@@ -4,7 +4,9 @@
 
 ## 当前结论
 
-当前验证服务已按用户要求切换到测试 GEA：`https://gea.synear.cn:4443/gea-boot`。地址依据 AionUi 的 `docs/contributing/development.zh-CN.md`，其二维码接口已实际返回 HTTP 200，页面也显示相同地址。测试环境需要重新扫码；正式环境登录令牌未复制到测试环境。以下授权拒绝记录来自正式环境，不代表测试环境结果。
+2026-09-10 18:16（中国时间），测试 GEA 的真实只读查询到 dsh 持久化会话验证通过。用户在 `https://gea.synear.cn:4443/gea-boot` 独立扫码登录后查到一条销售计划，并将选中记录送入会话；浏览器显示的数据、本地模型适配器收到的数据、会话日志和回执的 SHA-256 一致。`npm run verify -- --require-live` 通过，报告中 `liveBusinessVerified=true`。
+
+测试地址依据 AionUi 的 `docs/contributing/development.zh-CN.md`。正式环境登录令牌未复制到测试环境。测试样本为 `planTypeCode=Y`、`status=5`，当前数量与目标数量均为 `26445.000`；接口未提供经销商名称，页面保留“未提供”，未补造字段。测试成功不代表正式环境授权问题已解决。
 
 2026-09-10，官方 npm 发布版 `@deepseek-ai/dsh@0.1.5-rc.1` 已成功加载本插件。浏览器侧边栏与销售计划页面、受认证保护的服务端接口、选中演示记录到会话、模型请求回执、会话落盘及服务重启后恢复均已实际验证。
 
@@ -25,7 +27,7 @@
 
 主流程是：GEA 页面 → dsh 认证 Fetch 接口 → 外部 Host 插件 → GEA GET 查询 → 带来源、查询时间、覆盖范围的选中记录 → 标准 Session prompt → dsh 日志和本地模型回执。
 
-GEA access token 只存在服务端内存中，不返回浏览器，不写入会话。Host 只实现固定的扫码登录和销售计划列表调用；浏览器不传任意上游地址、凭证或 HTTP 方法。长整数标识和数量金额保留原始 JSON 数值文本。真实接口的字段兼容性仍待登录后验证。
+GEA access token 只存在服务端内存中，不返回浏览器，不写入会话。Host 只实现固定的扫码登录和销售计划列表调用；浏览器不传任意上游地址、凭证或 HTTP 方法。长整数标识和数量金额保留原始 JSON 数值文本。已验证测试环境返回的一条 Y 类型记录；其他计划类型、分页和详情字段尚未验收。
 
 ## 复现
 
@@ -37,7 +39,7 @@ npm run build
 npm start
 ```
 
-通过 `.runtime/server.log` 中本次启动生成的 dsh 本地链接打开页面，服务监听 `127.0.0.1:3199`。该日志仅供本机使用。点击侧边栏“GEA 销售计划”，载入演示数据，再点击“发送选中记录到会话”。会话选择 `gea-proof/receipt`，回执明确说明它不是 AI 分析。
+通过 `.runtime/server.log` 中本次启动生成的 dsh 本地链接打开页面，服务监听 `127.0.0.1:3199`。该日志仅供本机使用。点击侧边栏“GEA 销售计划”，确认页面显示的 GEA 环境，扫码登录并查询真实销售计划，再点击“发送选中记录到会话”。无业务账号时可载入演示数据验证交互。会话选择 `gea-proof/receipt`，回执明确说明它不是 AI 分析。
 
 随后在本目录另一终端运行 `npm run verify`。程序通过正常启动令牌交换建立自己的 HTTP 会话，不读取浏览器 Cookie。结果写入 `.runtime/verification.json`。它校验未认证请求 401、外站 Origin 403、GEA 未登录拒绝、无效选中记录拒绝、持久化用户快照摘要、助手回执与实际适配器请求摘要一致。
 
@@ -51,6 +53,10 @@ npm start
 
 ## 验证证据
 
+- 测试环境真实会话：`session-ace0b334-e648-4abb-831e-30acca4510a8`，来源为 `GEA_LIVE_READONLY`，来源 URL 为 `https://gea.synear.cn:4443/gea-boot/sales-plan/plans`。
+- 真实快照 SHA-256：`094ce5e382ecc38f5fab3128b8caf1e330c12b736744752175ec8fa3a75a796a`；浏览器会话、Host 交接记录、本地适配器实际请求和持久化回执一致。
+- 真实会话持久化文件：`.runtime/home/sessions/--Users-synear-Documents-ChatGPT-gea-dsh-plugin-prototype-.runtime-workspace---/session-ace0b334-e648-4abb-831e-30acca4510a8/session.v3.jsonl.zstd`，读取到 20 个事件。
+- 2026-09-10 18:16，`npm run verify -- --require-live` 六项检查通过；包含当前测试环境真实会话，报告保存在 `.runtime/verification.json`。真实记录已验证磁盘读回；服务重启恢复的实测样本是下述演示会话。
 - 浏览器真实点击完成：全局面板 → 演示数据 → 选中记录 → 创建会话 → 展示回执。
 - 演示会话：`session-667e536a-3150-4209-9ca0-c726a839c3b0`。
 - 快照 SHA-256：`134792d0efbd475f0b18dd16a2c0ca2a1ccd13817c1ccbe0e9b8546c6ff3b694`。
@@ -63,7 +69,7 @@ npm start
 
 ## 后续仍需验证
 
-1. 当前测试环境扫码登录后查询真实列表，再走相同会话交接校验；测试结果与正式环境单独记录。
+1. 正式环境销售计划授权问题，以及更多计划类型、分页、详情和缺失字段的兼容性。
 2. AionCore 适配器：当前运行中的 AionCore 需要独立登录，本原型直接复用 GEA 登录协议，没有证明 AionCore 身份桥接。
 3. 真实模型、销售计划详情和版本、审批权限与写回、通知、语音、桌面发布更新。这些不在本轮通过范围内。
 4. 类型化 RPC 和桌面 transport：本轮只验证 Web Fetch。发布版的专用 `connection.rpc.handle` 注册在本次启动中报 `cannot get property "webServer" without inject`；采用已验证的认证 Fetch 注册后可运行。未经桌面实测，不能承诺同一传输无需适配即可复用。
