@@ -5,7 +5,7 @@ export const inject = ['slots', 'layout', 'locale', 'connection', 'sessions', 'u
 const zh = {
   title: 'GEA 销售计划', tag: '独立插件验证', intro: '只读查询一页销售计划，将选中记录发送到 dsh 会话。',
   login: '飞书扫码登录', refresh: '查询真实销售计划', fixture: '载入演示数据', send: '发送选中记录到会话',
-  signedOut: '尚未登录 GEA', signedIn: '已登录', qr: '请使用飞书扫描二维码', pending: '等待扫码确认', expired: '二维码已过期，请重新登录',
+  signedOut: '尚未登录 GEA', signedIn: '已登录', environment: 'GEA 环境', qr: '请使用飞书扫描二维码', pending: '等待扫码确认', expired: '二维码已过期，请重新登录',
   live: '真实 GEA 数据 · 只读', demo: '演示数据 · 非真实业务', none: '还没有查询结果', empty: '本次查询没有记录',
   dealer: '经销商', type: '计划类型', status: '状态码', qty: '当前数量', target: '目标数量', unknown: '未提供',
   coverage: '仅显示第一页，最多 10 条；会话接收其中一条。', receipt: '会话使用本地验证回执，不调用外部模型，也不执行审批。',
@@ -14,7 +14,7 @@ const zh = {
 const en = {
   title: 'GEA sales plans', tag: 'Independent plugin proof', intro: 'Read one page of sales plans and send one selected record to a dsh session.',
   login: 'Sign in with Lark QR', refresh: 'Query live sales plans', fixture: 'Load demo data', send: 'Send selected record to session',
-  signedOut: 'Not signed in to GEA', signedIn: 'Signed in', qr: 'Scan with Lark', pending: 'Waiting for confirmation', expired: 'QR expired. Sign in again.',
+  signedOut: 'Not signed in to GEA', signedIn: 'Signed in', environment: 'GEA environment', qr: 'Scan with Lark', pending: 'Waiting for confirmation', expired: 'QR expired. Sign in again.',
   live: 'Live GEA data · read only', demo: 'Demo data · not real business', none: 'No query yet', empty: 'No records returned',
   dealer: 'Dealer', type: 'Plan type', status: 'Status code', qty: 'Current quantity', target: 'Target quantity', unknown: 'Not provided',
   coverage: 'First page only, at most 10 records. The session receives one selected record.', receipt: 'The session uses a local receipt. No external model or approval is invoked.',
@@ -77,6 +77,7 @@ export function apply(ctx) {
         <p style={{ color: '#536377' }}>{t('intro')}</p>
         <section style={{ padding: 20, margin: '24px 0', background: '#fff', border: '1px solid #d8e1ee', borderRadius: 10 }}>
           <p>{status?.authenticated ? `${t('signedIn')}：${status.user.name}` : t('signedOut')}</p>
+          {status?.source && <p style={{ fontSize: 13, color: '#65758a', overflowWrap: 'anywhere' }}>{t('environment')}：{status.source}</p>}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '14px 0' }}>
             <button style={buttonStyle} disabled={busy} onClick={act(async () => { setQr(await rpc('login/start')); setQrState('pending'); })}>{t('login')}</button>
             <button style={{ ...buttonStyle, background: '#1b4f8c', color: '#fff' }} disabled={busy || !status?.authenticated} onClick={act(async () => { setData(null); setData(await rpc('plans')); setSelected(0); })}>{t('refresh')}</button>

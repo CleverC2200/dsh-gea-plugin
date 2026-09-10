@@ -58,7 +58,7 @@ for (const workspace of await readdir(root)) {
     const snapshot = JSON.parse(json);
     assert.ok(rows.some(row => row.type === 'assistant/message' && JSON.stringify(row).includes(expected)));
     assert.ok(rows.some(row => row.type === 'turn/end'));
-    report.sessions.push({ sessionId: session, source: snapshot.source, snapshotHash: expected, events: rows.length, durableFile: path });
+    report.sessions.push({ sessionId: session, source: snapshot.source, sourceUrl: snapshot.sourceUrl ?? null, snapshotHash: expected, events: rows.length, durableFile: path });
   }
 }
 assert.ok(report.sessions.length > 0, 'Send a selected record through the UI first');
@@ -70,7 +70,7 @@ for (const session of report.sessions) {
   assert.ok(handoffs.some(handoff => handoff.snapshotHash === session.snapshotHash && handoff.source === session.source));
 }
 record('local adapter received the same snapshot', 'No external model used');
-report.liveBusinessVerified = report.sessions.some(session => session.source === 'GEA_LIVE_READONLY');
+report.liveBusinessVerified = report.sessions.some(session => session.source === 'GEA_LIVE_READONLY' && session.sourceUrl === status.value.source + '/sales-plan/plans');
 await writeFile('.runtime/verification.json', JSON.stringify(report, null, 2) + '\n', { mode: 0o600 });
 if (process.argv.includes('--require-live')) assert.ok(report.liveBusinessVerified, 'Real GEA query and selected-record handoff have not yet been verified');
 console.log(JSON.stringify(report, null, 2));

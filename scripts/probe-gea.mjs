@@ -14,7 +14,7 @@ while (!status.value?.authenticated && Date.now() < deadline) {
   await new Promise(resolve => setTimeout(resolve, 2500));
   status = await call('status');
 }
-const report = { checkedAt: new Date().toISOString(), authenticated: status.value?.authenticated === true, tenantId: status.value?.user?.tenantId ?? null };
+const report = { checkedAt: new Date().toISOString(), source: status.value?.source, authenticated: status.value?.authenticated === true, tenantId: status.value?.user?.tenantId ?? null };
 if (report.authenticated) {
   report.diagnostics = await call('diagnostics');
   const plans = await call('plans');

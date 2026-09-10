@@ -6,6 +6,6 @@
     - id: gea-proof
       name: /Users/synear/Documents/ChatGPT/gea-dsh-plugin-prototype/lib/host.js
       config:
-        geaBaseUrl: https://gea.synear.cn/gea-boot
+        geaBaseUrl: https://gea.synear.cn:4443/gea-boot
         pageSize: 10
         requestTimeoutMs: 15000

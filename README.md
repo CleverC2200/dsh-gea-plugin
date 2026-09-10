@@ -4,9 +4,11 @@
 
 ## 当前结论
 
+当前验证服务已按用户要求切换到测试 GEA：`https://gea.synear.cn:4443/gea-boot`。地址依据 AionUi 的 `docs/contributing/development.zh-CN.md`，其二维码接口已实际返回 HTTP 200，页面也显示相同地址。测试环境需要重新扫码；正式环境登录令牌未复制到测试环境。以下授权拒绝记录来自正式环境，不代表测试环境结果。
+
 2026-09-10，官方 npm 发布版 `@deepseek-ai/dsh@0.1.5-rc.1` 已成功加载本插件。浏览器侧边栏与销售计划页面、受认证保护的服务端接口、选中演示记录到会话、模型请求回执、会话落盘及服务重启后恢复均已实际验证。
 
-真实业务验收被 GEA 授权拒绝阻塞。2026-09-10 17:48（中国时间），扫码登录与身份接口均成功，确认租户为 `0`；销售周期 `/sales-plan/periods` 与计划列表 `/sales-plan/plans` 都返回 HTTP 403、`errorCode=SALES_PLAN_FORBIDDEN`、`category=AUTHORIZATION`，提示“当前用户无权操作该销售计划”。令牌和租户请求头与 AionCore 实现一致，补齐请求关联 ID 后仍被拒绝。需要 GEA 端核查该账号的销售计划授权与组织范围；现有响应没有指出具体缺少哪项授权。更早的登录接口 502 已恢复，原因未确定。现有演示会话标注 `LOCAL_FIXTURE_NOT_REAL_BUSINESS`，不得描述为真实 GEA 验收。
+正式环境的真实业务验收被 GEA 授权拒绝阻塞。2026-09-10 17:48（中国时间），扫码登录与身份接口均成功，确认租户为 `0`；销售周期 `/sales-plan/periods` 与计划列表 `/sales-plan/plans` 都返回 HTTP 403、`errorCode=SALES_PLAN_FORBIDDEN`、`category=AUTHORIZATION`，提示“当前用户无权操作该销售计划”。令牌和租户请求头与 AionCore 实现一致，补齐请求关联 ID 后仍被拒绝。该正式环境账号的销售计划授权与组织范围需要由 GEA 端核查；现有响应没有指出具体缺少哪项授权。更早的登录接口 502 已恢复，原因未确定。现有演示会话标注 `LOCAL_FIXTURE_NOT_REAL_BUSINESS`，不得描述为真实 GEA 验收。
 
 本次测试的是 npm 发布产物，不是从当前 dsh checkout 重新构建的产物。原仓库 `/Users/synear/Documents/ChatGPT/dpherness` 的 HEAD 保持 `2377c272a8e839e0a84c9f0e623b867a1dce2014`，工作区保持干净，origin 仍指向个人 fork。本项目未修改或补丁覆盖任何 dsh 源码、node_modules 文件。
 
@@ -39,7 +41,7 @@ npm start
 
 随后在本目录另一终端运行 `npm run verify`。程序通过正常启动令牌交换建立自己的 HTTP 会话，不读取浏览器 Cookie。结果写入 `.runtime/verification.json`。它校验未认证请求 401、外站 Origin 403、GEA 未登录拒绝、无效选中记录拒绝、持久化用户快照摘要、助手回执与实际适配器请求摘要一致。
 
-真实验收使用 `npm run verify -- --require-live`。除了上述检查，还要求存在来源为 `GEA_LIVE_READONLY` 的会话，并与 Host 查询后生成的交接记录对应。仅有演示数据时，这条命令会明确失败；报告中的 `liveBusinessVerified` 保持 `false`。已实际验证该失败路径，防止将演示结果算作真实验收。
+真实验收使用 `npm run verify -- --require-live`。除了上述检查，还要求存在来源为 `GEA_LIVE_READONLY`、来源 URL 与当前 GEA 环境一致的会话，并与 Host 查询后生成的交接记录对应。仅有演示数据或其他环境的记录时，这条命令会明确失败；报告中的 `liveBusinessVerified` 保持 `false`。已实际验证演示数据拒绝路径，防止将演示结果算作真实验收。
 
 403 等失败使用 `node scripts/probe-gea.mjs` 复现；添加 `--wait-login` 最多等待 110 秒供用户扫码。脱敏的错误原因、错误码和关联 ID 写入 `.runtime/gea-probe.json` 与 `.runtime/upstream-errors.jsonl`，不返回整个上游响应，不导出令牌。真实查询开始时清除上一次列表和待发送快照，避免失败后误发送旧的演示数据。`node --test scripts/gea-error.test.mjs` 覆盖原因保留、令牌脱敏和非 JSON 拒绝响应。
 
@@ -57,11 +59,11 @@ npm start
 - 2026-09-10 17:48 浏览器实测：载入演示记录后查询真实计划，页面显示 GEA 返回的具体授权错误，旧演示列表和发送按钮均被移除；登录状态仍有效。
 - `.runtime/handoffs.jsonl` 记录交接摘要；`.runtime/receipts.jsonl` 记录本地适配器实际收到的请求摘要。标题生成也会调用适配器，所以回执记录数不等于业务会话数。
 
-本次拒绝的查询记录见 `.runtime/gea-probe.json`。销售周期 requestId 为 `094cb4fa-ccaa-4afa-adbf-794fb2dad034`；销售计划 requestId 为 `9f8e352c-b9af-4ae4-a079-84d904ceac48`，可供 GEA 服务端关联日志。没有修改权限、切换身份、变更租户或尝试绕过拒绝。
+正式环境拒绝的查询记录保存在 `.runtime/gea-probe-production-20260910.json`，最近一次当前环境探测写入 `.runtime/gea-probe.json`。正式环境销售周期 requestId 为 `094cb4fa-ccaa-4afa-adbf-794fb2dad034`；销售计划 requestId 为 `9f8e352c-b9af-4ae4-a079-84d904ceac48`，可供 GEA 服务端关联日志。没有修改 GEA 权限或变更租户。
 
 ## 后续仍需验证
 
-1. GEA 环境与飞书扫码登录已通过。待 GEA 端确认当前账号在租户 `0` 的销售计划授权后，查询真实列表，再走相同会话交接校验。
+1. 当前测试环境扫码登录后查询真实列表，再走相同会话交接校验；测试结果与正式环境单独记录。
 2. AionCore 适配器：当前运行中的 AionCore 需要独立登录，本原型直接复用 GEA 登录协议，没有证明 AionCore 身份桥接。
 3. 真实模型、销售计划详情和版本、审批权限与写回、通知、语音、桌面发布更新。这些不在本轮通过范围内。
 4. 类型化 RPC 和桌面 transport：本轮只验证 Web Fetch。发布版的专用 `connection.rpc.handle` 注册在本次启动中报 `cannot get property "webServer" without inject`；采用已验证的认证 Fetch 注册后可运行。未经桌面实测，不能承诺同一传输无需适配即可复用。
