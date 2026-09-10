@@ -1,0 +1,11 @@
+- id: agent-default-model
+  config:
+    provider: gea-proof
+    model: receipt
+- insert:
+    - id: gea-proof
+      name: /Users/synear/Documents/ChatGPT/gea-dsh-plugin-prototype/lib/host.js
+      config:
+        geaBaseUrl: https://gea.synear.cn/gea-boot
+        pageSize: 10
+        requestTimeoutMs: 15000
