@@ -1,6 +1,6 @@
 # 销售计划只读插件任务拆分草稿
 
-来源为已完成的本地销售计划只读插件规格。当前尚无父 Issue，本轮不创建、关闭或修改父 Issue。目标 tracker 为个人 fork `CleverC2200/deepseek-harness` 的 GitHub Issues；本目录是待确认的发布草稿，不是已发布 ticket。用户确认后按编号发布，应用 `ready-for-agent`，以 GitHub 原生 blocking 关系登记真实依赖。
+来源为已完成的本地销售计划只读插件规格。当前没有父 Issue，本轮未创建、关闭或修改父 Issue。8 张任务已发布到个人 fork `CleverC2200/deepseek-harness` 的 GitHub Issues，全部应用 `ready-for-agent`，并以 GitHub 原生 blocking 关系登记真实依赖。
 
 ## 拆分与依赖
 
@@ -17,7 +17,7 @@
 
 01 完成后，02、03、04、06 不互相阻塞。04 不依赖 03，因为现有单页列表已可选择计划；06 不依赖 04/05，因为先分析已有单记录就能验证模型兼容性。08 只列直接依赖，不重复列出已由它们传递覆盖的 01、04、06。
 
-各票都从真实启动的 dsh Web profile 验证其用户流程，只在外部 GEA 与模型服务使用受控响应；无密钥回归随功能交付，真实模型和完整业务验收分别归 06 与 08。详细正文每票单独保存，发布时把本地编号替换为实际 Issue 引用。
+已发布 Issue：[#1](https://github.com/CleverC2200/deepseek-harness/issues/1)、[#2](https://github.com/CleverC2200/deepseek-harness/issues/2)、[#3](https://github.com/CleverC2200/deepseek-harness/issues/3)、[#4](https://github.com/CleverC2200/deepseek-harness/issues/4)、[#5](https://github.com/CleverC2200/deepseek-harness/issues/5)、[#6](https://github.com/CleverC2200/deepseek-harness/issues/6)、[#7](https://github.com/CleverC2200/deepseek-harness/issues/7)、[#8](https://github.com/CleverC2200/deepseek-harness/issues/8)。各票都从真实启动的 dsh Web profile 验证其用户流程，只在外部 GEA 与模型服务使用受控响应；无密钥回归随功能交付，真实模型和完整业务验收分别归 06 与 08。详细正文保留在本目录，Issue 正文使用 GitHub 依赖引用。
 
 ## 用户故事覆盖
 
@@ -30,6 +30,6 @@
 - 07：26–28、30、33–35 的失败、取消和重试。
 - 08：1–35 的新增整合行为与真实环境最终验收，不替代前序票的独立验收。
 
-## 待确认
+## 发布记录
 
-请确认这 8 张任务的粒度是否合适、直接依赖是否都是实际前置条件，以及是否有需要合并或继续拆分的任务。本次确认同时覆盖各票已列明的测试入口，不另行重复询问原规格的同一测试问题。
+用户已确认这 8 张任务的粒度和依赖。发布后重新读取验证：8 张 Issue 均为 open，均带 `ready-for-agent`；阻塞关系为 02←01、03←01、04←01、05←04、06←01、07←06、08←02/03/05/07。Issue tracker 原生依赖状态与各票正文一致。
