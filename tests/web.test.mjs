@@ -1,0 +1,66 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { chromium } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+import { profile } from "./profile.mjs";
+
+test(
+  "the real Web page previews a selection and opens its durable receipt",
+  { timeout: 60000 },
+  async (t) => {
+    const app = await profile(t);
+    const browser = await chromium.launch({
+      channel: "chrome",
+      headless: true,
+    });
+    t.after(() => browser.close());
+    const context = await browser.newContext({
+      locale: "zh-CN",
+      viewport: { width: 1440, height: 1000 },
+    });
+    await context.addCookies(
+      app.cookie
+        .split("; ")
+        .map((pair) => ({
+          name: pair.slice(0, pair.indexOf("=")),
+          value: pair.slice(pair.indexOf("=") + 1),
+          url: app.origin,
+        })),
+    );
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto(app.origin);
+    await page.getByText("GEA 销售计划", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "继续", exact: true }).click();
+    page.setDefaultTimeout(10000);
+    await page.getByText("GEA 销售计划", { exact: true }).click();
+    await page
+      .getByRole("button", { name: "飞书扫码登录", exact: true })
+      .click();
+    await page.getByText("已登录：测试用户", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "查询计划", exact: true }).click();
+    await page
+      .getByRole("radio", { name: "选择 9007199254740993", exact: true })
+      .waitFor();
+    await page
+      .getByRole("button", { name: "预览发送范围", exact: true })
+      .click();
+    await page
+      .getByRole("heading", { name: "确认会话输入", exact: true })
+      .waitFor();
+    await mkdir(".runtime/web-evidence", { recursive: true });
+    await page.screenshot({ path: ".runtime/web-evidence/desktop.png" });
+    await page.setViewportSize({ width: 700, height: 900 });
+    await page.screenshot({ path: ".runtime/web-evidence/narrow.png" });
+    await page
+      .getByRole("button", { name: "确认并验证传递", exact: true })
+      .click();
+    await page
+      .getByText("本地验证回执（非 AI 分析）：快照已进入 dsh 模型请求。", {
+        exact: false,
+      })
+      .waitFor();
+    assert.deepEqual(errors, []);
+  },
+);

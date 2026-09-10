@@ -1,0 +1,16 @@
+{
+  "geaBaseUrl": "https://gea.example.test/gea-boot",
+  "pageSize": 10,
+  "periodPageSize": 100,
+  "requestTimeoutMs": 15000,
+  "maxSnapshotBytes": 100000,
+  "analysis": {
+    "mode": "model",
+    "source": "aionui",
+    "backendUrl": "http://127.0.0.1:12345",
+    "providerId": "gea-personal-replace-with-enabled-provider-id",
+    "model": "replace-with-enabled-model-id",
+    "contextWindow": 32768,
+    "maxTokens": 2048
+  }
+}

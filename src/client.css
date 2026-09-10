@@ -1,0 +1,297 @@
+.gea-page {
+  height: 100%;
+  overflow: auto;
+  color: #172b43;
+  background: #f4f7fb;
+  font:
+    14px/1.6 system-ui,
+    sans-serif;
+  --gea-accent: #1b4f8c;
+}
+.gea-page * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+.gea-content {
+  max-width: 1440px;
+  margin: auto;
+  padding: 32px 36px 64px;
+}
+.gea-page h1 {
+  font-size: 28px;
+  line-height: 1.3;
+  font-weight: 650;
+  margin: 0 0 12px;
+}
+.gea-page h2 {
+  font-size: 18px;
+  font-weight: 650;
+  margin: 0 0 12px;
+}
+.gea-page p {
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+.gea-page header {
+  margin-bottom: 28px;
+}
+.gea-section {
+  background: #fff;
+  border: 1px solid #d8e1ee;
+  border-radius: 10px;
+  padding: 20px;
+  margin-block: 20px;
+}
+.gea-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.gea-page button,
+.gea-page input:not([type="checkbox"]):not([type="radio"]),
+.gea-page select {
+  font: inherit;
+  border: 1px solid #99aac0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: #fff;
+  color: inherit;
+  min-height: 40px;
+  max-width: 100%;
+}
+.gea-page button {
+  cursor: pointer;
+}
+.gea-page button:hover:enabled {
+  background: #eaf1fa;
+  border-color: var(--gea-accent);
+}
+.gea-page button.gea-primary {
+  color: #fff;
+  background: var(--gea-accent);
+  border-color: var(--gea-accent);
+}
+.gea-page button.gea-primary:hover:enabled {
+  background: #123b6b;
+}
+.gea-page button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.gea-page :focus-visible {
+  outline: 2px solid var(--gea-accent);
+  outline-offset: 3px;
+}
+.gea-page ::selection {
+  background: #cfdef2;
+}
+.gea-page input {
+  accent-color: var(--gea-accent);
+  caret-color: var(--gea-accent);
+}
+.gea-page input::placeholder {
+  color: #62748b;
+}
+.gea-meta {
+  color: #53677f;
+  font-size: 13px;
+}
+.gea-mode {
+  font-weight: 550;
+}
+.gea-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin-block: 24px;
+}
+.gea-filters label {
+  display: grid;
+  gap: 6px;
+}
+.gea-filters input {
+  width: 120px;
+}
+.gea-filters select {
+  max-width: 340px;
+}
+.gea-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+.gea-table-scroll {
+  overflow: auto;
+  max-width: 100%;
+  scrollbar-color: #9bafc9 #edf2f8;
+}
+.gea-page table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.gea-page th {
+  text-align: start;
+  font-weight: 600;
+  background: #f6f8fb;
+  white-space: nowrap;
+}
+.gea-page th,
+.gea-page td {
+  padding: 12px;
+  border-bottom: 1px solid #dfe6f0;
+  vertical-align: top;
+}
+.gea-page td {
+  min-width: 88px;
+  max-width: 280px;
+  overflow-wrap: anywhere;
+}
+.gea-page td:first-child {
+  min-width: 42px;
+}
+.gea-page tr[aria-selected="true"] {
+  background: #edf4ff;
+}
+.gea-page td small {
+  display: block;
+  color: #53677f;
+  margin-top: 4px;
+}
+.gea-page input[type="checkbox"],
+.gea-page input[type="radio"] {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+.gea-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+.gea-skus {
+  max-height: 420px;
+  margin-top: 14px;
+}
+.gea-skus th {
+  position: sticky;
+  top: 0;
+}
+.gea-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-block: 20px;
+}
+.gea-fields dt {
+  color: #53677f;
+  font-size: 13px;
+}
+.gea-fields dd {
+  margin: 4px 0 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.gea-empty {
+  padding-block: 20px;
+  color: #53677f;
+}
+.gea-error {
+  padding: 16px 20px;
+  background: #fff1ef;
+  color: #9a271b;
+  border: 1px solid #e4b6af;
+  border-radius: 6px;
+}
+.gea-preview {
+  border-color: #96b1d2;
+}
+.gea-page details {
+  margin-block: 16px;
+}
+.gea-page summary {
+  cursor: pointer;
+  color: var(--gea-accent);
+}
+.gea-page pre {
+  overflow: auto;
+  max-height: 360px;
+  padding: 14px;
+  background: #f4f7fb;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gea-qr {
+  margin-top: 20px;
+}
+@media (max-width: 700px) {
+  .gea-content {
+    padding: 22px 16px 44px;
+  }
+  .gea-section {
+    padding: 16px;
+  }
+  .gea-page input:not([type="checkbox"]):not([type="radio"]),
+  .gea-page select {
+    font-size: 16px;
+  }
+  .gea-filters label {
+    flex: 1 1 120px;
+  }
+  .gea-filters input {
+    width: 100%;
+  }
+  .gea-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (prefers-color-scheme: dark) {
+  .gea-page {
+    color: #dce6f4;
+    background: #182334;
+    --gea-accent: #a9c8ef;
+  }
+  .gea-section,
+  .gea-page button,
+  .gea-page input:not([type="checkbox"]):not([type="radio"]),
+  .gea-page select {
+    background: #202d40;
+    border-color: #516681;
+  }
+  .gea-page th,
+  .gea-page pre {
+    background: #26364e;
+  }
+  .gea-meta,
+  .gea-fields dt,
+  .gea-page td small,
+  .gea-empty {
+    color: #b5c7de;
+  }
+  .gea-page tr[aria-selected="true"],
+  .gea-page button:hover:enabled {
+    background: #2c4361;
+  }
+  .gea-page button.gea-primary {
+    color: #122b49;
+    background: #a9c8ef;
+  }
+  .gea-page button.gea-primary:hover:enabled {
+    background: #d2e4fa;
+  }
+  .gea-error {
+    background: #452a2c;
+    color: #ffccc4;
+  }
+  .gea-page th,
+  .gea-page td {
+    border-color: #40546f;
+  }
+}

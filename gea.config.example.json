@@ -1,0 +1,8 @@
+{
+  "geaBaseUrl": "https://gea.example.test/gea-boot",
+  "pageSize": 10,
+  "periodPageSize": 100,
+  "requestTimeoutMs": 15000,
+  "maxSnapshotBytes": 100000,
+  "analysis": { "mode": "receipt" }
+}

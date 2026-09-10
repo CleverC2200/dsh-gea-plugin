@@ -1,79 +1,46 @@
-# GEA 外部插件验证
+# GEA 销售计划只读插件
 
-本项目验证：不修改 DeepSeek Harness 源码，能否独立安装 GEA 页面和服务端插件，并把选中的销售计划记录送入持久化会话。这是可丢弃的集成原型，不是完整业务迁移。
+独立安装的 DeepSeek Harness Web 插件，使用官方 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码全部位于本工程；不修改 dsh 源码或安装依赖，不执行业务审批、保存或写回。
 
-## 当前结论
+## 安装与启动
 
-2026-09-10 18:16（中国时间），测试 GEA 的真实只读查询到 dsh 持久化会话验证通过。用户在 `https://gea.synear.cn:4443/gea-boot` 独立扫码登录后查到一条销售计划，并将选中记录送入会话；浏览器显示的数据、本地模型适配器收到的数据、会话日志和回执的 SHA-256 一致。`npm run verify -- --require-live` 通过，报告中 `liveBusinessVerified=true`。
-
-当前实现已推进至首批可用切片：独立 profile 启动、登录失效隔离、销售周期/类型/状态筛选与分页参数、计划详情/版本/SKU 只读入口、快照大小限制和可选 OpenAI 兼容分析适配器均已接入。详情、版本和 SKU 的真实服务响应及真实模型仍需在有权限的测试环境完成验收。
-
-测试地址依据 AionUi 的 `docs/contributing/development.zh-CN.md`。正式环境登录令牌未复制到测试环境。测试样本为 `planTypeCode=Y`、`status=5`，当前数量与目标数量均为 `26445.000`；接口未提供经销商名称，页面保留“未提供”，未补造字段。测试成功不代表正式环境授权问题已解决。
-
-2026-09-10，官方 npm 发布版 `@deepseek-ai/dsh@0.1.5-rc.1` 已成功加载本插件。浏览器侧边栏与销售计划页面、受认证保护的服务端接口、选中演示记录到会话、模型请求回执、会话落盘及服务重启后恢复均已实际验证。
-
-正式环境的真实业务验收被 GEA 授权拒绝阻塞。2026-09-10 17:48（中国时间），扫码登录与身份接口均成功，确认租户为 `0`；销售周期 `/sales-plan/periods` 与计划列表 `/sales-plan/plans` 都返回 HTTP 403、`errorCode=SALES_PLAN_FORBIDDEN`、`category=AUTHORIZATION`，提示“当前用户无权操作该销售计划”。令牌和租户请求头与 AionCore 实现一致，补齐请求关联 ID 后仍被拒绝。该正式环境账号的销售计划授权与组织范围需要由 GEA 端核查；现有响应没有指出具体缺少哪项授权。更早的登录接口 502 已恢复，原因未确定。现有演示会话标注 `LOCAL_FIXTURE_NOT_REAL_BUSINESS`，不得描述为真实 GEA 验收。
-
-本次测试的是 npm 发布产物，不是从当前 dsh checkout 重新构建的产物。原仓库 `/Users/synear/Documents/ChatGPT/dpherness` 的 HEAD 保持 `2377c272a8e839e0a84c9f0e623b867a1dce2014`，工作区保持干净，origin 仍指向个人 fork。本项目未修改或补丁覆盖任何 dsh 源码、node_modules 文件。
-
-## 组成
-
-| 文件 | 用途 |
-| --- | --- |
-| `src/host.js` | GEA 登录、固定只读查询、选中记录快照；本地 LLM 回执适配器 |
-| `src/client.jsx` | dsh sidebar/main 插槽注册、独立页面、标准 Session 创建和 prompt 调用 |
-| `gea.patch.yml` | profile 覆盖层：注册外部插件，选择本地回执模型，配置 GEA 地址 |
-| `scripts/start.mjs` | 通过官方 dsh CLI/profile 启动，使用独立 DSH_HOME |
-| `scripts/verify.mjs` | HTTP 黑盒校验、持久化日志与快照 SHA-256 核对 |
-| `scripts/probe-gea.mjs` | 复现真实 GEA 查询，并对照身份和销售周期只读接口 |
-
-主流程是：GEA 页面 → dsh 认证 Fetch 接口 → 外部 Host 插件 → GEA GET 查询 → 带来源、查询时间、覆盖范围的选中记录 → 标准 Session prompt → dsh 日志和本地模型回执。
-
-GEA access token 只存在服务端内存中，不返回浏览器，不写入会话。Host 只实现固定的扫码登录和销售计划列表调用；浏览器不传任意上游地址、凭证或 HTTP 方法。长整数标识和数量金额保留原始 JSON 数值文本。已验证测试环境返回的一条 Y 类型记录；其他计划类型、分页和详情字段尚未验收。
-
-## 复现
-
-使用 Node 24。在本目录运行：
+使用 Node 24，在本目录执行：
 
 ```sh
 npm ci
 npm run build
-npm start
+cp gea.config.example.json gea.config.json
+# 在 gea.config.json 中填写环境地址；凭证不写入该文件。
+npm start -- --config gea.config.json --runtime .runtime/development --port 3198
 ```
 
-通过 `.runtime/server.log` 中本次启动生成的 dsh 本地链接打开页面，服务监听 `127.0.0.1:3199`。该日志仅供本机使用。点击侧边栏“GEA 销售计划”，确认页面显示的 GEA 环境，扫码登录并查询真实销售计划，再点击“发送选中记录到会话”。无业务账号时可载入演示数据验证交互。会话选择 `gea-proof/receipt`，回执明确说明它不是 AI 分析。
+使用启动进程本地日志中的带认证参数链接进入页面。点击「GEA 销售计划」后独立扫码登录、查询、选择版本和 SKU、预览输入范围，最后确认提交。会话使用 dsh 的标准取消、追问和历史读取功能。
 
-随后在本目录另一终端运行 `npm run verify`。程序通过正常启动令牌交换建立自己的 HTTP 会话，不读取浏览器 Cookie。结果写入 `.runtime/verification.json`。它校验未认证请求 401、外站 Origin 403、GEA 未登录拒绝、无效选中记录拒绝、持久化用户快照摘要、助手回执与实际适配器请求摘要一致。
+`gea.config.example.json` 使用明确的本地回执模式，只验证数据传递。真实模型可使用直接 HTTPS 配置，也可按 [AionUi 接入说明](docs/aionui-model.md) 使用 `gea.aionui.example.json` 从已运行的 AionUi 读取所选模型和本机代理凭证。AionUi 退出或代理失效会中断其模型路径；不会自动切换模型或退回本地回执。
 
-真实验收使用 `npm run verify -- --require-live`。除了上述检查，还要求存在来源为 `GEA_LIVE_READONLY`、来源 URL 与当前 GEA 环境一致的会话，并与 Host 查询后生成的交接记录对应。仅有演示数据或其他环境的记录时，这条命令会明确失败；报告中的 `liveBusinessVerified` 保持 `false`。已实际验证演示数据拒绝路径，防止将演示结果算作真实验收。
+GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
 
-403 等失败使用 `node scripts/probe-gea.mjs` 复现；添加 `--wait-login` 最多等待 110 秒供用户扫码。脱敏的错误原因、错误码和关联 ID 写入 `.runtime/gea-probe.json` 与 `.runtime/upstream-errors.jsonl`，不返回整个上游响应，不导出令牌。真实查询开始时清除上一次列表和待发送快照，避免失败后误发送旧的演示数据。`node --test scripts/gea-error.test.mjs` 覆盖原因保留、令牌脱敏和非 JSON 拒绝响应。
+## 数据与会话
 
-在启动终端按 Ctrl-C 停止，然后重新运行 `npm start`，刷新浏览器。已验证演示会话在重启后恢复。运行状态和会话位于 `.runtime/`；GEA 登录状态不会跨重启保留。
+Host 生成查询和预览 ID，并缓存已获取的详情、版本和 SKU。浏览器只能提交选择标识，不能把自己提供的业务对象加入快照。新查询、重新登录或 401 会使旧快照失效。业务权限 403 保留脱敏原因，不被当成未登录或空结果。
 
-更换环境时修改 `gea.patch.yml` 的 `geaBaseUrl` 并重启。插件路径目前固定到本机目录；移动项目需同时修改该文件的 `name`。
+计划详情标注为当前计划数据，历史版本和版本 SKU 分别记录身份、来源及获取时间。缺失字段、总数未知和部分结果均保留；仅发送明确选中的范围。业务标识和十进制数字保留原始 JSON 数值文本，数量和金额差额通过 Decimal 计算后连同依据写入快照。超出配置的输入字节上限时拒绝发送，不静默截断。
 
-## 验证证据
+分析 preset 不注册 Shell、网络或业务写工具。模型可见输入通过标准 `user/message` 持久化；成功、失败及取消使用已有 Session 事件。取消后若已有部分文本，dsh 可以保留 `interrupted: true` 的助手消息，同时以 `turn/end.reason.kind=aborted` 结束，不能将该消息计为完整回答。
 
-- 测试环境真实会话：`session-ace0b334-e648-4abb-831e-30acca4510a8`，来源为 `GEA_LIVE_READONLY`，来源 URL 为 `https://gea.synear.cn:4443/gea-boot/sales-plan/plans`。
-- 真实快照 SHA-256：`094ce5e382ecc38f5fab3128b8caf1e330c12b736744752175ec8fa3a75a796a`；浏览器会话、Host 交接记录、本地适配器实际请求和持久化回执一致。
-- 真实会话持久化文件：`.runtime/home/sessions/--Users-synear-Documents-ChatGPT-gea-dsh-plugin-prototype-.runtime-workspace---/session-ace0b334-e648-4abb-831e-30acca4510a8/session.v3.jsonl.zstd`，读取到 20 个事件。
-- 2026-09-10 18:16，`npm run verify -- --require-live` 六项检查通过；包含当前测试环境真实会话，报告保存在 `.runtime/verification.json`。真实记录已验证磁盘读回；服务重启恢复的实测样本是下述演示会话。
-- 浏览器真实点击完成：全局面板 → 演示数据 → 选中记录 → 创建会话 → 展示回执。
-- 演示会话：`session-667e536a-3150-4209-9ca0-c726a839c3b0`。
-- 快照 SHA-256：`134792d0efbd475f0b18dd16a2c0ca2a1ccd13817c1ccbe0e9b8546c6ff3b694`。
-- 持久化文件：`.runtime/home/sessions/--Users-synear-Documents-ChatGPT-gea-dsh-plugin-prototype-.runtime-workspace---/session-667e536a-3150-4209-9ca0-c726a839c3b0/session.v3.jsonl.zstd`。
-- 重启前后均执行黑盒校验通过；浏览器重载后显示相同用户数据和回执。
-- 2026-09-10 17:48 浏览器实测：载入演示记录后查询真实计划，页面显示 GEA 返回的具体授权错误，旧演示列表和发送按钮均被移除；登录状态仍有效。
-- `.runtime/handoffs.jsonl` 记录交接摘要；`.runtime/receipts.jsonl` 记录本地适配器实际收到的请求摘要。标题生成也会调用适配器，所以回执记录数不等于业务会话数。
+GEA token 仅保存在当前 Host 内存中；重启后需要重新登录。模型凭证独立配置，不进入业务快照、普通配置或 profile patch。本地 `.runtime/` 包含会话、启动认证链接及验证证据，不应发布。
 
-正式环境拒绝的查询记录保存在 `.runtime/gea-probe-production-20260910.json`，最近一次当前环境探测写入 `.runtime/gea-probe.json`。正式环境销售周期 requestId 为 `094cb4fa-ccaa-4afa-adbf-794fb2dad034`；销售计划 requestId 为 `9f8e352c-b9af-4ae4-a079-84d904ceac48`，可供 GEA 服务端关联日志。没有修改 GEA 权限或变更租户。
+## 当前验证状态
 
-## 后续仍需验证
+兼容基线为固定 npm 发布版 `@deepseek-ai/dsh@0.1.5-rc.1`。本地检查使用真实官方 Web profile，仅替换外部 GEA/LLM HTTP 响应；包括查询隔离、精确数值、详情/历史版本/SKU 子集、登录过期/401/403、模型路由、取消与显式重试、一次提交、Session 磁盘读回和新进程恢复。浏览器回归操作实际页面并打开标准会话。
 
-1. 正式环境销售计划授权问题，以及更多计划类型、分页、详情和缺失字段的兼容性。
-2. AionCore 适配器：当前运行中的 AionCore 需要独立登录，本原型直接复用 GEA 登录协议，没有证明 AionCore 身份桥接。
-3. 真实模型、销售计划详情和版本、审批权限与写回、通知、语音、桌面发布更新。这些不在本轮通过范围内。
-4. 类型化 RPC 和桌面 transport：本轮只验证 Web Fetch。发布版的专用 `connection.rpc.handle` 注册在本次启动中报 `cannot get property "webServer" without inject`；采用已验证的认证 Fetch 注册后可运行。未经桌面实测，不能承诺同一传输无需适配即可复用。
+真实服务证据分开记录：旧原型曾通过测试 GEA 单记录到本地回执的验证；新版不能沿用该结果宣布验收完成。AionUi 真实模型最小标准 Session 调用已完成并持久化。新版完整计划、版本、SKU、真实模型分析以及真实业务会话新进程重开仍未验收；全部 Issue 保持开放。正式环境曾返回的业务 403 未被本项目修改。
 
-结论支持继续采用外部业务插件的迁移方式。它证明了页面、服务接口和会话衔接的可行性；还不足以承诺 AionUi 所有功能都无需任何 dsh 扩展点改进。
+尚待补齐：干净目录安装复现、扩展乱序/空结果/超限覆盖、完整无密钥录制回放、真实模型输入预算与长会话验证、完整真实业务验收、最终双轴审查。字节上限属于当前保守预检，不代表已经验证模型的完整上下文预算。
+
+```sh
+npm run typecheck
+npm test
+```
+
+浏览器测试使用本机 Chrome，测试进程、端口和目录均由测试拥有。定向测试可运行 `node --test tests/<name>.test.mjs`。`scripts/verify.mjs` 和 `scripts/probe-gea.mjs` 属于旧原型诊断入口，尚未适配新版部署与选择 ID，不应用它们宣告新版真实验收。
