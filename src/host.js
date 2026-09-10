@@ -11,6 +11,10 @@ export const Config = z.object({
   geaBaseUrl: z.string().required(),
   pageSize: z.natural().min(1).max(10).required(),
   requestTimeoutMs: z.natural().min(1000).max(30000).required(),
+  analysisBaseUrl: z.string().default(''),
+  analysisModel: z.string().default(''),
+  analysisApiKey: z.string().default(''),
+  maxSnapshotBytes: z.natural().min(10000).max(5000000).default(1000000),
 });
 const runtime = new URL('../.runtime/', import.meta.url);
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -43,6 +47,37 @@ class ReceiptAdapter extends LlmAdapter {
   }
 }
 
+/** Optional OpenAI-compatible adapter for the explicitly configured analysis route. */
+class AnalysisAdapter extends LlmAdapter {
+  constructor(baseUrl, model, apiKey) { super(); this.baseUrl = baseUrl.replace(/\/$/, ''); this.model = model; this.apiKey = apiKey; }
+  providerInfo(id) { return { id, name: 'GEA sales-plan analysis' }; }
+  async listModels() { return [{ id: this.model, name: this.model }]; }
+  async *stream(options) {
+    const response = await fetch(this.baseUrl + '/chat/completions', {
+      method: 'POST', headers: { Accept: 'text/event-stream', 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify({ model: options.model, messages: options.messages, stream: true }), signal: options.signal,
+    });
+    if (!response.ok || !response.body) throw new Error('ANALYSIS_PROVIDER_HTTP_' + response.status);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder(); let buffer = ''; let completeText = '';
+    yield { type: 'block-start', index: 0, blockType: 'text' };
+    try {
+      while (true) {
+        const item = await reader.read(); if (item.done) break;
+        buffer += decoder.decode(item.value, { stream: true });
+        for (const line of buffer.split(/\r?\n/).slice(0, -1)) {
+          if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+          let chunk; try { chunk = JSON.parse(line.slice(6)); } catch { continue; }
+          const text = chunk.choices?.[0]?.delta?.content; if (text) { completeText += text; yield { type: 'text-delta', index: 0, text }; }
+        }
+        buffer = buffer.slice(buffer.lastIndexOf('\n') + 1);
+      }
+    } finally { reader.releaseLock(); }
+    yield { type: 'block-end', index: 0, block: { type: 'text', text: completeText } };
+    yield { type: 'finish', reason: { kind: 'stop' } };
+  }
+}
+
 /** Mount authenticated Fetch endpoints and a local receipt provider. */
 export function apply(ctx, config) {
   const url = new URL(config.geaBaseUrl);
@@ -54,6 +89,11 @@ export function apply(ctx, config) {
   const active = new AbortController();
   ctx.effect(() => () => { active.abort(); auth = undefined; qr = undefined; snapshot = undefined; });
   ctx.effect(() => ctx.llm.registerAdapter(['gea-proof'], new ReceiptAdapter()));
+  if (config.analysisBaseUrl && config.analysisModel && config.analysisApiKey) {
+    const analysisUrl = new URL(config.analysisBaseUrl);
+    if (analysisUrl.protocol !== 'https:' || analysisUrl.username || analysisUrl.password) throw new Error('INVALID_ANALYSIS_BASE_URL');
+    ctx.effect(() => ctx.llm.registerAdapter(['gea-analysis'], new AnalysisAdapter(config.analysisBaseUrl, config.analysisModel, config.analysisApiKey)));
+  }
 
   async function get(path, authenticated = false, signal) {
     if (authenticated && !auth) throw new Error('LOGIN_REQUIRED');
@@ -84,6 +124,7 @@ export function apply(ctx, config) {
       switch (endpoint) {
         case 'status': value = state(); break;
         case 'login/start': {
+          auth = undefined; snapshot = undefined;
           const result = await get('/sys/getLoginQrcode', false, signal);
           if (typeof result?.qrcodeId !== 'string' || !result.qrcodeId.trim()) throw new Error('GEA_INVALID_QR');
           qr = { id: result.qrcodeId, createdAt: Date.now() };
@@ -111,14 +152,42 @@ export function apply(ctx, config) {
           value = { status: 'authenticated', ...state() };
           break;
         }
+        case 'periods': {
+          const page = await get('/sales-plan/periods?pageNo=1&pageSize=100', true, signal);
+          if (!Array.isArray(page?.records)) throw new Error('GEA_INVALID_PAGE');
+          value = page.records.map(row => Object.fromEntries(['periodId', 'periodCode', 'periodName', 'status', 'startDate', 'endDate'].filter(key => row[key] !== undefined).map(key => [key, row[key]])));
+          break;
+        }
         case 'plans': {
           snapshot = undefined;
-          const page = await get('/sales-plan/plans?pageNo=1&pageSize=' + config.pageSize, true, signal);
+          const pageNo = Number.isInteger(payload.pageNo) && payload.pageNo > 0 ? payload.pageNo : 1;
+          const pageSize = Number.isInteger(payload.pageSize) && payload.pageSize > 0 && payload.pageSize <= config.pageSize ? payload.pageSize : config.pageSize;
+          const query = new URLSearchParams({ pageNo: String(pageNo), pageSize: String(pageSize) });
+          for (const key of ['periodId', 'planTypeCode', 'status']) if (typeof payload[key] === 'string' && payload[key]) query.set(key, payload[key]);
+          const page = await get('/sales-plan/plans?' + query, true, signal);
           if (!Array.isArray(page?.records) || typeof page.total !== 'number') throw new Error('GEA_INVALID_PAGE');
           const fields = ['planId', 'versionId', 'seq', 'periodId', 'planTypeCode', 'dealerCode', 'dealerName', 'orgName', 'provinceName', 'status', 'targetQty', 'targetAmount', 'currentQty', 'currentAmount', 'skuCount', 'updatedAt'];
           const records = page.records.map(row => Object.fromEntries(fields.filter(key => row[key] !== undefined).map(key => [key, row[key]])));
-          snapshot = { source: 'GEA_LIVE_READONLY', endpoint: '/sales-plan/plans', sourceUrl: base + '/sales-plan/plans', fetchedAt: new Date().toISOString(), tenantId: auth.tenantId, current: page.current, size: page.size, total: page.total, records };
+          snapshot = { source: 'GEA_LIVE_READONLY', endpoint: '/sales-plan/plans', sourceUrl: base + '/sales-plan/plans', fetchedAt: new Date().toISOString(), tenantId: auth.tenantId, current: page.current ?? pageNo, size: page.size ?? pageSize, total: page.total, query: Object.fromEntries(query), records };
           value = snapshot;
+          break;
+        }
+        case 'detail': {
+          if (typeof payload.planId !== 'string' || !payload.planId) throw new Error('INVALID_PLAN_ID');
+          const result = await get('/sales-plan/plans/' + encodeURIComponent(payload.planId), true, signal);
+          value = { source: 'GEA_LIVE_READONLY', fetchedAt: new Date().toISOString(), planId: payload.planId, data: result };
+          break;
+        }
+        case 'versions': {
+          if (typeof payload.planId !== 'string' || !payload.planId) throw new Error('INVALID_PLAN_ID');
+          const result = await get('/sales-plan/plans/' + encodeURIComponent(payload.planId) + '/versions', true, signal);
+          value = { source: 'GEA_LIVE_READONLY', fetchedAt: new Date().toISOString(), planId: payload.planId, records: Array.isArray(result?.records) ? result.records : result };
+          break;
+        }
+        case 'skus': {
+          if (typeof payload.versionId !== 'string' || !payload.versionId) throw new Error('INVALID_VERSION_ID');
+          const result = await get('/sales-plan/plans/versions/' + encodeURIComponent(payload.versionId) + '/skus', true, signal);
+          value = { source: 'GEA_LIVE_READONLY', fetchedAt: new Date().toISOString(), versionId: payload.versionId, records: Array.isArray(result?.records) ? result.records : result };
           break;
         }
         case 'diagnostics': {
@@ -142,7 +211,9 @@ export function apply(ctx, config) {
           if (!snapshot || !Number.isInteger(payload.index) || payload.index < 0 || payload.index >= snapshot.records.length) throw new Error('INVALID_SELECTION');
           const { records, ...metadata } = snapshot;
           const selected = { ...metadata, coverage: 'one selected record from the displayed page', record: records[payload.index] };
+          for (const key of ['detail', 'version', 'skus']) if (payload[key] !== undefined) selected[key] = payload[key];
           const json = JSON.stringify(selected, null, 2);
+          if (Buffer.byteLength(json) > config.maxSnapshotBytes) throw new Error('SNAPSHOT_TOO_LARGE');
           const snapshotHash = hash(json);
           value = { snapshotHash, prompt: `请核对以下销售计划数据已进入本会话。本次只做传递验证，不执行审批或写回。\nGEA_SNAPSHOT_SHA256=${snapshotHash}\n\n${json}` };
           await mkdir(runtime, { recursive: true, mode: 0o700 });
@@ -158,7 +229,7 @@ export function apply(ctx, config) {
       return { ok: false, error: { code, message: code, details: {} } };
     }
   };
-  for (const endpoint of ['status', 'login/start', 'login/poll', 'plans', 'diagnostics', 'fixture', 'prepare']) {
+  for (const endpoint of ['status', 'login/start', 'login/poll', 'periods', 'plans', 'detail', 'versions', 'skus', 'diagnostics', 'fixture', 'prepare']) {
     ctx.effect(() => ctx.connection.fetch.register({
       path: '/api/gea-proof/' + endpoint,
       methods: ['POST'],
