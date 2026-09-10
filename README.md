@@ -43,4 +43,6 @@ npm run typecheck
 npm test
 ```
 
-浏览器测试使用本机 Chrome，测试进程、端口和目录均由测试拥有。定向测试可运行 `node --test tests/<name>.test.mjs`。`scripts/verify.mjs` 和 `scripts/probe-gea.mjs` 属于旧原型诊断入口，尚未适配新版部署与选择 ID，不应用它们宣告新版真实验收。
+浏览器测试使用本机 Chrome，测试进程、端口和目录均由测试拥有。定向测试可运行 `node --test tests/<name>.test.mjs`。
+
+验收指定会话使用 `npm run verify -- --runtime <runtime目录> --session <session-id>`，独立核对磁盘快照与首轮完整回答。添加 `--require-live` 还要求当前进程已登录、快照属于当前进程和环境、来源不是本机模拟服务且处于真实模型模式。它不会自动选择旧会话，不将本地回执计为真实模型验收。此入口验证落盘结果，不能替代外部模型请求比对或完整业务范围验收。`scripts/probe-gea.mjs` 仍属于旧原型诊断入口，尚未适配新版部署，不应用它宣告新版验收。

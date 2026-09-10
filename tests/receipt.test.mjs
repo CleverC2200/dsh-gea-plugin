@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { profile, readSession, until } from "./profile.mjs";
 
 test(
@@ -45,10 +47,29 @@ test(
       .map(JSON.parse);
     assert.equal(receipts.length, 1);
     assert.equal(receipts[0].snapshotHash, preview.snapshotHash);
+    const verify = await promisify(execFile)(process.execPath, [
+      "scripts/verify.mjs",
+      "--runtime",
+      app.runtime,
+      "--session",
+      id,
+    ]);
+    assert.equal(JSON.parse(verify.stdout).durableSnapshotVerified, true);
     await app.stop();
     await app.start();
     assert.equal((await app.rpc("status")).value.authenticated, false);
     const restored = await readSession(app.runtime, id);
     assert.deepEqual(restored, rows);
+    await assert.rejects(
+      promisify(execFile)(process.execPath, [
+        "scripts/verify.mjs",
+        "--runtime",
+        app.runtime,
+        "--session",
+        id,
+        "--require-live",
+      ]),
+      (error) => error.stderr.includes("FRESH_GEA_LOGIN_REQUIRED"),
+    );
   },
 );
