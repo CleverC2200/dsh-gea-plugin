@@ -1,9 +1,10 @@
 /** Independent GEA read-only proof. Login credentials live only in this Host process. */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { appendFile, mkdir } from 'node:fs/promises';
 import { LlmAdapter } from '@deepseek-ai/dsh-llm';
 import QRCode from 'qrcode';
 import z from '@deepseek-ai/schemastery';
+import { GeaResponseError, geaResponseError } from './gea-error.js';
 
 export const inject = ['connection', 'llm'];
 export const Config = z.object({
@@ -42,7 +43,7 @@ class ReceiptAdapter extends LlmAdapter {
   }
 }
 
-/** Mount an authenticated RPC channel and a local receipt provider. */
+/** Mount authenticated Fetch endpoints and a local receipt provider. */
 export function apply(ctx, config) {
   const url = new URL(config.geaBaseUrl);
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('INVALID_GEA_BASE_URL');
@@ -57,14 +58,17 @@ export function apply(ctx, config) {
   async function get(path, authenticated = false, signal) {
     if (authenticated && !auth) throw new Error('LOGIN_REQUIRED');
     const headers = { Accept: 'application/json' };
-    if (authenticated) Object.assign(headers, { 'X-Access-Token': auth.token, 'X-Tenant-Id': auth.tenantId });
+    if (authenticated) Object.assign(headers, { 'X-Access-Token': auth.token, 'X-Tenant-Id': auth.tenantId, 'X-Request-Id': randomUUID() });
     let response;
     try {
       response = await fetch(base + path, { method: 'GET', headers, redirect: 'error', signal: AbortSignal.any([active.signal, AbortSignal.timeout(config.requestTimeoutMs), ...(signal ? [signal] : [])]) });
     } catch { throw new Error('GEA_NETWORK_ERROR'); }
     if (!response.ok) {
+      const error = await geaResponseError(response, [auth?.token]);
       if (response.status === 401) auth = undefined;
-      throw new Error(`GEA_HTTP_${response.status}`);
+      await mkdir(runtime, { recursive: true, mode: 0o700 });
+      await appendFile(new URL('upstream-errors.jsonl', runtime), JSON.stringify({ at: new Date().toISOString(), endpoint: path.split('?')[0], code: error.code, message: error.message, ...error.details }) + '\n', { mode: 0o600 });
+      throw error;
     }
     let data;
     try { data = parseJson(await response.text()); } catch { throw new Error('GEA_INVALID_JSON'); }
@@ -108,12 +112,26 @@ export function apply(ctx, config) {
           break;
         }
         case 'plans': {
+          snapshot = undefined;
           const page = await get('/sales-plan/plans?pageNo=1&pageSize=' + config.pageSize, true, signal);
           if (!Array.isArray(page?.records) || typeof page.total !== 'number') throw new Error('GEA_INVALID_PAGE');
           const fields = ['planId', 'versionId', 'seq', 'periodId', 'planTypeCode', 'dealerCode', 'dealerName', 'orgName', 'provinceName', 'status', 'targetQty', 'targetAmount', 'currentQty', 'currentAmount', 'skuCount', 'updatedAt'];
           const records = page.records.map(row => Object.fromEntries(fields.filter(key => row[key] !== undefined).map(key => [key, row[key]])));
-          snapshot = { source: 'GEA_LIVE_READONLY', endpoint: '/sales-plan/plans', fetchedAt: new Date().toISOString(), tenantId: auth.tenantId, current: page.current, size: page.size, total: page.total, records };
+          snapshot = { source: 'GEA_LIVE_READONLY', endpoint: '/sales-plan/plans', sourceUrl: base + '/sales-plan/plans', fetchedAt: new Date().toISOString(), tenantId: auth.tenantId, current: page.current, size: page.size, total: page.total, records };
           value = snapshot;
+          break;
+        }
+        case 'diagnostics': {
+          if (!auth) throw new Error('LOGIN_REQUIRED');
+          value = [];
+          for (const path of ['/sys/user/getUserInfo', '/sales-plan/periods?pageNo=1&pageSize=1']) {
+            try {
+              const result = await get(path, true, signal);
+              value.push({ endpoint: path.split('?')[0], ok: true, ...(Array.isArray(result?.records) ? { records: result.records.length } : {}) });
+            } catch (error) {
+              value.push({ endpoint: path.split('?')[0], ok: false, code: error.code ?? 'GEA_DIAGNOSTIC_FAILED', message: error.message, details: error.details ?? {} });
+            }
+          }
           break;
         }
         case 'fixture':
@@ -135,11 +153,12 @@ export function apply(ctx, config) {
       }
       return { ok: true, value };
     } catch (error) {
+      if (error instanceof GeaResponseError) return { ok: false, error: { code: error.code, message: error.message, details: error.details } };
       const code = /^[A-Z][A-Z_0-9]+$/.test(error?.message ?? '') ? error.message : 'PROOF_REQUEST_FAILED';
       return { ok: false, error: { code, message: code, details: {} } };
     }
   };
-  for (const endpoint of ['status', 'login/start', 'login/poll', 'plans', 'fixture', 'prepare']) {
+  for (const endpoint of ['status', 'login/start', 'login/poll', 'plans', 'diagnostics', 'fixture', 'prepare']) {
     ctx.effect(() => ctx.connection.fetch.register({
       path: '/api/gea-proof/' + endpoint,
       methods: ['POST'],

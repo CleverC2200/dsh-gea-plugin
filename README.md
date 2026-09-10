@@ -6,7 +6,7 @@
 
 2026-09-10，官方 npm 发布版 `@deepseek-ai/dsh@0.1.5-rc.1` 已成功加载本插件。浏览器侧边栏与销售计划页面、受认证保护的服务端接口、选中演示记录到会话、模型请求回执、会话落盘及服务重启后恢复均已实际验证。
 
-真实业务验收尚未通过。2026-09-10 17:20（中国时间），原先返回 502 的 GEA 扫码接口恢复 HTTP 200，Node、curl 和插件页面均已验证二维码可生成；尚待用户扫码确认登录，未查询到真实销售计划。只读取 AionUi 保存配置的 `gea.endpointProfile.baseUrl` 后确认，其地址与本插件配置一致。服务恢复前后未修改上游服务或网络设置，502 原因未确定。现有演示会话标注 `LOCAL_FIXTURE_NOT_REAL_BUSINESS`，不得描述为真实 GEA 验收。
+真实业务验收尚未通过。2026-09-10，GEA 扫码登录已成功，身份接口验证了当前用户和租户 `0`，但真实销售计划列表返回 HTTP 403。令牌和租户请求头与 AionCore 实现一致；403 的具体原因仍待结构化错误信息确认，不能只根据状态码判定为账号权限不足。更早的登录接口 502 已自行恢复，原因未确定。AionUi 保存的 GEA 环境地址与本插件一致。现有演示会话标注 `LOCAL_FIXTURE_NOT_REAL_BUSINESS`，不得描述为真实 GEA 验收。
 
 本次测试的是 npm 发布产物，不是从当前 dsh checkout 重新构建的产物。原仓库 `/Users/synear/Documents/ChatGPT/dpherness` 的 HEAD 保持 `2377c272a8e839e0a84c9f0e623b867a1dce2014`，工作区保持干净，origin 仍指向个人 fork。本项目未修改或补丁覆盖任何 dsh 源码、node_modules 文件。
 
@@ -19,6 +19,7 @@
 | `gea.patch.yml` | profile 覆盖层：注册外部插件，选择本地回执模型，配置 GEA 地址 |
 | `scripts/start.mjs` | 通过官方 dsh CLI/profile 启动，使用独立 DSH_HOME |
 | `scripts/verify.mjs` | HTTP 黑盒校验、持久化日志与快照 SHA-256 核对 |
+| `scripts/probe-gea.mjs` | 复现真实 GEA 查询，并对照身份和销售周期只读接口 |
 
 主流程是：GEA 页面 → dsh 认证 Fetch 接口 → 外部 Host 插件 → GEA GET 查询 → 带来源、查询时间、覆盖范围的选中记录 → 标准 Session prompt → dsh 日志和本地模型回执。
 
@@ -39,6 +40,8 @@ npm start
 随后在本目录另一终端运行 `npm run verify`。程序通过正常启动令牌交换建立自己的 HTTP 会话，不读取浏览器 Cookie。结果写入 `.runtime/verification.json`。它校验未认证请求 401、外站 Origin 403、GEA 未登录拒绝、无效选中记录拒绝、持久化用户快照摘要、助手回执与实际适配器请求摘要一致。
 
 真实验收使用 `npm run verify -- --require-live`。除了上述检查，还要求存在来源为 `GEA_LIVE_READONLY` 的会话，并与 Host 查询后生成的交接记录对应。仅有演示数据时，这条命令会明确失败；报告中的 `liveBusinessVerified` 保持 `false`。已实际验证该失败路径，防止将演示结果算作真实验收。
+
+403 等失败使用 `node scripts/probe-gea.mjs` 复现；添加 `--wait-login` 最多等待 110 秒供用户扫码。脱敏的错误原因、错误码和关联 ID 写入 `.runtime/gea-probe.json` 与 `.runtime/upstream-errors.jsonl`，不返回整个上游响应，不导出令牌。真实查询开始时清除上一次列表和待发送快照，避免失败后误发送旧的演示数据。`node --test scripts/gea-error.test.mjs` 覆盖原因保留、令牌脱敏和非 JSON 拒绝响应。
 
 在启动终端按 Ctrl-C 停止，然后重新运行 `npm start`，刷新浏览器。已验证演示会话在重启后恢复。运行状态和会话位于 `.runtime/`；GEA 登录状态不会跨重启保留。
 

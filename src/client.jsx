@@ -79,7 +79,7 @@ export function apply(ctx) {
           <p>{status?.authenticated ? `${t('signedIn')}：${status.user.name}` : t('signedOut')}</p>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '14px 0' }}>
             <button style={buttonStyle} disabled={busy} onClick={act(async () => { setQr(await rpc('login/start')); setQrState('pending'); })}>{t('login')}</button>
-            <button style={{ ...buttonStyle, background: '#1b4f8c', color: '#fff' }} disabled={busy || !status?.authenticated} onClick={act(async () => { setData(await rpc('plans')); setSelected(0); })}>{t('refresh')}</button>
+            <button style={{ ...buttonStyle, background: '#1b4f8c', color: '#fff' }} disabled={busy || !status?.authenticated} onClick={act(async () => { setData(null); setData(await rpc('plans')); setSelected(0); })}>{t('refresh')}</button>
             <button style={buttonStyle} disabled={busy} onClick={act(async () => { setData(await rpc('fixture')); setSelected(0); })}>{t('fixture')}</button>
           </div>
           <small style={{ color: '#65758a' }}>{t('help')}</small>
