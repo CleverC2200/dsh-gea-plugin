@@ -5,7 +5,8 @@ import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { zstdDecompressSync, constants } from 'node:zlib';
 
 const origin = 'http://127.0.0.1:3199';
-const report = { checkedAt: new Date().toISOString(), dshVersion: '0.1.5-rc.1', checks: [], sessions: [] };
+const installed = JSON.parse(await readFile('node_modules/@deepseek-ai/dsh/package.json', 'utf8'));
+const report = { checkedAt: new Date().toISOString(), dshVersion: installed.version, checks: [], sessions: [], liveBusinessVerified: false };
 const record = (name, detail) => report.checks.push({ name, passed: true, detail });
 const request = (endpoint, headers = {}, payload = {}) => fetch(origin + '/api/gea-proof/' + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(payload) });
 assert.equal((await request('status')).status, 401);
@@ -63,7 +64,13 @@ for (const workspace of await readdir(root)) {
 assert.ok(report.sessions.length > 0, 'Send a selected record through the UI first');
 record('durable user snapshot hash equals assistant receipt', report.sessions.length + ' session(s)');
 const receipts = (await readFile('.runtime/receipts.jsonl', 'utf8')).trim().split('\n').map(JSON.parse);
-for (const session of report.sessions) assert.ok(receipts.some(receipt => receipt.snapshotHash === session.snapshotHash && receipt.provider === 'gea-proof'));
+const handoffs = (await readFile('.runtime/handoffs.jsonl', 'utf8')).trim().split('\n').map(JSON.parse);
+for (const session of report.sessions) {
+  assert.ok(receipts.some(receipt => receipt.snapshotHash === session.snapshotHash && receipt.provider === 'gea-proof'));
+  assert.ok(handoffs.some(handoff => handoff.snapshotHash === session.snapshotHash && handoff.source === session.source));
+}
 record('local adapter received the same snapshot', 'No external model used');
+report.liveBusinessVerified = report.sessions.some(session => session.source === 'GEA_LIVE_READONLY');
 await writeFile('.runtime/verification.json', JSON.stringify(report, null, 2) + '\n', { mode: 0o600 });
+if (process.argv.includes('--require-live')) assert.ok(report.liveBusinessVerified, 'Real GEA query and selected-record handoff have not yet been verified');
 console.log(JSON.stringify(report, null, 2));

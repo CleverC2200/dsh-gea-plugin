@@ -6,7 +6,7 @@
 
 2026-09-10，官方 npm 发布版 `@deepseek-ai/dsh@0.1.5-rc.1` 已成功加载本插件。浏览器侧边栏与销售计划页面、受认证保护的服务端接口、选中演示记录到会话、模型请求回执、会话落盘及服务重启后恢复均已实际验证。
 
-真实业务验收尚未通过：`https://gea.synear.cn/gea-boot/sys/getLoginQrcode` 返回 HTTP 502（响应服务器为 nginx/1.20.1），当前未取得 GEA 登录态，未查询到真实销售计划。页面与会话明确标注 `LOCAL_FIXTURE_NOT_REAL_BUSINESS`，不得把演示验收描述为真实 GEA 验收。
+真实业务验收尚未通过。2026-09-10 17:20（中国时间），原先返回 502 的 GEA 扫码接口恢复 HTTP 200，Node、curl 和插件页面均已验证二维码可生成；尚待用户扫码确认登录，未查询到真实销售计划。只读取 AionUi 保存配置的 `gea.endpointProfile.baseUrl` 后确认，其地址与本插件配置一致。服务恢复前后未修改上游服务或网络设置，502 原因未确定。现有演示会话标注 `LOCAL_FIXTURE_NOT_REAL_BUSINESS`，不得描述为真实 GEA 验收。
 
 本次测试的是 npm 发布产物，不是从当前 dsh checkout 重新构建的产物。原仓库 `/Users/synear/Documents/ChatGPT/dpherness` 的 HEAD 保持 `2377c272a8e839e0a84c9f0e623b867a1dce2014`，工作区保持干净，origin 仍指向个人 fork。本项目未修改或补丁覆盖任何 dsh 源码、node_modules 文件。
 
@@ -37,6 +37,8 @@ npm start
 通过 `.runtime/server.log` 中本次启动生成的 dsh 本地链接打开页面，服务监听 `127.0.0.1:3199`。该日志仅供本机使用。点击侧边栏“GEA 销售计划”，载入演示数据，再点击“发送选中记录到会话”。会话选择 `gea-proof/receipt`，回执明确说明它不是 AI 分析。
 
 随后在本目录另一终端运行 `npm run verify`。程序通过正常启动令牌交换建立自己的 HTTP 会话，不读取浏览器 Cookie。结果写入 `.runtime/verification.json`。它校验未认证请求 401、外站 Origin 403、GEA 未登录拒绝、无效选中记录拒绝、持久化用户快照摘要、助手回执与实际适配器请求摘要一致。
+
+真实验收使用 `npm run verify -- --require-live`。除了上述检查，还要求存在来源为 `GEA_LIVE_READONLY` 的会话，并与 Host 查询后生成的交接记录对应。仅有演示数据时，这条命令会明确失败；报告中的 `liveBusinessVerified` 保持 `false`。已实际验证该失败路径，防止将演示结果算作真实验收。
 
 在启动终端按 Ctrl-C 停止，然后重新运行 `npm start`，刷新浏览器。已验证演示会话在重启后恢复。运行状态和会话位于 `.runtime/`；GEA 登录状态不会跨重启保留。
 
