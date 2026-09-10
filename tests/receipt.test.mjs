@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, rename, writeFile, unlink, mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { profile, readSession, until } from "./profile.mjs";
@@ -71,5 +71,36 @@ test(
       ]),
       (error) => error.stderr.includes("FRESH_GEA_LOGIN_REQUIRED"),
     );
+  },
+);
+
+test(
+  "a failed submission can retry the same preview after storage recovers",
+  { timeout: 60000 },
+  async (t) => {
+    const app = await profile(t);
+    await app.login();
+    const page = (await app.rpc("plans")).value;
+    const preview = (
+      await app.rpc("prepare", {
+        queryId: page.queryId,
+        planId: page.records[0].planId,
+      })
+    ).value;
+    const storage = app.runtime + "/home/sessions";
+    await mkdir(storage, { recursive: true });
+    await rename(storage, storage + ".saved");
+    await writeFile(storage, "temporarily unavailable");
+    const failed = await app.rpc("submit", { previewId: preview.previewId });
+    await unlink(storage);
+    await rename(storage + ".saved", storage);
+    assert.equal(failed.ok, false);
+    const retry = await app.rpc("submit", { previewId: preview.previewId });
+    assert.equal(retry.ok, true, JSON.stringify(retry));
+    const rows = await until(
+      () => readSession(app.runtime, retry.value.sessionId),
+      (rows) => rows.some((row) => row.type === "turn/end"),
+    );
+    assert.equal(rows.filter((row) => row.type === "user/message").length, 1);
   },
 );

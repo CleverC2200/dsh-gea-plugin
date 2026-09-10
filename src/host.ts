@@ -83,16 +83,33 @@ export function apply(ctx: Context, config: Deployment): void {
       ),
     );
   let submission:
-    | { id: string; result: Promise<{ sessionId: SessionId }> }
+    | {
+        id: string;
+        sessionId: SessionId;
+        requestId: SessionRequestId;
+        result?: Promise<{ sessionId: SessionId }>;
+      }
     | undefined;
-  function submit(id: unknown) {
+  function submit(id: unknown, requestSignal: AbortSignal) {
     const preview = business.prepared(id);
-    if (submission?.id === preview.previewId) return submission.result;
-    const result = (async () => {
+    requestSignal.throwIfAborted();
+    if (submission?.id !== preview.previewId)
+      submission = {
+        id: preview.previewId,
+        sessionId: brandString<SessionId>(`session-${randomUUID()}`),
+        requestId: brandString<SessionRequestId>(randomUUID()),
+      };
+    const attempt = submission;
+    if (attempt.result) return attempt.result;
+    const signal = business.admissionSignal(requestSignal);
+    attempt.result = (async () => {
+      signal.throwIfAborted();
       const session = await ctx.sessionController.create({
+        sessionId: attempt.sessionId,
         cwd: resolve(config.runtimeDir, "workspace"),
         agentPreset: "gea-readonly",
       });
+      signal.throwIfAborted();
       business.prepared(preview.previewId);
       await ctx.sessionController.selectModel({
         sessionId: session.sessionId,
@@ -100,20 +117,24 @@ export function apply(ctx: Context, config: Deployment): void {
           config.analysisMode === "model" ? "gea-analysis" : "gea-proof",
         model: config.analysisModel,
       });
+      signal.throwIfAborted();
       business.prepared(preview.previewId);
       await ctx.sessionController.prompt(
         {
           sessionId: session.sessionId,
-          requestId: brandString<SessionRequestId>(randomUUID()),
+          requestId: attempt.requestId,
           mode: "queue",
           content: [{ type: "text", text: preview.prompt }],
         },
-        new AbortController().signal,
+        signal,
       );
       return session;
-    })();
-    submission = { id: preview.previewId, result };
-    return result;
+    })().catch((error: unknown) => {
+      // Retain identities because admission may have succeeded before a failure.
+      attempt.result = undefined;
+      throw error;
+    });
+    return attempt.result;
   }
   const endpoints = [
     "status",
@@ -166,7 +187,7 @@ export function apply(ctx: Context, config: Deployment): void {
                 value = business.prepare(payload);
                 break;
               case "submit":
-                value = await submit(payload.previewId);
+                value = await submit(payload.previewId, request.signal);
                 break;
               default:
                 throw new Error("UNKNOWN_ENDPOINT");

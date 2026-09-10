@@ -9,6 +9,20 @@ import { deploymentPatch, readDeployment } from "./deployment.mjs";
 import { startAionUiWire } from "./aionui-wire.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+let wire;
+let log;
+let child;
+let writes = Promise.resolve();
+async function closeResources() {
+  await wire?.close();
+  wire = undefined;
+  try {
+    await writes;
+  } finally {
+    await log?.close();
+    log = undefined;
+  }
+}
 try {
   const { values } = parseArgs({
     options: {
@@ -32,7 +46,7 @@ try {
     throw new Error("GEA_PORT_INVALID");
   const runtime = resolve(values.runtime ?? ".runtime/development");
   await mkdir(resolve(runtime, "workspace"), { recursive: true, mode: 0o700 });
-  const wire =
+  wire =
     config.analysis.source === "aionui"
       ? await startAionUiWire(config.analysis)
       : undefined;
@@ -48,7 +62,7 @@ try {
     JSON.stringify(deploymentPatch(config, root, runtime), null, 2) + "\n",
     { mode: 0o600 },
   );
-  const log = await open(resolve(runtime, "server.log"), "a", 0o600);
+  log = await open(resolve(runtime, "server.log"), "a", 0o600);
   const env = Object.fromEntries(
     Object.entries(process.env).filter(
       ([key]) => !/API_KEY|ACCESS_TOKEN|AUTH_TOKEN|SECRET|DSH_/.test(key),
@@ -63,7 +77,7 @@ try {
   )
     ? []
     : ["--from-default-profile", "web"];
-  const child = spawn(
+  child = spawn(
     process.execPath,
     [
       resolve(root, "node_modules/@deepseek-ai/dsh/lib/bin.js"),
@@ -80,10 +94,6 @@ try {
     ],
     { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] },
   );
-  await writeFile(resolve(runtime, "pid"), String(child.pid) + "\n", {
-    mode: 0o600,
-  });
-  let writes = Promise.resolve();
   for (const pipe of [child.stdout, child.stderr])
     pipe.on("data", (data) => {
       writes = writes.then(() => log.write(data));
@@ -95,17 +105,26 @@ try {
     });
   for (const signal of ["SIGTERM", "SIGINT"])
     process.on(signal, () => child.kill(signal));
-  child.on("error", (error) => {
-    console.error(error.message);
-    process.exitCode = 1;
+  const ended = new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code, signal) => resolve(code ?? (signal ? 1 : 0)));
   });
-  child.on("exit", async (code, signal) => {
-    await wire?.close();
-    await writes;
-    await log.close();
-    process.exit(code ?? (signal ? 1 : 0));
-  });
+  // Observe early spawn failures while the PID file is being written.
+  void ended.catch(() => {});
+  try {
+    if (child.pid !== undefined)
+      await writeFile(resolve(runtime, "pid"), String(child.pid) + "\n", {
+        mode: 0o600,
+      });
+  } catch (error) {
+    child.kill("SIGTERM");
+    await ended;
+    throw error;
+  }
+  process.exitCode = await ended;
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;
+} finally {
+  await closeResources();
 }

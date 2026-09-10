@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { readDeployment, deploymentPatch } from "../scripts/deployment.mjs";
 
 test("AionUi model selection resolves only the enabled local proxy and keeps credentials out of the patch", async (t) => {
@@ -63,6 +65,16 @@ test("AionUi model selection resolves only the enabled local proxy and keeps cre
       "fixture-proxy-key",
     ),
     false,
+  );
+  const runtime = resolve(dir, "failed-start");
+  await mkdir(resolve(runtime, "deployment.patch.json"), { recursive: true });
+  await assert.rejects(
+    promisify(execFile)(
+      process.execPath,
+      ["scripts/start.mjs", "--config", path, "--runtime", runtime],
+      { timeout: 10000 },
+    ),
+    (error) => !error.killed && error.code === 1 && /EISDIR/.test(error.stderr),
   );
   provider = { ...provider, enabled: false };
   await assert.rejects(readDeployment(path), /AIONUI_PROVIDER_UNAVAILABLE/);

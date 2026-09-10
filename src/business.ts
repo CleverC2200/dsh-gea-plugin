@@ -692,7 +692,7 @@ export class Business {
     const { records, ...metadata } = page;
     const snapshot = {
       format: "gea-readonly-v1",
-      pluginVersion: "0.1.0",
+      pluginVersion: "0.0.1",
       runId: this.runId,
       ...metadata,
       pageRecordCount: records.length,
@@ -730,6 +730,11 @@ export class Business {
       prompt,
     };
     return this.preview;
+  }
+
+  /** Cancel pending admission when the caller, login, query, or Host expires. */
+  admissionSignal(caller: AbortSignal): AbortSignal {
+    return AbortSignal.any([caller, this.epoch.signal, this.queryEpoch.signal]);
   }
 
   /** Return only a still-current preview for standard Session submission. */

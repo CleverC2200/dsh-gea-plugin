@@ -61,10 +61,12 @@ export async function startAionUiWire(analysis) {
         return;
       }
       if (
+        !body ||
         body.model !== analysis.model ||
         body.stream !== true ||
         !Array.isArray(body.messages) ||
-        body.tools?.length
+        (body.tools !== undefined &&
+          (!Array.isArray(body.tools) || body.tools.length !== 0))
       ) {
         reject(400, "AIONUI_WIRE_INVALID_REQUEST");
         return;

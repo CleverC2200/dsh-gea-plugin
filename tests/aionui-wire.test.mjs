@@ -27,7 +27,7 @@ test("AionUi wire converts text blocks without losing text and rejects non-text 
     upstream.closeAllConnections();
     await new Promise((done) => upstream.close(done));
   });
-  const call = (content) =>
+  const call = (content, extra = {}) =>
     fetch(wire.baseUrl + "/chat/completions", {
       method: "POST",
       headers: {
@@ -38,6 +38,7 @@ test("AionUi wire converts text blocks without losing text and rejects non-text 
         model: "fixture-model",
         stream: true,
         messages: [{ role: "user", content }],
+        ...extra,
       }),
     });
   const response = await call([
@@ -53,6 +54,11 @@ test("AionUi wire converts text blocks without losing text and rejects non-text 
         { type: "image_url", image_url: { url: "https://example.test/a.png" } },
       ])
     ).status,
+    400,
+  );
+  assert.equal((await call("test", { tools: {} })).status, 400);
+  assert.equal(
+    (await call("test", { tools: [{ type: "function" }] })).status,
     400,
   );
   assert.equal(

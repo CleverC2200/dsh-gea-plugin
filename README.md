@@ -14,7 +14,7 @@ cp gea.config.example.json gea.config.json
 npm start -- --config gea.config.json --runtime .runtime/development --port 3198
 ```
 
-使用启动进程本地日志中的带认证参数链接进入页面。点击「GEA 销售计划」后独立扫码登录、查询、选择版本和 SKU、预览输入范围，最后确认提交。会话使用 dsh 的标准取消、追问和历史读取功能。
+使用启动进程本地日志中的带认证参数链接进入页面。点击「GEA 销售计划」后独立扫码登录、查询、选择版本和 SKU、预览输入范围，最后确认提交。提交进入 Session 前响应浏览器取消、登录失效及 Host 关闭；进入 Session 后使用 dsh 的标准取消、追问和历史读取功能。提交阶段失败后可以重试同一预览，复用 Session 和请求 ID 避免重复入队。
 
 `gea.config.example.json` 使用明确的本地回执模式，只验证数据传递。真实模型可使用直接 HTTPS 配置，也可按 [AionUi 接入说明](docs/aionui-model.md) 使用 `gea.aionui.example.json` 从已运行的 AionUi 读取所选模型和本机代理凭证。AionUi 退出或代理失效会中断其模型路径；不会自动切换模型或退回本地回执。
 
