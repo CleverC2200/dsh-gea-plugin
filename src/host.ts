@@ -19,8 +19,14 @@ import { GeaResponseError } from "./gea-error.js";
 import { geaTextStream } from "./gea-stream.ts";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
 import type {} from "@deepseek-ai/dsh-client-connection";
+import type {} from "@deepseek-ai/dsh-agent-default-model";
 
-export const inject = ["connection", "llm", "sessionController"];
+export const inject = [
+  "connection",
+  "llm",
+  "sessionController",
+  "agentDefaultModel",
+];
 export const Config = z.object({
   geaBaseUrl: z.string().required(),
   pageSize: z.natural().min(1).max(100).required(),
@@ -84,13 +90,11 @@ class GeaModelAdapter extends LlmAdapter {
     return { id, name: "GEA personal model" };
   }
   async listModels(provider: string) {
-    return [
-      {
-        provider,
-        id: this.business.config.analysisModel,
-        name: this.business.config.analysisModel,
-      },
-    ];
+    const route = await this.business.modelRoute(
+      new AbortController().signal,
+      this.business.config.analysisAgentCode,
+    );
+    return route.models.map((id) => ({ provider, id, name: id }));
   }
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const identitySignal = this.business.identitySignal();
@@ -297,6 +301,16 @@ export function apply(ctx: Context, config: Deployment): void {
     const signal = business.admissionSignal(requestSignal);
     attempt.result = (async () => {
       signal.throwIfAborted();
+      let selectedModel = config.analysisModel;
+      if (config.analysisMode === "model" && config.analysisSource === "gea") {
+        const route = await business.modelRoute(
+          signal,
+          config.analysisAgentCode,
+        );
+        selectedModel = route.models.includes(config.analysisModel)
+          ? config.analysisModel
+          : route.models[0]!;
+      }
       const session = await ctx.sessionController.create({
         sessionId: attempt.sessionId,
         cwd: resolve(config.runtimeDir, "workspace"),
@@ -308,7 +322,7 @@ export function apply(ctx: Context, config: Deployment): void {
         sessionId: session.sessionId,
         provider:
           config.analysisMode === "model" ? "gea-analysis" : "gea-proof",
-        model: config.analysisModel,
+        model: selectedModel,
       });
       signal.throwIfAborted();
       business.prepared(preview.previewId);
@@ -332,6 +346,7 @@ export function apply(ctx: Context, config: Deployment): void {
   const endpoints = [
     "status",
     "environment/select",
+    "model/discover",
     "login/start",
     "login/poll",
     "periods",
@@ -367,6 +382,22 @@ export function apply(ctx: Context, config: Deployment): void {
               case "status":
                 value = business.status();
                 break;
+              case "model/discover": {
+                const route = await business.modelRoute(
+                  request.signal,
+                  config.analysisAgentCode,
+                );
+                const selected = route.models.includes(config.analysisModel)
+                  ? config.analysisModel
+                  : route.models[0]!;
+                request.signal.throwIfAborted();
+                await ctx.agentDefaultModel.saveSelection({
+                  provider: "gea-analysis",
+                  model: selected,
+                });
+                value = { models: route.models, selected };
+                break;
+              }
               case "environment/select":
                 value = business.selectEnvironment(payload);
                 break;

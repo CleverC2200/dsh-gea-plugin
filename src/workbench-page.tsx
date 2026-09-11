@@ -120,6 +120,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const [qr, setQr] = useState<{ image: string; loginId: string }>();
   const [expired, setExpired] = useState(false);
   const [qrRefresh, setQrRefresh] = useState(0);
+  const [modelState, setModelState] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [selection, setSelection] = useState<string[]>([]);
@@ -277,6 +278,31 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       });
     return () => controller.abort();
   }, [status?.authenticated, status?.environment, qrRefresh]);
+  useEffect(() => {
+    setModelState("");
+    if (!status?.authenticated || status.mode !== "model") return;
+    const controller = new AbortController();
+    setModelState(t("modelDiscovering"));
+    void rpc<{ models: string[]; selected: string }>(
+      "model/discover",
+      {},
+      controller.signal,
+    )
+      .then((value) => {
+        if (!controller.signal.aborted)
+          setModelState(t("modelDiscovered") + value.selected);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted)
+          setModelState(
+            t("modelFailed") +
+              (error instanceof BackendHttpError
+                ? error.code
+                : requestErrorMessage(error, t)),
+          );
+      });
+    return () => controller.abort();
+  }, [status?.authenticated, status?.environment]);
   if (!status?.authenticated)
     return (
       <main className="gea-login-page">
@@ -359,6 +385,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
         </div>
       </WorkbenchSessionProvider>
       <div className="gea-analysis-toolbar">
+        {modelState && <span role="status">{modelState}</span>}
         <span>
           {t("selectedCount")} {selection.length}
         </span>

@@ -22,6 +22,12 @@ const copy = {
   ],
   login: ["飞书扫码登录", "Sign in with Lark QR"],
   dshConversation: ["DSH 对话", "DSH conversation"],
+  modelDiscovering: ["正在获取 GEA 模型…", "Discovering GEA models…"],
+  modelDiscovered: [
+    "已获取模型（尚未验证推理）：",
+    "Model discovered (inference not verified): ",
+  ],
+  modelFailed: ["模型获取失败：", "Model discovery failed: "],
   refreshQr: ["刷新二维码", "Refresh QR code"],
   signedOut: ["尚未登录 GEA", "Not signed in to GEA"],
   signedIn: ["已登录", "Signed in"],

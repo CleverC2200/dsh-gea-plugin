@@ -12,7 +12,7 @@ test(
           mode: "model",
           source: "gea",
           agentCode: "sales_forecast",
-          model: "fixture-gea-model",
+          model: "obsolete-configured-model",
           contextWindow: 32768,
           maxTokens: 2048,
         },
@@ -77,6 +77,14 @@ test(
       return true;
     });
     await app.login();
+    const discovered = await app.rpc("model/discover");
+    assert.deepEqual(discovered.value, {
+      models: ["fixture-gea-model"],
+      selected: "fixture-gea-model",
+    });
+    assert.ok(
+      !JSON.stringify(discovered).includes("fixture-personal-model-secret"),
+    );
     const page = (await app.rpc("plans")).value;
     const select = { queryId: page.queryId, planId: page.records[0].planId };
     const submit = async () => {

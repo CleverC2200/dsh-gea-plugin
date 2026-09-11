@@ -323,6 +323,7 @@ export class Business {
 
   /** Public status never contains GEA credentials. */
   status() {
+    const models = this.modelRoutes.get(this.config.analysisAgentCode)?.models;
     return {
       environment: this.environment,
       environments: Object.keys(this.environments),
@@ -338,7 +339,11 @@ export class Business {
       source: this.base,
       provider:
         this.config.analysisMode === "model" ? "gea-analysis" : "gea-proof",
-      model: this.config.analysisModel,
+      model:
+        models?.length && !models.includes(this.config.analysisModel)
+          ? models[0]
+          : this.config.analysisModel,
+      discoveredModels: models ?? [],
       mode: this.config.analysisMode,
       runId: this.runId,
     };
