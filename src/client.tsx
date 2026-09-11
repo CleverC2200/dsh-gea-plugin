@@ -140,12 +140,12 @@ function ApprovalWorkspace({
   };
   const dimension = view === "all" ? undefined : keyByView[view];
   const dimensionValue = dimension ? first?.[dimension] : undefined;
-  const stages = [
-    "客户确认 AI",
-    "区域审批",
-    "省区审批",
-    "大区审批",
-    "品类计划",
+  const stages: CopyKey[] = [
+    "stageCustomerAi",
+    "stageAreaApproval",
+    "stageProvinceApproval",
+    "stageRegionApproval",
+    "stageCategoryPlan",
   ];
   return (
     <section
@@ -183,18 +183,20 @@ function ApprovalWorkspace({
         <div>
           <span className="gea-summary-label">{t("progress")}</span>
           <strong>
-            {first?.status == null ? t("unknown") : `status=${first.status}`}
+            {first?.status == null
+              ? t("unknown")
+              : `${t("status")}=${first.status}`}
           </strong>
         </div>
       </div>
       <div className="gea-approval-stages" aria-label={t("approvalStages")}>
         {stages.map((stage, index) => (
           <div
-            className={`gea-stage ${index === 0 ? "is-current" : ""}`}
+            className="gea-stage"
             key={stage}
           >
             <span className="gea-stage-dot">{index + 1}</span>
-            <span>{stage}</span>
+            <span>{t(stage)}</span>
           </div>
         ))}
       </div>

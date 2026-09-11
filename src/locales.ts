@@ -165,6 +165,11 @@ const copy = {
     "节点状态待接口提供",
     "Stage status pending upstream data",
   ],
+  stageCustomerAi: ["客户确认 AI", "Customer AI confirmation"],
+  stageAreaApproval: ["区域审批", "Area approval"],
+  stageProvinceApproval: ["省区审批", "Province approval"],
+  stageRegionApproval: ["大区审批", "Region approval"],
+  stageCategoryPlan: ["品类计划", "Category planning"],
 } as const;
 export type CopyKey = keyof typeof copy;
 export const zh = Object.fromEntries(
