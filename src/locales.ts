@@ -1,5 +1,28 @@
 /** Locale-owned copy for the external sales-plan page. */
 const copy = {
+  inboxReadOnly: [
+    "GEA 通知与业务待办 · 只读查看，不改变处理状态",
+    "GEA notifications and business tasks · viewing does not change state",
+  ],
+  refreshInbox: ["刷新消息", "Refresh messages"],
+  backToInbox: ["返回消息列表", "Back to messages"],
+  unreadCount: ["未读数", "Unread"],
+  notificationTitle: ["标题", "Title"],
+  notificationState: ["通知状态", "Notification state"],
+  notificationKind: ["通知类型", "Notification kind"],
+  notificationSource: ["来源", "Source"],
+  notificationSourceRef: ["来源引用", "Source reference"],
+  notificationAggregate: ["关联业务标识", "Related business ID"],
+  notificationExpiry: ["有效期至", "Expires at"],
+  inboxSessionUnavailable: [
+    "来源会话定位尚未接入，保留 GEA 来源引用供核对。",
+    "Session navigation is not connected. The GEA source reference is preserved for comparison.",
+  ],
+  requestTimeout: ["请求超时，请重试。", "The request timed out. Retry."],
+  networkError: [
+    "无法连接 GEA，请检查网络后重试。",
+    "Cannot connect to GEA. Check the network and retry.",
+  ],
   title: ["GEA 销售计划", "GEA sales plans"],
   intro: [
     "查询计划、查看版本与 SKU，确认范围后交给只读会话。",

@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import { resolveEnvironments } from "./environments.js";
 import { Decimal } from "decimal.js";
 import { transportSignal } from "./transport-signal.ts";
+import { notificationPage, notificationDetail } from "./notifications.ts";
 import { geaResponseError } from "./gea-error.js";
 
 export type QueryId = Branded<"gea-query">;
@@ -396,13 +397,56 @@ export class Business {
       throw new Error("GEA_INVALID_JSON");
     }
     if (signal.aborted) throw new Error("STALE_SELECTION");
-    if (data.success !== true) throw new Error("GEA_REQUEST_REJECTED");
+    if (data.success !== true) {
+      if (
+        typeof data.errorCode === "string" &&
+        /^NOTIFICATION_[A-Z_]+$/.test(data.errorCode)
+      ) {
+        if (
+          data.errorCode === "NOTIFICATION_UNAUTHENTICATED" &&
+          this.auth?.token === identity?.token
+        )
+          this.clearLogin(true);
+        throw new Error(data.errorCode);
+      }
+      throw new Error("GEA_REQUEST_REJECTED");
+    }
     return data.result;
   }
 
   private authenticated(): NonNullable<Business["auth"]> {
     if (!this.auth) throw new Error("LOGIN_REQUIRED");
     return this.auth;
+  }
+
+  /** Read fixed notification endpoints under the current Host identity without changing plan selection. */
+  async notifications(payload: Record<string, unknown>, caller: AbortSignal) {
+    keys(payload, ["pageNo", "state", "id"]);
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    let path = "/api/v1/notifications";
+    if (payload.id !== undefined) {
+      if (payload.pageNo !== undefined || payload.state !== undefined)
+        throw new Error("INVALID_PAYLOAD");
+      path += "/" + encodeURIComponent(text(payload.id));
+    } else {
+      const query = new URLSearchParams({
+        pageNo: String(integer(payload.pageNo ?? 1, 1, 100000)),
+        pageSize: String(this.config.pageSize),
+      });
+      if (payload.state !== undefined && payload.state !== "")
+        query.set("state", text(payload.state));
+      path += "?" + query;
+    }
+    const value = await this.get(path, auth, signal);
+    signal.throwIfAborted();
+    return {
+      environment: this.environment,
+      fetchedAt: new Date().toISOString(),
+      ...(payload.id === undefined
+        ? notificationPage(value, this.config.pageSize)
+        : { detail: notificationDetail(value, text(payload.id)) }),
+    };
   }
 
   /** Resolve the logged-in user's GEA personal model route without exposing its secret to the browser. */
