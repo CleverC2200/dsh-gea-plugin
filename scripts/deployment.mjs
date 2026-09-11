@@ -2,6 +2,25 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+/** Parse an HTTPS endpoint and reject credentials or URL routing metadata. */
+function httpsEndpoint(value, code) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(code);
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  )
+    throw new Error(code);
+  return url;
+}
+
 /** Read the selected AionUi proxy through its local API; never claim or decrypt an upstream secret. */
 async function resolveAionUi(analysis) {
   const backend = new URL(analysis.backendUrl);
@@ -94,15 +113,7 @@ export async function readDeployment(path) {
   }
   if (!config || Array.isArray(config) || typeof config !== "object")
     throw new Error("GEA_CONFIG_INVALID");
-  const url = new URL(config.geaBaseUrl);
-  if (
-    url.protocol !== "https:" ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash
-  )
-    throw new Error("INVALID_GEA_BASE_URL");
+  const url = httpsEndpoint(config.geaBaseUrl, "INVALID_GEA_BASE_URL");
   for (const [name, low, high] of [
     ["pageSize", 1, 100],
     ["periodPageSize", 1, 1000],
@@ -133,15 +144,7 @@ export async function readDeployment(path) {
     else {
       if (a.source !== undefined && a.source !== "direct")
         throw new Error("ANALYSIS_SOURCE_INVALID");
-      const modelUrl = new URL(a.baseUrl);
-      if (
-        modelUrl.protocol !== "https:" ||
-        modelUrl.username ||
-        modelUrl.password ||
-        modelUrl.search ||
-        modelUrl.hash
-      )
-        throw new Error("INVALID_ANALYSIS_BASE_URL");
+      httpsEndpoint(a.baseUrl, "INVALID_ANALYSIS_BASE_URL");
       if (!/^[A-Z][A-Z0-9_]*$/.test(a.apiKeyEnv ?? ""))
         throw new Error("ANALYSIS_CONFIG_INCOMPLETE");
       if (!process.env[a.apiKeyEnv]?.trim())
