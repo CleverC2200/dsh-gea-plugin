@@ -1,0 +1,20 @@
+{
+  "events": [
+    "assistant/message",
+    "tool/call",
+    "tool/result",
+    "assistant/message",
+    "turn/end"
+  ],
+  "tool": "gea_sales_plan_read",
+  "arguments": { "kind": "periods", "query": { "pageSize": 1 } },
+  "coverage": "partial",
+  "value": {
+    "records": [{ "periodId": "period-1", "periodMonth": "2026-09" }],
+    "total": 2,
+    "size": 1,
+    "current": 1,
+    "pages": 2
+  },
+  "finish": "completed"
+}

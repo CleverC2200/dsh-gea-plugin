@@ -4,6 +4,7 @@ import { brandString, type Branded } from "@deepseek-ai/dsh-brand";
 import QRCode from "qrcode";
 import { resolveEnvironments } from "./environments.js";
 import { Decimal } from "decimal.js";
+import { transportSignal } from "./transport-signal.ts";
 import { geaResponseError } from "./gea-error.js";
 
 export type QueryId = Branded<"gea-query">;
@@ -366,18 +367,17 @@ export class Business {
         "X-Request-Id": randomUUID(),
       });
     let response: Response;
+    const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
     try {
       response = await fetch(this.base + path, {
         method: "GET",
         headers,
         redirect: "error",
-        signal: AbortSignal.any([
-          signal,
-          AbortSignal.timeout(this.config.requestTimeoutMs),
-        ]),
+        signal: AbortSignal.any([signal, timeout]),
       });
     } catch {
       if (signal.aborted) throw new Error("STALE_SELECTION");
+      if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
       throw new Error("GEA_NETWORK_ERROR");
     }
     if (signal.aborted) throw new Error("STALE_SELECTION");
@@ -391,6 +391,8 @@ export class Business {
     try {
       data = object(parseJson(await response.text()));
     } catch {
+      if (signal.aborted) throw new Error("STALE_SELECTION");
+      if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
       throw new Error("GEA_INVALID_JSON");
     }
     if (signal.aborted) throw new Error("STALE_SELECTION");
@@ -949,6 +951,49 @@ export class Business {
   ): Promise<unknown> {
     this.clearQuery();
     return this.readWorkbenchQuery(payload, signal);
+  }
+
+  /** Read for the model without invalidating a browser-owned selection or preview.
+   * @param payload - Fixed resource kind and validated query fields.
+   * @param signal - The owning tool execution cancellation.
+   * @returns Exact JSON with source, time and collection coverage for the Session log.
+   */
+  async agentQuery(
+    payload: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<string> {
+    const identity = this.epoch.signal;
+    const transport = transportSignal(AbortSignal.any([signal, identity]));
+    let value: unknown;
+    try {
+      value = await this.readWorkbenchQuery(payload, transport.signal);
+    } catch (error) {
+      signal.throwIfAborted();
+      identity.throwIfAborted();
+      throw error;
+    } finally {
+      transport.dispose();
+    }
+    signal.throwIfAborted();
+    identity.throwIfAborted();
+    const page = Array.isArray(value) ? undefined : object(value);
+    const coverage =
+      page && Array.isArray(page.records)
+        ? page.records.length === page.total
+          ? "complete"
+          : "partial"
+        : "complete";
+    const result = JSON.stringify({
+      source: "GEA_LIVE_READONLY",
+      environment: this.environment,
+      fetchedAt: new Date().toISOString(),
+      query: payload,
+      coverage,
+      value,
+    });
+    if (Buffer.byteLength(result, "utf8") > this.config.inputByteBudget)
+      throw new Error("SNAPSHOT_TOO_LARGE");
+    return result;
   }
 
   private async readWorkbenchQuery(
