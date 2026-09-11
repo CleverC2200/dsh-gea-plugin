@@ -108,12 +108,19 @@ test(
     });
     page.on("pageerror", (error) => errors.push(error.message));
     page.setDefaultTimeout(15000);
+    let allowLogin = false;
+    await page.route("**/api/gea-proof/login/poll", (route) =>
+      allowLogin
+        ? route.continue()
+        : route.fulfill({ json: { ok: true, value: { status: "pending" } } }),
+    );
     await page.goto(app.origin);
     const frame = page.frameLocator("iframe[data-gea-workbench]");
     try {
       await frame
-        .getByRole("button", { name: "飞书扫码登录", exact: true })
+        .getByRole("button", { name: "刷新二维码", exact: true })
         .waitFor();
+      await frame.locator(".gea-login-qr img").waitFor();
       await frame.getByRole("radio", { name: "测试", exact: true }).waitFor();
       assert.equal(
         await frame
@@ -139,7 +146,7 @@ test(
       await page.setViewportSize({ width: 1536, height: 920 });
       await frame.getByRole("radio", { name: "正式", exact: true }).check();
       await frame
-        .getByRole("button", { name: "飞书扫码登录", exact: true })
+        .getByRole("button", { name: "刷新二维码", exact: true })
         .waitFor();
       await frame.getByRole("radio", { name: "测试", exact: true }).check();
       const continueButton = page.getByRole("button", {
@@ -147,9 +154,8 @@ test(
         exact: true,
       });
       if (await continueButton.isVisible()) await continueButton.click();
-      await frame
-        .getByRole("button", { name: "飞书扫码登录", exact: true })
-        .click();
+      await frame.locator(".gea-login-qr img").waitFor();
+      allowLogin = true;
       await frame
         .getByRole("heading", { name: "销售计划审批", exact: true })
         .waitFor();

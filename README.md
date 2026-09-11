@@ -18,7 +18,7 @@ npm start -- --config gea.config.json --runtime .runtime/fork-development --port
 
 `DSH_SOURCE_DIR` 选择已构建的本地 DSH fork。构建将本插件直接使用的 DSH 和 Cordis 包链接到同一 checkout，并在忽略提交的 `lib/dsh-runtime.json` 中记录路径；随后 `npm start` 可复用该路径。启动仍通过 fork 的 `dsh --profile gea-readonly-fork`，它拥有独立 Harness home，避免使用旧发布版 profile 的依赖。客户端 UI 由该 DSH Host 的模块加载器提供，不复制 DSH bundle。当前三栏版本不支持 npm `0.1.5-rc.1`，缺少 fork 路径时明确报错。`npm ci` 会恢复锁定的 npm 依赖；再次构建前需选择 fork。
 
-使用启动日志中的带认证参数链接进入全屏登录页，选择「正式」或「测试」后飞书扫码登录。页面不显示或要求输入服务器地址。登录后进入 GEA 导航、原销售计划审批工作台、原生 DSH 会话的三栏界面。选择组织行与分析范围，点击「预览发送范围」，核对 Host 重新获取的当前计划数据，再确认送入右侧原生 DSH 会话。选中 Session 不会关闭业务页面，后续输入、流式回答、取消和历史记录仍由 DSH 负责。
+使用启动日志中的带认证参数链接进入全屏登录页，默认自动加载正式环境的二维码，可切换「正式」或「测试」后直接飞书扫码登录；切换环境会自动换码，「刷新二维码」用于重试或更新过期二维码。页面不显示或要求输入服务器地址。登录后进入 GEA 导航、原销售计划审批工作台、原生 DSH 会话的三栏界面。选择组织行与分析范围，点击「预览发送范围」，核对 Host 重新获取的当前计划数据，再确认送入右侧原生 DSH 会话。选中 Session 不会关闭业务页面，后续输入、流式回答、取消和历史记录仍由 DSH 负责。
 
 部署配置的 `geaEnvironments.production` 和 `geaEnvironments.test` 分别保存正式、测试 HTTPS 地址，`environment` 指定初始选项（默认 `production`）。旧单地址配置只提供对应的一个环境。工作台「切换环境 / 重新登录」返回登录页；切换会作废旧凭证、二维码、预览和进行中的模型请求，并清空当前会话选择。登录页 GEA 图标来自 AionUi 的 `packages/desktop/src/renderer/assets/logos/brand/app.png`，沿用[原工作台来源与许可证](src/workbench-original/SOURCE.md)。
 

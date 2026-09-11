@@ -21,6 +21,7 @@ const copy = {
     "Change environment / sign in again",
   ],
   login: ["飞书扫码登录", "Sign in with Lark QR"],
+  refreshQr: ["刷新二维码", "Refresh QR code"],
   signedOut: ["尚未登录 GEA", "Not signed in to GEA"],
   signedIn: ["已登录", "Signed in"],
   environment: ["GEA 环境", "GEA environment"],

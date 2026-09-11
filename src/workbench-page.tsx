@@ -119,6 +119,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const [status, setStatus] = useState<Status>();
   const [qr, setQr] = useState<{ image: string; loginId: string }>();
   const [expired, setExpired] = useState(false);
+  const [qrRefresh, setQrRefresh] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [selection, setSelection] = useState<string[]>([]);
@@ -250,6 +251,31 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       if (request.current === controller) setBusy(false);
     }
   };
+  useEffect(() => {
+    if (!status || status.authenticated) return;
+    const controller = new AbortController();
+    request.current?.abort();
+    request.current = controller;
+    setBusy(true);
+    setError("");
+    setQr(undefined);
+    setExpired(false);
+    void rpc<{ image: string; loginId: string }>(
+      "login/start",
+      { environment: status.environment },
+      controller.signal,
+    )
+      .then((value) => {
+        if (!controller.signal.aborted) setQr(value);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setError(requestErrorMessage(error, t));
+      })
+      .finally(() => {
+        if (request.current === controller) setBusy(false);
+      });
+    return () => controller.abort();
+  }, [status?.authenticated, status?.environment, qrRefresh]);
   if (!status?.authenticated)
     return (
       <main className="gea-login-page">
@@ -294,14 +320,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
                       setPreview(undefined);
                       setSelection([]);
                       setSessionId(null);
-                      void run(async (signal) => {
-                        const value = await rpc<Status>(
-                          "environment/select",
-                          { environment },
-                          signal,
-                        );
-                        if (!signal.aborted) setStatus(value);
-                      });
                     }}
                   />
                   <span>
@@ -315,20 +333,9 @@ export function WorkbenchPage({ t }: { t: Translate }) {
             type="button"
             className="gea-login-submit"
             disabled={busy || !status}
-            onClick={() =>
-              void run(async (signal) => {
-                setExpired(false);
-                setQr(undefined);
-                const value = await rpc<{ image: string; loginId: string }>(
-                  "login/start",
-                  { environment: status?.environment },
-                  signal,
-                );
-                if (!signal.aborted) setQr(value);
-              })
-            }
+            onClick={() => setQrRefresh((value) => value + 1)}
           >
-            {busy ? t("busy") : t("login")}
+            {busy ? t("busy") : t("refreshQr")}
           </button>
           {error && <p role="alert">{error}</p>}
           <footer>{t("loginFooter")}</footer>
