@@ -102,6 +102,26 @@ function Coverage({ value, t }: { value: Collection; t: Translate }) {
   );
 }
 
+function sumDecimal(rows: Row[], key: string): string | undefined {
+  const values = rows
+    .map((row) => row[key])
+    .filter((value): value is string | number => typeof value === "string" || typeof value === "number")
+    .map(String);
+  if (values.length !== rows.length || !values.length || values.some((value) => !/^-?\d+(\.\d+)?$/.test(value))) return undefined;
+  const scale = Math.max(...values.map((value) => value.split(".")[1]?.length ?? 0));
+  const total = values.reduce((sum, value) => {
+    const [whole, fraction = ""] = value.split(".");
+    const sign = whole.startsWith("-") ? -1n : 1n;
+    const digits = whole.replace("-", "") + fraction.padEnd(scale, "0");
+    return sum + sign * BigInt(digits);
+  }, 0n);
+  const negative = total < 0n;
+  const absolute = (negative ? -total : total).toString().padStart(scale + 1, "0");
+  if (scale === 0) return `${negative ? "-" : ""}${absolute}`;
+  const point = absolute.length - scale;
+  return `${negative ? "-" : ""}${absolute.slice(0, point)}.${absolute.slice(point)}`.replace(/\.0+$/, "");
+}
+
 type OrganizationView =
   | "all"
   | "base"
@@ -119,27 +139,45 @@ const organizationLabels: Record<OrganizationView, CopyKey> = {
   dealer: "byDealer",
 };
 
+function organizationValueFor(row: Row, view: OrganizationView): string | undefined {
+  if (view === "all") return undefined;
+  const value = {
+    base: row.baseName ?? row.orgName ?? row.orgCode,
+    region: row.regionName ?? row.salesGroupName ?? row.orgName ?? row.orgCode,
+    province: row.provinceName ?? row.provinceRegionName ?? row.provinceCode,
+    area: row.areaName ?? row.regionName ?? row.areaCode,
+    dealer: row.dealerName ?? row.dealerCode,
+  }[view];
+  return value == null ? undefined : String(value);
+}
+
 function ApprovalWorkspace({
   rows,
   view,
   onViewChange,
+  organizationOptions,
+  organizationValue,
+  onOrganizationValueChange,
+  canSend,
+  onSend,
   t,
 }: {
   rows: Row[];
   view: OrganizationView;
   onViewChange: (view: OrganizationView) => void;
+  organizationOptions: string[];
+  organizationValue: string;
+  onOrganizationValueChange: (value: string) => void;
+  canSend: boolean;
+  onSend: () => void;
   t: Translate;
 }) {
   const first = rows[0];
-  const keyByView: Record<Exclude<OrganizationView, "all">, string> = {
-    base: "baseName",
-    region: "regionName",
-    province: "provinceName",
-    area: "areaName",
-    dealer: "dealerName",
-  };
-  const dimension = view === "all" ? undefined : keyByView[view];
-  const dimensionValue = dimension ? first?.[dimension] : undefined;
+  const targetQty = sumDecimal(rows, "targetQty");
+  const targetAmount = sumDecimal(rows, "targetAmount");
+  const currentQty = sumDecimal(rows, "currentQty");
+  const currentAmount = sumDecimal(rows, "currentAmount");
+  const dimensionValue = first ? organizationValueFor(first, view) : undefined;
   const stages: CopyKey[] = [
     "stageCustomerAi",
     "stageAreaApproval",
@@ -148,16 +186,31 @@ function ApprovalWorkspace({
     "stageCategoryPlan",
   ];
   return (
-    <section
-      className="gea-section gea-approval"
-      aria-label={t("approvalWorkspace")}
-    >
-      <div className="gea-toolbar">
+    <div className="gea-approval-frame">
+      <aside className="gea-business-nav" aria-label={t("businessNavigation")}>
+        <strong>{t("geaBusiness")}</strong>
+        <span>{t("businessFunctions")}</span>
+        <button type="button" className="is-active" aria-current="page">
+          {t("approvalWorkspace")}
+        </button>
+        <button type="button" disabled>{t("messageInbox")}</button>
+      </aside>
+      <section
+        className="gea-section gea-approval"
+        aria-label={t("approvalWorkspace")}
+      >
+      <div className="gea-toolbar gea-approval-heading">
         <div>
-          <h2>{t("approvalWorkspace")}</h2>
+          <p className="gea-eyebrow">{t("approvalEyebrow")}</p>
+          <h2>{t("approvalTitle")}</h2>
           <p className="gea-meta">{t("readOnlyPreview")}</p>
         </div>
-        <span className="gea-status-chip">{t("stageDataPending")}</span>
+        <div className="gea-version-controls">
+          <span>{t("versionLabel")} {t("unknown")}</span>
+          <button type="button" disabled>{t("latestVersion")}</button>
+          <span>{t("period")}</span>
+          <button type="button" disabled>{first?.periodId ?? t("unknown")}</button>
+        </div>
       </div>
       <div className="gea-summary-grid">
         <div>
@@ -169,15 +222,13 @@ function ApprovalWorkspace({
         <div>
           <span className="gea-summary-label">{t("targetSummary")}</span>
           <strong>
-            {first?.targetQty ?? t("unknown")} /{" "}
-            {first?.targetAmount ?? t("unknown")}
+            {targetQty ?? t("unknown")} / {targetAmount ?? t("unknown")}
           </strong>
         </div>
         <div>
           <span className="gea-summary-label">{t("currentSummary")}</span>
           <strong>
-            {first?.currentQty ?? t("unknown")} /{" "}
-            {first?.currentAmount ?? t("unknown")}
+            {currentQty ?? t("unknown")} / {currentAmount ?? t("unknown")}
           </strong>
         </div>
         <div>
@@ -185,7 +236,7 @@ function ApprovalWorkspace({
           <strong>
             {first?.status == null
               ? t("unknown")
-              : `${t("status")}=${first.status}`}
+              : `${t("status")}=${rows.length === 1 ? first.status : t("mixed")}`}
           </strong>
         </div>
       </div>
@@ -197,6 +248,7 @@ function ApprovalWorkspace({
           >
             <span className="gea-stage-dot">{index + 1}</span>
             <span>{t(stage)}</span>
+            <small>{t("unknown")}</small>
           </div>
         ))}
       </div>
@@ -217,11 +269,33 @@ function ApprovalWorkspace({
             {t(organizationLabels[item])}
           </button>
         ))}
-        {dimensionValue != null && (
-          <span className="gea-meta">{String(dimensionValue)}</span>
+        {dimensionValue != null && <span className="gea-meta">{String(dimensionValue)}</span>}
+        {view !== "all" && (
+          <select
+            aria-label={t("organizationValue")}
+            value={organizationValue}
+            onChange={(event) => onOrganizationValueChange(event.target.value)}
+          >
+            {organizationOptions.map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
         )}
       </div>
-    </section>
+      <div className="gea-readonly-banner">{t("readOnlyBanner")}</div>
+      </section>
+      <aside className="gea-agent-panel" aria-label={t("agentPanel")}>
+        <h3>{t("agentPanel")}</h3>
+        <p className="gea-meta">{t("agentPanelModel")}</p>
+        <p>{t("agentPanelHelp")}</p>
+        <div className="gea-agent-state">
+          <strong>{rows.length ? t("agentReady") : t("agentWaiting")}</strong>
+          <span>{rows.length ? `${rows.length} ${t("planCount")}` : t("noQuery")}</span>
+        </div>
+        <button type="button" className="gea-primary" disabled={!canSend} onClick={onSend}>
+          {t("sendToSession")}
+        </button>
+        <p className="gea-meta">{t("agentReadOnly")}</p>
+      </aside>
+    </div>
   );
 }
 
@@ -263,26 +337,26 @@ export function apply(ctx: Context): void {
     const [sessionId, setSessionId] = useState<SessionId>();
     const [organizationView, setOrganizationView] =
       useState<OrganizationView>("all");
+    const [organizationValue, setOrganizationValue] = useState("");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<RequestError>();
     const active = useRef<AbortController | undefined>(undefined);
     const login = useRef<AbortController | undefined>(undefined);
     const submitting = useRef(false);
     const row = data?.records.find((row) => row.planId === selected);
-    const organizationField: Record<
-      Exclude<OrganizationView, "all">,
-      string
-    > = {
-      base: "baseName",
-      region: "regionName",
-      province: "provinceName",
-      area: "areaName",
-      dealer: "dealerName",
-    };
+    const organizationValues = data
+      ? Array.from(
+          new Set(
+            data.records
+              .map((record) => organizationValueFor(record, organizationView) ?? "")
+              .filter(Boolean),
+          ),
+        )
+      : [];
     const visibleRecords =
       data?.records.filter((record) => {
-        if (organizationView === "all") return true;
-        return record[organizationField[organizationView]] != null;
+        if (organizationView === "all" || !organizationValue) return true;
+        return organizationValueFor(record, organizationView) === organizationValue;
       }) ?? [];
     const selection =
       data && row ? { queryId: data.queryId, planId: row.planId } : undefined;
@@ -305,6 +379,7 @@ export function apply(ctx: Context): void {
       setData(undefined);
       setSelected(undefined);
       setOrganizationView("all");
+      setOrganizationValue("");
       clearExtras();
     };
     const cancel = () => {
@@ -610,11 +685,52 @@ export function apply(ctx: Context): void {
           )}
           {!data && !busy && <p className="gea-empty">{t("noQuery")}</p>}
           {data && (
-            <section className="gea-section" aria-label={t("live")}>
+            <section className="gea-section gea-live-section" aria-label={t("live")}>
               <ApprovalWorkspace
                 rows={visibleRecords}
                 view={organizationView}
-                onViewChange={(next) => setOrganizationView(next)}
+                organizationOptions={organizationValues}
+                organizationValue={organizationValue}
+                canSend={Boolean(preview) && !busy}
+                onSend={submit}
+                onOrganizationValueChange={(value) => {
+                  setOrganizationValue(value);
+                  if (organizationView === "all") return;
+                  const next = data.records.find(
+                    (record) => organizationValueFor(record, organizationView) === value,
+                  );
+                  if (next && next.planId !== selected) {
+                    cancel();
+                    clearExtras();
+                    setSelected(String(next.planId));
+                  }
+                }}
+                onViewChange={(next) => {
+                  setOrganizationView(next);
+                  const nextValues = next === "all"
+                    ? []
+                    : Array.from(
+                        new Set(
+                          data.records
+                            .map((record) => organizationValueFor(record, next) ?? "")
+                            .filter(Boolean),
+                        ),
+                      );
+                  const nextValue = next !== "all"
+                    ? nextValues[0] ?? ""
+                    : "";
+                  setOrganizationValue(nextValue);
+                  if (next !== "all") {
+                    const nextRecord = data.records.find(
+                      (record) => organizationValueFor(record, next) === nextValue,
+                    );
+                    if (nextRecord && nextRecord.planId !== selected) {
+                      cancel();
+                      clearExtras();
+                      setSelected(String(nextRecord.planId));
+                    }
+                  }
+                }}
                 t={t}
               />
               <div className="gea-toolbar">
@@ -637,15 +753,10 @@ export function apply(ctx: Context): void {
                       {(
                         [
                           "select",
-                          "planId",
                           "dealer",
-                          "planTypeCode",
-                          "status",
-                          "currentQty",
-                          "targetQty",
-                          "currentAmount",
                           "targetAmount",
-                          "updatedAt",
+                          "progress",
+                          "status",
                         ] as CopyKey[]
                       ).map((key) => (
                         <th key={key}>{t(key)}</th>
@@ -672,33 +783,18 @@ export function apply(ctx: Context): void {
                           />
                         </td>
                         <td>
-                          {record.planId}
+                          {record.orgName ?? record.dealerName ?? record.dealerCode ?? t("unknown")}
                           <small>
-                            {t("versionId")} {record.versionId ?? t("unknown")}
+                            {record.provinceName ?? record.areaName ?? t("unknown")}
                           </small>
                         </td>
                         <td>
-                          {record.dealerName ??
-                            record.dealerCode ??
-                            t("unknown")}
-                          <small>
-                            {record.orgName ?? t("unknown")} ·{" "}
-                            {record.provinceName ?? t("unknown")}
-                          </small>
+                          {record.targetAmount ?? t("unknown")}
                         </td>
-                        {(
-                          [
-                            "planTypeCode",
-                            "status",
-                            "currentQty",
-                            "targetQty",
-                            "currentAmount",
-                            "targetAmount",
-                            "updatedAt",
-                          ] as const
-                        ).map((key) => (
-                          <td key={key}>{record[key] ?? t("unknown")}</td>
-                        ))}
+                        <td>
+                          {record.currentQty ?? t("unknown")} / {record.targetQty ?? t("unknown")}
+                        </td>
+                        <td>{record.status ?? t("unknown")}</td>
                       </tr>
                     ))}
                   </tbody>

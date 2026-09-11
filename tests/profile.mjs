@@ -143,7 +143,7 @@ export async function profile(t, options = {}) {
           });
         else if (path.endsWith("/plans")) {
           res.end(
-            '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version-1","planTypeCode":"Y","status":5,"currentQty":1.2300,"targetQty":2.3400,"currentAmount":10.10,"targetAmount":12.30}],"total":1,"current":1,"size":10}}',
+            '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version-1","planTypeCode":"Y","status":5,"currentQty":1.2300,"targetQty":2.3400,"currentAmount":10.10,"targetAmount":12.30,"baseName":"华东","orgName":"组织A","provinceName":"浙江"}],"total":1,"current":1,"size":10}}',
           );
         } else reply({ message: "fixture route absent" }, 404);
       } catch (error) {

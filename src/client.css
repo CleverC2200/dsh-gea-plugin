@@ -217,6 +217,149 @@
   border-color: #c6d6ea;
   background: #fbfdff;
 }
+.gea-approval-frame {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) 270px;
+  gap: 0;
+  margin-block: 20px;
+  border: 1px solid #d8e1ee;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.gea-live-section {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) 270px;
+  align-items: start;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.gea-live-section > .gea-approval-frame {
+  display: contents;
+}
+.gea-live-section > .gea-approval-frame > .gea-business-nav {
+  grid-column: 1;
+}
+.gea-live-section > .gea-approval-frame > .gea-approval {
+  grid-column: 2;
+}
+.gea-live-section > .gea-approval-frame > .gea-agent-panel {
+  grid-column: 3;
+}
+.gea-live-section > .gea-toolbar,
+.gea-live-section > p.gea-meta,
+.gea-live-section > .gea-table-scroll,
+.gea-live-section > .gea-empty,
+.gea-live-section > .gea-actions {
+  grid-column: 2;
+  margin-inline: 0;
+}
+.gea-live-section > .gea-toolbar {
+  padding-inline: 18px;
+}
+.gea-live-section > p.gea-meta {
+  padding-inline: 18px;
+}
+.gea-live-section > .gea-table-scroll {
+  background: #fff;
+  border-inline: 1px solid #d8e1ee;
+}
+.gea-live-section > .gea-actions {
+  padding-inline: 18px;
+}
+.gea-approval-frame > .gea-section {
+  margin: 0;
+  border: 0;
+  border-inline: 1px solid #d8e1ee;
+  border-radius: 0;
+}
+.gea-business-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 14px;
+  background: #f5f7fa;
+  color: #27384d;
+}
+.gea-business-nav strong {
+  padding: 2px 8px 14px;
+  border-bottom: 1px solid #dfe6f0;
+  font-size: 15px;
+}
+.gea-business-nav span {
+  padding: 10px 8px 4px;
+  color: #6a7b90;
+  font-size: 12px;
+}
+.gea-business-nav button {
+  min-height: 36px;
+  padding: 7px 9px;
+  border-color: transparent;
+  background: transparent;
+  text-align: start;
+  font-size: 13px;
+}
+.gea-business-nav button.is-active {
+  color: #c53c4a;
+  background: #f6e5e8;
+}
+.gea-agent-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px 18px;
+  background: #fff;
+}
+.gea-agent-panel h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.gea-agent-panel p {
+  margin: 0;
+}
+.gea-agent-state {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+  padding: 12px;
+  border-radius: 6px;
+  background: #f3f7fc;
+}
+.gea-agent-state span {
+  color: #53677f;
+  font-size: 12px;
+}
+.gea-approval-heading {
+  align-items: flex-start;
+}
+.gea-eyebrow {
+  margin: 0 0 4px;
+  color: #59708d;
+  font-size: 12px;
+}
+.gea-version-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #53677f;
+  font-size: 12px;
+}
+.gea-version-controls button {
+  min-height: 32px;
+  padding: 5px 9px;
+}
+.gea-readonly-banner {
+  margin-top: 16px;
+  padding: 9px 12px;
+  color: #315b86;
+  background: #e8f3ff;
+  border: 1px solid #c5ddf5;
+  border-radius: 4px;
+  font-size: 12px;
+}
 .gea-approval h2 {
   margin-bottom: 2px;
 }
@@ -267,6 +410,11 @@
   border-radius: 5px;
   background: #f0f4f9;
   font-size: 12px;
+}
+.gea-stage small {
+  margin-inline-start: auto;
+  color: #73859a;
+  font-size: 10px;
 }
 .gea-stage.is-current {
   color: #1b4f8c;
@@ -348,6 +496,31 @@
   }
   .gea-approval-stages {
     grid-template-columns: 1fr;
+  }
+  .gea-approval-frame {
+    grid-template-columns: 1fr;
+  }
+  .gea-live-section {
+    grid-template-columns: 1fr;
+  }
+  .gea-live-section > .gea-approval-frame > .gea-business-nav,
+  .gea-live-section > .gea-approval-frame > .gea-approval,
+  .gea-live-section > .gea-approval-frame > .gea-agent-panel,
+  .gea-live-section > .gea-toolbar,
+  .gea-live-section > p.gea-meta,
+  .gea-live-section > .gea-table-scroll,
+  .gea-live-section > .gea-empty,
+  .gea-live-section > .gea-actions {
+    grid-column: 1;
+  }
+  .gea-business-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .gea-business-nav strong {
+    border: 0;
+    padding-bottom: 2px;
   }
 }
 @media (prefers-color-scheme: dark) {

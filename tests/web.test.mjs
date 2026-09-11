@@ -42,12 +42,31 @@ test(
       .getByRole("radio", { name: "选择 9007199254740993", exact: true })
       .waitFor();
     await page
-      .getByRole("heading", { name: "销售计划审批工作区", exact: true })
+      .getByRole("heading", { name: "销售计划审批", exact: true })
       .waitFor();
     await page
       .getByRole("group", { name: "组织视图", exact: true })
       .getByRole("button", { name: "按基地", exact: true })
       .waitFor();
+    await page
+      .getByRole("heading", { name: "需求预测 Agent", exact: true })
+      .waitFor();
+    await page
+      .getByText("暂不可操作：当前仅展示 GEA 数据，审批和写回接口尚未接入。", {
+        exact: true,
+      })
+      .waitFor();
+    await page
+      .getByRole("group", { name: "组织视图", exact: true })
+      .getByRole("button", { name: "按基地", exact: true })
+      .click();
+    const organizationSelect = page.getByRole("combobox", { name: "组织值", exact: true });
+    await organizationSelect.waitFor();
+    assert.equal(await organizationSelect.inputValue(), "华东");
+    assert.equal(
+      await page.getByRole("button", { name: "发送到 dsh 会话", exact: true }).isDisabled(),
+      true,
+    );
     await page
       .getByText("只读预览 · 不执行审批写回", { exact: true })
       .waitFor();
