@@ -191,6 +191,13 @@ export async function profile(t, options = {}) {
   });
   async function start() {
     output = "";
+    let logOffset = 0;
+    try {
+      logOffset = (await readFile(resolve(runtime, "server.log"), "utf8"))
+        .length;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
     child = spawn(
       process.execPath,
       [
@@ -215,7 +222,17 @@ export async function profile(t, options = {}) {
     const deadline = Date.now() + 45000;
     let launch;
     while (Date.now() < deadline) {
-      launch = [...output.matchAll(/dsh web: (http[^\s]+)/g)].at(-1)?.[1];
+      let freshLog = "";
+      try {
+        freshLog = (
+          await readFile(resolve(runtime, "server.log"), "utf8")
+        ).slice(logOffset);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      launch = [...freshLog.matchAll(/dsh web: (http[^\s]+)(?=\r?\n)/g)].at(
+        -1,
+      )?.[1];
       if (launch) break;
       if (child.exitCode !== null) throw new Error("Profile exited: " + output);
       await delay(50);
