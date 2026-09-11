@@ -1,0 +1,135 @@
+{
+  "repository": "Aionui",
+  "commit": "55d12cd60248c6084afd76bba816638a79af36de",
+  "sourceDirectory": "packages/desktop/src/renderer/pages/assistantSurface/workbenches/regionalApproval",
+  "files": [
+    {
+      "path": "workbenches/regionalApproval/regionalApprovalFixture.ts",
+      "sourceSha256": "ffbb24d077ad7e304f58ac737f2ad3161aed2c2b5c6fb3026c2d431eda41fdb7"
+    },
+    {
+      "path": "workbenches/regionalApproval/regionalApprovalDetailModel.ts",
+      "sourceSha256": "1ac61670e643ed6adea6366e3b234b332792041f39907e262b1f58f8d30caec1"
+    },
+    {
+      "path": "workbenches/regionalApproval/RegionalApprovalLiveAdjustmentDialog.module.css",
+      "sourceSha256": "eb1ba803fc93f89312f9d41e24595e711a3bbee4607e5da06cc558061ec0ee79"
+    },
+    {
+      "path": "workbenches/regionalApproval/RegionalApprovalActionDialog.module.css",
+      "sourceSha256": "a43b849a808cc6087f55f494fb9bc53bf369f461577b98dfca76e0abe3463dfe"
+    },
+    {
+      "path": "workbenches/regionalApproval/RegionalApprovalLiveActionDialog.tsx",
+      "sourceSha256": "eecf4e0a103ec6c739f4a623c772110459924be7b1507485ae7c6af004438cbd"
+    },
+    {
+      "path": "workbenches/regionalApproval/RegionalApprovalPlanDetail.module.css",
+      "sourceSha256": "24bf930c9d7880af4e242a11a2979376b4a2cf80d1ff1898ec4b8e738a17c9ed"
+    },
+    {
+      "path": "workbenches/regionalApproval/regionalApprovalDetailFixture.ts",
+      "sourceSha256": "038b0115c982d6e2f1f44dd9b7ac875ce240052249396039e30ef7d310f2ed4d"
+    },
+    {
+      "path": "workbenches/regionalApproval/RegionalApprovalActionDialog.tsx",
+      "sourceSha256": "74cf539ea96dc8cbcbff082d209d39226485ed6be2fcd9f330cd24418c518fbe"
+    },
+    {
+      "path": "workbenches/regionalApproval/RegionalApprovalWorkbench.module.css",
+      "sourceSha256": "a5cd2439dd37fecd4c2c23b6ef7e60565206d734b7055adf69d3c949fceec8ab"
+    },
+    {
+      "path": "workbenches/regionalApproval/regionalApprovalActionModel.ts",
+      "sourceSha256": "8be27b92c0718df23310c5085b7a91367cc2ce51f27d5672514be52b91d4922d"
+    },
+    {
+      "path": "workbenches/regionalApproval/useRegionalApprovalQuery.ts",
+      "sourceSha256": "637d6efcb5b861c6565446177167011aa91fc610011af5e8e690e380d5ba15fe"
+    },
+    {
+      "path": "workbenches/regionalApproval/RegionalApprovalPlanDetail.tsx",
+      "sourceSha256": "c158358d22251ec792334311bf1df64423e58201797bc7da47ee3bcd464d1e45"
+    },
+    {
+      "path": "workbenches/regionalApproval/RegionalApprovalLiveAdjustmentDialog.tsx",
+      "sourceSha256": "4c59aab1e0c67df69ad7fc8425b87af7066b61f45130c69a149997b780604ae7"
+    },
+    {
+      "path": "workbenches/regionalApproval/regionalApprovalQueryModel.ts",
+      "sourceSha256": "dd4fc7f3b83f8b8dce9592c9ef0e4c8ac0ecc6c6740034b5dc5eb0e8b7b1bf90"
+    },
+    {
+      "path": "workbenches/regionalApproval/RegionalApprovalWorkbench.tsx",
+      "sourceSha256": "b225edafd35f6a74b07e5479a928bc1a7d10faa09a1e2d5fede95a03ae7ba8fb"
+    },
+    {
+      "path": "workbenches/regionalApproval/RegionalApprovalLiveProgress.tsx",
+      "sourceSha256": "ef4abad76e206aba2090a771eb3305d59e73c6b037a3674c07b4c649d64f0697"
+    },
+    {
+      "path": "workbenches/regionalApproval/regionalApprovalModel.ts",
+      "sourceSha256": "a7db834222f529b551fc75283adaf62f3572110fd25a4d48212da7f01c96431a"
+    },
+    {
+      "path": "workbenches/regionalApproval/RegionalApprovalLivePlanDetail/index.tsx",
+      "sourceSha256": "89e9a3138e5aa7a5cbc7e863e841ce4b54282327d2095be028c08a8bed9b571d"
+    },
+    {
+      "path": "workbenches/regionalApproval/RegionalApprovalLivePlanDetail/RegionalApprovalLivePlanDetail.module.css",
+      "sourceSha256": "965a329fed23c25ccb338a441851c6db3632d2d9a0822e15cf8bb783b5c3b71a"
+    },
+    {
+      "path": "workbenches/regionalApproval/models/salesPlanSubmitModel.ts",
+      "sourceSha256": "0e928a63da7a0e4a53742071ffe5c7c249fa6a9846f8a2fa81dbf531c123b5aa"
+    },
+    {
+      "path": "workbenches/regionalApproval/models/salesPlanProgressModel.ts",
+      "sourceSha256": "c8ba18d6e5029b5e3ea71d2d0db293c2f7f2a8ba4f0544e0e32d9afca0dc02b2"
+    },
+    {
+      "path": "workbenches/regionalApproval/models/salesPlanActionModel.ts",
+      "sourceSha256": "d942e30d6aee9cd8a39e40eb8b96df6249ba1df4fbc7f1211d38063e25de0611"
+    },
+    {
+      "path": "workbenches/regionalApproval/models/salesPlanAccessModel.ts",
+      "sourceSha256": "71f904744b975be10948ed70a2cdaaec833e8fe25e06dcb2b4b22eb5534ba665"
+    },
+    {
+      "path": "workbenches/regionalApproval/models/salesPlanDetailModel.ts",
+      "sourceSha256": "21e79ef02e67ff53344668c10cb393c5dd0c5daff67f51fc0d907e2c0f58fd47"
+    },
+    {
+      "path": "workbenches/regionalApproval/models/salesPlanAdjustmentModel.ts",
+      "sourceSha256": "4358da195525be239edc9bd683ab862299b9f2c860a6372e3c5632dedab92fec"
+    },
+    {
+      "path": "workbenches/regionalApproval/models/salesPlanLocalDraftModel.ts",
+      "sourceSha256": "aeb4a0cbfbfaac78e132a5ea76249ce38b2bc2b7977cb93a5a6ff9df344600ad"
+    },
+    {
+      "path": "workbenches/regionalApproval/models/salesPlanContextModel.ts",
+      "sourceSha256": "f5b2075a0ba67ba2c2ee5e452589d4856f948c5b88dc5c8cfa55fceb88438dbb"
+    },
+    {
+      "path": "workbenches/regionalApproval/models/salesPlanExportModel.ts",
+      "sourceSha256": "787902621c4ab36ee15c6e39bb180573c50458ff7f1f732c295c642111b70c28"
+    },
+    {
+      "path": "workbenches/regionalApproval/hooks/useSalesPlanAccess.ts",
+      "sourceSha256": "4761ad44dd5e7efa9740757e763f1962757f534e5a8962ef26fb5f529cf9cd32"
+    },
+    {
+      "path": "workbenches/regionalApproval/hooks/useSalesPlanAction.ts",
+      "sourceSha256": "0b0d2c7ad43b91fc54a0d974d3ddf3c8c8bcee2b58d64a50e06e9e36ea80bdaa"
+    },
+    {
+      "path": "workbenches/regionalApproval/hooks/useSalesPlanAdvice.ts",
+      "sourceSha256": "2060fb37b76f6a91353e2b679b2312ae6ddfa8032d6e92aab90e121df61e50d7"
+    },
+    {
+      "path": "workbenches/regionalApproval/hooks/useSalesPlanDetail.ts",
+      "sourceSha256": "c3ebebfa724cbf498e40d9a626484d9cecfacd8b49e1ea2e9ef67b241fd73211"
+    }
+  ]
+}

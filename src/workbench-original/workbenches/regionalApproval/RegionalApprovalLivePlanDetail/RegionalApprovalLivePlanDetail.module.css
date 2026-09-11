@@ -1,0 +1,118 @@
+.modal {
+  width: min(1040px, calc(100vw - 32px));
+}
+
+.modal :global(.arco-modal-content) {
+  padding: 0;
+}
+
+.body {
+  display: flex;
+  max-height: min(720px, calc(100vh - 190px));
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  padding: 14px;
+  color: var(--text-primary);
+}
+
+.scopeControls,
+.compareControls,
+.summary {
+  display: grid;
+  gap: 10px;
+}
+
+.scopeControls {
+  grid-template-columns: minmax(220px, 1fr) minmax(200px, 1fr) minmax(220px, 1fr);
+}
+
+.field,
+.receipt,
+.stack,
+.summary > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field > span,
+.receipt span,
+.receipt small,
+.stack small,
+.summary small {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.receipt,
+.summary > span {
+  justify-content: center;
+  padding: 7px 9px;
+  border: 1px solid var(--bg-3);
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+
+.receipt strong,
+.receipt small,
+.stack small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.compareControls {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  margin-bottom: 10px;
+}
+
+.compareReasons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.compareReasons > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--bg-3);
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+
+.compareReasons small {
+  color: var(--text-secondary);
+}
+
+.state {
+  display: flex;
+  min-height: 160px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-secondary);
+}
+
+.state :global(.arco-alert) {
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .scopeControls,
+  .compareControls,
+  .compareReasons,
+  .summary {
+    grid-template-columns: 1fr;
+  }
+}

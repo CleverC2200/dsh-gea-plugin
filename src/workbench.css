@@ -1,0 +1,79 @@
+@import "./workbench-original/theme.css";
+.gea-workbench-document {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.gea-original-workbench {
+  flex: 1;
+  min-height: 0;
+}
+.gea-analysis-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  border-top: 1px solid var(--bg-3);
+  padding: 8px 16px;
+  background: var(--bg-1);
+  font-size: 12px;
+}
+.gea-analysis-toolbar button,
+.gea-login-page button {
+  font: inherit;
+  border: 1px solid #ed4348;
+  border-radius: 3px;
+  padding: 6px 12px;
+  color: #ed4348;
+  background: white;
+  cursor: pointer;
+}
+.gea-analysis-toolbar button:disabled,
+.gea-login-page button:disabled {
+  cursor: default;
+  border-color: #ddd;
+  color: #aaa;
+}
+.gea-analysis-toolbar :focus-visible,
+.gea-login-page :focus-visible {
+  outline: 2px solid #ed4348;
+  outline-offset: 3px;
+}
+.gea-analysis-toolbar details {
+  width: 100%;
+}
+.gea-analysis-toolbar pre {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gea-analysis-toolbar [role="alert"] {
+  color: #b42318;
+  overflow-wrap: anywhere;
+}
+.gea-login-page {
+  padding: 40px;
+  max-width: 560px;
+  margin: 8vh auto;
+}
+.gea-login-page h1 {
+  font-size: 20px;
+  margin-bottom: 40px;
+}
+.gea-login-page h2 {
+  font-size: 16px;
+}
+.gea-login-page p {
+  color: #525b6d;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.gea-login-qr {
+  margin-top: 24px;
+}
+::selection {
+  background: #ffe7e7;
+}

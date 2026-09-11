@@ -1,1038 +1,238 @@
-/** Sales-plan page composed into the standard dsh Web navigation and Session UI. */
+/** GEA navigation and independent workbench mounted in the DSH application frame. */
 import React, { useEffect, useRef, useState } from "react";
+import type {
+  HostObservable,
+  InjectFace,
+  PropsRuntime,
+} from "@deepseek-ai/dsh-client-ui-slots";
+import type {} from "@deepseek-ai/dsh-client-ui-session/client";
 import type { Context } from "@deepseek-ai/cordis";
 import type { SessionId } from "@deepseek-ai/dsh-api-remotes/client";
-import type {} from "@deepseek-ai/dsh-client-locale/client";
+import type { LocaleSnapshot } from "@deepseek-ai/dsh-client-locale/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
-import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
-import type {} from "@deepseek-ai/dsh-client-ui-sidebar/client";
+import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
-import type {
-  Business,
-  Collection,
-  Detail,
-  Page as PlanPage,
-  Preview,
-  Row,
-} from "./business.ts";
 import { zh, en, type CopyKey } from "./locales.ts";
-import css from "./client.css";
-import {
-  ForecastAssistantSurface,
-  organizationValueFor,
-  organizationValuesFor,
-  type OrganizationView,
-} from "./forecast-surface.tsx";
+import shellCss from "./shell.css";
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
   interface LocaleNamespaceMap {
     geaProof: CopyKey;
   }
 }
-type Translate = (key: CopyKey) => string;
-type Status = ReturnType<Business["status"]>;
-type Filters = {
-  periodId: string;
-  planTypeCode: string;
-  status: string;
-  pageNo: number;
-};
-type Qr = { image: string; loginId: string; expiresIn: number };
-class RequestError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
-/** Fixed authenticated Fetch transport; generic values correspond to the Host endpoint declarations. */
-async function rpc<T>(
-  endpoint: string,
-  payload: object = {},
-  signal?: AbortSignal,
-): Promise<T> {
-  const response = await fetch("/api/gea-proof/" + endpoint, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal,
-  });
-  if (!response.ok)
-    throw new RequestError(
-      "HOST_HTTP_" + response.status,
-      "HOST_HTTP_" + response.status,
-    );
-  const result: {
-    ok: boolean;
-    value: T;
-    error?: { code: string; message: string };
-  } = await response.json();
-  if (result.ok !== true)
-    throw new RequestError(
-      result.error?.code ?? "INVALID_HOST_RESPONSE",
-      result.error?.message ?? "INVALID_HOST_RESPONSE",
-    );
-  return result.value;
-}
+export const inject = ["slots", "layout", "locale", "uiWorkspace"];
+const PANEL = "gea-proof" as MainPanelId;
 
-function Fields({
-  row,
-  fields,
-  t,
-}: {
-  row: Row | null;
-  fields: CopyKey[];
-  t: Translate;
-}) {
-  return (
-    <dl className="gea-fields">
-      {fields.map((key) => (
-        <div key={key}>
-          <dt>{t(key)}</dt>
-          <dd>{row?.[key] == null ? t("unknown") : String(row[key])}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-function Coverage({ value, t }: { value: Collection; t: Translate }) {
-  return (
-    <p className="gea-meta">
-      {t(value.coverage === "unknown" ? "unknownCoverage" : value.coverage)} ·{" "}
-      {t("returned")} {value.returned} / {value.total ?? t("unknown")} ·{" "}
-      {t("fetchedAt")} {value.fetchedAt}
-    </p>
-  );
-}
-
-export const inject = [
-  "slots",
-  "layout",
-  "locale",
-  "connection",
-  "uiWorkspace",
-];
-
-/** Register locale-owned navigation and a page whose request generations discard obsolete results. */
+/** Register a business-only center document beside the frame-owned native conversation. */
 export function apply(ctx: Context): void {
-  ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
-  const t: Translate = ctx.locale.bind("geaProof");
-  function Page() {
-    const [status, setStatus] = useState<Status>();
-    const [qr, setQr] = useState<Qr>();
-    const [qrState, setQrState] = useState<"pending" | "expired" | "failed">(
-      "pending",
+  if (typeof ctx.layout.registerConversationPanel !== "function")
+    throw new Error(
+      "GEA_DSH_FORK_REQUIRED: this workbench requires the DSH conversation-panel extension",
     );
-    const [periods, setPeriods] = useState<Collection>();
-    const [data, setData] = useState<PlanPage>();
-    const [filters, setFilters] = useState<Filters>({
-      periodId: "",
-      planTypeCode: "",
-      status: "",
-      pageNo: 1,
-    });
-    const [selected, setSelected] = useState<string>();
-    const [detail, setDetail] = useState<Detail>();
-    const [versions, setVersions] = useState<Collection>();
-    const [versionId, setVersionId] = useState<string>();
-    const [skus, setSkus] = useState<Collection>();
-    const [skuIds, setSkuIds] = useState<string[]>([]);
-    const [includeDetail, setIncludeDetail] = useState(false);
-    const [includeSkus, setIncludeSkus] = useState(false);
-    const [preview, setPreview] = useState<Preview>();
-    const [sessionId, setSessionId] = useState<SessionId>();
-    const [organizationView, setOrganizationView] =
-      useState<OrganizationView>("all");
-    const [organizationValue, setOrganizationValue] = useState("");
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<RequestError>();
-    const active = useRef<AbortController | undefined>(undefined);
-    const login = useRef<AbortController | undefined>(undefined);
-    const submitting = useRef(false);
-    const row = data?.records.find((row) => row.planId === selected);
-    const organizationValues = data ? organizationValuesFor(data.records, organizationView) : [];
-    const visibleRecords =
-      data?.records.filter((record) => {
-        if (organizationView === "all" || !organizationValue) return true;
-        return organizationValueFor(record, organizationView) === organizationValue;
-      }) ?? [];
-    const selection =
-      data && row ? { queryId: data.queryId, planId: row.planId } : undefined;
-
-    const clearPreview = () => {
-      setPreview(undefined);
-      setSessionId(undefined);
-    };
-    const clearExtras = () => {
-      setDetail(undefined);
-      setVersions(undefined);
-      setVersionId(undefined);
-      setSkus(undefined);
-      setSkuIds([]);
-      setIncludeDetail(false);
-      setIncludeSkus(false);
-      clearPreview();
-    };
-    const clearQuery = () => {
-      setData(undefined);
-      setSelected(undefined);
-      setOrganizationView("all");
-      setOrganizationValue("");
-      clearExtras();
-    };
-    const cancel = () => {
-      active.current?.abort();
-      setBusy(false);
-    };
-    const fail = (error: unknown) => {
-      const failure =
-        error instanceof RequestError
-          ? error
-          : new RequestError("GEA_NETWORK_ERROR", t("retry"));
-      setError(failure);
-      if (["GEA_HTTP_401", "LOGIN_REQUIRED"].includes(failure.code)) {
-        clearQuery();
-        setPeriods(undefined);
-        setQr(undefined);
-        setStatus((old) =>
-          old
-            ? {
-                ...old,
-                authenticated: false,
-                loginState: "expired",
-                user: null,
-              }
-            : old,
-        );
-      }
-      if (
-        ["STALE_SELECTION", "STALE_PREVIEW", "STALE_LOGIN"].includes(
-          failure.code,
+  ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
+  const t = ctx.locale.bind("geaProof");
+  const injected = {
+    hooks: {
+      geaLocale: {
+        getSnapshot: () => ctx.locale.getSnapshot(),
+        subscribe: (listener: () => void) => ctx.locale.subscribe(listener),
+      } satisfies HostObservable<LocaleSnapshot>,
+    },
+  };
+  function Workbench({
+    useSessions,
+    useGeaLocale,
+  }: PropsRuntime<"main"> & InjectFace<typeof injected>) {
+    const language = useGeaLocale((snapshot) => snapshot.active);
+    const currentSession = useSessions((snapshot) => snapshot.current);
+    const frame = useRef<HTMLIFrameElement>(null);
+    useEffect(() => {
+      frame.current?.contentWindow?.postMessage(
+        { type: "gea:session", sessionId: currentSession },
+        window.location.origin,
+      );
+    }, [currentSession]);
+    useEffect(() => {
+      const onMessage = (event: MessageEvent) => {
+        if (
+          event.origin !== window.location.origin ||
+          event.source !== frame.current?.contentWindow
         )
-      )
-        clearQuery();
-    };
-    const run = async (work: (signal: AbortSignal) => Promise<void>) => {
-      active.current?.abort();
-      const controller = new AbortController();
-      active.current = controller;
-      setBusy(true);
-      setError(undefined);
-      try {
-        await work(controller.signal);
-      } catch (error) {
-        if (!controller.signal.aborted) fail(error);
-      } finally {
-        if (active.current === controller) setBusy(false);
-      }
-    };
-
+          return;
+        const message: unknown = event.data;
+        if (!message || typeof message !== "object" || !("type" in message))
+          return;
+        if (
+          message.type === "gea:open-session" &&
+          "sessionId" in message &&
+          typeof message.sessionId === "string" &&
+          /^session-[0-9a-f-]{36}$/.test(message.sessionId)
+        ) {
+          // Keep the business page selected; AppFrame projects this Session on the right.
+          ctx.uiWorkspace.openSession(message.sessionId as SessionId);
+          ctx.layout.selectPanel(PANEL);
+        }
+      };
+      window.addEventListener("message", onMessage);
+      return () => window.removeEventListener("message", onMessage);
+    }, []);
+    return (
+      <>
+        <style>{shellCss}</style>
+        <iframe
+          ref={frame}
+          className="gea-workbench-frame"
+          data-gea-workbench
+          title={t("approvalTitle")}
+          onLoad={() =>
+            frame.current?.contentWindow?.postMessage(
+              { type: "gea:session", sessionId: currentSession },
+              window.location.origin,
+            )
+          }
+          src={`/api/gea-proof/workbench?locale=${encodeURIComponent(language)}`}
+        />
+      </>
+    );
+  }
+  function Navigation() {
+    const [name, setName] = useState("");
     useEffect(() => {
       const controller = new AbortController();
-      void rpc<Status>("status", {}, controller.signal)
-        .then((value) => {
-          if (!controller.signal.aborted) setStatus(value);
+      void fetch("/api/gea-proof/status", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+        signal: controller.signal,
+      })
+        .then((response) => response.json())
+        .then((result) => {
+          if (
+            !controller.signal.aborted &&
+            result.ok &&
+            result.value.user?.name
+          )
+            setName(result.value.user.name);
         })
-        .catch((error) => {
-          if (!controller.signal.aborted) fail(error);
+        .catch(() => {
+          /* Navigation remains usable while the login status request is unavailable. */
         });
+      const updateName = (event: MessageEvent) => {
+        if (
+          event.origin !== window.location.origin ||
+          event.source !==
+            document.querySelector<HTMLIFrameElement>(
+              "iframe[data-gea-workbench]",
+            )?.contentWindow
+        )
+          return;
+        const value = event.data;
+        if (
+          value?.type === "gea:identity" &&
+          typeof value.name === "string" &&
+          value.name.length <= 256
+        )
+          setName(value.name);
+      };
+      window.addEventListener("message", updateName);
       return () => {
         controller.abort();
-        active.current?.abort();
-        login.current?.abort();
+        window.removeEventListener("message", updateName);
       };
     }, []);
-    useEffect(() => {
-      if (!qr || qrState !== "pending") return;
-      const controller = new AbortController();
-      login.current = controller;
-      let timer: ReturnType<typeof setTimeout>;
-      const poll = async () => {
-        try {
-          const result = await rpc<
-            Status & { status: "authenticated" | "pending" | "expired" }
-          >("login/poll", { loginId: qr.loginId }, controller.signal);
-          if (controller.signal.aborted) return;
-          if (result.status === "authenticated") {
-            setStatus(result);
-            setQr(undefined);
-          } else if (result.status === "expired") setQrState("expired");
-          else timer = setTimeout(poll, 2500);
-        } catch (error) {
-          if (!controller.signal.aborted) {
-            fail(error);
-            setQrState("failed");
-          }
-        }
-      };
-      timer = setTimeout(poll, 500);
-      return () => {
-        controller.abort();
-        clearTimeout(timer);
-      };
-    }, [qr, qrState]);
-
-    const query = (next = filters) => {
-      clearQuery();
-      setFilters(next);
-      void run(async (signal) => {
-        const value = await rpc<PlanPage>("plans", next, signal);
-        if (signal.aborted) return;
-        setData(value);
-        setSelected(value.records[0]?.planId as string | undefined);
-      });
-    };
-    const changeFilters = (value: Partial<Filters>) => {
-      cancel();
-      clearQuery();
-      setFilters((old) => ({ ...old, ...value, pageNo: 1 }));
-    };
-    const openSession = (id: SessionId) => {
-      ctx.uiWorkspace.openSession(id);
-      ctx.layout.selectPanel(null);
-    };
-    const submit = () => {
-      if (sessionId) {
-        openSession(sessionId);
-        return;
-      }
-      if (!preview || submitting.current) return;
-      submitting.current = true;
-      void run(async (signal) => {
-        try {
-          const value = await rpc<{ sessionId: SessionId }>(
-            "submit",
-            { previewId: preview.previewId },
-            signal,
-          );
-          if (!signal.aborted) {
-            setSessionId(value.sessionId);
-            openSession(value.sessionId);
-          }
-        } finally {
-          submitting.current = false;
-        }
-      });
-    };
-    const errorHelp: CopyKey =
-      error?.code === "GEA_HTTP_403"
-        ? "forbidden"
-        : error?.code === "SNAPSHOT_TOO_LARGE"
-          ? "tooLarge"
-          : error?.code.startsWith("STALE_")
-            ? "stale"
-            : ["GEA_HTTP_401", "LOGIN_REQUIRED"].includes(error?.code ?? "")
-              ? "loginExpired"
-              : "retry";
-
     return (
-      <div className="gea-page">
-        <style>{css}</style>
-        <main className="gea-content">
-          <header>
-            <h1>{t("title")}</h1>
-            <p>{t("intro")}</p>
-          </header>
-          <section className="gea-section" aria-label={t("login")}>
-            <div className="gea-toolbar">
-              <strong>
-                {status?.authenticated
-                  ? `${t("signedIn")}：${status.user?.name}`
-                  : t(
-                      status?.loginState === "expired"
-                        ? "loginExpired"
-                        : "signedOut",
-                    )}
-              </strong>
-              <button
-                disabled={busy}
-                onClick={() => {
-                  login.current?.abort();
-                  clearQuery();
-                  setPeriods(undefined);
-                  setQr(undefined);
-                  setStatus((old) =>
-                    old ? { ...old, authenticated: false, user: null } : old,
-                  );
-                  void run(async (signal) => {
-                    const value = await rpc<Qr>("login/start", {}, signal);
-                    if (!signal.aborted) {
-                      setQr(value);
-                      setQrState("pending");
-                    }
-                  });
-                }}
-              >
-                {t("login")}
-              </button>
-            </div>
-            <p className="gea-meta">
-              {t("environment")}：{status?.source ?? t("unknown")}
-            </p>
-            <p className="gea-meta">{t("loginHelp")}</p>
-            <p className="gea-mode">
-              {status?.mode === "model"
-                ? `${t("modelMode")} · ${status.provider} / ${status.model}`
-                : t("receiptMode")}
-            </p>
-            {qr && (
-              <div className="gea-qr">
-                <img
-                  src={qr.image}
-                  width="256"
-                  height="256"
-                  alt={t("pending")}
-                />
-                <p role="status">
-                  {t(
-                    qrState === "expired"
-                      ? "expired"
-                      : qrState === "failed"
-                        ? "failure"
-                        : "pending",
-                  )}
-                </p>
-              </div>
-            )}
-          </section>
-          <form
-            className="gea-filters"
-            onSubmit={(event) => {
-              event.preventDefault();
-              query();
-            }}
-          >
-            <label>
-              {t("period")}
-              <select
-                disabled={!status?.authenticated || busy}
-                value={filters.periodId}
-                onChange={(event) =>
-                  changeFilters({ periodId: event.target.value })
-                }
-              >
-                <option value="">{t("all")}</option>
-                {periods?.records.map((row) => (
-                  <option
-                    key={String(row.periodId)}
-                    value={String(row.periodId)}
-                  >
-                    {row.periodMonth ?? row.periodId} ·{" "}
-                    {row.planTypeCode ?? t("unknown")} ·{" "}
-                    {row.status ?? t("unknown")}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              disabled={!status?.authenticated || busy}
-              onClick={() => {
-                setPeriods(undefined);
-                void run(async (signal) => {
-                  const value = await rpc<Collection>("periods", {}, signal);
-                  if (!signal.aborted) setPeriods(value);
-                });
-              }}
-            >
-              {t("periods")}
-            </button>
-            <label>
-              {t("planTypeCode")}
-              <input
-                value={filters.planTypeCode}
-                onChange={(event) =>
-                  changeFilters({ planTypeCode: event.target.value })
-                }
-                placeholder={t("all")}
-                maxLength={32}
-              />
-            </label>
-            <label>
-              {t("status")}
-              <input
-                value={filters.status}
-                onChange={(event) =>
-                  changeFilters({ status: event.target.value })
-                }
-                placeholder={t("all")}
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={12}
-              />
-            </label>
-            <button
-              className="gea-primary"
-              disabled={!status?.authenticated || busy}
-              type="submit"
-            >
-              {t("query")}
-            </button>
-          </form>
-          {periods && <Coverage value={periods} t={t} />}
-          {busy && (
-            <p role="status" className="gea-meta">
-              {t("busy")}
-            </p>
-          )}
-          {error && (
-            <div role="alert" className="gea-error">
-              <strong>{t(errorHelp)}</strong>
-              <p>{error.message}</p>
-            </div>
-          )}
-          {!data && !busy && <p className="gea-empty">{t("noQuery")}</p>}
-          {data && (
-            <section className="gea-section gea-live-section" aria-label={t("live")}>
-              <ForecastAssistantSurface
-                rows={visibleRecords}
-                selectedRow={row ?? null}
-                selectedVersionId={versionId ?? row?.versionId?.toString()}
-                analysisMode={status?.mode === "model" ? "model" : "receipt"}
-                view={organizationView}
-                organizationOptions={organizationValues}
-                organizationValue={organizationValue}
-                canSend={Boolean(preview) && !busy}
-                onSend={submit}
-                onOrganizationValueChange={(value) => {
-                  setOrganizationValue(value);
-                  if (organizationView === "all") return;
-                  const next = data.records.find(
-                    (record) => organizationValueFor(record, organizationView) === value,
-                  );
-                  if (next && next.planId !== selected) {
-                    cancel();
-                    clearExtras();
-                    setSelected(String(next.planId));
-                  } else if (!next) {
-                    cancel();
-                    clearExtras();
-                    setSelected(undefined);
-                  }
-                }}
-                onViewChange={(next) => {
-                  setOrganizationView(next);
-                  const nextValues = next === "all" ? [] : organizationValuesFor(data.records, next);
-                  const nextValue = next !== "all"
-                    ? nextValues[0] ?? ""
-                    : "";
-                  setOrganizationValue(nextValue);
-                  if (next !== "all") {
-                    const nextRecord = data.records.find(
-                      (record) => organizationValueFor(record, next) === nextValue,
-                    );
-                    if (nextRecord && nextRecord.planId !== selected) {
-                      cancel();
-                      clearExtras();
-                      setSelected(String(nextRecord.planId));
-                    } else if (!nextRecord) {
-                      cancel();
-                      clearExtras();
-                      setSelected(undefined);
-                    }
-                  }
-                }}
-                t={t}
-              />
-              <div className="gea-toolbar">
-                <h2>{t("live")}</h2>
-                <span className="gea-meta">
-                  {t("total")} {data.total} · {t("returned")}{" "}
-                  {data.records.length} · {t("page")} {data.current}
-                </span>
-              </div>
-              <p className="gea-meta">
-                {t("fetchedAt")} {data.fetchedAt} · {t("period")}{" "}
-                {data.query.periodId || t("all")} · {t("planTypeCode")}{" "}
-                {data.query.planTypeCode || t("all")} · {t("status")}{" "}
-                {data.query.status || t("all")}
-              </p>
-              <div className="gea-table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      {(
-                        [
-                          "select",
-                          "planId",
-                          "dealer",
-                          "planTypeCode",
-                          "currentQty",
-                          "currentAmount",
-                          "updatedAt",
-                        ] as CopyKey[]
-                      ).map((key) => (
-                        <th key={key}>{t(key)}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleRecords.map((record) => (
-                      <tr
-                        key={String(record.planId)}
-                        aria-selected={record.planId === selected}
-                      >
-                        <td>
-                          <input
-                            type="radio"
-                            name="gea-plan"
-                            aria-label={`${t("select")} ${record.planId}`}
-                            checked={record.planId === selected}
-                            onChange={() => {
-                              cancel();
-                              clearExtras();
-                              setSelected(String(record.planId));
-                            }}
-                          />
-                        </td>
-                        <td>
-                          {record.planId ?? t("unknown")}
-                          <small>
-                            {t("versionId")} {record.versionId ?? t("unknown")}
-                          </small>
-                        </td>
-                        <td>
-                          {record.orgName ?? record.dealerName ?? record.dealerCode ?? t("unknown")}
-                          <small>
-                            {record.provinceName ?? record.areaName ?? t("unknown")}
-                          </small>
-                        </td>
-                        <td>
-                          {record.planTypeCode ?? t("unknown")}
-                          <small>{t("status")} {record.status ?? t("unknown")}</small>
-                        </td>
-                        <td>
-                          {record.currentQty ?? t("unknown")} / {record.targetQty ?? t("unknown")}
-                        </td>
-                        <td>
-                          {record.currentAmount ?? t("unknown")} / {record.targetAmount ?? t("unknown")}
-                        </td>
-                        <td>{record.updatedAt ?? t("unknown")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {!visibleRecords.length && (
-                <p className="gea-empty">{t("empty")}</p>
-              )}
-              <div className="gea-toolbar gea-actions">
-                <div className="gea-toolbar">
-                  <button
-                    disabled={busy || data.current <= 1}
-                    onClick={() =>
-                      query({ ...filters, pageNo: data.current - 1 })
-                    }
-                  >
-                    {t("previous")}
-                  </button>
-                  <button
-                    disabled={busy || data.current * data.size >= data.total}
-                    onClick={() =>
-                      query({ ...filters, pageNo: data.current + 1 })
-                    }
-                  >
-                    {t("next")}
-                  </button>
-                </div>
-                {selection && (
-                  <div className="gea-toolbar">
-                    <button
-                      disabled={busy}
-                      onClick={() => {
-                        setDetail(undefined);
-                        setIncludeDetail(false);
-                        clearPreview();
-                        void run(async (signal) => {
-                          const value = await rpc<Detail>(
-                            "detail",
-                            selection,
-                            signal,
-                          );
-                          if (!signal.aborted) {
-                            setDetail(value);
-                            setIncludeDetail(true);
-                          }
-                        });
-                      }}
-                    >
-                      {t("detail")}
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => {
-                        setVersions(undefined);
-                        setVersionId(undefined);
-                        setSkus(undefined);
-                        setIncludeSkus(false);
-                        clearPreview();
-                        void run(async (signal) => {
-                          const value = await rpc<Collection>(
-                            "versions",
-                            selection,
-                            signal,
-                          );
-                          if (!signal.aborted) setVersions(value);
-                        });
-                      }}
-                    >
-                      {t("versions")}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-          {detail && (
-            <section className="gea-section">
-              <h2>{t("currentDetail")}</h2>
-              <p className="gea-meta">{t("detailHelp")}</p>
-              <Fields
-                row={detail.currentVersion}
-                fields={[
-                  "planId",
-                  "id",
-                  "seq",
-                  "status",
-                  "targetQty",
-                  "targetAmount",
-                  "returnReason",
-                  "updatedAt",
-                ]}
-                t={t}
-              />
-              <p className="gea-meta">
-                {t("fetchedAt")} {detail.fetchedAt}
-              </p>
-              <label className="gea-check">
-                <input
-                  type="checkbox"
-                  checked={includeDetail}
-                  onChange={(event) => {
-                    setIncludeDetail(event.target.checked);
-                    clearPreview();
-                  }}
-                />
-                {t("includeDetail")}
-              </label>
-            </section>
-          )}
-          {versions && (
-            <section className="gea-section">
-              <h2>{t("chooseVersion")}</h2>
-              <Coverage value={versions} t={t} />
-              <div className="gea-table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      {(
-                        [
-                          "select",
-                          "id",
-                          "seq",
-                          "status",
-                          "targetQty",
-                          "targetAmount",
-                          "updatedAt",
-                        ] as CopyKey[]
-                      ).map((key) => (
-                        <th key={key}>{t(key)}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {versions.records.map((record) => (
-                      <tr
-                        key={String(record.id)}
-                        aria-selected={record.id === versionId}
-                      >
-                        <td>
-                          <input
-                            type="radio"
-                            name="gea-version"
-                            aria-label={`${t("select")} ${record.id}`}
-                            checked={record.id === versionId}
-                            onChange={() => {
-                              cancel();
-                              setVersionId(String(record.id));
-                              setSkus(undefined);
-                              setSkuIds([]);
-                              setIncludeSkus(false);
-                              clearPreview();
-                            }}
-                          />
-                        </td>
-                        {(
-                          [
-                            "id",
-                            "seq",
-                            "status",
-                            "targetQty",
-                            "targetAmount",
-                            "updatedAt",
-                          ] as const
-                        ).map((key) => (
-                          <td key={key}>{record[key] ?? t("unknown")}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {!versions.records.length && <p>{t("noVersions")}</p>}
-              {versionId && (
-                <div className="gea-actions">
-                  <button
-                    disabled={busy}
-                    onClick={() => {
-                      setSkus(undefined);
-                      setSkuIds([]);
-                      setIncludeSkus(false);
-                      clearPreview();
-                      void run(async (signal) => {
-                        const value = await rpc<Collection>(
-                          "skus",
-                          { ...selection, versionId },
-                          signal,
-                        );
-                        if (!signal.aborted) {
-                          setSkus(value);
-                          setSkuIds(value.records.map((row) => String(row.id)));
-                          setIncludeSkus(true);
-                        }
-                      });
-                    }}
-                  >
-                    {t("skus")}
-                  </button>
-                  <span className="gea-meta">
-                    {t("selectedVersion")} {versionId}
-                  </span>
-                </div>
-              )}
-            </section>
-          )}
-          {skus && (
-            <section className="gea-section">
-              <h2>
-                {t("selectedVersion")} {versionId} · SKU
-              </h2>
-              <Coverage value={skus} t={t} />
-              <div className="gea-toolbar">
-                <label className="gea-check">
-                  <input
-                    type="checkbox"
-                    checked={includeSkus}
-                    onChange={(event) => {
-                      setIncludeSkus(event.target.checked);
-                      clearPreview();
-                    }}
-                  />
-                  {t("includeSkus")}
-                </label>
-                <label className="gea-check">
-                  <input
-                    type="checkbox"
-                    checked={
-                      skuIds.length === skus.records.length &&
-                      skus.records.length > 0
-                    }
-                    onChange={(event) => {
-                      setSkuIds(
-                        event.target.checked
-                          ? skus.records.map((row) => String(row.id))
-                          : [],
-                      );
-                      clearPreview();
-                    }}
-                  />
-                  {t("allSkus")}
-                </label>
-                <span>
-                  {t("selectedCount")} {skuIds.length}
-                </span>
-              </div>
-              <div className="gea-table-scroll gea-skus">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>{t("select")}</th>
-                      {skuColumns.map((key) => (
-                        <th key={key}>{t(key)}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {skus.records.map((record) => (
-                      <tr key={String(record.id)}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            aria-label={`${t("select")} ${record.skuCode ?? record.id}`}
-                            checked={skuIds.includes(String(record.id))}
-                            onChange={(event) => {
-                              setSkuIds((old) =>
-                                event.target.checked
-                                  ? [...old, String(record.id)]
-                                  : old.filter((id) => id !== record.id),
-                              );
-                              clearPreview();
-                            }}
-                          />
-                        </td>
-                        {skuColumns.map((key) => (
-                          <td key={key}>{record[key] ?? t("unknown")}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {!skus.records.length && <p>{t("noSkus")}</p>}
-            </section>
-          )}
-          {selection && (
-            <div className="gea-actions">
-              <button
-                className="gea-primary"
-                disabled={busy}
-                onClick={() => {
-                  clearPreview();
-                  void run(async (signal) => {
-                    const value = await rpc<Preview>(
-                      "prepare",
-                      {
-                        ...selection,
-                        includeDetail,
-                        ...(versionId ? { versionId } : {}),
-                        ...(includeSkus ? { skuIds } : {}),
-                      },
-                      signal,
-                    );
-                    if (!signal.aborted) setPreview(value);
-                  });
-                }}
-              >
-                {t("preview")}
-              </button>
-            </div>
-          )}
-          {preview && (
-            <section className="gea-section gea-preview">
-              <h2>{t("previewTitle")}</h2>
-              <p>{t("previewHelp")}</p>
-              <Fields
-                row={row ?? null}
-                fields={[
-                  "planId",
-                  "versionId",
-                  "planTypeCode",
-                  "currentQty",
-                  "targetQty",
-                  "currentAmount",
-                  "targetAmount",
-                ]}
-                t={t}
-              />
-              <p>
-                {t("selectedVersion")} {versionId ?? t("unknown")} ·{" "}
-                {t("selectedCount")} SKU {includeSkus ? skuIds.length : 0}
-              </p>
-              {(!includeDetail || !versionId || !includeSkus) && (
-                <p className="gea-meta">
-                  {t("missing")}：
-                  {[
-                    !includeDetail && t("missingDetail"),
-                    !versionId && t("missingVersion"),
-                    !includeSkus && t("missingSkus"),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              )}
-              <p className="gea-meta">
-                {t("bytes")} {preview.bytes} / {preview.limitBytes}
-              </p>
-              <details>
-                <summary>{t("fullInput")}</summary>
-                <pre>{preview.prompt}</pre>
-              </details>
-              <div className="gea-actions">
-                <button
-                  className="gea-primary"
-                  disabled={busy}
-                  onClick={submit}
-                >
-                  {t(
-                    sessionId
-                      ? "openSession"
-                      : status?.mode === "model"
-                        ? "analysis"
-                        : "receipt",
-                  )}
-                </button>
-              </div>
-              <p className="gea-meta">{t("sessionHelp")}</p>
-            </section>
-          )}
-        </main>
-      </div>
-    );
-  }
-  function Icon({ size = 18 }: { size?: number }) {
-    return (
-      <svg
-        aria-hidden="true"
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
+      <nav
+        className="gea-shell-navigation"
+        aria-label={t("businessNavigation")}
       >
-        <rect x="4" y="3" width="16" height="18" rx="2" />
-        <path d="M8 8h8M8 12h8M8 16h4" />
-      </svg>
+        <style>{shellCss}</style>
+        <div className="gea-shell-navigation-content">
+          <div className="gea-shell-brand" title={t("geaBusiness")}>
+            <span className="gea-shell-logo" aria-hidden="true">
+              GEA
+            </span>
+            <strong className="gea-shell-label">{t("geaBusiness")}</strong>
+          </div>
+          <div className="gea-shell-caption">{t("businessFunctions")}</div>
+          <button
+            type="button"
+            disabled
+            aria-label={t("messageInbox")}
+            title={t("inboxNotConnected")}
+          >
+            <NavIcon kind="inbox" />
+            <span className="gea-shell-label">{t("messageInbox")}</span>
+          </button>
+          <div className="gea-shell-group" title={t("planManagement")}>
+            <NavIcon kind="plan" />
+            <strong className="gea-shell-label">{t("planManagement")}</strong>
+          </div>
+          <button
+            type="button"
+            className="is-active"
+            aria-label={t("demandForecastAgent")}
+            title={t("demandForecastAgent")}
+            onClick={() => ctx.layout.selectPanel(PANEL)}
+          >
+            <span className="gea-shell-active-icon">
+              <NavIcon kind="plan" />
+            </span>
+            <span className="gea-shell-label">{t("demandForecastAgent")}</span>
+          </button>
+          <div
+            className="gea-shell-user"
+            aria-label={name || t("signedOut")}
+            title={name || t("signedOut")}
+          >
+            <span className="gea-user-avatar" aria-hidden="true">
+              {name.slice(0, 1) || "G"}
+            </span>
+            <span className="gea-shell-label">{name || t("signedOut")}</span>
+          </div>
+        </div>
+      </nav>
     );
   }
-  ctx.slots.inject("main", () =>
+  ctx.slots.inject("main", function* () {
+    yield ctx.slots.register(
+      { name: "main", key: PANEL, locale: "geaProof", inject: () => injected },
+      Workbench,
+    );
+    yield ctx.layout.registerConversationPanel(PANEL);
+    ctx.layout.selectPanel(PANEL);
+  });
+  ctx.slots.inject("sidebar", () =>
     ctx.slots.register(
-      { name: "main", key: "gea-proof", locale: "geaProof" },
-      Page,
-    ),
-  );
-  ctx.slots.inject("sidebar.panellist", () =>
-    ctx.slots.register(
-      {
-        name: "sidebar.panellist",
-        id: "gea-proof",
-        label: () => t("title"),
-        order: 5,
-        locale: "geaProof",
-      },
-      Icon,
+      { name: "sidebar", locale: "geaProof", priority: -10 },
+      Navigation,
     ),
   );
 }
-const skuColumns: CopyKey[] = [
-  "id",
-  "skuCode",
-  "materialDescription",
-  "productCategName",
-  "baseQty",
-  "qty",
-  "price",
-  "amt",
-  "amtBase",
-  "regionConfirmedQty",
-  "regionConfirmedAmount",
-  "provinceConfirmedQty",
-  "provinceConfirmedAmount",
-  "areaConfirmedQty",
-  "areaConfirmedAmount",
-  "categoryConfirmedQty",
-  "categoryConfirmedAmount",
-];
+
+function NavIcon({ kind }: { kind: "inbox" | "plan" }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      {kind === "inbox" ? (
+        <>
+          <path d="M6 17V9a6 6 0 0 1 12 0v8l2 2H4l2-2Z" />
+          <path d="M10 22h4" />
+        </>
+      ) : (
+        <>
+          <ellipse cx="12" cy="5" rx="8" ry="3" />
+          <path d="M4 5v14c0 4 16 4 16 0V5M4 10c0 4 16 4 16 0M4 15c0 4 16 4 16 0" />
+        </>
+      )}
+    </svg>
+  );
+}

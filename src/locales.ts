@@ -128,6 +128,17 @@ const copy = {
   missingSkus: ["未包含 SKU", "SKUs omitted"],
   bytes: ["输入大小 / 上限（字节）", "Input / limit (bytes)"],
   analysis: ["确认并开始分析", "Confirm and analyze"],
+  analysisScope: ["分析范围", "Analysis scope"],
+  analysisSummaryScope: ["计划汇总（不含SKU）", "Plan summary (without SKUs)"],
+  analysisDetailsScope: ["完整明细（含SKU）", "Full details (with SKUs)"],
+  analysisScopeHelp: [
+    "汇总仅含当前版本的金额、数量、组织与状态；完整明细包含 SKU，可能超出输入限制。",
+    "Summary includes only the current version's amounts, quantities, organization and status. Full details include SKUs and may exceed the input limit.",
+  ],
+  analysisTooLarge: [
+    "所选内容超出模型输入限制。请选择“计划汇总（不含SKU）”或减少计划数量后重新预览；未发送任何内容。",
+    "The selection exceeds the model input limit. Choose Plan summary (without SKUs) or select fewer plans, then preview again. Nothing was sent.",
+  ],
   receipt: ["确认并验证传递", "Confirm and verify handoff"],
   receiptMode: [
     "本地验证回执：仅验证数据传递，不是真实 AI 分析。",
@@ -155,9 +166,16 @@ const copy = {
   businessFunctions: ["业务功能", "Business functions"],
   planManagement: ["计划管理", "Plan management"],
   demandForecastAgent: ["需求预测 Agent", "Demand forecast Agent"],
+  inboxNotConnected: [
+    "消息待办接口尚未接入",
+    "Message inbox service is not connected",
+  ],
   messageInbox: ["消息待办", "Message inbox"],
   agentPanel: ["需求预测 Agent", "Demand forecast Agent"],
-  agentPanelModel: ["GEA Personal Model · 只读分析", "GEA Personal Model · read-only analysis"],
+  agentPanelModel: [
+    "GEA Personal Model · 只读分析",
+    "GEA Personal Model · read-only analysis",
+  ],
   agentPanelHelp: [
     "分析结果将在 dsh 会话中生成；此面板不执行审批或写回。",
     "Analysis runs in a dsh session; this panel does not approve or write back.",
@@ -165,7 +183,10 @@ const copy = {
   agentReady: ["已准备分析", "Ready to analyze"],
   agentWaiting: ["等待选择计划", "Waiting for a plan"],
   sendToSession: ["发送到 dsh 会话", "Send to dsh session"],
-  agentReadOnly: ["仅发送明确选择的只读快照。", "Only the selected read-only snapshot is sent."],
+  agentReadOnly: [
+    "仅发送明确选择的只读快照。",
+    "Only the selected read-only snapshot is sent.",
+  ],
   agentAnalysisTitle: ["审批建议", "Approval guidance"],
   agentAnalysisEmpty: [
     "选择计划后，Agent 将在 dsh 会话中生成需求预测和审批建议。",

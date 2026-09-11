@@ -1,0 +1,1106 @@
+.root {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  container-type: inline-size;
+  background: var(--bg-2);
+  color: var(--text-primary);
+}
+
+.header {
+  display: flex;
+  min-height: 53px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 16px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--bg-3);
+  background: var(--bg-1);
+}
+
+.titleLine {
+  display: flex;
+  width: max-content;
+  min-width: 176px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.titleLine :global(.arco-typography) {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+.titleLine :global(.arco-tag) {
+  flex: 0 0 auto;
+}
+
+.scope {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.scope > span {
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.scope small,
+.stageCopy small,
+.stackCell small,
+.queueMetrics small {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.scope strong,
+.stageCopy strong,
+.stackCell strong,
+.queueMetrics strong {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.scope :global(.arco-select) {
+  width: 108px;
+}
+
+.versionControls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.versionField {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.versionControls :global(.arco-select) {
+  width: 84px;
+}
+
+.versionControls .versionInfo {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+  color: rgb(var(--danger-6));
+}
+
+.versionControls .versionInfo:hover,
+.versionControls .versionInfo:focus-visible {
+  color: rgb(var(--danger-7));
+}
+
+.stageViewport {
+  min-width: 0;
+  flex: 0 0 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--bg-3);
+  background: var(--bg-1);
+}
+
+.stageLane {
+  display: flex;
+  width: 100%;
+  min-width: 650px;
+  height: 52px;
+  box-sizing: border-box;
+  align-items: center;
+  padding: 7px 16px;
+}
+
+.stageButton {
+  display: inline-flex;
+  min-width: 108px;
+  min-height: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  padding: 0 8px;
+  color: var(--text-secondary);
+}
+
+.stageButton[data-state='current'] {
+  color: rgb(var(--danger-6));
+}
+
+.stageLane[data-live-status='true'] .stageButton {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+.stageLane[data-live-status='true'] .stageButton[data-selected='true'] {
+  background: rgb(var(--primary-1));
+  color: rgb(var(--primary-6));
+}
+
+.stageLane[data-live-status='true'] .stageButton:focus-visible {
+  outline: 2px solid rgb(var(--primary-6));
+  outline-offset: 1px;
+}
+
+.stageButton[data-state='partial'] {
+  color: var(--text-primary);
+}
+
+.stageButton[data-state='critical'] {
+  color: rgb(var(--danger-6));
+}
+
+.stageLane[data-live-status='true'] .stageButton:disabled,
+.stageLane[data-live-status='true'] .stageButton:disabled strong,
+.stageLane[data-live-status='true'] .stageButton:disabled small {
+  color: var(--text-disabled);
+  background: transparent;
+}
+
+.stageLane[data-live-status='true'] .stageButton:disabled .stageMarker {
+  color: var(--text-disabled);
+  background: var(--bg-2);
+  border-color: var(--bg-4);
+}
+
+.stageButton[data-state='completed'] .stageMarker {
+  background: rgb(var(--success-1));
+  color: rgb(var(--success-6));
+}
+
+.stageMarker {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--bg-4);
+  border-radius: 50%;
+  background: var(--bg-2);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.stageButton[data-state='current'] .stageMarker {
+  border-color: rgb(var(--danger-6));
+  background: rgb(var(--danger-6));
+  color: var(--color-white);
+}
+
+.stageButton[data-state='partial'] .stageMarker {
+  border-color: rgb(var(--warning-6));
+  background: rgb(var(--warning-1));
+  color: rgb(var(--warning-7));
+}
+
+.stageButton[data-state='critical'] .stageMarker {
+  border-color: rgb(var(--danger-6));
+  background: rgb(var(--danger-1));
+  color: rgb(var(--danger-7));
+}
+
+.stageCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1;
+}
+
+.stageCopy strong {
+  max-width: 76px;
+  overflow: hidden;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stageCopy small {
+  line-height: 13px;
+}
+
+.stageConnector {
+  width: clamp(20px, 4cqw, 72px);
+  min-width: 20px;
+  height: 1px;
+  flex: 1 0 20px;
+  background: var(--bg-4);
+}
+
+.stageConnector[data-state='completed'] {
+  background: rgb(var(--success-6));
+}
+
+.content {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.queryAlert {
+  flex: 0 0 auto;
+}
+
+.querySpin {
+  display: block;
+  height: 100%;
+  min-height: 100%;
+}
+
+.querySpin :global(.arco-spin-children) {
+  height: 100%;
+  min-height: 100%;
+}
+
+.querySpin :global(.arco-empty) {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.queue {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--bg-3);
+  border-radius: 8px;
+  background: var(--bg-1);
+}
+
+.queueHeader {
+  display: flex;
+  min-height: 60px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--bg-3);
+}
+
+.queueHeader h2 {
+  margin: 0 0 2px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.controls {
+  min-width: 0;
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--bg-3);
+  background: var(--bg-1);
+}
+
+.controlToolbar,
+.filterRow {
+  min-width: 760px;
+}
+
+.controlToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dimensionTabs {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+}
+
+.dimensionControls {
+  display: flex;
+  flex: 0 0 auto;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.dimensionTabs :global(.arco-btn) {
+  min-height: 32px;
+  flex: 0 0 auto;
+  border-radius: 0;
+  color: var(--text-secondary);
+}
+
+.dimensionTabs :global(.arco-btn)[data-active='true'] {
+  box-shadow: inset 0 -2px rgb(var(--danger-6));
+  color: rgb(var(--danger-6));
+  font-weight: 600;
+}
+
+.categorySwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.categoryOrganizationCell {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding-left: 18px;
+}
+
+.categoryOrganizationCell > span,
+.categoryOrganizationCell strong {
+  color: rgb(var(--danger-6));
+}
+
+.categoryOrganizationCell > div,
+.categoryProgressCell,
+.categoryOpinionCell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.categoryOrganizationCell small,
+.categoryProgressCell small {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.categoryProgressCell strong {
+  font-size: 11px;
+}
+
+.categoryProgressCell :global(.arco-progress-line) {
+  width: 100px;
+  margin: 0;
+}
+
+.categoryOpinionCell {
+  flex-direction: row;
+  align-items: flex-start;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.categoryComparisonRow {
+  background: var(--bg-1);
+}
+
+.categoryComparisonRow :global(.arco-radio) {
+  visibility: hidden;
+}
+
+.advancedToggle {
+  display: none;
+  min-height: 32px;
+}
+
+.advancedControls {
+  min-width: 760px;
+  padding-top: 5px;
+}
+
+.toolbarActions,
+.filterActions,
+.footerControls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.toolbarActions {
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+}
+
+.approvalToolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+}
+
+.fieldControl,
+.pageSizeControl {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fieldControl > span,
+.pageSizeControl > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.filterHeading {
+  display: flex;
+  min-width: 760px;
+  align-items: center;
+  gap: 7px;
+  margin: 3px 0 5px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.filterRow {
+  display: grid;
+  grid-template-columns: 120px 120px 130px 180px 140px 130px minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 7px;
+}
+
+.liveFilterRow {
+  grid-template-columns: 112px 112px 120px minmax(150px, 1fr) 130px minmax(0, 1fr) auto;
+}
+
+.filterRow :global(.arco-select) {
+  width: 100%;
+  min-height: 32px;
+}
+
+.filterActions {
+  grid-column: -2 / -1;
+  justify-content: flex-end;
+  padding-bottom: 1px;
+  white-space: nowrap;
+}
+
+.filterActions :global(.arco-btn),
+.toolbarActions :global(.arco-btn),
+.footerControls :global(.arco-btn),
+.footerControls :global(.arco-select) {
+  min-height: 32px;
+}
+
+.exportFeedback {
+  min-width: 760px;
+  margin-top: 7px;
+}
+
+.queueMetrics {
+  display: flex;
+  align-items: stretch;
+}
+
+.queueMetrics > span {
+  display: flex;
+  min-width: 92px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 10px;
+  border-left: 1px solid var(--bg-3);
+}
+
+.tableViewport {
+  display: flex;
+  min-width: 0;
+  min-height: 132px;
+  flex: 1 1 132px;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-1);
+}
+
+.tableViewport :global(.arco-table),
+.tableViewport :global(.arco-table > .arco-spin),
+.tableViewport :global(.arco-table > .arco-spin > .arco-spin-children),
+.tableViewport :global(.arco-table-container),
+.tableViewport :global(.arco-table-content-scroll),
+.tableViewport :global(.arco-table-content-inner) {
+  height: 100%;
+  min-height: 100%;
+}
+
+.tableViewport :global(.arco-table-content-scroll) {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.tableViewport :global(.arco-table-content-inner) {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+}
+
+.tableViewport :global(.arco-table-container) {
+  border: 0;
+}
+
+.queueFooter {
+  display: flex;
+  min-height: 44px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 5px 10px;
+  overflow-x: auto;
+  border-top: 1px solid var(--bg-3);
+  background: var(--bg-1);
+}
+
+.footerControls > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.footerControls {
+  min-width: 360px;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.pageSizeControl :global(.arco-select) {
+  width: 105px;
+}
+
+.pageSizeControl {
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+}
+
+.progressList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progressModal {
+  width: min(960px, calc(100vw - 32px));
+}
+
+.progressModal :global(.arco-modal-content) {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.progressRow {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(180px, 2fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--bg-3);
+}
+
+.progressRow > span:first-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.progressRow small {
+  color: var(--text-secondary);
+}
+
+.organizationCell,
+.stackCell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.organizationCell > strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailTrigger {
+  width: fit-content;
+  min-height: 32px;
+  justify-content: flex-start;
+  padding: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.organizationCell > span,
+.organizationCell > small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.organizationCell > .organizationPath {
+  display: block;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.organizationCell > small {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.healthFilterAction {
+  min-height: 28px;
+  padding: 0 2px;
+}
+
+.stackCell span {
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.categoryProgressCell small {
+  white-space: nowrap;
+}
+
+@container (max-width: 860px) {
+  .header {
+    min-height: 53px;
+    align-items: center;
+    flex-direction: row;
+    gap: 10px;
+  }
+
+  .scope {
+    max-width: none;
+    flex: 1 1 auto;
+    overflow-x: auto;
+  }
+
+  .controls {
+    overflow-x: hidden;
+  }
+
+  .controlToolbar,
+  .advancedControls,
+  .filterHeading,
+  .filterRow,
+  .exportFeedback,
+  .footerControls {
+    min-width: 0;
+  }
+
+  .controlToolbar,
+  .toolbarActions,
+  .queueFooter,
+  .footerControls {
+    flex-wrap: wrap;
+  }
+
+  .filterRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filterActions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .queueFooter {
+    overflow-x: hidden;
+  }
+
+  .footerControls {
+    flex: 1 1 100%;
+  }
+}
+
+@container (max-width: 620px) {
+  .advancedToggle {
+    display: inline-flex;
+  }
+  .advancedControls[data-expanded='false'] {
+    display: none;
+  }
+
+  .header {
+    align-items: center;
+    flex-direction: row;
+    gap: 6px;
+    padding-inline: 8px;
+  }
+
+  .fixtureTag,
+  .scope small {
+    display: none;
+  }
+
+  .scope {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .content {
+    padding: 0;
+  }
+
+  .queueMetrics > span {
+    min-width: 74px;
+    padding-inline: 7px;
+  }
+
+  .queueHeader {
+    min-height: 52px;
+  }
+
+  .filterRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .filterActions {
+    grid-column: auto;
+    justify-content: flex-start;
+  }
+
+  .toolbarActions,
+  .footerControls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stageButton {
+    transition: none;
+  }
+}
+
+/* Two actual rows: summary/actions, then dimensions and applied filters. */
+.queueHeader {
+  box-sizing: border-box;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-height: 48px;
+  padding: 6px 10px;
+}
+.queueHeader > .controlToolbar {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.queueHeader h2 {
+  line-height: 20px;
+  margin-bottom: 0;
+}
+.queueHeader > div:first-child {
+  font-size: 12px;
+  line-height: 20px;
+}
+.queueMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex: 1 1 300px;
+  min-width: 0;
+  gap: 4px 0;
+}
+.queueMetrics > span {
+  min-width: 0;
+}
+.queueMetrics strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queueMetrics strong:focus-visible {
+  outline: 2px solid rgb(var(--primary-6));
+  outline-offset: 2px;
+}
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  overflow-x: hidden;
+}
+.advancedToggle {
+  display: inline-flex;
+  margin-left: auto;
+}
+.advancedControls {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.advancedControls[data-expanded='false'] {
+  display: none;
+}
+.exportFeedback {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin-top: 0;
+}
+@container (min-width: 1100px) {
+  .queueHeader {
+    flex-wrap: nowrap;
+  }
+  .queueHeader > .controlToolbar {
+    flex: 0 0 auto;
+  }
+  .queueHeader > div:first-child {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .queueMetrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    flex: 1 1 360px;
+    min-width: 0;
+  }
+  .queueMetrics strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .queueMetrics strong:focus-visible {
+    outline: 2px solid rgb(var(--primary-6));
+    outline-offset: 2px;
+  }
+  .queueMetrics > span {
+    min-width: 0;
+    padding-inline: 6px;
+  }
+  .toolbarActions {
+    gap: 5px;
+    white-space: nowrap;
+  }
+  .toolbarActions :global(.arco-btn) {
+    padding-inline: 8px;
+    font-size: 12px;
+    min-height: 28px;
+  }
+  .advancedToggle {
+    display: none;
+  }
+  .advancedControls,
+  .advancedControls[data-expanded='false'] {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    gap: 8px;
+    padding-top: 0;
+  }
+  .filterHeading {
+    min-width: 0;
+    flex: 0 0 auto;
+    margin: 0;
+  }
+  .filterHeading > strong,
+  .fieldControl > span {
+    display: none;
+  }
+  .filterRow {
+    min-width: 0;
+    flex: 1;
+    grid-template-columns: repeat(3, minmax(70px, 1fr)) minmax(110px, 1.4fr) repeat(2, minmax(70px, 1fr)) auto;
+  }
+  .liveFilterRow {
+    grid-template-columns: 96px 96px 96px minmax(120px, 1fr) 96px auto;
+  }
+  .filterRow :global(.arco-select-view) {
+    padding-inline: 8px;
+  }
+  .dimensionTabs :global(.arco-btn) {
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+  .filterActions {
+    grid-column: auto;
+  }
+}
+
+/* Shared right-hand columns keep metrics aligned across every organization depth. */
+.progressTreeSection {
+  --progress-completion-width: 220px;
+  --progress-pending-width: 72px;
+  --progress-status-width: 80px;
+  min-width: 0;
+}
+
+.progressModal :global(.arco-modal-title) {
+  text-align: left;
+}
+
+.progressTreeScope {
+  margin: 0 0 16px;
+  color: var(--color-text-2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.progressTreeToolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.progressTreeHeader,
+.progressTreeRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--progress-completion-width) var(--progress-pending-width) var(
+      --progress-status-width
+    );
+  align-items: center;
+  gap: 16px;
+}
+
+.progressTreeTable {
+  max-height: min(52vh, 480px);
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.progressTreeHeader {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 12px 10px 36px;
+  background: var(--color-fill-1);
+  color: var(--color-text-2);
+  font-size: 12px;
+  border-bottom: 1px solid var(--color-border-2);
+}
+
+.progressTreeHeader > :nth-child(n + 3) {
+  text-align: center;
+}
+
+.progressTree :global(.arco-tree-node) {
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--color-border-1);
+}
+
+.progressTree :global(.arco-tree-node:hover) {
+  background: var(--color-fill-1);
+}
+
+.progressTree :global(.arco-tree-node-title) {
+  min-width: 0;
+  padding: 10px 0;
+  margin: 0;
+}
+
+.progressTree :global(.arco-tree-node-title:hover) {
+  background: transparent;
+}
+
+.progressTree :global(.arco-tree-node-title-text) {
+  display: block;
+}
+
+.progressTreeName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+  color: var(--color-text-1);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.progressTreeName[data-level='customer'] {
+  font-weight: 400;
+}
+
+.progressTreeName small {
+  color: var(--color-text-2);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.progressTreeCompletion {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  color: var(--color-text-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.progressTreePending {
+  text-align: center;
+  color: var(--color-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.progressTreeStatus {
+  justify-self: center;
+}
+
+@media (max-width: 1000px) {
+  .progressTreeSection {
+    --progress-completion-width: 160px;
+    --progress-pending-width: 56px;
+    --progress-status-width: 72px;
+  }
+}
+
+@media (max-width: 600px) {
+  .progressTreeSection {
+    --progress-completion-width: 80px;
+    --progress-pending-width: 40px;
+    --progress-status-width: 60px;
+  }
+
+  .progressTreeHeader,
+  .progressTreeRow {
+    gap: 8px;
+  }
+
+  .progressTreeCompletion {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .progressTree :global(.arco-tree-node-indent-block) {
+    width: 4px;
+    margin-right: 4px;
+  }
+}

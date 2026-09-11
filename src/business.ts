@@ -13,6 +13,7 @@ export interface Deployment {
   pageSize: number;
   periodPageSize: number;
   requestTimeoutMs: number;
+  modelRequestTimeoutMs: number;
   maxSnapshotBytes: number;
   runtimeDir: string;
   analysisMode: "receipt" | "model";
@@ -131,7 +132,8 @@ const skuFields = [
   "categoryConfirmedQty",
   "categoryConfirmedAmount",
 ];
-const exactNumber = /Id$|Code$|Qty$|Amount$|^(id|qty|price|amt|amtBase)$/;
+const exactNumber =
+  /Id$|Code$|Qty$|Amount$|^(id|qty|price|amt|amtBase|qtyDelta|amountDelta)$/;
 
 /** Preserve decimal lexemes and opaque identifiers before JavaScript rounding occurs. */
 function parseJson(text: string): unknown {
@@ -189,8 +191,12 @@ function keys(payload: Record<string, unknown>, allowed: string[]): void {
   if (Object.keys(payload).some((key) => !allowed.includes(key)))
     throw new Error("INVALID_PAYLOAD");
 }
-function difference(row: Row, target: string, current: string) {
-  const values = [row[target], row[current]];
+/** Validate source decimals before arithmetic; no invalid record can be skipped. */
+function decimalSources(
+  values: unknown[],
+):
+  | { values: Decimal[] }
+  | { missing: "decimal-source-unavailable" | "decimal-range-exceeded" } {
   if (
     values.some(
       (value) =>
@@ -199,21 +205,37 @@ function difference(row: Row, target: string, current: string) {
         value.length > 1024,
     )
   )
-    return { basis: [target, current], missing: "decimal-source-unavailable" };
+    return { missing: "decimal-source-unavailable" };
   const Exact = Decimal.clone({ precision: 4096 });
-  const left = new Exact(String(values[0])),
-    right = new Exact(String(values[1]));
-  if (
-    !left.isFinite() ||
-    !right.isFinite() ||
-    Math.abs(left.e) > 1024 ||
-    Math.abs(right.e) > 1024
-  )
-    return { basis: [target, current], missing: "decimal-range-exceeded" };
+  const parsed = values.map((value) => new Exact(String(value)));
+  if (parsed.some((value) => !value.isFinite() || Math.abs(value.e) > 1024))
+    return { missing: "decimal-range-exceeded" };
+  return { values: parsed };
+}
+function difference(row: Row, target: string, current: string) {
+  const decimals = decimalSources([row[target], row[current]]);
+  if ("missing" in decimals)
+    return { basis: [target, current], missing: decimals.missing };
   return {
     basis: [target, current],
     operation: "target-minus-current",
-    value: left.minus(right).toFixed(),
+    value: decimals.values[0].minus(decimals.values[1]).toFixed(),
+  };
+}
+/** Sum a complete validated SKU collection separately from the GEA version's source fields. */
+function skuTotal(rows: Record<string, unknown>[], field: "qty" | "amt") {
+  const basis = `detail.skus[].${field}`;
+  const recordCount = rows.length;
+  const decimals = decimalSources(rows.map((row) => row[field]));
+  if ("missing" in decimals)
+    return { basis, operation: "sum", recordCount, missing: decimals.missing };
+  return {
+    basis,
+    operation: "sum",
+    recordCount,
+    value: decimals.values.length
+      ? decimals.values.reduce((total, value) => total.plus(value)).toFixed()
+      : "0",
   };
 }
 
@@ -311,7 +333,9 @@ export class Business {
     if (identity)
       Object.assign(headers, {
         "X-Access-Token": identity.token,
-        ...(includeTenant && identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
+        ...(includeTenant && identity.tenantId
+          ? { "X-Tenant-Id": identity.tenantId }
+          : {}),
         "X-Request-Id": randomUUID(),
       });
     let response: Response;
@@ -353,9 +377,13 @@ export class Business {
   }
 
   /** Resolve the logged-in user's GEA personal model route without exposing its secret to the browser. */
-  async modelRoute(signal: AbortSignal, agentCode = "sales_forecast"): Promise<GeaModelRoute> {
+  async modelRoute(
+    signal: AbortSignal,
+    agentCode = "sales_forecast",
+  ): Promise<GeaModelRoute> {
     const auth = this.authenticated();
-    if (!/^[A-Za-z0-9._:-]{1,100}$/.test(agentCode)) throw new Error("GEA_MODEL_AGENT_INVALID");
+    if (!/^[A-Za-z0-9._:-]{1,100}$/.test(agentCode))
+      throw new Error("GEA_MODEL_AGENT_INVALID");
     const cached = this.modelRoutes.get(agentCode);
     if (cached) return cached;
     const credentialResult = object(
@@ -366,15 +394,19 @@ export class Business {
         false,
       ),
     );
-    const records = Array.isArray(credentialResult.records) ? credentialResult.records : [];
+    const records = Array.isArray(credentialResult.records)
+      ? credentialResult.records
+      : [];
     if (records.length > 1) throw new Error("GEA_MODEL_CREDENTIAL_AMBIGUOUS");
     const credential = records[0] ? object(records[0]) : undefined;
     if (!credential) throw new Error("GEA_MODEL_CREDENTIAL_MISSING");
     const status = credential.status;
-    if (status === "DISABLED" || status === "REVOKED") throw new Error("GEA_MODEL_CREDENTIAL_DISABLED");
+    if (status === "DISABLED" || status === "REVOKED")
+      throw new Error("GEA_MODEL_CREDENTIAL_DISABLED");
     const credentialId = text(credential.credentialId ?? credential.id);
     const claim = await this.post(
-      "/aidata/user-agent-credential/my/claim?id=" + encodeURIComponent(credentialId),
+      "/aidata/user-agent-credential/my/claim?id=" +
+        encodeURIComponent(credentialId),
       auth,
       AbortSignal.any([signal, this.epoch.signal]),
       false,
@@ -385,7 +417,13 @@ export class Business {
     if (!["ACTIVE", "ENABLED"].includes(String(claimed.status)))
       throw new Error("GEA_MODEL_CREDENTIAL_UNAVAILABLE");
     const base = new URL(text(claimed.baseUrl));
-    if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash)
+    if (
+      base.protocol !== "https:" ||
+      base.username ||
+      base.password ||
+      base.search ||
+      base.hash
+    )
       throw new Error("GEA_MODEL_BASE_URL_INVALID");
     const baseUrl = base.href.replace(/\/$/, "");
     const secret = text(claimed.secret);
@@ -398,7 +436,11 @@ export class Business {
           "X-GEA-Agent-Code": agentCode,
         },
         redirect: "error",
-        signal: AbortSignal.any([signal, this.epoch.signal, AbortSignal.timeout(this.config.requestTimeoutMs)]),
+        signal: AbortSignal.any([
+          signal,
+          this.epoch.signal,
+          AbortSignal.timeout(this.config.requestTimeoutMs),
+        ]),
       });
     } catch {
       throw new Error("GEA_MODEL_NETWORK_ERROR");
@@ -408,7 +450,8 @@ export class Business {
       throw new Error("GEA_MODEL_HTTP_" + response.status);
     }
     const modelsPayload = object(await response.json());
-    if (!Array.isArray(modelsPayload.data)) throw new Error("GEA_MODEL_INVALID_RESPONSE");
+    if (!Array.isArray(modelsPayload.data))
+      throw new Error("GEA_MODEL_INVALID_RESPONSE");
     const models = modelsPayload.data.map((entry) =>
       typeof entry === "string" ? entry : text(object(entry).id),
     );
@@ -431,11 +474,16 @@ export class Business {
         headers: {
           Accept: "application/json",
           "X-Access-Token": identity.token,
-          ...(includeTenant && identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
+          ...(includeTenant && identity.tenantId
+            ? { "X-Tenant-Id": identity.tenantId }
+            : {}),
           "X-Request-Id": randomUUID(),
         },
         redirect: "error",
-        signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)]),
+        signal: AbortSignal.any([
+          signal,
+          AbortSignal.timeout(this.config.requestTimeoutMs),
+        ]),
       });
     } catch {
       throw new Error("GEA_NETWORK_ERROR");
@@ -822,6 +870,277 @@ export class Business {
       skus,
       missing,
     };
+    return this.recordPreview(snapshot);
+  }
+
+  /** Read the original workbench's fixed GEA endpoints using the current server-owned identity. */
+  async workbenchQuery(
+    payload: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    this.clearQuery();
+    return this.readWorkbenchQuery(payload, signal);
+  }
+
+  private async readWorkbenchQuery(
+    payload: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    keys(payload, ["kind", "query"]);
+    const query = object(payload.query ?? {});
+    const kind = text(payload.kind);
+    const allowed: Record<string, string[]> = {
+      periods: ["periodMonth", "planType", "status", "pageNo", "pageSize"],
+      list: [
+        "periodId",
+        "planTypeCode",
+        "dealerCode",
+        "areaCode",
+        "provinceCode",
+        "orgCode",
+        "baseName",
+        "status",
+        "pageNo",
+        "pageSize",
+      ],
+      detail: ["planId"],
+      versions: ["planId"],
+      logs: ["planId", "pageNo", "pageSize"],
+      versionSkus: ["versionId", "pageNo", "pageSize"],
+      compare: ["planId", "fromVersionId", "toVersionId"],
+    };
+    if (!Object.hasOwn(allowed, kind)) throw new Error("INVALID_QUERY");
+    keys(query, allowed[kind]);
+    const id = (key: string) => encodeURIComponent(text(query[key]));
+    const paths: Record<string, () => string> = {
+      periods: () => "/sales-plan/periods",
+      list: () => "/sales-plan/plans",
+      detail: () => "/sales-plan/plans/" + id("planId"),
+      versions: () => "/sales-plan/plans/" + id("planId") + "/versions",
+      logs: () => "/sales-plan/plans/" + id("planId") + "/logs",
+      versionSkus: () =>
+        "/sales-plan/plans/versions/" + id("versionId") + "/skus",
+      compare: () => "/sales-plan/plans/" + id("planId") + "/compare",
+    };
+    if (kind === "compare") {
+      text(query.fromVersionId);
+      text(query.toVersionId);
+    }
+    const paged = kind === "periods" || kind === "list";
+    const current = paged ? integer(query.pageNo ?? 1, 1) : 1;
+    const size = paged
+      ? integer(
+          query.pageSize ??
+            (kind === "periods"
+              ? this.config.periodPageSize
+              : this.config.pageSize),
+          1,
+          1000,
+        )
+      : 1;
+    const params = new URLSearchParams();
+    if (paged) {
+      params.set("pageNo", String(current));
+      params.set("pageSize", String(size));
+    }
+    for (const [key, value] of Object.entries(query)) {
+      if (
+        value == null ||
+        value === "" ||
+        key === "planId" ||
+        key === "versionId"
+      )
+        continue;
+      if (key === "pageNo" || key === "pageSize")
+        params.set(
+          key,
+          String(
+            integer(
+              value,
+              1,
+              key === "pageSize" ? 1000 : Number.MAX_SAFE_INTEGER,
+            ),
+          ),
+        );
+      else if (key === "status" && kind !== "periods")
+        params.set(key, String(integer(value, 0)));
+      else params.set(key, text(value));
+    }
+    const result = await this.get(
+      paths[kind]() + (params.size ? "?" + params : ""),
+      this.authenticated(),
+      AbortSignal.any([signal, this.epoch.signal]),
+    );
+    // AionUi's workbench consumes complete arrays; a paged SKU subset cannot claim completeness.
+    const records = (value: unknown): Record<string, unknown>[] => {
+      if (Array.isArray(value)) return value.map(object);
+      const page = object(value);
+      if (!Array.isArray(page.records))
+        throw new Error("GEA_INVALID_COLLECTION");
+      if (
+        (page.total != null &&
+          integer(page.total, page.records.length) > page.records.length) ||
+        (page.pages != null && integer(page.pages, 0) > 1) ||
+        (page.current != null && integer(page.current, 1) > 1)
+      )
+        throw new Error("GEA_INCOMPLETE_COLLECTION");
+      return page.records.map(object);
+    };
+    const listRecord = (value: unknown) => {
+      const { dealer_name, province_name, ...row } = object(value);
+      if (row.dealerName == null && dealer_name != null)
+        row.dealerName = dealer_name;
+      if (row.provinceName == null && province_name != null)
+        row.provinceName = province_name;
+      return row;
+    };
+    if (paged) {
+      const page = object(result);
+      if (!Array.isArray(page.records))
+        throw new Error("GEA_INVALID_COLLECTION");
+      const total = integer(page.total, page.records.length);
+      const pageSize = integer(page.size ?? size, 1);
+      return {
+        ...page,
+        records: page.records.map(kind === "list" ? listRecord : object),
+        total,
+        size: pageSize,
+        current: integer(page.current ?? current, 1),
+        pages: integer(page.pages ?? Math.ceil(total / pageSize), 0),
+      };
+    }
+    if (kind === "detail") {
+      const detail = object(result);
+      const currentVersion = object(detail.currentVersion);
+      const skus = records(detail.skus),
+        versions = records(detail.versions),
+        logs = records(detail.logs);
+      const versionId = text(currentVersion.id);
+      const versionIds = new Set([
+        versionId,
+        ...versions.map((version) => text(version.id)),
+      ]);
+      if (
+        currentVersion.planId !== query.planId ||
+        versions.some((version) => version.planId !== query.planId) ||
+        skus.some((sku) => sku.versionId !== versionId) ||
+        logs.some(
+          (log) =>
+            log.planId !== query.planId || !versionIds.has(text(log.versionId)),
+        )
+      )
+        throw new Error("GEA_IDENTITY_MISMATCH");
+      return { ...detail, currentVersion, skus, versions, logs };
+    }
+    const values = records(result);
+    if (
+      (kind === "versions" || kind === "logs") &&
+      values.some((row) => row.planId !== query.planId)
+    )
+      throw new Error("GEA_IDENTITY_MISMATCH");
+    if (
+      kind === "versionSkus" &&
+      values.some((row) => row.versionId !== query.versionId)
+    )
+      throw new Error("GEA_IDENTITY_MISMATCH");
+    if (
+      kind === "compare" &&
+      values.some((row) => {
+        const before = row.before == null ? undefined : object(row.before);
+        const after = row.after == null ? undefined : object(row.after);
+        return (
+          (before &&
+            (before.versionId !== query.fromVersionId ||
+              before.skuCode !== row.skuCode)) ||
+          (after &&
+            (after.versionId !== query.toVersionId ||
+              after.skuCode !== row.skuCode))
+        );
+      })
+    )
+      throw new Error("GEA_IDENTITY_MISMATCH");
+    return values;
+  }
+
+  /** Re-read selected plans from GEA before constructing an immutable native-conversation input. */
+  async prepareWorkbench(
+    payload: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<Preview> {
+    this.clearQuery();
+    keys(payload, ["planIds", "scope"]);
+    const scope = payload.scope === undefined ? "details" : payload.scope;
+    if (scope !== "summary" && scope !== "details")
+      throw new Error("INVALID_SELECTION");
+    if (
+      !Array.isArray(payload.planIds) ||
+      payload.planIds.length < 1 ||
+      payload.planIds.length > 100
+    )
+      throw new Error("INVALID_SELECTION");
+    const ids = payload.planIds.map(text);
+    if (new Set(ids).size !== ids.length) throw new Error("INVALID_SELECTION");
+    const active = AbortSignal.any([
+      signal,
+      this.epoch.signal,
+      this.queryEpoch.signal,
+    ]);
+    const records: unknown[] = [];
+    const summaryFields = ["id", ...planFields, "effective", "createdAt"];
+    // Both scopes re-read and validate all resource identities before selecting model-visible fields.
+    for (const planId of ids) {
+      const detail = object(
+        await this.readWorkbenchQuery(
+          { kind: "detail", query: { planId } },
+          active,
+        ),
+      );
+      if (scope === "summary") {
+        const currentVersion = project(detail.currentVersion, summaryFields);
+        const skus = detail.skus as Record<string, unknown>[];
+        records.push({
+          planId,
+          detail: { currentVersion },
+          derivedTotals: {
+            quantity: skuTotal(skus, "qty"),
+            amount: skuTotal(skus, "amt"),
+          },
+          missingFields: summaryFields.filter(
+            (key) => currentVersion[key] == null,
+          ),
+        });
+      } else records.push({ planId, detail });
+    }
+    active.throwIfAborted();
+    const snapshot = {
+      format: "gea-workbench-readonly-v1",
+      source: "GEA_LIVE_READONLY",
+      runId: this.runId,
+      fetchedAt: new Date().toISOString(),
+      sourceUrl: this.base + "/sales-plan/plans",
+      scope,
+      coverage:
+        scope === "summary"
+          ? "selected-plans-current-summary"
+          : "selected-plans-current-detail",
+      records,
+      missing:
+        scope === "summary"
+          ? [
+              "unselected-plans",
+              "external-history",
+              "sku-details-not-in-summary",
+              "historical-versions-not-in-summary",
+              "approval-logs-not-in-summary",
+              "action-context-not-in-summary",
+              "additional-version-fields-not-in-summary",
+            ]
+          : ["unselected-plans", "external-history", "unfetched-sku-details"],
+    };
+    return this.recordPreview(snapshot);
+  }
+
+  private recordPreview(snapshot: object): Preview {
     const json = JSON.stringify(snapshot, null, 2);
     const snapshotHash = createHash("sha256").update(json).digest("hex");
     const task =

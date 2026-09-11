@@ -1,0 +1,185 @@
+.detailModal {
+  width: min(880px, calc(100vw - 32px));
+}
+
+.detailModal :global(.arco-modal-content) {
+  padding: 0;
+}
+
+.body {
+  display: flex;
+  max-height: min(680px, calc(100vh - 190px));
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  padding: 14px;
+  color: var(--text-primary);
+}
+
+.scopeControls {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 150px minmax(190px, 1fr);
+  gap: 10px;
+}
+
+.scopeControls > div,
+.reasonField {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scopeControls > div > span,
+.reasonField > span,
+.quantityGrid small,
+.evidenceReceipt small {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.evidenceReceipt {
+  justify-content: center;
+  padding: 6px 9px;
+  border: 1px solid var(--bg-3);
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+
+.skuList {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.planSummary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr)) auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 9px;
+  border: 1px solid var(--bg-3);
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+
+.planSummary > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.planSummary small {
+  color: var(--text-secondary);
+}
+
+.businessReason {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.businessReason > span {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.skuCard {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid var(--bg-3);
+  border-radius: 8px;
+  background: var(--bg-1);
+}
+
+.skuCard > header,
+.suggestion,
+.suggestionActions,
+.footer,
+.footer > span,
+.guardActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skuCard > header,
+.suggestion,
+.footer {
+  justify-content: space-between;
+}
+
+.skuCard > header > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.skuCard > header small {
+  color: var(--text-secondary);
+}
+
+.quantityGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.quantityGrid > span {
+  display: flex;
+  min-height: 54px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+
+.suggestion {
+  align-items: flex-start;
+  background: rgb(var(--arcoblue-1));
+}
+
+.suggestion p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.suggestionActions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.suggestionActions :global(.arco-btn) {
+  min-height: 44px;
+}
+
+.footer {
+  width: 100%;
+}
+
+.footer small {
+  color: var(--text-secondary);
+}
+
+.guardActions {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+@media (max-width: 700px) {
+  .scopeControls,
+  .quantityGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .suggestion {
+    flex-direction: column;
+  }
+}

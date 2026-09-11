@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Local prototype verifying GEA business plugins without changing dsh source",
+  "description": "Independent GEA workbench and model adapter for the DeepSeek Harness fork",
   "exports": {
     ".": "./lib/host.js",
     "./client": "./lib/client.js",
@@ -27,6 +27,7 @@
     "@deepseek-ai/schemastery": "3.18.2",
     "decimal.js": "10.6.0",
     "esbuild": "0.25.9",
+    "eventsource-parser": "3.1.1",
     "qrcode": "1.5.4",
     "yaml": "2.9.0"
   },

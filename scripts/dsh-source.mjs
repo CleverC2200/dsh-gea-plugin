@@ -3,10 +3,12 @@ import {
   mkdir,
   readFile,
   realpath,
+  rename,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 
 /** Resolve the DSH checkout used for a local fork integration run. */
@@ -82,10 +84,13 @@ export async function linkDshSource({ source, pluginRoot }) {
     await symlink(target, destination, "dir");
   }
   await mkdir(resolve(pluginRoot, "lib"), { recursive: true });
-  await writeFile(
-    resolve(pluginRoot, "lib/dsh-runtime.json"),
-    JSON.stringify({ source }, null, 2) + "\n",
+  const recordPath = resolve(pluginRoot, "lib/dsh-runtime.json");
+  const record = resolve(
+    pluginRoot,
+    "lib/dsh-runtime-" + randomUUID() + ".json",
   );
+  await writeFile(record, JSON.stringify({ source }, null, 2) + "\n");
+  await rename(record, recordPath);
   return { source, linked: names, layout };
 }
 

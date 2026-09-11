@@ -1,0 +1,139 @@
+.gea-workbench-frame {
+  display: block;
+  border: 0;
+  width: 100%;
+  height: 100%;
+  background: #f8f9fb;
+}
+.gea-shell-navigation {
+  box-sizing: border-box;
+  height: 100%;
+  min-width: 0;
+  container: gea-sidebar / inline-size;
+  background: #f2f3f5;
+  color: #525b6d;
+  font:
+    13px/1.6 system-ui,
+    sans-serif;
+}
+.gea-shell-navigation-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 16px 12px;
+}
+.gea-shell-navigation * {
+  box-sizing: border-box;
+}
+.gea-shell-navigation svg,
+.gea-shell-logo,
+.gea-user-avatar {
+  flex-shrink: 0;
+}
+.gea-shell-active-icon {
+  display: none;
+}
+.gea-shell-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 54px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #e0e3eb;
+  color: #111;
+  font-size: 16px;
+}
+.gea-shell-logo {
+  background: #ed0000;
+  color: white;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 700;
+}
+.gea-shell-caption {
+  padding: 4px 7px;
+  color: #111;
+  font-size: 12px;
+}
+.gea-shell-navigation button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  text-align: left;
+}
+.gea-shell-navigation button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.gea-shell-navigation button.is-active {
+  background: #f5e4e7;
+  color: #ed3d43;
+  padding-left: 56px;
+}
+.gea-shell-navigation button:focus-visible {
+  outline: 2px solid #ef4c50;
+  outline-offset: 2px;
+}
+.gea-shell-group {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 8px 3px;
+}
+.gea-shell-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid #e0e3eb;
+  padding-top: 14px;
+  margin-top: auto;
+}
+.gea-user-avatar {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  background: #f39830;
+  color: white;
+}
+@container gea-sidebar (max-width: 100px) {
+  .gea-shell-navigation-content {
+    padding: 0 8px 12px;
+  }
+  .gea-shell-label,
+  .gea-shell-caption {
+    display: none;
+  }
+  .gea-shell-brand,
+  .gea-shell-group,
+  .gea-shell-user {
+    justify-content: center;
+    gap: 0;
+  }
+  .gea-shell-group {
+    padding: 12px 0 3px;
+  }
+  .gea-shell-navigation button,
+  .gea-shell-navigation button.is-active {
+    justify-content: center;
+    gap: 0;
+    padding: 7px 0;
+  }
+  .gea-shell-active-icon {
+    display: flex;
+  }
+}

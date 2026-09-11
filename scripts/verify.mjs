@@ -62,10 +62,9 @@ const expected = prompt.match(/GEA_SNAPSHOT_SHA256=([a-f0-9]{64})/)?.[1];
 const json = prompt.slice(prompt.indexOf("\n\n") + 2);
 assert.equal(createHash("sha256").update(json).digest("hex"), expected);
 const snapshot = JSON.parse(json);
-assert.equal(
-  snapshot.format,
-  "gea-readonly-v1",
-  "LEGACY_SNAPSHOT_NOT_ACCEPTED",
+assert.ok(
+  ["gea-readonly-v1", "gea-workbench-readonly-v1"].includes(snapshot.format),
+  "UNSUPPORTED_SNAPSHOT_FORMAT",
 );
 const firstTurn = rows.find((row) => row.type === "turn/end");
 assert.equal(
@@ -74,14 +73,16 @@ assert.equal(
   "FIRST_ANALYSIS_NOT_COMPLETED",
 );
 assert.ok(
-  rows.some(
-    (row) =>
-      row.type === "assistant/message" &&
-      row.data.turn === firstTurn.data.turn &&
-      row.data.interrupted !== true,
-  ),
-  "COMPLETE_ANSWER_NOT_FOUND",
+  rows.indexOf(user) < rows.indexOf(firstTurn),
+  "SNAPSHOT_NOT_IN_FIRST_ANALYSIS",
 );
+const answers = rows.filter(
+  (row) =>
+    row.type === "assistant/message" &&
+    row.data.turn === firstTurn.data.turn &&
+    row.data.interrupted !== true,
+);
+assert.ok(answers.length > 0, "COMPLETE_ANSWER_NOT_FOUND");
 let freshLiveVerified = false;
 if (values["require-live"]) {
   const log = await readFile(resolve(runtime, "server.log"), "utf8");
@@ -107,17 +108,36 @@ if (values["require-live"]) {
     status.ok && status.value.authenticated,
     "FRESH_GEA_LOGIN_REQUIRED",
   );
+  assert.ok(
+    typeof snapshot.runId === "string" && snapshot.runId.length > 0,
+    "SNAPSHOT_RUN_REQUIRED",
+  );
   assert.equal(
     snapshot.runId,
     status.value.runId,
     "PREVIOUS_PROCESS_NOT_FRESH_ACCEPTANCE",
   );
-  assert.equal(snapshot.sourceUrl, status.value.source + "/sales-plan/plans");
-  assert.equal(snapshot.source, "GEA_LIVE_READONLY");
+  assert.equal(
+    snapshot.sourceUrl,
+    status.value.source + "/sales-plan/plans",
+    "SOURCE_URL_MISMATCH",
+  );
+  assert.equal(snapshot.source, "GEA_LIVE_READONLY", "LIVE_SOURCE_REQUIRED");
+  const sourceUrl = new URL(snapshot.sourceUrl);
   assert.ok(
-    !["localhost", "127.0.0.1", "[::1]"].includes(
-      new URL(snapshot.sourceUrl).hostname,
-    ),
+    sourceUrl.protocol === "https:" &&
+      !sourceUrl.username &&
+      !sourceUrl.password &&
+      !sourceUrl.search &&
+      !sourceUrl.hash,
+    "INVALID_LIVE_SOURCE_URL",
+  );
+  const hostname = sourceUrl.hostname.replace(/\.$/, "");
+  assert.ok(
+    hostname !== "localhost" &&
+      !hostname.endsWith(".localhost") &&
+      !/^127\.\d+\.\d+\.\d+$/.test(hostname) &&
+      hostname !== "[::1]",
     "LOCAL_FIXTURE_NOT_LIVE_ACCEPTANCE",
   );
   assert.equal(
@@ -125,12 +145,35 @@ if (values["require-live"]) {
     "model",
     "LOCAL_RECEIPT_NOT_MODEL_ACCEPTANCE",
   );
+  assert.equal(
+    status.value.provider,
+    "gea-analysis",
+    "GEA_MODEL_PROVIDER_REQUIRED",
+  );
+  assert.ok(
+    typeof status.value.model === "string" && status.value.model.length > 0,
+    "CURRENT_MODEL_REQUIRED",
+  );
+  // Message source records the route that produced the answer; a later model selection is only intent.
+  for (const answer of answers) {
+    const source = answer.data.message?.source;
+    assert.equal(source?.kind, "model", "MODEL_ANSWER_REQUIRED");
+    assert.equal(
+      source.provider,
+      status.value.provider,
+      "ANALYSIS_PROVIDER_MISMATCH",
+    );
+    assert.equal(source.model, status.value.model, "ANALYSIS_MODEL_MISMATCH");
+  }
   freshLiveVerified = true;
 }
 const report = {
   checkedAt: new Date().toISOString(),
   sessionId: values.session,
   snapshotHash: expected,
+  snapshotFormat: snapshot.format,
+  analysisProvider: answers[0].data.message?.source?.provider ?? null,
+  analysisModel: answers[0].data.message?.source?.model ?? null,
   durableSnapshotVerified: true,
   firstAnalysisCompleted: true,
   freshLiveVerified,

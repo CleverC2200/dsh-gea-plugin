@@ -114,10 +114,13 @@ export async function readDeployment(path) {
   if (!config || Array.isArray(config) || typeof config !== "object")
     throw new Error("GEA_CONFIG_INVALID");
   const url = httpsEndpoint(config.geaBaseUrl, "INVALID_GEA_BASE_URL");
+  if (config.modelRequestTimeoutMs === undefined)
+    config.modelRequestTimeoutMs = 120000;
   for (const [name, low, high] of [
     ["pageSize", 1, 100],
     ["periodPageSize", 1, 1000],
     ["requestTimeoutMs", 1000, 120000],
+    ["modelRequestTimeoutMs", 1000, 600000],
     ["maxSnapshotBytes", 1000, 5000000],
   ]) {
     if (
@@ -142,10 +145,12 @@ export async function readDeployment(path) {
       throw new Error("ANALYSIS_TOKEN_BUDGET_INVALID");
     if (a.source === "aionui") a = await resolveAionUi(a);
     else if (a.source === "gea") {
-      if (typeof a.agentCode !== "string" || !/^[A-Za-z0-9._:-]{1,100}$/.test(a.agentCode))
+      if (
+        typeof a.agentCode !== "string" ||
+        !/^[A-Za-z0-9._:-]{1,100}$/.test(a.agentCode)
+      )
         throw new Error("ANALYSIS_AGENT_CODE_INVALID");
-    }
-    else {
+    } else {
       if (a.source !== undefined && a.source !== "direct")
         throw new Error("ANALYSIS_SOURCE_INVALID");
       httpsEndpoint(a.baseUrl, "INVALID_ANALYSIS_BASE_URL");
@@ -191,11 +196,14 @@ export function deploymentPatch(config, root, runtime) {
             pageSize: config.pageSize,
             periodPageSize: config.periodPageSize,
             requestTimeoutMs: config.requestTimeoutMs,
+            modelRequestTimeoutMs: config.modelRequestTimeoutMs,
             maxSnapshotBytes: config.maxSnapshotBytes,
             runtimeDir: runtime,
             analysisMode: analysis.mode,
             analysisModel: model ? analysis.model : "receipt",
-            analysisAgentCode: model ? (analysis.agentCode ?? "sales_forecast") : "sales_forecast",
+            analysisAgentCode: model
+              ? (analysis.agentCode ?? "sales_forecast")
+              : "sales_forecast",
             analysisSource: model ? (analysis.source ?? "direct") : "receipt",
             inputByteBudget: model
               ? Math.min(

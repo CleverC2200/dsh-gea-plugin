@@ -1,0 +1,257 @@
+.modal {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.liveModal {
+  width: min(920px, calc(100vw - 32px));
+}
+
+.body,
+.form,
+.adjustmentSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.adjustments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--bg-3);
+  border-radius: 8px;
+  background: var(--bg-1);
+}
+
+.adjustments p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.adjustmentHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.adjustmentHeader span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.adjustmentTable {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--bg-3);
+  border-radius: 6px;
+}
+
+.adjustmentTableHeader,
+.adjustmentTableRow {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.15fr) minmax(130px, 0.9fr) minmax(130px, 0.8fr) minmax(170px, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 10px;
+}
+
+.adjustmentTableHeader {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  color: var(--text-secondary);
+  background: var(--bg-2);
+  font-size: 12px;
+}
+
+.adjustmentTableRow + .adjustmentTableRow {
+  border-top: 1px solid var(--bg-3);
+}
+
+.adjustmentTableRow > span:first-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.adjustmentTableRow small {
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nodeTotals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--bg-3);
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+
+.nodeTotals > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 12px;
+}
+
+.nodeTotals > span + span {
+  border-left: 1px solid var(--bg-3);
+}
+
+.nodeTotals small,
+.nodeValue small,
+.nodeValue em {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.nodeValue {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nodeValue em {
+  color: rgb(var(--primary-6));
+}
+
+.scopeSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr)) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--bg-3);
+  border-radius: 8px;
+  background: var(--bg-2);
+}
+
+.scopeSummary > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.scopeSummary small,
+.footer > span,
+.adjustmentSummary span {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.businessChecksum {
+  padding: 10px;
+  border: 1px solid var(--bg-3);
+  border-radius: 8px;
+  background: var(--bg-1);
+}
+
+.businessChecksum h3 {
+  margin: 0 0 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.businessChecksum dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+
+.businessChecksum dl > div {
+  min-width: 0;
+}
+
+.businessChecksum dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.businessChecksum dd {
+  margin: 3px 0 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.formControl {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.formControl > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.adjustmentSummary {
+  max-height: 160px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+
+.loadingState,
+.footer,
+.footer > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loadingState {
+  justify-content: center;
+  min-height: 44px;
+  color: var(--text-secondary);
+}
+
+.footer {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.footer :global(.arco-btn) {
+  min-height: 44px;
+}
+
+@media (max-width: 700px) {
+  .scopeSummary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .businessChecksum dl {
+    grid-template-columns: 1fr;
+  }
+
+  .adjustmentTableHeader,
+  .adjustmentTableRow {
+    grid-template-columns: minmax(130px, 1fr) 105px 110px minmax(140px, 1fr);
+  }
+
+  .nodeTotals {
+    grid-template-columns: 1fr;
+  }
+
+  .nodeTotals > span + span {
+    border-top: 1px solid var(--bg-3);
+    border-left: 0;
+  }
+}
