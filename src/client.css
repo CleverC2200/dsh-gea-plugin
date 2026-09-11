@@ -339,18 +339,19 @@
   min-height: 100%;
 }
 .gea-agent-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  display: grid;
+  align-items: start;
   gap: 8px;
 }
 .gea-agent-panel h3 {
   margin: 0;
   font-size: 16px;
+  white-space: nowrap;
 }
 .gea-agent-heading .gea-status-chip {
-  max-width: 145px;
-  text-align: end;
+  width: max-content;
+  max-width: 100%;
+  text-align: start;
 }
 .gea-agent-panel p {
   margin: 0;
