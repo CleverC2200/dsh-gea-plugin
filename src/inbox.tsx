@@ -169,7 +169,6 @@ export function Inbox({ t }: { t: Translate }) {
             <dt>{t("notificationExpiry")}</dt>
             <dd>{detail.expiresAt ?? t("unknown")}</dd>
           </dl>
-          <p>{t("inboxSessionUnavailable")}</p>
         </article>
       ) : null}
     </section>
