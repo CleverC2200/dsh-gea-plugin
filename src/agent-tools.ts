@@ -45,7 +45,7 @@ export function registerGeaTools(ctx: Context, business: Business): void {
               provinceCode: { type: "string" },
               orgCode: { type: "string" },
               baseName: { type: "string" },
-              status: { type: "string" },
+              status: { oneOf: [{ type: "string" }, { type: "integer" }] },
               pageNo: { type: "integer" },
               pageSize: { type: "integer" },
             },

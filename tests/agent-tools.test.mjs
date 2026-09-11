@@ -102,11 +102,13 @@ test(
                   function: {
                     name: "gea_sales_plan_read",
                     arguments: JSON.stringify({
-                      kind: "periods",
+                      kind: outcome === "status-filter" ? "list" : "periods",
                       query:
                         outcome === "invalid"
                           ? { tenantId: "forged" }
-                          : { pageSize: 1 },
+                          : outcome === "status-filter"
+                            ? { pageSize: 1, status: 5 }
+                            : { pageSize: 1 },
                     }),
                   },
                 },
@@ -195,6 +197,27 @@ test(
         );
         assert.equal(read.method, "GET");
         assert.equal(read.headers["x-tenant-id"], "0");
+      },
+    );
+    await t.test(
+      "integer plan status reaches GEA through the advertised tool schema",
+      async () => {
+        outcome = "status-filter";
+        modelRequests = [];
+        const rows = await ended(await submit());
+        const result = modelRequests[1].messages.find((x) => x.role === "tool");
+        assert.equal(JSON.parse(result.content).source, "GEA_LIVE_READONLY");
+        assert.equal(
+          app.requests
+            .filter((x) => x.url.pathname.endsWith("/plans"))
+            .at(-1)
+            .url.searchParams.get("status"),
+          "5",
+        );
+        assert.equal(
+          rows.find((x) => x.type === "turn/end").data.reason.kind,
+          "completed",
+        );
       },
     );
     await t.test(

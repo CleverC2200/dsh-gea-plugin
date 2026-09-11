@@ -17,3 +17,5 @@ GEA SSE 适配器仅接受本次请求已提供的工具名，拼接交错的调
 发行包 0.0.2 的独立进程已完成正式工具验收：Session session-8919186e-2bc5-42fd-8e0e-3cef7315af65，模型 liteLLM-deepseek-chat，一次 gea_sales_plan_read 调用查询 list/pageNo=1/pageSize=1，返回 1 条、total=6、coverage=partial，tool/result 为成功，turn/end 为 completed。模型回答正确区分单页与全量。该进程与原进程显示的用户/租户一致；总数与早前 4 条不同，变化原因未归因。新版再次读取的详情仍无 actionContext。原始业务结果保留在忽略提交的运行目录中。
 
 新版汇总 Session session-06ce53ae-2b8e-4f14-9b82-030eaccbf4f6 首轮通过 verify --require-live；第二轮按明确范围执行 versions 与 versionSkus 两次读取。versions 成功，完整 SKU 输出因 SNAPSHOT_TOO_LARGE 被拒绝，两轮均 completed。第二轮 completed 只表示交互结束，不表示 SKU 分析完成。模型仍将版本列表结果用于排除差异原因，依据不足，业务推理质量保持 partial；完整 SKU 输入、独立建议与业务写入均不计为已验收。
+
+工具 status 参数允许周期接口的字符串状态与计划列表接口的整数状态，Host 按读取种类校验；整数计划状态的模型→工具→GEA 请求已纳入回归。

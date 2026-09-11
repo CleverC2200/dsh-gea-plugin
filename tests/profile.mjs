@@ -215,14 +215,8 @@ export async function profile(t, options = {}) {
     const deadline = Date.now() + 45000;
     let launch;
     while (Date.now() < deadline) {
-      let log = "";
-      try {
-        log = await readFile(resolve(runtime, "server.log"), "utf8");
-      } catch {
-        /* Startup has not opened its log yet. */
-      }
-      launch = [...log.matchAll(/dsh web: (http[^\s]+)/g)].at(-1)?.[1];
-      if (launch && output.includes("dsh web:")) break;
+      launch = [...output.matchAll(/dsh web: (http[^\s]+)/g)].at(-1)?.[1];
+      if (launch) break;
       if (child.exitCode !== null) throw new Error("Profile exited: " + output);
       await delay(50);
     }
