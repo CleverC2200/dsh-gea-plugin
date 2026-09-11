@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { deploymentPatch, readDeployment } from "./deployment.mjs";
 import { startAionUiWire } from "./aionui-wire.mjs";
+import { prepareDshSource } from "./dsh-source.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 let wire;
@@ -44,7 +45,8 @@ try {
   const port = Number(values.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535)
     throw new Error("GEA_PORT_INVALID");
-  const runtime = resolve(values.runtime ?? ".runtime/development");
+  const { source: dshSource } = await prepareDshSource(root);
+  const runtime = resolve(values.runtime ?? ".runtime/fork-development");
   await mkdir(resolve(runtime, "workspace"), { recursive: true, mode: 0o700 });
   wire =
     config.analysis.source === "aionui"
@@ -73,16 +75,17 @@ try {
       config.analysis.credential ?? process.env[config.analysis.apiKeyEnv];
   env.DSH_HOME = resolve(runtime, "home");
   const initialize = existsSync(
-    resolve(env.DSH_HOME, "profiles/gea-readonly/package.json"),
+    resolve(env.DSH_HOME, "profiles/gea-readonly-fork/package.json"),
   )
     ? []
     : ["--from-default-profile", "web"];
+  const dshArgs = [resolve(dshSource, "apps/cli/lib/bin.js")];
   child = spawn(
     process.execPath,
     [
-      resolve(root, "node_modules/@deepseek-ai/dsh/lib/bin.js"),
+      ...dshArgs,
       "--profile",
-      "gea-readonly",
+      "gea-readonly-fork",
       ...initialize,
       "--patch",
       patchPath,

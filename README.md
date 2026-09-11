@@ -1,6 +1,6 @@
 # GEA 销售计划只读插件
 
-独立安装的 DeepSeek Harness Web 插件，使用官方 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码全部位于本工程；不修改 dsh 源码或安装依赖，不执行业务审批、保存或写回。
+独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；原生对话栏依赖个人 DSH fork 提供的布局接口，不执行业务审批、保存或写回。
 
 ## 安装与启动
 
@@ -8,11 +8,15 @@
 
 ```sh
 npm ci
+export DSH_SOURCE_DIR=/absolute/path/to/deepseek-harness
+# 先在该 DSH fork 中完成 pnpm run build。
 npm run build
 cp gea.direct.example.json gea.config.json
 # 登录 GEA 后，插件通过 GEA 个人模型接口发现模型并直接调用。
-npm start -- --config gea.config.json --runtime .runtime/development --port 3198
+npm start -- --config gea.config.json --runtime .runtime/fork-development --port 3198
 ```
+
+`DSH_SOURCE_DIR` 选择已构建的本地 DSH fork。构建将本插件直接使用的 DSH 和 Cordis 包链接到同一 checkout，并在忽略提交的 `lib/dsh-runtime.json` 中记录路径；随后 `npm start` 可复用该路径。启动仍通过 fork 的 `dsh --profile gea-readonly-fork`，它拥有独立 Harness home，避免使用旧发布版 profile 的依赖。客户端 UI 由该 DSH Host 的模块加载器提供，不复制 DSH bundle。当前三栏版本不支持 npm `0.1.5-rc.1`，缺少 fork 路径时明确报错。`npm ci` 会恢复锁定的 npm 依赖；再次构建前需选择 fork。
 
 使用启动进程本地日志中的带认证参数链接进入页面。点击「GEA 销售计划」后独立扫码登录、查询、选择版本和 SKU、预览输入范围，最后确认提交。提交进入 Session 前响应浏览器取消、登录失效及 Host 关闭；进入 Session 后使用 dsh 的标准取消、追问和历史读取功能。提交阶段失败后可以重试同一预览，复用 Session 和请求 ID 避免重复入队。
 
@@ -36,7 +40,7 @@ GEA token 仅保存在当前 Host 内存中；重启后需要重新登录。模�
 
 ## 当前验证状态
 
-兼容基线为固定 npm 发布版 `@deepseek-ai/dsh@0.1.5-rc.1`。本地检查使用真实官方 Web profile，仅替换外部 GEA/LLM HTTP 响应；包括查询隔离、精确数值、详情/历史版本/SKU 子集、登录过期/401/403、模型路由、取消与显式重试、一次提交、Session 磁盘读回和新进程恢复。浏览器回归操作实际页面并打开标准会话。
+早期查询验证基线为 npm `@deepseek-ai/dsh@0.1.5-rc.1`；当前原生三栏开发使用选定 DSH fork。本地检查使用真实 Web profile，仅替换外部 GEA/LLM HTTP 响应；包括查询隔离、精确数值、详情/历史版本/SKU 子集、登录过期/401/403、模型路由、取消与显式重试、一次提交、Session 磁盘读回和新进程恢复。早期发布版验收不替代 fork 运行时的重新验收。
 
 新版已经完成测试 GEA 真实单计划分析与同会话追问，以及包含详情、版本和 3/205 条 SKU 子集的真实分析，均正常持久化。重启本次验收服务后，已记录的快照与回答保持不变，GEA 登录按设计失效。205 条 SKU 的完整快照被大小限制拒绝，未静默截断。完整验收范围和各 Issue 剩余项见 [验收记录](docs/acceptance-2026-09-10.md)；全部 Issue 保持未完成。正式环境曾返回的业务 403 未被本项目修改。
 

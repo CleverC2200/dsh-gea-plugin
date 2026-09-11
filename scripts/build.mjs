@@ -1,5 +1,10 @@
 import { build } from "esbuild";
 import { mkdir, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { prepareDshSource } from "./dsh-source.mjs";
+
+const root = fileURLToPath(new URL("../", import.meta.url));
+await prepareDshSource(root);
 await mkdir("lib", { recursive: true });
 await build({
   entryPoints: ["src/host.ts"],
@@ -25,3 +30,13 @@ await writeFile(
   "lib/client.js",
   `window.__ModuleLoader__.load({id:'@cleverc2200/gea-dsh-prototype',factory:(require)=>{var module={exports:{}};var exports=module.exports;\n${code}\nreturn module.exports;}});\n`,
 );
+
+await build({
+  entryPoints: ["src/workbench-entry.tsx"],
+  bundle: true,
+  format: "esm",
+  platform: "browser",
+  target: "es2022",
+  outfile: "lib/workbench.js",
+  loader: { ".css": "text" },
+});
