@@ -2,7 +2,9 @@
 
 独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；原生对话栏依赖个人 DSH fork 提供的布局接口，不执行业务审批、保存或写回。
 
-## 安装与启动
+本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。`npm run package` 输出可核对 SHA-256 的 tarball，尚不是桌面安装器。
+
+## 源码安装与启动
 
 使用 Node 24，在本目录执行：
 

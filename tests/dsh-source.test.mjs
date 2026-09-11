@@ -22,7 +22,10 @@ async function fixture(t) {
   await mkdir(resolve(layout, "lib"), { recursive: true });
   await mkdir(plugin);
   await writeFile(resolve(source, "apps/cli/lib/bin.js"), "");
-  await writeFile(resolve(layout, "lib/client.js"), "");
+  await writeFile(
+    resolve(layout, "lib/client.js"),
+    "registerConversationPanel() {}",
+  );
   await writeFile(
     resolve(layout, "package.json"),
     JSON.stringify({ name: "@deepseek-ai/dsh-client-ui-layout" }),
@@ -70,4 +73,13 @@ test("missing fork packages fail before replacing installed dependencies", async
     /GEA_DSH_SOURCE_PACKAGE_MISSING/,
   );
   assert.equal(await readFile(resolve(installed, "keep.txt"), "utf8"), "keep");
+});
+
+test("an older built layout fails before dependency links are changed", async (t) => {
+  const { plugin, source, layout } = await fixture(t);
+  await writeFile(resolve(layout, "lib/client.js"), "registerGlobalPanel() {}");
+  await assert.rejects(
+    prepareDshSource(plugin, source),
+    /GEA_DSH_LAYOUT_INCOMPATIBLE/,
+  );
 });

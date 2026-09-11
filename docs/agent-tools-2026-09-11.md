@@ -11,3 +11,5 @@ GEA SSE 适配器仅接受本次请求已提供的工具名，拼接交错的调
 无密钥预期文件 `tests/fixtures/gea-agent-tools.snapshot.json` 在真实 dsh profile 测试中对比事件顺序、参数、分页结果与结束状态。它覆盖固定只读工具回路，不能替代消息待办、业务写入或生产 GEA 工具调用验收。
 
 本轮在原运行进程完成正式汇总分析：Session `session-45bc6243-e7a1-4923-8315-0373c8683199`，模型 `2075867101766672385`，实际名称 liteLLM-deepseek-chat，首轮 completed。`verify --require-live` 核对了快照哈希与当前进程身份。该进程仍运行更新前的插件，不能把这条证据算作新工具实机验收。模型答案中“记录数相同所以不是明细缺失”的推断依据不足；新 persona 明确禁止这种推断，实际回答质量仍需后续复核。
+
+正式页面已用浏览器确认原审批工作台、liteLLM-deepseek-chat 名称与原生输入框同时显示。再次读取四条正式计划详情均未返回 actionContext、allowedActions 或 snapshotHash；不能从可读状态推断写权限。本机参考后端的动作枚举仅 APPROVE/REJECT，与来源页面的 SAVE/修正协议不同，需确认正式写入能力和接口版本后接通。

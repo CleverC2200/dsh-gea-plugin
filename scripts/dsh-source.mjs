@@ -67,6 +67,14 @@ export async function linkDshSource({ source, pluginRoot }) {
     throw new Error(
       "GEA_DSH_SOURCE_ARTIFACT_MISSING: build ui-layout with pnpm --filter @deepseek-ai/dsh-client-ui-layout bundle",
     );
+  if (
+    !(await readFile(resolve(layout, "lib/client.js"), "utf8")).includes(
+      "registerConversationPanel(",
+    )
+  )
+    throw new Error(
+      "GEA_DSH_LAYOUT_INCOMPATIBLE: the built fork must provide registerConversationPanel",
+    );
   for (const name of names) {
     if (!index.has(name))
       throw new Error(`GEA_DSH_SOURCE_PACKAGE_MISSING: ${name}`);

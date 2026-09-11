@@ -1,6 +1,6 @@
 # Original GEA sales-plan workbench
 
-Copied from `/Users/synear/Documents/Aionui/packages/desktop/src/renderer/pages/assistantSurface/workbenches/regionalApproval` at commit `55d12cd60248c6084afd76bba816638a79af36de` (Apache-2.0; retained in `LICENSE`). The source workbench is React and CSS Modules rendered inside `BusinessSurfaceShell`; there is no independent sales-plan HTML file in that checkout. This copy is intended to be compiled into the plugin's separate center HTML document.
+Copied from AionUi `packages/desktop/src/renderer/pages/assistantSurface/workbenches/regionalApproval` at commit `55d12cd60248c6084afd76bba816638a79af36de` (Apache-2.0; retained in `LICENSE`). The source workbench is React and CSS Modules rendered inside `BusinessSurfaceShell`; there is no independent sales-plan HTML file in that checkout. This copy is intended to be compiled into the plugin's separate center HTML document.
 
 The original JSX, styles, query generation, exact-decimal projection, version comparison, dialogs and workflow models are retained. Changes redirect source imports to local files, make NodeNext file extensions and a numeric reducer type explicit, and replace the AionUi IPC and chat imports with `bridge.ts` and `session-context.tsx`. No AionUi process or conversation implementation is imported. `contracts.ts`, `salesPlanWorkflow.ts`, `http-error.ts`, `storage.ts`, and the surface translations are copied or extracted from their source owners. Storage prefixes are isolated to `gea-dsh`, so old AionUi browser state is not adopted.
 

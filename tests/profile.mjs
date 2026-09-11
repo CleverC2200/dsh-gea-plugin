@@ -9,7 +9,7 @@ import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
-const root = resolve(import.meta.dirname, "..");
+const defaultRoot = resolve(import.meta.dirname, "..");
 export async function readSession(runtime, id) {
   const home = resolve(runtime, "home/sessions");
   let workspaces;
@@ -58,6 +58,7 @@ export async function until(read, predicate, timeout = 10000) {
   );
 }
 export async function profile(t, options = {}) {
+  const root = options.pluginRoot ?? defaultRoot;
   const dir = await mkdtemp(resolve(tmpdir(), "gea-profile-"));
   const key = resolve(dir, "key.pem"),
     cert = resolve(dir, "cert.pem");

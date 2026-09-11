@@ -1,6 +1,6 @@
 # Source and migration changes
 
-Source repository: `/Users/synear/Documents/Aionui`, commit `55d12cd60248c6084afd76bba816638a79af36de` on `main`. The source worktree had unrelated authentication-service edits; no source files copied here were modified. Source license: Apache License 2.0, copied verbatim to `LICENSE`.
+Source repository: AionUi, commit `55d12cd60248c6084afd76bba816638a79af36de` on `main`. The source worktree had unrelated authentication-service edits; no source files copied here were modified. Source license: Apache License 2.0, copied verbatim to `LICENSE`.
 
 | Destination | Original source under `packages/desktop/src/` | Adaptation |
 | --- | --- | --- |
