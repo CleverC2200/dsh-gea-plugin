@@ -6,17 +6,13 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { deploymentPatch, readDeployment } from "./deployment.mjs";
-import { startAionUiWire } from "./aionui-wire.mjs";
 import { prepareDshSource } from "./dsh-source.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-let wire;
 let log;
 let child;
 let writes = Promise.resolve();
 async function closeResources() {
-  await wire?.close();
-  wire = undefined;
   try {
     await writes;
   } finally {
@@ -48,16 +44,6 @@ try {
   const { source: dshSource } = await prepareDshSource(root);
   const runtime = resolve(values.runtime ?? ".runtime/fork-development");
   await mkdir(resolve(runtime, "workspace"), { recursive: true, mode: 0o700 });
-  wire =
-    config.analysis.source === "aionui"
-      ? await startAionUiWire(config.analysis)
-      : undefined;
-  if (wire)
-    config.analysis = {
-      ...config.analysis,
-      baseUrl: wire.baseUrl,
-      credential: wire.credential,
-    };
   const patchPath = resolve(runtime, "deployment.patch.json");
   await writeFile(
     patchPath,
@@ -70,9 +56,8 @@ try {
       ([key]) => !/API_KEY|ACCESS_TOKEN|AUTH_TOKEN|SECRET|DSH_/.test(key),
     ),
   );
-  if (config.analysis.mode === "model")
-    env[config.analysis.apiKeyEnv] =
-      config.analysis.credential ?? process.env[config.analysis.apiKeyEnv];
+  if (config.analysis.mode === "model" && config.analysis.source !== "gea")
+    env[config.analysis.apiKeyEnv] = process.env[config.analysis.apiKeyEnv];
   env.DSH_HOME = resolve(runtime, "home");
   const initialize = existsSync(
     resolve(env.DSH_HOME, "profiles/gea-readonly-fork/package.json"),

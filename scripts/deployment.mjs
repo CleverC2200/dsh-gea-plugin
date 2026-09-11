@@ -22,87 +22,6 @@ function httpsEndpoint(value, code) {
   return url;
 }
 
-/** Read the selected AionUi proxy through its local API; never claim or decrypt an upstream secret. */
-async function resolveAionUi(analysis) {
-  const backend = new URL(analysis.backendUrl);
-  if (
-    backend.protocol !== "http:" ||
-    backend.hostname !== "127.0.0.1" ||
-    backend.username ||
-    backend.password ||
-    backend.search ||
-    backend.hash ||
-    backend.pathname !== "/"
-  )
-    throw new Error("AIONUI_BACKEND_MUST_BE_LOOPBACK");
-  if (
-    typeof analysis.providerId !== "string" ||
-    !analysis.providerId.startsWith("gea-personal-")
-  )
-    throw new Error("AIONUI_PROVIDER_REQUIRED");
-  let result;
-  try {
-    const response = await fetch(new URL("/api/providers", backend), {
-      redirect: "error",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!response.ok) throw new Error();
-    result = await response.json();
-  } catch {
-    throw new Error("AIONUI_BACKEND_UNAVAILABLE");
-  }
-  const providers = Array.isArray(result.data)
-    ? result.data.filter(
-        (p) => p.id === analysis.providerId && p.enabled === true,
-      )
-    : [];
-  if (providers.length !== 1) throw new Error("AIONUI_PROVIDER_UNAVAILABLE");
-  const provider = providers[0];
-  const proxy = new URL(provider.base_url);
-  if (
-    proxy.protocol !== "http:" ||
-    proxy.hostname !== "127.0.0.1" ||
-    proxy.username ||
-    proxy.password ||
-    proxy.search ||
-    proxy.hash ||
-    proxy.pathname !== "/personal/" + provider.id
-  )
-    throw new Error("AIONUI_PROXY_MUST_BE_LOOPBACK");
-  if (
-    provider.platform !== "openai" ||
-    !Array.isArray(provider.models) ||
-    !provider.models.includes(analysis.model) ||
-    provider.model_enabled?.[analysis.model] === false
-  )
-    throw new Error("AIONUI_MODEL_UNAVAILABLE");
-  if (typeof provider.api_key !== "string" || !provider.api_key.trim())
-    throw new Error("AIONUI_PROXY_CREDENTIAL_MISSING");
-  let models;
-  try {
-    const response = await fetch(proxy.href + "/models", {
-      headers: { Authorization: "Bearer " + provider.api_key },
-      redirect: "error",
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!response.ok) throw new Error();
-    models = await response.json();
-  } catch {
-    throw new Error("AIONUI_PROXY_UNAVAILABLE");
-  }
-  if (
-    !Array.isArray(models.data) ||
-    !models.data.some((model) => model.id === analysis.model)
-  )
-    throw new Error("AIONUI_MODEL_UNAVAILABLE");
-  return {
-    ...analysis,
-    baseUrl: proxy.href,
-    apiKeyEnv: "GEA_AIONUI_PROXY_KEY",
-    credential: provider.api_key,
-  };
-}
-
 export async function readDeployment(path) {
   let config;
   try {
@@ -136,7 +55,7 @@ export async function readDeployment(path) {
   if (!config.analysis || !["receipt", "model"].includes(config.analysis.mode))
     throw new Error("ANALYSIS_MODE_REQUIRED");
   if (config.analysis.mode === "model") {
-    let a = config.analysis;
+    const a = config.analysis;
     if (typeof a.model !== "string" || !a.model.trim())
       throw new Error("ANALYSIS_CONFIG_INCOMPLETE");
     if (
@@ -146,8 +65,11 @@ export async function readDeployment(path) {
       a.contextWindow <= a.maxTokens + 1000
     )
       throw new Error("ANALYSIS_TOKEN_BUDGET_INVALID");
-    if (a.source === "aionui") a = await resolveAionUi(a);
-    else if (a.source === "gea") {
+    if (a.source === "aionui")
+      throw new Error(
+        "AIONUI_RUNTIME_REMOVED: use analysis.source=gea with the GEA login",
+      );
+    if (a.source === "gea") {
       if (
         typeof a.agentCode !== "string" ||
         !/^[A-Za-z0-9._:-]{1,100}$/.test(a.agentCode)

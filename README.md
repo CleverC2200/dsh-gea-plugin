@@ -22,7 +22,7 @@ npm start -- --config gea.config.json --runtime .runtime/fork-development --port
 
 部署配置的 `geaEnvironments.production` 和 `geaEnvironments.test` 分别保存正式、测试 HTTPS 地址，`environment` 指定初始选项（默认 `production`）。旧单地址配置只提供对应的一个环境。工作台「切换环境 / 重新登录」返回登录页；切换会作废旧凭证、二维码、预览和进行中的模型请求，并清空当前会话选择。登录页 GEA 图标来自 AionUi 的 `packages/desktop/src/renderer/assets/logos/brand/app.png`，沿用[原工作台来源与许可证](src/workbench-original/SOURCE.md)。
 
-`gea.config.example.json` 使用本地回执模式，只验证数据传递；真实模型使用 `gea.direct.example.json` 中 `source: "gea"`。插件通过当前 GEA 登录获取个人模型凭证、发现模型并直接调用，不依赖 AionUi 进程。`source: "aionui"` 是保留的旧配置兼容路径，当前三栏验收不使用它。
+`gea.config.example.json` 使用本地回执模式，只验证数据传递；真实模型使用 `gea.direct.example.json` 中 `source: "gea"`。插件通过当前 GEA 登录获取个人模型凭证、发现模型并直接调用，不依赖 AionUi 进程。`source: "aionui"` 已移除，旧配置会在启动前报 `AIONUI_RUNTIME_REMOVED`；改用 `source: "gea"`、`agentCode` 和当前 GEA 登录，无需读取 AionUi 的 provider、代理地址或凭证。
 
 ### 页面组成
 
@@ -72,3 +72,5 @@ npm test
 模型名称优先使用模型列表的 `name`；旧版 GEA 列表只有 ID 时，仅对已授权模型调用模型详情查询，提取 `name` 或 `modelName`。DSH 模型列表、当前选择和业务栏使用名称，推理仍使用 ID。无权获取名称或接口未提供时显示“GEA 模型（名称未提供）”，不把编号冒充名称。
 
 原生只读工具、工具流协议、取消收尾和当前真实验收范围见[工具接入记录](docs/agent-tools-2026-09-11.md)。
+
+AionUi 代理适配器及示例配置已删除；旧配置启动拒绝的定向回归确保不会探测本机代理或读取其凭证。此项源码独立性与“干净机器真实登录”验收分别记录。

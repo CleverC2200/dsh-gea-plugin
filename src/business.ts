@@ -23,7 +23,7 @@ export interface Deployment {
   analysisMode: "receipt" | "model";
   analysisModel: string;
   analysisAgentCode: string;
-  analysisSource: "gea" | "aionui" | "direct" | "receipt";
+  analysisSource: "gea" | "direct" | "receipt";
   inputByteBudget: number;
 }
 export interface Page {
