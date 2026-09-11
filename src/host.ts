@@ -71,6 +71,69 @@ class ReceiptAdapter extends LlmAdapter {
   }
 }
 
+/** Calls the logged-in GEA personal model route directly, without an AionUi proxy. */
+class GeaModelAdapter extends LlmAdapter {
+  constructor(private readonly business: Business) {
+    super();
+  }
+  override providerInfo(id: string) {
+    return { id, name: "GEA personal model" };
+  }
+  async listModels(provider: string) {
+    return [{ provider, id: this.business.config.analysisModel, name: this.business.config.analysisModel }];
+  }
+  async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    const route = await this.business.modelRoute(
+      options.signal ?? new AbortController().signal,
+      this.business.config.analysisAgentCode,
+    );
+    if (!route.models.includes(options.model)) throw new Error("GEA_MODEL_NOT_FOUND");
+    const response = await fetch(route.baseUrl + "/chat/completions", {
+      method: "POST",
+      headers: {
+        Accept: "text/event-stream",
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + route.secret,
+        "X-GEA-Agent-Code": route.agentCode,
+      },
+      body: JSON.stringify({ model: options.model, messages: options.messages, stream: true }),
+      redirect: "error",
+      signal: options.signal,
+    });
+    if (!response.ok || !response.body) throw new Error("GEA_MODEL_HTTP_" + response.status);
+    if (!response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream"))
+      throw new Error("GEA_MODEL_NOT_SSE");
+    yield { type: "block-start", index: 0, blockType: "text" };
+    const decoder = new TextDecoder();
+    let pending = "";
+    const reader = response.body.getReader();
+    while (true) {
+      const read = await reader.read();
+      if (read.done) break;
+      pending += decoder.decode(read.value, { stream: true });
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") continue;
+        let payload: { choices?: Array<{ delta?: { content?: unknown }; finish_reason?: unknown }> };
+        try { payload = JSON.parse(data); } catch { throw new Error("GEA_MODEL_INVALID_SSE"); }
+        const choice = payload.choices?.[0];
+        const text = choice?.delta?.content;
+        if (typeof text === "string" && text) yield { type: "text-delta", index: 0, text };
+        if (choice?.finish_reason) {
+          yield { type: "block-end", index: 0, block: { type: "text", text: "" } };
+          yield { type: "finish", reason: { kind: "stop" } };
+          return;
+        }
+      }
+    }
+    yield { type: "block-end", index: 0, block: { type: "text", text: "" } };
+    yield { type: "finish", reason: { kind: "stop" } };
+  }
+}
+
 /** Register authenticated Web routes; the standard dsh connection owns browser authorization. */
 export function apply(ctx: Context, config: Deployment): void {
   const business = new Business(config);
@@ -82,6 +145,8 @@ export function apply(ctx: Context, config: Deployment): void {
         new ReceiptAdapter(config, business.runId),
       ),
     );
+  if (config.analysisMode === "model" && config.analysisSource === "gea")
+    ctx.effect(() => ctx.llm.registerAdapter(["gea-analysis"], new GeaModelAdapter(business)));
   let submission:
     | {
         id: string;

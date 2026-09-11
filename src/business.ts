@@ -17,6 +17,8 @@ export interface Deployment {
   runtimeDir: string;
   analysisMode: "receipt" | "model";
   analysisModel: string;
+  analysisAgentCode: string;
+  analysisSource: "gea" | "aionui" | "direct" | "receipt";
   inputByteBudget: number;
 }
 export interface Page {
@@ -56,6 +58,13 @@ export interface Detail {
   sourceUrl: string;
   missing: string[];
 }
+
+export type GeaModelRoute = {
+  baseUrl: string;
+  secret: string;
+  agentCode: string;
+  models: string[];
+};
 
 const planFields = [
   "planId",
@@ -220,6 +229,7 @@ export class Business {
   private versionsByPlan = new Map<string, Collection>();
   private skusByVersion = new Map<string, Collection>();
   private requests = new Map<string, AbortController>();
+  private modelRoutes = new Map<string, GeaModelRoute>();
   private loginExpired = false;
   readonly runId = randomUUID();
   readonly base: string;
@@ -259,6 +269,7 @@ export class Business {
     this.epoch.abort();
     this.epoch = new AbortController();
     this.auth = undefined;
+    this.modelRoutes.clear();
     this.qr = undefined;
     this.loginExpired = expired;
     this.clearQuery();
@@ -333,6 +344,93 @@ export class Business {
   private authenticated(): NonNullable<Business["auth"]> {
     if (!this.auth) throw new Error("LOGIN_REQUIRED");
     return this.auth;
+  }
+
+  /** Resolve the logged-in user's GEA personal model route without exposing its secret to the browser. */
+  async modelRoute(signal: AbortSignal, agentCode = "sales_forecast"): Promise<GeaModelRoute> {
+    const auth = this.authenticated();
+    if (!/^[A-Za-z0-9._:-]{1,100}$/.test(agentCode)) throw new Error("GEA_MODEL_AGENT_INVALID");
+    const cached = this.modelRoutes.get(agentCode);
+    if (cached) return cached;
+    const credentialResult = object(
+      await this.get(
+        "/aidata/user-agent-credential/my/list?pageNo=1&pageSize=10",
+        auth,
+        AbortSignal.any([signal, this.epoch.signal]),
+      ),
+    );
+    const records = Array.isArray(credentialResult.records) ? credentialResult.records : [];
+    if (records.length > 1) throw new Error("GEA_MODEL_CREDENTIAL_AMBIGUOUS");
+    const credential = records[0] ? object(records[0]) : undefined;
+    if (!credential) throw new Error("GEA_MODEL_CREDENTIAL_MISSING");
+    const status = credential.status;
+    if (status === "DISABLED" || status === "REVOKED") throw new Error("GEA_MODEL_CREDENTIAL_DISABLED");
+    const credentialId = text(credential.credentialId ?? credential.id);
+    const claim = await this.post(
+      "/aidata/user-agent-credential/my/claim?id=" + encodeURIComponent(credentialId),
+      auth,
+      AbortSignal.any([signal, this.epoch.signal]),
+    );
+    const claimed = object(claim);
+    if (String(claimed.credentialId ?? "") !== credentialId)
+      throw new Error("GEA_MODEL_CREDENTIAL_MISMATCH");
+    if (!["ACTIVE", "ENABLED"].includes(String(claimed.status)))
+      throw new Error("GEA_MODEL_CREDENTIAL_UNAVAILABLE");
+    const baseUrl = text(claimed.baseUrl).replace(/\/$/, "");
+    const secret = text(claimed.secret);
+    let response: Response;
+    try {
+      response = await fetch(baseUrl + "/models", {
+        headers: {
+          Accept: "application/json",
+          Authorization: "Bearer " + secret,
+          "X-GEA-Agent-Code": agentCode,
+        },
+        redirect: "error",
+        signal: AbortSignal.any([signal, this.epoch.signal, AbortSignal.timeout(this.config.requestTimeoutMs)]),
+      });
+    } catch {
+      throw new Error("GEA_MODEL_NETWORK_ERROR");
+    }
+    if (!response.ok) {
+      if (response.status === 401) this.clearLogin(true);
+      throw new Error("GEA_MODEL_HTTP_" + response.status);
+    }
+    const modelsPayload = object(await response.json());
+    if (!Array.isArray(modelsPayload.data)) throw new Error("GEA_MODEL_INVALID_RESPONSE");
+    const models = modelsPayload.data.map((entry) =>
+      typeof entry === "string" ? entry : text(object(entry).id),
+    );
+    if (!models.length) throw new Error("GEA_MODEL_EMPTY");
+    const route = { baseUrl, secret, agentCode, models: [...new Set(models)] };
+    this.modelRoutes.set(agentCode, route);
+    return route;
+  }
+
+  private async post(path: string, identity: { token: string; tenantId?: string }, signal: AbortSignal): Promise<unknown> {
+    let response: Response;
+    try {
+      response = await fetch(this.base + path, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-Access-Token": identity.token,
+          ...(identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
+          "X-Request-Id": randomUUID(),
+        },
+        redirect: "error",
+        signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)]),
+      });
+    } catch {
+      throw new Error("GEA_NETWORK_ERROR");
+    }
+    if (!response.ok) {
+      if (response.status === 401) this.clearLogin(true);
+      throw new Error("GEA_MODEL_HTTP_" + response.status);
+    }
+    const data = object(parseJson(await response.text()));
+    if (data.success !== true) throw new Error("GEA_MODEL_REQUEST_REJECTED");
+    return data.result;
   }
 
   /** Restart QR login and invalidate every selection from the previous identity. */

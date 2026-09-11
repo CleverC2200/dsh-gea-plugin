@@ -6,9 +6,8 @@
   "maxSnapshotBytes": 100000,
   "analysis": {
     "mode": "model",
-    "source": "direct",
-    "baseUrl": "https://api.example.test/v1",
-    "apiKeyEnv": "GEA_LLM_API_KEY",
+    "source": "gea",
+    "agentCode": "sales_forecast",
     "model": "replace-with-model-id",
     "contextWindow": 32768,
     "maxTokens": 2048

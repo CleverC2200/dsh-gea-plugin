@@ -36,6 +36,34 @@ test("direct model deployment does not require an AionUi backend", async () => {
   delete process.env.GEA_DIRECT_TEST_KEY;
 });
 
+test("GEA model deployment uses the logged-in GEA route", async () => {
+  const dir = await mkdtemp(resolve(tmpdir(), "gea-route-model-"));
+  const path = resolve(dir, "deployment.json");
+  await writeFile(
+    path,
+    JSON.stringify({
+      geaBaseUrl: "https://gea.example.test/gea-boot",
+      pageSize: 10,
+      periodPageSize: 100,
+      requestTimeoutMs: 15000,
+      maxSnapshotBytes: 100000,
+      analysis: {
+        mode: "model",
+        source: "gea",
+        agentCode: "sales_forecast",
+        model: "2085162185715609601",
+        contextWindow: 32768,
+        maxTokens: 2048,
+      },
+    }),
+  );
+  const config = await readDeployment(path);
+  const patch = deploymentPatch(config, dir, resolve(dir, "runtime"));
+  assert.equal(config.analysis.source, "gea");
+  assert.equal(patch.find((row) => row.id === "llm-pi-ai"), undefined);
+  assert.equal(patch.at(3).insert[0].config.analysisAgentCode, "sales_forecast");
+});
+
 test("direct model deployment fails closed for malformed endpoints and missing credentials", async () => {
   const dir = await mkdtemp(resolve(tmpdir(), "gea-direct-invalid-"));
   const path = resolve(dir, "deployment.json");

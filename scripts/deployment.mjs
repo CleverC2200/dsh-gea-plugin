@@ -141,6 +141,10 @@ export async function readDeployment(path) {
     )
       throw new Error("ANALYSIS_TOKEN_BUDGET_INVALID");
     if (a.source === "aionui") a = await resolveAionUi(a);
+    else if (a.source === "gea") {
+      if (typeof a.agentCode !== "string" || !/^[A-Za-z0-9._:-]{1,100}$/.test(a.agentCode))
+        throw new Error("ANALYSIS_AGENT_CODE_INVALID");
+    }
     else {
       if (a.source !== undefined && a.source !== "direct")
         throw new Error("ANALYSIS_SOURCE_INVALID");
@@ -191,6 +195,8 @@ export function deploymentPatch(config, root, runtime) {
             runtimeDir: runtime,
             analysisMode: analysis.mode,
             analysisModel: model ? analysis.model : "receipt",
+            analysisAgentCode: model ? (analysis.agentCode ?? "sales_forecast") : "sales_forecast",
+            analysisSource: model ? (analysis.source ?? "direct") : "receipt",
             inputByteBudget: model
               ? Math.min(
                   config.maxSnapshotBytes,
@@ -202,7 +208,7 @@ export function deploymentPatch(config, root, runtime) {
       ],
     },
   ];
-  if (model)
+  if (model && analysis.source !== "gea")
     rows.push({
       id: "llm-pi-ai",
       config: {
