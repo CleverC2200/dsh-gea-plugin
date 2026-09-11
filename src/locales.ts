@@ -153,6 +153,8 @@ const copy = {
   businessNavigation: ["业务导航", "Business navigation"],
   geaBusiness: ["GEA 业务版", "GEA business"],
   businessFunctions: ["业务功能", "Business functions"],
+  planManagement: ["计划管理", "Plan management"],
+  demandForecastAgent: ["需求预测 Agent", "Demand forecast Agent"],
   messageInbox: ["消息待办", "Message inbox"],
   agentPanel: ["需求预测 Agent", "Demand forecast Agent"],
   agentPanelModel: ["GEA Personal Model · 只读分析", "GEA Personal Model · read-only analysis"],
@@ -164,6 +166,19 @@ const copy = {
   agentWaiting: ["等待选择计划", "Waiting for a plan"],
   sendToSession: ["发送到 dsh 会话", "Send to dsh session"],
   agentReadOnly: ["仅发送明确选择的只读快照。", "Only the selected read-only snapshot is sent."],
+  agentAnalysisTitle: ["审批建议", "Approval guidance"],
+  agentAnalysisEmpty: [
+    "选择计划后，Agent 将在 dsh 会话中生成需求预测和审批建议。",
+    "Select a plan to generate demand-forecast and approval guidance in a dsh session.",
+  ],
+  agentComposerPlaceholder: [
+    "发送消息到 Demand Forecast and Plan Submission Assistant…",
+    "Send a message to Demand Forecast and Plan Submission Assistant…",
+  ],
+  agentInputDisabled: [
+    "当前页面只发送只读快照，消息输入在 dsh 会话中进行。",
+    "This page sends read-only snapshots; message input is available in the dsh session.",
+  ],
   readOnlyPreview: [
     "只读预览 · 不执行审批写回",
     "Read-only preview · no approval writeback",

@@ -241,12 +241,15 @@
 }
 .gea-live-section > .gea-approval-frame > .gea-business-nav {
   grid-column: 1;
+  grid-row: 1 / span 5;
 }
 .gea-live-section > .gea-approval-frame > .gea-approval {
   grid-column: 2;
+  grid-row: 1;
 }
 .gea-live-section > .gea-approval-frame > .gea-agent-panel {
   grid-column: 3;
+  grid-row: 1 / span 5;
 }
 .gea-live-section > .gea-toolbar,
 .gea-live-section > p.gea-meta,
@@ -305,19 +308,73 @@
   color: #c53c4a;
   background: #f6e5e8;
 }
+.gea-plan-nav-group {
+  display: grid;
+  gap: 3px;
+}
+.gea-plan-nav-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #27384d !important;
+  font-weight: 600;
+  text-align: start !important;
+}
+.gea-plan-nav-heading span {
+  padding: 0;
+  color: #6a7b90;
+  font-size: 14px;
+}
+.gea-plan-nav-group > .is-active {
+  margin-inline: 0;
+  padding-inline-start: 16px;
+}
 .gea-agent-panel {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 20px 18px;
   background: #fff;
+  border-inline-start: 1px solid #d8e1ee;
+  min-height: 100%;
+}
+.gea-agent-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
 }
 .gea-agent-panel h3 {
   margin: 0;
   font-size: 16px;
 }
+.gea-agent-heading .gea-status-chip {
+  max-width: 145px;
+  text-align: end;
+}
 .gea-agent-panel p {
   margin: 0;
+}
+.gea-agent-context {
+  display: grid;
+  gap: 3px;
+  padding-block: 4px 12px;
+  border-bottom: 1px solid #dfe6f0;
+  font-size: 12px;
+}
+.gea-agent-context span {
+  color: #53677f;
+}
+.gea-agent-card {
+  display: grid;
+  gap: 7px;
+  padding: 13px;
+  border: 1px solid #d8e1ee;
+  border-radius: 6px;
+  background: #fbfdff;
+}
+.gea-agent-card p {
+  line-height: 1.55;
 }
 .gea-agent-state {
   display: grid;
@@ -326,6 +383,46 @@
   padding: 12px;
   border-radius: 6px;
   background: #f3f7fc;
+}
+.gea-agent-composer {
+  display: grid;
+  gap: 6px;
+  margin-top: auto;
+  padding: 8px;
+  border: 1px solid #c8d3e2;
+  border-radius: 12px;
+  background: #fff;
+}
+.gea-agent-composer textarea {
+  width: 100%;
+  resize: vertical;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.4;
+}
+.gea-agent-composer textarea::placeholder {
+  color: #8a98aa;
+}
+.gea-agent-composer textarea:focus {
+  outline: 0;
+}
+.gea-agent-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #73859a;
+  font-size: 11px;
+}
+.gea-agent-composer-tools span {
+  flex: 1;
+}
+.gea-agent-composer-tools button {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 2px 6px;
+  border-radius: 50%;
 }
 .gea-agent-state span {
   color: #53677f;
@@ -512,6 +609,10 @@
   .gea-live-section > .gea-empty,
   .gea-live-section > .gea-actions {
     grid-column: 1;
+  }
+  .gea-live-section > .gea-approval-frame > .gea-business-nav,
+  .gea-live-section > .gea-approval-frame > .gea-agent-panel {
+    grid-row: auto;
   }
   .gea-business-nav {
     flex-direction: row;

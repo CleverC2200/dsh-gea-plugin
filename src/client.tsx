@@ -130,6 +130,13 @@ const organizationLabels: Record<OrganizationView, CopyKey> = {
   area: "byArea",
   dealer: "byDealer",
 };
+const approvalStageKeys: CopyKey[] = [
+  "stageCustomerAi",
+  "stageAreaApproval",
+  "stageProvinceApproval",
+  "stageRegionApproval",
+  "stageCategoryPlan",
+];
 
 function organizationValueFor(row: Row, view: OrganizationView): string | undefined {
   if (view === "all") return undefined;
@@ -187,10 +194,15 @@ function ApprovalWorkspace({
       <aside className="gea-business-nav" aria-label={t("businessNavigation")}>
         <strong>{t("geaBusiness")}</strong>
         <span>{t("businessFunctions")}</span>
-        <button type="button" className="is-active" aria-current="page">
-          {t("approvalWorkspace")}
-        </button>
         <button type="button" disabled>{t("messageInbox")}</button>
+        <div className="gea-plan-nav-group">
+          <button type="button" className="gea-plan-nav-heading" disabled>
+            {t("planManagement")} <span aria-hidden="true">⌃</span>
+          </button>
+          <button type="button" className="is-active" aria-current="page">
+            {t("demandForecastAgent")}
+          </button>
+        </div>
       </aside>
       <section
         className="gea-section gea-approval"
@@ -238,11 +250,13 @@ function ApprovalWorkspace({
         </div>
       </div>
       <div className="gea-approval-stages" aria-label={t("approvalStages")}>
-        <div className="gea-stage">
-          <span className="gea-stage-dot">?</span>
-          <span>{t("stageDataPending")}</span>
-          <small>{t("unknown")}</small>
-        </div>
+        {approvalStageKeys.map((key) => (
+          <div className="gea-stage" key={key}>
+            <span className="gea-stage-dot">?</span>
+            <span>{t(key)}</span>
+            <small>{t("unknown")}</small>
+          </div>
+        ))}
       </div>
       <div
         className="gea-org-toolbar"
@@ -275,18 +289,34 @@ function ApprovalWorkspace({
       <div className="gea-readonly-banner">{t("readOnlyBanner")}</div>
       </section>
       <aside className="gea-agent-panel" aria-label={t("agentPanel")}>
-        <h3>{t("agentPanel")}</h3>
-        <p className="gea-meta">
-          {analysisMode === "model" ? t("agentPanelModel") : t("receiptMode")}
-        </p>
-        <p>{t("agentPanelHelp")}</p>
-        <div className="gea-agent-state">
-          <strong>{selectedRow ? t("agentReady") : t("agentWaiting")}</strong>
-          <span>{selectedRow ? `${t("select")} ${selectedRow.planId ?? t("unknown")}` : t("noQuery")}</span>
+        <div className="gea-agent-heading">
+          <h3>{t("agentPanel")}</h3>
+          <span className="gea-status-chip">
+            {analysisMode === "model" ? t("agentPanelModel") : t("receiptMode")}
+          </span>
+        </div>
+        <div className="gea-agent-context">
+          <span>{first?.periodId ?? t("unknown")} · {first?.orgName ?? first?.dealerName ?? t("unknown")}</span>
+          <strong>{selectedRow ? `${t("select")} ${selectedRow.planId ?? t("unknown")}` : t("noQuery")}</strong>
+        </div>
+        <div className="gea-agent-card">
+          <strong>{t("agentAnalysisTitle")}</strong>
+          <p>{selectedRow ? t("agentPanelHelp") : t("agentAnalysisEmpty")}</p>
+          <span className="gea-meta">
+            {selectedRow ? t("agentReady") : t("agentWaiting")}
+          </span>
         </div>
         <button type="button" className="gea-primary" disabled={!canSend} onClick={onSend}>
           {t("sendToSession")}
         </button>
+        <div className="gea-agent-composer" aria-label={t("agentPanel")}>
+          <textarea disabled placeholder={t("agentComposerPlaceholder")} rows={3} />
+          <div className="gea-agent-composer-tools">
+            <button type="button" disabled aria-label={t("agentInputDisabled")}>＋</button>
+            <span>{t("agentInputDisabled")}</span>
+            <button type="button" disabled aria-label={t("agentInputDisabled")}>↑</button>
+          </div>
+        </div>
         <p className="gea-meta">{t("agentReadOnly")}</p>
       </aside>
     </div>

@@ -52,6 +52,14 @@ test(
       .getByRole("heading", { name: "需求预测 Agent", exact: true })
       .waitFor();
     await page
+      .getByRole("button", { name: "需求预测 Agent", exact: true })
+      .waitFor();
+    await page
+      .getByPlaceholder("发送消息到 Demand Forecast and Plan Submission Assistant…", {
+        exact: true,
+      })
+      .waitFor();
+    await page
       .getByText("暂不可操作：当前仅展示 GEA 数据，审批和写回接口尚未接入。", {
         exact: true,
       })
