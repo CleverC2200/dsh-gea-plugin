@@ -38,5 +38,5 @@ await build({
   platform: "browser",
   target: "es2022",
   outfile: "lib/workbench.js",
-  loader: { ".css": "css", ".module.css": "local-css" },
+  loader: { ".css": "css", ".module.css": "local-css", ".png": "dataurl" },
 });

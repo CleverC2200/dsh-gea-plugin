@@ -28,7 +28,15 @@ test(
   "original workbench document and native DSH conversation remain side by side through a durable receipt",
   { timeout: 90000 },
   async (t) => {
-    const app = await profile(t);
+    const app = await profile(t, {
+      config: (base) => ({
+        environment: "test",
+        geaEnvironments: {
+          production: base + "/production",
+          test: base + "/test",
+        },
+      }),
+    });
     let oversizedDetails = false;
     app.route((request, res, reply) => {
       const path = request.url.pathname;
@@ -55,9 +63,13 @@ test(
             versions: [{ ...plan, id: plan.versionId }],
             skus: oversizedDetails
               ? Array.from({ length: 1500 }, (_, index) => ({
-                  id: `sku-${index}`, versionId: plan.versionId,
-                  skuCode: `code-${index}`, qty: "1.000", amt: "2.000",
-                  materialDescription: "A long but valid product description for a complete detail snapshot",
+                  id: `sku-${index}`,
+                  versionId: plan.versionId,
+                  skuCode: `code-${index}`,
+                  qty: "1.000",
+                  amt: "2.000",
+                  materialDescription:
+                    "A long but valid product description for a complete detail snapshot",
                 }))
               : [],
             logs: [],
@@ -81,18 +93,16 @@ test(
       viewport: { width: 1536, height: 920 },
     });
     await context.addCookies(
-      app.cookie
-        .split("; ")
-        .map((pair) => ({
-          name: pair.slice(0, pair.indexOf("=")),
-          value: pair.slice(pair.indexOf("=") + 1),
-          url: app.origin,
-        })),
+      app.cookie.split("; ").map((pair) => ({
+        name: pair.slice(0, pair.indexOf("=")),
+        value: pair.slice(pair.indexOf("=") + 1),
+        url: app.origin,
+      })),
     );
     const page = await context.newPage();
     const errors = [];
     const preparationScopes = [];
-    page.on("request", request => {
+    page.on("request", (request) => {
       if (request.url().endsWith("/api/gea-proof/workbench/prepare"))
         preparationScopes.push(request.postDataJSON().scope);
     });
@@ -104,6 +114,34 @@ test(
       await frame
         .getByRole("button", { name: "飞书扫码登录", exact: true })
         .waitFor();
+      await frame.getByRole("radio", { name: "测试", exact: true }).waitFor();
+      assert.equal(
+        await frame
+          .getByRole("radio", { name: "测试", exact: true })
+          .isChecked(),
+        true,
+      );
+      assert.equal(
+        await frame.locator('input[type="url"], input[type="text"]').count(),
+        0,
+      );
+      assert.equal(await page.locator('[contenteditable="true"]').count(), 0);
+      const loginBounds = await page
+        .locator("iframe[data-gea-workbench]")
+        .boundingBox();
+      assert.deepEqual(loginBounds, { x: 0, y: 0, width: 1536, height: 920 });
+      await mkdir(".runtime/web-evidence", { recursive: true });
+      await page.screenshot({
+        path: ".runtime/web-evidence/login-desktop.png",
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.screenshot({ path: ".runtime/web-evidence/login-mobile.png" });
+      await page.setViewportSize({ width: 1536, height: 920 });
+      await frame.getByRole("radio", { name: "正式", exact: true }).check();
+      await frame
+        .getByRole("button", { name: "飞书扫码登录", exact: true })
+        .waitFor();
+      await frame.getByRole("radio", { name: "测试", exact: true }).check();
       const continueButton = page.getByRole("button", {
         name: "继续",
         exact: true,
@@ -127,32 +165,75 @@ test(
       assert.ok(bounds.x > 200 && bounds.width < 1100, JSON.stringify(bounds));
       await frame.getByRole("tab", { name: "按基地", exact: true }).click();
       await frame.locator("tbody label.arco-checkbox").first().click();
-      const analysisScope = frame.getByRole("combobox", { name: "分析范围", exact: true });
+      const analysisScope = frame.getByRole("combobox", {
+        name: "分析范围",
+        exact: true,
+      });
       assert.equal(await analysisScope.inputValue(), "summary");
       await frame
         .getByRole("button", { name: "预览发送范围", exact: true })
         .click();
-      await frame.getByRole("button", { name: "确认并验证传递", exact: true }).waitFor();
+      await frame
+        .getByRole("button", { name: "确认并验证传递", exact: true })
+        .waitFor();
       await analysisScope.selectOption("details");
-      await frame.getByRole("button", { name: "确认并验证传递", exact: true }).waitFor({ state: "detached" });
-      assert.equal(await frame.getByRole("button", { name: "确认并验证传递", exact: true }).count(), 0);
+      await frame
+        .getByRole("button", { name: "确认并验证传递", exact: true })
+        .waitFor({ state: "detached" });
+      assert.equal(
+        await frame
+          .getByRole("button", { name: "确认并验证传递", exact: true })
+          .count(),
+        0,
+      );
       oversizedDetails = true;
-      await frame.getByRole("button", { name: "预览发送范围", exact: true }).click();
-      await frame.getByRole("alert").filter({ hasText: "所选内容超出模型输入限制。" }).waitFor();
-      const budgetMessage = await frame.getByRole("alert").filter({ hasText: "所选内容超出模型输入限制。" }).innerText();
+      await frame
+        .getByRole("button", { name: "预览发送范围", exact: true })
+        .click();
+      await frame
+        .getByRole("alert")
+        .filter({ hasText: "所选内容超出模型输入限制。" })
+        .waitFor();
+      const budgetMessage = await frame
+        .getByRole("alert")
+        .filter({ hasText: "所选内容超出模型输入限制。" })
+        .innerText();
       assert.equal(budgetMessage.includes("SNAPSHOT_TOO_LARGE"), false);
-      assert.equal(await frame.getByRole("button", { name: "确认并验证传递", exact: true }).count(), 0);
+      assert.equal(
+        await frame
+          .getByRole("button", { name: "确认并验证传递", exact: true })
+          .count(),
+        0,
+      );
       oversizedDetails = false;
-      await frame.getByRole("button", { name: "预览发送范围", exact: true }).click();
-      await frame.getByRole("button", { name: "确认并验证传递", exact: true }).waitFor();
+      await frame
+        .getByRole("button", { name: "预览发送范围", exact: true })
+        .click();
+      await frame
+        .getByRole("button", { name: "确认并验证传递", exact: true })
+        .waitFor();
       await analysisScope.selectOption("summary");
-      await frame.getByRole("button", { name: "确认并验证传递", exact: true }).waitFor({ state: "detached" });
-      assert.equal(await frame.getByRole("button", { name: "确认并验证传递", exact: true }).count(), 0);
-      await frame.getByRole("button", { name: "预览发送范围", exact: true }).click();
+      await frame
+        .getByRole("button", { name: "确认并验证传递", exact: true })
+        .waitFor({ state: "detached" });
+      assert.equal(
+        await frame
+          .getByRole("button", { name: "确认并验证传递", exact: true })
+          .count(),
+        0,
+      );
+      await frame
+        .getByRole("button", { name: "预览发送范围", exact: true })
+        .click();
       await frame
         .getByRole("button", { name: "确认并验证传递", exact: true })
         .click();
-      assert.deepEqual(preparationScopes, ["summary", "details", "details", "summary"]);
+      assert.deepEqual(preparationScopes, [
+        "summary",
+        "details",
+        "details",
+        "summary",
+      ]);
       await page
         .getByText("本地验证回执（非 AI 分析）：快照已进入 dsh 模型请求。", {
           exact: false,
@@ -167,9 +248,10 @@ test(
         })
         .first()
         .boundingBox();
+      const currentBounds = await page.locator("iframe").boundingBox();
       assert.ok(
-        reply.x >= bounds.x + bounds.width - 2,
-        JSON.stringify({ bounds, reply }),
+        reply.x >= currentBounds.x + currentBounds.width - 2,
+        JSON.stringify({ bounds: currentBounds, reply }),
       );
       await mkdir(".runtime/web-evidence", { recursive: true });
       await page.screenshot({ path: ".runtime/web-evidence/desktop.png" });
@@ -194,6 +276,13 @@ test(
         JSON.stringify(narrowFrame),
       );
       await page.screenshot({ path: ".runtime/web-evidence/narrow.png" });
+      await frame
+        .getByRole("button", { name: "切换环境 / 重新登录", exact: true })
+        .click();
+      await frame.getByRole("radio", { name: "正式", exact: true }).waitFor();
+      await page.locator("iframe.gea-login-frame").waitFor();
+      assert.equal(await page.locator('[contenteditable="true"]').count(), 0);
+      assert.equal((await app.rpc("status")).value.authenticated, false);
       assert.deepEqual(errors, []);
     } catch (error) {
       await mkdir(".runtime/web-evidence", { recursive: true });

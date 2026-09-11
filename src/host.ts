@@ -93,6 +93,7 @@ class GeaModelAdapter extends LlmAdapter {
     ];
   }
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    const identitySignal = this.business.identitySignal();
     const route = await this.business.modelRoute(
       options.signal ?? new AbortController().signal,
       this.business.config.analysisAgentCode,
@@ -101,6 +102,7 @@ class GeaModelAdapter extends LlmAdapter {
       throw new Error("GEA_MODEL_NOT_FOUND");
     const signal = AbortSignal.any([
       options.signal ?? new AbortController().signal,
+      identitySignal,
       AbortSignal.timeout(this.business.config.modelRequestTimeoutMs),
     ]);
     const response = await fetch(route.baseUrl + "/chat/completions", {
@@ -329,6 +331,7 @@ export function apply(ctx: Context, config: Deployment): void {
   }
   const endpoints = [
     "status",
+    "environment/select",
     "login/start",
     "login/poll",
     "periods",
@@ -364,8 +367,11 @@ export function apply(ctx: Context, config: Deployment): void {
               case "status":
                 value = business.status();
                 break;
+              case "environment/select":
+                value = business.selectEnvironment(payload);
+                break;
               case "login/start":
-                value = await business.loginStart(request.signal);
+                value = await business.loginStart(request.signal, payload);
                 break;
               case "login/poll":
                 value = await business.loginPoll(payload, request.signal);

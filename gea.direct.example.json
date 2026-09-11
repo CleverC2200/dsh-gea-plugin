@@ -12,5 +12,10 @@
     "model": "replace-with-model-id",
     "contextWindow": 32768,
     "maxTokens": 2048
+  },
+  "environment": "test",
+  "geaEnvironments": {
+    "production": "https://gea.example.test/gea-boot",
+    "test": "https://gea-test.example.test/gea-boot"
   }
 }

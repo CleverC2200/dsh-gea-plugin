@@ -5,6 +5,21 @@ const copy = {
     "查询计划、查看版本与 SKU，确认范围后交给只读会话。",
     "Inspect plans, versions and SKUs, then confirm the input for a read-only session.",
   ],
+  welcomeLogin: [
+    "欢迎回来，请登录您的账户",
+    "Welcome back. Sign in to your account.",
+  ],
+  production: ["正式", "Production"],
+  test: ["测试", "Test"],
+  scanInstructions: [
+    "使用手机飞书扫描二维码并确认授权",
+    "Scan the code with Lark on your phone and confirm sign-in.",
+  ],
+  loginFooter: ["GEA 业务工作台", "GEA business workspace"],
+  changeEnvironment: [
+    "切换环境 / 重新登录",
+    "Change environment / sign in again",
+  ],
   login: ["飞书扫码登录", "Sign in with Lark QR"],
   signedOut: ["尚未登录 GEA", "Not signed in to GEA"],
   signedIn: ["已登录", "Signed in"],

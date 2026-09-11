@@ -16,6 +16,7 @@ import { salesPlan } from "./workbench-original/bridge.ts";
 import type { Business, Preview } from "./business.ts";
 import type { CopyKey } from "./locales.ts";
 import "./workbench.css";
+import logo from "./gea-logo.png";
 
 type Status = ReturnType<Business["status"]>;
 type Translate = (key: CopyKey) => string;
@@ -128,6 +129,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     window.parent.postMessage(
       {
         type: "gea:identity",
+        authenticated: status?.authenticated === true,
         name: status?.authenticated ? (status.user?.name ?? "") : "",
       },
       window.location.origin,
@@ -219,8 +221,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
         }
         timer = setTimeout(poll, 1000);
       } catch (error) {
-        if (!controller.signal.aborted)
-          setError(requestErrorMessage(error, t));
+        if (!controller.signal.aborted) setError(requestErrorMessage(error, t));
       }
     };
     timer = setTimeout(poll, 500);
@@ -241,7 +242,9 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       if (!controller.signal.aborted) {
         setError(requestErrorMessage(error, t));
         if (error instanceof BackendHttpError && error.status === 401)
-          setStatus(undefined);
+          setStatus((previous) =>
+            previous ? { ...previous, authenticated: false } : previous,
+          );
       }
     } finally {
       if (request.current === controller) setBusy(false);
@@ -250,34 +253,88 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   if (!status?.authenticated)
     return (
       <main className="gea-login-page">
-        <h1>{t("approvalTitle")}</h1>
-        <h2>{t("signedOut")}</h2>
-        <p>{t("loginHelp")}</p>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() =>
-            void run(async (signal) => {
-              setExpired(false);
-              setQr(undefined);
-              const value = await rpc<{ image: string; loginId: string }>(
-                "login/start",
-                {},
-                signal,
-              );
-              if (!signal.aborted) setQr(value);
-            })
-          }
-        >
-          {t("login")}
-        </button>
-        {qr && (
-          <div className="gea-login-qr">
-            <img src={qr.image} alt={t("login")} width="256" height="256" />
-            {expired && <p role="status">{t("expired")}</p>}
-          </div>
-        )}
-        {error && <p role="alert">{error}</p>}
+        <section className="gea-login-card" aria-label="GEA">
+          <img
+            className="gea-login-logo"
+            src={logo}
+            alt="GEA"
+            width="56"
+            height="56"
+          />
+          <h1>GEA</h1>
+          <p className="gea-login-welcome">{t("welcomeLogin")}</p>
+          <h2>{t("login")}</h2>
+          <p>{t("scanInstructions")}</p>
+          <fieldset disabled={busy || !status} className="gea-environments">
+            <legend>{t("environment")}</legend>
+            {(status?.environments ?? ["production", "test"]).map(
+              (environment) => (
+                <label key={environment}>
+                  <input
+                    type="radio"
+                    name="environment"
+                    value={environment}
+                    checked={status?.environment === environment}
+                    onChange={() => {
+                      setStatus((previous) =>
+                        previous
+                          ? {
+                              ...previous,
+                              environment: environment as Status["environment"],
+                              authenticated: false,
+                            }
+                          : previous,
+                      );
+                      setQr(undefined);
+                      setExpired(false);
+                      setPreview(undefined);
+                      setSelection([]);
+                      setSessionId(null);
+                      void run(async (signal) => {
+                        const value = await rpc<Status>(
+                          "environment/select",
+                          { environment },
+                          signal,
+                        );
+                        if (!signal.aborted) setStatus(value);
+                      });
+                    }}
+                  />
+                  <span>
+                    {t(environment === "production" ? "production" : "test")}
+                  </span>
+                </label>
+              ),
+            )}
+          </fieldset>
+          <button
+            type="button"
+            className="gea-login-submit"
+            disabled={busy || !status}
+            onClick={() =>
+              void run(async (signal) => {
+                setExpired(false);
+                setQr(undefined);
+                const value = await rpc<{ image: string; loginId: string }>(
+                  "login/start",
+                  { environment: status?.environment },
+                  signal,
+                );
+                if (!signal.aborted) setQr(value);
+              })
+            }
+          >
+            {busy ? t("busy") : t("login")}
+          </button>
+          {qr && (
+            <div className="gea-login-qr">
+              <img src={qr.image} alt={t("login")} width="220" height="220" />
+              <p role="status">{t(expired ? "expired" : "pending")}</p>
+            </div>
+          )}
+          {error && <p role="alert">{error}</p>}
+          <footer>{t("loginFooter")}</footer>
+        </section>
       </main>
     );
   return (
@@ -285,7 +342,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
         <div className="gea-original-workbench">
           <RegionalApprovalWorkbench
-            stateScope={`gea-dsh:${status.user?.name ?? "user"}`}
+            stateScope={`gea-dsh:${status.environment}:${status.user?.name ?? "user"}`}
             t={locale.t.bind(locale)}
             onContextChange={onContextChange}
             queryClient={salesPlan}
@@ -321,13 +378,20 @@ export function WorkbenchPage({ t }: { t: Translate }) {
         <button
           type="button"
           onClick={() => {
-            request.current?.abort();
-            setStatus(undefined);
             setQr(undefined);
             setPreview(undefined);
+            setSessionId(null);
+            void run(async (signal) => {
+              const value = await rpc<Status>(
+                "environment/select",
+                { environment: status.environment },
+                signal,
+              );
+              if (!signal.aborted) setStatus(value);
+            });
           }}
         >
-          {t("login")}
+          {t("changeEnvironment")}
         </button>
         <button
           type="button"

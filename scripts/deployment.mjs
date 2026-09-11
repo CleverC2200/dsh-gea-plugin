@@ -1,3 +1,4 @@
+import { resolveEnvironments } from "../src/environments.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -113,7 +114,9 @@ export async function readDeployment(path) {
   }
   if (!config || Array.isArray(config) || typeof config !== "object")
     throw new Error("GEA_CONFIG_INVALID");
-  const url = httpsEndpoint(config.geaBaseUrl, "INVALID_GEA_BASE_URL");
+  const selected = resolveEnvironments(config);
+  config.environment = selected.environment;
+  const url = httpsEndpoint(selected.baseUrl, "INVALID_GEA_BASE_URL");
   if (config.modelRequestTimeoutMs === undefined)
     config.modelRequestTimeoutMs = 120000;
   for (const [name, low, high] of [
@@ -193,6 +196,8 @@ export function deploymentPatch(config, root, runtime) {
           name: resolve(root, "lib/host.js"),
           config: {
             geaBaseUrl: config.geaBaseUrl,
+            environment: config.environment,
+            geaEnvironments: config.geaEnvironments,
             pageSize: config.pageSize,
             periodPageSize: config.periodPageSize,
             requestTimeoutMs: config.requestTimeoutMs,

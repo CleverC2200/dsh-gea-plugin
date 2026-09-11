@@ -6,6 +6,7 @@ import type {
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-ui-session/client";
+import type { ISessions } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { Context } from "@deepseek-ai/cordis";
 import type { SessionId } from "@deepseek-ai/dsh-api-remotes/client";
 import type { LocaleSnapshot } from "@deepseek-ai/dsh-client-locale/client";
@@ -21,7 +22,7 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
   }
 }
 
-export const inject = ["slots", "layout", "locale", "uiWorkspace"];
+export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions"];
 const PANEL = "gea-proof" as MainPanelId;
 
 /** Register a business-only center document beside the frame-owned native conversation. */
@@ -44,6 +45,15 @@ export function apply(ctx: Context): void {
     useSessions,
     useGeaLocale,
   }: PropsRuntime<"main"> & InjectFace<typeof injected>) {
+    const [authenticated, setAuthenticated] = useState(false);
+    useEffect(() => {
+      if (!authenticated) {
+        // This package compiles Host and Client declarations together; this effect runs only in the Client.
+        (ctx.get("sessions") as unknown as ISessions).clear();
+        return;
+      }
+      return ctx.layout.registerConversationPanel(PANEL);
+    }, [authenticated]);
     const language = useGeaLocale((snapshot) => snapshot.active);
     const currentSession = useSessions((snapshot) => snapshot.current);
     const frame = useRef<HTMLIFrameElement>(null);
@@ -63,6 +73,8 @@ export function apply(ctx: Context): void {
         const message: unknown = event.data;
         if (!message || typeof message !== "object" || !("type" in message))
           return;
+        if (message.type === "gea:identity" && "authenticated" in message)
+          setAuthenticated(message.authenticated === true);
         if (
           message.type === "gea:open-session" &&
           "sessionId" in message &&
@@ -82,7 +94,7 @@ export function apply(ctx: Context): void {
         <style>{shellCss}</style>
         <iframe
           ref={frame}
-          className="gea-workbench-frame"
+          className={`gea-workbench-frame${authenticated ? "" : " gea-login-frame"}`}
           data-gea-workbench
           title={t("approvalTitle")}
           onLoad={() =>
@@ -142,6 +154,7 @@ export function apply(ctx: Context): void {
         window.removeEventListener("message", updateName);
       };
     }, []);
+    if (!name) return null;
     return (
       <nav
         className="gea-shell-navigation"
@@ -200,7 +213,6 @@ export function apply(ctx: Context): void {
       { name: "main", key: PANEL, locale: "geaProof", inject: () => injected },
       Workbench,
     );
-    yield ctx.layout.registerConversationPanel(PANEL);
     ctx.layout.selectPanel(PANEL);
   });
   ctx.slots.inject("sidebar", () =>

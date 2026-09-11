@@ -191,5 +191,30 @@ test(
         );
       },
     );
+    await t.test(
+      "changing environment closes an active model stream and clears authentication",
+      async () => {
+        mode = "hold";
+        held = undefined;
+        heldClosed = false;
+        const id = await submit();
+        await until(async () => Boolean(held), Boolean);
+        const changed = await app.rpc("environment/select", {
+          environment: "test",
+        });
+        assert.equal(changed.value.authenticated, false);
+        await until(async () => heldClosed, Boolean);
+        const rows = await ended(id);
+        assert.notEqual(
+          rows.find((row) => row.type === "turn/end").data.reason.kind,
+          "completed",
+        );
+        assert.ok(
+          rows
+            .filter((row) => row.type === "assistant/message")
+            .every((row) => row.data.interrupted === true),
+        );
+      },
+    );
   },
 );

@@ -2,6 +2,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { brandString, type Branded } from "@deepseek-ai/dsh-brand";
 import QRCode from "qrcode";
+import { resolveEnvironments } from "./environments.js";
 import { Decimal } from "decimal.js";
 import { geaResponseError } from "./gea-error.js";
 
@@ -10,6 +11,8 @@ export type PreviewId = Branded<"gea-preview">;
 export type Row = Record<string, string | number | boolean>;
 export interface Deployment {
   geaBaseUrl: string;
+  environment?: "production" | "test";
+  geaEnvironments?: { production: string; test: string };
   pageSize: number;
   periodPageSize: number;
   requestTimeoutMs: number;
@@ -254,19 +257,35 @@ export class Business {
   private modelRoutes = new Map<string, GeaModelRoute>();
   private loginExpired = false;
   readonly runId = randomUUID();
-  readonly base: string;
+  private selectedBase: string;
+  private environment: "production" | "test";
+  private readonly environments: Record<string, string>;
+  get base(): string {
+    return this.selectedBase;
+  }
+
+  /** Abort inference and queries when the signed-in environment changes. */
+  identitySignal(): AbortSignal {
+    return this.epoch.signal;
+  }
+
+  /** Select a configured environment and discard credentials, QR and previews immediately. */
+  selectEnvironment(payload: Record<string, unknown>) {
+    keys(payload, ["environment"]);
+    const environment = text(payload.environment);
+    if (!Object.hasOwn(this.environments, environment))
+      throw new Error("INVALID_GEA_ENVIRONMENT");
+    this.clearLogin();
+    this.environment = environment as "production" | "test";
+    this.selectedBase = this.environments[environment];
+    return this.status();
+  }
 
   constructor(readonly config: Deployment) {
-    const base = new URL(config.geaBaseUrl);
-    if (
-      base.protocol !== "https:" ||
-      base.username ||
-      base.password ||
-      base.search ||
-      base.hash
-    )
-      throw new Error("INVALID_GEA_BASE_URL");
-    this.base = base.href.replace(/\/$/, "");
+    const resolved = resolveEnvironments(config);
+    this.selectedBase = resolved.baseUrl;
+    this.environment = resolved.environment as "production" | "test";
+    this.environments = resolved.environments;
   }
 
   /** Release outstanding requests and erase process-local authentication. */
@@ -305,6 +324,8 @@ export class Business {
   /** Public status never contains GEA credentials. */
   status() {
     return {
+      environment: this.environment,
+      environments: Object.keys(this.environments),
       authenticated: Boolean(this.auth),
       loginState: this.auth
         ? "authenticated"
@@ -498,7 +519,10 @@ export class Business {
   }
 
   /** Restart QR login and invalidate every selection from the previous identity. */
-  async loginStart(signal: AbortSignal) {
+  async loginStart(signal: AbortSignal, payload: Record<string, unknown> = {}) {
+    keys(payload, ["environment"]);
+    if (payload.environment !== undefined)
+      this.selectEnvironment({ environment: payload.environment });
     this.clearLogin();
     const epoch = this.epoch.signal;
     const result = object(

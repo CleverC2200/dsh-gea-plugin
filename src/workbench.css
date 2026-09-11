@@ -77,3 +77,122 @@
 ::selection {
   background: #ffe7e7;
 }
+.gea-login-page {
+  box-sizing: border-box;
+  min-height: 100dvh;
+  max-width: none;
+  margin: 0;
+  padding: 32px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #97a0c5 0%, #596590 100%);
+  overflow: auto;
+}
+.gea-login-card {
+  box-sizing: border-box;
+  width: 416px;
+  max-width: 100%;
+  padding: 48px 28px 30px;
+  border-radius: 20px;
+  background: #fdfdff;
+  box-shadow: 0 16px 64px #2935522e;
+  text-align: center;
+}
+.gea-login-logo {
+  display: block;
+  margin: 0 auto 24px;
+  object-fit: contain;
+}
+.gea-login-page h1 {
+  margin: 0 0 12px;
+  font-size: 28px;
+  color: #7264cf;
+  font-weight: 600;
+}
+.gea-login-page h2 {
+  margin: 42px 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #242936;
+}
+.gea-login-page p {
+  margin: 8px 0 20px;
+  color: #596173;
+  font-size: 14px;
+}
+.gea-environments {
+  margin: 24px 0 16px;
+  padding: 0;
+  border: 0;
+  display: flex;
+  gap: 12px;
+  text-align: left;
+}
+.gea-environments legend {
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #242936;
+}
+.gea-environments label {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid #ccd0dd;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #384152;
+}
+.gea-environments label:has(input:checked) {
+  border-color: #7264cf;
+  background: #f0edfc;
+  color: #5446a5;
+}
+.gea-environments input {
+  accent-color: #7264cf;
+  margin: 0;
+}
+.gea-login-page .gea-login-submit {
+  width: 100%;
+  min-height: 42px;
+  background: #565f72;
+  color: white;
+  border: 0;
+  border-radius: 5px;
+  font-size: 14px;
+}
+.gea-login-page .gea-login-submit:hover:not(:disabled) {
+  background: #414b5e;
+}
+.gea-login-page .gea-login-submit:disabled {
+  background: #e5e7eb;
+  color: #666e7b;
+}
+.gea-login-card footer {
+  margin-top: 24px;
+  border-top: 1px solid #ececf1;
+  padding-top: 20px;
+  color: #687084;
+  font-size: 12px;
+}
+.gea-login-page [role="alert"] {
+  color: #b42318;
+  overflow-wrap: anywhere;
+}
+.gea-login-qr {
+  margin-top: 20px;
+}
+@media (max-height: 680px) {
+  .gea-login-page {
+    align-items: flex-start;
+  }
+  .gea-login-card {
+    padding-top: 28px;
+  }
+  .gea-login-page h2 {
+    margin-top: 24px;
+  }
+}
