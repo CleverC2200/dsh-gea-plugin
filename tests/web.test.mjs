@@ -277,6 +277,16 @@ test(
         })
         .first()
         .waitFor();
+      await page.reload();
+      await frame
+        .getByRole("heading", { name: "销售计划审批", exact: true })
+        .waitFor();
+      await page
+        .getByText("本地验证回执（非 AI 分析）：快照已进入 dsh 模型请求。", {
+          exact: false,
+        })
+        .first()
+        .waitFor();
       await page.setViewportSize({ width: 700, height: 1000 });
       await page.locator('[data-conversation-stacked="true"]').waitFor();
       assert.equal(
