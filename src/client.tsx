@@ -102,6 +102,127 @@ function Coverage({ value, t }: { value: Collection; t: Translate }) {
   );
 }
 
+type OrganizationView =
+  | "all"
+  | "base"
+  | "region"
+  | "province"
+  | "area"
+  | "dealer";
+
+const organizationLabels: Record<OrganizationView, CopyKey> = {
+  all: "allOrganizations",
+  base: "byBase",
+  region: "byRegion",
+  province: "byProvince",
+  area: "byArea",
+  dealer: "byDealer",
+};
+
+function ApprovalWorkspace({
+  rows,
+  view,
+  onViewChange,
+  t,
+}: {
+  rows: Row[];
+  view: OrganizationView;
+  onViewChange: (view: OrganizationView) => void;
+  t: Translate;
+}) {
+  const first = rows[0];
+  const keyByView: Record<Exclude<OrganizationView, "all">, string> = {
+    base: "baseName",
+    region: "regionName",
+    province: "provinceName",
+    area: "areaName",
+    dealer: "dealerName",
+  };
+  const dimension = view === "all" ? undefined : keyByView[view];
+  const dimensionValue = dimension ? first?.[dimension] : undefined;
+  const stages = [
+    "客户确认 AI",
+    "区域审批",
+    "省区审批",
+    "大区审批",
+    "品类计划",
+  ];
+  return (
+    <section
+      className="gea-section gea-approval"
+      aria-label={t("approvalWorkspace")}
+    >
+      <div className="gea-toolbar">
+        <div>
+          <h2>{t("approvalWorkspace")}</h2>
+          <p className="gea-meta">{t("readOnlyPreview")}</p>
+        </div>
+        <span className="gea-status-chip">{t("stageDataPending")}</span>
+      </div>
+      <div className="gea-summary-grid">
+        <div>
+          <span className="gea-summary-label">{t("approvalQueue")}</span>
+          <strong>
+            {rows.length} {t("planCount")}
+          </strong>
+        </div>
+        <div>
+          <span className="gea-summary-label">{t("targetSummary")}</span>
+          <strong>
+            {first?.targetQty ?? t("unknown")} /{" "}
+            {first?.targetAmount ?? t("unknown")}
+          </strong>
+        </div>
+        <div>
+          <span className="gea-summary-label">{t("currentSummary")}</span>
+          <strong>
+            {first?.currentQty ?? t("unknown")} /{" "}
+            {first?.currentAmount ?? t("unknown")}
+          </strong>
+        </div>
+        <div>
+          <span className="gea-summary-label">{t("progress")}</span>
+          <strong>
+            {first?.status == null ? t("unknown") : `status=${first.status}`}
+          </strong>
+        </div>
+      </div>
+      <div className="gea-approval-stages" aria-label={t("approvalStages")}>
+        {stages.map((stage, index) => (
+          <div
+            className={`gea-stage ${index === 0 ? "is-current" : ""}`}
+            key={stage}
+          >
+            <span className="gea-stage-dot">{index + 1}</span>
+            <span>{stage}</span>
+          </div>
+        ))}
+      </div>
+      <div
+        className="gea-org-toolbar"
+        role="group"
+        aria-label={t("organizationView")}
+      >
+        <strong>{t("organizationView")}</strong>
+        {(Object.keys(organizationLabels) as OrganizationView[]).map((item) => (
+          <button
+            key={item}
+            type="button"
+            className={item === view ? "is-active" : ""}
+            aria-pressed={item === view}
+            onClick={() => onViewChange(item)}
+          >
+            {t(organizationLabels[item])}
+          </button>
+        ))}
+        {dimensionValue != null && (
+          <span className="gea-meta">{String(dimensionValue)}</span>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export const inject = [
   "slots",
   "layout",
@@ -138,12 +259,29 @@ export function apply(ctx: Context): void {
     const [includeSkus, setIncludeSkus] = useState(false);
     const [preview, setPreview] = useState<Preview>();
     const [sessionId, setSessionId] = useState<SessionId>();
+    const [organizationView, setOrganizationView] =
+      useState<OrganizationView>("all");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<RequestError>();
     const active = useRef<AbortController | undefined>(undefined);
     const login = useRef<AbortController | undefined>(undefined);
     const submitting = useRef(false);
     const row = data?.records.find((row) => row.planId === selected);
+    const organizationField: Record<
+      Exclude<OrganizationView, "all">,
+      string
+    > = {
+      base: "baseName",
+      region: "regionName",
+      province: "provinceName",
+      area: "areaName",
+      dealer: "dealerName",
+    };
+    const visibleRecords =
+      data?.records.filter((record) => {
+        if (organizationView === "all") return true;
+        return record[organizationField[organizationView]] != null;
+      }) ?? [];
     const selection =
       data && row ? { queryId: data.queryId, planId: row.planId } : undefined;
 
@@ -164,6 +302,7 @@ export function apply(ctx: Context): void {
     const clearQuery = () => {
       setData(undefined);
       setSelected(undefined);
+      setOrganizationView("all");
       clearExtras();
     };
     const cancel = () => {
@@ -470,6 +609,12 @@ export function apply(ctx: Context): void {
           {!data && !busy && <p className="gea-empty">{t("noQuery")}</p>}
           {data && (
             <section className="gea-section" aria-label={t("live")}>
+              <ApprovalWorkspace
+                rows={visibleRecords}
+                view={organizationView}
+                onViewChange={(next) => setOrganizationView(next)}
+                t={t}
+              />
               <div className="gea-toolbar">
                 <h2>{t("live")}</h2>
                 <span className="gea-meta">
@@ -506,7 +651,7 @@ export function apply(ctx: Context): void {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.records.map((record) => (
+                    {visibleRecords.map((record) => (
                       <tr
                         key={String(record.planId)}
                         aria-selected={record.planId === selected}
@@ -557,7 +702,7 @@ export function apply(ctx: Context): void {
                   </tbody>
                 </table>
               </div>
-              {!data.records.length && (
+              {!visibleRecords.length && (
                 <p className="gea-empty">{t("empty")}</p>
               )}
               <div className="gea-toolbar gea-actions">

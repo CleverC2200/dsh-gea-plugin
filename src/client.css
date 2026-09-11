@@ -212,6 +212,95 @@
 .gea-preview {
   border-color: #96b1d2;
 }
+.gea-approval {
+  margin-top: 0;
+  border-color: #c6d6ea;
+  background: #fbfdff;
+}
+.gea-approval h2 {
+  margin-bottom: 2px;
+}
+.gea-status-chip {
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: #24598d;
+  background: #e7f1fd;
+  font-size: 12px;
+}
+.gea-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 0;
+  margin: 18px 0;
+  border-block: 1px solid #dfe6f0;
+}
+.gea-summary-grid > div {
+  padding: 14px 16px;
+  border-inline-end: 1px solid #dfe6f0;
+}
+.gea-summary-grid > div:last-child {
+  border-inline-end: 0;
+}
+.gea-summary-label {
+  display: block;
+  color: #53677f;
+  font-size: 12px;
+}
+.gea-summary-grid strong {
+  display: block;
+  margin: 5px 0 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.gea-approval-stages {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  gap: 8px;
+  margin: 18px 0;
+}
+.gea-stage {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 10px;
+  color: #53677f;
+  border-radius: 5px;
+  background: #f0f4f9;
+  font-size: 12px;
+}
+.gea-stage.is-current {
+  color: #1b4f8c;
+  background: #e5f1ff;
+}
+.gea-stage-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  border: 1px solid #a9bad0;
+  border-radius: 50%;
+  font-size: 11px;
+}
+.gea-org-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gea-org-toolbar strong {
+  margin-inline-end: 4px;
+}
+.gea-org-toolbar button {
+  min-height: 34px;
+  padding: 5px 10px;
+  border-color: transparent;
+  background: transparent;
+}
+.gea-org-toolbar button.is-active {
+  color: #1b4f8c;
+  border-color: #9ebadd;
+  background: #e8f1fc;
+}
 .gea-page details {
   margin-block: 16px;
 }
@@ -250,6 +339,15 @@
   }
   .gea-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .gea-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .gea-summary-grid > div:nth-child(2) {
+    border-inline-end: 0;
+  }
+  .gea-approval-stages {
+    grid-template-columns: 1fr;
   }
 }
 @media (prefers-color-scheme: dark) {

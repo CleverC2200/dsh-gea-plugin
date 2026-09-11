@@ -139,6 +139,32 @@ const copy = {
     "In the standard session, cancel, inspect failures, explicitly retry, or ask follow-up questions about this snapshot.",
   ],
   openSession: ["打开已提交会话", "Open submitted session"],
+  approvalWorkspace: ["销售计划审批工作区", "Sales plan approval workspace"],
+  readOnlyPreview: [
+    "只读预览 · 不执行审批写回",
+    "Read-only preview · no approval writeback",
+  ],
+  approvalQueue: ["审批核对队列", "Approval review queue"],
+  planCount: ["计划数", "Plans"],
+  targetSummary: ["目标数量 / 金额", "Target quantity / amount"],
+  currentSummary: ["当前数量 / 金额", "Current quantity / amount"],
+  progress: ["计划进度", "Plan progress"],
+  organizationView: ["组织视图", "Organization view"],
+  allOrganizations: ["全部", "All"],
+  byBase: ["按基地", "By base"],
+  byRegion: ["按大区", "By region"],
+  byProvince: ["按省区", "By province"],
+  byArea: ["按区域", "By area"],
+  byDealer: ["按客户", "By customer"],
+  noOrganizationData: [
+    "当前结果未提供该组织维度",
+    "The result does not provide this organization dimension",
+  ],
+  approvalStages: ["审批节点", "Approval stages"],
+  stageDataPending: [
+    "节点状态待接口提供",
+    "Stage status pending upstream data",
+  ],
 } as const;
 export type CopyKey = keyof typeof copy;
 export const zh = Object.fromEntries(

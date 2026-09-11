@@ -19,13 +19,11 @@ test(
       viewport: { width: 1440, height: 1000 },
     });
     await context.addCookies(
-      app.cookie
-        .split("; ")
-        .map((pair) => ({
-          name: pair.slice(0, pair.indexOf("=")),
-          value: pair.slice(pair.indexOf("=") + 1),
-          url: app.origin,
-        })),
+      app.cookie.split("; ").map((pair) => ({
+        name: pair.slice(0, pair.indexOf("=")),
+        value: pair.slice(pair.indexOf("=") + 1),
+        url: app.origin,
+      })),
     );
     const page = await context.newPage();
     const errors = [];
@@ -42,6 +40,16 @@ test(
     await page.getByRole("button", { name: "查询计划", exact: true }).click();
     await page
       .getByRole("radio", { name: "选择 9007199254740993", exact: true })
+      .waitFor();
+    await page
+      .getByRole("heading", { name: "销售计划审批工作区", exact: true })
+      .waitFor();
+    await page
+      .getByRole("group", { name: "组织视图", exact: true })
+      .getByRole("button", { name: "按基地", exact: true })
+      .waitFor();
+    await page
+      .getByText("只读预览 · 不执行审批写回", { exact: true })
       .waitFor();
     await page
       .getByRole("button", { name: "预览发送范围", exact: true })
