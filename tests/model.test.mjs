@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { profile, readSession, until } from "./profile.mjs";
 
 test(
-  "configured model receives the exact logged snapshot without tools or duplicate title calls",
+  "configured model receives the exact logged snapshot with only the fixed GEA read tool and no duplicate title calls",
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t, {
@@ -71,7 +71,10 @@ test(
     );
     const body = JSON.parse(modelRequests[0].body);
     assert.equal(body.model, "fixture-model");
-    assert.ok(!body.tools || body.tools.length === 0);
+    assert.deepEqual(
+      body.tools.map((tool) => tool.function.name),
+      ["gea_sales_plan_read"],
+    );
     const user = body.messages.find((message) => message.role === "user");
     assert.ok(JSON.stringify(user).includes(prepared.snapshotHash));
     assert.ok(JSON.stringify(user).includes("1.2300"));

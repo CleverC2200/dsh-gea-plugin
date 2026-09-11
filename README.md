@@ -2,7 +2,9 @@
 
 独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；原生对话栏依赖个人 DSH fork 提供的布局接口，不执行业务审批、保存或写回。
 
-## 安装与启动
+本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。`npm run package` 输出可核对 SHA-256 的 tarball，尚不是桌面安装器。
+
+## 源码安装与启动
 
 使用 Node 24，在本目录执行：
 
@@ -22,7 +24,7 @@ npm start -- --config gea.config.json --runtime .runtime/fork-development --port
 
 部署配置的 `geaEnvironments.production` 和 `geaEnvironments.test` 分别保存正式、测试 HTTPS 地址，`environment` 指定初始选项（默认 `production`）。旧单地址配置只提供对应的一个环境。工作台「切换环境 / 重新登录」返回登录页；切换会作废旧凭证、二维码、预览和进行中的模型请求，并清空当前会话选择。登录页 GEA 图标来自 AionUi 的 `packages/desktop/src/renderer/assets/logos/brand/app.png`，沿用[原工作台来源与许可证](src/workbench-original/SOURCE.md)。
 
-`gea.config.example.json` 使用本地回执模式，只验证数据传递；真实模型使用 `gea.direct.example.json` 中 `source: "gea"`。插件通过当前 GEA 登录获取个人模型凭证、发现模型并直接调用，不依赖 AionUi 进程。`source: "aionui"` 是保留的旧配置兼容路径，当前三栏验收不使用它。
+`gea.config.example.json` 使用本地回执模式，只验证数据传递；真实模型使用 `gea.direct.example.json` 中 `source: "gea"`。插件通过当前 GEA 登录获取个人模型凭证、发现模型并直接调用，不依赖 AionUi 进程。`source: "aionui"` 已移除，旧配置会在启动前报 `AIONUI_RUNTIME_REMOVED`；改用 `source: "gea"`、`agentCode` 和当前 GEA 登录，无需读取 AionUi 的 provider、代理地址或凭证。
 
 ### 页面组成
 
@@ -34,7 +36,7 @@ npm start -- --config gea.config.json --runtime .runtime/fork-development --port
 | 原审批组件    | `src/workbench-original/`        | 从 AionUi 原源码复制的工作台、CSS、组织维度、筛选、版本、详情和导出             |
 | GEA Host      | `src/business.ts`、`src/host.ts` | 持有登录凭证、固定只读查询、精确数据和持久化 Session 输入                       |
 
-原件来源、许可证及改动范围见 [SOURCE.md](src/workbench-original/SOURCE.md)。旧的三栏仿写组件及占位对话栏已经删除。完整迁移尚未验收：审批保存/通过/退回、消息待办和独立 SKU 推理适配尚未接入；原件中的相应写操作保持禁用。当前 AionUi 源码没有单独的需求提报页面，不能把审批页或未挂载的提报模型当作已迁移页面。
+原件来源、许可证及改动范围见 [SOURCE.md](src/workbench-original/SOURCE.md)。旧的三栏仿写组件及占位对话栏已经删除。完整迁移尚未验收：审批保存/通过/退回、消息处理和独立 SKU 推理适配尚未接入；原件中的相应写操作保持禁用。当前 AionUi 源码没有单独的需求提报页面，不能把审批页或未挂载的提报模型当作已迁移页面。
 
 GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`requestTimeoutMs` 用于 GEA 查询和模型发现；`modelRequestTimeoutMs` 单独限制模型流，总时限默认 120 秒，可配置为 1–600 秒。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
 
@@ -46,7 +48,7 @@ Host 为预览生成 ID，并重新读取用户选择的当前计划详情；浏
 
 分析范围默认为「计划汇总（不含 SKU）」，只发送当前版本的头信息和明确标注来源的数量/金额汇总；缺失字段单独列出。选择「完整明细（含 SKU）」会保留完整详情，超出模型输入预算时拒绝发送并提示调整范围。两种范围都展示实际完整输入；切换范围会废弃旧预览，不自动降级或截断。
 
-分析 preset 不注册 Shell、网络或业务写工具。模型可见输入通过标准 `user/message` 持久化；成功、失败及取消使用已有 Session 事件。取消后若已有部分文本，dsh 可以保留 `interrupted: true` 的助手消息，同时以 `turn/end.reason.kind=aborted` 结束，不能将该消息计为完整回答。
+分析 preset 注册 `gea_sales_plan_read` 固定只读业务工具，按用户任务补充查询周期、列表、详情、版本、日志、SKU 与对比。查询结果保留精确数字、时间、环境和分页覆盖范围；工具调用与结果进入标准 Session，不影响浏览器已经核对的预览。它不注册 Shell、通用网络或业务写工具。模型可见输入通过标准 `user/message` 持久化；成功、失败及取消使用已有 Session 事件。取消后若已有部分文本，dsh 可以保留 `interrupted: true` 的助手消息，同时以 `turn/end.reason.kind=aborted` 结束，不能将该消息计为完整回答。
 
 GEA token 仅保存在当前 Host 内存中；重启后需要重新登录。GEA 模式下模型凭证通过当前登录获取，不进入业务快照或 profile patch。本地 `.runtime/` 包含会话、启动认证链接及验证证据，不应发布。
 
@@ -70,3 +72,11 @@ npm test
 登录后的真实模型发现、正式最小推理验收与审批范围限制见[模型与审批核对](docs/model-and-approval-audit-2026-09-11.md)。
 
 模型名称优先使用模型列表的 `name`；旧版 GEA 列表只有 ID 时，仅对已授权模型调用模型详情查询，提取 `name` 或 `modelName`。DSH 模型列表、当前选择和业务栏使用名称，推理仍使用 ID。无权获取名称或接口未提供时显示“GEA 模型（名称未提供）”，不把编号冒充名称。
+
+原生只读工具、工具流协议、取消收尾和当前真实验收范围见[工具接入记录](docs/agent-tools-2026-09-11.md)。
+
+AionUi 代理适配器及示例配置已删除；旧配置启动拒绝的定向回归确保不会探测本机代理或读取其凭证。此项源码独立性与“干净机器真实登录”验收分别记录。
+
+消息待办支持独立的只读列表、未读数、分页与详情，读取 GEA `/api/v1/notifications`，保留来源引用与原始通知状态。打开详情不会标记已读或执行审批；来源引用不自动解释成 DSH Session。身份切换取消在途查询，响应失败清除旧页面结果。已完成模拟 GEA 回归及正式环境两页共 18 条消息的只读浏览器验收；处理历史仍待实现；来源 DSH Session 跳转按用户要求不在本轮迁移范围内。
+
+消息列表可按未读、已读、已忽略筛选，切换条件自动返回第一页；已知通知状态使用当前界面语言显示。

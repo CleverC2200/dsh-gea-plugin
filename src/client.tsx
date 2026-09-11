@@ -15,6 +15,7 @@ import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import { zh, en, type CopyKey } from "./locales.ts";
+import { Inbox } from "./inbox.tsx";
 import shellCss from "./shell.css";
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
@@ -24,6 +25,7 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
 }
 
 export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions"];
+const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 
 /** Register a business-only center document beside the frame-owned native conversation. */
@@ -110,7 +112,8 @@ export function apply(ctx: Context): void {
       </>
     );
   }
-  function Navigation() {
+  function Navigation({ usePanelInfo }: PropsRuntime<"sidebar">) {
+    const activePanel = usePanelInfo((info) => info.activePanelId);
     const [name, setName] = useState("");
     useEffect(() => {
       const controller = new AbortController();
@@ -176,9 +179,9 @@ export function apply(ctx: Context): void {
           <div className="gea-shell-caption">{t("businessFunctions")}</div>
           <button
             type="button"
-            disabled
+            onClick={() => ctx.layout.selectPanel(INBOX)}
+            className={activePanel === INBOX ? "is-active" : undefined}
             aria-label={t("messageInbox")}
-            title={t("inboxNotConnected")}
           >
             <NavIcon kind="inbox" />
             <span className="gea-shell-label">{t("messageInbox")}</span>
@@ -189,7 +192,7 @@ export function apply(ctx: Context): void {
           </div>
           <button
             type="button"
-            className="is-active"
+            className={activePanel === PANEL ? "is-active" : undefined}
             aria-label={t("demandForecastAgent")}
             title={t("demandForecastAgent")}
             onClick={() => ctx.layout.selectPanel(PANEL)}
@@ -218,10 +221,21 @@ export function apply(ctx: Context): void {
       { name: "main", key: PANEL, locale: "geaProof", inject: () => injected },
       Workbench,
     );
+    yield ctx.slots.register(
+      { name: "main", key: INBOX, locale: "geaProof" },
+      () => (
+        <>
+          <style>{shellCss}</style>
+          <Inbox t={t} />
+        </>
+      ),
+    );
     ctx.layout.selectPanel(PANEL);
   });
   function NavigationMode({ usePanelInfo }: PropsRuntime<"shell.overlay">) {
-    const business = usePanelInfo((info) => info.activePanelId === PANEL);
+    const business = usePanelInfo(
+      (info) => info.activePanelId === PANEL || info.activePanelId === INBOX,
+    );
     useEffect(() => {
       if (!business) return;
       return ctx.slots.register(

@@ -172,3 +172,48 @@
   flex: 1;
   height: auto;
 }
+
+.gea-inbox {
+  padding: 24px;
+  overflow: auto;
+  height: 100%;
+  color: var(--text-primary, #222);
+}
+.gea-inbox table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+}
+.gea-inbox th,
+.gea-inbox td {
+  text-align: left;
+  padding: 12px;
+  border-bottom: 1px solid #ddd;
+}
+.gea-inbox button {
+  padding: 6px 12px;
+  margin-right: 8px;
+  cursor: pointer;
+}
+.gea-inbox button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.gea-inbox dd {
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+
+.gea-inbox-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+.gea-inbox-filter select {
+  padding: 6px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: inherit;
+  color: inherit;
+}

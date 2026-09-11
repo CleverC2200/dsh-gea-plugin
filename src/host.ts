@@ -16,6 +16,8 @@ import {
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./business.ts";
 import { GeaResponseError } from "./gea-error.js";
+import { registerGeaTools } from "./agent-tools.ts";
+import { transportSignal } from "./transport-signal.ts";
 import { geaTextStream } from "./gea-stream.ts";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
 import type {} from "@deepseek-ai/dsh-client-connection";
@@ -23,6 +25,7 @@ import type {} from "@deepseek-ai/dsh-agent-default-model";
 
 export const inject = [
   "connection",
+  "tools",
   "llm",
   "sessionController",
   "agentDefaultModel",
@@ -108,44 +111,53 @@ class GeaModelAdapter extends LlmAdapter {
     };
   }
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-    const identitySignal = this.business.identitySignal();
-    const route = await this.business.modelRoute(
-      options.signal ?? new AbortController().signal,
-      this.business.config.analysisAgentCode,
+    const transport = transportSignal(
+      AbortSignal.any([
+        options.signal ?? new AbortController().signal,
+        this.business.identitySignal(),
+        AbortSignal.timeout(this.business.config.modelRequestTimeoutMs),
+      ]),
     );
-    if (!route.models.includes(options.model))
-      throw new Error("GEA_MODEL_NOT_FOUND");
-    const signal = AbortSignal.any([
-      options.signal ?? new AbortController().signal,
-      identitySignal,
-      AbortSignal.timeout(this.business.config.modelRequestTimeoutMs),
-    ]);
-    const response = await fetch(route.baseUrl + "/chat/completions", {
-      method: "POST",
-      headers: {
-        Accept: "text/event-stream",
-        "Content-Type": "application/json",
-        ...attributionHeaders(),
-        Authorization: "Bearer " + route.secret,
-        "X-GEA-Agent-Code": route.agentCode,
-      },
-      body: JSON.stringify(toGeaRequest(options)),
-      redirect: "error",
-      signal,
-    });
-    if (!response.ok) {
-      if (response.status === 401) this.business.expireModelLogin();
-      throw new Error("GEA_MODEL_HTTP_" + response.status);
+    const signal = transport.signal;
+    try {
+      const route = await this.business.modelRoute(
+        signal,
+        this.business.config.analysisAgentCode,
+      );
+      if (!route.models.includes(options.model))
+        throw new Error("GEA_MODEL_NOT_FOUND");
+      const response = await fetch(route.baseUrl + "/chat/completions", {
+        method: "POST",
+        headers: {
+          Accept: "text/event-stream",
+          "Content-Type": "application/json",
+          ...attributionHeaders(),
+          Authorization: "Bearer " + route.secret,
+          "X-GEA-Agent-Code": route.agentCode,
+        },
+        body: JSON.stringify(toGeaRequest(options)),
+        redirect: "error",
+        signal,
+      });
+      if (!response.ok) {
+        if (response.status === 401) this.business.expireModelLogin();
+        throw new Error("GEA_MODEL_HTTP_" + response.status);
+      }
+      if (!response.body) throw new Error("GEA_MODEL_HTTP_NO_BODY");
+      if (
+        !response.headers
+          .get("content-type")
+          ?.toLowerCase()
+          .startsWith("text/event-stream")
+      )
+        throw new Error("GEA_MODEL_NOT_SSE");
+      yield* geaTextStream(response.body, signal, {
+        names: options.tools?.map((tool) => tool.name) ?? [],
+        maxBytes: this.business.config.maxSnapshotBytes,
+      });
+    } finally {
+      transport.dispose();
     }
-    if (!response.body) throw new Error("GEA_MODEL_HTTP_NO_BODY");
-    if (
-      !response.headers
-        .get("content-type")
-        ?.toLowerCase()
-        .startsWith("text/event-stream")
-    )
-      throw new Error("GEA_MODEL_NOT_SSE");
-    yield* geaTextStream(response.body, signal);
   }
 }
 
@@ -278,6 +290,7 @@ export function apply(ctx: Context, config: Deployment): void {
       }),
     );
   const business = new Business(config);
+  registerGeaTools(ctx, business);
   ctx.effect(() => () => business.dispose());
   if (config.analysisMode === "receipt")
     ctx.effect(() =>
@@ -356,6 +369,7 @@ export function apply(ctx: Context, config: Deployment): void {
   }
   const endpoints = [
     "status",
+    "notifications",
     "environment/select",
     "model/discover",
     "login/start",
@@ -389,6 +403,9 @@ export function apply(ctx: Context, config: Deployment): void {
                   payload,
                   request.signal,
                 );
+                break;
+              case "notifications":
+                value = await business.notifications(payload, request.signal);
                 break;
               case "status":
                 value = business.status();

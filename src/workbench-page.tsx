@@ -106,6 +106,8 @@ bindWorkbenchHost(host);
 
 function requestErrorMessage(error: unknown, t: Translate): string {
   if (error instanceof BackendHttpError) {
+    if (error.code === "GEA_REQUEST_TIMEOUT") return t("requestTimeout");
+    if (error.code === "GEA_NETWORK_ERROR") return t("networkError");
     if (error.code === "SNAPSHOT_TOO_LARGE") return t("analysisTooLarge");
     if (error.status === 401) return t("loginExpired");
     if (error.status === 403) return t("forbidden");

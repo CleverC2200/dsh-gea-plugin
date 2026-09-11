@@ -2,86 +2,59 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readDeployment, deploymentPatch } from "../scripts/deployment.mjs";
+import { readDeployment } from "../scripts/deployment.mjs";
 
-test("AionUi model selection resolves only the enabled local proxy and keeps credentials out of the patch", async (t) => {
-  let provider;
-  const server = createServer((req, res) => {
-    res.setHeader("Content-Type", "application/json");
-    if (req.url === "/api/providers")
-      res.end(JSON.stringify({ data: [provider] }));
-    else {
-      assert.equal(req.headers.authorization, "Bearer fixture-proxy-key");
-      res.end(JSON.stringify({ data: [{ id: "fixture-model" }] }));
-    }
+test("removed AionUi configurations fail before backend discovery, credential reads or profile creation", async (t) => {
+  let requests = 0;
+  const server = createServer((_req, res) => {
+    requests++;
+    res.end("{}");
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
-  const base = `http://127.0.0.1:${server.address().port}`;
-  provider = {
-    id: "gea-personal-test",
-    name: "fixture",
-    enabled: true,
-    platform: "openai",
-    api_key: "fixture-proxy-key",
-    base_url: base + "/personal/gea-personal-test",
-    models: ["fixture-model"],
-    model_enabled: { "fixture-model": true },
-  };
-  const dir = await mkdtemp(resolve(tmpdir(), "gea-aionui-"));
+  const dir = await mkdtemp(resolve(tmpdir(), "gea-removed-runtime-"));
   t.after(async () => {
     server.closeAllConnections();
-    await new Promise((done) => server.close(done));
+    await new Promise((r) => server.close(r));
     await rm(dir, { recursive: true, force: true });
   });
   const path = resolve(dir, "deployment.json");
-  const config = {
-    geaBaseUrl: "https://gea.example.test/gea",
-    pageSize: 10,
-    periodPageSize: 100,
-    requestTimeoutMs: 2000,
-    maxSnapshotBytes: 100000,
-    analysis: {
-      mode: "model",
-      source: "aionui",
-      backendUrl: base,
-      providerId: provider.id,
-      model: "fixture-model",
-      contextWindow: 32768,
-      maxTokens: 2048,
-    },
-  };
-  await writeFile(path, JSON.stringify(config));
-  const resolved = await readDeployment(path);
-  assert.equal(resolved.analysis.baseUrl, provider.base_url);
-  assert.equal(resolved.analysis.credential, "fixture-proxy-key");
-  assert.equal(
-    JSON.stringify(deploymentPatch(resolved, dir, dir)).includes(
-      "fixture-proxy-key",
-    ),
-    false,
+  await writeFile(
+    path,
+    JSON.stringify({
+      geaBaseUrl: "https://gea.example.test/gea",
+      pageSize: 10,
+      periodPageSize: 100,
+      requestTimeoutMs: 2000,
+      maxSnapshotBytes: 100000,
+      analysis: {
+        mode: "model",
+        source: "aionui",
+        backendUrl: `http://127.0.0.1:${server.address().port}`,
+        providerId: "gea-personal-test",
+        model: "model",
+        contextWindow: 32768,
+        maxTokens: 2048,
+      },
+    }),
   );
-  const runtime = resolve(dir, "failed-start");
-  await mkdir(resolve(runtime, "deployment.patch.json"), { recursive: true });
+  await assert.rejects(readDeployment(path), /AIONUI_RUNTIME_REMOVED/);
+  const runtime = resolve(dir, "runtime");
   await assert.rejects(
-    promisify(execFile)(
-      process.execPath,
-      ["scripts/start.mjs", "--config", path, "--runtime", runtime],
-      { timeout: 10000 },
-    ),
-    (error) => !error.killed && error.code === 1 && /EISDIR/.test(error.stderr),
+    promisify(execFile)(process.execPath, [
+      "scripts/start.mjs",
+      "--config",
+      path,
+      "--runtime",
+      runtime,
+    ]),
+    (e) => e.code === 1 && /AIONUI_RUNTIME_REMOVED/.test(e.stderr),
   );
-  provider = { ...provider, enabled: false };
-  await assert.rejects(readDeployment(path), /AIONUI_PROVIDER_UNAVAILABLE/);
-  provider = {
-    ...provider,
-    enabled: true,
-    base_url: "http://remote.example.test/personal/gea-personal-test",
-  };
-  await assert.rejects(readDeployment(path), /AIONUI_PROXY_MUST_BE_LOOPBACK/);
+  assert.equal(requests, 0);
+  await assert.rejects(access(runtime), { code: "ENOENT" });
 });

@@ -9,7 +9,7 @@ import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
-const root = resolve(import.meta.dirname, "..");
+const defaultRoot = resolve(import.meta.dirname, "..");
 export async function readSession(runtime, id) {
   const home = resolve(runtime, "home/sessions");
   let workspaces;
@@ -58,6 +58,7 @@ export async function until(read, predicate, timeout = 10000) {
   );
 }
 export async function profile(t, options = {}) {
+  const root = options.pluginRoot ?? defaultRoot;
   const dir = await mkdtemp(resolve(tmpdir(), "gea-profile-"));
   const key = resolve(dir, "key.pem"),
     cert = resolve(dir, "cert.pem");
@@ -190,6 +191,13 @@ export async function profile(t, options = {}) {
   });
   async function start() {
     output = "";
+    let logOffset = 0;
+    try {
+      logOffset = (await readFile(resolve(runtime, "server.log"), "utf8"))
+        .length;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
     child = spawn(
       process.execPath,
       [
@@ -214,14 +222,18 @@ export async function profile(t, options = {}) {
     const deadline = Date.now() + 45000;
     let launch;
     while (Date.now() < deadline) {
-      let log = "";
+      let freshLog = "";
       try {
-        log = await readFile(resolve(runtime, "server.log"), "utf8");
-      } catch {
-        /* Startup has not opened its log yet. */
+        freshLog = (
+          await readFile(resolve(runtime, "server.log"), "utf8")
+        ).slice(logOffset);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
       }
-      launch = [...log.matchAll(/dsh web: (http[^\s]+)/g)].at(-1)?.[1];
-      if (launch && output.includes("dsh web:")) break;
+      launch = [...freshLog.matchAll(/dsh web: (http[^\s]+)(?=\r?\n)/g)].at(
+        -1,
+      )?.[1];
+      if (launch) break;
       if (child.exitCode !== null) throw new Error("Profile exited: " + output);
       await delay(50);
     }

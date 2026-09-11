@@ -4,6 +4,8 @@ import { brandString, type Branded } from "@deepseek-ai/dsh-brand";
 import QRCode from "qrcode";
 import { resolveEnvironments } from "./environments.js";
 import { Decimal } from "decimal.js";
+import { transportSignal } from "./transport-signal.ts";
+import { notificationPage, notificationDetail } from "./notifications.ts";
 import { geaResponseError } from "./gea-error.js";
 
 export type QueryId = Branded<"gea-query">;
@@ -22,7 +24,7 @@ export interface Deployment {
   analysisMode: "receipt" | "model";
   analysisModel: string;
   analysisAgentCode: string;
-  analysisSource: "gea" | "aionui" | "direct" | "receipt";
+  analysisSource: "gea" | "direct" | "receipt";
   inputByteBudget: number;
 }
 export interface Page {
@@ -366,18 +368,17 @@ export class Business {
         "X-Request-Id": randomUUID(),
       });
     let response: Response;
+    const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
     try {
       response = await fetch(this.base + path, {
         method: "GET",
         headers,
         redirect: "error",
-        signal: AbortSignal.any([
-          signal,
-          AbortSignal.timeout(this.config.requestTimeoutMs),
-        ]),
+        signal: AbortSignal.any([signal, timeout]),
       });
     } catch {
       if (signal.aborted) throw new Error("STALE_SELECTION");
+      if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
       throw new Error("GEA_NETWORK_ERROR");
     }
     if (signal.aborted) throw new Error("STALE_SELECTION");
@@ -391,16 +392,61 @@ export class Business {
     try {
       data = object(parseJson(await response.text()));
     } catch {
+      if (signal.aborted) throw new Error("STALE_SELECTION");
+      if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
       throw new Error("GEA_INVALID_JSON");
     }
     if (signal.aborted) throw new Error("STALE_SELECTION");
-    if (data.success !== true) throw new Error("GEA_REQUEST_REJECTED");
+    if (data.success !== true) {
+      if (
+        typeof data.errorCode === "string" &&
+        /^NOTIFICATION_[A-Z_]+$/.test(data.errorCode)
+      ) {
+        if (
+          data.errorCode === "NOTIFICATION_UNAUTHENTICATED" &&
+          this.auth?.token === identity?.token
+        )
+          this.clearLogin(true);
+        throw new Error(data.errorCode);
+      }
+      throw new Error("GEA_REQUEST_REJECTED");
+    }
     return data.result;
   }
 
   private authenticated(): NonNullable<Business["auth"]> {
     if (!this.auth) throw new Error("LOGIN_REQUIRED");
     return this.auth;
+  }
+
+  /** Read fixed notification endpoints under the current Host identity without changing plan selection. */
+  async notifications(payload: Record<string, unknown>, caller: AbortSignal) {
+    keys(payload, ["pageNo", "state", "id"]);
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    let path = "/api/v1/notifications";
+    if (payload.id !== undefined) {
+      if (payload.pageNo !== undefined || payload.state !== undefined)
+        throw new Error("INVALID_PAYLOAD");
+      path += "/" + encodeURIComponent(text(payload.id));
+    } else {
+      const query = new URLSearchParams({
+        pageNo: String(integer(payload.pageNo ?? 1, 1, 100000)),
+        pageSize: String(this.config.pageSize),
+      });
+      if (payload.state !== undefined && payload.state !== "")
+        query.set("state", text(payload.state));
+      path += "?" + query;
+    }
+    const value = await this.get(path, auth, signal);
+    signal.throwIfAborted();
+    return {
+      environment: this.environment,
+      fetchedAt: new Date().toISOString(),
+      ...(payload.id === undefined
+        ? notificationPage(value, this.config.pageSize)
+        : { detail: notificationDetail(value, text(payload.id)) }),
+    };
   }
 
   /** Resolve the logged-in user's GEA personal model route without exposing its secret to the browser. */
@@ -949,6 +995,49 @@ export class Business {
   ): Promise<unknown> {
     this.clearQuery();
     return this.readWorkbenchQuery(payload, signal);
+  }
+
+  /** Read for the model without invalidating a browser-owned selection or preview.
+   * @param payload - Fixed resource kind and validated query fields.
+   * @param signal - The owning tool execution cancellation.
+   * @returns Exact JSON with source, time and collection coverage for the Session log.
+   */
+  async agentQuery(
+    payload: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<string> {
+    const identity = this.epoch.signal;
+    const transport = transportSignal(AbortSignal.any([signal, identity]));
+    let value: unknown;
+    try {
+      value = await this.readWorkbenchQuery(payload, transport.signal);
+    } catch (error) {
+      signal.throwIfAborted();
+      identity.throwIfAborted();
+      throw error;
+    } finally {
+      transport.dispose();
+    }
+    signal.throwIfAborted();
+    identity.throwIfAborted();
+    const page = Array.isArray(value) ? undefined : object(value);
+    const coverage =
+      page && Array.isArray(page.records)
+        ? page.records.length === page.total
+          ? "complete"
+          : "partial"
+        : "complete";
+    const result = JSON.stringify({
+      source: "GEA_LIVE_READONLY",
+      environment: this.environment,
+      fetchedAt: new Date().toISOString(),
+      query: payload,
+      coverage,
+      value,
+    });
+    if (Buffer.byteLength(result, "utf8") > this.config.inputByteBudget)
+      throw new Error("SNAPSHOT_TOO_LARGE");
+    return result;
   }
 
   private async readWorkbenchQuery(

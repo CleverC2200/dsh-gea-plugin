@@ -1,0 +1,15 @@
+# 独立安装与回退
+
+当前发行物是 GEA Web 插件 tarball，依赖已构建、提供 registerConversationPanel 的个人 DSH fork。它不包含 DSH 本体，不是桌面安装器，也不读取 AionUi 进程、目录或凭证库。
+
+维护者在源码目录选择 DSH_SOURCE_DIR 后执行 npm run build、npm run typecheck、npm test、npm run package。产物位于 .runtime/packages，旁边 JSON 保存 SHA-256 和逐文件清单。npm-shrinkwrap.json 固定安装依赖，避免预发布 peer 依赖漂移。打包采用白名单，排除部署配置、会话、启动日志、机器路径和依赖目录。npm run test:package 将产物解压到临时空目录，安装生产依赖，通过真实 dsh profile 验证模拟登录、GEA 模型发现与 SSE、浏览器查询/分析和 Session 落盘，并重启验证会话保留及登录失效。
+
+用户将 tarball 解压到新的版本目录，执行 npm ci --omit=dev --ignore-scripts，设置 DSH_SOURCE_DIR 指向兼容且已构建的个人 fork，再用 npm start -- --config 配置绝对路径 --runtime 数据绝对路径 --port 3199 启动。配置应放在版本目录外；首次使用复制 gea.direct.example.json 并设置正式/测试地址。缺少三栏布局接口时，启动在改动依赖链接前报错。
+
+升级前保留旧版本目录，停止旧进程后备份独立 runtime，再在新目录使用同一 config/runtime 启动。禁止两个进程同时占用同一个 home。GEA 凭证仅在内存中，切换进程后需要重新扫码。应用没有自动升级、数据库迁移或失败自动切换；当前流程为人工受控更换版本。
+
+回退时停止新版本；如果 DSH 版本和 Session 格式保持兼容，使用旧版本目录和同一 runtime 启动。若更换过 DSH 或数据格式，不能让旧版本读取较新的数据；保留新 runtime，改用升级前备份并明确其时间点。不可覆盖或丢弃升级后产生的会话。真实用户数据上的升级/回退、全新机器真实 GEA 登录仍待验收，空目录模拟测试不能替代这些证据。
+
+2026-09-11 已从 0.0.2 tarball 在独立目录完成上述自动验收，另在 3200 端口启动独立真实环境验收进程，该进程已扫码登录并完成真实 GEA 只读工具回路验收。原 3199 服务保留原登录与历史。该测试使用同一台机器上的兼容 DSH fork，不等同于一台全新机器，也不代表真实业务写入验收。
+
+测试启动器只从本次启动新追加的完整日志行获取启动地址，避免重启时读取追加日志中上一进程的端口。安装包验收使用同一启动器验证停止后的新进程恢复。
