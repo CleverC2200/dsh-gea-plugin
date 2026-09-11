@@ -48,6 +48,17 @@ test(
         });
         return true;
       }
+      if (path === "/gea/airag/airagModel/queryById") {
+        reply({
+          success: true,
+          result: {
+            id: "fixture-gea-model",
+            name: "GEA 测试模型",
+            apiKey: "metadata-secret",
+          },
+        });
+        return true;
+      }
       if (path === "/personal/models") {
         reply({ data: [{ id: "fixture-gea-model" }] });
         return true;
@@ -81,6 +92,8 @@ test(
     assert.deepEqual(discovered.value, {
       models: ["fixture-gea-model"],
       selected: "fixture-gea-model",
+      names: { "fixture-gea-model": "GEA 测试模型" },
+      selectedName: "GEA 测试模型",
     });
     assert.ok(
       !JSON.stringify(discovered).includes("fixture-personal-model-secret"),

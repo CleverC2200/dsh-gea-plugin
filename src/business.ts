@@ -68,6 +68,7 @@ export type GeaModelRoute = {
   secret: string;
   agentCode: string;
   models: string[];
+  names: Record<string, string>;
 };
 
 const planFields = [
@@ -408,6 +409,7 @@ export class Business {
     agentCode = "sales_forecast",
   ): Promise<GeaModelRoute> {
     const auth = this.authenticated();
+    const epoch = this.epoch.signal;
     if (!/^[A-Za-z0-9._:-]{1,100}$/.test(agentCode))
       throw new Error("GEA_MODEL_AGENT_INVALID");
     const cached = this.modelRoutes.get(agentCode);
@@ -416,7 +418,7 @@ export class Business {
       await this.get(
         "/aidata/user-agent-credential/my/list?pageNo=1&pageSize=10",
         auth,
-        AbortSignal.any([signal, this.epoch.signal]),
+        AbortSignal.any([signal, epoch]),
         false,
       ),
     );
@@ -434,7 +436,7 @@ export class Business {
       "/aidata/user-agent-credential/my/claim?id=" +
         encodeURIComponent(credentialId),
       auth,
-      AbortSignal.any([signal, this.epoch.signal]),
+      AbortSignal.any([signal, epoch]),
       false,
     );
     const claimed = object(claim);
@@ -464,7 +466,7 @@ export class Business {
         redirect: "error",
         signal: AbortSignal.any([
           signal,
-          this.epoch.signal,
+          epoch,
           AbortSignal.timeout(this.config.requestTimeoutMs),
         ]),
       });
@@ -482,7 +484,45 @@ export class Business {
       typeof entry === "string" ? entry : text(object(entry).id),
     );
     if (!models.length) throw new Error("GEA_MODEL_EMPTY");
-    const route = { baseUrl, secret, agentCode, models: [...new Set(models)] };
+    const names: Record<string, string> = {};
+    for (const id of [...new Set(models)]) {
+      const item = modelsPayload.data.find(
+        (entry: unknown) =>
+          typeof entry === "object" &&
+          entry !== null &&
+          object(entry).id === id,
+      );
+      let label =
+        item && typeof item === "object" ? object(item).name : undefined;
+      if (typeof label !== "string" || !label.trim()) {
+        try {
+          const metadata = object(
+            await this.get(
+              "/airag/airagModel/queryById?id=" + encodeURIComponent(id),
+              auth,
+              AbortSignal.any([signal, epoch]),
+            ),
+          );
+          if (metadata.id === id) label = metadata.name || metadata.modelName;
+        } catch (error) {
+          // A forbidden or unavailable display-name lookup must not disable an authorized model route.
+          if (epoch.aborted || signal.aborted) throw error;
+        }
+      }
+      names[id] =
+        typeof label === "string" && label.trim() && label.length <= 256
+          ? label.trim()
+          : "GEA 模型（名称未提供）";
+    }
+    const route = {
+      baseUrl,
+      secret,
+      agentCode,
+      models: [...new Set(models)],
+      names,
+    };
+    epoch.throwIfAborted();
+    signal.throwIfAborted();
     this.modelRoutes.set(agentCode, route);
     return route;
   }

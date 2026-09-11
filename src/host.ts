@@ -94,7 +94,18 @@ class GeaModelAdapter extends LlmAdapter {
       new AbortController().signal,
       this.business.config.analysisAgentCode,
     );
-    return route.models.map((id) => ({ provider, id, name: id }));
+    return route.models.map((id) => ({ provider, id, name: route.names[id] }));
+  }
+  async resolveModel(provider: string, model: string, signal?: AbortSignal) {
+    const route = await this.business.modelRoute(
+      signal ?? new AbortController().signal,
+      this.business.config.analysisAgentCode,
+    );
+    return {
+      provider,
+      id: model,
+      name: route.names[model] ?? "GEA 模型（名称未提供）",
+    };
   }
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const identitySignal = this.business.identitySignal();
@@ -395,7 +406,12 @@ export function apply(ctx: Context, config: Deployment): void {
                   provider: "gea-analysis",
                   model: selected,
                 });
-                value = { models: route.models, selected };
+                value = {
+                  models: route.models,
+                  selected,
+                  names: route.names,
+                  selectedName: route.names[selected],
+                };
                 break;
               }
               case "environment/select":

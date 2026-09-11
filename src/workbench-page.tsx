@@ -283,14 +283,14 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     if (!status?.authenticated || status.mode !== "model") return;
     const controller = new AbortController();
     setModelState(t("modelDiscovering"));
-    void rpc<{ models: string[]; selected: string }>(
+    void rpc<{ models: string[]; selected: string; selectedName: string }>(
       "model/discover",
       {},
       controller.signal,
     )
       .then((value) => {
         if (!controller.signal.aborted)
-          setModelState(t("modelDiscovered") + value.selected);
+          setModelState(t("modelDiscovered") + value.selectedName);
       })
       .catch((error) => {
         if (!controller.signal.aborted)
