@@ -145,3 +145,10 @@
   width: 100vw;
   height: 100dvh;
 }
+
+/* The GEA side conversation keeps its native composer at the column foot. */
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench])
+  [data-phase="hero"]
+  [data-conversation-scroll] {
+  justify-content: flex-end;
+}
