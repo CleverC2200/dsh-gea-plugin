@@ -261,6 +261,22 @@ test(
       );
       await mkdir(".runtime/web-evidence", { recursive: true });
       await page.screenshot({ path: ".runtime/web-evidence/desktop.png" });
+      await page.getByRole("button", { name: "DSH 对话", exact: true }).click();
+      await page
+        .locator("iframe[data-gea-workbench]")
+        .waitFor({ state: "detached" });
+      await page
+        .getByRole("button", { name: "GEA 业务版", exact: true })
+        .click();
+      await frame
+        .getByRole("heading", { name: "销售计划审批", exact: true })
+        .waitFor();
+      await page
+        .getByText("本地验证回执（非 AI 分析）：快照已进入 dsh 模型请求。", {
+          exact: false,
+        })
+        .first()
+        .waitFor();
       await page.setViewportSize({ width: 700, height: 1000 });
       await page.locator('[data-conversation-stacked="true"]').waitFor();
       assert.equal(

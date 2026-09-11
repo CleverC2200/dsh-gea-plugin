@@ -127,6 +127,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const [preview, setPreview] = useState<Preview>();
   const [sessionId, setSessionId] = useState<string | null>(null);
   useEffect(() => {
+    if (!status) return;
     window.parent.postMessage(
       {
         type: "gea:identity",

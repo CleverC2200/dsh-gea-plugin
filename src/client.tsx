@@ -6,6 +6,7 @@ import type {
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-ui-session/client";
+import type {} from "@deepseek-ai/dsh-client-ui-sidebar/client";
 import type { ISessions } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { Context } from "@deepseek-ai/cordis";
 import type { SessionId } from "@deepseek-ai/dsh-api-remotes/client";
@@ -48,8 +49,6 @@ export function apply(ctx: Context): void {
     const [authenticated, setAuthenticated] = useState(false);
     useEffect(() => {
       if (!authenticated) {
-        // This package compiles Host and Client declarations together; this effect runs only in the Client.
-        (ctx.get("sessions") as unknown as ISessions).clear();
         return;
       }
       return ctx.layout.registerConversationPanel(PANEL);
@@ -73,8 +72,11 @@ export function apply(ctx: Context): void {
         const message: unknown = event.data;
         if (!message || typeof message !== "object" || !("type" in message))
           return;
-        if (message.type === "gea:identity" && "authenticated" in message)
+        if (message.type === "gea:identity" && "authenticated" in message) {
           setAuthenticated(message.authenticated === true);
+          if (message.authenticated !== true)
+            (ctx.get("sessions") as unknown as ISessions).clear();
+        }
         if (
           message.type === "gea:open-session" &&
           "sessionId" in message &&
@@ -168,6 +170,9 @@ export function apply(ctx: Context): void {
             </span>
             <strong className="gea-shell-label">{t("geaBusiness")}</strong>
           </div>
+          <button type="button" onClick={() => ctx.layout.selectPanel(null)}>
+            {t("dshConversation")}
+          </button>
           <div className="gea-shell-caption">{t("businessFunctions")}</div>
           <button
             type="button"
@@ -215,10 +220,32 @@ export function apply(ctx: Context): void {
     );
     ctx.layout.selectPanel(PANEL);
   });
-  ctx.slots.inject("sidebar", () =>
+  function NavigationMode({ usePanelInfo }: PropsRuntime<"shell.overlay">) {
+    const business = usePanelInfo((info) => info.activePanelId === PANEL);
+    useEffect(() => {
+      if (!business) return;
+      return ctx.slots.register(
+        { name: "sidebar", locale: "geaProof", priority: -10 },
+        Navigation,
+      );
+    }, [business]);
+    return null;
+  }
+  ctx.slots.inject("shell.overlay", () =>
     ctx.slots.register(
-      { name: "sidebar", locale: "geaProof", priority: -10 },
-      Navigation,
+      { name: "shell.overlay", id: "gea-navigation-mode", locale: "geaProof" },
+      NavigationMode,
+    ),
+  );
+  ctx.slots.inject("sidebar.panellist", () =>
+    ctx.slots.register(
+      {
+        name: "sidebar.panellist",
+        id: PANEL,
+        locale: "geaProof",
+        label: t("geaBusiness"),
+      },
+      () => <NavIcon kind="plan" />,
     ),
   );
 }
