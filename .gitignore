@@ -3,3 +3,4 @@ lib/
 .runtime/
 .env
 gea.config.json
+.idea/

@@ -9,14 +9,14 @@
 ```sh
 npm ci
 npm run build
-cp gea.config.example.json gea.config.json
-# 在 gea.config.json 中填写环境地址；凭证不写入该文件。
+cp gea.direct.example.json gea.config.json
+# 填写 GEA 和独立模型地址；API Key 通过 GEA_LLM_API_KEY 环境变量提供。
 npm start -- --config gea.config.json --runtime .runtime/development --port 3198
 ```
 
 使用启动进程本地日志中的带认证参数链接进入页面。点击「GEA 销售计划」后独立扫码登录、查询、选择版本和 SKU、预览输入范围，最后确认提交。提交进入 Session 前响应浏览器取消、登录失效及 Host 关闭；进入 Session 后使用 dsh 的标准取消、追问和历史读取功能。提交阶段失败后可以重试同一预览，复用 Session 和请求 ID 避免重复入队。
 
-`gea.config.example.json` 使用明确的本地回执模式，只验证数据传递。真实模型可使用直接 HTTPS 配置，也可按 [AionUi 接入说明](docs/aionui-model.md) 使用 `gea.aionui.example.json` 从已运行的 AionUi 读取所选模型和本机代理凭证。AionUi 退出或代理失效会中断其模型路径；不会自动切换模型或退回本地回执。
+`gea.config.example.json` 使用明确的本地回执模式，只验证数据传递。生产部署应使用 `gea.direct.example.json` 的独立 HTTPS 模型配置；`source: "aionui"` 仅作为迁移期间的兼容路径，不属于脱离 AionUi 的目标部署。
 
 GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
 
