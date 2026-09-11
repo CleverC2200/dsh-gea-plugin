@@ -275,6 +275,11 @@ export class Business {
     this.clearQuery();
   }
 
+  /** Mark the current GEA identity expired after a model gateway rejects it. */
+  expireModelLogin(): void {
+    if (this.auth) this.clearLogin(true);
+  }
+
   /** Public status never contains GEA credentials. */
   status() {
     return {

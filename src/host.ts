@@ -101,9 +101,16 @@ class GeaModelAdapter extends LlmAdapter {
       },
       body: JSON.stringify(toGeaRequest(options)),
       redirect: "error",
-      signal: options.signal,
+      signal: AbortSignal.any([
+        options.signal ?? new AbortController().signal,
+        AbortSignal.timeout(this.business.config.requestTimeoutMs),
+      ]),
     });
-    if (!response.ok || !response.body) throw new Error("GEA_MODEL_HTTP_" + response.status);
+    if (!response.ok) {
+      if (response.status === 401) this.business.expireModelLogin();
+      throw new Error("GEA_MODEL_HTTP_" + response.status);
+    }
+    if (!response.body) throw new Error("GEA_MODEL_HTTP_NO_BODY");
     if (!response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream"))
       throw new Error("GEA_MODEL_NOT_SSE");
     yield { type: "block-start", index: 0, blockType: "text" };
