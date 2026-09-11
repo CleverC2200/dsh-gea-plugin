@@ -261,14 +261,12 @@ export function WorkbenchPage({ t }: { t: Translate }) {
             width="56"
             height="56"
           />
-          <h1>GEA</h1>
-          <p className="gea-login-welcome">{t("welcomeLogin")}</p>
           <h2>{t("login")}</h2>
           <p>{t("scanInstructions")}</p>
           {qr && (
             <div className="gea-login-qr">
               <img src={qr.image} alt={t("login")} width="220" height="220" />
-              <p role="status">{t(expired ? "expired" : "pending")}</p>
+              {expired && <p role="status">{t("expired")}</p>}
             </div>
           )}
           <fieldset disabled={busy || !status} className="gea-environments">
