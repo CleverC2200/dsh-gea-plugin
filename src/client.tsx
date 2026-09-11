@@ -1,6 +1,5 @@
 /** Sales-plan page composed into the standard dsh Web navigation and Session UI. */
 import React, { useEffect, useRef, useState } from "react";
-import { Decimal } from "decimal.js";
 import type { Context } from "@deepseek-ai/cordis";
 import type { SessionId } from "@deepseek-ai/dsh-api-remotes/client";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
@@ -18,6 +17,12 @@ import type {
 } from "./business.ts";
 import { zh, en, type CopyKey } from "./locales.ts";
 import css from "./client.css";
+import {
+  ForecastAssistantSurface,
+  organizationValueFor,
+  organizationValuesFor,
+  type OrganizationView,
+} from "./forecast-surface.tsx";
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
   interface LocaleNamespaceMap {
@@ -100,226 +105,6 @@ function Coverage({ value, t }: { value: Collection; t: Translate }) {
       {t("returned")} {value.returned} / {value.total ?? t("unknown")} ·{" "}
       {t("fetchedAt")} {value.fetchedAt}
     </p>
-  );
-}
-
-function sumDecimal(rows: Row[], key: string): string | undefined {
-  const values = rows
-    .map((row) => row[key])
-    .filter((value): value is string | number => typeof value === "string" || typeof value === "number")
-    .map(String);
-  if (values.length !== rows.length || !values.length || values.some((value) => !/^-?\d+(\.\d+)?$/.test(value))) return undefined;
-  const scale = Math.max(...values.map((value) => value.split(".")[1]?.length ?? 0));
-  const total = values.reduce((sum, value) => sum.plus(value), new Decimal(0));
-  return total.toFixed(scale);
-}
-
-type OrganizationView =
-  | "all"
-  | "base"
-  | "region"
-  | "province"
-  | "area"
-  | "dealer";
-
-const organizationLabels: Record<OrganizationView, CopyKey> = {
-  all: "allOrganizations",
-  base: "byBase",
-  region: "byRegion",
-  province: "byProvince",
-  area: "byArea",
-  dealer: "byDealer",
-};
-const approvalStageKeys: CopyKey[] = [
-  "stageCustomerAi",
-  "stageAreaApproval",
-  "stageProvinceApproval",
-  "stageRegionApproval",
-  "stageCategoryPlan",
-];
-
-function organizationValueFor(row: Row, view: OrganizationView): string | undefined {
-  if (view === "all") return undefined;
-  const value = {
-    base: row.baseName,
-    region: row.regionName ?? row.salesGroupName,
-    province: row.provinceName ?? row.provinceRegionName ?? row.provinceCode,
-    area: row.areaName,
-    dealer: row.dealerName ?? row.dealerCode,
-  }[view];
-  return value == null ? undefined : String(value);
-}
-
-function organizationValuesFor(rows: Row[], view: OrganizationView): string[] {
-  return Array.from(
-    new Set(rows.map((row) => organizationValueFor(row, view) ?? "").filter(Boolean)),
-  );
-}
-
-function ApprovalWorkspace({
-  rows,
-  selectedRow,
-  selectedVersionId,
-  analysisMode,
-  view,
-  onViewChange,
-  organizationOptions,
-  organizationValue,
-  onOrganizationValueChange,
-  canSend,
-  onSend,
-  t,
-}: {
-  rows: Row[];
-  selectedRow: Row | null;
-  selectedVersionId: string | undefined;
-  analysisMode: "receipt" | "model";
-  view: OrganizationView;
-  onViewChange: (view: OrganizationView) => void;
-  organizationOptions: string[];
-  organizationValue: string;
-  onOrganizationValueChange: (value: string) => void;
-  canSend: boolean;
-  onSend: () => void;
-  t: Translate;
-}) {
-  const first = selectedRow ?? rows[0];
-  const targetQty = sumDecimal(rows, "targetQty");
-  const targetAmount = sumDecimal(rows, "targetAmount");
-  const currentQty = sumDecimal(rows, "currentQty");
-  const currentAmount = sumDecimal(rows, "currentAmount");
-  const dimensionValue = first ? organizationValueFor(first, view) : undefined;
-  return (
-    <div className="gea-approval-frame">
-      <aside className="gea-business-nav" aria-label={t("businessNavigation")}>
-        <strong>{t("geaBusiness")}</strong>
-        <span>{t("businessFunctions")}</span>
-        <button type="button" disabled>{t("messageInbox")}</button>
-        <div className="gea-plan-nav-group">
-          <button type="button" className="gea-plan-nav-heading" disabled>
-            {t("planManagement")} <span aria-hidden="true">⌃</span>
-          </button>
-          <button type="button" className="is-active" aria-current="page">
-            {t("demandForecastAgent")}
-          </button>
-        </div>
-      </aside>
-      <section
-        className="gea-section gea-approval"
-        aria-label={t("approvalWorkspace")}
-      >
-      <div className="gea-toolbar gea-approval-heading">
-        <div>
-          <p className="gea-eyebrow">{t("approvalEyebrow")}</p>
-          <h2>{t("approvalTitle")}</h2>
-          <p className="gea-meta">{t("readOnlyPreview")}</p>
-        </div>
-        <div className="gea-version-controls">
-          <span>{t("versionLabel")} {selectedVersionId ?? t("unknown")}</span>
-          <button type="button" disabled>{t("latestVersion")}</button>
-          <span>{t("period")}</span>
-          <button type="button" disabled>{first?.periodId ?? t("unknown")}</button>
-        </div>
-      </div>
-      <div className="gea-summary-grid">
-        <div>
-          <span className="gea-summary-label">{t("approvalQueue")}</span>
-          <strong>
-            {rows.length} {t("planCount")}
-          </strong>
-        </div>
-        <div>
-          <span className="gea-summary-label">{t("targetSummary")}</span>
-          <strong>
-            {targetQty ?? t("unknown")} / {targetAmount ?? t("unknown")}
-          </strong>
-        </div>
-        <div>
-          <span className="gea-summary-label">{t("currentSummary")}</span>
-          <strong>
-            {currentQty ?? t("unknown")} / {currentAmount ?? t("unknown")}
-          </strong>
-        </div>
-        <div>
-          <span className="gea-summary-label">{t("progress")}</span>
-          <strong>
-            {first?.status == null
-              ? t("unknown")
-              : `${t("status")}=${rows.length === 1 ? first.status : t("mixed")}`}
-          </strong>
-        </div>
-      </div>
-      <div className="gea-approval-stages" aria-label={t("approvalStages")}>
-        {approvalStageKeys.map((key) => (
-          <div className="gea-stage" key={key}>
-            <span className="gea-stage-dot">?</span>
-            <span>{t(key)}</span>
-            <small>{t("unknown")}</small>
-          </div>
-        ))}
-      </div>
-      <div
-        className="gea-org-toolbar"
-        role="group"
-        aria-label={t("organizationView")}
-      >
-        <strong>{t("organizationView")}</strong>
-        {(Object.keys(organizationLabels) as OrganizationView[]).map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={item === view ? "is-active" : ""}
-            aria-pressed={item === view}
-            onClick={() => onViewChange(item)}
-          >
-            {t(organizationLabels[item])}
-          </button>
-        ))}
-        {dimensionValue != null && <span className="gea-meta">{String(dimensionValue)}</span>}
-        {view !== "all" && (
-          <select
-            aria-label={t("organizationValue")}
-            value={organizationValue}
-            onChange={(event) => onOrganizationValueChange(event.target.value)}
-          >
-            {organizationOptions.map((value) => <option key={value} value={value}>{value}</option>)}
-          </select>
-        )}
-      </div>
-      <div className="gea-readonly-banner">{t("readOnlyBanner")}</div>
-      </section>
-      <aside className="gea-agent-panel" aria-label={t("agentPanel")}>
-        <div className="gea-agent-heading">
-          <h3>{t("agentPanel")}</h3>
-          <span className="gea-status-chip">
-            {analysisMode === "model" ? t("agentPanelModel") : t("receiptMode")}
-          </span>
-        </div>
-        <div className="gea-agent-context">
-          <span>{first?.periodId ?? t("unknown")} · {first?.orgName ?? first?.dealerName ?? t("unknown")}</span>
-          <strong>{selectedRow ? `${t("select")} ${selectedRow.planId ?? t("unknown")}` : t("noQuery")}</strong>
-        </div>
-        <div className="gea-agent-card">
-          <strong>{t("agentAnalysisTitle")}</strong>
-          <p>{selectedRow ? t("agentPanelHelp") : t("agentAnalysisEmpty")}</p>
-          <span className="gea-meta">
-            {selectedRow ? t("agentReady") : t("agentWaiting")}
-          </span>
-        </div>
-        <button type="button" className="gea-primary" disabled={!canSend} onClick={onSend}>
-          {t("sendToSession")}
-        </button>
-        <div className="gea-agent-composer" aria-label={t("agentPanel")}>
-          <textarea disabled placeholder={t("agentComposerPlaceholder")} rows={3} />
-          <div className="gea-agent-composer-tools">
-            <button type="button" disabled aria-label={t("agentInputDisabled")}>＋</button>
-            <span>{t("agentInputDisabled")}</span>
-            <button type="button" disabled aria-label={t("agentInputDisabled")}>↑</button>
-          </div>
-        </div>
-        <p className="gea-meta">{t("agentReadOnly")}</p>
-      </aside>
-    </div>
   );
 }
 
@@ -702,7 +487,7 @@ export function apply(ctx: Context): void {
           {!data && !busy && <p className="gea-empty">{t("noQuery")}</p>}
           {data && (
             <section className="gea-section gea-live-section" aria-label={t("live")}>
-              <ApprovalWorkspace
+              <ForecastAssistantSurface
                 rows={visibleRecords}
                 selectedRow={row ?? null}
                 selectedVersionId={versionId ?? row?.versionId?.toString()}

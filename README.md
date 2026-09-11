@@ -20,6 +20,8 @@ npm start -- --config gea.config.json --runtime .runtime/development --port 3198
 
 页面工作台按 AionUi 参考布局组织为业务导航、销售计划审批中心和需求预测 Agent 三列。当前审批区域明确保持只读：组织维度、选中计划、版本标识和数据摘要可见，未确认的 GEA 节点状态显示为未知，分析按钮只在生成只读快照后把选中计划送入 dsh Session。页面迁移不等于审批写回能力。
 
+业务 Surface 组件位于 `src/forecast-surface.tsx`：它划分业务导航、消息待办入口、销售计划工作台和右侧对话 rail 的接口。右侧只接受宿主提供的原生 ChatSurface；在宿主扩展点可用前显示待接入状态，不在插件内仿造 dsh ChatView。
+
 GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
 
 ## 数据与会话
