@@ -20,7 +20,7 @@ npm start -- --config gea.config.json --runtime .runtime/fork-development --port
 
 使用启动日志中的带认证参数链接进入全屏登录页，选择「正式」或「测试」后飞书扫码登录。页面不显示或要求输入服务器地址。登录后进入 GEA 导航、原销售计划审批工作台、原生 DSH 会话的三栏界面。选择组织行与分析范围，点击「预览发送范围」，核对 Host 重新获取的当前计划数据，再确认送入右侧原生 DSH 会话。选中 Session 不会关闭业务页面，后续输入、流式回答、取消和历史记录仍由 DSH 负责。
 
-部署配置的 `geaEnvironments.production` 和 `geaEnvironments.test` 分别保存正式、测试 HTTPS 地址，`environment` 指定初始选项（默认 `test`）。旧单地址配置只提供对应的一个环境。工作台「切换环境 / 重新登录」返回登录页；切换会作废旧凭证、二维码、预览和进行中的模型请求，并清空当前会话选择。登录页 GEA 图标来自 AionUi 的 `packages/desktop/src/renderer/assets/logos/brand/app.png`，沿用[原工作台来源与许可证](src/workbench-original/SOURCE.md)。
+部署配置的 `geaEnvironments.production` 和 `geaEnvironments.test` 分别保存正式、测试 HTTPS 地址，`environment` 指定初始选项（默认 `production`）。旧单地址配置只提供对应的一个环境。工作台「切换环境 / 重新登录」返回登录页；切换会作废旧凭证、二维码、预览和进行中的模型请求，并清空当前会话选择。登录页 GEA 图标来自 AionUi 的 `packages/desktop/src/renderer/assets/logos/brand/app.png`，沿用[原工作台来源与许可证](src/workbench-original/SOURCE.md)。
 
 `gea.config.example.json` 使用本地回执模式，只验证数据传递；真实模型使用 `gea.direct.example.json` 中 `source: "gea"`。插件通过当前 GEA 登录获取个人模型凭证、发现模型并直接调用，不依赖 AionUi 进程。`source: "aionui"` 是保留的旧配置兼容路径，当前三栏验收不使用它。
 

@@ -265,6 +265,12 @@ export function WorkbenchPage({ t }: { t: Translate }) {
           <p className="gea-login-welcome">{t("welcomeLogin")}</p>
           <h2>{t("login")}</h2>
           <p>{t("scanInstructions")}</p>
+          {qr && (
+            <div className="gea-login-qr">
+              <img src={qr.image} alt={t("login")} width="220" height="220" />
+              <p role="status">{t(expired ? "expired" : "pending")}</p>
+            </div>
+          )}
           <fieldset disabled={busy || !status} className="gea-environments">
             <legend>{t("environment")}</legend>
             {(status?.environments ?? ["production", "test"]).map(
@@ -326,12 +332,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
           >
             {busy ? t("busy") : t("login")}
           </button>
-          {qr && (
-            <div className="gea-login-qr">
-              <img src={qr.image} alt={t("login")} width="220" height="220" />
-              <p role="status">{t(expired ? "expired" : "pending")}</p>
-            </div>
-          )}
           {error && <p role="alert">{error}</p>}
           <footer>{t("loginFooter")}</footer>
         </section>

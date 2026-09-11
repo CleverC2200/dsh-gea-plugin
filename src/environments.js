@@ -1,6 +1,6 @@
 /** Resolve deployment-owned GEA endpoints; browser requests may select names only. */
 export function resolveEnvironments(config) {
-  const environment = config.environment ?? "test";
+  const environment = config.environment ?? "production";
   if (!["production", "test"].includes(environment))
     throw new Error("INVALID_GEA_ENVIRONMENT");
   const urls = config.geaEnvironments ?? { [environment]: config.geaBaseUrl };

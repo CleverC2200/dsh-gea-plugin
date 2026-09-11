@@ -200,7 +200,7 @@ test(
         const id = await submit();
         await until(async () => Boolean(held), Boolean);
         const changed = await app.rpc("environment/select", {
-          environment: "test",
+          environment: "production",
         });
         assert.equal(changed.value.authenticated, false);
         await until(async () => heldClosed, Boolean);
