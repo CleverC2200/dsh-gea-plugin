@@ -2,6 +2,8 @@
 
 插件版本 `0.0.1`，固定发布依赖 `@deepseek-ai/dsh@0.1.5-rc.1`。使用独立插件目录与官方 profile；未修改 dsh 源码或安装依赖。业务数据仅来自测试环境的只读查询。
 
+页面当前按 AionUi 参考布局提供三列只读工作台、组织维度筛选、选中计划摘要和 Agent 传递入口。GEA 审批写接口没有接入；审批节点未由上游返回时显示未知。无密钥页面夹具位于 `tests/fixtures/gea-approval-workspace.snapshot.json`，仅验证事件顺序和脱敏字段。
+
 2026-09-11 的直接 GEA 模型验收使用提交 `f2d2065`。登录后的同一 dsh 进程完成真实查询、快照提交、GEA Personal Model `models` 发现和 `chat/completions` SSE；`npm run verify -- --runtime .runtime/gea-dsh --session session-3dc7568c-925c-4c4f-b1e4-7bb895451dd1 --require-live` 返回 `durableSnapshotVerified: true`、`firstAnalysisCompleted: true` 和 `freshLiveVerified: true`。凭证未写入仓库，当前运行目录仍是本地忽略文件。
 
 ## 证据范围

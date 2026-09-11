@@ -1,5 +1,6 @@
 /** Sales-plan page composed into the standard dsh Web navigation and Session UI. */
 import React, { useEffect, useRef, useState } from "react";
+import { Decimal } from "decimal.js";
 import type { Context } from "@deepseek-ai/cordis";
 import type { SessionId } from "@deepseek-ai/dsh-api-remotes/client";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
@@ -109,17 +110,8 @@ function sumDecimal(rows: Row[], key: string): string | undefined {
     .map(String);
   if (values.length !== rows.length || !values.length || values.some((value) => !/^-?\d+(\.\d+)?$/.test(value))) return undefined;
   const scale = Math.max(...values.map((value) => value.split(".")[1]?.length ?? 0));
-  const total = values.reduce((sum, value) => {
-    const [whole, fraction = ""] = value.split(".");
-    const sign = whole.startsWith("-") ? -1n : 1n;
-    const digits = whole.replace("-", "") + fraction.padEnd(scale, "0");
-    return sum + sign * BigInt(digits);
-  }, 0n);
-  const negative = total < 0n;
-  const absolute = (negative ? -total : total).toString().padStart(scale + 1, "0");
-  if (scale === 0) return `${negative ? "-" : ""}${absolute}`;
-  const point = absolute.length - scale;
-  return `${negative ? "-" : ""}${absolute.slice(0, point)}.${absolute.slice(point)}`.replace(/\.0+$/, "");
+  const total = values.reduce((sum, value) => sum.plus(value), new Decimal(0));
+  return total.toFixed(scale);
 }
 
 type OrganizationView =
@@ -142,17 +134,26 @@ const organizationLabels: Record<OrganizationView, CopyKey> = {
 function organizationValueFor(row: Row, view: OrganizationView): string | undefined {
   if (view === "all") return undefined;
   const value = {
-    base: row.baseName ?? row.orgName ?? row.orgCode,
-    region: row.regionName ?? row.salesGroupName ?? row.orgName ?? row.orgCode,
+    base: row.baseName,
+    region: row.regionName ?? row.salesGroupName,
     province: row.provinceName ?? row.provinceRegionName ?? row.provinceCode,
-    area: row.areaName ?? row.regionName ?? row.areaCode,
+    area: row.areaName,
     dealer: row.dealerName ?? row.dealerCode,
   }[view];
   return value == null ? undefined : String(value);
 }
 
+function organizationValuesFor(rows: Row[], view: OrganizationView): string[] {
+  return Array.from(
+    new Set(rows.map((row) => organizationValueFor(row, view) ?? "").filter(Boolean)),
+  );
+}
+
 function ApprovalWorkspace({
   rows,
+  selectedRow,
+  selectedVersionId,
+  analysisMode,
   view,
   onViewChange,
   organizationOptions,
@@ -163,6 +164,9 @@ function ApprovalWorkspace({
   t,
 }: {
   rows: Row[];
+  selectedRow: Row | null;
+  selectedVersionId: string | undefined;
+  analysisMode: "receipt" | "model";
   view: OrganizationView;
   onViewChange: (view: OrganizationView) => void;
   organizationOptions: string[];
@@ -172,19 +176,12 @@ function ApprovalWorkspace({
   onSend: () => void;
   t: Translate;
 }) {
-  const first = rows[0];
+  const first = selectedRow ?? rows[0];
   const targetQty = sumDecimal(rows, "targetQty");
   const targetAmount = sumDecimal(rows, "targetAmount");
   const currentQty = sumDecimal(rows, "currentQty");
   const currentAmount = sumDecimal(rows, "currentAmount");
   const dimensionValue = first ? organizationValueFor(first, view) : undefined;
-  const stages: CopyKey[] = [
-    "stageCustomerAi",
-    "stageAreaApproval",
-    "stageProvinceApproval",
-    "stageRegionApproval",
-    "stageCategoryPlan",
-  ];
   return (
     <div className="gea-approval-frame">
       <aside className="gea-business-nav" aria-label={t("businessNavigation")}>
@@ -206,7 +203,7 @@ function ApprovalWorkspace({
           <p className="gea-meta">{t("readOnlyPreview")}</p>
         </div>
         <div className="gea-version-controls">
-          <span>{t("versionLabel")} {t("unknown")}</span>
+          <span>{t("versionLabel")} {selectedVersionId ?? t("unknown")}</span>
           <button type="button" disabled>{t("latestVersion")}</button>
           <span>{t("period")}</span>
           <button type="button" disabled>{first?.periodId ?? t("unknown")}</button>
@@ -241,16 +238,11 @@ function ApprovalWorkspace({
         </div>
       </div>
       <div className="gea-approval-stages" aria-label={t("approvalStages")}>
-        {stages.map((stage, index) => (
-          <div
-            className="gea-stage"
-            key={stage}
-          >
-            <span className="gea-stage-dot">{index + 1}</span>
-            <span>{t(stage)}</span>
-            <small>{t("unknown")}</small>
-          </div>
-        ))}
+        <div className="gea-stage">
+          <span className="gea-stage-dot">?</span>
+          <span>{t("stageDataPending")}</span>
+          <small>{t("unknown")}</small>
+        </div>
       </div>
       <div
         className="gea-org-toolbar"
@@ -284,11 +276,13 @@ function ApprovalWorkspace({
       </section>
       <aside className="gea-agent-panel" aria-label={t("agentPanel")}>
         <h3>{t("agentPanel")}</h3>
-        <p className="gea-meta">{t("agentPanelModel")}</p>
+        <p className="gea-meta">
+          {analysisMode === "model" ? t("agentPanelModel") : t("receiptMode")}
+        </p>
         <p>{t("agentPanelHelp")}</p>
         <div className="gea-agent-state">
-          <strong>{rows.length ? t("agentReady") : t("agentWaiting")}</strong>
-          <span>{rows.length ? `${rows.length} ${t("planCount")}` : t("noQuery")}</span>
+          <strong>{selectedRow ? t("agentReady") : t("agentWaiting")}</strong>
+          <span>{selectedRow ? `${t("select")} ${selectedRow.planId ?? t("unknown")}` : t("noQuery")}</span>
         </div>
         <button type="button" className="gea-primary" disabled={!canSend} onClick={onSend}>
           {t("sendToSession")}
@@ -344,15 +338,7 @@ export function apply(ctx: Context): void {
     const login = useRef<AbortController | undefined>(undefined);
     const submitting = useRef(false);
     const row = data?.records.find((row) => row.planId === selected);
-    const organizationValues = data
-      ? Array.from(
-          new Set(
-            data.records
-              .map((record) => organizationValueFor(record, organizationView) ?? "")
-              .filter(Boolean),
-          ),
-        )
-      : [];
+    const organizationValues = data ? organizationValuesFor(data.records, organizationView) : [];
     const visibleRecords =
       data?.records.filter((record) => {
         if (organizationView === "all" || !organizationValue) return true;
@@ -688,6 +674,9 @@ export function apply(ctx: Context): void {
             <section className="gea-section gea-live-section" aria-label={t("live")}>
               <ApprovalWorkspace
                 rows={visibleRecords}
+                selectedRow={row ?? null}
+                selectedVersionId={versionId ?? row?.versionId?.toString()}
+                analysisMode={status?.mode === "model" ? "model" : "receipt"}
                 view={organizationView}
                 organizationOptions={organizationValues}
                 organizationValue={organizationValue}
@@ -703,19 +692,15 @@ export function apply(ctx: Context): void {
                     cancel();
                     clearExtras();
                     setSelected(String(next.planId));
+                  } else if (!next) {
+                    cancel();
+                    clearExtras();
+                    setSelected(undefined);
                   }
                 }}
                 onViewChange={(next) => {
                   setOrganizationView(next);
-                  const nextValues = next === "all"
-                    ? []
-                    : Array.from(
-                        new Set(
-                          data.records
-                            .map((record) => organizationValueFor(record, next) ?? "")
-                            .filter(Boolean),
-                        ),
-                      );
+                  const nextValues = next === "all" ? [] : organizationValuesFor(data.records, next);
                   const nextValue = next !== "all"
                     ? nextValues[0] ?? ""
                     : "";
@@ -728,6 +713,10 @@ export function apply(ctx: Context): void {
                       cancel();
                       clearExtras();
                       setSelected(String(nextRecord.planId));
+                    } else if (!nextRecord) {
+                      cancel();
+                      clearExtras();
+                      setSelected(undefined);
                     }
                   }
                 }}
@@ -753,10 +742,12 @@ export function apply(ctx: Context): void {
                       {(
                         [
                           "select",
+                          "planId",
                           "dealer",
-                          "targetAmount",
-                          "progress",
-                          "status",
+                          "planTypeCode",
+                          "currentQty",
+                          "currentAmount",
+                          "updatedAt",
                         ] as CopyKey[]
                       ).map((key) => (
                         <th key={key}>{t(key)}</th>
@@ -783,18 +774,28 @@ export function apply(ctx: Context): void {
                           />
                         </td>
                         <td>
+                          {record.planId ?? t("unknown")}
+                          <small>
+                            {t("versionId")} {record.versionId ?? t("unknown")}
+                          </small>
+                        </td>
+                        <td>
                           {record.orgName ?? record.dealerName ?? record.dealerCode ?? t("unknown")}
                           <small>
                             {record.provinceName ?? record.areaName ?? t("unknown")}
                           </small>
                         </td>
                         <td>
-                          {record.targetAmount ?? t("unknown")}
+                          {record.planTypeCode ?? t("unknown")}
+                          <small>{t("status")} {record.status ?? t("unknown")}</small>
                         </td>
                         <td>
                           {record.currentQty ?? t("unknown")} / {record.targetQty ?? t("unknown")}
                         </td>
-                        <td>{record.status ?? t("unknown")}</td>
+                        <td>
+                          {record.currentAmount ?? t("unknown")} / {record.targetAmount ?? t("unknown")}
+                        </td>
+                        <td>{record.updatedAt ?? t("unknown")}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -1,0 +1,28 @@
+{
+  "format": "gea-approval-workspace-keyless-v1",
+  "source": "GEA_LIVE_READONLY",
+  "analysis": "receipt",
+  "query": {
+    "periodId": "period-1",
+    "planTypeCode": "Y",
+    "status": "5"
+  },
+  "selected": {
+    "planId": "9007199254740993",
+    "versionId": "version-1",
+    "organization": "华东",
+    "planTypeCode": "Y",
+    "status": "5",
+    "currentQty": "1.2300",
+    "targetQty": "2.3400",
+    "currentAmount": "10.10",
+    "targetAmount": "12.30"
+  },
+  "events": [
+    "query",
+    "select",
+    "preview",
+    "submit",
+    "receipt"
+  ]
+}

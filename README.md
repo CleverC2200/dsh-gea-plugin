@@ -18,6 +18,8 @@ npm start -- --config gea.config.json --runtime .runtime/development --port 3198
 
 `gea.config.example.json` 使用明确的本地回执模式，只验证数据传递。生产部署应使用 `gea.direct.example.json` 的 `source: "gea"` 配置；插件会复用当前 GEA 登录会话获取个人模型凭证、发现 `sales_forecast` 模型并直接调用 OpenAI-compatible 接口。`source: "aionui"` 仅作为迁移期间的兼容路径。
 
+页面工作台按 AionUi 参考布局组织为业务导航、销售计划审批中心和需求预测 Agent 三列。当前审批区域明确保持只读：组织维度、选中计划、版本标识和数据摘要可见，未确认的 GEA 节点状态显示为未知，分析按钮只在生成只读快照后把选中计划送入 dsh Session。页面迁移不等于审批写回能力。
+
 GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
 
 ## 数据与会话
@@ -42,6 +44,8 @@ GEA token 仅保存在当前 Host 内存中；重启后需要重新登录。模�
 npm run typecheck
 npm test
 ```
+
+`tests/fixtures/gea-approval-workspace.snapshot.json` 是脱敏、无密钥的页面/Session 事件回放夹具；它锁定查询、选择、预览、提交和回执的顺序，不代表真实 GEA 或真实模型验收。真实环境证据仍以 `docs/acceptance-2026-09-10.md` 和运行目录中的本地回执为准。
 
 浏览器测试使用本机 Chrome，测试进程、端口和目录均由测试拥有。定向测试可运行 `node --test tests/<name>.test.mjs`。
 

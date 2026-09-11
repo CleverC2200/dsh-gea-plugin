@@ -468,7 +468,7 @@
 .gea-qr {
   margin-top: 20px;
 }
-@media (max-width: 700px) {
+@media (max-width: 900px) {
   .gea-content {
     padding: 22px 16px 44px;
   }
