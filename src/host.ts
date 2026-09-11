@@ -10,6 +10,8 @@ import {
   LlmAdapter,
   type GenerateOptions,
   type StreamChunk,
+  attributionHeaders,
+  type ContentBlock,
 } from "@deepseek-ai/dsh-llm";
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./business.ts";
@@ -93,10 +95,11 @@ class GeaModelAdapter extends LlmAdapter {
       headers: {
         Accept: "text/event-stream",
         "Content-Type": "application/json",
+        ...attributionHeaders(),
         Authorization: "Bearer " + route.secret,
         "X-GEA-Agent-Code": route.agentCode,
       },
-      body: JSON.stringify({ model: options.model, messages: options.messages, stream: true }),
+      body: JSON.stringify(toGeaRequest(options)),
       redirect: "error",
       signal: options.signal,
     });
@@ -132,6 +135,64 @@ class GeaModelAdapter extends LlmAdapter {
     yield { type: "block-end", index: 0, block: { type: "text", text: "" } };
     yield { type: "finish", reason: { kind: "stop" } };
   }
+}
+
+type GeaMessage = {
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string;
+  tool_call_id?: string;
+  tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
+};
+
+function textContent(content: ContentBlock[]): string {
+  return content
+    .filter((block): block is Extract<ContentBlock, { type: "text" }> => block.type === "text")
+    .map((block) => block.text)
+    .join("");
+}
+
+function toGeaMessages(options: GenerateOptions): GeaMessage[] {
+  const messages: GeaMessage[] = [];
+  if (options.system !== undefined) messages.push({ role: "system", content: options.system });
+  for (const message of options.messages) {
+    if (message.role === "system") {
+      const content = textContent(message.content);
+      if (content) messages.push({ role: "system", content });
+      continue;
+    }
+    const toolResults = message.content.filter(
+      (block): block is Extract<ContentBlock, { type: "tool-result" }> => block.type === "tool-result",
+    );
+    if (toolResults.length > 0) {
+      for (const result of toolResults)
+        messages.push({ role: "tool", tool_call_id: result.toolCallId, content: textContent(result.content) || "(no output)" });
+      continue;
+    }
+    if (message.role === "assistant") {
+      const calls = message.content
+        .filter((block): block is Extract<ContentBlock, { type: "tool-call" }> => block.type === "tool-call")
+        .map((call) => ({ id: call.id, type: "function" as const, function: { name: call.name, arguments: call.arguments } }));
+      messages.push({ role: "assistant", content: textContent(message.content) || undefined, ...(calls.length > 0 ? { tool_calls: calls } : {}) });
+      continue;
+    }
+    messages.push({ role: "user", content: textContent(message.content) });
+  }
+  return messages;
+}
+
+function toGeaRequest(options: GenerateOptions) {
+  return {
+    model: options.model,
+    messages: toGeaMessages(options),
+    stream: true,
+    stream_options: { include_usage: true },
+    ...(options.tools && options.tools.length > 0
+      ? { tools: options.tools.map((tool) => ({ type: "function", function: tool })) }
+      : {}),
+    ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
+    ...(options.maxTokens === undefined ? {} : { max_tokens: options.maxTokens }),
+    ...(options.stop === undefined ? {} : { stop: options.stop }),
+  };
 }
 
 /** Register authenticated Web routes; the standard dsh connection owns browser authorization. */

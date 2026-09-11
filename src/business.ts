@@ -300,12 +300,13 @@ export class Business {
     path: string,
     identity: { token: string; tenantId?: string } | undefined,
     signal: AbortSignal,
+    includeTenant = true,
   ): Promise<unknown> {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (identity)
       Object.assign(headers, {
         "X-Access-Token": identity.token,
-        ...(identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
+        ...(includeTenant && identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
         "X-Request-Id": randomUUID(),
       });
     let response: Response;
@@ -357,6 +358,7 @@ export class Business {
         "/aidata/user-agent-credential/my/list?pageNo=1&pageSize=10",
         auth,
         AbortSignal.any([signal, this.epoch.signal]),
+        false,
       ),
     );
     const records = Array.isArray(credentialResult.records) ? credentialResult.records : [];
@@ -370,13 +372,17 @@ export class Business {
       "/aidata/user-agent-credential/my/claim?id=" + encodeURIComponent(credentialId),
       auth,
       AbortSignal.any([signal, this.epoch.signal]),
+      false,
     );
     const claimed = object(claim);
     if (String(claimed.credentialId ?? "") !== credentialId)
       throw new Error("GEA_MODEL_CREDENTIAL_MISMATCH");
     if (!["ACTIVE", "ENABLED"].includes(String(claimed.status)))
       throw new Error("GEA_MODEL_CREDENTIAL_UNAVAILABLE");
-    const baseUrl = text(claimed.baseUrl).replace(/\/$/, "");
+    const base = new URL(text(claimed.baseUrl));
+    if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash)
+      throw new Error("GEA_MODEL_BASE_URL_INVALID");
+    const baseUrl = base.href.replace(/\/$/, "");
     const secret = text(claimed.secret);
     let response: Response;
     try {
@@ -407,7 +413,12 @@ export class Business {
     return route;
   }
 
-  private async post(path: string, identity: { token: string; tenantId?: string }, signal: AbortSignal): Promise<unknown> {
+  private async post(
+    path: string,
+    identity: { token: string; tenantId?: string },
+    signal: AbortSignal,
+    includeTenant = true,
+  ): Promise<unknown> {
     let response: Response;
     try {
       response = await fetch(this.base + path, {
@@ -415,7 +426,7 @@ export class Business {
         headers: {
           Accept: "application/json",
           "X-Access-Token": identity.token,
-          ...(identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
+          ...(includeTenant && identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
           "X-Request-Id": randomUUID(),
         },
         redirect: "error",
