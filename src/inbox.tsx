@@ -17,6 +17,7 @@ type Translate = (key: CopyKey) => string;
 /** Mount a fresh read on each page or detail selection and discard late responses on navigation. */
 export function Inbox({ t }: { t: Translate }) {
   const [pageNo, setPageNo] = useState(1);
+  const [state, setState] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [data, setData] = useState<Page | null>(null);
@@ -33,7 +34,7 @@ export function Inbox({ t }: { t: Translate }) {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(selected ? { id: selected } : { pageNo }),
+      body: JSON.stringify(selected ? { id: selected } : { pageNo, state }),
       signal: controller.signal,
     })
       .then(async (response) => {
@@ -67,7 +68,7 @@ export function Inbox({ t }: { t: Translate }) {
         if (!controller.signal.aborted) setBusy(false);
       });
     return () => controller.abort();
-  }, [pageNo, selected, revision]);
+  }, [pageNo, selected, revision, state]);
   return (
     <section className="gea-inbox" aria-label={t("messageInbox")}>
       <h1>{t("messageInbox")}</h1>
@@ -77,6 +78,24 @@ export function Inbox({ t }: { t: Translate }) {
       </button>
       {selected ? (
         <button onClick={() => setSelected(null)}>{t("backToInbox")}</button>
+      ) : null}
+      {!selected ? (
+        <label className="gea-inbox-filter">
+          {t("notificationState")}
+          <select
+            aria-label={t("notificationState")}
+            value={state}
+            onChange={(event) => {
+              setState(event.target.value);
+              setPageNo(1);
+            }}
+          >
+            <option value="">{t("all")}</option>
+            <option value="unread">{t("notificationUnread")}</option>
+            <option value="read">{t("notificationRead")}</option>
+            <option value="dismissed">{t("notificationDismissed")}</option>
+          </select>
+        </label>
       ) : null}
       {busy ? <p role="status">{t("busy")}</p> : null}
       {error ? <p role="alert">{t(error)}</p> : null}
@@ -110,7 +129,7 @@ export function Inbox({ t }: { t: Translate }) {
                         {item.title ?? item.id}
                       </button>
                     </td>
-                    <td>{item.state ?? t("unknown")}</td>
+                    <td>{stateLabel(item.state, t)}</td>
                     <td>{item.kind ?? t("unknown")}</td>
                     <td>{item.source?.label ?? t("unknown")}</td>
                   </tr>
@@ -138,7 +157,7 @@ export function Inbox({ t }: { t: Translate }) {
           <p>{detail.summary ?? t("unknown")}</p>
           <dl>
             <dt>{t("notificationState")}</dt>
-            <dd>{detail.state ?? t("unknown")}</dd>
+            <dd>{stateLabel(detail.state, t)}</dd>
             <dt>{t("notificationKind")}</dt>
             <dd>{detail.kind ?? t("unknown")}</dd>
             <dt>{t("notificationSource")}</dt>
@@ -155,4 +174,17 @@ export function Inbox({ t }: { t: Translate }) {
       ) : null}
     </section>
   );
+}
+
+function stateLabel(state: string | null, t: Translate): string {
+  switch (state) {
+    case "unread":
+      return t("notificationUnread");
+    case "read":
+      return t("notificationRead");
+    case "dismissed":
+      return t("notificationDismissed");
+    default:
+      return state ?? t("unknown");
+  }
 }

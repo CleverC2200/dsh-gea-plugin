@@ -10,6 +10,7 @@ test(
   async (t) => {
     const app = await profile(t, {
       config: (base) => ({
+        pageSize: 2,
         geaEnvironments: { production: base, test: base + "/test" },
       }),
     });
@@ -51,6 +52,31 @@ test(
             ...item,
             id: mode === "wrong" ? "notice-2" : item.id,
             payload_projection: { secret: "do-not-project" },
+          },
+        });
+        return true;
+      }
+      if (mode === "paging") {
+        const filtered = req.url.searchParams.get("state") === "unread";
+        const secondPage = req.url.searchParams.get("pageNo") === "2";
+        reply({
+          success: true,
+          result: {
+            items: filtered
+              ? [item]
+              : secondPage
+                ? [{ ...item, id: "notice-3", title: "Later task" }]
+                : [
+                    item,
+                    {
+                      ...item,
+                      id: "notice-2",
+                      title: "Second task",
+                      state: "read",
+                    },
+                  ],
+            total: filtered ? 1 : 3,
+            unread_count: 1,
           },
         });
         return true;
@@ -130,6 +156,37 @@ test(
     await ui
       .getByRole("button", { name: "Fixture task", exact: true })
       .waitFor();
+    mode = "paging";
+    await ui.getByRole("button", { name: "刷新消息", exact: true }).click();
+    await ui
+      .getByRole("button", { name: "Second task", exact: true })
+      .waitFor();
+    await ui.getByRole("button", { name: "下一页", exact: true }).click();
+    await ui.getByRole("button", { name: "Later task", exact: true }).waitFor();
+    assert.equal(
+      await ui.getByRole("button", { name: "下一页", exact: true }).isEnabled(),
+      false,
+    );
+    await ui
+      .getByRole("combobox", { name: "通知状态", exact: true })
+      .selectOption("unread");
+    await ui
+      .getByRole("button", { name: "Fixture task", exact: true })
+      .waitFor();
+    assert.equal(
+      await ui.getByRole("button", { name: "Later task", exact: true }).count(),
+      0,
+    );
+    const filteredRequest = app.requests
+      .filter((r) => r.url.pathname.endsWith("/notifications"))
+      .at(-1);
+    assert.equal(filteredRequest.url.searchParams.get("state"), "unread");
+    assert.equal(filteredRequest.url.searchParams.get("pageNo"), "1");
+    assert.equal(
+      await ui.getByRole("button", { name: "上一页", exact: true }).isEnabled(),
+      false,
+    );
+    mode = "success";
     await mkdir(".runtime/web-evidence", { recursive: true });
     await ui.screenshot({ path: ".runtime/web-evidence/inbox.png" });
     await ui.getByRole("button", { name: "Fixture task", exact: true }).click();

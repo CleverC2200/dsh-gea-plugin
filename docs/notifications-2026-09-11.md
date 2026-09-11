@@ -11,3 +11,5 @@ Host 使用当前登录身份读取固定的 `/api/v1/notifications` 和按 ID �
 正式环境 3201 独立进程已完成只读验收：两页 total=18、returned=18、unique=18，unread_count=3。真实浏览器第一页显示 10 行，可打开详情且无 pageerror；详情 ID 与请求一致，来源类型为 business_system。查询结果不包含来源会话映射，不能把来源引用解释成 DSH Session。原始截图及脱敏回执保留在忽略提交的 `.runtime/inbox-acceptance`，未执行标记已读或审批。
 
 Session 页面回归增加浏览器 reload 后恢复原生回答的断言，已通过；新进程逐事件保留证据仍由 receipt.test.mjs 与源码安装验收提供。该恢复能力不等于 GEA 待办来源会话定位。
+
+消息列表支持全部、未读、已读和已忽略筛选；筛选发送 GEA NotificationState 定义的原始编码，切换状态返回第一页。已知状态使用 DSH 中英文文案，未知状态原样显示。浏览器回归验证第二页、末页禁用、筛选回到第一页及旧行清除。正式 3201 页面验证第二页 8 条、未读筛选 3 条且覆盖完整；未读筛选不表示待审批筛选。

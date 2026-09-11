@@ -1,5 +1,8 @@
 /** Locale-owned copy for the external sales-plan page. */
 const copy = {
+  notificationUnread: ["未读", "Unread"],
+  notificationRead: ["已读", "Read"],
+  notificationDismissed: ["已忽略", "Dismissed"],
   inboxReadOnly: [
     "GEA 通知与业务待办 · 只读查看，不改变处理状态",
     "GEA notifications and business tasks · viewing does not change state",
