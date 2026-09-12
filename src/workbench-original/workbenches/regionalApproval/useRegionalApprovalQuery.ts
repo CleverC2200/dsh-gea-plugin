@@ -190,7 +190,7 @@ export const useRegionalApprovalQuery = ({
   const selectedPeriodPlanTypeCode = selectedPeriod?.planTypeCode;
 
   useEffect(() => {
-    if (!client || !selectedPeriodId || !selectedPeriodPlanTypeCode) {
+    if (periodsState.status !== 'success' || !client || !selectedPeriodId || !selectedPeriodPlanTypeCode) {
       setQueueState(idle);
       setQueueSettledPage(undefined);
       return;
@@ -282,6 +282,7 @@ export const useRegionalApprovalQuery = ({
       .finally(request.finish);
     return request.cancel;
   }, [
+    periodsState.status,
     client,
     page,
     pageSize,
@@ -293,7 +294,7 @@ export const useRegionalApprovalQuery = ({
   ]);
 
   useEffect(() => {
-    if (!client || !loadStageProgress || !selectedPeriodId || !selectedPeriodPlanTypeCode) {
+    if (periodsState.status !== 'success' || !client || !loadStageProgress || !selectedPeriodId || !selectedPeriodPlanTypeCode) {
       setProgressState(idle);
       return;
     }
@@ -345,6 +346,7 @@ export const useRegionalApprovalQuery = ({
       .finally(request.finish);
     return request.cancel;
   }, [
+    periodsState.status,
     client,
     loadStageProgress,
     queueRevision,
@@ -355,7 +357,7 @@ export const useRegionalApprovalQuery = ({
   ]);
 
   useEffect(() => {
-    if (!client || !loadAnalysisSummary || !selectedPeriodId || !selectedPeriodPlanTypeCode) {
+    if (periodsState.status !== 'success' || !client || !loadAnalysisSummary || !selectedPeriodId || !selectedPeriodPlanTypeCode) {
       setAnalysisResult(idle);
       return;
     }
@@ -457,6 +459,7 @@ export const useRegionalApprovalQuery = ({
       request.cancel();
     };
   }, [
+    periodsState.status,
     client,
     loadAnalysisSummary,
     selectedPeriodId,

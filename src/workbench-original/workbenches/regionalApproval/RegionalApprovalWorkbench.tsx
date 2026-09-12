@@ -89,7 +89,6 @@ import {
   addExactDecimals,
   clampSalesPlanPageNumber,
   formatExactDecimal,
-  isOpenSalesPlanPeriod,
   projectRegionalApprovalLiveDimension,
   regionalApprovalLiveProgress,
   subtractExactDecimals,
@@ -825,7 +824,6 @@ const RegionalApprovalWorkbench: React.FC<{
     if (!detail || !salesPlanAccessForRow(row, detail, permissionCodes, liveStageFilter)?.allowedActions.includes(kind))
       return 'missingAuthority';
     if (kind === 'SAVE') return undefined;
-    if (!isOpenSalesPlanPeriod(liveQuery.selectedPeriod)) return 'closedPeriod';
     if (salesPlanApprovalNodeForStatus(row.status, row.planTypeCode) === undefined) return 'notCurrentStage';
     return undefined;
   };
@@ -1850,7 +1848,7 @@ const RegionalApprovalWorkbench: React.FC<{
   ];
   const approvalActionButtons = liveQuery.enabled ? (
     <>
-      {roleStages.length > 0 && !readOnlyBrowsing ? (
+      {roleStages.length > 0 && (!readOnlyBrowsing || selectedLiveRows[0]?.status === 10) ? (
         <Button
           size='small'
           disabled={
@@ -2753,7 +2751,7 @@ const RegionalApprovalWorkbench: React.FC<{
             }));
           }}
           onEdit={
-            roleStages.length > 0 && !readOnlyBrowsing && !liveActionDisabledReason(activeLiveAdjustmentRow, 'SAVE')
+            roleStages.length > 0 && (!readOnlyBrowsing || activeLiveAdjustmentRow.status === 10) && !liveActionDisabledReason(activeLiveAdjustmentRow, 'SAVE')
               ? () => {
                   setLiveActionKind('SAVE');
                   setLiveActionPlanId(activeLiveAdjustmentRow.planId);

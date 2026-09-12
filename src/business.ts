@@ -1,4 +1,5 @@
 /** Process-local GEA identity, query ownership, and immutable analysis inputs. */
+import { readSalesPlanWorkflowConfig } from "./workflow-config.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { brandString, type Branded } from "@deepseek-ai/dsh-brand";
 import QRCode from "qrcode";
@@ -417,6 +418,14 @@ export class Business {
   private authenticated(): NonNullable<Business["auth"]> {
     if (!this.auth) throw new Error("LOGIN_REQUIRED");
     return this.auth;
+  }
+
+  /** Read the complete workflow configuration using this Host's current identity. */
+  async workflowConfig(payload: Record<string, unknown>, caller: AbortSignal) {
+    keys(payload, []);
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(this.config.requestTimeoutMs)]);
+    return readSalesPlanWorkflowConfig(this.base, auth.token, fetch, signal);
   }
 
   /** Read fixed notification endpoints under the current Host identity without changing plan selection. */

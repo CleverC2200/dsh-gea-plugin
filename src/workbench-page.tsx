@@ -1,4 +1,5 @@
 /** GEA's original approval workbench in a standalone, authenticated document. */
+import { createWorkflowLoader } from "./workflow-loader.ts";
 import "@arco-design/web-react/dist/css/arco.css";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import i18next from "i18next";
@@ -82,9 +83,13 @@ function query<T>(
 const unavailable = async (): Promise<never> => {
   throw new Error("GEA_WRITE_ADAPTER_NOT_CONNECTED");
 };
+const loadWorkflow = createWorkflowLoader((signal) => rpc("workflow/config", {}, signal));
 const host: WorkbenchHost = {
   salesPlan: {
-    periods: { invoke: (input) => query("periods", input) },
+    periods: { invoke: async (input) => {
+      await loadWorkflow(input?.signal);
+      return query("periods", input);
+    } },
     list: { invoke: (input) => query("list", input) },
     detail: { invoke: (input) => query("detail", input) },
     versions: { invoke: (input) => query("versions", input) },

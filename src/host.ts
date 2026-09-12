@@ -370,6 +370,7 @@ export function apply(ctx: Context, config: Deployment): void {
   const endpoints = [
     "status",
     "notifications",
+    "workflow/config",
     "environment/select",
     "model/discover",
     "login/start",
@@ -403,6 +404,9 @@ export function apply(ctx: Context, config: Deployment): void {
                   payload,
                   request.signal,
                 );
+                break;
+              case "workflow/config":
+                value = await business.workflowConfig(payload, request.signal);
                 break;
               case "notifications":
                 value = await business.notifications(payload, request.signal);

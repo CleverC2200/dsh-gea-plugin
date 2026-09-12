@@ -125,6 +125,13 @@ export async function profile(t, options = {}) {
               },
             },
           });
+        else if (path.endsWith("/ai/gateway/agent/session"))
+          reply({ success: true, code: 200, result: { accessDecision: { allowed: true }, delegationToken: "fixture-delegation" } });
+        else if (path.endsWith("/ai/gateway/sql/execute")) {
+          const body = JSON.parse(request.body);
+          const rows = ['0', '1', '2', '3', '4', 'Y'].map((node, level) => ({ id: level + 1, type_code: 'Y', examine_level: String(level), node_num: node }));
+          reply({ success: true, code: 200, result: { requestId: request.headers['x-request-id'], operation: 'SELECT', tables: ['agents_scm_plan_workflow_config'], total: rows.length, pageNo: body.pageNo, pageSize: body.pageSize, rows } });
+        }
         else if (path.endsWith("/periods"))
           reply({
             success: true,
