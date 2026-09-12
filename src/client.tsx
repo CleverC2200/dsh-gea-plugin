@@ -175,7 +175,6 @@ export function apply(ctx: Context): void {
             </button>
             <strong className="gea-shell-label">{t("geaBusiness")}</strong>
           </div>
-          <span className="gea-shell-label">{t("dshConversation")}</span>
           <button type="button" onClick={() => ctx.layout.selectPanel(null)}>
             {t("dshConversation")}
           </button>
@@ -207,10 +206,6 @@ export function apply(ctx: Context): void {
           </button>
           <div
             className="gea-shell-user"
-            onClick={() => {
-              const button = Array.from(document.querySelectorAll("button")).find((item) => /设置|settings/i.test(item.getAttribute("aria-label") || item.textContent || ""));
-              button instanceof HTMLButtonElement ? button.click() : ctx.layout.selectPanel(null);
-            }}
             aria-label={name || t("signedOut")}
             title={name || t("signedOut")}
           >
