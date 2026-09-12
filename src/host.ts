@@ -371,6 +371,7 @@ export function apply(ctx: Context, config: Deployment): void {
     "status",
     "notifications",
     "workflow/config",
+    "sales-plan/action",
     "environment/select",
     "model/discover",
     "login/start",
@@ -404,6 +405,9 @@ export function apply(ctx: Context, config: Deployment): void {
                   payload,
                   request.signal,
                 );
+                break;
+              case "sales-plan/action":
+                value = await business.salesPlanAction(payload, request.signal);
                 break;
               case "workflow/config":
                 value = await business.workflowConfig(payload, request.signal);

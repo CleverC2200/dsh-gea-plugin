@@ -428,6 +428,25 @@ export class Business {
     return readSalesPlanWorkflowConfig(this.base, auth.token, fetch, signal);
   }
 
+  /** Execute one authorized GEA sales-plan action; DMS is intentionally outside this method. */
+  async salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+    keys(payload, ["versionId", "request", "idempotencyKey", "requestId"]);
+    const versionId = text(payload.versionId);
+    const request = object(payload.request);
+    keys(request, ["expectedSnapshot", "action", "expectedStatus", "remark", "adjustments"]);
+    if (!["SAVE", "APPROVE", "REJECT"].includes(text(request.action))) throw new Error("INVALID_ACTION");
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    const body = JSON.stringify(request);
+    const response = await fetch(this.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions", {
+      method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": text(payload.requestId), "Idempotency-Key": text(payload.idempotencyKey) }, body, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)])
+    });
+    if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw new Error("GEA_WRITE_HTTP_" + response.status); }
+    const data = object(parseJson(await response.text()));
+    if (data.success !== true || !data.result) throw new Error("GEA_WRITE_REJECTED");
+    return data.result;
+  }
+
   /** Read fixed notification endpoints under the current Host identity without changing plan selection. */
   async notifications(payload: Record<string, unknown>, caller: AbortSignal) {
     keys(payload, ["pageNo", "state", "id"]);

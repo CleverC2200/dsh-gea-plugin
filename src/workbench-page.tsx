@@ -96,7 +96,7 @@ const host: WorkbenchHost = {
     logs: { invoke: (input) => query("logs", input) },
     versionSkus: { invoke: (input) => query("versionSkus", input) },
     compare: { invoke: (input) => query("compare", input) },
-    action: { invoke: unavailable },
+    action: { invoke: (input) => rpc("sales-plan/action", input) },
     submit: { invoke: unavailable },
   },
   modelInference: {
