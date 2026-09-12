@@ -167,12 +167,15 @@ export function apply(ctx: Context): void {
       >
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
-          <button className="gea-shell-brand" title={t("geaBusiness")} aria-label={t("geaBusiness")} onClick={() => ctx.layout.selectPanel(PANEL)}> 
-            <span className="gea-shell-logo" aria-hidden="true">
+          <div className="gea-shell-brand" title={t("geaBusiness")}> 
+            <button type="button" className="gea-shell-logo" aria-label={t("geaBusiness")} onClick={() => ctx.layout.selectPanel(PANEL)}>
+              <span aria-hidden="true">
               GEA
-            </span>
+              </span>
+            </button>
             <strong className="gea-shell-label">{t("geaBusiness")}</strong>
-          </button>
+          </div>
+          <span className="gea-shell-label">{t("dshConversation")}</span>
           <button type="button" onClick={() => ctx.layout.selectPanel(null)}>
             {t("dshConversation")}
           </button>
@@ -202,8 +205,7 @@ export function apply(ctx: Context): void {
             </span>
             <span className="gea-shell-label">{t("demandForecastAgent")}</span>
           </button>
-          <button
-            type="button"
+          <div
             className="gea-shell-user"
             onClick={() => {
               const button = Array.from(document.querySelectorAll("button")).find((item) => /设置|settings/i.test(item.getAttribute("aria-label") || item.textContent || ""));
@@ -212,11 +214,11 @@ export function apply(ctx: Context): void {
             aria-label={name || t("signedOut")}
             title={name || t("signedOut")}
           >
-            <span className="gea-user-avatar" aria-hidden="true">
+            <button type="button" className="gea-user-avatar" aria-label="设置" onClick={() => { const button = Array.from(document.querySelectorAll("button")).find((item) => /设置|settings/i.test(item.getAttribute("aria-label") || item.textContent || "")); if (button instanceof HTMLButtonElement) button.click(); }}>
               {name.slice(0, 1) || "G"}
-            </span>
+            </button>
             <span className="gea-shell-label">{name || t("signedOut")}</span>
-          </button>
+          </div>
         </div>
       </nav>
     );
