@@ -80,6 +80,7 @@ export type GeaSalesPlanPageQuery = {
 };
 
 export type GeaSalesPlanVersion = {
+  orderType?: 'M' | 'Z';
   id: string;
   planId: string;
   seq: number;
@@ -200,6 +201,8 @@ export type GeaSalesPlanSubmitItem = {
 };
 
 export type GeaSalesPlanSubmitRequest = {
+  orderType: 'M' | 'Z';
+  status: number;
   periodId: GeaSalesPlanId;
   periodMonth: string;
   planTypeCode: string;

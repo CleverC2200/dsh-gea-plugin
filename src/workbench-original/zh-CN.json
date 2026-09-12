@@ -724,7 +724,7 @@
         "disabled": {
           "completed": "该退回版本已收到服务端重提回执，已阻止重复操作。",
           "channelMissing": "计划 ID 不符合 p-{渠道}-{YYYY-MM}-{5位流水号} 业务编码，无法安全确定重提渠道。",
-          "serviceBoundary": "业务版未开放服务账号提交或退回重提。",
+          "serviceBoundary": "可核对并编辑真实退回明细；提交服务身份尚未配置，当前不会发送重提。",
           "readOnly": "当前版本仅可查看，服务端尚未授予可执行操作。",
           "queueNotFresh": "队列正在刷新或读取失败；必须先获得成功的权威队列响应。",
           "closedPeriod": "只有 OPEN 周期可以重提。",
@@ -741,7 +741,9 @@
           "retryExhausted": "三次总调用预算已用尽；客户端不会继续调用，请刷新权威状态核对是否已生成新版本。",
           "unavailable": "结果暂时未知；为避免重复版本，必须使用原幂等键和相同请求体重试并确认结果。",
           "failed": "重提失败且未更新本地状态；请刷新权威数据后再决定。"
-        }
+        },
+        "quantity": "提报数量",
+        "nextStatus": "重提目标状态"
       },
       "liveAction": {
         "saveChecksumTitle": "保存核对摘要",

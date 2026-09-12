@@ -248,7 +248,7 @@ function skuTotal(rows: Record<string, unknown>[], field: "qty" | "amt") {
 
 /** Owns credentials and fetched records; callers can select identifiers, never supply business data. */
 export class Business {
-  private auth?: { token: string; tenantId: string; name: string };
+  private auth?: { token: string; tenantId: string; name: string; id: string; username: string };
   private qr?: { id: string; loginId: string; createdAt: number };
   private epoch = new AbortController();
   private queryEpoch = new AbortController();
@@ -338,7 +338,7 @@ export class Business {
           ? "expired"
           : "signed-out",
       user: this.auth
-        ? { name: this.auth.name, tenantId: this.auth.tenantId }
+        ? { name: this.auth.name, tenantId: this.auth.tenantId, id: this.auth.id, username: this.auth.username }
         : null,
       source: this.base,
       provider:
@@ -726,7 +726,7 @@ export class Business {
       throw new Error("GEA_IDENTITY_INCOMPLETE");
     const name = text(user.realname || user.username);
     if (epoch.aborted || this.qr !== qr) throw new Error("STALE_LOGIN");
-    this.auth = { token, tenantId, name };
+    this.auth = { token, tenantId, name, id: text(user.id), username: text(user.username || user.realname) };
     this.qr = undefined;
     return { status: "authenticated", ...this.status() };
   }

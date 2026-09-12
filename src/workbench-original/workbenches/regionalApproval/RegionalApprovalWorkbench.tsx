@@ -1,3 +1,4 @@
+import type { GeaSalesPlanPeriod } from '../../contracts.ts';
 /** Adapted from AionUi (Apache-2.0): local imports and explicit DSH host adapter. See SOURCE.md. */
 import { salesPlanStatusText } from './regionalApprovalQueryModel.ts';
 import { SALES_PLAN_RETURN_CODES } from '../../salesPlanWorkflow.ts';
@@ -392,6 +393,7 @@ const RegionalApprovalWorkbench: React.FC<{
   liveActionClient?: SalesPlanActionClient;
   liveActionsEnabled?: boolean;
   automaticAnalysisEnabled?: boolean;
+  onResubmit?: (planId: string, versionId: string, period: GeaSalesPlanPeriod) => void;
   permissionCodes?: readonly string[];
 }> = ({
   stateScope,
@@ -404,6 +406,7 @@ const RegionalApprovalWorkbench: React.FC<{
   liveActionsEnabled = false,
   automaticAnalysisEnabled = false,
   permissionCodes,
+  onResubmit,
 }) => {
   const { conversationId } = useBusinessSurfaceSession();
   const scopedState = getAssistantSurfaceWorkbenchScope(stateScope);
@@ -1885,6 +1888,11 @@ const RegionalApprovalWorkbench: React.FC<{
           {t('common.assistantSurface.regionalApproval.liveAction.reject')}
         </Button>
       ) : null}
+      {onResubmit ? <Button size='small'
+        disabled={selectedLiveRows.length !== 1 || !liveQuery.selectedPeriod || liveQuery.queueState.status !== 'success' || ![6, 7, 8, 9].includes(selectedLiveRows[0]?.status)}
+        onClick={() => { const row = selectedLiveRows[0]; if (row && liveQuery.selectedPeriod) onResubmit(row.planId, row.versionId, liveQuery.selectedPeriod); }}>
+        {t('common.assistantSurface.regionalApproval.liveSubmit.open')}
+      </Button> : null}
       {liveActionsEnabled ? (
         <Button
           type='primary'

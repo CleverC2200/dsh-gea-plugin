@@ -156,7 +156,8 @@ export const prepareSalesPlanResubmit = (source: SalesPlanResubmitSource): Sales
     version.planTypeCode !== source.period.planTypeCode ||
     version.status < 6 ||
     version.status > 9 ||
-    source.period.status.toUpperCase() !== 'OPEN' ||
+    (salesPlanWorkflow(version.planTypeCode).actor(version.status) === 'customer' && source.period.status.toUpperCase() !== 'OPEN') ||
+    !['M', 'Z'].includes(version.orderType ?? '') ||
     source.skus.length < 1 ||
     source.skus.length > 5000
   ) {
@@ -197,6 +198,8 @@ export const prepareSalesPlanResubmit = (source: SalesPlanResubmitSource): Sales
 
   return {
     request: {
+      orderType: version.orderType as 'M' | 'Z',
+      status: nextStatus,
       periodId: source.period.periodId,
       periodMonth: source.period.periodMonth,
       planTypeCode,
@@ -285,7 +288,7 @@ export class SalesPlanSubmitAttempt {
     this.input = input;
     this.command = {
       request: input.request,
-      idempotencyKey: `aionui:sales-plan:${this.createId()}`,
+      idempotencyKey: `gea-sales-plan-submit:${this.createId()}`,
       requestId: this.createId(),
     };
     return this.invoke();
@@ -339,3 +342,18 @@ export class SalesPlanSubmitAttempt {
     return error;
   }
 }
+
+/** Confirm the new effective version and its resubmission log before refreshing the queue. */
+export const salesPlanResubmitReadbackMatches = (
+  previousVersionId: string,
+  receipt: GeaSalesPlanSubmitReceipt,
+  detail: GeaSalesPlanDetail
+): boolean => {
+  const current = detail.currentVersion;
+  const old = detail.versions.find(row => row.id === previousVersionId);
+  return current.planId === receipt.planId && current.id === receipt.versionId &&
+    current.seq === receipt.seq && current.status === receipt.status && current.effective === true &&
+    old?.effective === false && old.planId === receipt.planId &&
+    detail.logs.some(log => log.requestId === receipt.requestId && log.planId === receipt.planId &&
+      log.versionId === receipt.versionId && log.actionCode === 'RESUBMIT');
+};
