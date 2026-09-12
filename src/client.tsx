@@ -167,7 +167,7 @@ export function apply(ctx: Context): void {
       >
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
-          <button className="gea-shell-brand" title={t("geaBusiness")} aria-label={t("geaBusiness")} onClick={() => ctx.layout.selectPanel(PANEL)}>
+          <button className="gea-shell-brand" title={t("geaBusiness")} aria-label={t("geaBusiness")} onClick={() => ctx.layout.selectPanel(PANEL)}> 
             <span className="gea-shell-logo" aria-hidden="true">
               GEA
             </span>
@@ -205,6 +205,10 @@ export function apply(ctx: Context): void {
           <button
             type="button"
             className="gea-shell-user"
+            onClick={() => {
+              const button = Array.from(document.querySelectorAll("button")).find((item) => /设置|settings/i.test(item.getAttribute("aria-label") || item.textContent || ""));
+              button instanceof HTMLButtonElement ? button.click() : ctx.layout.selectPanel(null);
+            }}
             aria-label={name || t("signedOut")}
             title={name || t("signedOut")}
           >
