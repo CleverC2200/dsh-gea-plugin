@@ -60,7 +60,8 @@
   color: #111;
   font-size: 12px;
 }
-.gea-shell-navigation button {
+.gea-shell-navigation-content > button,
+.gea-shell-workspaces > button {
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -216,4 +217,25 @@
   border-radius: 4px;
   background: inherit;
   color: inherit;
+}
+
+.gea-shell-navigation-content > .gea-shell-brand {
+  height: 54px;
+  border-radius: 0;
+  border-bottom: 1px solid #e0e3eb;
+  font-size: 16px;
+  color: #111;
+  padding: 0;
+  gap: 16px;
+}
+.gea-shell-workspaces {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.gea-shell-user .gea-user-avatar {
+  width: 27px;
+  height: 27px;
+  font-size: 9px;
+  font-weight: 700;
 }

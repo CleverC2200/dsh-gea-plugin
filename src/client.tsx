@@ -7,6 +7,7 @@ import type {
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-ui-session/client";
 import type {} from "@deepseek-ai/dsh-client-ui-sidebar/client";
+import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type { ISessions } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { Context } from "@deepseek-ai/cordis";
 import type { SessionId } from "@deepseek-ai/dsh-api-remotes/client";
@@ -112,8 +113,7 @@ export function apply(ctx: Context): void {
       </>
     );
   }
-  function Navigation({ usePanelInfo }: PropsRuntime<"sidebar">) {
-    const activePanel = usePanelInfo((info) => info.activePanelId);
+  function useIdentity() {
     const [name, setName] = useState("");
     useEffect(() => {
       const controller = new AbortController();
@@ -126,40 +126,17 @@ export function apply(ctx: Context): void {
       })
         .then((response) => response.json())
         .then((result) => {
-          if (
-            !controller.signal.aborted &&
-            result.ok &&
-            result.value.user?.name
-          )
-            setName(result.value.user.name);
+          if (result.ok) setName(result.value.user?.name ?? "");
         })
         .catch(() => {
-          /* Navigation remains usable while the login status request is unavailable. */
+          /* The avatar remains available without a GEA login. */
         });
-      const updateName = (event: MessageEvent) => {
-        if (
-          event.origin !== window.location.origin ||
-          event.source !==
-            document.querySelector<HTMLIFrameElement>(
-              "iframe[data-gea-workbench]",
-            )?.contentWindow
-        )
-          return;
-        const value = event.data;
-        if (
-          value?.type === "gea:identity" &&
-          typeof value.name === "string" &&
-          value.name.length <= 256
-        )
-          setName(value.name);
-      };
-      window.addEventListener("message", updateName);
-      return () => {
-        controller.abort();
-        window.removeEventListener("message", updateName);
-      };
+      return () => controller.abort();
     }, []);
-    if (!name) return null;
+    return name;
+  }
+  function Navigation({ usePanelInfo }: PropsRuntime<"sidebar.workspaces">) {
+    const activePanel = usePanelInfo((info) => info.activePanelId);
     return (
       <nav
         className="gea-shell-navigation"
@@ -167,55 +144,84 @@ export function apply(ctx: Context): void {
       >
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
-          <div className="gea-shell-brand" title={t("geaBusiness")}> 
-            <button type="button" className="gea-shell-logo" aria-label={t("geaBusiness")} onClick={() => ctx.layout.selectPanel(null)}>
-              <span aria-hidden="true">
-              GEA
-              </span>
-            </button>
-            <strong className="gea-shell-label">{t("geaBusiness")}</strong>
-          </div>
-          <button type="button" onClick={() => ctx.layout.selectPanel(null)}>
-            {t("dshConversation")}
-          </button>
-          <div className="gea-shell-caption">{t("businessFunctions")}</div>
           <button
             type="button"
             onClick={() => ctx.layout.selectPanel(INBOX)}
             className={activePanel === INBOX ? "is-active" : undefined}
-            aria-label={t("messageInbox")}
           >
             <NavIcon kind="inbox" />
-            <span className="gea-shell-label">{t("messageInbox")}</span>
+            <span>{t("messageInbox")}</span>
           </button>
-          <div className="gea-shell-group" title={t("planManagement")}>
+          <div className="gea-shell-group">
             <NavIcon kind="plan" />
-            <strong className="gea-shell-label">{t("planManagement")}</strong>
+            <strong>{t("planManagement")}</strong>
           </div>
           <button
             type="button"
-            className={activePanel === PANEL ? "is-active" : undefined}
-            aria-label={t("demandForecastAgent")}
-            title={t("demandForecastAgent")}
             onClick={() => ctx.layout.selectPanel(PANEL)}
+            className={activePanel === PANEL ? "is-active" : undefined}
           >
-            <span className="gea-shell-active-icon">
-              <NavIcon kind="plan" />
-            </span>
-            <span className="gea-shell-label">{t("demandForecastAgent")}</span>
+            {t("demandForecastAgent")}
           </button>
-          <div
-            className="gea-shell-user"
-            aria-label={name || t("signedOut")}
-            title={name || t("signedOut")}
-          >
-            <button type="button" className="gea-user-avatar" aria-label="设置" onClick={() => { const button = Array.from(document.querySelectorAll("button")).find((item) => /设置|settings/i.test(item.getAttribute("aria-label") || item.textContent || "")); if (button instanceof HTMLButtonElement) button.click(); }}>
-              {name.slice(0, 1) || "G"}
-            </button>
-            <span className="gea-shell-label">{name || t("signedOut")}</span>
-          </div>
         </div>
       </nav>
+    );
+  }
+  function Brand({ usePanelInfo }: PropsRuntime<"sidebar.brand.mark">) {
+    const business = usePanelInfo(
+      (info) => info.activePanelId === PANEL || info.activePanelId === INBOX,
+    );
+    const switchPage = () => ctx.layout.selectPanel(business ? null : PANEL);
+    return (
+      <>
+        <style>{shellCss}</style>
+        <span
+          className="gea-brand-switch"
+          role="button"
+          tabIndex={0}
+          aria-label={t(business ? "switchToDsh" : "switchToBusiness")}
+          onClick={(event) => {
+            event.stopPropagation();
+            switchPage();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              event.stopPropagation();
+              switchPage();
+            }
+          }}
+        >
+          <span className="gea-shell-logo">GEA</span>
+        </span>
+      </>
+    );
+  }
+  function BrandName({ usePanelInfo }: PropsRuntime<"sidebar.brand.name">) {
+    const business = usePanelInfo(
+      (info) => info.activePanelId === PANEL || info.activePanelId === INBOX,
+    );
+    return (
+      <span
+        onClick={(event) => {
+          event.stopPropagation();
+          ctx.layout.selectPanel(business ? null : PANEL);
+        }}
+      >
+        {t(business ? "geaBusiness" : "dshConversation")}
+      </span>
+    );
+  }
+  function UserAvatar() {
+    const name = useIdentity();
+    return (
+      <>
+        <style>{shellCss}</style>
+        <span className="gea-user-avatar" aria-hidden="true">
+          {name.slice(0, 1) || "G"}
+        </span>
+        <span>{name || t("signedOut")}</span>
+      </>
     );
   }
   ctx.slots.inject("main", function* () {
@@ -241,7 +247,7 @@ export function apply(ctx: Context): void {
     useEffect(() => {
       if (!business) return;
       return ctx.slots.register(
-        { name: "sidebar", locale: "geaProof", priority: -10 },
+        { name: "sidebar.workspaces", locale: "geaProof", priority: -10 },
         Navigation,
       );
     }, [business]);
@@ -253,15 +259,22 @@ export function apply(ctx: Context): void {
       NavigationMode,
     ),
   );
-  ctx.slots.inject("sidebar.panellist", () =>
+  ctx.slots.inject("sidebar.brand.mark", () =>
     ctx.slots.register(
-      {
-        name: "sidebar.panellist",
-        id: PANEL,
-        locale: "geaProof",
-        label: t("geaBusiness"),
-      },
-      () => <NavIcon kind="plan" />,
+      { name: "sidebar.brand.mark", locale: "geaProof", priority: -10 },
+      Brand,
+    ),
+  );
+  ctx.slots.inject("sidebar.brand.name", () =>
+    ctx.slots.register(
+      { name: "sidebar.brand.name", locale: "geaProof", priority: -10 },
+      BrandName,
+    ),
+  );
+  ctx.slots.inject("settings.trigger", () =>
+    ctx.slots.register(
+      { name: "settings.trigger", locale: "geaProof", priority: -10 },
+      UserAvatar,
     ),
   );
 }
