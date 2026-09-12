@@ -167,12 +167,12 @@ export function apply(ctx: Context): void {
       >
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
-          <div className="gea-shell-brand" title={t("geaBusiness")}>
+          <button className="gea-shell-brand" title={t("geaBusiness")} aria-label={t("geaBusiness")} onClick={() => ctx.layout.selectPanel(PANEL)}>
             <span className="gea-shell-logo" aria-hidden="true">
               GEA
             </span>
             <strong className="gea-shell-label">{t("geaBusiness")}</strong>
-          </div>
+          </button>
           <button type="button" onClick={() => ctx.layout.selectPanel(null)}>
             {t("dshConversation")}
           </button>
@@ -202,7 +202,8 @@ export function apply(ctx: Context): void {
             </span>
             <span className="gea-shell-label">{t("demandForecastAgent")}</span>
           </button>
-          <div
+          <button
+            type="button"
             className="gea-shell-user"
             aria-label={name || t("signedOut")}
             title={name || t("signedOut")}
@@ -211,7 +212,7 @@ export function apply(ctx: Context): void {
               {name.slice(0, 1) || "G"}
             </span>
             <span className="gea-shell-label">{name || t("signedOut")}</span>
-          </div>
+          </button>
         </div>
       </nav>
     );
