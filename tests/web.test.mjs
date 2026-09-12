@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { profile } from "./profile.mjs";
 
@@ -11,7 +11,7 @@ const plan = {
   periodId: "period-1",
   planTypeCode: "Y",
   dealerCode: "dealer-a",
-  status: 5,
+  status: 1,
   currentQty: "26445.000",
   targetQty: "26445.000",
   currentAmount: "2064404.28",
@@ -25,7 +25,7 @@ const plan = {
 };
 
 test(
-  "original workbench document and native DSH conversation remain side by side through a durable receipt",
+  "workbench login, brand switching, avatar settings and responsive layout use the current shell",
   { timeout: 90000 },
   async (t) => {
     const app = await profile(t, {
@@ -37,12 +37,28 @@ test(
         },
       }),
     });
-    let oversizedDetails = false;
+
     app.route((request, res, reply) => {
       const path = request.url.pathname;
+      const task = {
+        id: "task",
+        approval: {
+          biz_key: `sales-plan:version:${plan.versionId}`,
+          instance_id: "instance",
+          actionable: true,
+        },
+      };
+      if (path.endsWith("/notifications")) {
+        reply({ success: true, result: { items: [task], total: 1 } });
+        return true;
+      }
+      if (path.endsWith("/notifications/task")) {
+        reply({ success: true, result: task });
+        return true;
+      }
       if (path.endsWith("/plans")) {
         const status = request.url.searchParams.get("status");
-        const records = status === null || status === "5" ? [plan] : [];
+        const records = status === null || status === "1" ? [plan] : [];
         reply({
           success: true,
           result: {
@@ -61,17 +77,7 @@ test(
           result: {
             currentVersion: { ...plan, id: plan.versionId, effective: true },
             versions: [{ ...plan, id: plan.versionId }],
-            skus: oversizedDetails
-              ? Array.from({ length: 1500 }, (_, index) => ({
-                  id: `sku-${index}`,
-                  versionId: plan.versionId,
-                  skuCode: `code-${index}`,
-                  qty: "1.000",
-                  amt: "2.000",
-                  materialDescription:
-                    "A long but valid product description for a complete detail snapshot",
-                }))
-              : [],
+            skus: [],
             logs: [],
           },
         });
@@ -101,11 +107,6 @@ test(
     );
     const page = await context.newPage();
     const errors = [];
-    const preparationScopes = [];
-    page.on("request", (request) => {
-      if (request.url().endsWith("/api/gea-proof/workbench/prepare"))
-        preparationScopes.push(request.postDataJSON().scope);
-    });
     page.on("pageerror", (error) => errors.push(error.message));
     page.setDefaultTimeout(15000);
     let allowLogin = false;
@@ -115,6 +116,10 @@ test(
         : route.fulfill({ json: { ok: true, value: { status: "pending" } } }),
     );
     await page.goto(app.origin);
+    await page
+      .getByRole("dialog", { name: "内测声明", exact: true })
+      .getByRole("button", { name: "继续", exact: true })
+      .click();
     const frame = page.frameLocator("iframe[data-gea-workbench]");
     try {
       await frame
@@ -149,11 +154,6 @@ test(
         .getByRole("button", { name: "刷新二维码", exact: true })
         .waitFor();
       await frame.getByRole("radio", { name: "测试", exact: true }).check();
-      const continueButton = page.getByRole("button", {
-        name: "继续",
-        exact: true,
-      });
-      if (await continueButton.isVisible()) await continueButton.click();
       await frame.locator(".gea-login-qr img").waitFor();
       allowLogin = true;
       await frame
@@ -171,121 +171,76 @@ test(
       assert.ok(bounds.x > 200 && bounds.width < 1100, JSON.stringify(bounds));
       await frame.getByRole("tab", { name: "按基地", exact: true }).click();
       await frame.locator("tbody label.arco-checkbox").first().click();
-      const analysisScope = frame.getByRole("combobox", {
-        name: "分析范围",
-        exact: true,
+      const approve = frame.getByRole("button", { name: "通过", exact: true });
+      const reject = frame.getByRole("button", { name: "退回", exact: true });
+      await expect(approve).toBeEnabled();
+      await expect(reject).toBeEnabled();
+      await approve.click();
+      const approvalDialog = frame.getByRole("dialog");
+      await approvalDialog.getByText("业务校验摘要", { exact: true }).waitFor();
+      await approvalDialog
+        .getByRole("button", { name: "关闭", exact: true })
+        .click();
+      const provinceStage = frame.getByRole("button", {
+        name: /省区审批.*进度/,
       });
-      assert.equal(await analysisScope.inputValue(), "summary");
-      await frame
-        .getByRole("button", { name: "预览发送范围", exact: true })
-        .click();
-      await frame
-        .getByRole("button", { name: "确认并验证传递", exact: true })
-        .waitFor();
-      await analysisScope.selectOption("details");
-      await frame
-        .getByRole("button", { name: "确认并验证传递", exact: true })
-        .waitFor({ state: "detached" });
+      await provinceStage.click();
+      await expect(provinceStage).toHaveAttribute("aria-pressed", "true");
+      await expect(approve).toBeDisabled();
+      await provinceStage.click();
+      await expect(provinceStage).toHaveAttribute("aria-pressed", "false");
+      assert.equal(
+        app.requests.some(
+          (r) => r.method === "POST" && r.url.pathname.endsWith("/actions"),
+        ),
+        false,
+      );
+
       assert.equal(
         await frame
-          .getByRole("button", { name: "确认并验证传递", exact: true })
+          .getByRole("combobox", { name: "分析范围", exact: true })
           .count(),
         0,
       );
-      oversizedDetails = true;
-      await frame
-        .getByRole("button", { name: "预览发送范围", exact: true })
-        .click();
-      await frame
-        .getByRole("alert")
-        .filter({ hasText: "所选内容超出模型输入限制。" })
-        .waitFor();
-      const budgetMessage = await frame
-        .getByRole("alert")
-        .filter({ hasText: "所选内容超出模型输入限制。" })
-        .innerText();
-      assert.equal(budgetMessage.includes("SNAPSHOT_TOO_LARGE"), false);
       assert.equal(
         await frame
-          .getByRole("button", { name: "确认并验证传递", exact: true })
+          .getByRole("button", { name: "预览发送范围", exact: true })
           .count(),
         0,
       );
-      oversizedDetails = false;
-      await frame
-        .getByRole("button", { name: "预览发送范围", exact: true })
-        .click();
-      await frame
-        .getByRole("button", { name: "确认并验证传递", exact: true })
-        .waitFor();
-      await analysisScope.selectOption("summary");
-      await frame
-        .getByRole("button", { name: "确认并验证传递", exact: true })
-        .waitFor({ state: "detached" });
+      const brand = page.locator(".gea-brand-switch");
       assert.equal(
-        await frame
-          .getByRole("button", { name: "确认并验证传递", exact: true })
+        await page
+          .locator(".gea-shell-logo")
+          .evaluate((el) => getComputedStyle(el).backgroundColor),
+        "rgb(237, 0, 0)",
+      );
+      assert.equal(
+        await page
+          .locator(".gea-user-avatar")
+          .evaluate((el) => getComputedStyle(el).borderRadius),
+        "50%",
+      );
+      for (let view = 0; view < 2; view++) {
+        await page.getByRole("button", { name: "设置", exact: true }).click();
+        await page
+          .getByRole("button", { name: "通用设置", exact: true })
+          .waitFor();
+        await page.getByRole("button", { name: "关闭", exact: true }).click();
+        await brand.click();
+        await page
+          .locator("iframe[data-gea-workbench]")
+          .waitFor({ state: view === 0 ? "detached" : "visible" });
+      }
+      assert.equal(
+        await page
+          .getByRole("button", { name: "DSH 对话", exact: true })
           .count(),
         0,
       );
-      await frame
-        .getByRole("button", { name: "预览发送范围", exact: true })
-        .click();
-      await frame
-        .getByRole("button", { name: "确认并验证传递", exact: true })
-        .click();
-      assert.deepEqual(preparationScopes, [
-        "summary",
-        "details",
-        "details",
-        "summary",
-      ]);
-      await page
-        .getByText("本地验证回执（非 AI 分析）：快照已进入 dsh 模型请求。", {
-          exact: false,
-        })
-        .waitFor();
-      await frame
-        .getByRole("heading", { name: "销售计划审批", exact: true })
-        .waitFor();
-      const reply = await page
-        .getByText("本地验证回执（非 AI 分析）：快照已进入 dsh 模型请求。", {
-          exact: false,
-        })
-        .first()
-        .boundingBox();
-      const currentBounds = await page.locator("iframe").boundingBox();
-      assert.ok(
-        reply.x >= currentBounds.x + currentBounds.width - 2,
-        JSON.stringify({ bounds: currentBounds, reply }),
-      );
-      await mkdir(".runtime/web-evidence", { recursive: true });
-      await page.screenshot({ path: ".runtime/web-evidence/desktop.png" });
-      await page.getByRole("button", { name: "DSH 对话", exact: true }).click();
-      await page
-        .locator("iframe[data-gea-workbench]")
-        .waitFor({ state: "detached" });
-      await page
-        .getByRole("button", { name: "GEA 业务版", exact: true })
-        .click();
-      await frame
-        .getByRole("heading", { name: "销售计划审批", exact: true })
-        .waitFor();
-      await page
-        .getByText("本地验证回执（非 AI 分析）：快照已进入 dsh 模型请求。", {
-          exact: false,
-        })
-        .first()
-        .waitFor();
       await page.reload();
       await frame
         .getByRole("heading", { name: "销售计划审批", exact: true })
-        .waitFor();
-      await page
-        .getByText("本地验证回执（非 AI 分析）：快照已进入 dsh 模型请求。", {
-          exact: false,
-        })
-        .first()
         .waitFor();
       await page.setViewportSize({ width: 700, height: 1000 });
       await page.locator('[data-conversation-stacked="true"]').waitFor();
@@ -298,8 +253,7 @@ test(
       await frame
         .getByRole("heading", { name: "销售计划审批", exact: true })
         .waitFor();
-      const editor = page.locator('[contenteditable="true"]').first();
-      await editor.waitFor();
+      await page.getByText("选择一个工作区开始", { exact: true }).waitFor();
       const narrowFrame = await page
         .locator("iframe[data-gea-workbench]")
         .boundingBox();
@@ -308,13 +262,6 @@ test(
         JSON.stringify(narrowFrame),
       );
       await page.screenshot({ path: ".runtime/web-evidence/narrow.png" });
-      await frame
-        .getByRole("button", { name: "切换环境 / 重新登录", exact: true })
-        .click();
-      await frame.getByRole("radio", { name: "正式", exact: true }).waitFor();
-      await page.locator("iframe.gea-login-frame").waitFor();
-      assert.equal(await page.locator('[contenteditable="true"]').count(), 0);
-      assert.equal((await app.rpc("status")).value.authenticated, false);
       assert.deepEqual(errors, []);
     } catch (error) {
       await mkdir(".runtime/web-evidence", { recursive: true });

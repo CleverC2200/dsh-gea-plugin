@@ -48,6 +48,15 @@ export const salesPlanAccessForRow = (
     detail.currentVersion.status !== row.status
   )
     return undefined;
+  if (!context && detail.workflowApproval?.actionable === true &&
+      detail.workflowApproval.versionId === row.versionId && actor && actor !== 'customer' &&
+      salesPlanActionTargetStatus('APPROVE', row.status, typeCode) !== undefined) {
+    return {
+      versionId: row.versionId, status: row.status,
+      nodeOrder: NODE_PERMISSIONS.findIndex(([id]) => id === actor) + 1,
+      allowedActions: ['APPROVE', 'REJECT'],
+    };
+  }
   if (!context) {
     if (!stage || !salesPlanStagesForPermissions(permissions).includes(stage) || !actor || actor === 'customer')
       return undefined;

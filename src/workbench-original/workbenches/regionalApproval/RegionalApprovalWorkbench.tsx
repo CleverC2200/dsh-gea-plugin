@@ -1082,10 +1082,9 @@ const RegionalApprovalWorkbench: React.FC<{
 
   const changeStage = (stage: ApprovalStageId) => {
     if (liveQuery.enabled) {
-      if (!roleStages.includes(stage)) return;
       explicitLiveStageSelection.current = true;
       const nextStage = liveStageFilter === stage ? undefined : stage;
-      setReadOnlyBrowsing(nextStage === undefined);
+      setReadOnlyBrowsing(nextStage === undefined || !roleStages.includes(nextStage));
       setLiveStageFilter(nextStage);
       setDimension(APPROVAL_DIMENSIONS_BY_STAGE[nextStage ?? 'category'][0]);
       setDraftLiveFilters((current) => ({ ...current, status: ALL_ORGANIZATIONS }));
@@ -1866,7 +1865,7 @@ const RegionalApprovalWorkbench: React.FC<{
           {t('common.assistantSurface.regionalApproval.liveAction.save')}
         </Button>
       ) : null}
-      {roleStages.length > 0 && !readOnlyBrowsing ? (
+      {liveActionsEnabled ? (
         <Button
           size='small'
           status='danger'
@@ -1886,7 +1885,7 @@ const RegionalApprovalWorkbench: React.FC<{
           {t('common.assistantSurface.regionalApproval.liveAction.reject')}
         </Button>
       ) : null}
-      {roleStages.length > 0 && !readOnlyBrowsing ? (
+      {liveActionsEnabled ? (
         <Button
           type='primary'
           size='small'
@@ -2141,7 +2140,7 @@ const RegionalApprovalWorkbench: React.FC<{
                   aria-pressed={liveQuery.enabled ? liveStageFilter === stage.id : undefined}
                   disabled={
                     liveQuery.enabled &&
-                    (!roleStages.includes(stage.id) || liveQuery.progressState.status !== 'success')
+                    liveQuery.progressState.status !== 'success'
                   }
                   onClick={() => changeStage(stage.id)}
                 >

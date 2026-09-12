@@ -112,3 +112,13 @@ test('workbench bridge keeps host request identity and cannot reuse a released d
   release();
   assert.throws(() => salesPlan.list.invoke(query), /WORKBENCH_HOST_NOT_BOUND/);
 });
+
+test('fresh task assignment grants only matching-version approval and respects stage browsing', () => {
+  const row = { planId: 'p', versionId: 'v', status: 1, planTypeCode: 'Y' };
+  const value = { currentVersion: { id: 'v', planId: 'p', status: 1, planTypeCode: 'Y', effective: true }, skus: [], versions: [], logs: [], workflowApproval: { versionId: 'v', notificationId: 'n', instanceId: 'i', actionable: true } };
+  assert.deepEqual(salesPlanAccessForRow(row, value)?.allowedActions, ['APPROVE', 'REJECT']);
+  assert.equal(salesPlanAccessForRow(row, value, [], 'province'), undefined);
+  assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: undefined }), undefined);
+  assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: { ...value.workflowApproval, versionId: 'old' } }), undefined);
+  assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: { ...value.workflowApproval, actionable: false } }), undefined);
+});

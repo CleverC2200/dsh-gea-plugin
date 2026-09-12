@@ -420,6 +420,33 @@ export class Business {
     return this.auth;
   }
 
+  /** Match a fresh server-assigned approval task to this exact sales-plan version. */
+  private async workflowApproval(versionId: string, caller: AbortSignal) {
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    let pageNo = 1;
+    while (true) {
+      const page = object(await this.get(`/api/v1/notifications?pageNo=${pageNo}&pageSize=100`, auth, signal));
+      if (!Array.isArray(page.items)) throw new Error("NOTIFICATION_INVALID_RESPONSE");
+      for (const item of page.items) {
+        const row = object(item);
+        const approval = row.approval == null ? undefined : object(row.approval);
+        if (approval?.biz_key !== `sales-plan:version:${versionId}` || approval.actionable !== true) continue;
+        const fresh = object(await this.get("/api/v1/notifications/" + encodeURIComponent(text(row.id)), auth, signal));
+        const confirmed = fresh.approval == null ? undefined : object(fresh.approval);
+        if (fresh.id !== row.id) throw new Error("NOTIFICATION_INVALID_RESPONSE");
+        if (confirmed?.biz_key === `sales-plan:version:${versionId}` && confirmed.actionable === true) {
+          if (this.auth !== auth) throw new Error("STALE_LOGIN");
+          return { versionId, notificationId: text(row.id), instanceId: text(confirmed.instance_id), actionable: true as const };
+        }
+      }
+      const total = integer(page.total, 0);
+      if (pageNo * 100 >= total) return undefined;
+      if (!page.items.length || pageNo >= 100) throw new Error("NOTIFICATION_SCAN_INCOMPLETE");
+      pageNo++;
+    }
+  }
+
   /** Read the complete workflow configuration using this Host's current identity. */
   async workflowConfig(payload: Record<string, unknown>, caller: AbortSignal) {
     keys(payload, []);
@@ -441,7 +468,7 @@ export class Business {
     const response = await fetch(this.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions", {
       method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": text(payload.requestId), "Idempotency-Key": text(payload.idempotencyKey) }, body, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)])
     });
-    if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw new Error("GEA_WRITE_HTTP_" + response.status); }
+    if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw await geaResponseError(response, [auth.token]); }
     const data = object(parseJson(await response.text()));
     if (data.success !== true || !data.result) throw new Error("GEA_WRITE_REJECTED");
     return data.result;
@@ -1216,7 +1243,15 @@ export class Business {
         )
       )
         throw new Error("GEA_IDENTITY_MISMATCH");
-      return { ...detail, currentVersion, skus, versions, logs };
+      let workflowApproval;
+      try {
+        if (!detail.actionContext && Number(currentVersion.status) >= 1 && Number(currentVersion.status) <= 4)
+          workflowApproval = await this.workflowApproval(versionId, signal);
+      } catch (error) {
+        if (signal.aborted || !this.auth) throw error;
+        // Notification discovery failures keep the business detail readable, with no approval grant.
+      }
+      return { ...detail, currentVersion, skus, versions, logs, workflowApproval };
     }
     const values = records(result);
     if (

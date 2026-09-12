@@ -153,6 +153,8 @@ export type GeaSalesPlanActionContext = {
 };
 
 export type GeaSalesPlanDetail = {
+  /** Current-user task assignment, matched and refreshed by the authenticated Host. */
+  workflowApproval?: { versionId: string; notificationId: string; instanceId: string; actionable: true };
   actionContext?: GeaSalesPlanActionContext;
 
   currentVersion: GeaSalesPlanVersion;

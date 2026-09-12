@@ -68,7 +68,7 @@ async function rpc<T>(
       method: "POST",
       path: endpoint,
       status,
-      body: { code, error: result.error?.message ?? code },
+      body: { code, error: result.error?.message ?? code, details: result.error?.details },
     });
   }
   return result.value;

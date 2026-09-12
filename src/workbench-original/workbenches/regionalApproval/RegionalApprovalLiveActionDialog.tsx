@@ -5,6 +5,7 @@ import {
   type GeaSalesPlanDetail,
   type GeaSalesPlanSku,
 } from '../../bridge.ts';
+import { isBackendHttpError } from '../../http-error.ts';
 import { Alert, Button, Checkbox, Input, Modal, Radio, Spin } from '@arco-design/web-react';
 import type { TFunction } from 'i18next';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -663,7 +664,9 @@ const RegionalApprovalLiveActionDialog: React.FC<{
             </div>
           ) : null}
           {action.state.status === 'error' ? (
-            <Alert type='error' showIcon content={t(errorKey(action.state.error.kind))} />
+            <Alert type='error' showIcon content={isBackendHttpError(action.state.error.cause) && action.state.error.cause.status < 500
+              ? action.state.error.cause.backendMessage || t(errorKey(action.state.error.kind))
+              : t(errorKey(action.state.error.kind))} />
           ) : null}
           {action.state.status === 'success' ? (
             <Alert
