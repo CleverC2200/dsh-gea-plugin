@@ -168,7 +168,7 @@ export function apply(ctx: Context): void {
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
           <div className="gea-shell-brand" title={t("geaBusiness")}> 
-            <button type="button" className="gea-shell-logo" aria-label={t("geaBusiness")} onClick={() => ctx.layout.selectPanel(PANEL)}>
+            <button type="button" className="gea-shell-logo" aria-label={t("geaBusiness")} onClick={() => ctx.layout.selectPanel(null)}>
               <span aria-hidden="true">
               GEA
               </span>
