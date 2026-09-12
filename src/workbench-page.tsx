@@ -386,7 +386,8 @@ export function WorkbenchPage({ t }: { t: Translate }) {
             onContextChange={onContextChange}
             queryClient={salesPlan}
             detailClient={salesPlan}
-            liveActionsEnabled={false}
+            liveActionsEnabled={true}
+            liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
             automaticAnalysisEnabled={false}
           />
         </div>
