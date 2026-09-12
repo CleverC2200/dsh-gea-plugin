@@ -97,7 +97,12 @@ test('copied SAVE verification requires exact readback, matching audit receipt a
     { ...after, skus: [item] }, { ...after, logs: [] },
     { ...after, currentVersion: { ...after.currentVersion, id: 'new' } },
     { ...after, currentVersion: { ...after.currentVersion, status: 5 } },
+    { ...after, currentVersion: { ...after.currentVersion, seq: 999 } },
+    { ...after, currentVersion: { ...after.currentVersion, planTypeCode: 'XN' } },
   ]) assert.equal(verifySavedSalesPlan(before, stale, request, receipt), false);
+  for (const adjustments of [[...request.adjustments, { skuCode: 'unknown', adjustQty: '1' }], [...request.adjustments, ...request.adjustments]])
+    assert.equal(verifySavedSalesPlan(before, after, { ...request, adjustments }, receipt), false);
+  assert.equal(verifySavedSalesPlan(before, after, { ...request, expectedStatus: 5 }, receipt), false);
 });
 
 test('workbench bridge keeps host request identity and cannot reuse a released document binding', async () => {

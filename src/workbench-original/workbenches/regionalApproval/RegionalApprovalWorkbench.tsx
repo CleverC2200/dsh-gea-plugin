@@ -465,12 +465,10 @@ const RegionalApprovalWorkbench: React.FC<{
   const [liveStageFilter, setLiveStageFilter] = useState<ApprovalStageId>();
   const roleStages = useMemo(() => salesPlanStagesForPermissions(permissionCodes), [permissionCodes]);
   const roleKey = roleStages.join(',');
-  const [readOnlyBrowsing, setReadOnlyBrowsing] = useState(false);
   const explicitLiveStageSelection = useRef(false);
   useEffect(() => {
     explicitLiveStageSelection.current = false;
     setLiveStageFilter((roleKey.split(',')[0] || undefined) as ApprovalStageId | undefined);
-    setReadOnlyBrowsing(!roleKey);
     setSelectedRowIds([]);
     setPage(1);
   }, [roleKey]);
@@ -541,7 +539,6 @@ const RegionalApprovalWorkbench: React.FC<{
       return;
     // A default role filter must not hide plans the server allows this user to browse.
     setLiveStageFilter(undefined);
-    setReadOnlyBrowsing(true);
     setDimension(APPROVAL_DIMENSIONS_BY_STAGE.category[0]);
     setSelectedRowIds([]);
     setPage(1);
@@ -1087,7 +1084,6 @@ const RegionalApprovalWorkbench: React.FC<{
     if (liveQuery.enabled) {
       explicitLiveStageSelection.current = true;
       const nextStage = liveStageFilter === stage ? undefined : stage;
-      setReadOnlyBrowsing(nextStage === undefined || !roleStages.includes(nextStage));
       setLiveStageFilter(nextStage);
       setDimension(APPROVAL_DIMENSIONS_BY_STAGE[nextStage ?? 'category'][0]);
       setDraftLiveFilters((current) => ({ ...current, status: ALL_ORGANIZATIONS }));
@@ -1850,7 +1846,7 @@ const RegionalApprovalWorkbench: React.FC<{
   ];
   const approvalActionButtons = liveQuery.enabled ? (
     <>
-      {roleStages.length > 0 && (!readOnlyBrowsing || selectedLiveRows[0]?.status === 10) ? (
+      {liveActionsEnabled ? (
         <Button
           size='small'
           disabled={
@@ -2758,7 +2754,7 @@ const RegionalApprovalWorkbench: React.FC<{
             }));
           }}
           onEdit={
-            roleStages.length > 0 && (!readOnlyBrowsing || activeLiveAdjustmentRow.status === 10) && !liveActionDisabledReason(activeLiveAdjustmentRow, 'SAVE')
+            liveActionsEnabled && !liveActionDisabledReason(activeLiveAdjustmentRow, 'SAVE')
               ? () => {
                   setLiveActionKind('SAVE');
                   setLiveActionPlanId(activeLiveAdjustmentRow.planId);

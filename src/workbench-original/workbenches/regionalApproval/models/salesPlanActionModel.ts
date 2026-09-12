@@ -190,6 +190,7 @@ export class SalesPlanActionAttempt {
 
     this.input = normalizedInput(input);
     this.command = {
+      ...(this.input.request.action === 'SAVE' ? { planId: this.input.planId } : {}),
       versionId: this.input.versionId,
       request: this.input.request,
       idempotencyKey: `gea-sales-plan-action:${this.createId()}`,

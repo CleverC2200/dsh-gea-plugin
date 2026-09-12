@@ -7,7 +7,7 @@ import { resolveEnvironments } from "./environments.js";
 import { Decimal } from "decimal.js";
 import { transportSignal } from "./transport-signal.ts";
 import { notificationPage, notificationDetail } from "./notifications.ts";
-import { geaResponseError } from "./gea-error.js";
+import { GeaResponseError, geaResponseError } from "./gea-error.js";
 
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
@@ -457,13 +457,29 @@ export class Business {
 
   /** Execute one authorized GEA sales-plan action; DMS is intentionally outside this method. */
   async salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
-    keys(payload, ["versionId", "request", "idempotencyKey", "requestId"]);
+    keys(payload, ["planId", "versionId", "request", "idempotencyKey", "requestId"]);
     const versionId = text(payload.versionId);
     const request = object(payload.request);
     keys(request, ["expectedSnapshot", "action", "expectedStatus", "remark", "adjustments"]);
     if (!["SAVE", "APPROVE", "REJECT"].includes(text(request.action))) throw new Error("INVALID_ACTION");
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
+    if (request.action === "SAVE") {
+      if (request.expectedStatus === 5) throw new GeaResponseError(400, { message: "状态 5 不允许保存调整" });
+      const planId = text(payload.planId);
+      const detail = object(await this.workbenchQuery({ kind: "detail", query: { planId } }, signal));
+      const version = object(detail.currentVersion);
+      const capability = detail.actionContext == null ? undefined : object(detail.actionContext);
+      if (!capability || !Array.isArray(capability.allowedActions) || !capability.allowedActions.includes("SAVE"))
+        throw new GeaResponseError(403, { message: "服务端未授予当前版本 SAVE 能力" });
+      if (version.id !== versionId || version.planId !== planId || version.effective !== true ||
+          version.status !== request.expectedStatus || capability.versionId !== versionId ||
+          capability.status !== request.expectedStatus || !/^[a-f0-9]{64}$/.test(String(capability.snapshotHash)) ||
+          capability.snapshotHash !== request.expectedSnapshot)
+        throw new GeaResponseError(409, { message: "版本或快照已变化，请回读后核对保存结果" });
+      if (this.auth !== auth) throw new Error("STALE_LOGIN");
+      signal.throwIfAborted();
+    }
     const body = JSON.stringify(request);
     const response = await fetch(this.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions", {
       method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": text(payload.requestId), "Idempotency-Key": text(payload.idempotencyKey) }, body, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)])

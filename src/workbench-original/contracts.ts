@@ -264,6 +264,8 @@ export type GeaSalesPlanActionReceipt = {
 };
 
 export type GeaSalesPlanActionParams = {
+  /** Required by the Host for fresh SAVE capability verification. */
+  planId?: GeaSalesPlanId;
   versionId: GeaSalesPlanId;
   request: GeaSalesPlanActionRequest;
   idempotencyKey: string;
