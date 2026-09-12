@@ -300,13 +300,14 @@ export function WorkbenchPage({ t }: { t: Translate }) {
           setModelState(t("modelDiscovered") + value.selectedName);
       })
       .catch((error) => {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted) {
+          const code = error instanceof BackendHttpError ? error.code : "";
           setModelState(
-            t("modelFailed") +
-              (error instanceof BackendHttpError
-                ? error.code
-                : requestErrorMessage(error, t)),
+            code === "LOGIN_REQUIRED"
+              ? "请先登录 GEA 后再使用个人模型"
+              : t("modelFailed") + (code || requestErrorMessage(error, t)),
           );
+        }
       });
     return () => controller.abort();
   }, [status?.authenticated, status?.environment]);
