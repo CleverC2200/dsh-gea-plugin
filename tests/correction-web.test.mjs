@@ -110,7 +110,7 @@ test(
     let d = f.getByRole('dialog', { name: '纠偏调整明细', exact: true });
     await expect(d.getByRole('textbox', { name: '调整量 123' })).toHaveValue('2');
     await mkdir('.runtime/correction-evidence', { recursive: true });
-    await page.screenshot({ path: '.runtime/correction-evidence/detail.png', fullPage: true });
+    await page.screenshot({ path: '.runtime/correction-evidence/detail.png', fullPage: true, animations: 'disabled' });
     await d.getByRole('textbox', { name: '调整量 123' }).fill('8');
     await d.getByRole('button', { name: '保存调整', exact: true }).click();
     await expect(d).toHaveCount(0);

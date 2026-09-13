@@ -587,17 +587,18 @@ export class Business {
       if (request.adjustmentMode !== 'ABSOLUTE_NET') throw new Error('INVALID_PAYLOAD');
       const planId=text(payload.planId);
       const detail=await this.workbenchQuery({kind:'detail',query:{planId}},signal) as GeaSalesPlanDetail;
-      const access=correctionAccess(detail);
+      const workflowRows=await this.workflowConfig({},signal);
+      const access=correctionAccess(detail,workflowRows);
       if (!access || !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']) || !detail.currentVersion.submitter || detail.currentVersion.submitter === auth.id)
         throw new GeaResponseError(403,{message:'纠偏契约、月初终审、审批窗口或节点权限未获确认'});
       if (detail.currentVersion.id !== versionId || access.status !== request.expectedStatus || access.snapshotHash !== request.expectedSnapshot)
         throw new GeaResponseError(409,{message:'纠偏版本或快照已变化，请刷新'});
       const typed=request as GeaSalesPlanActionRequest;
-      validateSalesPlanActionInput({planId,versionId,planTypeCode:detail.currentVersion.planTypeCode,request:typed});
+      validateSalesPlanActionInput({planId,versionId,planTypeCode:detail.currentVersion.planTypeCode,request:typed},workflowRows);
       if (typed.action !== 'REJECT') {
         const edits=Object.fromEntries((typed.adjustments??[]).map(x=>[x.skuCode,x.adjustQty]));
         if (Object.keys(edits).some(code=>!detail.skus.some(sku=>sku.skuCode===code))) throw new Error('INVALID_PAYLOAD');
-        const expected=correctionAdjustments(detail,edits);
+        const expected=correctionAdjustments(detail,edits,workflowRows);
         if (!isDeepStrictEqual(expected,typed.adjustments)) throw new GeaResponseError(400,{message:'纠偏必须提交完整的本节点绝对调整决定'});
       }
       if (this.auth !== auth) throw new Error('STALE_LOGIN');

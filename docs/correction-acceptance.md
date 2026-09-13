@@ -19,7 +19,7 @@
 - 列表请求 `orderType=M/Z`。Z 返回 `orderType`、`monthlyApproved`、`hasCorrection`、`mPlanQty`、`mPlanAmount`、`shipQty`、`shipAmount`、`corrPlanAmount`，可选 `corrPlanQty`。无 Z 单以 `hasCorrection=false` 表示，该行可带 M 基准。列表是服务端按客户和当前生效版本聚合的结果。纠偏金额需服务端按当前待审节点的上游确认量逐 SKU 乘价格聚合，不能重复加调整。
 - 明细 `correctionContext.contract=absolute-net-v1`，同时提供 `monthlyApproved`、`approvalOpen`。仅当这些条件、有效版本、节点和 `actionContext` 匹配时才开放写操作。具体窗口日期由服务端决定，不把 13–15 日建议硬编码为既定规则。
 - SKU 使用既有 `qty/price` 与各节点 confirmed 字段，新增提报 `adjAddQty/adjCutQty` 和各节点 `region/province/area/category` 前缀的 `AdjAddQty/AdjCutQty`。NULL 表示未决定，显式零表示决定为零；每个节点单一净调整不能同时追加和追减。
-- 纠偏动作在既有动作接口携带 `adjustmentMode=ABSOLUTE_NET`、完整绝对调整决定、预期状态与快照。服务端必须实现同一事务中的保存/通过/退回语义、行锁、快照冲突和审计日志。Host 提供预校验，不能替代服务端事务与授权。
+- 纠偏动作在既有动作接口携带 `adjustmentMode=ABSOLUTE_NET`、完整绝对调整决定（包括显式零）、预期状态与快照。双零行在服务端核验决定后不入库，不能先从请求漏掉零决定再重新继承旧追加。服务端必须实现同一事务中的保存/通过/退回语义、行锁、快照冲突和审计日志。Host 提供预校验，不能替代服务端事务与授权。
 - 同登录代际内，原幂等键绑定原正文。已验证请求结果未知时可原键重试，不因第一次请求已推进快照而重新拼装正文。重新登录会清除这些引用。
 - Z 重提保留基准数量和单价，只允许编辑提报 adj；新增 `adjustmentMode=ABSOLUTE_NET` 与提报 adj 字段。仍需配置已授权用户的服务身份；没有凭据不会退回浏览器直接写入。
 - `dmsMock` 仅作为明确标注的模拟回执展示。生产 Host 不导入模拟接收方，也不会凭 mock 回执把真实 GEA 计划设为 10。完整衔接在真实 Web profile + 受控外部 GEA 服务中验证；已有独立 DMS 演示继续可用。

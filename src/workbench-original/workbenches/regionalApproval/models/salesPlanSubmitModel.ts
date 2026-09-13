@@ -192,7 +192,7 @@ export const prepareSalesPlanResubmit = (source: SalesPlanResubmitSource, rows?:
     skuCodes.add(sku.skuCode);
     const validated = validateSku(sku);
     if(correction){
-      const line=correctionLine(sku,correctionDecision(sku,0,version.planTypeCode));
+      const line=correctionLine(sku,correctionDecision(sku,0,version.planTypeCode,true,rows));
       totalQty += parseUnsignedDecimal(line.qty,15,3,3).scaled;
       totalAmount += parseUnsignedDecimal(line.amount,16,2,2).scaled;
       return {...validated.item,adjAddQty:line.addQty,adjCutQty:line.cutQty};
