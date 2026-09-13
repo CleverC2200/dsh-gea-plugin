@@ -15,6 +15,7 @@ const copy = {
   refreshInbox: ["刷新消息", "Refresh messages"],
   backToInbox: ["返回消息列表", "Back to messages"],
   unreadCount: ["未读数", "Unread"],
+  notificationNoContent: ["暂无消息内容", "No message content"],
   notificationTitle: ["标题", "Title"],
   notificationState: ["通知状态", "Notification state"],
   notificationKind: ["通知类型", "Notification kind"],
