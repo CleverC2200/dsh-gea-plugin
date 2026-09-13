@@ -124,7 +124,7 @@
     "managed": "Enterprise managed",
     "fixtureBoundary": "Sample data: no GEA connection and no real business action.",
     "liveReadOnlyBoundary": "Live GEA approval data · read only. Approval, rejection, and submission are disabled.",
-    "liveUserActionBoundary": "Live GEA approval data · user-session approval is enabled; service-account submission and resubmission remain disabled.",
+    "liveUserActionBoundary": "Live GEA approval data · resubmission depends on service-account configuration for the current environment.",
     "contextBadge": "Forecast board v{{revision}}",
     "contextMessageBadge": "{{label}} v{{revision}}",
     "contextRevision": "Current board snapshot v{{revision}}",
@@ -724,7 +724,7 @@
         "disabled": {
           "completed": "This returned version already has a server receipt, so duplicate resubmission is blocked.",
           "channelMissing": "The plan ID does not match the p-{channel}-{YYYY-MM}-{5-digit sequence} business format, so the resubmit channel cannot be verified safely.",
-          "serviceBoundary": "Service-account submission and returned-plan resubmission are not enabled in the business surface.",
+          "serviceBoundary": "Review and edit the returned data. Service credentials or authorization for the current user are unavailable; no resubmission will be sent.",
           "readOnly": "This version is read-only. The server has not granted an available action.",
           "queueNotFresh": "The queue is refreshing or failed to load. A successful authoritative queue response is required.",
           "closedPeriod": "Resubmission is available only for an OPEN period.",
@@ -741,7 +741,9 @@
           "retryExhausted": "The three-call total budget is exhausted. The client will not call again; refresh authoritative state to check for a new version.",
           "unavailable": "The result is unknown. To prevent duplicate versions, retry with the same idempotency key and identical body until the result is resolved.",
           "failed": "Resubmission failed and local state was not changed. Refresh authoritative data before deciding."
-        }
+        },
+        "quantity": "Submitted quantity",
+        "nextStatus": "Resubmission target status"
       },
       "liveAction": {
         "saveChecksumTitle": "Save review",

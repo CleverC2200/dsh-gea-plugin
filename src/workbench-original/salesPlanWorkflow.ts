@@ -6,13 +6,13 @@ export type SalesPlanWorkflowRow = {
   nodeNum: string;
 };
 
-/** Read-only snapshot of active plan_workflow_config rows. No database credentials or transport. */
+/** Local projection, including the user-confirmed removal of JD 8 / TM 9. Live SQL acceptance is separate. */
 export const SALES_PLAN_WORKFLOW_ROWS: readonly SalesPlanWorkflowRow[] = Object.entries({
   Y: ['0', '1', '2', '3', '4', 'Y'],
   DC: ['0', '2', '3', '4', 'Y'],
   FC: ['0', '4', 'Y'],
-  JD: ['0', '8', '4', 'Y'],
-  TM: ['0', '9', '4', 'Y'],
+  JD: ['0', '4', 'Y'],
+  TM: ['0', '4', 'Y'],
   XN: ['0', '2', '3', '4', 'Y'],
 }).flatMap(([typeCode, nodes]) => nodes.map((nodeNum, examineLevel) => ({ typeCode, examineLevel, nodeNum })));
 
@@ -24,48 +24,25 @@ export const SALES_PLAN_RETURN_CODES: Partial<Record<SalesPlanRole, number>> = {
   area: 9,
 };
 
-// Role bindings come from the V1.2 business specification, not from node_num arithmetic.
-// The table's examine_node is null; other chains cannot grant role-based actions until bound.
-const ROLE_BINDINGS: Record<string, readonly SalesPlanRole[]> = {
-  Y: ['customer', 'region', 'province', 'area', 'category'],
-  XN: ['customer', 'province', 'area', 'category'],
+// Node meanings are defined by V1.2 §4.0; configuration determines which nodes participate.
+const NODE_ROLES: Readonly<Record<string, SalesPlanRole>> = {
+  '0': 'customer',
+  '1': 'region',
+  '2': 'province',
+  '3': 'area',
+  '4': 'category',
 };
 
-export const classifySalesPlanCustomer = (customer: {
-  cooperationWayCode?: string | null;
-  customerClassifyCode?: string | null;
-  customerGroupCode?: string | null;
-}): string => {
-  let type: string;
-  switch (customer.cooperationWayCode) {
-    case '5':
-      type = 'DC';
-      break;
-    case '6':
-      type = 'FC';
-      break;
-    case '9':
-      type = 'XN';
-      break;
-    case '3':
-      type =
-        customer.customerClassifyCode === 'kajxs'
-          ? 'Y'
-          : customer.customerGroupCode === 'H5'
-            ? 'JD'
-            : customer.customerGroupCode === 'J4'
-              ? 'TM'
-              : 'Y';
-      break;
-    default:
-      type = 'Y';
-  }
-  return type || 'Y';
-};
+let liveWorkflowRows: readonly SalesPlanWorkflowRow[] | undefined;
+
+/** Document-local query projection; each bundled workbench document has its own module instance. */
+export function replaceSalesPlanWorkflowRows(rows: readonly SalesPlanWorkflowRow[]): void {
+  liveWorkflowRows = rows.map((row) => ({ ...row }));
+}
 
 export const salesPlanWorkflow = (
   typeCode: string,
-  rows: readonly SalesPlanWorkflowRow[] = SALES_PLAN_WORKFLOW_ROWS
+  rows: readonly SalesPlanWorkflowRow[] = liveWorkflowRows ?? SALES_PLAN_WORKFLOW_ROWS
 ) => {
   const chain = rows.filter((row) => row.typeCode === typeCode).toSorted((a, b) => a.examineLevel - b.examineLevel);
   const valid =
@@ -76,19 +53,19 @@ export const salesPlanWorkflow = (
     chain.every(
       (row, index) =>
         Number.isSafeInteger(row.examineLevel) &&
-        row.examineLevel === index &&
+        row.examineLevel >= 0 &&
+        (index === 0 || row.examineLevel > chain[index - 1].examineLevel) &&
         Boolean(row.nodeNum) &&
         (row.nodeNum !== 'Y' || index === chain.length - 1)
     ) &&
     new Set(chain.map((row) => row.nodeNum)).size === chain.length;
-  const roles = valid ? ROLE_BINDINGS[typeCode] : undefined;
-  // Do not apply a frozen role binding to a changed node-code chain.
+  const roles = chain.slice(0, -1).map((row) => NODE_ROLES[row.nodeNum]);
   const rolesKnown = Boolean(
-    roles &&
-    chain.length === roles.length + 1 &&
-    chain.every(
-      (row, index) =>
-        row.nodeNum === SALES_PLAN_WORKFLOW_ROWS.filter((item) => item.typeCode === typeCode)[index]?.nodeNum
+    valid &&
+    roles.every(Boolean) &&
+    roles.at(-1) === 'category' &&
+    roles.every(
+      (role, index) => index === 0 || SALES_PLAN_ROLES.indexOf(role) > SALES_PLAN_ROLES.indexOf(roles[index - 1])
     )
   );
   const roleIndex = (role: SalesPlanRole) => (rolesKnown ? roles!.indexOf(role) : -1);

@@ -1,4 +1,7 @@
 /** GEA's original approval workbench in a standalone, authenticated document. */
+import { RegionalApprovalResubmitDialog } from './workbench-original/workbenches/regionalApproval/RegionalApprovalResubmitDialog.tsx';
+import type { GeaSalesPlanPeriod } from './workbench-original/contracts.ts';
+import { createWorkflowLoader } from "./workflow-loader.ts";
 import "@arco-design/web-react/dist/css/arco.css";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import i18next from "i18next";
@@ -67,7 +70,7 @@ async function rpc<T>(
       method: "POST",
       path: endpoint,
       status,
-      body: { code, error: result.error?.message ?? code },
+      body: { code, error: result.error?.message ?? code, details: result.error?.details },
     });
   }
   return result.value;
@@ -82,17 +85,21 @@ function query<T>(
 const unavailable = async (): Promise<never> => {
   throw new Error("GEA_WRITE_ADAPTER_NOT_CONNECTED");
 };
+const loadWorkflow = createWorkflowLoader((signal) => rpc("workflow/config", {}, signal));
 const host: WorkbenchHost = {
   salesPlan: {
-    periods: { invoke: (input) => query("periods", input) },
+    periods: { invoke: async (input) => {
+      await loadWorkflow(input?.signal);
+      return query("periods", input);
+    } },
     list: { invoke: (input) => query("list", input) },
     detail: { invoke: (input) => query("detail", input) },
     versions: { invoke: (input) => query("versions", input) },
     logs: { invoke: (input) => query("logs", input) },
     versionSkus: { invoke: (input) => query("versionSkus", input) },
     compare: { invoke: (input) => query("compare", input) },
-    action: { invoke: unavailable },
-    submit: { invoke: unavailable },
+    action: { invoke: (input) => rpc("sales-plan/action", input) },
+    submit: { invoke: (input) => rpc("sales-plan/submit", input) },
   },
   modelInference: {
     invoke: async () => ({
@@ -103,6 +110,16 @@ const host: WorkbenchHost = {
   },
 };
 bindWorkbenchHost(host);
+const resubmitClient = {
+  detail: host.salesPlan.detail,
+  versionSkus: host.salesPlan.versionSkus,
+  submit: host.salesPlan.submit,
+  currentUser: { invoke: async () => {
+    const state = await rpc<Status>('status');
+    if (!state.user) throw new Error('LOGIN_REQUIRED');
+    return { id: state.user.id, username: state.user.username };
+  } },
+};
 
 function requestErrorMessage(error: unknown, t: Translate): string {
   if (error instanceof BackendHttpError) {
@@ -119,6 +136,9 @@ function requestErrorMessage(error: unknown, t: Translate): string {
 /** Mount only real GEA data; unauthenticated and failed queries never switch to fixtures. */
 export function WorkbenchPage({ t }: { t: Translate }) {
   const [status, setStatus] = useState<Status>();
+  const [workbenchRevision, setWorkbenchRevision] = useState(0);
+  const [resubmit, setResubmit] = useState<{ planId: string; versionId: string; period: GeaSalesPlanPeriod }>();
+  useEffect(() => setResubmit(undefined), [status?.environment, status?.user?.id]);
   const [qr, setQr] = useState<{ image: string; loginId: string }>();
   const [expired, setExpired] = useState(false);
   const [qrRefresh, setQrRefresh] = useState(0);
@@ -295,13 +315,14 @@ export function WorkbenchPage({ t }: { t: Translate }) {
           setModelState(t("modelDiscovered") + value.selectedName);
       })
       .catch((error) => {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted) {
+          const code = error instanceof BackendHttpError ? error.code : "";
           setModelState(
-            t("modelFailed") +
-              (error instanceof BackendHttpError
-                ? error.code
-                : requestErrorMessage(error, t)),
+            code === "LOGIN_REQUIRED"
+              ? "请先登录 GEA 后再使用个人模型"
+              : t("modelFailed") + (code || requestErrorMessage(error, t)),
           );
+        }
       });
     return () => controller.abort();
   }, [status?.authenticated, status?.environment]);
@@ -376,110 +397,23 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
         <div className="gea-original-workbench">
           <RegionalApprovalWorkbench
-            stateScope={`gea-dsh:${status.environment}:${status.user?.name ?? "user"}`}
+            key={workbenchRevision}
+            stateScope={`gea-dsh:${status.environment}:${status.user?.tenantId}:${status.user?.id}`}
             t={locale.t.bind(locale)}
             onContextChange={onContextChange}
             queryClient={salesPlan}
             detailClient={salesPlan}
-            liveActionsEnabled={false}
+            liveActionsEnabled={true}
+            liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
+            onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })}
             automaticAnalysisEnabled={false}
           />
         </div>
+        {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit}
+          client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)}
+          onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}
       </WorkbenchSessionProvider>
-      <div className="gea-analysis-toolbar">
-        {modelState && <span role="status">{modelState}</span>}
-        <span>
-          {t("selectedCount")} {selection.length}
-        </span>
-        <label>
-          {t("analysisScope")}
-          <select
-            value={analysisScope}
-            aria-label={t("analysisScope")}
-            aria-describedby="gea-analysis-scope-help"
-            onChange={(event) => {
-              request.current?.abort();
-              setAnalysisScope(event.currentTarget.value as AnalysisScope);
-              setPreview(undefined);
-              setBusy(false);
-              setError("");
-            }}
-          >
-            <option value="summary">{t("analysisSummaryScope")}</option>
-            <option value="details">{t("analysisDetailsScope")}</option>
-          </select>
-        </label>
-        <span id="gea-analysis-scope-help">{t("analysisScopeHelp")}</span>
-        <button
-          type="button"
-          onClick={() => {
-            setQr(undefined);
-            setPreview(undefined);
-            setSessionId(null);
-            void run(async (signal) => {
-              const value = await rpc<Status>(
-                "environment/select",
-                { environment: status.environment },
-                signal,
-              );
-              if (!signal.aborted) setStatus(value);
-            });
-          }}
-        >
-          {t("changeEnvironment")}
-        </button>
-        <button
-          type="button"
-          disabled={busy || !selection.length}
-          onClick={() =>
-            void run(async (signal) => {
-              setPreview(undefined);
-              const value = await rpc<Preview>(
-                "workbench/prepare",
-                { planIds: selection, scope: analysisScope },
-                signal,
-              );
-              if (!signal.aborted) setPreview(value);
-            })
-          }
-        >
-          {t("preview")}
-        </button>
-        {preview && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() =>
-              void run(async (signal) => {
-                const value = await rpc<{ sessionId: string }>(
-                  "submit",
-                  { previewId: preview.previewId },
-                  signal,
-                );
-                if (!signal.aborted) {
-                  setSessionId(value.sessionId);
-                  window.parent.postMessage(
-                    { type: "gea:open-session", sessionId: value.sessionId },
-                    window.location.origin,
-                  );
-                  setPreview(undefined);
-                }
-              })
-            }
-          >
-            {t(status.mode === "model" ? "analysis" : "receipt")}
-          </button>
-        )}
-        {preview && (
-          <details>
-            <summary>
-              {t("previewTitle")} · {preview.bytes} B
-            </summary>
-            <pre>{preview.prompt}</pre>
-          </details>
-        )}
-        {error && <span role="alert">{error}</span>}
-      </div>
+
     </div>
   );
 }

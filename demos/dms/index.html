@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>DMS 模拟回写验收</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f5f7fa;
+        color: #172033;
+        font:
+          15px/1.6 system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 1200px;
+        margin: 32px auto;
+        padding: 0 24px;
+      }
+      h1 {
+        font-size: 28px;
+        margin: 4px 0;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 0 0 12px;
+      }
+      p {
+        margin: 8px 0;
+      }
+      .badge {
+        background: #fff1d6;
+        color: #805300;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-weight: 650;
+      }
+      .sub {
+        color: #586579;
+      }
+      header {
+        margin-bottom: 24px;
+      }
+      .controls,
+      .panel {
+        background: white;
+        border: 1px solid #dce2ea;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+      .controls {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      select,
+      button {
+        font: inherit;
+        border: 1px solid #ccd4df;
+        border-radius: 6px;
+        padding: 8px 12px;
+        background: white;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button.primary {
+        background: #195fe9;
+        color: white;
+        border-color: #195fe9;
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      button:focus-visible,
+      select:focus-visible {
+        outline: 3px solid #8eb6ff;
+        outline-offset: 2px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: 2fr 1fr 2fr;
+        gap: 20px;
+      }
+      .label {
+        font-size: 13px;
+        color: #667085;
+      }
+      .value {
+        font-size: 19px;
+        font-weight: 650;
+        overflow-wrap: anywhere;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      pre {
+        font:
+          12px/1.6 ui-monospace,
+          monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #f7f9fc;
+        padding: 14px;
+        border-radius: 8px;
+        max-height: 360px;
+        overflow: auto;
+      }
+      #notice {
+        color: #375983;
+      }
+      #error {
+        color: #b42318;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+      }
+      @media (max-width: 760px) {
+        .stats,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        main {
+          padding: 0 14px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="badge">仅 MOCK · 无外部连接</span>
+        <h1>DMS 两段式回写</h1>
+        <p class="sub">
+          终审停在 5，全部报文收到成功回执后进入
+          10。页面仅使用合成样本，不读取或修改真实计划。
+        </p>
+      </header>
+      <section class="controls" aria-label="模拟场景">
+        <label
+          >计划类型
+          <select id="type">
+            <option>Y</option>
+            <option>XN</option>
+            <option>DC</option>
+            <option>FC</option>
+            <option>JD</option>
+            <option>TM</option>
+          </select></label
+        ><label
+          >单据类型
+          <select id="order">
+            <option value="M">M 月初计划</option>
+            <option value="Z">Z 纠偏（追加／追减）</option>
+          </select></label
+        ><button id="reset">重置模拟</button
+        ><span class="sub">切换类型会重置内存样本。</span>
+      </section>
+      <section class="panel" aria-label="模拟状态">
+        <div class="stats">
+          <div>
+            <div class="label">计划状态</div>
+            <div id="status" class="value"></div>
+          </div>
+          <div>
+            <div class="label">同步状态</div>
+            <div id="sync" class="value"></div>
+          </div>
+          <div>
+            <div class="label">完成时间</div>
+            <div id="finished" class="value"></div>
+          </div>
+        </div>
+        <p>源计划：<span id="source"></span></p>
+        <p>
+          投递尝试 <strong id="attempts">0</strong> 次 · 模拟接收方实际入库
+          <strong id="deliveries">0</strong> 笔
+        </p>
+        <p id="notice" role="status"></p>
+        <div class="actions">
+          <button id="approve" class="primary">模拟品类终审</button
+          ><label
+            >回写场景
+            <select id="outcome">
+              <option value="success">成功</option>
+              <option value="failure">明确失败</option>
+              <option value="timeout-before">接收前超时</option>
+              <option value="lost-receipt">已接收但回执丢失</option>
+              <option value="partial">Z 单仅追加已接收</option>
+            </select></label
+          ><button id="send" class="primary">模拟回写／原键重试</button
+          ><button id="reconcile">查询回执对账</button
+          ><button id="duplicate">模拟重复回执</button>
+        </div>
+        <p id="error" role="alert"></p>
+      </section>
+      <div class="grid">
+        <section class="panel">
+          <h2>模拟报文</h2>
+          <p class="sub">
+            PLANE_NUM 对应源 plan_id；其余字段为模拟结构，非正式 DMS 协议。
+          </p>
+          <pre id="packets"></pre>
+        </section>
+        <section class="panel">
+          <h2>回执与源单对应</h2>
+          <p class="sub">DMS 自有 ID 与源计划、版本、分笔幂等键分别保存。</p>
+          <pre id="receipts"></pre>
+        </section>
+      </div>
+      <section class="panel">
+        <h2>状态与操作日志</h2>
+        <pre id="logs" aria-label="操作日志"></pre>
+      </section>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

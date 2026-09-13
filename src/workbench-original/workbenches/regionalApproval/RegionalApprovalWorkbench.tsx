@@ -1,3 +1,4 @@
+import type { GeaSalesPlanPeriod } from '../../contracts.ts';
 /** Adapted from AionUi (Apache-2.0): local imports and explicit DSH host adapter. See SOURCE.md. */
 import { salesPlanStatusText } from './regionalApprovalQueryModel.ts';
 import { SALES_PLAN_RETURN_CODES } from '../../salesPlanWorkflow.ts';
@@ -89,7 +90,6 @@ import {
   addExactDecimals,
   clampSalesPlanPageNumber,
   formatExactDecimal,
-  isOpenSalesPlanPeriod,
   projectRegionalApprovalLiveDimension,
   regionalApprovalLiveProgress,
   subtractExactDecimals,
@@ -393,6 +393,7 @@ const RegionalApprovalWorkbench: React.FC<{
   liveActionClient?: SalesPlanActionClient;
   liveActionsEnabled?: boolean;
   automaticAnalysisEnabled?: boolean;
+  onResubmit?: (planId: string, versionId: string, period: GeaSalesPlanPeriod) => void;
   permissionCodes?: readonly string[];
 }> = ({
   stateScope,
@@ -405,6 +406,7 @@ const RegionalApprovalWorkbench: React.FC<{
   liveActionsEnabled = false,
   automaticAnalysisEnabled = false,
   permissionCodes,
+  onResubmit,
 }) => {
   const { conversationId } = useBusinessSurfaceSession();
   const scopedState = getAssistantSurfaceWorkbenchScope(stateScope);
@@ -463,12 +465,10 @@ const RegionalApprovalWorkbench: React.FC<{
   const [liveStageFilter, setLiveStageFilter] = useState<ApprovalStageId>();
   const roleStages = useMemo(() => salesPlanStagesForPermissions(permissionCodes), [permissionCodes]);
   const roleKey = roleStages.join(',');
-  const [readOnlyBrowsing, setReadOnlyBrowsing] = useState(false);
   const explicitLiveStageSelection = useRef(false);
   useEffect(() => {
     explicitLiveStageSelection.current = false;
     setLiveStageFilter((roleKey.split(',')[0] || undefined) as ApprovalStageId | undefined);
-    setReadOnlyBrowsing(!roleKey);
     setSelectedRowIds([]);
     setPage(1);
   }, [roleKey]);
@@ -539,7 +539,6 @@ const RegionalApprovalWorkbench: React.FC<{
       return;
     // A default role filter must not hide plans the server allows this user to browse.
     setLiveStageFilter(undefined);
-    setReadOnlyBrowsing(true);
     setDimension(APPROVAL_DIMENSIONS_BY_STAGE.category[0]);
     setSelectedRowIds([]);
     setPage(1);
@@ -825,7 +824,6 @@ const RegionalApprovalWorkbench: React.FC<{
     if (!detail || !salesPlanAccessForRow(row, detail, permissionCodes, liveStageFilter)?.allowedActions.includes(kind))
       return 'missingAuthority';
     if (kind === 'SAVE') return undefined;
-    if (!isOpenSalesPlanPeriod(liveQuery.selectedPeriod)) return 'closedPeriod';
     if (salesPlanApprovalNodeForStatus(row.status, row.planTypeCode) === undefined) return 'notCurrentStage';
     return undefined;
   };
@@ -1084,10 +1082,8 @@ const RegionalApprovalWorkbench: React.FC<{
 
   const changeStage = (stage: ApprovalStageId) => {
     if (liveQuery.enabled) {
-      if (!roleStages.includes(stage)) return;
       explicitLiveStageSelection.current = true;
       const nextStage = liveStageFilter === stage ? undefined : stage;
-      setReadOnlyBrowsing(nextStage === undefined);
       setLiveStageFilter(nextStage);
       setDimension(APPROVAL_DIMENSIONS_BY_STAGE[nextStage ?? 'category'][0]);
       setDraftLiveFilters((current) => ({ ...current, status: ALL_ORGANIZATIONS }));
@@ -1850,7 +1846,7 @@ const RegionalApprovalWorkbench: React.FC<{
   ];
   const approvalActionButtons = liveQuery.enabled ? (
     <>
-      {roleStages.length > 0 && !readOnlyBrowsing ? (
+      {liveActionsEnabled ? (
         <Button
           size='small'
           disabled={
@@ -1868,7 +1864,7 @@ const RegionalApprovalWorkbench: React.FC<{
           {t('common.assistantSurface.regionalApproval.liveAction.save')}
         </Button>
       ) : null}
-      {roleStages.length > 0 && !readOnlyBrowsing ? (
+      {liveActionsEnabled ? (
         <Button
           size='small'
           status='danger'
@@ -1888,7 +1884,12 @@ const RegionalApprovalWorkbench: React.FC<{
           {t('common.assistantSurface.regionalApproval.liveAction.reject')}
         </Button>
       ) : null}
-      {roleStages.length > 0 && !readOnlyBrowsing ? (
+      {onResubmit ? <Button size='small'
+        disabled={selectedLiveRows.length !== 1 || !liveQuery.selectedPeriod || liveQuery.queueState.status !== 'success' || ![6, 7, 8, 9].includes(selectedLiveRows[0]?.status)}
+        onClick={() => { const row = selectedLiveRows[0]; if (row && liveQuery.selectedPeriod) onResubmit(row.planId, row.versionId, liveQuery.selectedPeriod); }}>
+        {t('common.assistantSurface.regionalApproval.liveSubmit.open')}
+      </Button> : null}
+      {liveActionsEnabled ? (
         <Button
           type='primary'
           size='small'
@@ -2143,7 +2144,7 @@ const RegionalApprovalWorkbench: React.FC<{
                   aria-pressed={liveQuery.enabled ? liveStageFilter === stage.id : undefined}
                   disabled={
                     liveQuery.enabled &&
-                    (!roleStages.includes(stage.id) || liveQuery.progressState.status !== 'success')
+                    liveQuery.progressState.status !== 'success'
                   }
                   onClick={() => changeStage(stage.id)}
                 >
@@ -2753,7 +2754,7 @@ const RegionalApprovalWorkbench: React.FC<{
             }));
           }}
           onEdit={
-            roleStages.length > 0 && !readOnlyBrowsing && !liveActionDisabledReason(activeLiveAdjustmentRow, 'SAVE')
+            liveActionsEnabled && !liveActionDisabledReason(activeLiveAdjustmentRow, 'SAVE')
               ? () => {
                   setLiveActionKind('SAVE');
                   setLiveActionPlanId(activeLiveAdjustmentRow.planId);

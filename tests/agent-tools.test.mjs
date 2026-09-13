@@ -153,7 +153,7 @@ test(
         assert.equal(modelRequests.length, 2);
         assert.deepEqual(
           modelRequests[0].tools.map((x) => x.function.name),
-          ["gea_sales_plan_read"],
+          ["gea_sales_plan_read", "skill"],
         );
         const result = modelRequests[1].messages.find((x) => x.role === "tool");
         assert.equal(result.tool_call_id, "read-1");

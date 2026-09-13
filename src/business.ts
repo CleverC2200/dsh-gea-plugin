@@ -1,4 +1,10 @@
 /** Process-local GEA identity, query ownership, and immutable analysis inputs. */
+import { prepareGatewayMcp } from "./gateway-mcp.ts";
+import { isDeepStrictEqual } from 'node:util';
+import { validateServiceAccounts, serviceAccountReady, submitWithServiceAccount, type ServiceAccounts } from './service-account.ts';
+import { prepareSalesPlanResubmit } from './workbench-original/workbenches/regionalApproval/models/salesPlanSubmitModel.ts';
+import type { GeaSalesPlanDetail, GeaSalesPlanPeriod, GeaSalesPlanSku } from './workbench-original/contracts.ts';
+import { readSalesPlanWorkflowConfig } from "./workflow-config.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { brandString, type Branded } from "@deepseek-ai/dsh-brand";
 import QRCode from "qrcode";
@@ -6,12 +12,13 @@ import { resolveEnvironments } from "./environments.js";
 import { Decimal } from "decimal.js";
 import { transportSignal } from "./transport-signal.ts";
 import { notificationPage, notificationDetail } from "./notifications.ts";
-import { geaResponseError } from "./gea-error.js";
+import { GeaResponseError, geaResponseError } from "./gea-error.js";
 
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
 export type Row = Record<string, string | number | boolean>;
 export interface Deployment {
+  serviceAccounts?: ServiceAccounts;
   geaBaseUrl: string;
   environment?: "production" | "test";
   geaEnvironments?: { production: string; test: string };
@@ -247,7 +254,27 @@ function skuTotal(rows: Record<string, unknown>[], field: "qty" | "amt") {
 
 /** Owns credentials and fetched records; callers can select identifiers, never supply business data. */
 export class Business {
-  private auth?: { token: string; tenantId: string; name: string };
+  private readonly identityListeners = new Set<() => void>();
+
+  /** Observe authenticated identity changes without exposing login credentials. */
+  watchIdentity(listener: () => void): () => void {
+    this.identityListeners.add(listener);
+    return () => {
+      this.identityListeners.delete(listener);
+    };
+  }
+
+  private notifyIdentity(): void {
+    for (const listener of this.identityListeners) {
+      try {
+        listener();
+      } catch {
+        // Consumers cannot break login/logout.
+      }
+    }
+  }
+
+  private auth?: { token: string; tenantId: string; name: string; id: string; username: string };
   private qr?: { id: string; loginId: string; createdAt: number };
   private epoch = new AbortController();
   private queryEpoch = new AbortController();
@@ -284,7 +311,15 @@ export class Business {
     return this.status();
   }
 
+  /** End the current GEA login and invalidate all pending identity-bound work. */
+  logout(payload: Record<string, unknown>) {
+    keys(payload, []);
+    this.clearLogin();
+    return this.status();
+  }
+
   constructor(readonly config: Deployment) {
+    validateServiceAccounts(config.serviceAccounts);
     const resolved = resolveEnvironments(config);
     this.selectedBase = resolved.baseUrl;
     this.environment = resolved.environment as "production" | "test";
@@ -314,9 +349,11 @@ export class Business {
     this.epoch = new AbortController();
     this.auth = undefined;
     this.modelRoutes.clear();
+    this.resubmissions.clear();
     this.qr = undefined;
     this.loginExpired = expired;
     this.clearQuery();
+    this.notifyIdentity();
   }
 
   /** Mark the current GEA identity expired after a model gateway rejects it. */
@@ -331,13 +368,14 @@ export class Business {
       environment: this.environment,
       environments: Object.keys(this.environments),
       authenticated: Boolean(this.auth),
+      resubmitConnected: serviceAccountReady(this.config.serviceAccounts?.[this.environment], this.auth),
       loginState: this.auth
         ? "authenticated"
         : this.loginExpired
           ? "expired"
           : "signed-out",
       user: this.auth
-        ? { name: this.auth.name, tenantId: this.auth.tenantId }
+        ? { name: this.auth.name, tenantId: this.auth.tenantId, id: this.auth.id, username: this.auth.username }
         : null,
       source: this.base,
       provider:
@@ -417,6 +455,132 @@ export class Business {
   private authenticated(): NonNullable<Business["auth"]> {
     if (!this.auth) throw new Error("LOGIN_REQUIRED");
     return this.auth;
+  }
+
+  /** Match a fresh server-assigned approval task to this exact sales-plan version. */
+  private async workflowApproval(versionId: string, caller: AbortSignal) {
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    let pageNo = 1;
+    while (true) {
+      const page = object(await this.get(`/api/v1/notifications?pageNo=${pageNo}&pageSize=100`, auth, signal));
+      if (!Array.isArray(page.items)) throw new Error("NOTIFICATION_INVALID_RESPONSE");
+      for (const item of page.items) {
+        const row = object(item);
+        const approval = row.approval == null ? undefined : object(row.approval);
+        if (approval?.biz_key !== `sales-plan:version:${versionId}` || approval.actionable !== true) continue;
+        const fresh = object(await this.get("/api/v1/notifications/" + encodeURIComponent(text(row.id)), auth, signal));
+        const confirmed = fresh.approval == null ? undefined : object(fresh.approval);
+        if (fresh.id !== row.id) throw new Error("NOTIFICATION_INVALID_RESPONSE");
+        if (confirmed?.biz_key === `sales-plan:version:${versionId}` && confirmed.actionable === true) {
+          if (this.auth !== auth) throw new Error("STALE_LOGIN");
+          return { versionId, notificationId: text(row.id), instanceId: text(confirmed.instance_id), actionable: true as const };
+        }
+      }
+      const total = integer(page.total, 0);
+      if (pageNo * 100 >= total) return undefined;
+      if (!page.items.length || pageNo >= 100) throw new Error("NOTIFICATION_SCAN_INCOMPLETE");
+      pageNo++;
+    }
+  }
+
+  /** Read the complete workflow configuration using this Host's current identity. */
+  async workflowConfig(payload: Record<string, unknown>, caller: AbortSignal) {
+    keys(payload, []);
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(this.config.requestTimeoutMs)]);
+    return readSalesPlanWorkflowConfig(this.base, auth.token, fetch, signal);
+  }
+
+  /** Bind an idempotency key to one validated request for the lifetime of this login. */
+  private resubmissions = new Map<string, { fingerprint: string; body?: string; flight?: Promise<unknown>; receipt?: unknown }>();
+
+  /** Rebuild a returned plan from current user-visible data before using service credentials. */
+  async salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+    keys(payload, ['source', 'request', 'requestId', 'idempotencyKey']);
+    const auth = this.authenticated();
+    const config = this.config.serviceAccounts?.[this.environment];
+    if (!config || !serviceAccountReady(config, auth)) throw new GeaResponseError(403, { message: '当前环境尚未配置当前用户可用的重提服务账号' });
+    const source = object(payload.source); keys(source, ['planId', 'versionId']);
+    const planId = text(source.planId), versionId = text(source.versionId);
+    const request = object(payload.request);
+    const requestId = text(payload.requestId), idempotencyKey = text(payload.idempotencyKey);
+    if (!/^[A-Za-z0-9:_-]{1,64}$/.test(requestId) || !/^[A-Za-z0-9:_-]{1,128}$/.test(idempotencyKey)) throw new Error('INVALID_PAYLOAD');
+    const fingerprint = JSON.stringify(payload);
+    let entry = this.resubmissions.get(idempotencyKey);
+    if (entry && entry.fingerprint !== fingerprint) throw new GeaResponseError(409, { message: '幂等键已绑定其他重提请求' });
+    if (entry?.receipt) return entry.receipt;
+    if (entry?.flight) return entry.flight;
+    if (!entry) { entry = { fingerprint }; this.resubmissions.set(idempotencyKey, entry); }
+    const attempt = entry;
+    const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(this.config.requestTimeoutMs)]);
+    const run = async () => {
+      if (!attempt.body) {
+        const detail = await this.workbenchQuery({ kind: 'detail', query: { planId } }, signal) as GeaSalesPlanDetail;
+        const version = detail.currentVersion;
+        if (version.id !== versionId || !version.effective || ![6, 7, 8, 9].includes(version.status))
+          throw new GeaResponseError(409, { message: '计划已变化，请刷新后核对重提版本' });
+        const periods = object(await this.workbenchQuery({ kind: 'periods', query: { periodMonth: request.periodMonth, pageSize: this.config.periodPageSize } }, signal));
+        const period = (periods.records as GeaSalesPlanPeriod[]).find(row => row.periodId === version.periodId && row.planTypeCode === version.planTypeCode);
+        if (!period) throw new GeaResponseError(409, { message: '未找到当前计划对应的周期，请刷新后核对' });
+        const skus = await this.workbenchQuery({ kind: 'versionSkus', query: { versionId } }, signal) as GeaSalesPlanSku[];
+        if (!Array.isArray(request.items) || request.items.length !== skus.length) throw new Error('INVALID_PAYLOAD');
+        const items = request.items.map(object);
+        if (new Set(items.map(row => row.skuCode)).size !== skus.length) throw new Error('INVALID_PAYLOAD');
+        const edited = skus.map(sku => {
+          const item = items.find(row => row.skuCode === sku.skuCode);
+          if (!item || typeof item.qty !== 'string') throw new Error('INVALID_PAYLOAD');
+          return { ...sku, qty: item.qty };
+        });
+        const rows = await this.workflowConfig({}, signal);
+        const prepared = prepareSalesPlanResubmit({ planId, versionId, detail, period, skus: edited, currentUser: auth }, rows);
+        // The browser may change quantities only; identity, prices and routing come from GEA.
+        if (!isDeepStrictEqual(JSON.parse(JSON.stringify(prepared.request)), request)) throw new GeaResponseError(409, { message: '提交数据与当前 GEA 来源不一致，请重新核对' });
+        if (this.auth !== auth) throw new Error('STALE_LOGIN');
+        signal.throwIfAborted();
+        attempt.body = JSON.stringify(prepared.request);
+      }
+      const receipt = await submitWithServiceAccount(config, this.base, attempt.body, requestId, idempotencyKey, signal);
+      attempt.receipt = receipt;
+      return receipt;
+    };
+    attempt.flight = run().finally(() => { attempt.flight = undefined; });
+    return attempt.flight;
+  }
+
+  /** Execute one authorized GEA sales-plan action; DMS is intentionally outside this method. */
+  async salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+    keys(payload, ["planId", "versionId", "request", "idempotencyKey", "requestId"]);
+    const versionId = text(payload.versionId);
+    const request = object(payload.request);
+    keys(request, ["expectedSnapshot", "action", "expectedStatus", "remark", "adjustments"]);
+    if (!["SAVE", "APPROVE", "REJECT"].includes(text(request.action))) throw new Error("INVALID_ACTION");
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    if (request.action === "SAVE") {
+      if (request.expectedStatus === 5) throw new GeaResponseError(400, { message: "状态 5 不允许保存调整" });
+      const planId = text(payload.planId);
+      const detail = object(await this.workbenchQuery({ kind: "detail", query: { planId } }, signal));
+      const version = object(detail.currentVersion);
+      const capability = detail.actionContext == null ? undefined : object(detail.actionContext);
+      if (!capability || !Array.isArray(capability.allowedActions) || !capability.allowedActions.includes("SAVE"))
+        throw new GeaResponseError(403, { message: "服务端未授予当前版本 SAVE 能力" });
+      if (version.id !== versionId || version.planId !== planId || version.effective !== true ||
+          version.status !== request.expectedStatus || capability.versionId !== versionId ||
+          capability.status !== request.expectedStatus || !/^[a-f0-9]{64}$/.test(String(capability.snapshotHash)) ||
+          capability.snapshotHash !== request.expectedSnapshot)
+        throw new GeaResponseError(409, { message: "版本或快照已变化，请回读后核对保存结果" });
+      if (this.auth !== auth) throw new Error("STALE_LOGIN");
+      signal.throwIfAborted();
+    }
+    const body = JSON.stringify(request);
+    const response = await fetch(this.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions", {
+      method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": text(payload.requestId), "Idempotency-Key": text(payload.idempotencyKey) }, body, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)])
+    });
+    if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw await geaResponseError(response, [auth.token]); }
+    const data = object(parseJson(await response.text()));
+    if (data.success !== true || !data.result) throw new Error("GEA_WRITE_REJECTED");
+    return data.result;
   }
 
   /** Read fixed notification endpoints under the current Host identity without changing plan selection. */
@@ -671,9 +835,17 @@ export class Business {
       throw new Error("GEA_IDENTITY_INCOMPLETE");
     const name = text(user.realname || user.username);
     if (epoch.aborted || this.qr !== qr) throw new Error("STALE_LOGIN");
-    this.auth = { token, tenantId, name };
+    this.auth = { token, tenantId, name, id: text(user.id), username: text(user.username || user.realname) };
     this.qr = undefined;
+    this.notifyIdentity();
     return { status: "authenticated", ...this.status() };
+  }
+
+  /** Prepare a gateway transport capability using only the current process login. */
+  async openMcpConnection(consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) {
+    const auth = this.authenticated();
+    const identity = this.epoch.signal;
+    return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.requestTimeoutMs);
   }
 
   /** Fetch one explicitly paged query, invalidating all previous query inputs immediately. */
@@ -1188,7 +1360,15 @@ export class Business {
         )
       )
         throw new Error("GEA_IDENTITY_MISMATCH");
-      return { ...detail, currentVersion, skus, versions, logs };
+      let workflowApproval;
+      try {
+        if (!detail.actionContext && Number(currentVersion.status) >= 1 && Number(currentVersion.status) <= 4)
+          workflowApproval = await this.workflowApproval(versionId, signal);
+      } catch (error) {
+        if (signal.aborted || !this.auth) throw error;
+        // Notification discovery failures keep the business detail readable, with no approval grant.
+      }
+      return { ...detail, currentVersion, skus, versions, logs, workflowApproval };
     }
     const values = records(result);
     if (

@@ -1,5 +1,10 @@
 /** Locale-owned copy for the external sales-plan page. */
 const copy = {
+  accountMenu: ["账户菜单", "Account menu"],
+  settings: ["设置", "Settings"],
+  logout: ["退出登录", "Sign out"],
+  loggingOut: ["正在退出…", "Signing out…"],
+  logoutFailed: ["退出失败，请重试。", "Sign-out failed. Retry."],
   notificationUnread: ["未读", "Unread"],
   notificationRead: ["已读", "Read"],
   notificationDismissed: ["已忽略", "Dismissed"],
@@ -211,6 +216,9 @@ const copy = {
     "Actions are unavailable: this view is read-only until GEA approval APIs are connected.",
   ],
   businessNavigation: ["业务导航", "Business navigation"],
+  switchToDsh: ["切换到 DSH 对话版", "Switch to DSH conversations"],
+  switchToBusiness: ["切换到 GEA 业务版", "Switch to GEA business"],
+  newConversation: ["新会话", "New conversation"],
   geaBusiness: ["GEA 业务版", "GEA business"],
   businessFunctions: ["业务功能", "Business functions"],
   planManagement: ["计划管理", "Plan management"],

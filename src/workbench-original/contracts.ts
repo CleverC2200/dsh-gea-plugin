@@ -80,6 +80,7 @@ export type GeaSalesPlanPageQuery = {
 };
 
 export type GeaSalesPlanVersion = {
+  orderType?: 'M' | 'Z';
   id: string;
   planId: string;
   seq: number;
@@ -153,6 +154,8 @@ export type GeaSalesPlanActionContext = {
 };
 
 export type GeaSalesPlanDetail = {
+  /** Current-user task assignment, matched and refreshed by the authenticated Host. */
+  workflowApproval?: { versionId: string; notificationId: string; instanceId: string; actionable: true };
   actionContext?: GeaSalesPlanActionContext;
 
   currentVersion: GeaSalesPlanVersion;
@@ -198,6 +201,8 @@ export type GeaSalesPlanSubmitItem = {
 };
 
 export type GeaSalesPlanSubmitRequest = {
+  orderType: 'M' | 'Z';
+  status: number;
   periodId: GeaSalesPlanId;
   periodMonth: string;
   planTypeCode: string;
@@ -226,6 +231,7 @@ export type GeaSalesPlanSubmitReceipt = {
 };
 
 export type GeaSalesPlanSubmitParams = {
+  source: { planId: string; versionId: string };
   request: GeaSalesPlanSubmitRequest;
   idempotencyKey: string;
   requestId: string;
@@ -259,6 +265,8 @@ export type GeaSalesPlanActionReceipt = {
 };
 
 export type GeaSalesPlanActionParams = {
+  /** Required by the Host for fresh SAVE capability verification. */
+  planId?: GeaSalesPlanId;
   versionId: GeaSalesPlanId;
   request: GeaSalesPlanActionRequest;
   idempotencyKey: string;

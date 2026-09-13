@@ -1,5 +1,5 @@
 /** Adapted from AionUi (Apache-2.0): local imports and explicit DSH host adapter. See SOURCE.md. */
-import { salesPlanWorkflow } from '../../../salesPlanWorkflow.ts';
+import { salesPlanWorkflow, type SalesPlanWorkflowRow } from '../../../salesPlanWorkflow.ts';
 import { isBackendHttpError } from '../../../http-error.ts';
 import type {
   GeaSalesPlanDetail,
@@ -144,9 +144,9 @@ const validateSku = (sku: GeaSalesPlanSku) => {
   };
 };
 
-export const prepareSalesPlanResubmit = (source: SalesPlanResubmitSource): SalesPlanSubmitInput => {
+export const prepareSalesPlanResubmit = (source: SalesPlanResubmitSource, rows?: readonly SalesPlanWorkflowRow[]): SalesPlanSubmitInput => {
   const version: GeaSalesPlanVersion = source.detail.currentVersion;
-  const nextStatus = salesPlanWorkflow(version.planTypeCode).resubmit(version.status);
+  const nextStatus = salesPlanWorkflow(version.planTypeCode, rows).resubmit(version.status);
   if (
     !nextStatus ||
     !version.effective ||
@@ -156,7 +156,8 @@ export const prepareSalesPlanResubmit = (source: SalesPlanResubmitSource): Sales
     version.planTypeCode !== source.period.planTypeCode ||
     version.status < 6 ||
     version.status > 9 ||
-    source.period.status.toUpperCase() !== 'OPEN' ||
+    (salesPlanWorkflow(version.planTypeCode, rows).actor(version.status) === 'customer' && source.period.status.toUpperCase() !== 'OPEN') ||
+    !['M', 'Z'].includes(version.orderType ?? '') ||
     source.skus.length < 1 ||
     source.skus.length > 5000
   ) {
@@ -197,6 +198,8 @@ export const prepareSalesPlanResubmit = (source: SalesPlanResubmitSource): Sales
 
   return {
     request: {
+      orderType: version.orderType as 'M' | 'Z',
+      status: nextStatus,
       periodId: source.period.periodId,
       periodMonth: source.period.periodMonth,
       planTypeCode,
@@ -242,6 +245,7 @@ export const classifySalesPlanSubmitError = (error: unknown): SalesPlanSubmitErr
     if (error.status === 429) {
       return new SalesPlanSubmitError('rateLimited', false, retryAfterMsFromDetails(error.details), { cause: error });
     }
+    if (error.status >= 500 && error.details && typeof error.details === 'object' && 'retrySameIntent' in error.details && error.details.retrySameIntent === true) return new SalesPlanSubmitError('unavailable', true, undefined, { cause: error });
     if (error.status >= 500) return new SalesPlanSubmitError('serviceUnavailable', false, undefined, { cause: error });
     return new SalesPlanSubmitError('failed', false, undefined, { cause: error });
   }
@@ -284,8 +288,9 @@ export class SalesPlanSubmitAttempt {
 
     this.input = input;
     this.command = {
+      source: { planId: input.expected.planId, versionId: input.expected.previousVersionId },
       request: input.request,
-      idempotencyKey: `aionui:sales-plan:${this.createId()}`,
+      idempotencyKey: `gea-sales-plan-submit:${this.createId()}`,
       requestId: this.createId(),
     };
     return this.invoke();
@@ -339,3 +344,18 @@ export class SalesPlanSubmitAttempt {
     return error;
   }
 }
+
+/** Confirm the new effective version and its resubmission log before refreshing the queue. */
+export const salesPlanResubmitReadbackMatches = (
+  previousVersionId: string,
+  receipt: GeaSalesPlanSubmitReceipt,
+  detail: GeaSalesPlanDetail
+): boolean => {
+  const current = detail.currentVersion;
+  const old = detail.versions.find(row => row.id === previousVersionId);
+  return current.planId === receipt.planId && current.id === receipt.versionId &&
+    current.seq === receipt.seq && current.status === receipt.status && current.effective === true &&
+    old?.effective === false && old.planId === receipt.planId &&
+    detail.logs.some(log => log.requestId === receipt.requestId && log.planId === receipt.planId &&
+      log.versionId === receipt.versionId && log.actionCode === 'RESUBMIT');
+};

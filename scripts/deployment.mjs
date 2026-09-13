@@ -1,6 +1,13 @@
 import { resolveEnvironments } from "../src/environments.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
-import { readFile } from "node:fs/promises";
+import {
+  readFile,
+  mkdir,
+  symlink,
+  realpath,
+  lstat,
+  unlink,
+} from "node:fs/promises";
 import { resolve } from "node:path";
 
 /** Parse an HTTPS endpoint and reject credentials or URL routing metadata. */
@@ -105,10 +112,13 @@ export function deploymentPatch(config, root, runtime) {
     {
       id: "agent-presets",
       config: {
-        default: "gea-readonly",
+        default: "standard",
         includeShippedRoot: false,
         includeUserRoot: false,
-        roots: [{ path: resolve(root, "presets"), trust: "system" }],
+        roots: [
+          { path: resolve(runtime, "native-presets"), trust: "system" },
+          { path: resolve(root, "presets"), trust: "system" },
+        ],
       },
     },
     {
@@ -118,6 +128,7 @@ export function deploymentPatch(config, root, runtime) {
           name: resolve(root, "lib/host.js"),
           config: {
             geaBaseUrl: config.geaBaseUrl,
+            serviceAccounts: config.serviceAccounts,
             environment: config.environment,
             geaEnvironments: config.geaEnvironments,
             pageSize: config.pageSize,
@@ -168,4 +179,40 @@ export function deploymentPatch(config, root, runtime) {
       },
     });
   return rows;
+}
+
+/** Expose only the original standard preset, without copying or modifying DSH's composition. */
+export async function prepareNativePreset(runtime, dshSource) {
+  const parent = resolve(runtime, "native-presets");
+  const target = resolve(
+    dshSource,
+    "packages/preset/agent-presets/presets/standard",
+  );
+  await readFile(resolve(target, "agent.cordis.yml"), "utf8");
+  await mkdir(parent, { recursive: true });
+  const directory = resolve(parent, "standard");
+  // Upgrade the earlier directory-link layout: discovery only scans real directories.
+  try {
+    if ((await lstat(directory)).isSymbolicLink()) {
+      if ((await realpath(directory)) !== (await realpath(target)))
+        throw new Error("NATIVE_PRESET_CONFLICT");
+      await unlink(directory);
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  await mkdir(directory, { recursive: true });
+  for (const name of ["agent.cordis.yml", "preset.yml"]) {
+    const link = resolve(directory, name);
+    const source = resolve(target, name);
+    try {
+      await symlink(source, link, "file");
+    } catch (error) {
+      if (
+        error.code !== "EEXIST" ||
+        (await realpath(link)) !== (await realpath(source))
+      )
+        throw error;
+    }
+  }
 }

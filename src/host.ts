@@ -290,6 +290,13 @@ export function apply(ctx: Context, config: Deployment): void {
       }),
     );
   const business = new Business(config);
+  ctx.provide("geaMcp", {
+    version: 1 as const,
+    defaultConsumer: { consumerType: "AGENT" as const, consumerCode: config.analysisAgentCode },
+    authenticated: () => business.status().authenticated,
+    watch: (listener: () => void) => business.watchIdentity(listener),
+    open: (consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) => business.openMcpConnection(consumer, signal),
+  });
   registerGeaTools(ctx, business);
   ctx.effect(() => () => business.dispose());
   if (config.analysisMode === "receipt")
@@ -370,8 +377,12 @@ export function apply(ctx: Context, config: Deployment): void {
   const endpoints = [
     "status",
     "notifications",
+    "workflow/config",
+    "sales-plan/action",
+    "sales-plan/submit",
     "environment/select",
     "model/discover",
+    "logout",
     "login/start",
     "login/poll",
     "periods",
@@ -404,6 +415,15 @@ export function apply(ctx: Context, config: Deployment): void {
                   request.signal,
                 );
                 break;
+              case "sales-plan/submit":
+                value = await business.salesPlanSubmit(payload, request.signal);
+                break;
+              case "sales-plan/action":
+                value = await business.salesPlanAction(payload, request.signal);
+                break;
+              case "workflow/config":
+                value = await business.workflowConfig(payload, request.signal);
+                break;
               case "notifications":
                 value = await business.notifications(payload, request.signal);
                 break;
@@ -433,6 +453,9 @@ export function apply(ctx: Context, config: Deployment): void {
               }
               case "environment/select":
                 value = business.selectEnvironment(payload);
+                break;
+              case "logout":
+                value = business.logout(payload);
                 break;
               case "login/start":
                 value = await business.loginStart(request.signal, payload);

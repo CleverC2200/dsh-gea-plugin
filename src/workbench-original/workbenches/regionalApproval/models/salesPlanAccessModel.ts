@@ -48,6 +48,15 @@ export const salesPlanAccessForRow = (
     detail.currentVersion.status !== row.status
   )
     return undefined;
+  if (!context && detail.workflowApproval?.actionable === true &&
+      detail.workflowApproval.versionId === row.versionId && actor && actor !== 'customer' &&
+      salesPlanActionTargetStatus('APPROVE', row.status, typeCode) !== undefined) {
+    return {
+      versionId: row.versionId, status: row.status,
+      nodeOrder: NODE_PERMISSIONS.findIndex(([id]) => id === actor) + 1,
+      allowedActions: ['APPROVE', 'REJECT'],
+    };
+  }
   if (!context) {
     if (!stage || !salesPlanStagesForPermissions(permissions).includes(stage) || !actor || actor === 'customer')
       return undefined;
@@ -101,6 +110,9 @@ export const verifySavedSalesPlan = (
   const version = before.currentVersion;
   if (
     request.action !== 'SAVE' ||
+    request.expectedStatus !== version.status ||
+    !version.effective ||
+    !salesPlanSkusMatchVersion(version.id, before.skus) ||
     receipt.planId !== version.planId ||
     receipt.versionId !== version.id ||
     receipt.fromStatus !== version.status ||
@@ -108,6 +120,8 @@ export const verifySavedSalesPlan = (
     after.currentVersion.id !== version.id ||
     after.currentVersion.planId !== version.planId ||
     after.currentVersion.status !== version.status ||
+    after.currentVersion.seq !== version.seq ||
+    after.currentVersion.planTypeCode !== version.planTypeCode ||
     !after.currentVersion.effective ||
     !salesPlanSkusMatchVersion(version.id, after.skus) ||
     before.skus.length !== after.skus.length ||
@@ -125,6 +139,8 @@ export const verifySavedSalesPlan = (
   )
     return false;
   const deltas = new Map((request.adjustments ?? []).map((item) => [String(item.skuCode), String(item.adjustQty)]));
+  const sourceCodes = new Set(before.skus.map(sku => String(sku.skuCode)));
+  if (deltas.size !== request.adjustments?.length || [...deltas.keys()].some(code => !sourceCodes.has(code))) return false;
   return before.skus.every((sku) => {
     const code = String(sku.skuCode);
     const saved = after.skus.find((item) => String(item.skuCode) === code);

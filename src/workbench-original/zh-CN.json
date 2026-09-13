@@ -124,7 +124,7 @@
     "managed": "企业受管",
     "fixtureBoundary": "样例数据：不连接 GEA，不执行真实业务操作。",
     "liveReadOnlyBoundary": "真实 GEA 审批数据 · 只读；不会执行审批、退回或提交。",
-    "liveUserActionBoundary": "真实 GEA 审批数据 · 用户会话审批已开放；服务账号提交与退回重提仍关闭。",
+    "liveUserActionBoundary": "真实 GEA 审批数据 · 重提按当前环境的服务账号配置开放。",
     "contextBadge": "需求预测看板 v{{revision}}",
     "contextMessageBadge": "{{label}} v{{revision}}",
     "contextRevision": "本轮看板快照 v{{revision}}",
@@ -696,7 +696,7 @@
         },
         "firstSubmit": "首次提报",
         "firstSubmitUnavailable": "首次提报暂不可用：当前接口没有真实的新计划草稿、经销商和 SKU 明细来源；客户端不会用样例组织、AI 建议或本地编辑伪造提交。",
-        "boundary": "重提仅复用 GEA 当前有效版本的真实 SKU、OPEN 周期和当前用户；服务身份与重试由 AionCore 受信边界处理，Renderer 不接触凭证。",
+        "boundary": "重提读取 GEA 当前有效版本与真实 SKU，销售退回须处于 OPEN 周期；插件后端校验当前用户、管理服务凭据与幂等请求。",
         "footerBoundary": "只有校验通过的服务端回执才会更新工作台；审批通过/退回按钮不会调用重提接口。",
         "plan": "销售计划",
         "version": "退回版本",
@@ -724,7 +724,7 @@
         "disabled": {
           "completed": "该退回版本已收到服务端重提回执，已阻止重复操作。",
           "channelMissing": "计划 ID 不符合 p-{渠道}-{YYYY-MM}-{5位流水号} 业务编码，无法安全确定重提渠道。",
-          "serviceBoundary": "业务版未开放服务账号提交或退回重提。",
+          "serviceBoundary": "可核对并编辑真实退回明细；当前环境的服务凭据或用户授权未就绪，暂不发送重提。",
           "readOnly": "当前版本仅可查看，服务端尚未授予可执行操作。",
           "queueNotFresh": "队列正在刷新或读取失败；必须先获得成功的权威队列响应。",
           "closedPeriod": "只有 OPEN 周期可以重提。",
@@ -737,11 +737,13 @@
           "permission": "AionCore 或 GEA 拒绝当前提交权限；客户端不会伪造租户或角色。",
           "conflict": "版本已变化或存在并发提交；未提前更新本地状态，请刷新权威队列。",
           "rateLimited": "请求过于频繁；AionCore 已完成本轮限流处理，客户端不会再开启一轮调用，请刷新权威状态。",
-          "serviceUnavailable": "AionCore 已完成本轮上游重试但服务仍不可用；客户端不会叠加新的重试轮次，请刷新权威状态。",
+          "serviceUnavailable": "重提服务暂时不可用；请刷新计划状态后核对，不要重复发起新的重提。",
           "retryExhausted": "三次总调用预算已用尽；客户端不会继续调用，请刷新权威状态核对是否已生成新版本。",
           "unavailable": "结果暂时未知；为避免重复版本，必须使用原幂等键和相同请求体重试并确认结果。",
           "failed": "重提失败且未更新本地状态；请刷新权威数据后再决定。"
-        }
+        },
+        "quantity": "提报数量",
+        "nextStatus": "重提目标状态"
       },
       "liveAction": {
         "saveChecksumTitle": "保存核对摘要",

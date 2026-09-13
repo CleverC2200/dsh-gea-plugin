@@ -80,3 +80,47 @@ AionUi 代理适配器及示例配置已删除；旧配置启动拒绝的定向�
 消息待办支持独立的只读列表、未读数、分页与详情，读取 GEA `/api/v1/notifications`，保留来源引用与原始通知状态。打开详情不会标记已读或执行审批；来源引用不自动解释成 DSH Session。身份切换取消在途查询，响应失败清除旧页面结果。已完成模拟 GEA 回归及正式环境两页共 18 条消息的只读浏览器验收；处理历史仍待实现；来源 DSH Session 跳转按用户要求不在本轮迁移范围内。
 
 消息列表可按未读、已读、已忽略筛选，切换条件自动返回第一页；已知通知状态使用当前界面语言显示。
+
+登录后，业务版和对话版左下角头像均可打开账户菜单，包含「设置」和「退出登录」。退出会清除当前 Host 的 GEA 凭证、个人模型路由、二维码与业务缓存，并取消进行中的身份相关请求；同一服务的其他已打开页面会同步返回扫码页。DSH 工作区和历史会话保留。此操作不注销飞书或其他 GEA 客户端。
+
+### 登录后供市场插件接入 MCP
+
+更新后的插件在同一 Cordis 作用域提供进程内 `geaMcp` v1 服务。更新后的 `dsh-agent-manage` 自动监听登录，默认使用本插件 `analysisAgentCode` 对应的 AGENT Consumer 创建 `/ai/gateway/session` 业务会话，连接 `/ai/gateway/mcp/proxy/mcp`，发现该 Consumer 获授权的工具。市场插件可以显式配置已注册的 CLIENT_APP/AGENT Consumer，或使用 `geaMcp: false` 关闭集成。
+
+登录凭证和委托令牌留在 GEA 的内存闭包中，仅通过受控 fetch 为 MCP 请求注入 `params._meta`；不写入业务 `arguments` 或市场配置。退出、环境切换、登录失效和卸载中止旧请求。失败后需解决授权问题并重新登录，不自动重复建会话或重放工具调用。一个登录代际共享一个挂载业务会话。普通登录和已有业务功能不依赖市场插件。本地测试不代表生产 MCP 授权及业务验收。
+
+The in-process `geaMcp` v1 service lets the market discover authorized MCP tools after login. GEA owns credentials, session preparation and trusted metadata injection; the market owns MCP transport and tools. The default Consumer is the configured analysis Agent. Logout invalidates the capability; no secrets are persisted and failed sessions are not blindly recreated. Production acceptance remains separate.
+
+### 退回重提的服务身份
+
+退回状态 6–9 的重提使用 `POST /api/v1/internal/sales-plans`。Host 从当前用户可读的有效版本重新读取周期、SKU、价格与流程配置，仅接受数量修改；组织、提报人、目标和下一状态必须与 GEA 来源一致。服务账号须授予 `sales-plan:write`、事件 `sales-plan.submit`、策略 `sales-plan.default`。DMS 不参与这条调用。
+
+部署 JSON 的 `serviceAccounts` 按环境隔离，以下只保存引用与授权范围，不保存 Secret：
+
+```json
+{
+  "serviceAccounts": {
+    "production": {
+      "clientIdEnv": "GEA_RESUBMIT_CLIENT_ID",
+      "clientSecretEnv": "GEA_RESUBMIT_CLIENT_SECRET",
+      "keychainService": "gea-dsh-sales-plan-production",
+      "tenantId": "0",
+      "allowedUserIds": ["部署管理员批准的GEA用户ID"]
+    }
+  }
+}
+```
+
+macOS 启动器从钥匙串中 `service=keychainService`、`account=service-account` 的项目读取包含 `clientId` 与 `secret` 的 JSON，只传入 Host 进程环境。其他平台省略 `keychainService`，由密钥管理系统注入对应的 `GEA_` 环境变量。允许的用户和租户由部署配置明确指定，只有读取权限并不会自动获得服务账号重提权限。缺少凭据或用户未获授权时，重提确认按钮保持禁用。
+
+Host 每次发送前使用表单 `client_credentials` 获取短期 Token，不向浏览器返回凭据。相同幂等键绑定同一请求，当前登录期间的失败重试复用已核验的请求正文；结果未知时只提供原键重试。退出或重启后需重新回读计划，不能把新操作当成旧操作的重试。成功回执仍需核对新有效版本、旧版本失效和重提日志，才能视为工作台验收完成。
+
+### 会话模式 / Session modes
+
+新会话默认使用原版 DSH `standard`（标准）预设，不注入 GEA 业务 Persona，也不可调用 GEA MCP。另一个预设显示为「需求预测」（`gea-readonly`），包含业务 Persona、Skill 发现及加载，以及限于此预设的 GEA MCP。输入框的 Agent 预设选择器用于切换；已有消息的会话保持原预设，请新建会话后选择。左侧需求预测入口仍明确选择 `gea-readonly`。启动器在 runtime 的 `native-presets/standard` 创建真实目录，其中的配置文件链接到当前 DSH 源码中的原版标准预设；不复制或改写 DSH 的标准配置，只展示标准与需求预测两种模式。
+
+New conversations default to DSH's unmodified `standard` preset, without the GEA business persona or GEA MCP access. The `gea-readonly` preset is displayed as Demand Forecast (需求预测), with its business persona, skill discovery/loading and scoped GEA MCP. Select the preset in a new conversation; non-empty conversations retain their composition. The launcher links the original standard preset files under runtime `native-presets/standard`, keeping the roster to standard and demand forecast.
+
+## DMS 模拟回写
+
+Issue #23 的独立演示支持终审停在 5、成功后进入 10、失败原键重试、未知结果对账，以及 Z 单追加/追减两笔确认。运行 `node scripts/build-dms-demo.mjs`，再用 `python3 -m http.server 3202 --bind 127.0.0.1 --directory .runtime/dms-demo` 打开模拟页。该页只使用合成样本与内存接收方，不连接真实 GEA/DMS，不影响 3201 的真实业务。复现步骤、回归证据与正式协议边界见 [DMS mock 验收](docs/dms-mock-acceptance.md)。

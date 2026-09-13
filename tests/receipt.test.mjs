@@ -29,7 +29,9 @@ test(
       () => readSession(app.runtime, id),
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
-    assert.equal(rows.filter((row) => row.type === "user/message").length, 1);
+    const messages = rows.filter((row) => row.type === "user/message");
+    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 1);
+    assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
     assert.ok(
       JSON.stringify(rows.find((row) => row.type === "user/message")).includes(
         "1.2300",
@@ -101,6 +103,8 @@ test(
       () => readSession(app.runtime, retry.value.sessionId),
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
-    assert.equal(rows.filter((row) => row.type === "user/message").length, 1);
+    const messages = rows.filter((row) => row.type === "user/message");
+    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 1);
+    assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
   },
 );
