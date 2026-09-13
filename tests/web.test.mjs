@@ -222,7 +222,8 @@ test(
         "50%",
       );
       for (let view = 0; view < 2; view++) {
-        await page.getByRole("button", { name: "设置", exact: true }).click();
+        await page.getByRole("button", { name: "账户菜单", exact: true }).click();
+        await page.getByRole("menuitem", { name: "设置", exact: true }).click();
         await page
           .getByRole("button", { name: "通用设置", exact: true })
           .waitFor();

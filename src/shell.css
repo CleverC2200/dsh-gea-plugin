@@ -239,3 +239,12 @@
   font-size: 9px;
   font-weight: 700;
 }
+
+.gea-logout-control { width: 100%; }
+.gea-logout-button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 8px 12px; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+.gea-logout-button:hover { background: rgba(128, 128, 128, .12); }
+.gea-logout-button:focus-visible { outline: 2px solid #165dff; outline-offset: -2px; }
+.gea-logout-button:disabled { cursor: wait; opacity: .6; }
+.gea-logout-control [role="alert"] { display: block; padding: 4px 12px; color: #c62828; font-size: 12px; }
+
+.gea-account-menu { position: fixed; z-index: 1000; width: 200px; padding: 5px; border: 1px solid rgba(128, 128, 128, .2); border-radius: 10px; background: light-dark(#fff, #242424); color: light-dark(#202020, #eee); box-shadow: 0 6px 24px #0002; }

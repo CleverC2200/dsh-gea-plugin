@@ -1,4 +1,5 @@
 /** GEA navigation and independent workbench mounted in the DSH application frame. */
+import { createPortal } from "react-dom";
 import React, { useEffect, useRef, useState } from "react";
 import type {
   HostObservable,
@@ -117,23 +118,60 @@ export function apply(ctx: Context): void {
     const [name, setName] = useState("");
     useEffect(() => {
       const controller = new AbortController();
+      let revision = 0;
+      const onIdentity = (event: MessageEvent) => {
+        const frame = document.querySelector<HTMLIFrameElement>('iframe[data-gea-workbench]');
+        if (event.origin !== window.location.origin || !frame || event.source !== frame.contentWindow || event.data?.type !== "gea:identity") return;
+        revision++;
+        setName(event.data.authenticated === true && typeof event.data.name === "string" ? event.data.name : "");
+      };
+      window.addEventListener("message", onIdentity);
       void fetch("/api/gea-proof/status", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-        signal: controller.signal,
-      })
-        .then((response) => response.json())
-        .then((result) => {
-          if (result.ok) setName(result.value.user?.name ?? "");
-        })
-        .catch(() => {
-          /* The avatar remains available without a GEA login. */
-        });
-      return () => controller.abort();
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: "{}", signal: controller.signal,
+      }).then(response => response.json()).then(result => {
+        if (result.ok && revision === 0 && !controller.signal.aborted) setName(result.value.user?.name ?? "");
+      }).catch(() => { /* Unavailable identity leaves account controls signed out. */ });
+      return () => { controller.abort(); window.removeEventListener("message", onIdentity); };
     }, []);
     return name;
+  }
+  let authChannel: BroadcastChannel | undefined;
+  ctx.effect(() => {
+    const channel = new BroadcastChannel("gea-auth");
+    authChannel = channel;
+    const signedOut = (event: MessageEvent) => {
+      if (event.data === "signed-out") window.location.assign("/");
+    };
+    channel.addEventListener("message", signedOut);
+    return () => { channel.removeEventListener("message", signedOut); channel.close(); authChannel = undefined; };
+  });
+  function Logout({ name }: { name: string }) {
+    const [busy, setBusy] = useState(false);
+    const [failed, setFailed] = useState(false);
+    const pending = useRef(false);
+    if (!name) return null;
+    const logout = async () => {
+      if (pending.current) return;
+      pending.current = true; setBusy(true); setFailed(false);
+      try {
+        const response = await fetch("/api/gea-proof/logout", {
+          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}", signal: AbortSignal.timeout(10000),
+        });
+        const result = await response.json();
+        if (!response.ok || result.ok !== true || result.value.authenticated !== false) throw new Error("LOGOUT_FAILED");
+        authChannel?.postMessage("signed-out");
+        window.location.assign("/");
+      } catch { setFailed(true); setBusy(false); pending.current = false; }
+    };
+    return <div className="gea-logout-control">
+      <style>{shellCss}</style>
+      <button type="button" role="menuitem" className="gea-logout-button" title={t("logout")} aria-label={t("logout")} disabled={busy} onClick={() => void logout()}>
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M10 4H4v16h6M14 8l4 4-4 4M8 12h10" /></svg>
+        <span>{t(busy ? "loggingOut" : "logout")}</span>
+      </button>
+      {failed && <span role="alert">{t("logoutFailed")}</span>}
+    </div>;
   }
   function Navigation({ usePanelInfo }: PropsRuntime<"sidebar.workspaces">) {
     const activePanel = usePanelInfo((info) => info.activePanelId);
@@ -212,17 +250,76 @@ export function apply(ctx: Context): void {
       </span>
     );
   }
-  function UserAvatar() {
+  function UserAvatar({ wide }: PropsRuntime<"settings.trigger">) {
     const name = useIdentity();
-    return (
-      <>
-        <style>{shellCss}</style>
-        <span className="gea-user-avatar" aria-hidden="true">
-          {name.slice(0, 1) || "G"}
-        </span>
-        <span>{name || t("signedOut")}</span>
-      </>
-    );
+    const avatar = useRef<HTMLSpanElement>(null);
+    const menu = useRef<HTMLDivElement>(null);
+    const trigger = useRef<HTMLButtonElement | null>(null);
+    const openSettings = useRef(false);
+    const [position, setPosition] = useState<{ left: number; bottom: number } | null>(null);
+    // The native slot supplies button content only; preserve its settings action
+    // while routing pointer and keyboard activation through the account menu.
+    useEffect(() => {
+      const button = avatar.current?.closest("button");
+      if (!button) return;
+      trigger.current = button;
+      const activate = (event: MouseEvent) => {
+        if (openSettings.current) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        const rect = button.getBoundingClientRect();
+        setPosition(current => current ? null : { left: Math.min(rect.left, window.innerWidth - 212), bottom: window.innerHeight - rect.top + 6 });
+      };
+      button.addEventListener("click", activate);
+      return () => { button.removeEventListener("click", activate); trigger.current = null; };
+    }, []);
+    useEffect(() => {
+      const button = trigger.current;
+      if (!button) return;
+      const previous = ["aria-label", "aria-haspopup", "aria-expanded"].map(key => button.getAttribute(key));
+      button.setAttribute("aria-label", t("accountMenu"));
+      button.setAttribute("aria-haspopup", "menu");
+      button.setAttribute("aria-expanded", String(position !== null));
+      return () => { ["aria-label", "aria-haspopup", "aria-expanded"].forEach((key, index) => {
+        const value = previous[index]; if (value === null) button.removeAttribute(key); else button.setAttribute(key, value!);
+      }); };
+    }, [position]);
+    useEffect(() => {
+      if (!position) return;
+      menu.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      const close = (event: PointerEvent) => {
+        if (event.target instanceof Node && !menu.current?.contains(event.target) && !trigger.current?.contains(event.target)) setPosition(null);
+      };
+      const resize = () => setPosition(null);
+      document.addEventListener("pointerdown", close);
+      window.addEventListener("resize", resize);
+      window.addEventListener("blur", resize);
+      return () => { document.removeEventListener("pointerdown", close); window.removeEventListener("resize", resize); window.removeEventListener("blur", resize); };
+    }, [position]);
+    return <>
+      <style>{shellCss}</style>
+      <span ref={avatar} className="gea-user-avatar" aria-hidden="true">{name.slice(0, 1) || "G"}</span>
+      {wide && <span>{name || t("signedOut")}</span>}
+      {position && createPortal(<div ref={menu} role="menu" aria-label={t("accountMenu")} className="gea-account-menu" style={position}
+        onClick={event => event.stopPropagation()}
+        onKeyDown={event => {
+          event.stopPropagation();
+          if (event.key === "Escape") { event.preventDefault(); setPosition(null); trigger.current?.focus(); }
+          if (event.key === "Tab") setPosition(null);
+          if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+            event.preventDefault();
+            const items = Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
+            const index = items.indexOf(document.activeElement as HTMLButtonElement);
+            const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowUp" ? -1 : 1) + items.length) % items.length;
+            items[next]?.focus();
+          }
+        }}>
+        <button type="button" role="menuitem" className="gea-logout-button" onClick={() => {
+          setPosition(null); openSettings.current = true;
+          try { trigger.current?.click(); } finally { openSettings.current = false; }
+        }}><span aria-hidden="true">⚙</span><span>{t("settings")}</span></button>
+        <Logout name={name} />
+      </div>, document.body)}
+    </>;
   }
   ctx.slots.inject("main", function* () {
     yield ctx.slots.register(

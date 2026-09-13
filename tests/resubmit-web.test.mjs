@@ -139,7 +139,7 @@ test(
     await expect(
       dialog.getByRole("button", { name: "确认重提", exact: true }),
     ).toBeDisabled();
-    await expect(dialog).toContainText("提交服务身份尚未配置");
+    await expect(dialog).toContainText("当前环境的服务凭据或用户授权未就绪");
     assert.equal(
       app.requests.some(
         (r) =>

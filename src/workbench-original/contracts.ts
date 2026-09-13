@@ -231,6 +231,7 @@ export type GeaSalesPlanSubmitReceipt = {
 };
 
 export type GeaSalesPlanSubmitParams = {
+  source: { planId: string; versionId: string };
   request: GeaSalesPlanSubmitRequest;
   idempotencyKey: string;
   requestId: string;

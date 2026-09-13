@@ -10,11 +10,10 @@ function result(plan: MockPlan, fromStatus: number, toStatus: number, requestId:
   return { planId: plan.planId, versionId: plan.versionId, fromStatus, toStatus, replayed, requestId, traceId: `mock-trace:${requestId}`, auditId: `mock-audit:${requestId}` };
 }
 
-/** In-memory adapter models server CAS, idempotency, version creation and DMS acknowledgement. */
+/** In-memory approval adapter models server CAS and action idempotency; DMS uses MockDmsWriteback. */
 export class MockSalesPlanAdapter {
   private readonly plans = new Map<string, MockPlan>();
   private readonly idempotency = new Map<string, { hash: string; receipt: MockReceipt }>();
-  private readonly pendingDms = new Set<string>();
   add(plan: MockPlan): void { this.plans.set(plan.versionId, clone(plan)); }
   read(versionId: string): MockPlan { const plan = this.plans.get(versionId); if (!plan) throw new Error('MOCK_VERSION_NOT_FOUND'); return clone(plan); }
   action(versionId: string, request: { action: 'SAVE' | 'APPROVE' | 'REJECT'; expectedStatus: number; requestId: string; idempotencyKey: string; remark?: string; adjustments?: Array<{ skuCode: string; adjustQty: string }> }): MockReceipt {
@@ -34,13 +33,7 @@ export class MockSalesPlanAdapter {
     const to = request.action === 'APPROVE' ? flow.transition(plan.status, 'APPROVE') : flow.transition(plan.status, 'REJECT');
     if (to === undefined || (request.action === 'REJECT' && !request.remark?.trim())) throw new Error('MOCK_INVALID_TRANSITION');
     const from = plan.status; plan.status = to; plan.logs.push({ action: request.action, from, to, requestId: request.requestId });
-    if (to === 5) this.pendingDms.add(plan.versionId);
     const receipt = result(plan, from, to, request.requestId); this.store(request, hash, receipt); return receipt;
-  }
-  acknowledgeDms(versionId: string, success: boolean): MockReceipt {
-    const plan = this.plans.get(versionId); if (!plan || plan.status !== 5 || !this.pendingDms.has(versionId)) throw new Error('MOCK_DMS_NOT_PENDING');
-    if (!success) throw new Error('MOCK_DMS_FAILED');
-    this.pendingDms.delete(versionId); plan.status = 10; plan.logs.push({ action: 'DMS_SYNC', from: 5, to: 10, requestId: `mock-dms:${versionId}` }); return result(plan, 5, 10, `mock-dms:${versionId}`);
   }
   private store(request: { idempotencyKey: string }, hash: string, receipt: MockReceipt) { this.idempotency.set(request.idempotencyKey, { hash, receipt }); }
   private rows(plan: MockPlan) {

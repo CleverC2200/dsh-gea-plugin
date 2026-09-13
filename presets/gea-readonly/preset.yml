@@ -1,2 +1,2 @@
-name: GEA 只读分析
-description: 分析明确选中的销售计划快照，不提供业务写入或通用执行工具。
+name: 需求预测
+description: 使用业务 Skills、代理角色和 GEA MCP 查询、分析销售需求预测；不执行审批或业务写入。

@@ -1,5 +1,10 @@
 /** Locale-owned copy for the external sales-plan page. */
 const copy = {
+  accountMenu: ["账户菜单", "Account menu"],
+  settings: ["设置", "Settings"],
+  logout: ["退出登录", "Sign out"],
+  loggingOut: ["正在退出…", "Signing out…"],
+  logoutFailed: ["退出失败，请重试。", "Sign-out failed. Retry."],
   notificationUnread: ["未读", "Unread"],
   notificationRead: ["已读", "Read"],
   notificationDismissed: ["已忽略", "Dismissed"],

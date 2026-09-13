@@ -99,7 +99,7 @@ const host: WorkbenchHost = {
     versionSkus: { invoke: (input) => query("versionSkus", input) },
     compare: { invoke: (input) => query("compare", input) },
     action: { invoke: (input) => rpc("sales-plan/action", input) },
-    submit: { invoke: unavailable },
+    submit: { invoke: (input) => rpc("sales-plan/submit", input) },
   },
   modelInference: {
     invoke: async () => ({
@@ -410,7 +410,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
           />
         </div>
         {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit}
-          client={resubmitClient} connected={false} t={locale.t.bind(locale)}
+          client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)}
           onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}
       </WorkbenchSessionProvider>
 

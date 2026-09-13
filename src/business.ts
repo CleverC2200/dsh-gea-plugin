@@ -1,4 +1,9 @@
 /** Process-local GEA identity, query ownership, and immutable analysis inputs. */
+import { prepareGatewayMcp } from "./gateway-mcp.ts";
+import { isDeepStrictEqual } from 'node:util';
+import { validateServiceAccounts, serviceAccountReady, submitWithServiceAccount, type ServiceAccounts } from './service-account.ts';
+import { prepareSalesPlanResubmit } from './workbench-original/workbenches/regionalApproval/models/salesPlanSubmitModel.ts';
+import type { GeaSalesPlanDetail, GeaSalesPlanPeriod, GeaSalesPlanSku } from './workbench-original/contracts.ts';
 import { readSalesPlanWorkflowConfig } from "./workflow-config.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { brandString, type Branded } from "@deepseek-ai/dsh-brand";
@@ -13,6 +18,7 @@ export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
 export type Row = Record<string, string | number | boolean>;
 export interface Deployment {
+  serviceAccounts?: ServiceAccounts;
   geaBaseUrl: string;
   environment?: "production" | "test";
   geaEnvironments?: { production: string; test: string };
@@ -248,6 +254,26 @@ function skuTotal(rows: Record<string, unknown>[], field: "qty" | "amt") {
 
 /** Owns credentials and fetched records; callers can select identifiers, never supply business data. */
 export class Business {
+  private readonly identityListeners = new Set<() => void>();
+
+  /** Observe authenticated identity changes without exposing login credentials. */
+  watchIdentity(listener: () => void): () => void {
+    this.identityListeners.add(listener);
+    return () => {
+      this.identityListeners.delete(listener);
+    };
+  }
+
+  private notifyIdentity(): void {
+    for (const listener of this.identityListeners) {
+      try {
+        listener();
+      } catch {
+        // Consumers cannot break login/logout.
+      }
+    }
+  }
+
   private auth?: { token: string; tenantId: string; name: string; id: string; username: string };
   private qr?: { id: string; loginId: string; createdAt: number };
   private epoch = new AbortController();
@@ -285,7 +311,15 @@ export class Business {
     return this.status();
   }
 
+  /** End the current GEA login and invalidate all pending identity-bound work. */
+  logout(payload: Record<string, unknown>) {
+    keys(payload, []);
+    this.clearLogin();
+    return this.status();
+  }
+
   constructor(readonly config: Deployment) {
+    validateServiceAccounts(config.serviceAccounts);
     const resolved = resolveEnvironments(config);
     this.selectedBase = resolved.baseUrl;
     this.environment = resolved.environment as "production" | "test";
@@ -315,9 +349,11 @@ export class Business {
     this.epoch = new AbortController();
     this.auth = undefined;
     this.modelRoutes.clear();
+    this.resubmissions.clear();
     this.qr = undefined;
     this.loginExpired = expired;
     this.clearQuery();
+    this.notifyIdentity();
   }
 
   /** Mark the current GEA identity expired after a model gateway rejects it. */
@@ -332,6 +368,7 @@ export class Business {
       environment: this.environment,
       environments: Object.keys(this.environments),
       authenticated: Boolean(this.auth),
+      resubmitConnected: serviceAccountReady(this.config.serviceAccounts?.[this.environment], this.auth),
       loginState: this.auth
         ? "authenticated"
         : this.loginExpired
@@ -453,6 +490,62 @@ export class Business {
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(this.config.requestTimeoutMs)]);
     return readSalesPlanWorkflowConfig(this.base, auth.token, fetch, signal);
+  }
+
+  /** Bind an idempotency key to one validated request for the lifetime of this login. */
+  private resubmissions = new Map<string, { fingerprint: string; body?: string; flight?: Promise<unknown>; receipt?: unknown }>();
+
+  /** Rebuild a returned plan from current user-visible data before using service credentials. */
+  async salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+    keys(payload, ['source', 'request', 'requestId', 'idempotencyKey']);
+    const auth = this.authenticated();
+    const config = this.config.serviceAccounts?.[this.environment];
+    if (!config || !serviceAccountReady(config, auth)) throw new GeaResponseError(403, { message: '当前环境尚未配置当前用户可用的重提服务账号' });
+    const source = object(payload.source); keys(source, ['planId', 'versionId']);
+    const planId = text(source.planId), versionId = text(source.versionId);
+    const request = object(payload.request);
+    const requestId = text(payload.requestId), idempotencyKey = text(payload.idempotencyKey);
+    if (!/^[A-Za-z0-9:_-]{1,64}$/.test(requestId) || !/^[A-Za-z0-9:_-]{1,128}$/.test(idempotencyKey)) throw new Error('INVALID_PAYLOAD');
+    const fingerprint = JSON.stringify(payload);
+    let entry = this.resubmissions.get(idempotencyKey);
+    if (entry && entry.fingerprint !== fingerprint) throw new GeaResponseError(409, { message: '幂等键已绑定其他重提请求' });
+    if (entry?.receipt) return entry.receipt;
+    if (entry?.flight) return entry.flight;
+    if (!entry) { entry = { fingerprint }; this.resubmissions.set(idempotencyKey, entry); }
+    const attempt = entry;
+    const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(this.config.requestTimeoutMs)]);
+    const run = async () => {
+      if (!attempt.body) {
+        const detail = await this.workbenchQuery({ kind: 'detail', query: { planId } }, signal) as GeaSalesPlanDetail;
+        const version = detail.currentVersion;
+        if (version.id !== versionId || !version.effective || ![6, 7, 8, 9].includes(version.status))
+          throw new GeaResponseError(409, { message: '计划已变化，请刷新后核对重提版本' });
+        const periods = object(await this.workbenchQuery({ kind: 'periods', query: { periodMonth: request.periodMonth, pageSize: this.config.periodPageSize } }, signal));
+        const period = (periods.records as GeaSalesPlanPeriod[]).find(row => row.periodId === version.periodId && row.planTypeCode === version.planTypeCode);
+        if (!period) throw new GeaResponseError(409, { message: '未找到当前计划对应的周期，请刷新后核对' });
+        const skus = await this.workbenchQuery({ kind: 'versionSkus', query: { versionId } }, signal) as GeaSalesPlanSku[];
+        if (!Array.isArray(request.items) || request.items.length !== skus.length) throw new Error('INVALID_PAYLOAD');
+        const items = request.items.map(object);
+        if (new Set(items.map(row => row.skuCode)).size !== skus.length) throw new Error('INVALID_PAYLOAD');
+        const edited = skus.map(sku => {
+          const item = items.find(row => row.skuCode === sku.skuCode);
+          if (!item || typeof item.qty !== 'string') throw new Error('INVALID_PAYLOAD');
+          return { ...sku, qty: item.qty };
+        });
+        const rows = await this.workflowConfig({}, signal);
+        const prepared = prepareSalesPlanResubmit({ planId, versionId, detail, period, skus: edited, currentUser: auth }, rows);
+        // The browser may change quantities only; identity, prices and routing come from GEA.
+        if (!isDeepStrictEqual(JSON.parse(JSON.stringify(prepared.request)), request)) throw new GeaResponseError(409, { message: '提交数据与当前 GEA 来源不一致，请重新核对' });
+        if (this.auth !== auth) throw new Error('STALE_LOGIN');
+        signal.throwIfAborted();
+        attempt.body = JSON.stringify(prepared.request);
+      }
+      const receipt = await submitWithServiceAccount(config, this.base, attempt.body, requestId, idempotencyKey, signal);
+      attempt.receipt = receipt;
+      return receipt;
+    };
+    attempt.flight = run().finally(() => { attempt.flight = undefined; });
+    return attempt.flight;
   }
 
   /** Execute one authorized GEA sales-plan action; DMS is intentionally outside this method. */
@@ -744,7 +837,15 @@ export class Business {
     if (epoch.aborted || this.qr !== qr) throw new Error("STALE_LOGIN");
     this.auth = { token, tenantId, name, id: text(user.id), username: text(user.username || user.realname) };
     this.qr = undefined;
+    this.notifyIdentity();
     return { status: "authenticated", ...this.status() };
+  }
+
+  /** Prepare a gateway transport capability using only the current process login. */
+  async openMcpConnection(consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) {
+    const auth = this.authenticated();
+    const identity = this.epoch.signal;
+    return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.requestTimeoutMs);
   }
 
   /** Fetch one explicitly paged query, invalidating all previous query inputs immediately. */
