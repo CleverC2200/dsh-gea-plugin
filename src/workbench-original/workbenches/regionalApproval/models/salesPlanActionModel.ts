@@ -81,7 +81,7 @@ export const validateSalesPlanActionInput = (input: SalesPlanActionInput): void 
       : salesPlanApprovalNodeForStatus(request.expectedStatus, input.planTypeCode);
   if (
     request.action === 'SAVE' &&
-    (!/^[a-f0-9]{64}$/.test(request.expectedSnapshot ?? '') || !request.adjustments?.length)
+    (!/^[a-f0-9]{64}$/.test(request.expectedSnapshot ?? '') || (!request.adjustments?.length && request.adjustmentMode !== 'ABSOLUTE_NET'))
   ) {
     throw new SalesPlanActionError('validation', false);
   }
@@ -158,9 +158,9 @@ const normalizedInput = (input: SalesPlanActionInput): SalesPlanActionInput => {
     request: {
       ...request,
       ...(remark?.trim() ? { remark: remark.trim() } : {}),
-      ...(adjustments?.length
+      ...((adjustments?.length || request.adjustmentMode === 'ABSOLUTE_NET' && request.action !== 'REJECT')
         ? {
-            adjustments: adjustments.map((adjustment) => ({
+            adjustments: (adjustments ?? []).map((adjustment) => ({
               skuCode: adjustment.skuCode,
               adjustQty: adjustment.adjustQty,
             })),
@@ -190,7 +190,7 @@ export class SalesPlanActionAttempt {
 
     this.input = normalizedInput(input);
     this.command = {
-      ...(this.input.request.action === 'SAVE' ? { planId: this.input.planId } : {}),
+      ...(this.input.request.action === 'SAVE' || this.input.request.adjustmentMode === 'ABSOLUTE_NET' ? { planId: this.input.planId } : {}),
       versionId: this.input.versionId,
       request: this.input.request,
       idempotencyKey: `gea-sales-plan-action:${this.createId()}`,

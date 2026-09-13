@@ -1,3 +1,4 @@
+import type { CorrectionFields } from './workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';
 /** Sales-plan API fields copied from AionUi; identifiers and exact decimals remain strings. */
 /** GEA Long identifiers remain strings so Renderer code cannot lose precision. */
 export type GeaSalesPlanId = string;
@@ -34,6 +35,15 @@ export type GeaSalesPlanPeriodQuery = {
 };
 
 export type GeaSalesPlanListItem = {
+  orderType?: "M" | "Z";
+  monthlyApproved?: boolean;
+  hasCorrection?: boolean;
+  mPlanAmount?: string;
+  mPlanQty?: string;
+  shipAmount?: string;
+  shipQty?: string;
+  corrPlanAmount?: string;
+  corrPlanQty?: string;
   planId: string;
   versionId: string;
   seq: number;
@@ -66,6 +76,7 @@ export type GeaSalesPlanListItem = {
 };
 
 export type GeaSalesPlanPageQuery = {
+  orderType?: "M" | "Z";
   periodId?: GeaSalesPlanId;
   planTypeCode?: string;
   dealerCode?: GeaSalesPlanId;
@@ -106,7 +117,7 @@ export type GeaSalesPlanVersion = {
   updatedAt?: string | null;
 };
 
-export type GeaSalesPlanSku = {
+export type GeaSalesPlanSku = CorrectionFields & {
   id: GeaSalesPlanId;
   versionId: string;
   skuCode: GeaSalesPlanId;
@@ -154,6 +165,10 @@ export type GeaSalesPlanActionContext = {
 };
 
 export type GeaSalesPlanDetail = {
+  /** Versioned adapter contract; missing evidence keeps correction writes disabled. */
+  correctionContext?: { contract: 'absolute-net-v1'; monthlyApproved: boolean; approvalOpen: boolean };
+  dmsMock?: { source: 'DMS_MOCK'; syncStatus: string; finishedAt: string | null; receipts: Array<{key:string;dmsId:string}> };
+
   /** Current-user task assignment, matched and refreshed by the authenticated Host. */
   workflowApproval?: { versionId: string; notificationId: string; instanceId: string; actionable: true };
   actionContext?: GeaSalesPlanActionContext;
@@ -193,6 +208,8 @@ export type GeaSalesPlanCompareQuery = {
 };
 
 export type GeaSalesPlanSubmitItem = {
+  adjAddQty?: string;
+  adjCutQty?: string;
   skuCode: GeaSalesPlanId;
   productCategName: string;
   baseQty: GeaSalesPlanDecimal;
@@ -201,6 +218,7 @@ export type GeaSalesPlanSubmitItem = {
 };
 
 export type GeaSalesPlanSubmitRequest = {
+  adjustmentMode?: "ABSOLUTE_NET";
   orderType: 'M' | 'Z';
   status: number;
   periodId: GeaSalesPlanId;
@@ -246,6 +264,7 @@ export type GeaSalesPlanSkuAdjustment = {
 };
 
 export type GeaSalesPlanActionRequest = {
+  adjustmentMode?: "ABSOLUTE_NET";
   expectedSnapshot?: string;
   action: GeaSalesPlanAction;
   expectedStatus: number;

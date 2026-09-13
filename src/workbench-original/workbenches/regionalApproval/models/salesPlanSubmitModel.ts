@@ -1,3 +1,4 @@
+import { correctionDecision, correctionLine, correctionDecimal } from './salesPlanCorrectionModel.ts';
 /** Adapted from AionUi (Apache-2.0): local imports and explicit DSH host adapter. See SOURCE.md. */
 import { salesPlanWorkflow, type SalesPlanWorkflowRow } from '../../../salesPlanWorkflow.ts';
 import { isBackendHttpError } from '../../../http-error.ts';
@@ -147,6 +148,8 @@ const validateSku = (sku: GeaSalesPlanSku) => {
 export const prepareSalesPlanResubmit = (source: SalesPlanResubmitSource, rows?: readonly SalesPlanWorkflowRow[]): SalesPlanSubmitInput => {
   const version: GeaSalesPlanVersion = source.detail.currentVersion;
   const nextStatus = salesPlanWorkflow(version.planTypeCode, rows).resubmit(version.status);
+  const correction=version.orderType === 'Z';
+  if(correction && (source.detail.correctionContext?.contract !== 'absolute-net-v1' || source.detail.correctionContext.monthlyApproved !== true))return fail('sourceMismatch');
   if (
     !nextStatus ||
     !version.effective ||
@@ -188,6 +191,12 @@ export const prepareSalesPlanResubmit = (source: SalesPlanResubmitSource, rows?:
     if (sku.versionId !== version.id || skuCodes.has(sku.skuCode)) return fail('sourceMismatch');
     skuCodes.add(sku.skuCode);
     const validated = validateSku(sku);
+    if(correction){
+      const line=correctionLine(sku,correctionDecision(sku,0,version.planTypeCode));
+      totalQty += parseUnsignedDecimal(line.qty,15,3,3).scaled;
+      totalAmount += parseUnsignedDecimal(line.amount,16,2,2).scaled;
+      return {...validated.item,adjAddQty:line.addQty,adjCutQty:line.cutQty};
+    }
     totalQty += validated.qty;
     totalAmount += validated.roundedAmount;
     return validated.item;
@@ -198,6 +207,7 @@ export const prepareSalesPlanResubmit = (source: SalesPlanResubmitSource, rows?:
 
   return {
     request: {
+      ...(correction ? {adjustmentMode:'ABSOLUTE_NET' as const} : {}),
       orderType: version.orderType as 'M' | 'Z',
       status: nextStatus,
       periodId: source.period.periodId,
@@ -349,9 +359,22 @@ export class SalesPlanSubmitAttempt {
 export const salesPlanResubmitReadbackMatches = (
   previousVersionId: string,
   receipt: GeaSalesPlanSubmitReceipt,
-  detail: GeaSalesPlanDetail
+  detail: GeaSalesPlanDetail,
+  request?: GeaSalesPlanSubmitRequest
 ): boolean => {
   const current = detail.currentVersion;
+  if(request?.orderType === 'Z') {
+    if(current.orderType !== 'Z' || detail.skus.length !== request.items.length || new Set(detail.skus.map(s=>s.skuCode)).size !== detail.skus.length)return false;
+    const matches=request.items.every(item=>{
+      const sku=detail.skus.find(s=>s.skuCode === item.skuCode && s.versionId === receipt.versionId);
+      if(!sku)return false;
+      try{
+        if(!['qty','price','baseQty','adjAddQty','adjCutQty'].every(field=>correctionDecimal(sku[field as keyof GeaSalesPlanSku]).eq(correctionDecimal(item[field as keyof typeof item]))))return false;
+      }catch{return false;}
+      return ['region','province','area','category'].every(role=>['AdjAddQty','AdjCutQty','ConfirmedQty','ConfirmedAmount'].every(suffix=>sku[(role+suffix) as keyof GeaSalesPlanSku]==null));
+    });
+    if(!matches)return false;
+  }
   const old = detail.versions.find(row => row.id === previousVersionId);
   return current.planId === receipt.planId && current.id === receipt.versionId &&
     current.seq === receipt.seq && current.status === receipt.status && current.effective === true &&

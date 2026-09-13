@@ -1,3 +1,6 @@
+import { correctionAccess, correctionAdjustments, correctionDecimal } from './workbench-original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';
+import { validateSalesPlanActionInput } from './workbench-original/workbenches/regionalApproval/models/salesPlanActionModel.ts';
+import type { GeaSalesPlanActionRequest } from './workbench-original/contracts.ts';
 /** Process-local GEA identity, query ownership, and immutable analysis inputs. */
 import { prepareGatewayMcp } from "./gateway-mcp.ts";
 import { isDeepStrictEqual } from 'node:util';
@@ -350,6 +353,7 @@ export class Business {
     this.auth = undefined;
     this.modelRoutes.clear();
     this.resubmissions.clear();
+    this.correctionRequests.clear();
     this.qr = undefined;
     this.loginExpired = expired;
     this.clearQuery();
@@ -530,6 +534,10 @@ export class Business {
         const edited = skus.map(sku => {
           const item = items.find(row => row.skuCode === sku.skuCode);
           if (!item || typeof item.qty !== 'string') throw new Error('INVALID_PAYLOAD');
+          if(version.orderType === 'Z') {
+            if(!correctionDecimal(item.qty).eq(correctionDecimal(sku.qty)) || typeof item.adjAddQty !== 'string' || typeof item.adjCutQty !== 'string') throw new Error('INVALID_PAYLOAD');
+            return {...sku,adjAddQty:item.adjAddQty,adjCutQty:item.adjCutQty};
+          }
           return { ...sku, qty: item.qty };
         });
         const rows = await this.workflowConfig({}, signal);
@@ -548,16 +556,53 @@ export class Business {
     return attempt.flight;
   }
 
-  /** Execute one authorized GEA sales-plan action; DMS is intentionally outside this method. */
+  private correctionRequests = new Map<string, { fingerprint:string; validated:boolean; flight?:Promise<unknown>; receipt?:unknown }>();
+
+  /** A correction retry replays the same authorized intent, even when its first response was lost. */
   async salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+    this.authenticated();
+    if(object(payload.request).adjustmentMode == null)return this.executeSalesPlanAction(payload,caller);
+    const key=text(payload.idempotencyKey), fingerprint=JSON.stringify(payload);
+    let entry=this.correctionRequests.get(key);
+    if(entry && entry.fingerprint !== fingerprint)throw new GeaResponseError(409,{message:'幂等键已绑定另一纠偏请求'});
+    if(entry?.receipt)return entry.receipt;
+    if(entry?.flight)return entry.flight;
+    if(!entry){entry={fingerprint,validated:false};this.correctionRequests.set(key,entry);}
+    const intent=entry;
+    intent.flight=this.executeSalesPlanAction(payload,caller,intent.validated,()=>{intent.validated=true;})
+      .then(receipt=>{intent.receipt=receipt;return receipt;}).finally(()=>{intent.flight=undefined;});
+    return intent.flight;
+  }
+
+  /** Execute one authorized GEA sales-plan action; DMS is intentionally outside this method. */
+  private async executeSalesPlanAction(payload: Record<string, unknown>, caller: AbortSignal, validatedCorrection=false, onValidated=()=>{}): Promise<unknown> {
     keys(payload, ["planId", "versionId", "request", "idempotencyKey", "requestId"]);
     const versionId = text(payload.versionId);
     const request = object(payload.request);
-    keys(request, ["expectedSnapshot", "action", "expectedStatus", "remark", "adjustments"]);
+    keys(request, ["expectedSnapshot", "action", "expectedStatus", "remark", "adjustments", "adjustmentMode"]);
     if (!["SAVE", "APPROVE", "REJECT"].includes(text(request.action))) throw new Error("INVALID_ACTION");
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
-    if (request.action === "SAVE") {
+    if (request.adjustmentMode != null && !validatedCorrection) {
+      if (request.adjustmentMode !== 'ABSOLUTE_NET') throw new Error('INVALID_PAYLOAD');
+      const planId=text(payload.planId);
+      const detail=await this.workbenchQuery({kind:'detail',query:{planId}},signal) as GeaSalesPlanDetail;
+      const access=correctionAccess(detail);
+      if (!access || !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']) || !detail.currentVersion.submitter || detail.currentVersion.submitter === auth.id)
+        throw new GeaResponseError(403,{message:'纠偏契约、月初终审、审批窗口或节点权限未获确认'});
+      if (detail.currentVersion.id !== versionId || access.status !== request.expectedStatus || access.snapshotHash !== request.expectedSnapshot)
+        throw new GeaResponseError(409,{message:'纠偏版本或快照已变化，请刷新'});
+      const typed=request as GeaSalesPlanActionRequest;
+      validateSalesPlanActionInput({planId,versionId,planTypeCode:detail.currentVersion.planTypeCode,request:typed});
+      if (typed.action !== 'REJECT') {
+        const edits=Object.fromEntries((typed.adjustments??[]).map(x=>[x.skuCode,x.adjustQty]));
+        if (Object.keys(edits).some(code=>!detail.skus.some(sku=>sku.skuCode===code))) throw new Error('INVALID_PAYLOAD');
+        const expected=correctionAdjustments(detail,edits);
+        if (!isDeepStrictEqual(expected,typed.adjustments)) throw new GeaResponseError(400,{message:'纠偏必须提交完整的本节点绝对调整决定'});
+      }
+      if (this.auth !== auth) throw new Error('STALE_LOGIN');
+      signal.throwIfAborted();
+    } else if (request.adjustmentMode == null && request.action === "SAVE") {
       if (request.expectedStatus === 5) throw new GeaResponseError(400, { message: "状态 5 不允许保存调整" });
       const planId = text(payload.planId);
       const detail = object(await this.workbenchQuery({ kind: "detail", query: { planId } }, signal));
@@ -573,6 +618,8 @@ export class Business {
       if (this.auth !== auth) throw new Error("STALE_LOGIN");
       signal.throwIfAborted();
     }
+    signal.throwIfAborted();
+    onValidated();
     const body = JSON.stringify(request);
     const response = await fetch(this.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions", {
       method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": text(payload.requestId), "Idempotency-Key": text(payload.idempotencyKey) }, body, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)])
@@ -580,6 +627,8 @@ export class Business {
     if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw await geaResponseError(response, [auth.token]); }
     const data = object(parseJson(await response.text()));
     if (data.success !== true || !data.result) throw new Error("GEA_WRITE_REJECTED");
+    if(this.auth !== auth)throw new Error('STALE_LOGIN');
+    signal.throwIfAborted();
     return data.result;
   }
 
@@ -1222,6 +1271,7 @@ export class Business {
     const allowed: Record<string, string[]> = {
       periods: ["periodMonth", "planType", "status", "pageNo", "pageSize"],
       list: [
+        "orderType",
         "periodId",
         "planTypeCode",
         "dealerCode",
@@ -1241,6 +1291,7 @@ export class Business {
     };
     if (!Object.hasOwn(allowed, kind)) throw new Error("INVALID_QUERY");
     keys(query, allowed[kind]);
+    if (query.orderType != null && !["M", "Z"].includes(String(query.orderType))) throw new Error("INVALID_QUERY");
     const id = (key: string) => encodeURIComponent(text(query[key]));
     const paths: Record<string, () => string> = {
       periods: () => "/sales-plan/periods",
