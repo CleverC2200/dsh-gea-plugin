@@ -5,7 +5,7 @@ import {mkdir,readFile,writeFile,copyFile,symlink,rm,readdir} from 'node:fs/prom
 import {join,dirname} from 'node:path';
 import {createRequire} from 'node:module';
 
-export async function installArtifact({directory,artifact,node,pnpm,signal,onProgress=()=>{}}) {
+export async function installArtifact({directory,artifact,node,pnpm,signal,onProcess=async()=>{},onProgress=()=>{}}) {
   const tool=JSON.parse(await readFile(join(dirname(dirname(pnpm)),'package.json'),'utf8'));
   if(tool.version!=='11.19.0')throw Error('INSTALL_TOOL_VERSION_MISMATCH');
   const manifestPath=join(directory,'package.json');
@@ -27,7 +27,7 @@ export async function installArtifact({directory,artifact,node,pnpm,signal,onPro
   const digest=createHash('sha256').update(await readFile(artifact)).digest('hex');
   await mkdir(join(directory,'packages'),{recursive:true});
   const target='file:packages/'+digest+'.tgz';
-  await copyFile(artifact,join(directory,'packages',digest+'.tgz')); 
+  await copyFile(artifact,join(directory,'packages',digest+'.tgz'));
   const home=join(directory,'.installer-home'),bin=join(directory,'.installer-bin');
   await mkdir(join(home,'profiles'),{recursive:true});await mkdir(bin);
   await symlink(directory,join(home,'profiles/prepared'),process.platform==='win32'?'junction':'dir');
@@ -42,6 +42,7 @@ export async function installArtifact({directory,artifact,node,pnpm,signal,onPro
         cwd:directory,detached:process.platform!=='win32',windowsHide:true,stdio:['ignore','pipe','pipe'],
         env:{...process.env,DSH_HOME:home,PATH:bin+(process.platform==='win32'?';':':')+dirname(node),GEA_INSTALL_NODE:node,GEA_INSTALL_PNPM:pnpm,GEA_INSTALL_DRIVER:wrapper,GEA_INSTALL_TARGET:target,CI:'true'},
       });
+      const registered=Promise.resolve().then(()=>onProcess(child.pid));
       let cancelled=false;
       let stopped=Promise.resolve();
       const cancel=()=>{
@@ -53,12 +54,14 @@ export async function installArtifact({directory,artifact,node,pnpm,signal,onPro
         });
         else {try{process.kill(-child.pid,'SIGTERM');}catch(error){if(error.code!=='ESRCH')reject(error);}}
       };
+      void registered.catch(cancel);
       signal?.addEventListener('abort',cancel,{once:true});
       if(signal?.aborted)cancel();
       child.once('error',error=>{signal?.removeEventListener('abort',cancel);reject(error);});
       for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>onProgress(chunk.toString().replace(/https?:\/\/\S+/g,'[package source]')));
       child.once('close',async code=>{
         signal?.removeEventListener('abort',cancel);await stopped;
+        try{await registered;}catch(error){reject(error);return;}
         if(cancelled)reject(Error('PLUGIN_INSTALL_CANCELLED'));
         else if(code===0)resolve();else reject(Error('PLUGIN_INSTALL_FAILED_'+code));
       });

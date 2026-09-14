@@ -1,22 +1,20 @@
 /** Desktop shell owns a bundled Node process and isolated per-user deployment data. */
-const {app,BrowserWindow,Menu,ipcMain,shell,dialog} = require('electron');
+const {app,BrowserWindow,Menu,shell,dialog,safeStorage} = require('electron');
 const {spawn} = require('node:child_process');
 const {mkdir,readFile,writeFile,appendFile} = require('node:fs/promises');
-const {existsSync} = require('node:fs');
 const {join} = require('node:path');
-const {pathToFileURL} = require('node:url');
-const {configuration,launchUrl} = require('./config.cjs');
+const {ensureConfiguration,launchUrl} = require('./config.cjs');
 if (process.env.DSH_GEA_DESKTOP_DATA) app.setPath('userData',process.env.DSH_GEA_DESKTOP_DATA);
 const owned = app.requestSingleInstanceLock();
 if (!owned) app.quit();
-let window,backend,stopping=false,quitting=false,origin,pluginStore;
+let window,backend,stopping=false,quitting=false,origin,pluginStore,control;
 let lifecycle=Promise.resolve();
-function runLifecycle(action){const next=lifecycle.then(action);lifecycle=next.catch(()=>{});return next;}
-const payload=join(process.resourcesPath,'payload');
+function runLifecycle(action){const next=lifecycle.then(()=>action());lifecycle=next.catch(()=>{});return next;}
+const payload=!app.isPackaged&&process.env.GEA_DESKTOP_PAYLOAD?process.env.GEA_DESKTOP_PAYLOAD:join(process.resourcesPath,'payload');
 const data=app.getPath('userData');
 const configPath=join(data,'gea.config.json');
-const setupUrl=pathToFileURL(join(__dirname,'setup.html')).href;
 const errorText=error=>String(error?.message??error).replace(/(https?:\/\/[^\s?]+)\?[^\s]+/g,'$1?[redacted]');
+async function bounded(promise,ms,code){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(code)),ms);})]);}finally{clearTimeout(timer);}}
 async function stop(){
   const child=backend;
   if(!child)return;
@@ -36,14 +34,19 @@ async function stop(){
   if(backend===child)backend=undefined;
   stopping=false;
 }
-async function start(){
+async function start(recovered=false){
   if(quitting)return;
   await stop();
   if(quitting)return;
-  const selected=await pluginStore.selected();
+  let selected;
+  try{selected=await pluginStore.beginBoot();}
+  catch(error){
+    if(recovered)throw error;
+    await pluginStore.failBoot('PLUGIN_SELECTION_INVALID');return start(true);
+  }
   const node=join(payload,'node',process.platform==='win32'?'node.exe':'bin/node');
   const child=spawn(node,[join(payload,'start.mjs')],{cwd:payload,detached:process.platform!=='win32',windowsHide:true,
-    env:{...process.env,GEA_CONFIG:configPath,DSH_FULL_DATA_DIR:join(data,'data'),DSH_FULL_PORT:'0',DSH_FULL_NO_OPEN:'1',DSH_PLUGIN_GRAPH:selected.path},
+    env:{...process.env,GEA_CONFIG:configPath,DSH_FULL_DATA_DIR:join(data,'data'),DSH_FULL_PORT:'0',DSH_FULL_NO_OPEN:'1',DSH_PLUGIN_GRAPH:selected.path,GEA_DESKTOP_CONTROL_URL:control.url,GEA_DESKTOP_CONTROL_TOKEN:control.token},
     stdio:['ignore','pipe','pipe','ipc']});
   backend=child;
   let pending='';
@@ -66,15 +69,30 @@ async function start(){
     void appendFile(join(data,'desktop.log'),errorText(chunk.toString()),{mode:0o600}).catch(error=>console.error(errorText(error)));
   });
   child.on('close',code=>{if(!stopping&&!quitting&&origin){origin=undefined;dialog.showErrorBox('工作台已停止',`后端进程退出 (${code})，可通过应用菜单重新启动。`);}});
-  try{const url=await ready;origin=new URL(url).origin;await window.loadURL(url);}
-  catch(error){await stop();throw error;}
+  try{
+    const url=await ready;origin=new URL(url).origin;
+    await bounded(window.loadURL(url),15000,'LOCAL_PAGE_TIMEOUT');
+    // This local status call does not contact GEA and accepts authenticated=false.
+    const healthy=await bounded(window.webContents.executeJavaScript(`fetch('/api/gea-proof/status',{method:'POST',headers:{'Content-Type':'application/json','X-GEA-Desktop-Health':'1'},body:'{}',signal:AbortSignal.timeout(10000)}).then(r=>r.json()).then(r=>r.ok===true)`),15000,'LOCAL_HEALTH_TIMEOUT');
+    if(!healthy)throw Error('LOCAL_PLUGIN_START_FAILED');
+    await pluginStore.confirmBoot();
+  } catch(error){
+    window.webContents.stop();
+    await stop();
+    const fallback=await pluginStore.failBoot('BACKEND_START_FAILED');
+    if(!recovered&&fallback!==selected.id){
+      await appendFile(join(data,'desktop.log'),'新插件未能启动，自动恢复上一版本；用户数据保留。\n',{mode:0o600});
+      return start(true);
+    }
+    throw error;
+  }
 }
 async function preparePlugin(){
   const choice=await dialog.showOpenDialog(window,{properties:['openFile'],filters:[{name:'插件发行包',extensions:['tgz']}]});
   if(choice.canceled)return;
   const {installArtifact}=await import('./installer.mjs');
   const id='local-'+Date.now();
-  await pluginStore.prepare({id,install:directory=>installArtifact({directory,artifact:choice.filePaths[0],
+  await pluginStore.prepare({id,install:(directory,{registerProcess})=>installArtifact({directory,onProcess:registerProcess,artifact:choice.filePaths[0],
     node:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node'),pnpm:join(payload,'tools/node_modules/pnpm/bin/pnpm.cjs')})});
   await dialog.showMessageBox(window,{message:'插件已准备，当前工作台继续运行',detail:'组合 '+id+'。完成当前任务后，在插件版本菜单中切换并重启。'});
 }
@@ -89,9 +107,9 @@ async function selectPlugin(){
 function report(error){dialog.showErrorBox('GEA Desktop',errorText(error));}
 function createWindow(){
   window=new BrowserWindow({width:1440,height:960,minWidth:760,minHeight:600,title:'GEA Desktop',
-    webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,preload:join(__dirname,'preload.cjs')}});
+    webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true}});
   window.webContents.setWindowOpenHandler(({url})=>{if(/^https?:\/\//.test(url))void shell.openExternal(url);return{action:'deny'};});
-  window.webContents.on('will-navigate',(event,url)=>{if(url!==setupUrl&&new URL(url).origin!==origin)event.preventDefault();});
+  window.webContents.on('will-navigate',(event,url)=>{if(new URL(url).origin!==origin)event.preventDefault();});
   window.webContents.session.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
   window.on('closed',()=>{window=undefined;});
 }
@@ -101,9 +119,26 @@ if(owned){
     await mkdir(data,{recursive:true,mode:0o700});
     const {PluginStore}=await import('./plugin-store.mjs');
     pluginStore=new PluginStore({data,baseline:payload});
+    await pluginStore.recoverPreparation();
+    const {createControlServer}=await import('./control-server.mjs');
+    const loginPath=join(data,'login.encrypted');
+    control=await createControlServer({
+      'GET /login':async()=>{
+        let bytes;try{bytes=await readFile(loginPath);}catch(error){if(error.code==='ENOENT')return null;throw error;}
+        if(!safeStorage.isEncryptionAvailable())throw Error('SECURE_STORAGE_UNAVAILABLE');
+        return JSON.parse(safeStorage.decryptString(bytes));
+      },
+      'POST /login':async value=>{
+        const {rm,rename}=require('node:fs/promises');
+        if(value===null){await rm(loginPath,{force:true});return null;}
+        if(!safeStorage.isEncryptionAvailable())throw Error('SECURE_STORAGE_UNAVAILABLE');
+        await writeFile(loginPath+'.tmp',safeStorage.encryptString(JSON.stringify(value)),{mode:0o600});
+        await rename(loginPath+'.tmp',loginPath);return null;
+      }
+    });
     createWindow();
     Menu.setApplicationMenu(Menu.buildFromTemplate([
-      {label:'GEA Desktop',submenu:[{label:'连接设置',click:()=>{void runLifecycle(async()=>{await stop();origin=undefined;return window.loadURL(setupUrl);}).catch(report);}},{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'重新启动工作台',click:()=>void runLifecycle(start).catch(report)},{type:'separator'},{role:'quit'}]},
+      {label:'GEA Desktop',submenu:[{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'重新启动工作台',click:()=>void runLifecycle(start).catch(report)},{type:'separator'},{role:'quit'}]},
       {label:'插件版本',submenu:[
         {label:'准备本地插件包',click:()=>void preparePlugin().catch(report)},
         {label:'切换已准备版本并重启',click:()=>void selectPlugin().catch(report)},
@@ -112,21 +147,13 @@ if(owned){
       {label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},
       {label:'视图',submenu:[{role:'reload'},{role:'toggleDevTools'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'}]}
     ]));
-    ipcMain.handle('setup:save',async(event,fields)=>{
-      if(event.sender!==window?.webContents||event.senderFrame!==window.webContents.mainFrame||event.senderFrame.url!==setupUrl)return{ok:false,error:'无效的设置请求'};
-      try{return await runLifecycle(async()=>{
-        const template=JSON.parse(await readFile(join(payload,'gea.config.example.json'),'utf8'));
-        const config=configuration(fields,template);
-        await writeFile(configPath,JSON.stringify(config,null,2)+'\n',{mode:0o600});
-        await start();return{ok:true};});
-      }catch(error){return{ok:false,error:errorText(error)};}
-    });
-    if(existsSync(configPath))await runLifecycle(start);else await window.loadURL(setupUrl);
+    await ensureConfiguration(configPath);
+    await runLifecycle(start);
   }).catch(report);
   app.on('window-all-closed',()=>app.quit());
   app.on('before-quit',event=>{
     if(quitting)return;
     event.preventDefault();quitting=true;
-    void runLifecycle(stop).finally(()=>app.quit());
+    void runLifecycle(stop).finally(async()=>{await control?.close();app.quit();});
   });
 }

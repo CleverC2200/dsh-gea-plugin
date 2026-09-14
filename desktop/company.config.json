@@ -1,0 +1,21 @@
+{
+  "geaBaseUrl": "https://gea.synear.cn/gea-boot",
+  "pageSize": 10,
+  "periodPageSize": 100,
+  "requestTimeoutMs": 15000,
+  "modelRequestTimeoutMs": 120000,
+  "maxSnapshotBytes": 100000,
+  "analysis": {
+    "mode": "model",
+    "source": "gea",
+    "agentCode": "sales_forecast",
+    "model": "2085162185715609601",
+    "contextWindow": 32768,
+    "maxTokens": 2048
+  },
+  "environment": "production",
+  "geaEnvironments": {
+    "production": "https://gea.synear.cn/gea-boot",
+    "test": "https://gea.synear.cn:4443/gea-boot"
+  }
+}

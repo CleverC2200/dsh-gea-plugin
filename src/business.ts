@@ -329,6 +329,21 @@ export class Business {
     this.environments = resolved.environments;
   }
 
+  /** Desktop owner only: credentials cross its private loopback channel, never a browser RPC. */
+  desktopLoginSnapshot(): unknown {
+    return this.auth ? {schema:1,environment:this.environment,base:this.base,auth:{...this.auth}} : null;
+  }
+  restoreDesktopLogin(value: unknown): void {
+    const saved=object(value);
+    if(saved.schema!==1||typeof saved.environment!=="string"||this.environments[saved.environment]!==saved.base)throw Error("DESKTOP_LOGIN_SCOPE_MISMATCH");
+    const auth=object(saved.auth);
+    if(typeof auth.token!=="string"||!auth.token||auth.token.length>16384||typeof auth.tenantId!=="string"||!/^\d+$/.test(auth.tenantId))throw Error("DESKTOP_LOGIN_INVALID");
+    this.environment=saved.environment as "production"|"test";
+    this.selectedBase=this.environments[saved.environment];
+    this.auth={token:auth.token,tenantId:auth.tenantId,name:text(auth.name),id:text(auth.id),username:text(auth.username)};
+    this.notifyIdentity();
+  }
+
   /** Release outstanding requests and erase process-local authentication. */
   dispose(): void {
     this.clearLogin();

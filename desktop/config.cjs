@@ -1,18 +1,9 @@
-/** Validate the desktop setup form before persisting deployment configuration. */
-exports.configuration = (input, template) => {
-  if (!input || typeof input !== 'object') throw new Error('请填写连接信息');
-  const endpoint = (value) => {
-    const url = new URL(String(value));
-    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash)
-      throw new Error('GEA 地址必须为不带账号、查询参数或片段的 HTTPS 地址');
-    return url.href.replace(/\/$/, '');
-  };
-  const production = endpoint(input.production);
-  const test = input.test?.trim() ? endpoint(input.test) : production;
-  const model = String(input.model ?? '').trim();
-  if (!model || model.length > 200) throw new Error('请填写模型 ID');
-  return {...template, geaBaseUrl: production, environment:'production',
-    geaEnvironments:{production,test}, analysis:{...template.analysis,model}};
+/** First launch uses release-owned company defaults; existing user data is preserved. */
+exports.ensureConfiguration = async path => {
+  const {writeFile} = require('node:fs/promises');
+  const config = require('./company.config.json');
+  try { await writeFile(path,JSON.stringify(config,null,2)+'\n',{flag:'wx',mode:0o600}); }
+  catch(error) { if(error.code!=='EEXIST')throw error; }
 };
 /** Accept only the loopback launch URL emitted by this owned DSH process. */
 exports.launchUrl = (line) => {

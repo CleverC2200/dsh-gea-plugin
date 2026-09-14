@@ -1,3 +1,4 @@
+import { attachDesktopLogin } from "./desktop-login.ts";
 import { resolveWorkbench } from "../scripts/deployment.mjs";
 /** External GEA Fetch contribution and explicit local receipt provider. */
 import { appendFile, mkdir, readFile } from "node:fs/promises";
@@ -254,7 +255,7 @@ function toGeaRequest(options: GenerateOptions) {
 }
 
 /** Register authenticated Web routes; the standard dsh connection owns browser authorization. */
-export function apply(ctx: Context, config: Deployment): void {
+export async function apply(ctx: Context, config: Deployment): Promise<void> {
   resolveWorkbench(import.meta.url);
   const workbenchHtml =
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GEA</title><link rel="stylesheet" href="/api/gea-proof/workbench.css"><style>html,body,#gea-workbench{height:100%;margin:0}</style></head><body><div id="gea-workbench"></div><script type="module" src="/api/gea-proof/workbench.js"></script></body></html>';
@@ -292,6 +293,7 @@ export function apply(ctx: Context, config: Deployment): void {
       }),
     );
   const business = new Business(config);
+  const desktopLogin = await attachDesktopLogin(business);
   ctx.provide("geaMcp", {
     version: 1 as const,
     defaultConsumer: { consumerType: "AGENT" as const, consumerCode: config.analysisAgentCode },
@@ -300,7 +302,7 @@ export function apply(ctx: Context, config: Deployment): void {
     open: (consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) => business.openMcpConnection(consumer, signal),
   });
   registerGeaTools(ctx, business);
-  ctx.effect(() => () => business.dispose());
+  ctx.effect(() => async () => { await desktopLogin.dispose(); business.dispose(); });
   if (config.analysisMode === "receipt")
     ctx.effect(() =>
       ctx.llm.registerAdapter(
@@ -489,11 +491,14 @@ export function apply(ctx: Context, config: Deployment): void {
               default:
                 throw new Error("UNKNOWN_ENDPOINT");
             }
+            await desktopLogin.flush();
             return Response.json(
               { ok: true, value },
               { headers: { "Cache-Control": "no-store" } },
             );
           } catch (error) {
+            // Expiration can clear identity while the business operation itself fails.
+            try { await desktopLogin.flush(); } catch (storageError) { error = storageError; }
             const code =
               error instanceof Error && /^[A-Z][A-Z_0-9]+$/.test(error.message)
                 ? error.message
