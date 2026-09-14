@@ -84,24 +84,24 @@ export function Inbox({ t }: { t: Translate }) {
       <header className="gea-inbox-header">
         <div className="gea-inbox-heading">
           <h1>{t("businessInbox")}</h1>
-          {data && <span className="gea-inbox-unread">{t("unreadCount")}: {data.unreadCount}</span>}
+          {data && <span className="gea-inbox-unread">{data.unreadCount} {t("inboxUnreadMessages")}</span>}
         </div>
         <button disabled={busy} onClick={() => setRevision((value) => value + 1)}>{t("refreshInbox")}</button>
       </header>
       <div className="gea-inbox-toolbar">
         <label className="gea-inbox-filter">
-          {t("notificationState")}
+          {t("inboxStatusLabel")}
           <select aria-label={t("notificationState")} value={state} onChange={(event) => {
             setState(event.target.value);
             setPageNo(1);
           }}>
-            <option value="">{t("all")}</option>
+            <option value="">{t("inboxAll")}</option>
             <option value="unread">{t("notificationUnread")}</option>
             <option value="read">{t("notificationRead")}</option>
             <option value="dismissed">{t("notificationDismissed")}</option>
           </select>
         </label>
-        <span className="gea-inbox-hint">{t("inboxReadOnly")}</span>
+
       </div>
       <div className="gea-inbox-content">
         {!selected && busy && <p role="status">{t("busy")}</p>}
@@ -110,9 +110,9 @@ export function Inbox({ t }: { t: Translate }) {
           <div className="gea-inbox-table-scroll">
             <table>
               <thead><tr>
-                <th>{t("notificationKind")}</th><th>{t("notificationTitle")}</th>
-                <th>{t("notificationContent")}</th><th>{t("notificationCreatedAt")}</th>
-                <th>{t("notificationState")}</th>
+                <th>{t("inboxBusinessType")}</th><th>{t("inboxSubject")}</th>
+                <th>{t("inboxContent")}</th><th>{t("notificationCreatedAt")}</th>
+                <th>{t("inboxStatus")}</th>
               </tr></thead>
               <tbody>{data.items.map((item) => (
                 <tr key={item.id} className={item.state === "unread" ? "is-unread" : ""} onClick={() => setSelected(item.id)}>
@@ -131,7 +131,8 @@ export function Inbox({ t }: { t: Translate }) {
             <div><button disabled={busy || pageNo === 1} onClick={() => setPageNo(pageNo - 1)}>{t("previous")}</button>
             <button disabled={busy || pageNo * data.pageSize >= data.total} onClick={() => setPageNo(pageNo + 1)}>{t("next")}</button></div>
           </footer>
-          <p className="gea-inbox-provenance">{t(data.environment)} · {t("returned")}: {data.items.length} · {t(data.coverage)} · {t("fetchedAt")}: {formatDate(data.fetchedAt)}</p>
+          <p className="gea-inbox-hint">{t("inboxReadOnly")}</p>
+          <details className="gea-inbox-provenance"><summary>{t("inboxQueryInfo")}</summary><p>{t(data.environment)} · {t("returned")}: {data.items.length} · {t(data.coverage)} · {t("fetchedAt")}: {formatDate(data.fetchedAt)}</p></details>
         </>}
       </div>
       <dialog ref={drawer} className="gea-inbox-drawer" aria-labelledby="gea-inbox-detail-title"
@@ -146,21 +147,22 @@ export function Inbox({ t }: { t: Translate }) {
             {busy && <p role="status">{t("busy")}</p>}
             {error && <div role="alert"><p>{t(error)}</p><button onClick={() => setRevision(value => value + 1)}>{t("refreshInbox")}</button></div>}
             {detail && !busy && <article>
-              <div className="gea-inbox-detail-status"><span className="gea-inbox-kind">{detail.kind ?? t("unknown")}</span>{badge(detail.state)}</div>
+
               <dl className="gea-inbox-info">
                 <div><dt>{t("notificationSource")}</dt><dd>{detail.source?.label ?? t("unknown")}</dd></div>
                 <div><dt>{t("notificationAggregate")}</dt><dd>{detail.aggregateId ?? t("unknown")}</dd></div>
                 <div><dt>{t("notificationCreatedAt")}</dt><dd>{formatDate(detail.createdAt)}</dd></div>
-                <div><dt>{t("notificationExpiry")}</dt><dd>{formatDate(detail.expiresAt)}</dd></div>
-                <div><dt>{t("notificationSourceRef")}</dt><dd>{detail.source?.ref ?? t("unknown")}</dd></div>
+                <div><dt>{t("inboxCurrentStatus")}</dt><dd>{badge(detail.state)}</dd></div>
+
               </dl>
-              <span className="gea-inbox-label">{t("notificationTitle")}</span>
+              <span className="gea-inbox-label">{t("inboxMessageSubject")}</span>
               <h3>{detail.title ?? detail.id}</h3>
               <span className="gea-inbox-label">{t("notificationContent")}</span>
               <p className="gea-inbox-body">{detail.body?.trim() ? detail.body : detail.summary?.trim() ? detail.summary : t("notificationNoContent")}</p>
+              <details className="gea-inbox-more"><summary>{t("inboxAdditionalInfo")}</summary><dl className="gea-inbox-info"><div><dt>{t("notificationKind")}</dt><dd>{detail.kind ?? t("unknown")}</dd></div><div><dt>{t("notificationSourceRef")}</dt><dd>{detail.source?.ref ?? t("unknown")}</dd></div><div><dt>{t("notificationExpiry")}</dt><dd>{formatDate(detail.expiresAt)}</dd></div></dl></details>
             </article>}
           </div>
-          <footer className="gea-inbox-drawer-footer"><button onClick={() => setSelected(null)}>{t("backToInbox")}</button></footer>
+          <footer className="gea-inbox-drawer-footer"><button aria-label={t("backToInbox")} onClick={() => setSelected(null)}>{t("close")}</button></footer>
         </div>
       </dialog>
     </section>
@@ -183,5 +185,7 @@ function stateLabel(state: string | null, t: Translate): string {
 function formatDate(value: string | null): string {
   if (!value) return "—";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(undefined, { hour12: false });
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
