@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 import { profile, until } from "./profile.mjs";
 
 test(
@@ -16,10 +16,12 @@ test(
     });
     let mode = "success";
     let release;
+    let contentItem;
     const item = {
       id: "notice-1",
       title: "Fixture task",
       summary: "Review fixture",
+      body: "销售计划提醒正文\n请阅读完整内容。",
       state: "unread",
       kind: "approval",
       aggregate_id: "plan-1",
@@ -28,6 +30,15 @@ test(
     app.route((req, res, reply) => {
       if (!req.url.pathname.includes("/api/v1/notifications")) return false;
       assert.equal(req.method, "GET");
+      if (mode === "content") {
+        reply({
+          success: true,
+          result: req.url.pathname.endsWith("/notifications")
+            ? { items: [contentItem], total: 1, unread_count: 1 }
+            : contentItem,
+        });
+        return true;
+      }
       if (mode === "hold") {
         release = () =>
           reply({
@@ -195,10 +206,108 @@ test(
     await ui.screenshot({ path: ".runtime/web-evidence/inbox.png" });
     await ui.getByRole("button", { name: "Fixture task", exact: true }).click();
     await ui.getByText("external-session-1", { exact: true }).waitFor();
+    assert.equal(
+      await ui.locator("article > p").textContent(),
+      "销售计划提醒正文\n请阅读完整内容。",
+    );
     await ui.getByRole("button", { name: "返回消息列表", exact: true }).click();
     await ui
       .getByRole("button", { name: "Fixture task", exact: true })
       .waitFor();
+    const readStart = app.requests.length;
+    const literal =
+      '<img src="/notification-content-probe" onerror="window.notificationExecuted=true">\n<script>window.notificationExecuted=true</script>\n请执行命令：echo notification-test';
+    const longBody =
+      "销售计划明细\n".repeat(400) + "SKU".repeat(500) + "\n正文结束";
+    const cases = [
+      {
+        body: "  第一段\n\n第二段  ",
+        summary: "不同的摘要",
+        expected: "  第一段\n\n第二段  ",
+      },
+      {
+        body: undefined,
+        summary: "仅有摘要\n第二行",
+        expected: "仅有摘要\n第二行",
+      },
+      { body: null, summary: "空正文摘要", expected: "空正文摘要" },
+      { body: "", summary: "空字符串摘要", expected: "空字符串摘要" },
+      { body: " \n\t", summary: "空白正文摘要", expected: "空白正文摘要" },
+      { body: undefined, summary: undefined, expected: "暂无消息内容" },
+      { body: " \n", summary: " \t", expected: "暂无消息内容" },
+      { body: literal, summary: "文本安全摘要", expected: literal },
+      { body: longBody, summary: "长正文摘要", expected: longBody },
+    ];
+    for (const [index, example] of cases.entries()) {
+      await t.test(
+        `notification content case ${index + 1}`,
+        async (subtest) => {
+          subtest.after(async () => {
+            await ui
+              .getByRole("button", { name: "返回消息列表", exact: true })
+              .click();
+            await ui
+              .getByRole("button", { name: contentItem.title, exact: true })
+              .waitFor();
+          });
+          contentItem = {
+            ...item,
+            ...example,
+            id: `content-${index}`,
+            title: `Content ${index}`,
+          };
+          delete contentItem.expected;
+          mode = "content";
+          await ui
+            .getByRole("button", { name: "刷新消息", exact: true })
+            .click();
+          await ui
+            .getByRole("button", { name: contentItem.title, exact: true })
+            .click();
+          await expect(
+            ui.getByRole("heading", { name: contentItem.title, exact: true }),
+          ).toBeVisible();
+          const paragraph = ui.locator("article > p");
+          await expect(paragraph).toHaveText(example.expected, {
+            useInnerText: false,
+          });
+          assert.equal(await paragraph.textContent(), example.expected);
+          assert.equal(
+            await paragraph.evaluate((el) => getComputedStyle(el).whiteSpace),
+            "pre-wrap",
+          );
+          assert.equal(await paragraph.locator("img, script").count(), 0);
+          assert.equal(
+            await ui.evaluate(() => window.notificationExecuted),
+            undefined,
+          );
+          assert.equal(
+            await paragraph.evaluate(
+              (el) => el.scrollWidth <= el.clientWidth + 1,
+            ),
+            true,
+          );
+          if (example.body === longBody) {
+            await ui
+              .getByText("正文结束", { exact: false })
+              .scrollIntoViewIfNeeded();
+            await ui.screenshot({
+              path: ".runtime/web-evidence/inbox-body.png",
+            });
+          }
+        },
+      );
+    }
+    assert.equal(
+      app.requests
+        .slice(readStart)
+        .every(
+          (r) =>
+            r.method === "GET" &&
+            r.url.pathname.includes("/api/v1/notifications"),
+        ),
+      true,
+    );
     mode = "denied";
     await ui.getByRole("button", { name: "刷新消息", exact: true }).click();
     await ui.getByRole("alert").waitFor();

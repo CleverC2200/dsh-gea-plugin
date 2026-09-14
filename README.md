@@ -124,3 +124,9 @@ New conversations default to DSH's unmodified `standard` preset, without the GEA
 ## DMS 模拟回写
 
 Issue #23 的独立演示支持终审停在 5、成功后进入 10、失败原键重试、未知结果对账，以及 Z 单追加/追减两笔确认。运行 `node scripts/build-dms-demo.mjs`，再用 `python3 -m http.server 3202 --bind 127.0.0.1 --directory .runtime/dms-demo` 打开模拟页。该页只使用合成样本与内存接收方，不连接真实 GEA/DMS，不影响 3201 的真实业务。复现步骤、回归证据与正式协议边界见 [DMS mock 验收](docs/dms-mock-acceptance.md)。
+
+## 纠偏审批
+
+销售计划工作台增加「月初 / 纠偏」切换。纠偏视图支持固定月初基准和发货指标、逐 SKU 绝对净调整、保存草稿、逐级通过/退回及退回重提；保存不会写确认量或推进状态。新的纠偏写能力要求服务端声明相应契约、窗口和当前版本权限，缺少这些信息时保持只读。
+
+DMS 继续使用 mock。受控 GEA 终审流程可连接既有模拟接收方验证分笔回写、对账和完成状态；模拟回执不会完成真实 GEA 计划。新增适配契约、各票映射及真实环境验证边界见[纠偏验收说明](docs/correction-acceptance.md)。

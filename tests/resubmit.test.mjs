@@ -154,3 +154,16 @@ test("readback requires the effective successor, retired source and matching res
       false,
     );
 });
+
+test('Z resubmit keeps the fixed baseline and carries submission corrections rather than stale node confirmations',()=>{
+ const z=source(6);
+ z.detail.currentVersion.orderType='Z';
+ z.detail.correctionContext={contract:'absolute-net-v1',monthlyApproved:true,approvalOpen:true};
+ z.skus[0]={...z.skus[0],qty:'30',adjAddQty:'2',adjCutQty:'0',regionAdjAddQty:'8',regionAdjCutQty:'0'};
+ const input=prepareSalesPlanResubmit(z);
+ assert.equal(input.request.items[0].qty,'30.000');
+ assert.equal(input.request.items[0].adjAddQty,'2');
+ assert.equal(input.request.items[0].adjCutQty,'0');
+ assert.equal(input.request.items[0].regionAdjAddQty,undefined);
+ assert.equal(input.sourceSummary.submittedQty,'32.000');
+});

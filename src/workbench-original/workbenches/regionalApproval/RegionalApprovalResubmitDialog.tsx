@@ -1,3 +1,4 @@
+import { correctionDecision, correctionLine } from './models/salesPlanCorrectionModel.ts';
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -46,6 +47,7 @@ export function RegionalApprovalResubmitDialog({
     t(`common.assistantSurface.regionalApproval.liveSubmit.${key}`, values);
   const [source, setSource] = useState<SalesPlanResubmitSource>();
   const [skus, setSkus] = useState<GeaSalesPlanSku[]>([]);
+  const [correctionEdits,setCorrectionEdits]=useState<Record<string,string>>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -88,14 +90,18 @@ export function RegionalApprovalResubmitDialog({
   const input = useMemo(() => {
     if (!source) return undefined;
     try {
-      return prepareSalesPlanResubmit({ ...source, skus });
+      const submitted=source.detail.currentVersion.orderType === 'Z' ? skus.map(sku=>{
+        const input=correctionEdits[sku.skuCode];if(input===undefined)return sku;
+        const line=correctionLine(sku,input);return {...sku,adjAddQty:line.addQty,adjCutQty:line.cutQty};
+      }):skus;
+      return prepareSalesPlanResubmit({ ...source, skus:submitted });
     } catch {
       return undefined;
     }
-  }, [source, skus]);
+  }, [source, skus, correctionEdits]);
   const readBack = async (value: GeaSalesPlanSubmitReceipt) => {
     const detail = await client.detail.invoke({ planId });
-    if (!salesPlanResubmitReadbackMatches(versionId, value, detail))
+    if (!salesPlanResubmitReadbackMatches(versionId, value, detail, input?.request))
       throw new Error("readback");
     setVerified(true);
     onSucceeded();
@@ -196,16 +202,13 @@ export function RegionalApprovalResubmitDialog({
                   {sku.skuCode} · {sku.productCategName}
                 </span>
                 <Input
-                  aria-label={`${tr("quantity")} ${sku.skuCode}`}
-                  value={sku.qty}
+                  aria-label={`${source.detail.currentVersion.orderType === "Z" ? "纠偏调整量" : tr("quantity")} ${sku.skuCode}`}
+                  value={source.detail.currentVersion.orderType === 'Z' ? correctionEdits[sku.skuCode] ?? (()=>{try{return correctionDecision(sku,0,source.period.planTypeCode);}catch{return '';}})() : sku.qty}
                   disabled={busy || Boolean(attempt)}
                   onChange={(qty) => {
                     setConfirmed(false);
-                    setSkus((rows) =>
-                      rows.map((row, i) =>
-                        i === index ? { ...row, qty } : row,
-                      ),
-                    );
+                    if(source.detail.currentVersion.orderType === 'Z')setCorrectionEdits(values=>({...values,[sku.skuCode]:qty}));
+                    else setSkus(rows=>rows.map((row,i)=>i===index?{...row,qty}:row));
                   }}
                 />
               </label>

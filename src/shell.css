@@ -200,6 +200,10 @@
   cursor: default;
   opacity: 0.5;
 }
+.gea-inbox-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .gea-inbox dd {
   margin-bottom: 12px;
   overflow-wrap: anywhere;
