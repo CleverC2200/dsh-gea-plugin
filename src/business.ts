@@ -1,3 +1,4 @@
+import { avatarUrl } from "./avatar.ts";
 import { correctionAccess, correctionAdjustments, correctionDecimal } from './workbench-original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';
 import { validateSalesPlanActionInput } from './workbench-original/workbenches/regionalApproval/models/salesPlanActionModel.ts';
 import type { GeaSalesPlanActionRequest } from './workbench-original/contracts.ts';
@@ -277,7 +278,7 @@ export class Business {
     }
   }
 
-  private auth?: { token: string; tenantId: string; name: string; id: string; username: string };
+  private auth?: { token: string; tenantId: string; name: string; id: string; username: string; avatar?: string };
   private qr?: { id: string; loginId: string; createdAt: number };
   private epoch = new AbortController();
   private queryEpoch = new AbortController();
@@ -340,7 +341,7 @@ export class Business {
     if(typeof auth.token!=="string"||!auth.token||auth.token.length>16384||typeof auth.tenantId!=="string"||!/^\d+$/.test(auth.tenantId))throw Error("DESKTOP_LOGIN_INVALID");
     this.environment=saved.environment as "production"|"test";
     this.selectedBase=this.environments[saved.environment];
-    this.auth={token:auth.token,tenantId:auth.tenantId,name:text(auth.name),id:text(auth.id),username:text(auth.username)};
+    this.auth={token:auth.token,tenantId:auth.tenantId,name:text(auth.name),id:text(auth.id),username:text(auth.username),avatar:avatarUrl(auth.avatar,this.base)};
     this.notifyIdentity();
   }
 
@@ -394,7 +395,7 @@ export class Business {
           ? "expired"
           : "signed-out",
       user: this.auth
-        ? { name: this.auth.name, tenantId: this.auth.tenantId, id: this.auth.id, username: this.auth.username }
+        ? { name: this.auth.name, tenantId: this.auth.tenantId, id: this.auth.id, username: this.auth.username, avatar: this.auth.avatar }
         : null,
       source: this.base,
       provider:
@@ -900,7 +901,7 @@ export class Business {
       throw new Error("GEA_IDENTITY_INCOMPLETE");
     const name = text(user.realname || user.username);
     if (epoch.aborted || this.qr !== qr) throw new Error("STALE_LOGIN");
-    this.auth = { token, tenantId, name, id: text(user.id), username: text(user.username || user.realname) };
+    this.auth = { token, tenantId, name, id: text(user.id), username: text(user.username || user.realname), avatar: avatarUrl(user.avatar, this.base) };
     this.qr = undefined;
     this.notifyIdentity();
     return { status: "authenticated", ...this.status() };

@@ -36,6 +36,7 @@ test(
     await writeFile(path, JSON.stringify(config));
     await app.start();
     let callCount = 0;
+    let resourceReads = 0;
     let modelResult;
     app.route((request, res, reply) => {
       const path = request.url.pathname;
@@ -67,22 +68,43 @@ test(
       }
       if (path === "/personal/chat/completions") {
         const input = JSON.parse(request.body);
-        modelResult = input.messages.find((x) => x.role === "tool");
+        modelResult = input.messages.filter((x) => x.role === "tool").at(-1);
         const name = input.tools.find((x) =>
           x.function.name.includes("probe_read"),
         )?.function.name;
-        const delta = modelResult
-          ? { content: "Read succeeded" }
-          : {
+        const pendingResource =
+          modelResult && modelResult.content.includes("Resource link:");
+        const reader = input.tools.find((x) =>
+          x.function.name.includes("dsh_read_resource"),
+        )?.function.name;
+        const delta = pendingResource
+          ? {
               tool_calls: [
                 {
                   index: 0,
-                  id: "probe-1",
+                  id: "resource-1",
                   type: "function",
-                  function: { name, arguments: "{}" },
+                  function: {
+                    name: reader,
+                    arguments: JSON.stringify({
+                      uri: "data-artifact://gateway/probe",
+                    }),
+                  },
                 },
               ],
-            };
+            }
+          : modelResult
+            ? { content: "Read succeeded" }
+            : {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "probe-1",
+                    type: "function",
+                    function: { name, arguments: "{}" },
+                  },
+                ],
+              };
         res.setHeader("Content-Type", "text/event-stream");
         res.end(
           "data: " +
@@ -91,7 +113,8 @@ test(
                 {
                   index: 0,
                   delta,
-                  finish_reason: modelResult ? "stop" : "tool_calls",
+                  finish_reason:
+                    modelResult && !pendingResource ? "stop" : "tool_calls",
                 },
               ],
             }) +
@@ -127,6 +150,28 @@ test(
         reply({}, 202);
         return true;
       }
+      if (message.method === "resources/read") {
+        assert.equal(message.params.uri, "data-artifact://gateway/probe");
+        assert.equal(
+          message.params._meta.delegationToken,
+          "fixture-delegation",
+        );
+        resourceReads++;
+        reply({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {
+            contents: [
+              {
+                uri: message.params.uri,
+                text: "route-verified",
+                mimeType: "text/plain",
+              },
+            ],
+          },
+        });
+        return true;
+      }
       if (message.method === "tools/call") {
         assert.equal(message.params._meta.mcpCode, "mcp.gateway.session");
         assert.equal(
@@ -138,7 +183,15 @@ test(
         reply({
           jsonrpc: "2.0",
           id: message.id,
-          result: { content: [{ type: "text", text: "route-verified" }] },
+          result: {
+            content: [
+              {
+                type: "resource_link",
+                name: "probe",
+                uri: "data-artifact://gateway/probe",
+              },
+            ],
+          },
         });
         return true;
       }
@@ -146,7 +199,7 @@ test(
         message.method === "initialize"
           ? {
               protocolVersion: message.params.protocolVersion,
-              capabilities: { tools: {} },
+              capabilities: { tools: {}, resources: {} },
               serverInfo: { name: "fixture-gea", version: "1" },
             }
           : {
@@ -201,6 +254,7 @@ test(
       15000,
     );
     assert.equal(callCount, 1);
+    assert.equal(resourceReads, 1);
     assert.match(modelResult.content, /route-verified/);
     await app.rpc("logout");
     await until(mcp, (entries) => entries.length === 0, 7000);

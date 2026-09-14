@@ -27,12 +27,17 @@ test("logout clears identity and invalidates previous QR login", { timeout: 6000
 
 test("Chrome logout works from both shells, retries failure and signs out other tabs", { timeout: 90000 }, async (t) => {
   const app = await profile(t);
+  app.route((request,_res,reply)=>{
+    if (!request.url.pathname.endsWith('/getUserInfo')) return false;
+    reply({success:true,result:{userInfo:{id:'user',realname:'测试用户',loginTenantId:'0',avatar:'https://avatar.test/feishu.png'}}});return true;
+  });
   const browser = await chromium.launch({ channel: "chrome", headless: true });
   t.after(() => browser.close());
   const context = await browser.newContext({ locale: "zh-CN", viewport: { width: 1536, height: 920 } });
   await context.addCookies(app.cookie.split("; ").map(pair => ({
     name: pair.slice(0, pair.indexOf("=")), value: pair.slice(pair.indexOf("=") + 1), url: app.origin,
   })));
+  await context.route('https://avatar.test/feishu.png',route=>route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=','base64')}));
   let allowLogin = false;
   await context.route("**/api/gea-proof/login/poll", route => allowLogin ? route.continue() : route.fulfill({ json: { ok: true, value: { status: "pending" } } }));
   const page = await context.newPage();
@@ -42,6 +47,7 @@ test("Chrome logout works from both shells, retries failure and signs out other 
   await page.frameLocator("iframe[data-gea-workbench]").getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
   allowLogin = true;
   await expect.poll(async () => (await app.rpc("status")).value.authenticated).toBe(true);
+  await expect(page.locator('.gea-user-avatar img')).toHaveAttribute('src','https://avatar.test/feishu.png');
   await page.getByRole("button", { name: "账户菜单", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: "退出登录", exact: true })).toBeVisible();
   allowLogin = false;

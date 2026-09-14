@@ -221,7 +221,7 @@ test("Business login notifications and transport capabilities follow logout and 
     if (url.includes("/getUserInfo"))
       return Response.json({
         success: true,
-        result: { userInfo: { id: "user", username: "user", tenantId: "0" } },
+        result: { userInfo: { id: "user", username: "user", tenantId: "0", avatar: "https://avatar.test/user.png" } },
       });
     if (url.endsWith("/session")) return Response.json(session());
     return Response.json({});
@@ -237,6 +237,7 @@ test("Business login notifications and transport capabilities follow logout and 
       new AbortController().signal,
     );
     assert.equal(business.status().authenticated, true);
+    assert.equal(business.status().user.avatar, "https://avatar.test/user.png");
     assert.equal(notifications, 2);
     const connection = await business.openMcpConnection(
       consumer,

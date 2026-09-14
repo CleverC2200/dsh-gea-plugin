@@ -154,6 +154,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     window.parent.postMessage(
       {
         type: "gea:identity",
+        avatar: status?.authenticated ? (status.user?.avatar ?? "") : "",
         authenticated: status?.authenticated === true,
         name: status?.authenticated ? (status.user?.name ?? "") : "",
       },

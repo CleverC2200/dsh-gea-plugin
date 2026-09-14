@@ -111,7 +111,9 @@ function createWindow(){
     webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true}});
   window.webContents.setWindowOpenHandler(({url})=>{if(/^https?:\/\//.test(url))void shell.openExternal(url);return{action:'deny'};});
   window.webContents.on('will-navigate',(event,url)=>{if(new URL(url).origin!==origin)event.preventDefault();});
-  window.webContents.session.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
+  const {allowPermission}=require('./permissions.cjs');
+  window.webContents.session.setPermissionRequestHandler((contents,permission,callback,details)=>callback(allowPermission(contents,permission,details.requestingUrl,origin,window?.webContents)));
+  window.webContents.session.setPermissionCheckHandler((contents,permission,requestingOrigin)=>allowPermission(contents,permission,requestingOrigin,origin,window?.webContents));
   window.on('closed',()=>{window=undefined;});
 }
 if(owned){

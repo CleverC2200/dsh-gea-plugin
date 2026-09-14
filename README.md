@@ -147,3 +147,5 @@ DMS 继续使用 mock。受控 GEA 终审流程可连接既有模拟接收方验
 GEA 发行包声明 `dsh.bundle.patch`，在官方 base/web 后挂载 GEA 和固定版本的独立工作台。连接配置通过 profile overlay 提供，不放入 bundle。`npm start -- --bundle --config <本地配置> --runtime <独立数据目录> --port 0` 验证标准 bundle 加载；省略 `--bundle` 兼容既有启动方式。`npm run test:package` 从空目录安装发行包并验证登录、业务页面、原生对话及重启后的历史。
 
 缺失工作台时报 `WORKBENCH_MISSING`；非 0.1.x 公共接口版本时报 `WORKBENCH_INCOMPATIBLE`。工作台控制器测试已迁至独立仓库，GEA 保留跨插件浏览器集成测试。发行包由明确文件清单校验，拒绝本机路径和凭据。
+
+账号菜单显示 GEA 登录接口 `userInfo.avatar` 提供的头像（飞书同步头像）；缺失或加载失败时回退姓名首字。旧版保存的登录未包含头像，需要退出后重新扫码。
