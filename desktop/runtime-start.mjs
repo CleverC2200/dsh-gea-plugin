@@ -9,7 +9,7 @@ const root=resolve(process.env.DSH_PLUGIN_GRAPH||payload);
 process.chdir(root);
 const runtime=resolve(payload,process.env.DSH_FULL_DATA_DIR||'data');
 const configPath=resolve(payload,process.env.GEA_CONFIG||'gea.config.json');
-if(!existsSync(configPath)) {console.error('请先将 gea.config.example.json 复制为 gea.config.json 并填写 GEA 地址。');process.exit(1);}
+if(!existsSync(configPath)) {console.error('公司运行配置缺失，请联系管理员重新安装桌面应用。');process.exit(1);}
 const port=Number(process.env.DSH_FULL_PORT||'3198');
 if(!Number.isInteger(port)||port<0||port>65535)throw Error('INVALID_PORT');
 const gea=join(root,'node_modules/@cleverc2200/gea-dsh-prototype');

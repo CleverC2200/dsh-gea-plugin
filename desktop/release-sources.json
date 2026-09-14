@@ -1,0 +1,4 @@
+{
+  "stable": "https://api.github.com/repos/CleverC2200/dsh-gea-plugin/releases/tags/company-channel-stable",
+  "test": "https://api.github.com/repos/CleverC2200/dsh-gea-plugin/releases/tags/company-channel-test"
+}

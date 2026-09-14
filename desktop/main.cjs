@@ -7,7 +7,7 @@ const {ensureConfiguration,launchUrl} = require('./config.cjs');
 if (process.env.DSH_GEA_DESKTOP_DATA) app.setPath('userData',process.env.DSH_GEA_DESKTOP_DATA);
 const owned = app.requestSingleInstanceLock();
 if (!owned) app.quit();
-let window,backend,stopping=false,quitting=false,origin,pluginStore,control;
+let window,backend,stopping=false,quitting=false,origin,pluginStore,control,updates;
 let lifecycle=Promise.resolve();
 function runLifecycle(action){const next=lifecycle.then(()=>action());lifecycle=next.catch(()=>{});return next;}
 const payload=!app.isPackaged&&process.env.GEA_DESKTOP_PAYLOAD?process.env.GEA_DESKTOP_PAYLOAD:join(process.resourcesPath,'payload');
@@ -45,8 +45,9 @@ async function start(recovered=false){
     await pluginStore.failBoot('PLUGIN_SELECTION_INVALID');return start(true);
   }
   const node=join(payload,'node',process.platform==='win32'?'node.exe':'bin/node');
+  const runtimeEnv={...process.env};delete runtimeEnv.GEA_RELEASE_TOKEN;
   const child=spawn(node,[join(payload,'start.mjs')],{cwd:payload,detached:process.platform!=='win32',windowsHide:true,
-    env:{...process.env,GEA_CONFIG:configPath,DSH_FULL_DATA_DIR:join(data,'data'),DSH_FULL_PORT:'0',DSH_FULL_NO_OPEN:'1',DSH_PLUGIN_GRAPH:selected.path,GEA_DESKTOP_CONTROL_URL:control.url,GEA_DESKTOP_CONTROL_TOKEN:control.token},
+    env:{...runtimeEnv,GEA_CONFIG:configPath,DSH_FULL_DATA_DIR:join(data,'data'),DSH_FULL_PORT:'0',DSH_FULL_NO_OPEN:'1',DSH_PLUGIN_GRAPH:selected.path,GEA_DESKTOP_CONTROL_URL:control.url,GEA_DESKTOP_CONTROL_TOKEN:control.token},
     stdio:['ignore','pipe','pipe','ipc']});
   backend=child;
   let pending='';
@@ -123,6 +124,7 @@ if(owned){
     const {createControlServer}=await import('./control-server.mjs');
     const loginPath=join(data,'login.encrypted');
     control=await createControlServer({
+      ...Object.fromEntries(['status','check','settings','prepare','cancel','restart'].map(action=>[(action==='status'?'GET':'POST')+' /updates/'+action,async value=>{if(!updates)throw Error('UPDATES_UNAVAILABLE');return updates[action](value);}])) ,
       'GET /login':async()=>{
         let bytes;try{bytes=await readFile(loginPath);}catch(error){if(error.code==='ENOENT')return null;throw error;}
         if(!safeStorage.isEncryptionAvailable())throw Error('SECURE_STORAGE_UNAVAILABLE');
@@ -136,6 +138,16 @@ if(owned){
         await rename(loginPath+'.tmp',loginPath);return null;
       }
     });
+    try {
+      const {createRequire}=require('node:module');const {pathToFileURL}=require('node:url');
+      const dependency=createRequire(join(payload,'package.json'));
+      const releases=await import(pathToFileURL(dependency.resolve('dsh-plugin/release-channel')).href);
+      const {createUpdates}=await import('./updates.mjs');const {installArtifact}=await import('./installer.mjs');
+      updates=await createUpdates({data,store:pluginStore,desktopVersion:require('./package.json').version,releases,
+        sources:require('./release-sources.json'),token:process.env.GEA_RELEASE_TOKEN,
+        install:(directory,artifact,signal,onProcess)=>installArtifact({directory,artifact,signal,onProcess,onProgress:line=>void appendFile(join(data,'desktop.log'),line,{mode:0o600}).catch(()=>{}),node:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node'),pnpm:join(payload,'tools/node_modules/pnpm/bin/pnpm.cjs')}),
+        restart:id=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await pluginStore.activate(id);await start();})});
+    }catch(error){await appendFile(join(data,'desktop.log'),'公司更新服务不可用：'+errorText(error)+'\n',{mode:0o600});}
     createWindow();
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       {label:'GEA Desktop',submenu:[{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'重新启动工作台',click:()=>void runLifecycle(start).catch(report)},{type:'separator'},{role:'quit'}]},
@@ -149,11 +161,13 @@ if(owned){
     ]));
     await ensureConfiguration(configPath);
     await runLifecycle(start);
+    await updates?.start();
   }).catch(report);
   app.on('window-all-closed',()=>app.quit());
   app.on('before-quit',event=>{
     if(quitting)return;
     event.preventDefault();quitting=true;
-    void runLifecycle(stop).finally(async()=>{await control?.close();app.quit();});
+    const updatesClosing=updates?.close();
+    void runLifecycle(stop).finally(async()=>{await updatesClosing;await control?.close();app.quit();});
   });
 }

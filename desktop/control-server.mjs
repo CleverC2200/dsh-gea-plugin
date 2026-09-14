@@ -15,7 +15,7 @@ export async function createControlServer(handlers) {
       const body=size?JSON.parse(Buffer.concat(chunks).toString()):undefined;
       const value=await handler(body);
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}).end(JSON.stringify(value??null));
-    }catch{res.writeHead(500).end('{"error":"CONTROL_ACTION_FAILED"}');}
+    }catch(error){const code=/^[A-Z][A-Z_0-9]+$/.test(error?.message)?error.message:'CONTROL_ACTION_FAILED';res.writeHead(500,{'Content-Type':'application/json'}).end(JSON.stringify({error:code}));}
   });
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
   return {url:'http://127.0.0.1:'+server.address().port,token,close:()=>new Promise(resolve=>{server.closeAllConnections();server.close(resolve);})};

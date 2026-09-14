@@ -6,6 +6,8 @@ import {join,dirname} from 'node:path';
 import {createRequire} from 'node:module';
 
 export async function installArtifact({directory,artifact,node,pnpm,signal,onProcess=async()=>{},onProgress=()=>{}}) {
+  const deadline=AbortSignal.timeout(5*60*1000);
+  signal=AbortSignal.any([...(signal?[signal]:[]),deadline]);
   const tool=JSON.parse(await readFile(join(dirname(dirname(pnpm)),'package.json'),'utf8'));
   if(tool.version!=='11.19.0')throw Error('INSTALL_TOOL_VERSION_MISMATCH');
   const manifestPath=join(directory,'package.json');
@@ -32,15 +34,16 @@ export async function installArtifact({directory,artifact,node,pnpm,signal,onPro
   await mkdir(join(home,'profiles'),{recursive:true});await mkdir(bin);
   await symlink(directory,join(home,'profiles/prepared'),process.platform==='win32'?'junction':'dir');
   const wrapper=join(bin,'pnpm-driver.cjs');
-  await writeFile(wrapper,`require('node:child_process').execFileSync(process.env.GEA_INSTALL_NODE,[process.env.GEA_INSTALL_PNPM,'add',process.env.GEA_INSTALL_TARGET,'--ignore-scripts','--save-exact'],{stdio:'inherit'});`);
+  await writeFile(wrapper,`require('node:child_process').execFileSync(process.env.GEA_INSTALL_NODE,[process.env.GEA_INSTALL_PNPM,'add',process.env.GEA_INSTALL_TARGET,'--ignore-scripts','--save-exact','--prefer-offline'],{stdio:'inherit'});`);
   await writeFile(join(bin,'pnpm'),`#!/bin/sh\nexec "$GEA_INSTALL_NODE" "$GEA_INSTALL_DRIVER"\n`,{mode:0o755});
   await writeFile(join(bin,'pnpm.cmd'),'@echo off\r\n"%GEA_INSTALL_NODE%" "%GEA_INSTALL_DRIVER%"\r\n');
   const cli=join(directory,'node_modules/@deepseek-ai/dsh/lib/bin.js');
   try {
     await new Promise((resolve,reject)=>{
+      const installEnv={...process.env};delete installEnv.GEA_RELEASE_TOKEN;delete installEnv.GEA_DESKTOP_CONTROL_TOKEN;
       const child=spawn(node,[cli,'plugin','--profile','prepared','add',target],{
         cwd:directory,detached:process.platform!=='win32',windowsHide:true,stdio:['ignore','pipe','pipe'],
-        env:{...process.env,DSH_HOME:home,PATH:bin+(process.platform==='win32'?';':':')+dirname(node),GEA_INSTALL_NODE:node,GEA_INSTALL_PNPM:pnpm,GEA_INSTALL_DRIVER:wrapper,GEA_INSTALL_TARGET:target,CI:'true'},
+        env:{...installEnv,DSH_HOME:home,PATH:bin+(process.platform==='win32'?';':':')+dirname(node),GEA_INSTALL_NODE:node,GEA_INSTALL_PNPM:pnpm,GEA_INSTALL_DRIVER:wrapper,GEA_INSTALL_TARGET:target,CI:'true'},
       });
       const registered=Promise.resolve().then(()=>onProcess(child.pid));
       let cancelled=false;
@@ -52,7 +55,7 @@ export async function installArtifact({directory,artifact,node,pnpm,signal,onPro
           const killer=spawn('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
           killer.once('error',done);killer.once('close',done);
         });
-        else {try{process.kill(-child.pid,'SIGTERM');}catch(error){if(error.code!=='ESRCH')reject(error);}}
+        else {try{process.kill(-child.pid,'SIGKILL');}catch(error){if(error.code!=='ESRCH')reject(error);}}
       };
       void registered.catch(cancel);
       signal?.addEventListener('abort',cancel,{once:true});
@@ -62,7 +65,7 @@ export async function installArtifact({directory,artifact,node,pnpm,signal,onPro
       child.once('close',async code=>{
         signal?.removeEventListener('abort',cancel);await stopped;
         try{await registered;}catch(error){reject(error);return;}
-        if(cancelled)reject(Error('PLUGIN_INSTALL_CANCELLED'));
+        if(cancelled)reject(Error(deadline.aborted?'PLUGIN_INSTALL_TIMEOUT':'PLUGIN_INSTALL_CANCELLED'));
         else if(code===0)resolve();else reject(Error('PLUGIN_INSTALL_FAILED_'+code));
       });
     });
