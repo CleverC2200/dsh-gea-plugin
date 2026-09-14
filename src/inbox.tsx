@@ -154,7 +154,13 @@ export function Inbox({ t }: { t: Translate }) {
       {detail && !busy ? (
         <article>
           <h2>{detail.title ?? detail.id}</h2>
-          <p>{detail.summary ?? t("unknown")}</p>
+          <p className="gea-inbox-body">
+            {detail.body?.trim()
+              ? detail.body
+              : detail.summary?.trim()
+                ? detail.summary
+                : t("notificationNoContent")}
+          </p>
           <dl>
             <dt>{t("notificationState")}</dt>
             <dd>{stateLabel(detail.state, t)}</dd>

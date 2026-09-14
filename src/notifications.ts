@@ -3,6 +3,7 @@ export interface NotificationItem {
   id: string;
   title: string | null;
   summary: string | null;
+  body: string | null;
   state: string | null;
   kind: string | null;
   eventType: string | null;
@@ -50,6 +51,7 @@ export function notificationDetail(
     id: row.id,
     title: optional(row.title),
     summary: optional(row.summary),
+    body: optional(row.body),
     state: optional(row.state),
     kind: optional(row.kind),
     eventType: optional(row.event_type),
