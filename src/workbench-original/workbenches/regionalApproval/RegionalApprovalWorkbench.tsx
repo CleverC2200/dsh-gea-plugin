@@ -1,3 +1,5 @@
+import { correctionMetrics } from './models/salesPlanCorrectionModel.ts';
+import { CorrectionWorkbench } from './CorrectionWorkbench.tsx';
 import type { GeaSalesPlanPeriod } from '../../contracts.ts';
 /** Adapted from AionUi (Apache-2.0): local imports and explicit DSH host adapter. See SOURCE.md. */
 import { salesPlanStatusText } from './regionalApprovalQueryModel.ts';
@@ -31,7 +33,7 @@ import {
 import type { TableColumnProps } from '@arco-design/web-react';
 import { CheckOne, Download, Info, Refresh } from '@icon-park/react';
 import type { TFunction } from 'i18next';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBusinessSurfaceSession } from '../../session-context.tsx';
 import {
   getAssistantSurfaceWorkbenchScope,
@@ -1611,7 +1613,7 @@ const RegionalApprovalWorkbench: React.FC<{
       },
     },
     {
-      title: t('common.assistantSurface.regionalApproval.columns.plan'),
+      title: t('common.correction.target'),
       width: 165,
       render: (_, tableRow) => {
         const category = tableRow.kind === 'category' ? tableRow.category : undefined;
@@ -1624,36 +1626,25 @@ const RegionalApprovalWorkbench: React.FC<{
       },
     },
     {
+      title: t('common.correction.plan'),
+      width: 165,
+      render: (_, tableRow) => tableRow.kind === 'category' ? '—' : <div className={styles.stackCell}>
+        <span>{tableRow.plan.mPlanAmount == null ? '—' : exactMoney(tableRow.plan.mPlanAmount)}</span>
+        <small>{tableRow.plan.mPlanQty ?? '—'}</small>
+      </div>,
+    },
+    {
       title: categoryComparison
         ? t('common.assistantSurface.regionalApproval.columns.categoryProgress')
         : t('common.assistantSurface.regionalApproval.columns.progress'),
       width: 190,
       render: (_, tableRow) => {
         if (tableRow.kind === 'plan') {
-          const progress = regionalApprovalLiveProgress(tableRow.plan);
-          return (
-            <div className={styles.categoryProgressCell}>
-              <strong>
-                {t('common.assistantSurface.regionalApproval.categoryRows.amountProgress', {
-                  progress: formattedProgress(progress.amount),
-                })}
-              </strong>
-              <Progress
-                percent={Math.min(progress.amount ?? 0, 100)}
-                showText={false}
-                size='small'
-                color='rgb(var(--danger-6))'
-                width={100}
-              />
-              <small>
-                {t('common.assistantSurface.regionalApproval.query.target')} {exactMoney(tableRow.plan.targetAmount)}
-              </small>
-              <small>
-                {t('common.assistantSurface.regionalApproval.query.planQuantity')}{' '}
-                {formatExactDecimal(tableRow.plan.currentQty)}
-              </small>
-            </div>
-          );
+          const progress = correctionMetrics(tableRow.plan);
+          return <div className={styles.categoryProgressCell}>
+            <strong>{t('common.correction.amountProgress',{value:progress.amountProgress == null ? '—' : progress.amountProgress+'%'})}</strong>
+            <small>{t('common.correction.qtyProgress',{value:progress.qtyProgress == null ? '—' : progress.qtyProgress+'%'})}</small>
+          </div>;
         }
         const { category } = tableRow;
         return (
@@ -2785,4 +2776,32 @@ const RegionalApprovalWorkbench: React.FC<{
   );
 };
 
-export default RegionalApprovalWorkbench;
+const SalesPlanWorkbench: React.FC<React.ComponentProps<typeof RegionalApprovalWorkbench>> = (props) => {
+  const [orderType, setOrderType] = useState<'M' | 'Z'>('M');
+  const context = useRef<RegionalApprovalWorkbenchContext>();
+  const onContextChange: typeof props.onContextChange = useCallback((value, id) => {
+    context.current = value;
+    props.onContextChange(value, id);
+  }, [props.onContextChange]);
+  const monthlyClient = useMemo(() => props.queryClient ? {
+    ...props.queryClient,
+    list: { invoke: (query: Parameters<NonNullable<typeof props.queryClient>['list']['invoke']>[0]) => props.queryClient!.list.invoke({...query,orderType:'M'}) },
+  } : props.queryClient, [props.queryClient]);
+  const select = (value: 'M' | 'Z') => {
+    if (value === orderType) return;
+    if (context.current) props.onContextChange({ ...context.current, selectedEntities: [],
+      evidence: { ...context.current.evidence, queryState: 'loading' } }, null);
+    setOrderType(value);
+  };
+  return <>
+    <div role="tablist" aria-label={props.t("common.correction.tabs")} style={{display:'flex',gap:8,padding:'12px 20px'}}>
+      {(['M','Z'] as const).map(value => <Button key={value} role="tab" aria-selected={orderType === value}
+        type={orderType === value ? 'primary' : 'secondary'} onClick={() => select(value)}>
+        {props.t(value === 'M' ? 'common.correction.monthly' : 'common.correction.correction')}
+      </Button>)}
+    </div>
+    {orderType === 'M' ? <RegionalApprovalWorkbench {...props} queryClient={monthlyClient} onContextChange={onContextChange} /> :
+      <CorrectionWorkbench t={props.t} queryClient={props.queryClient} detailClient={props.detailClient} actionClient={props.liveActionsEnabled ? props.liveActionClient : undefined} onResubmit={props.onResubmit} />}
+  </>;
+};
+export default SalesPlanWorkbench;

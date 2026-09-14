@@ -1,5 +1,5 @@
 /** Adapted from AionUi (Apache-2.0): local imports and explicit DSH host adapter. See SOURCE.md. */
-import { SALES_PLAN_ROLES, salesPlanWorkflow } from '../../../salesPlanWorkflow.ts';
+import { SALES_PLAN_ROLES, salesPlanWorkflow, type SalesPlanWorkflowRow } from '../../../salesPlanWorkflow.ts';
 import { isBackendHttpError } from '../../../http-error.ts';
 import type {
   GeaSalesPlanActionParams,
@@ -49,16 +49,17 @@ const POSITIVE_LONG_PATTERN = /^[1-9]\d*$/;
 const MAX_SIGNED_LONG = BigInt('9223372036854775807');
 
 /** Node order is a role identity (customer=1, region=2 ...), never a plan status. */
-export const salesPlanApprovalNodeForStatus = (status: number, typeCode = 'Y'): number | undefined => {
-  const role = salesPlanWorkflow(typeCode).actor(status);
+export const salesPlanApprovalNodeForStatus = (status: number, typeCode = 'Y', workflowRows?: readonly SalesPlanWorkflowRow[]): number | undefined => {
+  const role = salesPlanWorkflow(typeCode, workflowRows).actor(status);
   return role && role !== 'customer' ? SALES_PLAN_ROLES.indexOf(role) + 1 : undefined;
 };
 
 export const salesPlanActionTargetStatus = (
   action: GeaSalesPlanActionRequest['action'],
   status: number,
-  typeCode = 'Y'
-): number | undefined => salesPlanWorkflow(typeCode).transition(status, action);
+  typeCode = 'Y',
+  workflowRows?: readonly SalesPlanWorkflowRow[]
+): number | undefined => salesPlanWorkflow(typeCode, workflowRows).transition(status, action);
 
 const isValidAdjustment = (adjustment: GeaSalesPlanSkuAdjustment): boolean => {
   const value = adjustment.adjustQty.trim();
@@ -72,16 +73,16 @@ const isValidAdjustment = (adjustment: GeaSalesPlanSkuAdjustment): boolean => {
   );
 };
 
-export const validateSalesPlanActionInput = (input: SalesPlanActionInput): void => {
+export const validateSalesPlanActionInput = (input: SalesPlanActionInput, workflowRows?: readonly SalesPlanWorkflowRow[]): void => {
   const { request } = input;
   if (!input.planId.trim() || !input.versionId.trim()) throw new SalesPlanActionError('validation', false);
   const approvalNodeOrder =
     request.action === 'SAVE' && request.expectedStatus === 10
       ? 5
-      : salesPlanApprovalNodeForStatus(request.expectedStatus, input.planTypeCode);
+      : salesPlanApprovalNodeForStatus(request.expectedStatus, input.planTypeCode, workflowRows);
   if (
     request.action === 'SAVE' &&
-    (!/^[a-f0-9]{64}$/.test(request.expectedSnapshot ?? '') || !request.adjustments?.length)
+    (!/^[a-f0-9]{64}$/.test(request.expectedSnapshot ?? '') || (!request.adjustments?.length && request.adjustmentMode !== 'ABSOLUTE_NET'))
   ) {
     throw new SalesPlanActionError('validation', false);
   }
@@ -89,7 +90,7 @@ export const validateSalesPlanActionInput = (input: SalesPlanActionInput): void 
   const remark = request.remark?.trim() ?? '';
   if (Array.from(remark).length > 1000) throw new SalesPlanActionError('validation', false);
   if (request.action === 'REJECT' && !remark) throw new SalesPlanActionError('validation', false);
-  if (salesPlanActionTargetStatus(request.action, request.expectedStatus, input.planTypeCode) === undefined) {
+  if (salesPlanActionTargetStatus(request.action, request.expectedStatus, input.planTypeCode, workflowRows) === undefined) {
     throw new SalesPlanActionError('validation', false);
   }
   if (request.action === 'REJECT' && request.adjustments?.length) {
@@ -158,9 +159,9 @@ const normalizedInput = (input: SalesPlanActionInput): SalesPlanActionInput => {
     request: {
       ...request,
       ...(remark?.trim() ? { remark: remark.trim() } : {}),
-      ...(adjustments?.length
+      ...((adjustments?.length || request.adjustmentMode === 'ABSOLUTE_NET' && request.action !== 'REJECT')
         ? {
-            adjustments: adjustments.map((adjustment) => ({
+            adjustments: (adjustments ?? []).map((adjustment) => ({
               skuCode: adjustment.skuCode,
               adjustQty: adjustment.adjustQty,
             })),
@@ -190,7 +191,7 @@ export class SalesPlanActionAttempt {
 
     this.input = normalizedInput(input);
     this.command = {
-      ...(this.input.request.action === 'SAVE' ? { planId: this.input.planId } : {}),
+      ...(this.input.request.action === 'SAVE' || this.input.request.adjustmentMode === 'ABSOLUTE_NET' ? { planId: this.input.planId } : {}),
       versionId: this.input.versionId,
       request: this.input.request,
       idempotencyKey: `gea-sales-plan-action:${this.createId()}`,
