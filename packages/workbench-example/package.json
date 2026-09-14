@@ -1,0 +1,29 @@
+{
+  "name": "@cleverc2200/dsh-workbench-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./lib/host.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@cleverc2200/dsh-agent-workbench",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@cleverc2200/dsh-agent-workbench": "0.1.0",
+    "@deepseek-ai/cordis": "4.0.2"
+  },
+  "files": [
+    "lib/"
+  ],
+  "license": "MIT"
+}

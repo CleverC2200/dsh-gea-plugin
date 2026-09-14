@@ -1,10 +1,10 @@
 # 独立安装与回退
 
-当前发行物是 GEA Web 插件 tarball，依赖已构建、提供 registerConversationPanel 的个人 DSH fork。它不包含 DSH 本体，不是桌面安装器，也不读取 AionUi 进程、目录或凭证库。
+当前发行物是 GEA Web 插件 tarball，包含独立工作台插件并依赖固定的 npm DSH `0.1.5-rc.2`。它不包含 DSH 本体，不是桌面安装器，也不读取 AionUi 进程、目录或凭证库。
 
-维护者在源码目录选择 DSH_SOURCE_DIR 后执行 npm run build、npm run typecheck、npm test、npm run package。产物位于 .runtime/packages，旁边 JSON 保存 SHA-256 和逐文件清单。npm-shrinkwrap.json 固定安装依赖，避免预发布 peer 依赖漂移。打包采用白名单，排除部署配置、会话、启动日志、机器路径和依赖目录。npm run test:package 将产物解压到临时空目录，安装生产依赖，通过真实 dsh profile 验证模拟登录、GEA 模型发现与 SSE、浏览器查询/分析和 Session 落盘，并重启验证会话保留及登录失效。
+维护者在源码目录执行 npm run build、npm run typecheck、npm test、npm run package。产物位于 .runtime/packages，旁边 JSON 保存 SHA-256 和逐文件清单。npm-shrinkwrap.json 固定安装依赖，避免预发布 peer 依赖漂移。打包采用白名单，排除部署配置、会话、启动日志、机器路径和依赖目录。npm run test:package 将产物解压到临时空目录，安装生产依赖，通过真实 dsh profile 验证模拟登录、GEA 模型发现与 SSE、浏览器查询/分析和 Session 落盘，并重启验证会话保留及登录失效。
 
-用户将 tarball 解压到新的版本目录，执行 npm ci --omit=dev --ignore-scripts，设置 DSH_SOURCE_DIR 指向兼容且已构建的个人 fork，再用 npm start -- --config 配置绝对路径 --runtime 数据绝对路径 --port 3199 启动。配置应放在版本目录外；首次使用复制 gea.direct.example.json 并设置正式/测试地址。缺少三栏布局接口时，启动在改动依赖链接前报错。
+用户将 tarball 解压到新的版本目录，执行 npm ci --omit=dev --ignore-scripts，再用 npm start -- --config 配置绝对路径 --runtime 数据绝对路径 --port 3199 启动。配置应放在版本目录外；首次使用复制 gea.direct.example.json 并设置正式/测试地址。布局通过 profile 禁用 `ui-layout` 并插入独立工作台插件；不用修改 DSH 包或准备源码目录。
 
 升级前保留旧版本目录，停止旧进程后备份独立 runtime，再在新目录使用同一 config/runtime 启动。禁止两个进程同时占用同一个 home。GEA 凭证仅在内存中，切换进程后需要重新扫码。应用没有自动升级、数据库迁移或失败自动切换；当前流程为人工受控更换版本。
 

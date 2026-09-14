@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 import { profile, readSession, until } from "../tests/profile.mjs";
 
 test(
-  "allowlisted package installs into an empty directory and starts a real fork profile without AionUi",
+  "allowlisted package installs into an empty directory and starts a published DSH profile without AionUi",
   { timeout: 180000 },
   async (t) => {
     const root = resolve(import.meta.dirname, "..");
@@ -19,7 +19,8 @@ test(
       }),
     );
     const dir = await mkdtemp(resolve(tmpdir(), "gea-package-"));
-    t.after(() => rm(dir, { recursive: true, force: true }));
+    let app;
+    t.after(async () => { await app?.stop(); await rm(dir, { recursive: true, force: true }); });
     execFileSync("tar", [
       "-xzf",
       packed.artifact,
@@ -32,10 +33,7 @@ test(
       ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"],
       { cwd: dir, timeout: 120000, stdio: "pipe" },
     );
-    const manifest = JSON.parse(
-      await readFile(resolve(root, "lib/dsh-runtime.json"), "utf8"),
-    );
-    const app = await profile(t, {
+    app = await profile(t, {
       pluginRoot: dir,
       config: () => ({
         analysis: {
@@ -47,7 +45,7 @@ test(
           maxTokens: 2048,
         },
       }),
-      env: { DSH_SOURCE_DIR: manifest.source },
+      env: { DSH_SOURCE_DIR: "/nonexistent/fork-must-not-be-used" },
     });
     const plan = {
       planId: "9007199254740993",
@@ -186,6 +184,7 @@ test(
       if (message.type() === "error") errors.push(message.text());
     });
     await ui.goto(app.origin);
+    await ui.getByRole("dialog", { name: "内测声明", exact: true }).getByRole("button", { name: "继续", exact: true }).click();
     await ui
       .frameLocator("iframe[data-gea-workbench]")
       .getByRole("heading", { name: "销售计划审批", exact: true })
@@ -200,15 +199,10 @@ test(
         );
         throw error;
       });
-    const frame = ui.frameLocator("iframe[data-gea-workbench]");
-    await frame.getByRole("tab", { name: "按基地", exact: true }).click();
-    await frame.locator("tbody label.arco-checkbox").first().click();
-    await frame
-      .getByRole("button", { name: "预览发送范围", exact: true })
-      .click();
-    await frame
-      .getByRole("button", { name: "确认并开始分析", exact: true })
-      .click();
+    const composer = ui.locator('[contenteditable="true"]');
+    await composer.waitFor({ timeout: 15000 });
+    await composer.fill("独立安装包继续分析");
+    await composer.press("Enter");
     await ui
       .getByText("独立安装 GEA 模型回执", { exact: true })
       .first()

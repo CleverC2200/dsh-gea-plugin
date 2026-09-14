@@ -29,8 +29,8 @@ test("native standard stays byte-identical and discoverable as a real preset dir
       "original standard composition\n",
     );
     await writeFile(join(native, "preset.yml"), "name: 标准模式\n");
-    await prepareNativePreset(join(dir, "runtime"), source);
-    await prepareNativePreset(join(dir, "runtime"), source);
+    await prepareNativePreset(join(dir, "runtime"), native);
+    await prepareNativePreset(join(dir, "runtime"), native);
     const entries = await readdir(join(dir, "runtime/native-presets"), {
       withFileTypes: true,
     });

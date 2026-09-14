@@ -1,3 +1,4 @@
+import type {} from "@cleverc2200/dsh-agent-workbench/client";
 /** GEA navigation and independent workbench mounted in the DSH application frame. */
 import { createPortal } from "react-dom";
 import React, { useEffect, useRef, useState } from "react";
@@ -26,16 +27,12 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
   }
 }
 
-export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions"];
+export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions", "agentWorkbench"];
 const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 
 /** Register a business-only center document beside the frame-owned native conversation. */
 export function apply(ctx: Context): void {
-  if (typeof ctx.layout.registerConversationPanel !== "function")
-    throw new Error(
-      "GEA_DSH_FORK_REQUIRED: this workbench requires the DSH conversation-panel extension",
-    );
   ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
   const t = ctx.locale.bind("geaProof");
   const injected = {
@@ -51,18 +48,21 @@ export function apply(ctx: Context): void {
     useGeaLocale,
   }: PropsRuntime<"main"> & InjectFace<typeof injected>) {
     const [authenticated, setAuthenticated] = useState(false);
+    const [sessionError, setSessionError] = useState("");
     useEffect(() => {
       if (!authenticated) {
         return;
       }
-      return ctx.layout.registerConversationPanel(PANEL);
+      const hide = ctx.agentWorkbench.showConversation(PANEL);
+      void ctx.agentWorkbench.open(PANEL).catch(error => setSessionError(String(error.message)));
+      return hide;
     }, [authenticated]);
     const language = useGeaLocale((snapshot) => snapshot.active);
     const currentSession = useSessions((snapshot) => snapshot.current);
     const frame = useRef<HTMLIFrameElement>(null);
     useEffect(() => {
       frame.current?.contentWindow?.postMessage(
-        { type: "gea:session", sessionId: currentSession },
+        { type: "gea:session", sessionId: currentSession ?? null },
         window.location.origin,
       );
     }, [currentSession]);
@@ -78,8 +78,10 @@ export function apply(ctx: Context): void {
           return;
         if (message.type === "gea:identity" && "authenticated" in message) {
           setAuthenticated(message.authenticated === true);
-          if (message.authenticated !== true)
+          if (message.authenticated !== true) {
+            ctx.agentWorkbench.forget(PANEL);
             (ctx.get("sessions") as unknown as ISessions).clear();
+          }
         }
         if (
           message.type === "gea:open-session" &&
@@ -88,8 +90,7 @@ export function apply(ctx: Context): void {
           /^session-[0-9a-f-]{36}$/.test(message.sessionId)
         ) {
           // Keep the business page selected; AppFrame projects this Session on the right.
-          ctx.uiWorkspace.openSession(message.sessionId as SessionId);
-          ctx.layout.selectPanel(PANEL);
+          void ctx.agentWorkbench.open(PANEL, "default", message.sessionId as SessionId).catch(error => setSessionError(String(error.message)));
         }
       };
       window.addEventListener("message", onMessage);
@@ -98,6 +99,7 @@ export function apply(ctx: Context): void {
     return (
       <>
         <style>{shellCss}</style>
+        {sessionError && <div role="alert">{sessionError}</div>}
         <iframe
           ref={frame}
           className={`gea-workbench-frame${authenticated ? "" : " gea-login-frame"}`}
@@ -105,7 +107,7 @@ export function apply(ctx: Context): void {
           title={t("approvalTitle")}
           onLoad={() =>
             frame.current?.contentWindow?.postMessage(
-              { type: "gea:session", sessionId: currentSession },
+              { type: "gea:session", sessionId: currentSession ?? null },
               window.location.origin,
             )
           }
@@ -335,6 +337,7 @@ export function apply(ctx: Context): void {
         </>
       ),
     );
+    yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
     ctx.layout.selectPanel(PANEL);
   });
   function NavigationMode({ usePanelInfo }: PropsRuntime<"shell.overlay">) {

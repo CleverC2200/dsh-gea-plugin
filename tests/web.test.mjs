@@ -254,7 +254,7 @@ test(
       await frame
         .getByRole("heading", { name: "销售计划审批", exact: true })
         .waitFor();
-      await page.getByText("选择一个工作区开始", { exact: true }).waitFor();
+      await page.locator('[contenteditable="true"]').waitFor();
       const narrowFrame = await page
         .locator("iframe[data-gea-workbench]")
         .boundingBox();

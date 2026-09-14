@@ -9,7 +9,17 @@
     "allowJs": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/gea-error.js"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/gea-error.js",
+    "packages/*/src/**/*.ts",
+    "packages/*/src/**/*.tsx"
+  ]
 }

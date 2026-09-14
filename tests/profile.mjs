@@ -183,7 +183,7 @@ export async function profile(t, options = {}) {
     cookie = "",
     origin = "";
   async function stop() {
-    if (!child || child.exitCode !== null) return;
+    if (!child || child.exitCode !== null || child.signalCode !== null) return;
     const ended = once(child, "exit");
     child.kill("SIGTERM");
     const timer = setTimeout(() => child.kill("SIGKILL"), 10000);

@@ -10,7 +10,8 @@ import {
   readDeployment,
   prepareNativePreset,
 } from "./deployment.mjs";
-import { prepareDshSource } from "./dsh-source.mjs";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 let log;
@@ -45,10 +46,10 @@ try {
   const port = Number(values.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535)
     throw new Error("GEA_PORT_INVALID");
-  const { source: dshSource } = await prepareDshSource(root);
-  const runtime = resolve(values.runtime ?? ".runtime/fork-development");
+  const presetRoot = resolve(require.resolve("@deepseek-ai/dsh-agent-presets/package.json"), "../presets/standard");
+  const runtime = resolve(values.runtime ?? ".runtime/workbench-development");
   await mkdir(resolve(runtime, "workspace"), { recursive: true, mode: 0o700 });
-  await prepareNativePreset(runtime, dshSource);
+  await prepareNativePreset(runtime, presetRoot);
   const patchPath = resolve(runtime, "deployment.patch.json");
   await writeFile(
     patchPath,
@@ -109,17 +110,17 @@ try {
   }
   env.DSH_HOME = resolve(runtime, "home");
   const initialize = existsSync(
-    resolve(env.DSH_HOME, "profiles/gea-readonly-fork/package.json"),
+    resolve(env.DSH_HOME, "profiles/gea-workbench/package.json"),
   )
     ? []
     : ["--from-default-profile", "web"];
-  const dshArgs = [resolve(dshSource, "apps/cli/lib/bin.js")];
+  const dshArgs = [resolve(require.resolve("@deepseek-ai/dsh/package.json"), "../lib/bin.js")];
   child = spawn(
     process.execPath,
     [
       ...dshArgs,
       "--profile",
-      "gea-readonly-fork",
+      "gea-workbench",
       ...initialize,
       "--patch",
       patchPath,
