@@ -4,6 +4,8 @@ const {spawn} = require('node:child_process');
 const {mkdir,readFile,writeFile,appendFile} = require('node:fs/promises');
 const {join} = require('node:path');
 const {ensureConfiguration,launchUrl} = require('./config.cjs');
+const {startupUrl}=require('./startup-state.cjs');
+async function showStartup(error){if(window&&!window.isDestroyed())await window.loadURL(startupUrl(error));}
 if (process.env.DSH_GEA_DESKTOP_DATA) app.setPath('userData',process.env.DSH_GEA_DESKTOP_DATA);
 const owned = app.requestSingleInstanceLock();
 if (!owned) app.quit();
@@ -36,6 +38,8 @@ async function stop(){
 }
 async function start(recovered=false){
   if(quitting)return;
+  await showStartup();
+  await appendFile(join(data,'desktop.log'),new Date().toISOString()+' START '+process.platform+' '+process.arch+'\n',{mode:0o600});
   await stop();
   if(quitting)return;
   let selected;
@@ -105,7 +109,7 @@ async function selectPlugin(){
   if(choice.response===0)return;
   await runLifecycle(async()=>{await stop();await pluginStore.activate(choices[choice.response]);await start();});
 }
-function report(error){dialog.showErrorBox('GEA Desktop',errorText(error));}
+function report(error){const text=errorText(error);void appendFile(join(data,'desktop.log'),new Date().toISOString()+' STARTUP_ERROR '+text+'\n',{mode:0o600}).catch(()=>{});if(window&&!window.isDestroyed())void showStartup(text).catch(()=>dialog.showErrorBox('GEA Desktop',text));else dialog.showErrorBox('GEA Desktop',text);}
 function createWindow(){
   window=new BrowserWindow({width:1440,height:960,minWidth:760,minHeight:600,title:'GEA Desktop',
     webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true}});
@@ -114,6 +118,7 @@ function createWindow(){
   const {allowPermission}=require('./permissions.cjs');
   window.webContents.session.setPermissionRequestHandler((contents,permission,callback,details)=>callback(allowPermission(contents,permission,details.requestingUrl,origin,window?.webContents)));
   window.webContents.session.setPermissionCheckHandler((contents,permission,requestingOrigin)=>allowPermission(contents,permission,requestingOrigin,origin,window?.webContents));
+  window.webContents.on('render-process-gone',(_event,details)=>{void appendFile(join(data,'desktop.log'),new Date().toISOString()+' RENDERER_EXIT '+details.reason+' '+details.exitCode+'\n',{mode:0o600});dialog.showErrorBox('工作台页面已停止','请通过应用菜单重新启动，并将启动日志交给维护者。');});
   window.on('closed',()=>{window=undefined;});
 }
 if(owned){
@@ -152,7 +157,7 @@ if(owned){
     }catch(error){await appendFile(join(data,'desktop.log'),'公司更新服务不可用：'+errorText(error)+'\n',{mode:0o600});}
     createWindow();
     Menu.setApplicationMenu(Menu.buildFromTemplate([
-      {label:'GEA Desktop',submenu:[{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'重新启动工作台',click:()=>void runLifecycle(start).catch(report)},{type:'separator'},{role:'quit'}]},
+      {label:'GEA Desktop',submenu:[{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'打开启动日志',click:()=>void shell.openPath(join(data,'desktop.log'))},{label:'重新启动工作台',click:()=>void runLifecycle(start).catch(report)},{type:'separator'},{role:'quit'}]},
       {label:'插件版本',submenu:[
         {label:'准备本地插件包',click:()=>void preparePlugin().catch(report)},
         {label:'切换已准备版本并重启',click:()=>void selectPlugin().catch(report)},
