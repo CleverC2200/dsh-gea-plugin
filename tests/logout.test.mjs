@@ -49,6 +49,7 @@ test("Chrome logout works from both shells, retries failure and signs out other 
   await second.goto(app.origin);
   await second.getByRole("button", { name: "账户菜单", exact: true }).click();
   await expect(second.getByRole("menuitem", { name: "退出登录", exact: true })).toBeVisible();
+  await page.bringToFront();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
   await page.locator(".gea-brand-switch").click();

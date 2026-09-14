@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolveEnvironments } from "../src/environments.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
 import {
@@ -96,13 +98,26 @@ export async function readDeployment(path) {
   return { ...config, geaBaseUrl: url.href.replace(/\/$/, "") };
 }
 
+/** Resolve the supported public workbench API before writing runtime state. */
+export function resolveWorkbench(anchor = import.meta.url) {
+  try {
+    const dependency = createRequire(anchor);
+    const manifest = JSON.parse(readFileSync(dependency.resolve("@cleverc2200/dsh-agent-workbench/package.json"), "utf8"));
+    if (!/^0\.1\.\d+$/.test(manifest.version)) throw new Error("WORKBENCH_INCOMPATIBLE: expected 0.1.x");
+    return dependency.resolve("@cleverc2200/dsh-agent-workbench");
+  } catch (error) {
+    if (error.message.startsWith("WORKBENCH_INCOMPATIBLE")) throw error;
+    throw new Error("WORKBENCH_MISSING: install the pinned independent workbench dependency");
+  }
+}
+
 /** Build ordinary patch rows for the supported dsh profile launcher. */
-export function deploymentPatch(config, root, runtime) {
+export function deploymentPatch(config, root, runtime, { bundle = false } = {}) {
   const model = config.analysis.mode === "model";
   const analysis = config.analysis;
   const rows = [
     { id: "ui-layout", disabled: true },
-    { insert: [{ id: "agent-workbench", name: resolve(root, "packages/agent-workbench/lib/host.js"), config: { cwd: resolve(runtime, "workspace") } }] },
+    { insert: [{ id: "agent-workbench", name: resolveWorkbench(), config: { cwd: resolve(runtime, "workspace") } }] },
     { id: "session-title-llm", disabled: true },
     {
       id: "agent-default-model",
@@ -181,6 +196,12 @@ export function deploymentPatch(config, root, runtime) {
       },
     });
   if (config.workbenchExample === true) rows.push({ insert: [{ id: "workbench-example", name: resolve(root, "packages/workbench-example/lib/host.js") }] });
+  if (bundle) return rows.flatMap(row => {
+    if (row.id === "ui-layout") return [];
+    if (row.insert?.some(entry => entry.id === "agent-workbench")) return row.insert.map(({ name, ...entry }) => entry);
+    if (row.insert?.some(entry => entry.id === "gea-proof")) return row.insert.map(({ name, ...entry }) => entry);
+    return [row];
+  });
   return rows;
 }
 

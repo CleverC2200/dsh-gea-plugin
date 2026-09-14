@@ -25,7 +25,7 @@ const [preview] = JSON.parse(
   }),
 );
 for (const file of preview.files) {
-  if (!allowed.has(file.path) && !/^packages\/agent-workbench\/lib\/types\/[A-Za-z-]+\.d\.ts$/.test(file.path))
+  if (!allowed.has(file.path))
     throw Error("UNEXPECTED_PACKAGE_FILE: " + file.path);
   const content = await readFile(resolve(root, file.path), "utf8");
   if (/\/Users\/|Bearer [A-Za-z0-9_-]{20,}|[?&](?:token|auth)=/i.test(content))

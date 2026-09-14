@@ -1,3 +1,4 @@
+import { resolveWorkbench } from "../scripts/deployment.mjs";
 /** External GEA Fetch contribution and explicit local receipt provider. */
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -254,6 +255,7 @@ function toGeaRequest(options: GenerateOptions) {
 
 /** Register authenticated Web routes; the standard dsh connection owns browser authorization. */
 export function apply(ctx: Context, config: Deployment): void {
+  resolveWorkbench(import.meta.url);
   const workbenchHtml =
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GEA</title><link rel="stylesheet" href="/api/gea-proof/workbench.css"><style>html,body,#gea-workbench{height:100%;margin:0}</style></head><body><div id="gea-workbench"></div><script type="module" src="/api/gea-proof/workbench.js"></script></body></html>';
   for (const [path, type, content] of [

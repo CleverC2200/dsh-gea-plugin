@@ -209,6 +209,7 @@ export async function profile(t, options = {}) {
       process.execPath,
       [
         "scripts/start.mjs",
+        ...(options.bundle ? ["--bundle"] : []),
         "--config",
         config,
         "--runtime",

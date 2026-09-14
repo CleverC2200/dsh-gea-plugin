@@ -29,7 +29,7 @@ npm start -- --config gea.config.json --runtime .runtime/workbench-development -
 | 层            | 代码                             | 职责                                                                            |
 | ------------- | -------------------------------- | ------------------------------------------------------------------------------- |
 | 外层 DSH 插件 | `src/client.tsx`                 | GEA 导航、独立页面 iframe、Session 选择与语言同步                               |
-| 通用工作台 | `packages/agent-workbench/` | 页面注册、业务实例与会话关联、原生对话布局和窄屏排列 |
+| 通用工作台 | [独立工作台仓库](https://github.com/CleverC2200/dsh-agent-workbench) | 页面注册、业务实例与会话关联、原生对话布局和窄屏排列 |
 | 示例 Agent | `packages/workbench-example/` | 独立插件验证多页面接入，仅在 `workbenchExample: true` 时加载 |
 | 独立业务文档  | `src/workbench-page.tsx`         | 登录、GEA 适配、预览与发送；不实现聊天输入框                                    |
 | 原审批组件    | `src/workbench-original/`        | 从 AionUi 原源码复制的工作台、CSS、组织维度、筛选、版本、详情和导出             |
@@ -132,6 +132,16 @@ DMS 继续使用 mock。受控 GEA 终审流程可连接既有模拟接收方验
 
 ## 多 Agent 页面
 
-通用工作台接口及职责见 [工作台说明](packages/agent-workbench/README.md)。GEA 作为其中一个业务插件注册页面；其他 Agent 通过同一接口加入。按“页面＋业务实例”关联 Session，切换与刷新恢复各自会话；只展示页面不会自动向模型发送业务数据。源码位于同一 npm workspace，工作台包不依赖 GEA 业务代码。
+通用工作台接口及职责见 [工作台说明](https://github.com/CleverC2200/dsh-agent-workbench/blob/main/README.md)。GEA 作为其中一个业务插件注册页面；其他 Agent 通过同一接口加入。按“页面＋业务实例”关联 Session，切换与刷新恢复各自会话；只展示页面不会自动向模型发送业务数据。工作台在独立仓库维护，通过固定 Git 提交依赖，且不依赖 GEA 业务代码。
 
-定向验收：`node --test tests/workbench-controller.test.mjs tests/published-runtime.test.mjs tests/workbench-pages.test.mjs`。此次只使用本地测试服务，未对真实审批业务执行写入。
+定向验收：`node --test tests/published-runtime.test.mjs tests/workbench-pages.test.mjs`。此次只使用本地测试服务，未对真实审批业务执行写入。
+
+## 公共工作台依赖
+
+公共工作台已迁至独立私有仓库 https://github.com/CleverC2200/dsh-agent-workbench 。本仓库通过固定 Git 提交依赖其构建产物，不再维护或编译工作台源码。安装开发依赖需要该仓库的读取权限；桌面分发仍携带已安装产物，最终用户不需要 Git 凭据。工作台的控制器测试在独立仓库维护，GEA 保留业务和集成测试。
+
+## 标准 bundle
+
+GEA 发行包声明 `dsh.bundle.patch`，在官方 base/web 后挂载 GEA 和固定版本的独立工作台。连接配置通过 profile overlay 提供，不放入 bundle。`npm start -- --bundle --config <本地配置> --runtime <独立数据目录> --port 0` 验证标准 bundle 加载；省略 `--bundle` 兼容既有启动方式。`npm run test:package` 从空目录安装发行包并验证登录、业务页面、原生对话及重启后的历史。
+
+缺失工作台时报 `WORKBENCH_MISSING`；非 0.1.x 公共接口版本时报 `WORKBENCH_INCOMPATIBLE`。工作台控制器测试已迁至独立仓库，GEA 保留跨插件浏览器集成测试。发行包由明确文件清单校验，拒绝本机路径和凭据。
