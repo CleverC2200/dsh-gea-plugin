@@ -174,54 +174,54 @@
   height: auto;
 }
 
-.gea-inbox {
-  padding: 24px;
-  overflow: auto;
-  height: 100%;
-  color: var(--text-primary, #222);
-}
-.gea-inbox table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 16px 0;
-}
-.gea-inbox th,
-.gea-inbox td {
-  text-align: left;
-  padding: 12px;
-  border-bottom: 1px solid #ddd;
-}
-.gea-inbox button {
-  padding: 6px 12px;
-  margin-right: 8px;
-  cursor: pointer;
-}
-.gea-inbox button:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-.gea-inbox-body {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.gea-inbox dd {
-  margin-bottom: 12px;
-  overflow-wrap: anywhere;
-}
-
-.gea-inbox-filter {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0;
-}
-.gea-inbox-filter select {
-  padding: 6px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: inherit;
-  color: inherit;
-}
+/* Business inbox follows the dealer reminder prototype. */
+.gea-inbox { --inbox-brand: #c91414; --inbox-muted: light-dark(#626975, #b6bdc8); --inbox-border: light-dark(#e5e6eb, #41444c); --inbox-panel: light-dark(#fff, #24262b); --inbox-bg: light-dark(#f2f3f5, #1b1d21); height: 100%; overflow: auto; color: light-dark(#1d2129, #edf0f5); background: var(--inbox-bg); font-size: 14px; }
+.gea-inbox *, .gea-inbox *::before, .gea-inbox *::after { box-sizing: border-box; }
+.gea-inbox-header, .gea-inbox-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; background: var(--inbox-panel); border-bottom: 1px solid var(--inbox-border); }
+.gea-inbox-heading { display: flex; align-items: center; gap: 24px; }
+.gea-inbox h1 { margin: 0; font-size: 18px; font-weight: 600; }
+.gea-inbox-unread { color: var(--inbox-muted); font-size: 13px; }
+.gea-inbox button, .gea-inbox select { font: inherit; color: inherit; border: 1px solid var(--inbox-border); border-radius: 4px; background: var(--inbox-panel); padding: 7px 12px; cursor: pointer; }
+.gea-inbox button:hover:not(:disabled) { background: var(--inbox-bg); }
+.gea-inbox button:disabled { opacity: .5; cursor: default; }
+.gea-inbox :is(button, select):focus-visible { outline: 2px solid var(--inbox-brand); outline-offset: 2px; }
+.gea-inbox ::selection { background: #fbd4d4; color: #601010; }
+.gea-inbox-toolbar { padding-block: 12px; flex-wrap: wrap; }
+.gea-inbox-filter { display: flex; align-items: center; gap: 12px; }
+.gea-inbox-filter select { min-width: 120px; background: var(--inbox-bg); }
+.gea-inbox-hint, .gea-inbox-provenance { color: var(--inbox-muted); font-size: 12px; }
+.gea-inbox-content { max-width: 1440px; margin: auto; padding: 16px 24px; }
+.gea-inbox-table-scroll { overflow-x: auto; }
+.gea-inbox table { border-collapse: collapse; width: 100%; min-width: 850px; table-layout: fixed; }
+.gea-inbox th, .gea-inbox td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--inbox-border); line-height: 1.6; overflow-wrap: anywhere; }
+.gea-inbox th { font-size: 13px; font-weight: 600; }
+.gea-inbox th:nth-child(1) { width: 15%; }.gea-inbox th:nth-child(2) { width: 29%; }.gea-inbox th:nth-child(3) { width: 30%; }.gea-inbox th:nth-child(4) { width: 18%; }.gea-inbox th:nth-child(5) { width: 8%; }
+.gea-inbox tbody tr { background: var(--inbox-panel); cursor: pointer; }
+.gea-inbox tbody tr:hover { background: light-dark(#fff7f7, #302629); }
+.gea-inbox .gea-inbox-subject { text-align: left; padding: 0; border: 0; background: transparent; line-height: 1.6; }
+.gea-inbox tr.is-unread .gea-inbox-subject { font-weight: 600; }
+.gea-inbox-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--inbox-muted); }
+.gea-inbox-kind, .gea-inbox-status { display: inline-block; font-size: 12px; line-height: 1.6; padding: 2px 7px; border-radius: 3px; background: var(--inbox-bg); color: var(--inbox-muted); }
+.gea-inbox-kind, .gea-inbox-status.is-unread { background: light-dark(#fdecec, #492525); color: light-dark(#bd1515, #ffabab); }
+.gea-inbox-date { font-variant-numeric: tabular-nums; font-size: 13px; }
+.gea-inbox-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 16px; color: var(--inbox-muted); }
+.gea-inbox-pagination > div { display: flex; gap: 8px; }
+.gea-inbox-empty { text-align: center; padding: 48px 16px; color: var(--inbox-muted); background: var(--inbox-panel); margin: 0; }
+.gea-inbox-drawer { position: fixed; inset: 0 0 0 auto; margin: 0; padding: 0; width: min(560px, 100%); max-width: 100%; height: 100%; max-height: 100%; border: 0; background: var(--inbox-panel); color: inherit; }
+.gea-inbox-drawer::backdrop { background: #1d212940; }
+.gea-inbox-drawer-layout { height: 100%; display: flex; flex-direction: column; }
+.gea-inbox-drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--inbox-border); }
+.gea-inbox-drawer-header h2 { margin: 0; font-size: 16px; }
+.gea-inbox-drawer-header button { display: flex; border: 0; padding: 8px; }
+.gea-inbox-drawer-body { flex: 1; min-height: 0; overflow-y: auto; padding: 24px; }
+.gea-inbox-detail-status { display: flex; gap: 12px; margin-bottom: 24px; }
+.gea-inbox-info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin: 0 0 28px; }
+.gea-inbox dt, .gea-inbox-label { display: block; font-size: 13px; color: var(--inbox-muted); margin-bottom: 6px; }
+.gea-inbox dd { margin: 0; overflow-wrap: anywhere; line-height: 1.6; }
+.gea-inbox h3 { font-size: 16px; line-height: 1.6; margin: 0 0 24px; overflow-wrap: anywhere; }
+.gea-inbox-body { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--inbox-bg); border: 1px solid var(--inbox-border); border-radius: 6px; padding: 16px; margin: 0; line-height: 1.8; }
+.gea-inbox-drawer-footer { padding: 16px 20px; display: flex; justify-content: flex-end; border-top: 1px solid var(--inbox-border); }
+@media (max-width: 600px) { .gea-inbox-header, .gea-inbox-toolbar { padding: 12px 16px; }.gea-inbox-heading { gap: 12px; flex-wrap: wrap; }.gea-inbox-content { padding: 12px 16px; }.gea-inbox-info { grid-template-columns: 1fr; }.gea-inbox-drawer-body { padding: 20px 16px; } }
 
 .gea-shell-navigation-content > .gea-shell-brand {
   height: 54px;
