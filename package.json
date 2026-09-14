@@ -3,7 +3,7 @@
   "version": "0.0.2",
   "private": true,
   "type": "module",
-  "description": "Independent GEA workbench and model adapter for the DeepSeek Harness fork",
+  "description": "GEA business Agent plugin for the shared DeepSeek Harness workbench",
   "exports": {
     ".": "./lib/host.js",
     "./client": "./lib/client.js",
@@ -20,37 +20,39 @@
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.2",
-    "@deepseek-ai/dsh": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-api-session-controller": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-brand": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-llm": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-llm-pi-ai": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-persona": "0.1.5-rc.1",
+    "@deepseek-ai/dsh": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-api-session-controller": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-brand": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-llm": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-persona": "0.1.5-rc.2",
     "@deepseek-ai/schemastery": "3.18.2",
     "decimal.js": "10.6.0",
     "esbuild": "0.25.9",
     "eventsource-parser": "3.1.1",
     "qrcode": "1.5.4",
     "yaml": "2.9.0",
-    "@deepseek-ai/dsh-tools": "0.1.5-rc.1"
+    "@deepseek-ai/dsh-tools": "0.1.5-rc.2",
+    "@cleverc2200/dsh-agent-workbench": "file:packages/agent-workbench",
+    "@deepseek-ai/dsh-agent-presets": "0.1.5-rc.2"
   },
   "dsh": {
     "client": {
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-api-remotes",
-        "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-sidebar",
         "@deepseek-ai/dsh-client-ui-renderer",
         "@deepseek-ai/dsh-client-ui-workspace",
-        "@deepseek-ai/dsh-client-locale"
+        "@deepseek-ai/dsh-client-locale",
+        "@cleverc2200/dsh-agent-workbench"
       ]
     }
   },
   "devDependencies": {
     "@arco-design/web-react": "2.66.1",
-    "@deepseek-ai/dsh-client-ui-layout": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-client-ui-slots": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-ui-layout": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.5-rc.2",
     "@icon-park/react": "1.4.2",
     "@playwright/test": "1.58.2",
     "@types/node": "24.3.1",
@@ -62,7 +64,16 @@
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "typescript": "5.9.3",
-    "xlsx-republish": "0.20.3"
+    "xlsx-republish": "0.20.3",
+    "@deepseek-ai/dsh-client-store": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-session": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-theme": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-workspace": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-locale": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-api-remotes": "0.1.5-rc.2"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -76,7 +87,6 @@
     "presets/",
     "scripts/start.mjs",
     "scripts/deployment.mjs",
-    "scripts/dsh-source.mjs",
     "scripts/verify.mjs",
     "src/environments.js",
     "src/workbench-original/LICENSE",
@@ -87,6 +97,20 @@
     "README.md",
     "docs/install.md",
     "src/workbench-original/README.md",
-    "npm-shrinkwrap.json"
+    "npm-shrinkwrap.json",
+    "packages/agent-workbench/package.json",
+    "packages/agent-workbench/lib/host.js",
+    "packages/agent-workbench/lib/client.js",
+    "packages/agent-workbench/README.md",
+    "packages/workbench-example/package.json",
+    "packages/workbench-example/lib/host.js",
+    "packages/workbench-example/lib/client.js",
+    "packages/workbench-example/README.md",
+    "packages/agent-workbench/LICENSE",
+    "packages/agent-workbench/UPSTREAM.md",
+    "packages/agent-workbench/lib/types/"
+  ],
+  "workspaces": [
+    "packages/*"
   ]
 }

@@ -1,6 +1,6 @@
 # GEA 销售计划只读插件
 
-独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；原生对话栏依赖个人 DSH fork 提供的布局接口，不执行业务审批、保存或写回。
+独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；通用工作台插件负责布局与会话关联，运行使用未修改的 npm DSH `0.1.5-rc.2`。
 
 本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。`npm run package` 输出可核对 SHA-256 的 tarball，尚不是桌面安装器。
 
@@ -10,15 +10,13 @@
 
 ```sh
 npm ci
-export DSH_SOURCE_DIR=/absolute/path/to/deepseek-harness
-# 先在该 DSH fork 中完成 pnpm run build。
 npm run build
 cp gea.direct.example.json gea.config.json
 # 登录 GEA 后，插件通过 GEA 个人模型接口发现模型并直接调用。
-npm start -- --config gea.config.json --runtime .runtime/fork-development --port 3198
+npm start -- --config gea.config.json --runtime .runtime/workbench-development --port 3198
 ```
 
-`DSH_SOURCE_DIR` 选择已构建的本地 DSH fork。构建将本插件直接使用的 DSH 和 Cordis 包链接到同一 checkout，并在忽略提交的 `lib/dsh-runtime.json` 中记录路径；随后 `npm start` 可复用该路径。启动仍通过 fork 的 `dsh --profile gea-readonly-fork`，它拥有独立 Harness home，避免使用旧发布版 profile 的依赖。客户端 UI 由该 DSH Host 的模块加载器提供，不复制 DSH bundle。当前三栏版本不支持 npm `0.1.5-rc.1`，缺少 fork 路径时明确报错。`npm ci` 会恢复锁定的 npm 依赖；再次构建前需选择 fork。
+启动通过安装依赖中的 `dsh --profile gea-workbench`，拥有独立 Harness home。profile 禁用内置 `ui-layout`，启用 `@cleverc2200/dsh-agent-workbench`；其他 DSH 包使用 npm 发布物。构建和启动不读取 DSH checkout，也不会链接或修改其源码。原生聊天、输入框及 Session 继续由 DSH 提供。
 
 使用启动日志中的带认证参数链接进入全屏登录页，默认自动加载正式环境的二维码，可切换「正式」或「测试」后直接飞书扫码登录；切换环境会自动换码，「刷新二维码」用于重试或更新过期二维码。页面不显示或要求输入服务器地址。登录后进入 GEA 导航、原销售计划审批工作台、原生 DSH 会话的三栏界面。选择组织行与分析范围，点击「预览发送范围」，核对 Host 重新获取的当前计划数据，再确认送入右侧原生 DSH 会话。左栏「DSH 对话」切换到原生对话与工作区侧栏；原生侧栏「GEA 业务版」返回工作台，往返保留当前 Session。空会话欢迎图标居于右栏内容区中央，输入框位于底部。选中 Session 不会关闭业务页面，后续输入、流式回答、取消和历史记录仍由 DSH 负责。
 
@@ -31,7 +29,8 @@ npm start -- --config gea.config.json --runtime .runtime/fork-development --port
 | 层            | 代码                             | 职责                                                                            |
 | ------------- | -------------------------------- | ------------------------------------------------------------------------------- |
 | 外层 DSH 插件 | `src/client.tsx`                 | GEA 导航、独立页面 iframe、Session 选择与语言同步                               |
-| 原生会话      | DSH fork `ui-layout`             | `registerConversationPanel()` 将原生 `main/conversation` 放到右侧，窄屏上下排列 |
+| 通用工作台 | `packages/agent-workbench/` | 页面注册、业务实例与会话关联、原生对话布局和窄屏排列 |
+| 示例 Agent | `packages/workbench-example/` | 独立插件验证多页面接入，仅在 `workbenchExample: true` 时加载 |
 | 独立业务文档  | `src/workbench-page.tsx`         | 登录、GEA 适配、预览与发送；不实现聊天输入框                                    |
 | 原审批组件    | `src/workbench-original/`        | 从 AionUi 原源码复制的工作台、CSS、组织维度、筛选、版本、详情和导出             |
 | GEA Host      | `src/business.ts`、`src/host.ts` | 持有登录凭证、固定只读查询、精确数据和持久化 Session 输入                       |
@@ -54,9 +53,9 @@ GEA token 仅保存在当前 Host 内存中；重启后需要重新登录。GEA 
 
 ## 当前验证状态
 
-当前三栏基线使用个人 DSH fork，浏览器回归启动真实 Web profile，仅将外部 GEA/模型响应替换为固定测试服务。覆盖原工作台登录/查询/选择、独立文档与原生会话同时显示、持久化回执、窄屏排列。Host 测试覆盖精确金额、接口限制、数据身份和登录/预览失效。原工作台模型测试覆盖导出、权限和 SAVE 回读语义；这些测试不执行真实业务写回。
+当前三栏基线使用 npm DSH `0.1.5-rc.2` 与独立工作台插件，浏览器回归启动真实 Web profile，仅将外部 GEA/模型响应替换为固定测试服务。覆盖原工作台登录/查询/选择、独立文档与原生会话同时显示、持久化回执、窄屏排列。Host 测试覆盖精确金额、接口限制、数据身份和登录/预览失效。原工作台模型测试覆盖导出、权限和 SAVE 回读语义；这些测试不执行真实业务写回。
 
-本次三栏重构的检查、真实查询证据和未完成项见 [2026-09-11 验收记录](docs/acceptance-2026-09-11.md)。此前的真实 GEA/模型验证记录见 [早期验收记录](docs/acceptance-2026-09-10.md)，它不能替代本次 fork + 原工作台的真实环境重新验收；独立安装包、写操作和生产验收也仍未完成。
+本次三栏重构的检查、真实查询证据和未完成项见 [2026-09-11 验收记录](docs/acceptance-2026-09-11.md)。此前的真实 GEA/模型验证记录见 [早期验收记录](docs/acceptance-2026-09-10.md)，它不能替代当前发布版 DSH + 工作台插件的真实环境验收；独立安装包、写操作和生产验收也仍未完成。
 
 ```sh
 npm run typecheck
@@ -117,7 +116,7 @@ Host 每次发送前使用表单 `client_credentials` 获取短期 Token，不�
 
 ### 会话模式 / Session modes
 
-新会话默认使用原版 DSH `standard`（标准）预设，不注入 GEA 业务 Persona，也不可调用 GEA MCP。另一个预设显示为「需求预测」（`gea-readonly`），包含业务 Persona、Skill 发现及加载，以及限于此预设的 GEA MCP。输入框的 Agent 预设选择器用于切换；已有消息的会话保持原预设，请新建会话后选择。左侧需求预测入口仍明确选择 `gea-readonly`。启动器在 runtime 的 `native-presets/standard` 创建真实目录，其中的配置文件链接到当前 DSH 源码中的原版标准预设；不复制或改写 DSH 的标准配置，只展示标准与需求预测两种模式。
+新会话默认使用原版 DSH `standard`（标准）预设，不注入 GEA 业务 Persona，也不可调用 GEA MCP。另一个预设显示为「需求预测」（`gea-readonly`），包含业务 Persona、Skill 发现及加载，以及限于此预设的 GEA MCP。输入框的 Agent 预设选择器用于切换；已有消息的会话保持原预设，请新建会话后选择。左侧需求预测入口仍明确选择 `gea-readonly`。启动器在 runtime 的 `native-presets/standard` 创建真实目录，其中的配置文件链接到已安装 DSH 发布包中的原版标准预设；不复制或改写 DSH 的标准配置，只展示标准与需求预测两种模式。
 
 New conversations default to DSH's unmodified `standard` preset, without the GEA business persona or GEA MCP access. The `gea-readonly` preset is displayed as Demand Forecast (需求预测), with its business persona, skill discovery/loading and scoped GEA MCP. Select the preset in a new conversation; non-empty conversations retain their composition. The launcher links the original standard preset files under runtime `native-presets/standard`, keeping the roster to standard and demand forecast.
 
@@ -130,3 +129,9 @@ Issue #23 的独立演示支持终审停在 5、成功后进入 10、失败原�
 销售计划工作台增加「月初 / 纠偏」切换。纠偏视图支持固定月初基准和发货指标、逐 SKU 绝对净调整、保存草稿、逐级通过/退回及退回重提；保存不会写确认量或推进状态。新的纠偏写能力要求服务端声明相应契约、窗口和当前版本权限，缺少这些信息时保持只读。
 
 DMS 继续使用 mock。受控 GEA 终审流程可连接既有模拟接收方验证分笔回写、对账和完成状态；模拟回执不会完成真实 GEA 计划。新增适配契约、各票映射及真实环境验证边界见[纠偏验收说明](docs/correction-acceptance.md)。
+
+## 多 Agent 页面
+
+通用工作台接口及职责见 [工作台说明](packages/agent-workbench/README.md)。GEA 作为其中一个业务插件注册页面；其他 Agent 通过同一接口加入。按“页面＋业务实例”关联 Session，切换与刷新恢复各自会话；只展示页面不会自动向模型发送业务数据。源码位于同一 npm workspace，工作台包不依赖 GEA 业务代码。
+
+定向验收：`node --test tests/workbench-controller.test.mjs tests/published-runtime.test.mjs tests/workbench-pages.test.mjs`。此次只使用本地测试服务，未对真实审批业务执行写入。

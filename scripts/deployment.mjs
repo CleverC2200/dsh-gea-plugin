@@ -101,6 +101,8 @@ export function deploymentPatch(config, root, runtime) {
   const model = config.analysis.mode === "model";
   const analysis = config.analysis;
   const rows = [
+    { id: "ui-layout", disabled: true },
+    { insert: [{ id: "agent-workbench", name: resolve(root, "packages/agent-workbench/lib/host.js"), config: { cwd: resolve(runtime, "workspace") } }] },
     { id: "session-title-llm", disabled: true },
     {
       id: "agent-default-model",
@@ -178,16 +180,13 @@ export function deploymentPatch(config, root, runtime) {
         },
       },
     });
+  if (config.workbenchExample === true) rows.push({ insert: [{ id: "workbench-example", name: resolve(root, "packages/workbench-example/lib/host.js") }] });
   return rows;
 }
 
 /** Expose only the original standard preset, without copying or modifying DSH's composition. */
-export async function prepareNativePreset(runtime, dshSource) {
+export async function prepareNativePreset(runtime, target) {
   const parent = resolve(runtime, "native-presets");
-  const target = resolve(
-    dshSource,
-    "packages/preset/agent-presets/presets/standard",
-  );
   await readFile(resolve(target, "agent.cordis.yml"), "utf8");
   await mkdir(parent, { recursive: true });
   const directory = resolve(parent, "standard");
