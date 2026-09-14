@@ -88,6 +88,8 @@ AionUi 代理适配器及示例配置已删除；旧配置启动拒绝的定向�
 
 登录凭证和委托令牌留在 GEA 的内存闭包中，仅通过受控 fetch 为 MCP 请求注入 `params._meta`；不写入业务 `arguments` 或市场配置。退出、环境切换、登录失效和卸载中止旧请求。失败后需解决授权问题并重新登录，不自动重复建会话或重放工具调用。一个登录代际共享一个挂载业务会话。普通登录和已有业务功能不依赖市场插件。本地测试不代表生产 MCP 授权及业务验收。
 
+工具发现时，GEA 从网关返回的 `_meta.sourceCode` 保存工具路由；调用时自动注入 `params._meta.mcpCode`。模型只填写业务参数。路由随当前登录会话失效，未知或冲突路由会明确报错。支持 JSON 与 SSE 工具列表。
+
 The in-process `geaMcp` v1 service lets the market discover authorized MCP tools after login. GEA owns credentials, session preparation and trusted metadata injection; the market owns MCP transport and tools. The default Consumer is the configured analysis Agent. Logout invalidates the capability; no secrets are persisted and failed sessions are not blindly recreated. Production acceptance remains separate.
 
 ### 退回重提的服务身份

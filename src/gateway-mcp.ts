@@ -1,5 +1,6 @@
 /** Login-owned GEA gateway capability. Secrets never leave the fetch closure. */
 import { randomUUID } from "node:crypto";
+import { createParser } from "eventsource-parser";
 
 /** Prepare one authorized business session; transport session negotiation stays with MCP SDK. */
 export async function prepareGatewayMcp(
@@ -58,16 +59,20 @@ export async function prepareGatewayMcp(
       : {}),
   };
   const url = base + "/ai/gateway/mcp/proxy/mcp";
+  const routes = new Map<string, string>();
   const gatewayFetch: typeof fetch = async (input, init) => {
     identity.throwIfAborted();
     const target = input instanceof Request ? input.url : String(input);
     if (target !== url) throw new Error("GEA_MCP_ENDPOINT_REJECTED");
     let body = init?.body;
+    let discovery: { id: unknown; firstPage: boolean } | undefined;
     if (body !== undefined && body !== null) {
       if (typeof body !== "string") throw new Error("GEA_MCP_BODY_INVALID");
       const message = JSON.parse(body);
       if (Array.isArray(message) || !message || typeof message !== "object")
         throw new Error("GEA_MCP_BODY_INVALID");
+      if (message.method === "tools/list")
+        discovery = { id: message.id, firstPage: !message.params?.cursor };
       if (
         [
           "tools/list",
@@ -78,6 +83,11 @@ export async function prepareGatewayMcp(
       ) {
         // Replace caller-supplied identity entirely; never insert it in arguments.
         message.params = { ...message.params, _meta: meta };
+        if (message.method === "tools/call") {
+          const mcpCode = routes.get(message.params.name);
+          if (!mcpCode) throw new Error("GEA_MCP_TOOL_ROUTE_REQUIRED");
+          message.params._meta = { ...meta, mcpCode };
+        }
       }
       body = JSON.stringify(message);
     }
@@ -92,6 +102,37 @@ export async function prepareGatewayMcp(
       ]),
     });
     identity.throwIfAborted();
+    if (discovery && res.ok) {
+      const text = await res.clone().text();
+      identity.throwIfAborted();
+      const messages: unknown[] = [];
+      if (res.headers.get("content-type")?.includes("text/event-stream")) {
+        createParser({
+          onEvent: (event) => messages.push(JSON.parse(event.data)),
+        }).feed(text);
+      } else {
+        messages.push(JSON.parse(text));
+      }
+      for (const value of messages) {
+        if (!value || typeof value !== "object") continue;
+        const reply = value as { id?: unknown; result?: { tools?: unknown } };
+        if (reply.id !== discovery.id || !Array.isArray(reply.result?.tools))
+          continue;
+        const next = discovery.firstPage
+          ? new Map<string, string>()
+          : new Map(routes);
+        for (const tool of reply.result.tools) {
+          const code = tool?._meta?.sourceCode;
+          if (!nonempty(tool?.name) || !nonempty(code))
+            throw new Error("GEA_MCP_TOOL_ROUTE_INVALID");
+          if (next.has(tool.name) && next.get(tool.name) !== code)
+            throw new Error("GEA_MCP_TOOL_ROUTE_AMBIGUOUS");
+          next.set(tool.name, code);
+        }
+        routes.clear();
+        for (const [name, code] of next) routes.set(name, code);
+      }
+    }
     return res;
   };
   return { url, fetch: gatewayFetch };
