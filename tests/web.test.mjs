@@ -40,6 +40,13 @@ test(
 
     app.route((request, res, reply) => {
       const path = request.url.pathname;
+      if (path.endsWith("/getUserInfo")) {
+        reply({ success: true, result: { userInfo: {
+          id: "9007199254740993", realname: "测试用户", loginTenantId: "0",
+          avatar: "https://avatar.example.test/lark.png",
+        } } });
+        return true;
+      }
       const task = {
         id: "task",
         approval: {
@@ -106,6 +113,10 @@ test(
       })),
     );
     const page = await context.newPage();
+    await page.route("https://avatar.example.test/lark.png", route => route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=", "base64"),
+    }));
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.setDefaultTimeout(15000);
@@ -209,6 +220,11 @@ test(
         0,
       );
       const brand = page.locator(".gea-brand-switch");
+      const avatarImage = page.locator(".gea-user-avatar img");
+      await expect(avatarImage).toHaveAttribute("src", "https://avatar.example.test/lark.png");
+      await expect.poll(() => avatarImage.evaluate(img => img.naturalWidth)).toBe(1);
+      await avatarImage.dispatchEvent("error");
+      await expect(page.locator(".gea-user-avatar")).toHaveText("测");
       assert.equal(
         await page
           .locator(".gea-shell-logo")

@@ -1,0 +1,4 @@
+{
+  "stable": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/desktop-stable.json",
+  "test": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/desktop-test.json"
+}

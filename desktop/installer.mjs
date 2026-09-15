@@ -28,10 +28,15 @@ export async function installArtifact({directory,artifact,node,pnpm,optimizedBas
   const {parse}=createRequire(manifestPath)('yaml');
   const workspace=parse(await readFile(join(directory,'pnpm-workspace.yaml'),'utf8'));
   await writeFile(join(directory,'pnpm-workspace.yaml'),JSON.stringify({nodeLinker:'hoisted',minimumReleaseAge:0,overrides,...(workspace.patchedDependencies?{patchedDependencies:workspace.patchedDependencies}:{})}));
-  const digest=createHash('sha256').update(await readFile(artifact)).digest('hex');
+  const artifacts=Array.isArray(artifact)?artifact:[artifact];
+  if(!artifacts.length)throw Error('NO_PLUGIN_ARTIFACTS');
   await mkdir(join(directory,'packages'),{recursive:true});
-  const target='file:packages/'+digest+'.tgz';
-  await copyFile(artifact,join(directory,'packages',digest+'.tgz'));
+  const targets=[];
+  for(const file of artifacts){
+    const digest=createHash('sha256').update(await readFile(file)).digest('hex');
+    targets.push('file:packages/'+digest+'.tgz');
+    await copyFile(file,join(directory,'packages',digest+'.tgz'));
+  }
   const home=join(directory,'.installer-home'),bin=join(directory,'.installer-bin');
   await mkdir(join(home,'profiles'),{recursive:true});await mkdir(bin);
   await symlink(directory,join(home,'profiles/prepared'),process.platform==='win32'?'junction':'dir');
@@ -44,7 +49,7 @@ const run=args=>new Promise((resolve,reject)=>{
  child.once('error',reject);child.once('close',status=>resolve({status,output}));
 });
 (async()=>{
- const add=['add',process.env.GEA_INSTALL_TARGET,'--ignore-scripts','--save-exact','--prefer-offline'];
+ const add=['add',...JSON.parse(process.env.GEA_INSTALL_TARGETS),'--ignore-scripts','--save-exact','--prefer-offline'];
  let result=await run(add);
  if(result.status!==0&&/ERR_PNPM_(UNEXPECTED_STORE|VIRTUAL_STORE_DIR_MAX_LENGTH_DIFF|UNEXPECTED_VIRTUAL_STORE)/.test(result.output)){
   result=await run(['install','--ignore-scripts','--prefer-offline','--no-frozen-lockfile']);
@@ -58,9 +63,9 @@ const run=args=>new Promise((resolve,reject)=>{
   try {
     await new Promise((resolve,reject)=>{
       const installEnv={...process.env};delete installEnv.GEA_RELEASE_TOKEN;delete installEnv.GEA_DESKTOP_CONTROL_TOKEN;
-      const child=spawn(node,[cli,'plugin','--profile','prepared','add',target],{
+      const child=spawn(node,[cli,'plugin','--profile','prepared','add',...targets],{
         cwd:directory,detached:process.platform!=='win32',windowsHide:true,stdio:['ignore','pipe','pipe'],
-        env:{...installEnv,DSH_HOME:home,PATH:bin+(process.platform==='win32'?';':':')+dirname(node),GEA_INSTALL_NODE:node,GEA_INSTALL_PNPM:pnpm,GEA_INSTALL_DRIVER:wrapper,GEA_INSTALL_TARGET:target,CI:'true'},
+        env:{...installEnv,DSH_HOME:home,PATH:bin+(process.platform==='win32'?';':':')+dirname(node),GEA_INSTALL_NODE:node,GEA_INSTALL_PNPM:pnpm,GEA_INSTALL_DRIVER:wrapper,GEA_INSTALL_TARGETS:JSON.stringify(targets),CI:'true'},
       });
       const registered=Promise.resolve().then(()=>onProcess(child.pid));
       let cancelled=false;

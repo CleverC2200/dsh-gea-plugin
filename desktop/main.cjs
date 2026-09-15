@@ -9,7 +9,7 @@ async function showStartup(error){if(window&&!window.isDestroyed())await window.
 if (process.env.DSH_GEA_DESKTOP_DATA) app.setPath('userData',process.env.DSH_GEA_DESKTOP_DATA);
 const owned = app.requestSingleInstanceLock();
 if (!owned) app.quit();
-let window,backend,stopping=false,quitting=false,origin,pluginStore,control,updates;
+let window,backend,stopping=false,quitting=false,origin,pluginStore,control,updates,clientInstaller;
 let startupReason='startup';
 let lifecycle=Promise.resolve();
 function runLifecycle(action){const next=lifecycle.then(()=>action());lifecycle=next.catch(()=>{});return next;}
@@ -142,7 +142,10 @@ if(owned){
     pluginStore=new PluginStore({data,baseline:payload});
     await pluginStore.recoverPreparation();
     const {createControlServer}=await import('./control-server.mjs');
+    const {createClientInstaller}=await import('./client-installer.mjs');
+    clientInstaller=createClientInstaller({data,currentVersion:require('./package.json').version,sources:require('./desktop-release-sources.json'),openPath:path=>shell.openPath(path)});
     control=await createControlServer({
+      ...Object.fromEntries(['status','check','download','cancel','open'].map(action=>[(action==='status'?'GET':'POST')+' /installer/'+action,async value=>clientInstaller[action](value)])),
       ...Object.fromEntries(['status','check','settings','prepare','cancel','restart'].map(action=>[(action==='status'?'GET':'POST')+' /updates/'+action,async value=>{if(!updates)throw Error('UPDATES_UNAVAILABLE');return updates[action](value);}])) ,
       'GET /login':async()=>loginSnapshot,
       'POST /login':async value=>{
@@ -181,7 +184,7 @@ if(owned){
   app.on('before-quit',event=>{
     if(quitting)return;
     event.preventDefault();quitting=true;
-    const updatesClosing=updates?.close();
+    const updatesClosing=Promise.all([updates?.close(),clientInstaller?.close()]);
     void runLifecycle(stop).finally(async()=>{await updatesClosing;await control?.close();app.quit();});
   });
 }
