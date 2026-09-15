@@ -54,15 +54,19 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
     const id='channel-'+randomUUID();state.pending=id;
     preparing=(async()=>{
       const artifact=join(data,'plugins',id+'.tgz');
+      const started=performance.now();state.timings={};
       try{
         await save();const bytes=await releases.fetchReleasePackage(release,{token,signal:AbortSignal.any([abort.signal,AbortSignal.timeout(60000)])});
         await writeFile(artifact,bytes,{mode:0o600});if(abort.signal.aborted)throw Error('UPDATE_CANCELLED');
+        state.timings.downloadMs=Math.round(performance.now()-started);
         state.phase='installing';await save();
-        const receipt=await store.prepare({id,install:async(directory,owner)=>{
+        const preparingAt=performance.now();
+        const receipt=await store.prepare({id,signal:abort.signal,install:async(directory,owner)=>{
           await install(directory,artifact,abort.signal,owner.registerProcess);
           const require=createRequire(join(directory,'package.json'));const actual=JSON.parse(await readFile(require.resolve(release.package+'/package.json'),'utf8'));
           if(actual.version!==release.version)throw Error('RELEASE_PACKAGE_VERSION_MISMATCH');
         }});
+        state.timings.prepareMs=Math.round(performance.now()-preparingAt);
         if(receipt.versions[release.package]!==release.version)throw Error('RELEASE_PACKAGE_VERSION_MISMATCH');
         state.phase=abort.signal.aborted?'cancelled':'pending';
       }catch(error){state.phase=abort.signal.aborted?'cancelled':'failed';state.error=errorCode(error);}

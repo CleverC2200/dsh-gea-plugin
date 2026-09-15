@@ -31,8 +31,8 @@ test('a graph copied from another machine installs without changing the active g
  const shared=optimized.files.find(file=>file.file.startsWith('node_modules/@deepseek-ai/'));
  assert.deepEqual(await readFile(join(data,'plugins/versions/relocated',shared.file)),await readFile(join(baseline,shared.file)));
  assert.deepEqual(await readFile(join(data,'plugins/versions/relocated',shared.file+'.map')),await readFile(join(baseline,shared.file+'.map')));
- assert.equal(receipt.versions['@cleverc2200/gea-dsh-prototype'],'0.0.7');
- const changed='node_modules/@cleverc2200/gea-dsh-prototype/lib/workbench.js';
+ assert.equal(receipt.versions['@cleverc2200/gea-dsh-prototype'],process.env.GEA_EXPECTED_PLUGIN_VERSION??'0.0.7');
+ const changed='node_modules/@cleverc2200/gea-dsh-prototype/lib/host.js';
  assert.notDeepEqual(await readFile(join(data,'plugins/versions/relocated',changed)),await readFile(join(baseline,changed)));
  assert.equal((await store.selected()).id,'baseline');
  assert.equal(await readFile(marker,'utf8'),'{"keep":"business configuration"}');

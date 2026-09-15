@@ -19,7 +19,7 @@ async function fixture(t,overrides={},initialState){
 test('checks do not install; duplicate preparations reserve one graph and explicit restart verifies its actual version',async t=>{
  const {updates,store,counts}=await fixture(t);await updates.check();assert.equal(counts().installs,0);
  await Promise.all([updates.prepare({package:'dsh-plugin'}),updates.prepare({package:'dsh-plugin'})]);
- await until(updates.status,s=>s.phase==='pending');assert.equal(counts().installs,1);assert.equal((await store.selected()).id,'baseline');
+ const prepared=await until(updates.status,s=>s.phase==='pending');assert.ok(prepared.timings.downloadMs>=0);assert.ok(prepared.timings.prepareMs>=0);assert.equal(counts().installs,1);assert.equal((await store.selected()).id,'baseline');
  assert.deepEqual(await updates.prepare({package:'dsh-plugin'}),{error:'UPDATE_BUSY'});
  await updates.restart();assert.equal((await updates.status()).phase,'restarting');
  await until(updates.status,s=>s.phase==='succeeded');assert.equal(counts().restarts,1);assert.equal((await updates.status()).current['dsh-plugin'],'1.4.3-company.2');
