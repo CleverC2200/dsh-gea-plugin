@@ -90,3 +90,9 @@ Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体�
 以上脚本使用自己的临时数据目录并关闭自己启动的进程，不操作用户的日常应用数据。
 
 Windows 包验收先记录 GitLab 网络可达性。能访问公司网络时执行在线检查、下载和重启；公共 CI 无法访问内网时，通过应用原有的本地插件菜单安装与 GitLab 摘要一致的归档并切换版本，报告单独标记 `local-verified-archive`，不能据此声称 Windows 已完成内网下载验证。Mac 验收直接读取真实 GitLab 频道。
+
+## 启动修复 0.0.8
+
+本版包含系统凭据授权等待修复，以及客户端组合脚本的换行计数优化。`prepare-payload.py` 使用 pnpm 的 `patchedDependencies` 应用 `patches/client-modules-newline-scan.patch`；官方归档保持原始字节，补丁和锁随桌面版本固定。插件安装保留补丁声明，重建依赖后仍使用相同实现。上游源码对应 deepseek-harness PR #10。
+
+Mac 本机构建对照中，再次启动中位耗时由 2.875 秒降至 2.105 秒；此数值不代表下载安装后的首次启动或 Windows 耗时。Mac 默认仍为 ad-hoc 内测签名，正式分发需 Developer ID 签名与 Apple 公证。

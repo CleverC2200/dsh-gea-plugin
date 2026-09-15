@@ -24,6 +24,9 @@ test('a graph copied from another machine installs without changing the active g
   await installArtifact({directory,optimizedBaseline:baseline,artifact:resolve(process.env.GEA_PLUGIN_ARTIFACT),node:join(baseline,process.platform==='win32'?'node/node.exe':'node/bin/node'),pnpm:process.env.GEA_TEST_PNPM??join(baseline,'tools/node_modules/pnpm/bin/pnpm.cjs'),onProcess:registerProcess,onProgress:line=>{log=(log+line).slice(-12000);}}).catch(error=>{throw Error(error.message+'\n'+log,{cause:error});});
  }});
  assert.equal(receipt.state,'prepared');
+ const host='node_modules/@deepseek-ai/dsh-client-modules/lib/index.js';
+ assert.deepEqual(await readFile(join(data,'plugins/versions/relocated',host)),await readFile(join(baseline,host)));
+ assert.match(await readFile(join(data,'plugins/versions/relocated',host),'utf8'),/offset = value.indexOf/);
  const optimized=JSON.parse(await readFile(join(baseline,'client-artifacts.json')));
  const shared=optimized.files.find(file=>file.file.startsWith('node_modules/@deepseek-ai/'));
  assert.deepEqual(await readFile(join(data,'plugins/versions/relocated',shared.file)),await readFile(join(baseline,shared.file)));
