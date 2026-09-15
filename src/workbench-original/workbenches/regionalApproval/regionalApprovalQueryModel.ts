@@ -23,6 +23,14 @@ export const VISIBLE_SALES_PLAN_STATUSES_BY_STAGE = Object.fromEntries(
   SALES_PLAN_ROLES.map((role) => [role, salesPlanWorkflow('Y').pendingStatuses(role)])
 ) as Record<ApprovalStageId, number[]>;
 export const SALES_PLAN_PROGRESS_STATUSES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+/** Status visibility is intersected with server-owned organization/version scope, never a grant. */
+export const salesPlanVisibleStatuses = (typeCode: string, roles: readonly ApprovalStageId[]): number[] => {
+  const workflow = salesPlanWorkflow(typeCode);
+  return SALES_PLAN_PROGRESS_STATUSES.filter((status) =>
+    roles.some((role) => workflow.visibility(status, role) !== 'denied')
+  );
+};
+
 export const approvalStageProgressForSalesPlanStatusTotals = (
   total: number,
   statusTotals: Readonly<Partial<Record<number, number>>>,

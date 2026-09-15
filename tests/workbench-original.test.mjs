@@ -127,3 +127,17 @@ test('fresh task assignment grants only matching-version approval and respects s
   assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: { ...value.workflowApproval, versionId: 'old' } }), undefined);
   assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: { ...value.workflowApproval, actionable: false } }), undefined);
 });
+
+for (const [typeCode, status, actor, wrong] of [['Y', 7, 'region', 'province'], ['Y', 8, 'province', 'area'], ['Y', 9, 'area', 'category'], ['XN', 2, 'province', 'region']]) {
+  test(`${typeCode} ${status}: only the current role can approve without a stage filter`, () => {
+    const row = { planId: 'p', versionId: 'v', status, planTypeCode: typeCode };
+    const value = { currentVersion: { id: 'v', planId: 'p', status, planTypeCode: typeCode, effective: true } };
+    const permission = role => [`sales-plan:plan:${role}-approve`];
+    assert.deepEqual(salesPlanAccessForRow(row, value, permission(actor))?.allowedActions, ['APPROVE', 'REJECT']);
+    assert.equal(salesPlanAccessForRow(row, value, permission(wrong)), undefined);
+    assert.equal(salesPlanAccessForRow(row, value, permission(actor), wrong), undefined);
+    assert.equal(salesPlanAccessForRow(row, {...value, currentVersion: {...value.currentVersion, effective: false}}, permission(actor)), undefined);
+    assert.equal(salesPlanAccessForRow(row, {...value, currentVersion: {...value.currentVersion, id: 'new'}}, permission(actor)), undefined);
+    assert.equal(salesPlanAccessForRow(row, {...value, actionContext: {versionId: 'v', status, nodeOrder: 2, snapshotHash: 'a'.repeat(64), allowedActions: []}}, permission(actor))?.allowedActions.length, 0);
+  });
+}

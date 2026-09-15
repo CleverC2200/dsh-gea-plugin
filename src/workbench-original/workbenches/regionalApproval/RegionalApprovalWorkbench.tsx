@@ -467,10 +467,8 @@ const RegionalApprovalWorkbench: React.FC<{
   const [liveStageFilter, setLiveStageFilter] = useState<ApprovalStageId>();
   const roleStages = useMemo(() => salesPlanStagesForPermissions(permissionCodes), [permissionCodes]);
   const roleKey = roleStages.join(',');
-  const explicitLiveStageSelection = useRef(false);
   useEffect(() => {
-    explicitLiveStageSelection.current = false;
-    setLiveStageFilter((roleKey.split(',')[0] || undefined) as ApprovalStageId | undefined);
+    setLiveStageFilter(undefined);
     setSelectedRowIds([]);
     setPage(1);
   }, [roleKey]);
@@ -540,23 +538,8 @@ const RegionalApprovalWorkbench: React.FC<{
     loadStageProgress: queryClient !== null,
     loadAnalysisSummary: queryClient !== null,
     stage: liveStageFilter,
+    roles: roleStages,
   });
-  useEffect(() => {
-    if (
-      !liveQuery.enabled ||
-      explicitLiveStageSelection.current ||
-      !liveStageFilter ||
-      liveQuery.queueState.status !== 'success' ||
-      liveQuery.queueSettledStageKey !== liveQuery.stageStatusesKey ||
-      liveQuery.queueState.data.total !== 0
-    )
-      return;
-    // A default role filter must not hide plans the server allows this user to browse.
-    setLiveStageFilter(undefined);
-    setDimension(APPROVAL_DIMENSIONS_BY_STAGE.category[0]);
-    setSelectedRowIds([]);
-    setPage(1);
-  }, [liveQuery.enabled, liveQuery.queueState, liveQuery.queueSettledStageKey, liveStageFilter]);
   const stageRows = useMemo(() => approvalRowsForStage(REGIONAL_APPROVAL_ROWS, currentStage), [currentStage]);
   const filterOptions = useMemo(() => approvalFilterOptions(stageRows, draftFilters), [draftFilters, stageRows]);
   const visibleRows = useMemo(() => projectApprovalRows(stageRows, appliedFilters), [appliedFilters, stageRows]);
@@ -1096,7 +1079,6 @@ const RegionalApprovalWorkbench: React.FC<{
 
   const changeStage = (stage: ApprovalStageId) => {
     if (liveQuery.enabled) {
-      explicitLiveStageSelection.current = true;
       const nextStage = liveStageFilter === stage ? undefined : stage;
       setLiveStageFilter(nextStage);
       setDimension(APPROVAL_DIMENSIONS_BY_STAGE[nextStage ?? 'category'][0]);
@@ -1125,7 +1107,6 @@ const RegionalApprovalWorkbench: React.FC<{
   };
 
   const updateLiveDraftFilter = (field: keyof LiveApprovalFilters, value: string) => {
-    explicitLiveStageSelection.current = true;
     if (field === 'status') setLiveStageFilter(undefined);
     setDraftLiveFilters((current) => {
       const next = { ...current, [field]: value };

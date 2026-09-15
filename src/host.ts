@@ -432,7 +432,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 value = await business.notifications(payload, request.signal);
                 break;
               case "status":
-                await business.refreshMissingAvatar(request.signal);
+                await Promise.all([business.refreshMissingAvatar(request.signal), business.refreshPermissions(request.signal)]);
                 value = business.status();
                 break;
               case "model/discover": {
