@@ -15,6 +15,6 @@ module.exports={
   afterSign:require('./verify-macos-signature.cjs'),
   dmg:{sign:false},
   win:{icon:join(__dirname,'build/icon.png'),target:['nsis'],signExecutable:false},
-  nsis:{oneClick:false,allowToChangeInstallationDirectory:true,deleteAppDataOnUninstall:false},
+  nsis:{oneClick:false,allowToChangeInstallationDirectory:true,deleteAppDataOnUninstall:false,useZip:true},
   publish:null
 };

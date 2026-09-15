@@ -18,13 +18,13 @@ async function launch(update=false){
  const child=spawn(executablePath,['--remote-debugging-port=0'],{env,stdio:['ignore','pipe','pipe']});
  let output='',browser;
  const exited=new Promise(resolve=>child.once('exit',resolve));
+ try{
  const endpoint=await new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>reject(Error('Browser debugging endpoint did not appear')),60000);
   child.once('error',error=>{clearTimeout(timer);reject(error);});
   child.once('exit',code=>{clearTimeout(timer);reject(Error('Desktop exited before ready: '+code));});
   for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>{output+=chunk;const match=output.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/[^\s]+)/);if(match){clearTimeout(timer);resolve(match[1]);}});
  });
- try{
   browser=await chromium.connectOverCDP(endpoint,{timeout:60000});
   const context=browser.contexts()[0];const page=context.pages()[0]??await context.waitForEvent('page');
   const windowMs=performance.now()-started;const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -39,7 +39,7 @@ async function launch(update=false){
    const overview=await page.evaluate(()=>fetch('/api/agent-plugins/overview').then(r=>r.json()));
    assert.equal(overview.suites.length,2);assert.equal(overview.sources[0].id,'company-agent-suites');
    assert.equal(overview.sources[0].kind,'archive');assert.equal(overview.sources[0].cloned,true);
-   const refresh=await page.evaluate(()=>fetch('/api/agent-plugins/sources/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"id":"company-agent-suites"}'}).then(r=>r.json()));assert.equal(refresh.ok,true);
+   const refresh=await page.evaluate(()=>fetch('/api/agent-plugins/sources/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"id":"company-agent-suites"}'}).then(r=>r.json()));assert.equal(refresh.ok,true,JSON.stringify(refresh));
    const checked=await action('check');assert.equal(checked.checkError,null);assert.equal(checked.releases.length,4);
    if(update){
     assert.equal(checked.current['@cleverc2200/gea-dsh-prototype'],'0.0.7');

@@ -59,3 +59,5 @@ GEA 登录由 Electron safeStorage 使用操作系统加密保存为 userData/lo
 打包先用 `prepare-payload.py <mac|win> <archives> <node-distribution> <new-payload>` 从每个包唯一版本的归档安装相应平台依赖，记录归档摘要。公司运行包只安装所需的 DSH、GEA、共享工作台、插件市场、Agent Manage 和 visualize 依赖，不安装未启用的第三方 UI 全家桶。随后在新目录运行 `compact-payload.py`，再运行 `node desktop/optimize-client-artifacts.mjs <compact-payload> <esbuild-module>`：压缩浏览器注册脚本和 GEA 业务页面，生成无源文本的预计算源码映射，减少每次启动合并模块的 CPU 开销；官方 Host 运行代码和插件版本保持不变。产物中的 `client-artifacts.json` 记录编译器版本及前后摘要。
 
 准备脚本通过 Agent Manage 的 `archiveInstall` 从公司源下载资源到 `payload/resources/company-agent-suites`，记录归档摘要；这一步只在构建机联网，客户端启动不下载。Mac 和 Windows 使用相同的纯文本资源快照，各自安装平台依赖。Mac 执行 MCP 和客户端启动验证，两份最终 payload 均检查平台原生模块，再调用 electron-builder。Windows 未通过真实安装和启动测量前，只能报告交叉构建与静态检查结果。
+
+Windows NSIS 使用 ZIP 直接解压到安装目录，避免 7z 模式先解压到临时目录再复制整棵依赖树。资源同步使用 Agent Manage 0.6.3-company.4，修复 Windows 解压路径分隔符检查。
