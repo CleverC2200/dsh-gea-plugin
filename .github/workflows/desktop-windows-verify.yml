@@ -65,7 +65,7 @@ jobs:
           npm install --ignore-scripts --no-audit --no-fund
           if ($LASTEXITCODE -ne 0) { throw 'Driver installation failed' }
           Pop-Location
-      - name: Install, start twice, synchronize, and switch plugins
+      - name: Install packages
         shell: pwsh
         env:
           COMPARE_BASELINE: ${{ inputs.compare_baseline || false }}
@@ -78,26 +78,41 @@ jobs:
           $driver = Join-Path $env:RUNNER_TEMP 'gea-driver/windows-package-smoke.mjs'
           $targets = @('current')
           if ($env:COMPARE_BASELINE -eq 'true') { $targets = @('baseline', 'current') }
+          $installations = @()
           foreach ($target in $targets) {
             $installer = if ($target -eq 'baseline') { Get-Item (Join-Path $downloads 'baseline.exe') } else { Get-ChildItem $downloads -Filter 'GEA-Desktop-*-win-x64.exe' | Select-Object -First 1 }
             $destination = Join-Path $env:RUNNER_TEMP "gea-$target"
             $timer = [Diagnostics.Stopwatch]::StartNew()
             Write-Host "Installing $target into $destination"
             $process = Start-Process $installer.FullName -ArgumentList '/S', "/D=$destination" -PassThru
-            if (-not $process.WaitForExit(600000)) {
+            if (-not $process.WaitForExit(300000)) {
               taskkill /PID $process.Id /T /F
-              '{"stage":"install","error":"installer exceeded 600 seconds"}' | Set-Content (Join-Path $report "$target.json")
+              '{"stage":"install","error":"installer exceeded 300 seconds"}' | Set-Content (Join-Path $report "$target.json")
               if ($target -eq 'baseline') { continue }
               throw 'Installer timeout'
             }
             if ($process.ExitCode -ne 0) { throw "Installer exited $($process.ExitCode)" }
             $env:GEA_INSTALL_MS = [string]$timer.ElapsedMilliseconds
             Write-Host "$target installer completed in $env:GEA_INSTALL_MS ms"
-            $env:GEA_SMOKE_EXECUTABLE = Join-Path $destination 'GEA Desktop.exe'
-            $env:GEA_SMOKE_KIND = $target
+            $installations += @{ kind = $target; executable = (Join-Path $destination 'GEA Desktop.exe'); installMs = $timer.ElapsedMilliseconds }
+          }
+          ConvertTo-Json -InputObject $installations | Set-Content (Join-Path $report 'installations.json')
+      - name: Start twice, synchronize, and switch plugins
+        shell: pwsh
+        env:
+          GEA_SMOKE_REPO: ${{ github.workspace }}
+        run: |
+          $downloads = Join-Path $env:RUNNER_TEMP 'gea-downloads'
+          $report = Join-Path $env:RUNNER_TEMP 'gea-verification'
+          $env:GEA_SMOKE_REPORT = $report
+          $driver = Join-Path $env:RUNNER_TEMP 'gea-driver/windows-package-smoke.mjs'
+          foreach ($installation in (Get-Content (Join-Path $report 'installations.json') | ConvertFrom-Json)) {
+            $env:GEA_INSTALL_MS = [string]$installation.installMs
+            $env:GEA_SMOKE_EXECUTABLE = $installation.executable
+            $env:GEA_SMOKE_KIND = $installation.kind
             $env:GEA_PREVIOUS_PLUGIN = (Get-ChildItem $downloads -Filter '*prototype-0.0.7.tgz' | Select-Object -First 1).FullName
             node $driver
-            if ($LASTEXITCODE -ne 0 -and $target -eq 'current') { throw "$target desktop verification failed" }
+            if ($LASTEXITCODE -ne 0 -and $installation.kind -eq 'current') { throw 'Current desktop verification failed' }
           }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
