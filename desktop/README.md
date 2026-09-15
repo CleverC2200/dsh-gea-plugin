@@ -67,3 +67,22 @@ Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体�
 `GEA_DESKTOP_PAYLOAD=<payload> GEA_PLUGIN_ARTIFACT=<GEA-0.0.7.tgz> node --test desktop/installer-portability.test.mjs` 在复制的依赖图中模拟另一台机器的存储路径和目录长度，执行真实 pnpm 安装并检查当前选择与业务配置不变。
 
 准备插件后，桌面逐项核对浏览器源文件摘要；仅当内容与随包编译记录一致时复用压缩文件及源码映射，保持重复启动性能。更新后内容不同的插件使用新文件，不被旧优化产物覆盖。
+## GitLab 更新引导版 0.0.6
+
+`release-sources.json` 改为公司 GitLab 12 的公开发行库 raw JSON，正式/测试频道分别读取
+`http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/stable.json`
+和 `test.json`。下载不需要 GitLab 登录或 `GEA_RELEASE_TOKEN`，但网络必须能到达该地址。
+源码库保持私有。当前服务仅提供 HTTP；需要部署 HTTPS 才能提供传输身份认证。
+
+引导版 baseline 必须包含 `dsh-plugin@1.4.3-company.7`。更新协议从 baseline 加载，
+因此升级桌面后，即使用户仍选择旧插件组合，也能读取 GitLab 并更新。旧的 0.0.5
+安装包仍内置 GitHub 地址，不能通过修改服务器清单自动更换桌面内的渠道地址。
+本次构建 macOS Apple Silicon 0.0.6；Windows 引导版尚未发布和真机验收。
+
+可复验脚本：
+
+- `GEA_GITLAB_BASELINE=<旧payload> GEA_GITLAB_RELEASE_MODULE=<新Hub的lib/services/release-channel.js> node desktop/gitlab-update-smoke.mjs`：免登录读取两个真实 GitLab 频道和全部包，校验摘要，通过官方 DSH/pnpm 更新隔离插件组合，并确认再次检查无更新。
+- `GEA_GITLAB_BASELINE=<旧payload> node desktop/gitlab-runtime-smoke.mjs <上一脚本result.json>`：用实际新组合启动 DSH，验证软件更新页面与插件加载状态。
+- `GEA_GITLAB_BASELINE=<旧payload> GEA_GITLAB_ELECTRON=<打包后的应用可执行文件> node desktop/gitlab-electron-smoke.mjs`：真实桌面 UI 下载、重启与版本切换；仅 GEA 登录使用本地模拟服务，发行下载与安装均为真实操作。
+
+以上脚本使用自己的临时数据目录并关闭自己启动的进程，不操作用户的日常应用数据。
