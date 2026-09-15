@@ -50,11 +50,11 @@ GEA 登录由 Electron safeStorage 使用操作系统加密保存为 userData/lo
 
 `setup.html`、`setup.js` 和 `preload.cjs` 保留旧连接表单原型，当前桌面入口不加载这些文件。发行版沿用上述公司默认配置与扫码登录流程。
 
-## 业务发行 0.0.5
+## 业务发行 0.0.7
 
 首次启动预置公司资源目录中的两个套件及 HTTPS 归档源，资源列表离线可见；业务用户无需输入仓库地址、安装 Git 或提供 GitHub 凭据。套件由用户在资源管理中选择安装和启用，GEA 扫码登录及原有业务预设开箱可用。首次复制后不会用随包旧目录覆盖用户已同步的资源。升级时仅将旧版公司默认 Git 主分支来源迁移为归档来源，保留已安装套件、启用状态与自定义来源；手动接管的目录和自选分支保持原样。
 
-桌面使用独立的 `company-channel-desktop` 发行频道；`stable.json` 和 `test.json` 明确包含当前桌面版本及插件兼容版本。旧桌面频道保持原样。检查更新不阻塞打开窗口或登录页；准备更新不影响当前运行版本，只有明确重启才切换。
+桌面使用下述 GitLab 发行频道；`stable.json` 和 `test.json` 明确包含当前桌面版本及插件兼容版本。检查更新不阻塞打开窗口或登录页；准备更新不影响当前运行版本，只有明确重启才切换。
 
 打包先用 `prepare-payload.py <mac|win> <archives> <node-distribution> <new-payload>` 从每个包唯一版本的归档安装相应平台依赖，记录归档摘要。公司运行包只安装所需的 DSH、GEA、共享工作台、插件市场、Agent Manage 和 visualize 依赖，不安装未启用的第三方 UI 全家桶。随后在新目录运行 `compact-payload.py`，再运行 `node desktop/optimize-client-artifacts.mjs <compact-payload> <esbuild-module>`：压缩浏览器注册脚本和 GEA 业务页面，生成无源文本的预计算源码映射，减少每次启动合并模块的 CPU 开销；官方 Host 运行代码和插件版本保持不变。产物中的 `client-artifacts.json` 记录编译器版本及前后摘要。
 
@@ -67,7 +67,7 @@ Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体�
 `GEA_DESKTOP_PAYLOAD=<payload> GEA_PLUGIN_ARTIFACT=<GEA-0.0.7.tgz> node --test desktop/installer-portability.test.mjs` 在复制的依赖图中模拟另一台机器的存储路径和目录长度，执行真实 pnpm 安装并检查当前选择与业务配置不变。
 
 准备插件后，桌面逐项核对浏览器源文件摘要；仅当内容与随包编译记录一致时复用压缩文件及源码映射，保持重复启动性能。更新后内容不同的插件使用新文件，不被旧优化产物覆盖。
-## GitLab 更新引导版 0.0.6
+## GitLab 更新渠道
 
 `release-sources.json` 改为公司 GitLab 12 的公开发行库 raw JSON，正式/测试频道分别读取
 `http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/stable.json`
@@ -77,7 +77,7 @@ Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体�
 引导版 baseline 必须包含 `dsh-plugin@1.4.3-company.7`。更新协议从 baseline 加载，
 因此升级桌面后，即使用户仍选择旧插件组合，也能读取 GitLab 并更新。旧的 0.0.5
 安装包仍内置 GitHub 地址，不能通过修改服务器清单自动更换桌面内的渠道地址。
-本次构建 macOS Apple Silicon 0.0.6；Windows 引导版尚未发布和真机验收。
+0.0.7 构建 macOS Apple Silicon 和 Windows x64 安装包，包含相同的 GitLab 更新配置。
 
 可复验脚本：
 

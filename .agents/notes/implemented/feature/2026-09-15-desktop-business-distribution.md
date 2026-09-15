@@ -1,8 +1,8 @@
 # GEA Desktop business distribution
 
-GEA Desktop 0.0.5 provisions company deployment settings, an offline company suite catalog, and an archive refresh URL without asking business users for GitHub repository details or credentials. Existing resource checkouts and account/session data survive application restarts and plugin updates. Suites remain selectable in Agent Manage; startup does not automatically enable new capabilities.
+GEA Desktop 0.0.7 provisions company deployment settings, an offline company suite catalog, and an archive refresh URL without asking business users for GitHub repository details or credentials. Existing resource checkouts and account/session data survive application restarts and plugin updates. Suites remain selectable in Agent Manage; startup does not automatically enable new capabilities.
 
-The desktop release channel is separate from the earlier channel whose compatibility list excludes Desktop 0.0.4. Its stable and test assets explicitly declare Desktop 0.0.5 and the bundled company plugin versions. Immutable package digests remain the authority for downloads.
+The desktop bundles the company GitLab stable and test channel URLs and Hub 1.4.3-company.7. Downloads require no GitLab login; the network must reach the configured company GitLab host. Channels explicitly include Desktop 0.0.7 compatibility, and immutable package digests remain the authority for downloads.
 
 A CPU profile of the released DSH runtime showed browser combo composition and identity source-map generation dominating repeated startup. The distribution build minifies browser registrations and ships compact precomputed maps; it does not modify DSH Host code. The payload retains archive/lock inputs for the official staging installer and removes the unused third-party UI bundle root. Each transformed client artifact has a before/after digest receipt. Source-map preparation belongs to packaging, so it also works on Windows without a first-launch compiler.
 
