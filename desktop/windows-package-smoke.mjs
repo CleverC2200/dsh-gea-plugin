@@ -2,12 +2,25 @@
 import {chromium,expect} from '@playwright/test';
 import {spawn} from 'node:child_process';
 import assert from 'node:assert/strict';
-import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,readdir} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 const executablePath=process.env.GEA_SMOKE_EXECUTABLE,kind=process.env.GEA_SMOKE_KIND,report=process.env.GEA_SMOKE_REPORT,repo=process.env.GEA_SMOKE_REPO;
 assert.equal(process.platform,'win32');assert.ok(executablePath&&kind&&report&&repo);
 const data=join(report,kind+'-user');await mkdir(data,{recursive:true});
+const sources=JSON.parse(await readFile(join(repo,'desktop/release-sources.json'),'utf8'));
+let gitlabReachable=false;
+try {const response=await fetch(sources.stable,{signal:AbortSignal.timeout(8000)});gitlabReachable=response.ok&&(await response.json()).schema===1;}
+catch(error){await writeFile(join(report,'gitlab-network-error.txt'),error.name+': '+error.message);}
+await writeFile(join(report,'gitlab-network.json'),JSON.stringify({url:sources.stable,reachable:gitlabReachable}));
+if(!gitlabReachable){await mkdir(join(data,'plugins'),{recursive:true});await writeFile(join(data,'plugins/update-state.json'),JSON.stringify({settings:{automatic:false,intervalHours:24,channel:'stable'}}));}
+/** Connect to this test-owned Electron main process to drive its existing native menu. */
+async function inspector(endpoint){
+ const socket=new WebSocket(endpoint);await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});
+ let sequence=0;const pending=new Map();
+ socket.addEventListener('message',event=>{const result=JSON.parse(event.data);if(!result.id)return;const task=pending.get(result.id);if(!task)return;pending.delete(result.id);clearTimeout(task.timer);result.error||result.result?.exceptionDetails?task.reject(Error(JSON.stringify(result.error??result.result.exceptionDetails))):task.resolve(result.result);});
+ return {evaluate:expression=>new Promise((resolve,reject)=>{const id=++sequence;const timer=setTimeout(()=>{pending.delete(id);reject(Error('Main inspector evaluation timeout'));},30000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression,awaitPromise:true,returnByValue:true}}));}),close:()=>socket.close()};
+}
 // Older installers required the same connection form before reaching their login page.
 if(kind==='baseline')await writeFile(join(data,'gea.config.json'),await readFile(join(repo,'desktop/company.config.json')));
 const records=[];
@@ -15,8 +28,8 @@ async function launch(update=false){
  console.log(JSON.stringify({kind,stage:'launch',run:records.length+1,update}));
  const env={...process.env,DSH_GEA_DESKTOP_DATA:data};delete env.GEA_RELEASE_TOKEN;
  const started=performance.now();
- const child=spawn(executablePath,['--remote-debugging-port=0'],{env,stdio:['ignore','pipe','pipe']});
- let output='',browser;
+ const child=spawn(executablePath,['--remote-debugging-port=0','--inspect=0'],{env,stdio:['ignore','pipe','pipe']});
+ let output='',browser,main;
  const exited=new Promise(resolve=>child.once('exit',resolve));
  try{
  const endpoint=await new Promise((resolve,reject)=>{
@@ -40,23 +53,35 @@ async function launch(update=false){
    assert.equal(overview.suites.length,2);assert.equal(overview.sources[0].id,'company-agent-suites');
    assert.equal(overview.sources[0].kind,'archive');assert.equal(overview.sources[0].cloned,true);
    const refresh=await page.evaluate(()=>fetch('/api/agent-plugins/sources/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"id":"company-agent-suites"}'}).then(r=>r.json()));assert.equal(refresh.ok,true,JSON.stringify(refresh));
-   const checked=await action('check');assert.equal(checked.checkError,null);assert.equal(checked.releases.length,4);
+   const checked=gitlabReachable?await action('check'):await status();
+   if(gitlabReachable){assert.equal(checked.checkError,null);assert.equal(checked.releases.length,4);assert.ok(checked.releases.every(release=>release.url.startsWith('http://100.100.6.191:20656/')));}
    if(update){
     assert.equal(checked.current['@cleverc2200/gea-dsh-prototype'],'0.0.7');
     const config=await readFile(join(data,'gea.config.json'));await writeFile(join(data,'data/workspace/keep.txt'),'business data');
-    assert.deepEqual(await action('prepare',{package:'@cleverc2200/gea-dsh-prototype'}),{accepted:true});
-    await expect.poll(status,{timeout:300000,intervals:[1000,2000]}).toMatchObject({phase:'pending'});
-    assert.equal((await action('restart')).ok,true);
-    await expect.poll(status,{timeout:120000,intervals:[500,1000]}).toMatchObject({phase:'succeeded',current:{'@cleverc2200/gea-dsh-prototype':'0.0.8'}});
+    if(gitlabReachable){
+     assert.deepEqual(await action('prepare',{package:'@cleverc2200/gea-dsh-prototype'}),{accepted:true});
+     await expect.poll(status,{timeout:300000,intervals:[1000,2000]}).toMatchObject({phase:'pending'});
+     assert.equal((await action('restart')).ok,true);
+     await expect.poll(status,{timeout:120000,intervals:[500,1000]}).toMatchObject({phase:'succeeded',current:{'@cleverc2200/gea-dsh-prototype':'0.0.8'}});
+    }else{
+     const endpoint=output.match(/Debugger listening on (ws:\/\/127\.0\.0\.1:\d+\/[^\s]+)/)?.[1];assert.ok(endpoint);
+     main=await inspector(endpoint);const existing=new Set(await readdir(join(data,'plugins/versions')));
+     await main.evaluate(`{const e=process.mainModule.require('electron');e.dialog.showOpenDialog=async()=>({canceled:false,filePaths:[${JSON.stringify(process.env.GEA_CURRENT_PLUGIN)}]});e.dialog.showMessageBox=async()=>({response:0});e.Menu.getApplicationMenu().items.find(item=>item.label==='插件版本').submenu.items[0].click();}`);
+     let prepared;
+     await expect.poll(async()=>{for(const id of await readdir(join(data,'plugins/versions'))){if(existing.has(id))continue;const receipt=JSON.parse(await readFile(join(data,'plugins/versions',id,'version.json'),'utf8'));if(receipt.state==='prepared'){prepared=id;return receipt.versions['@cleverc2200/gea-dsh-prototype'];}}return null;},{timeout:300000,intervals:[1000,2000]}).toBe('0.0.8');
+     await main.evaluate(`{const e=process.mainModule.require('electron');e.dialog.showMessageBox=async(_window,options)=>({response:options.buttons?.indexOf(${JSON.stringify(prepared)})??0});e.Menu.getApplicationMenu().items.find(item=>item.label==='插件版本').submenu.items[1].click();}`);
+     await expect.poll(status,{timeout:120000,intervals:[500,1000]}).toMatchObject({current:{'@cleverc2200/gea-dsh-prototype':'0.0.8'}});
+    }
     assert.deepEqual(await readFile(join(data,'gea.config.json')),config);assert.equal(await readFile(join(data,'data/workspace/keep.txt'),'utf8'),'business data');
    }
    assert.deepEqual(errors,[]);
   }
-  records.push({run:records.length+1,update,windowMs:Math.round(windowMs),readyMs:Math.round(readyMs),totalMs:Math.round(performance.now()-started),errors});
+  records.push({run:records.length+1,update,updateTransport:gitlabReachable?'live-gitlab':'local-verified-archive',windowMs:Math.round(windowMs),readyMs:Math.round(readyMs),totalMs:Math.round(performance.now()-started),errors});
  }finally{
   console.log(JSON.stringify({kind,stage:'closing'}));
   let timer;
   try {
+   main?.close();
    if(browser){const session=await browser.newBrowserCDPSession();await session.send('Browser.close').catch(()=>{});}else child.kill();
    await Promise.race([exited,new Promise((_,reject)=>{timer=setTimeout(()=>{child.kill();reject(Error('Desktop close exceeded 30 seconds'));},30000);})]);
   }

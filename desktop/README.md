@@ -86,3 +86,5 @@ Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体�
 - `GEA_GITLAB_BASELINE=<旧payload> GEA_GITLAB_ELECTRON=<打包后的应用可执行文件> node desktop/gitlab-electron-smoke.mjs`：真实桌面 UI 下载、重启与版本切换；仅 GEA 登录使用本地模拟服务，发行下载与安装均为真实操作。
 
 以上脚本使用自己的临时数据目录并关闭自己启动的进程，不操作用户的日常应用数据。
+
+Windows 包验收先记录 GitLab 网络可达性。能访问公司网络时执行在线检查、下载和重启；公共 CI 无法访问内网时，通过应用原有的本地插件菜单安装与 GitLab 摘要一致的归档并切换版本，报告单独标记 `local-verified-archive`，不能据此声称 Windows 已完成内网下载验证。Mac 验收直接读取真实 GitLab 频道。

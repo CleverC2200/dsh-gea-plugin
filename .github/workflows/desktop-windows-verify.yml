@@ -47,6 +47,10 @@ jobs:
           }
           gh release download gea-v0.0.7 --repo $env:REPOSITORY --pattern '*.tgz' --dir $downloads
           if ($LASTEXITCODE -ne 0) { throw 'Previous plugin download failed' }
+          gh release download gea-v0.0.8 --repo $env:REPOSITORY --pattern '*.tgz' --dir $downloads
+          if ($LASTEXITCODE -ne 0) { throw 'Current plugin download failed' }
+          $plugin = Get-ChildItem $downloads -Filter '*prototype-0.0.8.tgz' | Select-Object -First 1
+          if ((Get-FileHash $plugin.FullName -Algorithm SHA256).Hash.ToLower() -ne '677186da892dc247a1dcf09f9e8f8b3c38bc26237e5907efc406bc2666bfb159') { throw 'Plugin differs from the verified GitLab archive' }
           foreach ($line in Get-Content (Join-Path $downloads 'SHA256SUMS.txt')) {
             $digest, $name = $line -split '\s+', 2
             $path = Join-Path $downloads $name
@@ -111,6 +115,7 @@ jobs:
             $env:GEA_SMOKE_EXECUTABLE = $installation.executable
             $env:GEA_SMOKE_KIND = $installation.kind
             $env:GEA_PREVIOUS_PLUGIN = (Get-ChildItem $downloads -Filter '*prototype-0.0.7.tgz' | Select-Object -First 1).FullName
+            $env:GEA_CURRENT_PLUGIN = (Get-ChildItem $downloads -Filter '*prototype-0.0.8.tgz' | Select-Object -First 1).FullName
             node $driver
             if ($LASTEXITCODE -ne 0 -and $installation.kind -eq 'current') { throw 'Current desktop verification failed' }
           }
