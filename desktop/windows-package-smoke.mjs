@@ -11,13 +11,16 @@ const data=join(report,kind+'-user');await mkdir(data,{recursive:true});
 if(kind==='baseline')await writeFile(join(data,'gea.config.json'),await readFile(join(repo,'desktop/company.config.json')));
 const records=[];
 async function launch(update=false){
+ console.log(JSON.stringify({kind,stage:'launch',run:records.length+1,update}));
  const env={...process.env,DSH_GEA_DESKTOP_DATA:data};delete env.GEA_RELEASE_TOKEN;
  const started=performance.now();const app=await electron.launch({executablePath,env,args:[],timeout:60000});
  try{
   const page=await app.firstWindow();const windowMs=performance.now()-started;const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  console.log(JSON.stringify({kind,stage:'window',windowMs:Math.round(windowMs)}));
   await expect.poll(()=>page.url(),{timeout:120000}).toMatch(/^http:\/\/127\.0\.0\.1:/);
   await expect.poll(()=>page.evaluate(()=>fetch('/api/gea-proof/status',{method:'POST',headers:{'Content-Type':'application/json','X-GEA-Desktop-Health':'1'},body:'{}'}).then(r=>r.json())).catch(()=>null),{timeout:30000}).toMatchObject({ok:true});
   const readyMs=performance.now()-started;
+  console.log(JSON.stringify({kind,stage:'ready',readyMs:Math.round(readyMs)}));
   const action=(action,value={})=>page.evaluate(({action,value})=>fetch('/dsh-plugin-hub/desktop-updates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,value})}).then(r=>r.json()),{action,value});
   const status=()=>page.evaluate(()=>fetch('/dsh-plugin-hub/desktop-updates').then(r=>r.json())).catch(()=>null);
   if(kind==='current'){
@@ -38,7 +41,12 @@ async function launch(update=false){
    assert.deepEqual(errors,[]);
   }
   records.push({run:records.length+1,update,windowMs:Math.round(windowMs),readyMs:Math.round(readyMs),totalMs:Math.round(performance.now()-started),errors});
- }finally{await app.close();}
+ }finally{
+  console.log(JSON.stringify({kind,stage:'closing'}));
+  let timer;
+  try {await Promise.race([app.close(),new Promise((_,reject)=>{timer=setTimeout(()=>{app.process().kill();reject(Error('Desktop close exceeded 30 seconds'));},30000);})]);}
+  finally {clearTimeout(timer);}
+ }
  await writeFile(join(report,kind+'.json'),JSON.stringify({kind,installMs:Number(process.env.GEA_INSTALL_MS),records},null,2));
 }
 try{
@@ -51,4 +59,7 @@ try{
   await store.activate('previous-0.0.7');await launch(true);
  }
  console.log(JSON.stringify({kind,records}));
-}catch(error){await writeFile(join(report,kind+'-error.txt'),String(error.stack).replace(/https?:\/\/\S+/g,'[URL]'));throw error;}
+}catch(error){
+ let log='';try{log=(await readFile(join(data,'desktop.log'),'utf8')).slice(-6000);}catch(readError){if(readError.code!=='ENOENT')throw readError;}
+ await writeFile(join(report,kind+'-error.txt'),(String(error.stack)+'\n'+log).replace(/https?:\/\/\S+/g,'[URL]'));throw error;
+}

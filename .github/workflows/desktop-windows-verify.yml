@@ -77,9 +77,17 @@ jobs:
             $installer = if ($target -eq 'baseline') { Get-Item (Join-Path $downloads 'baseline.exe') } else { Get-ChildItem $downloads -Filter 'GEA-Desktop-*-win-x64.exe' | Select-Object -First 1 }
             $destination = Join-Path $env:RUNNER_TEMP "gea-$target"
             $timer = [Diagnostics.Stopwatch]::StartNew()
-            $process = Start-Process $installer.FullName -ArgumentList '/S', "/D=$destination" -Wait -PassThru
+            Write-Host "Installing $target into $destination"
+            $process = Start-Process $installer.FullName -ArgumentList '/S', "/D=$destination" -PassThru
+            if (-not $process.WaitForExit(180000)) {
+              taskkill /PID $process.Id /T /F
+              '{"stage":"install","error":"installer exceeded 180 seconds"}' | Set-Content (Join-Path $report "$target.json")
+              if ($target -eq 'baseline') { continue }
+              throw 'Installer timeout'
+            }
             if ($process.ExitCode -ne 0) { throw "Installer exited $($process.ExitCode)" }
             $env:GEA_INSTALL_MS = [string]$timer.ElapsedMilliseconds
+            Write-Host "$target installer completed in $env:GEA_INSTALL_MS ms"
             $env:GEA_SMOKE_EXECUTABLE = Join-Path $destination 'GEA Desktop.exe'
             $env:GEA_SMOKE_KIND = $target
             $env:GEA_PREVIOUS_PLUGIN = (Get-ChildItem $downloads -Filter '*prototype-0.0.7.tgz' | Select-Object -First 1).FullName
