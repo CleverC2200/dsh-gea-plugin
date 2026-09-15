@@ -1,4 +1,4 @@
 {
-  "stable": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/stable.json",
-  "test": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/test.json"
+  "stable": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/dsh-0.1.6-stable.json",
+  "test": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/dsh-0.1.6-test.json"
 }

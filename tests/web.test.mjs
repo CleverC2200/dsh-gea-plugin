@@ -180,6 +180,38 @@ test(
         .locator("iframe[data-gea-workbench]")
         .boundingBox();
       assert.ok(bounds.x > 200 && bounds.width < 1100, JSON.stringify(bounds));
+      // The embedded workbench must resize its columns independently of the outer window.
+      const workbenchFrame = page.locator("iframe[data-gea-workbench]");
+      const originalStyle = await workbenchFrame.getAttribute("style");
+      for (const width of [860, 1200, 580]) {
+        await workbenchFrame.evaluate((element, width) => {
+          element.style.setProperty("position", "fixed", "important");
+          element.style.setProperty("inset", "0 auto auto 0", "important");
+          element.style.setProperty("z-index", "9999", "important");
+          element.style.setProperty("width", `${width}px`, "important");
+          element.style.setProperty("min-width", `${width}px`, "important");
+          element.style.setProperty("max-width", `${width}px`, "important");
+        }, width);
+        const table = frame.locator(".arco-table-content-inner").first();
+        await expect.poll(() => table.evaluate((element) => ({
+          viewport: element.clientWidth,
+          table: Math.round(element.querySelector("table").getBoundingClientRect().width),
+        }))).toEqual({ viewport: width - 2, table: Math.max(800, width - 2) });
+        const headers = await table.locator("thead th").evaluateAll((cells) =>
+          cells.map((cell) => ({
+            left: cell.getBoundingClientRect().left,
+            right: cell.getBoundingClientRect().right,
+          }))
+        );
+        for (let index = 1; index < headers.length; index++) {
+          assert.ok(headers[index].left >= headers[index - 1].right - 1, JSON.stringify(headers));
+        }
+        await workbenchFrame.screenshot({ path: `.runtime/web-evidence/approval-columns-${width}.png` });
+      }
+      await workbenchFrame.evaluate((element, style) => {
+        if (style === null) element.removeAttribute("style");
+        else element.setAttribute("style", style);
+      }, originalStyle);
       await frame.getByRole("tab", { name: "按基地", exact: true }).click();
       await frame.locator("tbody label.arco-checkbox").first().click();
       const approve = frame.getByRole("button", { name: "通过", exact: true });

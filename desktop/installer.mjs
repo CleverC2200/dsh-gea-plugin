@@ -15,18 +15,20 @@ export async function installArtifact({directory,artifact,node,pnpm,optimizedBas
   manifest.dsh={profile:{bundles:['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app',...['@cleverc2200/gea-dsh-prototype','dsh-plugin','dsh-agent-manage','dsh-agent-plugins-market'].filter(name=>manifest.dependencies?.[name])],patchReload:'startup'}};
   delete manifest.pnpm;
   const overrides={...manifest.overrides};
+  const {parse}=createRequire(manifestPath)('yaml');
+  const workspace=parse(await readFile(join(directory,'pnpm-workspace.yaml'),'utf8'));
   const official={};
   for(const entry of await readdir(join(directory,'node_modules/@deepseek-ai'))) {
     const name='@deepseek-ai/'+entry;
     const pkg=JSON.parse(await readFile(join(directory,'node_modules',name,'package.json'),'utf8'));
-    official[name]=pkg.version;overrides[name]=pkg.version;
+    official[name]=pkg.version;
+    const pinned=workspace.overrides?.[name];
+    overrides[name]=typeof pinned==='string'&&pinned.startsWith('file:packages/')?pinned:pkg.version;
   }
   for(const name of Object.keys(manifest.dependencies??{})) {
     if(name.startsWith('@cleverc2200/')||['dsh-plugin','dsh-agent-manage','dsh-agent-plugins-market'].includes(name)) overrides[name]='$'+name;
   }
   await writeFile(manifestPath,JSON.stringify(manifest,null,2));
-  const {parse}=createRequire(manifestPath)('yaml');
-  const workspace=parse(await readFile(join(directory,'pnpm-workspace.yaml'),'utf8'));
   await writeFile(join(directory,'pnpm-workspace.yaml'),JSON.stringify({nodeLinker:'hoisted',minimumReleaseAge:0,overrides,...(workspace.patchedDependencies?{patchedDependencies:workspace.patchedDependencies}:{})}));
   const artifacts=Array.isArray(artifact)?artifact:[artifact];
   if(!artifacts.length)throw Error('NO_PLUGIN_ARTIFACTS');

@@ -417,6 +417,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
             onContextChange={onContextChange}
             queryClient={salesPlan}
             detailClient={salesPlan}
+            permissionCodes={status.permissionCodes}
             liveActionsEnabled={true}
             liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
             onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })}

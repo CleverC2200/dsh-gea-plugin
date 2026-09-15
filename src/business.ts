@@ -278,7 +278,7 @@ export class Business {
     }
   }
 
-  private auth?: { token: string; tenantId: string; name: string; id: string; username: string; avatar?: string };
+  private auth?: { token: string; tenantId: string; name: string; id: string; username: string; avatar?: string; permissionCodes?: string[] };
   private qr?: { id: string; loginId: string; createdAt: number };
   private epoch = new AbortController();
   private queryEpoch = new AbortController();
@@ -405,6 +405,31 @@ export class Business {
     return refresh;
   }
 
+  private readonly permissionRefreshes = new WeakMap<object, Promise<void>>();
+
+  /** Read only this user's grants. allAuth is the permission catalogue, not a grant. */
+  async refreshPermissions(signal: AbortSignal): Promise<void> {
+    const auth = this.auth;
+    if (!auth || auth.permissionCodes !== undefined) return;
+    const pending = this.permissionRefreshes.get(auth);
+    if (pending) return pending;
+    const refresh = (async () => {
+      try {
+        const result = object(await this.get('/sys/permission/getPermCode', auth,
+          AbortSignal.any([signal, this.epoch.signal])));
+        if (!Array.isArray(result.codeList) || result.codeList.some(code => typeof code !== 'string'))
+          throw new Error('GEA_INVALID_PERMISSION_CODES');
+        if (this.auth === auth) auth.permissionCodes = [...new Set(result.codeList as string[])];
+      } catch (error) {
+        this.permissionRefreshes.delete(auth);
+        if (signal.aborted || !this.auth) throw error;
+        // Older servers retain server-scoped browsing and exact task/context authorization.
+      }
+    })();
+    this.permissionRefreshes.set(auth, refresh);
+    return refresh;
+  }
+
   /** Public status never contains GEA credentials. */
   status() {
     const models = this.modelRoutes.get(this.config.analysisAgentCode)?.models;
@@ -418,6 +443,7 @@ export class Business {
         : this.loginExpired
           ? "expired"
           : "signed-out",
+      permissionCodes: this.auth?.permissionCodes,
       user: this.auth
         ? { name: this.auth.name, tenantId: this.auth.tenantId, id: this.auth.id, username: this.auth.username, avatar: this.auth.avatar }
         : null,
@@ -927,6 +953,8 @@ export class Business {
     if (epoch.aborted || this.qr !== qr) throw new Error("STALE_LOGIN");
     this.auth = { token, tenantId, name, id: text(user.id), username: text(user.username || user.realname), avatar: avatarUrl(user.avatar, this.base) };
     this.qr = undefined;
+    await this.refreshPermissions(combined);
+    combined.throwIfAborted();
     this.notifyIdentity();
     return { status: "authenticated", ...this.status() };
   }
@@ -1454,7 +1482,8 @@ export class Business {
         throw new Error("GEA_IDENTITY_MISMATCH");
       let workflowApproval;
       try {
-        if (!detail.actionContext && Number(currentVersion.status) >= 1 && Number(currentVersion.status) <= 4)
+        if (!detail.actionContext && currentVersion.effective === true &&
+            [1, 2, 3, 4, 7, 8, 9].includes(Number(currentVersion.status)))
           workflowApproval = await this.workflowApproval(versionId, signal);
       } catch (error) {
         if (signal.aborted || !this.auth) throw error;
