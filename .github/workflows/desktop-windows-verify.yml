@@ -1,0 +1,93 @@
+name: Verify Windows desktop package
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release containing the Windows installer
+        required: true
+      compare_baseline:
+        description: Also measure the previous installer supplied as baseline.exe
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  windows:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'verify-windows-package'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.14.1'
+      - name: Download immutable installer inputs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          $downloads = Join-Path $env:RUNNER_TEMP 'gea-downloads'
+          New-Item -ItemType Directory $downloads | Out-Null
+          if (-not $env:RELEASE_TAG) { $env:RELEASE_TAG = 'desktop-v' + (Get-Content desktop/package.json | ConvertFrom-Json).version }
+          gh release download $env:RELEASE_TAG --repo $env:REPOSITORY --pattern '*.exe' --pattern 'SHA256SUMS.txt' --dir $downloads
+          if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
+          gh release download gea-v0.0.7 --repo $env:REPOSITORY --pattern '*.tgz' --dir $downloads
+          if ($LASTEXITCODE -ne 0) { throw 'Previous plugin download failed' }
+          foreach ($line in Get-Content (Join-Path $downloads 'SHA256SUMS.txt')) {
+            $digest, $name = $line -split '\s+', 2
+            $path = Join-Path $downloads $name
+            if (Test-Path $path) {
+              if ((Get-FileHash $path -Algorithm SHA256).Hash.ToLower() -ne $digest) { throw "Digest mismatch: $name" }
+            }
+          }
+      - name: Prepare isolated browser driver
+        shell: pwsh
+        run: |
+          $driver = Join-Path $env:RUNNER_TEMP 'gea-driver'
+          New-Item -ItemType Directory $driver | Out-Null
+          '{"private":true,"type":"module","dependencies":{"@playwright/test":"1.58.2"}}' | Set-Content (Join-Path $driver 'package.json')
+          Copy-Item desktop/windows-package-smoke.mjs $driver
+          Push-Location $driver
+          npm install --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'Driver installation failed' }
+          Pop-Location
+      - name: Install, start twice, synchronize, and switch plugins
+        shell: pwsh
+        env:
+          COMPARE_BASELINE: ${{ inputs.compare_baseline || github.event_name == 'pull_request' }}
+          GEA_SMOKE_REPO: ${{ github.workspace }}
+        run: |
+          $downloads = Join-Path $env:RUNNER_TEMP 'gea-downloads'
+          $report = Join-Path $env:RUNNER_TEMP 'gea-verification'
+          New-Item -ItemType Directory $report | Out-Null
+          $env:GEA_SMOKE_REPORT = $report
+          $driver = Join-Path $env:RUNNER_TEMP 'gea-driver/windows-package-smoke.mjs'
+          $targets = @('current')
+          if ($env:COMPARE_BASELINE -eq 'true') { $targets = @('baseline', 'current') }
+          foreach ($target in $targets) {
+            $installer = if ($target -eq 'baseline') { Get-Item (Join-Path $downloads 'baseline.exe') } else { Get-ChildItem $downloads -Filter 'GEA-Desktop-*-win-x64.exe' | Select-Object -First 1 }
+            $destination = Join-Path $env:RUNNER_TEMP "gea-$target"
+            $timer = [Diagnostics.Stopwatch]::StartNew()
+            $process = Start-Process $installer.FullName -ArgumentList '/S', "/D=$destination" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "Installer exited $($process.ExitCode)" }
+            $env:GEA_INSTALL_MS = [string]$timer.ElapsedMilliseconds
+            $env:GEA_SMOKE_EXECUTABLE = Join-Path $destination 'GEA Desktop.exe'
+            $env:GEA_SMOKE_KIND = $target
+            $env:GEA_PREVIOUS_PLUGIN = (Get-ChildItem $downloads -Filter '*prototype-0.0.7.tgz' | Select-Object -First 1).FullName
+            node $driver
+            if ($LASTEXITCODE -ne 0 -and $target -eq 'current') { throw "$target desktop verification failed" }
+          }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: windows-desktop-verification
+          path: |
+            ${{ runner.temp }}/gea-verification/*.json
+            ${{ runner.temp }}/gea-verification/*-error.txt
+          retention-days: 7

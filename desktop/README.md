@@ -49,3 +49,13 @@ GEA 登录由 Electron safeStorage 使用操作系统加密保存为 userData/lo
 正式对外分发需配置 `GEA_MAC_SIGNING_IDENTITY` 为 Developer ID Application 身份、`GEA_MAC_NOTARIZE=1` 及构建工具支持的安全公证凭据。该模式启用 hardened runtime、公证并要求 Gatekeeper 评估通过。不得将私钥、密码或公证凭据写入仓库或安装包。最终验收应包含通过下载方式获取安装包的新机器首次打开；本机直接执行应用不替代该验收。
 
 `setup.html`、`setup.js` 和 `preload.cjs` 保留旧连接表单原型，当前桌面入口不加载这些文件。发行版沿用上述公司默认配置与扫码登录流程。
+
+## 业务发行 0.0.5
+
+首次启动预置公司资源目录中的两个套件及 HTTPS 归档源，资源列表离线可见；业务用户无需输入仓库地址、安装 Git 或提供 GitHub 凭据。套件由用户在资源管理中选择安装和启用，GEA 扫码登录及原有业务预设开箱可用。首次复制后不会用随包旧目录覆盖用户已同步的资源。
+
+桌面使用独立的 `company-channel-desktop` 发行频道；`stable.json` 和 `test.json` 明确包含当前桌面版本及插件兼容版本。旧桌面频道保持原样。检查更新不阻塞打开窗口或登录页；准备更新不影响当前运行版本，只有明确重启才切换。
+
+打包先用 `prepare-payload.py <mac|win> <archives> <node-distribution> <new-payload>` 从每个包唯一版本的归档安装相应平台依赖，记录归档摘要。公司运行包只安装所需的 DSH、GEA、共享工作台、插件市场、Agent Manage 和 visualize 依赖，不安装未启用的第三方 UI 全家桶。随后在新目录运行 `compact-payload.py`，再运行 `node desktop/optimize-client-artifacts.mjs <compact-payload> <esbuild-module>`：压缩浏览器注册脚本和 GEA 业务页面，生成无源文本的预计算源码映射，减少每次启动合并模块的 CPU 开销；官方 Host 运行代码和插件版本保持不变。产物中的 `client-artifacts.json` 记录编译器版本及前后摘要。
+
+准备脚本通过 Agent Manage 的 `archiveInstall` 从公司源下载资源到 `payload/resources/company-agent-suites`，记录归档摘要；这一步只在构建机联网，客户端启动不下载。Mac 和 Windows 使用相同的纯文本资源快照，各自安装平台依赖。Mac 执行 MCP 和客户端启动验证，两份最终 payload 均检查平台原生模块，再调用 electron-builder。Windows 未通过真实安装和启动测量前，只能报告交叉构建与静态检查结果。
