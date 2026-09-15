@@ -34,12 +34,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           REPOSITORY: ${{ github.repository }}
+          COMPARE_BASELINE: ${{ inputs.compare_baseline || false }}
         run: |
           $downloads = Join-Path $env:RUNNER_TEMP 'gea-downloads'
           New-Item -ItemType Directory $downloads | Out-Null
           if (-not $env:RELEASE_TAG) { $env:RELEASE_TAG = 'desktop-v' + (Get-Content desktop/package.json | ConvertFrom-Json).version }
-          gh release download $env:RELEASE_TAG --repo $env:REPOSITORY --pattern '*.exe' --pattern 'SHA256SUMS.txt' --dir $downloads
+          gh release download $env:RELEASE_TAG --repo $env:REPOSITORY --pattern 'GEA-Desktop-*-win-x64.exe' --pattern 'SHA256SUMS.txt' --dir $downloads
           if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
+          if ($env:COMPARE_BASELINE -eq 'true') {
+            gh release download $env:RELEASE_TAG --repo $env:REPOSITORY --pattern 'baseline.exe' --dir $downloads
+            if ($LASTEXITCODE -ne 0) { throw 'Comparison requires a baseline.exe draft asset' }
+          }
           gh release download gea-v0.0.7 --repo $env:REPOSITORY --pattern '*.tgz' --dir $downloads
           if ($LASTEXITCODE -ne 0) { throw 'Previous plugin download failed' }
           foreach ($line in Get-Content (Join-Path $downloads 'SHA256SUMS.txt')) {
@@ -63,7 +68,7 @@ jobs:
       - name: Install, start twice, synchronize, and switch plugins
         shell: pwsh
         env:
-          COMPARE_BASELINE: ${{ inputs.compare_baseline || github.event_name == 'pull_request' }}
+          COMPARE_BASELINE: ${{ inputs.compare_baseline || false }}
           GEA_SMOKE_REPO: ${{ github.workspace }}
         run: |
           $downloads = Join-Path $env:RUNNER_TEMP 'gea-downloads'
