@@ -1,12 +1,14 @@
-name: Verify Windows desktop package
+name: Check Windows installer
 on:
-  pull_request:
-    types: [labeled]
   workflow_dispatch:
     inputs:
       release_tag:
         description: Release containing the Windows installer
         required: true
+      run_diagnostics:
+        description: Investigate startup timing, resource synchronization, and plugin switching
+        type: boolean
+        default: false
       compare_baseline:
         description: Also measure the previous installer supplied as baseline.exe
         type: boolean
@@ -15,7 +17,6 @@ permissions:
   contents: read
 jobs:
   windows:
-    if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'verify-windows-package' && github.event.pull_request.head.repo.full_name == github.repository)
     # GitHub requires push access to read draft releases. The token is used only by the download step.
     permissions:
       contents: write
@@ -38,27 +39,40 @@ jobs:
         run: |
           $downloads = Join-Path $env:RUNNER_TEMP 'gea-downloads'
           New-Item -ItemType Directory $downloads | Out-Null
-          if (-not $env:RELEASE_TAG) { $env:RELEASE_TAG = 'desktop-v' + (Get-Content desktop/package.json | ConvertFrom-Json).version }
           gh release download $env:RELEASE_TAG --repo $env:REPOSITORY --pattern 'GEA-Desktop-*-win-x64.exe' --pattern 'SHA256SUMS.txt' --dir $downloads
           if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
           if ($env:COMPARE_BASELINE -eq 'true') {
             gh release download $env:RELEASE_TAG --repo $env:REPOSITORY --pattern 'baseline.exe' --dir $downloads
             if ($LASTEXITCODE -ne 0) { throw 'Comparison requires a baseline.exe draft asset' }
           }
+          $installers = @(Get-ChildItem $downloads -Filter 'GEA-Desktop-*-win-x64.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one Windows installer' }
+          $verifiedInstaller = $false
+          foreach ($line in Get-Content (Join-Path $downloads 'SHA256SUMS.txt')) {
+            $digest, $name = $line -split '\s+', 2
+            $path = Join-Path $downloads $name
+            if (Test-Path $path) {
+              if ((Get-FileHash $path -Algorithm SHA256).Hash.ToLower() -ne $digest) { throw "Digest mismatch: $name" }
+              if ($name -eq $installers[0].Name) { $verifiedInstaller = $true }
+            }
+          }
+          if (-not $verifiedInstaller) { throw 'Installer missing from SHA256SUMS.txt' }
+      - name: Download diagnostic plugin fixtures
+        if: inputs.run_diagnostics
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          $downloads = Join-Path $env:RUNNER_TEMP 'gea-downloads'
           gh release download gea-v0.0.7 --repo $env:REPOSITORY --pattern '*.tgz' --dir $downloads
           if ($LASTEXITCODE -ne 0) { throw 'Previous plugin download failed' }
           gh release download gea-v0.0.8 --repo $env:REPOSITORY --pattern '*.tgz' --dir $downloads
           if ($LASTEXITCODE -ne 0) { throw 'Current plugin download failed' }
           $plugin = Get-ChildItem $downloads -Filter '*prototype-0.0.8.tgz' | Select-Object -First 1
           if ((Get-FileHash $plugin.FullName -Algorithm SHA256).Hash.ToLower() -ne '677186da892dc247a1dcf09f9e8f8b3c38bc26237e5907efc406bc2666bfb159') { throw 'Plugin differs from the verified GitLab archive' }
-          foreach ($line in Get-Content (Join-Path $downloads 'SHA256SUMS.txt')) {
-            $digest, $name = $line -split '\s+', 2
-            $path = Join-Path $downloads $name
-            if (Test-Path $path) {
-              if ((Get-FileHash $path -Algorithm SHA256).Hash.ToLower() -ne $digest) { throw "Digest mismatch: $name" }
-            }
-          }
       - name: Prepare isolated browser driver
+        if: inputs.run_diagnostics
         shell: pwsh
         run: |
           $driver = Join-Path $env:RUNNER_TEMP 'gea-driver'
@@ -79,7 +93,6 @@ jobs:
           $report = Join-Path $env:RUNNER_TEMP 'gea-verification'
           New-Item -ItemType Directory $report | Out-Null
           $env:GEA_SMOKE_REPORT = $report
-          $driver = Join-Path $env:RUNNER_TEMP 'gea-driver/windows-package-smoke.mjs'
           $targets = @('current')
           if ($env:COMPARE_BASELINE -eq 'true') { $targets = @('baseline', 'current') }
           $installations = @()
@@ -102,6 +115,7 @@ jobs:
           }
           ConvertTo-Json -InputObject $installations | Set-Content (Join-Path $report 'installations.json')
       - name: Start twice, synchronize, and switch plugins
+        if: inputs.run_diagnostics
         shell: pwsh
         env:
           GEA_SMOKE_REPO: ${{ github.workspace }}

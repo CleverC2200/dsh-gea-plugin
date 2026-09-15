@@ -20,15 +20,21 @@
 
 ## 构建和验证
 
+常规交付按本次改动选择定向检查、构建及包内容/摘要校验。启动时长、业务接口和资源同步属于问题专项验收；已通过后，仅在再次出现相关问题或明确要求时复查，不作为每次构建、发布、提交或合并的前置条件。下文的启动、同步和更新脚本供相应问题排查使用。
+
+同一组源码、依赖锁、平台、公司配置和资源快照只准备一份 payload；已验证的最终包直接用于发布和频道提升，不因提交、合并或切换频道重新打包。只有输入改变才重建受影响的平台，Mac 与 Windows 可以并行构建，原生依赖分别准备。保留依赖下载缓存、最终包及摘要/构建记录；发行完成后清理本次未被进程使用的 raw/compact、解包应用和隔离验收副本，保留用户数据及正在使用的目录。
+
+Windows 工作流 `Check Windows installer` 仅通过手动运行触发，必须指定已有发行标签。默认只下载、校验并安装该包，不下载诊断插件、不安装浏览器驱动，也不启动应用。排查启动或同步问题时才选择 `run_diagnostics`，复用现有专项脚本；该任务不因 PR 标签或每次构建自动执行。
+
 公司发行必须加载 `dsh-agent-manage`，不能用第三方 `dsh-agent-plugins-market` 替代：后者能加载套件 Skills，但不包含登录后发现 GEA MCP 工具的集成。`installCompanyManage` 在新暂存图中移除旧依赖并安装公司包，保留原运行图以供回退。`compact-payload.py` 在复制前执行公司插件门禁，缺少公司入口或 MCP 模块时拒绝打包。
 
-运行 `GEA_MANAGE_GRAPH=<payload或外置版本目录> node --test desktop/gea-mcp-bundle.test.mjs`，用实际分发插件和本地模拟网关验证登录后发现工具、退出后移除连接；此测试不访问生产业务数据。实际部署仍须验证当前登录用户的 Consumer 授权。
+运行 `GEA_MANAGE_GRAPH=<payload或外置版本目录> node --test desktop/gea-mcp-bundle.test.mjs`，用实际分发插件和本地模拟网关验证登录后发现工具、退出后移除连接；此测试不访问生产业务数据。Consumer 授权问题使用实际登录用户做针对性诊断。
 
 使用 electron-builder 26.15.3，`GEA_DESKTOP_PAYLOAD_ROOT` 指向新构建根，包含 mac/payload、win/payload。各 payload 必须包含相应平台 Node、生产依赖、标准发行包、pnpm 11.27.0 工具与 runtime-start.mjs 的 start.mjs 副本、onboarding.mjs。不能把 Mac 原生模块复用到 Windows。
 
 `node --test desktop/config.test.cjs desktop/onboarding.test.mjs desktop/plugin-store.test.mjs` 验证配置、提示、版本目录与数据保护。指定 `GEA_DESKTOP_TEST_GRAPH` 运行 desktop/runtime-graph.test.mjs 验证外置启动；指定 `GEA_DESKTOP_BASELINE`、`GEA_DESKTOP_NEXT` 运行 desktop/version-switch.test.mjs 验证实际页面版本切换。
 
-Windows 路径使用 file URL 动态导入、junction 与带引号的固定工具路径；在 Mac 的交叉检查不等于真实 Windows 验收。最终安装包交付票还需目标平台首次启动、升级、失败恢复证据及签名状态。
+Windows 路径使用 file URL 动态导入、junction 与带引号的固定工具路径；在 Mac 的交叉检查不等于真实 Windows 验收。安装方式变化或出现安装问题时，针对受影响平台验收；其他交付复用适用的安装记录并说明签名状态。
 
 `time-command.py` 记录打包起止时间与耗时。当前支持插件更新的发行包使用 `compact-payload.py <mac|win> <source> <new-destination>` 精简副本；仅移除依赖源码映射、原生调试符号、其他平台的 node-pty 预编译文件及 Node 开发头文件/文档。同时补齐 Mac node-pty 终端辅助程序的执行权限，并在报告中记录。保留全部运行代码、锁文件和插件归档，逐文件校验其余内容未变，并生成 `compact-report.json`。构建时将 `GEA_DESKTOP_PAYLOAD_ROOT` 指向精简副本根目录。旧 `trim-payload.py` 会移除归档和锁，不适用于当前更新流程。不得覆盖已有产物或运行中的数据目录。
 
@@ -60,7 +66,7 @@ GEA 登录由 Electron safeStorage 使用操作系统加密保存为 userData/lo
 
 打包先用 `prepare-payload.py <mac|win> <archives> <node-distribution> <new-payload>` 从每个包唯一版本的归档安装相应平台依赖，记录归档摘要。公司运行包只安装所需的 DSH、GEA、共享工作台、插件市场、Agent Manage 和 visualize 依赖，不安装未启用的第三方 UI 全家桶。随后在新目录运行 `compact-payload.py`，再运行 `node desktop/optimize-client-artifacts.mjs <compact-payload> <esbuild-module>`：压缩浏览器注册脚本和 GEA 业务页面，生成无源文本的预计算源码映射，减少每次启动合并模块的 CPU 开销；官方 Host 运行代码和插件版本保持不变。产物中的 `client-artifacts.json` 记录编译器版本及前后摘要。
 
-准备脚本通过 Agent Manage 的 `archiveInstall` 从公司源下载资源到 `payload/resources/company-agent-suites`，记录归档摘要；这一步只在构建机联网，客户端启动不下载。Mac 和 Windows 使用相同的纯文本资源快照，各自安装平台依赖。Mac 执行 MCP 和客户端启动验证，两份最终 payload 均检查平台原生模块，再调用 electron-builder。Windows 未通过真实安装和启动测量前，只能报告交叉构建与静态检查结果。
+准备脚本通过 Agent Manage 的 `archiveInstall` 从公司源下载资源到 `payload/resources/company-agent-suites`，记录归档摘要；这一步只在构建机联网，客户端启动不下载。Mac 和 Windows 使用相同的纯文本资源快照，各自安装平台依赖。两份最终 payload 均检查平台原生模块，再调用 electron-builder。MCP、客户端启动与同步验证按上述问题专项规则运行；报告分别注明本次执行和复用的证据，不将交叉构建描述为真机验收。
 
 Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体缩短安装过程。资源同步使用 Agent Manage 0.6.3-company.4，修复 Windows 解压路径分隔符检查和大归档并发写入问题。
 
