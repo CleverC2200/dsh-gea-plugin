@@ -381,6 +381,30 @@ export class Business {
     if (this.auth) this.clearLogin(true);
   }
 
+  private readonly avatarRefreshes = new WeakMap<object, Promise<void>>();
+
+  /** Older desktop login snapshots may predate avatar support. */
+  async refreshMissingAvatar(signal: AbortSignal): Promise<void> {
+    const auth = this.auth;
+    if (!auth || auth.avatar) return;
+    const pending = this.avatarRefreshes.get(auth);
+    if (pending) return pending;
+    const refresh = (async () => {
+      try {
+        const identity = object(await this.get("/sys/user/getUserInfo", auth, AbortSignal.any([signal, this.epoch.signal])));
+        const user = object(identity.userInfo);
+        if (this.auth !== auth || String(user.id) !== auth.id) return;
+        const avatar = avatarUrl(user.avatar, this.base);
+        if (avatar) { auth.avatar = avatar; this.notifyIdentity(); }
+      } catch {
+        this.avatarRefreshes.delete(auth);
+        // A profile/image failure must not block the account controls.
+      }
+    })();
+    this.avatarRefreshes.set(auth, refresh);
+    return refresh;
+  }
+
   /** Public status never contains GEA credentials. */
   status() {
     const models = this.modelRoutes.get(this.config.analysisAgentCode)?.models;

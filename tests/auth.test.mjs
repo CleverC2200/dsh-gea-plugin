@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { profile } from "./profile.mjs";
 
 test("Lark avatar is exposed without credentials and cleared on logout", { timeout: 60000 }, async (t) => {
@@ -127,3 +128,34 @@ test(
     assert.ok(app.requests.every((request) => request.method === "GET"));
   },
 );
+
+
+test("restored desktop login fetches its missing avatar on status", { timeout: 60000 }, async t => {
+  let saved;
+  const control = createServer((req, res) => {
+    if (req.method === 'GET') { res.end(JSON.stringify(saved)); return; }
+    let body = ''; req.on('data', chunk => body += chunk);
+    req.on('end', () => { saved = JSON.parse(body); res.end('null'); });
+  });
+  await new Promise(resolve => control.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => { control.closeAllConnections(); control.close(resolve); }));
+  const app = await profile(t, {
+    env: { GEA_DESKTOP_CONTROL_URL: `http://127.0.0.1:${control.address().port}`, GEA_DESKTOP_CONTROL_TOKEN: 'fixture' },
+    config: base => {
+      saved = { schema: 1, environment: 'production', base: base + '/gea', auth: { token: 'fixture-token', tenantId: '0', id: 'user', name: '旧登录', username: 'user' } };
+      return {};
+    },
+  });
+  let reads = 0;
+  app.route((req, res, reply) => {
+    if (!req.url.pathname.endsWith('/getUserInfo')) return false;
+    reads++;
+    reply({ success: true, result: { userInfo: { id: 'user', avatar: 'https://example.com/restored.png' } } });
+    return true;
+  });
+  const result = await app.rpc('status');
+  assert.equal(result.value.user.avatar, 'https://example.com/restored.png');
+  assert.equal(saved.auth.avatar, 'https://example.com/restored.png');
+  await app.rpc('status');
+  assert.equal(reads, 1);
+});
