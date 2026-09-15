@@ -1,5 +1,5 @@
 /** Adapted from AionUi (Apache-2.0): local imports and explicit DSH host adapter. See SOURCE.md. */
-import { Alert, Button, Empty, InputNumber, Modal, Spin, Table, Tabs, Tag } from '@arco-design/web-react';
+import { Alert, Button, Empty, InputNumber, Drawer, Pagination, Spin, Table, Tabs, Tag } from '@arco-design/web-react';
 import type { TableColumnProps } from '@arco-design/web-react';
 import type { TFunction } from 'i18next';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -108,7 +108,7 @@ const RegionalApprovalLiveAdjustmentDialog: React.FC<{
   }, [client, initialDrafts, scopedRows, visible, readOnly]);
 
   const records = state.status === 'success' ? state.records : [];
-  const groups = useMemo(() => groupSalesPlanAdjustmentRecords(records, dimension), [dimension, records]);
+  const groups = useMemo(() => groupSalesPlanAdjustmentRecords(records, dimension).filter(group => !isZero(group.quantityDelta) || !isZero(group.amountDelta)), [dimension, records]);
   const pageGroups = groups.slice((advicePage - 1) * 20, advicePage * 20);
   const adviceScope =
     visible && state.status === 'success' && !editor && pageGroups.length > 0
@@ -267,8 +267,12 @@ const RegionalApprovalLiveAdjustmentDialog: React.FC<{
   ];
 
   return (
-    <Modal
+    <Drawer
       visible={visible}
+      width='min(960px, 70vw)'
+      mask={false}
+      focusLock={false}
+      placement='right'
       className={styles.modal}
       title={t('common.assistantSurface.regionalApproval.liveAdjustment.title', {
         organization: adjustmentDimensionName(row, initialDimension),
@@ -347,6 +351,25 @@ const RegionalApprovalLiveAdjustmentDialog: React.FC<{
             </div>
           ) : state.status === 'error' ? (
             <Empty description={t('common.assistantSurface.regionalApproval.liveAdjustment.loadError')} />
+          ) : readOnly ? (
+            <div className={styles.cards}>
+              {pageGroups.length === 0 ? <Empty description={t('common.assistantSurface.regionalApproval.liveAdjustment.empty')} /> : pageGroups.map(group => (
+                <article key={group.id} className={styles.card}>
+                  <div className={styles.skuCell}>
+                    <strong>{group.skuCode} · {group.materialDescription || t('common.assistantSurface.regionalApproval.liveAdjustment.missingDescription')}</strong>
+                    <small>{group.dimensionName} · {group.categoryName || '—'}</small>
+                  </div>
+                  <dl className={styles.values}>
+                    {([
+                      ['baseQty',formatExactDecimal(group.baseQty)],['qty',formatExactDecimal(group.qty)],['deltaQty',signed(group.quantityDelta)],
+                      ['baseAmount',formatExactDecimal(group.baseAmount)],['amount',formatExactDecimal(group.amount)],['deltaAmount',signed(group.amountDelta)],
+                    ] as const).map(([key,value])=><div key={key}><dt>{t('common.assistantSurface.regionalApproval.liveAdjustment.columns.'+key)}</dt><dd>{value}</dd></div>)}
+                  </dl>
+                  <div className={styles.advice}><strong>{t('common.assistantSurface.regionalApproval.liveAdjustment.columns.aiAdvice')}</strong><p>{advice.state.answers[group.id] || (advice.state.status === 'idle' ? '—' : t('common.assistantSurface.regionalApproval.liveAdjustment.advice.'+(advice.state.status === 'ready' ? 'noAnswer' : advice.state.status)))}</p></div>
+                </article>
+              ))}
+              {groups.length > 20 && <Pagination current={advicePage} pageSize={20} total={groups.length} onChange={setAdvicePage} sizeCanChange={false} />}
+            </div>
           ) : (
             <Table
               borderCell
@@ -360,7 +383,7 @@ const RegionalApprovalLiveAdjustmentDialog: React.FC<{
           )}
         </div>
       )}
-    </Modal>
+    </Drawer>
   );
 };
 

@@ -44,12 +44,14 @@ const sum = (
 
 /** Correction is a view in the existing workbench, using its authenticated clients. */
 export function CorrectionWorkbench({
+  headerControls,
   t,
   queryClient,
   detailClient,
   actionClient,
   onResubmit,
 }: {
+  headerControls?: React.ReactNode;
   t: TFunction;
   queryClient?: SalesPlanQueryClient | null;
   detailClient?: SalesPlanDetailClient;
@@ -134,7 +136,7 @@ export function CorrectionWorkbench({
       : undefined;
   return (
     <main className={styles.page}>
-      <h2>{tr('title')}</h2>
+      <div className={styles.toolbar}>{headerControls}<h2>{tr('title')}</h2></div>
       <div className={styles.toolbar}>
         <Select
           aria-label={tr('period')}

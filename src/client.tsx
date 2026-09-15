@@ -193,21 +193,26 @@ export function apply(ctx: Context): void {
           <button
             type="button"
             onClick={() => ctx.layout.selectPanel(INBOX)}
+            title={t("messageInbox")}
+            aria-label={t("messageInbox")}
             className={activePanel === INBOX ? "is-active" : undefined}
           >
             <NavIcon kind="inbox" />
-            <span>{t("messageInbox")}</span>
+            <span className="gea-shell-label">{t("messageInbox")}</span>
           </button>
-          <div className="gea-shell-group">
+          <div className="gea-shell-group" title={t("planManagement")}>
             <NavIcon kind="plan" />
-            <strong>{t("planManagement")}</strong>
+            <strong className="gea-shell-label">{t("planManagement")}</strong>
           </div>
           <button
             type="button"
             onClick={() => ctx.layout.selectPanel(PANEL)}
+            title={t("demandForecastAgent")}
+            aria-label={t("demandForecastAgent")}
             className={activePanel === PANEL ? "is-active" : undefined}
           >
-            {t("demandForecastAgent")}
+            <span className="gea-shell-active-icon"><NavIcon kind="plan" /></span>
+            <span className="gea-shell-label">{t("demandForecastAgent")}</span>
           </button>
         </div>
       </nav>

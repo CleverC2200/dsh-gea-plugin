@@ -1,5 +1,6 @@
 /** Adapted from AionUi (Apache-2.0): local imports and explicit DSH host adapter. See SOURCE.md. */
 import {
+  salesPlan,
   type GeaSalesPlanActionReceipt,
   type GeaSalesPlanActionRequest,
   type GeaSalesPlanDetail,
@@ -106,6 +107,19 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [discardConfirmVisible, setDiscardConfirmVisible] = useState(false);
   const [adjustmentValues, setAdjustmentValues] = useState<Record<string, string>>({});
+  const [draftReady, setDraftReady] = useState(initialAction === 'SAVE');
+  const [draftError, setDraftError] = useState('');
+  useEffect(() => {
+    if (initialAction === 'SAVE') return;
+    const controller = new AbortController();
+    void salesPlan.draft!.invoke({planId: row.planId, versionId: row.versionId, signal: controller.signal}).then(result => {
+      if (controller.signal.aborted) return;
+      if (result.stale) {setDraftError('stale');return;}
+      setAdjustmentValues(Object.fromEntries((result.draft?.adjustments ?? []).map(item => [item.skuCode,item.adjustQty])));
+      setDraftReady(true);
+    }).catch(() => {if (!controller.signal.aborted) setDraftError('loadFailed');});
+    return () => controller.abort();
+  },[row.planId,row.versionId,initialAction]);
   const [confirmedInputs, setConfirmedInputs] = useState<Record<string, string>>({});
   const [adjustmentSkus, setAdjustmentSkus] = useState<AdjustmentSkuState>({ status: 'idle' });
   const action = useSalesPlanAction({ client });
@@ -143,7 +157,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
       const previousAmount = previousQty && price ? multiplyExactDecimals(previousQty, price) : undefined;
       const confirmedQty = previousQty && adjustmentValid ? addExactDecimals([previousQty, adjustmentQty]) : undefined;
       const normalizedConfirmedQty = confirmedQty === '—' ? undefined : confirmedQty;
-      if (kind !== 'SAVE') {
+      if (kind !== 'SAVE' && !Object.hasOwn(adjustmentValues, skuCode)) {
         const saved = salesPlanSkuNodeComparison(sku, selectedRole ?? approvalStage);
         return {
           sku,
@@ -196,6 +210,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
             Boolean(item.amountDelta && !ZERO_DECIMAL_PATTERN.test(item.amountDelta))
         );
   const invalid = unsupportedRole || !selectedRole ||
+    !draftReady ||
     !confirmed ||
     !access?.allowedActions.includes(kind) ||
     (kind === 'SAVE' && (adjustments.length === 0 || adjustmentSkus.status !== 'success')) ||
@@ -341,6 +356,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
                     action.state.status === 'success' && void complete(Promise.resolve(action.state.receipt))
                   }
                 >
+
                   {t('common.assistantSurface.regionalApproval.liveAction.verifySave')}
                 </Button>
               ) : action.state.status === 'error' && action.state.error.retrySameIntent ? (
@@ -378,6 +394,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
           </div>
         }
       >
+        {draftError && <Alert type='warning' content={t(`common.assistantSurface.regionalApproval.draft.${draftError}`)} action={<Button onClick={()=>{onRefresh();onClose();}}>{t('common.assistantSurface.regionalApproval.liveAction.refresh')}</Button>} />}
         <div className={styles.body} data-testid='regional-approval-live-action-dialog'>
           <section className={styles.businessChecksum} data-testid='regional-approval-live-action-checksum'>
             <h3>

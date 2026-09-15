@@ -264,3 +264,31 @@
 .gea-logout-control [role="alert"] { display: block; padding: 4px 12px; color: #c62828; font-size: 12px; }
 
 .gea-account-menu { position: fixed; z-index: 1000; width: 200px; padding: 5px; border: 1px solid rgba(128, 128, 128, .2); border-radius: 10px; background: light-dark(#fff, #242424); color: light-dark(#202020, #eee); box-shadow: 0 6px 24px #0002; }
+
+/* Keep labels intact when the adjacent conversation changes width. */
+.gea-shell-navigation-content > button,
+.gea-shell-workspaces > button,
+.gea-shell-group { min-width: 0; max-width: 100%; white-space: nowrap; }
+.gea-shell-navigation button > span,
+.gea-shell-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gea-shell-navigation button.is-active { padding-left: 12px; }
+@container gea-sidebar (max-width: 100px) {
+  .gea-shell-navigation-content > button,
+  .gea-shell-navigation-content > button.is-active { padding-inline: 0; width: 100%; }
+  .gea-shell-navigation-content .gea-shell-label { display: none; }
+  .gea-shell-navigation-content .gea-shell-active-icon { display: flex; overflow: visible; }
+}
+
+/* GEA's approval table needs more room than a chat-only center column on tablets. */
+@media (min-width: 801px) and (max-width: 1200px) {
+  .AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) {
+    grid-template-columns: 180px minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
+    transition: none;
+  }
+  .AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) > .AppFrame_sidebarCol { grid-row: 1 / -1; }
+  .AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) > .AppFrame_centerCol { grid-column: 2; grid-row: 1; min-height: 0; }
+  .AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) > .AppFrame_rightbarCol { grid-column: 2; grid-row: 2; min-height: 0; border-top: 1px solid var(--dsw-alias-border-l3); }
+  .AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) > .AppFrame_handle { display: none; }
+  .AppFrame_frame[data-conversation-beside-panel][data-sidebar-collapsed]:has(iframe[data-gea-workbench]) { grid-template-columns: 64px minmax(0, 1fr) !important; }
+}

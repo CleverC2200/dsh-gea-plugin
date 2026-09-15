@@ -1,4 +1,7 @@
 import { avatarUrl } from "./avatar.ts";
+import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { salesPlanDraftMatches, salesPlanDraftSnapshot, type SalesPlanLocalDraft } from './workbench-original/workbenches/regionalApproval/models/salesPlanLocalDraftModel.ts';
 import { correctionAccess, correctionAdjustments, correctionDecimal } from './workbench-original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';
 import { salesPlanAccessForRow } from './workbench-original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';
 import { salesPlanWorkflow } from './workbench-original/salesPlanWorkflow.ts';
@@ -554,6 +557,44 @@ export class Business {
       if (pageNo * 100 >= total) return undefined;
       if (!page.items.length || pageNo >= 100) throw new Error("NOTIFICATION_SCAN_INCOMPLETE");
       pageNo++;
+    }
+  }
+
+  /** Persistent private drafts belong to this login and never invoke GEA actions. */
+  async salesPlanDraft(payload: Record<string, unknown>, caller: AbortSignal) {
+    keys(payload, ['planId', 'versionId', 'draft']);
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    const planId = text(payload.planId), versionId = text(payload.versionId);
+    const owner = createHash('sha256').update(JSON.stringify([this.base, auth.tenantId, auth.id, planId, versionId])).digest('hex');
+    const dir = resolve(this.config.runtimeDir, 'approval-drafts');
+    const file = resolve(dir, owner + '.json');
+    const detail = await this.workbenchQuery({kind: 'detail', query: {planId}}, signal) as GeaSalesPlanDetail;
+    const row = {planId, versionId, status: detail.currentVersion.status, planTypeCode: detail.currentVersion.planTypeCode};
+    const sourceSnapshot = salesPlanDraftSnapshot(row, detail);
+    if (!sourceSnapshot) throw new Error('STALE_DRAFT_VERSION');
+    if (payload.draft !== undefined) {
+      const access = salesPlanAccessForRow(row, detail);
+      if (!access?.snapshotHash || !access.allowedActions.includes('APPROVE')) throw new Error('GEA_DRAFT_NOT_EDITABLE');
+      const draft = payload.draft as SalesPlanLocalDraft;
+      if (!salesPlanDraftMatches(draft, row, detail)) throw new Error('STALE_DRAFT');
+      const value = {draft, savedAt: new Date().toISOString(), storage: 'host'};
+      signal.throwIfAborted();
+      await mkdir(dir, {recursive: true, mode: 0o700});
+      const temp = resolve(dir, owner + '.' + randomUUID() + '.tmp');
+      await writeFile(temp, JSON.stringify(value), {mode: 0o600});
+      signal.throwIfAborted();
+      await rename(temp, file);
+      return value;
+    }
+    try {
+      const stored = JSON.parse(await readFile(file, 'utf8'));
+      signal.throwIfAborted();
+      if (!salesPlanDraftMatches(stored.draft, row, detail)) return {draft: null, stale: true, sourceSnapshot};
+      return {...stored, sourceSnapshot};
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      return {draft: null, sourceSnapshot};
     }
   }
 

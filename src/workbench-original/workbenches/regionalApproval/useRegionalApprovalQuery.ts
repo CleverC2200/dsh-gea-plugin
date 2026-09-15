@@ -309,17 +309,14 @@ export const useRegionalApprovalQuery = ({
     const requestId = ++progressRequest.current;
     const request = beginTimedRequest();
     setProgressState((current) => ({ status: 'loading', data: current.data }));
-    const statuses = SALES_PLAN_PROGRESS_STATUSES.filter(
-      (status) =>
-        (stableScope.status === undefined || status === stableScope.status) &&
-        (!stableStageStatuses || stableStageStatuses.includes(status))
-    );
+    const statuses = SALES_PLAN_PROGRESS_STATUSES;
     const baseQuery = {
       periodId: selectedPeriodId,
       planTypeCode: selectedPeriodPlanTypeCode,
       pageNo: 1,
       pageSize: 1,
       ...stableScope,
+      status: undefined,
       signal: request.signal,
     };
 
@@ -335,9 +332,7 @@ export const useRegionalApprovalQuery = ({
         setProgressState({
           status: 'success',
           data: approvalStageProgressForSalesPlanStatusTotals(
-            stableStageStatuses
-              ? statusPages.reduce((total, statusPage) => total + statusPage.total, 0)
-              : allRows.total,
+            allRows.total,
             statusTotals,
             selectedPeriodPlanTypeCode
           ),
@@ -361,7 +356,6 @@ export const useRegionalApprovalQuery = ({
     selectedPeriodId,
     selectedPeriodPlanTypeCode,
     stableScope,
-    stableStageStatuses,
   ]);
 
   useEffect(() => {

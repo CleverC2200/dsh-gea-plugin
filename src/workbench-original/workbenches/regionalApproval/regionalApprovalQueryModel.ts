@@ -206,6 +206,7 @@ export const groupRegionalApprovalLiveRows = (
         : {
             ...members[0],
             targetAmount: addExactDecimals(members.map((row) => row.targetAmount)),
+            targetQty: addExactDecimals(members.map((row) => row.targetQty)),
             currentAmount: addExactDecimals(members.map((row) => row.currentAmount)),
             currentQty: addExactDecimals(members.map((row) => row.currentQty)),
             skuCount: members.reduce((total, row) => total + row.skuCount, 0),

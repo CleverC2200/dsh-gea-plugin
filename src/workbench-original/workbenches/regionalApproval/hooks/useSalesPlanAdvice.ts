@@ -13,7 +13,10 @@ type AdviceStatus =
   | 'toolsRequired'
   | 'failed'
   | 'timeout'
-  | 'unavailable';
+  | 'unavailable'
+  | 'invalidResponse'
+  | 'authentication'
+  | 'rateLimited';
 export type SalesPlanAdviceState = {
   key: string;
   status: AdviceStatus;
@@ -149,12 +152,17 @@ export const useSalesPlanAdvice = (scope: string | undefined, prompt: string) =>
         .catch((error: unknown) =>
           finish(
             error instanceof BackendHttpError
-              ? error.message.includes('MODEL_NOT_SELECTED')
+              ? /MODEL_NOT_SELECTED|GEA_ADVICE_MODEL_REQUIRED/.test(error.code)
                 ? 'noModel'
-                : error.status === 404
+                : error.status === 401 || error.code.includes('401') || error.code === 'LOGIN_REQUIRED'
+                  ? 'authentication'
+                  : error.status === 429 || /429|RATE_LIMIT|TOO_MANY_REQUESTS/.test(error.code) ? 'rateLimited'
+                  : error.code.includes('INCOMPLETE') ? 'noAnswer'
+                  : /TIMEOUT|TIMED_OUT/.test(error.code) ? 'timeout'
+                  : error.status === 404 || error.status >= 500 || /UNAVAILABLE|UPSTREAM/.test(error.code)
                   ? 'unavailable'
                   : 'failed'
-              : 'failed'
+              : error instanceof SyntaxError ? 'invalidResponse' : 'failed'
           )
         );
     };

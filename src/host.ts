@@ -10,6 +10,7 @@ import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { Context } from "@deepseek-ai/cordis";
 import {
   LlmAdapter,
+  createUserMessage,
   type GenerateOptions,
   type StreamChunk,
   attributionHeaders,
@@ -384,9 +385,11 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "notifications",
     "workflow/config",
     "sales-plan/action",
+    "sales-plan/draft",
     "sales-plan/submit",
     "environment/select",
     "model/discover",
+    "model/advice",
     "logout",
     "login/start",
     "login/poll",
@@ -423,6 +426,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
               case "sales-plan/submit":
                 value = await business.salesPlanSubmit(payload, request.signal);
                 break;
+              case "sales-plan/draft":
+                value = await business.salesPlanDraft(payload, request.signal);
+                break;
               case "sales-plan/action":
                 value = await business.salesPlanAction(payload, request.signal);
                 break;
@@ -436,8 +442,35 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 await Promise.all([business.refreshMissingAvatar(request.signal), business.refreshPermissions(request.signal)]);
                 value = business.status();
                 break;
+              case "model/advice": {
+                if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
+                if (config.analysisMode !== "model") throw new Error("GEA_ADVICE_MODEL_REQUIRED");
+                if (typeof payload.question !== "string" || !payload.question.trim() || Buffer.byteLength(payload.question) > config.inputByteBudget)
+                  throw new Error("INVALID_ADVICE_INPUT");
+                const signal = AbortSignal.any([request.signal, business.identitySignal(), AbortSignal.timeout(config.modelRequestTimeoutMs)]);
+                let model = config.analysisModel;
+                if (config.analysisSource === "gea") {
+                  const route = await business.modelRoute(signal, config.analysisAgentCode);
+                  model = route.models.includes(model) ? model : route.models[0]!;
+                }
+                let answer = "";
+                let finished = false;
+                for await (const chunk of ctx.llm.stream({ provider: "gea-analysis", model,
+                  messages: [createUserMessage({ source: {kind: "user"}, content: [{ type: "text", text: payload.question }] })],
+                  maxTokens: 4096, signal })) {
+                  signal.throwIfAborted();
+                  if (chunk.type === "text-delta") answer += chunk.text;
+                  if (Buffer.byteLength(answer) > config.maxSnapshotBytes) throw new Error("GEA_ADVICE_TOO_LARGE");
+                  if (chunk.type === "finish") finished = chunk.reason.kind === "stop";
+                }
+                signal.throwIfAborted();
+                if (!finished) throw new Error("GEA_ADVICE_INCOMPLETE");
+                value = {status: answer.trim() ? "ok" : "noAnswer", provider_id: "gea-analysis", model, answer};
+                break;
+              }
               case "model/discover": {
-                const route = await business.modelRoute(
+                if (!business.status().authenticated) throw new Error('LOGIN_REQUIRED');
+                const route = config.analysisSource === 'direct' ? {models:[config.analysisModel],names:{[config.analysisModel]:config.analysisModel}} : await business.modelRoute(
                   request.signal,
                   config.analysisAgentCode,
                 );

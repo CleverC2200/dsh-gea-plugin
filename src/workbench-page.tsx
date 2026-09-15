@@ -88,6 +88,7 @@ const unavailable = async (): Promise<never> => {
 const loadWorkflow = createWorkflowLoader((signal) => rpc("workflow/config", {}, signal));
 const host: WorkbenchHost = {
   salesPlan: {
+    draft: { invoke: ({signal, ...input}) => rpc("sales-plan/draft", input, signal) },
     periods: { invoke: async (input) => {
       await loadWorkflow(input?.signal);
       return query("periods", input);
@@ -102,11 +103,7 @@ const host: WorkbenchHost = {
     submit: { invoke: (input) => rpc("sales-plan/submit", input) },
   },
   modelInference: {
-    invoke: async () => ({
-      status: "failed",
-      provider_id: "gea-analysis",
-      model: "",
-    }),
+    invoke: ({ signal, ...input }) => rpc("model/advice", input, signal),
   },
 };
 bindWorkbenchHost(host);
@@ -157,6 +154,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
         avatar: status?.authenticated ? (status.user?.avatar ?? "") : "",
         authenticated: status?.authenticated === true,
         name: status?.authenticated ? (status.user?.name ?? "") : "",
+        avatarUrl: status?.authenticated ? (status.user?.avatar ?? "") : "",
       },
       window.location.origin,
     );
@@ -179,10 +177,17 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
+  const [autoContext, setAutoContext] = useState<string>();
+  const [autoState, setAutoState] = useState('');
+  const [autoRetry, setAutoRetry] = useState(0);
   const request = useRef<AbortController>();
   const selectionRef = useRef("");
   const onContextChange = useCallback(
     (context: RegionalApprovalWorkbenchContext) => {
+      const available = context.evidence.source === 'gea-user-session' && context.evidence.queryState === 'success';
+      const planIds = [...new Set(context.visibleEntities.filter(entity => entity.source === 'gea').map(entity => entity.id))].sort();
+      setAutoContext(available && planIds.length ? JSON.stringify({planIds, month: context.scope.month, stage: context.scope.approvalStage,
+        filters: context.scope.appliedFilters, versions: context.visibleEntities.map(entity=>entity.versionId)}) : undefined);
       const ids =
         context.evidence.source === "gea-user-session" &&
         context.evidence.queryState === "success"
@@ -327,6 +332,33 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       });
     return () => controller.abort();
   }, [status?.authenticated, status?.environment]);
+  useEffect(() => {
+    if (!autoContext || !status?.authenticated || status.mode !== 'model') return;
+    const controller = new AbortController();
+    const context = JSON.parse(autoContext);
+    const cacheKey = JSON.stringify(['gea-auto-advice',status.runId,status.user?.id,autoContext]);
+    const open = (sessionId: string) => window.parent.postMessage({type:'gea:open-session',sessionId},window.location.origin);
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {open(cached); setAutoState(''); return;}
+    setAutoState(language === 'zh-CN' ? '正在生成当前页面审批建议…' : 'Generating advice for this page…');
+    const timer = setTimeout(() => {
+      void rpc<Preview>('workbench/prepare',{planIds:context.planIds,scope:'summary'},controller.signal)
+        .then(preview => rpc<{sessionId:string}>('submit',{previewId:preview.previewId},controller.signal))
+        .then(result => {
+          if (controller.signal.aborted) return;
+          sessionStorage.setItem(cacheKey,result.sessionId); open(result.sessionId); setAutoState('');
+        }).catch(error => {
+          if (!controller.signal.aborted) setAutoState((language === 'zh-CN' ? '建议生成失败：' : 'Advice failed: ') +
+            (language === 'zh-CN'
+              ? error instanceof BackendHttpError && /401|LOGIN_REQUIRED/.test(error.code) ? '登录已失效，请重新登录'
+                : error instanceof BackendHttpError && /429|RATE_LIMIT/.test(error.code) ? '请求过于频繁，请稍后重试'
+                : error instanceof BackendHttpError && /TIMEOUT/.test(error.code) ? '服务响应超时，请重试'
+                : '暂时无法获取业务数据或连接分析服务，请重试'
+              : 'Business data or the analysis service is temporarily unavailable. Please retry.'));
+        });
+    },700);
+    return () => {clearTimeout(timer); controller.abort();};
+  },[autoContext,status?.authenticated,status?.runId,autoRetry]);
   if (!status?.authenticated)
     return (
       <main className="gea-login-page">
@@ -408,6 +440,9 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     );
   return (
     <div className="gea-workbench-document">
+      {autoState && <div role='status' className='gea-auto-advice'>{autoState}
+        {autoState.includes('失败') || autoState.includes('failed') ? <button onClick={()=>setAutoRetry(n=>n+1)}>{language === 'zh-CN' ? '重试' : 'Retry'}</button> : null}
+      </div>}
       <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
         <div className="gea-original-workbench">
           <RegionalApprovalWorkbench

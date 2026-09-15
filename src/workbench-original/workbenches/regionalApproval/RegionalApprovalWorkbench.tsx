@@ -1,3 +1,5 @@
+import { InlineSkuDetails } from './InlineSkuDetails.tsx';
+import { ApprovalDraftEditor } from './ApprovalDraftEditor.tsx';
 import { correctionMetrics } from './models/salesPlanCorrectionModel.ts';
 import { CorrectionWorkbench } from './CorrectionWorkbench.tsx';
 import type { GeaSalesPlanPeriod } from '../../contracts.ts';
@@ -386,6 +388,7 @@ const livePriority = (row: RegionalApprovalLiveRow) => {
 };
 
 const RegionalApprovalWorkbench: React.FC<{
+  headerControls?: React.ReactNode;
   stateScope: string;
   t: TFunction;
   onContextChange: (context: RegionalApprovalWorkbenchContext, conversationId: string | null) => void;
@@ -398,6 +401,7 @@ const RegionalApprovalWorkbench: React.FC<{
   onResubmit?: (planId: string, versionId: string, period: GeaSalesPlanPeriod) => void;
   permissionCodes?: readonly string[];
 }> = ({
+  headerControls,
   stateScope,
   t,
   onContextChange,
@@ -462,6 +466,8 @@ const RegionalApprovalWorkbench: React.FC<{
     Record<string, RegionalApprovalLiveCategorySummary[]>
   >({});
   const [liveCategoriesLoading, setLiveCategoriesLoading] = useState(false);
+  const [versionMetrics, setVersionMetrics] = useState<Record<string, {versionId?:string; qty:string; amount:string; targetQty:string; targetAmount:string; compareQty?:string; compareAmount?:string; compareTargetQty?:string; compareTargetAmount?:string}>>({});
+  const [inlinePlanId, setInlinePlanId] = useState<string>();
   const [draftLiveFilters, setDraftLiveFilters] = useState<LiveApprovalFilters>(EMPTY_LIVE_APPROVAL_FILTERS);
   const [appliedLiveFilters, setAppliedLiveFilters] = useState<LiveApprovalFilters>(EMPTY_LIVE_APPROVAL_FILTERS);
   const [liveStageFilter, setLiveStageFilter] = useState<ApprovalStageId>();
@@ -563,7 +569,8 @@ const RegionalApprovalWorkbench: React.FC<{
     () =>
       liveRows.map((row) => {
         const drafts = Object.values(liveAdjustmentDrafts).filter((draft) => draft.versionId === row.versionId);
-        if (drafts.length === 0) return row;
+        const metrics = versionMetrics[row.planId];
+        if (drafts.length === 0) return metrics ? {...row,currentQty:metrics.qty,currentAmount:metrics.amount,targetQty:metrics.targetQty,targetAmount:metrics.targetAmount} : row;
         const quantityDelta = addExactDecimals(
           drafts.map((draft) => subtractExactDecimals(draft.qty, draft.sourceQty))
         );
@@ -576,7 +583,7 @@ const RegionalApprovalWorkbench: React.FC<{
           currentAmount: addExactDecimals([row.currentAmount, amountDelta]),
         };
       }),
-    [liveAdjustmentDrafts, liveRows]
+    [liveAdjustmentDrafts, liveRows, versionMetrics]
   );
   const dimensionStage = liveQuery.enabled ? (liveStageFilter ?? 'category') : currentStage;
   const availableDimensions = APPROVAL_DIMENSIONS_BY_STAGE[dimensionStage];
@@ -593,32 +600,6 @@ const RegionalApprovalWorkbench: React.FC<{
     setDimension(availableDimensions[0]);
   }, [availableDimensions, dimension]);
 
-  useEffect(() => {
-    if (!liveQuery.enabled || !categoryComparison || !detailClient || liveRows.length === 0) {
-      setLiveCategorySummaries({});
-      setLiveCategoriesLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    setLiveCategoriesLoading(true);
-    void Promise.all(
-      liveRows.map(async (row) => {
-        try {
-          const skus = await detailClient.versionSkus.invoke({ versionId: row.versionId, signal: controller.signal });
-          return [row.planId, aggregateRegionalApprovalLiveCategories(skus)] as const;
-        } catch {
-          return [row.planId, []] as const;
-        }
-      })
-    )
-      .then((entries) => {
-        if (!controller.signal.aborted) setLiveCategorySummaries(Object.fromEntries(entries));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLiveCategoriesLoading(false);
-      });
-    return () => controller.abort();
-  }, [categoryComparison, detailClient, liveQuery.enabled, liveRows]);
   const liveFilterOptions = useMemo(() => {
     const provinceRows =
       draftLiveFilters.areaCode !== ALL_ORGANIZATIONS
@@ -736,6 +717,46 @@ const RegionalApprovalWorkbench: React.FC<{
   )
     ? liveCompareVersionId
     : undefined;
+  useEffect(() => {
+    if (!detailClient || !liveQuery.enabled || !liveRows.length) {setVersionMetrics({});setLiveCategorySummaries({});return;}
+    const controller = new AbortController();
+    const reference = liveVersions.find(v => v.id === focusedLiveRow?.versionId);
+    const primary = liveVersions.find(v => v.id === scopedPrimaryVersionId);
+    const compare = liveVersions.find(v => v.id === scopedCompareVersionId);
+    const primaryOffset = primary && reference ? reference.seq - primary.seq : 0;
+    const compareOffset = compare && reference ? reference.seq - compare.seq : primaryOffset;
+    setLiveCategoriesLoading(true);
+    setVersionMetrics({});
+    void (async () => {
+      const metrics: typeof versionMetrics = {};
+      const categories: typeof liveCategorySummaries = {};
+      for (const row of liveRows) {
+        controller.signal.throwIfAborted();
+        const versions = primaryOffset || compareOffset ? await detailClient.versions.invoke({planId:row.planId,signal:controller.signal}) : [];
+        const current = versions.find(v=>v.id===row.versionId);
+        const chosen = primaryOffset ? versions.find(v=>current && v.seq===current.seq-primaryOffset) : undefined;
+        const versionId = primaryOffset ? chosen?.id : row.versionId;
+        if (!versionId) {metrics[row.planId]={qty:'—',amount:'—',targetQty:'',targetAmount:''};continue;}
+        const skus = await detailClient.versionSkus.invoke({versionId,signal:controller.signal});
+        categories[row.planId]=aggregateRegionalApprovalLiveCategories(skus);
+        const aggregate = aggregateRegionalApprovalLiveCategories(skus);
+        metrics[row.planId]={versionId,qty:addExactDecimals(aggregate.map(c=>c.quantity)),amount:addExactDecimals(aggregate.map(c=>c.amount)),
+          targetQty:String(primaryOffset ? chosen?.targetQty ?? '' : row.targetQty),targetAmount:String(primaryOffset ? chosen?.targetAmount ?? '' : row.targetAmount)};
+        if (compareOffset !== primaryOffset) {
+          const other = compareOffset ? versions.find(v=>current && v.seq===current.seq-compareOffset) : current;
+          if (other) {
+            const compared = aggregateRegionalApprovalLiveCategories(await detailClient.versionSkus.invoke({versionId:other.id,signal:controller.signal}));
+            metrics[row.planId].compareTargetQty=String(other.targetQty ?? '');
+            metrics[row.planId].compareTargetAmount=String(other.targetAmount ?? '');
+            metrics[row.planId].compareQty=addExactDecimals(compared.map(c=>c.quantity));
+            metrics[row.planId].compareAmount=addExactDecimals(compared.map(c=>c.amount));
+          }
+        }
+      }
+      if (!controller.signal.aborted) {setVersionMetrics(metrics);setLiveCategorySummaries(categories);}
+    })().catch(()=>{}).finally(()=>{if(!controller.signal.aborted)setLiveCategoriesLoading(false);});
+    return ()=>controller.abort();
+  },[detailClient,liveRows,scopedPrimaryVersionId,scopedCompareVersionId]);
   const historicalSummaryUnavailable = Boolean(
     liveQuery.enabled && scopedPrimaryVersionId && scopedPrimaryVersionId !== focusedLiveRow?.versionId
   );
@@ -812,6 +833,7 @@ const RegionalApprovalWorkbench: React.FC<{
   }, [detailClient, focusedLiveRow?.planId, focusedLiveRow?.versionId, liveQuery.enabled]);
 
   const liveActionDisabledReason = (row: RegionalApprovalLiveRow, kind: LiveActionKind = 'APPROVE') => {
+    if (historicalSummaryUnavailable) return 'queueNotFresh';
     if (!liveActionsEnabled) return 'missingAuthority';
 
     if (permissionDeniedVersions.has(row.versionId)) return 'permission';
@@ -1503,6 +1525,12 @@ const RegionalApprovalWorkbench: React.FC<{
       .toReversed()
       .find((result) => result.scope.organizationId === row.id && result.scope.version === primaryVersion);
   // Preserve readable minimums, then share the panel's spare width across content columns.
+  const comparisonFor = (row: Extract<RegionalApprovalLiveTableRow, {kind:'plan'}>) => {
+    const metrics = (row.members ?? [row.plan]).map(plan=>versionMetrics[plan.planId]);
+    const sum = (field:'compareQty'|'compareAmount'|'compareTargetQty'|'compareTargetAmount') => metrics.length && metrics.every(value=>value?.[field] && /^-?\d+(?:\.\d+)?$/.test(value[field]!))
+      ? addExactDecimals(metrics.map(value=>value[field]!)) : '';
+    return {compareQty:sum('compareQty'),compareAmount:sum('compareAmount'),compareTargetQty:sum('compareTargetQty'),compareTargetAmount:sum('compareTargetAmount')};
+  };
   const liveMinimumWidths = [220, 125, 125, categoryComparison ? 190 : 150, categoryComparison ? 200 : 140];
   const liveMinimumWidth = liveMinimumWidths.reduce((total, width) => total + width, 40);
   const liveExtraWidth = Math.max(0, tableViewportWidth - liveMinimumWidth);
@@ -1566,7 +1594,7 @@ const RegionalApprovalWorkbench: React.FC<{
                 selectLivePlanContext(row);
                 setFocusedLivePlanId(row.planId);
                 setLiveAdjustmentDimension(tableRow.childPlan ? 'customer' : dimension);
-                setLiveAdjustmentPlanId(row.planId);
+                setInlinePlanId(current => current === row.planId ? undefined : row.planId);
               }}
               aria-label={t(
                 tableRow.members
@@ -1615,7 +1643,7 @@ const RegionalApprovalWorkbench: React.FC<{
         const row = tableRow.plan;
         return (
           <div className={styles.stackCell}>
-            <span>{category ? '—' : exactMoney(row.targetAmount)}</span>
+            <span>{category ? '—' : /^-?\d+(?:\.\d+)?$/.test(row.targetAmount) ? exactMoney(row.targetAmount) : t('common.assistantSurface.regionalApproval.versionTargetMissing')}</span>
           </div>
         );
       },
@@ -1626,6 +1654,7 @@ const RegionalApprovalWorkbench: React.FC<{
       render: (_, tableRow) => tableRow.kind === 'category' ? '—' : <div className={styles.stackCell}>
         <span>{tableRow.plan.mPlanAmount == null ? '—' : exactMoney(tableRow.plan.mPlanAmount)}</span>
         <small>{tableRow.plan.mPlanQty ?? '—'}</small>
+        {tableRow.kind === 'plan' && comparisonFor(tableRow).compareAmount && <small>{t('common.assistantSurface.regionalApproval.comparePlan', {amount:exactMoney(comparisonFor(tableRow).compareAmount!),qty:comparisonFor(tableRow).compareQty})}</small>}
       </div>,
     },
     {
@@ -1635,10 +1664,14 @@ const RegionalApprovalWorkbench: React.FC<{
       width: liveColumnWidths[3],
       render: (_, tableRow) => {
         if (tableRow.kind === 'plan') {
-          const progress = correctionMetrics(tableRow.plan);
+          const progress = regionalApprovalLiveProgress(tableRow.plan);
           return <div className={styles.categoryProgressCell}>
-            <strong>{t('common.correction.amountProgress',{value:progress.amountProgress == null ? '—' : progress.amountProgress+'%'})}</strong>
-            <small>{t('common.correction.qtyProgress',{value:progress.qtyProgress == null ? '—' : progress.qtyProgress+'%'})}</small>
+            <strong>{t('common.correction.amountProgress',{value:formattedProgress(progress.amount)})}</strong>
+            <small>{t('common.correction.qtyProgress',{value:formattedProgress(progress.quantity)})}</small>
+            {comparisonFor(tableRow).compareAmount && <small>{t('common.assistantSurface.regionalApproval.compareProgress', {value:comparisonFor(tableRow).compareTargetAmount
+              ? formattedProgress(regionalApprovalLiveProgress({...tableRow.plan,currentQty:comparisonFor(tableRow).compareQty!,currentAmount:comparisonFor(tableRow).compareAmount!,targetQty:comparisonFor(tableRow).compareTargetQty!,targetAmount:comparisonFor(tableRow).compareTargetAmount!}).amount)
+              : t('common.assistantSurface.regionalApproval.versionTargetMissing')})}</small>}
+
           </div>;
         }
         const { category } = tableRow;
@@ -1836,24 +1869,6 @@ const RegionalApprovalWorkbench: React.FC<{
       {liveActionsEnabled ? (
         <Button
           size='small'
-          disabled={
-            selectedLiveRows.length !== 1 ||
-            Boolean(selectedLiveRows[0] && liveActionDisabledReason(selectedLiveRows[0], 'SAVE'))
-          }
-          onClick={() => {
-            const row = selectedLiveRows[0];
-            if (!row || liveActionDisabledReason(row, 'SAVE')) return;
-            selectLivePlanContext(row);
-            setLiveActionKind('SAVE');
-            setLiveActionPlanId(row.planId);
-          }}
-        >
-          {t('common.assistantSurface.regionalApproval.liveAction.save')}
-        </Button>
-      ) : null}
-      {liveActionsEnabled ? (
-        <Button
-          size='small'
           status='danger'
           disabled={
             selectedLiveRows.length !== 1 ||
@@ -1871,11 +1886,6 @@ const RegionalApprovalWorkbench: React.FC<{
           {t('common.assistantSurface.regionalApproval.liveAction.reject')}
         </Button>
       ) : null}
-      {onResubmit ? <Button size='small'
-        disabled={selectedLiveRows.length !== 1 || !liveQuery.selectedPeriod || liveQuery.queueState.status !== 'success' || ![6, 7, 8, 9].includes(selectedLiveRows[0]?.status)}
-        onClick={() => { const row = selectedLiveRows[0]; if (row && liveQuery.selectedPeriod) onResubmit(row.planId, row.versionId, liveQuery.selectedPeriod); }}>
-        {t('common.assistantSurface.regionalApproval.liveSubmit.open')}
-      </Button> : null}
       {liveActionsEnabled ? (
         <Button
           type='primary'
@@ -1966,6 +1976,7 @@ const RegionalApprovalWorkbench: React.FC<{
     >
       <header className={styles.header}>
         <div className={styles.titleLine}>
+          {headerControls}
           <Typography.Title heading={5}>{t('common.assistantSurface.regionalApproval.title')}</Typography.Title>
           {!liveQuery.enabled ? (
             <Tag className={styles.fixtureTag} color='red'>
@@ -2542,6 +2553,8 @@ const RegionalApprovalWorkbench: React.FC<{
                     className={styles.organizationTable}
                     tableLayoutFixed
                     indentSize={20}
+                    expandedRowRender={(record) => record.kind === 'plan' && !record.members && record.plan.planId === inlinePlanId
+                      ? <InlineSkuDetails row={{...record.plan,versionId:versionMetrics[record.plan.planId]?.versionId ?? record.plan.versionId}} t={t} onOpen={() => {setLiveAdjustmentDimension(dimension);setLiveAdjustmentPlanId(record.plan.planId);}} /> : null}
                     expandProps={{
                       icon: ({ expanded, record }) => (
                         <button
@@ -2561,7 +2574,7 @@ const RegionalApprovalWorkbench: React.FC<{
                         </button>
                       ),
                     }}
-                    expandedRowKeys={expandedLiveGroups}
+                    expandedRowKeys={[...expandedLiveGroups, ...(inlinePlanId ? [inlinePlanId] : [])]}
                     onExpandedRowsChange={setExpandedLiveGroups}
                     loading={liveCategoriesLoading}
                     rowClassName={(row) => row.kind === 'category' ? styles.categoryComparisonRow : row.members ? styles.organizationGroupRow : ''}
@@ -2744,7 +2757,9 @@ const RegionalApprovalWorkbench: React.FC<{
           row={activeLiveAdjustmentRow}
           initialDimension={liveAdjustmentDimension}
           drafts={liveAdjustmentDrafts}
-          editor={liveActionDialog}
+          editor={liveActionKind === 'SAVE' && liveActionPlanId && liveAccess.entries[activeLiveAdjustmentRow.versionId]
+            ? <ApprovalDraftEditor detail={liveAccess.entries[activeLiveAdjustmentRow.versionId]} t={t} onClose={() => setLiveActionPlanId(undefined)} />
+            : liveActionDialog}
           t={t}
           client={detailClient}
           onDraftsChange={(recordIds, nextDrafts) => {
@@ -2757,7 +2772,7 @@ const RegionalApprovalWorkbench: React.FC<{
             }));
           }}
           onEdit={
-            liveActionsEnabled && !liveActionDisabledReason(activeLiveAdjustmentRow, 'SAVE')
+            liveActionsEnabled && Boolean(liveAccess.entries[activeLiveAdjustmentRow.versionId]?.actionContext?.snapshotHash) && !liveActionDisabledReason(activeLiveAdjustmentRow, 'APPROVE')
               ? () => {
                   setLiveActionKind('SAVE');
                   setLiveActionPlanId(activeLiveAdjustmentRow.planId);
@@ -2805,15 +2820,14 @@ const SalesPlanWorkbench: React.FC<React.ComponentProps<typeof RegionalApprovalW
       evidence: { ...context.current.evidence, queryState: 'loading' } }, null);
     setOrderType(value);
   };
-  return <>
-    <div role="tablist" aria-label={props.t("common.correction.tabs")} style={{display:'flex',gap:8,padding:'12px 20px'}}>
-      {(['M','Z'] as const).map(value => <Button key={value} role="tab" aria-selected={orderType === value}
+  const headerControls = <div role="tablist" aria-label={props.t("common.correction.tabs")} className={styles.orderTabs}>
+      {(['M','Z'] as const).map(value => <Button size='small' key={value} role="tab" aria-selected={orderType === value}
         type={orderType === value ? 'primary' : 'secondary'} onClick={() => select(value)}>
         {props.t(value === 'M' ? 'common.correction.monthly' : 'common.correction.correction')}
       </Button>)}
-    </div>
-    {orderType === 'M' ? <RegionalApprovalWorkbench {...props} queryClient={monthlyClient} onContextChange={onContextChange} /> :
-      <CorrectionWorkbench t={props.t} queryClient={props.queryClient} detailClient={props.detailClient} actionClient={props.liveActionsEnabled ? props.liveActionClient : undefined} onResubmit={props.onResubmit} />}
-  </>;
+    </div>;
+  return orderType === 'M' ? <RegionalApprovalWorkbench {...props} headerControls={headerControls} queryClient={monthlyClient} onContextChange={onContextChange} /> :
+      <CorrectionWorkbench headerControls={headerControls} t={props.t} queryClient={props.queryClient} detailClient={props.detailClient} actionClient={props.liveActionsEnabled ? props.liveActionClient : undefined} onResubmit={props.onResubmit} />;
+
 };
 export default SalesPlanWorkbench;

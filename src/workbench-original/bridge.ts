@@ -1,3 +1,4 @@
+import type { SalesPlanLocalDraft } from './workbenches/regionalApproval/models/salesPlanLocalDraftModel.ts';
 /** Explicit host methods for the copied workbench; no AionUi process or IPC is loaded. */
 import type * as Api from './contracts.ts';
 
@@ -6,6 +7,7 @@ export type * from './contracts.ts';
 /** Host-owned GEA transport. Authentication, authorization and writes remain on the server. */
 export interface WorkbenchHost {
   salesPlan: {
+    draft?: { invoke(params: {planId: string; versionId: string; draft?: SalesPlanLocalDraft; signal?: AbortSignal}): Promise<{draft: SalesPlanLocalDraft | null; sourceSnapshot?: string; savedAt?: string; stale?: boolean}> };
     periods: { invoke(query?: Api.GeaSalesPlanPeriodQuery): Promise<Api.GeaSalesPlanPage<Api.GeaSalesPlanPeriod>> };
     list: { invoke(query?: Api.GeaSalesPlanPageQuery): Promise<Api.GeaSalesPlanPage<Api.GeaSalesPlanListItem>> };
     detail: { invoke(query: Api.GeaSalesPlanResourceQuery): Promise<Api.GeaSalesPlanDetail> };
@@ -47,6 +49,7 @@ function host(): WorkbenchHost {
 
 /** Compatibility names used by the original presentation; every call reaches the configured host. */
 export const salesPlan: WorkbenchHost['salesPlan'] = {
+  draft: { invoke: (input) => { const adapter = host().salesPlan.draft; if (!adapter) return Promise.reject(new Error('DRAFT_UNAVAILABLE')); return adapter.invoke(input); } },
   periods: { invoke: (query) => host().salesPlan.periods.invoke(query) },
   list: { invoke: (query) => host().salesPlan.list.invoke(query) },
   detail: { invoke: (query) => host().salesPlan.detail.invoke(query) },
