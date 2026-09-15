@@ -374,3 +374,49 @@ test("SSE discovery preserves response, pagination accumulates routes and refres
   tools = [{ name: "invalid" }];
   await assert.rejects(() => send("tools/list"), /ROUTE_INVALID/);
 });
+
+test("local Skill file URI is rejected before gateway IO with the correct reader guidance", async () => {
+  const messages = [];
+  const connection = await prepareGatewayMcp(
+    "https://gea.test",
+    auth,
+    consumer,
+    new AbortController().signal,
+    1000,
+    async (url, init) => {
+      if (url.endsWith("/session")) return Response.json(session());
+      messages.push(JSON.parse(init.body));
+      return Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        error: { code: -32002, message: "Resource URI 不合法" },
+      });
+    },
+  );
+  await assert.rejects(
+    () =>
+      connection.fetch(connection.url, {
+        method: "POST",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "resources/read",
+          params: { uri: "file:///suite/references/rules-and-conflicts.md" },
+        }),
+      }),
+    /gea_skill_reference_read/,
+  );
+  assert.equal(messages.length, 0);
+  const uri = "data-artifact://gateway/returned-artifact";
+  await connection.fetch(connection.url, {
+    method: "POST",
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "resources/read",
+      params: { uri },
+    }),
+  });
+  assert.equal(messages[0].params.uri, uri);
+  assert.equal(messages[0].params._meta.sessionId, "business-session");
+});

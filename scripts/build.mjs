@@ -4,13 +4,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 
 await mkdir("lib", { recursive: true });
 await build({
-  entryPoints: ["src/host.ts"],
+  entryPoints: ["src/host.ts", "src/skill-reference.ts"],
   bundle: true,
   packages: "external",
   format: "esm",
   platform: "node",
   target: "node22",
-  outfile: "lib/host.js",
+  outdir: "lib",
 });
 const output = await build({
   entryPoints: ["src/client.tsx"],
