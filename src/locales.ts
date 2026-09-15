@@ -54,14 +54,24 @@ const copy = {
     "Inspect plans, versions and SKUs, then confirm the input for a read-only session.",
   ],
   welcomeLogin: [
-    "欢迎回来，请登录您的账户",
-    "Welcome back. Sign in to your account.",
+    "欢迎使用 GEA 工作台",
+    "Welcome to your GEA workspace",
   ],
   production: ["正式", "Production"],
   test: ["测试", "Test"],
   scanInstructions: [
-    "使用手机飞书扫描二维码并确认授权",
-    "Scan the code with Lark on your phone and confirm sign-in.",
+    "用手机飞书扫一扫，开始今天的工作。",
+    "Scan with Lark on your phone to get started.",
+  ],
+  qrPreparing: ["正在准备二维码…", "Preparing your QR code…"],
+  qrUnavailable: ["二维码暂未就绪", "QR code unavailable"],
+  qrWaiting: ["等待扫码", "Ready to scan"],
+  qrExpired: ["二维码已过期", "QR code expired"],
+  qrExpiredHint: ["点下方按钮，换一张新的二维码", "Use the button below to get a new code."],
+  loginTipTitle: ["小提示", "A quick tip"],
+  loginTip: [
+    "扫码后，请在手机飞书中确认登录；无需在这里输入密码。",
+    "After scanning, confirm sign-in in Lark. No password is needed here.",
   ],
   loginFooter: ["GEA 业务工作台", "GEA business workspace"],
   changeEnvironment: [
