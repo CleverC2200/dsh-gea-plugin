@@ -6,8 +6,19 @@
   overflow: hidden;
 }
 .gea-original-workbench {
+  display: flex;
+  flex-direction: column;
   flex: 1;
+  min-width: 0;
   min-height: 0;
+}
+.gea-original-workbench > [role="tablist"] {
+  flex: 0 0 auto;
+}
+.gea-original-workbench > main {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
 }
 .gea-analysis-toolbar {
   flex: 0 0 auto;

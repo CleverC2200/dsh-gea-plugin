@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { resolveEnvironments } from "../src/environments.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
 import {
@@ -102,7 +103,7 @@ export function deploymentPatch(config, root, runtime) {
   const analysis = config.analysis;
   const rows = [
     { id: "ui-layout", disabled: true },
-    { insert: [{ id: "agent-workbench", name: resolve(root, "packages/agent-workbench/lib/host.js"), config: { cwd: resolve(runtime, "workspace") } }] },
+    { insert: [{ id: "agent-workbench", name: createRequire(import.meta.url).resolve("@cleverc2200/dsh-agent-workbench"), config: { cwd: resolve(runtime, "workspace") } }] },
     { id: "session-title-llm", disabled: true },
     {
       id: "agent-default-model",

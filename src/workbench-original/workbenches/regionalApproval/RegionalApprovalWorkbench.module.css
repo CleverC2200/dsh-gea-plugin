@@ -1104,3 +1104,81 @@
     margin-right: 4px;
   }
 }
+
+/* Keep tree controls on the title baseline, with one indentation per level. */
+.organizationTable :global(.arco-table-cell) {
+  display: flex;
+  align-items: flex-start;
+}
+.organizationTable :global(.arco-table-cell-wrap-value) {
+  min-width: 0;
+  flex: 1;
+}
+.organizationTable :global(.arco-table-cell-expand-icon) {
+  flex: 0 0 20px;
+  margin-right: 4px;
+}
+.organizationTable :global(.arco-table-cell-expand-icon button) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.organizationTable :global(.arco-table-cell-expand-icon button:hover) {
+  background: var(--bg-3);
+  color: var(--text-primary);
+}
+.organizationTable :global(.arco-table-cell-expand-icon button:focus-visible) {
+  outline: 2px solid rgb(var(--primary-6));
+  outline-offset: 2px;
+}
+.organizationTable .detailTrigger {
+  display: block;
+  max-width: 100%;
+  min-height: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.organizationTable .organizationPath {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.organizationGroupRow > :global(td) {
+  background: var(--bg-1);
+}
+.organizationTable :global(.arco-table-td) {
+  padding-block: 10px;
+}
+.organizationTable :global(.arco-table-content-inner) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-4) var(--bg-1);
+}
+/* Sticky identity and status columns must leave room for values in small panels. */
+@container (max-width: 620px) {
+  .organizationTable :global(.arco-table-col-fixed-left),
+  .organizationTable :global(.arco-table-col-fixed-right) {
+    position: static;
+  }
+  .header {
+    flex-wrap: wrap;
+    padding-block: 8px;
+    overflow: visible;
+  }
+  .scope {
+    flex-basis: 100%;
+  }
+}
+
+.organizationTable :global(.arco-table-cell-indent) {
+  flex-shrink: 0;
+}

@@ -33,7 +33,7 @@
     "qrcode": "1.5.4",
     "yaml": "2.9.0",
     "@deepseek-ai/dsh-tools": "0.1.5-rc.2",
-    "@cleverc2200/dsh-agent-workbench": "file:packages/agent-workbench",
+    "@cleverc2200/dsh-agent-workbench": "git+https://github.com/CleverC2200/dsh-agent-workbench.git#db51a0d0f772fc6e78701f3a218f4d4c3f26e93c",
     "@deepseek-ai/dsh-agent-presets": "0.1.5-rc.2"
   },
   "dsh": {
@@ -98,17 +98,10 @@
     "docs/install.md",
     "src/workbench-original/README.md",
     "npm-shrinkwrap.json",
-    "packages/agent-workbench/package.json",
-    "packages/agent-workbench/lib/host.js",
-    "packages/agent-workbench/lib/client.js",
-    "packages/agent-workbench/README.md",
     "packages/workbench-example/package.json",
     "packages/workbench-example/lib/host.js",
     "packages/workbench-example/lib/client.js",
-    "packages/workbench-example/README.md",
-    "packages/agent-workbench/LICENSE",
-    "packages/agent-workbench/UPSTREAM.md",
-    "packages/agent-workbench/lib/types/"
+    "packages/workbench-example/README.md"
   ],
   "workspaces": [
     "packages/*"

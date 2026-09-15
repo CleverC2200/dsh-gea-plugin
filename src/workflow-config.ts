@@ -1,3 +1,4 @@
+import { GeaResponseError } from './gea-error.js';
 import { randomUUID } from 'node:crypto';
 import { salesPlanWorkflow, type SalesPlanWorkflowRow } from './workbench-original/salesPlanWorkflow.ts';
 
@@ -14,31 +15,52 @@ export async function readSalesPlanWorkflowConfig(
 ): Promise<SalesPlanWorkflowRow[]> {
   const rows: SalesPlanWorkflowRow[] = [];
   const ids = new Set<string>();
+  const secrets = [accessToken];
   const post = async (path: string, body: unknown, headers: Record<string, string>) => {
-    const response = await fetchImpl(base + path, {
-      method: 'POST',
-      redirect: 'error',
-      signal,
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...headers },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) throw new Error('GEA_WORKFLOW_QUERY_FAILED');
-    const payload = await response.json();
+    const requestId = headers['X-Request-Id'] ?? randomUUID();
+    const stage = path.endsWith('/agent/session') ? 'session' : 'sql';
+    const failure = (status: number, payload: any, reason: string) => {
+      const error = new GeaResponseError(status >= 400 ? status : 502, payload, secrets);
+      error.details = { ...error.details, httpStatus: status, stage, path, reason,
+        ...(typeof payload?.code === 'number' ? { businessCode: payload.code } : {}),
+        requestId: error.details.requestId ?? requestId };
+      return error;
+    };
+    let response: Response;
+    try {
+      response = await fetchImpl(base + path, {
+        method: 'POST',
+        redirect: 'error',
+        signal,
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...headers, 'X-Request-Id': requestId },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      signal.throwIfAborted();
+      throw failure(0, undefined, 'transport');
+    }
+    let payload;
+    try { payload = await response.json(); } catch {
+      signal.throwIfAborted();
+      throw failure(response.status, undefined, 'invalid-json');
+    }
+    if (!response.ok) throw failure(response.status, payload, 'http');
     signal.throwIfAborted();
     if (payload?.success !== true || payload.code !== 200 || !payload.result)
-      throw new Error('GEA_WORKFLOW_QUERY_FAILED');
+      throw failure(response.status, payload, 'envelope');
     return payload.result;
   };
   {
+    const sessionRequestId = randomUUID();
     const session = await post(
       '/ai/gateway/agent/session',
       {
         agentCode: 'sales_forecast',
         channel: 'AI_PORTAL',
-        requestId: randomUUID(),
+        requestId: sessionRequestId,
         conversationId: randomUUID(),
       },
-      { 'X-Access-Token': accessToken }
+      { 'X-Access-Token': accessToken, 'X-Request-Id': sessionRequestId }
     );
     if (
       session.accessDecision?.allowed !== true ||
@@ -46,6 +68,7 @@ export async function readSalesPlanWorkflowConfig(
       !session.delegationToken
     )
       throw new Error('GEA_WORKFLOW_SESSION_REJECTED');
+    secrets.push(session.delegationToken);
     let total: number | undefined;
     for (let page = 1; page <= 10; page++) {
       const requestId = randomUUID();

@@ -19,6 +19,9 @@ test("the runtime resolves pinned published packages and replaces layout by ordi
     "/runtime",
   );
   assert.equal(patch.find((row) => row.id === "ui-layout").disabled, true);
+  const workbench = patch.flatMap(row => row.insert ?? []).find(entry => entry.id === "agent-workbench");
+  assert.equal(workbench.name, require.resolve("@cleverc2200/dsh-agent-workbench"));
+  assert.ok((await realpath(workbench.name)).includes("/node_modules/"));
   assert.ok(
     patch.some((row) =>
       row.insert?.some((entry) => entry.id === "agent-workbench"),
