@@ -34,6 +34,7 @@ function fixture() {
       },
     },
     skills: {
+      list: async () => [],
       get: async () => ({
         invocation: { modelInvocable: true },
         resourceBase: { kind: "directory", path: "/suite/skills/scope" },
@@ -130,4 +131,21 @@ test("reference reader respects current skill visibility, cancellation and pagin
   await assert.rejects(() =>
     reader.execute(args, { signal: controller.signal }),
   );
+});
+
+test("unknown skill gives the current visible catalog instead of another dead end", async () => {
+  const { tools, reads, ctx } = fixture();
+  ctx.skills.get = async () => undefined;
+  ctx.skills.list = async (options) => {
+    assert.equal(options.cwd, "/workspace");
+    return [
+      { name: "sinian-forecast-scope", invocation: { modelInvocable: true } },
+      { name: "hidden-skill", invocation: { modelInvocable: false } },
+    ];
+  };
+  await assert.rejects(() => tools.get("gea_skill_reference_read").execute(
+    { skill: "gea-sales-plan", path: "SKILL.md" },
+    { signal: new AbortController().signal, agent: { session: { header: { cwd: "/workspace" } } } },
+  ), error => /sinian-forecast-scope/.test(error.message) && !/hidden-skill/.test(error.message));
+  assert.equal(reads.length, 0);
 });
