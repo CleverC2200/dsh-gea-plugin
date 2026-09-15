@@ -46,3 +46,23 @@ test('a process killed while preparing can be recovered without touching the act
  assert.equal((await store.selected()).id,'baseline');
  await store.prepare({id:'retry',install:async()=>{}});
 });
+
+test('new core selects its baseline before data writes and rejects old graphs and old shells',async t=>{
+ const {root,store:old}=await fixture(t);
+ const data=join(root,'user');
+ await writeFile(join(data,'login.encrypted'),'encrypted login').catch(async error=>{if(error.code!=='ENOENT')throw error;await mkdir(data);await writeFile(join(data,'login.encrypted'),'encrypted login');});
+ await mkdir(join(data,'data'),{recursive:true});
+ await writeFile(join(data,'data','session'),'saved session');
+ await old.prepare({id:'old-core',install:async()=>{}});await old.activate('old-core');await old.beginBoot();await old.confirmBoot();
+ const modern=new PluginStore({data,baseline:join(root,'baseline'),dataSchema:2});
+ assert.equal((await modern.beginBoot()).id,'baseline');
+ assert.equal((await modern.status()).upgradedFrom.active,'old-core');
+ await modern.failBoot('FIRST_BOOT_FAILED');
+ assert.equal((await modern.beginBoot()).id,'baseline');await modern.confirmBoot();
+ await assert.rejects(modern.activate('old-core'),/DATA_SCHEMA_INCOMPATIBLE/);
+ await assert.rejects(old.beginBoot(),/DATA_SCHEMA_INCOMPATIBLE/);
+ await assert.rejects(old.activate('baseline'),/DATA_SCHEMA_INCOMPATIBLE/);
+ assert.equal(await readFile(join(data,'login.encrypted'),'utf8'),'encrypted login');
+ assert.equal(await readFile(join(data,'data','session'),'utf8'),'saved session');
+ assert.equal(JSON.parse(await readFile(join(data,'plugins','versions','old-core','version.json'),'utf8')).dataSchema,1);
+});

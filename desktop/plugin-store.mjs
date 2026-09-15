@@ -17,8 +17,8 @@ async function atomic(path,value) {
   await rename(temporary,path);
 }
 export class PluginStore {
-  constructor({data,baseline}) {
-    this.root=join(resolve(data),'plugins');this.baseline=resolve(baseline);
+  constructor({data,baseline,dataSchema=1}) {
+    this.root=join(resolve(data),'plugins');this.baseline=resolve(baseline);this.dataSchema=dataSchema;
   }
   async status() {
     try{return await json(join(this.root,'selection.json'));}
@@ -31,6 +31,7 @@ export class PluginStore {
     const path=join(this.root,'versions',active);
     const receipt=await json(join(path,'version.json'));
     if(receipt.id!==active||receipt.state!=='prepared')throw Error('PLUGIN_VERSION_NOT_PREPARED');
+    if((receipt.dataSchema??1)!==this.dataSchema)throw Error('DATA_SCHEMA_INCOMPATIBLE');
     return {id:active,path,receipt};
   }
   async prepare({id,install,signal}) {
@@ -53,16 +54,16 @@ export class PluginStore {
       signal?.throwIfAborted();
       await install(stage,{registerProcess:async workerPid=>atomic(lockPath,{...owner,workerPid})});
       const manifest=await json(join(stage,'package.json'));
-      if(manifest.desktopDataSchema!==undefined&&manifest.desktopDataSchema!==1)throw Error('DATA_SCHEMA_UNSUPPORTED');
+      if(manifest.desktopDataSchema!==undefined&&manifest.desktopDataSchema!==this.dataSchema)throw Error('DATA_SCHEMA_UNSUPPORTED');
       const versions={};
       const dependency=createRequire(join(stage,'package.json'));
       for(const name of Object.keys(manifest.dependencies??{})) {
         const pkg=await json(dependency.resolve(name+'/package.json'));
-        if(pkg.desktopDataSchema!==undefined&&pkg.desktopDataSchema!==1)throw Error('DATA_SCHEMA_UNSUPPORTED');
+        if(pkg.desktopDataSchema!==undefined&&pkg.desktopDataSchema!==this.dataSchema)throw Error('DATA_SCHEMA_UNSUPPORTED');
         versions[name]=pkg.version;
       }
       const lockBytes=await readFile(join(stage,'pnpm-lock.yaml')).catch(error=>{if(error.code==='ENOENT')return Buffer.alloc(0);throw error;});
-      const receipt={id,state:'prepared',dataSchema:1,createdAt:new Date().toISOString(),dependencies:manifest.dependencies??{},versions,lockSha256:createHash('sha256').update(lockBytes).digest('hex')};
+      const receipt={id,state:'prepared',dataSchema:this.dataSchema,createdAt:new Date().toISOString(),dependencies:manifest.dependencies??{},versions,lockSha256:createHash('sha256').update(lockBytes).digest('hex')};
       await atomic(join(stage,'version.json'),receipt);
       // The store-wide lock serializes claims; never replace an existing version id.
       const destination=join(this.root,'versions',id);
@@ -91,8 +92,13 @@ export class PluginStore {
   }
   async beginBoot() {
     await mkdir(this.root,{recursive:true,mode:0o700});
-    const state=await this.status();
-    if((state.dataSchema??1)!==1)throw Error("DATA_SCHEMA_INCOMPATIBLE");
+    let state=await this.status();
+    if(this.dataSchema===2&&(state.dataSchema??1)===1){
+      // Reserve the new data generation before any new-core writes; old shells refuse it.
+      state={active:'baseline',previous:null,verified:'baseline',booting:null,dataSchema:2,upgradedFrom:state};
+      await atomic(join(this.root,'selection.json'),state);
+    }
+    if((state.dataSchema??1)!==this.dataSchema)throw Error("DATA_SCHEMA_INCOMPATIBLE");
     // A previous unconfirmed boot was interrupted. Recover before touching shared user data.
     if(state.booting) {
       await this.failBoot('PREVIOUS_BOOT_INTERRUPTED');
@@ -103,7 +109,7 @@ export class PluginStore {
   }
   async confirmBoot() {
     const state=await this.status();
-    await atomic(join(this.root,'selection.json'),{...state,booting:null,verified:state.active,error:null,dataSchema:1});
+    await atomic(join(this.root,'selection.json'),{...state,booting:null,verified:state.active,error:null,dataSchema:this.dataSchema});
   }
   async failBoot(reason) {
     const state=await this.status();
@@ -113,11 +119,12 @@ export class PluginStore {
   }
   async activate(id) {
     const current=await this.status();
-    if((current.dataSchema??1)!==1)throw Error("DATA_SCHEMA_INCOMPATIBLE: preserve data; restore a compatible application");
+    if((current.dataSchema??1)!==this.dataSchema)throw Error("DATA_SCHEMA_INCOMPATIBLE: preserve data; restore a compatible application");
     if(id!=='baseline') {
       versionId(id);
       const receipt=await json(join(this.root,'versions',id,'version.json'));
       if(receipt.id!==id||receipt.state!=='prepared')throw Error('PLUGIN_VERSION_NOT_PREPARED');
+      if((receipt.dataSchema??1)!==this.dataSchema)throw Error('DATA_SCHEMA_INCOMPATIBLE');
     }
     await mkdir(this.root,{recursive:true,mode:0o700});
     const state=await this.status();

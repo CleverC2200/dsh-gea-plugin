@@ -69,3 +69,13 @@ test('batch download or install failure keeps all current versions and offers no
   assert.equal((await readdir(join(data,'plugins'))).filter(name=>name.endsWith('.tgz')).length,0);
  }
 });
+
+
+test('core upgrade discards old pending actions while retaining update preferences and verified history',async t=>{
+ const history={'dsh-plugin@1.4.3-company.1':'saved-digest'};
+ const settings={automatic:false,intervalHours:12,channel:'test'};
+ const {updates,store}=await fixture(t,{}, {phase:'pending',pending:'legacy-graph',releases:[{package:'old'}],history,settings});
+ store.dataSchema=2;await store.beginBoot();await store.confirmBoot();await updates.start();
+ const state=await updates.status();assert.equal(state.phase,'idle');assert.equal(state.pending,undefined);assert.deepEqual(state.releases,[]);assert.deepEqual(state.history,history);assert.deepEqual(state.settings,settings);
+ await assert.rejects(updates.restart(),/NO_PREPARED_UPDATE/);
+});

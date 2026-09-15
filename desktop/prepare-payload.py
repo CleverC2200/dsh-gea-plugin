@@ -30,12 +30,13 @@ for record in records.values():
     shutil.copy2(args.archives / record['file'], target / 'packages' / record['file'])
 overrides = {name: 'file:packages/' + record['file'] for name, record in records.items() if name.startswith('@deepseek-ai/') or name in roots}
 version = json.loads((desktop / 'package.json').read_text())['version']
-manifest = {'name': 'gea-desktop-runtime', 'version': version, 'private': True, 'type': 'module', 'desktopDataSchema': 1, 'dependencies': {name: overrides[name] for name in roots}}
+manifest = {'name': 'gea-desktop-runtime', 'version': version, 'private': True, 'type': 'module', 'desktopDataSchema': json.loads((desktop / 'package.json').read_text())['desktopDataSchema'], 'dependencies': {name: overrides[name] for name in roots}}
 (target / 'package.json').write_text(json.dumps(manifest, indent=2) + '\n')
 workspace = {'nodeLinker': 'hoisted', 'minimumReleaseAge': 0, 'overrides': overrides, 'supportedArchitectures': {'os': ['darwin' if args.platform == 'mac' else 'win32'], 'cpu': ['arm64' if args.platform == 'mac' else 'x64']}}
-patch = 'client-modules-newline-scan.patch'
-shutil.copy2(desktop / 'patches' / patch, target / 'packages' / patch)
-workspace['patchedDependencies'] = {'@deepseek-ai/dsh-client-modules@0.1.5-rc.2': 'packages/' + patch}
+if records['@deepseek-ai/dsh-client-modules']['version'] == '0.1.5-rc.2':
+    patch = 'client-modules-newline-scan.patch'
+    shutil.copy2(desktop / 'patches' / patch, target / 'packages' / patch)
+    workspace['patchedDependencies'] = {'@deepseek-ai/dsh-client-modules@0.1.5-rc.2': 'packages/' + patch}
 (target / 'pnpm-workspace.yaml').write_text(json.dumps(workspace, indent=2) + '\n')
 (target / 'archives.json').write_text(json.dumps(records, indent=2) + '\n')
 shutil.copytree(args.node_distribution, target / 'node', symlinks=True)

@@ -139,7 +139,7 @@ if(owned){
     await mkdir(data,{recursive:true,mode:0o700});
     createWindow();await showStartup();
     const {PluginStore}=await import('./plugin-store.mjs');
-    pluginStore=new PluginStore({data,baseline:payload});
+    pluginStore=new PluginStore({data,baseline:payload,dataSchema:require('./package.json').desktopDataSchema});
     await pluginStore.recoverPreparation();
     const {createControlServer}=await import('./control-server.mjs');
     const {createClientInstaller}=await import('./client-installer.mjs');
