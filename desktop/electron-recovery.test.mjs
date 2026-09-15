@@ -23,10 +23,14 @@ test('Electron restores the baseline when the selected backend cannot start, the
 
 test('Electron encrypted identity survives restart and is removed by explicit logout', {timeout:90000},async t=>{
   const data=await mkdtemp(join(tmpdir(),'gea-electron-login-'));
+  const selection=async()=>{
+    try{return JSON.parse(await readFile(join(data,'plugins/selection.json'),'utf8'));}
+    catch(error){if(error.code==='ENOENT')return null;throw error;}
+  };
   await writeFile(join(data,'gea.config.json'),await readFile('gea.config.example.json'));
   const app=await electron.launch({executablePath:resolve(process.env.GEA_ELECTRON_EXECUTABLE),args:[resolve('desktop')],env:{...process.env,DSH_GEA_DESKTOP_DATA:data,GEA_DESKTOP_PAYLOAD:resolve(process.env.GEA_DESKTOP_PAYLOAD)}});
   t.after(async()=>{await app.close();await rm(data,{recursive:true,force:true});});await app.firstWindow();
-  await expect.poll(async()=>JSON.parse(await readFile(join(data,'plugins/selection.json'),'utf8')),{timeout:30000}).toMatchObject({booting:null,verified:'baseline'});
+  await expect.poll(selection,{timeout:30000}).toMatchObject({booting:null,verified:'baseline'});
   const config=JSON.parse(await readFile('gea.config.example.json','utf8'));
   const secret='fixture-encrypted-only-token';
   const snapshot={schema:1,environment:'production',base:config.geaBaseUrl,auth:{token:secret,tenantId:'0',name:'Tester',id:'1',username:'tester'}};
