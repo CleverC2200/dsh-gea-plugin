@@ -100,7 +100,7 @@ test('one-click cancellation prevents automatic restart',async t=>{
 test('startup always checks once, even with legacy automatic checks disabled',async t=>{
   const {updates,counts,desktopChecks}=await fixture(t,{}, {settings:{automatic:false,intervalHours:24,channel:'stable'}});
   await updates.start();await until(updates.status,s=>!!s.lastCheck&&!s.checking);
-  await updates.start();assert.equal(counts().checks,1);assert.equal(desktopChecks(),1);assert.equal(counts().installs,0);
+  await updates.start();await until(updates.status,s=>!s.checking);assert.equal(counts().checks,1);assert.equal(desktopChecks(),1);assert.equal(counts().installs,0);
 });
 test('interval settings validate, persist and reschedule without installing',async t=>{
   const {updates,counts,data}=await fixture(t);
@@ -124,4 +124,18 @@ test('core upgrade discards old pending actions while retaining update preferenc
  store.dataSchema=2;await store.beginBoot();await store.confirmBoot();await updates.start();
  const state=await updates.status();assert.equal(state.phase,'idle');assert.equal(state.pending,undefined);assert.deepEqual(state.releases,[]);assert.deepEqual(state.history,history);assert.deepEqual(state.settings,settings);
  await assert.rejects(updates.restart(),/NO_PREPARED_UPDATE/);
+});
+
+// Compatibility must hold both before preparation and after the selected upgrades.
+test('rejects a batch whose resulting host combination is incompatible before downloads',async t=>{
+ const hosts=[];let downloads=0;
+ const offer={package:'@cleverc2200/dsh-agent-workbench',version:'0.1.2'};
+ const {updates,counts,store}=await fixture(t,{
+  fetchCompanyChannel:async()=>({releases:[offer]}),
+  validateReleaseChannel:(_value,_channel,host)=>{hosts.push(host.workbench);if(host.workbench==='0.1.2')throw Error('INCOMPATIBLE_TARGET');},
+  fetchReleasePackage:async()=>{downloads++;return new Uint8Array([1]);},
+ });
+ await updates.check();await assert.rejects(updates.prepare({all:true}),/INCOMPATIBLE_TARGET/);
+ assert.deepEqual(hosts,['0.1.1','0.1.2']);assert.equal(downloads,0);assert.equal(counts().installs,0);
+ assert.equal((await store.selected()).id,'baseline');
 });

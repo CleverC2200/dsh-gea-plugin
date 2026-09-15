@@ -52,7 +52,11 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
     if(!selected.length)throw Error('CHECK_RELEASE_FIRST');
     const targets=selected.filter(entry=>current[entry.package]!==entry.version);
     if(!targets.length)return {error:'ALREADY_CURRENT'};
-    releases.validateReleaseChannel({schema:1,channel:state.settings.channel,releases:targets},state.settings.channel,{dsh:current['@deepseek-ai/dsh'],workbench:current['@cleverc2200/dsh-agent-workbench'],desktop:desktopVersion});
+    const batch={schema:1,channel:state.settings.channel,releases:targets};
+    const host={dsh:current['@deepseek-ai/dsh'],workbench:current['@cleverc2200/dsh-agent-workbench'],desktop:desktopVersion};
+    releases.validateReleaseChannel(batch,state.settings.channel,host);
+    const planned={...current,...Object.fromEntries(targets.map(entry=>[entry.package,entry.version]))};
+    releases.validateReleaseChannel(batch,state.settings.channel,{...host,dsh:planned['@deepseek-ai/dsh'],workbench:planned['@cleverc2200/dsh-agent-workbench']});
     if(closed||preparing||checking||['pending','restarting'].includes(state.phase))return {error:'UPDATE_BUSY'};
     autoRestart=value.restart===true;
     // Reserve before asynchronous download; duplicate requests share one operation.
@@ -94,8 +98,7 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
     status,check,settings,prepare,
     cancel:async()=>{autoRestart=false;abort?.abort();if(state.phase==='pending'){state.phase='cancelled';await save();}return {ok:true};},
     restart:restartPrepared,
-    start:async()=>{if(started)return;started=true;if(state.phase!=='pending'||preparing)throw Error('NO_PREPARED_UPDATE');state.phase='restarting';await save();restartTimer=setTimeout(()=>{if(closed)return;restartTask=restart(state.pending).then(async()=>{const selected=await store.status();state.phase=selected.active===state.pending&&selected.verified===state.pending&&!selected.booting?'succeeded':'failed';state.error=state.phase==='failed'?'UPDATE_ROLLED_BACK':null;await save();}).catch(async error=>{state.phase='failed';state.error=errorCode(error);await save();});},100);return {ok:true};},
-    start:async()=>{const generation=(await store.status()).dataSchema??1;if((state.dataSchema??1)!==generation){state={settings:state.settings,history:state.history,phase:'idle',releases:[],dataSchema:generation};await save();}if(state.phase==='restarting'){const selection=await store.status();state.phase=selection.active===state.pending&&!selection.booting?'succeeded':'failed';state.error=state.phase==='failed'?'UPDATE_ROLLED_BACK':null;await save();}void check().catch(()=>{});},
+    start:async()=>{if(started)return;started=true;const generation=(await store.status()).dataSchema??1;if((state.dataSchema??1)!==generation){state={settings:state.settings,history:state.history,phase:'idle',releases:[],dataSchema:generation};await save();}if(state.phase==='restarting'){const selection=await store.status();state.phase=selection.active===state.pending&&!selection.booting?'succeeded':'failed';state.error=state.phase==='failed'?'UPDATE_ROLLED_BACK':null;await save();}void check().catch(()=>{});},
     close:async()=>{closed=true;clearInterval(timer);clearTimeout(restartTimer);abort?.abort();checkAbort?.abort();await preparing;await checking;await restartTask;await writes;},
   };
 }
