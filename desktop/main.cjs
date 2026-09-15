@@ -163,6 +163,7 @@ if(owned){
       const {createUpdates}=await import('./updates.mjs');const {installArtifact}=await import('./installer.mjs');
       updates=await createUpdates({data,store:pluginStore,desktopVersion:require('./package.json').version,releases,
         sources:require('./release-sources.json'),token:process.env.GEA_RELEASE_TOKEN,
+        checkDesktop:value=>clientInstaller.check(value),
         install:(directory,artifact,signal,onProcess)=>installArtifact({directory,optimizedBaseline:payload,artifact,signal,onProcess,onProgress:line=>void appendFile(join(data,'desktop.log'),line,{mode:0o600}).catch(()=>{}),node:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node'),pnpm:join(payload,'tools/node_modules/pnpm/bin/pnpm.cjs')}),
         restart:id=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await pluginStore.activate(id);await start(false,'update');})});
     }catch(error){await appendFile(join(data,'desktop.log'),'公司更新服务不可用：'+errorText(error)+'\n',{mode:0o600});}

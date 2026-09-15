@@ -59,6 +59,7 @@ export function createClientInstaller({data,currentVersion,platform=process.plat
     const artifact=selected.artifact;
     controller=new AbortController();const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(10*60*1000)]);
     state={...state,phase:'downloading',downloadedBytes:0,error:null};ready=undefined;
+    let outcome;
     work=(async()=>{
       const directory=join(data,'desktop-downloads'),part=join(directory,randomUUID()+'.part');
       let file;
@@ -75,10 +76,10 @@ export function createClientInstaller({data,currentVersion,platform=process.plat
         if(state.downloadedBytes!==artifact.bytes||hash.digest('hex')!==artifact.sha256)fail('DESKTOP_INSTALLER_CHECKSUM_MISMATCH');
         signal.throwIfAborted();await file.sync();await file.close();file=undefined;
         const path=join(directory,artifact.sha256+'-'+new URL(artifact.url).pathname.split('/').pop());
-        await rename(part,path);ready={path,sha256:artifact.sha256};state.phase='ready';
-      }catch(error){state.phase=signal.aborted?'cancelled':'failed';state.error=signal.aborted?null:error.message;}
+        await rename(part,path);ready={path,sha256:artifact.sha256};outcome={phase:'ready',error:null};
+      }catch(error){outcome={phase:signal.aborted?'cancelled':'failed',error:signal.aborted?null:error.message};}
       finally{await file?.close();await rm(part,{force:true});}
-    })().finally(()=>{work=undefined;controller=undefined;});
+    })().finally(()=>{work=undefined;controller=undefined;if(outcome)state={...state,...outcome};});
     void work.catch(()=>{state.phase='failed';state.error='DESKTOP_DOWNLOAD_FAILED';});
     return {accepted:true};
   };

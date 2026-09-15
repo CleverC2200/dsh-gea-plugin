@@ -9,12 +9,12 @@ async function fixture(t,overrides={},initialState){
  await writeFile(join(baseline,'package.json'),JSON.stringify({dependencies}));
  if(initialState){await mkdir(join(data,'plugins'),{recursive:true});await writeFile(join(data,'plugins/update-state.json'),JSON.stringify(initialState));}
  const store=new PluginStore({data,baseline});const release={package:'dsh-plugin',version:'1.4.3-company.2',notes:{zh:'更新',en:'Update'}};
- let installs=0,restarts=0,checks=0;
- const updates=await createUpdates({data,store,desktopVersion:'0.0.2',sources:{stable:'stable',test:'test'},
+ let installs=0,restarts=0,checks=0,desktopChecks=0;
+ const updates=await createUpdates({data,store,desktopVersion:'0.0.2',sources:{stable:'stable',test:'test'},checkDesktop:async()=>{desktopChecks++;},
   releases:{validateReleaseChannel:value=>value,fetchCompanyChannel:async(source)=>{checks++;return {releases:source==='stable'?[release]:[]}},verifyReleaseHistory:(_,history)=>history,fetchReleasePackage:async()=>new Uint8Array([1]),...overrides},
   install:async directory=>{installs++;await writeFile(join(directory,'node_modules/dsh-plugin/package.json'),JSON.stringify({name:'dsh-plugin',version:release.version}));},
   restart:async id=>{restarts++;await store.activate(id);await store.beginBoot();await store.confirmBoot();}});
- t.after(()=>updates.close());return {updates,store,counts:()=>({installs,restarts,checks})};
+ t.after(()=>updates.close());return {updates,store,data,desktopChecks:()=>desktopChecks,counts:()=>({installs,restarts,checks})};
 }
 test('checks do not install; duplicate preparations reserve one graph and explicit restart verifies its actual version',async t=>{
  const {updates,store,counts}=await fixture(t);await updates.check();assert.equal(counts().installs,0);
@@ -68,4 +68,51 @@ test('batch download or install failure keeps all current versions and offers no
   await assert.rejects(updates.restart(),/NO_PREPARED_UPDATE/);assert.equal(counts().restarts,0);
   assert.equal((await readdir(join(data,'plugins'))).filter(name=>name.endsWith('.tgz')).length,0);
  }
+});
+
+test('one click downloads all updates and automatically restarts exactly once',async t=>{
+  const {updates,counts,store}=await batchFixture(t);
+  await updates.check();
+  assert.equal((await updates.status()).settings.intervalHours,24);
+  assert.equal((await updates.status()).capabilities.prepareAndRestart,true);
+  await Promise.all([updates.prepare({all:true,restart:true}),updates.prepare({all:true,restart:true})]);
+  const done=await until(updates.status,s=>s.phase==='succeeded');
+  assert.deepEqual(counts(),{installs:1,restarts:1,downloads:2});
+  assert.equal(done.current['dsh-plugin'],'1.4.3-company.2');
+  assert.equal(done.current['@cleverc2200/dsh-agent-workbench'],'0.1.2');
+  assert.notEqual((await store.selected()).id,'baseline');
+});
+test('one-click failure never restarts or partially applies an update',async t=>{
+  for(const options of [{badDownload:true},{badInstall:true}]){
+    const {updates,counts,store}=await batchFixture(t,options);
+    await updates.check();await updates.prepare({all:true,restart:true});
+    await until(updates.status,s=>s.phase==='failed');
+    assert.equal(counts().restarts,0);assert.equal((await store.selected()).id,'baseline');
+  }
+});
+test('one-click cancellation prevents automatic restart',async t=>{
+  const {updates,counts}=await fixture(t,{fetchReleasePackage:async(_release,{signal})=>new Promise((_,reject)=>{
+    if(signal.aborted)reject(Error('ABORTED'));else signal.addEventListener('abort',()=>reject(Error('ABORTED')),{once:true});
+  })});
+  await updates.check();await updates.prepare({all:true,restart:true});await updates.cancel();
+  await until(updates.status,s=>s.phase==='cancelled');assert.equal(counts().restarts,0);
+});
+test('startup always checks once, even with legacy automatic checks disabled',async t=>{
+  const {updates,counts,desktopChecks}=await fixture(t,{}, {settings:{automatic:false,intervalHours:24,channel:'stable'}});
+  await updates.start();await until(updates.status,s=>!!s.lastCheck&&!s.checking);
+  await updates.start();assert.equal(counts().checks,1);assert.equal(desktopChecks(),1);assert.equal(counts().installs,0);
+});
+test('interval settings validate, persist and reschedule without installing',async t=>{
+  const {updates,counts,data}=await fixture(t);
+  for(const hours of [0,-1,1.5,169,'24']) await assert.rejects(updates.settings({automatic:true,intervalHours:hours,channel:'stable'}),/INVALID_UPDATE_SETTINGS/);
+  await assert.rejects(updates.settings(null),/INVALID_UPDATE_SETTINGS/);
+  t.mock.timers.enable({apis:['setInterval']});
+  await updates.settings({automatic:true,intervalHours:2,channel:'stable'});
+  t.mock.timers.tick(3600000);assert.equal(counts().checks,0);
+  t.mock.timers.tick(3600000);await until(updates.status,s=>!!s.lastCheck&&!s.checking);assert.equal(counts().checks,1);
+  await updates.settings({automatic:true,intervalHours:3,channel:'stable'});
+  t.mock.timers.tick(2*3600000);assert.equal(counts().checks,1);
+  t.mock.timers.tick(3600000);await until(updates.status,s=>!s.checking);assert.equal(counts().checks,2);
+  assert.equal((await updates.status()).settings.intervalHours,3);assert.equal(counts().installs,0);
+  assert.equal(JSON.parse(await readFile(join(data,'plugins/update-state.json'),'utf8')).settings.intervalHours,3);
 });
