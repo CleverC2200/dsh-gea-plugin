@@ -20,6 +20,7 @@ export type SalesPlanActionInput = {
   versionId: string;
   request: GeaSalesPlanActionRequest;
   serverWorkflowResult?: boolean;
+  serverRoleResult?: boolean;
   planTypeCode?: string;
 };
 
@@ -76,10 +77,11 @@ const isValidAdjustment = (adjustment: GeaSalesPlanSkuAdjustment): boolean => {
 export const validateSalesPlanActionInput = (input: SalesPlanActionInput, workflowRows?: readonly SalesPlanWorkflowRow[]): void => {
   const { request } = input;
   if (!input.planId.trim() || !input.versionId.trim()) throw new SalesPlanActionError('validation', false);
-  const approvalNodeOrder =
-    request.action === 'SAVE' && request.expectedStatus === 10
-      ? 5
-      : salesPlanApprovalNodeForStatus(request.expectedStatus, input.planTypeCode, workflowRows);
+  const flow = salesPlanWorkflow(input.planTypeCode ?? 'Y', workflowRows);
+  if (![1,2,3,4,6,7,8,9].includes(request.expectedStatus)) throw new SalesPlanActionError('validation', false);
+  if (request.approvalRole && !['region','province','area','category'].includes(request.approvalRole)) throw new SalesPlanActionError('validation', false);
+  const approvalNodeOrder = request.approvalRole ? SALES_PLAN_ROLES.indexOf(request.approvalRole) + 1 :
+    salesPlanApprovalNodeForStatus(request.expectedStatus, input.planTypeCode, workflowRows);
   if (
     request.action === 'SAVE' &&
     (!/^[a-f0-9]{64}$/.test(request.expectedSnapshot ?? '') || (!request.adjustments?.length && request.adjustmentMode !== 'ABSOLUTE_NET'))
@@ -90,7 +92,9 @@ export const validateSalesPlanActionInput = (input: SalesPlanActionInput, workfl
   const remark = request.remark?.trim() ?? '';
   if (Array.from(remark).length > 1000) throw new SalesPlanActionError('validation', false);
   if (request.action === 'REJECT' && !remark) throw new SalesPlanActionError('validation', false);
-  if (salesPlanActionTargetStatus(request.action, request.expectedStatus, input.planTypeCode, workflowRows) === undefined) {
+  if (request.approvalRole
+    ? (!flow.rolesKnown || (request.action === 'REJECT' && flow.pending(request.approvalRole) === undefined))
+    : salesPlanActionTargetStatus(request.action, request.expectedStatus, input.planTypeCode, workflowRows) === undefined) {
     throw new SalesPlanActionError('validation', false);
   }
   if (request.action === 'REJECT' && request.adjustments?.length) {
@@ -135,19 +139,31 @@ export const salesPlanActionReceiptMatches = (
   input: SalesPlanActionInput,
   requestId: string,
   receipt: GeaSalesPlanActionReceipt
-): boolean =>
-  receipt.planId === input.planId &&
-  receipt.versionId === input.versionId &&
-  receipt.fromStatus === input.request.expectedStatus &&
-  (receipt.toStatus ===
-    salesPlanActionTargetStatus(input.request.action, input.request.expectedStatus, input.planTypeCode) ||
-    (input.serverWorkflowResult === true &&
-      input.request.action === 'APPROVE' &&
+): boolean => {
+  if (receipt.planId !== input.planId || receipt.versionId !== input.versionId ||
+      receipt.fromStatus !== input.request.expectedStatus || receipt.requestId !== requestId ||
+      !receipt.traceId?.trim() || !receipt.auditId?.trim()) return false;
+  const flow = salesPlanWorkflow(input.planTypeCode ?? 'Y');
+  if (input.serverRoleResult) {
+    const role = input.request.approvalRole;
+    if (!flow.rolesKnown || !role || receipt.approvalRole !== role) return false;
+    if (input.request.action === 'SAVE') return receipt.toStatus === receipt.fromStatus;
+    if (input.request.action === 'REJECT') {
+      const pending = flow.pending(role);
+      return pending !== undefined && receipt.toStatus === flow.transition(pending, 'REJECT');
+    }
+    if (receipt.toStatus === 5) {
+      return Array.isArray(receipt.approvedRoles) && SALES_PLAN_ROLES.filter(r => r !== 'customer' && flow.pending(r) !== undefined)
+        .every(r => receipt.approvedRoles!.includes(r as NonNullable<typeof role>));
+    }
+    return receipt.toStatus === receipt.fromStatus ||
+      ([1,2,3,4].includes(receipt.toStatus) && flow.actor(receipt.toStatus) !== undefined);
+  }
+  return receipt.toStatus === salesPlanActionTargetStatus(input.request.action, input.request.expectedStatus, input.planTypeCode) ||
+    (input.serverWorkflowResult === true && input.request.action === 'APPROVE' &&
       salesPlanActionTargetStatus('APPROVE', input.request.expectedStatus, input.planTypeCode) !== undefined &&
-      receipt.toStatus === input.request.expectedStatus)) &&
-  receipt.requestId === requestId &&
-  receipt.traceId.trim().length > 0 &&
-  receipt.auditId.trim().length > 0;
+      receipt.toStatus === input.request.expectedStatus);
+};
 
 const normalizedInput = (input: SalesPlanActionInput): SalesPlanActionInput => {
   const { remark, adjustments, ...request } = input.request;
@@ -155,6 +171,7 @@ const normalizedInput = (input: SalesPlanActionInput): SalesPlanActionInput => {
     planId: input.planId,
     versionId: input.versionId,
     planTypeCode: input.planTypeCode,
+    ...(input.serverRoleResult ? { serverRoleResult: true } : {}),
     ...(input.serverWorkflowResult ? { serverWorkflowResult: true } : {}),
     request: {
       ...request,
@@ -191,7 +208,7 @@ export class SalesPlanActionAttempt {
 
     this.input = normalizedInput(input);
     this.command = {
-      ...(this.input.request.action === 'SAVE' || this.input.request.adjustmentMode === 'ABSOLUTE_NET' ? { planId: this.input.planId } : {}),
+      planId: this.input.planId,
       versionId: this.input.versionId,
       request: this.input.request,
       idempotencyKey: `gea-sales-plan-action:${this.createId()}`,

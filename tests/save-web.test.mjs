@@ -4,7 +4,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 
 test(
-  "server SAVE capability enables status 10 without legacy menu roles and verifies same-version persistence",
+  "server SAVE capability enables in-progress SAVE without legacy menu roles and verifies same-version persistence",
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
@@ -19,7 +19,7 @@ test(
       planTypeCode: "Y",
       orderType: "M",
       dealerCode: "456",
-      status: 10,
+      status: 4,
       currentQty: "1",
       targetQty: "1",
       currentAmount: "12.34",
@@ -78,7 +78,7 @@ test(
             currentVersion: { ...plan, id: "v", effective: true },
             actionContext: {
               versionId: "v",
-              status: 10,
+              status: 4,
               nodeOrder: 5,
               allowedActions: ["SAVE"],
               snapshotHash: (saved ? "b" : "a").repeat(64),
@@ -104,7 +104,7 @@ test(
       if (path.endsWith("/versions/v/actions")) {
         const body = JSON.parse(req.body);
         assert.equal(body.action, "SAVE");
-        assert.equal(body.expectedStatus, 10);
+        assert.equal(body.expectedStatus, 4);
         assert.equal(body.expectedSnapshot, "a".repeat(64));
         assert.deepEqual(body.adjustments, [
           { skuCode: "789", adjustQty: "1.000" },
@@ -115,8 +115,8 @@ test(
           id: "1",
           planId: "p",
           versionId: "v",
-          fromStatus: 10,
-          toStatus: 10,
+          fromStatus: 4,
+          toStatus: 4,
           actionCode: "SAVE",
           requestId: req.headers["x-request-id"],
           traceId: "trace",
@@ -126,8 +126,8 @@ test(
           result: {
             planId: "p",
             versionId: "v",
-            fromStatus: 10,
-            toStatus: 10,
+            fromStatus: 4,
+            toStatus: 4,
             replayed: false,
             requestId: log.requestId,
             traceId: "trace",

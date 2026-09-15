@@ -23,7 +23,7 @@ test(
             currentVersion: {
               id: mode === "old" ? "other" : "v",
               planId: "p",
-              status: 10,
+              status: 4,
               effective: mode !== "ineffective",
             },
             actionContext:
@@ -31,7 +31,7 @@ test(
                 ? undefined
                 : {
                     versionId: "v",
-                    status: 10,
+                    status: 4,
                     allowedActions: mode === "denied" ? [] : ["SAVE"],
                     snapshotHash:
                       mode === "changed" ? "b".repeat(64) : snapshot,
@@ -69,8 +69,8 @@ test(
           result: {
             planId: "p",
             versionId: "v",
-            fromStatus: 10,
-            toStatus: 10,
+            fromStatus: 4,
+            toStatus: 4,
             requestId: "r",
             traceId: "t",
             auditId: "sales-plan-log:1",
@@ -88,7 +88,7 @@ test(
         idempotencyKey: "save-intent",
         request: {
           action: "SAVE",
-          expectedStatus: 10,
+          expectedStatus: 4,
           expectedSnapshot: snapshot,
           adjustments: [{ skuCode: "1", adjustQty: "1.000" }],
           ...patch,

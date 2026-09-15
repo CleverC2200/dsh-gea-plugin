@@ -74,7 +74,7 @@ const detail = {
 test('copied action projection does not infer write permission from readable plans', () => {
   assert.deepEqual(salesPlanStagesForPermissions(), []);
   assert.deepEqual(salesPlanStagesForPermissions(['sales-plan:plan:approve']), []);
-  assert.deepEqual(salesPlanAccessForRow(plan, detail)?.allowedActions, ['SAVE']);
+  assert.equal(salesPlanAccessForRow(plan, detail), undefined);
   assert.equal(salesPlanAccessForRow(plan, { ...detail, actionContext: undefined }), undefined);
   assert.equal(salesPlanAccessForRow({ ...plan, versionId: 'other' }, detail), undefined);
   assert.equal(salesPlanAccessForRow({ ...plan, status: 5 }, detail), undefined);
@@ -83,13 +83,13 @@ test('copied action projection does not infer write permission from readable pla
 
 test('copied SAVE verification requires exact readback, matching audit receipt and unchanged version', () => {
   const item = { id: 's', versionId: 'v', skuCode: '10001', price: '2', areaConfirmedQty: '12', categoryConfirmedQty: '13' };
-  const before = { ...detail, skus: [item] };
-  const receipt = { planId: 'p', versionId: 'v', fromStatus: 10, toStatus: 10, auditId: 'sales-plan-log:42', requestId: 'request', traceId: 'trace' };
-  const request = { action: 'SAVE', expectedStatus: 10, adjustments: [{ skuCode: '10001', adjustQty: '2.125' }] };
+  const before = { ...detail, currentVersion: {...detail.currentVersion,status:4}, skus: [item] };
+  const receipt = { planId: 'p', versionId: 'v', fromStatus: 4, toStatus: 4, auditId: 'sales-plan-log:42', requestId: 'request', traceId: 'trace' };
+  const request = { action: 'SAVE', expectedStatus: 4, adjustments: [{ skuCode: '10001', adjustQty: '2.125' }] };
   const after = {
     ...before,
     skus: [{ ...item, categoryConfirmedQty: '15.125', categoryConfirmedAmount: '30.25' }],
-    logs: [{ id: '42', planId: 'p', requestId: 'request', traceId: 'trace', versionId: 'v', fromStatus: 10, toStatus: 10, actionCode: 'SAVE' }],
+    logs: [{ id: '42', planId: 'p', requestId: 'request', traceId: 'trace', versionId: 'v', fromStatus: 4, toStatus: 4, actionCode: 'SAVE' }],
   };
   assert.equal(verifySavedSalesPlan(before, after, request, receipt), true);
   for (const stale of [
@@ -118,10 +118,10 @@ test('workbench bridge keeps host request identity and cannot reuse a released d
   assert.throws(() => salesPlan.list.invoke(query), /WORKBENCH_HOST_NOT_BOUND/);
 });
 
-test('fresh task assignment grants only matching-version approval and respects stage browsing', () => {
+test('task assignment never grants an approval role', () => {
   const row = { planId: 'p', versionId: 'v', status: 1, planTypeCode: 'Y' };
   const value = { currentVersion: { id: 'v', planId: 'p', status: 1, planTypeCode: 'Y', effective: true }, skus: [], versions: [], logs: [], workflowApproval: { versionId: 'v', notificationId: 'n', instanceId: 'i', actionable: true } };
-  assert.deepEqual(salesPlanAccessForRow(row, value)?.allowedActions, ['APPROVE', 'REJECT']);
+  assert.equal(salesPlanAccessForRow(row, value), undefined);
   assert.equal(salesPlanAccessForRow(row, value, [], 'province'), undefined);
   assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: undefined }), undefined);
   assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: { ...value.workflowApproval, versionId: 'old' } }), undefined);
@@ -129,12 +129,13 @@ test('fresh task assignment grants only matching-version approval and respects s
 });
 
 for (const [typeCode, status, actor, wrong] of [['Y', 7, 'region', 'province'], ['Y', 8, 'province', 'area'], ['Y', 9, 'area', 'category'], ['XN', 2, 'province', 'region']]) {
-  test(`${typeCode} ${status}: only the current role can approve without a stage filter`, () => {
+  test(`${typeCode} ${status}: visibility and role grant determine approval`, () => {
     const row = { planId: 'p', versionId: 'v', status, planTypeCode: typeCode };
     const value = { currentVersion: { id: 'v', planId: 'p', status, planTypeCode: typeCode, effective: true } };
     const permission = role => [`sales-plan:plan:${role}-approve`];
     assert.deepEqual(salesPlanAccessForRow(row, value, permission(actor))?.allowedActions, ['APPROVE', 'REJECT']);
-    assert.equal(salesPlanAccessForRow(row, value, permission(wrong)), undefined);
+    if(typeCode === 'XN') assert.equal(salesPlanAccessForRow(row, value, permission(wrong)), undefined);
+    else assert.equal(salesPlanAccessForRow(row, value, permission(wrong)).approvalRole,wrong);
     assert.equal(salesPlanAccessForRow(row, value, permission(actor), wrong), undefined);
     assert.equal(salesPlanAccessForRow(row, {...value, currentVersion: {...value.currentVersion, effective: false}}, permission(actor)), undefined);
     assert.equal(salesPlanAccessForRow(row, {...value, currentVersion: {...value.currentVersion, id: 'new'}}, permission(actor)), undefined);

@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
 import { profile } from './profile.mjs';
 
-test('region sees own pending and tracking rows; other returns stay hidden and read-only rows cannot approve', {timeout:90000}, async t => {
+test('region sees own pending and tracking rows; other returns stay hidden and visible tracking rows expose role approval', {timeout:90000}, async t => {
   const app = await profile(t);
   const plans = Array.from({length:11}, (_, status) => ({planId:`p${status}`,versionId:`v${status}`,periodId:'period-1',planTypeCode:'Y',status,baseName:`scope-${status}-row`,orgCode:'region-a',orgName:'region-a',dealerCode:`c${status}`,currentQty:'1',currentAmount:'10',targetAmount:'10',targetQty:'1',skuCount:0}));
+  const writes=[];
   app.route((req,res,reply) => {
     const path = req.url.pathname;
     const send = result => {reply({success:true,result});return true;};
@@ -21,8 +22,10 @@ test('region sees own pending and tracking rows; other returns stay hidden and r
     if (match) {
       const plan = plans.find(p=>p.planId===match[1]);
       const version = {...plan,id:plan.versionId,effective:true};
-      return send(match[2] ? [version] : {currentVersion:version,versions:[version],skus:[],logs:[]});
+      return send(match[2] ? [version] : {currentVersion:version,versions:[version],skus:[],logs:[], ...(plan.status === 2 ? {actionContext:{versionId:plan.versionId,status:2,snapshotHash:'a'.repeat(64),policy:'role-visible-v1',allowedActions:[],roleActions:[{role:'region',allowedActions:['APPROVE','REJECT']}]}} : {})});
     }
+    if(path.endsWith('/versions/v2/skus')) return send([]);
+    if(path.endsWith('/versions/v2/actions')) {const body=JSON.parse(req.body);writes.push(body);return send({planId:'p2',versionId:'v2',fromStatus:2,toStatus:2,approvalRole:'region',requestId:req.headers['x-request-id'],traceId:'t',auditId:'a',replayed:false});}
     if (path.endsWith('/notifications')) return send({items:[],total:0});
     return false;
   });
@@ -47,8 +50,8 @@ test('region sees own pending and tracking rows; other returns stay hidden and r
   const tracked = table.locator('tr').filter({hasText:'scope-6-row'});
   await returned.locator('label.arco-checkbox').click();
   await tracked.locator('label.arco-checkbox').click();
-  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeDisabled();
-  await expect(frame.getByRole('button',{name:'退回',exact:true})).toBeDisabled();
+  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeEnabled();
+  await expect(frame.getByRole('button',{name:'退回',exact:true})).toBeEnabled();
   const region = frame.getByRole('button',{name:/区域审批.*进度/});
   await region.click();
   await expect(table.getByText('scope-6-row',{exact:true})).toHaveCount(0);
@@ -58,5 +61,17 @@ test('region sees own pending and tracking rows; other returns stay hidden and r
   const queries = app.requests.filter(r=>r.url.pathname.endsWith('/plans'));
   assert.ok(queries.length);
   assert.ok(queries.every(r=>[1,2,3,4,5,6,7,10].includes(Number(r.url.searchParams.get('status'))) && r.url.searchParams.has('status')));
-  assert.ok(!app.requests.some(r=>r.method==='POST' && r.url.pathname.endsWith('/actions')));
+  assert.equal(writes.length,0);
+  for (const checked of await table.locator('label.arco-checkbox-checked').all()) await checked.click();
+  const regionCanReview = table.locator('tr').filter({hasText:'scope-2-row'});
+  await regionCanReview.locator('label.arco-checkbox').click();
+  await frame.getByRole('button',{name:'通过',exact:true}).click();
+  const dialog=frame.getByRole('dialog',{name:'销售计划审批',exact:true});
+  await dialog.locator('label.arco-checkbox').click();
+  await dialog.getByRole('button',{name:'确认通过',exact:true}).click();
+  await expect(dialog).toHaveCount(0);
+  assert.equal(writes.length,1);
+  assert.equal(writes[0].approvalRole,'region');
+  assert.equal(writes[0].approvalPolicy,'role-visible-v1');
+  assert.equal(writes[0].expectedStatus,2);
 });

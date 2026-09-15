@@ -1,5 +1,7 @@
 import { avatarUrl } from "./avatar.ts";
 import { correctionAccess, correctionAdjustments, correctionDecimal } from './workbench-original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';
+import { salesPlanAccessForRow } from './workbench-original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';
+import { salesPlanWorkflow } from './workbench-original/salesPlanWorkflow.ts';
 import { validateSalesPlanActionInput } from './workbench-original/workbenches/regionalApproval/models/salesPlanActionModel.ts';
 import type { GeaSalesPlanActionRequest } from './workbench-original/contracts.ts';
 /** Process-local GEA identity, query ownership, and immutable analysis inputs. */
@@ -624,13 +626,13 @@ export class Business {
 
   private correctionRequests = new Map<string, { fingerprint:string; validated:boolean; flight?:Promise<unknown>; receipt?:unknown }>();
 
-  /** A correction retry replays the same authorized intent, even when its first response was lost. */
+  /** An approval retry replays the same authorized intent, even when its first response was lost. */
   async salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     this.authenticated();
-    if(object(payload.request).adjustmentMode == null)return this.executeSalesPlanAction(payload,caller);
+    if(object(payload.request).adjustmentMode == null && object(payload.request).approvalRole == null)return this.executeSalesPlanAction(payload,caller);
     const key=text(payload.idempotencyKey), fingerprint=JSON.stringify(payload);
     let entry=this.correctionRequests.get(key);
-    if(entry && entry.fingerprint !== fingerprint)throw new GeaResponseError(409,{message:'幂等键已绑定另一纠偏请求'});
+    if(entry && entry.fingerprint !== fingerprint)throw new GeaResponseError(409,{message:'幂等键已绑定另一审批请求'});
     if(entry?.receipt)return entry.receipt;
     if(entry?.flight)return entry.flight;
     if(!entry){entry={fingerprint,validated:false};this.correctionRequests.set(key,entry);}
@@ -645,18 +647,42 @@ export class Business {
     keys(payload, ["planId", "versionId", "request", "idempotencyKey", "requestId"]);
     const versionId = text(payload.versionId);
     const request = object(payload.request);
-    keys(request, ["expectedSnapshot", "action", "expectedStatus", "remark", "adjustments", "adjustmentMode"]);
+    keys(request, ["expectedSnapshot", "action", "expectedStatus", "remark", "adjustments", "adjustmentMode", "approvalRole", "approvalPolicy"]);
     if (!["SAVE", "APPROVE", "REJECT"].includes(text(request.action))) throw new Error("INVALID_ACTION");
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
+    if (![1,2,3,4,6,7,8,9].includes(request.expectedStatus as number))
+      throw new GeaResponseError(400, {message:'未提交、已完成或无效状态不允许写入'});
+    if (request.approvalRole == null && request.adjustmentMode == null && request.action !== 'SAVE')
+      throw new GeaResponseError(400,{message:'请明确本次审批角色'});
+    if (request.approvalPolicy != null && (request.approvalPolicy !== 'role-visible-v1' || !request.approvalRole)) throw new Error('INVALID_PAYLOAD');
+    if (request.approvalRole != null && !validatedCorrection) {
+      if (!['region','province','area','category'].includes(text(request.approvalRole))) throw new Error('INVALID_PAYLOAD');
+      const planId = text(payload.planId);
+      const detail = await this.workbenchQuery({kind:'detail',query:{planId}},signal) as GeaSalesPlanDetail;
+      await this.refreshPermissions(signal);
+      const row = {planId,versionId,status:request.expectedStatus as number,planTypeCode:detail.currentVersion.planTypeCode};
+      const role = request.approvalRole as NonNullable<GeaSalesPlanActionRequest['approvalRole']>;
+      const workflowRows = await this.workflowConfig({}, signal);
+      const access = salesPlanAccessForRow(row, detail, auth.permissionCodes, role, workflowRows);
+      if (!access?.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']))
+        throw new GeaResponseError(403,{message:'当前角色不具备该版本的操作权限'});
+      if (request.expectedSnapshot !== access.snapshotHash)
+        throw new GeaResponseError(409,{message:'审批依据已变化，请刷新后重试'});
+      if (request.approvalPolicy === 'role-visible-v1' ? !access.roleContractSupported :
+          access.roleContractSupported || salesPlanWorkflow(row.planTypeCode, workflowRows).actor(row.status) !== role)
+        throw new GeaResponseError(409,{message:'GEA 尚未支持本次角色审批契约，请升级服务端后重试'});
+      validateSalesPlanActionInput({planId,versionId,planTypeCode:row.planTypeCode,request:request as GeaSalesPlanActionRequest}, workflowRows);
+      if (this.auth !== auth) throw new Error('STALE_LOGIN');
+    }
     if (request.adjustmentMode != null && !validatedCorrection) {
       if (request.adjustmentMode !== 'ABSOLUTE_NET') throw new Error('INVALID_PAYLOAD');
       const planId=text(payload.planId);
       const detail=await this.workbenchQuery({kind:'detail',query:{planId}},signal) as GeaSalesPlanDetail;
       const workflowRows=await this.workflowConfig({},signal);
-      const access=correctionAccess(detail,workflowRows);
+      const access=correctionAccess(detail,workflowRows,request.approvalRole as GeaSalesPlanActionRequest['approvalRole']);
       if (!access || !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']) || !detail.currentVersion.submitter || detail.currentVersion.submitter === auth.id)
-        throw new GeaResponseError(403,{message:'纠偏契约、月初终审、审批窗口或节点权限未获确认'});
+        throw new GeaResponseError(403,{message:'纠偏契约、月初终审或角色权限未获确认'});
       if (detail.currentVersion.id !== versionId || access.status !== request.expectedStatus || access.snapshotHash !== request.expectedSnapshot)
         throw new GeaResponseError(409,{message:'纠偏版本或快照已变化，请刷新'});
       const typed=request as GeaSalesPlanActionRequest;
@@ -664,12 +690,12 @@ export class Business {
       if (typed.action !== 'REJECT') {
         const edits=Object.fromEntries((typed.adjustments??[]).map(x=>[x.skuCode,x.adjustQty]));
         if (Object.keys(edits).some(code=>!detail.skus.some(sku=>sku.skuCode===code))) throw new Error('INVALID_PAYLOAD');
-        const expected=correctionAdjustments(detail,edits,workflowRows);
+        const expected=correctionAdjustments(detail,edits,workflowRows,request.approvalRole as GeaSalesPlanActionRequest['approvalRole']);
         if (!isDeepStrictEqual(expected,typed.adjustments)) throw new GeaResponseError(400,{message:'纠偏必须提交完整的本节点绝对调整决定'});
       }
       if (this.auth !== auth) throw new Error('STALE_LOGIN');
       signal.throwIfAborted();
-    } else if (request.adjustmentMode == null && request.action === "SAVE") {
+    } else if (request.adjustmentMode == null && request.action === "SAVE" && request.approvalRole == null) {
       if (request.expectedStatus === 5) throw new GeaResponseError(400, { message: "状态 5 不允许保存调整" });
       const planId = text(payload.planId);
       const detail = object(await this.workbenchQuery({ kind: "detail", query: { planId } }, signal));
