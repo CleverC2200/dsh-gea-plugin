@@ -476,6 +476,18 @@ const RegionalApprovalWorkbench: React.FC<{
   }, [roleKey]);
   const [selectedRowIds, setSelectedRowIds] = useState(initialState.selectedRowIds);
   const [progressOpen, setProgressOpen] = useState(false);
+  const tableViewportRef = useRef<HTMLDivElement>(null);
+  const [tableViewportWidth, setTableViewportWidth] = useState(0);
+  useEffect(() => {
+    const viewport = tableViewportRef.current;
+    if (!viewport) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setTableViewportWidth(Math.floor(entry.contentRect.width));
+    });
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
+
   const [narrowFiltersExpanded, setNarrowFiltersExpanded] = useState(false);
   const filterPanelId = React.useId();
   const [exportFeedback, setExportFeedback] = useState<ExportFeedback>();
@@ -1509,11 +1521,19 @@ const RegionalApprovalWorkbench: React.FC<{
     localApprovalResults
       .toReversed()
       .find((result) => result.scope.organizationId === row.id && result.scope.version === primaryVersion);
+  // Preserve readable minimums, then share the panel's spare width across content columns.
+  const liveMinimumWidths = [220, 125, 125, categoryComparison ? 190 : 150, categoryComparison ? 200 : 140];
+  const liveMinimumWidth = liveMinimumWidths.reduce((total, width) => total + width, 40);
+  const liveExtraWidth = Math.max(0, tableViewportWidth - liveMinimumWidth);
+  const liveColumnWidths = liveMinimumWidths.map((width, index) =>
+    width + liveExtraWidth * [0.4, 0.2, 0.2, 0.2, 0][index]
+  );
+  const pinLiveColumns = tableViewportWidth >= liveMinimumWidth;
   const liveColumns: TableColumnProps<RegionalApprovalLiveTableRow>[] = [
     {
       title: t('common.assistantSurface.regionalApproval.columns.organization'),
-      width: 300,
-      fixed: 'left',
+      width: liveColumnWidths[0],
+      fixed: pinLiveColumns ? 'left' : undefined,
       render: (_, tableRow) => {
         if (tableRow.kind === 'category') {
           return (
@@ -1579,7 +1599,7 @@ const RegionalApprovalWorkbench: React.FC<{
               title={
                 organizationName === t('common.assistantSurface.regionalApproval.query.unnamedOrganization')
                   ? t('common.assistantSurface.regionalApproval.query.unnamedOrganizationHint')
-                  : undefined
+                  : organizationName
               }
             >
               {organizationName}
@@ -1608,7 +1628,7 @@ const RegionalApprovalWorkbench: React.FC<{
     },
     {
       title: t('common.correction.target'),
-      width: 165,
+      width: liveColumnWidths[1],
       render: (_, tableRow) => {
         const category = tableRow.kind === 'category' ? tableRow.category : undefined;
         const row = tableRow.plan;
@@ -1621,7 +1641,7 @@ const RegionalApprovalWorkbench: React.FC<{
     },
     {
       title: t('common.correction.plan'),
-      width: 165,
+      width: liveColumnWidths[2],
       render: (_, tableRow) => tableRow.kind === 'category' ? '—' : <div className={styles.stackCell}>
         <span>{tableRow.plan.mPlanAmount == null ? '—' : exactMoney(tableRow.plan.mPlanAmount)}</span>
         <small>{tableRow.plan.mPlanQty ?? '—'}</small>
@@ -1631,7 +1651,7 @@ const RegionalApprovalWorkbench: React.FC<{
       title: categoryComparison
         ? t('common.assistantSurface.regionalApproval.columns.categoryProgress')
         : t('common.assistantSurface.regionalApproval.columns.progress'),
-      width: 190,
+      width: liveColumnWidths[3],
       render: (_, tableRow) => {
         if (tableRow.kind === 'plan') {
           const progress = correctionMetrics(tableRow.plan);
@@ -1671,8 +1691,8 @@ const RegionalApprovalWorkbench: React.FC<{
       title: categoryComparison
         ? t('common.assistantSurface.regionalApproval.columns.aiOpinion')
         : t('common.assistantSurface.regionalApproval.columns.status'),
-      width: categoryComparison ? 220 : 140,
-      fixed: 'right',
+      width: liveColumnWidths[4],
+      fixed: pinLiveColumns ? 'right' : undefined,
       render: (_, tableRow) => {
         if (tableRow.kind === 'plan') {
           const row = tableRow.plan;
@@ -2514,7 +2534,7 @@ const RegionalApprovalWorkbench: React.FC<{
               />
             ) : null}
           </section>
-          <div className={styles.tableViewport}>
+          <div ref={tableViewportRef} className={styles.tableViewport}>
             {liveQuery.enabled ? (
               <Spin loading={liveQuery.queueState.status === 'loading'} className={styles.querySpin}>
                 {liveQuery.queueState.status === 'error' ? (
@@ -2575,7 +2595,7 @@ const RegionalApprovalWorkbench: React.FC<{
                     rowSelection={{
                       type: 'checkbox',
                       checkAll: false,
-                      fixed: true,
+                      fixed: pinLiveColumns,
                       columnWidth: 40,
                       selectedRowKeys: selectedRowIds,
                       onChange: (keys) => setSelectedRowIds(keys.map(String).slice(-1)),
@@ -2583,7 +2603,7 @@ const RegionalApprovalWorkbench: React.FC<{
                     }}
                     pagination={false}
                     size='small'
-                    scroll={{ x: liveColumns.reduce((width, column) => width + Number(column.width), 40) }}
+                    scroll={{ x: Math.max(liveMinimumWidth, tableViewportWidth) }}
                   />
                 )}
               </Spin>
