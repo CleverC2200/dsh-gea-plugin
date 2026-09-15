@@ -12,6 +12,7 @@ module.exports={
   asar:true,npmRebuild:false,files:['permissions.cjs','startup-state.cjs','updates.mjs','client-installer.mjs','desktop-release-sources.json','release-sources.json','control-server.mjs','plugin-store.mjs','copy-graph.mjs','installer.mjs','main.cjs','config.cjs','company.config.json','package.json'],
   extraResources:[{from:join(payloadRoot,target,'payload'),to:'payload',filter:['**/*','!node_modules/**/*']},{from:join(payloadRoot,target,'payload/node_modules'),to:'payload/node_modules',filter:['**/*']}],
   mac:{icon:join(__dirname,'build/icon.png'),target:['dmg'],category:'public.app-category.productivity',identity:macIdentity,hardenedRuntime:macIdentity!=='-',notarize},
+  beforePack:()=>require('./verify-client-artifacts.cjs')(join(payloadRoot,target,'payload')),
   afterSign:require('./verify-macos-signature.cjs'),
   dmg:{sign:false},
   win:{icon:join(__dirname,'build/icon.png'),target:['nsis'],signExecutable:false},
