@@ -92,9 +92,7 @@ const run=args=>new Promise((resolve,reject)=>{
       });
     });
     const require=createRequire(manifestPath);
-    for(const [name,version] of Object.entries(official)) {
-      if(JSON.parse(await readFile(require.resolve(name+'/package.json'),'utf8')).version!==version)throw Error('RUNTIME_VERSION_CHANGED');
-    }
+    await verifyOfficialVersions(directory, official, Object.keys(manifest.dependencies ?? {}));
     const cordis=require.resolve('@deepseek-ai/cordis');
     for(const name of Object.keys(JSON.parse(await readFile(manifestPath,'utf8')).dependencies??{}).filter(name=>name.startsWith('@cleverc2200/')||['dsh-plugin','dsh-agent-manage','dsh-agent-plugins-market'].includes(name))) {
       const pluginRequire=createRequire(require.resolve(name+'/package.json'));
@@ -129,5 +127,19 @@ async function restoreClientArtifacts(directory,baseline) {
     await writeFile(target,optimized,{flag:'wx'});
     await rm(target+'.map',{force:true});
     await copyFile(source+'.map',target+'.map');
+  }
+}
+
+/** Retained SDK packages must stay pinned; obsolete transitive SDKs may be pruned by pnpm. */
+export async function verifyOfficialVersions(directory, official, required) {
+  const require=createRequire(join(directory,'package.json'));
+  for(const [name,version] of Object.entries(official)) {
+    let path;
+    try {path=require.resolve(name+'/package.json');}
+    catch(error) {
+      if(error.code==='MODULE_NOT_FOUND'&&!required.includes(name))continue;
+      throw error;
+    }
+    if(JSON.parse(await readFile(path,'utf8')).version!==version)throw Error('RUNTIME_VERSION_CHANGED');
   }
 }
