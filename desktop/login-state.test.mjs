@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import {createControlServer} from './control-server.mjs';
+const {outputFiles}=await build({stdin:{contents:"export {Business} from './src/business.ts'; export {attachDesktopLogin} from './src/desktop-login.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm',banner:{js:`import {createRequire} from 'node:module'; const require=createRequire(${JSON.stringify(process.cwd()+'/package.json')});`}});
+const {Business,attachDesktopLogin}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].contents).toString('base64'));
+const config={geaBaseUrl:'https://gea.example.test/gea-boot'};
+const saved={schema:1,environment:'production',base:config.geaBaseUrl,auth:{token:'fixture-secret',tenantId:'0',name:'Tester',id:'1',username:'tester'}};
+test('desktop login survives backend disposal, logout persists, and the private transport rejects browser access',async t=>{
+ let state=saved;
+ const server=await createControlServer({'GET /login':()=>state,'POST /login':value=>{state=value;}});t.after(()=>server.close());
+ const previous={url:process.env.GEA_DESKTOP_CONTROL_URL,token:process.env.GEA_DESKTOP_CONTROL_TOKEN};
+ process.env.GEA_DESKTOP_CONTROL_URL=server.url;process.env.GEA_DESKTOP_CONTROL_TOKEN=server.token;
+ t.after(()=>{for(const [key,value] of [['GEA_DESKTOP_CONTROL_URL',previous.url],['GEA_DESKTOP_CONTROL_TOKEN',previous.token]])if(value===undefined)delete process.env[key];else process.env[key]=value;});
+ assert.equal((await fetch(server.url+'/login')).status,403);
+ assert.equal((await fetch(server.url+'/login',{headers:{Authorization:'Bearer '+server.token,Origin:'http://127.0.0.1'}})).status,403);
+ const first=new Business(config);const storage=await attachDesktopLogin(first);
+ assert.equal(first.status().authenticated,true);
+ assert.ok(!JSON.stringify(first.status()).includes('fixture-secret'));
+ await storage.dispose();first.dispose();assert.deepEqual(state,saved);
+ const second=new Business(config);const next=await attachDesktopLogin(second);
+ assert.equal(second.status().authenticated,true);second.logout({});await next.flush();assert.equal(state,null);
+ await next.dispose();second.dispose();
+});
+test('saved identity cannot restore against a different GEA endpoint or unsupported schema',()=>{
+ const business=new Business(config);
+ assert.throws(()=>business.restoreDesktopLogin({...saved,base:'https://other.example/gea'}),/SCOPE_MISMATCH/);
+ assert.throws(()=>business.restoreDesktopLogin({...saved,schema:2}),/SCOPE_MISMATCH/);
+ assert.equal(business.status().authenticated,false);business.dispose();
+});

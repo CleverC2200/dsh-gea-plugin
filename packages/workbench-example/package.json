@@ -19,7 +19,7 @@
     }
   },
   "peerDependencies": {
-    "@cleverc2200/dsh-agent-workbench": "0.1.0",
+    "@cleverc2200/dsh-agent-workbench": "0.1.1",
     "@deepseek-ai/cordis": "4.0.2"
   },
   "files": [

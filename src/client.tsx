@@ -117,7 +117,7 @@ export function apply(ctx: Context): void {
     );
   }
   function useIdentity() {
-    const [name, setName] = useState("");
+    const [identity, setIdentity] = useState({name:"",avatar:""});
     useEffect(() => {
       const controller = new AbortController();
       let revision = 0;
@@ -125,18 +125,18 @@ export function apply(ctx: Context): void {
         const frame = document.querySelector<HTMLIFrameElement>('iframe[data-gea-workbench]');
         if (event.origin !== window.location.origin || !frame || event.source !== frame.contentWindow || event.data?.type !== "gea:identity") return;
         revision++;
-        setName(event.data.authenticated === true && typeof event.data.name === "string" ? event.data.name : "");
+        setIdentity({name:event.data.authenticated === true && typeof event.data.name === "string" ? event.data.name : "",avatar:event.data.authenticated === true && typeof event.data.avatar === "string" ? event.data.avatar : ""});
       };
       window.addEventListener("message", onIdentity);
       void fetch("/api/gea-proof/status", {
         method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
         body: "{}", signal: controller.signal,
       }).then(response => response.json()).then(result => {
-        if (result.ok && revision === 0 && !controller.signal.aborted) setName(result.value.user?.name ?? "");
+        if (result.ok && revision === 0 && !controller.signal.aborted) setIdentity({name:result.value.user?.name ?? "",avatar:result.value.user?.avatar ?? ""});
       }).catch(() => { /* Unavailable identity leaves account controls signed out. */ });
       return () => { controller.abort(); window.removeEventListener("message", onIdentity); };
     }, []);
-    return name;
+    return identity;
   }
   let authChannel: BroadcastChannel | undefined;
   ctx.effect(() => {
@@ -253,7 +253,8 @@ export function apply(ctx: Context): void {
     );
   }
   function UserAvatar({ wide }: PropsRuntime<"settings.trigger">) {
-    const name = useIdentity();
+    const {name,avatar:avatarSrc} = useIdentity();
+    const [failedAvatar,setFailedAvatar]=useState("");
     const avatar = useRef<HTMLSpanElement>(null);
     const menu = useRef<HTMLDivElement>(null);
     const trigger = useRef<HTMLButtonElement | null>(null);
@@ -299,7 +300,7 @@ export function apply(ctx: Context): void {
     }, [position]);
     return <>
       <style>{shellCss}</style>
-      <span ref={avatar} className="gea-user-avatar" aria-hidden="true">{name.slice(0, 1) || "G"}</span>
+      <span ref={avatar} className="gea-user-avatar" aria-hidden="true">{avatarSrc && failedAvatar!==avatarSrc ? <img src={avatarSrc} alt="" referrerPolicy="no-referrer" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"inherit"}} onError={()=>setFailedAvatar(avatarSrc)}/> : name.slice(0, 1) || "G"}</span>
       {wide && <span>{name || t("signedOut")}</span>}
       {position && createPortal(<div ref={menu} role="menu" aria-label={t("accountMenu")} className="gea-account-menu" style={position}
         onClick={event => event.stopPropagation()}

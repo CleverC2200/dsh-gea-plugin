@@ -35,6 +35,7 @@ test(
     );
     app = await profile(t, {
       pluginRoot: dir,
+      bundle: true,
       config: () => ({
         analysis: {
           mode: "model",

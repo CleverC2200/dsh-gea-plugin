@@ -205,6 +205,7 @@ test(
     await mkdir(".runtime/web-evidence", { recursive: true });
     await ui.screenshot({ path: ".runtime/web-evidence/inbox.png" });
     await ui.getByRole("button", { name: "Fixture task", exact: true }).click();
+    await ui.getByRole("dialog").getByText("更多信息", { exact: true }).click();
     await ui.getByText("external-session-1", { exact: true }).waitFor();
     assert.equal(
       await ui.locator("article > p").textContent(),

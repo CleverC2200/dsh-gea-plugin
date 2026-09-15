@@ -208,17 +208,18 @@ export async function profile(t, options = {}) {
     child = spawn(
       process.execPath,
       [
-        "scripts/start.mjs",
+        ...(options.desktopGraph ? [resolve(defaultRoot, "desktop/runtime-start.mjs")] : ["scripts/start.mjs",
+        ...(options.bundle ? ["--bundle"] : []),
         "--config",
         config,
         "--runtime",
         runtime,
         "--port",
-        "0",
+        "0"]),
       ],
       {
         cwd: root,
-        env: { ...process.env, NODE_EXTRA_CA_CERTS: cert, ...options.env },
+        env: { ...process.env, NODE_EXTRA_CA_CERTS: cert, ...(options.desktopGraph ? {DSH_PLUGIN_GRAPH: options.desktopGraph, DSH_FULL_DATA_DIR: runtime, GEA_CONFIG: config, DSH_FULL_PORT: "0", DSH_FULL_NO_OPEN: "1"} : {}), ...options.env },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
@@ -237,7 +238,7 @@ export async function profile(t, options = {}) {
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
-      launch = [...freshLog.matchAll(/dsh web: (http[^\s]+)(?=\r?\n)/g)].at(
+      launch = [...(options.desktopGraph ? output : freshLog).matchAll(/dsh web: (http[^\s]+)(?=\r?\n)/g)].at(
         -1,
       )?.[1];
       if (launch) break;

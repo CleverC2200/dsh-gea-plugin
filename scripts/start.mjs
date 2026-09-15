@@ -1,7 +1,7 @@
 /** Start an isolated, configured GEA Web profile through the official dsh CLI. */
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, open, writeFile } from "node:fs/promises";
+import { mkdir, open, writeFile, symlink, lstat, realpath, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -31,6 +31,7 @@ try {
       config: { type: "string" },
       runtime: { type: "string" },
       port: { type: "string", default: "3198" },
+      bundle: { type: "boolean" },
       help: { type: "boolean" },
     },
   });
@@ -53,7 +54,7 @@ try {
   const patchPath = resolve(runtime, "deployment.patch.json");
   await writeFile(
     patchPath,
-    JSON.stringify(deploymentPatch(config, root, runtime), null, 2) + "\n",
+    JSON.stringify(deploymentPatch(config, root, runtime, { bundle: values.bundle }), null, 2) + "\n",
     { mode: 0o600 },
   );
   log = await open(resolve(runtime, "server.log"), "a", 0o600);
@@ -109,6 +110,28 @@ try {
     }
   }
   env.DSH_HOME = resolve(runtime, "home");
+  if (values.bundle) {
+    const profileDir = resolve(env.DSH_HOME, "profiles/gea-workbench");
+    const modules = resolve(profileDir, "node_modules/@cleverc2200");
+    await mkdir(modules, { recursive: true });
+    for (const [name, target] of [["gea-dsh-prototype", root], ["dsh-agent-workbench", resolve(require.resolve("@cleverc2200/dsh-agent-workbench/package.json"), "..")]]) {
+      try { await symlink(target, resolve(modules, name), process.platform === "win32" ? "junction" : "dir"); }
+      catch (error) {
+        if (error.code !== "EEXIST") throw error;
+        const link = resolve(modules, name);
+        if (!(await lstat(link)).isSymbolicLink()) throw new Error("PROFILE_MODULES_NOT_OWNED_LINK");
+        if (await realpath(link).catch(() => null) !== await realpath(target)) {
+          await unlink(link);
+          await symlink(target, link, process.platform === "win32" ? "junction" : "dir");
+        }
+      }
+    }
+    const manifestPath = resolve(profileDir, "package.json");
+    if (!existsSync(manifestPath)) await writeFile(manifestPath, JSON.stringify({
+      name: "gea-profile", private: true,
+      dsh: { profile: { bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "@cleverc2200/gea-dsh-prototype"], patchReload: "startup" } },
+    }, null, 2));
+  }
   const initialize = existsSync(
     resolve(env.DSH_HOME, "profiles/gea-workbench/package.json"),
   )

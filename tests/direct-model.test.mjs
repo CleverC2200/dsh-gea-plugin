@@ -65,14 +65,14 @@ test("GEA model deployment uses the logged-in GEA route", async () => {
   assert.equal(config.analysis.source, "gea");
   assert.equal(config.modelRequestTimeoutMs, 120000);
   assert.equal(config.requestTimeoutMs, 15000);
-  assert.equal(patch.at(3).insert[0].config.modelRequestTimeoutMs, 120000);
-  assert.equal(patch.at(3).insert[0].config.requestTimeoutMs, 15000);
+  assert.equal(patch.flatMap(row => row.insert ?? []).find(entry => entry.id === "gea-proof").config.modelRequestTimeoutMs, 120000);
+  assert.equal(patch.flatMap(row => row.insert ?? []).find(entry => entry.id === "gea-proof").config.requestTimeoutMs, 15000);
   assert.equal(
     patch.find((row) => row.id === "llm-pi-ai"),
     undefined,
   );
   assert.equal(
-    patch.at(3).insert[0].config.analysisAgentCode,
+    patch.flatMap(row => row.insert ?? []).find(entry => entry.id === "gea-proof").config.analysisAgentCode,
     "sales_forecast",
   );
 });
@@ -138,8 +138,7 @@ test("GEA stream timeout resolves independently from read timeouts and rejects i
     const config = await readDeployment(path);
     assert.equal(config.modelRequestTimeoutMs, modelRequestTimeoutMs);
     assert.equal(config.requestTimeoutMs, 15000);
-    const host = deploymentPatch(config, dir, resolve(dir, "runtime")).at(3)
-      .insert[0].config;
+    const host = deploymentPatch(config, dir, resolve(dir, "runtime")).flatMap(row => row.insert ?? []).find(entry => entry.id === "gea-proof").config;
     assert.equal(host.modelRequestTimeoutMs, modelRequestTimeoutMs);
     assert.equal(host.requestTimeoutMs, 15000);
   }

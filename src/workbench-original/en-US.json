@@ -374,6 +374,7 @@
         "periodStatus": "Period status",
         "noPeriod": "No available period",
         "noPeriodDescription": "The current user session returned no sales plan period. The UI will not present sample rows as a real queue.",
+        "workflowErrorTitle": "Approval workflow configuration failed",
         "periodErrorTitle": "Period query failed",
         "queueErrorTitle": "Approval queue query failed",
         "retry": "Retry",
@@ -390,6 +391,7 @@
         "noReturnReason": "No return reason",
         "actionBoundary": "The queue, details, and current-node approval use the GEA user session. The server verifies real roles and permissions. AI guidance, organization candidates, and client-side adjustments are sample data and are not connected to production.",
         "errors": {
+          "workflow": "Workflow configuration could not be loaded; period lookup has not started. Retry or inspect the workflow configuration diagnostics.",
           "permission": "This account cannot read the requested sales plan scope.",
           "expired": "The GEA user session expired. Sign in again, then retry.",
           "timeout": "The request timed out and was stopped. Retry manually.",
