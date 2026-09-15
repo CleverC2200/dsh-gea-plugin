@@ -72,8 +72,8 @@ test(
     const body = JSON.parse(modelRequests[0].body);
     assert.equal(body.model, "fixture-model");
     assert.deepEqual(
-      body.tools.map((tool) => tool.function.name),
-      ["gea_sales_plan_read", "skill"],
+      body.tools.map((tool) => tool.function.name).sort(),
+      ["gea_sales_plan_read", "gea_skill_reference_read", "skill"],
     );
     const user = body.messages.find((message) => message.role === "user");
     assert.ok(JSON.stringify(user).includes(prepared.snapshotHash));
