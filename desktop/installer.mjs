@@ -9,7 +9,7 @@ export async function installArtifact({directory,artifact,node,pnpm,optimizedBas
   const deadline=AbortSignal.timeout(5*60*1000);
   signal=AbortSignal.any([...(signal?[signal]:[]),deadline]);
   const tool=JSON.parse(await readFile(join(dirname(dirname(pnpm)),'package.json'),'utf8'));
-  if(tool.version!=='11.19.0')throw Error('INSTALL_TOOL_VERSION_MISMATCH');
+  if(tool.version!=='11.27.0')throw Error('INSTALL_TOOL_VERSION_MISMATCH');
   const manifestPath=join(directory,'package.json');
   const manifest=JSON.parse(await readFile(manifestPath,'utf8'));
   manifest.dsh={profile:{bundles:['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app',...['@cleverc2200/gea-dsh-prototype','dsh-plugin','dsh-agent-manage','dsh-agent-plugins-market'].filter(name=>manifest.dependencies?.[name])],patchReload:'startup'}};

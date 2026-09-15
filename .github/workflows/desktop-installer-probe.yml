@@ -1,4 +1,4 @@
-name: Diagnose Windows staged plugin install
+name: Verify Windows staged plugin install
 on:
   workflow_dispatch:
   pull_request:
@@ -37,7 +37,10 @@ jobs:
           "GEA_DESKTOP_PAYLOAD=$destination/resources/payload" >> $env:GITHUB_ENV
           $artifact = Get-ChildItem $downloads -Filter '*.tgz' | Select-Object -First 1
           "GEA_PLUGIN_ARTIFACT=$($artifact.FullName)" >> $env:GITHUB_ENV
-      - name: Trace the official installer process lifecycle
+      - name: Verify relocation and successful process exit
         shell: pwsh
         run: |
-          node desktop/installer-probe.mjs
+          npm ci --prefix desktop/tools --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'Tool installation failed' }
+          $env:GEA_TEST_PNPM = Join-Path $env:GITHUB_WORKSPACE 'desktop/tools/node_modules/pnpm/bin/pnpm.cjs'
+          node --test desktop/installer-portability.test.mjs
