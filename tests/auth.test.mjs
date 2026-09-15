@@ -2,6 +2,24 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { profile } from "./profile.mjs";
 
+test("Lark avatar is exposed without credentials and cleared on logout", { timeout: 60000 }, async (t) => {
+  const app = await profile(t);
+  for (const avatar of ["https://example.com/lark-avatar.png", "", null, "javascript:alert(1)"]) {
+    app.route((req, res, reply) => {
+      if (!req.url.pathname.endsWith("/getUserInfo")) return false;
+      reply({ success: true, result: { userInfo: { id: "user", realname: "测试用户", tenantId: "0", avatar } } });
+      return true;
+    });
+    await app.login();
+    const status = (await app.rpc("status")).value;
+    assert.equal(status.user.avatar, avatar?.startsWith("https:") ? avatar : undefined);
+    assert.equal(status.user.name, "测试用户");
+    assert.equal("token" in status.user, false);
+    await app.rpc("logout");
+    assert.equal((await app.rpc("status")).value.user, null);
+  }
+});
+
 test(
   "expired QR, late identity, 401 and business 403 preserve distinct states",
   { timeout: 60000 },
