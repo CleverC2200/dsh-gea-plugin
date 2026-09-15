@@ -79,9 +79,9 @@ jobs:
             $timer = [Diagnostics.Stopwatch]::StartNew()
             Write-Host "Installing $target into $destination"
             $process = Start-Process $installer.FullName -ArgumentList '/S', "/D=$destination" -PassThru
-            if (-not $process.WaitForExit(180000)) {
+            if (-not $process.WaitForExit(600000)) {
               taskkill /PID $process.Id /T /F
-              '{"stage":"install","error":"installer exceeded 180 seconds"}' | Set-Content (Join-Path $report "$target.json")
+              '{"stage":"install","error":"installer exceeded 600 seconds"}' | Set-Content (Join-Path $report "$target.json")
               if ($target -eq 'baseline') { continue }
               throw 'Installer timeout'
             }

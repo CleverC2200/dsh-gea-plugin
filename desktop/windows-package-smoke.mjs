@@ -1,5 +1,6 @@
 /** Runs only against installers in an isolated Windows CI user profile. */
-import {_electron as electron,expect} from '@playwright/test';
+import {chromium,expect} from '@playwright/test';
+import {spawn} from 'node:child_process';
 import assert from 'node:assert/strict';
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
@@ -13,9 +14,20 @@ const records=[];
 async function launch(update=false){
  console.log(JSON.stringify({kind,stage:'launch',run:records.length+1,update}));
  const env={...process.env,DSH_GEA_DESKTOP_DATA:data};delete env.GEA_RELEASE_TOKEN;
- const started=performance.now();const app=await electron.launch({executablePath,env,args:[],timeout:60000});
+ const started=performance.now();
+ const child=spawn(executablePath,['--remote-debugging-port=0'],{env,stdio:['ignore','pipe','pipe']});
+ let output='',browser;
+ const exited=new Promise(resolve=>child.once('exit',resolve));
+ const endpoint=await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(Error('Browser debugging endpoint did not appear')),60000);
+  child.once('error',error=>{clearTimeout(timer);reject(error);});
+  child.once('exit',code=>{clearTimeout(timer);reject(Error('Desktop exited before ready: '+code));});
+  for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>{output+=chunk;const match=output.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/[^\s]+)/);if(match){clearTimeout(timer);resolve(match[1]);}});
+ });
  try{
-  const page=await app.firstWindow();const windowMs=performance.now()-started;const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  browser=await chromium.connectOverCDP(endpoint,{timeout:60000});
+  const context=browser.contexts()[0];const page=context.pages()[0]??await context.waitForEvent('page');
+  const windowMs=performance.now()-started;const errors=[];page.on('pageerror',e=>errors.push(e.message));
   console.log(JSON.stringify({kind,stage:'window',windowMs:Math.round(windowMs)}));
   await expect.poll(()=>page.url(),{timeout:120000}).toMatch(/^http:\/\/127\.0\.0\.1:/);
   await expect.poll(()=>page.evaluate(()=>fetch('/api/gea-proof/status',{method:'POST',headers:{'Content-Type':'application/json','X-GEA-Desktop-Health':'1'},body:'{}'}).then(r=>r.json())).catch(()=>null),{timeout:30000}).toMatchObject({ok:true});
@@ -44,7 +56,10 @@ async function launch(update=false){
  }finally{
   console.log(JSON.stringify({kind,stage:'closing'}));
   let timer;
-  try {await Promise.race([app.close(),new Promise((_,reject)=>{timer=setTimeout(()=>{app.process().kill();reject(Error('Desktop close exceeded 30 seconds'));},30000);})]);}
+  try {
+   if(browser){const session=await browser.newBrowserCDPSession();await session.send('Browser.close').catch(()=>{});}else child.kill();
+   await Promise.race([exited,new Promise((_,reject)=>{timer=setTimeout(()=>{child.kill();reject(Error('Desktop close exceeded 30 seconds'));},30000);})]);
+  }
   finally {clearTimeout(timer);}
  }
  await writeFile(join(report,kind+'.json'),JSON.stringify({kind,installMs:Number(process.env.GEA_INSTALL_MS),records},null,2));
