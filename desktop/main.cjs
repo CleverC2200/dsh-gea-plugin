@@ -15,6 +15,13 @@ function runLifecycle(action){const next=lifecycle.then(()=>action());lifecycle=
 const payload=!app.isPackaged&&process.env.GEA_DESKTOP_PAYLOAD?process.env.GEA_DESKTOP_PAYLOAD:join(process.resourcesPath,'payload');
 const data=app.getPath('userData');
 const configPath=join(data,'gea.config.json');
+const loginPath=join(data,'login.encrypted');
+let loginSnapshot=null;
+async function readDesktopLogin(){
+  let bytes;try{bytes=await readFile(loginPath);}catch(error){if(error.code==='ENOENT')return null;throw error;}
+  if(!safeStorage.isEncryptionAvailable())throw Error('SECURE_STORAGE_UNAVAILABLE');
+  return JSON.parse(safeStorage.decryptString(bytes));
+}
 const errorText=error=>String(error?.message??error).replace(/(https?:\/\/[^\s?]+)\?[^\s]+/g,'$1?[redacted]');
 async function bounded(promise,ms,code){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(code)),ms);})]);}finally{clearTimeout(timer);}}
 async function stop(){
@@ -41,6 +48,9 @@ async function start(recovered=false){
   await showStartup();
   await appendFile(join(data,'desktop.log'),new Date().toISOString()+' START '+process.platform+' '+process.arch+'\n',{mode:0o600});
   await stop();
+  if(quitting)return;
+  // OS credential prompts must finish before the backend's private request timeout starts.
+  loginSnapshot=await readDesktopLogin();
   if(quitting)return;
   let selected;
   try{selected=await pluginStore.beginBoot();}
@@ -130,20 +140,15 @@ if(owned){
     pluginStore=new PluginStore({data,baseline:payload});
     await pluginStore.recoverPreparation();
     const {createControlServer}=await import('./control-server.mjs');
-    const loginPath=join(data,'login.encrypted');
     control=await createControlServer({
       ...Object.fromEntries(['status','check','settings','prepare','cancel','restart'].map(action=>[(action==='status'?'GET':'POST')+' /updates/'+action,async value=>{if(!updates)throw Error('UPDATES_UNAVAILABLE');return updates[action](value);}])) ,
-      'GET /login':async()=>{
-        let bytes;try{bytes=await readFile(loginPath);}catch(error){if(error.code==='ENOENT')return null;throw error;}
-        if(!safeStorage.isEncryptionAvailable())throw Error('SECURE_STORAGE_UNAVAILABLE');
-        return JSON.parse(safeStorage.decryptString(bytes));
-      },
+      'GET /login':async()=>loginSnapshot,
       'POST /login':async value=>{
         const {rm,rename}=require('node:fs/promises');
-        if(value===null){await rm(loginPath,{force:true});return null;}
+        if(value===null){await rm(loginPath,{force:true});loginSnapshot=null;return null;}
         if(!safeStorage.isEncryptionAvailable())throw Error('SECURE_STORAGE_UNAVAILABLE');
         await writeFile(loginPath+'.tmp',safeStorage.encryptString(JSON.stringify(value)),{mode:0o600});
-        await rename(loginPath+'.tmp',loginPath);return null;
+        await rename(loginPath+'.tmp',loginPath);loginSnapshot=value;return null;
       }
     });
     try {
