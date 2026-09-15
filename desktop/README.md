@@ -1,6 +1,6 @@
 # GEA Electron 桌面
 
-桌面壳固定 Electron 44.0.0、官方 DSH 0.1.5-rc.2、Node.js 24.14.1 和安装工具 pnpm 11.19.0。只交付 macOS Apple Silicon DMG 与 Windows x64 NSIS。安装包不携带维护者凭据。
+桌面壳固定 Electron 44.0.0、官方 DSH 0.1.5-rc.2、Node.js 24.14.1 和安装工具 pnpm 11.27.0。只交付 macOS Apple Silicon DMG 与 Windows x64 NSIS。安装包不携带维护者凭据。
 
 ## 首次启动
 
@@ -22,7 +22,7 @@
 
 运行 `GEA_MANAGE_GRAPH=<payload或外置版本目录> node --test desktop/gea-mcp-bundle.test.mjs`，用实际分发插件和本地模拟网关验证登录后发现工具、退出后移除连接；此测试不访问生产业务数据。实际部署仍须验证当前登录用户的 Consumer 授权。
 
-使用 electron-builder 26.15.3，`GEA_DESKTOP_PAYLOAD_ROOT` 指向新构建根，包含 mac/payload、win/payload。各 payload 必须包含相应平台 Node、生产依赖、标准发行包、pnpm 11.19.0 工具与 runtime-start.mjs 的 start.mjs 副本、onboarding.mjs。不能把 Mac 原生模块复用到 Windows。
+使用 electron-builder 26.15.3，`GEA_DESKTOP_PAYLOAD_ROOT` 指向新构建根，包含 mac/payload、win/payload。各 payload 必须包含相应平台 Node、生产依赖、标准发行包、pnpm 11.27.0 工具与 runtime-start.mjs 的 start.mjs 副本、onboarding.mjs。不能把 Mac 原生模块复用到 Windows。
 
 `node --test desktop/config.test.cjs desktop/onboarding.test.mjs desktop/plugin-store.test.mjs` 验证配置、提示、版本目录与数据保护。指定 `GEA_DESKTOP_TEST_GRAPH` 运行 desktop/runtime-graph.test.mjs 验证外置启动；指定 `GEA_DESKTOP_BASELINE`、`GEA_DESKTOP_NEXT` 运行 desktop/version-switch.test.mjs 验证实际页面版本切换。
 
@@ -49,3 +49,42 @@ GEA 登录由 Electron safeStorage 使用操作系统加密保存为 userData/lo
 正式对外分发需配置 `GEA_MAC_SIGNING_IDENTITY` 为 Developer ID Application 身份、`GEA_MAC_NOTARIZE=1` 及构建工具支持的安全公证凭据。该模式启用 hardened runtime、公证并要求 Gatekeeper 评估通过。不得将私钥、密码或公证凭据写入仓库或安装包。最终验收应包含通过下载方式获取安装包的新机器首次打开；本机直接执行应用不替代该验收。
 
 `setup.html`、`setup.js` 和 `preload.cjs` 保留旧连接表单原型，当前桌面入口不加载这些文件。发行版沿用上述公司默认配置与扫码登录流程。
+
+## 业务发行 0.0.7
+
+首次启动预置公司资源目录中的两个套件及 HTTPS 归档源，资源列表离线可见；业务用户无需输入仓库地址、安装 Git 或提供 GitHub 凭据。套件由用户在资源管理中选择安装和启用，GEA 扫码登录及原有业务预设开箱可用。首次复制后不会用随包旧目录覆盖用户已同步的资源。升级时仅将旧版公司默认 Git 主分支来源迁移为归档来源，保留已安装套件、启用状态与自定义来源；手动接管的目录和自选分支保持原样。
+
+桌面使用下述 GitLab 发行频道；`stable.json` 和 `test.json` 明确包含当前桌面版本及插件兼容版本。检查更新不阻塞打开窗口或登录页；准备更新不影响当前运行版本，只有明确重启才切换。
+
+打包先用 `prepare-payload.py <mac|win> <archives> <node-distribution> <new-payload>` 从每个包唯一版本的归档安装相应平台依赖，记录归档摘要。公司运行包只安装所需的 DSH、GEA、共享工作台、插件市场、Agent Manage 和 visualize 依赖，不安装未启用的第三方 UI 全家桶。随后在新目录运行 `compact-payload.py`，再运行 `node desktop/optimize-client-artifacts.mjs <compact-payload> <esbuild-module>`：压缩浏览器注册脚本和 GEA 业务页面，生成无源文本的预计算源码映射，减少每次启动合并模块的 CPU 开销；官方 Host 运行代码和插件版本保持不变。产物中的 `client-artifacts.json` 记录编译器版本及前后摘要。
+
+准备脚本通过 Agent Manage 的 `archiveInstall` 从公司源下载资源到 `payload/resources/company-agent-suites`，记录归档摘要；这一步只在构建机联网，客户端启动不下载。Mac 和 Windows 使用相同的纯文本资源快照，各自安装平台依赖。Mac 执行 MCP 和客户端启动验证，两份最终 payload 均检查平台原生模块，再调用 electron-builder。Windows 未通过真实安装和启动测量前，只能报告交叉构建与静态检查结果。
+
+Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体缩短安装过程。资源同步使用 Agent Manage 0.6.3-company.4，修复 Windows 解压路径分隔符检查和大归档并发写入问题。
+
+插件更新先在专属暂存目录执行 pnpm install，协调构建机与客户端的存储路径及平台目录设置，再安装选中的插件。需要重建的依赖仅位于暂存目录，正在运行的版本和业务数据保持可用。
+
+`GEA_DESKTOP_PAYLOAD=<payload> GEA_PLUGIN_ARTIFACT=<GEA-0.0.7.tgz> node --test desktop/installer-portability.test.mjs` 在复制的依赖图中模拟另一台机器的存储路径和目录长度，执行真实 pnpm 安装并检查当前选择与业务配置不变。
+
+准备插件后，桌面逐项核对浏览器源文件摘要；仅当内容与随包编译记录一致时复用压缩文件及源码映射，保持重复启动性能。更新后内容不同的插件使用新文件，不被旧优化产物覆盖。
+## GitLab 更新渠道
+
+`release-sources.json` 改为公司 GitLab 12 的公开发行库 raw JSON，正式/测试频道分别读取
+`http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/stable.json`
+和 `test.json`。下载不需要 GitLab 登录或 `GEA_RELEASE_TOKEN`，但网络必须能到达该地址。
+源码库保持私有。当前服务仅提供 HTTP；需要部署 HTTPS 才能提供传输身份认证。
+
+引导版 baseline 必须包含 `dsh-plugin@1.4.3-company.7`。更新协议从 baseline 加载，
+因此升级桌面后，即使用户仍选择旧插件组合，也能读取 GitLab 并更新。旧的 0.0.5
+安装包仍内置 GitHub 地址，不能通过修改服务器清单自动更换桌面内的渠道地址。
+0.0.7 构建 macOS Apple Silicon 和 Windows x64 安装包，包含相同的 GitLab 更新配置。
+
+可复验脚本：
+
+- `GEA_GITLAB_BASELINE=<旧payload> GEA_GITLAB_RELEASE_MODULE=<新Hub的lib/services/release-channel.js> node desktop/gitlab-update-smoke.mjs`：免登录读取两个真实 GitLab 频道和全部包，校验摘要，通过官方 DSH/pnpm 更新隔离插件组合，并确认再次检查无更新。
+- `GEA_GITLAB_BASELINE=<旧payload> node desktop/gitlab-runtime-smoke.mjs <上一脚本result.json>`：用实际新组合启动 DSH，验证软件更新页面与插件加载状态。
+- `GEA_GITLAB_BASELINE=<旧payload> GEA_GITLAB_ELECTRON=<打包后的应用可执行文件> node desktop/gitlab-electron-smoke.mjs`：真实桌面 UI 下载、重启与版本切换；仅 GEA 登录使用本地模拟服务，发行下载与安装均为真实操作。
+
+以上脚本使用自己的临时数据目录并关闭自己启动的进程，不操作用户的日常应用数据。
+
+Windows 包验收先记录 GitLab 网络可达性。能访问公司网络时执行在线检查、下载和重启；公共 CI 无法访问内网时，通过应用原有的本地插件菜单安装与 GitLab 摘要一致的归档并切换版本，报告单独标记 `local-verified-archive`，不能据此声称 Windows 已完成内网下载验证。Mac 验收直接读取真实 GitLab 频道。

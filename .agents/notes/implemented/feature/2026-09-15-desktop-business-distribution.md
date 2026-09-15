@@ -1,0 +1,17 @@
+# GEA Desktop business distribution
+
+GEA Desktop 0.0.7 provisions company deployment settings, an offline company suite catalog, and an archive refresh URL without asking business users for GitHub repository details or credentials. Existing resource checkouts and account/session data survive application restarts and plugin updates. Suites remain selectable in Agent Manage; startup does not automatically enable new capabilities.
+
+The desktop bundles the company GitLab stable and test channel URLs and Hub 1.4.3-company.7. Downloads require no GitLab login; the network must reach the configured company GitLab host. Channels explicitly include Desktop 0.0.7 compatibility, and immutable package digests remain the authority for downloads.
+
+A CPU profile of the released DSH runtime showed browser combo composition and identity source-map generation dominating repeated startup. The distribution build minifies browser registrations and ships compact precomputed maps; it does not modify DSH Host code. The payload retains archive/lock inputs for the official staging installer and removes the unused third-party UI bundle root. Each transformed client artifact has a before/after digest receipt. Source-map preparation belongs to packaging, so it also works on Windows without a first-launch compiler.
+
+Validation covers first launch without configuration, offline source discovery, live anonymous source refresh, plugin preparation and restart, user-data preservation, and MCP discovery/call/logout through the model loop. macOS startup timing is measured independently of builds. Windows native binaries are checked for the target architecture; cross-building does not establish Windows installation or launch latency.
+
+The NSIS installer retains the default 7z format. Direct ZIP extraction exceeded the 600-second Windows installation limit; the compact 7z candidate completed in 177 seconds. Package size and file-count reductions remain the installation optimization. Agent Manage 0.6.3-company.4 uses platform path separators and sequential validated ZIP writes, preserving traversal rejection without exhausting file handles.
+
+Plugin preparation runs pnpm install in the private staging graph before adding an artifact. pnpm reconciles builder-specific store paths and platform-specific directory settings; pnpm add alone rejects those differences. The staging install allows lock reconciliation after pinning the official versions and ignores lifecycle scripts. It can recreate staged dependencies, while the active graph and user data remain untouched.
+
+After pnpm materialization, the installer reuses baseline browser build outputs only when the installed source digest equals the recorded build input or output digest. Different plugin content remains untouched. The baseline output digest and node_modules-relative paths are checked before copying; this preserves shared-module startup performance across plugin updates without recompiling on the user machine.
+
+The installer pins pnpm 11.27.0. The earlier 11.19.0 bundle clears the worker pool during shutdown; late package fetches can recreate a pool and prevent process exit after the completion log. The maintained version includes [upstream worker shutdown fix #13226](https://github.com/pnpm/pnpm/pull/13226). Installation still requires the official DSH command to exit successfully; log text is never treated as completion.

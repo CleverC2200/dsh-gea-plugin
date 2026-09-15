@@ -1,4 +1,4 @@
 {
-  "stable": "https://api.github.com/repos/CleverC2200/dsh-gea-plugin/releases/tags/company-channel-stable",
-  "test": "https://api.github.com/repos/CleverC2200/dsh-gea-plugin/releases/tags/company-channel-test"
+  "stable": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/stable.json",
+  "test": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/test.json"
 }

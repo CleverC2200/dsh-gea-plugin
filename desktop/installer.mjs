@@ -1,15 +1,15 @@
 /** Use the pinned official DSH plugin command and bundled pnpm, only inside a staging graph. */
 import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {mkdir,readFile,writeFile,copyFile,symlink,rm,readdir} from 'node:fs/promises';
-import {join,dirname} from 'node:path';
+import {mkdir,readFile,writeFile,copyFile,symlink,rm,readdir,realpath,unlink} from 'node:fs/promises';
+import {join,dirname,resolve,sep} from 'node:path';
 import {createRequire} from 'node:module';
 
-export async function installArtifact({directory,artifact,node,pnpm,signal,onProcess=async()=>{},onProgress=()=>{}}) {
+export async function installArtifact({directory,artifact,node,pnpm,optimizedBaseline,signal,onProcess=async()=>{},onProgress=()=>{}}) {
   const deadline=AbortSignal.timeout(5*60*1000);
   signal=AbortSignal.any([...(signal?[signal]:[]),deadline]);
   const tool=JSON.parse(await readFile(join(dirname(dirname(pnpm)),'package.json'),'utf8'));
-  if(tool.version!=='11.19.0')throw Error('INSTALL_TOOL_VERSION_MISMATCH');
+  if(tool.version!=='11.27.0')throw Error('INSTALL_TOOL_VERSION_MISMATCH');
   const manifestPath=join(directory,'package.json');
   const manifest=JSON.parse(await readFile(manifestPath,'utf8'));
   manifest.dsh={profile:{bundles:['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app',...['@cleverc2200/gea-dsh-prototype','dsh-plugin','dsh-agent-manage','dsh-agent-plugins-market'].filter(name=>manifest.dependencies?.[name])],patchReload:'startup'}};
@@ -34,7 +34,8 @@ export async function installArtifact({directory,artifact,node,pnpm,signal,onPro
   await mkdir(join(home,'profiles'),{recursive:true});await mkdir(bin);
   await symlink(directory,join(home,'profiles/prepared'),process.platform==='win32'?'junction':'dir');
   const wrapper=join(bin,'pnpm-driver.cjs');
-  await writeFile(wrapper,`require('node:child_process').execFileSync(process.env.GEA_INSTALL_NODE,[process.env.GEA_INSTALL_PNPM,'add',process.env.GEA_INSTALL_TARGET,'--ignore-scripts','--save-exact','--prefer-offline'],{stdio:'inherit'});`);
+  // A copied graph can refer to the builder's store and platform layout. pnpm install owns relocation.
+  await writeFile(wrapper,`const {execFileSync}=require('node:child_process');execFileSync(process.env.GEA_INSTALL_NODE,[process.env.GEA_INSTALL_PNPM,'install','--ignore-scripts','--prefer-offline','--no-frozen-lockfile'],{stdio:'inherit'});execFileSync(process.env.GEA_INSTALL_NODE,[process.env.GEA_INSTALL_PNPM,'add',process.env.GEA_INSTALL_TARGET,'--ignore-scripts','--save-exact','--prefer-offline'],{stdio:'inherit'});`);
   await writeFile(join(bin,'pnpm'),`#!/bin/sh\nexec "$GEA_INSTALL_NODE" "$GEA_INSTALL_DRIVER"\n`,{mode:0o755});
   await writeFile(join(bin,'pnpm.cmd'),'@echo off\r\n"%GEA_INSTALL_NODE%" "%GEA_INSTALL_DRIVER%"\r\n');
   const cli=join(directory,'node_modules/@deepseek-ai/dsh/lib/bin.js');
@@ -78,7 +79,34 @@ export async function installArtifact({directory,artifact,node,pnpm,signal,onPro
       const pluginRequire=createRequire(require.resolve(name+'/package.json'));
       if(pluginRequire.resolve('@deepseek-ai/cordis')!==cordis)throw Error('SHARED_CORDIS_MISMATCH');
     }
+    if(optimizedBaseline)await restoreClientArtifacts(directory,optimizedBaseline);
   } finally {
     await rm(home,{recursive:true,force:true});await rm(bin,{recursive:true,force:true});
+  }
+}
+
+/** Reuse build outputs only when pnpm materialized exactly the source that produced them. */
+async function restoreClientArtifacts(directory,baseline) {
+  let receipt;
+  try {receipt=JSON.parse(await readFile(join(baseline,'client-artifacts.json'),'utf8'));}
+  catch(error){if(error.code==='ENOENT')return;throw error;}
+  const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+  const modules=await realpath(join(directory,'node_modules')),baselineModules=await realpath(join(baseline,'node_modules'));
+  for(const record of receipt.files){
+    const source=resolve(baseline,record.file),target=resolve(directory,record.file);
+    if(!source.startsWith(resolve(baseline,'node_modules')+sep)||!target.startsWith(resolve(directory,'node_modules')+sep)||![record.beforeSha256,record.afterSha256].every(value=>/^[a-f0-9]{64}$/.test(value)))throw Error('CLIENT_ARTIFACT_RECEIPT_INVALID');
+    let installed;
+    try {
+      if(!(await realpath(target)).startsWith(modules+sep))throw Error('CLIENT_ARTIFACT_PATH_INVALID');
+      installed=await readFile(target);
+    }catch(error){if(error.code==='ENOENT')continue;throw error;}
+    if(![record.beforeSha256,record.afterSha256].includes(digest(installed)))continue;
+    const optimized=await readFile(source);
+    if(digest(optimized)!==record.afterSha256)throw Error('CLIENT_ARTIFACT_DIGEST_MISMATCH');
+    if(!(await realpath(source)).startsWith(baselineModules+sep)||!(await realpath(source+'.map')).startsWith(baselineModules+sep))throw Error('CLIENT_ARTIFACT_PATH_INVALID');
+    await unlink(target);
+    await writeFile(target,optimized,{flag:'wx'});
+    await rm(target+'.map',{force:true});
+    await copyFile(source+'.map',target+'.map');
   }
 }

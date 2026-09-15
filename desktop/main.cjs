@@ -51,7 +51,7 @@ async function start(recovered=false){
   const node=join(payload,'node',process.platform==='win32'?'node.exe':'bin/node');
   const runtimeEnv={...process.env};delete runtimeEnv.GEA_RELEASE_TOKEN;
   const child=spawn(node,[join(payload,'start.mjs')],{cwd:payload,detached:process.platform!=='win32',windowsHide:true,
-    env:{...runtimeEnv,GEA_CONFIG:configPath,DSH_FULL_DATA_DIR:join(data,'data'),DSH_FULL_PORT:'0',DSH_FULL_NO_OPEN:'1',DSH_PLUGIN_GRAPH:selected.path,GEA_DESKTOP_CONTROL_URL:control.url,GEA_DESKTOP_CONTROL_TOKEN:control.token},
+    env:{...runtimeEnv,GEA_CONFIG:configPath,DSH_FULL_DATA_DIR:join(data,'data'),DSH_FULL_PORT:'0',DSH_FULL_NO_OPEN:'1',DSH_PLUGIN_GRAPH:selected.path,DSH_DESKTOP_BASELINE:payload,GEA_DESKTOP_CONTROL_URL:control.url,GEA_DESKTOP_CONTROL_TOKEN:control.token},
     stdio:['ignore','pipe','pipe','ipc']});
   backend=child;
   let pending='';
@@ -97,7 +97,7 @@ async function preparePlugin(){
   if(choice.canceled)return;
   const {installArtifact}=await import('./installer.mjs');
   const id='local-'+Date.now();
-  await pluginStore.prepare({id,install:(directory,{registerProcess})=>installArtifact({directory,onProcess:registerProcess,artifact:choice.filePaths[0],
+  await pluginStore.prepare({id,install:(directory,{registerProcess})=>installArtifact({directory,optimizedBaseline:payload,onProcess:registerProcess,artifact:choice.filePaths[0],
     node:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node'),pnpm:join(payload,'tools/node_modules/pnpm/bin/pnpm.cjs')})});
   await dialog.showMessageBox(window,{message:'插件已准备，当前工作台继续运行',detail:'组合 '+id+'。完成当前任务后，在插件版本菜单中切换并重启。'});
 }
@@ -125,6 +125,7 @@ if(owned){
   app.on('second-instance',()=>{if(window){window.show();window.focus();}});
   app.whenReady().then(async()=>{
     await mkdir(data,{recursive:true,mode:0o700});
+    createWindow();await showStartup();
     const {PluginStore}=await import('./plugin-store.mjs');
     pluginStore=new PluginStore({data,baseline:payload});
     await pluginStore.recoverPreparation();
@@ -152,10 +153,9 @@ if(owned){
       const {createUpdates}=await import('./updates.mjs');const {installArtifact}=await import('./installer.mjs');
       updates=await createUpdates({data,store:pluginStore,desktopVersion:require('./package.json').version,releases,
         sources:require('./release-sources.json'),token:process.env.GEA_RELEASE_TOKEN,
-        install:(directory,artifact,signal,onProcess)=>installArtifact({directory,artifact,signal,onProcess,onProgress:line=>void appendFile(join(data,'desktop.log'),line,{mode:0o600}).catch(()=>{}),node:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node'),pnpm:join(payload,'tools/node_modules/pnpm/bin/pnpm.cjs')}),
+        install:(directory,artifact,signal,onProcess)=>installArtifact({directory,optimizedBaseline:payload,artifact,signal,onProcess,onProgress:line=>void appendFile(join(data,'desktop.log'),line,{mode:0o600}).catch(()=>{}),node:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node'),pnpm:join(payload,'tools/node_modules/pnpm/bin/pnpm.cjs')}),
         restart:id=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await pluginStore.activate(id);await start();})});
     }catch(error){await appendFile(join(data,'desktop.log'),'公司更新服务不可用：'+errorText(error)+'\n',{mode:0o600});}
-    createWindow();
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       {label:'GEA Desktop',submenu:[{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'打开启动日志',click:()=>void shell.openPath(join(data,'desktop.log'))},{label:'重新启动工作台',click:()=>void runLifecycle(start).catch(report)},{type:'separator'},{role:'quit'}]},
       {label:'插件版本',submenu:[
