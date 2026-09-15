@@ -8,6 +8,8 @@ test(
   async (t) => {
     const app = await profile(t);
     let mode = "assigned";
+    let status = 1;
+    let effective = true;
     const meta = {
       biz_key: "sales-plan:version:v",
       instance_id: "i",
@@ -21,8 +23,8 @@ test(
             currentVersion: {
               id: "v",
               planId: "p",
-              status: 1,
-              effective: true,
+              status,
+              effective,
             },
             skus: [],
             versions: [],
@@ -72,6 +74,12 @@ test(
       instanceId: "i",
       actionable: true,
     });
+    for (status of [7, 8, 9]) assert.equal((await read()).value.workflowApproval?.actionable, true);
+    for (status of [0, 5, 6, 10]) assert.equal((await read()).value.workflowApproval, undefined);
+    status = 7;
+    effective = false;
+    assert.equal((await read()).value.workflowApproval, undefined);
+    effective = true;
     for (mode of ["handled", "wrong", "failed"]) {
       const result = await read();
       assert.equal(result.ok, true);

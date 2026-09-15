@@ -17,7 +17,7 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
     return result;
   };
   const status=async()=>{
-    return {...state,current:await versions(),checking:Boolean(checking),capabilities:{batchPrepare:true,automaticUpdates:true,prepareAndRestart:true}};
+    return {...state,phase:state.phase==='pending'&&preparing?'installing':state.phase,current:await versions(),checking:Boolean(checking),capabilities:{batchPrepare:true,automaticUpdates:true,prepareAndRestart:true}};
   };
   const check=()=>{
     if(closed)return Promise.resolve({error:'DESKTOP_CLOSING'});
@@ -94,7 +94,8 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
     status,check,settings,prepare,
     cancel:async()=>{autoRestart=false;abort?.abort();if(state.phase==='pending'){state.phase='cancelled';await save();}return {ok:true};},
     restart:restartPrepared,
-    start:async()=>{if(started)return;started=true;if(state.phase==='restarting'){const selection=await store.status();state.phase=selection.active===state.pending&&!selection.booting?'succeeded':'failed';state.error=state.phase==='failed'?'UPDATE_ROLLED_BACK':null;await save();}void check().catch(()=>{});},
+    start:async()=>{if(started)return;started=true;if(state.phase!=='pending'||preparing)throw Error('NO_PREPARED_UPDATE');state.phase='restarting';await save();restartTimer=setTimeout(()=>{if(closed)return;restartTask=restart(state.pending).then(async()=>{const selected=await store.status();state.phase=selected.active===state.pending&&selected.verified===state.pending&&!selected.booting?'succeeded':'failed';state.error=state.phase==='failed'?'UPDATE_ROLLED_BACK':null;await save();}).catch(async error=>{state.phase='failed';state.error=errorCode(error);await save();});},100);return {ok:true};},
+    start:async()=>{const generation=(await store.status()).dataSchema??1;if((state.dataSchema??1)!==generation){state={settings:state.settings,history:state.history,phase:'idle',releases:[],dataSchema:generation};await save();}if(state.phase==='restarting'){const selection=await store.status();state.phase=selection.active===state.pending&&!selection.booting?'succeeded':'failed';state.error=state.phase==='failed'?'UPDATE_ROLLED_BACK':null;await save();}void check().catch(()=>{});},
     close:async()=>{closed=true;clearInterval(timer);clearTimeout(restartTimer);abort?.abort();checkAbort?.abort();await preparing;await checking;await restartTask;await writes;},
   };
 }

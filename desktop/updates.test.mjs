@@ -3,7 +3,7 @@ import {mkdtemp,mkdir,writeFile,rm,readFile,readdir} from 'node:fs/promises';imp
 import {PluginStore} from './plugin-store.mjs';import {createUpdates} from './updates.mjs';
 const until=async(fn,predicate)=>{for(let i=0;i<150;i++){const value=await fn();if(predicate(value))return value;await new Promise(r=>setTimeout(r,20));}throw Error('timed out');};
 async function fixture(t,overrides={},initialState){
- const data=await mkdtemp(join(tmpdir(),'gea-updates-'));t.after(()=>rm(data,{recursive:true,force:true}));const baseline=join(data,'baseline');
+ const data=await mkdtemp(join(tmpdir(),'gea-updates-'));const baseline=join(data,'baseline');
  const dependencies={'@deepseek-ai/dsh':'0.1.5-rc.2','@cleverc2200/dsh-agent-workbench':'0.1.1','dsh-plugin':'1.4.3-company.1'};
  for(const [name,version] of Object.entries(dependencies)){await mkdir(join(baseline,'node_modules',name),{recursive:true});await writeFile(join(baseline,'node_modules',name,'package.json'),JSON.stringify({name,version}));}
  await writeFile(join(baseline,'package.json'),JSON.stringify({dependencies}));
@@ -14,7 +14,7 @@ async function fixture(t,overrides={},initialState){
   releases:{validateReleaseChannel:value=>value,fetchCompanyChannel:async(source)=>{checks++;return {releases:source==='stable'?[release]:[]}},verifyReleaseHistory:(_,history)=>history,fetchReleasePackage:async()=>new Uint8Array([1]),...overrides},
   install:async directory=>{installs++;await writeFile(join(directory,'node_modules/dsh-plugin/package.json'),JSON.stringify({name:'dsh-plugin',version:release.version}));},
   restart:async id=>{restarts++;await store.activate(id);await store.beginBoot();await store.confirmBoot();}});
- t.after(()=>updates.close());return {updates,store,data,desktopChecks:()=>desktopChecks,counts:()=>({installs,restarts,checks})};
+ t.after(async()=>{await updates.close();await rm(data,{recursive:true,force:true});});return {updates,store,data,desktopChecks:()=>desktopChecks,counts:()=>({installs,restarts,checks})};
 }
 test('checks do not install; duplicate preparations reserve one graph and explicit restart verifies its actual version',async t=>{
  const {updates,store,counts}=await fixture(t);await updates.check();assert.equal(counts().installs,0);
@@ -44,13 +44,13 @@ async function batchFixture(t,{badDownload=false,badInstall=false}={}) {
   const f=await fixture(t,{fetchCompanyChannel:async()=>({releases:offers})});
   await f.updates.close();
   let installs=0,restarts=0,downloads=0;
-  const data=await mkdtemp(join(tmpdir(),'gea-batch-state-'));t.after(()=>rm(data,{recursive:true,force:true}));
+  const data=await mkdtemp(join(tmpdir(),'gea-batch-state-'));
   const updates=await createUpdates({data,store:f.store,desktopVersion:'0.0.9',sources:{stable:'stable'},
     releases:{validateReleaseChannel:value=>value,fetchCompanyChannel:async()=>({releases:offers}),verifyReleaseHistory:(_,history)=>history,
       fetchReleasePackage:async release=>{downloads++;if(badDownload&&downloads===2)throw Error('RELEASE_CHECKSUM_MISMATCH');return Buffer.from(JSON.stringify(release));}},
     install:async(directory,artifacts)=>{installs++;assert.equal(artifacts.length,2);for(const artifact of artifacts){const release=JSON.parse(await readFile(artifact,'utf8'));await writeFile(join(directory,'node_modules',release.package,'package.json'),JSON.stringify({name:release.package,version:release.version}));}if(badInstall)throw Error('PLUGIN_INSTALL_FAILED');},
     restart:async id=>{restarts++;await f.store.activate(id);await f.store.beginBoot();await f.store.confirmBoot();}});
-  t.after(()=>updates.close());return {...f,updates,data,counts:()=>({installs,restarts,downloads})};
+  t.after(async()=>{await updates.close();await rm(data,{recursive:true,force:true});});return {...f,updates,data,counts:()=>({installs,restarts,downloads})};
 }
 test('batch prepares two plugins in one graph and applies both with one explicit restart',async t=>{
   const {updates,store,counts}=await batchFixture(t);await updates.check();assert.equal((await updates.status()).capabilities.batchPrepare,true);
@@ -115,4 +115,13 @@ test('interval settings validate, persist and reschedule without installing',asy
   t.mock.timers.tick(3600000);await until(updates.status,s=>!s.checking);assert.equal(counts().checks,2);
   assert.equal((await updates.status()).settings.intervalHours,3);assert.equal(counts().installs,0);
   assert.equal(JSON.parse(await readFile(join(data,'plugins/update-state.json'),'utf8')).settings.intervalHours,3);
+});
+
+test('core upgrade discards old pending actions while retaining update preferences and verified history',async t=>{
+ const history={'dsh-plugin@1.4.3-company.1':'saved-digest'};
+ const settings={automatic:false,intervalHours:12,channel:'test'};
+ const {updates,store}=await fixture(t,{}, {phase:'pending',pending:'legacy-graph',releases:[{package:'old'}],history,settings});
+ store.dataSchema=2;await store.beginBoot();await store.confirmBoot();await updates.start();
+ const state=await updates.status();assert.equal(state.phase,'idle');assert.equal(state.pending,undefined);assert.deepEqual(state.releases,[]);assert.deepEqual(state.history,history);assert.deepEqual(state.settings,settings);
+ await assert.rejects(updates.restart(),/NO_PREPARED_UPDATE/);
 });

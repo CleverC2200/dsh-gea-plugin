@@ -1,5 +1,5 @@
 /** Read-only GEA inbox. Notification state does not alter DSH interaction or Session state. */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CopyKey } from "./locales.ts";
 import type { NotificationItem } from "./notifications.ts";
 
@@ -14,63 +14,62 @@ type Page = {
 };
 type Translate = (key: CopyKey) => string;
 
-/** Mount a fresh read on each page or detail selection and discard late responses on navigation. */
+/** Keep list and detail reads independent; discard late responses on navigation. */
 export function Inbox({ t }: { t: Translate }) {
   const [pageNo, setPageNo] = useState(1);
   const [state, setState] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+  const [detailRevision, setDetailRevision] = useState(0);
   const [data, setData] = useState<Page | null>(null);
-  const [detail, setDetail] = useState<NotificationItem | null>(null);
+  const [detailResult, setDetailResult] = useState<{
+    id: string;
+    detail?: NotificationItem;
+    error?: CopyKey;
+  } | null>(null);
   const [error, setError] = useState<CopyKey | null>(null);
   const [busy, setBusy] = useState(true);
   useEffect(() => {
     const controller = new AbortController();
-    if (!selected) setData(null);
-    setDetail(null);
     setError(null);
     setBusy(true);
-    void fetch("/api/gea-proof/notifications", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(selected ? { id: selected } : { pageNo, state }),
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("GEA_HTTP_" + response.status);
-        const result = await response.json();
-        if (!result.ok) throw new Error(result.error.code);
-        if (controller.signal.aborted) return;
-        if (selected) setDetail(result.value.detail);
-        else setData(result.value);
+    void readNotifications<{ value: Page }>({ pageNo, state }, controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) setData(result.value);
       })
       .catch((reason: unknown) => {
-        if (controller.signal.aborted) return;
-        const code = reason instanceof Error ? reason.message : "";
-        setError(
-          [
-            "LOGIN_REQUIRED",
-            "GEA_HTTP_401",
-            "NOTIFICATION_UNAUTHENTICATED",
-          ].includes(code)
-            ? "loginExpired"
-            : ["GEA_HTTP_403", "NOTIFICATION_TENANT_FORBIDDEN"].includes(code)
-              ? "forbidden"
-              : code === "GEA_REQUEST_TIMEOUT"
-                ? "requestTimeout"
-                : code === "GEA_NETWORK_ERROR"
-                  ? "networkError"
-                  : "retry",
-        );
+        if (!controller.signal.aborted) {
+          setData(null);
+          setError(notificationError(reason));
+        }
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy(false);
       });
     return () => controller.abort();
-  }, [pageNo, selected, revision, state]);
-  const drawer = useRef<HTMLDialogElement>(null);
+  }, [pageNo, revision, state]);
   useEffect(() => {
+    if (!selected) return;
+    const controller = new AbortController();
+    void readNotifications<{ value: { detail: NotificationItem } }>({ id: selected }, controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) setDetailResult({ id: selected, detail: result.value.detail });
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setDetailResult({ id: selected, error: notificationError(reason) });
+      });
+    return () => controller.abort();
+  }, [selected, detailRevision]);
+  const currentDetail = detailResult?.id === selected ? detailResult : null;
+  const detailBusy = Boolean(selected && !currentDetail);
+  const detailError = currentDetail?.error;
+  const detail = detailError ? null : currentDetail?.detail ?? data?.items.find(item => item.id === selected);
+  const openDetail = (id: string) => {
+    setDetailResult(null);
+    setSelected(id);
+  };
+  const drawer = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
     if (selected) drawer.current?.showModal();
     else drawer.current?.close();
   }, [selected]);
@@ -92,6 +91,7 @@ export function Inbox({ t }: { t: Translate }) {
         <label className="gea-inbox-filter">
           {t("inboxStatusLabel")}
           <select aria-label={t("notificationState")} value={state} onChange={(event) => {
+            setData(null);
             setState(event.target.value);
             setPageNo(1);
           }}>
@@ -104,9 +104,7 @@ export function Inbox({ t }: { t: Translate }) {
 
       </div>
       <div className="gea-inbox-content">
-        {!selected && busy && <p role="status">{t("busy")}</p>}
-        {!selected && error && <p role="alert">{t(error)}</p>}
-        {data && <>
+        {error && <p role="alert">{t(error)}</p>}
           <div className="gea-inbox-table-scroll">
             <table>
               <thead><tr>
@@ -114,22 +112,28 @@ export function Inbox({ t }: { t: Translate }) {
                 <th>{t("inboxContent")}</th><th>{t("notificationCreatedAt")}</th>
                 <th>{t("inboxStatus")}</th>
               </tr></thead>
-              <tbody>{data.items.map((item) => (
-                <tr key={item.id} className={item.state === "unread" ? "is-unread" : ""} onClick={() => setSelected(item.id)}>
+              <tbody>{data?.items.map((item) => (
+                <tr key={item.id} className={item.state === "unread" ? "is-unread" : ""} onClick={() => openDetail(item.id)}>
                   <td><span className="gea-inbox-kind">{item.kind ?? t("unknown")}</span></td>
-                  <td><button className="gea-inbox-subject" onClick={() => setSelected(item.id)}>{item.title ?? item.id}</button></td>
+                  <td><button className="gea-inbox-subject" onClick={() => openDetail(item.id)}>{item.title ?? item.id}</button></td>
                   <td><span className="gea-inbox-summary">{(item.summary?.trim() || item.body?.trim() || t("notificationNoContent")).slice(0, 160)}</span></td>
                   <td className="gea-inbox-date">{formatDate(item.createdAt)}</td>
                   <td>{badge(item.state)}</td>
                 </tr>
-              ))}</tbody>
+              ))}
+              {!data && busy && <tr className="gea-inbox-loading-row"><td colSpan={5}>
+                <p role="status">{t("busy")}</p>
+                <div className="gea-inbox-placeholder" aria-hidden="true" />
+              </td></tr>}
+              </tbody>
             </table>
           </div>
+          {data && <>
           {data.items.length === 0 && <p className="gea-inbox-empty">{t("empty")}</p>}
           <footer className="gea-inbox-pagination">
             <span>{t("total")}: {data.total} · {t("page")}: {pageNo}</span>
-            <div><button disabled={busy || pageNo === 1} onClick={() => setPageNo(pageNo - 1)}>{t("previous")}</button>
-            <button disabled={busy || pageNo * data.pageSize >= data.total} onClick={() => setPageNo(pageNo + 1)}>{t("next")}</button></div>
+            <div><button disabled={busy || pageNo === 1} onClick={() => { setData(null); setPageNo(pageNo - 1); }}>{t("previous")}</button>
+            <button disabled={busy || pageNo * data.pageSize >= data.total} onClick={() => { setData(null); setPageNo(pageNo + 1); }}>{t("next")}</button></div>
           </footer>
           <p className="gea-inbox-hint">{t("inboxReadOnly")}</p>
           <details className="gea-inbox-provenance"><summary>{t("inboxQueryInfo")}</summary><p>{t(data.environment)} · {t("returned")}: {data.items.length} · {t(data.coverage)} · {t("fetchedAt")}: {formatDate(data.fetchedAt)}</p></details>
@@ -144,9 +148,9 @@ export function Inbox({ t }: { t: Translate }) {
             </button>
           </header>
           <div className="gea-inbox-drawer-body">
-            {busy && <p role="status">{t("busy")}</p>}
-            {error && <div role="alert"><p>{t(error)}</p><button onClick={() => setRevision(value => value + 1)}>{t("refreshInbox")}</button></div>}
-            {detail && !busy && <article>
+            <div className="gea-inbox-detail-loading" role="status">{detailBusy ? t("busy") : null}</div>
+            {detailError && <div role="alert"><p>{t(detailError)}</p><button onClick={() => { setDetailResult(null); setDetailRevision(value => value + 1); }}>{t("refreshInbox")}</button></div>}
+            {detail && <article aria-busy={detailBusy}>
 
               <dl className="gea-inbox-info">
                 <div><dt>{t("notificationSource")}</dt><dd>{detail.source?.label ?? t("unknown")}</dd></div>
@@ -188,4 +192,27 @@ function formatDate(value: string | null): string {
   if (Number.isNaN(date.getTime())) return value;
   const pad = (part: number) => String(part).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+async function readNotifications<T>(query: object, signal: AbortSignal): Promise<T> {
+  const response = await fetch("/api/gea-proof/notifications", {
+    method: "POST", credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(query), signal,
+  });
+  if (!response.ok) throw new Error("GEA_HTTP_" + response.status);
+  const result = await response.json();
+  if (!result.ok) throw new Error(result.error.code);
+  return result;
+}
+
+function notificationError(reason: unknown): CopyKey {
+  const code = reason instanceof Error ? reason.message : "";
+  return ["LOGIN_REQUIRED", "GEA_HTTP_401", "NOTIFICATION_UNAUTHENTICATED"].includes(code)
+    ? "loginExpired"
+    : ["GEA_HTTP_403", "NOTIFICATION_TENANT_FORBIDDEN"].includes(code)
+      ? "forbidden"
+      : code === "GEA_REQUEST_TIMEOUT"
+        ? "requestTimeout"
+        : code === "GEA_NETWORK_ERROR" ? "networkError" : "retry";
 }

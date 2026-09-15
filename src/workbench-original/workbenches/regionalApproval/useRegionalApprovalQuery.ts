@@ -16,6 +16,7 @@ import {
   chooseInitialSalesPlanPeriod,
   clampSalesPlanPageNumber,
   SALES_PLAN_PROGRESS_STATUSES,
+  salesPlanVisibleStatuses,
   type RegionalApprovalQueryScope,
 } from './regionalApprovalQueryModel.ts';
 import type { ApprovalStageId } from './regionalApprovalFixture.ts';
@@ -88,6 +89,7 @@ export const useRegionalApprovalQuery = ({
   loadAnalysisSummary = false,
   stageStatuses,
   stage,
+  roles,
 }: {
   client?: SalesPlanQueryClient | null;
   page: number;
@@ -97,6 +99,7 @@ export const useRegionalApprovalQuery = ({
   loadAnalysisSummary?: boolean;
   stageStatuses?: readonly number[];
   stage?: ApprovalStageId;
+  roles?: readonly ApprovalStageId[];
 }) => {
   const [analysisResult, setAnalysisResult] =
     useState<QueryState<{ summary: SalesPlanAnalysisSummary; records: GeaSalesPlanListItem[] }>>(idle);
@@ -134,7 +137,11 @@ export const useRegionalApprovalQuery = ({
     [scope?.areaCode, scope?.baseName, scope?.dealerCode, scope?.orgCode, scope?.provinceCode, scope?.status]
   );
   const periodTypeCode = periodsState.data?.find((period) => period.periodId === selectedPeriodId)?.planTypeCode;
-  const resolvedStageStatuses = stage ? salesPlanWorkflow(periodTypeCode ?? '').pendingStatuses(stage) : stageStatuses;
+  const roleStatuses = roles?.length ? salesPlanVisibleStatuses(periodTypeCode ?? '', roles) : undefined;
+  const requestedStatuses = stage ? salesPlanWorkflow(periodTypeCode ?? '').pendingStatuses(stage) : stageStatuses;
+  const resolvedStageStatuses = roleStatuses
+    ? roleStatuses.filter((status) => !requestedStatuses || requestedStatuses.includes(status))
+    : requestedStatuses;
   const stageStatusesKey = resolvedStageStatuses
     ? [
         ...new Set(
@@ -317,7 +324,7 @@ export const useRegionalApprovalQuery = ({
     };
 
     void Promise.all([
-      client.list.invoke(baseQuery),
+      stableStageStatuses ? Promise.resolve({ total: 0 }) : client.list.invoke(baseQuery),
       ...statuses.map((status) => client.list.invoke({ ...baseQuery, status })),
     ])
       .then(([allRows, ...statusPages]) => {

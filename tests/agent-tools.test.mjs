@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { profile, readSession, until } from "./profile.mjs";
@@ -8,6 +8,8 @@ test(
   { timeout: 90000 },
   async (t) => {
     const app = await profile(t, {
+      pluginRoot: process.env.GEA_TEST_PLUGIN_ROOT,
+      bundle: Boolean(process.env.GEA_TEST_PLUGIN_ROOT),
       config: () => ({
         requestTimeoutMs: 1000,
         analysis: {
@@ -90,6 +92,33 @@ test(
       const body = JSON.parse(req.body);
       modelRequests.push(body);
       res.setHeader("Content-Type", "text/event-stream");
+      if (outcome === "skill-reference") {
+        const results = body.messages.filter((x) => x.role === "tool");
+        const name =
+          results.length === 0 ? "skill" : "gea_skill_reference_read";
+        const args =
+          results.length === 0
+            ? { name: "reference-scope" }
+            : { skill: "reference-scope", path: "../../references/rules.md" };
+        res.end(
+          results.length < 2
+            ? event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: `reference-${results.length}`,
+                      type: "function",
+                      function: { name, arguments: JSON.stringify(args) },
+                    },
+                  ],
+                },
+                "tool_calls",
+              )
+            : event({ content: "已读取本地规则，按实际期间查询。" }, "stop"),
+        );
+        return true;
+      }
       if (!body.messages.some((x) => x.role === "tool")) {
         res.end(
           event(
@@ -152,8 +181,8 @@ test(
         );
         assert.equal(modelRequests.length, 2);
         assert.deepEqual(
-          modelRequests[0].tools.map((x) => x.function.name),
-          ["gea_sales_plan_read", "skill"],
+          modelRequests[0].tools.map((x) => x.function.name).sort(),
+          ["gea_sales_plan_read", "gea_skill_reference_read", "skill"],
         );
         const result = modelRequests[1].messages.find((x) => x.role === "tool");
         assert.equal(result.tool_call_id, "read-1");
@@ -197,6 +226,48 @@ test(
         );
         assert.equal(read.method, "GET");
         assert.equal(read.headers["x-tenant-id"], "0");
+      },
+    );
+    await t.test(
+      "Skill references use the local reader in the actual model-tool-model loop",
+      async () => {
+        await mkdir(`${app.runtime}/workspace/.agents/skills/reference-scope`, {
+          recursive: true,
+        });
+        await mkdir(`${app.runtime}/workspace/.agents/references`, {
+          recursive: true,
+        });
+        await writeFile(
+          `${app.runtime}/workspace/.agents/skills/reference-scope/SKILL.md`,
+          "---\nname: reference-scope\ndescription: 需求预测规则测试\n---\n先读 [规则](../../references/rules.md)\n",
+        );
+        await writeFile(
+          `${app.runtime}/workspace/.agents/references/rules.md`,
+          "按实际期间查询；缺失数据不能编造。\n",
+        );
+        outcome = "skill-reference";
+        modelRequests = [];
+        const rows = await ended(await submit());
+        assert.equal(modelRequests.length, 3);
+        const initialSystem = modelRequests[0].messages
+          .filter((x) => x.role === "system")
+          .map((x) => x.content)
+          .join("\n");
+        assert.match(initialSystem, /用户用中文提问时.*进度.*中文/);
+        const results = modelRequests[2].messages.filter(
+          (x) => x.role === "tool",
+        );
+        assert.match(results[0].content, /reference-scope/);
+        assert.match(results[1].content, /按实际期间查询；缺失数据不能编造/);
+        assert.ok(
+          !rows.some(
+            (x) => x.type === "tool/call" && x.data.name.includes("mcp"),
+          ),
+        );
+        assert.equal(
+          rows.find((x) => x.type === "turn/end").data.reason.kind,
+          "completed",
+        );
       },
     );
     await t.test(

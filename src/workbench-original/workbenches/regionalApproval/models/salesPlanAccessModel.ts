@@ -45,7 +45,8 @@ export const salesPlanAccessForRow = (
     detail.currentVersion.id !== row.versionId ||
     detail.currentVersion.planId !== row.planId ||
     !detail.currentVersion.effective ||
-    detail.currentVersion.status !== row.status
+    detail.currentVersion.status !== row.status ||
+    (row.planTypeCode !== undefined && row.planTypeCode !== detail.currentVersion.planTypeCode)
   )
     return undefined;
   if (!context && detail.workflowApproval?.actionable === true &&
@@ -58,12 +59,12 @@ export const salesPlanAccessForRow = (
     };
   }
   if (!context) {
-    if (!stage || !salesPlanStagesForPermissions(permissions).includes(stage) || !actor || actor === 'customer')
+    if (!actor || actor === 'customer' || !salesPlanStagesForPermissions(permissions).includes(actor))
       return undefined;
     return {
       versionId: row.versionId,
       status: row.status,
-      nodeOrder: NODE_PERMISSIONS.findIndex(([id]) => id === stage) + 1,
+      nodeOrder: NODE_PERMISSIONS.findIndex(([id]) => id === actor) + 1,
       allowedActions: ['APPROVE', 'REJECT'],
     };
   }
