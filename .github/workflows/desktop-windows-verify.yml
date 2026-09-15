@@ -15,7 +15,10 @@ permissions:
   contents: read
 jobs:
   windows:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'verify-windows-package'
+    if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'verify-windows-package' && github.event.pull_request.head.repo.full_name == github.repository)
+    # GitHub requires push access to read draft releases. The token is used only by the download step.
+    permissions:
+      contents: write
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
