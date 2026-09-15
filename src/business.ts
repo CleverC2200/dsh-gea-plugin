@@ -656,7 +656,7 @@ export class Business {
       const workflowRows=await this.workflowConfig({},signal);
       const access=correctionAccess(detail,workflowRows);
       if (!access || !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']) || !detail.currentVersion.submitter || detail.currentVersion.submitter === auth.id)
-        throw new GeaResponseError(403,{message:'纠偏契约、月初终审、审批窗口或节点权限未获确认'});
+        throw new GeaResponseError(403,{message:'纠偏契约、月初终审或节点权限未获确认'});
       if (detail.currentVersion.id !== versionId || access.status !== request.expectedStatus || access.snapshotHash !== request.expectedSnapshot)
         throw new GeaResponseError(409,{message:'纠偏版本或快照已变化，请刷新'});
       const typed=request as GeaSalesPlanActionRequest;

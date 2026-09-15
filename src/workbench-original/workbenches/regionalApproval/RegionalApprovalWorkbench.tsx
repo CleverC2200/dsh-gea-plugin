@@ -2821,7 +2821,7 @@ const SalesPlanWorkbench: React.FC<React.ComponentProps<typeof RegionalApprovalW
       </Button>)}
     </div>
     {orderType === 'M' ? <RegionalApprovalWorkbench {...props} queryClient={monthlyClient} onContextChange={onContextChange} /> :
-      <CorrectionWorkbench t={props.t} queryClient={props.queryClient} detailClient={props.detailClient} actionClient={props.liveActionsEnabled ? props.liveActionClient : undefined} onResubmit={props.onResubmit} />}
+      <CorrectionWorkbench permissionCodes={props.permissionCodes} t={props.t} queryClient={props.queryClient} detailClient={props.detailClient} actionClient={props.liveActionsEnabled ? props.liveActionClient : undefined} onResubmit={props.onResubmit} />}
   </>;
 };
 export default SalesPlanWorkbench;

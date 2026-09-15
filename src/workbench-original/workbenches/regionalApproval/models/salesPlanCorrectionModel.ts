@@ -127,7 +127,6 @@ export function correctionAccess(
     v.effective === true &&
     policy?.contract === "absolute-net-v1" &&
     policy.monthlyApproved === true &&
-    policy.approvalOpen === true &&
     role &&
     role !== "customer" &&
     c?.versionId === v.id &&

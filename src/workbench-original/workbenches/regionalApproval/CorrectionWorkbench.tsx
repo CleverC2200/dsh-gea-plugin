@@ -24,6 +24,9 @@ import {
   correctionDecimal,
   verifyCorrectionAction,
 } from './models/salesPlanCorrectionModel.ts';
+import { salesPlanStagesForPermissions } from './models/salesPlanAccessModel.ts';
+import { salesPlanVisibleStatuses, chooseInitialSalesPlanPeriod } from './regionalApprovalQueryModel.ts';
+import { isBackendHttpError } from '../../http-error.ts';
 import { salesPlanWorkflow } from '../../salesPlanWorkflow.ts';
 import { formatExactDecimal, salesPlanStatusText } from './regionalApprovalQueryModel.ts';
 import styles from './CorrectionWorkbench.module.css';
@@ -49,8 +52,10 @@ export function CorrectionWorkbench({
   detailClient,
   actionClient,
   onResubmit,
+  permissionCodes,
 }: {
   t: TFunction;
+  permissionCodes?: readonly string[];
   queryClient?: SalesPlanQueryClient | null;
   detailClient?: SalesPlanDetailClient;
   actionClient?: SalesPlanActionClient;
@@ -68,6 +73,12 @@ export function CorrectionWorkbench({
   const [selected, setSelected] = useState<GeaSalesPlanListItem>();
   const [stage, setStage] = useState('current');
   const period = periods.find((p) => p.periodId === periodId);
+  const roleStages = salesPlanStagesForPermissions(permissionCodes);
+  const statusScope = roleStages.length ? salesPlanVisibleStatuses(period?.planTypeCode ?? '', roleStages) : undefined;
+  const selectedStatuses = stage === 'current' ? statusScope
+    : salesPlanWorkflow(period?.planTypeCode ?? '').pendingStatuses(stage as 'region' | 'province' | 'area' | 'category')
+        .filter(status => !statusScope || statusScope.includes(status));
+  const statusesKey = selectedStatuses?.join(',');
   const refresh = () => {
     setSelected(undefined);
     setRevision((n) => n + 1);
@@ -79,11 +90,12 @@ export function CorrectionWorkbench({
       return;
     }
     void queryClient.periods
-      .invoke({ pageNo: 1, pageSize: 100, signal: controller.signal })
+      .invoke({ planType: 'CORRECTION', pageNo: 1, pageSize: 100, signal: controller.signal })
       .then((result) => {
         if (controller.signal.aborted) return;
-        setPeriods(result.records);
-        setPeriodId(result.records[0]?.periodId ?? '');
+        const available = result.records.filter(p => !p.planType || p.planType === 'CORRECTION');
+        setPeriods(available);
+        setPeriodId(chooseInitialSalesPlanPeriod(available)?.periodId ?? '');
       })
       .catch(() => {
         if (!controller.signal.aborted) setError('周期读取失败，请重新进入');
@@ -97,34 +109,43 @@ export function CorrectionWorkbench({
     setSelected(undefined);
     setLoading(true);
     setError('');
-    void queryClient.list
-      .invoke({
-        periodId,
-        planTypeCode: period?.planTypeCode,
-        orderType: 'Z',
-        pageNo: page,
-        pageSize: 20,
-        signal: controller.signal,
-      })
+    const base = { periodId, planTypeCode: period?.planTypeCode, orderType: 'Z' as const, signal: controller.signal };
+    const load = async () => {
+      if (!selectedStatuses) return queryClient.list.invoke({...base, pageNo: page, pageSize: 20});
+      const pages = await Promise.all(selectedStatuses.map(async status => {
+        const prefix = page * 20;
+        const first = await queryClient.list.invoke({...base, status, pageNo: 1, pageSize: Math.min(200, prefix)});
+        const rest = await Promise.all(Array.from({length: Math.max(0, Math.ceil(Math.min(first.total, prefix) / first.size) - 1)}, (_, i) =>
+          queryClient.list.invoke({...base, status, pageNo: i + 2, pageSize: first.size})));
+        return {total: first.total, records: [first, ...rest].flatMap(p => p.records)};
+      }));
+      const records = pages.flatMap(p => p.records).toSorted((a,b) => String(b.updatedAt ?? b.planId).localeCompare(String(a.updatedAt ?? a.planId)));
+      return {records: records.slice((page - 1) * 20, page * 20), total: pages.reduce((n,p) => n+p.total,0)};
+    };
+    void load()
       .then((result) => {
         if (controller.signal.aborted) return;
         if (result.records.some((r) => r.periodId !== periodId || (r.orderType !== 'Z' && r.hasCorrection !== false)))
-          throw new Error('wrong correction scope');
+          throw new Error('CORRECTION_SCOPE_MISMATCH');
         setRows(result.records);
         setTotal(result.total);
       })
-      .catch(() => {
+      .catch((failure: unknown) => {
         if (!controller.signal.aborted) {
           setRows([]);
           setTotal(0);
-          setError('纠偏读取失败或服务端尚未提供纠偏契约，请刷新');
+          setError(failure instanceof Error && failure.message === 'CORRECTION_SCOPE_MISMATCH'
+            ? '纠偏接口返回了其他周期或非纠偏数据，请联系管理员核对服务版本'
+            : isBackendHttpError(failure) && failure.status === 403 ? '当前账号无权读取纠偏计划'
+            : isBackendHttpError(failure) && failure.status === 401 ? '登录已失效，请重新登录'
+            : '纠偏列表请求失败，请刷新；若持续失败，请核对后端接口');
         }
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [queryClient, periodId, period?.planTypeCode, page, revision]);
+  }, [queryClient, periodId, period?.planTypeCode, page, revision, statusesKey]);
   const month = period?.periodMonth;
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -158,6 +179,8 @@ export function CorrectionWorkbench({
           value={stage}
           onChange={(value) => {
             setSelected(undefined);
+            setRows([]);
+            setPage(1);
             setStage(value);
           }}
           style={{ width: 160 }}
@@ -175,9 +198,9 @@ export function CorrectionWorkbench({
       </div>
       <p>
         {tr('summary', {
-          target: money(sum(rows, 'targetAmount')),
-          qty: sum(rows, 'corrPlanQty') ?? '—',
-          amount: money(sum(rows, 'corrPlanAmount')),
+          target: error || loading ? '—' : money(sum(rows, 'targetAmount')),
+          qty: error || loading ? '—' : sum(rows, 'corrPlanQty') ?? '—',
+          amount: error || loading ? '—' : money(sum(rows, 'corrPlanAmount')),
           count: total,
         })}
       </p>

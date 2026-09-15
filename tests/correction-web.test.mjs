@@ -9,6 +9,7 @@ test(
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
+    let legacyResponse = false;
     app.route((req, res, reply) => {
       if (req.url.pathname.endsWith('/plans')) {
         reply({
@@ -21,7 +22,7 @@ test(
                 seq: 1,
                 periodId: 'period-1',
                 planTypeCode: 'Y',
-                orderType: req.url.searchParams.get('orderType') ?? 'M',
+                orderType: legacyResponse ? 'M' : req.url.searchParams.get('orderType') ?? 'M',
                 dealerCode: '123',
                 dealerName: '纠偏客户',
                 status: 1,
@@ -75,6 +76,12 @@ test(
     await expect(frame.getByText('不可纠偏：月初未终审', { exact: true })).toBeVisible();
     await expect(frame.getByRole('button', { name: '调整明细', exact: true })).toBeDisabled();
     assert.ok(app.requests.some((r) => r.url.searchParams.get('orderType') === 'Z'));
+    assert.ok(app.requests.some((r) => r.url.pathname.endsWith('/periods') && r.url.searchParams.get('planType') === 'CORRECTION'));
+    legacyResponse = true;
+    await frame.getByRole('button', { name: '刷新纠偏', exact: true }).click();
+    await expect(frame.getByText(/非纠偏数据/)).toBeVisible();
+    await expect(frame.getByText('纠偏客户', { exact: true })).toHaveCount(0);
+    await expect(frame.getByText(/当前页目标 —/)).toBeVisible();
   },
 );
 
