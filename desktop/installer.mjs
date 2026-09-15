@@ -34,7 +34,8 @@ export async function installArtifact({directory,artifact,node,pnpm,signal,onPro
   await mkdir(join(home,'profiles'),{recursive:true});await mkdir(bin);
   await symlink(directory,join(home,'profiles/prepared'),process.platform==='win32'?'junction':'dir');
   const wrapper=join(bin,'pnpm-driver.cjs');
-  await writeFile(wrapper,`require('node:child_process').execFileSync(process.env.GEA_INSTALL_NODE,[process.env.GEA_INSTALL_PNPM,'add',process.env.GEA_INSTALL_TARGET,'--ignore-scripts','--save-exact','--prefer-offline'],{stdio:'inherit'});`);
+  // A copied graph can refer to the builder's store and platform layout. pnpm install owns relocation.
+  await writeFile(wrapper,`const {execFileSync}=require('node:child_process');execFileSync(process.env.GEA_INSTALL_NODE,[process.env.GEA_INSTALL_PNPM,'install','--ignore-scripts','--prefer-offline','--no-frozen-lockfile'],{stdio:'inherit'});execFileSync(process.env.GEA_INSTALL_NODE,[process.env.GEA_INSTALL_PNPM,'add',process.env.GEA_INSTALL_TARGET,'--ignore-scripts','--save-exact','--prefer-offline'],{stdio:'inherit'});`);
   await writeFile(join(bin,'pnpm'),`#!/bin/sh\nexec "$GEA_INSTALL_NODE" "$GEA_INSTALL_DRIVER"\n`,{mode:0o755});
   await writeFile(join(bin,'pnpm.cmd'),'@echo off\r\n"%GEA_INSTALL_NODE%" "%GEA_INSTALL_DRIVER%"\r\n');
   const cli=join(directory,'node_modules/@deepseek-ai/dsh/lib/bin.js');
