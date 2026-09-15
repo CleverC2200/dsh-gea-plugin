@@ -4,13 +4,17 @@ import {_electron as electron, expect} from '@playwright/test';
 import {mkdtemp, mkdir, writeFile, readFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
+import {profile} from '../tests/profile.mjs';
 
 test('slow system credential access completes before the backend login request starts', {timeout:45000}, async t => {
   assert.ok(process.env.GEA_ELECTRON_EXECUTABLE && process.env.GEA_DESKTOP_PAYLOAD);
   const root = await mkdtemp(join(tmpdir(), 'gea-slow-login-'));
   const data = join(root, 'data');
   await mkdir(data);
-  const config = JSON.parse(await readFile('desktop/company.config.json', 'utf8'));
+  const fixture = await profile(t, {desktopGraph:resolve(process.env.GEA_DESKTOP_PAYLOAD), config:base=>({environment:'production', geaEnvironments:{production:base+'/gea', test:base+'/gea-test'}})});
+  await fixture.stop();
+  const config = JSON.parse(await readFile(join(fixture.dir, 'gea.json'), 'utf8'));
+  await writeFile(join(data, 'gea.config.json'), JSON.stringify(config));
   const saved = {schema:1, environment:'production', base:config.geaEnvironments?.production ?? config.geaBaseUrl,
     auth:{token:'fixture-only-slow-login', tenantId:'0', name:'Tester', id:'1', username:'tester'}};
   await writeFile(join(data, 'login.encrypted'), 'fixture-ciphertext');
@@ -23,7 +27,7 @@ require(${JSON.stringify(resolve('desktop/main.cjs'))});`);
   let app;
   t.after(async () => { await app?.close(); await rm(root, {recursive:true, force:true}); });
   app = await electron.launch({executablePath:resolve(process.env.GEA_ELECTRON_EXECUTABLE), args:[root],
-    env:{...process.env, DSH_GEA_DESKTOP_DATA:data, GEA_DESKTOP_PAYLOAD:resolve(process.env.GEA_DESKTOP_PAYLOAD)}});
+    env:{...process.env, NODE_EXTRA_CA_CERTS:join(fixture.dir, 'cert.pem'), DSH_GEA_DESKTOP_DATA:data, GEA_DESKTOP_PAYLOAD:resolve(process.env.GEA_DESKTOP_PAYLOAD)}});
   const page = await app.firstWindow();
   await expect.poll(() => page.url(), {timeout:25000}).toMatch(/^http:\/\/127\.0\.0\.1:/);
   const status = await page.evaluate(() => fetch('/api/gea-proof/status', {

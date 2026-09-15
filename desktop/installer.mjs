@@ -25,7 +25,9 @@ export async function installArtifact({directory,artifact,node,pnpm,optimizedBas
     if(name.startsWith('@cleverc2200/')||['dsh-plugin','dsh-agent-manage','dsh-agent-plugins-market'].includes(name)) overrides[name]='$'+name;
   }
   await writeFile(manifestPath,JSON.stringify(manifest,null,2));
-  await writeFile(join(directory,'pnpm-workspace.yaml'),JSON.stringify({nodeLinker:'hoisted',minimumReleaseAge:0,overrides}));
+  const {parse}=createRequire(manifestPath)('yaml');
+  const workspace=parse(await readFile(join(directory,'pnpm-workspace.yaml'),'utf8'));
+  await writeFile(join(directory,'pnpm-workspace.yaml'),JSON.stringify({nodeLinker:'hoisted',minimumReleaseAge:0,overrides,...(workspace.patchedDependencies?{patchedDependencies:workspace.patchedDependencies}:{})}));
   const digest=createHash('sha256').update(await readFile(artifact)).digest('hex');
   await mkdir(join(directory,'packages'),{recursive:true});
   const target='file:packages/'+digest+'.tgz';
