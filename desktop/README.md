@@ -47,3 +47,5 @@ GEA 登录由 Electron safeStorage 使用操作系统加密保存为 userData/lo
 默认产物仅适合内部试用。ad-hoc 签名只能验证内容完整性，不代表 Apple 认可的开发者身份或公证，不保证通过 Gatekeeper。首次打开可能需要用户在系统设置“隐私与安全性”中按应用单独批准；不得要求关闭全局 Gatekeeper。
 
 正式对外分发需配置 `GEA_MAC_SIGNING_IDENTITY` 为 Developer ID Application 身份、`GEA_MAC_NOTARIZE=1` 及构建工具支持的安全公证凭据。该模式启用 hardened runtime、公证并要求 Gatekeeper 评估通过。不得将私钥、密码或公证凭据写入仓库或安装包。最终验收应包含通过下载方式获取安装包的新机器首次打开；本机直接执行应用不替代该验收。
+
+`setup.html`、`setup.js` 和 `preload.cjs` 保留旧连接表单原型，当前桌面入口不加载这些文件。发行版沿用上述公司默认配置与扫码登录流程。

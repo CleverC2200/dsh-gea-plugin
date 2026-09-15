@@ -27,7 +27,7 @@ export type SalesPlanQueryClient = {
   list: { invoke: (query?: GeaSalesPlanPageQuery) => Promise<GeaSalesPlanPage<GeaSalesPlanListItem>> };
 };
 
-export type RegionalApprovalQueryError = 'permission' | 'expired' | 'timeout' | 'unavailable' | 'cancelled' | 'failed';
+export type RegionalApprovalQueryError = 'workflow' | 'permission' | 'expired' | 'timeout' | 'unavailable' | 'cancelled' | 'failed';
 
 type QueryState<T> =
   | { status: 'idle'; data?: undefined; error?: undefined }
@@ -48,6 +48,7 @@ export type SalesPlanAnalysisSummary = {
 const idle = { status: 'idle' } as const;
 
 export const classifyRegionalApprovalQueryError = (error: unknown, timedOut = false): RegionalApprovalQueryError => {
+  if (isBackendHttpError(error) && error.code === 'GEA_WORKFLOW_LOAD_FAILED') return 'workflow';
   if (timedOut) return 'timeout';
   if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled';
   if (isBackendHttpError(error)) {

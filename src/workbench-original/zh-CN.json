@@ -374,6 +374,7 @@
         "periodStatus": "周期状态",
         "noPeriod": "暂无可用周期",
         "noPeriodDescription": "当前用户会话未返回销售计划周期；不会回退为伪造的真实队列。",
+        "workflowErrorTitle": "审批流程配置读取失败",
         "periodErrorTitle": "周期读取失败",
         "queueErrorTitle": "审批队列读取失败",
         "retry": "重试",
@@ -390,6 +391,7 @@
         "noReturnReason": "无退回原因",
         "actionBoundary": "队列、明细与当前节点审批来自 GEA 用户会话；服务端校验真实角色和权限。AI 建议、组织候选与客户端临时调整为样例数据，不连接生产。",
         "errors": {
+          "workflow": "审批流程配置未能加载，周期查询尚未开始。请重试；持续失败时请检查流程配置接口的诊断信息。",
           "permission": "当前账号没有读取该销售计划范围的权限。",
           "expired": "GEA 用户会话已过期，请重新登录后重试。",
           "timeout": "请求超时；已停止本次加载，可手动重试。",

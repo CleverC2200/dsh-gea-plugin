@@ -31,7 +31,7 @@ import {
   Typography,
 } from '@arco-design/web-react';
 import type { TableColumnProps } from '@arco-design/web-react';
-import { CheckOne, Download, Info, Refresh } from '@icon-park/react';
+import { CheckOne, Down, Download, Info, Refresh, Right } from '@icon-park/react';
 import type { TFunction } from 'i18next';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBusinessSurfaceSession } from '../../session-context.tsx';
@@ -1512,7 +1512,8 @@ const RegionalApprovalWorkbench: React.FC<{
   const liveColumns: TableColumnProps<RegionalApprovalLiveTableRow>[] = [
     {
       title: t('common.assistantSurface.regionalApproval.columns.organization'),
-      width: 220,
+      width: 300,
+      fixed: 'left',
       render: (_, tableRow) => {
         if (tableRow.kind === 'category') {
           return (
@@ -1546,14 +1547,7 @@ const RegionalApprovalWorkbench: React.FC<{
         return (
           <div
             className={styles.organizationCell}
-            style={
-              tableRow.childPlan && dimension !== 'customer'
-                ? {
-                    paddingInlineStart:
-                      16 * (5 - ['base', 'area', 'province', 'region', 'customer'].indexOf(dimension)),
-                  }
-                : undefined
-            }
+
           >
             <Button
               type='text'
@@ -1677,7 +1671,8 @@ const RegionalApprovalWorkbench: React.FC<{
       title: categoryComparison
         ? t('common.assistantSurface.regionalApproval.columns.aiOpinion')
         : t('common.assistantSurface.regionalApproval.columns.status'),
-      width: categoryComparison ? 220 : 95,
+      width: categoryComparison ? 220 : 140,
+      fixed: 'right',
       render: (_, tableRow) => {
         if (tableRow.kind === 'plan') {
           const row = tableRow.plan;
@@ -2173,7 +2168,7 @@ const RegionalApprovalWorkbench: React.FC<{
             className={styles.queryAlert}
             type='error'
             showIcon
-            title={t('common.assistantSurface.regionalApproval.query.periodErrorTitle')}
+            title={t(liveQuery.periodsState.error === 'workflow' ? 'common.assistantSurface.regionalApproval.query.workflowErrorTitle' : 'common.assistantSurface.regionalApproval.query.periodErrorTitle')}
             content={t(queryErrorKey(liveQuery.periodsState.error))}
             action={
               <Button size='small' onClick={liveQuery.retryPeriods}>
@@ -2551,20 +2546,44 @@ const RegionalApprovalWorkbench: React.FC<{
                     rowKey='tableRowId'
                     columns={liveColumns}
                     data={liveTableRows}
+                    className={styles.organizationTable}
+                    tableLayoutFixed
+                    indentSize={20}
+                    expandProps={{
+                      icon: ({ expanded, record }) => (
+                        <button
+                          type='button'
+                          aria-expanded={expanded}
+                          aria-label={t('common.assistantSurface.regionalApproval.expandOrganization', {
+                            plan: projectRegionalApprovalLiveDimension(record.plan, record.displayDimension ?? dimension).name,
+                          })}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setExpandedLiveGroups((current) => expanded
+                              ? current.filter((id) => id !== record.tableRowId)
+                              : [...current, record.tableRowId]);
+                          }}
+                        >
+                          {expanded ? <Down size={14} /> : <Right size={14} />}
+                        </button>
+                      ),
+                    }}
                     expandedRowKeys={expandedLiveGroups}
                     onExpandedRowsChange={setExpandedLiveGroups}
                     loading={liveCategoriesLoading}
-                    rowClassName={(row) => (row.kind === 'category' ? styles.categoryComparisonRow : '')}
+                    rowClassName={(row) => row.kind === 'category' ? styles.categoryComparisonRow : row.members ? styles.organizationGroupRow : ''}
                     rowSelection={{
                       type: 'checkbox',
                       checkAll: false,
+                      fixed: true,
+                      columnWidth: 40,
                       selectedRowKeys: selectedRowIds,
                       onChange: (keys) => setSelectedRowIds(keys.map(String).slice(-1)),
                       checkboxProps: (row) => ({ disabled: row.kind === 'category' || Boolean(row.members) }),
                     }}
                     pagination={false}
                     size='small'
-                    scroll={{ x: categoryComparison ? 835 : 660 }}
+                    scroll={{ x: liveColumns.reduce((width, column) => width + Number(column.width), 40) }}
                   />
                 )}
               </Spin>

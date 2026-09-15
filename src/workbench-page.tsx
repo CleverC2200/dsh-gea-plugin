@@ -70,7 +70,7 @@ async function rpc<T>(
       method: "POST",
       path: endpoint,
       status,
-      body: { code, error: result.error?.message ?? code, details: result.error?.details },
+      body: { code: endpoint === "workflow/config" ? "GEA_WORKFLOW_LOAD_FAILED" : code, error: result.error?.message ?? code, details: result.error?.details },
     });
   }
   return result.value;

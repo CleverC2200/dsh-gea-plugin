@@ -1,0 +1,254 @@
+--- a/src/client/components/modals/InstalledDetailModal.tsx
++++ b/src/client/components/modals/InstalledDetailModal.tsx
+@@ -1,3 +1,4 @@
++import { runtimeStatusLabel } from '../../logic/installed.ts'
+ /**
+  * DSH Plugin Hub — the community plugin marketplace for DeepSeek Harness.
+  * Website: https://dsh-plugin.org
+@@ -89,7 +90,7 @@
+                 'aria-hidden': 'true',
+               }),
+               h('span', { className: styles.detailStatusText },
+-                item.loaded ? t('statusRunning') : t('statusPending')))),
++                t(runtimeStatusLabel(item.runtimeStatus ?? 'unknown'))))),
+           item.installedVersion
+             ? h('div', { className: styles.detailRow },
+               h('span', { className: styles.detailLabel }, t('installedVersionLabel')),
+--- a/src/client/components/views/InstalledView.tsx
++++ b/src/client/components/views/InstalledView.tsx
+@@ -1,3 +1,4 @@
++import { runtimeStatusLabel } from '../../logic/installed.ts'
+ /**
+  * DSH Plugin Hub — the community plugin marketplace for DeepSeek Harness.
+  * Website: https://dsh-plugin.org
+@@ -92,15 +93,12 @@
+       // 灰 = 非 dsh 插件（如官方示例项目，宿主不加载，无需重启）
+       h('span', {
+         className: item.loaded ? styles.statusDot
+-          : item.dshCapable ? `${styles.statusDot} ${styles.statusPending}`
++          : item.runtimeStatus === 'pending' ? `${styles.statusDot} ${styles.statusPending}`
+             : `${styles.statusDot} ${styles.statusInactive}`,
+-        title: item.loaded ? t('statusRunning')
+-          : item.dshCapable ? t('statusPending')
+-            : t('exampleHint'),
+-        'aria-label': item.loaded ? t('statusRunning')
+-          : item.dshCapable ? t('statusPending')
+-            : t('exampleHint'),
++        title: t(runtimeStatusLabel(item.runtimeStatus ?? 'unknown')),
++        'aria-label': t(runtimeStatusLabel(item.runtimeStatus ?? 'unknown')),
+       }),
++      item.runtimeStatus !== 'running' ? h('span', { className: styles.versionBadge }, t(runtimeStatusLabel(item.runtimeStatus ?? 'unknown'))) : null,
+       // 主信息：名称 + 已装版本 + 有更新徽标（flex 撑满，超长省略）
+       h('div', { className: styles.rowMain },
+         h('span', { className: styles.rowTitle }, name),
+@@ -122,7 +120,7 @@
+       // 行操作：重启（dsh 插件待重启时）/ 详情 / 更新（有更新时）/ 卸载 —— 按钮点击不触发行打开详情
+       h('div', { className: styles.rowActions },
+         // 装完未挂载的 dsh 插件：给「重启」入口，点了宿主重启后插件即生效；非 dsh 插件不提示（重启无用）
+-        !item.loaded && item.dshCapable
++        item.runtimeStatus === 'pending'
+           ? h('button', {
+             className: styles.rowRestart,
+             type: 'button',
+--- a/src/client/data/host.ts
++++ b/src/client/data/host.ts
+@@ -8,9 +8,11 @@
+  * routes degrades to null / empty tables instead of throwing.
+  */
+ import type { EnvInfo } from '../types.ts'
++import type { RuntimeStatus } from '../logic/installed.ts'
+ import type { InstalledVersionSignal } from '../logic/installed.ts'
+ 
+ export interface HostInstalled {
++  runtimeStates: Record<string, RuntimeStatus> | null
+   installed: Record<string, string>
+   versions: Record<string, InstalledVersionSignal>
+   /** 每个依赖在系统上的安装目录（profile/node_modules/<包名>），宿主未提供为 null */
+@@ -27,6 +29,7 @@
+     const res = await fetch('/dsh-plugin-hub/installed', { cache: 'no-store' })
+     if (!res.ok) return null
+     const data = await res.json() as {
++      runtimeStates?: Record<string, RuntimeStatus>
+       installed?: Record<string, string>
+       versions?: Record<string, InstalledVersionSignal>
+       paths?: Record<string, string>
+@@ -34,6 +37,7 @@
+       dshCapable?: string[]
+     }
+     return {
++      runtimeStates: data.runtimeStates ?? null,
+       installed: data.installed ?? {},
+       versions: data.versions ?? {},
+       paths: data.paths ?? null,
+--- a/src/client/hooks/useCatalog.ts
++++ b/src/client/hooks/useCatalog.ts
+@@ -82,6 +82,7 @@
+   /** 已加载进运行中 loader 的包名（官方 ctx.loader 对账）：装完未重启的新插件不在其中 */
+   const [loadedNames, setLoadedNames] = useState<string[] | null>(null)
+   /** 真正的 dsh 插件包名（包内声明 dsh 配置 / 在 profile bundles 清单）：非 dsh 插件不提示「待重启」 */
++  const [runtimeStates, setRuntimeStates] = useState<Record<string, import('../logic/installed.ts').RuntimeStatus> | null>(null)
+   const [dshCapableNames, setDshCapableNames] = useState<string[] | null>(null)
+   /** Hub 自我更新信息：来自接口中心 Pages（api.dsh-plugin.org），与目录数据解耦 */
+   const [hubUpdateInfo, setHubUpdateInfo] = useState<HubUpdateInfo | null>(null)
+@@ -154,6 +155,7 @@
+     setInstallPaths(data.paths)
+     setLoadedNames(data.loaded)
+     setDshCapableNames(data.dshCapable)
++    setRuntimeStates(data.runtimeStates)
+   }
+ 
+   // 首次进入拉取已安装表（依赖宿主 webServer 服务）
+@@ -191,8 +193,8 @@
+ 
+   /** 已安装项统一列表（目录元数据 + 运行时信息合并）：驱动「已安装」tab。 */
+   const installedItems = useMemo<InstalledItem[]>(
+-    () => installedItemsOf(plugins, installed, versions, installPaths, loadedNames, dshCapableNames),
+-    [plugins, installed, versions, installPaths, loadedNames, dshCapableNames],
++    () => installedItemsOf(plugins, installed, versions, installPaths, loadedNames, dshCapableNames, runtimeStates),
++    [plugins, installed, versions, installPaths, loadedNames, dshCapableNames, runtimeStates],
+   )
+ 
+   /**
+--- a/src/client/locales.ts
++++ b/src/client/locales.ts
+@@ -90,6 +90,10 @@
+   statusLabel: '安装状态',
+   statusRunning: '运行中',
+   statusPending: '待重启',
++  statusDisabled: '未启用',
++  statusUnloaded: '未加载，请检查日志',
++  statusInactive: '非宿主插件',
++  statusUnknown: '状态未知',
+   exampleLabel: 'DeepSeek Harness 内置示例项目',
+   exampleHint: 'DeepSeek Harness 内置示例项目：不是插件市场的 dsh 插件，宿主不会加载它，无需重启',
+   restart: '重启',
+@@ -450,6 +454,10 @@
+   statusLabel: 'Status',
+   statusRunning: 'Running',
+   statusPending: 'Restart pending',
++  statusDisabled: 'Not enabled',
++  statusUnloaded: 'Not loaded — check logs',
++  statusInactive: 'Not a host plugin',
++  statusUnknown: 'Status unknown',
+   exampleLabel: 'DeepSeek Harness built-in example',
+   exampleHint: 'DeepSeek Harness built-in example — not a marketplace dsh plugin, the host does not load it, no restart needed',
+   restart: 'Restart',
+--- a/src/client/logic/installed.ts
++++ b/src/client/logic/installed.ts
+@@ -24,7 +24,14 @@
+ }
+ 
+ /** 已安装项统一模型：目录元数据 + 宿主运行时信息的合并视图（驱动「已安装」tab）。 */
++export type RuntimeStatus = 'running' | 'pending' | 'disabled' | 'unloaded' | 'inactive' | 'unknown'
++
++export function runtimeStatusLabel(status: RuntimeStatus) {
++  return ({ running: 'statusRunning', pending: 'statusPending', disabled: 'statusDisabled', unloaded: 'statusUnloaded', inactive: 'statusInactive', unknown: 'statusUnknown' } as const)[status]
++}
++
+ export interface InstalledItem {
++  runtimeStatus?: RuntimeStatus
+   /** npm 包名（profile 依赖 key） */
+   name: string
+   /** manifest spec（github:owner/repo、git+https://…、或 npm 版本号） */
+@@ -192,6 +199,7 @@
+   paths: Record<string, string> | null,
+   loadedNames: string[] | null,
+   dshCapableNames: string[] | null,
++  runtimeStates: Record<string, RuntimeStatus> | null = null,
+ ): InstalledItem[] {
+   const items: InstalledItem[] = []
+   // 已被目录条目认领的依赖 key：同一依赖只归属一个目录条目（React key 必须唯一，
+@@ -214,6 +222,7 @@
+       installedAt: rec?.installedAt ?? null,
+       catalogVersion: p.version ?? null,
+       hasUpdate: hasUpdateOf(p, installed, versions),
++      runtimeStatus: runtimeStates?.[name] ?? (loadedNames?.includes(name) ? 'running' : 'unknown'),
+       loaded: loadedNames?.includes(name) ?? false,
+       dshCapable: dshCapableNames?.includes(name) ?? false,
+     })
+@@ -238,6 +247,7 @@
+       catalogVersion: null,
+       // 目录外没有目录信号可比，无法判断是否有更新
+       hasUpdate: false,
++      runtimeStatus: runtimeStates?.[name] ?? (loadedNames?.includes(name) ? 'running' : 'unknown'),
+       loaded: loadedNames?.includes(name) ?? false,
+       dshCapable: dshCapableNames?.includes(name) ?? false,
+     })
+--- a/src/server/http/routes.ts
++++ b/src/server/http/routes.ts
+@@ -20,7 +20,7 @@
+ import { recordInstalledVersion, recordResolvedNpmPackage, readInstalledVersions, removeInstalledVersion } from '../services/profile/installed-versions.ts'
+ import { resolveNpmPackage } from '../services/install/npm-resolve.ts'
+ import { preflightTarget } from '../services/install/preflight.ts'
+-import { isDshPlugin, isEntryLoaded } from '../services/loader.ts'
++import { isDshPlugin, isEntryLoaded, configuredBundles, pluginRuntimeStatus } from '../services/loader.ts'
+ import { loadSettings, saveSettings, resetSettings, type HubSettings } from '../services/settings.ts'
+ import { appendLog, clearLog, readLog, logFilePath, defaultLogFilePath, customLogFile } from '../services/log.ts'
+ 
+@@ -279,6 +279,7 @@
+     event: 'system.start',
+     message: `Plugin Hub 已启动（profile=${profile}）`,
+   })
++  const startupBundles = configuredBundles(profile)
+   const disposers = [
+     webServer.register({kind:'exact',path:'/dsh-plugin-hub/desktop-updates',handler:async(request,response)=>{
+       if(request.method==='GET') {
+@@ -1037,14 +1038,16 @@
+         // 客户端合并这些判断「是否有更新」「运行状态」并展示安装路径/时间等运行时信息。
+         const installed = readInstalled(profile)
+         const paths: Record<string, string> = {}
++        const runtimeStates: Record<string, string> = {}
+         const loaded: string[] = []
+         const dshCapable: string[] = []
+         for (const name of Object.keys(installed)) {
++          runtimeStates[name] = pluginRuntimeStatus(profile, name, loader, startupBundles)
+           paths[name] = join(profileDirectory(profile), 'node_modules', name)
+           if (isEntryLoaded(loader, name)) loaded.push(name)
+           if (isDshPlugin(profile, name)) dshCapable.push(name)
+         }
+-        sendJson(response, 200, { profile, installed, versions: readInstalledVersions(profile), paths, loaded, dshCapable })
++        sendJson(response, 200, { profile, installed, versions: readInstalledVersions(profile), paths, loaded, dshCapable, runtimeStates })
+       },
+     }),
+   ]
+--- a/src/server/services/loader.ts
++++ b/src/server/services/loader.ts
+@@ -47,7 +47,7 @@
+ export function isEntryLoaded(loader: LoaderHandle | undefined, name: string): boolean {
+   if (!loader) return false
+   for (const entry of Array.from(loader.entries())) {
+-    if (nameMatches(entry.options?.name, name)) return true
++    if (!entry.options?.disabled && nameMatches(entry.options?.name, name)) return true
+   }
+   return false
+ }
+@@ -173,3 +173,29 @@
+   } catch { /* 包缺失 / 无 package.json → 不是 dsh 插件 */ }
+   return false
+ }
++
++
++export function configuredBundles(profile: string): string[] | null {
++  try {
++    const pkg = JSON.parse(readFileSync(join(profileDirectory(profile), 'package.json'), 'utf8'))
++    const bundles = pkg.dsh?.profile?.bundles ?? []
++    return Array.isArray(bundles) && bundles.every((name) => typeof name === 'string') ? bundles : null
++  } catch { return null }
++}
++
++/** An installed bundle outside the profile cannot be activated by restarting. */
++export function pluginRuntimeStatus(profile: string, name: string, loader: LoaderHandle | undefined, startupBundles: string[] | null) {
++  if (!loader) return 'unknown'
++  if (isEntryLoaded(loader, name)) return 'running'
++  if (!isDshPlugin(profile, name)) return 'inactive'
++  const bundles = configuredBundles(profile)
++  if (bundles === null) return 'unknown'
++  if (bundles.includes(name)) {
++    return startupBundles !== null && !startupBundles.includes(name) ? 'pending' : 'unloaded'
++  }
++  try {
++    const pkg = JSON.parse(readFileSync(join(profileDirectory(profile), 'node_modules', name, 'package.json'), 'utf8'))
++    if (pkg.dsh?.bundle) return 'disabled'
++  } catch { return 'unknown' }
++  return 'unloaded'
++}
