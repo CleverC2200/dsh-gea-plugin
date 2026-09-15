@@ -27,9 +27,13 @@ jobs:
           gh release download gea-v0.0.7 --pattern '*.tgz' --dir $downloads
           $installer = Get-ChildItem $downloads -Filter '*.exe' | Select-Object -First 1
           $destination = Join-Path $env:RUNNER_TEMP 'gea-probe'
-          $p = Start-Process $installer.FullName -ArgumentList '/S', "/D=$destination" -PassThru
-          if (-not $p.WaitForExit(300000)) { taskkill /PID $p.Id /T /F; throw 'Install timeout' }
-          if ($p.ExitCode -ne 0) { throw 'Install failed' }
+          $archive = Join-Path $env:RUNNER_TEMP 'nsis-archive'
+          7z x -y $installer.FullName "-o$archive" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS extraction failed' }
+          $payload = Get-ChildItem $archive -Recurse -Filter '*.7z' | Select-Object -First 1
+          if (-not $payload) { Get-ChildItem $archive -Recurse | Select-Object FullName; throw 'Inner package not found' }
+          7z x -y $payload.FullName "-o$destination" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Payload extraction failed' }
           "GEA_DESKTOP_PAYLOAD=$destination/resources/payload" >> $env:GITHUB_ENV
           $artifact = Get-ChildItem $downloads -Filter '*.tgz' | Select-Object -First 1
           "GEA_PLUGIN_ARTIFACT=$($artifact.FullName)" >> $env:GITHUB_ENV
