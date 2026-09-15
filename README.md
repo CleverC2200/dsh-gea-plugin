@@ -155,3 +155,7 @@ GEA 发行包声明 `dsh.bundle.patch`，在官方 base/web 后挂载 GEA 和固
 ## 审批查询诊断
 
 流程配置加载失败时，审批页明确显示流程配置错误，并保留脱敏的请求阶段、HTTP 状态、请求编号和跟踪编号，供技术支持定位。访问令牌、委托令牌和未定义的上游响应字段不会返回浏览器。
+
+需求预测预设的进度说明和最终回答跟随用户语言；中文问题使用中文。Skill 的本地参考文件通过 `gea_skill_reference_read` 按技能名及正文链接的相对路径只读加载，支持 `offset`/`limit` 分段读取。MCP 资源读取只接收服务返回的 URI，本地 `file://` 链接会被拦截并提示正确工具。
+
+Demand Forecast follows the user's language for both progress and final answers. Its `gea_skill_reference_read` tool reads local references linked by a visible skill, with `offset`/`limit` pagination. MCP resource reads use server-returned URIs; local `file://` links are rejected with guidance to the correct reader.

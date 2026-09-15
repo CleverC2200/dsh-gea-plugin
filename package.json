@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "private": true,
   "type": "module",
   "description": "GEA business Agent plugin for the shared DeepSeek Harness workbench",
@@ -85,6 +85,7 @@
   "license": "Apache-2.0",
   "files": [
     "lib/host.js",
+    "lib/skill-reference.js",
     "lib/client.js",
     "lib/workbench.js",
     "lib/workbench.css",

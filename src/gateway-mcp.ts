@@ -74,6 +74,14 @@ export async function prepareGatewayMcp(
       if (message.method === "tools/list")
         discovery = { id: message.id, firstPage: !message.params?.cursor };
       if (
+        message.method === "resources/read" &&
+        typeof message.params?.uri === "string" &&
+        /^file:/i.test(message.params.uri.trim())
+      )
+        throw new Error(
+          "GEA_MCP_LOCAL_RESOURCE: 本地 Skill 参考文件请使用 gea_skill_reference_read，传入技能名和正文链接的相对路径；MCP 只读取该服务返回的资源 URI。",
+        );
+      if (
         [
           "tools/list",
           "tools/call",
