@@ -17,7 +17,7 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
     return result;
   };
   const status=async()=>{
-    return {...state,current:await versions(),checking:Boolean(checking)};
+    return {...state,current:await versions(),checking:Boolean(checking),capabilities:{batchPrepare:true}};
   };
   const check=()=>{
     if(closed)return Promise.resolve({error:'DESKTOP_CLOSING'});
@@ -43,34 +43,45 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
   };
   const prepare=async value=>{
     if(closed||preparing||checking||['pending','restarting'].includes(state.phase))return {error:'UPDATE_BUSY'};
-    const release=state.releases.find(entry=>entry.package===value.package);
-    if(!release||state.checkError)throw Error('CHECK_RELEASE_FIRST');
+    if(!value||typeof value!=='object'||(value.all!==true&&typeof value.package!=='string'))throw Error('INVALID_UPDATE_REQUEST');
+    if(!state.releases.length||state.checkError)throw Error('CHECK_RELEASE_FIRST');
     const current=await versions();
-    releases.validateReleaseChannel({schema:1,channel:state.settings.channel,releases:[release]},state.settings.channel,{dsh:current['@deepseek-ai/dsh'],workbench:current['@cleverc2200/dsh-agent-workbench'],desktop:desktopVersion});
-    if(current[release.package]===release.version)return {error:'ALREADY_CURRENT'};
+    const selected=value.all===true?state.releases:state.releases.filter(entry=>entry.package===value.package);
+    if(!selected.length)throw Error('CHECK_RELEASE_FIRST');
+    const targets=selected.filter(entry=>current[entry.package]!==entry.version);
+    if(!targets.length)return {error:'ALREADY_CURRENT'};
+    releases.validateReleaseChannel({schema:1,channel:state.settings.channel,releases:targets},state.settings.channel,{dsh:current['@deepseek-ai/dsh'],workbench:current['@cleverc2200/dsh-agent-workbench'],desktop:desktopVersion});
     if(closed||preparing||checking||['pending','restarting'].includes(state.phase))return {error:'UPDATE_BUSY'};
     // Reserve before asynchronous download; duplicate requests share one operation.
-    state.phase='downloading';state.target={package:release.package,version:release.version};state.error=null;abort=new AbortController();
+    state.phase='downloading';state.targets=targets.map(({package:name,version})=>({package:name,version}));state.target=state.targets[0];state.progress={completed:0,total:targets.length,package:targets[0].package};state.error=null;abort=new AbortController();
     const id='channel-'+randomUUID();state.pending=id;
     preparing=(async()=>{
-      const artifact=join(data,'plugins',id+'.tgz');
+      const artifacts=targets.map((_,index)=>join(data,'plugins',id+'-'+index+'.tgz'));
       const started=performance.now();state.timings={};
       try{
-        await save();const bytes=await releases.fetchReleasePackage(release,{token,signal:AbortSignal.any([abort.signal,AbortSignal.timeout(60000)])});
-        await writeFile(artifact,bytes,{mode:0o600});if(abort.signal.aborted)throw Error('UPDATE_CANCELLED');
+        await save();
+        for(const [index,release] of targets.entries()){
+          state.progress={completed:index,total:targets.length,package:release.package};await save();
+          const bytes=await releases.fetchReleasePackage(release,{token,signal:AbortSignal.any([abort.signal,AbortSignal.timeout(60000)])});
+          await writeFile(artifacts[index],bytes,{mode:0o600});abort.signal.throwIfAborted();
+        }
+        state.progress={completed:targets.length,total:targets.length,package:''};
         state.timings.downloadMs=Math.round(performance.now()-started);
         state.phase='installing';await save();
         const preparingAt=performance.now();
         const receipt=await store.prepare({id,signal:abort.signal,install:async(directory,owner)=>{
-          await install(directory,artifact,abort.signal,owner.registerProcess);
-          const require=createRequire(join(directory,'package.json'));const actual=JSON.parse(await readFile(require.resolve(release.package+'/package.json'),'utf8'));
-          if(actual.version!==release.version)throw Error('RELEASE_PACKAGE_VERSION_MISMATCH');
+          await install(directory,artifacts.length===1?artifacts[0]:artifacts,abort.signal,owner.registerProcess);
+          const require=createRequire(join(directory,'package.json'));
+          for(const release of targets){
+            const actual=JSON.parse(await readFile(require.resolve(release.package+'/package.json'),'utf8'));
+            if(actual.version!==release.version)throw Error('RELEASE_PACKAGE_VERSION_MISMATCH');
+          }
         }});
         state.timings.prepareMs=Math.round(performance.now()-preparingAt);
-        if(receipt.versions[release.package]!==release.version)throw Error('RELEASE_PACKAGE_VERSION_MISMATCH');
+        if(targets.some(release=>receipt.versions[release.package]!==release.version))throw Error('RELEASE_PACKAGE_VERSION_MISMATCH');
         state.phase=abort.signal.aborted?'cancelled':'pending';
       }catch(error){state.phase=abort.signal.aborted?'cancelled':'failed';state.error=errorCode(error);}
-      finally{await rm(artifact,{force:true});await save();}
+      finally{await Promise.all(artifacts.map(artifact=>rm(artifact,{force:true})));await save();}
     })().finally(()=>{preparing=undefined;abort=undefined;});
     void preparing.catch(()=>{});return {accepted:true};
   };
