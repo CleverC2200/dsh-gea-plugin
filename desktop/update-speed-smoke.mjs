@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,readFile,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {_electron as electron,expect} from '@playwright/test';
 import {profile} from '../tests/profile.mjs';
 const baseline=process.env.GEA_DESKTOP_PAYLOAD;assert.ok(baseline);
@@ -20,7 +21,7 @@ try {
  await writeFile(join(data,'gea.config.json'),await readFile(join(fixture.dir,'gea.json')));
  await writeFile(join(data,'plugins/update-state.json'),JSON.stringify({settings:{automatic:false,intervalHours:24,channel:'test'}}));
  const env={...process.env,DSH_GEA_DESKTOP_DATA:data,GEA_DESKTOP_PAYLOAD:baseline,NODE_EXTRA_CA_CERTS:join(fixture.dir,'cert.pem')};delete env.GEA_RELEASE_TOKEN;
- app=await electron.launch({executablePath:executable,args:[new URL('.',import.meta.url).pathname],env,timeout:45000});
+ app=await electron.launch({executablePath:executable,args:[fileURLToPath(new URL('.',import.meta.url))],env,timeout:45000});
  const page=await app.firstWindow();page.setDefaultTimeout(20000);
  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().forEach(w=>w.hide()));
  app.process().once('exit',code=>console.log('ELECTRON_EXIT',code));
