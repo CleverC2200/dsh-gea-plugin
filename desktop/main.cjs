@@ -5,11 +5,12 @@ const {mkdir,readFile,writeFile,appendFile} = require('node:fs/promises');
 const {join} = require('node:path');
 const {ensureConfiguration,launchUrl} = require('./config.cjs');
 const {startupUrl}=require('./startup-state.cjs');
-async function showStartup(error){if(window&&!window.isDestroyed())await window.loadURL(startupUrl(error));}
+async function showStartup(error){if(window&&!window.isDestroyed())await window.loadURL(startupUrl(error,startupReason));}
 if (process.env.DSH_GEA_DESKTOP_DATA) app.setPath('userData',process.env.DSH_GEA_DESKTOP_DATA);
 const owned = app.requestSingleInstanceLock();
 if (!owned) app.quit();
 let window,backend,stopping=false,quitting=false,origin,pluginStore,control,updates,clientInstaller;
+let startupReason='startup';
 let lifecycle=Promise.resolve();
 function runLifecycle(action){const next=lifecycle.then(()=>action());lifecycle=next.catch(()=>{});return next;}
 const payload=!app.isPackaged&&process.env.GEA_DESKTOP_PAYLOAD?process.env.GEA_DESKTOP_PAYLOAD:join(process.resourcesPath,'payload');
@@ -43,8 +44,9 @@ async function stop(){
   if(backend===child)backend=undefined;
   stopping=false;
 }
-async function start(recovered=false){
+async function start(recovered=false,reason='startup'){
   if(quitting)return;
+  startupReason=reason;
   await showStartup();
   await appendFile(join(data,'desktop.log'),new Date().toISOString()+' START '+process.platform+' '+process.arch+'\n',{mode:0o600});
   await stop();
@@ -56,7 +58,7 @@ async function start(recovered=false){
   try{selected=await pluginStore.beginBoot();}
   catch(error){
     if(recovered)throw error;
-    await pluginStore.failBoot('PLUGIN_SELECTION_INVALID');return start(true);
+    await pluginStore.failBoot('PLUGIN_SELECTION_INVALID');return start(true,'recovery');
   }
   const node=join(payload,'node',process.platform==='win32'?'node.exe':'bin/node');
   const runtimeEnv={...process.env};delete runtimeEnv.GEA_RELEASE_TOKEN;
@@ -97,7 +99,7 @@ async function start(recovered=false){
     const fallback=await pluginStore.failBoot('BACKEND_START_FAILED');
     if(!recovered&&fallback!==selected.id){
       await appendFile(join(data,'desktop.log'),'新插件未能启动，自动恢复上一版本；用户数据保留。\n',{mode:0o600});
-      return start(true);
+      return start(true,'recovery');
     }
     throw error;
   }
@@ -117,7 +119,7 @@ async function selectPlugin(){
   const choices=['取消','baseline',...ids];
   const choice=await dialog.showMessageBox(window,{message:'选择插件组合并重启工作台',detail:'重启将停止当前后端，请先结束正在运行的任务。用户配置、会话和工作区保留。',buttons:choices,cancelId:0,defaultId:0});
   if(choice.response===0)return;
-  await runLifecycle(async()=>{await stop();await pluginStore.activate(choices[choice.response]);await start();});
+  await runLifecycle(async()=>{await stop();await pluginStore.activate(choices[choice.response]);await start(false,'update');});
 }
 function report(error){const text=errorText(error);void appendFile(join(data,'desktop.log'),new Date().toISOString()+' STARTUP_ERROR '+text+'\n',{mode:0o600}).catch(()=>{});if(window&&!window.isDestroyed())void showStartup(text).catch(()=>dialog.showErrorBox('GEA Desktop',text));else dialog.showErrorBox('GEA Desktop',text);}
 function createWindow(){
@@ -162,10 +164,10 @@ if(owned){
       updates=await createUpdates({data,store:pluginStore,desktopVersion:require('./package.json').version,releases,
         sources:require('./release-sources.json'),token:process.env.GEA_RELEASE_TOKEN,
         install:(directory,artifact,signal,onProcess)=>installArtifact({directory,optimizedBaseline:payload,artifact,signal,onProcess,onProgress:line=>void appendFile(join(data,'desktop.log'),line,{mode:0o600}).catch(()=>{}),node:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node'),pnpm:join(payload,'tools/node_modules/pnpm/bin/pnpm.cjs')}),
-        restart:id=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await pluginStore.activate(id);await start();})});
+        restart:id=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await pluginStore.activate(id);await start(false,'update');})});
     }catch(error){await appendFile(join(data,'desktop.log'),'公司更新服务不可用：'+errorText(error)+'\n',{mode:0o600});}
     Menu.setApplicationMenu(Menu.buildFromTemplate([
-      {label:'GEA Desktop',submenu:[{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'打开启动日志',click:()=>void shell.openPath(join(data,'desktop.log'))},{label:'重新启动工作台',click:()=>void runLifecycle(start).catch(report)},{type:'separator'},{role:'quit'}]},
+      {label:'GEA Desktop',submenu:[{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'打开启动日志',click:()=>void shell.openPath(join(data,'desktop.log'))},{label:'重新启动工作台',click:()=>void runLifecycle(()=>start(false,'restart')).catch(report)},{type:'separator'},{role:'quit'}]},
       {label:'插件版本',submenu:[
         {label:'准备本地插件包',click:()=>void preparePlugin().catch(report)},
         {label:'切换已准备版本并重启',click:()=>void selectPlugin().catch(report)},
