@@ -420,3 +420,95 @@ test("local Skill file URI is rejected before gateway IO with the correct reader
   assert.equal(messages[0].params.uri, uri);
   assert.equal(messages[0].params._meta.sessionId, "business-session");
 });
+
+test("SDK calls recover an expired transport session once, including concurrent calls", async () => {
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
+  let generation = 0, expired = false, initialized = false;
+  const calls = [];
+  const connection = await prepareGatewayMcp("https://gea.test", auth, consumer,
+    new AbortController().signal, 1000, async (url, init) => {
+      if (url.endsWith("/session")) return Response.json(session());
+      if (init.method !== "POST") return new Response(null, { status: 405 });
+      const message = JSON.parse(init.body);
+      if (message.method === "initialize") {
+        generation++; expired = false; initialized = false;
+        return Response.json({ jsonrpc: "2.0", id: message.id, result: {
+          protocolVersion: message.params.protocolVersion, capabilities: { tools: {} },
+          serverInfo: { name: "test", version: "1" },
+        } }, { headers: { "MCP-Session-Id": "transport-" + generation } });
+      }
+      if (expired || new Headers(init.headers).get("MCP-Session-Id") !== "transport-" + generation)
+        return new Response(null, { status: 404 });
+      if (message.method === "notifications/initialized") {
+        initialized = true;
+        return new Response(null, { status: 202 });
+      }
+      assert.equal(initialized, true);
+      assert.equal(message.params._meta.delegationToken, "delegation-secret");
+      if (message.method === "tools/list") return Response.json({ jsonrpc: "2.0", id: message.id, result: { tools: ["first", "second", "third"].map(name => ({ name, inputSchema: { type: "object" }, _meta: { sourceCode: "test-mcp" } })) } });
+      assert.equal(message.params._meta.mcpCode, "test-mcp");
+      calls.push(message.params.name);
+      return Response.json({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: "ok" }] } });
+    });
+  const client = new Client({ name: "regression", version: "1" });
+  const transport = new StreamableHTTPClientTransport(new URL(connection.url), { fetch: connection.fetch });
+  await client.connect(transport);
+  await client.listTools();
+  try {
+    expired = true;
+    const results = await Promise.all(["first", "second"].map(name => client.callTool({ name, arguments: {} })));
+    assert.equal(results.length, 2);
+    await client.callTool({ name: "third", arguments: {} });
+    assert.equal(generation, 2, "concurrent failures share one initialization");
+    assert.deepEqual(calls.sort(), ["first", "second", "third"]);
+  } finally { await client.close(); }
+});
+
+test("HTTP failures preserve their status, do not leak bodies and have bounded retries", async () => {
+  for (const status of [400, 401, 403, 404, 500]) {
+    let attempts = 0, initializations = 0;
+    const connection = await prepareGatewayMcp("https://gea.test", auth, consumer,
+      new AbortController().signal, 1000, async (url, init) => {
+        if (url.endsWith("/session")) return Response.json(session());
+        const message = JSON.parse(init.body);
+        if (message.method === "initialize") {
+          initializations++;
+          return Response.json({ result: { protocolVersion: "2025-11-25" } },
+            { headers: { "MCP-Session-Id": "session-" + initializations } });
+        }
+        if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
+        attempts++;
+        return new Response("upstream-secret", { status });
+      });
+    const headers = { "MCP-Protocol-Version": "2025-11-25" };
+    await connection.fetch(connection.url, { method: "POST", headers,
+      body: JSON.stringify({ method: "initialize" }) });
+    await assert.rejects(() => connection.fetch(connection.url, { method: "POST", headers,
+      body: JSON.stringify({ method: "resources/list", params: {} }) }),
+    error => error.message.includes(`GEA_MCP_HTTP_${status}`) && !error.message.includes("upstream-secret"));
+    assert.equal(attempts, status === 404 ? 2 : 1);
+    assert.equal(initializations, status === 404 ? 2 : 1);
+  }
+});
+
+test("logout during transport recovery prevents replay", async () => {
+  const controller = new AbortController();
+  let initializations = 0, calls = 0;
+  const connection = await prepareGatewayMcp("https://gea.test", auth, consumer,
+    controller.signal, 1000, async (url, init) => {
+      if (url.endsWith("/session")) return Response.json(session());
+      if (JSON.parse(init.body).method === "initialize") {
+        if (++initializations === 2) controller.abort();
+        return Response.json({ result: { protocolVersion: "2025-11-25" } },
+          { headers: { "MCP-Session-Id": "transport" } });
+      }
+      calls++;
+      return new Response(null, { status: 404 });
+    });
+  const headers = { "MCP-Protocol-Version": "2025-11-25" };
+  await connection.fetch(connection.url, { method: "POST", headers, body: JSON.stringify({ method: "initialize" }) });
+  await assert.rejects(() => connection.fetch(connection.url, { method: "POST", headers,
+    body: JSON.stringify({ method: "resources/list", params: {} }) }), { name: "AbortError" });
+  assert.equal(calls, 1);
+});

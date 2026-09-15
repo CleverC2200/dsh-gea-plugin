@@ -60,17 +60,52 @@ export async function prepareGatewayMcp(
   };
   const url = base + "/ai/gateway/mcp/proxy/mcp";
   const routes = new Map<string, string>();
+  let initializeBody: string | undefined;
+  let transportSession: string | undefined;
+  let reconnect: Promise<void> | undefined;
+  const send = (init: RequestInit) => fetchImpl(url, {
+    ...init,
+    redirect: "error",
+    signal: AbortSignal.any([
+      identity,
+      ...(init.signal ? [init.signal] : []),
+      AbortSignal.timeout(timeoutMs),
+    ]),
+  });
+  const restore = async (headers: Headers) => {
+    headers.delete("MCP-Session-Id");
+    const response = await send({ method: "POST", headers, body: initializeBody });
+    identity.throwIfAborted();
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(`GEA_MCP_RECONNECT_HTTP_${response.status}`);
+    }
+    const session = response.headers.get("MCP-Session-Id");
+    const result = await response.json();
+    if (!session || result.error || result.result?.protocolVersion !== headers.get("MCP-Protocol-Version"))
+      throw new Error("GEA_MCP_RECONNECT_REJECTED: 网关协议已变化，请重新登录建立连接。");
+    headers.set("MCP-Session-Id", session);
+    const ready = await send({ method: "POST", headers,
+      body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+    });
+    await ready.body?.cancel();
+    identity.throwIfAborted();
+    if (!ready.ok) throw new Error(`GEA_MCP_RECONNECT_HTTP_${ready.status}`);
+    transportSession = session;
+  };
   const gatewayFetch: typeof fetch = async (input, init) => {
     identity.throwIfAborted();
     const target = input instanceof Request ? input.url : String(input);
     if (target !== url) throw new Error("GEA_MCP_ENDPOINT_REJECTED");
     let body = init?.body;
+    let method: string | undefined;
     let discovery: { id: unknown; firstPage: boolean } | undefined;
     if (body !== undefined && body !== null) {
       if (typeof body !== "string") throw new Error("GEA_MCP_BODY_INVALID");
       const message = JSON.parse(body);
       if (Array.isArray(message) || !message || typeof message !== "object")
         throw new Error("GEA_MCP_BODY_INVALID");
+      method = message.method;
       if (message.method === "tools/list")
         discovery = { id: message.id, firstPage: !message.params?.cursor };
       if (
@@ -99,17 +134,32 @@ export async function prepareGatewayMcp(
       }
       body = JSON.stringify(message);
     }
-    const res = await fetchImpl(url, {
-      ...init,
-      body,
-      redirect: "error",
-      signal: AbortSignal.any([
-        identity,
-        ...(init?.signal ? [init.signal] : []),
-        AbortSignal.timeout(timeoutMs),
-      ]),
-    });
+    const headers = new Headers(init?.headers);
+    if (transportSession && method !== "initialize") headers.set("MCP-Session-Id", transportSession);
+    const sentSession = headers.get("MCP-Session-Id");
+    let res = await send({ ...init, headers, body });
+    if (method === "initialize" && res.ok) {
+      initializeBody = body as string;
+      transportSession = res.headers.get("MCP-Session-Id") ?? undefined;
+    }
+    // A transport 404 rejects the request before business execution. Recover only
+    // this case, once; never retry ambiguous network failures or business errors.
+    if (res.status === 404 && init?.method === "POST" && method !== "initialize" && sentSession && initializeBody) {
+      await res.body?.cancel();
+      if (sentSession === transportSession) {
+        reconnect ??= restore(new Headers(headers)).finally(() => { reconnect = undefined; });
+        await reconnect;
+      }
+      identity.throwIfAborted();
+      init?.signal?.throwIfAborted();
+      headers.set("MCP-Session-Id", transportSession!);
+      res = await send({ ...init, headers, body });
+    }
     identity.throwIfAborted();
+    if (!res.ok && init?.method === "POST") {
+      await res.body?.cancel();
+      throw new Error(`GEA_MCP_HTTP_${res.status}: 网关请求被拒绝，请检查连接或重新登录；不要原样重复调用。`);
+    }
     if (discovery && res.ok) {
       const text = await res.clone().text();
       identity.throwIfAborted();
