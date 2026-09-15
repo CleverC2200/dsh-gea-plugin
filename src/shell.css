@@ -198,6 +198,9 @@
 .gea-inbox-hint, .gea-inbox-provenance { color: var(--inbox-muted); font-size: 12px; }
 .gea-inbox-content { max-width: 1440px; margin: auto; padding: 16px 24px; }
 .gea-inbox-table-scroll { overflow-x: auto; }
+.gea-inbox-loading-row td { height: 420px; vertical-align: top; color: var(--inbox-muted); }
+.gea-inbox-placeholder { height: 340px; background: repeating-linear-gradient(to bottom, var(--inbox-border) 0 1px, transparent 1px 52px); }
+.gea-inbox-detail-loading { height: 24px; color: var(--inbox-muted); font-size: 12px; }
 .gea-inbox table { border-collapse: collapse; width: 100%; min-width: 850px; table-layout: fixed; }
 .gea-inbox th, .gea-inbox td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--inbox-border); line-height: 1.6; overflow-wrap: anywhere; }
 .gea-inbox th { font-size: 13px; font-weight: 600; }
