@@ -1,7 +1,7 @@
 /** Immutable prepared plugin graphs and an atomic per-user selection. Never stores login data. */
-import {mkdir,readFile,writeFile,rename,cp,rm,open,lstat,link,readdir} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,rename,rm,open,lstat,link,readdir} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
-import {constants} from 'node:fs';
+import {copyGraphEntry} from './copy-graph.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 
@@ -33,7 +33,7 @@ export class PluginStore {
     if(receipt.id!==active||receipt.state!=='prepared')throw Error('PLUGIN_VERSION_NOT_PREPARED');
     return {id:active,path,receipt};
   }
-  async prepare({id,install}) {
+  async prepare({id,install,signal}) {
     versionId(id);
     await mkdir(join(this.root,'versions'),{recursive:true,mode:0o700});
     const lockPath=join(this.root,'prepare.lock');
@@ -48,8 +48,9 @@ export class PluginStore {
       await mkdir(stage,{recursive:true,mode:0o700});
       // Copy only distributable code and locks, never node binaries, connection files or user state.
       for (const name of ['node_modules','package.json','packages','pnpm-lock.yaml','pnpm-workspace.yaml']) {
-        await cp(join(current.path,name),join(stage,name),{recursive:true,dereference:true,mode:constants.COPYFILE_FICLONE}).catch(error=>{if(error.code!=='ENOENT')throw error;});
+        await copyGraphEntry(join(current.path,name),join(stage,name),{signal}).catch(error=>{if(error.code!=='ENOENT')throw error;});
       }
+      signal?.throwIfAborted();
       await install(stage,{registerProcess:async workerPid=>atomic(lockPath,{...owner,workerPid})});
       const manifest=await json(join(stage,'package.json'));
       if(manifest.desktopDataSchema!==undefined&&manifest.desktopDataSchema!==1)throw Error('DATA_SCHEMA_UNSUPPORTED');

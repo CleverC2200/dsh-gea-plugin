@@ -70,7 +70,9 @@ GEA 登录由 Electron safeStorage 使用操作系统加密保存为 userData/lo
 
 Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体缩短安装过程。资源同步使用 Agent Manage 0.6.3-company.4，修复 Windows 解压路径分隔符检查和大归档并发写入问题。
 
-插件更新先在专属暂存目录执行 pnpm install，协调构建机与客户端的存储路径及平台目录设置，再安装选中的插件。需要重建的依赖仅位于暂存目录，正在运行的版本和业务数据保持可用。
+插件更新以最多 32 个文件复制任务准备独立暂存目录，支持时使用文件系统写时复制，不共享可写硬链接。常规更新只执行一次 pnpm add；仅遇到存储路径或虚拟目录布局不兼容时，执行 pnpm install 修复后重试。其他失败直接返回，不重复安装。取消更新会等待正在进行的文件复制结束再清理暂存目录。
+
+更新状态中的 timings.downloadMs 和 timings.prepareMs 分别记录下载校验与本地准备耗时，便于定位慢在哪一步；不把本地安装时间归为网络下载。
 
 `GEA_DESKTOP_PAYLOAD=<payload> GEA_PLUGIN_ARTIFACT=<GEA-0.0.7.tgz> node --test desktop/installer-portability.test.mjs` 在复制的依赖图中模拟另一台机器的存储路径和目录长度，执行真实 pnpm 安装并检查当前选择与业务配置不变。
 
@@ -102,3 +104,10 @@ Windows 包验收先记录 GitLab 网络可达性。能访问公司网络时执�
 本版包含系统凭据授权等待修复，以及客户端组合脚本的换行计数优化。`prepare-payload.py` 使用 pnpm 的 `patchedDependencies` 应用 `patches/client-modules-newline-scan.patch`；官方归档保持原始字节，补丁和锁随桌面版本固定。插件安装保留补丁声明，重建依赖后仍使用相同实现。上游源码对应 deepseek-harness PR #10。
 
 Mac 本机构建对照中，再次启动中位耗时由 2.875 秒降至 2.105 秒；此数值不代表下载安装后的首次启动或 Windows 耗时。Mac 默认仍为 ad-hoc 内测签名，正式分发需 Developer ID 签名与 Apple 公证。
+
+
+## 插件更新耗时诊断
+
+`GEA_DESKTOP_PAYLOAD=<已验证payload> GEA_ELECTRON_EXECUTABLE=<开发版Electron> GEA_UPDATE_FROM=<基线GEA版本> GEA_UPDATE_TO=<测试频道GEA版本> node desktop/update-speed-smoke.mjs` 使用隔离数据和模拟登录，通过真实测试频道下载、安装、重启，检查头像、登录、工作区保留及不再提示同一更新，并输出阶段耗时。需已安装项目开发依赖、构建插件。该脚本保留临时 result.json 供核查，不操作日常用户目录。
+
+2026-09-15 macOS arm64 同一外置插件组合、同一 0.0.10 安装包对比：原流程复制 15.23 秒、安装 4.01 秒，总计 19.25 秒；优化流程复制 4.88 秒、安装 2.30 秒，总计 7.20 秒。这里不包含重启时间；耗时取决于磁盘、缓存及依赖规模，不是性能保证。Windows 尚未实测。

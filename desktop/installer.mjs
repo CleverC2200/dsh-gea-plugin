@@ -36,8 +36,22 @@ export async function installArtifact({directory,artifact,node,pnpm,optimizedBas
   await mkdir(join(home,'profiles'),{recursive:true});await mkdir(bin);
   await symlink(directory,join(home,'profiles/prepared'),process.platform==='win32'?'junction':'dir');
   const wrapper=join(bin,'pnpm-driver.cjs');
-  // A copied graph can refer to the builder's store and platform layout. pnpm install owns relocation.
-  await writeFile(wrapper,`const {execFileSync}=require('node:child_process');execFileSync(process.env.GEA_INSTALL_NODE,[process.env.GEA_INSTALL_PNPM,'install','--ignore-scripts','--prefer-offline','--no-frozen-lockfile'],{stdio:'inherit'});execFileSync(process.env.GEA_INSTALL_NODE,[process.env.GEA_INSTALL_PNPM,'add',process.env.GEA_INSTALL_TARGET,'--ignore-scripts','--save-exact','--prefer-offline'],{stdio:'inherit'});`);
+  // Normal updates resolve once; only foreign store/layout metadata needs relocation first.
+  await writeFile(wrapper,`const {spawn}=require('node:child_process');
+const run=args=>new Promise((resolve,reject)=>{
+ const child=spawn(process.env.GEA_INSTALL_NODE,[process.env.GEA_INSTALL_PNPM,...args],{stdio:['ignore','pipe','pipe']});let output='';
+ for(const [stream,destination] of [[child.stdout,process.stdout],[child.stderr,process.stderr]])stream.on('data',chunk=>{destination.write(chunk);output=(output+chunk).slice(-65536);});
+ child.once('error',reject);child.once('close',status=>resolve({status,output}));
+});
+(async()=>{
+ const add=['add',process.env.GEA_INSTALL_TARGET,'--ignore-scripts','--save-exact','--prefer-offline'];
+ let result=await run(add);
+ if(result.status!==0&&/ERR_PNPM_(UNEXPECTED_STORE|VIRTUAL_STORE_DIR_MAX_LENGTH_DIFF|UNEXPECTED_VIRTUAL_STORE)/.test(result.output)){
+  result=await run(['install','--ignore-scripts','--prefer-offline','--no-frozen-lockfile']);
+  if(result.status===0)result=await run(add);
+ }
+ process.exitCode=result.status??1;
+})().catch(error=>{console.error(error);process.exitCode=1;});`);
   await writeFile(join(bin,'pnpm'),`#!/bin/sh\nexec "$GEA_INSTALL_NODE" "$GEA_INSTALL_DRIVER"\n`,{mode:0o755});
   await writeFile(join(bin,'pnpm.cmd'),'@echo off\r\n"%GEA_INSTALL_NODE%" "%GEA_INSTALL_DRIVER%"\r\n');
   const cli=join(directory,'node_modules/@deepseek-ai/dsh/lib/bin.js');
