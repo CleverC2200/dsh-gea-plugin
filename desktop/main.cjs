@@ -97,7 +97,7 @@ async function preparePlugin(){
   if(choice.canceled)return;
   const {installArtifact}=await import('./installer.mjs');
   const id='local-'+Date.now();
-  await pluginStore.prepare({id,install:(directory,{registerProcess})=>installArtifact({directory,onProcess:registerProcess,artifact:choice.filePaths[0],
+  await pluginStore.prepare({id,install:(directory,{registerProcess})=>installArtifact({directory,optimizedBaseline:payload,onProcess:registerProcess,artifact:choice.filePaths[0],
     node:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node'),pnpm:join(payload,'tools/node_modules/pnpm/bin/pnpm.cjs')})});
   await dialog.showMessageBox(window,{message:'插件已准备，当前工作台继续运行',detail:'组合 '+id+'。完成当前任务后，在插件版本菜单中切换并重启。'});
 }
@@ -153,7 +153,7 @@ if(owned){
       const {createUpdates}=await import('./updates.mjs');const {installArtifact}=await import('./installer.mjs');
       updates=await createUpdates({data,store:pluginStore,desktopVersion:require('./package.json').version,releases,
         sources:require('./release-sources.json'),token:process.env.GEA_RELEASE_TOKEN,
-        install:(directory,artifact,signal,onProcess)=>installArtifact({directory,artifact,signal,onProcess,onProgress:line=>void appendFile(join(data,'desktop.log'),line,{mode:0o600}).catch(()=>{}),node:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node'),pnpm:join(payload,'tools/node_modules/pnpm/bin/pnpm.cjs')}),
+        install:(directory,artifact,signal,onProcess)=>installArtifact({directory,optimizedBaseline:payload,artifact,signal,onProcess,onProgress:line=>void appendFile(join(data,'desktop.log'),line,{mode:0o600}).catch(()=>{}),node:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node'),pnpm:join(payload,'tools/node_modules/pnpm/bin/pnpm.cjs')}),
         restart:id=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await pluginStore.activate(id);await start();})});
     }catch(error){await appendFile(join(data,'desktop.log'),'公司更新服务不可用：'+errorText(error)+'\n',{mode:0o600});}
     Menu.setApplicationMenu(Menu.buildFromTemplate([

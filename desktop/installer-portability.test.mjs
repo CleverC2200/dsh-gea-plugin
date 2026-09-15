@@ -21,10 +21,16 @@ test('a graph copied from another machine installs without changing the active g
   metadata.storeDir=join(data,'other-machine-store');
   metadata.virtualStoreDirMaxLength=process.platform==='win32'?120:60;
   await writeFile(path,JSON.stringify(metadata));
-  await installArtifact({directory,artifact:resolve(process.env.GEA_PLUGIN_ARTIFACT),node:join(baseline,process.platform==='win32'?'node/node.exe':'node/bin/node'),pnpm:join(baseline,'tools/node_modules/pnpm/bin/pnpm.cjs'),onProcess:registerProcess,onProgress:line=>{log=(log+line).slice(-12000);}}).catch(error=>{throw Error(error.message+'\n'+log,{cause:error});});
+  await installArtifact({directory,optimizedBaseline:baseline,artifact:resolve(process.env.GEA_PLUGIN_ARTIFACT),node:join(baseline,process.platform==='win32'?'node/node.exe':'node/bin/node'),pnpm:join(baseline,'tools/node_modules/pnpm/bin/pnpm.cjs'),onProcess:registerProcess,onProgress:line=>{log=(log+line).slice(-12000);}}).catch(error=>{throw Error(error.message+'\n'+log,{cause:error});});
  }});
  assert.equal(receipt.state,'prepared');
+ const optimized=JSON.parse(await readFile(join(baseline,'client-artifacts.json')));
+ const shared=optimized.files.find(file=>file.file.startsWith('node_modules/@deepseek-ai/'));
+ assert.deepEqual(await readFile(join(data,'plugins/versions/relocated',shared.file)),await readFile(join(baseline,shared.file)));
+ assert.deepEqual(await readFile(join(data,'plugins/versions/relocated',shared.file+'.map')),await readFile(join(baseline,shared.file+'.map')));
  assert.equal(receipt.versions['@cleverc2200/gea-dsh-prototype'],'0.0.7');
+ const changed='node_modules/@cleverc2200/gea-dsh-prototype/lib/workbench.js';
+ assert.notDeepEqual(await readFile(join(data,'plugins/versions/relocated',changed)),await readFile(join(baseline,changed)));
  assert.equal((await store.selected()).id,'baseline');
  assert.equal(await readFile(marker,'utf8'),'{"keep":"business configuration"}');
 });

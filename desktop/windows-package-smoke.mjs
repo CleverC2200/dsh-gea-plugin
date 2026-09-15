@@ -70,7 +70,7 @@ try{
   const {PluginStore}=await import(pathToFileURL(join(repo,'desktop/plugin-store.mjs')));
   const {installArtifact}=await import(pathToFileURL(join(repo,'desktop/installer.mjs')));
   const baseline=join(dirname(executablePath),'resources/payload'),store=new PluginStore({data,baseline});
-  await store.prepare({id:'previous-0.0.7',install:(directory,{registerProcess})=>installArtifact({directory,artifact:process.env.GEA_PREVIOUS_PLUGIN,node:join(baseline,'node/node.exe'),pnpm:join(baseline,'tools/node_modules/pnpm/bin/pnpm.cjs'),onProcess:registerProcess,onProgress:line=>console.log(line)})});
+  await store.prepare({id:'previous-0.0.7',install:(directory,{registerProcess})=>installArtifact({directory,optimizedBaseline:baseline,artifact:process.env.GEA_PREVIOUS_PLUGIN,node:join(baseline,'node/node.exe'),pnpm:join(baseline,'tools/node_modules/pnpm/bin/pnpm.cjs'),onProcess:registerProcess,onProgress:line=>console.log(line)})});
   await store.activate('previous-0.0.7');await launch(true);
  }
  console.log(JSON.stringify({kind,records}));

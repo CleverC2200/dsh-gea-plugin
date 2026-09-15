@@ -1,11 +1,11 @@
 /** Use the pinned official DSH plugin command and bundled pnpm, only inside a staging graph. */
 import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {mkdir,readFile,writeFile,copyFile,symlink,rm,readdir} from 'node:fs/promises';
-import {join,dirname} from 'node:path';
+import {mkdir,readFile,writeFile,copyFile,symlink,rm,readdir,realpath,unlink} from 'node:fs/promises';
+import {join,dirname,resolve,sep} from 'node:path';
 import {createRequire} from 'node:module';
 
-export async function installArtifact({directory,artifact,node,pnpm,signal,onProcess=async()=>{},onProgress=()=>{}}) {
+export async function installArtifact({directory,artifact,node,pnpm,optimizedBaseline,signal,onProcess=async()=>{},onProgress=()=>{}}) {
   const deadline=AbortSignal.timeout(5*60*1000);
   signal=AbortSignal.any([...(signal?[signal]:[]),deadline]);
   const tool=JSON.parse(await readFile(join(dirname(dirname(pnpm)),'package.json'),'utf8'));
@@ -79,7 +79,34 @@ export async function installArtifact({directory,artifact,node,pnpm,signal,onPro
       const pluginRequire=createRequire(require.resolve(name+'/package.json'));
       if(pluginRequire.resolve('@deepseek-ai/cordis')!==cordis)throw Error('SHARED_CORDIS_MISMATCH');
     }
+    if(optimizedBaseline)await restoreClientArtifacts(directory,optimizedBaseline);
   } finally {
     await rm(home,{recursive:true,force:true});await rm(bin,{recursive:true,force:true});
+  }
+}
+
+/** Reuse build outputs only when pnpm materialized exactly the source that produced them. */
+async function restoreClientArtifacts(directory,baseline) {
+  let receipt;
+  try {receipt=JSON.parse(await readFile(join(baseline,'client-artifacts.json'),'utf8'));}
+  catch(error){if(error.code==='ENOENT')return;throw error;}
+  const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+  const modules=await realpath(join(directory,'node_modules')),baselineModules=await realpath(join(baseline,'node_modules'));
+  for(const record of receipt.files){
+    const source=resolve(baseline,record.file),target=resolve(directory,record.file);
+    if(!source.startsWith(resolve(baseline,'node_modules')+sep)||!target.startsWith(resolve(directory,'node_modules')+sep)||![record.beforeSha256,record.afterSha256].every(value=>/^[a-f0-9]{64}$/.test(value)))throw Error('CLIENT_ARTIFACT_RECEIPT_INVALID');
+    let installed;
+    try {
+      if(!(await realpath(target)).startsWith(modules+sep))throw Error('CLIENT_ARTIFACT_PATH_INVALID');
+      installed=await readFile(target);
+    }catch(error){if(error.code==='ENOENT')continue;throw error;}
+    if(![record.beforeSha256,record.afterSha256].includes(digest(installed)))continue;
+    const optimized=await readFile(source);
+    if(digest(optimized)!==record.afterSha256)throw Error('CLIENT_ARTIFACT_DIGEST_MISMATCH');
+    if(!(await realpath(source)).startsWith(baselineModules+sep)||!(await realpath(source+'.map')).startsWith(baselineModules+sep))throw Error('CLIENT_ARTIFACT_PATH_INVALID');
+    await unlink(target);
+    await writeFile(target,optimized,{flag:'wx'});
+    await rm(target+'.map',{force:true});
+    await copyFile(source+'.map',target+'.map');
   }
 }
