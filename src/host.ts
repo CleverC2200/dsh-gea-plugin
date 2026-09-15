@@ -37,6 +37,7 @@ export const Config = z.object({
   pageSize: z.natural().min(1).max(100).required(),
   periodPageSize: z.natural().min(1).max(1000).required(),
   requestTimeoutMs: z.natural().min(1000).max(120000).required(),
+  mcpRequestTimeoutMs: z.natural().min(1000).max(120000).default(60000),
   modelRequestTimeoutMs: z.natural().min(1000).max(600000).default(120000),
   maxSnapshotBytes: z.natural().min(1000).max(5000000).required(),
   runtimeDir: z.string().required(),

@@ -31,6 +31,7 @@ export interface Deployment {
   pageSize: number;
   periodPageSize: number;
   requestTimeoutMs: number;
+  mcpRequestTimeoutMs?: number;
   modelRequestTimeoutMs: number;
   maxSnapshotBytes: number;
   runtimeDir: string;
@@ -989,7 +990,7 @@ export class Business {
   async openMcpConnection(consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) {
     const auth = this.authenticated();
     const identity = this.epoch.signal;
-    return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.requestTimeoutMs);
+    return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.mcpRequestTimeoutMs ?? 60000);
   }
 
   /** Fetch one explicitly paged query, invalidating all previous query inputs immediately. */
@@ -1385,7 +1386,13 @@ export class Business {
       compare: ["planId", "fromVersionId", "toVersionId"],
     };
     if (!Object.hasOwn(allowed, kind)) throw new Error("INVALID_QUERY");
-    keys(query, allowed[kind]);
+    const unsupported = Object.keys(query).filter(key => !allowed[kind].includes(key));
+    if (unsupported.length) {
+      const guidance = kind === "list"
+        ? " For a month, call kind=periods with periodMonth first, then use the returned periodId with kind=list."
+        : "";
+      throw new Error(`INVALID_QUERY: kind=${kind} accepts only ${allowed[kind].join(", ")}.${guidance}`);
+    }
     if (query.orderType != null && !["M", "Z"].includes(String(query.orderType))) throw new Error("INVALID_QUERY");
     const id = (key: string) => encodeURIComponent(text(query[key]));
     const paths: Record<string, () => string> = {

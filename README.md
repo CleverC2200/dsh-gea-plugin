@@ -37,7 +37,7 @@ npm start -- --config gea.config.json --runtime .runtime/workbench-development -
 
 原件来源、许可证及改动范围见 [SOURCE.md](src/workbench-original/SOURCE.md)。旧的三栏仿写组件及占位对话栏已经删除。完整迁移尚未验收：审批保存/通过/退回、消息处理和独立 SKU 推理适配尚未接入；原件中的相应写操作保持禁用。当前 AionUi 源码没有单独的需求提报页面，不能把审批页或未挂载的提报模型当作已迁移页面。
 
-GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`requestTimeoutMs` 用于 GEA 查询和模型发现；`modelRequestTimeoutMs` 单独限制模型流，总时限默认 120 秒，可配置为 1–600 秒。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
+GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`requestTimeoutMs` 用于普通 GEA 查询和模型发现；`mcpRequestTimeoutMs` 单独限制 MCP 网关请求，默认 60 秒，可配置为 1–120 秒，旧配置不填时自动使用默认值；`modelRequestTimeoutMs` 单独限制模型流，总时限默认 120 秒，可配置为 1–600 秒。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
 
 ## 数据与会话
 
