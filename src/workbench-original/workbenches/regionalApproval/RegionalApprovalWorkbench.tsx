@@ -631,12 +631,12 @@ const RegionalApprovalWorkbench: React.FC<{
       ),
       customers: customerRows
         .map((row) => ({
-          dealerCode: row.dealerCode.trim(),
+          dealerCode: String(row.dealerCode ?? '').trim(),
           dealerName: row.dealerName?.trim(),
           baseName: row.baseName?.trim(),
         }))
         .filter(
-          (option, index, options) => options.findIndex((item) => item.dealerCode === option.dealerCode) === index
+          (option, index, options) => Boolean(option.dealerCode) && options.findIndex((item) => item.dealerCode === option.dealerCode) === index
         ),
     };
   }, [draftLiveFilters.areaCode, draftLiveFilters.orgCode, draftLiveFilters.provinceCode, liveRows]);
