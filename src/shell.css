@@ -111,6 +111,12 @@
   background: #f39830;
   color: white;
 }
+.gea-user-avatar > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
 @container gea-sidebar (max-width: 100px) {
   .gea-shell-navigation-content {
     padding: 0 8px 12px;
