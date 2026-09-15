@@ -86,8 +86,7 @@ export const salesPlanWorkflow = (
   };
   const transition = (status: number, action: 'SAVE' | 'APPROVE' | 'REJECT'): number | undefined => {
     if (!valid) return undefined;
-    // Retain the separately authorized same-version effective-plan SAVE contract.
-    if (status === 10) return action === 'SAVE' && rolesKnown ? 10 : undefined;
+    if (status === 10) return undefined;
     const role = actor(status);
     if (!role || role === 'customer') return undefined;
     const index = roleIndex(role);

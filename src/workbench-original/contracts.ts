@@ -155,7 +155,12 @@ export type GeaSalesPlanApprovalLog = {
   actionAt: string;
 };
 
+export type GeaSalesPlanApprovalRole = 'region' | 'province' | 'area' | 'category';
+
 export type GeaSalesPlanActionContext = {
+  /** Explicit support for role-scoped writes, result invalidation and notification-only routing. */
+  policy?: 'role-visible-v1';
+  roleActions?: Array<{ role: GeaSalesPlanApprovalRole; allowedActions: GeaSalesPlanAction[] }>;
   versionId: string;
   status: number;
   nodeOrder?: number | null;
@@ -264,6 +269,8 @@ export type GeaSalesPlanSkuAdjustment = {
 };
 
 export type GeaSalesPlanActionRequest = {
+  approvalPolicy?: 'role-visible-v1';
+  approvalRole?: GeaSalesPlanApprovalRole;
   adjustmentMode?: "ABSOLUTE_NET";
   expectedSnapshot?: string;
   action: GeaSalesPlanAction;
@@ -273,6 +280,9 @@ export type GeaSalesPlanActionRequest = {
 };
 
 export type GeaSalesPlanActionReceipt = {
+  approvalRole?: GeaSalesPlanApprovalRole;
+  /** Roles whose decisions remain valid for the resulting data snapshot. */
+  approvedRoles?: GeaSalesPlanApprovalRole[];
   planId: GeaSalesPlanId;
   versionId: GeaSalesPlanId;
   fromStatus: number;

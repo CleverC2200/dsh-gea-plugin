@@ -813,15 +813,15 @@ const RegionalApprovalWorkbench: React.FC<{
 
   const liveActionDisabledReason = (row: RegionalApprovalLiveRow, kind: LiveActionKind = 'APPROVE') => {
     if (!liveActionsEnabled) return 'missingAuthority';
-    if (liveActionReceipts[row.versionId]?.fromStatus === row.status) return 'completed';
+
     if (permissionDeniedVersions.has(row.versionId)) return 'permission';
     if (liveQuery.queueState.status !== 'success') return 'queueNotFresh';
     if (liveAccess.failedVersions.has(row.versionId)) return 'detailUnavailable';
     const detail = liveAccess.entries[row.versionId];
-    if (!detail || !salesPlanAccessForRow(row, detail, permissionCodes, liveStageFilter)?.allowedActions.includes(kind))
+    if (!detail || !(liveStageFilter ? [liveStageFilter] : ['region','province','area','category'] as const).some(role => salesPlanAccessForRow(row, detail, permissionCodes, role)?.allowedActions.includes(kind)))
       return 'missingAuthority';
     if (kind === 'SAVE') return undefined;
-    if (salesPlanApprovalNodeForStatus(row.status, row.planTypeCode) === undefined) return 'notCurrentStage';
+
     return undefined;
   };
   const metrics = useMemo(() => {
@@ -1928,15 +1928,7 @@ const RegionalApprovalWorkbench: React.FC<{
         visible
         embedded={Boolean(activeLiveAdjustmentRow)}
         row={activeLiveActionRow}
-        approvalStage={
-          liveStageFilter ??
-          (['customer', 'region', 'province', 'area', 'category'] as const)[
-            (activeLiveActionRow.status === 10
-              ? 5
-              : (salesPlanApprovalNodeForStatus(activeLiveActionRow.status, activeLiveActionRow.planTypeCode) ?? 1)) - 1
-          ] ??
-          'customer'
-        }
+        approvalStage={liveStageFilter ?? (roleStages.length === 1 ? roleStages[0] : 'customer')}
         initialAction={liveActionKind}
         t={t}
         client={liveActionClient}

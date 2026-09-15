@@ -1,5 +1,8 @@
+import { salesPlanAccessForRow } from './salesPlanAccessModel.ts';
+import { salesPlanActionReceiptMatches } from './salesPlanActionModel.ts';
 import { Decimal } from "decimal.js";
 import {
+  SALES_PLAN_ROLES,
   salesPlanWorkflow,
   type SalesPlanWorkflowRow,
   type SalesPlanRole,
@@ -32,10 +35,11 @@ export function correctionDecision(
   typeCode: string,
   includeCurrent = true,
   workflowRows?: readonly SalesPlanWorkflowRow[],
+  selectedRole?: CorrectionNode,
 ): string {
-  const roles = salesPlanWorkflow(typeCode, workflowRows).confirmationRoles(
-    status,
-  );
+  const flow = salesPlanWorkflow(typeCode, workflowRows);
+  const roles = selectedRole ? SALES_PLAN_ROLES.slice(0, SALES_PLAN_ROLES.indexOf(selectedRole) + 1).toReversed()
+    .filter(role => role === selectedRole || flow.pending(role) !== undefined) : flow.confirmationRoles(status);
   for (const role of includeCurrent ? roles : roles.slice(1)) {
     const add = role === "customer" ? sku.adjAddQty : sku[`${role}AdjAddQty`];
     const cut = role === "customer" ? sku.adjCutQty : sku[`${role}AdjCutQty`];
@@ -116,28 +120,12 @@ import type {
 export function correctionAccess(
   detail: GeaSalesPlanDetail,
   workflowRows?: readonly SalesPlanWorkflowRow[],
+  selectedRole?: CorrectionNode,
 ) {
-  const {
-    currentVersion: v,
-    actionContext: c,
-    correctionContext: policy,
-  } = detail;
-  const role = salesPlanWorkflow(v.planTypeCode, workflowRows).actor(v.status);
-  return v.orderType === "Z" &&
-    v.effective === true &&
-    policy?.contract === "absolute-net-v1" &&
-    policy.monthlyApproved === true &&
-    policy.approvalOpen === true &&
-    role &&
-    role !== "customer" &&
-    c?.versionId === v.id &&
-    c.status === v.status &&
-    c.nodeOrder ===
-      ["customer", "region", "province", "area", "category"].indexOf(role) +
-        1 &&
-    /^[a-f0-9]{64}$/.test(c.snapshotHash)
-    ? c
-    : undefined;
+  const v = detail.currentVersion;
+  if (v.orderType !== 'Z' || detail.correctionContext?.contract !== 'absolute-net-v1' ||
+      detail.correctionContext.monthlyApproved !== true) return undefined;
+  return salesPlanAccessForRow({planId:v.planId,versionId:v.id,status:v.status,planTypeCode:v.planTypeCode}, detail, [], selectedRole, workflowRows);
 }
 
 /** Build all absolute decisions, including unchanged inherited values and explicit zeroes. */
@@ -145,6 +133,7 @@ export function correctionAdjustments(
   detail: GeaSalesPlanDetail,
   edits: Record<string, string>,
   workflowRows?: readonly SalesPlanWorkflowRow[],
+  selectedRole?: CorrectionNode,
 ) {
   return detail.skus.flatMap((sku) => {
     const delta =
@@ -155,6 +144,7 @@ export function correctionAdjustments(
         detail.currentVersion.planTypeCode,
         true,
         workflowRows,
+        selectedRole,
       );
     const line = correctionLine(sku, delta);
     // Zero is explicit intent; the service removes double-zero rows only after validation.
@@ -172,7 +162,7 @@ export function verifyCorrectionAction(
   const v = before.currentVersion,
     a = after.currentVersion;
   const flow = salesPlanWorkflow(v.planTypeCode),
-    role = flow.actor(v.status);
+    role = request.approvalRole ?? flow.actor(v.status);
   if (
     !role ||
     role === "customer" ||
@@ -181,7 +171,7 @@ export function verifyCorrectionAction(
     a.seq !== v.seq ||
     !a.effective ||
     a.orderType !== "Z" ||
-    a.status !== flow.transition(v.status, request.action) ||
+    !salesPlanActionReceiptMatches({planId:v.planId,versionId:v.id,planTypeCode:v.planTypeCode,request,serverRoleResult:request.approvalPolicy === 'role-visible-v1'},receipt.requestId,receipt) ||
     receipt.planId !== v.planId ||
     receipt.versionId !== v.id ||
     receipt.fromStatus !== v.status ||

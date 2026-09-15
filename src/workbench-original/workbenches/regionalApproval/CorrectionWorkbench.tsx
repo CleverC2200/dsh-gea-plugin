@@ -343,8 +343,8 @@ function CorrectionDetail({
     };
   }, [client, row.planId, row.versionId]);
   const actor = detail && salesPlanWorkflow(detail.currentVersion.planTypeCode).actor(detail.currentVersion.status);
-  const access = detail && correctionAccess(detail);
-  const writable = Boolean(access && actionClient && (stage === 'current' || stage === actor));
+  const access = detail && correctionAccess(detail, undefined, stage === 'current' ? undefined : stage as 'region' | 'province' | 'area' | 'category');
+  const writable = Boolean(access && actionClient && (access.roleContractSupported || access.approvalRole === actor));
   const lines = useMemo(
     () =>
       detail?.skus.map((sku) => {
@@ -361,6 +361,9 @@ function CorrectionDetail({
                     : (salesPlanWorkflow(detail.currentVersion.planTypeCode).pending(stage as (typeof roles)[number]) ??
                         -1),
                   detail.currentVersion.planTypeCode,
+                  true,
+                  undefined,
+                  stage === 'current' ? access?.approvalRole : stage as 'region' | 'province' | 'area' | 'category',
                 )
               : '0');
           return { sku, line: correctionLine(sku, delta), input: delta, error: '' };
@@ -368,7 +371,7 @@ function CorrectionDetail({
           return { sku, input: edits[sku.skuCode] ?? '', error: e instanceof Error ? e.message : '数据错误' };
         }
       }) ?? [],
-    [detail, edits],
+    [detail, edits, stage],
   );
   const invalid = lines.some((x) => x.error);
   const total = invalid
@@ -386,10 +389,12 @@ function CorrectionDetail({
       if (!operation) {
         const request: GeaSalesPlanActionRequest = {
           action: kind,
+          approvalRole: access!.approvalRole,
+          ...(access!.roleContractSupported ? {approvalPolicy:'role-visible-v1' as const} : {}),
           expectedStatus: detail.currentVersion.status,
           expectedSnapshot: access!.snapshotHash,
           adjustmentMode: 'ABSOLUTE_NET',
-          ...(kind === 'REJECT' ? { remark: reason.trim() } : { adjustments: correctionAdjustments(detail, edits) }),
+          ...(kind === 'REJECT' ? { remark: reason.trim() } : { adjustments: correctionAdjustments(detail, edits, undefined, access!.approvalRole) }),
         };
         operation = { attempt: new SalesPlanActionAttempt(actionClient), request, retryable: false };
         setPending(operation);
@@ -398,6 +403,7 @@ function CorrectionDetail({
           versionId: row.versionId,
           planTypeCode: detail.currentVersion.planTypeCode,
           request,
+          serverRoleResult: access!.roleContractSupported,
         });
       } else if (!operation.receipt) operation.receipt = await operation.attempt.retry();
       if (!alive.current) return;

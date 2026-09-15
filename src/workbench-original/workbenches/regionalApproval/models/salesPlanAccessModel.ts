@@ -1,5 +1,5 @@
 /** Adapted from AionUi (Apache-2.0): local imports and explicit DSH host adapter. See SOURCE.md. */
-import { salesPlanWorkflow } from '../../../salesPlanWorkflow.ts';
+import { SALES_PLAN_ROLES, salesPlanWorkflow, type SalesPlanWorkflowRow } from '../../../salesPlanWorkflow.ts';
 import type {
   GeaSalesPlanActionContext,
   GeaSalesPlanActionReceipt,
@@ -10,7 +10,7 @@ import type {
 } from '../../../bridge.ts';
 import { addExactDecimals, multiplyExactDecimals } from '../regionalApprovalQueryModel.ts';
 import { salesPlanSkusMatchVersion } from './salesPlanDetailModel.ts';
-import { salesPlanActionTargetStatus, salesPlanApprovalNodeForStatus } from './salesPlanActionModel.ts';
+import { salesPlanApprovalNodeForStatus } from './salesPlanActionModel.ts';
 import type { ApprovalStageId } from '../regionalApprovalFixture.ts';
 
 const NODE_PERMISSIONS: readonly [ApprovalStageId, string][] = [
@@ -27,66 +27,59 @@ export const salesPlanStagesForPermissions = (permissions: readonly string[] = [
     ([stage]) => stage
   );
 
-export type SalesPlanAccess = Omit<GeaSalesPlanActionContext, 'snapshotHash'> & { snapshotHash?: string };
+export type SalesPlanAccess = Omit<GeaSalesPlanActionContext, 'snapshotHash'> & {
+  snapshotHash?: string;
+  approvalRole: Exclude<ApprovalStageId, 'customer'>;
+  roleContractSupported: boolean;
+};
 
-/** Prefer object capabilities. Older GEA details omit them and enforce candidates on POST. */
+/** Notifications never grant permissions. Select an explicitly authorized role, not the active node. */
 export const salesPlanAccessForRow = (
-  row: Pick<GeaSalesPlanListItem, 'planId' | 'versionId' | 'status'> &
-    Partial<Pick<GeaSalesPlanListItem, 'planTypeCode'>>,
+  row: Pick<GeaSalesPlanListItem, 'planId' | 'versionId' | 'status'> & Partial<Pick<GeaSalesPlanListItem, 'planTypeCode'>>,
   detail: GeaSalesPlanDetail,
   permissions: readonly string[] = [],
-  stage?: ApprovalStageId
+  stage?: ApprovalStageId,
+  workflowRows?: readonly SalesPlanWorkflowRow[],
 ): SalesPlanAccess | undefined => {
-  const context = detail.actionContext;
-  const typeCode = row.planTypeCode ?? detail.currentVersion.planTypeCode;
-  const actor = salesPlanWorkflow(typeCode).actor(row.status);
-  if (stage && row.status !== 10 && actor !== stage) return undefined;
-  if (
-    detail.currentVersion.id !== row.versionId ||
-    detail.currentVersion.planId !== row.planId ||
-    !detail.currentVersion.effective ||
-    detail.currentVersion.status !== row.status ||
-    (row.planTypeCode !== undefined && row.planTypeCode !== detail.currentVersion.planTypeCode)
-  )
-    return undefined;
-  if (!context && detail.workflowApproval?.actionable === true &&
-      detail.workflowApproval.versionId === row.versionId && actor && actor !== 'customer' &&
-      salesPlanActionTargetStatus('APPROVE', row.status, typeCode) !== undefined) {
-    return {
-      versionId: row.versionId, status: row.status,
-      nodeOrder: NODE_PERMISSIONS.findIndex(([id]) => id === actor) + 1,
-      allowedActions: ['APPROVE', 'REJECT'],
-    };
-  }
-  if (!context) {
-    if (!actor || actor === 'customer' || !salesPlanStagesForPermissions(permissions).includes(actor))
-      return undefined;
-    return {
-      versionId: row.versionId,
-      status: row.status,
-      nodeOrder: NODE_PERMISSIONS.findIndex(([id]) => id === actor) + 1,
-      allowedActions: ['APPROVE', 'REJECT'],
-    };
-  }
-  if (
-    context.versionId !== row.versionId ||
-    context.status !== row.status ||
-    !/^[a-f0-9]{64}$/.test(context.snapshotHash) ||
-    !Array.isArray(context.allowedActions) ||
-    context.allowedActions.some(
-      (action) =>
-        !['SAVE', 'APPROVE', 'REJECT'].includes(action) ||
-        salesPlanActionTargetStatus(action, row.status, typeCode) === undefined
-    )
-  )
-    return undefined;
-  const node = row.status === 10 ? 5 : salesPlanApprovalNodeForStatus(row.status, typeCode);
-  if (context.allowedActions.length && context.nodeOrder !== node) return undefined;
-  return context;
+  const v = detail.currentVersion, context = detail.actionContext;
+  const typeCode = row.planTypeCode ?? v.planTypeCode;
+  const flow = salesPlanWorkflow(typeCode, workflowRows);
+  if (v.id !== row.versionId || v.planId !== row.planId || !v.effective || v.status !== row.status ||
+      ![1,2,3,4,6,7,8,9].includes(row.status) ||
+      (row.planTypeCode !== undefined && row.planTypeCode !== v.planTypeCode)) return undefined;
+  const supported = context?.policy === 'role-visible-v1';
+  if (context && (context.versionId !== v.id || context.status !== v.status ||
+      !/^[a-f0-9]{64}$/.test(context.snapshotHash) || !Array.isArray(context.allowedActions))) return undefined;
+  const knownActions = (actions: readonly string[]) => actions.every(a => ['SAVE','APPROVE','REJECT'].includes(a));
+  if (context && !knownActions(context.allowedActions)) return undefined;
+  if (supported && (!Array.isArray(context.roleActions) || context.roleActions.some(entry =>
+      !entry || !['region','province','area','category'].includes(entry.role) ||
+      !Array.isArray(entry.allowedActions) || !knownActions(entry.allowedActions)) ||
+      new Set(context.roleActions.map(entry => entry.role)).size !== context.roleActions.length)) return undefined;
+  const granted = salesPlanStagesForPermissions(permissions).filter(role => role !== 'customer');
+  // Authenticated object capabilities can also prove a role; a notification cannot.
+  const capabilityRoles = supported ? context.roleActions!.filter(entry => entry.allowedActions.length).map(entry => entry.role) :
+    context?.allowedActions.length && context.nodeOrder != null && context.nodeOrder >= 2 && context.nodeOrder <= 5
+      ? [SALES_PLAN_ROLES[context.nodeOrder - 1]] : [];
+  const roles = [...new Set([...granted, ...capabilityRoles])].filter(role => role !== 'customer');
+  if (!roles.some(role => flow.visibility(row.status, role) !== 'denied')) return undefined;
+  // Multi-role users choose explicitly in the action dialog.
+  const role = stage ?? (roles.length === 1 ? roles[0] : undefined);
+  if (!role || role === 'customer' || !roles.includes(role)) return undefined;
+  const roleEntry = supported ? context.roleActions!.find(entry => entry.role === role) : undefined;
+  const nodeOrder = SALES_PLAN_ROLES.indexOf(role) + 1;
+  const allowedActions = supported ? roleEntry?.allowedActions ?? [] :
+    context && (context.nodeOrder === nodeOrder || context.allowedActions.length === 0) ? context.allowedActions : ['APPROVE', 'REJECT'] as const;
+  return {
+    versionId: v.id, status: v.status, nodeOrder, approvalRole: role,
+    allowedActions: [...allowedActions].filter(action => action !== 'REJECT' || flow.pending(role) !== undefined),
+    ...(context?.snapshotHash ? {snapshotHash: context.snapshotHash} : {}),
+    roleContractSupported: supported,
+  };
 };
 
 /** A saved node remains the baseline for the next edit and subsequent approval. */
-export const salesPlanEditableQuantity = (sku: GeaSalesPlanSku, status: number, typeCode = 'Y'): string | undefined => {
+export const salesPlanEditableQuantity = (sku: GeaSalesPlanSku, status: number, typeCode = 'Y', role?: ApprovalStageId): string | undefined => {
   const fields = {
     customer: 'qty',
     region: 'regionConfirmedQty',
@@ -94,7 +87,10 @@ export const salesPlanEditableQuantity = (sku: GeaSalesPlanSku, status: number, 
     area: 'areaConfirmedQty',
     category: 'categoryConfirmedQty',
   } as const;
-  for (const role of salesPlanWorkflow(typeCode).confirmationRoles(status)) {
+  const flow = salesPlanWorkflow(typeCode);
+  const roles = role ? SALES_PLAN_ROLES.slice(0, SALES_PLAN_ROLES.indexOf(role) + 1).toReversed()
+    .filter(r => r === role || flow.pending(r) !== undefined) : flow.confirmationRoles(status);
+  for (const role of roles) {
     const value = sku[fields[role]];
     if (value !== null && value !== undefined) return String(value);
   }
@@ -145,11 +141,11 @@ export const verifySavedSalesPlan = (
   return before.skus.every((sku) => {
     const code = String(sku.skuCode);
     const saved = after.skus.find((item) => String(item.skuCode) === code);
-    const baseline = salesPlanEditableQuantity(sku, version.status, version.planTypeCode);
-    const actual = saved && salesPlanEditableQuantity(saved, version.status, version.planTypeCode);
+    const baseline = salesPlanEditableQuantity(sku, version.status, version.planTypeCode, request.approvalRole);
+    const actual = saved && salesPlanEditableQuantity(saved, version.status, version.planTypeCode, request.approvalRole);
     if (baseline === undefined || actual === undefined) return false;
     const expected = addExactDecimals([baseline, deltas.get(code) ?? '0']);
-    const node = version.status === 10 ? 5 : salesPlanApprovalNodeForStatus(version.status, version.planTypeCode);
+    const node = request.approvalRole ? SALES_PLAN_ROLES.indexOf(request.approvalRole) + 1 : salesPlanApprovalNodeForStatus(version.status, version.planTypeCode);
     const amount =
       node === 5
         ? saved?.categoryConfirmedAmount
