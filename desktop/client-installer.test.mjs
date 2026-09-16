@@ -23,6 +23,14 @@ test('verified download is streamed to disk and opens only on explicit request',
  await manager.open();assert.equal(opened.length,1);assert.deepEqual(await readFile(opened[0]),bytes);
  await writeFile(opened[0],'tampered');await assert.rejects(manager.open(),/CHECKSUM/);assert.equal(opened.length,1);
 });
+test('the current desktop package cannot be re-downloaded as an update',async t=>{
+ const data=await mkdtemp(join(tmpdir(),'gea-installer-current-'));
+ const currentManifest={...manifest(),release:{...manifest().release,version:'0.0.8',artifacts:manifest().release.artifacts.map(artifact=>({...artifact,url:artifact.url.replace('0.0.9','0.0.8')}))}};
+ const manager=createClientInstaller({data,currentVersion:'0.0.8',platform:'darwin',arch:'arm64',sources:{stable:source},openPath:async()=>'',fetchImpl:async url=>url===source?Response.json(currentManifest):new Response(bytes)});
+ t.after(async()=>{await manager.close();await rm(data,{recursive:true,force:true});});
+ await manager.check();assert.equal(manager.status().updateAvailable,false);
+ await assert.rejects(manager.download(),/DESKTOP_INSTALLER_ALREADY_CURRENT/);
+});
 test('bad checksum and oversized response cannot become installers',async t=>{
  for(const bad of [Buffer.from('corrupt'),Buffer.alloc(bytes.length+1)]){
  const {manager,data,opened}=await fixture(t,{fetchImpl:async url=>url===source?Response.json(manifest()):new Response(bad)});
