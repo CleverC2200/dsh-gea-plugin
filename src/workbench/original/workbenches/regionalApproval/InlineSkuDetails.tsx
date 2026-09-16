@@ -19,7 +19,12 @@ export function InlineSkuDetails({row,t,onOpen}:{row:RegionalApprovalLiveRow;t:T
   <div className={styles.toolbar}><Button size='small' onClick={onOpen}>{t('common.assistantSurface.regionalApproval.inlineAdjustments')}</Button></div>
   {failed ? <Alert type='error' content={tr('loadError')} /> : !skus ? <Spin /> :
    <div className={styles.viewport} tabIndex={0} role="region" aria-label={tr('columns.sku')}>
-   <table className={styles.table}><thead><tr>{['sku','baseQty','qty','baseAmount','amount'].map(key=><th scope="col" key={key}>{tr('columns.'+key)}</th>)}</tr></thead>
+   <table className={styles.table}>
+    <colgroup>
+     <col className={styles.skuColumn} />
+     {['baseQty','qty','baseAmount','amount'].map(key=><col className={styles.metricColumn} key={key} />)}
+    </colgroup>
+    <thead><tr>{['sku','baseQty','qty','baseAmount','amount'].map(key=><th scope="col" key={key}>{tr('columns.'+key)}</th>)}</tr></thead>
    {[...groups].map(([category, items])=><tbody key={category}>
     <tr className={styles.group}><th colSpan={5} scope="rowgroup">{category} · {items.length} SKU</th></tr>
     {items.map((sku,index)=>{

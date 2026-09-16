@@ -1534,13 +1534,19 @@ const RegionalApprovalWorkbench: React.FC<{
       ? addExactDecimals(metrics.map(value=>value[field]!)) : '';
     return {compareQty:sum('compareQty'),compareAmount:sum('compareAmount'),compareTargetQty:sum('compareTargetQty'),compareTargetAmount:sum('compareTargetAmount')};
   };
-  const liveMinimumWidths = [220, 125, 125, categoryComparison ? 190 : 150, categoryComparison ? 200 : 140];
+  // Keep the approval queue dense once its columns have enough room to scan.
+  // The expanded SKU table deliberately follows a separate, roomier layout.
+  const liveMinimumWidths = [220, 112, 112, categoryComparison ? 172 : 136, categoryComparison ? 180 : 120];
   const liveMinimumWidth = liveMinimumWidths.reduce((total, width) => total + width, 40);
-  const liveExtraWidth = Math.max(0, tableViewportWidth - liveMinimumWidth);
-  const liveColumnWidths = liveMinimumWidths.map((width, index) =>
-    width + liveExtraWidth * [0.4, 0.2, 0.2, 0.2, 0][index]
+  const liveTableWidth = Math.max(
+    liveMinimumWidth,
+    Math.min(tableViewportWidth || liveMinimumWidth, 960)
   );
-  const pinLiveColumns = tableViewportWidth >= liveMinimumWidth;
+  const liveExtraWidth = Math.max(0, liveTableWidth - liveMinimumWidth);
+  const liveColumnWidths = liveMinimumWidths.map((width, index) =>
+    width + liveExtraWidth * [0.42, 0.18, 0.18, 0.22, 0][index]
+  );
+  const pinLiveColumns = tableViewportWidth >= liveTableWidth;
   const liveColumns: TableColumnProps<RegionalApprovalLiveTableRow>[] = [
     {
       title: t('common.assistantSurface.regionalApproval.columns.organization'),
@@ -2592,7 +2598,7 @@ const RegionalApprovalWorkbench: React.FC<{
                     }}
                     pagination={false}
                     size='small'
-                    scroll={{ x: Math.max(liveMinimumWidth, tableViewportWidth) }}
+                    scroll={{ x: liveTableWidth }}
                   />
                 )}
               </Spin>

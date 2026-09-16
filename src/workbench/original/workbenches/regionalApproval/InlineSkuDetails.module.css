@@ -1,10 +1,12 @@
 .root { padding: 12px 16px; border: 1px solid var(--bg-3); border-radius: 6px; background: var(--bg-1); }
 .toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 .viewport { max-height: 360px; overflow: auto; overscroll-behavior: contain; }
-.table { width: 100%; min-width: 680px; table-layout: fixed; border-collapse: collapse; font-size: 12px; line-height: 1.5; }
-.table th, .table td { padding: 8px 12px; border-bottom: 1px solid var(--bg-3); vertical-align: middle; }
+.table { width: 100%; min-width: 760px; table-layout: fixed; border-collapse: collapse; font-size: 12px; line-height: 1.5; }
+.skuColumn { width: 36%; }
+.metricColumn { width: 16%; }
+.table th, .table td { padding: 8px 14px; border-bottom: 1px solid var(--bg-3); vertical-align: middle; }
 .table thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-2); text-align: right; font-weight: 500; white-space: nowrap; }
-.table thead th:first-child { width: 36%; text-align: left; }
+.table thead th:first-child { text-align: left; }
 .table td { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table td:first-child { text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .group th { text-align: left; background: var(--bg-2); font-weight: 600; }

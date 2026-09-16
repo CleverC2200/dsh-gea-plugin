@@ -1206,16 +1206,22 @@
   overflow-wrap: anywhere;
 }
 
-.orderTabs { display: flex; flex: 0 0 auto; gap: 4px; margin-right: 8px; }
-.titleLine :global(.arco-typography) { font-size: 17px; }
-
 /* Compact, single-line controls; very narrow panels scroll as one header. */
 .header { flex-wrap: nowrap; min-height: 48px; overflow-x: auto; padding: 4px 12px; gap: 12px; }
 .titleLine { min-width: 0; flex: 0 0 auto; gap: 4px; }
-.titleLine :global(.arco-typography) { font-size: 15px; }
-.orderTabs { gap: 2px; margin-right: 4px; }
+.titleLine :global(.arco-typography) {
+  color: rgb(var(--danger-6)) !important;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 22px;
+}
+.orderTabs { display: flex; flex: 0 0 auto; gap: 2px; margin-right: 4px; }
 .scope { flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-end; overflow: visible; gap: 6px; margin-left: auto; }
-.versionControls { gap: 6px; }
-.versionField { gap: 3px; }
-.versionControls :global(.arco-select) { width: 76px; }
+.versionControls { flex-shrink: 0; gap: 10px; }
+.versionField { flex: 0 0 auto; gap: 4px; }
+.versionControls :global(.arco-select) { width: 120px !important; }
 .scope > span { gap: 3px; }
+
+@container (max-width: 860px) {
+  .versionControls :global(.arco-select) { width: 108px; }
+}
