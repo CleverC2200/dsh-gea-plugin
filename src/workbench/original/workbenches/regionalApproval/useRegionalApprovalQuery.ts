@@ -139,7 +139,7 @@ export const useRegionalApprovalQuery = ({
   );
   const periodTypeCode = periodsState.data?.find((period) => period.periodId === selectedPeriodId)?.planTypeCode;
   const roleStatuses = roles?.length ? salesPlanVisibleStatuses(periodTypeCode ?? '', roles) : undefined;
-  const requestedStatuses = stage ? salesPlanWorkflow(periodTypeCode ?? '').pendingStatuses(stage) : stageStatuses;
+  const requestedStatuses = stage ? salesPlanWorkflow(periodTypeCode ?? '').queueStatuses(stage) : stageStatuses;
   const resolvedStageStatuses = roleStatuses
     ? roleStatuses.filter((status) => !requestedStatuses || requestedStatuses.includes(status))
     : requestedStatuses;

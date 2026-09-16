@@ -9,6 +9,14 @@ test('Y visibility includes pending, own returns and read-only tracking, exclude
   assert.deepEqual(salesPlanVisibleStatuses('Y', ['region','province']), [1,2,3,4,5,6,7,8,10]);
   assert.deepEqual(salesPlanVisibleStatuses('unknown', ['region']), []);
 });
+test('category queue includes approval and DMS completion states without expanding write permissions', () => {
+  const flow = salesPlanWorkflow('Y');
+  assert.deepEqual(flow.queueStatuses('category'), [4,5,10]);
+  assert.deepEqual(flow.pendingStatuses('category'), [4]);
+  assert.equal(flow.visibility(4, 'category'), 'writable');
+  assert.equal(flow.visibility(5, 'category'), 'read-only');
+  assert.equal(flow.visibility(10, 'category'), 'read-only');
+});
 test('XN has no region visibility and returns to the next configured node after customer resubmission', () => {
   assert.deepEqual(salesPlanVisibleStatuses('XN', ['region']), []);
   assert.deepEqual(salesPlanVisibleStatuses('XN', ['province']), [2,3,4,5,6,8,10]);
