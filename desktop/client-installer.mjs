@@ -56,7 +56,6 @@ export function createClientInstaller({data,currentVersion,platform=process.plat
   const download=async()=>{
     if(closed||work||state.checking)fail('DESKTOP_INSTALLER_BUSY');
     if(!selected?.artifact)fail('DESKTOP_INSTALLER_UNAVAILABLE');
-    if(!newer(selected.version,currentVersion))fail('DESKTOP_INSTALLER_ALREADY_CURRENT');
     const artifact=selected.artifact;
     controller=new AbortController();const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(10*60*1000)]);
     state={...state,phase:'downloading',downloadedBytes:0,error:null};ready=undefined;

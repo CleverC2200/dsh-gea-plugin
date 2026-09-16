@@ -143,11 +143,7 @@ if(owned){
     await pluginStore.recoverPreparation();
     const {createControlServer}=await import('./control-server.mjs');
     const {createClientInstaller}=await import('./client-installer.mjs');
-    clientInstaller=createClientInstaller({data,currentVersion:require('./package.json').version,sources:require('./desktop-release-sources.json'),openPath:async path=>{
-      const error=await shell.openPath(path);
-      if(error)await appendFile(join(data,'desktop.log'),new Date().toISOString()+' INSTALLER_OPEN_FAILED '+errorText(error)+'\n',{mode:0o600});
-      return error;
-    }});
+    clientInstaller=createClientInstaller({data,currentVersion:require('./package.json').version,sources:require('./desktop-release-sources.json'),openPath:path=>shell.openPath(path)});
     control=await createControlServer({
       ...Object.fromEntries(['status','check','download','cancel','open'].map(action=>[(action==='status'?'GET':'POST')+' /installer/'+action,async value=>clientInstaller[action](value)])),
       ...Object.fromEntries(['status','check','settings','prepare','cancel','restart'].map(action=>[(action==='status'?'GET':'POST')+' /updates/'+action,async value=>{if(!updates)throw Error('UPDATES_UNAVAILABLE');return updates[action](value);}])) ,
