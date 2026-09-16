@@ -104,6 +104,12 @@ export const salesPlanWorkflow = (
     const returned = role === 'category' ? undefined : status + 6;
     return returned === undefined ? [status] : [status, returned];
   };
+  /**
+   * 工作台队列的只读展示范围。品类节点同时保留待审批、待 DMS 回写和已回写的计划，
+   * 让用户能在同一处追踪审批闭环；不能用于判断可写权限。
+   */
+  const queueStatuses = (role: SalesPlanRole): number[] =>
+    role === 'category' ? [...pendingStatuses(role), 5, 10] : pendingStatuses(role);
   const visibility = (status: number, role: SalesPlanRole): 'writable' | 'read-only' | 'denied' => {
     if (!rolesKnown || pending(role) === undefined) return 'denied';
     if (pendingStatuses(role).includes(status)) return 'writable';
@@ -122,6 +128,7 @@ export const salesPlanWorkflow = (
     actor,
     pending,
     pendingStatuses,
+    queueStatuses,
     transition,
     visibility,
     confirmationRoles: (status: number): SalesPlanRole[] => {
