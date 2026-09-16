@@ -7,7 +7,7 @@ import {profile} from './profile.mjs';
 test('V1.6 Web: compact header, stable progress, inline SKU, drawer and persistent private drafts', {timeout:90000}, async t=>{
  const app=await profile(t,{config:base=>({analysis:{mode:'model',source:'direct',baseUrl:base+'/v1',model:'fixture-model',apiKeyEnv:'GEA_V16_MODEL_KEY',contextWindow:32768,maxTokens:2048}}),env:{GEA_V16_MODEL_KEY:'fixture-key'}});
  let modelCalls=0;
- const plan={planId:'p',versionId:'v',seq:1,periodId:'period-1',planTypeCode:'Y',orderType:'M',dealerCode:'d',dealerName:'客户A',orgCode:'org',orgName:'宝阳销售组',provinceCode:'province',provinceName:'华南省区',areaCode:'area',areaName:'华南大区',status:1,mPlanQty:'20',mPlanAmount:'200',currentQty:'20',currentAmount:'200',targetQty:'40',targetAmount:'400',skuCount:1};
+ const plan={planId:'p',versionId:'v',seq:1,periodId:'period-1',planTypeCode:'Y',orderType:'M',dealerCode:'d',dealerName:'客户A',orgCode:'org',orgName:'宝阳销售组',provinceCode:'province',provinceName:'华南省区',areaCode:'area',areaName:'华南大区',status:1,currentQty:'20',currentAmount:'200',targetQty:'40',targetAmount:'400',skuCount:1};
  const sku={id:'s',skuCode:'1001',versionId:'v',productCategName:'汤圆',materialDescription:'黑芝麻汤圆 500g',qty:'20',baseQty:'10',amt:'200',amtBase:'100',price:'10'};
  let writes=0; let allowApproval=false;
  app.route((req,res,reply)=>{
@@ -49,7 +49,9 @@ test('V1.6 Web: compact header, stable progress, inline SKU, drawer and persiste
  for(const stage of stages){await frame.getByTestId('regional-approval-stage-'+stage).click();assert.deepEqual(await readProgress(),before);}
  await frame.getByTestId('regional-approval-stage-region').click();
  await frame.getByRole('tab',{name:'按区域',exact:true}).click();
- await expect(frame.locator('tbody').first()).toContainText('200');
+ const monthPlan=frame.getByTestId('regional-approval-month-plan-p');
+ await expect(monthPlan.locator('span').first()).toHaveText('¥100');
+ await expect(monthPlan.locator('small').first()).toHaveText('10');
  await expect(frame.locator('tbody').first()).toContainText('50.0%');
  await expect(frame.locator('tbody').first()).toContainText('版本②：¥100 / 10');
  await expect(frame.locator('tbody').first()).toContainText('该版本不含月度目标');

@@ -466,7 +466,7 @@ const RegionalApprovalWorkbench: React.FC<{
     Record<string, RegionalApprovalLiveCategorySummary[]>
   >({});
   const [liveCategoriesLoading, setLiveCategoriesLoading] = useState(false);
-  const [versionMetrics, setVersionMetrics] = useState<Record<string, {versionId?:string; qty:string; amount:string; targetQty:string; targetAmount:string; compareQty?:string; compareAmount?:string; compareTargetQty?:string; compareTargetAmount?:string}>>({});
+  const [versionMetrics, setVersionMetrics] = useState<Record<string, {versionId?:string; qty:string; amount:string; baseQty:string; baseAmount:string; targetQty:string; targetAmount:string; compareQty?:string; compareAmount?:string; compareTargetQty?:string; compareTargetAmount?:string}>>({});
   const [inlinePlanId, setInlinePlanId] = useState<string>();
   const [draftLiveFilters, setDraftLiveFilters] = useState<LiveApprovalFilters>(EMPTY_LIVE_APPROVAL_FILTERS);
   const [appliedLiveFilters, setAppliedLiveFilters] = useState<LiveApprovalFilters>(EMPTY_LIVE_APPROVAL_FILTERS);
@@ -570,7 +570,10 @@ const RegionalApprovalWorkbench: React.FC<{
       liveRows.map((row) => {
         const drafts = Object.values(liveAdjustmentDrafts).filter((draft) => draft.versionId === row.versionId);
         const metrics = versionMetrics[row.planId];
-        if (drafts.length === 0) return metrics ? {...row,currentQty:metrics.qty,currentAmount:metrics.amount,targetQty:metrics.targetQty,targetAmount:metrics.targetAmount} : row;
+        const measuredRow = metrics
+          ? {...row,mPlanQty:metrics.baseQty,mPlanAmount:metrics.baseAmount,currentQty:metrics.qty,currentAmount:metrics.amount,targetQty:metrics.targetQty,targetAmount:metrics.targetAmount}
+          : row;
+        if (drafts.length === 0) return measuredRow;
         const quantityDelta = addExactDecimals(
           drafts.map((draft) => subtractExactDecimals(draft.qty, draft.sourceQty))
         );
@@ -578,9 +581,9 @@ const RegionalApprovalWorkbench: React.FC<{
           drafts.map((draft) => subtractExactDecimals(draft.amount, draft.sourceAmount))
         );
         return {
-          ...row,
-          currentQty: addExactDecimals([row.currentQty, quantityDelta]),
-          currentAmount: addExactDecimals([row.currentAmount, amountDelta]),
+          ...measuredRow,
+          currentQty: addExactDecimals([measuredRow.currentQty, quantityDelta]),
+          currentAmount: addExactDecimals([measuredRow.currentAmount, amountDelta]),
         };
       }),
     [liveAdjustmentDrafts, liveRows, versionMetrics]
@@ -736,11 +739,11 @@ const RegionalApprovalWorkbench: React.FC<{
         const current = versions.find(v=>v.id===row.versionId);
         const chosen = primaryOffset ? versions.find(v=>current && v.seq===current.seq-primaryOffset) : undefined;
         const versionId = primaryOffset ? chosen?.id : row.versionId;
-        if (!versionId) {metrics[row.planId]={qty:'—',amount:'—',targetQty:'',targetAmount:''};continue;}
+        if (!versionId) {metrics[row.planId]={qty:'—',amount:'—',baseQty:'—',baseAmount:'—',targetQty:'',targetAmount:''};continue;}
         const skus = await detailClient.versionSkus.invoke({versionId,signal:controller.signal});
         categories[row.planId]=aggregateRegionalApprovalLiveCategories(skus);
         const aggregate = aggregateRegionalApprovalLiveCategories(skus);
-        metrics[row.planId]={versionId,qty:addExactDecimals(aggregate.map(c=>c.quantity)),amount:addExactDecimals(aggregate.map(c=>c.amount)),
+        metrics[row.planId]={versionId,qty:addExactDecimals(aggregate.map(c=>c.quantity)),amount:addExactDecimals(aggregate.map(c=>c.amount)),baseQty:addExactDecimals(aggregate.map(c=>c.baseQuantity)),baseAmount:addExactDecimals(aggregate.map(c=>c.baseAmount)),
           targetQty:String(primaryOffset ? chosen?.targetQty ?? '' : row.targetQty),targetAmount:String(primaryOffset ? chosen?.targetAmount ?? '' : row.targetAmount)};
         if (compareOffset !== primaryOffset) {
           const other = compareOffset ? versions.find(v=>current && v.seq===current.seq-compareOffset) : current;
@@ -1651,9 +1654,9 @@ const RegionalApprovalWorkbench: React.FC<{
     {
       title: t('common.correction.plan'),
       width: liveColumnWidths[2],
-      render: (_, tableRow) => tableRow.kind === 'category' ? '—' : <div className={styles.stackCell}>
-        <span>{tableRow.plan.mPlanAmount == null ? '—' : exactMoney(tableRow.plan.mPlanAmount)}</span>
-        <small>{tableRow.plan.mPlanQty ?? '—'}</small>
+      render: (_, tableRow) => tableRow.kind === 'category' ? '—' : <div className={styles.stackCell} data-testid={`regional-approval-month-plan-${tableRow.tableRowId}`}>
+        <span>{/^-?\d+(?:\.\d+)?$/.test(tableRow.plan.mPlanAmount ?? '') ? exactMoney(tableRow.plan.mPlanAmount!) : '—'}</span>
+        <small>{/^-?\d+(?:\.\d+)?$/.test(tableRow.plan.mPlanQty ?? '') ? tableRow.plan.mPlanQty : '—'}</small>
         {tableRow.kind === 'plan' && comparisonFor(tableRow).compareAmount && <small>{t('common.assistantSurface.regionalApproval.comparePlan', {amount:exactMoney(comparisonFor(tableRow).compareAmount!),qty:comparisonFor(tableRow).compareQty})}</small>}
       </div>,
     },

@@ -211,7 +211,7 @@ export function apply(ctx: Context): void {
             aria-label={t("demandForecastAgent")}
             className={activePanel === PANEL ? "is-active" : undefined}
           >
-            <span className="gea-shell-active-icon"><NavIcon kind="plan" /></span>
+            <span className="gea-shell-active-icon"><NavIcon kind="forecast" /></span>
             <span className="gea-shell-label">{t("demandForecastAgent")}</span>
           </button>
         </div>
@@ -396,26 +396,35 @@ export function apply(ctx: Context): void {
   );
 }
 
-function NavIcon({ kind }: { kind: "inbox" | "plan" }) {
+function NavIcon({ kind }: { kind: "inbox" | "plan" | "forecast" }) {
   return (
     <svg
       aria-hidden="true"
+      data-nav-icon={kind}
       width="16"
       height="16"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     >
       {kind === "inbox" ? (
         <>
           <path d="M6 17V9a6 6 0 0 1 12 0v8l2 2H4l2-2Z" />
           <path d="M10 22h4" />
         </>
-      ) : (
+      ) : kind === "plan" ? (
         <>
           <ellipse cx="12" cy="5" rx="8" ry="3" />
           <path d="M4 5v14c0 4 16 4 16 0V5M4 10c0 4 16 4 16 0M4 15c0 4 16 4 16 0" />
+        </>
+      ) : (
+        <>
+          <path d="M4 5v14h16" />
+          <path d="m7 15 4-4 3 2 5-6" />
+          <path d="M16 7h3v3" />
         </>
       )}
     </svg>

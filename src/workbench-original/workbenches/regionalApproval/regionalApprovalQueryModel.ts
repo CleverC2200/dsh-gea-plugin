@@ -74,6 +74,8 @@ const normalizeSalesPlanDecimal = (value: unknown): string => {
 
 export const toRegionalApprovalLiveRow = (row: GeaSalesPlanListItem): RegionalApprovalLiveRow => ({
   ...row,
+  ...(row.mPlanQty == null ? {} : { mPlanQty: normalizeSalesPlanDecimal(row.mPlanQty) }),
+  ...(row.mPlanAmount == null ? {} : { mPlanAmount: normalizeSalesPlanDecimal(row.mPlanAmount) }),
   targetQty: normalizeSalesPlanDecimal(row.targetQty),
   targetAmount: normalizeSalesPlanDecimal(row.targetAmount),
   currentQty: normalizeSalesPlanDecimal(row.currentQty),
@@ -205,6 +207,12 @@ export const groupRegionalApprovalLiveRows = (
         ? members[0]
         : {
             ...members[0],
+            mPlanAmount: members.every((row) => /^-?\d+(?:\.\d+)?$/.test(row.mPlanAmount ?? ''))
+              ? addExactDecimals(members.map((row) => row.mPlanAmount!))
+              : undefined,
+            mPlanQty: members.every((row) => /^-?\d+(?:\.\d+)?$/.test(row.mPlanQty ?? ''))
+              ? addExactDecimals(members.map((row) => row.mPlanQty!))
+              : undefined,
             targetAmount: addExactDecimals(members.map((row) => row.targetAmount)),
             targetQty: addExactDecimals(members.map((row) => row.targetQty)),
             currentAmount: addExactDecimals(members.map((row) => row.currentAmount)),

@@ -56,7 +56,9 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  for(const stage of stages){await frame.getByTestId('regional-approval-stage-'+stage).click();assert.deepEqual(await readProgress(),before);await shot('04-05-'+stage);}
  await frame.getByTestId('regional-approval-stage-region').click();
  await frame.getByRole('tab',{name:'按区域',exact:true}).click();
- await expect(frame.locator('tbody').first()).toContainText('200');
+ const monthPlan=frame.getByTestId('regional-approval-month-plan-p');
+ await expect(monthPlan.locator('span').first()).toHaveText('¥100');
+ await expect(monthPlan.locator('small').first()).toHaveText('10');
  await expect(frame.locator('tbody').first()).toContainText('50.0%');
  await expect(frame.locator('tbody').first()).toContainText('版本②：¥100 / 10');
  await expect(frame.locator('tbody').first()).toContainText('该版本不含月度目标');
@@ -113,6 +115,11 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  await page.getByRole('button',{name:/收起侧边栏|Collapse sidebar/}).click();
  await shot('10-sidebar-collapsed');
  await expect(page.locator('.gea-shell-navigation .gea-shell-label').first()).toBeHidden();
+ const planIcon=page.locator('.gea-shell-navigation [data-nav-icon="plan"]');
+ const forecastIcon=page.locator('.gea-shell-navigation [data-nav-icon="forecast"]');
+ await expect(planIcon).toBeVisible();
+ await expect(forecastIcon).toBeVisible();
+ assert.notEqual(await planIcon.innerHTML(),await forecastIcon.innerHTML());
  await page.getByRole('button',{name:/打开侧边栏|Expand sidebar/}).click();
  await shot('10-sidebar-restored');
  await page.getByRole('button',{name:/右侧边栏/}).click(); await shot('10-right-toggle-0');

@@ -30,7 +30,7 @@ test(
         });
       } else if (path.endsWith("/plans")) {
         res.end(
-          '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version/a","dealerCode":9007199254740997,"dealer_name":"经销商A","province_name":"浙江","targetQty":0.1000,"currentAmount":9007199254740993.0100}],"total":11}}',
+          '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version/a","dealerCode":9007199254740997,"dealer_name":"经销商A","province_name":"浙江","mPlanQty":37556.000,"mPlanAmount":2796344.64,"targetQty":0.1000,"currentAmount":9007199254740993.0100}],"total":11}}',
         );
       } else if (path.endsWith("/versions")) {
         reply({
@@ -109,6 +109,8 @@ test(
         assert.equal(page.value.records[0].planId, planId);
         assert.equal(page.value.records[0].dealerCode, "9007199254740997");
         assert.equal(page.value.records[0].targetQty, "0.1000");
+        assert.equal(page.value.records[0].mPlanQty, "37556.000");
+        assert.equal(page.value.records[0].mPlanAmount, "2796344.64");
         assert.equal(
           page.value.records[0].currentAmount,
           "9007199254740993.0100",
