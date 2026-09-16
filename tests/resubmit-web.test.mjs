@@ -4,7 +4,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 
 test(
-  "returned plans do not expose resubmission in the V1.6 approval toolbar",
+  "returned plans open real-source quantity editing while disconnected submission stays disabled",
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
@@ -122,7 +122,24 @@ test(
     const frame = page.frameLocator("iframe[data-gea-workbench]");
     await frame.getByRole("tab", { name: "按基地", exact: true }).click();
     await frame.locator("tbody label.arco-checkbox").first().click();
-    await expect(frame.getByRole("button", { name: "重提", exact: true })).toHaveCount(0);
+    await frame.getByRole("button", { name: "重提", exact: true }).click();
+    const dialog = frame.getByRole("dialog", {
+      name: "真实销售计划退回重提",
+      exact: true,
+    });
+    const quantity = dialog.getByRole("textbox", {
+      name: "提报数量 789",
+      exact: true,
+    });
+    await quantity.fill("2.000");
+    await expect(dialog).toContainText("24.68");
+    await expect(dialog).toContainText("重提目标状态: 1");
+    await dialog.locator("label.arco-checkbox").click();
+    await expect(dialog.getByRole("checkbox")).toBeChecked();
+    await expect(
+      dialog.getByRole("button", { name: "确认重提", exact: true }),
+    ).toBeDisabled();
+    await expect(dialog).toContainText("当前环境的服务凭据或用户授权未就绪");
     assert.equal(
       app.requests.some(
         (r) =>

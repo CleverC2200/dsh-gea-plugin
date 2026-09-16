@@ -35,7 +35,14 @@ test('Host revalidates source, rejects forged values and binds retries to one id
   await frame.getByRole('tab', { name: '按客户', exact: true }).click();
   await expect(frame.getByRole('button', { name: '刷新数据', exact: true })).toBeEnabled();
   await frame.locator('label.arco-checkbox:has(input[value="' + planId + '"])').click();
-  await expect(frame.getByRole('button', {name:'重提',exact:true})).toHaveCount(0);
+  await frame.getByRole('button', { name: '重提', exact: true }).click();
+  const dialog = frame.getByRole('dialog', { name: '真实销售计划退回重提', exact: true });
+  await expect(dialog.getByRole('button', { name: '确认重提', exact: true })).toBeDisabled();
+  await dialog.getByRole('textbox').fill('3.000');
+  await expect(dialog).toContainText('37.02');
+  await dialog.locator('label.arco-checkbox').click();
+  await expect(dialog.getByRole('button', { name: '确认重提', exact: true })).toBeEnabled();
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
   assert.equal(writes, 0);
   const command = { source: { planId, versionId: 'v1' }, request, requestId: 'request', idempotencyKey: 'idem' };
   const forged = await app.rpc('sales-plan/submit', { ...command, idempotencyKey: 'forged', request: { ...request, submitterCode: 'other' } });

@@ -151,9 +151,10 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     window.parent.postMessage(
       {
         type: "gea:identity",
+        avatar: status?.authenticated ? (status.user?.avatar ?? "") : "",
         authenticated: status?.authenticated === true,
         name: status?.authenticated ? (status.user?.name ?? "") : "",
-        avatarUrl: status?.authenticated ? (status.user?.avatarUrl ?? "") : "",
+        avatarUrl: status?.authenticated ? (status.user?.avatar ?? "") : "",
       },
       window.location.origin,
     );
@@ -369,14 +370,23 @@ export function WorkbenchPage({ t }: { t: Translate }) {
             width="56"
             height="56"
           />
-          <h2>{t("login")}</h2>
+          <h2>{t("welcomeLogin")}</h2>
           <p>{t("scanInstructions")}</p>
-          {qr && (
-            <div className="gea-login-qr">
+          <div className={`gea-login-qr${expired ? " is-expired" : ""}`} aria-busy={busy || (!status && !error)}>
+            {qr ? (
               <img src={qr.image} alt={t("login")} width="220" height="220" />
-              {expired && <p role="status">{t("expired")}</p>}
-            </div>
-          )}
+            ) : (
+              <div className="gea-qr-placeholder" role="status">
+                {!error && <span className="gea-wait-dots" aria-hidden="true"><i /><i /><i /></span>}
+                <span>{t(error ? "qrUnavailable" : "qrPreparing")}</span>
+              </div>
+            )}
+            {expired && <div className="gea-qr-expired"><p>{t("qrExpired")}</p></div>}
+          </div>
+          <p className="gea-login-status" role="status" aria-live="polite">
+            {qr && !expired && !error && <span className="gea-ready-dot" aria-hidden="true" />}
+            {qr && !error ? t(expired ? "qrExpiredHint" : "qrWaiting") : null}
+          </p>
           <fieldset disabled={busy || !status} className="gea-environments">
             <legend>{t("environment")}</legend>
             {(status?.environments ?? ["production", "test"]).map(
@@ -417,9 +427,13 @@ export function WorkbenchPage({ t }: { t: Translate }) {
             disabled={busy || !status}
             onClick={() => setQrRefresh((value) => value + 1)}
           >
-            {busy ? t("busy") : t("refreshQr")}
+            {busy ? t("qrPreparing") : t("refreshQr")}
           </button>
           {error && <p role="alert">{error}</p>}
+          <aside className="gea-login-tip">
+            <strong>{t("loginTipTitle")}</strong>
+            <p>{t("loginTip")}</p>
+          </aside>
           <footer>{t("loginFooter")}</footer>
         </section>
       </main>
@@ -438,6 +452,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
             onContextChange={onContextChange}
             queryClient={salesPlan}
             detailClient={salesPlan}
+            permissionCodes={status.permissionCodes}
             liveActionsEnabled={true}
             liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
             onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })}

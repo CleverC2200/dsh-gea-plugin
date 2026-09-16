@@ -7,13 +7,12 @@ import {
   type GeaSalesPlanSku,
 } from '../../bridge.ts';
 import { isBackendHttpError } from '../../http-error.ts';
-import { Alert, Button, Checkbox, Input, Modal, Radio, Spin } from '@arco-design/web-react';
+import { Alert, Button, Checkbox, Input, Modal, Radio, Select, Spin } from '@arco-design/web-react';
 import type { TFunction } from 'i18next';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSalesPlanAction } from './hooks/useSalesPlanAction.ts';
 import {
   salesPlanActionTargetStatus,
-  salesPlanApprovalNodeForStatus,
   type SalesPlanActionClient,
   type SalesPlanActionErrorKind,
 } from './models/salesPlanActionModel.ts';
@@ -26,6 +25,7 @@ import {
   type RegionalApprovalLiveRow,
 } from './regionalApprovalQueryModel.ts';
 import type { ApprovalStageId } from './regionalApprovalFixture.ts';
+import { SALES_PLAN_ROLES, salesPlanWorkflow } from '../../salesPlanWorkflow.ts';
 import { salesPlanAccessForRow, salesPlanEditableQuantity } from './models/salesPlanAccessModel.ts';
 import styles from './RegionalApprovalActionDialog.module.css';
 
@@ -93,7 +93,12 @@ const RegionalApprovalLiveActionDialog: React.FC<{
 }) => {
   const [snapshot] = useState(evidence);
   const Container = embedded ? InlineAction : Modal;
-  const access = snapshot && salesPlanAccessForRow(row, snapshot, permissionCodes, approvalStage);
+  const availableRoles = SALES_PLAN_ROLES.filter(role => snapshot && salesPlanAccessForRow(row, snapshot, permissionCodes, role));
+  const [selectedRole, setSelectedRole] = useState<ApprovalStageId | undefined>(
+    availableRoles.includes(approvalStage) ? approvalStage : availableRoles.length === 1 ? availableRoles[0] : undefined
+  );
+  const access = snapshot && selectedRole && salesPlanAccessForRow(row, snapshot, permissionCodes, selectedRole);
+  const unsupportedRole = Boolean(access && !access.roleContractSupported && salesPlanWorkflow(row.planTypeCode).actor(row.status) !== access.approvalRole);
   const submittedRequest = useRef<GeaSalesPlanActionRequest | undefined>(undefined);
   const [kind, setKind] = useState<LiveActionKind>(initialAction);
   const [remark, setRemark] = useState('');
@@ -124,8 +129,10 @@ const RegionalApprovalLiveActionDialog: React.FC<{
     loading ||
     action.state.status === 'success' ||
     (action.state.status === 'error' && action.state.error.retrySameIntent);
-  const targetStatus = salesPlanActionTargetStatus(kind, row.status, row.planTypeCode);
-  const approvalNodeOrder = row.status === 10 ? 5 : salesPlanApprovalNodeForStatus(row.status, row.planTypeCode);
+  const targetStatus = access?.roleContractSupported
+    ? kind === 'REJECT' ? salesPlanActionTargetStatus('REJECT', salesPlanWorkflow(row.planTypeCode).pending(access.approvalRole) ?? -1, row.planTypeCode) : row.status
+    : salesPlanActionTargetStatus(kind, row.status, row.planTypeCode);
+  const approvalNodeOrder = access?.nodeOrder ?? undefined;
   const supportsAdjustments = approvalNodeOrder !== undefined && approvalNodeOrder >= 2;
   const adjustments = useMemo(
     () =>
@@ -145,13 +152,13 @@ const RegionalApprovalLiveActionDialog: React.FC<{
       const input = adjustmentValues[skuCode]?.trim() ?? '';
       const adjustmentQty = input || '0';
       const adjustmentValid = SIGNED_DECIMAL_PATTERN.test(adjustmentQty);
-      const previousQty = salesPlanEditableQuantity(sku, row.status, row.planTypeCode);
+      const previousQty = salesPlanEditableQuantity(sku, row.status, row.planTypeCode, selectedRole);
       const price = decimalText(sku.price);
       const previousAmount = previousQty && price ? multiplyExactDecimals(previousQty, price) : undefined;
       const confirmedQty = previousQty && adjustmentValid ? addExactDecimals([previousQty, adjustmentQty]) : undefined;
       const normalizedConfirmedQty = confirmedQty === '—' ? undefined : confirmedQty;
       if (kind !== 'SAVE' && !Object.hasOwn(adjustmentValues, skuCode)) {
-        const saved = salesPlanSkuNodeComparison(sku, approvalStage);
+        const saved = salesPlanSkuNodeComparison(sku, selectedRole ?? approvalStage);
         return {
           sku,
           skuCode,
@@ -177,7 +184,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
         amountDelta: adjustmentValid && price ? multiplyExactDecimals(adjustmentQty, price) : undefined,
       };
     });
-  }, [adjustmentSkus, adjustmentValues, row.status, kind, approvalStage]);
+  }, [adjustmentSkus, adjustmentValues, row.status, kind, approvalStage, selectedRole]);
   const nodeTotals = useMemo(() => {
     if (nodeComparisons.length === 0) return undefined;
     const total = (values: Array<string | undefined>) => {
@@ -202,7 +209,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
             (item.adjustmentValid && !ZERO_DECIMAL_PATTERN.test(item.adjustmentQty)) ||
             Boolean(item.amountDelta && !ZERO_DECIMAL_PATTERN.test(item.amountDelta))
         );
-  const invalid =
+  const invalid = unsupportedRole || !selectedRole ||
     !draftReady ||
     !confirmed ||
     !access?.allowedActions.includes(kind) ||
@@ -235,7 +242,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
     },
     {
       label: t('common.assistantSurface.regionalApproval.liveAction.checksum.stage'),
-      value: t(`common.assistantSurface.regionalApproval.stages.${approvalStage}`),
+      value: t(`common.assistantSurface.regionalApproval.stages.${selectedRole ?? approvalStage}`),
     },
     {
       label: t('common.assistantSurface.regionalApproval.liveAction.checksum.difference'),
@@ -287,6 +294,8 @@ const RegionalApprovalLiveActionDialog: React.FC<{
     setAttempted(true);
     if (invalid || loading || action.state.status === 'success') return;
     const request: GeaSalesPlanActionRequest = {
+      approvalRole: access?.approvalRole,
+      ...(access?.roleContractSupported ? {approvalPolicy: 'role-visible-v1' as const} : {}),
       action: kind,
       expectedStatus: row.status,
       ...(access?.snapshotHash ? { expectedSnapshot: access.snapshotHash } : {}),
@@ -301,6 +310,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
         versionId: row.versionId,
         request,
         serverWorkflowResult: !access?.snapshotHash,
+        serverRoleResult: access?.roleContractSupported,
       })
     );
   };
@@ -406,6 +416,17 @@ const RegionalApprovalLiveActionDialog: React.FC<{
 
           <div className={styles.form}>
             <div className={styles.formControl}>
+              <span>{t('common.assistantSurface.regionalApproval.liveAction.approvalRole')}</span>
+              <Select value={selectedRole} disabled={intentLocked}
+                aria-label={t('common.assistantSurface.regionalApproval.liveAction.approvalRole')}
+                placeholder={t('common.assistantSurface.regionalApproval.liveAction.selectRole')}
+                onChange={role => {setSelectedRole(role); setAdjustmentValues({}); setConfirmedInputs({}); setConfirmed(false); setAttempted(false);}}>
+                {availableRoles.map(role => <Select.Option key={role} value={role}>{t(`common.assistantSurface.regionalApproval.stages.${role}`)}</Select.Option>)}
+              </Select>
+            </div>
+            {unsupportedRole ? <Alert type='warning' content={t('common.assistantSurface.regionalApproval.liveAction.roleContractUnavailable')} /> : null}
+
+            <div className={styles.formControl}>
               <span>{t('common.assistantSurface.regionalApproval.liveAction.action')}</span>
               {initialAction === 'SAVE' ? (
                 <span>{t('common.assistantSurface.regionalApproval.liveAction.saveBoundary')}</span>
@@ -426,7 +447,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
                     value='REJECT'
                     disabled={
                       !access?.allowedActions.includes('REJECT') ||
-                      salesPlanActionTargetStatus('REJECT', row.status, row.planTypeCode) === undefined
+                      salesPlanWorkflow(row.planTypeCode).pending(access?.approvalRole ?? 'customer') === undefined
                     }
                   >
                     {t('common.assistantSurface.regionalApproval.liveAction.reject')}

@@ -1,13 +1,14 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.2",
+  "version": "0.0.21",
   "private": true,
   "type": "module",
   "description": "GEA business Agent plugin for the shared DeepSeek Harness workbench",
   "exports": {
     ".": "./lib/host.js",
     "./client": "./lib/client.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -47,6 +48,9 @@
         "@deepseek-ai/dsh-client-locale",
         "@cleverc2200/dsh-agent-workbench"
       ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
   },
   "devDependencies": {
@@ -102,7 +106,8 @@
     "packages/workbench-example/package.json",
     "packages/workbench-example/lib/host.js",
     "packages/workbench-example/lib/client.js",
-    "packages/workbench-example/README.md"
+    "packages/workbench-example/README.md",
+    "cordis.patch.yml"
   ],
   "workspaces": [
     "packages/*"

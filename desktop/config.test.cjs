@@ -1,12 +1,11 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
-const{configuration,launchUrl}=require('./config.cjs');
-test('setup accepts HTTPS environments and preserves deployment defaults',()=>{
- const c=configuration({production:'https://gea.example.com/gea/',test:'',model:'model-1'},{analysis:{source:'gea'},pageSize:10});
- assert.equal(c.geaEnvironments.test,'https://gea.example.com/gea');assert.equal(c.analysis.source,'gea');assert.equal(c.analysis.model,'model-1');assert.equal(c.pageSize,10);
-});
-test('setup rejects credentials, insecure endpoints, and missing model',()=>{
- for(const production of ['http://example.com','https://user:secret@example.com','https://example.com?token=x','https://example.com#x'])assert.throws(()=>configuration({production,model:'m'},{}));
- assert.throws(()=>configuration({production:'https://example.com',model:''},{}));
+const{ensureConfiguration,launchUrl}=require('./config.cjs');
+test('first launch provisions company environments and model without business input; existing configuration survives',async t=>{
+ const {mkdtemp,readFile,writeFile,rm}=require('node:fs/promises');const {join}=require('node:path');
+ const dir=await mkdtemp(join(require('node:os').tmpdir(),'gea-defaults-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const path=join(dir,'gea.config.json');await ensureConfiguration(path);const c=JSON.parse(await readFile(path,'utf8'));
+ assert.equal(c.environment,'production');assert.equal(c.geaEnvironments.production,'https://gea.synear.cn/gea-boot');assert.equal(c.geaEnvironments.test,'https://gea.synear.cn:4443/gea-boot');assert.equal(c.analysis.source,'gea');assert.equal(c.analysis.model,'2085162185715609601');
+ await writeFile(path,'{"existing":true}');await ensureConfiguration(path);assert.equal(await readFile(path,'utf8'),'{"existing":true}');
 });
 test('backend readiness accepts only its loopback launch URL',()=>{
  assert.equal(launchUrl('unrelated output'),undefined);

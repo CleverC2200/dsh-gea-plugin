@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolveEnvironments } from "../src/environments.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
@@ -41,6 +42,7 @@ export async function readDeployment(path) {
   }
   if (!config || Array.isArray(config) || typeof config !== "object")
     throw new Error("GEA_CONFIG_INVALID");
+  if (config.mcpRequestTimeoutMs === undefined) config.mcpRequestTimeoutMs = 60000;
   const selected = resolveEnvironments(config);
   config.environment = selected.environment;
   const url = httpsEndpoint(selected.baseUrl, "INVALID_GEA_BASE_URL");
@@ -50,6 +52,7 @@ export async function readDeployment(path) {
     ["pageSize", 1, 100],
     ["periodPageSize", 1, 1000],
     ["requestTimeoutMs", 1000, 120000],
+    ["mcpRequestTimeoutMs", 1000, 120000],
     ["modelRequestTimeoutMs", 1000, 600000],
     ["maxSnapshotBytes", 1000, 5000000],
   ]) {
@@ -97,13 +100,26 @@ export async function readDeployment(path) {
   return { ...config, geaBaseUrl: url.href.replace(/\/$/, "") };
 }
 
+/** Resolve the supported public workbench API before writing runtime state. */
+export function resolveWorkbench(anchor = import.meta.url) {
+  try {
+    const dependency = createRequire(anchor);
+    const manifest = JSON.parse(readFileSync(dependency.resolve("@cleverc2200/dsh-agent-workbench/package.json"), "utf8"));
+    if (!/^0\.1\.\d+$/.test(manifest.version)) throw new Error("WORKBENCH_INCOMPATIBLE: expected 0.1.x");
+    return dependency.resolve("@cleverc2200/dsh-agent-workbench");
+  } catch (error) {
+    if (error.message.startsWith("WORKBENCH_INCOMPATIBLE")) throw error;
+    throw new Error("WORKBENCH_MISSING: install the pinned independent workbench dependency");
+  }
+}
+
 /** Build ordinary patch rows for the supported dsh profile launcher. */
-export function deploymentPatch(config, root, runtime) {
+export function deploymentPatch(config, root, runtime, { bundle = false } = {}) {
   const model = config.analysis.mode === "model";
   const analysis = config.analysis;
   const rows = [
     { id: "ui-layout", disabled: true },
-    { insert: [{ id: "agent-workbench", name: createRequire(import.meta.url).resolve("@cleverc2200/dsh-agent-workbench"), config: { cwd: resolve(runtime, "workspace") } }] },
+    { insert: [{ id: "agent-workbench", name: resolveWorkbench(), config: { cwd: resolve(runtime, "workspace") } }] },
     { id: "session-title-llm", disabled: true },
     {
       id: "agent-default-model",
@@ -137,6 +153,7 @@ export function deploymentPatch(config, root, runtime) {
             pageSize: config.pageSize,
             periodPageSize: config.periodPageSize,
             requestTimeoutMs: config.requestTimeoutMs,
+            mcpRequestTimeoutMs: config.mcpRequestTimeoutMs,
             modelRequestTimeoutMs: config.modelRequestTimeoutMs,
             maxSnapshotBytes: config.maxSnapshotBytes,
             runtimeDir: runtime,
@@ -182,6 +199,12 @@ export function deploymentPatch(config, root, runtime) {
       },
     });
   if (config.workbenchExample === true) rows.push({ insert: [{ id: "workbench-example", name: resolve(root, "packages/workbench-example/lib/host.js") }] });
+  if (bundle) return rows.flatMap(row => {
+    if (row.id === "ui-layout") return [];
+    if (row.insert?.some(entry => entry.id === "agent-workbench")) return row.insert.map(({ name, ...entry }) => entry);
+    if (row.insert?.some(entry => entry.id === "gea-proof")) return row.insert.map(({ name, ...entry }) => entry);
+    return [row];
+  });
   return rows;
 }
 

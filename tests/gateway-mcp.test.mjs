@@ -32,6 +32,22 @@ test("creates authorized session and isolates trusted meta from business argumen
   const calls = [];
   const fake = async (url, init) => {
     calls.push({ url, init });
+    if (
+      !url.endsWith("/session") &&
+      JSON.parse(init.body).method === "tools/list"
+    )
+      return Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: {
+          tools: [
+            {
+              name: "read",
+              _meta: { sourceType: "MCP", sourceCode: "read-service" },
+            },
+          ],
+        },
+      });
     return url.endsWith("/session")
       ? Response.json(session())
       : Response.json({ ok: true });
@@ -51,6 +67,10 @@ test("creates authorized session and isolates trusted meta from business argumen
   assert.ok(!JSON.stringify(connection).includes("secret"));
   await connection.fetch(connection.url, {
     method: "POST",
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+  });
+  await connection.fetch(connection.url, {
+    method: "POST",
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 2,
@@ -62,23 +82,24 @@ test("creates authorized session and isolates trusted meta from business argumen
       },
     }),
   });
-  const wire = JSON.parse(calls[1].init.body);
+  const wire = JSON.parse(calls[2].init.body);
   assert.deepEqual(wire.params.arguments, { query: "x" });
   assert.deepEqual(wire.params._meta, {
     sessionId: "business-session",
     conversationId: "conversation",
     delegationToken: "delegation-secret",
     agentCode: "test-agent",
+    mcpCode: "read-service",
   });
-  assert.ok(!JSON.stringify(calls[1]).includes("login-secret"));
-  assert.equal(calls[1].init.redirect, "error");
+  assert.ok(!JSON.stringify(calls[2]).includes("login-secret"));
+  assert.equal(calls[2].init.redirect, "error");
   await assert.rejects(
     () => connection.fetch("https://foreign.test", {}),
     /ENDPOINT_REJECTED/,
   );
   controller.abort();
   await assert.rejects(() => connection.fetch(connection.url, {}));
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
 });
 
 test("rejects denied, incomplete and wrong-consumer sessions despite HTTP success", async () => {
@@ -200,7 +221,7 @@ test("Business login notifications and transport capabilities follow logout and 
     if (url.includes("/getUserInfo"))
       return Response.json({
         success: true,
-        result: { userInfo: { id: "user", username: "user", tenantId: "0" } },
+        result: { userInfo: { id: "user", username: "user", tenantId: "0", avatar: "https://avatar.test/user.png" } },
       });
     if (url.endsWith("/session")) return Response.json(session());
     return Response.json({});
@@ -216,6 +237,7 @@ test("Business login notifications and transport capabilities follow logout and 
       new AbortController().signal,
     );
     assert.equal(business.status().authenticated, true);
+    assert.equal(business.status().user.avatar, "https://avatar.test/user.png");
     assert.equal(notifications, 2);
     const connection = await business.openMcpConnection(
       consumer,
@@ -233,6 +255,124 @@ test("Business login notifications and transport capabilities follow logout and 
     business.dispose();
     globalThis.fetch = original;
   }
+});
+
+test("routes discovered gateway and remote tools without trusting caller metadata", async () => {
+  const wires = [];
+  const fake = async (url, init) => {
+    if (url.endsWith("/session")) return Response.json(session());
+    const wire = JSON.parse(init.body);
+    wires.push(wire);
+    if (wire.method === "tools/list")
+      return Response.json({
+        jsonrpc: "2.0",
+        id: wire.id,
+        result: {
+          tools: [
+            {
+              name: "gateway.session.currentUser.resolve",
+              _meta: { sourceType: "MCP", sourceCode: "mcp.gateway.session" },
+            },
+            {
+              name: "lightrag_list_docs",
+              _meta: { sourceType: "MCP", sourceCode: "knowledge" },
+            },
+          ],
+        },
+      });
+    const expected =
+      wire.params.name === "lightrag_list_docs"
+        ? "knowledge"
+        : "mcp.gateway.session";
+    assert.equal(wire.params._meta.mcpCode, expected);
+    assert.equal(wire.params._meta.delegationToken, "delegation-secret");
+    assert.deepEqual(wire.params.arguments, {});
+    return Response.json({
+      jsonrpc: "2.0",
+      id: wire.id,
+      result: { content: [] },
+    });
+  };
+  const connection = await prepareGatewayMcp(
+    "https://gea.test",
+    auth,
+    consumer,
+    new AbortController().signal,
+    1000,
+    fake,
+  );
+  const send = (method, params) =>
+    connection.fetch(connection.url, {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    });
+  await send("tools/list", {});
+  for (const name of [
+    "gateway.session.currentUser.resolve",
+    "lightrag_list_docs",
+  ])
+    await send("tools/call", {
+      name,
+      arguments: {},
+      _meta: { mcpCode: "forged", delegationToken: "forged" },
+    });
+});
+
+test("SSE discovery preserves response, pagination accumulates routes and refresh removes stale tools", async () => {
+  let tools = [{ name: "first", _meta: { sourceCode: "one" } }];
+  const sent = [];
+  let body;
+  const connection = await prepareGatewayMcp(
+    "https://gea.test",
+    auth,
+    consumer,
+    new AbortController().signal,
+    1000,
+    async (url, init) => {
+      if (url.endsWith("/session")) return Response.json(session());
+      const wire = JSON.parse(init.body);
+      sent.push(wire);
+      if (wire.method !== "tools/list")
+        return Response.json({
+          jsonrpc: "2.0",
+          id: wire.id,
+          result: { content: [] },
+        });
+      body =
+        ": heartbeat\n\nevent: message\ndata: " +
+        JSON.stringify({ jsonrpc: "2.0", id: wire.id, result: { tools } }) +
+        "\n\n";
+      return new Response(body, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    },
+  );
+  const send = (method, params = {}) =>
+    connection.fetch(connection.url, {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method, params }),
+    });
+  assert.equal(await (await send("tools/list")).text(), body);
+  tools = [{ name: "second", _meta: { sourceCode: "two" } }];
+  await send("tools/list", { cursor: "next" });
+  for (const name of ["first", "second"])
+    await send("tools/call", { name, arguments: {} });
+  assert.deepEqual(
+    sent.slice(-2).map((x) => x.params._meta.mcpCode),
+    ["one", "two"],
+  );
+  await send("tools/list");
+  await assert.rejects(
+    () => send("tools/call", { name: "first", _meta: { mcpCode: "one" } }),
+    /ROUTE_REQUIRED/,
+  );
+  tools = [
+    { name: "second", _meta: { sourceCode: "two" } },
+    { name: "second", _meta: { sourceCode: "other" } },
+  ];
+  await assert.rejects(() => send("tools/list"), /ROUTE_AMBIGUOUS/);
+  tools = [{ name: "invalid" }];
+  await assert.rejects(() => send("tools/list"), /ROUTE_INVALID/);
 });
 
 test("local Skill file URI is rejected before gateway IO with the correct reader guidance", async () => {
@@ -306,12 +446,15 @@ test("SDK calls recover an expired transport session once, including concurrent 
       }
       assert.equal(initialized, true);
       assert.equal(message.params._meta.delegationToken, "delegation-secret");
+      if (message.method === "tools/list") return Response.json({ jsonrpc: "2.0", id: message.id, result: { tools: ["first", "second", "third"].map(name => ({ name, inputSchema: { type: "object" }, _meta: { sourceCode: "test-mcp" } })) } });
+      assert.equal(message.params._meta.mcpCode, "test-mcp");
       calls.push(message.params.name);
       return Response.json({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: "ok" }] } });
     });
   const client = new Client({ name: "regression", version: "1" });
   const transport = new StreamableHTTPClientTransport(new URL(connection.url), { fetch: connection.fetch });
   await client.connect(transport);
+  await client.listTools();
   try {
     expired = true;
     const results = await Promise.all(["first", "second"].map(name => client.callTool({ name, arguments: {} })));
@@ -342,7 +485,7 @@ test("HTTP failures preserve their status, do not leak bodies and have bounded r
     await connection.fetch(connection.url, { method: "POST", headers,
       body: JSON.stringify({ method: "initialize" }) });
     await assert.rejects(() => connection.fetch(connection.url, { method: "POST", headers,
-      body: JSON.stringify({ method: "tools/call", params: { name: "read" } }) }),
+      body: JSON.stringify({ method: "resources/list", params: {} }) }),
     error => error.message.includes(`GEA_MCP_HTTP_${status}`) && !error.message.includes("upstream-secret"));
     assert.equal(attempts, status === 404 ? 2 : 1);
     assert.equal(initializations, status === 404 ? 2 : 1);
@@ -366,6 +509,6 @@ test("logout during transport recovery prevents replay", async () => {
   const headers = { "MCP-Protocol-Version": "2025-11-25" };
   await connection.fetch(connection.url, { method: "POST", headers, body: JSON.stringify({ method: "initialize" }) });
   await assert.rejects(() => connection.fetch(connection.url, { method: "POST", headers,
-    body: JSON.stringify({ method: "tools/call", params: { name: "read" } }) }), { name: "AbortError" });
+    body: JSON.stringify({ method: "resources/list", params: {} }) }), { name: "AbortError" });
   assert.equal(calls, 1);
 });

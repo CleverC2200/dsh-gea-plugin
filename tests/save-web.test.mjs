@@ -4,7 +4,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 
 test(
-  "V1.6 removes SAVE from the approval toolbar even when an effective version exposes legacy SAVE",
+  "server SAVE capability enables in-progress SAVE without legacy menu roles and verifies same-version persistence",
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
@@ -19,7 +19,7 @@ test(
       planTypeCode: "Y",
       orderType: "M",
       dealerCode: "456",
-      status: 10,
+      status: 4,
       currentQty: "1",
       targetQty: "1",
       currentAmount: "12.34",
@@ -78,7 +78,7 @@ test(
             currentVersion: { ...plan, id: "v", effective: true },
             actionContext: {
               versionId: "v",
-              status: 10,
+              status: 4,
               nodeOrder: 5,
               allowedActions: ["SAVE"],
               snapshotHash: (saved ? "b" : "a").repeat(64),
@@ -104,7 +104,7 @@ test(
       if (path.endsWith("/versions/v/actions")) {
         const body = JSON.parse(req.body);
         assert.equal(body.action, "SAVE");
-        assert.equal(body.expectedStatus, 10);
+        assert.equal(body.expectedStatus, 4);
         assert.equal(body.expectedSnapshot, "a".repeat(64));
         assert.deepEqual(body.adjustments, [
           { skuCode: "789", adjustQty: "1.000" },
@@ -115,8 +115,8 @@ test(
           id: "1",
           planId: "p",
           versionId: "v",
-          fromStatus: 10,
-          toStatus: 10,
+          fromStatus: 4,
+          toStatus: 4,
           actionCode: "SAVE",
           requestId: req.headers["x-request-id"],
           traceId: "trace",
@@ -126,8 +126,8 @@ test(
           result: {
             planId: "p",
             versionId: "v",
-            fromStatus: 10,
-            toStatus: 10,
+            fromStatus: 4,
+            toStatus: 4,
             replayed: false,
             requestId: log.requestId,
             traceId: "trace",
@@ -165,9 +165,18 @@ test(
     const frame = page.frameLocator("iframe[data-gea-workbench]");
     await frame.getByRole("tab", { name: "按基地", exact: true }).click();
     await frame.locator("tbody label.arco-checkbox").first().click();
-    await expect(frame.getByRole("button", { name: "保存调整", exact: true })).toHaveCount(0);
-    // V1.6 keeps effective plans read-only in the approval toolbar; private drafts only apply before approval.
-    assert.equal(writes, 0);
-    assert.equal(saved, false);
+    const save = frame.getByRole("button", { name: "保存调整", exact: true });
+    await expect(save).toBeEnabled();
+    await save.click();
+    const dialog = frame.getByRole("dialog", {
+      name: "保存销售计划调整",
+      exact: true,
+    });
+    await dialog.locator("input.arco-input").first().fill("1.000");
+    await dialog.locator("label.arco-checkbox").click();
+    await dialog.getByRole("button", { name: "确认保存", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    assert.equal(writes, 1);
+    assert.equal(saved, true);
   },
 );
