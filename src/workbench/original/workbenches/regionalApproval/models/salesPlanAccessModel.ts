@@ -68,7 +68,10 @@ export const salesPlanAccessForRow = (
   if (!role || role === 'customer' || !roles.includes(role)) return undefined;
   const roleEntry = supported ? context.roleActions!.find(entry => entry.role === role) : undefined;
   const nodeOrder = SALES_PLAN_ROLES.indexOf(role) + 1;
-  const allowedActions = supported ? roleEntry?.allowedActions ?? [] :
+  // 角色权限决定能否审批；对象能力可补充动作，但不能把“当前未通知该角色”误当成撤销角色权限。
+  // GEA 写接口仍会按组织、角色、版本、状态和快照重新校验，客户端这里只负责准确投影入口。
+  const grantedRoleActions = granted.includes(role) ? ['APPROVE', 'REJECT'] as const : [];
+  const allowedActions = supported ? [...new Set([...grantedRoleActions, ...(roleEntry?.allowedActions ?? [])])] :
     context && (context.nodeOrder === nodeOrder || context.allowedActions.length === 0) ? context.allowedActions : ['APPROVE', 'REJECT'] as const;
   return {
     versionId: v.id, status: v.status, nodeOrder, approvalRole: role,

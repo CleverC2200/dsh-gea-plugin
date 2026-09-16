@@ -37,6 +37,13 @@ test('new object capability is role-specific, freshness-checked and terminal-saf
     assert.equal(m.salesPlanAccessForRow(row(),bad,[],'region'),undefined);
   for(const status of [0,5,10]) assert.equal(m.salesPlanAccessForRow(row(status),{...detail(status),actionContext:policy(['region'],status)},[],'region'),undefined);
 });
+test('granted visible role remains actionable when object capabilities only track the notified node',()=>{
+  const d={...detail(),actionContext:{...policy([],2),roleActions:[]}};
+  const access=m.salesPlanAccessForRow(row(2),d,[grant('region')],'region');
+  assert.equal(access.roleContractSupported,true);
+  assert.deepEqual(access.allowedActions,['APPROVE','REJECT']);
+  assert.equal(m.salesPlanAccessForRow(row(2),d,[],'region'),undefined);
+});
 test('quantity inheritance follows selected role rather than notification status',()=>{
   const sku={qty:'10',regionConfirmedQty:'12',provinceConfirmedQty:'20',areaConfirmedQty:'30'};
   assert.equal(m.salesPlanEditableQuantity(sku,3,'Y','region'),'12');
