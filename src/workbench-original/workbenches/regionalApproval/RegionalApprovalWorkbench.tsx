@@ -473,8 +473,10 @@ const RegionalApprovalWorkbench: React.FC<{
   const [liveStageFilter, setLiveStageFilter] = useState<ApprovalStageId>();
   const roleStages = useMemo(() => salesPlanStagesForPermissions(permissionCodes), [permissionCodes]);
   const roleKey = roleStages.join(',');
+  const explicitLiveStageSelection = useRef(false);
   useEffect(() => {
-    setLiveStageFilter(undefined);
+    explicitLiveStageSelection.current = false;
+    setLiveStageFilter((roleKey.split(',')[0] || undefined) as ApprovalStageId | undefined);
     setSelectedRowIds([]);
     setPage(1);
   }, [roleKey]);
@@ -544,8 +546,23 @@ const RegionalApprovalWorkbench: React.FC<{
     loadStageProgress: queryClient !== null,
     loadAnalysisSummary: queryClient !== null,
     stage: liveStageFilter,
-    roles: roleStages,
   });
+  useEffect(() => {
+    if (
+      !liveQuery.enabled ||
+      explicitLiveStageSelection.current ||
+      !liveStageFilter ||
+      liveQuery.queueState.status !== 'success' ||
+      liveQuery.queueSettledStageKey !== liveQuery.stageStatusesKey ||
+      liveQuery.queueState.data.total !== 0
+    )
+      return;
+    // A default role filter must not hide plans the server allows this user to browse.
+    setLiveStageFilter(undefined);
+    setDimension(APPROVAL_DIMENSIONS_BY_STAGE.category[0]);
+    setSelectedRowIds([]);
+    setPage(1);
+  }, [liveQuery.enabled, liveQuery.queueState, liveQuery.queueSettledStageKey, liveStageFilter]);
   const stageRows = useMemo(() => approvalRowsForStage(REGIONAL_APPROVAL_ROWS, currentStage), [currentStage]);
   const filterOptions = useMemo(() => approvalFilterOptions(stageRows, draftFilters), [draftFilters, stageRows]);
   const visibleRows = useMemo(() => projectApprovalRows(stageRows, appliedFilters), [appliedFilters, stageRows]);
@@ -631,12 +648,12 @@ const RegionalApprovalWorkbench: React.FC<{
       ),
       customers: customerRows
         .map((row) => ({
-          dealerCode: String(row.dealerCode ?? '').trim(),
+          dealerCode: row.dealerCode.trim(),
           dealerName: row.dealerName?.trim(),
           baseName: row.baseName?.trim(),
         }))
         .filter(
-          (option, index, options) => Boolean(option.dealerCode) && options.findIndex((item) => item.dealerCode === option.dealerCode) === index
+          (option, index, options) => options.findIndex((item) => item.dealerCode === option.dealerCode) === index
         ),
     };
   }, [draftLiveFilters.areaCode, draftLiveFilters.orgCode, draftLiveFilters.provinceCode, liveRows]);
@@ -835,15 +852,15 @@ const RegionalApprovalWorkbench: React.FC<{
   const liveActionDisabledReason = (row: RegionalApprovalLiveRow, kind: LiveActionKind = 'APPROVE') => {
     if (historicalSummaryUnavailable) return 'queueNotFresh';
     if (!liveActionsEnabled) return 'missingAuthority';
-
+    if (liveActionReceipts[row.versionId]?.fromStatus === row.status) return 'completed';
     if (permissionDeniedVersions.has(row.versionId)) return 'permission';
     if (liveQuery.queueState.status !== 'success') return 'queueNotFresh';
     if (liveAccess.failedVersions.has(row.versionId)) return 'detailUnavailable';
     const detail = liveAccess.entries[row.versionId];
-    if (!detail || !(liveStageFilter ? [liveStageFilter] : ['region','province','area','category'] as const).some(role => salesPlanAccessForRow(row, detail, permissionCodes, role)?.allowedActions.includes(kind)))
+    if (!detail || !salesPlanAccessForRow(row, detail, permissionCodes, liveStageFilter)?.allowedActions.includes(kind))
       return 'missingAuthority';
     if (kind === 'SAVE') return undefined;
-
+    if (salesPlanApprovalNodeForStatus(row.status, row.planTypeCode) === undefined) return 'notCurrentStage';
     return undefined;
   };
   const metrics = useMemo(() => {
@@ -1101,6 +1118,7 @@ const RegionalApprovalWorkbench: React.FC<{
 
   const changeStage = (stage: ApprovalStageId) => {
     if (liveQuery.enabled) {
+      explicitLiveStageSelection.current = true;
       const nextStage = liveStageFilter === stage ? undefined : stage;
       setLiveStageFilter(nextStage);
       setDimension(APPROVAL_DIMENSIONS_BY_STAGE[nextStage ?? 'category'][0]);
@@ -1129,6 +1147,7 @@ const RegionalApprovalWorkbench: React.FC<{
   };
 
   const updateLiveDraftFilter = (field: keyof LiveApprovalFilters, value: string) => {
+    explicitLiveStageSelection.current = true;
     if (field === 'status') setLiveStageFilter(undefined);
     setDraftLiveFilters((current) => {
       const next = { ...current, [field]: value };
@@ -1531,8 +1550,8 @@ const RegionalApprovalWorkbench: React.FC<{
       ? addExactDecimals(metrics.map(value=>value[field]!)) : '';
     return {compareQty:sum('compareQty'),compareAmount:sum('compareAmount'),compareTargetQty:sum('compareTargetQty'),compareTargetAmount:sum('compareTargetAmount')};
   };
-  const liveMinimumWidths = [220, 125, 125, categoryComparison ? 190 : 150, categoryComparison ? 200 : 140];
-  const liveMinimumWidth = liveMinimumWidths.reduce((total, width) => total + width, 40);
+  const liveMinimumWidths = [200, 125, 125, categoryComparison ? 190 : 150, categoryComparison ? 180 : 120];
+  const liveMinimumWidth = liveMinimumWidths.reduce((total, width) => total + width, 80);
   const liveExtraWidth = Math.max(0, tableViewportWidth - liveMinimumWidth);
   const liveColumnWidths = liveMinimumWidths.map((width, index) =>
     width + liveExtraWidth * [0.4, 0.2, 0.2, 0.2, 0][index]
@@ -1651,9 +1670,9 @@ const RegionalApprovalWorkbench: React.FC<{
     {
       title: t('common.correction.plan'),
       width: liveColumnWidths[2],
-      render: (_, tableRow) => tableRow.kind === 'category' ? '—' : <div className={styles.stackCell}>
-        <span>{tableRow.plan.mPlanAmount == null ? '—' : exactMoney(tableRow.plan.mPlanAmount)}</span>
-        <small>{tableRow.plan.mPlanQty ?? '—'}</small>
+      render: (_, tableRow) => <div className={styles.stackCell}>
+        <span>{exactMoney(tableRow.kind === 'category' ? tableRow.category.amount : tableRow.plan.currentAmount)}</span>
+        <small>{formatExactDecimal(tableRow.kind === 'category' ? tableRow.category.quantity : tableRow.plan.currentQty)}</small>
         {tableRow.kind === 'plan' && comparisonFor(tableRow).compareAmount && <small>{t('common.assistantSurface.regionalApproval.comparePlan', {amount:exactMoney(comparisonFor(tableRow).compareAmount!),qty:comparisonFor(tableRow).compareQty})}</small>}
       </div>,
     },
@@ -1938,7 +1957,15 @@ const RegionalApprovalWorkbench: React.FC<{
         visible
         embedded={Boolean(activeLiveAdjustmentRow)}
         row={activeLiveActionRow}
-        approvalStage={liveStageFilter ?? (roleStages.length === 1 ? roleStages[0] : 'customer')}
+        approvalStage={
+          liveStageFilter ??
+          (['customer', 'region', 'province', 'area', 'category'] as const)[
+            (activeLiveActionRow.status === 10
+              ? 5
+              : (salesPlanApprovalNodeForStatus(activeLiveActionRow.status, activeLiveActionRow.planTypeCode) ?? 1)) - 1
+          ] ??
+          'customer'
+        }
         initialAction={liveActionKind}
         t={t}
         client={liveActionClient}

@@ -37,7 +37,7 @@ npm start -- --config gea.config.json --runtime .runtime/workbench-development -
 
 原件来源、许可证及改动范围见 [SOURCE.md](src/workbench-original/SOURCE.md)。旧的三栏仿写组件及占位对话栏已经删除。完整迁移尚未验收：审批保存/通过/退回、消息处理和独立 SKU 推理适配尚未接入；原件中的相应写操作保持禁用。当前 AionUi 源码没有单独的需求提报页面，不能把审批页或未挂载的提报模型当作已迁移页面。
 
-GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`requestTimeoutMs` 用于普通 GEA 查询和模型发现；`mcpRequestTimeoutMs` 单独限制 MCP 网关请求，默认 60 秒，可配置为 1–120 秒，旧配置不填时自动使用默认值；`modelRequestTimeoutMs` 单独限制模型流，总时限默认 120 秒，可配置为 1–600 秒。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
+GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`requestTimeoutMs` 用于 GEA 查询和模型发现；`modelRequestTimeoutMs` 单独限制模型流，总时限默认 120 秒，可配置为 1–600 秒。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
 
 ## 数据与会话
 
@@ -50,8 +50,6 @@ Host 为预览生成 ID，并重新读取用户选择的当前计划详情；浏
 分析 preset 注册 `gea_sales_plan_read` 固定只读业务工具，按用户任务补充查询周期、列表、详情、版本、日志、SKU 与对比。查询结果保留精确数字、时间、环境和分页覆盖范围；工具调用与结果进入标准 Session，不影响浏览器已经核对的预览。它不注册 Shell、通用网络或业务写工具。模型可见输入通过标准 `user/message` 持久化；成功、失败及取消使用已有 Session 事件。取消后若已有部分文本，dsh 可以保留 `interrupted: true` 的助手消息，同时以 `turn/end.reason.kind=aborted` 结束，不能将该消息计为完整回答。
 
 GEA token 仅保存在当前 Host 内存中；重启后需要重新登录。GEA 模式下模型凭证通过当前登录获取，不进入业务快照或 profile patch。本地 `.runtime/` 包含会话、启动认证链接及验证证据，不应发布。
-
-扫码登录页会显示二维码准备、等待扫码与过期状态，并提示在手机飞书中确认登录。二维码过期后可刷新；支持系统“减少动态效果”设置，中文和英文提示保持一致。
 
 ## 当前验证状态
 
@@ -90,8 +88,6 @@ AionUi 代理适配器及示例配置已删除；旧配置启动拒绝的定向�
 
 登录凭证和委托令牌留在 GEA 的内存闭包中，仅通过受控 fetch 为 MCP 请求注入 `params._meta`；不写入业务 `arguments` 或市场配置。退出、环境切换、登录失效和卸载中止旧请求。失败后需解决授权问题并重新登录，不自动重复建会话或重放工具调用。一个登录代际共享一个挂载业务会话。普通登录和已有业务功能不依赖市场插件。本地测试不代表生产 MCP 授权及业务验收。
 
-工具发现时，GEA 从网关返回的 `_meta.sourceCode` 保存工具路由；调用时自动注入 `params._meta.mcpCode`。模型只填写业务参数。路由随当前登录会话失效，未知或冲突路由会明确报错。支持 JSON 与 SSE 工具列表。
-
 The in-process `geaMcp` v1 service lets the market discover authorized MCP tools after login. GEA owns credentials, session preparation and trusted metadata injection; the market owns MCP transport and tools. The default Consumer is the configured analysis Agent. Logout invalidates the capability; no secrets are persisted and failed sessions are not blindly recreated. Production acceptance remains separate.
 
 ### 退回重提的服务身份
@@ -122,6 +118,10 @@ Host 每次发送前使用表单 `client_credentials` 获取短期 Token，不�
 
 新会话默认使用原版 DSH `standard`（标准）预设，不注入 GEA 业务 Persona，也不可调用 GEA MCP。另一个预设显示为「需求预测」（`gea-readonly`），包含业务 Persona、Skill 发现及加载，以及限于此预设的 GEA MCP。输入框的 Agent 预设选择器用于切换；已有消息的会话保持原预设，请新建会话后选择。左侧需求预测入口仍明确选择 `gea-readonly`。启动器在 runtime 的 `native-presets/standard` 创建真实目录，其中的配置文件链接到已安装 DSH 发布包中的原版标准预设；不复制或改写 DSH 的标准配置，只展示标准与需求预测两种模式。
 
+需求预测预设的进度说明和最终回答跟随用户语言；中文问题使用中文。Skill 的本地参考文件通过 `gea_skill_reference_read` 按技能名及正文链接的相对路径只读加载，支持 `offset`/`limit` 分段读取。MCP 资源读取只接收服务返回的 URI，本地 `file://` 链接会被拦截并提示正确工具。
+
+Demand Forecast follows the user's language for both progress and final answers. Its `gea_skill_reference_read` tool reads local references linked by a visible skill, with `offset`/`limit` pagination. MCP resource reads use server-returned URIs; local `file://` links are rejected with guidance to the correct reader.
+
 New conversations default to DSH's unmodified `standard` preset, without the GEA business persona or GEA MCP access. The `gea-readonly` preset is displayed as Demand Forecast (需求预测), with its business persona, skill discovery/loading and scoped GEA MCP. Select the preset in a new conversation; non-empty conversations retain their composition. The launcher links the original standard preset files under runtime `native-presets/standard`, keeping the roster to standard and demand forecast.
 
 ## DMS 模拟回写
@@ -140,22 +140,14 @@ DMS 继续使用 mock。受控 GEA 终审流程可连接既有模拟接收方验
 
 定向验收：`node --test tests/published-runtime.test.mjs tests/workbench-pages.test.mjs`。此次只使用本地测试服务，未对真实审批业务执行写入。
 
+## Electron 桌面安装包
+
+独立桌面壳与构建配置位于 [desktop/](desktop/README.md)，生成 macOS Apple Silicon DMG 和 Windows x64 NSIS EXE。桌面包内置 Electron、对应平台的 Node.js、已安装依赖及全部插件归档，使用官方 DSH，首次启动通过设置页填写 GEA 连接信息。当前发行构建未配置签名或公证，Windows 仍需实机验收；插件兼容性与启用范围见桌面说明。
+
 ## 公共工作台依赖
 
 公共工作台已迁至独立私有仓库 https://github.com/CleverC2200/dsh-agent-workbench 。本仓库通过固定 Git 提交依赖其构建产物，不再维护或编译工作台源码。安装开发依赖需要该仓库的读取权限；桌面分发仍携带已安装产物，最终用户不需要 Git 凭据。工作台的控制器测试在独立仓库维护，GEA 保留业务和集成测试。
 
-## 标准 bundle
+## V1.6 反馈与 Web 验收
 
-GEA 发行包声明 `dsh.bundle.patch`，在官方 base/web 后挂载 GEA 和固定版本的独立工作台。连接配置通过 profile overlay 提供，不放入 bundle。`npm start -- --bundle --config <本地配置> --runtime <独立数据目录> --port 0` 验证标准 bundle 加载；省略 `--bundle` 兼容既有启动方式。`npm run test:package` 从空目录安装发行包并验证登录、业务页面、原生对话及重启后的历史。
-
-缺失工作台时报 `WORKBENCH_MISSING`；非 0.1.x 公共接口版本时报 `WORKBENCH_INCOMPATIBLE`。工作台控制器测试已迁至独立仓库，GEA 保留跨插件浏览器集成测试。发行包由明确文件清单校验，拒绝本机路径和凭据。
-
-账号菜单显示 GEA 登录接口 `userInfo.avatar` 提供的头像（飞书同步头像）；缺失或加载失败时回退姓名首字。旧版保存的登录未包含头像，需要退出后重新扫码。
-
-## 审批查询诊断
-
-流程配置加载失败时，审批页明确显示流程配置错误，并保留脱敏的请求阶段、HTTP 状态、请求编号和跟踪编号，供技术支持定位。访问令牌、委托令牌和未定义的上游响应字段不会返回浏览器。
-
-需求预测预设的进度说明和最终回答跟随用户语言；中文问题使用中文。Skill 的本地参考文件通过 `gea_skill_reference_read` 按技能名及正文链接的相对路径只读加载，支持 `offset`/`limit` 分段读取。MCP 资源读取只接收服务返回的 URI，本地 `file://` 链接会被拦截并提示正确工具。
-
-Demand Forecast follows the user's language for both progress and final answers. Its `gea_skill_reference_read` tool reads local references linked by a visible skill, with `offset`/`limit` pagination. MCP resource reads use server-returned URIs; local `file://` links are rejected with guidance to the correct reader.
+销售计划审批支持独立草稿自动暂存、右侧调整明细抽屉、行内 SKU 展开，以及真实模型模式下的页面自动建议。月初审批区保留通过与退回。草稿存放在当前 Web 服务，正式审批前不写 GEA 计划。实现范围、运行命令和待后端确认项见 [V1.6 Web 验收](docs/feedback-v1.6-web-acceptance.md)。

@@ -1,10 +1,8 @@
-import { avatarUrl } from "./avatar.ts";
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { salesPlanDraftMatches, salesPlanDraftSnapshot, type SalesPlanLocalDraft } from './workbench-original/workbenches/regionalApproval/models/salesPlanLocalDraftModel.ts';
-import { correctionAccess, correctionAdjustments, correctionDecimal } from './workbench-original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';
 import { salesPlanAccessForRow } from './workbench-original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';
-import { salesPlanWorkflow } from './workbench-original/salesPlanWorkflow.ts';
+import { correctionAccess, correctionAdjustments, correctionDecimal } from './workbench-original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';
 import { validateSalesPlanActionInput } from './workbench-original/workbenches/regionalApproval/models/salesPlanActionModel.ts';
 import type { GeaSalesPlanActionRequest } from './workbench-original/contracts.ts';
 /** Process-local GEA identity, query ownership, and immutable analysis inputs. */
@@ -34,7 +32,6 @@ export interface Deployment {
   pageSize: number;
   periodPageSize: number;
   requestTimeoutMs: number;
-  mcpRequestTimeoutMs?: number;
   modelRequestTimeoutMs: number;
   maxSnapshotBytes: number;
   runtimeDir: string;
@@ -284,7 +281,7 @@ export class Business {
     }
   }
 
-  private auth?: { token: string; tenantId: string; name: string; id: string; username: string; avatar?: string; permissionCodes?: string[] };
+  private auth?: { token: string; tenantId: string; name: string; id: string; username: string; avatarUrl: string };
   private qr?: { id: string; loginId: string; createdAt: number };
   private epoch = new AbortController();
   private queryEpoch = new AbortController();
@@ -336,21 +333,6 @@ export class Business {
     this.environments = resolved.environments;
   }
 
-  /** Desktop owner only: credentials cross its private loopback channel, never a browser RPC. */
-  desktopLoginSnapshot(): unknown {
-    return this.auth ? {schema:1,environment:this.environment,base:this.base,auth:{...this.auth}} : null;
-  }
-  restoreDesktopLogin(value: unknown): void {
-    const saved=object(value);
-    if(saved.schema!==1||typeof saved.environment!=="string"||this.environments[saved.environment]!==saved.base)throw Error("DESKTOP_LOGIN_SCOPE_MISMATCH");
-    const auth=object(saved.auth);
-    if(typeof auth.token!=="string"||!auth.token||auth.token.length>16384||typeof auth.tenantId!=="string"||!/^\d+$/.test(auth.tenantId))throw Error("DESKTOP_LOGIN_INVALID");
-    this.environment=saved.environment as "production"|"test";
-    this.selectedBase=this.environments[saved.environment];
-    this.auth={token:auth.token,tenantId:auth.tenantId,name:text(auth.name),id:text(auth.id),username:text(auth.username),avatar:avatarUrl(auth.avatar,this.base)};
-    this.notifyIdentity();
-  }
-
   /** Release outstanding requests and erase process-local authentication. */
   dispose(): void {
     this.clearLogin();
@@ -387,55 +369,6 @@ export class Business {
     if (this.auth) this.clearLogin(true);
   }
 
-  private readonly avatarRefreshes = new WeakMap<object, Promise<void>>();
-
-  /** Older desktop login snapshots may predate avatar support. */
-  async refreshMissingAvatar(signal: AbortSignal): Promise<void> {
-    const auth = this.auth;
-    if (!auth || auth.avatar) return;
-    const pending = this.avatarRefreshes.get(auth);
-    if (pending) return pending;
-    const refresh = (async () => {
-      try {
-        const identity = object(await this.get("/sys/user/getUserInfo", auth, AbortSignal.any([signal, this.epoch.signal])));
-        const user = object(identity.userInfo);
-        if (this.auth !== auth || String(user.id) !== auth.id) return;
-        const avatar = avatarUrl(user.avatar, this.base);
-        if (avatar) { auth.avatar = avatar; this.notifyIdentity(); }
-      } catch {
-        this.avatarRefreshes.delete(auth);
-        // A profile/image failure must not block the account controls.
-      }
-    })();
-    this.avatarRefreshes.set(auth, refresh);
-    return refresh;
-  }
-
-  private readonly permissionRefreshes = new WeakMap<object, Promise<void>>();
-
-  /** Read only this user's grants. allAuth is the permission catalogue, not a grant. */
-  async refreshPermissions(signal: AbortSignal): Promise<void> {
-    const auth = this.auth;
-    if (!auth || auth.permissionCodes !== undefined) return;
-    const pending = this.permissionRefreshes.get(auth);
-    if (pending) return pending;
-    const refresh = (async () => {
-      try {
-        const result = object(await this.get('/sys/permission/getPermCode', auth,
-          AbortSignal.any([signal, this.epoch.signal])));
-        if (!Array.isArray(result.codeList) || result.codeList.some(code => typeof code !== 'string'))
-          throw new Error('GEA_INVALID_PERMISSION_CODES');
-        if (this.auth === auth) auth.permissionCodes = [...new Set(result.codeList as string[])];
-      } catch (error) {
-        this.permissionRefreshes.delete(auth);
-        if (signal.aborted || !this.auth) throw error;
-        // Older servers retain server-scoped browsing and exact task/context authorization.
-      }
-    })();
-    this.permissionRefreshes.set(auth, refresh);
-    return refresh;
-  }
-
   /** Public status never contains GEA credentials. */
   status() {
     const models = this.modelRoutes.get(this.config.analysisAgentCode)?.models;
@@ -449,9 +382,8 @@ export class Business {
         : this.loginExpired
           ? "expired"
           : "signed-out",
-      permissionCodes: this.auth?.permissionCodes,
       user: this.auth
-        ? { name: this.auth.name, tenantId: this.auth.tenantId, id: this.auth.id, username: this.auth.username, avatar: this.auth.avatar }
+        ? { name: this.auth.name, tenantId: this.auth.tenantId, id: this.auth.id, username: this.auth.username, avatarUrl: this.auth.avatarUrl }
         : null,
       source: this.base,
       provider:
@@ -668,13 +600,13 @@ export class Business {
 
   private correctionRequests = new Map<string, { fingerprint:string; validated:boolean; flight?:Promise<unknown>; receipt?:unknown }>();
 
-  /** An approval retry replays the same authorized intent, even when its first response was lost. */
+  /** A correction retry replays the same authorized intent, even when its first response was lost. */
   async salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     this.authenticated();
-    if(object(payload.request).adjustmentMode == null && object(payload.request).approvalRole == null)return this.executeSalesPlanAction(payload,caller);
+    if(object(payload.request).adjustmentMode == null)return this.executeSalesPlanAction(payload,caller);
     const key=text(payload.idempotencyKey), fingerprint=JSON.stringify(payload);
     let entry=this.correctionRequests.get(key);
-    if(entry && entry.fingerprint !== fingerprint)throw new GeaResponseError(409,{message:'幂等键已绑定另一审批请求'});
+    if(entry && entry.fingerprint !== fingerprint)throw new GeaResponseError(409,{message:'幂等键已绑定另一纠偏请求'});
     if(entry?.receipt)return entry.receipt;
     if(entry?.flight)return entry.flight;
     if(!entry){entry={fingerprint,validated:false};this.correctionRequests.set(key,entry);}
@@ -689,42 +621,18 @@ export class Business {
     keys(payload, ["planId", "versionId", "request", "idempotencyKey", "requestId"]);
     const versionId = text(payload.versionId);
     const request = object(payload.request);
-    keys(request, ["expectedSnapshot", "action", "expectedStatus", "remark", "adjustments", "adjustmentMode", "approvalRole", "approvalPolicy"]);
+    keys(request, ["expectedSnapshot", "action", "expectedStatus", "remark", "adjustments", "adjustmentMode"]);
     if (!["SAVE", "APPROVE", "REJECT"].includes(text(request.action))) throw new Error("INVALID_ACTION");
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
-    if (![1,2,3,4,6,7,8,9].includes(request.expectedStatus as number))
-      throw new GeaResponseError(400, {message:'未提交、已完成或无效状态不允许写入'});
-    if (request.approvalRole == null && request.adjustmentMode == null && request.action !== 'SAVE')
-      throw new GeaResponseError(400,{message:'请明确本次审批角色'});
-    if (request.approvalPolicy != null && (request.approvalPolicy !== 'role-visible-v1' || !request.approvalRole)) throw new Error('INVALID_PAYLOAD');
-    if (request.approvalRole != null && !validatedCorrection) {
-      if (!['region','province','area','category'].includes(text(request.approvalRole))) throw new Error('INVALID_PAYLOAD');
-      const planId = text(payload.planId);
-      const detail = await this.workbenchQuery({kind:'detail',query:{planId}},signal) as GeaSalesPlanDetail;
-      await this.refreshPermissions(signal);
-      const row = {planId,versionId,status:request.expectedStatus as number,planTypeCode:detail.currentVersion.planTypeCode};
-      const role = request.approvalRole as NonNullable<GeaSalesPlanActionRequest['approvalRole']>;
-      const workflowRows = await this.workflowConfig({}, signal);
-      const access = salesPlanAccessForRow(row, detail, auth.permissionCodes, role, workflowRows);
-      if (!access?.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']))
-        throw new GeaResponseError(403,{message:'当前角色不具备该版本的操作权限'});
-      if (request.expectedSnapshot !== access.snapshotHash)
-        throw new GeaResponseError(409,{message:'审批依据已变化，请刷新后重试'});
-      if (request.approvalPolicy === 'role-visible-v1' ? !access.roleContractSupported :
-          access.roleContractSupported || salesPlanWorkflow(row.planTypeCode, workflowRows).actor(row.status) !== role)
-        throw new GeaResponseError(409,{message:'GEA 尚未支持本次角色审批契约，请升级服务端后重试'});
-      validateSalesPlanActionInput({planId,versionId,planTypeCode:row.planTypeCode,request:request as GeaSalesPlanActionRequest}, workflowRows);
-      if (this.auth !== auth) throw new Error('STALE_LOGIN');
-    }
     if (request.adjustmentMode != null && !validatedCorrection) {
       if (request.adjustmentMode !== 'ABSOLUTE_NET') throw new Error('INVALID_PAYLOAD');
       const planId=text(payload.planId);
       const detail=await this.workbenchQuery({kind:'detail',query:{planId}},signal) as GeaSalesPlanDetail;
       const workflowRows=await this.workflowConfig({},signal);
-      const access=correctionAccess(detail,workflowRows,request.approvalRole as GeaSalesPlanActionRequest['approvalRole']);
+      const access=correctionAccess(detail,workflowRows);
       if (!access || !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']) || !detail.currentVersion.submitter || detail.currentVersion.submitter === auth.id)
-        throw new GeaResponseError(403,{message:'纠偏契约、月初终审或角色权限未获确认'});
+        throw new GeaResponseError(403,{message:'纠偏契约、月初终审、审批窗口或节点权限未获确认'});
       if (detail.currentVersion.id !== versionId || access.status !== request.expectedStatus || access.snapshotHash !== request.expectedSnapshot)
         throw new GeaResponseError(409,{message:'纠偏版本或快照已变化，请刷新'});
       const typed=request as GeaSalesPlanActionRequest;
@@ -732,12 +640,12 @@ export class Business {
       if (typed.action !== 'REJECT') {
         const edits=Object.fromEntries((typed.adjustments??[]).map(x=>[x.skuCode,x.adjustQty]));
         if (Object.keys(edits).some(code=>!detail.skus.some(sku=>sku.skuCode===code))) throw new Error('INVALID_PAYLOAD');
-        const expected=correctionAdjustments(detail,edits,workflowRows,request.approvalRole as GeaSalesPlanActionRequest['approvalRole']);
+        const expected=correctionAdjustments(detail,edits,workflowRows);
         if (!isDeepStrictEqual(expected,typed.adjustments)) throw new GeaResponseError(400,{message:'纠偏必须提交完整的本节点绝对调整决定'});
       }
       if (this.auth !== auth) throw new Error('STALE_LOGIN');
       signal.throwIfAborted();
-    } else if (request.adjustmentMode == null && request.action === "SAVE" && request.approvalRole == null) {
+    } else if (request.adjustmentMode == null && request.action === "SAVE") {
       if (request.expectedStatus === 5) throw new GeaResponseError(400, { message: "状态 5 不允许保存调整" });
       const planId = text(payload.planId);
       const detail = object(await this.workbenchQuery({ kind: "detail", query: { planId } }, signal));
@@ -1019,10 +927,15 @@ export class Business {
       throw new Error("GEA_IDENTITY_INCOMPLETE");
     const name = text(user.realname || user.username);
     if (epoch.aborted || this.qr !== qr) throw new Error("STALE_LOGIN");
-    this.auth = { token, tenantId, name, id: text(user.id), username: text(user.username || user.realname), avatar: avatarUrl(user.avatar, this.base) };
+    let avatarUrl = "";
+    if (typeof user.avatar === "string" && user.avatar.trim()) {
+      try {
+        const url = new URL(user.avatar);
+        if (["https:", "http:"].includes(url.protocol) && !url.username && !url.password) avatarUrl = url.href;
+      } catch { /* Missing or invalid avatars must not prevent sign-in. */ }
+    }
+    this.auth = { token, tenantId, name, id: text(user.id), username: text(user.username || user.realname), avatarUrl };
     this.qr = undefined;
-    await this.refreshPermissions(combined);
-    combined.throwIfAborted();
     this.notifyIdentity();
     return { status: "authenticated", ...this.status() };
   }
@@ -1031,7 +944,7 @@ export class Business {
   async openMcpConnection(consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) {
     const auth = this.authenticated();
     const identity = this.epoch.signal;
-    return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.mcpRequestTimeoutMs ?? 60000);
+    return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.requestTimeoutMs);
   }
 
   /** Fetch one explicitly paged query, invalidating all previous query inputs immediately. */
@@ -1427,13 +1340,7 @@ export class Business {
       compare: ["planId", "fromVersionId", "toVersionId"],
     };
     if (!Object.hasOwn(allowed, kind)) throw new Error("INVALID_QUERY");
-    const unsupported = Object.keys(query).filter(key => !allowed[kind].includes(key));
-    if (unsupported.length) {
-      const guidance = kind === "list"
-        ? " For a month, call kind=periods with periodMonth first, then use the returned periodId with kind=list."
-        : "";
-      throw new Error(`INVALID_QUERY: kind=${kind} accepts only ${allowed[kind].join(", ")}.${guidance}`);
-    }
+    keys(query, allowed[kind]);
     if (query.orderType != null && !["M", "Z"].includes(String(query.orderType))) throw new Error("INVALID_QUERY");
     const id = (key: string) => encodeURIComponent(text(query[key]));
     const paths: Record<string, () => string> = {
@@ -1556,8 +1463,7 @@ export class Business {
         throw new Error("GEA_IDENTITY_MISMATCH");
       let workflowApproval;
       try {
-        if (!detail.actionContext && currentVersion.effective === true &&
-            [1, 2, 3, 4, 7, 8, 9].includes(Number(currentVersion.status)))
+        if (!detail.actionContext && Number(currentVersion.status) >= 1 && Number(currentVersion.status) <= 4)
           workflowApproval = await this.workflowApproval(versionId, signal);
       } catch (error) {
         if (signal.aborted || !this.auth) throw error;

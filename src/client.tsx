@@ -118,10 +118,10 @@ export function apply(ctx: Context): void {
   }
   function useIdentity() {
     const [identity, setIdentity] = useState({ name: "", avatarUrl: "" });
-    const updateIdentity = (authenticated: boolean, user: { name?: unknown; avatar?: unknown } | null | undefined) => {
+    const updateIdentity = (authenticated: boolean, user: { name?: unknown; avatarUrl?: unknown } | null | undefined) => {
       setIdentity({
         name: authenticated && typeof user?.name === "string" ? user.name : "",
-        avatarUrl: authenticated && typeof user?.avatar === "string" ? user.avatar : "",
+        avatarUrl: authenticated && typeof user?.avatarUrl === "string" ? user.avatarUrl : "",
       });
     };
     useEffect(() => {
