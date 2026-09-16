@@ -3,6 +3,7 @@ import { RegionalApprovalResubmitDialog } from './original/workbenches/regionalA
 import type { GeaSalesPlanPeriod } from './original/contracts.ts';
 import { createWorkflowLoader } from "./workflow-loader.ts";
 import "@arco-design/web-react/dist/css/arco.css";
+import { Modal } from "@arco-design/web-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import i18next from "i18next";
 import {
@@ -255,7 +256,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     return () => window.removeEventListener("message", onMessage);
   }, []);
   const [autoContext, setAutoContext] = useState<string>();
-  const [autoState, setAutoState] = useState('');
+  const [autoFailure, setAutoFailure] = useState<string>();
   const [autoRetry, setAutoRetry] = useState(0);
   const request = useRef<AbortController>();
   const selectionRef = useRef("");
@@ -441,16 +442,16 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     const cacheKey = JSON.stringify(['gea-auto-advice',status.runId,status.user?.id,autoContext]);
     const open = (sessionId: string) => window.parent.postMessage({type:'gea:open-session',sessionId},window.location.origin);
     const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {open(cached); setAutoState(''); return;}
-    setAutoState(language === 'zh-CN' ? '正在生成当前页面审批建议…' : 'Generating advice for this page…');
+    if (cached) {open(cached); setAutoFailure(undefined); return;}
+    setAutoFailure(undefined);
     const timer = setTimeout(() => {
       void rpc<Preview>('workbench/prepare',{planIds:context.planIds,scope:'summary'},controller.signal)
         .then(preview => rpc<{sessionId:string}>('submit',{previewId:preview.previewId},controller.signal))
         .then(result => {
           if (controller.signal.aborted) return;
-          sessionStorage.setItem(cacheKey,result.sessionId); open(result.sessionId); setAutoState('');
+          sessionStorage.setItem(cacheKey,result.sessionId); open(result.sessionId); setAutoFailure(undefined);
         }).catch(error => {
-          if (!controller.signal.aborted) setAutoState((language === 'zh-CN' ? '建议生成失败：' : 'Advice failed: ') +
+          if (!controller.signal.aborted) setAutoFailure(
             (language === 'zh-CN'
               ? error instanceof BackendHttpError && /401|LOGIN_REQUIRED/.test(error.code) ? '登录已失效，请重新登录'
                 : error instanceof BackendHttpError && /429|RATE_LIMIT/.test(error.code) ? '请求过于频繁，请稍后重试'
@@ -542,9 +543,17 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     );
   return (
     <div className="gea-workbench-document">
-      {autoState && <div role='status' className='gea-auto-advice'>{autoState}
-        {autoState.includes('失败') || autoState.includes('failed') ? <button onClick={()=>setAutoRetry(n=>n+1)}>{language === 'zh-CN' ? '重试' : 'Retry'}</button> : null}
-      </div>}
+      <Modal
+        visible={Boolean(autoFailure)}
+        title={language === 'zh-CN' ? '建议生成失败' : 'Advice generation failed'}
+        okText={language === 'zh-CN' ? '重试' : 'Retry'}
+        cancelText={language === 'zh-CN' ? '暂不重试' : 'Not now'}
+        unmountOnExit
+        onOk={() => { setAutoFailure(undefined); setAutoRetry((value) => value + 1); }}
+        onCancel={() => setAutoFailure(undefined)}
+      >
+        <p>{autoFailure}</p>
+      </Modal>
       <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
         <div className="gea-original-workbench">
           <RegionalApprovalWorkbench

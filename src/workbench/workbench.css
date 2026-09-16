@@ -257,6 +257,3 @@
     padding-top: 24px;
   }
 }
-
-.gea-auto-advice { display:flex; flex:0 0 auto; align-items:center; justify-content:space-between; gap:12px; padding:8px 64px 8px 16px; font:13px/1.5 system-ui,sans-serif; color:#44546a; background:#eef5ff; border-bottom:1px solid #dce8f8; }
-.gea-auto-advice button { flex-shrink:0; padding:4px 12px; border:1px solid #b6c8e4; border-radius:4px; color:#165dff; background:#fff; cursor:pointer; font:inherit; }
