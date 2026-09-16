@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { parse } from "yaml";
 import { deploymentPatch } from "../scripts/deployment.mjs";
 const require = createRequire(import.meta.url);
 test("the runtime resolves pinned published packages and replaces layout by ordinary patch rows", async () => {
@@ -32,6 +33,14 @@ test("the runtime resolves pinned published packages and replaces layout by ordi
       row.insert?.some((entry) => entry.id === "workbench-example"),
     ),
     false,
+  );
+});
+
+test("GEA bundle keeps the application chooser but hides the default workspace launcher", async () => {
+  const patch = parse(await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8"));
+  assert.deepEqual(
+    patch.find((row) => row.id === "ui-open-in-app").config,
+    { showPrimaryAction: false },
   );
 });
 
