@@ -31,9 +31,6 @@
 .gea-user-avatar {
   flex-shrink: 0;
 }
-.gea-shell-active-icon {
-  display: none;
-}
 .gea-shell-brand {
   display: flex;
   align-items: center;
@@ -82,7 +79,9 @@
 .gea-shell-navigation button.is-active {
   background: #f5e4e7;
   color: #ed3d43;
-  padding-left: 56px;
+}
+.gea-shell-navigation-content > .gea-shell-child {
+  padding-left: 40px;
 }
 .gea-shell-navigation button:focus-visible {
   outline: 2px solid #ef4c50;
@@ -134,14 +133,10 @@
   .gea-shell-group {
     padding: 12px 0 3px;
   }
-  .gea-shell-navigation button,
-  .gea-shell-navigation button.is-active {
+  .gea-shell-navigation button {
     justify-content: center;
     gap: 0;
     padding: 7px 0;
-  }
-  .gea-shell-active-icon {
-    display: flex;
   }
 }
 
@@ -271,12 +266,16 @@
 .gea-shell-group { min-width: 0; max-width: 100%; white-space: nowrap; }
 .gea-shell-navigation button > span,
 .gea-shell-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gea-shell-navigation button.is-active { padding-left: 12px; }
 @container gea-sidebar (max-width: 100px) {
   .gea-shell-navigation-content > button,
   .gea-shell-navigation-content > button.is-active { padding-inline: 0; width: 100%; }
   .gea-shell-navigation-content .gea-shell-label { display: none; }
-  .gea-shell-navigation-content .gea-shell-active-icon { display: flex; overflow: visible; }
+}
+
+/* The collapsed rail is a flat launcher: one menu glyph, without elevation. */
+[data-sidebar-collapsed] > :has(.gea-shell-navigation),
+[data-sidebar-collapsed] .gea-shell-navigation {
+  box-shadow: none !important;
 }
 
 /* GEA's approval table needs more room than a chat-only center column on tablets. */

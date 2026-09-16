@@ -181,8 +181,30 @@ export function apply(ctx: Context): void {
       {failed && <span role="alert">{t("logoutFailed")}</span>}
     </div>;
   }
-  function Navigation({ usePanelInfo }: PropsRuntime<"sidebar.workspaces">) {
+  function Navigation({
+    usePanelInfo,
+    wide,
+    expandSidebar,
+  }: PropsRuntime<"sidebar.workspaces">) {
     const activePanel = usePanelInfo((info) => info.activePanelId);
+    if (!wide) {
+      return (
+        <nav className="gea-shell-navigation" aria-label={t("businessNavigation")}>
+          <style>{shellCss}</style>
+          <div className="gea-shell-navigation-content">
+            <button
+              type="button"
+              className="gea-shell-menu-trigger"
+              onClick={expandSidebar}
+              title={t("openBusinessNavigation")}
+              aria-label={t("openBusinessNavigation")}
+            >
+              <MenuIcon />
+            </button>
+          </div>
+        </nav>
+      );
+    }
     return (
       <nav
         className="gea-shell-navigation"
@@ -197,11 +219,9 @@ export function apply(ctx: Context): void {
             aria-label={t("messageInbox")}
             className={activePanel === INBOX ? "is-active" : undefined}
           >
-            <NavIcon kind="inbox" />
             <span className="gea-shell-label">{t("messageInbox")}</span>
           </button>
           <div className="gea-shell-group" title={t("planManagement")}>
-            <NavIcon kind="plan" />
             <strong className="gea-shell-label">{t("planManagement")}</strong>
           </div>
           <button
@@ -209,9 +229,8 @@ export function apply(ctx: Context): void {
             onClick={() => ctx.layout.selectPanel(PANEL)}
             title={t("demandForecastAgent")}
             aria-label={t("demandForecastAgent")}
-            className={activePanel === PANEL ? "is-active" : undefined}
+            className={`gea-shell-child${activePanel === PANEL ? " is-active" : ""}`}
           >
-            <span className="gea-shell-active-icon"><NavIcon kind="forecast" /></span>
             <span className="gea-shell-label">{t("demandForecastAgent")}</span>
           </button>
         </div>
@@ -395,11 +414,11 @@ export function apply(ctx: Context): void {
   );
 }
 
-function NavIcon({ kind }: { kind: "inbox" | "plan" | "forecast" }) {
+function MenuIcon() {
   return (
     <svg
       aria-hidden="true"
-      data-nav-icon={kind}
+      data-nav-icon="menu"
       width="16"
       height="16"
       viewBox="0 0 24 24"
@@ -409,23 +428,10 @@ function NavIcon({ kind }: { kind: "inbox" | "plan" | "forecast" }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      {kind === "inbox" ? (
-        <>
-          <path d="M6 17V9a6 6 0 0 1 12 0v8l2 2H4l2-2Z" />
-          <path d="M10 22h4" />
-        </>
-      ) : kind === "plan" ? (
-        <>
-          <ellipse cx="12" cy="5" rx="8" ry="3" />
-          <path d="M4 5v14c0 4 16 4 16 0V5M4 10c0 4 16 4 16 0M4 15c0 4 16 4 16 0" />
-        </>
-      ) : (
-        <>
-          <path d="M4 5v14h16" />
-          <path d="m7 15 4-4 3 2 5-6" />
-          <path d="M16 7h3v3" />
-        </>
-      )}
+      <circle cx="5" cy="6" r="1" />
+      <circle cx="5" cy="12" r="1" />
+      <circle cx="5" cy="18" r="1" />
+      <path d="M9 6h11M9 12h11M9 18h11" />
     </svg>
   );
 }
