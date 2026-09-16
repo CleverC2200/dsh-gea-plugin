@@ -8,14 +8,14 @@ const { outputFiles } = await build({
   stdin: {
     contents: `import React from 'react';
       import { createRoot } from 'react-dom/client';
-      import { Inbox } from './src/inbox.tsx';
-      import { zh } from './src/locales.ts';
+      import { Inbox } from './src/client/inbox.tsx';
+      import { zh } from './src/client/locales.ts';
       createRoot(document.getElementById('root')).render(<Inbox t={key => zh[key]} />);`,
     resolveDir: process.cwd(), loader: 'tsx',
   },
   bundle: true, write: false, platform: 'browser', format: 'iife',
 });
-const css = await readFile(new URL('../src/shell.css', import.meta.url), 'utf8');
+const css = await readFile(new URL('../src/client/shell.css', import.meta.url), 'utf8');
 const item = { id: 'notice-1', title: '消息一', body: '详情正文', state: 'unread', kind: 'approval' };
 
 test('opening and closing inbox details preserves the list without a blank reload', async t => {

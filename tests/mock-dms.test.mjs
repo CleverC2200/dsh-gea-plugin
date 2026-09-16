@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 const { outputFiles } = await build({
-  entryPoints: ["src/mock-dms.ts"],
+  entryPoints: ["src/mocks/mock-dms.ts"],
   bundle: true,
   write: false,
   platform: "node",

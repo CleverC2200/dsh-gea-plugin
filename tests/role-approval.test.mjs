@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 const {outputFiles} = await build({stdin:{contents:[
-  "export * from './src/workbench-original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';",
-  "export * from './src/workbench-original/workbenches/regionalApproval/models/salesPlanActionModel.ts';",
-  "export * from './src/workbench-original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';",
+  "export * from './src/workbench/original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';",
+  "export * from './src/workbench/original/workbenches/regionalApproval/models/salesPlanActionModel.ts';",
+  "export * from './src/workbench/original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';",
 ].join('\n'),resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm'});
 const m = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].contents).toString('base64'));
 const hash='a'.repeat(64);

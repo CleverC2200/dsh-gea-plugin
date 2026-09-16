@@ -6,9 +6,9 @@ import { build } from 'esbuild';
 const { outputFiles } = await build({
   stdin: {
     contents: [
-      "export * from './src/workbench-original/workbenches/regionalApproval/models/salesPlanExportModel.ts';",
-      "export * from './src/workbench-original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';",
-      "export * from './src/workbench-original/bridge.ts';",
+      "export * from './src/workbench/original/workbenches/regionalApproval/models/salesPlanExportModel.ts';",
+      "export * from './src/workbench/original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';",
+      "export * from './src/workbench/original/bridge.ts';",
     ].join('\n'),
     resolveDir: process.cwd(),
   },

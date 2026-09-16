@@ -1,4 +1,4 @@
-/** Read only references published by skills visible to the demand forecast preset. */
+/** 只读取需求预测预设可见的 Skill 参考资料。 */
 import type { Context } from "@deepseek-ai/cordis";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { resolve } from "node:path";
@@ -7,7 +7,7 @@ import type {} from "@deepseek-ai/dsh-fs";
 
 export const inject = ["tools", "skills", "fs"];
 
-/** Mounted only by gea-readonly; the standard preset keeps its own file tools. */
+/** 仅由 gea-readonly 挂载；标准预设继续使用自身的文件工具。 */
 export function apply(host: Context): void {
   host.effect(() =>
     host.tools.register(

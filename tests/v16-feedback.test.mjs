@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-const {outputFiles} = await build({entryPoints:['src/workbench-original/workbenches/regionalApproval/regionalApprovalQueryModel.ts'],bundle:true,write:false,platform:'node',format:'esm'});
+const {outputFiles} = await build({entryPoints:['src/workbench/original/workbenches/regionalApproval/regionalApprovalQueryModel.ts'],bundle:true,write:false,platform:'node',format:'esm'});
 const m = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].contents).toString('base64'));
 test('V1.6 organization totals include targets and derived monthly plans from every child',()=>{
  const row={planId:'p',versionId:'v',orgCode:'org',dealerCode:'d',status:1,skuCount:1,mPlanQty:'1.5',mPlanAmount:'10.25',currentQty:'2',currentAmount:'20',targetQty:'4',targetAmount:'40'};

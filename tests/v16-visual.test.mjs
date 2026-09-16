@@ -115,12 +115,17 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  await page.getByRole('button',{name:/收起侧边栏|Collapse sidebar/}).click();
  await shot('10-sidebar-collapsed');
  await expect(page.locator('.gea-shell-navigation .gea-shell-label').first()).toBeHidden();
- const planIcon=page.locator('.gea-shell-navigation [data-nav-icon="plan"]');
- const forecastIcon=page.locator('.gea-shell-navigation [data-nav-icon="forecast"]');
- await expect(planIcon).toBeVisible();
- await expect(forecastIcon).toBeVisible();
- assert.notEqual(await planIcon.innerHTML(),await forecastIcon.innerHTML());
- await page.getByRole('button',{name:/打开侧边栏|Expand sidebar/}).click();
+ const collapsedMenu=page.getByRole('button',{name:'展开业务菜单',exact:true});
+ await expect(collapsedMenu).toBeVisible();
+ await expect(page.locator('.gea-shell-navigation [data-nav-icon]')).toHaveCount(1);
+ await expect(collapsedMenu.locator('[data-nav-icon="menu"]')).toBeVisible();
+ assert.equal(await collapsedMenu.evaluate(el=>{
+  const frame=el.closest('[data-sidebar-collapsed]');
+  return frame?.firstElementChild ? getComputedStyle(frame.firstElementChild).boxShadow : null;
+ }),'none');
+ await collapsedMenu.click();
+ await expect(page.getByRole('button',{name:/收起侧边栏|Collapse sidebar/})).toBeVisible();
+ await expect(page.locator('.gea-shell-navigation [data-nav-icon]')).toHaveCount(0);
  await shot('10-sidebar-restored');
  await page.getByRole('button',{name:/右侧边栏/}).click(); await shot('10-right-toggle-0');
  await page.route('**/api/gea-proof/model/advice',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:false,error:{code:'RATE_LIMITED',message:'Rate limited'}})}));

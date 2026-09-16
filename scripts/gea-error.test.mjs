@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { geaResponseError } from '../src/gea-error.js';
+import { geaResponseError } from '../src/shared/gea-error.js';
 
 test('403 preserves upstream reason and correlation fields without returning arbitrary body data', async () => {
   const response = Response.json({ message: '没有销售计划查询权限', errorCode: 'PLAN_FORBIDDEN', category: 'AUTHORIZATION', requestId: 'request-123', result: { private: 'must not return' } }, { status: 403 });

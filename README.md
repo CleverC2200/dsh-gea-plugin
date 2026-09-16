@@ -20,7 +20,7 @@ npm start -- --config gea.config.json --runtime .runtime/workbench-development -
 
 使用启动日志中的带认证参数链接进入全屏登录页，默认自动加载正式环境的二维码，可切换「正式」或「测试」后直接飞书扫码登录；切换环境会自动换码，「刷新二维码」用于重试或更新过期二维码。页面不显示或要求输入服务器地址。登录后进入 GEA 导航、原销售计划审批工作台、原生 DSH 会话的三栏界面。选择组织行与分析范围，点击「预览发送范围」，核对 Host 重新获取的当前计划数据，再确认送入右侧原生 DSH 会话。左栏「DSH 对话」切换到原生对话与工作区侧栏；原生侧栏「GEA 业务版」返回工作台，往返保留当前 Session。空会话欢迎图标居于右栏内容区中央，输入框位于底部。选中 Session 不会关闭业务页面，后续输入、流式回答、取消和历史记录仍由 DSH 负责。
 
-部署配置的 `geaEnvironments.production` 和 `geaEnvironments.test` 分别保存正式、测试 HTTPS 地址，`environment` 指定初始选项（默认 `production`）。旧单地址配置只提供对应的一个环境。工作台「切换环境 / 重新登录」返回登录页；切换会作废旧凭证、二维码、预览和进行中的模型请求，并清空当前会话选择。登录页 GEA 图标来自 AionUi 的 `packages/desktop/src/renderer/assets/logos/brand/app.png`，沿用[原工作台来源与许可证](src/workbench-original/SOURCE.md)。
+部署配置的 `geaEnvironments.production` 和 `geaEnvironments.test` 分别保存正式、测试 HTTPS 地址，`environment` 指定初始选项（默认 `production`）。旧单地址配置只提供对应的一个环境。工作台「切换环境 / 重新登录」返回登录页；切换会作废旧凭证、二维码、预览和进行中的模型请求，并清空当前会话选择。登录页 GEA 图标来自 AionUi 的 `packages/desktop/src/renderer/assets/logos/brand/app.png`，沿用[原工作台来源与许可证](src/workbench/original/SOURCE.md)。
 
 `gea.config.example.json` 使用本地回执模式，只验证数据传递；真实模型使用 `gea.direct.example.json` 中 `source: "gea"`。插件通过当前 GEA 登录获取个人模型凭证、发现模型并直接调用，不依赖 AionUi 进程。`source: "aionui"` 已移除，旧配置会在启动前报 `AIONUI_RUNTIME_REMOVED`；改用 `source: "gea"`、`agentCode` 和当前 GEA 登录，无需读取 AionUi 的 provider、代理地址或凭证。
 
@@ -31,11 +31,23 @@ npm start -- --config gea.config.json --runtime .runtime/workbench-development -
 | 外层 DSH 插件 | `src/client.tsx`                 | GEA 导航、独立页面 iframe、Session 选择与语言同步                               |
 | 通用工作台 | [独立工作台仓库](https://github.com/CleverC2200/dsh-agent-workbench) | 页面注册、业务实例与会话关联、原生对话布局和窄屏排列 |
 | 示例 Agent | `packages/workbench-example/` | 独立插件验证多页面接入，仅在 `workbenchExample: true` 时加载 |
-| 独立业务文档  | `src/workbench-page.tsx`         | 登录、GEA 适配、预览与发送；不实现聊天输入框                                    |
-| 原审批组件    | `src/workbench-original/`        | 从 AionUi 原源码复制的工作台、CSS、组织维度、筛选、版本、详情和导出             |
-| GEA Host      | `src/business.ts`、`src/host.ts` | 持有登录凭证、固定只读查询、精确数据和持久化 Session 输入                       |
+| 独立业务文档  | `src/workbench/page.tsx`         | 登录、GEA 适配、预览与发送；不实现聊天输入框                                    |
+| 原审批组件    | `src/workbench/original/`        | 从 AionUi 原源码复制的工作台、CSS、组织维度、筛选、版本、详情和导出             |
+| GEA Host      | `src/host/business.ts`、`src/host.ts` | 持有登录凭证、固定只读查询、精确数据和持久化 Session 输入                       |
 
-原件来源、许可证及改动范围见 [SOURCE.md](src/workbench-original/SOURCE.md)。旧的三栏仿写组件及占位对话栏已经删除。完整迁移尚未验收：审批保存/通过/退回、消息处理和独立 SKU 推理适配尚未接入；原件中的相应写操作保持禁用。当前 AionUi 源码没有单独的需求提报页面，不能把审批页或未挂载的提报模型当作已迁移页面。
+### 源码目录
+
+| 目录 | 职责 |
+| --- | --- |
+| `src/client/` | DSH 客户端壳层、导航、通知收件箱、文案与样式 |
+| `src/host/` | GEA Host 业务编排、身份和权限边界、MCP、服务账号与工作流配置 |
+| `src/shared/` | Host 与构建脚本共用的环境解析、错误脱敏、流解析、取消信号和通知投影 |
+| `src/workbench/` | 独立业务文档、工作流加载器及从 AionUi 适配的原审批工作台 |
+| `src/mocks/` | 仅供测试和演示使用的 DMS、销售计划模拟实现 |
+
+`src/host.ts`、`src/client.tsx`、`src/workbench-entry.tsx` 和 `src/skill-reference.ts` 保持为构建入口；发布后的 `lib/host.js`、`lib/client.js`、`lib/workbench.js`、`lib/skill-reference.js` 及 package exports 不变。
+
+原件来源、许可证及改动范围见 [SOURCE.md](src/workbench/original/SOURCE.md)。旧的三栏仿写组件及占位对话栏已经删除。完整迁移尚未验收：审批保存/通过/退回、消息处理和独立 SKU 推理适配尚未接入；原件中的相应写操作保持禁用。当前 AionUi 源码没有单独的需求提报页面，不能把审批页或未挂载的提报模型当作已迁移页面。
 
 GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`requestTimeoutMs` 用于普通 GEA 查询和模型发现；`mcpRequestTimeoutMs` 单独限制 MCP 网关请求，默认 60 秒，可配置为 1–120 秒，旧配置不填时自动使用默认值；`modelRequestTimeoutMs` 单独限制模型流，总时限默认 120 秒，可配置为 1–600 秒。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
 

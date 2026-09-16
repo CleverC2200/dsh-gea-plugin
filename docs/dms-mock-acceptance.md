@@ -4,7 +4,7 @@
 
 ## 实现范围
 
-`src/mock-dms.ts` 提供内存模拟接收方、回执和状态回读。`demos/dms` 为独立演示页，使用合成的 MOCK 计划，不接入真实审批工作台，不加载登录配置、Token 或服务账号，不调用 GEA/DMS 接口。页面设置 `connect-src 'none'`。刷新或重置会清空模拟状态；本实现不声称具有跨进程恢复或真实持久化能力。
+`src/mocks/mock-dms.ts` 提供内存模拟接收方、回执和状态回读。`demos/dms` 为独立演示页，使用合成的 MOCK 计划，不接入真实审批工作台，不加载登录配置、Token 或服务账号，不调用 GEA/DMS 接口。页面设置 `connect-src 'none'`。刷新或重置会清空模拟状态；本实现不声称具有跨进程恢复或真实持久化能力。
 
 旧 `MockSalesPlanAdapter.acknowledgeDms` 的直接改状态入口已删除，DMS 验收统一由新模型负责；原审批/SAVE mock 仍保留原职责。
 

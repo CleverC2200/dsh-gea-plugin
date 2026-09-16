@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import {createControlServer} from './control-server.mjs';
-const {outputFiles}=await build({stdin:{contents:"export {Business} from './src/business.ts'; export {attachDesktopLogin} from './src/desktop-login.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm',banner:{js:`import {createRequire} from 'node:module'; const require=createRequire(${JSON.stringify(process.cwd()+'/package.json')});`}});
+const {outputFiles}=await build({stdin:{contents:"export {Business} from './src/host/business.ts'; export {attachDesktopLogin} from './src/host/desktop-login.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm',banner:{js:`import {createRequire} from 'node:module'; const require=createRequire(${JSON.stringify(process.cwd()+'/package.json')});`}});
 const {Business,attachDesktopLogin}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].contents).toString('base64'));
 const config={geaBaseUrl:'https://gea.example.test/gea-boot'};
 const saved={schema:1,environment:'production',base:config.geaBaseUrl,auth:{token:'fixture-secret',tenantId:'0',name:'Tester',id:'1',username:'tester'}};

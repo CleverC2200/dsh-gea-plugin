@@ -1,7 +1,7 @@
 /** External GEA contract fixture. These proposed correction fields are not a claim of deployment. */
 import { build } from 'esbuild';
 const { outputFiles } = await build({
-  entryPoints: ['src/mock-dms.ts'],
+  entryPoints: ['src/mocks/mock-dms.ts'],
   bundle: true,
   write: false,
   platform: 'node',

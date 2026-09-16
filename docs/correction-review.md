@@ -31,11 +31,11 @@ Standards：1 项已修复，剩余 0；Spec：1 项已修复，剩余 0。
 | --- | --- | --- |
 | 配置 | `.gitignore` | reviewed：仅隔离索引和临时产物 |
 | 文档 | `README.md`、`docs/agents/issue-tracker.md`、`docs/correction-acceptance.md`、`docs/sales-plan-client-approval-correction-research-2026-09-13.md`、`specs/sales-plan-correction.md` | reviewed：需求追踪、确认口径和真实环境边界 |
-| Host | `src/business.ts` | reviewed：身份、快照、幂等重试、动态流程、重提原值核验；HTTP 边界测试 |
-| 契约 | `src/workbench-original/contracts.ts` | reviewed：可选新增字段、显式纠偏模式与 mock 来源 |
-| 文案 | `src/workbench-original/en-US.json`、`src/workbench-original/zh-CN.json` | reviewed：纠偏入口和反馈文案 |
-| UI | `src/workbench-original/workbenches/regionalApproval/CorrectionWorkbench.tsx`、`CorrectionWorkbench.module.css`、`RegionalApprovalWorkbench.tsx`、`RegionalApprovalResubmitDialog.tsx`（后三者同目录） | reviewed：查询切换、权限、重复操作、继承、回读和模态窗口；实际浏览器测试及截图 |
-| 规则 | `src/workbench-original/workbenches/regionalApproval/models/salesPlanActionModel.ts`、`salesPlanCorrectionModel.ts`、`salesPlanSubmitModel.ts`（后两者同目录） | reviewed：精度、绝对覆盖、零值、状态及新版本字段；规则和浏览器验证 |
+| Host | `src/host/business.ts` | reviewed：身份、快照、幂等重试、动态流程、重提原值核验；HTTP 边界测试 |
+| 契约 | `src/workbench/original/contracts.ts` | reviewed：可选新增字段、显式纠偏模式与 mock 来源 |
+| 文案 | `src/workbench/original/en-US.json`、`src/workbench/original/zh-CN.json` | reviewed：纠偏入口和反馈文案 |
+| UI | `src/workbench/original/workbenches/regionalApproval/CorrectionWorkbench.tsx`、`CorrectionWorkbench.module.css`、`RegionalApprovalWorkbench.tsx`、`RegionalApprovalResubmitDialog.tsx`（后三者同目录） | reviewed：查询切换、权限、重复操作、继承、回读和模态窗口；实际浏览器测试及截图 |
+| 规则 | `src/workbench/original/workbenches/regionalApproval/models/salesPlanActionModel.ts`、`salesPlanCorrectionModel.ts`、`salesPlanSubmitModel.ts`（后两者同目录） | reviewed：精度、绝对覆盖、零值、状态及新版本字段；规则和浏览器验证 |
 | 测试 | `tests/correction-host.test.mjs`、`tests/correction-resubmit-web.test.mjs`、`tests/correction-rules.test.mjs`、`tests/correction-web.test.mjs`、`tests/fixtures/correction-service.mjs`、`tests/resubmit.test.mjs` | reviewed：实际 Web/Host 入口，外部受控服务与独立回读；保留既有测试 |
 
 生成产物 `.codegraph/`、`.runtime/` 和临时 `.scratch/` 不进入代码交付；索引与合成样本截图仅作为本地辅助证据。没有依赖版本变更、测试删除或跳过新增。
