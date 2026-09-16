@@ -1,8 +1,8 @@
-/** Standalone same-origin business document; DSH remains the conversation owner. */
+/** 独立的同源业务文档；会话仍由 DSH 拥有和管理。 */
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { WorkbenchPage } from "./workbench-page.tsx";
-import { zh, en, type CopyKey } from "./locales.ts";
+import { WorkbenchPage } from "./workbench/page.tsx";
+import { zh, en, type CopyKey } from "./client/locales.ts";
 
 const language =
   new URLSearchParams(window.location.search).get("locale") ??

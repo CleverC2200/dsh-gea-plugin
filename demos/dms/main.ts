@@ -1,4 +1,4 @@
-import { MockDmsWriteback, type DmsMockOutcome } from "../../src/mock-dms.ts";
+import { MockDmsWriteback, type DmsMockOutcome } from "../../src/mocks/mock-dms.ts";
 
 const $ = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;

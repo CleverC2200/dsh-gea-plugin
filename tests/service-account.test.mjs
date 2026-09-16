@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-const { outputFiles } = await build({ stdin: { contents: "export * from './src/service-account.ts';", resolveDir: process.cwd() }, bundle: true, write: false, platform: 'node', format: 'esm' });
+const { outputFiles } = await build({ stdin: { contents: "export * from './src/host/service-account.ts';", resolveDir: process.cwd() }, bundle: true, write: false, platform: 'node', format: 'esm' });
 const { submitWithServiceAccount, validateServiceAccounts, serviceAccountReady } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].contents).toString('base64'));
 const config = { clientIdEnv: 'GEA_TEST_CLIENT', clientSecretEnv: 'GEA_TEST_SECRET', tenantId: '0', allowedUserIds: ['user'] };
 process.env.GEA_TEST_CLIENT = 'fixture-client'; process.env.GEA_TEST_SECRET = 'fixture-secret';

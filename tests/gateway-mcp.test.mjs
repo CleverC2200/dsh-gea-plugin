@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 const { outputFiles } = await build({
-  entryPoints: ["src/gateway-mcp.ts"],
+  entryPoints: ["src/host/gateway-mcp.ts"],
   bundle: true,
   write: false,
   platform: "node",
@@ -185,7 +185,7 @@ test("late session responses cannot survive identity invalidation", async () => 
 test("Business login notifications and transport capabilities follow logout and environment changes", async () => {
   const { createRequire } = await import("node:module");
   const compiled = await build({
-    entryPoints: ["src/business.ts"],
+    entryPoints: ["src/host/business.ts"],
     bundle: true,
     write: false,
     platform: "node",

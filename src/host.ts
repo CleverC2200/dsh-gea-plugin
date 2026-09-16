@@ -1,6 +1,6 @@
-import { attachDesktopLogin } from "./desktop-login.ts";
+import { attachDesktopLogin } from "./host/desktop-login.ts";
 import { resolveWorkbench } from "../scripts/deployment.mjs";
-/** External GEA Fetch contribution and explicit local receipt provider. */
+/** GEA 外部 Fetch 能力和显式本地回执提供者的 DSH 插件入口。 */
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -17,11 +17,11 @@ import {
   type ContentBlock,
 } from "@deepseek-ai/dsh-llm";
 import z from "@deepseek-ai/schemastery";
-import { Business, object, type Deployment } from "./business.ts";
-import { GeaResponseError } from "./gea-error.js";
-import { registerGeaTools } from "./agent-tools.ts";
-import { transportSignal } from "./transport-signal.ts";
-import { geaTextStream } from "./gea-stream.ts";
+import { Business, object, type Deployment } from "./host/business.ts";
+import { GeaResponseError } from "./shared/gea-error.js";
+import { registerGeaTools } from "./host/agent-tools.ts";
+import { transportSignal } from "./shared/transport-signal.ts";
+import { geaTextStream } from "./shared/gea-stream.ts";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
 import type {} from "@deepseek-ai/dsh-client-connection";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
@@ -47,7 +47,7 @@ export const Config = z.object({
   inputByteBudget: z.natural().min(1).required(),
 });
 
-/** Runs the standard model call without making an external inference request. */
+/** 执行标准模型调用，但不发起外部推理请求。 */
 class ReceiptAdapter extends LlmAdapter {
   constructor(
     private readonly config: Deployment,
@@ -88,7 +88,7 @@ class ReceiptAdapter extends LlmAdapter {
   }
 }
 
-/** Calls the logged-in GEA personal model route directly, without an AionUi proxy. */
+/** 直接调用当前登录用户的 GEA 个人模型路由，不经过 AionUi 代理。 */
 class GeaModelAdapter extends LlmAdapter {
   constructor(private readonly business: Business) {
     super();
@@ -256,7 +256,7 @@ function toGeaRequest(options: GenerateOptions) {
   };
 }
 
-/** Register authenticated Web routes; the standard dsh connection owns browser authorization. */
+/** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
 export async function apply(ctx: Context, config: Deployment): Promise<void> {
   resolveWorkbench(import.meta.url);
   const workbenchHtml =
@@ -374,7 +374,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       );
       return session;
     })().catch((error: unknown) => {
-      // Retain identities because admission may have succeeded before a failure.
+      // admission 可能已在失败前成功，因此保留已生成的身份标识。
       attempt.result = undefined;
       throw error;
     });
@@ -532,7 +532,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
               { headers: { "Cache-Control": "no-store" } },
             );
           } catch (error) {
-            // Expiration can clear identity while the business operation itself fails.
+            // 业务操作失败时也可能同时发现登录过期并清除身份。
             try { await desktopLogin.flush(); } catch (storageError) { error = storageError; }
             const code =
               error instanceof Error && /^[A-Z][A-Z_0-9]+$/.test(error.message)

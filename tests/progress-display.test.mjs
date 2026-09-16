@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import i18next from 'i18next';
 
 const { outputFiles } = await build({
-  entryPoints: ['src/workbench-original/workbenches/regionalApproval/RegionalApprovalLiveProgress.tsx'],
+  entryPoints: ['src/workbench/original/workbenches/regionalApproval/RegionalApprovalLiveProgress.tsx'],
   bundle: true, write: false, platform: 'node', format: 'cjs',
   packages: 'external', outdir: 'out',
 });
@@ -16,7 +16,7 @@ const module = { exports: {} };
 new Function('require', 'module', 'exports', outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
 const Progress = module.exports.default;
 const resources = Object.fromEntries(await Promise.all(['zh-CN', 'en-US'].map(async language => [
-  language, { translation: { common: JSON.parse(await readFile(new URL(`../src/workbench-original/${language}.json`, import.meta.url), 'utf8')) } },
+  language, { translation: { common: JSON.parse(await readFile(new URL(`../src/workbench/original/${language}.json`, import.meta.url), 'utf8')) } },
 ])));
 
 for (const language of ['zh-CN', 'en-US']) {

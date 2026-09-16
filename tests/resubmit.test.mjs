@@ -4,7 +4,7 @@ import { build } from "esbuild";
 const { outputFiles } = await build({
   stdin: {
     contents:
-      "export * from './src/workbench-original/workbenches/regionalApproval/models/salesPlanSubmitModel.ts'; export * from './src/workbench-original/salesPlanWorkflow.ts';",
+      "export * from './src/workbench/original/workbenches/regionalApproval/models/salesPlanSubmitModel.ts'; export * from './src/workbench/original/salesPlanWorkflow.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,

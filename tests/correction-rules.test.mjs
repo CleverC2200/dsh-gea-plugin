@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {build} from 'esbuild';
-const {outputFiles}=await build({stdin:{contents:"export * from './src/workbench-original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm'});
+const {outputFiles}=await build({stdin:{contents:"export * from './src/workbench/original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm'});
 const {correctionAdjustments,correctionDecision,correctionLine,correctionMetrics}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].contents).toString('base64'));
 
 test("correction uses a fixed monthly baseline and absolute node decisions including explicit zero", () => {

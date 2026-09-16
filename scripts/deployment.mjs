@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { resolveEnvironments } from "../src/environments.js";
+import { resolveEnvironments } from "../src/shared/environments.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
 import {
   readFile,

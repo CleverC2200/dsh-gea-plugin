@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 
 const { outputFiles } = await build({
-  entryPoints: ["src/gea-stream.ts"],
+  entryPoints: ["src/shared/gea-stream.ts"],
   bundle: true,
   write: false,
   platform: "node",

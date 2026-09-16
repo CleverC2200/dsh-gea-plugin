@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 import { build } from 'esbuild';
-const compiled = await build({ entryPoints: ['src/business.ts'], bundle: true, write: false, platform: 'node', format: 'cjs' });
+const compiled = await build({ entryPoints: ['src/host/business.ts'], bundle: true, write: false, platform: 'node', format: 'cjs' });
 const module = { exports: {} };
 new Function('require', 'module', 'exports', Buffer.from(compiled.outputFiles[0].contents).toString())(createRequire(import.meta.url), module, module.exports);
 const { Business } = module.exports;

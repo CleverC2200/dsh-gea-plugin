@@ -1,5 +1,5 @@
 import type {} from "@cleverc2200/dsh-agent-workbench/client";
-/** GEA navigation and independent workbench mounted in the DSH application frame. */
+/** 在 DSH 应用框架中挂载 GEA 导航和独立工作台。 */
 import { createPortal } from "react-dom";
 import React, { useEffect, useRef, useState } from "react";
 import type {
@@ -17,9 +17,9 @@ import type { LocaleSnapshot } from "@deepseek-ai/dsh-client-locale/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
-import { zh, en, type CopyKey } from "./locales.ts";
-import { Inbox } from "./inbox.tsx";
-import shellCss from "./shell.css";
+import { zh, en, type CopyKey } from "./client/locales.ts";
+import { Inbox } from "./client/inbox.tsx";
+import shellCss from "./client/shell.css";
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
   interface LocaleNamespaceMap {
@@ -31,7 +31,7 @@ export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions", "
 const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 
-/** Register a business-only center document beside the frame-owned native conversation. */
+/** 在框架管理的原生会话旁注册仅承载业务的中心文档。 */
 export function apply(ctx: Context): void {
   ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
   const t = ctx.locale.bind("geaProof");
@@ -89,7 +89,7 @@ export function apply(ctx: Context): void {
           typeof message.sessionId === "string" &&
           /^session-[0-9a-f-]{36}$/.test(message.sessionId)
         ) {
-          // Keep the business page selected; AppFrame projects this Session on the right.
+          // 保持业务页面选中；AppFrame 会把该 Session 投影到右侧。
           void ctx.agentWorkbench.open(PANEL, "default", message.sessionId as SessionId).catch(error => setSessionError(String(error.message)));
         }
       };
@@ -139,7 +139,7 @@ export function apply(ctx: Context): void {
         body: "{}", signal: controller.signal,
       }).then(response => response.json()).then(result => {
         if (result.ok && revision === 0 && !controller.signal.aborted) updateIdentity(result.value.authenticated === true, result.value.user);
-      }).catch(() => { /* Unavailable identity leaves account controls signed out. */ });
+      }).catch(() => { /* 身份不可用时保持账户控件为未登录状态。 */ });
       return () => { controller.abort(); window.removeEventListener("message", onIdentity); };
     }, []);
     return identity;
@@ -272,8 +272,7 @@ export function apply(ctx: Context): void {
     const trigger = useRef<HTMLButtonElement | null>(null);
     const openSettings = useRef(false);
     const [position, setPosition] = useState<{ left: number; bottom: number } | null>(null);
-    // The native slot supplies button content only; preserve its settings action
-    // while routing pointer and keyboard activation through the account menu.
+    // 原生插槽只提供按钮内容；保留设置动作，同时把鼠标和键盘激活转由账户菜单处理。
     useEffect(() => {
       const button = avatar.current?.closest("button");
       if (!button) return;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveEnvironments } from "../src/environments.js";
+import { resolveEnvironments } from "../src/shared/environments.js";
 import { profile } from "./profile.mjs";
 
 test("environment selection only resolves deployment-owned endpoints", () => {
