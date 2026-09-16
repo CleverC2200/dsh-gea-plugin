@@ -34,7 +34,7 @@ Windows 工作流 `Check Windows installer` 仅通过手动运行触发，必须
 
 使用 electron-builder 26.15.3，`GEA_DESKTOP_PAYLOAD_ROOT` 指向新构建根，包含 mac/payload、win/payload。各 payload 必须包含相应平台 Node、生产依赖、标准发行包、pnpm 11.27.0 工具与 runtime-start.mjs 的 start.mjs 副本、onboarding.mjs。不能把 Mac 原生模块复用到 Windows。
 
-`node --test desktop/config.test.cjs desktop/onboarding.test.mjs desktop/plugin-store.test.mjs` 验证配置、提示、版本目录与数据保护。指定 `GEA_DESKTOP_TEST_GRAPH` 运行 desktop/runtime-graph.test.mjs 验证外置启动；指定 `GEA_DESKTOP_BASELINE`、`GEA_DESKTOP_NEXT` 运行 desktop/version-switch.test.mjs 验证实际页面版本切换。
+`npm run test:desktop` 运行不依赖安装包、Electron 或外部频道的快速桌面回归。`npm run test:desktop:electron` 使用 `GEA_ELECTRON_EXECUTABLE` 和 `GEA_DESKTOP_PAYLOAD` 运行真实 Electron 启动、恢复、凭据和首次业务页面回归。指定 `GEA_DESKTOP_TEST_GRAPH` 运行 desktop/runtime-graph.test.mjs 验证外置启动；指定 `GEA_DESKTOP_BASELINE`、`GEA_DESKTOP_NEXT`、`GEA_EXPECTED_BASELINE_VERSION` 和 `GEA_EXPECTED_NEXT_VERSION` 运行 desktop/version-switch.test.mjs 验证实际页面版本切换。
 
 Windows 路径使用 file URL 动态导入、junction 与带引号的固定工具路径；在 Mac 的交叉检查不等于真实 Windows 验收。安装方式变化或出现安装问题时，针对受影响平台验收；其他交付复用适用的安装记录并说明签名状态。
 
@@ -76,7 +76,7 @@ Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体�
 
 更新状态中的 timings.downloadMs 和 timings.prepareMs 分别记录下载校验与本地准备耗时，便于定位慢在哪一步；不把本地安装时间归为网络下载。
 
-`GEA_DESKTOP_PAYLOAD=<payload> GEA_PLUGIN_ARTIFACT=<GEA-0.0.7.tgz> node --test desktop/installer-portability.test.mjs` 在复制的依赖图中模拟另一台机器的存储路径和目录长度，执行真实 pnpm 安装并检查当前选择与业务配置不变。
+`GEA_DESKTOP_PAYLOAD=<payload> GEA_PLUGIN_ARTIFACT=<GEA插件.tgz> GEA_EXPECTED_PLUGIN_VERSION=<版本> node --test desktop/installer-portability.test.mjs` 在复制的依赖图中模拟另一台机器的存储路径和目录长度，执行真实 pnpm 安装并检查当前选择与业务配置不变。
 
 准备插件后，桌面逐项核对浏览器源文件摘要；仅当内容与随包编译记录一致时复用压缩文件及源码映射，保持重复启动性能。更新后内容不同的插件使用新文件，不被旧优化产物覆盖。
 ## GitLab 更新渠道
@@ -95,7 +95,7 @@ Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体�
 
 - `GEA_GITLAB_BASELINE=<旧payload> GEA_GITLAB_RELEASE_MODULE=<新Hub的lib/services/release-channel.js> node desktop/gitlab-update-smoke.mjs`：免登录读取两个真实 GitLab 频道和全部包，校验摘要，通过官方 DSH/pnpm 更新隔离插件组合，并确认再次检查无更新。
 - `GEA_GITLAB_BASELINE=<旧payload> node desktop/gitlab-runtime-smoke.mjs <上一脚本result.json>`：用实际新组合启动 DSH，验证软件更新页面与插件加载状态。
-- `GEA_GITLAB_BASELINE=<旧payload> GEA_GITLAB_ELECTRON=<打包后的应用可执行文件> node desktop/gitlab-electron-smoke.mjs`：真实桌面 UI 下载、重启与版本切换；仅 GEA 登录使用本地模拟服务，发行下载与安装均为真实操作。
+- `GEA_GITLAB_BASELINE=<旧payload> GEA_GITLAB_ELECTRON=<打包后的应用可执行文件> GEA_GITLAB_FROM=<旧Hub版本> GEA_GITLAB_TO=<新Hub版本> node desktop/gitlab-electron-smoke.mjs`：真实桌面 UI 下载、重启与版本切换；仅 GEA 登录使用本地模拟服务，发行下载与安装均为真实操作。
 
 以上脚本使用自己的临时数据目录并关闭自己启动的进程，不操作用户的日常应用数据。
 
@@ -110,7 +110,7 @@ Mac 本机构建对照中，再次启动中位耗时由 2.875 秒降至 2.105 �
 
 ## 插件更新耗时诊断
 
-`GEA_DESKTOP_PAYLOAD=<已验证payload> GEA_ELECTRON_EXECUTABLE=<开发版Electron> GEA_UPDATE_FROM=<基线GEA版本> GEA_UPDATE_TO=<测试频道GEA版本> node desktop/update-speed-smoke.mjs` 使用隔离数据和模拟登录，通过真实测试频道下载、安装、重启，检查头像、登录、工作区保留及不再提示同一更新，并输出阶段耗时。需已安装项目开发依赖、构建插件。该脚本保留临时 result.json 供核查，不操作日常用户目录。
+`GEA_DESKTOP_PAYLOAD=<已验证payload> GEA_ELECTRON_EXECUTABLE=<开发版Electron> GEA_UPDATE_FROM=<基线GEA版本> GEA_UPDATE_TO=<测试频道GEA版本> npm run test:desktop:update-channel` 使用隔离数据和模拟登录，通过真实测试频道下载、安装、重启，检查头像、登录、工作区保留及不再提示同一更新，并输出阶段耗时。默认验证单个 GEA 插件更新；增加 `GEA_UPDATE_SCOPE=all` 时验证批量准备与一次重启。需已安装项目开发依赖、构建插件。该脚本保留临时 result.json 供核查，不操作日常用户目录。
 
 2026-09-15 macOS arm64 同一外置插件组合、同一 0.0.10 安装包对比：原流程复制 15.23 秒、安装 4.01 秒，总计 19.25 秒；优化流程复制 4.88 秒、安装 2.30 秒，总计 7.20 秒。这里不包含重启时间；耗时取决于磁盘、缓存及依赖规模，不是性能保证。Windows 尚未实测。
 

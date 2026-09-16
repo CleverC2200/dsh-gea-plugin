@@ -1,4 +1,4 @@
-/** Opt-in real channel update and restart using isolated data and synthetic login. */
+/** Opt-in single or batch channel update and restart using isolated data and synthetic login. */
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,readFile,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -10,6 +10,8 @@ const baseline=process.env.GEA_DESKTOP_PAYLOAD;assert.ok(baseline);
 const executable=process.env.GEA_ELECTRON_EXECUTABLE;assert.ok(executable);
 const data=await mkdtemp(join(tmpdir(),'gea-avatar-release-'));
 const fromVersion=process.env.GEA_UPDATE_FROM,toVersion=process.env.GEA_UPDATE_TO;assert.ok(fromVersion&&toVersion);
+const updateScope=process.env.GEA_UPDATE_SCOPE??'single';assert.ok(['single','all'].includes(updateScope));
+const batch=updateScope==='all';
 const cleanup=[];let app;
 console.log('EVIDENCE',data);
 try {
@@ -38,9 +40,11 @@ try {
  console.log('BASELINE_READY');
  const checked=await action('check');assert.equal(checked.checkError,null);
  assert.ok(checked.releases.some(x=>x.package==='@cleverc2200/gea-dsh-prototype'&&x.version===(toVersion)));
- assert.deepEqual(await action('prepare',{package:'@cleverc2200/gea-dsh-prototype'}),{accepted:true});
+ if(batch){assert.equal(checked.capabilities.batchPrepare,true);assert.ok(checked.releases.filter(x=>checked.current[x.package]!==x.version).length>=2);}
+ assert.deepEqual(await action('prepare',batch?{all:true}:{package:'@cleverc2200/gea-dsh-prototype'}),{accepted:true});
  await expect.poll(status,{timeout:300000,intervals:[1000,2000]}).toMatchObject({phase:'pending',current:{'@cleverc2200/gea-dsh-prototype':fromVersion}});
- console.log('DOWNLOAD_INSTALL_PASS');
+ if(batch)assert.ok((await status()).targets.length>=2);
+ console.log(batch?'BATCH_DOWNLOAD_INSTALL_PASS':'DOWNLOAD_INSTALL_PASS');
  assert.equal((await action('restart')).ok,true);
  await expect.poll(status,{timeout:90000,intervals:[1000,2000]}).toMatchObject({phase:'succeeded',current:{'@cleverc2200/gea-dsh-prototype':toVersion}});
  await expect(page.locator('.gea-user-avatar img')).toHaveAttribute('src','https://avatar.example.test/lark.png');
@@ -51,6 +55,6 @@ try {
  console.log("UPDATE_TIMINGS",JSON.stringify((await status()).timings));
  const final=await action('check');assert.equal(final.checkError,null);assert.ok(final.releases.every(x=>final.current[x.package]===x.version));
 
- await writeFile(join(data,'result.json'),JSON.stringify({from:fromVersion,to:toVersion,desktop:JSON.parse(await readFile(new URL('./package.json',import.meta.url),'utf8')).version,platform:process.platform,phase:final.phase,timings:final.timings,anonymousDownload:true,realElectronRestart:true,avatarRendered:true,syntheticLoginPreserved:true,workspacePreserved:true,noFurtherUpdates:true},null,2));
- console.log('AVATAR_RELEASE_PASS',data);
+ await writeFile(join(data,'result.json'),JSON.stringify({from:fromVersion,to:toVersion,scope:updateScope,desktop:JSON.parse(await readFile(new URL('./package.json',import.meta.url),'utf8')).version,platform:process.platform,phase:final.phase,timings:final.timings,anonymousDownload:true,realElectronRestart:true,avatarRendered:true,syntheticLoginPreserved:true,workspacePreserved:true,noFurtherUpdates:true},null,2));
+ console.log(batch?'BATCH_RELEASE_PASS':'AVATAR_RELEASE_PASS',data);
 }finally{await app?.close();for(const close of cleanup.reverse())await close();}
