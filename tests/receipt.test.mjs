@@ -32,6 +32,15 @@ test(
     const messages = rows.filter((row) => row.type === "user/message");
     assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 1);
     assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
+    const snapshot = messages.find(
+      (row) => row.data.source.plugin === "gea-proof",
+    );
+    assert.equal(snapshot.data.source.form, "notice");
+    assert.equal(
+      snapshot.data.source.summary,
+      "已提交只读快照，正在验证数据传递",
+    );
+    assert.equal(messages.some((row) => row.data.source.kind === "user"), false);
     assert.ok(
       JSON.stringify(rows.find((row) => row.type === "user/message")).includes(
         "1.2300",

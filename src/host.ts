@@ -5,9 +5,9 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { brandString } from "@deepseek-ai/dsh-brand";
-import type { SessionRequestId } from "@deepseek-ai/dsh-api-session-controller";
 import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-agent";
 import {
   LlmAdapter,
   createUserMessage,
@@ -27,6 +27,7 @@ import type {} from "@deepseek-ai/dsh-client-connection";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
 
 export const inject = [
+  "agents",
   "connection",
   "tools",
   "llm",
@@ -320,7 +321,6 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     | {
         id: string;
         sessionId: SessionId;
-        requestId: SessionRequestId;
         result?: Promise<{ sessionId: SessionId }>;
       }
     | undefined;
@@ -331,7 +331,6 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       submission = {
         id: preview.previewId,
         sessionId: brandString<SessionId>(`session-${randomUUID()}`),
-        requestId: brandString<SessionRequestId>(randomUUID()),
       };
     const attempt = submission;
     if (attempt.result) return attempt.result;
@@ -363,14 +362,21 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       });
       signal.throwIfAborted();
       business.prepared(preview.previewId);
-      await ctx.sessionController.prompt(
-        {
-          sessionId: session.sessionId,
-          requestId: attempt.requestId,
-          mode: "queue",
+      const agent = ctx.agents.get(session.sessionId);
+      if (!agent) throw new Error("SESSION_NOT_FOUND");
+      agent.followup(
+        createUserMessage({
+          source: {
+            kind: "plugin",
+            plugin: "gea-proof",
+            form: "notice",
+            summary:
+              config.analysisMode === "receipt"
+                ? "已提交只读快照，正在验证数据传递"
+                : "已提交只读分析：对比所选计划的数量和金额差异",
+          },
           content: [{ type: "text", text: preview.prompt }],
-        },
-        signal,
+        }),
       );
       return session;
     })().catch((error: unknown) => {

@@ -75,6 +75,21 @@ test(
       body.tools.map((tool) => tool.function.name).sort(),
       ["gea_sales_plan_read", "gea_skill_reference_read", "skill"],
     );
+    const submitted = rows.find(
+      (row) =>
+        row.type === "user/message" && row.data.source.plugin === "gea-proof",
+    );
+    assert.equal(submitted.data.source.form, "notice");
+    assert.equal(
+      submitted.data.source.summary,
+      "已提交只读分析：对比所选计划的数量和金额差异",
+    );
+    assert.equal(
+      rows.some(
+        (row) => row.type === "user/message" && row.data.source.kind === "user",
+      ),
+      false,
+    );
     const user = body.messages.find((message) => message.role === "user");
     assert.ok(JSON.stringify(user).includes(prepared.snapshotHash));
     assert.ok(JSON.stringify(user).includes("1.2300"));
