@@ -123,10 +123,24 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
   const frame=el.closest('[data-sidebar-collapsed]');
   return frame?.firstElementChild ? getComputedStyle(frame.firstElementChild).boxShadow : null;
  }),'none');
+ assert.equal(await collapsedMenu.evaluate(el=>{
+  const frame=el.closest('[data-sidebar-collapsed]');
+  return frame?.firstElementChild ? getComputedStyle(frame.firstElementChild).backgroundColor : null;
+ }),'rgba(0, 0, 0, 0)');
  await collapsedMenu.click();
  await expect(page.getByRole('button',{name:/收起侧边栏|Collapse sidebar/})).toBeVisible();
  await expect(page.locator('.gea-shell-navigation [data-nav-icon]')).toHaveCount(0);
  await shot('10-sidebar-restored');
+ const fullscreen=page.getByRole('button',{name:'全屏展示',exact:true});
+ await expect(fullscreen).toBeVisible();
+ await fullscreen.click();
+ await expect.poll(()=>page.evaluate(()=>document.fullscreenElement?.querySelector('iframe[data-gea-workbench]')!==null)).toBe(true);
+ const exitFullscreen=page.getByRole('button',{name:'退出全屏展示',exact:true});
+ await expect(exitFullscreen).toHaveAttribute('aria-pressed','true');
+ await shot('10-fullscreen');
+ await exitFullscreen.click();
+ await expect.poll(()=>page.evaluate(()=>document.fullscreenElement===null)).toBe(true);
+ await expect(page.getByRole('button',{name:'全屏展示',exact:true})).toHaveAttribute('aria-pressed','false');
  await page.getByRole('button',{name:/右侧边栏/}).click(); await shot('10-right-toggle-0');
  await page.route('**/api/gea-proof/model/advice',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:false,error:{code:'RATE_LIMITED',message:'Rate limited'}})}));
  await frame.getByRole('button',{name:'查看调整明细',exact:true}).click();

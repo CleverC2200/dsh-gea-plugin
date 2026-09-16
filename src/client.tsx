@@ -49,6 +49,7 @@ export function apply(ctx: Context): void {
   }: PropsRuntime<"main"> & InjectFace<typeof injected>) {
     const [authenticated, setAuthenticated] = useState(false);
     const [sessionError, setSessionError] = useState("");
+    const [fullscreen, setFullscreen] = useState(false);
     useEffect(() => {
       if (!authenticated) {
         return;
@@ -60,6 +61,28 @@ export function apply(ctx: Context): void {
     const language = useGeaLocale((snapshot) => snapshot.active);
     const currentSession = useSessions((snapshot) => snapshot.current);
     const frame = useRef<HTMLIFrameElement>(null);
+    const workbenchShell = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      const syncFullscreen = () => {
+        setFullscreen(document.fullscreenElement === workbenchShell.current);
+      };
+      document.addEventListener("fullscreenchange", syncFullscreen);
+      return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+    }, []);
+    const toggleFullscreen = async () => {
+      const target = workbenchShell.current;
+      if (!target) return;
+      try {
+        if (document.fullscreenElement === target) {
+          await document.exitFullscreen();
+        } else {
+          await target.requestFullscreen();
+        }
+        setFullscreen(document.fullscreenElement === target);
+      } catch {
+        // 浏览器禁用全屏时保留当前工作台，避免影响审批操作。
+      }
+    };
     useEffect(() => {
       frame.current?.contentWindow?.postMessage(
         { type: "gea:session", sessionId: currentSession ?? null },
@@ -100,19 +123,34 @@ export function apply(ctx: Context): void {
       <>
         <style>{shellCss}</style>
         {sessionError && <div role="alert">{sessionError}</div>}
-        <iframe
-          ref={frame}
-          className={`gea-workbench-frame${authenticated ? "" : " gea-login-frame"}`}
-          data-gea-workbench
-          title={t("approvalTitle")}
-          onLoad={() =>
-            frame.current?.contentWindow?.postMessage(
-              { type: "gea:session", sessionId: currentSession ?? null },
-              window.location.origin,
-            )
-          }
-          src={`/api/gea-proof/workbench?locale=${encodeURIComponent(language)}`}
-        />
+        <div ref={workbenchShell} className="gea-workbench-shell">
+          <iframe
+            ref={frame}
+            className={`gea-workbench-frame${authenticated ? "" : " gea-login-frame"}`}
+            data-gea-workbench
+            allow="fullscreen"
+            title={t("approvalTitle")}
+            onLoad={() =>
+              frame.current?.contentWindow?.postMessage(
+                { type: "gea:session", sessionId: currentSession ?? null },
+                window.location.origin,
+              )
+            }
+            src={`/api/gea-proof/workbench?locale=${encodeURIComponent(language)}`}
+          />
+          {authenticated && (
+            <button
+              type="button"
+              className="gea-workbench-fullscreen"
+              aria-label={t(fullscreen ? "exitFullscreen" : "enterFullscreen")}
+              aria-pressed={fullscreen}
+              title={t(fullscreen ? "exitFullscreen" : "enterFullscreen")}
+              onClick={() => void toggleFullscreen()}
+            >
+              <FullscreenIcon exit={fullscreen} />
+            </button>
+          )}
+        </div>
       </>
     );
   }
@@ -432,6 +470,32 @@ function MenuIcon() {
       <circle cx="5" cy="12" r="1" />
       <circle cx="5" cy="18" r="1" />
       <path d="M9 6h11M9 12h11M9 18h11" />
+    </svg>
+  );
+}
+
+function FullscreenIcon({ exit }: { exit: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {exit ? (
+        <>
+          <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+        </>
+      ) : (
+        <>
+          <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+        </>
+      )}
     </svg>
   );
 }

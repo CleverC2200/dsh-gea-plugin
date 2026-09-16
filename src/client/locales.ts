@@ -244,6 +244,8 @@ const copy = {
   ],
   businessNavigation: ["业务导航", "Business navigation"],
   openBusinessNavigation: ["展开业务菜单", "Expand business menu"],
+  enterFullscreen: ["全屏展示", "Enter full screen"],
+  exitFullscreen: ["退出全屏展示", "Exit full screen"],
   switchToDsh: ["切换到 DSH 对话版", "Switch to DSH conversations"],
   switchToBusiness: ["切换到 GEA 业务版", "Switch to GEA business"],
   newConversation: ["新会话", "New conversation"],
