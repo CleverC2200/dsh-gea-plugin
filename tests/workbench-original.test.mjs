@@ -118,10 +118,10 @@ test('workbench bridge keeps host request identity and cannot reuse a released d
   assert.throws(() => salesPlan.list.invoke(query), /WORKBENCH_HOST_NOT_BOUND/);
 });
 
-test('task assignment never grants an approval role', () => {
+test('an exact actionable task grants only its current approval role', () => {
   const row = { planId: 'p', versionId: 'v', status: 1, planTypeCode: 'Y' };
   const value = { currentVersion: { id: 'v', planId: 'p', status: 1, planTypeCode: 'Y', effective: true }, skus: [], versions: [], logs: [], workflowApproval: { versionId: 'v', notificationId: 'n', instanceId: 'i', actionable: true } };
-  assert.equal(salesPlanAccessForRow(row, value), undefined);
+  assert.equal(salesPlanAccessForRow(row, value)?.approvalRole, 'region');
   assert.equal(salesPlanAccessForRow(row, value, [], 'province'), undefined);
   assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: undefined }), undefined);
   assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: { ...value.workflowApproval, versionId: 'old' } }), undefined);

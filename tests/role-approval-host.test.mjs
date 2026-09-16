@@ -35,3 +35,28 @@ test('Host binds role writes to fresh permission and capability evidence while r
  const deniedDowngrade=await action({approvalPolicy:undefined});assert.equal(deniedDowngrade.ok,false);
  assert.equal(writes,2);
 });
+
+test('Host accepts a current workflow task only for its exact version and current node', {timeout:60000}, async t=>{
+ const app=await profile(t);
+ let writes=0;
+ app.route((req,res,reply)=>{
+   const path=req.url.pathname;
+   const send=result=>{reply({success:true,result});return true;};
+   if(path.endsWith('/getPermCode')) return send({codeList:[]});
+   if(path.endsWith('/plans/p')) return send({currentVersion:{id:'v',planId:'p',status:1,effective:true,planTypeCode:'Y'},skus:[],versions:[],logs:[]});
+   if(path.endsWith('/notifications/n')) return send({id:'n',approval:{biz_key:'sales-plan:version:v',instance_id:'i',actionable:true}});
+   if(path.endsWith('/notifications')) return send({items:[{id:'n',approval:{biz_key:'sales-plan:version:v',instance_id:'i',actionable:true}}],total:1});
+   if(path.endsWith('/versions/v/actions')) {
+     writes++;
+     const body=JSON.parse(req.body);
+     assert.equal(body.approvalRole,'region');
+     assert.equal(body.approvalPolicy,undefined);
+     assert.equal(body.expectedSnapshot,undefined);
+     return send({planId:'p',versionId:'v',fromStatus:1,toStatus:1,approvalRole:'region',requestId:req.headers['x-request-id'],traceId:'t',auditId:'a',replayed:false});
+   }
+ });
+ await app.login();
+ const result=await app.rpc('sales-plan/action',{planId:'p',versionId:'v',requestId:'workflow-task',idempotencyKey:'workflow-task',request:{action:'APPROVE',approvalRole:'region',expectedStatus:1}});
+ assert.equal(result.ok,true);
+ assert.equal(writes,1);
+});

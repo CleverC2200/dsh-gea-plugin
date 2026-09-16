@@ -21,9 +21,13 @@ test('visible role can act while another node is notified, including own rejecte
   for(const status of [0,5,8,9,10]) assert.equal(m.salesPlanAccessForRow(row(status),detail(status),[grant('region')]),undefined);
   for(const status of [2,3,4,6,8]) assert.equal(m.salesPlanAccessForRow(row(status,'XN'),detail(status,'XN'),[grant('province')]).approvalRole,'province');
 });
-test('notifications grant nothing and multi-role selection is explicit',()=>{
-  const d={...detail(),workflowApproval:{versionId:'v',actionable:true}};
-  assert.equal(m.salesPlanAccessForRow(row(),d),undefined);
+test('an exact server-assigned actionable task grants only the current workflow actor',()=>{
+  const d={...detail(),workflowApproval:{versionId:'v',notificationId:'n',instanceId:'i',actionable:true}};
+  assert.equal(m.salesPlanAccessForRow(row(),d).approvalRole,'province');
+  assert.deepEqual(m.salesPlanAccessForRow(row(),d).allowedActions,['APPROVE','REJECT']);
+  assert.equal(m.salesPlanAccessForRow(row(),d,[],'region'),undefined);
+  assert.equal(m.salesPlanAccessForRow(row(),{...d,workflowApproval:{...d.workflowApproval,versionId:'old'}}),undefined);
+  assert.equal(m.salesPlanAccessForRow(row(),{...d,workflowApproval:{...d.workflowApproval,actionable:false}}),undefined);
   const roles=[grant('region'),grant('province')];
   assert.equal(m.salesPlanAccessForRow(row(),d,roles),undefined);
   assert.equal(m.salesPlanAccessForRow(row(),d,roles,'region').approvalRole,'region');

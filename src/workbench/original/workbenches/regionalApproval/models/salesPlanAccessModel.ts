@@ -33,7 +33,7 @@ export type SalesPlanAccess = Omit<GeaSalesPlanActionContext, 'snapshotHash'> & 
   roleContractSupported: boolean;
 };
 
-/** 能力结果是 UI 入口的保守投影；通知不会授予权限，真正的角色、快照和版本校验仍由 GEA 每次写入时执行。 */
+/** 能力结果是 UI 入口的保守投影；普通通知不会授予权限，只有 Host 刷新的同版本可处理任务可证明当前节点，写入时仍由 GEA 校验。 */
 export const salesPlanAccessForRow = (
   row: Pick<GeaSalesPlanListItem, 'planId' | 'versionId' | 'status'> & Partial<Pick<GeaSalesPlanListItem, 'planTypeCode'>>,
   detail: GeaSalesPlanDetail,
@@ -57,11 +57,14 @@ export const salesPlanAccessForRow = (
       !Array.isArray(entry.allowedActions) || !knownActions(entry.allowedActions)) ||
       new Set(context.roleActions.map(entry => entry.role)).size !== context.roleActions.length)) return undefined;
   const granted = salesPlanStagesForPermissions(permissions).filter(role => role !== 'customer');
-  // 已认证对象的能力也可以证明角色；通知不能证明角色。
+  // 已认证对象能力，或 Host 对同版本重新确认的可处理任务，才能证明角色。
+  // 后者只映射到当前状态的节点，不能用来处理其他节点或旧版本。
+  const workflowRole = detail.workflowApproval?.versionId === v.id && detail.workflowApproval.actionable === true
+    ? flow.actor(row.status) : undefined;
   const capabilityRoles = supported ? context.roleActions!.filter(entry => entry.allowedActions.length).map(entry => entry.role) :
     context?.allowedActions.length && context.nodeOrder != null && context.nodeOrder >= 2 && context.nodeOrder <= 5
       ? [SALES_PLAN_ROLES[context.nodeOrder - 1]] : [];
-  const roles = [...new Set([...granted, ...capabilityRoles])].filter(role => role !== 'customer');
+  const roles = [...new Set([...granted, ...capabilityRoles, ...(workflowRole && workflowRole !== 'customer' ? [workflowRole] : [])])].filter(role => role !== 'customer');
   if (!roles.some(role => flow.visibility(row.status, role) !== 'denied')) return undefined;
   // 多角色用户必须在动作对话框中明确选择角色。
   const role = stage ?? (roles.length === 1 ? roles[0] : undefined);
