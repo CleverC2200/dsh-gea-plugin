@@ -10,6 +10,7 @@ import {installArtifact} from './installer.mjs';
 
 test('a graph copied from another machine installs without changing the active graph or business data',{timeout:180000},async t=>{
  assert.ok(process.env.GEA_DESKTOP_PAYLOAD);assert.ok(process.env.GEA_PLUGIN_ARTIFACT);
+ assert.ok(process.env.GEA_EXPECTED_PLUGIN_VERSION);
  const baseline=resolve(process.env.GEA_DESKTOP_PAYLOAD),data=await mkdtemp(join(tmpdir(),'gea-portable-install-'));
  t.after(()=>rm(data,{recursive:true,force:true}));
  const marker=join(data,'gea.config.json');await writeFile(marker,'{"keep":"business configuration"}');
@@ -31,7 +32,7 @@ test('a graph copied from another machine installs without changing the active g
  const shared=optimized.files.find(file=>file.file.startsWith('node_modules/@deepseek-ai/'));
  assert.deepEqual(await readFile(join(data,'plugins/versions/relocated',shared.file)),await readFile(join(baseline,shared.file)));
  assert.deepEqual(await readFile(join(data,'plugins/versions/relocated',shared.file+'.map')),await readFile(join(baseline,shared.file+'.map')));
- assert.equal(receipt.versions['@cleverc2200/gea-dsh-prototype'],process.env.GEA_EXPECTED_PLUGIN_VERSION??'0.0.7');
+ assert.equal(receipt.versions['@cleverc2200/gea-dsh-prototype'],process.env.GEA_EXPECTED_PLUGIN_VERSION);
  const changed='node_modules/@cleverc2200/gea-dsh-prototype/lib/host.js';
  assert.notDeepEqual(await readFile(join(data,'plugins/versions/relocated',changed)),await readFile(join(baseline,changed)));
  assert.equal((await store.selected()).id,'baseline');

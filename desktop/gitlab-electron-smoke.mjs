@@ -8,6 +8,7 @@ import {PluginStore} from './plugin-store.mjs';
 import {profile} from '../tests/profile.mjs';
 const baseline=resolve(process.env.GEA_GITLAB_BASELINE);
 const executable=resolve(process.env.GEA_GITLAB_ELECTRON);
+const fromVersion=process.env.GEA_GITLAB_FROM,toVersion=process.env.GEA_GITLAB_TO;assert.ok(fromVersion&&toVersion);
 const cleanup=[];let app;
 const data=await mkdtemp(join(tmpdir(),'gea-gitlab-electron-'));
 try {
@@ -22,7 +23,7 @@ try {
  let stderr='';app.process().stderr?.on('data',chunk=>{stderr+=chunk.toString();});app.process().once('exit',code=>{if(code)console.log('ELECTRON_EXIT',code,stderr.slice(-1500).replace(/https?:\/\/\S+/g,'[URL]'));});
  const page=await app.firstWindow();page.setDefaultTimeout(20000);
  const status=()=>page.evaluate(()=>fetch('/dsh-plugin-hub/desktop-updates').then(r=>r.json())).catch(()=>null);
- await expect.poll(status,{timeout:60000}).toMatchObject({desktop:true,current:{'dsh-plugin':'1.4.3-company.4'}});
+ await expect.poll(status,{timeout:60000}).toMatchObject({desktop:true,current:{'dsh-plugin':fromVersion}});
  // The local QR fixture confirms a synthetic account; no production login is used.
  await page.screenshot({path:join(data,'00-login.png')});
  let qrFrame;await expect.poll(async()=>{for(const frame of page.frames()){if(await frame.getByRole('button',{name:'刷新二维码',exact:true}).count()){qrFrame=frame;return true;}}return false;}).toBe(true);
@@ -32,19 +33,19 @@ try {
  async function openUpdates(){await page.getByRole('button',{name:'账户菜单',exact:true}).click();await page.getByRole('menuitem',{name:'设置',exact:true}).click();await page.getByRole('button',{name:/^(插件市场|公司插件|软件更新)$/}).first().click();await page.locator('[data-desktop-updates]').waitFor();}
  console.log('MOCK_LOGIN_READY');await openUpdates();console.log('UPDATES_PAGE_READY');const panel=page.locator('[data-desktop-updates]');
  await panel.getByRole('button',{name:'检查更新',exact:true}).click();
- await expect.poll(status).toMatchObject({checkError:null,releases:expect.arrayContaining([expect.objectContaining({package:'dsh-plugin',version:'1.4.3-company.7'})])});
+ await expect.poll(status).toMatchObject({checkError:null,releases:expect.arrayContaining([expect.objectContaining({package:'dsh-plugin',version:toVersion})])});
  await panel.getByRole('button',{name:'查看更新',exact:true}).click();
  console.log('GITLAB_UPDATE_FOUND');await page.screenshot({path:join(data,'01-update-found.png')});
  await panel.getByRole('button',{name:'下载更新',exact:true}).click();
- await expect.poll(status,{timeout:300000}).toMatchObject({phase:'pending',current:{'dsh-plugin':'1.4.3-company.4'}});
+ await expect.poll(status,{timeout:300000}).toMatchObject({phase:'pending',current:{'dsh-plugin':fromVersion}});
  console.log('GITLAB_UPDATE_PREPARED');await page.screenshot({path:join(data,'02-update-ready.png')});
  await panel.getByRole('button',{name:'重启并应用（会停止当前任务）',exact:true}).click();
- await expect.poll(status,{timeout:60000}).toMatchObject({phase:'succeeded',current:{'dsh-plugin':'1.4.3-company.7'}});
+ await expect.poll(status,{timeout:60000}).toMatchObject({phase:'succeeded',current:{'dsh-plugin':toVersion}});
  await openUpdates();await panel.getByRole('button',{name:'检查更新',exact:true}).click();
  await expect(panel).toContainText('已是最新版本');await page.screenshot({path:join(data,'03-updated.png')});
  assert.equal(await readFile(join(data,'data/workspace/keep.txt'),'utf8'),'existing workspace');
  assert.deepEqual(await readFile(join(data,'login.encrypted')),savedLogin);
  const state=await status();assert.ok(state.releases.every(entry=>entry.url.startsWith('http://100.100.6.191:20656/')));
- await writeFile(join(data,'result.json'),JSON.stringify({data,executable,from:'1.4.3-company.4',to:state.current['dsh-plugin'],phase:state.phase,gitlabOnly:true,noToken:true,workspacePreserved:true,mockLoginPreserved:true},null,2));
+ await writeFile(join(data,'result.json'),JSON.stringify({data,executable,from:fromVersion,to:state.current['dsh-plugin'],phase:state.phase,gitlabOnly:true,noToken:true,workspacePreserved:true,mockLoginPreserved:true},null,2));
  console.log('ELECTRON_GITLAB_UPDATE_PASS '+data);
 }finally{await app?.close();for(const close of cleanup.reverse())await close();}
