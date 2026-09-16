@@ -42,6 +42,8 @@ test("GEA bundle keeps the application chooser but hides the default workspace l
     patch.find((row) => row.id === "ui-open-in-app").config,
     { showPrimaryAction: false },
   );
+  const shell = await readFile(new URL("../src/client/shell.css", import.meta.url), "utf8");
+  assert.match(shell, /button\[data-state\]\[aria-label\]:has\(\+ button\[aria-haspopup='menu'\]\)/);
 });
 
 test('GEA exposes a standard bundle that composes the independent workbench', async () => {

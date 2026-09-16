@@ -42,6 +42,17 @@
 .gea-workbench-fullscreen:active {
   background: #e8f1ff;
 }
+
+/* The business profile keeps the application chooser but not the default
+   workspace quick-launch. Older desktop cores do not yet understand the
+   showPrimaryAction bundle option, so this is a structural fallback. */
+button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) {
+  display: none !important;
+}
+
+button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria-haspopup='menu'] {
+  border-left: 0 !important;
+}
 .gea-shell-navigation {
   box-sizing: border-box;
   height: 100%;
