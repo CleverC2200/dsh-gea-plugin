@@ -73,7 +73,12 @@ test(
     assert.equal(body.model, "fixture-model");
     assert.deepEqual(
       body.tools.map((tool) => tool.function.name).sort(),
-      ["gea_sales_plan_read", "gea_skill_reference_read", "skill"],
+      [
+        "gea_sales_plan_read",
+        "gea_skill_reference_read",
+        "gea_visible_workbench_context",
+        "skill",
+      ],
     );
     const submitted = rows.find(
       (row) =>

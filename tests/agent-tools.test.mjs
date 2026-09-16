@@ -1,4 +1,5 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { profile, readSession, until } from "./profile.mjs";
@@ -119,6 +120,35 @@ test(
         );
         return true;
       }
+      if (outcome === "visible-context") {
+        const hasVisibleContext = body.messages.some(
+          (message) =>
+            message.role === "tool" &&
+            typeof message.content === "string" &&
+            message.content.includes("GEA_RENDERED_WORKBENCH"),
+        );
+        res.end(
+          hasVisibleContext
+            ? event({ content: "已按当前可见客户范围回答。" }, "stop")
+            : event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "visible-context-1",
+                      type: "function",
+                      function: {
+                        name: "gea_visible_workbench_context",
+                        arguments: "{}",
+                      },
+                    },
+                  ],
+                },
+                "tool_calls",
+              ),
+        );
+        return true;
+      }
       if (!body.messages.some((x) => x.role === "tool")) {
         res.end(
           event(
@@ -182,7 +212,12 @@ test(
         assert.equal(modelRequests.length, 2);
         assert.deepEqual(
           modelRequests[0].tools.map((x) => x.function.name).sort(),
-          ["gea_sales_plan_read", "gea_skill_reference_read", "skill"],
+          [
+            "gea_sales_plan_read",
+            "gea_skill_reference_read",
+            "gea_visible_workbench_context",
+            "skill",
+          ],
         );
         const result = modelRequests[1].messages.find((x) => x.role === "tool");
         assert.equal(result.tool_call_id, "read-1");
@@ -226,6 +261,82 @@ test(
         );
         assert.equal(read.method, "GET");
         assert.equal(read.headers["x-tenant-id"], "0");
+      },
+    );
+    await t.test(
+      "the current conversation reads only its synchronised visible workbench page",
+      async () => {
+        outcome = "success";
+        const id = await submit();
+        await ended(id);
+        const synced = await app.rpc("workbench/context", {
+          sessionId: id,
+          context: {
+            format: "gea-workbench-visible-v1",
+            sequence: 1,
+            view: "regional-approval",
+            scope: {
+              month: "2026-10",
+              planType: "Y",
+              approvalStage: "province",
+              dimension: "customer",
+            },
+            visibleRows: [
+              {
+                planId: "9007199254740993",
+                organization: "当前客户",
+                planTypeCode: "Y",
+                status: 3,
+              },
+            ],
+            selectedPlanIds: [],
+            pagination: { page: 1, pageSize: 20, total: 1 },
+            evidence: {
+              source: "gea-user-session",
+              completeness: "paged-queue",
+              queryState: "success",
+              dataVersion: "sales-plan-v1.11",
+            },
+          },
+        });
+        assert.deepEqual(synced, { ok: true, value: { synced: true } });
+        outcome = "visible-context";
+        modelRequests = [];
+        const prompted = await app.remote("session/prompt", {
+          requestId: randomUUID(),
+          sessionId: id,
+          mode: "queue",
+          content: [{ type: "text", text: "这几个客户是什么计划类型？" }],
+        });
+        assert.equal(prompted.ok, true, JSON.stringify(prompted));
+        const rows = await until(
+          () => readSession(app.runtime, id),
+          (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
+        );
+        assert.equal(modelRequests.length, 2);
+        assert.equal(
+          modelRequests[0].tools.some(
+            (tool) => tool.function.name === "gea_visible_workbench_context",
+          ),
+          true,
+        );
+        const result = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "visible-context-1",
+        );
+        const value = JSON.parse(result.content);
+        assert.equal(value.source, "GEA_RENDERED_WORKBENCH");
+        assert.equal(value.coverage, "current-visible-page");
+        assert.equal(value.context.visibleRows[0].organization, "当前客户");
+        assert.equal(
+          rows.some(
+            (entry) =>
+              entry.type === "tool/call" &&
+              entry.data.name === "gea_visible_workbench_context",
+          ),
+          true,
+        );
       },
     );
     await t.test(

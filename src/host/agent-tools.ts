@@ -71,4 +71,32 @@ export function registerGeaTools(ctx: Context, business: Business): void {
       }),
     ),
   );
+  ctx.effect(() =>
+    ctx.tools.register(
+      defineTool({
+        name: "gea_visible_workbench_context",
+        description:
+          "Read the latest rows currently visible in this same GEA approval workbench conversation. Use this before answering references such as ‘these customers’, ‘the current page’, ‘the rows on screen’, or ‘this table’. The result is a browser-rendered, read-only current-page snapshot with its rendered time and coverage; it is not independently re-read from GEA and cannot approve, save, submit, or adjust anything.",
+        parameters: {},
+        output: {
+          schema: { type: "string" },
+          render: (_args, value) => [{ type: "text", text: value }],
+          presentationMeta: () => ({
+            source: "GEA_RENDERED_WORKBENCH",
+            readonly: true,
+            coverage: "current-visible-page",
+          }),
+        },
+        isConcurrencySafe: () => true,
+        presentCall: () => ({
+          card: "generic",
+          title: "GEA · 当前页面上下文",
+        }),
+        execute: async (_args, exec) => {
+          if (!exec.agent) throw new Error("WORKBENCH_SESSION_REQUIRED");
+          return business.visibleWorkbenchContext(exec.agent.id);
+        },
+      }),
+    ),
+  );
 }

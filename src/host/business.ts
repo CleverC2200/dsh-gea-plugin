@@ -85,6 +85,28 @@ export interface Detail {
   missing: string[];
 }
 
+/** 浏览器当前可见页的最小只读投影，不作为 GEA 写操作依据。 */
+export interface VisibleWorkbenchContext {
+  format: "gea-workbench-visible-v1";
+  sequence: number;
+  view: "regional-approval";
+  scope: {
+    month: string;
+    planType: string;
+    approvalStage: string;
+    dimension: string | null;
+  };
+  visibleRows: Array<Record<string, string | number | null>>;
+  selectedPlanIds: string[];
+  pagination: { page: number; pageSize: number; total: number };
+  evidence: {
+    source: "gea-user-session";
+    completeness: "paged-queue";
+    queryState: "success";
+    dataVersion: string;
+  };
+}
+
 export type GeaModelRoute = {
   baseUrl: string;
   secret: string;
@@ -217,6 +239,90 @@ function keys(payload: Record<string, unknown>, allowed: string[]): void {
   if (Object.keys(payload).some((key) => !allowed.includes(key)))
     throw new Error("INVALID_PAYLOAD");
 }
+
+function visibleWorkbenchText(value: unknown): string {
+  if (typeof value !== "string" || value.length > 512)
+    throw new Error("INVALID_WORKBENCH_CONTEXT");
+  return value;
+}
+
+function validateVisibleWorkbenchContext(
+  payload: Record<string, unknown>,
+): VisibleWorkbenchContext {
+  keys(payload, [
+    "format",
+    "sequence",
+    "view",
+    "scope",
+    "visibleRows",
+    "selectedPlanIds",
+    "pagination",
+    "evidence",
+  ]);
+  if (payload.format !== "gea-workbench-visible-v1" || payload.view !== "regional-approval")
+    throw new Error("INVALID_WORKBENCH_CONTEXT");
+  const scope = object(payload.scope);
+  keys(scope, ["month", "planType", "approvalStage", "dimension"]);
+  const pagination = object(payload.pagination);
+  keys(pagination, ["page", "pageSize", "total"]);
+  const evidence = object(payload.evidence);
+  keys(evidence, ["source", "completeness", "queryState", "dataVersion"]);
+  if (
+    evidence.source !== "gea-user-session" ||
+    evidence.completeness !== "paged-queue" ||
+    evidence.queryState !== "success"
+  )
+    throw new Error("INVALID_WORKBENCH_CONTEXT");
+  if (!Array.isArray(payload.visibleRows) || payload.visibleRows.length > 100)
+    throw new Error("INVALID_WORKBENCH_CONTEXT");
+  const visibleRows = payload.visibleRows.map((candidate) => {
+    const row = object(candidate);
+    if (Object.keys(row).length > 20) throw new Error("INVALID_WORKBENCH_CONTEXT");
+    return Object.fromEntries(
+      Object.entries(row).map(([key, value]) => {
+        if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(key))
+          throw new Error("INVALID_WORKBENCH_CONTEXT");
+        if (value !== null && typeof value !== "string" && typeof value !== "number")
+          throw new Error("INVALID_WORKBENCH_CONTEXT");
+        if (typeof value === "string" && value.length > 512)
+          throw new Error("INVALID_WORKBENCH_CONTEXT");
+        if (typeof value === "number" && !Number.isFinite(value))
+          throw new Error("INVALID_WORKBENCH_CONTEXT");
+        return [key, value] as const;
+      }),
+    );
+  });
+  if (
+    !Array.isArray(payload.selectedPlanIds) ||
+    payload.selectedPlanIds.length > visibleRows.length ||
+    payload.selectedPlanIds.some((id) => typeof id !== "string" || id.length > 256)
+  )
+    throw new Error("INVALID_WORKBENCH_CONTEXT");
+  return {
+    format: "gea-workbench-visible-v1",
+    sequence: integer(payload.sequence, 1),
+    view: "regional-approval",
+    scope: {
+      month: visibleWorkbenchText(scope.month),
+      planType: visibleWorkbenchText(scope.planType),
+      approvalStage: visibleWorkbenchText(scope.approvalStage),
+      dimension: scope.dimension === null ? null : visibleWorkbenchText(scope.dimension),
+    },
+    visibleRows,
+    selectedPlanIds: [...new Set(payload.selectedPlanIds)],
+    pagination: {
+      page: integer(pagination.page, 1),
+      pageSize: integer(pagination.pageSize, 1, 100),
+      total: integer(pagination.total, 0),
+    },
+    evidence: {
+      source: "gea-user-session",
+      completeness: "paged-queue",
+      queryState: "success",
+      dataVersion: visibleWorkbenchText(evidence.dataVersion),
+    },
+  };
+}
 /** 运算前校验来源小数；任何无效记录都不能被静默跳过。 */
 function decimalSources(
   values: unknown[],
@@ -297,6 +403,10 @@ export class Business {
   private details = new Map<string, Detail>();
   private versionsByPlan = new Map<string, Collection>();
   private skusByVersion = new Map<string, Collection>();
+  private readonly visibleWorkbenchContexts = new Map<
+    string,
+    { sequence: number; receivedAt: string; context: VisibleWorkbenchContext }
+  >();
   private requests = new Map<string, AbortController>();
   private modelRoutes = new Map<string, GeaModelRoute>();
   private loginExpired = false;
@@ -370,6 +480,7 @@ export class Business {
     this.details.clear();
     this.versionsByPlan.clear();
     this.skusByVersion.clear();
+    this.visibleWorkbenchContexts.clear();
     for (const request of this.requests.values()) request.abort();
     this.requests.clear();
   }
@@ -385,6 +496,43 @@ export class Business {
     this.loginExpired = expired;
     this.clearQuery();
     this.notifyIdentity();
+  }
+
+  /**
+   * 浏览器推送当前已显示的最小只读投影；字段都按不可信业务数据处理。
+   * 同一 sessionId 的较旧更新不会覆盖较新的页面状态。
+   */
+  updateVisibleWorkbenchContext(sessionId: string, payload: Record<string, unknown>): void {
+    this.authenticated();
+    if (!/^session-[0-9a-f-]{36}$/.test(sessionId))
+      throw new Error("INVALID_WORKBENCH_SESSION");
+    const context = validateVisibleWorkbenchContext(payload);
+    const previous = this.visibleWorkbenchContexts.get(sessionId);
+    if (previous && context.sequence < previous.sequence) return;
+    this.visibleWorkbenchContexts.set(sessionId, {
+      sequence: context.sequence,
+      receivedAt: new Date().toISOString(),
+      context,
+    });
+  }
+
+  clearVisibleWorkbenchContext(sessionId: string): void {
+    if (!/^session-[0-9a-f-]{36}$/.test(sessionId))
+      throw new Error("INVALID_WORKBENCH_SESSION");
+    this.visibleWorkbenchContexts.delete(sessionId);
+  }
+
+  /** 只返回当前 Agent 会话的页面范围，不重新读取 GEA，也不执行任何写操作。 */
+  visibleWorkbenchContext(sessionId: string): string {
+    const value = this.visibleWorkbenchContexts.get(sessionId);
+    if (!value) throw new Error("WORKBENCH_CONTEXT_UNAVAILABLE");
+    return JSON.stringify({
+      source: "GEA_RENDERED_WORKBENCH",
+      renderedAt: value.receivedAt,
+      coverage: "current-visible-page",
+      authority: "read-only-ui-context",
+      context: value.context,
+    });
   }
 
   /** 模型 Gateway 拒绝当前身份后，将该 GEA 登录标记为过期。 */

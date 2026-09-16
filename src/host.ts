@@ -408,6 +408,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "submit",
     "workbench/query",
     "workbench/prepare",
+    "workbench/context",
   ];
   for (const endpoint of endpoints)
     ctx.effect(() =>
@@ -429,6 +430,25 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                   request.signal,
                 );
                 break;
+              case "workbench/context": {
+                if (
+                  Object.keys(payload).some(
+                    (key) => key !== "sessionId" && key !== "context",
+                  )
+                )
+                  throw new Error("INVALID_WORKBENCH_CONTEXT");
+                if (typeof payload.sessionId !== "string")
+                  throw new Error("INVALID_WORKBENCH_SESSION");
+                const sessionId = payload.sessionId;
+                if (payload.context === null) {
+                  business.clearVisibleWorkbenchContext(sessionId);
+                  value = { synced: false };
+                } else {
+                  business.updateVisibleWorkbenchContext(sessionId, object(payload.context));
+                  value = { synced: true };
+                }
+                break;
+              }
               case "sales-plan/submit":
                 value = await business.salesPlanSubmit(payload, request.signal);
                 break;

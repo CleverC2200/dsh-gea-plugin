@@ -24,6 +24,83 @@ import logo from "./gea-logo.png";
 type Status = ReturnType<Business["status"]>;
 type Translate = (key: CopyKey) => string;
 type AnalysisScope = "summary" | "details";
+type VisibleWorkbenchContext = {
+  format: "gea-workbench-visible-v1";
+  sequence: number;
+  view: "regional-approval";
+  scope: {
+    month: string;
+    planType: string;
+    approvalStage: string;
+    dimension: string | null;
+  };
+  visibleRows: Array<Record<string, string | number | null>>;
+  selectedPlanIds: string[];
+  pagination: { page: number; pageSize: number; total: number };
+  evidence: {
+    source: "gea-user-session";
+    completeness: "paged-queue";
+    queryState: "success";
+    dataVersion: string;
+  };
+};
+
+function visibleWorkbenchContext(
+  context: RegionalApprovalWorkbenchContext,
+  sequence: number,
+): VisibleWorkbenchContext | undefined {
+  if (
+    context.evidence.source !== "gea-user-session" ||
+    context.evidence.completeness !== "paged-queue" ||
+    context.evidence.queryState !== "success"
+  )
+    return undefined;
+  const rows = context.visibleEntities
+    .filter((entity) => entity.source === "gea")
+    .map((entity) => ({
+      planId: entity.id,
+      organization: entity.organizationKey,
+      planTypeCode: entity.planTypeCode ?? null,
+      approvalState: String(entity.approvalState),
+      status: entity.status ?? null,
+      versionId: entity.versionId ?? null,
+      seq: entity.seq ?? null,
+      dealerCode: entity.dealerCode ?? null,
+      orgCode: entity.orgCode ?? null,
+      provinceCode: entity.provinceCode ?? null,
+      areaCode: entity.areaCode ?? null,
+      currentQty: entity.currentQty ?? null,
+      currentAmount: entity.currentAmount ?? null,
+      targetAmount: entity.targetAmount ?? null,
+      skuCount: entity.skuCount ?? null,
+      submitter: entity.submitter ?? null,
+      returnReason: entity.returnReason ?? null,
+    }));
+  return {
+    format: "gea-workbench-visible-v1",
+    sequence,
+    view: "regional-approval",
+    scope: {
+      month: context.scope.month,
+      planType: context.scope.planType,
+      approvalStage: context.scope.approvalStage,
+      dimension: context.scope.dimension ?? null,
+    },
+    visibleRows: rows,
+    selectedPlanIds: [...new Set(
+      context.selectedEntities
+        .filter((entity) => entity.source === "gea")
+        .map((entity) => entity.id),
+    )].sort(),
+    pagination: context.pagination,
+    evidence: {
+      source: "gea-user-session",
+      completeness: "paged-queue",
+      queryState: "success",
+      dataVersion: context.evidence.dataVersion,
+    },
+  };
+}
 const locale = i18next.createInstance();
 const language = (
   new URLSearchParams(window.location.search).get("locale") ??
@@ -182,12 +259,25 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const [autoRetry, setAutoRetry] = useState(0);
   const request = useRef<AbortController>();
   const selectionRef = useRef("");
+  const contextSequence = useRef(0);
+  const contextRef = useRef("");
+  const [conversationContext, setConversationContext] =
+    useState<VisibleWorkbenchContext>();
   const onContextChange = useCallback(
     (context: RegionalApprovalWorkbenchContext) => {
       const available = context.evidence.source === 'gea-user-session' && context.evidence.queryState === 'success';
       const planIds = [...new Set(context.visibleEntities.filter(entity => entity.source === 'gea').map(entity => entity.id))].sort();
       setAutoContext(available && planIds.length ? JSON.stringify({planIds, month: context.scope.month, stage: context.scope.approvalStage,
         filters: context.scope.appliedFilters, versions: context.visibleEntities.map(entity=>entity.versionId)}) : undefined);
+      const nextContext = visibleWorkbenchContext(context, 0);
+      const nextKey = JSON.stringify(nextContext);
+      if (nextKey !== contextRef.current) {
+        contextRef.current = nextKey;
+        contextSequence.current += 1;
+        setConversationContext(
+          nextContext && { ...nextContext, sequence: contextSequence.current },
+        );
+      }
       const ids =
         context.evidence.source === "gea-user-session" &&
         context.evidence.queryState === "success"
@@ -217,6 +307,18 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     },
     [],
   );
+  useEffect(() => {
+    if (!sessionId) return;
+    const controller = new AbortController();
+    void rpc(
+      "workbench/context",
+      { sessionId, context: conversationContext ?? null },
+      controller.signal,
+    ).catch(() => {
+      // 上下文同步失败不能影响审批工作台；右侧工具会如实提示上下文不可用。
+    });
+    return () => controller.abort();
+  }, [conversationContext, sessionId]);
   useEffect(() => {
     const controller = new AbortController();
     void rpc<Status>("status", {}, controller.signal)
