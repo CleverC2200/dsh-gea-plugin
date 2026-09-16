@@ -1536,17 +1536,44 @@ const RegionalApprovalWorkbench: React.FC<{
   };
   // Keep the approval queue dense once its columns have enough room to scan.
   // The expanded SKU table deliberately follows a separate, roomier layout.
-  const liveMinimumWidths = [220, 112, 112, categoryComparison ? 172 : 136, categoryComparison ? 180 : 120];
+  const liveMinimumWidths = categoryComparison ? [220, 112, 112, 172, 180] : [220, 112, 112, 136];
   const liveMinimumWidth = liveMinimumWidths.reduce((total, width) => total + width, 40);
   const liveTableWidth = Math.max(
     liveMinimumWidth,
     Math.min(tableViewportWidth || liveMinimumWidth, 960)
   );
   const liveExtraWidth = Math.max(0, liveTableWidth - liveMinimumWidth);
-  const liveColumnWidths = liveMinimumWidths.map((width, index) =>
-    width + liveExtraWidth * [0.42, 0.18, 0.18, 0.22, 0][index]
-  );
+  const liveColumnWeights = categoryComparison ? [0.42, 0.18, 0.18, 0.22, 0] : [0.44, 0.2, 0.2, 0.16];
+  const liveColumnWidths = liveMinimumWidths.map((width, index) => width + liveExtraWidth * liveColumnWeights[index]);
   const pinLiveColumns = tableViewportWidth >= liveTableWidth;
+  const liveApprovalStatusTag = (tableRow: Extract<RegionalApprovalLiveTableRow, {kind: 'plan'}>) => {
+    const row = tableRow.plan;
+    return (
+      <Tag
+        color={row.approvalState === 'approved' ? 'green' : row.approvalState === 'returned' ? 'orange' : 'arcoblue'}
+        data-testid={`regional-approval-status-${row.planId}`}
+      >
+        {tableRow.members && new Set(tableRow.members.map((member) => member.status)).size > 1
+          ? t('common.assistantSurface.regionalApproval.mixedApprovalStatus')
+          : salesPlanStatusText(row.status, row.planTypeCode, t)}
+      </Tag>
+    );
+  };
+  const fixtureApprovalStatusTag = (row: RegionalApprovalRow) => {
+    const localResult = localResultFor(row);
+    return localResult ? (
+      <Tag
+        color={localResult.kind === 'submit' ? 'green' : 'orange'}
+        data-testid={`regional-approval-status-${row.id}`}
+      >
+        {t(`common.assistantSurface.regionalApproval.action.rowStatus.${localResult.kind}`)}
+      </Tag>
+    ) : (
+      <Tag color={approvalColors[row.approvalState]} data-testid={`regional-approval-status-${row.id}`}>
+        {t(`common.assistantSurface.regionalApproval.status.${row.approvalState}`)}
+      </Tag>
+    );
+  };
   const liveColumns: TableColumnProps<RegionalApprovalLiveTableRow>[] = [
     {
       title: t('common.assistantSurface.regionalApproval.columns.organization'),
@@ -1587,41 +1614,44 @@ const RegionalApprovalWorkbench: React.FC<{
             className={styles.organizationCell}
 
           >
-            <Button
-              type='text'
-              size='small'
-              className={styles.detailTrigger}
-              onClick={() => {
-                if (tableRow.members) {
-                  setExpandedLiveGroups((current) =>
-                    current.includes(tableRow.tableRowId)
-                      ? current.filter((id) => id !== tableRow.tableRowId)
-                      : [...current, tableRow.tableRowId]
-                  );
-                  return;
+            <div className={styles.organizationTitle}>
+              <Button
+                type='text'
+                size='small'
+                className={styles.detailTrigger}
+                onClick={() => {
+                  if (tableRow.members) {
+                    setExpandedLiveGroups((current) =>
+                      current.includes(tableRow.tableRowId)
+                        ? current.filter((id) => id !== tableRow.tableRowId)
+                        : [...current, tableRow.tableRowId]
+                    );
+                    return;
+                  }
+                  selectLivePlanContext(row);
+                  setFocusedLivePlanId(row.planId);
+                  setLiveAdjustmentDimension(tableRow.childPlan ? 'customer' : dimension);
+                  setInlinePlanId(current => current === row.planId ? undefined : row.planId);
+                }}
+                aria-label={t(
+                  tableRow.members
+                    ? 'common.assistantSurface.regionalApproval.expandOrganization'
+                    : 'common.assistantSurface.regionalApproval.liveAdjustment.openFor',
+                  {
+                    plan: organizationName,
+                  }
+                )}
+                aria-expanded={tableRow.members ? expandedLiveGroups.includes(tableRow.tableRowId) : undefined}
+                title={
+                  organizationName === t('common.assistantSurface.regionalApproval.query.unnamedOrganization')
+                    ? t('common.assistantSurface.regionalApproval.query.unnamedOrganizationHint')
+                    : organizationName
                 }
-                selectLivePlanContext(row);
-                setFocusedLivePlanId(row.planId);
-                setLiveAdjustmentDimension(tableRow.childPlan ? 'customer' : dimension);
-                setInlinePlanId(current => current === row.planId ? undefined : row.planId);
-              }}
-              aria-label={t(
-                tableRow.members
-                  ? 'common.assistantSurface.regionalApproval.expandOrganization'
-                  : 'common.assistantSurface.regionalApproval.liveAdjustment.openFor',
-                {
-                  plan: organizationName,
-                }
-              )}
-              aria-expanded={tableRow.members ? expandedLiveGroups.includes(tableRow.tableRowId) : undefined}
-              title={
-                organizationName === t('common.assistantSurface.regionalApproval.query.unnamedOrganization')
-                  ? t('common.assistantSurface.regionalApproval.query.unnamedOrganizationHint')
-                  : organizationName
-              }
-            >
-              {organizationName}
-            </Button>
+              >
+                {organizationName}
+              </Button>
+              {liveApprovalStatusTag(tableRow)}
+            </div>
             <span
               className={styles.organizationPath}
               data-testid={`regional-approval-scope-${row.planId}`}
@@ -1710,42 +1740,31 @@ const RegionalApprovalWorkbench: React.FC<{
         );
       },
     },
-    {
-      title: categoryComparison
-        ? t('common.assistantSurface.regionalApproval.columns.aiOpinion')
-        : t('common.assistantSurface.regionalApproval.columns.status'),
-      width: liveColumnWidths[4],
-      fixed: pinLiveColumns ? 'right' : undefined,
-      render: (_, tableRow) => {
-        if (tableRow.kind === 'plan') {
-          const row = tableRow.plan;
-          return (
-            <Tag
-              color={
-                row.approvalState === 'approved' ? 'green' : row.approvalState === 'returned' ? 'orange' : 'arcoblue'
-              }
-            >
-              {tableRow.members && new Set(tableRow.members.map((member) => member.status)).size > 1
-                ? t('common.assistantSurface.regionalApproval.mixedApprovalStatus')
-                : salesPlanStatusText(row.status, row.planTypeCode, t)}
-            </Tag>
-          );
-        }
-        const state = categoryComparisonState(tableRow.category);
-        return (
-          <div className={styles.categoryOpinionCell}>
-            <Tag color={state === 'healthy' ? 'green' : state === 'attention' ? 'orange' : 'red'}>
-              {t(`common.assistantSurface.regionalApproval.health.${state}`)}
-            </Tag>
-            <span>
-              {t(`common.assistantSurface.regionalApproval.categoryRows.advice.${state}`, {
-                category: tableRow.category.categoryName,
-              })}
-            </span>
-          </div>
-        );
-      },
-    },
+    ...(categoryComparison
+      ? [
+          {
+            title: t('common.assistantSurface.regionalApproval.columns.aiOpinion'),
+            width: liveColumnWidths[4],
+            fixed: pinLiveColumns ? ('right' as const) : undefined,
+            render: (_: unknown, tableRow: RegionalApprovalLiveTableRow) => {
+              if (tableRow.kind === 'plan') return '—';
+              const state = categoryComparisonState(tableRow.category);
+              return (
+                <div className={styles.categoryOpinionCell}>
+                  <Tag color={state === 'healthy' ? 'green' : state === 'attention' ? 'orange' : 'red'}>
+                    {t(`common.assistantSurface.regionalApproval.health.${state}`)}
+                  </Tag>
+                  <span>
+                    {t(`common.assistantSurface.regionalApproval.categoryRows.advice.${state}`, {
+                      category: tableRow.category.categoryName,
+                    })}
+                  </span>
+                </div>
+              );
+            },
+          },
+        ]
+      : []),
   ];
   const columns: TableColumnProps<RegionalApprovalRow>[] = [
     {
@@ -1753,17 +1772,20 @@ const RegionalApprovalWorkbench: React.FC<{
       width: 220,
       render: (_, row) => (
         <div className={styles.organizationCell}>
-          <Button
-            type='text'
-            size='small'
-            className={styles.detailTrigger}
-            onClick={() => openDetail(row)}
-            aria-label={t('common.assistantSurface.regionalApproval.detail.openFor', {
-              organization: t(organizationLabelKey(row.organizationKey)),
-            })}
-          >
-            {t(organizationLabelKey(row.organizationKey))}
-          </Button>
+          <div className={styles.organizationTitle}>
+            <Button
+              type='text'
+              size='small'
+              className={styles.detailTrigger}
+              onClick={() => openDetail(row)}
+              aria-label={t('common.assistantSurface.regionalApproval.detail.openFor', {
+                organization: t(organizationLabelKey(row.organizationKey)),
+              })}
+            >
+              {t(organizationLabelKey(row.organizationKey))}
+            </Button>
+            {fixtureApprovalStatusTag(row)}
+          </div>
           <span>
             {t(areaLabelKey(row.areaKey))} · {t(branchLabelKey(row.branchKey))} ·{' '}
             {t(departmentLabelKey(row.departmentKey))}
@@ -1855,23 +1877,6 @@ const RegionalApprovalWorkbench: React.FC<{
           },
         ]
       : []),
-    {
-      title: t('common.assistantSurface.regionalApproval.columns.status'),
-      width: 90,
-      fixed: 'right',
-      render: (_, row) => {
-        const localResult = localResultFor(row);
-        return localResult ? (
-          <Tag color={localResult.kind === 'submit' ? 'green' : 'orange'}>
-            {t(`common.assistantSurface.regionalApproval.action.rowStatus.${localResult.kind}`)}
-          </Tag>
-        ) : (
-          <Tag color={approvalColors[row.approvalState]}>
-            {t(`common.assistantSurface.regionalApproval.status.${row.approvalState}`)}
-          </Tag>
-        );
-      },
-    },
   ];
   const approvalActionButtons = liveQuery.enabled ? (
     <>

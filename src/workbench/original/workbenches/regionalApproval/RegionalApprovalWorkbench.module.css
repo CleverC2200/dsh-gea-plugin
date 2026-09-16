@@ -646,6 +646,22 @@
   gap: 3px;
 }
 
+.organizationTitle {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.organizationTitle .detailTrigger {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.organizationTitle :global(.arco-tag) {
+  flex: 0 0 auto;
+}
+
 .organizationCell > strong {
   overflow: hidden;
   color: var(--text-primary);
