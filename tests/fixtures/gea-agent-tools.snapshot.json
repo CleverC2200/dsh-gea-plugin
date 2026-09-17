@@ -10,7 +10,7 @@
   "arguments": { "kind": "periods", "query": { "pageSize": 1 } },
   "coverage": "partial",
   "value": {
-    "records": [{ "periodId": "period-1", "periodMonth": "2026-09" }],
+    "records": [{ "periodId": "20261001", "tenantId": "0", "periodMonth": "2026-10", "planType": "MONTHLY", "planTypeCode": "Y", "status": "UNKNOWN" }],
     "total": 2,
     "size": 1,
     "current": 1,

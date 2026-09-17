@@ -76,7 +76,10 @@ test("resubmission retains order type, sends the configured next status and vali
   const negative = source();
   negative.skus[0].qty = "-1";
   assert.throws(() => prepareSalesPlanResubmit(negative));
-  assert.throws(() => prepareSalesPlanResubmit(source(6, "CLOSED")));
+  const withoutRemovedPeriodStatus = source(6);
+  delete withoutRemovedPeriodStatus.period.status;
+  assert.equal(prepareSalesPlanResubmit(withoutRemovedPeriodStatus).request.status, 1);
+  assert.equal(prepareSalesPlanResubmit(source(6, "CLOSED")).request.status, 1);
   assert.equal(prepareSalesPlanResubmit(source(7, "CLOSED")).request.status, 2);
 });
 test("shortened workflows choose their next configured role rather than subtracting five", () => {

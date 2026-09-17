@@ -33,7 +33,7 @@ export function correctionService() {
     id: 'v',
     planId: 'z',
     seq: 1,
-    periodId: 'period-1',
+    periodId: '20260901',
     planTypeCode: 'Y',
     orderType: 'Z',
     dealerCode: '123',

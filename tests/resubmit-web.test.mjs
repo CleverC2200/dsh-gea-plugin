@@ -12,7 +12,7 @@ test(
       planId: "p-jxs-2026-10-00001",
       versionId: "v1",
       seq: 1,
-      periodId: "123",
+      periodId: "20261001",
       planTypeCode: "Y",
       orderType: "Z",
       monthlyApproved: true,
@@ -36,7 +36,7 @@ test(
           result: {
             records: [
               {
-                periodId: "123",
+                periodId: "20261001",
                 periodMonth: "2026-10",
                 planTypeCode: "Y",
                 status: "OPEN",

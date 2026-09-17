@@ -1349,14 +1349,81 @@ export class Business {
     return { page: this.page, row };
   }
 
-  /** 返回实际周期字段，并保留周期分页的覆盖范围。 */
+  /**
+   * 周期管理依赖下线后，以当前用户可见计划中的 periodId/planTypeCode 重建只读月份索引。
+   * periodId 的现网格式以 YYYYMM 开头；无法识别的历史标识原样展示，避免伪造月份。
+   */
+  private async salesPlanPeriodPage(
+    query: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<{ records: Row[]; total: number; size: number; current: number; pages: number }> {
+    if (query.status != null && query.status !== "")
+      throw new Error("INVALID_QUERY: period status was removed; filter visible plans by plan status instead.");
+    const auth = this.authenticated();
+    const upstreamPageSize = 200;
+    const rows: Record<string, unknown>[] = [];
+    let pageNo = 1;
+    let pageCount = 1;
+    let upstreamTotal = 0;
+    do {
+      const path = `/sales-plan/plans?pageNo=${pageNo}&pageSize=${upstreamPageSize}`;
+      const page = object(await this.get(
+        path,
+        auth,
+        AbortSignal.any([signal, this.epoch.signal]),
+      ));
+      if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_PAGE");
+      rows.push(...page.records.map(object));
+      upstreamTotal = integer(page.total, rows.length);
+      const actualSize = integer(page.size ?? upstreamPageSize, 1);
+      pageCount = integer(page.pages ?? Math.ceil(upstreamTotal / actualSize), 0, 1000);
+      pageNo += 1;
+    } while (pageNo <= pageCount);
+    if (rows.length < upstreamTotal) throw new Error("GEA_INCOMPLETE_COLLECTION");
+
+    const discovered = new Map<string, Row>();
+    for (const row of rows) {
+      const periodId = text(row.periodId);
+      const planTypeCode = text(row.planTypeCode);
+      const match = /^(\d{4})(0[1-9]|1[0-2])/.exec(periodId);
+      const periodMonth = match ? `${match[1]}-${match[2]}` : periodId;
+      const orderType = row.orderType == null ? "" : text(row.orderType);
+      const planType = orderType === "Z" ? "CORRECTION" : orderType === "M" ? "MONTHLY" : "UNKNOWN";
+      discovered.set(`${periodId}\u0000${planTypeCode}`, {
+        periodId,
+        tenantId: auth.tenantId,
+        periodMonth,
+        planType,
+        planTypeCode,
+        status: "UNKNOWN",
+      });
+    }
+    const periodMonth = query.periodMonth == null || query.periodMonth === "" ? undefined : text(query.periodMonth);
+    const planType = query.planType == null || query.planType === "" ? undefined : text(query.planType);
+    const records = [...discovered.values()]
+      .filter((row) => periodMonth == null || row.periodMonth === periodMonth)
+      .filter((row) => planType == null || row.planType === planType)
+      .toSorted((left, right) =>
+        String(right.periodMonth).localeCompare(String(left.periodMonth)) ||
+        String(left.periodId).localeCompare(String(right.periodId)) ||
+        String(left.planTypeCode).localeCompare(String(right.planTypeCode)),
+      );
+    const current = integer(query.pageNo ?? 1, 1);
+    const size = integer(query.pageSize ?? this.config.periodPageSize, 1, 1000);
+    const start = (current - 1) * size;
+    return {
+      records: records.slice(start, start + size),
+      total: records.length,
+      size,
+      current,
+      pages: records.length === 0 ? 0 : Math.ceil(records.length / size),
+    };
+  }
+
+  /** 返回从当前可见计划重建的周期索引，并保留分页覆盖范围。 */
   async periods(signal: AbortSignal): Promise<Collection> {
-    const path = `/sales-plan/periods?pageNo=1&pageSize=${this.config.periodPageSize}`;
-    const result = await this.get(
-      path,
-      this.authenticated(),
-      AbortSignal.any([signal, this.epoch.signal]),
-    );
+    const path = "/sales-plan/plans";
+    const result = await this.salesPlanPeriodPage({}, signal);
     return this.collection(
       result,
       [
@@ -1370,7 +1437,7 @@ export class Business {
         "createdAt",
         "updatedAt",
       ],
-      ["periodId", "periodMonth", "status"],
+      ["periodId", "periodMonth", "planTypeCode"],
       path,
       "periodId",
     );
@@ -1657,7 +1724,7 @@ export class Business {
     const query = object(payload.query ?? {});
     const kind = text(payload.kind);
     const allowed: Record<string, string[]> = {
-      periods: ["periodMonth", "planType", "status", "pageNo", "pageSize"],
+      periods: ["periodMonth", "planType", "pageNo", "pageSize"],
       list: [
         "orderType",
         "periodId",
@@ -1686,9 +1753,9 @@ export class Business {
       throw new Error(`INVALID_QUERY: kind=${kind} accepts only ${allowed[kind].join(", ")}.${guidance}`);
     }
     if (query.orderType != null && !["M", "Z"].includes(String(query.orderType))) throw new Error("INVALID_QUERY");
+    if (kind === "periods") return this.salesPlanPeriodPage(query, signal);
     const id = (key: string) => encodeURIComponent(text(query[key]));
     const paths: Record<string, () => string> = {
-      periods: () => "/sales-plan/periods",
       list: () => "/sales-plan/plans",
       detail: () => "/sales-plan/plans/" + id("planId"),
       versions: () => "/sales-plan/plans/" + id("planId") + "/versions",

@@ -16,6 +16,12 @@ test(
     ];
     app.route((req, res, reply) => {
       const path = req.url.pathname;
+      if (path.endsWith("/plans")) {
+        res.end(
+          '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version-1","periodId":20260901,"planTypeCode":"Y","orderType":"M","dealerCode":9007199254740997,"status":5,"targetQty":2.3400,"targetAmount":12.30,"currentQty":1.2300,"currentAmount":10.10}],"total":1,"current":1,"size":200,"pages":1}}',
+        );
+        return true;
+      }
       if (path.endsWith("/plans/" + planId)) {
         reply({
           success: true,
@@ -38,7 +44,7 @@ test(
     const periods = await app.rpc("periods");
     assert.equal(periods.value.records[0].periodMonth, "2026-09");
     const page = (
-      await app.rpc("plans", { periodId: "period-1", status: "5", pageNo: 1 })
+      await app.rpc("plans", { periodId: "20260901", status: "5", pageNo: 1 })
     ).value;
     const selection = { queryId: page.queryId, planId };
     const detail = await app.rpc("detail", selection);
