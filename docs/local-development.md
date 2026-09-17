@@ -11,6 +11,8 @@ corepack pnpm install --frozen-lockfile --prefer-offline
 
 Corepack 需提前可用，不在项目 setup 中安装全局工具。上述命令可避开 PATH 中其他 pnpm 入口。已有依赖且相关输入没有变化，不必每次检查前重装；只读或文档任务不需要依赖时不安装。
 
+本项目设置 `verifyDepsBeforeRun: error`：pnpm run/exec 发现依赖过期时直接报错，不自动安装。此时明确运行上面的冻结安装，再执行原命令。这样保留一致性检查，又避免多个检查命令各自触发隐式安装；不是全局关闭依赖校验。
+
 每工作树保留独立 node_modules 和 lib，复用 pnpm store，不链接其他工作树可写目录。workspace 中的构建许可和固定工作台 Git override 仅用于本项目，不复制成全局设置。
 
 ## 构建入口
