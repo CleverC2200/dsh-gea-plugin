@@ -6,6 +6,8 @@ const {join} = require('node:path');
 const {ensureConfiguration,launchUrl} = require('./config.cjs');
 const {startupUrl}=require('./startup-state.cjs');
 async function showStartup(error){if(window&&!window.isDestroyed())await window.loadURL(startupUrl(error,startupReason));}
+// Chromium 补充的自动填充、听写、表情等原生菜单项也使用简体中文。
+app.commandLine.appendSwitch('lang','zh-CN');
 if (process.env.DSH_GEA_DESKTOP_DATA) app.setPath('userData',process.env.DSH_GEA_DESKTOP_DATA);
 const owned = app.requestSingleInstanceLock();
 if (!owned) app.quit();
@@ -168,14 +170,14 @@ if(owned){
         restart:id=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await pluginStore.activate(id);await start(false,'update');})});
     }catch(error){await appendFile(join(data,'desktop.log'),'公司更新服务不可用：'+errorText(error)+'\n',{mode:0o600});}
     Menu.setApplicationMenu(Menu.buildFromTemplate([
-      {label:'GEA Desktop',submenu:[{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'打开启动日志',click:()=>void shell.openPath(join(data,'desktop.log'))},{label:'重新启动工作台',click:()=>void runLifecycle(()=>start(false,'restart')).catch(report)},{type:'separator'},{role:'quit'}]},
+      {label:'GEA Desktop',submenu:[{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'打开启动日志',click:()=>void shell.openPath(join(data,'desktop.log'))},{label:'重新启动工作台',click:()=>void runLifecycle(()=>start(false,'restart')).catch(report)},{type:'separator'},{label:'退出 GEA Desktop',role:'quit'}]},
       {label:'插件版本',submenu:[
         {label:'准备本地插件包',click:()=>void preparePlugin().catch(report)},
         {label:'切换已准备版本并重启',click:()=>void selectPlugin().catch(report)},
         {label:'查看当前版本',click:()=>void pluginStore.selected().then(selected=>dialog.showMessageBox(window,{message:'当前插件组合：'+selected.id,detail:JSON.stringify(selected.receipt?.versions??{},null,2)})).catch(report)}
       ]},
-      {label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},
-      {label:'视图',submenu:[{role:'reload'},{role:'toggleDevTools'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'}]}
+      {label:'编辑',submenu:[{label:'撤销',role:'undo'},{label:'重做',role:'redo'},{type:'separator'},{label:'剪切',role:'cut'},{label:'复制',role:'copy'},{label:'粘贴',role:'paste'},{label:'全选',role:'selectAll'}]},
+      {label:'视图',submenu:[{label:'重新加载',role:'reload'},{label:'切换开发者工具',role:'toggleDevTools'},{label:'实际大小',role:'resetZoom'},{label:'放大',role:'zoomIn'},{label:'缩小',role:'zoomOut'}]}
     ]));
     await ensureConfiguration(configPath);
     await runLifecycle(start);
