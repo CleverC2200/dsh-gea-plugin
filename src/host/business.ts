@@ -583,7 +583,14 @@ export class Business {
   /** 只返回当前 Agent 会话的页面范围，不重新读取 GEA，也不执行任何写操作。 */
   visibleWorkbenchContext(sessionId: string): string {
     const value = this.visibleWorkbenchContexts.get(sessionId);
-    if (!value) throw new Error("WORKBENCH_CONTEXT_UNAVAILABLE");
+    if (!value)
+      return JSON.stringify({
+        source: "GEA_RENDERED_WORKBENCH",
+        coverage: "none",
+        authority: "read-only-ui-context",
+        availability: "unavailable",
+        reason: "WORKBENCH_CONTEXT_NOT_SYNCED",
+      });
     return JSON.stringify({
       source: "GEA_RENDERED_WORKBENCH",
       renderedAt: value.receivedAt,

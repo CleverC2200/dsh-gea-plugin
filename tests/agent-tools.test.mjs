@@ -149,6 +149,30 @@ test(
         );
         return true;
       }
+      if (outcome === "visible-context-unavailable") {
+        const result = body.messages.find((message) => message.role === "tool");
+        res.end(
+          result
+            ? event({ content: "当前页面上下文暂不可用，未据此编造业务结论。" }, "stop")
+            : event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "visible-context-unavailable-1",
+                      type: "function",
+                      function: {
+                        name: "gea_visible_workbench_context",
+                        arguments: "{}",
+                      },
+                    },
+                  ],
+                },
+                "tool_calls",
+              ),
+        );
+        return true;
+      }
       if (!body.messages.some((x) => x.role === "tool")) {
         res.end(
           event(
@@ -184,7 +208,7 @@ test(
     });
     await app.login();
     const page = (await app.rpc("plans")).value;
-    async function submit() {
+    async function submit(workbenchContext) {
       const preview = await app.rpc("prepare", {
         queryId: page.queryId,
         planId: page.records[0].planId,
@@ -192,6 +216,7 @@ test(
       assert.equal(preview.ok, true, JSON.stringify(preview));
       const result = await app.rpc("submit", {
         previewId: preview.value.previewId,
+        ...(workbenchContext ? { workbenchContext } : {}),
       });
       assert.equal(result.ok, true, JSON.stringify(result));
       return result.value.sessionId;
@@ -218,6 +243,13 @@ test(
             "gea_visible_workbench_context",
             "skill",
           ],
+        );
+        assert.match(
+          modelRequests[0].messages
+            .filter((message) => message.role === "system")
+            .map((message) => message.content)
+            .join("\n"),
+          /不得引用其他会话、模型记忆或历史回答中的公司名、月份、状态、数量、金额、退回原因/,
         );
         const result = modelRequests[1].messages.find((x) => x.role === "tool");
         assert.equal(result.tool_call_id, "read-1");
@@ -261,6 +293,79 @@ test(
         );
         assert.equal(read.method, "GET");
         assert.equal(read.headers["x-tenant-id"], "0");
+      },
+    );
+    await t.test(
+      "a newly submitted conversation receives its rendered context before the first model tool call",
+      async () => {
+        outcome = "visible-context";
+        modelRequests = [];
+        const rows = await ended(
+          await submit({
+            format: "gea-workbench-visible-v1",
+            sequence: 1,
+            view: "regional-approval",
+            scope: {
+              month: "2026-10",
+              planType: "Y",
+              approvalStage: "province",
+              dimension: "customer",
+            },
+            visibleRows: [
+              {
+                planId: "9007199254740993",
+                organization: "当前客户",
+                planTypeCode: "Y",
+                status: 3,
+              },
+            ],
+            selectedPlanIds: [],
+            pagination: { page: 1, pageSize: 20, total: 1 },
+            evidence: {
+              source: "gea-user-session",
+              completeness: "paged-queue",
+              queryState: "success",
+              dataVersion: "sales-plan-v1.11",
+            },
+          }),
+        );
+        const result = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "visible-context-1",
+        );
+        assert.match(result.content, /current-visible-page/);
+        assert.match(result.content, /当前客户/);
+        assert.equal(
+          rows.some(
+            (entry) =>
+              entry.type === "tool/result" &&
+              entry.data.message.content[0].isError,
+          ),
+          false,
+        );
+      },
+    );
+    await t.test(
+      "an unsynchronised page context is a safe tool result rather than a visible tool error",
+      async () => {
+        outcome = "visible-context-unavailable";
+        modelRequests = [];
+        const rows = await ended(await submit());
+        const result = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "visible-context-unavailable-1",
+        );
+        assert.match(result.content, /WORKBENCH_CONTEXT_NOT_SYNCED/);
+        assert.equal(
+          rows.some(
+            (entry) =>
+              entry.type === "tool/result" &&
+              entry.data.message.content[0].isError,
+          ),
+          false,
+        );
       },
     );
     await t.test(
@@ -364,7 +469,7 @@ test(
           .filter((x) => x.role === "system")
           .map((x) => x.content)
           .join("\n");
-        assert.match(initialSystem, /用户用中文提问时.*进度.*中文/);
+        assert.match(initialSystem, /所有面向业务用户的答复一律使用简体中文/);
         const results = modelRequests[2].messages.filter(
           (x) => x.role === "tool",
         );

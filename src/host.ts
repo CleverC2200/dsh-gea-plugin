@@ -321,8 +321,18 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         result?: Promise<{ sessionId: SessionId }>;
       }
     | undefined;
-  function submit(id: unknown, requestSignal: AbortSignal) {
-    const preview = business.prepared(id);
+  function submit(payload: Record<string, unknown>, requestSignal: AbortSignal) {
+    if (
+      Object.keys(payload).some(
+        (key) => key !== "previewId" && key !== "workbenchContext",
+      )
+    )
+      throw new Error("INVALID_PAYLOAD");
+    const preview = business.prepared(payload.previewId);
+    const workbenchContext =
+      payload.workbenchContext === undefined
+        ? undefined
+        : object(payload.workbenchContext);
     requestSignal.throwIfAborted();
     if (submission?.id !== preview.previewId)
       submission = {
@@ -330,6 +340,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         sessionId: brandString<SessionId>(`session-${randomUUID()}`),
       };
     const attempt = submission;
+    if (workbenchContext)
+      business.updateVisibleWorkbenchContext(attempt.sessionId, workbenchContext);
     if (attempt.result) return attempt.result;
     const signal = business.admissionSignal(requestSignal);
     attempt.result = (async () => {
@@ -547,7 +559,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 value = business.prepare(payload);
                 break;
               case "submit":
-                value = await submit(payload.previewId, request.signal);
+                value = await submit(payload, request.signal);
                 break;
               default:
                 throw new Error("UNKNOWN_ENDPOINT");
