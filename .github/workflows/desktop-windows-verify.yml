@@ -1,110 +1,90 @@
-name: Measure Windows EXE installation
+name: Verify complete installer diagnostics
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Unpublished diagnostic draft containing the fixed EXE inputs
+        description: Unpublished diagnostic draft
         required: true
-      test_mode:
-        description: Installation case to measure
-        type: choice
-        options: [both, clean, upgrade]
-        default: both
-      enable_realtime:
-        description: Enable and verify Defender real-time scanning on this disposable runner
-        type: boolean
-        default: false
-      archive_format:
-        description: NSIS internal archive format to measure
-        type: choice
-        options: [both, 7z, zip, timing]
-        default: both
 permissions:
   contents: read
 jobs:
-  measure:
+  verify:
     runs-on: windows-2022
-    timeout-minutes: 60
+    timeout-minutes: 25
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
-        mode: ${{ fromJSON(inputs.test_mode == 'clean' && '["clean"]' || inputs.test_mode == 'upgrade' && '["upgrade"]' || '["clean","upgrade"]') }}
-        archive: ${{ fromJSON(inputs.archive_format == '7z' && '["7z"]' || inputs.archive_format == 'zip' && '["zip"]' || inputs.archive_format == 'timing' && '["timing"]' || '["7z","zip"]') }}
-    # GitHub draft assets require write permission. Only the download step receives the token.
-    permissions:
-      contents: write
+        mode: [clean, upgrade]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Download and verify fixed diagnostic inputs
+      - name: Download fixed inputs and reconstruct byte-identical diagnostic installer
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           REPOSITORY: ${{ github.repository }}
           TEST_MODE: ${{ matrix.mode }}
-          TEST_ARCHIVE: ${{ matrix.archive }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          $draft = gh release view $env:RELEASE_TAG --repo $env:REPOSITORY --json isDraft | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or -not $draft.isDraft) { throw 'Expected an unpublished diagnostic draft' }
-          $downloads = Join-Path $env:RUNNER_TEMP 'install-inputs'
-          New-Item -ItemType Directory -Path $downloads | Out-Null
-          $current = if ($env:TEST_ARCHIVE -eq 'timing') {
-            @{name='GEA-Desktop-0.0.13-preview.20260917-win-x64-timing.exe'; sha='2e323dad4746e94c7b22328f47811b66fb4da4624243fab75505e05e4f4b8886'}
-          } elseif ($env:TEST_ARCHIVE -eq 'zip') {
-            @{name='GEA-Desktop-0.0.13-preview.20260917-win-x64-zip.exe'; sha='b5f6c38f8751b0181b81f55a8ba0507b353d64689795d39d4af3b628e09a08bf'}
-          } else {
-            @{name='GEA-Desktop-0.0.13-preview.20260917-win-x64.exe'; sha='3fa823d92bc02716b36b3fab9e4afbce2ab2f40d84a45123153a2da0578d2769'}
+          $ErrorActionPreference='Stop'
+          $draft=gh release view $env:RELEASE_TAG --repo $env:REPOSITORY --json isDraft | ConvertFrom-Json
+          if($LASTEXITCODE -ne 0 -or -not $draft.isDraft){throw 'Expected unpublished draft'}
+          $files=@(
+            @('GEA-Desktop-0.0.13-preview.20260917-win-x64-timing.exe','2e323dad4746e94c7b22328f47811b66fb4da4624243fab75505e05e4f4b8886'),
+            @('full-diagnostic-v2-transfer.json.gz','a3741fd0bafdc768f2d96d223ae2127ee88dd6234f8478a53e3572ec56ad3f0e'),
+            @('installer-timing-probe.exe','7ffecaa5875e13f2bb0ccbedfc12bd5a9b2d658e64f7b21ae731de2b2bba5e29')
+          )
+          if($env:TEST_MODE -eq 'upgrade'){$files+=,@('GEA-Desktop-0.0.12-win-x64.exe','5094db0f81f1532129266681ae07e64916fadce37aeea2314295dfa4651d0101')}
+          foreach($file in $files){
+            gh release download $env:RELEASE_TAG --repo $env:REPOSITORY --pattern $file[0] --dir desktop
+            if($LASTEXITCODE -ne 0){throw 'Download failed'}
+            if((Get-FileHash (Join-Path 'desktop' $file[0])).Hash.ToLower() -ne $file[1]){throw 'Input hash mismatch'}
           }
-          $files = @($current)
-          if ($env:TEST_MODE -eq 'upgrade') { $files += @{name='GEA-Desktop-0.0.12-win-x64.exe'; sha='5094db0f81f1532129266681ae07e64916fadce37aeea2314295dfa4651d0101'} }
-          foreach ($file in $files) {
-            gh release download $env:RELEASE_TAG --repo $env:REPOSITORY --pattern $file.name --dir $downloads
-            if ($LASTEXITCODE -ne 0) { throw 'Draft asset download failed' }
-            if ((Get-FileHash (Join-Path $downloads $file.name) -Algorithm SHA256).Hash.ToLower() -ne $file.sha) { throw 'Installer SHA mismatch' }
-          }
-      - name: Capture security state and optionally enable real-time scanning
-        shell: pwsh
-        env:
-          ENABLE_REALTIME: ${{ inputs.enable_realtime }}
+          python desktop/apply-diagnostic-transfer.py desktop/GEA-Desktop-0.0.13-preview.20260917-win-x64-timing.exe desktop/full-diagnostic-v2-transfer.json.gz desktop/GEA-Desktop-0.0.13-preview.20260917-win-x64-full-diagnostic.exe
+          if($LASTEXITCODE -ne 0){throw 'Reconstruction failed'}
+      - name: Verify logging preserves NSIS error flags, registers, and stack
+        shell: powershell
         run: |
-          $report = Join-Path $env:RUNNER_TEMP 'install-report'
-          New-Item -ItemType Directory -Path $report | Out-Null
-          if ($env:ENABLE_REALTIME -eq 'true') {
-            try {
-              Set-MpPreference -DisableRealtimeMonitoring $false
-              Start-Sleep -Seconds 3
-              if (-not (Get-MpComputerStatus).RealTimeProtectionEnabled) { throw 'Real-time protection could not be enabled on this image' }
-            } catch {
-              @{stage='security-setup'; error=$_.Exception.Message} | ConvertTo-Json | Set-Content (Join-Path $report 'security-error.json')
-              throw
-            }
-          }
-          $security = $null
-          try { $security = Get-MpComputerStatus | Select-Object AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,AntivirusSignatureVersion } catch {}
-          @{os=(Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber); cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores); disks=@(Get-CimInstance Win32_DiskDrive | Select-Object Model,MediaType,Size); security=$security; imageOS=$env:ImageOS; imageVersion=$env:ImageVersion} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $report 'environment.json')
-          $tokens=$null; $errors=$null
-          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE 'desktop/measure-windows-install.ps1'),[ref]$tokens,[ref]$errors) | Out-Null
-          if ($errors.Count) { throw ($errors | Out-String) }
-      - name: Measure installation with five-second process and disk samples
-        shell: pwsh
+          $ErrorActionPreference='Stop'
+          $env:GEA_DIAG_DIR=Join-Path $env:RUNNER_TEMP 'probe-logs'
+          $p=Start-Process desktop/installer-timing-probe.exe -PassThru -Wait
+          if($p.ExitCode -ne 0){throw 'NSIS state preservation failed'}
+          $logs=Get-Content "$env:GEA_DIAG_DIR/stages-*.log" -Raw
+          if($logs -notmatch 'errors=1 probe-error-set' -or $logs -notmatch 'errors=0 probe-error-clear' -or $logs -notmatch 'probe-pass'){throw 'Probe log content failed'}
+          $env:GEA_DIAG_DIR=Join-Path $env:RUNNER_TEMP 'unwritable-probe-file'
+          Set-Content -LiteralPath $env:GEA_DIAG_DIR -Value 'not a directory'
+          $p=Start-Process desktop/installer-timing-probe.exe -PassThru -Wait
+          if($p.ExitCode -ne 0){throw 'A log write failure changed NSIS behavior'}
+          Remove-Item Env:GEA_DIAG_DIR
+      - name: Test collector using Windows PowerShell 5.1 and the real installer
+        shell: powershell
         env:
           TEST_MODE: ${{ matrix.mode }}
-          TEST_ARCHIVE: ${{ matrix.archive }}
         run: |
-          $downloads = Join-Path $env:RUNNER_TEMP 'install-inputs'
-          $destination = Join-Path $env:RUNNER_TEMP 'gea-install-target'
-          $report = Join-Path $env:RUNNER_TEMP 'install-report'
-          if ($env:TEST_MODE -eq 'upgrade') {
-            ./desktop/measure-windows-install.ps1 -Installer (Join-Path $downloads 'GEA-Desktop-0.0.12-win-x64.exe') -Destination $destination -ReportDirectory $report -Label baseline -TimeoutSeconds 1500
+          $ErrorActionPreference='Stop'
+          $target=Join-Path $env:RUNNER_TEMP 'gea-full-diagnostic-target'
+          if($env:TEST_MODE -eq 'upgrade'){
+            $old=Start-Process desktop/GEA-Desktop-0.0.12-win-x64.exe -ArgumentList '/S',"/D=$target" -PassThru -Wait
+            if($old.ExitCode -ne 0){throw 'Baseline installation failed'}
           }
-          $current = if ($env:TEST_ARCHIVE -eq 'timing') { 'GEA-Desktop-0.0.13-preview.20260917-win-x64-timing.exe' } elseif ($env:TEST_ARCHIVE -eq 'zip') { 'GEA-Desktop-0.0.13-preview.20260917-win-x64-zip.exe' } else { 'GEA-Desktop-0.0.13-preview.20260917-win-x64.exe' }
-          ./desktop/measure-windows-install.ps1 -Installer (Join-Path $downloads $current) -Destination $destination -ReportDirectory $report -Label "$env:TEST_MODE-$env:TEST_ARCHIVE" -TimeoutSeconds 1500
+          ./desktop/collect-install-diagnostics.ps1 -Silent -Destination $target -MaxMinutes 15
+          if(-not (Test-Path (Join-Path $target 'GEA Desktop.exe'))){throw 'Installed executable missing'}
+          $report=Get-ChildItem desktop -Directory -Filter 'GEA-report-*' | Select-Object -First 1
+          $result=Get-Content (Join-Path $report.FullName 'result.json') -Raw | ConvertFrom-Json
+          if($result.sampleCount -lt 2 -or $result.stageFiles.Count -lt 1){throw 'Missing sampler evidence'}
+          $log=(@(Get-ChildItem $report.FullName -Filter 'stages-*.log' | ForEach-Object {Get-Content $_.FullName}) -join "`n")
+          if($env:TEST_MODE -eq 'upgrade' -and $log -notmatch 'old-uninstaller-temp-exec-end'){throw 'Upgrade did not exercise old uninstaller'}
+          $installed=Get-ChildItem $target -Recurse -File | Measure-Object -Property Length -Sum
+          @{mode=$env:TEST_MODE;count=$installed.Count;bytes=$installed.Sum;runnerImage=$env:ImageVersion} | ConvertTo-Json | Set-Content (Join-Path $report.FullName 'ci-installation.json')
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: windows-install-${{ matrix.mode }}-${{ matrix.archive }}
-          path: ${{ runner.temp }}/install-report/
-          retention-days: 7
+          name: complete-diagnostics-${{ matrix.mode }}
+          path: |
+            desktop/GEA-report-*/
+            desktop/GEA-report-*.zip
+            ${{ runner.temp }}/probe-logs/
+          retention-days: 14
