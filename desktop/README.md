@@ -22,6 +22,10 @@
 
 ## 构建和验证
 
+Windows 安装耗时专项使用 [一次运行采集说明](INSTALL-DIAGNOSTICS-README.md)。诊断包必须携带与 `diagnostic-package.json` 摘要一致的完整 EXE，不能用普通安装包替换。该包仅供专项试用，不自动推进桌面频道。
+
+诊断构建用 `prepare-installer-diagnostics.mjs <app-builder-lib目录> <新模板目录>` 给固定 26.15.3 模板加阶段日志，再用 `build-diagnostic-installer.cjs <node_modules目录> <独立桌面导出目录> <win-unpacked目录> <新模板目录> <输出目录>` 复用同一 payload；设置 `GEA_DESKTOP_TARGET=win`、`GEA_INSTALL_TIMING_LOG=1` 及 `GEA_DESKTOP_PAYLOAD_ROOT`。导出目录中的 `build/installer-timing.nsh` 必须来自本次源码。不修改共享构建缓存，不更换默认 7z 算法。`installer-timing-probe.nsi` 在 Windows 上验证日志追加、寄存器/栈及错误标记不受日志成功或失败影响；云端 clean/upgrade 验证不能冒充 Windows 10/11 实机性能验收。
+
 常规交付按本次改动选择定向检查、构建及包内容/摘要校验。启动时长、业务接口和资源同步属于问题专项验收；已通过后，仅在再次出现相关问题或明确要求时复查，不作为每次构建、发布、提交或合并的前置条件。下文的启动、同步和更新脚本供相应问题排查使用。
 
 同一组源码、依赖锁、平台、公司配置和资源快照只准备一份 payload；已验证的最终包直接用于发布和频道提升，不因提交、合并或切换频道重新打包。只有输入改变才重建受影响的平台，Mac 与 Windows 可以并行构建，原生依赖分别准备。保留依赖下载缓存、最终包及摘要/构建记录；发行完成后清理本次未被进程使用的 raw/compact、解包应用和隔离验收副本，保留用户数据及正在使用的目录。
