@@ -221,6 +221,10 @@ const customerLabelKey = (customer: RegionalApprovalRow['customerKey']) =>
 const number = (value: number) => value.toLocaleString();
 const money = (value: number) => `¥${value.toLocaleString()}`;
 const exactMoney = (value: string) => `¥${formatExactDecimal(value)}`;
+const exactSignedMoney = (value: string) => {
+  const formatted = formatExactDecimal(value);
+  return formatted.startsWith('-') ? `−¥${formatted.slice(1)}` : `¥${formatted}`;
+};
 const isExactZero = (value: string) => /^-?0(?:\.0+)?$/.test(value);
 const formattedProgress = (value: number | undefined) => (value === undefined ? '—' : `${value.toFixed(1)}%`);
 const projectLiveContextEntity = (
@@ -887,6 +891,10 @@ const RegionalApprovalWorkbench: React.FC<{
     savedAdjustments.length,
     visibleRows,
   ]);
+  const amountVariance =
+    metrics.targetAmount !== undefined && metrics.amount !== '—'
+      ? subtractExactDecimals(metrics.amount, metrics.targetAmount)
+      : undefined;
 
   useEffect(() => {
     writeAssistantSurfaceState('forecast', `${scopedState}:approval-stage`, currentStage);
@@ -2001,6 +2009,9 @@ const RegionalApprovalWorkbench: React.FC<{
       <header className={styles.header}>
         <div className={styles.titleLine}>
           <Typography.Title heading={5}>{t('common.assistantSurface.regionalApproval.title')}</Typography.Title>
+          <Typography.Text className={styles.pendingSummary}>
+            {t('common.assistantSurface.regionalApproval.pendingSummary', { count: metrics.pendingCount })}
+          </Typography.Text>
           {headerControls}
           {!liveQuery.enabled ? (
             <Tag className={styles.fixtureTag} color='red'>
@@ -2012,6 +2023,37 @@ const RegionalApprovalWorkbench: React.FC<{
           ) : null}
         </div>
         <div className={styles.scope} aria-label={t('common.assistantSurface.regionalApproval.scopeAria')}>
+          <span className={styles.monthField}>
+            <small>{t('common.assistantSurface.regionalApproval.planMonth')}</small>
+            {liveQuery.enabled ? (
+              <Spin loading={liveQuery.periodsState.status === 'loading' && liveQuery.periods.length === 0} size={14}>
+                <Select
+                  size='small'
+                  value={liveQuery.selectedPeriodMonth}
+                  aria-label={t('common.assistantSurface.regionalApproval.query.periodSelect')}
+                  placeholder={t('common.assistantSurface.regionalApproval.query.noPeriod')}
+                  onChange={(periodMonth) => {
+                    setSelectedRowIds([]);
+                    setPage(1);
+                    liveQuery.selectPeriodMonth(periodMonth);
+                  }}
+                  disabled={liveQuery.periods.length === 0}
+                >
+                  {liveQuery.periodMonths.map((periodMonth) => (
+                    <Select.Option key={periodMonth} value={periodMonth}>
+                      {salesPlanPeriodOptionLabel(periodMonth)}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Spin>
+            ) : (
+              <Select size='small' value='2026-09' aria-label={t('common.assistantSurface.regionalApproval.planMonth')}>
+                <Select.Option value='2026-09'>
+                  {t('common.assistantSurface.regionalApproval.planMonthValue')}
+                </Select.Option>
+              </Select>
+            )}
+          </span>
           <div
             className={styles.versionControls}
             aria-label={t('common.assistantSurface.regionalApproval.versions.group')}
@@ -2091,37 +2133,6 @@ const RegionalApprovalWorkbench: React.FC<{
               />
             </Tooltip>
           </div>
-          <span>
-            <small>{t('common.assistantSurface.regionalApproval.planMonth')}</small>
-            {liveQuery.enabled ? (
-              <Spin loading={liveQuery.periodsState.status === 'loading' && liveQuery.periods.length === 0} size={14}>
-                <Select
-                  size='small'
-                  value={liveQuery.selectedPeriodMonth}
-                  aria-label={t('common.assistantSurface.regionalApproval.query.periodSelect')}
-                  placeholder={t('common.assistantSurface.regionalApproval.query.noPeriod')}
-                  onChange={(periodMonth) => {
-                    setSelectedRowIds([]);
-                    setPage(1);
-                    liveQuery.selectPeriodMonth(periodMonth);
-                  }}
-                  disabled={liveQuery.periods.length === 0}
-                >
-                  {liveQuery.periodMonths.map((periodMonth) => (
-                    <Select.Option key={periodMonth} value={periodMonth}>
-                      {salesPlanPeriodOptionLabel(periodMonth)}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </Spin>
-            ) : (
-              <Select size='small' value='2026-09' aria-label={t('common.assistantSurface.regionalApproval.planMonth')}>
-                <Select.Option value='2026-09'>
-                  {t('common.assistantSurface.regionalApproval.planMonthValue')}
-                </Select.Option>
-              </Select>
-            )}
-          </span>
         </div>
       </header>
 
@@ -2215,42 +2226,39 @@ const RegionalApprovalWorkbench: React.FC<{
           />
         ) : null}
         <section className={styles.queue} aria-label={t('common.assistantSurface.regionalApproval.queue.ariaLabel')}>
-          <header className={styles.queueHeader}>
-            <div>
-              <h2>{t('common.assistantSurface.regionalApproval.queue.title')}</h2>
-              <Typography.Text type='secondary'>
-                {t('common.assistantSurface.regionalApproval.queue.counts', {
-                  count: metrics.visibleCount,
-                  pending: metrics.pendingCount,
-                })}
-              </Typography.Text>
-            </div>
+          <header className={styles.dashboardHeader}>
             <div
               className={styles.queueMetrics}
               role='region'
               aria-label={t('common.assistantSurface.regionalApproval.scopeTotals.title')}
             >
-              {(['targetAmount', 'quantity', 'amount'] as const).map((field) => (
-                <span key={field}>
-                  <small>{t(`common.assistantSurface.regionalApproval.scopeTotals.${field}`)}</small>
-                  <strong>
-                    {(liveQuery.enabled && scopeSummary.status !== 'success') || metrics[field] === undefined
-                      ? '—'
-                      : field === 'amount' || field === 'targetAmount'
-                        ? exactMoney(metrics[field]!)
-                        : formatExactDecimal(metrics[field]!)}
-                  </strong>
-                </span>
-              ))}
-              {liveQuery.enabled && scopeSummary.status === 'loading' ? <Spin size={14} /> : null}
+              <span>
+                <small>{t('common.assistantSurface.regionalApproval.scopeTotals.targetAmount')}</small>
+                <strong>{(liveQuery.enabled && scopeSummary.status !== 'success') || metrics.targetAmount === undefined ? '—' : exactMoney(metrics.targetAmount)}</strong>
+              </span>
+              <span>
+                <small>{t('common.assistantSurface.regionalApproval.scopeTotals.planAmount')}</small>
+                <strong>{liveQuery.enabled && scopeSummary.status !== 'success' ? '—' : exactMoney(metrics.amount)}</strong>
+              </span>
+              <span>
+                <small>{t('common.assistantSurface.regionalApproval.scopeTotals.amountVariance')}</small>
+                <strong>{liveQuery.enabled && scopeSummary.status !== 'success' || amountVariance === undefined ? '—' : exactSignedMoney(amountVariance)}</strong>
+              </span>
+              <span>
+                <small>{t('common.assistantSurface.regionalApproval.scopeTotals.planQuantity')}</small>
+                <strong>{liveQuery.enabled && scopeSummary.status !== 'success' ? '—' : `${formatExactDecimal(metrics.quantity)} ${t('common.assistantSurface.regionalApproval.scopeTotals.quantityUnit')}`}</strong>
+              </span>
+              {liveQuery.enabled && scopeSummary.status === 'loading' ? <Spin className={styles.dashboardSpinner} size={14} /> : null}
               {historicalSummaryUnavailable ? (
-                <small>{t('common.assistantSurface.regionalApproval.scopeTotals.historicalUnavailable')}</small>
+                <small className={styles.dashboardMessage}>{t('common.assistantSurface.regionalApproval.scopeTotals.historicalUnavailable')}</small>
               ) : liveQuery.enabled && scopeSummary.status === 'error' ? (
-                <Button size='mini' onClick={refreshLiveAuthority}>
+                <Button className={styles.dashboardMessage} size='mini' onClick={refreshLiveAuthority}>
                   {t('common.assistantSurface.regionalApproval.scopeTotals.retry')}
                 </Button>
               ) : null}
             </div>
+          </header>
+          <div className={styles.queueHeader}>
             <div className={styles.controlToolbar}>
               <div className={styles.dimensionControls}>
                 <label className={styles.categorySwitch}>
@@ -2322,7 +2330,7 @@ const RegionalApprovalWorkbench: React.FC<{
                 <div className={styles.approvalToolbarActions}>{approvalActionButtons}</div>
               </div>
             </div>
-          </header>
+          </div>
           <section
             className={styles.controls}
             aria-label={t('common.assistantSurface.regionalApproval.filters.ariaLabel')}

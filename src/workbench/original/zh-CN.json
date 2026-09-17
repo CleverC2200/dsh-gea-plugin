@@ -295,6 +295,10 @@
         "title": "当前筛选范围统计",
         "targetQuantity": "目标数量",
         "targetAmount": "目标金额",
+        "planAmount": "计划金额",
+        "amountVariance": "差额（计划 − 目标）",
+        "planQuantity": "计划数量",
+        "quantityUnit": "件",
         "quantity": "当前数量",
         "amount": "当前金额",
         "retry": "汇总失败，重试"
@@ -360,6 +364,7 @@
       },
       "ariaLabel": "需求预测区域经理审批工作台",
       "title": "销售计划审批",
+      "pendingSummary": "待我审批 {{count}} 条",
       "fixtureTag": "样例数据 · 不连接生产",
       "scopeAria": "当前审批范围",
       "planMonth": "计划月份",
@@ -430,9 +435,9 @@
       "versions": {
         "group": "计划版本对比",
         "primary": "当前查看版本",
-        "primaryCompact": "版本①",
+        "primaryCompact": "版本",
         "compare": "对比版本",
-        "compareCompact": "对比版本②",
+        "compareCompact": "对比",
         "current": "最新版",
         "previous": "上一版",
         "initial": "初始版",
@@ -442,7 +447,7 @@
         "description": "版本①为主显示，版本②为对比基准；版本①不能早于版本②，两版相同时不展示差异。"
       },
       "dimensions": {
-        "ariaLabel": "审批队列维度",
+        "ariaLabel": "审批计划维度",
         "area": "按大区",
         "province": "按省区",
         "region": "按区域",
@@ -948,13 +953,7 @@
         "primaryAction": "处理首条待办"
       },
       "queue": {
-        "ariaLabel": "审批核对队列",
-        "title": "审批核对队列",
-        "counts": "当前 {{count}} 条 · 待审批 {{pending}} 条",
-        "quantity": "当前数量",
-        "amount": "当前金额",
-        "authority": "审批权威",
-        "organization": "组织层级"
+        "ariaLabel": "审批计划明细"
       },
       "columns": {
         "organization": "组织名称",

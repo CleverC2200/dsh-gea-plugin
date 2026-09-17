@@ -42,6 +42,17 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  const shot=async name=>{await page.waitForTimeout(400);await page.screenshot({path:'.runtime/v16-visual/'+name+'.png',fullPage:true,animations:'disabled'});};
  const frame=page.frameLocator('iframe[data-gea-workbench]');
  await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
+ await expect(frame.getByText('待我审批 1 条',{exact:true})).toBeVisible();
+ await expect(frame.getByText('审批核对队列',{exact:true})).toHaveCount(0);
+ const overview=frame.getByRole('region',{name:'当前筛选范围统计'});
+ await expect(overview).toContainText('目标金额');
+ await expect(overview).toContainText('¥400');
+ await expect(overview).toContainText('计划金额');
+ await expect(overview).toContainText('¥200');
+ await expect(overview).toContainText('差额（计划 − 目标）');
+ await expect(overview).toContainText('−¥200');
+ await expect(overview).toContainText('计划数量');
+ await expect(overview).toContainText('20 件');
  await expect(frame.getByRole('button',{name:'保存调整',exact:true})).toHaveCount(0);
  await expect(frame.getByRole('button',{name:'重提',exact:true})).toHaveCount(0);
  const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toBeVisible();
@@ -49,7 +60,7 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  await shot('01-02-09-initial');
  const compactHeader=frame.getByTestId('regional-approval-workbench').locator('header').first();
  const headerLayout=await compactHeader.evaluate(el=>({height:el.getBoundingClientRect().height,wrap:getComputedStyle(el).flexWrap}));
- assert.equal(headerLayout.wrap,'nowrap');assert.ok(headerLayout.height<=56,JSON.stringify(headerLayout));
+ assert.equal(headerLayout.wrap,'nowrap');assert.ok(headerLayout.height<=76,JSON.stringify(headerLayout));
  const stages=['region','province','area'];
  const readProgress=()=>frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
  const before=await readProgress(); assert.equal(before.length,5);

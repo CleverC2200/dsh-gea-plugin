@@ -295,6 +295,10 @@
         "title": "Applied filter scope totals",
         "targetQuantity": "Target quantity",
         "targetAmount": "Target amount",
+        "planAmount": "Plan amount",
+        "amountVariance": "Variance (plan − target)",
+        "planQuantity": "Plan quantity",
+        "quantityUnit": "units",
         "quantity": "Current quantity",
         "amount": "Current amount",
         "retry": "Totals failed, retry"
@@ -360,6 +364,7 @@
       },
       "ariaLabel": "Regional manager demand forecast approval workbench",
       "title": "Sales plan approval",
+      "pendingSummary": "{{count}} awaiting my approval",
       "fixtureTag": "Sample data · not connected to production",
       "scopeAria": "Current approval scope",
       "planMonth": "Plan month",
@@ -430,9 +435,9 @@
       "versions": {
         "group": "Plan version comparison",
         "primary": "Viewing version",
-        "primaryCompact": "Version ①",
+        "primaryCompact": "Version",
         "compare": "Compare version",
-        "compareCompact": "Compare ②",
+        "compareCompact": "Compare",
         "current": "Latest",
         "previous": "Previous",
         "initial": "Initial",
@@ -442,7 +447,7 @@
         "description": "Version ① is the primary view and Version ② is the comparison baseline. Version ① cannot be older than Version ②; no differences are shown when both versions match."
       },
       "dimensions": {
-        "ariaLabel": "Approval queue dimensions",
+        "ariaLabel": "Approval plan dimensions",
         "area": "By area",
         "province": "By province",
         "region": "By region",
@@ -948,13 +953,7 @@
         "primaryAction": "Handle first pending item"
       },
       "queue": {
-        "ariaLabel": "Approval review queue",
-        "title": "Approval review queue",
-        "counts": "{{count}} current · {{pending}} pending",
-        "quantity": "Current quantity",
-        "amount": "Current amount",
-        "authority": "Approval authority",
-        "organization": "Organization"
+        "ariaLabel": "Approval plan details"
       },
       "columns": {
         "organization": "Organization name",
