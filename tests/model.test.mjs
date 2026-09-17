@@ -73,6 +73,12 @@ test(
     );
     const body = JSON.parse(modelRequests[0].body);
     assert.equal(body.model, "fixture-model");
+    const instructions = JSON.stringify(
+      body.messages.filter((message) => message.role !== "user"),
+    );
+    assert.ok(instructions.includes("本会话只读"));
+    assert.ok(instructions.includes("只使用当前已加载且有权限的 GEA MCP 工具"));
+    assert.ok(instructions.includes("不要展示或解释接口、工具名、字段名、JSON、哈希"));
     assert.deepEqual(
       body.tools.map((tool) => tool.function.name).sort(),
       [
