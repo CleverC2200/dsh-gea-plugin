@@ -17,7 +17,7 @@ on:
       archive_format:
         description: NSIS internal archive format to measure
         type: choice
-        options: [both, 7z, zip]
+        options: [both, 7z, zip, timing]
         default: both
 permissions:
   contents: read
@@ -29,7 +29,7 @@ jobs:
       fail-fast: false
       matrix:
         mode: ${{ fromJSON(inputs.test_mode == 'clean' && '["clean"]' || inputs.test_mode == 'upgrade' && '["upgrade"]' || '["clean","upgrade"]') }}
-        archive: ${{ fromJSON(inputs.archive_format == '7z' && '["7z"]' || inputs.archive_format == 'zip' && '["zip"]' || '["7z","zip"]') }}
+        archive: ${{ fromJSON(inputs.archive_format == '7z' && '["7z"]' || inputs.archive_format == 'zip' && '["zip"]' || inputs.archive_format == 'timing' && '["timing"]' || '["7z","zip"]') }}
     # GitHub draft assets require write permission. Only the download step receives the token.
     permissions:
       contents: write
@@ -51,7 +51,9 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not $draft.isDraft) { throw 'Expected an unpublished diagnostic draft' }
           $downloads = Join-Path $env:RUNNER_TEMP 'install-inputs'
           New-Item -ItemType Directory -Path $downloads | Out-Null
-          $current = if ($env:TEST_ARCHIVE -eq 'zip') {
+          $current = if ($env:TEST_ARCHIVE -eq 'timing') {
+            @{name='GEA-Desktop-0.0.13-preview.20260917-win-x64-timing.exe'; sha='2e323dad4746e94c7b22328f47811b66fb4da4624243fab75505e05e4f4b8886'}
+          } elseif ($env:TEST_ARCHIVE -eq 'zip') {
             @{name='GEA-Desktop-0.0.13-preview.20260917-win-x64-zip.exe'; sha='b5f6c38f8751b0181b81f55a8ba0507b353d64689795d39d4af3b628e09a08bf'}
           } else {
             @{name='GEA-Desktop-0.0.13-preview.20260917-win-x64.exe'; sha='3fa823d92bc02716b36b3fab9e4afbce2ab2f40d84a45123153a2da0578d2769'}
@@ -98,7 +100,7 @@ jobs:
           if ($env:TEST_MODE -eq 'upgrade') {
             ./desktop/measure-windows-install.ps1 -Installer (Join-Path $downloads 'GEA-Desktop-0.0.12-win-x64.exe') -Destination $destination -ReportDirectory $report -Label baseline -TimeoutSeconds 1500
           }
-          $current = if ($env:TEST_ARCHIVE -eq 'zip') { 'GEA-Desktop-0.0.13-preview.20260917-win-x64-zip.exe' } else { 'GEA-Desktop-0.0.13-preview.20260917-win-x64.exe' }
+          $current = if ($env:TEST_ARCHIVE -eq 'timing') { 'GEA-Desktop-0.0.13-preview.20260917-win-x64-timing.exe' } elseif ($env:TEST_ARCHIVE -eq 'zip') { 'GEA-Desktop-0.0.13-preview.20260917-win-x64-zip.exe' } else { 'GEA-Desktop-0.0.13-preview.20260917-win-x64.exe' }
           ./desktop/measure-windows-install.ps1 -Installer (Join-Path $downloads $current) -Destination $destination -ReportDirectory $report -Label "$env:TEST_MODE-$env:TEST_ARCHIVE" -TimeoutSeconds 1500
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()

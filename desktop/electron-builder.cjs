@@ -5,6 +5,8 @@ const notarize=process.env.GEA_MAC_NOTARIZE==='1';
 if(notarize&&macIdentity==='-')throw Error('Notarization requires a Developer ID Application identity');
 const payloadRoot=process.env.GEA_DESKTOP_PAYLOAD_ROOT||join(__dirname,'../.runtime/electron-build');
 if(!['mac','win'].includes(target))throw new Error('Set GEA_DESKTOP_TARGET to mac or win');
+const nsis={oneClick:false,allowToChangeInstallationDirectory:true,deleteAppDataOnUninstall:false};
+if(process.env.GEA_INSTALL_TIMING_LOG==='1')nsis.include=join(__dirname,'build/installer-timing.nsh');
 module.exports={
   appId:'com.cleverc2200.gea.desktop',productName:'GEA Desktop',electronVersion:'44.0.0',
   directories:{output:join(__dirname,'../.runtime/electron-build/final',target)},
@@ -16,6 +18,6 @@ module.exports={
   afterSign:require('./verify-macos-signature.cjs'),
   dmg:{sign:false},
   win:{icon:join(__dirname,'build/icon.png'),target:['nsis'],signExecutable:false},
-  nsis:{oneClick:false,allowToChangeInstallationDirectory:true,deleteAppDataOnUninstall:false},
+  nsis,
   publish:null
 };
