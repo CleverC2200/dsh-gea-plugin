@@ -82,6 +82,10 @@ Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体�
 
 `GEA_DESKTOP_PAYLOAD=<payload> GEA_PLUGIN_ARTIFACT=<GEA插件.tgz> GEA_EXPECTED_PLUGIN_VERSION=<版本> node --test desktop/installer-portability.test.mjs` 在复制的依赖图中模拟另一台机器的存储路径和目录长度，执行真实 pnpm 安装并检查当前选择与业务配置不变。
 
+额外指定 `GEA_PREVIOUS_PLUGIN_ARTIFACT=<较早GEA插件.tgz>` 时，同一测试还执行连续两轮真实安装及版本目录搬迁，断言没有因虚拟目录路径变化重建依赖，且未变核心文件保持原 inode 和字节。Mac 上仅模拟 Windows 的绝对路径元数据，不能替代 Windows 实机运行。
+
+Windows payload 准备显式使用 `virtualStoreDirMaxLength: 60`，Mac 使用 120，安装器使用相同目标参数。仅对已知 hoisted/layout 5 图内部的虚拟目录记录做相对路径转换，在复制后及安装后各处理一次；真实 store、长度或其他布局不兼容仍保留 pnpm 重建兜底。旧 Windows 图可能需要一次布局迁移，不保证首次升级完全免重建。
+
 准备插件后，桌面逐项核对浏览器源文件摘要；仅当内容与随包编译记录一致时复用压缩文件及源码映射，保持重复启动性能。更新后内容不同的插件使用新文件，不被旧优化产物覆盖。
 ## GitLab 更新渠道
 

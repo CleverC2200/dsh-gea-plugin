@@ -5,6 +5,25 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {PluginStore} from './plugin-store.mjs';
 
+test('two preparations normalize Windows-style absolute metadata before install and before version rename',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'gea move 中文 '));t.after(()=>rm(root,{recursive:true,force:true}));
+ const baseline=join(root,'baseline'),store=new PluginStore({data:join(root,'user'),baseline});
+ await mkdir(join(baseline,'node_modules/.pnpm'),{recursive:true});
+ await writeFile(join(baseline,'package.json'),'{"dependencies":{}}');
+ const metadata={nodeLinker:'hoisted',layoutVersion:5,storeDir:'real-store',virtualStoreDirMaxLength:60,virtualStoreDir:join(store.root,'staging-12345678-1234-1234-1234-123456789abc/node_modules/.pnpm')};
+ const file=join(baseline,'node_modules/.modules.yaml');await writeFile(file,JSON.stringify(metadata));
+ for(const id of ['first','second']){
+  await store.prepare({id,install:async directory=>{
+   const path=join(directory,'node_modules/.modules.yaml');
+   const current=JSON.parse(await readFile(path));assert.equal(current.virtualStoreDir,'.pnpm');
+   await writeFile(path,JSON.stringify({...current,virtualStoreDir:join(directory,'node_modules/.pnpm')}));
+  }});
+  await store.activate(id);
+  assert.equal(JSON.parse(await readFile(join((await store.selected()).path,'node_modules/.modules.yaml'))).virtualStoreDir,'.pnpm');
+ }
+ assert.deepEqual(JSON.parse(await readFile(file)),metadata);
+});
+
 test('preparing a version leaves the running selection and user data unchanged until explicit activation', async t => {
   const root=await mkdtemp(join(tmpdir(),'gea-versions-'));
   t.after(()=>rm(root,{recursive:true,force:true}));
