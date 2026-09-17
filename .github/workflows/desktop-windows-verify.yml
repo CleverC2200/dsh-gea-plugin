@@ -34,8 +34,8 @@ jobs:
           if($LASTEXITCODE -ne 0 -or -not $draft.isDraft){throw 'Expected unpublished draft'}
           $files=@(
             @('GEA-Desktop-0.0.13-preview.20260917-win-x64-timing.exe','2e323dad4746e94c7b22328f47811b66fb4da4624243fab75505e05e4f4b8886'),
-            @('full-diagnostic-v2-transfer.json.gz','a3741fd0bafdc768f2d96d223ae2127ee88dd6234f8478a53e3572ec56ad3f0e'),
-            @('installer-timing-probe.exe','7ffecaa5875e13f2bb0ccbedfc12bd5a9b2d658e64f7b21ae731de2b2bba5e29')
+            @('full-diagnostic-v3-transfer.json.gz','bea0e7c1f064add5935eae71e356dfc1913abe575ef2798452648e3472ca1909'),
+            @('installer-timing-probe-v3.exe','eca8708755d4c433c5a72aed7e5823bf9dc28c753dd5879dc111ba4aece5a921')
           )
           if($env:TEST_MODE -eq 'upgrade'){$files+=,@('GEA-Desktop-0.0.12-win-x64.exe','5094db0f81f1532129266681ae07e64916fadce37aeea2314295dfa4651d0101')}
           foreach($file in $files){
@@ -43,20 +43,20 @@ jobs:
             if($LASTEXITCODE -ne 0){throw 'Download failed'}
             if((Get-FileHash (Join-Path 'desktop' $file[0])).Hash.ToLower() -ne $file[1]){throw 'Input hash mismatch'}
           }
-          python desktop/apply-diagnostic-transfer.py desktop/GEA-Desktop-0.0.13-preview.20260917-win-x64-timing.exe desktop/full-diagnostic-v2-transfer.json.gz desktop/GEA-Desktop-0.0.13-preview.20260917-win-x64-full-diagnostic.exe
+          python desktop/apply-diagnostic-transfer.py desktop/GEA-Desktop-0.0.13-preview.20260917-win-x64-timing.exe desktop/full-diagnostic-v3-transfer.json.gz desktop/GEA-Desktop-0.0.13-preview.20260917-win-x64-full-diagnostic.exe
           if($LASTEXITCODE -ne 0){throw 'Reconstruction failed'}
       - name: Verify logging preserves NSIS error flags, registers, and stack
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           $env:GEA_DIAG_DIR=Join-Path $env:RUNNER_TEMP 'probe-logs'
-          $p=Start-Process desktop/installer-timing-probe.exe -PassThru -Wait
+          $p=Start-Process desktop/installer-timing-probe-v3.exe -PassThru -Wait
           if($p.ExitCode -ne 0){throw 'NSIS state preservation failed'}
           $logs=Get-Content "$env:GEA_DIAG_DIR/stages-*.log" -Raw
           if($logs -notmatch 'errors=1 probe-error-set' -or $logs -notmatch 'errors=0 probe-error-clear' -or $logs -notmatch 'probe-pass'){throw 'Probe log content failed'}
           $env:GEA_DIAG_DIR=Join-Path $env:RUNNER_TEMP 'unwritable-probe-file'
           Set-Content -LiteralPath $env:GEA_DIAG_DIR -Value 'not a directory'
-          $p=Start-Process desktop/installer-timing-probe.exe -PassThru -Wait
+          $p=Start-Process desktop/installer-timing-probe-v3.exe -PassThru -Wait
           if($p.ExitCode -ne 0){throw 'A log write failure changed NSIS behavior'}
           Remove-Item Env:GEA_DIAG_DIR
       - name: Test collector using Windows PowerShell 5.1 and the real installer

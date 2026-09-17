@@ -29,7 +29,9 @@ function Export-Report {
   try { Compress-Archive -Path (Join-Path $output '*') -DestinationPath $zip -CompressionLevel Fastest; Write-Host "Report saved: $zip" } catch { Record-Error 'zip' $_; Write-Host "Raw report remains available: $output" }
 }
 try {
-  $environment=[ordered]@{schema=2;collectorElevated=$admin;powerShell=$PSVersionTable.PSVersion.ToString();timezone=[TimeZoneInfo]::Local.Id;processArchitecture=$env:PROCESSOR_ARCHITECTURE}
+  $environment=[ordered]@{schema=2;collectorElevated=$admin;powerShell=$PSVersionTable.PSVersion.ToString();timezone=[TimeZoneInfo]::Local.Id;processArchitecture=$env:PROCESSOR_ARCHITECTURE;tempDrive=[IO.Path]::GetPathRoot($env:TEMP);installerDrive=[IO.Path]::GetPathRoot($installer)}
+  try {$environment.windowsRelease=Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' | Select-Object DisplayVersion,CurrentBuildNumber,UBR,EditionID} catch {Record-Error 'windows-release' $_}
+  try {$environment.physicalDisks=@(Get-PhysicalDisk | Select-Object MediaType,BusType,Size,HealthStatus)} catch {Record-Error 'physical-disks' $_}
   foreach($item in @(@('os','Win32_OperatingSystem',@('Caption','Version','BuildNumber','OSArchitecture','TotalVisibleMemorySize','FreePhysicalMemory')), @('cpu','Win32_Processor',@('Name','NumberOfCores','NumberOfLogicalProcessors')), @('disks','Win32_DiskDrive',@('Model','MediaType','Size','InterfaceType')), @('volumes','Win32_LogicalDisk',@('DeviceID','DriveType','FileSystem','Size','FreeSpace')))) {
     try { $environment[$item[0]]=@(Get-CimInstance -ClassName $item[1] | Select-Object -Property $item[2]) } catch { Record-Error $item[0] $_ }
   }
