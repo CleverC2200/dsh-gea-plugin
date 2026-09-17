@@ -96,6 +96,7 @@ import {
   formatExactDecimal,
   projectRegionalApprovalLiveDimension,
   regionalApprovalLiveProgress,
+  salesPlanPeriodOptionLabel,
   subtractExactDecimals,
   toRegionalApprovalLiveRow,
   type RegionalApprovalLiveCategorySummary,
@@ -2109,7 +2110,7 @@ const RegionalApprovalWorkbench: React.FC<{
                 >
                   {liveQuery.periods.map((period) => (
                     <Select.Option key={period.periodId} value={period.periodId}>
-                      {period.periodMonth}
+                      {salesPlanPeriodOptionLabel(period)}
                     </Select.Option>
                   ))}
                 </Select>
