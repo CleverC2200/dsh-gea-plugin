@@ -1539,7 +1539,8 @@ const RegionalApprovalWorkbench: React.FC<{
   // Keep the approval queue dense once its columns have enough room to scan.
   // The expanded SKU table deliberately follows a separate, roomier layout.
   const liveMinimumWidths = categoryComparison ? [220, 112, 112, 172, 180] : [220, 112, 112, 136];
-  const liveMinimumWidth = liveMinimumWidths.reduce((total, width) => total + width, 40);
+  // 选择框与展开按钮各占 40px，必须一起计入列宽预算。
+  const liveMinimumWidth = liveMinimumWidths.reduce((total, width) => total + width, 80);
   const liveTableWidth = Math.max(
     liveMinimumWidth,
     Math.min(tableViewportWidth || liveMinimumWidth, 960)
@@ -2579,6 +2580,7 @@ const RegionalApprovalWorkbench: React.FC<{
                     expandedRowRender={(record) => record.kind === 'plan' && !record.members && record.plan.planId === inlinePlanId
                       ? <InlineSkuDetails row={{...record.plan,versionId:versionMetrics[record.plan.planId]?.versionId ?? record.plan.versionId}} t={t} onOpen={() => {setLiveAdjustmentDimension(dimension);setLiveAdjustmentPlanId(record.plan.planId);}} /> : null}
                     expandProps={{
+                      width: 40,
                       icon: ({ expanded, record }) => (
                         <button
                           type='button'

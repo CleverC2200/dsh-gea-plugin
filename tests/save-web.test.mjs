@@ -4,7 +4,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 
 test(
-  "server SAVE capability enables in-progress SAVE without legacy menu roles and verifies same-version persistence",
+  "monthly UI omits legacy SAVE while the retained Host capability verifies same-version persistence",
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
@@ -163,19 +163,21 @@ test(
       .getByRole("button", { name: "继续", exact: true })
       .click();
     const frame = page.frameLocator("iframe[data-gea-workbench]");
-    await frame.getByRole("tab", { name: "按基地", exact: true }).click();
-    await frame.locator("tbody label.arco-checkbox").first().click();
-    const save = frame.getByRole("button", { name: "保存调整", exact: true });
-    await expect(save).toBeEnabled();
-    await save.click();
-    const dialog = frame.getByRole("dialog", {
-      name: "保存销售计划调整",
-      exact: true,
+    await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
+    await expect(frame.getByRole("button", { name: "保存调整", exact: true })).toHaveCount(0);
+    assert.equal(writes, 0);
+    const result = await app.rpc("sales-plan/action", {
+      planId: "p", versionId: "v", requestId: "save-readback", idempotencyKey: "save-readback",
+      request: { action: "SAVE", expectedStatus: 4, expectedSnapshot: "a".repeat(64), adjustments: [{skuCode:"789",adjustQty:"1.000"}] },
     });
-    await dialog.locator("input.arco-input").first().fill("1.000");
-    await dialog.locator("label.arco-checkbox").click();
-    await dialog.getByRole("button", { name: "确认保存", exact: true }).click();
-    await expect(dialog).toHaveCount(0);
+    assert.equal(result.ok, true, JSON.stringify(result));
+    const readback = await app.rpc("workbench/query", {kind:"detail",query:{planId:"p"}});
+    assert.equal(readback.ok, true);
+    assert.equal(readback.value.currentVersion.id, "v");
+    assert.equal(readback.value.currentVersion.status, 4);
+    assert.equal(readback.value.skus[0].categoryConfirmedQty, "2.000");
+    assert.equal(readback.value.skus[0].categoryConfirmedAmount, "24.68");
+    assert.equal(readback.value.logs[0].requestId, result.value.requestId);
     assert.equal(writes, 1);
     assert.equal(saved, true);
   },

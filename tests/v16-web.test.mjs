@@ -42,9 +42,10 @@ test('V1.6 Web: compact header, stable progress, inline SKU, drawer and persiste
  await expect(frame.getByRole('button',{name:'保存调整',exact:true})).toHaveCount(0);
  await expect(frame.getByRole('button',{name:'重提',exact:true})).toHaveCount(0);
  const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toBeVisible();
- await expect(page.getByText('当前计划为 20，月度目标为 40，完成 50%。请核对库存后审批。',{exact:false})).toBeVisible({timeout:20000});
+ assert.equal(modelCalls,0,'opening the workbench must not trigger analysis');
  const stages=['region','province','area'];
  const readProgress=()=>frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
+ await expect.poll(readProgress).toEqual(['进度 100%','进度 0%','进度 0%','进度 0%','进度 0%']);
  const before=await readProgress(); assert.equal(before.length,5);
  for(const stage of stages){await frame.getByTestId('regional-approval-stage-'+stage).click();assert.deepEqual(await readProgress(),before);}
  await frame.getByTestId('regional-approval-stage-region').click();
@@ -74,6 +75,7 @@ test('V1.6 Web: compact header, stable progress, inline SKU, drawer and persiste
  const drawer=frame.locator('.arco-drawer');await expect(drawer).toBeVisible();
  await expect(drawer).toContainText('黑芝麻汤圆 500g');
  await expect(drawer).toContainText('当前计划高于基准，请结合库存核对。',{timeout:15000});
+ assert.ok(modelCalls > 0,'opening adjustment details explicitly requests advice');
  await drawer.getByRole('button',{name:'编辑调整草稿',exact:true}).click();
  const editor=drawer.getByRole('region',{name:'调整草稿'});
  await expect(editor.getByRole('status')).toContainText('已自动暂存');
@@ -98,12 +100,10 @@ test('V1.6 Web: compact header, stable progress, inline SKU, drawer and persiste
  await editor.getByRole('button',{name:'完成编辑',exact:true}).click();
  await drawer.getByRole('button',{name:'关闭',exact:true}).click();
  await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
- await frame.getByRole('button',{name:'通过',exact:true}).click();
- const approval=frame.getByRole('dialog');
- await expect(approval).toContainText('2.125');
- await approval.locator('label.arco-checkbox').click();
  allowApproval=true;
- await approval.getByRole('button',{name:'确认通过',exact:true}).click();
- await expect(approval).toHaveCount(0);assert.equal(writes,1);
+ await frame.getByRole('button',{name:'通过',exact:true}).click();
+ await expect.poll(()=>writes).toBe(1);
+ await expect(frame.getByRole('dialog')).toHaveCount(0);
+ assert.deepEqual(errors,[]);
 
 });
