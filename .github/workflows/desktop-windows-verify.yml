@@ -1,143 +1,73 @@
-name: Check Windows installer
+name: Measure Windows EXE installation
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release containing the Windows installer
+        description: Unpublished diagnostic draft containing the fixed EXE inputs
         required: true
-      run_diagnostics:
-        description: Investigate startup timing, resource synchronization, and plugin switching
-        type: boolean
-        default: false
-      compare_baseline:
-        description: Also measure the previous installer supplied as baseline.exe
-        type: boolean
-        default: false
 permissions:
   contents: read
 jobs:
-  windows:
-    # GitHub requires push access to read draft releases. The token is used only by the download step.
+  measure:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [clean, upgrade]
+    # GitHub draft assets require write permission. Only the download step receives the token.
     permissions:
       contents: write
-    runs-on: windows-latest
-    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '24.14.1'
-      - name: Download immutable installer inputs
+      - name: Download and verify fixed diagnostic inputs
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           REPOSITORY: ${{ github.repository }}
-          COMPARE_BASELINE: ${{ inputs.compare_baseline || false }}
+          TEST_MODE: ${{ matrix.mode }}
         run: |
-          $downloads = Join-Path $env:RUNNER_TEMP 'gea-downloads'
-          New-Item -ItemType Directory $downloads | Out-Null
-          gh release download $env:RELEASE_TAG --repo $env:REPOSITORY --pattern 'GEA-Desktop-*-win-x64.exe' --pattern 'SHA256SUMS.txt' --dir $downloads
-          if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
-          if ($env:COMPARE_BASELINE -eq 'true') {
-            gh release download $env:RELEASE_TAG --repo $env:REPOSITORY --pattern 'baseline.exe' --dir $downloads
-            if ($LASTEXITCODE -ne 0) { throw 'Comparison requires a baseline.exe draft asset' }
+          $ErrorActionPreference = 'Stop'
+          $draft = gh release view $env:RELEASE_TAG --repo $env:REPOSITORY --json isDraft | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $draft.isDraft) { throw 'Expected an unpublished diagnostic draft' }
+          $downloads = Join-Path $env:RUNNER_TEMP 'install-inputs'
+          New-Item -ItemType Directory -Path $downloads | Out-Null
+          $files = @(@{name='GEA-Desktop-0.0.13-preview.20260917-win-x64.exe'; sha='3fa823d92bc02716b36b3fab9e4afbce2ab2f40d84a45123153a2da0578d2769'})
+          if ($env:TEST_MODE -eq 'upgrade') { $files += @{name='GEA-Desktop-0.0.12-win-x64.exe'; sha='5094db0f81f1532129266681ae07e64916fadce37aeea2314295dfa4651d0101'} }
+          foreach ($file in $files) {
+            gh release download $env:RELEASE_TAG --repo $env:REPOSITORY --pattern $file.name --dir $downloads
+            if ($LASTEXITCODE -ne 0) { throw 'Draft asset download failed' }
+            if ((Get-FileHash (Join-Path $downloads $file.name) -Algorithm SHA256).Hash.ToLower() -ne $file.sha) { throw 'Installer SHA mismatch' }
           }
-          $installers = @(Get-ChildItem $downloads -Filter 'GEA-Desktop-*-win-x64.exe')
-          if ($installers.Count -ne 1) { throw 'Expected exactly one Windows installer' }
-          $verifiedInstaller = $false
-          foreach ($line in Get-Content (Join-Path $downloads 'SHA256SUMS.txt')) {
-            $digest, $name = $line -split '\s+', 2
-            $path = Join-Path $downloads $name
-            if (Test-Path $path) {
-              if ((Get-FileHash $path -Algorithm SHA256).Hash.ToLower() -ne $digest) { throw "Digest mismatch: $name" }
-              if ($name -eq $installers[0].Name) { $verifiedInstaller = $true }
-            }
-          }
-          if (-not $verifiedInstaller) { throw 'Installer missing from SHA256SUMS.txt' }
-      - name: Download diagnostic plugin fixtures
-        if: inputs.run_diagnostics
+      - name: Capture environment without changing security settings
+        shell: pwsh
+        run: |
+          $report = Join-Path $env:RUNNER_TEMP 'install-report'
+          New-Item -ItemType Directory -Path $report | Out-Null
+          $security = $null
+          try { $security = Get-MpComputerStatus | Select-Object AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,AntivirusSignatureVersion } catch {}
+          @{os=(Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber); cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores); disks=@(Get-CimInstance Win32_DiskDrive | Select-Object Model,MediaType,Size); security=$security; imageOS=$env:ImageOS; imageVersion=$env:ImageVersion} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $report 'environment.json')
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE 'desktop/measure-windows-install.ps1'),[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count) { throw ($errors | Out-String) }
+      - name: Measure installation with five-second process and disk samples
         shell: pwsh
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
+          TEST_MODE: ${{ matrix.mode }}
         run: |
-          $downloads = Join-Path $env:RUNNER_TEMP 'gea-downloads'
-          gh release download gea-v0.0.7 --repo $env:REPOSITORY --pattern '*.tgz' --dir $downloads
-          if ($LASTEXITCODE -ne 0) { throw 'Previous plugin download failed' }
-          gh release download gea-v0.0.8 --repo $env:REPOSITORY --pattern '*.tgz' --dir $downloads
-          if ($LASTEXITCODE -ne 0) { throw 'Current plugin download failed' }
-          $plugin = Get-ChildItem $downloads -Filter '*prototype-0.0.8.tgz' | Select-Object -First 1
-          if ((Get-FileHash $plugin.FullName -Algorithm SHA256).Hash.ToLower() -ne '677186da892dc247a1dcf09f9e8f8b3c38bc26237e5907efc406bc2666bfb159') { throw 'Plugin differs from the verified GitLab archive' }
-      - name: Prepare isolated browser driver
-        if: inputs.run_diagnostics
-        shell: pwsh
-        run: |
-          $driver = Join-Path $env:RUNNER_TEMP 'gea-driver'
-          New-Item -ItemType Directory $driver | Out-Null
-          '{"private":true,"type":"module","dependencies":{"@playwright/test":"1.58.2"}}' | Set-Content (Join-Path $driver 'package.json')
-          Copy-Item desktop/windows-package-smoke.mjs $driver
-          Push-Location $driver
-          npm install --ignore-scripts --no-audit --no-fund
-          if ($LASTEXITCODE -ne 0) { throw 'Driver installation failed' }
-          Pop-Location
-      - name: Install packages
-        shell: pwsh
-        env:
-          COMPARE_BASELINE: ${{ inputs.compare_baseline || false }}
-          GEA_SMOKE_REPO: ${{ github.workspace }}
-        run: |
-          $downloads = Join-Path $env:RUNNER_TEMP 'gea-downloads'
-          $report = Join-Path $env:RUNNER_TEMP 'gea-verification'
-          New-Item -ItemType Directory $report | Out-Null
-          $env:GEA_SMOKE_REPORT = $report
-          $targets = @('current')
-          if ($env:COMPARE_BASELINE -eq 'true') { $targets = @('baseline', 'current') }
-          $installations = @()
-          foreach ($target in $targets) {
-            $installer = if ($target -eq 'baseline') { Get-Item (Join-Path $downloads 'baseline.exe') } else { Get-ChildItem $downloads -Filter 'GEA-Desktop-*-win-x64.exe' | Select-Object -First 1 }
-            $destination = Join-Path $env:RUNNER_TEMP "gea-$target"
-            $timer = [Diagnostics.Stopwatch]::StartNew()
-            Write-Host "Installing $target into $destination"
-            $process = Start-Process $installer.FullName -ArgumentList '/S', "/D=$destination" -PassThru
-            if (-not $process.WaitForExit(300000)) {
-              taskkill /PID $process.Id /T /F
-              '{"stage":"install","error":"installer exceeded 300 seconds"}' | Set-Content (Join-Path $report "$target.json")
-              if ($target -eq 'baseline') { continue }
-              throw 'Installer timeout'
-            }
-            if ($process.ExitCode -ne 0) { throw "Installer exited $($process.ExitCode)" }
-            $env:GEA_INSTALL_MS = [string]$timer.ElapsedMilliseconds
-            Write-Host "$target installer completed in $env:GEA_INSTALL_MS ms"
-            $installations += @{ kind = $target; executable = (Join-Path $destination 'GEA Desktop.exe'); installMs = $timer.ElapsedMilliseconds }
+          $downloads = Join-Path $env:RUNNER_TEMP 'install-inputs'
+          $destination = Join-Path $env:RUNNER_TEMP 'gea-install-target'
+          $report = Join-Path $env:RUNNER_TEMP 'install-report'
+          if ($env:TEST_MODE -eq 'upgrade') {
+            ./desktop/measure-windows-install.ps1 -Installer (Join-Path $downloads 'GEA-Desktop-0.0.12-win-x64.exe') -Destination $destination -ReportDirectory $report -Label baseline -TimeoutSeconds 1500
           }
-          ConvertTo-Json -InputObject $installations | Set-Content (Join-Path $report 'installations.json')
-      - name: Start twice, synchronize, and switch plugins
-        if: inputs.run_diagnostics
-        shell: pwsh
-        env:
-          GEA_SMOKE_REPO: ${{ github.workspace }}
-        run: |
-          $downloads = Join-Path $env:RUNNER_TEMP 'gea-downloads'
-          $report = Join-Path $env:RUNNER_TEMP 'gea-verification'
-          $env:GEA_SMOKE_REPORT = $report
-          $driver = Join-Path $env:RUNNER_TEMP 'gea-driver/windows-package-smoke.mjs'
-          foreach ($installation in (Get-Content (Join-Path $report 'installations.json') | ConvertFrom-Json)) {
-            $env:GEA_INSTALL_MS = [string]$installation.installMs
-            $env:GEA_SMOKE_EXECUTABLE = $installation.executable
-            $env:GEA_SMOKE_KIND = $installation.kind
-            $env:GEA_PREVIOUS_PLUGIN = (Get-ChildItem $downloads -Filter '*prototype-0.0.7.tgz' | Select-Object -First 1).FullName
-            $env:GEA_CURRENT_PLUGIN = (Get-ChildItem $downloads -Filter '*prototype-0.0.8.tgz' | Select-Object -First 1).FullName
-            node $driver
-            if ($LASTEXITCODE -ne 0 -and $installation.kind -eq 'current') { throw 'Current desktop verification failed' }
-          }
+          ./desktop/measure-windows-install.ps1 -Installer (Join-Path $downloads 'GEA-Desktop-0.0.13-preview.20260917-win-x64.exe') -Destination $destination -ReportDirectory $report -Label $env:TEST_MODE -TimeoutSeconds 1500
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: windows-desktop-verification
-          path: |
-            ${{ runner.temp }}/gea-verification/*.json
-            ${{ runner.temp }}/gea-verification/*-error.txt
+          name: windows-install-${{ matrix.mode }}
+          path: ${{ runner.temp }}/install-report/
           retention-days: 7
