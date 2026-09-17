@@ -44,4 +44,24 @@ watch 只编译，不启动应用；运行应用仍用 README 的 start 命令�
 - Action「完整构建」：`corepack pnpm build`。
 - Action「构建测试」：`corepack pnpm test:build`。
 
-界面生成后检查并提交真实配置，不猜 TOML 字段。验收须从实际新任务确认默认 setup 未安装和构建；明确选择安装型环境或准备依赖 Action 时，核对 pnpm 版本、冻结锁成功且没有全量 build，再触发一个 Action 验证当前工作目录。2026-09-17 本轮受工具限制，未能操作 Codex 自身界面；这些步骤尚未完成，不能认为原生环境已启用。
+2026-09-17 用户已通过界面保存默认 setup 和「工具检查」Action，确认实际生成的字段为 `[[actions]]`、`name`、`icon`、`command`。本分支沿用该格式补齐上述 Actions；主目录中的用户配置仍保留原样，待 pnpm 改造与配置一起集成。清理脚本为空，不自动删除依赖或缓存。
+
+命令行验证不等于应用内验收：仍须从实际新任务确认默认 setup 未安装和构建；点击「准备依赖」时核对当前工作目录、pnpm 版本和冻结锁成功且没有全量 build，再触发一个检查 Action。该配置没有声明安装型 setup，安装只在明确点击「准备依赖」时执行。开发编译为持续 watch，不要同时触发写相同输出的完整构建；先停止 watch。
+
+## 可选的本地运行采样
+
+GEA 试点提供两个额外 Action：「采样 Host 构建（macOS/Linux）」与「本地采样报告」。普通命令和上述普通 Actions 不采样，不增加后台服务。也可主动运行：
+
+```sh
+corepack pnpm observe --task build --source terminal --condition existing-layout
+corepack pnpm observe:report
+corepack pnpm test:observe
+```
+
+采样 CLI 只在 GEA、POSIX 环境使用；Windows 继续使用普通项目命令。来源/缓存条件是人工标签，默认 unknown，不自动推断。
+
+JSONL 位于用户目录下 `.local/state/dev-environment-governance`，每次独立私有文件。记录白名单任务、时间/退出/取消、工具版本、锁摘要、Git HEAD/状态摘要和工作树路径摘要；不记录源码、业务内容、环境值、完整参数和日志。原终端输出不被存档，也不被这个工具脱敏。pnpm reused 仅表示依赖复用，不是构建缓存命中；未明确输出的指标为 null/unknown。
+
+仅 `--sample-space` 会在开始/结束扫描本项目 node_modules、lib、.runtime/packages；不会扫描共享 store。APFS 的目录占用和文件系统剩余空间分别报告，不能直接当节省量。HEAD/状态摘要不是完整输入标识，报告的重复/重试只是候选，不能据此复用产物或跳过工作。
+
+只轮转自身合法且已完成的记录（30 天/50 MiB），不删除未完成/未知/链接文件，因此不是目录硬配额。写入失败不中断原命令；SIGINT/SIGTERM 会转发给命令进程组，保留退出/取消语义。Node 启动及最后写入/轮转不含在单条记录的内部开销字段中；总开销需外部成对测量。没有自动上传、清理依赖或自动更新治理规则。
