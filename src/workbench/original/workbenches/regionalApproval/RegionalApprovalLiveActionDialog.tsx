@@ -116,7 +116,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   const [draftReady, setDraftReady] = useState(initialAction === 'SAVE');
   const [draftError, setDraftError] = useState('');
   useEffect(() => {
-    if (initialAction === 'SAVE' || directApproval) return;
+    if (initialAction === 'SAVE') return;
     const controller = new AbortController();
     void salesPlan.draft!.invoke({planId: row.planId, versionId: row.versionId, signal: controller.signal}).then(result => {
       if (controller.signal.aborted) return;
@@ -221,8 +221,9 @@ const RegionalApprovalLiveActionDialog: React.FC<{
       : kind === 'SAVE'
         ? !draftReady || !confirmed || adjustments.length === 0 || adjustmentSkus.status !== 'success' || adjustmentsInvalid ||
           nodeComparisons.some((item) => !item.confirmedQty || item.confirmedQty.startsWith('-'))
-        : !directApproval && (!draftReady || !confirmed || adjustmentsInvalid ||
-          nodeComparisons.some((item) => !item.confirmedQty || item.confirmedQty.startsWith('-'))));
+        : !draftReady || (!directApproval && !confirmed) || adjustmentsInvalid ||
+          (adjustments.length > 0 && adjustmentSkus.status !== 'success') ||
+          nodeComparisons.some((item) => !item.confirmedQty || item.confirmedQty.startsWith('-')));
   const unknown = t('common.assistantSurface.regionalApproval.liveAction.checksum.unknown');
   const hasAdjustmentDraft = Object.values(adjustmentValues).some((value) => value.trim().length > 0);
   const displayDecimal = (value: unknown, currency = false) =>
@@ -322,10 +323,16 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   };
 
   useEffect(() => {
-    if (!directApproval || !visible || directSubmissionStarted.current || invalid || loading || action.state.status !== 'idle') return;
+    if (!directApproval || !visible || directSubmissionStarted.current || loading || action.state.status !== 'idle') return;
+    if (draftError) {
+      directSubmissionStarted.current = true;
+      onFailed?.();
+      return;
+    }
+    if (invalid) return;
     directSubmissionStarted.current = true;
     submit();
-  }, [action.state.status, directApproval, invalid, loading, submit, visible]);
+  }, [action.state.status, directApproval, draftError, invalid, loading, onFailed, submit, visible]);
 
   const retry = () => {
     if (loading || action.state.status !== 'error' || !action.state.error.retrySameIntent) return;
@@ -352,7 +359,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
         maskClosable={false}
         closable={canClose}
         okText={t('common.assistantSurface.regionalApproval.liveAction.confirmReject')}
-        cancelText={t('cancel')}
+        cancelText={t('common.cancel')}
         okButtonProps={{ disabled: invalid || loading || action.state.status === 'success', status: 'danger' }}
         onCancel={requestClose}
         onOk={submit}

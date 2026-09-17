@@ -1,8 +1,9 @@
 import test from 'node:test';
+import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
 import { profile } from './profile.mjs';
 
-test('granted visible region role can open approval when current-node capabilities are empty', {timeout:90000}, async t => {
+test('granted visible region role directly approves tracking rows when current-node capabilities are empty', {timeout:90000}, async t => {
   const app = await profile(t);
   const plan = {
     planId: 'p-role-visible',
@@ -21,6 +22,7 @@ test('granted visible region role can open approval when current-node capabiliti
     skuCount: 0,
   };
 
+  const writes = [];
   app.route((req, _res, reply) => {
     const path = req.url.pathname;
     const send = result => { reply({success:true,result}); return true; };
@@ -46,6 +48,12 @@ test('granted visible region role can open approval when current-node capabiliti
       },
     });
     if (path.endsWith('/notifications')) return send({items:[],total:0});
+    if (path.endsWith('/versions')) return send([{...plan,id:plan.versionId,effective:true}]);
+    if (path.endsWith('/skus')) return send([]);
+    if (path.endsWith(`/versions/${plan.versionId}/actions`)) {
+      writes.push(JSON.parse(req.body));
+      return send({planId:plan.planId,versionId:plan.versionId,fromStatus:2,toStatus:2,approvalRole:'region',requestId:req.headers['x-request-id'],traceId:'t',auditId:'a',replayed:false});
+    }
     return false;
   });
 
@@ -63,11 +71,20 @@ test('granted visible region role can open approval when current-node capabiliti
   await page.getByRole('dialog',{name:'内测声明',exact:true}).getByRole('button',{name:'继续',exact:true}).click();
 
   const frame = page.frameLocator('iframe[data-gea-workbench]');
+  const region = frame.getByTestId('regional-approval-stage-region');
+  await expect(region).toHaveAttribute('aria-pressed','true');
+  await region.click(); // Include tracking rows, not only this role's pending queue.
   const row = frame.locator('tbody tr').filter({hasText:plan.baseName}).first();
   await expect(row).toBeVisible();
   await row.locator('label.arco-checkbox').click();
   const approve = frame.getByRole('button',{name:'通过',exact:true});
   await expect(approve).toBeEnabled();
   await approve.click();
-  await expect(frame.getByRole('dialog',{name:'销售计划审批',exact:true})).toBeVisible();
+  await expect.poll(()=>writes.length).toBe(1);
+  await expect(frame.getByRole('dialog',{name:'销售计划审批',exact:true})).toHaveCount(0);
+  assert.equal(writes[0].action,'APPROVE');
+  assert.equal(writes[0].approvalRole,'region');
+  assert.equal(writes[0].approvalPolicy,'role-visible-v1');
+  assert.equal(writes[0].expectedStatus,2);
+  assert.equal(writes[0].expectedSnapshot,'a'.repeat(64));
 });

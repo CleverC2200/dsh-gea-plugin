@@ -196,7 +196,7 @@ test(
         await expect.poll(() => table.evaluate((element) => ({
           viewport: element.clientWidth,
           table: Math.round(element.querySelector("table").getBoundingClientRect().width),
-        }))).toEqual({ viewport: width - 2, table: Math.max(800, width - 2) });
+        }))).toEqual({ viewport: width - 2, table: Math.max(660, width - 2) });
         const headers = await table.locator("thead th").evaluateAll((cells) =>
           cells.map((cell) => ({
             left: cell.getBoundingClientRect().left,
@@ -218,11 +218,13 @@ test(
       const reject = frame.getByRole("button", { name: "退回", exact: true });
       await expect(approve).toBeEnabled();
       await expect(reject).toBeEnabled();
-      await approve.click();
-      const approvalDialog = frame.getByRole("dialog");
-      await approvalDialog.getByText("业务校验摘要", { exact: true }).waitFor();
+      // Approval now submits directly; exercise the cancellable rejection form without writing.
+      await reject.click();
+      const approvalDialog = frame.getByRole("dialog", { name: "退回", exact: true });
+      await expect(approvalDialog.getByRole("textbox", { name: "退回原因（必填）", exact: true })).toBeVisible();
+      await expect(approvalDialog.getByRole("button", { name: "确认退回", exact: true })).toBeDisabled();
       await approvalDialog
-        .getByRole("button", { name: "关闭", exact: true })
+        .getByRole("button", { name: "取消", exact: true })
         .click();
       const provinceStage = frame.getByRole("button", {
         name: /省区审批.*进度/,

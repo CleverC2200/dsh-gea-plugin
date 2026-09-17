@@ -94,7 +94,8 @@ test("forecast language and resource routing are present before the first model 
     new URL("../presets/gea-readonly/agent.cordis.yml", import.meta.url),
     "utf8",
   );
-  assert.match(source, /用户用中文提问时.*进度.*中文/);
+  assert.match(source, /所有面向业务用户的答复一律使用简体中文/);
+  assert.match(source, /不汇报工具调用、查询过程或内部计划/);
   assert.match(source, /gea_skill_reference_read/);
   assert.match(source, /file:\/\//);
 });

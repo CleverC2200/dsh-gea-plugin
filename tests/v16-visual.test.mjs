@@ -143,14 +143,11 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  await drawer.getByRole('button',{name:'关闭',exact:true}).click();
 
  await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
- await frame.getByRole('button',{name:'通过',exact:true}).click();
- const approval=frame.getByRole('dialog');
- await expect(approval).toContainText('2.125');
- await approval.locator('label.arco-checkbox').click();
- await shot('01-approval-confirmation');
  allowApproval=true;
- await approval.getByRole('button',{name:'确认通过',exact:true}).click();
- await expect(approval).toHaveCount(0);assert.equal(writes,1);
+ await frame.getByRole('button',{name:'通过',exact:true}).click();
+ await expect.poll(()=>writes).toBe(1);
+ await expect(frame.getByRole('dialog')).toHaveCount(0);
+ await shot('01-approval-completed');
  plan.status=1;
  let automaticPrepareRequests=0;
  await page.route('**/api/gea-proof/workbench/prepare',route=>{automaticPrepareRequests++;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:false,error:{code:'GEA_UNAVAILABLE',message:'Unavailable'}})});});

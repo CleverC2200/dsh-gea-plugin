@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { profile, readSession, until } from "./profile.mjs";
 
 test(
@@ -74,11 +76,18 @@ test(
       () => readSession(app.runtime, submit.value.sessionId),
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
-    assert.ok(
-      JSON.stringify(rows.find((row) => row.type === "user/message")).includes(
-        "3.0000",
-      ),
-    );
+    const archivePath = `${app.runtime}/analysis-snapshots/${submit.value.sessionId}.json`;
+    const archive = JSON.parse(await readFile(archivePath, "utf8"));
+    assert.equal(archive.schema, 1);
+    assert.equal(archive.sessionId, submit.value.sessionId);
+    assert.deepEqual(archive.snapshot, snapshot);
+    assert.equal(archive.snapshot.skus.records[0].amt, "3.0000");
+    assert.equal(archive.snapshotHash, prepared.value.snapshotHash);
+    assert.equal(createHash("sha256").update(JSON.stringify(archive.snapshot, null, 2)).digest("hex"), archive.snapshotHash);
+    assert.equal((await stat(archivePath)).mode & 0o777, 0o600);
+    const notice = rows.find(row => row.type === "user/message" && row.data.source.plugin === "gea-proof");
+    assert.ok(notice);
+    assert.equal(JSON.stringify(notice).includes(archive.snapshotHash), false);
     assert.equal(
       (await app.rpc("skus", { ...selection, versionId: "foreign-version" }))
         .error.code,

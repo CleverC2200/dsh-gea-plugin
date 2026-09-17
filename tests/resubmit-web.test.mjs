@@ -4,7 +4,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 
 test(
-  "returned plans open real-source quantity editing while disconnected submission stays disabled",
+  "returned correction plans edit real-source quantities while disconnected submission stays disabled",
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
@@ -14,7 +14,9 @@ test(
       seq: 1,
       periodId: "123",
       planTypeCode: "Y",
-      orderType: "M",
+      orderType: "Z",
+      monthlyApproved: true,
+      hasCorrection: true,
       dealerCode: "456",
       status: 6,
       currentQty: "1",
@@ -60,6 +62,7 @@ test(
           success: true,
           result: {
             currentVersion: { ...plan, id: "v1", effective: true },
+            correctionContext: { contract: "absolute-net-v1", monthlyApproved: true },
             skus: [],
             versions: [],
             logs: [],
@@ -88,6 +91,8 @@ test(
               price: "12.34",
               amt: "12.34",
               amtBase: "12.34",
+              adjAddQty: "0",
+              adjCutQty: "0",
             },
           ],
         });
@@ -120,18 +125,19 @@ test(
       .getByRole("button", { name: "继续", exact: true })
       .click();
     const frame = page.frameLocator("iframe[data-gea-workbench]");
-    await frame.getByRole("tab", { name: "按基地", exact: true }).click();
-    await frame.locator("tbody label.arco-checkbox").first().click();
-    await frame.getByRole("button", { name: "重提", exact: true }).click();
+    await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
+    await expect(frame.getByRole("button", { name: "重提", exact: true })).toHaveCount(0);
+    await frame.getByRole("tab", { name: "纠偏", exact: true }).click();
+    await frame.getByRole("button", { name: "退回重提", exact: true }).click();
     const dialog = frame.getByRole("dialog", {
       name: "真实销售计划退回重提",
       exact: true,
     });
     const quantity = dialog.getByRole("textbox", {
-      name: "提报数量 789",
+      name: "纠偏调整量 789",
       exact: true,
     });
-    await quantity.fill("2.000");
+    await quantity.fill("1.000");
     await expect(dialog).toContainText("24.68");
     await expect(dialog).toContainText("重提目标状态: 1");
     await dialog.locator("label.arco-checkbox").click();
