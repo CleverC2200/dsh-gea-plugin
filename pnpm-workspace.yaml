@@ -1,0 +1,16 @@
+packages:
+  - packages/*
+# Existing native/runtime dependencies that need their installation scripts.
+allowBuilds:
+  '@deepseek-ai/dsh-subprocess-local': true
+  '@google/genai': true
+  esbuild: true
+  koffi: true
+  node-pty: true
+  protobufjs: true
+peerDependencyRules:
+  ignoreMissing:
+    - '@cleverc2200/dsh-agent-workbench'
+# The private example peer must resolve to the same pinned package as the host.
+overrides:
+  '@cleverc2200/dsh-agent-workbench': 'git+https://github.com/CleverC2200/dsh-agent-workbench.git#db51a0d0f772fc6e78701f3a218f4d4c3f26e93c'

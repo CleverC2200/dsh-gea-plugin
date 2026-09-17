@@ -2,18 +2,21 @@
 
 独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；通用工作台插件负责布局与会话关联，运行使用未修改的 npm DSH `0.1.5-rc.2`。
 
-本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。`npm run package` 输出可核对 SHA-256 的 tarball，尚不是桌面安装器。
+本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。`pnpm run package` 输出可核对 SHA-256 的 tarball，尚不是桌面安装器。
 
 ## 源码安装与启动
 
-使用 Node 24，在本目录执行：
+按需构建、watch 和 Codex 原生环境配置见[本地开发说明](docs/local-development.md)。
+
+使用 Node 24 和 package.json 固定的 pnpm 版本，在本目录执行（发行包的 npm shrinkwrap 安装协议保持不变）：
 
 ```sh
-npm ci
-npm run build
+corepack enable pnpm
+pnpm install --frozen-lockfile
+pnpm run build
 cp gea.direct.example.json gea.config.json
 # 登录 GEA 后，插件通过 GEA 个人模型接口发现模型并直接调用。
-npm start -- --config gea.config.json --runtime .runtime/workbench-development --port 3198
+pnpm start --config gea.config.json --runtime .runtime/workbench-development --port 3198
 ```
 
 启动通过安装依赖中的 `dsh --profile gea-workbench`，拥有独立 Harness home。profile 禁用内置 `ui-layout`，启用 `@cleverc2200/dsh-agent-workbench`；其他 DSH 包使用 npm 发布物。构建和启动不读取 DSH checkout，也不会链接或修改其源码。原生聊天、输入框及 Session 继续由 DSH 提供。
@@ -72,15 +75,15 @@ GEA token 仅保存在当前 Host 内存中；重启后需要重新登录。GEA 
 本次三栏重构的检查、真实查询证据和未完成项见 [2026-09-11 验收记录](docs/acceptance-2026-09-11.md)。此前的真实 GEA/模型验证记录见 [早期验收记录](docs/acceptance-2026-09-10.md)，它不能替代当前发布版 DSH + 工作台插件的真实环境验收；独立安装包、写操作和生产验收也仍未完成。
 
 ```sh
-npm run typecheck
-npm test
+pnpm run typecheck
+pnpm test
 ```
 
 `tests/fixtures/gea-approval-workspace.snapshot.json` 是脱敏、无密钥的页面/Session 事件回放夹具；它锁定查询、选择、预览、提交和回执的顺序，不代表真实 GEA 或真实模型验收。真实环境证据仍以 `docs/acceptance-2026-09-10.md` 和运行目录中的本地回执为准。
 
 浏览器测试使用本机 Chrome，测试进程、端口和目录均由测试拥有。定向测试可运行 `node --test tests/<name>.test.mjs`。
 
-验收指定会话使用 `npm run verify -- --runtime <runtime目录> --session <session-id>`，独立核对磁盘快照与首轮完整回答。添加 `--require-live` 还要求当前进程已登录、快照属于当前进程和环境、来源不是本机模拟服务且处于真实模型模式。它不会自动选择旧会话，不将本地回执计为真实模型验收。此入口验证落盘结果，不能替代外部模型请求比对或完整业务范围验收。`scripts/probe-gea.mjs` 仍属于旧原型诊断入口，尚未适配新版部署，不应用它宣告新版验收。
+验收指定会话使用 `pnpm run verify --runtime <runtime目录> --session <session-id>`，独立核对磁盘快照与首轮完整回答。添加 `--require-live` 还要求当前进程已登录、快照属于当前进程和环境、来源不是本机模拟服务且处于真实模型模式。它不会自动选择旧会话，不将本地回执计为真实模型验收。此入口验证落盘结果，不能替代外部模型请求比对或完整业务范围验收。`scripts/probe-gea.mjs` 仍属于旧原型诊断入口，尚未适配新版部署，不应用它宣告新版验收。
 
 登录后的真实模型发现、正式最小推理验收与审批范围限制见[模型与审批核对](docs/model-and-approval-audit-2026-09-11.md)。
 
@@ -158,7 +161,7 @@ DMS 继续使用 mock。受控 GEA 终审流程可连接既有模拟接收方验
 
 ## 标准 bundle
 
-GEA 发行包声明 `dsh.bundle.patch`，在官方 base/web 后挂载 GEA 和固定版本的独立工作台。连接配置通过 profile overlay 提供，不放入 bundle。`npm start -- --bundle --config <本地配置> --runtime <独立数据目录> --port 0` 验证标准 bundle 加载；省略 `--bundle` 兼容既有启动方式。`npm run test:package` 从空目录安装发行包并验证登录、业务页面、原生对话及重启后的历史。
+GEA 发行包声明 `dsh.bundle.patch`，在官方 base/web 后挂载 GEA 和固定版本的独立工作台。连接配置通过 profile overlay 提供，不放入 bundle。`pnpm start --bundle --config <本地配置> --runtime <独立数据目录> --port 0` 验证标准 bundle 加载；省略 `--bundle` 兼容既有启动方式。`pnpm run test:package` 从空目录安装发行包并验证登录、业务页面、原生对话及重启后的历史。
 
 缺失工作台时报 `WORKBENCH_MISSING`；非 0.1.x 公共接口版本时报 `WORKBENCH_INCOMPATIBLE`。工作台控制器测试已迁至独立仓库，GEA 保留跨插件浏览器集成测试。发行包由明确文件清单校验，拒绝本机路径和凭据。
 
