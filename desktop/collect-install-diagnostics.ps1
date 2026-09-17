@@ -56,11 +56,12 @@ try {
       do {
         $changed=$false
         foreach($row in $rows){
+          if($null -eq $row.CreationDate){continue}
           $created=$row.CreationDate.ToUniversalTime(); $parent=[int]$row.ParentProcessId; $id=[int]$row.ProcessId
           if($owned.ContainsKey($parent) -and $created -ge $owned[$parent] -and $created -ge $started.AddSeconds(-1) -and -not $owned.ContainsKey($id)){$owned[$id]=$created;$changed=$true}
         }
       } while($changed)
-      $lastLive=@($rows | Where-Object {$owned.ContainsKey([int]$_.ProcessId) -and [Math]::Abs(($_.CreationDate.ToUniversalTime()-$owned[[int]$_.ProcessId]).TotalSeconds) -lt 2})
+      $lastLive=@($rows | Where-Object {$null -ne $_.CreationDate -and $owned.ContainsKey([int]$_.ProcessId) -and [Math]::Abs(($_.CreationDate.ToUniversalTime()-$owned[[int]$_.ProcessId]).TotalSeconds) -lt 2})
       $observed=@($lastLive)+@($rows | Where-Object {$avNames -contains $_.Name})
       $disk=@(); try {$disk=@(Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk | Select-Object Name,DiskReadBytesPersec,DiskWriteBytesPersec,CurrentDiskQueueLength,PercentDiskTime)}catch{Record-Error 'disk-sample' $_}
       [ordered]@{utc=[DateTime]::UtcNow.ToString('o');elapsedMs=$watch.ElapsedMilliseconds;rootExited=$root.HasExited;processes=@($observed | Select-Object Name,ProcessId,ParentProcessId,KernelModeTime,UserModeTime,ReadTransferCount,WriteTransferCount,WorkingSetSize);disk=$disk} | ConvertTo-Json -Depth 6 -Compress | Add-Content -LiteralPath (Join-Path $output 'samples.jsonl') -Encoding utf8
@@ -69,7 +70,7 @@ try {
       foreach($file in @(Get-ChildItem -LiteralPath $output -Filter 'stages-*.log')){
         if($file.BaseName -match '^stages-(\d+)$'){
           $stageId=[int]$Matches[1]
-          $row=$rows | Where-Object {$_.ProcessId -eq $stageId -and $_.CreationDate.ToUniversalTime() -ge $started.AddSeconds(-1)} | Select-Object -First 1
+          $row=$rows | Where-Object {$_.ProcessId -eq $stageId -and $null -ne $_.CreationDate -and $_.CreationDate.ToUniversalTime() -ge $started.AddSeconds(-1)} | Select-Object -First 1
           if($row){$owned[$stageId]=$row.CreationDate.ToUniversalTime()}
         }
       }
