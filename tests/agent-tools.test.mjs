@@ -61,7 +61,7 @@ test(
         reply({ data: [{ id: "model", name: "Test model" }] });
         return true;
       }
-      if (path.endsWith("/periods")) {
+      if (path.endsWith("/plans") && req.url.searchParams.get("pageSize") === "200") {
         if (outcome === "forbidden") reply({ message: "Forbidden" }, 403);
         else if (outcome === "hold" || outcome === "timeout") {
           toolReply = res;
@@ -72,19 +72,30 @@ test(
           reply({
             success: true,
             result: {
-              records: [{ periodId: "x", notes: "x".repeat(40000) }],
-              total: 1,
+              records: Array.from({ length: 200 }, (_, index) => ({
+                planId: `oversize-${index}`,
+                periodId: `202610${String(index).padStart(3, "0")}-${"x".repeat(200)}`,
+                planTypeCode: "Y",
+                orderType: "M",
+              })),
+              total: 200,
+              size: 200,
+              current: 1,
+              pages: 1,
             },
           });
         else
           reply({
             success: true,
             result: {
-              records: [{ periodId: "period-1", periodMonth: "2026-09" }],
+              records: [
+                { planId: "period-plan-1", periodId: "20261001", planTypeCode: "Y", orderType: "M" },
+                { planId: "period-plan-2", periodId: "20260901", planTypeCode: "Y", orderType: "M" },
+              ],
               total: 2,
-              size: 1,
+              size: 200,
               current: 1,
-              pages: 2,
+              pages: 1,
             },
           });
         return true;
@@ -191,7 +202,7 @@ test(
                           ? { tenantId: "forged" }
                           : outcome === "status-filter"
                             ? { pageSize: 1, status: 5 }
-                            : { pageSize: 1 },
+                            : { pageSize: outcome === "oversize" ? 200 : 1 },
                     }),
                   },
                 },
@@ -289,7 +300,7 @@ test(
         );
         assert.equal(JSON.stringify(rows).includes("fixture-gea-token"), false);
         const read = app.requests.find((x) =>
-          x.url.pathname.endsWith("/periods"),
+          x.url.pathname.endsWith("/plans") && x.url.searchParams.get("pageSize") === "200",
         );
         assert.equal(read.method, "GET");
         assert.equal(read.headers["x-tenant-id"], "0");
@@ -532,7 +543,7 @@ test(
           outcome = mode;
           modelRequests = [];
           const before = app.requests.filter((x) =>
-            x.url.pathname.endsWith("/periods"),
+            x.url.pathname.endsWith("/plans") && x.url.searchParams.get("pageSize") === "200",
           ).length;
           const rows = await ended(await submit());
           assert.match(
@@ -545,7 +556,7 @@ test(
           );
           if (mode === "invalid")
             assert.equal(
-              app.requests.filter((x) => x.url.pathname.endsWith("/periods"))
+              app.requests.filter((x) => x.url.pathname.endsWith("/plans") && x.url.searchParams.get("pageSize") === "200")
                 .length,
               before,
             );

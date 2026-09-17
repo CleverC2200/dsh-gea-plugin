@@ -15,7 +15,7 @@ test(
       planId: "p",
       versionId: "v",
       seq: 1,
-      periodId: "123",
+      periodId: "20261001",
       planTypeCode: "Y",
       orderType: "M",
       dealerCode: "456",
@@ -50,7 +50,7 @@ test(
           result: {
             records: [
               {
-                periodId: "123",
+                periodId: "20261001",
                 periodMonth: "2026-10",
                 planTypeCode: "Y",
                 status: "OPEN",

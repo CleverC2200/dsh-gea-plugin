@@ -18,7 +18,8 @@ export type GeaSalesPlanPeriod = {
   periodMonth: string;
   planType: string;
   planTypeCode: string;
-  status: string;
+  /** 旧周期状态已移除；从可见计划重建周期时为 UNKNOWN。 */
+  status?: string;
   submitDeadline?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -27,7 +28,6 @@ export type GeaSalesPlanPeriod = {
 export type GeaSalesPlanPeriodQuery = {
   periodMonth?: string;
   planType?: string;
-  status?: string;
   pageNo?: number;
   pageSize?: number;
   signal?: AbortSignal;

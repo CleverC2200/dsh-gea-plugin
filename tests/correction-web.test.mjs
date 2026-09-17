@@ -19,7 +19,7 @@ test(
                 planId: 'z',
                 versionId: 'v',
                 seq: 1,
-                periodId: 'period-1',
+                periodId: '20260901',
                 planTypeCode: 'Y',
                 orderType: req.url.searchParams.get('orderType') ?? 'M',
                 dealerCode: '123',

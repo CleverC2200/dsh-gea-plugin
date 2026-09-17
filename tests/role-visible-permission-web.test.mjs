@@ -8,7 +8,7 @@ test('granted visible region role directly approves tracking rows when current-n
   const plan = {
     planId: 'p-role-visible',
     versionId: 'v-role-visible',
-    periodId: 'period-1',
+    periodId: '20260901',
     planTypeCode: 'Y',
     status: 2,
     baseName: '跨节点区域审批',
@@ -27,7 +27,7 @@ test('granted visible region role directly approves tracking rows when current-n
     const path = req.url.pathname;
     const send = result => { reply({success:true,result}); return true; };
     if (path.endsWith('/getPermCode')) return send({codeList:['sales-plan:plan:region-approve']});
-    if (path.endsWith('/periods')) return send({records:[{periodId:'period-1',periodMonth:'2026-09',planTypeCode:'Y',status:'CLOSED'}],total:1,current:1,size:100});
+    if (path.endsWith('/periods')) return send({records:[{periodId:'20260901',periodMonth:'2026-09',planTypeCode:'Y',status:'CLOSED'}],total:1,current:1,size:100});
     if (path.endsWith('/plans')) {
       const requestedStatus = req.url.searchParams.get('status');
       const records = requestedStatus === null || Number(requestedStatus) === plan.status ? [plan] : [];

@@ -204,7 +204,7 @@ export const projectRegionalApprovalLiveDimension = (
 };
 
 export const chooseInitialSalesPlanPeriod = (periods: readonly GeaSalesPlanPeriod[]): GeaSalesPlanPeriod | undefined =>
-  periods.find((period) => period.status.toUpperCase() === 'OPEN') ?? periods[0];
+  periods.find((period) => period.status?.toUpperCase() === 'OPEN') ?? periods[0];
 
 /** 用户只选择月份；Y/DC 等流程类型留在同月各计划内部用于审批判断。 */
 export const salesPlanPeriodMonths = (periods: readonly GeaSalesPlanPeriod[]): string[] => [
@@ -265,7 +265,7 @@ export const groupRegionalApprovalLiveRows = (
 };
 
 export const isOpenSalesPlanPeriod = (period: GeaSalesPlanPeriod | undefined): boolean =>
-  period?.status.toUpperCase() === 'OPEN';
+  period?.status?.toUpperCase() === 'OPEN';
 
 const DECIMAL_PATTERN = /^(-?)(\d+)(?:\.(\d+))?$/;
 
