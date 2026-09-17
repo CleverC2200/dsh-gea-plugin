@@ -5,6 +5,15 @@ on:
       release_tag:
         description: Unpublished diagnostic draft containing the fixed EXE inputs
         required: true
+      test_mode:
+        description: Installation case to measure
+        type: choice
+        options: [both, clean, upgrade]
+        default: both
+      enable_realtime:
+        description: Enable and verify Defender real-time scanning on this disposable runner
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -14,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [clean, upgrade]
+        mode: ${{ fromJSON(inputs.test_mode == 'clean' && '["clean"]' || inputs.test_mode == 'upgrade' && '["upgrade"]' || '["clean","upgrade"]') }}
     # GitHub draft assets require write permission. Only the download step receives the token.
     permissions:
       contents: write
@@ -42,11 +51,23 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Draft asset download failed' }
             if ((Get-FileHash (Join-Path $downloads $file.name) -Algorithm SHA256).Hash.ToLower() -ne $file.sha) { throw 'Installer SHA mismatch' }
           }
-      - name: Capture environment without changing security settings
+      - name: Capture security state and optionally enable real-time scanning
         shell: pwsh
+        env:
+          ENABLE_REALTIME: ${{ inputs.enable_realtime }}
         run: |
           $report = Join-Path $env:RUNNER_TEMP 'install-report'
           New-Item -ItemType Directory -Path $report | Out-Null
+          if ($env:ENABLE_REALTIME -eq 'true') {
+            try {
+              Set-MpPreference -DisableRealtimeMonitoring $false
+              Start-Sleep -Seconds 3
+              if (-not (Get-MpComputerStatus).RealTimeProtectionEnabled) { throw 'Real-time protection could not be enabled on this image' }
+            } catch {
+              @{stage='security-setup'; error=$_.Exception.Message} | ConvertTo-Json | Set-Content (Join-Path $report 'security-error.json')
+              throw
+            }
+          }
           $security = $null
           try { $security = Get-MpComputerStatus | Select-Object AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,AntivirusSignatureVersion } catch {}
           @{os=(Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber); cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores); disks=@(Get-CimInstance Win32_DiskDrive | Select-Object Model,MediaType,Size); security=$security; imageOS=$env:ImageOS; imageVersion=$env:ImageVersion} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $report 'environment.json')
