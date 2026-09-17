@@ -15,6 +15,8 @@ foreach ($path in @($Destination,$ReportDirectory)) {
 if ($Label -notmatch '^[a-z0-9-]+$') { throw 'Invalid report label' }
 New-Item -ItemType Directory -Path $ReportDirectory -Force | Out-Null
 $samples = Join-Path $ReportDirectory "$Label-samples.jsonl"
+$installerTimingLog = Join-Path $env:TEMP 'GEA-Desktop-install-timing.log'
+Remove-Item -LiteralPath $installerTimingLog -Force -ErrorAction SilentlyContinue
 $started = [DateTime]::UtcNow
 $timer = [Diagnostics.Stopwatch]::StartNew()
 $process = Start-Process -FilePath $Installer -ArgumentList '/S', "/D=$Destination" -PassThru
@@ -66,12 +68,17 @@ try {
   if (Test-Path -LiteralPath $Destination) {
     Get-ChildItem -LiteralPath $Destination -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { $fileCount++; $installedBytes += $_.Length }
   }
+  $installerTimingLogPresent = Test-Path -LiteralPath $installerTimingLog
+  if ($installerTimingLogPresent) {
+    Copy-Item -LiteralPath $installerTimingLog -Destination (Join-Path $ReportDirectory "$Label-installer-timing.log") -Force
+  }
   $result = [ordered]@{
     label=$Label; startedUtc=$started.ToString('o'); elapsedMs=$timer.ElapsedMilliseconds
     installerSha256=(Get-FileHash -LiteralPath $Installer -Algorithm SHA256).Hash.ToLower()
     exitCode=$(if ($process.HasExited) {$process.ExitCode} else {$null}); timedOut=$timedOut
     executablePresent=(Test-Path -LiteralPath (Join-Path $Destination 'GEA Desktop.exe'))
     installedFileCount=$fileCount; installedBytes=$installedBytes; peakInstallerProcesses=$peakProcesses
+    installerTimingLogPresent=$installerTimingLogPresent
     telemetryErrors=@($sampleErrors | Select-Object -Unique)
     scope='Silent NSIS install only; no app startup or user data. Five-second sampling; not exact GUI progress timing.'
   }
