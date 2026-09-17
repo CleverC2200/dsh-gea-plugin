@@ -129,7 +129,7 @@ test("identity changes disable old replay closures and the ring stays bounded", 
   for (const path of [
     "/sys/user/getUserInfo",
     "/sys/permission/getPermCode",
-    "/sales-plan/periods?pageNo=1&pageSize=20",
+    "/sales-plan/plans?pageNo=1&pageSize=20",
   ]) {
     const response = await center.fetch("https://gea.example" + path);
     await response.body.cancel();

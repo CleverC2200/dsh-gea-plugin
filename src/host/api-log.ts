@@ -133,26 +133,6 @@ const CATALOG: CatalogDefinition[] = [
   ),
   endpoint(
     {
-      id: "plans.periods",
-      group: "销售计划",
-      name: "计划周期",
-      method: "GET",
-      path: "/sales-plan/periods",
-      description: "查询销售计划周期和开放状态。",
-      requestFields: [
-        "periodMonth",
-        "planType",
-        "status",
-        "pageNo",
-        "pageSize",
-      ],
-      replayPolicy: "safe",
-      replayNote: safe,
-    },
-    /^\/sales-plan\/periods$/,
-  ),
-  endpoint(
-    {
       id: "plans.list",
       group: "销售计划",
       name: "计划列表",
