@@ -65,17 +65,14 @@ class ReceiptAdapter extends LlmAdapter {
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     options.signal?.throwIfAborted();
     const request = JSON.stringify(options.messages);
-    const snapshotHash = request.match(
-      /GEA_SNAPSHOT_SHA256=([a-f0-9]{64})/,
-    )?.[1];
-    const text = `本地验证回执（非 AI 分析）：快照已进入 dsh 模型请求。\n\nSHA-256: ${snapshotHash ?? "not-present"}\n\n这是数据传递验证，不构成审批意见。`;
+    const text =
+      "本地验证回执（非 AI 分析）：业务资料已进入会话。\n\n这是数据传递验证，不构成审批意见。";
     await mkdir(this.config.runtimeDir, { recursive: true, mode: 0o700 });
     await appendFile(
       resolve(this.config.runtimeDir, "receipts.jsonl"),
       JSON.stringify({
         at: new Date().toISOString(),
         runId: this.runId,
-        snapshotHash,
         requestHash: createHash("sha256").update(request).digest("hex"),
         provider: options.provider,
         model: options.model,
@@ -360,6 +357,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
           config.analysisMode === "model" ? "gea-analysis" : "gea-proof",
         model: selectedModel,
       });
+      signal.throwIfAborted();
+      business.prepared(preview.previewId);
+      await business.archivePreview(session.sessionId, preview);
       signal.throwIfAborted();
       business.prepared(preview.previewId);
       const agent = ctx.agents.get(session.sessionId);

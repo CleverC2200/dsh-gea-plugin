@@ -208,6 +208,64 @@ function text(value: unknown): string {
     throw new Error("INVALID_SELECTION");
   return value;
 }
+
+function plainObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function businessValue(value: unknown): string | undefined {
+  return typeof value === "string" || typeof value === "number"
+    ? String(value)
+    : undefined;
+}
+
+/** 将内部只读快照投影成会话中可见的业务资料，避免暴露接口和字段实现。 */
+function businessBrief(snapshot: object): string {
+  const root = plainObject(snapshot);
+  const records = Array.isArray(root.records)
+    ? root.records
+    : root.record
+      ? [{ record: root.record }]
+      : [];
+  const lines = records.map((candidate, index) => {
+    const entry = plainObject(candidate);
+    const detail = plainObject(entry.detail);
+    const current = plainObject(detail.currentVersion);
+    const row = Object.keys(current).length
+      ? current
+      : plainObject(entry.record);
+    const field = (...names: string[]) => {
+      for (const name of names) {
+        const value = businessValue(row[name] ?? entry[name]);
+        if (value !== undefined) return value;
+      }
+      return "未提供";
+    };
+    const area = [field("provinceName"), field("regionName")]
+      .filter((value) => value !== "未提供")
+      .join(" / ");
+    return [
+      `计划 ${index + 1}`,
+      `编号：${field("planId")}`,
+      `经销商：${field("dealerName")}`,
+      `区域：${area || "未提供"}`,
+      `周期：${field("periodId", "periodMonth")}`,
+      `数量（目标 / 当前）：${field("targetQty")} / ${field("currentQty")}`,
+      `金额（目标 / 当前）：${field("targetAmount")} / ${field("currentAmount")}`,
+    ].join("；");
+  });
+  return [
+    "请根据以下销售计划资料，向业务同事给出简洁说明。",
+    "默认按“本次结果、需要关注、请确认或补充、下一步”回答；没有风险时直接说明“暂未发现明显异常”。",
+    "不要展示或解释系统字段、接口地址、哈希、抓取时间、JSON、字段路径、内部状态码、覆盖范围或计算中间过程；不要复述本段原文。",
+    "仅在用户明确要求核对明细、审计依据或技术排查时，才补充必要的业务口径说明。不得执行审批、保存、提交或写回。",
+    "",
+    `业务资料（共 ${lines.length} 条计划）：`,
+    ...(lines.length ? lines : ["未取得可供说明的计划资料。"]),
+  ].join("\n");
+}
 function integer(
   value: unknown,
   min: number,
@@ -1826,16 +1884,13 @@ export class Business {
     return this.recordPreview(snapshot);
   }
 
-  /** 记录不可变快照；超出输入预算时拒绝送入模型，且不执行任何业务写入。 */
+  /** 记录不可变快照；会话只接收业务投影，原始快照另存为受限审计依据。 */
   private recordPreview(snapshot: object): Preview {
     const json = JSON.stringify(snapshot, null, 2);
     const snapshotHash = createHash("sha256").update(json).digest("hex");
-    const task =
-      this.config.analysisMode === "receipt"
-        ? "本次是本地传递验证，不是 AI 分析。请核对以下快照已进入会话。"
-        : "请依据以下只读快照分析销售计划数量和金额差异。分别列出源数据、精确计算、推测与缺失依据。不得执行审批或写回。";
-    const prompt = `${task}\nGEA_SNAPSHOT_SHA256=${snapshotHash}\n\n${json}`;
-    const bytes = Buffer.byteLength(prompt);
+    const prompt = businessBrief(snapshot);
+    // 输入改为业务投影后，仍以原始快照的大小作为安全上限，不能借此绕过保护。
+    const bytes = Buffer.byteLength(json);
     const limitBytes = Math.min(
       this.config.maxSnapshotBytes,
       this.config.inputByteBudget,
@@ -1850,6 +1905,31 @@ export class Business {
       prompt,
     };
     return this.preview;
+  }
+
+  /** 原始快照不进入会话展示，按会话标识保存为本机受限审计依据。 */
+  async archivePreview(sessionId: string, preview: Preview): Promise<void> {
+    if (!/^session-[a-zA-Z0-9-]+$/.test(sessionId))
+      throw new Error("INVALID_SESSION");
+    const dir = resolve(this.config.runtimeDir, "analysis-snapshots");
+    const file = resolve(dir, sessionId + ".json");
+    const temp = resolve(dir, sessionId + "." + randomUUID() + ".tmp");
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await writeFile(
+      temp,
+      JSON.stringify(
+        {
+          schema: 1,
+          sessionId,
+          snapshotHash: preview.snapshotHash,
+          snapshot: preview.snapshot,
+        },
+        null,
+        2,
+      ) + "\n",
+      { mode: 0o600 },
+    );
+    await rename(temp, file);
   }
 
   /** 调用方、登录、查询或 Host 失效时取消待处理的准入。 */

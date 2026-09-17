@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { profile, readSession, until } from "./profile.mjs";
 
 test(
@@ -96,8 +98,26 @@ test(
       false,
     );
     const user = body.messages.find((message) => message.role === "user");
-    assert.ok(JSON.stringify(user).includes(prepared.snapshotHash));
-    assert.ok(JSON.stringify(user).includes("1.2300"));
+    const prompt = JSON.stringify(user);
+    assert.ok(prompt.includes("业务资料（共 1 条计划）"));
+    assert.ok(prompt.includes("数量（目标 / 当前）"));
+    assert.equal(prompt.includes("GEA_SNAPSHOT_SHA256"), false);
+    assert.equal(prompt.includes("gea-readonly-v1"), false);
+    assert.equal(prompt.includes("sourceUrl"), false);
+    assert.equal(prompt.includes("fetchedAt"), false);
+    const archive = JSON.parse(
+      await readFile(
+        resolve(
+          app.runtime,
+          "analysis-snapshots",
+          sent.value.sessionId + ".json",
+        ),
+        "utf8",
+      ),
+    );
+    assert.equal(archive.sessionId, sent.value.sessionId);
+    assert.equal(archive.snapshotHash, prepared.snapshotHash);
+    assert.deepEqual(archive.snapshot, prepared.snapshot);
     assert.equal(prepared.snapshot.calculations.quantityGap.value, "1.11");
     assert.equal(prepared.snapshot.calculations.amountGap.value, "2.2");
     assert.ok(

@@ -496,6 +496,11 @@ test(
     assert.equal(snapshot.format, "gea-workbench-readonly-v1");
     assert.equal(snapshot.scope, "summary");
     assert.equal(snapshot.coverage, "selected-plans-current-summary");
+    assert.ok(summary.value.prompt.includes("业务资料（共 1 条计划）"));
+    assert.equal(summary.value.prompt.includes("GEA_SNAPSHOT_SHA256"), false);
+    assert.equal(summary.value.prompt.includes("gea-workbench-readonly-v1"), false);
+    assert.equal(summary.value.prompt.includes("sourceUrl"), false);
+    assert.equal(summary.value.prompt.includes("detail.currentVersion"), false);
     assert.equal(snapshot.records.length, 1);
     const record = snapshot.records[0];
     assert.equal(record.planId, planId);
