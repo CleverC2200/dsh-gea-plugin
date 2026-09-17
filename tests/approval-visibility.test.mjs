@@ -2,10 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 const { outputFiles } = await build({stdin: {contents: "export * from './src/workbench/original/workbenches/regionalApproval/regionalApprovalQueryModel.ts'; export * from './src/workbench/original/salesPlanWorkflow.ts';", resolveDir: process.cwd()}, bundle: true, write: false, platform: 'node', format: 'esm'});
-const { salesPlanPeriodOptionLabel, salesPlanVisibleStatuses, salesPlanWorkflow } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].contents).toString('base64'));
-test('period options distinguish plan types within the same month', () => {
-  assert.equal(salesPlanPeriodOptionLabel({periodMonth:'2026-10',planTypeCode:'Y'}), '2026-10 · Y');
-  assert.equal(salesPlanPeriodOptionLabel({periodMonth:'2026-10',planTypeCode:'DC'}), '2026-10 · DC');
+const { approvalStageProgressForSalesPlanPeriods, salesPlanPeriodMonths, salesPlanPeriodsForMonth, salesPlanPeriodOptionLabel, salesPlanVisibleStatuses, salesPlanWorkflow } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].contents).toString('base64'));
+test('period options expose one month while keeping all workflow periods in its query scope', () => {
+  const periods = [
+    {periodId:'20261001',periodMonth:'2026-10',planTypeCode:'Y',status:'OPEN'},
+    {periodId:'20261002',periodMonth:'2026-10',planTypeCode:'DC',status:'OPEN'},
+    {periodId:'20260901',periodMonth:'2026-09',planTypeCode:'Y',status:'CLOSED'},
+  ];
+  assert.deepEqual(salesPlanPeriodMonths(periods), ['2026-10','2026-09']);
+  assert.deepEqual(salesPlanPeriodsForMonth(periods,'2026-10').map(period=>period.periodId), ['20261001','20261002']);
+  assert.equal(salesPlanPeriodOptionLabel('2026-10'), '2026-10');
+});
+test('month progress weights each workflow without inventing a missing DC region node', () => {
+  const progress = approvalStageProgressForSalesPlanPeriods([
+    {planTypeCode:'Y',total:2,statusTotals:{2:1,10:1}},
+    {planTypeCode:'DC',total:2,statusTotals:{2:2}},
+  ]);
+  assert.equal(progress.region, 100);
+  assert.equal(progress.province, 25);
 });
 test('Y visibility includes pending, own returns and read-only tracking, excludes other returns and earlier steps', () => {
   const expected = {customer: [0,1,2,3,4,5,6,10], region: [1,2,3,4,5,6,7,10], province: [2,3,4,5,7,8,10], area: [3,4,5,8,9,10], category: [4,5,9,10]};

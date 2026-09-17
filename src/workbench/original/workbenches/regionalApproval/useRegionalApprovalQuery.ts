@@ -12,10 +12,12 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addExactDecimals,
-  approvalStageProgressForSalesPlanStatusTotals,
+  approvalStageProgressForSalesPlanPeriods,
   chooseInitialSalesPlanPeriod,
   clampSalesPlanPageNumber,
   SALES_PLAN_PROGRESS_STATUSES,
+  salesPlanPeriodMonths,
+  salesPlanPeriodsForMonth,
   salesPlanVisibleStatuses,
   type RegionalApprovalQueryScope,
 } from './regionalApprovalQueryModel.ts';
@@ -118,7 +120,7 @@ export const useRegionalApprovalQuery = ({
   const [progressState, setProgressState] = useState<
     QueryState<Record<ApprovalStageId, number>> & { statusTotals?: Partial<Record<number, number>> }
   >(idle);
-  const [selectedPeriodId, setSelectedPeriodId] = useState<string>();
+  const [selectedPeriodMonth, setSelectedPeriodMonth] = useState<string>();
   const [queueSettledPage, setQueueSettledPage] = useState<number>();
   const [queueSettledStageKey, setQueueSettledStageKey] = useState<string>();
   const [periodRevision, setPeriodRevision] = useState(0);
@@ -137,34 +139,12 @@ export const useRegionalApprovalQuery = ({
     }),
     [scope?.areaCode, scope?.baseName, scope?.dealerCode, scope?.orgCode, scope?.provinceCode, scope?.status]
   );
-  const periodTypeCode = periodsState.data?.find((period) => period.periodId === selectedPeriodId)?.planTypeCode;
-  const roleStatuses = roles?.length ? salesPlanVisibleStatuses(periodTypeCode ?? '', roles) : undefined;
-  const requestedStatuses = stage ? salesPlanWorkflow(periodTypeCode ?? '').queueStatuses(stage) : stageStatuses;
-  const resolvedStageStatuses = roleStatuses
-    ? roleStatuses.filter((status) => !requestedStatuses || requestedStatuses.includes(status))
-    : requestedStatuses;
-  const stageStatusesKey = resolvedStageStatuses
-    ? [
-        ...new Set(
-          resolvedStageStatuses.filter(
-            (status) => Number.isSafeInteger(status) && (scope?.status === undefined || scope.status === status)
-          )
-        ),
-      ]
-        .toSorted((a, b) => a - b)
-        .join(',')
-    : undefined;
-  const stableStageStatuses = useMemo(
-    () =>
-      stageStatusesKey === undefined ? undefined : stageStatusesKey ? stageStatusesKey.split(',').map(Number) : [],
-    [stageStatusesKey]
-  );
   useEffect(() => {
     if (!client) {
       setPeriodsState(idle);
       setQueueState(idle);
       setProgressState(idle);
-      setSelectedPeriodId(undefined);
+      setSelectedPeriodMonth(undefined);
       setQueueSettledPage(undefined);
       setQueueSettledStageKey(undefined);
       return;
@@ -178,9 +158,9 @@ export const useRegionalApprovalQuery = ({
         if (periodsRequest.current !== requestId || request.signal.aborted) return;
         const records = Array.isArray(response.records) ? response.records : [];
         setPeriodsState({ status: 'success', data: records });
-        setSelectedPeriodId((current) => {
-          if (current && records.some((period) => period.periodId === current)) return current;
-          return chooseInitialSalesPlanPeriod(records)?.periodId;
+        setSelectedPeriodMonth((current) => {
+          if (current && records.some((period) => period.periodMonth === current)) return current;
+          return chooseInitialSalesPlanPeriod(records)?.periodMonth;
         });
       })
       .catch((error: unknown) => {
@@ -195,11 +175,27 @@ export const useRegionalApprovalQuery = ({
   }, [client, periodRevision]);
 
   const periods = periodsState.data ?? [];
-  const selectedPeriod = periods.find((period) => period.periodId === selectedPeriodId);
-  const selectedPeriodPlanTypeCode = selectedPeriod?.planTypeCode;
+  const periodMonths = salesPlanPeriodMonths(periods);
+  const selectedPeriods = salesPlanPeriodsForMonth(periods, selectedPeriodMonth);
+  const selectedPlanTypeCodes = [...new Set(selectedPeriods.map((period) => period.planTypeCode))];
+  const selectedPlanTypeCode = selectedPlanTypeCodes.length === 1 ? selectedPlanTypeCodes[0] : undefined;
+  const periodQueries = selectedPeriods.map((period) => {
+    const roleStatuses = roles?.length ? salesPlanVisibleStatuses(period.planTypeCode, roles) : undefined;
+    const requestedStatuses = stage ? salesPlanWorkflow(period.planTypeCode).queueStatuses(stage) : stageStatuses;
+    const resolved = roleStatuses
+      ? roleStatuses.filter((status) => !requestedStatuses || requestedStatuses.includes(status))
+      : requestedStatuses;
+    const statuses = resolved
+      ? [...new Set(resolved.filter((status) => Number.isSafeInteger(status) && (scope?.status === undefined || scope.status === status)))].toSorted((a, b) => a - b)
+      : undefined;
+    return { period, statuses };
+  });
+  const stageStatusesKey = periodQueries
+    .map(({ period, statuses }) => `${period.periodId}:${statuses === undefined ? '*' : statuses.join(',')}`)
+    .join('|');
 
   useEffect(() => {
-    if (periodsState.status !== 'success' || !client || !selectedPeriodId || !selectedPeriodPlanTypeCode) {
+    if (periodsState.status !== 'success' || !client || periodQueries.length === 0) {
       setQueueState(idle);
       setQueueSettledPage(undefined);
       return;
@@ -209,77 +205,61 @@ export const useRegionalApprovalQuery = ({
     setQueueState((current) => ({ status: 'loading', data: current.data }));
     setQueueSettledStageKey(undefined);
     const requestedPage = clampSalesPlanPageNumber(page);
-    const baseQuery = {
-      periodId: selectedPeriodId,
-      planTypeCode: selectedPeriodPlanTypeCode,
-      pageNo: requestedPage,
-      pageSize: clampSalesPlanPageNumber(pageSize, 20),
-      ...stableScope,
-      signal: request.signal,
-    };
-    const queuePromise =
-      stableStageStatuses?.length === 0
-        ? Promise.resolve({ records: [], total: 0, size: pageSize, current: requestedPage, pages: 1 })
-        : stableStageStatuses && stableStageStatuses.length > 1
-          ? Promise.all(
-              stableStageStatuses.map(async (status) => {
-                const requestedSize = clampSalesPlanPageNumber(pageSize, 20);
-                const requiredPrefix = requestedPage * requestedSize;
-                const serverPageSize = Math.min(200, requiredPrefix);
-                const first = await client.list.invoke({
-                  ...baseQuery,
-                  status,
-                  pageNo: 1,
-                  pageSize: serverPageSize,
-                });
-                const pageCount = Math.min(
-                  Math.ceil(first.total / serverPageSize),
-                  Math.ceil(requiredPrefix / serverPageSize)
-                );
-                const rest = await Promise.all(
-                  Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
-                    client.list.invoke({
-                      ...baseQuery,
-                      status,
-                      pageNo: index + 2,
-                      pageSize: serverPageSize,
-                    })
-                  )
-                );
-                return {
-                  records: [first, ...rest].flatMap((statusPage) => statusPage.records),
-                  total: first.total,
-                };
-              })
-            ).then((pages) => {
-              const requestedSize = clampSalesPlanPageNumber(pageSize, 20);
-              const start = (requestedPage - 1) * requestedSize;
-              const records = pages
-                .flatMap((statusPage) => statusPage.records)
-                .toSorted((left, right) =>
-                  String(right.updatedAt ?? right.submitTime ?? right.planId).localeCompare(
-                    String(left.updatedAt ?? left.submitTime ?? left.planId)
-                  )
-                );
-              const total = pages.reduce((sum, statusPage) => sum + statusPage.total, 0);
-              return {
-                records: records.slice(start, start + requestedSize),
-                total,
-                size: requestedSize,
-                current: requestedPage,
-                pages: Math.max(1, Math.ceil(total / requestedSize)),
-              } satisfies GeaSalesPlanPage<GeaSalesPlanListItem>;
-            })
-          : client.list.invoke({
-              ...baseQuery,
-              ...(stableStageStatuses?.length === 1 ? { status: stableStageStatuses[0] } : {}),
-            });
+    const requestedSize = clampSalesPlanPageNumber(pageSize, 20);
+    const requiredPrefix = requestedPage * requestedSize;
+    const serverPageSize = Math.min(200, requiredPrefix);
+    const partitions = periodQueries.flatMap(({ period, statuses }) =>
+      (statuses ?? [undefined]).map((status) => ({ period, status }))
+    );
+    const queuePromise = partitions.length === 0
+      ? Promise.resolve({ records: [], total: 0, size: requestedSize, current: requestedPage, pages: 1 })
+      : Promise.all(
+          partitions.map(async ({ period, status }) => {
+            const baseQuery = {
+              ...stableScope,
+              periodId: period.periodId,
+              planTypeCode: period.planTypeCode,
+              status,
+              pageNo: 1,
+              pageSize: serverPageSize,
+              signal: request.signal,
+            };
+            const first = await client.list.invoke(baseQuery);
+            const pageCount = Math.min(
+              Math.ceil(first.total / serverPageSize),
+              Math.ceil(requiredPrefix / serverPageSize)
+            );
+            const rest = await Promise.all(
+              Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
+                client.list.invoke({ ...baseQuery, pageNo: index + 2 })
+              )
+            );
+            return { records: [first, ...rest].flatMap((result) => result.records), total: first.total };
+          })
+        ).then((results) => {
+          const start = (requestedPage - 1) * requestedSize;
+          const records = results
+            .flatMap((result) => result.records)
+            .toSorted((left, right) =>
+              String(right.updatedAt ?? right.submitTime ?? right.planId).localeCompare(
+                String(left.updatedAt ?? left.submitTime ?? left.planId)
+              )
+            );
+          const total = results.reduce((sum, result) => sum + result.total, 0);
+          return {
+            records: records.slice(start, start + requestedSize),
+            total,
+            size: requestedSize,
+            current: requestedPage,
+            pages: Math.max(1, Math.ceil(total / requestedSize)),
+          } satisfies GeaSalesPlanPage<GeaSalesPlanListItem>;
+        });
     void queuePromise
       .then((response) => {
         if (queueRequest.current !== requestId || request.signal.aborted) return;
         setQueueState({ status: 'success', data: response });
         setQueueSettledPage(requestedPage);
-        setQueueSettledStageKey(stableStageStatuses?.join(',') ?? '');
+        setQueueSettledStageKey(stageStatusesKey);
       })
       .catch((error: unknown) => {
         if (queueRequest.current !== requestId) return;
@@ -296,14 +276,13 @@ export const useRegionalApprovalQuery = ({
     page,
     pageSize,
     queueRevision,
-    selectedPeriodId,
-    selectedPeriodPlanTypeCode,
+    selectedPeriodMonth,
+    stageStatusesKey,
     stableScope,
-    stableStageStatuses,
   ]);
 
   useEffect(() => {
-    if (periodsState.status !== 'success' || !client || !loadStageProgress || !selectedPeriodId || !selectedPeriodPlanTypeCode) {
+    if (periodsState.status !== 'success' || !client || !loadStageProgress || selectedPeriods.length === 0) {
       setProgressState(idle);
       return;
     }
@@ -311,33 +290,36 @@ export const useRegionalApprovalQuery = ({
     const request = beginTimedRequest();
     setProgressState((current) => ({ status: 'loading', data: current.data }));
     const statuses = SALES_PLAN_PROGRESS_STATUSES;
-    const baseQuery = {
-      periodId: selectedPeriodId,
-      planTypeCode: selectedPeriodPlanTypeCode,
-      pageNo: 1,
-      pageSize: 1,
-      ...stableScope,
-      status: undefined,
-      signal: request.signal,
-    };
-
     // Progress is based on the full period and organization scope, not the active approval node.
-    void Promise.all([
-      client.list.invoke(baseQuery),
-      ...statuses.map((status) => client.list.invoke({ ...baseQuery, status })),
-    ])
-      .then(([allRows, ...statusPages]) => {
+    void Promise.all(selectedPeriods.map(async (period) => {
+      const baseQuery = {
+        periodId: period.periodId,
+        planTypeCode: period.planTypeCode,
+        pageNo: 1,
+        pageSize: 1,
+        ...stableScope,
+        status: undefined,
+        signal: request.signal,
+      };
+      const [allRows, ...statusPages] = await Promise.all([
+        client.list.invoke(baseQuery),
+        ...statuses.map((status) => client.list.invoke({ ...baseQuery, status })),
+      ]);
+      return {
+        total: allRows.total,
+        planTypeCode: period.planTypeCode,
+        statusTotals: Object.fromEntries(statuses.map((status, index) => [status, statusPages[index]?.total ?? 0])),
+      };
+    }))
+      .then((periodTotals) => {
         if (progressRequest.current !== requestId || request.signal.aborted) return;
-        const statusTotals = Object.fromEntries(
-          statuses.map((status, index) => [status, statusPages[index]?.total ?? 0])
-        );
+        const statusTotals = Object.fromEntries(statuses.map((status) => [
+          status,
+          periodTotals.reduce((sum, period) => sum + (period.statusTotals[status] ?? 0), 0),
+        ]));
         setProgressState({
           status: 'success',
-          data: approvalStageProgressForSalesPlanStatusTotals(
-            allRows.total,
-            statusTotals,
-            selectedPeriodPlanTypeCode
-          ),
+          data: approvalStageProgressForSalesPlanPeriods(periodTotals),
           statusTotals,
         });
       })
@@ -355,13 +337,12 @@ export const useRegionalApprovalQuery = ({
     client,
     loadStageProgress,
     queueRevision,
-    selectedPeriodId,
-    selectedPeriodPlanTypeCode,
+    selectedPeriodMonth,
     stableScope,
   ]);
 
   useEffect(() => {
-    if (periodsState.status !== 'success' || !client || !loadAnalysisSummary || !selectedPeriodId || !selectedPeriodPlanTypeCode) {
+    if (periodsState.status !== 'success' || !client || !loadAnalysisSummary || periodQueries.length === 0) {
       setAnalysisResult(idle);
       return;
     }
@@ -379,58 +360,61 @@ export const useRegionalApprovalQuery = ({
       const rows = new Map<string, GeaSalesPlanListItem>();
       let expectedTotal = 0;
       // 顺序读取页面，避免进入工作台时无界地扩散请求。
-      for (const status of stableStageStatuses ?? [stableScope.status]) {
-        let pageCount = 1;
-        let statusTotal = 0;
-        let serverPageSize = 0;
-        for (let pageNo = 1; pageNo <= pageCount; pageNo++) {
-          request.signal.throwIfAborted();
-          // oxlint-disable-next-line no-await-in-loop -- 下一页依赖服务端页大小，并以此限制请求并发。
-          const response = await client.list.invoke({
-            ...stableScope,
-            status,
-            periodId: selectedPeriodId,
-            planTypeCode: selectedPeriodPlanTypeCode,
-            pageNo,
-            pageSize: 200,
-            signal: request.signal,
-          });
-          request.signal.throwIfAborted();
-          if (
-            response.current !== pageNo ||
-            !Number.isSafeInteger(response.total) ||
-            response.total < 0 ||
-            !Number.isSafeInteger(response.size) ||
-            response.size <= 0
-          ) {
-            throw new Error('Invalid analysis pagination');
-          }
-          if (pageNo === 1) {
-            statusTotal = response.total;
-            serverPageSize = response.size;
-            expectedTotal += statusTotal;
-            pageCount = Math.max(1, Math.ceil(statusTotal / response.size));
-          } else if (response.total !== statusTotal || response.size !== serverPageSize) {
-            throw new Error('Analysis scope changed during pagination');
-          }
-          if (
-            response.records.length !==
-            Math.min(serverPageSize, Math.max(0, statusTotal - (pageNo - 1) * serverPageSize))
-          ) {
-            throw new Error('Incomplete analysis page');
-          }
-          for (const row of response.records) {
+      for (const { period, statuses } of periodQueries) {
+        for (const status of statuses ?? [stableScope.status]) {
+          let pageCount = 1;
+          let statusTotal = 0;
+          let serverPageSize = 0;
+          for (let pageNo = 1; pageNo <= pageCount; pageNo++) {
+            request.signal.throwIfAborted();
+            // oxlint-disable-next-line no-await-in-loop -- 下一页依赖服务端页大小，并以此限制请求并发。
+            const response = await client.list.invoke({
+              ...stableScope,
+              status,
+              periodId: period.periodId,
+              planTypeCode: period.planTypeCode,
+              pageNo,
+              pageSize: 200,
+              signal: request.signal,
+            });
+            request.signal.throwIfAborted();
             if (
-              [row.currentQty, row.currentAmount, row.targetAmount].some(
-                (value) => !/^-?\d+(?:\.\d+)?$/.test(String(value))
-              )
+              response.current !== pageNo ||
+              !Number.isSafeInteger(response.total) ||
+              response.total < 0 ||
+              !Number.isSafeInteger(response.size) ||
+              response.size <= 0
             ) {
-              throw new Error('Invalid analysis decimal');
+              throw new Error('Invalid analysis pagination');
             }
-            if (rows.has(row.planId) || row.periodId !== selectedPeriodId) {
-              throw new Error('Inconsistent analysis records');
+            if (pageNo === 1) {
+              statusTotal = response.total;
+              serverPageSize = response.size;
+              expectedTotal += statusTotal;
+              pageCount = Math.max(1, Math.ceil(statusTotal / response.size));
+            } else if (response.total !== statusTotal || response.size !== serverPageSize) {
+              throw new Error('Analysis scope changed during pagination');
             }
-            rows.set(row.planId, row);
+            if (
+              response.records.length !==
+              Math.min(serverPageSize, Math.max(0, statusTotal - (pageNo - 1) * serverPageSize))
+            ) {
+              throw new Error('Incomplete analysis page');
+            }
+            for (const row of response.records) {
+              if (
+                [row.currentQty, row.currentAmount, row.targetAmount].some(
+                  (value) => !/^-?\d+(?:\.\d+)?$/.test(String(value))
+                )
+              ) {
+                throw new Error('Invalid analysis decimal');
+              }
+              const key = `${period.periodId}:${row.planId}`;
+              if (rows.has(key) || row.periodId !== period.periodId || row.planTypeCode !== period.planTypeCode) {
+                throw new Error('Inconsistent analysis records');
+              }
+              rows.set(key, row);
+            }
           }
         }
       }
@@ -466,10 +450,9 @@ export const useRegionalApprovalQuery = ({
     periodsState.status,
     client,
     loadAnalysisSummary,
-    selectedPeriodId,
-    selectedPeriodPlanTypeCode,
+    selectedPeriodMonth,
     stableScope,
-    stableStageStatuses,
+    stageStatusesKey,
     queueRevision,
   ]);
 
@@ -489,9 +472,12 @@ export const useRegionalApprovalQuery = ({
     queueSettledStageKey,
     stageStatusesKey,
     periods,
-    selectedPeriod,
+    periodMonths,
+    selectedPeriodMonth,
+    selectedPeriods,
+    selectedPlanTypeCode,
     refreshing,
-    selectPeriod: (periodId: string) => setSelectedPeriodId(periodId),
+    selectPeriodMonth: (periodMonth: string) => setSelectedPeriodMonth(periodMonth),
     refresh: () => {
       if (refreshing) return;
       setPeriodRevision((current) => current + 1);

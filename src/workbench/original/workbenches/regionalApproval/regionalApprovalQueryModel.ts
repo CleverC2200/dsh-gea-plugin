@@ -56,6 +56,36 @@ export const approvalStageProgressForSalesPlanStatusTotals = (
   ) as Record<ApprovalStageId, number>;
 };
 
+export const approvalStageProgressForSalesPlanPeriods = (
+  periods: readonly {
+    total: number;
+    statusTotals: Readonly<Partial<Record<number, number>>>;
+    planTypeCode: string;
+  }[]
+): Record<ApprovalStageId, number> =>
+  Object.fromEntries(
+    SALES_PLAN_ROLES.map((role) => {
+      let total = 0;
+      let completed = 0;
+      for (const period of periods) {
+        const workflow = salesPlanWorkflow(period.planTypeCode);
+        const pending = workflow.pending(role);
+        if (pending === undefined || period.total <= 0) continue;
+        total += period.total;
+        completed += SALES_PLAN_PROGRESS_STATUSES.reduce<number>((sum, status) => {
+          const active = workflow.actor(status);
+          const activePending = active && workflow.pending(active);
+          const done =
+            status === 10 ||
+            (status === 5 && role !== 'category') ||
+            (activePending !== undefined && activePending > pending);
+          return sum + (done ? Math.max(0, period.statusTotals[status] ?? 0) : 0);
+        }, 0);
+      }
+      return [role, total > 0 ? Math.max(0, Math.min(completed >= total ? 100 : 99, Math.round((completed / total) * 100))) : 0];
+    })
+  ) as Record<ApprovalStageId, number>;
+
 export type RegionalApprovalQueryScope = Pick<
   GeaSalesPlanPageQuery,
   'dealerCode' | 'areaCode' | 'provinceCode' | 'orgCode' | 'baseName' | 'status'
@@ -176,10 +206,17 @@ export const projectRegionalApprovalLiveDimension = (
 export const chooseInitialSalesPlanPeriod = (periods: readonly GeaSalesPlanPeriod[]): GeaSalesPlanPeriod | undefined =>
   periods.find((period) => period.status.toUpperCase() === 'OPEN') ?? periods[0];
 
-/** 同月可能同时存在月度和大仓计划，选项必须带类型才能让用户选对查询周期。 */
-export const salesPlanPeriodOptionLabel = (
-  period: Pick<GeaSalesPlanPeriod, 'periodMonth' | 'planTypeCode'>
-): string => `${period.periodMonth} · ${period.planTypeCode}`;
+/** 用户只选择月份；Y/DC 等流程类型留在同月各计划内部用于审批判断。 */
+export const salesPlanPeriodMonths = (periods: readonly GeaSalesPlanPeriod[]): string[] => [
+  ...new Set(periods.map((period) => period.periodMonth)),
+];
+
+export const salesPlanPeriodsForMonth = (
+  periods: readonly GeaSalesPlanPeriod[],
+  periodMonth: string | undefined
+): GeaSalesPlanPeriod[] => periods.filter((period) => period.periodMonth === periodMonth);
+
+export const salesPlanPeriodOptionLabel = (periodMonth: string): string => periodMonth;
 
 /** 聚合展示总数，但不把多个计划版本变成可写对象。 */
 export const groupRegionalApprovalLiveRows = (

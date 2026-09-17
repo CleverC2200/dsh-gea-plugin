@@ -906,7 +906,7 @@
         }
       },
       "progressDialog": {
-        "liveScope": "{{month}} · {{planType}} · {{stage}} · 当前已应用筛选",
+        "liveScope": "{{month}} · {{stage}} · 当前已应用筛选",
         "title": "提报进度 · {{stage}}",
         "description": "与当前已应用组织筛选和 {{version}} 结果一致，共 {{count}} 条。",
         "allStages": "五个独立节点",

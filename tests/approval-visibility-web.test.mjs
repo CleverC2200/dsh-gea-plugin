@@ -16,6 +16,7 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
       {periodId:'period-2',periodMonth:'2026-09',planTypeCode:'DC',status:'OPEN'},
     ],total:2,current:1,size:100});
     if (path.endsWith('/plans')) {
+      if (req.url.searchParams.get('periodId') === 'period-2') return send({records:[],total:0,current:1,size:Number(req.url.searchParams.get('pageSize') || 20),pages:1});
       const status = req.url.searchParams.get('status');
       const rows = plans.filter(p => status === null || p.status === Number(status));
       const size = Number(req.url.searchParams.get('pageSize') || 20);
@@ -44,8 +45,8 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   const frame = page.frameLocator('iframe[data-gea-workbench]');
   await frame.getByRole('heading',{name:'销售计划审批',exact:true}).waitFor();
   await frame.getByRole('combobox',{name:'销售计划周期',exact:true}).click();
-  await expect(frame.getByRole('option',{name:'2026-09 · Y',exact:true})).toBeVisible();
-  await expect(frame.getByRole('option',{name:'2026-09 · DC',exact:true})).toBeVisible();
+  await expect(frame.getByRole('option',{name:'2026-09',exact:true})).toHaveCount(1);
+  await expect(frame.getByRole('option')).toHaveCount(1);
   await page.keyboard.press('Escape');
   const region = frame.getByRole('button',{name:/区域审批.*进度/});
   await expect(region).toHaveAttribute('aria-pressed', 'true');

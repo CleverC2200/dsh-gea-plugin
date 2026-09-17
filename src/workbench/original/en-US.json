@@ -906,7 +906,7 @@
         }
       },
       "progressDialog": {
-        "liveScope": "{{month}} · {{planType}} · {{stage}} · Applied filters",
+        "liveScope": "{{month}} · {{stage}} · Applied filters",
         "title": "Submission progress · {{stage}}",
         "description": "Matches the applied organization filters and {{version}} results: {{count}} rows.",
         "allStages": "five independent nodes",

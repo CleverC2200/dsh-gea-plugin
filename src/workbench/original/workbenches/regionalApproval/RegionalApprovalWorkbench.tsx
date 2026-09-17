@@ -785,13 +785,13 @@ const RegionalApprovalWorkbench: React.FC<{
   const contextFilterSummary = useMemo(
     () =>
       buildSalesPlanFilterSummary({
-        periodMonth: liveQuery.selectedPeriod?.periodMonth ?? (liveQuery.enabled ? undefined : '2026-09'),
-        planTypeCode: liveQuery.selectedPeriod?.planTypeCode ?? (liveQuery.enabled ? undefined : 'monthly'),
+        periodMonth: liveQuery.selectedPeriodMonth ?? (liveQuery.enabled ? undefined : '2026-09'),
+        planTypeCode: liveQuery.selectedPlanTypeCode ?? (liveQuery.enabled ? undefined : 'monthly'),
         approvalStage: effectiveStage,
         queueMode: 'approval',
         appliedFilters: contextAppliedFilters,
       }),
-    [contextAppliedFilters, effectiveStage, liveQuery.enabled, liveQuery.selectedPeriod]
+    [contextAppliedFilters, effectiveStage, liveQuery.enabled, liveQuery.selectedPeriodMonth, liveQuery.selectedPlanTypeCode]
   );
 
   useEffect(() => {
@@ -929,7 +929,7 @@ const RegionalApprovalWorkbench: React.FC<{
     setLiveActionPlanId(undefined);
     setLiveAuthorityContext(undefined);
     setPermissionDeniedVersions(new Set());
-  }, [appliedFilters, appliedLiveFilters, currentStage, liveQuery.selectedPeriod?.periodId, page, pageSize]);
+  }, [appliedFilters, appliedLiveFilters, currentStage, liveQuery.selectedPeriodMonth, page, pageSize]);
 
   useEffect(() => {
     writeAssistantSurfaceState('forecast', `${scopedState}:regional-approval-action-state`, actionStore);
@@ -1039,8 +1039,8 @@ const RegionalApprovalWorkbench: React.FC<{
                 currentVersionId: focusedLiveRow?.versionId,
               }
             : {}),
-          planType: liveQuery.selectedPeriod?.planTypeCode ?? (usingLiveQueue ? 'unknown' : 'monthly'),
-          month: liveQuery.selectedPeriod?.periodMonth ?? (usingLiveQueue ? '' : '2026-09'),
+          planType: liveQuery.selectedPlanTypeCode ?? (usingLiveQueue && liveQuery.selectedPeriods.length > 1 ? 'mixed' : usingLiveQueue ? 'unknown' : 'monthly'),
+          month: liveQuery.selectedPeriodMonth ?? (usingLiveQueue ? '' : '2026-09'),
           approvalStage: effectiveStage,
           authority: 'organization',
           primaryVersion: usingLiveQueue ? 'current' : primaryVersion,
@@ -1085,7 +1085,9 @@ const RegionalApprovalWorkbench: React.FC<{
     localApprovalResults,
     liveQuery.enabled,
     liveQuery.queueState.data,
-    liveQuery.selectedPeriod,
+    liveQuery.selectedPeriodMonth,
+    liveQuery.selectedPeriods.length,
+    liveQuery.selectedPlanTypeCode,
     liveEvidence,
     liveAuthorityContext,
     draftedLiveRows,
@@ -1251,7 +1253,7 @@ const RegionalApprovalWorkbench: React.FC<{
   const exportScope = JSON.stringify([
     scopedState,
     liveQueryScope,
-    liveQuery.selectedPeriod?.periodId,
+    liveQuery.selectedPeriodMonth,
     liveStageFilter,
     page,
     pageSize,
@@ -1342,7 +1344,6 @@ const RegionalApprovalWorkbench: React.FC<{
           'dealerCode',
           'status',
           'seq',
-          'planTypeCode',
           'areaCode',
           'areaName',
           'provinceCode',
@@ -1380,7 +1381,6 @@ const RegionalApprovalWorkbench: React.FC<{
             row.dealerCode,
             salesPlanStatusText(row.status, row.planTypeCode, t),
             row.seq,
-            row.planTypeCode,
             row.areaCode ?? '',
             row.areaName ?? row.regionName ?? '',
             row.provinceCode ?? '',
@@ -1419,8 +1419,7 @@ const RegionalApprovalWorkbench: React.FC<{
         const exportLabel = (key: string) => t(`common.assistantSurface.regionalApproval.exportScope.${key}`);
         const metadata = [
           [exportLabel('scope'), exportLabel('currentPage')],
-          [exportLabel('month'), liveQuery.selectedPeriod?.periodMonth ?? '—'],
-          [exportLabel('planType'), liveQuery.selectedPeriod?.planTypeCode ?? '—'],
+          [exportLabel('month'), liveQuery.selectedPeriodMonth ?? '—'],
           [exportLabel('version'), exportLabel('currentVersion')],
           [exportLabel('page'), liveQuery.queueState.data.current],
           [exportLabel('pageSize'), liveQuery.queueState.data.size],
@@ -1441,7 +1440,7 @@ const RegionalApprovalWorkbench: React.FC<{
         );
         const link = document.createElement('a');
         link.href = url;
-        link.download = `sales-plan-approval-${liveQuery.selectedPeriod?.periodMonth ?? 'period'}-${liveStageFilter ?? 'all'}-page-${liveQuery.queueState.data.current}.xlsx`;
+        link.download = `sales-plan-approval-${liveQuery.selectedPeriodMonth ?? 'period'}-${liveStageFilter ?? 'all'}-page-${liveQuery.queueState.data.current}.xlsx`;
         link.click();
         URL.revokeObjectURL(url);
         setExportFeedback({
@@ -2098,19 +2097,19 @@ const RegionalApprovalWorkbench: React.FC<{
               <Spin loading={liveQuery.periodsState.status === 'loading' && liveQuery.periods.length === 0} size={14}>
                 <Select
                   size='small'
-                  value={liveQuery.selectedPeriod?.periodId}
+                  value={liveQuery.selectedPeriodMonth}
                   aria-label={t('common.assistantSurface.regionalApproval.query.periodSelect')}
                   placeholder={t('common.assistantSurface.regionalApproval.query.noPeriod')}
-                  onChange={(periodId) => {
+                  onChange={(periodMonth) => {
                     setSelectedRowIds([]);
                     setPage(1);
-                    liveQuery.selectPeriod(periodId);
+                    liveQuery.selectPeriodMonth(periodMonth);
                   }}
                   disabled={liveQuery.periods.length === 0}
                 >
-                  {liveQuery.periods.map((period) => (
-                    <Select.Option key={period.periodId} value={period.periodId}>
-                      {salesPlanPeriodOptionLabel(period)}
+                  {liveQuery.periodMonths.map((periodMonth) => (
+                    <Select.Option key={periodMonth} value={periodMonth}>
+                      {salesPlanPeriodOptionLabel(periodMonth)}
                     </Select.Option>
                   ))}
                 </Select>
@@ -2489,7 +2488,7 @@ const RegionalApprovalWorkbench: React.FC<{
                     {liveQuery.enabled
                       ? Array.from({ length: 11 }, (_, index) => String(index)).map((value) => (
                           <Select.Option key={value} value={value}>
-                            {salesPlanStatusText(Number(value), liveQuery.selectedPeriod?.planTypeCode ?? '', t)}
+                            {salesPlanStatusText(Number(value), liveQuery.selectedPlanTypeCode ?? 'Y', t)}
                           </Select.Option>
                         ))
                       : filterOptions.approval.map((value) => (
@@ -2695,8 +2694,7 @@ const RegionalApprovalWorkbench: React.FC<{
         <Typography.Paragraph type='secondary'>
           {liveQuery.enabled
             ? t('common.assistantSurface.regionalApproval.progressDialog.liveScope', {
-                month: liveQuery.selectedPeriod?.periodMonth ?? '—',
-                planType: liveQuery.selectedPeriod?.planType ?? '—',
+                month: liveQuery.selectedPeriodMonth ?? '—',
                 stage: t(`common.assistantSurface.regionalApproval.stages.${liveStageFilter ?? 'all'}`),
               })
             : t('common.assistantSurface.regionalApproval.progressDialog.description', {
@@ -2707,7 +2705,7 @@ const RegionalApprovalWorkbench: React.FC<{
         <div className={styles.progressList} data-testid='regional-approval-progress-results'>
           {liveQuery.enabled ? (
             <RegionalApprovalLiveProgress
-              key={JSON.stringify([liveQuery.selectedPeriod?.periodId, liveQueryScope, liveStageFilter])}
+              key={JSON.stringify([liveQuery.selectedPeriodMonth, liveQueryScope, liveStageFilter])}
               records={liveQuery.analysisRecords}
               status={liveQuery.analysisSummary.status}
               error={liveQuery.analysisSummary.error}
