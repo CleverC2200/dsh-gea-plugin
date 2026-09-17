@@ -25,6 +25,7 @@ import { Decimal } from "decimal.js";
 import { transportSignal } from "../shared/transport-signal.ts";
 import { notificationPage, notificationDetail } from "../shared/notifications.ts";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
+import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
 
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
@@ -472,6 +473,7 @@ export class Business {
   private selectedBase: string;
   private environment: "production" | "test";
   private readonly environments: Record<string, string>;
+  private readonly apiLog: GeaApiLogCenter;
   get base(): string {
     return this.selectedBase;
   }
@@ -506,6 +508,7 @@ export class Business {
     this.selectedBase = resolved.baseUrl;
     this.environment = resolved.environment as "production" | "test";
     this.environments = resolved.environments;
+    this.apiLog = new GeaApiLogCenter(() => this.environment);
   }
 
   /** 仅桌面拥有者可用：凭证通过私有回环通道传递，绝不经浏览器 RPC。 */
@@ -517,6 +520,7 @@ export class Business {
     if(saved.schema!==1||typeof saved.environment!=="string"||this.environments[saved.environment]!==saved.base)throw Error("DESKTOP_LOGIN_SCOPE_MISMATCH");
     const auth=object(saved.auth);
     if(typeof auth.token!=="string"||!auth.token||auth.token.length>16384||typeof auth.tenantId!=="string"||!/^\d+$/.test(auth.tenantId))throw Error("DESKTOP_LOGIN_INVALID");
+    this.clearLogin();
     this.environment=saved.environment as "production"|"test";
     this.selectedBase=this.environments[saved.environment];
     this.auth={token:auth.token,tenantId:auth.tenantId,name:text(auth.name),id:text(auth.id),username:text(auth.username),avatar:avatarUrl(auth.avatar,this.base)};
@@ -544,6 +548,7 @@ export class Business {
   }
   /** 清理查询缓存和未完成请求，避免新选择沿用旧身份或旧页面的数据。 */
   private clearLogin(expired = false): void {
+    this.apiLog.invalidateReplays();
     this.epoch.abort();
     this.epoch = new AbortController();
     this.auth = undefined;
@@ -702,7 +707,7 @@ export class Business {
     let response: Response;
     const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
     try {
-      response = await fetch(this.base + path, {
+      response = await this.apiLog.fetch(this.base + path, {
         method: "GET",
         headers,
         redirect: "error",
@@ -821,7 +826,7 @@ export class Business {
     keys(payload, []);
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(this.config.requestTimeoutMs)]);
-    return readSalesPlanWorkflowConfig(this.base, auth.token, fetch, signal);
+    return readSalesPlanWorkflowConfig(this.base, auth.token, this.apiLog.fetch, signal);
   }
 
   /** 在本次登录生命周期内，将一个幂等键绑定到一份已校验请求。 */
@@ -876,7 +881,7 @@ export class Business {
         signal.throwIfAborted();
         attempt.body = JSON.stringify(prepared.request);
       }
-      const receipt = await submitWithServiceAccount(config, this.base, attempt.body, requestId, idempotencyKey, signal);
+      const receipt = await submitWithServiceAccount(config, this.base, attempt.body, requestId, idempotencyKey, signal, this.apiLog.fetch);
       attempt.receipt = receipt;
       return receipt;
     };
@@ -974,7 +979,7 @@ export class Business {
     signal.throwIfAborted();
     onValidated();
     const body = JSON.stringify(request);
-    const response = await fetch(this.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions", {
+    const response = await this.apiLog.fetch(this.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions", {
       method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": text(payload.requestId), "Idempotency-Key": text(payload.idempotencyKey) }, body, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)])
     });
     if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw await geaResponseError(response, [auth.token]); }
@@ -1069,7 +1074,7 @@ export class Business {
     const secret = text(claimed.secret);
     let response: Response;
     try {
-      response = await fetch(baseUrl + "/models", {
+      response = await this.apiLog.fetch(baseUrl + "/models", {
         headers: {
           Accept: "application/json",
           Authorization: "Bearer " + secret,
@@ -1147,7 +1152,7 @@ export class Business {
   ): Promise<unknown> {
     let response: Response;
     try {
-      response = await fetch(this.base + path, {
+      response = await this.apiLog.fetch(this.base + path, {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -1249,7 +1254,35 @@ export class Business {
   async openMcpConnection(consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) {
     const auth = this.authenticated();
     const identity = this.epoch.signal;
-    return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.mcpRequestTimeoutMs ?? 60000);
+    return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.mcpRequestTimeoutMs ?? 60000, this.apiLog.fetch);
+  }
+
+  /** 向模型适配器提供同一套脱敏日志边界，浏览器永远拿不到原始凭证。 */
+  fetchExternal(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    return this.apiLog.fetch(input, init);
+  }
+
+  /** 返回当前进程内的脱敏接口目录与调用记录。 */
+  apiLogSnapshot(payload: Record<string, unknown>): ApiLogSnapshot {
+    keys(payload, []);
+    this.authenticated();
+    return this.apiLog.snapshot();
+  }
+
+  /** 清空当前进程内的调用记录，不影响接口目录与业务缓存。 */
+  apiLogClear(payload: Record<string, unknown>): ApiLogSnapshot {
+    keys(payload, []);
+    this.authenticated();
+    return this.apiLog.clear();
+  }
+
+  /** 在当前身份内执行日志中心已校验的安全重发。 */
+  apiLogReplay(payload: Record<string, unknown>, signal: AbortSignal) {
+    keys(payload, ["id", "confirmed"]);
+    this.authenticated();
+    if (payload.confirmed !== true && payload.confirmed !== false)
+      throw new Error("INVALID_PAYLOAD");
+    return this.apiLog.replay(text(payload.id), payload.confirmed, signal);
   }
 
   /** 开启新分页查询时立即失效旧选择，后续 detail/version/SKU 只能引用本次页面。 */

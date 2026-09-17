@@ -4,6 +4,7 @@ import type { GeaSalesPlanPeriod } from './original/contracts.ts';
 import { createWorkflowLoader } from "./workflow-loader.ts";
 import "@arco-design/web-react/dist/css/arco.css";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Api } from "@icon-park/react";
 import i18next from "i18next";
 import {
   RegionalApprovalWorkbench,
@@ -20,6 +21,7 @@ import type { Business, Preview } from "../host/business.ts";
 import type { CopyKey } from "../client/locales.ts";
 import "./workbench.css";
 import logo from "./gea-logo.png";
+import { ApiLogCenter } from "./api-log-center.tsx";
 
 type Status = ReturnType<Business["status"]>;
 type Translate = (key: CopyKey) => string;
@@ -210,9 +212,18 @@ function requestErrorMessage(error: unknown, t: Translate): string {
 /** 只挂载真实 GEA 数据；未认证或查询失败时绝不切换到 fixture。 */
 export function WorkbenchPage({ t }: { t: Translate }) {
   const [status, setStatus] = useState<Status>();
+  const [apiLogOpen, setApiLogOpen] = useState(false);
+  const apiLogTrigger = useRef<HTMLButtonElement>(null);
+  const closeApiLog = useCallback(() => {
+    setApiLogOpen(false);
+    window.requestAnimationFrame(() => apiLogTrigger.current?.focus());
+  }, []);
   const [workbenchRevision, setWorkbenchRevision] = useState(0);
   const [resubmit, setResubmit] = useState<{ planId: string; versionId: string; period: GeaSalesPlanPeriod }>();
-  useEffect(() => setResubmit(undefined), [status?.environment, status?.user?.id]);
+  useEffect(() => {
+    setResubmit(undefined);
+    setApiLogOpen(false);
+  }, [status?.environment, status?.user?.id]);
   const [qr, setQr] = useState<{ image: string; loginId: string }>();
   const [expired, setExpired] = useState(false);
   const [qrRefresh, setQrRefresh] = useState(0);
@@ -508,27 +519,45 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     );
   return (
     <div className="gea-workbench-document">
-      <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
-        <div className="gea-original-workbench">
-          <RegionalApprovalWorkbench
-            key={workbenchRevision}
-            stateScope={`gea-dsh:${status.environment}:${status.user?.tenantId}:${status.user?.id}`}
-            t={locale.t.bind(locale)}
-            onContextChange={onContextChange}
-            queryClient={salesPlan}
-            detailClient={salesPlan}
-            permissionCodes={status.permissionCodes}
-            liveActionsEnabled={true}
-            liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
-            onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })}
-            automaticAnalysisEnabled={false}
-          />
-        </div>
-        {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit}
-          client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)}
-          onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}
-      </WorkbenchSessionProvider>
-
+      {apiLogOpen ? (
+        <ApiLogCenter
+          environment={status.environment}
+          request={rpc}
+          onClose={closeApiLog}
+        />
+      ) : (
+        <>
+          <button
+            type="button"
+            ref={apiLogTrigger}
+            className="gea-api-log-trigger"
+            onClick={() => setApiLogOpen(true)}
+          >
+            <Api size={17} />
+            接口日志
+          </button>
+          <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
+            <div className="gea-original-workbench">
+              <RegionalApprovalWorkbench
+                key={workbenchRevision}
+                stateScope={`gea-dsh:${status.environment}:${status.user?.tenantId}:${status.user?.id}`}
+                t={locale.t.bind(locale)}
+                onContextChange={onContextChange}
+                queryClient={salesPlan}
+                detailClient={salesPlan}
+                permissionCodes={status.permissionCodes}
+                liveActionsEnabled={true}
+                liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
+                onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })}
+                automaticAnalysisEnabled={false}
+              />
+            </div>
+            {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit}
+              client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)}
+              onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}
+          </WorkbenchSessionProvider>
+        </>
+      )}
     </div>
   );
 }
