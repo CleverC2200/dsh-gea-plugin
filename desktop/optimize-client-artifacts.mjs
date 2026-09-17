@@ -22,7 +22,8 @@ for(const name of await readdir(modules)){
 files.add(join(modules,'@cleverc2200/gea-dsh-prototype/lib/workbench.js'));
 for(const path of files){
  const source=await readFile(path,'utf8');
- const output=await transform(source,{loader:'js',minify:true,keepNames:true,target:'esnext',legalComments:'inline',sourcemap:'external',sourcesContent:false,sourcefile:relative(root,path)});
+ // DSH concatenates registrations; isolate compiler helpers so later packages cannot overwrite them.
+ const output=await transform(source,{loader:'js',format:'iife',minify:true,keepNames:true,target:'esnext',legalComments:'inline',sourcemap:'external',sourcesContent:false,sourcefile:relative(root,path)});
  // DSH loads adjacent maps directly. Ship a compact precomputed map to avoid identity-map construction.
  await writeFile(path,output.code);await writeFile(path+'.map',output.map);
  records.push({file:relative(root,path),beforeBytes:Buffer.byteLength(source),afterBytes:Buffer.byteLength(output.code),beforeSha256:createHash('sha256').update(source).digest('hex'),afterSha256:createHash('sha256').update(output.code).digest('hex')});

@@ -26,6 +26,10 @@
 
 同一组源码、依赖锁、平台、公司配置和资源快照只准备一份 payload；已验证的最终包直接用于发布和频道提升，不因提交、合并或切换频道重新打包。只有输入改变才重建受影响的平台，Mac 与 Windows 可以并行构建，原生依赖分别准备。保留依赖下载缓存、最终包及摘要/构建记录；发行完成后清理本次未被进程使用的 raw/compact、解包应用和隔离验收副本，保留用户数据及正在使用的目录。
 
+桌面壳应从固定源码提交的 `desktop/` 独立导出目录打包，不能在 pnpm 工作区中直接运行 `electron-builder --projectDir desktop`：构建器可能把父工作区的生产依赖重复装进 `app.asar`。导出目录不得包含父工作区的 manifest 或 node_modules；通过现有 `GEA_DESKTOP_PAYLOAD_ROOT` 提供已验证运行依赖。检查 app.asar 只包含配置中的壳文件，不含额外 node_modules。
+
+浏览器注册脚本以 IIFE 独立作用域压缩，防止 DSH 合并脚本时不同包的编译器辅助变量互相覆盖。修改压缩流程后运行 `node --test desktop/optimize-client-artifacts.test.mjs`，再验证真实桌面页面加载与更新。
+
 Windows 工作流 `Check Windows installer` 仅通过手动运行触发，必须指定已有发行标签。默认只下载、校验并安装该包，不下载诊断插件、不安装浏览器驱动，也不启动应用。排查启动或同步问题时才选择 `run_diagnostics`，复用现有专项脚本；该任务不因 PR 标签或每次构建自动执行。
 
 公司发行必须加载 `dsh-agent-manage`，不能用第三方 `dsh-agent-plugins-market` 替代：后者能加载套件 Skills，但不包含登录后发现 GEA MCP 工具的集成。`installCompanyManage` 在新暂存图中移除旧依赖并安装公司包，保留原运行图以供回退。`compact-payload.py` 在复制前执行公司插件门禁，缺少公司入口或 MCP 模块时拒绝打包。
