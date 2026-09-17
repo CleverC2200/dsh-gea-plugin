@@ -3,7 +3,6 @@ import { RegionalApprovalResubmitDialog } from './original/workbenches/regionalA
 import type { GeaSalesPlanPeriod } from './original/contracts.ts';
 import { createWorkflowLoader } from "./workflow-loader.ts";
 import "@arco-design/web-react/dist/css/arco.css";
-import { Modal } from "@arco-design/web-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import i18next from "i18next";
 import {
@@ -255,9 +254,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
-  const [autoContext, setAutoContext] = useState<string>();
-  const [autoFailure, setAutoFailure] = useState<string>();
-  const [autoRetry, setAutoRetry] = useState(0);
   const request = useRef<AbortController>();
   const selectionRef = useRef("");
   const contextSequence = useRef(0);
@@ -266,10 +262,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     useState<VisibleWorkbenchContext>();
   const onContextChange = useCallback(
     (context: RegionalApprovalWorkbenchContext) => {
-      const available = context.evidence.source === 'gea-user-session' && context.evidence.queryState === 'success';
-      const planIds = [...new Set(context.visibleEntities.filter(entity => entity.source === 'gea').map(entity => entity.id))].sort();
-      setAutoContext(available && planIds.length ? JSON.stringify({planIds, month: context.scope.month, stage: context.scope.approvalStage,
-        filters: context.scope.appliedFilters, versions: context.visibleEntities.map(entity=>entity.versionId)}) : undefined);
       const nextContext = visibleWorkbenchContext(context, 0);
       const nextKey = JSON.stringify(nextContext);
       if (nextKey !== contextRef.current) {
@@ -435,33 +427,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       });
     return () => controller.abort();
   }, [status?.authenticated, status?.environment]);
-  useEffect(() => {
-    if (!autoContext || !status?.authenticated || status.mode !== 'model') return;
-    const controller = new AbortController();
-    const context = JSON.parse(autoContext);
-    const cacheKey = JSON.stringify(['gea-auto-advice',status.runId,status.user?.id,autoContext]);
-    const open = (sessionId: string) => window.parent.postMessage({type:'gea:open-session',sessionId},window.location.origin);
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {open(cached); setAutoFailure(undefined); return;}
-    setAutoFailure(undefined);
-    const timer = setTimeout(() => {
-      void rpc<Preview>('workbench/prepare',{planIds:context.planIds,scope:'summary'},controller.signal)
-        .then(preview => rpc<{sessionId:string}>('submit',{previewId:preview.previewId},controller.signal))
-        .then(result => {
-          if (controller.signal.aborted) return;
-          sessionStorage.setItem(cacheKey,result.sessionId); open(result.sessionId); setAutoFailure(undefined);
-        }).catch(error => {
-          if (!controller.signal.aborted) setAutoFailure(
-            (language === 'zh-CN'
-              ? error instanceof BackendHttpError && /401|LOGIN_REQUIRED/.test(error.code) ? '登录已失效，请重新登录'
-                : error instanceof BackendHttpError && /429|RATE_LIMIT/.test(error.code) ? '请求过于频繁，请稍后重试'
-                : error instanceof BackendHttpError && /TIMEOUT/.test(error.code) ? '服务响应超时，请重试'
-                : '暂时无法获取业务数据或连接分析服务，请重试'
-              : 'Business data or the analysis service is temporarily unavailable. Please retry.'));
-        });
-    },700);
-    return () => {clearTimeout(timer); controller.abort();};
-  },[autoContext,status?.authenticated,status?.runId,autoRetry]);
   if (!status?.authenticated)
     return (
       <main className="gea-login-page">
@@ -543,17 +508,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     );
   return (
     <div className="gea-workbench-document">
-      <Modal
-        visible={Boolean(autoFailure)}
-        title={language === 'zh-CN' ? '建议生成失败' : 'Advice generation failed'}
-        okText={language === 'zh-CN' ? '重试' : 'Retry'}
-        cancelText={language === 'zh-CN' ? '暂不重试' : 'Not now'}
-        unmountOnExit
-        onOk={() => { setAutoFailure(undefined); setAutoRetry((value) => value + 1); }}
-        onCancel={() => setAutoFailure(undefined)}
-      >
-        <p>{autoFailure}</p>
-      </Modal>
       <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
         <div className="gea-original-workbench">
           <RegionalApprovalWorkbench
