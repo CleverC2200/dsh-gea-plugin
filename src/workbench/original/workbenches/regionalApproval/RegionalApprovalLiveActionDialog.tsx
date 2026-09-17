@@ -68,6 +68,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   row: RegionalApprovalLiveRow;
   approvalStage: ApprovalStageId;
   initialAction?: LiveActionKind;
+  autoSubmitApproval?: boolean;
   t: TFunction;
   client?: SalesPlanActionClient;
   evidence?: GeaSalesPlanDetail;
@@ -75,6 +76,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   onPermissionDenied: (versionId: string) => void;
   onSucceeded: (receipt: GeaSalesPlanActionReceipt, request: GeaSalesPlanActionRequest) => void | Promise<void>;
   onRefresh: () => void;
+  onFailed?: () => void;
   onClose: () => void;
 }> = ({
   visible,
@@ -82,6 +84,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   row,
   approvalStage,
   initialAction = 'APPROVE',
+  autoSubmitApproval = false,
   t,
   client,
   evidence,
@@ -89,6 +92,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   onPermissionDenied,
   onSucceeded,
   onRefresh,
+  onFailed,
   onClose,
 }) => {
   const [snapshot] = useState(evidence);
@@ -101,6 +105,8 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   const unsupportedRole = Boolean(access && !access.roleContractSupported && salesPlanWorkflow(row.planTypeCode).actor(row.status) !== access.approvalRole);
   const submittedRequest = useRef<GeaSalesPlanActionRequest | undefined>(undefined);
   const [kind, setKind] = useState<LiveActionKind>(initialAction);
+  const directApproval = autoSubmitApproval && initialAction === 'APPROVE';
+  const directSubmissionStarted = useRef(false);
   const [remark, setRemark] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [attempted, setAttempted] = useState(false);
@@ -110,7 +116,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   const [draftReady, setDraftReady] = useState(initialAction === 'SAVE');
   const [draftError, setDraftError] = useState('');
   useEffect(() => {
-    if (initialAction === 'SAVE') return;
+    if (initialAction === 'SAVE' || directApproval) return;
     const controller = new AbortController();
     void salesPlan.draft!.invoke({planId: row.planId, versionId: row.versionId, signal: controller.signal}).then(result => {
       if (controller.signal.aborted) return;
@@ -119,7 +125,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
       setDraftReady(true);
     }).catch(() => {if (!controller.signal.aborted) setDraftError('loadFailed');});
     return () => controller.abort();
-  },[row.planId,row.versionId,initialAction]);
+  },[row.planId,row.versionId,initialAction,directApproval]);
   const [confirmedInputs, setConfirmedInputs] = useState<Record<string, string>>({});
   const [adjustmentSkus, setAdjustmentSkus] = useState<AdjustmentSkuState>({ status: 'idle' });
   const action = useSalesPlanAction({ client });
@@ -209,16 +215,14 @@ const RegionalApprovalLiveActionDialog: React.FC<{
             (item.adjustmentValid && !ZERO_DECIMAL_PATTERN.test(item.adjustmentQty)) ||
             Boolean(item.amountDelta && !ZERO_DECIMAL_PATTERN.test(item.amountDelta))
         );
-  const invalid = unsupportedRole || !selectedRole ||
-    !draftReady ||
-    !confirmed ||
-    !access?.allowedActions.includes(kind) ||
-    (kind === 'SAVE' && (adjustments.length === 0 || adjustmentSkus.status !== 'success')) ||
-    targetStatus === undefined ||
-    (kind === 'REJECT' && !remark.trim()) ||
-    Array.from(remark.trim()).length > 1000 ||
-    (kind !== 'REJECT' &&
-      (adjustmentsInvalid || nodeComparisons.some((item) => !item.confirmedQty || item.confirmedQty.startsWith('-'))));
+  const invalid = unsupportedRole || !selectedRole || !access?.allowedActions.includes(kind) || targetStatus === undefined ||
+    (kind === 'REJECT'
+      ? !remark.trim() || Array.from(remark.trim()).length > 1000
+      : kind === 'SAVE'
+        ? !draftReady || !confirmed || adjustments.length === 0 || adjustmentSkus.status !== 'success' || adjustmentsInvalid ||
+          nodeComparisons.some((item) => !item.confirmedQty || item.confirmedQty.startsWith('-'))
+        : !directApproval && (!draftReady || !confirmed || adjustmentsInvalid ||
+          nodeComparisons.some((item) => !item.confirmedQty || item.confirmedQty.startsWith('-'))));
   const unknown = t('common.assistantSurface.regionalApproval.liveAction.checksum.unknown');
   const hasAdjustmentDraft = Object.values(adjustmentValues).some((value) => value.trim().length > 0);
   const displayDecimal = (value: unknown, currency = false) =>
@@ -282,11 +286,13 @@ const RegionalApprovalLiveActionDialog: React.FC<{
         setRefreshFailed(false);
       } catch {
         setRefreshFailed(true);
+        if (directApproval) onFailed?.();
       }
     } catch (error) {
       if (error && typeof error === 'object' && 'kind' in error && error.kind === 'permission') {
         onPermissionDenied(row.versionId);
       }
+      if (directApproval) onFailed?.();
     }
   };
 
@@ -315,6 +321,12 @@ const RegionalApprovalLiveActionDialog: React.FC<{
     );
   };
 
+  useEffect(() => {
+    if (!directApproval || !visible || directSubmissionStarted.current || invalid || loading || action.state.status !== 'idle') return;
+    directSubmissionStarted.current = true;
+    submit();
+  }, [action.state.status, directApproval, invalid, loading, submit, visible]);
+
   const retry = () => {
     if (loading || action.state.status !== 'error' || !action.state.error.retrySameIntent) return;
     void complete(action.retry());
@@ -328,6 +340,50 @@ const RegionalApprovalLiveActionDialog: React.FC<{
     }
     onClose();
   };
+
+  if (directApproval) return null;
+
+  if (kind === 'REJECT') {
+    return (
+      <Modal
+        visible={visible}
+        className={styles.liveRejectModal}
+        title={t('common.assistantSurface.regionalApproval.liveAction.reject')}
+        maskClosable={false}
+        closable={canClose}
+        okText={t('common.assistantSurface.regionalApproval.liveAction.confirmReject')}
+        cancelText={t('cancel')}
+        okButtonProps={{ disabled: invalid || loading || action.state.status === 'success', status: 'danger' }}
+        onCancel={requestClose}
+        onOk={submit}
+      >
+        <div className={styles.compactRejectBody}>
+          <label className={styles.formControl}>
+            <span>{t('common.assistantSurface.regionalApproval.liveAction.rejectRemark')}</span>
+            <Input.TextArea
+              value={remark}
+              maxLength={1000}
+              showWordLimit
+              autoFocus
+              disabled={intentLocked}
+              status={attempted && !remark.trim() ? 'error' : undefined}
+              aria-label={t('common.assistantSurface.regionalApproval.liveAction.rejectRemark')}
+              placeholder={t('common.assistantSurface.regionalApproval.liveAction.remarkPlaceholder')}
+              autoSize={{ minRows: 3, maxRows: 5 }}
+              onChange={setRemark}
+            />
+          </label>
+          {attempted && invalid ? <Alert type='error' showIcon content={t('common.assistantSurface.regionalApproval.liveAction.required')} /> : null}
+          {loading ? <div className={styles.loadingState}><Spin size={16} /><span>{t('common.assistantSurface.regionalApproval.liveAction.loading')}</span></div> : null}
+          {action.state.status === 'error' ? (
+            <Alert type='error' showIcon content={isBackendHttpError(action.state.error.cause) && action.state.error.cause.status < 500
+              ? action.state.error.cause.backendMessage || t(errorKey(action.state.error.kind))
+              : t(errorKey(action.state.error.kind))} />
+          ) : null}
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <>
@@ -462,7 +518,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
                 content={t('common.assistantSurface.regionalApproval.liveAction.finalNode')}
               />
             ) : null}
-            {kind !== 'REJECT' && supportsAdjustments ? (
+            {supportsAdjustments ? (
               <section
                 className={styles.adjustments}
                 aria-label={t('common.assistantSurface.regionalApproval.liveAction.adjustments.title')}
@@ -615,7 +671,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
                         );
                       })}
                     </div>
-                    {kind !== 'SAVE' && visibleComparisons.length === 0 ? (
+                    {kind === 'APPROVE' && visibleComparisons.length === 0 ? (
                       <Alert
                         type='info'
                         showIcon
@@ -635,11 +691,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
               <Alert
                 type='info'
                 showIcon
-                content={t(
-                  kind === 'REJECT'
-                    ? 'common.assistantSurface.regionalApproval.liveAction.adjustments.rejectBoundary'
-                    : 'common.assistantSurface.regionalApproval.liveAction.adjustments.nodeBoundary'
-                )}
+                content={t('common.assistantSurface.regionalApproval.liveAction.adjustments.nodeBoundary')}
               />
             )}
             <div className={styles.formControl}>
@@ -647,9 +699,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
                 {t(
                   kind === 'SAVE'
                     ? 'common.assistantSurface.regionalApproval.liveAction.saveRemark'
-                    : kind === 'REJECT'
-                      ? 'common.assistantSurface.regionalApproval.liveAction.rejectRemark'
-                      : 'common.assistantSurface.regionalApproval.liveAction.approveRemark'
+                    : 'common.assistantSurface.regionalApproval.liveAction.approveRemark'
                 )}
               </span>
               <Input.TextArea
@@ -657,13 +707,11 @@ const RegionalApprovalLiveActionDialog: React.FC<{
                 maxLength={1000}
                 showWordLimit
                 disabled={intentLocked}
-                status={attempted && kind === 'REJECT' && !remark.trim() ? 'error' : undefined}
+                status={undefined}
                 aria-label={t(
                   kind === 'SAVE'
                     ? 'common.assistantSurface.regionalApproval.liveAction.saveRemark'
-                    : kind === 'REJECT'
-                      ? 'common.assistantSurface.regionalApproval.liveAction.rejectRemark'
-                      : 'common.assistantSurface.regionalApproval.liveAction.approveRemark'
+                    : 'common.assistantSurface.regionalApproval.liveAction.approveRemark'
                 )}
                 placeholder={t('common.assistantSurface.regionalApproval.liveAction.remarkPlaceholder')}
                 autoSize={{ minRows: 2, maxRows: 4 }}

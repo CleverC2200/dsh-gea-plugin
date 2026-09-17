@@ -936,7 +936,7 @@
       },
       "stages": {
         "all": "All nodes",
-        "customer": "Customer confirms AI forecast",
+        "customer": "Customer submission",
         "region": "Region approval",
         "province": "Province approval",
         "area": "Area approval",

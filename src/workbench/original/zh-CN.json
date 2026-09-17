@@ -936,7 +936,7 @@
       },
       "stages": {
         "all": "全部节点",
-        "customer": "客户确认 AI 预测",
+        "customer": "客户提报",
         "region": "区域审批",
         "province": "省区审批",
         "area": "大区审批",

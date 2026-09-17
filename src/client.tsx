@@ -388,6 +388,32 @@ export function apply(ctx: Context): void {
         Navigation,
       );
     }, [business]);
+    useEffect(() => {
+      if (!business) return;
+      const hideConversationChrome = () => {
+        const conversation = document.querySelector<HTMLElement>(
+          ".AppFrame_rightbarCol [data-slot='main.conversation']",
+        );
+        if (!conversation) return;
+        const hide = (element: Element | undefined) => element?.setAttribute("data-gea-hidden-session-chrome", "");
+        const text = (element: Element) => element.textContent?.trim() ?? "";
+        hide([...conversation.querySelectorAll("button")].find((element) => text(element) === "workspace"));
+        for (const label of ["选择打开方式", "更多操作"]) {
+          hide(conversation.querySelector(`button[aria-label='${label}']`) ?? undefined);
+        }
+        hide([...conversation.querySelectorAll("[role='tab']")].find((element) => text(element) === "轨迹"));
+        hide([...conversation.querySelectorAll("*")].find((element) => element.children.length === 0 && text(element) === "需求预测"));
+      };
+      hideConversationChrome();
+      const observer = new MutationObserver(hideConversationChrome);
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => {
+        observer.disconnect();
+        document.querySelectorAll("[data-gea-hidden-session-chrome]").forEach((element) =>
+          element.removeAttribute("data-gea-hidden-session-chrome"),
+        );
+      };
+    }, [business]);
     return null;
   }
   ctx.slots.inject("shell.overlay", () =>

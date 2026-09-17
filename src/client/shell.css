@@ -12,6 +12,9 @@
   height: 100%;
   background: #f8f9fb;
 }
+.AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-gea-hidden-session-chrome] {
+  display: none !important;
+}
 /* The business profile keeps the application chooser but not the default
    workspace quick-launch. Older desktop cores do not yet understand the
    showPrimaryAction bundle option, so this is a structural fallback. */

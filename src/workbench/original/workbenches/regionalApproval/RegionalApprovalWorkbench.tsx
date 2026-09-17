@@ -470,11 +470,13 @@ const RegionalApprovalWorkbench: React.FC<{
   const [inlinePlanId, setInlinePlanId] = useState<string>();
   const [draftLiveFilters, setDraftLiveFilters] = useState<LiveApprovalFilters>(EMPTY_LIVE_APPROVAL_FILTERS);
   const [appliedLiveFilters, setAppliedLiveFilters] = useState<LiveApprovalFilters>(EMPTY_LIVE_APPROVAL_FILTERS);
-  const [liveStageFilter, setLiveStageFilter] = useState<ApprovalStageId>();
   const roleStages = useMemo(() => salesPlanStagesForPermissions(permissionCodes), [permissionCodes]);
+  const [liveStageFilter, setLiveStageFilter] = useState<ApprovalStageId | undefined>(() => roleStages[0]);
   const roleKey = roleStages.join(',');
   useEffect(() => {
-    setLiveStageFilter(undefined);
+    const firstStage = salesPlanStagesForPermissions(permissionCodes)[0];
+    setLiveStageFilter(firstStage);
+    if (queryClient && firstStage) setDimension(APPROVAL_DIMENSIONS_BY_STAGE[firstStage][0]);
     setSelectedRowIds([]);
     setPage(1);
   }, [roleKey]);
@@ -1904,8 +1906,10 @@ const RegionalApprovalWorkbench: React.FC<{
         <Button
           type='primary'
           size='small'
+          loading={liveActionKind === 'APPROVE' && liveActionPlanId !== undefined}
           disabled={
             selectedLiveRows.length !== 1 ||
+            liveActionPlanId !== undefined ||
             (selectedLiveRows[0] ? Boolean(liveActionDisabledReason(selectedLiveRows[0])) : true)
           }
           onClick={() => {
@@ -1951,6 +1955,7 @@ const RegionalApprovalWorkbench: React.FC<{
         key={`${activeLiveActionRow.versionId}:${liveActionKind}`}
         visible
         embedded={Boolean(activeLiveAdjustmentRow)}
+        autoSubmitApproval={liveActionKind === 'APPROVE'}
         row={activeLiveActionRow}
         approvalStage={liveStageFilter ?? (roleStages.length === 1 ? roleStages[0] : 'customer')}
         initialAction={liveActionKind}
@@ -1978,6 +1983,10 @@ const RegionalApprovalWorkbench: React.FC<{
           refreshLiveAuthority();
         }}
         onRefresh={refreshLiveAuthority}
+        onFailed={() => {
+          setLiveActionPlanId(undefined);
+          setExportFeedback({ type: 'error', message: t('common.assistantSurface.regionalApproval.liveAction.errors.failed') });
+        }}
         onClose={() => setLiveActionPlanId(undefined)}
       />
     ) : null;
@@ -1990,8 +1999,8 @@ const RegionalApprovalWorkbench: React.FC<{
     >
       <header className={styles.header}>
         <div className={styles.titleLine}>
-          {headerControls}
           <Typography.Title heading={5}>{t('common.assistantSurface.regionalApproval.title')}</Typography.Title>
+          {headerControls}
           {!liveQuery.enabled ? (
             <Tag className={styles.fixtureTag} color='red'>
               {t('common.assistantSurface.regionalApproval.fixtureTag')}

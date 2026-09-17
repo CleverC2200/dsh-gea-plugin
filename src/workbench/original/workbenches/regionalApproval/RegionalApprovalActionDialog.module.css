@@ -6,6 +6,16 @@
   width: min(920px, calc(100vw - 32px));
 }
 
+.liveRejectModal {
+  width: min(420px, calc(100vw - 32px));
+}
+
+.compactRejectBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .body,
 .form,
 .adjustmentSummary {

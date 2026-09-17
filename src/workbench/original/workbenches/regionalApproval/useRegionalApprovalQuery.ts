@@ -321,8 +321,9 @@ export const useRegionalApprovalQuery = ({
       signal: request.signal,
     };
 
+    // Progress is based on the full period and organization scope, not the active approval node.
     void Promise.all([
-      stableStageStatuses ? Promise.resolve({ total: 0 }) : client.list.invoke(baseQuery),
+      client.list.invoke(baseQuery),
       ...statuses.map((status) => client.list.invoke({ ...baseQuery, status })),
     ])
       .then(([allRows, ...statusPages]) => {
