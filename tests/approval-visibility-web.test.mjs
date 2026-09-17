@@ -11,7 +11,10 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
     const path = req.url.pathname;
     const send = result => {reply({success:true,result});return true;};
     if (path.endsWith('/getPermCode')) return send({codeList:['sales-plan:plan:region-approve'],allAuth:[{action:'sales-plan:plan:category-approve'}]});
-    if (path.endsWith('/periods')) return send({records:[{periodId:'period-1',periodMonth:'2026-09',planTypeCode:'Y',status:'CLOSED'}],total:1,current:1,size:100});
+    if (path.endsWith('/periods')) return send({records:[
+      {periodId:'period-1',periodMonth:'2026-09',planTypeCode:'Y',status:'OPEN'},
+      {periodId:'period-2',periodMonth:'2026-09',planTypeCode:'DC',status:'OPEN'},
+    ],total:2,current:1,size:100});
     if (path.endsWith('/plans')) {
       const status = req.url.searchParams.get('status');
       const rows = plans.filter(p => status === null || p.status === Number(status));
@@ -40,6 +43,10 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   await page.getByRole('dialog',{name:'内测声明',exact:true}).getByRole('button',{name:'继续',exact:true}).click();
   const frame = page.frameLocator('iframe[data-gea-workbench]');
   await frame.getByRole('heading',{name:'销售计划审批',exact:true}).waitFor();
+  await frame.getByRole('combobox',{name:'销售计划周期',exact:true}).click();
+  await expect(frame.getByRole('option',{name:'2026-09 · Y',exact:true})).toBeVisible();
+  await expect(frame.getByRole('option',{name:'2026-09 · DC',exact:true})).toBeVisible();
+  await page.keyboard.press('Escape');
   const region = frame.getByRole('button',{name:/区域审批.*进度/});
   await expect(region).toHaveAttribute('aria-pressed', 'true');
   await expect(frame.getByRole('button',{name:/客户提报.*进度/})).not.toContainText('进度 0%');

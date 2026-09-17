@@ -176,6 +176,11 @@ export const projectRegionalApprovalLiveDimension = (
 export const chooseInitialSalesPlanPeriod = (periods: readonly GeaSalesPlanPeriod[]): GeaSalesPlanPeriod | undefined =>
   periods.find((period) => period.status.toUpperCase() === 'OPEN') ?? periods[0];
 
+/** 同月可能同时存在月度和大仓计划，选项必须带类型才能让用户选对查询周期。 */
+export const salesPlanPeriodOptionLabel = (
+  period: Pick<GeaSalesPlanPeriod, 'periodMonth' | 'planTypeCode'>
+): string => `${period.periodMonth} · ${period.planTypeCode}`;
+
 /** 聚合展示总数，但不把多个计划版本变成可写对象。 */
 export const groupRegionalApprovalLiveRows = (
   rows: readonly RegionalApprovalLiveRow[],
