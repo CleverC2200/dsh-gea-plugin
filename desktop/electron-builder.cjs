@@ -6,6 +6,10 @@ if(notarize&&macIdentity==='-')throw Error('Notarization requires a Developer ID
 const payloadRoot=process.env.GEA_DESKTOP_PAYLOAD_ROOT||join(__dirname,'../.runtime/electron-build');
 if(!['mac','win'].includes(target))throw new Error('Set GEA_DESKTOP_TARGET to mac or win');
 if(target==='win' && !process.env.ELECTRON_BUILDER_7Z_FILTER)process.env.ELECTRON_BUILDER_7Z_FILTER='BCJ';
+const windowsSigningCertificate=process.env.WIN_CSC_LINK||process.env.CSC_LINK;
+const windowsSigningEnabled=target==='win'&&Boolean(windowsSigningCertificate);
+const requireWindowsSigning=process.env.GEA_WIN_REQUIRE_SIGNING==='1';
+if(requireWindowsSigning&&!windowsSigningEnabled)throw Error('GEA_WIN_REQUIRE_SIGNING=1 requires WIN_CSC_LINK or CSC_LINK');
 const nsis={oneClick:false,allowToChangeInstallationDirectory:true,deleteAppDataOnUninstall:false,differentialPackage:true};
 if(process.env.GEA_INSTALL_TIMING_LOG==='1')nsis.include=join(__dirname,'build/installer-timing.nsh');
 module.exports={
@@ -18,7 +22,7 @@ module.exports={
   beforePack:()=>require('./verify-client-artifacts.cjs')(join(payloadRoot,target,'payload')),
   afterSign:require('./verify-macos-signature.cjs'),
   dmg:{sign:false},
-  win:{icon:join(__dirname,'build/icon.png'),target:['nsis'],signExecutable:false},
+  win:{icon:join(__dirname,'build/icon.png'),target:['nsis'],signExecutable:windowsSigningEnabled,forceCodeSigning:requireWindowsSigning},
   nsis,
   publish:null
 };

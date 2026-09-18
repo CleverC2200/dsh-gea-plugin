@@ -20,6 +20,18 @@ test('Windows NSIS uses BCJ and differential package without changing macOS',()=
   assert.equal(JSON.parse(mac.stdout).filter,undefined);
 });
 
+test('Windows signing is certificate-gated and can be made mandatory',()=>{
+  const configPath=path.join(desktop,'electron-builder.cjs');
+  const signed=spawnSync(process.execPath,['-e',`process.env.GEA_DESKTOP_TARGET='win';process.env.WIN_CSC_LINK='C:/certs/gea.pfx';process.env.GEA_WIN_REQUIRE_SIGNING='1';process.stdout.write(JSON.stringify(require(${JSON.stringify(configPath)})))`],{encoding:'utf8'});
+  assert.equal(signed.status,0,signed.stderr);
+  const signedConfig=JSON.parse(signed.stdout);
+  assert.equal(signedConfig.win.signExecutable,true);
+  assert.equal(signedConfig.win.forceCodeSigning,true);
+  const missing=spawnSync(process.execPath,['-e',`process.env.GEA_DESKTOP_TARGET='win';process.env.GEA_WIN_REQUIRE_SIGNING='1';require(${JSON.stringify(configPath)})`],{encoding:'utf8'});
+  assert.notEqual(missing.status,0);
+  assert.match(missing.stderr,/requires WIN_CSC_LINK or CSC_LINK/);
+});
+
 test('MSIX pilot is explicit and publisher-gated',()=>{
   const result=spawnSync(process.execPath,['-e',`process.env.GEA_MSIX_PUBLISHER='CN=GEA Pilot';process.env.GEA_DESKTOP_PAYLOAD_ROOT='/tmp/payload';process.stdout.write(JSON.stringify(require(${JSON.stringify(path.join(desktop,'electron-builder-msix.cjs'))})))`],{encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
