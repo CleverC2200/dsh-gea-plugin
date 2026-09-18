@@ -13,6 +13,7 @@ async function fixture(t,overrides={},initialState){
  const updates=await createUpdates({data,store,desktopVersion:'0.0.2',sources:{stable:'stable',test:'test'},checkDesktop:async()=>{desktopChecks++;},
   releases:{validateReleaseChannel:value=>value,fetchCompanyChannel:async(source)=>{checks++;return {releases:source==='stable'?[release]:[]}},verifyReleaseHistory:(_,history)=>history,fetchReleasePackage:async()=>new Uint8Array([1]),...overrides},
   install:async directory=>{installs++;await writeFile(join(directory,'node_modules/dsh-plugin/package.json'),JSON.stringify({name:'dsh-plugin',version:release.version}));},
+  restartRuntime:overrides.restartRuntime,
   restart:async id=>{restarts++;await store.activate(id);await store.beginBoot();await store.confirmBoot();}});
  t.after(async()=>{await updates.close();await rm(data,{recursive:true,force:true});});return {updates,store,data,desktopChecks:()=>desktopChecks,counts:()=>({installs,restarts,checks})};
 }
@@ -106,6 +107,19 @@ test('startup always checks once, even with legacy automatic checks disabled',as
   const {updates,counts,desktopChecks}=await fixture(t,{}, {settings:{automatic:false,intervalHours:24,channel:'stable'}});
   await updates.start();await until(updates.status,s=>!!s.lastCheck&&!s.checking);
   await updates.start();await until(updates.status,s=>!s.checking);assert.equal(counts().checks,1);assert.equal(desktopChecks(),1);assert.equal(counts().installs,0);
+});
+test('optional plugin toggle persists and restarts the runtime graph',async t=>{
+  let runtimeRestarts=0;
+  const f=await fixture(t,{restartRuntime:async()=>{runtimeRestarts++;}});
+  const manifest=JSON.parse(await readFile(join(f.data,'baseline/package.json'),'utf8'));
+  manifest.dependencies['@dsh-external/dsh-visualize']='0.1.2';
+  await writeFile(join(f.data,'baseline/package.json'),JSON.stringify(manifest));
+  await mkdir(join(f.data,'baseline/node_modules/@dsh-external/dsh-visualize'),{recursive:true});
+  await writeFile(join(f.data,'baseline/node_modules/@dsh-external/dsh-visualize/package.json'),JSON.stringify({name:'@dsh-external/dsh-visualize',version:'0.1.2'}));
+  assert.equal((await f.updates.status()).optional.plugins.find(p=>p.key==='@dsh-external/dsh-visualize').enabled,true);
+  await f.updates.optionalToggle({name:'@dsh-external/dsh-visualize',enabled:false});
+  assert.equal(runtimeRestarts,1);assert.equal((await f.updates.status()).optional.plugins.find(p=>p.key==='@dsh-external/dsh-visualize').enabled,false);
+  const saved=JSON.parse(await readFile(join(f.data,'plugins/optional-state.json'),'utf8'));assert.equal(saved['@dsh-external/dsh-visualize'],false);
 });
 test('interval settings validate, persist and reschedule without installing',async t=>{
   const {updates,counts,data}=await fixture(t);

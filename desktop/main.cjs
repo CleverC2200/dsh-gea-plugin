@@ -151,6 +151,8 @@ if(owned){
     control=await createControlServer({
       ...Object.fromEntries(['status','check','download','cancel','open'].map(action=>[(action==='status'?'GET':'POST')+' /installer/'+action,async value=>clientInstaller[action](value)])),
       ...Object.fromEntries(['status','check','settings','prepare','cancel','restart'].map(action=>[(action==='status'?'GET':'POST')+' /updates/'+action,async value=>{if(!updates)throw Error('UPDATES_UNAVAILABLE');return updates[action](value);}])) ,
+      'GET /updates/optional':async()=>{if(!updates)throw Error('UPDATES_UNAVAILABLE');return updates.optional();},
+      'POST /updates/optional-toggle':async value=>{if(!updates)throw Error('UPDATES_UNAVAILABLE');return updates.optionalToggle(value);},
       'GET /login':async()=>loginSnapshot,
       'POST /login':async value=>{
         const {rm,rename}=require('node:fs/promises');
@@ -169,7 +171,8 @@ if(owned){
         sources:require('./release-sources.json'),token:process.env.GEA_RELEASE_TOKEN,
         checkDesktop:value=>clientInstaller.check(value),
         install:(directory,artifact,signal,onProcess)=>installArtifact({directory,optimizedBaseline:payload,artifact,signal,onProcess,onProgress:line=>void appendFile(join(data,'desktop.log'),line,{mode:0o600}).catch(()=>{}),node:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node'),pnpm:join(payload,'tools/node_modules/pnpm/bin/pnpm.cjs')}),
-        restart:id=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await pluginStore.activate(id);await start(false,'update');})});
+        restart:id=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await pluginStore.activate(id);await start(false,'update');}),
+        restartRuntime:()=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await start(false,'optional-plugin')})});
     }catch(error){await appendFile(join(data,'desktop.log'),'公司更新服务不可用：'+errorText(error)+'\n',{mode:0o600});}
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       {label:'GEA Desktop',submenu:[{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'打开启动日志',click:()=>void shell.openPath(join(data,'desktop.log'))},{label:'重新启动工作台',click:()=>void runLifecycle(()=>start(false,'restart')).catch(report)},{type:'separator'},{label:'退出 GEA Desktop',role:'quit'}]},

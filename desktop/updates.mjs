@@ -3,9 +3,10 @@ import {readFile,writeFile,mkdir,rename,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
+const OPTIONAL_PLUGINS={'@dsh-external/dsh-visualize':{name:'@dsh-external/dsh-visualize'},'dsh-raw-html-v2':{name:'dsh-raw-html-v2'},'dsh-worktable':{name:'dsh-worktable'}};
 const errorCode=error=>/^[A-Z][A-Z_0-9]+$/.test(error?.message)?error.message:'UPDATE_FAILED';
-export async function createUpdates({data,store,desktopVersion,releases,install,restart,sources,token,checkDesktop}) {
-  const path=join(data,'plugins/update-state.json');await mkdir(join(data,'plugins'),{recursive:true});
+export async function createUpdates({data,store,desktopVersion,releases,install,restart,restartRuntime,sources,token,checkDesktop}) {
+  const path=join(data,'plugins/update-state.json');const optionalPath=join(data,'plugins/optional-state.json');await mkdir(join(data,'plugins'),{recursive:true});
   let state={settings:{automatic:true,intervalHours:2,channel:'stable'},history:{},updateHistory:[],phase:'idle',releases:[]};
   try{state={...state,...JSON.parse(await readFile(path,'utf8'))};}catch(error){if(error.code!=='ENOENT')throw Error('UPDATE_STATE_INVALID');}
   if(['downloading','installing'].includes(state.phase))state={...state,phase:'failed',error:'PREPARATION_INTERRUPTED'};
@@ -16,8 +17,12 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
     for(const name of Object.keys(manifest.dependencies??{}))result[name]=JSON.parse(await readFile(require.resolve(name+'/package.json'),'utf8')).version;
     return result;
   };
+  let optionalState={};try{optionalState=JSON.parse(await readFile(optionalPath,'utf8'));}catch(error){if(error.code!=='ENOENT')throw Error('OPTIONAL_STATE_INVALID');}
+  const saveOptional=()=>writeFile(optionalPath,JSON.stringify(optionalState,null,2),{mode:0o600});
+  const optionalStatus=async()=>{const current=await versions();return {plugins:Object.entries(OPTIONAL_PLUGINS).map(([key,meta])=>({key,name:meta.name,installed:Boolean(current[key]),version:current[key]??null,enabled:current[key]!==undefined&&(optionalState[key]??true)}))};};
+  const optionalToggle=async value=>{if(!value||typeof value.name!=='string'||typeof value.enabled!=='boolean'||!OPTIONAL_PLUGINS[value.name])throw Error('INVALID_OPTIONAL_PLUGIN');if(preparing||checking||state.phase==='restarting')throw Error('UPDATE_BUSY');const current=await versions();if(!current[value.name])throw Error('OPTIONAL_PLUGIN_NOT_INSTALLED');optionalState[value.name]=value.enabled;await saveOptional();if(!restartRuntime)throw Error('OPTIONAL_RESTART_UNAVAILABLE');await restartRuntime();return optionalStatus();};
   const status=async()=>{
-    return {...state,phase:state.phase==='pending'&&preparing?'installing':state.phase,current:await versions(),checking:Boolean(checking),capabilities:{batchPrepare:true,automaticUpdates:true,prepareAndRestart:true}};
+    return {...state,phase:state.phase==='pending'&&preparing?'installing':state.phase,current:await versions(),optional:await optionalStatus(),checking:Boolean(checking),capabilities:{batchPrepare:true,automaticUpdates:true,prepareAndRestart:true,optionalPluginToggle:true}};
   };
   const check=()=>{
     if(closed)return Promise.resolve({error:'DESKTOP_CLOSING'});
@@ -104,7 +109,7 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
   const restartPrepared=async()=>{if(state.phase!=='pending'||preparing)throw Error('NO_PREPARED_UPDATE');state.phase='restarting';await save();restartTimer=setTimeout(()=>{if(closed)return;restartTask=restart(state.pending).then(async()=>{const selected=await store.status();state.phase=selected.active===state.pending&&selected.verified===state.pending&&!selected.booting?'succeeded':'failed';state.error=state.phase==='failed'?'UPDATE_ROLLED_BACK':null;finishHistory(state.phase==='succeeded');await save();}).catch(async error=>{state.phase='failed';state.error=errorCode(error);finishHistory(false);await save();});},100);return {ok:true};};
   schedule();
   return {
-    status,check,settings,prepare,
+    status,check,settings,prepare,optional:optionalStatus,optionalToggle,
     cancel:async()=>{autoRestart=false;abort?.abort();if(state.phase==='pending'){state.phase='cancelled';finishHistory(false);await save();}return {ok:true};},
     restart:restartPrepared,
     start:async()=>{if(started)return;started=true;const generation=(await store.status()).dataSchema??1;if((state.dataSchema??1)!==generation){state={settings:state.settings,history:state.history,updateHistory:Array.isArray(state.updateHistory)?state.updateHistory:[],phase:'idle',releases:[],dataSchema:generation};await save();}if(state.phase==='restarting'){const selection=await store.status();state.phase=selection.active===state.pending&&!selection.booting?'succeeded':'failed';state.error=state.phase==='failed'?'UPDATE_ROLLED_BACK':null;finishHistory(state.phase==='succeeded');await save();}void check().catch(()=>{});},
