@@ -94,7 +94,7 @@ export function registerGeaTools(ctx: Context, business: Business): void {
         }),
         execute: async (_args, exec) => {
           if (!exec.agent) throw new Error("WORKBENCH_SESSION_REQUIRED");
-          return business.visibleWorkbenchContext(exec.agent.id);
+          return business.waitVisibleWorkbenchContext(exec.agent.id);
         },
       }),
     ),

@@ -617,6 +617,16 @@ export class Business {
     });
   }
 
+  /** 首屏查询尚未完成时给浏览器一点时间把当前页快照同步进来。 */
+  async waitVisibleWorkbenchContext(sessionId: string, timeoutMs = 2000): Promise<string> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (this.visibleWorkbenchContexts.has(sessionId)) return this.visibleWorkbenchContext(sessionId);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return this.visibleWorkbenchContext(sessionId);
+  }
+
   /** 模型 Gateway 拒绝当前身份后，将该 GEA 登录标记为过期。 */
   expireModelLogin(): void {
     if (this.auth) this.clearLogin(true);
