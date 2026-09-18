@@ -426,7 +426,7 @@
       },
       "stageLane": "Per-node data status",
       "stageProgress": "Progress {{progress}}%",
-      "contextSummary": "Regional approval · {{stage}} · {{count}} organization plans",
+      "contextSummary": "City manager approval · {{stage}} · {{count}} organization plans",
       "authorityContextSummary": "{{source}} · {{stage}} · plan {{planId}} · status {{status}}",
       "contextSources": {
         "fixture": "Sample data",
@@ -952,9 +952,10 @@
       "stages": {
         "all": "All nodes",
         "customer": "Customer submission",
-        "region": "Region approval",
+        "region": "City manager approval",
         "province": "Province approval",
         "area": "Area approval",
+        "evaluation": "Regional plan evaluation",
         "category": "Category plan approval"
       },
       "risk": {

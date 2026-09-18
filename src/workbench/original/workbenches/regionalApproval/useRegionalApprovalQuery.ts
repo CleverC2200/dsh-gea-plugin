@@ -22,6 +22,7 @@ import {
   type RegionalApprovalQueryScope,
 } from './regionalApprovalQueryModel.ts';
 import type { ApprovalStageId } from './regionalApprovalFixture.ts';
+import { REGIONAL_PLAN_EVALUATION_STATUSES } from './regionalApprovalFixture.ts';
 
 const QUERY_TIMEOUT_MS = 15_000;
 
@@ -181,7 +182,11 @@ export const useRegionalApprovalQuery = ({
   const selectedPlanTypeCode = selectedPlanTypeCodes.length === 1 ? selectedPlanTypeCodes[0] : undefined;
   const periodQueries = selectedPeriods.map((period) => {
     const roleStatuses = roles?.length ? salesPlanVisibleStatuses(period.planTypeCode, roles) : undefined;
-    const requestedStatuses = stage ? salesPlanWorkflow(period.planTypeCode).queueStatuses(stage) : stageStatuses;
+    const requestedStatuses = stage
+      ? (stage as string) === 'evaluation'
+        ? [...REGIONAL_PLAN_EVALUATION_STATUSES]
+        : salesPlanWorkflow(period.planTypeCode).queueStatuses(stage)
+      : stageStatuses;
     const resolved = roleStatuses
       ? roleStatuses.filter((status) => !requestedStatuses || requestedStatuses.includes(status))
       : requestedStatuses;

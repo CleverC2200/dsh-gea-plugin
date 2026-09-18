@@ -1,5 +1,6 @@
 /** 改编自 AionUi（Apache-2.0）：已替换为本地导入并使用显式 DSH Host 适配器，见 SOURCE.md。 */
 export type ApprovalStageId = 'customer' | 'region' | 'province' | 'area' | 'category';
+
 export type ApprovalHealth = 'healthy' | 'attention' | 'warning';
 export type ApprovalState = 'pending' | 'approved' | 'future';
 export type ApprovalVersion = 'current' | 'previous' | 'initial';
@@ -9,6 +10,9 @@ export type ApprovalAreaKey = 'north' | 'east' | 'central' | 'southwest';
 export type ApprovalBranchKey = 'beijing' | 'hebei' | 'zhejiang' | 'henan' | 'sichuan';
 export type ApprovalDepartmentKey = 'beijing-sales' | 'shijiazhuang' | 'hangzhou' | 'zhengzhou' | 'chengdu';
 export type ApprovalCustomerKey = 'northstar' | 'yanzhao' | 'qiantang' | 'zhongyuan' | 'rongcheng';
+
+/** 区域计划评估是展示节点，沿用计划的未提交、待回写和已回写状态。 */
+export const REGIONAL_PLAN_EVALUATION_STATUSES = [0, 5, 10] as const;
 
 export type ApprovalStageFixture = {
   id: ApprovalStageId;
@@ -48,14 +52,16 @@ export const APPROVAL_STAGE_FIXTURES: readonly ApprovalStageFixture[] = [
   { id: 'region', progress: 100 },
   { id: 'province', progress: 75 },
   { id: 'area', progress: 42 },
+  { id: 'evaluation' as ApprovalStageId, progress: 0 },
   { id: 'category', progress: 0 },
 ];
 
-const approvalStageRank: Record<ApprovalStageId, number> = {
+const approvalStageRank: Record<string, number> = {
   customer: 0,
   region: 1,
   province: 2,
   area: 3,
+  evaluation: 4,
   category: 4,
 };
 
@@ -202,10 +208,11 @@ export const approvalRowsForStage = (
   stage: ApprovalStageId
 ): RegionalApprovalRow[] => rows.filter((row) => approvalStageRank[row.reachedStage] >= approvalStageRank[stage]);
 
-export const APPROVAL_DIMENSIONS_BY_STAGE: Record<ApprovalStageId, readonly ApprovalDimension[]> = {
+export const APPROVAL_DIMENSIONS_BY_STAGE: Record<ApprovalStageId, readonly ApprovalDimension[]> & Record<'evaluation', readonly ApprovalDimension[]> = {
   customer: ['customer'],
   region: ['region', 'customer'],
   province: ['province', 'region', 'customer'],
   area: ['area', 'province', 'region', 'customer'],
+  evaluation: ['base', 'area', 'province', 'region', 'customer'],
   category: ['base', 'area', 'province', 'region', 'customer'],
 };

@@ -426,7 +426,7 @@
       },
       "stageLane": "各节点数据状态",
       "stageProgress": "进度 {{progress}}%",
-      "contextSummary": "区域审批 · {{stage}} · 当前 {{count}} 条组织计划",
+      "contextSummary": "城市经理审批 · {{stage}} · 当前 {{count}} 条组织计划",
       "authorityContextSummary": "{{source}} · {{stage}} · 计划 {{planId}} · 状态 {{status}}",
       "contextSources": {
         "fixture": "样例数据",
@@ -952,9 +952,10 @@
       "stages": {
         "all": "全部节点",
         "customer": "客户提报",
-        "region": "区域审批",
+        "region": "城市经理审批",
         "province": "省区审批",
         "area": "大区审批",
+        "evaluation": "区域计划评估",
         "category": "品类计划审批"
       },
       "risk": {

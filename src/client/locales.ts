@@ -325,7 +325,7 @@ const copy = {
     "Stage status pending upstream data",
   ],
   stageCustomerAi: ["客户确认 AI", "Customer AI confirmation"],
-  stageAreaApproval: ["区域审批", "Area approval"],
+  stageAreaApproval: ["城市经理审批", "City manager approval"],
   stageProvinceApproval: ["省区审批", "Province approval"],
   stageRegionApproval: ["大区审批", "Region approval"],
   stageCategoryPlan: ["品类计划", "Category planning"],
