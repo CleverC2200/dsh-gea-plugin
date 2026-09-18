@@ -29,8 +29,9 @@ test(
           },
         });
       } else if (path.endsWith("/plans")) {
+        const discovery = req.url.searchParams.get("pageSize") === "200";
         res.end(
-          '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version/a","dealerCode":9007199254740997,"dealer_name":"经销商A","province_name":"浙江","mPlanQty":37556.000,"mPlanAmount":2796344.64,"targetQty":0.1000,"currentAmount":9007199254740993.0100}],"total":11}}',
+          '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version/a","periodId":20260901,"planTypeCode":"Y","orderType":"M","dealerCode":9007199254740997,"dealer_name":"经销商A","province_name":"浙江","mPlanQty":37556.000,"mPlanAmount":2796344.64,"targetQty":0.1000,"currentAmount":9007199254740993.0100}],"total":' + (discovery ? '1' : '11') + ',"current":1,"size":' + (discovery ? '200' : '10') + ',"pages":' + (discovery ? '1' : '2') + '}}',
         );
       } else if (path.endsWith("/versions")) {
         reply({
@@ -80,9 +81,7 @@ test(
       async () => {
         const periods = await query("periods", {
           periodMonth: "2026-09",
-          planType: "Y",
-          status: "OPEN",
-          pageNo: 2,
+          pageNo: 1,
           pageSize: 2,
         });
         assert.equal(periods.ok, true, JSON.stringify(periods));
@@ -93,7 +92,7 @@ test(
             current: periods.value.current,
             pages: periods.value.pages,
           },
-          { total: 3, size: 2, current: 2, pages: 2 },
+          { total: 1, size: 2, current: 1, pages: 1 },
         );
         const page = await query("list", { periodId: "period-1", status: 5 });
         assert.equal(page.ok, true, JSON.stringify(page));
@@ -156,7 +155,7 @@ test(
         assert.deepEqual(
           reads.map((req) => req.url.pathname),
           [
-            "/gea/sales-plan/periods",
+            "/gea/sales-plan/plans",
             "/gea/sales-plan/plans",
             `/gea/sales-plan/plans/${planId}`,
             `/gea/sales-plan/plans/${planId}/versions`,
@@ -171,6 +170,7 @@ test(
           assert.equal(req.headers["x-access-token"], "fixture-gea-token");
           assert.equal(req.headers["x-tenant-id"], "0");
         }
+        assert.equal(reads[0].url.searchParams.get("pageSize"), "200");
         assert.equal(reads[1].url.searchParams.get("pageNo"), "1");
         assert.equal(reads[1].url.searchParams.get("pageSize"), "10");
         assert.equal(

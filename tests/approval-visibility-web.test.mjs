@@ -5,14 +5,18 @@ import { profile } from './profile.mjs';
 
 test('region sees own pending and tracking rows; other returns stay hidden and visible tracking rows expose role approval', {timeout:90000}, async t => {
   const app = await profile(t);
-  const plans = Array.from({length:11}, (_, status) => ({planId:`p${status}`,versionId:`v${status}`,periodId:'period-1',planTypeCode:'Y',status,baseName:`scope-${status}-row`,orgCode:'region-a',orgName:'region-a',dealerCode:`c${status}`,currentQty:'1',currentAmount:'10',targetAmount:'10',targetQty:'1',skuCount:0}));
+  const plans = Array.from({length:11}, (_, status) => ({planId:`p${status}`,versionId:`v${status}`,periodId:'20260901',planTypeCode:'Y',status,baseName:`scope-${status}-row`,orgCode:'region-a',orgName:'region-a',dealerCode:`c${status}`,currentQty:'1',currentAmount:'10',targetAmount:'10',targetQty:'1',skuCount:0}));
   const writes=[];
   app.route((req,res,reply) => {
     const path = req.url.pathname;
     const send = result => {reply({success:true,result});return true;};
     if (path.endsWith('/getPermCode')) return send({codeList:['sales-plan:plan:region-approve'],allAuth:[{action:'sales-plan:plan:category-approve'}]});
-    if (path.endsWith('/periods')) return send({records:[{periodId:'period-1',periodMonth:'2026-09',planTypeCode:'Y',status:'CLOSED'}],total:1,current:1,size:100});
+    if (path.endsWith('/periods')) return send({records:[
+      {periodId:'20260901',periodMonth:'2026-09',planTypeCode:'Y',status:'OPEN'},
+      {periodId:'20260902',periodMonth:'2026-09',planTypeCode:'DC',status:'OPEN'},
+    ],total:2,current:1,size:100});
     if (path.endsWith('/plans')) {
+      if (req.url.searchParams.get('periodId') === '20260902') return send({records:[],total:0,current:1,size:Number(req.url.searchParams.get('pageSize') || 20),pages:1});
       const status = req.url.searchParams.get('status');
       const rows = plans.filter(p => status === null || p.status === Number(status));
       const size = Number(req.url.searchParams.get('pageSize') || 20);
@@ -40,6 +44,10 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   await page.getByRole('dialog',{name:'内测声明',exact:true}).getByRole('button',{name:'继续',exact:true}).click();
   const frame = page.frameLocator('iframe[data-gea-workbench]');
   await frame.getByRole('heading',{name:'销售计划审批',exact:true}).waitFor();
+  await frame.getByRole('combobox',{name:'销售计划周期',exact:true}).click();
+  await expect(frame.getByRole('option',{name:'2026-09',exact:true})).toHaveCount(1);
+  await expect(frame.getByRole('option')).toHaveCount(1);
+  await page.keyboard.press('Escape');
   const region = frame.getByRole('button',{name:/区域审批.*进度/});
   await expect(region).toHaveAttribute('aria-pressed', 'true');
   await expect(frame.getByRole('button',{name:/客户提报.*进度/})).not.toContainText('进度 0%');

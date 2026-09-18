@@ -212,7 +212,9 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const [status, setStatus] = useState<Status>();
   const [workbenchRevision, setWorkbenchRevision] = useState(0);
   const [resubmit, setResubmit] = useState<{ planId: string; versionId: string; period: GeaSalesPlanPeriod }>();
-  useEffect(() => setResubmit(undefined), [status?.environment, status?.user?.id]);
+  useEffect(() => {
+    setResubmit(undefined);
+  }, [status?.environment, status?.user?.id]);
   const [qr, setQr] = useState<{ image: string; loginId: string }>();
   const [expired, setExpired] = useState(false);
   const [qrRefresh, setQrRefresh] = useState(0);
@@ -509,26 +511,25 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   return (
     <div className="gea-workbench-document">
       <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
-        <div className="gea-original-workbench">
-          <RegionalApprovalWorkbench
-            key={workbenchRevision}
-            stateScope={`gea-dsh:${status.environment}:${status.user?.tenantId}:${status.user?.id}`}
-            t={locale.t.bind(locale)}
-            onContextChange={onContextChange}
-            queryClient={salesPlan}
-            detailClient={salesPlan}
-            permissionCodes={status.permissionCodes}
-            liveActionsEnabled={true}
-            liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
-            onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })}
-            automaticAnalysisEnabled={false}
-          />
-        </div>
-        {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit}
-          client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)}
-          onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}
+            <div className="gea-original-workbench">
+              <RegionalApprovalWorkbench
+                key={workbenchRevision}
+                stateScope={`gea-dsh:${status.environment}:${status.user?.tenantId}:${status.user?.id}`}
+                t={locale.t.bind(locale)}
+                onContextChange={onContextChange}
+                queryClient={salesPlan}
+                detailClient={salesPlan}
+                permissionCodes={status.permissionCodes}
+                liveActionsEnabled={true}
+                liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
+                onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })}
+                automaticAnalysisEnabled={false}
+              />
+            </div>
+            {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit}
+              client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)}
+              onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}
       </WorkbenchSessionProvider>
-
     </div>
   );
 }

@@ -1241,3 +1241,209 @@
 @container (max-width: 860px) {
   .versionControls :global(.arco-select) { width: 108px; }
 }
+
+/* Approval overview: one compact task bar followed by four decision metrics. */
+.header {
+  min-height: 62px;
+  margin: 8px 12px 0;
+  padding: 8px 16px;
+  overflow-x: auto;
+  border: 1px solid var(--bg-3);
+  border-bottom-color: var(--bg-4);
+  border-radius: 14px 14px 0 0;
+  background: var(--bg-1);
+}
+
+.titleLine {
+  gap: 12px;
+}
+
+.titleLine :global(.arco-typography) {
+  color: var(--text-primary) !important;
+  font-size: 18px;
+}
+
+.pendingSummary {
+  color: var(--text-primary) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+}
+
+.orderTabs {
+  overflow: hidden;
+  gap: 0;
+  margin: 0;
+  border: 1px solid var(--bg-4);
+  border-radius: 7px;
+}
+
+.orderTabs :global(.arco-btn) {
+  min-width: 54px;
+  height: 30px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.orderTabs :global(.arco-btn-primary),
+.orderTabs :global(.arco-btn-primary):hover,
+.orderTabs :global(.arco-btn-primary):focus-visible {
+  background: var(--bg-2);
+  color: var(--text-primary);
+}
+
+.scope {
+  gap: 16px;
+}
+
+.scope > .monthField,
+.versionField {
+  align-items: center;
+}
+
+.scope small,
+.versionField small {
+  font-size: 13px;
+}
+
+.scope :global(.arco-select) {
+  width: 112px;
+}
+
+.scope :global(.arco-select-view),
+.versionControls :global(.arco-select-view) {
+  border: 0;
+  background: transparent;
+}
+
+.versionControls {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--bg-4);
+  border-radius: 7px;
+}
+
+.versionField {
+  gap: 3px;
+  padding-left: 10px;
+}
+
+.versionField + .versionField {
+  border-left: 1px solid var(--bg-3);
+}
+
+.versionControls :global(.arco-select) {
+  width: 86px !important;
+}
+
+.versionControls .versionInfo {
+  display: none;
+}
+
+.stageViewport {
+  margin: 0 12px;
+  border-right: 1px solid var(--bg-3);
+  border-left: 1px solid var(--bg-3);
+}
+
+.content {
+  padding: 0 12px 12px;
+}
+
+.queue {
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+}
+
+.dashboardHeader {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--bg-3);
+  background: var(--bg-1);
+}
+
+.queueMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.queueMetrics > span {
+  min-width: 0;
+  padding: 15px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--bg-2);
+}
+
+.queueMetrics small {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.queueMetrics strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 30px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboardSpinner,
+.dashboardMessage {
+  position: absolute;
+  right: 24px;
+  bottom: 2px;
+}
+
+.queueHeader {
+  min-height: auto;
+  padding: 8px 12px;
+}
+
+.queueHeader > .controlToolbar {
+  flex: 1 1 auto;
+}
+
+@container (max-width: 840px) {
+  .header {
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .titleLine,
+  .scope {
+    width: auto;
+  }
+
+  .scope {
+    justify-content: flex-end;
+    margin-left: auto;
+    overflow-x: auto;
+  }
+}
+
+@container (max-width: 620px) {
+  .titleLine {
+    flex-wrap: wrap;
+  }
+
+  .queueMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 420px) {
+  .queueMetrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

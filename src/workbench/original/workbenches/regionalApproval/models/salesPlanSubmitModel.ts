@@ -161,7 +161,6 @@ export const prepareSalesPlanResubmit = (source: SalesPlanResubmitSource, rows?:
     version.planTypeCode !== source.period.planTypeCode ||
     version.status < 6 ||
     version.status > 9 ||
-    (salesPlanWorkflow(version.planTypeCode, rows).actor(version.status) === 'customer' && source.period.status.toUpperCase() !== 'OPEN') ||
     !['M', 'Z'].includes(version.orderType ?? '') ||
     source.skus.length < 1 ||
     source.skus.length > 5000
