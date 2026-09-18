@@ -138,9 +138,8 @@ export const salesPlanWorkflow = (
     statusLabelCode: (status: number): number | undefined => {
       if (status === 0 || status === 5 || (status >= 6 && status <= 10)) return status;
       if (!rolesKnown) return undefined;
-      const active = actor(status);
-      const previous = active ? roles?.[roleIndex(active) - 1] : undefined;
-      return actor(status) && previous ? SALES_PLAN_ROLES.indexOf(previous) + 1 : undefined;
+      // 状态名称按原始节点码固定，XN 的 2 同样叫“区域已审批”。
+      return actor(status) ? status : undefined;
     },
     /** 原始 DMS 节点保持不透明；即使未提供角色名称也可安全使用。 */
     nextNode: (nodeNum: string) => {

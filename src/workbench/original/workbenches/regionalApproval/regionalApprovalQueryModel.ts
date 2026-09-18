@@ -401,26 +401,12 @@ export const salesPlanStatusText = (status: number, typeCode: string, t: TFuncti
     : t(`common.assistantSurface.regionalApproval.query.status.${code}`);
 };
 
-/**
- * 队列标签要描述“当前审批节点之前已经完成的节点”。
- * 例如省区审批队列里的状态 2，应显示“区域已审批”，而不是把当前节点
- * 误写成“待省区处理”。通用状态文案仍保留给筛选器、导出和历史明细使用。
- */
+/** 队列、筛选、导出及详情使用同一状态名称，不随所选审批节点变化。 */
 export const salesPlanQueueStatusText = (
   status: number,
   typeCode: string,
   stage: ApprovalStageId,
   t: TFunction,
 ): string => {
-  const workflow = salesPlanWorkflow(typeCode);
-  const approvedLabelByStage: Partial<Record<ApprovalStageId, string>> = {
-    province: 'approvedRegion',
-    area: 'approvedProvince',
-    category: 'approvedArea',
-  };
-  const label = approvedLabelByStage[stage];
-  if (label && status === workflow.pending(stage)) {
-    return t(`common.assistantSurface.regionalApproval.query.status.${label}`);
-  }
   return salesPlanStatusText(status, typeCode, t);
 };

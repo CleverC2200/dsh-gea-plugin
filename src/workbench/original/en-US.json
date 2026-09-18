@@ -406,15 +406,15 @@
         },
         "status": {
           "0": "Awaiting submission",
-          "1": "Awaiting region processing",
-          "2": "Awaiting province processing",
-          "3": "Awaiting area processing",
-          "4": "Awaiting category processing",
+          "1": "Sales submitted",
+          "2": "Region approved",
+          "3": "Province approved",
+          "4": "Area approved",
           "approvedRegion": "Region approved",
           "approvedProvince": "Province approved",
           "approvedArea": "Area approved",
           "approvedCategory": "Category approved",
-          "5": "Approval complete (awaiting writeback)",
+          "5": "Category approved (awaiting writeback)",
           "6": "Returned to sales",
           "7": "Returned to region",
           "8": "Returned to province",
@@ -955,7 +955,7 @@
         "region": "Region approval",
         "province": "Province approval",
         "area": "Area approval",
-        "category": "Category plan review"
+        "category": "Category plan approval"
       },
       "risk": {
         "title": "Current-stage review guidance",

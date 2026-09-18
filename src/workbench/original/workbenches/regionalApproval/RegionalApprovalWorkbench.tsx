@@ -835,6 +835,8 @@ const RegionalApprovalWorkbench: React.FC<{
 
     return undefined;
   };
+  const liveRowCanApprove = (row: RegionalApprovalLiveRow) =>
+    !liveActionDisabledReason(row, 'APPROVE');
   const metrics = useMemo(() => {
     if (liveQuery.enabled) {
       return {
@@ -2624,7 +2626,9 @@ const RegionalApprovalWorkbench: React.FC<{
                       columnWidth: 40,
                       selectedRowKeys: selectedRowIds,
                       onChange: (keys) => setSelectedRowIds(keys.map(String).slice(-1)),
-                      checkboxProps: (row) => ({ disabled: row.kind === 'category' || Boolean(row.members) }),
+                      checkboxProps: (row) => ({
+                        disabled: row.kind !== 'plan' || Boolean(row.members) || !liveRowCanApprove(row.plan),
+                      }),
                     }}
                     pagination={false}
                     size='small'
