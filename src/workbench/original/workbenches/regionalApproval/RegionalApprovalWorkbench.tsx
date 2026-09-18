@@ -32,7 +32,7 @@ import {
   Typography,
 } from '@arco-design/web-react';
 import type { TableColumnProps } from '@arco-design/web-react';
-import { CheckOne, Down, Download, Filter, Info, Refresh, Right, ChartHistogram } from '@icon-park/react';
+import { CheckOne, Down, Download, Filter, Info, Refresh, Right } from '@icon-park/react';
 import type { TFunction } from 'i18next';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBusinessSurfaceSession } from '../../session-context.tsx';
@@ -2283,13 +2283,9 @@ const RegionalApprovalWorkbench: React.FC<{
                 </div>
               </div>
               <div className={styles.toolbarActions} data-testid='regional-approval-toolbar-actions'>
-                <Button
-                  size='small'
-                  icon={<ChartHistogram size={16} />}
-                  aria-label={t('common.assistantSurface.regionalApproval.toolbar.progress')}
-                  title={t('common.assistantSurface.regionalApproval.toolbar.progress')}
-                  onClick={() => setProgressOpen(true)}
-                />
+                <Button size='small' onClick={() => setProgressOpen(true)}>
+                  {t('common.assistantSurface.regionalApproval.toolbar.progress')}
+                </Button>
                 {liveQuery.enabled ? (
                   <Button
                     size='small'
@@ -2302,9 +2298,9 @@ const RegionalApprovalWorkbench: React.FC<{
                       liveAccess.refresh();
                       liveQuery.refresh();
                     }}
-                  aria-label={t('common.assistantSurface.regionalApproval.toolbar.refreshData')}
-                  title={t('common.assistantSurface.regionalApproval.toolbar.refreshData')}
-                />
+                  >
+                    {t('common.assistantSurface.regionalApproval.toolbar.refreshData')}
+                  </Button>
                 ) : null}
                 <Button
                   size='small'
@@ -2312,17 +2308,13 @@ const RegionalApprovalWorkbench: React.FC<{
                   disabled={liveQuery.enabled && liveQuery.queueState.status !== 'success'}
                   onClick={() => void exportQueue()}
                   loading={exporting}
-                  aria-label={t(
+                >
+                  {t(
                     liveQuery.enabled
                       ? 'common.assistantSurface.regionalApproval.toolbar.exportPage'
                       : 'common.assistantSurface.regionalApproval.toolbar.export'
                   )}
-                  title={t(
-                    liveQuery.enabled
-                      ? 'common.assistantSurface.regionalApproval.toolbar.exportPage'
-                      : 'common.assistantSurface.regionalApproval.toolbar.export'
-                  )}
-                />
+                </Button>
                 <div className={styles.approvalToolbarActions}>{approvalActionButtons}</div>
               </div>
             </div>
@@ -2583,7 +2575,7 @@ const RegionalApprovalWorkbench: React.FC<{
                           t={t}
                           detail={access.detail}
                           approvalRole={access.role}
-                          canEdit={record.kind === 'plan' && access.canEdit}
+                          canEdit={record.kind === 'plan' && Boolean(access.detail)}
                           categoryName={record.kind === 'category' ? record.category.categoryName : undefined}
                         />
                       );
@@ -2618,9 +2610,9 @@ const RegionalApprovalWorkbench: React.FC<{
                       fixed: pinLiveColumns,
                       columnWidth: 40,
                       selectedRowKeys: selectedRowIds,
-                      onChange: (keys) => setSelectedRowIds(keys.map(String).slice(-1)),
+                      onChange: (keys) => setSelectedRowIds(keys.map(String)),
                       checkboxProps: (row) => ({
-                        disabled: row.kind !== 'plan' || Boolean(row.members) || !liveRowCanApprove(row.plan),
+                        disabled: row.kind !== 'plan' || Boolean(row.members),
                       }),
                     }}
                     pagination={false}
