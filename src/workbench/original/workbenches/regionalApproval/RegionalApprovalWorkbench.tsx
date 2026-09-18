@@ -1141,20 +1141,21 @@ const RegionalApprovalWorkbench: React.FC<{
 
   const updateLiveDraftFilter = (field: keyof LiveApprovalFilters, value: string) => {
     if (field === 'status') setLiveStageFilter(undefined);
-    setDraftLiveFilters((current) => {
-      const next = { ...current, [field]: value };
-      if (field === 'areaCode') {
-        next.provinceCode = ALL_ORGANIZATIONS;
-        next.orgCode = ALL_ORGANIZATIONS;
-        next.dealerCode = ALL_ORGANIZATIONS;
-      } else if (field === 'provinceCode') {
-        next.orgCode = ALL_ORGANIZATIONS;
-        next.dealerCode = ALL_ORGANIZATIONS;
-      } else if (field === 'orgCode') {
-        next.dealerCode = ALL_ORGANIZATIONS;
-      }
-      return next;
-    });
+    const next = { ...draftLiveFilters, [field]: value };
+    if (field === 'areaCode') {
+      next.provinceCode = ALL_ORGANIZATIONS;
+      next.orgCode = ALL_ORGANIZATIONS;
+      next.dealerCode = ALL_ORGANIZATIONS;
+    } else if (field === 'provinceCode') {
+      next.orgCode = ALL_ORGANIZATIONS;
+      next.dealerCode = ALL_ORGANIZATIONS;
+    } else if (field === 'orgCode') {
+      next.dealerCode = ALL_ORGANIZATIONS;
+    }
+    setDraftLiveFilters(next);
+    setAppliedLiveFilters(next);
+    setSelectedRowIds([]);
+    setPage(1);
     setExportFeedback(undefined);
   };
 
