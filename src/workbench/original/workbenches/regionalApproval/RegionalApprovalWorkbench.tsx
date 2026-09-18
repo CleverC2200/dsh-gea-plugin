@@ -32,7 +32,7 @@ import {
   Typography,
 } from '@arco-design/web-react';
 import type { TableColumnProps } from '@arco-design/web-react';
-import { CheckOne, Down, Download, Info, Refresh, Right } from '@icon-park/react';
+import { CheckOne, Down, Download, FilterOne, Info, Refresh, Right, ChartHistogram } from '@icon-park/react';
 import type { TFunction } from 'i18next';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBusinessSurfaceSession } from '../../session-context.tsx';
@@ -2292,9 +2292,13 @@ const RegionalApprovalWorkbench: React.FC<{
                 </div>
               </div>
               <div className={styles.toolbarActions} data-testid='regional-approval-toolbar-actions'>
-                <Button size='small' onClick={() => setProgressOpen(true)}>
-                  {t('common.assistantSurface.regionalApproval.toolbar.progress')}
-                </Button>
+                <Button
+                  size='small'
+                  icon={<ChartHistogram size={16} />}
+                  aria-label={t('common.assistantSurface.regionalApproval.toolbar.progress')}
+                  title={t('common.assistantSurface.regionalApproval.toolbar.progress')}
+                  onClick={() => setProgressOpen(true)}
+                />
                 {liveQuery.enabled ? (
                   <Button
                     size='small'
@@ -2307,9 +2311,9 @@ const RegionalApprovalWorkbench: React.FC<{
                       liveAccess.refresh();
                       liveQuery.refresh();
                     }}
-                  >
-                    {t('common.assistantSurface.regionalApproval.toolbar.refreshData')}
-                  </Button>
+                  aria-label={t('common.assistantSurface.regionalApproval.toolbar.refreshData')}
+                  title={t('common.assistantSurface.regionalApproval.toolbar.refreshData')}
+                />
                 ) : null}
                 <Button
                   size='small'
@@ -2317,13 +2321,17 @@ const RegionalApprovalWorkbench: React.FC<{
                   disabled={liveQuery.enabled && liveQuery.queueState.status !== 'success'}
                   onClick={() => void exportQueue()}
                   loading={exporting}
-                >
-                  {t(
+                  aria-label={t(
                     liveQuery.enabled
                       ? 'common.assistantSurface.regionalApproval.toolbar.exportPage'
                       : 'common.assistantSurface.regionalApproval.toolbar.export'
                   )}
-                </Button>
+                  title={t(
+                    liveQuery.enabled
+                      ? 'common.assistantSurface.regionalApproval.toolbar.exportPage'
+                      : 'common.assistantSurface.regionalApproval.toolbar.export'
+                  )}
+                />
                 <div className={styles.approvalToolbarActions}>{approvalActionButtons}</div>
               </div>
             </div>
@@ -2335,6 +2343,7 @@ const RegionalApprovalWorkbench: React.FC<{
             <Button
               className={styles.advancedToggle}
               size='small'
+              icon={<FilterOne size={16} />}
               aria-label={t('common.assistantSurface.regionalApproval.filters.toggle')}
               aria-controls={filterPanelId}
               aria-expanded={narrowFiltersExpanded}
@@ -2561,7 +2570,7 @@ const RegionalApprovalWorkbench: React.FC<{
                       <Button size='small' onClick={refreshLiveAuthority}>
                         {t('common.assistantSurface.regionalApproval.query.retry')}
                       </Button>
-                    }
+                  }
                   />
                 ) : null}
                 {liveQuery.queueState.status === 'success' && liveRows.length === 0 ? (
