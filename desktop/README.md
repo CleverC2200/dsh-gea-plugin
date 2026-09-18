@@ -84,6 +84,8 @@ Windows NSIS 构建固定使用 `ELECTRON_BUILDER_7Z_FILTER=BCJ`，避免 electr
 
 Windows 签名默认关闭，仅用于本机内测。正式或 Windows 真机验收构建使用证书环境变量，不把证书和密码提交到仓库：`WIN_CSC_LINK=/secure/path/gea.pfx WIN_CSC_KEY_PASSWORD=... GEA_WIN_REQUIRE_SIGNING=1`。也可使用 electron-builder 支持的 `CSC_LINK`/`CSC_KEY_PASSWORD`。开启强制模式后没有证书会直接失败；证书的 Subject/Publisher 必须与 AppX 配置中的 `GEA_MSIX_PUBLISHER` 一致。证书密码只通过 CI Secret、Windows 凭据管理器或临时环境变量注入，构建结束后清除。
 
+仅供 Windows 10/11 内部验收时，可在 PowerShell 运行 `desktop/create-windows-test-certificate.ps1` 生成自签名测试证书。脚本会把证书加入当前用户的 `TrustedPeople`，仅该用户/机器信任；不要把生成的目录、密码或证书提交到 Git。自签名证书不能用于正式发布或替代公开信任的公司证书。
+
 MSIX 只作为 Windows 10/11 验证路线，不进入现有正式频道。当前 electron-builder 26.15.3 的实现入口名是 `appx`（生成 MSIX/AppX 包），不是 `msix`。使用 `GEA_DESKTOP_TARGET=win GEA_MSIX_PUBLISHER='CN=实际签名发布者' electron-builder --config desktop/electron-builder-msix.cjs` 构建；必须提供真实签名发布者，未签名的试验包不能视为安装或更新验收。重点验证用户数据目录、原生 Node 模块、快捷方式/协议、首次安装和覆盖更新耗时。MSIX 的差分更新依赖 Windows 的 AppxBlockMap，和 NSIS 的 differentialPackage 不是同一机制。
 
 插件更新以最多 32 个文件复制任务准备独立暂存目录，支持时使用文件系统写时复制，不共享可写硬链接。常规更新只执行一次 pnpm add；仅遇到存储路径或虚拟目录布局不兼容时，执行 pnpm install 修复后重试。其他失败直接返回，不重复安装。取消更新会等待正在进行的文件复制结束再清理暂存目录。
