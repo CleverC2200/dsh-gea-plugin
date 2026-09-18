@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_LIMIT = 500;
-const BODY_LIMIT = 64 * 1024;
-const BODY_OMITTED = "[正文超过 64 KiB，未保存]";
+const BODY_LIMIT = 4 * 1024 * 1024;
+const BODY_OMITTED = "[正文超过 4 MiB，未保存]";
 const STREAM_OMITTED = "[流式响应正文未保存]";
 const SENSITIVE_KEY =
   /^(?:authorization|proxy-authorization|cookies?|set-cookie|x-access-token|x-delegation-token|mcp[_-]?session[_-]?id|access[_-]?token|refresh[_-]?token|tokens?|secrets?|passwords?|client[_-]?(?:id|secret)|delegation[_-]?token|api[_-]?key|session[_-]?id|qrcode[_-]?id|credentials?|credential[_-]?id)$/i;

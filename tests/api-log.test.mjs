@@ -190,10 +190,10 @@ test("streaming and oversized response bodies are summarized instead of buffered
       "流式响应正文未保存",
     ],
     [
-      new Response("x".repeat(70 * 1024), {
+      new Response("x".repeat(5 * 1024 * 1024), {
         headers: { "Content-Type": "text/plain" },
       }),
-      "正文超过 64 KiB",
+      "正文超过 4 MiB",
     ],
   ]) {
     const center = new GeaApiLogCenter(

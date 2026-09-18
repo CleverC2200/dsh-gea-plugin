@@ -185,6 +185,15 @@ const skuFields = [
   "categoryConfirmedQty",
   "categoryConfirmedAmount",
 ];
+function normalizeMaterialDescription(records: Row[]): void {
+  for (const record of records) {
+    if (typeof record.materialDescription === "string" && record.materialDescription.trim()) continue;
+    const fallback = [record.materialDesc, record.materialName, record.skuName, record.productName].find(
+      (value) => typeof value === "string" && value.trim(),
+    );
+    if (typeof fallback === "string") record.materialDescription = fallback.trim();
+  }
+}
 const exactNumber =
   /Id$|Code$|Qty$|Amount$|^(id|qty|price|amt|amtBase|qtyDelta|amountDelta)$/;
 
@@ -1676,6 +1685,7 @@ export class Business {
       );
       if (typeof fallback === "string") record.materialDescription = fallback.trim();
     }
+    normalizeMaterialDescription(result.records);
     if (result.records.some((record) => record.versionId !== id))
       throw new Error("GEA_IDENTITY_MISMATCH");
     if (active.aborted) throw new Error("STALE_SELECTION");

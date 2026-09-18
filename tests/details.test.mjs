@@ -35,7 +35,7 @@ test(
       }
       if (path.endsWith("/version-0/skus")) {
         res.end(
-          '{"success":true,"result":{"records":[{"id":9007199254740995,"versionId":"version-0","skuCode":"sku-a","qty":1.2000,"price":2.5000,"amt":3.0000,"amtBase":0.10},{"id":"sku-b-id","versionId":"version-0","skuCode":"sku-b","qty":0.0010}],"total":5}}',
+          '{"success":true,"result":{"records":[{"id":9007199254740995,"versionId":"version-0","skuCode":"sku-a","materialDesc":"黑芝麻汤圆","qty":1.2000,"price":2.5000,"amt":3.0000,"amtBase":0.10},{"id":"sku-b-id","versionId":"version-0","skuCode":"sku-b","qty":0.0010}],"total":5}}',
         );
         return true;
       }
@@ -57,6 +57,7 @@ test(
     const sku = await app.rpc("skus", { ...selection, versionId: "version-0" });
     assert.equal(sku.value.records[0].qty, "1.2000");
     assert.equal(sku.value.records[0].amt, "3.0000");
+    assert.equal(sku.value.records[0].materialDescription, "黑芝麻汤圆");
     assert.equal(sku.value.coverage, "partial");
     const prepared = await app.rpc("prepare", {
       ...selection,
