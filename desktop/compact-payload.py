@@ -21,6 +21,8 @@ if subprocess.run(['cp', '-cR', str(source), str(target)], capture_output=True).
     shutil.copytree(source, target, symlinks=True)
 removed = []
 platform_arch = 'darwin-arm64' if args.platform == 'mac' else 'win32-x64'
+non_runtime_dirs = {'test', 'tests', 'example', 'examples', 'docs'}
+non_runtime_names = {'readme.md', 'changelog.md', 'history.md', 'contributing.md'}
 
 for item in list(target.rglob('*')):
     if not item.is_file() or item.is_symlink():
@@ -33,6 +35,12 @@ for item in list(target.rglob('*')):
             reason = 'source-map'
         elif item.suffix == '.pdb':
             reason = 'native-debug-symbols'
+        elif item.name.lower().endswith('.d.ts'):
+            reason = 'type-declaration'
+        elif item.name.lower() in non_runtime_names:
+            reason = 'package-documentation'
+        elif any(part.lower() in non_runtime_dirs for part in parts[1:-1]):
+            reason = 'package-test-or-example'
         elif 'node-pty' in parts and 'prebuilds' in parts:
             index = parts.index('prebuilds')
             if parts[index + 1] != platform_arch:
