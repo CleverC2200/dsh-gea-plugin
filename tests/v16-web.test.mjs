@@ -20,7 +20,7 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
    res.end('data: '+JSON.stringify({id:'reply',object:'chat.completion.chunk',choices:[{index:0,delta:{content:answer},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({id:'reply',choices:[{index:0,delta:{},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n');return true;
   }
   if(path.endsWith('/plans')){const status=req.url.searchParams.get('status');const records=status===null || status==='1'?[plan]:[];reply({success:true,result:{records,total:records.length,pages:1,current:1,size:Number(req.url.searchParams.get('pageSize')||20)}});return true;}
-  if(path.endsWith('/plans/p')){reply({success:true,result:{currentVersion:{...plan,id:'v',effective:true},skus:[sku],versions:[],logs:[],actionContext:{versionId:'v',status:1,nodeOrder:2,allowedActions:['SAVE','APPROVE','REJECT'],snapshotHash:'a'.repeat(64)}}});return true;}
+ if(path.endsWith('/plans/p')){reply({success:true,result:{currentVersion:{...plan,id:'v',effective:true},skus:[sku],versions:[],logs:[],actionContext:{versionId:'v',status:1,nodeOrder:2,policy:'role-visible-v1',allowedActions:[],roleActions:[{role:'region',allowedActions:['APPROVE','REJECT']}],snapshotHash:'a'.repeat(64)}}});return true;}
   if(path.endsWith('/versions')){reply({success:true,result:[{...plan,id:'v',effective:true},{...plan,id:'v0',seq:0,effective:false,targetQty:null,targetAmount:null}]});return true;}
   if(path.endsWith('/versions/v0/skus')){reply({success:true,result:[{...sku,versionId:'v0',qty:'10',amt:'100'}]});return true;}
   if(path.endsWith('/versions/v/skus')){reply({success:true,result:[sku]});return true;}

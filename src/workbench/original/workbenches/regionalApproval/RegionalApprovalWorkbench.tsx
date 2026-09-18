@@ -1974,20 +1974,19 @@ const RegionalApprovalWorkbench: React.FC<{
   const inlineSkuAccess = (row: RegionalApprovalLiveRow) => {
     const detail = liveAccess.entries[row.versionId];
     if (!detail) return { detail: undefined, role: undefined, canEdit: false };
-    const editableRole = roleStages
-      .filter((candidate): candidate is Exclude<ApprovalStageId, 'customer'> => candidate !== 'customer')
+    const accessRoles: ApprovalStageId[] = liveStageFilter
+      ? [liveStageFilter]
+      : ['region', 'province', 'area', 'category'];
+    const editableRole = accessRoles
       .map((candidate) => ({
         candidate,
         access: salesPlanAccessForRow(row, detail, permissionCodes, candidate),
       }))
-      .find(({ access }) => access?.allowedActions.includes('SAVE') || access?.allowedActions.includes('APPROVE'));
-    const actionContextAllowsEdit = detail.actionContext?.allowedActions.some(
-      (action) => action === 'SAVE' || action === 'APPROVE',
-    );
+      .find(({ access }) => access?.allowedActions.includes('APPROVE'));
     return {
       detail,
-      role: editableRole?.candidate ?? liveStageFilter ?? roleStages[0],
-      canEdit: Boolean(editableRole || actionContextAllowsEdit),
+      role: editableRole?.candidate,
+      canEdit: Boolean(editableRole) && !liveActionDisabledReason(row),
     };
   };
 
