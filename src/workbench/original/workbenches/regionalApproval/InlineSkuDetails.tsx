@@ -87,7 +87,7 @@ export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName
      const changed = formatExactDecimal(sku.baseQty) !== formatExactDecimal(sku.qty) || formatExactDecimal(sku.amtBase) !== formatExactDecimal(sku.amt);
      const code=String(sku.skuCode), baseline=baselineFor(sku), confirmed=confirmedValues[code] ?? baseline;
      return <tr key={code+':'+index} className={changed ? styles.changed : undefined}>
-      <td><span className={styles.sku}>{code}</span><span className={styles.description}>{sku.materialDescription || tr('missingDescription')}</span></td>
+      <td><span className={styles.sku}>{code}</span><span className={styles.description}>{sku.materialDescription || sku.skuName || tr('missingDescription')}</span></td>
       <td>{formatExactDecimal(sku.baseQty)}</td><td>{canEdit ? <Input size='small' value={confirmed} aria-label={`${tr('columns.qty')} ${code}`} onChange={value=>setConfirmedValues(current=>({...current,[code]:value}))} /> : formatExactDecimal(sku.qty)}</td><td>{formatExactDecimal(sku.amtBase)}</td><td>{formatExactDecimal(sku.amt)}</td></tr>;
     })}
    </tbody>)}
