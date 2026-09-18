@@ -50,7 +50,7 @@ test('V1.6 Web: compact header, stable progress, inline SKU, drawer and persiste
  for(const stage of stages){await frame.getByTestId('regional-approval-stage-'+stage).click();assert.deepEqual(await readProgress(),before);}
  await frame.getByTestId('regional-approval-stage-region').click();
  await frame.getByRole('tab',{name:'按区域',exact:true}).click();
- await expect(frame.getByTestId('regional-approval-status-p')).toHaveText('销售已提报');
+ await expect(frame.getByTestId('regional-approval-status-p')).toHaveText('待区域处理');
  await expect(frame.getByTestId('regional-approval-status-p').locator('xpath=ancestor::td[1]')).toContainText('宝阳销售组');
  await expect(frame.getByTestId('regional-approval-status-p').locator('xpath=ancestor::table[1]/thead')).not.toContainText('审批状态');
  const monthPlan=frame.getByTestId('regional-approval-month-plan-p');
