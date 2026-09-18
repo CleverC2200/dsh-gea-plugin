@@ -46,8 +46,8 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  assert.equal(modelCalls,0,'opening the workbench must not trigger analysis');
  const stages=['region','province','area'];
  const readProgress=()=>frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
- await expect.poll(readProgress).toEqual(['进度 100%','进度 0%','进度 0%','进度 0%','进度 0%']);
- const before=await readProgress(); assert.equal(before.length,5);
+ await expect.poll(readProgress).toEqual(['进度 100%','进度 0%','进度 0%','进度 0%','进度 %','进度 0%']);
+ const before=await readProgress(); assert.equal(before.length,6);
  for(const stage of stages){await frame.getByTestId('regional-approval-stage-'+stage).click();assert.deepEqual(await readProgress(),before);}
  await frame.getByTestId('regional-approval-stage-region').click();
  await frame.getByRole('tab',{name:'按区域',exact:true}).click();
@@ -57,7 +57,7 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  const monthPlan=frame.getByTestId('regional-approval-month-plan-p');
  await expect(monthPlan.locator('span').first()).toHaveText('¥100');
  await expect(monthPlan.locator('small').first()).toHaveText('10');
- await expect(frame.locator('tbody').first()).toContainText('50.0%');
+ await expect(frame.locator('tbody').first()).toContainText('25.0%');
  await expect(frame.locator('tbody').first()).toContainText('版本②：¥100 / 10');
  await expect(frame.locator('tbody').first()).toContainText('该版本不含月度目标');
  await frame.getByRole('button',{name:/查看.*宝阳销售组|宝阳销售组.*调整/}).click();

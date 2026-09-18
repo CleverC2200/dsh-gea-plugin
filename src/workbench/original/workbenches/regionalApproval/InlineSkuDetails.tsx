@@ -10,12 +10,13 @@ import type {ApprovalStageId} from './regionalApprovalFixture.ts';
 
 const DECIMAL = /^[+-]?\d{1,15}(?:\.\d{1,3})?$/;
 
-export function InlineSkuDetails({row,t,detail,canEdit,approvalRole}:{
+export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName}:{
  row:RegionalApprovalLiveRow;
  t:TFunction;
  detail?:GeaSalesPlanDetail;
  canEdit?:boolean;
  approvalRole?:ApprovalStageId;
+ categoryName?:string;
 }) {
  const [skus,setSkus]=useState<GeaSalesPlanSku[]>(); const [failed,setFailed]=useState(false);
  const [confirmedValues,setConfirmedValues]=useState<Record<string,string>>({});
@@ -66,7 +67,8 @@ export function InlineSkuDetails({row,t,detail,canEdit,approvalRole}:{
  const tr=(key:string)=>t(`common.assistantSurface.regionalApproval.liveAdjustment.${key}`);
  const groups = new Map<string, GeaSalesPlanSku[]>();
  for (const sku of skus ?? []) {
-  const category = sku.productCategName || '—';
+  const category = sku.productCategName.trim() || '其他';
+  if (categoryName !== undefined && category !== categoryName) continue;
   groups.set(category, [...(groups.get(category) ?? []), sku]);
  }
  return <section className={styles.root} aria-label={tr('columns.sku')}>

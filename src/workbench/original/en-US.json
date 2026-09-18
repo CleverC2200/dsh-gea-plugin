@@ -291,6 +291,7 @@
       "readOnlyBrowseHint": "Read-only view. Select an authorized approval node to process plans.",
       "rolesUnavailable": "Approval permissions are not available. Only read-only browsing is enabled.",
       "scopeTotals": {
+        "pageTitle": "Current page detail totals",
         "historicalUnavailable": "Historical version totals are unavailable",
         "title": "Applied filter scope totals",
         "targetQuantity": "Target quantity",

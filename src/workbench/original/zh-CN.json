@@ -291,6 +291,7 @@
       "readOnlyBrowseHint": "只读浏览；请选择有权限的审批节点以处理计划。",
       "rolesUnavailable": "审批权限尚未取得，当前仅可只读浏览。",
       "scopeTotals": {
+        "pageTitle": "当前页明细汇总",
         "historicalUnavailable": "历史版本汇总暂不可用",
         "title": "当前筛选范围统计",
         "targetQuantity": "目标数量",
@@ -989,6 +990,7 @@
         "amountProgress": "金额 {{progress}}",
         "quantityProgress": "数量 {{progress}}",
         "baseAmount": "原计划金额 {{amount}}",
+        "planAmount": "计划金额 {{amount}}",
         "baseQuantity": "原计划数量 {{quantity}}",
         "advice": {
           "healthy": "{{category}}品类计划与原计划基本一致",

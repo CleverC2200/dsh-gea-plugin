@@ -32,7 +32,7 @@ import {
   Typography,
 } from '@arco-design/web-react';
 import type { TableColumnProps } from '@arco-design/web-react';
-import { CheckOne, Down, Download, FilterOne, Info, Refresh, Right, ChartHistogram } from '@icon-park/react';
+import { CheckOne, Down, Download, Filter, Info, Refresh, Right, ChartHistogram } from '@icon-park/react';
 import type { TFunction } from 'i18next';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBusinessSurfaceSession } from '../../session-context.tsx';
@@ -839,13 +839,27 @@ const RegionalApprovalWorkbench: React.FC<{
     !liveActionDisabledReason(row, 'APPROVE');
   const metrics = useMemo(() => {
     if (liveQuery.enabled) {
+      const detailMetrics = liveRows.map((row) => versionMetrics[row.planId]);
+      const hasCompleteDetailMetrics =
+        detailMetrics.length === liveRows.length &&
+        detailMetrics.length > 0 &&
+        detailMetrics.every(
+          (detail) =>
+            detail &&
+            /^-?\d+(?:\.\d+)?$/.test(detail.baseQty) &&
+            /^-?\d+(?:\.\d+)?$/.test(detail.baseAmount)
+        );
       return {
         visibleCount: liveRows.length,
         pendingCount: liveRows.filter((row) => row.approvalState === 'pending').length,
         warningCount: liveRows.filter((row) => row.approvalState === 'returned').length,
-        quantity: scopeSummary.data?.quantity ?? '—',
-        amount: scopeSummary.data?.amount ?? '—',
-        targetAmount: scopeSummary.data?.targetAmount,
+        quantity: hasCompleteDetailMetrics
+          ? addExactDecimals(detailMetrics.map((detail) => detail!.baseQty))
+          : liveRows.length === 0 ? '0' : '—',
+        amount: hasCompleteDetailMetrics
+          ? addExactDecimals(detailMetrics.map((detail) => detail!.baseAmount))
+          : liveRows.length === 0 ? '0' : '—',
+        targetAmount: addExactDecimals(draftedLiveRows.map((row) => row.targetAmount)),
         savedAdjustmentCount: 0,
         localApprovalResultCount: 0,
       };
@@ -866,11 +880,14 @@ const RegionalApprovalWorkbench: React.FC<{
     scopeSummary,
     draftedLiveRows,
     liveQuery.enabled,
+    liveRows,
     localApprovalResults.length,
     primaryVersion,
     savedAdjustments.length,
     visibleRows,
+    versionMetrics,
   ]);
+  const dashboardReady = liveQuery.queueState.status === 'success' && !liveCategoriesLoading;
   const amountVariance =
     metrics.targetAmount !== undefined && metrics.amount !== '—'
       ? subtractExactDecimals(metrics.amount, metrics.targetAmount)
@@ -1524,7 +1541,7 @@ const RegionalApprovalWorkbench: React.FC<{
   };
   // Keep the approval queue dense once its columns have enough room to scan.
   // The expanded SKU table deliberately follows a separate, roomier layout.
-  const liveMinimumWidths = categoryComparison ? [220, 112, 112, 172, 180] : [220, 112, 112, 136];
+  const liveMinimumWidths = [220, 112, 112, 136];
   // 选择框与展开按钮各占 40px，必须一起计入列宽预算。
   const liveMinimumWidth = liveMinimumWidths.reduce((total, width) => total + width, 80);
   const liveTableWidth = Math.max(
@@ -1532,7 +1549,7 @@ const RegionalApprovalWorkbench: React.FC<{
     Math.min(tableViewportWidth || liveMinimumWidth, 960)
   );
   const liveExtraWidth = Math.max(0, liveTableWidth - liveMinimumWidth);
-  const liveColumnWeights = categoryComparison ? [0.42, 0.18, 0.18, 0.22, 0] : [0.44, 0.2, 0.2, 0.16];
+  const liveColumnWeights = [0.44, 0.2, 0.2, 0.16];
   const liveColumnWidths = liveMinimumWidths.map((width, index) => width + liveExtraWidth * liveColumnWeights[index]);
   const pinLiveColumns = tableViewportWidth >= liveTableWidth;
   const liveApprovalStatusTag = (tableRow: Extract<RegionalApprovalLiveTableRow, {kind: 'plan'}>) => {
@@ -1575,13 +1592,12 @@ const RegionalApprovalWorkbench: React.FC<{
               className={styles.categoryOrganizationCell}
               data-testid={`regional-approval-category-row-${tableRow.plan.planId}-${tableRow.category.categoryName}`}
             >
-              <span aria-hidden>›</span>
               <div>
-                <strong>
+                <Button type='text' size='small' aria-expanded={expandedLiveGroups.includes(tableRow.tableRowId)} onClick={() => setExpandedLiveGroups(current => current.includes(tableRow.tableRowId) ? current.filter(id => id !== tableRow.tableRowId) : [...current, tableRow.tableRowId])}>
                   {t('common.assistantSurface.regionalApproval.categoryRows.name', {
                     category: tableRow.category.categoryName,
                   })}
-                </strong>
+                </Button>
                 <small>
                   {t('common.assistantSurface.regionalApproval.categoryRows.skuCount', {
                     count: tableRow.category.skuCount,
@@ -1666,19 +1682,23 @@ const RegionalApprovalWorkbench: React.FC<{
       title: t('common.correction.target'),
       width: liveColumnWidths[1],
       render: (_, tableRow) => {
-        const category = tableRow.kind === 'category' ? tableRow.category : undefined;
         const row = tableRow.plan;
-        return (
-          <div className={styles.stackCell}>
-            <span>{category ? '—' : /^-?\d+(?:\.\d+)?$/.test(row.targetAmount) ? exactMoney(row.targetAmount) : t('common.assistantSurface.regionalApproval.versionTargetMissing')}</span>
-          </div>
-        );
+        if (tableRow.kind === 'category') {
+          const categories = liveCategorySummaries[row.planId] ?? [];
+          const baseTotal = addExactDecimals(categories.map((item) => item.baseAmount));
+          const categoryTarget =
+            /^-?\d+(?:\.\d+)?$/.test(row.targetAmount) && /^-?\d+(?:\.\d+)?$/.test(baseTotal) && Number(baseTotal) !== 0
+              ? String(Number(row.targetAmount) * Number(tableRow.category.baseAmount) / Number(baseTotal))
+              : '';
+          return <div className={styles.stackCell}><span>{categoryTarget ? exactMoney(Number(categoryTarget).toFixed(2)) : '—'}</span></div>;
+        }
+        return <div className={styles.stackCell}><span>{/^-?\d+(?:\.\d+)?$/.test(row.targetAmount) ? exactMoney(row.targetAmount) : t('common.assistantSurface.regionalApproval.versionTargetMissing')}</span></div>;
       },
     },
     {
       title: t('common.correction.plan'),
       width: liveColumnWidths[2],
-      render: (_, tableRow) => tableRow.kind === 'category' ? '—' : <div className={styles.stackCell} data-testid={`regional-approval-month-plan-${tableRow.tableRowId}`}>
+      render: (_, tableRow) => tableRow.kind === 'category' ? <div className={styles.stackCell}><span>{exactMoney(tableRow.category.amount)}</span></div> : <div className={styles.stackCell} data-testid={`regional-approval-month-plan-${tableRow.tableRowId}`}>
         <span>{/^-?\d+(?:\.\d+)?$/.test(tableRow.plan.mPlanAmount ?? '') ? exactMoney(tableRow.plan.mPlanAmount!) : '—'}</span>
         <small>{/^-?\d+(?:\.\d+)?$/.test(tableRow.plan.mPlanQty ?? '') ? tableRow.plan.mPlanQty : '—'}</small>
         {tableRow.kind === 'plan' && comparisonFor(tableRow).compareAmount && <small>{t('common.assistantSurface.regionalApproval.comparePlan', {amount:exactMoney(comparisonFor(tableRow).compareAmount!),qty:comparisonFor(tableRow).compareQty})}</small>}
@@ -1691,10 +1711,9 @@ const RegionalApprovalWorkbench: React.FC<{
       width: liveColumnWidths[3],
       render: (_, tableRow) => {
         if (tableRow.kind === 'plan') {
-          const progress = regionalApprovalLiveProgress(tableRow.plan);
+          const progress = regionalApprovalLiveProgress({...tableRow.plan,currentAmount:tableRow.plan.mPlanAmount ?? '—'});
           return <div className={styles.categoryProgressCell}>
             <strong>{t('common.correction.amountProgress',{value:formattedProgress(progress.amount)})}</strong>
-            <small>{t('common.correction.qtyProgress',{value:formattedProgress(progress.quantity)})}</small>
             {comparisonFor(tableRow).compareAmount && <small>{t('common.assistantSurface.regionalApproval.compareProgress', {value:comparisonFor(tableRow).compareTargetAmount
               ? formattedProgress(regionalApprovalLiveProgress({...tableRow.plan,currentQty:comparisonFor(tableRow).compareQty!,currentAmount:comparisonFor(tableRow).compareAmount!,targetQty:comparisonFor(tableRow).compareTargetQty!,targetAmount:comparisonFor(tableRow).compareTargetAmount!}).amount)
               : t('common.assistantSurface.regionalApproval.versionTargetMissing')})}</small>}
@@ -1702,23 +1721,29 @@ const RegionalApprovalWorkbench: React.FC<{
           </div>;
         }
         const { category } = tableRow;
+        const categories = liveCategorySummaries[tableRow.plan.planId] ?? [];
+        const baseTotal = addExactDecimals(categories.map((item) => item.baseAmount));
+        const categoryTarget = /^-?\d+(?:\.\d+)?$/.test(tableRow.plan.targetAmount) && /^-?\d+(?:\.\d+)?$/.test(baseTotal) && Number(baseTotal) !== 0
+          ? Number(tableRow.plan.targetAmount) * Number(category.baseAmount) / Number(baseTotal)
+          : undefined;
+        const categoryProgress = categoryTarget && categoryTarget !== 0 ? Number(category.amount) / categoryTarget * 100 : undefined;
         return (
           <div className={styles.categoryProgressCell}>
             <strong>
               {t('common.assistantSurface.regionalApproval.categoryRows.amountProgress', {
-                progress: formattedProgress(category.amountProgress),
+                progress: formattedProgress(categoryProgress),
               })}
             </strong>
             <Progress
-              percent={Math.min(category.amountProgress ?? 0, 100)}
+              percent={Math.min(categoryProgress ?? 0, 100)}
               showText={false}
               size='small'
               color='rgb(var(--danger-6))'
               width={100}
             />
             <small>
-              {t('common.assistantSurface.regionalApproval.categoryRows.baseAmount', {
-                amount: exactMoney(category.baseAmount),
+              {t('common.assistantSurface.regionalApproval.categoryRows.planAmount', {
+                amount: exactMoney(category.amount),
               })}
             </small>
             <small>
@@ -1728,31 +1753,6 @@ const RegionalApprovalWorkbench: React.FC<{
         );
       },
     },
-    ...(categoryComparison
-      ? [
-          {
-            title: t('common.assistantSurface.regionalApproval.columns.aiOpinion'),
-            width: liveColumnWidths[4],
-            fixed: pinLiveColumns ? ('right' as const) : undefined,
-            render: (_: unknown, tableRow: RegionalApprovalLiveTableRow) => {
-              if (tableRow.kind === 'plan') return '—';
-              const state = categoryComparisonState(tableRow.category);
-              return (
-                <div className={styles.categoryOpinionCell}>
-                  <Tag color={state === 'healthy' ? 'green' : state === 'attention' ? 'orange' : 'red'}>
-                    {t(`common.assistantSurface.regionalApproval.health.${state}`)}
-                  </Tag>
-                  <span>
-                    {t(`common.assistantSurface.regionalApproval.categoryRows.advice.${state}`, {
-                      category: tableRow.category.categoryName,
-                    })}
-                  </span>
-                </div>
-              );
-            },
-          },
-        ]
-      : []),
   ];
   const columns: TableColumnProps<RegionalApprovalRow>[] = [
     {
@@ -1809,11 +1809,6 @@ const RegionalApprovalWorkbench: React.FC<{
         ]
       : []),
     {
-      title: t('common.assistantSurface.regionalApproval.columns.aiOpinion'),
-      width: 190,
-      render: (_, row) => t(`common.assistantSurface.regionalApproval.opinions.${row.aiOpinionKey}`),
-    },
-    {
       title: t('common.assistantSurface.regionalApproval.columns.quantity'),
       width: 100,
       render: (_, row) => <strong>{number(metricsForApprovalVersion(row, primaryVersion).quantity)}</strong>,
@@ -1828,9 +1823,6 @@ const RegionalApprovalWorkbench: React.FC<{
       width: 125,
       render: (_, row) => (
         <div className={styles.stackCell}>
-          <strong>
-            {t('common.assistantSurface.regionalApproval.quantityProgress', { progress: row.quantityProgress })}
-          </strong>
           <span>{t('common.assistantSurface.regionalApproval.amountProgress', { progress: row.amountProgress })}</span>
         </div>
       ),
@@ -2227,28 +2219,27 @@ const RegionalApprovalWorkbench: React.FC<{
             <div
               className={styles.queueMetrics}
               role='region'
-              aria-label={t('common.assistantSurface.regionalApproval.scopeTotals.title')}
+              aria-label={t('common.assistantSurface.regionalApproval.scopeTotals.pageTitle')}
+              title={t('common.assistantSurface.regionalApproval.scopeTotals.pageTitle')}
             >
               <span>
                 <small>{t('common.assistantSurface.regionalApproval.scopeTotals.targetAmount')}</small>
-                <strong>{(liveQuery.enabled && scopeSummary.status !== 'success') || metrics.targetAmount === undefined ? '—' : exactMoney(metrics.targetAmount)}</strong>
+                <strong>{(liveQuery.enabled && !dashboardReady) || metrics.targetAmount === undefined ? '—' : exactMoney(metrics.targetAmount)}</strong>
               </span>
               <span>
                 <small>{t('common.assistantSurface.regionalApproval.scopeTotals.planAmount')}</small>
-                <strong>{liveQuery.enabled && scopeSummary.status !== 'success' ? '—' : exactMoney(metrics.amount)}</strong>
+                <strong>{liveQuery.enabled && !dashboardReady ? '—' : exactMoney(metrics.amount)}</strong>
               </span>
               <span>
                 <small>{t('common.assistantSurface.regionalApproval.scopeTotals.amountVariance')}</small>
-                <strong>{liveQuery.enabled && scopeSummary.status !== 'success' || amountVariance === undefined ? '—' : exactSignedMoney(amountVariance)}</strong>
+                <strong>{liveQuery.enabled && !dashboardReady || amountVariance === undefined ? '—' : exactSignedMoney(amountVariance)}</strong>
               </span>
               <span>
                 <small>{t('common.assistantSurface.regionalApproval.scopeTotals.planQuantity')}</small>
-                <strong>{liveQuery.enabled && scopeSummary.status !== 'success' ? '—' : `${formatExactDecimal(metrics.quantity)} ${t('common.assistantSurface.regionalApproval.scopeTotals.quantityUnit')}`}</strong>
+                <strong>{liveQuery.enabled && !dashboardReady ? '—' : `${formatExactDecimal(metrics.quantity)} ${t('common.assistantSurface.regionalApproval.scopeTotals.quantityUnit')}`}</strong>
               </span>
-              {liveQuery.enabled && scopeSummary.status === 'loading' ? <Spin className={styles.dashboardSpinner} size={14} /> : null}
-              {historicalSummaryUnavailable ? (
-                <small className={styles.dashboardMessage}>{t('common.assistantSurface.regionalApproval.scopeTotals.historicalUnavailable')}</small>
-              ) : liveQuery.enabled && scopeSummary.status === 'error' ? (
+              {liveQuery.enabled && (liveQuery.queueState.status === 'loading' || liveCategoriesLoading) ? <Spin className={styles.dashboardSpinner} size={14} /> : null}
+              {liveQuery.enabled && (liveQuery.queueState.status === 'error' || (dashboardReady && metrics.amount === '—')) ? (
                 <Button className={styles.dashboardMessage} size='mini' onClick={refreshLiveAuthority}>
                   {t('common.assistantSurface.regionalApproval.scopeTotals.retry')}
                 </Button>
@@ -2343,20 +2334,12 @@ const RegionalApprovalWorkbench: React.FC<{
             <Button
               className={styles.advancedToggle}
               size='small'
-              icon={<FilterOne size={16} />}
               aria-label={t('common.assistantSurface.regionalApproval.filters.toggle')}
               aria-controls={filterPanelId}
               aria-expanded={narrowFiltersExpanded}
               onClick={() => setNarrowFiltersExpanded((expanded) => !expanded)}
             >
-              {t(
-                narrowFiltersExpanded
-                  ? 'common.assistantSurface.regionalApproval.filters.collapse'
-                  : 'common.assistantSurface.regionalApproval.filters.expand'
-              )}
-              {(liveQuery.enabled ? liveFiltersDirty : filtersDirty)
-                ? ` · ${t('common.assistantSurface.regionalApproval.filters.dirty')}`
-                : ''}
+              <Filter size={16} strokeWidth={3} />
             </Button>
             <div id={filterPanelId} className={styles.advancedControls} data-expanded={narrowFiltersExpanded}>
               <div className={styles.filterHeading}>
@@ -2570,7 +2553,7 @@ const RegionalApprovalWorkbench: React.FC<{
                       <Button size='small' onClick={refreshLiveAuthority}>
                         {t('common.assistantSurface.regionalApproval.query.retry')}
                       </Button>
-                  }
+                    }
                   />
                 ) : null}
                 {liveQuery.queueState.status === 'success' && liveRows.length === 0 ? (
@@ -2592,7 +2575,7 @@ const RegionalApprovalWorkbench: React.FC<{
                     tableLayoutFixed
                     indentSize={20}
                     expandedRowRender={(record) => {
-                      if (record.kind !== 'plan' || record.members || record.plan.planId !== inlinePlanId) return null;
+                      if (record.kind === 'plan' && record.members) return null;
                       const access = inlineSkuAccess(record.plan);
                       return (
                         <InlineSkuDetails
@@ -2600,7 +2583,8 @@ const RegionalApprovalWorkbench: React.FC<{
                           t={t}
                           detail={access.detail}
                           approvalRole={access.role}
-                          canEdit={access.canEdit}
+                          canEdit={record.kind === 'plan' && access.canEdit}
+                          categoryName={record.kind === 'category' ? record.category.categoryName : undefined}
                         />
                       );
                     }}
@@ -2611,7 +2595,7 @@ const RegionalApprovalWorkbench: React.FC<{
                           type='button'
                           aria-expanded={expanded}
                           aria-label={t('common.assistantSurface.regionalApproval.expandOrganization', {
-                            plan: projectRegionalApprovalLiveDimension(record.plan, record.displayDimension ?? dimension).name,
+                            plan: record.kind === 'category' ? record.category.categoryName : projectRegionalApprovalLiveDimension(record.plan, record.displayDimension ?? dimension).name,
                           })}
                           onClick={(event) => {
                             event.stopPropagation();
