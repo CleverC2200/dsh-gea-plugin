@@ -270,27 +270,6 @@
   border: 0;
 }
 
-.gea-api-log-trigger {
-  position: fixed;
-  z-index: 20;
-  top: 10px;
-  right: 18px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 34px;
-  padding: 0 12px;
-  border: 1px solid #d9dce3;
-  border-radius: 9px;
-  color: #303746;
-  background: #fff;
-  box-shadow: 0 5px 14px rgba(24, 32, 48, 0.12);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-.gea-api-log-trigger:hover { color: #d92d34; border-color: #ed4348; }
-.gea-api-log-trigger:focus-visible,
 .gea-api-log-center button:focus-visible,
 .gea-api-log-center input:focus-visible,
 .gea-api-log-center pre:focus-visible {
@@ -310,6 +289,13 @@
   flex-direction: column;
   color: var(--api-ink);
   background: #f7f8fa;
+}
+.AppFrame_frame.gea-api-fullscreen {
+  grid-template-columns: minmax(0, 1fr) 0 0 !important;
+}
+.AppFrame_frame.gea-api-fullscreen .AppFrame_sidebarCol,
+.AppFrame_frame.gea-api-fullscreen .AppFrame_rightbarCol {
+  display: none !important;
 }
 .gea-api-log-center button,
 .gea-api-log-center input { font: inherit; }
@@ -594,7 +580,6 @@
   .gea-api-call-row { grid-template-columns: 58px 40px minmax(110px, 1fr) 52px; }
   .gea-api-call-row .gea-api-replayed,
   .gea-api-call-duration { display: none; }
-  .gea-api-log-trigger { top: 8px; right: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

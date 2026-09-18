@@ -251,6 +251,7 @@ const copy = {
   businessFunctions: ["业务功能", "Business functions"],
   planManagement: ["计划管理", "Plan management"],
   demandForecastAgent: ["需求预测 Agent", "Demand forecast Agent"],
+  apiLog: ["接口日志", "API logs"],
   inboxNotConnected: [
     "消息待办接口尚未接入",
     "Message inbox service is not connected",
