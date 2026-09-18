@@ -1008,35 +1008,47 @@ export class Business {
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     const operation = payload.operation === undefined ? undefined : text(payload.operation);
+    if (operation !== undefined && !["unread-count", "read", "dismiss", "batch-read", "approval-action"].includes(operation)) throw new Error("INVALID_PAYLOAD");
     if (operation === "unread-count") {
       return { environment: this.environment, fetchedAt: new Date().toISOString(), count: object(await this.get("/api/v1/notifications/unread-count", auth, signal)).count };
     }
     if (operation === "read" || operation === "dismiss") {
+      keys(payload, ["operation", "id", "expectedVersion", "idempotencyKey"]);
       const id = text(payload.id);
       const expectedVersion = versionNumber(payload.expectedVersion);
       const idempotencyKey = text(payload.idempotencyKey);
+      if (operation === "dismiss") {
+        const detail = notificationDetail(await this.get(`/api/v1/notifications/${encodeURIComponent(id)}`, auth, signal), id);
+        if (detail.dismissible !== true) throw new Error("NOTIFICATION_NOT_DISMISSIBLE");
+      }
       return await this.postJson(`/api/v1/notifications/${encodeURIComponent(id)}/${operation}`, auth, signal, { expectedVersion: String(expectedVersion), idempotencyKey });
     }
     if (operation === "batch-read") {
+      keys(payload, ["operation", "items", "idempotencyKey"]);
       if (!Array.isArray(payload.items) || payload.items.length < 1 || payload.items.length > 100) throw new Error("INVALID_PAYLOAD");
       const items = payload.items.map((item) => {
         const row = object(item);
         keys(row, ["notificationId", "expectedVersion"]);
         return { notification_id: text(row.notificationId), expected_version: String(versionNumber(row.expectedVersion)) };
       });
+      if (new Set(items.map(item => item.notification_id)).size !== items.length) throw new Error("INVALID_PAYLOAD");
       return await this.postJson("/api/v1/notifications/batch-read", auth, signal, { idempotency_key: text(payload.idempotencyKey), items });
     }
     if (operation === "approval-action") {
+      keys(payload, ["operation", "id", "action", "targetUserId", "comment", "expectedVersion", "idempotencyKey"]);
       const id = text(payload.id);
       const action = text(payload.action);
       if (!["APPROVE", "REJECT", "TRANSFER"].includes(action)) throw new Error("INVALID_PAYLOAD");
+      if (action === "TRANSFER") text(payload.targetUserId);
+      if (payload.comment != null && (typeof payload.comment !== "string" || payload.comment.length > 500)) throw new Error("INVALID_PAYLOAD");
       return await this.postJson(`/api/v1/notifications/${encodeURIComponent(id)}/approval-action`, auth, signal, {
         action, target_user_id: payload.targetUserId == null ? null : text(payload.targetUserId),
-        comment: payload.comment == null ? null : text(payload.comment),
+        comment: payload.comment ?? null,
         expected_version: versionNumber(payload.expectedVersion), idempotency_key: text(payload.idempotencyKey),
       });
     }
     let path = "/api/v1/notifications";
+    keys(payload, ["pageNo", "pageSize", "state", "states", "eventType", "id"]);
     if (payload.id !== undefined) {
       if (payload.pageNo !== undefined || payload.state !== undefined || payload.states !== undefined || payload.eventType !== undefined)
         throw new Error("INVALID_PAYLOAD");
@@ -1058,23 +1070,32 @@ export class Business {
       environment: this.environment,
       fetchedAt: new Date().toISOString(),
       ...(payload.id === undefined
-        ? notificationPage(value, this.config.pageSize)
+        ? notificationPage(value, integer(payload.pageSize ?? this.config.pageSize, 1, 100))
         : { detail: notificationDetail(value, text(payload.id)) }),
     };
   }
 
   private async postJson(path: string, identity: { token: string; tenantId?: string }, signal: AbortSignal, body: unknown): Promise<unknown> {
     let response: Response;
+    const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
+    signal.throwIfAborted();
     try {
-      response = await this.apiLog.fetch(this.base + path, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": identity.token, ...(identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}), "X-Request-Id": randomUUID() }, body: JSON.stringify(body), redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)]) });
+      response = await this.apiLog.fetch(this.base + path, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": identity.token, ...(identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}), "X-Request-Id": randomUUID() }, body: JSON.stringify(body), redirect: "error", signal: AbortSignal.any([signal, timeout]) });
     } catch {
       if (signal.aborted) throw new Error("STALE_SELECTION");
+      if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
       throw new Error("GEA_NETWORK_ERROR");
     }
+    signal.throwIfAborted();
+    if (this.auth !== identity) throw new Error("STALE_LOGIN");
     if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw await geaResponseError(response, [identity.token]); }
     const data = object(parseJson(await response.text()));
+    signal.throwIfAborted();
     if (data.success !== true) {
-      if (typeof data.errorCode === "string" && /^NOTIFICATION_[A-Z_]+$/.test(data.errorCode)) throw new Error(data.errorCode);
+      if (typeof data.errorCode === "string" && /^(NOTIFICATION|APPROVAL)_[A-Z_]+$/.test(data.errorCode)) {
+        if (data.errorCode === "NOTIFICATION_UNAUTHENTICATED") this.clearLogin(true);
+        throw new Error(data.errorCode);
+      }
       throw new Error("GEA_REQUEST_REJECTED");
     }
     return data.result;

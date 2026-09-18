@@ -32,15 +32,31 @@ export function Inbox({ t }: { t: Translate }) {
   const [busy, setBusy] = useState(true);
   const [mutationBusy, setMutationBusy] = useState(false);
   const [mutationError, setMutationError] = useState<CopyKey | null>(null);
+  const attempt = useRef<object | null>(null);
+  const writing = useRef(false);
+  const [retryPending, setRetryPending] = useState(false);
   const refresh = () => setRevision((value) => value + 1);
   const mutate = async (payload: object) => {
+    if (writing.current || (attempt.current && attempt.current !== payload)) return;
+    writing.current = true;
+    attempt.current = payload;
     setMutationBusy(true); setMutationError(null);
-    try { await readNotifications({ ...payload }, undefined); setSelectedIds(new Set()); refresh(); setDetailRevision((value) => value + 1); }
-    catch (reason) { setMutationError(notificationError(reason)); }
-    finally { setMutationBusy(false); }
+    try {
+      await readNotifications(payload);
+      attempt.current = null; setRetryPending(false); setSelectedIds(new Set());
+      setDetailResult(null); refresh(); setDetailRevision((value) => value + 1);
+    } catch (reason) {
+      const code = reason instanceof Error ? reason.message : "";
+      const rejected = /^(NOTIFICATION_|APPROVAL_|INVALID_|LOGIN_REQUIRED|STALE_|GEA_HTTP_40[13])/.test(code);
+      setRetryPending(!rejected);
+      if (rejected) { attempt.current = null; setSelectedIds(new Set()); setDetailResult(null); refresh(); setDetailRevision(value => value + 1); }
+      setMutationError(rejected ? notificationError(reason) : "notificationResultUnknown");
+    } finally { writing.current = false; setMutationBusy(false); }
   };
+  const mutationNotice = mutationError && <div role="alert"><p>{t(mutationError)}</p>{retryPending && <button disabled={mutationBusy} onClick={() => attempt.current && mutate(attempt.current)}>{t("notificationRetryOriginal")}</button>}</div>;
   useEffect(() => {
     const controller = new AbortController();
+    setSelectedIds(new Set());
     setError(null);
     setBusy(true);
     void readNotifications<{ value: Page }>({ pageNo, state }, controller.signal)
@@ -96,12 +112,15 @@ export function Inbox({ t }: { t: Translate }) {
           {data && <span className="gea-inbox-unread">{data.unreadCount} {t("inboxUnreadMessages")}</span>}
         </div>
         <div className="gea-inbox-header-actions"><button disabled={busy || mutationBusy} onClick={refresh}>{t("refreshInbox")}</button>
-        {selectedIds.size > 0 && <button disabled={mutationBusy} onClick={() => mutate({ operation: "batch-read", idempotencyKey: `batch-read-${Date.now()}`, items: [...selectedIds].map(id => ({ notificationId: id, expectedVersion: data?.items.find(item => item.id === id)?.version ?? 0 })) })}>{t("markSelectedRead")}</button>}</div>
+        {selectedIds.size > 0 && <button disabled={busy || mutationBusy || retryPending} onClick={() => {
+          const items = data?.items.filter(item => selectedIds.has(item.id) && item.state === "unread" && item.version !== null).map(item => ({ notificationId: item.id, expectedVersion: item.version }));
+          if (items?.length && items.length === selectedIds.size) void mutate({ operation: "batch-read", idempotencyKey: crypto.randomUUID(), items });
+        }}>{t("markSelectedRead")}</button>}</div>
       </header>
       <div className="gea-inbox-toolbar">
         <label className="gea-inbox-filter">
           {t("inboxStatusLabel")}
-          <select aria-label={t("notificationState")} value={state} onChange={(event) => {
+          <select disabled={mutationBusy} aria-label={t("notificationState")} value={state} onChange={(event) => {
             setData(null);
             setState(event.target.value);
             setPageNo(1);
@@ -116,17 +135,17 @@ export function Inbox({ t }: { t: Translate }) {
       </div>
       <div className="gea-inbox-content">
         {error && <p role="alert">{t(error)}</p>}
-        {mutationError && <p role="alert">{t(mutationError)}</p>}
+        {!selected && mutationNotice}
           <div className="gea-inbox-table-scroll">
             <table>
               <thead><tr>
                 <th className="gea-inbox-select-col"><span className="visually-hidden">{t("select")}</span></th><th>{t("inboxBusinessType")}</th><th>{t("inboxSubject")}</th>
-                <th>{t("inboxContent")}</th><th>{t("notificationCreatedAt")}</th>
+                <th>{t("inboxContent")}</th><th>{t("notificationNotifiedAt")}</th>
                 <th>{t("inboxStatus")}</th>
               </tr></thead>
               <tbody>{data?.items.map((item) => (
                 <tr key={item.id} className={item.state === "unread" ? "is-unread" : ""} onClick={() => openDetail(item.id)}>
-                  <td className="gea-inbox-select-col"><input type="checkbox" aria-label={`${t("select")} ${item.title ?? item.id}`} checked={selectedIds.has(item.id)} onChange={(event) => { event.stopPropagation(); setSelectedIds((current) => { const next = new Set(current); event.target.checked ? next.add(item.id) : next.delete(item.id); return next; }); }} onClick={(event) => event.stopPropagation()} /></td>
+                  <td className="gea-inbox-select-col"><input type="checkbox" disabled={busy || mutationBusy || retryPending || item.state !== "unread" || item.version === null} aria-label={`${t("select")} ${item.title ?? item.id}`} checked={selectedIds.has(item.id)} onChange={(event) => { event.stopPropagation(); setSelectedIds((current) => { const next = new Set(current); event.target.checked ? next.add(item.id) : next.delete(item.id); return next; }); }} onClick={(event) => event.stopPropagation()} /></td>
                   <td><span className="gea-inbox-kind">{item.businessType ?? item.kind ?? t("unknown")}</span></td>
                   <td><button className="gea-inbox-subject" onClick={() => openDetail(item.id)}>{item.title ?? item.id}</button></td>
                   <td><span className="gea-inbox-summary">{(item.summary?.trim() || item.body?.trim() || t("notificationNoContent")).slice(0, 160)}</span></td>
@@ -161,6 +180,7 @@ export function Inbox({ t }: { t: Translate }) {
             </button>
           </header>
           <div className="gea-inbox-drawer-body">
+            {mutationNotice}
             <div className="gea-inbox-detail-loading" role="status">{detailBusy ? t("busy") : null}</div>
             {detailError && <div role="alert"><p>{t(detailError)}</p><button onClick={() => { setDetailResult(null); setDetailRevision(value => value + 1); }}>{t("refreshInbox")}</button></div>}
             {detail && <article aria-busy={detailBusy}>
@@ -177,12 +197,12 @@ export function Inbox({ t }: { t: Translate }) {
               <span className="gea-inbox-label">{t("notificationContent")}</span>
               {detail.actionText && <div className="gea-inbox-action"><span>{detail.actionText}</span>{detail.target && <small>{detail.target.type ?? t("unknown")} · {detail.target.value ?? t("unknown")}</small>}</div>}
               <p className="gea-inbox-body">{detail.content?.trim() ? detail.content : detail.summary?.trim() ? detail.summary : t("notificationNoContent")}</p>
-              <div className="gea-inbox-detail-actions">
+              <fieldset disabled={mutationBusy || retryPending || detailBusy} className="gea-inbox-detail-actions">
                 {detail.state === "unread" && detail.version !== null && <button disabled={mutationBusy} onClick={() => mutate({ operation: "read", id: detail.id, expectedVersion: detail.version, idempotencyKey: `read-${detail.id}-${detail.version}` })}>{t("markRead")}</button>}
-                {detail.dismissible === true && detail.version !== null && <button disabled={mutationBusy} onClick={() => mutate({ operation: "dismiss", id: detail.id, expectedVersion: detail.version, idempotencyKey: `dismiss-${detail.id}-${detail.version}` })}>{t("dismissNotification")}</button>}
+                {detail.dismissible === true && detail.state !== "dismissed" && detail.version !== null && <button disabled={mutationBusy} onClick={() => mutate({ operation: "dismiss", id: detail.id, expectedVersion: detail.version, idempotencyKey: `dismiss-${detail.id}-${detail.version}` })}>{t("dismissNotification")}</button>}
                 {detail.approval?.actionable === true && detail.approval.version !== null && detail.approval.actions.includes("APPROVE") && <button disabled={mutationBusy} onClick={() => mutate({ operation: "approval-action", id: detail.id, action: "APPROVE", expectedVersion: detail.approval?.version, idempotencyKey: `approve-${detail.id}-${detail.approval?.version}` })}>{t("approveNotification")}</button>}
                 {detail.approval?.actionable === true && detail.approval.version !== null && detail.approval.actions.includes("REJECT") && <button disabled={mutationBusy} onClick={() => mutate({ operation: "approval-action", id: detail.id, action: "REJECT", expectedVersion: detail.approval?.version, idempotencyKey: `reject-${detail.id}-${detail.approval?.version}` })}>{t("rejectNotification")}</button>}
-              </div>
+              </fieldset>
               <details className="gea-inbox-more"><summary>{t("inboxAdditionalInfo")}</summary><dl className="gea-inbox-info"><div><dt>{t("notificationKind")}</dt><dd>{detail.kind ?? t("unknown")}</dd></div><div><dt>{t("notificationSourceRef")}</dt><dd>{detail.source?.ref ?? t("unknown")}</dd></div><div><dt>{t("notificationExpiry")}</dt><dd>{formatDate(detail.expiresAt)}</dd></div></dl></details>
             </article>}
           </div>
@@ -228,6 +248,7 @@ async function readNotifications<T = { value: unknown }>(query: object, signal?:
 
 function notificationError(reason: unknown): CopyKey {
   const code = reason instanceof Error ? reason.message : "";
+  if (code === "NOTIFICATION_STATE_CONFLICT" || code === "APPROVAL_VERSION_CONFLICT") return "notificationConflict";
   return ["LOGIN_REQUIRED", "GEA_HTTP_401", "NOTIFICATION_UNAUTHENTICATED"].includes(code)
     ? "loginExpired"
     : ["GEA_HTTP_403", "NOTIFICATION_TENANT_FORBIDDEN"].includes(code)
