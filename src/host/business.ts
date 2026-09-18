@@ -285,6 +285,14 @@ function integer(
     throw new Error("INVALID_QUERY");
   return value;
 }
+function versionNumber(value: unknown): number {
+  if (typeof value === "number") return integer(value, 0);
+  if (typeof value === "string" && /^[0-9]+$/.test(value)) {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed)) return parsed;
+  }
+  throw new Error("INVALID_PAYLOAD");
+}
 function project(value: unknown, fields: readonly string[]): Row {
   const row = object(value);
   return Object.fromEntries(
@@ -996,21 +1004,52 @@ export class Business {
 
   /** 使用当前 Host 身份读取固定通知端点，不改变计划选择。 */
   async notifications(payload: Record<string, unknown>, caller: AbortSignal) {
-    keys(payload, ["pageNo", "state", "id"]);
+    keys(payload, ["pageNo", "pageSize", "state", "states", "eventType", "id", "operation", "expectedVersion", "idempotencyKey", "items", "action", "targetUserId", "comment"]);
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
+    const operation = payload.operation === undefined ? undefined : text(payload.operation);
+    if (operation === "unread-count") {
+      return { environment: this.environment, fetchedAt: new Date().toISOString(), count: object(await this.get("/api/v1/notifications/unread-count", auth, signal)).count };
+    }
+    if (operation === "read" || operation === "dismiss") {
+      const id = text(payload.id);
+      const expectedVersion = versionNumber(payload.expectedVersion);
+      const idempotencyKey = text(payload.idempotencyKey);
+      return await this.postJson(`/api/v1/notifications/${encodeURIComponent(id)}/${operation}`, auth, signal, { expectedVersion: String(expectedVersion), idempotencyKey });
+    }
+    if (operation === "batch-read") {
+      if (!Array.isArray(payload.items) || payload.items.length < 1 || payload.items.length > 100) throw new Error("INVALID_PAYLOAD");
+      const items = payload.items.map((item) => {
+        const row = object(item);
+        keys(row, ["notificationId", "expectedVersion"]);
+        return { notification_id: text(row.notificationId), expected_version: String(versionNumber(row.expectedVersion)) };
+      });
+      return await this.postJson("/api/v1/notifications/batch-read", auth, signal, { idempotency_key: text(payload.idempotencyKey), items });
+    }
+    if (operation === "approval-action") {
+      const id = text(payload.id);
+      const action = text(payload.action);
+      if (!["APPROVE", "REJECT", "TRANSFER"].includes(action)) throw new Error("INVALID_PAYLOAD");
+      return await this.postJson(`/api/v1/notifications/${encodeURIComponent(id)}/approval-action`, auth, signal, {
+        action, target_user_id: payload.targetUserId == null ? null : text(payload.targetUserId),
+        comment: payload.comment == null ? null : text(payload.comment),
+        expected_version: versionNumber(payload.expectedVersion), idempotency_key: text(payload.idempotencyKey),
+      });
+    }
     let path = "/api/v1/notifications";
     if (payload.id !== undefined) {
-      if (payload.pageNo !== undefined || payload.state !== undefined)
+      if (payload.pageNo !== undefined || payload.state !== undefined || payload.states !== undefined || payload.eventType !== undefined)
         throw new Error("INVALID_PAYLOAD");
       path += "/" + encodeURIComponent(text(payload.id));
     } else {
       const query = new URLSearchParams({
         pageNo: String(integer(payload.pageNo ?? 1, 1, 100000)),
-        pageSize: String(this.config.pageSize),
+        pageSize: String(integer(payload.pageSize ?? this.config.pageSize, 1, 100)),
       });
       if (payload.state !== undefined && payload.state !== "")
         query.set("state", text(payload.state));
+      if (payload.states !== undefined && payload.states !== "") query.set("states", text(payload.states));
+      if (payload.eventType !== undefined && payload.eventType !== "") query.set("eventType", text(payload.eventType));
       path += "?" + query;
     }
     const value = await this.get(path, auth, signal);
@@ -1022,6 +1061,23 @@ export class Business {
         ? notificationPage(value, this.config.pageSize)
         : { detail: notificationDetail(value, text(payload.id)) }),
     };
+  }
+
+  private async postJson(path: string, identity: { token: string; tenantId?: string }, signal: AbortSignal, body: unknown): Promise<unknown> {
+    let response: Response;
+    try {
+      response = await this.apiLog.fetch(this.base + path, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": identity.token, ...(identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}), "X-Request-Id": randomUUID() }, body: JSON.stringify(body), redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)]) });
+    } catch {
+      if (signal.aborted) throw new Error("STALE_SELECTION");
+      throw new Error("GEA_NETWORK_ERROR");
+    }
+    if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw await geaResponseError(response, [identity.token]); }
+    const data = object(parseJson(await response.text()));
+    if (data.success !== true) {
+      if (typeof data.errorCode === "string" && /^NOTIFICATION_[A-Z_]+$/.test(data.errorCode)) throw new Error(data.errorCode);
+      throw new Error("GEA_REQUEST_REJECTED");
+    }
+    return data.result;
   }
 
   /** 解析当前登录用户的 GEA 个人模型路由，但不向浏览器暴露密钥。 */
