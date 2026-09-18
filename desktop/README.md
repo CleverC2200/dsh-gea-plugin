@@ -82,7 +82,7 @@ Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体�
 
 Windows NSIS 构建固定使用 `ELECTRON_BUILDER_7Z_FILTER=BCJ`，避免 electron-builder 26.15.x 生成的 BCJ2 归档与安装时 Nsis7z 解码器不兼容；同时启用 `nsis.differentialPackage=true`，供更新器减少差分下载。该设置不能消除首次安装的本地逐文件复制耗时，也不替代安装后文件完整性验收。
 
-MSIX 只作为 Windows 10/11 验证路线，不进入现有正式频道。使用 `GEA_DESKTOP_TARGET=win GEA_MSIX_PUBLISHER='CN=实际签名发布者' electron-builder --config desktop/electron-builder-msix.cjs` 构建；必须提供真实签名发布者，未签名的试验包不能视为安装或更新验收。重点验证用户数据目录、原生 Node 模块、快捷方式/协议、首次安装和覆盖更新耗时。MSIX 的差分更新依赖 Windows 的 AppxBlockMap，和 NSIS 的 differentialPackage 不是同一机制。
+MSIX 只作为 Windows 10/11 验证路线，不进入现有正式频道。当前 electron-builder 26.15.3 的实现入口名是 `appx`（生成 MSIX/AppX 包），不是 `msix`。使用 `GEA_DESKTOP_TARGET=win GEA_MSIX_PUBLISHER='CN=实际签名发布者' electron-builder --config desktop/electron-builder-msix.cjs` 构建；必须提供真实签名发布者，未签名的试验包不能视为安装或更新验收。重点验证用户数据目录、原生 Node 模块、快捷方式/协议、首次安装和覆盖更新耗时。MSIX 的差分更新依赖 Windows 的 AppxBlockMap，和 NSIS 的 differentialPackage 不是同一机制。
 
 插件更新以最多 32 个文件复制任务准备独立暂存目录，支持时使用文件系统写时复制，不共享可写硬链接。常规更新只执行一次 pnpm add；仅遇到存储路径或虚拟目录布局不兼容时，执行 pnpm install 修复后重试。其他失败直接返回，不重复安装。取消更新会等待正在进行的文件复制结束再清理暂存目录。
 

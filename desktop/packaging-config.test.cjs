@@ -24,7 +24,8 @@ test('MSIX pilot is explicit and publisher-gated',()=>{
   const result=spawnSync(process.execPath,['-e',`process.env.GEA_MSIX_PUBLISHER='CN=GEA Pilot';process.env.GEA_DESKTOP_PAYLOAD_ROOT='/tmp/payload';process.stdout.write(JSON.stringify(require(${JSON.stringify(path.join(desktop,'electron-builder-msix.cjs'))})))`],{encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
   const config=JSON.parse(result.stdout);
-  assert.deepEqual(config.win.target,['msix']);
-  assert.equal(config.msix.publisher,'CN=GEA Pilot');
-  assert.equal(config.msix.packageName,'GEADesktop');
+  assert.deepEqual(config.win.target,['appx']);
+  assert.equal(config.appx.publisher,'CN=GEA Pilot');
+  assert.equal(config.appx.identityName,'CleverC2200.GEA.Desktop');
+  assert.equal(config.appx.displayName,'GEA Desktop');
 });

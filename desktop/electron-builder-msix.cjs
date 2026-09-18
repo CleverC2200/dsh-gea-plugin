@@ -6,12 +6,11 @@ if(!publisher)throw new Error('Set GEA_MSIX_PUBLISHER to the signed package publ
 module.exports={
   ...base,
   artifactName:'GEA-Desktop-${version}-${os}-${arch}-pilot.${ext}',
-  win:{...base.win,target:['msix'],sign:false},
-  msix:{
+  win:{...base.win,target:['appx']},
+  appx:{
     applicationId:'com.cleverc2200.gea.desktop',
     identityName:'CleverC2200.GEA.Desktop',
-    packageName:'GEADesktop',
-    packageDisplayName:'GEA Desktop',
+    displayName:'GEA Desktop',
     publisher,
     publisherDisplayName:'CleverC2200',
     languages:['zh-CN','en-US']
