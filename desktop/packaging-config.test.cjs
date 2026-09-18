@@ -14,6 +14,7 @@ function load(file,env){
 test('Windows NSIS uses BCJ and differential package without changing macOS',()=>{
   const config=load('electron-builder.cjs');
   assert.deepEqual(config.config.nsis.differentialPackage,true);
+  assert.deepEqual(config.config.electronLanguages,['en-US','zh-CN','zh_CN','zh-TW','zh_TW']);
   assert.equal(config.filter,'BCJ');
   const mac=spawnSync(process.execPath,['-e',`process.env.GEA_DESKTOP_TARGET='mac';const config=require(${JSON.stringify(path.join(desktop,'electron-builder.cjs'))});process.stdout.write(JSON.stringify({config,filter:process.env.ELECTRON_BUILDER_7Z_FILTER}))`],{encoding:'utf8'});
   assert.equal(mac.status,0,mac.stderr);

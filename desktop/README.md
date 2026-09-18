@@ -82,6 +82,8 @@ Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体�
 
 Windows NSIS 构建固定使用 `ELECTRON_BUILDER_7Z_FILTER=BCJ`，避免 electron-builder 26.15.x 生成的 BCJ2 归档与安装时 Nsis7z 解码器不兼容；同时启用 `nsis.differentialPackage=true`，供更新器减少差分下载。该设置不能消除首次安装的本地逐文件复制耗时，也不替代安装后文件完整性验收。
 
+Electron 内置语言包只保留 `en-US`、简体中文和繁体中文变体，避免把不使用的 locale 文件复制进 Windows 安装器；业务插件自己的多语言资源不受此白名单影响。
+
 Windows 签名默认关闭，仅用于本机内测。正式或 Windows 真机验收构建使用证书环境变量，不把证书和密码提交到仓库：`WIN_CSC_LINK=/secure/path/gea.pfx WIN_CSC_KEY_PASSWORD=... GEA_WIN_REQUIRE_SIGNING=1`。也可使用 electron-builder 支持的 `CSC_LINK`/`CSC_KEY_PASSWORD`。开启强制模式后没有证书会直接失败；证书的 Subject/Publisher 必须与 AppX 配置中的 `GEA_MSIX_PUBLISHER` 一致。证书密码只通过 CI Secret、Windows 凭据管理器或临时环境变量注入，构建结束后清除。
 
 仅供 Windows 10/11 内部验收时，可在 PowerShell 运行 `desktop/create-windows-test-certificate.ps1` 生成自签名测试证书。脚本会把证书加入当前用户的 `TrustedPeople`，仅该用户/机器信任；不要把生成的目录、密码或证书提交到 Git。自签名证书不能用于正式发布或替代公开信任的公司证书。
