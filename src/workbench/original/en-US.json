@@ -661,6 +661,12 @@
           "rateLimited": "Model rate limit reached. Retry later."
         },
         "missingDescription": "Material description unavailable",
+        "draft": {
+          "loading": "Loading draft…",
+          "saving": "Saving draft…",
+          "saved": "Saved automatically",
+          "failed": "Draft save failed"
+        },
         "editCurrent": "Edit adjustment draft",
         "editScope": "This view shows aggregates. Editing applies only to the currently selected plan.",
         "readOnly": "Read-only",

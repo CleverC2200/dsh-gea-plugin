@@ -1,5 +1,4 @@
 import { InlineSkuDetails } from './InlineSkuDetails.tsx';
-import { ApprovalDraftEditor } from './ApprovalDraftEditor.tsx';
 import { correctionMetrics } from './models/salesPlanCorrectionModel.ts';
 import { CorrectionWorkbench } from './CorrectionWorkbench.tsx';
 import type { GeaSalesPlanPeriod } from '../../contracts.ts';
@@ -76,7 +75,6 @@ import RegionalApprovalLivePlanDetail, {
 import RegionalApprovalActionDialog from './RegionalApprovalActionDialog.tsx';
 import RegionalApprovalLiveActionDialog, { type LiveActionKind } from './RegionalApprovalLiveActionDialog.tsx';
 import { groupRegionalApprovalLiveRows } from './regionalApprovalQueryModel.ts';
-import RegionalApprovalLiveAdjustmentDialog from './RegionalApprovalLiveAdjustmentDialog.tsx';
 import RegionalApprovalLiveProgress from './RegionalApprovalLiveProgress.tsx';
 import {
   EMPTY_REGIONAL_APPROVAL_ACTION_STORE,
@@ -109,7 +107,6 @@ import {
 } from './useRegionalApprovalQuery.ts';
 import type { SalesPlanDetailClient } from './hooks/useSalesPlanDetail.ts';
 import { salesPlanApprovalNodeForStatus, type SalesPlanActionClient } from './models/salesPlanActionModel.ts';
-import type { SalesPlanAdjustmentDraft } from './models/salesPlanAdjustmentModel.ts';
 import type { GeaSalesPlanActionReceipt, GeaSalesPlanVersion } from '../../bridge.ts';
 import { salesPlan } from '../../bridge.ts';
 import {
@@ -504,9 +501,6 @@ const RegionalApprovalWorkbench: React.FC<{
   const [exportFeedback, setExportFeedback] = useState<ExportFeedback>();
   const [detailRowId, setDetailRowId] = useState<string>();
   const [liveDetailPlanId, setLiveDetailPlanId] = useState<string>();
-  const [liveAdjustmentPlanId, setLiveAdjustmentPlanId] = useState<string>();
-  const [liveAdjustmentDimension, setLiveAdjustmentDimension] = useState<ApprovalDimension>(dimension);
-  const [liveAdjustmentDrafts, setLiveAdjustmentDrafts] = useState<Record<string, SalesPlanAdjustmentDraft>>({});
   const [focusedLivePlanId, setFocusedLivePlanId] = useState<string>();
   const [liveVersions, setLiveVersions] = useState<GeaSalesPlanVersion[]>([]);
   const [liveVersionsLoading, setLiveVersionsLoading] = useState(false);
@@ -573,27 +567,13 @@ const RegionalApprovalWorkbench: React.FC<{
     [liveQuery.queueState.data?.records]
   );
   const draftedLiveRows = useMemo(
-    () =>
-      liveRows.map((row) => {
-        const drafts = Object.values(liveAdjustmentDrafts).filter((draft) => draft.versionId === row.versionId);
-        const metrics = versionMetrics[row.planId];
-        const measuredRow = metrics
-          ? {...row,mPlanQty:metrics.baseQty,mPlanAmount:metrics.baseAmount,currentQty:metrics.qty,currentAmount:metrics.amount,targetQty:metrics.targetQty,targetAmount:metrics.targetAmount}
-          : row;
-        if (drafts.length === 0) return measuredRow;
-        const quantityDelta = addExactDecimals(
-          drafts.map((draft) => subtractExactDecimals(draft.qty, draft.sourceQty))
-        );
-        const amountDelta = addExactDecimals(
-          drafts.map((draft) => subtractExactDecimals(draft.amount, draft.sourceAmount))
-        );
-        return {
-          ...measuredRow,
-          currentQty: addExactDecimals([measuredRow.currentQty, quantityDelta]),
-          currentAmount: addExactDecimals([measuredRow.currentAmount, amountDelta]),
-        };
-      }),
-    [liveAdjustmentDrafts, liveRows, versionMetrics]
+    () => liveRows.map((row) => {
+      const metrics = versionMetrics[row.planId];
+      return metrics
+        ? {...row,mPlanQty:metrics.baseQty,mPlanAmount:metrics.baseAmount,currentQty:metrics.qty,currentAmount:metrics.amount,targetQty:metrics.targetQty,targetAmount:metrics.targetAmount}
+        : row;
+    }),
+    [liveRows, versionMetrics]
   );
   const dimensionStage = liveQuery.enabled ? (liveStageFilter ?? 'category') : currentStage;
   const availableDimensions = APPROVAL_DIMENSIONS_BY_STAGE[dimensionStage];
@@ -715,7 +695,6 @@ const RegionalApprovalWorkbench: React.FC<{
   );
   const activeDetailRow = visibleRows.find((row) => row.id === detailRowId);
   const activeLiveDetailRow = liveRows.find((row) => row.planId === liveDetailPlanId);
-  const activeLiveAdjustmentRow = liveRows.find((row) => row.planId === liveAdjustmentPlanId);
   const focusedLiveRow = liveRows.find((row) => row.planId === focusedLivePlanId) ?? liveRows[0];
   const scopedPrimaryVersionId = liveVersions.some(
     (version) => version.planId === focusedLiveRow?.planId && version.id === livePrimaryVersionId
@@ -865,7 +844,7 @@ const RegionalApprovalWorkbench: React.FC<{
         quantity: scopeSummary.data?.quantity ?? '—',
         amount: scopeSummary.data?.amount ?? '—',
         targetAmount: scopeSummary.data?.targetAmount,
-        savedAdjustmentCount: Object.keys(liveAdjustmentDrafts).length,
+        savedAdjustmentCount: 0,
         localApprovalResultCount: 0,
       };
     }
@@ -884,7 +863,6 @@ const RegionalApprovalWorkbench: React.FC<{
   }, [
     scopeSummary,
     draftedLiveRows,
-    liveAdjustmentDrafts,
     liveQuery.enabled,
     localApprovalResults.length,
     primaryVersion,
@@ -932,8 +910,6 @@ const RegionalApprovalWorkbench: React.FC<{
 
   useEffect(() => {
     setLiveDetailPlanId(undefined);
-    setLiveAdjustmentPlanId(undefined);
-    setLiveAdjustmentDrafts({});
     setLiveActionPlanId(undefined);
     setLiveAuthorityContext(undefined);
     setPermissionDeniedVersions(new Set());
@@ -1641,7 +1617,6 @@ const RegionalApprovalWorkbench: React.FC<{
                   }
                   selectLivePlanContext(row);
                   setFocusedLivePlanId(row.planId);
-                  setLiveAdjustmentDimension(tableRow.childPlan ? 'customer' : dimension);
                   setInlinePlanId(current => current === row.planId ? undefined : row.planId);
                 }}
                 aria-label={t(
@@ -1963,7 +1938,7 @@ const RegionalApprovalWorkbench: React.FC<{
       <RegionalApprovalLiveActionDialog
         key={`${activeLiveActionRow.versionId}:${liveActionKind}`}
         visible
-        embedded={Boolean(activeLiveAdjustmentRow)}
+        embedded={false}
         autoSubmitApproval={liveActionKind === 'APPROVE'}
         row={activeLiveActionRow}
         approvalStage={liveStageFilter ?? (roleStages.length === 1 ? roleStages[0] : 'customer')}
@@ -1979,16 +1954,12 @@ const RegionalApprovalWorkbench: React.FC<{
             if (!before || !detailClient) throw new Error('Save verification unavailable');
             const after = await detailClient.detail.invoke({ planId: receipt.planId });
             if (!verifySavedSalesPlan(before, after, request, receipt)) throw new Error('Save readback mismatch');
-            setLiveAdjustmentDrafts((current) =>
-              Object.fromEntries(Object.entries(current).filter(([, draft]) => draft.versionId !== receipt.versionId))
-            );
           } else {
             setLiveActionReceipts((current) => ({ ...current, [receipt.versionId]: receipt }));
           }
           setLiveAuthorityContext(projectSalesPlanActionContext(activeLiveActionRow, receipt, contextFilterSummary));
           setSelectedRowIds([]);
           setLiveActionPlanId(undefined);
-          setLiveAdjustmentPlanId(undefined);
           refreshLiveAuthority();
         }}
         onRefresh={refreshLiveAuthority}
@@ -1999,6 +1970,26 @@ const RegionalApprovalWorkbench: React.FC<{
         onClose={() => setLiveActionPlanId(undefined)}
       />
     ) : null;
+
+  const inlineSkuAccess = (row: RegionalApprovalLiveRow) => {
+    const detail = liveAccess.entries[row.versionId];
+    if (!detail) return { detail: undefined, role: undefined, canEdit: false };
+    const editableRole = roleStages
+      .filter((candidate): candidate is Exclude<ApprovalStageId, 'customer'> => candidate !== 'customer')
+      .map((candidate) => ({
+        candidate,
+        access: salesPlanAccessForRow(row, detail, permissionCodes, candidate),
+      }))
+      .find(({ access }) => access?.allowedActions.includes('SAVE') || access?.allowedActions.includes('APPROVE'));
+    const actionContextAllowsEdit = detail.actionContext?.allowedActions.some(
+      (action) => action === 'SAVE' || action === 'APPROVE',
+    );
+    return {
+      detail,
+      role: editableRole?.candidate ?? liveStageFilter ?? roleStages[0],
+      canEdit: Boolean(editableRole || actionContextAllowsEdit),
+    };
+  };
 
   return (
     <main
@@ -2585,8 +2576,19 @@ const RegionalApprovalWorkbench: React.FC<{
                     className={styles.organizationTable}
                     tableLayoutFixed
                     indentSize={20}
-                    expandedRowRender={(record) => record.kind === 'plan' && !record.members && record.plan.planId === inlinePlanId
-                      ? <InlineSkuDetails row={{...record.plan,versionId:versionMetrics[record.plan.planId]?.versionId ?? record.plan.versionId}} t={t} onOpen={() => {setLiveAdjustmentDimension(dimension);setLiveAdjustmentPlanId(record.plan.planId);}} /> : null}
+                    expandedRowRender={(record) => {
+                      if (record.kind !== 'plan' || record.members || record.plan.planId !== inlinePlanId) return null;
+                      const access = inlineSkuAccess(record.plan);
+                      return (
+                        <InlineSkuDetails
+                          row={{ ...record.plan, versionId: versionMetrics[record.plan.planId]?.versionId ?? record.plan.versionId }}
+                          t={t}
+                          detail={access.detail}
+                          approvalRole={access.role}
+                          canEdit={access.canEdit}
+                        />
+                      );
+                    }}
                     expandProps={{
                       width: 40,
                       icon: ({ expanded, record }) => (
@@ -2781,41 +2783,7 @@ const RegionalApprovalWorkbench: React.FC<{
         />
       ) : null}
 
-      {activeLiveAdjustmentRow ? (
-        <RegionalApprovalLiveAdjustmentDialog
-          key={`${activeLiveAdjustmentRow.versionId}:${liveAdjustmentDimension}`}
-          visible
-          rows={liveRows}
-          row={activeLiveAdjustmentRow}
-          initialDimension={liveAdjustmentDimension}
-          drafts={liveAdjustmentDrafts}
-          editor={liveActionKind === 'SAVE' && liveActionPlanId && liveAccess.entries[activeLiveAdjustmentRow.versionId]
-            ? <ApprovalDraftEditor detail={liveAccess.entries[activeLiveAdjustmentRow.versionId]} t={t} onClose={() => setLiveActionPlanId(undefined)} />
-            : liveActionDialog}
-          t={t}
-          client={detailClient}
-          onDraftsChange={(recordIds, nextDrafts) => {
-            const nextDraftById = Object.fromEntries(
-              nextDrafts.map((draft) => [`${draft.versionId}:${draft.skuCode}`, draft])
-            );
-            setLiveAdjustmentDrafts((current) => ({
-              ...Object.fromEntries(Object.entries(current).filter(([recordId]) => !recordIds.includes(recordId))),
-              ...nextDraftById,
-            }));
-          }}
-          onEdit={
-            liveActionsEnabled && Boolean(liveAccess.entries[activeLiveAdjustmentRow.versionId]?.actionContext?.snapshotHash) && !liveActionDisabledReason(activeLiveAdjustmentRow, 'APPROVE')
-              ? () => {
-                  setLiveActionKind('SAVE');
-                  setLiveActionPlanId(activeLiveAdjustmentRow.planId);
-                }
-              : undefined
-          }
-          onClose={() => setLiveAdjustmentPlanId(undefined)}
-        />
-      ) : null}
-
-      {!activeLiveAdjustmentRow ? liveActionDialog : null}
+      {liveActionDialog}
 
       {activeActionRow ? (
         <RegionalApprovalActionDialog
