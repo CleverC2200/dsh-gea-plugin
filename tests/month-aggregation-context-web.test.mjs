@@ -80,6 +80,7 @@ test('one month merges Y and DC plans and synchronises the combined page with th
   const readContexts = () => contextPayloads.filter(Boolean);
   await expect.poll(() => readContexts().length).toBeGreaterThan(0);
   const combined = readContexts().at(-1);
+  assert.ok(Number.isInteger(combined.sequence) && combined.sequence >= 1, JSON.stringify(combined));
   assert.equal(combined.scope.month, '2026-10');
   assert.equal(combined.scope.planType, 'mixed');
   assert.deepEqual(combined.visibleRows.map(row => row.planId).toSorted(), ['plan-dc','plan-y'], JSON.stringify(listResponses));

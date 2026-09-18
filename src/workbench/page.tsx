@@ -20,6 +20,7 @@ import type { Business, Preview } from "../host/business.ts";
 import type { CopyKey } from "../client/locales.ts";
 import "./workbench.css";
 import logo from "./gea-logo.png";
+import { ApiLogCenter } from "./api-log-center.tsx";
 
 type Status = ReturnType<Business["status"]>;
 type Translate = (key: CopyKey) => string;
@@ -210,11 +211,14 @@ function requestErrorMessage(error: unknown, t: Translate): string {
 /** 只挂载真实 GEA 数据；未认证或查询失败时绝不切换到 fixture。 */
 export function WorkbenchPage({ t }: { t: Translate }) {
   const [status, setStatus] = useState<Status>();
+  const directApiLog = new URLSearchParams(window.location.search).get("view") === "api-log";
+  const [apiLogOpen, setApiLogOpen] = useState(directApiLog);
   const [workbenchRevision, setWorkbenchRevision] = useState(0);
   const [resubmit, setResubmit] = useState<{ planId: string; versionId: string; period: GeaSalesPlanPeriod }>();
   useEffect(() => {
     setResubmit(undefined);
-  }, [status?.environment, status?.user?.id]);
+    if (!directApiLog) setApiLogOpen(false);
+  }, [directApiLog, status?.environment, status?.user?.id]);
   const [qr, setQr] = useState<{ image: string; loginId: string }>();
   const [expired, setExpired] = useState(false);
   const [qrRefresh, setQrRefresh] = useState(0);
@@ -264,13 +268,16 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     useState<VisibleWorkbenchContext>();
   const onContextChange = useCallback(
     (context: RegionalApprovalWorkbenchContext) => {
-      const nextContext = visibleWorkbenchContext(context, 0);
-      const nextKey = JSON.stringify(nextContext);
+      const nextSequence = contextSequence.current + 1;
+      const nextContext = visibleWorkbenchContext(context, nextSequence);
+      const nextKey = nextContext
+        ? JSON.stringify({ ...nextContext, sequence: 0 })
+        : '';
       if (nextKey !== contextRef.current) {
         contextRef.current = nextKey;
-        contextSequence.current += 1;
+        contextSequence.current = nextSequence;
         setConversationContext(
-          nextContext && { ...nextContext, sequence: contextSequence.current },
+          nextContext,
         );
       }
       const ids =
@@ -510,7 +517,15 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     );
   return (
     <div className="gea-workbench-document">
-      <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
+      {apiLogOpen ? (
+        <ApiLogCenter
+          environment={status.environment}
+          request={rpc}
+          onClose={() => setApiLogOpen(false)}
+        />
+      ) : (
+        <>
+          <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
             <div className="gea-original-workbench">
               <RegionalApprovalWorkbench
                 key={workbenchRevision}
@@ -529,7 +544,9 @@ export function WorkbenchPage({ t }: { t: Translate }) {
             {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit}
               client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)}
               onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}
-      </WorkbenchSessionProvider>
+          </WorkbenchSessionProvider>
+        </>
+      )}
     </div>
   );
 }

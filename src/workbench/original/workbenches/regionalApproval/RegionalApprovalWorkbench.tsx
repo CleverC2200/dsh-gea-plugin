@@ -3,7 +3,7 @@ import { correctionMetrics } from './models/salesPlanCorrectionModel.ts';
 import { CorrectionWorkbench } from './CorrectionWorkbench.tsx';
 import type { GeaSalesPlanPeriod } from '../../contracts.ts';
 /** 改编自 AionUi（Apache-2.0）：已替换为本地导入并使用显式 DSH Host 适配器，见 SOURCE.md。 */
-import { salesPlanStatusText } from './regionalApprovalQueryModel.ts';
+import { salesPlanQueueStatusText, salesPlanStatusText } from './regionalApprovalQueryModel.ts';
 import { SALES_PLAN_RETURN_CODES } from '../../salesPlanWorkflow.ts';
 import {
   aggregateSalesPlanExportAmounts,
@@ -1542,7 +1542,7 @@ const RegionalApprovalWorkbench: React.FC<{
       >
         {tableRow.members && new Set(tableRow.members.map((member) => member.status)).size > 1
           ? t('common.assistantSurface.regionalApproval.mixedApprovalStatus')
-          : salesPlanStatusText(row.status, row.planTypeCode, t)}
+          : salesPlanQueueStatusText(row.status, row.planTypeCode, liveStageFilter ?? 'category', t)}
       </Tag>
     );
   };
@@ -1972,21 +1972,26 @@ const RegionalApprovalWorkbench: React.FC<{
     ) : null;
 
   const inlineSkuAccess = (row: RegionalApprovalLiveRow) => {
-    const detail = liveAccess.entries[row.versionId];
+    const detail = liveAccess.entries[row.versionId] ?? Object.values(liveAccess.entries).find(
+      (candidate) => candidate.currentVersion.planId === row.planId && candidate.currentVersion.id === row.versionId,
+    );
     if (!detail) return { detail: undefined, role: undefined, canEdit: false };
-    const accessRoles: ApprovalStageId[] = liveStageFilter
-      ? [liveStageFilter]
+    const accessRoles: Exclude<ApprovalStageId, 'customer'>[] = roleStages.length
+      ? roleStages.filter((candidate): candidate is Exclude<ApprovalStageId, 'customer'> => candidate !== 'customer')
       : ['region', 'province', 'area', 'category'];
     const editableRole = accessRoles
       .map((candidate) => ({
         candidate,
         access: salesPlanAccessForRow(row, detail, permissionCodes, candidate),
       }))
-      .find(({ access }) => access?.allowedActions.includes('APPROVE'));
+      .find(({ access }) => access?.allowedActions.includes('SAVE') || access?.allowedActions.includes('APPROVE'));
+    const actionContextAllowsEdit = detail.actionContext?.allowedActions.some(
+      (action) => action === 'SAVE' || action === 'APPROVE',
+    );
     return {
       detail,
-      role: editableRole?.candidate,
-      canEdit: Boolean(editableRole) && !liveActionDisabledReason(row),
+      role: editableRole?.candidate ?? liveStageFilter ?? roleStages[0],
+      canEdit: Boolean(editableRole || actionContextAllowsEdit),
     };
   };
 
