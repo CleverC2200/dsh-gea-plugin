@@ -1359,7 +1359,7 @@
 .dashboardHeader {
   position: relative;
   flex: 0 0 auto;
-  padding: 18px 20px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--bg-3);
   background: var(--bg-1);
 }
@@ -1367,12 +1367,12 @@
 .queueMetrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  gap: 10px;
 }
 
 .queueMetrics > span {
   min-width: 0;
-  padding: 11px 16px;
+  padding: 8px 14px;
   border: 0;
   border-radius: 10px;
   background: var(--bg-2);
@@ -1380,19 +1380,19 @@
 
 .queueMetrics small {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 11px;
+  line-height: 16px;
 }
 
 .queueMetrics strong {
   display: block;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 500;
-  line-height: 24px;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

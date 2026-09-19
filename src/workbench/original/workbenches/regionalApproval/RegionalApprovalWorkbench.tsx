@@ -666,6 +666,17 @@ const RegionalApprovalWorkbench: React.FC<{
       });
     return build(prioritizedLiveRows, levels.indexOf(dimension));
   }, [categoryComparison, liveCategorySummaries, prioritizedLiveRows, dimension]);
+  const liveTableRowById = useMemo(() => {
+    const rows = new Map<string, RegionalApprovalLiveTableRow>();
+    const visit = (tableRows: RegionalApprovalLiveTableRow[]) => {
+      tableRows.forEach((row) => {
+        rows.set(row.tableRowId, row);
+        if (row.kind === 'plan' && row.children) visit(row.children);
+      });
+    };
+    visit(liveTableRows);
+    return rows;
+  }, [liveTableRows]);
   const [expandedLiveGroups, setExpandedLiveGroups] = useState<Array<string | number>>([]);
   const selectableFixtureRow = (row: RegionalApprovalRow) =>
     row.approvalState === 'pending' && row.permission === 'writable' && row.reachedStage === currentStage;
@@ -677,6 +688,19 @@ const RegionalApprovalWorkbench: React.FC<{
     () => liveRows.filter((row) => selectedRowIds.includes(row.planId)),
     [liveRows, selectedRowIds]
   );
+  const selectedLiveTableRowIds = useMemo(() => {
+    const selected = new Set(selectedRowIds);
+    const visit = (rows: RegionalApprovalLiveTableRow[]) => {
+      rows.forEach((row) => {
+        if (row.kind === 'plan' && row.members?.length && row.members.every((member) => selected.has(member.planId))) {
+          selected.add(row.tableRowId);
+        }
+        if (row.kind === 'plan' && row.children) visit(row.children);
+      });
+    };
+    visit(liveTableRows);
+    return [...selected];
+  }, [liveTableRows, selectedRowIds]);
   const displayStage = liveQuery.enabled ? liveStageFilter : currentStage;
   const effectiveStage: SalesPlanContextApprovalStage = liveQuery.enabled ? (liveStageFilter ?? 'all') : currentStage;
   const contextAppliedFilters = useMemo<ApprovalContextFilters>(
@@ -1727,6 +1751,7 @@ const RegionalApprovalWorkbench: React.FC<{
         const categoryTarget = /^-?\d+(?:\.\d+)?$/.test(tableRow.plan.targetAmount) && /^-?\d+(?:\.\d+)?$/.test(baseTotal) && Number(baseTotal) !== 0
           ? Number(tableRow.plan.targetAmount) * Number(category.baseAmount) / Number(baseTotal)
           : undefined;
+        // 品类金额进度统一按「计划金额 ÷ 目标金额」计算，避免把原计划金额误当作分母。
         const categoryProgress = categoryTarget && categoryTarget !== 0 ? Number(category.amount) / categoryTarget * 100 : undefined;
         return (
           <div className={styles.categoryProgressCell}>
@@ -1743,12 +1768,14 @@ const RegionalApprovalWorkbench: React.FC<{
               width={100}
             />
             <small>
-              {t('common.assistantSurface.regionalApproval.categoryRows.planAmount', {
-                amount: exactMoney(category.amount),
+              {t('common.assistantSurface.regionalApproval.categoryRows.targetAmount', {
+                amount: categoryTarget == null ? '—' : exactMoney(Number(categoryTarget).toFixed(2)),
               })}
             </small>
             <small>
-              {t('common.assistantSurface.regionalApproval.query.planQuantity')} {formatExactDecimal(category.quantity)}
+              {t('common.assistantSurface.regionalApproval.categoryRows.planAmount', {
+                amount: exactMoney(category.amount),
+              })}
             </small>
           </div>
         );
@@ -2604,10 +2631,22 @@ const RegionalApprovalWorkbench: React.FC<{
                       checkAll: false,
                       fixed: pinLiveColumns,
                       columnWidth: 40,
-                      selectedRowKeys: selectedRowIds,
-                      onChange: (keys) => setSelectedRowIds(keys.map(String)),
+                      selectedRowKeys: selectedLiveTableRowIds,
+                      onChange: (keys) => {
+                        const planIds = new Set<string>();
+                        keys.forEach((key) => {
+                          const row = liveTableRowById.get(String(key));
+                          if (row?.kind !== 'plan') return;
+                          if (row.members?.length) {
+                            row.members.forEach((member) => planIds.add(member.planId));
+                          } else {
+                            planIds.add(row.plan.planId);
+                          }
+                        });
+                        setSelectedRowIds([...planIds]);
+                      },
                       checkboxProps: (row) => ({
-                        disabled: row.kind !== 'plan' || Boolean(row.members),
+                        disabled: row.kind !== 'plan',
                       }),
                     }}
                     pagination={false}
