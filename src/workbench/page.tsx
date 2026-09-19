@@ -22,6 +22,34 @@ import "./workbench.css";
 import logo from "./gea-logo.png";
 import { ApiLogCenter } from "./api-log-center.tsx";
 
+type HtmlPlugin = { id: string; label: string; group: string; url: string };
+const HTML_PLUGINS: HtmlPlugin[] = [
+  { id: "inventory-apsboard", label: "产销协同看板", group: "产销协同", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/bb0ebb159dd3ceb08f829dc928896ba5ea6bb18a/packages/inventory-apsboard-0.1.0-preview.9.zip" },
+  { id: "inventory-apsdemand", label: "需求运营管理", group: "产销协同", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/bb0ebb159dd3ceb08f829dc928896ba5ea6bb18a/packages/inventory-apsdemand-0.1.0-preview.9.zip" },
+  { id: "inventory-apsdelivery", label: "交付运营管理", group: "产销协同", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/bb0ebb159dd3ceb08f829dc928896ba5ea6bb18a/packages/inventory-apsdelivery-0.1.0-preview.9.zip" },
+  { id: "inventory-personal", label: "库存管理工作台", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/bb0ebb159dd3ceb08f829dc928896ba5ea6bb18a/packages/inventory-personal-0.2.7-preview.1.zip" },
+  { id: "inventory-aqkc", label: "安全库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/36b3723b0fa734c22c609249448682fef945c3e5/packages/inventory-aqkc-0.2.6-preview.1.zip" },
+  { id: "inventory-dealer", label: "经销商库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/36b3723b0fa734c22c609249448682fef945c3e5/packages/inventory-dealer-0.2.6-preview.1.zip" },
+  { id: "inventory-fc", label: "分仓库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/36b3723b0fa734c22c609249448682fef945c3e5/packages/inventory-fc-0.2.6-preview.1.zip" },
+  { id: "inventory-qll", label: "全链路库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/36b3723b0fa734c22c609249448682fef945c3e5/packages/inventory-qll-0.2.6-preview.1.zip" },
+];
+
+function ShellIcon({ name }: { name: "home" | "robot" | "users" | "calendar" | "box" | "settings" | "plus" | "history" | "send" | "menu" }) {
+  const paths: Record<string, string> = {
+    home: "M3 10.5 12 3l9 7.5V21H14v-6h-4v6H3z",
+    robot: "M8 9h8a3 3 0 0 1 3 3v6H5v-6a3 3 0 0 1 3-3Zm4-6v3M8 14h.01M16 14h.01M8 18v2m8-2v2",
+    users: "M16 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1m6-9a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7-7a3 3 0 0 1 0 6m3 10v-1a4 4 0 0 0-3-3.87",
+    calendar: "M5 4h14a2 2 0 0 1 2 2v13H3V6a2 2 0 0 1 2-2Zm3-2v4m8-4v4M3 9h18",
+    box: "M4 7 12 3l8 4v10l-8 4-8-4V7Zm0 0 8 4 8-4M12 11v10",
+    settings: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0-5v3m0 13v3M4.93 4.93l2.12 2.12m9.9 9.9 2.12 2.12M3 12h3m12 0h3M4.93 19.07l2.12-2.12m9.9-9.9 2.12-2.12",
+    plus: "M12 5v14M5 12h14",
+    history: "M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2",
+    send: "m3 4 18 8-18 8 3-8-3-8Zm3 8h15",
+    menu: "M4 6h16M4 12h16M4 18h16",
+  };
+  return <svg className="gea-shell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d={paths[name]} /></svg>;
+}
+
 type Status = ReturnType<Business["status"]>;
 type Translate = (key: CopyKey) => string;
 type AnalysisScope = "summary" | "details";
@@ -212,6 +240,10 @@ function requestErrorMessage(error: unknown, t: Translate): string {
 export function WorkbenchPage({ t }: { t: Translate }) {
   const [status, setStatus] = useState<Status>();
   const directApiLog = new URLSearchParams(window.location.search).get("view") === "api-log";
+  const initialView = new URLSearchParams(window.location.search).get("plugin") ?? "workbench";
+  const [shellView, setShellView] = useState<"plugin" | "workbench">(initialView === "workbench" ? "workbench" : "plugin");
+  const [selectedPlugin, setSelectedPlugin] = useState<HtmlPlugin>(HTML_PLUGINS.find((plugin) => plugin.id === initialView) ?? HTML_PLUGINS[0]);
+  const pluginFrame = useRef<HTMLIFrameElement>(null);
   const [apiLogOpen, setApiLogOpen] = useState(directApiLog);
   const [workbenchRevision, setWorkbenchRevision] = useState(0);
   const [resubmit, setResubmit] = useState<{ planId: string; versionId: string; period: GeaSalesPlanPeriod }>();
@@ -240,6 +272,18 @@ export function WorkbenchPage({ t }: { t: Translate }) {
         avatarUrl: status?.authenticated ? (status.user?.avatar ?? "") : "",
       },
       window.location.origin,
+    );
+  }, [status]);
+  const notifyPluginIdentity = useCallback(() => {
+    pluginFrame.current?.contentWindow?.postMessage(
+      {
+        type: "gea:identity",
+        authenticated: status?.authenticated === true,
+        name: status?.user?.name ?? "",
+        avatarUrl: status?.user?.avatar ?? "",
+        environment: status?.environment,
+      },
+      "*",
     );
   }, [status]);
   useEffect(() => {
@@ -527,28 +571,53 @@ export function WorkbenchPage({ t }: { t: Translate }) {
           onClose={() => setApiLogOpen(false)}
         />
       ) : (
-        <>
-          <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
-            <div className="gea-original-workbench">
-              <RegionalApprovalWorkbench
-                key={workbenchRevision}
-                stateScope={`gea-dsh:${status.environment}:${status.user?.tenantId}:${status.user?.id}`}
-                t={locale.t.bind(locale)}
-                onContextChange={onContextChange}
-                queryClient={salesPlan}
-                detailClient={salesPlan}
-                permissionCodes={status.permissionCodes}
-                liveActionsEnabled={true}
-                liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
-                onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })}
-                automaticAnalysisEnabled={true}
-              />
-            </div>
-            {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit}
-              client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)}
-              onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}
-          </WorkbenchSessionProvider>
-        </>
+        <div className="gea-shell">
+          <aside className="gea-shell-sidebar">
+            <div className="gea-brand"><span className="gea-brand-mark">思</span><span>GEA平台</span></div>
+            <button className="gea-collapse" type="button" aria-label="收起导航"><ShellIcon name="menu" /></button>
+            <nav className="gea-primary-nav" aria-label="主导航">
+              <button type="button" className="gea-nav-item is-active"><ShellIcon name="robot" /><span>AI工作台</span></button>
+              <button type="button" className="gea-nav-item"><ShellIcon name="calendar" /><span>业务待办</span></button>
+              <button type="button" className="gea-nav-item"><ShellIcon name="users" /><span>客户管理</span><span className="gea-nav-chevron">⌄</span></button>
+              <button type="button" className="gea-nav-item"><ShellIcon name="box" /><span>计划管理</span><span className="gea-nav-chevron">⌄</span></button>
+            </nav>
+            <div className="gea-nav-section-label">插件工作区</div>
+            <nav className="gea-plugin-nav" aria-label="插件导航">
+              <button type="button" className={`gea-plugin-nav-item ${shellView === "workbench" ? "is-active" : ""}`} onClick={() => setShellView("workbench")}>业务工作台</button>
+              {HTML_PLUGINS.map((plugin) => (
+                <button key={plugin.id} type="button" className={`gea-plugin-nav-item ${shellView === "plugin" && selectedPlugin.id === plugin.id ? "is-active" : ""}`} onClick={() => { setSelectedPlugin(plugin); setShellView("plugin"); }}>
+                  <span className="gea-plugin-dot" />{plugin.label}
+                </button>
+              ))}
+            </nav>
+            <div className="gea-sidebar-footer"><div className="gea-user-avatar">{status.user?.name?.slice(0, 1) ?? "刘"}</div><div><strong>{status.user?.name ?? "当前用户"}</strong><span>{status.user?.tenantId ?? "已登录"}</span></div><ShellIcon name="settings" /></div>
+          </aside>
+          <main className="gea-shell-main">
+            <header className="gea-shell-header"><div><span className="gea-breadcrumb">AI工作台</span><span className="gea-breadcrumb-separator">/</span><strong>{shellView === "plugin" ? selectedPlugin.label : "产销协同工作台 V0.2"}</strong></div><div className="gea-shell-header-actions"><span className="gea-session-state"><i />{status.environment === "production" ? "正式环境" : "测试环境"}</span><button type="button" className="gea-icon-button" aria-label="历史记录"><ShellIcon name="history" /></button><button type="button" className="gea-icon-button" aria-label="新建"><ShellIcon name="plus" /></button></div></header>
+            <section className="gea-plugin-stage" aria-label="插件内容">
+              {shellView === "plugin" ? <iframe ref={pluginFrame} onLoad={notifyPluginIdentity} title={selectedPlugin.label} src={selectedPlugin.url} sandbox="allow-scripts allow-same-origin allow-forms" /> : (
+                <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
+                  <div className="gea-original-workbench">
+                    <RegionalApprovalWorkbench
+                      key={workbenchRevision}
+                      stateScope={`gea-dsh:${status.environment}:${status.user?.tenantId}:${status.user?.id}`}
+                      t={locale.t.bind(locale)} onContextChange={onContextChange} queryClient={salesPlan} detailClient={salesPlan}
+                      permissionCodes={status.permissionCodes} liveActionsEnabled={true}
+                      liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
+                      onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })} automaticAnalysisEnabled={true}
+                    />
+                  </div>
+                  {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit} client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)} onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}
+                </WorkbenchSessionProvider>
+              )}
+            </section>
+          </main>
+          <aside className="gea-assistant-panel">
+            <div className="gea-assistant-tabs"><button type="button" className="is-active"><ShellIcon name="robot" /></button><button type="button">对话</button><button type="button">...</button></div>
+            <div className="gea-assistant-content"><div className="gea-assistant-avatar">思</div><h2>开启你的AI工作方式</h2><p>可直接输入问题，也可以引用当前插件的数据继续追问。</p><div className="gea-assistant-label">常见问法</div>{["生成本周产销协同会议摘要", "哪些基地订单满足率未达目标？", "水控缺货的根因和措施？", "哪些库存组合超过12天？", "列出本周到期任务"].map((question) => <button key={question} type="button" className="gea-suggestion" onClick={() => setModelState(question)}><span>{question}</span><b>→</b></button>)}</div>
+            <div className="gea-assistant-compose"><button type="button" aria-label="添加上下文"><ShellIcon name="plus" /></button><input value={modelState} onChange={(event) => setModelState(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") setModelState(""); }} placeholder="输入问题"/><button type="button" className="gea-send-button" aria-label="发送" onClick={() => setModelState("")}><ShellIcon name="send" /></button></div>
+          </aside>
+        </div>
       )}
     </div>
   );
