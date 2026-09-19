@@ -649,6 +649,7 @@ export class Business {
         coverage: "none",
         authority: "read-only-ui-context",
         availability: "unavailable",
+        code: "WORKBENCH_CONTEXT_NOT_SYNCED",
         reason: "当前工作台页面数据仍在同步，请稍后重试",
       });
     return JSON.stringify({
