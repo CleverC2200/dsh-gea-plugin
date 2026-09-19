@@ -19,6 +19,8 @@ import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import { zh, en, type CopyKey } from "./client/locales.ts";
 import { Inbox } from "./client/inbox.tsx";
+import {registerHtmlClient} from "./html-client.tsx";
+import {isGeaBusinessPanel,registeredBusinessPanels} from "./business-navigation.ts";
 import shellCss from "./client/shell.css";
 import workbenchCss from "./workbench/workbench.css";
 import { ApiLogCenter } from "./workbench/api-log-center.tsx";
@@ -29,7 +31,7 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
   }
 }
 
-export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions", "agentWorkbench"];
+export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions", "agentWorkbench", "remote", "remote.session"];
 const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;
@@ -46,6 +48,7 @@ const HTML_PLUGIN_ITEMS = [
 
 /** 在框架管理的原生会话旁注册仅承载业务的中心文档。 */
 export function apply(ctx: Context): void {
+  registerHtmlClient(ctx);
   ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
   const t = ctx.locale.bind("geaProof");
   const injected = {
@@ -256,6 +259,8 @@ export function apply(ctx: Context): void {
     const [selectedPlugin, setSelectedPlugin] = useState<string | null>(null);
     const [expanded, setExpanded] = useState({ customer: true, plan: true, inventory: true });
     const activePanel = usePanelInfo((info) => info.activePanelId);
+    const [panels,setPanels]=useState(()=>registeredBusinessPanels(ctx.slots.entries("main")));
+    useEffect(()=>{const refresh=()=>setPanels(registeredBusinessPanels(ctx.slots.entries("main")));refresh();return ctx.slots.subscribe("main",refresh);},[]);
     if (!wide) {
       return (
         <nav className="gea-shell-navigation" aria-label={t("businessNavigation")}>
@@ -320,13 +325,15 @@ export function apply(ctx: Context): void {
             <button type="button" className="gea-shell-nav-heading" onClick={() => toggle("inventory")}><NavIcon kind="warehouse" /><span>库存管理</span><Chevron open={expanded.inventory} /></button>
             {expanded.inventory && <div className="gea-shell-nav-children">{child("库存管理工作台", () => openPlugin("inventory-personal"), selectedPlugin === "inventory-personal")}{child("全链库存", () => openPlugin("inventory-qll"), selectedPlugin === "inventory-qll")}{child("基地库存", () => openPlugin("inventory-aqkc"), selectedPlugin === "inventory-aqkc")}{child("分仓库存", () => openPlugin("inventory-fc"), selectedPlugin === "inventory-fc")}</div>}
           </div>
+          <button type="button" onClick={() => ctx.layout.selectPanel(PANEL)} title={t("demandForecastAgent")} aria-label={t("demandForecastAgent")} className={`gea-shell-child${activePanel === PANEL ? " is-active" : ""}`}><span className="gea-shell-label">{t("demandForecastAgent")}</span></button>
+          {panels.map(item=><button key={item.id} type="button" data-gea-business-entry={item.id} title={item.title} aria-current={activePanel===item.id?"page":undefined} onClick={()=>ctx.layout.selectPanel(item.id as MainPanelId)} className={`gea-shell-child${activePanel===item.id?" is-active":""}`}><span className="gea-shell-label">{item.title}</span></button>)}
         </div>
       </nav>
     );
   }
   function Brand({ usePanelInfo }: PropsRuntime<"sidebar.brand.mark">) {
     const business = usePanelInfo(
-      (info) => info.activePanelId === PANEL || info.activePanelId === INBOX || info.activePanelId === API_LOG_PANEL,
+      (info) => isGeaBusinessPanel(info.activePanelId, ctx.slots.entries("main")) || info.activePanelId === API_LOG_PANEL,
     );
     const switchPage = () => ctx.layout.selectPanel(business ? null : PANEL);
     return (
@@ -356,7 +363,7 @@ export function apply(ctx: Context): void {
   }
   function BrandName({ usePanelInfo }: PropsRuntime<"sidebar.brand.name">) {
     const business = usePanelInfo(
-      (info) => info.activePanelId === PANEL || info.activePanelId === INBOX || info.activePanelId === API_LOG_PANEL,
+      (info) => isGeaBusinessPanel(info.activePanelId, ctx.slots.entries("main")) || info.activePanelId === API_LOG_PANEL,
     );
     return (
       <span
@@ -474,7 +481,7 @@ export function apply(ctx: Context): void {
   }: PropsRuntime<"shell.overlay">) {
     const activePanel = usePanelInfo((info) => info.activePanelId);
     const business = usePanelInfo(
-      (info) => info.activePanelId === PANEL || info.activePanelId === INBOX || info.activePanelId === API_LOG_PANEL,
+      (info) => isGeaBusinessPanel(info.activePanelId, ctx.slots.entries("main")) || info.activePanelId === API_LOG_PANEL,
     );
     useEffect(() => {
       const frame = document.querySelector<HTMLElement>(".AppFrame_frame");

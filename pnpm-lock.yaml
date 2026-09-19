@@ -5,15 +5,15 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@cleverc2200/dsh-agent-workbench': git+https://github.com/CleverC2200/dsh-agent-workbench.git#db51a0d0f772fc6e78701f3a218f4d4c3f26e93c
+  '@cleverc2200/dsh-agent-workbench': git+http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git#8558e64c0af6275a1f3289dd2d10a83203dfd03a
 
 importers:
 
   .:
     dependencies:
       '@cleverc2200/dsh-agent-workbench':
-        specifier: git+https://github.com/CleverC2200/dsh-agent-workbench.git#db51a0d0f772fc6e78701f3a218f4d4c3f26e93c
-        version: https://codeload.github.com/CleverC2200/dsh-agent-workbench/tar.gz/db51a0d0f772fc6e78701f3a218f4d4c3f26e93c(@deepseek-ai/cordis@4.0.2)
+        specifier: git+http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git#8558e64c0af6275a1f3289dd2d10a83203dfd03a
+        version: git+http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git#8558e64c0af6275a1f3289dd2d10a83203dfd03a(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/cordis':
         specifier: 4.0.2
         version: 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.7)(@deepseek-ai/cordis-plugin-loader@1.0.3)
@@ -160,8 +160,8 @@ importers:
   packages/workbench-example:
     dependencies:
       '@cleverc2200/dsh-agent-workbench':
-        specifier: git+https://github.com/CleverC2200/dsh-agent-workbench.git#db51a0d0f772fc6e78701f3a218f4d4c3f26e93c
-        version: https://codeload.github.com/CleverC2200/dsh-agent-workbench/tar.gz/db51a0d0f772fc6e78701f3a218f4d4c3f26e93c(@deepseek-ai/cordis@4.0.2)
+        specifier: git+http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git#8558e64c0af6275a1f3289dd2d10a83203dfd03a
+        version: git+http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git#8558e64c0af6275a1f3289dd2d10a83203dfd03a(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/cordis':
         specifier: 4.0.2
         version: 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.7)(@deepseek-ai/cordis-plugin-loader@1.0.3)
@@ -300,8 +300,8 @@ packages:
     resolution: {integrity: sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw==}
     engines: {node: '>=6.9.0'}
 
-  '@cleverc2200/dsh-agent-workbench@https://codeload.github.com/CleverC2200/dsh-agent-workbench/tar.gz/db51a0d0f772fc6e78701f3a218f4d4c3f26e93c':
-    resolution: {gitHosted: true, integrity: sha512-IFHzLFPJPfq51D/A96mUBdu7AwIM8lMlz2lr2ifLj6lGvv4nZsWkYLV+d3ZliDEAb+YXNwlBadgkoFVZ1aHRvw==, tarball: https://codeload.github.com/CleverC2200/dsh-agent-workbench/tar.gz/db51a0d0f772fc6e78701f3a218f4d4c3f26e93c}
+  '@cleverc2200/dsh-agent-workbench@git+http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git#8558e64c0af6275a1f3289dd2d10a83203dfd03a':
+    resolution: {commit: 8558e64c0af6275a1f3289dd2d10a83203dfd03a, repo: http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git, type: git}
     version: 0.1.1
     peerDependencies:
       '@deepseek-ai/cordis': 4.0.2
@@ -4269,7 +4269,7 @@ snapshots:
 
   '@babel/runtime@7.29.7': {}
 
-  '@cleverc2200/dsh-agent-workbench@https://codeload.github.com/CleverC2200/dsh-agent-workbench/tar.gz/db51a0d0f772fc6e78701f3a218f4d4c3f26e93c(@deepseek-ai/cordis@4.0.2)':
+  '@cleverc2200/dsh-agent-workbench@git+http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git#8558e64c0af6275a1f3289dd2d10a83203dfd03a(@deepseek-ai/cordis@4.0.2)':
     dependencies:
       '@deepseek-ai/cordis': 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.7)(@deepseek-ai/cordis-plugin-loader@1.0.3)
 

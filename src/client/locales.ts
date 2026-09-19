@@ -270,7 +270,7 @@ const copy = {
     "Message inbox service is not connected",
   ],
   messageInbox: ["消息待办", "Message inbox"],
-  agentPanel: ["需求预测 Agent", "Demand forecast Agent"],
+  agentPanel: ["需求预测", "Demand forecast"],
   agentPanelModel: [
     "GEA Personal Model · 只读分析",
     "GEA Personal Model · read-only analysis",

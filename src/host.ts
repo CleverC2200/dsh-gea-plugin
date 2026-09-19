@@ -20,6 +20,7 @@ import {
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
 import { GeaResponseError } from "./shared/gea-error.js";
+import { registerHtmlPlugins } from "./html-plugins.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
 import { transportSignal } from "./shared/transport-signal.ts";
 import { geaTextStream } from "./shared/gea-stream.ts";
@@ -89,7 +90,7 @@ class ReceiptAdapter extends LlmAdapter {
 
 /** 直接调用当前登录用户的 GEA 个人模型路由，不经过 AionUi 代理。 */
 class GeaModelAdapter extends LlmAdapter {
-  constructor(private readonly business: Business) {
+  constructor(private readonly business: Business, private readonly htmlConsumer: (session?: string) => string | undefined = () => undefined) {
     super();
   }
   override providerInfo(id: string) {
@@ -125,7 +126,7 @@ class GeaModelAdapter extends LlmAdapter {
     try {
       const route = await this.business.modelRoute(
         signal,
-        this.business.config.analysisAgentCode,
+        this.htmlConsumer(options.sessionId) ?? this.business.config.analysisAgentCode,
       );
       if (!route.models.includes(options.model))
         throw new Error("GEA_MODEL_NOT_FOUND");
@@ -309,6 +310,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);
+  const htmlRoots=JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS || "[]");
+  if(!Array.isArray(htmlRoots)||htmlRoots.some(root=>typeof root!=="string"))throw Error("INVALID_HTML_PLUGIN_ROOTS");
+  const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlRoots);
   ctx.provide("geaMcp", {
     version: 1 as const,
     defaultConsumer: { consumerType: "AGENT" as const, consumerCode: config.analysisAgentCode },
@@ -327,7 +331,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     );
   if (config.analysisMode === "model" && config.analysisSource === "gea")
     ctx.effect(() =>
-      ctx.llm.registerAdapter(["gea-analysis"], new GeaModelAdapter(business)),
+      ctx.llm.registerAdapter(["gea-analysis"], new GeaModelAdapter(business, htmlPlugins.consumerForSession)),
     );
   let submission:
     | {
@@ -509,7 +513,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 break;
               case "status":
                 await Promise.all([business.refreshMissingAvatar(request.signal), business.refreshPermissions(request.signal)]);
-                value = business.status();
+                value = {...business.status(),htmlPlugins:htmlRoots.length>0};
                 break;
               case "model/advice": {
                 if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
