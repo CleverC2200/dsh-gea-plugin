@@ -487,6 +487,10 @@ export function apply(ctx: Context): void {
     }, [activePanel]);
     const [region, setRegion] = useState<HTMLElement | null>(null);
     const [logoRow, setLogoRow] = useState<HTMLElement | null>(null);
+    const [showFunctionMenu, setShowFunctionMenu] = useState(false);
+    useEffect(() => {
+      if (business) setShowFunctionMenu(false);
+    }, [business]);
     useEffect(() => {
       const renameNewSession = () => {
         const button = document.querySelector<HTMLButtonElement>(".hHd-Xa_newSession");
@@ -540,20 +544,32 @@ export function apply(ctx: Context): void {
     const expandSidebar = () => {
       document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']")?.click();
     };
-    const functionAreaButton = createPortal(
+    const functionAreaButton = !business && createPortal(
       <button
         type="button"
         className="gea-function-area-button"
-        onClick={() => ctx.layout.selectPanel(business ? null : PANEL)}
+        aria-expanded={showFunctionMenu}
+        onClick={() => setShowFunctionMenu((value) => !value)}
       >
         功能区
       </button>,
       region,
     );
-    if (!business) return functionAreaButton;
+    if (!business) {
+      return (
+        <>
+          {functionAreaButton}
+          {showFunctionMenu && createPortal(
+            <div className="gea-business-navigation gea-function-menu-popover">
+              <Navigation usePanelInfo={usePanelInfo} wide expandSidebar={expandSidebar} />
+            </div>,
+            region,
+          )}
+        </>
+      );
+    }
     return (
       <>
-        {functionAreaButton}
         {createPortal(
           <div className="gea-business-navigation">
             <Navigation usePanelInfo={usePanelInfo} wide expandSidebar={expandSidebar} />

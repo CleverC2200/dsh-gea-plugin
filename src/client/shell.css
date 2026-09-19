@@ -43,6 +43,24 @@
   max-height: 100%;
   overflow: auto;
 }
+.gea-function-menu-popover {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  z-index: 10;
+  width: 100%;
+  max-height: calc(100% - 36px);
+  overflow: auto;
+  border: 1px solid #cfd4dc;
+  border-radius: 10px;
+  background: #f5f6f8;
+  box-shadow: 0 8px 24px rgb(31 35 41 / 18%);
+}
+.gea-function-menu-popover .gea-shell-navigation,
+.gea-function-menu-popover .gea-shell-navigation-content {
+  height: auto;
+  min-height: 0;
+}
 .hHd-Xa_logoRow:has(.gea-inbox-quick-action) {
   position: relative;
 }
