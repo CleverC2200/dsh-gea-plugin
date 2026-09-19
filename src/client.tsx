@@ -492,6 +492,7 @@ export function apply(ctx: Context): void {
     }, [activePanel]);
     const [region, setRegion] = useState<HTMLElement | null>(null);
     const [logoRow, setLogoRow] = useState<HTMLElement | null>(null);
+    const [conversationHero, setConversationHero] = useState<HTMLElement | null>(null);
     const [sidebarMode, setSidebarMode] = useState<"workspace" | "function">("workspace");
     useEffect(() => {
       if (business) setSidebarMode("function");
@@ -513,6 +514,9 @@ export function apply(ctx: Context): void {
       const findRegions = () => {
         setRegion(document.querySelector<HTMLElement>(".hHd-Xa_regionArea"));
         setLogoRow(document.querySelector<HTMLElement>(".hHd-Xa_logoRow"));
+        setConversationHero(document.querySelector<HTMLElement>(
+          ".AppFrame_rightbarCol [data-slot='main.conversation'] [data-phase='hero']",
+        ));
       };
       findRegions();
       const observer = new MutationObserver(findRegions);
@@ -616,6 +620,21 @@ export function apply(ctx: Context): void {
           </button>,
           logoRow,
         )}
+        {conversationHero && createPortal(
+          <AgentWelcome onPrompt={(prompt) => {
+            const input = conversationHero.querySelector<HTMLElement>("textarea, [contenteditable='true']");
+            if (!input) return;
+            if (input instanceof HTMLTextAreaElement) {
+              const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+              setter?.call(input, prompt);
+            } else {
+              input.textContent = prompt;
+            }
+            input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
+            input.focus();
+          }} />,
+          conversationHero,
+        )}
       </>
     );
   }
@@ -660,6 +679,41 @@ export function apply(ctx: Context): void {
         return null;
       },
     ),
+  );
+}
+
+function AgentWelcome({ onPrompt }: { onPrompt: (prompt: string) => void }) {
+  const actions = [
+    ["▥", "查看整体库存情况", "请分析当前整体库存情况"],
+    ["◔", "查看品类库存", "请查看各品类库存情况"],
+    ["▤", "生成补货建议", "请生成本周补货建议"],
+    ["♧", "分析重点客户", "请分析需要重点关注的客户"],
+  ];
+  const prompts = ["哪些客户需要补货？", "重点客户的库存情况如何？", "生成下周的补货建议", "导出客户库存分析报告"];
+  return (
+    <section className="gea-agent-welcome" aria-label="经销商补货助手">
+      <div className="gea-agent-identity">
+        <div className="gea-agent-avatar" aria-hidden="true">●●</div>
+        <h2>经销商补货助手</h2>
+        <p>我可以帮你分析客户库存，生成补货建议并跟进执行进度</p>
+      </div>
+      <div className="gea-agent-block">
+        <h3>常用功能</h3>
+        <div className="gea-agent-actions">
+          {actions.map(([icon, label, prompt]) => (
+            <button key={label} type="button" onClick={() => onPrompt(prompt)}>
+              <span className="gea-agent-action-icon" aria-hidden="true">{icon}</span>
+              <span>{label}</span>
+              <b aria-hidden="true">›</b>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="gea-agent-block gea-agent-prompts">
+        <h3>你可以这样问</h3>
+        {prompts.map((prompt) => <button key={prompt} type="button" onClick={() => onPrompt(prompt)}>{prompt}</button>)}
+      </div>
+    </section>
   );
 }
 

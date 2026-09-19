@@ -385,9 +385,82 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   border-top: 1px solid #edf0f3;
   background: #fff;
 }
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] .wSkVaW_composerHero > .pXSMma_root,
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] .wSkVaW_heroWorkspaceRow {
+  display: none;
+}
 [data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] [data-conversation-scroll] {
   padding-inline: 18px;
 }
+
+/* Agent landing surface: keep DSH's native composer and put GEA's useful entry points above it. */
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] {
+  position: relative;
+  overflow: hidden;
+}
+.gea-agent-welcome {
+  position: absolute;
+  inset: 0 0 104px;
+  z-index: 2;
+  overflow: auto;
+  padding: 28px 18px 16px;
+  background: linear-gradient(180deg, #fff8f9 0, #fff 35%);
+}
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] [data-composer-seat] {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  flex: 0 0 104px;
+  min-height: 104px;
+  border-top: 1px solid #edf0f3;
+  background: #fff;
+}
+.gea-agent-identity { text-align: center; }
+.gea-agent-avatar {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 13px;
+  border: 1px solid #f2c5ce;
+  border-radius: 22px;
+  color: #fff;
+  font-size: 11px;
+  letter-spacing: 3px;
+  background: radial-gradient(circle at 50% 38%, #fff 0 13%, transparent 14%), linear-gradient(145deg, #ffd9df, #e83655);
+  box-shadow: 0 10px 24px #db3b5726;
+}
+.gea-agent-identity h2 { margin: 0; color: #242b38; font-size: 17px; font-weight: 700; }
+.gea-agent-identity p { max-width: 235px; margin: 9px auto 22px; color: #707988; font-size: 12px; line-height: 1.65; }
+.gea-agent-block { margin-top: 16px; }
+.gea-agent-block h3 { margin: 0 0 8px; color: #4b5565; font-size: 12px; font-weight: 700; }
+.gea-agent-actions { display: grid; gap: 7px; }
+.gea-agent-actions button,
+.gea-agent-prompts button {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 11px;
+  border: 1px solid #e8ebf0;
+  border-radius: 10px;
+  background: #fff;
+  color: #3f4856;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+}
+.gea-agent-actions button:hover,
+.gea-agent-prompts button:hover { border-color: #e7a4ae; background: #fff5f6; color: #c52138; }
+.gea-agent-action-icon { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 7px; color: #df3d58; background: #fff0f2; font-size: 16px; }
+.gea-agent-actions b { margin-left: auto; color: #aeb5bf; font-size: 18px; font-weight: 400; }
+.gea-agent-prompts { padding-top: 2px; }
+.gea-agent-prompts button { min-height: 35px; margin-top: 7px; padding-inline: 12px; border-radius: 18px; color: #697382; }
 
 /* Business inbox follows the dealer reminder prototype. */
 .gea-inbox { --inbox-brand: #c91414; --inbox-muted: light-dark(#626975, #b6bdc8); --inbox-border: light-dark(#e5e6eb, #41444c); --inbox-panel: light-dark(#fff, #24262b); --inbox-bg: light-dark(#f2f3f5, #1b1d21); height: 100%; overflow: auto; color: light-dark(#1d2129, #edf0f5); background: var(--inbox-bg); font-size: 14px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif; }
