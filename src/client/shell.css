@@ -93,6 +93,9 @@
   background: #fff0f2;
   color: #df1732;
 }
+.hHd-Xa_regionArea:has(.gea-business-navigation) .gea-function-area-button {
+  top: calc(58% + 7px);
+}
 [data-sidebar-collapsed] .gea-function-area-button {
   display: none;
 }

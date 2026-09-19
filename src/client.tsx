@@ -540,7 +540,7 @@ export function apply(ctx: Context): void {
     const expandSidebar = () => {
       document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']")?.click();
     };
-    const functionAreaButton = !business && createPortal(
+    const functionAreaButton = createPortal(
       <button
         type="button"
         className="gea-function-area-button"
@@ -553,6 +553,7 @@ export function apply(ctx: Context): void {
     if (!business) return functionAreaButton;
     return (
       <>
+        {functionAreaButton}
         {createPortal(
           <div className="gea-business-navigation">
             <Navigation usePanelInfo={usePanelInfo} wide expandSidebar={expandSidebar} />
