@@ -307,7 +307,11 @@ export function apply(ctx: Context): void {
       >
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
-          {item("AI工作台", "bot", () => ctx.layout.selectPanel(INBOX), activePanel === INBOX)}
+          {item("AI工作台", "bot", () => {
+            hideWorkbenchConversation?.();
+            hideWorkbenchConversation = undefined;
+            ctx.layout.selectPanel(null);
+          }, activePanel === null)}
           {item("产销协同工作台", "desktop", openBusinessWorkbench, activePanel === PANEL && selectedPlugin === null)}
           <div className="gea-shell-nav-section">
             <button type="button" className="gea-shell-nav-heading" onClick={() => toggle("customer")}><NavIcon kind="users" /><span>客户管理</span><Chevron open={expanded.customer} /></button>
@@ -486,13 +490,14 @@ export function apply(ctx: Context): void {
       if (activePanel === PANEL && workbenchAuthenticated && !hideWorkbenchConversation)
         hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
     }, [activePanel]);
+    const [region, setRegion] = useState<HTMLElement | null>(null);
     useEffect(() => {
-      if (!business) return;
-      return ctx.slots.register(
-        { name: "sidebar.workspaces", locale: "geaProof", priority: -10 },
-        Navigation,
-      );
-    }, [business]);
+      const findRegion = () => setRegion(document.querySelector<HTMLElement>(".hHd-Xa_regionArea"));
+      findRegion();
+      const observer = new MutationObserver(findRegion);
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => observer.disconnect();
+    }, []);
     useEffect(() => {
       if (!business) return;
       const hideConversationChrome = () => {
@@ -519,7 +524,16 @@ export function apply(ctx: Context): void {
         );
       };
     }, [business]);
-    return null;
+    if (!business || !region) return null;
+    const expandSidebar = () => {
+      document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']")?.click();
+    };
+    return createPortal(
+      <div className="gea-business-navigation">
+        <Navigation usePanelInfo={usePanelInfo} wide expandSidebar={expandSidebar} />
+      </div>,
+      region,
+    );
   }
   ctx.slots.inject("shell.overlay", () =>
     ctx.slots.register(

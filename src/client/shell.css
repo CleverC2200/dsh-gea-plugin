@@ -12,8 +12,36 @@
   height: 100%;
   background: #f8f9fb;
 }
-.AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-gea-hidden-session-chrome] {
-  display: none !important;
+/* Keep the native DSH workspace list below the business navigation. */
+.hHd-Xa_regionArea:has(.gea-business-navigation) {
+  display: flex !important;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.hHd-Xa_regionArea:has(.gea-business-navigation) > [data-slot="sidebar.workspaces"] {
+  display: block !important;
+  order: 2;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.gea-business-navigation {
+  order: 1;
+  flex: 0 1 58%;
+  min-height: 0;
+  max-height: 58%;
+  overflow: auto;
+  border-bottom: 1px solid #e3e6ea;
+}
+.gea-business-navigation .gea-shell-navigation,
+.gea-business-navigation .gea-shell-navigation-content {
+  height: auto;
+  min-height: 0;
+}
+.gea-business-navigation .gea-shell-navigation-content {
+  max-height: 100%;
+  overflow: auto;
 }
 /* The business profile keeps the application chooser but not the default
    workspace quick-launch. Older desktop cores do not yet understand the
