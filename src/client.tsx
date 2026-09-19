@@ -536,10 +536,21 @@ export function apply(ctx: Context): void {
         );
       };
     }, [business]);
-    if (!business || !region) return null;
+    if (!region) return null;
     const expandSidebar = () => {
       document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']")?.click();
     };
+    const functionAreaButton = !business && createPortal(
+      <button
+        type="button"
+        className="gea-function-area-button"
+        onClick={() => ctx.layout.selectPanel(PANEL)}
+      >
+        功能区
+      </button>,
+      region,
+    );
+    if (!business) return functionAreaButton;
     return (
       <>
         {createPortal(
