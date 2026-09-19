@@ -70,5 +70,14 @@ test('Dashboard matches monthly detail totals and categories expand SKU', {timeo
  await page.screenshot({path:'.runtime/detail-summary/narrow.png',fullPage:true});
  await category.getByRole('button').click();
  await expect(frame.locator('tbody th[scope="rowgroup"]')).toHaveCount(0);
+ await expect(frame.getByTestId('regional-approval-stage-evaluation')).toHaveCount(0);
+ await expect(frame.getByText(/待我审批.*条/)).toHaveCount(0);
+ await frame.getByRole('button',{name:'区域计划评估',exact:true}).click();
+ await expect(frame.getByTestId('regional-plan-evaluation-workbench')).toBeVisible();
+ await expect(frame.getByTestId('regional-approval-workbench')).toHaveCount(0);
+ await expect(frame.locator('table')).toHaveCount(0);
+ await frame.getByRole('button',{name:'销售计划审批',exact:true}).click();
+ await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
+ await expect(frame.getByRole('region',{name:'当前页明细汇总',exact:true})).toContainText('¥150');
  assert.deepEqual(errors,[]);assert.equal(writes,0);
 });
