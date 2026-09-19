@@ -33,6 +33,16 @@ export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions", "
 const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;
+const HTML_PLUGIN_ITEMS = [
+  ["inventory-apsboard", "产销协同看板"],
+  ["inventory-apsdemand", "需求运营管理"],
+  ["inventory-apsdelivery", "交付运营管理"],
+  ["inventory-personal", "库存管理工作台"],
+  ["inventory-aqkc", "安全库存"],
+  ["inventory-dealer", "经销商库存"],
+  ["inventory-fc", "分仓库存"],
+  ["inventory-qll", "全链路库存"],
+] as const;
 
 /** 在框架管理的原生会话旁注册仅承载业务的中心文档。 */
 export function apply(ctx: Context): void {
@@ -262,6 +272,22 @@ export function apply(ctx: Context): void {
         </nav>
       );
     }
+    const openPlugin = (pluginId: string) => {
+      hideWorkbenchConversation?.();
+      hideWorkbenchConversation = undefined;
+      ctx.layout.selectPanel(PANEL);
+      document.querySelector<HTMLIFrameElement>("iframe[data-gea-workbench]")?.contentWindow?.postMessage(
+        { type: "gea:select-plugin", pluginId }, window.location.origin,
+      );
+    };
+    const openBusinessWorkbench = () => {
+      ctx.layout.selectPanel(PANEL);
+      if (workbenchAuthenticated && !hideWorkbenchConversation)
+        hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
+      document.querySelector<HTMLIFrameElement>("iframe[data-gea-workbench]")?.contentWindow?.postMessage(
+        { type: "gea:select-plugin", pluginId: "workbench" }, window.location.origin,
+      );
+    };
     return (
       <nav
         className="gea-shell-navigation"
@@ -283,13 +309,21 @@ export function apply(ctx: Context): void {
           </div>
           <button
             type="button"
-            onClick={() => ctx.layout.selectPanel(PANEL)}
+            onClick={openBusinessWorkbench}
             title={t("demandForecastAgent")}
             aria-label={t("demandForecastAgent")}
             className={`gea-shell-child${activePanel === PANEL ? " is-active" : ""}`}
           >
             <span className="gea-shell-label">{t("demandForecastAgent")}</span>
           </button>
+          <div className="gea-shell-plugin-group" aria-label="插件工作区">
+            {HTML_PLUGIN_ITEMS.map(([pluginId, label]) => (
+              <button key={pluginId} type="button" className="gea-shell-child gea-shell-plugin" onClick={() => openPlugin(pluginId)}>
+                <span className="gea-shell-plugin-dot" aria-hidden="true" />
+                <span className="gea-shell-label">{label}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </nav>
     );

@@ -285,8 +285,27 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       )
         setSessionId(value);
     };
+    const onPluginSelection = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== window.parent) return;
+      const pluginId = event.data?.pluginId;
+      if (event.data?.type !== "gea:select-plugin") return;
+      if (pluginId === "workbench") {
+        setShellView("workbench");
+        return;
+      }
+      if (typeof pluginId !== "string") return;
+      const plugin = HTML_PLUGINS.find((item) => item.id === pluginId);
+      if (plugin) {
+        setSelectedPlugin(plugin);
+        setShellView("plugin");
+      }
+    };
     window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    window.addEventListener("message", onPluginSelection);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("message", onPluginSelection);
+    };
   }, []);
   const request = useRef<AbortController>();
   const selectionRef = useRef("");
