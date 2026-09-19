@@ -310,8 +310,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);
-  const htmlRoots=JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS || "[]");
-  if(!Array.isArray(htmlRoots)||htmlRoots.some(root=>typeof root!=="string"))throw Error("INVALID_HTML_PLUGIN_ROOTS");
+  const htmlRootConfig=JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS || "[]");
+  const htmlRoots=Array.isArray(htmlRootConfig) ? htmlRootConfig : (htmlRootConfig && typeof htmlRootConfig === "object" ? Object.values(htmlRootConfig) : []);
+  if(htmlRoots.some(root=>typeof root!=="string"))throw Error("INVALID_HTML_PLUGIN_ROOTS");
   const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlRoots);
   ctx.provide("geaMcp", {
     version: 1 as const,
