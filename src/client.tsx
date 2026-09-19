@@ -466,7 +466,12 @@ export function apply(ctx: Context): void {
     yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
     ctx.layout.selectPanel(PANEL);
   });
-  function NavigationMode({ usePanelInfo }: PropsRuntime<"shell.overlay">) {
+  function NavigationMode({
+    usePanelInfo,
+    useSessions,
+    useSessionPendingInteraction,
+    useWorkspaces,
+  }: PropsRuntime<"shell.overlay">) {
     const activePanel = usePanelInfo((info) => info.activePanelId);
     const business = usePanelInfo(
       (info) => info.activePanelId === PANEL || info.activePanelId === INBOX || info.activePanelId === API_LOG_PANEL,
@@ -569,7 +574,14 @@ export function apply(ctx: Context): void {
           {modeTabs}
           {sidebarMode === "function" && createPortal(
             <div className="gea-business-navigation gea-function-menu-popover" data-sidebar-function-mode>
-              <Navigation usePanelInfo={usePanelInfo} wide expandSidebar={expandSidebar} />
+              <Navigation
+                usePanelInfo={usePanelInfo}
+                useSessions={useSessions}
+                useSessionPendingInteraction={useSessionPendingInteraction}
+                useWorkspaces={useWorkspaces}
+                wide
+                expandSidebar={expandSidebar}
+              />
             </div>,
             region,
           )}
@@ -581,7 +593,14 @@ export function apply(ctx: Context): void {
         {modeTabs}
         {createPortal(
           <div className="gea-business-navigation gea-business-menu-panel">
-            <Navigation usePanelInfo={usePanelInfo} wide expandSidebar={expandSidebar} />
+            <Navigation
+              usePanelInfo={usePanelInfo}
+              useSessions={useSessions}
+              useSessionPendingInteraction={useSessionPendingInteraction}
+              useWorkspaces={useWorkspaces}
+              wide
+              expandSidebar={expandSidebar}
+            />
           </div>,
           region,
         )}
