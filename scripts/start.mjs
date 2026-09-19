@@ -43,6 +43,19 @@ async function prepareHtmlPlugins(runtime) {
       execFileSync("tar", ["-xzf", archive, "--strip-components=1", "-C", target]);
       await rm(archive, { force: true });
     }
+    // Older inventory-dealer previews shipped a placeholder fetch bridge that
+    // always threw before delegating SQL requests to the host MessageChannel.
+    // Repair that known preview in the isolated development copy so a fresh
+    // runtime behaves like the merged HTML host contract.
+    if (id === "inventory-dealer") {
+      const entry = resolve(target, "index.html");
+      const source = await readFile(entry, "utf8");
+      const repaired = source.replace(
+        /async function x_\(e,t,n\)\{let r=e\.searchParams,o=e\.pathname;throw Error\("\\u6682\\u4E0D\\u652F\\u6301\\u6B64\\u64CD\\u4F5C[^}]+\}/,
+        'async function x_(e,t,n){if(t!=="GET"&&t!=="POST")throw Error("\\u4E0D\\u652F\\u6301\\u7684\\u6570\\u636E\\u8BF7\\u6C42\\u65B9\\u6CD5");if(n&&typeof n.sql==="string")return await Dl("sql",n);throw Error("\\u6682\\u4E0D\\u652F\\u6301\\u6B64\\u64CD\\u4F5C")}',
+      );
+      if (repaired !== source) await writeFile(entry, repaired);
+    }
     roots[id] = target;
   }
   return roots;
