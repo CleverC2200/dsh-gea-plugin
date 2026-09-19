@@ -273,9 +273,9 @@ export function apply(ctx: Context): void {
       );
     }
     const openPlugin = (pluginId: string) => {
-      hideWorkbenchConversation?.();
-      hideWorkbenchConversation = undefined;
       ctx.layout.selectPanel(PANEL);
+      if (workbenchAuthenticated && !hideWorkbenchConversation)
+        hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
       document.querySelector<HTMLIFrameElement>("iframe[data-gea-workbench]")?.contentWindow?.postMessage(
         { type: "gea:select-plugin", pluginId }, window.location.origin,
       );
