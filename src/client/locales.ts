@@ -263,14 +263,14 @@ const copy = {
   geaBusiness: ["GEA 业务版", "GEA business"],
   businessFunctions: ["业务功能", "Business functions"],
   planManagement: ["计划管理", "Plan management"],
-  demandForecastAgent: ["需求预测 Agent", "Demand forecast Agent"],
+  demandForecastAgent: ["需求预测", "Demand forecast"],
   apiLog: ["接口日志", "API logs"],
   inboxNotConnected: [
     "消息待办接口尚未接入",
     "Message inbox service is not connected",
   ],
   messageInbox: ["消息待办", "Message inbox"],
-  agentPanel: ["需求预测 Agent", "Demand forecast Agent"],
+  agentPanel: ["需求预测", "Demand forecast"],
   agentPanelModel: [
     "GEA Personal Model · 只读分析",
     "GEA Personal Model · read-only analysis",
