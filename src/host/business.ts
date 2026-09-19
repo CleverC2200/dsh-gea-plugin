@@ -1446,7 +1446,15 @@ export class Business {
     }
     const body = object(await response.json());
     if (body.success !== true || !body.result) throw new Error("GEA_PLUGIN_QUERY_REJECTED");
-    return body.result;
+    const result = object(body.result);
+    const rows = Array.isArray(result.rows) ? result.rows : [];
+    return {
+      ...result,
+      rows,
+      total: Number.isSafeInteger(result.total) ? result.total : rows.length,
+      pageNo: Number.isSafeInteger(result.pageNo) ? result.pageNo : pageNo,
+      pageSize: Number.isSafeInteger(result.pageSize) ? result.pageSize : pageSize,
+    };
   }
 
   /** 向模型适配器提供同一套脱敏日志边界，浏览器永远拿不到原始凭证。 */
