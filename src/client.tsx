@@ -307,11 +307,7 @@ export function apply(ctx: Context): void {
       >
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
-          {item("AI工作台", "bot", () => {
-            hideWorkbenchConversation?.();
-            hideWorkbenchConversation = undefined;
-            ctx.layout.selectPanel(null);
-          }, activePanel === null)}
+          {item("业务代办", "bot", () => ctx.layout.selectPanel(INBOX), activePanel === INBOX)}
           {item("产销协同工作台", "desktop", openBusinessWorkbench, activePanel === PANEL && selectedPlugin === null)}
           <div className="gea-shell-nav-section">
             <button type="button" className="gea-shell-nav-heading" onClick={() => toggle("customer")}><NavIcon kind="users" /><span>客户管理</span><Chevron open={expanded.customer} /></button>
@@ -491,6 +487,19 @@ export function apply(ctx: Context): void {
         hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
     }, [activePanel]);
     const [region, setRegion] = useState<HTMLElement | null>(null);
+    useEffect(() => {
+      const renameNewSession = () => {
+        const button = document.querySelector<HTMLButtonElement>(".hHd-Xa_newSession");
+        const label = button?.querySelector<HTMLElement>(".hHd-Xa_newSessionLabel");
+        if (!button || !label) return;
+        if (label.textContent !== "AI工作台") label.textContent = "AI工作台";
+        if (button.getAttribute("aria-label") !== "AI工作台") button.setAttribute("aria-label", "AI工作台");
+      };
+      renameNewSession();
+      const observer = new MutationObserver(renameNewSession);
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => observer.disconnect();
+    }, []);
     useEffect(() => {
       const findRegion = () => setRegion(document.querySelector<HTMLElement>(".hHd-Xa_regionArea"));
       findRegion();
