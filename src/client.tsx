@@ -544,10 +544,22 @@ export function apply(ctx: Context): void {
     const expandSidebar = () => {
       document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']")?.click();
     };
-    const modeTabs = !business && createPortal(
+    const selectWorkspace = () => {
+      setSidebarMode("workspace");
+      if (business) {
+        hideWorkbenchConversation?.();
+        hideWorkbenchConversation = undefined;
+        ctx.layout.selectPanel(null);
+      }
+    };
+    const selectFunction = () => {
+      setSidebarMode("function");
+      if (!business) ctx.layout.selectPanel(PANEL);
+    };
+    const modeTabs = createPortal(
       <div className="gea-sidebar-mode-tabs" role="tablist" aria-label="侧边栏区域">
-        <button type="button" role="tab" aria-selected={sidebarMode === "workspace"} onClick={() => setSidebarMode("workspace")}>工作区</button>
-        <button type="button" role="tab" aria-selected={sidebarMode === "function"} onClick={() => setSidebarMode("function")}>功能区</button>
+        <button type="button" role="tab" aria-selected={sidebarMode === "workspace"} onClick={selectWorkspace}>工作区</button>
+        <button type="button" role="tab" aria-selected={sidebarMode === "function"} onClick={selectFunction}>功能区</button>
       </div>,
       region,
     );
@@ -566,8 +578,9 @@ export function apply(ctx: Context): void {
     }
     return (
       <>
+        {modeTabs}
         {createPortal(
-          <div className="gea-business-navigation">
+          <div className="gea-business-navigation gea-business-menu-panel">
             <Navigation usePanelInfo={usePanelInfo} wide expandSidebar={expandSidebar} />
           </div>,
           region,
