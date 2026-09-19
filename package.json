@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.61",
+  "version": "0.0.62",
   "private": true,
   "packageManager": "pnpm@11.27.0",
   "type": "module",
@@ -34,7 +34,13 @@
     "verify": "node scripts/verify.mjs",
     "package": "node scripts/package.mjs",
     "test:package": "node --test scripts/package-smoke.test.mjs",
-    "release:preflight": "node scripts/release-preflight.mjs"
+    "release:preflight": "node scripts/release-preflight.mjs",
+    "desktop:dev": "node scripts/desktop-dev.mjs",
+    "test:desktop:dev": "node --test scripts/desktop-dev.test.mjs",
+    "package:desktop": "node scripts/package-desktop.mjs",
+    "package:desktop:mac": "node scripts/package-desktop.mjs --target mac",
+    "package:desktop:win": "node scripts/package-desktop.mjs --target win",
+    "test:package:desktop": "node --test scripts/package-desktop.test.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.2",

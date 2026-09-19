@@ -43,8 +43,13 @@ test(
           '{"success":true,"result":{"records":[{"id":9007199254740999,"planId":"9007199254740993","versionId":"version/a","actionCode":"SAVE"}],"total":1}}',
         );
       } else if (path.endsWith("/skus")) {
+        const versionId = decodeURIComponent(path.split("/").slice(-2)[0]);
         res.end(
-          '{"success":true,"result":{"records":[{"id":9007199254740995,"versionId":"version/a","skuCode":"sku-a","qty":1.2000,"price":2.5000,"amt":3.0000,"amtBase":0.10}],"total":' +
+          '{"success":true,"result":{"records":[' +
+            (versionId === "version/c"
+              ? '{"id":"sku-c-id","versionId":"version/c","skuCode":"sku-a","skuName":null,"qty":0.5000,"price":2.5000,"amt":1.2500,"amtBase":0.1000}'
+              : '{"id":9007199254740995,"versionId":"version/a","skuCode":"sku-a","skuname":"黑芝麻汤圆","qty":1.2000,"price":2.5000,"amt":3.0000,"amtBase":0.10}') +
+            '],"total":' +
             (incomplete ? 2 : 1) +
             "}}",
         );
@@ -141,6 +146,7 @@ test(
         assert.equal(skus.value[0].qty, "1.2000");
         assert.equal(skus.value[0].amt, "3.0000");
         assert.equal(skus.value[0].amtBase, "0.10");
+        assert.equal(skus.value[0].materialDescription, "黑芝麻汤圆");
         const compare = await query("compare", {
           planId,
           fromVersionId: "version/a",
@@ -211,6 +217,17 @@ test(
           "GEA_INCOMPLETE_COLLECTION",
         );
         incomplete = false;
+      },
+    );
+
+    await t.test(
+      "同编码 SKU 在别处回填过的物料名称用于缺失该字段的版本",
+      async () => {
+        const named = await query("versionSkus", { versionId: "version/a" });
+        assert.equal(named.value[0].materialDescription, "黑芝麻汤圆");
+        const unnamed = await query("versionSkus", { versionId: "version/c" });
+        assert.equal(unnamed.value[0].skuName, null);
+        assert.equal(unnamed.value[0].materialDescription, "黑芝麻汤圆");
       },
     );
 

@@ -22,6 +22,18 @@
 
 ## 构建和验证
 
+桌面安装包使用仓库根目录的统一入口，不要直接在工作区执行 `electron-builder --projectDir desktop`：
+
+```sh
+GEA_DESKTOP_PAYLOAD_ROOT=.runtime/electron-build/payload pnpm run package:desktop:mac
+GEA_DESKTOP_PAYLOAD_ROOT=.runtime/electron-build/payload pnpm run package:desktop:win
+```
+
+打包机需要提供 `electron-builder 26.15.3`（可用 `GEA_ELECTRON_BUILDER` 指定可执行文件）；脚本不会偷偷下载或复用父工作区依赖。
+
+入口会先把 `desktop/` 壳文件复制到隔离 staging 目录，再调用固定的 `electron-builder.cjs`；父工作区的 `package.json` 和 `node_modules` 不会进入 `app.asar`。`GEA_DESKTOP_PAYLOAD_ROOT` 必须包含 `<mac|win>/payload`，运行依赖和原生模块按平台分别准备。需要只生成解包目录时追加 `--dir`，需要保留 staging 供排查时追加 `--keep-staging`。
+
+
 Windows 安装耗时专项使用 [一次运行采集说明](INSTALL-DIAGNOSTICS-README.md)。诊断包必须携带与 `diagnostic-package.json` 摘要一致的完整 EXE，不能用普通安装包替换。该包仅供专项试用，不自动推进桌面频道。
 
 诊断构建用 `prepare-installer-diagnostics.mjs <app-builder-lib目录> <新模板目录>` 给固定 26.15.3 模板加阶段日志，再用 `build-diagnostic-installer.cjs <node_modules目录> <独立桌面导出目录> <win-unpacked目录> <新模板目录> <输出目录>` 复用同一 payload；设置 `GEA_DESKTOP_TARGET=win`、`GEA_INSTALL_TIMING_LOG=1` 及 `GEA_DESKTOP_PAYLOAD_ROOT`。导出目录中的 `build/installer-timing.nsh` 必须来自本次源码。不修改共享构建缓存，不更换默认 7z 算法。`installer-timing-probe.nsi` 在 Windows 上验证日志追加、寄存器/栈及错误标记不受日志成功或失败影响；云端 clean/upgrade 验证不能冒充 Windows 10/11 实机性能验收。

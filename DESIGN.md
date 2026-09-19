@@ -149,8 +149,8 @@ GEA 的视觉系统服务于判断、核对和受控操作。它继承 Arco 的�
 
 ## Typography
 
-**Display Font:** 系统无衬线字体栈（优先 Apple / Segoe UI / PingFang SC）
-**Body Font:** 系统无衬线字体栈（优先 Apple / Segoe UI / PingFang SC）
+**Display Font:** 系统无衬线字体栈（优先 Apple / Segoe UI / PingFang SC）  
+**Body Font:** 系统无衬线字体栈（优先 Apple / Segoe UI / PingFang SC）  
 **Label/Mono Font:** 接口、路径、方法与代码使用系统等宽字体栈（ui-monospace / SFMono-Regular / Menlo / Consolas）
 
 **Character:** 字体选择保持原生、可靠和快速加载。层级主要依靠字号、字重和空间建立，不用夸张字形制造视觉身份。
@@ -177,7 +177,7 @@ GEA 的视觉系统服务于判断、核对和受控操作。它继承 Arco 的�
 
 ## Elevation & Depth
 
-主体默认平面化，主要依靠白色与浅灰色调层级、1px 分隔线和选中轨道建立深度。固定入口按钮可使用轻量环境阴影（`0 5px 14px rgba(24, 32, 48, 0.12)`）；登录卡片作为独立认证场景可使用更宽的环境阴影（`0 16px 64px #2935522e`）。业务分栏、记录行和详情面板静止时不使用悬浮阴影。
+主体默认平面化，主要依靠白色与浅灰色调层级、1px 分隔线和选中轨道建立深度。接口日志从 DSH 设置侧栏进入，打开后作为独立主页面展示，不叠加原生会话面板；登录卡片作为独立认证场景可使用更宽的环境阴影（`0 16px 64px #2935522e`）。业务分栏、记录行和详情面板静止时不使用悬浮阴影。
 
 ### Named Rules
 

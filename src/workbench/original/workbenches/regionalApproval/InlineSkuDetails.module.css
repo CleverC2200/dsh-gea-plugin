@@ -1,6 +1,6 @@
 .root { padding: 12px 16px; border: 1px solid var(--bg-3); border-radius: 6px; background: var(--bg-1); }
 .toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
-.viewport { max-height: 360px; overflow: auto; overscroll-behavior: contain; }
+.viewport { max-height: 360px; overflow: auto; overscroll-behavior-y: auto; overscroll-behavior-x: contain; }
 .table { width: 100%; min-width: 760px; table-layout: fixed; border-collapse: collapse; font-size: 12px; line-height: 1.5; }
 .skuColumn { width: 36%; }
 .metricColumn { width: 16%; }

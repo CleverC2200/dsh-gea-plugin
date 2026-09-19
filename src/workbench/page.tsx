@@ -541,7 +541,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
                 liveActionsEnabled={true}
                 liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
                 onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })}
-                automaticAnalysisEnabled={false}
+                automaticAnalysisEnabled={true}
               />
             </div>
             {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit}

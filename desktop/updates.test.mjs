@@ -13,6 +13,7 @@ async function fixture(t,overrides={},initialState){
  const updates=await createUpdates({data,store,desktopVersion:'0.0.2',sources:{stable:'stable',test:'test'},checkDesktop:async()=>{desktopChecks++;},
   releases:{validateReleaseChannel:value=>value,fetchCompanyChannel:async(source)=>{checks++;return {releases:source==='stable'?[release]:[]}},verifyReleaseHistory:(_,history)=>history,fetchReleasePackage:async()=>new Uint8Array([1]),...overrides},
   install:async directory=>{installs++;await writeFile(join(directory,'node_modules/dsh-plugin/package.json'),JSON.stringify({name:'dsh-plugin',version:release.version}));},
+  restartRuntime:overrides.restartRuntime,
   restart:async id=>{restarts++;await store.activate(id);await store.beginBoot();await store.confirmBoot();}});
  t.after(async()=>{await updates.close();await rm(data,{recursive:true,force:true});});return {updates,store,data,desktopChecks:()=>desktopChecks,counts:()=>({installs,restarts,checks})};
 }
@@ -73,13 +74,18 @@ test('batch download or install failure keeps all current versions and offers no
 test('one click downloads all updates and automatically restarts exactly once',async t=>{
   const {updates,counts,store}=await batchFixture(t);
   await updates.check();
-  assert.equal((await updates.status()).settings.intervalHours,24);
+  assert.equal((await updates.status()).settings.intervalHours,2);
   assert.equal((await updates.status()).capabilities.prepareAndRestart,true);
   await Promise.all([updates.prepare({all:true,restart:true}),updates.prepare({all:true,restart:true})]);
   const done=await until(updates.status,s=>s.phase==='succeeded');
   assert.deepEqual(counts(),{installs:1,restarts:1,downloads:2});
   assert.equal(done.current['dsh-plugin'],'1.4.3-company.2');
   assert.equal(done.current['@cleverc2200/dsh-agent-workbench'],'0.1.2');
+  assert.equal(done.updateHistory.length,1);
+  assert.deepEqual(done.updateHistory[0].items,[
+    {package:'dsh-plugin',fromVersion:'1.4.3-company.1',toVersion:'1.4.3-company.2'},
+    {package:'@cleverc2200/dsh-agent-workbench',fromVersion:'0.1.1',toVersion:'0.1.2'},
+  ]);
   assert.notEqual((await store.selected()).id,'baseline');
 });
 test('one-click failure never restarts or partially applies an update',async t=>{
@@ -87,7 +93,7 @@ test('one-click failure never restarts or partially applies an update',async t=>
     const {updates,counts,store}=await batchFixture(t,options);
     await updates.check();await updates.prepare({all:true,restart:true});
     await until(updates.status,s=>s.phase==='failed');
-    assert.equal(counts().restarts,0);assert.equal((await store.selected()).id,'baseline');
+    assert.equal(counts().restarts,0);assert.equal((await store.selected()).id,'baseline');assert.deepEqual((await updates.status()).updateHistory,[]);
   }
 });
 test('one-click cancellation prevents automatic restart',async t=>{
@@ -101,6 +107,19 @@ test('startup always checks once, even with legacy automatic checks disabled',as
   const {updates,counts,desktopChecks}=await fixture(t,{}, {settings:{automatic:false,intervalHours:24,channel:'stable'}});
   await updates.start();await until(updates.status,s=>!!s.lastCheck&&!s.checking);
   await updates.start();await until(updates.status,s=>!s.checking);assert.equal(counts().checks,1);assert.equal(desktopChecks(),1);assert.equal(counts().installs,0);
+});
+test('optional plugin toggle persists and restarts the runtime graph',async t=>{
+  let runtimeRestarts=0;
+  const f=await fixture(t,{restartRuntime:async()=>{runtimeRestarts++;}});
+  const manifest=JSON.parse(await readFile(join(f.data,'baseline/package.json'),'utf8'));
+  manifest.dependencies['@dsh-external/dsh-visualize']='0.1.2';
+  await writeFile(join(f.data,'baseline/package.json'),JSON.stringify(manifest));
+  await mkdir(join(f.data,'baseline/node_modules/@dsh-external/dsh-visualize'),{recursive:true});
+  await writeFile(join(f.data,'baseline/node_modules/@dsh-external/dsh-visualize/package.json'),JSON.stringify({name:'@dsh-external/dsh-visualize',version:'0.1.2'}));
+  assert.equal((await f.updates.status()).optional.plugins.find(p=>p.key==='@dsh-external/dsh-visualize').enabled,true);
+  await f.updates.optionalToggle({name:'@dsh-external/dsh-visualize',enabled:false});
+  assert.equal(runtimeRestarts,1);assert.equal((await f.updates.status()).optional.plugins.find(p=>p.key==='@dsh-external/dsh-visualize').enabled,false);
+  const saved=JSON.parse(await readFile(join(f.data,'plugins/optional-state.json'),'utf8'));assert.equal(saved['@dsh-external/dsh-visualize'],false);
 });
 test('interval settings validate, persist and reschedule without installing',async t=>{
   const {updates,counts,data}=await fixture(t);

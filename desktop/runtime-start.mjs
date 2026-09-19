@@ -41,10 +41,13 @@ try {
 if(!existsSync(modules))await symlink(target,modules,process.platform==='win32'?'junction':'dir');
 const manifestPath=join(profileDir,'package.json');
 const graphManifest=JSON.parse(await readFile(join(root,'package.json'),'utf8'));
-const bundles=['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app','@cleverc2200/gea-dsh-prototype',...['dsh-plugin','@dsh-external/dsh-visualize','dsh-agent-manage','dsh-agent-plugins-market'].filter(name=>graphManifest.dependencies?.[name])];
+let optionalState={};
+if(process.env.DSH_OPTIONAL_STATE_PATH){try{optionalState=JSON.parse(await readFile(process.env.DSH_OPTIONAL_STATE_PATH,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}}
+const optional=['dsh-plugin','@dsh-external/dsh-visualize','dsh-agent-manage','dsh-agent-plugins-market','dsh-raw-html-v2','dsh-worktable'];
+const bundles=['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app','@cleverc2200/gea-dsh-prototype',...optional.filter(name=>graphManifest.dependencies?.[name]&&(optionalState[name]??true))];
 // Preserve profile settings while updating only the graph-owned dependency/bundle inventory.
 const existing=existsSync(manifestPath)?JSON.parse(await readFile(manifestPath,'utf8')):{};
-await writeFile(manifestPath,JSON.stringify({...existing,name:'dsh-profile-full',private:true,dependencies:graphManifest.dependencies,dsh:{...existing.dsh,profile:{...existing.dsh?.profile,bundles,patchReload:'startup'}}},null,2));
+await writeFile(manifestPath,JSON.stringify({...existing,name:'dsh-profile-full',private:true,dependencies:graphManifest.dependencies,dsh:{...existing.dsh,profile:{...existing.dsh?.profile,bundles,patchReload:process.env.GEA_DESKTOP_DEV==='1'?'live':'startup'}}},null,2));
 
 const child=spawn(process.execPath,[join(root,'node_modules/@deepseek-ai/dsh/lib/bin.js'),'--profile','full','--patch',patchPath,'--host','127.0.0.1','--port',String(port),...(process.env.DSH_FULL_NO_OPEN?['--no-open']:[])],{cwd:root,env:{...process.env,DSH_HOME:home},stdio:'inherit'});
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>child.kill(signal));

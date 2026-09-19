@@ -1,7 +1,7 @@
 /** Start an isolated, configured GEA Web profile through the official dsh CLI. */
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, open, writeFile, symlink, lstat, realpath, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile, symlink, lstat, realpath, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -32,18 +32,23 @@ try {
       runtime: { type: "string" },
       port: { type: "string", default: "3198" },
       bundle: { type: "boolean" },
+      dev: { type: "boolean" },
       help: { type: "boolean" },
     },
   });
   if (values.help) {
     console.log(
-      "npm start -- --config <deployment.json> [--runtime <directory>] [--port <port or 0>]",
+      "npm start -- --config <deployment.json> [--runtime <directory>] [--port <port or 0>] [--dev]",
     );
     process.exit(0);
   }
   const config = await readDeployment(
     resolve(values.config ?? "gea.config.json"),
   );
+  // Source checkouts use the local package graph. Release installs keep the
+  // normal installed-plugin path unless the caller explicitly opts in.
+  const development = values.dev === true;
+  const useBundle = values.bundle === true || development;
   const port = Number(values.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535)
     throw new Error("GEA_PORT_INVALID");
@@ -54,7 +59,7 @@ try {
   const patchPath = resolve(runtime, "deployment.patch.json");
   await writeFile(
     patchPath,
-    JSON.stringify(deploymentPatch(config, root, runtime, { bundle: values.bundle }), null, 2) + "\n",
+    JSON.stringify(deploymentPatch(config, root, runtime, { bundle: useBundle }), null, 2) + "\n",
     { mode: 0o600 },
   );
   log = await open(resolve(runtime, "server.log"), "a", 0o600);
@@ -110,7 +115,7 @@ try {
     }
   }
   env.DSH_HOME = resolve(runtime, "home");
-  if (values.bundle) {
+  if (useBundle) {
     const profileDir = resolve(env.DSH_HOME, "profiles/gea-workbench");
     const modules = resolve(profileDir, "node_modules/@cleverc2200");
     await mkdir(modules, { recursive: true });
@@ -127,10 +132,28 @@ try {
       }
     }
     const manifestPath = resolve(profileDir, "package.json");
-    if (!existsSync(manifestPath)) await writeFile(manifestPath, JSON.stringify({
-      name: "gea-profile", private: true,
-      dsh: { profile: { bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "@cleverc2200/gea-dsh-prototype"], patchReload: "startup" } },
-    }, null, 2));
+    const manifest = existsSync(manifestPath)
+      ? JSON.parse(await readFile(manifestPath, "utf8"))
+      : {
+          name: "gea-profile",
+          private: true,
+          dsh: {
+            profile: {
+              bundles: [
+                "@deepseek-ai/dsh-base",
+                "@deepseek-ai/dsh-web-app",
+                "@cleverc2200/gea-dsh-prototype",
+              ],
+              patchReload: "startup",
+            },
+          },
+        };
+    if (development) {
+      manifest.dsh ??= {};
+      manifest.dsh.profile ??= {};
+      manifest.dsh.profile.patchReload = "live";
+    }
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
   }
   const initialize = existsSync(
     resolve(env.DSH_HOME, "profiles/gea-workbench/package.json"),
