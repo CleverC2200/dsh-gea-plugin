@@ -20,7 +20,7 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
       const status = req.url.searchParams.get('status');
       const rows = plans.filter(p => status === null || p.status === Number(status));
       const size = Number(req.url.searchParams.get('pageSize') || 20);
-      return send({records:rows.slice(0,size),total:rows.length,current:1,size,pages:1});
+      return send({records:rows.slice(0,size).map(p => req.url.searchParams.get("orderType") === "Z" ? {...p, orderType:"Z", dealerName:p.baseName, monthlyApproved:false} : p),total:rows.length,current:1,size,pages:1});
     }
     const match = /\/plans\/(p\d+)(\/versions)?$/.exec(path);
     if (match) {
@@ -69,6 +69,10 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   await expect(region).toHaveAttribute('aria-pressed', 'true');
   await region.click();
   await expect(table.getByText('scope-6-row',{exact:true})).toBeVisible();
+  await frame.getByRole('tab',{name:'纠偏',exact:true}).click();
+  for (const status of [1,2,3,4,5,6,7,10]) await expect(table.getByText(`scope-${status}-row`,{exact:true})).toBeVisible();
+  for (const status of [0,8,9]) await expect(table.getByText(`scope-${status}-row`,{exact:true})).toHaveCount(0);
+  assert.ok(app.requests.some(r => r.url.searchParams.get('orderType') === 'Z'));
   const queries = app.requests.filter(r=>r.url.pathname.endsWith('/plans'));
   assert.ok(queries.length);
   const queueQueries = queries.filter(r => r.url.searchParams.has('status') && r.url.searchParams.get('pageSize') !== '1');
