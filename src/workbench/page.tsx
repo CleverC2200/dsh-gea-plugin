@@ -24,14 +24,14 @@ import { ApiLogCenter } from "./api-log-center.tsx";
 
 type HtmlPlugin = { id: string; label: string; group: string; url: string };
 const HTML_PLUGINS: HtmlPlugin[] = [
-  { id: "inventory-apsboard", label: "产销协同看板", group: "产销协同", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/bb0ebb159dd3ceb08f829dc928896ba5ea6bb18a/packages/inventory-apsboard-0.1.0-preview.9.zip" },
-  { id: "inventory-apsdemand", label: "需求运营管理", group: "产销协同", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/bb0ebb159dd3ceb08f829dc928896ba5ea6bb18a/packages/inventory-apsdemand-0.1.0-preview.9.zip" },
-  { id: "inventory-apsdelivery", label: "交付运营管理", group: "产销协同", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/bb0ebb159dd3ceb08f829dc928896ba5ea6bb18a/packages/inventory-apsdelivery-0.1.0-preview.9.zip" },
-  { id: "inventory-personal", label: "库存管理工作台", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/bb0ebb159dd3ceb08f829dc928896ba5ea6bb18a/packages/inventory-personal-0.2.7-preview.1.zip" },
-  { id: "inventory-aqkc", label: "安全库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/36b3723b0fa734c22c609249448682fef945c3e5/packages/inventory-aqkc-0.2.6-preview.1.zip" },
-  { id: "inventory-dealer", label: "经销商库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/36b3723b0fa734c22c609249448682fef945c3e5/packages/inventory-dealer-0.2.6-preview.1.zip" },
-  { id: "inventory-fc", label: "分仓库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/36b3723b0fa734c22c609249448682fef945c3e5/packages/inventory-fc-0.2.6-preview.1.zip" },
-  { id: "inventory-qll", label: "全链路库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/36b3723b0fa734c22c609249448682fef945c3e5/packages/inventory-qll-0.2.6-preview.1.zip" },
+  { id: "inventory-apsboard", label: "产销协同看板", group: "产销协同", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-apsboard-0.1.0-preview.10.tgz" },
+  { id: "inventory-apsdemand", label: "需求运营管理", group: "产销协同", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-apsdemand-0.1.0-preview.10.tgz" },
+  { id: "inventory-apsdelivery", label: "交付运营管理", group: "产销协同", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-apsdelivery-0.1.0-preview.10.tgz" },
+  { id: "inventory-personal", label: "库存管理工作台", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-personal-0.2.7-preview.2.tgz" },
+  { id: "inventory-aqkc", label: "安全库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-aqkc-0.2.6-preview.2.tgz" },
+  { id: "inventory-dealer", label: "经销商库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-dealer-0.2.6-preview.2.tgz" },
+  { id: "inventory-fc", label: "分仓库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-fc-0.2.6-preview.2.tgz" },
+  { id: "inventory-qll", label: "全链路库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-qll-0.2.6-preview.2.tgz" },
 ];
 
 type Status = ReturnType<Business["status"]>;
