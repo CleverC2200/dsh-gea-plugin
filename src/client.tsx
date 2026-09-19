@@ -608,7 +608,7 @@ export function apply(ctx: Context): void {
           <button
             type="button"
             className="gea-inbox-quick-action"
-            aria-label="业务代办"
+            aria-label={t("messageInbox")}
             title="业务代办"
             onClick={() => ctx.layout.selectPanel(INBOX)}
           >
