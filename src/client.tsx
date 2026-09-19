@@ -307,7 +307,6 @@ export function apply(ctx: Context): void {
       >
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
-          {item("业务代办", "bot", () => ctx.layout.selectPanel(INBOX), activePanel === INBOX)}
           {item("产销协同工作台", "desktop", openBusinessWorkbench, activePanel === PANEL && selectedPlugin === null)}
           <div className="gea-shell-nav-section">
             <button type="button" className="gea-shell-nav-heading" onClick={() => toggle("customer")}><NavIcon kind="users" /><span>客户管理</span><Chevron open={expanded.customer} /></button>
@@ -487,6 +486,7 @@ export function apply(ctx: Context): void {
         hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
     }, [activePanel]);
     const [region, setRegion] = useState<HTMLElement | null>(null);
+    const [logoRow, setLogoRow] = useState<HTMLElement | null>(null);
     useEffect(() => {
       const renameNewSession = () => {
         const button = document.querySelector<HTMLButtonElement>(".hHd-Xa_newSession");
@@ -501,9 +501,12 @@ export function apply(ctx: Context): void {
       return () => observer.disconnect();
     }, []);
     useEffect(() => {
-      const findRegion = () => setRegion(document.querySelector<HTMLElement>(".hHd-Xa_regionArea"));
-      findRegion();
-      const observer = new MutationObserver(findRegion);
+      const findRegions = () => {
+        setRegion(document.querySelector<HTMLElement>(".hHd-Xa_regionArea"));
+        setLogoRow(document.querySelector<HTMLElement>(".hHd-Xa_logoRow"));
+      };
+      findRegions();
+      const observer = new MutationObserver(findRegions);
       observer.observe(document.body, { childList: true, subtree: true });
       return () => observer.disconnect();
     }, []);
@@ -537,11 +540,27 @@ export function apply(ctx: Context): void {
     const expandSidebar = () => {
       document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']")?.click();
     };
-    return createPortal(
-      <div className="gea-business-navigation">
-        <Navigation usePanelInfo={usePanelInfo} wide expandSidebar={expandSidebar} />
-      </div>,
-      region,
+    return (
+      <>
+        {createPortal(
+          <div className="gea-business-navigation">
+            <Navigation usePanelInfo={usePanelInfo} wide expandSidebar={expandSidebar} />
+          </div>,
+          region,
+        )}
+        {logoRow && createPortal(
+          <button
+            type="button"
+            className="gea-inbox-quick-action"
+            aria-label="业务代办"
+            title="业务代办"
+            onClick={() => ctx.layout.selectPanel(INBOX)}
+          >
+            <NavIcon kind="bot" />
+          </button>,
+          logoRow,
+        )}
+      </>
     );
   }
   ctx.slots.inject("shell.overlay", () =>

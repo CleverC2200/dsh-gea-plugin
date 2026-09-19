@@ -43,6 +43,34 @@
   max-height: 100%;
   overflow: auto;
 }
+.hHd-Xa_logoRow:has(.gea-inbox-quick-action) {
+  position: relative;
+}
+.gea-inbox-quick-action {
+  position: absolute;
+  top: 50%;
+  right: 42px;
+  z-index: 1;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #687282;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.gea-inbox-quick-action:hover,
+.gea-inbox-quick-action[aria-current="page"] {
+  background: #fff0f2;
+  color: #df1732;
+}
+[data-sidebar-collapsed] .gea-inbox-quick-action {
+  display: none;
+}
 /* The business profile keeps the application chooser but not the default
    workspace quick-launch. Older desktop cores do not yet understand the
    showPrimaryAction bundle option, so this is a structural fallback. */
