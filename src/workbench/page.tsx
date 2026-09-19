@@ -24,14 +24,7 @@ import { ApiLogCenter } from "./api-log-center.tsx";
 
 type HtmlPlugin = { id: string; label: string; group: string; url: string };
 const HTML_PLUGINS: HtmlPlugin[] = [
-  { id: "inventory-apsboard", label: "产销协同看板", group: "产销协同", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-apsboard-0.1.0-preview.10.tgz" },
-  { id: "inventory-apsdemand", label: "需求运营管理", group: "产销协同", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-apsdemand-0.1.0-preview.10.tgz" },
-  { id: "inventory-apsdelivery", label: "交付运营管理", group: "产销协同", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-apsdelivery-0.1.0-preview.10.tgz" },
-  { id: "inventory-personal", label: "库存管理工作台", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-personal-0.2.7-preview.2.tgz" },
-  { id: "inventory-aqkc", label: "安全库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-aqkc-0.2.6-preview.2.tgz" },
-  { id: "inventory-dealer", label: "经销商库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-dealer-0.2.6-preview.2.tgz" },
-  { id: "inventory-fc", label: "分仓库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-fc-0.2.6-preview.2.tgz" },
-  { id: "inventory-qll", label: "全链路库存", group: "库存管理", url: "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/-/raw/main/packages/dsh-gea-inventory-qll-0.2.6-preview.2.tgz" },
+  ...[["inventory-apsboard", "产销协同看板", "产销协同"], ["inventory-apsdemand", "需求运营管理", "产销协同"], ["inventory-apsdelivery", "交付运营管理", "产销协同"], ["inventory-personal", "库存管理工作台", "库存管理"], ["inventory-aqkc", "安全库存", "库存管理"], ["inventory-dealer", "经销商库存", "库存管理"], ["inventory-fc", "分仓库存", "库存管理"], ["inventory-qll", "全链路库存", "库存管理"]].map(([id, label, group]) => ({ id, label, group, url: `/api/gea-html-plugin/${id}` })),
 ];
 
 type Status = ReturnType<Business["status"]>;
@@ -228,6 +221,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const [shellView, setShellView] = useState<"plugin" | "workbench">(initialView === "workbench" ? "workbench" : "plugin");
   const [selectedPlugin, setSelectedPlugin] = useState<HtmlPlugin>(HTML_PLUGINS.find((plugin) => plugin.id === initialView) ?? HTML_PLUGINS[0]);
   const pluginFrame = useRef<HTMLIFrameElement>(null);
+  const pluginPort = useRef<MessagePort>();
   const [apiLogOpen, setApiLogOpen] = useState(directApiLog);
   const [workbenchRevision, setWorkbenchRevision] = useState(0);
   const [resubmit, setResubmit] = useState<{ planId: string; versionId: string; period: GeaSalesPlanPeriod }>();
@@ -316,13 +310,34 @@ export function WorkbenchPage({ t }: { t: Translate }) {
         .then(value => (event.source as WindowProxy).postMessage({ type: "gea:response", requestId: message.requestId, ok: true, value }, { targetOrigin: event.origin }))
         .catch(error => (event.source as WindowProxy).postMessage({ type: "gea:response", requestId: message.requestId, ok: false, error: error instanceof Error ? error.message : "GEA_REQUEST_FAILED" }, { targetOrigin: event.origin }));
     };
+    const onHtmlPluginReady = (event: MessageEvent) => {
+      if (event.source !== pluginFrame.current?.contentWindow || event.data?.protocol !== "gea-html-v1" || event.data?.type !== "ready") return;
+      const channel = new MessageChannel();
+      pluginPort.current?.close(); pluginPort.current = channel.port1;
+      channel.port1.onmessage = (message: MessageEvent) => {
+        const request = message.data;
+        if (request?.type !== "request" || typeof request.id !== "string") return;
+        const method = request.method === "context" ? "status" : request.method;
+        if (method !== "status" && method !== "notifications" && method !== "periods" && method !== "plans" && method !== "detail" && method !== "versions" && method !== "skus") {
+          channel.port1.postMessage({ type: "response", id: request.id, error: "GEA_METHOD_NOT_ALLOWED" }); return;
+        }
+        void rpc(method, request.parameters && typeof request.parameters === "object" ? request.parameters : {})
+          .then(value => channel.port1.postMessage({ type: "response", id: request.id, result: value }))
+          .catch(error => channel.port1.postMessage({ type: "response", id: request.id, error: error instanceof Error ? error.message : "GEA_REQUEST_FAILED" }));
+      };
+      channel.port1.start();
+      if (event.source) event.source.postMessage({ protocol: "gea-html-v1", type: "connect", context: { authenticated: status?.authenticated === true, user: status?.user ?? null } }, "*", [channel.port2]);
+    };
     window.addEventListener("message", onMessage);
     window.addEventListener("message", onPluginSelection);
     window.addEventListener("message", onPluginRequest);
+    window.addEventListener("message", onHtmlPluginReady);
     return () => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("message", onPluginSelection);
       window.removeEventListener("message", onPluginRequest);
+      window.removeEventListener("message", onHtmlPluginReady);
+      pluginPort.current?.close();
     };
   }, []);
   const request = useRef<AbortController>();

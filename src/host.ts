@@ -258,6 +258,19 @@ function toGeaRequest(options: GenerateOptions) {
 /** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
 export async function apply(ctx: Context, config: Deployment): Promise<void> {
   resolveWorkbench(import.meta.url);
+  const htmlPluginRoots: Record<string, string> = (() => {
+    try { const value = JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS ?? "{}"); return value && typeof value === "object" ? value : {}; }
+    catch { return {}; }
+  })();
+  for (const [id, root] of Object.entries(htmlPluginRoots)) {
+    if (!/^[a-z0-9-]+$/.test(id) || typeof root !== "string") continue;
+    ctx.effect(() => ctx.connection.fetch.register({
+      path: `/api/gea-html-plugin/${id}`, methods: ["GET"], requestBody: "buffered",
+      fetch: async () => new Response(new Uint8Array(await readFile(resolve(root, "index.html"))), {
+        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "frame-ancestors 'self'" },
+      }),
+    }));
+  }
   const workbenchHtml =
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GEA</title><link rel="stylesheet" href="/api/gea-proof/workbench.css"><style>html,body,#gea-workbench{height:100%;margin:0}</style></head><body><div id="gea-workbench"></div><script type="module" src="/api/gea-proof/workbench.js"></script></body></html>';
   for (const [path, type, content] of [
