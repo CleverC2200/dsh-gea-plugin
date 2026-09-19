@@ -1,10 +1,11 @@
 /** Desktop shell owns a bundled Node process and isolated per-user deployment data. */
-const {app,BrowserWindow,Menu,shell,dialog,safeStorage} = require('electron');
+const {app,BrowserWindow,Menu,shell,dialog,safeStorage,session} = require('electron');
 const {spawn} = require('node:child_process');
 const {mkdir,readFile,writeFile,appendFile} = require('node:fs/promises');
 const {join} = require('node:path');
 const {ensureConfiguration,launchUrl} = require('./config.cjs');
 const {startupUrl}=require('./startup-state.cjs');
+const {clearRuntimeCookies}=require('./runtime-cookies.cjs');
 async function showStartup(error){if(window&&!window.isDestroyed())await window.loadURL(startupUrl(error,startupReason));}
 // Chromium 补充的自动填充、听写、表情等原生菜单项也使用简体中文。
 app.commandLine.appendSwitch('lang','zh-CN');
@@ -52,6 +53,7 @@ async function start(recovered=false,reason='startup'){
   if(quitting)return;
   startupReason=reason;
   await showStartup();
+  await clearRuntimeCookies(session.defaultSession.cookies);
   await appendFile(join(data,'desktop.log'),new Date().toISOString()+' START '+process.platform+' '+process.arch+(development?' DEV '+(developmentGraph||''):'')+'\n',{mode:0o600});
   await stop();
   if(quitting)return;
