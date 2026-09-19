@@ -40,8 +40,9 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   padding: 0 14px 12px;
+  background: #f5f6f8;
 }
 .gea-shell-navigation * {
   box-sizing: border-box;
@@ -89,9 +90,9 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-shell-navigation-content > button,
 .gea-shell-workspaces > button {
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
+  border: 0 !important;
+  border-radius: 6px;
+  background: transparent !important;
   color: inherit;
   font: inherit;
   cursor: pointer;
@@ -115,6 +116,11 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-shell-navigation-content > .gea-shell-child {
   padding-left: 40px;
 }
+.gea-shell-navigation-content > button:hover,
+.gea-shell-navigation-content > .gea-shell-child:hover {
+  background: #eceef2 !important;
+  color: #202531;
+}
 .gea-shell-navigation button:focus-visible {
   outline: 2px solid #ef4c50;
   outline-offset: 2px;
@@ -135,11 +141,12 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   border: 1.5px solid #9aa2af;
   border-radius: 2px;
 }
-.gea-shell-plugin-group { display: grid; gap: 2px; margin-top: 2px; }
-.gea-shell-plugin { min-height: 32px !important; padding-block: 6px !important; padding-left: 40px !important; color: #687282 !important; font-size: 12px !important; }
+.gea-shell-plugin-group { display: grid; gap: 2px; margin-top: 2px; padding-top: 4px; }
+.gea-shell-plugin { min-height: 32px !important; padding-block: 6px !important; padding-left: 40px !important; color: #687282 !important; font-size: 12px !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
 .gea-shell-plugin:hover { color: #d6223d !important; background: #fff6f7 !important; }
+.gea-shell-plugin.is-active { color: #d6223d !important; background: #fff0f2 !important; box-shadow: inset 3px 0 0 #d6223d !important; }
 .gea-shell-plugin-dot { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #c7ced8; }
-.gea-shell-plugin:hover .gea-shell-plugin-dot { background: #d6223d; }
+.gea-shell-plugin:hover .gea-shell-plugin-dot, .gea-shell-plugin.is-active .gea-shell-plugin-dot { background: #d6223d; }
 .gea-shell-user {
   display: flex;
   align-items: center;

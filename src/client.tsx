@@ -253,6 +253,7 @@ export function apply(ctx: Context): void {
     wide,
     expandSidebar,
   }: PropsRuntime<"sidebar.workspaces">) {
+    const [selectedPlugin, setSelectedPlugin] = useState<string | null>(null);
     const activePanel = usePanelInfo((info) => info.activePanelId);
     if (!wide) {
       return (
@@ -273,6 +274,7 @@ export function apply(ctx: Context): void {
       );
     }
     const openPlugin = (pluginId: string) => {
+      setSelectedPlugin(pluginId);
       ctx.layout.selectPanel(PANEL);
       if (workbenchAuthenticated && !hideWorkbenchConversation)
         hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
@@ -318,7 +320,7 @@ export function apply(ctx: Context): void {
           </button>
           <div className="gea-shell-plugin-group" aria-label="插件工作区">
             {HTML_PLUGIN_ITEMS.map(([pluginId, label]) => (
-              <button key={pluginId} type="button" className="gea-shell-child gea-shell-plugin" onClick={() => openPlugin(pluginId)}>
+              <button key={pluginId} type="button" className={`gea-shell-child gea-shell-plugin${selectedPlugin === pluginId ? " is-active" : ""}`} onClick={() => openPlugin(pluginId)}>
                 <span className="gea-shell-plugin-dot" aria-hidden="true" />
                 <span className="gea-shell-label">{label}</span>
               </button>
