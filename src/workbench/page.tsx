@@ -311,13 +311,16 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   );
   useEffect(() => {
     if (!sessionId) return;
+    // 首次进入时 live 查询可能还在加载；不要把一个暂时为空的快照当成最终结果。
+    // conversationContext 一旦产生会立即触发本 effect，后续分页/筛选也会持续同步。
+    if (!conversationContext) return;
     const controller = new AbortController();
     void rpc(
       "workbench/context",
       { sessionId, context: conversationContext ?? null },
       controller.signal,
     ).catch(() => {
-      // 上下文同步失败不能影响审批工作台；右侧工具会如实提示上下文不可用。
+      // 上下文同步失败不能影响审批工作台；下一次上下文变化会自动重试。
     });
     return () => controller.abort();
   }, [conversationContext, sessionId]);

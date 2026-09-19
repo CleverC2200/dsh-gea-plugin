@@ -30,10 +30,29 @@ test(
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.setDefaultTimeout(15000);
-    await page.goto(app.origin + "/api/gea-proof/workbench?locale=zh-CN&view=api-log");
+    await page.goto(app.origin);
+    const notice = page.getByRole("dialog", { name: "内测声明", exact: true });
+    try {
+      await notice.waitFor({ state: "visible", timeout: 5000 });
+      await notice.getByRole("button", { name: "继续", exact: true }).click();
+    } catch {}
+    await page.locator('iframe[data-gea-workbench]').contentFrame()
+      .getByRole("heading", { name: "销售计划审批", exact: true })
+      .waitFor();
+    await page.locator('button[aria-label="账户菜单"]').evaluate((element) => element.click());
+    await page.getByRole("menuitem", { name: "设置", exact: true }).click({ force: true });
+    const settings = page.getByRole("dialog", { name: "设置", exact: true });
+    await settings.getByRole("button", { name: "接口日志", exact: true }).dispatchEvent("click");
     await page
       .getByRole("heading", { name: "接口日志中心", exact: true })
       .waitFor();
+    await expect(settings).toHaveCount(0);
+    assert.deepEqual(
+      await page.locator(".AppFrame_sidebarCol, .AppFrame_rightbarCol").evaluateAll((elements) =>
+        elements.map((element) => Math.round(element.getBoundingClientRect().width)),
+      ),
+      [0, 0],
+    );
 
     await expect(
       page.getByText("24 个已登记接口", { exact: true }),

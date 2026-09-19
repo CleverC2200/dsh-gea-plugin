@@ -2283,9 +2283,7 @@ const RegionalApprovalWorkbench: React.FC<{
                 </div>
               </div>
               <div className={styles.toolbarActions} data-testid='regional-approval-toolbar-actions'>
-                <Button size='small' onClick={() => setProgressOpen(true)}>
-                  {t('common.assistantSurface.regionalApproval.toolbar.progress')}
-                </Button>
+                <Button size='small' icon={<ChartHistogram size={16} />} aria-label={t('common.assistantSurface.regionalApproval.toolbar.progress')} title={t('common.assistantSurface.regionalApproval.toolbar.progress')} onClick={() => setProgressOpen(true)} />
                 {liveQuery.enabled ? (
                   <Button
                     size='small'
@@ -2298,9 +2296,9 @@ const RegionalApprovalWorkbench: React.FC<{
                       liveAccess.refresh();
                       liveQuery.refresh();
                     }}
-                  >
-                    {t('common.assistantSurface.regionalApproval.toolbar.refreshData')}
-                  </Button>
+                  aria-label={t('common.assistantSurface.regionalApproval.toolbar.refreshData')}
+                  title={t('common.assistantSurface.regionalApproval.toolbar.refreshData')}
+                  />
                 ) : null}
                 <Button
                   size='small'
@@ -2308,13 +2306,9 @@ const RegionalApprovalWorkbench: React.FC<{
                   disabled={liveQuery.enabled && liveQuery.queueState.status !== 'success'}
                   onClick={() => void exportQueue()}
                   loading={exporting}
-                >
-                  {t(
-                    liveQuery.enabled
-                      ? 'common.assistantSurface.regionalApproval.toolbar.exportPage'
-                      : 'common.assistantSurface.regionalApproval.toolbar.export'
-                  )}
-                </Button>
+                  aria-label={t(liveQuery.enabled ? 'common.assistantSurface.regionalApproval.toolbar.exportPage' : 'common.assistantSurface.regionalApproval.toolbar.export')}
+                  title={t(liveQuery.enabled ? 'common.assistantSurface.regionalApproval.toolbar.exportPage' : 'common.assistantSurface.regionalApproval.toolbar.export')}
+                />
                 <div className={styles.approvalToolbarActions}>{approvalActionButtons}</div>
               </div>
             </div>

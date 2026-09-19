@@ -32,8 +32,14 @@ test("records known APIs and never exposes credentials", async () => {
         result: {
           id: "user-1",
           access_token: "response-secret",
+          sessionId: "gateway-session-secret",
+          qrcodeId: "qr-secret",
+          credentials: "credential-secret",
+          tokens: ["token-secret"],
           nested: { delegationToken: "delegation-secret" },
         },
+      }, {
+        headers: { "MCP-Session-Id": "mcp-header-secret" },
       });
     },
   );
@@ -57,6 +63,11 @@ test("records known APIs and never exposes credentials", async () => {
   assert.equal(wire.includes("request-secret"), false);
   assert.equal(wire.includes("bearer-secret"), false);
   assert.equal(wire.includes("response-secret"), false);
+  assert.equal(wire.includes("gateway-session-secret"), false);
+  assert.equal(wire.includes("mcp-header-secret"), false);
+  assert.equal(wire.includes("qr-secret"), false);
+  assert.equal(wire.includes("credential-secret"), false);
+  assert.equal(wire.includes("token-secret"), false);
   assert.equal(wire.includes("delegation-secret"), false);
   assert.match(wire, /已脱敏/);
 
@@ -135,6 +146,39 @@ test("identity changes disable old replay closures and the ring stays bounded", 
     center.replay(center.snapshot().records[0].id, false),
     /API_LOG_REPLAY_UNAVAILABLE/,
   );
+});
+
+test("concurrent calls cannot steal a replay's source relationship", async () => {
+  let calls = 0;
+  let center;
+  center = new GeaApiLogCenter(
+    () => "test",
+    10,
+    async () => {
+      calls++;
+      if (calls === 2) {
+        const nested = await center.fetch(
+          "https://gea.example/sys/permission/getPermCode",
+        );
+        await nested.body.cancel();
+      }
+      return json({ success: true, result: {} });
+    },
+  );
+  const original = await center.fetch(
+    "https://gea.example/sys/user/getUserInfo",
+  );
+  await original.body.cancel();
+  const source = center.snapshot().records[0];
+  const replay = await center.replay(source.id, false);
+  const records = center.snapshot().records;
+  const replayed = records.find((record) => record.id === replay.recordId);
+  const nested = records.find(
+    (record) => record.catalogId === "identity.permissions",
+  );
+  assert.equal(replayed.catalogId, "identity.profile");
+  assert.equal(replayed.replayedFrom, source.id);
+  assert.equal(nested.replayedFrom, undefined);
 });
 
 test("streaming and oversized response bodies are summarized instead of buffered into logs", async () => {

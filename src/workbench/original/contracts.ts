@@ -122,6 +122,7 @@ export type GeaSalesPlanSku = CorrectionFields & {
   skuCode: GeaSalesPlanId;
   /** todo/material 端点可选提供的描述。 */
   materialDescription?: string | null;
+  skuName?: string | null;
   productCategName: string;
   baseQty: GeaSalesPlanDecimal;
   qty: GeaSalesPlanDecimal;

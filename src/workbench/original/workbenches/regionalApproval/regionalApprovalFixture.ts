@@ -1,5 +1,6 @@
 /** 改编自 AionUi（Apache-2.0）：已替换为本地导入并使用显式 DSH Host 适配器，见 SOURCE.md。 */
 export type ApprovalStageId = 'customer' | 'region' | 'province' | 'area' | 'category';
+
 export type ApprovalHealth = 'healthy' | 'attention' | 'warning';
 export type ApprovalState = 'pending' | 'approved' | 'future';
 export type ApprovalVersion = 'current' | 'previous' | 'initial';
@@ -9,6 +10,9 @@ export type ApprovalAreaKey = 'north' | 'east' | 'central' | 'southwest';
 export type ApprovalBranchKey = 'beijing' | 'hebei' | 'zhejiang' | 'henan' | 'sichuan';
 export type ApprovalDepartmentKey = 'beijing-sales' | 'shijiazhuang' | 'hangzhou' | 'zhengzhou' | 'chengdu';
 export type ApprovalCustomerKey = 'northstar' | 'yanzhao' | 'qiantang' | 'zhongyuan' | 'rongcheng';
+
+/** 区域计划评估是展示节点，沿用计划的未提交、待回写和已回写状态。 */
+export const REGIONAL_PLAN_EVALUATION_STATUSES = [0, 5, 10] as const;
 
 export type ApprovalStageFixture = {
   id: ApprovalStageId;

@@ -541,6 +541,7 @@ export class Business {
     if(saved.schema!==1||typeof saved.environment!=="string"||this.environments[saved.environment]!==saved.base)throw Error("DESKTOP_LOGIN_SCOPE_MISMATCH");
     const auth=object(saved.auth);
     if(typeof auth.token!=="string"||!auth.token||auth.token.length>16384||typeof auth.tenantId!=="string"||!/^\d+$/.test(auth.tenantId))throw Error("DESKTOP_LOGIN_INVALID");
+    this.clearLogin();
     this.environment=saved.environment as "production"|"test";
     this.selectedBase=this.environments[saved.environment];
     this.auth={token:auth.token,tenantId:auth.tenantId,name:text(auth.name),id:text(auth.id),username:text(auth.username),avatar:avatarUrl(auth.avatar,this.base)};
@@ -614,7 +615,7 @@ export class Business {
         coverage: "none",
         authority: "read-only-ui-context",
         availability: "unavailable",
-        reason: "WORKBENCH_CONTEXT_NOT_SYNCED",
+        reason: "当前工作台页面数据仍在同步，请稍后重试",
       });
     return JSON.stringify({
       source: "GEA_RENDERED_WORKBENCH",
@@ -623,6 +624,16 @@ export class Business {
       authority: "read-only-ui-context",
       context: value.context,
     });
+  }
+
+  /** 首屏查询尚未完成时给浏览器一点时间把当前页快照同步进来。 */
+  async waitVisibleWorkbenchContext(sessionId: string, timeoutMs = 2000): Promise<string> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (this.visibleWorkbenchContexts.has(sessionId)) return this.visibleWorkbenchContext(sessionId);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return this.visibleWorkbenchContext(sessionId);
   }
 
   /** 模型 Gateway 拒绝当前身份后，将该 GEA 登录标记为过期。 */
@@ -1016,35 +1027,47 @@ export class Business {
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     const operation = payload.operation === undefined ? undefined : text(payload.operation);
+    if (operation !== undefined && !["unread-count", "read", "dismiss", "batch-read", "approval-action"].includes(operation)) throw new Error("INVALID_PAYLOAD");
     if (operation === "unread-count") {
       return { environment: this.environment, fetchedAt: new Date().toISOString(), count: object(await this.get("/api/v1/notifications/unread-count", auth, signal)).count };
     }
     if (operation === "read" || operation === "dismiss") {
+      keys(payload, ["operation", "id", "expectedVersion", "idempotencyKey"]);
       const id = text(payload.id);
       const expectedVersion = versionNumber(payload.expectedVersion);
       const idempotencyKey = text(payload.idempotencyKey);
+      if (operation === "dismiss") {
+        const detail = notificationDetail(await this.get(`/api/v1/notifications/${encodeURIComponent(id)}`, auth, signal), id);
+        if (detail.dismissible !== true) throw new Error("NOTIFICATION_NOT_DISMISSIBLE");
+      }
       return await this.postJson(`/api/v1/notifications/${encodeURIComponent(id)}/${operation}`, auth, signal, { expectedVersion: String(expectedVersion), idempotencyKey });
     }
     if (operation === "batch-read") {
+      keys(payload, ["operation", "items", "idempotencyKey"]);
       if (!Array.isArray(payload.items) || payload.items.length < 1 || payload.items.length > 100) throw new Error("INVALID_PAYLOAD");
       const items = payload.items.map((item) => {
         const row = object(item);
         keys(row, ["notificationId", "expectedVersion"]);
         return { notification_id: text(row.notificationId), expected_version: String(versionNumber(row.expectedVersion)) };
       });
+      if (new Set(items.map(item => item.notification_id)).size !== items.length) throw new Error("INVALID_PAYLOAD");
       return await this.postJson("/api/v1/notifications/batch-read", auth, signal, { idempotency_key: text(payload.idempotencyKey), items });
     }
     if (operation === "approval-action") {
+      keys(payload, ["operation", "id", "action", "targetUserId", "comment", "expectedVersion", "idempotencyKey"]);
       const id = text(payload.id);
       const action = text(payload.action);
       if (!["APPROVE", "REJECT", "TRANSFER"].includes(action)) throw new Error("INVALID_PAYLOAD");
+      if (action === "TRANSFER") text(payload.targetUserId);
+      if (payload.comment != null && (typeof payload.comment !== "string" || payload.comment.length > 500)) throw new Error("INVALID_PAYLOAD");
       return await this.postJson(`/api/v1/notifications/${encodeURIComponent(id)}/approval-action`, auth, signal, {
         action, target_user_id: payload.targetUserId == null ? null : text(payload.targetUserId),
-        comment: payload.comment == null ? null : text(payload.comment),
+        comment: payload.comment ?? null,
         expected_version: versionNumber(payload.expectedVersion), idempotency_key: text(payload.idempotencyKey),
       });
     }
     let path = "/api/v1/notifications";
+    keys(payload, ["pageNo", "pageSize", "state", "states", "eventType", "id"]);
     if (payload.id !== undefined) {
       if (payload.pageNo !== undefined || payload.state !== undefined || payload.states !== undefined || payload.eventType !== undefined)
         throw new Error("INVALID_PAYLOAD");
@@ -1066,23 +1089,32 @@ export class Business {
       environment: this.environment,
       fetchedAt: new Date().toISOString(),
       ...(payload.id === undefined
-        ? notificationPage(value, this.config.pageSize)
+        ? notificationPage(value, integer(payload.pageSize ?? this.config.pageSize, 1, 100))
         : { detail: notificationDetail(value, text(payload.id)) }),
     };
   }
 
   private async postJson(path: string, identity: { token: string; tenantId?: string }, signal: AbortSignal, body: unknown): Promise<unknown> {
     let response: Response;
+    const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
+    signal.throwIfAborted();
     try {
-      response = await this.apiLog.fetch(this.base + path, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": identity.token, ...(identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}), "X-Request-Id": randomUUID() }, body: JSON.stringify(body), redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)]) });
+      response = await this.apiLog.fetch(this.base + path, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": identity.token, ...(identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}), "X-Request-Id": randomUUID() }, body: JSON.stringify(body), redirect: "error", signal: AbortSignal.any([signal, timeout]) });
     } catch {
       if (signal.aborted) throw new Error("STALE_SELECTION");
+      if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
       throw new Error("GEA_NETWORK_ERROR");
     }
+    signal.throwIfAborted();
+    if (this.auth !== identity) throw new Error("STALE_LOGIN");
     if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw await geaResponseError(response, [identity.token]); }
     const data = object(parseJson(await response.text()));
+    signal.throwIfAborted();
     if (data.success !== true) {
-      if (typeof data.errorCode === "string" && /^NOTIFICATION_[A-Z_]+$/.test(data.errorCode)) throw new Error(data.errorCode);
+      if (typeof data.errorCode === "string" && /^(NOTIFICATION|APPROVAL)_[A-Z_]+$/.test(data.errorCode)) {
+        if (data.errorCode === "NOTIFICATION_UNAUTHENTICATED") this.clearLogin(true);
+        throw new Error(data.errorCode);
+      }
       throw new Error("GEA_REQUEST_REJECTED");
     }
     return data.result;
@@ -1610,7 +1642,6 @@ export class Business {
       ["id", "planId", "seq", "status", "targetQty", "targetAmount"],
       path,
     );
-    normalizeMaterialDescription(result.records);
     if (result.records.some((record) => record.planId !== id))
       throw new Error("GEA_IDENTITY_MISMATCH");
     if (active.aborted) throw new Error("STALE_SELECTION");
@@ -1647,6 +1678,13 @@ export class Business {
       ["skuCode", "baseQty", "qty", "price", "amt", "amtBase"],
       path,
     );
+    for (const record of result.records) {
+      if (typeof record.materialDescription === "string" && record.materialDescription.trim()) continue;
+      const fallback = [record.materialDesc, record.materialName, record.skuName, record.productName].find(
+        (value) => typeof value === "string" && value.trim(),
+      );
+      if (typeof fallback === "string") record.materialDescription = fallback.trim();
+    }
     normalizeMaterialDescription(result.records);
     if (result.records.some((record) => record.versionId !== id))
       throw new Error("GEA_IDENTITY_MISMATCH");

@@ -1,13 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_LIMIT = 500;
-// SKU 明细响应可能包含数百行；64 KiB 会在字段分析前截断报文。
-// 仍保留硬上限，避免接口日志无限增长，并继续经过 sanitizeValue 脱敏。
 const BODY_LIMIT = 4 * 1024 * 1024;
 const BODY_OMITTED = "[正文超过 4 MiB，未保存]";
 const STREAM_OMITTED = "[流式响应正文未保存]";
 const SENSITIVE_KEY =
-  /^(?:authorization|proxy-authorization|cookie|set-cookie|x-access-token|x-delegation-token|access[_-]?token|refresh[_-]?token|token|secret|password|client[_-]?(?:id|secret)|delegation[_-]?token|api[_-]?key)$/i;
+  /^(?:authorization|proxy-authorization|cookies?|set-cookie|x-access-token|x-delegation-token|mcp[_-]?session[_-]?id|access[_-]?token|refresh[_-]?token|tokens?|secrets?|passwords?|client[_-]?(?:id|secret)|delegation[_-]?token|api[_-]?key|session[_-]?id|qrcode[_-]?id|credentials?|credential[_-]?id)$/i;
 const SENSITIVE_QUERY =
   /^(?:token|secret|password|client_id|client_secret|qrcodeId|credentialId)$/i;
 
@@ -457,7 +455,9 @@ export type ApiLogSnapshot = {
 };
 
 type PrivateRecord = ApiLogRecord & {
-  replay?: (signal: AbortSignal) => Promise<Response>;
+  replay?: (
+    signal: AbortSignal,
+  ) => Promise<{ response: Response; recordId: string }>;
 };
 
 function sanitizeString(value: string): string {
@@ -592,7 +592,15 @@ export class GeaApiLogCenter {
     private readonly fetchImpl?: typeof fetch,
   ) {}
 
-  readonly fetch: typeof fetch = async (input, init) => {
+  readonly fetch: typeof fetch = (input, init) =>
+    this.fetchRequest(input, init);
+
+  private async fetchRequest(
+    input: RequestInfo | URL,
+    init?: RequestInit,
+    replayedFrom?: string,
+    onRecord?: (id: string) => void,
+  ): Promise<Response> {
     const rawUrl = input instanceof Request ? input.url : String(input);
     const method = (
       init?.method ?? (input instanceof Request ? input.method : "GET")
@@ -620,6 +628,7 @@ export class GeaApiLogCenter {
       outcome: "pending",
       replayPolicy: catalog?.replayPolicy ?? "blocked",
       replayAvailable: false,
+      ...(replayedFrom ? { replayedFrom } : {}),
       request: {
         method,
         ...safeUrl,
@@ -652,6 +661,7 @@ export class GeaApiLogCenter {
         );
     }
     this.prepend(record);
+    onRecord?.(record.id);
     try {
       // 未注入实现时在调用时读取全局 fetch，保留测试、代理和运行时替换能力。
       const response = await (this.fetchImpl ?? globalThis.fetch)(input, init);
@@ -675,19 +685,25 @@ export class GeaApiLogCenter {
       this.finish(record, started);
       throw error;
     }
-  };
+  }
 
   // 私有第三个参数只由重发闭包使用；保持公开调用仍兼容 typeof fetch。
   private async fetchWithSource(
     input: RequestInfo | URL,
     init: RequestInit | undefined,
     replayedFrom: string,
-  ): Promise<Response> {
-    const before = this.sequence;
-    const response = await this.fetch(input, init);
-    const created = this.records.find((entry) => entry.sequence > before);
-    if (created) created.replayedFrom = replayedFrom;
-    return response;
+  ): Promise<{ response: Response; recordId: string }> {
+    let recordId = "";
+    const response = await this.fetchRequest(
+      input,
+      init,
+      replayedFrom,
+      (id) => {
+        recordId = id;
+      },
+    );
+    if (!recordId) throw new Error("API_LOG_REPLAY_RECORD_MISSING");
+    return { response, recordId };
   }
 
   snapshot(): ApiLogSnapshot {
@@ -729,14 +745,9 @@ export class GeaApiLogCenter {
       throw new Error("API_LOG_REPLAY_UNAVAILABLE");
     if (target.replayPolicy === "idempotent" && !confirmed)
       throw new Error("API_LOG_REPLAY_CONFIRMATION_REQUIRED");
-    const before = this.sequence;
-    const response = await target.replay(signal);
+    const { response, recordId } = await target.replay(signal);
     await response.body?.cancel();
-    const created = this.records.find((record) => record.sequence > before);
-    if (!created) throw new Error("API_LOG_REPLAY_RECORD_MISSING");
-    created.replayedFrom = target.id;
-    this.revision++;
-    return { recordId: created.id };
+    return { recordId };
   }
 
   private prepend(record: PrivateRecord): void {

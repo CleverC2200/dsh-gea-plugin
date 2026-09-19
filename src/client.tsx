@@ -145,9 +145,8 @@ export function apply(ctx: Context): void {
       signal,
     });
     const result = await response.json();
-    if (!response.ok || result.ok !== true) {
+    if (!response.ok || result.ok !== true)
       throw new Error(result.error?.message ?? result.error?.code ?? "GEA_REQUEST_FAILED");
-    }
     return result.value as T;
   }
   function ApiLogPage() {
@@ -159,9 +158,7 @@ export function apply(ctx: Context): void {
           if (value.environment === "test" || value.environment === "production")
             setEnvironment(value.environment);
         })
-        .catch(() => {
-          // ApiLogCenter renders the authenticated error and recovery path.
-        });
+        .catch(() => {});
       return () => controller.abort();
     }, []);
     return (
@@ -455,9 +452,8 @@ export function apply(ctx: Context): void {
         hideWorkbenchConversation = undefined;
         return;
       }
-      if (activePanel === PANEL && workbenchAuthenticated && !hideWorkbenchConversation) {
+      if (activePanel === PANEL && workbenchAuthenticated && !hideWorkbenchConversation)
         hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
-      }
     }, [activePanel]);
     useEffect(() => {
       if (!business) return;
