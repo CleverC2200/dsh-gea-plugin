@@ -26,10 +26,6 @@ type HtmlPlugin = { id: string; label: string; group: string; url: string };
 const HTML_PLUGINS: HtmlPlugin[] = [
   ...[["inventory-apsboard", "产销协同看板", "产销协同"], ["inventory-apsdemand", "需求运营管理", "产销协同"], ["inventory-apsdelivery", "交付运营管理", "产销协同"], ["inventory-personal", "库存管理工作台", "库存管理"], ["inventory-aqkc", "安全库存", "库存管理"], ["inventory-dealer", "经销商库存", "库存管理"], ["inventory-fc", "分仓库存", "库存管理"], ["inventory-qll", "全链路库存", "库存管理"]].map(([id, label, group]) => ({ id, label, group, url: `/api/gea-html-plugin/${id}` })),
 ];
-const HTML_PLUGIN_CONSUMERS: Record<string, string> = {
-  "inventory-apsboard": "aps-board-collaboration", "inventory-apsdemand": "aps-demand-operations", "inventory-apsdelivery": "aps-delivery-operations",
-  "inventory-personal": "inventory-personal-workbench", "inventory-aqkc": "base-safety-stock", "inventory-dealer": "dealer-inventory-replenishment", "inventory-fc": "branch-inventory", "inventory-qll": "full-chain-inventory",
-};
 
 type Status = ReturnType<Business["status"]>;
 type Translate = (key: CopyKey) => string;
@@ -226,8 +222,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const [selectedPlugin, setSelectedPlugin] = useState<HtmlPlugin>(HTML_PLUGINS.find((plugin) => plugin.id === initialView) ?? HTML_PLUGINS[0]);
   const pluginFrame = useRef<HTMLIFrameElement>(null);
   const pluginPort = useRef<MessagePort>();
-  const selectedPluginRef = useRef(selectedPlugin);
-  selectedPluginRef.current = selectedPlugin;
   const [apiLogOpen, setApiLogOpen] = useState(directApiLog);
   const [workbenchRevision, setWorkbenchRevision] = useState(0);
   const [resubmit, setResubmit] = useState<{ planId: string; versionId: string; period: GeaSalesPlanPeriod }>();
@@ -324,19 +318,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
         const request = message.data;
         if (request?.type !== "request" || typeof request.id !== "string") return;
         const method = request.method === "context" ? "status" : request.method;
-        if (method === "access") {
-          channel.port1.postMessage({ type: "response", id: request.id, result: { allowed: status?.authenticated === true, consumerCode: HTML_PLUGIN_CONSUMERS[selectedPluginRef.current.id] ?? null } });
-          return;
-        }
-        if (method === "sql") {
-          const consumerCode = HTML_PLUGIN_CONSUMERS[selectedPluginRef.current.id];
-          if (!consumerCode || !request.parameters || typeof request.parameters !== "object") { channel.port1.postMessage({ type: "response", id: request.id, error: "GEA_PLUGIN_CONSUMER_INVALID" }); return; }
-          void rpc("html-plugin/sql", { consumerCode, ...(request.parameters as Record<string, unknown>) })
-            .then(value => channel.port1.postMessage({ type: "response", id: request.id, result: value }))
-            .catch(error => channel.port1.postMessage({ type: "response", id: request.id, error: error instanceof Error ? error.message : "GEA_PLUGIN_SQL_FAILED" }));
-          return;
-        }
-        if (method !== "status" && method !== "context" && method !== "notifications" && method !== "periods" && method !== "plans" && method !== "detail" && method !== "versions" && method !== "skus") {
+        if (method !== "status" && method !== "notifications" && method !== "periods" && method !== "plans" && method !== "detail" && method !== "versions" && method !== "skus") {
           channel.port1.postMessage({ type: "response", id: request.id, error: "GEA_METHOD_NOT_ALLOWED" }); return;
         }
         void rpc(method, request.parameters && typeof request.parameters === "object" ? request.parameters : {})
