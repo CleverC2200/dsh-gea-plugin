@@ -19,9 +19,6 @@ export type ApprovalStageFixture = {
   progress: number;
 };
 
-/** 区域计划评估是展示节点，沿用计划的未提交、待回写和已回写状态。 */
-export const REGIONAL_PLAN_EVALUATION_STATUSES = [0, 5, 10] as const;
-
 export type RegionalApprovalRow = {
   id: string;
   organizationKey: 'north' | 'east' | 'central' | 'southwest' | 'hebei';

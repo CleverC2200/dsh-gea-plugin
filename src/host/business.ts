@@ -168,6 +168,7 @@ const skuFields = [
   "materialDescription",
   "materialDesc",
   "materialName",
+  "skuname",
   "skuName",
   "productName",
   "productCategName",
@@ -185,13 +186,43 @@ const skuFields = [
   "categoryConfirmedQty",
   "categoryConfirmedAmount",
 ];
-function normalizeMaterialDescription(records: Row[]): void {
-  for (const record of records) {
-    if (typeof record.materialDescription === "string" && record.materialDescription.trim()) continue;
-    const fallback = [record.materialDesc, record.materialName, record.skuName, record.productName].find(
-      (value) => typeof value === "string" && value.trim(),
-    );
-    if (typeof fallback === "string") record.materialDescription = fallback.trim();
+/** GEA 只在部分计划回填物料名称；同一 SKU 编码在别处回填过的名称可以复用。 */
+const materialNameFields = [
+  "materialDescription",
+  "materialDesc",
+  "materialName",
+  "skuName",
+  "skuname",
+  "productName",
+] as const;
+const materialNameLimit = 5000;
+class MaterialNameIndex {
+  private readonly names = new Map<string, string>();
+
+  /** 先取本记录自带的权威字段，缺失时再回落到同编码已见过的名称。 */
+  apply(records: Array<Record<string, unknown>>): void {
+    for (const record of records) {
+      const code = record.skuCode == null ? undefined : String(record.skuCode);
+      const provided = materialNameFields
+        .map((key) => record[key])
+        .find(
+          (value): value is string =>
+            typeof value === "string" && value.trim() !== "",
+        );
+      if (provided !== undefined && code !== undefined)
+        this.remember(code, provided.trim());
+      const name =
+        provided?.trim() ??
+        (code === undefined ? undefined : this.names.get(code));
+      if (name !== undefined && record.materialDescription !== name)
+        record.materialDescription = name;
+    }
+  }
+
+  private remember(code: string, name: string): void {
+    if (this.names.get(code) === name) return;
+    if (this.names.size >= materialNameLimit) this.names.clear();
+    this.names.set(code, name);
   }
 }
 const exactNumber =
@@ -488,6 +519,7 @@ export class Business {
     { sequence: number; receivedAt: string; context: VisibleWorkbenchContext }
   >();
   private requests = new Map<string, AbortController>();
+  private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
   private loginExpired = false;
   readonly runId = randomUUID();
@@ -1678,14 +1710,7 @@ export class Business {
       ["skuCode", "baseQty", "qty", "price", "amt", "amtBase"],
       path,
     );
-    for (const record of result.records) {
-      if (typeof record.materialDescription === "string" && record.materialDescription.trim()) continue;
-      const fallback = [record.materialDesc, record.materialName, record.skuName, record.productName].find(
-        (value) => typeof value === "string" && value.trim(),
-      );
-      if (typeof fallback === "string") record.materialDescription = fallback.trim();
-    }
-    normalizeMaterialDescription(result.records);
+    this.materialNames.apply(result.records);
     if (result.records.some((record) => record.versionId !== id))
       throw new Error("GEA_IDENTITY_MISMATCH");
     if (active.aborted) throw new Error("STALE_SELECTION");
@@ -1965,6 +1990,7 @@ export class Business {
       const skus = records(detail.skus),
         versions = records(detail.versions),
         logs = records(detail.logs);
+      this.materialNames.apply(skus);
       const versionId = text(currentVersion.id);
       const versionIds = new Set([
         versionId,
@@ -1992,6 +2018,7 @@ export class Business {
       return { ...detail, currentVersion, skus, versions, logs, workflowApproval };
     }
     const values = records(result);
+    if (kind === "versionSkus") this.materialNames.apply(values);
     if (
       (kind === "versions" || kind === "logs") &&
       values.some((row) => row.planId !== query.planId)
