@@ -487,9 +487,9 @@ export function apply(ctx: Context): void {
     }, [activePanel]);
     const [region, setRegion] = useState<HTMLElement | null>(null);
     const [logoRow, setLogoRow] = useState<HTMLElement | null>(null);
-    const [showFunctionMenu, setShowFunctionMenu] = useState(false);
+    const [sidebarMode, setSidebarMode] = useState<"workspace" | "function">("workspace");
     useEffect(() => {
-      if (business) setShowFunctionMenu(false);
+      if (business) setSidebarMode("function");
     }, [business]);
     useEffect(() => {
       const renameNewSession = () => {
@@ -544,23 +544,19 @@ export function apply(ctx: Context): void {
     const expandSidebar = () => {
       document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']")?.click();
     };
-    const functionAreaButton = !business && createPortal(
-      <button
-        type="button"
-        className="gea-function-area-button"
-        aria-expanded={showFunctionMenu}
-        onClick={() => setShowFunctionMenu((value) => !value)}
-      >
-        功能区
-      </button>,
+    const modeTabs = !business && createPortal(
+      <div className="gea-sidebar-mode-tabs" role="tablist" aria-label="侧边栏区域">
+        <button type="button" role="tab" aria-selected={sidebarMode === "workspace"} onClick={() => setSidebarMode("workspace")}>工作区</button>
+        <button type="button" role="tab" aria-selected={sidebarMode === "function"} onClick={() => setSidebarMode("function")}>功能区</button>
+      </div>,
       region,
     );
     if (!business) {
       return (
         <>
-          {functionAreaButton}
-          {showFunctionMenu && createPortal(
-            <div className="gea-business-navigation gea-function-menu-popover">
+          {modeTabs}
+          {sidebarMode === "function" && createPortal(
+            <div className="gea-business-navigation gea-function-menu-popover" data-sidebar-function-mode>
               <Navigation usePanelInfo={usePanelInfo} wide expandSidebar={expandSidebar} />
             </div>,
             region,

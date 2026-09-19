@@ -89,32 +89,42 @@
 [data-sidebar-collapsed] .gea-inbox-quick-action {
   display: none;
 }
-.hHd-Xa_regionArea:has(.gea-function-area-button) {
+.hHd-Xa_regionArea:has(.gea-sidebar-mode-tabs) {
   position: relative;
 }
-.gea-function-area-button {
+.gea-sidebar-mode-tabs {
   position: absolute;
-  top: 7px;
-  left: 58px;
+  top: 0;
+  left: 0;
   z-index: 2;
-  min-width: 52px;
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding-left: 14px;
+  background: #f5f6f8;
+}
+.gea-sidebar-mode-tabs button {
   height: 28px;
   padding: 2px 8px;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: 0;
+  border-radius: 5px;
   background: transparent;
-  color: #687282;
+  color: #df1732;
   font: inherit;
   cursor: pointer;
 }
-.gea-function-area-button:hover {
+.gea-sidebar-mode-tabs button[aria-selected="false"] {
+  color: #687282;
+}
+.gea-sidebar-mode-tabs button[aria-selected="true"] {
+  background: #fff0f2;
+  font-weight: 600;
+}
+.gea-sidebar-mode-tabs button:hover {
   background: #fff0f2;
   color: #df1732;
 }
-.hHd-Xa_regionArea:has(.gea-business-navigation) .gea-function-area-button {
-  top: calc(58% + 7px);
-}
-[data-sidebar-collapsed] .gea-function-area-button {
+[data-sidebar-collapsed] .gea-sidebar-mode-tabs {
   display: none;
 }
 /* The business profile keeps the application chooser but not the default
