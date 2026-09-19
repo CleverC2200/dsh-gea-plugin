@@ -324,6 +324,10 @@ export function WorkbenchPage({ t }: { t: Translate }) {
         const request = message.data;
         if (request?.type !== "request" || typeof request.id !== "string") return;
         const method = request.method === "context" ? "status" : request.method;
+        if (method === "access") {
+          channel.port1.postMessage({ type: "response", id: request.id, result: { allowed: status?.authenticated === true, consumerCode: HTML_PLUGIN_CONSUMERS[selectedPluginRef.current.id] ?? null } });
+          return;
+        }
         if (method === "sql") {
           const consumerCode = HTML_PLUGIN_CONSUMERS[selectedPluginRef.current.id];
           if (!consumerCode || !request.parameters || typeof request.parameters !== "object") { channel.port1.postMessage({ type: "response", id: request.id, error: "GEA_PLUGIN_CONSUMER_INVALID" }); return; }
@@ -332,7 +336,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
             .catch(error => channel.port1.postMessage({ type: "response", id: request.id, error: error instanceof Error ? error.message : "GEA_PLUGIN_SQL_FAILED" }));
           return;
         }
-        if (method !== "status" && method !== "notifications" && method !== "periods" && method !== "plans" && method !== "detail" && method !== "versions" && method !== "skus") {
+        if (method !== "status" && method !== "context" && method !== "notifications" && method !== "periods" && method !== "plans" && method !== "detail" && method !== "versions" && method !== "skus") {
           channel.port1.postMessage({ type: "response", id: request.id, error: "GEA_METHOD_NOT_ALLOWED" }); return;
         }
         void rpc(method, request.parameters && typeof request.parameters === "object" ? request.parameters : {})
