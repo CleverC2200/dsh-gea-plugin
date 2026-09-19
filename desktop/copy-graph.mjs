@@ -1,6 +1,6 @@
 /** Bound filesystem work while keeping every copied file independent of the running graph. */
-import {mkdir,readdir,copyFile,cp,lstat} from 'node:fs/promises';
-import {join} from 'node:path';
+import {mkdir,readdir,copyFile,cp,lstat,readFile,writeFile} from 'node:fs/promises';
+import {join,resolve,relative} from 'node:path';
 import {constants} from 'node:fs';
 
 export async function copyGraphEntry(source,target,{signal}={}) {
@@ -29,4 +29,30 @@ export async function copyGraphEntry(source,target,{signal}={}) {
   };
   try {await copy(source,target,await lstat(source));await Promise.all(pending);check();}
   finally {await Promise.all(pending);}
+}
+
+/** pnpm 11 writes absolute virtual-store paths on Windows; our hoisted graphs move twice.
+ * Change only a known internal location, never the real store or layout compatibility fields.
+ * Unknown/older metadata is left to pnpm's existing relocation fallback.
+ */
+export async function relocateVirtualStore(directory,{sourceDirectory=directory,storeRoot}={}) {
+  const modules=join(directory,'node_modules'),file=join(modules,'.modules.yaml');
+  let metadata;
+  try {metadata=JSON.parse(await readFile(file,'utf8'));}
+  catch(error){if(error.code==='ENOENT'||error instanceof SyntaxError)return false;throw error;}
+  if(metadata?.nodeLinker!=='hoisted'||metadata.layoutVersion!==5||typeof metadata.virtualStoreDir!=='string')return false;
+  const old=metadata.virtualStoreDir;
+  if(old==='.pnpm')return false;
+  const location=resolve(modules,old);
+  const owned=[join(directory,'node_modules/.pnpm'),join(sourceDirectory,'node_modules/.pnpm')].some(path=>relative(resolve(path),location)==='');
+  // Legacy releases retained the previous staging UUID even after it became versions/<id>.
+  const legacy=storeRoot&&/^staging-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/node_modules\/\.pnpm$/i.test(relative(resolve(storeRoot),location).replaceAll('\\','/'));
+  if(!owned&&!legacy)return false;
+  let entry;
+  try {entry=await lstat(join(modules,'.pnpm'));}
+  catch(error){if(error.code==='ENOENT')return false;throw error;}
+  if(!entry.isDirectory()||entry.isSymbolicLink())return false;
+  metadata.virtualStoreDir='.pnpm';
+  await writeFile(file,JSON.stringify(metadata,null,2)+'\n');
+  return true;
 }

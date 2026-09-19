@@ -1,4 +1,4 @@
-/** Read only references published by skills visible to the demand forecast preset. */
+/** 只读取需求预测预设可见的 Skill 参考资料。 */
 import type { Context } from "@deepseek-ai/cordis";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { resolve } from "node:path";
@@ -7,7 +7,7 @@ import type {} from "@deepseek-ai/dsh-fs";
 
 export const inject = ["tools", "skills", "fs"];
 
-/** Mounted only by gea-readonly; the standard preset keeps its own file tools. */
+/** 仅由 gea-readonly 挂载；标准预设继续使用自身的文件工具。 */
 export function apply(host: Context): void {
   host.effect(() =>
     host.tools.register(
@@ -39,16 +39,20 @@ export function apply(host: Context): void {
             throw new Error(
               "参考文件 offset 必须为正整数，limit 必须为 1–500。",
             );
-          const skill = await host.skills.get(args.skill, {
+          const view = {
             cwd: exec.agent?.session.header.cwd,
             scope: exec.agent,
             signal: exec.signal,
-          });
-          if (
-            !skill?.invocation.modelInvocable ||
-            skill.resourceBase?.kind !== "directory"
-          )
-            throw new Error("该 Skill 当前不可用，或没有本地参考目录。");
+          };
+          const skill = await host.skills.get(args.skill, view);
+          if (!skill?.invocation.modelInvocable) {
+            const available = (await host.skills.list(view))
+              .filter((item) => item.invocation.modelInvocable)
+              .map((item) => item.name);
+            throw new Error(`该 Skill 当前不可用。当前可用技能：${available.join("、") || "无"}。先用 skill 工具加载完整技能名，再读取正文明确链接的参考文件；不要猜测技能名或用 SKILL.md 代替参考路径。`);
+          }
+          if (skill.resourceBase?.kind !== "directory")
+            throw new Error("该 Skill 没有本地参考目录，请使用正文提供的资源读取方式。");
           const links = [
             ...skill.content.matchAll(/\[[^\]\n]*\]\(([^\s)]+)\)/g),
           ].map((match) => match[1]!.split("#")[0]);

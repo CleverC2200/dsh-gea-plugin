@@ -25,7 +25,7 @@ test(
       id: 'v1',
       planId,
       seq: 1,
-      periodId: '123',
+      periodId: '20261001',
       planTypeCode: 'Y',
       orderType: 'Z',
       dealerCode: '456',
@@ -67,7 +67,7 @@ test(
         reply({
           success: true,
           result: {
-            records: [{ periodId: '123', periodMonth: '2026-10', planTypeCode: 'Y', status: 'OPEN' }],
+            records: [{ periodId: '20261001', periodMonth: '2026-10', planTypeCode: 'Y', status: 'OPEN' }],
             total: 1,
             size: 100,
             current: 1,

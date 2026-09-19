@@ -6,6 +6,8 @@ const {join} = require('node:path');
 const {ensureConfiguration,launchUrl} = require('./config.cjs');
 const {startupUrl}=require('./startup-state.cjs');
 async function showStartup(error){if(window&&!window.isDestroyed())await window.loadURL(startupUrl(error,startupReason));}
+// Chromium 补充的自动填充、听写、表情等原生菜单项也使用简体中文。
+app.commandLine.appendSwitch('lang','zh-CN');
 if (process.env.DSH_GEA_DESKTOP_DATA) app.setPath('userData',process.env.DSH_GEA_DESKTOP_DATA);
 const owned = app.requestSingleInstanceLock();
 if (!owned) app.quit();
@@ -14,6 +16,8 @@ let startupReason='startup';
 let lifecycle=Promise.resolve();
 function runLifecycle(action){const next=lifecycle.then(()=>action());lifecycle=next.catch(()=>{});return next;}
 const payload=!app.isPackaged&&process.env.GEA_DESKTOP_PAYLOAD?process.env.GEA_DESKTOP_PAYLOAD:join(process.resourcesPath,'payload');
+const development=process.env.GEA_DESKTOP_DEV==='1';
+const developmentGraph=process.env.DSH_PLUGIN_GRAPH;
 const data=app.getPath('userData');
 const configPath=join(data,'gea.config.json');
 const loginPath=join(data,'login.encrypted');
@@ -48,7 +52,7 @@ async function start(recovered=false,reason='startup'){
   if(quitting)return;
   startupReason=reason;
   await showStartup();
-  await appendFile(join(data,'desktop.log'),new Date().toISOString()+' START '+process.platform+' '+process.arch+'\n',{mode:0o600});
+  await appendFile(join(data,'desktop.log'),new Date().toISOString()+' START '+process.platform+' '+process.arch+(development?' DEV '+(developmentGraph||''):'')+'\n',{mode:0o600});
   await stop();
   if(quitting)return;
   // OS credential prompts must finish before the backend's private request timeout starts.
@@ -63,7 +67,7 @@ async function start(recovered=false,reason='startup'){
   const node=join(payload,'node',process.platform==='win32'?'node.exe':'bin/node');
   const runtimeEnv={...process.env};delete runtimeEnv.GEA_RELEASE_TOKEN;
   const child=spawn(node,[join(payload,'start.mjs')],{cwd:payload,detached:process.platform!=='win32',windowsHide:true,
-    env:{...runtimeEnv,GEA_CONFIG:configPath,DSH_FULL_DATA_DIR:join(data,'data'),DSH_FULL_PORT:'0',DSH_FULL_NO_OPEN:'1',DSH_PLUGIN_GRAPH:selected.path,DSH_DESKTOP_BASELINE:payload,GEA_DESKTOP_CONTROL_URL:control.url,GEA_DESKTOP_CONTROL_TOKEN:control.token},
+    env:{...runtimeEnv,GEA_CONFIG:configPath,DSH_FULL_DATA_DIR:join(data,'data'),DSH_FULL_PORT:'0',DSH_FULL_NO_OPEN:'1',DSH_PLUGIN_GRAPH:developmentGraph||selected.path,DSH_DESKTOP_BASELINE:payload,GEA_DESKTOP_DEV:development?'1':undefined,GEA_DESKTOP_CONTROL_URL:control.url,GEA_DESKTOP_CONTROL_TOKEN:control.token},
     stdio:['ignore','pipe','pipe','ipc']});
   backend=child;
   let pending='';
@@ -147,6 +151,8 @@ if(owned){
     control=await createControlServer({
       ...Object.fromEntries(['status','check','download','cancel','open'].map(action=>[(action==='status'?'GET':'POST')+' /installer/'+action,async value=>clientInstaller[action](value)])),
       ...Object.fromEntries(['status','check','settings','prepare','cancel','restart'].map(action=>[(action==='status'?'GET':'POST')+' /updates/'+action,async value=>{if(!updates)throw Error('UPDATES_UNAVAILABLE');return updates[action](value);}])) ,
+      'GET /updates/optional':async()=>{if(!updates)throw Error('UPDATES_UNAVAILABLE');return updates.optional();},
+      'POST /updates/optional-toggle':async value=>{if(!updates)throw Error('UPDATES_UNAVAILABLE');return updates.optionalToggle(value);},
       'GET /login':async()=>loginSnapshot,
       'POST /login':async value=>{
         const {rm,rename}=require('node:fs/promises');
@@ -165,17 +171,18 @@ if(owned){
         sources:require('./release-sources.json'),token:process.env.GEA_RELEASE_TOKEN,
         checkDesktop:value=>clientInstaller.check(value),
         install:(directory,artifact,signal,onProcess)=>installArtifact({directory,optimizedBaseline:payload,artifact,signal,onProcess,onProgress:line=>void appendFile(join(data,'desktop.log'),line,{mode:0o600}).catch(()=>{}),node:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node'),pnpm:join(payload,'tools/node_modules/pnpm/bin/pnpm.cjs')}),
-        restart:id=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await pluginStore.activate(id);await start(false,'update');})});
+        restart:id=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await pluginStore.activate(id);await start(false,'update');}),
+        restartRuntime:()=>runLifecycle(async()=>{if(quitting)throw Error('DESKTOP_CLOSING');await stop();if(quitting)throw Error('DESKTOP_CLOSING');await start(false,'optional-plugin')})});
     }catch(error){await appendFile(join(data,'desktop.log'),'公司更新服务不可用：'+errorText(error)+'\n',{mode:0o600});}
     Menu.setApplicationMenu(Menu.buildFromTemplate([
-      {label:'GEA Desktop',submenu:[{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'打开启动日志',click:()=>void shell.openPath(join(data,'desktop.log'))},{label:'重新启动工作台',click:()=>void runLifecycle(()=>start(false,'restart')).catch(report)},{type:'separator'},{role:'quit'}]},
+      {label:'GEA Desktop',submenu:[{label:'打开数据目录',click:()=>void shell.openPath(data)},{label:'打开启动日志',click:()=>void shell.openPath(join(data,'desktop.log'))},{label:'重新启动工作台',click:()=>void runLifecycle(()=>start(false,'restart')).catch(report)},{type:'separator'},{label:'退出 GEA Desktop',role:'quit'}]},
       {label:'插件版本',submenu:[
         {label:'准备本地插件包',click:()=>void preparePlugin().catch(report)},
         {label:'切换已准备版本并重启',click:()=>void selectPlugin().catch(report)},
         {label:'查看当前版本',click:()=>void pluginStore.selected().then(selected=>dialog.showMessageBox(window,{message:'当前插件组合：'+selected.id,detail:JSON.stringify(selected.receipt?.versions??{},null,2)})).catch(report)}
       ]},
-      {label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},
-      {label:'视图',submenu:[{role:'reload'},{role:'toggleDevTools'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'}]}
+      {label:'编辑',submenu:[{label:'撤销',role:'undo'},{label:'重做',role:'redo'},{type:'separator'},{label:'剪切',role:'cut'},{label:'复制',role:'copy'},{label:'粘贴',role:'paste'},{label:'全选',role:'selectAll'}]},
+      {label:'视图',submenu:[{label:'重新加载',role:'reload'},{label:'切换开发者工具',role:'toggleDevTools'},{label:'实际大小',role:'resetZoom'},{label:'放大',role:'zoomIn'},{label:'缩小',role:'zoomOut'}]}
     ]));
     await ensureConfiguration(configPath);
     await runLifecycle(start);

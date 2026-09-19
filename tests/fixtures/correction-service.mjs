@@ -1,7 +1,7 @@
 /** External GEA contract fixture. These proposed correction fields are not a claim of deployment. */
 import { build } from 'esbuild';
 const { outputFiles } = await build({
-  entryPoints: ['src/mock-dms.ts'],
+  entryPoints: ['src/mocks/mock-dms.ts'],
   bundle: true,
   write: false,
   platform: 'node',
@@ -33,7 +33,7 @@ export function correctionService() {
     id: 'v',
     planId: 'z',
     seq: 1,
-    periodId: 'period-1',
+    periodId: '20260901',
     planTypeCode: 'Y',
     orderType: 'Z',
     dealerCode: '123',

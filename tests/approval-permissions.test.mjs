@@ -22,7 +22,7 @@ test('permission codes come from the authenticated grant list, survive status re
 test('restored login reloads current grants instead of trusting persisted permissions', async t => {
   const { build } = await import('esbuild');
   const { createRequire } = await import('node:module');
-  const { outputFiles } = await build({stdin:{contents:"export {Business} from './src/business.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'cjs'});
+  const { outputFiles } = await build({stdin:{contents:"export {Business} from './src/host/business.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'cjs'});
   const module = {exports:{}};
   new Function('require','module','exports',outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
   const business = new module.exports.Business({geaBaseUrl:'https://gea.example.test',requestTimeoutMs:1000});

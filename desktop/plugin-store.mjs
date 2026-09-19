@@ -1,7 +1,7 @@
 /** Immutable prepared plugin graphs and an atomic per-user selection. Never stores login data. */
 import {mkdir,readFile,writeFile,rename,rm,open,lstat,link,readdir} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
-import {copyGraphEntry} from './copy-graph.mjs';
+import {copyGraphEntry,relocateVirtualStore} from './copy-graph.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 
@@ -52,7 +52,9 @@ export class PluginStore {
         await copyGraphEntry(join(current.path,name),join(stage,name),{signal}).catch(error=>{if(error.code!=='ENOENT')throw error;});
       }
       signal?.throwIfAborted();
+      await relocateVirtualStore(stage,{sourceDirectory:current.path,storeRoot:this.root});
       await install(stage,{registerProcess:async workerPid=>atomic(lockPath,{...owner,workerPid})});
+      await relocateVirtualStore(stage);
       const manifest=await json(join(stage,'package.json'));
       if(manifest.desktopDataSchema!==undefined&&manifest.desktopDataSchema!==this.dataSchema)throw Error('DATA_SCHEMA_UNSUPPORTED');
       const versions={};

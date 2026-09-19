@@ -155,7 +155,26 @@ test(
       rows.find((x) => x.type === "turn/end").data.reason.kind,
       "completed",
     );
-    assert.ok(JSON.stringify(rows).includes(preview.snapshotHash));
+    const injected = rows.find(
+      (row) =>
+        row.type === "user/message" &&
+        row.data.content?.some(
+          (part) => part.type === "text" && part.text.includes("业务资料（共"),
+        ),
+    );
+    assert.ok(injected);
+    assert.equal(JSON.stringify(injected).includes("GEA_SNAPSHOT_SHA256"), false);
+    const archive = JSON.parse(
+      await readFile(
+        resolve(
+          app.runtime,
+          "analysis-snapshots",
+          sent.value.sessionId + ".json",
+        ),
+        "utf8",
+      ),
+    );
+    assert.equal(archive.snapshotHash, preview.snapshotHash);
     assert.equal(inference, 1);
     assert.ok(JSON.stringify(rows).includes("独立安装 GEA 模型回执"));
     assert.equal(

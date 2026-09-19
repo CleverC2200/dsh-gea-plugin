@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { profile, readSession, until } from "./profile.mjs";
 
 test(
@@ -71,13 +73,57 @@ test(
     );
     const body = JSON.parse(modelRequests[0].body);
     assert.equal(body.model, "fixture-model");
+    const instructions = JSON.stringify(
+      body.messages.filter((message) => message.role !== "user"),
+    );
+    assert.ok(instructions.includes("本会话只读"));
+    assert.ok(instructions.includes("只使用当前已加载且有权限的 GEA MCP 工具"));
+    assert.ok(instructions.includes("不要展示或解释接口、工具名、字段名、JSON、哈希"));
     assert.deepEqual(
       body.tools.map((tool) => tool.function.name).sort(),
-      ["gea_sales_plan_read", "gea_skill_reference_read", "skill"],
+      [
+        "gea_sales_plan_read",
+        "gea_skill_reference_read",
+        "gea_visible_workbench_context",
+        "skill",
+      ],
+    );
+    const submitted = rows.find(
+      (row) =>
+        row.type === "user/message" && row.data.source.plugin === "gea-proof",
+    );
+    assert.equal(submitted.data.source.form, "notice");
+    assert.equal(
+      submitted.data.source.summary,
+      "已提交只读分析：对比所选计划的数量和金额差异",
+    );
+    assert.equal(
+      rows.some(
+        (row) => row.type === "user/message" && row.data.source.kind === "user",
+      ),
+      false,
     );
     const user = body.messages.find((message) => message.role === "user");
-    assert.ok(JSON.stringify(user).includes(prepared.snapshotHash));
-    assert.ok(JSON.stringify(user).includes("1.2300"));
+    const prompt = JSON.stringify(user);
+    assert.ok(prompt.includes("业务资料（共 1 条计划）"));
+    assert.ok(prompt.includes("数量（目标 / 当前）"));
+    assert.equal(prompt.includes("GEA_SNAPSHOT_SHA256"), false);
+    assert.equal(prompt.includes("gea-readonly-v1"), false);
+    assert.equal(prompt.includes("sourceUrl"), false);
+    assert.equal(prompt.includes("fetchedAt"), false);
+    const archive = JSON.parse(
+      await readFile(
+        resolve(
+          app.runtime,
+          "analysis-snapshots",
+          sent.value.sessionId + ".json",
+        ),
+        "utf8",
+      ),
+    );
+    assert.equal(archive.sessionId, sent.value.sessionId);
+    assert.equal(archive.snapshotHash, prepared.snapshotHash);
+    assert.deepEqual(archive.snapshot, prepared.snapshot);
     assert.equal(prepared.snapshot.calculations.quantityGap.value, "1.11");
     assert.equal(prepared.snapshot.calculations.amountGap.value, "2.2");
     assert.ok(

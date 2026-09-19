@@ -1,31 +1,33 @@
-import { attachDesktopLogin } from "./desktop-login.ts";
+import { attachDesktopLogin } from "./host/desktop-login.ts";
 import { resolveWorkbench } from "../scripts/deployment.mjs";
-/** External GEA Fetch contribution and explicit local receipt provider. */
+/** GEA 外部 Fetch 能力和显式本地回执提供者的 DSH 插件入口。 */
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { brandString } from "@deepseek-ai/dsh-brand";
-import type { SessionRequestId } from "@deepseek-ai/dsh-api-session-controller";
 import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-agent";
 import {
   LlmAdapter,
+  createUserMessage,
   type GenerateOptions,
   type StreamChunk,
   attributionHeaders,
   type ContentBlock,
 } from "@deepseek-ai/dsh-llm";
 import z from "@deepseek-ai/schemastery";
-import { Business, object, type Deployment } from "./business.ts";
-import { GeaResponseError } from "./gea-error.js";
-import { registerGeaTools } from "./agent-tools.ts";
-import { transportSignal } from "./transport-signal.ts";
-import { geaTextStream } from "./gea-stream.ts";
+import { Business, object, type Deployment } from "./host/business.ts";
+import { GeaResponseError } from "./shared/gea-error.js";
+import { registerGeaTools } from "./host/agent-tools.ts";
+import { transportSignal } from "./shared/transport-signal.ts";
+import { geaTextStream } from "./shared/gea-stream.ts";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
 import type {} from "@deepseek-ai/dsh-client-connection";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
 
 export const inject = [
+  "agents",
   "connection",
   "tools",
   "llm",
@@ -37,6 +39,7 @@ export const Config = z.object({
   pageSize: z.natural().min(1).max(100).required(),
   periodPageSize: z.natural().min(1).max(1000).required(),
   requestTimeoutMs: z.natural().min(1000).max(120000).required(),
+  mcpRequestTimeoutMs: z.natural().min(1000).max(120000).default(60000),
   modelRequestTimeoutMs: z.natural().min(1000).max(600000).default(120000),
   maxSnapshotBytes: z.natural().min(1000).max(5000000).required(),
   runtimeDir: z.string().required(),
@@ -45,7 +48,7 @@ export const Config = z.object({
   inputByteBudget: z.natural().min(1).required(),
 });
 
-/** Runs the standard model call without making an external inference request. */
+/** 执行标准模型调用，但不发起外部推理请求。 */
 class ReceiptAdapter extends LlmAdapter {
   constructor(
     private readonly config: Deployment,
@@ -62,17 +65,14 @@ class ReceiptAdapter extends LlmAdapter {
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     options.signal?.throwIfAborted();
     const request = JSON.stringify(options.messages);
-    const snapshotHash = request.match(
-      /GEA_SNAPSHOT_SHA256=([a-f0-9]{64})/,
-    )?.[1];
-    const text = `本地验证回执（非 AI 分析）：快照已进入 dsh 模型请求。\n\nSHA-256: ${snapshotHash ?? "not-present"}\n\n这是数据传递验证，不构成审批意见。`;
+    const text =
+      "本地验证回执（非 AI 分析）：业务资料已进入会话。\n\n这是数据传递验证，不构成审批意见。";
     await mkdir(this.config.runtimeDir, { recursive: true, mode: 0o700 });
     await appendFile(
       resolve(this.config.runtimeDir, "receipts.jsonl"),
       JSON.stringify({
         at: new Date().toISOString(),
         runId: this.runId,
-        snapshotHash,
         requestHash: createHash("sha256").update(request).digest("hex"),
         provider: options.provider,
         model: options.model,
@@ -86,7 +86,7 @@ class ReceiptAdapter extends LlmAdapter {
   }
 }
 
-/** Calls the logged-in GEA personal model route directly, without an AionUi proxy. */
+/** 直接调用当前登录用户的 GEA 个人模型路由，不经过 AionUi 代理。 */
 class GeaModelAdapter extends LlmAdapter {
   constructor(private readonly business: Business) {
     super();
@@ -128,7 +128,7 @@ class GeaModelAdapter extends LlmAdapter {
       );
       if (!route.models.includes(options.model))
         throw new Error("GEA_MODEL_NOT_FOUND");
-      const response = await fetch(route.baseUrl + "/chat/completions", {
+      const response = await this.business.fetchExternal(route.baseUrl + "/chat/completions", {
         method: "POST",
         headers: {
           Accept: "text/event-stream",
@@ -254,7 +254,7 @@ function toGeaRequest(options: GenerateOptions) {
   };
 }
 
-/** Register authenticated Web routes; the standard dsh connection owns browser authorization. */
+/** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
 export async function apply(ctx: Context, config: Deployment): Promise<void> {
   resolveWorkbench(import.meta.url);
   const workbenchHtml =
@@ -318,20 +318,30 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     | {
         id: string;
         sessionId: SessionId;
-        requestId: SessionRequestId;
         result?: Promise<{ sessionId: SessionId }>;
       }
     | undefined;
-  function submit(id: unknown, requestSignal: AbortSignal) {
-    const preview = business.prepared(id);
+  function submit(payload: Record<string, unknown>, requestSignal: AbortSignal) {
+    if (
+      Object.keys(payload).some(
+        (key) => key !== "previewId" && key !== "workbenchContext",
+      )
+    )
+      throw new Error("INVALID_PAYLOAD");
+    const preview = business.prepared(payload.previewId);
+    const workbenchContext =
+      payload.workbenchContext === undefined
+        ? undefined
+        : object(payload.workbenchContext);
     requestSignal.throwIfAborted();
     if (submission?.id !== preview.previewId)
       submission = {
         id: preview.previewId,
         sessionId: brandString<SessionId>(`session-${randomUUID()}`),
-        requestId: brandString<SessionRequestId>(randomUUID()),
       };
     const attempt = submission;
+    if (workbenchContext)
+      business.updateVisibleWorkbenchContext(attempt.sessionId, workbenchContext);
     if (attempt.result) return attempt.result;
     const signal = business.admissionSignal(requestSignal);
     attempt.result = (async () => {
@@ -361,18 +371,28 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       });
       signal.throwIfAborted();
       business.prepared(preview.previewId);
-      await ctx.sessionController.prompt(
-        {
-          sessionId: session.sessionId,
-          requestId: attempt.requestId,
-          mode: "queue",
+      await business.archivePreview(session.sessionId, preview);
+      signal.throwIfAborted();
+      business.prepared(preview.previewId);
+      const agent = ctx.agents.get(session.sessionId);
+      if (!agent) throw new Error("SESSION_NOT_FOUND");
+      agent.followup(
+        createUserMessage({
+          source: {
+            kind: "plugin",
+            plugin: "gea-proof",
+            form: "notice",
+            summary:
+              config.analysisMode === "receipt"
+                ? "已提交只读快照，正在验证数据传递"
+                : "已提交只读分析：对比所选计划的数量和金额差异",
+          },
           content: [{ type: "text", text: preview.prompt }],
-        },
-        signal,
+        }),
       );
       return session;
     })().catch((error: unknown) => {
-      // Retain identities because admission may have succeeded before a failure.
+      // admission 可能已在失败前成功，因此保留已生成的身份标识。
       attempt.result = undefined;
       throw error;
     });
@@ -383,9 +403,11 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "notifications",
     "workflow/config",
     "sales-plan/action",
+    "sales-plan/draft",
     "sales-plan/submit",
     "environment/select",
     "model/discover",
+    "model/advice",
     "logout",
     "login/start",
     "login/poll",
@@ -398,6 +420,10 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "submit",
     "workbench/query",
     "workbench/prepare",
+    "workbench/context",
+    "api-log/snapshot",
+    "api-log/replay",
+    "api-log/clear",
   ];
   for (const endpoint of endpoints)
     ctx.effect(() =>
@@ -410,6 +436,15 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
             const payload = object(await request.json());
             let value: unknown;
             switch (endpoint) {
+              case "api-log/snapshot":
+                value = business.apiLogSnapshot(payload);
+                break;
+              case "api-log/replay":
+                value = await business.apiLogReplay(payload, request.signal);
+                break;
+              case "api-log/clear":
+                value = business.apiLogClear(payload);
+                break;
               case "workbench/query":
                 value = await business.workbenchQuery(payload, request.signal);
                 break;
@@ -419,8 +454,30 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                   request.signal,
                 );
                 break;
+              case "workbench/context": {
+                if (
+                  Object.keys(payload).some(
+                    (key) => key !== "sessionId" && key !== "context",
+                  )
+                )
+                  throw new Error("INVALID_WORKBENCH_CONTEXT");
+                if (typeof payload.sessionId !== "string")
+                  throw new Error("INVALID_WORKBENCH_SESSION");
+                const sessionId = payload.sessionId;
+                if (payload.context === null) {
+                  business.clearVisibleWorkbenchContext(sessionId);
+                  value = { synced: false };
+                } else {
+                  business.updateVisibleWorkbenchContext(sessionId, object(payload.context));
+                  value = { synced: true };
+                }
+                break;
+              }
               case "sales-plan/submit":
                 value = await business.salesPlanSubmit(payload, request.signal);
+                break;
+              case "sales-plan/draft":
+                value = await business.salesPlanDraft(payload, request.signal);
                 break;
               case "sales-plan/action":
                 value = await business.salesPlanAction(payload, request.signal);
@@ -435,8 +492,35 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 await Promise.all([business.refreshMissingAvatar(request.signal), business.refreshPermissions(request.signal)]);
                 value = business.status();
                 break;
+              case "model/advice": {
+                if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
+                if (config.analysisMode !== "model") throw new Error("GEA_ADVICE_MODEL_REQUIRED");
+                if (typeof payload.question !== "string" || !payload.question.trim() || Buffer.byteLength(payload.question) > config.inputByteBudget)
+                  throw new Error("INVALID_ADVICE_INPUT");
+                const signal = AbortSignal.any([request.signal, business.identitySignal(), AbortSignal.timeout(config.modelRequestTimeoutMs)]);
+                let model = config.analysisModel;
+                if (config.analysisSource === "gea") {
+                  const route = await business.modelRoute(signal, config.analysisAgentCode);
+                  model = route.models.includes(model) ? model : route.models[0]!;
+                }
+                let answer = "";
+                let finished = false;
+                for await (const chunk of ctx.llm.stream({ provider: "gea-analysis", model,
+                  messages: [createUserMessage({ source: {kind: "user"}, content: [{ type: "text", text: payload.question }] })],
+                  maxTokens: 4096, signal })) {
+                  signal.throwIfAborted();
+                  if (chunk.type === "text-delta") answer += chunk.text;
+                  if (Buffer.byteLength(answer) > config.maxSnapshotBytes) throw new Error("GEA_ADVICE_TOO_LARGE");
+                  if (chunk.type === "finish") finished = chunk.reason.kind === "stop";
+                }
+                signal.throwIfAborted();
+                if (!finished) throw new Error("GEA_ADVICE_INCOMPLETE");
+                value = {status: answer.trim() ? "ok" : "noAnswer", provider_id: "gea-analysis", model, answer};
+                break;
+              }
               case "model/discover": {
-                const route = await business.modelRoute(
+                if (!business.status().authenticated) throw new Error('LOGIN_REQUIRED');
+                const route = config.analysisSource === 'direct' ? {models:[config.analysisModel],names:{[config.analysisModel]:config.analysisModel}} : await business.modelRoute(
                   request.signal,
                   config.analysisAgentCode,
                 );
@@ -487,7 +571,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 value = business.prepare(payload);
                 break;
               case "submit":
-                value = await submit(payload.previewId, request.signal);
+                value = await submit(payload, request.signal);
                 break;
               default:
                 throw new Error("UNKNOWN_ENDPOINT");
@@ -498,7 +582,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
               { headers: { "Cache-Control": "no-store" } },
             );
           } catch (error) {
-            // Expiration can clear identity while the business operation itself fails.
+            // 业务操作失败时也可能同时发现登录过期并清除身份。
             try { await desktopLogin.flush(); } catch (storageError) { error = storageError; }
             const code =
               error instanceof Error && /^[A-Z][A-Z_0-9]+$/.test(error.message)

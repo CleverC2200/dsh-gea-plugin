@@ -29,7 +29,7 @@ export async function installArtifact({directory,artifact,node,pnpm,optimizedBas
     if(name.startsWith('@cleverc2200/')||['dsh-plugin','dsh-agent-manage','dsh-agent-plugins-market'].includes(name)) overrides[name]='$'+name;
   }
   await writeFile(manifestPath,JSON.stringify(manifest,null,2));
-  await writeFile(join(directory,'pnpm-workspace.yaml'),JSON.stringify({nodeLinker:'hoisted',minimumReleaseAge:0,overrides,...(workspace.patchedDependencies?{patchedDependencies:workspace.patchedDependencies}:{})}));
+  await writeFile(join(directory,'pnpm-workspace.yaml'),JSON.stringify({nodeLinker:'hoisted',virtualStoreDirMaxLength:process.platform==='win32'?60:120,minimumReleaseAge:0,overrides,...(workspace.patchedDependencies?{patchedDependencies:workspace.patchedDependencies}:{})}));
   const artifacts=Array.isArray(artifact)?artifact:[artifact];
   if(!artifacts.length)throw Error('NO_PLUGIN_ARTIFACTS');
   await mkdir(join(directory,'packages'),{recursive:true});

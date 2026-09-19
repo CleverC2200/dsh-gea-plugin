@@ -1,5 +1,5 @@
 import type {} from "@cleverc2200/dsh-agent-workbench/client";
-/** GEA navigation and independent workbench mounted in the DSH application frame. */
+/** 在 DSH 应用框架中挂载 GEA 导航和独立工作台。 */
 import { createPortal } from "react-dom";
 import React, { useEffect, useRef, useState } from "react";
 import type {
@@ -17,9 +17,11 @@ import type { LocaleSnapshot } from "@deepseek-ai/dsh-client-locale/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
-import { zh, en, type CopyKey } from "./locales.ts";
-import { Inbox } from "./inbox.tsx";
-import shellCss from "./shell.css";
+import { zh, en, type CopyKey } from "./client/locales.ts";
+import { Inbox } from "./client/inbox.tsx";
+import shellCss from "./client/shell.css";
+import workbenchCss from "./workbench/workbench.css";
+import { ApiLogCenter } from "./workbench/api-log-center.tsx";
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
   interface LocaleNamespaceMap {
@@ -30,8 +32,9 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
 export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions", "agentWorkbench"];
 const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
+const API_LOG_PANEL = "gea-api-log" as MainPanelId;
 
-/** Register a business-only center document beside the frame-owned native conversation. */
+/** 在框架管理的原生会话旁注册仅承载业务的中心文档。 */
 export function apply(ctx: Context): void {
   ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
   const t = ctx.locale.bind("geaProof");
@@ -43,6 +46,8 @@ export function apply(ctx: Context): void {
       } satisfies HostObservable<LocaleSnapshot>,
     },
   };
+  let workbenchAuthenticated = false;
+  let hideWorkbenchConversation: (() => void) | undefined;
   function Workbench({
     useSessions,
     useGeaLocale,
@@ -51,11 +56,19 @@ export function apply(ctx: Context): void {
     const [sessionError, setSessionError] = useState("");
     useEffect(() => {
       if (!authenticated) {
+        workbenchAuthenticated = false;
+        hideWorkbenchConversation?.();
+        hideWorkbenchConversation = undefined;
         return;
       }
+      workbenchAuthenticated = true;
       const hide = ctx.agentWorkbench.showConversation(PANEL);
+      hideWorkbenchConversation = hide;
       void ctx.agentWorkbench.open(PANEL).catch(error => setSessionError(String(error.message)));
-      return hide;
+      return () => {
+        hide();
+        if (hideWorkbenchConversation === hide) hideWorkbenchConversation = undefined;
+      };
     }, [authenticated]);
     const language = useGeaLocale((snapshot) => snapshot.active);
     const currentSession = useSessions((snapshot) => snapshot.current);
@@ -78,6 +91,7 @@ export function apply(ctx: Context): void {
           return;
         if (message.type === "gea:identity" && "authenticated" in message) {
           setAuthenticated(message.authenticated === true);
+          workbenchAuthenticated = message.authenticated === true;
           if (message.authenticated !== true) {
             ctx.agentWorkbench.forget(PANEL);
             (ctx.get("sessions") as unknown as ISessions).clear();
@@ -89,7 +103,7 @@ export function apply(ctx: Context): void {
           typeof message.sessionId === "string" &&
           /^session-[0-9a-f-]{36}$/.test(message.sessionId)
         ) {
-          // Keep the business page selected; AppFrame projects this Session on the right.
+          // 保持业务页面选中；AppFrame 会把该 Session 投影到右侧。
           void ctx.agentWorkbench.open(PANEL, "default", message.sessionId as SessionId).catch(error => setSessionError(String(error.message)));
         }
       };
@@ -100,18 +114,61 @@ export function apply(ctx: Context): void {
       <>
         <style>{shellCss}</style>
         {sessionError && <div role="alert">{sessionError}</div>}
-        <iframe
-          ref={frame}
-          className={`gea-workbench-frame${authenticated ? "" : " gea-login-frame"}`}
-          data-gea-workbench
-          title={t("approvalTitle")}
-          onLoad={() =>
-            frame.current?.contentWindow?.postMessage(
-              { type: "gea:session", sessionId: currentSession ?? null },
-              window.location.origin,
-            )
-          }
-          src={`/api/gea-proof/workbench?locale=${encodeURIComponent(language)}`}
+        <div className="gea-workbench-shell">
+          <iframe
+            ref={frame}
+            className={`gea-workbench-frame${authenticated ? "" : " gea-login-frame"}`}
+            data-gea-workbench
+            title={t("approvalTitle")}
+            onLoad={() =>
+              frame.current?.contentWindow?.postMessage(
+                { type: "gea:session", sessionId: currentSession ?? null },
+                window.location.origin,
+              )
+            }
+            src={`/api/gea-proof/workbench?locale=${encodeURIComponent(language)}`}
+          />
+        </div>
+      </>
+    );
+  }
+  async function apiLogRequest<T>(
+    endpoint: string,
+    payload: object = {},
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const response = await fetch("/api/gea-proof/" + endpoint, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+    const result = await response.json();
+    if (!response.ok || result.ok !== true)
+      throw new Error(result.error?.message ?? result.error?.code ?? "GEA_REQUEST_FAILED");
+    return result.value as T;
+  }
+  function ApiLogPage() {
+    const [environment, setEnvironment] = useState<"production" | "test">("production");
+    useEffect(() => {
+      const controller = new AbortController();
+      void apiLogRequest<{ environment?: "production" | "test" }>("status", {}, controller.signal)
+        .then((value) => {
+          if (value.environment === "test" || value.environment === "production")
+            setEnvironment(value.environment);
+        })
+        .catch(() => {});
+      return () => controller.abort();
+    }, []);
+    return (
+      <>
+        <style>{shellCss}</style>
+        <style>{workbenchCss}</style>
+        <ApiLogCenter
+          environment={environment}
+          request={apiLogRequest}
+          onClose={() => ctx.layout.selectPanel(PANEL)}
         />
       </>
     );
@@ -139,7 +196,7 @@ export function apply(ctx: Context): void {
         body: "{}", signal: controller.signal,
       }).then(response => response.json()).then(result => {
         if (result.ok && revision === 0 && !controller.signal.aborted) updateIdentity(result.value.authenticated === true, result.value.user);
-      }).catch(() => { /* Unavailable identity leaves account controls signed out. */ });
+      }).catch(() => { /* 身份不可用时保持账户控件为未登录状态。 */ });
       return () => { controller.abort(); window.removeEventListener("message", onIdentity); };
     }, []);
     return identity;
@@ -181,8 +238,30 @@ export function apply(ctx: Context): void {
       {failed && <span role="alert">{t("logoutFailed")}</span>}
     </div>;
   }
-  function Navigation({ usePanelInfo }: PropsRuntime<"sidebar.workspaces">) {
+  function Navigation({
+    usePanelInfo,
+    wide,
+    expandSidebar,
+  }: PropsRuntime<"sidebar.workspaces">) {
     const activePanel = usePanelInfo((info) => info.activePanelId);
+    if (!wide) {
+      return (
+        <nav className="gea-shell-navigation" aria-label={t("businessNavigation")}>
+          <style>{shellCss}</style>
+          <div className="gea-shell-navigation-content">
+            <button
+              type="button"
+              className="gea-shell-menu-trigger"
+              onClick={expandSidebar}
+              title={t("openBusinessNavigation")}
+              aria-label={t("openBusinessNavigation")}
+            >
+              <MenuIcon />
+            </button>
+          </div>
+        </nav>
+      );
+    }
     return (
       <nav
         className="gea-shell-navigation"
@@ -193,21 +272,23 @@ export function apply(ctx: Context): void {
           <button
             type="button"
             onClick={() => ctx.layout.selectPanel(INBOX)}
+            title={t("messageInbox")}
+            aria-label={t("messageInbox")}
             className={activePanel === INBOX ? "is-active" : undefined}
           >
-            <NavIcon kind="inbox" />
-            <span>{t("messageInbox")}</span>
+            <span className="gea-shell-label">{t("messageInbox")}</span>
           </button>
-          <div className="gea-shell-group">
-            <NavIcon kind="plan" />
-            <strong>{t("planManagement")}</strong>
+          <div className="gea-shell-group" title={t("planManagement")}>
+            <strong className="gea-shell-label">{t("planManagement")}</strong>
           </div>
           <button
             type="button"
             onClick={() => ctx.layout.selectPanel(PANEL)}
-            className={activePanel === PANEL ? "is-active" : undefined}
+            title={t("demandForecastAgent")}
+            aria-label={t("demandForecastAgent")}
+            className={`gea-shell-child${activePanel === PANEL ? " is-active" : ""}`}
           >
-            {t("demandForecastAgent")}
+            <span className="gea-shell-label">{t("demandForecastAgent")}</span>
           </button>
         </div>
       </nav>
@@ -215,7 +296,7 @@ export function apply(ctx: Context): void {
   }
   function Brand({ usePanelInfo }: PropsRuntime<"sidebar.brand.mark">) {
     const business = usePanelInfo(
-      (info) => info.activePanelId === PANEL || info.activePanelId === INBOX,
+      (info) => info.activePanelId === PANEL || info.activePanelId === INBOX || info.activePanelId === API_LOG_PANEL,
     );
     const switchPage = () => ctx.layout.selectPanel(business ? null : PANEL);
     return (
@@ -245,7 +326,7 @@ export function apply(ctx: Context): void {
   }
   function BrandName({ usePanelInfo }: PropsRuntime<"sidebar.brand.name">) {
     const business = usePanelInfo(
-      (info) => info.activePanelId === PANEL || info.activePanelId === INBOX,
+      (info) => info.activePanelId === PANEL || info.activePanelId === INBOX || info.activePanelId === API_LOG_PANEL,
     );
     return (
       <span
@@ -267,8 +348,7 @@ export function apply(ctx: Context): void {
     const trigger = useRef<HTMLButtonElement | null>(null);
     const openSettings = useRef(false);
     const [position, setPosition] = useState<{ left: number; bottom: number } | null>(null);
-    // The native slot supplies button content only; preserve its settings action
-    // while routing pointer and keyboard activation through the account menu.
+    // 原生插槽只提供按钮内容；保留设置动作，同时把鼠标和键盘激活转由账户菜单处理。
     useEffect(() => {
       const button = avatar.current?.closest("button");
       if (!button) return;
@@ -349,19 +429,64 @@ export function apply(ctx: Context): void {
         </>
       ),
     );
+    yield ctx.slots.register(
+      { name: "main", key: API_LOG_PANEL, locale: "geaProof" },
+      ApiLogPage,
+    );
     yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
     ctx.layout.selectPanel(PANEL);
   });
   function NavigationMode({ usePanelInfo }: PropsRuntime<"shell.overlay">) {
+    const activePanel = usePanelInfo((info) => info.activePanelId);
     const business = usePanelInfo(
-      (info) => info.activePanelId === PANEL || info.activePanelId === INBOX,
+      (info) => info.activePanelId === PANEL || info.activePanelId === INBOX || info.activePanelId === API_LOG_PANEL,
     );
+    useEffect(() => {
+      const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
+      frame?.classList.toggle("gea-api-fullscreen", activePanel === API_LOG_PANEL);
+      return () => frame?.classList.remove("gea-api-fullscreen");
+    }, [activePanel]);
+    useEffect(() => {
+      if (activePanel === API_LOG_PANEL) {
+        hideWorkbenchConversation?.();
+        hideWorkbenchConversation = undefined;
+        return;
+      }
+      if (activePanel === PANEL && workbenchAuthenticated && !hideWorkbenchConversation)
+        hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
+    }, [activePanel]);
     useEffect(() => {
       if (!business) return;
       return ctx.slots.register(
         { name: "sidebar.workspaces", locale: "geaProof", priority: -10 },
         Navigation,
       );
+    }, [business]);
+    useEffect(() => {
+      if (!business) return;
+      const hideConversationChrome = () => {
+        const conversation = document.querySelector<HTMLElement>(
+          ".AppFrame_rightbarCol [data-slot='main.conversation']",
+        );
+        if (!conversation) return;
+        const hide = (element: Element | undefined) => element?.setAttribute("data-gea-hidden-session-chrome", "");
+        const text = (element: Element) => element.textContent?.trim() ?? "";
+        hide([...conversation.querySelectorAll("button")].find((element) => text(element) === "workspace"));
+        for (const label of ["选择打开方式", "更多操作"]) {
+          hide(conversation.querySelector(`button[aria-label='${label}']`) ?? undefined);
+        }
+        hide([...conversation.querySelectorAll("[role='tab']")].find((element) => text(element) === "轨迹"));
+        hide([...conversation.querySelectorAll("*")].find((element) => element.children.length === 0 && text(element) === "需求预测"));
+      };
+      hideConversationChrome();
+      const observer = new MutationObserver(hideConversationChrome);
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => {
+        observer.disconnect();
+        document.querySelectorAll("[data-gea-hidden-session-chrome]").forEach((element) =>
+          element.removeAttribute("data-gea-hidden-session-chrome"),
+        );
+      };
     }, [business]);
     return null;
   }
@@ -389,30 +514,44 @@ export function apply(ctx: Context): void {
       UserAvatar,
     ),
   );
+  ctx.slots.inject("settings.section", () =>
+    ctx.slots.register(
+      {
+        name: "settings.section",
+        id: API_LOG_PANEL,
+        order: 100,
+        label: () => t("apiLog"),
+        locale: "geaProof",
+      },
+      function ApiLogSettingsSection({ close }: PropsRuntime<"settings.section">) {
+        useEffect(() => {
+          close();
+          ctx.layout.selectPanel(API_LOG_PANEL);
+        }, [close]);
+        return null;
+      },
+    ),
+  );
 }
 
-function NavIcon({ kind }: { kind: "inbox" | "plan" }) {
+function MenuIcon() {
   return (
     <svg
       aria-hidden="true"
+      data-nav-icon="menu"
       width="16"
       height="16"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     >
-      {kind === "inbox" ? (
-        <>
-          <path d="M6 17V9a6 6 0 0 1 12 0v8l2 2H4l2-2Z" />
-          <path d="M10 22h4" />
-        </>
-      ) : (
-        <>
-          <ellipse cx="12" cy="5" rx="8" ry="3" />
-          <path d="M4 5v14c0 4 16 4 16 0V5M4 10c0 4 16 4 16 0M4 15c0 4 16 4 16 0" />
-        </>
-      )}
+      <circle cx="5" cy="6" r="1" />
+      <circle cx="5" cy="12" r="1" />
+      <circle cx="5" cy="18" r="1" />
+      <path d="M9 6h11M9 12h11M9 18h11" />
     </svg>
   );
 }

@@ -18,7 +18,7 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
-    "src/gea-error.js",
+    "src/shared/gea-error.js",
     "packages/*/src/**/*.ts",
     "packages/*/src/**/*.tsx"
   ]

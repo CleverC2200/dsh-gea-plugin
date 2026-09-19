@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { resolveEnvironments } from "../src/environments.js";
+import { resolveEnvironments } from "../src/shared/environments.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
 import {
   readFile,
@@ -42,6 +42,7 @@ export async function readDeployment(path) {
   }
   if (!config || Array.isArray(config) || typeof config !== "object")
     throw new Error("GEA_CONFIG_INVALID");
+  if (config.mcpRequestTimeoutMs === undefined) config.mcpRequestTimeoutMs = 60000;
   const selected = resolveEnvironments(config);
   config.environment = selected.environment;
   const url = httpsEndpoint(selected.baseUrl, "INVALID_GEA_BASE_URL");
@@ -51,6 +52,7 @@ export async function readDeployment(path) {
     ["pageSize", 1, 100],
     ["periodPageSize", 1, 1000],
     ["requestTimeoutMs", 1000, 120000],
+    ["mcpRequestTimeoutMs", 1000, 120000],
     ["modelRequestTimeoutMs", 1000, 600000],
     ["maxSnapshotBytes", 1000, 5000000],
   ]) {
@@ -151,6 +153,7 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
             pageSize: config.pageSize,
             periodPageSize: config.periodPageSize,
             requestTimeoutMs: config.requestTimeoutMs,
+            mcpRequestTimeoutMs: config.mcpRequestTimeoutMs,
             modelRequestTimeoutMs: config.modelRequestTimeoutMs,
             maxSnapshotBytes: config.maxSnapshotBytes,
             runtimeDir: runtime,

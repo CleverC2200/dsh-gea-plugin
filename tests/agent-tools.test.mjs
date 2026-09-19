@@ -1,4 +1,5 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { profile, readSession, until } from "./profile.mjs";
@@ -60,7 +61,7 @@ test(
         reply({ data: [{ id: "model", name: "Test model" }] });
         return true;
       }
-      if (path.endsWith("/periods")) {
+      if (path.endsWith("/plans") && req.url.searchParams.get("pageSize") === "200") {
         if (outcome === "forbidden") reply({ message: "Forbidden" }, 403);
         else if (outcome === "hold" || outcome === "timeout") {
           toolReply = res;
@@ -71,19 +72,30 @@ test(
           reply({
             success: true,
             result: {
-              records: [{ periodId: "x", notes: "x".repeat(40000) }],
-              total: 1,
+              records: Array.from({ length: 200 }, (_, index) => ({
+                planId: `oversize-${index}`,
+                periodId: `202610${String(index).padStart(3, "0")}-${"x".repeat(200)}`,
+                planTypeCode: "Y",
+                orderType: "M",
+              })),
+              total: 200,
+              size: 200,
+              current: 1,
+              pages: 1,
             },
           });
         else
           reply({
             success: true,
             result: {
-              records: [{ periodId: "period-1", periodMonth: "2026-09" }],
+              records: [
+                { planId: "period-plan-1", periodId: "20261001", planTypeCode: "Y", orderType: "M" },
+                { planId: "period-plan-2", periodId: "20260901", planTypeCode: "Y", orderType: "M" },
+              ],
               total: 2,
-              size: 1,
+              size: 200,
               current: 1,
-              pages: 2,
+              pages: 1,
             },
           });
         return true;
@@ -119,6 +131,59 @@ test(
         );
         return true;
       }
+      if (outcome === "visible-context") {
+        const hasVisibleContext = body.messages.some(
+          (message) =>
+            message.role === "tool" &&
+            typeof message.content === "string" &&
+            message.content.includes("GEA_RENDERED_WORKBENCH"),
+        );
+        res.end(
+          hasVisibleContext
+            ? event({ content: "已按当前可见客户范围回答。" }, "stop")
+            : event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "visible-context-1",
+                      type: "function",
+                      function: {
+                        name: "gea_visible_workbench_context",
+                        arguments: "{}",
+                      },
+                    },
+                  ],
+                },
+                "tool_calls",
+              ),
+        );
+        return true;
+      }
+      if (outcome === "visible-context-unavailable") {
+        const result = body.messages.find((message) => message.role === "tool");
+        res.end(
+          result
+            ? event({ content: "当前页面上下文暂不可用，未据此编造业务结论。" }, "stop")
+            : event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "visible-context-unavailable-1",
+                      type: "function",
+                      function: {
+                        name: "gea_visible_workbench_context",
+                        arguments: "{}",
+                      },
+                    },
+                  ],
+                },
+                "tool_calls",
+              ),
+        );
+        return true;
+      }
       if (!body.messages.some((x) => x.role === "tool")) {
         res.end(
           event(
@@ -137,7 +202,7 @@ test(
                           ? { tenantId: "forged" }
                           : outcome === "status-filter"
                             ? { pageSize: 1, status: 5 }
-                            : { pageSize: 1 },
+                            : { pageSize: outcome === "oversize" ? 200 : 1 },
                     }),
                   },
                 },
@@ -154,7 +219,7 @@ test(
     });
     await app.login();
     const page = (await app.rpc("plans")).value;
-    async function submit() {
+    async function submit(workbenchContext) {
       const preview = await app.rpc("prepare", {
         queryId: page.queryId,
         planId: page.records[0].planId,
@@ -162,6 +227,7 @@ test(
       assert.equal(preview.ok, true, JSON.stringify(preview));
       const result = await app.rpc("submit", {
         previewId: preview.value.previewId,
+        ...(workbenchContext ? { workbenchContext } : {}),
       });
       assert.equal(result.ok, true, JSON.stringify(result));
       return result.value.sessionId;
@@ -182,7 +248,19 @@ test(
         assert.equal(modelRequests.length, 2);
         assert.deepEqual(
           modelRequests[0].tools.map((x) => x.function.name).sort(),
-          ["gea_sales_plan_read", "gea_skill_reference_read", "skill"],
+          [
+            "gea_sales_plan_read",
+            "gea_skill_reference_read",
+            "gea_visible_workbench_context",
+            "skill",
+          ],
+        );
+        assert.match(
+          modelRequests[0].messages
+            .filter((message) => message.role === "system")
+            .map((message) => message.content)
+            .join("\n"),
+          /不得引用其他会话、模型记忆或历史回答中的公司名、月份、状态、数量、金额、退回原因/,
         );
         const result = modelRequests[1].messages.find((x) => x.role === "tool");
         assert.equal(result.tool_call_id, "read-1");
@@ -222,10 +300,159 @@ test(
         );
         assert.equal(JSON.stringify(rows).includes("fixture-gea-token"), false);
         const read = app.requests.find((x) =>
-          x.url.pathname.endsWith("/periods"),
+          x.url.pathname.endsWith("/plans") && x.url.searchParams.get("pageSize") === "200",
         );
         assert.equal(read.method, "GET");
         assert.equal(read.headers["x-tenant-id"], "0");
+      },
+    );
+    await t.test(
+      "a newly submitted conversation receives its rendered context before the first model tool call",
+      async () => {
+        outcome = "visible-context";
+        modelRequests = [];
+        const rows = await ended(
+          await submit({
+            format: "gea-workbench-visible-v1",
+            sequence: 1,
+            view: "regional-approval",
+            scope: {
+              month: "2026-10",
+              planType: "Y",
+              approvalStage: "province",
+              dimension: "customer",
+            },
+            visibleRows: [
+              {
+                planId: "9007199254740993",
+                organization: "当前客户",
+                planTypeCode: "Y",
+                status: 3,
+              },
+            ],
+            selectedPlanIds: [],
+            pagination: { page: 1, pageSize: 20, total: 1 },
+            evidence: {
+              source: "gea-user-session",
+              completeness: "paged-queue",
+              queryState: "success",
+              dataVersion: "sales-plan-v1.11",
+            },
+          }),
+        );
+        const result = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "visible-context-1",
+        );
+        assert.match(result.content, /current-visible-page/);
+        assert.match(result.content, /当前客户/);
+        assert.equal(
+          rows.some(
+            (entry) =>
+              entry.type === "tool/result" &&
+              entry.data.message.content[0].isError,
+          ),
+          false,
+        );
+      },
+    );
+    await t.test(
+      "an unsynchronised page context is a safe tool result rather than a visible tool error",
+      async () => {
+        outcome = "visible-context-unavailable";
+        modelRequests = [];
+        const rows = await ended(await submit());
+        const result = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "visible-context-unavailable-1",
+        );
+        assert.match(result.content, /WORKBENCH_CONTEXT_NOT_SYNCED/);
+        assert.equal(
+          rows.some(
+            (entry) =>
+              entry.type === "tool/result" &&
+              entry.data.message.content[0].isError,
+          ),
+          false,
+        );
+      },
+    );
+    await t.test(
+      "the current conversation reads only its synchronised visible workbench page",
+      async () => {
+        outcome = "success";
+        const id = await submit();
+        await ended(id);
+        const synced = await app.rpc("workbench/context", {
+          sessionId: id,
+          context: {
+            format: "gea-workbench-visible-v1",
+            sequence: 1,
+            view: "regional-approval",
+            scope: {
+              month: "2026-10",
+              planType: "Y",
+              approvalStage: "province",
+              dimension: "customer",
+            },
+            visibleRows: [
+              {
+                planId: "9007199254740993",
+                organization: "当前客户",
+                planTypeCode: "Y",
+                status: 3,
+              },
+            ],
+            selectedPlanIds: [],
+            pagination: { page: 1, pageSize: 20, total: 1 },
+            evidence: {
+              source: "gea-user-session",
+              completeness: "paged-queue",
+              queryState: "success",
+              dataVersion: "sales-plan-v1.11",
+            },
+          },
+        });
+        assert.deepEqual(synced, { ok: true, value: { synced: true } });
+        outcome = "visible-context";
+        modelRequests = [];
+        const prompted = await app.remote("session/prompt", {
+          requestId: randomUUID(),
+          sessionId: id,
+          mode: "queue",
+          content: [{ type: "text", text: "这几个客户是什么计划类型？" }],
+        });
+        assert.equal(prompted.ok, true, JSON.stringify(prompted));
+        const rows = await until(
+          () => readSession(app.runtime, id),
+          (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
+        );
+        assert.equal(modelRequests.length, 2);
+        assert.equal(
+          modelRequests[0].tools.some(
+            (tool) => tool.function.name === "gea_visible_workbench_context",
+          ),
+          true,
+        );
+        const result = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "visible-context-1",
+        );
+        const value = JSON.parse(result.content);
+        assert.equal(value.source, "GEA_RENDERED_WORKBENCH");
+        assert.equal(value.coverage, "current-visible-page");
+        assert.equal(value.context.visibleRows[0].organization, "当前客户");
+        assert.equal(
+          rows.some(
+            (entry) =>
+              entry.type === "tool/call" &&
+              entry.data.name === "gea_visible_workbench_context",
+          ),
+          true,
+        );
       },
     );
     await t.test(
@@ -253,7 +480,7 @@ test(
           .filter((x) => x.role === "system")
           .map((x) => x.content)
           .join("\n");
-        assert.match(initialSystem, /用户用中文提问时.*进度.*中文/);
+        assert.match(initialSystem, /所有面向业务用户的答复一律使用简体中文/);
         const results = modelRequests[2].messages.filter(
           (x) => x.role === "tool",
         );
@@ -316,7 +543,7 @@ test(
           outcome = mode;
           modelRequests = [];
           const before = app.requests.filter((x) =>
-            x.url.pathname.endsWith("/periods"),
+            x.url.pathname.endsWith("/plans") && x.url.searchParams.get("pageSize") === "200",
           ).length;
           const rows = await ended(await submit());
           assert.match(
@@ -329,7 +556,7 @@ test(
           );
           if (mode === "invalid")
             assert.equal(
-              app.requests.filter((x) => x.url.pathname.endsWith("/periods"))
+              app.requests.filter((x) => x.url.pathname.endsWith("/plans") && x.url.searchParams.get("pageSize") === "200")
                 .length,
               before,
             );

@@ -46,7 +46,7 @@ for (const workspace of await readdir(home)) {
   break;
 }
 assert.ok(rows, "SESSION_NOT_FOUND");
-const user = rows.find(
+const legacyUser = rows.find(
   (row) =>
     row.type === "user/message" &&
     row.data.content?.some(
@@ -54,14 +54,40 @@ const user = rows.find(
         part.type === "text" && part.text.includes("GEA_SNAPSHOT_SHA256="),
     ),
 );
-assert.ok(user, "SNAPSHOT_NOT_FOUND");
-const prompt = user.data.content.find(
-  (part) => part.type === "text" && part.text.includes("GEA_SNAPSHOT_SHA256="),
-).text;
-const expected = prompt.match(/GEA_SNAPSHOT_SHA256=([a-f0-9]{64})/)?.[1];
-const json = prompt.slice(prompt.indexOf("\n\n") + 2);
-assert.equal(createHash("sha256").update(json).digest("hex"), expected);
-const snapshot = JSON.parse(json);
+let expected, snapshot, snapshotRow = legacyUser;
+if (legacyUser) {
+  const prompt = legacyUser.data.content.find(
+    (part) => part.type === "text" && part.text.includes("GEA_SNAPSHOT_SHA256="),
+  ).text;
+  expected = prompt.match(/GEA_SNAPSHOT_SHA256=([a-f0-9]{64})/)?.[1];
+  const json = prompt.slice(prompt.indexOf("\n\n") + 2);
+  assert.equal(createHash("sha256").update(json).digest("hex"), expected);
+  snapshot = JSON.parse(json);
+} else {
+  const archived = JSON.parse(
+    await readFile(
+      resolve(runtime, "analysis-snapshots", values.session + ".json"),
+      "utf8",
+    ),
+  );
+  assert.equal(archived.schema, 1, "UNSUPPORTED_SNAPSHOT_ARCHIVE");
+  assert.equal(archived.sessionId, values.session, "SNAPSHOT_SESSION_MISMATCH");
+  expected = archived.snapshotHash;
+  snapshot = archived.snapshot;
+  assert.equal(
+    createHash("sha256").update(JSON.stringify(snapshot, null, 2)).digest("hex"),
+    expected,
+    "SNAPSHOT_HASH_MISMATCH",
+  );
+  snapshotRow = rows.find(
+    (row) =>
+      row.type === "user/message" &&
+      row.data.content?.some(
+        (part) => part.type === "text" && part.text.includes("业务资料（共"),
+      ),
+  );
+}
+assert.ok(snapshotRow, "SNAPSHOT_NOT_FOUND");
 assert.ok(
   ["gea-readonly-v1", "gea-workbench-readonly-v1"].includes(snapshot.format),
   "UNSUPPORTED_SNAPSHOT_FORMAT",
@@ -73,7 +99,7 @@ assert.equal(
   "FIRST_ANALYSIS_NOT_COMPLETED",
 );
 assert.ok(
-  rows.indexOf(user) < rows.indexOf(firstTurn),
+  rows.indexOf(snapshotRow) < rows.indexOf(firstTurn),
   "SNAPSHOT_NOT_IN_FIRST_ANALYSIS",
 );
 const answers = rows.filter(

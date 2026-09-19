@@ -22,9 +22,29 @@
 
 ## 构建和验证
 
+桌面安装包使用仓库根目录的统一入口，不要直接在工作区执行 `electron-builder --projectDir desktop`：
+
+```sh
+GEA_DESKTOP_PAYLOAD_ROOT=.runtime/electron-build/payload pnpm run package:desktop:mac
+GEA_DESKTOP_PAYLOAD_ROOT=.runtime/electron-build/payload pnpm run package:desktop:win
+```
+
+打包机需要提供 `electron-builder 26.15.3`（可用 `GEA_ELECTRON_BUILDER` 指定可执行文件）；脚本不会偷偷下载或复用父工作区依赖。
+
+入口会先把 `desktop/` 壳文件复制到隔离 staging 目录，再调用固定的 `electron-builder.cjs`；父工作区的 `package.json` 和 `node_modules` 不会进入 `app.asar`。`GEA_DESKTOP_PAYLOAD_ROOT` 必须包含 `<mac|win>/payload`，运行依赖和原生模块按平台分别准备。需要只生成解包目录时追加 `--dir`，需要保留 staging 供排查时追加 `--keep-staging`。
+
+
+Windows 安装耗时专项使用 [一次运行采集说明](INSTALL-DIAGNOSTICS-README.md)。诊断包必须携带与 `diagnostic-package.json` 摘要一致的完整 EXE，不能用普通安装包替换。该包仅供专项试用，不自动推进桌面频道。
+
+诊断构建用 `prepare-installer-diagnostics.mjs <app-builder-lib目录> <新模板目录>` 给固定 26.15.3 模板加阶段日志，再用 `build-diagnostic-installer.cjs <node_modules目录> <独立桌面导出目录> <win-unpacked目录> <新模板目录> <输出目录>` 复用同一 payload；设置 `GEA_DESKTOP_TARGET=win`、`GEA_INSTALL_TIMING_LOG=1` 及 `GEA_DESKTOP_PAYLOAD_ROOT`。导出目录中的 `build/installer-timing.nsh` 必须来自本次源码。不修改共享构建缓存，不更换默认 7z 算法。`installer-timing-probe.nsi` 在 Windows 上验证日志追加、寄存器/栈及错误标记不受日志成功或失败影响；云端 clean/upgrade 验证不能冒充 Windows 10/11 实机性能验收。
+
 常规交付按本次改动选择定向检查、构建及包内容/摘要校验。启动时长、业务接口和资源同步属于问题专项验收；已通过后，仅在再次出现相关问题或明确要求时复查，不作为每次构建、发布、提交或合并的前置条件。下文的启动、同步和更新脚本供相应问题排查使用。
 
 同一组源码、依赖锁、平台、公司配置和资源快照只准备一份 payload；已验证的最终包直接用于发布和频道提升，不因提交、合并或切换频道重新打包。只有输入改变才重建受影响的平台，Mac 与 Windows 可以并行构建，原生依赖分别准备。保留依赖下载缓存、最终包及摘要/构建记录；发行完成后清理本次未被进程使用的 raw/compact、解包应用和隔离验收副本，保留用户数据及正在使用的目录。
+
+桌面壳应从固定源码提交的 `desktop/` 独立导出目录打包，不能在 pnpm 工作区中直接运行 `electron-builder --projectDir desktop`：构建器可能把父工作区的生产依赖重复装进 `app.asar`。导出目录不得包含父工作区的 manifest 或 node_modules；通过现有 `GEA_DESKTOP_PAYLOAD_ROOT` 提供已验证运行依赖。检查 app.asar 只包含配置中的壳文件，不含额外 node_modules。
+
+浏览器注册脚本以 IIFE 独立作用域压缩，防止 DSH 合并脚本时不同包的编译器辅助变量互相覆盖。修改压缩流程后运行 `node --test desktop/optimize-client-artifacts.test.mjs`，再验证真实桌面页面加载与更新。
 
 Windows 工作流 `Check Windows installer` 仅通过手动运行触发，必须指定已有发行标签。默认只下载、校验并安装该包，不下载诊断插件、不安装浏览器驱动，也不启动应用。排查启动或同步问题时才选择 `run_diagnostics`，复用现有专项脚本；该任务不因 PR 标签或每次构建自动执行。
 
@@ -34,7 +54,7 @@ Windows 工作流 `Check Windows installer` 仅通过手动运行触发，必须
 
 使用 electron-builder 26.15.3，`GEA_DESKTOP_PAYLOAD_ROOT` 指向新构建根，包含 mac/payload、win/payload。各 payload 必须包含相应平台 Node、生产依赖、标准发行包、pnpm 11.27.0 工具与 runtime-start.mjs 的 start.mjs 副本、onboarding.mjs。不能把 Mac 原生模块复用到 Windows。
 
-`node --test desktop/config.test.cjs desktop/onboarding.test.mjs desktop/plugin-store.test.mjs` 验证配置、提示、版本目录与数据保护。指定 `GEA_DESKTOP_TEST_GRAPH` 运行 desktop/runtime-graph.test.mjs 验证外置启动；指定 `GEA_DESKTOP_BASELINE`、`GEA_DESKTOP_NEXT` 运行 desktop/version-switch.test.mjs 验证实际页面版本切换。
+`npm run test:desktop` 运行不依赖安装包、Electron 或外部频道的快速桌面回归。`npm run test:desktop:electron` 使用 `GEA_ELECTRON_EXECUTABLE` 和 `GEA_DESKTOP_PAYLOAD` 运行真实 Electron 启动、恢复、凭据和首次业务页面回归。指定 `GEA_DESKTOP_TEST_GRAPH` 运行 desktop/runtime-graph.test.mjs 验证外置启动；指定 `GEA_DESKTOP_BASELINE`、`GEA_DESKTOP_NEXT`、`GEA_EXPECTED_BASELINE_VERSION` 和 `GEA_EXPECTED_NEXT_VERSION` 运行 desktop/version-switch.test.mjs 验证实际页面版本切换。
 
 Windows 路径使用 file URL 动态导入、junction 与带引号的固定工具路径；在 Mac 的交叉检查不等于真实 Windows 验收。安装方式变化或出现安装问题时，针对受影响平台验收；其他交付复用适用的安装记录并说明签名状态。
 
@@ -72,11 +92,25 @@ GEA 登录由 Electron safeStorage 使用操作系统加密保存为 userData/lo
 
 Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体缩短安装过程。资源同步使用 Agent Manage 0.6.3-company.4，修复 Windows 解压路径分隔符检查和大归档并发写入问题。
 
+Windows NSIS 构建固定使用 `ELECTRON_BUILDER_7Z_FILTER=BCJ`，避免 electron-builder 26.15.x 生成的 BCJ2 归档与安装时 Nsis7z 解码器不兼容；同时启用 `nsis.differentialPackage=true`，供更新器减少差分下载。该设置不能消除首次安装的本地逐文件复制耗时，也不替代安装后文件完整性验收。
+
+Electron 内置语言包只保留 `en-US`、简体中文和繁体中文变体，避免把不使用的 locale 文件复制进 Windows 安装器；业务插件自己的多语言资源不受此白名单影响。
+
+Windows 签名默认关闭，仅用于本机内测。正式或 Windows 真机验收构建使用证书环境变量，不把证书和密码提交到仓库：`WIN_CSC_LINK=/secure/path/gea.pfx WIN_CSC_KEY_PASSWORD=... GEA_WIN_REQUIRE_SIGNING=1`。也可使用 electron-builder 支持的 `CSC_LINK`/`CSC_KEY_PASSWORD`。开启强制模式后没有证书会直接失败；证书的 Subject/Publisher 必须与 AppX 配置中的 `GEA_MSIX_PUBLISHER` 一致。证书密码只通过 CI Secret、Windows 凭据管理器或临时环境变量注入，构建结束后清除。
+
+仅供 Windows 10/11 内部验收时，可在 PowerShell 运行 `desktop/create-windows-test-certificate.ps1` 生成自签名测试证书。脚本会把证书加入当前用户的 `TrustedPeople`，仅该用户/机器信任；不要把生成的目录、密码或证书提交到 Git。自签名证书不能用于正式发布或替代公开信任的公司证书。
+
+MSIX 只作为 Windows 10/11 验证路线，不进入现有正式频道。当前 electron-builder 26.15.3 的实现入口名是 `appx`（生成 MSIX/AppX 包），不是 `msix`。使用 `GEA_DESKTOP_TARGET=win GEA_MSIX_PUBLISHER='CN=实际签名发布者' electron-builder --config desktop/electron-builder-msix.cjs` 构建；必须提供真实签名发布者，未签名的试验包不能视为安装或更新验收。重点验证用户数据目录、原生 Node 模块、快捷方式/协议、首次安装和覆盖更新耗时。MSIX 的差分更新依赖 Windows 的 AppxBlockMap，和 NSIS 的 differentialPackage 不是同一机制。
+
 插件更新以最多 32 个文件复制任务准备独立暂存目录，支持时使用文件系统写时复制，不共享可写硬链接。常规更新只执行一次 pnpm add；仅遇到存储路径或虚拟目录布局不兼容时，执行 pnpm install 修复后重试。其他失败直接返回，不重复安装。取消更新会等待正在进行的文件复制结束再清理暂存目录。
 
 更新状态中的 timings.downloadMs 和 timings.prepareMs 分别记录下载校验与本地准备耗时，便于定位慢在哪一步；不把本地安装时间归为网络下载。
 
-`GEA_DESKTOP_PAYLOAD=<payload> GEA_PLUGIN_ARTIFACT=<GEA-0.0.7.tgz> node --test desktop/installer-portability.test.mjs` 在复制的依赖图中模拟另一台机器的存储路径和目录长度，执行真实 pnpm 安装并检查当前选择与业务配置不变。
+`GEA_DESKTOP_PAYLOAD=<payload> GEA_PLUGIN_ARTIFACT=<GEA插件.tgz> GEA_EXPECTED_PLUGIN_VERSION=<版本> node --test desktop/installer-portability.test.mjs` 在复制的依赖图中模拟另一台机器的存储路径和目录长度，执行真实 pnpm 安装并检查当前选择与业务配置不变。
+
+额外指定 `GEA_PREVIOUS_PLUGIN_ARTIFACT=<较早GEA插件.tgz>` 时，同一测试还执行连续两轮真实安装及版本目录搬迁，断言没有因虚拟目录路径变化重建依赖，且未变核心文件保持原 inode 和字节。Mac 上仅模拟 Windows 的绝对路径元数据，不能替代 Windows 实机运行。
+
+Windows payload 准备显式使用 `virtualStoreDirMaxLength: 60`，Mac 使用 120，安装器使用相同目标参数。仅对已知 hoisted/layout 5 图内部的虚拟目录记录做相对路径转换，在复制后及安装后各处理一次；真实 store、长度或其他布局不兼容仍保留 pnpm 重建兜底。旧 Windows 图可能需要一次布局迁移，不保证首次升级完全免重建。
 
 准备插件后，桌面逐项核对浏览器源文件摘要；仅当内容与随包编译记录一致时复用压缩文件及源码映射，保持重复启动性能。更新后内容不同的插件使用新文件，不被旧优化产物覆盖。
 ## GitLab 更新渠道
@@ -95,7 +129,7 @@ Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体�
 
 - `GEA_GITLAB_BASELINE=<旧payload> GEA_GITLAB_RELEASE_MODULE=<新Hub的lib/services/release-channel.js> node desktop/gitlab-update-smoke.mjs`：免登录读取两个真实 GitLab 频道和全部包，校验摘要，通过官方 DSH/pnpm 更新隔离插件组合，并确认再次检查无更新。
 - `GEA_GITLAB_BASELINE=<旧payload> node desktop/gitlab-runtime-smoke.mjs <上一脚本result.json>`：用实际新组合启动 DSH，验证软件更新页面与插件加载状态。
-- `GEA_GITLAB_BASELINE=<旧payload> GEA_GITLAB_ELECTRON=<打包后的应用可执行文件> node desktop/gitlab-electron-smoke.mjs`：真实桌面 UI 下载、重启与版本切换；仅 GEA 登录使用本地模拟服务，发行下载与安装均为真实操作。
+- `GEA_GITLAB_BASELINE=<旧payload> GEA_GITLAB_ELECTRON=<打包后的应用可执行文件> GEA_GITLAB_FROM=<旧Hub版本> GEA_GITLAB_TO=<新Hub版本> node desktop/gitlab-electron-smoke.mjs`：真实桌面 UI 下载、重启与版本切换；仅 GEA 登录使用本地模拟服务，发行下载与安装均为真实操作。
 
 以上脚本使用自己的临时数据目录并关闭自己启动的进程，不操作用户的日常应用数据。
 
@@ -110,7 +144,7 @@ Mac 本机构建对照中，再次启动中位耗时由 2.875 秒降至 2.105 �
 
 ## 插件更新耗时诊断
 
-`GEA_DESKTOP_PAYLOAD=<已验证payload> GEA_ELECTRON_EXECUTABLE=<开发版Electron> GEA_UPDATE_FROM=<基线GEA版本> GEA_UPDATE_TO=<测试频道GEA版本> node desktop/update-speed-smoke.mjs` 使用隔离数据和模拟登录，通过真实测试频道下载、安装、重启，检查头像、登录、工作区保留及不再提示同一更新，并输出阶段耗时。需已安装项目开发依赖、构建插件。该脚本保留临时 result.json 供核查，不操作日常用户目录。
+`GEA_DESKTOP_PAYLOAD=<已验证payload> GEA_ELECTRON_EXECUTABLE=<开发版Electron> GEA_UPDATE_FROM=<基线GEA版本> GEA_UPDATE_TO=<测试频道GEA版本> npm run test:desktop:update-channel` 使用隔离数据和模拟登录，通过真实测试频道下载、安装、重启，检查头像、登录、工作区保留及不再提示同一更新，并输出阶段耗时。默认验证单个 GEA 插件更新；增加 `GEA_UPDATE_SCOPE=all` 时验证批量准备与一次重启。需已安装项目开发依赖、构建插件。该脚本保留临时 result.json 供核查，不操作日常用户目录。
 
 2026-09-15 macOS arm64 同一外置插件组合、同一 0.0.10 安装包对比：原流程复制 15.23 秒、安装 4.01 秒，总计 19.25 秒；优化流程复制 4.88 秒、安装 2.30 秒，总计 7.20 秒。这里不包含重启时间；耗时取决于磁盘、缓存及依赖规模，不是性能保证。Windows 尚未实测。
 
@@ -143,3 +177,11 @@ Mac 本机构建对照中，再次启动中位耗时由 2.875 秒降至 2.105 �
 桌面启动时检查公司插件和客户端版本，周期检查间隔支持 1–168 小时，默认 24 小时。插件中心可请求批量准备并在成功后重启一次；失败或取消不自动应用。核心数据升级仍清除旧的待应用状态，保留更新偏好与已验证摘要历史。准备状态只在后台清理完成后显示为可重启。
 
 批量更新在下载前校验当前宿主组合和更新后的目标组合；任一组合不兼容时拒绝准备，保持当前插件不变。重复调用启动入口不会重复发起启动检查。
+
+## 桌面 0.0.12
+
+原生菜单显式使用简体中文，保留退出、编辑和缩放等既有系统动作；不恢复工作台全屏按钮。
+
+内置 DSH 0.1.6 公司核心，更新下载状态靠近设置入口显示，并提供进行中的动画；准备完成后的“下载并重启”操作改为红色强调。
+业务版移除默认的本地工作区快捷打开按钮，仍保留“选择打开方式”菜单。
+数据代际仍为 2，不修改用户登录、会话或工作区。

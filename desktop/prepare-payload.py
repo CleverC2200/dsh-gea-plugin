@@ -32,7 +32,7 @@ overrides = {name: 'file:packages/' + record['file'] for name, record in records
 version = json.loads((desktop / 'package.json').read_text())['version']
 manifest = {'name': 'gea-desktop-runtime', 'version': version, 'private': True, 'type': 'module', 'desktopDataSchema': json.loads((desktop / 'package.json').read_text())['desktopDataSchema'], 'dependencies': {name: overrides[name] for name in roots}}
 (target / 'package.json').write_text(json.dumps(manifest, indent=2) + '\n')
-workspace = {'nodeLinker': 'hoisted', 'minimumReleaseAge': 0, 'overrides': overrides, 'supportedArchitectures': {'os': ['darwin' if args.platform == 'mac' else 'win32'], 'cpu': ['arm64' if args.platform == 'mac' else 'x64']}}
+workspace = {'nodeLinker': 'hoisted', 'virtualStoreDirMaxLength': 120 if args.platform == 'mac' else 60, 'minimumReleaseAge': 0, 'overrides': overrides, 'supportedArchitectures': {'os': ['darwin' if args.platform == 'mac' else 'win32'], 'cpu': ['arm64' if args.platform == 'mac' else 'x64']}}
 if records['@deepseek-ai/dsh-client-modules']['version'] == '0.1.5-rc.2':
     patch = 'client-modules-newline-scan.patch'
     shutil.copy2(desktop / 'patches' / patch, target / 'packages' / patch)
