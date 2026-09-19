@@ -544,7 +544,7 @@ export function apply(ctx: Context): void {
       <button
         type="button"
         className="gea-function-area-button"
-        onClick={() => ctx.layout.selectPanel(PANEL)}
+        onClick={() => ctx.layout.selectPanel(business ? null : PANEL)}
       >
         功能区
       </button>,
