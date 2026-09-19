@@ -568,6 +568,8 @@ export class Business {
   desktopLoginSnapshot(): unknown {
     return this.auth ? {schema:1,environment:this.environment,base:this.base,auth:{...this.auth}} : null;
   }
+  persistentLoginSnapshot(): unknown { return this.desktopLoginSnapshot(); }
+  restorePersistentLogin(value: unknown): void { this.restoreDesktopLogin(value); }
   restoreDesktopLogin(value: unknown): void {
     const saved=object(value);
     if(saved.schema!==1||typeof saved.environment!=="string"||this.environments[saved.environment]!==saved.base)throw Error("DESKTOP_LOGIN_SCOPE_MISMATCH");

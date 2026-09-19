@@ -271,6 +271,9 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     );
   }, [status]);
   useEffect(() => {
+    notifyPluginIdentity();
+  }, [notifyPluginIdentity]);
+  useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (
         event.origin !== window.location.origin ||
@@ -300,11 +303,26 @@ export function WorkbenchPage({ t }: { t: Translate }) {
         setShellView("plugin");
       }
     };
+    const onPluginRequest = (event: MessageEvent) => {
+      if (event.source !== pluginFrame.current?.contentWindow) return;
+      const message = event.data;
+      if (!message || message.type !== "gea:request" || typeof message.requestId !== "string" || typeof message.endpoint !== "string") return;
+      const allowed = new Set(["status", "notifications", "workflow/config", "periods", "plans", "detail", "versions", "skus"]);
+      if (!allowed.has(message.endpoint)) {
+        (event.source as WindowProxy).postMessage({ type: "gea:response", requestId: message.requestId, ok: false, error: "GEA_ENDPOINT_NOT_ALLOWED" }, { targetOrigin: event.origin });
+        return;
+      }
+      void rpc(message.endpoint, message.payload && typeof message.payload === "object" ? message.payload : {})
+        .then(value => (event.source as WindowProxy).postMessage({ type: "gea:response", requestId: message.requestId, ok: true, value }, { targetOrigin: event.origin }))
+        .catch(error => (event.source as WindowProxy).postMessage({ type: "gea:response", requestId: message.requestId, ok: false, error: error instanceof Error ? error.message : "GEA_REQUEST_FAILED" }, { targetOrigin: event.origin }));
+    };
     window.addEventListener("message", onMessage);
     window.addEventListener("message", onPluginSelection);
+    window.addEventListener("message", onPluginRequest);
     return () => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("message", onPluginSelection);
+      window.removeEventListener("message", onPluginRequest);
     };
   }, []);
   const request = useRef<AbortController>();
