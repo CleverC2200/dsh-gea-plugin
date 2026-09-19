@@ -18,7 +18,7 @@ import {
   type ContentBlock,
 } from "@deepseek-ai/dsh-llm";
 import z from "@deepseek-ai/schemastery";
-import { Business, object, type Deployment } from "./host/business.ts";
+import { Business, keys, object, text, type Deployment } from "./host/business.ts";
 import { GeaResponseError } from "./shared/gea-error.js";
 import { registerGeaTools } from "./host/agent-tools.ts";
 import { transportSignal } from "./shared/transport-signal.ts";
@@ -436,6 +436,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "workbench/query",
     "workbench/prepare",
     "workbench/context",
+    "html-plugin/sql",
     "api-log/snapshot",
     "api-log/replay",
     "api-log/clear",
@@ -488,6 +489,10 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 }
                 break;
               }
+              case "html-plugin/sql":
+                keys(payload, ["consumerCode", "sql", "values"]);
+                value = await business.htmlPluginSql(text(payload.consumerCode), { sql: payload.sql, values: payload.values }, request.signal);
+                break;
               case "sales-plan/submit":
                 value = await business.salesPlanSubmit(payload, request.signal);
                 break;

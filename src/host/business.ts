@@ -248,7 +248,7 @@ export function object(value: unknown): Record<string, unknown> {
     throw new Error("INVALID_PAYLOAD");
   return value as Record<string, unknown>;
 }
-function text(value: unknown): string {
+export function text(value: unknown): string {
   if (typeof value !== "string" || !value.trim() || value.length > 256)
     throw new Error("INVALID_SELECTION");
   return value;
@@ -346,7 +346,7 @@ function project(value: unknown, fields: readonly string[]): Row {
       }),
   );
 }
-function keys(payload: Record<string, unknown>, allowed: string[]): void {
+export function keys(payload: Record<string, unknown>, allowed: string[]): void {
   if (Object.keys(payload).some((key) => !allowed.includes(key)))
     throw new Error("INVALID_PAYLOAD");
 }
@@ -819,6 +819,31 @@ export class Business {
   private authenticated(): NonNullable<Business["auth"]> {
     if (!this.auth) throw new Error("LOGIN_REQUIRED");
     return this.auth;
+  }
+
+  /** 为 gea-html-v1 插件申请当前消费者的只读 SQL 会话。 */
+  async htmlPluginSql(consumerCode: string, payload: Record<string, unknown>, caller: AbortSignal) {
+    if (!/^[a-z0-9-]{3,80}$/.test(consumerCode)) throw new Error("INVALID_PLUGIN_CONSUMER");
+    keys(payload, ["sql", "values"]);
+    const sql = text(payload.sql).trim();
+    if (!/^select\b/i.test(sql) || sql.includes(";") || sql.length > 120_000) throw new Error("GEA_SQL_READONLY_REQUIRED");
+    const values = Array.isArray(payload.values) ? payload.values : [];
+    if (values.length > 100) throw new Error("GEA_SQL_PARAMETERS_INVALID");
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(this.config.requestTimeoutMs)]);
+    const requestId = randomUUID();
+    const post = async (path: string, body: unknown, headers: Record<string, string>) => {
+      const response = await this.apiLog.fetch(this.base + path, { method: "POST", redirect: "error", signal,
+        headers: { Accept: "application/json", "Content-Type": "application/json", ...headers, "X-Request-Id": requestId }, body: JSON.stringify(body) });
+      const result = object(parseJson(await response.text()));
+      if (!response.ok || result.success !== true || result.code !== 200 || !result.result) throw new Error("GEA_PLUGIN_SQL_FAILED");
+      return object(result.result);
+    };
+    const session = await post("/ai/gateway/agent/session", { agentCode: consumerCode, channel: "AI_PORTAL", requestId, conversationId: randomUUID() }, { "X-Access-Token": auth.token, ...(auth.tenantId ? { "X-Tenant-Id": auth.tenantId } : {}) });
+    const delegationToken = text(session.delegationToken);
+    const decision = session.accessDecision == null ? {} : object(session.accessDecision);
+    if (decision.allowed !== true || !delegationToken) throw new Error("GEA_PLUGIN_ACCESS_DENIED");
+    return post("/ai/gateway/sql/execute", { sql, parameters: values, pageNo: 1, pageSize: 500, includeTotal: true }, { "X-Delegation-Token": delegationToken });
   }
 
   /** 将服务端最新分配的审批任务匹配到指定销售计划版本。 */
