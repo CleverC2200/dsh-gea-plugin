@@ -30,8 +30,8 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   height: 100%;
   min-width: 0;
   container: gea-sidebar / inline-size;
-  background: #f2f3f5;
-  color: #525b6d;
+  background: #f5f6f8;
+  color: #596273;
   font:
     13px/1.6 system-ui,
     sans-serif;
@@ -40,8 +40,8 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 0 16px 12px;
+  gap: 6px;
+  padding: 0 14px 12px;
 }
 .gea-shell-navigation * {
   box-sizing: border-box;
@@ -60,6 +60,16 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   border-bottom: 1px solid #e0e3eb;
   color: #111;
   font-size: 16px;
+}
+.gea-shell-navigation-content::after {
+  content: "插件工作区";
+  display: block;
+  margin: 10px 8px 0;
+  color: #9aa2af;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
 }
 .gea-shell-logo {
   background: #ed0000;
@@ -80,16 +90,16 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-shell-navigation-content > button,
 .gea-shell-workspaces > button {
   border: 0;
-  border-radius: 6px;
+  border-radius: 9px;
   background: transparent;
   color: inherit;
   font: inherit;
   cursor: pointer;
-  min-height: 34px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 8px;
+  padding: 8px 12px;
   text-align: left;
 }
 .gea-shell-navigation button:disabled {
@@ -97,8 +107,10 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   cursor: default;
 }
 .gea-shell-navigation button.is-active {
-  background: #f5e4e7;
-  color: #ed3d43;
+  background: #fff0f2;
+  color: #d6223d;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 #d6223d;
 }
 .gea-shell-navigation-content > .gea-shell-child {
   padding-left: 40px;
@@ -111,14 +123,24 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   display: flex;
   gap: 10px;
   align-items: center;
-  padding: 12px 8px 3px;
+  padding: 18px 12px 4px;
+  color: #3d4654;
+  font-size: 13px;
+}
+.gea-shell-group::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-right: 3px;
+  border: 1.5px solid #9aa2af;
+  border-radius: 2px;
 }
 .gea-shell-user {
   display: flex;
   align-items: center;
   gap: 8px;
   border-top: 1px solid #e0e3eb;
-  padding-top: 14px;
+  padding: 14px 8px 0;
   margin-top: auto;
 }
 .gea-user-avatar {
@@ -193,6 +215,19 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   > div:first-child {
   flex: 1;
   height: auto;
+}
+
+/* The right rail is the single native conversation surface. */
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] {
+  background: #fff;
+  border-left: 1px solid #e5e8ed;
+}
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] [data-composer-seat] {
+  border-top: 1px solid #edf0f3;
+  background: #fff;
+}
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] [data-conversation-scroll] {
+  padding-inline: 18px;
 }
 
 /* Business inbox follows the dealer reminder prototype. */
