@@ -15,4 +15,4 @@ peerDependencyRules:
     - '@cleverc2200/dsh-agent-workbench'
 # The private example peer must resolve to the same pinned package as the host.
 overrides:
-  '@cleverc2200/dsh-agent-workbench': 'git+https://github.com/CleverC2200/dsh-agent-workbench.git#db51a0d0f772fc6e78701f3a218f4d4c3f26e93c'
+  '@cleverc2200/dsh-agent-workbench': 'git+http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git#8558e64c0af6275a1f3289dd2d10a83203dfd03a'

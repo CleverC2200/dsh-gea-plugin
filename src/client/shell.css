@@ -318,3 +318,5 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   .AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) > .AppFrame_handle { display: none; }
   .AppFrame_frame[data-conversation-beside-panel][data-sidebar-collapsed]:has(iframe[data-gea-workbench]) { grid-template-columns: 64px minmax(0, 1fr) !important; }
 }
+
+.gea-shell-navigation .gea-shell-collaboration { margin-top: 12px; font-weight: 600; }

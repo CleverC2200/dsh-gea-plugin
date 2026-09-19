@@ -11,6 +11,7 @@ import type { GeaSalesPlanActionRequest } from '../workbench/original/contracts.
  * Host 侧业务门面：集中维护 GEA 身份、查询选择、权限校验和只读快照。
  * 浏览器只能提交资源标识与用户意图，凭证、来源数据和最终写入校验都留在这里。
  */
+import { prepareGatewayLaunch } from "./html-gateway.ts";
 import { prepareGatewayMcp } from "./gateway-mcp.ts";
 import { isDeepStrictEqual } from 'node:util';
 import { validateServiceAccounts, serviceAccountReady, submitWithServiceAccount, type ServiceAccounts } from './service-account.ts';
@@ -1383,6 +1384,11 @@ export class Business {
   }
 
   /** 只使用当前进程登录准备 Gateway 传输能力。 */
+  async htmlLaunch(agentCode: string, signal: AbortSignal, conversationId?: string) {
+    const auth = this.authenticated();
+    return prepareGatewayLaunch(this.base, auth, {consumerType:"AGENT",consumerCode:agentCode}, AbortSignal.any([signal,this.epoch.signal]), this.config.requestTimeoutMs, this.fetchExternal.bind(this), conversationId);
+  }
+
   async openMcpConnection(consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) {
     const auth = this.authenticated();
     const identity = this.epoch.signal;
