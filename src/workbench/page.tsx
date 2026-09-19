@@ -26,6 +26,16 @@ type HtmlPlugin = { id: string; label: string; group: string; url: string };
 const HTML_PLUGINS: HtmlPlugin[] = [
   ...[["inventory-apsboard", "产销协同看板", "产销协同"], ["inventory-apsdemand", "需求运营管理", "产销协同"], ["inventory-apsdelivery", "交付运营管理", "产销协同"], ["inventory-personal", "库存管理工作台", "库存管理"], ["inventory-aqkc", "安全库存", "库存管理"], ["inventory-dealer", "经销商库存", "库存管理"], ["inventory-fc", "分仓库存", "库存管理"], ["inventory-qll", "全链路库存", "库存管理"]].map(([id, label, group]) => ({ id, label, group, url: `/api/gea-html-plugin/${id}` })),
 ];
+const HTML_PLUGIN_CONSUMERS: Record<string, string> = {
+  "inventory-apsboard": "aps-board-collaboration",
+  "inventory-apsdemand": "aps-demand-collaboration",
+  "inventory-apsdelivery": "aps-delivery-collaboration",
+  "inventory-personal": "inventory-personal-workbench",
+  "inventory-aqkc": "base-safety-stock",
+  "inventory-dealer": "dealer-inventory-replenishment",
+  "inventory-fc": "branch-inventory",
+  "inventory-qll": "full-chain-inventory",
+};
 
 type Status = ReturnType<Business["status"]>;
 type Translate = (key: CopyKey) => string;
@@ -220,6 +230,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const initialView = new URLSearchParams(window.location.search).get("plugin") ?? "workbench";
   const [shellView, setShellView] = useState<"plugin" | "workbench">(initialView === "workbench" ? "workbench" : "plugin");
   const [selectedPlugin, setSelectedPlugin] = useState<HtmlPlugin>(HTML_PLUGINS.find((plugin) => plugin.id === initialView) ?? HTML_PLUGINS[0]);
+  const selectedPluginRef = useRef(selectedPlugin);
   const pluginFrame = useRef<HTMLIFrameElement>(null);
   const pluginPort = useRef<MessagePort>();
   const [apiLogOpen, setApiLogOpen] = useState(directApiLog);
@@ -239,6 +250,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const [analysisScope, setAnalysisScope] = useState<AnalysisScope>("summary");
   const [preview, setPreview] = useState<Preview>();
   const [sessionId, setSessionId] = useState<string | null>(null);
+  useEffect(() => { selectedPluginRef.current = selectedPlugin; }, [selectedPlugin]);
   useEffect(() => {
     if (!status) return;
     window.parent.postMessage(
@@ -318,10 +330,20 @@ export function WorkbenchPage({ t }: { t: Translate }) {
         const request = message.data;
         if (request?.type !== "request" || typeof request.id !== "string") return;
         const method = request.method === "context" ? "status" : request.method;
-        if (method !== "status" && method !== "notifications" && method !== "periods" && method !== "plans" && method !== "detail" && method !== "versions" && method !== "skus") {
+        if (method !== "status" && method !== "notifications" && method !== "periods" && method !== "plans" && method !== "detail" && method !== "versions" && method !== "skus" && method !== "sql") {
           channel.port1.postMessage({ type: "response", id: request.id, error: "GEA_METHOD_NOT_ALLOWED" }); return;
         }
-        void rpc(method, request.parameters && typeof request.parameters === "object" ? request.parameters : {})
+        const parameters = request.parameters && typeof request.parameters === "object" ? request.parameters : {};
+        const endpoint = method === "sql" ? "plugin/sql" : method;
+        const payload = method === "sql"
+          ? {
+              ...parameters,
+              ...(parameters.query && typeof parameters.query === "object" && !Array.isArray(parameters.query) ? parameters.query : {}),
+              consumerCode: HTML_PLUGIN_CONSUMERS[selectedPluginRef.current?.id]
+                ?? (pluginFrame.current?.src.includes("inventory-dealer") ? "dealer-inventory-replenishment" : ""),
+            }
+          : parameters;
+        void rpc(endpoint, payload)
           .then(value => channel.port1.postMessage({ type: "response", id: request.id, result: value }))
           .catch(error => channel.port1.postMessage({ type: "response", id: request.id, error: error instanceof Error ? error.message : "GEA_REQUEST_FAILED" }));
       };

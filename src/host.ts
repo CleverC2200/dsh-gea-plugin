@@ -434,6 +434,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "prepare",
     "submit",
     "workbench/query",
+    "plugin/sql",
     "workbench/prepare",
     "workbench/context",
     "api-log/snapshot",
@@ -462,6 +463,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 break;
               case "workbench/query":
                 value = await business.workbenchQuery(payload, request.signal);
+                break;
+              case "plugin/sql":
+                value = await business.pluginSql(payload, request.signal);
                 break;
               case "workbench/prepare":
                 value = await business.prepareWorkbench(
