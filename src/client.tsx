@@ -693,7 +693,10 @@ function AgentWelcome({ onPrompt }: { onPrompt: (prompt: string) => void }) {
   return (
     <section className="gea-agent-welcome" aria-label="经销商补货助手">
       <div className="gea-agent-identity">
-        <div className="gea-agent-avatar" aria-hidden="true">●●</div>
+        <div className="gea-agent-avatar" aria-hidden="true">
+          <span className="gea-agent-antenna" />
+          <span className="gea-agent-face"><i /><i /></span>
+        </div>
         <h2>经销商补货助手</h2>
         <p>我可以帮你分析客户库存，生成补货建议并跟进执行进度</p>
       </div>
