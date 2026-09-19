@@ -391,7 +391,6 @@ const livePriority = (row: RegionalApprovalLiveRow) => {
 
 const RegionalApprovalWorkbench: React.FC<{
   headerControls?: React.ReactNode;
-  navigationControls?: React.ReactNode;
   stateScope: string;
   t: TFunction;
   onContextChange: (context: RegionalApprovalWorkbenchContext, conversationId: string | null) => void;
@@ -405,7 +404,6 @@ const RegionalApprovalWorkbench: React.FC<{
   permissionCodes?: readonly string[];
 }> = ({
   headerControls,
-  navigationControls,
   stateScope,
   t,
   onContextChange,
@@ -1520,7 +1518,7 @@ const RegionalApprovalWorkbench: React.FC<{
     }
   };
 
-  const currentStageIndex = APPROVAL_STAGE_FIXTURES.filter(stage => String(stage.id) !== 'evaluation').findIndex((stage) => stage.id === displayStage);
+  const currentStageIndex = APPROVAL_STAGE_FIXTURES.findIndex((stage) => stage.id === displayStage);
   const healthColors: Record<ApprovalHealth, 'green' | 'orange' | 'red'> = {
     healthy: 'green',
     attention: 'orange',
@@ -2000,7 +1998,10 @@ const RegionalApprovalWorkbench: React.FC<{
     >
       <header className={styles.header}>
         <div className={styles.titleLine}>
-          {navigationControls}
+          <Typography.Title heading={5}>{t('common.assistantSurface.regionalApproval.title')}</Typography.Title>
+          <Typography.Text className={styles.pendingSummary}>
+            {t('common.assistantSurface.regionalApproval.pendingSummary', { count: metrics.pendingCount })}
+          </Typography.Text>
           {headerControls}
           {!liveQuery.enabled ? (
             <Tag className={styles.fixtureTag} color='red'>
@@ -2131,7 +2132,7 @@ const RegionalApprovalWorkbench: React.FC<{
           data-live-status={liveQuery.enabled}
           aria-label={t('common.assistantSurface.regionalApproval.stageLane')}
         >
-          {APPROVAL_STAGE_FIXTURES.filter(stage => String(stage.id) !== 'evaluation').map((stage, index) => {
+          {APPROVAL_STAGE_FIXTURES.map((stage, index) => {
             const state = liveQuery.enabled
               ? liveQuery.progressState.status !== 'success'
                 ? 'unavailable'
@@ -2791,7 +2792,6 @@ const RegionalApprovalWorkbench: React.FC<{
 };
 
 const SalesPlanWorkbench: React.FC<React.ComponentProps<typeof RegionalApprovalWorkbench>> = (props) => {
-  const [page, setPage] = useState<'approval' | 'evaluation'>('approval');
   const [orderType, setOrderType] = useState<'M' | 'Z'>('M');
   const context = useRef<RegionalApprovalWorkbenchContext>();
   const onContextChange: typeof props.onContextChange = useCallback((value, id) => {
@@ -2814,23 +2814,8 @@ const SalesPlanWorkbench: React.FC<React.ComponentProps<typeof RegionalApprovalW
         {props.t(value === 'M' ? 'common.correction.monthly' : 'common.correction.correction')}
       </Button>)}
     </div>;
-  const navigationControls = <nav className={styles.pageNavigation} aria-label={props.t('common.assistantSurface.regionalApproval.pageNavigation')}>
-    {(['approval', 'evaluation'] as const).map(value => <Button key={value} type='text'
-      aria-pressed={page === value} onClick={() => {
-        if (page === value) return;
-        if (context.current) props.onContextChange({...context.current, visibleEntities: [], selectedEntities: [], authority: undefined,
-          evidence: {...context.current.evidence, completeness: 'none', queryState: 'loading'}}, null);
-        setPage(value);
-      }}>
-      {props.t(value === 'approval' ? 'common.assistantSurface.regionalApproval.title' : 'common.assistantSurface.regionalApproval.stages.evaluation')}
-    </Button>)}
-  </nav>;
-  if (page === 'evaluation') return <main className={styles.root} data-testid='regional-plan-evaluation-workbench'
-    aria-label={props.t('common.assistantSurface.regionalApproval.stages.evaluation')}>
-    <header className={styles.header}>{navigationControls}</header>
-  </main>;
-  return orderType === 'M' ? <RegionalApprovalWorkbench {...props} navigationControls={navigationControls} headerControls={headerControls} queryClient={monthlyClient} onContextChange={onContextChange} /> :
-      <CorrectionWorkbench headerControls={<>{navigationControls}{headerControls}</>} t={props.t} queryClient={props.queryClient} detailClient={props.detailClient} actionClient={props.liveActionsEnabled ? props.liveActionClient : undefined} onResubmit={props.onResubmit} />;
+  return orderType === 'M' ? <RegionalApprovalWorkbench {...props} headerControls={headerControls} queryClient={monthlyClient} onContextChange={onContextChange} /> :
+      <CorrectionWorkbench headerControls={headerControls} t={props.t} queryClient={props.queryClient} detailClient={props.detailClient} actionClient={props.liveActionsEnabled ? props.liveActionClient : undefined} onResubmit={props.onResubmit} />;
 
 };
 export default SalesPlanWorkbench;

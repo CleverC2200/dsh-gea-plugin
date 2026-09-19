@@ -365,7 +365,6 @@
       },
       "ariaLabel": "Regional manager demand forecast approval workbench",
       "title": "Sales plan approval",
-      "pageNavigation": "Plan pages",
       "pendingSummary": "{{count}} awaiting my approval",
       "fixtureTag": "Sample data · not connected to production",
       "scopeAria": "Current approval scope",

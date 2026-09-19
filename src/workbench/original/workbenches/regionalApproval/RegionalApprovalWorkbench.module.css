@@ -1447,7 +1447,3 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
-
-.pageNavigation { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.pageNavigation :global(.arco-btn) { color: var(--color-text-2); font-weight: 600; }
-.pageNavigation :global(.arco-btn)[aria-pressed='true'] { color: rgb(var(--primary-6)); background: var(--color-fill-2); }
