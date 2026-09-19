@@ -12,8 +12,143 @@
   height: 100%;
   background: #f8f9fb;
 }
-.AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-gea-hidden-session-chrome] {
-  display: none !important;
+/* Keep the native DSH workspace list below the business navigation. */
+.hHd-Xa_regionArea:has(.gea-business-navigation) {
+  display: flex !important;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.hHd-Xa_regionArea:has(.gea-business-navigation) > [data-slot="sidebar.workspaces"] {
+  display: block !important;
+  order: 2;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.gea-business-navigation {
+  order: 1;
+  flex: 0 1 58%;
+  min-height: 0;
+  max-height: 58%;
+  overflow: auto;
+  border-bottom: 1px solid #e3e6ea;
+}
+.gea-business-navigation .gea-shell-navigation,
+.gea-business-navigation .gea-shell-navigation-content {
+  height: auto;
+  min-height: 0;
+}
+.gea-business-navigation .gea-shell-navigation-content {
+  max-height: 100%;
+  overflow: auto;
+}
+.gea-function-menu-popover {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  z-index: 10;
+  width: 100%;
+  max-height: calc(100% - 36px);
+  overflow: auto;
+  border: 1px solid #cfd4dc;
+  border-radius: 10px;
+  background: #f5f6f8;
+  box-shadow: 0 8px 24px rgb(31 35 41 / 18%);
+}
+.gea-function-menu-popover .gea-shell-navigation,
+.gea-function-menu-popover .gea-shell-navigation-content {
+  height: auto;
+  min-height: 0;
+}
+.gea-business-menu-panel {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  max-height: none;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.hHd-Xa_regionArea:has(.gea-business-menu-panel) {
+  position: relative;
+  overflow: hidden;
+}
+.hHd-Xa_regionArea:has(.gea-business-menu-panel) > [data-slot="sidebar.workspaces"] {
+  display: block !important;
+  height: 36px;
+  min-height: 36px;
+  overflow: hidden;
+}
+.hHd-Xa_logoRow:has(.gea-inbox-quick-action) {
+  position: relative;
+}
+.gea-inbox-quick-action {
+  position: absolute;
+  top: 50%;
+  right: 42px;
+  z-index: 1;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #687282;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.gea-inbox-quick-action:hover,
+.gea-inbox-quick-action[aria-current="page"] {
+  background: #fff0f2;
+  color: #df1732;
+}
+[data-sidebar-collapsed] .gea-inbox-quick-action {
+  display: none;
+}
+.hHd-Xa_regionArea:has(.gea-sidebar-mode-tabs) {
+  position: relative;
+}
+.gea-sidebar-mode-tabs {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding-left: 14px;
+  background: #f5f6f8;
+}
+.gea-sidebar-mode-tabs button {
+  height: 28px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #df1732;
+  font: inherit;
+  cursor: pointer;
+}
+.gea-sidebar-mode-tabs button[aria-selected="false"] {
+  color: #687282;
+}
+.gea-sidebar-mode-tabs button[aria-selected="true"] {
+  background: #fff0f2;
+  font-weight: 600;
+}
+.gea-sidebar-mode-tabs button:hover {
+  background: #fff0f2;
+  color: #df1732;
+}
+[data-sidebar-collapsed] .gea-sidebar-mode-tabs {
+  display: none;
 }
 /* The business profile keeps the application chooser but not the default
    workspace quick-launch. Older desktop cores do not yet understand the
@@ -30,18 +165,19 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   height: 100%;
   min-width: 0;
   container: gea-sidebar / inline-size;
-  background: #f2f3f5;
-  color: #525b6d;
-  font:
-    13px/1.6 system-ui,
-    sans-serif;
+  background: #f5f6f8;
+  color: #555d68;
+  font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.7;
 }
 .gea-shell-navigation-content {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 0 16px 12px;
+  gap: 4px;
+  padding: 0 14px 12px;
+  background: #f5f6f8;
 }
 .gea-shell-navigation * {
   box-sizing: border-box;
@@ -57,12 +193,16 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   gap: 16px;
   height: 54px;
   flex-shrink: 0;
-  border-bottom: 1px solid #e0e3eb;
-  color: #111;
-  font-size: 16px;
+  border-bottom: 1px solid #e3e6ea;
+  color: #20232a;
+  font-size: 14px;
+  font-weight: 700;
+}
+.gea-shell-navigation-content::after {
+  display: none;
 }
 .gea-shell-logo {
-  background: #ed0000;
+  background: #df1732;
   color: white;
   width: 27px;
   height: 27px;
@@ -79,17 +219,17 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-shell-navigation-content > button,
 .gea-shell-workspaces > button {
-  border: 0;
+  border: 0 !important;
   border-radius: 6px;
-  background: transparent;
+  background: transparent !important;
   color: inherit;
   font: inherit;
   cursor: pointer;
-  min-height: 34px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 8px;
+  padding: 8px 12px;
   text-align: left;
 }
 .gea-shell-navigation button:disabled {
@@ -97,28 +237,69 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   cursor: default;
 }
 .gea-shell-navigation button.is-active {
-  background: #f5e4e7;
-  color: #ed3d43;
+  background: #fff0f2;
+  color: #df1732;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 #d6223d;
 }
 .gea-shell-navigation-content > .gea-shell-child {
   padding-left: 40px;
 }
+.gea-shell-navigation-content > button:hover,
+.gea-shell-navigation-content > .gea-shell-child:hover {
+  background: #eceef2 !important;
+  color: #202531;
+}
 .gea-shell-navigation button:focus-visible {
-  outline: 2px solid #ef4c50;
+  outline: 2px solid #df1732;
   outline-offset: 2px;
 }
 .gea-shell-group {
   display: flex;
   gap: 10px;
   align-items: center;
-  padding: 12px 8px 3px;
+  padding: 18px 12px 4px;
+  color: #3d4654;
+  font-size: 13px;
 }
+.gea-shell-group::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-right: 3px;
+  border: 1.5px solid #9aa2af;
+  border-radius: 2px;
+}
+.gea-shell-plugin-group { display: grid; gap: 2px; margin-top: 2px; padding-top: 4px; }
+.gea-shell-plugin { min-height: 32px !important; padding-block: 6px !important; padding-left: 40px !important; color: #687282 !important; font-size: 12px !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
+.gea-shell-plugin:hover { color: #df1732 !important; background: #fffafb !important; }
+.gea-shell-plugin.is-active { color: #df1732 !important; background: #fff0f2 !important; box-shadow: inset 3px 0 0 #df1732 !important; }
+.gea-shell-plugin-dot { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #c7ced8; }
+.gea-shell-plugin:hover .gea-shell-plugin-dot, .gea-shell-plugin.is-active .gea-shell-plugin-dot { background: #df1732; }
+.gea-shell-nav-section { display: grid; gap: 2px; margin-top: 8px; }
+.gea-shell-nav-heading,
+.gea-shell-nav-item {
+  width: 100%; min-height: 38px; display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border: 0 !important; border-radius: 6px;
+  background: transparent !important; color: #555d68; font: inherit; text-align: left; cursor: pointer;
+}
+.gea-shell-nav-heading { font-weight: 600; }
+.gea-shell-nav-heading:hover, .gea-shell-nav-item:hover { background: #fffafb !important; color: #df1732; }
+.gea-shell-nav-item.is-active { background: #fff0f2 !important; color: #df1732; box-shadow: inset 3px 0 0 #df1732; font-weight: 700; }
+.gea-shell-nav-icon { flex: 0 0 auto; color: currentColor; }
+.gea-shell-chevron { margin-left: auto; transition: transform 160ms ease; }
+.gea-shell-chevron.is-open { transform: rotate(180deg); }
+.gea-shell-nav-children { display: grid; gap: 1px; padding: 1px 0 3px 28px; }
+.gea-shell-nav-child { min-height: 36px; padding: 7px 12px 7px 28px; border: 0; border-radius: 6px; background: transparent; color: #555d68; font: inherit; text-align: left; cursor: pointer; }
+.gea-shell-nav-child:hover { background: #fffafb; color: #df1732; }
+.gea-shell-nav-child.is-active { background: #fff0f2; color: #df1732; font-weight: 700; }
+.gea-shell-nav-heading:focus-visible, .gea-shell-nav-item:focus-visible, .gea-shell-nav-child:focus-visible { outline: 2px solid #df1732; outline-offset: 2px; }
 .gea-shell-user {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-top: 1px solid #e0e3eb;
-  padding-top: 14px;
+  border-top: 1px solid #e3e6ea;
+  padding: 14px 8px 0;
   margin-top: auto;
 }
 .gea-user-avatar {
@@ -193,6 +374,19 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   > div:first-child {
   flex: 1;
   height: auto;
+}
+
+/* The right rail is the single native conversation surface. */
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] {
+  background: #fff;
+  border-left: 1px solid #e5e8ed;
+}
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] [data-composer-seat] {
+  border-top: 1px solid #edf0f3;
+  background: #fff;
+}
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] [data-conversation-scroll] {
+  padding-inline: 18px;
 }
 
 /* Business inbox follows the dealer reminder prototype. */

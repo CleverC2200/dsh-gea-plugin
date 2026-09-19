@@ -1,16 +1,18 @@
 /** Persist the local development web login without exposing credentials to the browser. */
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import type { Business } from './business.ts';
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import type { Business } from "./business.ts";
 
 export async function attachWebLogin(business: Business): Promise<{ flush(): Promise<void>; dispose(): Promise<void> }> {
-  if (process.env.GEA_WEB_LOGIN_PERSIST !== '1' || process.env.GEA_DESKTOP_CONTROL_URL) return { flush: async () => {}, dispose: async () => {} };
-  const file = resolve(business.config.runtimeDir, 'web-login.json');
+  if (process.env.GEA_WEB_LOGIN_PERSIST !== "1" || process.env.GEA_DESKTOP_CONTROL_URL)
+    return { flush: async () => {}, dispose: async () => {} };
+  const file = resolve(business.config.runtimeDir, "web-login.json");
   try {
-    const saved = JSON.parse(await readFile(file, 'utf8'));
+    const saved = JSON.parse(await readFile(file, "utf8"));
     if (saved !== null) business.restorePersistentLogin(saved);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('WEB_LOGIN_STORAGE_UNAVAILABLE');
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      throw new Error("WEB_LOGIN_STORAGE_UNAVAILABLE");
   }
   let pending = Promise.resolve();
   const stop = business.watchIdentity(() => {

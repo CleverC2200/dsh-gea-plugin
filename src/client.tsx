@@ -33,6 +33,16 @@ export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions", "
 const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;
+const HTML_PLUGIN_ITEMS = [
+  ["inventory-apsboard", "产销协同看板"],
+  ["inventory-apsdemand", "需求运营管理"],
+  ["inventory-apsdelivery", "交付运营管理"],
+  ["inventory-personal", "库存管理工作台"],
+  ["inventory-aqkc", "安全库存"],
+  ["inventory-dealer", "经销商库存"],
+  ["inventory-fc", "分仓库存"],
+  ["inventory-qll", "全链路库存"],
+] as const;
 
 /** 在框架管理的原生会话旁注册仅承载业务的中心文档。 */
 export function apply(ctx: Context): void {
@@ -243,6 +253,8 @@ export function apply(ctx: Context): void {
     wide,
     expandSidebar,
   }: PropsRuntime<"sidebar.workspaces">) {
+    const [selectedPlugin, setSelectedPlugin] = useState<string | null>(null);
+    const [expanded, setExpanded] = useState({ customer: true, plan: true, inventory: true });
     const activePanel = usePanelInfo((info) => info.activePanelId);
     if (!wide) {
       return (
@@ -262,6 +274,32 @@ export function apply(ctx: Context): void {
         </nav>
       );
     }
+    const openPlugin = (pluginId: string) => {
+      setSelectedPlugin(pluginId);
+      ctx.layout.selectPanel(PANEL);
+      if (workbenchAuthenticated && !hideWorkbenchConversation)
+        hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
+      document.querySelector<HTMLIFrameElement>("iframe[data-gea-workbench]")?.contentWindow?.postMessage(
+        { type: "gea:select-plugin", pluginId }, window.location.origin,
+      );
+    };
+    const openBusinessWorkbench = () => {
+      ctx.layout.selectPanel(PANEL);
+      if (workbenchAuthenticated && !hideWorkbenchConversation)
+        hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
+      document.querySelector<HTMLIFrameElement>("iframe[data-gea-workbench]")?.contentWindow?.postMessage(
+        { type: "gea:select-plugin", pluginId: "workbench" }, window.location.origin,
+      );
+    };
+    const toggle = (section: "customer" | "plan" | "inventory") => setExpanded((value) => ({ ...value, [section]: !value[section] }));
+    const item = (label: string, icon: NavIconKind, action?: () => void, active = false) => (
+      <button type="button" className={`gea-shell-nav-item${active ? " is-active" : ""}`} onClick={action}>
+        <NavIcon kind={icon} /><span className="gea-shell-label">{label}</span>
+      </button>
+    );
+    const child = (label: string, action?: () => void, active = false) => (
+      <button type="button" className={`gea-shell-nav-child${active ? " is-active" : ""}`} onClick={action}><span className="gea-shell-label">{label}</span></button>
+    );
     return (
       <nav
         className="gea-shell-navigation"
@@ -269,27 +307,19 @@ export function apply(ctx: Context): void {
       >
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
-          <button
-            type="button"
-            onClick={() => ctx.layout.selectPanel(INBOX)}
-            title={t("messageInbox")}
-            aria-label={t("messageInbox")}
-            className={activePanel === INBOX ? "is-active" : undefined}
-          >
-            <span className="gea-shell-label">{t("messageInbox")}</span>
-          </button>
-          <div className="gea-shell-group" title={t("planManagement")}>
-            <strong className="gea-shell-label">{t("planManagement")}</strong>
+          {item("产销协同工作台", "desktop", openBusinessWorkbench, activePanel === PANEL && selectedPlugin === null)}
+          <div className="gea-shell-nav-section">
+            <button type="button" className="gea-shell-nav-heading" onClick={() => toggle("customer")}><NavIcon kind="users" /><span>客户管理</span><Chevron open={expanded.customer} /></button>
+            {expanded.customer && <div className="gea-shell-nav-children">{child("经销商工作台", () => openPlugin("inventory-personal"))}{child("经销商库存", () => openPlugin("inventory-dealer"))}{child("经销商补货", () => openPlugin("inventory-dealer"), selectedPlugin === "inventory-dealer")}</div>}
           </div>
-          <button
-            type="button"
-            onClick={() => ctx.layout.selectPanel(PANEL)}
-            title={t("demandForecastAgent")}
-            aria-label={t("demandForecastAgent")}
-            className={`gea-shell-child${activePanel === PANEL ? " is-active" : ""}`}
-          >
-            <span className="gea-shell-label">{t("demandForecastAgent")}</span>
-          </button>
+          <div className="gea-shell-nav-section">
+            <button type="button" className="gea-shell-nav-heading" onClick={() => toggle("plan")}><NavIcon kind="calendar" /><span>计划管理</span><Chevron open={expanded.plan} /></button>
+            {expanded.plan && <div className="gea-shell-nav-children">{child("计划管理工作台", openBusinessWorkbench)}{child("销售计划")}{child("生产计划")}{child("排产计划")}</div>}
+          </div>
+          <div className="gea-shell-nav-section">
+            <button type="button" className="gea-shell-nav-heading" onClick={() => toggle("inventory")}><NavIcon kind="warehouse" /><span>库存管理</span><Chevron open={expanded.inventory} /></button>
+            {expanded.inventory && <div className="gea-shell-nav-children">{child("库存管理工作台", () => openPlugin("inventory-personal"), selectedPlugin === "inventory-personal")}{child("全链库存", () => openPlugin("inventory-qll"), selectedPlugin === "inventory-qll")}{child("基地库存", () => openPlugin("inventory-aqkc"), selectedPlugin === "inventory-aqkc")}{child("分仓库存", () => openPlugin("inventory-fc"), selectedPlugin === "inventory-fc")}</div>}
+          </div>
         </div>
       </nav>
     );
@@ -436,7 +466,12 @@ export function apply(ctx: Context): void {
     yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
     ctx.layout.selectPanel(PANEL);
   });
-  function NavigationMode({ usePanelInfo }: PropsRuntime<"shell.overlay">) {
+  function NavigationMode({
+    usePanelInfo,
+    useSessions,
+    useSessionPendingInteraction,
+    useWorkspaces,
+  }: PropsRuntime<"shell.overlay">) {
     const activePanel = usePanelInfo((info) => info.activePanelId);
     const business = usePanelInfo(
       (info) => info.activePanelId === PANEL || info.activePanelId === INBOX || info.activePanelId === API_LOG_PANEL,
@@ -455,13 +490,35 @@ export function apply(ctx: Context): void {
       if (activePanel === PANEL && workbenchAuthenticated && !hideWorkbenchConversation)
         hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
     }, [activePanel]);
+    const [region, setRegion] = useState<HTMLElement | null>(null);
+    const [logoRow, setLogoRow] = useState<HTMLElement | null>(null);
+    const [sidebarMode, setSidebarMode] = useState<"workspace" | "function">("workspace");
     useEffect(() => {
-      if (!business) return;
-      return ctx.slots.register(
-        { name: "sidebar.workspaces", locale: "geaProof", priority: -10 },
-        Navigation,
-      );
+      if (business) setSidebarMode("function");
     }, [business]);
+    useEffect(() => {
+      const renameNewSession = () => {
+        const button = document.querySelector<HTMLButtonElement>(".hHd-Xa_newSession");
+        const label = button?.querySelector<HTMLElement>(".hHd-Xa_newSessionLabel");
+        if (!button || !label) return;
+        if (label.textContent !== "AI工作台") label.textContent = "AI工作台";
+        if (button.getAttribute("aria-label") !== "AI工作台") button.setAttribute("aria-label", "AI工作台");
+      };
+      renameNewSession();
+      const observer = new MutationObserver(renameNewSession);
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => observer.disconnect();
+    }, []);
+    useEffect(() => {
+      const findRegions = () => {
+        setRegion(document.querySelector<HTMLElement>(".hHd-Xa_regionArea"));
+        setLogoRow(document.querySelector<HTMLElement>(".hHd-Xa_logoRow"));
+      };
+      findRegions();
+      const observer = new MutationObserver(findRegions);
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => observer.disconnect();
+    }, []);
     useEffect(() => {
       if (!business) return;
       const hideConversationChrome = () => {
@@ -488,7 +545,79 @@ export function apply(ctx: Context): void {
         );
       };
     }, [business]);
-    return null;
+    if (!region) return null;
+    const expandSidebar = () => {
+      document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']")?.click();
+    };
+    const selectWorkspace = () => {
+      setSidebarMode("workspace");
+      if (business) {
+        hideWorkbenchConversation?.();
+        hideWorkbenchConversation = undefined;
+        ctx.layout.selectPanel(null);
+      }
+    };
+    const selectFunction = () => {
+      setSidebarMode("function");
+      if (!business) ctx.layout.selectPanel(PANEL);
+    };
+    const modeTabs = createPortal(
+      <div className="gea-sidebar-mode-tabs" role="tablist" aria-label="侧边栏区域">
+        <button type="button" role="tab" aria-selected={sidebarMode === "workspace"} onClick={selectWorkspace}>工作区</button>
+        <button type="button" role="tab" aria-selected={sidebarMode === "function"} onClick={selectFunction}>功能区</button>
+      </div>,
+      region,
+    );
+    if (!business) {
+      return (
+        <>
+          {modeTabs}
+          {sidebarMode === "function" && createPortal(
+            <div className="gea-business-navigation gea-function-menu-popover" data-sidebar-function-mode>
+              <Navigation
+                usePanelInfo={usePanelInfo}
+                useSessions={useSessions}
+                useSessionPendingInteraction={useSessionPendingInteraction}
+                useWorkspaces={useWorkspaces}
+                wide
+                expandSidebar={expandSidebar}
+              />
+            </div>,
+            region,
+          )}
+        </>
+      );
+    }
+    return (
+      <>
+        {modeTabs}
+        {createPortal(
+          <div className="gea-business-navigation gea-business-menu-panel">
+            <Navigation
+              usePanelInfo={usePanelInfo}
+              useSessions={useSessions}
+              useSessionPendingInteraction={useSessionPendingInteraction}
+              useWorkspaces={useWorkspaces}
+              wide
+              expandSidebar={expandSidebar}
+            />
+          </div>,
+          region,
+        )}
+        {logoRow && createPortal(
+          <button
+            type="button"
+            className="gea-inbox-quick-action"
+            aria-label="业务代办"
+            title="业务代办"
+            onClick={() => ctx.layout.selectPanel(INBOX)}
+          >
+            <NavIcon kind="bell" />
+          </button>,
+          logoRow,
+        )}
+      </>
+    );
   }
   ctx.slots.inject("shell.overlay", () =>
     ctx.slots.register(
@@ -532,6 +661,22 @@ export function apply(ctx: Context): void {
       },
     ),
   );
+}
+
+type NavIconKind = "bot" | "bell" | "desktop" | "users" | "calendar" | "warehouse";
+function NavIcon({ kind }: { kind: NavIconKind }) {
+  const paths: Record<NavIconKind, React.ReactNode> = {
+    bot: <><rect x="5" y="7" width="14" height="11" rx="2" /><path d="M12 4v3M8 12h.01M16 12h.01M9 18v2M15 18v2" /></>,
+    bell: <><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
+    desktop: <><rect x="4" y="5" width="16" height="11" rx="1.5" /><path d="M9 20h6M12 16v4" /></>,
+    users: <><circle cx="9" cy="9" r="3" /><path d="M3.5 19c.7-3 2.5-4.5 5.5-4.5s4.8 1.5 5.5 4.5M16 6.5a2.5 2.5 0 0 1 0 5M17 14.5c1.9.2 3.1 1.6 3.5 3.5" /></>,
+    calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16M8 14h2M14 14h2M8 17h2" /></>,
+    warehouse: <><path d="m3 10 9-6 9 6v10H3z" /><path d="M8 20v-6h8v6M6 10h12" /></>,
+  };
+  return <svg className="gea-shell-nav-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{paths[kind]}</svg>;
+}
+function Chevron({ open }: { open: boolean }) {
+  return <svg className={`gea-shell-chevron${open ? " is-open" : ""}`} aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m7 10 5 5 5-5" /></svg>;
 }
 
 function MenuIcon() {
