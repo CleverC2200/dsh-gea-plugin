@@ -556,7 +556,7 @@ export function apply(ctx: Context): void {
             title="业务代办"
             onClick={() => ctx.layout.selectPanel(INBOX)}
           >
-            <NavIcon kind="bot" />
+            <NavIcon kind="bell" />
           </button>,
           logoRow,
         )}
@@ -607,10 +607,11 @@ export function apply(ctx: Context): void {
   );
 }
 
-type NavIconKind = "bot" | "desktop" | "users" | "calendar" | "warehouse";
+type NavIconKind = "bot" | "bell" | "desktop" | "users" | "calendar" | "warehouse";
 function NavIcon({ kind }: { kind: NavIconKind }) {
   const paths: Record<NavIconKind, React.ReactNode> = {
     bot: <><rect x="5" y="7" width="14" height="11" rx="2" /><path d="M12 4v3M8 12h.01M16 12h.01M9 18v2M15 18v2" /></>,
+    bell: <><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
     desktop: <><rect x="4" y="5" width="16" height="11" rx="1.5" /><path d="M9 20h6M12 16v4" /></>,
     users: <><circle cx="9" cy="9" r="3" /><path d="M3.5 19c.7-3 2.5-4.5 5.5-4.5s4.8 1.5 5.5 4.5M16 6.5a2.5 2.5 0 0 1 0 5M17 14.5c1.9.2 3.1 1.6 3.5 3.5" /></>,
     calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16M8 14h2M14 14h2M8 17h2" /></>,
