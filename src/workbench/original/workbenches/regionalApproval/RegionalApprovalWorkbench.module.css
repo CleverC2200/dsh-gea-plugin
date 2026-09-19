@@ -24,6 +24,38 @@
   background: var(--bg-1);
 }
 
+.workspaceTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.workspaceTabs :global(.arco-btn) {
+  min-height: 32px;
+  border-radius: 0;
+  color: var(--text-secondary);
+}
+
+.workspaceTabs :global(.arco-btn)[data-active='true'] {
+  box-shadow: inset 0 -2px rgb(var(--primary-6));
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.evaluationEmpty {
+  display: flex;
+  min-height: 320px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.evaluationEmpty :global(.arco-typography) {
+  margin: 0;
+}
+
 .titleLine {
   display: flex;
   width: max-content;
@@ -335,6 +367,8 @@
 
 .controlToolbar {
   display: flex;
+  width: 100%;
+  box-sizing: border-box;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
@@ -433,8 +467,14 @@
 }
 
 .advancedToggle {
-  display: none;
+  display: inline-flex;
   min-height: 32px;
+}
+
+.advancedToggle[data-active='true'] {
+  color: var(--text-primary);
+  background: var(--bg-3);
+  border-color: var(--bg-4);
 }
 
 .advancedControls {
@@ -451,8 +491,35 @@
 }
 
 .toolbarActions {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.toolbarActions > :global(.arco-btn) {
+  min-width: 32px;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.toolbarActions > :global(.arco-btn) > :global(.i-icon) {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.toolbarActions > :global(.arco-btn) > :global(.i-icon) > svg {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.toolbarActions > :global(.arco-btn-icon-only) > :global(.i-icon) {
+  transform: translateY(3px);
 }
 
 .approvalToolbarActions {
@@ -923,21 +990,21 @@
     gap: 5px;
     white-space: nowrap;
   }
-  .toolbarActions :global(.arco-btn) {
-    padding-inline: 8px;
+  .toolbarActions > :global(.arco-btn) {
+    padding-inline: 0;
     font-size: 12px;
     min-height: 28px;
   }
-  .advancedToggle {
-    display: none;
-  }
-  .advancedControls,
-  .advancedControls[data-expanded='false'] {
+  .advancedToggle { display: inline-flex; }
+  .advancedControls {
     display: flex;
     flex: 1 1 0;
     align-items: center;
     gap: 8px;
     padding-top: 0;
+  }
+  .advancedControls[data-expanded='false'] {
+    display: none;
   }
   .filterHeading {
     min-width: 0;

@@ -213,7 +213,7 @@
       "description": "企业业务工作区；从左侧菜单切换 Agent。"
     },
     "forecast": {
-      "name": "需求预测 Agent",
+      "name": "需求提报",
       "description": "按月份核对经销商与 SKU，形成销售计划。",
       "capabilities": {
         "dealer": "经销商核对",
@@ -366,6 +366,10 @@
       "ariaLabel": "需求预测区域经理审批工作台",
       "title": "销售计划审批",
       "pendingSummary": "待我审批 {{count}} 条",
+      "workspaceTabs": {
+        "ariaLabel": "计划工作台页面",
+        "evaluationEmpty": "区域计划评估页面暂为空，等待业务原型。"
+      },
       "fixtureTag": "样例数据 · 不连接生产",
       "scopeAria": "当前审批范围",
       "planMonth": "计划月份",
@@ -670,7 +674,8 @@
           "loading": "正在读取草稿…",
           "saving": "正在暂存…",
           "saved": "已自动暂存",
-          "failed": "草稿暂存失败"
+          "failed": "草稿暂存失败，请重试"
+        ,"retry": "重试暂存"
         },
         "editCurrent": "编辑调整草稿",
         "editScope": "此处查看汇总；编辑仅作用于当前选中的一个计划。",
@@ -975,8 +980,8 @@
         "category": "品类",
         "quantity": "计划数量",
         "amount": "计划金额",
-        "progress": "计划进度",
-        "categoryProgress": "计划进度",
+        "progress": "计划/目标",
+        "categoryProgress": "计划/目标",
         "adjustment": "调整",
         "comparison": "版本对比",
         "returnReason": "退回原因",

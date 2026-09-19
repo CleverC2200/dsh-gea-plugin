@@ -12,14 +12,15 @@ const row=(status=2,type='Y')=>({planId:'p',versionId:'v',status,planTypeCode:ty
 const detail=(status=2,type='Y')=>({currentVersion:{id:'v',planId:'p',effective:true,status,planTypeCode:type},skus:[],versions:[],logs:[]});
 const grant=role=>`sales-plan:plan:${role}-approve`;
 const policy=(roles=['region'],status=2)=>({versionId:'v',status,snapshotHash:hash,policy:'role-visible-v1',allowedActions:[],roleActions:roles.map(role=>({role,allowedActions:['SAVE','APPROVE','REJECT']}))});
-test('visible role can act while another node is notified, including own rejected plan',()=>{
-  for(const status of [1,2,3,4,6,7]) {
+test('visible role can act on pending plans but not returned plans',()=>{
+  for(const status of [1,2,3,4]) {
     const access=m.salesPlanAccessForRow(row(status),detail(status),[grant('region')]);
     assert.equal(access.approvalRole,'region');
     assert.deepEqual(access.allowedActions,['APPROVE','REJECT']);
   }
-  for(const status of [0,5,8,9,10]) assert.equal(m.salesPlanAccessForRow(row(status),detail(status),[grant('region')]),undefined);
-  for(const status of [2,3,4,6,8]) assert.equal(m.salesPlanAccessForRow(row(status,'XN'),detail(status,'XN'),[grant('province')]).approvalRole,'province');
+  for(const status of [0,5,6,7,8,9,10]) assert.equal(m.salesPlanAccessForRow(row(status),detail(status),[grant('region')]),undefined);
+  for(const status of [2,3,4]) assert.equal(m.salesPlanAccessForRow(row(status,'XN'),detail(status,'XN'),[grant('province')]).approvalRole,'province');
+  for(const status of [6,7,8,9]) assert.equal(m.salesPlanAccessForRow(row(status,'XN'),detail(status,'XN'),[grant('province')]),undefined);
 });
 test('an exact server-assigned actionable task grants only the current workflow actor',()=>{
   const d={...detail(),workflowApproval:{versionId:'v',notificationId:'n',instanceId:'i',actionable:true}};
@@ -67,7 +68,7 @@ test('role receipt verifies actor, configured return target and all required app
 });
 test('correction role authority ignores approval date window and uses selected-role data',()=>{
   const d={...detail(),currentVersion:{...detail().currentVersion,orderType:'Z'},correctionContext:{contract:'absolute-net-v1',monthlyApproved:true,approvalOpen:false},actionContext:policy()};
-  assert.equal(m.correctionAccess(d,undefined,'region').approvalRole,'region');
+  assert.equal(m.correctionAccess({...d,currentVersion:{...d.currentVersion,status:7},actionContext:policy(['region'],7)},undefined,'region').approvalRole,'region');
   assert.equal(m.correctionAccess({...d,correctionContext:{...d.correctionContext,monthlyApproved:false}},undefined,'region'),undefined);
   assert.equal(m.correctionDecision({qty:'10',price:'2',adjAddQty:'1',adjCutQty:'0',regionAdjAddQty:'3',regionAdjCutQty:'0',provinceAdjAddQty:'8',provinceAdjCutQty:'0'},3,'Y',true,undefined,'region'),'3');
 });

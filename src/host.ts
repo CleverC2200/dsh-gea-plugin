@@ -1,4 +1,5 @@
 import { attachDesktopLogin } from "./host/desktop-login.ts";
+import { attachWebLogin } from "./host/web-login.ts";
 import { resolveWorkbench } from "../scripts/deployment.mjs";
 /** GEA 外部 Fetch 能力和显式本地回执提供者的 DSH 插件入口。 */
 import { appendFile, mkdir, readFile } from "node:fs/promises";
@@ -294,6 +295,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     );
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);
+  const webLogin = await attachWebLogin(business);
   ctx.provide("geaMcp", {
     version: 1 as const,
     defaultConsumer: { consumerType: "AGENT" as const, consumerCode: config.analysisAgentCode },
@@ -302,7 +304,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     open: (consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) => business.openMcpConnection(consumer, signal),
   });
   registerGeaTools(ctx, business);
-  ctx.effect(() => async () => { await desktopLogin.dispose(); business.dispose(); });
+  ctx.effect(() => async () => { await desktopLogin.dispose(); await webLogin.dispose(); business.dispose(); });
   if (config.analysisMode === "receipt")
     ctx.effect(() =>
       ctx.llm.registerAdapter(
@@ -576,14 +578,14 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
               default:
                 throw new Error("UNKNOWN_ENDPOINT");
             }
-            await desktopLogin.flush();
+            await desktopLogin.flush(); await webLogin.flush();
             return Response.json(
               { ok: true, value },
               { headers: { "Cache-Control": "no-store" } },
             );
           } catch (error) {
             // 业务操作失败时也可能同时发现登录过期并清除身份。
-            try { await desktopLogin.flush(); } catch (storageError) { error = storageError; }
+            try { await desktopLogin.flush(); await webLogin.flush(); } catch (storageError) { error = storageError; }
             const code =
               error instanceof Error && /^[A-Z][A-Z_0-9]+$/.test(error.message)
                 ? error.message

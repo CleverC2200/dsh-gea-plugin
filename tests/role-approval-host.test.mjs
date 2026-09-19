@@ -21,7 +21,10 @@ test('Host binds role writes to fresh permission and capability evidence while r
  const action=(patch={})=>app.rpc('sales-plan/action',{planId:'p',versionId:'v',requestId:`r${++attempt}`,idempotencyKey:`role:${attempt}`,request:{action:'APPROVE',approvalRole:'region',approvalPolicy:'role-visible-v1',expectedStatus:status,expectedSnapshot:snapshot,...patch}});
  for(const scenario of ['legacy','stale','ineffective']) {mode=scenario; assert.equal((await action()).ok,false,scenario);}
  mode='supported';
- for(status of [0,5,8,9,10]) assert.equal((await action()).ok,false,`status ${status}`);
+ for(status of [0,5,6,7,8,9,10]) assert.equal((await action()).ok,false,`status ${status}`);
+ status=6;
+ const returnedSave=await app.rpc('sales-plan/action',{planId:'p',versionId:'v',requestId:`r${++attempt}`,idempotencyKey:`role:${attempt}`,request:{action:'SAVE',expectedStatus:6,expectedSnapshot:snapshot}});
+ assert.equal(returnedSave.ok,false,'returned SAVE');
  status=2;
  assert.equal((await action({approvalRole:'category'})).ok,false);
  assert.equal((await action({approvalRole:undefined,approvalPolicy:undefined})).ok,false);

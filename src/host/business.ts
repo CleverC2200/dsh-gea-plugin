@@ -1,7 +1,7 @@
 import { avatarUrl } from "./avatar.ts";
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { salesPlanDraftMatches, salesPlanDraftSnapshot, type SalesPlanLocalDraft } from '../workbench/original/workbenches/regionalApproval/models/salesPlanLocalDraftModel.ts';
+import { salesPlanLocalDraftValid, type SalesPlanLocalDraft } from '../workbench/original/workbenches/regionalApproval/models/salesPlanLocalDraftModel.ts';
 import { correctionAccess, correctionAdjustments, correctionDecimal } from '../workbench/original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';
 import { salesPlanAccessForRow } from '../workbench/original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';
 import { salesPlanWorkflow } from '../workbench/original/salesPlanWorkflow.ts';
@@ -568,6 +568,8 @@ export class Business {
   desktopLoginSnapshot(): unknown {
     return this.auth ? {schema:1,environment:this.environment,base:this.base,auth:{...this.auth}} : null;
   }
+  persistentLoginSnapshot(): unknown { return this.desktopLoginSnapshot(); }
+  restorePersistentLogin(value: unknown): void { this.restoreDesktopLogin(value); }
   restoreDesktopLogin(value: unknown): void {
     const saved=object(value);
     if(saved.schema!==1||typeof saved.environment!=="string"||this.environments[saved.environment]!==saved.base)throw Error("DESKTOP_LOGIN_SCOPE_MISMATCH");
@@ -855,15 +857,9 @@ export class Business {
     const owner = createHash('sha256').update(JSON.stringify([this.base, auth.tenantId, auth.id, planId, versionId])).digest('hex');
     const dir = resolve(this.config.runtimeDir, 'approval-drafts');
     const file = resolve(dir, owner + '.json');
-    const detail = await this.workbenchQuery({kind: 'detail', query: {planId}}, signal) as GeaSalesPlanDetail;
-    const row = {planId, versionId, status: detail.currentVersion.status, planTypeCode: detail.currentVersion.planTypeCode};
-    const sourceSnapshot = salesPlanDraftSnapshot(row, detail);
-    if (!sourceSnapshot) throw new Error('STALE_DRAFT_VERSION');
     if (payload.draft !== undefined) {
-      const access = salesPlanAccessForRow(row, detail);
-      if (!access?.snapshotHash || !access.allowedActions.includes('APPROVE')) throw new Error('GEA_DRAFT_NOT_EDITABLE');
       const draft = payload.draft as SalesPlanLocalDraft;
-      if (!salesPlanDraftMatches(draft, row, detail)) throw new Error('STALE_DRAFT');
+      if (!salesPlanLocalDraftValid(draft, planId, versionId)) throw new Error('INVALID_LOCAL_DRAFT');
       const value = {draft, savedAt: new Date().toISOString(), storage: 'host'};
       signal.throwIfAborted();
       await mkdir(dir, {recursive: true, mode: 0o700});
@@ -876,11 +872,11 @@ export class Business {
     try {
       const stored = JSON.parse(await readFile(file, 'utf8'));
       signal.throwIfAborted();
-      if (!salesPlanDraftMatches(stored.draft, row, detail)) return {draft: null, stale: true, sourceSnapshot};
-      return {...stored, sourceSnapshot};
+      if (!salesPlanLocalDraftValid(stored.draft, planId, versionId)) return {draft: null, stale: true};
+      return stored;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      return {draft: null, sourceSnapshot};
+      return {draft: null};
     }
   }
 
@@ -981,6 +977,8 @@ export class Business {
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     if (![1,2,3,4,6,7,8,9].includes(request.expectedStatus as number))
       throw new GeaResponseError(400, {message:'未提交、已完成或无效状态不允许写入'});
+    if (request.adjustmentMode == null && (request.expectedStatus as number) >= 6 && (request.expectedStatus as number) <= 9)
+      throw new GeaResponseError(400, {message:'已退回记录只能通过纠偏重提流程再次提交'});
     if (request.approvalRole == null && request.adjustmentMode == null && request.action !== 'SAVE')
       throw new GeaResponseError(400,{message:'请明确本次审批角色'});
     if (request.approvalPolicy != null && (request.approvalPolicy !== 'role-visible-v1' || !request.approvalRole)) throw new Error('INVALID_PAYLOAD');

@@ -13,3 +13,6 @@
 .sku { display: block; font-weight: 500; }
 .description { display: block; color: var(--text-secondary); margin-top: 2px; }
 .changed { background: var(--color-primary-light-1); }
+.quantityInput { width: 96px; margin-left: auto; }
+.quantityInput :global(.arco-input-inner-wrapper) { padding-right: 0; }
+.quantityInput :global(input) { padding-right: 0; text-align: right; }

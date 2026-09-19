@@ -366,6 +366,10 @@
       "ariaLabel": "Regional manager demand forecast approval workbench",
       "title": "Sales plan approval",
       "pendingSummary": "{{count}} awaiting my approval",
+      "workspaceTabs": {
+        "ariaLabel": "Plan workspace pages",
+        "evaluationEmpty": "The regional plan evaluation page is empty until the business prototype is available."
+      },
       "fixtureTag": "Sample data · not connected to production",
       "scopeAria": "Current approval scope",
       "planMonth": "Plan month",
@@ -670,7 +674,8 @@
           "loading": "Loading draft…",
           "saving": "Saving draft…",
           "saved": "Saved automatically",
-          "failed": "Draft save failed"
+          "failed": "Draft save failed. Retry."
+        ,"retry": "Retry save"
         },
         "editCurrent": "Edit adjustment draft",
         "editScope": "This view shows aggregates. Editing applies only to the currently selected plan.",
@@ -975,8 +980,8 @@
         "category": "Category",
         "quantity": "Plan quantity",
         "amount": "Plan amount",
-        "progress": "Plan progress",
-        "categoryProgress": "Plan progress",
+        "progress": "Plan / Target",
+        "categoryProgress": "Plan / Target",
         "adjustment": "Adjustment",
         "comparison": "Version comparison",
         "returnReason": "Return reason",

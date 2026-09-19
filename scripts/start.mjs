@@ -68,6 +68,7 @@ try {
       ([key]) => !/API_KEY|ACCESS_TOKEN|AUTH_TOKEN|SECRET|DSH_/.test(key),
     ),
   );
+  if (development) env.GEA_WEB_LOGIN_PERSIST = "1";
   if (config.analysis.mode === "model" && config.analysis.source !== "gea")
     env[config.analysis.apiKeyEnv] = process.env[config.analysis.apiKeyEnv];
   for (const account of Object.values(config.serviceAccounts ?? {})) {

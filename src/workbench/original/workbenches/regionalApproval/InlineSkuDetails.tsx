@@ -1,26 +1,29 @@
 import styles from './InlineSkuDetails.module.css';
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Alert, Input, Spin} from '@arco-design/web-react';
+import {Alert, Button, Input, Spin} from '@arco-design/web-react';
 import type {TFunction} from 'i18next';
 import {salesPlan, type GeaSalesPlanDetail, type GeaSalesPlanSku} from '../../bridge.ts';
-import {addExactDecimals, formatExactDecimal, subtractExactDecimals, type RegionalApprovalLiveRow} from './regionalApprovalQueryModel.ts';
+import {addExactDecimals, formatExactDecimal, multiplyExactDecimals, subtractExactDecimals, type RegionalApprovalLiveRow} from './regionalApprovalQueryModel.ts';
 import {salesPlanDraftSnapshot, type SalesPlanLocalDraft} from './models/salesPlanLocalDraftModel.ts';
 import {salesPlanEditableQuantity} from './models/salesPlanAccessModel.ts';
 import type {ApprovalStageId} from './regionalApprovalFixture.ts';
 
 const DECIMAL = /^[+-]?\d{1,15}(?:\.\d{1,3})?$/;
+const quantityText = (value: string) => formatExactDecimal(value).replace(/\.0+$/, '');
 
-export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName}:{
+export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName,onMetricsChange}:{
  row:RegionalApprovalLiveRow;
  t:TFunction;
  detail?:GeaSalesPlanDetail;
  canEdit?:boolean;
  approvalRole?:ApprovalStageId;
  categoryName?:string;
+ onMetricsChange?: (metrics?: {quantity: string; amount: string}) => void;
 }) {
  const [skus,setSkus]=useState<GeaSalesPlanSku[]>(); const [failed,setFailed]=useState(false);
  const [confirmedValues,setConfirmedValues]=useState<Record<string,string>>({});
  const [draftState,setDraftState]=useState<'idle'|'loading'|'saved'|'saving'|'failed'>('idle');
+ const [saveRetry,setSaveRetry]=useState(0);
  const savedDraft=useRef('');
  useEffect(()=>{const controller=new AbortController(); setSkus(undefined); setFailed(false);
   const source = detail?.skus && detail.currentVersion.id === row.versionId ? Promise.resolve(detail.skus) : salesPlan.versionSkus.invoke({versionId:row.versionId,signal:controller.signal});
@@ -41,7 +44,21 @@ export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName
   }).catch(()=>{if (!controller.signal.aborted) setDraftState('failed');});
   return ()=>controller.abort();
  },[approvalRole,canEdit,detail,row.planId,row.planTypeCode,row.status,row.versionId]);
+ useEffect(() => {
+  if (draftState !== 'saved') return;
+  const timer = window.setTimeout(() => setDraftState('idle'), 1400);
+  return () => window.clearTimeout(timer);
+ }, [draftState]);
  const baselineFor = (sku:GeaSalesPlanSku) => salesPlanEditableQuantity(sku,row.status,row.planTypeCode,approvalRole) ?? String(sku.qty);
+ const confirmedMetrics = useMemo(() => {
+  if (!skus || skus.length === 0) return undefined;
+  const quantities = skus.map(sku => confirmedValues[String(sku.skuCode)] ?? baselineFor(sku));
+  const amounts = skus.map(sku => multiplyExactDecimals(confirmedValues[String(sku.skuCode)] ?? baselineFor(sku), String(sku.price)));
+  return amounts.every((amount): amount is string => amount !== undefined)
+    ? {quantity: addExactDecimals(quantities), amount: addExactDecimals(amounts)}
+    : undefined;
+ }, [confirmedValues, skus, row.status, row.planTypeCode, approvalRole]);
+ useEffect(() => { onMetricsChange?.(confirmedMetrics); }, [confirmedMetrics, onMetricsChange]);
  const draftAdjustments = useMemo(() => (skus ?? []).map(sku => {
   const code=String(sku.skuCode), value=confirmedValues[code];
   if (value === undefined || value.trim() === '') return undefined;
@@ -63,7 +80,7 @@ export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName
    }).catch(()=>{if (!controller.signal.aborted)setDraftState('failed');});
   },500);
   return ()=>{clearTimeout(timer);controller.abort();};
- },[canEdit,confirmedValues,detail,draftAdjustments,draftState,row.planId,row.status,row.versionId,skus]);
+ },[canEdit,confirmedValues,detail,draftAdjustments,row.planId,row.status,row.versionId,saveRetry,skus]);
  const tr=(key:string)=>t(`common.assistantSurface.regionalApproval.liveAdjustment.${key}`);
  const groups = new Map<string, GeaSalesPlanSku[]>();
  for (const sku of skus ?? []) {
@@ -72,7 +89,10 @@ export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName
   groups.set(category, [...(groups.get(category) ?? []), sku]);
  }
  return <section className={styles.root} aria-label={tr('columns.sku')}>
-  {canEdit && draftState !== 'idle' ? <div className={styles.toolbar}><span role='status'>{t(`common.assistantSurface.regionalApproval.liveAdjustment.draft.${draftState}`)}</span></div> : null}
+  {canEdit && (draftState === 'saving' || draftState === 'failed') ? <div className={styles.toolbar}>
+   <span role='status'>{t(`common.assistantSurface.regionalApproval.liveAdjustment.draft.${draftState}`)}</span>
+   {draftState === 'failed' ? <Button size='mini' onClick={() => { savedDraft.current = ''; setSaveRetry(value => value + 1); }}>{t('common.assistantSurface.regionalApproval.liveAdjustment.draft.retry')}</Button> : null}
+  </div> : null}
   {failed ? <Alert type='error' content={tr('loadError')} /> : !skus ? <Spin /> :
    <div className={styles.viewport} tabIndex={0} role="region" aria-label={tr('columns.sku')}>
    <table className={styles.table}>
@@ -88,7 +108,7 @@ export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName
      const code=String(sku.skuCode), baseline=baselineFor(sku), confirmed=confirmedValues[code] ?? baseline;
      return <tr key={code+':'+index} className={changed ? styles.changed : undefined}>
       <td><span className={styles.sku}>{code}</span><span className={styles.description}>{sku.materialDescription || sku.skuName || tr('missingDescription')}</span></td>
-      <td>{formatExactDecimal(sku.baseQty)}</td><td>{canEdit ? <Input size='small' value={confirmed} aria-label={`${tr('columns.qty')} ${code}`} onChange={value=>setConfirmedValues(current=>({...current,[code]:value}))} /> : formatExactDecimal(sku.qty)}</td><td>{formatExactDecimal(sku.amtBase)}</td><td>{formatExactDecimal(sku.amt)}</td></tr>;
+      <td>{quantityText(sku.baseQty)}</td><td>{canEdit ? <Input className={styles.quantityInput} type='number' step={1} size='small' value={quantityText(confirmed)} aria-label={`${tr('columns.qty')} ${code}`} onChange={value=>setConfirmedValues(current=>({...current,[code]:value}))} /> : quantityText(sku.qty)}</td><td>{formatExactDecimal(sku.amtBase)}</td><td>{formatExactDecimal(sku.amt)}</td></tr>;
     })}
    </tbody>)}
    </table></div>}

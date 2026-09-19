@@ -83,6 +83,26 @@ export const salesPlanDraftMatches = (
   });
 };
 
+/** 本地草稿保存只校验数据形状，不回查 GEA，也不代表服务端审批权限。 */
+export const salesPlanLocalDraftValid = (
+  draft: unknown,
+  planId: string,
+  versionId: string,
+): draft is SalesPlanLocalDraft => {
+  if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return false;
+  const value = draft as Partial<SalesPlanLocalDraft>;
+  if (value.planId !== planId || value.versionId !== versionId || !Number.isInteger(value.status)) return false;
+  if (typeof value.sourceSnapshot !== 'string' || value.sourceSnapshot.length > 200_000) return false;
+  if (typeof value.remark !== 'string' || Array.from(value.remark).length > 1000 || !Array.isArray(value.adjustments)) return false;
+  const codes = new Set<string>();
+  return value.adjustments.every((adjustment) => {
+    if (!adjustment || typeof adjustment !== 'object' || typeof adjustment.skuCode !== 'string' ||
+        typeof adjustment.adjustQty !== 'string' || !DECIMAL.test(adjustment.adjustQty) || codes.has(adjustment.skuCode)) return false;
+    codes.add(adjustment.skuCode);
+    return true;
+  });
+};
+
 const storageKey = (scope: string) => `gea-dsh:sales-plan-local-drafts:v1:${encodeURIComponent(scope)}`;
 export const readSalesPlanLocalDrafts = (scope: string | undefined): SalesPlanLocalDraftStore => {
   if (!scope) return {};
