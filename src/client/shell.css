@@ -31,10 +31,10 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   min-width: 0;
   container: gea-sidebar / inline-size;
   background: #f5f6f8;
-  color: #596273;
-  font:
-    13px/1.6 system-ui,
-    sans-serif;
+  color: #555d68;
+  font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.7;
 }
 .gea-shell-navigation-content {
   height: 100%;
@@ -58,9 +58,10 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   gap: 16px;
   height: 54px;
   flex-shrink: 0;
-  border-bottom: 1px solid #e0e3eb;
-  color: #111;
-  font-size: 16px;
+  border-bottom: 1px solid #e3e6ea;
+  color: #20232a;
+  font-size: 14px;
+  font-weight: 700;
 }
 .gea-shell-navigation-content::after {
   content: "插件工作区";
@@ -73,7 +74,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   text-transform: uppercase;
 }
 .gea-shell-logo {
-  background: #ed0000;
+  background: #df1732;
   color: white;
   width: 27px;
   height: 27px;
@@ -109,7 +110,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-shell-navigation button.is-active {
   background: #fff0f2;
-  color: #d6223d;
+  color: #df1732;
   font-weight: 600;
   box-shadow: inset 3px 0 0 #d6223d;
 }
@@ -122,7 +123,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   color: #202531;
 }
 .gea-shell-navigation button:focus-visible {
-  outline: 2px solid #ef4c50;
+  outline: 2px solid #df1732;
   outline-offset: 2px;
 }
 .gea-shell-group {
@@ -143,15 +144,15 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-shell-plugin-group { display: grid; gap: 2px; margin-top: 2px; padding-top: 4px; }
 .gea-shell-plugin { min-height: 32px !important; padding-block: 6px !important; padding-left: 40px !important; color: #687282 !important; font-size: 12px !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
-.gea-shell-plugin:hover { color: #d6223d !important; background: #fff6f7 !important; }
-.gea-shell-plugin.is-active { color: #d6223d !important; background: #fff0f2 !important; box-shadow: inset 3px 0 0 #d6223d !important; }
+.gea-shell-plugin:hover { color: #df1732 !important; background: #fffafb !important; }
+.gea-shell-plugin.is-active { color: #df1732 !important; background: #fff0f2 !important; box-shadow: inset 3px 0 0 #df1732 !important; }
 .gea-shell-plugin-dot { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #c7ced8; }
-.gea-shell-plugin:hover .gea-shell-plugin-dot, .gea-shell-plugin.is-active .gea-shell-plugin-dot { background: #d6223d; }
+.gea-shell-plugin:hover .gea-shell-plugin-dot, .gea-shell-plugin.is-active .gea-shell-plugin-dot { background: #df1732; }
 .gea-shell-user {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-top: 1px solid #e0e3eb;
+  border-top: 1px solid #e3e6ea;
   padding: 14px 8px 0;
   margin-top: auto;
 }
