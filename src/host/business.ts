@@ -25,6 +25,7 @@ import { Decimal } from "decimal.js";
 import { transportSignal } from "../shared/transport-signal.ts";
 import { notificationPage, notificationDetail } from "../shared/notifications.ts";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
+import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
 
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
@@ -165,6 +166,10 @@ const skuFields = [
   "versionId",
   "skuCode",
   "materialDescription",
+  "materialDesc",
+  "materialName",
+  "skuName",
+  "productName",
   "productCategName",
   "baseQty",
   "qty",
@@ -180,6 +185,15 @@ const skuFields = [
   "categoryConfirmedQty",
   "categoryConfirmedAmount",
 ];
+function normalizeMaterialDescription(records: Row[]): void {
+  for (const record of records) {
+    if (typeof record.materialDescription === "string" && record.materialDescription.trim()) continue;
+    const fallback = [record.materialDesc, record.materialName, record.skuName, record.productName].find(
+      (value) => typeof value === "string" && value.trim(),
+    );
+    if (typeof fallback === "string") record.materialDescription = fallback.trim();
+  }
+}
 const exactNumber =
   /Id$|Code$|Qty$|Amount$|^(id|qty|price|amt|amtBase|qtyDelta|amountDelta)$/;
 
@@ -279,6 +293,14 @@ function integer(
   )
     throw new Error("INVALID_QUERY");
   return value;
+}
+function versionNumber(value: unknown): number {
+  if (typeof value === "number") return integer(value, 0);
+  if (typeof value === "string" && /^[0-9]+$/.test(value)) {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed)) return parsed;
+  }
+  throw new Error("INVALID_PAYLOAD");
 }
 function project(value: unknown, fields: readonly string[]): Row {
   const row = object(value);
@@ -472,6 +494,7 @@ export class Business {
   private selectedBase: string;
   private environment: "production" | "test";
   private readonly environments: Record<string, string>;
+  private readonly apiLog: GeaApiLogCenter;
   get base(): string {
     return this.selectedBase;
   }
@@ -506,6 +529,7 @@ export class Business {
     this.selectedBase = resolved.baseUrl;
     this.environment = resolved.environment as "production" | "test";
     this.environments = resolved.environments;
+    this.apiLog = new GeaApiLogCenter(() => this.environment);
   }
 
   /** 仅桌面拥有者可用：凭证通过私有回环通道传递，绝不经浏览器 RPC。 */
@@ -544,6 +568,7 @@ export class Business {
   }
   /** 清理查询缓存和未完成请求，避免新选择沿用旧身份或旧页面的数据。 */
   private clearLogin(expired = false): void {
+    this.apiLog.invalidateReplays();
     this.epoch.abort();
     this.epoch = new AbortController();
     this.auth = undefined;
@@ -702,7 +727,7 @@ export class Business {
     let response: Response;
     const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
     try {
-      response = await fetch(this.base + path, {
+      response = await this.apiLog.fetch(this.base + path, {
         method: "GET",
         headers,
         redirect: "error",
@@ -821,7 +846,7 @@ export class Business {
     keys(payload, []);
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(this.config.requestTimeoutMs)]);
-    return readSalesPlanWorkflowConfig(this.base, auth.token, fetch, signal);
+    return readSalesPlanWorkflowConfig(this.base, auth.token, this.apiLog.fetch, signal);
   }
 
   /** 在本次登录生命周期内，将一个幂等键绑定到一份已校验请求。 */
@@ -876,7 +901,7 @@ export class Business {
         signal.throwIfAborted();
         attempt.body = JSON.stringify(prepared.request);
       }
-      const receipt = await submitWithServiceAccount(config, this.base, attempt.body, requestId, idempotencyKey, signal);
+      const receipt = await submitWithServiceAccount(config, this.base, attempt.body, requestId, idempotencyKey, signal, this.apiLog.fetch);
       attempt.receipt = receipt;
       return receipt;
     };
@@ -974,7 +999,7 @@ export class Business {
     signal.throwIfAborted();
     onValidated();
     const body = JSON.stringify(request);
-    const response = await fetch(this.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions", {
+    const response = await this.apiLog.fetch(this.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions", {
       method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": text(payload.requestId), "Idempotency-Key": text(payload.idempotencyKey) }, body, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)])
     });
     if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw await geaResponseError(response, [auth.token]); }
@@ -987,21 +1012,52 @@ export class Business {
 
   /** 使用当前 Host 身份读取固定通知端点，不改变计划选择。 */
   async notifications(payload: Record<string, unknown>, caller: AbortSignal) {
-    keys(payload, ["pageNo", "state", "id"]);
+    keys(payload, ["pageNo", "pageSize", "state", "states", "eventType", "id", "operation", "expectedVersion", "idempotencyKey", "items", "action", "targetUserId", "comment"]);
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
+    const operation = payload.operation === undefined ? undefined : text(payload.operation);
+    if (operation === "unread-count") {
+      return { environment: this.environment, fetchedAt: new Date().toISOString(), count: object(await this.get("/api/v1/notifications/unread-count", auth, signal)).count };
+    }
+    if (operation === "read" || operation === "dismiss") {
+      const id = text(payload.id);
+      const expectedVersion = versionNumber(payload.expectedVersion);
+      const idempotencyKey = text(payload.idempotencyKey);
+      return await this.postJson(`/api/v1/notifications/${encodeURIComponent(id)}/${operation}`, auth, signal, { expectedVersion: String(expectedVersion), idempotencyKey });
+    }
+    if (operation === "batch-read") {
+      if (!Array.isArray(payload.items) || payload.items.length < 1 || payload.items.length > 100) throw new Error("INVALID_PAYLOAD");
+      const items = payload.items.map((item) => {
+        const row = object(item);
+        keys(row, ["notificationId", "expectedVersion"]);
+        return { notification_id: text(row.notificationId), expected_version: String(versionNumber(row.expectedVersion)) };
+      });
+      return await this.postJson("/api/v1/notifications/batch-read", auth, signal, { idempotency_key: text(payload.idempotencyKey), items });
+    }
+    if (operation === "approval-action") {
+      const id = text(payload.id);
+      const action = text(payload.action);
+      if (!["APPROVE", "REJECT", "TRANSFER"].includes(action)) throw new Error("INVALID_PAYLOAD");
+      return await this.postJson(`/api/v1/notifications/${encodeURIComponent(id)}/approval-action`, auth, signal, {
+        action, target_user_id: payload.targetUserId == null ? null : text(payload.targetUserId),
+        comment: payload.comment == null ? null : text(payload.comment),
+        expected_version: versionNumber(payload.expectedVersion), idempotency_key: text(payload.idempotencyKey),
+      });
+    }
     let path = "/api/v1/notifications";
     if (payload.id !== undefined) {
-      if (payload.pageNo !== undefined || payload.state !== undefined)
+      if (payload.pageNo !== undefined || payload.state !== undefined || payload.states !== undefined || payload.eventType !== undefined)
         throw new Error("INVALID_PAYLOAD");
       path += "/" + encodeURIComponent(text(payload.id));
     } else {
       const query = new URLSearchParams({
         pageNo: String(integer(payload.pageNo ?? 1, 1, 100000)),
-        pageSize: String(this.config.pageSize),
+        pageSize: String(integer(payload.pageSize ?? this.config.pageSize, 1, 100)),
       });
       if (payload.state !== undefined && payload.state !== "")
         query.set("state", text(payload.state));
+      if (payload.states !== undefined && payload.states !== "") query.set("states", text(payload.states));
+      if (payload.eventType !== undefined && payload.eventType !== "") query.set("eventType", text(payload.eventType));
       path += "?" + query;
     }
     const value = await this.get(path, auth, signal);
@@ -1013,6 +1069,23 @@ export class Business {
         ? notificationPage(value, this.config.pageSize)
         : { detail: notificationDetail(value, text(payload.id)) }),
     };
+  }
+
+  private async postJson(path: string, identity: { token: string; tenantId?: string }, signal: AbortSignal, body: unknown): Promise<unknown> {
+    let response: Response;
+    try {
+      response = await this.apiLog.fetch(this.base + path, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": identity.token, ...(identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}), "X-Request-Id": randomUUID() }, body: JSON.stringify(body), redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)]) });
+    } catch {
+      if (signal.aborted) throw new Error("STALE_SELECTION");
+      throw new Error("GEA_NETWORK_ERROR");
+    }
+    if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw await geaResponseError(response, [identity.token]); }
+    const data = object(parseJson(await response.text()));
+    if (data.success !== true) {
+      if (typeof data.errorCode === "string" && /^NOTIFICATION_[A-Z_]+$/.test(data.errorCode)) throw new Error(data.errorCode);
+      throw new Error("GEA_REQUEST_REJECTED");
+    }
+    return data.result;
   }
 
   /** 解析当前登录用户的 GEA 个人模型路由，但不向浏览器暴露密钥。 */
@@ -1069,7 +1142,7 @@ export class Business {
     const secret = text(claimed.secret);
     let response: Response;
     try {
-      response = await fetch(baseUrl + "/models", {
+      response = await this.apiLog.fetch(baseUrl + "/models", {
         headers: {
           Accept: "application/json",
           Authorization: "Bearer " + secret,
@@ -1147,7 +1220,7 @@ export class Business {
   ): Promise<unknown> {
     let response: Response;
     try {
-      response = await fetch(this.base + path, {
+      response = await this.apiLog.fetch(this.base + path, {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -1249,7 +1322,35 @@ export class Business {
   async openMcpConnection(consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) {
     const auth = this.authenticated();
     const identity = this.epoch.signal;
-    return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.mcpRequestTimeoutMs ?? 60000);
+    return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.mcpRequestTimeoutMs ?? 60000, this.apiLog.fetch);
+  }
+
+  /** 向模型适配器提供同一套脱敏日志边界，浏览器永远拿不到原始凭证。 */
+  fetchExternal(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    return this.apiLog.fetch(input, init);
+  }
+
+  /** 返回当前进程内的脱敏接口目录与调用记录。 */
+  apiLogSnapshot(payload: Record<string, unknown>): ApiLogSnapshot {
+    keys(payload, []);
+    this.authenticated();
+    return this.apiLog.snapshot();
+  }
+
+  /** 清空当前进程内的调用记录，不影响接口目录与业务缓存。 */
+  apiLogClear(payload: Record<string, unknown>): ApiLogSnapshot {
+    keys(payload, []);
+    this.authenticated();
+    return this.apiLog.clear();
+  }
+
+  /** 在当前身份内执行日志中心已校验的安全重发。 */
+  apiLogReplay(payload: Record<string, unknown>, signal: AbortSignal) {
+    keys(payload, ["id", "confirmed"]);
+    this.authenticated();
+    if (payload.confirmed !== true && payload.confirmed !== false)
+      throw new Error("INVALID_PAYLOAD");
+    return this.apiLog.replay(text(payload.id), payload.confirmed, signal);
   }
 
   /** 开启新分页查询时立即失效旧选择，后续 detail/version/SKU 只能引用本次页面。 */
@@ -1316,14 +1417,81 @@ export class Business {
     return { page: this.page, row };
   }
 
-  /** 返回实际周期字段，并保留周期分页的覆盖范围。 */
+  /**
+   * 周期管理依赖下线后，以当前用户可见计划中的 periodId/planTypeCode 重建只读月份索引。
+   * periodId 的现网格式以 YYYYMM 开头；无法识别的历史标识原样展示，避免伪造月份。
+   */
+  private async salesPlanPeriodPage(
+    query: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<{ records: Row[]; total: number; size: number; current: number; pages: number }> {
+    if (query.status != null && query.status !== "")
+      throw new Error("INVALID_QUERY: period status was removed; filter visible plans by plan status instead.");
+    const auth = this.authenticated();
+    const upstreamPageSize = 200;
+    const rows: Record<string, unknown>[] = [];
+    let pageNo = 1;
+    let pageCount = 1;
+    let upstreamTotal = 0;
+    do {
+      const path = `/sales-plan/plans?pageNo=${pageNo}&pageSize=${upstreamPageSize}`;
+      const page = object(await this.get(
+        path,
+        auth,
+        AbortSignal.any([signal, this.epoch.signal]),
+      ));
+      if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_PAGE");
+      rows.push(...page.records.map(object));
+      upstreamTotal = integer(page.total, rows.length);
+      const actualSize = integer(page.size ?? upstreamPageSize, 1);
+      pageCount = integer(page.pages ?? Math.ceil(upstreamTotal / actualSize), 0, 1000);
+      pageNo += 1;
+    } while (pageNo <= pageCount);
+    if (rows.length < upstreamTotal) throw new Error("GEA_INCOMPLETE_COLLECTION");
+
+    const discovered = new Map<string, Row>();
+    for (const row of rows) {
+      const periodId = text(row.periodId);
+      const planTypeCode = text(row.planTypeCode);
+      const match = /^(\d{4})(0[1-9]|1[0-2])/.exec(periodId);
+      const periodMonth = match ? `${match[1]}-${match[2]}` : periodId;
+      const orderType = row.orderType == null ? "" : text(row.orderType);
+      const planType = orderType === "Z" ? "CORRECTION" : orderType === "M" ? "MONTHLY" : "UNKNOWN";
+      discovered.set(`${periodId}\u0000${planTypeCode}`, {
+        periodId,
+        tenantId: auth.tenantId,
+        periodMonth,
+        planType,
+        planTypeCode,
+        status: "UNKNOWN",
+      });
+    }
+    const periodMonth = query.periodMonth == null || query.periodMonth === "" ? undefined : text(query.periodMonth);
+    const planType = query.planType == null || query.planType === "" ? undefined : text(query.planType);
+    const records = [...discovered.values()]
+      .filter((row) => periodMonth == null || row.periodMonth === periodMonth)
+      .filter((row) => planType == null || row.planType === planType)
+      .toSorted((left, right) =>
+        String(right.periodMonth).localeCompare(String(left.periodMonth)) ||
+        String(left.periodId).localeCompare(String(right.periodId)) ||
+        String(left.planTypeCode).localeCompare(String(right.planTypeCode)),
+      );
+    const current = integer(query.pageNo ?? 1, 1);
+    const size = integer(query.pageSize ?? this.config.periodPageSize, 1, 1000);
+    const start = (current - 1) * size;
+    return {
+      records: records.slice(start, start + size),
+      total: records.length,
+      size,
+      current,
+      pages: records.length === 0 ? 0 : Math.ceil(records.length / size),
+    };
+  }
+
+  /** 返回从当前可见计划重建的周期索引，并保留分页覆盖范围。 */
   async periods(signal: AbortSignal): Promise<Collection> {
-    const path = `/sales-plan/periods?pageNo=1&pageSize=${this.config.periodPageSize}`;
-    const result = await this.get(
-      path,
-      this.authenticated(),
-      AbortSignal.any([signal, this.epoch.signal]),
-    );
+    const path = "/sales-plan/plans";
+    const result = await this.salesPlanPeriodPage({}, signal);
     return this.collection(
       result,
       [
@@ -1337,7 +1505,7 @@ export class Business {
         "createdAt",
         "updatedAt",
       ],
-      ["periodId", "periodMonth", "status"],
+      ["periodId", "periodMonth", "planTypeCode"],
       path,
       "periodId",
     );
@@ -1442,6 +1610,7 @@ export class Business {
       ["id", "planId", "seq", "status", "targetQty", "targetAmount"],
       path,
     );
+    normalizeMaterialDescription(result.records);
     if (result.records.some((record) => record.planId !== id))
       throw new Error("GEA_IDENTITY_MISMATCH");
     if (active.aborted) throw new Error("STALE_SELECTION");
@@ -1478,6 +1647,7 @@ export class Business {
       ["skuCode", "baseQty", "qty", "price", "amt", "amtBase"],
       path,
     );
+    normalizeMaterialDescription(result.records);
     if (result.records.some((record) => record.versionId !== id))
       throw new Error("GEA_IDENTITY_MISMATCH");
     if (active.aborted) throw new Error("STALE_SELECTION");
@@ -1624,7 +1794,7 @@ export class Business {
     const query = object(payload.query ?? {});
     const kind = text(payload.kind);
     const allowed: Record<string, string[]> = {
-      periods: ["periodMonth", "planType", "status", "pageNo", "pageSize"],
+      periods: ["periodMonth", "planType", "pageNo", "pageSize"],
       list: [
         "orderType",
         "periodId",
@@ -1653,9 +1823,9 @@ export class Business {
       throw new Error(`INVALID_QUERY: kind=${kind} accepts only ${allowed[kind].join(", ")}.${guidance}`);
     }
     if (query.orderType != null && !["M", "Z"].includes(String(query.orderType))) throw new Error("INVALID_QUERY");
+    if (kind === "periods") return this.salesPlanPeriodPage(query, signal);
     const id = (key: string) => encodeURIComponent(text(query[key]));
     const paths: Record<string, () => string> = {
-      periods: () => "/sales-plan/periods",
       list: () => "/sales-plan/plans",
       detail: () => "/sales-plan/plans/" + id("planId"),
       versions: () => "/sales-plan/plans/" + id("planId") + "/versions",

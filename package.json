@@ -31,9 +31,15 @@
     "build:example": "node scripts/build.mjs --target example",
     "dev": "node scripts/build.mjs --target host,client,workbench --watch",
     "start": "node scripts/start.mjs",
+    "desktop:dev": "node scripts/desktop-dev.mjs",
+    "test:desktop:dev": "node --test scripts/desktop-dev.test.mjs",
     "verify": "node scripts/verify.mjs",
     "package": "node scripts/package.mjs",
-    "test:package": "node --test scripts/package-smoke.test.mjs"
+    "package:desktop": "node scripts/package-desktop.mjs",
+    "package:desktop:mac": "node scripts/package-desktop.mjs --target mac",
+    "package:desktop:win": "node scripts/package-desktop.mjs --target win",
+    "test:package": "node --test scripts/package-smoke.test.mjs",
+    "test:package:desktop": "node --test scripts/package-desktop.test.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.2",

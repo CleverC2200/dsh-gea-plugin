@@ -15,6 +15,9 @@ export type ApprovalStageFixture = {
   progress: number;
 };
 
+/** 区域计划评估是展示节点，沿用计划的未提交、待回写和已回写状态。 */
+export const REGIONAL_PLAN_EVALUATION_STATUSES = [0, 5, 10] as const;
+
 export type RegionalApprovalRow = {
   id: string;
   organizationKey: 'north' | 'east' | 'central' | 'southwest' | 'hebei';
@@ -48,14 +51,16 @@ export const APPROVAL_STAGE_FIXTURES: readonly ApprovalStageFixture[] = [
   { id: 'region', progress: 100 },
   { id: 'province', progress: 75 },
   { id: 'area', progress: 42 },
+  { id: 'evaluation' as ApprovalStageId, progress: 0 },
   { id: 'category', progress: 0 },
 ];
 
-const approvalStageRank: Record<ApprovalStageId, number> = {
+const approvalStageRank: Record<string, number> = {
   customer: 0,
   region: 1,
   province: 2,
   area: 3,
+  evaluation: 4,
   category: 4,
 };
 
@@ -202,10 +207,11 @@ export const approvalRowsForStage = (
   stage: ApprovalStageId
 ): RegionalApprovalRow[] => rows.filter((row) => approvalStageRank[row.reachedStage] >= approvalStageRank[stage]);
 
-export const APPROVAL_DIMENSIONS_BY_STAGE: Record<ApprovalStageId, readonly ApprovalDimension[]> = {
+export const APPROVAL_DIMENSIONS_BY_STAGE: Record<ApprovalStageId, readonly ApprovalDimension[]> & Record<'evaluation', readonly ApprovalDimension[]> = {
   customer: ['customer'],
   region: ['region', 'customer'],
   province: ['province', 'region', 'customer'],
   area: ['area', 'province', 'region', 'customer'],
+  evaluation: ['base', 'area', 'province', 'region', 'customer'],
   category: ['base', 'area', 'province', 'region', 'customer'],
 };

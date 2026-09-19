@@ -73,13 +73,18 @@ test('batch download or install failure keeps all current versions and offers no
 test('one click downloads all updates and automatically restarts exactly once',async t=>{
   const {updates,counts,store}=await batchFixture(t);
   await updates.check();
-  assert.equal((await updates.status()).settings.intervalHours,24);
+  assert.equal((await updates.status()).settings.intervalHours,2);
   assert.equal((await updates.status()).capabilities.prepareAndRestart,true);
   await Promise.all([updates.prepare({all:true,restart:true}),updates.prepare({all:true,restart:true})]);
   const done=await until(updates.status,s=>s.phase==='succeeded');
   assert.deepEqual(counts(),{installs:1,restarts:1,downloads:2});
   assert.equal(done.current['dsh-plugin'],'1.4.3-company.2');
   assert.equal(done.current['@cleverc2200/dsh-agent-workbench'],'0.1.2');
+  assert.equal(done.updateHistory.length,1);
+  assert.deepEqual(done.updateHistory[0].items,[
+    {package:'dsh-plugin',fromVersion:'1.4.3-company.1',toVersion:'1.4.3-company.2'},
+    {package:'@cleverc2200/dsh-agent-workbench',fromVersion:'0.1.1',toVersion:'0.1.2'},
+  ]);
   assert.notEqual((await store.selected()).id,'baseline');
 });
 test('one-click failure never restarts or partially applies an update',async t=>{
@@ -87,7 +92,7 @@ test('one-click failure never restarts or partially applies an update',async t=>
     const {updates,counts,store}=await batchFixture(t,options);
     await updates.check();await updates.prepare({all:true,restart:true});
     await until(updates.status,s=>s.phase==='failed');
-    assert.equal(counts().restarts,0);assert.equal((await store.selected()).id,'baseline');
+    assert.equal(counts().restarts,0);assert.equal((await store.selected()).id,'baseline');assert.deepEqual((await updates.status()).updateHistory,[]);
   }
 });
 test('one-click cancellation prevents automatic restart',async t=>{

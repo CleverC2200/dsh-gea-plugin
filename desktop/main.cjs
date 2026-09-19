@@ -16,6 +16,8 @@ let startupReason='startup';
 let lifecycle=Promise.resolve();
 function runLifecycle(action){const next=lifecycle.then(()=>action());lifecycle=next.catch(()=>{});return next;}
 const payload=!app.isPackaged&&process.env.GEA_DESKTOP_PAYLOAD?process.env.GEA_DESKTOP_PAYLOAD:join(process.resourcesPath,'payload');
+const development=process.env.GEA_DESKTOP_DEV==='1';
+const developmentGraph=process.env.DSH_PLUGIN_GRAPH;
 const data=app.getPath('userData');
 const configPath=join(data,'gea.config.json');
 const loginPath=join(data,'login.encrypted');
@@ -50,7 +52,7 @@ async function start(recovered=false,reason='startup'){
   if(quitting)return;
   startupReason=reason;
   await showStartup();
-  await appendFile(join(data,'desktop.log'),new Date().toISOString()+' START '+process.platform+' '+process.arch+'\n',{mode:0o600});
+  await appendFile(join(data,'desktop.log'),new Date().toISOString()+' START '+process.platform+' '+process.arch+(development?' DEV '+(developmentGraph||''):'')+'\n',{mode:0o600});
   await stop();
   if(quitting)return;
   // OS credential prompts must finish before the backend's private request timeout starts.
@@ -65,7 +67,7 @@ async function start(recovered=false,reason='startup'){
   const node=join(payload,'node',process.platform==='win32'?'node.exe':'bin/node');
   const runtimeEnv={...process.env};delete runtimeEnv.GEA_RELEASE_TOKEN;
   const child=spawn(node,[join(payload,'start.mjs')],{cwd:payload,detached:process.platform!=='win32',windowsHide:true,
-    env:{...runtimeEnv,GEA_CONFIG:configPath,DSH_FULL_DATA_DIR:join(data,'data'),DSH_FULL_PORT:'0',DSH_FULL_NO_OPEN:'1',DSH_PLUGIN_GRAPH:selected.path,DSH_DESKTOP_BASELINE:payload,GEA_DESKTOP_CONTROL_URL:control.url,GEA_DESKTOP_CONTROL_TOKEN:control.token},
+    env:{...runtimeEnv,GEA_CONFIG:configPath,DSH_FULL_DATA_DIR:join(data,'data'),DSH_FULL_PORT:'0',DSH_FULL_NO_OPEN:'1',DSH_PLUGIN_GRAPH:developmentGraph||selected.path,DSH_DESKTOP_BASELINE:payload,GEA_DESKTOP_DEV:development?'1':undefined,GEA_DESKTOP_CONTROL_URL:control.url,GEA_DESKTOP_CONTROL_TOKEN:control.token},
     stdio:['ignore','pipe','pipe','ipc']});
   backend=child;
   let pending='';

@@ -1372,7 +1372,7 @@
 
 .queueMetrics > span {
   min-width: 0;
-  padding: 15px 16px;
+  padding: 11px 16px;
   border: 0;
   border-radius: 10px;
   background: var(--bg-2);
@@ -1380,9 +1380,9 @@
 
 .queueMetrics small {
   display: block;
-  margin-bottom: 7px;
+  margin-bottom: 4px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 18px;
 }
 
@@ -1390,9 +1390,9 @@
   display: block;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 500;
-  line-height: 30px;
+  line-height: 24px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -22,6 +22,17 @@
 
 ## 构建和验证
 
+桌面安装包使用仓库根目录的统一入口，不要直接在工作区执行 `electron-builder --projectDir desktop`：
+
+```sh
+GEA_DESKTOP_PAYLOAD_ROOT=.runtime/electron-build/payload pnpm run package:desktop:mac
+GEA_DESKTOP_PAYLOAD_ROOT=.runtime/electron-build/payload pnpm run package:desktop:win
+```
+
+打包机需要提供 `electron-builder 26.15.3`（可用 `GEA_ELECTRON_BUILDER` 指定可执行文件）；脚本不会偷偷下载或复用父工作区依赖。
+
+入口会先把 `desktop/` 壳文件复制到隔离 staging 目录，再调用固定的 `electron-builder.cjs`；父工作区的 `package.json` 和 `node_modules` 不会进入 `app.asar`。`GEA_DESKTOP_PAYLOAD_ROOT` 必须包含 `<mac|win>/payload`，运行依赖和原生模块按平台分别准备。需要只生成解包目录时追加 `--dir`，需要保留 staging 供排查时追加 `--keep-staging`。
+
 常规交付按本次改动选择定向检查、构建及包内容/摘要校验。启动时长、业务接口和资源同步属于问题专项验收；已通过后，仅在再次出现相关问题或明确要求时复查，不作为每次构建、发布、提交或合并的前置条件。下文的启动、同步和更新脚本供相应问题排查使用。
 
 同一组源码、依赖锁、平台、公司配置和资源快照只准备一份 payload；已验证的最终包直接用于发布和频道提升，不因提交、合并或切换频道重新打包。只有输入改变才重建受影响的平台，Mac 与 Windows 可以并行构建，原生依赖分别准备。保留依赖下载缓存、最终包及摘要/构建记录；发行完成后清理本次未被进程使用的 raw/compact、解包应用和隔离验收副本，保留用户数据及正在使用的目录。

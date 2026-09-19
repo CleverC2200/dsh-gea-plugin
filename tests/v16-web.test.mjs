@@ -4,7 +4,7 @@ import {chromium,expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {profile} from './profile.mjs';
 
-test('V1.6 Web: compact header, stable progress, inline SKU, drawer and persistent private drafts', {timeout:90000}, async t=>{
+test('V1.6 Web: compact header, stable progress, inline SKU and approval editing', {timeout:90000}, async t=>{
  const app=await profile(t,{config:base=>({analysis:{mode:'model',source:'direct',baseUrl:base+'/v1',model:'fixture-model',apiKeyEnv:'GEA_V16_MODEL_KEY',contextWindow:32768,maxTokens:2048}}),env:{GEA_V16_MODEL_KEY:'fixture-key'}});
  let modelCalls=0;
  const plan={planId:'p',versionId:'v',seq:1,periodId:'period-1',planTypeCode:'Y',orderType:'M',dealerCode:'d',dealerName:'客户A',orgCode:'org',orgName:'宝阳销售组',provinceCode:'province',provinceName:'华南省区',areaCode:'area',areaName:'华南大区',status:1,currentQty:'20',currentAmount:'200',targetQty:'40',targetAmount:'400',skuCount:1};
@@ -19,8 +19,9 @@ test('V1.6 Web: compact header, stable progress, inline SKU, drawer and persiste
    res.setHeader('Content-Type','text/event-stream');
    res.end('data: '+JSON.stringify({id:'reply',object:'chat.completion.chunk',choices:[{index:0,delta:{content:answer},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({id:'reply',choices:[{index:0,delta:{},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n');return true;
   }
+  if(path.endsWith('/getPermCode')){reply({success:true,result:{codeList:['sales-plan:plan:region-approve']}});return true;}
   if(path.endsWith('/plans')){const status=req.url.searchParams.get('status');const records=status===null || status==='1'?[plan]:[];reply({success:true,result:{records,total:records.length,pages:1,current:1,size:Number(req.url.searchParams.get('pageSize')||20)}});return true;}
-  if(path.endsWith('/plans/p')){reply({success:true,result:{currentVersion:{...plan,id:'v',effective:true},skus:[sku],versions:[],logs:[],actionContext:{versionId:'v',status:1,nodeOrder:2,allowedActions:['SAVE','APPROVE','REJECT'],snapshotHash:'a'.repeat(64)}}});return true;}
+ if(path.endsWith('/plans/p')){reply({success:true,result:{currentVersion:{...plan,id:'v',effective:true},skus:[sku],versions:[],logs:[],actionContext:{versionId:'v',status:1,nodeOrder:2,allowedActions:['APPROVE','REJECT'],snapshotHash:'a'.repeat(64)}}});return true;}
   if(path.endsWith('/versions')){reply({success:true,result:[{...plan,id:'v',effective:true},{...plan,id:'v0',seq:0,effective:false,targetQty:null,targetAmount:null}]});return true;}
   if(path.endsWith('/versions/v0/skus')){reply({success:true,result:[{...sku,versionId:'v0',qty:'10',amt:'100'}]});return true;}
   if(path.endsWith('/versions/v/skus')){reply({success:true,result:[sku]});return true;}
@@ -45,8 +46,8 @@ test('V1.6 Web: compact header, stable progress, inline SKU, drawer and persiste
  assert.equal(modelCalls,0,'opening the workbench must not trigger analysis');
  const stages=['region','province','area'];
  const readProgress=()=>frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
- await expect.poll(readProgress).toEqual(['进度 100%','进度 0%','进度 0%','进度 0%','进度 0%']);
- const before=await readProgress(); assert.equal(before.length,5);
+ await expect.poll(readProgress).toEqual(['进度 100%','进度 0%','进度 0%','进度 0%','进度 %','进度 0%']);
+ const before=await readProgress(); assert.equal(before.length,6);
  for(const stage of stages){await frame.getByTestId('regional-approval-stage-'+stage).click();assert.deepEqual(await readProgress(),before);}
  await frame.getByTestId('regional-approval-stage-region').click();
  await frame.getByRole('tab',{name:'按区域',exact:true}).click();
@@ -56,7 +57,7 @@ test('V1.6 Web: compact header, stable progress, inline SKU, drawer and persiste
  const monthPlan=frame.getByTestId('regional-approval-month-plan-p');
  await expect(monthPlan.locator('span').first()).toHaveText('¥100');
  await expect(monthPlan.locator('small').first()).toHaveText('10');
- await expect(frame.locator('tbody').first()).toContainText('50.0%');
+ await expect(frame.locator('tbody').first()).toContainText('25.0%');
  await expect(frame.locator('tbody').first()).toContainText('版本②：¥100 / 10');
  await expect(frame.locator('tbody').first()).toContainText('该版本不含月度目标');
  await frame.getByRole('button',{name:/查看.*宝阳销售组|宝阳销售组.*调整/}).click();
@@ -71,16 +72,12 @@ test('V1.6 Web: compact header, stable progress, inline SKU, drawer and persiste
  }
  await nav.evaluate(el=>el.style.removeProperty('width'));
  await page.screenshot({path:'.runtime/v16-feedback/inline-grouped.png',fullPage:true});
- await frame.getByRole('button',{name:'查看调整明细',exact:true}).click();
- const drawer=frame.locator('.arco-drawer');await expect(drawer).toBeVisible();
- await expect(drawer).toContainText('黑芝麻汤圆 500g');
- await expect(drawer).toContainText('当前计划高于基准，请结合库存核对。',{timeout:15000});
- assert.ok(modelCalls > 0,'opening adjustment details explicitly requests advice');
- await drawer.getByRole('button',{name:'编辑调整草稿',exact:true}).click();
- const editor=drawer.getByRole('region',{name:'调整草稿'});
- await expect(editor.getByRole('status')).toContainText('已自动暂存');
- await editor.getByRole('textbox',{name:'调整数量 1001',exact:true}).fill('2.125');
- await expect(editor.getByRole('status')).toContainText('已自动暂存',{timeout:10000});
+ await expect(frame.getByRole('button',{name:'查看调整明细',exact:true})).toHaveCount(0);
+ await expect(frame.locator('.arco-drawer')).toHaveCount(0);
+ const editor=frame.getByRole('textbox',{name:'确认计划量 1001',exact:true});
+ await expect(editor).toHaveValue('20');
+ await editor.fill('22.125');
+ await expect(frame.getByRole('status')).toContainText('已自动暂存',{timeout:10000});
  assert.equal(writes,0);
  const result=await app.rpc('sales-plan/draft',{planId:'p',versionId:'v'});
  assert.equal(result.value.draft.adjustments[0].adjustQty,'2.125');
@@ -91,14 +88,11 @@ test('V1.6 Web: compact header, stable progress, inline SKU, drawer and persiste
  await page.reload();
  await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
  await frame.getByRole('button',{name:/查看.*宝阳销售组|宝阳销售组.*调整/}).click();
- await frame.getByRole('button',{name:'查看调整明细',exact:true}).click();
- await drawer.getByRole('button',{name:'编辑调整草稿',exact:true}).click();
- await expect(editor.getByRole('textbox',{name:'调整数量 1001',exact:true})).toHaveValue('2.125');
+ await expect(frame.getByRole('button',{name:'查看调整明细',exact:true})).toHaveCount(0);
+ await expect(frame.getByRole('textbox',{name:'确认计划量 1001',exact:true})).toHaveValue('22.125');
  await page.setViewportSize({width:1024,height:768});await page.screenshot({path:'.runtime/v16-feedback/web-tablet.png',fullPage:true});
  assert.deepEqual(errors,[]);assert.equal(writes,0);
  await page.setViewportSize({width:1536,height:920});
- await editor.getByRole('button',{name:'完成编辑',exact:true}).click();
- await drawer.getByRole('button',{name:'关闭',exact:true}).click();
  await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
  allowApproval=true;
  await frame.getByRole('button',{name:'通过',exact:true}).click();

@@ -16,10 +16,14 @@ pnpm install --frozen-lockfile
 pnpm run build
 cp gea.direct.example.json gea.config.json
 # 登录 GEA 后，插件通过 GEA 个人模型接口发现模型并直接调用。
-pnpm start --config gea.config.json --runtime .runtime/workbench-development --port 3198
+pnpm start --dev --config gea.config.json --runtime .runtime/workbench-development --port 3198
 ```
 
-启动通过安装依赖中的 `dsh --profile gea-workbench`，拥有独立 Harness home。profile 禁用内置 `ui-layout`，启用 `@cleverc2200/dsh-agent-workbench`；其他 DSH 包使用 npm 发布物。构建和启动不读取 DSH checkout，也不会链接或修改其源码。原生聊天、输入框及 Session 继续由 DSH 提供。
+需要持续编译时，另开一个终端运行 `pnpm dev`，再刷新客户端页面即可加载最新 bundle。
+
+桌面端调试运行 `pnpm desktop:dev`。它复用本机已安装的 Electron 运行时，只将当前项目的 GEA 插件源码挂入桌面进程；不会写入正式插件版本目录，也不会改变正式插件版本号。改动 UI 后重新编译，在桌面菜单选择“视图 → 重新加载”即可查看。
+
+开发启动通过安装依赖中的 `dsh --profile gea-workbench`，并把当前源码目录挂进独立 Harness home；改完源码后重新构建并刷新客户端即可看到，不需要先安装插件。`pnpm dev` 持续编译 Host、Client 和 Workbench，`--dev` 同时启用 profile 的实时 patch 重载。发行包仍使用不带 `--dev` 的安装启动方式。profile 禁用内置 `ui-layout`，启用 `@cleverc2200/dsh-agent-workbench`；其他 DSH 包使用 npm 发布物。原生聊天、输入框及 Session 继续由 DSH 提供。
 
 使用启动日志中的带认证参数链接进入全屏登录页，默认自动加载正式环境的二维码，可切换「正式」或「测试」后直接飞书扫码登录；切换环境会自动换码，「刷新二维码」用于重试或更新过期二维码。页面不显示或要求输入服务器地址。登录后进入 GEA 导航、原销售计划审批工作台、原生 DSH 会话的三栏界面。选择组织行与分析范围，点击「预览发送范围」，核对 Host 重新获取的当前计划数据，再确认送入右侧原生 DSH 会话。左栏「DSH 对话」切换到原生对话与工作区侧栏；原生侧栏「GEA 业务版」返回工作台，往返保留当前 Session。空会话欢迎图标居于右栏内容区中央，输入框位于底部。选中 Session 不会关闭业务页面，后续输入、流式回答、取消和历史记录仍由 DSH 负责。
 

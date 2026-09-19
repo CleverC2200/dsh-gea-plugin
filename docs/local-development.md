@@ -20,6 +20,8 @@ Corepack 需提前可用，不在项目 setup 中安装全局工具。上述命�
 | 需要做什么 | 命令 |
 |---|---|
 | 开发时监听插件源码 | `corepack pnpm dev` |
+| 用当前源码启动客户端 | `corepack pnpm start --dev --config gea.config.json --runtime .runtime/workbench-development --port 3198` |
+| 用当前源码启动桌面客户端 | `corepack pnpm desktop:dev` |
 | 只改 Host | `corepack pnpm build:host` |
 | 只改外层客户端 | `corepack pnpm build:client` |
 | 只改业务工作台 | `corepack pnpm build:workbench` |
@@ -28,7 +30,9 @@ Corepack 需提前可用，不在项目 setup 中安装全局工具。上述命�
 | 类型检查 | `corepack pnpm typecheck` |
 | 验证目标隔离及 watch | `corepack pnpm test:build` |
 
-watch 只编译，不启动应用；运行应用仍用 README 的 start 命令。不要并发运行写同一输出的构建/watch。一次性 build 仍会编译，没有新增持久化缓存；日常增量编译交给 esbuild watch/context。
+watch 只编译，不启动应用；运行应用使用 README 的 `start --dev` 命令。`--dev` 会把当前源码包挂进 profile，避免把改动安装成插件后才能在客户端看到；页面仍需刷新才能加载刚生成的客户端 bundle。不要并发运行写同一输出的构建/watch。一次性 build 仍会编译，没有新增持久化缓存；日常增量编译交给 esbuild watch/context。
+
+桌面调试使用 `pnpm desktop:dev`。它复用已安装桌面运行时，只替换 GEA 插件为当前项目的 `lib/`，不会改动正式插件版本目录；改动后重新编译并在桌面菜单点击“重新加载”即可。
 
 打包前执行完整 build。`corepack pnpm package` 不代表已构建或已发布；`corepack pnpm test:package` 验证最终包的空目录 npm 安装。开发 pnpm 锁不替代 npm-shrinkwrap 或桌面安装器自身的锁及归档协议。
 

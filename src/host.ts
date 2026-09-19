@@ -128,7 +128,7 @@ class GeaModelAdapter extends LlmAdapter {
       );
       if (!route.models.includes(options.model))
         throw new Error("GEA_MODEL_NOT_FOUND");
-      const response = await fetch(route.baseUrl + "/chat/completions", {
+      const response = await this.business.fetchExternal(route.baseUrl + "/chat/completions", {
         method: "POST",
         headers: {
           Accept: "text/event-stream",
@@ -421,6 +421,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "workbench/query",
     "workbench/prepare",
     "workbench/context",
+    "api-log/snapshot",
+    "api-log/replay",
+    "api-log/clear",
   ];
   for (const endpoint of endpoints)
     ctx.effect(() =>
@@ -433,6 +436,15 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
             const payload = object(await request.json());
             let value: unknown;
             switch (endpoint) {
+              case "api-log/snapshot":
+                value = business.apiLogSnapshot(payload);
+                break;
+              case "api-log/replay":
+                value = await business.apiLogReplay(payload, request.signal);
+                break;
+              case "api-log/clear":
+                value = business.apiLogClear(payload);
+                break;
               case "workbench/query":
                 value = await business.workbenchQuery(payload, request.signal);
                 break;

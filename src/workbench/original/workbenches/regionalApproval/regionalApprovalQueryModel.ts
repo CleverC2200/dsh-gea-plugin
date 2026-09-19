@@ -204,7 +204,7 @@ export const projectRegionalApprovalLiveDimension = (
 };
 
 export const chooseInitialSalesPlanPeriod = (periods: readonly GeaSalesPlanPeriod[]): GeaSalesPlanPeriod | undefined =>
-  periods.find((period) => period.status.toUpperCase() === 'OPEN') ?? periods[0];
+  periods.find((period) => period.status?.toUpperCase() === 'OPEN') ?? periods[0];
 
 /** 用户只选择月份；Y/DC 等流程类型留在同月各计划内部用于审批判断。 */
 export const salesPlanPeriodMonths = (periods: readonly GeaSalesPlanPeriod[]): string[] => [
@@ -265,7 +265,7 @@ export const groupRegionalApprovalLiveRows = (
 };
 
 export const isOpenSalesPlanPeriod = (period: GeaSalesPlanPeriod | undefined): boolean =>
-  period?.status.toUpperCase() === 'OPEN';
+  period?.status?.toUpperCase() === 'OPEN';
 
 const DECIMAL_PATTERN = /^(-?)(\d+)(?:\.(\d+))?$/;
 
@@ -399,4 +399,14 @@ export const salesPlanStatusText = (status: number, typeCode: string, t: TFuncti
   return code === undefined
     ? t('common.assistantSurface.regionalApproval.query.unknownStatus', { status })
     : t(`common.assistantSurface.regionalApproval.query.status.${code}`);
+};
+
+/** 队列、筛选、导出及详情使用同一状态名称，不随所选审批节点变化。 */
+export const salesPlanQueueStatusText = (
+  status: number,
+  typeCode: string,
+  stage: ApprovalStageId,
+  t: TFunction,
+): string => {
+  return salesPlanStatusText(status, typeCode, t);
 };

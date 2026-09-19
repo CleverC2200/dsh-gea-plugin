@@ -8,6 +8,7 @@ test('one month merges Y and DC plans and synchronises the combined page with th
   const plans = {
     '20261001': {planId:'plan-y',versionId:'version-y',seq:1,periodId:'20261001',planTypeCode:'Y',status:2,baseName:'月度计划客户',dealerCode:'dealer-y',dealerName:'月度计划客户',orgCode:'org',orgName:'南京直营分区',provinceCode:'province',provinceName:'华东直营省区',areaCode:'area',areaName:'直营渠道销售',currentQty:'1',currentAmount:'10',targetQty:'2',targetAmount:'20',skuCount:0},
     '20261002': {planId:'plan-dc',versionId:'version-dc',seq:1,periodId:'20261002',planTypeCode:'DC',status:2,baseName:'大仓计划客户',dealerCode:'dealer-dc',dealerName:'大仓计划客户',orgCode:'org',orgName:'南京直营分区',provinceCode:'province',provinceName:'华东直营省区',areaCode:'area',areaName:'直营渠道销售',currentQty:'3',currentAmount:'30',targetQty:'4',targetAmount:'40',skuCount:0},
+    '20260901': {planId:'plan-history',versionId:'version-history',seq:1,periodId:'20260901',planTypeCode:'Y',status:10,baseName:'历史计划客户',dealerCode:'dealer-history',dealerName:'历史计划客户',orgCode:'org',orgName:'南京直营分区',provinceCode:'province',provinceName:'华东直营省区',areaCode:'area',areaName:'直营渠道销售',currentQty:'1',currentAmount:'10',targetQty:'1',targetAmount:'10',skuCount:0},
   };
   app.route((req, _res, reply) => {
     const path = req.url.pathname;
@@ -22,15 +23,11 @@ test('one month merges Y and DC plans and synchronises the combined page with th
       return true;
     }
     if (path.endsWith('/getPermCode')) return send({codeList:['sales-plan:plan:province-approve']});
-    if (path.endsWith('/periods')) return send({records:[
-      {periodId:'20261001',periodMonth:'2026-10',planTypeCode:'Y',status:'OPEN'},
-      {periodId:'20261002',periodMonth:'2026-10',planTypeCode:'DC',status:'OPEN'},
-      {periodId:'20260901',periodMonth:'2026-09',planTypeCode:'Y',status:'CLOSED'},
-    ],total:3,current:1,size:100,pages:1});
     if (path.endsWith('/plans')) {
-      const plan = plans[req.url.searchParams.get('periodId')];
+      const periodId = req.url.searchParams.get('periodId');
+      const candidates = periodId === null ? Object.values(plans) : [plans[periodId]].filter(Boolean);
       const status = req.url.searchParams.get('status');
-      const records = plan && (status === null || Number(status) === plan.status) ? [plan] : [];
+      const records = candidates.filter(plan => status === null || Number(status) === plan.status);
       return send({records,total:records.length,current:Number(req.url.searchParams.get('pageNo') ?? 1),size:Number(req.url.searchParams.get('pageSize') ?? 20),pages:1});
     }
     if (path.endsWith('/versions')) return send([]);
@@ -72,9 +69,10 @@ test('one month merges Y and DC plans and synchronises the combined page with th
   await frame.getByRole('tab',{name:'按客户',exact:true}).click();
   await expect(frame.locator('tbody').first()).toContainText('月度计划客户');
   assert.deepEqual(
-    [...new Set(app.requests.filter(req => req.url.pathname.endsWith('/plans')).map(req => `${req.url.searchParams.get('periodId')}:${req.url.searchParams.get('planTypeCode')}`))].toSorted(),
+    [...new Set(app.requests.filter(req => req.url.pathname.endsWith('/plans') && req.url.searchParams.has('periodId')).map(req => `${req.url.searchParams.get('periodId')}:${req.url.searchParams.get('planTypeCode')}`))].toSorted(),
     ['20261001:Y','20261002:DC'],
   );
+  assert.equal(app.requests.some(req => req.url.pathname.endsWith('/periods')), false);
   const sessionId = 'session-11111111-1111-4111-8111-111111111111';
   await page.locator('iframe[data-gea-workbench]').evaluate((iframe, id) => {
     iframe.contentWindow.postMessage({type:'gea:session',sessionId:id}, window.location.origin);
@@ -82,6 +80,7 @@ test('one month merges Y and DC plans and synchronises the combined page with th
   const readContexts = () => contextPayloads.filter(Boolean);
   await expect.poll(() => readContexts().length).toBeGreaterThan(0);
   const combined = readContexts().at(-1);
+  assert.ok(Number.isInteger(combined.sequence) && combined.sequence >= 1, JSON.stringify(combined));
   assert.equal(combined.scope.month, '2026-10');
   assert.equal(combined.scope.planType, 'mixed');
   assert.deepEqual(combined.visibleRows.map(row => row.planId).toSorted(), ['plan-dc','plan-y'], JSON.stringify(listResponses));
