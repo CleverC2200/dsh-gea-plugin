@@ -2048,6 +2048,21 @@ const RegionalApprovalWorkbench: React.FC<{
       aria-label={t('common.assistantSurface.regionalApproval.ariaLabel')}
       data-testid='regional-approval-workbench'
     >
+      <h1
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          padding: 0,
+          margin: -1,
+          overflow: 'hidden',
+          clip: 'rect(0, 0, 0, 0)',
+          whiteSpace: 'nowrap',
+          border: 0,
+        }}
+      >
+        {t('common.assistantSurface.regionalApproval.title')}
+      </h1>
       <header className={styles.header}>
         <div className={styles.titleLine}>
           <div className={styles.workspaceTabs} role='tablist' aria-label={t('common.assistantSurface.regionalApproval.workspaceTabs.ariaLabel')}>
