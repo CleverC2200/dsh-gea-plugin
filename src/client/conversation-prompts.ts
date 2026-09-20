@@ -130,6 +130,50 @@ export const approvalConversation: ConversationPromptConfig = {
 };
 
 /** 经销商补货（库存）业务页沿用原有助手文案。 */
+export const regionalPlanConversation: ConversationPromptConfig = {
+  name: "区域计划助手",
+  headerSub: "需求预测 Agent · 区域计划辅助",
+  tagline: "区域计划辅助",
+  intro: "我可以跨模块盯提报进度、找异常，给提报与跟催的参考意见。",
+  boundary: "区域计划不参与审批与退回，我只做跟踪、评估与跟催。",
+  actions: [
+    {
+      icon: "chart",
+      tone: "brand",
+      label: "看提报与跟催",
+      detail: "待跟进事件与四维提报 / 审批下钻",
+      prompt: "看提报与跟催",
+    },
+    {
+      icon: "box",
+      tone: "brand",
+      label: "看品类达成",
+      detail: "品类达成与品类 × 大区分布",
+      prompt: "看品类达成",
+    },
+    {
+      icon: "info",
+      tone: "info",
+      label: "看复盘与达成",
+      detail: "三个月提报偏差、达成率与偏差象限",
+      prompt: "看复盘与达成",
+    },
+    {
+      icon: "alert",
+      tone: "success",
+      label: "看分析与异常",
+      detail: "期间研判建议与跨模块异常清单",
+      prompt: "看分析与异常",
+    },
+  ],
+  prompts: [
+    "本月还有哪些客户未提报？",
+    "哪个品类达成最低？",
+    "哪个审批节点滞留最多？",
+  ],
+};
+
+/** 经销商补货（库存）业务页沿用原有助手文案。 */
 export const inventoryConversation: ConversationPromptConfig = {
   name: "经销商补货助手",
   headerSub: "库存 Agent · 补货辅助",

@@ -20,7 +20,7 @@ import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import { zh, en, type CopyKey } from "./client/locales.ts";
 import { Inbox } from "./client/inbox.tsx";
 import {registerHtmlClient} from "./html-client.tsx";
-import {approvalConversation,inventoryConversation,type ConversationActionIcon,type ConversationActionTone,type ConversationPromptConfig} from "./client/conversation-prompts.ts";
+import {approvalConversation,inventoryConversation,regionalPlanConversation,type ConversationActionIcon,type ConversationActionTone,type ConversationPromptConfig} from "./client/conversation-prompts.ts";
 import {isGeaBusinessPanel,registeredBusinessPanels} from "./business-navigation.ts";
 import brandLogo from "./client/brand-logo.png";
 import agentAvatar from "./client/agent-avatar.png";
@@ -163,9 +163,19 @@ export function apply(ctx: Context): void {
   }
   // 区域计划工作台：先内嵌业务侧原型（V9 事件线版，纯模拟数据，不连 GEA）。
   function RegionalPlanPage() {
+    const [sessionError, setSessionError] = useState("");
+    useEffect(() => {
+      // 和其他业务页一样挂一个只读会话，让右侧会话区常驻。
+      const hide = ctx.agentWorkbench.showConversation(REGIONAL_PLAN_PANEL);
+      void ctx.agentWorkbench
+        .open(REGIONAL_PLAN_PANEL)
+        .catch((error) => setSessionError(String(error.message)));
+      return () => hide();
+    }, []);
     return (
       <>
         <style>{shellCss}</style>
+        {sessionError && <div role="alert">{sessionError}</div>}
         <section className="gea-workbench-shell">
           <iframe
             className="gea-workbench-frame"
@@ -448,6 +458,7 @@ export function apply(ctx: Context): void {
       RegionalPlanPage,
     );
     yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
+    yield ctx.agentWorkbench.register({ id: REGIONAL_PLAN_PANEL, preset: "gea-readonly" });
     ctx.layout.selectPanel(PANEL);
   });
   function NavigationMode({
@@ -635,7 +646,15 @@ export function apply(ctx: Context): void {
           logoRow,
         )}
         {conversationHero && createPortal(
-          <AgentWelcome agent={activePanel === PANEL ? approvalConversation : inventoryConversation} onPrompt={(prompt) => {
+          <AgentWelcome
+            agent={
+              activePanel === PANEL
+                ? approvalConversation
+                : activePanel === REGIONAL_PLAN_PANEL
+                  ? regionalPlanConversation
+                  : inventoryConversation
+            }
+            onPrompt={(prompt) => {
             const conversation = document.querySelector<HTMLElement>(
               ".AppFrame_rightbarCol [data-slot='main.conversation']",
             ) ?? conversationHero;
