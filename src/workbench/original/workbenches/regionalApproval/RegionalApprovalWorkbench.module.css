@@ -24,36 +24,15 @@
   background: var(--bg-1);
 }
 
-.workspaceTabs {
+/* 区域计划评估已摘成独立菜单页面，这里只保留当前页标题。 */
+.workspaceTitle {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-}
-
-.workspaceTabs :global(.arco-btn) {
-  min-height: 32px;
-  border-radius: 0;
-  color: var(--text-secondary);
-}
-
-.workspaceTabs :global(.arco-btn)[data-active='true'] {
-  box-shadow: inset 0 -2px rgb(var(--primary-6));
+  min-height: 36px;
   color: var(--text-primary);
-  font-weight: 600;
-}
-
-.evaluationEmpty {
-  display: flex;
-  min-height: 320px;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 8px;
-  color: var(--text-secondary);
-}
-
-.evaluationEmpty :global(.arco-typography) {
-  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 28px;
 }
 
 .titleLine {
@@ -1312,12 +1291,12 @@
 /* Approval overview: one compact task bar followed by four decision metrics. */
 .header {
   min-height: 62px;
-  margin: 8px 12px 0;
-  padding: 8px 16px;
+  margin: 0;
+  padding: 4px 12px;
   overflow-x: auto;
   border: 1px solid var(--bg-3);
   border-bottom-color: var(--bg-4);
-  border-radius: 14px 14px 0 0;
+  border-radius: 0;
   background: var(--bg-1);
 }
 
@@ -1409,7 +1388,7 @@
 }
 
 .stageViewport {
-  margin: 0 12px;
+  margin: 0;
   border-right: 1px solid var(--bg-3);
   border-left: 1px solid var(--bg-3);
 }

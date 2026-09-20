@@ -77,6 +77,7 @@ const copy = {
     "Scan with Lark on your phone to get started.",
   ],
   qrPreparing: ["正在准备二维码…", "Preparing your QR code…"],
+  loading: ["正在加载…", "Loading…"],
   qrUnavailable: ["二维码暂未就绪", "QR code unavailable"],
   qrWaiting: ["等待扫码", "Ready to scan"],
   qrExpired: ["二维码已过期", "QR code expired"],
@@ -262,6 +263,7 @@ const copy = {
   businessFunctions: ["业务功能", "Business functions"],
   planManagement: ["计划管理", "Plan management"],
   demandForecastAgent: ["需求提报", "Demand submission"],
+  regionalPlanWorkbench: ["区域计划工作台", "Regional plan workbench"],
   apiLog: ["接口日志", "API logs"],
   inboxNotConnected: [
     "消息待办接口尚未接入",

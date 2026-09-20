@@ -71,6 +71,16 @@
 ::selection {
   background: #ffe7e7;
 }
+/* 首次状态返回前的中性加载态：只显示骨架点，不渲染登录卡片。 */
+.gea-workbench-boot {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100dvh;
+  min-height: 0;
+  background: #f8f9fb;
+}
 .gea-login-page {
   box-sizing: border-box;
   height: 100dvh;

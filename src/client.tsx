@@ -24,6 +24,7 @@ import {isGeaBusinessPanel,registeredBusinessPanels} from "./business-navigation
 import brandLogo from "./client/brand-logo.png";
 import shellCss from "./client/shell.css";
 import workbenchCss from "./workbench/workbench.css";
+import regionalPlanPrototype from "./workbench/prototypes/regional-plan-v9.html";
 import { ApiLogCenter } from "./workbench/api-log-center.tsx";
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
@@ -36,6 +37,7 @@ export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions", "
 const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;
+const REGIONAL_PLAN_PANEL = "gea-regional-plan" as MainPanelId;
 
 /** 在框架管理的原生会话旁注册仅承载业务的中心文档。 */
 export function apply(ctx: Context): void {
@@ -57,6 +59,9 @@ export function apply(ctx: Context): void {
     useGeaLocale,
   }: PropsRuntime<"main"> & InjectFace<typeof injected>) {
     const [authenticated, setAuthenticated] = useState(false);
+    // 只有子文档明确上报「未登录」时才铺整屏登录遮罩；
+    // 首次挂载还不知道登录态，直接铺遮罩会让切进业务面板时整屏闪一下。
+    const [loginOverlay, setLoginOverlay] = useState(false);
     const [sessionError, setSessionError] = useState("");
     useEffect(() => {
       if (!authenticated) {
@@ -95,6 +100,7 @@ export function apply(ctx: Context): void {
           return;
         if (message.type === "gea:identity" && "authenticated" in message) {
           setAuthenticated(message.authenticated === true);
+          setLoginOverlay(message.authenticated !== true);
           workbenchAuthenticated = message.authenticated === true;
           if (message.authenticated !== true) {
             ctx.agentWorkbench.forget(PANEL);
@@ -121,7 +127,7 @@ export function apply(ctx: Context): void {
         <div className="gea-workbench-shell">
           <iframe
             ref={frame}
-            className={`gea-workbench-frame${authenticated ? "" : " gea-login-frame"}`}
+            className={`gea-workbench-frame${loginOverlay ? " gea-login-frame" : ""}`}
             data-gea-workbench
             title={t("approvalTitle")}
             onLoad={() =>
@@ -152,6 +158,22 @@ export function apply(ctx: Context): void {
     if (!response.ok || result.ok !== true)
       throw new Error(result.error?.message ?? result.error?.code ?? "GEA_REQUEST_FAILED");
     return result.value as T;
+  }
+  // 区域计划工作台：先内嵌业务侧原型（V9 事件线版，纯模拟数据，不连 GEA）。
+  function RegionalPlanPage() {
+    return (
+      <>
+        <style>{shellCss}</style>
+        <section className="gea-workbench-shell">
+          <iframe
+            className="gea-workbench-frame"
+            title={t("regionalPlanWorkbench")}
+            sandbox="allow-scripts"
+            srcDoc={regionalPlanPrototype}
+          />
+        </section>
+      </>
+    );
   }
   function ApiLogPage() {
     const [environment, setEnvironment] = useState<"production" | "test">("production");
@@ -296,7 +318,7 @@ export function apply(ctx: Context): void {
           </div>
           <div className="gea-shell-nav-section">
             <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.plan} onClick={() => toggle("plan")}><NavIcon kind="calendar" /><span>计划管理</span><Chevron open={expanded.plan} /></button>
-            {expanded.plan && <div className="gea-shell-nav-children">{child({ id: PANEL, title: t("demandForecastAgent") })}{planPanels.map(child)}</div>}
+            {expanded.plan && <div className="gea-shell-nav-children">{child({ id: PANEL, title: t("demandForecastAgent") })}{child({ id: REGIONAL_PLAN_PANEL, title: t("regionalPlanWorkbench") })}{planPanels.map(child)}</div>}
           </div>
           <div className="gea-shell-nav-section">
             <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.inventory} onClick={() => toggle("inventory")}><NavIcon kind="warehouse" /><span>库存管理</span><Chevron open={expanded.inventory} /></button>
@@ -419,6 +441,10 @@ export function apply(ctx: Context): void {
       { name: "main", key: API_LOG_PANEL, locale: "geaProof" },
       ApiLogPage,
     );
+    yield ctx.slots.register(
+      { name: "main", key: REGIONAL_PLAN_PANEL, locale: "geaProof" },
+      RegionalPlanPage,
+    );
     yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
     ctx.layout.selectPanel(PANEL);
   });
@@ -436,6 +462,21 @@ export function apply(ctx: Context): void {
       const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
       frame?.classList.toggle("gea-api-fullscreen", activePanel === API_LOG_PANEL);
       return () => frame?.classList.remove("gea-api-fullscreen");
+    }, [activePanel]);
+    // 业务面板之间切换时，框架默认会用 400ms 动画改列宽，
+    // 动画期间工作台跟着连续重排，看起来像页面闪动；切换瞬间先关掉这个动画。
+    useEffect(() => {
+      const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
+      if (!frame) return;
+      frame.classList.add("gea-panel-switching");
+      const timer = window.setTimeout(
+        () => frame.classList.remove("gea-panel-switching"),
+        400,
+      );
+      return () => {
+        window.clearTimeout(timer);
+        frame.classList.remove("gea-panel-switching");
+      };
     }, [activePanel]);
     useEffect(() => {
       if (activePanel === API_LOG_PANEL) {

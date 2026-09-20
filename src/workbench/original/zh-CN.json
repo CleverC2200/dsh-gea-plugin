@@ -366,10 +366,6 @@
       "ariaLabel": "需求预测区域经理审批工作台",
       "title": "销售计划审批",
       "pendingSummary": "待我审批 {{count}} 条",
-      "workspaceTabs": {
-        "ariaLabel": "计划工作台页面",
-        "evaluationEmpty": "区域计划评估页面暂为空，等待业务原型。"
-      },
       "fixtureTag": "样例数据 · 不连接生产",
       "scopeAria": "当前审批范围",
       "planMonth": "计划月份",
