@@ -23,11 +23,21 @@ const { reportingConversation, approvalConversation, inventoryConversation } = m
 // 文案来源：《销售计划 · 右侧 AI 会话区原型说明 V1》，原型见 docs/prototypes/。
 test("提报版对话区文案按原型说明 V1 落地", () => {
   assert.equal(reportingConversation.name, "销售计划助手");
+  assert.equal(reportingConversation.tagline, "提报辅助");
   assert.match(reportingConversation.intro, /核对本月计划的合理性与风险/);
-  assert.match(reportingConversation.intro, /最终提交仍然由你自己在确认入口完成/);
+  assert.equal(reportingConversation.boundary, "最终提交仍然由你自己在确认入口完成。");
   assert.deepEqual(
     reportingConversation.actions.map((action) => action.label),
     ["看本月计划建议", "看需要重点关注的商品", "解释预测依据", "按工作台当前结果提交"],
+  );
+  assert.deepEqual(
+    reportingConversation.actions.map((action) => action.detail),
+    [
+      "任务头、总量建议、关键变化、风险提示",
+      "发货概率偏低、库存或货龄偏高的商品",
+      "公式怎么套算、用了哪些数据、哪项没取到",
+      "只把你带到确认入口，不代替你提交",
+    ],
   );
   assert.deepEqual(reportingConversation.prompts, [
     "这次预测能按现状走吗？",
@@ -39,11 +49,21 @@ test("提报版对话区文案按原型说明 V1 落地", () => {
 
 test("审批版对话区文案按原型说明 V1 落地", () => {
   assert.equal(approvalConversation.name, "销售计划审批助手");
+  assert.equal(approvalConversation.tagline, "审批辅助");
   assert.match(approvalConversation.intro, /先给结论，再给依据/);
-  assert.match(approvalConversation.intro, /不改变审批状态/);
+  assert.equal(approvalConversation.boundary, "我只做分析建议，不改变审批状态。");
   assert.deepEqual(
     approvalConversation.actions.map((action) => action.label),
     ["审这张单", "看异常清理清单", "看双版本差异", "生成审批意见"],
+  );
+  assert.deepEqual(
+    approvalConversation.actions.map((action) => action.detail),
+    [
+      "结论先行：能不能直接同意，不能同意卡在哪",
+      "下市与预下市、非季节品、货龄超期、需复核",
+      "最新版与上一版改了哪些客户和商品",
+      "采纳记录留痕：谁采纳、改前改后",
+    ],
   );
   assert.deepEqual(approvalConversation.prompts, [
     "这张单能直接同意吗？",

@@ -20,9 +20,10 @@ import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import { zh, en, type CopyKey } from "./client/locales.ts";
 import { Inbox } from "./client/inbox.tsx";
 import {registerHtmlClient} from "./html-client.tsx";
-import {approvalConversation,inventoryConversation,type ConversationPromptConfig} from "./client/conversation-prompts.ts";
+import {approvalConversation,inventoryConversation,type ConversationActionIcon,type ConversationActionTone,type ConversationPromptConfig} from "./client/conversation-prompts.ts";
 import {isGeaBusinessPanel,registeredBusinessPanels} from "./business-navigation.ts";
 import brandLogo from "./client/brand-logo.png";
+import agentAvatar from "./client/agent-avatar.png";
 import shellCss from "./client/shell.css";
 import workbenchCss from "./workbench/workbench.css";
 import regionalPlanPrototype from "./workbench/prototypes/regional-plan-v9.html";
@@ -716,22 +717,30 @@ function AgentWelcome({
 }) {
   return (
     <section className="gea-agent-welcome" aria-label={agent.name}>
+      <header className="gea-agent-head">
+        <img className="gea-agent-head-avatar" src={agentAvatar} alt="" width={30} height={30} />
+        <span className="gea-agent-head-copy">
+          <span className="gea-agent-head-name">{agent.name}</span>
+          <span className="gea-agent-head-sub"><i aria-hidden="true" />{agent.headerSub}</span>
+        </span>
+      </header>
       <div className="gea-agent-identity">
-        <div className="gea-agent-avatar" aria-hidden="true">
-          <span className="gea-agent-antenna" />
-          <span className="gea-agent-face"><i /><i /></span>
-        </div>
+        <img className="gea-agent-avatar" src={agentAvatar} alt="" width={72} height={72} />
         <h2>{agent.name}</h2>
-        <p>{agent.intro}</p>
+        <span className="gea-agent-tagline">{agent.tagline}</span>
+        <p className="gea-agent-intro">{agent.intro}<b>{agent.boundary}</b></p>
       </div>
       <div className="gea-agent-block">
         <h3>常用功能</h3>
         <div className="gea-agent-actions">
-          {agent.actions.map(({ icon, label, prompt }) => (
-            <button key={label} type="button" onClick={() => onPrompt(prompt)}>
-              <span className="gea-agent-action-icon" aria-hidden="true">{icon}</span>
-              <span>{label}</span>
-              <b aria-hidden="true">›</b>
+          {agent.actions.map((action) => (
+            <button key={action.label} type="button" onClick={() => onPrompt(action.prompt)}>
+              <AgentActionIcon kind={action.icon} tone={action.tone} />
+              <span className="gea-agent-action-copy">
+                <span className="gea-agent-action-title">{action.label}</span>
+                <span className="gea-agent-action-detail">{action.detail}</span>
+              </span>
+              <b className="gea-agent-action-arrow" aria-hidden="true">›</b>
             </button>
           ))}
         </div>
@@ -740,7 +749,26 @@ function AgentWelcome({
         <h3>你可以这样问</h3>
         {agent.prompts.map((prompt) => <button key={prompt} type="button" onClick={() => onPrompt(prompt)}>{prompt}</button>)}
       </div>
+      <p className="gea-agent-footnote">AI 生成内容请判断后使用</p>
     </section>
+  );
+}
+
+function AgentActionIcon({ kind, tone }: { kind: ConversationActionIcon; tone: ConversationActionTone }) {
+  const paths: Record<ConversationActionIcon, React.ReactNode> = {
+    chart: <><rect x="3" y="13" width="3" height="8" rx=".8" /><rect x="10" y="8" width="3" height="13" rx=".8" /><rect x="17" y="3" width="3" height="18" rx=".8" /></>,
+    alert: <><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>,
+    info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7h.01" /></>,
+    check: <><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></>,
+    versions: <><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M16 8V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h4" /></>,
+    opinion: <><path d="M14 3H6a2 2 0 0 0-2 2v15a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5M8 12h7M8 16h7" /></>,
+    box: <><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="m3 8 9 5 9-5M12 13v8" /></>,
+    users: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20c.6-3.2 2.6-4.8 6-4.8s5.4 1.6 6 4.8" /><path d="M16.5 5.6a3 3 0 0 1 0 5.6M18 15.4c1.7.4 2.7 1.7 3 3.6" /></>,
+  };
+  return (
+    <svg className="gea-agent-action-icon" data-tone={tone} width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths[kind]}
+    </svg>
   );
 }
 
