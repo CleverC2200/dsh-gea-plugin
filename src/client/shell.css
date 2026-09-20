@@ -13,13 +13,13 @@
   background: #f8f9fb;
 }
 /* Keep the native DSH workspace list below the business navigation. */
-.hHd-Xa_regionArea:has(.gea-business-navigation) {
+[class*="_regionArea"]:has(.gea-business-navigation) {
   display: flex !important;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
-.hHd-Xa_regionArea:has(.gea-business-navigation) > [data-slot="sidebar.workspaces"] {
+[class*="_regionArea"]:has(.gea-business-navigation) > [data-slot="sidebar.workspaces"] {
   display: block !important;
   order: 2;
   flex: 1 1 auto;
@@ -74,17 +74,17 @@
   border-radius: 0;
   box-shadow: none;
 }
-.hHd-Xa_regionArea:has(.gea-business-menu-panel) {
+[class*="_regionArea"]:has(.gea-business-menu-panel) {
   position: relative;
   overflow: hidden;
 }
-.hHd-Xa_regionArea:has(.gea-business-menu-panel) > [data-slot="sidebar.workspaces"] {
+[class*="_regionArea"]:has(.gea-business-menu-panel) > [data-slot="sidebar.workspaces"] {
   display: block !important;
   height: 36px;
   min-height: 36px;
   overflow: hidden;
 }
-.hHd-Xa_logoRow:has(.gea-inbox-quick-action) {
+[class*="_logoRow"]:has(.gea-inbox-quick-action) {
   position: relative;
 }
 .gea-inbox-quick-action {
@@ -112,7 +112,7 @@
 [data-sidebar-collapsed] .gea-inbox-quick-action {
   display: none;
 }
-.hHd-Xa_regionArea:has(.gea-sidebar-mode-tabs) {
+[class*="_regionArea"]:has(.gea-sidebar-mode-tabs) {
   position: relative;
 }
 .gea-sidebar-mode-tabs {
