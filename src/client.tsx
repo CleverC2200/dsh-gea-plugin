@@ -482,8 +482,8 @@ export function apply(ctx: Context): void {
     }, [business]);
     useEffect(() => {
       const renameNewSession = () => {
-        const button = document.querySelector<HTMLButtonElement>(".hHd-Xa_newSession");
-        const label = button?.querySelector<HTMLElement>(".hHd-Xa_newSessionLabel");
+        const button = document.querySelector<HTMLButtonElement>("button[class*='_newSession']");
+        const label = button?.querySelector<HTMLElement>("[class*='_newSessionLabel']");
         if (!button || !label) return;
         if (label.textContent !== "AI工作台") label.textContent = "AI工作台";
         if (button.getAttribute("aria-label") !== "AI工作台") button.setAttribute("aria-label", "AI工作台");
@@ -495,8 +495,12 @@ export function apply(ctx: Context): void {
     }, []);
     useEffect(() => {
       const findRegions = () => {
-        setRegion(document.querySelector<HTMLElement>(".hHd-Xa_regionArea"));
-        setLogoRow(document.querySelector<HTMLElement>(".hHd-Xa_logoRow"));
+        setRegion(
+          document.querySelector<HTMLElement>("[class*='_regionArea']") ??
+            document.querySelector<HTMLElement>('[data-slot="sidebar.workspaces"]')?.parentElement ??
+            null,
+        );
+        setLogoRow(document.querySelector<HTMLElement>("[class*='_logoRow']"));
         setConversationHero(document.querySelector<HTMLElement>(
           ".AppFrame_rightbarCol [data-slot='main.conversation'] [data-phase='hero']",
         ));
