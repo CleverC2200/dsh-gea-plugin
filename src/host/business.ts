@@ -522,6 +522,7 @@ export class Business {
   private requests = new Map<string, AbortController>();
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
+  private readonly pluginDelegations = new Map<string, { authToken: string; delegationToken: string }>();
   private loginExpired = false;
   readonly runId = randomUUID();
   private selectedBase: string;
@@ -569,6 +570,8 @@ export class Business {
   desktopLoginSnapshot(): unknown {
     return this.auth ? {schema:1,environment:this.environment,base:this.base,auth:{...this.auth}} : null;
   }
+  persistentLoginSnapshot(): unknown { return this.desktopLoginSnapshot(); }
+  restorePersistentLogin(value: unknown): void { this.restoreDesktopLogin(value); }
   restoreDesktopLogin(value: unknown): void {
     const saved=object(value);
     if(saved.schema!==1||typeof saved.environment!=="string"||this.environments[saved.environment]!==saved.base)throw Error("DESKTOP_LOGIN_SCOPE_MISMATCH");
@@ -607,6 +610,7 @@ export class Business {
     this.epoch = new AbortController();
     this.auth = undefined;
     this.modelRoutes.clear();
+    this.pluginDelegations.clear();
     this.resubmissions.clear();
     this.correctionRequests.clear();
     this.qr = undefined;
@@ -648,6 +652,7 @@ export class Business {
         coverage: "none",
         authority: "read-only-ui-context",
         availability: "unavailable",
+        code: "WORKBENCH_CONTEXT_NOT_SYNCED",
         reason: "当前工作台页面数据仍在同步，请稍后重试",
       });
     return JSON.stringify({
@@ -982,6 +987,8 @@ export class Business {
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     if (![1,2,3,4,6,7,8,9].includes(request.expectedStatus as number))
       throw new GeaResponseError(400, {message:'未提交、已完成或无效状态不允许写入'});
+    if (request.adjustmentMode == null && (request.expectedStatus as number) >= 6 && (request.expectedStatus as number) <= 9)
+      throw new GeaResponseError(400, {message:'已退回记录只能通过纠偏重提流程再次提交'});
     if (request.approvalRole == null && request.adjustmentMode == null && request.action !== 'SAVE')
       throw new GeaResponseError(400,{message:'请明确本次审批角色'});
     if (request.approvalPolicy != null && (request.approvalPolicy !== 'role-visible-v1' || !request.approvalRole)) throw new Error('INVALID_PAYLOAD');
@@ -1393,6 +1400,67 @@ export class Business {
     const auth = this.authenticated();
     const identity = this.epoch.signal;
     return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.mcpRequestTimeoutMs ?? 60000, this.apiLog.fetch);
+  }
+
+  /** 为受信任的 HTML 插件提供带用户权限的只读 SQL 查询。SQL 仍由 GEA 网关按 consumerCode 审核。 */
+  async pluginSql(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+    const query = payload.query && typeof payload.query === "object" && !Array.isArray(payload.query)
+      ? object(payload.query)
+      : payload;
+    keys(payload, ["consumerCode", "sql", "parameters", "pageNo", "pageSize", "query"]);
+    const auth = this.authenticated();
+    const consumerCode = text(payload.consumerCode ?? query.consumerCode);
+    const allowedConsumers = new Set([
+      "base-safety-stock", "dealer-inventory-replenishment", "branch-inventory",
+      "full-chain-inventory", "inventory-personal-workbench", "aps-board-collaboration",
+      "aps-demand-collaboration", "aps-delivery-collaboration",
+    ]);
+    if (!allowedConsumers.has(consumerCode)) throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
+    const sqlValue = payload.sql ?? query.sql;
+    if (typeof sqlValue !== "string" || !sqlValue.trim() || sqlValue.length > 200_000)
+      throw new Error("GEA_PLUGIN_SQL_INVALID");
+    const sql = sqlValue;
+    const parameters = (payload.parameters ?? query.parameters) == null ? {} : object(payload.parameters ?? query.parameters);
+    const pageNo = integer(payload.pageNo ?? query.pageNo ?? 1, 1);
+    const pageSize = integer(payload.pageSize ?? query.pageSize ?? 200, 1, 1000);
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    let delegation = this.pluginDelegations.get(consumerCode);
+    if (!delegation || delegation.authToken !== auth.token) {
+      const requestId = randomUUID();
+      const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
+        method: "POST", redirect: "error", signal,
+        headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": requestId },
+        body: JSON.stringify({ agentCode: consumerCode, channel: "AI_PORTAL", requestId, conversationId: randomUUID() }),
+      });
+      if (!response.ok) throw await geaResponseError(response, [auth.token]);
+      const body = object(await response.json());
+      const result = object(body.result);
+      if (body.success !== true || object(result.accessDecision).allowed !== true || typeof result.delegationToken !== "string" || !result.delegationToken)
+        throw new Error("GEA_PLUGIN_SESSION_REJECTED");
+      delegation = { authToken: auth.token, delegationToken: result.delegationToken };
+      this.pluginDelegations.set(consumerCode, delegation);
+    }
+    const requestId = randomUUID();
+    const response = await this.apiLog.fetch(this.base + "/ai/gateway/sql/execute", {
+      method: "POST", redirect: "error", signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json", "X-Delegation-Token": delegation.delegationToken, "X-Request-Id": requestId },
+      body: JSON.stringify({ sql, parameters, pageNo, pageSize, includeTotal: true }),
+    });
+    if (!response.ok) {
+      this.pluginDelegations.delete(consumerCode);
+      throw await geaResponseError(response, [auth.token, delegation.delegationToken]);
+    }
+    const body = object(await response.json());
+    if (body.success !== true || !body.result) throw new Error("GEA_PLUGIN_QUERY_REJECTED");
+    const result = object(body.result);
+    const rows = Array.isArray(result.rows) ? result.rows : [];
+    return {
+      ...result,
+      rows,
+      total: Number.isSafeInteger(result.total) ? result.total : rows.length,
+      pageNo: Number.isSafeInteger(result.pageNo) ? result.pageNo : pageNo,
+      pageSize: Number.isSafeInteger(result.pageSize) ? result.pageSize : pageSize,
+    };
   }
 
   /** 向模型适配器提供同一套脱敏日志边界，浏览器永远拿不到原始凭证。 */

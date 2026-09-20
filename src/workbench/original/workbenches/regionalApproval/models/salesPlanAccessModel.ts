@@ -40,12 +40,14 @@ export const salesPlanAccessForRow = (
   permissions: readonly string[] = [],
   stage?: ApprovalStageId,
   workflowRows?: readonly SalesPlanWorkflowRow[],
+  options: { allowReturned?: boolean } = {},
 ): SalesPlanAccess | undefined => {
   const v = detail.currentVersion, context = detail.actionContext;
   const typeCode = row.planTypeCode ?? v.planTypeCode;
   const flow = salesPlanWorkflow(typeCode, workflowRows);
   if (v.id !== row.versionId || v.planId !== row.planId || !v.effective || v.status !== row.status ||
       ![1,2,3,4,6,7,8,9].includes(row.status) ||
+      (!options.allowReturned && row.status >= 6 && row.status <= 9) ||
       (row.planTypeCode !== undefined && row.planTypeCode !== v.planTypeCode)) return undefined;
   const supported = context?.policy === 'role-visible-v1';
   if (context && (context.versionId !== v.id || context.status !== v.status ||

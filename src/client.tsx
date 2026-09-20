@@ -246,6 +246,7 @@ export function apply(ctx: Context): void {
     wide,
     expandSidebar,
   }: PropsRuntime<"sidebar.workspaces">) {
+    const [expanded, setExpanded] = useState({ customer: true, plan: true, inventory: true });
     const activePanel = usePanelInfo((info) => info.activePanelId);
     const [panels,setPanels]=useState(()=>registeredBusinessPanels(ctx.slots.entries("main")));
     useEffect(()=>{const refresh=()=>setPanels(registeredBusinessPanels(ctx.slots.entries("main")));refresh();return ctx.slots.subscribe("main",refresh);},[]);
@@ -267,6 +268,19 @@ export function apply(ctx: Context): void {
         </nav>
       );
     }
+    const toggle = (section: "customer" | "plan" | "inventory") => setExpanded((value) => ({ ...value, [section]: !value[section] }));
+    const item = (label: string, icon: NavIconKind, action?: () => void, active = false) => (
+      <button type="button" className={`gea-shell-nav-item${active ? " is-active" : ""}`} onClick={action} aria-current={active ? "page" : undefined}>
+        <NavIcon kind={icon} /><span className="gea-shell-label">{label}</span>
+      </button>
+    );
+    const child = ({ id, title }: { id: string; title: string }) => (
+      <button key={id} type="button" data-gea-business-entry={id} aria-current={activePanel === id ? "page" : undefined} className={`gea-shell-nav-child${activePanel === id ? " is-active" : ""}`} onClick={() => ctx.layout.selectPanel(id as MainPanelId)}><span className="gea-shell-label">{title}</span></button>
+    );
+    const board = panels.find(({ id }) => id === "inventory-apsboard");
+    const customerPanels = panels.filter(({ id }) => id === "inventory-dealer");
+    const planPanels = panels.filter(({ id }) => id.startsWith("inventory-aps") && id !== "inventory-apsboard");
+    const inventoryPanels = panels.filter(({ id }) => id !== "inventory-dealer" && !id.startsWith("inventory-aps"));
     return (
       <nav
         className="gea-shell-navigation"
@@ -274,28 +288,21 @@ export function apply(ctx: Context): void {
       >
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
-          <button
-            type="button"
-            onClick={() => ctx.layout.selectPanel(INBOX)}
-            title={t("messageInbox")}
-            aria-label={t("messageInbox")}
-            className={activePanel === INBOX ? "is-active" : undefined}
-          >
-            <span className="gea-shell-label">{t("messageInbox")}</span>
-          </button>
-          <div className="gea-shell-group" title={t("planManagement")}>
-            <strong className="gea-shell-label">{t("planManagement")}</strong>
+          {board && item("产销协同工作台", "desktop", () => ctx.layout.selectPanel(board.id as MainPanelId), activePanel === board.id)}
+          <div className="gea-shell-nav-section">
+            <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.customer} onClick={() => toggle("customer")}><NavIcon kind="users" /><span>客户管理</span><Chevron open={expanded.customer} /></button>
+            {expanded.customer && <div className="gea-shell-nav-children">{customerPanels.map(child)}</div>}
           </div>
-          <button
-            type="button"
-            onClick={() => ctx.layout.selectPanel(PANEL)}
-            title={t("demandForecastAgent")}
-            aria-label={t("demandForecastAgent")}
-            className={`gea-shell-child${activePanel === PANEL ? " is-active" : ""}`}
-          >
-            <span className="gea-shell-label">{t("demandForecastAgent")}</span>
-          </button>
-          {panels.map(item=><button key={item.id} type="button" data-gea-business-entry={item.id} title={item.title} aria-current={activePanel===item.id?"page":undefined} onClick={()=>ctx.layout.selectPanel(item.id as MainPanelId)} className={`gea-shell-child${activePanel===item.id?" is-active":""}`}><span className="gea-shell-label">{item.title}</span></button>)}
+          <div className="gea-shell-nav-section">
+            <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.plan} onClick={() => toggle("plan")}><NavIcon kind="calendar" /><span>计划管理</span><Chevron open={expanded.plan} /></button>
+            {expanded.plan && <div className="gea-shell-nav-children">{child({ id: PANEL, title: t("demandForecastAgent") })}{planPanels.map(child)}</div>}
+          </div>
+          <div className="gea-shell-nav-section">
+            <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.inventory} onClick={() => toggle("inventory")}><NavIcon kind="warehouse" /><span>库存管理</span><Chevron open={expanded.inventory} /></button>
+            {expanded.inventory && <div className="gea-shell-nav-children">
+              {inventoryPanels.map(child)}
+            </div>}
+          </div>
         </div>
       </nav>
     );
@@ -442,7 +449,12 @@ export function apply(ctx: Context): void {
     yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
     ctx.layout.selectPanel(PANEL);
   });
-  function NavigationMode({ usePanelInfo }: PropsRuntime<"shell.overlay">) {
+  function NavigationMode({
+    usePanelInfo,
+    useSessions,
+    useSessionPendingInteraction,
+    useWorkspaces,
+  }: PropsRuntime<"shell.overlay">) {
     const activePanel = usePanelInfo((info) => info.activePanelId);
     const business = usePanelInfo(
       (info) => isGeaBusinessPanel(info.activePanelId, ctx.slots.entries("main")) || info.activePanelId === API_LOG_PANEL,
@@ -461,13 +473,39 @@ export function apply(ctx: Context): void {
       if (activePanel === PANEL && workbenchAuthenticated && !hideWorkbenchConversation)
         hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
     }, [activePanel]);
+    const [region, setRegion] = useState<HTMLElement | null>(null);
+    const [logoRow, setLogoRow] = useState<HTMLElement | null>(null);
+    const [conversationHero, setConversationHero] = useState<HTMLElement | null>(null);
+    const [sidebarMode, setSidebarMode] = useState<"workspace" | "function">("workspace");
     useEffect(() => {
-      if (!business) return;
-      return ctx.slots.register(
-        { name: "sidebar.workspaces", locale: "geaProof", priority: -10 },
-        Navigation,
-      );
+      if (business) setSidebarMode("function");
     }, [business]);
+    useEffect(() => {
+      const renameNewSession = () => {
+        const button = document.querySelector<HTMLButtonElement>(".hHd-Xa_newSession");
+        const label = button?.querySelector<HTMLElement>(".hHd-Xa_newSessionLabel");
+        if (!button || !label) return;
+        if (label.textContent !== "AI工作台") label.textContent = "AI工作台";
+        if (button.getAttribute("aria-label") !== "AI工作台") button.setAttribute("aria-label", "AI工作台");
+      };
+      renameNewSession();
+      const observer = new MutationObserver(renameNewSession);
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => observer.disconnect();
+    }, []);
+    useEffect(() => {
+      const findRegions = () => {
+        setRegion(document.querySelector<HTMLElement>(".hHd-Xa_regionArea"));
+        setLogoRow(document.querySelector<HTMLElement>(".hHd-Xa_logoRow"));
+        setConversationHero(document.querySelector<HTMLElement>(
+          ".AppFrame_rightbarCol [data-slot='main.conversation'] [data-phase='hero']",
+        ));
+      };
+      findRegions();
+      const observer = new MutationObserver(findRegions);
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => observer.disconnect();
+    }, []);
     useEffect(() => {
       if (!business) return;
       const hideConversationChrome = () => {
@@ -494,7 +532,105 @@ export function apply(ctx: Context): void {
         );
       };
     }, [business]);
-    return null;
+    if (!region) return null;
+    const expandSidebar = () => {
+      document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']")?.click();
+    };
+    const selectWorkspace = () => {
+      setSidebarMode("workspace");
+      if (business) {
+        hideWorkbenchConversation?.();
+        hideWorkbenchConversation = undefined;
+        ctx.layout.selectPanel(null);
+      }
+    };
+    const selectFunction = () => {
+      setSidebarMode("function");
+      if (!business) ctx.layout.selectPanel(PANEL);
+    };
+    const modeTabs = createPortal(
+      <div className="gea-sidebar-mode-tabs" role="tablist" aria-label="侧边栏区域">
+        <button type="button" role="tab" aria-selected={sidebarMode === "workspace"} onClick={selectWorkspace}>工作区</button>
+        <button type="button" role="tab" aria-selected={sidebarMode === "function"} onClick={selectFunction}>功能区</button>
+      </div>,
+      region,
+    );
+    if (!business) {
+      return (
+        <>
+          {modeTabs}
+          {sidebarMode === "function" && createPortal(
+            <div className="gea-business-navigation gea-function-menu-popover" data-sidebar-function-mode>
+              <Navigation
+                usePanelInfo={usePanelInfo}
+                useSessions={useSessions}
+                useSessionPendingInteraction={useSessionPendingInteraction}
+                useWorkspaces={useWorkspaces}
+                wide
+                expandSidebar={expandSidebar}
+              />
+            </div>,
+            region,
+          )}
+        </>
+      );
+    }
+    return (
+      <>
+        {modeTabs}
+        {createPortal(
+          <div className="gea-business-navigation gea-business-menu-panel">
+            <Navigation
+              usePanelInfo={usePanelInfo}
+              useSessions={useSessions}
+              useSessionPendingInteraction={useSessionPendingInteraction}
+              useWorkspaces={useWorkspaces}
+              wide
+              expandSidebar={expandSidebar}
+            />
+          </div>,
+          region,
+        )}
+        {logoRow && createPortal(
+          <button
+            type="button"
+            className="gea-inbox-quick-action"
+            aria-label={t("messageInbox")}
+            title="业务代办"
+            onClick={() => ctx.layout.selectPanel(INBOX)}
+          >
+            <NavIcon kind="bell" />
+          </button>,
+          logoRow,
+        )}
+        {conversationHero && createPortal(
+          <AgentWelcome onPrompt={(prompt) => {
+            const conversation = document.querySelector<HTMLElement>(
+              ".AppFrame_rightbarCol [data-slot='main.conversation']",
+            ) ?? conversationHero;
+            const input = Array.from(
+              conversation.querySelectorAll<HTMLElement>("textarea, [contenteditable='true']"),
+            ).find((element) => element.getClientRects().length > 0 && !element.hasAttribute("disabled"));
+            if (!input) return;
+            if (input instanceof HTMLTextAreaElement) {
+              const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+              setter?.call(input, prompt);
+            } else {
+              input.focus();
+              document.execCommand("selectAll", false);
+              if (!document.execCommand("insertText", false, prompt)) {
+                input.replaceChildren(document.createTextNode(prompt));
+                input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
+              }
+            }
+            if (input instanceof HTMLTextAreaElement)
+              input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
+            input.focus();
+          }} />,
+          conversationHero,
+        )}
+      </>
+    );
   }
   ctx.slots.inject("shell.overlay", () =>
     ctx.slots.register(
@@ -538,6 +674,60 @@ export function apply(ctx: Context): void {
       },
     ),
   );
+}
+
+function AgentWelcome({ onPrompt }: { onPrompt: (prompt: string) => void }) {
+  const actions = [
+    ["▥", "查看整体库存情况", "请分析当前整体库存情况"],
+    ["◔", "查看品类库存", "请查看各品类库存情况"],
+    ["▤", "生成补货建议", "请生成本周补货建议"],
+    ["♧", "分析重点客户", "请分析需要重点关注的客户"],
+  ];
+  const prompts = ["哪些客户需要补货？", "重点客户的库存情况如何？", "生成下周的补货建议", "导出客户库存分析报告"];
+  return (
+    <section className="gea-agent-welcome" aria-label="经销商补货助手">
+      <div className="gea-agent-identity">
+        <div className="gea-agent-avatar" aria-hidden="true">
+          <span className="gea-agent-antenna" />
+          <span className="gea-agent-face"><i /><i /></span>
+        </div>
+        <h2>经销商补货助手</h2>
+        <p>我可以帮你分析客户库存，生成补货建议并跟进执行进度</p>
+      </div>
+      <div className="gea-agent-block">
+        <h3>常用功能</h3>
+        <div className="gea-agent-actions">
+          {actions.map(([icon, label, prompt]) => (
+            <button key={label} type="button" onClick={() => onPrompt(prompt)}>
+              <span className="gea-agent-action-icon" aria-hidden="true">{icon}</span>
+              <span>{label}</span>
+              <b aria-hidden="true">›</b>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="gea-agent-block gea-agent-prompts">
+        <h3>你可以这样问</h3>
+        {prompts.map((prompt) => <button key={prompt} type="button" onClick={() => onPrompt(prompt)}>{prompt}</button>)}
+      </div>
+    </section>
+  );
+}
+
+type NavIconKind = "bot" | "bell" | "desktop" | "users" | "calendar" | "warehouse";
+function NavIcon({ kind }: { kind: NavIconKind }) {
+  const paths: Record<NavIconKind, React.ReactNode> = {
+    bot: <><rect x="5" y="7" width="14" height="11" rx="2" /><path d="M12 4v3M8 12h.01M16 12h.01M9 18v2M15 18v2" /></>,
+    bell: <><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
+    desktop: <><rect x="4" y="5" width="16" height="11" rx="1.5" /><path d="M9 20h6M12 16v4" /></>,
+    users: <><circle cx="9" cy="9" r="3" /><path d="M3.5 19c.7-3 2.5-4.5 5.5-4.5s4.8 1.5 5.5 4.5M16 6.5a2.5 2.5 0 0 1 0 5M17 14.5c1.9.2 3.1 1.6 3.5 3.5" /></>,
+    calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16M8 14h2M14 14h2M8 17h2" /></>,
+    warehouse: <><path d="m3 10 9-6 9 6v10H3z" /><path d="M8 20v-6h8v6M6 10h12" /></>,
+  };
+  return <svg className="gea-shell-nav-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{paths[kind]}</svg>;
+}
+function Chevron({ open }: { open: boolean }) {
+  return <svg className={`gea-shell-chevron${open ? " is-open" : ""}`} aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m7 10 5 5 5-5" /></svg>;
 }
 
 function MenuIcon() {

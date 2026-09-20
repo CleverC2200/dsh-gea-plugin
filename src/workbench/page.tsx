@@ -22,6 +22,21 @@ import "./workbench.css";
 import logo from "./gea-logo.png";
 import { ApiLogCenter } from "./api-log-center.tsx";
 
+type HtmlPlugin = { id: string; label: string; group: string; url: string };
+const HTML_PLUGINS: HtmlPlugin[] = [
+  ...[["inventory-apsboard", "产销协同看板", "产销协同"], ["inventory-apsdemand", "需求运营管理", "产销协同"], ["inventory-apsdelivery", "交付运营管理", "产销协同"], ["inventory-personal", "库存管理工作台", "库存管理"], ["inventory-aqkc", "安全库存", "库存管理"], ["inventory-dealer", "经销商库存", "库存管理"], ["inventory-fc", "分仓库存", "库存管理"], ["inventory-qll", "全链路库存", "库存管理"]].map(([id, label, group]) => ({ id, label, group, url: `/api/gea-html-plugin/${id}` })),
+];
+const HTML_PLUGIN_CONSUMERS: Record<string, string> = {
+  "inventory-apsboard": "aps-board-collaboration",
+  "inventory-apsdemand": "aps-demand-collaboration",
+  "inventory-apsdelivery": "aps-delivery-collaboration",
+  "inventory-personal": "inventory-personal-workbench",
+  "inventory-aqkc": "base-safety-stock",
+  "inventory-dealer": "dealer-inventory-replenishment",
+  "inventory-fc": "branch-inventory",
+  "inventory-qll": "full-chain-inventory",
+};
+
 type Status = ReturnType<Business["status"]>;
 type Translate = (key: CopyKey) => string;
 type AnalysisScope = "summary" | "details";
@@ -212,6 +227,12 @@ function requestErrorMessage(error: unknown, t: Translate): string {
 export function WorkbenchPage({ t }: { t: Translate }) {
   const [status, setStatus] = useState<Status>();
   const directApiLog = new URLSearchParams(window.location.search).get("view") === "api-log";
+  const initialView = new URLSearchParams(window.location.search).get("plugin") ?? "workbench";
+  const [shellView, setShellView] = useState<"plugin" | "workbench">(initialView === "workbench" ? "workbench" : "plugin");
+  const [selectedPlugin, setSelectedPlugin] = useState<HtmlPlugin>(HTML_PLUGINS.find((plugin) => plugin.id === initialView) ?? HTML_PLUGINS[0]);
+  const selectedPluginRef = useRef(selectedPlugin);
+  const pluginFrame = useRef<HTMLIFrameElement>(null);
+  const pluginPort = useRef<MessagePort>();
   const [apiLogOpen, setApiLogOpen] = useState(directApiLog);
   const [workbenchRevision, setWorkbenchRevision] = useState(0);
   const [resubmit, setResubmit] = useState<{ planId: string; versionId: string; period: GeaSalesPlanPeriod }>();
@@ -229,6 +250,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const [analysisScope, setAnalysisScope] = useState<AnalysisScope>("summary");
   const [preview, setPreview] = useState<Preview>();
   const [sessionId, setSessionId] = useState<string | null>(null);
+  useEffect(() => { selectedPluginRef.current = selectedPlugin; }, [selectedPlugin]);
   useEffect(() => {
     if (!status) return;
     window.parent.postMessage(
@@ -242,6 +264,21 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       window.location.origin,
     );
   }, [status]);
+  const notifyPluginIdentity = useCallback(() => {
+    pluginFrame.current?.contentWindow?.postMessage(
+      {
+        type: "gea:identity",
+        authenticated: status?.authenticated === true,
+        name: status?.user?.name ?? "",
+        avatarUrl: status?.user?.avatar ?? "",
+        environment: status?.environment,
+      },
+      "*",
+    );
+  }, [status]);
+  useEffect(() => {
+    notifyPluginIdentity();
+  }, [notifyPluginIdentity]);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (
@@ -257,8 +294,73 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       )
         setSessionId(value);
     };
+    const onPluginSelection = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== window.parent) return;
+      const pluginId = event.data?.pluginId;
+      if (event.data?.type !== "gea:select-plugin") return;
+      if (pluginId === "workbench") {
+        setShellView("workbench");
+        return;
+      }
+      if (typeof pluginId !== "string") return;
+      const plugin = HTML_PLUGINS.find((item) => item.id === pluginId);
+      if (plugin) {
+        setSelectedPlugin(plugin);
+        setShellView("plugin");
+      }
+    };
+    const onPluginRequest = (event: MessageEvent) => {
+      if (event.source !== pluginFrame.current?.contentWindow) return;
+      const message = event.data;
+      if (!message || message.type !== "gea:request" || typeof message.requestId !== "string" || typeof message.endpoint !== "string") return;
+      const allowed = new Set(["status", "notifications", "workflow/config", "periods", "plans", "detail", "versions", "skus"]);
+      if (!allowed.has(message.endpoint)) {
+        (event.source as WindowProxy).postMessage({ type: "gea:response", requestId: message.requestId, ok: false, error: "GEA_ENDPOINT_NOT_ALLOWED" }, { targetOrigin: event.origin });
+        return;
+      }
+      void rpc(message.endpoint, message.payload && typeof message.payload === "object" ? message.payload : {})
+        .then(value => (event.source as WindowProxy).postMessage({ type: "gea:response", requestId: message.requestId, ok: true, value }, { targetOrigin: event.origin }))
+        .catch(error => (event.source as WindowProxy).postMessage({ type: "gea:response", requestId: message.requestId, ok: false, error: error instanceof Error ? error.message : "GEA_REQUEST_FAILED" }, { targetOrigin: event.origin }));
+    };
+    const onHtmlPluginReady = (event: MessageEvent) => {
+      if (event.source !== pluginFrame.current?.contentWindow || event.data?.protocol !== "gea-html-v1" || event.data?.type !== "ready") return;
+      const channel = new MessageChannel();
+      pluginPort.current?.close(); pluginPort.current = channel.port1;
+      channel.port1.onmessage = (message: MessageEvent) => {
+        const request = message.data;
+        if (request?.type !== "request" || typeof request.id !== "string") return;
+        const method = request.method === "context" ? "status" : request.method;
+        if (method !== "status" && method !== "notifications" && method !== "periods" && method !== "plans" && method !== "detail" && method !== "versions" && method !== "skus" && method !== "sql") {
+          channel.port1.postMessage({ type: "response", id: request.id, error: "GEA_METHOD_NOT_ALLOWED" }); return;
+        }
+        const parameters = request.parameters && typeof request.parameters === "object" ? request.parameters : {};
+        const endpoint = method === "sql" ? "plugin/sql" : method;
+        const payload = method === "sql"
+          ? {
+              ...parameters,
+              ...(parameters.query && typeof parameters.query === "object" && !Array.isArray(parameters.query) ? parameters.query : {}),
+              consumerCode: HTML_PLUGIN_CONSUMERS[selectedPluginRef.current?.id]
+                ?? (pluginFrame.current?.src.includes("inventory-dealer") ? "dealer-inventory-replenishment" : ""),
+            }
+          : parameters;
+        void rpc(endpoint, payload)
+          .then(value => channel.port1.postMessage({ type: "response", id: request.id, result: value }))
+          .catch(error => channel.port1.postMessage({ type: "response", id: request.id, error: error instanceof Error ? error.message : "GEA_REQUEST_FAILED" }));
+      };
+      channel.port1.start();
+      if (event.source) event.source.postMessage({ protocol: "gea-html-v1", type: "connect", context: { authenticated: status?.authenticated === true, user: status?.user ?? null } }, "*", [channel.port2]);
+    };
     window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    window.addEventListener("message", onPluginSelection);
+    window.addEventListener("message", onPluginRequest);
+    window.addEventListener("message", onHtmlPluginReady);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("message", onPluginSelection);
+      window.removeEventListener("message", onPluginRequest);
+      window.removeEventListener("message", onHtmlPluginReady);
+      pluginPort.current?.close();
+    };
   }, []);
   const request = useRef<AbortController>();
   const selectionRef = useRef("");
@@ -527,28 +629,25 @@ export function WorkbenchPage({ t }: { t: Translate }) {
           onClose={() => setApiLogOpen(false)}
         />
       ) : (
-        <>
-          <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
-            <div className="gea-original-workbench">
-              <RegionalApprovalWorkbench
-                key={workbenchRevision}
-                stateScope={`gea-dsh:${status.environment}:${status.user?.tenantId}:${status.user?.id}`}
-                t={locale.t.bind(locale)}
-                onContextChange={onContextChange}
-                queryClient={salesPlan}
-                detailClient={salesPlan}
-                permissionCodes={status.permissionCodes}
-                liveActionsEnabled={true}
-                liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
-                onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })}
-                automaticAnalysisEnabled={true}
-              />
-            </div>
-            {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit}
-              client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)}
-              onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}
-          </WorkbenchSessionProvider>
-        </>
+        <section className="gea-center-surface" aria-label="插件内容">
+          {shellView === "plugin" ? (
+            <iframe ref={pluginFrame} onLoad={notifyPluginIdentity} title={selectedPlugin.label} src={selectedPlugin.url} sandbox="allow-scripts allow-same-origin allow-forms" />
+          ) : (
+            <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
+              <div className="gea-original-workbench">
+                <RegionalApprovalWorkbench
+                  key={workbenchRevision}
+                  stateScope={`gea-dsh:${status.environment}:${status.user?.tenantId}:${status.user?.id}`}
+                  t={locale.t.bind(locale)} onContextChange={onContextChange} queryClient={salesPlan} detailClient={salesPlan}
+                  permissionCodes={status.permissionCodes} liveActionsEnabled={true}
+                  liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
+                  onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })} automaticAnalysisEnabled={true}
+                />
+              </div>
+              {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit} client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)} onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}
+            </WorkbenchSessionProvider>
+          )}
+        </section>
       )}
     </div>
   );

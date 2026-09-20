@@ -1,7 +1,7 @@
 /** Start an isolated, configured GEA Web profile through the official dsh CLI. */
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, open, readFile, writeFile, symlink, lstat, realpath, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile, symlink, lstat, realpath, unlink, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -14,6 +14,52 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const HTML_PLUGIN_RELEASE_PROJECT = "chenyonghao%2Fdsh-plugin-releases";
+const HTML_PLUGIN_PACKAGES = [
+  ["inventory-apsboard", "dsh-gea-inventory-apsboard-0.1.0-preview.10.tgz"],
+  ["inventory-apsdemand", "dsh-gea-inventory-apsdemand-0.1.0-preview.10.tgz"],
+  ["inventory-apsdelivery", "dsh-gea-inventory-apsdelivery-0.1.0-preview.10.tgz"],
+  ["inventory-personal", "dsh-gea-inventory-personal-0.2.7-preview.2.tgz"],
+  ["inventory-aqkc", "dsh-gea-inventory-aqkc-0.2.6-preview.2.tgz"],
+  ["inventory-dealer", "dsh-gea-inventory-dealer-0.2.6-preview.2.tgz"],
+  ["inventory-fc", "dsh-gea-inventory-fc-0.2.6-preview.2.tgz"],
+  ["inventory-qll", "dsh-gea-inventory-qll-0.2.6-preview.2.tgz"],
+];
+async function prepareHtmlPlugins(runtime) {
+  const roots = {};
+  const base = resolve(runtime, "html-plugins");
+  for (const [id, filename] of HTML_PLUGIN_PACKAGES) {
+    const target = resolve(base, id);
+    if (!existsSync(resolve(target, "plugin.json"))) {
+      const url = `http://100.100.6.191:20656/api/v4/projects/${HTML_PLUGIN_RELEASE_PROJECT}/repository/files/${encodeURIComponent(`packages/${filename}`)}?ref=main`;
+      const response = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error(`HTML_PLUGIN_DOWNLOAD_${response.status}`);
+      const record = await response.json();
+      await rm(target, { recursive: true, force: true });
+      await mkdir(target, { recursive: true, mode: 0o700 });
+      const archive = resolve(base, `${id}.tgz`);
+      await mkdir(base, { recursive: true, mode: 0o700 });
+      await writeFile(archive, Buffer.from(record.content, "base64"), { mode: 0o600 });
+      execFileSync("tar", ["-xzf", archive, "--strip-components=1", "-C", target]);
+      await rm(archive, { force: true });
+    }
+    // Older inventory-dealer previews shipped a placeholder fetch bridge that
+    // always threw before delegating SQL requests to the host MessageChannel.
+    // Repair that known preview in the isolated development copy so a fresh
+    // runtime behaves like the merged HTML host contract.
+    if (id === "inventory-dealer") {
+      const entry = resolve(target, "index.html");
+      const source = await readFile(entry, "utf8");
+      const repaired = source.replace(
+        /async function x_\(e,t,n\)\{let r=e\.searchParams,o=e\.pathname;throw Error\("\\u6682\\u4E0D\\u652F\\u6301\\u6B64\\u64CD\\u4F5C[^}]+\}/,
+        'async function x_(e,t,n){if(t!=="GET"&&t!=="POST")throw Error("\\u4E0D\\u652F\\u6301\\u7684\\u6570\\u636E\\u8BF7\\u6C42\\u65B9\\u6CD5");if(n&&typeof n.sql==="string")return await Dl("sql",n);throw Error("\\u6682\\u4E0D\\u652F\\u6301\\u6B64\\u64CD\\u4F5C")}',
+      );
+      if (repaired !== source) await writeFile(entry, repaired);
+    }
+    roots[id] = target;
+  }
+  return roots;
+}
 let log;
 let child;
 let writes = Promise.resolve();
@@ -55,6 +101,7 @@ try {
   const presetRoot = resolve(require.resolve("@deepseek-ai/dsh-agent-presets/package.json"), "../presets/standard");
   const runtime = resolve(values.runtime ?? ".runtime/workbench-development");
   await mkdir(resolve(runtime, "workspace"), { recursive: true, mode: 0o700 });
+  if (development) process.env.GEA_HTML_PLUGIN_ROOTS = JSON.stringify(await prepareHtmlPlugins(runtime));
   await prepareNativePreset(runtime, presetRoot);
   const patchPath = resolve(runtime, "deployment.patch.json");
   await writeFile(
@@ -68,6 +115,8 @@ try {
       ([key]) => !/API_KEY|ACCESS_TOKEN|AUTH_TOKEN|SECRET|DSH_/.test(key),
     ),
   );
+  if (process.env.GEA_HTML_PLUGIN_ROOTS) env.GEA_HTML_PLUGIN_ROOTS = process.env.GEA_HTML_PLUGIN_ROOTS;
+  if (development) env.GEA_WEB_LOGIN_PERSIST = "1";
   if (config.analysis.mode === "model" && config.analysis.source !== "gea")
     env[config.analysis.apiKeyEnv] = process.env[config.analysis.apiKeyEnv];
   for (const account of Object.values(config.serviceAccounts ?? {})) {

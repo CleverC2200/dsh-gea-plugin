@@ -1,4 +1,5 @@
 import { attachDesktopLogin } from "./host/desktop-login.ts";
+import { attachWebLogin } from "./host/web-login.ts";
 import { resolveWorkbench } from "../scripts/deployment.mjs";
 /** GEA 外部 Fetch 能力和显式本地回执提供者的 DSH 插件入口。 */
 import { appendFile, mkdir, readFile } from "node:fs/promises";
@@ -258,6 +259,19 @@ function toGeaRequest(options: GenerateOptions) {
 /** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
 export async function apply(ctx: Context, config: Deployment): Promise<void> {
   resolveWorkbench(import.meta.url);
+  const htmlPluginRoots: Record<string, string> = (() => {
+    try { const value = JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS ?? "{}"); return value && typeof value === "object" ? value : {}; }
+    catch { return {}; }
+  })();
+  for (const [id, root] of Object.entries(htmlPluginRoots)) {
+    if (!/^[a-z0-9-]+$/.test(id) || typeof root !== "string") continue;
+    ctx.effect(() => ctx.connection.fetch.register({
+      path: `/api/gea-html-plugin/${id}`, methods: ["GET"], requestBody: "buffered",
+      fetch: async () => new Response(new Uint8Array(await readFile(resolve(root, "index.html"))), {
+        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "frame-ancestors 'self'" },
+      }),
+    }));
+  }
   const workbenchHtml =
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GEA</title><link rel="stylesheet" href="/api/gea-proof/workbench.css"><style>html,body,#gea-workbench{height:100%;margin:0}</style></head><body><div id="gea-workbench"></div><script type="module" src="/api/gea-proof/workbench.js"></script></body></html>';
   for (const [path, type, content] of [
@@ -295,8 +309,10 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     );
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);
-  const htmlRoots=JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS || "[]");
-  if(!Array.isArray(htmlRoots)||htmlRoots.some(root=>typeof root!=="string"))throw Error("INVALID_HTML_PLUGIN_ROOTS");
+  const webLogin = await attachWebLogin(business);
+  const htmlRootConfig=JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS || "[]");
+  const htmlRoots=Array.isArray(htmlRootConfig) ? htmlRootConfig : (htmlRootConfig && typeof htmlRootConfig === "object" ? Object.values(htmlRootConfig) : []);
+  if(htmlRoots.some(root=>typeof root!=="string"))throw Error("INVALID_HTML_PLUGIN_ROOTS");
   const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlRoots);
   ctx.provide("geaMcp", {
     version: 1 as const,
@@ -306,7 +322,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     open: (consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) => business.openMcpConnection(consumer, signal),
   });
   registerGeaTools(ctx, business);
-  ctx.effect(() => async () => { await desktopLogin.dispose(); business.dispose(); });
+  ctx.effect(() => async () => { await desktopLogin.dispose(); await webLogin.dispose(); business.dispose(); });
   if (config.analysisMode === "receipt")
     ctx.effect(() =>
       ctx.llm.registerAdapter(
@@ -423,6 +439,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "prepare",
     "submit",
     "workbench/query",
+    "plugin/sql",
     "workbench/prepare",
     "workbench/context",
     "api-log/snapshot",
@@ -451,6 +468,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 break;
               case "workbench/query":
                 value = await business.workbenchQuery(payload, request.signal);
+                break;
+              case "plugin/sql":
+                value = await business.pluginSql(payload, request.signal);
                 break;
               case "workbench/prepare":
                 value = await business.prepareWorkbench(
@@ -580,14 +600,14 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
               default:
                 throw new Error("UNKNOWN_ENDPOINT");
             }
-            await desktopLogin.flush();
+            await desktopLogin.flush(); await webLogin.flush();
             return Response.json(
               { ok: true, value },
               { headers: { "Cache-Control": "no-store" } },
             );
           } catch (error) {
             // 业务操作失败时也可能同时发现登录过期并清除身份。
-            try { await desktopLogin.flush(); } catch (storageError) { error = storageError; }
+            try { await desktopLogin.flush(); await webLogin.flush(); } catch (storageError) { error = storageError; }
             const code =
               error instanceof Error && /^[A-Z][A-Z_0-9]+$/.test(error.message)
                 ? error.message

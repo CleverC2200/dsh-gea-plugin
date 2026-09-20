@@ -196,7 +196,7 @@ export function Inbox({ t }: { t: Translate }) {
               <h3>{detail.title ?? detail.id}</h3>
               <span className="gea-inbox-label">{t("notificationContent")}</span>
               {detail.actionText && <div className="gea-inbox-action"><span>{detail.actionText}</span>{detail.target && <small>{detail.target.type ?? t("unknown")} · {detail.target.value ?? t("unknown")}</small>}</div>}
-              <p className="gea-inbox-body">{detail.content?.trim() ? detail.content : detail.summary?.trim() ? detail.summary : t("notificationNoContent")}</p>
+              <p className="gea-inbox-body">{detail.content?.trim() ? detail.content : detail.body?.trim() ? detail.body : detail.summary?.trim() ? detail.summary : t("notificationNoContent")}</p>
               <fieldset disabled={mutationBusy || retryPending || detailBusy} className="gea-inbox-detail-actions">
                 {detail.state === "unread" && detail.version !== null && <button disabled={mutationBusy} onClick={() => mutate({ operation: "read", id: detail.id, expectedVersion: detail.version, idempotencyKey: `read-${detail.id}-${detail.version}` })}>{t("markRead")}</button>}
                 {detail.dismissible === true && detail.state !== "dismissed" && detail.version !== null && <button disabled={mutationBusy} onClick={() => mutate({ operation: "dismiss", id: detail.id, expectedVersion: detail.version, idempotencyKey: `dismiss-${detail.id}-${detail.version}` })}>{t("dismissNotification")}</button>}
