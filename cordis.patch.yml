@@ -10,5 +10,13 @@
       name: "@cleverc2200/dsh-agent-workbench"
       config:
         cwd: !!js process.cwd()
+    # Built-in content plugins: the model renders inline UI (genui) and the
+    # right sidebar gains explorer/editor/terminal/git/browser tabs.
+    # Both are mounted here rather than through `dsh.profile.bundles` so the
+    # plugin-channel update delivers them without a desktop rebuild.
+    - id: genui
+      name: "@changfenhuang/dsh-genui"
+    - id: better-sidebar
+      name: "dsh-better-sidebar"
     - id: gea-proof
       name: "@cleverc2200/gea-dsh-prototype"

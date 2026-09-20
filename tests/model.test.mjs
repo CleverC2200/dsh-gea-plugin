@@ -79,13 +79,19 @@ test(
     assert.ok(instructions.includes("本会话只读"));
     assert.ok(instructions.includes("只使用当前已加载且有权限的 GEA MCP 工具"));
     assert.ok(instructions.includes("不要展示或解释接口、工具名、字段名、JSON、哈希"));
+    // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在
+    // 回答里渲染界面；这里显式记录该行为，避免它变成无声的提示词漂移。
+    assert.ok(instructions.includes("dsh-ui"));
     assert.deepEqual(
       body.tools.map((tool) => tool.function.name).sort(),
       [
         "gea_sales_plan_read",
         "gea_skill_reference_read",
         "gea_visible_workbench_context",
+        // 内置插件 dsh-genui 注册的界面渲染与校验工具。
+        "render_ui",
         "skill",
+        "validate_dsh_ui",
       ],
     );
     const submitted = rows.find(

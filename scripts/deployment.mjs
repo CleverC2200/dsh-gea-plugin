@@ -113,6 +113,40 @@ export function resolveWorkbench(anchor = import.meta.url) {
   }
 }
 
+/**
+ * Resolve the built-in content plugins every GEA composition mounts.
+ *
+ * genui renders model-authored inline UI; better-sidebar adds the right-Sidebar
+ * explorer/editor/terminal/git/browser tab types. Both are ordinary
+ * dependencies of this package, so a release install resolves them from its own
+ * node_modules; a source checkout resolves them from the development install.
+ * The rows carry an absolute entry path in non-bundle compositions and lose it
+ * in bundle compositions, where the package's own `cordis.patch.yml` mounts the
+ * same ids by package name.
+ */
+export function resolveBuiltinPlugins(anchor = import.meta.url) {
+  const dependency = createRequire(anchor);
+  const entry = (specifier, id) => {
+    const manifest = JSON.parse(
+      readFileSync(dependency.resolve(`${specifier}/package.json`), "utf8"),
+    );
+    if (!/^0\.\d+\.\d+/.test(manifest.version))
+      throw new Error(`BUILTIN_PLUGIN_INCOMPATIBLE: ${manifest.name}@${manifest.version}`);
+    return { id, name: dependency.resolve(manifest.name) };
+  };
+  try {
+    return [
+      entry("@changfenhuang/dsh-genui", "genui"),
+      entry("dsh-better-sidebar", "better-sidebar"),
+    ];
+  } catch (error) {
+    if (error.message.startsWith("BUILTIN_PLUGIN_INCOMPATIBLE")) throw error;
+    throw new Error(
+      `BUILTIN_PLUGIN_MISSING: install the bundled genui and better-sidebar dependencies (${error.message})`,
+    );
+  }
+}
+
 /** Build ordinary patch rows for the supported dsh profile launcher. */
 export function deploymentPatch(config, root, runtime, { bundle = false } = {}) {
   const model = config.analysis.mode === "model";
@@ -120,6 +154,7 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
   const rows = [
     { id: "ui-layout", disabled: true },
     { insert: [{ id: "agent-workbench", name: resolveWorkbench(), config: { cwd: resolve(runtime, "workspace") } }] },
+    { insert: resolveBuiltinPlugins() },
     { id: "session-title-llm", disabled: true },
     {
       id: "agent-default-model",
@@ -222,7 +257,7 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
   if (config.workbenchExample === true) rows.push({ insert: [{ id: "workbench-example", name: resolve(root, "packages/workbench-example/lib/host.js") }] });
   if (bundle) return rows.flatMap(row => {
     if (row.id === "ui-layout") return [];
-    if (row.insert?.some(entry => entry.id === "agent-workbench")) return row.insert.map(({ name, ...entry }) => entry);
+    if (row.insert?.some(entry => ["agent-workbench", "genui", "better-sidebar"].includes(entry.id))) return row.insert.map(({ name, ...entry }) => entry);
     if (row.insert?.some(entry => entry.id === "gea-proof")) return row.insert.map(({ name, ...entry }) => entry);
     return [row];
   });
