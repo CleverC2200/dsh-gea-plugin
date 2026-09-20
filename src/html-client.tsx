@@ -24,8 +24,13 @@ export function registerHtmlClient(ctx: any) {
     useEffect(() => {
       let active = true;
       let hide = () => {};
-      void ctx.agentWorkbench
-        .open(workbenchId, "default")
+      // 业务数据页面和右侧对话必须是同一个会话：有当前会话就显式交给公共工作台，
+      // 否则工作台会给页面另建一个会话，页面租约和对话成了两个身份，模型读不到页面。
+      // 还没有当前会话时不挡着，仍按老样子让工作台先建一个（建好后 session 会更新并重新绑定）。
+      const opening = session
+        ? ctx.agentWorkbench.open(workbenchId, "default", session)
+        : ctx.agentWorkbench.open(workbenchId, "default");
+      void opening
         .then(() => {
           if (active) {
             hide = ctx.agentWorkbench.showConversation(workbenchId);
@@ -39,7 +44,7 @@ export function registerHtmlClient(ctx: any) {
         active = false;
         hide();
       };
-    }, [workbenchId]);
+    }, [workbenchId, session]);
     useEffect(() => {
       if (!session || !opened) return;
       const controller = new AbortController();

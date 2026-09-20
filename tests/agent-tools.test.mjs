@@ -1,4 +1,6 @@
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { readFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -8,9 +10,57 @@ test(
   "GEA tools use the native model-tool-model loop and persist success, permission errors and cancellation",
   { timeout: 90000 },
   async (t) => {
+    // 一个最小的业务页面插件：只用来验证"普通对话里页面工具怎么回答模型"。
+    const probeRoot = await mkdtemp(join(tmpdir(), "gea-page-probe-"));
+    const probeSkill = [
+      "---",
+      "name: inventory-probe",
+      "description: 探针业务规则，用于验证主对话能按需加载业务 skill。",
+      "---",
+      "",
+      "# 探针页面",
+      "",
+      "PROBE-RULE-42：建议量 = ceil(max(0, 缺货量 − 调拨中量))，缺失输入按未知处理，不按零。",
+      "",
+    ].join("\n");
+    await mkdir(join(probeRoot, "skills", "probe"), { recursive: true });
+    await writeFile(join(probeRoot, "index.html"), "<!doctype html><html><body>probe</body></html>\n");
+    await writeFile(join(probeRoot, "skills", "probe", "SKILL.md"), probeSkill);
+    // 主对话（标准 agent）按默认根扫描技能：这里把同一份业务规则挂到 DSH_AGENTS_HOME 下。
+    const agentsHome = await mkdtemp(join(tmpdir(), "gea-agents-home-"));
+    await mkdir(join(agentsHome, "skills", "inventory-probe"), { recursive: true });
+    await writeFile(join(agentsHome, "skills", "inventory-probe", "SKILL.md"), probeSkill);
+    await writeFile(
+      join(probeRoot, "plugin.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: "inventory-probe",
+        name: "探针页面",
+        version: "0.0.0",
+        html: "index.html",
+        skills: ["skills/probe/SKILL.md"],
+        mcp: "mcp.json",
+        mode: "mock",
+        gea: { consumerCode: "probe-consumer", readonly: true, contract: "gea-html-v1" },
+      }),
+    );
+    await writeFile(
+      join(probeRoot, "mcp.json"),
+      JSON.stringify({
+        provider: "gea",
+        transport: "host-provided",
+        contract: "gea-html-v1",
+        consumer: { consumerType: "AGENT", consumerCode: "probe-consumer" },
+        capabilities: ["governed-sql-read"],
+      }),
+    );
     const app = await profile(t, {
       pluginRoot: process.env.GEA_TEST_PLUGIN_ROOT,
       bundle: Boolean(process.env.GEA_TEST_PLUGIN_ROOT),
+      env: {
+        GEA_HTML_PLUGIN_ROOTS: JSON.stringify({ "inventory-probe": probeRoot }),
+        DSH_AGENTS_HOME: agentsHome,
+      },
       config: () => ({
         requestTimeoutMs: 1000,
         analysis: {
@@ -160,6 +210,30 @@ test(
         );
         return true;
       }
+      if (outcome === "page-tool") {
+        const results = body.messages.filter((x) => x.role === "tool");
+        res.end(
+          results.length === 0
+            ? event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "page-1",
+                      type: "function",
+                      function: {
+                        name: "inventory_probe_page",
+                        arguments: JSON.stringify({ name: "context", parameters: "{}" }),
+                      },
+                    },
+                  ],
+                },
+                "tool_calls",
+              )
+            : event({ content: "这个对话当前不在业务工作台，读不到页面数据。" }, "stop"),
+        );
+        return true;
+      }
       if (outcome === "visible-context-unavailable") {
         const result = body.messages.find((message) => message.role === "tool");
         res.end(
@@ -246,15 +320,16 @@ test(
           "completed",
         );
         assert.equal(modelRequests.length, 2);
-        assert.deepEqual(
-          modelRequests[0].tools.map((x) => x.function.name).sort(),
-          [
-            "gea_sales_plan_read",
-            "gea_skill_reference_read",
-            "gea_visible_workbench_context",
-            "skill",
-          ],
-        );
+        // 只要求核心工具在列；部署补丁还会挂其他工具（例如浏览器 MCP），不在这里锁死全集。
+        const toolNames = modelRequests[0].tools.map((x) => x.function.name);
+        for (const expected of [
+          "gea_sales_plan_read",
+          "gea_skill_reference_read",
+          "gea_visible_workbench_context",
+          "inventory_probe_page",
+          "skill",
+        ])
+          assert.ok(toolNames.includes(expected), `${expected} 在工具列表里`);
         assert.match(
           modelRequests[0].messages
             .filter((message) => message.role === "system")
@@ -368,7 +443,7 @@ test(
             message.role === "tool" &&
             message.tool_call_id === "visible-context-unavailable-1",
         );
-        assert.match(result.content, /WORKBENCH_CONTEXT_NOT_SYNCED/);
+        assert.match(result.content, /PAGE_NOT_IN_WORKBENCH/);
         assert.equal(
           rows.some(
             (entry) =>
@@ -376,6 +451,32 @@ test(
               entry.data.message.content[0].isError,
           ),
           false,
+        );
+      },
+    );
+    await t.test(
+      "a page tool in a plain conversation explains the rule instead of failing",
+      async () => {
+        outcome = "page-tool";
+        modelRequests = [];
+        const rows = await ended(await submit());
+        assert.ok(
+          modelRequests[0].tools.some((x) => x.function.name === "inventory_probe_page"),
+          "页面工具已暴露给模型",
+        );
+        const result = modelRequests[1].messages.find(
+          (message) => message.role === "tool" && message.tool_call_id === "page-1",
+        );
+        assert.match(result.content, /not-in-workbench/);
+        assert.match(result.content, /不在业务工作台/);
+        assert.equal(
+          rows.some(
+            (entry) =>
+              entry.type === "tool/result" &&
+              entry.data.message.content[0].isError,
+          ),
+          false,
+          "普通对话里的页面工具结果不是错误",
         );
       },
     );

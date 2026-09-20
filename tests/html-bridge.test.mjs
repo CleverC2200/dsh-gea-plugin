@@ -25,6 +25,23 @@ test("active leases renew but idle expiry and wrong-plugin isolation remain enfo
     Date.now = originalNow;
   }
 });
+test("a conversation without an open page reports it instead of a raw failure", async () => {
+  const pages = createHtmlSessions();
+  try {
+    assert.equal(pages.has("inventory-aqkc", session), false);
+    await assert.rejects(
+      () => pages.invoke("inventory-aqkc", session, "context", {}, new AbortController().signal),
+      /还没有打开业务页面/,
+    );
+    const lease = pages.open("inventory-aqkc", session, {}, {});
+    assert.equal(pages.has("inventory-aqkc", session), true);
+    assert.equal(pages.has("inventory-other", session), false);
+    pages.close(lease);
+    assert.equal(pages.has("inventory-aqkc", session), false);
+  } finally {
+    pages.clear();
+  }
+});
 test("named and positional parameters are bound without inserting data in SQL", () => {
   const query = prepareHtmlQuery({
     sql: "SELECT * FROM example WHERE a=:value AND b=':ignored' AND c::text=:value",

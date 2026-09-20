@@ -219,7 +219,8 @@ export async function profile(t, options = {}) {
       ],
       {
         cwd: root,
-        env: { ...process.env, NODE_EXTRA_CA_CERTS: cert, ...(options.desktopGraph ? {DSH_PLUGIN_GRAPH: options.desktopGraph, DSH_FULL_DATA_DIR: runtime, GEA_CONFIG: config, DSH_FULL_PORT: "0", DSH_FULL_NO_OPEN: "1"} : {}), ...options.env },
+        // 测试里不挂浏览器 MCP：每次启动都拉 npx + Chrome 会拖慢并让并发用例超时。
+        env: { ...process.env, NODE_EXTRA_CA_CERTS: cert, GEA_BROWSER_MCP: "0", ...(options.desktopGraph ? {DSH_PLUGIN_GRAPH: options.desktopGraph, DSH_FULL_DATA_DIR: runtime, GEA_CONFIG: config, DSH_FULL_PORT: "0", DSH_FULL_NO_OPEN: "1"} : {}), ...options.env },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );

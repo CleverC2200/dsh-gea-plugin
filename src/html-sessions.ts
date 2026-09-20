@@ -51,6 +51,11 @@ export function createHtmlSessions() {
       p.expires = Date.now() + 300000;
       return p;
     },
+    /** 这个会话当前有没有打开该插件的业务页面（模型读页面之前先问一次，避免直接抛错）。 */
+    has(plugin: string, session: string): boolean {
+      for (const p of pages.values()) if (p.plugin === plugin && p.session === session) return true;
+      return false;
+    },
     close: destroy,
     clear() {
       for (const key of pages.keys()) destroy(key);
@@ -65,7 +70,7 @@ export function createHtmlSessions() {
       const pair = [...pages].find(
         ([, p]) => p.plugin === plugin && p.session === session,
       );
-      if (!pair) throw Error("请先打开该会话的业务页面");
+      if (!pair) throw Error("该会话还没有打开业务页面：请先在左侧「功能区」打开对应业务页面再操作");
       const p = this.get(pair[0]);
       if (name === "context")
         return {

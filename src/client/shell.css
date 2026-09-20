@@ -20,77 +20,85 @@
   height: 100%;
   background: #f8f9fb;
 }
-/* Keep the native DSH workspace list below the business navigation. */
-[class*="_regionArea"]:has(.gea-business-navigation) {
+/* 侧栏是上下折叠的文件夹：功能区在上，DSH 原生会话列表是工作区的展开内容。 */
+[class*="_regionArea"]:has(.gea-sidebar-folders) {
   display: flex !important;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
-[class*="_regionArea"]:has(.gea-business-navigation) > [data-slot="sidebar.workspaces"] {
+.gea-sidebar-folders {
+  order: 1;
+  display: flex;
+  /* 可被压缩：功能区菜单很长、窗口又不高时，别把工作区的会话列表挤成 0 高。 */
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+[class*="_regionArea"]:has(.gea-sidebar-folders) > [data-slot="sidebar.workspaces"] {
   display: block !important;
   order: 2;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }
-.gea-business-navigation {
-  order: 1;
-  flex: 0 1 58%;
-  min-height: 0;
-  max-height: 58%;
-  overflow: auto;
-  border-bottom: 1px solid #e3e6ea;
+/* 工作区展开时给会话列表留一块最小可见高度。 */
+[class*="_regionArea"][data-gea-workspace="open"] > [data-slot="sidebar.workspaces"] {
+  min-height: 140px;
 }
-.gea-business-navigation .gea-shell-navigation,
-.gea-business-navigation .gea-shell-navigation-content {
-  height: auto;
-  min-height: 0;
+/* 侧栏整体收起时，原生会话列表（含它的搜索/新建工具栏）不能挤进图标列。 */
+[data-sidebar-collapsed] [class*="_regionArea"] > [data-slot="sidebar.workspaces"],
+[data-sidebar-collapsed] [data-slot="sidebar.workspaces"] {
+  display: none !important;
 }
-.gea-business-navigation .gea-shell-navigation-content {
-  max-height: 100%;
-  overflow: auto;
+/* 工作区折叠时，历史会话整块隐藏，只剩下两个文件夹标题。 */
+[class*="_regionArea"][data-gea-workspace="collapsed"] .gea-sidebar-folders,
+[class*="_regionArea"]:has(.gea-sidebar-folders)[data-gea-workspace="collapsed"] {
+  flex: 1 1 auto;
 }
-.gea-function-menu-popover {
-  position: absolute;
-  top: 36px;
-  left: 0;
-  z-index: 10;
+[class*="_regionArea"][data-gea-workspace="collapsed"] > [data-slot="sidebar.workspaces"] {
+  display: none !important;
+}
+.gea-sidebar-folders > .gea-sidebar-folder-head + .gea-sidebar-folder-head,
+.gea-sidebar-folder-body {
+  border-top: 1px solid #e3e6ea;
+}
+.gea-sidebar-folder-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
-  max-height: calc(100% - 36px);
-  overflow: auto;
-  border: 1px solid #cfd4dc;
-  border-radius: 10px;
-  background: #f5f6f8;
-  box-shadow: 0 8px 24px rgb(31 35 41 / 18%);
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #3d4654;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
 }
-.gea-function-menu-popover .gea-shell-navigation,
-.gea-function-menu-popover .gea-shell-navigation-content {
+.gea-sidebar-folder-head:hover {
+  background: #eceef2;
+  color: #202531;
+}
+.gea-sidebar-folder-head:focus-visible {
+  outline: 2px solid #df1732;
+  outline-offset: 2px;
+}
+.gea-sidebar-folder-head .gea-shell-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.gea-sidebar-folder-body {
+  min-height: 0;
+  overflow: auto;
+}
+.gea-sidebar-folder-body .gea-shell-navigation,
+.gea-sidebar-folder-body .gea-shell-navigation-content {
   height: auto;
   min-height: 0;
-}
-.gea-business-menu-panel {
-  position: absolute;
-  top: 36px;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 3;
-  max-height: none;
-  overflow: auto;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-[class*="_regionArea"]:has(.gea-business-menu-panel) {
-  position: relative;
-  overflow: hidden;
-}
-[class*="_regionArea"]:has(.gea-business-menu-panel) > [data-slot="sidebar.workspaces"] {
-  display: block !important;
-  height: 36px;
-  min-height: 36px;
-  overflow: hidden;
 }
 [class*="_logoRow"]:has(.gea-inbox-quick-action) {
   position: relative;
@@ -120,43 +128,48 @@
 [data-sidebar-collapsed] .gea-inbox-quick-action {
   display: none;
 }
-[class*="_regionArea"]:has(.gea-sidebar-mode-tabs) {
-  position: relative;
+[data-sidebar-collapsed] .gea-sidebar-folders {
+  display: none;
 }
-.gea-sidebar-mode-tabs {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 2;
+/* 侧栏收起时功能区缩成一列图标：点分组图标展开侧栏并打开该分组。 */
+.gea-sidebar-rail {
+  display: none;
+}
+[data-sidebar-collapsed] .gea-sidebar-rail {
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+}
+/* 收起态这四个入口由 GEA 提供，原生重复的「新建会话」按钮就收起来。 */
+[data-sidebar-collapsed] [class*="_newSession"] {
+  display: none !important;
+}
+.gea-sidebar-rail-item {
   display: flex;
   align-items: center;
-  height: 36px;
-  padding-left: 14px;
-  background: #f5f6f8;
-}
-.gea-sidebar-mode-tabs button {
-  height: 28px;
-  padding: 2px 8px;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
   border: 0;
-  border-radius: 5px;
+  border-radius: 10px;
   background: transparent;
-  color: #df1732;
-  font: inherit;
+  color: #3d4654;
   cursor: pointer;
 }
-.gea-sidebar-mode-tabs button[aria-selected="false"] {
-  color: #687282;
+.gea-sidebar-rail-item:hover {
+  background: #eceef2;
+  color: #202531;
 }
-.gea-sidebar-mode-tabs button[aria-selected="true"] {
-  background: #fff0f2;
-  font-weight: 600;
-}
-.gea-sidebar-mode-tabs button:hover {
+.gea-sidebar-rail-item.is-active {
   background: #fff0f2;
   color: #df1732;
 }
-[data-sidebar-collapsed] .gea-sidebar-mode-tabs {
-  display: none;
+.gea-sidebar-rail-item:focus-visible {
+  outline: 2px solid #df1732;
+  outline-offset: 2px;
 }
 /* The business profile keeps the application chooser but not the default
    workspace quick-launch. Older desktop cores do not yet understand the
@@ -361,24 +374,24 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 
 /* The GEA side conversation keeps its native composer at the column foot. */
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
   [data-phase="hero"]
   [data-conversation-scroll] {
   justify-content: flex-end;
 }
 
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
   [data-phase="hero"]
   [data-composer-seat] {
   flex: 1;
 }
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
   [data-phase="hero"]
   [data-chain-overlay-fallback="conversation.composer"]
   > div {
   flex: 1;
 }
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
   [data-phase="hero"]
   [data-chain-overlay-fallback="conversation.composer"]
   > div
@@ -388,47 +401,47 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 
 /* The right rail is the single native conversation surface. */
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] {
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] {
   background: #fff;
   border-left: 1px solid #e5e8ed;
 }
 /* The rail keeps DSH's native composer card; only its clearance is tightened, because the
    hero-sized clearance wastes most of a 440px column. Both conversation phases inherit it,
    and it must sit on the conversation root because DSH declares the same vars there. */
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
   [data-rightbar-col]
   [data-phase] {
   --dsh-composer-card-max-width: 100%;
   --dsh-composer-side-clearance: 8px;
 }
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
   [data-phase="hero"]
   :has(> [data-slot="conversation.composer.bar"]) {
   padding: 8px 0;
 }
 /* The rail reserves a scrollbar gutter the composer never uses; drop it so the card sits
    symmetrically against both rail edges instead of 8px further from the right one. */
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
   [data-rightbar-col]
   [data-conversation-scroll] {
   scrollbar-gutter: auto;
   margin-right: 0;
 }
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] [data-composer-seat] {
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] [data-composer-seat] {
   background: #fff;
 }
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] .wSkVaW_composerHero > .pXSMma_root,
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] .wSkVaW_heroWorkspaceRow {
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] .wSkVaW_composerHero > .pXSMma_root,
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] .wSkVaW_heroWorkspaceRow {
   display: none;
 }
 /* Agent landing surface: keep DSH's native composer and put GEA's useful entry points above it. */
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] {
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] {
   position: relative;
   overflow: hidden;
   flex-direction: column;
 }
 /* The conversation body shrinks to the composer so the composer is docked, not overlaid. */
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] > .wSkVaW_body {
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] > .wSkVaW_body {
   flex: 0 0 auto;
   height: auto;
   min-height: 0;
@@ -442,7 +455,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   background: linear-gradient(180deg, #fff8f9 0, #fff 35%);
 }
 /* With the workbench beside it, the landing surface takes the space above the docked composer. */
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] > .gea-agent-welcome {
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] > .gea-agent-welcome {
   position: relative;
   inset: auto;
   order: -1;
@@ -450,7 +463,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   min-height: 0;
   z-index: 1;
 }
-[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] [data-composer-seat] {
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] [data-composer-seat] {
   position: relative;
   inset: auto;
   z-index: 1;
@@ -651,16 +664,16 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 
 /* GEA's approval table needs more room than a chat-only center column on tablets. */
 @media (min-width: 801px) and (max-width: 1200px) {
-  .AppFrame_frame[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) {
+  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) {
     grid-template-columns: 180px minmax(0, 1fr) !important;
     grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
     transition: none;
   }
-  .AppFrame_frame[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) > .AppFrame_sidebarCol { grid-row: 1 / -1; }
-  .AppFrame_frame[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) > .AppFrame_centerCol { grid-column: 2; grid-row: 1; min-height: 0; }
-  .AppFrame_frame[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) > .AppFrame_rightbarCol { grid-column: 2; grid-row: 2; min-height: 0; border-top: 1px solid var(--dsw-alias-border-l3); }
-  .AppFrame_frame[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) > .AppFrame_handle { display: none; }
-  .AppFrame_frame[data-conversation-beside-panel][data-sidebar-collapsed]:has(iframe[data-gea-workbench]) { grid-template-columns: 64px minmax(0, 1fr) !important; }
+  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_sidebarCol { grid-row: 1 / -1; }
+  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_centerCol { grid-column: 2; grid-row: 1; min-height: 0; }
+  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_rightbarCol { grid-column: 2; grid-row: 2; min-height: 0; border-top: 1px solid var(--dsw-alias-border-l3); }
+  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_handle { display: none; }
+  .AppFrame_frame[data-conversation-beside-panel][data-sidebar-collapsed]:is(.gea-business-shell, .gea-rail-docked) { grid-template-columns: 64px minmax(0, 1fr) !important; }
 }
 
 .gea-shell-navigation .gea-shell-collaboration { margin-top: 12px; font-weight: 600; }
