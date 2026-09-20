@@ -9,6 +9,10 @@
 [data-gea-hidden-session-chrome] {
   display: none !important;
 }
+/* 面板切换瞬间不做列宽动画，避免业务页面连续重排（看起来像闪动）。 */
+.AppFrame_frame.gea-panel-switching {
+  transition: none !important;
+}
 .gea-workbench-frame {
   display: block;
   border: 0;

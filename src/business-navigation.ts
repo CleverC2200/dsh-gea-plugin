@@ -6,5 +6,5 @@ export function registeredBusinessPanels(entries: readonly Entry[]) {
   .sort((a,b) => a.order-b.order || a.id.localeCompare(b.id));
 }
 export function isGeaBusinessPanel(panel: string | null | undefined, entries: readonly Entry[]): boolean {
- return panel==='gea-proof' || panel==='gea-inbox' || registeredBusinessPanels(entries).some(item=>item.id===panel);
+ return panel==='gea-proof' || panel==='gea-regional-plan' || panel==='gea-inbox' || registeredBusinessPanels(entries).some(item=>item.id===panel);
 }

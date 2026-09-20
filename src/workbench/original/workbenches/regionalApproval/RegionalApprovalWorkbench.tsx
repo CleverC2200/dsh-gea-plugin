@@ -465,7 +465,6 @@ const RegionalApprovalWorkbench: React.FC<{
   const [page, setPage] = useState(initialState.page);
   const [dimension, setDimension] = useState(initialState.dimension);
   const [categoryComparison, setCategoryComparison] = useState(initialState.categoryComparison);
-  const [workspacePage, setWorkspacePage] = useState<'approval' | 'evaluation'>('approval');
   const [liveCategorySummaries, setLiveCategorySummaries] = useState<
     Record<string, RegionalApprovalLiveCategorySummary[]>
   >({});
@@ -2065,14 +2064,7 @@ const RegionalApprovalWorkbench: React.FC<{
       </h1>
       <header className={styles.header}>
         <div className={styles.titleLine}>
-          <div className={styles.workspaceTabs} role='tablist' aria-label={t('common.assistantSurface.regionalApproval.workspaceTabs.ariaLabel')}>
-            <Button type='text' role='tab' aria-selected={workspacePage === 'approval'} data-active={workspacePage === 'approval'} onClick={() => setWorkspacePage('approval')}>
-              {t('common.assistantSurface.regionalApproval.title')}
-            </Button>
-            <Button type='text' role='tab' aria-selected={workspacePage === 'evaluation'} data-active={workspacePage === 'evaluation'} onClick={() => setWorkspacePage('evaluation')}>
-              {t('common.assistantSurface.regionalApproval.stages.evaluation')}
-            </Button>
-          </div>
+          <span className={styles.workspaceTitle}>{t('common.assistantSurface.regionalApproval.title')}</span>
           {headerControls}
           {!liveQuery.enabled ? (
             <Tag className={styles.fixtureTag} color='red'>
@@ -2197,12 +2189,6 @@ const RegionalApprovalWorkbench: React.FC<{
         </div>
       </header>
 
-      {workspacePage === 'evaluation' ? (
-        <section className={styles.evaluationEmpty} aria-label={t('common.assistantSurface.regionalApproval.stages.evaluation')}>
-          <Typography.Title heading={6}>{t('common.assistantSurface.regionalApproval.stages.evaluation')}</Typography.Title>
-          <Typography.Text>{t('common.assistantSurface.regionalApproval.workspaceTabs.evaluationEmpty')}</Typography.Text>
-        </section>
-      ) : <>
       <div className={styles.stageViewport}>
         <nav
           className={styles.stageLane}
@@ -2267,7 +2253,6 @@ const RegionalApprovalWorkbench: React.FC<{
           })}
         </nav>
       </div>
-      </>}
 
       <div className={styles.content}>
         {liveQuery.enabled && liveQuery.periodsState.status === 'error' ? (

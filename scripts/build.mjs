@@ -61,7 +61,7 @@ const targets = {
       platform: "browser",
       target: "es2022",
       external: ["react"],
-      loader: { ".css": "text", ".png": "dataurl" },
+      loader: { ".css": "text", ".png": "dataurl", ".html": "text" },
       plugins: [
         clientOutput("lib/client.js", "'@cleverc2200/gea-dsh-prototype'"),
       ],

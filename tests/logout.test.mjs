@@ -45,6 +45,8 @@ test("Chrome logout works from both shells, retries failure and signs out other 
   await page.goto(app.origin);
   await page.getByRole("dialog", { name: "内测声明", exact: true }).getByRole("button", { name: "继续", exact: true }).click();
   await page.frameLocator("iframe[data-gea-workbench]").getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
+  // 未登录时才铺整屏登录遮罩，扫码页保持全屏。
+  await expect(page.locator("iframe[data-gea-workbench]")).toHaveClass(/gea-login-frame/);
   allowLogin = true;
   await expect.poll(async () => (await app.rpc("status")).value.authenticated).toBe(true);
   await expect(page.locator('.gea-user-avatar img')).toHaveAttribute('src','https://avatar.test/feishu.png');

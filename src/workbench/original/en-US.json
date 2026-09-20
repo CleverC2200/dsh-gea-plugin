@@ -366,10 +366,6 @@
       "ariaLabel": "Regional manager demand forecast approval workbench",
       "title": "Sales plan approval",
       "pendingSummary": "{{count}} awaiting my approval",
-      "workspaceTabs": {
-        "ariaLabel": "Plan workspace pages",
-        "evaluationEmpty": "The regional plan evaluation page is empty until the business prototype is available."
-      },
       "fixtureTag": "Sample data · not connected to production",
       "scopeAria": "Current approval scope",
       "planMonth": "Plan month",

@@ -541,7 +541,15 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       });
     return () => controller.abort();
   }, [status?.authenticated, status?.environment]);
-  if (!status?.authenticated)
+  // 面板切换会重建本文档：首次 status 返回前先显示中性加载态，
+  // 避免刚切进业务面板时闪出「扫码登录」页面。
+  if (!status)
+    return (
+      <main className="gea-workbench-boot" aria-busy="true" aria-label={t("loading")}>
+        <span className="gea-wait-dots" aria-hidden="true"><i /><i /><i /></span>
+      </main>
+    );
+  if (!status.authenticated)
     return (
       <main className="gea-login-page">
         <section className="gea-login-card" aria-label="GEA">
