@@ -49,7 +49,7 @@ test(
     ).toBeVisible();
 
     // 审批页保留单据类型切换，但不再有「区域计划评估」这排工作台页签。
-    await page.getByRole("button", { name: "需求提报", exact: true }).click();
+    await page.getByRole("button", { name: "销售计划", exact: true }).click();
     const workbench = page.frameLocator("iframe[data-gea-workbench]");
     const header = workbench.locator("header").first();
     await expect(

@@ -20,6 +20,7 @@ import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import { zh, en, type CopyKey } from "./client/locales.ts";
 import { Inbox } from "./client/inbox.tsx";
 import {registerHtmlClient} from "./html-client.tsx";
+import {approvalConversation,inventoryConversation,type ConversationPromptConfig} from "./client/conversation-prompts.ts";
 import {isGeaBusinessPanel,registeredBusinessPanels} from "./business-navigation.ts";
 import brandLogo from "./client/brand-logo.png";
 import shellCss from "./client/shell.css";
@@ -318,7 +319,7 @@ export function apply(ctx: Context): void {
           </div>
           <div className="gea-shell-nav-section">
             <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.plan} onClick={() => toggle("plan")}><NavIcon kind="calendar" /><span>计划管理</span><Chevron open={expanded.plan} /></button>
-            {expanded.plan && <div className="gea-shell-nav-children">{child({ id: PANEL, title: t("demandForecastAgent") })}{child({ id: REGIONAL_PLAN_PANEL, title: t("regionalPlanWorkbench") })}{planPanels.map(child)}</div>}
+            {expanded.plan && <div className="gea-shell-nav-children">{child({ id: PANEL, title: t("salesPlan") })}{child({ id: REGIONAL_PLAN_PANEL, title: t("regionalPlanWorkbench") })}{planPanels.map(child)}</div>}
           </div>
           <div className="gea-shell-nav-section">
             <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.inventory} onClick={() => toggle("inventory")}><NavIcon kind="warehouse" /><span>库存管理</span><Chevron open={expanded.inventory} /></button>
@@ -633,7 +634,7 @@ export function apply(ctx: Context): void {
           logoRow,
         )}
         {conversationHero && createPortal(
-          <AgentWelcome onPrompt={(prompt) => {
+          <AgentWelcome agent={activePanel === PANEL ? approvalConversation : inventoryConversation} onPrompt={(prompt) => {
             const conversation = document.querySelector<HTMLElement>(
               ".AppFrame_rightbarCol [data-slot='main.conversation']",
             ) ?? conversationHero;
@@ -706,28 +707,27 @@ export function apply(ctx: Context): void {
   );
 }
 
-function AgentWelcome({ onPrompt }: { onPrompt: (prompt: string) => void }) {
-  const actions = [
-    ["▥", "查看整体库存情况", "请分析当前整体库存情况"],
-    ["◔", "查看品类库存", "请查看各品类库存情况"],
-    ["▤", "生成补货建议", "请生成本周补货建议"],
-    ["♧", "分析重点客户", "请分析需要重点关注的客户"],
-  ];
-  const prompts = ["哪些客户需要补货？", "重点客户的库存情况如何？", "生成下周的补货建议", "导出客户库存分析报告"];
+function AgentWelcome({
+  agent,
+  onPrompt,
+}: {
+  agent: ConversationPromptConfig;
+  onPrompt: (prompt: string) => void;
+}) {
   return (
-    <section className="gea-agent-welcome" aria-label="经销商补货助手">
+    <section className="gea-agent-welcome" aria-label={agent.name}>
       <div className="gea-agent-identity">
         <div className="gea-agent-avatar" aria-hidden="true">
           <span className="gea-agent-antenna" />
           <span className="gea-agent-face"><i /><i /></span>
         </div>
-        <h2>经销商补货助手</h2>
-        <p>我可以帮你分析客户库存，生成补货建议并跟进执行进度</p>
+        <h2>{agent.name}</h2>
+        <p>{agent.intro}</p>
       </div>
       <div className="gea-agent-block">
         <h3>常用功能</h3>
         <div className="gea-agent-actions">
-          {actions.map(([icon, label, prompt]) => (
+          {agent.actions.map(({ icon, label, prompt }) => (
             <button key={label} type="button" onClick={() => onPrompt(prompt)}>
               <span className="gea-agent-action-icon" aria-hidden="true">{icon}</span>
               <span>{label}</span>
@@ -738,7 +738,7 @@ function AgentWelcome({ onPrompt }: { onPrompt: (prompt: string) => void }) {
       </div>
       <div className="gea-agent-block gea-agent-prompts">
         <h3>你可以这样问</h3>
-        {prompts.map((prompt) => <button key={prompt} type="button" onClick={() => onPrompt(prompt)}>{prompt}</button>)}
+        {agent.prompts.map((prompt) => <button key={prompt} type="button" onClick={() => onPrompt(prompt)}>{prompt}</button>)}
       </div>
     </section>
   );

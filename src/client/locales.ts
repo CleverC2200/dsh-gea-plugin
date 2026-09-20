@@ -262,7 +262,7 @@ const copy = {
   geaBusiness: ["GEA平台", "GEA platform"],
   businessFunctions: ["业务功能", "Business functions"],
   planManagement: ["计划管理", "Plan management"],
-  demandForecastAgent: ["需求提报", "Demand submission"],
+  salesPlan: ["销售计划", "Sales plan"],
   regionalPlanWorkbench: ["区域计划工作台", "Regional plan workbench"],
   apiLog: ["接口日志", "API logs"],
   inboxNotConnected: [
