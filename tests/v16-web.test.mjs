@@ -87,7 +87,7 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  const result=await app.rpc('sales-plan/draft',{planId:'p',versionId:'v'});
  assert.equal(result.value.draft.adjustments[0].adjustQty,'2.125');
  const forged=await app.rpc('sales-plan/draft',{planId:'p',versionId:'v',draft:{...result.value.draft,sourceSnapshot:'forged'}});
- assert.equal(forged.ok,true,'本地草稿保存不回查 GEA，也不把 sourceSnapshot 当服务端令牌');
+ assert.equal(forged.ok,false,'伪造的草稿快照必须被拒绝，不能覆盖已验证草稿');
  const unchanged=await app.rpc('sales-plan/draft',{planId:'p',versionId:'v'});assert.equal(unchanged.value.draft.adjustments[0].adjustQty,'2.125');
  await mkdir('.runtime/v16-feedback',{recursive:true});await page.screenshot({path:'.runtime/v16-feedback/web-desktop.png',fullPage:true});
  await page.reload();

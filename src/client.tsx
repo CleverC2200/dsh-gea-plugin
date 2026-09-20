@@ -35,16 +35,6 @@ export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions", "
 const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;
-const HTML_PLUGIN_ITEMS = [
-  ["inventory-apsboard", "产销协同看板"],
-  ["inventory-apsdemand", "需求运营管理"],
-  ["inventory-apsdelivery", "交付运营管理"],
-  ["inventory-personal", "库存管理工作台"],
-  ["inventory-aqkc", "安全库存"],
-  ["inventory-dealer", "经销商库存"],
-  ["inventory-fc", "分仓库存"],
-  ["inventory-qll", "全链路库存"],
-] as const;
 
 /** 在框架管理的原生会话旁注册仅承载业务的中心文档。 */
 export function apply(ctx: Context): void {
@@ -256,7 +246,6 @@ export function apply(ctx: Context): void {
     wide,
     expandSidebar,
   }: PropsRuntime<"sidebar.workspaces">) {
-    const [selectedPlugin, setSelectedPlugin] = useState<string | null>(null);
     const [expanded, setExpanded] = useState({ customer: true, plan: true, inventory: true });
     const activePanel = usePanelInfo((info) => info.activePanelId);
     const [panels,setPanels]=useState(()=>registeredBusinessPanels(ctx.slots.entries("main")));
@@ -279,32 +268,19 @@ export function apply(ctx: Context): void {
         </nav>
       );
     }
-    const openPlugin = (pluginId: string) => {
-      setSelectedPlugin(pluginId);
-      ctx.layout.selectPanel(PANEL);
-      if (workbenchAuthenticated && !hideWorkbenchConversation)
-        hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
-      document.querySelector<HTMLIFrameElement>("iframe[data-gea-workbench]")?.contentWindow?.postMessage(
-        { type: "gea:select-plugin", pluginId }, window.location.origin,
-      );
-    };
-    const openBusinessWorkbench = () => {
-      ctx.layout.selectPanel(PANEL);
-      if (workbenchAuthenticated && !hideWorkbenchConversation)
-        hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
-      document.querySelector<HTMLIFrameElement>("iframe[data-gea-workbench]")?.contentWindow?.postMessage(
-        { type: "gea:select-plugin", pluginId: "workbench" }, window.location.origin,
-      );
-    };
     const toggle = (section: "customer" | "plan" | "inventory") => setExpanded((value) => ({ ...value, [section]: !value[section] }));
     const item = (label: string, icon: NavIconKind, action?: () => void, active = false) => (
-      <button type="button" className={`gea-shell-nav-item${active ? " is-active" : ""}`} onClick={action}>
+      <button type="button" className={`gea-shell-nav-item${active ? " is-active" : ""}`} onClick={action} aria-current={active ? "page" : undefined}>
         <NavIcon kind={icon} /><span className="gea-shell-label">{label}</span>
       </button>
     );
-    const child = (label: string, action?: () => void, active = false) => (
-      <button type="button" className={`gea-shell-nav-child${active ? " is-active" : ""}`} onClick={action}><span className="gea-shell-label">{label}</span></button>
+    const child = ({ id, title }: { id: string; title: string }) => (
+      <button key={id} type="button" data-gea-business-entry={id} aria-current={activePanel === id ? "page" : undefined} className={`gea-shell-nav-child${activePanel === id ? " is-active" : ""}`} onClick={() => ctx.layout.selectPanel(id as MainPanelId)}><span className="gea-shell-label">{title}</span></button>
     );
+    const board = panels.find(({ id }) => id === "inventory-apsboard");
+    const customerPanels = panels.filter(({ id }) => id === "inventory-dealer");
+    const planPanels = panels.filter(({ id }) => id.startsWith("inventory-aps") && id !== "inventory-apsboard");
+    const inventoryPanels = panels.filter(({ id }) => id !== "inventory-dealer" && !id.startsWith("inventory-aps"));
     return (
       <nav
         className="gea-shell-navigation"
@@ -312,21 +288,21 @@ export function apply(ctx: Context): void {
       >
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
-          {item("产销协同工作台", "desktop", openBusinessWorkbench, activePanel === PANEL && selectedPlugin === null)}
+          {board && item("产销协同工作台", "desktop", () => ctx.layout.selectPanel(board.id as MainPanelId), activePanel === board.id)}
           <div className="gea-shell-nav-section">
-            <button type="button" className="gea-shell-nav-heading" onClick={() => toggle("customer")}><NavIcon kind="users" /><span>客户管理</span><Chevron open={expanded.customer} /></button>
-            {expanded.customer && <div className="gea-shell-nav-children">{child("经销商工作台", () => openPlugin("inventory-personal"))}{child("经销商库存", () => openPlugin("inventory-dealer"))}{child("经销商补货", () => openPlugin("inventory-dealer"), selectedPlugin === "inventory-dealer")}</div>}
+            <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.customer} onClick={() => toggle("customer")}><NavIcon kind="users" /><span>客户管理</span><Chevron open={expanded.customer} /></button>
+            {expanded.customer && <div className="gea-shell-nav-children">{customerPanels.map(child)}</div>}
           </div>
           <div className="gea-shell-nav-section">
-            <button type="button" className="gea-shell-nav-heading" onClick={() => toggle("plan")}><NavIcon kind="calendar" /><span>计划管理</span><Chevron open={expanded.plan} /></button>
-            {expanded.plan && <div className="gea-shell-nav-children">{child("计划管理工作台", openBusinessWorkbench)}{child("销售计划")}{child("生产计划")}{child("排产计划")}</div>}
+            <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.plan} onClick={() => toggle("plan")}><NavIcon kind="calendar" /><span>计划管理</span><Chevron open={expanded.plan} /></button>
+            {expanded.plan && <div className="gea-shell-nav-children">{child({ id: PANEL, title: t("demandForecastAgent") })}{planPanels.map(child)}</div>}
           </div>
           <div className="gea-shell-nav-section">
-            <button type="button" className="gea-shell-nav-heading" onClick={() => toggle("inventory")}><NavIcon kind="warehouse" /><span>库存管理</span><Chevron open={expanded.inventory} /></button>
-            {expanded.inventory && <div className="gea-shell-nav-children">{child("库存管理工作台", () => openPlugin("inventory-personal"), selectedPlugin === "inventory-personal")}{child("全链库存", () => openPlugin("inventory-qll"), selectedPlugin === "inventory-qll")}{child("基地库存", () => openPlugin("inventory-aqkc"), selectedPlugin === "inventory-aqkc")}{child("分仓库存", () => openPlugin("inventory-fc"), selectedPlugin === "inventory-fc")}</div>}
+            <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.inventory} onClick={() => toggle("inventory")}><NavIcon kind="warehouse" /><span>库存管理</span><Chevron open={expanded.inventory} /></button>
+            {expanded.inventory && <div className="gea-shell-nav-children">
+              {inventoryPanels.map(child)}
+            </div>}
           </div>
-          <button type="button" onClick={() => ctx.layout.selectPanel(PANEL)} title={t("demandForecastAgent")} aria-label={t("demandForecastAgent")} className={`gea-shell-child${activePanel === PANEL ? " is-active" : ""}`}><span className="gea-shell-label">{t("demandForecastAgent")}</span></button>
-          {panels.map(item=><button key={item.id} type="button" data-gea-business-entry={item.id} title={item.title} aria-current={activePanel===item.id?"page":undefined} onClick={()=>ctx.layout.selectPanel(item.id as MainPanelId)} className={`gea-shell-child${activePanel===item.id?" is-active":""}`}><span className="gea-shell-label">{item.title}</span></button>)}
         </div>
       </nav>
     );
@@ -629,15 +605,26 @@ export function apply(ctx: Context): void {
         )}
         {conversationHero && createPortal(
           <AgentWelcome onPrompt={(prompt) => {
-            const input = conversationHero.querySelector<HTMLElement>("textarea, [contenteditable='true']");
+            const conversation = document.querySelector<HTMLElement>(
+              ".AppFrame_rightbarCol [data-slot='main.conversation']",
+            ) ?? conversationHero;
+            const input = Array.from(
+              conversation.querySelectorAll<HTMLElement>("textarea, [contenteditable='true']"),
+            ).find((element) => element.getClientRects().length > 0 && !element.hasAttribute("disabled"));
             if (!input) return;
             if (input instanceof HTMLTextAreaElement) {
               const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
               setter?.call(input, prompt);
             } else {
-              input.textContent = prompt;
+              input.focus();
+              document.execCommand("selectAll", false);
+              if (!document.execCommand("insertText", false, prompt)) {
+                input.replaceChildren(document.createTextNode(prompt));
+                input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
+              }
             }
-            input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
+            if (input instanceof HTMLTextAreaElement)
+              input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
             input.focus();
           }} />,
           conversationHero,

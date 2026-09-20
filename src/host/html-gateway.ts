@@ -42,6 +42,12 @@ export async function prepareGatewayLaunch(
   identity.throwIfAborted();
   const result = payload?.result;
   const context = result?.gatewayContext;
+  if (result?.accessDecision?.allowed === false && result.accessDecision.code === "AGENT_ACCESS_DENIED") {
+    throw Object.assign(
+      new Error("当前账号无权访问此工作台，请联系管理员开通对应 Agent 权限。"),
+      { code: "AGENT_ACCESS_DENIED", retryable: false },
+    );
+  }
   if (
     payload?.success !== true ||
     result?.accessDecision?.allowed !== true ||

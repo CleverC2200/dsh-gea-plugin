@@ -35,7 +35,7 @@ test("registry package versions do not drift between development and distributio
       ),
   );
   const pnpmVersions = new Set(
-    Object.keys(pnpm.packages).filter((key) => !key.includes("@https:")),
+    Object.keys(pnpm.packages).filter((key) => !key.includes("@https:") && !key.includes("@git+")),
   );
   assert.deepEqual(
     [...pnpmVersions].sort(),
