@@ -95,7 +95,7 @@ test(
         .getByText("contract-a-only", { exact: true })
         .first()
         .waitFor();
-      await page.locator(".gea-brand-switch").click();
+      await page.locator('[data-gea-business-entry="gea-proof"]').click();
       await frame
         .getByRole("heading", { name: "销售计划审批", exact: true })
         .waitFor();

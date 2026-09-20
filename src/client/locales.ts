@@ -257,8 +257,6 @@ const copy = {
   ],
   businessNavigation: ["业务导航", "Business navigation"],
   openBusinessNavigation: ["展开业务菜单", "Expand business menu"],
-  switchToDsh: ["切换到 DSH 对话版", "Switch to DSH conversations"],
-  switchToBusiness: ["切换到 GEA 业务版", "Switch to GEA business"],
   newConversation: ["新会话", "New conversation"],
   geaBusiness: ["GEA平台", "GEA platform"],
   businessFunctions: ["业务功能", "Business functions"],

@@ -21,6 +21,7 @@ import { zh, en, type CopyKey } from "./client/locales.ts";
 import { Inbox } from "./client/inbox.tsx";
 import {registerHtmlClient} from "./html-client.tsx";
 import {isGeaBusinessPanel,registeredBusinessPanels} from "./business-navigation.ts";
+import brandLogo from "./client/brand-logo.png";
 import shellCss from "./client/shell.css";
 import workbenchCss from "./workbench/workbench.css";
 import { ApiLogCenter } from "./workbench/api-log-center.tsx";
@@ -307,32 +308,13 @@ export function apply(ctx: Context): void {
       </nav>
     );
   }
-  function Brand({ usePanelInfo }: PropsRuntime<"sidebar.brand.mark">) {
-    const business = usePanelInfo(
-      (info) => isGeaBusinessPanel(info.activePanelId, ctx.slots.entries("main")) || info.activePanelId === API_LOG_PANEL,
-    );
-    const switchPage = () => ctx.layout.selectPanel(business ? null : PANEL);
+  function Brand() {
+    // 品牌区只是标识，不再承担页面切换，也不触发 DSH 原生的「新建会话」。
     return (
       <>
         <style>{shellCss}</style>
-        <span
-          className="gea-brand-switch"
-          role="button"
-          tabIndex={0}
-          aria-label={t(business ? "switchToDsh" : "switchToBusiness")}
-          onClick={(event) => {
-            event.stopPropagation();
-            switchPage();
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              event.stopPropagation();
-              switchPage();
-            }
-          }}
-        >
-          <span className="gea-shell-logo">GEA</span>
+        <span className="gea-brand-switch" onClick={(event) => event.stopPropagation()}>
+          <img className="gea-shell-logo" src={brandLogo} alt="" />
         </span>
       </>
     );
@@ -341,16 +323,7 @@ export function apply(ctx: Context): void {
     const business = usePanelInfo(
       (info) => isGeaBusinessPanel(info.activePanelId, ctx.slots.entries("main")) || info.activePanelId === API_LOG_PANEL,
     );
-    return (
-      <span
-        onClick={(event) => {
-          event.stopPropagation();
-          ctx.layout.selectPanel(business ? null : PANEL);
-        }}
-      >
-        {t(business ? "geaBusiness" : "dshConversation")}
-      </span>
-    );
+    return <span onClick={(event) => event.stopPropagation()}>{t(business ? "geaBusiness" : "dshConversation")}</span>;
   }
   function UserAvatar({ wide }: PropsRuntime<"settings.trigger">) {
     const { name, avatarUrl } = useIdentity();
@@ -476,9 +449,13 @@ export function apply(ctx: Context): void {
     const [region, setRegion] = useState<HTMLElement | null>(null);
     const [logoRow, setLogoRow] = useState<HTMLElement | null>(null);
     const [conversationHero, setConversationHero] = useState<HTMLElement | null>(null);
-    const [sidebarMode, setSidebarMode] = useState<"workspace" | "function">("workspace");
+    const [sidebarMode, setSidebarMode] = useState<"workspace" | "function">(() => (business ? "function" : "workspace"));
+    const previousBusiness = useRef(business);
     useEffect(() => {
-      if (business) setSidebarMode("function");
+      // Selecting a business panel opens its navigation, but the tabs stay the user's choice:
+      // switching back to 工作区 must not force the sidebar back to 功能区.
+      if (business && !previousBusiness.current) setSidebarMode("function");
+      previousBusiness.current = business;
     }, [business]);
     useEffect(() => {
       const renameNewSession = () => {
@@ -540,14 +517,8 @@ export function apply(ctx: Context): void {
     const expandSidebar = () => {
       document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']")?.click();
     };
-    const selectWorkspace = () => {
-      setSidebarMode("workspace");
-      if (business) {
-        hideWorkbenchConversation?.();
-        hideWorkbenchConversation = undefined;
-        ctx.layout.selectPanel(null);
-      }
-    };
+    // 工作区 only swaps the sidebar surface: the center document and the rail conversation stay.
+    const selectWorkspace = () => setSidebarMode("workspace");
     const selectFunction = () => {
       setSidebarMode("function");
       if (!business) ctx.layout.selectPanel(PANEL);
@@ -582,7 +553,7 @@ export function apply(ctx: Context): void {
     return (
       <>
         {modeTabs}
-        {createPortal(
+        {sidebarMode === "function" && createPortal(
           <div className="gea-business-navigation gea-business-menu-panel">
             <Navigation
               usePanelInfo={usePanelInfo}

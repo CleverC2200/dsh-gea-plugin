@@ -202,14 +202,17 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   display: none;
 }
 .gea-shell-logo {
-  background: #df1732;
-  color: white;
-  width: 27px;
-  height: 27px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: 9px;
+  display: block;
+  width: 30px;
+  height: 30px;
+  margin-right: 6px;
+  object-fit: contain;
+}
+/* 品牌名沿用思念红，和品牌圆标组成统一的「图 + 字」标识。 */
+[data-slot="sidebar.brand.name"] span {
+  color: #d70a1c;
+  font-family: "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", Arial, sans-serif;
+  font-size: 16px;
   font-weight: 700;
 }
 .gea-shell-caption {
@@ -381,22 +384,46 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   background: #fff;
   border-left: 1px solid #e5e8ed;
 }
+/* The rail keeps DSH's native composer card; only its clearance is tightened, because the
+   hero-sized clearance wastes most of a 440px column. Both conversation phases inherit it,
+   and it must sit on the conversation root because DSH declares the same vars there. */
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench])
+  [data-rightbar-col]
+  [data-phase] {
+  --dsh-composer-card-max-width: 100%;
+  --dsh-composer-side-clearance: 8px;
+}
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench])
+  [data-phase="hero"]
+  :has(> [data-slot="conversation.composer.bar"]) {
+  padding: 8px 0;
+}
+/* The rail reserves a scrollbar gutter the composer never uses; drop it so the card sits
+   symmetrically against both rail edges instead of 8px further from the right one. */
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench])
+  [data-rightbar-col]
+  [data-conversation-scroll] {
+  scrollbar-gutter: auto;
+  margin-right: 0;
+}
 [data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] [data-composer-seat] {
-  border-top: 1px solid #edf0f3;
   background: #fff;
 }
 [data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] .wSkVaW_composerHero > .pXSMma_root,
 [data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] .wSkVaW_heroWorkspaceRow {
   display: none;
 }
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] [data-conversation-scroll] {
-  padding-inline: 18px;
-}
-
 /* Agent landing surface: keep DSH's native composer and put GEA's useful entry points above it. */
 [data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] {
   position: relative;
   overflow: hidden;
+  flex-direction: column;
+}
+/* The conversation body shrinks to the composer so the composer is docked, not overlaid. */
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] > .wSkVaW_body {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
 }
 .gea-agent-welcome {
   position: absolute;
@@ -406,15 +433,21 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   padding: 28px 18px 16px;
   background: linear-gradient(180deg, #fff8f9 0, #fff 35%);
 }
+/* With the workbench beside it, the landing surface takes the space above the docked composer. */
+[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] > .gea-agent-welcome {
+  position: relative;
+  inset: auto;
+  order: -1;
+  flex: 1 1 auto;
+  min-height: 0;
+  z-index: 1;
+}
 [data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] [data-composer-seat] {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 3;
-  flex: 0 0 104px;
-  min-height: 104px;
-  border-top: 1px solid #edf0f3;
+  position: relative;
+  inset: auto;
+  z-index: 1;
+  flex: 0 0 auto;
+  min-height: 0;
   background: #fff;
 }
 .gea-agent-identity { text-align: center; }

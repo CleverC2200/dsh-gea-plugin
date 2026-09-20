@@ -25,7 +25,7 @@ const plan = {
 };
 
 test(
-  "workbench login, brand switching, avatar settings and responsive layout use the current shell",
+  "workbench login, brand label, avatar settings and responsive layout use the current shell",
   { timeout: 90000 },
   async (t) => {
     const app = await profile(t, {
@@ -259,11 +259,17 @@ test(
       await expect.poll(() => avatarImage.evaluate(img => img.naturalWidth)).toBe(1);
       await avatarImage.dispatchEvent("error");
       await expect(page.locator(".gea-user-avatar")).toHaveText("测");
+      const brandLogo = page.locator(".gea-shell-logo");
+      assert.equal(await brandLogo.evaluate((el) => el.tagName), "IMG");
+      assert.match(
+        await brandLogo.getAttribute("src"),
+        /^data:image\/png;base64,/,
+      );
       assert.equal(
         await page
-          .locator(".gea-shell-logo")
-          .evaluate((el) => getComputedStyle(el).backgroundColor),
-        "rgb(237, 0, 0)",
+          .locator('[data-slot="sidebar.brand.name"] span')
+          .evaluate((el) => getComputedStyle(el).color),
+        "rgb(215, 10, 28)",
       );
       assert.equal(
         await page
@@ -271,18 +277,24 @@ test(
           .evaluate((el) => getComputedStyle(el).borderRadius),
         "50%",
       );
-      for (let view = 0; view < 2; view++) {
+      // The brand mark is a label now: clicking it must not swap the page.
+      await brand.click();
+      await expect(page.locator("iframe[data-gea-workbench]")).toBeVisible();
+      for (const view of ["business", "conversation"]) {
+        if (view === "conversation") {
+          await page.getByRole("button", { name: "AI工作台", exact: true }).click();
+          await expect(page.locator("iframe[data-gea-workbench]")).toHaveCount(0);
+        }
         await page.getByRole("button", { name: "账户菜单", exact: true }).click();
         await page.getByRole("menuitem", { name: "设置", exact: true }).click();
         await page
           .getByRole("button", { name: "通用设置", exact: true })
           .waitFor();
         await page.getByRole("button", { name: "关闭", exact: true }).click();
-        await brand.click();
-        await page
-          .locator("iframe[data-gea-workbench]")
-          .waitFor({ state: view === 0 ? "detached" : "visible" });
       }
+      // Back to the business page so the reload below still restores the workbench.
+      await page.locator('[data-gea-business-entry="gea-proof"]').click();
+      await expect(page.locator("iframe[data-gea-workbench]")).toBeVisible();
       assert.equal(
         await page
           .getByRole("button", { name: "DSH 对话", exact: true })

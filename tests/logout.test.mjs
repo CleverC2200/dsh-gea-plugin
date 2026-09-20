@@ -58,7 +58,9 @@ test("Chrome logout works from both shells, retries failure and signs out other 
   await page.bringToFront();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
-  await page.locator(".gea-brand-switch").click();
+  // The brand no longer switches pages; open a fresh conversation for the second shell.
+  await page.getByRole("button", { name: "AI工作台", exact: true }).click();
+  await expect(page.locator("iframe[data-gea-workbench]")).toHaveCount(0);
   await page.getByRole("button", { name: "账户菜单", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("menuitem", { name: "设置", exact: true })).toBeFocused();
