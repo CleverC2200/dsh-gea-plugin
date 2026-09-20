@@ -361,24 +361,24 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 
 /* The GEA side conversation keeps its native composer at the column foot. */
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench])
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
   [data-phase="hero"]
   [data-conversation-scroll] {
   justify-content: flex-end;
 }
 
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench])
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
   [data-phase="hero"]
   [data-composer-seat] {
   flex: 1;
 }
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench])
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
   [data-phase="hero"]
   [data-chain-overlay-fallback="conversation.composer"]
   > div {
   flex: 1;
 }
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench])
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
   [data-phase="hero"]
   [data-chain-overlay-fallback="conversation.composer"]
   > div
@@ -388,47 +388,47 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 
 /* The right rail is the single native conversation surface. */
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] {
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] {
   background: #fff;
   border-left: 1px solid #e5e8ed;
 }
 /* The rail keeps DSH's native composer card; only its clearance is tightened, because the
    hero-sized clearance wastes most of a 440px column. Both conversation phases inherit it,
    and it must sit on the conversation root because DSH declares the same vars there. */
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench])
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
   [data-rightbar-col]
   [data-phase] {
   --dsh-composer-card-max-width: 100%;
   --dsh-composer-side-clearance: 8px;
 }
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench])
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
   [data-phase="hero"]
   :has(> [data-slot="conversation.composer.bar"]) {
   padding: 8px 0;
 }
 /* The rail reserves a scrollbar gutter the composer never uses; drop it so the card sits
    symmetrically against both rail edges instead of 8px further from the right one. */
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench])
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked)
   [data-rightbar-col]
   [data-conversation-scroll] {
   scrollbar-gutter: auto;
   margin-right: 0;
 }
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] [data-composer-seat] {
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] [data-composer-seat] {
   background: #fff;
 }
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] .wSkVaW_composerHero > .pXSMma_root,
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] .wSkVaW_heroWorkspaceRow {
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] .wSkVaW_composerHero > .pXSMma_root,
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] .wSkVaW_heroWorkspaceRow {
   display: none;
 }
 /* Agent landing surface: keep DSH's native composer and put GEA's useful entry points above it. */
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] {
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] {
   position: relative;
   overflow: hidden;
   flex-direction: column;
 }
 /* The conversation body shrinks to the composer so the composer is docked, not overlaid. */
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] > .wSkVaW_body {
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] > .wSkVaW_body {
   flex: 0 0 auto;
   height: auto;
   min-height: 0;
@@ -442,7 +442,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   background: linear-gradient(180deg, #fff8f9 0, #fff 35%);
 }
 /* With the workbench beside it, the landing surface takes the space above the docked composer. */
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] > .gea-agent-welcome {
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] > .gea-agent-welcome {
   position: relative;
   inset: auto;
   order: -1;
@@ -450,7 +450,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   min-height: 0;
   z-index: 1;
 }
-[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) [data-phase="hero"] [data-composer-seat] {
+[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) [data-phase="hero"] [data-composer-seat] {
   position: relative;
   inset: auto;
   z-index: 1;
@@ -651,15 +651,15 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 
 /* GEA's approval table needs more room than a chat-only center column on tablets. */
 @media (min-width: 801px) and (max-width: 1200px) {
-  .AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) {
+  .AppFrame_frame[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) {
     grid-template-columns: 180px minmax(0, 1fr) !important;
     grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
     transition: none;
   }
-  .AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) > .AppFrame_sidebarCol { grid-row: 1 / -1; }
-  .AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) > .AppFrame_centerCol { grid-column: 2; grid-row: 1; min-height: 0; }
-  .AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) > .AppFrame_rightbarCol { grid-column: 2; grid-row: 2; min-height: 0; border-top: 1px solid var(--dsw-alias-border-l3); }
-  .AppFrame_frame[data-conversation-beside-panel]:has(iframe[data-gea-workbench]) > .AppFrame_handle { display: none; }
+  .AppFrame_frame[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) > .AppFrame_sidebarCol { grid-row: 1 / -1; }
+  .AppFrame_frame[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) > .AppFrame_centerCol { grid-column: 2; grid-row: 1; min-height: 0; }
+  .AppFrame_frame[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) > .AppFrame_rightbarCol { grid-column: 2; grid-row: 2; min-height: 0; border-top: 1px solid var(--dsw-alias-border-l3); }
+  .AppFrame_frame[data-conversation-beside-panel]:is(:has(iframe[data-gea-workbench]), .gea-rail-docked) > .AppFrame_handle { display: none; }
   .AppFrame_frame[data-conversation-beside-panel][data-sidebar-collapsed]:has(iframe[data-gea-workbench]) { grid-template-columns: 64px minmax(0, 1fr) !important; }
 }
 

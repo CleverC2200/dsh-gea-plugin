@@ -476,6 +476,15 @@ export function apply(ctx: Context): void {
       frame?.classList.toggle("gea-api-fullscreen", activePanel === API_LOG_PANEL);
       return () => frame?.classList.remove("gea-api-fullscreen");
     }, [activePanel]);
+    // 会话栏沿用「工作台在旁边」的停靠布局：输入框贴底、首页区块在流内。
+    useEffect(() => {
+      const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
+      frame?.classList.toggle(
+        "gea-rail-docked",
+        activePanel === PANEL || activePanel === REGIONAL_PLAN_PANEL,
+      );
+      return () => frame?.classList.remove("gea-rail-docked");
+    }, [activePanel]);
     // 业务面板之间切换时，框架默认会用 400ms 动画改列宽，
     // 动画期间工作台跟着连续重排，看起来像页面闪动；切换瞬间先关掉这个动画。
     useEffect(() => {
