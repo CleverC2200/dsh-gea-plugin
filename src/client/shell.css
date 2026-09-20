@@ -460,13 +460,15 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-agent-identity { text-align: center; }
 .gea-agent-head {
+  order: -1;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 9px;
-  margin: -28px -18px 14px;
   padding: 11px 16px;
   border-bottom: 1px solid #eceff3;
-  background: rgba(255, 252, 252, 0.9);
+  background: #fffdfd;
+  z-index: 3;
 }
 .gea-agent-head-avatar { flex: none; width: 30px; height: 30px; border-radius: 50%; }
 .gea-agent-head-copy { display: grid; min-width: 0; gap: 0; }

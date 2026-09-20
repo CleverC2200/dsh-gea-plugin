@@ -503,6 +503,7 @@ export function apply(ctx: Context): void {
     const [region, setRegion] = useState<HTMLElement | null>(null);
     const [logoRow, setLogoRow] = useState<HTMLElement | null>(null);
     const [conversationHero, setConversationHero] = useState<HTMLElement | null>(null);
+    const [railColumn, setRailColumn] = useState<HTMLElement | null>(null);
     const [sidebarMode, setSidebarMode] = useState<"workspace" | "function">(() => (business ? "function" : "workspace"));
     const previousBusiness = useRef(business);
     useEffect(() => {
@@ -532,6 +533,7 @@ export function apply(ctx: Context): void {
             null,
         );
         setLogoRow(document.querySelector<HTMLElement>("[class*='_logoRow']"));
+        setRailColumn(document.querySelector<HTMLElement>(".AppFrame_rightbarCol"));
         setConversationHero(document.querySelector<HTMLElement>(
           ".AppFrame_rightbarCol [data-slot='main.conversation'] [data-phase='hero']",
         ));
@@ -645,16 +647,9 @@ export function apply(ctx: Context): void {
           </button>,
           logoRow,
         )}
+        {railColumn && createPortal(<ConversationHead agent={conversationAgentFor(activePanel)} />, railColumn)}
         {conversationHero && createPortal(
-          <AgentWelcome
-            agent={
-              activePanel === PANEL
-                ? approvalConversation
-                : activePanel === REGIONAL_PLAN_PANEL
-                  ? regionalPlanConversation
-                  : inventoryConversation
-            }
-            onPrompt={(prompt) => {
+          <AgentWelcome agent={conversationAgentFor(activePanel)} onPrompt={(prompt) => {
             const conversation = document.querySelector<HTMLElement>(
               ".AppFrame_rightbarCol [data-slot='main.conversation']",
             ) ?? conversationHero;
@@ -736,13 +731,6 @@ function AgentWelcome({
 }) {
   return (
     <section className="gea-agent-welcome" aria-label={agent.name}>
-      <header className="gea-agent-head">
-        <img className="gea-agent-head-avatar" src={agentAvatar} alt="" width={30} height={30} />
-        <span className="gea-agent-head-copy">
-          <span className="gea-agent-head-name">{agent.name}</span>
-          <span className="gea-agent-head-sub"><i aria-hidden="true" />{agent.headerSub}</span>
-        </span>
-      </header>
       <div className="gea-agent-identity">
         <img className="gea-agent-avatar" src={agentAvatar} alt="" width={72} height={72} />
         <h2>{agent.name}</h2>
@@ -771,6 +759,25 @@ function AgentWelcome({
       <p className="gea-agent-footnote">AI 生成内容请判断后使用</p>
     </section>
   );
+}
+
+/** 会话栏顶部常驻头（原型 phead）：冻结在会话区上方，不随内容滚动。 */
+function ConversationHead({ agent }: { agent: ConversationPromptConfig }) {
+  return (
+    <header className="gea-agent-head">
+      <img className="gea-agent-head-avatar" src={agentAvatar} alt="" width={30} height={30} />
+      <span className="gea-agent-head-copy">
+        <span className="gea-agent-head-name">{agent.name}</span>
+        <span className="gea-agent-head-sub"><i aria-hidden="true" />{agent.headerSub}</span>
+      </span>
+    </header>
+  );
+}
+
+function conversationAgentFor(panel: MainPanelId | null | undefined): ConversationPromptConfig {
+  if (panel === PANEL) return approvalConversation;
+  if (panel === REGIONAL_PLAN_PANEL) return regionalPlanConversation;
+  return inventoryConversation;
 }
 
 function AgentActionIcon({ kind, tone }: { kind: ConversationActionIcon; tone: ConversationActionTone }) {
