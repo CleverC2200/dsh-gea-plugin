@@ -494,14 +494,27 @@ export function apply(ctx: Context): void {
           ".AppFrame_rightbarCol [data-slot='main.conversation']",
         );
         if (!conversation) return;
-        const hide = (element: Element | undefined) => element?.setAttribute("data-gea-hidden-session-chrome", "");
-        const text = (element: Element) => element.textContent?.trim() ?? "";
-        hide([...conversation.querySelectorAll("button")].find((element) => text(element) === "workspace"));
+        const hide = (element: Element | null | undefined) => element?.setAttribute("data-gea-hidden-session-chrome", "");
+        const text = (element: Element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "";
+        // 0.1.6 renders the native hero as a brand row plus workspace and preset pickers above
+        // the composer, and the pickers are popup buttons rather than <button>. The business
+        // shell replaces all of it, so drop everything the composer sits behind while keeping
+        // the composer, its toolbar and the GEA panel itself.
+        const composer = conversation.querySelector("textarea, [contenteditable='true']");
+        for (let node: Element | null = composer; node && node !== conversation; node = node.parentElement) {
+          for (const sibling of [...(node.parentElement?.children ?? [])]) {
+            if (sibling === node) break;
+            if (sibling.querySelector(".gea-agent-welcome")) continue;
+            hide(sibling);
+          }
+        }
+        hide(conversation.querySelector("[aria-label='选择工作区']"));
+        hide(conversation.querySelector("[aria-label='需求预测']"));
+        hide([...conversation.querySelectorAll("button, [role='button']")].find((element) => text(element) === "workspace"));
         for (const label of ["选择打开方式", "更多操作"]) {
-          hide(conversation.querySelector(`button[aria-label='${label}']`) ?? undefined);
+          hide(conversation.querySelector(`button[aria-label='${label}']`));
         }
         hide([...conversation.querySelectorAll("[role='tab']")].find((element) => text(element) === "轨迹"));
-        hide([...conversation.querySelectorAll("*")].find((element) => element.children.length === 0 && text(element) === "需求预测"));
       };
       hideConversationChrome();
       const observer = new MutationObserver(hideConversationChrome);

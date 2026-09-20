@@ -14,7 +14,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(root, "desktop");
 const buildRoot = join(root, ".runtime", "electron-build");
 
-const SHELL_FILES = [
+export const SHELL_FILES = [
   "main.cjs",
   "config.cjs",
   "company.config.json",
@@ -28,6 +28,7 @@ const SHELL_FILES = [
   "plugin-store.mjs",
   "copy-graph.mjs",
   "installer.mjs",
+  "runtime-cookies.cjs",
   "onboarding.mjs",
   "preload.cjs",
 ];
@@ -56,6 +57,11 @@ async function assertDirectory(path, label) {
   catch { throw new Error(`${label} must be an existing directory: ${path}`); }
 }
 
+/** The packaged manifest must keep the data-schema contract the shell validates against. */
+export function stagedManifest(manifest) {
+  return { name: manifest.name, version: manifest.version, private: true, main: manifest.main, desktopDataSchema: manifest.desktopDataSchema };
+}
+
 async function prepareStaging(target) {
   const staging = join(buildRoot, "staging", target);
   await rm(staging, { recursive: true, force: true });
@@ -65,7 +71,7 @@ async function prepareStaging(target) {
   }
   const manifest = JSON.parse(await readFile(join(desktop, "package.json"), "utf8"));
   // A staging project must never inherit the workspace manifest or dependencies.
-  const staged = { name: manifest.name, version: manifest.version, private: true, main: manifest.main };
+  const staged = stagedManifest(manifest);
   const { writeFile } = await import("node:fs/promises");
   await writeFile(join(staging, "package.json"), JSON.stringify(staged, null, 2) + "\n");
   return staging;
