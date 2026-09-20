@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SHELL_FILES, validateDesktopPackage } from "./package-desktop.mjs";
+import { SHELL_FILES, stagedManifest, validateDesktopPackage } from "./package-desktop.mjs";
 
 const desktop = join(import.meta.dirname, "..", "desktop");
 
@@ -30,4 +30,11 @@ test("desktop package validation requires a platform payload", async t => {
 
 test("desktop package validation rejects unknown targets", async () => {
   await assert.rejects(() => validateDesktopPackage({ target: "linux", payloadRoot: tmpdir() }), /INVALID_DESKTOP_TARGET/);
+});
+
+test("the packaged manifest keeps the data schema the shell validates against", async () => {
+  const manifest = JSON.parse(await readFile(join(desktop, "package.json"), "utf8"));
+  assert.equal(manifest.desktopDataSchema, 2, "desktop/package.json must declare desktopDataSchema");
+  assert.equal(stagedManifest(manifest).desktopDataSchema, manifest.desktopDataSchema);
+  assert.equal(stagedManifest(manifest).main, manifest.main);
 });
