@@ -20,6 +20,8 @@ const allowed = new Set([
   "presets/agent-capabilities.json",
   "presets/gea-agent-hub/preset.yml",
   "presets/gea-agent-hub/agent.cordis.yml",
+  "default-presets/auto-negotiation/preset.yml",
+  "default-presets/auto-negotiation/agent.cordis.yml",
 ]);
 const [preview] = JSON.parse(
   execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {

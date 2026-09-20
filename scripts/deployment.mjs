@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolveEnvironments } from "../src/shared/environments.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
@@ -171,9 +171,11 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
         default: DEFAULT_PRESET_ID,
         includeShippedRoot: false,
         includeUserRoot: false,
+        // 默认预设随插件包分发（default-presets/）：客户端只更新插件、外壳还是旧的时候，
+        // 也必须能解析到 auto-negotiation，否则默认预设会找不到。
         roots: [
           { path: resolve(runtime, "native-presets"), trust: "system" },
-          { path: resolve(root, "presets"), trust: "system" },
+          ...presetRoots(root),
         ],
       },
     },
@@ -272,6 +274,20 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
  */
 export const DEFAULT_PRESET_ID = "auto-negotiation";
 export const DEFAULT_PRESET_NAME = "自动协商";
+
+/**
+ * 预设发现目录：先找插件包内的 default-presets（桌面端整包安装后的布局），
+ * 再找仓库根的 default-presets / presets（源码与开发态）。不存在的目录不登记。
+ */
+function presetRoots(root) {
+  return [
+    resolve(root, "node_modules/@cleverc2200/gea-dsh-prototype/default-presets"),
+    resolve(root, "default-presets"),
+    resolve(root, "presets"),
+  ]
+    .filter((path) => existsSync(path))
+    .map((path) => ({ path, trust: "system" }));
+}
 
 /** Expose only the original standard preset, without copying or modifying DSH's composition. */
 export async function prepareNativePreset(runtime, target) {

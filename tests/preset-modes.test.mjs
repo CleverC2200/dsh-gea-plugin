@@ -1,65 +1,82 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  mkdtemp,
-  mkdir,
-  writeFile,
-  readFile,
-  readdir,
-  rm,
-} from "node:fs/promises";
+import { createRequire } from "node:module";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
+  DEFAULT_PRESET_ID,
+  DEFAULT_PRESET_NAME,
   prepareNativePreset,
   deploymentPatch,
 } from "../scripts/deployment.mjs";
 
-test("默认预设沿用标准组合，只换 id 与显示名（自动协商）", async () => {
+const root = fileURLToPath(new URL("../", import.meta.url));
+const require = createRequire(import.meta.url);
+const shippedStandard = resolve(
+  dirname(require.resolve("@deepseek-ai/dsh-agent-presets/package.json")),
+  "presets/standard",
+);
+
+test("默认预设随插件包分发：显示名自动协商，组合与 DSH 标准预设逐字节一致", async () => {
+  const directory = join(root, "default-presets", DEFAULT_PRESET_ID);
+  assert.match(
+    await readFile(join(directory, "preset.yml"), "utf8"),
+    new RegExp(`^name: ${DEFAULT_PRESET_NAME}$`, "m"),
+  );
+  assert.equal(
+    await readFile(join(directory, "agent.cordis.yml"), "utf8"),
+    await readFile(join(shippedStandard, "agent.cordis.yml"), "utf8"),
+  );
+});
+
+test("开发/桌面两种布局都能发现默认预设，且清得掉旧的 standard 目录", async () => {
   const dir = await mkdtemp(join(tmpdir(), "gea-presets-"));
   try {
     const source = join(dir, "source");
-    const native = join(
-      source,
-      "packages/preset/agent-presets/presets/standard",
-    );
-    await mkdir(native, { recursive: true });
-    await writeFile(
-      join(native, "agent.cordis.yml"),
-      "original standard composition\n",
-    );
-    await writeFile(join(native, "preset.yml"), "name: 标准模式\n");
-    await prepareNativePreset(join(dir, "runtime"), native);
-    await prepareNativePreset(join(dir, "runtime"), native);
-    const entries = await readdir(join(dir, "runtime/native-presets"), {
-      withFileTypes: true,
-    });
-    assert.equal(entries.length, 1);
-    assert.equal(entries[0].isDirectory(), true);
-    assert.equal(entries[0].name, "auto-negotiation");
+    await mkdir(source, { recursive: true });
+    await writeFile(join(source, "agent.cordis.yml"), "original standard composition\n");
+    await writeFile(join(source, "preset.yml"), "name: 标准模式\n");
+    const runtime = join(dir, "runtime");
+
+    // 旧安装留下的 native-presets/standard（目录 与 指向源目录的软链两种形态）都会被清掉。
+    await mkdir(join(runtime, "native-presets/standard"), { recursive: true });
+    await writeFile(join(runtime, "native-presets/standard/preset.yml"), "name: 标准模式\n");
+    await prepareNativePreset(runtime, source);
     assert.equal(
-      await readFile(
-        join(dir, "runtime/native-presets/auto-negotiation/agent.cordis.yml"),
-        "utf8",
-      ),
+      (await readdir(join(runtime, "native-presets"))).includes("standard"),
+      false,
+      "旧目录应被清理",
+    );
+    await symlink(source, join(runtime, "native-presets/standard"), "dir");
+    await prepareNativePreset(runtime, source);
+    assert.equal(
+      (await readdir(join(runtime, "native-presets"))).includes("standard"),
+      false,
+      "旧软链应被清理且不删源目录",
+    );
+    assert.equal(
+      await readFile(join(source, "agent.cordis.yml"), "utf8"),
       "original standard composition\n",
     );
-    // 组合不变，只有显示名被改成「自动协商」。
-    assert.match(
-      await readFile(
-        join(dir, "runtime/native-presets/auto-negotiation/preset.yml"),
-        "utf8",
-      ),
-      /^name: 自动协商$/m,
+
+    // 发布补丁：默认指向 auto-negotiation；根目录按实际存在的目录登记。
+    const patch = () =>
+      deploymentPatch({ analysis: { mode: "receipt" } }, dir, runtime).find(
+        (row) => row.id === "agent-presets",
+      ).config;
+    assert.equal(patch().default, DEFAULT_PRESET_ID);
+    assert.equal(patch().includeShippedRoot, false);
+    assert.deepEqual(
+      patch().roots.map((entry) => entry.path),
+      [join(runtime, "native-presets")],
     );
-    const config = deploymentPatch(
-      { analysis: { mode: "receipt" } },
-      dir,
-      join(dir, "runtime"),
-    ).find((r) => r.id === "agent-presets").config;
-    assert.equal(config.default, "auto-negotiation");
-    assert.equal(config.includeShippedRoot, false);
-    assert.equal(config.roots.length, 2);
+    await mkdir(join(dir, "default-presets", DEFAULT_PRESET_ID), { recursive: true });
+    assert.deepEqual(
+      patch().roots.map((entry) => entry.path),
+      [join(runtime, "native-presets"), join(dir, "default-presets")],
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
