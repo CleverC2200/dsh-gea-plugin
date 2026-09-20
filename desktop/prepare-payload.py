@@ -40,7 +40,7 @@ if records['@deepseek-ai/dsh-client-modules']['version'] == '0.1.5-rc.2':
 (target / 'pnpm-workspace.yaml').write_text(json.dumps(workspace, indent=2) + '\n')
 (target / 'archives.json').write_text(json.dumps(records, indent=2) + '\n')
 shutil.copytree(args.node_distribution, target / 'node', symlinks=True)
-for name in ['runtime-start.mjs', 'onboarding.mjs', 'company-resources.mjs']:
+for name in ['runtime-start.mjs', 'onboarding.mjs', 'company-resources.mjs', 'html-plugins.mjs']:
     shutil.copy2(desktop / name, target / ('start.mjs' if name == 'runtime-start.mjs' else name))
 subprocess.run(['node', str(desktop / 'prepare-tools.mjs'), str(target)], check=True)
 subprocess.run(['node', str(target / 'tools/node_modules/pnpm/bin/pnpm.cjs'), 'install', '--prod', '--ignore-scripts', '--prefer-offline'], cwd=target, check=True)

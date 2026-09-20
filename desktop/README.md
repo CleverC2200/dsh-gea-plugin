@@ -54,7 +54,7 @@ Windows 工作流 `Check Windows installer` 仅通过手动运行触发，必须
 
 运行 `GEA_MANAGE_GRAPH=<payload或外置版本目录> node --test desktop/gea-mcp-bundle.test.mjs`，用实际分发插件和本地模拟网关验证登录后发现工具、退出后移除连接；此测试不访问生产业务数据。Consumer 授权问题使用实际登录用户做针对性诊断。
 
-使用 electron-builder 26.15.3，`GEA_DESKTOP_PAYLOAD_ROOT` 指向新构建根，包含 mac/payload、win/payload。各 payload 必须包含相应平台 Node、生产依赖、标准发行包、pnpm 11.27.0 工具与 runtime-start.mjs 的 start.mjs 副本、onboarding.mjs。不能把 Mac 原生模块复用到 Windows。
+使用 electron-builder 26.15.3，`GEA_DESKTOP_PAYLOAD_ROOT` 指向新构建根，包含 mac/payload、win/payload。各 payload 必须包含相应平台 Node、生产依赖、标准发行包、pnpm 11.27.0 工具与 runtime-start.mjs 的 start.mjs 副本、onboarding.mjs、company-resources.mjs、html-plugins.mjs。不能把 Mac 原生模块复用到 Windows。
 
 `npm run test:desktop` 运行不依赖安装包、Electron 或外部频道的快速桌面回归。`npm run test:desktop:electron` 使用 `GEA_ELECTRON_EXECUTABLE` 和 `GEA_DESKTOP_PAYLOAD` 运行真实 Electron 启动、恢复、凭据和首次业务页面回归。指定 `GEA_DESKTOP_TEST_GRAPH` 运行 desktop/runtime-graph.test.mjs 验证外置启动；指定 `GEA_DESKTOP_BASELINE`、`GEA_DESKTOP_NEXT`、`GEA_EXPECTED_BASELINE_VERSION` 和 `GEA_EXPECTED_NEXT_VERSION` 运行 desktop/version-switch.test.mjs 验证实际页面版本切换。
 
