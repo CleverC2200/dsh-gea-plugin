@@ -519,12 +519,18 @@ export function apply(ctx: Context): void {
         if (!conversation) return;
         const hide = (element: Element | null | undefined) => element?.setAttribute("data-gea-hidden-session-chrome", "");
         const text = (element: Element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "";
-        const innermost = (matches: (element: Element) => boolean) =>
-          [...conversation.querySelectorAll("*")].filter(matches).pop();
-        // The native hero shows its brand title plus workspace and preset pickers above the
-        // composer; the business shell replaces them, and 0.1.6 renders the pickers as popup
-        // buttons rather than <button>, so match by role and accessible name as well.
-        hide(innermost((element) => /^探索未至之境(\s*预览版)?$/.test(text(element))));
+        // 0.1.6 renders the native hero as a brand row plus workspace and preset pickers above
+        // the composer, and the pickers are popup buttons rather than <button>. The business
+        // shell replaces all of it, so drop everything the composer sits behind while keeping
+        // the composer, its toolbar and the GEA panel itself.
+        const composer = conversation.querySelector("textarea, [contenteditable='true']");
+        for (let node: Element | null = composer; node && node !== conversation; node = node.parentElement) {
+          for (const sibling of [...(node.parentElement?.children ?? [])]) {
+            if (sibling === node) break;
+            if (sibling.querySelector(".gea-agent-welcome")) continue;
+            hide(sibling);
+          }
+        }
         hide(conversation.querySelector("[aria-label='选择工作区']"));
         hide(conversation.querySelector("[aria-label='需求预测']"));
         hide([...conversation.querySelectorAll("button, [role='button']")].find((element) => text(element) === "workspace"));
