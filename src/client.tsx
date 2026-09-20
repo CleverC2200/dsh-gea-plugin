@@ -649,7 +649,8 @@ export function apply(ctx: Context): void {
       {
         name: "settings.section",
         id: API_LOG_PANEL,
-        order: 100,
+        // 紧跟在核心「插件」(order 15) 之后，排在 Agent 预设(20)、软件更新(60)之前。
+        order: 16,
         label: () => t("apiLog"),
         locale: "geaProof",
       },
