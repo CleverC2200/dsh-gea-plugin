@@ -10,6 +10,8 @@
 
 已有登录信息在后端启动前通过系统安全存储解密；系统授权提示的等待时间不计入后端本机通信的 5 秒超时。读取失败时显示启动错误并保留加密文件。指定 `GEA_ELECTRON_EXECUTABLE` 和 `GEA_DESKTOP_PAYLOAD` 运行 `node --test desktop/slow-login.test.mjs`，验证系统凭据读取耗时 8 秒时仍能恢复登录并打开工作台。
 
+后端启动前按 `gea-html-preview` 频道准备 GEA HTML 插件：`desktop/html-plugins.mjs` 匿名下载并校验 SHA-256，解包到 `data/html-plugins/<id>`，再用 `GEA_HTML_PLUGIN_ROOTS` 交给 GEA 插件。业务导航的经销商库存、安全库存、分仓库存等入口来自这些插件；已装且摘要一致的副本直接复用，频道暂时不可达时只缺少这些入口，不阻断后端启动，也不影响登录和会话。
+
 ## 独立插件版本
 
 首次从 payload 基线启动。菜单“插件版本 → 准备本地插件包”接收已构建 tgz，复制基线的代码与锁到用户目录暂存区，通过官方 `dsh plugin` 安装到该区。pnpm 由 payload/tools 提供，不调用同事机器上的开发工具。官方依赖逐项固定，安装后核对版本与公司插件的共享 Cordis 解析。
