@@ -5,6 +5,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {spawn} from 'node:child_process';
 import {configureWelcomeNotice} from './onboarding.mjs';
 import {companySources,provisionCompanyResources} from './company-resources.mjs';
+import {prepareHtmlPlugins} from './html-plugins.mjs';
 const payload=dirname(fileURLToPath(import.meta.url));
 const root=resolve(process.env.DSH_PLUGIN_GRAPH||payload);
 process.chdir(root);
@@ -49,7 +50,12 @@ const bundles=['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app','@cleverc2200/
 const existing=existsSync(manifestPath)?JSON.parse(await readFile(manifestPath,'utf8')):{};
 await writeFile(manifestPath,JSON.stringify({...existing,name:'dsh-profile-full',private:true,dependencies:graphManifest.dependencies,dsh:{...existing.dsh,profile:{...existing.dsh?.profile,bundles,patchReload:process.env.GEA_DESKTOP_DEV==='1'?'live':'startup'}}},null,2));
 
-const child=spawn(process.execPath,[join(root,'node_modules/@deepseek-ai/dsh/lib/bin.js'),'--profile','full','--patch',patchPath,'--host','127.0.0.1','--port',String(port),...(process.env.DSH_FULL_NO_OPEN?['--no-open']:[])],{cwd:root,env:{...process.env,DSH_HOME:home},stdio:'inherit'});
+// Business navigation entries come from the published HTML plugins; a missing or
+// unreachable channel only drops those entries and must not block startup.
+const htmlPlugins=await prepareHtmlPlugins({runtime});
+const htmlPluginEnv=Object.keys(htmlPlugins.roots).length?{GEA_HTML_PLUGIN_ROOTS:JSON.stringify(htmlPlugins.roots)}:{};
+
+const child=spawn(process.execPath,[join(root,'node_modules/@deepseek-ai/dsh/lib/bin.js'),'--profile','full','--patch',patchPath,'--host','127.0.0.1','--port',String(port),...(process.env.DSH_FULL_NO_OPEN?['--no-open']:[])],{cwd:root,env:{...process.env,DSH_HOME:home,...htmlPluginEnv},stdio:'inherit'});
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>child.kill(signal));
 process.on('message',message=>{if(message?.type==='stop')child.kill('SIGTERM');});
 process.on('disconnect',()=>child.kill('SIGTERM'));
