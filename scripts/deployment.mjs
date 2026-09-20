@@ -5,10 +5,12 @@ import { resolveEnvironments } from "../src/shared/environments.js";
 import {
   readFile,
   mkdir,
+  rm,
   symlink,
   realpath,
   lstat,
   unlink,
+  writeFile,
 } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -166,7 +168,7 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
     {
       id: "agent-presets",
       config: {
-        default: "standard",
+        default: DEFAULT_PRESET_ID,
         includeShippedRoot: false,
         includeUserRoot: false,
         roots: [
@@ -264,12 +266,29 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
   return rows;
 }
 
+/**
+ * 默认 preset 沿用 DSH 标准组合，但走我们自己的 id：
+ * DSH 对内置 id `standard` 会强行用它自带的显示名（标准模式），换个 id 才能改显示名。
+ */
+export const DEFAULT_PRESET_ID = "auto-negotiation";
+export const DEFAULT_PRESET_NAME = "自动协商";
+
 /** Expose only the original standard preset, without copying or modifying DSH's composition. */
 export async function prepareNativePreset(runtime, target) {
   const parent = resolve(runtime, "native-presets");
   await readFile(resolve(target, "agent.cordis.yml"), "utf8");
   await mkdir(parent, { recursive: true });
-  const directory = resolve(parent, "standard");
+  // 旧版本发布的是 native-presets/standard：可能是目录，也可能是指向 DSH 包目录的软链。
+  // 软链只删链接本身，别顺着链接把 DSH 包里的预设删了。
+  const legacy = resolve(parent, "standard");
+  try {
+    const entry = await lstat(legacy);
+    if (entry.isSymbolicLink()) await unlink(legacy);
+    else await rm(legacy, { recursive: true, force: true });
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const directory = resolve(parent, DEFAULT_PRESET_ID);
   // Upgrade the earlier directory-link layout: discovery only scans real directories.
   try {
     if ((await lstat(directory)).isSymbolicLink()) {
@@ -281,17 +300,23 @@ export async function prepareNativePreset(runtime, target) {
     if (error.code !== "ENOENT") throw error;
   }
   await mkdir(directory, { recursive: true });
-  for (const name of ["agent.cordis.yml", "preset.yml"]) {
-    const link = resolve(directory, name);
-    const source = resolve(target, name);
-    try {
-      await symlink(source, link, "file");
-    } catch (error) {
-      if (
-        error.code !== "EEXIST" ||
-        (await realpath(link)) !== (await realpath(source))
-      )
-        throw error;
-    }
+  // 组合文件继续软链 DSH 原始文件，保证能力集不被改动。
+  const link = resolve(directory, "agent.cordis.yml");
+  const source = resolve(target, "agent.cordis.yml");
+  try {
+    await symlink(source, link, "file");
+  } catch (error) {
+    if (
+      error.code !== "EEXIST" ||
+      (await realpath(link)) !== (await realpath(source))
+    )
+      throw error;
   }
+  // 只有显示名不一样：写自己的一份 preset.yml。
+  // 老版本在这里留的是指向 DSH 包内的软链，必须先删掉，否则会顺着链接改到包里。
+  const preset = await readFile(resolve(target, "preset.yml"), "utf8");
+  const renamed = preset.replace(/^name:.*$/m, `name: ${DEFAULT_PRESET_NAME}`);
+  const presetPath = resolve(directory, "preset.yml");
+  await rm(presetPath, { force: true });
+  await writeFile(presetPath, renamed, { mode: 0o600 });
 }

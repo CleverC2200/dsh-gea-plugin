@@ -129,8 +129,10 @@ async function selectPlugin(){
 }
 function report(error){const text=errorText(error);void appendFile(join(data,'desktop.log'),new Date().toISOString()+' STARTUP_ERROR '+text+'\n',{mode:0o600}).catch(()=>{});if(window&&!window.isDestroyed())void showStartup(text).catch(()=>dialog.showErrorBox('GEA Desktop',text));else dialog.showErrorBox('GEA Desktop',text);}
 function createWindow(){
-  window=new BrowserWindow({width:1440,height:960,minWidth:760,minHeight:600,title:'GEA Desktop',
+  window=new BrowserWindow({width:1440,height:960,minWidth:760,minHeight:600,title:'GEA平台',
     webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true}});
+  // 左上角标题固定成品牌名：页面标题（会话主题「xxx — DSH 本地构建」）不再改写窗口标题。
+  window.on('page-title-updated',(event)=>event.preventDefault());
   window.webContents.setWindowOpenHandler(({url})=>{if(/^https?:\/\//.test(url))void shell.openExternal(url);return{action:'deny'};});
   window.webContents.on('will-navigate',(event,url)=>{if(new URL(url).origin!==origin)event.preventDefault();});
   const {allowPermission}=require('./permissions.cjs');

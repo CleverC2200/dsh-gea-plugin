@@ -1,4 +1,4 @@
-import {readFile,mkdir,writeFile,cp,lstat,symlink,unlink} from 'node:fs/promises';
+import {readFile,mkdir,writeFile,lstat,symlink,unlink} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -15,12 +15,12 @@ if(!existsSync(configPath)) {console.error('公司运行配置缺失，请联系
 const port=Number(process.env.DSH_FULL_PORT||'3198');
 if(!Number.isInteger(port)||port<0||port>65535)throw Error('INVALID_PORT');
 const gea=join(root,'node_modules/@cleverc2200/gea-dsh-prototype');
-const {readDeployment,deploymentPatch}=await import(pathToFileURL(join(gea,'scripts/deployment.mjs')).href);
+const {readDeployment,deploymentPatch,prepareNativePreset}=await import(pathToFileURL(join(gea,'scripts/deployment.mjs')).href);
 const config=await readDeployment(configPath);
 await mkdir(runtime,{recursive:true});
 await mkdir(join(runtime,'workspace'),{recursive:true});
-const native=join(runtime,'native-presets/standard');
-await cp(join(root,'node_modules/@deepseek-ai/dsh-agent-presets/presets/standard'),native,{recursive:true});
+// 默认 preset 用和 web 开发态同一套发布逻辑：组合沿用 DSH 标准，只把显示名改成「自动协商」。
+await prepareNativePreset(runtime,join(root,'node_modules/@deepseek-ai/dsh-agent-presets/presets/standard'));
 const patchPath=join(runtime,'deployment.patch.json');
 const patch=deploymentPatch(config,gea,runtime,{bundle:true});
 patch.push({id:'dsh-agent-manage',config:{sources:companySources}});

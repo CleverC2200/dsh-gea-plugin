@@ -19,8 +19,7 @@ import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import { zh, en, type CopyKey } from "./client/locales.ts";
 import { AgentAvatar } from "./client/agent-avatar.tsx";
-import { Inbox, readNotifications } from "./client/inbox.tsx";
-import type { NotificationItem } from "./shared/notifications.ts";
+import { Inbox } from "./client/inbox.tsx";
 import {registerHtmlClient} from "./html-client.tsx";
 import {
   approvalConversation,
@@ -73,6 +72,17 @@ export function apply(ctx: Context): void {
   registerHtmlClient(ctx);
   ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
   const t = ctx.locale.bind("geaProof");
+  // 左上角标题固定成品牌名：DSH 会随会话主题改写 document.title（窗口标题跟着变），这里把它按住。
+  ctx.effect(() => {
+    const fixed = t("geaBusiness");
+    const applyTitle = () => {
+      if (document.title !== fixed) document.title = fixed;
+    };
+    applyTitle();
+    const observer = new MutationObserver(applyTitle);
+    observer.observe(document.head, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  });
   const injected = {
     hooks: {
       geaLocale: {
@@ -364,7 +374,8 @@ export function apply(ctx: Context): void {
     const child = ({ id, title }: { id: string; title: string }) => (
       <button key={id} type="button" data-gea-business-entry={id} aria-current={activePanel === id ? "page" : undefined} className={`gea-shell-nav-child${activePanel === id ? " is-active" : ""}`} onClick={() => ctx.layout.selectPanel(id as MainPanelId)}><span className="gea-shell-label">{title}</span></button>
     );
-    const { board, customer: customerPanels, plan: planPanels, inventory: inventoryPanels } = groupBusinessPanels(panels);
+    // 客户管理（含「经销商库存」）按评审从左侧菜单隐藏：插件照旧注册，只是这一层不再渲染。
+    const { board, plan: planPanels, inventory: inventoryPanels } = groupBusinessPanels(panels);
     return (
       <nav
         className="gea-shell-navigation"
@@ -373,10 +384,6 @@ export function apply(ctx: Context): void {
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
           {board && item("产销协同工作台", "desktop", () => ctx.layout.selectPanel(board.id as MainPanelId), activePanel === board.id)}
-          <div className="gea-shell-nav-section">
-            <button type="button" className="gea-shell-nav-heading" aria-expanded={open.customer} onClick={() => toggle("customer")}><NavIcon kind="users" /><span>客户管理</span><Chevron open={open.customer} /></button>
-            {open.customer && <div className="gea-shell-nav-children">{customerPanels.map(child)}</div>}
-          </div>
           <div className="gea-shell-nav-section">
             <button type="button" className="gea-shell-nav-heading" aria-expanded={open.plan} onClick={() => toggle("plan")}><NavIcon kind="calendar" /><span>计划管理</span><Chevron open={open.plan} /></button>
             {open.plan && <div className="gea-shell-nav-children">{child({ id: PANEL, title: t("salesPlan") })}{child({ id: REGIONAL_PLAN_PANEL, title: t("regionalPlanWorkbench") })}{planPanels.map(child)}</div>}
@@ -851,27 +858,11 @@ export function apply(ctx: Context): void {
         )}
         {!business && homeHero && createPortal(
           <GeaHomeHero
-            agent={conversationAgentFor(activePanel)}
-            onOpenInbox={() => ctx.layout.selectPanel(INBOX)}
-            onPrompt={writeComposer}
             copy={{
               label: t("geaBusiness"),
               eyebrow: t("homeEyebrow"),
               title: t("homeTitle"),
               description: t("homeDescription"),
-              functions: t("homeFunctions"),
-              functionsHint: t("homeFunctionsHint"),
-              functionsPanelHint: t("homeFunctionsPanelHint"),
-              questions: t("homeQuestions"),
-              questionsHint: t("homeQuestionsHint"),
-              questionsPanelHint: t("homeQuestionsPanelHint"),
-              alerts: t("homeAlerts"),
-              alertsHint: t("homeAlertsHint"),
-              alertsEmpty: t("homeAlertsEmpty"),
-              alertsFailed: t("homeAlertsFailed"),
-              alertsOpenAll: t("homeAlertsOpenAll"),
-              loading: t("loading"),
-              noContent: t("notificationNoContent"),
             }}
           />,
           homeHero,
@@ -963,190 +954,24 @@ function AgentWelcome({
 
 /**
  * AI 工作台主页面主视觉（原型 mid 区）。
- * 照原型的品牌引言 + 三个入口铺开，但按评审去掉「本地演示」「AI 生成内容请判断后使用」这类提示；
- * 三张卡都能展开：常用功能和推荐问题直接用会话区的文案填输入框，预警事件拉业务待办列表。
- * 原型里的预设场景库等新功能先不做。
+ * 按评审只保留品牌引言（logo + 一句话），三张入口卡（常用功能/推荐问题/预警事件）已去掉。
  */
-type HomeCardId = "functions" | "questions" | "alerts";
-
-/** 主页面预警列表的时间显示成和业务待办一致的「YYYY-MM-DD HH:mm」。 */
-function homeTime(value: string | null | undefined): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 function GeaHomeHero({
-  onOpenInbox,
-  onPrompt,
-  agent,
   copy,
 }: {
-  onOpenInbox: () => void;
-  onPrompt: (prompt: string) => void;
-  agent: ConversationPromptConfig;
   copy: {
     label: string;
     eyebrow: string;
     title: string;
     description: string;
-    functions: string;
-    functionsHint: string;
-    functionsPanelHint: string;
-    questions: string;
-    questionsHint: string;
-    questionsPanelHint: string;
-    alerts: string;
-    alertsHint: string;
-    alertsEmpty: string;
-    alertsFailed: string;
-    alertsOpenAll: string;
-    loading: string;
-    noContent: string;
   };
 }) {
-  const [openCard, setOpenCard] = useState<HomeCardId | null>(null);
-  const [alerts, setAlerts] = useState<{
-    status: "loading" | "ready" | "error";
-    items: NotificationItem[];
-    unread: number;
-  }>({ status: "loading", items: [], unread: 0 });
-  useEffect(() => {
-    if (openCard !== "alerts") return;
-    const controller = new AbortController();
-    setAlerts({ status: "loading", items: [], unread: 0 });
-    void readNotifications<{ value: { items: NotificationItem[]; unreadCount: number } }>(
-      { pageNo: 1, state: "unread" },
-      controller.signal,
-    )
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setAlerts({
-          status: "ready",
-          items: result.value.items.slice(0, 3),
-          unread: result.value.unreadCount,
-        });
-      })
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setAlerts({ status: "error", items: [], unread: 0 });
-      });
-    return () => controller.abort();
-  }, [openCard]);
-  const toggle = (card: HomeCardId) => setOpenCard((value) => (value === card ? null : card));
-  const card = (
-    id: HomeCardId,
-    icon: HomeCardIconKind,
-    title: string,
-    hint: string,
-    badge?: number,
-  ) => (
-    <button
-      type="button"
-      className="gea-home-card"
-      aria-expanded={openCard === id}
-      aria-controls={`gea-home-panel-${id}`}
-      onClick={() => toggle(id)}
-    >
-      <span className="gea-home-card-icon"><HomeCardIcon kind={icon} /></span>
-      <span className="gea-home-card-copy">
-        <strong>
-          {title}
-          {badge ? <i className="gea-home-card-badge">{badge}</i> : null}
-        </strong>
-        <small>{hint}</small>
-      </span>
-      <span className="gea-home-card-arrow" aria-hidden="true">›</span>
-    </button>
-  );
-  const panelHead = (title: string, hint: string) => (
-    <div className="gea-home-panel-head">
-      <strong>{title}</strong>
-      <small>{hint}</small>
-    </div>
-  );
   return (
     <section className="gea-home-hero" aria-label={copy.label}>
       <img className="gea-home-logo" src={brandLogo} alt="" width={81} height={81} />
       <p className="gea-home-eyebrow">{copy.eyebrow}</p>
       <h1 className="gea-home-title">{copy.title}</h1>
       <p className="gea-home-description">{copy.description}</p>
-      <div className="gea-home-cards">
-        {card("functions", "grid", copy.functions, copy.functionsHint)}
-        {card("questions", "light", copy.questions, copy.questionsHint)}
-        {card(
-          "alerts",
-          "bell",
-          copy.alerts,
-          copy.alertsHint,
-          alerts.status === "ready" && alerts.unread > 0 ? alerts.unread : undefined,
-        )}
-      </div>
-      {openCard === "functions" && (
-        <div className="gea-home-panel" id="gea-home-panel-functions">
-          {panelHead(copy.functions, copy.functionsPanelHint)}
-          <div className="gea-home-panel-list">
-            {agent.actions.map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                className="gea-home-panel-item"
-                onClick={() => onPrompt(action.prompt)}
-              >
-                <AgentActionIcon kind={action.icon} tone={action.tone} />
-                <span className="gea-home-panel-copy">
-                  <strong>{action.label}</strong>
-                  <small>{action.detail}</small>
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {openCard === "questions" && (
-        <div className="gea-home-panel" id="gea-home-panel-questions">
-          {panelHead(copy.questions, copy.questionsPanelHint)}
-          <div className="gea-home-prompts">
-            {agent.prompts.map((prompt) => (
-              <button key={prompt} type="button" onClick={() => onPrompt(prompt)}>{prompt}</button>
-            ))}
-          </div>
-        </div>
-      )}
-      {openCard === "alerts" && (
-        <div className="gea-home-panel" id="gea-home-panel-alerts">
-          {panelHead(copy.alerts, copy.alertsHint)}
-          {alerts.status === "loading" && <p className="gea-home-panel-note">{copy.loading}</p>}
-          {alerts.status === "error" && <p className="gea-home-panel-note">{copy.alertsFailed}</p>}
-          {alerts.status === "ready" && alerts.items.length === 0 && (
-            <p className="gea-home-panel-note">{copy.alertsEmpty}</p>
-          )}
-          {alerts.status === "ready" && alerts.items.length > 0 && (
-            <div className="gea-home-panel-list">
-              {alerts.items.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className="gea-home-panel-item"
-                  onClick={onOpenInbox}
-                >
-                  <span className="gea-home-panel-copy">
-                    <strong>{item.title ?? item.summary ?? copy.noContent}</strong>
-                    <small>{homeTime(item.notifiedAt ?? item.createdAt)}</small>
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="gea-home-panel-foot">
-            <button type="button" className="gea-home-panel-more" onClick={onOpenInbox}>
-              {copy.alertsOpenAll}
-            </button>
-          </div>
-        </div>
-      )}
     </section>
   );
 }
@@ -1218,15 +1043,6 @@ function NavIcon({ kind }: { kind: NavIconKind }) {
   return <svg className="gea-shell-nav-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{paths[kind]}</svg>;
 }
 
-type HomeCardIconKind = "grid" | "light" | "bell";
-function HomeCardIcon({ kind }: { kind: HomeCardIconKind }) {
-  const paths: Record<HomeCardIconKind, React.ReactNode> = {
-    grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
-    light: <><path d="M9 18h6m-5 3h4M8 14a7 7 0 1 1 8 0l-1 3H9Z" /></>,
-    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></>,
-  };
-  return <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{paths[kind]}</svg>;
-}
 function Chevron({ open }: { open: boolean }) {
   return <svg className={`gea-shell-chevron${open ? " is-open" : ""}`} aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m7 10 5 5 5-5" /></svg>;
 }

@@ -15,7 +15,7 @@ import {
   deploymentPatch,
 } from "../scripts/deployment.mjs";
 
-test("native standard stays byte-identical and discoverable as a real preset directory", async () => {
+test("默认预设沿用标准组合，只换 id 与显示名（自动协商）", async () => {
   const dir = await mkdtemp(join(tmpdir(), "gea-presets-"));
   try {
     const source = join(dir, "source");
@@ -36,19 +36,28 @@ test("native standard stays byte-identical and discoverable as a real preset dir
     });
     assert.equal(entries.length, 1);
     assert.equal(entries[0].isDirectory(), true);
+    assert.equal(entries[0].name, "auto-negotiation");
     assert.equal(
       await readFile(
-        join(dir, "runtime/native-presets/standard/agent.cordis.yml"),
+        join(dir, "runtime/native-presets/auto-negotiation/agent.cordis.yml"),
         "utf8",
       ),
       "original standard composition\n",
+    );
+    // 组合不变，只有显示名被改成「自动协商」。
+    assert.match(
+      await readFile(
+        join(dir, "runtime/native-presets/auto-negotiation/preset.yml"),
+        "utf8",
+      ),
+      /^name: 自动协商$/m,
     );
     const config = deploymentPatch(
       { analysis: { mode: "receipt" } },
       dir,
       join(dir, "runtime"),
     ).find((r) => r.id === "agent-presets").config;
-    assert.equal(config.default, "standard");
+    assert.equal(config.default, "auto-negotiation");
     assert.equal(config.includeShippedRoot, false);
     assert.equal(config.roots.length, 2);
   } finally {

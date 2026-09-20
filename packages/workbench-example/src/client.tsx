@@ -78,7 +78,8 @@ export function apply(ctx: Context): void {
       { name: "main", key: id, locale: "workbenchExample" },
       Page,
     );
-    const unregister = ctx.agentWorkbench.register({ id, preset: "standard" });
+    // 跟随部署默认预设（scripts/deployment.mjs 的 DEFAULT_PRESET_ID=auto-negotiation）。
+    const unregister = ctx.agentWorkbench.register({ id, preset: "auto-negotiation" });
     const unnav = ctx.slots.inject("sidebar.panellist", () =>
       ctx.slots.register(
         { name: "sidebar.panellist", id, label: () => t("title") },

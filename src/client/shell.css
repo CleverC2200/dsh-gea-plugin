@@ -355,7 +355,6 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   background: #fff0f2;
   color: #df1732;
   font-weight: 600;
-  box-shadow: inset 3px 0 0 #d6223d;
 }
 .gea-shell-navigation-content > .gea-shell-child {
   padding-left: 40px;
@@ -388,7 +387,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-shell-plugin-group { display: grid; gap: 2px; margin-top: 2px; padding-top: 4px; }
 .gea-shell-plugin { min-height: 32px !important; padding-block: 6px !important; padding-left: 40px !important; color: #687282 !important; font-size: 12px !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
 .gea-shell-plugin:hover { color: #df1732 !important; background: #fffafb !important; }
-.gea-shell-plugin.is-active { color: #df1732 !important; background: #fff0f2 !important; box-shadow: inset 3px 0 0 #df1732 !important; }
+.gea-shell-plugin.is-active { color: #df1732 !important; background: #fff0f2 !important; }
 .gea-shell-plugin-dot { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #c7ced8; }
 .gea-shell-plugin:hover .gea-shell-plugin-dot, .gea-shell-plugin.is-active .gea-shell-plugin-dot { background: #df1732; }
 .gea-shell-nav-section { display: grid; gap: 2px; margin-top: 8px; }
@@ -400,7 +399,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-shell-nav-heading { font-weight: 600; }
 .gea-shell-nav-heading:hover, .gea-shell-nav-item:hover { background: #fffafb !important; color: #df1732; }
-.gea-shell-nav-item.is-active { background: #fff0f2 !important; color: #df1732; box-shadow: inset 3px 0 0 #df1732; font-weight: 700; }
+.gea-shell-nav-item.is-active { background: #fff0f2 !important; color: #df1732; font-weight: 700; }
 .gea-shell-nav-icon { flex: 0 0 auto; color: currentColor; }
 .gea-shell-chevron { margin-left: auto; transition: transform 160ms ease; }
 .gea-shell-chevron.is-open { transform: rotate(180deg); }
@@ -634,9 +633,17 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 /*
  * AI 工作台主页面主视觉（原型 mid 区）：品牌引言 + 三个入口，
  * 原生会话区只留输入卡，DSH 自己的欢迎品牌（探索未至之境/预览版）不再出现。
+ * 内核换版本时类名哈希前缀会变（pXSMma_… → 别的），后缀不变，
+ * 所以除了写死的哈希，再按 *_titleGroup / *_headline 后缀兜一层。
  */
 .AppFrame_centerCol [data-slot="main.conversation"] [data-phase="hero"] .pXSMma_root {
   display: none;
+}
+.AppFrame_centerCol [data-slot="main.conversation"] [data-phase="hero"] [class*="_titleGroup"],
+.AppFrame_centerCol [data-slot="main.conversation"] [data-phase="hero"] [class*="_headline"],
+.AppFrame_centerCol [data-slot="main.conversation"] [class*="_composerHero"] [class*="_titleGroup"],
+.AppFrame_centerCol [data-slot="main.conversation"] [class*="_composerHero"] [class*="_headline"] {
+  display: none !important;
 }
 /* 会话一旦开始（chat 阶段），主视觉就不再占位。 */
 .AppFrame_centerCol [data-slot="main.conversation"] [data-phase]:not([data-phase="hero"]) .gea-home-hero {
