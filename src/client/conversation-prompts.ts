@@ -27,10 +27,8 @@ export type ConversationPromptAction = {
 
 export type ConversationPromptConfig = {
   name: string;
-  /** 会话区顶栏名称下的副标（原型 phead 第二行）。 */
+  /** 会话区顶栏名称下的副标（原型 phead 第二行）；不再挂「辅助」这类能力标签。 */
   headerSub: string;
-  /** 名称下的能力标签。 */
-  tagline: string;
   intro: string;
   /** 简介里加粗的边界句。 */
   boundary: string;
@@ -41,8 +39,7 @@ export type ConversationPromptConfig = {
 /** 方案 A · 提报版：客户 / 代报人（KA、行销综合、业务员）的提报界面。 */
 export const reportingConversation: ConversationPromptConfig = {
   name: "销售计划助手",
-  headerSub: "需求预测 Agent · 提报辅助",
-  tagline: "提报辅助",
+  headerSub: "需求预测 Agent",
   intro:
     "我可以帮你核对本月计划的合理性与风险，解释每个商品是怎么算出来的，并按你的意见调整草稿的数量与金额。",
   boundary: "最终提交仍然由你自己在确认入口完成。",
@@ -87,8 +84,7 @@ export const reportingConversation: ConversationPromptConfig = {
 /** 方案 B · 审批版：城市经理（区域计划审批）/ 省区总 / 大区总 / 品类计划审核人的审批工作台。 */
 export const approvalConversation: ConversationPromptConfig = {
   name: "销售计划审批助手",
-  headerSub: "需求预测 Agent · 审批辅助",
-  tagline: "审批辅助",
+  headerSub: "需求预测 Agent",
   intro: "我可以按你当前节点的口径核对这张计划：先给结论，再给依据，异常项逐条给处理建议。",
   boundary: "我只做分析建议，不改变审批状态。",
   actions: [
@@ -132,8 +128,7 @@ export const approvalConversation: ConversationPromptConfig = {
 /** 经销商补货（库存）业务页沿用原有助手文案。 */
 export const regionalPlanConversation: ConversationPromptConfig = {
   name: "区域计划助手",
-  headerSub: "需求预测 Agent · 区域计划辅助",
-  tagline: "区域计划辅助",
+  headerSub: "需求预测 Agent",
   intro: "我可以跨模块盯提报进度、找异常，给提报与跟催的参考意见。",
   boundary: "区域计划不参与审批与退回，我只做跟踪、评估与跟催。",
   actions: [
@@ -170,14 +165,14 @@ export const regionalPlanConversation: ConversationPromptConfig = {
     "本月还有哪些客户未提报？",
     "哪个品类达成最低？",
     "哪个审批节点滞留最多？",
+    "哪些客户的达成偏差最大？",
   ],
 };
 
 /** 经销商补货（库存）业务页沿用原有助手文案。 */
 export const inventoryConversation: ConversationPromptConfig = {
   name: "经销商补货助手",
-  headerSub: "库存 Agent · 补货辅助",
-  tagline: "补货辅助",
+  headerSub: "库存 Agent",
   intro: "我可以帮你分析客户库存，生成补货建议并跟进执行进度。",
   boundary: "建议只做参考，补货决策仍由你确认。",
   actions: [
@@ -215,5 +210,357 @@ export const inventoryConversation: ConversationPromptConfig = {
     "重点客户的库存情况如何？",
     "生成下周的补货建议",
     "导出客户库存分析报告",
+  ],
+};
+
+/** AI 工作台首页：没有打开具体业务页时的通用助手。 */
+export const homeConversation: ConversationPromptConfig = {
+  name: "AI 工作台助手",
+  headerSub: "需求预测 Agent",
+  intro: "我可以从你正在解决的问题入手：找数据、看计划进度、盯库存和交付风险。",
+  boundary: "所有动作先给建议，再由你确认。",
+  actions: [
+    {
+      icon: "chart",
+      tone: "brand",
+      label: "看本月计划建议",
+      detail: "任务头、总量建议、关键变化、风险提示",
+      prompt: "看本月计划建议",
+    },
+    {
+      icon: "alert",
+      tone: "brand",
+      label: "看需要重点关注的商品",
+      detail: "发货概率偏低、库存或货龄偏高的商品",
+      prompt: "看需要重点关注的商品",
+    },
+    {
+      icon: "box",
+      tone: "info",
+      label: "看库存与供应风险",
+      detail: "库存、在途与缺货风险",
+      prompt: "看库存与供应风险",
+    },
+    {
+      icon: "users",
+      tone: "success",
+      label: "看客户提报与审批进度",
+      detail: "到哪一步、卡在谁手里",
+      prompt: "看客户提报与审批进度",
+    },
+  ],
+  prompts: [
+    "本月哪些客户还没提报？",
+    "哪些商品需要重点复核？",
+    "现在最需要关注的风险是什么？",
+    "你能帮我做什么？",
+  ],
+};
+
+/** 业务待办页：GEA 消息待办与审批提醒。 */
+export const inboxConversation: ConversationPromptConfig = {
+  name: "业务待办助手",
+  headerSub: "GEA Agent",
+  intro: "我可以帮你看 GEA 消息待办：还有多少没处理、哪些卡在你这一节点、下一步该找谁。",
+  boundary: "待办状态由你在列表里确认，我只做梳理和建议。",
+  actions: [
+    {
+      icon: "check",
+      tone: "brand",
+      label: "看未读待办",
+      detail: "按业务类型与时间排序的未读消息",
+      prompt: "看未读待办",
+    },
+    {
+      icon: "alert",
+      tone: "brand",
+      label: "看卡在我这的审批",
+      detail: "当前节点等处理的计划",
+      prompt: "看卡在我这的审批",
+    },
+    {
+      icon: "chart",
+      tone: "info",
+      label: "看待办分布",
+      detail: "按业务类型、状态、来源汇总",
+      prompt: "看待办分布",
+    },
+    {
+      icon: "info",
+      tone: "success",
+      label: "看处理优先级",
+      detail: "按通知时间给出先处理谁",
+      prompt: "看处理优先级",
+    },
+  ],
+  prompts: [
+    "有多少待办还没处理？",
+    "哪些审批卡在我这一节点？",
+    "今天我应该先处理哪些？",
+    "这些待办分别是哪个客户的？",
+  ],
+};
+
+/** 需求运营管理页：需求信号研判。 */
+export const demandOpsConversation: ConversationPromptConfig = {
+  name: "需求运营助手",
+  headerSub: "需求预测 Agent",
+  intro: "我可以帮你看需求波动、预测偏差和需求共识待办，给出下期需求计划的调整参考。",
+  boundary: "我只做研判与建议，不直接改预测数字。",
+  actions: [
+    {
+      icon: "chart",
+      tone: "brand",
+      label: "看需求波动概览",
+      detail: "预测准确率、偏差率、需求变更率",
+      prompt: "看需求波动概览",
+    },
+    {
+      icon: "alert",
+      tone: "brand",
+      label: "看品类偏差明细",
+      detail: "按绝对偏差排序的品类预测与实际",
+      prompt: "看品类偏差明细",
+    },
+    {
+      icon: "check",
+      tone: "success",
+      label: "看需求共识待办",
+      detail: "销售、市场与计划待确认的协同动作",
+      prompt: "看需求共识待办",
+    },
+    {
+      icon: "info",
+      tone: "info",
+      label: "看活动纳入率",
+      detail: "促销活动是否已经进入需求计划",
+      prompt: "看活动纳入率",
+    },
+  ],
+  prompts: [
+    "本周需求波动怎么样？",
+    "哪些品类偏差最大？",
+    "火锅料为什么低于预测？",
+    "需求共识待办要谁确认？",
+  ],
+};
+
+/** 交付运营管理页：订单履约风险。 */
+export const deliveryOpsConversation: ConversationPromptConfig = {
+  name: "交付运营助手",
+  headerSub: "需求预测 Agent",
+  intro: "我可以帮你看订单履约：准交率、在途订单和重点客户延期，给出优先处理顺序。",
+  boundary: "我只做风险研判与建议，不下发派车、不改订单。",
+  actions: [
+    {
+      icon: "alert",
+      tone: "brand",
+      label: "看交付风险概览",
+      detail: "风险订单、重点客户、准交率缺口",
+      prompt: "看交付风险概览",
+    },
+    {
+      icon: "box",
+      tone: "brand",
+      label: "看重点交付订单",
+      detail: "按承诺时间与客户等级排序",
+      prompt: "看重点交付订单",
+    },
+    {
+      icon: "chart",
+      tone: "info",
+      label: "看履约链路分布",
+      detail: "待分配→待备货→待装车→运输中→已签收",
+      prompt: "看履约链路分布",
+    },
+    {
+      icon: "check",
+      tone: "success",
+      label: "看订单满足率",
+      detail: "订单满足率与目标的差距",
+      prompt: "看订单满足率",
+    },
+  ],
+  prompts: [
+    "今天哪些订单有延期风险？",
+    "准交率为什么没达标？",
+    "郑州装车延迟影响哪些客户？",
+    "重点客户的订单什么时候能到？",
+  ],
+};
+
+/** 安全库存页：基地口径的库存水位与货龄。 */
+export const safetyStockConversation: ConversationPromptConfig = {
+  name: "安全库存助手",
+  headerSub: "库存 Agent",
+  intro: "我可以按基地口径核对库存水位、周转天数、货龄和订单满足率，指出低于目标的部分。",
+  boundary: "我只做核对与建议，不调整库存目标。",
+  actions: [
+    {
+      icon: "box",
+      tone: "brand",
+      label: "看库存水位差额",
+      detail: "当前库存、目标库存与周转天数",
+      prompt: "看库存水位差额",
+    },
+    {
+      icon: "alert",
+      tone: "brand",
+      label: "看超龄与货龄",
+      detail: "超龄 SKU 数、超龄库存与平均货龄",
+      prompt: "看超龄与货龄",
+    },
+    {
+      icon: "chart",
+      tone: "info",
+      label: "看基地与品类结构",
+      detail: "基地、品类、货龄三个结构",
+      prompt: "看基地与品类结构",
+    },
+    {
+      icon: "check",
+      tone: "success",
+      label: "看订单满足率",
+      detail: "当月订单满足率最低的基地",
+      prompt: "看订单满足率",
+    },
+  ],
+  prompts: [
+    "哪些基地库存低于目标？",
+    "哪个基地货龄最高？",
+    "超龄 SKU 有多少？",
+    "订单满足率最低的是谁？",
+  ],
+};
+
+/** 分仓库存页：分仓经营与补货。 */
+export const branchStockConversation: ConversationPromptConfig = {
+  name: "分仓库存助手",
+  headerSub: "库存 Agent",
+  intro: "我可以按分仓看缺货订单、补货确认、大日期和滞库风险，给出先处理谁的建议。",
+  boundary: "补货只给建议，是否下单由你确认。",
+  actions: [
+    {
+      icon: "alert",
+      tone: "brand",
+      label: "看缺货订单",
+      detail: "缺货量、订单数与影响分仓",
+      prompt: "看缺货订单",
+    },
+    {
+      icon: "box",
+      tone: "brand",
+      label: "看补货确认明细",
+      detail: "已核实建议补货量与紧急补货",
+      prompt: "看补货确认明细",
+    },
+    {
+      icon: "chart",
+      tone: "info",
+      label: "看大日期与滞库",
+      detail: "大日期库存与滞库风险清单",
+      prompt: "看大日期与滞库",
+    },
+    {
+      icon: "check",
+      tone: "success",
+      label: "看分仓满足率",
+      detail: "当月订单满足率与发货缺口",
+      prompt: "看分仓满足率",
+    },
+  ],
+  prompts: [
+    "哪些分仓缺货最严重？",
+    "长沙分仓周转为什么高？",
+    "大日期库存怎么消化？",
+    "这周分仓给多少补货？",
+  ],
+};
+
+/** 库存管理工作台：基地 + 分仓的今日运营。 */
+export const inventoryWorkbenchConversation: ConversationPromptConfig = {
+  name: "库存管理助手",
+  headerSub: "库存 Agent",
+  intro: "我可以把基地和分仓的今日运营情况汇总起来，按优先级说清今天先处理什么。",
+  boundary: "我只做汇总和建议，处理动作仍由你和责任角色确认。",
+  actions: [
+    {
+      icon: "chart",
+      tone: "brand",
+      label: "看今日运营概况",
+      detail: "库存、缺货、货龄的当日快照",
+      prompt: "看今日运营概况",
+    },
+    {
+      icon: "alert",
+      tone: "brand",
+      label: "看今日优先处理事项",
+      detail: "缺货、低库存、货龄、大日期、滞库",
+      prompt: "看今日优先处理事项",
+    },
+    {
+      icon: "box",
+      tone: "info",
+      label: "看缺货与低库存",
+      detail: "按对象列出缺口与建议动作",
+      prompt: "看缺货与低库存",
+    },
+    {
+      icon: "users",
+      tone: "success",
+      label: "看责任角色与反馈",
+      detail: "谁在跟、反馈到哪一步",
+      prompt: "看责任角色与反馈",
+    },
+  ],
+  prompts: [
+    "今天我最该先处理什么？",
+    "哪些基地缺货？",
+    "大日期库存有多少？",
+    "给我一份今日跟进清单",
+  ],
+};
+
+/** 全链路库存页：基地到分仓的链路视角。 */
+export const fullChainStockConversation: ConversationPromptConfig = {
+  name: "全链路库存助手",
+  headerSub: "库存 Agent",
+  intro: "我可以沿基地到分仓的链路看库存分布、缺货和大日期风险，以及可调拨的机会。",
+  boundary: "调拨只给方案建议，执行由业务确认。",
+  actions: [
+    {
+      icon: "box",
+      tone: "brand",
+      label: "看全链库存概览",
+      detail: "基地与分仓的库存分布",
+      prompt: "看全链库存概览",
+    },
+    {
+      icon: "chart",
+      tone: "brand",
+      label: "看各节点库存",
+      detail: "按基地、分仓看库存与周转",
+      prompt: "看各节点库存",
+    },
+    {
+      icon: "alert",
+      tone: "info",
+      label: "看缺货与大日期风险",
+      detail: "全链路缺货与临期风险清单",
+      prompt: "看缺货与大日期风险",
+    },
+    {
+      icon: "check",
+      tone: "success",
+      label: "看跨仓调拨机会",
+      detail: "富余与短缺节点的匹配建议",
+      prompt: "看跨仓调拨机会",
+    },
+  ],
+  prompts: [
+    "全链路库存分布怎么样？",
+    "哪些 SKU 有缺货风险？",
+    "基地到分仓的库存怎么走？",
+    "需要跨仓调拨哪些货？",
   ],
 };

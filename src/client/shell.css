@@ -20,78 +20,153 @@
   height: 100%;
   background: #f8f9fb;
 }
-/* Keep the native DSH workspace list below the business navigation. */
-[class*="_regionArea"]:has(.gea-business-navigation) {
+/*
+ * 左侧两个互斥抽屉：业务工作台在上、历史会话紧跟其下，两个面板都往下弹。
+ * 两个面板铺在同一块底色上，同一时刻只开一个。
+ */
+[class*="_regionArea"] {
   display: flex !important;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
-[class*="_regionArea"]:has(.gea-business-navigation) > [data-slot="sidebar.workspaces"] {
-  display: block !important;
-  order: 2;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-}
-.gea-business-navigation {
-  order: 1;
-  flex: 0 1 58%;
-  min-height: 0;
-  max-height: 58%;
-  overflow: auto;
-  border-bottom: 1px solid #e3e6ea;
-}
-.gea-business-navigation .gea-shell-navigation,
-.gea-business-navigation .gea-shell-navigation-content {
-  height: auto;
+.gea-sidebar-drawer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
   min-height: 0;
 }
-.gea-business-navigation .gea-shell-navigation-content {
-  max-height: 100%;
-  overflow: auto;
-}
-.gea-function-menu-popover {
-  position: absolute;
-  top: 36px;
-  left: 0;
-  z-index: 10;
+.gea-drawer-function { order: 1; }
+/* 两行按顺序排：业务工作台 → 业务菜单 → 历史会话 → 会话列表。
+   展开的面板占满剩余高度，就会把后面那一行顶到最下面。 */
+.gea-drawer-workspace { order: 3; }
+.gea-sidebar-tab {
+  display: flex;
   width: 100%;
-  max-height: calc(100% - 36px);
-  overflow: auto;
-  border: 1px solid #cfd4dc;
-  border-radius: 10px;
-  background: #f5f6f8;
-  box-shadow: 0 8px 24px rgb(31 35 41 / 18%);
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 0 !important;
+  border-radius: 7px;
+  background: transparent !important;
+  color: #555d68;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
 }
-.gea-function-menu-popover .gea-shell-navigation,
-.gea-function-menu-popover .gea-shell-navigation-content {
-  height: auto;
-  min-height: 0;
-}
-.gea-business-menu-panel {
-  position: absolute;
-  top: 36px;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 3;
-  max-height: none;
-  overflow: auto;
-  border: 0;
-  border-radius: 0;
+.gea-sidebar-tab:hover { background: #eceff2 !important; color: #202531; }
+.gea-sidebar-tab[aria-expanded="true"] {
+  /* 展开态用浅红底，不再铺白卡片：白卡片会和右侧原生图标压出边缘，看着像被切掉。 */
+  background: #fff0f2 !important;
+  color: #df1732;
+  font-weight: 600;
   box-shadow: none;
 }
-[class*="_regionArea"]:has(.gea-business-menu-panel) {
+/* 焦点描边内描，避免被侧栏的 overflow 裁掉只剩一条红边。 */
+.gea-sidebar-tab:focus-visible { outline: none; box-shadow: inset 0 0 0 2px #df1732; }
+.gea-sidebar-tab .gea-drawer-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gea-sidebar-tab .gea-shell-chevron { margin-left: auto; }
+.gea-sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.gea-drawer-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gea-panel-function { order: 2; flex: 1 1 auto; overflow: auto; }
+.gea-sidebar-panel .gea-shell-navigation,
+.gea-sidebar-panel .gea-shell-navigation-content {
+  height: auto;
+  min-height: 0;
+  /* 两个抽屉共用一块底色：菜单不再自己铺灰底，跟原生会话列表保持一致。 */
+  background: transparent;
+}
+[class*="_regionArea"] > [data-slot="sidebar.workspaces"] {
+  order: 4;
+  min-height: 0;
+}
+/* 展开功能区：菜单占满这一行下面，工作区列表收起。 */
+[data-gea-drawer="function"] > [data-slot="sidebar.workspaces"],
+[data-gea-drawer="none"] > [data-slot="sidebar.workspaces"] {
+  display: none !important;
+}
+/* 展开工作区：原生会话列表顶到这一行下面，自己滚；功能区让位。 */
+[data-gea-drawer="workspace"] > [data-slot="sidebar.workspaces"] {
+  display: flex !important;
+  flex-direction: column;
   position: relative;
-  overflow: hidden;
+  /* 会话列表在「历史会话」下面往下长，自己滚。
+     这里不做滚动容器：原生那一行的搜索/排序/新建按钮要能上移到抽屉标题那一行。 */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: visible;
 }
-[class*="_regionArea"]:has(.gea-business-menu-panel) > [data-slot="sidebar.workspaces"] {
-  display: block !important;
+[data-gea-drawer="workspace"] > [data-slot="sidebar.workspaces"] > * { flex: 1 1 auto; min-height: 0; }
+[data-gea-drawer="workspace"] [class*="_listArea"] { flex: 1 1 auto; min-height: 0; }
+/*
+ * 原生那一行（搜索/排序/新建工作区）上移到「历史会话」标题右边，合成一行。
+ * 原生节点在 DSH 的 React 树里搬不动，所以用定位把它落上去。
+ */
+[data-gea-drawer="workspace"] [class*="_sectionHeader"] {
+  position: absolute;
+  top: -38px;
+  /* 右边留出收起箭头的位置，箭头排在整行最右边。 */
+  right: 30px;
+  left: auto;
+  z-index: 2;
+  width: auto;
   height: 36px;
-  min-height: 36px;
-  overflow: hidden;
+  padding: 0;
 }
+/* 标题给右边的按钮和箭头让位，避免压字。 */
+[data-gea-drawer="workspace"] .gea-drawer-workspace .gea-sidebar-tab { padding-right: 8px; }
+/*
+ * 点搜索后：原生那一行从「历史会话」标题右边一直铺到侧栏右边，输入框拉满；
+ * 这一行的收起箭头让位（原来被挤到中间，看着像跑偏了）。
+ */
+[class*="_regionArea"]:has([class*="_searchExpanded"]) [class*="_sectionHeader"] {
+  left: var(--gea-search-left, 96px);
+  right: 8px;
+  width: auto;
+}
+[class*="_regionArea"]:has([class*="_searchExpanded"]) [class*="_searchSlot"],
+[class*="_regionArea"]:has([class*="_searchExpanded"]) [class*="_search"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+[class*="_regionArea"]:has([class*="_searchExpanded"]) [class*="_searchInput"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+[class*="_regionArea"]:has([class*="_searchExpanded"]) .gea-drawer-workspace .gea-shell-chevron {
+  display: none;
+}
+[data-gea-drawer="workspace"] .gea-sidebar-panel { display: none; }
+/* 原生那一行的「工作区」标题由抽屉标题代替，只保留搜索/排序/新建按钮。 */
+[data-gea-drawer="workspace"] [class*="_sectionLabel"] { display: none; }
+/* 两个面板都是从上往下弹。 */
+@keyframes gea-panel-down {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: none; }
+}
+.gea-panel-function { animation: gea-panel-down 200ms ease-out; }
+[data-gea-drawer="workspace"] > [data-slot="sidebar.workspaces"] { animation: gea-panel-down 220ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .gea-panel-function,
+  [data-gea-drawer="workspace"] > [data-slot="sidebar.workspaces"] { animation: none; }
+}
+[data-sidebar-collapsed] .gea-sidebar-drawer,
+[data-sidebar-collapsed] .gea-sidebar-panel { display: none; }
 [class*="_logoRow"]:has(.gea-inbox-quick-action) {
   position: relative;
 }
@@ -118,44 +193,6 @@
   color: #df1732;
 }
 [data-sidebar-collapsed] .gea-inbox-quick-action {
-  display: none;
-}
-[class*="_regionArea"]:has(.gea-sidebar-mode-tabs) {
-  position: relative;
-}
-.gea-sidebar-mode-tabs {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  height: 36px;
-  padding-left: 14px;
-  background: #f5f6f8;
-}
-.gea-sidebar-mode-tabs button {
-  height: 28px;
-  padding: 2px 8px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: #df1732;
-  font: inherit;
-  cursor: pointer;
-}
-.gea-sidebar-mode-tabs button[aria-selected="false"] {
-  color: #687282;
-}
-.gea-sidebar-mode-tabs button[aria-selected="true"] {
-  background: #fff0f2;
-  font-weight: 600;
-}
-.gea-sidebar-mode-tabs button:hover {
-  background: #fff0f2;
-  color: #df1732;
-}
-[data-sidebar-collapsed] .gea-sidebar-mode-tabs {
   display: none;
 }
 /* The business profile keeps the application chooser but not the default
@@ -211,17 +248,41 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-shell-logo {
   display: block;
-  width: 30px;
-  height: 30px;
-  margin-right: 6px;
+  width: 38px;
+  height: 38px;
+  margin-right: 10px;
   object-fit: contain;
 }
-/* 品牌名沿用思念红，和品牌圆标组成统一的「图 + 字」标识。 */
+/* 品牌区照原型：思念圆标 + 思念红标题 + 一行浅灰说明。 */
+[class*="_logoRow"] [class*="_brand"] {
+  height: auto;
+  min-height: 44px;
+  overflow: visible;
+}
+[data-slot="sidebar.brand.name"] {
+  min-width: 0;
+}
+.gea-brand-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+  cursor: default;
+}
 [data-slot="sidebar.brand.name"] span {
   color: #d70a1c;
   font-family: "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", Arial, sans-serif;
-  font-size: 16px;
+  font-size: 19px;
   font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.2px;
+}
+.gea-brand-subtitle {
+  color: #96999f;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.3;
+  letter-spacing: 0.6px;
 }
 .gea-shell-caption {
   padding: 4px 7px;
@@ -481,18 +542,8 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   height: 72px;
   margin: 0 auto 8px;
 }
-.gea-agent-identity h2 { margin: 0; color: #242b38; font-size: 17px; font-weight: 600; }
-.gea-agent-tagline {
-  display: inline-block;
-  margin: 6px 0 8px;
-  padding: 1px 8px;
-  border: 1px solid #f7c1c1;
-  border-radius: 7px;
-  background: #fdecea;
-  color: #e1251b;
-  font-size: 11px;
-  line-height: 1.6;
-}
+/* 去掉名称下的「辅助」标签后，标题和简介之间留一点间距。 */
+.gea-agent-identity h2 { margin: 0 0 10px; color: #242b38; font-size: 17px; font-weight: 600; }
 .gea-agent-intro {
   margin: 0;
   padding: 9px 11px;
@@ -537,7 +588,209 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-agent-action-arrow { margin-left: auto; color: #9a9a96; font-size: 12px; font-weight: 400; }
 .gea-agent-prompts { padding-top: 2px; }
 .gea-agent-prompts button { min-height: 34px; margin-bottom: 7px; padding: 7px 14px; border-radius: 999px; color: #5f5f5a; }
-.gea-agent-footnote { margin: 12px 0 2px; color: #9a9a96; font-size: 10px; text-align: center; }
+/*
+ * AI 工作台主页面主视觉（原型 mid 区）：品牌引言 + 三个入口，
+ * 原生会话区只留输入卡，DSH 自己的欢迎品牌（探索未至之境/预览版）不再出现。
+ */
+.AppFrame_centerCol [data-slot="main.conversation"] [data-phase="hero"] .pXSMma_root {
+  display: none;
+}
+/* 会话一旦开始（chat 阶段），主视觉就不再占位。 */
+.AppFrame_centerCol [data-slot="main.conversation"] [data-phase]:not([data-phase="hero"]) .gea-home-hero {
+  display: none;
+}
+.gea-home-hero {
+  order: -1;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto 24px;
+  padding: 0 24px;
+  text-align: center;
+}
+.gea-home-logo {
+  display: block;
+  width: 81px;
+  height: 81px;
+  margin: 0 auto 13px;
+  object-fit: contain;
+}
+.gea-home-eyebrow {
+  margin: 0 0 18px;
+  color: #d71920;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 2.6px;
+}
+.gea-home-title {
+  max-width: 850px;
+  margin: 0 auto;
+  color: #292b2e;
+  font-size: clamp(26px, 2.6vw, 40px);
+  font-weight: 650;
+  line-height: 1.5;
+  letter-spacing: -0.7px;
+}
+.gea-home-description {
+  max-width: 760px;
+  margin: 20px auto 24px;
+  color: #919399;
+  font-size: 13px;
+  line-height: 1.95;
+}
+.gea-home-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.gea-home-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 17px;
+  border: 1px solid #ebebee !important;
+  border-radius: 11px;
+  background: #fff !important;
+  box-shadow: 0 2px 3px rgb(28 33 40 / 1%);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.gea-home-card:hover {
+  border-color: #e7b6bb !important;
+  background: #fffdfd !important;
+  box-shadow: 0 5px 20px rgb(28 33 40 / 5%);
+  transform: translateY(-2px);
+}
+.gea-home-card[aria-expanded="true"] {
+  border-color: #e7b6bb !important;
+  background: #fffdfd !important;
+  box-shadow: 0 5px 20px rgb(28 33 40 / 5%);
+}
+.gea-home-card[aria-expanded="true"] .gea-home-card-arrow {
+  color: #df1732;
+  transform: rotate(90deg);
+}
+.gea-home-card:focus-visible { outline: 2px solid #df1732; outline-offset: 2px; }
+.gea-home-card-icon {
+  display: grid;
+  width: 33px;
+  height: 33px;
+  flex: none;
+  place-items: center;
+  border-radius: 9px;
+  background: #f7f7f8;
+  color: #777c84;
+}
+.gea-home-card-copy { display: grid; min-width: 0; flex: 1 1 auto; gap: 3px; }
+.gea-home-card-copy strong { color: #2c2f34; font-size: 13px; font-weight: 600; line-height: 1.4; }
+.gea-home-card-copy small { color: #a0a4aa; font-size: 11px; line-height: 1.4; }
+.gea-home-card-arrow {
+  flex: none;
+  color: #b1b5bc;
+  font-size: 15px;
+  transition: transform 160ms ease, color 160ms ease;
+}
+.gea-home-card-badge {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f5e8e9;
+  color: #c85158;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 1.5;
+}
+/* 三张卡展开后的面板：常用功能 / 推荐问题 / 预警事件共用一套容器。 */
+.gea-home-panel {
+  margin-top: 14px;
+  padding: 15px 17px;
+  border: 1px solid #ececef;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgb(28 33 40 / 4%);
+  text-align: left;
+}
+.gea-home-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 11px;
+}
+.gea-home-panel-head strong { color: #2c2f34; font-size: 13px; font-weight: 600; }
+.gea-home-panel-head small { color: #a0a4aa; font-size: 11px; }
+.gea-home-panel-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.gea-home-panel-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #eef0f3 !important;
+  border-radius: 10px;
+  background: #fcfcfd !important;
+  color: #3f4856;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.gea-home-panel-item:hover { border-color: #e7a4ae !important; background: #fff5f6 !important; }
+.gea-home-panel-item:focus-visible { outline: 2px solid #df1732; outline-offset: 2px; }
+.gea-home-panel-copy { display: grid; min-width: 0; flex: 1 1 auto; gap: 2px; }
+.gea-home-panel-copy strong {
+  color: #2c2f34;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.gea-home-panel-copy small { color: #9a9a96; font-size: 11px; line-height: 1.45; }
+.gea-home-panel-note { margin: 2px 0 0; color: #9a9a96; font-size: 12px; line-height: 1.7; }
+.gea-home-panel-foot { display: flex; justify-content: flex-end; margin-top: 11px; }
+.gea-home-panel-more {
+  padding: 7px 13px;
+  border: 1px solid #e9d7da !important;
+  border-radius: 999px;
+  background: #fff7f8 !important;
+  color: #c14049;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.gea-home-panel-more:hover { border-color: #e7a4ae !important; background: #fff0f2 !important; }
+.gea-home-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.gea-home-panel .gea-home-prompts { justify-content: flex-start; margin-top: 0; }
+.gea-home-prompts button {
+  padding: 8px 14px;
+  border: 1px solid #ececef !important;
+  border-radius: 999px;
+  background: #fff !important;
+  color: #5f5f5a;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.gea-home-prompts button:hover { border-color: #e7a4ae !important; background: #fff5f6 !important; color: #c52138; }
+.gea-home-prompts button:focus-visible { outline: 2px solid #df1732; outline-offset: 2px; }
+@media (max-height: 800px) {
+  .gea-home-logo { width: 62px; height: 62px; margin-bottom: 8px; }
+  .gea-home-eyebrow { margin-bottom: 12px; }
+  .gea-home-description { margin: 14px auto 16px; }
+  .gea-home-card { padding: 11px 13px; }
+}
 
 /* Business inbox follows the dealer reminder prototype. */
 .gea-inbox { --inbox-brand: #c91414; --inbox-muted: light-dark(#626975, #b6bdc8); --inbox-border: light-dark(#e5e6eb, #41444c); --inbox-panel: light-dark(#fff, #24262b); --inbox-bg: light-dark(#f2f3f5, #1b1d21); height: 100%; overflow: auto; color: light-dark(#1d2129, #edf0f5); background: var(--inbox-bg); font-size: 14px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif; }

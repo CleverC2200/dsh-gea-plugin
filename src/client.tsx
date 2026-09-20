@@ -18,12 +18,28 @@ import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import { zh, en, type CopyKey } from "./client/locales.ts";
-import { Inbox } from "./client/inbox.tsx";
+import { AgentAvatar } from "./client/agent-avatar.tsx";
+import { Inbox, readNotifications } from "./client/inbox.tsx";
+import type { NotificationItem } from "./shared/notifications.ts";
 import {registerHtmlClient} from "./html-client.tsx";
-import {approvalConversation,inventoryConversation,regionalPlanConversation,type ConversationActionIcon,type ConversationActionTone,type ConversationPromptConfig} from "./client/conversation-prompts.ts";
+import {
+  approvalConversation,
+  branchStockConversation,
+  deliveryOpsConversation,
+  demandOpsConversation,
+  fullChainStockConversation,
+  homeConversation,
+  inboxConversation,
+  inventoryConversation,
+  inventoryWorkbenchConversation,
+  regionalPlanConversation,
+  safetyStockConversation,
+  type ConversationActionIcon,
+  type ConversationActionTone,
+  type ConversationPromptConfig,
+} from "./client/conversation-prompts.ts";
 import {isGeaBusinessPanel,registeredBusinessPanels} from "./business-navigation.ts";
 import brandLogo from "./client/brand-logo.png";
-import agentAvatar from "./client/agent-avatar.png";
 import shellCss from "./client/shell.css";
 import workbenchCss from "./workbench/workbench.css";
 import regionalPlanPrototype from "./workbench/prototypes/regional-plan-v9.html";
@@ -211,6 +227,22 @@ export function apply(ctx: Context): void {
       </>
     );
   }
+  /** 业务待办页：和业务工作台一样自带右侧会话栏（否则整块对话框不出现）。 */
+  function InboxPage() {
+    useEffect(() => {
+      const hide = ctx.agentWorkbench.showConversation(INBOX);
+      void ctx.agentWorkbench.open(INBOX).catch(() => {
+        /* 会话打不开时页面照常可看，不额外打扰用户。 */
+      });
+      return () => hide();
+    }, []);
+    return (
+      <>
+        <style>{shellCss}</style>
+        <Inbox t={t} />
+      </>
+    );
+  }
   function useIdentity() {
     const [identity, setIdentity] = useState({ name: "", avatarUrl: "" });
     const updateIdentity = (authenticated: boolean, user: { name?: unknown; avatar?: unknown } | null | undefined) => {
@@ -354,10 +386,14 @@ export function apply(ctx: Context): void {
     );
   }
   function BrandName({ usePanelInfo }: PropsRuntime<"sidebar.brand.name">) {
-    const business = usePanelInfo(
-      (info) => isGeaBusinessPanel(info.activePanelId, ctx.slots.entries("main")) || info.activePanelId === API_LOG_PANEL,
+    // 左上角品牌照原型固定成「思念 GEA + 一行说明」，不再随页面切文案。
+    // 原型里「AI工作台」行右侧的「企业级」标签和新建小图标按评审意见去掉。
+    return (
+      <div className="gea-brand-copy" onClick={(event) => event.stopPropagation()}>
+        <span className="gea-brand-title">{t("geaBusiness")}</span>
+        <div className="gea-brand-subtitle">{t("brandSubtitle")}</div>
+      </div>
     );
-    return <span onClick={(event) => event.stopPropagation()}>{t(business ? "geaBusiness" : "dshConversation")}</span>;
   }
   function UserAvatar({ wide }: PropsRuntime<"settings.trigger">) {
     const { name, avatarUrl } = useIdentity();
@@ -400,10 +436,22 @@ export function apply(ctx: Context): void {
         if (event.target instanceof Node && !menu.current?.contains(event.target) && !trigger.current?.contains(event.target)) setPosition(null);
       };
       const resize = () => setPosition(null);
+      // 焦点不在菜单里时（切页签、切窗口后）Esc 也应该关掉账户菜单。
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (event.key !== "Escape") return;
+        setPosition(null);
+        trigger.current?.focus();
+      };
       document.addEventListener("pointerdown", close);
+      document.addEventListener("keydown", onKeyDown);
       window.addEventListener("resize", resize);
       window.addEventListener("blur", resize);
-      return () => { document.removeEventListener("pointerdown", close); window.removeEventListener("resize", resize); window.removeEventListener("blur", resize); };
+      return () => {
+        document.removeEventListener("pointerdown", close);
+        document.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("resize", resize);
+        window.removeEventListener("blur", resize);
+      };
     }, [position]);
     return <>
       <style>{shellCss}</style>
@@ -442,12 +490,7 @@ export function apply(ctx: Context): void {
     );
     yield ctx.slots.register(
       { name: "main", key: INBOX, locale: "geaProof" },
-      () => (
-        <>
-          <style>{shellCss}</style>
-          <Inbox t={t} />
-        </>
-      ),
+      InboxPage,
     );
     yield ctx.slots.register(
       { name: "main", key: API_LOG_PANEL, locale: "geaProof" },
@@ -459,6 +502,8 @@ export function apply(ctx: Context): void {
     );
     yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
     yield ctx.agentWorkbench.register({ id: REGIONAL_PLAN_PANEL, preset: "gea-readonly" });
+    // 业务待办页也要有自己的会话栏：不登记的话右侧对话框整块不出现。
+    yield ctx.agentWorkbench.register({ id: INBOX, preset: "gea-readonly" });
     ctx.layout.selectPanel(PANEL);
   });
   function NavigationMode({
@@ -477,14 +522,13 @@ export function apply(ctx: Context): void {
       return () => frame?.classList.remove("gea-api-fullscreen");
     }, [activePanel]);
     // 会话栏沿用「工作台在旁边」的停靠布局：输入框贴底、首页区块在流内。
+    // 所有带会话栏的业务页（含 HTML 插件页和业务待办）都要停靠，
+    // 否则欢迎区会绝对定位浮在输入框上面，输入框点不进去。
     useEffect(() => {
       const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
-      frame?.classList.toggle(
-        "gea-rail-docked",
-        activePanel === PANEL || activePanel === REGIONAL_PLAN_PANEL,
-      );
+      frame?.classList.toggle("gea-rail-docked", business && activePanel !== API_LOG_PANEL);
       return () => frame?.classList.remove("gea-rail-docked");
-    }, [activePanel]);
+    }, [business, activePanel]);
     // 业务面板之间切换时，框架默认会用 400ms 动画改列宽，
     // 动画期间工作台跟着连续重排，看起来像页面闪动；切换瞬间先关掉这个动画。
     useEffect(() => {
@@ -512,13 +556,16 @@ export function apply(ctx: Context): void {
     const [region, setRegion] = useState<HTMLElement | null>(null);
     const [logoRow, setLogoRow] = useState<HTMLElement | null>(null);
     const [conversationHero, setConversationHero] = useState<HTMLElement | null>(null);
+    const [homeHero, setHomeHero] = useState<HTMLElement | null>(null);
     const [railColumn, setRailColumn] = useState<HTMLElement | null>(null);
-    const [sidebarMode, setSidebarMode] = useState<"workspace" | "function">(() => (business ? "function" : "workspace"));
+    // 左栏改成两个互斥抽屉：功能区在品牌下方从上往下展开，工作区贴底从下往上展开。
+    const [drawer, setDrawer] = useState<"function" | "workspace" | "none">(
+      () => (business ? "function" : "workspace"),
+    );
     const previousBusiness = useRef(business);
     useEffect(() => {
-      // Selecting a business panel opens its navigation, but the tabs stay the user's choice:
-      // switching back to 工作区 must not force the sidebar back to 功能区.
-      if (business && !previousBusiness.current) setSidebarMode("function");
+      // 进业务页自动展开功能区；回到 AI 工作台保留用户自己选的抽屉，不强行切换。
+      if (business && !previousBusiness.current) setDrawer("function");
       previousBusiness.current = business;
     }, [business]);
     useEffect(() => {
@@ -543,6 +590,12 @@ export function apply(ctx: Context): void {
         );
         setLogoRow(document.querySelector<HTMLElement>("[class*='_logoRow']"));
         setRailColumn(document.querySelector<HTMLElement>(".AppFrame_rightbarCol"));
+        // 主页面（没有业务面板时）中心列就是 GEA 的主视觉；业务页时中心列是工作台 iframe。
+        setHomeHero(
+          document.querySelector<HTMLElement>(
+            ".AppFrame_centerCol [data-slot='main.conversation'] [data-phase='hero'] [data-conversation-scroll]",
+          ),
+        );
         setConversationHero(document.querySelector<HTMLElement>(
           ".AppFrame_rightbarCol [data-slot='main.conversation'] [data-phase='hero']",
         ));
@@ -553,6 +606,40 @@ export function apply(ctx: Context): void {
       return () => observer.disconnect();
     }, []);
     useEffect(() => {
+      if (!region) return;
+      region.setAttribute("data-gea-drawer", drawer);
+      return () => region.removeAttribute("data-gea-drawer");
+    }, [region, drawer]);
+    // 会话搜索展开时，原生的搜索行要从「历史会话」标题右边一直铺到右边，
+    // 这里把标题右边缘量出来给 CSS 用（中英文标题宽度不同，写死会压字）。
+    useEffect(() => {
+      if (!region || drawer !== "workspace") {
+        region?.style.removeProperty("--gea-search-left");
+        return;
+      }
+      const sync = () => {
+        const slot = region.querySelector<HTMLElement>('[data-slot="sidebar.workspaces"]');
+        const title = region.querySelector<HTMLElement>(".gea-drawer-workspace .gea-drawer-title");
+        if (!slot || !title) return;
+        // 量文字本身（Range）而不是盒子：标题盒子会随内边距变化，量盒子会来回抖。
+        const range = document.createRange();
+        range.selectNodeContents(title);
+        const text = range.getBoundingClientRect();
+        const right = text.width > 0 ? text.right : title.getBoundingClientRect().right;
+        const left = Math.round(right - slot.getBoundingClientRect().left) + 6;
+        region.style.setProperty("--gea-search-left", `${left}px`);
+      };
+      sync();
+      const observer = new MutationObserver(sync);
+      observer.observe(region, { childList: true, subtree: true, characterData: true });
+      window.addEventListener("resize", sync);
+      return () => {
+        observer.disconnect();
+        window.removeEventListener("resize", sync);
+        region.style.removeProperty("--gea-search-left");
+      };
+    }, [region, drawer]);
+    useEffect(() => {
       if (!business) return;
       const hideConversationChrome = () => {
         const conversation = document.querySelector<HTMLElement>(
@@ -561,16 +648,20 @@ export function apply(ctx: Context): void {
         if (!conversation) return;
         const hide = (element: Element | null | undefined) => element?.setAttribute("data-gea-hidden-session-chrome", "");
         const text = (element: Element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "";
-        // 0.1.6 renders the native hero as a brand row plus workspace and preset pickers above
-        // the composer, and the pickers are popup buttons rather than <button>. The business
-        // shell replaces all of it, so drop everything the composer sits behind while keeping
-        // the composer, its toolbar and the GEA panel itself.
-        const composer = conversation.querySelector("textarea, [contenteditable='true']");
-        for (let node: Element | null = composer; node && node !== conversation; node = node.parentElement) {
-          for (const sibling of [...(node.parentElement?.children ?? [])]) {
-            if (sibling === node) break;
-            if (sibling.querySelector(".gea-agent-welcome")) continue;
-            hide(sibling);
+        // 每次重算前先撤掉上一轮的标记：首屏标记过的容器在会话开始后就是消息列表，
+        // 不能让它一直停在被隐藏的状态（否则真实回复用户看不到）。
+        for (const marked of conversation.querySelectorAll("[data-gea-hidden-session-chrome]"))
+          marked.removeAttribute("data-gea-hidden-session-chrome");
+        // 首屏（hero）才把原生欢迎区整段让开。0.1.6 的欢迎区是品牌行 + 工作区/预设选择器，
+        // 业务外壳自己铺了这一屏；会话开始后这些兄弟节点是消息列表，必须保留。
+        if (conversation.querySelector("[data-phase='hero']")) {
+          const composer = conversation.querySelector("textarea, [contenteditable='true']");
+          for (let node: Element | null = composer; node && node !== conversation; node = node.parentElement) {
+            for (const sibling of [...(node.parentElement?.children ?? [])]) {
+              if (sibling === node) break;
+              if (sibling.querySelector(".gea-agent-welcome")) continue;
+              hide(sibling);
+            }
           }
         }
         hide(conversation.querySelector("[aria-label='选择工作区']"));
@@ -593,46 +684,71 @@ export function apply(ctx: Context): void {
     }, [business]);
     if (!region) return null;
     const expandSidebar = () => {
-      document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']")?.click();
+      // 不同内核版本把同一个按钮标成「打开侧边栏」或「展开侧边栏」，两种都认。
+      document
+        .querySelector<HTMLButtonElement>(
+          "button[aria-label='打开侧边栏'], button[aria-label='展开侧边栏']",
+        )
+        ?.click();
     };
     // 工作区 only swaps the sidebar surface: the center document and the rail conversation stay.
-    const selectWorkspace = () => setSidebarMode("workspace");
-    const selectFunction = () => {
-      setSidebarMode("function");
-      if (!business) ctx.layout.selectPanel(PANEL);
+    const toggleDrawer = (name: "function" | "workspace") =>
+      setDrawer((value) => (value === name ? "none" : name));
+    const writeComposer = (prompt: string) => {
+      const conversation =
+        document.querySelector<HTMLElement>(
+          ".AppFrame_centerCol [data-slot='main.conversation'], .AppFrame_rightbarCol [data-slot='main.conversation']",
+        ) ?? conversationHero;
+      if (!conversation) return;
+      const input = Array.from(
+        conversation.querySelectorAll<HTMLElement>("textarea, [contenteditable='true']"),
+      ).find((element) => element.getClientRects().length > 0 && !element.hasAttribute("disabled"));
+      if (!input) return;
+      if (input instanceof HTMLTextAreaElement) {
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+        setter?.call(input, prompt);
+      } else {
+        input.focus();
+        document.execCommand("selectAll", false);
+        if (!document.execCommand("insertText", false, prompt)) {
+          input.replaceChildren(document.createTextNode(prompt));
+          input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
+        }
+      }
+      if (input instanceof HTMLTextAreaElement)
+        input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
+      input.focus();
     };
-    const modeTabs = createPortal(
-      <div className="gea-sidebar-mode-tabs" role="tablist" aria-label="侧边栏区域">
-        <button type="button" role="tab" aria-selected={sidebarMode === "workspace"} onClick={selectWorkspace}>工作区</button>
-        <button type="button" role="tab" aria-selected={sidebarMode === "function"} onClick={selectFunction}>功能区</button>
-      </div>,
-      region,
-    );
-    if (!business) {
-      return (
-        <>
-          {modeTabs}
-          {sidebarMode === "function" && createPortal(
-            <div className="gea-business-navigation gea-function-menu-popover" data-sidebar-function-mode>
-              <Navigation
-                usePanelInfo={usePanelInfo}
-                useSessions={useSessions}
-                useSessionPendingInteraction={useSessionPendingInteraction}
-                useWorkspaces={useWorkspaces}
-                wide
-                expandSidebar={expandSidebar}
-              />
-            </div>,
-            region,
-          )}
-        </>
-      );
-    }
-    return (
+    const drawerPortal = createPortal(
       <>
-        {modeTabs}
-        {sidebarMode === "function" && createPortal(
-          <div className="gea-business-navigation gea-business-menu-panel">
+        {/* 两个抽屉上下挨着：业务工作台在上、历史会话紧跟其下，展开都往下走。 */}
+        <div className="gea-sidebar-drawer gea-drawer-function">
+          <button
+            type="button"
+            className="gea-sidebar-tab"
+            aria-expanded={drawer === "function"}
+            aria-controls="gea-panel-function"
+            onClick={() => toggleDrawer("function")}
+          >
+            <span className="gea-drawer-title">{t("functionArea")}</span>
+            <Chevron open={drawer === "function"} />
+          </button>
+        </div>
+        <div className="gea-sidebar-drawer gea-drawer-workspace">
+          <button
+            type="button"
+            className="gea-sidebar-tab"
+            aria-expanded={drawer === "workspace"}
+            aria-controls="gea-panel-workspace"
+            onClick={() => toggleDrawer("workspace")}
+          >
+            <span className="gea-drawer-title">{t("workspaceArea")}</span>
+            <Chevron open={drawer === "workspace"} />
+          </button>
+        </div>
+        {/* 面板统一放在两行下面，这样两个标题始终挨着，展开都是往下长。 */}
+        {drawer === "function" && (
+          <div className="gea-sidebar-panel gea-panel-function" id="gea-panel-function">
             <Navigation
               usePanelInfo={usePanelInfo}
               useSessions={useSessions}
@@ -641,9 +757,14 @@ export function apply(ctx: Context): void {
               wide
               expandSidebar={expandSidebar}
             />
-          </div>,
-          region,
+          </div>
         )}
+      </>,
+      region,
+    );
+    return (
+      <>
+        {drawerPortal}
         {logoRow && createPortal(
           <button
             type="button"
@@ -658,30 +779,35 @@ export function apply(ctx: Context): void {
         )}
         {railColumn && createPortal(<ConversationHead agent={conversationAgentFor(activePanel)} />, railColumn)}
         {conversationHero && createPortal(
-          <AgentWelcome agent={conversationAgentFor(activePanel)} onPrompt={(prompt) => {
-            const conversation = document.querySelector<HTMLElement>(
-              ".AppFrame_rightbarCol [data-slot='main.conversation']",
-            ) ?? conversationHero;
-            const input = Array.from(
-              conversation.querySelectorAll<HTMLElement>("textarea, [contenteditable='true']"),
-            ).find((element) => element.getClientRects().length > 0 && !element.hasAttribute("disabled"));
-            if (!input) return;
-            if (input instanceof HTMLTextAreaElement) {
-              const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
-              setter?.call(input, prompt);
-            } else {
-              input.focus();
-              document.execCommand("selectAll", false);
-              if (!document.execCommand("insertText", false, prompt)) {
-                input.replaceChildren(document.createTextNode(prompt));
-                input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
-              }
-            }
-            if (input instanceof HTMLTextAreaElement)
-              input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
-            input.focus();
-          }} />,
+          <AgentWelcome agent={conversationAgentFor(activePanel)} onPrompt={writeComposer} />,
           conversationHero,
+        )}
+        {!business && homeHero && createPortal(
+          <GeaHomeHero
+            agent={conversationAgentFor(activePanel)}
+            onOpenInbox={() => ctx.layout.selectPanel(INBOX)}
+            onPrompt={writeComposer}
+            copy={{
+              label: t("geaBusiness"),
+              eyebrow: t("homeEyebrow"),
+              title: t("homeTitle"),
+              description: t("homeDescription"),
+              functions: t("homeFunctions"),
+              functionsHint: t("homeFunctionsHint"),
+              functionsPanelHint: t("homeFunctionsPanelHint"),
+              questions: t("homeQuestions"),
+              questionsHint: t("homeQuestionsHint"),
+              questionsPanelHint: t("homeQuestionsPanelHint"),
+              alerts: t("homeAlerts"),
+              alertsHint: t("homeAlertsHint"),
+              alertsEmpty: t("homeAlertsEmpty"),
+              alertsFailed: t("homeAlertsFailed"),
+              alertsOpenAll: t("homeAlertsOpenAll"),
+              loading: t("loading"),
+              noContent: t("notificationNoContent"),
+            }}
+          />,
+          homeHero,
         )}
       </>
     );
@@ -741,9 +867,8 @@ function AgentWelcome({
   return (
     <section className="gea-agent-welcome" aria-label={agent.name}>
       <div className="gea-agent-identity">
-        <img className="gea-agent-avatar" src={agentAvatar} alt="" width={72} height={72} />
+        <AgentAvatar className="gea-agent-avatar" />
         <h2>{agent.name}</h2>
-        <span className="gea-agent-tagline">{agent.tagline}</span>
         <p className="gea-agent-intro">{agent.intro}<b>{agent.boundary}</b></p>
       </div>
       <div className="gea-agent-block">
@@ -765,7 +890,196 @@ function AgentWelcome({
         <h3>你可以这样问</h3>
         {agent.prompts.map((prompt) => <button key={prompt} type="button" onClick={() => onPrompt(prompt)}>{prompt}</button>)}
       </div>
-      <p className="gea-agent-footnote">AI 生成内容请判断后使用</p>
+    </section>
+  );
+}
+
+/**
+ * AI 工作台主页面主视觉（原型 mid 区）。
+ * 照原型的品牌引言 + 三个入口铺开，但按评审去掉「本地演示」「AI 生成内容请判断后使用」这类提示；
+ * 三张卡都能展开：常用功能和推荐问题直接用会话区的文案填输入框，预警事件拉业务待办列表。
+ * 原型里的预设场景库等新功能先不做。
+ */
+type HomeCardId = "functions" | "questions" | "alerts";
+
+/** 主页面预警列表的时间显示成和业务待办一致的「YYYY-MM-DD HH:mm」。 */
+function homeTime(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function GeaHomeHero({
+  onOpenInbox,
+  onPrompt,
+  agent,
+  copy,
+}: {
+  onOpenInbox: () => void;
+  onPrompt: (prompt: string) => void;
+  agent: ConversationPromptConfig;
+  copy: {
+    label: string;
+    eyebrow: string;
+    title: string;
+    description: string;
+    functions: string;
+    functionsHint: string;
+    functionsPanelHint: string;
+    questions: string;
+    questionsHint: string;
+    questionsPanelHint: string;
+    alerts: string;
+    alertsHint: string;
+    alertsEmpty: string;
+    alertsFailed: string;
+    alertsOpenAll: string;
+    loading: string;
+    noContent: string;
+  };
+}) {
+  const [openCard, setOpenCard] = useState<HomeCardId | null>(null);
+  const [alerts, setAlerts] = useState<{
+    status: "loading" | "ready" | "error";
+    items: NotificationItem[];
+    unread: number;
+  }>({ status: "loading", items: [], unread: 0 });
+  useEffect(() => {
+    if (openCard !== "alerts") return;
+    const controller = new AbortController();
+    setAlerts({ status: "loading", items: [], unread: 0 });
+    void readNotifications<{ value: { items: NotificationItem[]; unreadCount: number } }>(
+      { pageNo: 1, state: "unread" },
+      controller.signal,
+    )
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setAlerts({
+          status: "ready",
+          items: result.value.items.slice(0, 3),
+          unread: result.value.unreadCount,
+        });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setAlerts({ status: "error", items: [], unread: 0 });
+      });
+    return () => controller.abort();
+  }, [openCard]);
+  const toggle = (card: HomeCardId) => setOpenCard((value) => (value === card ? null : card));
+  const card = (
+    id: HomeCardId,
+    icon: HomeCardIconKind,
+    title: string,
+    hint: string,
+    badge?: number,
+  ) => (
+    <button
+      type="button"
+      className="gea-home-card"
+      aria-expanded={openCard === id}
+      aria-controls={`gea-home-panel-${id}`}
+      onClick={() => toggle(id)}
+    >
+      <span className="gea-home-card-icon"><HomeCardIcon kind={icon} /></span>
+      <span className="gea-home-card-copy">
+        <strong>
+          {title}
+          {badge ? <i className="gea-home-card-badge">{badge}</i> : null}
+        </strong>
+        <small>{hint}</small>
+      </span>
+      <span className="gea-home-card-arrow" aria-hidden="true">›</span>
+    </button>
+  );
+  const panelHead = (title: string, hint: string) => (
+    <div className="gea-home-panel-head">
+      <strong>{title}</strong>
+      <small>{hint}</small>
+    </div>
+  );
+  return (
+    <section className="gea-home-hero" aria-label={copy.label}>
+      <img className="gea-home-logo" src={brandLogo} alt="" width={81} height={81} />
+      <p className="gea-home-eyebrow">{copy.eyebrow}</p>
+      <h1 className="gea-home-title">{copy.title}</h1>
+      <p className="gea-home-description">{copy.description}</p>
+      <div className="gea-home-cards">
+        {card("functions", "grid", copy.functions, copy.functionsHint)}
+        {card("questions", "light", copy.questions, copy.questionsHint)}
+        {card(
+          "alerts",
+          "bell",
+          copy.alerts,
+          copy.alertsHint,
+          alerts.status === "ready" && alerts.unread > 0 ? alerts.unread : undefined,
+        )}
+      </div>
+      {openCard === "functions" && (
+        <div className="gea-home-panel" id="gea-home-panel-functions">
+          {panelHead(copy.functions, copy.functionsPanelHint)}
+          <div className="gea-home-panel-list">
+            {agent.actions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                className="gea-home-panel-item"
+                onClick={() => onPrompt(action.prompt)}
+              >
+                <AgentActionIcon kind={action.icon} tone={action.tone} />
+                <span className="gea-home-panel-copy">
+                  <strong>{action.label}</strong>
+                  <small>{action.detail}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {openCard === "questions" && (
+        <div className="gea-home-panel" id="gea-home-panel-questions">
+          {panelHead(copy.questions, copy.questionsPanelHint)}
+          <div className="gea-home-prompts">
+            {agent.prompts.map((prompt) => (
+              <button key={prompt} type="button" onClick={() => onPrompt(prompt)}>{prompt}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      {openCard === "alerts" && (
+        <div className="gea-home-panel" id="gea-home-panel-alerts">
+          {panelHead(copy.alerts, copy.alertsHint)}
+          {alerts.status === "loading" && <p className="gea-home-panel-note">{copy.loading}</p>}
+          {alerts.status === "error" && <p className="gea-home-panel-note">{copy.alertsFailed}</p>}
+          {alerts.status === "ready" && alerts.items.length === 0 && (
+            <p className="gea-home-panel-note">{copy.alertsEmpty}</p>
+          )}
+          {alerts.status === "ready" && alerts.items.length > 0 && (
+            <div className="gea-home-panel-list">
+              {alerts.items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="gea-home-panel-item"
+                  onClick={onOpenInbox}
+                >
+                  <span className="gea-home-panel-copy">
+                    <strong>{item.title ?? item.summary ?? copy.noContent}</strong>
+                    <small>{homeTime(item.notifiedAt ?? item.createdAt)}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="gea-home-panel-foot">
+            <button type="button" className="gea-home-panel-more" onClick={onOpenInbox}>
+              {copy.alertsOpenAll}
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -774,7 +1088,7 @@ function AgentWelcome({
 function ConversationHead({ agent }: { agent: ConversationPromptConfig }) {
   return (
     <header className="gea-agent-head">
-      <img className="gea-agent-head-avatar" src={agentAvatar} alt="" width={30} height={30} />
+      <AgentAvatar className="gea-agent-head-avatar" />
       <span className="gea-agent-head-copy">
         <span className="gea-agent-head-name">{agent.name}</span>
         <span className="gea-agent-head-sub"><i aria-hidden="true" />{agent.headerSub}</span>
@@ -783,10 +1097,23 @@ function ConversationHead({ agent }: { agent: ConversationPromptConfig }) {
   );
 }
 
+/** 每个业务页配各自的会话助手：名字、常用功能、推荐提问都跟那一页的工作台对齐。 */
+const BUSINESS_CONVERSATIONS: Record<string, ConversationPromptConfig> = {
+  [PANEL]: approvalConversation,
+  [REGIONAL_PLAN_PANEL]: regionalPlanConversation,
+  "inventory-dealer": inventoryConversation,
+  "inventory-apsdemand": demandOpsConversation,
+  "inventory-apsdelivery": deliveryOpsConversation,
+  "inventory-aqkc": safetyStockConversation,
+  "inventory-fc": branchStockConversation,
+  "inventory-personal": inventoryWorkbenchConversation,
+  "inventory-qll": fullChainStockConversation,
+};
+
 function conversationAgentFor(panel: MainPanelId | null | undefined): ConversationPromptConfig {
-  if (panel === PANEL) return approvalConversation;
-  if (panel === REGIONAL_PLAN_PANEL) return regionalPlanConversation;
-  return inventoryConversation;
+  if (!panel) return homeConversation;
+  if (panel === INBOX) return inboxConversation;
+  return BUSINESS_CONVERSATIONS[panel] ?? homeConversation;
 }
 
 function AgentActionIcon({ kind, tone }: { kind: ConversationActionIcon; tone: ConversationActionTone }) {
@@ -807,7 +1134,7 @@ function AgentActionIcon({ kind, tone }: { kind: ConversationActionIcon; tone: C
   );
 }
 
-type NavIconKind = "bot" | "bell" | "desktop" | "users" | "calendar" | "warehouse";
+type NavIconKind = "bot" | "bell" | "desktop" | "users" | "calendar" | "warehouse" | "grid" | "folder";
 function NavIcon({ kind }: { kind: NavIconKind }) {
   const paths: Record<NavIconKind, React.ReactNode> = {
     bot: <><rect x="5" y="7" width="14" height="11" rx="2" /><path d="M12 4v3M8 12h.01M16 12h.01M9 18v2M15 18v2" /></>,
@@ -816,8 +1143,20 @@ function NavIcon({ kind }: { kind: NavIconKind }) {
     users: <><circle cx="9" cy="9" r="3" /><path d="M3.5 19c.7-3 2.5-4.5 5.5-4.5s4.8 1.5 5.5 4.5M16 6.5a2.5 2.5 0 0 1 0 5M17 14.5c1.9.2 3.1 1.6 3.5 3.5" /></>,
     calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16M8 14h2M14 14h2M8 17h2" /></>,
     warehouse: <><path d="m3 10 9-6 9 6v10H3z" /><path d="M8 20v-6h8v6M6 10h12" /></>,
+    grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
+    folder: <><path d="M3 7V5.5A1.5 1.5 0 0 1 4.5 4h4l2 2.5h9A1.5 1.5 0 0 1 21 8v10.5A1.5 1.5 0 0 1 19.5 20h-15A1.5 1.5 0 0 1 3 18.5Z" /></>,
   };
   return <svg className="gea-shell-nav-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{paths[kind]}</svg>;
+}
+
+type HomeCardIconKind = "grid" | "light" | "bell";
+function HomeCardIcon({ kind }: { kind: HomeCardIconKind }) {
+  const paths: Record<HomeCardIconKind, React.ReactNode> = {
+    grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
+    light: <><path d="M9 18h6m-5 3h4M8 14a7 7 0 1 1 8 0l-1 3H9Z" /></>,
+    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></>,
+  };
+  return <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{paths[kind]}</svg>;
 }
 function Chevron({ open }: { open: boolean }) {
   return <svg className={`gea-shell-chevron${open ? " is-open" : ""}`} aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m7 10 5 5 5-5" /></svg>;

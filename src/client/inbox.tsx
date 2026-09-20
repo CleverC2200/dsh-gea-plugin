@@ -234,7 +234,8 @@ function formatDate(value: string | null): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-async function readNotifications<T = { value: unknown }>(query: object, signal?: AbortSignal): Promise<T> {
+/** 待办列表/详情共用的一次读取；主页面「预警事件」抽屉也复用同一入口。 */
+export async function readNotifications<T = { value: unknown }>(query: object, signal?: AbortSignal): Promise<T> {
   const response = await fetch("/api/gea-proof/notifications", {
     method: "POST", credentials: "same-origin",
     headers: { "Content-Type": "application/json" },

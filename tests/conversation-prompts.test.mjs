@@ -18,12 +18,25 @@ new Function("require", "module", "exports", outputFiles[0].text)(
   module,
   module.exports,
 );
-const { reportingConversation, approvalConversation, inventoryConversation } = module.exports;
+const {
+  reportingConversation,
+  approvalConversation,
+  inventoryConversation,
+  homeConversation,
+  demandOpsConversation,
+  deliveryOpsConversation,
+  safetyStockConversation,
+  branchStockConversation,
+  inventoryWorkbenchConversation,
+  fullChainStockConversation,
+  regionalPlanConversation,
+  inboxConversation,
+} = module.exports;
 
 // 文案来源：《销售计划 · 右侧 AI 会话区原型说明 V1》，原型见 docs/prototypes/。
 test("提报版对话区文案按原型说明 V1 落地", () => {
   assert.equal(reportingConversation.name, "销售计划助手");
-  assert.equal(reportingConversation.tagline, "提报辅助");
+  assert.equal(reportingConversation.headerSub, "需求预测 Agent");
   assert.match(reportingConversation.intro, /核对本月计划的合理性与风险/);
   assert.equal(reportingConversation.boundary, "最终提交仍然由你自己在确认入口完成。");
   assert.deepEqual(
@@ -49,7 +62,7 @@ test("提报版对话区文案按原型说明 V1 落地", () => {
 
 test("审批版对话区文案按原型说明 V1 落地", () => {
   assert.equal(approvalConversation.name, "销售计划审批助手");
-  assert.equal(approvalConversation.tagline, "审批辅助");
+  assert.equal(approvalConversation.headerSub, "需求预测 Agent");
   assert.match(approvalConversation.intro, /先给结论，再给依据/);
   assert.equal(approvalConversation.boundary, "我只做分析建议，不改变审批状态。");
   assert.deepEqual(
@@ -88,4 +101,32 @@ test("两版共用同一套结构，库存助手文案保持不变", () => {
     "生成下周的补货建议",
     "导出客户库存分析报告",
   ]);
+});
+
+// 每个业务页一套助手文案，名字 / 固定功能 / 推荐提问都跟那一页的工作台对齐。
+test("每个工作台页都有对齐的助手名称与四段文案", () => {
+  const expected = [
+    [homeConversation, "AI 工作台助手"],
+    [inboxConversation, "业务待办助手"],
+    [demandOpsConversation, "需求运营助手"],
+    [deliveryOpsConversation, "交付运营助手"],
+    [safetyStockConversation, "安全库存助手"],
+    [branchStockConversation, "分仓库存助手"],
+    [inventoryWorkbenchConversation, "库存管理助手"],
+    [fullChainStockConversation, "全链路库存助手"],
+    [inventoryConversation, "经销商补货助手"],
+    [regionalPlanConversation, "区域计划助手"],
+    [approvalConversation, "销售计划审批助手"],
+  ];
+  for (const [config, name] of expected) {
+    assert.equal(config.name, name);
+    assert.match(config.headerSub, /^(需求预测|库存|GEA) Agent$/);
+    assert.equal(config.actions.length, 4);
+    assert.equal(config.prompts.length, 4);
+    assert.equal(config.tagline, undefined);
+    assert.ok(config.intro.length > 0 && config.boundary.length > 0);
+    for (const action of config.actions) {
+      assert.ok(action.icon && action.label && action.detail && action.prompt);
+    }
+  }
 });
