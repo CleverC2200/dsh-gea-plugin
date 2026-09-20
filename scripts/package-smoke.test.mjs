@@ -9,7 +9,9 @@ import { profile, readSession, until } from "../tests/profile.mjs";
 
 test(
   "allowlisted package installs into an empty directory and starts a published DSH profile without AionUi",
-  { timeout: 180000 },
+  // 空目录安装要拉取两个内置插件的 git 依赖（genui、better-sidebar）：热缓存
+  // 约 50s，冷缓存首次克隆明显更久，因此给整条链路更宽的预算。
+  { timeout: 600000 },
   async (t) => {
     const root = resolve(import.meta.dirname, "..");
     const packed = JSON.parse(
@@ -31,7 +33,7 @@ test(
     execFileSync(
       "npm",
       ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"],
-      { cwd: dir, timeout: 120000, stdio: "pipe" },
+      { cwd: dir, timeout: 300000, stdio: "pipe" },
     );
     app = await profile(t, {
       pluginRoot: dir,
