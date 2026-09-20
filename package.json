@@ -124,6 +124,7 @@
     "lib/workbench.js",
     "lib/workbench.css",
     "presets/",
+    "default-presets/",
     "scripts/start.mjs",
     "scripts/deployment.mjs",
     "scripts/verify.mjs",
