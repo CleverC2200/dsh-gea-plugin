@@ -14,7 +14,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(root, "desktop");
 const buildRoot = join(root, ".runtime", "electron-build");
 
-const SHELL_FILES = [
+export const SHELL_FILES = [
   "main.cjs",
   "config.cjs",
   "company.config.json",
@@ -28,6 +28,7 @@ const SHELL_FILES = [
   "plugin-store.mjs",
   "copy-graph.mjs",
   "installer.mjs",
+  "runtime-cookies.cjs",
   "onboarding.mjs",
   "preload.cjs",
 ];
