@@ -17,6 +17,9 @@ const allowed = new Set([
   ...manifest.files.filter((x) => !x.endsWith("/")),
   "presets/gea-readonly/preset.yml",
   "presets/gea-readonly/agent.cordis.yml",
+  "presets/agent-capabilities.json",
+  "presets/gea-agent-hub/preset.yml",
+  "presets/gea-agent-hub/agent.cordis.yml",
 ]);
 const [preview] = JSON.parse(
   execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {

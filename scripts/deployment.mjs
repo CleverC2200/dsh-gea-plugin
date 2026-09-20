@@ -140,6 +140,27 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
         ],
       },
     },
+    // 默认助手（标准模式）要能操作浏览器：挂 Playwright MCP，工具名形如 mcp__browser__browser_navigate。
+    // 本机文件与 Shell 由标准模式自带的 fs/bash 工具承担；这里只补浏览器这一块。
+    // 每次启动都会拉起一个 npx 进程 + 浏览器，测试和批量启动的场合用 GEA_BROWSER_MCP=0 关掉。
+    ...(process.env.GEA_BROWSER_MCP === "0"
+      ? []
+      : [
+          {
+            insert: [
+              {
+                id: "mcp-browser",
+                name: "@deepseek-ai/dsh-mcp-client",
+                config: {
+                  serverName: "browser",
+                  transport: "stdio",
+                  command: "npx",
+                  args: ["-y", "@playwright/mcp@0.0.82", "--browser", "chrome"],
+                },
+              },
+            ],
+          },
+        ]),
     {
       insert: [
         {

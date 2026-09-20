@@ -38,7 +38,7 @@ import {
   type ConversationActionTone,
   type ConversationPromptConfig,
 } from "./client/conversation-prompts.ts";
-import {isGeaBusinessPanel,registeredBusinessPanels} from "./business-navigation.ts";
+import {groupBusinessPanels,isGeaBusinessPanel,registeredBusinessPanels} from "./business-navigation.ts";
 import brandLogo from "./client/brand-logo.png";
 import shellCss from "./client/shell.css";
 import workbenchCss from "./workbench/workbench.css";
@@ -56,6 +56,17 @@ const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;
 const REGIONAL_PLAN_PANEL = "gea-regional-plan" as MainPanelId;
+type SidebarSection = "customer" | "plan" | "inventory";
+type SidebarSections = Record<SidebarSection, boolean>;
+
+/** 展开侧栏：0.1.6 的按钮文案是「打开侧边栏」，旧版本是「展开侧边栏」，找不到文案就按类名找。 */
+function nativeExpandSidebar(): void {
+  const button =
+    document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']") ??
+    document.querySelector<HTMLButtonElement>("button[aria-label='打开侧边栏']") ??
+    document.querySelector<HTMLButtonElement>("[class*='_sidebarCol'] button[class*='_toggle']");
+  button?.click();
+}
 
 /** 在框架管理的原生会话旁注册仅承载业务的中心文档。 */
 export function apply(ctx: Context): void {
@@ -312,8 +323,14 @@ export function apply(ctx: Context): void {
     usePanelInfo,
     wide,
     expandSidebar,
-  }: PropsRuntime<"sidebar.workspaces">) {
-    const [expanded, setExpanded] = useState({ customer: true, plan: true, inventory: true });
+    sections,
+    onToggleSection,
+  }: PropsRuntime<"sidebar.workspaces"> & {
+    sections?: SidebarSections;
+    onToggleSection?: (section: SidebarSection) => void;
+  }) {
+    const [expanded, setExpanded] = useState<SidebarSections>({ customer: true, plan: true, inventory: true });
+    const open = sections ?? expanded;
     const activePanel = usePanelInfo((info) => info.activePanelId);
     const [panels,setPanels]=useState(()=>registeredBusinessPanels(ctx.slots.entries("main")));
     useEffect(()=>{const refresh=()=>setPanels(registeredBusinessPanels(ctx.slots.entries("main")));refresh();return ctx.slots.subscribe("main",refresh);},[]);
@@ -335,7 +352,10 @@ export function apply(ctx: Context): void {
         </nav>
       );
     }
-    const toggle = (section: "customer" | "plan" | "inventory") => setExpanded((value) => ({ ...value, [section]: !value[section] }));
+    const toggle = (section: SidebarSection) => {
+      if (onToggleSection) return onToggleSection(section);
+      setExpanded((value) => ({ ...value, [section]: !value[section] }));
+    };
     const item = (label: string, icon: NavIconKind, action?: () => void, active = false) => (
       <button type="button" className={`gea-shell-nav-item${active ? " is-active" : ""}`} onClick={action} aria-current={active ? "page" : undefined}>
         <NavIcon kind={icon} /><span className="gea-shell-label">{label}</span>
@@ -344,10 +364,7 @@ export function apply(ctx: Context): void {
     const child = ({ id, title }: { id: string; title: string }) => (
       <button key={id} type="button" data-gea-business-entry={id} aria-current={activePanel === id ? "page" : undefined} className={`gea-shell-nav-child${activePanel === id ? " is-active" : ""}`} onClick={() => ctx.layout.selectPanel(id as MainPanelId)}><span className="gea-shell-label">{title}</span></button>
     );
-    const board = panels.find(({ id }) => id === "inventory-apsboard");
-    const customerPanels = panels.filter(({ id }) => id === "inventory-dealer");
-    const planPanels = panels.filter(({ id }) => id.startsWith("inventory-aps") && id !== "inventory-apsboard");
-    const inventoryPanels = panels.filter(({ id }) => id !== "inventory-dealer" && !id.startsWith("inventory-aps"));
+    const { board, customer: customerPanels, plan: planPanels, inventory: inventoryPanels } = groupBusinessPanels(panels);
     return (
       <nav
         className="gea-shell-navigation"
@@ -357,16 +374,16 @@ export function apply(ctx: Context): void {
         <div className="gea-shell-navigation-content">
           {board && item("产销协同工作台", "desktop", () => ctx.layout.selectPanel(board.id as MainPanelId), activePanel === board.id)}
           <div className="gea-shell-nav-section">
-            <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.customer} onClick={() => toggle("customer")}><NavIcon kind="users" /><span>客户管理</span><Chevron open={expanded.customer} /></button>
-            {expanded.customer && <div className="gea-shell-nav-children">{customerPanels.map(child)}</div>}
+            <button type="button" className="gea-shell-nav-heading" aria-expanded={open.customer} onClick={() => toggle("customer")}><NavIcon kind="users" /><span>客户管理</span><Chevron open={open.customer} /></button>
+            {open.customer && <div className="gea-shell-nav-children">{customerPanels.map(child)}</div>}
           </div>
           <div className="gea-shell-nav-section">
-            <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.plan} onClick={() => toggle("plan")}><NavIcon kind="calendar" /><span>计划管理</span><Chevron open={expanded.plan} /></button>
-            {expanded.plan && <div className="gea-shell-nav-children">{child({ id: PANEL, title: t("salesPlan") })}{child({ id: REGIONAL_PLAN_PANEL, title: t("regionalPlanWorkbench") })}{planPanels.map(child)}</div>}
+            <button type="button" className="gea-shell-nav-heading" aria-expanded={open.plan} onClick={() => toggle("plan")}><NavIcon kind="calendar" /><span>计划管理</span><Chevron open={open.plan} /></button>
+            {open.plan && <div className="gea-shell-nav-children">{child({ id: PANEL, title: t("salesPlan") })}{child({ id: REGIONAL_PLAN_PANEL, title: t("regionalPlanWorkbench") })}{planPanels.map(child)}</div>}
           </div>
           <div className="gea-shell-nav-section">
-            <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.inventory} onClick={() => toggle("inventory")}><NavIcon kind="warehouse" /><span>库存管理</span><Chevron open={expanded.inventory} /></button>
-            {expanded.inventory && <div className="gea-shell-nav-children">
+            <button type="button" className="gea-shell-nav-heading" aria-expanded={open.inventory} onClick={() => toggle("inventory")}><NavIcon kind="warehouse" /><span>库存管理</span><Chevron open={open.inventory} /></button>
+            {open.inventory && <div className="gea-shell-nav-children">
               {inventoryPanels.map(child)}
             </div>}
           </div>
@@ -376,10 +393,15 @@ export function apply(ctx: Context): void {
   }
   function Brand() {
     // 品牌区只是标识，不再承担页面切换，也不触发 DSH 原生的「新建会话」。
+    // 收起侧栏后点它就是「展开侧栏」，这样图标列里不用再单独放一个展开图标。
+    const expandWhenCollapsed = (event: React.MouseEvent) => {
+      event.stopPropagation();
+      if (document.querySelector("[data-sidebar-collapsed]")) nativeExpandSidebar();
+    };
     return (
       <>
         <style>{shellCss}</style>
-        <span className="gea-brand-switch" onClick={(event) => event.stopPropagation()}>
+        <span className="gea-brand-switch" title={t("openBusinessNavigation")} onClick={expandWhenCollapsed}>
           <img className="gea-shell-logo" src={brandLogo} alt="" />
         </span>
       </>
@@ -519,8 +541,14 @@ export function apply(ctx: Context): void {
     useEffect(() => {
       const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
       frame?.classList.toggle("gea-api-fullscreen", activePanel === API_LOG_PANEL);
-      return () => frame?.classList.remove("gea-api-fullscreen");
-    }, [activePanel]);
+      // 业务页（含 HTML 插件页）共用同一套「欢迎区在上、对话框在下」的右栏布局；
+      // 只按原生 data-conversation-beside-panel 判断会漏掉 HTML 插件页。
+      frame?.classList.toggle("gea-business-shell", business && activePanel !== API_LOG_PANEL);
+      return () => {
+        frame?.classList.remove("gea-api-fullscreen");
+        frame?.classList.remove("gea-business-shell");
+      };
+    }, [activePanel, business]);
     // 会话栏沿用「工作台在旁边」的停靠布局：输入框贴底、首页区块在流内。
     // 所有带会话栏的业务页（含 HTML 插件页和业务待办）都要停靠，
     // 否则欢迎区会绝对定位浮在输入框上面，输入框点不进去。
@@ -562,6 +590,8 @@ export function apply(ctx: Context): void {
     const [drawer, setDrawer] = useState<"function" | "workspace" | "none">(
       () => (business ? "function" : "workspace"),
     );
+    // 业务菜单里三个分组（客户/计划/库存）的展开状态由这里持有，切抽屉不会丢。
+    const [sections, setSections] = useState<SidebarSections>({ customer: true, plan: true, inventory: true });
     const previousBusiness = useRef(business);
     useEffect(() => {
       // 进业务页自动展开功能区；回到 AI 工作台保留用户自己选的抽屉，不强行切换。
@@ -756,14 +786,51 @@ export function apply(ctx: Context): void {
               useWorkspaces={useWorkspaces}
               wide
               expandSidebar={expandSidebar}
+              sections={sections}
+              onToggleSection={(section) => setSections((value) => ({ ...value, [section]: !value[section] }))}
             />
           </div>
         )}
       </>,
       region,
     );
+    // 侧栏收起后只留图标列：点哪个先把侧栏展开，再打开对应的抽屉（和展开态一一对应）。
+    const openDrawerFromRail = (name: "function" | "workspace") => {
+      setDrawer(name);
+      nativeExpandSidebar();
+    };
+    const newConversation = () => {
+      setDrawer("workspace");
+      nativeExpandSidebar();
+      // 等原生侧栏渲染出来再触发它自己的「新建会话」，避免在收起态点到不存在的节点。
+      window.setTimeout(
+        () => document.querySelector<HTMLButtonElement>("button[class*='_newSession']")?.click(),
+        150,
+      );
+    };
+    const railItem = (label: string, icon: NavIconKind, selected: boolean, onClick: () => void) => (
+      <button
+        type="button"
+        className={`gea-sidebar-rail-item${selected ? " is-active" : ""}`}
+        title={label}
+        aria-label={label}
+        aria-current={selected ? "page" : undefined}
+        onClick={onClick}
+      >
+        <NavIcon kind={icon} />
+      </button>
+    );
+    const sidebarRail = createPortal(
+      <div className="gea-sidebar-rail" data-gea-sidebar-rail>
+        {railItem("新建对话", "newChat", false, newConversation)}
+        {railItem(t("functionArea"), "apps", drawer === "function", () => openDrawerFromRail("function"))}
+        {railItem(t("workspaceArea"), "folder", drawer === "workspace", () => openDrawerFromRail("workspace"))}
+      </div>,
+      region,
+    );
     return (
       <>
+        {sidebarRail}
         {drawerPortal}
         {logoRow && createPortal(
           <button
@@ -1134,9 +1201,11 @@ function AgentActionIcon({ kind, tone }: { kind: ConversationActionIcon; tone: C
   );
 }
 
-type NavIconKind = "bot" | "bell" | "desktop" | "users" | "calendar" | "warehouse" | "grid" | "folder";
+type NavIconKind = "bot" | "bell" | "desktop" | "users" | "calendar" | "warehouse" | "grid" | "folder" | "apps" | "newChat";
 function NavIcon({ kind }: { kind: NavIconKind }) {
   const paths: Record<NavIconKind, React.ReactNode> = {
+    newChat: <><path d="M20 12a7.5 7.5 0 0 1-10.6 6.8L5 20l1.3-4.1A7.5 7.5 0 1 1 20 12Z" /><path d="M12 8.8v6.4M8.8 12h6.4" /></>,
+    apps: <><rect x="4" y="4" width="6.5" height="6.5" rx="1.4" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4" /></>,
     bot: <><rect x="5" y="7" width="14" height="11" rx="2" /><path d="M12 4v3M8 12h.01M16 12h.01M9 18v2M15 18v2" /></>,
     bell: <><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
     desktop: <><rect x="4" y="5" width="16" height="11" rx="1.5" /><path d="M9 20h6M12 16v4" /></>,

@@ -1,0 +1,10 @@
+{
+  "inventory-apsboard": "看经营健康：销售、计划、生产、库存、交付与品类异常协同。",
+  "inventory-apsdemand": "看需求信号：预测准确率、需求偏差与共识待办。",
+  "inventory-apsdelivery": "看交付履约：订单满足、准交风险与重点交付订单。",
+  "inventory-personal": "看基地/分仓日监控：优先事项核对与反馈草稿。",
+  "inventory-aqkc": "看安全库存：缺货、货龄、待发订单与目标/纠偏口径。",
+  "inventory-dealer": "看经销商库存：授权客户库存健康、覆盖率与补货建议。",
+  "inventory-fc": "看分仓补货：SKU 库存/在途/待发订单与 order-net-gap-v3 建议量。",
+  "inventory-qll": "看全链路分布：基地→分仓→客户各层库存、货龄与订单缺口。"
+}

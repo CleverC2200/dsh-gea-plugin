@@ -30,7 +30,9 @@ async function prepareHtmlPlugins(runtime) {
   const base = resolve(runtime, "html-plugins");
   for (const [id, filename] of HTML_PLUGIN_PACKAGES) {
     const target = resolve(base, id);
-    if (!existsSync(resolve(target, "plugin.json"))) {
+    // 默认只在缺失时下载（保持本地副本不动）；把 GEA_HTML_PLUGIN_REFRESH 设为 1 时会按列表里的
+    // 发行包重新拉一遍——插件发了新版、要确认新规则时用这个开关，避免每次启动都覆盖本地副本。
+    if (!existsSync(resolve(target, "plugin.json")) || process.env.GEA_HTML_PLUGIN_REFRESH === "1") {
       const url = `http://100.100.6.191:20656/api/v4/projects/${HTML_PLUGIN_RELEASE_PROJECT}/repository/files/${encodeURIComponent(`packages/${filename}`)}?ref=main`;
       const response = await fetch(url, { headers: { Accept: "application/json" } });
       if (!response.ok) throw new Error(`HTML_PLUGIN_DOWNLOAD_${response.status}`);

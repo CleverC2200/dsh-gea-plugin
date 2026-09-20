@@ -651,9 +651,10 @@ export class Business {
         source: "GEA_RENDERED_WORKBENCH",
         coverage: "none",
         authority: "read-only-ui-context",
-        availability: "unavailable",
-        code: "WORKBENCH_CONTEXT_NOT_SYNCED",
-        reason: "当前工作台页面数据仍在同步，请稍后重试",
+        availability: "not-in-workbench",
+        code: "PAGE_NOT_IN_WORKBENCH",
+        reason:
+          "这个对话当前不在业务工作台：读不到页面数据，也不会去打开页面。需要读页面数据时，请在业务工作台里打开对应页面再问。",
       });
     return JSON.stringify({
       source: "GEA_RENDERED_WORKBENCH",

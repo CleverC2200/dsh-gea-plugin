@@ -76,7 +76,7 @@ export function registerGeaTools(ctx: Context, business: Business): void {
       defineTool({
         name: "gea_visible_workbench_context",
         description:
-          "Read the latest rows currently visible in this same GEA approval workbench conversation. Use this before answering references such as ‘these customers’, ‘the current page’, ‘the rows on screen’, or ‘this table’. The result is a browser-rendered, read-only current-page snapshot with its rendered time and coverage; it is not independently re-read from GEA and cannot approve, save, submit, or adjust anything. If the snapshot is unavailable, answer the user's normal question without exposing internal sync codes; briefly ask them to refresh the workbench only when the answer truly depends on current-page data.",
+          "Read the latest rows currently visible in this same GEA approval workbench conversation. Use this before answering references such as ‘these customers’, ‘the current page’, ‘the rows on screen’, or ‘this table’. The result is a browser-rendered, read-only current-page snapshot with its rendered time and coverage; it is not independently re-read from GEA and cannot approve, save, submit, or adjust anything. Only a conversation currently inside the business workbench has page data. If the result says not-in-workbench, this conversation is a plain conversation: do not read, infer or invent business data and do not try to open a page; answer the user's normal question, and only ask them to open the page in the workbench when the answer truly depends on the current page.",
         parameters: {},
         output: {
           schema: { type: "string" },
