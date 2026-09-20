@@ -20,8 +20,10 @@ import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import { zh, en, type CopyKey } from "./client/locales.ts";
 import { Inbox } from "./client/inbox.tsx";
 import {registerHtmlClient} from "./html-client.tsx";
+import {approvalConversation,inventoryConversation,regionalPlanConversation,type ConversationActionIcon,type ConversationActionTone,type ConversationPromptConfig} from "./client/conversation-prompts.ts";
 import {isGeaBusinessPanel,registeredBusinessPanels} from "./business-navigation.ts";
 import brandLogo from "./client/brand-logo.png";
+import agentAvatar from "./client/agent-avatar.png";
 import shellCss from "./client/shell.css";
 import workbenchCss from "./workbench/workbench.css";
 import regionalPlanPrototype from "./workbench/prototypes/regional-plan-v9.html";
@@ -161,9 +163,19 @@ export function apply(ctx: Context): void {
   }
   // 区域计划工作台：先内嵌业务侧原型（V9 事件线版，纯模拟数据，不连 GEA）。
   function RegionalPlanPage() {
+    const [sessionError, setSessionError] = useState("");
+    useEffect(() => {
+      // 和其他业务页一样挂一个只读会话，让右侧会话区常驻。
+      const hide = ctx.agentWorkbench.showConversation(REGIONAL_PLAN_PANEL);
+      void ctx.agentWorkbench
+        .open(REGIONAL_PLAN_PANEL)
+        .catch((error) => setSessionError(String(error.message)));
+      return () => hide();
+    }, []);
     return (
       <>
         <style>{shellCss}</style>
+        {sessionError && <div role="alert">{sessionError}</div>}
         <section className="gea-workbench-shell">
           <iframe
             className="gea-workbench-frame"
@@ -318,7 +330,7 @@ export function apply(ctx: Context): void {
           </div>
           <div className="gea-shell-nav-section">
             <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.plan} onClick={() => toggle("plan")}><NavIcon kind="calendar" /><span>计划管理</span><Chevron open={expanded.plan} /></button>
-            {expanded.plan && <div className="gea-shell-nav-children">{child({ id: PANEL, title: t("demandForecastAgent") })}{child({ id: REGIONAL_PLAN_PANEL, title: t("regionalPlanWorkbench") })}{planPanels.map(child)}</div>}
+            {expanded.plan && <div className="gea-shell-nav-children">{child({ id: PANEL, title: t("salesPlan") })}{child({ id: REGIONAL_PLAN_PANEL, title: t("regionalPlanWorkbench") })}{planPanels.map(child)}</div>}
           </div>
           <div className="gea-shell-nav-section">
             <button type="button" className="gea-shell-nav-heading" aria-expanded={expanded.inventory} onClick={() => toggle("inventory")}><NavIcon kind="warehouse" /><span>库存管理</span><Chevron open={expanded.inventory} /></button>
@@ -446,6 +458,7 @@ export function apply(ctx: Context): void {
       RegionalPlanPage,
     );
     yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
+    yield ctx.agentWorkbench.register({ id: REGIONAL_PLAN_PANEL, preset: "gea-readonly" });
     ctx.layout.selectPanel(PANEL);
   });
   function NavigationMode({
@@ -462,6 +475,15 @@ export function apply(ctx: Context): void {
       const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
       frame?.classList.toggle("gea-api-fullscreen", activePanel === API_LOG_PANEL);
       return () => frame?.classList.remove("gea-api-fullscreen");
+    }, [activePanel]);
+    // 会话栏沿用「工作台在旁边」的停靠布局：输入框贴底、首页区块在流内。
+    useEffect(() => {
+      const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
+      frame?.classList.toggle(
+        "gea-rail-docked",
+        activePanel === PANEL || activePanel === REGIONAL_PLAN_PANEL,
+      );
+      return () => frame?.classList.remove("gea-rail-docked");
     }, [activePanel]);
     // 业务面板之间切换时，框架默认会用 400ms 动画改列宽，
     // 动画期间工作台跟着连续重排，看起来像页面闪动；切换瞬间先关掉这个动画。
@@ -490,6 +512,7 @@ export function apply(ctx: Context): void {
     const [region, setRegion] = useState<HTMLElement | null>(null);
     const [logoRow, setLogoRow] = useState<HTMLElement | null>(null);
     const [conversationHero, setConversationHero] = useState<HTMLElement | null>(null);
+    const [railColumn, setRailColumn] = useState<HTMLElement | null>(null);
     const [sidebarMode, setSidebarMode] = useState<"workspace" | "function">(() => (business ? "function" : "workspace"));
     const previousBusiness = useRef(business);
     useEffect(() => {
@@ -519,6 +542,7 @@ export function apply(ctx: Context): void {
             null,
         );
         setLogoRow(document.querySelector<HTMLElement>("[class*='_logoRow']"));
+        setRailColumn(document.querySelector<HTMLElement>(".AppFrame_rightbarCol"));
         setConversationHero(document.querySelector<HTMLElement>(
           ".AppFrame_rightbarCol [data-slot='main.conversation'] [data-phase='hero']",
         ));
@@ -632,8 +656,9 @@ export function apply(ctx: Context): void {
           </button>,
           logoRow,
         )}
+        {railColumn && createPortal(<ConversationHead agent={conversationAgentFor(activePanel)} />, railColumn)}
         {conversationHero && createPortal(
-          <AgentWelcome onPrompt={(prompt) => {
+          <AgentWelcome agent={conversationAgentFor(activePanel)} onPrompt={(prompt) => {
             const conversation = document.querySelector<HTMLElement>(
               ".AppFrame_rightbarCol [data-slot='main.conversation']",
             ) ?? conversationHero;
@@ -706,41 +731,79 @@ export function apply(ctx: Context): void {
   );
 }
 
-function AgentWelcome({ onPrompt }: { onPrompt: (prompt: string) => void }) {
-  const actions = [
-    ["▥", "查看整体库存情况", "请分析当前整体库存情况"],
-    ["◔", "查看品类库存", "请查看各品类库存情况"],
-    ["▤", "生成补货建议", "请生成本周补货建议"],
-    ["♧", "分析重点客户", "请分析需要重点关注的客户"],
-  ];
-  const prompts = ["哪些客户需要补货？", "重点客户的库存情况如何？", "生成下周的补货建议", "导出客户库存分析报告"];
+function AgentWelcome({
+  agent,
+  onPrompt,
+}: {
+  agent: ConversationPromptConfig;
+  onPrompt: (prompt: string) => void;
+}) {
   return (
-    <section className="gea-agent-welcome" aria-label="经销商补货助手">
+    <section className="gea-agent-welcome" aria-label={agent.name}>
       <div className="gea-agent-identity">
-        <div className="gea-agent-avatar" aria-hidden="true">
-          <span className="gea-agent-antenna" />
-          <span className="gea-agent-face"><i /><i /></span>
-        </div>
-        <h2>经销商补货助手</h2>
-        <p>我可以帮你分析客户库存，生成补货建议并跟进执行进度</p>
+        <img className="gea-agent-avatar" src={agentAvatar} alt="" width={72} height={72} />
+        <h2>{agent.name}</h2>
+        <span className="gea-agent-tagline">{agent.tagline}</span>
+        <p className="gea-agent-intro">{agent.intro}<b>{agent.boundary}</b></p>
       </div>
       <div className="gea-agent-block">
         <h3>常用功能</h3>
         <div className="gea-agent-actions">
-          {actions.map(([icon, label, prompt]) => (
-            <button key={label} type="button" onClick={() => onPrompt(prompt)}>
-              <span className="gea-agent-action-icon" aria-hidden="true">{icon}</span>
-              <span>{label}</span>
-              <b aria-hidden="true">›</b>
+          {agent.actions.map((action) => (
+            <button key={action.label} type="button" onClick={() => onPrompt(action.prompt)}>
+              <AgentActionIcon kind={action.icon} tone={action.tone} />
+              <span className="gea-agent-action-copy">
+                <span className="gea-agent-action-title">{action.label}</span>
+                <span className="gea-agent-action-detail">{action.detail}</span>
+              </span>
+              <b className="gea-agent-action-arrow" aria-hidden="true">›</b>
             </button>
           ))}
         </div>
       </div>
       <div className="gea-agent-block gea-agent-prompts">
         <h3>你可以这样问</h3>
-        {prompts.map((prompt) => <button key={prompt} type="button" onClick={() => onPrompt(prompt)}>{prompt}</button>)}
+        {agent.prompts.map((prompt) => <button key={prompt} type="button" onClick={() => onPrompt(prompt)}>{prompt}</button>)}
       </div>
+      <p className="gea-agent-footnote">AI 生成内容请判断后使用</p>
     </section>
+  );
+}
+
+/** 会话栏顶部常驻头（原型 phead）：冻结在会话区上方，不随内容滚动。 */
+function ConversationHead({ agent }: { agent: ConversationPromptConfig }) {
+  return (
+    <header className="gea-agent-head">
+      <img className="gea-agent-head-avatar" src={agentAvatar} alt="" width={30} height={30} />
+      <span className="gea-agent-head-copy">
+        <span className="gea-agent-head-name">{agent.name}</span>
+        <span className="gea-agent-head-sub"><i aria-hidden="true" />{agent.headerSub}</span>
+      </span>
+    </header>
+  );
+}
+
+function conversationAgentFor(panel: MainPanelId | null | undefined): ConversationPromptConfig {
+  if (panel === PANEL) return approvalConversation;
+  if (panel === REGIONAL_PLAN_PANEL) return regionalPlanConversation;
+  return inventoryConversation;
+}
+
+function AgentActionIcon({ kind, tone }: { kind: ConversationActionIcon; tone: ConversationActionTone }) {
+  const paths: Record<ConversationActionIcon, React.ReactNode> = {
+    chart: <><rect x="3" y="13" width="3" height="8" rx=".8" /><rect x="10" y="8" width="3" height="13" rx=".8" /><rect x="17" y="3" width="3" height="18" rx=".8" /></>,
+    alert: <><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>,
+    info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7h.01" /></>,
+    check: <><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></>,
+    versions: <><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M16 8V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h4" /></>,
+    opinion: <><path d="M14 3H6a2 2 0 0 0-2 2v15a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5M8 12h7M8 16h7" /></>,
+    box: <><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="m3 8 9 5 9-5M12 13v8" /></>,
+    users: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20c.6-3.2 2.6-4.8 6-4.8s5.4 1.6 6 4.8" /><path d="M16.5 5.6a3 3 0 0 1 0 5.6M18 15.4c1.7.4 2.7 1.7 3 3.6" /></>,
+  };
+  return (
+    <svg className="gea-agent-action-icon" data-tone={tone} width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths[kind]}
+    </svg>
   );
 }
 
