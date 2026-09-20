@@ -5,6 +5,10 @@
   min-width: 0;
   min-height: 0;
 }
+/* DSH session chrome the business shell replaces with its own panel. */
+[data-gea-hidden-session-chrome] {
+  display: none !important;
+}
 .gea-workbench-frame {
   display: block;
   border: 0;
