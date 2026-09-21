@@ -29,6 +29,8 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  /* 两个抽屉（业务工作台菜单 / 历史会话列表）统一正文色，改这一处即可。 */
+  --gea-sidebar-ink: rgb(31, 31, 31);
 }
 .gea-sidebar-drawer {
   display: flex;
@@ -51,7 +53,7 @@
   border: 0 !important;
   border-radius: 7px;
   background: transparent !important;
-  color: #555d68;
+  color: var(--gea-sidebar-ink);
   font: inherit;
   font-size: 13px;
   text-align: left;
@@ -112,6 +114,24 @@
 }
 [data-gea-drawer="workspace"] > [data-slot="sidebar.workspaces"] > * { flex: 1 1 auto; min-height: 0; }
 [data-gea-drawer="workspace"] [class*="_listArea"] { flex: 1 1 auto; min-height: 0; }
+/*
+ * 历史会话列表跟随业务工作台的文字规格：字号与菜单正文一致（12px），
+ * 颜色统一为同一个深灰，避免两边一大一小、一深一浅。
+ */
+[data-slot="sidebar.workspaces"] [class*="_title"],
+[data-slot="sidebar.workspaces"] [class*="_sessionOverflowButton"],
+[data-slot="sidebar.workspaces"] [class*="_empty"] {
+  font-size: 12px;
+}
+[data-slot="sidebar.workspaces"] [class*="_projectRow"],
+[data-slot="sidebar.workspaces"] [class*="_sessionRow"],
+[data-slot="sidebar.workspaces"] [class*="_title"],
+[data-slot="sidebar.workspaces"] [class*="_time"],
+[data-slot="sidebar.workspaces"] [class*="_meta"],
+[data-slot="sidebar.workspaces"] [class*="_sessionOverflowButton"],
+[data-slot="sidebar.workspaces"] [class*="_empty"] {
+  color: var(--gea-sidebar-ink);
+}
 /*
  * 原生那一行（搜索/排序/新建工作区）上移到「历史会话」标题右边，合成一行。
  * 原生节点在 DSH 的 React 树里搬不动，所以用定位把它落上去。
@@ -254,7 +274,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   min-width: 0;
   container: gea-sidebar / inline-size;
   background: #f5f6f8;
-  color: #555d68;
+  color: var(--gea-sidebar-ink);
   font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
   font-size: 12px;
   line-height: 1.7;
@@ -329,7 +349,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-shell-caption {
   padding: 4px 7px;
-  color: #111;
+  color: var(--gea-sidebar-ink);
   font-size: 12px;
 }
 .gea-shell-navigation-content > button,
@@ -373,7 +393,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   gap: 10px;
   align-items: center;
   padding: 18px 12px 4px;
-  color: #3d4654;
+  color: var(--gea-sidebar-ink);
   font-size: 13px;
 }
 .gea-shell-group::before {
@@ -385,7 +405,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   border-radius: 2px;
 }
 .gea-shell-plugin-group { display: grid; gap: 2px; margin-top: 2px; padding-top: 4px; }
-.gea-shell-plugin { min-height: 32px !important; padding-block: 6px !important; padding-left: 40px !important; color: #687282 !important; font-size: 12px !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
+.gea-shell-plugin { min-height: 32px !important; padding-block: 6px !important; padding-left: 40px !important; color: var(--gea-sidebar-ink) !important; font-size: 12px !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
 .gea-shell-plugin:hover { color: #df1732 !important; background: #fffafb !important; }
 .gea-shell-plugin.is-active { color: #df1732 !important; background: #fff0f2 !important; }
 .gea-shell-plugin-dot { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #c7ced8; }
@@ -395,7 +415,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-shell-nav-item {
   width: 100%; min-height: 38px; display: flex; align-items: center; gap: 10px;
   padding: 8px 12px; border: 0 !important; border-radius: 6px;
-  background: transparent !important; color: #555d68; font: inherit; text-align: left; cursor: pointer;
+  background: transparent !important; color: var(--gea-sidebar-ink); font: inherit; text-align: left; cursor: pointer;
 }
 .gea-shell-nav-heading { font-weight: 600; }
 .gea-shell-nav-heading:hover, .gea-shell-nav-item:hover { background: #fffafb !important; color: #df1732; }
@@ -404,7 +424,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-shell-chevron { margin-left: auto; transition: transform 160ms ease; }
 .gea-shell-chevron.is-open { transform: rotate(180deg); }
 .gea-shell-nav-children { display: grid; gap: 1px; padding: 1px 0 3px 28px; }
-.gea-shell-nav-child { min-height: 36px; padding: 7px 12px 7px 28px; border: 0; border-radius: 6px; background: transparent; color: #555d68; font: inherit; text-align: left; cursor: pointer; }
+.gea-shell-nav-child { min-height: 36px; padding: 7px 12px 7px 28px; border: 0; border-radius: 6px; background: transparent; color: var(--gea-sidebar-ink); font: inherit; text-align: left; cursor: pointer; }
 .gea-shell-nav-child:hover { background: #fffafb; color: #df1732; }
 .gea-shell-nav-child.is-active { background: #fff0f2; color: #df1732; font-weight: 700; }
 .gea-shell-nav-heading:focus-visible, .gea-shell-nav-item:focus-visible, .gea-shell-nav-child:focus-visible { outline: 2px solid #df1732; outline-offset: 2px; }
