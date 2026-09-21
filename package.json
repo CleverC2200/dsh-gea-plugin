@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.74",
+  "version": "0.0.75",
   "private": true,
   "packageManager": "pnpm@11.27.0",
   "type": "module",
@@ -44,7 +44,7 @@
     "test:package:desktop": "node --test scripts/package-desktop.test.mjs"
   },
   "dependencies": {
-    "@changfenhuang/dsh-genui": "git+http://100.100.6.191:20656/chenyonghao/dsh-genui.git#8aacf57f93478de1760dca0a8313b480d5a6e816",
+    "@changfenhuang/dsh-genui": "0.11.1-preview.2",
     "@cleverc2200/dsh-agent-workbench": "git+http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git#8558e64c0af6275a1f3289dd2d10a83203dfd03a",
     "@deepseek-ai/cordis": "4.0.2",
     "@deepseek-ai/dsh": "0.1.5-rc.2",
@@ -57,7 +57,7 @@
     "@deepseek-ai/dsh-tools": "0.1.5-rc.2",
     "@deepseek-ai/schemastery": "3.18.2",
     "decimal.js": "10.6.0",
-    "dsh-better-sidebar": "git+http://100.100.6.191:20656/chenyonghao/dsh-better-sidebar.git#5e1e4dbdd4f34ebc5eebe947b1878521d4d18a51",
+    "dsh-better-sidebar": "0.19.1",
     "esbuild": "0.25.9",
     "eventsource-parser": "3.1.1",
     "qrcode": "1.5.4",

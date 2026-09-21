@@ -12,8 +12,8 @@ importers:
   .:
     dependencies:
       '@changfenhuang/dsh-genui':
-        specifier: git+http://100.100.6.191:20656/chenyonghao/dsh-genui.git#8aacf57f93478de1760dca0a8313b480d5a6e816
-        version: git+http://100.100.6.191:20656/chenyonghao/dsh-genui.git#8aacf57f93478de1760dca0a8313b480d5a6e816(608ad3c6fc343d4d862ef4efe1305259)
+        specifier: 0.11.1-preview.2
+        version: 0.11.1-preview.2(608ad3c6fc343d4d862ef4efe1305259)
       '@cleverc2200/dsh-agent-workbench':
         specifier: git+http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git#8558e64c0af6275a1f3289dd2d10a83203dfd03a
         version: git+http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git#8558e64c0af6275a1f3289dd2d10a83203dfd03a(@deepseek-ai/cordis@4.0.2)
@@ -51,8 +51,8 @@ importers:
         specifier: 10.6.0
         version: 10.6.0
       dsh-better-sidebar:
-        specifier: git+http://100.100.6.191:20656/chenyonghao/dsh-better-sidebar.git#5e1e4dbdd4f34ebc5eebe947b1878521d4d18a51
-        version: git+http://100.100.6.191:20656/chenyonghao/dsh-better-sidebar.git#5e1e4dbdd4f34ebc5eebe947b1878521d4d18a51(fd1ff72970612d07e4e84f2514be6993)
+        specifier: 0.19.1
+        version: 0.19.1(fd1ff72970612d07e4e84f2514be6993)
       esbuild:
         specifier: 0.25.9
         version: 0.25.9
@@ -312,9 +312,8 @@ packages:
   '@braintree/sanitize-url@7.1.2':
     resolution: {integrity: sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA==}
 
-  '@changfenhuang/dsh-genui@git+http://100.100.6.191:20656/chenyonghao/dsh-genui.git#8aacf57f93478de1760dca0a8313b480d5a6e816':
-    resolution: {commit: 8aacf57f93478de1760dca0a8313b480d5a6e816, repo: http://100.100.6.191:20656/chenyonghao/dsh-genui.git, type: git}
-    version: 0.11.1-preview.2
+  '@changfenhuang/dsh-genui@0.11.1-preview.2':
+    resolution: {integrity: sha512-2POeRZu+nq/c9Ujbg4ezdgBYIq7reWFO+vpiF/KmWKrJnluT772W3CMIB17qbpdvNEkRcIOLWRIxBjXkP15zPw==}
     engines: {node: ^22.19.0 || >=24.0.0, pnpm: '>=11.7.0 <12'}
     peerDependencies:
       '@deepseek-ai/cordis': ^4.0.1
@@ -3719,9 +3718,8 @@ packages:
   dompurify@3.4.15:
     resolution: {integrity: sha512-EUBjM+B+lkDE41iE82DDSCfkoPGfXx8IxFxPMjNzm/Uk4xDet77rTN9wqlxlVg71kK7XGuUMv6wUxJUwwv+Xyw==}
 
-  dsh-better-sidebar@git+http://100.100.6.191:20656/chenyonghao/dsh-better-sidebar.git#5e1e4dbdd4f34ebc5eebe947b1878521d4d18a51:
-    resolution: {commit: 5e1e4dbdd4f34ebc5eebe947b1878521d4d18a51, repo: http://100.100.6.191:20656/chenyonghao/dsh-better-sidebar.git, type: git}
-    version: 0.19.1
+  dsh-better-sidebar@0.19.1:
+    resolution: {integrity: sha512-Jr0tPJoDKUVkq+fioL6Td+YwXZ+PULx3CnBJ4iktaQGNP5y9hgpz6V7o7f4Yh2czheVKZsewurqCaiN10GQYeQ==}
     engines: {node: '>=20'}
     peerDependencies:
       '@deepseek-ai/cordis': ^4.0.2
@@ -3739,10 +3737,13 @@ packages:
       '@deepseek-ai/dsh-settings': ^0.1.5-rc.1
       '@deepseek-ai/dsh-subagent': ^0.1.5-rc.1
       '@deepseek-ai/dsh-tools': ^0.1.5-rc.1
+      '@huanlin/dsh-plugin-better-locale': ^0.1.0
       react: ^18.2.0
       react-dom: ^18.2.0
     peerDependenciesMeta:
       '@deepseek-ai/dsh-client-ui-sidebar-right':
+        optional: true
+      '@huanlin/dsh-plugin-better-locale':
         optional: true
 
   dunder-proto@1.0.1:
@@ -4906,7 +4907,7 @@ snapshots:
 
   '@braintree/sanitize-url@7.1.2': {}
 
-  '@changfenhuang/dsh-genui@git+http://100.100.6.191:20656/chenyonghao/dsh-genui.git#8aacf57f93478de1760dca0a8313b480d5a6e816(608ad3c6fc343d4d862ef4efe1305259)':
+  '@changfenhuang/dsh-genui@0.11.1-preview.2(608ad3c6fc343d4d862ef4efe1305259)':
     dependencies:
       '@deepseek-ai/dsh-agent': 0.1.5-rc.2(6df6622855b87cb7fde1fe609a6d039a)
       '@deepseek-ai/dsh-client-ui-primitives': 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
@@ -8791,7 +8792,7 @@ snapshots:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
-  dsh-better-sidebar@git+http://100.100.6.191:20656/chenyonghao/dsh-better-sidebar.git#5e1e4dbdd4f34ebc5eebe947b1878521d4d18a51(fd1ff72970612d07e4e84f2514be6993):
+  dsh-better-sidebar@0.19.1(fd1ff72970612d07e4e84f2514be6993):
     dependencies:
       '@codemirror/commands': 6.11.1
       '@codemirror/lang-cpp': 6.0.3
