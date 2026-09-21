@@ -426,8 +426,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   });
   // 身份变化后旧会话的页面工具一律注销；页面下一轮声明会重新注册。
   ctx.effect(() => business.watchIdentity(() => pageTools.disposeAll()));
-  pageBridgeHost.declare = (sessionId, catalog) =>
-    pageTools.declare(sessionId, catalog);
+  pageBridgeHost.declare = (sessionId, catalog, source) =>
+    pageTools.declare(sessionId, catalog, source);
   ctx.provide("geaMcp", {
     version: 1 as const,
     defaultConsumer: { consumerType: "AGENT" as const, consumerCode: config.analysisAgentCode },
