@@ -323,6 +323,20 @@ export async function prepareNativePreset(runtime, target) {
   // 组合文件继续软链 DSH 原始文件，保证能力集不被改动。
   const link = resolve(directory, "agent.cordis.yml");
   const source = resolve(target, "agent.cordis.yml");
+  // 切换已准备版本后这里仍指向上一版组合目录。只替换软链本身；真实文件保持不动，避免覆盖用户改动。
+  try {
+    if ((await lstat(link)).isSymbolicLink()) {
+      let current = null;
+      try {
+        current = await realpath(link);
+      } catch {
+        current = null;
+      }
+      if (current !== (await realpath(source))) await unlink(link);
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
   try {
     await symlink(source, link, "file");
   } catch (error) {
