@@ -1,6 +1,7 @@
 /** 绑定登录身份的 GEA Gateway 能力；密钥不会离开 Fetch 闭包。 */
 import { randomUUID } from "node:crypto";
 import { createParser } from "eventsource-parser";
+const nonempty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 
 /** 先用当前登录身份申请 Gateway 上下文，再封装只带该上下文的 MCP Fetch 能力；传输会话协商仍由 MCP SDK 负责。 */
 export async function prepareGatewayMcp(
@@ -38,8 +39,7 @@ export async function prepareGatewayMcp(
   identity.throwIfAborted();
   const result = payload?.result;
   const context = result?.gatewayContext;
-  const nonempty = (value: unknown): value is string =>
-    typeof value === "string" && value.trim().length > 0;
+
   if (
     payload?.success !== true ||
     result?.accessDecision?.allowed !== true ||
@@ -58,6 +58,9 @@ export async function prepareGatewayMcp(
       ? { agentCode: consumer.consumerCode }
       : {}),
   };
+  return gatewayMcpTransport(base, meta, identity, timeoutMs, fetchImpl);
+}
+export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversationId:string;delegationToken:string;agentCode?:string}, identity:AbortSignal, timeoutMs:number, fetchImpl:typeof fetch=fetch):{url:string;fetch:typeof fetch} {
   const url = base + "/ai/gateway/mcp/proxy/mcp";
   const routes = new Map<string, string>();
   let initializeBody: string | undefined;

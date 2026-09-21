@@ -32,6 +32,8 @@ export function prepareHtmlQuery(input: any) {
       /'(?:''|[^'])*'|"(?:""|[^"])*"|--[^\r\n]*|\/\*[\s\S]*?\*\/|(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)/g,
       (token: string, name: string) => {
         if (!name) return token;
+        if (name.startsWith("__gea_"))
+          throw Error("RESERVED_QUERY_PARAMETER");
         if (!Object.hasOwn(input.parameters, name))
           throw Error("MISSING_QUERY_PARAMETER");
         let i = names.indexOf(name);
@@ -42,6 +44,8 @@ export function prepareHtmlQuery(input: any) {
         return "$" + (i + 1);
       },
     );
+    if (Object.keys(input.parameters).some((name) => !names.includes(name)))
+      throw Error("UNUSED_QUERY_PARAMETER");
     values = names.map((name) => input.parameters[name]);
   }
   if (!Array.isArray(values) || values.length > 10000)
@@ -59,13 +63,17 @@ export async function readHtmlQuery(
   },
 ) {
   const query = prepareHtmlQuery(input);
+  // Opt-in compact wire format; preserve metadata and legacy records consumers.
+  const finish = (value: any) => {
+    if (input.resultShape === 'rows') delete value.records;
+    return value;
+  };
   const db = createGeaSqlDatabase(() => transport.token, transport);
   const pageNo = input.pageNo,
     pageSize = input.pageSize ?? 200;
   if (
-    pageNo !== undefined &&
-    (!Number.isSafeInteger(pageNo) ||
-      pageNo < 1 ||
+    (pageNo !== undefined && (!Number.isSafeInteger(pageNo) || pageNo < 1)) ||
+    (
       !Number.isSafeInteger(pageSize) ||
       pageSize < 1 ||
       pageSize > 200)
@@ -76,11 +84,12 @@ export async function readHtmlQuery(
   if (pageNo !== undefined) {
     if (input.packing) throw Error("PACKED_PAGING_UNSUPPORTED");
     const page = await db.queryPage(query.sql, query.values, pageNo, pageSize);
-    return { rows: page.rows, records: page.rows, total: page.total };
+    return finish({ ...page, rows: page.rows, records: page.rows, total: page.total });
   }
-  let result = await db.query(
+  let result = await db.queryWithOptions!(
     input.packing ? packedRowsSql(query.sql, input.packing) : query.sql,
     query.values,
+    {pageSize},
   );
   if (input.packing) result = unpackBusinessRows(result.rows);
   const total = result.rows.length;
@@ -90,5 +99,5 @@ export async function readHtmlQuery(
     pageNo === undefined
       ? result.rows
       : result.rows.slice((pageNo - 1) * pageSize, pageNo * pageSize);
-  return { rows, records: rows, total };
+  return finish({ ...result, rows, records: rows, total });
 }
