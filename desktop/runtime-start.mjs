@@ -19,7 +19,7 @@ const {readDeployment,deploymentPatch,prepareNativePreset}=await import(pathToFi
 const config=await readDeployment(configPath);
 await mkdir(runtime,{recursive:true});
 await mkdir(join(runtime,'workspace'),{recursive:true});
-// 默认 preset 用和 web 开发态同一套发布逻辑：组合沿用 DSH 标准，只把显示名改成「自动协商」。
+// 默认 preset 用和 web 开发态同一套发布逻辑：组合沿用 DSH 标准，只把显示名改成 DEFAULT_PRESET_NAME。
 await prepareNativePreset(runtime,join(root,'node_modules/@deepseek-ai/dsh-agent-presets/presets/standard'));
 const patchPath=join(runtime,'deployment.patch.json');
 const patch=deploymentPatch(config,gea,runtime,{bundle:true});

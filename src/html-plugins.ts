@@ -1,6 +1,6 @@
 import { readFile, realpath, mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { createHtmlSessions } from "./html-sessions.ts";
 import { selectHtmlPlugins } from "./html-plugin-selection.ts";
@@ -21,46 +21,6 @@ async function publishAgentSkill(id: string, content: string): Promise<void> {
   await mkdir(directory, { recursive: true });
   await writeFile(resolve(directory, "SKILL.md"), content, { mode: 0o600 });
   publishedSkillDirs.push(directory);
-}
-
-/**
- * 主对话的"全能业务助手"preset：话术模板在仓库 `presets/gea-agent-hub/`，
- * 宿主只注入技能索引和 lib 路径；插件增删不需要改模板。
- */
-async function publishAgentHubPreset(business: Business, items: any[]): Promise<string | undefined> {
-  if (!items.length) return undefined;
-  const template = new URL("../presets/gea-agent-hub/", import.meta.url);
-  const [preset, body] = await Promise.all([
-    readFile(new URL("preset.yml", template), "utf8"),
-    readFile(new URL("agent.cordis.yml", template), "utf8"),
-  ]);
-  const rows = items.map(
-    (item) =>
-      `- **${item.name}** → 技能名 \`${item.skillName}\`：${item.skillDescription}`,
-  );
-  const index = [
-    `共 ${rows.length} 个模块（随客户端安装的业务插件，启动时重建）：`,
-    "",
-    ...rows,
-    "",
-    "用户问到的模块不在上面时，说明该模块没有随客户端安装，不要猜测它的口径。",
-  ].join("\n");
-  // 模板里的占位符在 YAML 块标量内（缩进 6 格），注入内容必须保持同样的缩进，
-  // 否则 markdown 的 ** 会被 YAML 当成别名，整个 preset 加载失败。
-  const indentedIndex = index.replace(/\n/g, "\n      ");
-  const rendered = body
-    .replaceAll("{{SKILL_INDEX}}", indentedIndex)
-    .replaceAll(
-      "{{SKILL_REFERENCE}}",
-      fileURLToPath(new URL("../lib/skill-reference.js", import.meta.url)),
-    );
-  const directory = resolve(business.config.runtimeDir, "native-presets", "gea-agent-hub");
-  await mkdir(directory, { recursive: true });
-  await Promise.all([
-    writeFile(resolve(directory, "preset.yml"), preset, { mode: 0o600 }),
-    writeFile(resolve(directory, "agent.cordis.yml"), rendered, { mode: 0o600 }),
-  ]);
-  return directory;
 }
 
 export async function registerHtmlPlugins(
@@ -87,6 +47,24 @@ export async function registerHtmlPlugins(
       return {};
     }
   })();
+  // 预设显示名与隐藏清单：plugin.json 由别的仓库发布，改预设名/下架条目不必重发插件包。
+  const presetLabels: { hidden: string[]; labels: Record<string, { name?: string }> } =
+    await (async () => {
+      try {
+        const value = JSON.parse(
+          await readFile(new URL("../presets/agent-presets.json", import.meta.url), "utf8"),
+        );
+        return {
+          hidden: Array.isArray(value?.hidden)
+            ? value.hidden.filter((id: unknown) => typeof id === "string")
+            : [],
+          labels:
+            value?.labels && typeof value.labels === "object" ? value.labels : {},
+        };
+      } catch {
+        return { hidden: [], labels: {} };
+      }
+    })();
   const candidates = await Promise.all(roots.map(async root => {
     const directory = await realpath(root);
     const manifest = JSON.parse(await readFile(resolve(directory, "plugin.json"), "utf8"));
@@ -157,33 +135,39 @@ export async function registerHtmlPlugins(
       "native-presets",
       "gea-html-" + manifest.id,
     );
-    await mkdir(preset, { recursive: true });
-    await writeFile(
-      resolve(preset, "preset.yml"),
-      JSON.stringify({
-        name: manifest.name,
-        // 卡片介绍写各模块自己的能力：文案在仓库 presets/agent-capabilities.json 维护，
-        // 没登记的插件回退到它自己 SKILL.md 的 description。
-        description:
-          capabilities[manifest.id] ??
-          frontmatter("description") ??
-          manifest.name,
-      }),
-    );
-    await writeFile(
-      resolve(preset, "agent.cordis.yml"),
-      JSON.stringify([
-        {
-          id: "persona",
-          name: "@deepseek-ai/dsh-persona",
-          config: {
-            prefix: skill,
-            complete: false,
-            includeRuntimeContext: false,
+    if (presetLabels.hidden.includes(manifest.id)) {
+      // 已下架的模块：页面可能还在装，但不再出现在 Agent 预设列表里。
+      await rm(preset, { recursive: true, force: true });
+    } else {
+      await mkdir(preset, { recursive: true });
+      await writeFile(
+        resolve(preset, "preset.yml"),
+        JSON.stringify({
+          // 显示名优先用仓库里的覆盖表，其次才是插件包自己的名字。
+          name: presetLabels.labels[manifest.id]?.name ?? manifest.name,
+          // 卡片介绍写各模块自己的能力：文案在仓库 presets/agent-capabilities.json 维护，
+          // 没登记的插件回退到它自己 SKILL.md 的 description。
+          description:
+            capabilities[manifest.id] ??
+            frontmatter("description") ??
+            manifest.name,
+        }),
+      );
+      await writeFile(
+        resolve(preset, "agent.cordis.yml"),
+        JSON.stringify([
+          {
+            id: "persona",
+            name: "@deepseek-ai/dsh-persona",
+            config: {
+              prefix: skill,
+              complete: false,
+              includeRuntimeContext: false,
+            },
           },
-        },
-      ]),
-    );
+        ]),
+      );
+    }
     items.push({
       ...manifest,
       pages,
@@ -201,14 +185,12 @@ export async function registerHtmlPlugins(
     sessions.clear();
     consumers.clear();
   });
-  const agentHubDir = await publishAgentHubPreset(business, items);
   ctx.effect(() => () => {
     unwatch();
     sessions.clear();
     publishedSkillDirs.splice(0).forEach((directory) => {
       void rm(resolve(directory, "SKILL.md"), { force: true });
     });
-    if (agentHubDir) void rm(agentHubDir, { recursive: true, force: true });
   });
   const json = (value: any, status = 200) =>
     Response.json(value, { status, headers: { "cache-control": "no-store" } });

@@ -18,8 +18,7 @@ const allowed = new Set([
   "presets/gea-readonly/preset.yml",
   "presets/gea-readonly/agent.cordis.yml",
   "presets/agent-capabilities.json",
-  "presets/gea-agent-hub/preset.yml",
-  "presets/gea-agent-hub/agent.cordis.yml",
+  "presets/agent-presets.json",
   "default-presets/auto-negotiation/preset.yml",
   "default-presets/auto-negotiation/agent.cordis.yml",
 ]);

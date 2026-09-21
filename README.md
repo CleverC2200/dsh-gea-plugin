@@ -139,9 +139,9 @@ Host 每次发送前使用表单 `client_credentials` 获取短期 Token，不�
 
 ### 会话模式 / Session modes
 
-新会话默认使用原版 DSH `standard`（标准）预设，不注入 GEA 业务 Persona，也不可调用 GEA MCP。另一个预设显示为「需求预测」（`gea-readonly`），包含业务 Persona、Skill 发现及加载，以及限于此预设的 GEA MCP。输入框的 Agent 预设选择器用于切换；已有消息的会话保持原预设，请新建会话后选择。左侧需求预测入口仍明确选择 `gea-readonly`。启动器在 runtime 的 `native-presets/standard` 创建真实目录，其中的配置文件链接到已安装 DSH 发布包中的原版标准预设；不复制或改写 DSH 的标准配置，只展示标准与需求预测两种模式。
+新会话默认使用公司标准预设（显示名在 `scripts/deployment.mjs` 的 `DEFAULT_PRESET_NAME`，组合逐字节沿用 DSH 原版，不注入 GEA 业务 Persona，也不可调用 GEA MCP）。业务侧预设显示为「销售计划Agent」（`gea-readonly`），包含业务 Persona、Skill 发现及加载，以及限于此预设的 GEA MCP。每个随客户端安装的 HTML 业务插件还会生成一个自己的预设，显示名与简介分别取自仓库 `presets/agent-presets.json` 与 `presets/agent-capabilities.json`（改文案不必重发插件包）；`presets/agent-presets.json` 的 `hidden` 列表用于下架不想再出现的模块。输入框的 Agent 预设选择器用于切换；已有消息的会话保持原预设，请新建会话后选择。左侧销售计划入口仍明确选择 `gea-readonly`。
 
-New conversations default to DSH's unmodified `standard` preset, without the GEA business persona or GEA MCP access. The `gea-readonly` preset is displayed as Demand Forecast (需求预测), with its business persona, skill discovery/loading and scoped GEA MCP. Select the preset in a new conversation; non-empty conversations retain their composition. The launcher links the original standard preset files under runtime `native-presets/standard`, keeping the roster to standard and demand forecast.
+New conversations default to the company standard preset (display name from `DEFAULT_PRESET_NAME` in `scripts/deployment.mjs`; the composition byte-for-byte matches DSH's original, without the GEA business persona or GEA MCP access). The business preset is displayed as 销售计划Agent (`gea-readonly`), with its business persona, skill discovery/loading and scoped GEA MCP. Every installed HTML business plugin also gets its own preset whose name and summary come from `presets/agent-presets.json` and `presets/agent-capabilities.json` in this repo (renaming never requires republishing a plugin); the `hidden` list in `presets/agent-presets.json` retires modules from the roster. Select the preset in a new conversation; non-empty conversations retain their composition.
 
 ## DMS 模拟回写
 

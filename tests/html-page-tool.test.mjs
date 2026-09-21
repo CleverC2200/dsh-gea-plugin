@@ -9,37 +9,40 @@ import { parse as parseYaml } from "yaml";
 const session = "session-11111111-1111-1111-1111-111111111111";
 
 /** 建一个最小可用的 HTML 业务插件，只用来验证页面工具对模型的行为。 */
-async function probePlugin() {
+async function probePlugin(options = {}) {
+  const id = options.id ?? "inventory-probe";
+  const name = options.name ?? "探针页面";
+  const skillName = options.skillName ?? "inventory-probe";
   const root = await mkdtemp(join(tmpdir(), "gea-html-probe-"));
   await mkdir(join(root, "skills", "probe"), { recursive: true });
   await writeFile(join(root, "index.html"), "<!doctype html><html><body>probe</body></html>\n");
   await writeFile(
     join(root, "skills", "probe", "SKILL.md"),
-    "---\nname: inventory-probe\ndescription: 探针业务规则。\n---\n\n# 探针页面\n\nPROBE-RULE-42：建议量 = ceil(max(0, 缺货量 − 调拨中量))。\n",
+    "---\nname: " + skillName + "\ndescription: 探针业务规则。\n---\n\n# 探针页面\n\nPROBE-RULE-42：建议量 = ceil(max(0, 缺货量 − 调拨中量))。\n",
   );
   await writeFile(join(root, "plugin.json"), JSON.stringify({
     schemaVersion: 1,
-    id: "inventory-probe",
-    name: "探针页面",
+    id,
+    name,
     version: "0.0.0",
     html: "index.html",
     skills: ["skills/probe/SKILL.md"],
     mcp: "mcp.json",
     mode: "mock",
-    gea: { consumerCode: "probe-consumer", readonly: true, contract: "gea-html-v1" },
+    gea: { consumerCode: id + "-consumer", readonly: true, contract: "gea-html-v1" },
   }));
   await writeFile(join(root, "mcp.json"), JSON.stringify({
     provider: "gea",
     transport: "host-provided",
     contract: "gea-html-v1",
-    consumer: { consumerType: "AGENT", consumerCode: "probe-consumer" },
+    consumer: { consumerType: "AGENT", consumerCode: id + "-consumer" },
     capabilities: ["governed-sql-read"],
   }));
   return root;
 }
 
-async function registeredPlugins() {
-  const root = await probePlugin();
+async function registeredPlugins(options = {}) {
+  const roots = options.roots ?? [await probePlugin(options)];
   const runtimeDir = await mkdtemp(join(tmpdir(), "gea-html-runtime-"));
   const tools = [];
   const routes = [];
@@ -53,7 +56,7 @@ async function registeredPlugins() {
     status: () => ({ authenticated: true }),
     watchIdentity: () => () => {},
   };
-  await registerHtmlPlugins(ctx, business, [root]);
+  await registerHtmlPlugins(ctx, business, roots);
   return { tool: tools.find((tool) => tool.name === "inventory_probe_page"), routes, runtimeDir };
 }
 
@@ -128,30 +131,32 @@ test("each plugin's SKILL.md is published for the main conversation", async () =
   }
 });
 
-test("the all-in-one agent preset is generated from the repo template with the plugin index", async () => {
-  const { runtimeDir } = await registeredPlugins();
-  const generated = await readFile(
-    join(runtimeDir, "native-presets", "gea-agent-hub", "agent.cordis.yml"),
-    "utf8",
+test("preset names follow the repo override table and hidden modules drop their preset", async () => {
+  const { runtimeDir } = await registeredPlugins({
+    roots: [
+      await probePlugin(),
+      await probePlugin({ id: "inventory-aqkc", name: "安全库存", skillName: "inventory-aqkc" }),
+      await probePlugin({ id: "inventory-qll", name: "全链路库存", skillName: "inventory-qll" }),
+    ],
+  });
+  const read = async (id) =>
+    JSON.parse(
+      await readFile(
+        join(runtimeDir, "native-presets", "gea-html-" + id, "preset.yml"),
+        "utf8",
+      ),
+    );
+  // 没登记的插件保留插件包自己的名字。
+  assert.equal((await read("inventory-probe")).name, "探针页面");
+  // 登记过的模块用仓库里的业务名，改名不必重发插件包。
+  assert.equal((await read("inventory-aqkc")).name, "基地库存Agent");
+  // 下架的模块不再生成预设。
+  await assert.rejects(
+    readFile(
+      join(runtimeDir, "native-presets", "gea-html-inventory-qll", "preset.yml"),
+      "utf8",
+    ),
   );
-  assert.match(generated, /全能业务助手/);
-  assert.match(generated, /inventory-probe/);
-  assert.match(generated, /探针业务规则/);
-  assert.doesNotMatch(generated, /\{\{SKILL_INDEX\}\}/, "占位符已替换");
-  assert.doesNotMatch(generated, /\{\{SKILL_REFERENCE\}\}/);
-  assert.match(generated, /lib\/skill-reference\.js/);
-  const preset = await readFile(
-    join(runtimeDir, "native-presets", "gea-agent-hub", "preset.yml"),
-    "utf8",
-  );
-  assert.match(preset, /name: 全能业务助手/);
-  // 生成的 preset 必须是合法 YAML，且索引落在 persona 的块标量里（曾经因为缩进错整份加载失败）。
-  const rows = parseYaml(generated);
-  const persona = rows.find((row) => row.id === "persona");
-  assert.ok(persona, "persona 行存在");
-  assert.match(persona.config.prefix, /inventory-probe/);
-  assert.match(persona.config.prefix, /探针业务规则/);
-  assert.match(persona.config.prefix, /共 1 个模块/);
 });
 
 test("each page agent card describes its own capability", async () => {

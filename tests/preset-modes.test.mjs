@@ -19,7 +19,7 @@ const shippedStandard = resolve(
   "presets/standard",
 );
 
-test("默认预设随插件包分发：显示名自动协商，组合与 DSH 标准预设逐字节一致", async () => {
+test("默认预设随插件包分发：用 DEFAULT_PRESET_NAME 显示名，组合与 DSH 标准预设逐字节一致", async () => {
   const directory = join(root, "default-presets", DEFAULT_PRESET_ID);
   assert.match(
     await readFile(join(directory, "preset.yml"), "utf8"),

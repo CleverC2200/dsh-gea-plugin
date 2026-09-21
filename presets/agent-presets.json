@@ -1,0 +1,15 @@
+{
+  "hidden": [
+    "inventory-apsboard",
+    "inventory-apsdemand",
+    "inventory-apsdelivery",
+    "inventory-qll"
+  ],
+  "labels": {
+    "inventory-apsplan": { "name": "产销协同Agent" },
+    "inventory-personal": { "name": "全链库存管理Agent" },
+    "inventory-aqkc": { "name": "基地库存Agent" },
+    "inventory-fc": { "name": "分仓库存Agent" },
+    "inventory-dealer": { "name": "经销商库存Agent" }
+  }
+}
