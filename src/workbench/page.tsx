@@ -21,6 +21,12 @@ import type { CopyKey } from "../client/locales.ts";
 import "./workbench.css";
 import logo from "./gea-logo.png";
 import { ApiLogCenter } from "./api-log-center.tsx";
+import type { PageElement } from "../page-bridge/catalog.ts";
+import { workbenchCatalog } from "../shared/workbench-actions.ts";
+import {
+  startPageBridgeClient,
+  type PageBridgeApplyResult,
+} from "../page-bridge/client.ts";
 
 type HtmlPlugin = { id: string; label: string; group: string; url: string };
 const HTML_PLUGINS: HtmlPlugin[] = [
@@ -50,6 +56,13 @@ type VisibleWorkbenchContext = {
   };
   visibleRows: Array<Record<string, string | number | null>>;
   selectedPlanIds: string[];
+  expandedPlanIds: string[];
+  expandedFields: Array<{
+    id: string;
+    label: string;
+    value: string;
+    editable: boolean;
+  }>;
   pagination: { page: number; pageSize: number; total: number };
   evidence: {
     source: "gea-user-session";
@@ -106,6 +119,8 @@ function visibleWorkbenchContext(
         .filter((entity) => entity.source === "gea")
         .map((entity) => entity.id),
     )].sort(),
+    expandedPlanIds: [...new Set(context.expandedPlanIds ?? [])].sort(),
+    expandedFields: (context.expandedFields ?? []).slice(0, 120),
     pagination: context.pagination,
     evidence: {
       source: "gea-user-session",
@@ -366,6 +381,17 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const contextRef = useRef("");
   const [conversationContext, setConversationContext] =
     useState<VisibleWorkbenchContext>();
+  const [workbenchToolCall, setWorkbenchToolCall] = useState<{
+    toolCallId: string;
+    command: Record<string, unknown>;
+  }>();
+  // 页面桥的工具定义来自工作台当前这一屏上报的元素清单。
+  const catalogElements = useRef<PageElement[]>([]);
+  // 桥把一次调用交给我们后，等组件执行完再回填结果。
+  const pendingToolResult = useRef<{
+    toolCallId: string;
+    resolve: (result: PageBridgeApplyResult) => void;
+  }>();
   const onContextChange = useCallback(
     (context: RegionalApprovalWorkbenchContext) => {
       const nextSequence = contextSequence.current + 1;
@@ -414,16 +440,46 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     // 首次进入时 live 查询可能还在加载；不要把一个暂时为空的快照当成最终结果。
     // conversationContext 一旦产生会立即触发本 effect，后续分页/筛选也会持续同步。
     if (!conversationContext) return;
-    const controller = new AbortController();
-    void rpc(
-      "workbench/context",
-      { sessionId, context: conversationContext ?? null },
-      controller.signal,
-    ).catch(() => {
-      // 上下文同步失败不能影响审批工作台；下一次上下文变化会自动重试。
-    });
-    return () => controller.abort();
+    let controller = new AbortController();
+    const sync = () => {
+      controller.abort();
+      controller = new AbortController();
+      void rpc(
+        "workbench/context",
+        { sessionId, context: conversationContext ?? null },
+        controller.signal,
+      ).catch(() => {
+        // 上下文同步失败不能影响审批工作台；下一轮会自动重试。
+      });
+    };
+    sync();
+    // 定时重申：宿主重启或状态丢失后，页面不必等下一次操作就能恢复同步。
+    const heartbeat = setInterval(sync, 15_000);
+    return () => {
+      clearInterval(heartbeat);
+      controller.abort();
+    };
   }, [conversationContext, sessionId]);
+  useEffect(() => {
+    if (!sessionId) return;
+    // 通用页面桥：取走 agent 发起的前端工具调用，交给工作台执行，再把结果回填。
+    // 桥不可用不能影响审批工作台本身；参数怎么解释由本页的 apply 决定。
+    return startPageBridgeClient({
+      endpoint: "agui/workbench",
+      request: rpc,
+      sessionId,
+      apply: (args, meta) =>
+        new Promise<PageBridgeApplyResult>((resolve) => {
+          pendingToolResult.current = { toolCallId: meta.toolCallId, resolve };
+          setWorkbenchToolCall({
+            toolCallId: meta.toolCallId,
+            command: (args ?? {}) as Record<string, unknown>,
+          });
+        }),
+      // 页面自述能力：工具的定义与说明由桥按这份目录生成。
+      catalog: () => workbenchCatalog(catalogElements.current),
+    });
+  }, [sessionId]);
   useEffect(() => {
     const controller = new AbortController();
     void rpc<Status>("status", {}, controller.signal)
@@ -648,6 +704,16 @@ export function WorkbenchPage({ t }: { t: Translate }) {
                   permissionCodes={status.permissionCodes} liveActionsEnabled={true}
                   liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
                   onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })} automaticAnalysisEnabled={true}
+                  onCatalogChange={(elements) => {
+                    catalogElements.current = elements;
+                  }}
+                  toolCall={workbenchToolCall}
+                  onToolResult={(toolCallId, applied, error) => {
+                    const pending = pendingToolResult.current;
+                    if (!pending || pending.toolCallId !== toolCallId) return;
+                    pendingToolResult.current = undefined;
+                    pending.resolve({ applied, error });
+                  }}
                 />
               </div>
               {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit} client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)} onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}

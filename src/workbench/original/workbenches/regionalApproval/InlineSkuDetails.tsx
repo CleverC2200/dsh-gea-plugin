@@ -1,5 +1,5 @@
 import styles from './InlineSkuDetails.module.css';
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Alert, Input, Spin} from '@arco-design/web-react';
 import type {TFunction} from 'i18next';
 import {salesPlan, type GeaSalesPlanDetail, type GeaSalesPlanSku} from '../../bridge.ts';
@@ -14,7 +14,7 @@ const quantityText = (value: string) => formatExactDecimal(value).replace(/\.0+$
 const editableQuantityText = (value: string) => quantityText(value).replace(/,/g, '');
 const draftLog = (stage: string, detail: unknown) => console.warn(`[gea-draft] ${stage}`, detail);
 
-export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName,onMetricsChange,onPendingValuesChange}:{
+export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName,onMetricsChange,onPendingValuesChange,draftPatch,onElementsChange}:{
  row:RegionalApprovalLiveRow;
  t:TFunction;
  detail?:GeaSalesPlanDetail;
@@ -27,6 +27,13 @@ export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName
   * 也不会因为草稿里的旧值把用户刚改的数字冲掉。
   */
  onPendingValuesChange?: (values: Record<string,string>) => void;
+ /** 外部（对话）下发的草稿改写：把指定 SKU 的确认计划量改成同一个值。 */
+ draftPatch?: {at: number; quantity: string; skuCodes?: string[]};
+ /** 把这一块“可编辑字段 + 集合”报给工作台，供页面桥声明成本页元素。 */
+ onElementsChange?: (
+  fields: Array<{id:string;label:string;value:string;editable:boolean}>,
+  collection?: {id:string;label:string;members:string[]},
+ ) => void;
 }) {
  const [skus,setSkus]=useState<GeaSalesPlanSku[]>(); const [failed,setFailed]=useState(false);
  const [confirmedValues,setConfirmedValues]=useState<Record<string,string>>({});
@@ -34,6 +41,22 @@ export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName
  const [saveRetry,setSaveRetry]=useState(0);
  // 已保存在 Host 上的草稿内容；失败时不写入，用来判断哪些行还没暂存成功。
  const [savedDraft,setSavedDraft]=useState('');
+ const appliedPatch=useRef<number>();
+ // 对话下发的草稿改写：只改“确认计划量”输入，等价于人工在格子里填数；保存仍要人工点。
+ useEffect(()=>{
+  if (!draftPatch || !canEdit || !skus || skus.length === 0) return;
+  if (appliedPatch.current === draftPatch.at) return;
+  appliedPatch.current = draftPatch.at;
+  const target = draftPatch.skuCodes?.length
+   ? skus.filter(sku=>draftPatch.skuCodes!.includes(String(sku.skuCode)))
+   : skus;
+  if (target.length === 0) return;
+  setConfirmedValues(current=>{
+   const next={...current};
+   for (const sku of target) next[String(sku.skuCode)] = draftPatch.quantity;
+   return next;
+  });
+ },[canEdit,draftPatch,skus]);
  useEffect(()=>{const controller=new AbortController(); setSkus(undefined); setFailed(false);
   const source = detail?.skus && detail.currentVersion.id === row.versionId ? Promise.resolve(detail.skus) : salesPlan.versionSkus.invoke({versionId:row.versionId,signal:controller.signal});
   void source.then(data=>{if(!controller.signal.aborted)setSkus(data);}).catch(()=>{if(!controller.signal.aborted)setFailed(true);});
@@ -85,6 +108,29 @@ export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName
   return DECIMAL.test(adjustQty) && !/^[-+]?0(?:\.0{1,3})?$/.test(adjustQty) ? {skuCode:code,adjustQty} : undefined;
  }).filter((item): item is {skuCode:string;adjustQty:string} => Boolean(item)), [confirmedValues,skus,row.status,row.planTypeCode,approvalRole]);
  useEffect(() => { onPendingValuesChange?.(confirmedValues); }, [confirmedValues, onPendingValuesChange]);
+ // 元素上报：字段 id / label / 当前值 / 是否可编辑，外加一个“整列一起改”的集合。
+ useEffect(() => {
+  if (!onElementsChange) return;
+  if (!skus || skus.length === 0) {
+   onElementsChange([]);
+   return;
+  }
+  const fields = skus.map(sku => {
+   const code = String(sku.skuCode);
+   const quantity = confirmedValues[code] ?? baselineFor(sku);
+   return {
+    id: `field:${row.planId}:${code}:qty`,
+    label: `${sku.materialDescription ?? sku.productCategName ?? code} 确认计划量`,
+    value: quantityText(quantity),
+    editable: Boolean(canEdit),
+   };
+  });
+  onElementsChange(fields, {
+   id: `collection:${row.planId}:qty`,
+   label: `${row.dealerName ?? row.orgName ?? row.planId} 全部 SKU 的确认计划量`,
+   members: fields.map(field => field.id),
+  });
+ }, [canEdit, confirmedValues, onElementsChange, row.dealerName, row.orgName, row.planId, skus]);
  useEffect(()=>{
   if (!canEdit || !detail || !skus || draftState === 'loading') return;
   const serialized=JSON.stringify(confirmedValues);

@@ -99,6 +99,10 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   onRefresh: () => void;
   onFailed?: () => void;
   onClose: () => void;
+  /** 对话下发的“退回理由”草稿（等价于人工在理由框里输入）。 */
+  remarkPatch?: {at: number; remark: string};
+  /** 对话下发的“确认提交”（等价于人工点确认按钮）。 */
+  submitRequest?: {at: number};
 }> = ({
   visible,
   embedded = false,
@@ -116,6 +120,8 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   onRefresh,
   onFailed,
   onClose,
+  remarkPatch,
+  submitRequest,
 }) => {
   const [snapshot] = useState(evidence);
   const Container = embedded ? InlineAction : Modal;
@@ -355,6 +361,20 @@ const RegionalApprovalLiveActionDialog: React.FC<{
       })
     );
   };
+
+  // 对话下发的草稿改写与确认：走的还是同一个人工路径（写理由 → 点确认）。
+  const appliedRemarkPatch = useRef<number>();
+  useEffect(() => {
+    if (!remarkPatch || appliedRemarkPatch.current === remarkPatch.at) return;
+    appliedRemarkPatch.current = remarkPatch.at;
+    setRemark(remarkPatch.remark);
+  }, [remarkPatch]);
+  const appliedSubmitRequest = useRef<number>();
+  useEffect(() => {
+    if (!submitRequest || appliedSubmitRequest.current === submitRequest.at) return;
+    appliedSubmitRequest.current = submitRequest.at;
+    submit();
+  }, [submitRequest]);
 
   useEffect(() => {
     if (!directApproval || !visible || directSubmissionStarted.current || loading || action.state.status !== 'idle') return;

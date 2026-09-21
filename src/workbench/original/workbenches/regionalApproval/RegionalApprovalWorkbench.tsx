@@ -111,6 +111,8 @@ import type { SalesPlanDetailClient } from './hooks/useSalesPlanDetail.ts';
 import { salesPlanApprovalNodeForStatus, type SalesPlanActionClient } from './models/salesPlanActionModel.ts';
 import type { GeaSalesPlanActionReceipt, GeaSalesPlanVersion } from '../../bridge.ts';
 import { salesPlan } from '../../bridge.ts';
+import type { PageElement } from '../../../../page-bridge/catalog.ts';
+import { buildWorkbenchElements } from '../../../workbench-elements.ts';
 import {
   buildSalesPlanFilterSummary,
   projectFixtureSalesPlanContext,
@@ -175,6 +177,15 @@ export type RegionalApprovalWorkbenchContext = {
   };
   visibleEntities: RegionalApprovalContextEntity[];
   selectedEntities: RegionalApprovalContextEntity[];
+  /** 当前展开的行（实时队列里就是 planId），用于让外部读到"展开了什么"。 */
+  expandedPlanIds: string[];
+  /** 已展开行里的可编辑字段（SKU 确认计划量）：让外部能回读改后的值。 */
+  expandedFields: Array<{
+    id: string;
+    label: string;
+    value: string;
+    editable: boolean;
+  }>;
   changes: ReturnType<typeof savedApprovalAdjustments>;
   localApprovalResults: ReturnType<typeof regionalApprovalFixtureResults>;
   metrics: {
@@ -407,6 +418,11 @@ const RegionalApprovalWorkbench: React.FC<{
   automaticAnalysisEnabled?: boolean;
   onResubmit?: (planId: string, versionId: string, period: GeaSalesPlanPeriod) => void;
   permissionCodes?: readonly string[];
+  /** AG-UI 前端工具调用：agent 让页面改这一屏怎么看。 */
+  toolCall?: { toolCallId: string; command: Record<string, unknown> };
+  onToolResult?: (toolCallId: string, applied: boolean, error?: string) => void;
+  /** 页面元素清单单独上报：它是页面能力，不属于页面状态快照。 */
+  onCatalogChange?: (elements: PageElement[]) => void;
 }> = ({
   headerControls,
   stateScope,
@@ -420,6 +436,9 @@ const RegionalApprovalWorkbench: React.FC<{
   automaticAnalysisEnabled = false,
   permissionCodes,
   onResubmit,
+  toolCall,
+  onToolResult,
+  onCatalogChange,
 }) => {
   const { conversationId } = useBusinessSurfaceSession();
   const scopedState = getAssistantSurfaceWorkbenchScope(stateScope);
@@ -521,6 +540,9 @@ const RegionalApprovalWorkbench: React.FC<{
   const [livePendingValues, setLivePendingValues] = useState<Record<string, Record<string, string>>>({});
   const [liveActionPlanId, setLiveActionPlanId] = useState<string>();
   const [liveActionKind, setLiveActionKind] = useState<LiveActionKind>('APPROVE');
+  // 对话下发的审批确认 / 退回理由草稿；审批本身仍走页面原有的对话框逻辑。
+  const [approvalSubmitRequest, setApprovalSubmitRequest] = useState<{ at: number }>();
+  const [approvalRemarkPatch, setApprovalRemarkPatch] = useState<{ at: number; remark: string }>();
   const [liveActionReceipts, setLiveActionReceipts] = useState(initialState.liveActionReceipts);
   const [liveAuthorityContext, setLiveAuthorityContext] = useState<SalesPlanAuthorityContext>();
   const handleLiveAdjustmentMetrics = useCallback((planId: string, metrics?: {quantity: string; amount: string}) => {
@@ -751,6 +773,37 @@ const RegionalApprovalWorkbench: React.FC<{
     return rows;
   }, [liveTableRows]);
   const [expandedLiveGroups, setExpandedLiveGroups] = useState<Array<string | number>>([]);
+  // 对话下发的草稿改写（确认计划量），交给对应行的内联编辑器应用。
+  const [draftPatch, setDraftPatch] = useState<{
+    at: number;
+    planId: string;
+    quantity: string;
+    skuCodes?: string[];
+  }>();
+  // 已展开行上报的"可编辑字段 + 集合"，合进本页元素清单。
+  const [inlineElements, setInlineElements] = useState<
+    Record<
+      string,
+      {
+        fields: Array<{ id: string; label: string; value: string; editable: boolean }>;
+        collection?: { id: string; label: string; members: string[] };
+      }
+    >
+  >({});
+  const handleInlineElements = useCallback(
+    (
+      planId: string,
+      fields: Array<{ id: string; label: string; value: string; editable: boolean }>,
+      collection?: { id: string; label: string; members: string[] },
+    ) => {
+      setInlineElements((current) => {
+        const next = { ...current, [planId]: { fields, collection } };
+        // 子组件回调身份每轮都会变，内容没变就不要触发父级重渲染。
+        return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+      });
+    },
+    [],
+  );
   const selectableFixtureRow = (row: RegionalApprovalRow) =>
     row.approvalState === 'pending' && row.permission === 'writable' && row.reachedStage === currentStage;
   const selectedFixtureRows = useMemo(
@@ -1156,6 +1209,172 @@ const RegionalApprovalWorkbench: React.FC<{
     };
   }, [liveQuery.enabled, liveQuery.periods.length, liveQuery.periodsState, liveQuery.queueState]);
 
+  // 这一屏"渲染出来的元素"：行 / 控件 / 可编辑字段，供页面桥声明给模型。
+  const catalogElements = useMemo<PageElement[]>(() => {
+    if (!liveQuery.enabled) return [];
+    const fields = liveRows.flatMap((row) =>
+      expandedLiveGroups.includes(row.planId)
+        ? inlineElements[row.planId]?.fields ?? []
+        : [],
+    );
+    // 每一行都给一个"整行一起改"的集合：不必先展开，页面收到后会自己展开并加载 SKU。
+    const collections = liveRows.map((row) => {
+      const label =
+        projectRegionalApprovalLiveDimension(row, dimension).name ?? row.planId;
+      const members = (inlineElements[row.planId]?.fields ?? []).map(
+        (field) => field.id,
+      );
+      return {
+        id: `collection:${row.planId}:qty`,
+        label: `${label} 全部 SKU 的确认计划量（无需展开，填同一个值）`,
+        members,
+      };
+    });
+    const detailRow = liveRows.find((row) => row.planId === liveDetailPlanId);
+    return buildWorkbenchElements({
+      rows: liveRows.map((row) => ({
+        planId: row.planId,
+        // label 不带勾选状态：勾选变化不该让元素清单整份变掉（它已经在页面状态里）。
+        label:
+          projectRegionalApprovalLiveDimension(row, dimension).name ?? row.planId,
+        value: String(row.currentAmount ?? ""),
+        expanded: expandedLiveGroups.includes(row.planId),
+      })),
+      selectedPlanIds: selectedRowIds,
+      stage: liveStageFilter ?? "all",
+      stageOptions: [
+        { value: "all", label: "不限阶段" },
+        ...roleStages.map((stage) => ({
+          value: stage,
+          label: t(stageLabelKey(stage)),
+        })),
+      ],
+      filters: [
+        {
+          field: "areaCode",
+          label: "大区筛选",
+          value: appliedLiveFilters.areaCode,
+          options: liveFilterOptions.areas.map((option) => ({
+            value: option.value,
+            label: option.label ?? option.value,
+          })),
+        },
+        {
+          field: "provinceCode",
+          label: "省区筛选",
+          value: appliedLiveFilters.provinceCode,
+          options: liveFilterOptions.provinces.map((option) => ({
+            value: option.value,
+            label: option.label ?? option.value,
+          })),
+        },
+        {
+          field: "orgCode",
+          label: "组织筛选",
+          value: appliedLiveFilters.orgCode,
+          options: liveFilterOptions.organizations.map((option) => ({
+            value: option.value,
+            label: option.label ?? option.value,
+          })),
+        },
+        {
+          field: "dealerCode",
+          label: "经销商筛选",
+          value: appliedLiveFilters.dealerCode,
+          options: liveFilterOptions.customers.map((option) => ({
+            value: option.dealerCode,
+            label: option.dealerName ?? option.baseName ?? option.dealerCode,
+          })),
+        },
+        {
+          field: "status",
+          label: "状态筛选",
+          value: appliedLiveFilters.status,
+          options: [],
+        },
+      ],
+      page,
+      pages: liveQuery.queueState.data?.pages ?? 1,
+      ...(detailRow && liveDetailPlanId
+        ? {
+            detail: {
+              planId: liveDetailPlanId,
+              label:
+                projectRegionalApprovalLiveDimension(detailRow, dimension).name ??
+                detailRow.planId,
+            },
+          }
+        : {}),
+      fields,
+      collections,
+      ...(() => {
+        // 工具栏动作：只有按钮当前可点时才声明，和人工能点的范围一致。
+        const actionRow = selectedLiveRows.length === 1 ? selectedLiveRows[0] : undefined;
+        const actionElements: Array<{
+          id: string;
+          label: string;
+          actions: string[];
+        }> = [];
+        if (liveActionsEnabled && actionRow) {
+          if (!liveActionDisabledReason(actionRow))
+            actionElements.push({
+              id: "action:approve",
+              label: `通过（${projectRegionalApprovalLiveDimension(actionRow, dimension).name ?? actionRow.planId}）`,
+              actions: ["invoke"],
+            });
+          if (
+            actionRow.status !== 5 &&
+            !liveActionDisabledReason(actionRow, "REJECT")
+          )
+            actionElements.push({
+              id: "action:reject",
+              label: `退回（${projectRegionalApprovalLiveDimension(actionRow, dimension).name ?? actionRow.planId}）`,
+              actions: ["invoke"],
+            });
+        }
+        return actionElements.length === 0 ? {} : { actionElements };
+      })(),
+      ...(activeLiveActionRow
+        ? {
+            dialog: {
+              label: `${liveActionKind === "REJECT" ? "退回" : "通过"}审批对话框（${
+                projectRegionalApprovalLiveDimension(activeLiveActionRow, dimension).name ??
+                activeLiveActionRow.planId
+              }）`,
+              actions:
+                liveActionKind === "APPROVE" ? [] : ["confirm", "cancel"],
+              fields:
+                liveActionKind === "REJECT"
+                  ? [
+                      {
+                        id: "dialog:approval:remark",
+                        label: "退回理由",
+                        value: "",
+                        editable: true,
+                      },
+                    ]
+                  : [],
+            },
+          }
+        : {}),
+    });
+  }, [
+    appliedLiveFilters,
+    dimension,
+    expandedLiveGroups,
+    inlineElements,
+    liveDetailPlanId,
+    liveFilterOptions,
+    liveQuery.enabled,
+    liveQuery.queueState.data?.pages,
+    liveRows,
+    liveStageFilter,
+    page,
+    roleStages,
+    selectedRowIds,
+    t,
+  ]);
+
   useEffect(() => {
     const usingLiveQueue = liveQuery.enabled;
     const selectedAuthority =
@@ -1201,6 +1420,15 @@ const RegionalApprovalWorkbench: React.FC<{
         selectedEntities: usingLiveQueue
           ? selectedLiveRows.map((row) => projectLiveContextEntity(row, dimension))
           : selectedFixtureRows.map((row) => projectFixtureContextEntity(row, primaryVersion)),
+        expandedPlanIds: usingLiveQueue
+          ? expandedLiveGroups.filter((id): id is string => typeof id === 'string')
+          : [],
+        expandedFields: usingLiveQueue
+          ? liveRows
+              .filter((row) => expandedLiveGroups.includes(row.planId))
+              .flatMap((row) => inlineElements[row.planId]?.fields ?? [])
+              .slice(0, 120)
+          : [],
         changes: usingLiveQueue ? [] : savedAdjustments,
         localApprovalResults: usingLiveQueue ? [] : localApprovalResults,
         metrics,
@@ -1243,6 +1471,7 @@ const RegionalApprovalWorkbench: React.FC<{
     liveRows,
     liveCurrentPage,
     liveOuterRows,
+    expandedLiveGroups,
     onContextChange,
     page,
     pageData,
@@ -1402,6 +1631,197 @@ const RegionalApprovalWorkbench: React.FC<{
     if (!compare) return;
     openLiveVersionComparison(primary && primary.seq >= compare.seq ? primary.id : compare.id, compare.id);
   };
+
+  // AG-UI 前端工具：右侧对话让页面改这一屏怎么看，只改视图，不改任何 GEA 数据。
+  // 参数是外部来源，先按当前可见行核对 planId，再走和手动操作一样的 setState；
+  // 结果统一按 AG-UI 的 tool 消息回填（失败必须带 error）。
+  const appliedToolCallRef = useRef<string>();
+  // 始终指向最新的字段上报，供 apply 等待"值真的落上去"。
+  const inlineElementsRef = useRef(inlineElements);
+  inlineElementsRef.current = inlineElements;
+  // 元素清单改变时上报给页面桥（独立通道，不进页面状态快照）。
+  useEffect(() => {
+    onCatalogChange?.(catalogElements);
+  }, [catalogElements, onCatalogChange]);
+  useEffect(() => {
+    if (!toolCall || appliedToolCallRef.current === toolCall.toolCallId) return;
+    appliedToolCallRef.current = toolCall.toolCallId;
+    void (async () => {
+    const { toolCallId, command } = toolCall;
+    const settled = (applied: boolean, error?: string) =>
+      onToolResult?.(toolCallId, applied, error);
+    // 只有已经连上实时查询的工作台才能被改动；只读夹具页如实回报失败。
+    if (!liveQuery.enabled) {
+      settled(false, "WORKBENCH_NOT_LIVE");
+      return;
+    }
+    const args = command;
+    const kind = typeof args.kind === "string" ? args.kind : "";
+    const targets = [
+      ...(typeof args.target === "string" ? [args.target] : []),
+      ...(Array.isArray(args.targets)
+        ? (args.targets as unknown[]).filter(
+            (value): value is string => typeof value === "string",
+          )
+        : []),
+    ];
+    const value = typeof args.value === "string" ? args.value : undefined;
+    const action = typeof args.action === "string" ? args.action : undefined;
+    const rejectWith = (error: string) => settled(false, error);
+
+    switch (kind) {
+      case "invoke": {
+        for (const id of targets) {
+          if (id === "detail" && action === "close") {
+            setLiveDetailPlanId(undefined);
+            continue;
+          }
+          if (id === "filters" && action === "reset") {
+            resetFilters();
+            continue;
+          }
+          if (id === "action:approve" || id === "action:reject") {
+            const row = selectedLiveRows.length === 1 ? selectedLiveRows[0] : undefined;
+            if (!row) return rejectWith("NO_SELECTED_ROW");
+            const kind = id === "action:approve" ? "APPROVE" : "REJECT";
+            if (liveActionDisabledReason(row, kind === "REJECT" ? "REJECT" : undefined))
+              return rejectWith("ACTION_NOT_ALLOWED");
+            selectLivePlanContext(row);
+            setLiveActionKind(kind);
+            setLiveActionPlanId(row.planId);
+            continue;
+          }
+          if (id === "dialog:approval") {
+            if (action === "confirm") {
+              setApprovalSubmitRequest({ at: Date.now() });
+              continue;
+            }
+            if (action === "cancel") {
+              setLiveActionPlanId(undefined);
+              continue;
+            }
+            return rejectWith("ACTION_NOT_ALLOWED");
+          }
+          if (id.startsWith("row:")) {
+            const planId = id.slice("row:".length);
+            if (action === "expand") {
+              setExpandedLiveGroups((current) =>
+                current.includes(planId) ? current : [...current, planId],
+              );
+            } else if (action === "collapse") {
+              setExpandedLiveGroups((current) =>
+                current.filter((candidate) => candidate !== planId),
+              );
+            } else if (action === "openDetail") {
+              const row = liveRows.find((candidate) => candidate.planId === planId);
+              if (!row) return rejectWith("PLAN_NOT_ON_CURRENT_PAGE");
+              selectLivePlanContext(row);
+              setLiveDetailPlanId(row.planId);
+            } else {
+              return rejectWith("ACTION_NOT_ALLOWED");
+            }
+            continue;
+          }
+          return rejectWith("UNKNOWN_ELEMENT");
+        }
+        break;
+      }
+      case "select": {
+        if (targets.some((id) => !id.startsWith("row:")))
+          return rejectWith("UNKNOWN_ELEMENT");
+        setSelectedRowIds([...new Set(targets.map((id) => id.slice("row:".length)))]);
+        break;
+      }
+      case "setValue": {
+        if (value === undefined) return rejectWith("MISSING_VALUE");
+        for (const id of targets) {
+          if (id === "stage") {
+            const stage = value === "all" ? undefined : (value as ApprovalStageId);
+            setLiveStageFilter(stage);
+            setDimension(APPROVAL_DIMENSIONS_BY_STAGE[stage ?? "category"][0]);
+            setDraftLiveFilters((current) => ({
+              ...current,
+              status: ALL_ORGANIZATIONS,
+            }));
+            setAppliedLiveFilters((current) => ({
+              ...current,
+              status: ALL_ORGANIZATIONS,
+            }));
+            setSelectedRowIds([]);
+            setPage(1);
+            continue;
+          }
+          if (id === "pager") {
+            const next = Number(value);
+            const pages = liveQuery.queueState.data?.pages ?? 1;
+            if (!Number.isInteger(next) || next < 1 || next > pages)
+              return rejectWith("PAGE_OUT_OF_RANGE");
+            setPage(next);
+            setSelectedRowIds([]);
+            continue;
+          }
+          if (id.startsWith("filter:")) {
+            updateLiveDraftFilter(
+              id.slice("filter:".length) as keyof LiveApprovalFilters,
+              value,
+            );
+            continue;
+          }
+          if (id === "dialog:approval:remark") {
+            setApprovalRemarkPatch({ at: Date.now(), remark: value });
+            continue;
+          }
+          if (id.startsWith("field:") || id.startsWith("collection:")) {
+            const planId = id.split(":")[1];
+            const row = liveRows.find((candidate) => candidate.planId === planId);
+            if (!row) return rejectWith("PLAN_NOT_ON_CURRENT_PAGE");
+            // 复用界面自己的编辑权限判断：不允许编辑的计划，对话也改不了。
+            if (!inlineSkuAccess(row).detail)
+              return rejectWith("NO_EDIT_PERMISSION");
+            const skuCode = id.startsWith("field:") ? id.split(":")[2] : undefined;
+            setExpandedLiveGroups((current) =>
+              current.includes(row.planId) ? current : [...current, row.planId],
+            );
+            setDraftPatch({
+              at: Date.now(),
+              planId: row.planId,
+              quantity: value,
+              ...(skuCode === undefined ? {} : { skuCodes: [skuCode] }),
+            });
+            // 等字段真的变成目标值再回执：只报"收到"会让模型以为改好了。
+            const landedDeadline = Date.now() + 4000;
+            let landed = false;
+            while (Date.now() < landedDeadline) {
+              await new Promise((resolve) => setTimeout(resolve, 150));
+              const reported = inlineElementsRef.current[row.planId]?.fields ?? [];
+              const target = skuCode
+                ? reported.filter((field) => field.id.endsWith(`:${skuCode}:qty`))
+                : reported;
+              if (
+                target.length > 0 &&
+                target.every((field) => field.value === value)
+              ) {
+                landed = true;
+                break;
+              }
+            }
+            if (!landed) return rejectWith("VALUE_NOT_APPLIED");
+            continue;
+          }
+          return rejectWith("UNKNOWN_ELEMENT");
+        }
+        break;
+      }
+      case "clear": {
+        setLiveDetailPlanId(undefined);
+        break;
+      }
+      default:
+        return rejectWith("UNKNOWN_VERB");
+    }
+    settled(true);
+    })();
+  }, [toolCall]);
 
   const exportScope = JSON.stringify([
     scopedState,
@@ -2106,6 +2526,8 @@ const RegionalApprovalWorkbench: React.FC<{
         evidence={liveAccess.entries[activeLiveActionRow.versionId]}
         pendingValues={livePendingValues[activeLiveActionRow.planId]}
         onPermissionDenied={(versionId) => setPermissionDeniedVersions((current) => new Set(current).add(versionId))}
+        remarkPatch={approvalRemarkPatch}
+        submitRequest={approvalSubmitRequest}
         onSucceeded={async (receipt, request) => {
           setLivePendingValues((current) => {
             if (!(activeLiveActionRow.planId in current)) return current;
@@ -2784,6 +3206,10 @@ const RegionalApprovalWorkbench: React.FC<{
                           categoryName={record.kind === 'category' ? record.category.categoryName : undefined}
                           onMetricsChange={record.kind === 'plan' && !record.members ? (metrics) => handleLiveAdjustmentMetrics(record.plan.planId, metrics) : undefined}
                           onPendingValuesChange={record.kind === 'plan' && !record.members ? (values) => handleLivePendingValues(record.plan.planId, values) : undefined}
+                          draftPatch={draftPatch && draftPatch.planId === record.plan.planId ? draftPatch : undefined}
+                          onElementsChange={(fields, collection) =>
+                            handleInlineElements(record.plan.planId, fields, collection)
+                          }
                         />
                       );
                     }}

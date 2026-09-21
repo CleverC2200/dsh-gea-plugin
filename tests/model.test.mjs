@@ -76,7 +76,7 @@ test(
     const instructions = JSON.stringify(
       body.messages.filter((message) => message.role !== "user"),
     );
-    assert.ok(instructions.includes("本会话只读"));
+    assert.ok(instructions.includes("只有用户明确要求时才动用页面操作工具"));
     assert.ok(instructions.includes("只使用当前已加载且有权限的 GEA MCP 工具"));
     assert.ok(instructions.includes("不要展示或解释接口、工具名、字段名、JSON、哈希"));
     // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在
@@ -85,6 +85,7 @@ test(
     assert.deepEqual(
       body.tools.map((tool) => tool.function.name).sort(),
       [
+        "gea_plugin_read",
         "gea_sales_plan_read",
         "gea_skill_reference_read",
         "gea_visible_workbench_context",

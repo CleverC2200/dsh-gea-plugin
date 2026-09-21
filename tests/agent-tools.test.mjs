@@ -258,6 +258,121 @@ test(
         );
         return true;
       }
+      if (outcome === "workbench-command") {
+        const appliedResult = body.messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "workbench-command-1",
+        );
+        const rejectedResult = body.messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "workbench-command-2",
+        );
+        res.end(
+          !appliedResult
+            ? event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "workbench-command-1",
+                      type: "function",
+                      function: {
+                        name: "gea_workbench_apply",
+                        arguments: JSON.stringify({
+                          kind: "invoke",
+                          target: "row:plan-hebei-1",
+                          action: "expand",
+                          reason: "展开这一行",
+                        }),
+                      },
+                    },
+                  ],
+                },
+                "tool_calls",
+              )
+            : !rejectedResult
+              ? event(
+                  {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "workbench-command-2",
+                        type: "function",
+                        function: {
+                          name: "gea_workbench_apply",
+                          arguments: JSON.stringify({
+                            kind: "setValue",
+                            target: "row:plan-hebei-1",
+                            value: "200",
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                  "tool_calls",
+                )
+              : event({ content: "已按当前页面范围回答。" }, "stop"),
+        );
+        return true;
+      }
+      if (outcome === "page-verb") {
+        const rejected = body.messages.find(
+          (message) =>
+            message.role === "tool" && message.tool_call_id === "page-verb-1",
+        );
+        const delivered = body.messages.find(
+          (message) =>
+            message.role === "tool" && message.tool_call_id === "page-verb-2",
+        );
+        res.end(
+          !rejected
+            ? event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "page-verb-1",
+                      type: "function",
+                      function: {
+                        name: "gea_workbench_apply",
+                        arguments: JSON.stringify({
+                          kind: "setValue",
+                          target: "row:p-1",
+                          value: "200",
+                        }),
+                      },
+                    },
+                  ],
+                },
+                "tool_calls",
+              )
+            : !delivered
+              ? event(
+                  {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "page-verb-2",
+                        type: "function",
+                        function: {
+                          name: "gea_workbench_apply",
+                          arguments: JSON.stringify({
+                            kind: "setValue",
+                            target: "field:p-1:sku:1001:qty",
+                            value: "200",
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                  "tool_calls",
+                )
+              : event({ content: "已按元素操作。" }, "stop"),
+        );
+        return true;
+      }
       if (!body.messages.some((x) => x.role === "tool")) {
         res.end(
           event(
@@ -406,6 +521,14 @@ test(
               },
             ],
             selectedPlanIds: [],
+            expandedFields: [
+              {
+                id: "field:plan-hebei-1:1004273:qty",
+                label: "BP思念150g黑芝麻肉松饭团 确认计划量",
+                value: "200",
+                editable: true,
+              },
+            ],
             pagination: { page: 1, pageSize: 20, total: 1 },
             evidence: {
               source: "gea-user-session",
@@ -507,6 +630,14 @@ test(
               },
             ],
             selectedPlanIds: [],
+            expandedFields: [
+              {
+                id: "field:plan-hebei-1:1004273:qty",
+                label: "BP思念150g黑芝麻肉松饭团 确认计划量",
+                value: "200",
+                editable: true,
+              },
+            ],
             pagination: { page: 1, pageSize: 20, total: 1 },
             evidence: {
               source: "gea-user-session",
@@ -546,6 +677,8 @@ test(
         assert.equal(value.source, "GEA_RENDERED_WORKBENCH");
         assert.equal(value.coverage, "current-visible-page");
         assert.equal(value.context.visibleRows[0].organization, "当前客户");
+        assert.equal(value.context.expandedFields[0].id, "field:plan-hebei-1:1004273:qty");
+        assert.equal(value.context.expandedFields[0].value, "200");
         assert.equal(
           rows.some(
             (entry) =>
@@ -553,6 +686,486 @@ test(
               entry.data.name === "gea_visible_workbench_context",
           ),
           true,
+        );
+      },
+    );
+    await t.test(
+      "the assistant drives the visible page through an AG-UI frontend tool",
+      async () => {
+        const page = (sequence, rows) => ({
+          format: "gea-workbench-visible-v1",
+          sequence,
+          view: "regional-approval",
+          scope: {
+            month: "2026-10",
+            planType: "Y",
+            approvalStage: "province",
+            dimension: "customer",
+          },
+          visibleRows: rows,
+          selectedPlanIds: [],
+          pagination: { page: 1, pageSize: 20, total: rows.length },
+          evidence: {
+            source: "gea-user-session",
+            completeness: "paged-queue",
+            queryState: "success",
+            dataVersion: "sales-plan-v1.11",
+          },
+        });
+        outcome = "success";
+        const id = await submit();
+        await ended(id);
+        // 页面自述能力：工具由通用桥按这份目录为该会话生成。
+        const catalog = {
+          surface: "gea-workbench",
+          tool: "gea_workbench_apply",
+          reasonField: "reason",
+          description: "改工作台这一屏。",
+          elements: [
+            {
+              id: "row:plan-hebei-1",
+              role: "row",
+              label: "河北 经销渠道虚拟二",
+              value: "¥3,888,792.00",
+              actions: ["expand", "collapse", "openDetail", "select"],
+            },
+            {
+              id: "field:plan-hebei-1:1004273:qty",
+              role: "field",
+              label: "BP思念150g黑芝麻肉松饭团 确认计划量",
+              value: "939",
+              editable: true,
+            },
+            {
+              id: "collection:plan-hebei-1:qty",
+              role: "collection",
+              label: "该行全部 SKU 的确认计划量",
+              members: ["field:plan-hebei-1:1004273:qty"],
+            },
+            {
+              id: "stage",
+              role: "control",
+              label: "审批阶段",
+              value: "area",
+              options: ["all", "area", "province"],
+              editable: true,
+            },
+          ],
+        };
+        const declared = await app.rpc("agui/workbench", {
+          sessionId: id,
+          toolMessages: [],
+          catalog,
+        });
+        assert.equal(declared.ok, true, JSON.stringify(declared));
+        await app.rpc("workbench/context", {
+          sessionId: id,
+          context: page(1, [
+            { planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" },
+          ]),
+        });
+        outcome = "workbench-command";
+        modelRequests = [];
+        const prompted = await app.remote("session/prompt", {
+          requestId: randomUUID(),
+          sessionId: id,
+          mode: "queue",
+          content: [{ type: "text", text: "只看河北" }],
+        });
+        assert.equal(prompted.ok, true, JSON.stringify(prompted));
+        // 工作台页面这一侧：按 AG-UI 取工具调用事件。
+        await until(() => modelRequests.length > 0, Boolean);
+        assert.ok(
+          modelRequests[0].tools.some(
+            (tool) => tool.function.name === "gea_workbench_apply",
+          ),
+          "页面声明后该会话应能看到生成的工具：" +
+            JSON.stringify(
+              modelRequests[0].tools.map((tool) => tool.function.name),
+            ),
+        );
+        // 工具由桥按元素目录生成：模型只会 4 个通用动词，说明里带元素与只读区分。
+        const applyTool = modelRequests[0].tools.find(
+          (tool) => tool.function.name === "gea_workbench_apply",
+        );
+        assert.deepEqual(
+          applyTool.function.parameters.properties.kind.enum,
+          ["invoke", "setValue", "select", "clear"],
+        );
+        assert.match(applyTool.function.description, /河北 经销渠道虚拟二/);
+        assert.match(applyTool.function.description, /只读元素/);
+        assert.equal(applyTool.function.parameters.properties.target.type, "string");
+        assert.equal(applyTool.function.parameters.properties.action.type, "string");
+        assert.equal(applyTool.function.parameters.properties.value.type, "string");
+        assert.deepEqual(applyTool.function.parameters.required, ["kind"]);
+        const events = await until(
+          async () =>
+            (await app.rpc("agui/workbench", { sessionId: id })).value.events,
+          (value) => value.length > 0,
+        );
+        assert.deepEqual(
+          events.map((event) => event.type),
+          ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END"],
+        );
+        const [start, args, end] = events;
+        assert.equal(start.toolCallName, "gea_workbench_apply");
+        assert.equal(end.toolCallId, start.toolCallId);
+        assert.deepEqual(JSON.parse(args.delta), {
+          kind: "invoke",
+          target: "row:plan-hebei-1",
+          action: "expand",
+          reason: "展开这一行",
+        });
+        // 页面执行完把结果按 AG-UI 的 tool 消息回填，并上报新的页面快照。
+        const settled = await app.rpc("agui/workbench", {
+          sessionId: id,
+          toolMessages: [
+            {
+              id: "tool-result-1",
+              role: "tool",
+              toolCallId: start.toolCallId,
+              content: JSON.stringify({ applied: true }),
+            },
+          ],
+        });
+        assert.deepEqual(settled.value.events, []);
+        await app.rpc("workbench/context", {
+          sessionId: id,
+          context: page(2, [
+            { planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" },
+            { planId: "plan-hebei-2", organization: "河北", planTypeCode: "Y" },
+          ]),
+        });
+        const rows = await until(
+          () => readSession(app.runtime, id),
+          (entries) =>
+            entries.filter((entry) => entry.type === "turn/end").length === 2,
+        );
+        const toolResult = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "workbench-command-1",
+        );
+        const value = JSON.parse(toolResult.content);
+        assert.equal(value.protocol, "ag-ui-frontend-tool");
+        assert.equal(value.applied, true);
+        assert.equal(value.kind, "invoke");
+        // 改动后必须拿到"改动后"的快照，否则模型会拿旧页面下结论。
+        assert.equal(value.snapshotAfterApply, true);
+        assert.equal(value.authority, "view-only");
+        assert.equal(value.tool.toolCallName, "gea_workbench_apply");
+        assert.equal(value.state.visibleRows.length, 2);
+        // 只改视图：整轮下来不能碰任何 GEA 写接口。
+        assert.equal(
+          app.requests.some((request) =>
+            /\/actions$|\/submit$|\/sales-plan\/action$/.test(
+              request.url.pathname,
+            ),
+          ),
+          false,
+          "改这一屏不应该触发任何 GEA 写接口",
+        );
+        assert.equal(
+          rows.some(
+            (entry) =>
+              entry.type === "tool/call" &&
+              entry.data.name === "gea_workbench_apply",
+          ),
+          true,
+        );
+        // 只读元素上的 setValue 必须被挡在宿主侧，不能变成"改好了"。
+        // （命令没有下发到页面，所以这里是一个带错误码的成功结果，而不是工具异常。）
+        assert.match(
+          modelRequests[2].messages.find(
+            (message) =>
+              message.role === "tool" &&
+              message.tool_call_id === "workbench-command-2",
+          ).content,
+          /ELEMENT_NOT_EDITABLE/,
+        );
+        assert.equal(
+          rows.filter((entry) => entry.type === "turn/end").length,
+          2,
+        );
+      },
+    );
+    await t.test(
+      "页面声明受策略收口：非白名单页面不注册，改数据的动作不暴露",
+      async () => {
+        outcome = "success";
+        // 1) 不在白名单里的页面：声明了也不给工具。
+        const foreign = await submit();
+        await ended(foreign);
+        await app.rpc("agui/workbench", {
+          sessionId: foreign,
+          toolMessages: [],
+          catalog: {
+            surface: "inventory-dealer",
+            tool: "dealer_page_apply",
+            description: "改经销商页面",
+            actions: [{ name: "openRow", description: "打开某一行" }],
+          },
+        });
+        modelRequests = [];
+        await app.remote("session/prompt", {
+          requestId: randomUUID(),
+          sessionId: foreign,
+          mode: "queue",
+          content: [{ type: "text", text: "随便问一句" }],
+        });
+        await until(() => modelRequests.length > 0, Boolean);
+        assert.equal(
+          modelRequests[0].tools.some(
+            (tool) => tool.function.name === "dealer_page_apply",
+          ),
+          false,
+          "非白名单页面不应注册工具",
+        );
+
+        // 2) 白名单页面：改视图的动作和"填草稿"的动作都要暴露（它们都是页面开放的）。
+        const allowed = await submit();
+        await ended(allowed);
+        await app.rpc("agui/workbench", {
+          sessionId: allowed,
+          toolMessages: [],
+          catalog: {
+            surface: "gea-workbench",
+            tool: "gea_workbench_apply",
+            description: "改工作台这一屏",
+            actions: [
+              { name: "expandRow", description: "展开某一行" },
+              {
+                name: "setConfirmedQuantity",
+                description: "填确认计划量草稿",
+                scope: "data",
+                params: {
+                  planId: { type: "string", required: true },
+                  quantity: { type: "string", required: true },
+                },
+              },
+            ],
+          },
+        });
+        modelRequests = [];
+        await app.remote("session/prompt", {
+          requestId: randomUUID(),
+          sessionId: allowed,
+          mode: "queue",
+          content: [{ type: "text", text: "随便问一句" }],
+        });
+        await until(() => modelRequests.length > 0, Boolean);
+        const tool = modelRequests[0].tools.find(
+          (candidate) => candidate.function.name === "gea_workbench_apply",
+        );
+        assert.ok(tool, "白名单页面应注册工具");
+        assert.deepEqual(tool.function.parameters.properties.kind.enum, [
+          "expandRow",
+          "setConfirmedQuantity",
+        ]);
+        // 动作里不存在"提交/审批"这类会落库的动作：页面没声明就永远调不到。
+        assert.equal(
+          tool.function.parameters.properties.kind.enum.some((kind) =>
+            /submit|approve|save/i.test(kind),
+          ),
+          false,
+        );
+      },
+    );
+    await t.test(
+      "元素目录：只读元素改不动，只有可编辑字段才下发到页面",
+      async () => {
+        outcome = "success";
+        const id = await submit();
+        await ended(id);
+        await app.rpc("agui/workbench", {
+          sessionId: id,
+          toolMessages: [],
+          catalog: {
+            surface: "gea-workbench",
+            tool: "gea_workbench_apply",
+            description: "通用页面操作：按元素调用四个通用动词。",
+            elements: [
+              {
+                id: "row:p-1",
+                role: "row",
+                label: "经销渠道虚拟二",
+                value: "¥3,888,792.00",
+                actions: ["expand", "openDetail", "select"],
+              },
+              {
+                id: "field:p-1:sku:1001:qty",
+                role: "field",
+                label: "BP思念150g黑芝麻肉松饭团 确认计划量",
+                value: "939",
+                editable: true,
+              },
+              {
+                id: "collection:p-1:qty",
+                role: "collection",
+                label: "该行全部 SKU 的确认计划量",
+                members: ["field:p-1:sku:1001:qty"],
+              },
+              {
+                id: "stage",
+                role: "control",
+                label: "审批阶段",
+                value: "area",
+                options: ["all", "area", "province"],
+                actions: ["setStage"],
+              },
+            ],
+          },
+        });
+        outcome = "page-verb";
+        modelRequests = [];
+        await app.remote("session/prompt", {
+          requestId: randomUUID(),
+          sessionId: id,
+          mode: "queue",
+          content: [{ type: "text", text: "把这行改成 200" }],
+        });
+        await until(() => modelRequests.length > 0, Boolean);
+        assert.ok(
+          modelRequests[0].tools.some(
+            (candidate) => candidate.function.name === "gea_workbench_apply",
+          ),
+          "元素目录也要注册工具：" +
+            JSON.stringify(
+              modelRequests[0].tools.map((candidate) => candidate.function.name),
+            ),
+        );
+        const events = await until(
+          async () =>
+            (await app.rpc("agui/workbench", { sessionId: id })).value.events,
+          (value) => value.length > 0,
+        );
+        const tool = modelRequests[0].tools.find(
+          (candidate) => candidate.function.name === "gea_workbench_apply",
+        );
+        // 元素目录：模型只会四个通用动词。
+        assert.deepEqual(
+          tool.function.parameters.properties.kind.enum,
+          ["invoke", "setValue", "select", "clear"],
+        );
+        // 说明里区分了"可操作"和"只读"，并带上元素 label 供对齐。
+        assert.match(tool.function.description, /只读元素/);
+        assert.match(tool.function.description, /经销渠道虚拟二/);
+        assert.match(tool.function.description, /可编辑/);
+        // 只读行上的 setValue 不会下发；事件来自第二个（可编辑字段）调用。
+        const [start, args] = events;
+        assert.deepEqual(JSON.parse(args.delta), {
+          kind: "setValue",
+          target: "field:p-1:sku:1001:qty",
+          value: "200",
+        });
+        await app.rpc("agui/workbench", {
+          sessionId: id,
+          toolMessages: [
+            {
+              id: "verb-result-1",
+              role: "tool",
+              toolCallId: start.toolCallId,
+              content: JSON.stringify({ applied: true }),
+            },
+          ],
+        });
+        await until(
+          () => readSession(app.runtime, id),
+          (entries) =>
+            entries.filter((entry) => entry.type === "turn/end").length === 2,
+        );
+        const rejected = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "page-verb-1",
+        );
+        assert.match(rejected.content, /ELEMENT_NOT_EDITABLE/);
+        const delivered = modelRequests[2].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "page-verb-2",
+        );
+        const value = JSON.parse(delivered.content);
+        assert.equal(value.applied, true);
+        assert.equal(value.kind, "setValue");
+      },
+    );
+    await t.test(
+      "元素很多（20 行 + 字段）时工具仍要注册，说明不能因为超长把工具弄没",
+      async () => {
+        outcome = "success";
+        const id = await submit();
+        await ended(id);
+        const elements = [
+          ...Array.from({ length: 20 }, (_, index) => ({
+            id: `row:p-jxs-2026-10-${String(index).padStart(5, "0")}`,
+            role: "row",
+            label: `经销渠道虚拟${index % 3}（河北逐平）`,
+            value: "3,888,792.00",
+            actions: ["expand", "collapse", "openDetail", "select"],
+          })),
+          ...Array.from({ length: 12 }, (_, index) => ({
+            id: `field:p-jxs-2026-10-00000:1004273${index}:qty`,
+            role: "field",
+            label: `BP思念150g黑芝麻肉松饭团 ${index} 确认计划量`,
+            value: "939",
+            editable: true,
+          })),
+          {
+            id: "collection:p-jxs-2026-10-00000:qty",
+            role: "collection",
+            label: "该行全部 SKU 的确认计划量",
+            members: Array.from(
+              { length: 12 },
+              (_, index) => `field:p-jxs-2026-10-00000:1004273${index}:qty`,
+            ),
+          },
+          ...["areaCode", "provinceCode", "orgCode", "dealerCode", "status"].map(
+            (field) => ({
+              id: `filter:${field}`,
+              role: "control",
+              label: `${field} 筛选`,
+              value: "all",
+              editable: true,
+            }),
+          ),
+          {
+            id: "stage",
+            role: "control",
+            label: "审批阶段",
+            value: "area",
+            options: ["all", "area", "province"],
+            editable: true,
+          },
+          { id: "filters", role: "control", label: "筛选", actions: ["reset"] },
+          { id: "pager", role: "control", label: "分页", value: "1", editable: true },
+        ];
+        const declared = await app.rpc("agui/workbench", {
+          sessionId: id,
+          toolMessages: [],
+          catalog: {
+            surface: "gea-workbench",
+            tool: "gea_workbench_apply",
+            description: "改工作台这一屏。",
+            elements,
+          },
+        });
+        assert.equal(declared.ok, true, JSON.stringify(declared).slice(0, 300));
+        modelRequests = [];
+        await app.remote("session/prompt", {
+          requestId: randomUUID(),
+          sessionId: id,
+          mode: "queue",
+          content: [{ type: "text", text: "随便问一句" }],
+        });
+        await until(() => modelRequests.length > 0, Boolean);
+        const tool = modelRequests[0].tools.find(
+          (candidate) => candidate.function.name === "gea_workbench_apply",
+        );
+        assert.ok(tool, "元素数量大时工具也必须注册");
+        assert.ok(
+          tool.function.description.length <= 20_200,
+          `说明长度 ${tool.function.description.length} 应在上限内`,
         );
       },
     );
@@ -702,6 +1315,77 @@ test(
         assert.ok(rows.some((x) => x.type === "tool/call"));
         assert.ok(rows.some((x) => x.type === "tool/result"));
         assert.equal(modelRequests.length, 1);
+      },
+    );
+    await t.test(
+      "a live workbench read never wipes the visible page context it just synced",
+      async () => {
+        outcome = "success";
+        const id = await submit();
+        await ended(id);
+        const synced = {
+          format: "gea-workbench-visible-v1",
+          sequence: 1,
+          view: "regional-approval",
+          scope: {
+            month: "2026-10",
+            planType: "Y",
+            approvalStage: "province",
+            dimension: "customer",
+          },
+          visibleRows: [
+            {
+              planId: "9007199254740993",
+              organization: "河北",
+              planTypeCode: "Y",
+            },
+          ],
+          selectedPlanIds: [],
+          pagination: { page: 1, pageSize: 20, total: 1 },
+          evidence: {
+            source: "gea-user-session",
+            completeness: "paged-queue",
+            queryState: "success",
+            dataVersion: "sales-plan-v1.11",
+          },
+        };
+        assert.deepEqual(
+          (
+            await app.rpc("workbench/context", {
+              sessionId: id,
+              context: synced,
+            })
+          ).value,
+          { synced: true },
+        );
+        // 工作台页面自己的实时查询走的就是这条：它曾经把刚同步的可见页快照清掉。
+        const live = await app.rpc("workbench/query", {
+          kind: "periods",
+          query: { pageSize: 1 },
+        });
+        assert.equal(live.ok, true, JSON.stringify(live));
+        outcome = "visible-context";
+        modelRequests = [];
+        const prompted = await app.remote("session/prompt", {
+          requestId: randomUUID(),
+          sessionId: id,
+          mode: "queue",
+          content: [{ type: "text", text: "这一页是什么范围？" }],
+        });
+        assert.equal(prompted.ok, true, JSON.stringify(prompted));
+        await until(
+          () => readSession(app.runtime, id),
+          (entries) =>
+            entries.filter((entry) => entry.type === "turn/end").length === 2,
+        );
+        const result = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "visible-context-1",
+        );
+        const value = JSON.parse(result.content);
+        assert.equal(value.coverage, "current-visible-page");
+        assert.equal(value.context.visibleRows[0].organization, "河北");
       },
     );
   },

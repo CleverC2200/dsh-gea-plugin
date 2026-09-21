@@ -24,6 +24,10 @@ import { Business, object, type Deployment } from "./host/business.ts";
 import { GeaResponseError } from "./shared/gea-error.js";
 import { registerHtmlPlugins } from "./html-plugins.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
+import {
+  createPageBridge,
+  createPageToolRegistry,
+} from "./page-bridge/index.ts";
 import { transportSignal } from "./shared/transport-signal.ts";
 import { geaTextStream } from "./shared/gea-stream.ts";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
@@ -374,7 +378,25 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
           }),
       }),
     );
-  const business = new Business(config);
+  const pageBridge = createPageBridge();
+  const business = new Business(config, pageBridge);
+  // 页面自述能力 -> 该会话专属的模型工具（页面关闭即注销）。
+  const pageTools = createPageToolRegistry(ctx, pageBridge, {
+    stateSnapshot: (sessionId) => business.workbenchStateSnapshot(sessionId),
+    // 只允许"业务工作台页面"被对话改动；其它页面声明一律不接。
+    allowSurfaces: ["gea-workbench"],
+    // 只有业务工作台可以暴露"改草稿"的动作（例如确认计划量）。
+    dataActionSurfaces: ["gea-workbench"],
+    // 工作台会话里不让它用浏览器/MCP 去扒页面数据（普通对话不受影响）。
+    denyGlobalToolsInWorkbench: [
+      "mcp__browser__browser_find",
+      "mcp__browser__browser_evaluate",
+      "mcp__browser__browser_navigate",
+      "mcp__browser__browser_snapshot",
+    ],
+  });
+  // 身份变化后旧会话的页面工具一律注销；页面下一轮声明会重新注册。
+  ctx.effect(() => business.watchIdentity(() => pageTools.disposeAll()));
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);
   const htmlRootConfig=JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS || "[]");
@@ -515,6 +537,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "plugin/sql",
     "workbench/prepare",
     "workbench/context",
+    "agui/workbench",
     "api-log/snapshot",
     "api-log/replay",
     "api-log/clear",
@@ -551,6 +574,35 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                   request.signal,
                 );
                 break;
+              case "agui/workbench": {
+                if (
+                  Object.keys(payload).some(
+                    (key) =>
+                      key !== "sessionId" &&
+                      key !== "toolMessages" &&
+                      key !== "catalog",
+                  )
+                )
+                  throw new Error("INVALID_AGUI_REQUEST");
+                if (typeof payload.sessionId !== "string")
+                  throw new Error("INVALID_WORKBENCH_SESSION");
+                try {
+                  pageTools.declare(payload.sessionId, payload.catalog);
+                } catch (error) {
+                  // 页面声明无效（例如说明超长）会让工具注册不上，页面侧又是静默重试，
+                  // 必须留一条日志，避免"功能突然不可用但没有任何线索"。
+                  console.log(
+                    `[page-bridge] declare rejected session=${payload.sessionId} code=${
+                      error instanceof Error ? error.message : String(error)
+                    }`,
+                  );
+                }
+                value = business.pullPageBridgeEvents(
+                  payload.sessionId,
+                  payload.toolMessages,
+                );
+                break;
+              }
               case "workbench/context": {
                 if (
                   Object.keys(payload).some(

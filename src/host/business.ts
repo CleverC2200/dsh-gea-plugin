@@ -30,6 +30,7 @@ import { transportSignal } from "../shared/transport-signal.ts";
 import { notificationPage, notificationDetail } from "../shared/notifications.ts";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
+import { createPageBridge, type PageBridge } from "../page-bridge/index.ts";
 
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
@@ -103,6 +104,8 @@ export interface VisibleWorkbenchContext {
   };
   visibleRows: Array<Record<string, string | number | null>>;
   selectedPlanIds: string[];
+  expandedPlanIds: string[];
+  expandedFields: Array<{ id: string; label: string; value: string; editable: boolean }>;
   pagination: { page: number; pageSize: number; total: number };
   evidence: {
     source: "gea-user-session";
@@ -417,6 +420,8 @@ function validateVisibleWorkbenchContext(
     "scope",
     "visibleRows",
     "selectedPlanIds",
+    "expandedPlanIds",
+    "expandedFields",
     "pagination",
     "evidence",
   ]);
@@ -459,6 +464,29 @@ function validateVisibleWorkbenchContext(
     payload.selectedPlanIds.some((id) => typeof id !== "string" || id.length > 256)
   )
     throw new Error("INVALID_WORKBENCH_CONTEXT");
+  // 展开状态是老客户端可能不带的新字段：缺失按空处理，带了就严格校验。
+  const expandedPlanIds = payload.expandedPlanIds ?? [];
+  if (
+    !Array.isArray(expandedPlanIds) ||
+    expandedPlanIds.length > 100 ||
+    expandedPlanIds.some((id) => typeof id !== "string" || id.length > 256)
+  )
+    throw new Error("INVALID_WORKBENCH_CONTEXT");
+  const expandedFields = payload.expandedFields ?? [];
+  if (!Array.isArray(expandedFields) || expandedFields.length > 120)
+    throw new Error("INVALID_WORKBENCH_CONTEXT");
+  const normalizedFields = expandedFields.map((candidate) => {
+    const field = object(candidate);
+    keys(field, ["id", "label", "value", "editable"]);
+    if (typeof field.editable !== "boolean")
+      throw new Error("INVALID_WORKBENCH_CONTEXT");
+    return {
+      id: visibleWorkbenchText(field.id),
+      label: visibleWorkbenchText(field.label),
+      value: visibleWorkbenchText(field.value),
+      editable: field.editable,
+    };
+  });
   return {
     format: "gea-workbench-visible-v1",
     sequence: integer(payload.sequence, 1),
@@ -471,6 +499,8 @@ function validateVisibleWorkbenchContext(
     },
     visibleRows,
     selectedPlanIds: [...new Set(payload.selectedPlanIds)],
+    expandedPlanIds: [...new Set(expandedPlanIds)],
+    expandedFields: normalizedFields,
     pagination: {
       page: integer(pagination.page, 1),
       pageSize: integer(pagination.pageSize, 1, 100),
@@ -606,7 +636,11 @@ export class Business {
     return this.status();
   }
 
-  constructor(readonly config: Deployment) {
+  constructor(
+    readonly config: Deployment,
+    /** 通用页面桥：对话与页面之间的前端工具通道，业务只提供工具名与参数。 */
+    readonly pageBridge: PageBridge = createPageBridge(),
+  ) {
     validateServiceAccounts(config.serviceAccounts);
     const resolved = resolveEnvironments(config);
     this.selectedBase = resolved.baseUrl;
@@ -648,7 +682,11 @@ export class Business {
     this.details.clear();
     this.versionsByPlan.clear();
     this.skusByVersion.clear();
-    this.visibleWorkbenchContexts.clear();
+    // 注意：这里不能清 visibleWorkbenchContexts。
+    // 工作台页面自己的每次实时查询都会走 workbench/query -> clearQuery()，
+    // 一旦在这里清掉，页面刚同步上来的可见页快照会立刻被自己的查询抹掉，
+    // 模型再读就是"不在工作台"。可见页快照按会话独立存放，
+    // 只在离开页面（context=null）或身份变化（clearLogin）时失效。
     for (const request of this.requests.values()) request.abort();
     this.requests.clear();
   }
@@ -664,6 +702,8 @@ export class Business {
     this.correctionRequests.clear();
     this.qr = undefined;
     this.loginExpired = expired;
+    // 身份变化后，之前的可见页快照一律作废。
+    this.visibleWorkbenchContexts.clear();
     this.clearQuery();
     this.notifyIdentity();
   }
@@ -690,6 +730,30 @@ export class Business {
     if (!/^session-[0-9a-f-]{36}$/.test(sessionId))
       throw new Error("INVALID_WORKBENCH_SESSION");
     this.visibleWorkbenchContexts.delete(sessionId);
+    // 离开工作台后，之前发起但还没被执行的前端工具调用一律作废。
+    this.pageBridge.reset(sessionId);
+  }
+
+  /**
+   * 工作台页面轮询这一步的 AG-UI 事件：交给通用页面桥处理队列与回填，
+   * 这里只补业务自身的鉴权与会话格式校验。
+   */
+  pullPageBridgeEvents(
+    sessionId: string,
+    toolMessages: unknown,
+  ): { events: ReturnType<PageBridge["pull"]> } {
+    this.authenticated();
+    if (!/^session-[0-9a-f-]{36}$/.test(sessionId))
+      throw new Error("INVALID_WORKBENCH_SESSION");
+    return { events: this.pageBridge.pull(sessionId, toolMessages) };
+  }
+
+  /** 当前会话的页面状态与序列号；页面桥用它判断"改动后的状态是否已报回"。 */
+  workbenchStateSnapshot(
+    sessionId: string,
+  ): { sequence: number; state: VisibleWorkbenchContext } | undefined {
+    const value = this.visibleWorkbenchContexts.get(sessionId);
+    return value ? { sequence: value.sequence, state: value.context } : undefined;
   }
 
   /** 只返回当前 Agent 会话的页面范围，不重新读取 GEA，也不执行任何写操作。 */
@@ -1966,16 +2030,95 @@ export class Business {
           ? "complete"
           : "partial"
         : "complete";
-    const result = JSON.stringify({
-      source: "GEA_LIVE_READONLY",
-      environment: this.environment,
-      fetchedAt: new Date().toISOString(),
-      query: payload,
-      coverage,
-      value,
-    });
-    if (Buffer.byteLength(result, "utf8") > this.config.inputByteBudget)
-      throw new Error("SNAPSHOT_TOO_LARGE");
+    const envelope = (coverageValue: string, valueOut: unknown) =>
+      JSON.stringify({
+        source: "GEA_LIVE_READONLY",
+        environment: this.environment,
+        fetchedAt: new Date().toISOString(),
+        query: payload,
+        coverage: coverageValue,
+        value: valueOut,
+      });
+    // versionSkus：模型侧只给必要字段 + 有界分页，绝不因为"整份 SKU 太大"失败。
+    // 页面自身的工作台读取仍走 readWorkbenchQuery（完整数据），不受这里影响。
+    if (text(payload.kind) === "versionSkus") {
+      const rows = (Array.isArray(value)
+        ? value
+        : Array.isArray(page?.records)
+          ? page.records
+          : []
+      ).map(object);
+      const skuView = (row: Record<string, unknown>) => ({
+        skuCode: row.skuCode,
+        productCategName: row.productCategName ?? null,
+        materialDescription: row.materialDescription ?? row.skuName ?? null,
+        qty: row.qty ?? null,
+        amt: row.amt ?? null,
+        price: row.price ?? null,
+        baseQty: row.baseQty ?? null,
+        amtBase: row.amtBase ?? null,
+        regionConfirmedQty: row.regionConfirmedQty ?? null,
+        provinceConfirmedQty: row.provinceConfirmedQty ?? null,
+        areaConfirmedQty: row.areaConfirmedQty ?? null,
+        categoryConfirmedQty: row.categoryConfirmedQty ?? null,
+      });
+      const views = rows.map(skuView);
+      const query = object(payload.query ?? {});
+      const pageNo = Math.max(1, Number(query.pageNo ?? 1) || 1);
+      const requested = Math.max(1, Math.min(50, Number(query.pageSize ?? 5) || 5));
+      const offset = (pageNo - 1) * requested;
+      let size = Math.max(1, Math.min(requested, views.length - offset || 1));
+      for (;;) {
+        const recordsPage = views.slice(offset, offset + size);
+        const nextPageNo = offset + size < views.length ? pageNo + 1 : null;
+        const result = envelope(nextPageNo === null ? "complete" : "partial", {
+          records: recordsPage,
+          total: views.length,
+          pageNo,
+          pageSize: size,
+          nextPageNo,
+          note:
+            nextPageNo === null
+              ? "本页为最后一页。"
+              : `还有 ${
+                  views.length - offset - size
+                } 条：用同一 versionId、pageNo=${nextPageNo} 继续取。`,
+        });
+        if (
+          Buffer.byteLength(result, "utf8") <= this.config.inputByteBudget ||
+          size <= 1
+        )
+          return result;
+        size = Math.max(1, Math.floor(size / 2));
+      }
+    }
+    // detail：不再内联全部 SKU / 审批日志，避免"一条记录就超限"。
+    if (text(payload.kind) === "detail") {
+      const detail = object(value);
+      const skus = Array.isArray(detail.skus) ? detail.skus.map(object) : [];
+      const { skus: _skus, logs: _logs, ...head } = detail;
+      const trimmed = envelope("partial", {
+        ...head,
+        skuCount: skus.length,
+        skuSample: skus.slice(0, 3).map((row) => ({
+          skuCode: row.skuCode,
+          qty: row.qty ?? null,
+          amt: row.amt ?? null,
+        })),
+        omitted:
+          "已省略 SKU 明细与审批日志：需要时用 kind=versionSkus（pageNo/pageSize 分页）或 kind=logs 单独读取。",
+      });
+      if (Buffer.byteLength(trimmed, "utf8") <= this.config.inputByteBudget)
+        return trimmed;
+    }
+    const result = envelope(coverage, value);
+    const resultBytes = Buffer.byteLength(result, "utf8");
+    if (resultBytes > this.config.inputByteBudget)
+      throw new Error(
+        `SNAPSHOT_TOO_LARGE: 本次结果 ${resultBytes} 字节，超过单次读取上限 ${this.config.inputByteBudget} 字节。` +
+          `请缩小范围后重试：list 把 pageSize 降到 5~10 并分页，versions/logs 按单个 planId 查，` +
+          `需要看"用户当前这一屏"时改用 gea_visible_workbench_context。`,
+      );
     return result;
   }
 
