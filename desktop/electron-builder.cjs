@@ -18,11 +18,13 @@ module.exports={
   artifactName:'GEA-Desktop-${version}-${os}-${arch}.${ext}',
   asar:true,npmRebuild:false,electronLanguages:['en-US','zh-CN','zh_CN','zh-TW','zh_TW'],files:['permissions.cjs','startup-state.cjs','updates.mjs','client-installer.mjs','desktop-release-sources.json','release-sources.json','control-server.mjs','plugin-store.mjs','copy-graph.mjs','installer.mjs','runtime-cookies.cjs','main.cjs','config.cjs','company.config.json','package.json','!node_modules/**'],
   extraResources:[{from:join(payloadRoot,target,'payload'),to:'payload',filter:['**/*','!node_modules/**/*']},{from:join(payloadRoot,target,'payload/node_modules'),to:'payload/node_modules',filter:['**/*']}],
-  mac:{icon:join(__dirname,'build/icon.png'),target:['dmg'],category:'public.app-category.productivity',identity:macIdentity,hardenedRuntime:macIdentity!=='-',notarize},
+  // 架构必须和 payload 对齐：payload 的 Node 与原生模块按平台预装（mac=darwin-arm64，win=win32-x64）。
+  // 不写死时会跟随构建机架构，Apple Silicon 上会静默打出 win-arm64 安装器，而里面装的是 x64 运行时。
+  mac:{icon:join(__dirname,'build/icon.png'),target:[{target:'dmg',arch:['arm64']}],category:'public.app-category.productivity',identity:macIdentity,hardenedRuntime:macIdentity!=='-',notarize},
   beforePack:()=>require('./verify-client-artifacts.cjs')(join(payloadRoot,target,'payload')),
   afterSign:require('./verify-macos-signature.cjs'),
   dmg:{sign:false},
-  win:{icon:join(__dirname,'build/icon.png'),target:['nsis'],signExecutable:windowsSigningEnabled,forceCodeSigning:requireWindowsSigning},
+  win:{icon:join(__dirname,'build/icon.png'),target:[{target:'nsis',arch:['x64']}],signExecutable:windowsSigningEnabled,forceCodeSigning:requireWindowsSigning},
   nsis,
   publish:null
 };
