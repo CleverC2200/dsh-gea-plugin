@@ -81,6 +81,13 @@ export type PageActionVerb = (typeof PAGE_ACTION_VERBS)[number];
 export type PageElementRole = "row" | "field" | "control" | "collection";
 
 /**
+ * 元素的影响等级：draft 只改页面草稿（默认）；submit / approve 会提交或审批，
+ * 必须由用户明确要求、且页面当前可点时才允许。
+ */
+export const PAGE_ELEMENT_EFFECTS = ["draft", "submit", "approve"] as const;
+export type PageElementEffect = (typeof PAGE_ELEMENT_EFFECTS)[number];
+
+/**
  * 页面上的一个元素。页面只声明"渲染出来、人能看见/能操作"的东西；
  * 后台状态、内部缓存、接口凭据不属于元素，不在这里出现。
  */
@@ -100,6 +107,8 @@ export type PageElement = {
   editable?: boolean;
   /** collection 的成员元素 id（用于"这一列的字段一起改"）。 */
   members?: readonly string[];
+  /** 这个元素操作下去的后果等级，缺省按草稿处理。 */
+  effect?: PageElementEffect;
 };
 
 export const PAGE_CATALOG_LIMITS = {
@@ -122,8 +131,12 @@ export const PAGE_CATALOG_LIMITS = {
 const NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 /** 页面标识允许连字符/点（例如 `gea-workbench`、`inventory.dealer`）。 */
 const SURFACE_PATTERN = /^[a-z][a-z0-9._-]*$/;
-/** 元素 id：允许冒号分层（例如 `field:p-1:sku:1001:qty`）。 */
-const ELEMENT_PATTERN = /^[A-Za-z][A-Za-z0-9:._-]*$/;
+/**
+ * 元素 id：允许冒号分层（例如 `field:p-1:sku:1001:qty`）。
+ * 迁移过来的业务页面由宿主按"行 + 表头"生成 id，表头是中文，所以这里允许中日韩文，
+ * 但仍然禁止空白、引号与换行，避免 id 把工具说明的结构撑破。
+ */
+const ELEMENT_PATTERN = /^[A-Za-z][A-Za-z0-9:._\-\u4e00-\u9fa5]*$/;
 const ELEMENT_ROLES = ["row", "field", "control", "collection"] as const;
 
 function catalogElements(value: unknown): PageElement[] {
@@ -141,7 +154,8 @@ function catalogElements(value: unknown): PageElement[] {
           key !== "options" &&
           key !== "actions" &&
           key !== "editable" &&
-          key !== "members",
+          key !== "members" &&
+          key !== "effect",
       )
     )
       throw new Error("INVALID_PAGE_CATALOG");
@@ -163,6 +177,11 @@ function catalogElements(value: unknown): PageElement[] {
     };
     if (element.editable !== undefined && typeof element.editable !== "boolean")
       throw new Error("INVALID_PAGE_CATALOG");
+    if (
+      element.effect !== undefined &&
+      !(PAGE_ELEMENT_EFFECTS as readonly unknown[]).includes(element.effect)
+    )
+      throw new Error("INVALID_PAGE_CATALOG");
     // 可编辑 = 用户能改：输入框（field）和可选项控件（control，如下拉/分段/页码）都算。
     if (element.editable === true && role !== "field" && role !== "control")
       throw new Error("INVALID_PAGE_CATALOG");
@@ -183,6 +202,9 @@ function catalogElements(value: unknown): PageElement[] {
       ...(list(element.members, 300) === undefined
         ? {}
         : { members: list(element.members, 300)! }),
+      ...(element.effect === undefined
+        ? {}
+        : { effect: element.effect as PageElementEffect }),
     };
   });
   if (new Set(elements.map((element) => element.id)).size !== elements.length)
@@ -499,6 +521,8 @@ function compileElementCatalog(catalog: PageCatalog): {
     if (element.value !== undefined) parts.push(`当前值=${element.value}`);
     if (element.options?.length) parts.push(`可选=${element.options.join("/")}`);
     if (element.editable) parts.push("可编辑");
+    if (element.effect === "submit") parts.push("提交类：必须在用户明确要求后才执行");
+    if (element.effect === "approve") parts.push("审批类：必须在用户明确要求后才执行");
     if (element.actions?.length) parts.push(`可执行=${element.actions.join("/")}`);
     if (element.members?.length)
       parts.push(`成员=${element.members.length} 个`);
@@ -525,7 +549,8 @@ function compileElementCatalog(catalog: PageCatalog): {
       ? [`- （另有 ${readOnly.length - PAGE_CATALOG_LIMITS.maxListedElements} 个只读元素）`]
       : []),
     "",
-    "规则：invoke 只能执行元素列出的可执行动作；setValue 只能写「可编辑」的 field，或用 collection 一次写它的成员字段；select 只能选可操作元素；后台状态、内部缓存、接口都不在清单里，禁止臆造 id。",
+    "规则：invoke 只能执行元素列出的可执行动作；setValue 只能写「可编辑」的 field，或用 collection 一次写它的成员字段；select 只能选可操作元素；后台状态、内部缓存、接口都不在清单里，禁止臆造 id。" +
+      "标了「提交类」「审批类」的元素默认不要动：只有用户这一轮明确要求提交/审批时才调用，并且必须带 confirm=true；页面没标这类元素就说明它不提供该动作，不要找别的办法绕过。",
   ].join("\n");
   // 长度兜底：宁可截断说明，也不能因为说明太长让工具注册不上。
   const bounded =
@@ -569,8 +594,38 @@ function compileElementCatalog(catalog: PageCatalog): {
         type: "string",
         description: "可选：一句话说明为什么改这一屏。",
       },
+      {
+        name: "confirm",
+        type: "boolean",
+        description:
+          "提交类/审批类元素必填 true，表示用户这一轮明确要求提交或审批；其它情况不要传。",
+      },
     ],
   };
+}
+
+/** 取一次调用涉及到的最高影响等级（没有元素信息时按 draft）。 */
+export function pageActionEffect(
+  catalog: PageCatalog,
+  args: Record<string, unknown>,
+): PageElementEffect {
+  if (!catalog.elements) return "draft";
+  const byId = new Map(catalog.elements.map((element) => [element.id, element]));
+  const targets = [
+    ...(typeof args.target === "string" ? [args.target] : []),
+    ...(Array.isArray(args.targets)
+      ? (args.targets as unknown[]).filter(
+          (value): value is string => typeof value === "string",
+        )
+      : []),
+  ];
+  let effect: PageElementEffect = "draft";
+  for (const id of targets) {
+    const declared = byId.get(id)?.effect;
+    if (declared === "approve") return "approve";
+    if (declared === "submit") effect = "submit";
+  }
+  return effect;
 }
 
 /**
@@ -610,6 +665,12 @@ export function resolvePageAction(
     if (kind === "invoke") {
       const action = typeof args.action === "string" ? args.action : "";
       if (!element.actions?.includes(action)) return "ACTION_NOT_ALLOWED";
+      // 提交/审批类动作必须由用户明确要求：缺 confirm 一律不下发。
+      if (
+        (element.effect === "submit" || element.effect === "approve") &&
+        args.confirm !== true
+      )
+        return "CONFIRMATION_REQUIRED";
       continue;
     }
     if (kind === "select") {

@@ -20,11 +20,22 @@ test(
       "",
       "# 探针页面",
       "",
+      "## 计算规则",
+      "",
       "PROBE-RULE-42：建议量 = ceil(max(0, 缺货量 − 调拨中量))，缺失输入按未知处理，不按零。",
       "",
     ].join("\n");
     await mkdir(join(probeRoot, "skills", "probe"), { recursive: true });
-    await writeFile(join(probeRoot, "index.html"), "<!doctype html><html><body>probe</body></html>\n");
+    // 页面里带上它自己的受管 SQL：能力契约据此静态导出"这个模块能读哪些表"。
+    await writeFile(
+      join(probeRoot, "index.html"),
+      [
+        "<!doctype html><html><body>probe",
+        "<script>",
+        "const rows = await sql(\"SELECT sku_code, shortage FROM data_service.agents_scm_probe_thing WHERE base = :base\");",
+        "</script></body></html>",
+      ].join("\n"),
+    );
     await writeFile(join(probeRoot, "skills", "probe", "SKILL.md"), probeSkill);
     // 主对话（标准 agent）按默认根扫描技能：这里把同一份业务规则挂到 DSH_AGENTS_HOME 下。
     const agentsHome = await mkdtemp(join(tmpdir(), "gea-agents-home-"));
@@ -578,6 +589,33 @@ test(
       },
     );
     await t.test(
+      "只读数据工具的说明由模块自述生成：装了什么模块、能读哪些表，模型不用猜",
+      async () => {
+        outcome = "success";
+        modelRequests = [];
+        await ended(await submit());
+        const tool = modelRequests[0].tools.find(
+          (candidate) => candidate.function.name === "gea_plugin_read",
+        );
+        assert.ok(tool, "只读数据工具已注册");
+        // 模块清单来自契约：模块名 + consumerCode + 它能读的表。
+        assert.match(tool.function.description, /探针页面/);
+        assert.match(tool.function.description, /consumerCode=probe-consumer/);
+        assert.match(tool.function.description, /agents_scm_probe_thing/);
+        // 口径（SKILL.md 里带"规则"的小节）也进了说明。
+        assert.match(tool.function.description, /probe-rule-42/i);
+        // 枚举按装了什么模块生成，不再写死一份固定名单。
+        assert.deepEqual(tool.function.parameters.properties.consumerCode.enum, [
+          "probe-consumer",
+        ]);
+        // 列名不确定时先 describe，工具自己也把这条路径写清楚了。
+        assert.equal(
+          tool.function.parameters.properties.describe.type,
+          "boolean",
+        );
+      },
+    );
+    await t.test(
       "a page tool in a plain conversation explains the rule instead of failing",
       async () => {
         outcome = "page-tool";
@@ -972,6 +1010,75 @@ test(
       },
     );
     await t.test(
+      "切页即撤：页面声明为 null 后，上一屏的元素当场从会话里消失",
+      async () => {
+        outcome = "success";
+        const id = await submit();
+        await ended(id);
+        const declared = await app.rpc("agui/workbench", {
+          sessionId: id,
+          toolMessages: [],
+          catalog: {
+            surface: "gea-workbench",
+            tool: "gea_workbench_apply",
+            description: "改工作台这一屏。",
+            elements: [
+              {
+                id: "row:p-1",
+                role: "row",
+                label: "上一屏的行",
+                actions: ["expand"],
+              },
+            ],
+          },
+        });
+        assert.equal(declared.ok, true, JSON.stringify(declared).slice(0, 300));
+        modelRequests = [];
+        await app.remote("session/prompt", {
+          requestId: randomUUID(),
+          sessionId: id,
+          mode: "queue",
+          content: [{ type: "text", text: "这一屏有什么" }],
+        });
+        await until(() => modelRequests.length > 0, Boolean);
+        assert.equal(
+          modelRequests[0].tools.some(
+            (tool) => tool.function.name === "gea_workbench_apply",
+          ),
+          true,
+          "页面声明后模型能看到页面工具",
+        );
+        await until(
+          () => readSession(app.runtime, id),
+          (entries) =>
+            entries.filter((entry) => entry.type === "turn/end").length === 2,
+        );
+
+        // 页面切走了：桥关闭 / 这一屏不再是工作台时报 null。
+        const released = await app.rpc("agui/workbench", {
+          sessionId: id,
+          toolMessages: [],
+          catalog: null,
+        });
+        assert.equal(released.ok, true);
+        modelRequests = [];
+        await app.remote("session/prompt", {
+          requestId: randomUUID(),
+          sessionId: id,
+          mode: "queue",
+          content: [{ type: "text", text: "现在这一屏有什么" }],
+        });
+        await until(() => modelRequests.length > 0, Boolean);
+        assert.equal(
+          modelRequests[0].tools.some(
+            (tool) => tool.function.name === "gea_workbench_apply",
+          ),
+          false,
+          "页面撤走后不能再把上一屏的元素留给模型",
+        );
+      },
+    );
+    await t.test(
       "元素目录：只读元素改不动，只有可编辑字段才下发到页面",
       async () => {
         outcome = "success";
@@ -1088,6 +1195,10 @@ test(
         const value = JSON.parse(delivered.content);
         assert.equal(value.applied, true);
         assert.equal(value.kind, "setValue");
+        // 这一屏的目录是页面自述的；这次改动在"改草稿"这一层留下了回执。
+        assert.equal(value.pageSource, "self-report", JSON.stringify(value));
+        assert.equal(value.draft.outcome, "applied");
+        assert.match(value.draft.id, /^draft-/);
       },
     );
     await t.test(

@@ -13,13 +13,16 @@ import type { SessionId } from "@deepseek-ai/dsh-session";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import {
   compilePageCatalog,
+  pageActionEffect,
   resolvePageAction,
   validatePageCatalog,
   type PageActionParam,
   type PageActionScalar,
   type PageCatalog,
+  type PageElementEffect,
 } from "./catalog.ts";
 import type { PageBridge } from "./host.ts";
+import { createDraftLayer, type DraftLayer } from "../capability/draft.ts";
 
 export type PageToolConsumer = {
   /** 业务侧语义校验/归一化：返回真正下发给页面的参数。 */
@@ -50,7 +53,21 @@ export type PageToolConsumer = {
    * 只作用于"页面声明过能力的那个 agent"，普通对话不受影响。
    */
   denyGlobalToolsInWorkbench?: readonly string[];
+  /**
+   * 这个页面允许被改到的最大影响等级（由能力契约决定）。
+   * 契约只声明"改草稿"的页面，提交/审批类元素一律不下发。
+   */
+  allowsEffect?: (surface: string, effect: PageElementEffect) => boolean;
+  /** "改草稿"这一层的实现（限流/超时/回执/确认）；不传就按默认参数建一个。 */
+  draftLayer?: DraftLayer;
 };
+
+/**
+ * 这一屏的目录从哪来：
+ * - self-report：页面自己上报（新协议，最准）；
+ * - dom-scan：宿主扫同源页面生成（迁移期回退，页面不用改）。
+ */
+export type PageCatalogSource = "self-report" | "dom-scan";
 
 function parsePageContent(content: string): unknown {
   try {
@@ -125,9 +142,17 @@ export function createPageToolRegistry(
 ) {
   const waitMs = consumer.waitMs ?? 4000;
   const refreshWaitMs = consumer.refreshWaitMs ?? 2000;
+  const drafts = consumer.draftLayer ?? createDraftLayer();
   const registered = new Map<
     string,
-    { key: string; at: number; dispose: () => void; restraint?: () => void }
+    {
+      key: string;
+      at: number;
+      dispose: () => void;
+      restraint?: () => void;
+      /** 这一屏的目录是页面自己报的，还是宿主扫出来的。 */
+      source: PageCatalogSource;
+    }
   >();
   const restrictionFailed = new Set<string>();
 
@@ -186,33 +211,55 @@ export function createPageToolRegistry(
     sessionId: string,
     catalog: PageCatalog,
     args: Record<string, unknown>,
-    options: { dataAllowed: boolean } = { dataAllowed: true },
+    options: { dataAllowed: boolean; source: PageCatalogSource },
   ): Promise<string> => {
     const kind = typeof args.kind === "string" ? args.kind : null;
+    /** 拒绝一次调用：命令没有下发，模型据此知道"这条路走不通"而不是页面没反应。 */
+    const refuse = (error: string, note: string) =>
+      JSON.stringify({
+        source: "PAGE_BRIDGE",
+        protocol: "ag-ui-frontend-tool",
+        authority: "view-only",
+        tool: { toolCallName: catalog.tool, toolCallId: null },
+        kind,
+        applied: false,
+        error,
+        note,
+      });
     // 只读元素不能被改、后台元素不存在：宿主按页面声明先挡一道。
     const violation = resolvePageAction(catalog, args);
-    if (violation)
-      return JSON.stringify({
-        source: "PAGE_BRIDGE",
-        protocol: "ag-ui-frontend-tool",
-        authority: "view-only",
-        tool: { toolCallName: catalog.tool, toolCallId: null },
-        kind,
-        applied: false,
-        error: violation,
-        note: "页面没有开放这个元素/动作，命令没有下发。",
-      });
+    if (violation) return refuse(violation, "页面没有开放这个元素/动作，命令没有下发。");
     if (kind === "setValue" && !options.dataAllowed)
-      return JSON.stringify({
-        source: "PAGE_BRIDGE",
-        protocol: "ag-ui-frontend-tool",
-        authority: "view-only",
-        tool: { toolCallName: catalog.tool, toolCallId: null },
-        kind,
-        applied: false,
-        error: "DATA_ACTION_NOT_ALLOWED",
-        note: "这个页面只允许改视图，不允许写字段。",
-      });
+      return refuse("DATA_ACTION_NOT_ALLOWED", "这个页面只允许改视图，不允许写字段。");
+    // 影响等级由契约卡住：只声明"改草稿"的页面，提交/审批类元素不下载到页面。
+    const effect = pageActionEffect(catalog, args);
+    const allowsEffect = consumer.allowsEffect ?? (() => effect === "draft");
+    if (!allowsEffect(catalog.surface, effect))
+      return refuse(
+        "EFFECT_NOT_ALLOWED",
+        effect === "approve"
+          ? "这个页面没有开放审批动作，命令没有下发。"
+          : "这个页面没有开放提交动作，命令没有下发。",
+      );
+    // "改草稿"这一层统一管限流、回执与超时：页面只声明能力，不写执行逻辑。
+    const begun = drafts.begin({
+      sessionId,
+      surface: catalog.surface,
+      kind: kind ?? "",
+      targets: [
+        ...(typeof args.target === "string" ? [args.target] : []),
+        ...(Array.isArray(args.targets)
+          ? (args.targets as unknown[]).filter(
+              (value): value is string => typeof value === "string",
+            )
+          : []),
+      ],
+      effect,
+      ...(typeof args[catalog.reasonField ?? "reason"] === "string"
+        ? { reason: String(args[catalog.reasonField ?? "reason"]) }
+        : {}),
+    });
+    if (!begun.ok) return refuse(begun.code, begun.reason);
     // 元素目录由桥自己按声明校验；旧的动作目录仍交给业务校验器。
     const validated =
       consumer.validate && catalog.elements === undefined
@@ -225,6 +272,15 @@ export function createPageToolRegistry(
     });
     const message = await bridge.wait(sessionId, toolCallId, waitMs);
     const applied = message !== undefined && message.error === undefined;
+    drafts.finish(begun.receiptId, {
+      applied,
+      ...(message === undefined
+        ? { error: "PAGE_TOOL_PENDING", timedOut: true }
+        : message.error === undefined
+          ? {}
+          : { error: message.error }),
+    });
+    const receipt = drafts.receipts().find((entry) => entry.id === begun.receiptId);
     let snapshot = consumer.stateSnapshot?.(sessionId);
     if (applied && consumer.stateSnapshot) {
       const deadline = Date.now() + refreshWaitMs;
@@ -241,6 +297,14 @@ export function createPageToolRegistry(
       tool: { toolCallName: catalog.tool, toolCallId },
       kind,
       applied,
+      pageSource: options.source,
+      draft: receipt === undefined
+        ? null
+        : {
+            id: receipt.id,
+            outcome: receipt.outcome,
+            ...(receipt.error === undefined ? {} : { error: receipt.error }),
+          },
       snapshotAfterApply,
       ...(message === undefined
         ? {
@@ -279,7 +343,11 @@ export function createPageToolRegistry(
      * - 不带声明（undefined）：保持现状（轮询不必每次都重复声明）；
      * - 显式声明为 null：页面已经没有可调用动作，注销该会话的工具。
      */
-    declare(sessionId: string, rawCatalog: unknown): void {
+    declare(
+      sessionId: string,
+      rawCatalog: unknown,
+      source: PageCatalogSource = "self-report",
+    ): void {
       if (rawCatalog === undefined) return;
       if (rawCatalog === null) {
         dispose(sessionId);
@@ -354,7 +422,10 @@ export function createPageToolRegistry(
             rawInput: args,
           }),
           execute: async (args, exec) =>
-            invoke(exec.agent?.id ?? sessionId, effective, args, { dataAllowed }),
+            invoke(exec.agent?.id ?? sessionId, effective, args, {
+              dataAllowed,
+              source,
+            }),
         }),
       );
       const restraint = consumer.denyGlobalToolsInWorkbench
@@ -373,11 +444,12 @@ export function createPageToolRegistry(
         key,
         at: Date.now(),
         dispose: disposeTool,
+        source,
         ...(restraint === undefined ? {} : { restraint }),
       });
       skipped.delete(sessionId);
       console.log(
-        `[page-bridge] registered tool=${effective.tool} session=${sessionId} elements=${effective.elements?.length ?? 0} actions=${effective.actions?.length ?? 0} descLen=${description.length}`,
+        `[page-bridge] registered tool=${effective.tool} session=${sessionId} source=${source} elements=${effective.elements?.length ?? 0} actions=${effective.actions?.length ?? 0} descLen=${description.length}`,
       );
     },
     /** 会话结束或身份变化时清掉。 */
@@ -387,6 +459,8 @@ export function createPageToolRegistry(
     disposeAll(): void {
       for (const sessionId of [...registered.keys()]) dispose(sessionId);
     },
+    /** 最近的"改草稿"回执，供诊断与验收复核。 */
+    receipts: () => drafts.receipts(),
   };
 }
 

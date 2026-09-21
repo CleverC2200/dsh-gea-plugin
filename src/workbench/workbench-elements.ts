@@ -42,6 +42,8 @@ export type WorkbenchElementInput = {
     label: string;
     value?: string;
     actions: string[];
+    /** 通过/退回这类会落审批状态的元素，标记为 approve，必须用户明确要求才执行。 */
+    effect?: "submit" | "approve";
   }>;
   /** 打开中的审批对话框：确认/取消 + 它自己的输入项（例如退回理由）。 */
   dialog?: {
@@ -169,6 +171,7 @@ export function buildWorkbenchElements(
       label: text(action.label || action.id, 200),
       ...optionalValue(action.value),
       actions: action.actions,
+      ...(action.effect === undefined ? {} : { effect: action.effect }),
     });
   if (input.dialog) {
     elements.push({

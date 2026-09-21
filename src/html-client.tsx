@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { businessMenuLabel } from "./business-navigation.ts";
+import { startPageBridgeClient } from "./page-bridge/client.ts";
 export function registerHtmlClient(ctx: any) {
   async function request(path: string, body?: any, signal?: AbortSignal) {
     const response = await fetch("/api/gea-html/" + path, {
@@ -72,6 +73,15 @@ export function registerHtmlClient(ctx: any) {
       if (!connection) return;
       const controller = new AbortController(),
         port = new MessageChannel();
+      // 页面桥：这一屏的"元素目录"由注入脚本在页面里扫出来，"改草稿"再交回页面执行。
+      // 页面本身不用改；页面没报目录（还没渲染/被清空）时就当作没有能力。
+      // 两种来源：页面自己报（新协议）优先，页面没实现时用宿主扫出来的（迁移期回退）。
+      const reported = { elements: null as unknown[] | null };
+      const scanned = { elements: null as unknown[] | null };
+      const pendingApplies = new Map<
+        string,
+        (result: { applied: boolean; error?: string }) => void
+      >();
       let connected = false,
         pollTimer: any;
       const call = (
@@ -161,11 +171,33 @@ export function registerHtmlClient(ctx: any) {
         }
       };
       const attach = (event: MessageEvent) => {
-        if (
-          event.source !== frame.current?.contentWindow ||
-          event.data?.protocol !== "gea-html-v1"
-        )
+        if (event.source !== frame.current?.contentWindow) return;
+        // 第二代协议（页面桥）：页面报"这一屏有什么"，并把改动结果回填。
+        if (event.data?.protocol === "gea-html-v2") {
+          if (event.data.type === "catalog") {
+            const elements = Array.isArray(event.data.elements)
+              ? event.data.elements
+              : [];
+            const target = event.data.source === "page" ? reported : scanned;
+            target.elements = elements.length ? elements : null;
+          } else if (
+            event.data.type === "applied" &&
+            typeof event.data.toolCallId === "string"
+          ) {
+            const settle = pendingApplies.get(event.data.toolCallId);
+            if (settle) {
+              pendingApplies.delete(event.data.toolCallId);
+              settle({
+                applied: event.data.applied === true,
+                ...(typeof event.data.error === "string"
+                  ? { error: event.data.error }
+                  : {}),
+              });
+            }
+          }
           return;
+        }
+        if (event.data?.protocol !== "gea-html-v1") return;
         if (event.data.type === "navigate") {
           const panel = event.data.panel;
           if (typeof panel === "string" && /^inventory-[a-z]+$/.test(panel))
@@ -185,6 +217,39 @@ export function registerHtmlClient(ctx: any) {
       };
       window.addEventListener("message", attach);
       port.port1.start();
+      const pageBridge = startPageBridgeClient({
+        endpoint: "page-bridge",
+        request: (endpoint, payload) => call(endpoint, payload),
+        sessionId: session,
+        // 页面自己报了元素就按自述算，否则是宿主扫出来的。
+        pageSource: () => (reported.elements === null ? "dom-scan" : "self-report"),
+        catalog: () => {
+          const elements = reported.elements ?? scanned.elements;
+          return elements === null ? null : { elements };
+        },
+        apply: (args, meta) =>
+          new Promise((resolve) => {
+            const settle = (result: { applied: boolean; error?: string }) => {
+              pendingApplies.delete(meta.toolCallId);
+              resolve(result);
+            };
+            pendingApplies.set(meta.toolCallId, settle);
+            frame.current?.contentWindow?.postMessage(
+              {
+                protocol: "gea-html-v2",
+                type: "apply",
+                toolCallId: meta.toolCallId,
+                toolCallName: meta.toolCallName,
+                args,
+              },
+              "*",
+            );
+            setTimeout(() => {
+              if (pendingApplies.delete(meta.toolCallId))
+                settle({ applied: false, error: "APPLY_TIMEOUT" });
+            }, 8000);
+          }),
+      });
       const poll = async () => {
         try {
           const events = await call("events");
@@ -196,6 +261,7 @@ export function registerHtmlClient(ctx: any) {
       };
       void poll();
       return () => {
+        pageBridge();
         controller.abort();
         clearTimeout(pollTimer);
         window.removeEventListener("message", attach);

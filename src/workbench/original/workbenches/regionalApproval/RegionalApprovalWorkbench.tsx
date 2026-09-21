@@ -1315,6 +1315,7 @@ const RegionalApprovalWorkbench: React.FC<{
           id: string;
           label: string;
           actions: string[];
+          effect?: "submit" | "approve";
         }> = [];
         if (liveActionsEnabled && actionRow) {
           if (!liveActionDisabledReason(actionRow))
@@ -1322,6 +1323,8 @@ const RegionalApprovalWorkbench: React.FC<{
               id: "action:approve",
               label: `通过（${projectRegionalApprovalLiveDimension(actionRow, dimension).name ?? actionRow.planId}）`,
               actions: ["invoke"],
+              // 通过会真的落审批状态：对话必须在用户明确要求、并带上 confirm 时才下发。
+              effect: "approve",
             });
           if (
             actionRow.status !== 5 &&
@@ -1331,6 +1334,7 @@ const RegionalApprovalWorkbench: React.FC<{
               id: "action:reject",
               label: `退回（${projectRegionalApprovalLiveDimension(actionRow, dimension).name ?? actionRow.planId}）`,
               actions: ["invoke"],
+              effect: "approve",
             });
         }
         return actionElements.length === 0 ? {} : { actionElements };

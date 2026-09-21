@@ -1,14 +1,79 @@
-import { readFile, realpath, mkdir, rm, writeFile } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { readFile, readdir, realpath, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { extname, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { createHtmlSessions } from "./html-sessions.ts";
 import { selectHtmlPlugins } from "./html-plugin-selection.ts";
 import {readHtmlBatch} from "./html-query-batch.ts";
 import type { Business } from "./host/business.ts";
+import {
+  contractFromPlugin,
+  type CapabilityContract,
+} from "./capability/contract.ts";
+import { injectPageScan, pageCatalogFromScan } from "./html-page-scan.ts";
 
 /** 已经挂到 DSH 技能根下的业务技能目录，用于插件卸载时回收。 */
 const publishedSkillDirs: string[] = [];
+
+/**
+ * 页面桥的宿主入口：由 host.ts 在页面工具注册表建好后接上。
+ * 迁移过来的页面通过它声明"这一屏有什么"并取走待执行的调用。
+ */
+export type PageBridgeHost = {
+  declare?: (
+    sessionId: string,
+    catalog: unknown,
+    source: "self-report" | "dom-scan",
+  ) => void;
+};
+
+/** 契约从模块自己的代码里派生：只看会写受管 SQL 的文件，不看说明文档。 */
+const CONTRACT_SOURCE_EXTENSIONS = new Set([
+  ".html",
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".ts",
+  ".tsx",
+]);
+const CONTRACT_SOURCE_MAX_FILE_BYTES = 2_000_000;
+const CONTRACT_SOURCE_MAX_TOTAL_BYTES = 8_000_000;
+
+/** 读模块自带的前端代码，用来静态导出"这个模块能读哪些业务表"。 */
+async function readContractSources(directory: string): Promise<string[]> {
+  const sources: string[] = [];
+  let total = 0;
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (depth > 2 || total >= CONTRACT_SOURCE_MAX_TOTAL_BYTES) return;
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (total >= CONTRACT_SOURCE_MAX_TOTAL_BYTES) return;
+      const path = resolve(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        await walk(path, depth + 1);
+        continue;
+      }
+      if (!CONTRACT_SOURCE_EXTENSIONS.has(extname(entry.name).toLowerCase()))
+        continue;
+      try {
+        const size = (await stat(path)).size;
+        if (size === 0 || size > CONTRACT_SOURCE_MAX_FILE_BYTES) continue;
+        total += size;
+        sources.push(await readFile(path, "utf8"));
+      } catch {
+        // 读不到的附属文件不影响模块本身可用。
+      }
+    }
+  };
+  await walk(directory, 1);
+  return sources;
+}
 
 /**
  * 业务页面自带的 SKILL.md 不只是该页面 agent 的提示词，也要让主对话（标准 agent）能按需加载：
@@ -27,6 +92,7 @@ export async function registerHtmlPlugins(
   ctx: any,
   business: Business,
   roots: string[],
+  pageBridgeHost: PageBridgeHost = {},
 ) {
   const localConfig = process.env.GEA_HTML_LOCAL_QUERY_CONFIG;
   const local = localConfig ? await (async () => {
@@ -174,6 +240,7 @@ export async function registerHtmlPlugins(
       mock,
       skillName: frontmatter("name") ?? manifest.id,
       skillDescription: frontmatter("description") ?? manifest.name,
+      skillText: skill,
       htmlSource: html,
       htmlPath: path,
       htmlDirectory: directory,
@@ -185,6 +252,20 @@ export async function registerHtmlPlugins(
     sessions.clear();
     consumers.clear();
   });
+  // 每个模块一份能力契约：页面范围、只读数据范围与口径、允许的最大改动等级。
+  // 模块自己声明，宿主不再按模块写分支（工单 #7）。
+  const capabilityContracts: CapabilityContract[] = await Promise.all(
+    items.map(async (item) =>
+      contractFromPlugin({
+        id: item.id,
+        label: item.name,
+        consumerCode: item.gea.consumerCode,
+        pageIds: (item.pages as Array<{ id: string }>).map((page) => page.id),
+        skill: item.skillText,
+        sources: await readContractSources(item.htmlDirectory),
+      }),
+    ),
+  );
   ctx.effect(() => () => {
     unwatch();
     sessions.clear();
@@ -246,7 +327,8 @@ export async function registerHtmlPlugins(
         throw Error("INVALID_HTML_PATH");
       const html = await readFile(path, "utf8");
       if (Buffer.byteLength(html) > 5000000) throw Error("HTML_TOO_LARGE");
-      return new Response(html, {
+      // 页面本身不用改：宿主把"读这一屏 / 收改单"的适配器注入进去。
+      return new Response(injectPageScan(html), {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
@@ -351,6 +433,40 @@ export async function registerHtmlPlugins(
           return json({ ok: true });
         case "events":
           return json(page.queue.splice(0));
+        case "page-bridge": {
+          // 页面桥：页面报"这一屏有什么"，宿主按契约注册工具，并把待执行的调用交回页面。
+          const parameters =
+            input.parameters && typeof input.parameters === "object"
+              ? input.parameters
+              : {};
+          const catalog = pageCatalogFromScan({
+            pluginId: item.id,
+            label: item.name,
+            elements:
+              parameters.catalog && typeof parameters.catalog === "object"
+                ? (parameters.catalog as { elements?: unknown }).elements
+                : undefined,
+          });
+          try {
+            // 页面自己实现自述协议时按自述算，否则是宿主扫出来的。
+            const source =
+              parameters.pageSource === "self-report" ? "self-report" : "dom-scan";
+            pageBridgeHost.declare?.(page.session, catalog, source);
+          } catch (error) {
+            // 页面报的元素超出宿主上限：留一条日志，页面下一轮还会重报。
+            console.log(
+              `[page-bridge] scan declare rejected plugin=${item.id} session=${
+                page.session
+              } code=${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+          return json(
+            await business.pullPageBridgeEvents(
+              page.session,
+              parameters.toolMessages,
+            ),
+          );
+        }
         case "reply":
           sessions.reply(input.lease, input.parameters);
           return json({ ok: true });
@@ -417,5 +533,6 @@ export async function registerHtmlPlugins(
   return {
     consumerForSession: (session?: string) =>
       session ? consumers.get(session) : undefined,
+    capabilityContracts,
   };
 }

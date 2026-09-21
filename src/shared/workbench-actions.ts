@@ -23,8 +23,17 @@ export const WORKBENCH_CATALOG = {
     "不读取也不改动 GEA 业务数据，不能审批、退回、保存或提交；不要擅自改用户的筛选或阶段。",
 } as const;
 
-/** 工具定义 = 固定总述 + 当前这一屏的元素清单。 */
-export const workbenchCatalog = (elements: PageElement[]) => ({
-  ...WORKBENCH_CATALOG,
-  elements,
-});
+/**
+ * 工具定义 = 固定总述 + 当前这一屏的元素清单。
+ *
+ * 这一屏没有可操作元素时返回 null（而不是一份空目录）：null 在桥里的含义是
+ * "这个会话现在没有页面能力"，宿主会立刻注销工具。切走页面、加载中、页面报空
+ * 都走这条，避免把上一屏的元素留在会话里（那会让模型对着不存在的元素下指令）。
+ */
+export const workbenchCatalog = (elements: PageElement[]) =>
+  elements.length === 0
+    ? null
+    : {
+        ...WORKBENCH_CATALOG,
+        elements,
+      };

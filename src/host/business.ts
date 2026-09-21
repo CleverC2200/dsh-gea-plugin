@@ -16,6 +16,30 @@ import { resolveInventoryRoles } from "./inventory-role.ts";
 import { prepareGatewayLaunch } from "./html-gateway.ts";
 import { prepareGatewayMcp } from "./gateway-mcp.ts";
 import { readHtmlQuery } from "../html-query.ts";
+import { withDefaultPaging } from "./plugin-query.ts";
+import { readableMessage } from "./error-envelope.ts";
+
+/** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
+const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
+
+/**
+ * 内置的受管只读模块清单，只在宿主还没接入能力契约时兜底（例如单元测试里直接
+ * 构造 Business）。正常启动时由主机的契约注册表覆盖：装了什么模块，就允许读什么。
+ */
+const DEFAULT_PLUGIN_CONSUMERS = new Set([
+  "base-safety-stock",
+  "dealer-inventory-replenishment",
+  "branch-inventory",
+  "full-chain-inventory",
+  "inventory-personal-workbench",
+  "aps-board-collaboration",
+  "aps-demand-collaboration",
+  "aps-delivery-collaboration",
+  // 新迁移进来的模块：没有能力契约时（例如单元测试）也要能读。
+  "customer-inventory-preview",
+  "orderworkbench-preview",
+  "orderfulfillment-preview",
+]);
 import { isDeepStrictEqual } from 'node:util';
 import { validateServiceAccounts, serviceAccountReady, submitWithServiceAccount, type ServiceAccounts } from './service-account.ts';
 import { prepareSalesPlanResubmit } from '../workbench/original/workbenches/regionalApproval/models/salesPlanSubmitModel.ts';
@@ -602,6 +626,10 @@ export class Business {
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
   private readonly pluginDelegations = new Map<string, { authToken: string; delegationToken: string }>();
+  /** 受管表列清单的短缓存：同一张表不重复探查。 */
+  private readonly pluginSchemaCache = new Map<string, { at: number; columns: string[] }>();
+  /** 允许走受管只读查询的模块（由能力契约注入；不注入时用内置清单兜底）。 */
+  private pluginConsumers?: Set<string>;
   private loginExpired = false;
   readonly runId = randomUUID();
   private selectedBase: string;
@@ -1540,12 +1568,7 @@ export class Business {
     keys(payload, ["consumerCode", "sql", "parameters", "values", "pageNo", "pageSize", "maxRows", "packing", "resultShape", "query"]);
     const auth = this.authenticated();
     const consumerCode = text(payload.consumerCode ?? query.consumerCode);
-    const allowedConsumers = new Set([
-      "base-safety-stock", "dealer-inventory-replenishment", "branch-inventory",
-      "full-chain-inventory", "inventory-personal-workbench", "aps-board-collaboration",
-      "aps-demand-collaboration", "aps-delivery-collaboration",
-      "customer-inventory-preview", "orderworkbench-preview", "orderfulfillment-preview",
-    ]);
+    const allowedConsumers = this.pluginConsumers ?? DEFAULT_PLUGIN_CONSUMERS;
     if (!allowedConsumers.has(consumerCode)) throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
     const sqlValue = query.sql;
     if (typeof sqlValue !== "string" || !sqlValue.trim() || sqlValue.length > 200_000)
@@ -1568,7 +1591,8 @@ export class Business {
       this.pluginDelegations.set(consumerCode, delegation);
     }
     try {
-      return await readHtmlQuery(query, {
+      // 统一走分页路径：同一条 SQL 不分页时会报底层错误，模型也不该被要求记住页码。
+      return await readHtmlQuery(withDefaultPaging(query), {
         endpoint: this.base.replace(/\/$/, "") + "/ai/gateway/sql/execute",
         token: delegation.delegationToken,
         fetch: this.apiLog.fetch,
@@ -1585,6 +1609,69 @@ export class Business {
   /** 向模型适配器提供同一套脱敏日志边界，浏览器永远拿不到原始凭证。 */
   fetchExternal(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     return this.apiLog.fetch(input, init);
+  }
+
+  /** 用能力契约里的模块清单替换内置白名单：装了什么模块，就允许读什么。 */
+  setPluginConsumers(consumerCodes: readonly string[]): void {
+    this.pluginConsumers = new Set(consumerCodes);
+  }
+
+  /**
+   * 只读探查：模块自述里那几张业务表的列清单。
+   *
+   * 会话里"不用猜表名字段名"靠这一步：表名来自模块契约（宿主静态提取），列名由受管
+   * 只读通道探一次得到（同样按权限过滤），结果按表缓存，避免每问一次都重探。
+   */
+  async pluginSchema(
+    payload: Record<string, unknown>,
+    caller: AbortSignal,
+  ): Promise<unknown> {
+    keys(payload, ["consumerCode", "tables"]);
+    const consumerCode = text(payload.consumerCode);
+    const requested = Array.isArray(payload.tables) ? payload.tables : [];
+    const tables = requested
+      .filter(
+        (table): table is string =>
+          typeof table === "string" && /^agents?_[a-z0-9_]+$/.test(table),
+      )
+      .slice(0, 20);
+    const result: Array<{ table: string; columns: string[]; error?: string }> = [];
+    for (const table of tables) {
+      const cacheKey = consumerCode + ":" + table;
+      const cached = this.pluginSchemaCache.get(cacheKey);
+      if (cached && Date.now() - cached.at < PLUGIN_SCHEMA_TTL_MS) {
+        result.push({ table, columns: cached.columns });
+        continue;
+      }
+      try {
+        const page = object(
+          await this.pluginSql(
+            { consumerCode, sql: `SELECT * FROM ${table}`, pageNo: 1, pageSize: 1 },
+            caller,
+          ),
+        );
+        const rows = Array.isArray(page.rows)
+          ? page.rows
+          : Array.isArray(page.records)
+            ? page.records
+            : [];
+        const columns = Array.isArray(page.returnedColumns)
+          ? page.returnedColumns.map((column) => String(column))
+          : rows.length > 0
+            ? Object.keys(object(rows[0]))
+            : [];
+        const bounded = columns.slice(0, 200);
+        this.pluginSchemaCache.set(cacheKey, { at: Date.now(), columns: bounded });
+        result.push({ table, columns: bounded });
+      } catch (error) {
+        result.push({
+          table,
+          columns: [],
+          error: readableMessage(error) ?? "READ_FAILED",
+        });
+      }
+    }
+    return { consumerCode, tables: result };
   }
 
   /** 返回当前进程内的脱敏接口目录与调用记录。 */
