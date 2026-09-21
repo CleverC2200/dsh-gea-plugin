@@ -80,6 +80,17 @@ test('a failed attempt keeps its notice while the channel still offers the same 
  assert.equal(state.phase,'failed');
  assert.equal(state.error,'PLUGIN_INSTALL_FAILED_1');
 });
+test('a failure whose batch changed is dropped even when one package kept its version',async t=>{
+ const settings={automatic:false,intervalHours:24,channel:'stable'};
+ const failed={phase:'failed',error:'UPDATE_ROLLED_BACK',settings,
+  targets:[{package:'dsh-plugin',version:'1.4.3-company.2'},{package:'@cleverc2200/dsh-agent-workbench',version:'0.1.2'}]};
+ const {updates}=await fixture(t,{},failed);
+ await updates.check();
+ const state=await updates.status();
+ assert.equal(state.phase,'idle');
+ assert.equal(state.error,null);
+ assert.equal(state.targets,undefined);
+});
 test('startup reconciles an interrupted restart and closing cancels an unstarted restart',async t=>{
  const restored=await fixture(t,{}, {phase:'restarting',pending:'missing',settings:{automatic:false,intervalHours:24,channel:'stable'}});
  await restored.updates.start();assert.equal((await restored.updates.status()).phase,'failed');await restored.updates.check();assert.equal(restored.counts().checks,1);

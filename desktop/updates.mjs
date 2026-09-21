@@ -41,10 +41,13 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
         const current=await versions();
         const result=await releases.fetchCompanyChannel(sources[channel],channel,{dsh:current['@deepseek-ai/dsh'],workbench:current['@cleverc2200/dsh-agent-workbench'],desktop:desktopVersion},{token,signal:AbortSignal.any([checkAbort.signal,AbortSignal.timeout(60000)])});
         state.history=releases.verifyReleaseHistory(result,state.history);state.releases=result.releases;state.lastCheck=new Date().toISOString();state.checkError=null;
-        // A failure left over from an earlier attempt must not be reported as the current problem once the
-        // channel offers different versions: the page would read as broken while the client is ready to update.
-        const staleFailure=state.phase==='failed'&&!state.releases.some(release=>(state.targets??[]).some(target=>target.package===release.package&&target.version===release.version));
-        if(staleFailure) {state.phase='idle';state.error=null;delete state.targets;delete state.target;delete state.progress;delete state.timings;delete state.pending;}
+        // Keep the failure notice only while a retry would repeat exactly the batch that failed. A batch that
+        // changed — even when one package kept its version — is a different operation, so the page must not
+        // keep reporting "update needs attention" from the previous attempt.
+        const key=entry=>entry.package+'@'+entry.version;
+        const attempted=(state.targets??[]).map(key).sort().join(',');
+        const offered=state.releases.filter(release=>current[release.package]!==release.version).map(key).sort().join(',');
+        if(state.phase==='failed'&&attempted!==offered) {state.phase='idle';state.error=null;delete state.targets;delete state.target;delete state.progress;delete state.timings;delete state.pending;}
       }catch(error){state.releases=[];state.lastCheck=new Date().toISOString();state.checkError=errorCode(error);}
       await desktopCheck;await save();return status();
     })().finally(()=>{checking=undefined;});
