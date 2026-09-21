@@ -11,8 +11,10 @@ import type { GeaSalesPlanActionRequest } from '../workbench/original/contracts.
  * Host 侧业务门面：集中维护 GEA 身份、查询选择、权限校验和只读快照。
  * 浏览器只能提交资源标识与用户意图，凭证、来源数据和最终写入校验都留在这里。
  */
+import { resolveInventoryRoles } from "./inventory-role.ts";
 import { prepareGatewayLaunch } from "./html-gateway.ts";
 import { prepareGatewayMcp } from "./gateway-mcp.ts";
+import { readHtmlQuery } from "../html-query.ts";
 import { isDeepStrictEqual } from 'node:util';
 import { validateServiceAccounts, serviceAccountReady, submitWithServiceAccount, type ServiceAccounts } from './service-account.ts';
 import { prepareSalesPlanResubmit } from '../workbench/original/workbenches/regionalApproval/models/salesPlanSubmitModel.ts';
@@ -1419,7 +1421,15 @@ export class Business {
   /** 只使用当前进程登录准备 Gateway 传输能力。 */
   async htmlLaunch(agentCode: string, signal: AbortSignal, conversationId?: string) {
     const auth = this.authenticated();
-    return prepareGatewayLaunch(this.base, auth, {consumerType:"AGENT",consumerCode:agentCode}, AbortSignal.any([signal,this.epoch.signal]), this.config.requestTimeoutMs, this.fetchExternal.bind(this), conversationId);
+    const identity=AbortSignal.any([signal,this.epoch.signal]);
+    const credentials=await prepareGatewayLaunch(this.base, auth, {consumerType:"AGENT",consumerCode:agentCode}, identity, this.config.requestTimeoutMs, this.fetchExternal.bind(this), conversationId);
+    if(agentCode!=="inventory-personal-workbench")return credentials;
+    try{
+      const roleProfile=await resolveInventoryRoles(this.base,credentials,auth.id,identity,this.config.mcpRequestTimeoutMs??60000,this.fetchExternal.bind(this));
+      identity.throwIfAborted();
+      return {...credentials,roleProfile};
+    }catch(error){identity.throwIfAborted();return {...credentials,roleProfile:{roleCodes:[],roleNames:[],roles:[],roleLookupFailed:true}};}
+
   }
 
   async openMcpConnection(consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) {
@@ -1433,7 +1443,7 @@ export class Business {
     const query = payload.query && typeof payload.query === "object" && !Array.isArray(payload.query)
       ? object(payload.query)
       : payload;
-    keys(payload, ["consumerCode", "sql", "parameters", "pageNo", "pageSize", "query"]);
+    keys(payload, ["consumerCode", "sql", "parameters", "values", "pageNo", "pageSize", "maxRows", "packing", "resultShape", "query"]);
     const auth = this.authenticated();
     const consumerCode = text(payload.consumerCode ?? query.consumerCode);
     const allowedConsumers = new Set([
@@ -1442,13 +1452,9 @@ export class Business {
       "aps-demand-collaboration", "aps-delivery-collaboration",
     ]);
     if (!allowedConsumers.has(consumerCode)) throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
-    const sqlValue = payload.sql ?? query.sql;
+    const sqlValue = query.sql;
     if (typeof sqlValue !== "string" || !sqlValue.trim() || sqlValue.length > 200_000)
       throw new Error("GEA_PLUGIN_SQL_INVALID");
-    const sql = sqlValue;
-    const parameters = (payload.parameters ?? query.parameters) == null ? {} : object(payload.parameters ?? query.parameters);
-    const pageNo = integer(payload.pageNo ?? query.pageNo ?? 1, 1);
-    const pageSize = integer(payload.pageSize ?? query.pageSize ?? 200, 1, 1000);
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     let delegation = this.pluginDelegations.get(consumerCode);
     if (!delegation || delegation.authToken !== auth.token) {
@@ -1466,27 +1472,19 @@ export class Business {
       delegation = { authToken: auth.token, delegationToken: result.delegationToken };
       this.pluginDelegations.set(consumerCode, delegation);
     }
-    const requestId = randomUUID();
-    const response = await this.apiLog.fetch(this.base + "/ai/gateway/sql/execute", {
-      method: "POST", redirect: "error", signal,
-      headers: { Accept: "application/json", "Content-Type": "application/json", "X-Delegation-Token": delegation.delegationToken, "X-Request-Id": requestId },
-      body: JSON.stringify({ sql, parameters, pageNo, pageSize, includeTotal: true }),
-    });
-    if (!response.ok) {
-      this.pluginDelegations.delete(consumerCode);
-      throw await geaResponseError(response, [auth.token, delegation.delegationToken]);
+    try {
+      return await readHtmlQuery(query, {
+        endpoint: this.base.replace(/\/$/, "") + "/ai/gateway/sql/execute",
+        token: delegation.delegationToken,
+        fetch: this.apiLog.fetch,
+        signal,
+      });
+    } catch (error) {
+      // A rejected/expired delegated credential must never poison the next
+      // page refresh; the next call obtains a fresh Agent-scoped delegation.
+      if (error instanceof GeaResponseError) this.pluginDelegations.delete(consumerCode);
+      throw error;
     }
-    const body = object(await response.json());
-    if (body.success !== true || !body.result) throw new Error("GEA_PLUGIN_QUERY_REJECTED");
-    const result = object(body.result);
-    const rows = Array.isArray(result.rows) ? result.rows : [];
-    return {
-      ...result,
-      rows,
-      total: Number.isSafeInteger(result.total) ? result.total : rows.length,
-      pageNo: Number.isSafeInteger(result.pageNo) ? result.pageNo : pageNo,
-      pageSize: Number.isSafeInteger(result.pageSize) ? result.pageSize : pageSize,
-    };
   }
 
   /** 向模型适配器提供同一套脱敏日志边界，浏览器永远拿不到原始凭证。 */

@@ -2,9 +2,9 @@ import { readFile, realpath, mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { readHtmlQuery } from "./html-query.ts";
-import { selectHtmlPlugins } from "./html-plugin-selection.ts";
 import { createHtmlSessions } from "./html-sessions.ts";
+import { selectHtmlPlugins } from "./html-plugin-selection.ts";
+import {readHtmlBatch} from "./html-query-batch.ts";
 import type { Business } from "./host/business.ts";
 
 /** 已经挂到 DSH 技能根下的业务技能目录，用于插件卸载时回收。 */
@@ -195,6 +195,8 @@ export async function registerHtmlPlugins(
       htmlDirectory: directory,
     });
   }
+  // Retire old APS routes, tools and panels together, regardless of root order.
+  items.splice(0, items.length, ...selectHtmlPlugins(items));
   const unwatch = business.watchIdentity(() => {
     sessions.clear();
     consumers.clear();
@@ -303,6 +305,7 @@ export async function registerHtmlPlugins(
           principalId: user.id,
           trusted: true,
           gatewayScopeRef: credentials.sessionId,
+          ...(credentials.roleProfile ?? {}),
         };
         consumers.set(session, item.gea.consumerCode);
       }
@@ -325,20 +328,28 @@ export async function registerHtmlPlugins(
             AbortSignal.any([request.signal, business.identitySignal(), page.controller.signal])));
         case "sql":
           if (item.mock) throw Error("MOCK_DATA_ONLY");
+          if (input.parameters?.queries !== undefined) {
+            const signal = AbortSignal.any([request.signal, business.identitySignal(), page.controller.signal]);
+            return json(await readHtmlBatch(input.parameters.queries, query=>
+              local?.pluginId === item.id ? local.read(query, page.access, signal) :
+              business.pluginSql({...query, consumerCode:item.gea.consumerCode}, signal),
+              {compactRows: input.parameters.responseFormat === 'rows'}));
+          }
           if (local?.pluginId === item.id) return json(await local.read(input.parameters,
             AbortSignal.any([request.signal, business.identitySignal(), page.controller.signal])));
+          // HTML pages use the same Agent-scoped delegation flow as the native
+          // inventory workbenches.  A generic MCP launch can establish a page
+          // lease, but it does not grant the SQL resource permissions that the
+          // page's declared Agent Consumer owns.
           return json(
-            await readHtmlQuery(input.parameters, {
-              endpoint:
-                business.base.replace(/\/$/, "") + "/ai/gateway/sql/execute",
-              token: page.credentials.delegationToken,
-              fetch: business.fetchExternal.bind(business),
-              signal: AbortSignal.any([
+            await business.pluginSql(
+              { ...input.parameters, consumerCode: item.gea.consumerCode },
+              AbortSignal.any([
                 request.signal,
                 business.identitySignal(),
                 page.controller.signal,
               ]),
-            }),
+            ),
           );
         case "register":
           if (!["refresh", "filter", "draft"].includes(input.parameters.name))

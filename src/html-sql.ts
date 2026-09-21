@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 
 type Scalar = string | number | boolean | null;
 type Row = Record<string, unknown>;
+type ColumnMetadata = { returnedColumns?: unknown[]; rejectedColumns?: unknown[] };
+type SqlRows = ColumnMetadata & {rows: Row[]; total?: number | null};
 type QueryOptions = { pageSize: number; pageNo?: number };
 export type RowPacking = {
   keys: string[];
@@ -11,13 +13,13 @@ export type RowPacking = {
   timestamps?: string[];
 };
 export type BusinessDatabase = {
-  query(sql: string, values?: unknown[]): Promise<{ rows: Row[] }>;
+  query(sql: string, values?: unknown[]): Promise<SqlRows>;
   queryPage(
     sql: string,
     values: unknown[],
     pageNo: number,
     pageSize: number,
-  ): Promise<{ rows: Row[]; total?: number | null }>;
+  ): Promise<SqlRows>;
   queryPackedRows?(
     sql: string,
     values: unknown[],
@@ -263,6 +265,21 @@ function totalFrom(payload: unknown): number | null {
   return null;
 }
 
+function columnMetadata(payload: unknown): ColumnMetadata {
+  if (!record(payload)) return {};
+  const nested = columnMetadata(payload.result ?? payload.data);
+  for (const key of ["returnedColumns", "rejectedColumns"] as const) {
+    if (Array.isArray(payload[key])) nested[key] = payload[key];
+  }
+  return nested;
+}
+
+function failureFrom(payload: unknown): Row | undefined {
+  if (!record(payload)) return;
+  if (record(payload.failure)) return payload.failure;
+  return failureFrom(payload.result ?? payload.data);
+}
+
 // 凭据只由 Web 服务端提供。每页重新取凭据，失效或拒绝后不回退直连 PG。
 export function createGeaSqlDatabase(
   delegationToken: () => string,
@@ -331,6 +348,7 @@ export function createGeaSqlDatabase(
           !response.ok ||
           !record(body) ||
           body.success === false ||
+          failureFrom(body)?.reasonCode ||
           responseCode < 200 ||
           responseCode >= 300
         ) {
@@ -338,7 +356,7 @@ export function createGeaSqlDatabase(
             token,
           ]);
           const upstreamCode = record(body)
-            ? [body.errorCode, body.code, body.message, body.msg].find(
+            ? [failureFrom(body)?.reasonCode, body.errorCode, body.code, body.message, body.msg].find(
                 (value) =>
                   typeof value === "string" &&
                   /^[A-Z][A-Z0-9_]{2,127}$/.test(value),
@@ -364,7 +382,9 @@ export function createGeaSqlDatabase(
               : denied
                 ? "当前用户没有该业务数据的 GEA 读取权限"
                 : "GEA SQL 查询失败（" +
-                  (upstreamCode ?? safeDiagnostic.code) +
+                  (upstreamCode ?? (response.ok
+                    ? responseCode >= 400 ? `业务码 ${responseCode}` : "GEA_SQL_QUERY_FAILED"
+                    : safeDiagnostic.code)) +
                   "）" +
                   (safeDiagnostic.message === safeDiagnostic.code
                     ? ""
@@ -373,7 +393,7 @@ export function createGeaSqlDatabase(
                         safeDiagnostic.code.length + 1,
                       )),
             rejected ? 401 : response.ok ? 503 : response.status,
-            !rejected && (response.status === 429 || response.status >= 500),
+            !rejected && !/^(RESOURCE_NOT_PUBLISHED|FIELD_NOT_PUBLISHED|NO_RETURN_COLUMN_ALLOWED|RETURN_PERMISSION_DENIED)$/.test(String(upstreamCode)) && (response.status === 429 || response.status >= 500),
           );
         }
         if (!("result" in body))
@@ -430,13 +450,13 @@ export function createGeaSqlDatabase(
               true,
             );
         }
-      return { rows: pageRows, total };
+      return { rows: pageRows, total, ...columnMetadata(payload) };
     };
     if (options.pageNo !== undefined) return fetchPage(options.pageNo, true);
     const first = await fetchPage(1, true),
       total = first.total;
     if (total === null) {
-      if (first.rows.length < pageSize) return { rows: first.rows };
+      if (first.rows.length < pageSize) return { ...first, rows: first.rows };
       throw new GeaSqlError(
         "GEA_SQL_RESULT_INCOMPLETE",
         "GEA SQL 分页结果不完整",
@@ -445,13 +465,15 @@ export function createGeaSqlDatabase(
       );
     }
     const pageCount = Math.ceil(total / pageSize);
-    if (pageCount > 500)
+    if (total > 200000)
       throw new GeaSqlError(
         "GEA_SQL_RESULT_TOO_LARGE",
         "GEA SQL 查询结果超过读取上限",
         502,
       );
     const validate = (page: typeof first, pageNo: number) => {
+      if (JSON.stringify(columnMetadata(page)) !== JSON.stringify(columnMetadata(first)))
+        throw new GeaSqlError("GEA_SQL_COLUMN_PERMISSION_CHANGED", "查询期间字段权限发生变化，请重新查询", 403);
       if (page.total !== null && page.total !== total)
         throw new GeaSqlError(
           "GEA_SQL_PAGINATION_CHANGED",
@@ -487,7 +509,7 @@ export function createGeaSqlDatabase(
     }
     if (pageCount > 1)
       rows.push(...validate(await fetchPage(pageCount, true), pageCount));
-    return { rows };
+    return { rows, ...columnMetadata(first) };
   }
   async function query(
     sql: string,
