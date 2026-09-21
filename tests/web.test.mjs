@@ -288,6 +288,12 @@ test(
         await brandLogo.getAttribute("src"),
         /^data:image\/png;base64,/,
       );
+      // 客户端名：左上角品牌文字与窗口标题都用「Synear GEA」。
+      assert.equal(
+        await page.locator(".gea-brand-title").textContent(),
+        "Synear GEA",
+      );
+      assert.equal(await page.title(), "Synear GEA");
       assert.equal(
         await page
           .locator('[data-slot="sidebar.brand.name"] span')
