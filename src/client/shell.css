@@ -986,3 +986,12 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 
 .gea-shell-navigation .gea-shell-collaboration { margin-top: 12px; font-weight: 600; }
+
+/* 会话统计（「N 轮 M 步」）本来在输入框下方，会把输入框顶上去。
+   这里把它排到输入框上面，输入框自己贴住面板底部；横向留白沿用原生变量。 */
+[class*="uV2eYG_root"] [class*="bOPqQW_root"] {
+  order: -1;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: 6px;
+}
