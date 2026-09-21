@@ -4,11 +4,14 @@ import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 const OPTIONAL_PLUGINS={'@dsh-external/dsh-visualize':{name:'@dsh-external/dsh-visualize'},'dsh-raw-html-v2':{name:'dsh-raw-html-v2'},'dsh-worktable':{name:'dsh-worktable'}};
-const errorCode=error=>/^[A-Z][A-Z_0-9]+$/.test(error?.message)?error.message:'UPDATE_FAILED';
+const code=value=>typeof value==='string'&&/^[A-Z][A-Z_0-9]+$/.test(value);
+const errorCode=error=>code(error?.message)?error.message:code(error?.code)?error.code:'UPDATE_FAILED';
 export async function createUpdates({data,store,desktopVersion,releases,install,restart,restartRuntime,sources,token,checkDesktop}) {
   const path=join(data,'plugins/update-state.json');const optionalPath=join(data,'plugins/optional-state.json');await mkdir(join(data,'plugins'),{recursive:true});
   let state={settings:{automatic:true,intervalHours:2,channel:'stable'},history:{},updateHistory:[],phase:'idle',releases:[]};
-  try{state={...state,...JSON.parse(await readFile(path,'utf8'))};}catch(error){if(error.code!=='ENOENT')throw Error('UPDATE_STATE_INVALID');}
+  // The release list is session state: only a check that completed in this run may offer a version.
+  // A list restored from disk could otherwise outlive the channel it came from and be re-installed forever.
+  try{state={...state,...JSON.parse(await readFile(path,'utf8')),releases:[]};}catch(error){if(error.code!=='ENOENT')throw Error('UPDATE_STATE_INVALID');}
   if(['downloading','installing'].includes(state.phase))state={...state,phase:'failed',error:'PREPARATION_INTERRUPTED'};
   let checking,checkAbort,preparing,abort,timer,restartTimer,restartTask,autoRestart=false,started=false,closed=false,writes=Promise.resolve();
   const save=()=>{const bytes=JSON.stringify(state,null,2);const next=writes.catch(()=>{}).then(async()=>{const temp=path+'.'+randomUUID();await writeFile(temp,bytes,{mode:0o600});await rename(temp,path);});writes=next;return next;};
@@ -30,9 +33,12 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
     if(preparing||state.phase==='restarting')return Promise.resolve({error:'UPDATE_BUSY'});
     checkAbort=new AbortController();
     checking=(async()=>{
-      const current=await versions();const channel=state.settings.channel;
+      const channel=state.settings.channel;
       const desktopCheck=Promise.resolve().then(()=>checkDesktop?.({channel})).catch(()=>{});
       try{
+        // Reading the selected graph is part of the check: if it fails, the previous release list
+        // must be dropped too, otherwise the client keeps re-offering a version it cannot install.
+        const current=await versions();
         const result=await releases.fetchCompanyChannel(sources[channel],channel,{dsh:current['@deepseek-ai/dsh'],workbench:current['@cleverc2200/dsh-agent-workbench'],desktop:desktopVersion},{token,signal:AbortSignal.any([checkAbort.signal,AbortSignal.timeout(60000)])});
         state.history=releases.verifyReleaseHistory(result,state.history);state.releases=result.releases;state.lastCheck=new Date().toISOString();state.checkError=null;
       }catch(error){state.releases=[];state.lastCheck=new Date().toISOString();state.checkError=errorCode(error);}

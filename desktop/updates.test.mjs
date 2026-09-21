@@ -33,6 +33,33 @@ test('download cancellation keeps the current graph; channel change clears prior
  await updates.settings({automatic:false,intervalHours:6,channel:'test'});assert.equal((await updates.status()).releases.length,0);await updates.check();assert.equal((await updates.status()).releases.length,0);
  fail=true;await updates.check();assert.equal((await updates.status()).checkError,'RELEASE_HTTP_404');assert.equal(counts().installs,0);
 });
+test('a check that cannot read the selected graph drops the stale release list instead of re-offering it',async t=>{
+ const stale={package:'dsh-plugin',version:'1.4.3-company.1',notes:{zh:'旧版本',en:'Stale release'}};
+ const {updates,data,counts}=await fixture(t,{}, {settings:{automatic:false,intervalHours:24,channel:'stable'},releases:[stale]});
+ const manifest=JSON.parse(await readFile(join(data,'baseline/package.json'),'utf8'));
+ manifest.dependencies['dsh-agent-plugins-market']='0.6.2'; // declared by an older graph, no longer on disk
+ await writeFile(join(data,'baseline/package.json'),JSON.stringify(manifest));
+ await updates.check().catch(()=>{});
+ const failed=JSON.parse(await readFile(join(data,'plugins/update-state.json'),'utf8'));
+ assert.deepEqual(failed.releases,[]);
+ assert.equal(failed.checkError,'MODULE_NOT_FOUND');
+ assert.ok(failed.lastCheck);
+ await assert.rejects(updates.prepare({package:'dsh-plugin'}),/CHECK_RELEASE_FIRST/);
+ assert.equal(counts().installs,0);
+ delete manifest.dependencies['dsh-agent-plugins-market'];
+ await writeFile(join(data,'baseline/package.json'),JSON.stringify(manifest));
+ await updates.check();
+ const recovered=await updates.status();
+ assert.equal(recovered.checkError,null);
+ assert.equal(recovered.releases.length,1);
+});
+test('a released list restored from disk is not offered until this run checks the channel',async t=>{
+ const stale={package:'dsh-plugin',version:'1.4.3-company.1',notes:{zh:'旧版本',en:'Stale release'}};
+ const {updates}=await fixture(t,{}, {settings:{automatic:false,intervalHours:24,channel:'stable'},releases:[stale]});
+ const before=await updates.status();
+ assert.deepEqual(before.releases,[]);
+ await assert.rejects(updates.prepare({package:'dsh-plugin'}),/CHECK_RELEASE_FIRST/);
+});
 test('startup reconciles an interrupted restart and closing cancels an unstarted restart',async t=>{
  const restored=await fixture(t,{}, {phase:'restarting',pending:'missing',settings:{automatic:false,intervalHours:24,channel:'stable'}});
  await restored.updates.start();assert.equal((await restored.updates.status()).phase,'failed');await restored.updates.check();assert.equal(restored.counts().checks,1);
