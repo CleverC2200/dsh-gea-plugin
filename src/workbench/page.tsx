@@ -24,12 +24,10 @@ import { ApiLogCenter } from "./api-log-center.tsx";
 
 type HtmlPlugin = { id: string; label: string; group: string; url: string };
 const HTML_PLUGINS: HtmlPlugin[] = [
-  ...[["inventory-apsboard", "产销协同看板", "产销协同"], ["inventory-apsdemand", "需求运营管理", "产销协同"], ["inventory-apsdelivery", "交付运营管理", "产销协同"], ["inventory-personal", "库存管理工作台", "库存管理"], ["inventory-aqkc", "安全库存", "库存管理"], ["inventory-dealer", "经销商库存", "库存管理"], ["inventory-fc", "分仓库存", "库存管理"], ["inventory-qll", "全链路库存", "库存管理"]].map(([id, label, group]) => ({ id, label, group, url: `/api/gea-html-plugin/${id}` })),
+  ...[["inventory-apsplan", "产销协同工作台", "产销协同"], ["inventory-personal", "库存管理工作台", "库存管理"], ["inventory-aqkc", "安全库存", "库存管理"], ["inventory-dealer", "经销商库存", "库存管理"], ["inventory-fc", "分仓库存", "库存管理"], ["inventory-qll", "全链路库存", "库存管理"]].map(([id, label, group]) => ({ id, label, group, url: `/api/gea-html-plugin/${id}` })),
 ];
 const HTML_PLUGIN_CONSUMERS: Record<string, string> = {
-  "inventory-apsboard": "aps-board-collaboration",
-  "inventory-apsdemand": "aps-demand-collaboration",
-  "inventory-apsdelivery": "aps-delivery-collaboration",
+  "inventory-apsplan": "aps-plan-collaboration",
   "inventory-personal": "inventory-personal-workbench",
   "inventory-aqkc": "base-safety-stock",
   "inventory-dealer": "dealer-inventory-replenishment",

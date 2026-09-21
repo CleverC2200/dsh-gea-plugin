@@ -13,10 +13,11 @@ export function isGeaBusinessPanel(panel: string | null | undefined, entries: re
 export type BusinessPanel = { id: string; title: string; order: number };
 export type BusinessPanelGroups = { board?: BusinessPanel; customer: BusinessPanel[]; plan: BusinessPanel[]; inventory: BusinessPanel[] };
 export function groupBusinessPanels(panels: readonly BusinessPanel[]): BusinessPanelGroups {
+  const board = panels.find(({ id }) => id === "inventory-apsplan") ?? panels.find(({ id }) => id === "inventory-apsboard");
   return {
-    board: panels.find(({ id }) => id === "inventory-apsboard"),
+    board,
     customer: panels.filter(({ id }) => id === "inventory-dealer"),
-    plan: panels.filter(({ id }) => id.startsWith("inventory-aps") && id !== "inventory-apsboard"),
+    plan: panels.filter(({ id }) => id.startsWith("inventory-aps") && id !== board?.id),
     inventory: panels.filter(({ id }) => id !== "inventory-dealer" && !id.startsWith("inventory-aps")),
   };
 }

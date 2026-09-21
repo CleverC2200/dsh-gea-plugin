@@ -16,9 +16,7 @@ const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL("../", import.meta.url));
 const HTML_PLUGIN_RELEASE_PROJECT = "chenyonghao%2Fdsh-plugin-releases";
 const HTML_PLUGIN_PACKAGES = [
-  ["inventory-apsboard", "dsh-gea-inventory-apsboard-0.1.0-preview.10.tgz"],
-  ["inventory-apsdemand", "dsh-gea-inventory-apsdemand-0.1.0-preview.10.tgz"],
-  ["inventory-apsdelivery", "dsh-gea-inventory-apsdelivery-0.1.0-preview.10.tgz"],
+  ["inventory-apsplan", "dsh-gea-inventory-apsplan-0.2.0-preview.1.tgz"],
   ["inventory-personal", "dsh-gea-inventory-personal-0.2.7-preview.2.tgz"],
   ["inventory-aqkc", "dsh-gea-inventory-aqkc-0.2.6-preview.2.tgz"],
   ["inventory-dealer", "dsh-gea-inventory-dealer-0.2.6-preview.2.tgz"],
