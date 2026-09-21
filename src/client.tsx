@@ -1028,7 +1028,10 @@ function NavIcon({ kind }: { kind: NavIconKind }) {
   if (kind === "synergy" || kind === "orders") {
     return (
       <svg className="gea-shell-nav-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 1024 1024" fill="currentColor">
-        {BUSINESS_GROUP_ICON_PATHS[kind].map((d, index) => <path key={index} d={d} />)}
+        {/* 填充图标是满幅的，缩到线框图标同一墨迹尺寸（约 13px），避免看着比其它分组图标大一圈。 */}
+        <g transform="translate(512 512) scale(0.75) translate(-512 -512)">
+          {BUSINESS_GROUP_ICON_PATHS[kind].map((d, index) => <path key={index} d={d} />)}
+        </g>
       </svg>
     );
   }
