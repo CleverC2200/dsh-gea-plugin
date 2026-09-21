@@ -3,6 +3,7 @@ import { resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { readHtmlQuery } from "./html-query.ts";
+import { selectHtmlPlugins } from "./html-plugin-selection.ts";
 import { createHtmlSessions } from "./html-sessions.ts";
 import type { Business } from "./host/business.ts";
 
@@ -86,7 +87,13 @@ export async function registerHtmlPlugins(
       return {};
     }
   })();
-  for (const root of roots) {
+  const candidates = await Promise.all(roots.map(async root => {
+    const directory = await realpath(root);
+    const manifest = JSON.parse(await readFile(resolve(directory, "plugin.json"), "utf8"));
+    return { ...manifest, directory };
+  }));
+  for (const candidate of selectHtmlPlugins(candidates)) {
+    const root = candidate.directory;
     const directory = await realpath(root),
       manifest = JSON.parse(
         await readFile(resolve(directory, "plugin.json"), "utf8"),
