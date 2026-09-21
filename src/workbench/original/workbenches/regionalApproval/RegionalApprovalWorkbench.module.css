@@ -13,11 +13,14 @@
 
 .header {
   display: flex;
+  /* 窄宽度下让右侧范围/版本组换行，而不是压到标题和页签上面。 */
+  flex-wrap: wrap;
   min-height: 53px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  row-gap: 6px;
   padding: 2px 16px;
   overflow: hidden;
   border-bottom: 1px solid var(--bg-3);
@@ -156,9 +159,11 @@
   display: flex;
   min-width: 0;
   flex: 1 1 auto;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  row-gap: 6px;
 }
 
 .stageLaneToggle {
