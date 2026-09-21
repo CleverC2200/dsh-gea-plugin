@@ -11,8 +11,10 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-agent";
 import {
   LlmAdapter,
+  ReasoningEffortId,
   createUserMessage,
   type GenerateOptions,
+  type LlmReasoningEffortInfo,
   type StreamChunk,
   attributionHeaders,
   type ContentBlock,
@@ -88,6 +90,63 @@ class ReceiptAdapter extends LlmAdapter {
   }
 }
 
+/**
+ * 可选推理档位。GEA 个人模型网关把 `extra_params` 的顶层键覆盖到模型配置的默认
+ * extraParams，再由上游 provider 解析 `reasoning_effort`；平台本身不定义档位名，
+ * 所以档位由客户端给出。上游只认接入手册里给过的那两个取值（`high` / `max`），
+ * 因此这里只暴露这两档，默认 `high`；`off` 是 DSH 内部的 thinking 开关，不在
+ * wire 协议里，不能透传。
+ */
+const GEA_REASONING_EFFORTS: readonly LlmReasoningEffortInfo[] = [
+  {
+    id: ReasoningEffortId("high"),
+    name: "高",
+    description: "默认档，适合大多数业务问题。",
+  },
+  {
+    id: ReasoningEffortId("max"),
+    name: "最高",
+    description: "复核、对比与难取数任务，耗时更长。",
+  },
+];
+
+/** 用户未选档位时materialize的默认档位。 */
+const GEA_DEFAULT_REASONING_EFFORT = ReasoningEffortId("high");
+
+/** 网关只接受非空字符串，且单次覆盖的键值有长度上限；不合法就保持改造前行为。 */
+const GEA_EFFORT_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+
+/**
+ * 把所选档位映射成网关契约里的 `extra_params`。取值不合法时返回 undefined，
+ * 请求体不带该字段，服务端保持模型配置默认参数。未显式选择时，DSH 会先按模型声明的
+ * `defaultEffort` 补上默认档位再调用，所以正常路径下这里总能拿到一个档位。
+ */
+function geaExtraParams(
+  options: GenerateOptions,
+): Record<string, string> | undefined {
+  const effort = options.reasoningEffort;
+  if (effort === undefined) return undefined;
+  const value = String(effort);
+  if (!GEA_EFFORT_PATTERN.test(value)) return undefined;
+  return { reasoning_effort: value };
+}
+
+/**
+ * `selectModel` 与 `saveSelection` 都是整体覆盖：不显式带上已选档位就会把它清掉。
+ * 档位只存在默认选择里，这里读回来并在仍是本适配器声明的档位时沿用。
+ */
+function geaKeptReasoningEffort(current: {
+  provider?: string;
+  reasoningEffort?: ReasoningEffortId;
+}): ReasoningEffortId | undefined {
+  const effort = current.reasoningEffort;
+  if (current.provider !== "gea-analysis" || effort === undefined)
+    return undefined;
+  return GEA_REASONING_EFFORTS.some((item) => String(item.id) === String(effort))
+    ? effort
+    : undefined;
+}
+
 /** 直接调用当前登录用户的 GEA 个人模型路由，不经过 AionUi 代理。 */
 class GeaModelAdapter extends LlmAdapter {
   constructor(private readonly business: Business, private readonly htmlConsumer: (session?: string) => string | undefined = () => undefined) {
@@ -112,6 +171,11 @@ class GeaModelAdapter extends LlmAdapter {
       provider,
       id: model,
       name: route.names[model] ?? "GEA 模型（名称未提供）",
+      // 声明默认档位：用户没显式选档位时，DSH 会补上它并按 extra_params 发给网关。
+      reasoning: {
+        efforts: GEA_REASONING_EFFORTS,
+        defaultEffort: GEA_DEFAULT_REASONING_EFFORT,
+      },
     };
   }
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
@@ -130,6 +194,7 @@ class GeaModelAdapter extends LlmAdapter {
       );
       if (!route.models.includes(options.model))
         throw new Error("GEA_MODEL_NOT_FOUND");
+      const requestBody = toGeaRequest(options);
       const response = await this.business.fetchExternal(route.baseUrl + "/chat/completions", {
         method: "POST",
         headers: {
@@ -139,7 +204,7 @@ class GeaModelAdapter extends LlmAdapter {
           Authorization: "Bearer " + route.secret,
           "X-GEA-Agent-Code": route.agentCode,
         },
-        body: JSON.stringify(toGeaRequest(options)),
+        body: JSON.stringify(requestBody),
         redirect: "error",
         signal,
       });
@@ -233,11 +298,13 @@ function toGeaMessages(options: GenerateOptions): GeaMessage[] {
 }
 
 function toGeaRequest(options: GenerateOptions) {
+  const extraParams = geaExtraParams(options);
   return {
     model: options.model,
     messages: toGeaMessages(options),
     stream: true,
     stream_options: { include_usage: true },
+    ...(extraParams === undefined ? {} : { extra_params: extraParams }),
     ...(options.tools && options.tools.length > 0
       ? {
           tools: options.tools.map((tool) => ({
@@ -383,11 +450,17 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       });
       signal.throwIfAborted();
       business.prepared(preview.previewId);
+      // selectModel 同样是整体覆盖，不带上档位会把它清掉。
+      const keptEffort =
+        config.analysisMode === "model" && config.analysisSource === "gea"
+          ? geaKeptReasoningEffort(ctx.agentDefaultModel.currentSelection())
+          : undefined;
       await ctx.sessionController.selectModel({
         sessionId: session.sessionId,
         provider:
           config.analysisMode === "model" ? "gea-analysis" : "gea-proof",
         model: selectedModel,
+        ...(keptEffort === undefined ? {} : { reasoningEffort: keptEffort }),
       });
       signal.throwIfAborted();
       business.prepared(preview.previewId);
@@ -552,9 +625,14 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                   ? config.analysisModel
                   : route.models[0]!;
                 request.signal.throwIfAborted();
+                // saveSelection 是整体覆盖：不带上已选档位就会把用户的档位选择清掉。
+                const kept = geaKeptReasoningEffort(
+                  ctx.agentDefaultModel.currentSelection(),
+                );
                 await ctx.agentDefaultModel.saveSelection({
                   provider: "gea-analysis",
                   model: selected,
+                  ...(kept === undefined ? {} : { reasoningEffort: kept }),
                 });
                 value = {
                   models: route.models,
