@@ -347,6 +347,31 @@ function project(value: unknown, fields: readonly string[]): Row {
       }),
   );
 }
+
+/**
+ * 按字节预算裁剪行数组，保留尽量多的完整行。
+ *
+ * 上游的 detail 会把整条计划的全部 SKU 一起返回，直接交给模型会超过按上下文
+ * 算出的输入预算（SNAPSHOT_TOO_LARGE）。这里按预算截断，并让调用方把“被丢弃的
+ * 行数”明确写给模型，避免它把子集当成全部。
+ * @param rows - 已投影的行。
+ * @param budgetBytes - 该数组可占用的字节数。
+ * @returns 保留的行与被丢弃的行数。
+ */
+function capRows<T extends Record<string, unknown>>(
+  rows: readonly T[],
+  budgetBytes: number,
+): { rows: T[]; omitted: number } {
+  const kept: T[] = [];
+  let used = 2; // "[]"
+  for (const row of rows) {
+    const size = Buffer.byteLength(JSON.stringify(row), "utf8") + 1;
+    if (used + size > budgetBytes) break;
+    kept.push(row);
+    used += size;
+  }
+  return { rows: kept, omitted: rows.length - kept.length };
+}
 function keys(payload: Record<string, unknown>, allowed: string[]): void {
   if (Object.keys(payload).some((key) => !allowed.includes(key)))
     throw new Error("INVALID_PAYLOAD");
@@ -654,7 +679,7 @@ export class Business {
         availability: "not-in-workbench",
         code: "PAGE_NOT_IN_WORKBENCH",
         reason:
-          "这个对话当前不在业务工作台：读不到页面数据，也不会去打开页面。需要读页面数据时，请在业务工作台里打开对应页面再问。",
+          "这个对话当前不在业务工作台：读不到页面数据，也不会去打开页面。这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答，不要因此拒答或索要经销商编码。本工具每轮最多调用一次，不要重复调用。",
       });
     return JSON.stringify({
       source: "GEA_RENDERED_WORKBENCH",
@@ -1894,7 +1919,9 @@ export class Business {
     const transport = transportSignal(AbortSignal.any([signal, identity]));
     let value: unknown;
     try {
-      value = await this.readWorkbenchQuery(payload, transport.signal);
+      value = await this.readWorkbenchQuery(payload, transport.signal, {
+        forModel: true,
+      });
     } catch (error) {
       signal.throwIfAborted();
       identity.throwIfAborted();
@@ -1927,6 +1954,7 @@ export class Business {
   private async readWorkbenchQuery(
     payload: Record<string, unknown>,
     signal: AbortSignal,
+    options: { forModel?: boolean } = {},
   ): Promise<unknown> {
     keys(payload, ["kind", "query"]);
     const query = object(payload.query ?? {});
@@ -1955,11 +1983,25 @@ export class Business {
     if (!Object.hasOwn(allowed, kind)) throw new Error("INVALID_QUERY");
     const unsupported = Object.keys(query).filter(key => !allowed[kind].includes(key));
     if (unsupported.length) {
-      const guidance = kind === "list"
-        ? " For a month, call kind=periods with periodMonth first, then use the returned periodId with kind=list."
-        : "";
+      // 这些提示直接决定模型下一轮能不能纠正，不要只说“参数不支持”。
+      const guidance =
+        kind === "list"
+          ? " For a month, call kind=periods with periodMonth (YYYY-MM) first, then pass the returned periodId together with planTypeCode from that result; never invent periodId or planTypeCode."
+          : kind === "detail"
+            ? " kind=detail takes only planId, taken from kind=list or kind=versions output; never pass versionId here and never invent an id."
+            : kind === "periods"
+              ? " periodMonth must be YYYY-MM, for example 2026-09."
+              : "";
       throw new Error(`INVALID_QUERY: kind=${kind} accepts only ${allowed[kind].join(", ")}.${guidance}`);
     }
+    if (
+      kind === "periods" &&
+      query.periodMonth != null &&
+      !/^\d{4}-\d{2}$/.test(text(query.periodMonth).trim())
+    )
+      throw new Error(
+        "INVALID_QUERY: periodMonth must be YYYY-MM, for example 2026-09 (Chinese month names are not accepted).",
+      );
     if (query.orderType != null && !["M", "Z"].includes(String(query.orderType))) throw new Error("INVALID_QUERY");
     if (kind === "periods") return this.salesPlanPeriodPage(query, signal);
     const id = (key: string) => encodeURIComponent(text(query[key]));
@@ -2089,6 +2131,42 @@ export class Business {
       } catch (error) {
         if (signal.aborted || !this.auth) throw error;
         // 通知发现失败时仍保留业务详情可读，但不授予审批能力。
+      }
+      if (options.forModel) {
+        // 模型侧只回投影后的字段：上游整包带着该计划的全部 SKU 与内部字段，
+        // 直接展开必然超过输入预算，detail 会永远 SNAPSHOT_TOO_LARGE。
+        const budget = Math.max(4096, Math.floor(this.config.inputByteBudget / 2));
+        const cappedSkus = capRows(
+          skus.map((sku) => project(sku, skuFields)),
+          Math.floor(budget * 0.6),
+        );
+        const cappedVersions = capRows(
+          versions.map((version) => project(version, versionFields)),
+          Math.floor(budget * 0.2),
+        );
+        const cappedLogs = capRows(logs, Math.floor(budget * 0.2));
+        return {
+          planId: text(detail.planId ?? query.planId),
+          currentVersion: project(currentVersion, versionFields),
+          skus: cappedSkus.rows,
+          skuCoverage: cappedSkus.omitted === 0 ? "complete" : "partial",
+          ...(cappedSkus.omitted === 0
+            ? {}
+            : {
+                skuOmitted: cappedSkus.omitted,
+                skuHint:
+                  "其余明细用 kind=versionSkus（传 currentVersion.id 作为 versionId）分页读取",
+              }),
+          versions: cappedVersions.rows,
+          ...(cappedVersions.omitted === 0
+            ? {}
+            : { versionsOmitted: cappedVersions.omitted }),
+          logs: cappedLogs.rows,
+          ...(cappedLogs.omitted === 0
+            ? {}
+            : { logsOmitted: cappedLogs.omitted }),
+          ...(workflowApproval === undefined ? {} : { workflowApproval }),
+        };
       }
       return { ...detail, currentVersion, skus, versions, logs, workflowApproval };
     }
