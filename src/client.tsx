@@ -672,6 +672,31 @@ export function apply(ctx: Context): void {
         region.style.removeProperty("--gea-search-left");
       };
     }, [region, drawer]);
+    // 设置弹窗左栏的顺序由各插件注册的 order 决定，第三方「侧边卡片」落在系统项后面。
+    // 弹窗一出现就把它提到「软件更新」前面；按锚点判断是否已就位，重复触发不会继续上移。
+    useEffect(() => {
+      const cellLabel = (cell: Element) =>
+        cell.textContent?.replace(/\s+/g, "").trim() ?? "";
+      const place = () => {
+        const list = document.querySelector<HTMLElement>(
+          '[role="dialog"] [class*="navList"]',
+        );
+        if (!list) return;
+        const cells = [...list.children];
+        const anchor = cells.find((cell) => cellLabel(cell) === "软件更新");
+        if (!anchor) return;
+        const anchorIndex = cells.indexOf(anchor);
+        for (const card of cells.filter((cell) => cellLabel(cell) === "侧边卡片")) {
+          // 已经在系统项前面就不再动，避免每次变更来回搬。
+          if (cells.indexOf(card) < anchorIndex) continue;
+          list.insertBefore(card, anchor);
+        }
+      };
+      place();
+      const observer = new MutationObserver(place);
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => observer.disconnect();
+    }, []);
     useEffect(() => {
       if (!business) return;
       const hideConversationChrome = () => {
