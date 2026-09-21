@@ -197,6 +197,11 @@ test(
         [headings[0].hit],
         JSON.stringify(navRows),
       );
+      // 业务导航整块贴侧栏左边缘：条目命中区顶到面板最左边，图标只留一点呼吸位。
+      assert.ok(
+        headings[0].hit <= 2 && children.every((row) => row.hit <= 2),
+        JSON.stringify(navRows),
+      );
       assert.equal(await page.locator(".gea-agent-panel").count(), 0);
       assert.equal(await frame.locator("textarea").count(), 0);
       const bounds = await page

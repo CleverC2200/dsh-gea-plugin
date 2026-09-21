@@ -410,11 +410,13 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-shell-plugin.is-active { color: #df1732 !important; background: #fff0f2 !important; }
 .gea-shell-plugin-dot { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #c7ced8; }
 .gea-shell-plugin:hover .gea-shell-plugin-dot, .gea-shell-plugin.is-active .gea-shell-plugin-dot { background: #df1732; }
-.gea-shell-nav-section { display: grid; gap: 2px; margin-top: 8px; }
+/* 业务导航整块贴到侧栏左边缘：抵消内容层 14px 内边距和原生 12px 内边距，
+   条目自己只留 8px 呼吸位；右侧同样只保留原生面板内边距，不在弹层里被裁。 */
+.gea-shell-nav-section { display: grid; gap: 2px; margin: 8px -14px 0 -26px; }
 .gea-shell-nav-heading,
 .gea-shell-nav-item {
   width: 100%; min-height: 38px; display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; border: 0 !important; border-radius: 6px;
+  padding: 8px 12px 8px 8px; border: 0 !important; border-radius: 6px;
   background: transparent !important; color: var(--gea-sidebar-ink); font: inherit; text-align: left; cursor: pointer;
 }
 .gea-shell-nav-heading { font-weight: 600; }
@@ -425,7 +427,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-shell-chevron.is-open { transform: rotate(180deg); }
 /* 二级条目与一级标题左对齐：整块贴到面板左边，文字缩进到一级标题文字的位置（12px 内边距 + 18px 图标 + 10px 间距）。 */
 .gea-shell-nav-children { display: grid; gap: 1px; padding: 1px 0 3px; }
-.gea-shell-nav-child { min-height: 36px; padding: 7px 12px 7px 40px; border: 0; border-radius: 6px; background: transparent; color: var(--gea-sidebar-ink); font: inherit; text-align: left; cursor: pointer; }
+.gea-shell-nav-child { min-height: 36px; padding: 7px 12px 7px 36px; border: 0; border-radius: 6px; background: transparent; color: var(--gea-sidebar-ink); font: inherit; text-align: left; cursor: pointer; }
 .gea-shell-nav-child:hover { background: #fffafb; color: #df1732; }
 .gea-shell-nav-child.is-active { background: #fff0f2; color: #df1732; font-weight: 700; }
 .gea-shell-nav-heading:focus-visible, .gea-shell-nav-item:focus-visible, .gea-shell-nav-child:focus-visible { outline: 2px solid #df1732; outline-offset: 2px; }
