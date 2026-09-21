@@ -138,7 +138,11 @@ export function resolveBuiltinPlugins(anchor = import.meta.url) {
   };
   try {
     return [
-      entry("@changfenhuang/dsh-genui", "genui"),
+      {
+        ...entry("@changfenhuang/dsh-genui", "genui"),
+        // 围栏渲染失败时把逐节点诊断送回同一轮，让模型重发修正版。
+        config: { fenceFeedback: true },
+      },
       entry("dsh-better-sidebar", "better-sidebar"),
     ];
   } catch (error) {

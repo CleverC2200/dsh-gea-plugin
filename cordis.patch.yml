@@ -16,6 +16,10 @@
     # plugin-channel update delivers them without a desktop rebuild.
     - id: genui
       name: "@changfenhuang/dsh-genui"
+      config:
+        # 围栏渲染失败时，借宿主的轮内转向把逐节点诊断送回同一轮，让模型
+        # 重发修正版（每轮至多一次、同一围栏至多一次、子代理不触发）。
+        fenceFeedback: true
     - id: better-sidebar
       name: "dsh-better-sidebar"
     - id: gea-proof
