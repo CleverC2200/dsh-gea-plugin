@@ -206,6 +206,14 @@
 [data-sidebar-collapsed] [class*="_newSession"] {
   display: none !important;
 }
+/* 「AI 工作台」（原生新建会话）跟业务导航同一条左线：整块贴左、内容左对齐。 */
+button[class*="_newSession"] {
+  justify-content: flex-start !important;
+  margin-left: -12px !important;
+  padding-left: 7px !important;
+}
+/* 文字跟业务导航的一级标题落在同一条竖线上（图标线都是 x=8）。 */
+button[class*="_newSession"] :is(svg, img) { margin-right: 8px; }
 .gea-sidebar-rail-item {
   display: flex;
   align-items: center;

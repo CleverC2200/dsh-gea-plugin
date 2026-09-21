@@ -202,6 +202,22 @@ test(
         headings[0].hit <= 2 && children.every((row) => row.hit <= 2),
         JSON.stringify(navRows),
       );
+      // 「AI 工作台」入口（原生新建会话）也走同一条左线：整块贴左、内容左对齐。
+      const newSession = await page
+        .locator('button[class*="_newSession"]')
+        .evaluate((button) => {
+          const icon = button.querySelector("svg, img");
+          return {
+            justify: getComputedStyle(button).justifyContent,
+            hit: Math.round(button.getBoundingClientRect().x),
+            icon: icon ? Math.round(icon.getBoundingClientRect().x) : null,
+          };
+        });
+      assert.equal(newSession.justify, "flex-start", JSON.stringify(newSession));
+      assert.ok(
+        newSession.hit <= 2 && newSession.icon !== null && newSession.icon <= 12,
+        JSON.stringify(newSession),
+      );
       assert.equal(await page.locator(".gea-agent-panel").count(), 0);
       assert.equal(await frame.locator("textarea").count(), 0);
       const bounds = await page
