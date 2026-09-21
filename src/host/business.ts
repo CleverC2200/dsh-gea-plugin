@@ -379,6 +379,27 @@ function keys(payload: Record<string, unknown>, allowed: string[]): void {
     throw new Error("INVALID_PAYLOAD");
 }
 
+/**
+ * 上游 action 报文只发接口文档声明的字段。
+ * approvalRole / approvalPolicy / expectedSnapshot / adjustmentMode 只服务本地闸门，
+ * 既不在 GEA 契约里，发出去也只会被服务端当未知字段丢掉。
+ */
+const UPSTREAM_ACTION_FIELDS = [
+  "action",
+  "expectedStatus",
+  "remark",
+  "adjustments",
+  "notification",
+] as const;
+function upstreamActionBody(
+  request: Record<string, unknown>,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  for (const field of UPSTREAM_ACTION_FIELDS)
+    if (request[field] !== undefined) body[field] = request[field];
+  return body;
+}
+
 function visibleWorkbenchText(value: unknown): string {
   if (typeof value !== "string" || value.length > 512)
     throw new Error("INVALID_WORKBENCH_CONTEXT");
@@ -1077,7 +1098,7 @@ export class Business {
     }
     signal.throwIfAborted();
     onValidated();
-    const body = JSON.stringify(request);
+    const body = JSON.stringify(upstreamActionBody(request));
     const response = await this.apiLog.fetch(this.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions", {
       method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": text(payload.requestId), "Idempotency-Key": text(payload.idempotencyKey) }, body, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)])
     });
