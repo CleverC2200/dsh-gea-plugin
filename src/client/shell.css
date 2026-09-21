@@ -64,7 +64,8 @@
 .gea-sidebar-tab[aria-expanded="true"] {
   /* 展开态用浅红底，不再铺白卡片：白卡片会和右侧原生图标压出边缘，看着像被切掉。 */
   background: #fff0f2 !important;
-  color: #df1732;
+  /* 浅红底上 #df1732 只有 4.41:1，统一改成 #d0132c（4.98:1）。 */
+  color: #d0132c;
   font-weight: 600;
   box-shadow: none;
 }
@@ -349,7 +350,8 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   letter-spacing: 0.2px;
 }
 .gea-brand-subtitle {
-  color: #96999f;
+  /* 对比度：原来 #96999f 在 #f9fafb 上只有 2.73:1，加深到 5.06:1（WCAG AA）。 */
+  color: #666c76;
   font-size: 11px;
   font-weight: 400;
   line-height: 1.3;
@@ -381,7 +383,8 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-shell-navigation button.is-active {
   background: #fff0f2;
-  color: #df1732;
+  /* 浅红底上 #df1732 只有 4.41:1，统一改成 #d0132c（4.98:1）。 */
+  color: #d0132c;
   font-weight: 600;
 }
 .gea-shell-navigation-content > .gea-shell-child {
@@ -415,7 +418,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-shell-plugin-group { display: grid; gap: 2px; margin-top: 2px; padding-top: 4px; }
 .gea-shell-plugin { min-height: 32px !important; padding-block: 6px !important; padding-left: 40px !important; color: var(--gea-sidebar-ink) !important; font-size: 12px !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
 .gea-shell-plugin:hover { color: #df1732 !important; background: #fffafb !important; }
-.gea-shell-plugin.is-active { color: #df1732 !important; background: #fff0f2 !important; }
+.gea-shell-plugin.is-active { color: #d0132c !important; background: #fff0f2 !important; }
 .gea-shell-plugin-dot { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #c7ced8; }
 .gea-shell-plugin:hover .gea-shell-plugin-dot, .gea-shell-plugin.is-active .gea-shell-plugin-dot { background: #df1732; }
 /* 业务导航整块贴到侧栏左边缘：抵消内容层 14px 内边距和原生 12px 内边距，
@@ -429,7 +432,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-shell-nav-heading { font-weight: 600; }
 .gea-shell-nav-heading:hover, .gea-shell-nav-item:hover { background: #fffafb !important; color: #df1732; }
-.gea-shell-nav-item.is-active { background: #fff0f2 !important; color: #df1732; font-weight: 700; }
+.gea-shell-nav-item.is-active { background: #fff0f2 !important; color: #d0132c; font-weight: 700; }
 .gea-shell-nav-icon { flex: 0 0 auto; color: currentColor; }
 .gea-shell-chevron { margin-left: auto; transition: transform 160ms ease; }
 .gea-shell-chevron.is-open { transform: rotate(180deg); }
@@ -437,7 +440,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-shell-nav-children { display: grid; gap: 1px; padding: 1px 0 3px; }
 .gea-shell-nav-child { min-height: 36px; padding: 7px 12px 7px 36px; border: 0; border-radius: 6px; background: transparent; color: var(--gea-sidebar-ink); font: inherit; text-align: left; cursor: pointer; }
 .gea-shell-nav-child:hover { background: #fffafb; color: #df1732; }
-.gea-shell-nav-child.is-active { background: #fff0f2; color: #df1732; font-weight: 700; }
+.gea-shell-nav-child.is-active { background: #fff0f2; color: #d0132c; font-weight: 700; }
 .gea-shell-nav-heading:focus-visible, .gea-shell-nav-item:focus-visible, .gea-shell-nav-child:focus-visible { outline: 2px solid #df1732; outline-offset: 2px; }
 .gea-shell-user {
   display: flex;

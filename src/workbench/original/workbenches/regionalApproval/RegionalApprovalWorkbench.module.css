@@ -1239,6 +1239,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 窄宽度下组织名/路径改成换行：原来 1280 那种列宽会把「浙沪经销业务(不用)」截成省略号，
+   用户看不到完整组织名。宽屏保持单行省略，行高不变。 */
+@container (max-width: 900px) {
+  .organizationTable .detailTrigger,
+  .organizationTable .organizationPath {
+    overflow: hidden;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
 .organizationGroupRow > :global(td) {
   background: var(--bg-1);
 }
