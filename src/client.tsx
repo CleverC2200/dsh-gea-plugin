@@ -615,6 +615,29 @@ export function apply(ctx: Context): void {
       return () => observer.disconnect();
     }, []);
     useEffect(() => {
+      // 登记 41：宿主等待态文案是「深度求索中...」，这里改成动作本身「深度思考中」，并交给 CSS 上思念红。
+      const hostText = "深度求索中";
+      const geaText = "深度思考中";
+      const rewrite = () => {
+        for (const node of document.querySelectorAll<HTMLElement>('[role="status"]')) {
+          const current = node.textContent ?? "";
+          const matched = current.includes(hostText);
+          if (matched) node.setAttribute("data-gea-think-status", "");
+          else node.removeAttribute("data-gea-think-status");
+          if (!matched) continue;
+          for (const child of Array.from(node.childNodes)) {
+            if (child.nodeType !== Node.TEXT_NODE) continue;
+            const text = child.textContent ?? "";
+            if (text.includes(hostText)) child.textContent = text.split(hostText).join(geaText);
+          }
+        }
+      };
+      rewrite();
+      const observer = new MutationObserver(rewrite);
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+      return () => observer.disconnect();
+    }, []);
+    useEffect(() => {
       const findRegions = () => {
         setRegion(
           document.querySelector<HTMLElement>("[class*='_regionArea']") ??
@@ -1004,7 +1027,6 @@ function ConversationHead({ agent }: { agent: ConversationPromptConfig }) {
       <AgentAvatar className="gea-agent-head-avatar" />
       <span className="gea-agent-head-copy">
         <span className="gea-agent-head-name">{agent.name}</span>
-        <span className="gea-agent-head-sub"><i aria-hidden="true" />{agent.headerSub}</span>
       </span>
     </header>
   );

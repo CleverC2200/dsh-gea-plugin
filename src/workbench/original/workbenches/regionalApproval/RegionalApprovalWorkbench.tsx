@@ -524,7 +524,8 @@ const RegionalApprovalWorkbench: React.FC<{
     return () => observer.disconnect();
   }, []);
 
-  const [narrowFiltersExpanded, setNarrowFiltersExpanded] = useState(true);
+  // 登记 51：进入销售计划审批默认不展开筛选，需要时点漏斗图标再展开。
+  const [narrowFiltersExpanded, setNarrowFiltersExpanded] = useState(false);
   const filterPanelId = React.useId();
   const [exportFeedback, setExportFeedback] = useState<ExportFeedback>();
   const [detailRowId, setDetailRowId] = useState<string>();

@@ -36,7 +36,6 @@ const {
 // 文案来源：《销售计划 · 右侧 AI 会话区原型说明 V1》，原型见 docs/prototypes/。
 test("提报版对话区文案按原型说明 V1 落地", () => {
   assert.equal(reportingConversation.name, "销售计划助手");
-  assert.equal(reportingConversation.headerSub, "需求预测 Agent");
   assert.match(reportingConversation.intro, /核对本月计划的合理性与风险/);
   assert.equal(reportingConversation.boundary, "最终提交仍然由你自己在确认入口完成。");
   assert.deepEqual(
@@ -61,8 +60,7 @@ test("提报版对话区文案按原型说明 V1 落地", () => {
 });
 
 test("审批版对话区文案按原型说明 V1 落地", () => {
-  assert.equal(approvalConversation.name, "销售计划审批助手");
-  assert.equal(approvalConversation.headerSub, "需求预测 Agent");
+  assert.equal(approvalConversation.name, "销售计划助手");
   assert.match(approvalConversation.intro, /先给结论，再给依据/);
   assert.equal(approvalConversation.boundary, "我只做分析建议，不改变审批状态。");
   assert.deepEqual(
@@ -116,11 +114,13 @@ test("每个工作台页都有对齐的助手名称与四段文案", () => {
     [fullChainStockConversation, "全链路库存助手"],
     [inventoryConversation, "经销商补货助手"],
     [regionalPlanConversation, "区域计划助手"],
-    [approvalConversation, "销售计划审批助手"],
+    [approvalConversation, "销售计划助手"],
   ];
   for (const [config, name] of expected) {
     assert.equal(config.name, name);
-    assert.match(config.headerSub, /^(需求预测|库存|GEA) Agent$/);
+    // 登记 32：会话框标题只留「模块名 + 助手」，副标（需求预测 Agent 等）整行去掉。
+    assert.equal(config.headerSub, undefined);
+    assert.match(config.name, /助手$/);
     assert.equal(config.actions.length, 4);
     assert.equal(config.prompts.length, 4);
     assert.equal(config.tagline, undefined);

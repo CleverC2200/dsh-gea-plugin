@@ -69,8 +69,15 @@
   font-weight: 600;
   box-shadow: none;
 }
-/* 焦点描边内描，避免被侧栏的 overflow 裁掉只剩一条红边。 */
-.gea-sidebar-tab:focus-visible { outline: none; box-shadow: inset 0 0 0 2px #df1732; }
+/* 焦点描边内描，避免被侧栏的 overflow 裁掉只剩一条边。
+   登记 20：选中/聚焦都不要深红色描边，统一用中性灰环。 */
+.gea-sidebar-tab:focus-visible { outline: 2px solid #9aa4b2; outline-offset: -2px; box-shadow: none; }
+.gea-sidebar-tab[aria-expanded="true"],
+.gea-sidebar-tab.is-active {
+  border: 0 !important;
+  outline-color: transparent !important;
+  box-shadow: none !important;
+}
 .gea-sidebar-tab .gea-drawer-title {
   flex: 1 1 auto;
   min-width: 0;
@@ -325,6 +332,15 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   margin-right: 10px;
   object-fit: contain;
 }
+/* 登记 24：宿主在品牌位未挂载时的兜底文案是「DSH 本地构建」，GEA 外壳不出现构建文案。 */
+[class*="fallbackBrandName"] { display: none !important; }
+/* 登记 28：侧栏收起后品牌圆标跟下面的图标列走同一条中线。 */
+[data-sidebar-collapsed] [class*="_logoRow"] [class*="_brand"] {
+  justify-content: center !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+[data-sidebar-collapsed] .gea-shell-logo { margin-right: 0 !important; }
 /* 品牌区照原型：思念圆标 + 思念红标题 + 一行浅灰说明。 */
 [class*="_logoRow"] [class*="_brand"] {
   height: auto;
@@ -396,8 +412,17 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   color: #202531;
 }
 .gea-shell-navigation button:focus-visible {
-  outline: 2px solid #df1732;
+  /* 登记 20：选中态与焦点环都不再用深红描边。 */
+  outline: 2px solid #9aa4b2;
   outline-offset: 2px;
+}
+.gea-shell-navigation button.is-active,
+.gea-shell-navigation button[aria-pressed="true"],
+.gea-shell-nav-child.is-active,
+.gea-shell-nav-heading.is-active {
+  border: 0 !important;
+  outline-color: transparent !important;
+  box-shadow: none !important;
 }
 .gea-shell-group {
   display: flex;
@@ -610,8 +635,9 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-agent-head-avatar { flex: none; width: 30px; height: 30px; border-radius: 50%; }
 .gea-agent-head-copy { display: grid; min-width: 0; gap: 0; }
 .gea-agent-head-name { color: #242b38; font-size: 14px; font-weight: 600; line-height: 1.35; }
-.gea-agent-head-sub { display: flex; align-items: center; gap: 5px; color: #9a9a96; font-size: 11px; line-height: 1.35; }
-.gea-agent-head-sub i { display: block; width: 5px; height: 5px; border-radius: 50%; background: #e1251b; }
+/* 登记 41：等待态文案由「深度求索中」改为「深度思考中」后，用思念红呈现。 */
+[data-gea-think-status] { color: rgb(226, 79, 102) !important; }
+[data-gea-think-status] *:not([class*="clock"]):not([class*="Clock"]) { color: inherit !important; }
 .gea-agent-avatar {
   display: block;
   width: 72px;
@@ -686,16 +712,20 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-home-hero {
   order: -1;
   width: 100%;
-  max-width: 900px;
-  margin: 0 auto 24px;
+  /* 登记 53：作为 flex 项时必须允许收缩，否则长句会把会话列撑出可视区被裁掉。 */
+  max-width: min(900px, 100%);
+  min-width: 0;
+  /* 登记 30：主视觉整块贴左，不再在会话列里居中。 */
+  margin: 0 0 24px;
   padding: 0 24px;
-  text-align: center;
+  /* 文本左对齐，跟业务区保持一致。 */
+  text-align: left;
 }
 .gea-home-logo {
   display: block;
   width: 81px;
   height: 81px;
-  margin: 0 auto 13px;
+  margin: 0 0 13px;
   object-fit: contain;
 }
 .gea-home-eyebrow {
@@ -707,7 +737,9 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-home-title {
   max-width: 850px;
-  margin: 0 auto;
+  margin: 0;
+  /* 登记 53：窄屏下长句必须换行，不能横向溢出被截断。 */
+  overflow-wrap: anywhere;
   color: #292b2e;
   font-size: clamp(26px, 2.6vw, 40px);
   font-weight: 650;
@@ -716,7 +748,8 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-home-description {
   max-width: 760px;
-  margin: 20px auto 24px;
+  margin: 20px 0 24px;
+  overflow-wrap: anywhere;
   color: #919399;
   font-size: 13px;
   line-height: 1.95;

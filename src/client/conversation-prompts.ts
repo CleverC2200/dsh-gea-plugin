@@ -26,9 +26,8 @@ export type ConversationPromptAction = {
 };
 
 export type ConversationPromptConfig = {
+  /** 会话区顶栏名称：统一用「功能模块名 + 助手」，和左侧菜单保持一致；不再挂副标。 */
   name: string;
-  /** 会话区顶栏名称下的副标（原型 phead 第二行）；不再挂「辅助」这类能力标签。 */
-  headerSub: string;
   intro: string;
   /** 简介里加粗的边界句。 */
   boundary: string;
@@ -39,7 +38,6 @@ export type ConversationPromptConfig = {
 /** 方案 A · 提报版：客户 / 代报人（KA、行销综合、业务员）的提报界面。 */
 export const reportingConversation: ConversationPromptConfig = {
   name: "销售计划助手",
-  headerSub: "需求预测 Agent",
   intro:
     "我可以帮你核对本月计划的合理性与风险，解释每个商品是怎么算出来的，并按你的意见调整草稿的数量与金额。",
   boundary: "最终提交仍然由你自己在确认入口完成。",
@@ -83,8 +81,7 @@ export const reportingConversation: ConversationPromptConfig = {
 
 /** 方案 B · 审批版：城市经理（区域计划审批）/ 省区总 / 大区总 / 品类计划审核人的审批工作台。 */
 export const approvalConversation: ConversationPromptConfig = {
-  name: "销售计划审批助手",
-  headerSub: "需求预测 Agent",
+  name: "销售计划助手",
   intro: "我可以按你当前节点的口径核对这张计划：先给结论，再给依据，异常项逐条给处理建议。",
   boundary: "我只做分析建议，不改变审批状态。",
   actions: [
@@ -128,7 +125,6 @@ export const approvalConversation: ConversationPromptConfig = {
 /** 经销商补货（库存）业务页沿用原有助手文案。 */
 export const regionalPlanConversation: ConversationPromptConfig = {
   name: "区域计划助手",
-  headerSub: "需求预测 Agent",
   intro: "我可以跨模块盯提报进度、找异常，给提报与跟催的参考意见。",
   boundary: "区域计划不参与审批与退回，我只做跟踪、评估与跟催。",
   actions: [
@@ -172,7 +168,6 @@ export const regionalPlanConversation: ConversationPromptConfig = {
 /** 经销商补货（库存）业务页沿用原有助手文案。 */
 export const inventoryConversation: ConversationPromptConfig = {
   name: "经销商补货助手",
-  headerSub: "库存 Agent",
   intro: "我可以帮你分析客户库存，生成补货建议并跟进执行进度。",
   boundary: "建议只做参考，补货决策仍由你确认。",
   actions: [
@@ -216,7 +211,6 @@ export const inventoryConversation: ConversationPromptConfig = {
 /** AI 工作台首页：没有打开具体业务页时的通用助手。 */
 export const homeConversation: ConversationPromptConfig = {
   name: "AI 工作台助手",
-  headerSub: "需求预测 Agent",
   intro: "我可以从你正在解决的问题入手：找数据、看计划进度、盯库存和交付风险。",
   boundary: "所有动作先给建议，再由你确认。",
   actions: [
@@ -260,7 +254,6 @@ export const homeConversation: ConversationPromptConfig = {
 /** 业务待办页：GEA 消息待办与审批提醒。 */
 export const inboxConversation: ConversationPromptConfig = {
   name: "业务待办助手",
-  headerSub: "GEA Agent",
   intro: "我可以帮你看 GEA 消息待办：还有多少没处理、哪些卡在你这一节点、下一步该找谁。",
   boundary: "待办状态由你在列表里确认，我只做梳理和建议。",
   actions: [
@@ -304,7 +297,6 @@ export const inboxConversation: ConversationPromptConfig = {
 /** 需求运营管理页：需求信号研判。 */
 export const demandOpsConversation: ConversationPromptConfig = {
   name: "需求运营助手",
-  headerSub: "需求预测 Agent",
   intro: "我可以帮你看需求波动、预测偏差和需求共识待办，给出下期需求计划的调整参考。",
   boundary: "我只做研判与建议，不直接改预测数字。",
   actions: [
@@ -348,7 +340,6 @@ export const demandOpsConversation: ConversationPromptConfig = {
 /** 交付运营管理页：订单履约风险。 */
 export const deliveryOpsConversation: ConversationPromptConfig = {
   name: "交付运营助手",
-  headerSub: "需求预测 Agent",
   intro: "我可以帮你看订单履约：准交率、在途订单和重点客户延期，给出优先处理顺序。",
   boundary: "我只做风险研判与建议，不下发派车、不改订单。",
   actions: [
@@ -392,7 +383,6 @@ export const deliveryOpsConversation: ConversationPromptConfig = {
 /** 安全库存页：基地口径的库存水位与货龄。 */
 export const safetyStockConversation: ConversationPromptConfig = {
   name: "安全库存助手",
-  headerSub: "库存 Agent",
   intro: "我可以按基地口径核对库存水位、周转天数、货龄和订单满足率，指出低于目标的部分。",
   boundary: "我只做核对与建议，不调整库存目标。",
   actions: [
@@ -436,7 +426,6 @@ export const safetyStockConversation: ConversationPromptConfig = {
 /** 分仓库存页：分仓经营与补货。 */
 export const branchStockConversation: ConversationPromptConfig = {
   name: "分仓库存助手",
-  headerSub: "库存 Agent",
   intro: "我可以按分仓看缺货订单、补货确认、大日期和滞库风险，给出先处理谁的建议。",
   boundary: "补货只给建议，是否下单由你确认。",
   actions: [
@@ -480,7 +469,6 @@ export const branchStockConversation: ConversationPromptConfig = {
 /** 库存管理工作台：基地 + 分仓的今日运营。 */
 export const inventoryWorkbenchConversation: ConversationPromptConfig = {
   name: "库存管理助手",
-  headerSub: "库存 Agent",
   intro: "我可以把基地和分仓的今日运营情况汇总起来，按优先级说清今天先处理什么。",
   boundary: "我只做汇总和建议，处理动作仍由你和责任角色确认。",
   actions: [
@@ -524,7 +512,6 @@ export const inventoryWorkbenchConversation: ConversationPromptConfig = {
 /** 全链路库存页：基地到分仓的链路视角。 */
 export const fullChainStockConversation: ConversationPromptConfig = {
   name: "全链路库存助手",
-  headerSub: "库存 Agent",
   intro: "我可以沿基地到分仓的链路看库存分布、缺货和大日期风险，以及可调拨的机会。",
   boundary: "调拨只给方案建议，执行由业务确认。",
   actions: [
