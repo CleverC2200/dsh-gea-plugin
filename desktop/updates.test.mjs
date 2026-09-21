@@ -60,6 +60,26 @@ test('a released list restored from disk is not offered until this run checks th
  assert.deepEqual(before.releases,[]);
  await assert.rejects(updates.prepare({package:'dsh-plugin'}),/CHECK_RELEASE_FIRST/);
 });
+test('a leftover failure notice is dropped once the channel offers different versions',async t=>{
+ const settings={automatic:false,intervalHours:24,channel:'stable'};
+ const failed={phase:'failed',error:'PLUGIN_INSTALL_FAILED_1',targets:[{package:'dsh-plugin',version:'1.4.3-company.1'}],settings};
+ const {updates}=await fixture(t,{},failed);
+ await updates.check();
+ const state=await updates.status();
+ assert.equal(state.phase,'idle');
+ assert.equal(state.error,null);
+ assert.equal(state.targets,undefined);
+ assert.equal(state.releases.length,1);
+});
+test('a failed attempt keeps its notice while the channel still offers the same version',async t=>{
+ const settings={automatic:false,intervalHours:24,channel:'stable'};
+ const failed={phase:'failed',error:'PLUGIN_INSTALL_FAILED_1',targets:[{package:'dsh-plugin',version:'1.4.3-company.2'}],settings};
+ const {updates}=await fixture(t,{},failed);
+ await updates.check();
+ const state=await updates.status();
+ assert.equal(state.phase,'failed');
+ assert.equal(state.error,'PLUGIN_INSTALL_FAILED_1');
+});
 test('startup reconciles an interrupted restart and closing cancels an unstarted restart',async t=>{
  const restored=await fixture(t,{}, {phase:'restarting',pending:'missing',settings:{automatic:false,intervalHours:24,channel:'stable'}});
  await restored.updates.start();assert.equal((await restored.updates.status()).phase,'failed');await restored.updates.check();assert.equal(restored.counts().checks,1);
