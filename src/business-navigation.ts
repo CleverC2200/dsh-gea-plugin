@@ -9,15 +9,77 @@ export function isGeaBusinessPanel(panel: string | null | undefined, entries: re
  return panel==='gea-proof' || panel==='gea-regional-plan' || panel==='gea-inbox' || registeredBusinessPanels(entries).some(item=>item.id===panel);
 }
 
-/** 业务菜单按四个顶层分组展示：产销协同工作台、客户管理、计划管理、库存管理。 */
 export type BusinessPanel = { id: string; title: string; order: number };
-export type BusinessPanelGroups = { board?: BusinessPanel; customer: BusinessPanel[]; plan: BusinessPanel[]; inventory: BusinessPanel[] };
-export function groupBusinessPanels(panels: readonly BusinessPanel[]): BusinessPanelGroups {
-  const board = panels.find(({ id }) => id === "inventory-apsplan") ?? panels.find(({ id }) => id === "inventory-apsboard");
-  return {
-    board,
-    customer: panels.filter(({ id }) => id === "inventory-dealer"),
-    plan: panels.filter(({ id }) => id.startsWith("inventory-aps") && id !== board?.id),
-    inventory: panels.filter(({ id }) => id !== "inventory-dealer" && !id.startsWith("inventory-aps")),
-  };
+
+/**
+ * 左侧业务菜单的分组与顺序以原型（GEA_AI工作台_右侧目录.html）为准：
+ * 产销协同 → 计划管理 → 库存管理 → 订单履约。
+ * 每个条目只登记「页面 id」；页面没接入就没有关联数据，渲染时自动隐藏。
+ */
+export type BusinessMenuSection = "supply" | "plan" | "inventory" | "orders";
+export type BusinessMenuItem = { id: string; title?: string };
+export type BusinessMenuGroup = {
+  key: BusinessMenuSection;
+  title: string;
+  icon: string;
+  items: readonly BusinessMenuItem[];
+};
+export type BusinessMenuEntry = { id: string; title: string };
+export type ResolvedBusinessMenuGroup = {
+  key: BusinessMenuSection;
+  title: string;
+  icon: string;
+  entries: BusinessMenuEntry[];
+};
+
+export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
+  { key: "supply", title: "产销协同", icon: "synergy", items: [{ id: "inventory-apsplan" }] },
+  {
+    key: "plan",
+    title: "计划管理",
+    icon: "calendar",
+    items: [
+      { id: "gea-regional-plan" },
+      { id: "gea-proof" },
+      // 生产计划等页面接入后会自动出现在这里。
+      { id: "inventory-production", title: "生产计划" },
+    ],
+  },
+  {
+    key: "inventory",
+    title: "库存管理",
+    icon: "warehouse",
+    items: [
+      { id: "inventory-qll" },
+      { id: "inventory-aqkc" },
+      { id: "inventory-fc" },
+      { id: "inventory-dealer" },
+    ],
+  },
+  {
+    key: "orders",
+    title: "订单履约",
+    icon: "orders",
+    items: [
+      { id: "orders-workbench", title: "订单工作台" },
+      { id: "orders-fulfillment", title: "订单履约" },
+    ],
+  },
+];
+
+/** 只保留已接入页面的条目；整组都没有页面时连分组一起隐藏。 */
+export function resolveBusinessMenu(
+  preset: readonly BusinessMenuGroup[],
+  available: ReadonlyMap<string, string>,
+): ResolvedBusinessMenuGroup[] {
+  return preset
+    .map((group) => ({
+      key: group.key,
+      title: group.title,
+      icon: group.icon,
+      entries: group.items
+        .filter((item) => available.has(item.id))
+        .map((item) => ({ id: item.id, title: available.get(item.id) || item.title || item.id })),
+    }))
+    .filter((group) => group.entries.length > 0);
 }

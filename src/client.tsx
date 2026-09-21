@@ -37,7 +37,8 @@ import {
   type ConversationActionTone,
   type ConversationPromptConfig,
 } from "./client/conversation-prompts.ts";
-import {groupBusinessPanels,isGeaBusinessPanel,registeredBusinessPanels} from "./business-navigation.ts";
+import {BUSINESS_MENU_PRESET,isGeaBusinessPanel,registeredBusinessPanels,resolveBusinessMenu,type BusinessMenuSection} from "./business-navigation.ts";
+import {BUSINESS_GROUP_ICON_PATHS,type BusinessGroupIcon} from "./client/business-icons.ts";
 import brandLogo from "./client/brand-logo.png";
 import shellCss from "./client/shell.css";
 import workbenchCss from "./workbench/workbench.css";
@@ -55,7 +56,7 @@ const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;
 const REGIONAL_PLAN_PANEL = "gea-regional-plan" as MainPanelId;
-type SidebarSection = "customer" | "plan" | "inventory";
+type SidebarSection = BusinessMenuSection;
 type SidebarSections = Record<SidebarSection, boolean>;
 
 /** 展开侧栏：0.1.6 的按钮文案是「打开侧边栏」，旧版本是「展开侧边栏」，找不到文案就按类名找。 */
@@ -339,7 +340,7 @@ export function apply(ctx: Context): void {
     sections?: SidebarSections;
     onToggleSection?: (section: SidebarSection) => void;
   }) {
-    const [expanded, setExpanded] = useState<SidebarSections>({ customer: true, plan: true, inventory: true });
+    const [expanded, setExpanded] = useState<SidebarSections>({ supply: true, plan: true, inventory: true, orders: true });
     const open = sections ?? expanded;
     const activePanel = usePanelInfo((info) => info.activePanelId);
     const [panels,setPanels]=useState(()=>registeredBusinessPanels(ctx.slots.entries("main")));
@@ -366,16 +367,14 @@ export function apply(ctx: Context): void {
       if (onToggleSection) return onToggleSection(section);
       setExpanded((value) => ({ ...value, [section]: !value[section] }));
     };
-    const item = (label: string, icon: NavIconKind, action?: () => void, active = false) => (
-      <button type="button" className={`gea-shell-nav-item${active ? " is-active" : ""}`} onClick={action} aria-current={active ? "page" : undefined}>
-        <NavIcon kind={icon} /><span className="gea-shell-label">{label}</span>
-      </button>
-    );
     const child = ({ id, title }: { id: string; title: string }) => (
       <button key={id} type="button" data-gea-business-entry={id} aria-current={activePanel === id ? "page" : undefined} className={`gea-shell-nav-child${activePanel === id ? " is-active" : ""}`} onClick={() => ctx.layout.selectPanel(id as MainPanelId)}><span className="gea-shell-label">{title}</span></button>
     );
-    // 客户管理（含「经销商库存」）按评审从左侧菜单隐藏：插件照旧注册，只是这一层不再渲染。
-    const { board, plan: planPanels, inventory: inventoryPanels } = groupBusinessPanels(panels);
+    // 菜单分组与顺序按原型固定；没有接入页面的条目（如生产计划、订单履约）自动隐藏。
+    const available = new Map<string, string>(panels.map((panel) => [panel.id, panel.title]));
+    available.set(PANEL, t("salesPlan"));
+    available.set(REGIONAL_PLAN_PANEL, t("regionalPlanWorkbench"));
+    const menu = resolveBusinessMenu(BUSINESS_MENU_PRESET, available);
     return (
       <nav
         className="gea-shell-navigation"
@@ -383,17 +382,14 @@ export function apply(ctx: Context): void {
       >
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
-          {board && item("产销协同工作台", "desktop", () => ctx.layout.selectPanel(board.id as MainPanelId), activePanel === board.id)}
-          <div className="gea-shell-nav-section">
-            <button type="button" className="gea-shell-nav-heading" aria-expanded={open.plan} onClick={() => toggle("plan")}><NavIcon kind="calendar" /><span>计划管理</span><Chevron open={open.plan} /></button>
-            {open.plan && <div className="gea-shell-nav-children">{child({ id: PANEL, title: t("salesPlan") })}{child({ id: REGIONAL_PLAN_PANEL, title: t("regionalPlanWorkbench") })}{planPanels.map(child)}</div>}
-          </div>
-          <div className="gea-shell-nav-section">
-            <button type="button" className="gea-shell-nav-heading" aria-expanded={open.inventory} onClick={() => toggle("inventory")}><NavIcon kind="warehouse" /><span>库存管理</span><Chevron open={open.inventory} /></button>
-            {open.inventory && <div className="gea-shell-nav-children">
-              {inventoryPanels.map(child)}
-            </div>}
-          </div>
+          {menu.map((group) => (
+            <div className="gea-shell-nav-section" key={group.key}>
+              <button type="button" className="gea-shell-nav-heading" aria-expanded={open[group.key]} onClick={() => toggle(group.key)}>
+                <NavIcon kind={group.icon as NavIconKind} /><span>{group.title}</span><Chevron open={open[group.key]} />
+              </button>
+              {open[group.key] && <div className="gea-shell-nav-children">{group.entries.map(child)}</div>}
+            </div>
+          ))}
         </div>
       </nav>
     );
@@ -597,8 +593,8 @@ export function apply(ctx: Context): void {
     const [drawer, setDrawer] = useState<"function" | "workspace" | "none">(
       () => (business ? "function" : "workspace"),
     );
-    // 业务菜单里三个分组（客户/计划/库存）的展开状态由这里持有，切抽屉不会丢。
-    const [sections, setSections] = useState<SidebarSections>({ customer: true, plan: true, inventory: true });
+    // 业务菜单各分组的展开状态由这里持有，切抽屉不会丢。
+    const [sections, setSections] = useState<SidebarSections>({ supply: true, plan: true, inventory: true, orders: true });
     const previousBusiness = useRef(business);
     useEffect(() => {
       // 进业务页自动展开功能区；回到 AI 工作台保留用户自己选的抽屉，不强行切换。
@@ -1026,9 +1022,17 @@ function AgentActionIcon({ kind, tone }: { kind: ConversationActionIcon; tone: C
   );
 }
 
-type NavIconKind = "bot" | "bell" | "desktop" | "users" | "calendar" | "warehouse" | "grid" | "folder" | "apps" | "newChat";
+type NavIconKind = "bot" | "bell" | "desktop" | "users" | "calendar" | "warehouse" | "grid" | "folder" | "apps" | "newChat" | BusinessGroupIcon;
 function NavIcon({ kind }: { kind: NavIconKind }) {
-  const paths: Record<NavIconKind, React.ReactNode> = {
+  // 原型分组图标是填充路径（1024 viewBox），用 currentColor 跟随菜单文字色。
+  if (kind === "synergy" || kind === "orders") {
+    return (
+      <svg className="gea-shell-nav-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 1024 1024" fill="currentColor">
+        {BUSINESS_GROUP_ICON_PATHS[kind].map((d, index) => <path key={index} d={d} />)}
+      </svg>
+    );
+  }
+  const paths: Record<Exclude<NavIconKind, BusinessGroupIcon>, React.ReactNode> = {
     newChat: <><path d="M20 12a7.5 7.5 0 0 1-10.6 6.8L5 20l1.3-4.1A7.5 7.5 0 1 1 20 12Z" /><path d="M12 8.8v6.4M8.8 12h6.4" /></>,
     apps: <><rect x="4" y="4" width="6.5" height="6.5" rx="1.4" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4" /></>,
     bot: <><rect x="5" y="7" width="14" height="11" rx="2" /><path d="M12 4v3M8 12h.01M16 12h.01M9 18v2M15 18v2" /></>,
