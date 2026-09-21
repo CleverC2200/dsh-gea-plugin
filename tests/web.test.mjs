@@ -174,6 +174,29 @@ test(
       await page
         .getByRole("navigation", { name: "业务导航", exact: true })
         .waitFor();
+      // 侧栏二级条目要和一级标题左对齐：文字同一竖线，命中区同一左边缘，二级只少一个图标。
+      const navRows = await page
+        .locator(".gea-shell-nav-heading, .gea-shell-nav-child")
+        .evaluateAll((buttons) =>
+          buttons.map((button) => ({
+            child: button.classList.contains("gea-shell-nav-child"),
+            hit: Math.round(button.getBoundingClientRect().x),
+            label: Math.round(button.querySelector("span").getBoundingClientRect().x),
+          })),
+        );
+      const headings = navRows.filter((row) => !row.child);
+      const children = navRows.filter((row) => row.child);
+      assert.ok(headings.length > 0 && children.length > 0, JSON.stringify(navRows));
+      assert.deepEqual(
+        [...new Set(children.map((row) => row.label))],
+        [headings[0].label],
+        JSON.stringify(navRows),
+      );
+      assert.deepEqual(
+        [...new Set(children.map((row) => row.hit))],
+        [headings[0].hit],
+        JSON.stringify(navRows),
+      );
       assert.equal(await page.locator(".gea-agent-panel").count(), 0);
       assert.equal(await frame.locator("textarea").count(), 0);
       const bounds = await page
