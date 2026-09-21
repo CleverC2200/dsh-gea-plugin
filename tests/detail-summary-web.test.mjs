@@ -52,7 +52,8 @@ test('Dashboard matches monthly detail totals and categories expand SKU', {timeo
  await expect(totals).not.toContainText('¥200');
  const monthPlan=frame.getByTestId('regional-approval-month-plan-p');
  await expect(monthPlan.locator('span').first()).toHaveText('¥150');
- await expect(frame.locator('tbody').first()).toContainText('金额 37.5%');
+ // V1.8 #09：达成率改为「细进度条 + 百分比」，百分比前不再带「金额」。
+ await expect(frame.locator('tbody').first()).toContainText('37.5%');
  await expect(frame.getByText(/数量 .*%/)).toHaveCount(0);
  await expect(frame.locator('thead')).not.toContainText('AI 核对意见');
  await frame.getByRole('switch').first().click();
@@ -62,7 +63,7 @@ test('Dashboard matches monthly detail totals and categories expand SKU', {timeo
  await expect(frame.locator('tbody')).toContainText(['黑芝麻汤圆 500g']);
  await expect(frame.getByText('面点测试 SKU',{exact:true})).toHaveCount(0);
  await expect(category.locator('xpath=ancestor::tr[1]')).toContainText('¥266.67');
- await expect(category.locator('xpath=ancestor::tr[1]')).toContainText('金额 75.0%');
+ await expect(category.locator('xpath=ancestor::tr[1]')).toContainText('75.0%');
  await expect(frame.getByRole('textbox',{name:'确认计划量 1001',exact:true})).toHaveCount(0);
  await mkdir('.runtime/detail-summary',{recursive:true});
  await page.screenshot({path:'.runtime/detail-summary/desktop.png',fullPage:true});

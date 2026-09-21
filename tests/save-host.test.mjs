@@ -111,7 +111,7 @@ test(
       "GEA_HTTP_400",
     );
     assert.equal(writes, 0);
-    assert.equal((await save()).ok, true);
+        assert.equal((await save()).ok, true);
     assert.equal(writes, 1);
     mode = "conflict";
     assert.equal((await save()).error.code, "GEA_HTTP_409");

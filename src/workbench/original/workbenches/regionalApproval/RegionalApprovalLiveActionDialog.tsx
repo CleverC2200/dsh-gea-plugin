@@ -12,8 +12,11 @@ import type { TFunction } from 'i18next';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSalesPlanAction } from './hooks/useSalesPlanAction.ts';
 import {
+  businessSafeErrorMessage,
+  reportSalesPlanError,
   salesPlanActionTargetStatus,
   type SalesPlanActionClient,
+  type SalesPlanActionError,
   type SalesPlanActionErrorKind,
 } from './models/salesPlanActionModel.ts';
 import { salesPlanSkusMatchVersion, salesPlanSkuNodeComparison } from './models/salesPlanDetailModel.ts';
@@ -55,6 +58,22 @@ const signedDecimal = (value: string, currency = false) => {
 const errorKey = (kind: SalesPlanActionErrorKind) =>
   `common.assistantSurface.regionalApproval.liveAction.errors.${kind}` as const;
 
+/**
+ * V1.8 #12：失败提示只给业务语言。后端原文只有在像业务话术时才透出；
+ * 一旦判定为技术文案（字段名 / 错误码 / 报文），就换成按 HTTP 语义的业务文案，
+ * 另附一个可口头转述的「错误编号」，技术细节只进控制台。
+ */
+const actionErrorText = (t: TFunction, error: SalesPlanActionError): string => {
+  const fallback = t(errorKey(error.kind));
+  const cause = error.cause;
+  if (!isBackendHttpError(cause) || cause.status >= 500) return fallback;
+  const safe = businessSafeErrorMessage(cause.backendMessage);
+  if (safe) return safe;
+  if (typeof cause.backendMessage !== 'string' || !cause.backendMessage.trim()) return fallback;
+  const id = reportSalesPlanError('sales-plan-action', cause);
+  return `${fallback}${t('common.assistantSurface.regionalApproval.liveAction.errors.reference', { id })}`;
+};
+
 const InlineAction: React.FC<React.ComponentProps<typeof Modal>> = ({ children, footer }) => (
   <div>
     {children}
@@ -73,6 +92,8 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   client?: SalesPlanActionClient;
   evidence?: GeaSalesPlanDetail;
   permissionCodes?: readonly string[];
+  /** 内联明细当前显示的本节点确认量（用户改过、可能还没落盘）；比本地草稿更新，优先采用。 */
+  pendingValues?: Record<string, string>;
   onPermissionDenied: (versionId: string) => void;
   onSucceeded: (receipt: GeaSalesPlanActionReceipt, request: GeaSalesPlanActionRequest) => void | Promise<void>;
   onRefresh: () => void;
@@ -89,6 +110,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   client,
   evidence,
   permissionCodes,
+  pendingValues,
   onPermissionDenied,
   onSucceeded,
   onRefresh,
@@ -121,7 +143,19 @@ const RegionalApprovalLiveActionDialog: React.FC<{
     void salesPlan.draft!.invoke({planId: row.planId, versionId: row.versionId, signal: controller.signal}).then(result => {
       if (controller.signal.aborted) return;
       if (result.stale) {setDraftError('stale');return;}
-      setAdjustmentValues(Object.fromEntries((result.draft?.adjustments ?? []).map(item => [item.skuCode,item.adjustQty])));
+      const stored = Object.fromEntries((result.draft?.adjustments ?? []).map(item => [item.skuCode,item.adjustQty]));
+      // 页面上刚改、还没等到自动暂存落盘的数字必须一起带上，否则「上一节点改了、下一节点还是旧值」。
+      // 用「确认量 − 本节点基准」换成本次提交要的调整量：改回原值也会正确覆盖成 0。
+      const inline = Object.fromEntries(
+        Object.entries(pendingValues ?? {}).flatMap(([skuCode, value]) => {
+          const sku = snapshot?.skus.find(item => String(item.skuCode) === skuCode);
+          const baseline = sku ? salesPlanEditableQuantity(sku, row.status, row.planTypeCode, selectedRole) : undefined;
+          if (baseline === undefined || baseline === '—' || !value.trim()) return [];
+          const adjustQty = subtractExactDecimals(value.trim(), baseline);
+          return SIGNED_DECIMAL_PATTERN.test(adjustQty) ? [[skuCode, adjustQty] as const] : [];
+        })
+      );
+      setAdjustmentValues({...stored, ...inline});
       setDraftReady(true);
     }).catch(() => {if (!controller.signal.aborted) setDraftError('loadFailed');});
     return () => controller.abort();
@@ -383,9 +417,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
           {attempted && invalid ? <Alert type='error' showIcon content={t('common.assistantSurface.regionalApproval.liveAction.required')} /> : null}
           {loading ? <div className={styles.loadingState}><Spin size={16} /><span>{t('common.assistantSurface.regionalApproval.liveAction.loading')}</span></div> : null}
           {action.state.status === 'error' ? (
-            <Alert type='error' showIcon content={isBackendHttpError(action.state.error.cause) && action.state.error.cause.status < 500
-              ? action.state.error.cause.backendMessage || t(errorKey(action.state.error.kind))
-              : t(errorKey(action.state.error.kind))} />
+            <Alert type='error' showIcon content={actionErrorText(t, action.state.error)} />
           ) : null}
         </div>
       </Modal>
@@ -757,9 +789,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
             </div>
           ) : null}
           {action.state.status === 'error' ? (
-            <Alert type='error' showIcon content={isBackendHttpError(action.state.error.cause) && action.state.error.cause.status < 500
-              ? action.state.error.cause.backendMessage || t(errorKey(action.state.error.kind))
-              : t(errorKey(action.state.error.kind))} />
+            <Alert type='error' showIcon content={actionErrorText(t, action.state.error)} />
           ) : null}
           {action.state.status === 'success' ? (
             <Alert

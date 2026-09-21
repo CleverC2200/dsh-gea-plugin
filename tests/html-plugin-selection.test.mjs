@@ -19,7 +19,14 @@ test("replacement declarations cannot suppress unrelated plugins", () => {
   assert.equal(selectHtmlPlugins([{ ...unified, replaces: [inventory.id] }, inventory]).length, 2);
 });
 
-import { BUSINESS_MENU_PRESET, resolveBusinessMenu } from "../src/business-navigation.ts";
+import { BUSINESS_MENU_PRESET, businessMenuLabel, resolveBusinessMenu } from "../src/business-navigation.ts";
+
+test("business menu labels rename inventory pages without republishing plugin bundles", () => {
+  // 插件包清单里仍是旧名字，菜单按这里的业务叫法展示。
+  assert.equal(businessMenuLabel("inventory-aqkc", "安全库存"), "基地库存");
+  assert.equal(businessMenuLabel("inventory-qll", "全链路库存"), "全链库存");
+  assert.equal(businessMenuLabel("inventory-fc", "分仓库存"), "分仓库存");
+});
 const menuOf = (ids) => resolveBusinessMenu(BUSINESS_MENU_PRESET, new Map(ids.map(id => [id, `${id} 名称`])));
 test("left menu follows the prototype group order and hides entries without a page", () => {
   const groups = menuOf(['gea-proof', 'gea-regional-plan', 'inventory-apsplan', 'inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-dealer', 'inventory-personal']);

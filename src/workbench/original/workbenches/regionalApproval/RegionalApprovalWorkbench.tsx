@@ -4,7 +4,7 @@ import { CorrectionWorkbench } from './CorrectionWorkbench.tsx';
 import type { GeaSalesPlanPeriod } from '../../contracts.ts';
 /** 改编自 AionUi（Apache-2.0）：已替换为本地导入并使用显式 DSH Host 适配器，见 SOURCE.md。 */
 import { salesPlanQueueStatusText, salesPlanStatusText } from './regionalApprovalQueryModel.ts';
-import { SALES_PLAN_RETURN_CODES } from '../../salesPlanWorkflow.ts';
+import { SALES_PLAN_RETURN_CODES, SALES_PLAN_ROLES, salesPlanWorkflow } from '../../salesPlanWorkflow.ts';
 import {
   aggregateSalesPlanExportAmounts,
   SALES_PLAN_EXPORT_AMOUNT_PAIRS,
@@ -16,6 +16,8 @@ import {
   salesPlanStagesForPermissions,
   verifySavedSalesPlan,
 } from './models/salesPlanAccessModel.ts';
+import { salesPlanProgressBarColor } from './models/salesPlanProgressModel.ts';
+import { salesPlanVarianceClass } from './models/salesPlanVarianceModel.ts';
 import {
   Alert,
   Button,
@@ -32,7 +34,7 @@ import {
   Typography,
 } from '@arco-design/web-react';
 import type { TableColumnProps } from '@arco-design/web-react';
-import { CheckOne, Down, Download, Filter, Info, Refresh, Right, ChartHistogram } from '@icon-park/react';
+import { CheckOne, Down, Download, Filter, Info, Refresh, Right, ChartHistogram, Up } from '@icon-park/react';
 import type { TFunction } from 'i18next';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBusinessSurfaceSession } from '../../session-context.tsx';
@@ -343,6 +345,8 @@ type PersistedApprovalWorkbenchState = {
   pageSize: number;
   dimension: ApprovalDimension;
   categoryComparison: boolean;
+  /** 审批流程图默认收起；同一次会话内记住用户展开/收起的选择。 */
+  stageLaneOpen: boolean;
   selectedRowIds: string[];
   liveActionReceipts: Record<string, GeaSalesPlanActionReceipt>;
 };
@@ -450,6 +454,7 @@ const RegionalApprovalWorkbench: React.FC<{
         ? (saved.dimension as ApprovalDimension)
         : APPROVAL_DIMENSIONS_BY_STAGE[currentStage][0],
       categoryComparison: saved.categoryComparison === true,
+      stageLaneOpen: saved.stageLaneOpen === true,
       selectedRowIds: Array.isArray(saved.selectedRowIds)
         ? saved.selectedRowIds.filter((value): value is string => typeof value === 'string')
         : [],
@@ -465,10 +470,13 @@ const RegionalApprovalWorkbench: React.FC<{
   const [page, setPage] = useState(initialState.page);
   const [dimension, setDimension] = useState(initialState.dimension);
   const [categoryComparison, setCategoryComparison] = useState(initialState.categoryComparison);
+  const [stageLaneOpen, setStageLaneOpen] = useState(initialState.stageLaneOpen);
   const [liveCategorySummaries, setLiveCategorySummaries] = useState<
     Record<string, RegionalApprovalLiveCategorySummary[]>
   >({});
   const [liveCategoriesLoading, setLiveCategoriesLoading] = useState(false);
+  // 只有最后一次品类汇总请求可以复位加载态，避免被中断的那次把遮罩留在页面上。
+  const liveCategoriesRequest = useRef(0);
   const [versionMetrics, setVersionMetrics] = useState<Record<string, {versionId?:string; qty:string; amount:string; baseQty:string; baseAmount:string; targetQty:string; targetAmount:string; compareQty?:string; compareAmount?:string; compareTargetQty?:string; compareTargetAmount?:string}>>({});
   const [inlinePlanId, setInlinePlanId] = useState<string>();
   const [draftLiveFilters, setDraftLiveFilters] = useState<LiveApprovalFilters>(EMPTY_LIVE_APPROVAL_FILTERS);
@@ -509,6 +517,8 @@ const RegionalApprovalWorkbench: React.FC<{
   const [liveCompareVersionId, setLiveCompareVersionId] = useState<string>();
   const [liveDetailInitialTab, setLiveDetailInitialTab] = useState<RegionalApprovalLivePlanDetailTab>('skus');
   const [liveAdjustmentMetrics, setLiveAdjustmentMetrics] = useState<Record<string, {quantity: string; amount: string}>>({});
+  // 内联明细里当前显示的本节点确认量（用户改过但可能还没落盘）；通过时优先用这份内存值，避免丢数。
+  const [livePendingValues, setLivePendingValues] = useState<Record<string, Record<string, string>>>({});
   const [liveActionPlanId, setLiveActionPlanId] = useState<string>();
   const [liveActionKind, setLiveActionKind] = useState<LiveActionKind>('APPROVE');
   const [liveActionReceipts, setLiveActionReceipts] = useState(initialState.liveActionReceipts);
@@ -524,6 +534,15 @@ const RegionalApprovalWorkbench: React.FC<{
       const previous = current[planId];
       if (previous?.quantity === metrics.quantity && previous.amount === metrics.amount) return current;
       return { ...current, [planId]: metrics };
+    });
+  }, []);
+  const handleLivePendingValues = useCallback((planId: string, values: Record<string, string>) => {
+    setLivePendingValues((current) => {
+      const previous = current[planId];
+      const keys = Object.keys(values);
+      if (previous && Object.keys(previous).length === keys.length && keys.every((key) => previous[key] === values[key]))
+        return current;
+      return { ...current, [planId]: values };
     });
   }, []);
   const [permissionDeniedVersions, setPermissionDeniedVersions] = useState<Set<string>>(() => new Set());
@@ -577,12 +596,13 @@ const RegionalApprovalWorkbench: React.FC<{
   const liveFiltersDirty = JSON.stringify(draftLiveFilters) !== JSON.stringify(appliedLiveFilters);
   const savedAdjustments = useMemo(() => savedApprovalAdjustments(detailStore), [detailStore]);
   const localApprovalResults = useMemo(() => regionalApprovalFixtureResults(actionStore), [actionStore]);
-  const liveRows = useMemo(
+  // 筛选范围内的完整计划集合：分组要覆盖全部数据，再按外层组织行分页。
+  const allLiveRows = useMemo(
     () => (liveQuery.queueState.data?.records ?? []).map(toRegionalApprovalLiveRow),
     [liveQuery.queueState.data?.records]
   );
-  const draftedLiveRows = useMemo(
-    () => liveRows.map((row) => {
+  const draftedAllLiveRows = useMemo(
+    () => allLiveRows.map((row) => {
       const metrics = versionMetrics[row.planId];
       const adjusted = liveAdjustmentMetrics[row.planId];
       const next = metrics
@@ -592,7 +612,7 @@ const RegionalApprovalWorkbench: React.FC<{
         ? {...next,mPlanQty:adjusted.quantity,mPlanAmount:adjusted.amount,currentQty:adjusted.quantity,currentAmount:adjusted.amount}
         : next;
     }),
-    [liveAdjustmentMetrics, liveRows, versionMetrics]
+    [liveAdjustmentMetrics, allLiveRows, versionMetrics]
   );
   const dimensionStage = liveQuery.enabled ? (liveStageFilter ?? 'category') : currentStage;
   const availableDimensions = APPROVAL_DIMENSIONS_BY_STAGE[dimensionStage];
@@ -612,8 +632,8 @@ const RegionalApprovalWorkbench: React.FC<{
   const liveFilterOptions = useMemo(() => {
     const provinceRows =
       draftLiveFilters.areaCode !== ALL_ORGANIZATIONS
-        ? liveRows.filter((row) => row.areaCode?.trim() === draftLiveFilters.areaCode)
-        : liveRows;
+        ? allLiveRows.filter((row) => row.areaCode?.trim() === draftLiveFilters.areaCode)
+        : allLiveRows;
     const organizationRows =
       draftLiveFilters.provinceCode !== ALL_ORGANIZATIONS
         ? provinceRows.filter((row) => row.provinceCode?.trim() === draftLiveFilters.provinceCode)
@@ -624,7 +644,7 @@ const RegionalApprovalWorkbench: React.FC<{
         : organizationRows;
     return {
       areas: uniqueLiveNamedFilterOptions(
-        liveRows,
+        allLiveRows,
         (row) => row.areaCode,
         (row) => row.areaName ?? row.regionName
       ),
@@ -648,11 +668,45 @@ const RegionalApprovalWorkbench: React.FC<{
           (option, index, options) => Boolean(option.dealerCode) && options.findIndex((item) => item.dealerCode === option.dealerCode) === index
         ),
     };
-  }, [draftLiveFilters.areaCode, draftLiveFilters.orgCode, draftLiveFilters.provinceCode, liveRows]);
+  }, [draftLiveFilters.areaCode, draftLiveFilters.orgCode, draftLiveFilters.provinceCode, allLiveRows]);
   const prioritizedLiveRows = useMemo(
-    () => draftedLiveRows.toSorted((left, right) => livePriority(left) - livePriority(right)),
-    [draftedLiveRows]
+    () => allLiveRows.toSorted((left, right) => livePriority(left) - livePriority(right)),
+    [allLiveRows]
   );
+  // 外层行分页：先按维度分组，再按组织行翻页；页脚与分页器统计的都是外层行条数。
+  // 分组只依赖计划本身，不依赖版本汇总 / 品类汇总，避免“汇总刷新 → 行数组更新 → effect 再跑”的相互触发。
+  const liveOuterRows = useMemo(() => {
+    const levels: ApprovalDimension[] = ['base', 'area', 'province', 'region', 'customer'];
+    const level = levels.indexOf(dimension);
+    if (level === levels.length - 1)
+      return prioritizedLiveRows.map((plan) => ({ key: `plan:${plan.planId}`, members: [plan] }));
+    return groupRegionalApprovalLiveRows(prioritizedLiveRows, levels[level]).map((group) => ({
+      key: `group:${group.key}`,
+      members: group.members,
+    }));
+  }, [dimension, prioritizedLiveRows]);
+  const livePageCount = Math.max(1, Math.ceil(liveOuterRows.length / Math.max(1, pageSize)));
+  const liveCurrentPage = Math.min(clampSalesPlanPageNumber(page), livePageCount);
+  const livePageRange = useMemo(
+    () => [(liveCurrentPage - 1) * pageSize, liveCurrentPage * pageSize] as const,
+    [liveCurrentPage, pageSize]
+  );
+  const pagedOuterRows = useMemo(
+    () => liveOuterRows.slice(livePageRange[0], livePageRange[1]),
+    [liveOuterRows, livePageRange]
+  );
+  // 当前页可见的计划行（未合并版本汇总与本节点调整）：能力预取、选择、导出、详情都只看这一页。
+  const liveRows = useMemo(() => pagedOuterRows.flatMap((row) => row.members), [pagedOuterRows]);
+  // 展示用：把版本汇总与本节点调整叠加到当前页每条计划上（指标卡、助手上下文也读这份）。
+  const draftedRowsByPlanId = useMemo(
+    () => new Map(draftedAllLiveRows.map((row) => [String(row.planId), row])),
+    [draftedAllLiveRows]
+  );
+  const draftedLiveRows = useMemo(
+    () => liveRows.map((row) => draftedRowsByPlanId.get(String(row.planId)) ?? row),
+    [draftedRowsByPlanId, liveRows]
+  );
+  // 当前位置的展示树：外层行已在分组阶段切好，组内成员不会被拆到两页。
   const liveTableRows = useMemo<RegionalApprovalLiveTableRow[]>(() => {
     const planRows = (plans: RegionalApprovalLiveRow[], childPlan = false): RegionalApprovalLiveTableRow[] =>
       plans.flatMap((plan) => [
@@ -683,8 +737,8 @@ const RegionalApprovalWorkbench: React.FC<{
           },
         ];
       });
-    return build(prioritizedLiveRows, levels.indexOf(dimension));
-  }, [categoryComparison, liveCategorySummaries, prioritizedLiveRows, dimension]);
+    return build(draftedLiveRows, levels.indexOf(dimension));
+  }, [categoryComparison, draftedLiveRows, liveCategorySummaries, dimension]);
   const liveTableRowById = useMemo(() => {
     const rows = new Map<string, RegionalApprovalLiveTableRow>();
     const visit = (tableRows: RegionalApprovalLiveTableRow[]) => {
@@ -751,6 +805,7 @@ const RegionalApprovalWorkbench: React.FC<{
     : undefined;
   useEffect(() => {
     if (!detailClient || !liveQuery.enabled || !liveRows.length) {setVersionMetrics({});setLiveCategorySummaries({});return;}
+    const requestId = ++liveCategoriesRequest.current;
     const controller = new AbortController();
     const reference = liveVersions.find(v => v.id === focusedLiveRow?.versionId);
     const primary = liveVersions.find(v => v.id === scopedPrimaryVersionId);
@@ -786,7 +841,7 @@ const RegionalApprovalWorkbench: React.FC<{
         }
       }
       if (!controller.signal.aborted) {setVersionMetrics(metrics);setLiveCategorySummaries(categories);}
-    })().catch(()=>{}).finally(()=>{if(!controller.signal.aborted)setLiveCategoriesLoading(false);});
+    })().catch(()=>{}).finally(()=>{if(liveCategoriesRequest.current===requestId)setLiveCategoriesLoading(false);});
     return ()=>controller.abort();
   },[detailClient,liveRows,scopedPrimaryVersionId,scopedCompareVersionId]);
   const historicalSummaryUnavailable = Boolean(
@@ -801,6 +856,48 @@ const RegionalApprovalWorkbench: React.FC<{
     detailClient,
     liveQuery.enabled && liveActionsEnabled && liveQuery.queueState.status === 'success'
   );
+
+  // 有权限审批的节点：先看权限码，其次看服务端给的角色能力 / 同版本可处理任务，按节点顺序取第一个。
+  // 没有权限码但有待办的账号（例如只被通知到某个节点）也要能识别出自己的节点。
+  const authorizedStages = useMemo(() => {
+    const fromPermissions = roleStages.filter(
+      (stage): stage is Exclude<ApprovalStageId, 'customer'> => stage !== 'customer'
+    );
+    if (fromPermissions.length) return fromPermissions;
+    if (!liveQuery.enabled) return [];
+    const capable = new Set<ApprovalStageId>();
+    for (const detail of Object.values(liveAccess.entries)) {
+      const version = detail.currentVersion;
+      if (detail.workflowApproval?.actionable === true && detail.workflowApproval.versionId === version.id) {
+        const actor = salesPlanWorkflow(version.planTypeCode).actor(version.status);
+        if (actor) capable.add(actor);
+      }
+      for (const entry of detail.actionContext?.roleActions ?? [])
+        if (entry.allowedActions.length > 0) capable.add(entry.role);
+    }
+    return SALES_PLAN_ROLES.filter((stage) => capable.has(stage) && stage !== 'customer');
+  }, [liveAccess.entries, liveQuery.enabled, roleStages]);
+  // 流程图收起态的节点口径：与展开态高亮一致（用户所选的节点，默认即其第一个有权限审批的节点）。
+  const stageIndicatorStage = displayStage ?? authorizedStages[0];
+  // 默认节点：权限码给出的已在上面的 effect 设好；这里补“没有权限码、但服务端给了同版本可处理任务”的账号，
+  // 且只自动设一次，之后用户自己切到「全部节点」或别的节点都不再覆盖。
+  const defaultStageApplied = useRef(false);
+  useEffect(() => {
+    if (!liveQuery.enabled || defaultStageApplied.current) return;
+    if (liveStageFilter !== undefined) {
+      defaultStageApplied.current = true;
+      return;
+    }
+    const fallback = authorizedStages[0];
+    if (!fallback) return;
+    defaultStageApplied.current = true;
+    setLiveStageFilter(fallback);
+    setDimension(APPROVAL_DIMENSIONS_BY_STAGE[fallback][0]);
+    setSelectedRowIds([]);
+    setPage(1);
+  }, [authorizedStages, liveQuery.enabled, liveStageFilter]);
+
+
   const refreshLiveAuthority = () => {
     setPermissionDeniedVersions(new Set());
     liveAccess.refresh();
@@ -896,6 +993,7 @@ const RegionalApprovalWorkbench: React.FC<{
         visibleCount: liveRows.length,
         pendingCount: liveRows.filter((row) => row.approvalState === 'pending').length,
         warningCount: liveRows.filter((row) => row.approvalState === 'returned').length,
+        // 汇总读展示行（含版本汇总与本节点调整），和表格里看到的数保持一致。
         quantity: draftedLiveRows.length === 0
           ? '0'
           : draftedLiveRows.every((row) => /^-?\d+(?:\.\d+)?$/.test(row.currentQty))
@@ -926,8 +1024,8 @@ const RegionalApprovalWorkbench: React.FC<{
   }, [
     scopeSummary,
     draftedLiveRows,
-    liveQuery.enabled,
     liveRows,
+    liveQuery.enabled,
     localApprovalResults.length,
     primaryVersion,
     savedAdjustments.length,
@@ -952,12 +1050,14 @@ const RegionalApprovalWorkbench: React.FC<{
       pageSize,
       dimension,
       categoryComparison,
+      stageLaneOpen,
       selectedRowIds,
       liveActionReceipts,
     });
   }, [
     appliedFilters,
     categoryComparison,
+    stageLaneOpen,
     compareVersion,
     currentStage,
     dimension,
@@ -991,11 +1091,9 @@ const RegionalApprovalWorkbench: React.FC<{
       return;
     }
     if (liveQuery.queueState.status !== 'success') return;
-    if (liveQuery.queueSettledPage !== clampSalesPlanPageNumber(page)) return;
-    const pages = clampSalesPlanPageNumber(liveQuery.queueState.data.pages);
-    const serverPage = Math.min(clampSalesPlanPageNumber(liveQuery.queueState.data.current), pages);
-    if (page !== serverPage) setPage(serverPage);
-  }, [liveQuery.enabled, liveQuery.queueSettledPage, liveQuery.queueState, page, pageData.page]);
+    // 分页改为按分组后的外层行：页码只受本地页数约束，数据变化后越界就回到最后一页。
+    if (page !== liveCurrentPage) setPage(liveCurrentPage);
+  }, [liveQuery.enabled, liveQuery.queueState.status, page, liveCurrentPage, pageData.page]);
 
   const liveEvidence = useMemo<RegionalApprovalWorkbenchContext['evidence']>(() => {
     if (!liveQuery.enabled) {
@@ -1108,9 +1206,10 @@ const RegionalApprovalWorkbench: React.FC<{
         metrics,
         pagination: usingLiveQueue
           ? {
-              page: liveQuery.queueState.data?.current ?? page,
-              pageSize: liveQuery.queueState.data?.size ?? pageSize,
-              total: liveQuery.queueState.data?.total ?? 0,
+              // 与界面一致：分页对象是分组后的外层组织行。
+              page: liveCurrentPage,
+              pageSize,
+              total: liveOuterRows.length,
             }
           : { page: pageData.page, pageSize: pageData.pageSize, total: pageData.total },
         evidence: liveEvidence,
@@ -1141,6 +1240,9 @@ const RegionalApprovalWorkbench: React.FC<{
     liveEvidence,
     liveAuthorityContext,
     draftedLiveRows,
+    liveRows,
+    liveCurrentPage,
+    liveOuterRows,
     onContextChange,
     page,
     pageData,
@@ -1472,10 +1574,10 @@ const RegionalApprovalWorkbench: React.FC<{
           [exportLabel('scope'), exportLabel('currentPage')],
           [exportLabel('month'), liveQuery.selectedPeriodMonth ?? '—'],
           [exportLabel('version'), exportLabel('currentVersion')],
-          [exportLabel('page'), liveQuery.queueState.data.current],
-          [exportLabel('pageSize'), liveQuery.queueState.data.size],
+          [exportLabel('page'), liveCurrentPage],
+          [exportLabel('pageSize'), pageSize],
           [exportLabel('exported'), liveRows.length],
-          [exportLabel('total'), liveQuery.queueState.data.total],
+          [exportLabel('total'), liveOuterRows.length],
           [exportLabel('stage'), t(`common.assistantSurface.regionalApproval.stages.${liveStageFilter ?? 'all'}`)],
           ...(['areaCode', 'provinceCode', 'orgCode', 'dealerCode', 'status'] as const).map((field) => [
             exportLabel(field),
@@ -1491,7 +1593,7 @@ const RegionalApprovalWorkbench: React.FC<{
         );
         const link = document.createElement('a');
         link.href = url;
-        link.download = `sales-plan-approval-${liveQuery.selectedPeriodMonth ?? 'period'}-${liveStageFilter ?? 'all'}-page-${liveQuery.queueState.data.current}.xlsx`;
+        link.download = `sales-plan-approval-${liveQuery.selectedPeriodMonth ?? 'period'}-${liveStageFilter ?? 'all'}-page-${liveCurrentPage}.xlsx`;
         link.click();
         URL.revokeObjectURL(url);
         setExportFeedback({
@@ -1663,6 +1765,9 @@ const RegionalApprovalWorkbench: React.FC<{
         );
         const organizationName =
           projection.name ?? t('common.assistantSurface.regionalApproval.query.unnamedOrganization');
+        const rowExpanded = tableRow.members
+          ? expandedLiveGroups.includes(tableRow.tableRowId)
+          : inlinePlanId === row.planId;
         return (
           <div
             className={styles.organizationCell}
@@ -1701,6 +1806,10 @@ const RegionalApprovalWorkbench: React.FC<{
                     : organizationName
                 }
               >
+                {/* 展开态用名称前置小三角体现，不再单独占一列控件。 */}
+                <span className={styles.organizationCaret} data-expanded={rowExpanded} aria-hidden='true'>
+                  {rowExpanded ? <Down size={12} /> : <Right size={12} />}
+                </span>
                 {organizationName}
               </Button>
               {liveApprovalStatusTag(tableRow)}
@@ -1762,7 +1871,14 @@ const RegionalApprovalWorkbench: React.FC<{
         if (tableRow.kind === 'plan') {
           const progress = regionalApprovalLiveProgress({...tableRow.plan,currentAmount:tableRow.plan.mPlanAmount ?? '—'});
           return <div className={styles.categoryProgressCell}>
-            <strong>{t('common.correction.amountProgress',{value:formattedProgress(progress.amount)})}</strong>
+            {/* V1.8 #09：达成率用进度条 + 百分比，百分比前不再带「金额」。 */}
+            <strong>{formattedProgress(progress.amount)}</strong>
+            <Progress
+              percent={Math.min(Math.max(progress.amount ?? 0, 0), 100)}
+              showText={false}
+              size='small'
+              color={salesPlanProgressBarColor(progress.amount)}
+            />
             {comparisonFor(tableRow).compareAmount && <small>{t('common.assistantSurface.regionalApproval.compareProgress', {value:comparisonFor(tableRow).compareTargetAmount
               ? formattedProgress(regionalApprovalLiveProgress({...tableRow.plan,currentQty:comparisonFor(tableRow).compareQty!,currentAmount:comparisonFor(tableRow).compareAmount!,targetQty:comparisonFor(tableRow).compareTargetQty!,targetAmount:comparisonFor(tableRow).compareTargetAmount!}).amount)
               : t('common.assistantSurface.regionalApproval.versionTargetMissing')})}</small>}
@@ -1779,17 +1895,12 @@ const RegionalApprovalWorkbench: React.FC<{
         const categoryProgress = categoryTarget && categoryTarget !== 0 ? Number(category.amount) / categoryTarget * 100 : undefined;
         return (
           <div className={styles.categoryProgressCell}>
-            <strong>
-              {t('common.assistantSurface.regionalApproval.categoryRows.amountProgress', {
-                progress: formattedProgress(categoryProgress),
-              })}
-            </strong>
+            <strong>{formattedProgress(categoryProgress)}</strong>
             <Progress
               percent={Math.min(categoryProgress ?? 0, 100)}
               showText={false}
               size='small'
-              color='rgb(var(--danger-6))'
-              width={100}
+              color={salesPlanProgressBarColor(categoryProgress)}
             />
             <small>
               {t('common.assistantSurface.regionalApproval.categoryRows.targetAmount', {
@@ -1993,8 +2104,15 @@ const RegionalApprovalWorkbench: React.FC<{
         client={liveActionClient}
         permissionCodes={permissionCodes}
         evidence={liveAccess.entries[activeLiveActionRow.versionId]}
+        pendingValues={livePendingValues[activeLiveActionRow.planId]}
         onPermissionDenied={(versionId) => setPermissionDeniedVersions((current) => new Set(current).add(versionId))}
         onSucceeded={async (receipt, request) => {
+          setLivePendingValues((current) => {
+            if (!(activeLiveActionRow.planId in current)) return current;
+            const next = { ...current };
+            delete next[activeLiveActionRow.planId];
+            return next;
+          });
           if (request.action === 'SAVE') {
             const before = liveAccess.entries[receipt.versionId];
             if (!before || !detailClient) throw new Error('Save verification unavailable');
@@ -2075,7 +2193,33 @@ const RegionalApprovalWorkbench: React.FC<{
             <Tag color='orange'>{t('common.assistantSurface.regionalApproval.query.fixtureCapabilitiesTag')}</Tag>
           ) : null}
         </div>
-        <div className={styles.scope} aria-label={t('common.assistantSurface.regionalApproval.scopeAria')}>
+        <div className={styles.headerRight}>
+          {/* 流程图默认收起：收起态只在标题行右侧留一个「当前节点」入口，点开才占一整行。 */}
+          <Button
+            type='text'
+            size='small'
+            className={styles.stageLaneToggle}
+            data-testid='regional-approval-flow-toggle'
+            aria-expanded={stageLaneOpen}
+            aria-controls='regional-approval-stage-lane'
+            aria-label={t(
+              `common.assistantSurface.regionalApproval.stageLaneToggle.${stageLaneOpen ? 'collapse' : 'expand'}`
+            )}
+            title={t(
+              `common.assistantSurface.regionalApproval.stageLaneToggle.${stageLaneOpen ? 'collapse' : 'expand'}`
+            )}
+            onClick={() => setStageLaneOpen((open) => !open)}
+          >
+            <span>
+              {t('common.assistantSurface.regionalApproval.stageLaneToggle.current', {
+                stage: stageIndicatorStage
+                  ? t(stageLabelKey(stageIndicatorStage))
+                  : t('common.assistantSurface.regionalApproval.stages.all'),
+              })}
+            </span>
+            {stageLaneOpen ? <Up size={12} /> : <Down size={12} />}
+          </Button>
+          <div className={styles.scope} aria-label={t('common.assistantSurface.regionalApproval.scopeAria')}>
           <span className={styles.monthField}>
             <small>{t('common.assistantSurface.regionalApproval.planMonth')}</small>
             {liveQuery.enabled ? (
@@ -2187,10 +2331,16 @@ const RegionalApprovalWorkbench: React.FC<{
             </Tooltip>
           </div>
         </div>
+        </div>
       </header>
 
-      <div className={styles.stageViewport}>
+      <div
+        className={styles.stageViewport}
+        data-testid='regional-approval-flow-lane'
+        data-collapsed={!stageLaneOpen}
+      >
         <nav
+          id='regional-approval-stage-lane'
           className={styles.stageLane}
           data-live-status={liveQuery.enabled}
           aria-label={t('common.assistantSurface.regionalApproval.stageLane')}
@@ -2296,7 +2446,9 @@ const RegionalApprovalWorkbench: React.FC<{
               </span>
               <span>
                 <small>{t('common.assistantSurface.regionalApproval.scopeTotals.amountVariance')}</small>
-                <strong>{liveQuery.enabled && !dashboardReady || amountVariance === undefined ? '—' : exactSignedMoney(amountVariance)}</strong>
+                <strong className={salesPlanVarianceClass(amountVariance, styles.variancePositive, styles.varianceNegative)}>
+                  {liveQuery.enabled && !dashboardReady || amountVariance === undefined ? '—' : exactSignedMoney(amountVariance)}
+                </strong>
               </span>
               <span>
                 <small>{t('common.assistantSurface.regionalApproval.scopeTotals.planQuantity')}</small>
@@ -2393,15 +2545,6 @@ const RegionalApprovalWorkbench: React.FC<{
             aria-label={t('common.assistantSurface.regionalApproval.filters.ariaLabel')}
           >
             <div id={filterPanelId} className={styles.advancedControls} data-expanded={narrowFiltersExpanded}>
-              <div className={styles.filterHeading}>
-                <strong>{t('common.assistantSurface.regionalApproval.filters.title')}</strong>
-                {!liveQuery.enabled ? (
-                  <Tag color='orange'>{t('common.assistantSurface.regionalApproval.query.fixtureScopeTag')}</Tag>
-                ) : null}
-                {(liveQuery.enabled ? liveFiltersDirty : filtersDirty) ? (
-                  <Tag color='orange'>{t('common.assistantSurface.regionalApproval.filters.dirty')}</Tag>
-                ) : null}
-              </div>
               <div className={`${styles.filterRow} ${liveQuery.enabled ? styles.liveFilterRow : ''}`}>
                 <div className={styles.fieldControl}>
                   <span>{t('common.assistantSurface.regionalApproval.filters.area')}</span>
@@ -2562,7 +2705,14 @@ const RegionalApprovalWorkbench: React.FC<{
                     </Select>
                   </div>
                 ) : null}
+                {/* 删掉「组织范围」标题行后，状态标签跟查询/重置放在同一格，不丢信息也不挤占筛选列。 */}
                 <div className={styles.filterActions}>
+                  {!liveQuery.enabled ? (
+                    <Tag color='orange'>{t('common.assistantSurface.regionalApproval.query.fixtureScopeTag')}</Tag>
+                  ) : null}
+                  {(liveQuery.enabled ? liveFiltersDirty : filtersDirty) ? (
+                    <Tag color='orange'>{t('common.assistantSurface.regionalApproval.filters.dirty')}</Tag>
+                  ) : null}
                   <Button
                     size='small'
                     onClick={applyFilters}
@@ -2633,29 +2783,13 @@ const RegionalApprovalWorkbench: React.FC<{
                           canEdit={record.kind === 'plan' && Boolean(access.detail)}
                           categoryName={record.kind === 'category' ? record.category.categoryName : undefined}
                           onMetricsChange={record.kind === 'plan' && !record.members ? (metrics) => handleLiveAdjustmentMetrics(record.plan.planId, metrics) : undefined}
+                          onPendingValuesChange={record.kind === 'plan' && !record.members ? (values) => handleLivePendingValues(record.plan.planId, values) : undefined}
                         />
                       );
                     }}
-                    expandProps={{
-                      width: 40,
-                      icon: ({ expanded, record }) => (
-                        <button
-                          type='button'
-                          aria-expanded={expanded}
-                          aria-label={t('common.assistantSurface.regionalApproval.expandOrganization', {
-                            plan: record.kind === 'category' ? record.category.categoryName : projectRegionalApprovalLiveDimension(record.plan, record.displayDimension ?? dimension).name,
-                          })}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setExpandedLiveGroups((current) => expanded
-                              ? current.filter((id) => id !== record.tableRowId)
-                              : [...current, record.tableRowId]);
-                          }}
-                        >
-                          {expanded ? <Down size={14} /> : <Right size={14} />}
-                        </button>
-                      ),
-                    }}
+                    // V1.8 #10：去掉行首独立展开箭头，展开/收起统一走组织名称；这里只保留展开能力。
+                    // 宽度必须给非 0 值：Arco 计算固定列偏移时用 `width || 40`，给 0 会被当成 40，左列会压掉 40px。
+                    expandProps={{ width: 1, icon: () => null }}
                     expandedRowKeys={[...expandedLiveGroups, ...(inlinePlanId ? [inlinePlanId] : [])]}
                     onExpandedRowsChange={setExpandedLiveGroups}
                     loading={liveCategoriesLoading}
@@ -2727,21 +2861,15 @@ const RegionalApprovalWorkbench: React.FC<{
               </div>
               <span>
                 {t('common.assistantSurface.regionalApproval.pagination.total', {
-                  count: liveQuery.enabled ? (liveQuery.queueState.data?.total ?? 0) : pageData.total,
+                  count: liveQuery.enabled ? liveOuterRows.length : pageData.total,
                 })}
               </span>
               <Pagination
                 size='small'
-                current={
-                  liveQuery.enabled
-                    ? liveQuery.queueState.status === 'loading'
-                      ? page
-                      : (liveQuery.queueState.data?.current ?? page)
-                    : pageData.page
-                }
-                pageSize={liveQuery.enabled ? (liveQuery.queueState.data?.size ?? pageSize) : pageData.pageSize}
-                total={liveQuery.enabled ? (liveQuery.queueState.data?.total ?? 0) : pageData.total}
-                onChange={setPage}
+                current={liveQuery.enabled ? liveCurrentPage : pageData.page}
+                pageSize={liveQuery.enabled ? pageSize : pageData.pageSize}
+                total={liveQuery.enabled ? liveOuterRows.length : pageData.total}
+                onChange={(next) => setPage(Math.min(Math.max(1, next), liveQuery.enabled ? livePageCount : pageData.pageCount))}
               />
             </div>
           </footer>

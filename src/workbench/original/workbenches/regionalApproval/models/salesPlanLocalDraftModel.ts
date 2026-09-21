@@ -3,6 +3,7 @@ import type { GeaSalesPlanDetail, GeaSalesPlanListItem, GeaSalesPlanSkuAdjustmen
 import { addExactDecimals, multiplyExactDecimals } from '../regionalApprovalQueryModel.ts';
 import { salesPlanEditableQuantity } from './salesPlanAccessModel.ts';
 import { salesPlanSkusMatchVersion } from './salesPlanDetailModel.ts';
+import type { ApprovalStageId } from '../regionalApprovalFixture.ts';
 
 export type SalesPlanLocalDraft = {
   planId: string;
@@ -11,6 +12,8 @@ export type SalesPlanLocalDraft = {
   sourceSnapshot: string;
   adjustments: GeaSalesPlanSkuAdjustment[];
   remark: string;
+  /** 草稿里的调整量是相对哪个节点口径算出来的；缺省表示按状态口径。 */
+  role?: ApprovalStageId;
 };
 
 export type SalesPlanLocalDraftStore = Record<string, SalesPlanLocalDraft>;
@@ -51,8 +54,9 @@ export const salesPlanDraftSnapshot = (
 
 export const salesPlanDraftMatches = (
   draft: SalesPlanLocalDraft | undefined,
-  row: Pick<GeaSalesPlanListItem, 'planId' | 'versionId' | 'status'>,
-  detail: GeaSalesPlanDetail
+  row: Pick<GeaSalesPlanListItem, 'planId' | 'versionId' | 'status'> & Partial<Pick<GeaSalesPlanListItem, 'planTypeCode'>>,
+  detail: GeaSalesPlanDetail,
+  role?: ApprovalStageId
 ): draft is SalesPlanLocalDraft => {
   if (
     !draft ||
@@ -66,6 +70,8 @@ export const salesPlanDraftMatches = (
   )
     return false;
   const codes = new Set<string>();
+  if (draft.role !== undefined && !['region', 'province', 'area', 'category'].includes(draft.role)) return false;
+  const baselineRole = role ?? draft.role;
   return draft.adjustments.every((adjustment) => {
     if (
       !adjustment ||
@@ -77,7 +83,8 @@ export const salesPlanDraftMatches = (
       return false;
     codes.add(adjustment.skuCode);
     const sku = detail.skus.find((item) => String(item.skuCode) === adjustment.skuCode);
-    const baseline = sku && salesPlanEditableQuantity(sku, row.status);
+    // 基线必须和写草稿的界面用同一套口径：优先用本次请求角色，其次用草稿自己记录的角色，最后按状态取值。
+    const baseline = sku && salesPlanEditableQuantity(sku, row.status, row.planTypeCode ?? 'Y', baselineRole);
     const qty = baseline === undefined ? '—' : addExactDecimals([baseline, adjustment.adjustQty]);
     return !!sku && qty !== '—' && !qty.startsWith('-') && multiplyExactDecimals(qty, String(sku.price)) !== undefined;
   });

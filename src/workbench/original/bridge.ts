@@ -7,7 +7,7 @@ export type * from './contracts.ts';
 /** 由 Host 持有的 GEA 传输；认证、授权和写入仍由服务端负责。 */
 export interface WorkbenchHost {
   salesPlan: {
-    draft?: { invoke(params: {planId: string; versionId: string; draft?: SalesPlanLocalDraft; signal?: AbortSignal}): Promise<{draft: SalesPlanLocalDraft | null; sourceSnapshot?: string; savedAt?: string; stale?: boolean}> };
+    draft?: { invoke(params: {planId: string; versionId: string; approvalRole?: string; draft?: SalesPlanLocalDraft; signal?: AbortSignal}): Promise<{draft: SalesPlanLocalDraft | null; sourceSnapshot?: string; savedAt?: string; stale?: boolean}> };
     periods: { invoke(query?: Api.GeaSalesPlanPeriodQuery): Promise<Api.GeaSalesPlanPage<Api.GeaSalesPlanPeriod>> };
     list: { invoke(query?: Api.GeaSalesPlanPageQuery): Promise<Api.GeaSalesPlanPage<Api.GeaSalesPlanListItem>> };
     detail: { invoke(query: Api.GeaSalesPlanResourceQuery): Promise<Api.GeaSalesPlanDetail> };

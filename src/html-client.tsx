@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { businessMenuLabel } from "./business-navigation.ts";
 export function registerHtmlClient(ctx: any) {
   async function request(path: string, body?: any, signal?: AbortSignal) {
     const response = await fetch("/api/gea-html/" + path, {
@@ -263,7 +264,7 @@ export function registerHtmlClient(ctx: any) {
                 {
                   name: "main",
                   key: page.id,
-                  label: () => page.name,
+                  label: () => businessMenuLabel(page.id, page.name),
                   order: page.order ?? 20,
                 },
                 (props: any) => <Frame {...props} plugin={{ ...plugin, workbenchId: page.id, pageView: page.view, name: page.name }} />,

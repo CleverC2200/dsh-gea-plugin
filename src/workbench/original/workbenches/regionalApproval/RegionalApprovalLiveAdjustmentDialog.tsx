@@ -20,6 +20,7 @@ import {
   type SalesPlanAdjustmentRecord,
 } from './models/salesPlanAdjustmentModel.ts';
 import { salesPlanSkusMatchVersion } from './models/salesPlanDetailModel.ts';
+import { salesPlanVarianceClass } from './models/salesPlanVarianceModel.ts';
 import { addExactDecimals, formatExactDecimal, type RegionalApprovalLiveRow } from './regionalApprovalQueryModel.ts';
 import type { ApprovalDimension } from './regionalApprovalFixture.ts';
 import styles from './RegionalApprovalLiveAdjustmentDialog.module.css';
@@ -234,7 +235,7 @@ const RegionalApprovalLiveAdjustmentDialog: React.FC<{
       title: t('common.assistantSurface.regionalApproval.liveAdjustment.columns.deltaQty'),
       width: 90,
       render: (_, group) => (
-        <span className={group.quantityDelta.startsWith('-') ? styles.negative : styles.positive}>
+        <span className={salesPlanVarianceClass(group.quantityDelta, styles.positive, styles.negative)}>
           {signed(group.quantityDelta)}
         </span>
       ),
@@ -243,7 +244,7 @@ const RegionalApprovalLiveAdjustmentDialog: React.FC<{
       title: t('common.assistantSurface.regionalApproval.liveAdjustment.columns.deltaAmount'),
       width: 130,
       render: (_, group) => (
-        <span className={group.amountDelta.startsWith('-') ? styles.negative : styles.positive}>
+        <span className={salesPlanVarianceClass(group.amountDelta, styles.positive, styles.negative)}>
           {signed(group.amountDelta)}
         </span>
       ),

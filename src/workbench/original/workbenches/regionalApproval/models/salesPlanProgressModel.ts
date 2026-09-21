@@ -12,6 +12,17 @@ export type SalesPlanProgressNode = {
   children: SalesPlanProgressNode[];
 };
 
+/**
+ * 达成率进度条配色（V1.8 #09，D23 采用业务文档推荐口径）：
+ * <95% 红、95–100% 橙、≥100% 绿；取不到数值时按红色处理（和其它缺失态一致地显眼）。
+ */
+export const salesPlanProgressBarColor = (percent: number | undefined): string =>
+  percent === undefined || percent < 95
+    ? 'rgb(var(--danger-6))'
+    : percent < 100
+      ? 'rgb(var(--warning-6))'
+      : 'rgb(var(--success-6))';
+
 /** 列表已由 GEA 限定范围；只聚合返回的标识，绝不虚构缺失客户。 */
 export const buildSalesPlanProgressTree = (records: readonly GeaSalesPlanListItem[]): SalesPlanProgressNode[] => {
   const roots: SalesPlanProgressNode[] = [];

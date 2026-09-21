@@ -82,12 +82,26 @@
   font-size: 11px;
 }
 
+/* 顶部标签（计划月份 / 版本 / 对比）加粗；右侧下拉里的取值保持常规字重，读起来才不糊。 */
+.scope small {
+  font-weight: 600;
+}
+
 .scope strong,
 .stageCopy strong,
 .stackCell strong,
 .queueMetrics strong {
   color: var(--text-primary);
   font-size: 12px;
+}
+
+/* V1.8 #14：差额正数红、负数绿，颜色只作用于差额数值本身。 */
+.queueMetrics .variancePositive {
+  color: rgb(var(--danger-6));
+}
+
+.queueMetrics .varianceNegative {
+  color: rgb(var(--success-6));
 }
 
 .scope :global(.arco-select) {
@@ -131,6 +145,32 @@
   overflow-y: hidden;
   border-bottom: 1px solid var(--bg-3);
   background: var(--bg-1);
+}
+
+/* 流程图默认收起：收起时不占高度，只留标题行右侧的「当前节点」入口。 */
+.stageViewport[data-collapsed='true'] {
+  display: none;
+}
+
+.headerRight {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.stageLaneToggle {
+  flex: 0 0 auto;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.stageLaneToggle:hover,
+.stageLaneToggle:focus-visible {
+  color: rgb(var(--primary-6));
 }
 
 .stageLane {
@@ -425,7 +465,8 @@
 }
 
 .categoryProgressCell :global(.arco-progress-line) {
-  width: 100px;
+  /* V1.8 #09：进度条宽度自适应列宽，不截断。 */
+  width: 100%;
   margin: 0;
 }
 
@@ -467,6 +508,12 @@
   display: flex;
   align-items: center;
   gap: 7px;
+}
+
+/* 删掉「组织范围」标题行后，状态标签（样例候选 / 草稿待应用）与查询按钮同格显示。 */
+.filterActions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .toolbarActions {
@@ -518,16 +565,6 @@
 .fieldControl > span,
 .pageSizeControl > span {
   color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.filterHeading {
-  display: flex;
-  min-width: 760px;
-  align-items: center;
-  gap: 7px;
-  margin: 3px 0 5px;
-  color: var(--text-primary);
   font-size: 12px;
 }
 
@@ -720,8 +757,18 @@
   min-height: 32px;
   justify-content: flex-start;
   padding: 0;
-  color: var(--text-primary);
+  /* V1.8 #10：组织名称是展开入口，保持蓝色 + 手型，并前置展开态小三角。 */
+  color: rgb(var(--primary-6));
   font-weight: 600;
+  cursor: pointer;
+}
+
+.organizationCaret {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 4px;
+  color: rgb(var(--primary-6));
+  transition: transform 120ms ease;
 }
 
 .organizationCell > span,
@@ -779,7 +826,6 @@
 
   .controlToolbar,
   .advancedControls,
-  .filterHeading,
   .filterRow,
   .exportFeedback,
   .footerControls {
@@ -985,12 +1031,6 @@
   .advancedControls[data-expanded='false'] {
     display: none;
   }
-  .filterHeading {
-    min-width: 0;
-    flex: 0 0 auto;
-    margin: 0;
-  }
-  .filterHeading > strong,
   .fieldControl > span {
     display: none;
   }
@@ -1176,30 +1216,9 @@
   min-width: 0;
   flex: 1;
 }
+/* V1.8 #10：展开入口已移到组织名称，这一列只留 1px 占位，图标整体隐藏。 */
 .organizationTable :global(.arco-table-cell-expand-icon) {
-  flex: 0 0 20px;
-  margin-right: 4px;
-}
-.organizationTable :global(.arco-table-cell-expand-icon button) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.organizationTable :global(.arco-table-cell-expand-icon button:hover) {
-  background: var(--bg-3);
-  color: var(--text-primary);
-}
-.organizationTable :global(.arco-table-cell-expand-icon button:focus-visible) {
-  outline: 2px solid rgb(var(--primary-6));
-  outline-offset: 2px;
+  display: none;
 }
 .organizationTable .detailTrigger {
   display: block;
@@ -1278,6 +1297,8 @@
   line-height: 22px;
 }
 .orderTabs { display: flex; flex: 0 0 auto; gap: 2px; margin-right: 4px; }
+/* 「月初 / 纠偏」切换项加粗，取值仍是常规字重。 */
+.orderTabs :global(.arco-btn) { font-weight: 600; }
 .scope { flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-end; overflow: visible; gap: 6px; margin-left: auto; }
 .versionControls { flex-shrink: 0; gap: 10px; }
 .versionField { flex: 0 0 auto; gap: 4px; }

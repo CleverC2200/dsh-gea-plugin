@@ -426,6 +426,11 @@
         "unknownStatus": "Status {{status}} (node unconfirmed)"
       },
       "stageLane": "Per-node data status",
+      "stageLaneToggle": {
+        "current": "Current node: {{stage}}",
+        "expand": "Expand approval flow",
+        "collapse": "Collapse approval flow"
+      },
       "stageProgress": "Progress {{progress}}%",
       "contextSummary": "City manager approval · {{stage}} · {{count}} organization plans",
       "authorityContextSummary": "{{source}} · {{stage}} · plan {{planId}} · status {{status}}",
@@ -436,7 +441,7 @@
       },
       "customerCount": "{{count}} customers",
       "quantityProgress": "Qty {{progress}}%",
-      "amountProgress": "Amount {{progress}}%",
+      "amountProgress": "{{progress}}%",
       "versions": {
         "group": "Plan version comparison",
         "primary": "Viewing version",
@@ -466,7 +471,6 @@
         "expand": "Show filters",
         "collapse": "Hide filters",
         "ariaLabel": "Organization cascade filters",
-        "title": "Organization scope",
         "draft": "Draft filters",
         "applied": "Applied",
         "dirty": "Draft pending",
@@ -670,7 +674,9 @@
           "loading": "Loading draft…",
           "saving": "Saving draft…",
           "saved": "Saved automatically",
-          "failed": "Draft save failed. Retry."
+          "failed": "Draft save failed. Retry.",
+          "failedShort": "Save failed",
+          "retryShort": "Retry"
         ,"retry": "Retry save"
         },
         "editCurrent": "Edit adjustment draft",
@@ -867,7 +873,8 @@
           "conflict": "The version changed or another action won the race. Local state was not changed; refresh the authoritative queue.",
           "rateLimited": "Too many requests. Retry later with the same idempotency key; no second action will be created.",
           "unavailable": "The result is unknown. Close and refresh authoritative state, or retry here with the same idempotency key. Do not start a new action intent.",
-          "failed": "The request failed and local state was not changed. Refresh the authoritative queue before deciding."
+          "failed": "The request failed and local state was not changed. Refresh the authoritative queue before deciding.",
+          "reference": " (Error reference: {{id}}, quote it to your administrator)"
         },
         "approvalRole": "Approval role",
         "selectRole": "Choose the role for this action",
@@ -913,7 +920,7 @@
         "status": {
           "loading": "Running the local sample action…",
           "success": "The local sample action succeeded; no real approval was triggered.",
-          "failure": "The local sample action failed ({{code}}). Adjustments and form values are preserved for retry.",
+          "failure": "The local sample action failed. Adjustments and form values are preserved for retry.",
           "cancelled": "The local sample action was cancelled; late results will be ignored.",
           "batch": "Batch completed: {{success}} succeeded and {{failed}} failed."
         },
@@ -976,8 +983,8 @@
         "category": "Category",
         "quantity": "Plan quantity",
         "amount": "Plan amount",
-        "progress": "Plan / Target",
-        "categoryProgress": "Plan / Target",
+        "progress": "Plan amount / Target amount",
+        "categoryProgress": "Plan amount / Target amount",
         "adjustment": "Adjustment",
         "comparison": "Version comparison",
         "returnReason": "Return reason",
@@ -988,7 +995,6 @@
         "name": "{{category}} category",
         "skuCount": "{{count}} SKUs · category rows cannot be approved",
         "basePlan": "Original {{quantity}} · {{amount}}",
-        "amountProgress": "Amount {{progress}}",
         "quantityProgress": "Quantity {{progress}}",
         "baseAmount": "Original amount {{amount}}",
         "baseQuantity": "Original quantity {{quantity}}",

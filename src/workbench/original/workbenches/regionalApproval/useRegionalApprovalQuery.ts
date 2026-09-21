@@ -211,8 +211,9 @@ export const useRegionalApprovalQuery = ({
     setQueueSettledStageKey(undefined);
     const requestedPage = clampSalesPlanPageNumber(page);
     const requestedSize = clampSalesPlanPageNumber(pageSize, 20);
-    const requiredPrefix = requestedPage * requestedSize;
-    const serverPageSize = Math.min(200, requiredPrefix);
+    // 列表最终按“外层组织行”分页，必须在客户端拿到筛选范围内的完整计划集合才能分组，
+    // 所以这里不再只取分页前缀，而是把每个分区取全（单页 200 条，按上游 total 循环补齐）。
+    const serverPageSize = 200;
     const partitions = periodQueries.flatMap(({ period, statuses }) =>
       (statuses ?? [undefined]).map((status) => ({ period, status }))
     );
@@ -230,29 +231,35 @@ export const useRegionalApprovalQuery = ({
               signal: request.signal,
             };
             const first = await client.list.invoke(baseQuery);
-            const pageCount = Math.min(
-              Math.ceil(first.total / serverPageSize),
-              Math.ceil(requiredPrefix / serverPageSize)
-            );
-            const rest = await Promise.all(
-              Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
-                client.list.invoke({ ...baseQuery, pageNo: index + 2 })
-              )
-            );
+            const pageSizeOfUpstream = Math.max(1, Math.min(serverPageSize, first.size ?? serverPageSize));
+            const pageCount = Math.max(1, Math.ceil(first.total / pageSizeOfUpstream));
+            const rest = pageCount > 1
+              ? await Promise.all(
+                  Array.from({ length: pageCount - 1 }, (_, index) =>
+                    client.list.invoke({ ...baseQuery, pageNo: index + 2 })
+                  )
+                )
+              : [];
             return { records: [first, ...rest].flatMap((result) => result.records), total: first.total };
           })
         ).then((results) => {
-          const start = (requestedPage - 1) * requestedSize;
-          const records = results
-            .flatMap((result) => result.records)
+          // 同一计划只会属于一个 (period, status) 分区；这里再去重一次，
+          // 避免上游分页异常重发同一条导致列表出现重复组织行。
+          const records = [...new Map(
+            results
+              .flatMap((result) => result.records)
+              .map((record) => [String(record.planId), record] as const)
+          ).values()]
             .toSorted((left, right) =>
               String(right.updatedAt ?? right.submitTime ?? right.planId).localeCompare(
                 String(left.updatedAt ?? left.submitTime ?? left.planId)
               )
             );
           const total = results.reduce((sum, result) => sum + result.total, 0);
+          // records 是完整集合；current / size / pages 只回显调用方请求的分页参数，
+          // 真正的分页由工作台按分组后的外层行完成。
           return {
-            records: records.slice(start, start + requestedSize),
+            records,
             total,
             size: requestedSize,
             current: requestedPage,
@@ -278,8 +285,6 @@ export const useRegionalApprovalQuery = ({
   }, [
     periodsState.status,
     client,
-    page,
-    pageSize,
     queueRevision,
     selectedPeriodMonth,
     stageStatusesKey,

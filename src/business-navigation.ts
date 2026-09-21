@@ -1,5 +1,18 @@
 /** Plugins declare their navigation using the standard DSH main-slot label/order. */
 type Entry = { options: { key?: string; label?: (() => string) | string; order?: number } };
+
+/**
+ * 业务菜单显示名覆盖表：HTML 插件的 `plugin.json` 由别的仓库发布，改菜单文案不必重发插件包。
+ * 只影响侧边栏菜单名，插件内部页面自己的标题仍由插件包决定。
+ */
+const BUSINESS_MENU_LABELS: Readonly<Record<string, string>> = {
+  'inventory-aqkc': '基地库存',
+  'inventory-qll': '全链库存',
+};
+
+export const businessMenuLabel = (pageId: string, fallback: string): string =>
+  BUSINESS_MENU_LABELS[pageId] ?? fallback;
+
 export function registeredBusinessPanels(entries: readonly Entry[]) {
  return entries.filter(entry => entry.options.key?.startsWith('inventory-') && entry.options.label)
  .map(({options}) => ({id: options.key!, title: (typeof options.label === 'function' ? options.label() : options.label!).replace(/\s+Agent$/i, ""), order: options.order ?? 0}))

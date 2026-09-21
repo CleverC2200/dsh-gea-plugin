@@ -71,6 +71,8 @@ test('granted visible region role directly approves tracking rows when current-n
   await page.getByRole('dialog',{name:'内测声明',exact:true}).getByRole('button',{name:'继续',exact:true}).click();
 
   const frame = page.frameLocator('iframe[data-gea-workbench]');
+  // V1.8 #05：流程图默认收起，先展开再操作节点。
+  if(!(await frame.getByTestId('regional-approval-flow-lane').isVisible())) await frame.getByTestId('regional-approval-flow-toggle').click();
   const region = frame.getByTestId('regional-approval-stage-region');
   await expect(region).toHaveAttribute('aria-pressed','true');
   await region.click(); // Include tracking rows, not only this role's pending queue.

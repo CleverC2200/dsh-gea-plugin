@@ -25,6 +25,7 @@ import {
   verifyCorrectionAction,
 } from './models/salesPlanCorrectionModel.ts';
 import { salesPlanStagesForPermissions } from './models/salesPlanAccessModel.ts';
+import { salesPlanVarianceClass } from './models/salesPlanVarianceModel.ts';
 import { salesPlanVisibleStatuses, chooseInitialSalesPlanPeriod } from './regionalApprovalQueryModel.ts';
 import { isBackendHttpError } from '../../http-error.ts';
 import { salesPlanWorkflow } from '../../salesPlanWorkflow.ts';
@@ -504,7 +505,7 @@ function CorrectionDetail({
             · {writable ? tr('editable') : tr('readonly')}
           </p>
           {!access && <Alert type="info" content={tr('unavailable')} />}
-          <p className={total.startsWith('-') ? styles.negative : styles.positive}>
+          <p className={salesPlanVarianceClass(total, styles.positive, styles.negative)}>
             {tr('difference', { value: total })}
           </p>
           <div className={styles.scroll}>
@@ -542,7 +543,7 @@ function CorrectionDetail({
                         <small>{tr('zero')}</small>
                       ) : null}
                     </td>
-                    <td className={line?.delta.startsWith('-') ? styles.negative : styles.positive}>
+                    <td className={salesPlanVarianceClass(line?.delta, styles.positive, styles.negative)}>
                       {money(line?.deltaAmount)}
                     </td>
                     <td>{tr('noAi')}</td>

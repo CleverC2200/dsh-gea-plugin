@@ -5,6 +5,7 @@ import { salesPlanDraftMatches, salesPlanDraftSnapshot, type SalesPlanLocalDraft
 import { correctionAccess, correctionAdjustments, correctionDecimal } from '../workbench/original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';
 import { salesPlanAccessForRow } from '../workbench/original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';
 import { salesPlanWorkflow } from '../workbench/original/salesPlanWorkflow.ts';
+import type { ApprovalStageId } from '../workbench/original/workbenches/regionalApproval/regionalApprovalFixture.ts';
 import { validateSalesPlanActionInput } from '../workbench/original/workbenches/regionalApproval/models/salesPlanActionModel.ts';
 import type { GeaSalesPlanActionRequest } from '../workbench/original/contracts.ts';
 /**
@@ -901,12 +902,21 @@ export class Business {
     }
   }
 
-  /** 持久化私有草稿属于当前登录身份，绝不会调用 GEA 动作。 */
+  /**
+   * 持久化私有草稿属于当前登录身份，绝不会调用 GEA 动作，也不代表服务端审批权限。
+   * 界面自 0.0.59 起按“详情可读”开放数量编辑入口（见 `canEdit={... Boolean(access.detail)}`），
+   * 真正的写权限由 GEA 在提交动作时校验；所以这里只校验登录身份、草稿新鲜度和数据形状，
+   * 不再要求审批能力——否则会出现“界面能改、一存就失败”。
+   */
   async salesPlanDraft(payload: Record<string, unknown>, caller: AbortSignal) {
-    keys(payload, ['planId', 'versionId', 'draft']);
+    keys(payload, ['planId', 'versionId', 'approvalRole', 'draft']);
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     const planId = text(payload.planId), versionId = text(payload.versionId);
+    const approvalRole = payload.approvalRole === undefined ? undefined : text(payload.approvalRole);
+    if (approvalRole !== undefined && !['region', 'province', 'area', 'category'].includes(approvalRole))
+      throw new Error('INVALID_PAYLOAD');
+    const draftRole = approvalRole as ApprovalStageId | undefined;
     const owner = createHash('sha256').update(JSON.stringify([this.base, auth.tenantId, auth.id, planId, versionId])).digest('hex');
     const dir = resolve(this.config.runtimeDir, 'approval-drafts');
     const file = resolve(dir, owner + '.json');
@@ -915,11 +925,10 @@ export class Business {
     const sourceSnapshot = salesPlanDraftSnapshot(row, detail);
     if (!sourceSnapshot) throw new Error('STALE_DRAFT_VERSION');
     if (payload.draft !== undefined) {
-      const access = salesPlanAccessForRow(row, detail);
-      if (!access?.snapshotHash || !access.allowedActions.includes('APPROVE')) throw new Error('GEA_DRAFT_NOT_EDITABLE');
       const draft = payload.draft as SalesPlanLocalDraft;
-      if (!salesPlanDraftMatches(draft, row, detail)) throw new Error('STALE_DRAFT');
-      const value = {draft, savedAt: new Date().toISOString(), storage: 'host'};
+      if (!salesPlanDraftMatches(draft, row, detail, draftRole)) throw new Error('STALE_DRAFT');
+      // 固定记录本次校验用的节点口径，读回时才能用同一套基线还原这些调整量。
+      const value = {draft: draftRole ? {...draft, role: draftRole} : draft, savedAt: new Date().toISOString(), storage: 'host'};
       signal.throwIfAborted();
       await mkdir(dir, {recursive: true, mode: 0o700});
       const temp = resolve(dir, owner + '.' + randomUUID() + '.tmp');

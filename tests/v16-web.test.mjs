@@ -48,6 +48,8 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  const readProgress=()=>frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
  await expect.poll(readProgress).toEqual(['进度 100%','进度 0%','进度 0%','进度 0%','进度 0%']);
  const before=await readProgress(); assert.equal(before.length,5);
+ // V1.8 #05：流程图默认收起，点标题行右侧的入口展开后才能点各节点。
+ if(!(await frame.getByTestId('regional-approval-flow-lane').isVisible())) await frame.getByTestId('regional-approval-flow-toggle').click();
  for(const stage of stages){await frame.getByTestId('regional-approval-stage-'+stage).click();assert.deepEqual(await readProgress(),before);}
  await frame.getByTestId('regional-approval-stage-region').click();
  await frame.getByRole('tab',{name:'按区域',exact:true}).click();

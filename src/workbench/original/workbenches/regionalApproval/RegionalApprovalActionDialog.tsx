@@ -4,6 +4,7 @@ import type { TFunction } from 'i18next';
 import React, { useMemo, useRef, useState } from 'react';
 import type { SavedApprovalAdjustment } from './regionalApprovalDetailModel.ts';
 import type { ApprovalStageId, ApprovalVersion, RegionalApprovalRow } from './regionalApprovalFixture.ts';
+import { reportSalesPlanError } from './models/salesPlanActionModel.ts';
 import {
   executeRegionalApprovalFixtureAction,
   reduceRegionalApprovalActionStore,
@@ -114,10 +115,13 @@ const RegionalApprovalActionDialog: React.FC<{
         success += 1;
       } catch (error) {
         failed.push(row.id);
+        const errorCode = error instanceof Error && error.message ? error.message : 'fixture_action_failed';
+        // V1.8 #12：样例操作的失败提示也只给业务语言，技术细节进控制台。
+        reportSalesPlanError('fixture-action', errorCode);
         dispatch({
           type: 'failure',
           requestId: command.requestId,
-          errorCode: error instanceof Error && error.message ? error.message : 'fixture_action_failed',
+          errorCode,
         });
       }
     }
@@ -163,9 +167,7 @@ const RegionalApprovalActionDialog: React.FC<{
         <Alert
           type='error'
           showIcon
-          content={t('common.assistantSurface.regionalApproval.action.status.failure', {
-            code: operationForCurrentAction.errorCode ?? 'fixture_action_failed',
-          })}
+          content={t('common.assistantSurface.regionalApproval.action.status.failure')}
         />
       );
     }

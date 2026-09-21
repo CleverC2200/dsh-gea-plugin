@@ -895,9 +895,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-inbox-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--inbox-muted); }
 .gea-inbox-kind, .gea-inbox-status { display: inline-block; font-size: 12px; line-height: 1.6; padding: 2px 7px; border-radius: 3px; background: var(--inbox-bg); color: var(--inbox-muted); }
 .gea-inbox-kind, .gea-inbox-status.is-unread { background: light-dark(#fdecec, #492525); color: light-dark(#bd1515, #ffabab); }
-.gea-inbox-more { margin-top: 20px; color: var(--inbox-muted); font-size: 13px; }
-.gea-inbox-more summary, .gea-inbox-provenance summary { cursor: pointer; }
-.gea-inbox-more .gea-inbox-info { margin: 16px 0 0; }
+.gea-inbox-provenance summary { cursor: pointer; }
 .gea-inbox-date { font-variant-numeric: tabular-nums; font-size: 13px; }
 .gea-inbox-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 16px; color: var(--inbox-muted); }
 .gea-inbox-pagination > div { display: flex; gap: 8px; }

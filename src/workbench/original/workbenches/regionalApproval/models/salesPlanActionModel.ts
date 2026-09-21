@@ -119,6 +119,27 @@ const retryAfterMsFromDetails = (details: unknown): number | undefined => {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 };
 
+/**
+ * V1.8 #12 对客红线：给业务的文案里不出现接口、字段名、参数名和错误码。
+ * 后端原文只有在“看起来就是业务话术”时才透出；出现 payload./错误码/报文痕迹就退回通用文案。
+ */
+const TECHNICAL_ERROR_PATTERN = /payload\.|GEA_HTTP|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|为必填字段|\bnull\b|\bundefined\b|https?:\/\/|[{}<>[\]"]/;
+
+export const businessSafeErrorMessage = (message: unknown): string | undefined => {
+  if (typeof message !== 'string') return undefined;
+  const text = message.trim();
+  if (!text || text.length > 80 || TECHNICAL_ERROR_PATTERN.test(text)) return undefined;
+  return text;
+};
+
+/** 技术细节只进日志，并返回一个可口头转述的错误编号，供用户报给管理员核对。 */
+export const reportSalesPlanError = (scope: string, detail: unknown): string => {
+  const id = Math.random().toString(36).slice(2, 8).toUpperCase();
+  // eslint-disable-next-line no-console
+  console.warn(`[gea-error] ${scope} 错误编号=${id}`, detail);
+  return id;
+};
+
 export const classifySalesPlanActionError = (error: unknown): SalesPlanActionError => {
   if (error instanceof SalesPlanActionError) return error;
   if (isBackendHttpError(error)) {

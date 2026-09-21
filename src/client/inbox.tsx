@@ -146,7 +146,7 @@ export function Inbox({ t }: { t: Translate }) {
               <tbody>{data?.items.map((item) => (
                 <tr key={item.id} className={item.state === "unread" ? "is-unread" : ""} onClick={() => openDetail(item.id)}>
                   <td className="gea-inbox-select-col"><input type="checkbox" disabled={busy || mutationBusy || retryPending || item.state !== "unread" || item.version === null} aria-label={`${t("select")} ${item.title ?? item.id}`} checked={selectedIds.has(item.id)} onChange={(event) => { event.stopPropagation(); setSelectedIds((current) => { const next = new Set(current); event.target.checked ? next.add(item.id) : next.delete(item.id); return next; }); }} onClick={(event) => event.stopPropagation()} /></td>
-                  <td><span className="gea-inbox-kind">{item.businessType ?? item.kind ?? t("unknown")}</span></td>
+                  <td><span className="gea-inbox-kind">{businessTypeText(item, t)}</span></td>
                   <td><button className="gea-inbox-subject" onClick={() => openDetail(item.id)}>{item.title ?? item.id}</button></td>
                   <td><span className="gea-inbox-summary">{(item.summary?.trim() || item.body?.trim() || t("notificationNoContent")).slice(0, 160)}</span></td>
                   <td className="gea-inbox-date">{formatDate(item.notifiedAt ?? item.createdAt)}</td>
@@ -186,8 +186,7 @@ export function Inbox({ t }: { t: Translate }) {
             {detail && <article aria-busy={detailBusy}>
 
               <dl className="gea-inbox-info">
-                <div><dt>{t("notificationSource")}</dt><dd>{detail.source?.label ?? t("unknown")}</dd></div>
-                <div><dt>{t("notificationAggregate")}</dt><dd>{detail.aggregateId ?? t("unknown")}</dd></div>
+                <div><dt>{t("notificationSource")}</dt><dd>{sourceText(detail, t)}</dd></div>
                 <div><dt>{t("notificationCreatedAt")}</dt><dd>{formatDate(detail.createdAt)}</dd></div>
                 <div><dt>{t("inboxCurrentStatus")}</dt><dd>{badge(detail.state)}</dd></div>
 
@@ -195,7 +194,7 @@ export function Inbox({ t }: { t: Translate }) {
               <span className="gea-inbox-label">{t("inboxMessageSubject")}</span>
               <h3>{detail.title ?? detail.id}</h3>
               <span className="gea-inbox-label">{t("notificationContent")}</span>
-              {detail.actionText && <div className="gea-inbox-action"><span>{detail.actionText}</span>{detail.target && <small>{detail.target.type ?? t("unknown")} · {detail.target.value ?? t("unknown")}</small>}</div>}
+              {detail.actionText && <div className="gea-inbox-action"><span>{detail.actionText}</span>{targetText(detail, t) && <small>{targetText(detail, t)}</small>}</div>}
               <p className="gea-inbox-body">{detail.content?.trim() ? detail.content : detail.body?.trim() ? detail.body : detail.summary?.trim() ? detail.summary : t("notificationNoContent")}</p>
               <fieldset disabled={mutationBusy || retryPending || detailBusy} className="gea-inbox-detail-actions">
                 {detail.state === "unread" && detail.version !== null && <button disabled={mutationBusy} onClick={() => mutate({ operation: "read", id: detail.id, expectedVersion: detail.version, idempotencyKey: `read-${detail.id}-${detail.version}` })}>{t("markRead")}</button>}
@@ -203,7 +202,6 @@ export function Inbox({ t }: { t: Translate }) {
                 {detail.approval?.actionable === true && detail.approval.version !== null && detail.approval.actions.includes("APPROVE") && <button disabled={mutationBusy} onClick={() => mutate({ operation: "approval-action", id: detail.id, action: "APPROVE", expectedVersion: detail.approval?.version, idempotencyKey: `approve-${detail.id}-${detail.approval?.version}` })}>{t("approveNotification")}</button>}
                 {detail.approval?.actionable === true && detail.approval.version !== null && detail.approval.actions.includes("REJECT") && <button disabled={mutationBusy} onClick={() => mutate({ operation: "approval-action", id: detail.id, action: "REJECT", expectedVersion: detail.approval?.version, idempotencyKey: `reject-${detail.id}-${detail.approval?.version}` })}>{t("rejectNotification")}</button>}
               </fieldset>
-              <details className="gea-inbox-more"><summary>{t("inboxAdditionalInfo")}</summary><dl className="gea-inbox-info"><div><dt>{t("notificationKind")}</dt><dd>{detail.kind ?? t("unknown")}</dd></div><div><dt>{t("notificationSourceRef")}</dt><dd>{detail.source?.ref ?? t("unknown")}</dd></div><div><dt>{t("notificationExpiry")}</dt><dd>{formatDate(detail.expiresAt)}</dd></div></dl></details>
             </article>}
           </div>
           <footer className="gea-inbox-drawer-footer"><button aria-label={t("backToInbox")} onClick={() => setSelected(null)}>{t("close")}</button></footer>
@@ -211,6 +209,75 @@ export function Inbox({ t }: { t: Translate }) {
       </dialog>
     </section>
   );
+}
+
+/**
+ * 上游把业务类型、通知类型、来源都按内部编码下发，业务不需要看到编码本身。
+ * 这里只登记可读名称；没登记的编码一律降级成通用说法，服务端给的可读文案才原样展示。
+ */
+const businessTypeLabels: Readonly<Record<string, CopyKey>> = {
+  sales_forecast: "inboxBusinessTypeSalesPlan",
+  sales_plan: "inboxBusinessTypeSalesPlan",
+};
+const notificationKindLabels: Readonly<Record<string, CopyKey>> = {
+  approval: "inboxNotificationKindApproval",
+};
+const notificationSourceLabels: Readonly<Record<string, CopyKey>> = {
+  "sales_plan.approval_required": "inboxSourceSalesPlanApproval",
+  "sales_plan.approval": "inboxSourceSalesPlanApproval",
+};
+/** 上游 target 里的技术跳转类型（例如 AGENT）对业务没有意义，直接省略。 */
+const technicalTargetTypes = new Set(["agent", "system", "service", "user", "internal"]);
+
+function readableText(
+  value: string | null | undefined,
+  labels: readonly Readonly<Record<string, CopyKey>>[],
+  fallback: CopyKey,
+  t: Translate,
+): string {
+  const raw = value?.trim() ?? "";
+  if (!raw) return t("unknown");
+  const mapped = labels.map((table) => table[raw.toLowerCase()]).find(Boolean);
+  if (mapped) return t(mapped);
+  return /^[a-z0-9][a-z0-9._:-]*$/.test(raw) ? t(fallback) : raw;
+}
+
+function businessTypeText(item: NotificationItem, t: Translate): string {
+  return readableText(
+    item.businessType ?? item.kind,
+    [businessTypeLabels, notificationKindLabels],
+    "inboxBusinessTypeFallback",
+    t,
+  );
+}
+
+function sourceText(item: NotificationItem, t: Translate): string {
+  return readableText(
+    item.source?.label ?? item.source?.type,
+    [notificationSourceLabels],
+    "inboxSourceFallback",
+    t,
+  );
+}
+
+/** 待办去向只保留业务能看懂的部分；全是技术字段时整段不显示。 */
+function targetText(item: NotificationItem, t: Translate): string {
+  const target = item.target;
+  if (!target) return "";
+  const type = target.type?.trim() ?? "";
+  return [
+    technicalTargetTypes.has(type.toLowerCase()) ? "" : type,
+    target.value
+      ? readableText(
+          target.value,
+          [businessTypeLabels, notificationKindLabels],
+          "inboxBusinessTypeFallback",
+          t,
+        )
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function stateLabel(state: string | null, t: Translate): string {

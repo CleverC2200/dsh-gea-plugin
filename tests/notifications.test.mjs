@@ -205,8 +205,18 @@ test(
     await mkdir(".runtime/web-evidence", { recursive: true });
     await ui.screenshot({ path: ".runtime/web-evidence/inbox.png" });
     await ui.getByRole("button", { name: "Fixture task", exact: true }).click();
-    await ui.getByRole("dialog").getByText("更多信息", { exact: true }).click();
-    await ui.getByText("external-session-1", { exact: true }).waitFor();
+    // 上游标识不露给业务：详情里不再出现来源引用和聚合标识。
+    const drawer = ui.getByRole("dialog");
+    assert.equal(
+      await drawer.getByText("external-session-1", { exact: true }).count(),
+      0,
+      "内部标识默认不能露给业务",
+    );
+    assert.equal(
+      await drawer.getByText("plan-1", { exact: true }).count(),
+      0,
+      "聚合标识默认不能露给业务",
+    );
     assert.equal(
       await ui.locator("article > p").textContent(),
       "销售计划提醒正文\n请阅读完整内容。",

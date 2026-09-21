@@ -656,3 +656,36 @@
 @media (prefers-reduced-motion: reduce) {
   .gea-api-log-center svg { animation: none !important; }
 }
+
+/*
+ * 可编辑表单控件统一外观：白底 + 浅灰描边 + 圆角，聚焦转品牌色。
+ * 只读 / 禁用控件保持原灰底无描边，让「能改的格子」一眼能认出来（V1.8 #02）。
+ * 只作用于工作台文档，宿主壳里的登录页与日志中心不受影响。
+ */
+.gea-original-workbench .arco-input:not([disabled]),
+.gea-original-workbench .arco-textarea:not([disabled]) {
+  background-color: #fff;
+  border: 1px solid var(--bg-4);
+  border-radius: 4px;
+}
+
+.gea-original-workbench .arco-input:not([disabled]):hover,
+.gea-original-workbench .arco-textarea:not([disabled]):hover {
+  border-color: rgb(var(--primary-6));
+}
+
+.gea-original-workbench .arco-input:not([disabled]):focus,
+.gea-original-workbench .arco-textarea:not([disabled]):focus {
+  background-color: #fff;
+  border-color: rgb(var(--primary-6));
+  box-shadow: 0 0 0 2px rgb(var(--primary-1));
+}
+
+/*
+ * V1.8 #04：表格表头统一加粗。队列表、品类子表、纠偏表、弹窗内表格都靠字重区分表头，
+ * 底色和分隔线保持原样，不额外加深。宿主壳里没有表格，所以这里不限定作用域也能覆盖弹窗 portal。
+ */
+th,
+.arco-table-th {
+  font-weight: 600;
+}

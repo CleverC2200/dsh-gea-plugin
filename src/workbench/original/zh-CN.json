@@ -426,6 +426,11 @@
         "unknownStatus": "状态 {{status}}（节点未确认）"
       },
       "stageLane": "各节点数据状态",
+      "stageLaneToggle": {
+        "current": "当前节点：{{stage}}",
+        "expand": "展开审批流程图",
+        "collapse": "收起审批流程图"
+      },
       "stageProgress": "进度 {{progress}}%",
       "contextSummary": "城市经理审批 · {{stage}} · 当前 {{count}} 条组织计划",
       "authorityContextSummary": "{{source}} · {{stage}} · 计划 {{planId}} · 状态 {{status}}",
@@ -436,7 +441,7 @@
       },
       "customerCount": "{{count}} 家客户",
       "quantityProgress": "数量 {{progress}}%",
-      "amountProgress": "金额 {{progress}}%",
+      "amountProgress": "{{progress}}%",
       "versions": {
         "group": "计划版本对比",
         "primary": "当前查看版本",
@@ -466,7 +471,6 @@
         "expand": "展开筛选",
         "collapse": "收起筛选",
         "ariaLabel": "组织级联筛选",
-        "title": "组织范围",
         "draft": "草稿筛选",
         "applied": "已应用",
         "dirty": "草稿待应用",
@@ -670,7 +674,9 @@
           "loading": "正在读取草稿…",
           "saving": "正在暂存…",
           "saved": "已自动暂存",
-          "failed": "草稿暂存失败，请重试"
+          "failed": "草稿暂存失败，请重试",
+          "failedShort": "暂存失败",
+          "retryShort": "重试"
         ,"retry": "重试暂存"
         },
         "editCurrent": "编辑调整草稿",
@@ -867,7 +873,8 @@
           "conflict": "版本状态已变化或存在并发操作；未修改本地状态，请刷新权威队列。",
           "rateLimited": "请求过于频繁；可稍后使用原幂等键重试，不会创建第二个动作。",
           "unavailable": "结果暂时未知；可关闭弹窗后刷新权威状态，或在此处使用原幂等键重试。请勿重新发起新的操作意图。",
-          "failed": "操作请求失败且未更新本地状态；请刷新权威队列后再决定。"
+          "failed": "操作请求失败且未更新本地状态；请刷新权威队列后再决定。",
+          "reference": "（错误编号：{{id}}，可将编号告知系统管理员）"
         },
         "approvalRole": "本次审批角色",
         "selectRole": "请选择本次审批角色",
@@ -913,7 +920,7 @@
         "status": {
           "loading": "正在执行本地样例操作…",
           "success": "本地样例操作成功；未触发真实审批。",
-          "failure": "本地样例操作失败（{{code}}）；调整和表单均已保留，可重试。",
+          "failure": "本地样例操作失败；调整和表单均已保留，可重试。",
           "cancelled": "本地样例操作已取消；晚到结果将被忽略。",
           "batch": "批量操作完成：成功 {{success}} 个，失败 {{failed}} 个。"
         },
@@ -976,8 +983,8 @@
         "category": "品类",
         "quantity": "计划数量",
         "amount": "计划金额",
-        "progress": "计划/目标",
-        "categoryProgress": "计划/目标",
+        "progress": "计划金额 / 目标金额",
+        "categoryProgress": "计划金额 / 目标金额",
         "adjustment": "调整",
         "comparison": "版本对比",
         "returnReason": "退回原因",
@@ -988,7 +995,6 @@
         "name": "{{category}}品类",
         "skuCount": "{{count}} 个 SKU · 不可按品类审批",
         "basePlan": "原计划 {{quantity}} · {{amount}}",
-        "amountProgress": "金额 {{progress}}",
         "quantityProgress": "数量 {{progress}}",
         "baseAmount": "原计划金额 {{amount}}",
         "planAmount": "计划金额 {{amount}}",
