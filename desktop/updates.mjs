@@ -6,15 +6,39 @@ import {createRequire} from 'node:module';
 const OPTIONAL_PLUGINS={'@dsh-external/dsh-visualize':{name:'@dsh-external/dsh-visualize'},'dsh-raw-html-v2':{name:'dsh-raw-html-v2'},'dsh-worktable':{name:'dsh-worktable'}};
 const code=value=>typeof value==='string'&&/^[A-Z][A-Z_0-9]+$/.test(value);
 const errorCode=error=>code(error?.message)?error.message:code(error?.code)?error.code:'UPDATE_FAILED';
-export async function createUpdates({data,store,desktopVersion,releases,install,restart,restartRuntime,sources,token,checkDesktop}) {
+/** 默认自动检查间隔：每小时一次；间隔从本机自己的启动时刻计时，不跟整点对齐。 */
+const DEFAULT_INTERVAL_HOURS=1;
+/** 旧版本内置过的默认间隔：这些值通常来自旧默认值而不是用户主动设置，升级时一次性迁到新默认。 */
+const LEGACY_DEFAULT_INTERVAL_HOURS=new Set([2,24]);
+/** 每次检查在标称间隔上叠加的随机偏移：间隔的 10%，单次最多 15 分钟。 */
+const INTERVAL_JITTER_RATIO=0.1;
+const INTERVAL_JITTER_MAX_MS=15*60*1000;
+/**
+ * 计算下一次自动检查的延迟。
+ * 中文：以本机时间计时并叠加随机偏移，让各客户端按自己的启动时间错开，
+ * 既不卡在整点，也不会一批客户端同时打到频道服务。
+ */
+export function nextCheckDelayMs(intervalHours,random=Math.random){
+  const interval=intervalHours*3600000;
+  const span=Math.min(Math.round(interval*INTERVAL_JITTER_RATIO),INTERVAL_JITTER_MAX_MS);
+  return Math.max(60000,Math.round(interval+(random()*2-1)*span));
+}
+export async function createUpdates({data,store,desktopVersion,releases,install,restart,restartRuntime,sources,token,checkDesktop,random=Math.random}) {
   const path=join(data,'plugins/update-state.json');const optionalPath=join(data,'plugins/optional-state.json');await mkdir(join(data,'plugins'),{recursive:true});
-  let state={settings:{automatic:true,intervalHours:2,channel:'stable'},history:{},updateHistory:[],phase:'idle',releases:[]};
+  let state={settings:{automatic:true,intervalHours:DEFAULT_INTERVAL_HOURS,channel:'stable'},history:{},updateHistory:[],phase:'idle',releases:[]};
   // The release list is session state: only a check that completed in this run may offer a version.
   // A list restored from disk could otherwise outlive the channel it came from and be re-installed forever.
   try{state={...state,...JSON.parse(await readFile(path,'utf8')),releases:[]};}catch(error){if(error.code!=='ENOENT')throw Error('UPDATE_STATE_INVALID');}
   if(['downloading','installing'].includes(state.phase))state={...state,phase:'failed',error:'PREPARATION_INTERRUPTED'};
   let checking,checkAbort,preparing,abort,timer,restartTimer,restartTask,autoRestart=false,started=false,closed=false,writes=Promise.resolve();
   const save=()=>{const bytes=JSON.stringify(state,null,2);const next=writes.catch(()=>{}).then(async()=>{const temp=path+'.'+randomUUID();await writeFile(temp,bytes,{mode:0o600});await rename(temp,path);});writes=next;return next;};
+  // 中文：旧版内置默认间隔（2/24 小时）不是用户主动选择，首次加载时一次性迁到 1 小时；其它自定义值保持不动。
+  if(state.defaultsMigration!==1){
+    const stored=state.settings?.intervalHours;
+    const intervalHours=LEGACY_DEFAULT_INTERVAL_HOURS.has(stored)?DEFAULT_INTERVAL_HOURS:(stored??DEFAULT_INTERVAL_HOURS);
+    state={...state,defaultsMigration:1,settings:{...state.settings,intervalHours}};
+    await save();
+  }
   const versions=async()=>{
     const selected=await store.selected();const require=createRequire(join(selected.path,'package.json'));const manifest=JSON.parse(await readFile(join(selected.path,'package.json'),'utf8'));const result={};
     for(const name of Object.keys(manifest.dependencies??{}))result[name]=JSON.parse(await readFile(require.resolve(name+'/package.json'),'utf8')).version;
@@ -46,7 +70,13 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
     })().finally(()=>{checking=undefined;});
     return checking;
   };
-  const schedule=()=>{clearInterval(timer);if(state.settings.automatic){timer=setInterval(()=>void check().catch(()=>{}),state.settings.intervalHours*3600000);timer.unref();}};
+  const schedule=()=>{
+    clearTimeout(timer);timer=undefined;
+    if(!state.settings.automatic)return;
+    // 中文：延迟 = 设置的间隔 ± 随机偏移，并从本次调度时刻重新计时（本机启动/上次检查时间），不落在整点。
+    timer=setTimeout(()=>{timer=undefined;void check().catch(()=>{}).finally(()=>{if(!closed)schedule();});},nextCheckDelayMs(state.settings.intervalHours,random));
+    timer.unref();
+  };
   const finishHistory=success=>{
     const items=Array.isArray(state.pendingHistory)?state.pendingHistory:[];
     if(success&&items.length){
@@ -119,6 +149,6 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
     cancel:async()=>{autoRestart=false;abort?.abort();if(state.phase==='pending'){state.phase='cancelled';finishHistory(false);await save();}return {ok:true};},
     restart:restartPrepared,
     start:async()=>{if(started)return;started=true;const generation=(await store.status()).dataSchema??1;if((state.dataSchema??1)!==generation){state={settings:state.settings,history:state.history,updateHistory:Array.isArray(state.updateHistory)?state.updateHistory:[],phase:'idle',releases:[],dataSchema:generation};await save();}if(state.phase==='restarting'){const selection=await store.status();state.phase=selection.active===state.pending&&!selection.booting?'succeeded':'failed';state.error=state.phase==='failed'?'UPDATE_ROLLED_BACK':null;finishHistory(state.phase==='succeeded');await save();}void check().catch(()=>{});},
-    close:async()=>{closed=true;clearInterval(timer);clearTimeout(restartTimer);abort?.abort();checkAbort?.abort();await preparing;await checking;await restartTask;await writes;},
+    close:async()=>{closed=true;clearTimeout(timer);clearTimeout(restartTimer);abort?.abort();checkAbort?.abort();await preparing;await checking;await restartTask;await writes;},
   };
 }

@@ -1,8 +1,8 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,rm,readFile,readdir} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';
-import {PluginStore} from './plugin-store.mjs';import {createUpdates} from './updates.mjs';
+import {PluginStore} from './plugin-store.mjs';import {createUpdates,nextCheckDelayMs} from './updates.mjs';
 const until=async(fn,predicate)=>{for(let i=0;i<150;i++){const value=await fn();if(predicate(value))return value;await new Promise(r=>setTimeout(r,20));}throw Error('timed out');};
-async function fixture(t,overrides={},initialState){
+async function fixture(t,overrides={},initialState,options={}){
  const data=await mkdtemp(join(tmpdir(),'gea-updates-'));const baseline=join(data,'baseline');
  const dependencies={'@deepseek-ai/dsh':'0.1.5-rc.2','@cleverc2200/dsh-agent-workbench':'0.1.1','dsh-plugin':'1.4.3-company.1'};
  for(const [name,version] of Object.entries(dependencies)){await mkdir(join(baseline,'node_modules',name),{recursive:true});await writeFile(join(baseline,'node_modules',name,'package.json'),JSON.stringify({name,version}));}
@@ -10,7 +10,7 @@ async function fixture(t,overrides={},initialState){
  if(initialState){await mkdir(join(data,'plugins'),{recursive:true});await writeFile(join(data,'plugins/update-state.json'),JSON.stringify(initialState));}
  const store=new PluginStore({data,baseline});const release={package:'dsh-plugin',version:'1.4.3-company.2',notes:{zh:'更新',en:'Update'}};
  let installs=0,restarts=0,checks=0,desktopChecks=0;
- const updates=await createUpdates({data,store,desktopVersion:'0.0.2',sources:{stable:'stable',test:'test'},checkDesktop:async()=>{desktopChecks++;},
+ const updates=await createUpdates({data,store,desktopVersion:'0.0.2',sources:{stable:'stable',test:'test'},checkDesktop:async()=>{desktopChecks++;},...options,
   releases:{validateReleaseChannel:value=>value,fetchCompanyChannel:async(source)=>{checks++;return {releases:source==='stable'?[release]:[]}},verifyReleaseHistory:(_,history)=>history,fetchReleasePackage:async()=>new Uint8Array([1]),...overrides},
   install:async directory=>{installs++;await writeFile(join(directory,'node_modules/dsh-plugin/package.json'),JSON.stringify({name:'dsh-plugin',version:release.version}));},
   restartRuntime:overrides.restartRuntime,
@@ -101,7 +101,7 @@ test('batch download or install failure keeps all current versions and offers no
 test('one click downloads all updates and automatically restarts exactly once',async t=>{
   const {updates,counts,store}=await batchFixture(t);
   await updates.check();
-  assert.equal((await updates.status()).settings.intervalHours,2);
+  assert.equal((await updates.status()).settings.intervalHours,1);
   assert.equal((await updates.status()).capabilities.prepareAndRestart,true);
   await Promise.all([updates.prepare({all:true,restart:true}),updates.prepare({all:true,restart:true})]);
   const done=await until(updates.status,s=>s.phase==='succeeded');
@@ -149,18 +149,49 @@ test('optional plugin toggle persists and restarts the runtime graph',async t=>{
   const saved=JSON.parse(await readFile(join(f.data,'plugins/optional-state.json'),'utf8'));assert.equal(saved['@dsh-external/dsh-visualize'],false);
 });
 test('interval settings validate, persist and reschedule without installing',async t=>{
-  const {updates,counts,data}=await fixture(t);
+  const {updates,counts,data}=await fixture(t,{},undefined,{random:()=>0.5});
   for(const hours of [0,-1,1.5,169,'24']) await assert.rejects(updates.settings({automatic:true,intervalHours:hours,channel:'stable'}),/INVALID_UPDATE_SETTINGS/);
   await assert.rejects(updates.settings(null),/INVALID_UPDATE_SETTINGS/);
-  t.mock.timers.enable({apis:['setInterval']});
+  // 中文：间隔改成链式 setTimeout 后只模拟定时器；轮询改用 setImmediate，避免依赖被模拟的 setTimeout。
+  t.mock.timers.enable({apis:['setTimeout']});
+  const idle=async()=>!(await updates.status()).checking;
+  const flush=async predicate=>{for(let i=0;i<500;i++){if(await predicate())return;await new Promise(resolve=>setImmediate(resolve));}};
   await updates.settings({automatic:true,intervalHours:2,channel:'stable'});
-  t.mock.timers.tick(3600000);assert.equal(counts().checks,0);
-  t.mock.timers.tick(3600000);await until(updates.status,s=>!!s.lastCheck&&!s.checking);assert.equal(counts().checks,1);
+  t.mock.timers.tick(3600000);await flush(idle);assert.equal(counts().checks,0);
+  t.mock.timers.tick(3600000);await flush(idle);assert.equal(counts().checks,1);
   await updates.settings({automatic:true,intervalHours:3,channel:'stable'});
-  t.mock.timers.tick(2*3600000);assert.equal(counts().checks,1);
-  t.mock.timers.tick(3600000);await until(updates.status,s=>!s.checking);assert.equal(counts().checks,2);
+  t.mock.timers.tick(2*3600000);await flush(idle);assert.equal(counts().checks,1);
+  t.mock.timers.tick(3600000);await flush(idle);assert.equal(counts().checks,2);
   assert.equal((await updates.status()).settings.intervalHours,3);assert.equal(counts().installs,0);
   assert.equal(JSON.parse(await readFile(join(data,'plugins/update-state.json'),'utf8')).settings.intervalHours,3);
+});
+
+test('the automatic interval defaults to one hour and legacy defaults migrate once',async t=>{
+  const fresh=await fixture(t,{},undefined,{random:()=>0.5});
+  assert.equal((await fresh.updates.status()).settings.intervalHours,1);
+  for(const legacy of [24,2]){
+    const {updates,data}=await fixture(t,{}, {settings:{automatic:true,intervalHours:legacy,channel:'stable'}});
+    assert.equal((await updates.status()).settings.intervalHours,1);
+    const saved=JSON.parse(await readFile(join(data,'plugins/update-state.json'),'utf8'));
+    assert.equal(saved.settings.intervalHours,1);assert.equal(saved.defaultsMigration,1);
+  }
+  // 迁移只做一次：迁移后用户自己设的值、以及从未是默认值的自定义间隔都保持不动。
+  const manual=await fixture(t,{}, {settings:{automatic:true,intervalHours:24,channel:'stable'},defaultsMigration:1});
+  assert.equal((await manual.updates.status()).settings.intervalHours,24);
+  const custom=await fixture(t,{}, {settings:{automatic:true,intervalHours:6,channel:'stable'}});
+  assert.equal((await custom.updates.status()).settings.intervalHours,6);
+});
+
+test('scheduled checks are measured from this client and jittered off the clock hour',async t=>{
+  assert.equal(nextCheckDelayMs(1,()=>0.5),3600000);
+  assert.equal(nextCheckDelayMs(1,()=>0),3600000-6*60*1000);
+  assert.equal(nextCheckDelayMs(1,()=>1),3600000+6*60*1000);
+  // 长间隔的随机偏移封顶 15 分钟，极短间隔也不会短于一分钟。
+  assert.equal(nextCheckDelayMs(168,()=>1)-168*3600000,15*60*1000);
+  assert.equal(nextCheckDelayMs(1/60,()=>0),60000);
+  // 每轮重新取偏移，避免所有客户端固定在整点同时请求。
+  const draws=new Set(Array.from({length:50},()=>nextCheckDelayMs(1)));
+  assert.ok(draws.size>40);
 });
 
 test('core upgrade discards old pending actions while retaining update preferences and verified history',async t=>{
