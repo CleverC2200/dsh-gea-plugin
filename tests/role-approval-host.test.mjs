@@ -13,7 +13,7 @@ test('Host binds role writes to fresh permission and capability evidence while r
    if(path.endsWith('/plans/p')) return send({currentVersion:{id:'v',planId:'p',status,effective:mode!=='ineffective',planTypeCode:'Y'},skus:[],versions:[],logs:[],
      actionContext:{versionId:'v',status,nodeOrder:3,snapshotHash:mode==='stale'?'b'.repeat(64):snapshot,allowedActions:['APPROVE'],
        ...(mode==='legacy'?{}:{policy:'role-visible-v1',roleActions:[{role:'region',allowedActions:mode==='current-node-only'?[]:['APPROVE','REJECT']}]})}});
-   if(path.endsWith('/versions/v/actions')) {writes++;const body=JSON.parse(req.body);assert.equal(body.approvalRole,'region');assert.equal(body.approvalPolicy,'role-visible-v1');return send({planId:'p',versionId:'v',fromStatus:status,toStatus:status,approvalRole:'region',requestId:req.headers['x-request-id'],traceId:'t',auditId:'a',replayed:false});}
+   if(path.endsWith('/versions/v/actions')) {writes++;const body=JSON.parse(req.body);assert.equal(body.action,'APPROVE');assert.equal(body.approvalRole,undefined,'上游报文只发接口文档声明的字段');assert.equal(body.approvalPolicy,undefined);assert.equal(body.expectedSnapshot,undefined);return send({planId:'p',versionId:'v',fromStatus:status,toStatus:status,approvalRole:'region',requestId:req.headers['x-request-id'],traceId:'t',auditId:'a',replayed:false});}
    if(path.endsWith('/notifications')) return send({items:[],total:0});
  });
  await app.login();
@@ -52,7 +52,8 @@ test('Host accepts a current workflow task only for its exact version and curren
    if(path.endsWith('/versions/v/actions')) {
      writes++;
      const body=JSON.parse(req.body);
-     assert.equal(body.approvalRole,'region');
+     assert.equal(body.action,'APPROVE');
+     assert.equal(body.approvalRole,undefined,'上游报文只发接口文档声明的字段');
      assert.equal(body.approvalPolicy,undefined);
      assert.equal(body.expectedSnapshot,undefined);
      return send({planId:'p',versionId:'v',fromStatus:1,toStatus:1,approvalRole:'region',requestId:req.headers['x-request-id'],traceId:'t',auditId:'a',replayed:false});

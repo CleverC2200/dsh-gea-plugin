@@ -87,8 +87,9 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   await expect(frame.getByRole('dialog',{name:'销售计划审批',exact:true})).toHaveCount(0);
   await expect.poll(() => writes.length).toBe(1);
   assert.equal(writes.length,1);
-  assert.equal(writes[0].approvalRole,'region');
-  assert.equal(writes[0].approvalPolicy,'role-visible-v1');
+  assert.equal(writes[0].approvalRole,undefined,'上游报文只发接口文档声明的字段');
+  assert.equal(writes[0].approvalPolicy,undefined);
+  assert.equal(writes[0].expectedSnapshot,undefined);
   assert.equal(writes[0].expectedStatus,2);
   await expect(regionCanReview.locator('label.arco-checkbox')).toBeVisible();
   await regionCanReview.locator('label.arco-checkbox').click();

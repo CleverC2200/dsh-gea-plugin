@@ -48,7 +48,7 @@ test(
         assert.equal(req.headers["x-tenant-id"], "0");
         assert.ok(req.headers["x-access-token"]);
         const body = JSON.parse(req.body);
-        assert.equal(body.expectedSnapshot, snapshot);
+        assert.equal(body.expectedSnapshot, undefined);
         assert.equal(body.action, "SAVE");
         if (mode === "conflict") {
           reply({ message: "changed concurrently" }, 409);

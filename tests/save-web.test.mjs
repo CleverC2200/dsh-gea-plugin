@@ -105,7 +105,7 @@ test(
         const body = JSON.parse(req.body);
         assert.equal(body.action, "SAVE");
         assert.equal(body.expectedStatus, 4);
-        assert.equal(body.expectedSnapshot, "a".repeat(64));
+        assert.equal(body.expectedSnapshot, undefined);
         assert.deepEqual(body.adjustments, [
           { skuCode: "789", adjustQty: "1.000" },
         ]);
