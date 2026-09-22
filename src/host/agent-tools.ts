@@ -113,7 +113,8 @@ export function registerGeaTools(
           },
           sql: {
             type: "string",
-            description: "只读 SELECT 语句；表名取上面该模块列出的可读表，字段先 describe 或取返回列。",
+            description:
+              "只读 SELECT 语句；表名取上面该模块列出的可读表，字段先 describe 或取返回列。参数占位符统一用 :name（例如 where cust_code = :cust），不要用 ?。",
           },
           recipe: {
             type: "string",
@@ -128,7 +129,8 @@ export function registerGeaTools(
           parameters: {
             type: "object",
             additionalProperties: true,
-            description: "SQL 参数（参数化查询，避免拼接）。",
+            description:
+              'SQL 参数：SQL 里用 :name 占位符，这里按同名键给值，例如 sql 写 "where cust_code = :cust"、parameters 写 {"cust":"10154963"}；配方的参数（base、group）也走这里。值是绑定参数，不要拼进 SQL。',
           },
           pageNo: { type: "integer", description: "页码，1 起。" },
           pageSize: {

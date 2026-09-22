@@ -43,17 +43,49 @@ export function withDefaultPaging<T extends Record<string, unknown>>(query: T): 
  * `GEA SQL 查询失败（业务码 500）：数据表未发布为可访问资源`——话说清了，但没告诉它
  * 该换成清单里的表或先 describe，于是继续换着表猜。
  *
+ * 另一种线上现象：模型写 `where cust_code = ?` 配 `parameters {"1": …}`，守卫报
+ * `UNUSED_QUERY_PARAMETER`，却仍然被贴上"该表可能不在本模块可读清单"。模型于是去换
+ * 表、换模块，白烧十几步。这里先看失败原因：参数类错误只提示占位符写法，只有真的
+ * 表或列没发布时才提 describe 与清单。
+ *
  * `errorEnvelope.readableMessage` 只放行 200 字以内的短句，所以这里同时把原文截断，
- * 保证"原文 + 提示"落在预算内，不会被整条丢掉。
+ * 保证"原文 + 提示"落在预算内，不会被整条丢掉。提示里不能出现斜杠，否则整条会被
+ * 当成"内部细节"过滤掉。
  */
+const PARAMETER_ERROR_CODES = [
+  "INVALID_QUERY_PARAMETERS",
+  "MISSING_QUERY_PARAMETER",
+  "UNUSED_QUERY_PARAMETER",
+  "RESERVED_QUERY_PARAMETER",
+  "POSITIONAL_QUERY_PARAMETER",
+  "MIXED_QUERY_PARAMETERS",
+];
+
+/** 只有这些才说明"表或列不在清单里"，别的失败不要往这上面引。 */
+const TABLE_ERROR_MARKERS = [
+  "RESOURCE_NOT_PUBLISHED",
+  "FIELD_NOT_PUBLISHED",
+  "NO_RETURN_COLUMN_ALLOWED",
+  "数据表未发布",
+  "字段未发布",
+  "表不存在",
+  "does not exist",
+  "no such column",
+  "no such table",
+];
+
 export function pluginReadHint(
   message: string,
   tables: readonly string[] = [],
 ): string {
   const listed = tables.slice(0, 3).join("、");
-  const hint = listed
-    ? `；该表可能不在本模块可读清单：先用 describe=true 取列名，或改用清单中的表（如 ${listed}）`
-    : "；先用 describe=true 取该模块可读的表与列名，再按清单重试";
+  const hint = PARAMETER_ERROR_CODES.some((code) => message.includes(code))
+    ? '；SQL 参数写法：占位符用 :name（例如 where cust_code = :cust），parameters 传 {"cust":"…"}，不要用 ?'
+    : TABLE_ERROR_MARKERS.some((marker) => message.includes(marker))
+      ? listed
+        ? `；该表或列不在本模块可读清单：先用 describe=true 取列名，或改用清单中的表（如 ${listed}）`
+        : "；先用 describe=true 取该模块可读的表与列名，再按清单重试"
+      : "；先 describe=true 核对表与列名；宽表聚合要先收窄口径（加月份、基地、物料过滤），不要整表聚合";
   const budget = 200 - hint.length;
   const head =
     message.length > budget

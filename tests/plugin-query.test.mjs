@@ -77,6 +77,38 @@ test("猜错表名时把“下一步”补进错误里，且仍在 200 字预算
   assert.ok(bare.length <= 200);
 });
 
+test("失败提示按原因区分：参数写法不再被说成“表不在清单”", () => {
+  // 线上现象：`where cust_code = ?` 配 {"1": …} 触发 UNUSED_QUERY_PARAMETER，
+  // 却被贴上“该表可能不在本模块可读清单”，模型于是去换表换模块。
+  const parameters = m.pluginReadHint(
+    "UNUSED_QUERY_PARAMETER：parameters 里的 1 在 SQL 里没有被引用",
+    ["agents_scm_cust_inventory_daily_keys"],
+  );
+  assert.match(parameters, /:name/);
+  assert.equal(parameters.includes("该表或列不在本模块可读清单"), false);
+  assert.ok(parameters.length <= 200, `提示过长: ${parameters.length}`);
+  assert.equal(m.readableMessage(parameters), parameters, "补过提示的原因必须仍可读");
+
+  // 真的“表或列没发布”时，才让模型去 describe 或换清单里的表。
+  const missingTable = m.pluginReadHint(
+    "GEA SQL 查询失败（业务码 500）：数据表未发布为可访问资源",
+    ["agents_scm_branch_inventory_snapshot"],
+  );
+  assert.match(missingTable, /describe=true/);
+  assert.match(missingTable, /该表或列不在本模块可读清单/);
+  assert.ok(missingTable.length <= 200);
+
+  // 上游只给通用原因（列名都对、聚合被拒）时，不再把责任推给表名。
+  const upstream = m.pluginReadHint(
+    "GEA SQL 查询失败（业务码 500）：受控 SQL 执行失败",
+    ["agents_scm_cust_inventory_daily"],
+  );
+  assert.equal(upstream.includes("该表或列不在本模块可读清单"), false);
+  assert.match(upstream, /收窄口径/);
+  assert.ok(upstream.length <= 200, `提示过长: ${upstream.length}`);
+  assert.equal(m.readableMessage(upstream), upstream, "补过提示的原因必须仍可读");
+});
+
 test("列清单探查有预算：不串行探爆工具超时，没探完的如实回报", async () => {
   const slow = (table, signal) =>
     new Promise((resolve, reject) => {
