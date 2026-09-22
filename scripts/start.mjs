@@ -22,6 +22,9 @@ const HTML_PLUGIN_PACKAGES = [
   ["inventory-dealer", "dsh-gea-inventory-dealer-0.2.6-preview.4.tgz"],
   ["inventory-fc", "dsh-gea-inventory-fc-0.2.6-preview.5.tgz"],
   ["inventory-qll", "dsh-gea-inventory-qll-0.2.6-preview.6.tgz"],
+  ["inventory-customer", "dsh-gea-inventory-customer-0.1.0-preview.1.tgz"],
+  ["inventory-orderworkbench", "dsh-gea-inventory-orderworkbench-0.1.0-preview.1.tgz"],
+  ["inventory-orderfulfillment", "dsh-gea-inventory-orderfulfillment-0.1.0-preview.1.tgz"],
 ];
 async function prepareHtmlPlugins(runtime) {
   const roots = {};

@@ -30,7 +30,7 @@ import {
 
 type HtmlPlugin = { id: string; label: string; group: string; url: string };
 const HTML_PLUGINS: HtmlPlugin[] = [
-  ...[["inventory-apsplan", "产销协同工作台", "产销协同"], ["inventory-personal", "库存管理工作台", "库存管理"], ["inventory-aqkc", "基地库存", "库存管理"], ["inventory-dealer", "经销商库存", "库存管理"], ["inventory-fc", "分仓库存", "库存管理"], ["inventory-qll", "全链库存", "库存管理"]].map(([id, label, group]) => ({ id, label, group, url: `/api/gea-html-plugin/${id}` })),
+  ...[["inventory-apsplan", "产销协同工作台", "产销协同"], ["inventory-personal", "库存管理工作台", "库存管理"], ["inventory-aqkc", "基地库存", "库存管理"], ["inventory-dealer", "经销商库存", "库存管理"], ["inventory-fc", "分仓库存", "库存管理"], ["inventory-qll", "全链库存", "库存管理"], ["inventory-customer", "客户库存", "库存管理"], ["inventory-orderworkbench", "订单工作台", "订单履约"], ["inventory-orderfulfillment", "订单履约", "订单履约"]].map(([id, label, group]) => ({ id, label, group, url: `/api/gea-html-plugin/${id}` })),
 ];
 const HTML_PLUGIN_CONSUMERS: Record<string, string> = {
   "inventory-apsplan": "aps-plan-collaboration",
@@ -39,6 +39,9 @@ const HTML_PLUGIN_CONSUMERS: Record<string, string> = {
   "inventory-dealer": "dealer-inventory-replenishment",
   "inventory-fc": "branch-inventory",
   "inventory-qll": "full-chain-inventory",
+  "inventory-customer": "customer-inventory-preview",
+  "inventory-orderworkbench": "orderworkbench-preview",
+  "inventory-orderfulfillment": "orderfulfillment-preview",
 };
 
 type Status = ReturnType<Business["status"]>;

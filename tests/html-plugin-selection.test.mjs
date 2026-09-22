@@ -29,16 +29,16 @@ test("business menu labels rename inventory pages without republishing plugin bu
 });
 const menuOf = (ids) => resolveBusinessMenu(BUSINESS_MENU_PRESET, new Map(ids.map(id => [id, `${id} 名称`])));
 test("left menu follows the prototype group order and hides entries without a page", () => {
-  const groups = menuOf(['gea-proof', 'gea-regional-plan', 'inventory-apsplan', 'inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-dealer', 'inventory-personal']);
+  const groups = menuOf(['gea-proof', 'gea-regional-plan', 'inventory-apsplan', 'inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-dealer', 'inventory-customer', 'inventory-personal']);
   assert.deepEqual(groups.map(group => [group.key, group.title]), [['supply', '产销协同'], ['plan', '计划管理'], ['inventory', '库存管理']]);
   assert.deepEqual(groups[0].entries.map(entry => entry.id), ['inventory-apsplan']);
   assert.deepEqual(groups[1].entries.map(entry => entry.id), ['gea-regional-plan', 'gea-proof']);
-  assert.deepEqual(groups[2].entries.map(entry => entry.id), ['inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-dealer']);
+  assert.deepEqual(groups[2].entries.map(entry => entry.id), ['inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-dealer', 'inventory-customer']);
   assert.equal(groups.some(group => group.key === 'orders'), false);
 });
 test("menu keeps prototype entries out until their page is registered", () => {
-  const groups = menuOf(['inventory-production', 'orders-workbench', 'orders-fulfillment']);
+  const groups = menuOf(['inventory-production', 'inventory-orderworkbench', 'inventory-orderfulfillment']);
   assert.deepEqual(groups.map(group => group.key), ['plan', 'orders']);
   assert.deepEqual(groups[0].entries.map(entry => entry.id), ['inventory-production']);
-  assert.deepEqual(groups[1].entries.map(entry => entry.id), ['orders-workbench', 'orders-fulfillment']);
+  assert.deepEqual(groups[1].entries.map(entry => entry.id), ['inventory-orderworkbench', 'inventory-orderfulfillment']);
 });

@@ -67,6 +67,7 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
       { id: "inventory-aqkc" },
       { id: "inventory-fc" },
       { id: "inventory-dealer" },
+      { id: "inventory-customer", title: "客户库存" },
     ],
   },
   {
@@ -74,8 +75,8 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
     title: "订单履约",
     icon: "orders",
     items: [
-      { id: "orders-workbench", title: "订单工作台" },
-      { id: "orders-fulfillment", title: "订单履约" },
+      { id: "inventory-orderworkbench", title: "订单工作台" },
+      { id: "inventory-orderfulfillment", title: "订单履约" },
     ],
   },
 ];
