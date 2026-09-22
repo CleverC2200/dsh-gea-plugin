@@ -3213,16 +3213,33 @@ const RegionalApprovalWorkbench: React.FC<{
                       columnWidth: 40,
                       selectedRowKeys: selectedLiveTableRowIds,
                       onChange: (keys) => {
-                        const planIds = new Set<string>();
-                        keys.forEach((key) => {
-                          const row = liveTableRowById.get(String(key));
-                          if (row?.kind !== 'plan') return;
-                          if (row.members?.length) {
-                            row.members.forEach((member) => planIds.add(member.planId));
-                          } else {
-                            planIds.add(row.plan.planId);
+                        // 分组行的勾选状态是「组内成员全部选中」的派生结果，不能按 key 是否存在直接重算：
+                        // 取消分组时只去掉分组 key，成员计划还在选，下一次渲染又把分组派生成勾选，表现为取消不掉。
+                        const next = new Set(keys.map(String));
+                        const displayed = new Set(selectedLiveTableRowIds);
+                        const planIds = new Set(selectedRowIds);
+                        const coveredPlans = (row: RegionalApprovalLiveTableRow | undefined) =>
+                          row?.kind !== 'plan'
+                            ? []
+                            : row.members?.length
+                              ? row.members.map((member) => member.planId)
+                              : [row.plan.planId];
+                        for (const key of next)
+                          if (!displayed.has(key))
+                            coveredPlans(liveTableRowById.get(key)).forEach((planId) => planIds.add(planId));
+                        for (const key of displayed) {
+                          if (next.has(key)) continue;
+                          const row = liveTableRowById.get(key);
+                          // 分组行只有在成员仍全部保留时才是「用户取消了整个分组」；
+                          // 否则它只是成员变化引起的派生取消，交给成员自己的 key 处理。
+                          if (row?.kind === 'plan' && row.members?.length) {
+                            const members = row.members.map((member) => member.planId);
+                            if (!members.every((planId) => next.has(planId))) continue;
+                            members.forEach((planId) => planIds.delete(planId));
+                            continue;
                           }
-                        });
+                          coveredPlans(row).forEach((planId) => planIds.delete(planId));
+                        }
                         setSelectedRowIds([...planIds]);
                       },
                       checkboxProps: (row) => ({
