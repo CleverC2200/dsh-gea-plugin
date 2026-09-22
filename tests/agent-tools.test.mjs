@@ -234,8 +234,8 @@ test(
                       id: "page-1",
                       type: "function",
                       function: {
-                        name: "inventory_probe_page",
-                        arguments: JSON.stringify({ name: "context", parameters: "{}" }),
+                        name: "gea_page",
+                        arguments: JSON.stringify({ action: "context", parameters: "{}" }),
                       },
                     },
                   ],
@@ -453,7 +453,7 @@ test(
           "gea_sales_plan_read",
           "gea_skill_reference_read",
           "gea_visible_workbench_context",
-          "inventory_probe_page",
+          "gea_page",
           "skill",
         ])
           assert.ok(toolNames.includes(expected), `${expected} 在工具列表里`);
@@ -632,7 +632,7 @@ test(
         modelRequests = [];
         const rows = await ended(await submit());
         assert.ok(
-          modelRequests[0].tools.some((x) => x.function.name === "inventory_probe_page"),
+          modelRequests[0].tools.some((x) => x.function.name === "gea_page"),
           "页面工具已暴露给模型",
         );
         const result = modelRequests[1].messages.find(

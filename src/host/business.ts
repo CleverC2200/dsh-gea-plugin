@@ -643,6 +643,8 @@ export class Business {
    * 见 page-identity.ts：这是"当前页是谁"的唯一权威来源。
    */
   private readonly pageIdentities = new Map<string, PageIdentity>();
+  /** 上一次返回的页面上下文正文：内容没变就不重复发送（历史里不用再背一份）。 */
+  private readonly lastContextReplies = new Map<string, string>();
   private requests = new Map<string, AbortController>();
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
@@ -758,6 +760,7 @@ export class Business {
     this.visibleWorkbenchContexts.clear();
     // 页面身份同理：换了身份，"当前页"这件事也算不清了。
     this.pageIdentities.clear();
+    this.lastContextReplies.clear();
     this.clearQuery();
     this.notifyIdentity();
   }
@@ -875,7 +878,7 @@ export class Business {
     } catch {
       // 压缩结果异常就退回原快照：宁可大一点，也不能让页面证据消失。
     }
-    return JSON.stringify({
+    const body = JSON.stringify({
       source: "GEA_RENDERED_WORKBENCH",
       renderedAt: value.receivedAt,
       coverage: "current-visible-page",
@@ -885,6 +888,17 @@ export class Business {
         ? { contextNote: compressed.note, contextOmitted: compressed.omitted }
         : {}),
     });
+    // 同一份内容第二次要就只回"没变"，不再把整包塞回历史。
+    if (this.lastContextReplies.get(sessionId) === body)
+      return JSON.stringify({
+        source: "GEA_RENDERED_WORKBENCH",
+        renderedAt: value.receivedAt,
+        coverage: "current-visible-page",
+        unchanged: true,
+        note: "这一屏与上一次读取完全相同：沿用上一次的内容，未重复发送。",
+      });
+    this.lastContextReplies.set(sessionId, body);
+    return body;
   }
 
   /** 首屏查询尚未完成时给浏览器一点时间把当前页快照同步进来。 */

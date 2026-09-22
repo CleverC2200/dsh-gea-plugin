@@ -7,18 +7,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  PAGE_TOOL,
   PAGE_IDENTITY_TTL_MS,
   currentPageEnvelope,
   pageIdentityFresh,
-  pageToolName,
-  wrongPageEnvelope,
 } from "../src/host/page-identity.ts";
 
 const dealer = {
   pluginId: "inventory-dealer",
   consumerCode: "dealer-inventory-replenishment",
   label: "经销商库存",
-  pageTool: "inventory_dealer_page",
+  pageTool: "gea_page",
   at: Date.now(),
 };
 
@@ -26,19 +25,10 @@ test("HTML 插件页没有快照时，回答里必须带上“当前页是谁、
   const value = JSON.parse(currentPageEnvelope(dealer));
   assert.equal(value.code, "PAGE_HAS_NO_SNAPSHOT");
   assert.equal(value.currentPage.pluginId, "inventory-dealer");
-  assert.equal(value.currentPage.tool, "inventory_dealer_page");
+  assert.equal(value.currentPage.tool, "gea_page");
   assert.match(value.reason, /经销商库存/);
-  assert.match(value.reason, /inventory_dealer_page/);
+  assert.match(value.reason, /gea_page/);
   assert.match(value.reason, /dealer-inventory-replenishment/);
-});
-
-test("读错页面时给的是纠正，而不是空上下文", () => {
-  const value = JSON.parse(wrongPageEnvelope(dealer, "客户库存"));
-  assert.equal(value.code, "PAGE_IDENTITY_MISMATCH");
-  assert.equal(value.page, "客户库存");
-  assert.equal(value.currentPage.tool, "inventory_dealer_page");
-  assert.match(value.reason, /当前页是「经销商库存」/);
-  assert.match(value.reason, /不要读别的页面/);
 });
 
 test("演示（mock）页面要把“这是演示数据”说清", () => {
@@ -47,7 +37,7 @@ test("演示（mock）页面要把“这是演示数据”说清", () => {
       ...dealer,
       pluginId: "inventory-customer",
       label: "客户库存",
-      pageTool: "inventory_customer_page",
+      pageTool: "gea_page",
       mock: true,
     }),
   );
@@ -67,7 +57,7 @@ test("身份按最近一次页面活动过期：还在轮询就是当前页，�
   assert.ok(PAGE_IDENTITY_TTL_MS >= 60_000);
 });
 
-test("页面工具名按模块 id 生成（和宿主注册的口径一致）", () => {
-  assert.equal(pageToolName("inventory-dealer"), "inventory_dealer_page");
-  assert.equal(pageToolName("inventory-apsplan"), "inventory_apsplan_page");
+test("页面入口只有一个工具名：不再按模块各注册一个", () => {
+  assert.equal(PAGE_TOOL, "gea_page");
+  assert.equal(dealer.pageTool, PAGE_TOOL);
 });

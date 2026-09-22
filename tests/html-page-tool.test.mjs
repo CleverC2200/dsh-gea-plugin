@@ -46,6 +46,7 @@ async function registeredPlugins(options = {}) {
   const runtimeDir = await mkdtemp(join(tmpdir(), "gea-html-runtime-"));
   const tools = [];
   const routes = [];
+  const identities = new Map();
   const ctx = {
     effect: (fn) => fn(),
     tools: { register: (tool) => tools.push(tool) },
@@ -53,11 +54,21 @@ async function registeredPlugins(options = {}) {
   };
   const business = {
     config: { runtimeDir },
-    status: () => ({ authenticated: true }),
+    status: () => ({ authenticated: true, user: { id: "u-1" } }),
     watchIdentity: () => () => {},
+    // 宿主侧"当前页身份"：页面打开/轮询时刷新（见 host/page-identity.ts）。
+    touchPageIdentity: (sessionId, identity) =>
+      identities.set(sessionId, { ...identity, at: Date.now() }),
+    currentPageIdentity: (sessionId) => identities.get(sessionId),
+    clearPageIdentity: (sessionId, pluginId) => {
+      const current = identities.get(sessionId);
+      if (!current) return;
+      if (pluginId && current.pluginId !== pluginId) return;
+      identities.delete(sessionId);
+    },
   };
   await registerHtmlPlugins(ctx, business, roots);
-  return { tool: tools.find((tool) => tool.name === "inventory_probe_page"), routes, runtimeDir };
+  return { tool: tools.find((tool) => tool.name === "gea_page"), routes, runtimeDir };
 }
 
 test("a page tool reports not-in-workbench instead of failing the conversation", async () => {
@@ -65,13 +76,14 @@ test("a page tool reports not-in-workbench instead of failing the conversation",
   assert.ok(tool, "页面工具已注册");
   for (const name of ["context", "refresh", "filter", "draft"]) {
     const result = JSON.parse(
-      await tool.execute({ name, parameters: "{}" }, { agent: { id: session }, signal: new AbortController().signal }),
+      await tool.execute({ action: name, parameters: "{}" }, { agent: { id: session }, signal: new AbortController().signal }),
     );
     assert.equal(result.availability, "not-in-workbench", name);
     assert.equal(result.code, "PAGE_NOT_IN_WORKBENCH", name);
     assert.equal(result.action, name);
-    assert.equal(result.page, "探针页面");
-    assert.match(result.reason, /不在业务工作台/);
+    // 没有打开任何页面时不说具体模块，只给"改用直读"的下一步。
+    assert.equal(result.page, undefined);
+    assert.match(result.reason, /gea_plugin_read/);
   }
 });
 
@@ -97,7 +109,7 @@ test("a page that was used and then closed is a plain conversation again", async
   );
   // 页面开着：读得到页面证据
   const live = JSON.parse(
-    await tool.execute({ name: "context", parameters: "{}" }, { agent: { id: session }, signal: new AbortController().signal }),
+    await tool.execute({ action: "context", parameters: "{}" }, { agent: { id: session }, signal: new AbortController().signal }),
   );
   assert.equal(live.source, "page-observation");
   assert.deepEqual(live.context, { rows: [{ name: "中心仓" }] });
@@ -110,11 +122,54 @@ test("a page that was used and then closed is a plain conversation again", async
     }),
   );
   const closed = JSON.parse(
-    await tool.execute({ name: "context", parameters: "{}" }, { agent: { id: session }, signal: new AbortController().signal }),
+    await tool.execute({ action: "context", parameters: "{}" }, { agent: { id: session }, signal: new AbortController().signal }),
   );
   assert.equal(closed.availability, "not-in-workbench");
   assert.equal(closed.context, undefined, "关闭后不再泄露页面数据");
   assert.equal(closed.renderedAt, undefined);
+});
+
+test("同一屏第二次读取只回 unchanged：不把整包重复塞进历史", async () => {
+  const { tool, routes } = await registeredPlugins();
+  const open = routes.find((route) => route.path === "/api/gea-html/inventory-probe/open");
+  const call = routes.find((route) => route.path === "/api/gea-html/inventory-probe/call");
+  const { lease } = await (
+    await open.fetch(
+      new Request("http://local/api/gea-html/inventory-probe/open", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session }),
+      }),
+    )
+  ).json();
+  await call.fetch(
+    new Request("http://local/api/gea-html/inventory-probe/call", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        lease,
+        method: "context",
+        parameters: { rows: [{ name: "中心仓" }, { name: "分仓二" }] },
+      }),
+    }),
+  );
+  const exec = { agent: { id: session }, signal: new AbortController().signal };
+  const first = JSON.parse(
+    await tool.execute({ action: "context", parameters: "{}" }, exec),
+  );
+  assert.equal(first.source, "page-observation");
+  const second = JSON.parse(
+    await tool.execute({ action: "context", parameters: "{}" }, exec),
+  );
+  assert.equal(second.unchanged, true, "同一份内容第二次只回没变");
+  assert.equal(second.context, undefined, "不再重复发送整包");
+  assert.match(second.note, /未重复发送/);
+  // 换个 focus 就是新的一道，正常回内容。
+  const focused = JSON.parse(
+    await tool.execute({ action: "context", focus: "中心仓", parameters: "{}" }, exec),
+  );
+  assert.equal(focused.unchanged, undefined);
+  assert.ok(JSON.stringify(focused.context).includes("中心仓"));
 });
 
 test("each plugin's SKILL.md is published for the main conversation", async () => {

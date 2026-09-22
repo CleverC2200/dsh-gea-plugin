@@ -218,7 +218,7 @@ test("页面报空或撤走时，宿主把这个会话的页面能力撤掉", as
   assert.equal(declared.at(-1).catalog, null);
 });
 
-test("页面工具只对当前打开的页面有效：读错页面会被纠正，而不是给空上下文", async () => {
+test("页面入口只有一个工具：按当前页身份路由，切页后同一个工具读新页", async () => {
   // 模块 id 受宿主校验（^inventory-[a-z]+$），第二个页面用 inventory-two。
   const { routes, identities, tools } = await registered([
     "inventory-probe",
@@ -226,38 +226,41 @@ test("页面工具只对当前打开的页面有效：读错页面会被纠正�
   ]);
   const openA = routes.find((route) => route.path === "/api/gea-html/inventory-probe/open");
   const openB = routes.find((route) => route.path === "/api/gea-html/inventory-two/open");
+  const callA = routes.find((route) => route.path === "/api/gea-html/inventory-probe/call");
+  const callB = routes.find((route) => route.path === "/api/gea-html/inventory-two/call");
   const exec = { agent: { id: session }, signal: new AbortController().signal };
-  const toolA = tools.find((tool) => tool.name === "inventory_probe_page");
-  const toolB = tools.find((tool) => tool.name === "inventory_two_page");
-  assert.ok(toolA && toolB, "每个模块一个页面工具");
+  const pageTools = tools.filter((tool) => tool.name === "gea_page");
+  assert.equal(pageTools.length, 1, "装几个模块都只注册一个页面工具");
+  const tool = pageTools[0];
 
-  // A 页打开：当前页身份就是 A。
-  await post(openA, { session });
+  // A 页打开：身份是 A，同一个工具读到 A 的证据。
+  const openedA = await (await post(openA, { session })).json();
+  await post(callA, {
+    lease: openedA.lease,
+    method: "context",
+    parameters: { rows: [{ name: "A 行" }] },
+  });
   assert.equal(identities.get(session).pluginId, "inventory-probe");
-  assert.equal(identities.get(session).pageTool, "inventory_probe_page");
-
-  // 拿 B 的页面工具去读 A 这一屏：要被纠正到当前页，而不是回一个空 context。
-  const wrong = JSON.parse(
-    await toolB.execute({ name: "context", parameters: "{}" }, exec),
+  assert.equal(identities.get(session).pageTool, "gea_page");
+  const onA = JSON.parse(
+    await tool.execute({ action: "context", parameters: "{}" }, exec),
   );
-  assert.equal(wrong.code, "PAGE_IDENTITY_MISMATCH");
-  assert.equal(wrong.currentPage.pluginId, "inventory-probe");
-  assert.match(wrong.reason, /inventory_probe_page/);
+  assert.equal(onA.source, "page-observation");
+  assert.deepEqual(onA.context, { rows: [{ name: "A 行" }] });
 
-  // 切到 B：身份跟着走，这时才轮到 A 的工具被纠正。
-  await post(openB, { session });
+  // 切到 B：身份跟着走，同一个工具读到的是 B 的证据（不再有"读错页面"这条路）。
+  const openedB = await (await post(openB, { session })).json();
+  await post(callB, {
+    lease: openedB.lease,
+    method: "context",
+    parameters: { rows: [{ name: "B 行" }] },
+  });
   assert.equal(identities.get(session).pluginId, "inventory-two");
-  const wrongA = JSON.parse(
-    await toolA.execute({ name: "context", parameters: "{}" }, exec),
+  const onB = JSON.parse(
+    await tool.execute({ action: "context", parameters: "{}" }, exec),
   );
-  assert.equal(wrongA.code, "PAGE_IDENTITY_MISMATCH");
-  assert.match(wrongA.reason, /inventory_two_page/);
-
-  // 当前页自己调用仍然真的读页面。
-  const ok = JSON.parse(
-    await toolB.execute({ name: "context", parameters: "{}" }, exec),
-  );
-  assert.equal(ok.source, "page-observation");
+  assert.equal(onB.source, "page-observation");
+  assert.deepEqual(onB.context, { rows: [{ name: "B 行" }] });
 });
 
 test("页面关掉后身份清空；真实模块的模型 agentCode 跟着当前页走", async () => {

@@ -79,7 +79,7 @@ test("APS V0.2 replaces legacy plugin routes and tools without GEA login", async
       400,
     );
     assert.deepEqual(tools.map((tool) => tool.name), [
-      "inventory_apsplan_page",
+      "gea_page",
     ]);
   } finally {
     cleanups.forEach((cleanup) => cleanup());

@@ -16,7 +16,7 @@ export type PageIdentity = {
   consumerCode: string;
   /** 给模型看的模块名，例如 `经销商库存`。 */
   label: string;
-  /** 这个页面的对话入口工具名，例如 `inventory_dealer_page`。 */
+  /** 这个页面的对话入口工具名（全客户端只有一个：gea_page）。 */
   pageTool: string;
   /** 演示（mock）模块要如实标出来，避免把它的数字当业务事实。 */
   mock?: boolean;
@@ -27,9 +27,11 @@ export type PageIdentity = {
 /** 页面身份多久没活动就算过期：页面桥每秒轮询，90 秒足够区分"切走了"和"网络抖动"。 */
 export const PAGE_IDENTITY_TTL_MS = 90_000;
 
-export function pageToolName(pluginId: string): string {
-  return pluginId.replace(/-/g, "_") + "_page";
-}
+/**
+ * 页面入口只注册一个工具：它按当前页身份路由，而不是每个模块一个。
+ * 线上实测：9 个 `<模块>_page` 工具合计约 9KB，每次请求都付一次，而且模型会挑错模块。
+ */
+export const PAGE_TOOL = "gea_page";
 
 /** 这份身份还算不算"当前页"。 */
 export function pageIdentityFresh(
@@ -58,26 +60,9 @@ export function currentPageEnvelope(identity: PageIdentity): string {
     currentPage: currentPage(identity),
     reason:
       `当前页是「${identity.label}」：这一类页面不上报可见数据快照，所以拿不到"这一屏"的行数据。` +
-      `要读这一屏请用页面工具 ${identity.pageTool}（先 context）；口径或范围问题请用受管只读直读该模块（consumerCode ${identity.consumerCode}），不要读别的页面。` +
+      `要读这一屏请用 ${PAGE_TOOL}（action=context，可按 focus 收窄）；口径或范围问题请用受管只读直读该模块（consumerCode ${identity.consumerCode}）。` +
       (identity.mock
         ? "另：这个模块是演示数据，它的数字不能当业务事实引用。"
         : ""),
-  });
-}
-
-/** 调用了"不是当前页"的页面工具时的权威回答：说清当前页，并给出该用的工具。 */
-export function wrongPageEnvelope(
-  identity: PageIdentity,
-  requestedLabel: string,
-): string {
-  return JSON.stringify({
-    source: "GEA_PAGE",
-    availability: "wrong-page",
-    code: "PAGE_IDENTITY_MISMATCH",
-    page: requestedLabel,
-    currentPage: currentPage(identity),
-    reason:
-      `当前页是「${identity.label}」，不是「${requestedLabel}」：「${requestedLabel}」此刻没有打开，读不到它的这一屏。` +
-      `请改用 ${identity.pageTool}；数据口径问题用受管只读直读模块（consumerCode ${identity.consumerCode}）。不要读别的页面，也不要让用户先去开页面。`,
   });
 }
