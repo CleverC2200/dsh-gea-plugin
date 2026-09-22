@@ -1034,6 +1034,12 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   box-shadow: none !important;
 }
 
+/* 业务页已经把右侧对话栏固定在布局里，原生抽屉手柄会压住工作台最右侧的 iframe 区域。
+   这里不需要再用手柄切换右栏；隐藏它也避免它拦截业务页最后一列的点击。 */
+.AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_handle {
+  display: none;
+}
+
 /*
  * 通用分辨率策略（所有页面共用，按窗口宽度分三档）：
  *   宽屏 ≥1680     三栏：侧栏 280 · 主区自适应 · 对话栏 clamp(400–520)
