@@ -550,6 +550,7 @@ test("宿主对拒绝过的模块在窗口内不再重试，并给出可读的�
   );
   // 线上实测：网关回 rejected 后模型会换模块反复试，一轮三次，每次都白等一次往返。
   assert.match(source, /MCP_REJECTION_TTL_MS = 10 \* 60 \* 1000/);
-  assert.match(source, /GEA_MCP_SESSION_REJECTED：网关拒绝为/);
-  assert.match(source, /不要重试这个模块的 MCP/);
+  assert.match(source, /GEA_MCP_SESSION_REJECTED：当前账号没有/);
+  assert.match(source, /GEA_MCP_HTTP_REJECTED：网关拒绝了这个模块的 MCP 代理调用/);
+  assert.match(source, /10 分钟内不要再试它/);
 });

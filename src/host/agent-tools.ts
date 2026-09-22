@@ -362,7 +362,16 @@ export function registerGeaTools(
         timeoutMs: Math.max(business.config.mcpRequestTimeoutMs ?? 60000, 60000),
         isConcurrencySafe: () => true,
         execute: async (args, exec) => {
-          const module = await business.moduleMcp(String(args.consumerCode), exec.signal);
+          const consumerCode = String(args.consumerCode);
+          // 演示（mock）模块没有真实数据通道：直接说清，不去网关撞一次 400 / 权限拒绝。
+          if (capability?.byConsumer(consumerCode)?.data?.mock === true)
+            return JSON.stringify({
+              source: "GEA_MODULE_MCP",
+              availability: "mock-module",
+              consumerCode,
+              note: "「演示模块」没有 MCP 数据通道：页面里的数字是原型数据。要演示数据请读页面；真实口径请用 gea_plugin_read 查有可读表的模块（先 describe=true）。",
+            });
+          const module = await business.moduleMcp(consumerCode, exec.signal);
           const toolName = typeof args.tool === "string" ? args.tool.trim() : "";
           if (!toolName)
             return JSON.stringify({

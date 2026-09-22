@@ -52,6 +52,8 @@ export type CapabilityData = {
   tables: string[];
   /** 从模块 SKILL.md 摘出来的口径要点，进只读工具说明。 */
   rules: string[];
+  /** 演示（mock）模块：页面里的数字是原型数据，也没有真实数据通道。 */
+  mock?: boolean;
 };
 
 export type CapabilityRouting = {
@@ -192,6 +194,8 @@ export type PluginContractInput = {
   sources?: readonly string[];
   /** 该模块允许被对话改到的最大等级，默认只改页面草稿。 */
   maxEffect?: CapabilityEffect;
+  /** 演示（mock）模块：页面数字是原型数据，也没有真实数据通道。 */
+  mock?: boolean;
 };
 
 /**
@@ -214,7 +218,12 @@ export function contractFromPlugin(input: PluginContractInput): CapabilityContra
       protocol: "dom-scan",
       pageIds: [...input.pageIds],
     },
-    data: { consumerCode: input.consumerCode, tables, rules },
+    data: {
+      consumerCode: input.consumerCode,
+      tables,
+      rules,
+      ...(input.mock === true ? { mock: true } : {}),
+    },
     maxEffect,
     layers: layersForContract({ hasView: true, hasData: true, maxEffect }),
     skills: [input.id],
@@ -322,7 +331,12 @@ export function normalizeContract(value: unknown): CapabilityContract {
           .slice(0, 5)
           .map((rule) => rule.slice(0, 800))
       : [];
-    normalizedData = { consumerCode, tables: tables.slice(0, 200), rules };
+    normalizedData = {
+      consumerCode,
+      tables: tables.slice(0, 200),
+      rules,
+      ...(candidate.mock === true ? { mock: true } : {}),
+    };
   }
   const skills = Array.isArray(raw.skills)
     ? (raw.skills as unknown[])

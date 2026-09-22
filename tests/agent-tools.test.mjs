@@ -222,6 +222,32 @@ test(
         );
         return true;
       }
+      if (outcome === "module-mcp-mock") {
+        const results = body.messages.filter((x) => x.role === "tool");
+        res.end(
+          results.length === 0
+            ? event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "module-mcp-1",
+                      type: "function",
+                      function: {
+                        name: "gea_module_mcp",
+                        arguments: JSON.stringify({
+                          consumerCode: "probe-consumer",
+                        }),
+                      },
+                    },
+                  ],
+                },
+                "tool_calls",
+              )
+            : event({ content: "这个模块是演示模块，没有真实数据。" }, "stop"),
+        );
+        return true;
+      }
       if (outcome === "visible-context-twice") {
         const hasVisibleContext = body.messages.some(
           (message) =>
@@ -606,6 +632,20 @@ test(
           ),
           false,
         );
+      },
+    );
+    await t.test(
+      "演示模块不再去撞 MCP：直接说明没有数据通道",
+      async () => {
+        outcome = "module-mcp-mock";
+        modelRequests = [];
+        await ended(await submit());
+        const result = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" && message.tool_call_id === "module-mcp-1",
+        );
+        assert.match(result.content, /mock-module/);
+        assert.match(result.content, /演示模块/);
       },
     );
     await t.test(

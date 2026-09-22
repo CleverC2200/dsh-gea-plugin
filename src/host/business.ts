@@ -1705,10 +1705,16 @@ export class Business {
       module = await openModuleMcp(transport, signal);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (/GEA_MCP_SESSION_(REJECTED|HTTP_\d+)/.test(message)) {
+      // 两类失败都要止损：网关没开权限（SESSION_REJECTED），或代理调用被拒（HTTP_4xx）。
+      // 线上实测模型会换模块连着试（一轮三次），每次白等一次往返。
+      const permission = /GEA_MCP_SESSION_REJECTED/.test(message);
+      const rejected = /GEA_MCP_(SESSION_(REJECTED|HTTP_\d+)|HTTP_\d+)/.test(message);
+      if (rejected) {
         this.moduleMcpRejections.set(consumerCode, Date.now());
         throw new Error(
-          `GEA_MCP_SESSION_REJECTED：网关拒绝为「${consumerCode}」开 MCP 会话（${message}）。不要重试这个模块的 MCP：改用 gea_plugin_read 直读（先 describe=true 取表与配方），或读页面证据。`,
+          permission
+            ? `GEA_MCP_SESSION_REJECTED：当前账号没有「${consumerCode}」这个模块的 MCP 权限（${message}）。10 分钟内不要再试它：改用 gea_plugin_read 直读（先 describe=true 看有哪些表与配方），或读页面证据。`
+            : `GEA_MCP_HTTP_REJECTED：网关拒绝了这个模块的 MCP 代理调用（${message}）。10 分钟内不要再试它：改用 gea_plugin_read 直读（先 describe=true），或读页面证据。`,
         );
       }
       throw error;

@@ -299,6 +299,8 @@ export async function registerHtmlPlugins(
         consumerCode: item.gea.consumerCode,
         pageIds: (item.pages as Array<{ id: string }>).map((page) => page.id),
         skill: item.skillText,
+        // 演示模块要在契约里标出来：它没有真实数据通道，别再去试模块 MCP。
+        mock: item.mock === true,
         // All accepted HTML modules declare gea.readonly=true; keep that
         // manifest fact in the capability contract instead of defaulting to draft.
         maxEffect: "view",
