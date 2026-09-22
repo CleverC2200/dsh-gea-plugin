@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { profile } from './profile.mjs';
 
-test('Host binds role writes to fresh permission and capability evidence while refusing stale, invisible and terminal requests', {timeout:60000}, async t=>{
+test('Host binds role writes to fresh permission and capability evidence while refusing stale, terminal and downgraded requests', {timeout:60000}, async t=>{
  const app=await profile(t);
  let mode='supported',writes=0,status=2;
  const snapshot='a'.repeat(64);
@@ -21,10 +21,11 @@ test('Host binds role writes to fresh permission and capability evidence while r
  const action=(patch={})=>app.rpc('sales-plan/action',{planId:'p',versionId:'v',requestId:`r${++attempt}`,idempotencyKey:`role:${attempt}`,request:{action:'APPROVE',approvalRole:'region',approvalPolicy:'role-visible-v1',expectedStatus:status,expectedSnapshot:snapshot,...patch}});
  for(const scenario of ['legacy','stale','ineffective']) {mode=scenario; assert.equal((await action()).ok,false,scenario);}
  mode='supported';
- // 终态与未提报一律不可写；退回态只有在“退回给本节点”时才可写（region 只接管 7）。
- for(status of [0,5,6,8,9,10]) assert.equal((await action()).ok,false,`status ${status}`);
- status=7;
- assert.equal((await action()).ok,true,'退回给本节点（7）可以改完继续提交');
+ // 未提报、待回写、回写完成都不是审批动作，仍然写不了。
+ for(status of [0,5,10]) assert.equal((await action()).ok,false,`status ${status}`);
+ // 退回态只要队列里看得见就能改完继续提交，不再要求「必须退回给本节点」；
+ // 角色、组织、版本和状态是否真的允许由 GEA 写接口校验。
+ for(status of [6,7,8,9]) assert.equal((await action()).ok,true,`status ${status} 可以改完继续提交`);
  status=6;
  const returnedSave=await app.rpc('sales-plan/action',{planId:'p',versionId:'v',requestId:`r${++attempt}`,idempotencyKey:`role:${attempt}`,request:{action:'SAVE',expectedStatus:6,expectedSnapshot:snapshot}});
  assert.equal(returnedSave.ok,false,'returned SAVE');

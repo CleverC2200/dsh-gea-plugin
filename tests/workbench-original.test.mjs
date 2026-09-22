@@ -131,12 +131,16 @@ test('approval identity comes from the account grant or an assigned task', () =>
 });
 
 for (const [typeCode, status, actor, wrong] of [['Y', 1, 'region', 'province'], ['Y', 2, 'province', 'area'], ['Y', 3, 'area', 'category'], ['XN', 2, 'province', 'region']]) {
-  test(`${typeCode} ${status}: visibility and role grant determine approval`, () => {
+  test(`${typeCode} ${status}: account grant determines identity, data scope determines the row`, () => {
     const row = { planId: 'p', versionId: 'v', status, planTypeCode: typeCode };
     const value = { currentVersion: { id: 'v', planId: 'p', status, planTypeCode: typeCode, effective: true } };
     const permission = role => [`sales-plan:plan:${role}-approve`];
+    // 角色决定身份，数据权限决定明细：有权限码的角色就是审批人，不再按「这行当前停在哪个节点」卡一遍，
+    // 表里看得见的行都能提交或退回；写权限最终由 GEA 按组织、角色、版本和状态校验。
     assert.deepEqual(salesPlanAccessForRow(row, value, permission(actor))?.allowedActions, ['APPROVE', 'REJECT']);
-    assert.equal(salesPlanAccessForRow(row, value, permission(wrong)), undefined);
+    assert.equal(salesPlanAccessForRow(row, value, permission(wrong))?.approvalRole, wrong);
+    // 没有权限码就没有身份；显式指定的角色也必须在这个账号的权限里。
+    assert.equal(salesPlanAccessForRow(row, value, []), undefined);
     assert.equal(salesPlanAccessForRow(row, value, permission(actor), wrong), undefined);
     assert.equal(salesPlanAccessForRow(row, {...value, currentVersion: {...value.currentVersion, effective: false}}, permission(actor)), undefined);
     assert.equal(salesPlanAccessForRow(row, {...value, currentVersion: {...value.currentVersion, id: 'new'}}, permission(actor)), undefined);

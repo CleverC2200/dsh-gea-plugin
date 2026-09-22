@@ -935,8 +935,8 @@ const RegionalApprovalWorkbench: React.FC<{
     }
     return SALES_PLAN_ROLES.filter((stage) => capable.has(stage) && stage !== 'customer');
   }, [liveAccess.entries, liveQuery.enabled, roleStages]);
-  // 流程图收起态的节点口径：与展开态高亮一致（用户所选的节点，默认即其第一个有权限审批的节点）。
-  const stageIndicatorStage = displayStage ?? authorizedStages[0];
+  // 收起态的节点口径跟展开态高亮一致：用户选了哪个节点就显示哪个，切到「全部节点」就显示全部节点。
+  const stageIndicatorStage = displayStage;
   // 默认节点：权限码给出的已在上面的 effect 设好；这里补“没有权限码、但服务端给了同版本可处理任务”的账号，
   // 且只自动设一次，之后用户自己切到「全部节点」或别的节点都不再覆盖。
   const defaultStageApplied = useRef(false);
@@ -1516,9 +1516,10 @@ const RegionalApprovalWorkbench: React.FC<{
 
   const changeStage = (stage: ApprovalStageId) => {
     if (liveQuery.enabled) {
-      // 审批工作台按节点收口：只能在自己有审批权限的节点之间切换，不提供「全部节点」。
-      setLiveStageFilter(stage);
-      setDimension(APPROVAL_DIMENSIONS_BY_STAGE[stage][0]);
+      // 再点当前节点就回到「全部节点」；没权限的节点已置灰，切不过来。
+      const nextStage = liveStageFilter === stage ? undefined : stage;
+      setLiveStageFilter(nextStage);
+      setDimension(APPROVAL_DIMENSIONS_BY_STAGE[nextStage ?? 'category'][0]);
       setDraftLiveFilters((current) => ({ ...current, status: ALL_ORGANIZATIONS }));
       setAppliedLiveFilters((current) => ({ ...current, status: ALL_ORGANIZATIONS }));
       setSelectedRowIds([]);
@@ -2114,11 +2115,10 @@ const RegionalApprovalWorkbench: React.FC<{
   };
 
   const visibleStageFixtures = APPROVAL_STAGE_FIXTURES.filter((stage) => stage.id !== ('evaluation' as ApprovalStageId));
-  // 审批工作台只列出当前账号有审批权限的节点：没有权限的节点不出现，也不提供「全部节点」。
-  // 没有权限码但被服务端派了同版本任务的账号，authorizedStages 由该任务推断得出。
-  const laneStageFixtures = liveQuery.enabled
-    ? visibleStageFixtures.filter((stage) => (authorizedStages as readonly ApprovalStageId[]).includes(stage.id))
-    : visibleStageFixtures;
+  // 节点条始终展示全部节点：角色决定能进哪些节点，没权限的节点置灰不可点，
+  // 明细由数据权限决定，因此「全部节点」这一视图保留。
+  const stageAuthorized = (id: ApprovalStageId) =>
+    (authorizedStages as readonly ApprovalStageId[]).includes(id);
   const currentStageIndex = visibleStageFixtures.findIndex((stage) => stage.id === displayStage);
   const healthColors: Record<ApprovalHealth, 'green' | 'orange' | 'red'> = {
     healthy: 'green',
@@ -2695,11 +2695,7 @@ const RegionalApprovalWorkbench: React.FC<{
               {t('common.assistantSurface.regionalApproval.stageLaneToggle.current', {
                 stage: stageIndicatorStage
                   ? t(stageLabelKey(stageIndicatorStage))
-                  : t(
-                      liveQuery.enabled
-                        ? 'common.assistantSurface.regionalApproval.stageLaneToggle.noStage'
-                        : 'common.assistantSurface.regionalApproval.stages.all',
-                    ),
+                  : t('common.assistantSurface.regionalApproval.stages.all'),
               })}
             </span>
             {stageLaneOpen ? <Up size={12} /> : <Down size={12} />}
@@ -2830,7 +2826,7 @@ const RegionalApprovalWorkbench: React.FC<{
           data-live-status={liveQuery.enabled}
           aria-label={t('common.assistantSurface.regionalApproval.stageLane')}
         >
-          {laneStageFixtures.map((stage, index) => {
+          {visibleStageFixtures.map((stage, index) => {
             const state = liveQuery.enabled
               ? liveQuery.progressState.status !== 'success'
                 ? 'unavailable'
@@ -2857,7 +2853,7 @@ const RegionalApprovalWorkbench: React.FC<{
                   aria-pressed={liveQuery.enabled ? liveStageFilter === stage.id : undefined}
                   disabled={
                     liveQuery.enabled &&
-                    liveQuery.progressState.status !== 'success'
+                    (liveQuery.progressState.status !== 'success' || !stageAuthorized(stage.id))
                   }
                   onClick={() => changeStage(stage.id)}
                 >
@@ -2880,7 +2876,7 @@ const RegionalApprovalWorkbench: React.FC<{
                     </small>
                   </span>
                 </Button>
-                {!liveQuery.enabled && index < laneStageFixtures.length - 1 ? (
+                {!liveQuery.enabled && index < visibleStageFixtures.length - 1 ? (
                   <span className={styles.stageConnector} data-state={state} aria-hidden='true' />
                 ) : null}
               </React.Fragment>

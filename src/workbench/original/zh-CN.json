@@ -428,7 +428,6 @@
       "stageLane": "各节点数据状态",
       "stageLaneToggle": {
         "current": "当前节点：{{stage}}",
-        "noStage": "未分配审批节点",
         "expand": "展开审批流程图",
         "collapse": "收起审批流程图"
       },

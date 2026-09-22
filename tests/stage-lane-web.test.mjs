@@ -47,12 +47,17 @@ test('approval flow lane is collapsed by default and toggles from the title row'
   await toggle.click();
   await expect(lane).toBeVisible();
   assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
-  // 节点条只列当前账号有权审批的节点：本用例只有 region 权限，因此只有一个节点，
-  // 也不再有「全部节点」这个可选状态。
-  await expect(frame.locator('[data-testid^="regional-approval-stage-"]')).toHaveCount(1);
-  await expect(frame.getByTestId('regional-approval-stage-customer')).toHaveCount(0);
+  // 节点条始终展示全部五个节点：角色决定能进哪个节点，没权限的节点置灰不可点。
+  await expect(frame.locator('[data-testid^="regional-approval-stage-"]')).toHaveCount(5);
+  await expect(frame.getByTestId('regional-approval-stage-region')).toBeEnabled();
+  for (const stage of ['customer', 'province', 'area', 'category'])
+    await expect(frame.getByTestId(`regional-approval-stage-${stage}`)).toBeDisabled();
   await expect(toggle).toContainText('当前节点：城市经理审批');
-  await expect(toggle).not.toContainText('全部节点');
+  // 再点当前节点就回到「全部节点」，队列按数据权限取数。
+  await frame.getByTestId('regional-approval-stage-region').click();
+  await expect(toggle).toContainText('当前节点：全部节点');
+  await frame.getByTestId('regional-approval-stage-region').click();
+  await expect(toggle).toContainText('当前节点：城市经理审批');
 
   // 同一次会话内记住展开状态：刷新后仍是展开。
   await page.reload();
