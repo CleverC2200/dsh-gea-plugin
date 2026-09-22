@@ -634,6 +634,29 @@ export function apply(ctx: Context): void {
       return () => observer.disconnect();
     }, []);
     useEffect(() => {
+      // 收起/展开是宿主做的宽度动画（约 240ms）。如果直接跟着 [data-sidebar-collapsed] 立刻换内容，
+      // 会出现「抽屉瞬间消失、图标列铺满整条宽度再滑回左边」的闪动。
+      // 这里按侧栏的实测宽度切换：宽度真的窄下来（≤100px）才换成图标列，展开时同理。
+      if (!region) return;
+      // 品牌行/图标列在 region 之外，所以收起标记要同时打在侧栏列和 region 上。
+      const sidebarColumn = region.closest<HTMLElement>("[class*='_sidebarCol']");
+      const targets = [region, sidebarColumn].filter((element): element is HTMLElement => Boolean(element));
+      const sync = () => {
+        const narrow = (sidebarColumn ?? region).getBoundingClientRect().width <= 100;
+        for (const target of targets) {
+          if (narrow) target.setAttribute("data-gea-narrow", "");
+          else target.removeAttribute("data-gea-narrow");
+        }
+      };
+      sync();
+      const observer = new ResizeObserver(sync);
+      observer.observe(sidebarColumn ?? region);
+      return () => {
+        observer.disconnect();
+        for (const target of targets) target.removeAttribute("data-gea-narrow");
+      };
+    }, [region]);
+    useEffect(() => {
       const findRegions = () => {
         setRegion(
           document.querySelector<HTMLElement>("[class*='_regionArea']") ??

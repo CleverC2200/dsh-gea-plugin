@@ -193,25 +193,36 @@
   .gea-panel-function,
   [data-gea-drawer="workspace"] > [data-slot="sidebar.workspaces"] { animation: none; }
 }
+/* 抽屉/图标列的切换按侧栏实测宽度走（data-gea-narrow），不跟宿主的收起标志同步切换，
+   否则宽度还在动画时抽屉就消失、图标列铺满整条栏再滑回左边，看起来就是"闪动"。 */
+[data-gea-narrow] .gea-sidebar-drawer,
+[data-gea-narrow] .gea-sidebar-panel { display: none; }
+/* 收起动画一开始就让抽屉淡出，避免中途被挤成一条时露出截断文字。 */
+.gea-sidebar-drawer,
+.gea-sidebar-panel { transition: opacity 120ms ease-out; }
 [data-sidebar-collapsed] .gea-sidebar-drawer,
-[data-sidebar-collapsed] .gea-sidebar-panel { display: none; }
-[data-sidebar-collapsed] [class*="_regionArea"] > [data-slot="sidebar.workspaces"] {
+[data-sidebar-collapsed] .gea-sidebar-panel { opacity: 0; pointer-events: none; }
+[data-gea-narrow] [class*="_regionArea"] > [data-slot="sidebar.workspaces"] {
   display: none !important;
 }
 /* 侧栏收起时只剩图标列：新建对话 / 业务工作台 / 历史会话，点哪个都会先展开侧栏。 */
 .gea-sidebar-rail {
   display: none;
 }
-[data-sidebar-collapsed] .gea-sidebar-rail {
+[data-gea-narrow] .gea-sidebar-rail {
   order: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
   padding: 6px 0;
+  /* 固定成收起态的列宽并贴左，宽度动画过程中图标不再横向漂移。 */
+  align-self: flex-start;
+  width: 56px;
+  max-width: 100%;
 }
 /* 收起态这三个入口由 GEA 提供，原生重复的「新建会话」按钮收起来。 */
-[data-sidebar-collapsed] [class*="_newSession"] {
+[data-gea-narrow] [class*="_newSession"] {
   display: none !important;
 }
 /* 「AI 工作台」（原生新建会话）跟业务导航同一条左线：整块贴左、内容左对齐。 */
@@ -271,7 +282,7 @@ button[class*="_newSession"] :is(svg, img) { margin-right: 8px; }
   background: #fff0f2;
   color: #df1732;
 }
-[data-sidebar-collapsed] .gea-inbox-quick-action {
+[data-gea-narrow] .gea-inbox-quick-action {
   display: none;
 }
 /* The business profile keeps the application chooser but not the default
@@ -335,13 +346,13 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 /* 登记 24：宿主在品牌位未挂载时的兜底文案是「DSH 本地构建」，GEA 外壳不出现构建文案。 */
 [class*="fallbackBrandName"] { display: none !important; }
 /* 登记 28：侧栏收起后品牌圆标跟下面的图标列走同一条中线。 */
-[data-sidebar-collapsed] [class*="_logoRow"] [class*="_brand"] {
+[data-gea-narrow] [class*="_logoRow"] [class*="_brand"] {
   justify-content: center !important;
   padding-left: 0 !important;
   padding-right: 0 !important;
 }
 /* 收起态品牌圆标缩小到跟图标列同一量级，不再占满整条宽度。 */
-[data-sidebar-collapsed] .gea-shell-logo {
+[data-gea-narrow] .gea-shell-logo {
   width: 26px;
   height: 26px;
   margin-right: 0 !important;

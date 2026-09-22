@@ -165,6 +165,19 @@ test(
       Math.abs(centering.logoCenter - centering.railCenter) <= 2,
       JSON.stringify(centering),
     );
+    // 收起动画期间不闪：图标列固定成窄列（不铺满整条侧栏），且切换按侧栏实测宽度走。
+    const collapsedRail = await page.evaluate(() => {
+      const rail = document.querySelector(".gea-sidebar-rail");
+      const sidebar = document.querySelector("[class*='_sidebarCol']");
+      return {
+        railWidth: rail ? Math.round(rail.getBoundingClientRect().width) : 0,
+        narrowFlag: sidebar?.hasAttribute("data-gea-narrow") ?? false,
+        drawerHidden: getComputedStyle(document.querySelector(".gea-sidebar-drawer")).display === "none",
+      };
+    });
+    assert.ok(collapsedRail.railWidth > 0 && collapsedRail.railWidth <= 60, JSON.stringify(collapsedRail));
+    assert.equal(collapsedRail.narrowFlag, true, JSON.stringify(collapsedRail));
+    assert.equal(collapsedRail.drawerHidden, true, JSON.stringify(collapsedRail));
     await page
       .getByRole("button", { name: "展开侧边栏", exact: true })
       .or(page.getByRole("button", { name: "打开侧边栏", exact: true }))
