@@ -1,3 +1,9 @@
+import {
+  CAPABILITY_LAYERS,
+  layersForContract,
+  type CapabilityLayer,
+} from "./layers.ts";
+
 /**
  * 能力契约：每个业务模块（原生工作台页面或迁移过来的 HTML 页面）用同一份形状
  * 声明自己"有什么页面、能读什么数据、能改到什么程度、带哪些提示词、负责回答哪类问题"。
@@ -62,6 +68,11 @@ export type CapabilityContract = {
   data?: CapabilityData;
   /** 这个模块允许被对话改到的最大等级。 */
   maxEffect: CapabilityEffect;
+  /**
+   * 这个模块实际上有哪几层能力（读 / 改草稿 / 提交 / 审批 / 导出）。
+   * 默认由上面的页面、数据与最大等级派生（layers.ts）；模块将来自己声明时直接生效。
+   */
+  layers?: CapabilityLayer[];
   skills: string[];
   routing: CapabilityRouting;
 };
@@ -193,6 +204,7 @@ export function contractFromPlugin(input: PluginContractInput): CapabilityContra
   const tables = tablesFromSource(...(input.sources ?? []));
   const rules = rulesFromSkill(input.skill ?? "");
   const description = skillDescription(input.skill ?? "");
+  const maxEffect = input.maxEffect ?? "draft";
   return {
     id: input.id,
     label: input.label,
@@ -203,7 +215,8 @@ export function contractFromPlugin(input: PluginContractInput): CapabilityContra
       pageIds: [...input.pageIds],
     },
     data: { consumerCode: input.consumerCode, tables, rules },
-    maxEffect: input.maxEffect ?? "draft",
+    maxEffect,
+    layers: layersForContract({ hasView: true, hasData: true, maxEffect }),
     skills: [input.id],
     routing: {
       keywords: [...new Set([input.label, input.id, ...tables])],
@@ -220,6 +233,7 @@ export function workbenchContract(input: {
   maxEffect?: CapabilityEffect;
   keywords?: readonly string[];
 }): CapabilityContract {
+  const maxEffect = input.maxEffect ?? "approve";
   return {
     id: "gea-workbench",
     label: "区域计划审批工作台",
@@ -229,7 +243,12 @@ export function workbenchContract(input: {
       pageIds: [...input.pageIds],
     },
     ...(input.data === undefined ? {} : { data: input.data }),
-    maxEffect: input.maxEffect ?? "approve",
+    maxEffect,
+    layers: layersForContract({
+      hasView: true,
+      hasData: input.data !== undefined,
+      maxEffect,
+    }),
     skills: [],
     routing: {
       keywords: [...(input.keywords ?? [])],
@@ -314,6 +333,14 @@ export function normalizeContract(value: unknown): CapabilityContract {
     typeof raw.routing === "object" && raw.routing !== null
       ? (raw.routing as Record<string, unknown>)
       : {};
+  // 模块显式声明的层与派生结果取并集：现在按事实派生，将来模块自己声明就直接生效。
+  const declaredLayers = Array.isArray(raw.layers)
+    ? (raw.layers as unknown[]).filter(
+        (layer): layer is CapabilityLayer =>
+          typeof layer === "string" &&
+          (CAPABILITY_LAYERS as readonly string[]).includes(layer),
+      )
+    : [];
   const keywords = Array.isArray(routingRaw.keywords)
     ? (routingRaw.keywords as unknown[])
         .filter((keyword): keyword is string => typeof keyword === "string")
@@ -326,6 +353,12 @@ export function normalizeContract(value: unknown): CapabilityContract {
     ...(normalizedView === undefined ? {} : { view: normalizedView }),
     ...(normalizedData === undefined ? {} : { data: normalizedData }),
     maxEffect: maxEffect as CapabilityEffect,
+    layers: layersForContract({
+      hasView: normalizedView !== undefined,
+      hasData: normalizedData !== undefined,
+      maxEffect: maxEffect as CapabilityEffect,
+      declared: declaredLayers,
+    }),
     skills,
     routing: {
       keywords,

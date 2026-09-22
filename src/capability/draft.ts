@@ -1,3 +1,5 @@
+import { LAYER_POLICY } from "./layers.ts";
+
 /**
  * "改草稿"这一层能力的统一实现。
  *
@@ -74,8 +76,9 @@ let receiptSeq = 0;
 export function createDraftLayer(options: DraftLayerOptions = {}): DraftLayer {
   const now = options.now ?? (() => Date.now());
   const nextId = options.id ?? (() => "draft-" + ++receiptSeq);
+  // 数值统一来自能力层策略表（见 layers.ts），不在这一层另写一套。
   const windowMs = options.windowMs ?? 60_000;
-  const maxPerWindow = options.maxPerWindow ?? 30;
+  const maxPerWindow = options.maxPerWindow ?? LAYER_POLICY.draft.maxPerMinute;
   const maxReceipts = options.maxReceipts ?? 200;
   const receipts: DraftReceipt[] = [];
   /** 每个会话的改动时间戳，用来限流。 */

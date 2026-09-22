@@ -557,6 +557,9 @@ test(
         );
         assert.match(result.content, /current-visible-page/);
         assert.match(result.content, /当前客户/);
+        // 通道顺序由宿主算好一起给出，模型不必自己挑通道。
+        assert.match(result.content, /"channels"/);
+        assert.match(result.content, /gea_plugin_read/);
         assert.equal(
           rows.some(
             (entry) =>
@@ -579,6 +582,8 @@ test(
             message.tool_call_id === "visible-context-unavailable-1",
         );
         assert.match(result.content, /PAGE_NOT_IN_WORKBENCH/);
+        // 没有页面时也要给出兜底通道（受管只读），而不是让模型空转。
+        assert.match(result.content, /"channels"/);
         assert.equal(
           rows.some(
             (entry) =>

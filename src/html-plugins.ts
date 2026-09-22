@@ -12,6 +12,7 @@ import {
 } from "./capability/contract.ts";
 import { injectPageScan, pageCatalogFromScan } from "./html-page-scan.ts";
 import { pageToolName, wrongPageEnvelope } from "./host/page-identity.ts";
+import { LAYER_POLICY } from "./capability/layers.ts";
 
 /** 已经挂到 DSH 技能根下的业务技能目录，用于插件卸载时回收。 */
 const publishedSkillDirs: string[] = [];
@@ -518,7 +519,11 @@ export async function registerHtmlPlugins(
             schema: { type: "string" },
             render: (_a: any, value: string) => [{ type: "text", text: value }],
           },
-          timeoutMs: 60000,
+          // 页面工具本身要覆盖最慢的一层（提交/审批）再加一点余量，数值来自能力层策略表。
+          timeoutMs: Math.max(
+            LAYER_POLICY.read.timeoutMs,
+            LAYER_POLICY.submit.timeoutMs + 5_000,
+          ),
           isConcurrencySafe: () => false,
           execute: async (args: any, exec: any) => {
             if (!item.mock && !business.status().authenticated)

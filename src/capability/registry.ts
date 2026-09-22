@@ -9,6 +9,11 @@ import {
   type CapabilityContract,
   type CapabilityEffect,
 } from "./contract.ts";
+import {
+  layerForEffect,
+  layersForContract,
+  type CapabilityLayer,
+} from "./layers.ts";
 import { recipesFor } from "./recipes.ts";
 
 export type CapabilityRegistry = {
@@ -40,6 +45,15 @@ export type CapabilityRegistry = {
 };
 
 const CONSUMER_PATTERN = /^[a-z][a-z0-9-]+$/;
+
+/** 模块有哪几层能力：模块自己声明过就用它，否则按页面/数据/最大等级派生。 */
+const layersOf = (contract: CapabilityContract): CapabilityLayer[] =>
+  contract.layers ??
+  layersForContract({
+    hasView: contract.view !== undefined,
+    hasData: contract.data !== undefined,
+    maxEffect: contract.maxEffect,
+  });
 
 function tableList(tables: readonly string[], max: number): string {
   if (tables.length === 0) return "未声明可读表（先用 describe 发现）";
@@ -121,14 +135,16 @@ export function createCapabilityRegistry(
           return `- ${contract.label}：consumerCode=${data.consumerCode}；可读表：${tableList(
             data.tables,
             12,
-          )}${recipeText}${rules}`;
+          )}；能力层：${layersOf(contract).join("、")}${recipeText}${rules}`;
         })
         .join("\n");
     },
     allows: (surface, effect) => {
       for (const contract of ordered())
-        if (surfaceOf(contract) === surface)
-          return effectRank(effect) <= effectRank(contract.maxEffect);
+        if (surfaceOf(contract) === surface) {
+          // 统一按能力层判定：读层看这个页面在不在、写层看模块声明的层。
+          return layersOf(contract).includes(layerForEffect(effect));
+        }
       return false;
     },
     modules: () =>

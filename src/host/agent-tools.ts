@@ -11,6 +11,8 @@ import {
   missingRecipeParams,
   recipesFor,
 } from "../capability/recipes.ts";
+import { LAYER_POLICY } from "../capability/layers.ts";
+import { channelPlan, type ChannelPlan } from "../capability/channel.ts";
 
 /** 只注册已认证的读取；可见记录仍以 GEA 为权威。
  * @param ctx 拥有工具注册和释放生命周期的 Host 上下文。
@@ -21,6 +23,41 @@ export function registerGeaTools(
   business: Business,
   capability?: CapabilityRegistry,
 ): void {
+  /**
+   * 宿主替模型算好的通道顺序：当前页是谁、命中哪个模块、该先用哪条道。
+   * 线上实测"选通道"这一步最容易翻车，所以不由模型自己猜（见 capability/channel.ts）。
+   */
+  const channelsFor = (sessionId: string): ChannelPlan => {
+    const page = business.currentPageIdentity?.(sessionId);
+    const module = page?.consumerCode
+      ? capability?.byConsumer(page.consumerCode)
+      : undefined;
+    return channelPlan({
+      ...(page ? { currentPage: page } : {}),
+      ...(module?.data
+        ? {
+            module: {
+              consumerCode: module.data.consumerCode,
+              label: module.label,
+              readableTables: module.data.tables.length,
+            },
+          }
+        : {}),
+    });
+  };
+
+  /** 把通道顺序并进工具结果；结果不是 JSON 就原样返回，绝不让"给建议"变成"给报错"。 */
+  const withChannels = (payload: string, plan: ChannelPlan): string => {
+    try {
+      const value = JSON.parse(payload);
+      if (!value || typeof value !== "object" || Array.isArray(value))
+        return payload;
+      return JSON.stringify({ ...value, channels: plan });
+    } catch {
+      return payload;
+    }
+  };
+
   ctx.effect(() =>
     ctx.tools.register(
       defineTool({
@@ -151,7 +188,10 @@ export function registerGeaTools(
         // 受管只读查询要留出网关自己的执行时间（SQL 侧默认 30 秒）：
         // 之前用 15 秒的普通请求超时，宽口径聚合还没返回就被判超时。
         // describe 探列也走这里（已按预算并行），所以统一放宽到 60 秒。
-        timeoutMs: Math.max(business.config.requestTimeoutMs, 60000),
+        timeoutMs: Math.max(
+          business.config.requestTimeoutMs,
+          LAYER_POLICY.read.timeoutMs,
+        ),
         isConcurrencySafe: () => true,
         presentCall: (args) => ({
           card: "generic",
@@ -342,8 +382,15 @@ export function registerGeaTools(
         execute: async (_args, exec) => {
           if (!exec.agent) throw new Error("WORKBENCH_SESSION_REQUIRED");
           const snapshot = await business.waitVisibleWorkbenchContext(exec.agent.id);
-          if (business.config.visibleContextSubagent !== true) return snapshot;
-          return summarizeVisibleWorkbenchContext(snapshot, exec.agent, exec.signal);
+          const plan = channelsFor(exec.agent.id);
+          if (business.config.visibleContextSubagent !== true)
+            return withChannels(snapshot, plan);
+          const summarized = await summarizeVisibleWorkbenchContext(
+            snapshot,
+            exec.agent,
+            exec.signal,
+          );
+          return withChannels(summarized, plan);
         },
       }),
     ),
