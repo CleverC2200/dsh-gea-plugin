@@ -106,17 +106,10 @@ export function Inbox({ t }: { t: Translate }) {
   );
   return (
     <section className="gea-inbox" aria-label={t("messageInbox")}>
-      <header className="gea-inbox-header">
-        <div className="gea-inbox-heading">
-          <h1>{t("businessInbox")}</h1>
-          {data && <span className="gea-inbox-unread">{data.unreadCount} {t("inboxUnreadMessages")}</span>}
-        </div>
-        <div className="gea-inbox-header-actions"><button disabled={busy || mutationBusy} onClick={refresh}>{t("refreshInbox")}</button>
-        {selectedIds.size > 0 && <button disabled={busy || mutationBusy || retryPending} onClick={() => {
+      {selectedIds.size > 0 && <div className="gea-inbox-selection-actions"><button disabled={busy || mutationBusy || retryPending} onClick={() => {
           const items = data?.items.filter(item => selectedIds.has(item.id) && item.state === "unread" && item.version !== null).map(item => ({ notificationId: item.id, expectedVersion: item.version }));
           if (items?.length && items.length === selectedIds.size) void mutate({ operation: "batch-read", idempotencyKey: crypto.randomUUID(), items });
-        }}>{t("markSelectedRead")}</button>}</div>
-      </header>
+        }}>{t("markSelectedRead")}</button></div>}
       <div className="gea-inbox-toolbar">
         <label className="gea-inbox-filter">
           {t("inboxStatusLabel")}
@@ -167,8 +160,6 @@ export function Inbox({ t }: { t: Translate }) {
             <div><button disabled={busy || pageNo === 1} onClick={() => { setData(null); setPageNo(pageNo - 1); }}>{t("previous")}</button>
             <button disabled={busy || pageNo * data.pageSize >= data.total} onClick={() => { setData(null); setPageNo(pageNo + 1); }}>{t("next")}</button></div>
           </footer>
-          <p className="gea-inbox-hint">{t("inboxMutationHint")}</p>
-          <details className="gea-inbox-provenance"><summary>{t("inboxQueryInfo")}</summary><p>{t(data.environment)} · {t("returned")}: {data.items.length} · {t(data.coverage)} · {t("fetchedAt")}: {formatDate(data.fetchedAt)}</p></details>
         </>}
       </div>
       <dialog ref={drawer} className="gea-inbox-drawer" aria-labelledby="gea-inbox-detail-title"

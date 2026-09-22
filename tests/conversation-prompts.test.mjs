@@ -105,13 +105,13 @@ test("两版共用同一套结构，库存助手文案保持不变", () => {
 test("每个工作台页都有对齐的助手名称与四段文案", () => {
   const expected = [
     [homeConversation, "AI 工作台助手"],
-    [inboxConversation, "业务待办助手"],
+    [inboxConversation, "业务待办Agent"],
     [demandOpsConversation, "需求运营助手"],
     [deliveryOpsConversation, "交付运营助手"],
-    [safetyStockConversation, "安全库存助手"],
-    [branchStockConversation, "分仓库存助手"],
+    [safetyStockConversation, "基地库存Agent"],
+    [branchStockConversation, "分仓库存Agent"],
     [inventoryWorkbenchConversation, "库存管理助手"],
-    [fullChainStockConversation, "全链路库存助手"],
+    [fullChainStockConversation, "全链库存管理Agent"],
     [inventoryConversation, "经销商补货助手"],
     [regionalPlanConversation, "区域计划助手"],
     [approvalConversation, "销售计划助手"],
@@ -120,7 +120,7 @@ test("每个工作台页都有对齐的助手名称与四段文案", () => {
     assert.equal(config.name, name);
     // 登记 32：会话框标题只留「模块名 + 助手」，副标（需求预测 Agent 等）整行去掉。
     assert.equal(config.headerSub, undefined);
-    assert.match(config.name, /助手$/);
+    assert.match(config.name, /(助手|Agent)$/);
     assert.equal(config.actions.length, 4);
     assert.equal(config.prompts.length, 4);
     assert.equal(config.tagline, undefined);
