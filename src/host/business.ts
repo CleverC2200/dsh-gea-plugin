@@ -17,6 +17,7 @@ import { prepareGatewayLaunch } from "./html-gateway.ts";
 import { prepareGatewayMcp } from "./gateway-mcp.ts";
 import { readHtmlQuery } from "../html-query.ts";
 import { probeTables, withDefaultPaging } from "./plugin-query.ts";
+import { openModuleMcp } from "./mcp-client.ts";
 import { readableMessage } from "./error-envelope.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
@@ -726,6 +727,7 @@ export class Business {
     this.auth = undefined;
     this.modelRoutes.clear();
     this.pluginDelegations.clear();
+    this.moduleMcpCache.clear();
     this.resubmissions.clear();
     this.correctionRequests.clear();
     this.qr = undefined;
@@ -1558,6 +1560,31 @@ export class Business {
     const auth = this.authenticated();
     const identity = this.epoch.signal;
     return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.mcpRequestTimeoutMs ?? 60000, this.apiLog.fetch);
+  }
+
+  private readonly moduleMcpCache = new Map<
+    string,
+    { token: string; module: import("./mcp-client.ts").McpModule }
+  >();
+
+  /**
+   * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
+   * 页面不可用时的兜底查询走这里：不依赖页面、也不依赖我们替它写 SQL。
+   */
+  async moduleMcp(
+    consumerCode: string,
+    signal: AbortSignal,
+  ): Promise<import("./mcp-client.ts").McpModule> {
+    const auth = this.authenticated();
+    const cached = this.moduleMcpCache.get(consumerCode);
+    if (cached && cached.token === auth.token) return cached.module;
+    const transport = await this.openMcpConnection(
+      { consumerType: "AGENT", consumerCode },
+      signal,
+    );
+    const module = await openModuleMcp(transport, signal);
+    this.moduleMcpCache.set(consumerCode, { token: auth.token, module });
+    return module;
   }
 
   /** 为受信任的 HTML 插件提供带用户权限的只读 SQL 查询。SQL 仍由 GEA 网关按 consumerCode 审核。 */
