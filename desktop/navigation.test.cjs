@@ -36,3 +36,27 @@ test('开发实例不抢占系统协议',()=>{
   assert.equal(typeof api.attachNavigation,'function');const app=new EventEmitter();app.isPackaged=false;app.setAsDefaultProtocolClient=()=>assert.fail('开发不应注册');
   api.attachNavigation({app,queue:api.createNavigationQueue(),argv:[],getWindow:()=>undefined,onError:()=>{}});
 });
+
+test('飞书链路传入动作后根斜杠时，V1/V2 与原格式等价且重复点击合并',()=>{
+  for(const version of [1,2]){
+    const original=`aionui://open-conversation?ref=v1.production-v1.synthetic.signature&v=${version}`;
+    const normalized=original.replace('open-conversation?','open-conversation/?');
+    assert.deepEqual(api.parseNavigation(normalized),api.parseNavigation(original));
+    const queue=api.createNavigationQueue();queue.enqueue(normalized);const first=queue.pending();
+    queue.enqueue(original);assert.deepEqual(queue.pending(),first);queue.complete({id:first.id});assert.equal(queue.pending(),null);
+  }
+  for(const action of ['open-conversation//','open-conversation/other','open-conversation/%2f','open-conversation/../','open-conversation/%2e']){
+    assert.throws(()=>api.parseNavigation(`aionui://${action}?ref=abc&v=1`),/^Error: NAVIGATION_LINK_INVALID$/);
+  }
+  assert.throws(()=>api.parseNavigation('aionui://open-conversation/?ref=abc&v=1&profile=production'),/^Error: NAVIGATION_LINK_INVALID$/);
+});
+
+test('含根斜杠的链接在冷启动、第二实例及 macOS 入口均可交付',()=>{
+  const app=new EventEmitter();app.isPackaged=false;const queue=api.createNavigationQueue();const issues=[];
+  api.attachNavigation({app,queue,argv:['exe','aionui://open-conversation/?ref=cold&v=1'],getWindow:()=>undefined,onError:code=>issues.push(code)});
+  assert.equal(queue.pending()?.navigationReference,'cold');queue.complete({id:queue.pending().id});
+  app.emit('second-instance',{},['exe','aionui://open-conversation/?ref=hot&v=2']);
+  assert.equal(queue.pending()?.navigationReference,'hot');queue.complete({id:queue.pending().id});
+  app.emit('open-url',{preventDefault(){}},'aionui://open-conversation/?ref=mac&v=1');
+  assert.equal(queue.pending()?.navigationReference,'mac');assert.deepEqual(issues,[]);
+});

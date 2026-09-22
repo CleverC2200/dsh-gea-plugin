@@ -3,10 +3,11 @@ const {randomUUID}=require('node:crypto');
 
 /** 严格接收现有 GEA ref/v 链接；错误不包含原始输入。 */
 function parseNavigation(value){
-  if(typeof value!=='string'||value.length>2048||!/^aionui:\/\/open-conversation\?[^#\s]+$/.test(value))throw Error('NAVIGATION_LINK_INVALID');
+  // 飞书/浏览器链路可能保留动作后的根斜杠，仅兼容空路径和根路径。
+  if(typeof value!=='string'||value.length>2048||!/^aionui:\/\/open-conversation\/?\?[^#\s]+$/.test(value))throw Error('NAVIGATION_LINK_INVALID');
   const url=new URL(value);
   const params=url.searchParams;
-  if(url.hostname!=='open-conversation'||url.username||url.password||url.port||url.pathname||url.hash||
+  if(url.hostname!=='open-conversation'||url.username||url.password||url.port||!['','/'].includes(url.pathname)||url.hash||
       [...params.keys()].length!==2||params.getAll('ref').length!==1||params.getAll('v').length!==1||
       !/^[A-Za-z0-9._-]{1,512}$/.test(params.get('ref')||'')||!['1','2'].includes(params.get('v')))
     throw Error('NAVIGATION_LINK_INVALID');
