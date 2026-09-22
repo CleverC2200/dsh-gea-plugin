@@ -63,6 +63,7 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
     title: "库存管理",
     icon: "warehouse",
     items: [
+      { id: "inventory-personal" },
       { id: "inventory-qll" },
       { id: "inventory-aqkc" },
       { id: "inventory-fc" },

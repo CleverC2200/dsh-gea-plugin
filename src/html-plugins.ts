@@ -47,6 +47,11 @@ export async function registerHtmlPlugins(
       return {};
     }
   })();
+  // 兼容已经保存了旧页面 ID 的客户端会话。全链库存曾以 inventory-all
+  // 注册工作台；新版页面使用 inventory-qll，但旧会话仍会请求旧预设。
+  const presetAliases: Readonly<Record<string, readonly string[]>> = {
+    "inventory-qll": ["inventory-all"],
+  };
   // 预设显示名与隐藏清单：plugin.json 由别的仓库发布，改预设名/下架条目不必重发插件包。
   const presetLabels: { hidden: string[]; labels: Record<string, { name?: string }> } =
     await (async () => {
@@ -139,34 +144,36 @@ export async function registerHtmlPlugins(
       // 已下架的模块：页面可能还在装，但不再出现在 Agent 预设列表里。
       await rm(preset, { recursive: true, force: true });
     } else {
-      await mkdir(preset, { recursive: true });
-      await writeFile(
-        resolve(preset, "preset.yml"),
-        JSON.stringify({
-          // 显示名优先用仓库里的覆盖表，其次才是插件包自己的名字。
-          name: presetLabels.labels[manifest.id]?.name ?? manifest.name,
-          // 卡片介绍写各模块自己的能力：文案在仓库 presets/agent-capabilities.json 维护，
-          // 没登记的插件回退到它自己 SKILL.md 的 description。
-          description:
-            capabilities[manifest.id] ??
-            frontmatter("description") ??
-            manifest.name,
-        }),
-      );
-      await writeFile(
-        resolve(preset, "agent.cordis.yml"),
-        JSON.stringify([
-          {
-            id: "persona",
-            name: "@deepseek-ai/dsh-persona",
-            config: {
-              prefix: skill,
-              complete: false,
-              includeRuntimeContext: false,
+      const name = presetLabels.labels[manifest.id]?.name ?? manifest.name;
+      const description =
+        capabilities[manifest.id] ??
+        frontmatter("description") ??
+        manifest.name;
+      const writePreset = async (directory: string) => {
+        await mkdir(directory, { recursive: true });
+        await writeFile(
+          resolve(directory, "preset.yml"),
+          JSON.stringify({ name, description }),
+        );
+        await writeFile(
+          resolve(directory, "agent.cordis.yml"),
+          JSON.stringify([
+            {
+              id: "persona",
+              name: "@deepseek-ai/dsh-persona",
+              config: {
+                prefix: skill,
+                complete: false,
+                includeRuntimeContext: false,
+              },
             },
-          },
-        ]),
-      );
+          ]),
+        );
+      };
+      await writePreset(preset);
+      for (const alias of presetAliases[manifest.id] ?? []) {
+        await writePreset(resolve(business.config.runtimeDir, "native-presets", "gea-html-" + alias));
+      }
     }
     items.push({
       ...manifest,

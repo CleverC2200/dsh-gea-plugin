@@ -131,7 +131,7 @@ test("each plugin's SKILL.md is published for the main conversation", async () =
   }
 });
 
-test("preset names follow the repo override table and hidden modules drop their preset", async () => {
+test("preset names follow the repo override table and full-chain legacy sessions keep working", async () => {
   const { runtimeDir } = await registeredPlugins({
     roots: [
       await probePlugin(),
@@ -150,12 +150,15 @@ test("preset names follow the repo override table and hidden modules drop their 
   assert.equal((await read("inventory-probe")).name, "探针页面");
   // 登记过的模块用仓库里的业务名，改名不必重发插件包。
   assert.equal((await read("inventory-aqkc")).name, "基地库存Agent");
-  // 下架的模块不再生成预设。
-  await assert.rejects(
-    readFile(
-      join(runtimeDir, "native-presets", "gea-html-inventory-qll", "preset.yml"),
-      "utf8",
-    ),
+  assert.equal((await read("inventory-qll")).name, "全链路库存");
+  assert.equal(
+    JSON.parse(
+      await readFile(
+        join(runtimeDir, "native-presets", "gea-html-inventory-all", "preset.yml"),
+        "utf8",
+      ),
+    ).name,
+    "全链路库存",
   );
 });
 

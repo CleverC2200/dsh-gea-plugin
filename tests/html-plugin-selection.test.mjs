@@ -33,7 +33,7 @@ test("left menu follows the prototype group order and hides entries without a pa
   assert.deepEqual(groups.map(group => [group.key, group.title]), [['supply', '产销协同'], ['plan', '计划管理'], ['inventory', '库存管理']]);
   assert.deepEqual(groups[0].entries.map(entry => entry.id), ['inventory-apsplan']);
   assert.deepEqual(groups[1].entries.map(entry => entry.id), ['gea-regional-plan', 'gea-proof']);
-  assert.deepEqual(groups[2].entries.map(entry => entry.id), ['inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-dealer', 'inventory-customer']);
+  assert.deepEqual(groups[2].entries.map(entry => entry.id), ['inventory-personal', 'inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-dealer', 'inventory-customer']);
   assert.equal(groups.some(group => group.key === 'orders'), false);
 });
 test("menu keeps prototype entries out until their page is registered", () => {
