@@ -2279,7 +2279,7 @@ export class Business {
     options: { forModel?: boolean } = {},
   ): Promise<unknown> {
     keys(payload, ["kind", "query"]);
-    const query = object(payload.query ?? {});
+    let query = object(payload.query ?? {});
     const kind = text(payload.kind);
     const allowed: Record<string, string[]> = {
       periods: ["periodMonth", "planType", "pageNo", "pageSize"],
@@ -2303,7 +2303,20 @@ export class Business {
       compare: ["planId", "fromVersionId", "toVersionId"],
     };
     if (!Object.hasOwn(allowed, kind)) throw new Error("INVALID_QUERY");
-    const unsupported = Object.keys(query).filter(key => !allowed[kind].includes(key));
+    // 分页参数对不分页的 kind（detail/versions/compare…）没有意义，但也不算错：
+    // 线上实测模型会给 detail 顺手带上 pageSize，严格拒绝等于白烧一轮。
+    // 这里把它丢掉继续跑；真正用错的 key（比如给 detail 传 versionId）仍然照旧报错。
+    const ignoredPaging = Object.keys(query).filter(
+      (key) =>
+        (key === "pageNo" || key === "pageSize") && !allowed[kind].includes(key),
+    );
+    const effective =
+      ignoredPaging.length === 0
+        ? query
+        : Object.fromEntries(
+            Object.entries(query).filter(([key]) => !ignoredPaging.includes(key)),
+          );
+    const unsupported = Object.keys(effective).filter(key => !allowed[kind].includes(key));
     if (unsupported.length) {
       // 这些提示直接决定模型下一轮能不能纠正，不要只说“参数不支持”。
       const guidance =
@@ -2316,6 +2329,7 @@ export class Business {
               : "";
       throw new Error(`INVALID_QUERY: kind=${kind} accepts only ${allowed[kind].join(", ")}.${guidance}`);
     }
+    query = effective;
     if (
       kind === "periods" &&
       query.periodMonth != null &&
