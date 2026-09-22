@@ -579,6 +579,12 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   background: #fff;
   border-left: 1px solid #e5e8ed;
 }
+/* 宿主的列拖拽条宽 8px、左右各压过边界 4px，会压进右侧会话区、在输入框那一行切出一条竖线。
+   整个挪到左边界外侧，拖动照样可用，但不再切进对话框。 */
+.AppFrame_handle {
+  width: 6px;
+  margin-left: -6px;
+}
 /* The rail keeps DSH's native composer card; only its clearance is tightened, because the
    hero-sized clearance wastes most of a 440px column. Both conversation phases inherit it,
    and it must sit on the conversation root because DSH declares the same vars there. */
@@ -1118,8 +1124,13 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 
 /* 会话统计（「N 轮 M 步」）本来在输入框下方，会把输入框顶上去。
    这里把它排到输入框上面，输入框自己贴住面板底部；横向留白沿用原生变量。 */
+/* 统计行绝对定位在输入框上方：这一行出现/消失都不再挤动输入框（否则整块会向下跳一下）。 */
+[class*="uV2eYG_root"] { position: relative; }
 [class*="uV2eYG_root"] [class*="bOPqQW_root"] {
-  order: -1;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
   padding-top: 0;
   padding-bottom: 0;
   margin-bottom: 6px;
