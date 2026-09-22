@@ -636,9 +636,12 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 [data-phase="hero"] [data-composer-seat] {
   position: relative;
   inset: auto;
-  z-index: 2;
+  /* 宿主的列拖拽条是 z-index:11 且左右各压进边界 4px，会压到输入框左上角；
+     输入区排在它上面（上色不透明），拖动条照旧可见，但不会盖住对话框。 */
+  z-index: 12;
   flex: 0 0 auto;
   min-height: 0;
+  background: #fff;
 }
 /* With the workbench beside it, the landing surface takes the space above the docked composer. */
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] > .gea-agent-welcome {
@@ -652,7 +655,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] [data-composer-seat] {
   position: relative;
   inset: auto;
-  z-index: 1;
+  z-index: 12;
   flex: 0 0 auto;
   min-height: 0;
   background: #fff;
