@@ -227,13 +227,26 @@ export function registerHtmlClient(ctx: any) {
           const elements = reported.elements ?? scanned.elements;
           return elements === null ? null : { elements };
         },
-        apply: (args, meta) =>
+        apply: (args, meta, signal) =>
           new Promise((resolve) => {
+            const cancel = () => {
+              if (!pendingApplies.delete(meta.toolCallId)) return;
+              frame.current?.contentWindow?.postMessage(
+                {
+                  protocol: "gea-html-v2",
+                  type: "cancel",
+                  toolCallId: meta.toolCallId,
+                },
+                "*",
+              );
+            };
             const settle = (result: { applied: boolean; error?: string }) => {
               pendingApplies.delete(meta.toolCallId);
+              signal.removeEventListener("abort", cancel);
               resolve(result);
             };
             pendingApplies.set(meta.toolCallId, settle);
+            signal.addEventListener("abort", cancel, { once: true });
             frame.current?.contentWindow?.postMessage(
               {
                 protocol: "gea-html-v2",
@@ -244,10 +257,6 @@ export function registerHtmlClient(ctx: any) {
               },
               "*",
             );
-            setTimeout(() => {
-              if (pendingApplies.delete(meta.toolCallId))
-                settle({ applied: false, error: "APPLY_TIMEOUT" });
-            }, 8000);
           }),
       });
       const poll = async () => {

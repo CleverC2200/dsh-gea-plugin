@@ -19,6 +19,7 @@ export type PageBridgeApplyResult = { applied: boolean; error?: string };
 export type PageBridgeApply = (
   args: unknown,
   meta: { toolCallId: string; toolCallName: string },
+  signal: AbortSignal,
 ) => PageBridgeApplyResult | Promise<PageBridgeApplyResult>;
 
 export type PageBridgeClientOptions = {
@@ -68,6 +69,7 @@ export function startPageBridgeClient(
   const buffers = new Map<string, string>();
   const names = new Map<string, string>();
   const settled = new Set<string>();
+  const activeApplies = new Map<string, AbortController>();
   const outbox: AgUiToolMessage[] = [];
   let counter = 0;
   let stopped = false;
@@ -90,21 +92,39 @@ export function startPageBridgeClient(
     toolCallName: string,
     args: unknown,
   ): Promise<PageBridgeApplyResult> => {
+    const controller = new AbortController();
+    activeApplies.set(toolCallId, controller);
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
     try {
       return await Promise.race([
-        Promise.resolve(options.apply(args, { toolCallId, toolCallName })),
+        Promise.resolve(
+          options.apply(
+            args,
+            { toolCallId, toolCallName },
+            controller.signal,
+          ),
+        ),
         new Promise<PageBridgeApplyResult>((resolve) => {
-          timeout = setTimeout(
-            () => resolve({ applied: false, error: "APPLY_TIMEOUT" }),
-            applyTimeoutMs,
+          controller.signal.addEventListener(
+            "abort",
+            () => {
+              if (!timedOut) resolve({ applied: false, error: "APPLY_CANCELLED" });
+            },
+            { once: true },
           );
+          timeout = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            resolve({ applied: false, error: "APPLY_TIMEOUT" });
+          }, applyTimeoutMs);
         }),
       ]);
     } catch (error) {
       return { applied: false, error: "APPLY_FAILED" };
     } finally {
       if (timeout) clearTimeout(timeout);
+      activeApplies.delete(toolCallId);
     }
   };
 
@@ -170,6 +190,8 @@ export function startPageBridgeClient(
   return () => {
     stopped = true;
     clearTimeout(timer);
+    for (const controller of activeApplies.values()) controller.abort();
+    activeApplies.clear();
     // 最后一件事：把"这个会话没有页面能力"报给宿主。宿主据此立刻注销页面工具，
     // 不必等声明过期。失败就算了：页面已经走了，桥不该影响业务页面本身。
     if (!closeOnDispose || typeof options.sessionId !== "string") return;

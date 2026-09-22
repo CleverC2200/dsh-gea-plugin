@@ -25,6 +25,8 @@ type PendingToolCall = {
 type BridgeSession = {
   toolCalls: PendingToolCall[];
   results: Map<string, { message: AgUiToolMessage; receivedAt: number }>;
+  /** 已取消的调用：既阻止排队下发，也丢弃页面迟到的回执。 */
+  cancelled: Map<string, number>;
 };
 
 export type PageBridgeOptions = {
@@ -42,6 +44,8 @@ export type PageBridge = {
   enqueue(sessionId: string, input: { toolCallName: string; args: unknown }): string;
   pull(sessionId: string, toolMessages: unknown): AgUiEvent[];
   take(sessionId: string, toolCallId: string): AgUiToolMessage | undefined;
+  /** 取消尚未完成的调用；迟到的页面回执不会再进入宿主结果队列。 */
+  cancel(sessionId: string, toolCallId: string): void;
   wait(sessionId: string, toolCallId: string, waitMs: number, pollMs?: number): Promise<AgUiToolMessage | undefined>;
   reset(sessionId: string): void;
   /** 身份或部署整体变化时清空所有会话。 */
@@ -59,7 +63,11 @@ export function createPageBridge(options: PageBridgeOptions = {}): PageBridge {
   const sessionOf = (sessionId: string): BridgeSession => {
     const existing = sessions.get(sessionId);
     if (existing) return existing;
-    const created: BridgeSession = { toolCalls: [], results: new Map() };
+    const created: BridgeSession = {
+      toolCalls: [],
+      results: new Map(),
+      cancelled: new Map(),
+    };
     sessions.set(sessionId, created);
     return created;
   };
@@ -68,6 +76,8 @@ export function createPageBridge(options: PageBridgeOptions = {}): PageBridge {
     session.toolCalls = session.toolCalls.filter((call) => call.expiresAt > at);
     for (const [toolCallId, result] of session.results)
       if (at - result.receivedAt > ttlMs) session.results.delete(toolCallId);
+    for (const [toolCallId, cancelledAt] of session.cancelled)
+      if (at - cancelledAt > ttlMs) session.cancelled.delete(toolCallId);
   };
 
   const take = (
@@ -99,6 +109,8 @@ export function createPageBridge(options: PageBridgeOptions = {}): PageBridge {
     pull(sessionId, toolMessages) {
       const session = sessionOf(sessionId);
       for (const message of validateToolMessages(toolMessages)) {
+        // 超时取消后，页面可能已经在执行并迟到回传；这条回执不能复活调用。
+        if (session.cancelled.has(message.toolCallId)) continue;
         session.results.set(message.toolCallId, {
           message,
           receivedAt: now(),
@@ -124,6 +136,17 @@ export function createPageBridge(options: PageBridgeOptions = {}): PageBridge {
     },
 
     take,
+
+    cancel(sessionId, toolCallId) {
+      const session = sessions.get(sessionId);
+      if (!session) return;
+      session.toolCalls = session.toolCalls.filter(
+        (call) => call.toolCallId !== toolCallId,
+      );
+      session.results.delete(toolCallId);
+      session.cancelled.set(toolCallId, now());
+      prune(session, now());
+    },
 
     async wait(sessionId, toolCallId, waitMs, pollMs = 100) {
       const deadline = now() + waitMs;

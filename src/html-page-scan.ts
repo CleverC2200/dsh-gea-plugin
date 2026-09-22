@@ -64,6 +64,7 @@ export const PAGE_SCAN_SCRIPT = String.raw`(function () {
   var MAX_TEXT = 200;
   var MAX_LABEL = 200;
   var MAX_OPTIONS = 24;
+  var cancelled = Object.create(null);
   var CONTROL_SELECTOR =
     "input, textarea, select, button, [role=button], [role=option], [role=menuitem]," +
     "[role=tab], [role=switch], [role=radio], [role=checkbox], [contenteditable]";
@@ -489,7 +490,22 @@ export const PAGE_SCAN_SCRIPT = String.raw`(function () {
     var message = event && event.data;
     if (!message || typeof message !== "object") return;
     if (message.protocol !== PROTOCOL) return;
+    if (message.type === "cancel") {
+      if (typeof message.toolCallId === "string") cancelled[message.toolCallId] = true;
+      return;
+    }
     if (message.type === "apply") {
+      if (typeof message.toolCallId !== "string") return;
+      if (cancelled[message.toolCallId]) {
+        delete cancelled[message.toolCallId];
+        post({
+          type: "applied",
+          toolCallId: message.toolCallId,
+          applied: false,
+          error: "APPLY_CANCELLED",
+        });
+        return;
+      }
       var result;
       try {
         result = applyOne(message.args || {});

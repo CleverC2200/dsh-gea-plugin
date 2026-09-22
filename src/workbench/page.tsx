@@ -475,9 +475,21 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       endpoint: "agui/workbench",
       request: rpc,
       sessionId,
-      apply: (args, meta) =>
+      apply: (args, meta, signal) =>
         new Promise<PageBridgeApplyResult>((resolve) => {
-          pendingToolResult.current = { toolCallId: meta.toolCallId, resolve };
+          const cancel = () => {
+            if (pendingToolResult.current?.toolCallId !== meta.toolCallId) return;
+            pendingToolResult.current = undefined;
+            setWorkbenchToolCall(undefined);
+          };
+          signal.addEventListener("abort", cancel, { once: true });
+          pendingToolResult.current = {
+            toolCallId: meta.toolCallId,
+            resolve: (result) => {
+              signal.removeEventListener("abort", cancel);
+              resolve(result);
+            },
+          };
           setWorkbenchToolCall({
             toolCallId: meta.toolCallId,
             command: (args ?? {}) as Record<string, unknown>,

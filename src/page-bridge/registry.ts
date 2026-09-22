@@ -271,14 +271,30 @@ export function createPageToolRegistry(
       args: validated,
     });
     const message = await bridge.wait(sessionId, toolCallId, waitMs);
-    const applied = message !== undefined && message.error === undefined;
+    if (message === undefined) bridge.cancel(sessionId, toolCallId);
+    let pageApplied = message !== undefined && message.error === undefined;
+    if (pageApplied && message) {
+      try {
+        const content = JSON.parse(message.content);
+        if (content && typeof content === "object" && content.applied === false)
+          pageApplied = false;
+      } catch {
+        // Legacy pages may return plain text; absence of an applied flag keeps
+        // the existing success semantics while explicit false is authoritative.
+      }
+    }
+    const applied = pageApplied;
+    const pageError =
+      message === undefined
+        ? "PAGE_TOOL_PENDING"
+        : message.error ?? (pageApplied ? undefined : "PAGE_TOOL_NOT_APPLIED");
     drafts.finish(begun.receiptId, {
       applied,
       ...(message === undefined
         ? { error: "PAGE_TOOL_PENDING", timedOut: true }
-        : message.error === undefined
+        : pageError === undefined
           ? {}
-          : { error: message.error }),
+          : { error: pageError }),
     });
     const receipt = drafts.receipts().find((entry) => entry.id === begun.receiptId);
     let snapshot = consumer.stateSnapshot?.(sessionId);
@@ -314,7 +330,7 @@ export function createPageToolRegistry(
               "页面还没执行这次改动（可能刚切走工作台或页面正在加载）。现在不能说页面已经改好了。",
           }
         : {}),
-      ...(message?.error ? { error: message.error } : {}),
+      ...(pageError ? { error: pageError } : {}),
       ...(applied && !snapshotAfterApply
         ? {
             availability: "refreshing",

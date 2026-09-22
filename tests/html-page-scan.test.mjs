@@ -160,12 +160,12 @@ function runScript(dom, extra = {}) {
 
 /** 跑一遍注入脚本，再把这一屏挂到同一份 document 上（脚本启动后才渲染的真实顺序）。 */
 function mount(dom, screen) {
-  const { window, document, posted } = runScript(dom);
+  const { window, document, posted, listeners } = runScript(dom);
   for (const child of screen.root.children) {
     document.children.push(child);
     child.parentElement = document;
   }
-  return { window, document, posted, scan: window.__geaPageScan };
+  return { window, document, posted, listeners, scan: window.__geaPageScan };
 }
 
 /** 一屏真实形态：一个带表头的表格，行里既有输入框也有只读文本，工具栏有按钮。 */
@@ -268,6 +268,30 @@ test("setValue 走原生 setter 并派发 input/change，提交类按钮能点�
   const clicked = scan.apply({ kind: "invoke", target: "control:通过", action: "invoke" });
   assert.deepEqual(clicked, { applied: true });
   assert.deepEqual(screen.toolbar.children[3].events, ["click"]);
+});
+
+test("取消回执到达页面后，尚未执行的调用不会落到 DOM", () => {
+  const dom = makeDom();
+  const screen = buildScreen(dom);
+  const mounted = mount(dom, screen);
+  const onMessage = mounted.listeners.find((entry) => entry.type === "message").handler;
+  onMessage({ data: { protocol: "gea-html-v2", type: "cancel", toolCallId: "__proto__" } });
+  onMessage({
+    data: {
+      protocol: "gea-html-v2",
+      type: "apply",
+      toolCallId: "__proto__",
+      args: { kind: "setValue", target: "field:sku-1001:补货量", value: "200" },
+    },
+  });
+  assert.equal(screen.qty.value, "");
+  assert.deepEqual(mounted.posted.at(-1), {
+    protocol: "gea-html-v2",
+    type: "applied",
+    toolCallId: "__proto__",
+    applied: false,
+    error: "APPLY_CANCELLED",
+  });
 });
 
 test("元素不在了就明确失败，不假装改成功", () => {
