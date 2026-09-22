@@ -712,20 +712,18 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-home-hero {
   order: -1;
   width: 100%;
-  /* 登记 53：作为 flex 项时必须允许收缩，否则长句会把会话列撑出可视区被裁掉。 */
+  /* 主视觉保持居中（登记 30 的"文字左对齐"经验收改回）。这两处只防窄列溢出，不改变居中形态。 */
   max-width: min(900px, 100%);
   min-width: 0;
-  /* 登记 30：主视觉整块贴左，不再在会话列里居中。 */
-  margin: 0 0 24px;
+  margin: 0 auto 24px;
   padding: 0 24px;
-  /* 文本左对齐，跟业务区保持一致。 */
-  text-align: left;
+  text-align: center;
 }
 .gea-home-logo {
   display: block;
   width: 81px;
   height: 81px;
-  margin: 0 0 13px;
+  margin: 0 auto 13px;
   object-fit: contain;
 }
 .gea-home-eyebrow {
@@ -737,8 +735,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-home-title {
   max-width: 850px;
-  margin: 0;
-  /* 登记 53：窄屏下长句必须换行，不能横向溢出被截断。 */
+  margin: 0 auto;
   overflow-wrap: anywhere;
   color: #292b2e;
   font-size: clamp(26px, 2.6vw, 40px);
@@ -748,7 +745,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-home-description {
   max-width: 760px;
-  margin: 20px 0 24px;
+  margin: 20px auto 24px;
   overflow-wrap: anywhere;
   color: #919399;
   font-size: 13px;

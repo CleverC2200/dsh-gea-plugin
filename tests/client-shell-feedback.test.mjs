@@ -29,7 +29,7 @@ const plan = {
 };
 
 test(
-  "客户端外壳按反馈收敛：会话区命名、菜单选中态、收起品牌居中与工作台文字对齐",
+  "客户端外壳按反馈收敛：会话区命名、菜单选中态、收起品牌居中与工作台主视觉居中",
   { timeout: 90000 },
   async (t) => {
     const app = await profile(t, {
@@ -172,13 +172,25 @@ test(
       .click();
     await page.waitForTimeout(500);
 
-    // 登记 30 / 53：AI 工作台主视觉文字左对齐，窄屏不横向溢出。
+    // 登记 30 经验收改回：AI 工作台主视觉保持居中；窄屏不横向溢出（登记 53 加固）。
     await page.getByRole("button", { name: "AI工作台", exact: true }).click();
     await page.locator(".gea-home-hero").waitFor();
     assert.equal(
       await page.locator(".gea-home-hero").evaluate((el) => getComputedStyle(el).textAlign),
-      "left",
+      "center",
     );
+    const heroCentered = await page.locator(".gea-home-hero").evaluate((el) => {
+      const hero = el.getBoundingClientRect();
+      const logo = el.querySelector(".gea-home-logo").getBoundingClientRect();
+      const title = el.querySelector(".gea-home-title").getBoundingClientRect();
+      const center = (box) => box.left + box.width / 2;
+      return {
+        logo: Math.round(center(logo) - center(hero)),
+        title: Math.round(center(title) - center(hero)),
+      };
+    });
+    assert.ok(Math.abs(heroCentered.logo) <= 2, JSON.stringify(heroCentered));
+    assert.ok(Math.abs(heroCentered.title) <= 2, JSON.stringify(heroCentered));
     await page.setViewportSize({ width: 700, height: 1000 });
     await page.waitForTimeout(300);
     assert.equal(
