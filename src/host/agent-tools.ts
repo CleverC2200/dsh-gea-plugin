@@ -2,6 +2,27 @@
 import type { Context } from "@deepseek-ai/cordis";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { Business } from "./business.ts";
+import { readFile } from "node:fs/promises";
+import {
+  contentText,
+  extractArtifactUri,
+  parseFirstJsonObject,
+  projectCatalog,
+  resultText,
+  spillPathFrom,
+} from "./gateway-catalog.ts";
+
+/** 网关 inspect 的产物常常被宿主截断到本机 spill 文件；能读就读完整版。 */
+async function catalogText(text: string): Promise<string> {
+  const spill = spillPathFrom(text);
+  if (!spill) return text;
+  try {
+    const full = await readFile(spill, "utf8");
+    return full.length > text.length ? full : text;
+  } catch {
+    return text;
+  }
+}
 
 /** 只注册已认证的读取；可见记录仍以 GEA 为权威。
  * @param ctx 拥有工具注册和释放生命周期的 Host 上下文。
@@ -153,6 +174,75 @@ export function registerGeaTools(ctx: Context, business: Business): void {
         execute: async (_args, exec) => {
           if (!exec.agent) throw new Error("WORKBENCH_SESSION_REQUIRED");
           return business.waitVisibleWorkbenchContext(exec.agent.id);
+        },
+      }),
+    ),
+  );
+  // 工作台之外的数据在 GEA 网关 MCP 里，但 inspect 产物约 33 万字符：宿主只内联 30KB，
+  // 模型看不到剩下的成员名，只能猜，于是连续报「成员必须是 模型.字段」「未唯一匹配数据目录资源」。
+  // 这里把语义模型压成紧凑目录，任何预设下的 agent 都能一次读完再查询。
+  ctx.effect(() =>
+    ctx.tools.register(
+      defineTool({
+        name: "gea_gateway_catalog",
+        description:
+          "List the GEA gateway semantic model before querying it. Call this first whenever the answer needs data that is not on the current workbench page (historical shipments, dealer or branch inventory, stock age, replenishment cycle, policy, seasonality, forecast confidence) or company knowledge base content. The result lists each model and its member names; copy member names verbatim into the Cube query you pass to the gateway's query_business_data tool. Pass model to narrow the directory to one model when it is long. Read-only: it cannot write, submit, approve or mutate anything.",
+        parameters: {
+          model: {
+            type: "string",
+            description: "只看名字里包含该字符串的模型，例如 agents_scm_wl_cust_stock_age_governed。留空返回全部模型。",
+          },
+        },
+        output: {
+          schema: { type: "string" },
+          render: (_args, value) => [{ type: "text", text: value }],
+          presentationMeta: () => ({
+            source: "GEA_GATEWAY_CATALOG",
+            readonly: true,
+          }),
+        },
+        timeoutMs: business.config.mcpRequestTimeoutMs ?? 60000,
+        isConcurrencySafe: () => true,
+        presentCall: (args) => ({
+          card: "generic",
+          title: "GEA · 网关语义模型" + (args.model ? " · " + args.model : ""),
+          rawInput: args,
+        }),
+        execute: async (args, exec) => {
+          const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+          const { StreamableHTTPClientTransport } = await import(
+            "@modelcontextprotocol/sdk/client/streamableHttp.js"
+          );
+          const connection = await business.openMcpConnection(
+            { consumerType: "AGENT", consumerCode: business.config.analysisAgentCode },
+            exec.signal,
+          );
+          const client = new Client({ name: "gea-plugin", version: "1" });
+          let listed = -1;
+          try {
+            await client.connect(
+              new StreamableHTTPClientTransport(new URL(connection.url), { fetch: connection.fetch }),
+            );
+            // 网关要求 tools/call 带 _meta.mcpCode，路由表由 tools/list 建立：
+            // 不先列一次工具，调用会被拒成 GEA_MCP_TOOL_ROUTE_REQUIRED。
+            const list = await client.listTools();
+            listed = Array.isArray(list?.tools) ? list.tools.length : 0;
+            const inspect = await client.callTool({
+              name: "query_business_data",
+              arguments: { action: "inspect", queries: [] },
+            });
+            // inspect 的产物可能是 text，也可能是 resource_link：两种都要能取到地址。
+            const uri = extractArtifactUri(resultText(inspect));
+            if (!uri) throw new Error(`GEA_CATALOG_RESOURCE_MISSING: tools=${listed}`);
+            // 资源正文用 MCP 的 resources/read 读（dsh_read_resource 是宿主自己的工具，不在网关工具表里）。
+            const resource = await client.readResource({ uri });
+            const text = await catalogText(resultText(resource));
+            return projectCatalog(parseFirstJsonObject(text), { model: args.model });
+          } catch (error) {
+            throw new Error(`GEA_CATALOG_MCP_FAILED: ${(error as Error).message} (listed=${listed})`);
+          } finally {
+            await client.close().catch(() => {});
+          }
         },
       }),
     ),

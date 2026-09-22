@@ -411,6 +411,26 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     open: (consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) => business.openMcpConnection(consumer, signal),
   });
   registerGeaTools(ctx, business);
+  // 登记 37：客户端所有 agent（含默认预设）都要能取到工作台之外的数据。
+  // 网关 MCP 的工具描述由 GEA 侧给出，模型容易猜错调用形状（实测报
+  // "queries.query 必须是 Cube 查询对象"、"成员未唯一匹配数据目录资源"、"Resource URI 不合法"），
+  // 这里在系统提示里补一份最小取数协议，全局生效、不依赖某个预设。
+  ctx.inject(["systemPrompt"], (promptCtx) => {
+    promptCtx.systemPrompt.section({
+      name: "gea:gateway-mcp-protocol",
+      order: 120,
+      text: [
+        "GEA 网关 MCP 取数协议（只有工作台页面上看不到的数据才用它）：",
+        "- 计划事实（提报状态、版本、明细、变更记录）优先用 gea_sales_plan_read；历史发货、经销商/分仓库存、货龄、补货周期、政策、节令、把握度，以及知识库类问题，用当前已加载的 GEA 网关 MCP 工具。",
+        "- 先取语义模型目录再查询：调用 gea_gateway_catalog（需要看某个模型时带 model=模型名），拿到模型名与成员名；成员名照抄，不要凭业务名猜。目录里的成员名形如 模型.字段，就是查询时要用的成员。",
+        '- 不要自己去读 inspect 的原始产物：它约 33 万字符，宿主只会内联前 30KB，剩下的存成本机文件，你没有读文件的工具。目录工具已经把它压到可一次读完的大小。',
+        '- 再查询：action="query"，queries 放 1 到 8 个具名 Cube 查询对象，每项形如 {"name":"<别名>","query":{…}}，其中 query 必须是 Cube 查询对象（不能写成字符串或自然语言）；response_mode 默认 "resource"，只有需要直接看行时才用 "inline_complete"。',
+        "- 一次只查一个模型：同一次调用的成员必须属于同一个 dataAssetCode，跨模型要分开调用；报“成员未唯一匹配数据目录资源”就是这条没满足。",
+        '- 结果返回资源链接时，用 dsh_read_resource 原样传入服务给出的完整 URI（形如 data-artifact://gateway/…）：不要自己拼 URI，也不要把它当 HTTP 链接去抓。',
+        "- 报错先按错误文本改参数再试一次；同一错误不要连续重试，更不要改用编造的数据或改写用户的问题。",
+      ].join("\n"),
+    });
+  });
   ctx.effect(() => async () => { await desktopLogin.dispose(); await webLogin.dispose(); business.dispose(); });
   if (config.analysisMode === "receipt")
     ctx.effect(() =>
