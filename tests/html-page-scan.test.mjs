@@ -317,3 +317,52 @@ test("扫出来的目录必须能通过宿主校验，宿主自己写死页面�
     /<script>[\s\S]*gea-html-v2[\s\S]*<\/script><\/body>/,
   );
 });
+
+test("弹层控件：先说清点开会有什么，点开后里面的选项要能被扫到", () => {
+  const dom = makeDom();
+  const { node } = dom;
+  // 真机形态：一个按钮 aria-haspopup=dialog，选项要点开才渲染。
+  const trigger = node("button", {
+    text: "补货周期7天",
+    attributes: { "aria-haspopup": "dialog", "aria-label": "补货周期配置" },
+  });
+  const root = node("div", {}, [trigger]);
+  const { window, document, scan } = mount(dom, { root });
+
+  const before = scan.scan();
+  const declared = before.find((el) => String(el.label).includes("补货周期"));
+  assert.ok(declared, "弹层触发器要进目录：" + JSON.stringify(before));
+  assert.match(declared.label, /点开是对话框/, "名字里要写清点开会怎样");
+  assert.deepEqual(declared.actions, ["invoke"]);
+  // 选项还没渲染出来，目录里就不该有它们（不能凭空猜）。
+  assert.equal(
+    before.some((el) => String(el.id).includes("10天")),
+    false,
+  );
+
+  // 点开以后：选项以 role=option 的 div 出现 —— 这类元素没有 button 语义，也必须扫到。
+  assert.deepEqual(scan.apply({ kind: "invoke", target: declared.id, action: "invoke" }), {
+    applied: true,
+  });
+  const dialog = node("div", { attributes: { role: "dialog" } }, [
+    node("div", { attributes: { role: "option" }, text: "7天" }),
+    node("div", { attributes: { role: "option" }, text: "10天" }),
+    node("input", { attributes: { type: "text", "aria-label": "自定义天数" } }),
+  ]);
+  document.children.push(dialog);
+  dialog.parentElement = document;
+
+  const after = scan.scan();
+  const options = after.filter((el) => /天/.test(String(el.label)) && el.actions);
+  assert.ok(
+    options.some((el) => el.label.includes("10天")),
+    "弹层里的选项要能被选：" + JSON.stringify(after.map((el) => el.id)),
+  );
+  const custom = after.find((el) => String(el.label).includes("自定义天数"));
+  assert.equal(custom.editable, true, "弹层里的输入框要可编辑");
+  // 选项是新出现的元素，点它走的是 invoke。
+  assert.deepEqual(scan.apply({ kind: "invoke", target: options[0].id, action: "invoke" }), {
+    applied: true,
+  });
+  void window;
+});

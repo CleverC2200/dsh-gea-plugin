@@ -47,6 +47,8 @@ export function pageCatalogFromScan(
       `操作「${input.label}」这一屏（宿主按页面实际渲染出来的内容生成）。` +
       "invoke 只能点元素列出的可执行动作；setValue 只能写「可编辑」的字段；select 选中元素；clear 关浮层。" +
       "只读元素只能读不能改；后台状态、接口和凭据都不在清单里。" +
+      "标了「点开是对话框」「点开有选项」的控件要先 invoke 打开，里面的元素会在下一轮读取里出现，" +
+      "再按新出现的 id 操作；不要凭空猜选项 id，也不要以为点开就等于选好了。" +
       "标了「提交类」「审批类」的元素只有用户这一轮明确要求时才能调用，并且必须带 confirm=true。",
     elements: input.elements,
   };
@@ -63,7 +65,8 @@ export const PAGE_SCAN_SCRIPT = String.raw`(function () {
   var MAX_LABEL = 200;
   var MAX_OPTIONS = 24;
   var CONTROL_SELECTOR =
-    "input, textarea, select, button, [role=button], [contenteditable]";
+    "input, textarea, select, button, [role=button], [role=option], [role=menuitem]," +
+    "[role=tab], [role=switch], [role=radio], [role=checkbox], [contenteditable]";
 
   function trim(value) {
     return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
@@ -162,8 +165,8 @@ export const PAGE_SCAN_SCRIPT = String.raw`(function () {
     var labelled = trim(attr(node, "data-gea-label"));
     if (labelled) return labelled;
     var tag = trim(node.tagName).toLowerCase();
-    // 按钮类元素自己的文字就是它的名字（"展开""通过""导出本页"）。
-    if (tag === "button" || attr(node, "role") === "button") {
+    // 按钮/选项类元素自己的文字就是它的名字（"展开""通过""10天"）。
+    if (clickable(node)) {
       var own = bounded(textOf(node), MAX_LABEL);
       if (own) return own;
     }
@@ -180,11 +183,42 @@ export const PAGE_SCAN_SCRIPT = String.raw`(function () {
     return placeholderOf(node);
   }
 
+  /** 能点的东西：原生按钮，或带交互 role 的元素（弹层里的选项往往是 div）。 */
+  function clickable(node) {
+    var tag = trim(node.tagName).toLowerCase();
+    if (tag === "button") return true;
+    var role = trim(attr(node, "role"));
+    return (
+      role === "button" ||
+      role === "option" ||
+      role === "menuitem" ||
+      role === "tab" ||
+      role === "switch" ||
+      role === "radio" ||
+      role === "checkbox"
+    );
+  }
+
   /** 影响等级：提交/审批类按钮必须让宿主知道，用户没明说就不能点。 */
   function classify(text) {
     if (/通过|退回|审批|核准|批准/.test(text)) return "approve";
     if (/提交|保存|下发|发布|删除|停用|启用|确认/.test(text)) return "submit";
     return undefined;
+  }
+
+  /**
+   * 弹层提示：下拉/对话框类的控件，它的选项要点开之后才渲染出来。
+   * 不写清楚的话，模型只会看到一个"当前值"的按钮，改不了里面的选项。
+   */
+  function hintOf(node) {
+    var hints = [];
+    var popup = trim(attr(node, "aria-haspopup"));
+    if (popup && popup !== "false")
+      hints.push(popup === "dialog" ? "点开是对话框" : "点开有选项");
+    var expanded = trim(attr(node, "aria-expanded"));
+    if (expanded === "true") hints.push("当前展开");
+    else if (expanded === "false") hints.push("当前收起");
+    return hints;
   }
 
   function optionsOf(node) {
@@ -224,7 +258,12 @@ export const PAGE_SCAN_SCRIPT = String.raw`(function () {
       if (ignored(node)) continue;
       var tag = trim(node.tagName).toLowerCase();
       var type = typeOf(node);
-      var label = bounded(labelOf(node) || placeholderOf(node) || tag, MAX_LABEL);
+      var role = trim(attr(node, "role"));
+      var label = labelOf(node) || placeholderOf(node) || tag;
+      // 弹层控件把"点开会怎样"写进名字，模型才知道要两步走。
+      var hints = hintOf(node);
+      if (hints.length) label = label + "（" + hints.join("；") + "）";
+      label = bounded(label, MAX_LABEL);
       var row = closest(node, "tr");
       var key = row ? rowKeyOf(row) : "";
       var cell = closest(node, "td, th");
@@ -240,10 +279,9 @@ export const PAGE_SCAN_SCRIPT = String.raw`(function () {
       used[id] = true;
       if (typeof node.setAttribute === "function") node.setAttribute("data-gea-el", id);
       var isButton =
-        tag === "button" ||
+        clickable(node) ||
         type === "button" ||
-        type === "submit" ||
-        attr(node, "role") === "button";
+        type === "submit";
       if (isButton) {
         // 只声明"现在真的能点"的按钮：disabled / aria-disabled 一律不进目录，
         // 这样模型看到的可点清单和人工能点的范围一致（提交/审批类同理）。
