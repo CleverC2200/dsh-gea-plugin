@@ -22,6 +22,9 @@ test("业务预设不再把当前页上下文当成拒答前提", async () => {
   assert.ok(preset.includes("页面上下文不是必要条件"));
   assert.ok(preset.includes("不得因为页面不可用而拒答"));
   assert.ok(preset.includes("gea_visible_workbench_context 每轮最多调用一次"));
+  // 宿主会把"工具调用 + 中间消息"折成一组，只有最后一条留在外面：
+  // 预设必须要求一轮只发一条消息，否则正文会被折进折叠区。
+  assert.ok(preset.includes("一轮只输出一条消息"));
 });
 
 test("页面上下文工具的描述与返回值都要求“按月问题去查数据、一轮一次”", async () => {

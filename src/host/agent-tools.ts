@@ -46,6 +46,40 @@ export function registerGeaTools(
     });
   };
 
+  /**
+   * 每次应答最多读一次"这一屏"。
+   *
+   * 线上实测：一轮里 gea_visible_workbench_context 被调了 3 次（说明里写着每轮最多一次，
+   * 模型没听），结果工具调用被折叠成一组、正文被挤进折叠区。这里做硬上限：
+   * 同一会话 + 同一焦点 + 页面序列号没变，窗口内再读就只回"本轮已读过"。
+   */
+  const VISIBLE_CONTEXT_REPEAT_WINDOW_MS = 90_000;
+  const visibleContextReads = new Map<
+    string,
+    { at: number; focus: string; sequence?: number }
+  >();
+  const visibleContextGuard = (
+    sessionId: string,
+    focus: string,
+    sequence: number | undefined,
+  ): string | undefined => {
+    const previous = visibleContextReads.get(sessionId);
+    if (!previous) return undefined;
+    if (Date.now() - previous.at > VISIBLE_CONTEXT_REPEAT_WINDOW_MS)
+      return undefined;
+    if (previous.focus !== focus) return undefined;
+    // 页面真的翻页/刷新了，就允许再读一次。
+    if (previous.sequence !== sequence) return undefined;
+    return JSON.stringify({
+      source: "GEA_RENDERED_WORKBENCH",
+      coverage: "none",
+      authority: "read-only-ui-context",
+      availability: "already-read",
+      code: "PAGE_CONTEXT_ALREADY_READ",
+      note: "这一屏本轮已经读过（同一焦点每次应答最多读一次）：请直接用手上的证据作答；确实要看另一部分，就换一个更具体的 focus 再读一次。",
+    });
+  };
+
   /** 把通道顺序并进工具结果；结果不是 JSON 就原样返回，绝不让"给建议"变成"给报错"。 */
   const withChannels = (payload: string, plan: ChannelPlan): string => {
     try {
@@ -380,6 +414,22 @@ export function registerGeaTools(
           if (!exec.agent) throw new Error("WORKBENCH_SESSION_REQUIRED");
           const focus =
             typeof args?.focus === "string" ? args.focus : undefined;
+          const sequence = business.workbenchStateSnapshot?.(exec.agent.id)
+            ?.sequence;
+          // 硬上限：同一轮同一焦点最多读一次，避免把工具调用堆成一组、正文被折叠。
+          const blocked = visibleContextGuard(
+            exec.agent.id,
+            (focus ?? "").trim().toLowerCase(),
+            sequence,
+          );
+          if (blocked)
+            return withChannels(blocked, channelsFor(exec.agent.id));
+          // 先占位再读：同一轮的第二次调用（可能并发下发）必须被挡住。
+          visibleContextReads.set(exec.agent.id, {
+            at: Date.now(),
+            focus: (focus ?? "").trim().toLowerCase(),
+            sequence,
+          });
           const snapshot = await business.waitVisibleWorkbenchContext(
             exec.agent.id,
             2000,

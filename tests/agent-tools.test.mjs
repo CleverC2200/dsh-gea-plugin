@@ -222,6 +222,44 @@ test(
         );
         return true;
       }
+      if (outcome === "visible-context-twice") {
+        const hasVisibleContext = body.messages.some(
+          (message) =>
+            message.role === "tool" &&
+            typeof message.content === "string" &&
+            message.content.includes("GEA_RENDERED_WORKBENCH"),
+        );
+        res.end(
+          hasVisibleContext
+            ? event({ content: "已按当前可见客户范围回答。" }, "stop")
+            : event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "visible-context-1",
+                      type: "function",
+                      function: {
+                        name: "gea_visible_workbench_context",
+                        arguments: "{}",
+                      },
+                    },
+                    {
+                      index: 1,
+                      id: "visible-context-2",
+                      type: "function",
+                      function: {
+                        name: "gea_visible_workbench_context",
+                        arguments: "{}",
+                      },
+                    },
+                  ],
+                },
+                "tool_calls",
+              ),
+        );
+        return true;
+      }
       if (outcome === "page-tool") {
         const results = body.messages.filter((x) => x.role === "tool");
         res.end(
@@ -568,6 +606,63 @@ test(
           ),
           false,
         );
+      },
+    );
+    await t.test(
+      "同一轮第二次读这一屏被挡回，避免工具调用堆成一组把正文挤进折叠区",
+      async () => {
+        outcome = "visible-context-twice";
+        modelRequests = [];
+        await ended(
+          await submit({
+            format: "gea-workbench-visible-v1",
+            sequence: 1,
+            view: "regional-approval",
+            scope: {
+              month: "2026-10",
+              planType: "Y",
+              approvalStage: "province",
+              dimension: "customer",
+            },
+            visibleRows: [
+              {
+                planId: "9007199254740993",
+                organization: "当前客户",
+                planTypeCode: "Y",
+                status: 3,
+              },
+            ],
+            selectedPlanIds: [],
+            expandedFields: [
+              {
+                id: "field:plan-hebei-1:1004273:qty",
+                label: "BP思念150g黑芝麻肉松饭团 确认计划量",
+                value: "200",
+                editable: true,
+              },
+            ],
+            pagination: { page: 1, pageSize: 20, total: 1 },
+            evidence: {
+              source: "gea-user-session",
+              completeness: "paged-queue",
+              queryState: "success",
+              dataVersion: "sales-plan-v1.11",
+            },
+          }),
+        );
+        const first = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "visible-context-1",
+        );
+        const second = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "visible-context-2",
+        );
+        assert.match(first.content, /current-visible-page/);
+        assert.match(second.content, /PAGE_CONTEXT_ALREADY_READ/);
+        assert.match(second.content, /本轮已经读过/);
       },
     );
     await t.test(
