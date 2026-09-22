@@ -615,18 +615,12 @@ export function apply(ctx: Context): void {
       return () => observer.disconnect();
     }, []);
     useEffect(() => {
-      // 登记 41：宿主等待态文案是「深度求索中...」，这里改成动作本身「深度思考中」，并交给 CSS 上思念红。
+      // 登记 41：宿主等待态文案是「深度求索中...」，这里只改文案为「深度思考中」，
+      // 颜色沿用宿主自己的渐变微光，不覆盖（验收确认不用思念红）。
       const hostText = "深度求索中";
       const geaText = "深度思考中";
       const rewrite = () => {
         for (const node of document.querySelectorAll<HTMLElement>('[role="status"]')) {
-          const current = node.textContent ?? "";
-          // 改写后文案已经变成 GEA 文案，第二轮扫描要按「已经是 GEA 文案」继续认这一条，
-          // 否则标记会被自己摘掉，颜色样式随之失效。
-          const matched = current.includes(hostText) || current.includes(geaText);
-          if (matched) node.setAttribute("data-gea-think-status", "");
-          else node.removeAttribute("data-gea-think-status");
-          if (!matched) continue;
           for (const child of Array.from(node.childNodes)) {
             if (child.nodeType !== Node.TEXT_NODE) continue;
             const text = child.textContent ?? "";

@@ -117,36 +117,6 @@ test(
       0,
     );
 
-    // 登记 41：等待态文案的样式必须压过宿主那套「渐变文字 + 微光动画」。
-    const thinking = await page.evaluate(() => {
-      const host = document.createElement("style");
-      host.textContent =
-        ".gea-host-thinking-sim{color:rgba(0,0,0,0);-webkit-text-fill-color:rgba(0,0,0,0);" +
-        "background:linear-gradient(90deg,rgb(65,118,230) 0%,rgb(211,226,255) 50%,rgb(65,118,230) 100%);" +
-        "background-clip:text;-webkit-background-clip:text;animation:gea-sim 1.8s linear infinite}";
-      document.head.append(host);
-      const el = document.createElement("div");
-      el.className = "gea-host-thinking-sim";
-      el.setAttribute("data-gea-think-status", "");
-      el.textContent = "深度思考中...";
-      document.body.append(el);
-      const cs = getComputedStyle(el);
-      const value = {
-        color: cs.color,
-        fill: cs.webkitTextFillColor,
-        backgroundImage: cs.backgroundImage,
-        backgroundClip: cs.backgroundClip,
-        animation: cs.animationName,
-      };
-      el.remove();
-      host.remove();
-      return value;
-    });
-    assert.equal(thinking.color, "rgb(226, 79, 102)", JSON.stringify(thinking));
-    assert.equal(thinking.fill, "rgb(226, 79, 102)", JSON.stringify(thinking));
-    assert.equal(thinking.backgroundImage, "none", JSON.stringify(thinking));
-    assert.equal(thinking.animation, "none", JSON.stringify(thinking));
-
     // 登记 20：左侧菜单选中项没有深红描边（边框、外描边、阴影都不带红色）。
     const redish = /rgb\(\s*(1[4-9]\d|2\d\d)\s*,\s*(?:[0-9]{1,2})\s*,\s*[0-9]{1,2}\)/;
     const selected = await page
