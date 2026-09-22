@@ -90,5 +90,23 @@ test(
       boxes.seat.bottom - boxes.card.bottom <= 12,
       `输入框必须贴底: ${JSON.stringify(boxes)}`,
     );
+
+    // 登记 37：调整工作台宽度时，宿主右栏的分隔线不能继续压进对话框输入区。
+    const railBoundary = await page.evaluate(() => {
+      const rail = document.querySelector(".AppFrame_rightbarCol");
+      const seat = document.querySelector("[data-composer-seat]");
+      if (!rail || !seat) return null;
+      const railBox = rail.getBoundingClientRect();
+      const seatBox = seat.getBoundingClientRect();
+      const style = getComputedStyle(rail);
+      return {
+        railLeft: Math.round(railBox.left),
+        seatLeft: Math.round(seatBox.left),
+        borderLeftWidth: style.borderLeftWidth,
+      };
+    });
+    assert.ok(railBoundary, "右侧对话栏和输入区必须存在");
+    assert.equal(railBoundary.borderLeftWidth, "0px", JSON.stringify(railBoundary));
+    assert.equal(railBoundary.seatLeft, railBoundary.railLeft, JSON.stringify(railBoundary));
   },
 );

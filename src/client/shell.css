@@ -577,13 +577,18 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 /* The right rail is the single native conversation surface. */
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] {
   background: #fff;
-  border-left: 1px solid #e5e8ed;
+  border-left: 0;
 }
 /* 宿主的列拖拽条宽 8px、左右各压过边界 4px，会压进右侧会话区、在输入框那一行切出一条竖线。
    整个挪到左边界外侧，拖动照样可用，但不再切进对话框。 */
 .AppFrame_handle {
   width: 6px;
   margin-left: -6px;
+}
+/* DSH 右栏自带的整列 border 会一直画到输入区，页面宽度变化时就像分隔条切进对话框。
+   业务会话自己保留内容边界，输入区不再继承宿主整列分隔线。 */
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-rightbar-col] {
+  border-left: 0 !important;
 }
 /* The rail keeps DSH's native composer card; only its clearance is tightened, because the
    hero-sized clearance wastes most of a 440px column. Both conversation phases inherit it,
@@ -1132,8 +1137,9 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 [class*="uV2eYG_root"] [class*="bOPqQW_root"] {
   position: absolute;
   bottom: 100%;
-  left: 0;
-  right: 0;
+  left: var(--dsh-composer-side-clearance, 0px);
+  right: var(--dsh-composer-side-clearance, 0px);
+  width: auto;
   padding-top: 0;
   padding-bottom: 0;
   margin-bottom: 6px;

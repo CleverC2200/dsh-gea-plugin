@@ -146,6 +146,23 @@ test(
       });
     const layoutBefore = await readLayout();
     assert.ok(layoutBefore && layoutBefore.handle, "layout handle must exist");
+    const conversationRail = () =>
+      page.evaluate(() => {
+        const rail = document.querySelector(".AppFrame_rightbarCol");
+        const seat = document.querySelector("[data-composer-seat]");
+        const input = document.querySelector('[contenteditable="true"]');
+        if (!rail || !seat || !input) return null;
+        const box = (element) => {
+          const value = element.getBoundingClientRect();
+          return { left: Math.round(value.left), right: Math.round(value.right), width: Math.round(value.width) };
+        };
+        return {
+          rail: box(rail),
+          seat: box(seat),
+          input: box(input),
+          borderLeft: getComputedStyle(rail).borderLeftWidth,
+        };
+      });
     const dragHandle = async (dx) => {
       // 手柄会跟着列宽移动，每次拖动前重新取当前位置。
       const current = await readLayout();
@@ -157,9 +174,22 @@ test(
       await page.mouse.up();
       await page.waitForTimeout(250);
     };
+    const railBefore = await conversationRail();
+    assert.ok(railBefore, "右侧对话栏必须存在");
     await dragHandle(80);
     const layoutWider = await readLayout();
     assert.ok(layoutWider.sidebar - layoutBefore.sidebar >= 60, JSON.stringify({ layoutBefore, layoutWider }));
+    const railAfterPageResize = await conversationRail();
+    assert.ok(railAfterPageResize, "调整页面宽度后右侧对话栏必须仍存在");
+    assert.equal(railAfterPageResize.borderLeft, "0px", JSON.stringify(railAfterPageResize));
+    assert.ok(
+      // 宿主列宽求解在两次测量间可能有几像素差（滚动条/clamp），4px 内视为"没跟着工作台变"。
+      Math.abs(railAfterPageResize.rail.width - railBefore.rail.width) <= 4,
+      `调整工作台宽度不能改变对话栏宽度: ${JSON.stringify({ railBefore, railAfterPageResize })}`,
+    );
+    assert.equal(railAfterPageResize.seat.left, railAfterPageResize.rail.left, JSON.stringify(railAfterPageResize));
+    assert.ok(railAfterPageResize.input.left >= railAfterPageResize.rail.left, JSON.stringify(railAfterPageResize));
+    assert.ok(railAfterPageResize.input.right <= railAfterPageResize.rail.right, JSON.stringify(railAfterPageResize));
     await dragHandle(-80);
     const layoutRestored = await readLayout();
     assert.ok(Math.abs(layoutRestored.sidebar - layoutBefore.sidebar) <= 12, JSON.stringify({ layoutBefore, layoutRestored }));
