@@ -554,7 +554,7 @@ export function registerGeaTools(
       defineTool({
         name: "gea_gateway_catalog",
         description:
-          "List the GEA gateway semantic model before querying it. Call this first whenever the answer needs data that is not on the current workbench page (historical shipments, dealer or branch inventory, stock age, replenishment cycle, policy, seasonality, forecast confidence) or company knowledge base content. 两级返回：不带 model 只回**模型索引**（名字 + 一句话 + 成员数量），名单是完整的；挑好模型后再带 model=模型名（按模型名子串匹配）拿它的成员名，并把这些成员名原样抄进 query_business_data 的 Cube 查询（执行走 gea_module_mcp：指定 consumerCode，tool=query_business_data，arguments.action=query）。索引里没有的模型就是没有，不要猜名字；猜错时返回的报错会列出可用模型。只读：不能写、提交、审批或改数据。",
+          "List the GEA gateway semantic model before querying it. Call this first whenever the answer needs data that is not on the current workbench page (historical shipments, dealer or branch inventory, stock age, replenishment cycle, policy, seasonality, forecast confidence) or company knowledge base content. 两级返回：不带 model 只回**模型索引**（名字 + 一句话 + 成员数量），名单是完整的；挑好模型后再带 model=模型名（按模型名子串匹配）拿它的成员名，并把这些成员名原样抄进 query_business_data 的 Cube 查询（执行走 gea_module_mcp：指定 consumerCode，tool=query_business_data，arguments.action=query）。成员写进 dimensions 还是 measures 按目录标出的类型来：标了“无度量”的模型全部放 dimensions（数值字段也是），写进 measures 会被上游拒绝整批查询。索引里没有的模型就是没有，不要猜名字；猜错时返回的报错会列出可用模型。只读：不能写、提交、审批或改数据。",
         parameters: {
           model: {
             type: "string",

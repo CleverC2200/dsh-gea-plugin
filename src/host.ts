@@ -460,6 +460,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         '- 不要自己去读 inspect 的原始产物：它约 33 万字符，宿主只会内联前 30KB，剩下的存成本机文件，你没有读文件的工具。目录工具已经把它压到可一次读完的大小。',
         '- 再查询：action="query"，queries 放 1 到 8 个具名 Cube 查询对象，每项形如 {"name":"<别名>","query":{…}}，其中 query 必须是 Cube 查询对象（不能写成字符串或自然语言）；response_mode 默认 "resource"，只有需要直接看行时才用 "inline_complete"。',
         "- 一次只查一个模型：同一次调用的成员必须属于同一个 dataAssetCode，跨模型要分开调用；报“成员未唯一匹配数据目录资源”就是这条没满足。",
+        "- 成员放 dimensions 还是 measures **由目录标出的类型决定**：只有目录里“度量”下列出的成员才写进 measures；标了“无度量”的模型（库存、库存快照、补货周期这几类基本都是）全部成员——数值字段也一样——只能放 dimensions。线上实测：把数值字段写进 measures，上游 Cube 会直接拒绝整批查询计划。",
         '- 结果返回资源链接时，用 dsh_read_resource 原样传入服务给出的完整 URI（形如 data-artifact://gateway/…）：不要自己拼 URI，也不要把它当 HTTP 链接去抓。',
         "- 报错先按错误文本改参数再试一次；同一错误不要连续重试，更不要改用编造的数据或改写用户的问题。",
       ].join("\n"),

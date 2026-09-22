@@ -92,12 +92,24 @@ test("不带 model 只回模型索引：名字完整、不带成员名", () => {
   assert.doesNotMatch(all, /目录已截断/);
   assert.match(all, /带 model=模型名 再调一次/);
   assert.ok(all.length < 2000, String(all.length));
+  // 一个 measure 都没定义的 cube：索引里必须直接说清"只能放 dimensions"，
+  // 否则模型会把数值字段写进 measures，被上游拒掉整批查询计划（线上实测）。
+  assert.match(all, /无度量：所有成员都是维度，只放 dimensions/);
+  assert.match(all, /只有列在“度量”里的成员才写进 measures/);
+  const withMeasures = all
+    .split("\n")
+    .find((line) => line.includes("agents_scm_wl_cust_stock_age_governed"));
+  assert.doesNotMatch(withMeasures, /无度量/);
 });
 
 test("带 model 才回成员名；猜错时列出可用模型", () => {
   const one = projectCatalog(sample, { model: "stock_age" });
   assert.match(one, /agents_scm_wl_cust_stock_age_governed\.qty/);
   assert.doesNotMatch(one, /agent_branch_cycle_config/);
+
+  const noMeasures = projectCatalog(sample, { model: "branch_cycle" });
+  assert.match(noMeasures, /度量：无/);
+  assert.match(noMeasures, /所有成员一律放 dimensions/);
 
   assert.throws(
     () => projectCatalog(sample, { model: "不存在的模型" }),

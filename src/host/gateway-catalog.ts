@@ -139,10 +139,14 @@ function modelIndex(models: Model[], maxChars: number): string {
     "GEA 网关语义模型索引（成员名可直接用于 Cube 查询，形如 模型.字段）：";
   const rich = (model: Model) => {
     const description = (model.description ?? "").replace(/\s+/g, " ").trim();
+    const measures = membersOf(model, "measures").length;
     return (
       `- ${model.name}` +
       (description ? `  说明：${description.slice(0, 120)}` : "") +
-      `  维度 ${membersOf(model, "dimensions").length} / 度量 ${membersOf(model, "measures").length} / 分段 ${membersOf(model, "segments").length}`
+      `  维度 ${membersOf(model, "dimensions").length} / 度量 ${measures} / 分段 ${membersOf(model, "segments").length}` +
+      // 线上实测：模型把数值字段（如 agents_scm_inventory_age.qty）写进 measures，
+      // 而这些 cube 一个 measure 都没定义，上游直接拒掉整批查询计划。
+      (measures === 0 ? "（无度量：所有成员都是维度，只放 dimensions）" : "")
     );
   };
   const namesOnly = (model: Model) => `- ${model.name}`;
@@ -156,6 +160,7 @@ function modelIndex(models: Model[], maxChars: number): string {
       length += line.length + 1;
     }
     lines.push(
+      "（成员放 dimensions 还是 measures 由这里的类型决定：只有列在“度量”里的成员才写进 measures；标了“无度量”的模型一律放 dimensions。）",
       "（要某个模型的成员名，带 model=模型名 再调一次；model 按模型名子串匹配。）",
     );
     return lines.join("\n");
@@ -175,6 +180,7 @@ function modelDetails(
 ): string {
   const lines: string[] = [
     "GEA 网关语义模型成员（可直接用于 Cube 查询，形如 模型.字段）：",
+    "成员放 dimensions 还是 measures 由下面的类型决定：只有在“度量”里列出的成员才写进 measures。",
   ];
   let membersTruncated = false;
   for (const model of models) {
@@ -189,6 +195,9 @@ function modelDetails(
       parts.push(`  维度(${dimensions.length})：${dimensions.slice(0, options.maxMembers).join(", ")}`);
     if (measures.length)
       parts.push(`  度量(${measures.length})：${measures.slice(0, options.maxMembers).join(", ")}`);
+    else
+      // 一个 measure 都没有的 cube：数值字段也是维度，写进 measures 会被上游拒掉整批查询。
+      parts.push("  度量：无（这个模型没有定义 measure：所有成员一律放 dimensions，数值字段也不要写进 measures）");
     if (segments.length)
       parts.push(`  分段(${segments.length})：${segments.slice(0, options.maxMembers).join(", ")}`);
     if (
