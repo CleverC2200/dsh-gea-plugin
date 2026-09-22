@@ -20,7 +20,8 @@ import {
 
 const session = "session-11111111-1111-1111-1111-111111111111";
 
-async function probePlugin() {
+async function probePlugin(id = "inventory-probe", name = "探针页面", options = {}) {
+  const mock = options.mock !== false;
   const root = await mkdtemp(join(tmpdir(), "gea-html-bridge-"));
   await mkdir(join(root, "skills", "probe"), { recursive: true });
   await writeFile(
@@ -30,21 +31,21 @@ async function probePlugin() {
   );
   await writeFile(
     join(root, "skills", "probe", "SKILL.md"),
-    "---\nname: inventory-probe\ndescription: 探针业务规则。\n---\n\n## 口径\n\n建议量 = ceil(max(0, 缺货量 − 调拨中量))。\n",
+    `---\nname: ${id}\ndescription: 探针业务规则。\n---\n\n## 口径\n\n建议量 = ceil(max(0, 缺货量 − 调拨中量))。\n`,
   );
   await writeFile(
     join(root, "plugin.json"),
     JSON.stringify({
       schemaVersion: 1,
-      id: "inventory-probe",
-      name: "探针页面",
+      id,
+      name,
       version: "0.0.0",
       html: "index.html",
       skills: ["skills/probe/SKILL.md"],
       mcp: "mcp.json",
-      mode: "mock",
+      ...(mock ? { mode: "mock" } : {}),
       gea: {
-        consumerCode: "probe-consumer",
+        consumerCode: id + "-consumer",
         readonly: true,
         contract: "gea-html-v1",
       },
@@ -56,35 +57,65 @@ async function probePlugin() {
       provider: "gea",
       transport: "host-provided",
       contract: "gea-html-v1",
-      consumer: { consumerType: "AGENT", consumerCode: "probe-consumer" },
+      consumer: { consumerType: "AGENT", consumerCode: id + "-consumer" },
       capabilities: ["governed-sql-read"],
     }),
   );
   return root;
 }
 
-async function registered() {
-  const root = await probePlugin();
+async function registered(specs = ["inventory-probe"]) {
+  const roots = [];
+  for (const spec of specs) {
+    const item = typeof spec === "string" ? { id: spec } : spec;
+    roots.push(await probePlugin(item.id, item.name, item));
+  }
   const runtimeDir = await mkdtemp(join(tmpdir(), "gea-html-bridge-runtime-"));
   const routes = [];
   const declared = [];
+  const tools = [];
   const ctx = {
     effect: (fn) => fn(),
-    tools: { register: () => {} },
+    tools: {
+      register: (tool) => {
+        tools.push(tool);
+        return () => {};
+      },
+    },
     connection: { fetch: { register: (route) => routes.push(route) } },
   };
+  // 宿主侧的"当前页身份"：页面每一次活动都会刷新它（见 page-identity.ts）。
+  const identities = new Map();
   const business = {
     config: { runtimeDir },
-    status: () => ({ authenticated: true }),
+    status: () => ({ authenticated: true, user: { id: "u-1" } }),
     watchIdentity: () => () => {},
+    identitySignal: () => new AbortController().signal,
+    htmlLaunch: async (consumerCode) => ({ sessionId: "deleg-" + consumerCode }),
     pullPageBridgeEvents: (sessionId, toolMessages) => ({
       events: [{ sessionId, received: toolMessages }],
     }),
+    touchPageIdentity: (sessionId, identity) =>
+      identities.set(sessionId, { ...identity, at: Date.now() }),
+    currentPageIdentity: (sessionId) => identities.get(sessionId),
+    clearPageIdentity: (sessionId, pluginId) => {
+      const current = identities.get(sessionId);
+      if (!current) return;
+      if (pluginId && current.pluginId !== pluginId) return;
+      identities.delete(sessionId);
+    },
   };
-  const plugins = await registerHtmlPlugins(ctx, business, [root], {
+  const plugins = await registerHtmlPlugins(ctx, business, roots, {
     declare: (sessionId, catalog) => declared.push({ sessionId, catalog }),
   });
-  return { routes, declared, plugin: plugins.capabilityContracts[0] };
+  return {
+    routes,
+    declared,
+    tools,
+    identities,
+    plugin: plugins.capabilityContracts[0],
+    consumerForSession: plugins.consumerForSession,
+  };
 }
 
 const post = (route, body) =>
@@ -185,4 +216,64 @@ test("页面报空或撤走时，宿主把这个会话的页面能力撤掉", as
     parameters: { sessionId: session, toolMessages: [], catalog: null },
   });
   assert.equal(declared.at(-1).catalog, null);
+});
+
+test("页面工具只对当前打开的页面有效：读错页面会被纠正，而不是给空上下文", async () => {
+  // 模块 id 受宿主校验（^inventory-[a-z]+$），第二个页面用 inventory-two。
+  const { routes, identities, tools } = await registered([
+    "inventory-probe",
+    { id: "inventory-two", name: "第二个页面" },
+  ]);
+  const openA = routes.find((route) => route.path === "/api/gea-html/inventory-probe/open");
+  const openB = routes.find((route) => route.path === "/api/gea-html/inventory-two/open");
+  const exec = { agent: { id: session }, signal: new AbortController().signal };
+  const toolA = tools.find((tool) => tool.name === "inventory_probe_page");
+  const toolB = tools.find((tool) => tool.name === "inventory_two_page");
+  assert.ok(toolA && toolB, "每个模块一个页面工具");
+
+  // A 页打开：当前页身份就是 A。
+  await post(openA, { session });
+  assert.equal(identities.get(session).pluginId, "inventory-probe");
+  assert.equal(identities.get(session).pageTool, "inventory_probe_page");
+
+  // 拿 B 的页面工具去读 A 这一屏：要被纠正到当前页，而不是回一个空 context。
+  const wrong = JSON.parse(
+    await toolB.execute({ name: "context", parameters: "{}" }, exec),
+  );
+  assert.equal(wrong.code, "PAGE_IDENTITY_MISMATCH");
+  assert.equal(wrong.currentPage.pluginId, "inventory-probe");
+  assert.match(wrong.reason, /inventory_probe_page/);
+
+  // 切到 B：身份跟着走，这时才轮到 A 的工具被纠正。
+  await post(openB, { session });
+  assert.equal(identities.get(session).pluginId, "inventory-two");
+  const wrongA = JSON.parse(
+    await toolA.execute({ name: "context", parameters: "{}" }, exec),
+  );
+  assert.equal(wrongA.code, "PAGE_IDENTITY_MISMATCH");
+  assert.match(wrongA.reason, /inventory_two_page/);
+
+  // 当前页自己调用仍然真的读页面。
+  const ok = JSON.parse(
+    await toolB.execute({ name: "context", parameters: "{}" }, exec),
+  );
+  assert.equal(ok.source, "page-observation");
+});
+
+test("页面关掉后身份清空；真实模块的模型 agentCode 跟着当前页走", async () => {
+  const { routes, identities, consumerForSession } = await registered([
+    { id: "inventory-real", mock: false },
+  ]);
+  const open = routes.find((route) => route.path === "/api/gea-html/inventory-real/open");
+  const call = routes.find((route) => route.path === "/api/gea-html/inventory-real/call");
+
+  const { lease } = await (await post(open, { session })).json();
+  assert.equal(identities.get(session).pluginId, "inventory-real");
+  assert.equal(identities.get(session).mock, false);
+  // 模型侧的 agentCode（决定技能/口径）必须跟着当前页，而不是上一个页面。
+  assert.equal(consumerForSession(session), "inventory-real-consumer");
+
+  await post(call, { lease, method: "close" });
+  assert.equal(identities.get(session), undefined);
+  assert.equal(consumerForSession(session), undefined, "没有页面时回到默认 agent");
 });

@@ -19,6 +19,11 @@ import { readHtmlQuery } from "../html-query.ts";
 import { probeTables, withDefaultPaging } from "./plugin-query.ts";
 import { openModuleMcp } from "./mcp-client.ts";
 import { readableMessage } from "./error-envelope.ts";
+import {
+  currentPageEnvelope,
+  pageIdentityFresh,
+  type PageIdentity,
+} from "./page-identity.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
 const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
@@ -632,6 +637,11 @@ export class Business {
     string,
     { sequence: number; receivedAt: string; context: VisibleWorkbenchContext }
   >();
+  /**
+   * 每个对话当前打开的业务页身份（HTML 插件页按最近一次页面活动刷新）。
+   * 见 page-identity.ts：这是"当前页是谁"的唯一权威来源。
+   */
+  private readonly pageIdentities = new Map<string, PageIdentity>();
   private requests = new Map<string, AbortController>();
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
@@ -745,6 +755,8 @@ export class Business {
     this.loginExpired = expired;
     // 身份变化后，之前的可见页快照一律作废。
     this.visibleWorkbenchContexts.clear();
+    // 页面身份同理：换了身份，"当前页"这件事也算不清了。
+    this.pageIdentities.clear();
     this.clearQuery();
     this.notifyIdentity();
   }
@@ -797,10 +809,47 @@ export class Business {
     return value ? { sequence: value.sequence, state: value.context } : undefined;
   }
 
+  /**
+   * 记录"这个对话现在打开的是哪个业务页"。
+   *
+   * 页面的每一次活动（打开、轮询、调用）都会刷新时间戳：这样切页之后身份会自然跟到
+   * 新页面，不会被上一个页面残留的绑定一直占着。
+   */
+  touchPageIdentity(
+    sessionId: string,
+    identity: Omit<PageIdentity, "at">,
+  ): void {
+    if (!sessionId) return;
+    this.pageIdentities.set(sessionId, { ...identity, at: Date.now() });
+  }
+
+  /** 页面关掉时清掉身份；带 pluginId 时只清属于它的那份，避免误删刚切过去的页面。 */
+  clearPageIdentity(sessionId: string, pluginId?: string): void {
+    const current = this.pageIdentities.get(sessionId);
+    if (!current) return;
+    if (pluginId && current.pluginId !== pluginId) return;
+    this.pageIdentities.delete(sessionId);
+  }
+
+  /** 当前页身份；超过 TTL 没活动就当没有页面。 */
+  currentPageIdentity(sessionId: string): PageIdentity | undefined {
+    const value = this.pageIdentities.get(sessionId);
+    if (!value) return undefined;
+    if (!pageIdentityFresh(value)) {
+      this.pageIdentities.delete(sessionId);
+      return undefined;
+    }
+    return value;
+  }
+
   /** 只返回当前 Agent 会话的页面范围，不重新读取 GEA，也不执行任何写操作。 */
   visibleWorkbenchContext(sessionId: string): string {
     const value = this.visibleWorkbenchContexts.get(sessionId);
-    if (!value)
+    if (!value) {
+      // 页面开着但不是原生工作台页（HTML 插件页没有可见行快照）时，至少把"当前页是
+      // 谁、该用哪个工具"说清楚——比一句"不在业务工作台"准确得多。
+      const identity = this.currentPageIdentity(sessionId);
+      if (identity) return currentPageEnvelope(identity);
       return JSON.stringify({
         source: "GEA_RENDERED_WORKBENCH",
         coverage: "none",
@@ -810,6 +859,7 @@ export class Business {
         reason:
           "这个对话当前不在业务工作台：读不到页面数据，也不会去打开页面。这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答，不要因此拒答或索要经销商编码。本工具每轮最多调用一次，不要重复调用。",
       });
+    }
     return JSON.stringify({
       source: "GEA_RENDERED_WORKBENCH",
       renderedAt: value.receivedAt,

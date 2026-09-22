@@ -11,6 +11,7 @@ import {
   type CapabilityContract,
 } from "./capability/contract.ts";
 import { injectPageScan, pageCatalogFromScan } from "./html-page-scan.ts";
+import { pageToolName, wrongPageEnvelope } from "./host/page-identity.ts";
 
 /** 已经挂到 DSH 技能根下的业务技能目录，用于插件卸载时回收。 */
 const publishedSkillDirs: string[] = [];
@@ -102,8 +103,7 @@ export async function registerHtmlPlugins(
   })() : null;
   if (local) ctx.effect(() => () => local.close());
   const sessions = createHtmlSessions(),
-    items: any[] = [],
-    consumers = new Map<string, string>();
+    items: any[] = [];
   const capabilities: Record<string, string> = await (async () => {
     try {
       return JSON.parse(
@@ -250,7 +250,6 @@ export async function registerHtmlPlugins(
   items.splice(0, items.length, ...selectHtmlPlugins(items));
   const unwatch = business.watchIdentity(() => {
     sessions.clear();
-    consumers.clear();
   });
   // 每个模块一份能力契约：页面范围、只读数据范围与口径、允许的最大改动等级。
   // 模块自己声明，宿主不再按模块写分支（工单 #7）。
@@ -374,8 +373,15 @@ export async function registerHtmlPlugins(
           gatewayScopeRef: credentials.sessionId,
           ...(credentials.roleProfile ?? {}),
         };
-        consumers.set(session, item.gea.consumerCode);
       }
+      // 打开页面即确立"当前页"：mock 页也要记，否则演示页会被当成没打开。
+      business.touchPageIdentity?.(session, {
+        pluginId: item.id,
+        consumerCode: item.gea.consumerCode,
+        label: item.name,
+        pageTool: pageToolName(item.id),
+        mock: item.mock === true,
+      });
       return json({
         lease: sessions.open(item.id, session, credentials, access),
         plugin: item.id,
@@ -386,6 +392,16 @@ export async function registerHtmlPlugins(
         page = sessions.get(input.lease, item.id);
       if (JSON.stringify(input).length > 500000)
         throw Error("REQUEST_TOO_LARGE");
+      // 页面每一次调用都证明它还停在那一屏：身份跟着最近活动的页面走，切页后自然换人，
+      // 不会出现"人已经在另一页、会话还绑着旧页面"的情况。
+      if (input.method !== "close")
+        business.touchPageIdentity?.(page.session, {
+          pluginId: item.id,
+          consumerCode: item.gea.consumerCode,
+          label: item.name,
+          pageTool: pageToolName(item.id),
+          mock: item.mock === true,
+        });
       switch (input.method) {
         case "access":
           return json(page.access);
@@ -475,6 +491,7 @@ export async function registerHtmlPlugins(
           return json({ ok: true });
         case "close":
           sessions.close(input.lease);
+          business.clearPageIdentity?.(page.session, item.id);
           return json({ ok: true });
         default:
           throw Error("METHOD_NOT_ALLOWED");
@@ -508,6 +525,11 @@ export async function registerHtmlPlugins(
               throw Error("请先登录 GEA");
             const owner = exec.agent?.id;
             if (!owner) throw Error("CONVERSATION_REQUIRED");
+            // 先问"当前页是谁"：模型手上有一屏页面工具，很容易读错模块。读错页面返回的
+            // 空上下文会被当成"这一屏没有数据"，而不是"你问错页面了"。
+            const identity = business.currentPageIdentity?.(owner);
+            if (identity && identity.pluginId !== item.id)
+              return wrongPageEnvelope(identity, item.name);
             // 页面没打开时给模型一份可读的说明，而不是让它把一次硬报错暴露到会话里。
             // 规则：只有"当前正处在业务工作台"的对话才关联页面数据；普通对话不读数据、也不展开页面。
             if (!sessions.has(item.id, owner))
@@ -534,8 +556,13 @@ export async function registerHtmlPlugins(
     );
   }
   return {
-    consumerForSession: (session?: string) =>
-      session ? consumers.get(session) : undefined,
+    // 模型侧用的 GEA agentCode 也只看当前页身份：技能/口径才能跟着页面走。
+    // 演示（mock）模块的 consumerCode 只是本地标识，不作为网关 agentCode 使用。
+    consumerForSession: (session?: string) => {
+      if (!session) return undefined;
+      const identity = business.currentPageIdentity?.(session);
+      return identity && !identity.mock ? identity.consumerCode : undefined;
+    },
     capabilityContracts,
   };
 }
