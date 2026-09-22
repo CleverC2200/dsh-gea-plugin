@@ -16,12 +16,12 @@ const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL("../", import.meta.url));
 const HTML_PLUGIN_RELEASE_PROJECT = "chenyonghao%2Fdsh-plugin-releases";
 const HTML_PLUGIN_PACKAGES = [
-  ["inventory-apsplan", "dsh-gea-inventory-apsplan-0.2.0-preview.1.tgz"],
-  ["inventory-personal", "dsh-gea-inventory-personal-0.2.7-preview.2.tgz"],
-  ["inventory-aqkc", "dsh-gea-inventory-aqkc-0.2.6-preview.2.tgz"],
-  ["inventory-dealer", "dsh-gea-inventory-dealer-0.2.6-preview.2.tgz"],
-  ["inventory-fc", "dsh-gea-inventory-fc-0.2.6-preview.2.tgz"],
-  ["inventory-qll", "dsh-gea-inventory-qll-0.2.6-preview.2.tgz"],
+  ["inventory-apsplan", "dsh-gea-inventory-apsplan-0.2.0-preview.2.tgz"],
+  ["inventory-personal", "dsh-gea-inventory-personal-0.2.7-preview.6.tgz"],
+  ["inventory-aqkc", "dsh-gea-inventory-aqkc-0.2.6-preview.6.tgz"],
+  ["inventory-dealer", "dsh-gea-inventory-dealer-0.2.6-preview.4.tgz"],
+  ["inventory-fc", "dsh-gea-inventory-fc-0.2.6-preview.5.tgz"],
+  ["inventory-qll", "dsh-gea-inventory-qll-0.2.6-preview.6.tgz"],
 ];
 async function prepareHtmlPlugins(runtime) {
   const roots = {};

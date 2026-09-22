@@ -226,3 +226,36 @@ test("identity cancellation rejects a late GEA response", async () => {
 test('upstream SQL errors retain a bounded diagnostic and redact delegation tokens',async()=>{
  await assert.rejects(()=>readHtmlQuery({sql:'SELECT sku FROM published_resource'}, {endpoint:'https://gea.test',token:'private-token',signal:new AbortController().signal,fetch:async()=>Response.json({success:false,errorCode:'SQL_POLICY_DENIED',message:'Policy refused private-token'},{status:400})}),error=>{assert.equal(error.code,'SQL_POLICY_DENIED');assert.match(error.message,/SQL_POLICY_DENIED/);assert.ok(!error.message.includes('private-token'));assert.match(error.message,/REDACTED/);return true;});
 });
+
+test('partial RETURN permissions preserve allowed fields and rejection metadata', async()=>{
+ const rejectedColumns=[{alias:'amount',reason:'RETURN_PERMISSION_DENIED'}];
+ const result=await readHtmlQuery({sql:'SELECT code AS code, amount AS amount FROM published ORDER BY code'}, {
+  endpoint:'https://gea.test',token:'private-token',signal:new AbortController().signal,
+  fetch:async()=>Response.json({success:true,code:200,result:{rows:[{code:'A'}],total:1,returnedColumns:['code'],rejectedColumns}}),
+ });
+ assert.deepEqual(result.rows,[{code:'A'}]);
+ assert.deepEqual(result.returnedColumns,['code']);
+ assert.deepEqual(result.rejectedColumns,rejectedColumns);
+});
+test('structured authorization failures keep reasonCode and never retry', async()=>{
+ let calls=0;
+ await assert.rejects(readHtmlQuery({sql:'SELECT amount AS amount FROM published'}, {
+  endpoint:'https://gea.test',token:'private-token',signal:new AbortController().signal,
+  fetch:async()=>{calls++;return Response.json({success:false,code:200,result:{failure:{stage:'AUTHORIZE',reasonCode:'NO_RETURN_COLUMN_ALLOWED',target:'amount'}}})},
+ }),error=>error.code==='NO_RETURN_COLUMN_ALLOWED'&&error.retryable===false);
+ assert.equal(calls,1);
+});
+
+test('gateway page limit is enforced without changing row order or permission metadata', async () => {
+ const offsets=[];
+ const transport={endpoint:'https://gea.test',token:'private-token',signal:new AbortController().signal,fetch:async(_url,init)=>{
+  const {parameters,includeTotal}=JSON.parse(init.body);
+  const offset=parameters.fc_page_offset,limit=parameters.fc_page_limit;offsets.push(offset);
+  assert.equal(limit,200);
+  return Response.json({success:true,code:200,result:{rows:Array.from({length:Math.min(limit,501-offset)},(_,i)=>({sku:String(offset+i)})),...(includeTotal?{total:501}:{}),returnedColumns:['sku'],rejectedColumns:['amount']}});
+ }};
+ const result=await readHtmlQuery({sql:'SELECT sku AS sku FROM published ORDER BY sku',pageSize:200},transport);
+ assert.equal(result.rows.length,501);assert.deepEqual(result.rows.map(r=>r.sku),Array.from({length:501},(_,i)=>String(i)));
+ assert.deepEqual(offsets,[0,200,400]);assert.deepEqual(result.rejectedColumns,['amount']);
+ await assert.rejects(readHtmlQuery({sql:'SELECT sku AS sku FROM published ORDER BY sku',pageSize:201},transport),/INVALID_PAGE/);
+});
