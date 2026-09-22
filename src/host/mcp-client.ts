@@ -84,8 +84,17 @@ function toolList(result: unknown): McpTool[] {
       const tool = (raw ?? {}) as {
         name?: unknown;
         description?: unknown;
+        annotations?: { readOnlyHint?: unknown; destructiveHint?: unknown };
         inputSchema?: { properties?: Record<string, unknown>; required?: unknown };
       };
+      // MCP annotations are advisory, but a module that explicitly marks a tool
+      // destructive or non-read-only must never pass through this read-only client.
+      if (
+        (tool.annotations?.readOnlyHint !== undefined &&
+          tool.annotations.readOnlyHint !== true) ||
+        tool.annotations?.destructiveHint === true
+      )
+        return null;
       const properties = tool.inputSchema?.properties;
       const required = Array.isArray(tool.inputSchema?.required)
         ? tool.inputSchema!.required.filter(
@@ -101,7 +110,7 @@ function toolList(result: unknown): McpTool[] {
         required,
       };
     })
-    .filter((tool) => tool.name.length > 0);
+    .filter((tool): tool is McpTool => tool !== null && tool.name.length > 0);
 }
 
 function resultText(result: unknown): string {

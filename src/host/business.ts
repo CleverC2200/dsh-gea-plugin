@@ -84,6 +84,8 @@ export interface Deployment {
   analysisAgentCode: string;
   analysisSource: "gea" | "direct" | "receipt";
   inputByteBudget: number;
+  /** 将当前页快照交给 DSH 一次性子 Agent 压缩；测试/旧宿主可显式关闭。 */
+  visibleContextSubagent?: boolean;
 }
 export interface Page {
   queryId: QueryId;
@@ -1584,6 +1586,9 @@ export class Business {
     consumerCode: string,
     signal: AbortSignal,
   ): Promise<import("./mcp-client.ts").McpModule> {
+    const allowedConsumers = this.pluginConsumers ?? DEFAULT_PLUGIN_CONSUMERS;
+    if (!allowedConsumers.has(consumerCode))
+      throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
     const auth = this.authenticated();
     const cached = this.moduleMcpCache.get(consumerCode);
     if (cached && cached.token === auth.token) return cached.module;
@@ -2380,6 +2385,9 @@ export class Business {
       text(query.fromVersionId);
       text(query.toVersionId);
     }
+    // versionSkus 不分页：上游按版本返回整份 SKU，模型侧的有界分页由
+    // agentQuery 的本地投影负责（见下方 versionSkus 投影分支）。若这里把
+    // 它当成远端分页集合，数组结果会走进 object() 而抛 INVALID_PAYLOAD。
     const paged = kind === "periods" || kind === "list";
     const current = paged ? integer(query.pageNo ?? 1, 1) : 1;
     const size = paged

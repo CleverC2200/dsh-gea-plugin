@@ -262,6 +262,9 @@ export async function registerHtmlPlugins(
         consumerCode: item.gea.consumerCode,
         pageIds: (item.pages as Array<{ id: string }>).map((page) => page.id),
         skill: item.skillText,
+        // All accepted HTML modules declare gea.readonly=true; keep that
+        // manifest fact in the capability contract instead of defaulting to draft.
+        maxEffect: "view",
         sources: await readContractSources(item.htmlDirectory),
       }),
     ),

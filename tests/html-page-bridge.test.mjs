@@ -154,6 +154,7 @@ test("页面报的元素经宿主校验后变成这一屏的页面能力", async
   const declaredCatalog = declared[0].catalog;
   // 页面标识 / 工具名 / 说明由宿主写死，页面只能报元素。
   assert.equal(plugin.view.surface, "gea-html-inventory-probe");
+  assert.equal(plugin.maxEffect, "view");
   assert.equal(declaredCatalog.surface, plugin.view.surface);
   assert.equal(declaredCatalog.tool, "gea_plugin_page_apply");
   assert.match(declaredCatalog.description, /探针页面/);

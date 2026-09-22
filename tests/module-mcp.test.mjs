@@ -82,6 +82,29 @@ test("会话按 initialize → tools/list 建立，工具清单可读", async ()
   assert.ok(seen[0].headers["MCP-Protocol-Version"]);
 });
 
+test("明确标记为写入或破坏性的 MCP 工具不会进入只读清单", async () => {
+  const { transport } = fakeTransport((body) => {
+    if (body.method === "initialize")
+      return json({ jsonrpc: "2.0", id: body.id, result: {} });
+    if (body.method === "notifications/initialized") return new Response("", { status: 202 });
+    if (body.method === "tools/list")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          tools: [
+            { name: "safe_read", inputSchema: { properties: {} }, annotations: { readOnlyHint: true } },
+            { name: "write_plan", inputSchema: { properties: {} }, annotations: { readOnlyHint: false } },
+            { name: "delete_plan", inputSchema: { properties: {} }, annotations: { destructiveHint: true } },
+          ],
+        },
+      });
+    throw new Error("unexpected method " + body.method);
+  });
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  assert.deepEqual(module.tools().map((tool) => tool.name), ["safe_read"]);
+});
+
 test("SSE 响应与业务错误都能读出来", async () => {
   const { transport } = fakeTransport((body) => {
     if (body.method === "initialize")
