@@ -130,6 +130,40 @@ test(
     assert.equal(await filterToggle.getAttribute("aria-expanded"), "false");
     assert.equal(await frame.locator("[class*='advancedControls']").first().getAttribute("data-expanded"), "false");
 
+    // 三栏宽度归 DSH 自己的 inline grid + 拖拽手柄管，外壳不能再写 !important 压轨道，
+    // 否则左右两侧手柄就拖不动了。
+    const readLayout = () =>
+      page.evaluate(() => {
+        const sidebar = document.querySelector(".AppFrame_sidebarCol");
+        const handle = document.querySelector(".AppFrame_handle");
+        if (!sidebar || !handle) return null;
+        const sidebarBox = sidebar.getBoundingClientRect();
+        const handleBox = handle.getBoundingClientRect();
+        return {
+          sidebar: Math.round(sidebarBox.width),
+          handle: { x: Math.round(handleBox.x + handleBox.width / 2), y: Math.round(handleBox.y + handleBox.height / 2) },
+        };
+      });
+    const layoutBefore = await readLayout();
+    assert.ok(layoutBefore && layoutBefore.handle, "layout handle must exist");
+    const dragHandle = async (dx) => {
+      // 手柄会跟着列宽移动，每次拖动前重新取当前位置。
+      const current = await readLayout();
+      await page.mouse.move(current.handle.x, current.handle.y);
+      await page.mouse.down();
+      for (let step = 1; step <= 8; step += 1) {
+        await page.mouse.move(current.handle.x + (dx * step) / 8, current.handle.y, { steps: 2 });
+      }
+      await page.mouse.up();
+      await page.waitForTimeout(250);
+    };
+    await dragHandle(80);
+    const layoutWider = await readLayout();
+    assert.ok(layoutWider.sidebar - layoutBefore.sidebar >= 60, JSON.stringify({ layoutBefore, layoutWider }));
+    await dragHandle(-80);
+    const layoutRestored = await readLayout();
+    assert.ok(Math.abs(layoutRestored.sidebar - layoutBefore.sidebar) <= 12, JSON.stringify({ layoutBefore, layoutRestored }));
+
     // 登记 24：宿主兜底品牌文案不出现。
     assert.equal(
       await page.evaluate(

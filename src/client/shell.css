@@ -1037,25 +1037,12 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 
 /*
- * 通用分辨率策略（所有页面共用，按窗口宽度分三档）：
- *   宽屏 ≥1680     三栏：侧栏 280 · 主区自适应 · 对话栏 clamp(400–520)
- *   中屏 1201–1679 三栏收紧：侧栏 240 · 主区自适应 · 对话栏 clamp(340–400)，
- *                  保证主区至少 ~660（工作台表格的最小宽度）
- *   窄屏 ≤1200     两行：主区在上、对话区在下，对话区最低 220，不会消失
- * 侧栏收起态在主区不足 1024 时由 DSH 自己切成图标列；这里只补一档 64px 的窄列。
+ * 三栏宽度不再由外壳写死：DSH 的 AppFrame 用 inline style 管 grid 轨道，并带两侧拖拽手柄
+ * （computeColumns：侧栏 clamp(264–420)、对话栏 clamp(300–viewport*ratio)、主区至少留 400）。
+ * 之前用 `grid-template-columns: … !important` 定分档宽度会压掉这个 inline style，
+ * 结果两侧手柄拖不动了。要改默认宽度就走客户端自己的布局偏好（拖一次即持久化），
+ * 外壳只在 ≤1200 的两行布局里接管列定义（见下）。
  */
-@media (min-width: 1680px) {
-  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) {
-    grid-template-columns: 280px minmax(0, 1fr) clamp(400px, 24vw, 520px) !important;
-    transition: none;
-  }
-}
-@media (min-width: 1201px) and (max-width: 1679px) {
-  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) {
-    grid-template-columns: 240px minmax(0, 1fr) clamp(340px, 26vw, 400px) !important;
-    transition: none;
-  }
-}
 @media (min-width: 801px) and (max-width: 1200px) {
   .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) {
     grid-template-columns: 180px minmax(0, 1fr) !important;
