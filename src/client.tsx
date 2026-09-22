@@ -367,8 +367,8 @@ export function apply(ctx: Context): void {
       if (onToggleSection) return onToggleSection(section);
       setExpanded((value) => ({ ...value, [section]: !value[section] }));
     };
-    const child = ({ id, title }: { id: string; title: string }) => (
-      <button key={id} type="button" data-gea-business-entry={id} aria-current={activePanel === id ? "page" : undefined} className={`gea-shell-nav-child${activePanel === id ? " is-active" : ""}`} onClick={() => ctx.layout.selectPanel(id as MainPanelId)}><span className="gea-shell-label">{title}</span></button>
+    const child = ({ id, title, disabled }: { id: string; title: string; disabled: boolean }) => (
+      <button key={id} type="button" disabled={disabled} data-gea-business-entry={id} aria-current={activePanel === id ? "page" : undefined} className={`gea-shell-nav-child${activePanel === id ? " is-active" : ""}`} onClick={() => ctx.layout.selectPanel(id as MainPanelId)}><span className="gea-shell-label">{title}</span></button>
     );
     // 菜单分组与顺序按原型固定；没有接入页面的条目（如生产计划、订单履约）自动隐藏。
     const available = new Map<string, string>(panels.map((panel) => [panel.id, panel.title]));
@@ -383,11 +383,11 @@ export function apply(ctx: Context): void {
         <style>{shellCss}</style>
         <div className="gea-shell-navigation-content">
           {menu.map((group) => (
-            <div className="gea-shell-nav-section" key={group.key}>
-              <button type="button" className="gea-shell-nav-heading" aria-expanded={open[group.key]} onClick={() => toggle(group.key)}>
+            <div className={`gea-shell-nav-section${group.flat ? " is-flat" : ""}`} key={group.key}>
+              {!group.flat && <button type="button" className="gea-shell-nav-heading" aria-expanded={open[group.key]} onClick={() => toggle(group.key)}>
                 <NavIcon kind={group.icon as NavIconKind} /><span>{group.title}</span><Chevron open={open[group.key]} />
-              </button>
-              {open[group.key] && <div className="gea-shell-nav-children">{group.entries.map(child)}</div>}
+              </button>}
+              {(group.flat || open[group.key]) && <div className="gea-shell-nav-children">{group.entries.map(child)}</div>}
             </div>
           ))}
         </div>

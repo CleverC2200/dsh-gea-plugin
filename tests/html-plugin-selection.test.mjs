@@ -28,17 +28,21 @@ test("business menu labels rename inventory pages without republishing plugin bu
   assert.equal(businessMenuLabel("inventory-fc", "分仓库存"), "分仓库存");
 });
 const menuOf = (ids) => resolveBusinessMenu(BUSINESS_MENU_PRESET, new Map(ids.map(id => [id, `${id} 名称`])));
-test("left menu follows the prototype group order and hides entries without a page", () => {
+test("left menu follows the fixed prototype directory and disables unavailable pages", () => {
   const groups = menuOf(['gea-proof', 'gea-regional-plan', 'inventory-apsplan', 'inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-dealer', 'inventory-customer', 'inventory-personal']);
-  assert.deepEqual(groups.map(group => [group.key, group.title]), [['supply', '产销协同'], ['plan', '计划管理'], ['inventory', '库存管理']]);
+  assert.deepEqual(groups.map(group => [group.key, group.title]), [['supply', '产销协同'], ['plan', '计划管理'], ['inventory', '库存管理'], ['orders', '订单管理']]);
+  assert.equal(groups[0].flat, true);
   assert.deepEqual(groups[0].entries.map(entry => entry.id), ['inventory-apsplan']);
-  assert.deepEqual(groups[1].entries.map(entry => entry.id), ['gea-regional-plan', 'gea-proof']);
-  assert.deepEqual(groups[2].entries.map(entry => entry.id), ['inventory-personal', 'inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-dealer', 'inventory-customer']);
-  assert.equal(groups.some(group => group.key === 'orders'), false);
+  assert.deepEqual(groups[1].entries.map(entry => entry.id), ['plan-region-category', 'gea-proof', 'gea-regional-plan', 'plan-category-production', 'plan-capacity-assessment']);
+  assert.deepEqual(groups[2].entries.map(entry => entry.id), ['inventory-personal', 'inventory-aqkc', 'inventory-fc', 'inventory-customer']);
+  assert.deepEqual(groups[3].entries.map(entry => entry.id), ['inventory-orderworkbench', 'inventory-orderfulfillment']);
+  assert.equal(groups[1].entries[0].disabled, true);
+  assert.equal(groups[1].entries[1].disabled, false);
+  assert.equal(groups[3].entries.every(entry => entry.disabled), true);
 });
-test("menu keeps prototype entries out until their page is registered", () => {
-  const groups = menuOf(['inventory-production', 'inventory-orderworkbench', 'inventory-orderfulfillment']);
-  assert.deepEqual(groups.map(group => group.key), ['plan', 'orders']);
-  assert.deepEqual(groups[0].entries.map(entry => entry.id), ['inventory-production']);
-  assert.deepEqual(groups[1].entries.map(entry => entry.id), ['inventory-orderworkbench', 'inventory-orderfulfillment']);
+test("registered development pages become clickable without changing their labels", () => {
+  const groups = menuOf(['inventory-orderworkbench', 'inventory-orderfulfillment']);
+  const orders = groups.find(group => group.key === 'orders');
+  assert.equal(orders.entries.every(entry => entry.disabled === false), true);
+  assert.deepEqual(orders.entries.map(entry => entry.title), ['订单管理Agent（开发中）', '订单履约Agent（开发中）']);
 });

@@ -489,6 +489,9 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-shell-nav-child { min-height: 36px; padding: 7px 12px 7px 36px; border: 0; border-radius: 6px; background: transparent; color: var(--gea-sidebar-ink); font: inherit; text-align: left; cursor: pointer; }
 .gea-shell-nav-child:hover { background: #fffafb; color: #df1732; }
 .gea-shell-nav-child.is-active { background: #fff0f2; color: #d0132c; font-weight: 700; }
+.gea-shell-nav-child:disabled { background: transparent; color: #a7aeb8; cursor: default; opacity: 1; }
+.gea-shell-nav-child:disabled:hover { background: transparent; color: #a7aeb8; }
+.gea-shell-nav-section.is-flat { margin-top: 2px; }
 .gea-shell-nav-heading:focus-visible, .gea-shell-nav-item:focus-visible, .gea-shell-nav-child:focus-visible { outline: 2px solid #df1732; outline-offset: 2px; }
 .gea-shell-user {
   display: flex;

@@ -26,36 +26,45 @@ export type BusinessPanel = { id: string; title: string; order: number };
 
 /**
  * 左侧业务菜单的分组与顺序以原型（GEA_AI工作台_右侧目录.html）为准：
- * 产销协同 → 计划管理 → 库存管理 → 订单履约。
- * 每个条目只登记「页面 id」；页面没接入就没有关联数据，渲染时自动隐藏。
+ * 产销协同 → 计划管理 → 库存管理 → 订单管理。
+ * 原型中尚未接入的页面也保留为禁用占位，避免不同账号看到的目录结构跳动。
  */
 export type BusinessMenuSection = "supply" | "plan" | "inventory" | "orders";
-export type BusinessMenuItem = { id: string; title?: string };
+export type BusinessMenuItem = { id: string; title: string };
 export type BusinessMenuGroup = {
   key: BusinessMenuSection;
   title: string;
   icon: string;
+  flat?: boolean;
   items: readonly BusinessMenuItem[];
 };
-export type BusinessMenuEntry = { id: string; title: string };
+export type BusinessMenuEntry = { id: string; title: string; disabled: boolean };
 export type ResolvedBusinessMenuGroup = {
   key: BusinessMenuSection;
   title: string;
   icon: string;
+  flat: boolean;
   entries: BusinessMenuEntry[];
 };
 
 export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
-  { key: "supply", title: "产销协同", icon: "synergy", items: [{ id: "inventory-apsplan" }] },
+  {
+    key: "supply",
+    title: "产销协同",
+    icon: "synergy",
+    flat: true,
+    items: [{ id: "inventory-apsplan", title: "产销协同Agent" }],
+  },
   {
     key: "plan",
     title: "计划管理",
     icon: "calendar",
     items: [
-      { id: "gea-regional-plan" },
-      { id: "gea-proof" },
-      // 生产计划等页面接入后会自动出现在这里。
-      { id: "inventory-production", title: "生产计划" },
+      { id: "plan-region-category", title: "区域及品类计划Agent（开发中）" },
+      { id: "gea-proof", title: "销售计划Agent" },
+      { id: "gea-regional-plan", title: "区域计划Agent（开发中）" },
+      { id: "plan-category-production", title: "品类与生产计划Agent（开发中）" },
+      { id: "plan-capacity-assessment", title: "产能评估Agent（待设计）" },
     ],
   },
   {
@@ -63,26 +72,24 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
     title: "库存管理",
     icon: "warehouse",
     items: [
-      { id: "inventory-personal" },
-      { id: "inventory-qll" },
-      { id: "inventory-aqkc" },
-      { id: "inventory-fc" },
-      { id: "inventory-dealer" },
-      { id: "inventory-customer", title: "客户库存" },
+      { id: "inventory-personal", title: "全链库存管理Agent" },
+      { id: "inventory-aqkc", title: "基地库存Agent" },
+      { id: "inventory-fc", title: "分仓库存Agent" },
+      { id: "inventory-customer", title: "客户库存Agent（开发中）" },
     ],
   },
   {
     key: "orders",
-    title: "订单履约",
+    title: "订单管理",
     icon: "orders",
     items: [
-      { id: "inventory-orderworkbench", title: "订单工作台" },
-      { id: "inventory-orderfulfillment", title: "订单履约" },
+      { id: "inventory-orderworkbench", title: "订单管理Agent（开发中）" },
+      { id: "inventory-orderfulfillment", title: "订单履约Agent（开发中）" },
     ],
   },
 ];
 
-/** 只保留已接入页面的条目；整组都没有页面时连分组一起隐藏。 */
+/** 固定展示原型目录；没有接入页面的条目显示为禁用占位。 */
 export function resolveBusinessMenu(
   preset: readonly BusinessMenuGroup[],
   available: ReadonlyMap<string, string>,
@@ -92,9 +99,13 @@ export function resolveBusinessMenu(
       key: group.key,
       title: group.title,
       icon: group.icon,
+      flat: group.flat === true,
       entries: group.items
-        .filter((item) => available.has(item.id))
-        .map((item) => ({ id: item.id, title: available.get(item.id) || item.title || item.id })),
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          disabled: !available.has(item.id),
+        })),
     }))
     .filter((group) => group.entries.length > 0);
 }
