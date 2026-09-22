@@ -17,7 +17,7 @@ test('business first launch needs no repository input and preserves the company 
    await expect.poll(()=>page.url(),{timeout:60000}).toMatch(/^http:\/\/127\.0\.0\.1:/);
    await expect.poll(()=>page.evaluate(()=>fetch('/api/gea-proof/status',{method:'POST',headers:{'Content-Type':'application/json','X-GEA-Desktop-Health':'1'},body:'{}'}).then(r=>r.json())),{timeout:30000}).toMatchObject({ok:true});
    const overview=await page.evaluate(()=>fetch('/api/agent-plugins/overview').then(r=>r.json()));
-   assert.ok(overview.sources.some(s=>s.id==='company-agent-suites'&&s.kind==='archive'&&s.cloned));
+   assert.ok(overview.sources.some(s=>s.id==='company-agent-suites'&&s.kind==='git'&&s.cloned));
    assert.deepEqual(overview.suites.map(s=>s.suiteId).sort(),['business-analysis-starter','sinian-demand-forecast']);
    if(process.env.GEA_LIVE_SYNC==='1'){
     const result=await page.evaluate(()=>fetch('/api/agent-plugins/sources/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"id":"company-agent-suites"}'}).then(r=>r.json()));
