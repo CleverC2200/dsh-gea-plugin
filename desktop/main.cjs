@@ -5,6 +5,7 @@ const {mkdir,readFile,writeFile,appendFile} = require('node:fs/promises');
 const {join} = require('node:path');
 const {ensureConfiguration,launchUrl} = require('./config.cjs');
 const {startupUrl}=require('./startup-state.cjs');
+const {watchBoot}=require('./boot-watch.cjs');
 const {clearRuntimeCookies}=require('./runtime-cookies.cjs');
 async function showStartup(error){if(window&&!window.isDestroyed())await window.loadURL(startupUrl(error,startupReason));}
 // Chromium 补充的自动填充、听写、表情等原生菜单项也使用简体中文。
@@ -74,22 +75,24 @@ async function start(recovered=false,reason='startup'){
   backend=child;
   let pending='';
   const ready=new Promise((resolve,reject)=>{
-    const timer=setTimeout(()=>reject(new Error('工作台启动超时，请查看应用日志')),60000);
-    const fail=error=>{clearTimeout(timer);reject(error);};
+    // 首启的准备阶段长时间不输出，按“还在不在输出”判活，别把慢启动判成失败。
+    const watch=watchBoot({onTimeout:reject});
+    const fail=error=>{watch.stop();reject(error);};
     child.once('error',fail);
     child.once('close',code=>fail(new Error(`工作台启动进程已退出 (${code})`)));
+    for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>{
+      watch.touch();
+      void appendFile(join(data,'desktop.log'),errorText(chunk.toString()),{mode:0o600}).catch(error=>console.error(errorText(error)));
+    });
     child.stdout.on('data',chunk=>{
       pending+=chunk.toString();
       for(let i;(i=pending.indexOf('\n'))!==-1;){
         const line=pending.slice(0,i).trim();pending=pending.slice(i+1);
-        try{const url=launchUrl(line);if(url){clearTimeout(timer);resolve(url);}}
+        try{const url=launchUrl(line);if(url){watch.stop();resolve(url);}}
         catch(error){fail(error);}
       }
       if(pending.length>65536)fail(new Error('工作台启动输出过长'));
     });
-  });
-  for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>{
-    void appendFile(join(data,'desktop.log'),errorText(chunk.toString()),{mode:0o600}).catch(error=>console.error(errorText(error)));
   });
   child.on('close',code=>{if(!stopping&&!quitting&&origin){origin=undefined;dialog.showErrorBox('工作台已停止',`后端进程退出 (${code})，可通过应用菜单重新启动。`);}});
   try{

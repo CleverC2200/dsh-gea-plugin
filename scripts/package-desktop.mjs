@@ -20,6 +20,7 @@ export const SHELL_FILES = [
   "company.config.json",
   "permissions.cjs",
   "startup-state.cjs",
+  "boot-watch.cjs",
   "updates.mjs",
   "client-installer.mjs",
   "desktop-release-sources.json",
