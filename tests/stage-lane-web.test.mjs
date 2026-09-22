@@ -47,7 +47,12 @@ test('approval flow lane is collapsed by default and toggles from the title row'
   await toggle.click();
   await expect(lane).toBeVisible();
   assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
-  await expect(frame.locator('[data-testid^="regional-approval-stage-"]')).toHaveCount(5);
+  // 节点条只列当前账号有权审批的节点：本用例只有 region 权限，因此只有一个节点，
+  // 也不再有「全部节点」这个可选状态。
+  await expect(frame.locator('[data-testid^="regional-approval-stage-"]')).toHaveCount(1);
+  await expect(frame.getByTestId('regional-approval-stage-customer')).toHaveCount(0);
+  await expect(toggle).toContainText('当前节点：城市经理审批');
+  await expect(toggle).not.toContainText('全部节点');
 
   // 同一次会话内记住展开状态：刷新后仍是展开。
   await page.reload();

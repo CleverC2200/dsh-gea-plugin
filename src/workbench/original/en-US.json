@@ -428,6 +428,7 @@
       "stageLane": "Per-node data status",
       "stageLaneToggle": {
         "current": "Current node: {{stage}}",
+        "noStage": "No approval node assigned",
         "expand": "Expand approval flow",
         "collapse": "Collapse approval flow"
       },

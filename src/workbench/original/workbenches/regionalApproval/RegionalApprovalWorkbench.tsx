@@ -1515,9 +1515,9 @@ const RegionalApprovalWorkbench: React.FC<{
 
   const changeStage = (stage: ApprovalStageId) => {
     if (liveQuery.enabled) {
-      const nextStage = liveStageFilter === stage ? undefined : stage;
-      setLiveStageFilter(nextStage);
-      setDimension(APPROVAL_DIMENSIONS_BY_STAGE[nextStage ?? 'category'][0]);
+      // 审批工作台按节点收口：只能在自己有审批权限的节点之间切换，不提供「全部节点」。
+      setLiveStageFilter(stage);
+      setDimension(APPROVAL_DIMENSIONS_BY_STAGE[stage][0]);
       setDraftLiveFilters((current) => ({ ...current, status: ALL_ORGANIZATIONS }));
       setAppliedLiveFilters((current) => ({ ...current, status: ALL_ORGANIZATIONS }));
       setSelectedRowIds([]);
@@ -2113,6 +2113,11 @@ const RegionalApprovalWorkbench: React.FC<{
   };
 
   const visibleStageFixtures = APPROVAL_STAGE_FIXTURES.filter((stage) => stage.id !== ('evaluation' as ApprovalStageId));
+  // 审批工作台只列出当前账号有审批权限的节点：没有权限的节点不出现，也不提供「全部节点」。
+  // 没有权限码但被服务端派了同版本任务的账号，authorizedStages 由该任务推断得出。
+  const laneStageFixtures = liveQuery.enabled
+    ? visibleStageFixtures.filter((stage) => (authorizedStages as readonly ApprovalStageId[]).includes(stage.id))
+    : visibleStageFixtures;
   const currentStageIndex = visibleStageFixtures.findIndex((stage) => stage.id === displayStage);
   const healthColors: Record<ApprovalHealth, 'green' | 'orange' | 'red'> = {
     healthy: 'green',
@@ -2689,7 +2694,11 @@ const RegionalApprovalWorkbench: React.FC<{
               {t('common.assistantSurface.regionalApproval.stageLaneToggle.current', {
                 stage: stageIndicatorStage
                   ? t(stageLabelKey(stageIndicatorStage))
-                  : t('common.assistantSurface.regionalApproval.stages.all'),
+                  : t(
+                      liveQuery.enabled
+                        ? 'common.assistantSurface.regionalApproval.stageLaneToggle.noStage'
+                        : 'common.assistantSurface.regionalApproval.stages.all',
+                    ),
               })}
             </span>
             {stageLaneOpen ? <Up size={12} /> : <Down size={12} />}
@@ -2820,7 +2829,7 @@ const RegionalApprovalWorkbench: React.FC<{
           data-live-status={liveQuery.enabled}
           aria-label={t('common.assistantSurface.regionalApproval.stageLane')}
         >
-          {visibleStageFixtures.map((stage, index) => {
+          {laneStageFixtures.map((stage, index) => {
             const state = liveQuery.enabled
               ? liveQuery.progressState.status !== 'success'
                 ? 'unavailable'
@@ -2870,7 +2879,7 @@ const RegionalApprovalWorkbench: React.FC<{
                     </small>
                   </span>
                 </Button>
-                {!liveQuery.enabled && index < visibleStageFixtures.length - 1 ? (
+                {!liveQuery.enabled && index < laneStageFixtures.length - 1 ? (
                   <span className={styles.stageConnector} data-state={state} aria-hidden='true' />
                 ) : null}
               </React.Fragment>

@@ -44,14 +44,14 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  await expect(frame.getByRole('button',{name:'重提',exact:true})).toHaveCount(0);
  const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toBeVisible();
  assert.equal(modelCalls,0,'opening the workbench must not trigger analysis');
- const stages=['region','province','area'];
  const readProgress=()=>frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
- await expect.poll(readProgress).toEqual(['进度 100%','进度 0%','进度 0%','进度 0%','进度 0%']);
- const before=await readProgress(); assert.equal(before.length,5);
+ // 节点条只列当前账号有权审批的节点：本用例只有 region 权限，因此只有一个节点，且不提供「全部节点」。
+ await expect.poll(readProgress).toEqual(['进度 0%']);
+ const before=await readProgress(); assert.equal(before.length,1);
  // V1.8 #05：流程图默认收起，点标题行右侧的入口展开后才能点各节点。
  if(!(await frame.getByTestId('regional-approval-flow-lane').isVisible())) await frame.getByTestId('regional-approval-flow-toggle').click();
- for(const stage of stages){await frame.getByTestId('regional-approval-stage-'+stage).click();assert.deepEqual(await readProgress(),before);}
  await frame.getByTestId('regional-approval-stage-region').click();
+ assert.deepEqual(await readProgress(),before);
  await frame.getByRole('tab',{name:'按区域',exact:true}).click();
  await expect(frame.getByTestId('regional-approval-status-p')).toHaveText('销售已提报');
  await expect(frame.getByTestId('regional-approval-status-p').locator('xpath=ancestor::td[1]')).toContainText('宝阳销售组');
