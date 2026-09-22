@@ -164,6 +164,33 @@ test(
     const layoutRestored = await readLayout();
     assert.ok(Math.abs(layoutRestored.sidebar - layoutBefore.sidebar) <= 12, JSON.stringify({ layoutBefore, layoutRestored }));
 
+    // 登记 37：窄窗口（上下两行）要能拖分隔调高度，且欢迎区不能挡住输入框。
+    await page.setViewportSize({ width: 1088, height: 820 });
+    await page.waitForTimeout(900);
+    const splitter = page.locator(".gea-stacked-splitter");
+    await splitter.first().waitFor();
+    const rowsOf = () => page.locator(".AppFrame_frame").evaluate((el) => getComputedStyle(el).gridTemplateRows);
+    const rowsBefore = await rowsOf();
+    const splitterBox = await splitter.first().boundingBox();
+    assert.ok(splitterBox && splitterBox.height > 0, JSON.stringify(splitterBox));
+    await page.mouse.move(splitterBox.x + splitterBox.width / 2, splitterBox.y + splitterBox.height / 2);
+    await page.mouse.down();
+    for (let step = 1; step <= 6; step += 1)
+      await page.mouse.move(splitterBox.x + splitterBox.width / 2, splitterBox.y - step * 12, { steps: 2 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    assert.notEqual(await rowsOf(), rowsBefore);
+    const composerHit = await page.evaluate(() => {
+      const input = document.querySelector('[contenteditable="true"]');
+      if (!input) return null;
+      const box = input.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      return hit ? input.contains(hit) : null;
+    });
+    assert.equal(composerHit, true);
+    await page.setViewportSize({ width: 1536, height: 920 });
+    await page.waitForTimeout(400);
+
     // 登记 24：宿主兜底品牌文案不出现。
     assert.equal(
       await page.evaluate(

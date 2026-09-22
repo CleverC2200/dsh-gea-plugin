@@ -621,12 +621,24 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   min-height: 0;
 }
 .gea-agent-welcome {
-  position: absolute;
-  inset: 0 0 104px;
-  z-index: 2;
+  /* 首页原来用绝对定位、底边只留 104px：输入区比这高时会盖住输入框、点不进去。
+     改成和业务页一样的"上欢迎区、下输入区"弹性排布。 */
+  position: relative;
+  inset: auto;
+  order: -1;
+  flex: 1 1 auto;
+  min-height: 0;
+  z-index: 1;
   overflow: auto;
   padding: 28px 18px 16px;
   background: linear-gradient(180deg, #fff8f9 0, #fff 35%);
+}
+[data-phase="hero"] [data-composer-seat] {
+  position: relative;
+  inset: auto;
+  z-index: 2;
+  flex: 0 0 auto;
+  min-height: 0;
 }
 /* With the workbench beside it, the landing surface takes the space above the docked composer. */
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] > .gea-agent-welcome {
@@ -1046,7 +1058,8 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 @media (min-width: 801px) and (max-width: 1200px) {
   .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) {
     grid-template-columns: 180px minmax(0, 1fr) !important;
-    grid-template-rows: minmax(0, 2fr) minmax(220px, 1fr);
+    /* 两行比例可以由用户拖动（--gea-stacked-split 由外壳在拖动时写入）。 */
+    grid-template-rows: minmax(200px, var(--gea-stacked-split, 62%)) minmax(220px, 1fr);
     transition: none;
   }
   .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_sidebarCol { grid-row: 1 / -1; }
@@ -1055,6 +1068,48 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_handle { display: none; }
   .AppFrame_frame[data-conversation-beside-panel][data-sidebar-collapsed]:has(iframe[data-gea-workbench]) { grid-template-columns: 64px minmax(0, 1fr) !important; }
 }
+
+/*
+ * 窄窗口（两行布局）里的上下拖动条：宿主在 ≤1200 会隐藏左右手柄，
+ * 这里补一条贴着工作台底边的横向拖动条（一直延伸到输入区那一侧）。
+ */
+.gea-stacked-splitter {
+  display: none;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+  height: 12px;
+  margin-bottom: -6px;
+  cursor: row-resize;
+  touch-action: none;
+  z-index: 12;
+  background: transparent;
+}
+.gea-stacked-splitter::after {
+  content: "";
+  display: block;
+  height: 2px;
+  margin: 5px 10px 0;
+  border-radius: 2px;
+  background: rgba(223, 23, 50, 0.16);
+  transition: background-color 120ms ease;
+}
+.gea-stacked-splitter:hover::after,
+.gea-stacked-splitter[data-dragging]::after { background: #d0132c; }
+@media (min-width: 801px) and (max-width: 1200px) {
+  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) .gea-stacked-splitter {
+    display: block;
+  }
+}
+
+/* 会话区内容跟随栏宽：宽表/图表横向滚动，不再被裁。 */
+[data-slot="main.conversation"] :is(img, svg, video, canvas) { max-width: 100%; height: auto; }
+[data-slot="main.conversation"] [data-gea-wide] {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+[data-slot="main.conversation"] table[data-gea-wide] { display: block; }
 
 .gea-shell-navigation .gea-shell-collaboration { margin-top: 12px; font-weight: 600; }
 

@@ -680,6 +680,103 @@ export function apply(ctx: Context): void {
       };
     }, [region]);
     useEffect(() => {
+      // 窄窗口（801–1200）是上下两行布局，宿主不给左右手柄，这里补一条上下拖动条：
+      // 拖动改两行比例，位置记在本机 localStorage。
+      const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
+      if (!frame) return;
+      const stored = Number(window.localStorage.getItem("gea.stackedSplit"));
+      if (Number.isFinite(stored) && stored >= 25 && stored <= 85)
+        frame.style.setProperty("--gea-stacked-split", stored + "%");
+      const splitter = document.createElement("div");
+      splitter.className = "gea-stacked-splitter";
+      splitter.setAttribute("role", "separator");
+      splitter.setAttribute("aria-orientation", "horizontal");
+      splitter.setAttribute("aria-label", "调整工作台与对话区高度");
+      let dragging = false;
+      const onDown = (event: PointerEvent) => {
+        dragging = true;
+        splitter.setAttribute("data-dragging", "");
+        splitter.setPointerCapture(event.pointerId);
+        event.preventDefault();
+      };
+      const onMove = (event: PointerEvent) => {
+        if (!dragging) return;
+        const rect = frame.getBoundingClientRect();
+        const ratio = ((event.clientY - rect.top) / rect.height) * 100;
+        frame.style.setProperty("--gea-stacked-split", Math.min(85, Math.max(25, ratio)) + "%");
+        event.preventDefault();
+      };
+      const onUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        splitter.removeAttribute("data-dragging");
+        const percent = Number.parseFloat(frame.style.getPropertyValue("--gea-stacked-split"));
+        if (Number.isFinite(percent)) window.localStorage.setItem("gea.stackedSplit", String(Math.round(percent)));
+      };
+      splitter.addEventListener("pointerdown", onDown);
+      splitter.addEventListener("pointermove", onMove);
+      splitter.addEventListener("pointerup", onUp);
+      splitter.addEventListener("pointercancel", onUp);
+      frame.append(splitter);
+      // 宿主会重建 frame，掉了就补回去。
+      const keepObserver = new MutationObserver(() => {
+        if (!splitter.isConnected) frame.append(splitter);
+      });
+      keepObserver.observe(document.body, { childList: true, subtree: true });
+      return () => {
+        keepObserver.disconnect();
+        splitter.removeEventListener("pointerdown", onDown);
+        splitter.removeEventListener("pointermove", onMove);
+        splitter.removeEventListener("pointerup", onUp);
+        splitter.removeEventListener("pointercancel", onUp);
+        splitter.remove();
+      };
+    }, []);
+    useEffect(() => {
+      // 会话区里的宽表/图表比栏宽宽时会被裁掉：打标记交给 CSS 横向滚动；
+      // 栏宽变化（拖手柄、改窗口）时重扫，避免拖宽后内容不重排。
+      const conversation = () =>
+        document.querySelector<HTMLElement>(
+          ".AppFrame_centerCol [data-slot='main.conversation'], .AppFrame_rightbarCol [data-slot='main.conversation']",
+        );
+      const selector =
+        "table, pre, img, svg, canvas, [class*='genui'], [class*='Genui'], [class*='chart'], [class*='Chart']";
+      let frameId = 0;
+      const scan = () => {
+        const root = conversation();
+        if (!root) return;
+        for (const marked of root.querySelectorAll<HTMLElement>("[data-gea-wide]")) {
+          if (marked.scrollWidth <= marked.clientWidth + 4) marked.removeAttribute("data-gea-wide");
+        }
+        for (const element of root.querySelectorAll<HTMLElement>(selector)) {
+          if (element.clientWidth > 60 && element.scrollWidth > element.clientWidth + 4)
+            element.setAttribute("data-gea-wide", "");
+          // 表格/图表自己不一定溢出，装它的气泡才会：把外层也一起标记，让它横向滚动。
+          const holder = element.parentElement;
+          if (holder && holder.clientWidth > 60 && holder.scrollWidth > holder.clientWidth + 4)
+            holder.setAttribute("data-gea-wide", "");
+        }
+      };
+      const schedule = () => {
+        if (frameId) return;
+        frameId = window.requestAnimationFrame(() => {
+          frameId = 0;
+          scan();
+        });
+      };
+      schedule();
+      const observer = new MutationObserver(schedule);
+      observer.observe(document.body, { childList: true, subtree: true });
+      const resize = new ResizeObserver(schedule);
+      const root = conversation();
+      if (root) resize.observe(root);
+      return () => {
+        if (frameId) window.cancelAnimationFrame(frameId);
+        observer.disconnect();
+        resize.disconnect();
+      };
+    }, []);
+    useEffect(() => {
       const findRegions = () => {
         setRegion(
           document.querySelector<HTMLElement>("[class*='_regionArea']") ??
