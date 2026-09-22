@@ -6,6 +6,33 @@ import {createRequire} from 'node:module';
 const OPTIONAL_PLUGINS={'@dsh-external/dsh-visualize':{name:'@dsh-external/dsh-visualize'},'dsh-raw-html-v2':{name:'dsh-raw-html-v2'},'dsh-worktable':{name:'dsh-worktable'}};
 const code=value=>typeof value==='string'&&/^[A-Z][A-Z_0-9]+$/.test(value);
 const errorCode=error=>code(error?.message)?error.message:code(error?.code)?error.code:'UPDATE_FAILED';
+/**
+ * 判断频道版本是否比本地更新（含 `1.4.3-company.33` 这类预发布后缀）。
+ * 频道是唯一真相，但“本地比频道新”不是更新——内置基线高于频道时不能把降级当成升级。
+ * 本地没装过这个包时按“需要安装”处理，保持既有行为。
+ */
+const versionParts=value=>{const [core,pre]=String(value??'').split('-',2);return {core:core.split('.').map(Number),pre:pre===undefined?null:pre.split('.')};};
+const isNewer=(candidate,current)=>{
+  if(current===undefined||current===null)return true;
+  const next=versionParts(candidate),now=versionParts(current);
+  for(let index=0;index<3;index+=1){
+    const a=next.core[index]??0,b=now.core[index]??0;
+    if(a!==b)return a>b;
+  }
+  if(!next.pre&&!now.pre)return false;
+  if(!next.pre)return true;
+  if(!now.pre)return false;
+  for(let index=0;index<Math.max(next.pre.length,now.pre.length);index+=1){
+    const a=next.pre[index],b=now.pre[index];
+    if(a===undefined)return false;
+    if(b===undefined)return true;
+    const aNumeric=/^\d+$/.test(a),bNumeric=/^\d+$/.test(b);
+    if(aNumeric&&bNumeric){if(Number(a)!==Number(b))return Number(a)>Number(b);}
+    else if(aNumeric!==bNumeric)return !aNumeric;
+    else if(a!==b)return a>b;
+  }
+  return false;
+};
 const CHANNEL_ATTEMPT_TIMEOUT_MS=30000;
 /** 兼容版频道来源：单个地址，或按优先级排列的地址列表。 */
 const channelCandidates=value=>Array.isArray(value)?value.filter(item=>typeof item==='string'&&item.length>0):typeof value==='string'&&value.length>0?[value]:[];
@@ -67,7 +94,7 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
         // keep reporting "update needs attention" from the previous attempt.
         const key=entry=>entry.package+'@'+entry.version;
         const attempted=(state.targets??[]).map(key).sort().join(',');
-        const offered=state.releases.filter(release=>current[release.package]!==release.version).map(key).sort().join(',');
+        const offered=state.releases.filter(release=>isNewer(release.version,current[release.package])).map(key).sort().join(',');
         if(state.phase==='failed'&&attempted!==offered) {state.phase='idle';state.error=null;delete state.targets;delete state.target;delete state.progress;delete state.timings;delete state.pending;}
       }catch(error){state.releases=[];state.channelSource=null;state.lastCheck=new Date().toISOString();state.checkError=errorCode(error);}
       await desktopCheck;await save();return status();
@@ -99,7 +126,7 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
     const current=await versions();
     const selected=value.all===true?state.releases:state.releases.filter(entry=>entry.package===value.package);
     if(!selected.length)throw Error('CHECK_RELEASE_FIRST');
-    const targets=selected.filter(entry=>current[entry.package]!==entry.version);
+    const targets=selected.filter(entry=>isNewer(entry.version,current[entry.package]));
     if(!targets.length)return {error:'ALREADY_CURRENT'};
     const batch={schema:1,channel:state.settings.channel,releases:targets};
     const host={dsh:current['@deepseek-ai/dsh'],workbench:current['@cleverc2200/dsh-agent-workbench'],desktop:desktopVersion};

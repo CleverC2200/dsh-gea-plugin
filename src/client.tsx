@@ -25,6 +25,7 @@ import {registerHtmlClient} from "./html-client.tsx";
 import {
   approvalConversation,
   branchStockConversation,
+  customerStockConversation,
   deliveryOpsConversation,
   demandOpsConversation,
   fullChainStockConversation,
@@ -32,8 +33,11 @@ import {
   inboxConversation,
   inventoryConversation,
   inventoryWorkbenchConversation,
+  orderFulfillmentConversation,
+  orderManagementConversation,
   regionalPlanConversation,
   safetyStockConversation,
+  supplyCoordinationConversation,
   type ConversationActionIcon,
   type ConversationActionTone,
   type ConversationPromptConfig,
@@ -655,6 +659,16 @@ export function apply(ctx: Context): void {
       return () => observer.disconnect();
     }, []);
     useEffect(() => {
+      const onPluginPrompt = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin || event.data?.type !== "gea:send-prompt" || typeof event.data.prompt !== "string") return;
+        const frame = document.querySelector<HTMLIFrameElement>(".AppFrame_centerCol iframe");
+        if (!frame || event.source !== frame.contentWindow) return;
+        writeConversationPrompt(event.data.prompt, true);
+      };
+      window.addEventListener("message", onPluginPrompt);
+      return () => window.removeEventListener("message", onPluginPrompt);
+    }, []);
+    useEffect(() => {
       // 收起/展开是宿主做的动画（宽度 280→56，约 240ms）。如果直接跟着 [data-sidebar-collapsed] 立刻换内容，
       // 会出现「抽屉瞬间消失、图标列铺满整条宽度再滑回左边」的闪动。
       // 规则：侧栏窄到 ≤100px，或者收起标志已经过了动画时间（宿主在宽屏下会把宽度钉住、压根不缩），
@@ -935,31 +949,6 @@ export function apply(ctx: Context): void {
     // 工作区 only swaps the sidebar surface: the center document and the rail conversation stay.
     const toggleDrawer = (name: "function" | "workspace") =>
       setDrawer((value) => (value === name ? "none" : name));
-    const writeComposer = (prompt: string) => {
-      const conversation =
-        document.querySelector<HTMLElement>(
-          ".AppFrame_centerCol [data-slot='main.conversation'], .AppFrame_rightbarCol [data-slot='main.conversation']",
-        ) ?? conversationHero;
-      if (!conversation) return;
-      const input = Array.from(
-        conversation.querySelectorAll<HTMLElement>("textarea, [contenteditable='true']"),
-      ).find((element) => element.getClientRects().length > 0 && !element.hasAttribute("disabled"));
-      if (!input) return;
-      if (input instanceof HTMLTextAreaElement) {
-        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
-        setter?.call(input, prompt);
-      } else {
-        input.focus();
-        document.execCommand("selectAll", false);
-        if (!document.execCommand("insertText", false, prompt)) {
-          input.replaceChildren(document.createTextNode(prompt));
-          input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
-        }
-      }
-      if (input instanceof HTMLTextAreaElement)
-        input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
-      input.focus();
-    };
     const drawerPortal = createPortal(
       <>
         {/* 两个抽屉上下挨着：业务工作台在上、历史会话紧跟其下，展开都往下走。 */}
@@ -1057,7 +1046,11 @@ export function apply(ctx: Context): void {
         )}
         {railColumn && createPortal(<ConversationHead agent={conversationAgentFor(activePanel)} />, railColumn)}
         {conversationHero && createPortal(
-          <AgentWelcome agent={conversationAgentFor(activePanel)} onPrompt={writeComposer} />,
+          <AgentWelcome
+            agent={conversationAgentFor(activePanel)}
+            onFill={(prompt) => writeConversationPrompt(prompt, false)}
+            onSend={(prompt) => writeConversationPrompt(prompt, true)}
+          />,
           conversationHero,
         )}
         {!business && homeHero && createPortal(
@@ -1123,12 +1116,45 @@ export function apply(ctx: Context): void {
   );
 }
 
+function writeConversationPrompt(prompt: string, submit: boolean): void {
+  const conversation = document.querySelector<HTMLElement>(
+    ".AppFrame_rightbarCol [data-slot='main.conversation'], .AppFrame_centerCol [data-slot='main.conversation']",
+  );
+  if (!conversation) return;
+  const input = Array.from(conversation.querySelectorAll<HTMLElement>("textarea, [contenteditable='true']"))
+    .find((element) => element.getClientRects().length > 0 && !element.hasAttribute("disabled"));
+  if (!input) return;
+  if (input instanceof HTMLTextAreaElement) {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(input, prompt);
+    input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
+  } else {
+    input.focus();
+    document.execCommand("selectAll", false);
+    if (!document.execCommand("insertText", false, prompt)) {
+      input.replaceChildren(document.createTextNode(prompt));
+      input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
+    }
+  }
+  input.focus();
+  if (!submit) return;
+  window.setTimeout(() => {
+    const send = Array.from(conversation.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
+      const label = `${button.getAttribute("aria-label") ?? ""} ${button.getAttribute("title") ?? ""}`;
+      return !button.disabled && button.getClientRects().length > 0 && /(发送|send)/i.test(label);
+    });
+    if (send) send.click();
+    else input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
+  }, 0);
+}
+
 function AgentWelcome({
   agent,
-  onPrompt,
+  onFill,
+  onSend,
 }: {
   agent: ConversationPromptConfig;
-  onPrompt: (prompt: string) => void;
+  onFill: (prompt: string) => void;
+  onSend: (prompt: string) => void;
 }) {
   return (
     <section className="gea-agent-welcome" aria-label={agent.name}>
@@ -1141,7 +1167,7 @@ function AgentWelcome({
         <h3>常用功能</h3>
         <div className="gea-agent-actions">
           {agent.actions.map((action) => (
-            <button key={action.label} type="button" onClick={() => onPrompt(action.prompt)}>
+            <button key={action.label} type="button" onClick={() => onSend(action.prompt)}>
               <AgentActionIcon kind={action.icon} tone={action.tone} />
               <span className="gea-agent-action-copy">
                 <span className="gea-agent-action-title">{action.label}</span>
@@ -1154,7 +1180,7 @@ function AgentWelcome({
       </div>
       <div className="gea-agent-block gea-agent-prompts">
         <h3>你可以这样问</h3>
-        {agent.prompts.map((prompt) => <button key={prompt} type="button" onClick={() => onPrompt(prompt)}>{prompt}</button>)}
+        {agent.prompts.map((prompt) => <button key={prompt} type="button" onClick={() => onFill(prompt)}>{prompt}</button>)}
       </div>
     </section>
   );
@@ -1207,6 +1233,10 @@ const BUSINESS_CONVERSATIONS: Record<string, ConversationPromptConfig> = {
   "inventory-fc": branchStockConversation,
   "inventory-personal": inventoryWorkbenchConversation,
   "inventory-qll": fullChainStockConversation,
+  "inventory-apsplan": supplyCoordinationConversation,
+  "inventory-customer": customerStockConversation,
+  "inventory-orderworkbench": orderManagementConversation,
+  "inventory-orderfulfillment": orderFulfillmentConversation,
 };
 
 function conversationAgentFor(panel: MainPanelId | null | undefined): ConversationPromptConfig {

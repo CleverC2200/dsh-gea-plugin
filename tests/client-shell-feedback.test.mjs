@@ -98,7 +98,7 @@ test(
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
     await page.getByRole("navigation", { name: "业务导航", exact: true }).waitFor();
 
-    // 业务目录保留完整父子层级；菜单整体使用本地原型的内缩位置。
+    // 业务目录保留完整父子层级；分组标题贴齐抽屉左沿，子项文字与标题文字对齐。
     const supplyHeading = page.getByRole("button", { name: "产销协同", exact: true });
     await supplyHeading.waitFor();
     assert.equal(await supplyHeading.getAttribute("aria-expanded"), "true");
@@ -116,7 +116,7 @@ test(
       };
     });
     assert.ok(menuIndent, "business menu geometry must be measurable");
-    assert.ok(menuIndent.headingInset >= 18, JSON.stringify(menuIndent));
+    assert.ok(Math.abs(menuIndent.headingInset) <= 2, JSON.stringify(menuIndent));
     assert.ok(Math.abs(menuIndent.headingText - menuIndent.childText) <= 2, JSON.stringify(menuIndent));
 
     // 登记 32 / 48：会话框标题只留「模块名 + 助手」，副标整行去掉。
