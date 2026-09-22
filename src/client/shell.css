@@ -1075,6 +1075,9 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_centerCol { grid-column: 2; grid-row: 1; min-height: 0; }
   .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_rightbarCol { grid-column: 2; grid-row: 2; min-height: 0; border-top: 1px solid var(--dsw-alias-border-l3); }
   .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_handle { display: none; }
+  /* 侧栏整列一直铺到对话行，它的 1px 右边框就贴着输入框左边画下来，看着像竖线切进对话框。
+     两行布局里这条边框只服务上方工作台行，去掉；对话行的分隔由右栏自己的上边框承担。 */
+  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_sidebarCol { border-right: 0 !important; }
   .AppFrame_frame[data-conversation-beside-panel][data-sidebar-collapsed]:has(iframe[data-gea-workbench]) { grid-template-columns: 64px minmax(0, 1fr) !important; }
 }
 
