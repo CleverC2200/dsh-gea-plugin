@@ -23,6 +23,7 @@ import {
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
+import { surfacePromptLine } from "./host/workbench-surface.ts";
 import { registerHtmlPlugins, type PageBridgeHost } from "./html-plugins.ts";
 import { injectPageScan } from "./html-page-scan.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
@@ -462,6 +463,19 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         '- 结果返回资源链接时，用 dsh_read_resource 原样传入服务给出的完整 URI（形如 data-artifact://gateway/…）：不要自己拼 URI，也不要把它当 HTTP 链接去抓。',
         "- 报错先按错误文本改参数再试一次；同一错误不要连续重试，更不要改用编造的数据或改写用户的问题。",
       ].join("\n"),
+    });
+    // 每个模型步骤都把"这个对话在不在业务工作台、在哪一页菜单"作为宿主事实注入。
+    // 位置判定(host/workbench-surface.ts)本身是对的，但模型看不到，只能先调页面
+    // 工具去问一次——那一次必然白跑。这里让它第一步就知道该走哪条通道。
+    promptCtx.systemPrompt.section({
+      name: "gea:workbench-surface",
+      order: 121,
+      text: (assembly) => {
+        const sessionId = (assembly as { agent?: { id?: string } }).agent?.id;
+        return sessionId
+          ? surfacePromptLine(business.surfaceFor(sessionId))
+          : "";
+      },
     });
   });
   ctx.effect(() => async () => { await desktopLogin.dispose(); await webLogin.dispose(); business.dispose(); });

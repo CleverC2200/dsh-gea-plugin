@@ -78,6 +78,12 @@ test(
     );
     assert.ok(instructions.includes("只有用户明确要求时才动用页面操作工具"));
     assert.ok(instructions.includes("只使用当前已加载且有权限的 GEA MCP 工具"));
+    // 位置事实由宿主每轮注入：没有业务菜单的会话直接告诉模型"别读页面"，
+    // 免得它先调页面工具去问一次（那一次必然白跑）。
+    assert.ok(
+      JSON.stringify(body.messages).includes("【业务位置｜宿主事实】"),
+      "系统提示里要带当前业务位置",
+    );
     assert.ok(instructions.includes("不要展示或解释接口、工具名、字段名、JSON、哈希"));
     // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在
     // 回答里渲染界面；这里显式记录该行为，避免它变成无声的提示词漂移。

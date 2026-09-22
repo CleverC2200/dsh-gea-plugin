@@ -14,6 +14,7 @@ import {
   isMainSurface,
   normalizeSurface,
   surfaceLabel,
+  surfacePromptLine,
 } from "../src/host/workbench-surface.ts";
 
 const now = 1_700_000_000_000;
@@ -89,4 +90,23 @@ test("菜单名解析：注册页面优先 → 原型目录 → 回退 id", () =
   assert.equal(businessMenuTitle("inventory-qll"), "全链库存工作台");
   assert.equal(businessMenuTitle("plan-region-category"), "区域及品类计划工作台");
   assert.equal(businessMenuTitle("unknown-page"), "unknown-page");
+});
+
+test("每轮注入的「业务位置」：主对话就明说别读页面", () => {
+  const main = surfacePromptLine(undefined);
+  assert.match(main, /业务位置/);
+  assert.match(main, /主对话/);
+  assert.match(main, /不要调用 gea_page 或 gea_visible_workbench_context/);
+  assert.match(main, /gea_module_mcp/);
+  // 报了 main 与没上报过是同一种事实，措辞一致。
+  assert.equal(surfacePromptLine(normalizeSurface({ menu: MAIN_MENU })), main);
+});
+
+test("每轮注入的「业务位置」：业务菜单才允许读这一屏", () => {
+  const line = surfacePromptLine(
+    normalizeSurface({ menu: "inventory-qll", title: "全链库存工作台" }),
+  );
+  assert.match(line, /业务菜单「全链库存工作台」/);
+  assert.match(line, /gea_page/);
+  assert.equal(line.includes("不要调用 gea_page"), false);
 });
