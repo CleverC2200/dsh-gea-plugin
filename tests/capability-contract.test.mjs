@@ -148,6 +148,10 @@ test("注册表只由契约产出白名单与只读模块清单", () => {
   assert.match(index, /分仓库存：consumerCode=branch-inventory/);
   assert.match(index, /能力层：/);
   assert.equal(index.includes("agents_scm_branch_inventory_snapshot"), false);
+  // 但要去前缀留着"表名关键词"：模型靠它选模块（实测为了找"货龄"会把几个模块的
+  // 契约逐个翻一遍，索引里有 inventory_age 就能直接指到安全库存）。
+  assert.match(index, /表：/);
+  assert.match(index, /branch_inventory_snapshot/);
   assert.ok(index.length < 600, `索引过长会占每次请求的上下文: ${index.length}`);
 });
 
