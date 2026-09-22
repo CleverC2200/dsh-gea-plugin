@@ -940,6 +940,46 @@ export class Business {
   }
 
   /**
+   * 将服务端最新分配的审批任务匹配到指定销售计划版本。
+   * 上游 approval 段的业务键是驼峰 `bizKey`；同时接受 `biz_key`，避免字段写法变化再次让这条来源静默失效。
+   */
+  private async workflowApproval(versionId: string, caller: AbortSignal) {
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    const bizKeyOf = (row: Record<string, unknown> | undefined): string | undefined => {
+      const value = row?.bizKey ?? row?.biz_key;
+      return typeof value === "string" ? value : undefined;
+    };
+    let pageNo = 1;
+    while (true) {
+      const page = object(await this.get(`/api/v1/notifications?pageNo=${pageNo}&pageSize=100`, auth, signal));
+      if (!Array.isArray(page.items)) throw new Error("NOTIFICATION_INVALID_RESPONSE");
+      for (const item of page.items) {
+        const row = object(item);
+        const approval = row.approval == null ? undefined : object(row.approval);
+        if (bizKeyOf(approval) !== `sales-plan:version:${versionId}` || approval?.actionable !== true) continue;
+        const fresh = object(await this.get("/api/v1/notifications/" + encodeURIComponent(text(row.id)), auth, signal));
+        const confirmed = fresh.approval == null ? undefined : object(fresh.approval);
+        if (fresh.id !== row.id) throw new Error("NOTIFICATION_INVALID_RESPONSE");
+        if (bizKeyOf(confirmed) === `sales-plan:version:${versionId}` && confirmed?.actionable === true) {
+          if (this.auth !== auth) throw new Error("STALE_LOGIN");
+          const instanceId = confirmed.instanceId ?? confirmed.instance_id ?? row.instanceId ?? row.instance_id;
+          return {
+            versionId,
+            notificationId: text(row.id),
+            instanceId: instanceId == null ? undefined : text(instanceId),
+            actionable: true as const,
+          };
+        }
+      }
+      const total = integer(page.total, 0);
+      if (pageNo * 100 >= total) return undefined;
+      if (!page.items.length || pageNo >= 100) throw new Error("NOTIFICATION_SCAN_INCOMPLETE");
+      pageNo++;
+    }
+  }
+
+  /**
    * 持久化私有草稿属于当前登录身份，绝不会调用 GEA 动作，也不代表服务端审批权限。
    * 界面自 0.0.59 起按“详情可读”开放数量编辑入口（见 `canEdit={... Boolean(access.detail)}`），
    * 真正的写权限由 GEA 在提交动作时校验；所以这里只校验登录身份、草稿新鲜度和数据形状，
@@ -2274,6 +2314,17 @@ export class Business {
         )
       )
         throw new Error("GEA_IDENTITY_MISMATCH");
+      // 服务端把这一笔派给当前用户时也要能识别节点；上游字段是驼峰 bizKey，
+      // 历史上按 biz_key 读取导致这条来源一直没生效，这里两种写法都接受。
+      let workflowApproval;
+      try {
+        if (!detail.actionContext && currentVersion.effective === true &&
+            [1, 2, 3, 4, 7, 8, 9].includes(Number(currentVersion.status)))
+          workflowApproval = await this.workflowApproval(versionId, signal);
+      } catch (error) {
+        if (signal.aborted || !this.auth) throw error;
+        // 通知发现失败时仍保留业务详情可读，但不授予审批能力。
+      }
       if (options.forModel) {
         // 模型侧只回投影后的字段：上游整包带着该计划的全部 SKU 与内部字段，
         // 直接展开必然超过输入预算，detail 会永远 SNAPSHOT_TOO_LARGE。
@@ -2307,9 +2358,10 @@ export class Business {
           ...(cappedLogs.omitted === 0
             ? {}
             : { logsOmitted: cappedLogs.omitted }),
+          ...(workflowApproval === undefined ? {} : { workflowApproval }),
         };
       }
-      return { ...detail, currentVersion, skus, versions, logs };
+      return { ...detail, currentVersion, skus, versions, logs, workflowApproval };
     }
     const values = records(result);
     if (kind === "versionSkus") this.materialNames.apply(values);

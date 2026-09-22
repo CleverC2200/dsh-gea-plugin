@@ -4,7 +4,7 @@ import { CorrectionWorkbench } from './CorrectionWorkbench.tsx';
 import type { GeaSalesPlanPeriod } from '../../contracts.ts';
 /** 改编自 AionUi（Apache-2.0）：已替换为本地导入并使用显式 DSH Host 适配器，见 SOURCE.md。 */
 import { salesPlanQueueStatusText, salesPlanStatusText } from './regionalApprovalQueryModel.ts';
-import { SALES_PLAN_RETURN_CODES } from '../../salesPlanWorkflow.ts';
+import { SALES_PLAN_RETURN_CODES, SALES_PLAN_ROLES, salesPlanWorkflow } from '../../salesPlanWorkflow.ts';
 import {
   aggregateSalesPlanExportAmounts,
   SALES_PLAN_EXPORT_AMOUNT_PAIRS,
@@ -917,11 +917,24 @@ const RegionalApprovalWorkbench: React.FC<{
     liveQuery.enabled && liveActionsEnabled && liveQuery.queueState.status === 'success'
   );
 
-  // 有权限审批的节点只来自当前账号的审批权限码，不再采集待办通知或服务端角色能力。
-  const authorizedStages = useMemo(
-    () => roleStages.filter((stage): stage is Exclude<ApprovalStageId, 'customer'> => stage !== 'customer'),
-    [roleStages]
-  );
+  // 有权限审批的节点：先看账号权限码；没有权限码但服务端把同版本任务派给了当前用户时，
+  // 用那条任务推断所属节点。服务端给的角色能力不参与身份判定。
+  const authorizedStages = useMemo(() => {
+    const fromPermissions = roleStages.filter(
+      (stage): stage is Exclude<ApprovalStageId, 'customer'> => stage !== 'customer'
+    );
+    if (fromPermissions.length) return fromPermissions;
+    if (!liveQuery.enabled) return [];
+    const capable = new Set<ApprovalStageId>();
+    for (const detail of Object.values(liveAccess.entries)) {
+      const version = detail.currentVersion;
+      if (detail.workflowApproval?.actionable === true && detail.workflowApproval.versionId === version.id) {
+        const actor = salesPlanWorkflow(version.planTypeCode).actor(version.status);
+        if (actor) capable.add(actor);
+      }
+    }
+    return SALES_PLAN_ROLES.filter((stage) => capable.has(stage) && stage !== 'customer');
+  }, [liveAccess.entries, liveQuery.enabled, roleStages]);
   // 流程图收起态的节点口径：与展开态高亮一致（用户所选的节点，默认即其第一个有权限审批的节点）。
   const stageIndicatorStage = displayStage ?? authorizedStages[0];
   // 默认节点：权限码给出的已在上面的 effect 设好；这里补“没有权限码、但服务端给了同版本可处理任务”的账号，

@@ -22,13 +22,15 @@ test('visible role can act on pending plans but not returned plans',()=>{
   for(const status of [2,3,4]) assert.equal(m.salesPlanAccessForRow(row(status,'XN'),detail(status,'XN'),[grant('province')]).approvalRole,'province');
   for(const status of [6,7,8,9]) assert.equal(m.salesPlanAccessForRow(row(status,'XN'),detail(status,'XN'),[grant('province')]),undefined);
 });
-test('a task notification never grants approval identity without an account grant',()=>{
+test('an assigned actionable task grants the current node actor, but object capability never does',()=>{
   const d={...detail(),workflowApproval:{versionId:'v',notificationId:'n',instanceId:'i',actionable:true}};
-  assert.equal(m.salesPlanAccessForRow(row(),d),undefined);
-  assert.equal(m.salesPlanAccessForRow(row(),d,[],'region'),undefined);
-  const access=m.salesPlanAccessForRow(row(),d,[grant('region')]);
-  assert.equal(access.approvalRole,'region');
+  // 状态 2 的当前节点是省区：任务只能证明"这笔现在归你办"，不能指定别的历史节点。
+  const access=m.salesPlanAccessForRow(row(),d);
+  assert.equal(access.approvalRole,'province');
   assert.deepEqual(access.allowedActions,['APPROVE','REJECT']);
+  assert.equal(m.salesPlanAccessForRow(row(),d,[],'region'),undefined);
+  assert.equal(m.salesPlanAccessForRow(row(),{...d,workflowApproval:{...d.workflowApproval,versionId:'old'}}),undefined);
+  assert.equal(m.salesPlanAccessForRow(row(),{...d,workflowApproval:{...d.workflowApproval,actionable:false}}),undefined);
   assert.equal(m.salesPlanAccessForRow(row(),{...d,workflowApproval:undefined},[grant('region')]).approvalRole,'region');
 });
 test('object capability adds actions but never grants identity, and stays freshness-checked',()=>{
