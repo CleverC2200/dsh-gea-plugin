@@ -89,6 +89,17 @@ test("元素目录改成按需取：说明里只有数量，directory=true 才�
   );
   assert.equal(focused.directory.entries[0].value, "10");
   assert.match(focused.directory.note, /focus/);
+
+  // 线上实测：模型会把"要目录"写成 kind=directory（不在动词枚举里）→ 这里也认。
+  const alias = JSON.parse(
+    await registered.execute({ kind: "directory" }, { agent }),
+  );
+  assert.ok(alias.directory, "kind=directory 当作要目录");
+
+  // 既没给动词也不要目录：给一句能照着改的说明，而不是看不懂的元素错误。
+  const missing = JSON.parse(await registered.execute({}, { agent }));
+  assert.equal(missing.error, "PAGE_KIND_REQUIRED");
+  assert.match(missing.note, /directory=true/);
 });
 
 test("页面明确回填 applied=false 时，宿主不会误报成功", async () => {

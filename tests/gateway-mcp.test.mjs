@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
+import { readFile } from "node:fs/promises";
 const { outputFiles } = await build({
   entryPoints: ["src/host/gateway-mcp.ts"],
   bundle: true,
@@ -511,4 +512,44 @@ test("logout during transport recovery prevents replay", async () => {
   await assert.rejects(() => connection.fetch(connection.url, { method: "POST", headers,
     body: JSON.stringify({ method: "resources/list", params: {} }) }), { name: "AbortError" });
   assert.equal(calls, 1);
+});
+
+test("网关拒绝 MCP 会话时给出稳定错误码，宿主据此止损", async () => {
+  await assert.rejects(
+    prepareGatewayMcp(
+      "https://gea.test",
+      auth,
+      consumer,
+      new AbortController().signal,
+      1000,
+      async () =>
+        Response.json({
+          success: true,
+          result: { accessDecision: { allowed: false } },
+        }),
+    ),
+    { message: "GEA_MCP_SESSION_REJECTED" },
+  );
+  await assert.rejects(
+    prepareGatewayMcp(
+      "https://gea.test",
+      auth,
+      consumer,
+      new AbortController().signal,
+      1000,
+      async () => new Response("nope", { status: 502 }),
+    ),
+    { message: "GEA_MCP_SESSION_HTTP_502" },
+  );
+});
+
+test("宿主对拒绝过的模块在窗口内不再重试，并给出可读的下一步", async () => {
+  const source = await readFile(
+    new URL("../src/host/business.ts", import.meta.url),
+    "utf8",
+  );
+  // 线上实测：网关回 rejected 后模型会换模块反复试，一轮三次，每次都白等一次往返。
+  assert.match(source, /MCP_REJECTION_TTL_MS = 10 \* 60 \* 1000/);
+  assert.match(source, /GEA_MCP_SESSION_REJECTED：网关拒绝为/);
+  assert.match(source, /不要重试这个模块的 MCP/);
 });

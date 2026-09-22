@@ -547,10 +547,10 @@ function compileElementCatalog(catalog: PageCatalog): {
       {
         name: "kind",
         type: "string",
-        required: true,
-        enum: [...PAGE_ACTION_VERBS],
+        // directory 是"只取元素目录"的口语写法：线上实测模型会这么写，索性认它。
+        enum: [...PAGE_ACTION_VERBS, "directory"],
         description:
-          "invoke 执行元素动作；setValue 写可编辑字段；select 选中元素；clear 关浮层/清当前筛选。",
+          "invoke 执行元素动作；setValue 写可编辑字段；select 选中元素；clear 关浮层/清当前筛选；directory 只取元素目录（等价于传 directory=true）。只要目录时也可以不传 kind。",
       },
       {
         name: "target",

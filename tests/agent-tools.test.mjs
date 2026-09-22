@@ -934,7 +934,7 @@ test(
         );
         assert.deepEqual(
           applyTool.function.parameters.properties.kind.enum,
-          ["invoke", "setValue", "select", "clear"],
+          ["invoke", "setValue", "select", "clear", "directory"],
         );
         assert.match(applyTool.function.description, /可操作元素 4 个/);
         assert.match(applyTool.function.description, /只读元素/);
@@ -947,7 +947,11 @@ test(
         assert.equal(applyTool.function.parameters.properties.target.type, "string");
         assert.equal(applyTool.function.parameters.properties.action.type, "string");
         assert.equal(applyTool.function.parameters.properties.value.type, "string");
-        assert.deepEqual(applyTool.function.parameters.required, ["kind"]);
+        assert.equal(
+          (applyTool.function.parameters.required ?? []).includes("kind"),
+          false,
+          "kind 不再必填：只要元素目录时可以只传 directory=true",
+        );
         const events = await until(
           async () =>
             (await app.rpc("agui/workbench", { sessionId: id })).value.events,
@@ -1264,7 +1268,7 @@ test(
         // 元素目录：模型只会四个通用动词。
         assert.deepEqual(
           tool.function.parameters.properties.kind.enum,
-          ["invoke", "setValue", "select", "clear"],
+          ["invoke", "setValue", "select", "clear", "directory"],
         );
         // 说明里区分了"可操作"和"只读"，并给出数量；元素 label 用 directory=true 按需取。
         assert.match(tool.function.description, /只读元素/);

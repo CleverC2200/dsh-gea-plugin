@@ -216,7 +216,8 @@ export function createPageToolRegistry(
   ): Promise<string> => {
     const kind = typeof args.kind === "string" ? args.kind : null;
     // 只要目录、不做事：目录本身不再写进工具说明（那会让每次请求都付一次 token）。
-    if (args.directory === true)
+    // 线上实测模型会把"要目录"写成 kind=directory（不在动词枚举里），两种写法都认。
+    if (args.directory === true || kind === "directory")
       return JSON.stringify({
         source: "PAGE_BRIDGE",
         protocol: "ag-ui-frontend-tool",
@@ -240,6 +241,12 @@ export function createPageToolRegistry(
         error,
         note,
       });
+    // 没给动词也没要目录：说清楚要传什么，而不是抛一个看不懂的元素错误。
+    if (kind === null)
+      return refuse(
+        "PAGE_KIND_REQUIRED",
+        "要改这一屏请传 kind=invoke/setValue/select/clear（并给 target/action/value）；只要元素目录就传 directory=true。",
+      );
     // 只读元素不能被改、后台元素不存在：宿主按页面声明先挡一道。
     const violation = resolvePageAction(catalog, args);
     if (violation) return refuse(violation, "页面没有开放这个元素/动作，命令没有下发。");

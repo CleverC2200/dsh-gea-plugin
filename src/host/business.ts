@@ -36,6 +36,9 @@ const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
 const PLUGIN_FAILURE_LIMIT = 3;
 const PLUGIN_FAILURE_WINDOW_MS = 10 * 60 * 1000;
 
+/** 网关拒绝过 MCP 会话的模块在这个窗口内不再重试（见 moduleMcp）。 */
+const MCP_REJECTION_TTL_MS = 10 * 60 * 1000;
+
 /**
  * 内置的受管只读模块清单，只在宿主还没接入能力契约时兜底（例如单元测试里直接
  * 构造 Business）。正常启动时由主机的契约注册表覆盖：装了什么模块，就允许读什么。
@@ -752,6 +755,7 @@ export class Business {
     this.modelRoutes.clear();
     this.pluginDelegations.clear();
     this.moduleMcpCache.clear();
+    this.moduleMcpRejections.clear();
     this.resubmissions.clear();
     this.correctionRequests.clear();
     this.qr = undefined;
@@ -1664,6 +1668,11 @@ export class Business {
     string,
     { token: string; module: import("./mcp-client.ts").McpModule }
   >();
+  /**
+   * 网关明确拒绝过 MCP 会话的模块：短窗口内不再重试。
+   * 线上实测：网关回 rejected 后模型会换模块反复试（一轮三次），每次都白等一次往返。
+   */
+  private readonly moduleMcpRejections = new Map<string, number>();
 
   /**
    * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
@@ -1677,13 +1686,33 @@ export class Business {
     if (!allowedConsumers.has(consumerCode))
       throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
     const auth = this.authenticated();
+    const rejectedAt = this.moduleMcpRejections.get(consumerCode);
+    if (rejectedAt !== undefined) {
+      if (Date.now() - rejectedAt < MCP_REJECTION_TTL_MS)
+        throw new Error(
+          `GEA_MCP_SESSION_REJECTED：网关刚才已拒绝过「${consumerCode}」的 MCP 会话，本轮不要再试它。改用 gea_plugin_read 直读该模块（先 describe=true），或读当前页面。`,
+        );
+      this.moduleMcpRejections.delete(consumerCode);
+    }
     const cached = this.moduleMcpCache.get(consumerCode);
     if (cached && cached.token === auth.token) return cached.module;
-    const transport = await this.openMcpConnection(
-      { consumerType: "AGENT", consumerCode },
-      signal,
-    );
-    const module = await openModuleMcp(transport, signal);
+    let module: import("./mcp-client.ts").McpModule;
+    try {
+      const transport = await this.openMcpConnection(
+        { consumerType: "AGENT", consumerCode },
+        signal,
+      );
+      module = await openModuleMcp(transport, signal);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/GEA_MCP_SESSION_(REJECTED|HTTP_\d+)/.test(message)) {
+        this.moduleMcpRejections.set(consumerCode, Date.now());
+        throw new Error(
+          `GEA_MCP_SESSION_REJECTED：网关拒绝为「${consumerCode}」开 MCP 会话（${message}）。不要重试这个模块的 MCP：改用 gea_plugin_read 直读（先 describe=true 取表与配方），或读页面证据。`,
+        );
+      }
+      throw error;
+    }
     this.moduleMcpCache.set(consumerCode, { token: auth.token, module });
     return module;
   }

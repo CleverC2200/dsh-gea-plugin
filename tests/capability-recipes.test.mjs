@@ -5,6 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
+import { readFile } from "node:fs/promises";
 
 const { outputFiles } = await build({
   stdin: {
@@ -60,4 +61,16 @@ test("缺参数时报可读错误，不拼出半截 SQL", () => {
     [],
   );
   assert.equal(m.findRecipe("branch-inventory", "not-a-recipe"), undefined);
+});
+
+test("配方调用不能把 recipe 透传给受管查询（否则 INVALID_PAYLOAD）", async () => {
+  const source = await readFile(
+    new URL("../src/host/agent-tools.ts", import.meta.url),
+    "utf8",
+  );
+  // 线上实测：整包透传 args 会把 recipe/describe 带进 pluginSql，被 keys() 判成
+  // INVALID_PAYLOAD —— 任何走 recipe 的调用都会失败。
+  assert.equal(source.includes("{ pageSize: 50, ...args, sql: statement }"), false);
+  assert.match(source, /consumerCode: args\.consumerCode,/);
+  assert.match(source, /recipe \? recipe\.sql : args\.sql/);
 });

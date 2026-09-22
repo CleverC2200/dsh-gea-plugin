@@ -294,7 +294,18 @@ export function registerGeaTools(
           try {
             return JSON.stringify(
               await business.pluginSql(
-                { pageSize: 50, ...args, sql: statement },
+                {
+                  // 只把受管只读查询认识的键传下去：`recipe`/`describe` 这类工具自己的
+                  // 参数透传到 pluginSql 会被判 INVALID_PAYLOAD（线上实测配方调用必失败）。
+                  consumerCode: args.consumerCode,
+                  sql: statement,
+                  ...(args.parameters === undefined
+                    ? {}
+                    : { parameters: args.parameters }),
+                  ...(args.pageNo === undefined ? {} : { pageNo: args.pageNo }),
+                  pageSize:
+                    typeof args.pageSize === "number" ? args.pageSize : 50,
+                },
                 exec.signal,
               ),
             );
