@@ -556,6 +556,21 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 
 /* The GEA side conversation keeps its native composer at the column foot. */
+/* 输入区在任何列宽、任何窗口高度下都必须压在业务页面之上：
+   宿主列拖拽条是 z-index:11，外壳自己的上下拖动条是 12，这里再抬一档，
+   并让对话列自成一个层叠上下文，页面内容不可能盖到输入框。 */
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > [data-rightbar-col] {
+  position: relative;
+  z-index: 2;
+}
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
+  [data-rightbar-col]
+  [data-composer-seat] {
+  position: relative;
+  z-index: 30;
+  background: #fff;
+}
+
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
   [data-phase="hero"]
   [data-conversation-scroll] {
