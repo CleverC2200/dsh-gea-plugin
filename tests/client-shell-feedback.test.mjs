@@ -102,12 +102,12 @@ test(
     const supplyHeading = page.getByRole("button", { name: "产销协同", exact: true });
     await supplyHeading.waitFor();
     assert.equal(await supplyHeading.getAttribute("aria-expanded"), "true");
-    await page.getByRole("button", { name: "产销协同Agent", exact: true }).waitFor();
+    await page.getByRole("button", { name: "产销协同工作台", exact: true }).waitFor();
     const menuIndent = await page.evaluate(() => {
       const workspace = Array.from(document.querySelectorAll("button")).find((item) => item.textContent?.trim() === "业务工作台");
       const heading = Array.from(document.querySelectorAll(".gea-shell-nav-heading")).find((item) => item.textContent?.includes("计划管理"));
       const headingLabel = heading?.querySelector("span");
-      const childLabel = Array.from(document.querySelectorAll(".gea-shell-nav-child .gea-shell-label")).find((item) => item.textContent?.trim() === "销售计划Agent");
+      const childLabel = Array.from(document.querySelectorAll(".gea-shell-nav-child .gea-shell-label")).find((item) => item.textContent?.trim() === "销售计划");
       if (!workspace || !heading || !headingLabel || !childLabel) return null;
       return {
         headingInset: Math.round(heading.getBoundingClientRect().left - workspace.getBoundingClientRect().left),
@@ -194,22 +194,39 @@ test(
     const layoutRestored = await readLayout();
     assert.ok(Math.abs(layoutRestored.sidebar - layoutBefore.sidebar) <= 12, JSON.stringify({ layoutBefore, layoutRestored }));
 
-    // 登记 37：窄窗口（上下两行）要能拖分隔调高度，且欢迎区不能挡住输入框。
-    await page.setViewportSize({ width: 1088, height: 820 });
+    // 登记 37（改）：窄窗口不再改成上下两行，而是分档收缩左右两栏，
+    // 最窄一档把左侧菜单收进图标列，始终保留「中间工作台 + 右边对话」。
+    const layoutAt = () =>
+      page.evaluate(() => {
+        const frame = document.querySelector(".AppFrame_frame");
+        const cs = frame ? getComputedStyle(frame) : null;
+        const rail = document.querySelector(".gea-sidebar-rail");
+        return {
+          columns: cs?.gridTemplateColumns ?? "",
+          rows: cs?.gridTemplateRows ?? "",
+          narrow: Boolean(document.querySelector("[data-gea-narrow]")),
+          railWidth: rail ? Math.round(rail.getBoundingClientRect().width) : 0,
+          splitter: Boolean(document.querySelector(".gea-stacked-splitter")),
+        };
+      });
+    await page.setViewportSize({ width: 1140, height: 900 });
     await page.waitForTimeout(900);
-    const splitter = page.locator(".gea-stacked-splitter");
-    await splitter.first().waitFor();
-    const rowsOf = () => page.locator(".AppFrame_frame").evaluate((el) => getComputedStyle(el).gridTemplateRows);
-    const rowsBefore = await rowsOf();
-    const splitterBox = await splitter.first().boundingBox();
-    assert.ok(splitterBox && splitterBox.height > 0, JSON.stringify(splitterBox));
-    await page.mouse.move(splitterBox.x + splitterBox.width / 2, splitterBox.y + splitterBox.height / 2);
-    await page.mouse.down();
-    for (let step = 1; step <= 6; step += 1)
-      await page.mouse.move(splitterBox.x + splitterBox.width / 2, splitterBox.y - step * 12, { steps: 2 });
-    await page.mouse.up();
-    await page.waitForTimeout(300);
-    assert.notEqual(await rowsOf(), rowsBefore);
+    const wrappedLayout = await layoutAt();
+    // 单行三栏；左右两栏已被收缩；没有上下拖动条。
+    assert.equal(wrappedLayout.rows.split(" ").length, 1, JSON.stringify(wrappedLayout));
+    assert.equal(wrappedLayout.columns.split(" ").length, 3, JSON.stringify(wrappedLayout));
+    assert.equal(wrappedLayout.narrow, false, JSON.stringify(wrappedLayout));
+    assert.equal(wrappedLayout.splitter, false, JSON.stringify(wrappedLayout));
+    const sideColumn = Number.parseFloat(wrappedLayout.columns.split(" ")[0]);
+    assert.ok(sideColumn > 0 && sideColumn <= 240, JSON.stringify(wrappedLayout));
+    await page.setViewportSize({ width: 1000, height: 820 });
+    await page.waitForTimeout(900);
+    const railLayout = await layoutAt();
+    // 再窄一档：菜单收进图标列（左栏 64px），仍然是三栏单行。
+    assert.equal(railLayout.narrow, true, JSON.stringify(railLayout));
+    assert.ok(railLayout.railWidth > 0 && railLayout.railWidth <= 64, JSON.stringify(railLayout));
+    assert.equal(Number.parseFloat(railLayout.columns.split(" ")[0]), 64, JSON.stringify(railLayout));
+    assert.equal(railLayout.rows.split(" ").length, 1, JSON.stringify(railLayout));
     const composerHit = await page.evaluate(() => {
       const input = document.querySelector('[contenteditable="true"]');
       if (!input) return null;
