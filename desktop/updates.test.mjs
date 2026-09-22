@@ -251,6 +251,27 @@ test('a single channel address still works without a fallback list',async t=>{
  assert.equal(state.channelSource,'stable');
 });
 
+// 内置基线高于频道时不能把降级当成升级：频道是唯一真相，但“本地更新”不是更新。
+test('a channel release older than the installed package is never offered as an update',async t=>{
+ const stale={package:'dsh-plugin',version:'1.4.3-company.0'};
+ const {updates,store,counts}=await fixture(t,{fetchCompanyChannel:async()=>({releases:[stale]})});
+ const state=await updates.check();
+ assert.equal(state.releases.length,1,'频道内容仍然要展示，只是不构成更新');
+ assert.deepEqual(await updates.prepare({package:'dsh-plugin'}),{error:'ALREADY_CURRENT'});
+ assert.equal(counts().installs,0);
+ assert.equal((await store.selected()).id,'baseline');
+});
+
+test('an equal channel release is not an update, a higher one is, and pre-release suffixes compare numerically',async t=>{
+ for(const wanted of [{version:'1.4.3-company.1',expected:'ALREADY_CURRENT'},{version:'1.4.3-company.2',expected:undefined},{version:'1.4.3-company.10',expected:undefined}]){
+  const {updates}=await fixture(t,{fetchCompanyChannel:async()=>({releases:[{package:'dsh-plugin',version:wanted.version}]})});
+  await updates.check();
+  const answer=await updates.prepare({package:'dsh-plugin'});
+  if(wanted.expected)assert.deepEqual(answer,{error:wanted.expected},wanted.version);
+  else assert.deepEqual(answer,{accepted:true},wanted.version);
+ }
+});
+
 // 随包发出去的频道配置必须真的做到“公网来源优先、公司 GitLab 兜底”。
 test('the shipped channel configuration keeps a public source ahead of the company GitLab fallback',async()=>{
  const sources=JSON.parse(await readFile(new URL('./release-sources.json',import.meta.url),'utf8'));
