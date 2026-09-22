@@ -880,6 +880,21 @@
         "selectRole": "请选择本次审批角色",
         "roleContractUnavailable": "你有此角色的审批权限，但当前 GEA 服务尚未支持按所选角色写入。暂不能提交，请先升级服务端。"
       },
+      "liveBatch": {
+        "approveTitle": "批量通过（{{count}} 笔）",
+        "rejectTitle": "批量退回（{{count}} 笔）",
+        "summary": "本次选择 {{total}} 笔计划，其中 {{ready}} 笔可提交；不可提交的计划会在结果里说明原因。",
+        "approveRemark": "审批备注（可选，作用于本次全部计划）",
+        "remarkLabel": "批量审批备注",
+        "confirmation": "我已核对本次 {{count}} 笔计划与当前状态，确认逐笔提交。",
+        "required": "请填写退回原因并确认本次提交范围。",
+        "loading": "正在逐笔提交 {{count}} 笔计划，请勿关闭…",
+        "result": "本次提交完成：成功 {{success}} 笔，失败 {{failed}} 笔，跳过 {{skipped}} 笔。",
+        "skipped": "该计划当前不可操作",
+        "close": "关闭",
+        "confirmApprove": "确认批量通过",
+        "confirmReject": "确认批量退回"
+      },
       "action": {
         "title": "区域计划审批操作",
         "fixtureBoundary": "退回和提交只生成本地样例结果；不会连接 GEA 或伪造真实审批回执。",

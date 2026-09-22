@@ -76,6 +76,11 @@ import RegionalApprovalLivePlanDetail, {
 } from './RegionalApprovalLivePlanDetail/index.tsx';
 import RegionalApprovalActionDialog from './RegionalApprovalActionDialog.tsx';
 import RegionalApprovalLiveActionDialog, { type LiveActionKind } from './RegionalApprovalLiveActionDialog.tsx';
+import RegionalApprovalBatchActionDialog, {
+  type BatchActionItem,
+  type BatchActionKind,
+  type BatchActionOutcome,
+} from './RegionalApprovalBatchActionDialog.tsx';
 import { groupRegionalApprovalLiveRows } from './regionalApprovalQueryModel.ts';
 import RegionalApprovalLiveProgress from './RegionalApprovalLiveProgress.tsx';
 import {
@@ -569,6 +574,7 @@ const RegionalApprovalWorkbench: React.FC<{
     });
   }, []);
   const [permissionDeniedVersions, setPermissionDeniedVersions] = useState<Set<string>>(() => new Set());
+  const [batchAction, setBatchAction] = useState<{ kind: BatchActionKind; items: BatchActionItem[] }>();
   const [actionRowId, setActionRowId] = useState<string>();
   const [detailStore, setDetailStore] = useState<ApprovalDetailStore>(() =>
     readAssistantSurfaceState<ApprovalDetailStore>(
@@ -1016,6 +1022,26 @@ const RegionalApprovalWorkbench: React.FC<{
   };
   const liveRowCanApprove = (row: RegionalApprovalLiveRow) =>
     !liveActionDisabledReason(row, 'APPROVE');
+  /** 与单笔按钮同源的角色解析：多角色账号按当前节点过滤逐个尝试，取第一个允许该动作的角色。 */
+  const liveActionAccessFor = (row: RegionalApprovalLiveRow, kind: LiveActionKind) => {
+    const detail = liveAccess.entries[row.versionId];
+    if (!detail) return undefined;
+    const candidates: readonly ApprovalStageId[] = liveStageFilter
+      ? [liveStageFilter]
+      : (['region', 'province', 'area', 'category'] as const);
+    for (const role of candidates) {
+      const access = salesPlanAccessForRow(row, detail, permissionCodes, role);
+      if (access?.allowedActions.includes(kind)) return access;
+    }
+    return undefined;
+  };
+  const batchItemsFor = (rows: readonly RegionalApprovalLiveRow[], kind: LiveActionKind): BatchActionItem[] =>
+    rows.map((row) => {
+      const access = liveActionAccessFor(row, kind);
+      return access
+        ? { row, access }
+        : { row, skipReason: liveActionDisabledReason(row, kind) ?? 'missingAuthority' };
+    });
   const metrics = useMemo(() => {
     if (liveQuery.enabled) {
       const detailMetrics = liveRows.map((row) => versionMetrics[row.planId]);
@@ -2434,16 +2460,20 @@ const RegionalApprovalWorkbench: React.FC<{
           size='small'
           status='danger'
           disabled={
-            selectedLiveRows.length !== 1 ||
-            selectedLiveRows[0]?.status === 5 ||
-            (selectedLiveRows[0] ? Boolean(liveActionDisabledReason(selectedLiveRows[0], 'REJECT')) : true)
+            selectedLiveRows.length === 0 ||
+            liveActionPlanId !== undefined ||
+            selectedLiveRows.every((row) => Boolean(liveActionDisabledReason(row, 'REJECT')))
           }
           onClick={() => {
-            const row = selectedLiveRows[0];
-            if (!row) return;
-            selectLivePlanContext(row);
-            setLiveActionKind('REJECT');
-            setLiveActionPlanId(row.planId);
+            if (!selectedLiveRows.length) return;
+            if (selectedLiveRows.length === 1) {
+              const row = selectedLiveRows[0];
+              selectLivePlanContext(row);
+              setLiveActionKind('REJECT');
+              setLiveActionPlanId(row.planId);
+              return;
+            }
+            setBatchAction({ kind: 'REJECT', items: batchItemsFor(selectedLiveRows, 'REJECT') });
           }}
         >
           {t('common.assistantSurface.regionalApproval.liveAction.reject')}
@@ -2455,16 +2485,20 @@ const RegionalApprovalWorkbench: React.FC<{
           size='small'
           loading={liveActionKind === 'APPROVE' && liveActionPlanId !== undefined}
           disabled={
-            selectedLiveRows.length !== 1 ||
+            selectedLiveRows.length === 0 ||
             liveActionPlanId !== undefined ||
-            (selectedLiveRows[0] ? Boolean(liveActionDisabledReason(selectedLiveRows[0])) : true)
+            selectedLiveRows.every((row) => Boolean(liveActionDisabledReason(row, 'APPROVE')))
           }
           onClick={() => {
-            const row = selectedLiveRows[0];
-            if (!row) return;
-            selectLivePlanContext(row);
-            setLiveActionKind('APPROVE');
-            setLiveActionPlanId(row.planId);
+            if (!selectedLiveRows.length) return;
+            if (selectedLiveRows.length === 1) {
+              const row = selectedLiveRows[0];
+              selectLivePlanContext(row);
+              setLiveActionKind('APPROVE');
+              setLiveActionPlanId(row.planId);
+              return;
+            }
+            setBatchAction({ kind: 'APPROVE', items: batchItemsFor(selectedLiveRows, 'APPROVE') });
           }}
         >
           {t('common.assistantSurface.regionalApproval.liveAction.approve')}
@@ -2540,6 +2574,26 @@ const RegionalApprovalWorkbench: React.FC<{
           setExportFeedback({ type: 'error', message: t('common.assistantSurface.regionalApproval.liveAction.errors.failed') });
         }}
         onClose={() => setLiveActionPlanId(undefined)}
+      />
+    ) : null;
+
+  /** 多选批量审批：逐笔提交并逐笔回报结果，成功的先刷新权威队列，失败的保留在弹窗里。 */
+  const liveBatchActionDialog =
+    batchAction && liveActionsEnabled ? (
+      <RegionalApprovalBatchActionDialog
+        visible
+        kind={batchAction.kind}
+        items={batchAction.items}
+        t={t}
+        client={liveActionClient}
+        onPermissionDenied={(versionId) => setPermissionDeniedVersions((current) => new Set(current).add(versionId))}
+        onCompleted={async (outcomes: readonly BatchActionOutcome[]) => {
+          if (outcomes.some((outcome) => outcome.status === 'success')) refreshLiveAuthority();
+        }}
+        onClose={() => {
+          setBatchAction(undefined);
+          setSelectedRowIds([]);
+        }}
       />
     ) : null;
 
@@ -3403,6 +3457,7 @@ const RegionalApprovalWorkbench: React.FC<{
       ) : null}
 
       {liveActionDialog}
+      {liveBatchActionDialog}
 
       {activeActionRow ? (
         <RegionalApprovalActionDialog
