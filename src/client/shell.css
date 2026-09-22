@@ -340,7 +340,12 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   padding-left: 0 !important;
   padding-right: 0 !important;
 }
-[data-sidebar-collapsed] .gea-shell-logo { margin-right: 0 !important; }
+/* 收起态品牌圆标缩小到跟图标列同一量级，不再占满整条宽度。 */
+[data-sidebar-collapsed] .gea-shell-logo {
+  width: 26px;
+  height: 26px;
+  margin-right: 0 !important;
+}
 /* 品牌区照原型：思念圆标 + 思念红标题 + 一行浅灰说明。 */
 [class*="_logoRow"] [class*="_brand"] {
   height: auto;
