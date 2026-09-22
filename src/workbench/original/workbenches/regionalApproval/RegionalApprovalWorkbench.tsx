@@ -4,7 +4,7 @@ import { CorrectionWorkbench } from './CorrectionWorkbench.tsx';
 import type { GeaSalesPlanPeriod } from '../../contracts.ts';
 /** 改编自 AionUi（Apache-2.0）：已替换为本地导入并使用显式 DSH Host 适配器，见 SOURCE.md。 */
 import { salesPlanQueueStatusText, salesPlanStatusText } from './regionalApprovalQueryModel.ts';
-import { SALES_PLAN_RETURN_CODES } from '../../salesPlanWorkflow.ts';
+import { SALES_PLAN_RETURN_CODES, SALES_PLAN_ROLES, salesPlanWorkflow } from '../../salesPlanWorkflow.ts';
 import {
   aggregateSalesPlanExportAmounts,
   SALES_PLAN_EXPORT_AMOUNT_PAIRS,
@@ -76,6 +76,11 @@ import RegionalApprovalLivePlanDetail, {
 } from './RegionalApprovalLivePlanDetail/index.tsx';
 import RegionalApprovalActionDialog from './RegionalApprovalActionDialog.tsx';
 import RegionalApprovalLiveActionDialog, { type LiveActionKind } from './RegionalApprovalLiveActionDialog.tsx';
+import RegionalApprovalBatchActionDialog, {
+  type BatchActionItem,
+  type BatchActionKind,
+  type BatchActionOutcome,
+} from './RegionalApprovalBatchActionDialog.tsx';
 import { groupRegionalApprovalLiveRows } from './regionalApprovalQueryModel.ts';
 import RegionalApprovalLiveProgress from './RegionalApprovalLiveProgress.tsx';
 import {
@@ -569,6 +574,7 @@ const RegionalApprovalWorkbench: React.FC<{
     });
   }, []);
   const [permissionDeniedVersions, setPermissionDeniedVersions] = useState<Set<string>>(() => new Set());
+  const [batchAction, setBatchAction] = useState<{ kind: BatchActionKind; items: BatchActionItem[] }>();
   const [actionRowId, setActionRowId] = useState<string>();
   const [detailStore, setDetailStore] = useState<ApprovalDetailStore>(() =>
     readAssistantSurfaceState<ApprovalDetailStore>(
@@ -911,11 +917,24 @@ const RegionalApprovalWorkbench: React.FC<{
     liveQuery.enabled && liveActionsEnabled && liveQuery.queueState.status === 'success'
   );
 
-  // 有权限审批的节点只来自当前账号的审批权限码，不再采集待办通知或服务端角色能力。
-  const authorizedStages = useMemo(
-    () => roleStages.filter((stage): stage is Exclude<ApprovalStageId, 'customer'> => stage !== 'customer'),
-    [roleStages]
-  );
+  // 有权限审批的节点：先看账号权限码；没有权限码但服务端把同版本任务派给了当前用户时，
+  // 用那条任务推断所属节点。服务端给的角色能力不参与身份判定。
+  const authorizedStages = useMemo(() => {
+    const fromPermissions = roleStages.filter(
+      (stage): stage is Exclude<ApprovalStageId, 'customer'> => stage !== 'customer'
+    );
+    if (fromPermissions.length) return fromPermissions;
+    if (!liveQuery.enabled) return [];
+    const capable = new Set<ApprovalStageId>();
+    for (const detail of Object.values(liveAccess.entries)) {
+      const version = detail.currentVersion;
+      if (detail.workflowApproval?.actionable === true && detail.workflowApproval.versionId === version.id) {
+        const actor = salesPlanWorkflow(version.planTypeCode).actor(version.status);
+        if (actor) capable.add(actor);
+      }
+    }
+    return SALES_PLAN_ROLES.filter((stage) => capable.has(stage) && stage !== 'customer');
+  }, [liveAccess.entries, liveQuery.enabled, roleStages]);
   // 流程图收起态的节点口径：与展开态高亮一致（用户所选的节点，默认即其第一个有权限审批的节点）。
   const stageIndicatorStage = displayStage ?? authorizedStages[0];
   // 默认节点：权限码给出的已在上面的 effect 设好；这里补“没有权限码、但服务端给了同版本可处理任务”的账号，
@@ -1016,6 +1035,26 @@ const RegionalApprovalWorkbench: React.FC<{
   };
   const liveRowCanApprove = (row: RegionalApprovalLiveRow) =>
     !liveActionDisabledReason(row, 'APPROVE');
+  /** 与单笔按钮同源的角色解析：多角色账号按当前节点过滤逐个尝试，取第一个允许该动作的角色。 */
+  const liveActionAccessFor = (row: RegionalApprovalLiveRow, kind: LiveActionKind) => {
+    const detail = liveAccess.entries[row.versionId];
+    if (!detail) return undefined;
+    const candidates: readonly ApprovalStageId[] = liveStageFilter
+      ? [liveStageFilter]
+      : (['region', 'province', 'area', 'category'] as const);
+    for (const role of candidates) {
+      const access = salesPlanAccessForRow(row, detail, permissionCodes, role);
+      if (access?.allowedActions.includes(kind)) return access;
+    }
+    return undefined;
+  };
+  const batchItemsFor = (rows: readonly RegionalApprovalLiveRow[], kind: LiveActionKind): BatchActionItem[] =>
+    rows.map((row) => {
+      const access = liveActionAccessFor(row, kind);
+      return access
+        ? { row, access }
+        : { row, skipReason: liveActionDisabledReason(row, kind) ?? 'missingAuthority' };
+    });
   const metrics = useMemo(() => {
     if (liveQuery.enabled) {
       const detailMetrics = liveRows.map((row) => versionMetrics[row.planId]);
@@ -2434,16 +2473,20 @@ const RegionalApprovalWorkbench: React.FC<{
           size='small'
           status='danger'
           disabled={
-            selectedLiveRows.length !== 1 ||
-            selectedLiveRows[0]?.status === 5 ||
-            (selectedLiveRows[0] ? Boolean(liveActionDisabledReason(selectedLiveRows[0], 'REJECT')) : true)
+            selectedLiveRows.length === 0 ||
+            liveActionPlanId !== undefined ||
+            selectedLiveRows.every((row) => Boolean(liveActionDisabledReason(row, 'REJECT')))
           }
           onClick={() => {
-            const row = selectedLiveRows[0];
-            if (!row) return;
-            selectLivePlanContext(row);
-            setLiveActionKind('REJECT');
-            setLiveActionPlanId(row.planId);
+            if (!selectedLiveRows.length) return;
+            if (selectedLiveRows.length === 1) {
+              const row = selectedLiveRows[0];
+              selectLivePlanContext(row);
+              setLiveActionKind('REJECT');
+              setLiveActionPlanId(row.planId);
+              return;
+            }
+            setBatchAction({ kind: 'REJECT', items: batchItemsFor(selectedLiveRows, 'REJECT') });
           }}
         >
           {t('common.assistantSurface.regionalApproval.liveAction.reject')}
@@ -2455,16 +2498,20 @@ const RegionalApprovalWorkbench: React.FC<{
           size='small'
           loading={liveActionKind === 'APPROVE' && liveActionPlanId !== undefined}
           disabled={
-            selectedLiveRows.length !== 1 ||
+            selectedLiveRows.length === 0 ||
             liveActionPlanId !== undefined ||
-            (selectedLiveRows[0] ? Boolean(liveActionDisabledReason(selectedLiveRows[0])) : true)
+            selectedLiveRows.every((row) => Boolean(liveActionDisabledReason(row, 'APPROVE')))
           }
           onClick={() => {
-            const row = selectedLiveRows[0];
-            if (!row) return;
-            selectLivePlanContext(row);
-            setLiveActionKind('APPROVE');
-            setLiveActionPlanId(row.planId);
+            if (!selectedLiveRows.length) return;
+            if (selectedLiveRows.length === 1) {
+              const row = selectedLiveRows[0];
+              selectLivePlanContext(row);
+              setLiveActionKind('APPROVE');
+              setLiveActionPlanId(row.planId);
+              return;
+            }
+            setBatchAction({ kind: 'APPROVE', items: batchItemsFor(selectedLiveRows, 'APPROVE') });
           }}
         >
           {t('common.assistantSurface.regionalApproval.liveAction.approve')}
@@ -2540,6 +2587,26 @@ const RegionalApprovalWorkbench: React.FC<{
           setExportFeedback({ type: 'error', message: t('common.assistantSurface.regionalApproval.liveAction.errors.failed') });
         }}
         onClose={() => setLiveActionPlanId(undefined)}
+      />
+    ) : null;
+
+  /** 多选批量审批：逐笔提交并逐笔回报结果，成功的先刷新权威队列，失败的保留在弹窗里。 */
+  const liveBatchActionDialog =
+    batchAction && liveActionsEnabled ? (
+      <RegionalApprovalBatchActionDialog
+        visible
+        kind={batchAction.kind}
+        items={batchAction.items}
+        t={t}
+        client={liveActionClient}
+        onPermissionDenied={(versionId) => setPermissionDeniedVersions((current) => new Set(current).add(versionId))}
+        onCompleted={async (outcomes: readonly BatchActionOutcome[]) => {
+          if (outcomes.some((outcome) => outcome.status === 'success')) refreshLiveAuthority();
+        }}
+        onClose={() => {
+          setBatchAction(undefined);
+          setSelectedRowIds([]);
+        }}
       />
     ) : null;
 
@@ -3213,16 +3280,33 @@ const RegionalApprovalWorkbench: React.FC<{
                       columnWidth: 40,
                       selectedRowKeys: selectedLiveTableRowIds,
                       onChange: (keys) => {
-                        const planIds = new Set<string>();
-                        keys.forEach((key) => {
-                          const row = liveTableRowById.get(String(key));
-                          if (row?.kind !== 'plan') return;
-                          if (row.members?.length) {
-                            row.members.forEach((member) => planIds.add(member.planId));
-                          } else {
-                            planIds.add(row.plan.planId);
+                        // 分组行的勾选状态是「组内成员全部选中」的派生结果，不能按 key 是否存在直接重算：
+                        // 取消分组时只去掉分组 key，成员计划还在选，下一次渲染又把分组派生成勾选，表现为取消不掉。
+                        const next = new Set(keys.map(String));
+                        const displayed = new Set(selectedLiveTableRowIds);
+                        const planIds = new Set(selectedRowIds);
+                        const coveredPlans = (row: RegionalApprovalLiveTableRow | undefined) =>
+                          row?.kind !== 'plan'
+                            ? []
+                            : row.members?.length
+                              ? row.members.map((member) => member.planId)
+                              : [row.plan.planId];
+                        for (const key of next)
+                          if (!displayed.has(key))
+                            coveredPlans(liveTableRowById.get(key)).forEach((planId) => planIds.add(planId));
+                        for (const key of displayed) {
+                          if (next.has(key)) continue;
+                          const row = liveTableRowById.get(key);
+                          // 分组行只有在成员仍全部保留时才是「用户取消了整个分组」；
+                          // 否则它只是成员变化引起的派生取消，交给成员自己的 key 处理。
+                          if (row?.kind === 'plan' && row.members?.length) {
+                            const members = row.members.map((member) => member.planId);
+                            if (!members.every((planId) => next.has(planId))) continue;
+                            members.forEach((planId) => planIds.delete(planId));
+                            continue;
                           }
-                        });
+                          coveredPlans(row).forEach((planId) => planIds.delete(planId));
+                        }
                         setSelectedRowIds([...planIds]);
                       },
                       checkboxProps: (row) => ({
@@ -3386,6 +3470,7 @@ const RegionalApprovalWorkbench: React.FC<{
       ) : null}
 
       {liveActionDialog}
+      {liveBatchActionDialog}
 
       {activeActionRow ? (
         <RegionalApprovalActionDialog

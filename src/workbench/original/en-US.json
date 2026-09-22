@@ -880,6 +880,22 @@
         "selectRole": "Choose the role for this action",
         "roleContractUnavailable": "You have this role, but GEA does not yet support writing for the selected role. Update the service before submitting."
       },
+      "liveBatch": {
+        "approveTitle": "Approve {{count}} plans",
+        "rejectTitle": "Return {{count}} plans",
+        "summary": "{{total}} plans selected, {{ready}} can be submitted. Plans that cannot be submitted are listed with the reason afterwards.",
+        "approveRemark": "Approval note (optional, applies to every selected plan)",
+        "remarkLabel": "Batch approval note",
+        "confirmation": "I have reviewed these {{count}} plans and their current status, and confirm submitting each of them.",
+        "required": "Add a return reason and confirm the scope before submitting.",
+        "loading": "Submitting {{count}} plans one by one. Do not close this dialog.",
+        "result": "Submission finished: {{success}} succeeded, {{failed}} failed, {{skipped}} skipped.",
+        "autoClose": "Closing in {{seconds}}s",
+        "skipped": "This plan cannot be submitted right now",
+        "close": "Close",
+        "confirmApprove": "Approve all",
+        "confirmReject": "Return all"
+      },
       "action": {
         "title": "Regional plan approval action",
         "fixtureBoundary": "Return and submit only create local sample results. They do not connect to GEA or fabricate real approval receipts.",

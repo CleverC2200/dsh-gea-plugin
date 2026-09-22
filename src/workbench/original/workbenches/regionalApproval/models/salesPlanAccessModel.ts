@@ -78,8 +78,14 @@ export const salesPlanAccessForRow = (
       !entry || !['region','province','area','category'].includes(entry.role) ||
       !Array.isArray(entry.allowedActions) || !knownActions(entry.allowedActions)) ||
       new Set(context.roleActions.map(entry => entry.role)).size !== context.roleActions.length)) return undefined;
-  // 审批身份只认当前账号的节点审批权限码；待办通知和服务端角色能力都不再用来推断角色。
-  const roles = salesPlanStagesForPermissions(permissions).filter(role => role !== 'customer');
+  // 审批身份有两个来源：账号的节点审批权限码，以及 Host 对同版本重新确认的可处理任务。
+  // 后者只映射到当前状态的节点，不能用来处理其它节点或旧版本；服务端给的角色能力不授予身份。
+  const workflowRole = detail.workflowApproval?.versionId === v.id && detail.workflowApproval.actionable === true
+    ? flow.actor(row.status) : undefined;
+  const roles = [...new Set([
+    ...salesPlanStagesForPermissions(permissions),
+    ...(workflowRole && workflowRole !== 'customer' ? [workflowRole] : []),
+  ])].filter(role => role !== 'customer');
   if (!roles.some(role => flow.visibility(row.status, role) !== 'denied')) return undefined;
   // 多角色用户必须在动作对话框中明确选择角色。
   const role = stage ?? (roles.length === 1 ? roles[0] : undefined);

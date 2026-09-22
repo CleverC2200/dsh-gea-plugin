@@ -63,7 +63,7 @@ const errorKey = (kind: SalesPlanActionErrorKind) =>
  * 一旦判定为技术文案（字段名 / 错误码 / 报文），就换成按 HTTP 语义的业务文案，
  * 另附一个可口头转述的「错误编号」，技术细节只进控制台。
  */
-const actionErrorText = (t: TFunction, error: SalesPlanActionError): string => {
+export const actionErrorText = (t: TFunction, error: SalesPlanActionError): string => {
   const fallback = t(errorKey(error.kind));
   const cause = error.cause;
   if (!isBackendHttpError(cause) || cause.status >= 500) return fallback;
