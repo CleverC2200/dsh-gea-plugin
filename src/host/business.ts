@@ -24,6 +24,13 @@ import { readableMessage } from "./error-envelope.ts";
 const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
 
 /**
+ * 同一模块连续失败多少次就熔断（窗口内）。模块"表不可读"这类失败重试没有意义，
+ * 熔断是为了让模型回到"用现有证据作答"，而不是把整轮耗在换表上。
+ */
+const PLUGIN_FAILURE_LIMIT = 3;
+const PLUGIN_FAILURE_WINDOW_MS = 10 * 60 * 1000;
+
+/**
  * 内置的受管只读模块清单，只在宿主还没接入能力契约时兜底（例如单元测试里直接
  * 构造 Business）。正常启动时由主机的契约注册表覆盖：装了什么模块，就允许读什么。
  */
@@ -627,6 +634,8 @@ export class Business {
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
   private readonly pluginDelegations = new Map<string, { authToken: string; delegationToken: string }>();
+  /** 同一模块连续失败计数：用来在"换着表一直重试"时及时熔断。 */
+  private readonly pluginFailures = new Map<string, { count: number; at: number }>();
   /** 受管表列清单的短缓存：同一张表不重复探查。 */
   private readonly pluginSchemaCache = new Map<string, { at: number; columns: string[] }>();
   /** 允许走受管只读查询的模块（由能力契约注入；不注入时用内置清单兜底）。 */
@@ -1597,6 +1606,16 @@ export class Business {
     const consumerCode = text(payload.consumerCode ?? query.consumerCode);
     const allowedConsumers = this.pluginConsumers ?? DEFAULT_PLUGIN_CONSUMERS;
     if (!allowedConsumers.has(consumerCode)) throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
+    // 同一个模块连续失败就到此为止：线上实测模型会换着表/换着 SQL 一直重试
+    // （38 步、4 分钟不输出）。熔断后强制它用手上的证据作答，或说明缺什么。
+    const failures = this.pluginFailures.get(consumerCode);
+    if (failures && failures.count >= PLUGIN_FAILURE_LIMIT) {
+      if (Date.now() - failures.at < PLUGIN_FAILURE_WINDOW_MS)
+        throw new Error(
+          `GEA_PLUGIN_RETRY_STOPPED: ${consumerCode} 本轮已连续失败 ${failures.count} 次，不要再换表或换写法重试。请用已经拿到的数据作答；确实缺口径时，直接说明缺哪一项，不要继续取数。`,
+        );
+      this.pluginFailures.delete(consumerCode);
+    }
     const sqlValue = query.sql;
     if (typeof sqlValue !== "string" || !sqlValue.trim() || sqlValue.length > 200_000)
       throw new Error("GEA_PLUGIN_SQL_INVALID");
@@ -1619,16 +1638,23 @@ export class Business {
     }
     try {
       // 统一走分页路径：同一条 SQL 不分页时会报底层错误，模型也不该被要求记住页码。
-      return await readHtmlQuery(withDefaultPaging(query), {
+      const result = await readHtmlQuery(withDefaultPaging(query), {
         endpoint: this.base.replace(/\/$/, "") + "/ai/gateway/sql/execute",
         token: delegation.delegationToken,
         fetch: this.apiLog.fetch,
         signal,
       });
+      this.pluginFailures.delete(consumerCode);
+      return result;
     } catch (error) {
       // A rejected/expired delegated credential must never poison the next
       // page refresh; the next call obtains a fresh Agent-scoped delegation.
       if (error instanceof GeaResponseError) this.pluginDelegations.delete(consumerCode);
+      const previous = this.pluginFailures.get(consumerCode);
+      this.pluginFailures.set(consumerCode, {
+        count: (previous?.count ?? 0) + 1,
+        at: Date.now(),
+      });
       throw error;
     }
   }
