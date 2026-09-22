@@ -78,7 +78,8 @@ export async function readHtmlQuery(
       pageSize < 1 ||
       pageSize > 200)
   )
-    throw Error("INVALID_PAGE");
+    // 报错也要能读：宿主会先钳制，这里是兜底；真漏进来时至少知道上限是多少。
+    throw Error("INVALID_PAGE：页码从 1 起，每页最多 200 行");
   // The upstream governed endpoint applies the current consumer and user's resource/data permissions.
   // HTML filters are presentation inputs, never authorization constraints.
   if (pageNo !== undefined) {

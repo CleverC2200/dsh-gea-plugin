@@ -3,6 +3,8 @@ import type { Context } from "@deepseek-ai/cordis";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { Business } from "./business.ts";
 import type { CapabilityRegistry } from "../capability/registry.ts";
+import { pluginReadHint } from "./plugin-query.ts";
+import { readableMessage } from "./error-envelope.ts";
 
 /** 只注册已认证的读取；可见记录仍以 GEA 为权威。
  * @param ctx 拥有工具注册和释放生命周期的 Host 上下文。
@@ -116,7 +118,11 @@ export function registerGeaTools(
             description: "SQL 参数（参数化查询，避免拼接）。",
           },
           pageNo: { type: "integer", description: "页码，1 起。" },
-          pageSize: { type: "integer", description: "每页条数，默认 200，上限 1000。" },
+          pageSize: {
+            type: "integer",
+            description:
+              "每页条数，默认 200；网关单页上限 200，超过由宿主钳制，不会报错。",
+          },
         },
         output: {
           schema: { type: "string" },
@@ -157,12 +163,27 @@ export function registerGeaTools(
             throw new Error("GEA_PLUGIN_SQL_INVALID");
           // 真机观察：模型侧默认回 200 行×55 列会把输入预算吃光，它只能靠反复试探收敛。
           // 这里把"给模型看的一页"收紧到 50 行；总数照旧返回，要更多自己翻页。
-          return JSON.stringify(
-            await business.pluginSql(
-              { pageSize: 50, ...args },
-              exec.signal,
-            ),
-          );
+          // 页大小超出网关上限由宿主钳制（见 plugin-query），不把模型的参数当错误报。
+          try {
+            return JSON.stringify(
+              await business.pluginSql(
+                { pageSize: 50, ...args },
+                exec.signal,
+              ),
+            );
+          } catch (error) {
+            // 猜表名/猜字段是线上最主要的失败来源：把"下一步"补进错误里，
+            // 否则模型只会换着表继续猜（截断到 200 字内，避免可读原因被整条丢掉）。
+            const module = capability?.byConsumer(String(args.consumerCode));
+            throw new Error(
+              pluginReadHint(
+                readableMessage(
+                  error instanceof Error ? error.message : String(error),
+                ) ?? "只读查询失败",
+                module?.data?.tables ?? [],
+              ),
+            );
+          }
         },
       }),
     ),
