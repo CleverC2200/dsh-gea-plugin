@@ -634,25 +634,48 @@ export function apply(ctx: Context): void {
       return () => observer.disconnect();
     }, []);
     useEffect(() => {
-      // 收起/展开是宿主做的宽度动画（约 240ms）。如果直接跟着 [data-sidebar-collapsed] 立刻换内容，
+      // 收起/展开是宿主做的动画（宽度 280→56，约 240ms）。如果直接跟着 [data-sidebar-collapsed] 立刻换内容，
       // 会出现「抽屉瞬间消失、图标列铺满整条宽度再滑回左边」的闪动。
-      // 这里按侧栏的实测宽度切换：宽度真的窄下来（≤100px）才换成图标列，展开时同理。
+      // 规则：侧栏窄到 ≤100px，或者收起标志已经过了动画时间（宿主在宽屏下会把宽度钉住、压根不缩），
+      // 才换成图标列；展开时只按宽度判断，避免窄列里提前塞进抽屉内容。
       if (!region) return;
       // 品牌行/图标列在 region 之外，所以收起标记要同时打在侧栏列和 region 上。
       const sidebarColumn = region.closest<HTMLElement>("[class*='_sidebarCol']");
       const targets = [region, sidebarColumn].filter((element): element is HTMLElement => Boolean(element));
+      const measureTarget = sidebarColumn ?? region;
+      const SETTLE_MS = 280;
+      let collapsedAt = 0;
+      let settleTimer: number | undefined;
+      const isCollapsed = () => Boolean(document.querySelector("[data-sidebar-collapsed]"));
       const sync = () => {
-        const narrow = (sidebarColumn ?? region).getBoundingClientRect().width <= 100;
+        const collapsed = isCollapsed();
+        if (collapsed && collapsedAt === 0) collapsedAt = Date.now();
+        if (!collapsed) collapsedAt = 0;
+        const settled = collapsedAt !== 0 && Date.now() - collapsedAt >= SETTLE_MS;
+        const narrow = measureTarget.getBoundingClientRect().width <= 100 || settled;
         for (const target of targets) {
           if (narrow) target.setAttribute("data-gea-narrow", "");
           else target.removeAttribute("data-gea-narrow");
         }
+        if (settleTimer !== undefined) {
+          window.clearTimeout(settleTimer);
+          settleTimer = undefined;
+        }
+        if (collapsed && !settled) settleTimer = window.setTimeout(sync, SETTLE_MS);
       };
       sync();
-      const observer = new ResizeObserver(sync);
-      observer.observe(sidebarColumn ?? region);
+      const resizeObserver = new ResizeObserver(sync);
+      resizeObserver.observe(measureTarget);
+      const flagObserver = new MutationObserver(sync);
+      flagObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ["data-sidebar-collapsed"],
+        subtree: true,
+      });
       return () => {
-        observer.disconnect();
+        resizeObserver.disconnect();
+        flagObserver.disconnect();
+        if (settleTimer !== undefined) window.clearTimeout(settleTimer);
         for (const target of targets) target.removeAttribute("data-gea-narrow");
       };
     }, [region]);

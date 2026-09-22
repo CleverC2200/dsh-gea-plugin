@@ -218,9 +218,11 @@
   padding: 6px 0;
   /* 固定成收起态的列宽并贴左，宽度动画过程中图标不再横向漂移。 */
   align-self: flex-start;
-  width: 56px;
+  /* 跟宿主收起态的品牌按钮同宽（36px）：圆标和图标列落在同一条中线上。 */
+  width: 36px;
   max-width: 100%;
 }
+[data-gea-narrow] .gea-sidebar-rail-item { width: 36px; height: 36px; }
 /* 收起态这三个入口由 GEA 提供，原生重复的「新建会话」按钮收起来。 */
 [data-gea-narrow] [class*="_newSession"] {
   display: none !important;
@@ -348,9 +350,14 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 /* 登记 28：侧栏收起后品牌圆标跟下面的图标列走同一条中线。 */
 [data-gea-narrow] [class*="_logoRow"] [class*="_brand"] {
   justify-content: center !important;
+  /* 和图标列同宽（56px）并贴同一条左边缘，圆标才会落在图标列的中线上。 */
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
   padding-left: 0 !important;
   padding-right: 0 !important;
 }
+[data-gea-narrow] [class*="_logoRow"] { padding-left: 0 !important; }
 /* 收起态品牌圆标缩小到跟图标列同一量级，不再占满整条宽度。 */
 [data-gea-narrow] .gea-shell-logo {
   width: 26px;
