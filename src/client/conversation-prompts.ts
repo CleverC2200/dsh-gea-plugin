@@ -253,7 +253,7 @@ export const homeConversation: ConversationPromptConfig = {
 
 /** 业务待办页：GEA 消息待办与审批提醒。 */
 export const inboxConversation: ConversationPromptConfig = {
-  name: "业务待办助手",
+  name: "业务待办Agent",
   intro: "我可以帮你看 GEA 消息待办：还有多少没处理、哪些卡在你这一节点、下一步该找谁。",
   boundary: "待办状态由你在列表里确认，我只做梳理和建议。",
   actions: [
@@ -382,7 +382,7 @@ export const deliveryOpsConversation: ConversationPromptConfig = {
 
 /** 安全库存页：基地口径的库存水位与货龄。 */
 export const safetyStockConversation: ConversationPromptConfig = {
-  name: "安全库存助手",
+  name: "基地库存Agent",
   intro: "我可以按基地口径核对库存水位、周转天数、货龄和订单满足率，指出低于目标的部分。",
   boundary: "我只做核对与建议，不调整库存目标。",
   actions: [
@@ -425,7 +425,7 @@ export const safetyStockConversation: ConversationPromptConfig = {
 
 /** 分仓库存页：分仓经营与补货。 */
 export const branchStockConversation: ConversationPromptConfig = {
-  name: "分仓库存助手",
+  name: "分仓库存Agent",
   intro: "我可以按分仓看缺货订单、补货确认、大日期和滞库风险，给出先处理谁的建议。",
   boundary: "补货只给建议，是否下单由你确认。",
   actions: [
@@ -511,7 +511,7 @@ export const inventoryWorkbenchConversation: ConversationPromptConfig = {
 
 /** 全链路库存页：基地到分仓的链路视角。 */
 export const fullChainStockConversation: ConversationPromptConfig = {
-  name: "全链路库存助手",
+  name: "全链库存管理Agent",
   intro: "我可以沿基地到分仓的链路看库存分布、缺货和大日期风险，以及可调拨的机会。",
   boundary: "调拨只给方案建议，执行由业务确认。",
   actions: [
@@ -550,4 +550,60 @@ export const fullChainStockConversation: ConversationPromptConfig = {
     "基地到分仓的库存怎么走？",
     "需要跨仓调拨哪些货？",
   ],
+};
+
+/** 产销协同页：经营计划、库存与履约的跨模块视角。 */
+export const supplyCoordinationConversation: ConversationPromptConfig = {
+  name: "产销协同Agent",
+  intro: "我可以结合计划、库存与订单履约，定位当前产销协同中的偏差和风险。",
+  boundary: "我只做分析与行动建议，不直接修改业务数据。",
+  actions: [
+    { icon: "chart", tone: "brand", label: "看经营概览", detail: "计划、库存与履约关键指标", prompt: "请分析当前产销经营概览" },
+    { icon: "alert", tone: "brand", label: "看协同风险", detail: "偏离目标和需要协调的事项", prompt: "请查看当前产销协同风险" },
+    { icon: "box", tone: "info", label: "看库存与订单", detail: "库存水位和订单履约异常", prompt: "请分析库存与订单风险" },
+    { icon: "check", tone: "success", label: "生成行动建议", detail: "按优先级整理协同动作", prompt: "请生成产销协同行动建议" },
+  ],
+  prompts: ["当前产销协同情况如何？", "哪些指标偏离目标？", "库存与订单有哪些风险？", "下一步如何协调产销？"],
+};
+
+/** 客户库存页：客户库存健康度、周转与大日期风险。 */
+export const customerStockConversation: ConversationPromptConfig = {
+  name: "客户库存Agent",
+  intro: "我可以帮你分析客户库存健康度、周转和大日期风险，并给出改善建议。",
+  boundary: "建议只做参考，库存处置仍由业务确认。",
+  actions: [
+    { icon: "box", tone: "brand", label: "看客户库存", detail: "库存规模、结构与周转概览", prompt: "请分析当前客户库存情况" },
+    { icon: "alert", tone: "brand", label: "看风险客户", detail: "高库存、低周转与异常客户", prompt: "请查看高风险客户" },
+    { icon: "chart", tone: "info", label: "看大日期库存", detail: "临期与大日期库存分布", prompt: "请查看客户大日期库存" },
+    { icon: "check", tone: "success", label: "生成改善建议", detail: "按客户整理优先动作", prompt: "请生成客户库存改善建议" },
+  ],
+  prompts: ["哪些客户库存风险最高？", "重点客户的库存情况如何？", "大日期库存如何处理？", "客户库存结构怎么改善？"],
+};
+
+/** 订单工作台：订单状态、供应风险与提报审批进度。 */
+export const orderManagementConversation: ConversationPromptConfig = {
+  name: "订单管理Agent",
+  intro: "我可以帮你分析订单状态、库存与供应风险，并跟进客户提报和审批进度。",
+  boundary: "我只做分析和建议，不直接修改订单。",
+  actions: [
+    { icon: "chart", tone: "brand", label: "看订单概览", detail: "订单规模、状态与关键变化", prompt: "请分析当前订单概览" },
+    { icon: "alert", tone: "brand", label: "看重点商品", detail: "需要优先关注的商品和原因", prompt: "请查看需要重点关注的商品" },
+    { icon: "box", tone: "info", label: "看库存与供应风险", detail: "订单关联的缺货与供应异常", prompt: "请分析订单相关的库存与供应风险" },
+    { icon: "check", tone: "success", label: "跟进提报审批", detail: "客户提报与审批进度", prompt: "请查看客户提报与审批进度" },
+  ],
+  prompts: ["本月订单情况如何？", "哪些商品需要重点关注？", "当前最需要关注的风险是什么？", "客户提报和审批进度如何？"],
+};
+
+/** 订单履约页：接收、校验与 OMS 推送进度。 */
+export const orderFulfillmentConversation: ConversationPromptConfig = {
+  name: "订单履约Agent",
+  intro: "我可以帮你跟进订单接收、校验与 OMS 推送进度，定位履约异常。",
+  boundary: "我只做风险分析和处理建议，不直接推送订单。",
+  actions: [
+    { icon: "chart", tone: "brand", label: "看履约进度", detail: "订单接收、校验与推送状态", prompt: "请分析当前订单履约进度" },
+    { icon: "alert", tone: "brand", label: "看校验异常", detail: "规则、商品与客户信息异常", prompt: "请查看订单校验异常" },
+    { icon: "box", tone: "info", label: "看待推送订单", detail: "等待生成或推送 OMS 的订单", prompt: "请查看待推送 OMS 的订单" },
+    { icon: "check", tone: "success", label: "生成处理建议", detail: "按影响范围整理处理顺序", prompt: "请生成订单履约处理建议" },
+  ],
+  prompts: ["当前订单履约进度如何？", "哪些订单校验异常？", "有哪些订单等待推送？", "下一步应优先处理什么？"],
 };

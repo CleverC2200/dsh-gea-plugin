@@ -1610,7 +1610,7 @@ export class Business {
       "base-safety-stock", "dealer-inventory-replenishment", "branch-inventory",
       "full-chain-inventory", "inventory-personal-workbench", "aps-board-collaboration",
       "aps-demand-collaboration", "aps-delivery-collaboration",
-      "customer-inventory-preview", "orderworkbench-preview", "orderfulfillment-preview",
+      "08", "customer-inventory-preview", "orderworkbench-preview", "orderfulfillment-preview",
     ]);
     if (!allowedConsumers.has(consumerCode)) throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
     const sqlValue = query.sql;
