@@ -621,7 +621,9 @@ export function apply(ctx: Context): void {
       const rewrite = () => {
         for (const node of document.querySelectorAll<HTMLElement>('[role="status"]')) {
           const current = node.textContent ?? "";
-          const matched = current.includes(hostText);
+          // 改写后文案已经变成 GEA 文案，第二轮扫描要按「已经是 GEA 文案」继续认这一条，
+          // 否则标记会被自己摘掉，颜色样式随之失效。
+          const matched = current.includes(hostText) || current.includes(geaText);
           if (matched) node.setAttribute("data-gea-think-status", "");
           else node.removeAttribute("data-gea-think-status");
           if (!matched) continue;

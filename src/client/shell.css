@@ -635,9 +635,23 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-agent-head-avatar { flex: none; width: 30px; height: 30px; border-radius: 50%; }
 .gea-agent-head-copy { display: grid; min-width: 0; gap: 0; }
 .gea-agent-head-name { color: #242b38; font-size: 14px; font-weight: 600; line-height: 1.35; }
-/* 登记 41：等待态文案由「深度求索中」改为「深度思考中」后，用思念红呈现。 */
-[data-gea-think-status] { color: rgb(226, 79, 102) !important; }
-[data-gea-think-status] *:not([class*="clock"]):not([class*="Clock"]) { color: inherit !important; }
+/* 登记 41：等待态文案由「深度求索中」改为「深度思考中」后，用思念红呈现。
+   宿主的等待态是渐变文字（background + background-clip: text + 微光动画），
+   只改 color 不会生效，必须同时压掉渐变、裁剪与动画，并改文字填充色。 */
+[data-gea-think-status] {
+  background: none !important;
+  background-image: none !important;
+  background-clip: border-box !important;
+  -webkit-background-clip: border-box !important;
+  animation: none !important;
+  color: rgb(226, 79, 102) !important;
+  -webkit-text-fill-color: rgb(226, 79, 102) !important;
+}
+/* 计时用的副标（…Clock）保留宿主自己的弱化颜色。 */
+[data-gea-think-status] > :not([class*="Clock"]) {
+  color: rgb(226, 79, 102) !important;
+  -webkit-text-fill-color: rgb(226, 79, 102) !important;
+}
 .gea-agent-avatar {
   display: block;
   width: 72px;
