@@ -1,6 +1,7 @@
 /** 面向浏览器的 GEA 通知 API 安全投影；此处不会执行任何动作。 */
 export interface NotificationItem {
   id: string;
+  interactionRequestId: string | null;
   title: string | null;
   summary: string | null;
   body: string | null;
@@ -71,6 +72,7 @@ export function notificationDetail(
   const source = row.source == null ? null : record(row.source);
   return {
     id: row.id,
+    interactionRequestId: optional(row.interaction_request_id),
     title: optional(row.title),
     summary: optional(row.summary),
     body: optional(row.content ?? row.body),

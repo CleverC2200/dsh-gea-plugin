@@ -16,6 +16,7 @@ const buildRoot = join(root, ".runtime", "electron-build");
 
 export const SHELL_FILES = [
   "main.cjs",
+  "navigation.cjs",
   "config.cjs",
   "company.config.json",
   "permissions.cjs",

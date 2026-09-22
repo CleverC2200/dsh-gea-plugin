@@ -16,7 +16,7 @@ function loadConfig(diagnostic){
 }
 
 test('installer timing include is opt-in and records supported NSIS boundaries',()=>{
-  assert.equal(loadConfig(false).include,undefined);
+  assert.equal(loadConfig(false).include,join(project,'build','installer-navigation.nsh'));
   assert.equal(loadConfig(true).include,includePath);
 
   const source=readFileSync(includePath,'utf8');

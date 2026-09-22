@@ -1,4 +1,5 @@
 import { attachDesktopLogin } from "./host/desktop-login.ts";
+import { createDesktopNavigation } from './host/desktop-navigation.ts';
 import { attachWebLogin } from "./host/web-login.ts";
 import { resolveWorkbench } from "../scripts/deployment.mjs";
 /** GEA 外部 Fetch 能力和显式本地回执提供者的 DSH 插件入口。 */
@@ -398,6 +399,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   // 身份变化后旧会话的页面工具一律注销；页面下一轮声明会重新注册。
   ctx.effect(() => business.watchIdentity(() => pageTools.disposeAll()));
   const desktopLogin = await attachDesktopLogin(business);
+  const desktopNavigation = createDesktopNavigation(business);
+  ctx.effect(() => () => desktopNavigation.dispose());
   const webLogin = await attachWebLogin(business);
   const htmlRootConfig=JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS || "[]");
   const htmlRoots=Array.isArray(htmlRootConfig) ? htmlRootConfig : (htmlRootConfig && typeof htmlRootConfig === "object" ? Object.values(htmlRootConfig) : []);
@@ -534,6 +537,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     return attempt.result;
   }
   const endpoints = [
+    "navigation/poll",
+    "navigation/finish",
+    "navigation/retry",
     "status",
     "notifications",
     "workflow/config",
@@ -573,6 +579,14 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
             const payload = object(await request.json());
             let value: unknown;
             switch (endpoint) {
+              case "navigation/poll":
+              case "navigation/retry":
+                if (Object.keys(payload).length) throw Error('NAVIGATION_REQUEST_INVALID');
+                value = endpoint === 'navigation/poll' ? await desktopNavigation.poll() : await desktopNavigation.retry();
+                break;
+              case "navigation/finish":
+                value = await desktopNavigation.finish(payload);
+                break;
               case "api-log/snapshot":
                 value = business.apiLogSnapshot(payload);
                 break;
