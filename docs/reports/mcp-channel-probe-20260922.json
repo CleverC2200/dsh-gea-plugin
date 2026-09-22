@@ -1,0 +1,383 @@
+[
+ {
+  "consumerCode": "aps-board-collaboration",
+  "ok": false,
+  "error": "GEA_MCP_SESSION_REJECTED",
+  "raw": [
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/session",
+    "requestHeaders": {
+     "content-type": "application/json"
+    },
+    "requestBody": "{\"consumerType\":\"AGENT\",\"consumerCode\":\"aps-board-collaboration\",\"conversationId\":\"14fdcb7c-0c33-4544-982b-7d7ad18e1342\",\"requestId\":\"aa3c93eb-ae95-4ad6-8c3b-9722ce75c10a\",\"channel\":\"MCP_CLIENT\"}",
+    "status": 200,
+    "responseBody": "{\"success\":true,\"message\":\"\",\"code\":200,\"result\":{\"accessDecision\":{\"allowed\":false,\"code\":\"AGENT_ACCESS_DENIED\",\"stage\":\"AGENT\",\"message\":\"当前用户无权访问该Agent\"},\"gatewayContext\":{\"requestId\":\"aa3c93eb-ae95-4ad6-8c3b-9722ce75c10a\",\"traceId\":\"24975627-b90b-420a-b937-c1ee98303e30\",\"conversationId\":\"14fdcb7c-0c33-4544-982b-7d7ad18e1342\",\"sessionId\":\"SES-9ee95f0d-e607-41b5-898a-22379f032895\",\"tenantId\":\"0\",\"principalType\":\"USER\",\"principalId\":\"2079086499998507009\",\"consumerType\":\"AGENT\",\"consumerCode\":\"aps-board-collaboration\",\"authorizationRevision\":\"AUTHV:c70e232321e4182c6d415e1217a5711f467d003caf289e144c2e5025bad30af3\",\"userId\":\"2079086499998507009\",\"username\":\"10006800\",\"agentId\":\"aps-board-collaboration\",\"agentVersion\":\"1.0\",\"channel\":\"MCP_CLIENT\",\"dataScopeRef\":\"SCOPE-24975627-b90b-420a-b937-c1ee98303e30\",\"riskLevel\":\"LOW\",\"roleCodes\":[],\"departIds\":[\"2081225579385356290\"],\"platformSuperAdmin\":false,\"identityVersion\":\"IDV:94ec78065bc31ab0d431ff79627a4d1d1be9f8a6aedd2a745abbefbf0388dcee\"},\"effectiveCapabilityCodes\":[],\"delegationToken\":null},\"timestamp\":1790083650327,\"errorCode\":null,\"category\":null,\"retryable\":null,\"requestId\":null,\"traceId\":null,\"auditId\":null,\"details\":null}"
+   }
+  ]
+ },
+ {
+  "consumerCode": "aps-delivery-collaboration",
+  "ok": false,
+  "error": "GEA_MCP_SESSION_REJECTED",
+  "raw": [
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/session",
+    "requestHeaders": {
+     "content-type": "application/json"
+    },
+    "requestBody": "{\"consumerType\":\"AGENT\",\"consumerCode\":\"aps-delivery-collaboration\",\"conversationId\":\"2953c412-4cf9-4e6a-95cb-cc70c27d2060\",\"requestId\":\"f8e0bb27-adb5-4457-9756-456f02ef21ef\",\"channel\":\"MCP_CLIENT\"}",
+    "status": 200,
+    "responseBody": "{\"success\":true,\"message\":\"\",\"code\":200,\"result\":{\"accessDecision\":{\"allowed\":false,\"code\":\"AGENT_ACCESS_DENIED\",\"stage\":\"AGENT\",\"message\":\"当前用户无权访问该Agent\"},\"gatewayContext\":{\"requestId\":\"f8e0bb27-adb5-4457-9756-456f02ef21ef\",\"traceId\":\"1af9fee3-61c3-4794-8eb5-64e141b529b9\",\"conversationId\":\"2953c412-4cf9-4e6a-95cb-cc70c27d2060\",\"sessionId\":\"SES-90d1dad4-9b3a-4b48-a9ec-517ca4b89771\",\"tenantId\":\"0\",\"principalType\":\"USER\",\"principalId\":\"2079086499998507009\",\"consumerType\":\"AGENT\",\"consumerCode\":\"aps-delivery-collaboration\",\"authorizationRevision\":\"AUTHV:f001360ef45fa06577233c291da468d517dadd78a5a55f212cd895da0c024ed0\",\"userId\":\"2079086499998507009\",\"username\":\"10006800\",\"agentId\":\"aps-delivery-collaboration\",\"agentVersion\":\"1.0\",\"channel\":\"MCP_CLIENT\",\"dataScopeRef\":\"SCOPE-1af9fee3-61c3-4794-8eb5-64e141b529b9\",\"riskLevel\":\"LOW\",\"roleCodes\":[],\"departIds\":[\"2081225579385356290\"],\"platformSuperAdmin\":false,\"identityVersion\":\"IDV:94ec78065bc31ab0d431ff79627a4d1d1be9f8a6aedd2a745abbefbf0388dcee\"},\"effectiveCapabilityCodes\":[],\"delegationToken\":null},\"timestamp\":1790083650386,\"errorCode\":null,\"category\":null,\"retryable\":null,\"requestId\":null,\"traceId\":null,\"auditId\":null,\"details\":null}"
+   }
+  ]
+ },
+ {
+  "consumerCode": "aps-demand-collaboration",
+  "ok": false,
+  "error": "GEA_MCP_SESSION_REJECTED",
+  "raw": [
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/session",
+    "requestHeaders": {
+     "content-type": "application/json"
+    },
+    "requestBody": "{\"consumerType\":\"AGENT\",\"consumerCode\":\"aps-demand-collaboration\",\"conversationId\":\"4b31a019-8eb4-4ecb-9979-1c96768dd899\",\"requestId\":\"74604dce-056a-4152-8ecd-fb32ed6bc95e\",\"channel\":\"MCP_CLIENT\"}",
+    "status": 200,
+    "responseBody": "{\"success\":true,\"message\":\"\",\"code\":200,\"result\":{\"accessDecision\":{\"allowed\":false,\"code\":\"AGENT_ACCESS_DENIED\",\"stage\":\"AGENT\",\"message\":\"当前用户无权访问该Agent\"},\"gatewayContext\":{\"requestId\":\"74604dce-056a-4152-8ecd-fb32ed6bc95e\",\"traceId\":\"f3b36139-cdf1-4a36-8713-3e5421af79be\",\"conversationId\":\"4b31a019-8eb4-4ecb-9979-1c96768dd899\",\"sessionId\":\"SES-146f2814-bccf-492c-a64c-0645b194b20d\",\"tenantId\":\"0\",\"principalType\":\"USER\",\"principalId\":\"2079086499998507009\",\"consumerType\":\"AGENT\",\"consumerCode\":\"aps-demand-collaboration\",\"authorizationRevision\":\"AUTHV:743bc2983ed6433d5eb6974585991bd4832de8467325f940686c1f6b3df9af6f\",\"userId\":\"2079086499998507009\",\"username\":\"10006800\",\"agentId\":\"aps-demand-collaboration\",\"agentVersion\":\"1.0\",\"channel\":\"MCP_CLIENT\",\"dataScopeRef\":\"SCOPE-f3b36139-cdf1-4a36-8713-3e5421af79be\",\"riskLevel\":\"LOW\",\"roleCodes\":[],\"departIds\":[\"2081225579385356290\"],\"platformSuperAdmin\":false,\"identityVersion\":\"IDV:94ec78065bc31ab0d431ff79627a4d1d1be9f8a6aedd2a745abbefbf0388dcee\"},\"effectiveCapabilityCodes\":[],\"delegationToken\":null},\"timestamp\":1790083650444,\"errorCode\":null,\"category\":null,\"retryable\":null,\"requestId\":null,\"traceId\":null,\"auditId\":null,\"details\":null}"
+   }
+  ]
+ },
+ {
+  "consumerCode": "aps-plan-collaboration",
+  "ok": false,
+  "error": "GEA_MCP_SESSION_REJECTED",
+  "raw": [
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/session",
+    "requestHeaders": {
+     "content-type": "application/json"
+    },
+    "requestBody": "{\"consumerType\":\"AGENT\",\"consumerCode\":\"aps-plan-collaboration\",\"conversationId\":\"bf95ad2a-b23d-4582-a569-499be90d2fb9\",\"requestId\":\"fd7adb47-3699-4944-adb0-8bf4d3c17cfe\",\"channel\":\"MCP_CLIENT\"}",
+    "status": 200,
+    "responseBody": "{\"success\":true,\"message\":\"\",\"code\":200,\"result\":{\"accessDecision\":{\"allowed\":false,\"code\":\"AGENT_ACCESS_DENIED\",\"stage\":\"AGENT\",\"message\":\"当前用户无权访问该Agent\"},\"gatewayContext\":{\"requestId\":\"fd7adb47-3699-4944-adb0-8bf4d3c17cfe\",\"traceId\":\"c2d952dc-3182-4adb-91ac-675c3bedd960\",\"conversationId\":\"bf95ad2a-b23d-4582-a569-499be90d2fb9\",\"sessionId\":\"SES-d7d80d80-b31c-4406-8fcd-120c4f9bf94b\",\"tenantId\":\"0\",\"principalType\":\"USER\",\"principalId\":\"2079086499998507009\",\"consumerType\":\"AGENT\",\"consumerCode\":\"aps-plan-collaboration\",\"authorizationRevision\":\"AUTHV:a003755a3d79109ac758d9b087787bc05c429aa79c9ef47006f34bce892b4a7b\",\"userId\":\"2079086499998507009\",\"username\":\"10006800\",\"agentId\":\"aps-plan-collaboration\",\"agentVersion\":\"1.0\",\"channel\":\"MCP_CLIENT\",\"dataScopeRef\":\"SCOPE-c2d952dc-3182-4adb-91ac-675c3bedd960\",\"riskLevel\":\"LOW\",\"roleCodes\":[],\"departIds\":[\"2081225579385356290\"],\"platformSuperAdmin\":false,\"identityVersion\":\"IDV:94ec78065bc31ab0d431ff79627a4d1d1be9f8a6aedd2a745abbefbf0388dcee\"},\"effectiveCapabilityCodes\":[],\"delegationToken\":null},\"timestamp\":1790083650506,\"errorCode\":null,\"category\":null,\"retryable\":null,\"requestId\":null,\"traceId\":null,\"auditId\":null,\"details\":null}"
+   }
+  ]
+ },
+ {
+  "consumerCode": "base-safety-stock",
+  "ok": true,
+  "tools": [
+   "gateway.session.currentUser.resolve",
+   "lightrag_query",
+   "lightrag_query_data",
+   "lightrag_list_docs",
+   "query_business_data",
+   "sqlExecute"
+  ],
+  "raw": [
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/session",
+    "requestHeaders": {
+     "content-type": "application/json"
+    },
+    "requestBody": "{\"consumerType\":\"AGENT\",\"consumerCode\":\"base-safety-stock\",\"conversationId\":\"8bcc9180-9874-4e6c-a234-5ab32d257314\",\"requestId\":\"15c55eef-3881-414c-b49a-27c2561abbdc\",\"channel\":\"MCP_CLIENT\"}",
+    "status": 200,
+    "responseBody": "{\"success\":true,\"message\":\"\",\"code\":200,\"result\":{\"accessDecision\":{\"allowed\":true,\"code\":\"ALLOW\",\"stage\":null,\"message\":\"允许访问Agent\"},\"gatewayContext\":{\"requestId\":\"15c55eef-3881-414c-b49a-27c2561abbdc\",\"traceId\":\"41eb1a74-8e38-4302-b666-311ef04224ac\",\"conversationId\":\"8bcc9180-9874-4e6c-a234-5ab32d257314\",\"sessionId\":\"SES-e2244273-ac23-4c7c-b57e-7864309bfe38\",\"tenantId\":\"0\",\"principalType\":\"USER\",\"principalId\":\"2079086499998507009\",\"consumerType\":\"AGENT\",\"consumerCode\":\"base-safety-stock\",\"authorizationRevision\":\"AUTHV:7711ecd875a4b7ecfb278613106916a1b9849ce991c9fc8da7f5eef426224ad0\",\"userId\":\"2079086499998507009\",\"username\":\"10006800\",\"agentId\":\"base-safety-stock\",\"agentVersion\":\"1.0\",\"channel\":\"MCP_CLIENT\",\"dataScopeRef\":\"SCOPE-41eb1a74-8e38-4302-b666-311ef04224ac\",\"riskLevel\":\"LOW\",\"roleCodes\":[],\"departIds\":[\"2081225579385356290\"],\"platformSuperAdmin\":false,\"identityVersion\":\"IDV:94ec78065bc31ab0d431ff79627a4d1d1be9f8a6aedd2a745abbefbf0388dcee\"},\"effectiveCapabilityCodes\":[\"MCP:mcp.gateway.session\",\"MCP_TOOL:mcp.gateway.session:gateway.session.currentUser.resolve\",\"MCP:2080565829038387201\",\"MCP_TOOL:2080565829038387201:lightrag_query\",\"MCP_TOOL:2080565829038387201:lightrag_que"
+   },
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/mcp/proxy/mcp",
+    "requestHeaders": {
+     "accept": "application/json, text/event-stream",
+     "content-type": "application/json",
+     "mcp-protocol-version": "2025-06-18"
+    },
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"id\":\"4f61e4cc-d7e7-43fe-8463-984cf5c29397\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"gea-dsh\",\"version\":\"1.0.0\"}}}",
+    "status": 200,
+    "mcpSessionId": "41997cdd-63b3-4a59-98a2-e0b32ad80d67",
+    "responseBody": "{\"result\":{\"capabilities\":{\"resources\":{\"listChanged\":false,\"subscribe\":false},\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"gea-mcp-proxy\",\"version\":\"1.0\"},\"protocolVersion\":\"2025-06-18\"},\"id\":\"4f61e4cc-d7e7-43fe-8463-984cf5c29397\",\"jsonrpc\":\"2.0\"}"
+   },
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/mcp/proxy/mcp",
+    "requestHeaders": {
+     "accept": "application/json, text/event-stream",
+     "content-type": "application/json",
+     "mcp-protocol-version": "2025-06-18",
+     "mcp-session-id": "41997cdd-63b3-4a59-98a2-e0b32ad80d67"
+    },
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}",
+    "status": 202
+   },
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/mcp/proxy/mcp",
+    "requestHeaders": {
+     "accept": "application/json, text/event-stream",
+     "content-type": "application/json",
+     "mcp-protocol-version": "2025-06-18",
+     "mcp-session-id": "41997cdd-63b3-4a59-98a2-e0b32ad80d67"
+    },
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"id\":\"60580dd2-2cb6-4861-9ae8-4abf7d06f824\",\"method\":\"tools/list\",\"params\":{\"_meta\":{\"sessionId\":\"SES-e2244273-ac23-4c7c-b57e-7864309bfe38\",\"conversationId\":\"8bcc9180-9874-4e6c-a234-5ab32d257314\",\"delegationToken\":\"gea-dlg-qeqSfzlVwdG2tr9vY9pww3Mqe2F9SbfZNiUF24QG2kQ\",\"agentCode\":\"base-safety-stock\"}}}",
+    "status": 200,
+    "responseBody": "{\"result\":{\"tools\":[{\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false,\"required\":[]},\"name\":\"gateway.session.currentUser.resolve\",\"description\":\"通过 AI 网关会话解析当前用户最小上下文，不接收系统登录 token\",\"_meta\":{\"sourceCode\":\"mcp.gateway.session\",\"sourceType\":\"MCP\"}},{\"inputSchema\":{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\"},\"include_references\":{\"type\":\"boolean\"},\"query\":{\"type\":\"string\"},\"top_k\":{\"type\":\"integer\"}},\"required\":[\"query\"]},\"name\":\"lightrag_query\",\"description\":\"Query the LightRAG knowledge base and get an LLM-generated answer with\\n    source citations. Use this when you need to find information from the\\n    company's internal knowledge documents.\\n\\n    Args:\\n        query: The question to ask (min 3 characters).\\n        mode: Retrieval strategy - 'mix' (recommended, knowledge graph + vector),\\n              'local' (entity-focused), 'global' (broad patterns),\\n              'hybrid' (local + global), 'naive' (vector only).\\n        include_references: Whether to include source document citations.\\n        top_k: Number of top entities/relations to retrieve.\\n    \",\"_meta\":{\"sourceCode\":\"2080565829038387201\",\"sourceType\":\"MCP\"}},{\"inputSchema\":"
+   }
+  ]
+ },
+ {
+  "consumerCode": "customer-inventory-preview",
+  "ok": false,
+  "error": "GEA_MCP_SESSION_REJECTED",
+  "raw": [
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/session",
+    "requestHeaders": {
+     "content-type": "application/json"
+    },
+    "requestBody": "{\"consumerType\":\"AGENT\",\"consumerCode\":\"customer-inventory-preview\",\"conversationId\":\"e675fc54-69bd-455a-b4c2-af2227739e8b\",\"requestId\":\"d65cbfcf-7415-46a2-a88e-b7f860eff36a\",\"channel\":\"MCP_CLIENT\"}",
+    "status": 200,
+    "responseBody": "{\"success\":true,\"message\":\"\",\"code\":200,\"result\":{\"accessDecision\":{\"allowed\":false,\"code\":\"AGENT_ACCESS_DENIED\",\"stage\":\"AGENT\",\"message\":\"当前用户无权访问该Agent\"},\"gatewayContext\":{\"requestId\":\"d65cbfcf-7415-46a2-a88e-b7f860eff36a\",\"traceId\":\"ef790d07-323d-44bc-91a5-cd9281d1acb9\",\"conversationId\":\"e675fc54-69bd-455a-b4c2-af2227739e8b\",\"sessionId\":\"SES-062cfd95-3885-4b95-84e9-9cab4c9c2397\",\"tenantId\":\"0\",\"principalType\":\"USER\",\"principalId\":\"2079086499998507009\",\"consumerType\":\"AGENT\",\"consumerCode\":\"customer-inventory-preview\",\"authorizationRevision\":\"AUTHV:cdaffb74fef77fad0803adc28804e2163e89fd20869da9e05850b62dd14c30b5\",\"userId\":\"2079086499998507009\",\"username\":\"10006800\",\"agentId\":\"customer-inventory-preview\",\"agentVersion\":\"1.0\",\"channel\":\"MCP_CLIENT\",\"dataScopeRef\":\"SCOPE-ef790d07-323d-44bc-91a5-cd9281d1acb9\",\"riskLevel\":\"LOW\",\"roleCodes\":[],\"departIds\":[\"2081225579385356290\"],\"platformSuperAdmin\":false,\"identityVersion\":\"IDV:94ec78065bc31ab0d431ff79627a4d1d1be9f8a6aedd2a745abbefbf0388dcee\"},\"effectiveCapabilityCodes\":[],\"delegationToken\":null},\"timestamp\":1790083650912,\"errorCode\":null,\"category\":null,\"retryable\":null,\"requestId\":null,\"traceId\":null,\"auditId\":null,\"details\":null}"
+   }
+  ]
+ },
+ {
+  "consumerCode": "dealer-inventory-replenishment",
+  "ok": true,
+  "tools": [
+   "gateway.session.currentUser.resolve",
+   "lightrag_query",
+   "lightrag_query_data",
+   "lightrag_list_docs",
+   "query_business_data"
+  ],
+  "raw": [
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/session",
+    "requestHeaders": {
+     "content-type": "application/json"
+    },
+    "requestBody": "{\"consumerType\":\"AGENT\",\"consumerCode\":\"dealer-inventory-replenishment\",\"conversationId\":\"357fd15f-4a75-43e6-bedb-9fe65dab2299\",\"requestId\":\"b50982c3-da77-44a4-915b-0512c2727960\",\"channel\":\"MCP_CLIENT\"}",
+    "status": 200,
+    "responseBody": "{\"success\":true,\"message\":\"\",\"code\":200,\"result\":{\"accessDecision\":{\"allowed\":true,\"code\":\"ALLOW\",\"stage\":null,\"message\":\"允许访问Agent\"},\"gatewayContext\":{\"requestId\":\"b50982c3-da77-44a4-915b-0512c2727960\",\"traceId\":\"3754a807-71d4-4a98-adbe-a3df1f711e4b\",\"conversationId\":\"357fd15f-4a75-43e6-bedb-9fe65dab2299\",\"sessionId\":\"SES-0e3f74e1-5b49-47aa-8851-a97b43a9524c\",\"tenantId\":\"0\",\"principalType\":\"USER\",\"principalId\":\"2079086499998507009\",\"consumerType\":\"AGENT\",\"consumerCode\":\"dealer-inventory-replenishment\",\"authorizationRevision\":\"AUTHV:765017778060fb3f5d75c9fc2591267793845f3e983a6a9e5ad7422d59b1c2d1\",\"userId\":\"2079086499998507009\",\"username\":\"10006800\",\"agentId\":\"dealer-inventory-replenishment\",\"agentVersion\":\"1.0\",\"channel\":\"MCP_CLIENT\",\"dataScopeRef\":\"SCOPE-3754a807-71d4-4a98-adbe-a3df1f711e4b\",\"riskLevel\":\"LOW\",\"roleCodes\":[],\"departIds\":[\"2081225579385356290\"],\"platformSuperAdmin\":false,\"identityVersion\":\"IDV:94ec78065bc31ab0d431ff79627a4d1d1be9f8a6aedd2a745abbefbf0388dcee\"},\"effectiveCapabilityCodes\":[\"MCP_TOOL:mcp.gateway.session:gateway.session.currentUser.resolve\",\"MCP:2080565829038387201\",\"MCP_TOOL:2080565829038387201:lightrag_query\",\"MCP_TOOL:2080565829038387201:lightrag_que"
+   },
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/mcp/proxy/mcp",
+    "requestHeaders": {
+     "accept": "application/json, text/event-stream",
+     "content-type": "application/json",
+     "mcp-protocol-version": "2025-06-18"
+    },
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"id\":\"8da80a8c-bf12-48fc-9ee5-ae290dba2d8b\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"gea-dsh\",\"version\":\"1.0.0\"}}}",
+    "status": 200,
+    "mcpSessionId": "35cca2c7-ba86-4c6a-a8a1-b255c937b0e2",
+    "responseBody": "{\"result\":{\"capabilities\":{\"resources\":{\"listChanged\":false,\"subscribe\":false},\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"gea-mcp-proxy\",\"version\":\"1.0\"},\"protocolVersion\":\"2025-06-18\"},\"id\":\"8da80a8c-bf12-48fc-9ee5-ae290dba2d8b\",\"jsonrpc\":\"2.0\"}"
+   },
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/mcp/proxy/mcp",
+    "requestHeaders": {
+     "accept": "application/json, text/event-stream",
+     "content-type": "application/json",
+     "mcp-protocol-version": "2025-06-18",
+     "mcp-session-id": "35cca2c7-ba86-4c6a-a8a1-b255c937b0e2"
+    },
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}",
+    "status": 202
+   },
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/mcp/proxy/mcp",
+    "requestHeaders": {
+     "accept": "application/json, text/event-stream",
+     "content-type": "application/json",
+     "mcp-protocol-version": "2025-06-18",
+     "mcp-session-id": "35cca2c7-ba86-4c6a-a8a1-b255c937b0e2"
+    },
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"id\":\"ddca9eff-0b81-4460-8547-e6f24e4a519d\",\"method\":\"tools/list\",\"params\":{\"_meta\":{\"sessionId\":\"SES-0e3f74e1-5b49-47aa-8851-a97b43a9524c\",\"conversationId\":\"357fd15f-4a75-43e6-bedb-9fe65dab2299\",\"delegationToken\":\"gea-dlg-sgOIOi9N7jL1OElqRjcwgHo4qfPDbjUZTewMsH-G7xs\",\"agentCode\":\"dealer-inventory-replenishment\"}}}",
+    "status": 200,
+    "responseBody": "{\"result\":{\"tools\":[{\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false,\"required\":[]},\"name\":\"gateway.session.currentUser.resolve\",\"description\":\"通过 AI 网关会话解析当前用户最小上下文，不接收系统登录 token\",\"_meta\":{\"sourceCode\":\"mcp.gateway.session\",\"sourceType\":\"MCP\"}},{\"inputSchema\":{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\"},\"include_references\":{\"type\":\"boolean\"},\"query\":{\"type\":\"string\"},\"top_k\":{\"type\":\"integer\"}},\"required\":[\"query\"]},\"name\":\"lightrag_query\",\"description\":\"Query the LightRAG knowledge base and get an LLM-generated answer with\\n    source citations. Use this when you need to find information from the\\n    company's internal knowledge documents.\\n\\n    Args:\\n        query: The question to ask (min 3 characters).\\n        mode: Retrieval strategy - 'mix' (recommended, knowledge graph + vector),\\n              'local' (entity-focused), 'global' (broad patterns),\\n              'hybrid' (local + global), 'naive' (vector only).\\n        include_references: Whether to include source document citations.\\n        top_k: Number of top entities/relations to retrieve.\\n    \",\"_meta\":{\"sourceCode\":\"2080565829038387201\",\"sourceType\":\"MCP\"}},{\"inputSchema\":"
+   }
+  ]
+ },
+ {
+  "consumerCode": "branch-inventory",
+  "ok": true,
+  "tools": [
+   "gateway.session.currentUser.resolve",
+   "query_business_data",
+   "lightrag_list_docs",
+   "lightrag_query_data",
+   "lightrag_query"
+  ],
+  "raw": [
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/session",
+    "requestHeaders": {
+     "content-type": "application/json"
+    },
+    "requestBody": "{\"consumerType\":\"AGENT\",\"consumerCode\":\"branch-inventory\",\"conversationId\":\"cdd1bf06-caa6-44d2-95cf-390778d3fd42\",\"requestId\":\"6c7b6f1d-3344-47bf-8da8-ffb7e62faa45\",\"channel\":\"MCP_CLIENT\"}",
+    "status": 200,
+    "responseBody": "{\"success\":true,\"message\":\"\",\"code\":200,\"result\":{\"accessDecision\":{\"allowed\":true,\"code\":\"ALLOW\",\"stage\":null,\"message\":\"允许访问Agent\"},\"gatewayContext\":{\"requestId\":\"6c7b6f1d-3344-47bf-8da8-ffb7e62faa45\",\"traceId\":\"7dbc2243-7457-41aa-9453-4f97dea38a81\",\"conversationId\":\"cdd1bf06-caa6-44d2-95cf-390778d3fd42\",\"sessionId\":\"SES-eb65f59c-89a9-4ea4-a08a-18753a260070\",\"tenantId\":\"0\",\"principalType\":\"USER\",\"principalId\":\"2079086499998507009\",\"consumerType\":\"AGENT\",\"consumerCode\":\"branch-inventory\",\"authorizationRevision\":\"AUTHV:23328c593272ec23f07032644e9e36beed6d6e619cfbfa1805e7d3a1cabeb6f8\",\"userId\":\"2079086499998507009\",\"username\":\"10006800\",\"agentId\":\"branch-inventory\",\"agentVersion\":\"1.0\",\"channel\":\"MCP_CLIENT\",\"dataScopeRef\":\"SCOPE-7dbc2243-7457-41aa-9453-4f97dea38a81\",\"riskLevel\":\"LOW\",\"roleCodes\":[],\"departIds\":[\"2081225579385356290\"],\"platformSuperAdmin\":false,\"identityVersion\":\"IDV:94ec78065bc31ab0d431ff79627a4d1d1be9f8a6aedd2a745abbefbf0388dcee\"},\"effectiveCapabilityCodes\":[\"MCP:mcp.gateway.session\",\"MCP_TOOL:mcp.gateway.session:gateway.session.currentUser.resolve\",\"MCP:2081702996486942722\",\"MCP:2081634804962844673\",\"MCP_TOOL:2081634804962844673:query_business_data\",\"MCP:20805658"
+   },
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/mcp/proxy/mcp",
+    "requestHeaders": {
+     "accept": "application/json, text/event-stream",
+     "content-type": "application/json",
+     "mcp-protocol-version": "2025-06-18"
+    },
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"id\":\"2ccc3496-6f64-4731-b130-5c63b6fb2a15\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"gea-dsh\",\"version\":\"1.0.0\"}}}",
+    "status": 200,
+    "mcpSessionId": "1bb84733-c406-45ac-ba61-43c697ad6f4b",
+    "responseBody": "{\"result\":{\"capabilities\":{\"resources\":{\"listChanged\":false,\"subscribe\":false},\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"gea-mcp-proxy\",\"version\":\"1.0\"},\"protocolVersion\":\"2025-06-18\"},\"id\":\"2ccc3496-6f64-4731-b130-5c63b6fb2a15\",\"jsonrpc\":\"2.0\"}"
+   },
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/mcp/proxy/mcp",
+    "requestHeaders": {
+     "accept": "application/json, text/event-stream",
+     "content-type": "application/json",
+     "mcp-protocol-version": "2025-06-18",
+     "mcp-session-id": "1bb84733-c406-45ac-ba61-43c697ad6f4b"
+    },
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}",
+    "status": 202
+   },
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/mcp/proxy/mcp",
+    "requestHeaders": {
+     "accept": "application/json, text/event-stream",
+     "content-type": "application/json",
+     "mcp-protocol-version": "2025-06-18",
+     "mcp-session-id": "1bb84733-c406-45ac-ba61-43c697ad6f4b"
+    },
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"id\":\"03520f1d-bfe4-46c9-a885-e504b5b683eb\",\"method\":\"tools/list\",\"params\":{\"_meta\":{\"sessionId\":\"SES-eb65f59c-89a9-4ea4-a08a-18753a260070\",\"conversationId\":\"cdd1bf06-caa6-44d2-95cf-390778d3fd42\",\"delegationToken\":\"gea-dlg-mByvMRuxN3cNYCAjIxdPYikG1dIIsd4Y9GUsdbooIjc\",\"agentCode\":\"branch-inventory\"}}}",
+    "status": 200,
+    "responseBody": "{\"result\":{\"tools\":[{\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false,\"required\":[]},\"name\":\"gateway.session.currentUser.resolve\",\"description\":\"通过 AI 网关会话解析当前用户最小上下文，不接收系统登录 token\",\"_meta\":{\"sourceCode\":\"mcp.gateway.session\",\"sourceType\":\"MCP\"}},{\"inputSchema\":{\"type\":\"object\",\"properties\":{\"action\":{\"description\":\"inspect 读取完整公开语义模型；query 执行具名查询。\",\"type\":\"string\",\"enum\":[\"inspect\",\"query\"]},\"queries\":{\"description\":\"inspect 时必须传空数组；query 时传 1 到 8 个具名 Cube JSON Query。\",\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{}}},\"response_mode\":{\"description\":\"resource 始终生成分页产物；inline_complete 直接返回完整 rows，超出单次返回安全上限时明确拒绝，调用方需缩小查询范围。\",\"type\":\"string\",\"enum\":[\"resource\",\"inline_complete\"]}},\"required\":[\"action\",\"queries\"]},\"name\":\"query_business_data\",\"description\":\"检查 Cube 语义模型或执行调用方明确提交的 Cube JSON Query。\",\"_meta\":{\"sourceCode\":\"2081634804962844673\",\"sourceType\":\"MCP\"}},{\"inputSchema\":{\"type\":\"object\",\"properties\":{}},\"name\":\"lightrag_list_docs\",\"description\":\"List all documents currently in the LightRAG knowledge base with their\\n    processing status. Use this to understand what knowledge is available.\",\"_meta\":{\"sourceCode\":\"2080565829038387201\",\"sourceTy"
+   }
+  ]
+ },
+ {
+  "consumerCode": "orderfulfillment-preview",
+  "ok": false,
+  "error": "GEA_MCP_SESSION_REJECTED",
+  "raw": [
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/session",
+    "requestHeaders": {
+     "content-type": "application/json"
+    },
+    "requestBody": "{\"consumerType\":\"AGENT\",\"consumerCode\":\"orderfulfillment-preview\",\"conversationId\":\"87bc1df0-ff89-4581-a6ad-6bf782cb66fe\",\"requestId\":\"6abaff05-5032-4e4d-8118-7953d8f511c7\",\"channel\":\"MCP_CLIENT\"}",
+    "status": 200,
+    "responseBody": "{\"success\":true,\"message\":\"\",\"code\":200,\"result\":{\"accessDecision\":{\"allowed\":false,\"code\":\"AGENT_ACCESS_DENIED\",\"stage\":\"AGENT\",\"message\":\"当前用户无权访问该Agent\"},\"gatewayContext\":{\"requestId\":\"6abaff05-5032-4e4d-8118-7953d8f511c7\",\"traceId\":\"a6f74869-4b22-4073-b6ba-6fcd9e8ab749\",\"conversationId\":\"87bc1df0-ff89-4581-a6ad-6bf782cb66fe\",\"sessionId\":\"SES-7a92e7ff-6d1a-4b82-ba0a-d145101daf59\",\"tenantId\":\"0\",\"principalType\":\"USER\",\"principalId\":\"2079086499998507009\",\"consumerType\":\"AGENT\",\"consumerCode\":\"orderfulfillment-preview\",\"authorizationRevision\":\"AUTHV:949c862d65a9356998813af6d3d8310215dc7fcfaafb79ad57868a5114947a8c\",\"userId\":\"2079086499998507009\",\"username\":\"10006800\",\"agentId\":\"orderfulfillment-preview\",\"agentVersion\":\"1.0\",\"channel\":\"MCP_CLIENT\",\"dataScopeRef\":\"SCOPE-a6f74869-4b22-4073-b6ba-6fcd9e8ab749\",\"riskLevel\":\"LOW\",\"roleCodes\":[],\"departIds\":[\"2081225579385356290\"],\"platformSuperAdmin\":false,\"identityVersion\":\"IDV:94ec78065bc31ab0d431ff79627a4d1d1be9f8a6aedd2a745abbefbf0388dcee\"},\"effectiveCapabilityCodes\":[],\"delegationToken\":null},\"timestamp\":1790083651562,\"errorCode\":null,\"category\":null,\"retryable\":null,\"requestId\":null,\"traceId\":null,\"auditId\":null,\"details\":null}"
+   }
+  ]
+ },
+ {
+  "consumerCode": "orderworkbench-preview",
+  "ok": false,
+  "error": "GEA_MCP_SESSION_REJECTED",
+  "raw": [
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/session",
+    "requestHeaders": {
+     "content-type": "application/json"
+    },
+    "requestBody": "{\"consumerType\":\"AGENT\",\"consumerCode\":\"orderworkbench-preview\",\"conversationId\":\"8fc746fe-3d3c-4b97-a27f-3d63595340be\",\"requestId\":\"2e77feb2-87a7-4021-aa46-09d5f6d5e128\",\"channel\":\"MCP_CLIENT\"}",
+    "status": 200,
+    "responseBody": "{\"success\":true,\"message\":\"\",\"code\":200,\"result\":{\"accessDecision\":{\"allowed\":false,\"code\":\"AGENT_ACCESS_DENIED\",\"stage\":\"AGENT\",\"message\":\"当前用户无权访问该Agent\"},\"gatewayContext\":{\"requestId\":\"2e77feb2-87a7-4021-aa46-09d5f6d5e128\",\"traceId\":\"d51181a6-cc4b-43d3-acb3-a4fda3b26a32\",\"conversationId\":\"8fc746fe-3d3c-4b97-a27f-3d63595340be\",\"sessionId\":\"SES-a4b3e4e5-e342-4ec3-92b8-05ba9ea29aed\",\"tenantId\":\"0\",\"principalType\":\"USER\",\"principalId\":\"2079086499998507009\",\"consumerType\":\"AGENT\",\"consumerCode\":\"orderworkbench-preview\",\"authorizationRevision\":\"AUTHV:05c35bbb3b47febf1f5557cc18041445bfd705bbf17edac9fd46f57e726d6134\",\"userId\":\"2079086499998507009\",\"username\":\"10006800\",\"agentId\":\"orderworkbench-preview\",\"agentVersion\":\"1.0\",\"channel\":\"MCP_CLIENT\",\"dataScopeRef\":\"SCOPE-d51181a6-cc4b-43d3-acb3-a4fda3b26a32\",\"riskLevel\":\"LOW\",\"roleCodes\":[],\"departIds\":[\"2081225579385356290\"],\"platformSuperAdmin\":false,\"identityVersion\":\"IDV:94ec78065bc31ab0d431ff79627a4d1d1be9f8a6aedd2a745abbefbf0388dcee\"},\"effectiveCapabilityCodes\":[],\"delegationToken\":null},\"timestamp\":1790083651625,\"errorCode\":null,\"category\":null,\"retryable\":null,\"requestId\":null,\"traceId\":null,\"auditId\":null,\"details\":null}"
+   }
+  ]
+ },
+ {
+  "consumerCode": "inventory-personal-workbench",
+  "ok": false,
+  "error": "GEA_MCP_SESSION_REJECTED",
+  "raw": [
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/session",
+    "requestHeaders": {
+     "content-type": "application/json"
+    },
+    "requestBody": "{\"consumerType\":\"AGENT\",\"consumerCode\":\"inventory-personal-workbench\",\"conversationId\":\"535e0bd8-30e3-4e1d-b89b-d12e1674844c\",\"requestId\":\"c0bac3cf-6a0f-4c90-b396-b28793f010f6\",\"channel\":\"MCP_CLIENT\"}",
+    "status": 200,
+    "responseBody": "{\"success\":true,\"message\":\"\",\"code\":200,\"result\":{\"accessDecision\":{\"allowed\":false,\"code\":\"AGENT_ACCESS_DENIED\",\"stage\":\"AGENT\",\"message\":\"当前用户无权访问该Agent\"},\"gatewayContext\":{\"requestId\":\"c0bac3cf-6a0f-4c90-b396-b28793f010f6\",\"traceId\":\"010b016c-d0ac-4abc-8f60-a72c99cc36c5\",\"conversationId\":\"535e0bd8-30e3-4e1d-b89b-d12e1674844c\",\"sessionId\":\"SES-c7af641d-c23a-4581-b014-8fd67ac642df\",\"tenantId\":\"0\",\"principalType\":\"USER\",\"principalId\":\"2079086499998507009\",\"consumerType\":\"AGENT\",\"consumerCode\":\"inventory-personal-workbench\",\"authorizationRevision\":\"AUTHV:1054f663df87ed02f12e4ea23b6f93d937c55d4b02926c8bc80735281dba8a38\",\"userId\":\"2079086499998507009\",\"username\":\"10006800\",\"agentId\":\"inventory-personal-workbench\",\"agentVersion\":\"1.0\",\"channel\":\"MCP_CLIENT\",\"dataScopeRef\":\"SCOPE-010b016c-d0ac-4abc-8f60-a72c99cc36c5\",\"riskLevel\":\"LOW\",\"roleCodes\":[],\"departIds\":[\"2081225579385356290\"],\"platformSuperAdmin\":false,\"identityVersion\":\"IDV:94ec78065bc31ab0d431ff79627a4d1d1be9f8a6aedd2a745abbefbf0388dcee\"},\"effectiveCapabilityCodes\":[],\"delegationToken\":null},\"timestamp\":1790083651682,\"errorCode\":null,\"category\":null,\"retryable\":null,\"requestId\":null,\"traceId\":null,\"auditId\":null,\"details\":nul"
+   }
+  ]
+ },
+ {
+  "consumerCode": "full-chain-inventory",
+  "ok": true,
+  "tools": [
+   "gateway.session.currentUser.resolve",
+   "query_business_data",
+   "lightrag_list_docs",
+   "lightrag_query_data",
+   "lightrag_query"
+  ],
+  "raw": [
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/session",
+    "requestHeaders": {
+     "content-type": "application/json"
+    },
+    "requestBody": "{\"consumerType\":\"AGENT\",\"consumerCode\":\"full-chain-inventory\",\"conversationId\":\"db0ba310-c34a-4940-bb68-ed213931799b\",\"requestId\":\"0dba43c4-8041-4644-9efd-64a080e0c2c0\",\"channel\":\"MCP_CLIENT\"}",
+    "status": 200,
+    "responseBody": "{\"success\":true,\"message\":\"\",\"code\":200,\"result\":{\"accessDecision\":{\"allowed\":true,\"code\":\"ALLOW\",\"stage\":null,\"message\":\"允许访问Agent\"},\"gatewayContext\":{\"requestId\":\"0dba43c4-8041-4644-9efd-64a080e0c2c0\",\"traceId\":\"e9d68a4e-f329-4618-87e4-db3bfb173898\",\"conversationId\":\"db0ba310-c34a-4940-bb68-ed213931799b\",\"sessionId\":\"SES-2fb16e6a-d9a4-48ab-b62c-312467a51519\",\"tenantId\":\"0\",\"principalType\":\"USER\",\"principalId\":\"2079086499998507009\",\"consumerType\":\"AGENT\",\"consumerCode\":\"full-chain-inventory\",\"authorizationRevision\":\"AUTHV:1aab942058a2b93db093a88e02364291983089cad4f34f9079445a8e5a0c6295\",\"userId\":\"2079086499998507009\",\"username\":\"10006800\",\"agentId\":\"full-chain-inventory\",\"agentVersion\":\"1.0\",\"channel\":\"MCP_CLIENT\",\"dataScopeRef\":\"SCOPE-e9d68a4e-f329-4618-87e4-db3bfb173898\",\"riskLevel\":\"LOW\",\"roleCodes\":[],\"departIds\":[\"2081225579385356290\"],\"platformSuperAdmin\":false,\"identityVersion\":\"IDV:94ec78065bc31ab0d431ff79627a4d1d1be9f8a6aedd2a745abbefbf0388dcee\"},\"effectiveCapabilityCodes\":[\"MCP:mcp.gateway.session\",\"MCP_TOOL:mcp.gateway.session:gateway.session.currentUser.resolve\",\"MCP:2081702996486942722\",\"MCP:2081634804962844673\",\"MCP_TOOL:2081634804962844673:query_business_data\",\"MCP:"
+   },
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/mcp/proxy/mcp",
+    "requestHeaders": {
+     "accept": "application/json, text/event-stream",
+     "content-type": "application/json",
+     "mcp-protocol-version": "2025-06-18"
+    },
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"id\":\"b772e8e9-cba6-4ee4-b3f4-838d8b8ffd4d\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"gea-dsh\",\"version\":\"1.0.0\"}}}",
+    "status": 200,
+    "mcpSessionId": "85d372f2-3cb2-4664-bdeb-dcbc52acddd8",
+    "responseBody": "{\"result\":{\"capabilities\":{\"resources\":{\"listChanged\":false,\"subscribe\":false},\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"gea-mcp-proxy\",\"version\":\"1.0\"},\"protocolVersion\":\"2025-06-18\"},\"id\":\"b772e8e9-cba6-4ee4-b3f4-838d8b8ffd4d\",\"jsonrpc\":\"2.0\"}"
+   },
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/mcp/proxy/mcp",
+    "requestHeaders": {
+     "accept": "application/json, text/event-stream",
+     "content-type": "application/json",
+     "mcp-protocol-version": "2025-06-18",
+     "mcp-session-id": "85d372f2-3cb2-4664-bdeb-dcbc52acddd8"
+    },
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}",
+    "status": 202
+   },
+   {
+    "method": "POST",
+    "url": "https://gea.synear.cn/gea-boot/ai/gateway/mcp/proxy/mcp",
+    "requestHeaders": {
+     "accept": "application/json, text/event-stream",
+     "content-type": "application/json",
+     "mcp-protocol-version": "2025-06-18",
+     "mcp-session-id": "85d372f2-3cb2-4664-bdeb-dcbc52acddd8"
+    },
+    "requestBody": "{\"jsonrpc\":\"2.0\",\"id\":\"7cf9b3e9-22a2-441c-ac56-e507ad0835f4\",\"method\":\"tools/list\",\"params\":{\"_meta\":{\"sessionId\":\"SES-2fb16e6a-d9a4-48ab-b62c-312467a51519\",\"conversationId\":\"db0ba310-c34a-4940-bb68-ed213931799b\",\"delegationToken\":\"gea-dlg-w3_AUUU2k9rT3XYZY87NO91jR2wK65_pODX9jzPG-aE\",\"agentCode\":\"full-chain-inventory\"}}}",
+    "status": 200,
+    "responseBody": "{\"result\":{\"tools\":[{\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false,\"required\":[]},\"name\":\"gateway.session.currentUser.resolve\",\"description\":\"通过 AI 网关会话解析当前用户最小上下文，不接收系统登录 token\",\"_meta\":{\"sourceCode\":\"mcp.gateway.session\",\"sourceType\":\"MCP\"}},{\"inputSchema\":{\"type\":\"object\",\"properties\":{\"action\":{\"description\":\"inspect 读取完整公开语义模型；query 执行具名查询。\",\"type\":\"string\",\"enum\":[\"inspect\",\"query\"]},\"queries\":{\"description\":\"inspect 时必须传空数组；query 时传 1 到 8 个具名 Cube JSON Query。\",\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{}}},\"response_mode\":{\"description\":\"resource 始终生成分页产物；inline_complete 直接返回完整 rows，超出单次返回安全上限时明确拒绝，调用方需缩小查询范围。\",\"type\":\"string\",\"enum\":[\"resource\",\"inline_complete\"]}},\"required\":[\"action\",\"queries\"]},\"name\":\"query_business_data\",\"description\":\"检查 Cube 语义模型或执行调用方明确提交的 Cube JSON Query。\",\"_meta\":{\"sourceCode\":\"2081634804962844673\",\"sourceType\":\"MCP\"}},{\"inputSchema\":{\"type\":\"object\",\"properties\":{}},\"name\":\"lightrag_list_docs\",\"description\":\"List all documents currently in the LightRAG knowledge base with their\\n    processing status. Use this to understand what knowledge is available.\",\"_meta\":{\"sourceCode\":\"2080565829038387201\",\"sourceTy"
+   }
+  ]
+ }
+]

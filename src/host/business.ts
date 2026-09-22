@@ -1672,7 +1672,10 @@ export class Business {
    * 网关明确拒绝过 MCP 会话的模块：短窗口内不再重试。
    * 线上实测：网关回 rejected 后模型会换模块反复试（一轮三次），每次都白等一次往返。
    */
-  private readonly moduleMcpRejections = new Map<string, number>();
+  private readonly moduleMcpRejections = new Map<
+    string,
+    { at: number; permission: boolean }
+  >();
 
   /**
    * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
@@ -1686,11 +1689,18 @@ export class Business {
     if (!allowedConsumers.has(consumerCode))
       throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
     const auth = this.authenticated();
-    const rejectedAt = this.moduleMcpRejections.get(consumerCode);
-    if (rejectedAt !== undefined) {
-      if (Date.now() - rejectedAt < MCP_REJECTION_TTL_MS)
-        throw new Error(
-          `GEA_MCP_SESSION_REJECTED：网关刚才已拒绝过「${consumerCode}」的 MCP 会话，本轮不要再试它。改用 gea_plugin_read 直读该模块（先 describe=true），或读当前页面。`,
+    const rejected = this.moduleMcpRejections.get(consumerCode);
+    if (rejected !== undefined) {
+      if (Date.now() - rejected.at < MCP_REJECTION_TTL_MS)
+        throw Object.assign(
+          new Error(
+            rejected.permission
+              ? `AGENT_ACCESS_DENIED：当前账号没有「${consumerCode}」这个模块的 MCP 权限（刚才网关已明确拒绝，10 分钟内不再重试）。需要管理员开通该 Agent/模块权限。`
+              : `GEA_MCP_HTTP_REJECTED：网关刚才已拒绝过「${consumerCode}」的 MCP 调用，10 分钟内不要再试它。改用 gea_plugin_read 直读（先 describe=true），或读页面证据。`,
+          ),
+          rejected.permission
+            ? { code: "AGENT_ACCESS_DENIED", retryable: false }
+            : {},
         );
       this.moduleMcpRejections.delete(consumerCode);
     }
@@ -1705,22 +1715,239 @@ export class Business {
       module = await openModuleMcp(transport, signal);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      // 两类失败都要止损：网关没开权限（SESSION_REJECTED），或代理调用被拒（HTTP_4xx）。
-      // 线上实测模型会换模块连着试（一轮三次），每次白等一次往返。
-      const permission = /GEA_MCP_SESSION_REJECTED/.test(message);
-      const rejected = /GEA_MCP_(SESSION_(REJECTED|HTTP_\d+)|HTTP_\d+)/.test(message);
-      if (rejected) {
-        this.moduleMcpRejections.set(consumerCode, Date.now());
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : "";
+      // 权限没开通：这是业务状态，不是故障。原样抛出带 code 的错误，由工具层转成
+      // 正常提示（见 agent-tools 的 gea_module_mcp），不要显示成红色调用失败。
+      if (code === "AGENT_ACCESS_DENIED") {
+        this.moduleMcpRejections.set(consumerCode, {
+          at: Date.now(),
+          permission: true,
+        });
+        throw Object.assign(
+          new Error(
+            `AGENT_ACCESS_DENIED：当前账号没有「${consumerCode}」这个模块的 MCP 权限（${message.replace(/^AGENT_ACCESS_DENIED: /, "")}）。需要管理员在当前环境为该账号开通该 Agent/模块的权限。`,
+          ),
+          { code: "AGENT_ACCESS_DENIED", retryable: false },
+        );
+      }
+      // 其余是"网关拒绝/代理出错"：这类才是真失败，保留可读原因。
+      if (/GEA_MCP_(SESSION_(REJECTED|HTTP_\d+)|HTTP_\d+)/.test(message)) {
+        this.moduleMcpRejections.set(consumerCode, {
+          at: Date.now(),
+          permission: false,
+        });
         throw new Error(
-          permission
-            ? `GEA_MCP_SESSION_REJECTED：当前账号没有「${consumerCode}」这个模块的 MCP 权限（${message}）。10 分钟内不要再试它：改用 gea_plugin_read 直读（先 describe=true 看有哪些表与配方），或读页面证据。`
-            : `GEA_MCP_HTTP_REJECTED：网关拒绝了这个模块的 MCP 代理调用（${message}）。10 分钟内不要再试它：改用 gea_plugin_read 直读（先 describe=true），或读页面证据。`,
+          `GEA_MCP_HTTP_REJECTED：网关拒绝了这个模块的 MCP 调用（${message}）。10 分钟内不要再试它：改用 gea_plugin_read 直读（先 describe=true），或读页面证据。`,
         );
       }
       throw error;
     }
     this.moduleMcpCache.set(consumerCode, { token: auth.token, module });
     return module;
+  }
+
+  /**
+   * 诊断用：对某个 consumerCode 真走一遍 MCP（会话申请 → initialize → tools/list），
+   * 并把两段 HTTP 的原始请求/响应带出来。只在 GEA_DEBUG_PROBE=1 时经调试路由暴露。
+   */
+  async debugProbeModuleMcp(
+    consumerCode: string,
+    signal: AbortSignal,
+  ): Promise<{
+    consumerCode: string;
+    ok: boolean;
+    error?: string;
+    tools?: string[];
+    raw: Array<{
+      method: string;
+      url: string;
+      requestBody?: string;
+      status?: number;
+      mcpSessionId?: string;
+      requestHeaders?: Record<string, string>;
+      responseBody?: string;
+    }>;
+    experiments?: Array<{ label: string; status?: number; responseBody?: string }>;
+  }> {
+    const raw: Array<{
+      method: string;
+      url: string;
+      requestBody?: string;
+      status?: number;
+      mcpSessionId?: string;
+      requestHeaders?: Record<string, string>;
+      responseBody?: string;
+    }> = [];
+    const capture: typeof fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const method =
+        init?.method ?? (input instanceof Request ? input.method : "GET");
+      const requestBody =
+        typeof init?.body === "string" ? init.body.slice(0, 4000) : undefined;
+      const response = await this.apiLog.fetch(input, init);
+      const sessionHeader = response.headers.get("mcp-session-id") ?? undefined;
+      // 诊断要看清"同一个 body 为什么这次 400、重放 200"：把非敏感请求头一起留下。
+      const headerBag = new Headers(init?.headers);
+      const requestHeaders: Record<string, string> = {};
+      for (const key of [
+        "accept",
+        "content-type",
+        "mcp-protocol-version",
+        "mcp-session-id",
+      ]) {
+        const value = headerBag.get(key);
+        if (value) requestHeaders[key] = value;
+      }
+      let responseBody: string | undefined;
+      const type = response.headers.get("content-type") ?? "";
+      // 网关的错误体不一定是 JSON：只要是文本类且不大，就带回来（诊断要的就是这段）。
+      const length = Number(response.headers.get("content-length") ?? "0");
+      if (
+        type.includes("json") ||
+        type.includes("text") ||
+        (Number.isSafeInteger(length) && length > 0 && length < 20_000)
+      ) {
+        responseBody = await response
+          .clone()
+          .text()
+          .then((text) => text.slice(0, 4000))
+          .catch(() => undefined);
+      }
+      raw.push({
+        method,
+        url,
+        ...(Object.keys(requestHeaders).length
+          ? { requestHeaders }
+          : {}),
+        ...(requestBody === undefined ? {} : { requestBody }),
+        status: response.status,
+        ...(sessionHeader === undefined ? {} : { mcpSessionId: sessionHeader }),
+        ...(responseBody === undefined ? {} : { responseBody }),
+      });
+      return response;
+    };
+    // 会话阶段拿到的身份，用来做"带 _meta / 不带 _meta"的对照实验。
+    let meta: Record<string, unknown> | undefined;
+    let transportSession: string | undefined;
+    const experiments: Array<{ label: string; status?: number; responseBody?: string }> = [];
+    try {
+      const auth = this.authenticated();
+      const transport = await prepareGatewayMcp(
+        this.base,
+        auth,
+        { consumerType: "AGENT", consumerCode },
+        AbortSignal.any([signal, this.epoch.signal]),
+        this.config.mcpRequestTimeoutMs ?? 60000,
+        capture,
+      );
+      for (const entry of raw) {
+        if (!entry.responseBody) continue;
+        try {
+          const parsed = JSON.parse(entry.responseBody) as {
+            result?: {
+              gatewayContext?: { sessionId?: string; conversationId?: string };
+              delegationToken?: string;
+            };
+          };
+          const context = parsed.result?.gatewayContext;
+          if (context?.sessionId && parsed.result?.delegationToken) {
+            transportSession = transportSession ?? entry.mcpSessionId;
+            meta = {
+              sessionId: context.sessionId,
+              conversationId: context.conversationId,
+              delegationToken: parsed.result.delegationToken,
+              agentCode: consumerCode,
+            };
+          }
+        } catch {
+          // 不是 JSON 的响应不参与实验。
+        }
+      }
+      const module = await openModuleMcp(transport, signal);
+      return {
+        consumerCode,
+        ok: true,
+        tools: module.tools().map((tool) => tool.name),
+        raw,
+        ...(experiments.length ? { experiments } : {}),
+      };
+    } catch (error) {
+      // 对照实验：同一个代理会话下，tools/list 带 _meta 与不带 _meta 各发一次。
+      if (meta) {
+        const headers: Record<string, string> = {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+          "mcp-protocol-version": "2025-06-18",
+        };
+        const session = transportSession ?? raw.find((r) => r.mcpSessionId)?.mcpSessionId;
+        if (session) headers["mcp-session-id"] = session;
+        // 失败的那条 tools/list 原文（含 SDK 用的 id/params），用于区分"body 问题"与"header 问题"。
+        const failedList = raw.find(
+          (entry) =>
+            entry.status === 400 && entry.requestBody?.includes('"tools/list"'),
+        );
+        const variants: Array<[string, string]> = [
+          [
+            "tools/list（不带 _meta）",
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: "probe-0",
+              method: "tools/list",
+              params: {},
+            }),
+          ],
+          [
+            "tools/list（带 _meta，复刻线上）",
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: "probe-1",
+              method: "tools/list",
+              params: { _meta: meta },
+            }),
+          ],
+          ...(failedList?.requestBody
+            ? ([
+                ["原样重放失败的那条 tools/list", failedList.requestBody],
+              ] as Array<[string, string]>)
+            : []),
+        ];
+        for (const [label, body] of variants) {
+          try {
+            const response = await capture(
+              this.base + "/ai/gateway/mcp/proxy/mcp",
+              {
+                method: "POST",
+                headers,
+                body,
+              },
+            );
+            experiments.push({
+              label,
+              status: response.status,
+              responseBody: raw.at(-1)?.responseBody,
+            });
+          } catch (experimentError) {
+            experiments.push({
+              label,
+              responseBody:
+                experimentError instanceof Error
+                  ? experimentError.message
+                  : String(experimentError),
+            });
+          }
+        }
+      }
+      return {
+        consumerCode,
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        raw,
+        ...(experiments.length ? { experiments } : {}),
+      };
+    }
   }
 
   /** 为受信任的 HTML 插件提供带用户权限的只读 SQL 查询。SQL 仍由 GEA 网关按 consumerCode 审核。 */

@@ -566,6 +566,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "api-log/snapshot",
     "api-log/replay",
     "api-log/clear",
+    // 只在显式打开调试开关时注册：逐个模块真跑一遍 MCP，并把原始报文带回来。
+    ...(process.env.GEA_DEBUG_PROBE === "1" ? ["debug/mcp-probe"] : []),
   ];
   for (const endpoint of endpoints)
     ctx.effect(() =>
@@ -586,6 +588,12 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 break;
               case "api-log/clear":
                 value = business.apiLogClear(payload);
+                break;
+              case "debug/mcp-probe":
+                value = await business.debugProbeModuleMcp(
+                  String(payload.consumerCode ?? ""),
+                  request.signal,
+                );
                 break;
               case "workbench/query":
                 value = await business.workbenchQuery(payload, request.signal);

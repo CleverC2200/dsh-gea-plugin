@@ -65,11 +65,48 @@ test(
         capabilities: ["governed-sql-read"],
       }),
     );
+    // 第二个模块：非演示（真实）模块，用来验证"权限没开通"这类网关侧状态。
+    const realRoot = await mkdtemp(join(tmpdir(), "gea-real-probe-"));
+    await mkdir(join(realRoot, "skills", "probe"), { recursive: true });
+    await writeFile(
+      join(realRoot, "index.html"),
+      "<!doctype html><html><body>real probe</body></html>\n",
+    );
+    await writeFile(
+      join(realRoot, "skills", "probe", "SKILL.md"),
+      "---\nname: inventory-real\ndescription: 真模块探针。\n---\n\n规则。\n",
+    );
+    await writeFile(
+      join(realRoot, "plugin.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: "inventory-real",
+        name: "真模块探针",
+        version: "0.0.0",
+        html: "index.html",
+        skills: ["skills/probe/SKILL.md"],
+        mcp: "mcp.json",
+        gea: { consumerCode: "branch-inventory", readonly: true, contract: "gea-html-v1" },
+      }),
+    );
+    await writeFile(
+      join(realRoot, "mcp.json"),
+      JSON.stringify({
+        provider: "gea",
+        transport: "host-provided",
+        contract: "gea-html-v1",
+        consumer: { consumerType: "AGENT", consumerCode: "branch-inventory" },
+        capabilities: ["governed-sql-read"],
+      }),
+    );
     const app = await profile(t, {
       pluginRoot: process.env.GEA_TEST_PLUGIN_ROOT,
       bundle: Boolean(process.env.GEA_TEST_PLUGIN_ROOT),
       env: {
-        GEA_HTML_PLUGIN_ROOTS: JSON.stringify({ "inventory-probe": probeRoot }),
+        GEA_HTML_PLUGIN_ROOTS: JSON.stringify({
+          "inventory-probe": probeRoot,
+          "inventory-real": realRoot,
+        }),
         DSH_AGENTS_HOME: agentsHome,
       },
       config: () => ({
@@ -97,6 +134,22 @@ test(
       "\n\n";
     app.route((req, res, reply) => {
       const path = req.url.pathname;
+      // 模块 MCP 的会话申请：网关明确说"当前用户无权访问该Agent"。
+      if (outcome === "module-mcp-denied" && path.endsWith("/ai/gateway/session")) {
+        reply({
+          success: true,
+          code: 200,
+          result: {
+            accessDecision: {
+              allowed: false,
+              code: "AGENT_ACCESS_DENIED",
+              stage: "AGENT",
+              message: "当前用户无权访问该Agent",
+            },
+          },
+        });
+        return true;
+      }
       if (path.endsWith("/user-agent-credential/my/list")) {
         reply({
           success: true,
@@ -219,6 +272,32 @@ test(
                 },
                 "tool_calls",
               ),
+        );
+        return true;
+      }
+      if (outcome === "module-mcp-denied") {
+        const results = body.messages.filter((x) => x.role === "tool");
+        res.end(
+          results.length === 0
+            ? event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "module-mcp-denied-1",
+                      type: "function",
+                      function: {
+                        name: "gea_module_mcp",
+                        arguments: JSON.stringify({
+                          consumerCode: "branch-inventory",
+                        }),
+                      },
+                    },
+                  ],
+                },
+                "tool_calls",
+              )
+            : event({ content: "这个模块的权限还没开通。" }, "stop"),
         );
         return true;
       }
@@ -635,6 +714,31 @@ test(
       },
     );
     await t.test(
+      "没权限时给的是「权限未开通」的正常提示，不是红色调用失败",
+      async () => {
+        outcome = "module-mcp-denied";
+        modelRequests = [];
+        const rows = await ended(await submit());
+        const result = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "module-mcp-denied-1",
+        );
+        assert.match(result.content, /permission-required/);
+        assert.match(result.content, /AGENT_ACCESS_DENIED/);
+        assert.match(result.content, /不是调用失败/);
+        // 关键：这一条不能是可见的工具错误（红色 Error）。
+        assert.equal(
+          rows.some(
+            (entry) =>
+              entry.type === "tool/result" &&
+              entry.data.message.content.some?.((block) => block.isError) === true,
+          ),
+          false,
+        );
+      },
+    );
+    await t.test(
       "演示模块不再去撞 MCP：直接说明没有数据通道",
       async () => {
         outcome = "module-mcp-mock";
@@ -752,6 +856,7 @@ test(
         // 枚举按装了什么模块生成，不再写死一份固定名单。
         assert.deepEqual(tool.function.parameters.properties.consumerCode.enum, [
           "probe-consumer",
+          "branch-inventory",
         ]);
         // 列名不确定时先 describe，工具自己也把这条路径写清楚了。
         assert.equal(

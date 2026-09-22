@@ -156,6 +156,8 @@ export async function openModuleMcp(
     });
 
   let initialized = false;
+  /** 协商成功的协议版本：网关要求后续每次请求都带上它（缺了 tools/list 会被 400）。 */
+  let negotiated: string | undefined;
   let lastError: unknown;
   for (const version of PROTOCOL_VERSIONS) {
     const id = randomUUID();
@@ -180,6 +182,7 @@ export async function openModuleMcp(
       );
       await ready.body?.cancel();
       initialized = true;
+      negotiated = version;
       break;
     } catch (error) {
       lastError = error;
@@ -193,7 +196,7 @@ export async function openModuleMcp(
     );
 
   // 先取工具清单：传输层靠 tools/list 把工具名映射成服务端路由码，tools/call 才认得。
-  const tools = await listModuleTools(transport, signal);
+  const tools = await listModuleTools(transport, signal, negotiated);
   return {
     tools: () => tools,
     call: async (name, args, callSignal) => {
@@ -205,7 +208,7 @@ export async function openModuleMcp(
           method: "tools/call",
           params: { name, arguments: args },
         },
-        { expectId: id },
+        { expectId: id, ...(negotiated ? { version: negotiated } : {}) },
       );
       const result = await readReply(response, id, callSignal);
       return resultText(result);
@@ -217,6 +220,7 @@ export async function openModuleMcp(
 export async function listModuleTools(
   transport: { url: string; fetch: typeof fetch },
   signal: AbortSignal,
+  version?: string,
 ): Promise<McpTool[]> {
   const id = randomUUID();
   const response = await transport.fetch(transport.url, {
@@ -224,6 +228,8 @@ export async function listModuleTools(
     headers: {
       "content-type": "application/json",
       accept: "application/json, text/event-stream",
+      // 线上实测：网关要求每个请求都带协议版本；缺了它 tools/list 直接 400。
+      ...(version ? { "MCP-Protocol-Version": version } : {}),
     },
     body: JSON.stringify({ jsonrpc: "2.0", id, method: "tools/list", params: {} }),
     signal,

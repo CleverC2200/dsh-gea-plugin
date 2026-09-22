@@ -78,8 +78,13 @@ test("会话按 initialize → tools/list 建立，工具清单可读", async ()
     seen.map((item) => item.method),
     ["initialize", "notifications/initialized", "tools/list", "tools/call"],
   );
-  // initialize 必须带协议版本头：重连时传输层要用它比对服务端版本。
-  assert.ok(seen[0].headers["MCP-Protocol-Version"]);
+  // 每个请求都要带协议版本头：线上实测网关只在缺它的时候把 tools/list 判 400
+  // （initialize 带了、tools/list 没带 → 会话建得起来、工具列不出来）。
+  for (const item of seen)
+    assert.ok(
+      item.headers["MCP-Protocol-Version"],
+      `${item.method} 缺少 MCP-Protocol-Version 头`,
+    );
 });
 
 test("明确标记为写入或破坏性的 MCP 工具不会进入只读清单", async () => {

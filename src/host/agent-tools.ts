@@ -371,7 +371,33 @@ export function registerGeaTools(
               consumerCode,
               note: "「演示模块」没有 MCP 数据通道：页面里的数字是原型数据。要演示数据请读页面；真实口径请用 gea_plugin_read 查有可读表的模块（先 describe=true）。",
             });
-          const module = await business.moduleMcp(consumerCode, exec.signal);
+          let module: import("./mcp-client.ts").McpModule;
+          try {
+            module = await business.moduleMcp(consumerCode, exec.signal);
+          } catch (error) {
+            const code =
+              error && typeof error === "object" && "code" in error
+                ? String((error as { code?: unknown }).code)
+                : "";
+            // 权限没开通是业务状态，不是调用失败：回正常结果，别显示成红色错误。
+            if (code === "AGENT_ACCESS_DENIED")
+              return JSON.stringify({
+                source: "GEA_MODULE_MCP",
+                availability: "permission-required",
+                consumerCode,
+                code: "AGENT_ACCESS_DENIED",
+                message:
+                  error instanceof Error
+                    ? error.message.replace(/^AGENT_ACCESS_DENIED：/, "")
+                    : "当前账号无权访问该模块的 MCP 数据通道。",
+                next: [
+                  "让管理员在当前环境给这个账号开通该 Agent/模块的权限后再试；",
+                  "现在可以先读页面证据，或用 gea_plugin_read 查有可读表的模块（先 describe=true）。",
+                ],
+                note: "这是权限未开通，不是调用失败：不用重试，也不要换别的模块凑答案。",
+              });
+            throw error;
+          }
           const toolName = typeof args.tool === "string" ? args.tool.trim() : "";
           if (!toolName)
             return JSON.stringify({

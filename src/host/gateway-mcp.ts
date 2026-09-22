@@ -40,6 +40,25 @@ export async function prepareGatewayMcp(
   const result = payload?.result;
   const context = result?.gatewayContext;
 
+  // 权限没开通和"请求/会话本身有问题"要分开：前者是正常业务状态，不该显示成调用失败。
+  if (result?.accessDecision?.allowed === false)
+    throw Object.assign(
+      new Error(
+        "AGENT_ACCESS_DENIED: " +
+          (typeof result.accessDecision.message === "string" &&
+          result.accessDecision.message.trim()
+            ? result.accessDecision.message
+            : "当前用户无权访问该Agent"),
+      ),
+      {
+        code: "AGENT_ACCESS_DENIED",
+        accessDecisionCode:
+          typeof result.accessDecision.code === "string"
+            ? result.accessDecision.code
+            : "AGENT_ACCESS_DENIED",
+        retryable: false,
+      },
+    );
   if (
     payload?.success !== true ||
     result?.accessDecision?.allowed !== true ||
