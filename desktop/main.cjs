@@ -132,7 +132,9 @@ async function selectPlugin(){
 }
 function report(error){const text=errorText(error);void appendFile(join(data,'desktop.log'),new Date().toISOString()+' STARTUP_ERROR '+text+'\n',{mode:0o600}).catch(()=>{});if(window&&!window.isDestroyed())void showStartup(text).catch(()=>dialog.showErrorBox('GEA Desktop',text));else dialog.showErrorBox('GEA Desktop',text);}
 function createWindow(){
-  window=new BrowserWindow({width:1440,height:960,minWidth:760,minHeight:600,title:'Synear GEA',
+  // 最小窗口按 1024×640：再小的话工作台会退化成图标列 + 横向滚动。
+  // 不设 1280 是为了照顾 1366×768 笔记本在 125% 缩放下的 1093px 可用宽度。
+  window=new BrowserWindow({width:1440,height:960,minWidth:1024,minHeight:640,title:'Synear GEA',
     webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true}});
   // 左上角标题固定成品牌名：页面标题（会话主题「xxx — DSH 本地构建」）不再改写窗口标题。
   window.on('page-title-updated',(event)=>event.preventDefault());

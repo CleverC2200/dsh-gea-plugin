@@ -9,6 +9,17 @@
   container-type: inline-size;
   background: var(--bg-2);
   color: var(--text-primary);
+  /* 超宽屏（2K/带鱼屏）下内容不再无限拉伸：整页内容居中并留出上限，
+     1600 以下窗口不受影响。 */
+  --gea-workbench-content-max: 1600px;
+}
+
+.header,
+.stageViewport,
+.content {
+  width: 100%;
+  max-width: var(--gea-workbench-content-max);
+  margin-inline: auto;
 }
 
 .header {

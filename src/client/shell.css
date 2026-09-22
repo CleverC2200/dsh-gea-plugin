@@ -738,6 +738,20 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-agent-action-arrow { margin-left: auto; color: #9a9a96; font-size: 12px; font-weight: 400; }
 .gea-agent-prompts { padding-top: 2px; }
 .gea-agent-prompts button { min-height: 34px; margin-bottom: 7px; padding: 7px 14px; border-radius: 999px; color: #5f5f5a; }
+/* 矮窗口（≤940px 高，覆盖 768/864/900 这类常见笔记本高度）压缩欢迎区：
+   隐藏常用功能的一行说明、常用功能只留前两条、收紧间距，
+   让「你可以这样问」的推荐问题一屏可见，而不是要滚动才看得到。 */
+@media (max-height: 940px) {
+  .gea-agent-action-detail { display: none; }
+  .gea-agent-intro { padding: 7px 10px; }
+  .gea-agent-block { margin-top: 12px; }
+  .gea-agent-prompts button { min-height: 32px; margin-bottom: 6px; padding: 6px 12px; }
+  .gea-agent-actions button:nth-child(n + 3) { display: none; }
+}
+/* 更矮（≤780px 高）时连头像一起收掉，保证推荐问题不被折叠。 */
+@media (max-height: 780px) {
+  .gea-agent-avatar { display: none; }
+}
 /*
  * AI 工作台主页面主视觉（原型 mid 区）：品牌引言 + 三个入口，
  * 原生会话区只留输入卡，DSH 自己的欢迎品牌（探索未至之境/预览版）不再出现。
