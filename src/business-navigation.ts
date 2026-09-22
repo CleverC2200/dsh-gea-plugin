@@ -52,18 +52,18 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
     key: "supply",
     title: "产销协同",
     icon: "synergy",
-    items: [{ id: "inventory-apsplan", title: "产销协同Agent" }],
+    items: [{ id: "inventory-apsplan", title: "产销协同工作台" }],
   },
   {
     key: "plan",
     title: "计划管理",
     icon: "calendar",
     items: [
-      { id: "plan-region-category", title: "区域及品类计划Agent（开发中）" },
-      { id: "gea-proof", title: "销售计划Agent" },
-      { id: "gea-regional-plan", title: "区域计划Agent（开发中）" },
-      { id: "plan-category-production", title: "品类与生产计划Agent（开发中）" },
-      { id: "plan-capacity-assessment", title: "产能评估Agent（待设计）" },
+      { id: "plan-region-category", title: "区域及品类计划工作台(开发中)" },
+      { id: "gea-proof", title: "销售计划" },
+      { id: "gea-regional-plan", title: "区域计划(开发中)" },
+      { id: "plan-category-production", title: "品类与生产计划(开发中)" },
+      { id: "plan-capacity-assessment", title: "产能评估(待设计)" },
     ],
   },
   {
@@ -71,10 +71,10 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
     title: "库存管理",
     icon: "warehouse",
     items: [
-      { id: "inventory-qll", title: "全链库存管理Agent" },
-      { id: "inventory-aqkc", title: "基地库存Agent" },
-      { id: "inventory-fc", title: "分仓库存Agent" },
-      { id: "inventory-customer", title: "客户库存Agent（开发中）" },
+      { id: "inventory-qll", title: "全链库存工作台" },
+      { id: "inventory-aqkc", title: "基地库存" },
+      { id: "inventory-fc", title: "分仓库存" },
+      { id: "inventory-customer", title: "客户库存(开发中)" },
     ],
   },
   {
@@ -82,8 +82,8 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
     title: "订单管理",
     icon: "orders",
     items: [
-      { id: "inventory-orderworkbench", title: "订单管理Agent（开发中）" },
-      { id: "inventory-orderfulfillment", title: "订单履约Agent（开发中）" },
+      { id: "inventory-orderworkbench", title: "订单管理工作台(开发中)" },
+      { id: "inventory-orderfulfillment", title: "订单履约(开发中)" },
     ],
   },
 ];

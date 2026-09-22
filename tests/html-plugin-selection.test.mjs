@@ -35,7 +35,7 @@ test("left menu follows the fixed prototype directory and disables unavailable p
   assert.deepEqual(groups[0].entries.map(entry => entry.id), ['inventory-apsplan']);
   assert.deepEqual(groups[1].entries.map(entry => entry.id), ['plan-region-category', 'gea-proof', 'gea-regional-plan', 'plan-category-production', 'plan-capacity-assessment']);
   assert.deepEqual(groups[2].entries.map(entry => entry.id), ['inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-customer']);
-  assert.equal(groups[2].entries[0].title, '全链库存管理Agent');
+  assert.equal(groups[2].entries[0].title, '全链库存工作台');
   assert.equal(groups[2].entries[0].disabled, false);
   assert.deepEqual(groups[3].entries.map(entry => entry.id), ['inventory-orderworkbench', 'inventory-orderfulfillment']);
   assert.equal(groups[1].entries[0].disabled, true);
@@ -46,5 +46,5 @@ test("registered development pages become clickable without changing their label
   const groups = menuOf(['inventory-orderworkbench', 'inventory-orderfulfillment']);
   const orders = groups.find(group => group.key === 'orders');
   assert.equal(orders.entries.every(entry => entry.disabled === false), true);
-  assert.deepEqual(orders.entries.map(entry => entry.title), ['订单管理Agent（开发中）', '订单履约Agent（开发中）']);
+  assert.deepEqual(orders.entries.map(entry => entry.title), ['订单管理工作台(开发中)', '订单履约(开发中)']);
 });
