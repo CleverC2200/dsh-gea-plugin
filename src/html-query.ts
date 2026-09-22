@@ -88,39 +88,49 @@ export function prepareHtmlQuery(input: any) {
           question ? "$" + ++index : token,
       );
     } else {
-      if (used.length === 0)
-        throw Error(
-          "UNUSED_QUERY_PARAMETER：SQL 里没有任何占位符引用 parameters；命名参数用 :name（例如 where cust_code = :cust），不要用 ?",
+      if (used.length === 0) {
+        // 空的 parameters（{}）当没传：模型和宿主都爱顺手带一个空对象，
+        // 这不是"参数写法错"，不该把一条本来就好的 SQL 判失败。
+        const provided = Object.keys(parameters);
+        if (provided.length > 0)
+          throw Error(
+            `UNUSED_QUERY_PARAMETER：SQL 里没有占位符引用 parameters 里的 ${provided
+              .slice(0, 3)
+              .join("、")}；命名参数用 :name（例如 where cust_code = :cust），不要用 ?`,
+          );
+        values = [];
+      }
+      if (used.length > 0) {
+        const names: string[] = [];
+        sql = sql.replace(
+          PLACEHOLDER,
+          (token: string, name?: string) => {
+            if (!name) return token;
+            if (name.startsWith("__gea_"))
+              throw Error("RESERVED_QUERY_PARAMETER：__gea_ 前缀是宿主保留名");
+            if (!Object.hasOwn(parameters, name))
+              throw Error(
+                `MISSING_QUERY_PARAMETER：SQL 用到 :${name}，parameters 里没有这个键`,
+              );
+            let i = names.indexOf(name);
+            if (i < 0) {
+              i = names.length;
+              names.push(name);
+            }
+            return "$" + (i + 1);
+          },
         );
-      const names: string[] = [];
-      sql = sql.replace(
-        PLACEHOLDER,
-        (token: string, name?: string) => {
-          if (!name) return token;
-          if (name.startsWith("__gea_"))
-            throw Error("RESERVED_QUERY_PARAMETER：__gea_ 前缀是宿主保留名");
-          if (!Object.hasOwn(parameters, name))
-            throw Error(
-              `MISSING_QUERY_PARAMETER：SQL 用到 :${name}，parameters 里没有这个键`,
-            );
-          let i = names.indexOf(name);
-          if (i < 0) {
-            i = names.length;
-            names.push(name);
-          }
-          return "$" + (i + 1);
-        },
-      );
-      const extra = Object.keys(parameters).filter(
-        (name) => !names.includes(name),
-      );
-      if (extra.length)
-        throw Error(
-          `UNUSED_QUERY_PARAMETER：parameters 里的 ${extra
-            .slice(0, 3)
-            .join("、")} 在 SQL 里没有被引用`,
+        const extra = Object.keys(parameters).filter(
+          (name) => !names.includes(name),
         );
-      values = names.map((name) => parameters[name]);
+        if (extra.length)
+          throw Error(
+            `UNUSED_QUERY_PARAMETER：parameters 里的 ${extra
+              .slice(0, 3)
+              .join("、")} 在 SQL 里没有被引用`,
+          );
+        values = names.map((name) => parameters[name]);
+      }
     }
   }
   if (!Array.isArray(values) || values.length > 10000)

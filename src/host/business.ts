@@ -1753,7 +1753,9 @@ export class Business {
     consumerCode: string,
     signal: AbortSignal,
   ): Promise<import("./mcp-client.ts").McpModule> {
-    const allowedConsumers = this.pluginConsumers ?? DEFAULT_PLUGIN_CONSUMERS;
+    const allowedConsumers = this.pluginConsumers?.size
+      ? this.pluginConsumers
+      : DEFAULT_PLUGIN_CONSUMERS;
     if (!allowedConsumers.has(consumerCode))
       throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
     const auth = this.authenticated();
@@ -2026,8 +2028,11 @@ export class Business {
     keys(payload, ["consumerCode", "sql", "parameters", "values", "pageNo", "pageSize", "maxRows", "packing", "resultShape", "query"]);
     const auth = this.authenticated();
     const consumerCode = text(payload.consumerCode ?? query.consumerCode);
-    // 白名单来自能力契约（由宿主在启动时注入）；没有契约时用内置兜底清单。
-    const allowedConsumers = this.pluginConsumers ?? DEFAULT_PLUGIN_CONSUMERS;
+    // 白名单来自能力契约（由宿主在启动时注入）；一个契约都没有时（例如单元测试或
+    // 没装任何 HTML 插件）用内置兜底清单，避免把历史编码一起挡掉。
+    const allowedConsumers = this.pluginConsumers?.size
+      ? this.pluginConsumers
+      : DEFAULT_PLUGIN_CONSUMERS;
     if (!allowedConsumers.has(consumerCode)) throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
     // 同一个模块连续失败就到此为止：线上实测模型会换着表/换着 SQL 一直重试
     // （38 步、4 分钟不输出）。熔断后强制它用手上的证据作答，或说明缺什么。
