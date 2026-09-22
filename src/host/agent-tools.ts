@@ -527,11 +527,12 @@ export function registerGeaTools(
       defineTool({
         name: "gea_gateway_catalog",
         description:
-          "List the GEA gateway semantic model before querying it. Call this first whenever the answer needs data that is not on the current workbench page (historical shipments, dealer or branch inventory, stock age, replenishment cycle, policy, seasonality, forecast confidence) or company knowledge base content. The result lists each model and its member names; copy member names verbatim into the Cube query you pass to the gateway's query_business_data tool. Pass model to narrow the directory to one model when it is long. Read-only: it cannot write, submit, approve or mutate anything.",
+          "List the GEA gateway semantic model before querying it. Call this first whenever the answer needs data that is not on the current workbench page (historical shipments, dealer or branch inventory, stock age, replenishment cycle, policy, seasonality, forecast confidence) or company knowledge base content. 两级返回：不带 model 只回**模型索引**（名字 + 一句话 + 成员数量），名单是完整的；挑好模型后再带 model=模型名（按模型名子串匹配）拿它的成员名，并把这些成员名原样抄进 query_business_data 的 Cube 查询。索引里没有的模型就是没有，不要猜名字；猜错时返回的报错会列出可用模型。只读：不能写、提交、审批或改数据。",
         parameters: {
           model: {
             type: "string",
-            description: "只看名字里包含该字符串的模型，例如 agents_scm_wl_cust_stock_age_governed。留空返回全部模型。",
+            description:
+              "按模型名子串只看匹配的模型（例如 agents_scm_wl_cust_stock_age_governed 的关键字）；留空只回模型索引。",
           },
         },
         output: {

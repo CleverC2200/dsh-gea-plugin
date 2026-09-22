@@ -83,22 +83,33 @@ test("解析第一段完整 JSON，忽略尾部提示", () => {
   assert.throws(() => parseFirstJsonObject('{"a": '), /GEA_CATALOG_TRUNCATED/);
 });
 
-test("紧凑目录给出模型与成员名，并支持按模型过滤", () => {
+test("不带 model 只回模型索引：名字完整、不带成员名", () => {
   const all = projectCatalog(sample);
   assert.match(all, /agent_branch_cycle_config/);
-  assert.match(all, /agent_branch_cycle_config\.warehouse_id/);
-  assert.match(all, /agents_scm_wl_cust_stock_age_governed\.qty/);
-  // 只给模型名时，不该把 33 万字符的正文带出来。
-  assert.ok(all.length < 4000, String(all.length));
-
-  const one = projectCatalog(sample, { model: "stock_age" });
-  assert.match(one, /agents_scm_wl_cust_stock_age_governed/);
-  assert.doesNotMatch(one, /agent_branch_cycle_config/);
-
-  assert.throws(() => projectCatalog(sample, { model: "不存在的模型" }), /GEA_CATALOG_MODEL_NOT_FOUND/);
+  assert.match(all, /agents_scm_wl_cust_stock_age_governed/);
+  // 索引里不该出现成员名（那是二级返回的事），也不该说"目录已截断"吓模型去猜。
+  assert.doesNotMatch(all, /agent_branch_cycle_config\.warehouse_id/);
+  assert.doesNotMatch(all, /目录已截断/);
+  assert.match(all, /带 model=模型名 再调一次/);
+  assert.ok(all.length < 2000, String(all.length));
 });
 
-test("目录超出预算时明确标注截断", () => {
+test("带 model 才回成员名；猜错时列出可用模型", () => {
+  const one = projectCatalog(sample, { model: "stock_age" });
+  assert.match(one, /agents_scm_wl_cust_stock_age_governed\.qty/);
+  assert.doesNotMatch(one, /agent_branch_cycle_config/);
+
+  assert.throws(
+    () => projectCatalog(sample, { model: "不存在的模型" }),
+    (error) =>
+      /GEA_CATALOG_MODEL_NOT_FOUND/.test(error.message) &&
+      /可用模型：/.test(error.message) &&
+      /agent_branch_cycle_config/.test(error.message),
+    "报错必须带可用模型名，否则模型只会继续猜",
+  );
+});
+
+test("预算不够时先保名字完整，再退成只有名字；成员只在二级返回里截断", () => {
   const big = {
     semanticModel: Array.from({ length: 40 }, (_, index) => ({
       name: "model_" + index,
@@ -108,6 +119,14 @@ test("目录超出预算时明确标注截断", () => {
       segments: [],
     })),
   };
-  const text = projectCatalog(big, { maxChars: 1200 });
-  assert.match(text, /目录已截断/);
+  // 索引预算很小时：40 个名字一个都不能少，也不出现"目录已截断"。
+  const index = projectCatalog(big, { maxChars: 500 });
+  for (let i = 0; i < 40; i += 1) assert.match(index, new RegExp("model_" + i + "\\b"));
+  assert.doesNotMatch(index, /目录已截断/);
+
+  // 二级返回里成员超上限：只说成员被截断，不说目录被截断。
+  const details = projectCatalog(big, { model: "model_1", maxMembersPerModel: 0 });
+  assert.match(details, /model_1/);
+  assert.match(details, /成员名超过单次上限/);
+  assert.doesNotMatch(details, /目录已截断/);
 });
