@@ -99,6 +99,10 @@ test('多选批量通过：勾选 3 笔一次性逐笔提交', { timeout: 90000 
     writes.map((body) => body.action).sort(),
     ['APPROVE', 'APPROVE', 'APPROVE'],
   );
+  // 全部成功后弹窗自己在 5 秒左右收起，并清掉本次勾选。
+  await expect(frame.getByTestId('regional-approval-batch-autoclose')).toBeVisible();
+  await expect(dialog).toBeHidden({ timeout: 12000 });
+  await expect(single.locator('input')).not.toBeChecked();
 });
 
 test('批量里一笔冲突不影响其它笔，结果逐笔说明原因', { timeout: 90000 }, async (t) => {

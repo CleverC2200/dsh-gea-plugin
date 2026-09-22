@@ -890,6 +890,7 @@
         "required": "请填写退回原因并确认本次提交范围。",
         "loading": "正在逐笔提交 {{count}} 笔计划，请勿关闭…",
         "result": "本次提交完成：成功 {{success}} 笔，失败 {{failed}} 笔，跳过 {{skipped}} 笔。",
+        "autoClose": "{{seconds}} 秒后自动关闭",
         "skipped": "该计划当前不可操作",
         "close": "关闭",
         "confirmApprove": "确认批量通过",

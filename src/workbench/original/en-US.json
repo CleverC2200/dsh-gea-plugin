@@ -890,6 +890,7 @@
         "required": "Add a return reason and confirm the scope before submitting.",
         "loading": "Submitting {{count}} plans one by one. Do not close this dialog.",
         "result": "Submission finished: {{success}} succeeded, {{failed}} failed, {{skipped}} skipped.",
+        "autoClose": "Closing in {{seconds}}s",
         "skipped": "This plan cannot be submitted right now",
         "close": "Close",
         "confirmApprove": "Approve all",

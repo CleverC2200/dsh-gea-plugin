@@ -1,7 +1,7 @@
 /** 改编自 AionUi（Apache-2.0）：已替换为本地导入并使用显式 DSH Host 适配器，见 SOURCE.md。 */
 import { Alert, Button, Checkbox, Input, Modal, Spin } from '@arco-design/web-react';
 import type { TFunction } from 'i18next';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { GeaSalesPlanActionRequest } from '../../bridge.ts';
 import {
   SalesPlanActionAttempt,
@@ -15,6 +15,9 @@ import { actionErrorText } from './RegionalApprovalLiveActionDialog.tsx';
 import styles from './RegionalApprovalActionDialog.module.css';
 
 export type BatchActionKind = 'APPROVE' | 'REJECT';
+
+/** 全部成功后自动收起弹窗，避免每次提交都要再点一次「关闭」。 */
+const AUTO_CLOSE_SECONDS = 5;
 
 export type BatchActionItem = {
   row: RegionalApprovalLiveRow;
@@ -62,6 +65,26 @@ const RegionalApprovalBatchActionDialog: React.FC<{
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [outcomes, setOutcomes] = useState<BatchActionOutcome[]>();
+  const [secondsToClose, setSecondsToClose] = useState<number>();
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  // 只在全部成功时倒计时；有失败或跳过时保持打开，别把原因一闪而过。
+  useEffect(() => {
+    if (!outcomes) return;
+    if (outcomes.some((outcome) => outcome.status !== 'success')) {
+      setSecondsToClose(undefined);
+      return;
+    }
+    setSecondsToClose(AUTO_CLOSE_SECONDS);
+    const timer = window.setInterval(() => setSecondsToClose((current) => (current === undefined ? current : Math.max(0, current - 1))), 1000);
+    return () => window.clearInterval(timer);
+  }, [outcomes]);
+
+  useEffect(() => {
+    if (secondsToClose !== 0) return;
+    closeRef.current();
+  }, [secondsToClose]);
 
   const submittable = items.filter((item) => item.access?.allowedActions.includes(kind));
   const submitted = outcomes?.filter((outcome) => outcome.status === 'success').length ?? 0;
@@ -222,6 +245,11 @@ const RegionalApprovalBatchActionDialog: React.FC<{
                 skipped,
               })}
             />
+            {secondsToClose === undefined ? null : (
+              <p className={styles.formControl} data-testid='regional-approval-batch-autoclose'>
+                {t('common.assistantSurface.regionalApproval.liveBatch.autoClose', { seconds: secondsToClose })}
+              </p>
+            )}
             <ul className={styles.businessChecksum}>
               {outcomes
                 .filter((outcome) => outcome.status !== 'success')
