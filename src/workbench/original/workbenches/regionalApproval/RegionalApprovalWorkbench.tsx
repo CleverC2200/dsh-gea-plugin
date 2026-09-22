@@ -1027,7 +1027,8 @@ const RegionalApprovalWorkbench: React.FC<{
     if (liveQuery.queueState.status !== 'success') return 'queueNotFresh';
     if (liveAccess.failedVersions.has(row.versionId)) return 'detailUnavailable';
     const detail = liveAccess.entries[row.versionId];
-    if (!detail || !(liveStageFilter ? [liveStageFilter] : ['region','province','area','category'] as const).some(role => salesPlanAccessForRow(row, detail, permissionCodes, role)?.allowedActions.includes(kind)))
+    // allowReturned：上级退回给本节点的单据也要能改完继续提交（退回给别处的单子在模型里仍被拒）。
+    if (!detail || !(liveStageFilter ? [liveStageFilter] : ['region','province','area','category'] as const).some(role => salesPlanAccessForRow(row, detail, permissionCodes, role, undefined, { allowReturned: true })?.allowedActions.includes(kind)))
       return 'missingAuthority';
     if (kind === 'SAVE') return undefined;
 
@@ -1043,7 +1044,7 @@ const RegionalApprovalWorkbench: React.FC<{
       ? [liveStageFilter]
       : (['region', 'province', 'area', 'category'] as const);
     for (const role of candidates) {
-      const access = salesPlanAccessForRow(row, detail, permissionCodes, role);
+      const access = salesPlanAccessForRow(row, detail, permissionCodes, role, undefined, { allowReturned: true });
       if (access?.allowedActions.includes(kind)) return access;
     }
     return undefined;
@@ -3319,8 +3320,12 @@ const RegionalApprovalWorkbench: React.FC<{
                         setSelectedRowIds([...planIds]);
                       },
                       checkboxProps: (row) => ({
-                        // 返回状态只能进入纠偏重提流程，不能在当前审批节点再次提交。
-                        disabled: row.kind !== 'plan' || (row.kind === 'plan' && row.plan.status >= 6 && row.plan.status <= 9),
+                        // 队列已按节点收口：退回给本节点的单据可以勾选、改完继续提交；
+                        // 真正不可操作的（例如别的节点的退回单）仍不可勾选。
+                        disabled:
+                          row.kind !== 'plan' ||
+                          (liveActionDisabledReason(row.plan, 'APPROVE') !== undefined &&
+                            liveActionDisabledReason(row.plan, 'REJECT') !== undefined),
                       }),
                     }}
                     pagination={false}

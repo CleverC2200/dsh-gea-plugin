@@ -90,6 +90,8 @@ export const salesPlanAccessForRow = (
   // 多角色用户必须在动作对话框中明确选择角色。
   const role = stage ?? (roles.length === 1 ? roles[0] : undefined);
   if (!role || role === 'customer' || !roles.includes(role)) return undefined;
+  // 退回态只有在“退回给本节点”时才是可写节点；退回给别处的单子不能被其它角色接管。
+  if (row.status >= 6 && row.status <= 9 && !flow.pendingStatuses(role).includes(row.status)) return undefined;
   const roleEntry = supported ? context.roleActions!.find(entry => entry.role === role) : undefined;
   const nodeOrder = SALES_PLAN_ROLES.indexOf(role) + 1;
   // 账号权限决定能否审批；服务端对象能力只能补充动作，不能撤销已有权限。
