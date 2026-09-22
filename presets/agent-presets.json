@@ -6,7 +6,8 @@
   ],
   "labels": {
     "inventory-apsplan": { "name": "产销协同Agent" },
-    "inventory-personal": { "name": "全链库存管理Agent" },
+    "inventory-personal": { "name": "库存管理工作台" },
+    "inventory-qll": { "name": "全链库存管理Agent" },
     "inventory-aqkc": { "name": "基地库存Agent" },
     "inventory-fc": { "name": "分仓库存Agent" },
     "inventory-dealer": { "name": "经销商库存Agent" }

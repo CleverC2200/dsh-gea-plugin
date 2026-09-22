@@ -34,7 +34,9 @@ test("left menu follows the fixed prototype directory and disables unavailable p
   assert.equal(groups[0].flat, true);
   assert.deepEqual(groups[0].entries.map(entry => entry.id), ['inventory-apsplan']);
   assert.deepEqual(groups[1].entries.map(entry => entry.id), ['plan-region-category', 'gea-proof', 'gea-regional-plan', 'plan-category-production', 'plan-capacity-assessment']);
-  assert.deepEqual(groups[2].entries.map(entry => entry.id), ['inventory-personal', 'inventory-aqkc', 'inventory-fc', 'inventory-customer']);
+  assert.deepEqual(groups[2].entries.map(entry => entry.id), ['inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-customer']);
+  assert.equal(groups[2].entries[0].title, '全链库存管理Agent');
+  assert.equal(groups[2].entries[0].disabled, false);
   assert.deepEqual(groups[3].entries.map(entry => entry.id), ['inventory-orderworkbench', 'inventory-orderfulfillment']);
   assert.equal(groups[1].entries[0].disabled, true);
   assert.equal(groups[1].entries[1].disabled, false);

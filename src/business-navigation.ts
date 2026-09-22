@@ -72,7 +72,7 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
     title: "库存管理",
     icon: "warehouse",
     items: [
-      { id: "inventory-personal", title: "全链库存管理Agent" },
+      { id: "inventory-qll", title: "全链库存管理Agent" },
       { id: "inventory-aqkc", title: "基地库存Agent" },
       { id: "inventory-fc", title: "分仓库存Agent" },
       { id: "inventory-customer", title: "客户库存Agent（开发中）" },
