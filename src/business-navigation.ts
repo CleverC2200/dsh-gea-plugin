@@ -52,7 +52,6 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
     key: "supply",
     title: "产销协同",
     icon: "synergy",
-    flat: true,
     items: [{ id: "inventory-apsplan", title: "产销协同Agent" }],
   },
   {

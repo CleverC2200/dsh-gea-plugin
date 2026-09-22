@@ -31,7 +31,7 @@ const menuOf = (ids) => resolveBusinessMenu(BUSINESS_MENU_PRESET, new Map(ids.ma
 test("left menu follows the fixed prototype directory and disables unavailable pages", () => {
   const groups = menuOf(['gea-proof', 'gea-regional-plan', 'inventory-apsplan', 'inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-dealer', 'inventory-customer', 'inventory-personal']);
   assert.deepEqual(groups.map(group => [group.key, group.title]), [['supply', '产销协同'], ['plan', '计划管理'], ['inventory', '库存管理'], ['orders', '订单管理']]);
-  assert.equal(groups[0].flat, true);
+  assert.equal(groups[0].flat, false);
   assert.deepEqual(groups[0].entries.map(entry => entry.id), ['inventory-apsplan']);
   assert.deepEqual(groups[1].entries.map(entry => entry.id), ['plan-region-category', 'gea-proof', 'gea-regional-plan', 'plan-category-production', 'plan-capacity-assessment']);
   assert.deepEqual(groups[2].entries.map(entry => entry.id), ['inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-customer']);

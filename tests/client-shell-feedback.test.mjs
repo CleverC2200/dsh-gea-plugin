@@ -98,6 +98,27 @@ test(
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
     await page.getByRole("navigation", { name: "业务导航", exact: true }).waitFor();
 
+    // 业务目录保留完整父子层级；菜单整体使用本地原型的内缩位置。
+    const supplyHeading = page.getByRole("button", { name: "产销协同", exact: true });
+    await supplyHeading.waitFor();
+    assert.equal(await supplyHeading.getAttribute("aria-expanded"), "true");
+    await page.getByRole("button", { name: "产销协同Agent", exact: true }).waitFor();
+    const menuIndent = await page.evaluate(() => {
+      const workspace = Array.from(document.querySelectorAll("button")).find((item) => item.textContent?.trim() === "业务工作台");
+      const heading = Array.from(document.querySelectorAll(".gea-shell-nav-heading")).find((item) => item.textContent?.includes("计划管理"));
+      const headingLabel = heading?.querySelector("span");
+      const childLabel = Array.from(document.querySelectorAll(".gea-shell-nav-child .gea-shell-label")).find((item) => item.textContent?.trim() === "销售计划Agent");
+      if (!workspace || !heading || !headingLabel || !childLabel) return null;
+      return {
+        headingInset: Math.round(heading.getBoundingClientRect().left - workspace.getBoundingClientRect().left),
+        headingText: Math.round(headingLabel.getBoundingClientRect().left),
+        childText: Math.round(childLabel.getBoundingClientRect().left),
+      };
+    });
+    assert.ok(menuIndent, "business menu geometry must be measurable");
+    assert.ok(menuIndent.headingInset >= 18, JSON.stringify(menuIndent));
+    assert.ok(Math.abs(menuIndent.headingText - menuIndent.childText) <= 2, JSON.stringify(menuIndent));
+
     // 登记 32 / 48：会话框标题只留「模块名 + 助手」，副标整行去掉。
     await page.locator(".gea-agent-head").waitFor();
     assert.equal(await page.locator(".gea-agent-head-sub").count(), 0);
