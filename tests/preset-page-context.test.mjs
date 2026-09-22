@@ -37,7 +37,7 @@ test("页面上下文工具的描述与返回值都要求“按月问题去查�
 
 test("业务预设要求先加载对应技能，且只允许清单里出现过的技能名", async () => {
   const preset = await read("../presets/gea-readonly/agent.cordis.yml");
-  // 实测过两种坏行为：完全不加载技能；猜造 sales-plan-forecast 导致 unknown。
+  // 预设只约束技能选择规则，不写死当前部署的技能名。
   assert.ok(
     preset.includes("必须是本次系统提示 <available_skills> 里出现过的名字"),
     "缺少“只能用清单里的技能名”约束",
@@ -47,11 +47,11 @@ test("业务预设要求先加载对应技能，且只允许清单里出现过�
     "缺少禁止猜造技能名的约束",
   );
   assert.ok(
-    preset.includes("查/问需求预测类问题一律先加载它（默认入口）"),
-    "没有把 sinian-demand-dialogue 定为默认入口",
+    preset.includes("涉及需求预测、销售计划或审批口径的问题，先加载对应业务技能再取数作答"),
+    "缺少需求预测类问题先加载对应业务技能的约束",
   );
   assert.ok(
-    preset.includes("清单里没有这些技能时按普通会话作答"),
+    preset.includes("清单里没有对应技能时按普通会话作答"),
     "缺少未安装套件时的降级说明",
   );
 });
