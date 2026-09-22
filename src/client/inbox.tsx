@@ -2,6 +2,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CopyKey } from "./locales.ts";
 import type { NotificationItem } from "../shared/notifications.ts";
+import type { PageNavigation } from './desktop-navigation.tsx';
 
 type Page = {
   coverage: "complete" | "partial";
@@ -15,16 +16,24 @@ type Page = {
 type Translate = (key: CopyKey) => string;
 
 /** 列表和详情读取彼此独立；导航后到达的旧响应直接丢弃。 */
-export function Inbox({ t }: { t: Translate }) {
+export function Inbox({ t, navigation }: { t: Translate; navigation?: PageNavigation | null }) {
   const [pageNo, setPageNo] = useState(1);
   const [state, setState] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
+  // 每次唤醒独立读取详情；手动选择不继续受上一条导航约束。
+  const [selectedReceipt, setSelectedReceipt] = useState<string>();
+  const navigationOwned = useRef(false);
+  useLayoutEffect(() => {
+    if (navigation?.notificationId) {navigationOwned.current=true;setDetailResult(null);setSelected(navigation.notificationId);setSelectedReceipt(navigation.receipt);}
+    else if (navigationOwned.current) {navigationOwned.current=false;setSelected(null);setSelectedReceipt(undefined);setDetailResult(null);setData(null);setSelectedIds(new Set());}
+  },[navigation?.receipt]);
   const [revision, setRevision] = useState(0);
   const [detailRevision, setDetailRevision] = useState(0);
   const [data, setData] = useState<Page | null>(null);
   const [detailResult, setDetailResult] = useState<{
     id: string;
+    navigationReceipt?: string;
     detail?: NotificationItem;
     error?: CopyKey;
   } | null>(null);
@@ -79,19 +88,20 @@ export function Inbox({ t }: { t: Translate }) {
     const controller = new AbortController();
     void readNotifications<{ value: { detail: NotificationItem } }>({ id: selected }, controller.signal)
       .then((result) => {
-        if (!controller.signal.aborted) setDetailResult({ id: selected, detail: result.value.detail });
+        if (!controller.signal.aborted) setDetailResult({ id: selected, navigationReceipt:selectedReceipt, detail: result.value.detail });
       })
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setDetailResult({ id: selected, error: notificationError(reason) });
+        if (!controller.signal.aborted) setDetailResult({ id: selected, navigationReceipt:selectedReceipt, error: notificationError(reason) });
       });
     return () => controller.abort();
-  }, [selected, detailRevision]);
-  const currentDetail = detailResult?.id === selected ? detailResult : null;
+  }, [selected, detailRevision, selectedReceipt]);
+  const currentDetail = detailResult?.id === selected && detailResult?.navigationReceipt === selectedReceipt ? detailResult : null;
   const detailBusy = Boolean(selected && !currentDetail);
   const detailError = currentDetail?.error;
-  const detail = detailError ? null : currentDetail?.detail ?? data?.items.find(item => item.id === selected);
+  const detail = detailError ? null : currentDetail?.detail ?? (navigation ? null : data?.items.find(item => item.id === selected));
   const openDetail = (id: string) => {
     setDetailResult(null);
+    setSelectedReceipt(undefined);
     setSelected(id);
   };
   const drawer = useRef<HTMLDialogElement>(null);
@@ -99,6 +109,13 @@ export function Inbox({ t }: { t: Translate }) {
     if (selected) drawer.current?.showModal();
     else drawer.current?.close();
   }, [selected]);
+  useEffect(() => {
+    if (!navigation || selected !== navigation.notificationId || selectedReceipt !== navigation.receipt) return;
+    if (detailError) {navigation.failed(Error('NAVIGATION_TARGET_UNAVAILABLE'));return;}
+    if (!currentDetail?.detail || !drawer.current?.open) return;
+    if (currentDetail.detail.interactionRequestId !== navigation.interactionRequestId) {navigation.failed(Error('NAVIGATION_TARGET_UNAVAILABLE'));return;}
+    navigation.visible();
+  },[navigation,currentDetail,detailError,selected,selectedReceipt]);
   const badge = (value: string | null) => (
     <span className={`gea-inbox-status ${value === "unread" ? "is-unread" : ""}`}>
       {stateLabel(value, t)}

@@ -20,6 +20,7 @@ import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import { zh, en, type CopyKey } from "./client/locales.ts";
 import { AgentAvatar } from "./client/agent-avatar.tsx";
 import { Inbox } from "./client/inbox.tsx";
+import { DesktopNavigation, createNavigationSelection, type ReadyNavigation } from './client/desktop-navigation.tsx';
 import {registerHtmlClient} from "./html-client.tsx";
 import {
   approvalConversation,
@@ -77,6 +78,23 @@ export function apply(ctx: Context): void {
   registerHtmlClient(ctx);
   ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
   const t = ctx.locale.bind("geaProof");
+  const navigationSelection = createNavigationSelection();
+  /** 页面与会话均就绪后才完成导航，取消或超时会撤销当前等待。 */
+  const openNavigation = async (target: ReadyNavigation, signal: AbortSignal) => {
+    if (![PANEL,INBOX].includes(target.panel as MainPanelId)) throw Error('NAVIGATION_TARGET_UNSUPPORTED');
+    let clear = () => {};
+    const arrival = new Promise<void>((resolve,reject) => {
+      const cancel = () => {if(navigationSelection.getSnapshot()?.receipt===target.receipt)navigationSelection.set(null);reject(Error('NAVIGATION_REQUEST_CANCELLED'));};
+      const timer = setTimeout(()=>{navigationSelection.set(null);reject(Error('NAVIGATION_TARGET_UNAVAILABLE'));},30000);
+      clear = () => {clearTimeout(timer);};
+      signal.addEventListener('abort',cancel,{once:true});
+      navigationSelection.set({...target,visible:resolve,failed:reject});
+      if (signal.aborted) cancel();
+    });
+    try {await Promise.all([ctx.agentWorkbench.open(target.panel as MainPanelId),arrival]);signal.throwIfAborted();}
+    catch(error) {if(navigationSelection.getSnapshot()?.receipt===target.receipt)navigationSelection.set(null);throw error;}
+    finally {clear();}
+  };
   // 左上角标题固定成品牌名：DSH 会随会话主题改写 document.title（窗口标题跟着变），这里把它按住。
   ctx.effect(() => {
     const fixed = t("geaBusiness");
@@ -103,6 +121,8 @@ export function apply(ctx: Context): void {
     useGeaLocale,
   }: PropsRuntime<"main"> & InjectFace<typeof injected>) {
     const [authenticated, setAuthenticated] = useState(false);
+    const incoming = React.useSyncExternalStore(navigationSelection.subscribe,navigationSelection.getSnapshot);
+    useEffect(() => {if (authenticated && incoming?.panel === PANEL) incoming.visible();},[authenticated,incoming]);
     // 只有子文档明确上报「未登录」时才铺整屏登录遮罩；
     // 首次挂载还不知道登录态，直接铺遮罩会让切进业务面板时整屏闪一下。
     const [loginOverlay, setLoginOverlay] = useState(false);
@@ -255,6 +275,7 @@ export function apply(ctx: Context): void {
   }
   /** 业务待办页：和业务工作台一样自带右侧会话栏（否则整块对话框不出现）。 */
   function InboxPage() {
+    const incoming = React.useSyncExternalStore(navigationSelection.subscribe,navigationSelection.getSnapshot);
     useEffect(() => {
       const hide = ctx.agentWorkbench.showConversation(INBOX);
       void ctx.agentWorkbench.open(INBOX).catch(() => {
@@ -265,7 +286,7 @@ export function apply(ctx: Context): void {
     return (
       <>
         <style>{shellCss}</style>
-        <Inbox t={t} />
+        <Inbox t={t} navigation={incoming?.panel === INBOX ? incoming : null} />
       </>
     );
   }
@@ -1046,6 +1067,10 @@ export function apply(ctx: Context): void {
       </>
     );
   }
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register(
+    {name:'shell.overlay',id:'gea-desktop-navigation',locale:'geaProof'},
+    () => <DesktopNavigation t={t} open={openNavigation} login={()=>ctx.layout.selectPanel(PANEL)} />,
+  ));
   ctx.slots.inject("shell.overlay", () =>
     ctx.slots.register(
       { name: "shell.overlay", id: "gea-navigation-mode", locale: "geaProof" },
