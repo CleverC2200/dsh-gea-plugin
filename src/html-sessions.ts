@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { LAYER_POLICY } from "./capability/layers.ts";
+
 type Pending = {
   resolve: (value: any) => void;
   reject: (error: Error) => void;
@@ -96,7 +98,8 @@ export function createHtmlSessions() {
         };
         const timer = setTimeout(
           () => finish(Error("PAGE_ACTION_TIMEOUT")),
-          55000,
+          // 页面动作可能落在提交/审批这两层，超时按能力层策略表走。
+          LAYER_POLICY.submit.timeoutMs,
         );
         p.pending.set(id, {
           resolve: (v: any) => finish(undefined, v),

@@ -35,6 +35,10 @@ test("direct model deployment does not require an AionUi backend", async () => {
     patch.at(-1).config.providers["gea-analysis"].baseURL,
     "https://llm.example.test/v1",
   );
+  assert.equal(
+    patch.flatMap((row) => row.insert ?? []).find((entry) => entry.id === "gea-proof").config.visibleContextSubagent,
+    true,
+  );
   assert.equal(JSON.stringify(patch).includes("AionUi"), false);
   delete process.env.GEA_DIRECT_TEST_KEY;
 });

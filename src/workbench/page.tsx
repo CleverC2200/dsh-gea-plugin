@@ -32,19 +32,15 @@ type HtmlPlugin = { id: string; label: string; group: string; url: string };
 const HTML_PLUGINS: HtmlPlugin[] = [
   ...[["inventory-apsplan", "产销协同工作台", "产销协同"], ["inventory-personal", "库存管理工作台", "库存管理"], ["inventory-aqkc", "基地库存", "库存管理"], ["inventory-dealer", "经销商库存", "库存管理"], ["inventory-fc", "分仓库存", "库存管理"], ["inventory-qll", "全链库存", "库存管理"], ["inventory-customer", "客户库存", "库存管理"], ["inventory-orderworkbench", "订单工作台", "订单履约"], ["inventory-orderfulfillment", "订单履约", "订单履约"]].map(([id, label, group]) => ({ id, label, group, url: `/api/gea-html-plugin/${id}` })),
 ];
-const HTML_PLUGIN_CONSUMERS: Record<string, string> = {
-  "inventory-apsplan": "aps",
-  "inventory-personal": "inventory-personal-workbench",
-  "inventory-aqkc": "base-safety-stock",
-  "inventory-dealer": "dealer-inventory-replenishment",
-  "inventory-fc": "branch-inventory",
-  "inventory-qll": "full-chain-inventory",
-  "inventory-customer": "customer-inventory-preview",
-  "inventory-orderworkbench": "orderworkbench-preview",
-  "inventory-orderfulfillment": "orderfulfillment-preview",
+/** 宿主按能力契约给出的模块索引：页面用它把 pageId 映射到受管 consumerCode。 */
+type ModuleInfo = {
+  id: string;
+  label: string;
+  surface?: string;
+  consumerCode?: string;
+  pageIds: string[];
 };
-
-type Status = ReturnType<Business["status"]>;
+type Status = ReturnType<Business["status"]> & { modules?: ModuleInfo[] };
 type Translate = (key: CopyKey) => string;
 type AnalysisScope = "summary" | "details";
 type VisibleWorkbenchContext = {
@@ -249,6 +245,8 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const selectedPluginRef = useRef(selectedPlugin);
   const pluginFrame = useRef<HTMLIFrameElement>(null);
   const pluginPort = useRef<MessagePort>();
+  // 页面 -> 模块 -> 受管 consumerCode 的映射来自宿主契约，前端不再写死。
+  const pluginConsumers = useRef<Record<string, string>>({});
   const [apiLogOpen, setApiLogOpen] = useState(directApiLog);
   const [workbenchRevision, setWorkbenchRevision] = useState(0);
   const [resubmit, setResubmit] = useState<{ planId: string; versionId: string; period: GeaSalesPlanPeriod }>();
@@ -267,6 +265,13 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const [preview, setPreview] = useState<Preview>();
   const [sessionId, setSessionId] = useState<string | null>(null);
   useEffect(() => { selectedPluginRef.current = selectedPlugin; }, [selectedPlugin]);
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    for (const module of status?.modules ?? [])
+      for (const pageId of module.pageIds ?? [])
+        if (module.consumerCode) map[pageId] = module.consumerCode;
+    pluginConsumers.current = map;
+  }, [status]);
   useEffect(() => {
     if (!status) return;
     window.parent.postMessage(
@@ -355,8 +360,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
           ? {
               ...parameters,
               ...(parameters.query && typeof parameters.query === "object" && !Array.isArray(parameters.query) ? parameters.query : {}),
-              consumerCode: HTML_PLUGIN_CONSUMERS[selectedPluginRef.current?.id]
-                ?? (pluginFrame.current?.src.includes("inventory-dealer") ? "dealer-inventory-replenishment" : ""),
+              consumerCode: pluginConsumers.current[selectedPluginRef.current?.id ?? ""] ?? "",
             }
           : parameters;
         void rpc(endpoint, payload)
@@ -471,18 +475,43 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       endpoint: "agui/workbench",
       request: rpc,
       sessionId,
-      apply: (args, meta) =>
+      apply: (args, meta, signal) =>
         new Promise<PageBridgeApplyResult>((resolve) => {
-          pendingToolResult.current = { toolCallId: meta.toolCallId, resolve };
+          const cancel = () => {
+            if (pendingToolResult.current?.toolCallId !== meta.toolCallId) return;
+            pendingToolResult.current = undefined;
+            setWorkbenchToolCall(undefined);
+          };
+          signal.addEventListener("abort", cancel, { once: true });
+          pendingToolResult.current = {
+            toolCallId: meta.toolCallId,
+            resolve: (result) => {
+              signal.removeEventListener("abort", cancel);
+              resolve(result);
+            },
+          };
           setWorkbenchToolCall({
             toolCallId: meta.toolCallId,
             command: (args ?? {}) as Record<string, unknown>,
           });
         }),
       // 页面自述能力：工具的定义与说明由桥按这份目录生成。
-      catalog: () => workbenchCatalog(catalogElements.current),
+      // 只有"审批工作台"这一屏才报目录；切到迁移过来的插件页面时这一屏不是它，
+      // 必须报 null，让宿主把上一屏的元素立刻注销（否则模型会对着上一屏下指令）。
+      catalog: () =>
+        shellView === "workbench"
+          ? workbenchCatalog(catalogElements.current)
+          : null,
     });
-  }, [sessionId]);
+  }, [sessionId, shellView, selectedPlugin.id]);
+  // 离开这一屏时（切页、切插件、切会话、关页面），把"当前这一屏"从宿主里撤掉：
+  // 元素目录随桥的关闭撤掉，可见上下文在这里显式清空。
+  useEffect(() => {
+    if (!sessionId) return;
+    return () => {
+      void rpc("workbench/context", { sessionId, context: null }).catch(() => {});
+    };
+  }, [sessionId, shellView, selectedPlugin.id]);
   useEffect(() => {
     const controller = new AbortController();
     void rpc<Status>("status", {}, controller.signal)

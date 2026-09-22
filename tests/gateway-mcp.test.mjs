@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
+import { readFile } from "node:fs/promises";
 const { outputFiles } = await build({
   entryPoints: ["src/host/gateway-mcp.ts"],
   bundle: true,
@@ -103,13 +104,15 @@ test("creates authorized session and isolates trusted meta from business argumen
 });
 
 test("rejects denied, incomplete and wrong-consumer sessions despite HTTP success", async () => {
-  for (const mutate of [
-    (p) => (p.result.accessDecision.allowed = false),
-    (p) => (p.result.delegationToken = ""),
-    (p) => (p.result.gatewayContext.conversationId = ""),
-    (p) => (p.result.gatewayContext.consumerCode = "other"),
-    (p) => (p.success = false),
-  ]) {
+  // 权限没开是业务状态（AGENT_ACCESS_DENIED），其余是协议级拒绝（SESSION_REJECTED）。
+  const cases = [
+    [(p) => (p.result.accessDecision.allowed = false), /AGENT_ACCESS_DENIED/],
+    [(p) => (p.result.delegationToken = ""), /SESSION_REJECTED/],
+    [(p) => (p.result.gatewayContext.conversationId = ""), /SESSION_REJECTED/],
+    [(p) => (p.result.gatewayContext.consumerCode = "other"), /SESSION_REJECTED/],
+    [(p) => (p.success = false), /SESSION_REJECTED/],
+  ];
+  for (const [mutate, expected] of cases) {
     const payload = session();
     mutate(payload);
     await assert.rejects(
@@ -122,7 +125,7 @@ test("rejects denied, incomplete and wrong-consumer sessions despite HTTP succes
           1000,
           async () => Response.json(payload),
         ),
-      /SESSION_REJECTED/,
+      expected,
     );
   }
 });
@@ -511,4 +514,64 @@ test("logout during transport recovery prevents replay", async () => {
   await assert.rejects(() => connection.fetch(connection.url, { method: "POST", headers,
     body: JSON.stringify({ method: "resources/list", params: {} }) }), { name: "AbortError" });
   assert.equal(calls, 1);
+});
+
+test("网关拒绝 MCP 会话时给出稳定错误码，宿主据此止损", async () => {
+  await assert.rejects(
+    prepareGatewayMcp(
+      "https://gea.test",
+      auth,
+      consumer,
+      new AbortController().signal,
+      1000,
+      async () =>
+        Response.json({
+          success: true,
+          result: {
+            accessDecision: {
+              allowed: false,
+              code: "AGENT_ACCESS_DENIED",
+              message: "当前用户无权访问该Agent",
+            },
+          },
+        }),
+    ),
+    (error) => error.code === "AGENT_ACCESS_DENIED" && /无权访问/.test(error.message),
+  );
+  // 会话"形状不对"（不是权限问题）仍然是协议级错误。
+  await assert.rejects(
+    prepareGatewayMcp(
+      "https://gea.test",
+      auth,
+      consumer,
+      new AbortController().signal,
+      1000,
+      async () =>
+        Response.json({ success: true, result: { gatewayContext: {} } }),
+    ),
+    { message: "GEA_MCP_SESSION_REJECTED" },
+  );
+  await assert.rejects(
+    prepareGatewayMcp(
+      "https://gea.test",
+      auth,
+      consumer,
+      new AbortController().signal,
+      1000,
+      async () => new Response("nope", { status: 502 }),
+    ),
+    { message: "GEA_MCP_SESSION_HTTP_502" },
+  );
+});
+
+test("宿主对拒绝过的模块在窗口内不再重试，并给出可读的下一步", async () => {
+  const source = await readFile(
+    new URL("../src/host/business.ts", import.meta.url),
+    "utf8",
+  );
+  // 线上实测：网关回 rejected 后模型会换模块反复试，一轮三次，每次都白等一次往返。
+  assert.match(source, /MCP_REJECTION_TTL_MS = 10 \* 60 \* 1000/);
+  assert.match(source, /AGENT_ACCESS_DENIED：当前账号没有/);
+  assert.match(source, /GEA_MCP_HTTP_REJECTED：网关拒绝了这个模块的 MCP 调用/);
+  assert.match(source, /10 分钟内不要再试它/);
 });

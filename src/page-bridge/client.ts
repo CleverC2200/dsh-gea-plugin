@@ -19,6 +19,7 @@ export type PageBridgeApplyResult = { applied: boolean; error?: string };
 export type PageBridgeApply = (
   args: unknown,
   meta: { toolCallId: string; toolCallName: string },
+  signal: AbortSignal,
 ) => PageBridgeApplyResult | Promise<PageBridgeApplyResult>;
 
 export type PageBridgeClientOptions = {
@@ -39,6 +40,16 @@ export type PageBridgeClientOptions = {
   /** 桥自身出错时的回调（默认忽略，下一轮自动重试）。 */
   onError?: (error: unknown) => void;
   /**
+   * 关掉桥时是否要告诉宿主"这个会话已经没有页面能力"（默认是）。
+   * 页面被卸载时用它把元素目录撤掉，避免模型继续对着上一屏的元素下指令。
+   */
+  closeOnDispose?: boolean;
+  /**
+   * 这一屏的目录是谁报的：页面自己（self-report）还是宿主扫出来的（dom-scan）。
+   * 宿主据此记录来源，也方便对比两种方式的结果。
+   */
+  pageSource?: string | (() => string);
+  /**
    * 页面自述的能力目录：这一屏此刻能做什么。
    * 桥据此为这个会话生成工具；不声明（返回 null）就等于没有可调用动作。
    */
@@ -58,10 +69,12 @@ export function startPageBridgeClient(
   const buffers = new Map<string, string>();
   const names = new Map<string, string>();
   const settled = new Set<string>();
+  const activeApplies = new Map<string, AbortController>();
   const outbox: AgUiToolMessage[] = [];
   let counter = 0;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout>;
+  const closeOnDispose = options.closeOnDispose ?? true;
 
   const message = (
     toolCallId: string,
@@ -79,33 +92,56 @@ export function startPageBridgeClient(
     toolCallName: string,
     args: unknown,
   ): Promise<PageBridgeApplyResult> => {
+    const controller = new AbortController();
+    activeApplies.set(toolCallId, controller);
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
     try {
       return await Promise.race([
-        Promise.resolve(options.apply(args, { toolCallId, toolCallName })),
+        Promise.resolve(
+          options.apply(
+            args,
+            { toolCallId, toolCallName },
+            controller.signal,
+          ),
+        ),
         new Promise<PageBridgeApplyResult>((resolve) => {
-          timeout = setTimeout(
-            () => resolve({ applied: false, error: "APPLY_TIMEOUT" }),
-            applyTimeoutMs,
+          controller.signal.addEventListener(
+            "abort",
+            () => {
+              if (!timedOut) resolve({ applied: false, error: "APPLY_CANCELLED" });
+            },
+            { once: true },
           );
+          timeout = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            resolve({ applied: false, error: "APPLY_TIMEOUT" });
+          }, applyTimeoutMs);
         }),
       ]);
     } catch (error) {
       return { applied: false, error: "APPLY_FAILED" };
     } finally {
       if (timeout) clearTimeout(timeout);
+      activeApplies.delete(toolCallId);
     }
   };
 
   const poll = async (): Promise<void> => {
     const pending = outbox.splice(0, outbox.length);
     try {
+      const pageSource =
+        typeof options.pageSource === "function"
+          ? options.pageSource()
+          : options.pageSource;
       const result = await options.request<{ events: AgUiEvent[] }>(
         options.endpoint,
         {
           sessionId: options.sessionId,
           toolMessages: pending,
           ...(options.catalog ? { catalog: options.catalog() } : {}),
+          ...(pageSource === undefined ? {} : { pageSource }),
         },
       );
       if (stopped) return;
@@ -154,5 +190,21 @@ export function startPageBridgeClient(
   return () => {
     stopped = true;
     clearTimeout(timer);
+    for (const controller of activeApplies.values()) controller.abort();
+    activeApplies.clear();
+    // 最后一件事：把"这个会话没有页面能力"报给宿主。宿主据此立刻注销页面工具，
+    // 不必等声明过期。失败就算了：页面已经走了，桥不该影响业务页面本身。
+    if (!closeOnDispose || typeof options.sessionId !== "string") return;
+    try {
+      void Promise.resolve(
+        options.request(options.endpoint, {
+          sessionId: options.sessionId,
+          toolMessages: [],
+          catalog: null,
+        }),
+      ).catch(() => {});
+    } catch {
+      // 同步抛出的实现同样忽略。
+    }
   };
 }

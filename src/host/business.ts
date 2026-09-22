@@ -16,6 +16,49 @@ import { resolveInventoryRoles } from "./inventory-role.ts";
 import { prepareGatewayLaunch } from "./html-gateway.ts";
 import { prepareGatewayMcp } from "./gateway-mcp.ts";
 import { readHtmlQuery } from "../html-query.ts";
+import { probeTables, withDefaultPaging } from "./plugin-query.ts";
+import { openModuleMcp } from "./mcp-client.ts";
+import { readableMessage } from "./error-envelope.ts";
+import {
+  currentPageEnvelope,
+  pageIdentityFresh,
+  type PageIdentity,
+} from "./page-identity.ts";
+import { compressForModel } from "../shared/payload-budget.ts";
+
+/** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
+const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
+
+/**
+ * 同一模块连续失败多少次就熔断（窗口内）。模块"表不可读"这类失败重试没有意义，
+ * 熔断是为了让模型回到"用现有证据作答"，而不是把整轮耗在换表上。
+ */
+const PLUGIN_FAILURE_LIMIT = 3;
+const PLUGIN_FAILURE_WINDOW_MS = 10 * 60 * 1000;
+
+/** 网关拒绝过 MCP 会话的模块在这个窗口内不再重试（见 moduleMcp）。 */
+const MCP_REJECTION_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * 内置的受管只读模块清单，只在宿主还没接入能力契约时兜底（例如单元测试里直接
+ * 构造 Business）。正常启动时由主机的契约注册表覆盖：装了什么模块，就允许读什么。
+ */
+const DEFAULT_PLUGIN_CONSUMERS = new Set([
+  "base-safety-stock",
+  "dealer-inventory-replenishment",
+  "branch-inventory",
+  "full-chain-inventory",
+  "inventory-personal-workbench",
+  "aps-board-collaboration",
+  "aps-demand-collaboration",
+  "aps-delivery-collaboration",
+  // 新迁移进来的模块：没有能力契约时（例如单元测试）也要能读。
+  "customer-inventory-preview",
+  "orderworkbench-preview",
+  "orderfulfillment-preview",
+  // main 上产销协同工作台的旧编码：契约缺席时按它兜底，避免历史调用被白名单挡掉。
+  "aps",
+]);
 import { isDeepStrictEqual } from 'node:util';
 import { validateServiceAccounts, serviceAccountReady, submitWithServiceAccount, type ServiceAccounts } from './service-account.ts';
 import { prepareSalesPlanResubmit } from '../workbench/original/workbenches/regionalApproval/models/salesPlanSubmitModel.ts';
@@ -53,6 +96,8 @@ export interface Deployment {
   analysisAgentCode: string;
   analysisSource: "gea" | "direct" | "receipt";
   inputByteBudget: number;
+  /** 将当前页快照交给 DSH 一次性子 Agent 压缩；测试/旧宿主可显式关闭。 */
+  visibleContextSubagent?: boolean;
 }
 export interface Page {
   queryId: QueryId;
@@ -599,10 +644,23 @@ export class Business {
     string,
     { sequence: number; receivedAt: string; context: VisibleWorkbenchContext }
   >();
+  /**
+   * 每个对话当前打开的业务页身份（HTML 插件页按最近一次页面活动刷新）。
+   * 见 page-identity.ts：这是"当前页是谁"的唯一权威来源。
+   */
+  private readonly pageIdentities = new Map<string, PageIdentity>();
+  /** 上一次返回的页面上下文正文：内容没变就不重复发送（历史里不用再背一份）。 */
+  private readonly lastContextReplies = new Map<string, string>();
   private requests = new Map<string, AbortController>();
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
   private readonly pluginDelegations = new Map<string, { authToken: string; delegationToken: string }>();
+  /** 同一模块连续失败计数：用来在"换着表一直重试"时及时熔断。 */
+  private readonly pluginFailures = new Map<string, { count: number; at: number }>();
+  /** 受管表列清单的短缓存：同一张表不重复探查。 */
+  private readonly pluginSchemaCache = new Map<string, { at: number; columns: string[] }>();
+  /** 允许走受管只读查询的模块（由能力契约注入；不注入时用内置清单兜底）。 */
+  private pluginConsumers?: Set<string>;
   private loginExpired = false;
   readonly runId = randomUUID();
   private selectedBase: string;
@@ -699,12 +757,17 @@ export class Business {
     this.auth = undefined;
     this.modelRoutes.clear();
     this.pluginDelegations.clear();
+    this.moduleMcpCache.clear();
+    this.moduleMcpRejections.clear();
     this.resubmissions.clear();
     this.correctionRequests.clear();
     this.qr = undefined;
     this.loginExpired = expired;
     // 身份变化后，之前的可见页快照一律作废。
     this.visibleWorkbenchContexts.clear();
+    // 页面身份同理：换了身份，"当前页"这件事也算不清了。
+    this.pageIdentities.clear();
+    this.lastContextReplies.clear();
     this.clearQuery();
     this.notifyIdentity();
   }
@@ -757,10 +820,52 @@ export class Business {
     return value ? { sequence: value.sequence, state: value.context } : undefined;
   }
 
-  /** 只返回当前 Agent 会话的页面范围，不重新读取 GEA，也不执行任何写操作。 */
-  visibleWorkbenchContext(sessionId: string): string {
+  /**
+   * 记录"这个对话现在打开的是哪个业务页"。
+   *
+   * 页面的每一次活动（打开、轮询、调用）都会刷新时间戳：这样切页之后身份会自然跟到
+   * 新页面，不会被上一个页面残留的绑定一直占着。
+   */
+  touchPageIdentity(
+    sessionId: string,
+    identity: Omit<PageIdentity, "at">,
+  ): void {
+    if (!sessionId) return;
+    this.pageIdentities.set(sessionId, { ...identity, at: Date.now() });
+  }
+
+  /** 页面关掉时清掉身份；带 pluginId 时只清属于它的那份，避免误删刚切过去的页面。 */
+  clearPageIdentity(sessionId: string, pluginId?: string): void {
+    const current = this.pageIdentities.get(sessionId);
+    if (!current) return;
+    if (pluginId && current.pluginId !== pluginId) return;
+    this.pageIdentities.delete(sessionId);
+  }
+
+  /** 当前页身份；超过 TTL 没活动就当没有页面。 */
+  currentPageIdentity(sessionId: string): PageIdentity | undefined {
+    const value = this.pageIdentities.get(sessionId);
+    if (!value) return undefined;
+    if (!pageIdentityFresh(value)) {
+      this.pageIdentities.delete(sessionId);
+      return undefined;
+    }
+    return value;
+  }
+
+  /**
+   * 只返回当前 Agent 会话的页面范围，不重新读取 GEA，也不执行任何写操作。
+   *
+   * focus：用户问题里提到的对象/字段。带上就只回相关行与字段；不带只回摘要（行数、
+   * 字段名、范围），避免整屏明细灌进上下文——这是"先判断是不是问这一屏，再引用数据"。
+   */
+  visibleWorkbenchContext(sessionId: string, focus?: string): string {
     const value = this.visibleWorkbenchContexts.get(sessionId);
-    if (!value)
+    if (!value) {
+      // 页面开着但不是原生工作台页（HTML 插件页没有可见行快照）时，至少把"当前页是
+      // 谁、该用哪个工具"说清楚——比一句"不在业务工作台"准确得多。
+      const identity = this.currentPageIdentity(sessionId);
+      if (identity) return currentPageEnvelope(identity);
       return JSON.stringify({
         source: "GEA_RENDERED_WORKBENCH",
         coverage: "none",
@@ -770,23 +875,52 @@ export class Business {
         reason:
           "这个对话当前不在业务工作台：读不到页面数据，也不会去打开页面。这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答，不要因此拒答或索要经销商编码。本工具每轮最多调用一次，不要重复调用。",
       });
-    return JSON.stringify({
+    }
+    const compressed = compressForModel(value.context, {
+      ...(focus === undefined ? {} : { focus }),
+    });
+    let context: unknown = value.context;
+    try {
+      context = JSON.parse(compressed.json);
+    } catch {
+      // 压缩结果异常就退回原快照：宁可大一点，也不能让页面证据消失。
+    }
+    const body = JSON.stringify({
       source: "GEA_RENDERED_WORKBENCH",
       renderedAt: value.receivedAt,
       coverage: "current-visible-page",
       authority: "read-only-ui-context",
-      context: value.context,
+      context,
+      ...(compressed.compressed
+        ? { contextNote: compressed.note, contextOmitted: compressed.omitted }
+        : {}),
     });
+    // 同一份内容第二次要就只回"没变"，不再把整包塞回历史。
+    if (this.lastContextReplies.get(sessionId) === body)
+      return JSON.stringify({
+        source: "GEA_RENDERED_WORKBENCH",
+        renderedAt: value.receivedAt,
+        coverage: "current-visible-page",
+        unchanged: true,
+        note: "这一屏与上一次读取完全相同：沿用上一次的内容，未重复发送。",
+      });
+    this.lastContextReplies.set(sessionId, body);
+    return body;
   }
 
   /** 首屏查询尚未完成时给浏览器一点时间把当前页快照同步进来。 */
-  async waitVisibleWorkbenchContext(sessionId: string, timeoutMs = 2000): Promise<string> {
+  async waitVisibleWorkbenchContext(
+    sessionId: string,
+    timeoutMs = 2000,
+    focus?: string,
+  ): Promise<string> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      if (this.visibleWorkbenchContexts.has(sessionId)) return this.visibleWorkbenchContext(sessionId);
+      if (this.visibleWorkbenchContexts.has(sessionId))
+        return this.visibleWorkbenchContext(sessionId, focus);
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    return this.visibleWorkbenchContext(sessionId);
+    return this.visibleWorkbenchContext(sessionId, focus);
   }
 
   /** 模型 Gateway 拒绝当前身份后，将该 GEA 登录标记为过期。 */
@@ -1598,6 +1732,292 @@ export class Business {
     return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.mcpRequestTimeoutMs ?? 60000, this.apiLog.fetch);
   }
 
+  private readonly moduleMcpCache = new Map<
+    string,
+    { token: string; module: import("./mcp-client.ts").McpModule }
+  >();
+  /**
+   * 网关明确拒绝过 MCP 会话的模块：短窗口内不再重试。
+   * 线上实测：网关回 rejected 后模型会换模块反复试（一轮三次），每次都白等一次往返。
+   */
+  private readonly moduleMcpRejections = new Map<
+    string,
+    { at: number; permission: boolean }
+  >();
+
+  /**
+   * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
+   * 页面不可用时的兜底查询走这里：不依赖页面、也不依赖我们替它写 SQL。
+   */
+  async moduleMcp(
+    consumerCode: string,
+    signal: AbortSignal,
+  ): Promise<import("./mcp-client.ts").McpModule> {
+    const allowedConsumers = this.pluginConsumers ?? DEFAULT_PLUGIN_CONSUMERS;
+    if (!allowedConsumers.has(consumerCode))
+      throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
+    const auth = this.authenticated();
+    const rejected = this.moduleMcpRejections.get(consumerCode);
+    if (rejected !== undefined) {
+      if (Date.now() - rejected.at < MCP_REJECTION_TTL_MS)
+        throw Object.assign(
+          new Error(
+            rejected.permission
+              ? `AGENT_ACCESS_DENIED：当前账号没有「${consumerCode}」这个模块的 MCP 权限（刚才网关已明确拒绝，10 分钟内不再重试）。需要管理员开通该 Agent/模块权限。`
+              : `GEA_MCP_HTTP_REJECTED：网关刚才已拒绝过「${consumerCode}」的 MCP 调用，10 分钟内不要再试它。改用 gea_plugin_read 直读（先 describe=true），或读页面证据。`,
+          ),
+          rejected.permission
+            ? { code: "AGENT_ACCESS_DENIED", retryable: false }
+            : {},
+        );
+      this.moduleMcpRejections.delete(consumerCode);
+    }
+    const cached = this.moduleMcpCache.get(consumerCode);
+    if (cached && cached.token === auth.token) return cached.module;
+    let module: import("./mcp-client.ts").McpModule;
+    try {
+      const transport = await this.openMcpConnection(
+        { consumerType: "AGENT", consumerCode },
+        signal,
+      );
+      module = await openModuleMcp(transport, signal);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : "";
+      // 权限没开通：这是业务状态，不是故障。原样抛出带 code 的错误，由工具层转成
+      // 正常提示（见 agent-tools 的 gea_module_mcp），不要显示成红色调用失败。
+      if (code === "AGENT_ACCESS_DENIED") {
+        this.moduleMcpRejections.set(consumerCode, {
+          at: Date.now(),
+          permission: true,
+        });
+        throw Object.assign(
+          new Error(
+            `AGENT_ACCESS_DENIED：当前账号没有「${consumerCode}」这个模块的 MCP 权限（${message.replace(/^AGENT_ACCESS_DENIED: /, "")}）。需要管理员在当前环境为该账号开通该 Agent/模块的权限。`,
+          ),
+          { code: "AGENT_ACCESS_DENIED", retryable: false },
+        );
+      }
+      // 其余是"网关拒绝/代理出错"：这类才是真失败，保留可读原因。
+      if (/GEA_MCP_(SESSION_(REJECTED|HTTP_\d+)|HTTP_\d+)/.test(message)) {
+        this.moduleMcpRejections.set(consumerCode, {
+          at: Date.now(),
+          permission: false,
+        });
+        throw new Error(
+          `GEA_MCP_HTTP_REJECTED：网关拒绝了这个模块的 MCP 调用（${message}）。10 分钟内不要再试它：改用 gea_plugin_read 直读（先 describe=true），或读页面证据。`,
+        );
+      }
+      throw error;
+    }
+    this.moduleMcpCache.set(consumerCode, { token: auth.token, module });
+    return module;
+  }
+
+  /**
+   * 诊断用：对某个 consumerCode 真走一遍 MCP（会话申请 → initialize → tools/list），
+   * 并把两段 HTTP 的原始请求/响应带出来。只在 GEA_DEBUG_PROBE=1 时经调试路由暴露。
+   */
+  async debugProbeModuleMcp(
+    consumerCode: string,
+    signal: AbortSignal,
+  ): Promise<{
+    consumerCode: string;
+    ok: boolean;
+    error?: string;
+    tools?: string[];
+    raw: Array<{
+      method: string;
+      url: string;
+      requestBody?: string;
+      status?: number;
+      mcpSessionId?: string;
+      requestHeaders?: Record<string, string>;
+      responseBody?: string;
+    }>;
+    experiments?: Array<{ label: string; status?: number; responseBody?: string }>;
+  }> {
+    const raw: Array<{
+      method: string;
+      url: string;
+      requestBody?: string;
+      status?: number;
+      mcpSessionId?: string;
+      requestHeaders?: Record<string, string>;
+      responseBody?: string;
+    }> = [];
+    const capture: typeof fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const method =
+        init?.method ?? (input instanceof Request ? input.method : "GET");
+      const requestBody =
+        typeof init?.body === "string" ? init.body.slice(0, 4000) : undefined;
+      const response = await this.apiLog.fetch(input, init);
+      const sessionHeader = response.headers.get("mcp-session-id") ?? undefined;
+      // 诊断要看清"同一个 body 为什么这次 400、重放 200"：把非敏感请求头一起留下。
+      const headerBag = new Headers(init?.headers);
+      const requestHeaders: Record<string, string> = {};
+      for (const key of [
+        "accept",
+        "content-type",
+        "mcp-protocol-version",
+        "mcp-session-id",
+      ]) {
+        const value = headerBag.get(key);
+        if (value) requestHeaders[key] = value;
+      }
+      let responseBody: string | undefined;
+      const type = response.headers.get("content-type") ?? "";
+      // 网关的错误体不一定是 JSON：只要是文本类且不大，就带回来（诊断要的就是这段）。
+      const length = Number(response.headers.get("content-length") ?? "0");
+      if (
+        type.includes("json") ||
+        type.includes("text") ||
+        (Number.isSafeInteger(length) && length > 0 && length < 20_000)
+      ) {
+        responseBody = await response
+          .clone()
+          .text()
+          .then((text) => text.slice(0, 4000))
+          .catch(() => undefined);
+      }
+      raw.push({
+        method,
+        url,
+        ...(Object.keys(requestHeaders).length
+          ? { requestHeaders }
+          : {}),
+        ...(requestBody === undefined ? {} : { requestBody }),
+        status: response.status,
+        ...(sessionHeader === undefined ? {} : { mcpSessionId: sessionHeader }),
+        ...(responseBody === undefined ? {} : { responseBody }),
+      });
+      return response;
+    };
+    // 会话阶段拿到的身份，用来做"带 _meta / 不带 _meta"的对照实验。
+    let meta: Record<string, unknown> | undefined;
+    let transportSession: string | undefined;
+    const experiments: Array<{ label: string; status?: number; responseBody?: string }> = [];
+    try {
+      const auth = this.authenticated();
+      const transport = await prepareGatewayMcp(
+        this.base,
+        auth,
+        { consumerType: "AGENT", consumerCode },
+        AbortSignal.any([signal, this.epoch.signal]),
+        this.config.mcpRequestTimeoutMs ?? 60000,
+        capture,
+      );
+      for (const entry of raw) {
+        if (!entry.responseBody) continue;
+        try {
+          const parsed = JSON.parse(entry.responseBody) as {
+            result?: {
+              gatewayContext?: { sessionId?: string; conversationId?: string };
+              delegationToken?: string;
+            };
+          };
+          const context = parsed.result?.gatewayContext;
+          if (context?.sessionId && parsed.result?.delegationToken) {
+            transportSession = transportSession ?? entry.mcpSessionId;
+            meta = {
+              sessionId: context.sessionId,
+              conversationId: context.conversationId,
+              delegationToken: parsed.result.delegationToken,
+              agentCode: consumerCode,
+            };
+          }
+        } catch {
+          // 不是 JSON 的响应不参与实验。
+        }
+      }
+      const module = await openModuleMcp(transport, signal);
+      return {
+        consumerCode,
+        ok: true,
+        tools: module.tools().map((tool) => tool.name),
+        raw,
+        ...(experiments.length ? { experiments } : {}),
+      };
+    } catch (error) {
+      // 对照实验：同一个代理会话下，tools/list 带 _meta 与不带 _meta 各发一次。
+      if (meta) {
+        const headers: Record<string, string> = {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+          "mcp-protocol-version": "2025-06-18",
+        };
+        const session = transportSession ?? raw.find((r) => r.mcpSessionId)?.mcpSessionId;
+        if (session) headers["mcp-session-id"] = session;
+        // 失败的那条 tools/list 原文（含 SDK 用的 id/params），用于区分"body 问题"与"header 问题"。
+        const failedList = raw.find(
+          (entry) =>
+            entry.status === 400 && entry.requestBody?.includes('"tools/list"'),
+        );
+        const variants: Array<[string, string]> = [
+          [
+            "tools/list（不带 _meta）",
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: "probe-0",
+              method: "tools/list",
+              params: {},
+            }),
+          ],
+          [
+            "tools/list（带 _meta，复刻线上）",
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: "probe-1",
+              method: "tools/list",
+              params: { _meta: meta },
+            }),
+          ],
+          ...(failedList?.requestBody
+            ? ([
+                ["原样重放失败的那条 tools/list", failedList.requestBody],
+              ] as Array<[string, string]>)
+            : []),
+        ];
+        for (const [label, body] of variants) {
+          try {
+            const response = await capture(
+              this.base + "/ai/gateway/mcp/proxy/mcp",
+              {
+                method: "POST",
+                headers,
+                body,
+              },
+            );
+            experiments.push({
+              label,
+              status: response.status,
+              responseBody: raw.at(-1)?.responseBody,
+            });
+          } catch (experimentError) {
+            experiments.push({
+              label,
+              responseBody:
+                experimentError instanceof Error
+                  ? experimentError.message
+                  : String(experimentError),
+            });
+          }
+        }
+      }
+      return {
+        consumerCode,
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        raw,
+        ...(experiments.length ? { experiments } : {}),
+      };
+    }
+  }
+
   /** 为受信任的 HTML 插件提供带用户权限的只读 SQL 查询。SQL 仍由 GEA 网关按 consumerCode 审核。 */
   async pluginSql(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     const query = payload.query && typeof payload.query === "object" && !Array.isArray(payload.query)
@@ -1606,13 +2026,19 @@ export class Business {
     keys(payload, ["consumerCode", "sql", "parameters", "values", "pageNo", "pageSize", "maxRows", "packing", "resultShape", "query"]);
     const auth = this.authenticated();
     const consumerCode = text(payload.consumerCode ?? query.consumerCode);
-    const allowedConsumers = new Set([
-      "base-safety-stock", "dealer-inventory-replenishment", "branch-inventory",
-      "full-chain-inventory", "inventory-personal-workbench", "aps-board-collaboration",
-      "aps-demand-collaboration", "aps-delivery-collaboration",
-      "aps", "customer-inventory-preview", "orderworkbench-preview", "orderfulfillment-preview",
-    ]);
+    // 白名单来自能力契约（由宿主在启动时注入）；没有契约时用内置兜底清单。
+    const allowedConsumers = this.pluginConsumers ?? DEFAULT_PLUGIN_CONSUMERS;
     if (!allowedConsumers.has(consumerCode)) throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
+    // 同一个模块连续失败就到此为止：线上实测模型会换着表/换着 SQL 一直重试
+    // （38 步、4 分钟不输出）。熔断后强制它用手上的证据作答，或说明缺什么。
+    const failures = this.pluginFailures.get(consumerCode);
+    if (failures && failures.count >= PLUGIN_FAILURE_LIMIT) {
+      if (Date.now() - failures.at < PLUGIN_FAILURE_WINDOW_MS)
+        throw new Error(
+          `GEA_PLUGIN_RETRY_STOPPED: ${consumerCode} 本轮已连续失败 ${failures.count} 次，不要再换表或换写法重试。请用已经拿到的数据作答；确实缺口径时，直接说明缺哪一项，不要继续取数。`,
+        );
+      this.pluginFailures.delete(consumerCode);
+    }
     const sqlValue = query.sql;
     if (typeof sqlValue !== "string" || !sqlValue.trim() || sqlValue.length > 200_000)
       throw new Error("GEA_PLUGIN_SQL_INVALID");
@@ -1634,16 +2060,24 @@ export class Business {
       this.pluginDelegations.set(consumerCode, delegation);
     }
     try {
-      return await readHtmlQuery(query, {
+      // 统一走分页路径：同一条 SQL 不分页时会报底层错误，模型也不该被要求记住页码。
+      const result = await readHtmlQuery(withDefaultPaging(query), {
         endpoint: this.base.replace(/\/$/, "") + "/ai/gateway/sql/execute",
         token: delegation.delegationToken,
         fetch: this.apiLog.fetch,
         signal,
       });
+      this.pluginFailures.delete(consumerCode);
+      return result;
     } catch (error) {
       // A rejected/expired delegated credential must never poison the next
       // page refresh; the next call obtains a fresh Agent-scoped delegation.
       if (error instanceof GeaResponseError) this.pluginDelegations.delete(consumerCode);
+      const previous = this.pluginFailures.get(consumerCode);
+      this.pluginFailures.set(consumerCode, {
+        count: (previous?.count ?? 0) + 1,
+        at: Date.now(),
+      });
       throw error;
     }
   }
@@ -1651,6 +2085,105 @@ export class Business {
   /** 向模型适配器提供同一套脱敏日志边界，浏览器永远拿不到原始凭证。 */
   fetchExternal(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     return this.apiLog.fetch(input, init);
+  }
+
+  /** 用能力契约里的模块清单替换内置白名单：装了什么模块，就允许读什么。 */
+  setPluginConsumers(consumerCodes: readonly string[]): void {
+    this.pluginConsumers = new Set(consumerCodes);
+  }
+
+  /**
+   * 只读探查：模块自述里那几张业务表的列清单。
+   *
+   * 会话里"不用猜表名字段名"靠这一步：表名来自模块契约（宿主静态提取），列名由受管
+   * 只读通道探一次得到（同样按权限过滤），结果按表缓存，避免每问一次都重探。
+   */
+  async pluginSchema(
+    payload: Record<string, unknown>,
+    caller: AbortSignal,
+  ): Promise<unknown> {
+    keys(payload, ["consumerCode", "tables"]);
+    const consumerCode = text(payload.consumerCode);
+    const requested = Array.isArray(payload.tables) ? payload.tables : [];
+    const tables = requested
+      .filter(
+        (table): table is string =>
+          typeof table === "string" && /^agents?_[a-z0-9_]+$/.test(table),
+      )
+      .slice(0, 20);
+    const result: Array<{ table: string; columns: string[]; error?: string }> = [];
+    // 缓存命中的直接给，未命中的按预算并行探：串行探十几张表会把工具超时跑爆。
+    const pending: string[] = [];
+    for (const table of tables) {
+      const cacheKey = consumerCode + ":" + table;
+      const cached = this.pluginSchemaCache.get(cacheKey);
+      if (cached && Date.now() - cached.at < PLUGIN_SCHEMA_TTL_MS) {
+        result.push({ table, columns: cached.columns });
+        continue;
+      }
+      pending.push(table);
+    }
+    const { outcomes, skipped } = await probeTables(
+      pending,
+      async (table, signal) => {
+        const page = object(
+          await this.pluginSql(
+            { consumerCode, sql: `SELECT * FROM ${table}`, pageNo: 1, pageSize: 1 },
+            signal,
+          ),
+        );
+        const rows = Array.isArray(page.rows)
+          ? page.rows
+          : Array.isArray(page.records)
+            ? page.records
+            : [];
+        const columns = Array.isArray(page.returnedColumns)
+          ? page.returnedColumns.map((column) => String(column))
+          : rows.length > 0
+            ? Object.keys(object(rows[0]))
+            : [];
+        return columns.slice(0, 200);
+      },
+      { signal: caller, limit: tables.length },
+    );
+    for (const outcome of outcomes) {
+      const { table } = outcome;
+      if (outcome.error !== undefined) {
+        result.push({ table, columns: [], error: outcome.error });
+        continue;
+      }
+      const bounded = outcome.value ?? [];
+      const cacheKey = consumerCode + ":" + table;
+      if (bounded.length > 0)
+        this.pluginSchemaCache.set(cacheKey, { at: Date.now(), columns: bounded });
+      result.push({ table, columns: bounded });
+    }
+    const byTable = new Map(result.map((row) => [row.table, row]));
+    const ordered = tables
+      .map((table) => byTable.get(table))
+      .filter((row): row is { table: string; columns: string[]; error?: string } =>
+        Boolean(row),
+      );
+    return {
+      consumerCode,
+      tables: ordered,
+      // 没探完的表如实回报，别让模型以为"这个模块就这么多字段"。
+      ...(skipped.length
+        ? {
+            skipped,
+            note: `本轮只探了 ${ordered.length} 张表（每次最多 ${
+              ordered.length + skipped.length
+            } 张）：${skipped.slice(0, 5).join("、")} 等 ${
+              skipped.length
+            } 张还没探，需要时再调一次 describe。`,
+          }
+        : {}),
+      ...(tables.length === 0
+        ? {
+            note: "该模块没有可直读的业务表（未声明受管 SQL）：需要它的数据请先打开对应页面，用页面工具读取。",
+          }
+        : {}),
+    };
   }
 
   /** 返回当前进程内的脱敏接口目录与调用记录。 */
@@ -2195,7 +2728,7 @@ export class Business {
     options: { forModel?: boolean } = {},
   ): Promise<unknown> {
     keys(payload, ["kind", "query"]);
-    const query = object(payload.query ?? {});
+    let query = object(payload.query ?? {});
     const kind = text(payload.kind);
     const allowed: Record<string, string[]> = {
       periods: ["periodMonth", "planType", "pageNo", "pageSize"],
@@ -2219,7 +2752,20 @@ export class Business {
       compare: ["planId", "fromVersionId", "toVersionId"],
     };
     if (!Object.hasOwn(allowed, kind)) throw new Error("INVALID_QUERY");
-    const unsupported = Object.keys(query).filter(key => !allowed[kind].includes(key));
+    // 分页参数对不分页的 kind（detail/versions/compare…）没有意义，但也不算错：
+    // 线上实测模型会给 detail 顺手带上 pageSize，严格拒绝等于白烧一轮。
+    // 这里把它丢掉继续跑；真正用错的 key（比如给 detail 传 versionId）仍然照旧报错。
+    const ignoredPaging = Object.keys(query).filter(
+      (key) =>
+        (key === "pageNo" || key === "pageSize") && !allowed[kind].includes(key),
+    );
+    const effective =
+      ignoredPaging.length === 0
+        ? query
+        : Object.fromEntries(
+            Object.entries(query).filter(([key]) => !ignoredPaging.includes(key)),
+          );
+    const unsupported = Object.keys(effective).filter(key => !allowed[kind].includes(key));
     if (unsupported.length) {
       // 这些提示直接决定模型下一轮能不能纠正，不要只说“参数不支持”。
       const guidance =
@@ -2232,6 +2778,7 @@ export class Business {
               : "";
       throw new Error(`INVALID_QUERY: kind=${kind} accepts only ${allowed[kind].join(", ")}.${guidance}`);
     }
+    query = effective;
     if (
       kind === "periods" &&
       query.periodMonth != null &&
@@ -2256,6 +2803,9 @@ export class Business {
       text(query.fromVersionId);
       text(query.toVersionId);
     }
+    // versionSkus 不分页：上游按版本返回整份 SKU，模型侧的有界分页由
+    // agentQuery 的本地投影负责（见下方 versionSkus 投影分支）。若这里把
+    // 它当成远端分页集合，数组结果会走进 object() 而抛 INVALID_PAYLOAD。
     const paged = kind === "periods" || kind === "list";
     const current = paged ? integer(query.pageNo ?? 1, 1) : 1;
     const size = paged

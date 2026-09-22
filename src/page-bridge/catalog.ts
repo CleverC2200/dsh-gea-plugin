@@ -9,6 +9,8 @@
  * 参数只允许标量，避免把复杂结构塞进模型工具。
  */
 
+import { focusTokens, truncateText } from "../shared/payload-budget.ts";
+
 export type PageActionScalarType =
   | "string"
   | "integer"
@@ -81,6 +83,13 @@ export type PageActionVerb = (typeof PAGE_ACTION_VERBS)[number];
 export type PageElementRole = "row" | "field" | "control" | "collection";
 
 /**
+ * 元素的影响等级：draft 只改页面草稿（默认）；submit / approve 会提交或审批，
+ * 必须由用户明确要求、且页面当前可点时才允许。
+ */
+export const PAGE_ELEMENT_EFFECTS = ["draft", "submit", "approve"] as const;
+export type PageElementEffect = (typeof PAGE_ELEMENT_EFFECTS)[number];
+
+/**
  * 页面上的一个元素。页面只声明"渲染出来、人能看见/能操作"的东西；
  * 后台状态、内部缓存、接口凭据不属于元素，不在这里出现。
  */
@@ -100,6 +109,8 @@ export type PageElement = {
   editable?: boolean;
   /** collection 的成员元素 id（用于"这一列的字段一起改"）。 */
   members?: readonly string[];
+  /** 这个元素操作下去的后果等级，缺省按草稿处理。 */
+  effect?: PageElementEffect;
 };
 
 export const PAGE_CATALOG_LIMITS = {
@@ -122,8 +133,12 @@ export const PAGE_CATALOG_LIMITS = {
 const NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 /** 页面标识允许连字符/点（例如 `gea-workbench`、`inventory.dealer`）。 */
 const SURFACE_PATTERN = /^[a-z][a-z0-9._-]*$/;
-/** 元素 id：允许冒号分层（例如 `field:p-1:sku:1001:qty`）。 */
-const ELEMENT_PATTERN = /^[A-Za-z][A-Za-z0-9:._-]*$/;
+/**
+ * 元素 id：允许冒号分层（例如 `field:p-1:sku:1001:qty`）。
+ * 迁移过来的业务页面由宿主按"行 + 表头"生成 id，表头是中文，所以这里允许中日韩文，
+ * 但仍然禁止空白、引号与换行，避免 id 把工具说明的结构撑破。
+ */
+const ELEMENT_PATTERN = /^[A-Za-z][A-Za-z0-9:._\-\u4e00-\u9fa5]*$/;
 const ELEMENT_ROLES = ["row", "field", "control", "collection"] as const;
 
 function catalogElements(value: unknown): PageElement[] {
@@ -141,7 +156,8 @@ function catalogElements(value: unknown): PageElement[] {
           key !== "options" &&
           key !== "actions" &&
           key !== "editable" &&
-          key !== "members",
+          key !== "members" &&
+          key !== "effect",
       )
     )
       throw new Error("INVALID_PAGE_CATALOG");
@@ -163,6 +179,11 @@ function catalogElements(value: unknown): PageElement[] {
     };
     if (element.editable !== undefined && typeof element.editable !== "boolean")
       throw new Error("INVALID_PAGE_CATALOG");
+    if (
+      element.effect !== undefined &&
+      !(PAGE_ELEMENT_EFFECTS as readonly unknown[]).includes(element.effect)
+    )
+      throw new Error("INVALID_PAGE_CATALOG");
     // 可编辑 = 用户能改：输入框（field）和可选项控件（control，如下拉/分段/页码）都算。
     if (element.editable === true && role !== "field" && role !== "control")
       throw new Error("INVALID_PAGE_CATALOG");
@@ -183,6 +204,9 @@ function catalogElements(value: unknown): PageElement[] {
       ...(list(element.members, 300) === undefined
         ? {}
         : { members: list(element.members, 300)! }),
+      ...(element.effect === undefined
+        ? {}
+        : { effect: element.effect as PageElementEffect }),
     };
   });
   if (new Set(elements.map((element) => element.id)).size !== elements.length)
@@ -494,38 +518,23 @@ function compileElementCatalog(catalog: PageCatalog): {
       element.role === "collection",
   );
   const readOnly = elements.filter((element) => !interactive.includes(element));
-  const line = (element: PageElement) => {
-    const parts = [`${element.id}`, `${element.role}`, `"${element.label}"`];
-    if (element.value !== undefined) parts.push(`当前值=${element.value}`);
-    if (element.options?.length) parts.push(`可选=${element.options.join("/")}`);
-    if (element.editable) parts.push("可编辑");
-    if (element.actions?.length) parts.push(`可执行=${element.actions.join("/")}`);
-    if (element.members?.length)
-      parts.push(`成员=${element.members.length} 个`);
-    return `- ${parts.join("｜")}`;
-  };
+  const count = (effect: PageElement["effect"]) =>
+    elements.filter((element) => element.effect === effect).length;
   const description = [
     catalog.description,
     "",
-    `可操作元素（${interactive.length}）：`,
-    ...(interactive.length
-      ? interactive.slice(0, PAGE_CATALOG_LIMITS.maxListedElements).map(line)
-      : ["- （无）"]),
-    ...(interactive.length > PAGE_CATALOG_LIMITS.maxListedElements
-      ? [
-          `- （另有 ${interactive.length - PAGE_CATALOG_LIMITS.maxListedElements} 个同规则元素未逐条列出：行用 row:<planId>、字段用 field:<planId>:<skuCode>:qty，取值见页面状态）`,
-        ]
-      : []),
+    // 元素目录**不写进工具说明**：它每次请求都要付一次 token。改成先要目录、按需取。
+    `可操作元素 ${interactive.length} 个（可编辑 ${
+      elements.filter((element) => element.editable === true).length
+    }、可点 ${
+      elements.filter((element) => (element.actions?.length ?? 0) > 0).length
+    }、提交类 ${count("submit")}、审批类 ${count("approve")}）；只读元素 ${
+      readOnly.length
+    } 个。`,
+    "元素目录不在说明里：先用 directory=true 取这一屏的 id、名称与当前值（只关心某几行/某字段时带 focus=用户提到的对象或字段名），拿到 id 再用 kind 操作。",
     "",
-    `只读元素（${readOnly.length}，只能读，不能改）：`,
-    ...(readOnly.length
-      ? readOnly.slice(0, PAGE_CATALOG_LIMITS.maxListedElements).map(line)
-      : ["- （无）"]),
-    ...(readOnly.length > PAGE_CATALOG_LIMITS.maxListedElements
-      ? [`- （另有 ${readOnly.length - PAGE_CATALOG_LIMITS.maxListedElements} 个只读元素）`]
-      : []),
-    "",
-    "规则：invoke 只能执行元素列出的可执行动作；setValue 只能写「可编辑」的 field，或用 collection 一次写它的成员字段；select 只能选可操作元素；后台状态、内部缓存、接口都不在清单里，禁止臆造 id。",
+    "规则：invoke 只能执行元素列出的可执行动作；setValue 只能写「可编辑」的 field，或用 collection 一次写它的成员字段；select 只能选可操作元素；后台状态、内部缓存、接口都不在清单里，禁止臆造 id。" +
+      "标了「提交类」「审批类」的元素默认不要动：只有用户这一轮明确要求提交/审批时才调用，并且必须带 confirm=true；页面没标这类元素就说明它不提供该动作，不要找别的办法绕过。",
   ].join("\n");
   // 长度兜底：宁可截断说明，也不能因为说明太长让工具注册不上。
   const bounded =
@@ -538,10 +547,10 @@ function compileElementCatalog(catalog: PageCatalog): {
       {
         name: "kind",
         type: "string",
-        required: true,
-        enum: [...PAGE_ACTION_VERBS],
+        // directory 是"只取元素目录"的口语写法：线上实测模型会这么写，索性认它。
+        enum: [...PAGE_ACTION_VERBS, "directory"],
         description:
-          "invoke 执行元素动作；setValue 写可编辑字段；select 选中元素；clear 关浮层/清当前筛选。",
+          "invoke 执行元素动作；setValue 写可编辑字段；select 选中元素；clear 关浮层/清当前筛选；directory 只取元素目录（等价于传 directory=true）。只要目录时也可以不传 kind。",
       },
       {
         name: "target",
@@ -569,8 +578,144 @@ function compileElementCatalog(catalog: PageCatalog): {
         type: "string",
         description: "可选：一句话说明为什么改这一屏。",
       },
+      {
+        name: "confirm",
+        type: "boolean",
+        description:
+          "提交类/审批类元素必填 true，表示用户这一轮明确要求提交或审批；其它情况不要传。",
+      },
+      {
+        name: "directory",
+        type: "boolean",
+        description:
+          "true 时只返回这一屏的元素目录（id、名称、当前值、能不能改），不下发任何操作。",
+      },
+      {
+        name: "focus",
+        type: "string",
+        description:
+          "只看与这些关键词相关的行或字段（用户提到的对象名、编码、字段名）；不带 focus 默认只回摘要。",
+      },
+      {
+        name: "values",
+        type: "boolean",
+        description:
+          "directory=true 时带上：除字段索引外再回当前值与可选项（默认不带，省上下文）。",
+      },
     ],
   };
+}
+
+/**
+ * 元素目录：只读、按需、可收窄。
+ *
+ * 线上实测这份目录曾经有 19.8KB 被写进工具说明，每次请求都付一次；现在它只在
+ * `directory=true` 时返回，并且可以按 focus 收窄、有硬上限。
+ */
+export function elementDirectory(
+  catalog: PageCatalog,
+  options: { focus?: string; limit?: number; values?: boolean } = {},
+): {
+  counts: {
+    total: number;
+    interactive: number;
+    readOnly: number;
+    submit: number;
+    approve: number;
+  };
+  entries: Array<{
+    id: string;
+    role?: string;
+    label?: string;
+    value?: string;
+    options?: readonly string[];
+    editable?: boolean;
+    actions?: readonly string[];
+    effect?: PageElementEffect;
+  }>;
+  omitted: number;
+  note: string;
+} {
+  const elements = catalog.elements ?? [];
+  const tokens = focusTokens(options.focus);
+  const limit = Math.max(1, options.limit ?? PAGE_CATALOG_LIMITS.maxListedElements);
+  const interactive = (element: PageElement) =>
+    element.editable === true ||
+    (element.actions?.length ?? 0) > 0 ||
+    element.role === "collection";
+  const matched = elements.filter(
+    (element) =>
+      tokens.length === 0 ||
+      tokens.some((token) =>
+        [element.id, element.label, element.value, ...(element.options ?? [])]
+          .filter((value): value is string => typeof value === "string")
+          .some((value) => value.toLowerCase().includes(token)),
+      ),
+  );
+  // 可操作的排前面：模型先要的是"能改什么"。
+  const ordered = [
+    ...matched.filter(interactive),
+    ...matched.filter((element) => !interactive(element)),
+  ];
+  const kept = ordered.slice(0, limit);
+  // 渐进式暴露：默认只回"字段索引"（id、名称、能不能改）。当前值和可选项要显式
+  // 带 values=true，免得把一整屏的值塞进上下文。
+  const withValues = options.values === true;
+  return {
+    counts: {
+      total: elements.length,
+      interactive: elements.filter(interactive).length,
+      readOnly: elements.filter((element) => !interactive(element)).length,
+      submit: elements.filter((element) => element.effect === "submit").length,
+      approve: elements.filter((element) => element.effect === "approve").length,
+    },
+    entries: kept.map((element) => ({
+      id: element.id,
+      ...(element.role === undefined ? {} : { role: element.role }),
+      ...(element.label === undefined ? {} : { label: truncateText(element.label, 40) }),
+      ...(!withValues || element.value === undefined
+        ? {}
+        : { value: truncateText(element.value, 60) }),
+      ...(!withValues || !element.options?.length
+        ? {}
+        : { options: element.options.slice(0, 20) }),
+      ...(element.editable === true ? { editable: true } : {}),
+      ...(element.actions?.length ? { actions: element.actions } : {}),
+      ...(element.effect === undefined ? {} : { effect: element.effect }),
+    })),
+    omitted: ordered.length - kept.length,
+    note:
+      (tokens.length > 0
+        ? `已按 focus「${tokens.join(" ")}」收窄目录`
+        : "只回了目录，没有下发任何操作") +
+      (withValues
+        ? "；含当前值与可选项。"
+        : "；默认只给字段索引（id／名称／能不能改），要看当前值或可选项再带 values=true，并尽量配 focus。"),
+  };
+}
+
+/** 取一次调用涉及到的最高影响等级（没有元素信息时按 draft）。 */
+export function pageActionEffect(
+  catalog: PageCatalog,
+  args: Record<string, unknown>,
+): PageElementEffect {
+  if (!catalog.elements) return "draft";
+  const byId = new Map(catalog.elements.map((element) => [element.id, element]));
+  const targets = [
+    ...(typeof args.target === "string" ? [args.target] : []),
+    ...(Array.isArray(args.targets)
+      ? (args.targets as unknown[]).filter(
+          (value): value is string => typeof value === "string",
+        )
+      : []),
+  ];
+  let effect: PageElementEffect = "draft";
+  for (const id of targets) {
+    const declared = byId.get(id)?.effect;
+    if (declared === "approve") return "approve";
+    if (declared === "submit") effect = "submit";
+  }
+  return effect;
 }
 
 /**
@@ -610,6 +755,12 @@ export function resolvePageAction(
     if (kind === "invoke") {
       const action = typeof args.action === "string" ? args.action : "";
       if (!element.actions?.includes(action)) return "ACTION_NOT_ALLOWED";
+      // 提交/审批类动作必须由用户明确要求：缺 confirm 一律不下发。
+      if (
+        (element.effect === "submit" || element.effect === "approve") &&
+        args.confirm !== true
+      )
+        return "CONFIRMATION_REQUIRED";
       continue;
     }
     if (kind === "select") {

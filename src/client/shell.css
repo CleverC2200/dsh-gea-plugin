@@ -1084,6 +1084,12 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   box-shadow: none !important;
 }
 
+/* 业务页已经把右侧对话栏固定在布局里，原生抽屉手柄会压住工作台最右侧的 iframe 区域。
+   这里不需要再用手柄切换右栏；隐藏它也避免它拦截业务页最后一列的点击。 */
+.AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_handle {
+  display: none;
+}
+
 /*
  * 三栏宽度不再由外壳写死：DSH 的 AppFrame 用 inline style 管 grid 轨道，并带两侧拖拽手柄
  * （computeColumns：侧栏 clamp(264–420)、对话栏 clamp(300–viewport*ratio)、主区至少留 400）。

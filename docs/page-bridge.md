@@ -194,12 +194,19 @@ GEA 工作台当前上报的元素 id 约定：
 
 ## 7. 接入一个新页面
 
-1. 宿主编排处把页面加进白名单：`createPageToolRegistry(ctx, bridge, { allowSurfaces: [...], dataActionSurfaces: [...] })`。
+0. **先看这个页面属于哪个模块**：宿主不再手写白名单，`allowSurfaces` / `dataActionSurfaces`
+   都来自能力契约（见 [capability-contract.md](./capability-contract.md)）。新模块只要把
+   `plugin.json` / `SKILL.md` / 页面装进客户端，契约自动派生。
+1. 宿主编排处把页面接上：`createPageToolRegistry(ctx, bridge, { allowSurfaces: registry.surfaces(), dataActionSurfaces: registry.draftSurfaces(), allowsEffect: registry.allows })`。
 2. 页面侧用 `startPageBridgeClient({ endpoint, request, sessionId, apply, catalog })` 启动：
    - `catalog()` 返回该页面**当前**的元素清单；
    - `apply(args, meta)` 把 4 个通用动词落到页面自己的状态上，返回 `{ applied, error? }`。
 3. 宿主路由接收 `{ sessionId, toolMessages, catalog }`，调用 `pageTools.declare()` 与 `bridge.pull()`。
 4. 业务提供 `stateSnapshot(sessionId)`（可选）：桥用它判断"改动后的状态是否已回填"。
+
+**从 web 迁过来的业务页面不用走上面 2-4 步**：宿主把适配器脚本注入页面
+（`src/html-page-scan.ts` + `html-plugins.ts` 的 `page-bridge` 方法），页面自己不用改。
+两种来源的取舍与试点结论见 [page-bridge-v2-pilot.md](./page-bridge-v2-pilot.md)。
 
 最小 `apply` 形状：
 
@@ -238,6 +245,17 @@ apply: (args) => {
   旧的动作名形态仍被桥支持，留给尚未迁移的页面过渡使用。
 - 审批类元素（通过/退回）**已开放**，但只声明"按钮当前可点"的行，且需要用户明确指令
   （见预设措辞：执行前复述"对象 + 动作 + 依据"）。保存调整仍是"草稿 + 人工点击"。
+  宿主侧另加一道硬规则：标了 `effect: submit/approve` 的元素**没有 `confirm=true` 一律不下发**。
+- 迁移过来的业务页面（`gea-html-<模块id>`）**已接入**：宿主注入适配器扫这一屏、按原生输入
+  方式改草稿；页面不用改。契约决定它能不能写草稿（默认 `draft`，只读页面声明 `view`）。
+- 弹层（下拉/对话框）**两步走**：控件带 `aria-haspopup` / `aria-expanded` 时，名字里会写明
+  "（点开是对话框）""（点开有选项）"；点开后弹层里的输入框与 `role=option/tab/switch…` 的选项
+  会在下一轮扫描里出现，模型再按新出现的 id 操作。工具说明里也写死了这条规矩（不要凭空猜选项 id，
+  点开不等于选好了）。
+- 切页/切会话/关页面时，页面目录与"这一屏"的可见上下文都会**立刻撤掉**，不留给下一屏
+  （`workbenchCatalog([])` 返回 `null`、桥关闭时补报一次 `catalog: null`）。
+- "改草稿"统一走一层实现（`src/capability/draft.ts`）：限流、超时、回执、确认策略与可追溯
+  记录都在那里，页面只声明能力；结果信封里带回 `draft.id` 与 `outcome`。
 - 传输是 HTTP 轮询；换成 SSE 只需要替换 `client.ts` 的取事件方式与 `host.ts` 的路由形态。
 - 桥当前以"仓库内共用模块"形态维护（`src/page-bridge/`），接口稳定后可抽成独立插件
   （新仓库 + 渠道）或并进 `@cleverc2200/dsh-agent-workbench`。

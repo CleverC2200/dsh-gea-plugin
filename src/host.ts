@@ -22,13 +22,17 @@ import {
 } from "@deepseek-ai/dsh-llm";
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
-import { GeaResponseError } from "./shared/gea-error.js";
-import { registerHtmlPlugins } from "./html-plugins.ts";
+import { errorEnvelope } from "./host/error-envelope.ts";
+import { registerHtmlPlugins, type PageBridgeHost } from "./html-plugins.ts";
+import { injectPageScan } from "./html-page-scan.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
 import {
   createPageBridge,
   createPageToolRegistry,
 } from "./page-bridge/index.ts";
+import { createCapabilityRegistry } from "./capability/registry.ts";
+import { workbenchContract } from "./capability/contract.ts";
+import { WORKBENCH_SURFACE } from "./shared/workbench-actions.ts";
 import { transportSignal } from "./shared/transport-signal.ts";
 import { geaTextStream } from "./shared/gea-stream.ts";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
@@ -339,7 +343,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     if (!/^[a-z0-9-]+$/.test(id) || typeof root !== "string") continue;
     ctx.effect(() => ctx.connection.fetch.register({
       path: `/api/gea-html-plugin/${id}`, methods: ["GET"], requestBody: "buffered",
-      fetch: async () => new Response(new Uint8Array(await readFile(resolve(root, "index.html"))), {
+      fetch: async () => new Response(injectPageScan(await readFile(resolve(root, "index.html"), "utf8")), {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "frame-ancestors 'self'" },
       }),
     }));
@@ -381,13 +385,38 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     );
   const pageBridge = createPageBridge();
   const business = new Business(config, pageBridge);
+  const desktopLogin = await attachDesktopLogin(business);
+  const webLogin = await attachWebLogin(business);
+  const htmlRootConfig=JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS || "[]");
+  const htmlRoots=Array.isArray(htmlRootConfig) ? htmlRootConfig : (htmlRootConfig && typeof htmlRootConfig === "object" ? Object.values(htmlRootConfig) : []);
+  if(htmlRoots.some(root=>typeof root!=="string"))throw Error("INVALID_HTML_PLUGIN_ROOTS");
+  // 迁移页面的页面桥入口：注册表建好后再接上（页面第一次轮询是 500ms 之后）。
+  const pageBridgeHost: PageBridgeHost = {};
+  const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlRoots,pageBridgeHost);
+  // 能力契约注册表：页面白名单、草稿白名单、只读模块清单全部由它产出，宿主不再按模块写分支。
+  const capability = createCapabilityRegistry([
+    ...htmlPlugins.capabilityContracts,
+    workbenchContract({
+      surface: WORKBENCH_SURFACE,
+      pageIds: [WORKBENCH_SURFACE],
+      keywords: ["区域计划", "审批", "销售计划", "计划量"],
+    }),
+  ]);
+  // 受管只读的模块白名单也来自契约：不再在业务代码里维护一份模块清单。
+  business.setPluginConsumers(
+    capability
+      .readModules()
+      .map((contract) => contract.data!.consumerCode),
+  );
   // 页面自述能力 -> 该会话专属的模型工具（页面关闭即注销）。
   const pageTools = createPageToolRegistry(ctx, pageBridge, {
     stateSnapshot: (sessionId) => business.workbenchStateSnapshot(sessionId),
-    // 只允许"业务工作台页面"被对话改动；其它页面声明一律不接。
-    allowSurfaces: ["gea-workbench"],
-    // 只有业务工作台可以暴露"改草稿"的动作（例如确认计划量）。
-    dataActionSurfaces: ["gea-workbench"],
+    // 只有"随客户端安装、且契约里声明了页面"的模块才允许被对话操作。
+    allowSurfaces: capability.surfaces(),
+    // 契约声明到草稿及以上等级的页面，才允许通过对话写页面草稿。
+    dataActionSurfaces: capability.draftSurfaces(),
+    // 提交/审批类元素只有契约声明到该等级的页面才允许下发。
+    allowsEffect: (surface, effect) => capability.allows(surface, effect),
     // 工作台会话里不让它用浏览器/MCP 去扒页面数据（普通对话不受影响）。
     denyGlobalToolsInWorkbench: [
       "mcp__browser__browser_find",
@@ -398,14 +427,10 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   });
   // 身份变化后旧会话的页面工具一律注销；页面下一轮声明会重新注册。
   ctx.effect(() => business.watchIdentity(() => pageTools.disposeAll()));
-  const desktopLogin = await attachDesktopLogin(business);
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());
-  const webLogin = await attachWebLogin(business);
-  const htmlRootConfig=JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS || "[]");
-  const htmlRoots=Array.isArray(htmlRootConfig) ? htmlRootConfig : (htmlRootConfig && typeof htmlRootConfig === "object" ? Object.values(htmlRootConfig) : []);
-  if(htmlRoots.some(root=>typeof root!=="string"))throw Error("INVALID_HTML_PLUGIN_ROOTS");
-  const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlRoots);
+  pageBridgeHost.declare = (sessionId, catalog, source) =>
+    pageTools.declare(sessionId, catalog, source);
   ctx.provide("geaMcp", {
     version: 1 as const,
     defaultConsumer: { consumerType: "AGENT" as const, consumerCode: config.analysisAgentCode },
@@ -413,7 +438,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     watch: (listener: () => void) => business.watchIdentity(listener),
     open: (consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) => business.openMcpConnection(consumer, signal),
   });
-  registerGeaTools(ctx, business);
+  registerGeaTools(ctx, business, capability);
   // 登记 37：客户端所有 agent（含默认预设）都要能取到工作台之外的数据。
   // 网关 MCP 的工具描述由 GEA 侧给出，模型容易猜错调用形状（实测报
   // "queries.query 必须是 Cube 查询对象"、"成员未唯一匹配数据目录资源"、"Resource URI 不合法"），
@@ -567,6 +592,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "api-log/snapshot",
     "api-log/replay",
     "api-log/clear",
+    // 只在显式打开调试开关时注册：逐个模块真跑一遍 MCP，并把原始报文带回来。
+    ...(process.env.GEA_DEBUG_PROBE === "1" ? ["debug/mcp-probe"] : []),
   ];
   for (const endpoint of endpoints)
     ctx.effect(() =>
@@ -596,6 +623,12 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
               case "api-log/clear":
                 value = business.apiLogClear(payload);
                 break;
+              case "debug/mcp-probe":
+                value = await business.debugProbeModuleMcp(
+                  String(payload.consumerCode ?? ""),
+                  request.signal,
+                );
+                break;
               case "workbench/query":
                 value = await business.workbenchQuery(payload, request.signal);
                 break;
@@ -621,7 +654,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 if (typeof payload.sessionId !== "string")
                   throw new Error("INVALID_WORKBENCH_SESSION");
                 try {
-                  pageTools.declare(payload.sessionId, payload.catalog);
+                  // 审批工作台是自述型页面：目录由页面自己报。
+                  pageTools.declare(payload.sessionId, payload.catalog, "self-report");
                 } catch (error) {
                   // 页面声明无效（例如说明超长）会让工具注册不上，页面侧又是静默重试，
                   // 必须留一条日志，避免"功能突然不可用但没有任何线索"。
@@ -673,7 +707,12 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 break;
               case "status":
                 await Promise.all([business.refreshMissingAvatar(request.signal), business.refreshPermissions(request.signal)]);
-                value = {...business.status(),htmlPlugins:htmlRoots.length>0};
+                // 前端不写死"哪个页面属于哪个模块"：模块索引由能力契约产出。
+                value = {
+                  ...business.status(),
+                  htmlPlugins: htmlRoots.length > 0,
+                  modules: capability.modules(),
+                };
                 break;
               case "model/advice": {
                 if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
@@ -772,22 +811,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
           } catch (error) {
             // 业务操作失败时也可能同时发现登录过期并清除身份。
             try { await desktopLogin.flush(); await webLogin.flush(); } catch (storageError) { error = storageError; }
-            const code =
-              error instanceof Error && /^[A-Z][A-Z_0-9]+$/.test(error.message)
-                ? error.message
-                : "GEA_REQUEST_FAILED";
             return Response.json(
-              {
-                ok: false,
-                error:
-                  error instanceof GeaResponseError
-                    ? {
-                        code: error.code,
-                        message: error.message,
-                        details: error.details,
-                      }
-                    : { code, message: code },
-              },
+              { ok: false, error: errorEnvelope(error) },
               { headers: { "Cache-Control": "no-store" } },
             );
           }
