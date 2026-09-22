@@ -353,7 +353,9 @@
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--bg-3);
-  border-radius: 8px;
+  /* 右侧正好贴住右侧会话区的边界：这条 1px 会被看成"分隔条切进对话框"，去掉右边框。 */
+  border-right: 0;
+  border-radius: 8px 0 8px 8px;
   background: var(--bg-1);
 }
 
