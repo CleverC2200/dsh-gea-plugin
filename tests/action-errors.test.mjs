@@ -9,6 +9,7 @@ test(
     const app = await profile(t);
     await app.login();
     app.route((req, res, reply) => {
+      if(req.url.pathname.endsWith('/getPermCode')) {reply({success:true,result:{codeList:['sales-plan:plan:region-approve']}});return true;}
       if(req.url.pathname.endsWith('/plans/p')) {
         reply({success:true,result:{currentVersion:{id:'v',planId:'p',effective:true,status:1,planTypeCode:'Y'},skus:[],versions:[],logs:[],actionContext:{versionId:'v',status:1,nodeOrder:2,snapshotHash:'a'.repeat(64),allowedActions:['APPROVE']}}});return true;
       }

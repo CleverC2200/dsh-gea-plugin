@@ -11,6 +11,10 @@ test(
     const app = await profile(t);
     let legacyResponse = false;
     app.route((req, res, reply) => {
+      if (req.url.pathname.endsWith('/getPermCode')) {
+        reply({ success: true, result: { codeList: ['sales-plan:plan:region-approve'] } });
+        return true;
+      }
       if (req.url.pathname.endsWith('/plans')) {
         reply({
           success: true,

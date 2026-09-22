@@ -123,11 +123,12 @@ export function correctionAccess(
   detail: GeaSalesPlanDetail,
   workflowRows?: readonly SalesPlanWorkflowRow[],
   selectedRole?: CorrectionNode,
+  permissions: readonly string[] = [],
 ) {
   const v = detail.currentVersion;
   if (v.orderType !== 'Z' || detail.correctionContext?.contract !== 'absolute-net-v1' ||
       detail.correctionContext.monthlyApproved !== true) return undefined;
-  return salesPlanAccessForRow({planId:v.planId,versionId:v.id,status:v.status,planTypeCode:v.planTypeCode}, detail, [], selectedRole, workflowRows, {allowReturned: true});
+  return salesPlanAccessForRow({planId:v.planId,versionId:v.id,status:v.status,planTypeCode:v.planTypeCode}, detail, permissions, selectedRole, workflowRows, {allowReturned: true});
 }
 
 /** 构造全部绝对决策，包括未变化的继承值和显式零值。 */

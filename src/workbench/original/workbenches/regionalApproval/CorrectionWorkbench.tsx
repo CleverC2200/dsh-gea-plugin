@@ -309,6 +309,7 @@ export function CorrectionWorkbench({
           key={`${selected.versionId}:${stage}`}
           row={selected}
           stage={stage}
+          permissionCodes={permissionCodes}
           client={detailClient}
           actionClient={actionClient}
           onClose={() => setSelected(undefined)}
@@ -323,6 +324,7 @@ function CorrectionDetail({
   t,
   row,
   stage,
+  permissionCodes,
   client,
   actionClient,
   onClose,
@@ -331,6 +333,7 @@ function CorrectionDetail({
   t: TFunction;
   row: GeaSalesPlanListItem;
   stage: string;
+  permissionCodes?: readonly string[];
   client: SalesPlanDetailClient;
   actionClient?: SalesPlanActionClient;
   onClose: () => void;
@@ -369,7 +372,7 @@ function CorrectionDetail({
     };
   }, [client, row.planId, row.versionId]);
   const actor = detail && salesPlanWorkflow(detail.currentVersion.planTypeCode).actor(detail.currentVersion.status);
-  const access = detail && correctionAccess(detail, undefined, stage === 'current' ? undefined : stage as 'region' | 'province' | 'area' | 'category');
+  const access = detail && correctionAccess(detail, undefined, stage === 'current' ? undefined : stage as 'region' | 'province' | 'area' | 'category', permissionCodes);
   const writable = Boolean(access && actionClient && (access.roleContractSupported || access.approvalRole === actor));
   const lines = useMemo(
     () =>

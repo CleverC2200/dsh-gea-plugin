@@ -83,10 +83,10 @@ test('collapsing the flow lane keeps filters and inline edits', { timeout: 90000
 });
 
 /**
- * 没有 sales-plan 权限码、只被服务端派了同版本可处理任务的账号，
- * 默认也要落到「第一个有权限审批的节点」，而不是全部节点。
+ * 没有 sales-plan 权限码的账号，即使被服务端派了同版本可处理任务，
+ * 也不再折算成审批节点：默认停在「全部节点」，且没有审批入口。
  */
-test('default node falls back to the first actionable node instead of every node', { timeout: 90000 }, async (t) => {
+test('a task notification without an account grant no longer selects an approval node', { timeout: 90000 }, async (t) => {
   const app = await profile(t);
   const plan = { planId: 'p', versionId: 'v', seq: 1, periodId: 'period-1', planTypeCode: 'Y', orderType: 'M', dealerCode: 'd', dealerName: '客户A', orgCode: 'org', orgName: '宝阳销售组', provinceCode: 'province', provinceName: '华南省区', areaCode: 'area', areaName: '华南大区', status: 1, currentQty: '20', currentAmount: '200', targetQty: '40', targetAmount: '400', skuCount: 1 };
   const sku = { id: 's', skuCode: '1001', versionId: 'v', productCategName: '汤圆', materialDescription: '黑芝麻汤圆 500g', qty: '20', baseQty: '10', amt: '200', amtBase: '100', price: '10' };
@@ -122,10 +122,8 @@ test('default node falls back to the first actionable node instead of every node
   const frame = page.frameLocator('iframe[data-gea-workbench]');
   await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
 
-  // 默认节点 = 城市经理（待办所在节点），不是「全部节点」。
-  await expect(frame.getByTestId('regional-approval-flow-toggle')).toContainText('当前节点：城市经理审批', { timeout: 20000 });
-  await expect.poll(() => requestedStatuses.filter((status) => status !== null).length, { timeout: 20000 })
-    .toBeGreaterThanOrEqual(2); // 切到该节点后按它的状态（1 / 7）重新取数
+  // 待办通知不再被当作审批身份，默认停在「全部节点」。
+  await expect(frame.getByTestId('regional-approval-flow-toggle')).toContainText('当前节点：全部节点', { timeout: 20000 });
   await frame.getByTestId('regional-approval-flow-toggle').click();
-  await expect(frame.getByTestId('regional-approval-stage-region')).toHaveAttribute('aria-pressed', 'true');
+  await expect(frame.getByTestId('regional-approval-stage-region')).toHaveAttribute('aria-pressed', 'false');
 });

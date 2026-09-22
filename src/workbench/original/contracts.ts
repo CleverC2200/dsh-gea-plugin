@@ -175,7 +175,6 @@ export type GeaSalesPlanDetail = {
   dmsMock?: { source: 'DMS_MOCK'; syncStatus: string; finishedAt: string | null; receipts: Array<{key:string;dmsId:string}> };
 
   /** 当前用户任务分配；由已认证 Host 匹配并刷新。 */
-  workflowApproval?: { versionId: string; notificationId: string; instanceId: string; actionable: true };
   actionContext?: GeaSalesPlanActionContext;
 
   currentVersion: GeaSalesPlanVersion;

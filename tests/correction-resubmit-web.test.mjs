@@ -63,6 +63,10 @@ test(
     let received;
     app.route((req, res, reply) => {
       const path = req.url.pathname;
+      if (path.endsWith('/getPermCode')) {
+        reply({ success: true, result: { codeList: ['sales-plan:plan:region-approve'] } });
+        return true;
+      }
       if (path.endsWith('/periods')) {
         reply({
           success: true,

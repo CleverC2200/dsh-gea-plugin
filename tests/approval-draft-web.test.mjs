@@ -12,6 +12,7 @@ for (const scenario of ['delayed', 'stale', 'unavailable']) {
     app.route((req, _res, reply) => {
       const path = req.url.pathname;
       const send = result => {reply({success:true,result});return true;};
+      if (path.endsWith('/getPermCode')) return send({codeList:['sales-plan:plan:region-approve']});
       if (path.endsWith('/plans')) return send({records:[plan],total:1,current:1,size:20,pages:1});
       if (path.endsWith('/plans/p')) return send({currentVersion:{...plan,id:'v',effective:true},skus:[sku],versions:[],logs:[],actionContext:{versionId:'v',status:1,nodeOrder:2,allowedActions:['APPROVE','REJECT'],snapshotHash:'a'.repeat(64)}});
       if (path.endsWith('/versions')) return send([{...plan,id:'v',effective:true}]);

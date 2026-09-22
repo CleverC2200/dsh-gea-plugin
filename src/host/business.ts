@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { salesPlanDraftMatches, salesPlanDraftSnapshot, type SalesPlanLocalDraft } from '../workbench/original/workbenches/regionalApproval/models/salesPlanLocalDraftModel.ts';
 import { correctionAccess, correctionAdjustments, correctionDecimal } from '../workbench/original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';
-import { salesPlanAccessForRow } from '../workbench/original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';
+import { salesPlanAccessForRow, salesPlanVersionEvidenceStale } from '../workbench/original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';
 import { salesPlanWorkflow } from '../workbench/original/salesPlanWorkflow.ts';
 import type { ApprovalStageId } from '../workbench/original/workbenches/regionalApproval/regionalApprovalFixture.ts';
 import { validateSalesPlanActionInput } from '../workbench/original/workbenches/regionalApproval/models/salesPlanActionModel.ts';
@@ -939,33 +939,6 @@ export class Business {
     return this.auth;
   }
 
-  /** 将服务端最新分配的审批任务匹配到指定销售计划版本。 */
-  private async workflowApproval(versionId: string, caller: AbortSignal) {
-    const auth = this.authenticated();
-    const signal = AbortSignal.any([caller, this.epoch.signal]);
-    let pageNo = 1;
-    while (true) {
-      const page = object(await this.get(`/api/v1/notifications?pageNo=${pageNo}&pageSize=100`, auth, signal));
-      if (!Array.isArray(page.items)) throw new Error("NOTIFICATION_INVALID_RESPONSE");
-      for (const item of page.items) {
-        const row = object(item);
-        const approval = row.approval == null ? undefined : object(row.approval);
-        if (approval?.biz_key !== `sales-plan:version:${versionId}` || approval.actionable !== true) continue;
-        const fresh = object(await this.get("/api/v1/notifications/" + encodeURIComponent(text(row.id)), auth, signal));
-        const confirmed = fresh.approval == null ? undefined : object(fresh.approval);
-        if (fresh.id !== row.id) throw new Error("NOTIFICATION_INVALID_RESPONSE");
-        if (confirmed?.biz_key === `sales-plan:version:${versionId}` && confirmed.actionable === true) {
-          if (this.auth !== auth) throw new Error("STALE_LOGIN");
-          return { versionId, notificationId: text(row.id), instanceId: text(confirmed.instance_id), actionable: true as const };
-        }
-      }
-      const total = integer(page.total, 0);
-      if (pageNo * 100 >= total) return undefined;
-      if (!page.items.length || pageNo >= 100) throw new Error("NOTIFICATION_SCAN_INCOMPLETE");
-      pageNo++;
-    }
-  }
-
   /**
    * 持久化私有草稿属于当前登录身份，绝不会调用 GEA 动作，也不代表服务端审批权限。
    * 界面自 0.0.59 起按“详情可读”开放数量编辑入口（见 `canEdit={... Boolean(access.detail)}`），
@@ -1122,6 +1095,9 @@ export class Business {
       const row = {planId,versionId,status:request.expectedStatus as number,planTypeCode:detail.currentVersion.planTypeCode};
       const role = request.approvalRole as NonNullable<GeaSalesPlanActionRequest['approvalRole']>;
       const workflowRows = await this.workflowConfig({}, signal);
+      // 版本或状态已经变化属于并发冲突：提示刷新，而不是笼统地报成无权限并禁用本轮操作。
+      if (salesPlanVersionEvidenceStale(detail, {planId, versionId, status: request.expectedStatus as number}))
+        throw new GeaResponseError(409,{message:'该计划版本或审批状态已变化，请刷新权威队列后重试'});
       const access = salesPlanAccessForRow(row, detail, auth.permissionCodes, role, workflowRows);
       if (!access?.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']))
         throw new GeaResponseError(403,{message:'当前角色不具备该版本的操作权限'});
@@ -1138,7 +1114,10 @@ export class Business {
       const planId=text(payload.planId);
       const detail=await this.workbenchQuery({kind:'detail',query:{planId}},signal) as GeaSalesPlanDetail;
       const workflowRows=await this.workflowConfig({},signal);
-      const access=correctionAccess(detail,workflowRows,request.approvalRole as GeaSalesPlanActionRequest['approvalRole']);
+      await this.refreshPermissions(signal);
+      if (salesPlanVersionEvidenceStale(detail, {planId, versionId, status: request.expectedStatus as number}))
+        throw new GeaResponseError(409,{message:'该计划版本或审批状态已变化，请刷新权威队列后重试'});
+      const access=correctionAccess(detail,workflowRows,request.approvalRole as GeaSalesPlanActionRequest['approvalRole'],auth.permissionCodes);
       if (!access || !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']) || !detail.currentVersion.submitter || detail.currentVersion.submitter === auth.id)
         throw new GeaResponseError(403,{message:'纠偏契约、月初终审或角色权限未获确认'});
       if (detail.currentVersion.id !== versionId || access.status !== request.expectedStatus || access.snapshotHash !== request.expectedSnapshot)
@@ -2295,15 +2274,6 @@ export class Business {
         )
       )
         throw new Error("GEA_IDENTITY_MISMATCH");
-      let workflowApproval;
-      try {
-        if (!detail.actionContext && currentVersion.effective === true &&
-            [1, 2, 3, 4, 7, 8, 9].includes(Number(currentVersion.status)))
-          workflowApproval = await this.workflowApproval(versionId, signal);
-      } catch (error) {
-        if (signal.aborted || !this.auth) throw error;
-        // 通知发现失败时仍保留业务详情可读，但不授予审批能力。
-      }
       if (options.forModel) {
         // 模型侧只回投影后的字段：上游整包带着该计划的全部 SKU 与内部字段，
         // 直接展开必然超过输入预算，detail 会永远 SNAPSHOT_TOO_LARGE。
@@ -2337,10 +2307,9 @@ export class Business {
           ...(cappedLogs.omitted === 0
             ? {}
             : { logsOmitted: cappedLogs.omitted }),
-          ...(workflowApproval === undefined ? {} : { workflowApproval }),
         };
       }
-      return { ...detail, currentVersion, skus, versions, logs, workflowApproval };
+      return { ...detail, currentVersion, skus, versions, logs };
     }
     const values = records(result);
     if (kind === "versionSkus") this.materialNames.apply(values);

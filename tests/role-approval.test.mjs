@@ -22,25 +22,25 @@ test('visible role can act on pending plans but not returned plans',()=>{
   for(const status of [2,3,4]) assert.equal(m.salesPlanAccessForRow(row(status,'XN'),detail(status,'XN'),[grant('province')]).approvalRole,'province');
   for(const status of [6,7,8,9]) assert.equal(m.salesPlanAccessForRow(row(status,'XN'),detail(status,'XN'),[grant('province')]),undefined);
 });
-test('an exact server-assigned actionable task grants only the current workflow actor',()=>{
+test('a task notification never grants approval identity without an account grant',()=>{
   const d={...detail(),workflowApproval:{versionId:'v',notificationId:'n',instanceId:'i',actionable:true}};
-  assert.equal(m.salesPlanAccessForRow(row(),d).approvalRole,'province');
-  assert.deepEqual(m.salesPlanAccessForRow(row(),d).allowedActions,['APPROVE','REJECT']);
+  assert.equal(m.salesPlanAccessForRow(row(),d),undefined);
   assert.equal(m.salesPlanAccessForRow(row(),d,[],'region'),undefined);
-  assert.equal(m.salesPlanAccessForRow(row(),{...d,workflowApproval:{...d.workflowApproval,versionId:'old'}}),undefined);
-  assert.equal(m.salesPlanAccessForRow(row(),{...d,workflowApproval:{...d.workflowApproval,actionable:false}}),undefined);
-  const roles=[grant('region'),grant('province')];
-  assert.equal(m.salesPlanAccessForRow(row(),d,roles),undefined);
-  assert.equal(m.salesPlanAccessForRow(row(),d,roles,'region').approvalRole,'region');
-  assert.equal(m.salesPlanAccessForRow(row(),d,roles,'category'),undefined);
+  const access=m.salesPlanAccessForRow(row(),d,[grant('region')]);
+  assert.equal(access.approvalRole,'region');
+  assert.deepEqual(access.allowedActions,['APPROVE','REJECT']);
+  assert.equal(m.salesPlanAccessForRow(row(),{...d,workflowApproval:undefined},[grant('region')]).approvalRole,'region');
 });
-test('new object capability is role-specific, freshness-checked and terminal-safe',()=>{
+test('object capability adds actions but never grants identity, and stays freshness-checked',()=>{
   const d={...detail(),actionContext:policy(['region','province'])};
-  assert.equal(m.salesPlanAccessForRow(row(),d,[],'region').roleContractSupported,true);
-  assert.deepEqual(m.salesPlanAccessForRow(row(),d,[],'province').allowedActions,['SAVE','APPROVE','REJECT']);
+  assert.equal(m.salesPlanAccessForRow(row(),d,[],'region'),undefined);
+  const granted=m.salesPlanAccessForRow(row(),d,[grant('region')],'region');
+  assert.equal(granted.roleContractSupported,true);
+  assert.deepEqual(granted.allowedActions,['APPROVE','REJECT','SAVE']);
+  assert.deepEqual(m.salesPlanAccessForRow(row(),d,[grant('province')],'province').allowedActions,['APPROVE','REJECT','SAVE']);
   for(const bad of [{...d,currentVersion:{...d.currentVersion,effective:false}},{...d,actionContext:{...d.actionContext,snapshotHash:'bad'}},{...d,actionContext:{...d.actionContext,roleActions:[{role:'region',allowedActions:['DELETE']}]} }])
-    assert.equal(m.salesPlanAccessForRow(row(),bad,[],'region'),undefined);
-  for(const status of [0,5,10]) assert.equal(m.salesPlanAccessForRow(row(status),{...detail(status),actionContext:policy(['region'],status)},[],'region'),undefined);
+    assert.equal(m.salesPlanAccessForRow(row(),bad,[grant('region')],'region'),undefined);
+  for(const status of [0,5,10]) assert.equal(m.salesPlanAccessForRow(row(status),{...detail(status),actionContext:policy(['region'],status)},[grant('region')],'region'),undefined);
 });
 test('granted visible role remains actionable when object capabilities only track the notified node',()=>{
   const d={...detail(),actionContext:{...policy([],2),roleActions:[]}};
@@ -68,8 +68,10 @@ test('role receipt verifies actor, configured return target and all required app
 });
 test('correction role authority ignores approval date window and uses selected-role data',()=>{
   const d={...detail(),currentVersion:{...detail().currentVersion,orderType:'Z'},correctionContext:{contract:'absolute-net-v1',monthlyApproved:true,approvalOpen:false},actionContext:policy()};
-  assert.equal(m.correctionAccess({...d,currentVersion:{...d.currentVersion,status:7},actionContext:policy(['region'],7)},undefined,'region').approvalRole,'region');
-  assert.equal(m.correctionAccess({...d,correctionContext:{...d.correctionContext,monthlyApproved:false}},undefined,'region'),undefined);
+  const returned={...d,currentVersion:{...d.currentVersion,status:7},actionContext:policy(['region'],7)};
+  assert.equal(m.correctionAccess(returned,undefined,'region',[grant('region')]).approvalRole,'region');
+  assert.equal(m.correctionAccess(returned,undefined,'region'),undefined);
+  assert.equal(m.correctionAccess({...d,correctionContext:{...d.correctionContext,monthlyApproved:false}},undefined,'region',[grant('region')]),undefined);
   assert.equal(m.correctionDecision({qty:'10',price:'2',adjAddQty:'1',adjCutQty:'0',regionAdjAddQty:'3',regionAdjCutQty:'0',provinceAdjAddQty:'8',provinceAdjCutQty:'0'},3,'Y',true,undefined,'region'),'3');
 });
 

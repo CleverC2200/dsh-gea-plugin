@@ -118,14 +118,15 @@ test('workbench bridge keeps host request identity and cannot reuse a released d
   assert.throws(() => salesPlan.list.invoke(query), /WORKBENCH_HOST_NOT_BOUND/);
 });
 
-test('an exact actionable task grants only its current approval role', () => {
+test('approval identity comes only from the account grant, never from a task notification', () => {
   const row = { planId: 'p', versionId: 'v', status: 1, planTypeCode: 'Y' };
   const value = { currentVersion: { id: 'v', planId: 'p', status: 1, planTypeCode: 'Y', effective: true }, skus: [], versions: [], logs: [], workflowApproval: { versionId: 'v', notificationId: 'n', instanceId: 'i', actionable: true } };
-  assert.equal(salesPlanAccessForRow(row, value)?.approvalRole, 'region');
+  const granted = ['sales-plan:plan:region-approve'];
+  assert.equal(salesPlanAccessForRow(row, value), undefined);
   assert.equal(salesPlanAccessForRow(row, value, [], 'province'), undefined);
-  assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: undefined }), undefined);
-  assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: { ...value.workflowApproval, versionId: 'old' } }), undefined);
-  assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: { ...value.workflowApproval, actionable: false } }), undefined);
+  assert.equal(salesPlanAccessForRow(row, value, granted)?.approvalRole, 'region');
+  assert.equal(salesPlanAccessForRow(row, value, granted, 'province'), undefined);
+  assert.equal(salesPlanAccessForRow(row, { ...value, workflowApproval: undefined }, granted)?.approvalRole, 'region');
 });
 
 for (const [typeCode, status, actor, wrong] of [['Y', 1, 'region', 'province'], ['Y', 2, 'province', 'area'], ['Y', 3, 'area', 'category'], ['XN', 2, 'province', 'region']]) {
