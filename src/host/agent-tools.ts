@@ -5,6 +5,7 @@ import type { Business } from "./business.ts";
 import type { CapabilityRegistry } from "../capability/registry.ts";
 import { pluginReadHint } from "./plugin-query.ts";
 import { readableMessage } from "./error-envelope.ts";
+import { summarizeVisibleWorkbenchContext } from "./visible-context-summary.ts";
 import {
   findRecipe,
   missingRecipeParams,
@@ -338,7 +339,9 @@ export function registerGeaTools(
         }),
         execute: async (_args, exec) => {
           if (!exec.agent) throw new Error("WORKBENCH_SESSION_REQUIRED");
-          return business.waitVisibleWorkbenchContext(exec.agent.id);
+          const snapshot = await business.waitVisibleWorkbenchContext(exec.agent.id);
+          if (business.config.visibleContextSubagent !== true) return snapshot;
+          return summarizeVisibleWorkbenchContext(snapshot, exec.agent, exec.signal);
         },
       }),
     ),

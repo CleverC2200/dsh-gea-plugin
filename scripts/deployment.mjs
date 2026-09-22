@@ -233,6 +233,7 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
                   analysis.contextWindow - analysis.maxTokens - 1000,
                 )
               : config.maxSnapshotBytes,
+            visibleContextSubagent: config.visibleContextSubagent ?? true,
           },
         },
       ],

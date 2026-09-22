@@ -74,6 +74,7 @@ test(
       },
       config: () => ({
         requestTimeoutMs: 1000,
+        visibleContextSubagent: false,
         analysis: {
           mode: "model",
           source: "gea",
