@@ -26,9 +26,14 @@ test("业务预设不再把当前页上下文当成拒答前提", async () => {
 
 test("页面上下文工具的描述与返回值都要求“按月问题去查数据、一轮一次”", async () => {
   const tools = await readFile(new URL("../src/host/agent-tools.ts", import.meta.url), "utf8");
-  assert.ok(tools.includes("for month- or scope-wide questions answer from the read-only data tools"));
+  assert.match(
+    tools,
+    /for month- or scope-wide questions answer from the read-only data tools/i,
+  );
   assert.ok(tools.includes("Call this tool at most once per turn."));
   assert.equal(tools.includes("do not read, infer or invent business data"), false);
+  // 这条工具现在还会按 focus 收窄：不带 focus 只回摘要，避免整屏塞进上下文。
+  assert.match(tools, /without focus you get a summary/i);
 
   const business = await readFile(new URL("../src/host/business.ts", import.meta.url), "utf8");
   assert.ok(business.includes("按月或按范围的数据问题请直接用只读数据工具查询并作答"));

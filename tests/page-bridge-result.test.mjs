@@ -20,6 +20,77 @@ const compiled = join(process.cwd(), ".scratch", "gea-page-bridge-result-test.mj
 await writeFile(compiled, outputFiles[0].text);
 const m = await import(pathToFileURL(compiled).href + `?v=${Date.now()}`);
 
+test("元素目录改成按需取：说明里只有数量，directory=true 才回目录且能按 focus 收窄", async () => {
+  let registered;
+  const sessionId = "session-page-directory";
+  const agent = {
+    id: sessionId,
+    ctx: {
+      tools: {
+        register(tool) {
+          registered = tool;
+          return () => {};
+        },
+      },
+    },
+  };
+  const registry = m.createPageToolRegistry(
+    { agents: { get: () => agent } },
+    { enqueue: () => "call-1", cancel: () => {}, wait: async () => undefined },
+    { waitMs: 1, refreshWaitMs: 1 },
+  );
+  registry.declare(sessionId, {
+    surface: "gea-workbench",
+    tool: "gea_workbench_apply",
+    description: "改页面",
+    elements: [
+      {
+        id: "field:c1:qty",
+        role: "field",
+        label: "长沙分仓 补货量",
+        value: "10",
+        editable: true,
+      },
+      {
+        id: "field:c2:qty",
+        role: "field",
+        label: "武汉分仓 补货量",
+        value: "20",
+        editable: true,
+      },
+      { id: "readout:c1:gap", role: "field", label: "缺口" },
+    ],
+  });
+  // 工具说明只写数量：目录不再跟着每次请求一起付 token。
+  assert.match(registered.description, /可操作元素 2 个/);
+  assert.equal(registered.description.includes("field:c1:qty"), false);
+
+  // 要目录时才回，且默认有上限、可 focus 收窄。
+  const all = JSON.parse(
+    await registered.execute({ kind: "invoke", directory: true }, { agent }),
+  );
+  assert.equal(all.directory.counts.total, 3);
+  assert.equal(all.directory.counts.interactive, 2);
+  assert.equal(all.directory.entries.length, 3);
+  assert.equal(all.directory.entries[0].id, "field:c1:qty");
+  // 渐进式暴露：默认只给字段索引，不给当前值。
+  assert.equal(all.directory.entries[0].value, undefined);
+  assert.match(all.directory.note, /values=true/);
+
+  const focused = JSON.parse(
+    await registered.execute(
+      { kind: "invoke", directory: true, focus: "长沙", values: true },
+      { agent },
+    ),
+  );
+  assert.deepEqual(
+    focused.directory.entries.map((entry) => entry.id),
+    ["field:c1:qty"],
+  );
+  assert.equal(focused.directory.entries[0].value, "10");
+  assert.match(focused.directory.note, /focus/);
+});
+
 test("页面明确回填 applied=false 时，宿主不会误报成功", async () => {
   let registered;
   const sessionId = "session-page-result";

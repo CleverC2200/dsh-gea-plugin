@@ -9,6 +9,8 @@
  * 参数只允许标量，避免把复杂结构塞进模型工具。
  */
 
+import { focusTokens, truncateText } from "../shared/payload-budget.ts";
+
 export type PageActionScalarType =
   | "string"
   | "integer"
@@ -516,38 +518,20 @@ function compileElementCatalog(catalog: PageCatalog): {
       element.role === "collection",
   );
   const readOnly = elements.filter((element) => !interactive.includes(element));
-  const line = (element: PageElement) => {
-    const parts = [`${element.id}`, `${element.role}`, `"${element.label}"`];
-    if (element.value !== undefined) parts.push(`当前值=${element.value}`);
-    if (element.options?.length) parts.push(`可选=${element.options.join("/")}`);
-    if (element.editable) parts.push("可编辑");
-    if (element.effect === "submit") parts.push("提交类：必须在用户明确要求后才执行");
-    if (element.effect === "approve") parts.push("审批类：必须在用户明确要求后才执行");
-    if (element.actions?.length) parts.push(`可执行=${element.actions.join("/")}`);
-    if (element.members?.length)
-      parts.push(`成员=${element.members.length} 个`);
-    return `- ${parts.join("｜")}`;
-  };
+  const count = (effect: PageElement["effect"]) =>
+    elements.filter((element) => element.effect === effect).length;
   const description = [
     catalog.description,
     "",
-    `可操作元素（${interactive.length}）：`,
-    ...(interactive.length
-      ? interactive.slice(0, PAGE_CATALOG_LIMITS.maxListedElements).map(line)
-      : ["- （无）"]),
-    ...(interactive.length > PAGE_CATALOG_LIMITS.maxListedElements
-      ? [
-          `- （另有 ${interactive.length - PAGE_CATALOG_LIMITS.maxListedElements} 个同规则元素未逐条列出：行用 row:<planId>、字段用 field:<planId>:<skuCode>:qty，取值见页面状态）`,
-        ]
-      : []),
-    "",
-    `只读元素（${readOnly.length}，只能读，不能改）：`,
-    ...(readOnly.length
-      ? readOnly.slice(0, PAGE_CATALOG_LIMITS.maxListedElements).map(line)
-      : ["- （无）"]),
-    ...(readOnly.length > PAGE_CATALOG_LIMITS.maxListedElements
-      ? [`- （另有 ${readOnly.length - PAGE_CATALOG_LIMITS.maxListedElements} 个只读元素）`]
-      : []),
+    // 元素目录**不写进工具说明**：它每次请求都要付一次 token。改成先要目录、按需取。
+    `可操作元素 ${interactive.length} 个（可编辑 ${
+      elements.filter((element) => element.editable === true).length
+    }、可点 ${
+      elements.filter((element) => (element.actions?.length ?? 0) > 0).length
+    }、提交类 ${count("submit")}、审批类 ${count("approve")}）；只读元素 ${
+      readOnly.length
+    } 个。`,
+    "元素目录不在说明里：先用 directory=true 取这一屏的 id、名称与当前值（只关心某几行/某字段时带 focus=用户提到的对象或字段名），拿到 id 再用 kind 操作。",
     "",
     "规则：invoke 只能执行元素列出的可执行动作；setValue 只能写「可编辑」的 field，或用 collection 一次写它的成员字段；select 只能选可操作元素；后台状态、内部缓存、接口都不在清单里，禁止臆造 id。" +
       "标了「提交类」「审批类」的元素默认不要动：只有用户这一轮明确要求提交/审批时才调用，并且必须带 confirm=true；页面没标这类元素就说明它不提供该动作，不要找别的办法绕过。",
@@ -600,7 +584,113 @@ function compileElementCatalog(catalog: PageCatalog): {
         description:
           "提交类/审批类元素必填 true，表示用户这一轮明确要求提交或审批；其它情况不要传。",
       },
+      {
+        name: "directory",
+        type: "boolean",
+        description:
+          "true 时只返回这一屏的元素目录（id、名称、当前值、能不能改），不下发任何操作。",
+      },
+      {
+        name: "focus",
+        type: "string",
+        description:
+          "只看与这些关键词相关的行或字段（用户提到的对象名、编码、字段名）；不带 focus 默认只回摘要。",
+      },
+      {
+        name: "values",
+        type: "boolean",
+        description:
+          "directory=true 时带上：除字段索引外再回当前值与可选项（默认不带，省上下文）。",
+      },
     ],
+  };
+}
+
+/**
+ * 元素目录：只读、按需、可收窄。
+ *
+ * 线上实测这份目录曾经有 19.8KB 被写进工具说明，每次请求都付一次；现在它只在
+ * `directory=true` 时返回，并且可以按 focus 收窄、有硬上限。
+ */
+export function elementDirectory(
+  catalog: PageCatalog,
+  options: { focus?: string; limit?: number; values?: boolean } = {},
+): {
+  counts: {
+    total: number;
+    interactive: number;
+    readOnly: number;
+    submit: number;
+    approve: number;
+  };
+  entries: Array<{
+    id: string;
+    role?: string;
+    label?: string;
+    value?: string;
+    options?: readonly string[];
+    editable?: boolean;
+    actions?: readonly string[];
+    effect?: PageElementEffect;
+  }>;
+  omitted: number;
+  note: string;
+} {
+  const elements = catalog.elements ?? [];
+  const tokens = focusTokens(options.focus);
+  const limit = Math.max(1, options.limit ?? PAGE_CATALOG_LIMITS.maxListedElements);
+  const interactive = (element: PageElement) =>
+    element.editable === true ||
+    (element.actions?.length ?? 0) > 0 ||
+    element.role === "collection";
+  const matched = elements.filter(
+    (element) =>
+      tokens.length === 0 ||
+      tokens.some((token) =>
+        [element.id, element.label, element.value, ...(element.options ?? [])]
+          .filter((value): value is string => typeof value === "string")
+          .some((value) => value.toLowerCase().includes(token)),
+      ),
+  );
+  // 可操作的排前面：模型先要的是"能改什么"。
+  const ordered = [
+    ...matched.filter(interactive),
+    ...matched.filter((element) => !interactive(element)),
+  ];
+  const kept = ordered.slice(0, limit);
+  // 渐进式暴露：默认只回"字段索引"（id、名称、能不能改）。当前值和可选项要显式
+  // 带 values=true，免得把一整屏的值塞进上下文。
+  const withValues = options.values === true;
+  return {
+    counts: {
+      total: elements.length,
+      interactive: elements.filter(interactive).length,
+      readOnly: elements.filter((element) => !interactive(element)).length,
+      submit: elements.filter((element) => element.effect === "submit").length,
+      approve: elements.filter((element) => element.effect === "approve").length,
+    },
+    entries: kept.map((element) => ({
+      id: element.id,
+      ...(element.role === undefined ? {} : { role: element.role }),
+      ...(element.label === undefined ? {} : { label: truncateText(element.label, 40) }),
+      ...(!withValues || element.value === undefined
+        ? {}
+        : { value: truncateText(element.value, 60) }),
+      ...(!withValues || !element.options?.length
+        ? {}
+        : { options: element.options.slice(0, 20) }),
+      ...(element.editable === true ? { editable: true } : {}),
+      ...(element.actions?.length ? { actions: element.actions } : {}),
+      ...(element.effect === undefined ? {} : { effect: element.effect }),
+    })),
+    omitted: ordered.length - kept.length,
+    note:
+      (tokens.length > 0
+        ? `已按 focus「${tokens.join(" ")}」收窄目录`
+        : "只回了目录，没有下发任何操作") +
+      (withValues
+        ? "；含当前值与可选项。"
+        : "；默认只给字段索引（id／名称／能不能改），要看当前值或可选项再带 values=true，并尽量配 focus。"),
   };
 }
 

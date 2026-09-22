@@ -14,7 +14,7 @@ import {
   layersForContract,
   type CapabilityLayer,
 } from "./layers.ts";
-import { recipesFor } from "./recipes.ts";
+import { truncateText } from "../shared/payload-budget.ts";
 
 export type CapabilityRegistry = {
   /** 全部契约（稳定顺序，模块 id 排序）。 */
@@ -54,17 +54,6 @@ const layersOf = (contract: CapabilityContract): CapabilityLayer[] =>
     hasData: contract.data !== undefined,
     maxEffect: contract.maxEffect,
   });
-
-function tableList(tables: readonly string[], max: number): string {
-  if (tables.length === 0) return "未声明可读表（先用 describe 发现）";
-  const shown = tables.slice(0, max);
-  return (
-    shown.join("、") +
-    (tables.length > shown.length
-      ? ` 等 ${tables.length} 张表`
-      : "")
-  );
-}
 
 export function createCapabilityRegistry(
   contracts: readonly CapabilityContract[],
@@ -119,24 +108,17 @@ export function createCapabilityRegistry(
     readToolIndex: () => {
       const modules = ordered().filter((contract) => contract.data !== undefined);
       if (modules.length === 0) return "（当前没有可直读的业务模块）";
+      // 渐进式暴露：这里只给"模块名 + 编码 + 一句话"，表、列、配方、口径都用
+      // describe=true 按需取，避免每次请求都背着一份模块说明书。
       return modules
-        .map((contract) => {
-          const data = contract.data!;
-          const rules = data.rules.length
-            ? `；口径：${data.rules.join(" / ")}`
-            : "";
-          // 配方优先写在最前面：常见问题直接用配方查，不必自己拼 SQL。
-          const recipes = recipesFor(data.consumerCode);
-          const recipeText = recipes.length
-            ? `；配方（优先用 recipe= 直接执行）：${recipes
-                .map((recipe) => `${recipe.id}（${recipe.title}）`)
-                .join("；")}`
-            : "";
-          return `- ${contract.label}：consumerCode=${data.consumerCode}；可读表：${tableList(
-            data.tables,
-            12,
-          )}；能力层：${layersOf(contract).join("、")}${recipeText}${rules}`;
-        })
+        .map(
+          (contract) =>
+            `- ${contract.label}：consumerCode=${
+              contract.data!.consumerCode
+            }；${truncateText(contract.routing.summary, 80)}；能力层：${layersOf(
+              contract,
+            ).join("、")}`,
+        )
         .join("\n");
     },
     allows: (surface, effect) => {

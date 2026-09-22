@@ -604,12 +604,16 @@ test(
           (candidate) => candidate.function.name === "gea_plugin_read",
         );
         assert.ok(tool, "只读数据工具已注册");
-        // 模块清单来自契约：模块名 + consumerCode + 它能读的表。
+        // 模块清单来自契约：模块名 + consumerCode；表、列、配方、口径都按需 describe。
         assert.match(tool.function.description, /探针页面/);
         assert.match(tool.function.description, /consumerCode=probe-consumer/);
-        assert.match(tool.function.description, /agents_scm_probe_thing/);
-        // 口径（SKILL.md 里带"规则"的小节）也进了说明。
-        assert.match(tool.function.description, /probe-rule-42/i);
+        assert.match(tool.function.description, /能力层/);
+        assert.equal(
+          tool.function.description.includes("agents_scm_probe_thing"),
+          false,
+          "表名不再写进说明，改用 describe=true 取",
+        );
+        assert.ok(tool.function.description.includes("describe=true"));
         // 枚举按装了什么模块生成，不再写死一份固定名单。
         assert.deepEqual(tool.function.parameters.properties.consumerCode.enum, [
           "probe-consumer",
@@ -828,7 +832,8 @@ test(
               modelRequests[0].tools.map((tool) => tool.function.name),
             ),
         );
-        // 工具由桥按元素目录生成：模型只会 4 个通用动词，说明里带元素与只读区分。
+        // 工具由桥按元素目录生成：模型只会 4 个通用动词；说明里只给数量，
+        // 目录按需取（directory=true），不再随每次请求把标签全塞进上下文。
         const applyTool = modelRequests[0].tools.find(
           (tool) => tool.function.name === "gea_workbench_apply",
         );
@@ -836,8 +841,14 @@ test(
           applyTool.function.parameters.properties.kind.enum,
           ["invoke", "setValue", "select", "clear"],
         );
-        assert.match(applyTool.function.description, /河北 经销渠道虚拟二/);
+        assert.match(applyTool.function.description, /可操作元素 4 个/);
         assert.match(applyTool.function.description, /只读元素/);
+        assert.equal(
+          applyTool.function.description.includes("河北 经销渠道虚拟二"),
+          false,
+          "元素标签不再写进工具说明，改用 directory=true 按需取",
+        );
+        assert.match(applyTool.function.description, /directory=true/);
         assert.equal(applyTool.function.parameters.properties.target.type, "string");
         assert.equal(applyTool.function.parameters.properties.action.type, "string");
         assert.equal(applyTool.function.parameters.properties.value.type, "string");
@@ -1160,10 +1171,14 @@ test(
           tool.function.parameters.properties.kind.enum,
           ["invoke", "setValue", "select", "clear"],
         );
-        // 说明里区分了"可操作"和"只读"，并带上元素 label 供对齐。
+        // 说明里区分了"可操作"和"只读"，并给出数量；元素 label 用 directory=true 按需取。
         assert.match(tool.function.description, /只读元素/);
-        assert.match(tool.function.description, /经销渠道虚拟二/);
         assert.match(tool.function.description, /可编辑/);
+        assert.equal(
+          tool.function.description.includes("经销渠道虚拟二"),
+          false,
+          "元素标签不再写进工具说明，改用 directory=true 按需取",
+        );
         // 只读行上的 setValue 不会下发；事件来自第二个（可编辑字段）调用。
         const [start, args] = events;
         assert.deepEqual(JSON.parse(args.delta), {

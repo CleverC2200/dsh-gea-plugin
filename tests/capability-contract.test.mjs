@@ -144,9 +144,11 @@ test("注册表只由契约产出白名单与只读模块清单", () => {
   assert.equal(registry.allows("gea-workbench", "approve"), true);
   assert.equal(registry.readModules().length, 2);
   const index = registry.readToolIndex();
+  // 渐进式暴露：索引只给"模块名 + 编码 + 一句话 + 能力层"，表和口径用 describe 按需取。
   assert.match(index, /分仓库存：consumerCode=branch-inventory/);
-  assert.match(index, /agents_scm_branch_inventory_snapshot/);
-  assert.match(index, /按 V3 计算/);
+  assert.match(index, /能力层：/);
+  assert.equal(index.includes("agents_scm_branch_inventory_snapshot"), false);
+  assert.ok(index.length < 600, `索引过长会占每次请求的上下文: ${index.length}`);
 });
 
 test("关键词能把用户问题路由到模块", () => {

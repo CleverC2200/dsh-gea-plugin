@@ -24,6 +24,7 @@ import {
   pageIdentityFresh,
   type PageIdentity,
 } from "./page-identity.ts";
+import { compressForModel } from "../shared/payload-budget.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
 const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
@@ -842,8 +843,13 @@ export class Business {
     return value;
   }
 
-  /** 只返回当前 Agent 会话的页面范围，不重新读取 GEA，也不执行任何写操作。 */
-  visibleWorkbenchContext(sessionId: string): string {
+  /**
+   * 只返回当前 Agent 会话的页面范围，不重新读取 GEA，也不执行任何写操作。
+   *
+   * focus：用户问题里提到的对象/字段。带上就只回相关行与字段；不带只回摘要（行数、
+   * 字段名、范围），避免整屏明细灌进上下文——这是"先判断是不是问这一屏，再引用数据"。
+   */
+  visibleWorkbenchContext(sessionId: string, focus?: string): string {
     const value = this.visibleWorkbenchContexts.get(sessionId);
     if (!value) {
       // 页面开着但不是原生工作台页（HTML 插件页没有可见行快照）时，至少把"当前页是
@@ -860,23 +866,40 @@ export class Business {
           "这个对话当前不在业务工作台：读不到页面数据，也不会去打开页面。这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答，不要因此拒答或索要经销商编码。本工具每轮最多调用一次，不要重复调用。",
       });
     }
+    const compressed = compressForModel(value.context, {
+      ...(focus === undefined ? {} : { focus }),
+    });
+    let context: unknown = value.context;
+    try {
+      context = JSON.parse(compressed.json);
+    } catch {
+      // 压缩结果异常就退回原快照：宁可大一点，也不能让页面证据消失。
+    }
     return JSON.stringify({
       source: "GEA_RENDERED_WORKBENCH",
       renderedAt: value.receivedAt,
       coverage: "current-visible-page",
       authority: "read-only-ui-context",
-      context: value.context,
+      context,
+      ...(compressed.compressed
+        ? { contextNote: compressed.note, contextOmitted: compressed.omitted }
+        : {}),
     });
   }
 
   /** 首屏查询尚未完成时给浏览器一点时间把当前页快照同步进来。 */
-  async waitVisibleWorkbenchContext(sessionId: string, timeoutMs = 2000): Promise<string> {
+  async waitVisibleWorkbenchContext(
+    sessionId: string,
+    timeoutMs = 2000,
+    focus?: string,
+  ): Promise<string> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      if (this.visibleWorkbenchContexts.has(sessionId)) return this.visibleWorkbenchContext(sessionId);
+      if (this.visibleWorkbenchContexts.has(sessionId))
+        return this.visibleWorkbenchContext(sessionId, focus);
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    return this.visibleWorkbenchContext(sessionId);
+    return this.visibleWorkbenchContext(sessionId, focus);
   }
 
   /** 模型 Gateway 拒绝当前身份后，将该 GEA 登录标记为过期。 */

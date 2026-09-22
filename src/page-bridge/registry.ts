@@ -13,6 +13,7 @@ import type { SessionId } from "@deepseek-ai/dsh-session";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import {
   compilePageCatalog,
+  elementDirectory,
   pageActionEffect,
   resolvePageAction,
   validatePageCatalog,
@@ -214,6 +215,19 @@ export function createPageToolRegistry(
     options: { dataAllowed: boolean; source: PageCatalogSource },
   ): Promise<string> => {
     const kind = typeof args.kind === "string" ? args.kind : null;
+    // 只要目录、不做事：目录本身不再写进工具说明（那会让每次请求都付一次 token）。
+    if (args.directory === true)
+      return JSON.stringify({
+        source: "PAGE_BRIDGE",
+        protocol: "ag-ui-frontend-tool",
+        authority: "view-only",
+        tool: { toolCallName: catalog.tool, toolCallId: null },
+        directory: elementDirectory(catalog, {
+          ...(typeof args.focus === "string" ? { focus: args.focus } : {}),
+          ...(args.values === true ? { values: true } : {}),
+        }),
+        note: "这是只读目录：没有下发任何操作，也不会改动这一屏。",
+      });
     /** 拒绝一次调用：命令没有下发，模型据此知道"这条路走不通"而不是页面没反应。 */
     const refuse = (error: string, note: string) =>
       JSON.stringify({
