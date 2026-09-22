@@ -7,6 +7,7 @@ const {ensureConfiguration,launchUrl} = require('./config.cjs');
 const {startupUrl}=require('./startup-state.cjs');
 const {watchBoot}=require('./boot-watch.cjs');
 const {clearRuntimeCookies}=require('./runtime-cookies.cjs');
+const {createNavigationQueue,attachNavigation}=require('./navigation.cjs');
 async function showStartup(error){if(window&&!window.isDestroyed())await window.loadURL(startupUrl(error,startupReason));}
 // Chromium 补充的自动填充、听写、表情等原生菜单项也使用简体中文。
 app.commandLine.appendSwitch('lang','zh-CN');
@@ -14,6 +15,16 @@ if (process.env.DSH_GEA_DESKTOP_DATA) app.setPath('userData',process.env.DSH_GEA
 const owned = app.requestSingleInstanceLock();
 if (!owned) app.quit();
 let window,backend,stopping=false,quitting=false,origin,pluginStore,control,updates,clientInstaller;
+const navigation=createNavigationQueue();
+// 启动早期的链接和错误等窗口就绪后再交付，日志中只写稳定事件码。
+const navigationErrors=new Set();
+function navigationError(code){navigationErrors.add(code);if(app.isReady())void showNavigationErrors();}
+async function showNavigationErrors(){
+  if(!window||window.isDestroyed()||!navigationErrors.size)return;
+  const codes=[...navigationErrors];navigationErrors.clear();
+  await dialog.showMessageBox(window,{type:'warning',message:'未能打开飞书消息',detail:codes.includes('NAVIGATION_REGISTRATION_FAILED')?'客户端协议注册未成功，请修复安装或在系统中选择 GEA Desktop。':codes.includes('NAVIGATION_QUEUE_FULL')?'待打开的消息过多，请处理后重新点击。':'消息链接无效或不受支持，请从飞书重新打开。'});
+}
+if(owned)attachNavigation({app,queue:navigation,argv:process.argv,getWindow:()=>window,onError:navigationError});
 let startupReason='startup';
 let lifecycle=Promise.resolve();
 function runLifecycle(action){const next=lifecycle.then(()=>action());lifecycle=next.catch(()=>{});return next;}
@@ -145,10 +156,10 @@ function createWindow(){
   window.on('closed',()=>{window=undefined;});
 }
 if(owned){
-  app.on('second-instance',()=>{if(window){window.show();window.focus();}});
   app.whenReady().then(async()=>{
     await mkdir(data,{recursive:true,mode:0o700});
     createWindow();await showStartup();
+    void showNavigationErrors();
     const {PluginStore}=await import('./plugin-store.mjs');
     pluginStore=new PluginStore({data,baseline:payload,dataSchema:require('./package.json').desktopDataSchema});
     await pluginStore.recoverPreparation();
@@ -156,6 +167,8 @@ if(owned){
     const {createClientInstaller}=await import('./client-installer.mjs');
     clientInstaller=createClientInstaller({data,currentVersion:require('./package.json').version,sources:require('./desktop-release-sources.json'),openPath:path=>shell.openPath(path)});
     control=await createControlServer({
+      'GET /navigation/pending':async()=>navigation.pending(),
+      'POST /navigation/complete':async value=>navigation.complete(value),
       ...Object.fromEntries(['status','check','download','cancel','open'].map(action=>[(action==='status'?'GET':'POST')+' /installer/'+action,async value=>clientInstaller[action](value)])),
       ...Object.fromEntries(['status','check','settings','prepare','cancel','restart'].map(action=>[(action==='status'?'GET':'POST')+' /updates/'+action,async value=>{if(!updates)throw Error('UPDATES_UNAVAILABLE');return updates[action](value);}])) ,
       'GET /updates/optional':async()=>{if(!updates)throw Error('UPDATES_UNAVAILABLE');return updates.optional();},

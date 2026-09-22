@@ -1,5 +1,7 @@
 !include "FileFunc.nsh"
 !include "LogicLib.nsh"
+!define GEA_INSTALL_TIMING_ENABLED
+!include "${__FILEDIR__}\installer-navigation.nsh"
 
 !macro GEA_INSTALL_TIMING_LOG STAGE
   Push $0
@@ -62,6 +64,7 @@
 
 # Called after registry entries and shortcuts have been written.
 !macro customInstall
+  !insertmacro GEA_REGISTER_NAVIGATION
   !insertmacro GEA_INSTALL_TIMING_LOG "install-complete"
 !macroend
 

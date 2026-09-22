@@ -28,6 +28,7 @@ import { resolveEnvironments } from "../shared/environments.js";
 import { Decimal } from "decimal.js";
 import { transportSignal } from "../shared/transport-signal.ts";
 import { notificationPage, notificationDetail } from "../shared/notifications.ts";
+import { resolveNavigationTarget, type NavigationInput } from './navigation-target.ts';
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
 import { createPageBridge, type PageBridge } from "../page-bridge/index.ts";
@@ -1159,6 +1160,52 @@ export class Business {
     if (data.success !== true || !data.result) throw new Error("GEA_WRITE_REJECTED");
     if(this.auth !== auth)throw new Error('STALE_LOGIN');
     signal.throwIfAborted();
+    return data.result;
+  }
+
+  /** 导航使用当前用户与身份取消信号，原始 Reference 不进入 API 正文日志中心。 */
+  async resolveClientNavigation(input: NavigationInput, caller: AbortSignal) {
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(30000)]);
+    const target = await resolveNavigationTarget((path, body) => this.navigationRequest(path, body, auth, signal), input, this.config.analysisAgentCode);
+    signal.throwIfAborted();
+    if (this.auth !== auth) throw Error('STALE_LOGIN');
+    return target;
+  }
+
+  /** 只确认已在当前身份下展示的目标；固定 ACK 契约且复用重试幂等键。 */
+  async acknowledgeClientNavigation(intentId: string, idempotencyKey: string, caller: AbortSignal) {
+    if (!/^[A-Za-z0-9._:-]{1,36}$/.test(intentId) || !/^[A-Za-z0-9-]{1,128}$/.test(idempotencyKey)) throw Error('NAVIGATION_REQUEST_INVALID');
+    const auth = this.authenticated();
+    await this.navigationRequest(`/ai/gateway/client-navigation-intents/${encodeURIComponent(intentId)}/ack`,
+      {stage: 'TARGET_VISIBLE', result: 'SUCCESS', idempotencyKey}, auth,
+      AbortSignal.any([caller, this.epoch.signal]));
+  }
+
+  /** 导航专用固定路径传输：不保存或回显请求与响应正文，只抛受控错误。 */
+  private async navigationRequest(path: string, body: unknown, auth: NonNullable<Business['auth']>, signal: AbortSignal): Promise<unknown> {
+    if (!/^\/ai\/gateway\/client-navigation-intents\/(resolve|[A-Za-z0-9._:%-]+\/ack)$/.test(path) &&
+        !/^\/api\/v1\/notifications(?:\?pageNo=\d+&pageSize=100|\/[A-Za-z0-9._:%-]+)$/.test(path)) throw Error('NAVIGATION_REQUEST_INVALID');
+    const active = AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)]);
+    active.throwIfAborted();
+    let response: Response;
+    try {
+      response = await fetch(this.base + path, {method: body === undefined ? 'GET' : 'POST', redirect: 'error', signal: active,
+        headers: {'Content-Type':'application/json',Accept:'application/json','X-Access-Token':auth.token,'X-Tenant-Id':auth.tenantId,'X-Trace-Id':randomUUID()},
+        body: body === undefined ? undefined : JSON.stringify(body)});
+    } catch { throw Error(active.aborted ? 'NAVIGATION_REQUEST_CANCELLED' : 'NAVIGATION_NETWORK_ERROR'); }
+    active.throwIfAborted();
+    if (this.auth !== auth) throw Error('STALE_LOGIN');
+    if (response.status === 401) { this.clearLogin(true); throw Error('LOGIN_REQUIRED'); }
+    let data: Record<string, unknown>;
+    try { data = object(await response.json()); } catch { throw Error('NAVIGATION_INVALID_RESPONSE'); }
+    active.throwIfAborted();
+    if (this.auth !== auth) throw Error('STALE_LOGIN');
+    if (data.success !== true || !response.ok) {
+      const code = typeof data.errorCode === 'string' && /^(NAVIGATION|NOTIFICATION)_[A-Z_]{1,64}$/.test(data.errorCode) ? data.errorCode : 'NAVIGATION_REQUEST_REJECTED';
+      if (code === 'NOTIFICATION_UNAUTHENTICATED') {this.clearLogin(true); throw Error('LOGIN_REQUIRED');}
+      throw Error(code);
+    }
     return data.result;
   }
 

@@ -1,5 +1,12 @@
 /** 独立销售计划页面使用的本地化文案。 */
 const copy = {
+  navigationLogin: ['请登录以打开飞书消息。','Sign in to open the Feishu message.'],
+  navigationLoginAction: ['登录并继续','Sign in and continue'],
+  navigationOpening: ['正在打开消息对应页面…','Opening the message destination…'],
+  navigationExpired: ['消息链接已过期或撤销，请重新获取通知。','This message link has expired or was revoked. Request a new notification.'],
+  navigationForbidden: ['当前账号无权查看此消息，请核对登录账号。','This account cannot view the message. Check your signed-in account.'],
+  navigationUnavailable: ['暂时无法定位消息目标，请确认对应功能已安装，或在消息待办中查看。','The destination could not be located. Check that its feature is installed or open the inbox.'],
+  navigationFailed: ['消息打开或回执未完成，请重试。','Opening the message or confirming arrival did not finish. Retry.'],
   accountMenu: ["账户菜单", "Account menu"],
   settings: ["设置", "Settings"],
   logout: ["退出登录", "Sign out"],
