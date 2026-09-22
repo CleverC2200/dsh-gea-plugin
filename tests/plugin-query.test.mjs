@@ -77,6 +77,49 @@ test("猜错表名时把“下一步”补进错误里，且仍在 200 字预算
   assert.ok(bare.length <= 200);
 });
 
+test("列清单探查有预算：不串行探爆工具超时，没探完的如实回报", async () => {
+  const slow = (table, signal) =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve([`col_${table}`]), 400);
+      signal?.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new Error("aborted"));
+      });
+    });
+  const tables = Array.from({ length: 12 }, (_, index) => `agents_t${index}`);
+  const started = Date.now();
+  const { outcomes, skipped } = await m.probeTables(tables, slow, {
+    limit: 6,
+    concurrency: 3,
+    budgetMs: 2000,
+  });
+  const elapsed = Date.now() - started;
+  // 12 张串行 × 400ms = 4.8s；有预算的并行必须明显更快。
+  assert.ok(elapsed < 2500, `耗时 ${elapsed}ms 说明还是在串行等待`);
+  assert.equal(outcomes.length, 6);
+  assert.equal(skipped.length, 6);
+  assert.deepEqual(
+    outcomes.map((outcome) => outcome.table),
+    tables.slice(0, 6),
+    "结果要按契约里的表顺序返回",
+  );
+  // 单张表卡住不能拖着整次调用：超时的表进 outcomes.error，不抛穿。
+  const hung = await m.probeTables(
+    ["agents_slow"],
+    (table, signal) =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(() => resolve([]), 5000);
+        signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(new Error("aborted"));
+        });
+      }),
+    { perProbeMs: 200, budgetMs: 1000 },
+  );
+  assert.equal(hung.outcomes.length, 1);
+  assert.ok(hung.outcomes[0].error, "卡住的表要作为错误回报");
+});
+
 test("带错误码的失败保留错误码与可读原因", () => {
   const error = new Error("GEA SQL 查询失败（TABLE_NOT_PUBLISHED）");
   error.code = "GEA_SQL_QUERY_FAILED";

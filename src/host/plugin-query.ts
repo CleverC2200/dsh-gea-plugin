@@ -61,3 +61,78 @@ export function pluginReadHint(
       : message;
   return head + hint;
 }
+
+/**
+ * 列清单探查的预算与并发。
+ *
+ * 线上现象：`describe=true` 把模块声明的表**串行**探一遍（一张表一次网关调用，1~5 秒），
+ * 十几张表直接把工具的 15 秒超时跑爆，模型只拿到 `tool call timed out`。
+ * 这里把探查变成"有预算的并行"：先探最前面的若干张，做完就返回，
+ * 剩下的如实标成 skipped 让调用方下一轮再要，绝不因为超时把整次调用废掉。
+ */
+export const PLUGIN_SCHEMA_MAX_TABLES = 6;
+export const PLUGIN_SCHEMA_PROBE_CONCURRENCY = 3;
+export const PLUGIN_SCHEMA_PROBE_BUDGET_MS = 9000;
+export const PLUGIN_SCHEMA_PROBE_TIMEOUT_MS = 6000;
+
+export type TableProbeOutcome<T> = {
+  table: string;
+  value?: T;
+  error?: string;
+};
+
+export async function probeTables<T>(
+  tables: readonly string[],
+  run: (table: string, signal: AbortSignal) => Promise<T>,
+  options: {
+    limit?: number;
+    concurrency?: number;
+    budgetMs?: number;
+    perProbeMs?: number;
+    signal?: AbortSignal;
+  } = {},
+): Promise<{ outcomes: Array<TableProbeOutcome<T>>; skipped: string[] }> {
+  const limit = Math.max(
+    0,
+    Math.min(options.limit ?? PLUGIN_SCHEMA_MAX_TABLES, tables.length),
+  );
+  const concurrency = Math.max(1, options.concurrency ?? PLUGIN_SCHEMA_PROBE_CONCURRENCY);
+  const budgetMs = options.budgetMs ?? PLUGIN_SCHEMA_PROBE_BUDGET_MS;
+  const perProbeMs = options.perProbeMs ?? PLUGIN_SCHEMA_PROBE_TIMEOUT_MS;
+  const picked = tables.slice(0, limit);
+  const skipped = [...tables.slice(limit)];
+  const outcomes: Array<TableProbeOutcome<T>> = [];
+  const started = Date.now();
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= picked.length) return;
+      const table = picked[index];
+      const remaining = budgetMs - (Date.now() - started);
+      if (remaining <= 0) {
+        skipped.push(table);
+        continue;
+      }
+      // 单张表也要有上限：某张表慢，不能拖着整次调用一起完蛋。
+      const timeout = AbortSignal.timeout(Math.min(perProbeMs, remaining));
+      const signal = options.signal
+        ? AbortSignal.any([options.signal, timeout])
+        : timeout;
+      try {
+        outcomes.push({ table, value: await run(table, signal) });
+      } catch (error) {
+        outcomes.push({
+          table,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, picked.length) }, () => worker()),
+  );
+  outcomes.sort((a, b) => picked.indexOf(a.table) - picked.indexOf(b.table));
+  return { outcomes, skipped };
+}

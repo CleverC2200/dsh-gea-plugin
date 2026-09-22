@@ -16,7 +16,7 @@ import { resolveInventoryRoles } from "./inventory-role.ts";
 import { prepareGatewayLaunch } from "./html-gateway.ts";
 import { prepareGatewayMcp } from "./gateway-mcp.ts";
 import { readHtmlQuery } from "../html-query.ts";
-import { withDefaultPaging } from "./plugin-query.ts";
+import { probeTables, withDefaultPaging } from "./plugin-query.ts";
 import { readableMessage } from "./error-envelope.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
@@ -1636,6 +1636,8 @@ export class Business {
       )
       .slice(0, 20);
     const result: Array<{ table: string; columns: string[]; error?: string }> = [];
+    // 缓存命中的直接给，未命中的按预算并行探：串行探十几张表会把工具超时跑爆。
+    const pending: string[] = [];
     for (const table of tables) {
       const cacheKey = consumerCode + ":" + table;
       const cached = this.pluginSchemaCache.get(cacheKey);
@@ -1643,11 +1645,15 @@ export class Business {
         result.push({ table, columns: cached.columns });
         continue;
       }
-      try {
+      pending.push(table);
+    }
+    const { outcomes, skipped } = await probeTables(
+      pending,
+      async (table, signal) => {
         const page = object(
           await this.pluginSql(
             { consumerCode, sql: `SELECT * FROM ${table}`, pageNo: 1, pageSize: 1 },
-            caller,
+            signal,
           ),
         );
         const rows = Array.isArray(page.rows)
@@ -1660,18 +1666,48 @@ export class Business {
           : rows.length > 0
             ? Object.keys(object(rows[0]))
             : [];
-        const bounded = columns.slice(0, 200);
-        this.pluginSchemaCache.set(cacheKey, { at: Date.now(), columns: bounded });
-        result.push({ table, columns: bounded });
-      } catch (error) {
-        result.push({
-          table,
-          columns: [],
-          error: readableMessage(error) ?? "READ_FAILED",
-        });
+        return columns.slice(0, 200);
+      },
+      { signal: caller, limit: tables.length },
+    );
+    for (const outcome of outcomes) {
+      const { table } = outcome;
+      if (outcome.error !== undefined) {
+        result.push({ table, columns: [], error: outcome.error });
+        continue;
       }
+      const bounded = outcome.value ?? [];
+      const cacheKey = consumerCode + ":" + table;
+      if (bounded.length > 0)
+        this.pluginSchemaCache.set(cacheKey, { at: Date.now(), columns: bounded });
+      result.push({ table, columns: bounded });
     }
-    return { consumerCode, tables: result };
+    const byTable = new Map(result.map((row) => [row.table, row]));
+    const ordered = tables
+      .map((table) => byTable.get(table))
+      .filter((row): row is { table: string; columns: string[]; error?: string } =>
+        Boolean(row),
+      );
+    return {
+      consumerCode,
+      tables: ordered,
+      // 没探完的表如实回报，别让模型以为"这个模块就这么多字段"。
+      ...(skipped.length
+        ? {
+            skipped,
+            note: `本轮只探了 ${ordered.length} 张表（每次最多 ${
+              ordered.length + skipped.length
+            } 张）：${skipped.slice(0, 5).join("、")} 等 ${
+              skipped.length
+            } 张还没探，需要时再调一次 describe。`,
+          }
+        : {}),
+      ...(tables.length === 0
+        ? {
+            note: "该模块没有可直读的业务表（未声明受管 SQL）：需要它的数据请先打开对应页面，用页面工具读取。",
+          }
+        : {}),
+    };
   }
 
   /** 返回当前进程内的脱敏接口目录与调用记录。 */
