@@ -28,6 +28,10 @@ import {
   workbenchPresence,
   type WorkbenchPresence,
 } from "./workbench-presence.ts";
+import {
+  normalizeSurface,
+  type WorkbenchSurface,
+} from "./workbench-surface.ts";
 import { compressForModel } from "../shared/payload-budget.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
@@ -653,8 +657,11 @@ export class Business {
    * 见 page-identity.ts：这是"当前页是谁"的唯一权威来源。
    */
   private readonly pageIdentities = new Map<string, PageIdentity>();
-  /** 页面桥心跳：宿主在注册页面工具注册表后注入，用来判断"这个对话还在不在工作台"。 */
-  private pageLiveness?: (sessionId: string) => boolean;
+  /**
+   * 「这个对话现在停在哪一页菜单」的状态字段：默认主对话，用户点业务菜单时前端上报。
+   * 见 workbench-surface.ts：这是"在不在工作台"的唯一权威来源。
+   */
+  private readonly surfaces = new Map<string, WorkbenchSurface>();
   /** 上一次返回的页面上下文正文：内容没变就不重复发送（历史里不用再背一份）。 */
   private readonly lastContextReplies = new Map<string, string>();
   private requests = new Map<string, AbortController>();
@@ -848,25 +855,49 @@ export class Business {
     this.pageIdentities.delete(sessionId);
   }
 
-  /** 注入页面桥心跳（由 host.ts 在页面工具注册表建好后调用）。 */
-  setPageLiveness(fn: (sessionId: string) => boolean): void {
-    this.pageLiveness = fn;
+  /**
+   * 前端上报"这个对话现在停在哪一页菜单"：默认主对话，点业务菜单时带菜单 id 与菜单名。
+   *
+   * 换菜单（或从主对话切进来）等于换上下文：上一页留下的可见行快照、页面身份、
+   * 以及"同一屏不重复发送"的记忆一律作废，由新页面重新上报，避免跨菜单串证据。
+   */
+  setSurface(
+    sessionId: string,
+    input: { menu?: unknown; title?: unknown },
+  ): WorkbenchSurface {
+    if (!/^session-[0-9a-f-]{36}$/.test(sessionId))
+      throw new Error("INVALID_WORKBENCH_SESSION");
+    const next = normalizeSurface(input);
+    const previous = this.surfaces.get(sessionId);
+    this.surfaces.set(sessionId, next);
+    // 会话很多时只留最近的一批，避免这张表无限长大。
+    while (this.surfaces.size > 500) {
+      const oldest = this.surfaces.keys().next();
+      if (oldest.done || oldest.value === sessionId) break;
+      this.surfaces.delete(oldest.value);
+    }
+    // 只在"从一个菜单换到另一个菜单"时清：首次上报（previous 为空）可能与页面同步快照
+    // 并发，清掉会把刚同步的这一屏弄丢；同一个菜单重复上报更不能清。
+    if (previous !== undefined && previous.menu !== next.menu) {
+      this.visibleWorkbenchContexts.delete(sessionId);
+      this.pageIdentities.delete(sessionId);
+      this.lastContextReplies.delete(sessionId);
+      this.pageBridge.reset(sessionId);
+    }
+    return next;
+  }
+
+  /** 当前菜单状态；没上报过就是 undefined（按主对话处理）。 */
+  surfaceFor(sessionId: string): WorkbenchSurface | undefined {
+    return this.surfaces.get(sessionId);
   }
 
   /**
    * 这个对话此刻是否还在业务工作台里。
-   * 依据见 host/workbench-presence.ts：页面桥心跳 → HTML 页身份 → 快照新鲜度。
+   * 只认菜单状态字段，见 host/workbench-presence.ts。
    */
-  workbenchPresenceFor(sessionId: string): import("./workbench-presence.ts").WorkbenchPresence {
-    const snapshot = this.visibleWorkbenchContexts.get(sessionId);
-    const receivedAt = snapshot ? Date.parse(snapshot.receivedAt) : undefined;
-    return workbenchPresence({
-      livePage: this.pageLiveness?.(sessionId) === true,
-      hasPageIdentity: this.currentPageIdentity(sessionId) !== undefined,
-      ...(receivedAt === undefined || !Number.isFinite(receivedAt)
-        ? {}
-        : { snapshotReceivedAt: receivedAt }),
-    });
+  workbenchPresenceFor(sessionId: string): WorkbenchPresence {
+    return workbenchPresence({ surface: this.surfaces.get(sessionId) });
   }
 
   /** 当前页身份；超过 TTL 没活动就当没有页面。 */
@@ -888,36 +919,24 @@ export class Business {
    */
   visibleWorkbenchContext(sessionId: string, focus?: string): string {
     const value = this.visibleWorkbenchContexts.get(sessionId);
-    // 先校验"这个对话到底在不在业务工作台"，再决定要不要交页面证据：
-    // 主对话里可能残留上一次打开页面时的快照，那不是本轮证据（见 workbench-presence.ts）。
+    // 先看菜单状态字段：主对话（AI 工作台首页）一律不交页面证据，也不去打开页面。
+    // 见 workbench-surface.ts / workbench-presence.ts。
     const presence = this.workbenchPresenceFor(sessionId);
     if (!presence.inWorkbench) {
-      const identity = this.currentPageIdentity(sessionId);
-      if (identity) return currentPageEnvelope(identity);
-      const age = presence.staleSnapshotSeconds;
-      const view = (value?.context as { view?: unknown } | undefined)?.view;
       return JSON.stringify({
         source: "GEA_RENDERED_WORKBENCH",
         coverage: "none",
         authority: "read-only-ui-context",
         inWorkbench: false,
         signal: presence.signal,
+        menu: presence.menu,
+        menuTitle: presence.menuTitle,
         availability: "not-in-workbench",
         code: "PAGE_NOT_IN_WORKBENCH",
-        ...(age === undefined
-          ? {}
-          : {
-              staleSnapshotSeconds: age,
-              ...(typeof view === "string" ? { staleSnapshotView: view } : {}),
-            }),
         reason:
-          age === undefined
-            ? "这个对话当前不在业务工作台：读不到页面数据，也不会去打开页面。这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答，不要因此拒答或索要经销商编码。本工具每轮最多调用一次，不要重复调用。"
-            : `这个对话现在不在业务工作台（没有活跃的业务页面）。手上这份快照是 ${
-                age
-              } 秒前${
-                typeof view === "string" ? `「${view}」视图` : ""
-              }留下的，只代表上一次打开过的页面：不要当本轮证据，也不要据此推断用户在看什么。数据问题直接用 gea_plugin_read（或模块 MCP）查；确实需要“这一屏”时，请让用户重新打开对应页面。`,
+          `这个对话在「${presence.menuTitle}」（主对话），没有业务页面证据：不要推断用户在看哪一页，也不要去打开页面。` +
+          "这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答（gea_plugin_read、模块 MCP、gea_sales_plan_read），不要因此拒答或索要经销商编码。" +
+          "确实需要“这一屏”时，说清需要哪一页，让用户从左侧功能区点开对应菜单。本工具每轮最多调用一次，不要重复调用。",
       });
     }
     if (!value) {
@@ -931,10 +950,12 @@ export class Business {
         authority: "read-only-ui-context",
         inWorkbench: true,
         signal: presence.signal,
+        menu: presence.menu,
+        menuTitle: presence.menuTitle,
         availability: "in-workbench-no-snapshot",
         code: "PAGE_HAS_NO_SNAPSHOT",
         reason:
-          "这个对话在业务工作台里，但这一屏还没有上报可见行快照：先用 gea_page 读这一屏，或直接按范围用只读数据工具查询。",
+          `这个对话在业务菜单「${presence.menuTitle}」里，但这一屏还没有上报可见行快照：先用 gea_page 读这一屏，或直接按范围用只读数据工具查询。`,
       });
     }
     const compressed = compressForModel(value.context, {
@@ -953,6 +974,8 @@ export class Business {
       authority: "read-only-ui-context",
       inWorkbench: true,
       signal: presence.signal,
+      menu: presence.menu,
+      menuTitle: presence.menuTitle,
       context,
       ...(compressed.compressed
         ? { contextNote: compressed.note, contextOmitted: compressed.omitted }

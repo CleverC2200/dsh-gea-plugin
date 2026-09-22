@@ -389,6 +389,35 @@ test(
         );
         return true;
       }
+      // 每一轮都要先读一次"这一屏"，读到结果才收尾：用来验证"同一份快照，
+      // 换菜单后还算不算本轮证据"。按"最后一条用户消息之后有没有工具结果"判断本轮。
+      if (outcome === "page-evidence-guard") {
+        const roles = body.messages.map((message) => message.role);
+        const answered = body.messages
+          .slice(roles.lastIndexOf("user") + 1)
+          .some((message) => message.role === "tool");
+        res.end(
+          answered
+            ? event({ content: "本轮先确认有没有页面证据，再决定用什么通道。" }, "stop")
+            : event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "guard-" + randomUUID().slice(0, 8),
+                      type: "function",
+                      function: {
+                        name: "gea_visible_workbench_context",
+                        arguments: "{}",
+                      },
+                    },
+                  ],
+                },
+                "tool_calls",
+              ),
+        );
+        return true;
+      }
       if (outcome === "visible-context-unavailable") {
         const result = body.messages.find((message) => message.role === "tool");
         res.end(
@@ -574,6 +603,13 @@ test(
         ...(workbenchContext ? { workbenchContext } : {}),
       });
       assert.equal(result.ok, true, JSON.stringify(result));
+      // 菜单状态字段：这条链路里用户是从业务菜单点进来的（默认是主对话）。
+      const surface = await app.rpc("surface", {
+        sessionId: result.value.sessionId,
+        menu: "gea-proof",
+        title: "销售计划",
+      });
+      assert.equal(surface.ok, true, JSON.stringify(surface));
       return result.value.sessionId;
     }
     const ended = (id) =>
@@ -820,9 +856,81 @@ test(
             message.role === "tool" &&
             message.tool_call_id === "visible-context-unavailable-1",
         );
-        assert.match(result.content, /PAGE_NOT_IN_WORKBENCH/);
+        // 在业务菜单里但这一屏还没上报快照：如实说"没有快照"，而不是假装不在工作台。
+        assert.match(result.content, /PAGE_HAS_NO_SNAPSHOT/);
+        assert.match(result.content, /in-workbench-no-snapshot/);
+        assert.match(result.content, /销售计划/);
         // 没有页面时也要给出兜底通道（受管只读），而不是让模型空转。
         assert.match(result.content, /"channels"/);
+        assert.equal(
+          rows.some(
+            (entry) =>
+              entry.type === "tool/result" &&
+              entry.data.message.content[0].isError,
+          ),
+          false,
+        );
+      },
+    );
+    await t.test(
+      "回到主对话后，同一份页面快照不再当本轮证据（菜单状态字段说了算）",
+      async () => {
+        outcome = "page-evidence-guard";
+        modelRequests = [];
+        const id = await submit({
+          format: "gea-workbench-visible-v1",
+          sequence: 1,
+          view: "regional-approval",
+          scope: {
+            month: "2026-10",
+            planType: "Y",
+            approvalStage: "province",
+            dimension: "customer",
+          },
+          visibleRows: [
+            { planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" },
+          ],
+          selectedPlanIds: [],
+          pagination: { page: 1, pageSize: 20, total: 1 },
+          evidence: {
+            source: "gea-user-session",
+            completeness: "paged-queue",
+            queryState: "success",
+            dataVersion: "sales-plan-v1.11",
+          },
+        });
+        await ended(id);
+        // 用户从业务菜单切回主对话：快照还在服务端，但不再是"你眼前这一屏"。
+        const surface = await app.rpc("surface", { sessionId: id, menu: "main" });
+        assert.equal(surface.ok, true, JSON.stringify(surface));
+        modelRequests = [];
+        const prompted = await app.remote("session/prompt", {
+          requestId: randomUUID(),
+          sessionId: id,
+          mode: "queue",
+          content: [{ type: "text", text: "河北这些行是什么计划类型？" }],
+        });
+        assert.equal(prompted.ok, true, JSON.stringify(prompted));
+        const rows = await until(
+          () => readSession(app.runtime, id),
+          (entries) =>
+            entries.filter((entry) => entry.type === "turn/end").length === 2,
+        );
+        // 模型每次请求都带全量历史，只能看"最后一条用户消息之后"的那条工具结果。
+        const messages = modelRequests[1].messages;
+        const lastUser = messages.map((message) => message.role).lastIndexOf("user");
+        const result = messages
+          .slice(lastUser + 1)
+          .find(
+            (message) =>
+              message.role === "tool" &&
+              String(message.tool_call_id).startsWith("guard-"),
+          );
+        assert.match(result.content, /PAGE_NOT_IN_WORKBENCH/);
+        assert.match(result.content, /not-in-workbench/);
+        assert.match(result.content, /主对话/);
+        // 旧快照的行内容一个字都不能带出去。
+        assert.equal(result.content.includes("河北"), false);
         assert.equal(
           rows.some(
             (entry) =>
@@ -897,6 +1005,12 @@ test(
         outcome = "success";
         const id = await submit();
         await ended(id);
+        // 菜单状态字段：只有点了业务菜单才算"在工作台"（默认是主对话）。
+        await app.rpc("surface", {
+          sessionId: id,
+          menu: "gea-workbench",
+          title: "销售计划",
+        });
         const synced = await app.rpc("workbench/context", {
           sessionId: id,
           context: {
@@ -1003,6 +1117,12 @@ test(
         outcome = "success";
         const id = await submit();
         await ended(id);
+        // 菜单状态字段：这一屏的上下文只在"点了业务菜单"的对话里才算证据。
+        await app.rpc("surface", {
+          sessionId: id,
+          menu: "gea-workbench",
+          title: "销售计划",
+        });
         // 页面自述能力：工具由通用桥按这份目录为该会话生成。
         const catalog = {
           surface: "gea-workbench",
@@ -1699,6 +1819,11 @@ test(
         outcome = "success";
         const id = await submit();
         await ended(id);
+        await app.rpc("surface", {
+          sessionId: id,
+          menu: "gea-workbench",
+          title: "销售计划",
+        });
         const synced = {
           format: "gea-workbench-visible-v1",
           sequence: 1,

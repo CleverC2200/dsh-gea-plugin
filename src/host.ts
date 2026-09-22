@@ -431,8 +431,6 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   ctx.effect(() => () => desktopNavigation.dispose());
   pageBridgeHost.declare = (sessionId, catalog, source) =>
     pageTools.declare(sessionId, catalog, source);
-  // "这个对话还在业务工作台里吗"由页面桥心跳判定（见 host/workbench-presence.ts）。
-  business.setPageLiveness((sessionId) => pageTools.isLive(sessionId));
   ctx.provide("geaMcp", {
     version: 1 as const,
     defaultConsumer: { consumerType: "AGENT" as const, consumerCode: config.analysisAgentCode },
@@ -591,6 +589,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "workbench/prepare",
     "workbench/context",
     "agui/workbench",
+    // 前端上报"这个对话现在停在哪一页菜单"（默认主对话，点菜单时带菜单名）。
+    "surface",
     "api-log/snapshot",
     "api-log/replay",
     "api-log/clear",
@@ -695,6 +695,27 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
               case "sales-plan/submit":
                 value = await business.salesPlanSubmit(payload, request.signal);
                 break;
+              case "surface": {
+                // 菜单状态只有"哪个会话 + 哪个菜单"两件事，多一个字段都拒掉，防止被当成旁路写入。
+                if (
+                  Object.keys(payload).some(
+                    (key) =>
+                      key !== "sessionId" && key !== "menu" && key !== "title",
+                  )
+                )
+                  throw new Error("INVALID_SURFACE_REQUEST");
+                if (typeof payload.sessionId !== "string")
+                  throw new Error("INVALID_WORKBENCH_SESSION");
+                const surface = business.setSurface(payload.sessionId, {
+                  menu: payload.menu,
+                  title: payload.title,
+                });
+                console.log(
+                  `[workbench-surface] session=${payload.sessionId} menu=${surface.menu} title=${surface.title}`,
+                );
+                value = { synced: true, menu: surface.menu, title: surface.title };
+                break;
+              }
               case "sales-plan/draft":
                 value = await business.salesPlanDraft(payload, request.signal);
                 break;

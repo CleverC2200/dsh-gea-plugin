@@ -42,7 +42,7 @@ import {
   type ConversationActionTone,
   type ConversationPromptConfig,
 } from "./client/conversation-prompts.ts";
-import {BUSINESS_MENU_PRESET,isGeaBusinessPanel,registeredBusinessPanels,resolveBusinessMenu,type BusinessMenuSection} from "./business-navigation.ts";
+import {BUSINESS_MENU_PRESET,MAIN_MENU,businessMenuTitle,isGeaBusinessPanel,registeredBusinessPanels,resolveBusinessMenu,type BusinessMenuSection} from "./business-navigation.ts";
 import {BUSINESS_GROUP_ICON_PATHS,type BusinessGroupIcon} from "./client/business-icons.ts";
 import brandLogo from "./client/brand-logo.png";
 import shellCss from "./client/shell.css";
@@ -79,6 +79,41 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
   const t = ctx.locale.bind("geaProof");
   const navigationSelection = createNavigationSelection();
+  /** 当前"这一页菜单叫什么"，给宿主上报用：优先用页面自己的标题，其次用原型目录名。 */
+  const menuTitleOf = (menu: string | null | undefined): string =>
+    businessMenuTitle(
+      menu ?? MAIN_MENU,
+      registeredBusinessPanels(ctx.slots.entries("main")),
+      {
+        [PANEL]: t("salesPlan"),
+        [REGIONAL_PLAN_PANEL]: t("regionalPlanWorkbench"),
+        [INBOX]: t("businessInbox"),
+      },
+    );
+  /**
+   * 上报菜单状态字段（默认主对话，点菜单时带菜单名）。宿主只认这一份事实：
+   * 主对话不交页面证据，业务菜单才交对应页面的上下文。
+   * 上报失败就退化成主对话（会少给页面证据），所以失败重试一次，不静默丢。
+   */
+  const reportSurface = (
+    sessionId: string | null | undefined,
+    menu: string | null | undefined,
+    attempt = 1,
+  ): void => {
+    if (!sessionId) return;
+    const value = menu ?? MAIN_MENU;
+    void apiLogRequest("surface", {
+      sessionId,
+      menu: value,
+      title: menuTitleOf(value),
+    }).catch(() => {
+      if (attempt < 2)
+        window.setTimeout(
+          () => reportSurface(sessionId, value, attempt + 1),
+          1500,
+        );
+    });
+  };
   /** 页面与会话均就绪后才完成导航，取消或超时会撤销当前等待。 */
   const openNavigation = async (target: ReadyNavigation, signal: AbortSignal) => {
     if (![PANEL,INBOX].includes(target.panel as MainPanelId)) throw Error('NAVIGATION_TARGET_UNSUPPORTED');
@@ -357,6 +392,7 @@ export function apply(ctx: Context): void {
   }
   function Navigation({
     usePanelInfo,
+    useSessions,
     wide,
     expandSidebar,
     sections,
@@ -368,6 +404,7 @@ export function apply(ctx: Context): void {
     const [expanded, setExpanded] = useState<SidebarSections>({ supply: true, plan: true, inventory: true, orders: true });
     const open = sections ?? expanded;
     const activePanel = usePanelInfo((info) => info.activePanelId);
+    const session = useSessions((snapshot) => snapshot.current);
     const [panels,setPanels]=useState(()=>registeredBusinessPanels(ctx.slots.entries("main")));
     useEffect(()=>{const refresh=()=>setPanels(registeredBusinessPanels(ctx.slots.entries("main")));refresh();return ctx.slots.subscribe("main",refresh);},[]);
     if (!wide) {
@@ -392,8 +429,9 @@ export function apply(ctx: Context): void {
       if (onToggleSection) return onToggleSection(section);
       setExpanded((value) => ({ ...value, [section]: !value[section] }));
     };
+    // 点菜单＝把"这个对话现在在哪一页"报给宿主，由宿主同时加载该菜单的上下文。
     const child = ({ id, title, disabled }: { id: string; title: string; disabled: boolean }) => (
-      <button key={id} type="button" disabled={disabled} data-gea-business-entry={id} aria-current={activePanel === id ? "page" : undefined} className={`gea-shell-nav-child${activePanel === id ? " is-active" : ""}`} onClick={() => ctx.layout.selectPanel(id as MainPanelId)}><span className="gea-shell-label">{title}</span></button>
+      <button key={id} type="button" disabled={disabled} data-gea-business-entry={id} aria-current={activePanel === id ? "page" : undefined} className={`gea-shell-nav-child${activePanel === id ? " is-active" : ""}`} onClick={() => { reportSurface(session ?? null, id); ctx.layout.selectPanel(id as MainPanelId); }}><span className="gea-shell-label">{title}</span></button>
     );
     // 菜单分组与顺序按原型固定；没有接入页面的条目（如生产计划、订单履约）自动隐藏。
     const available = new Map<string, string>(panels.map((panel) => [panel.id, panel.title]));
@@ -566,6 +604,12 @@ export function apply(ctx: Context): void {
     const business = usePanelInfo(
       (info) => isGeaBusinessPanel(info.activePanelId, ctx.slots.entries("main")) || info.activePanelId === API_LOG_PANEL,
     );
+    const surfaceSession = useSessions((snapshot) => snapshot.current);
+    // 菜单状态字段：面板或会话一变就上报（默认主对话），宿主据此判定"主对话 / 哪一页业务菜单"。
+    // 只认这一份事实，所以不在这里做去抖：漏报一次就会让页面证据对不上。
+    useEffect(() => {
+      reportSurface(surfaceSession ?? null, activePanel ?? null);
+    }, [activePanel, surfaceSession]);
     useEffect(() => {
       const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
       frame?.classList.toggle("gea-api-fullscreen", activePanel === API_LOG_PANEL);

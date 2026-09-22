@@ -1,51 +1,45 @@
 /**
- * "这个对话现在到底在不在业务工作台里"的校验。
+ * "这个对话现在到底在不在业务工作台里"的判定。
  *
- * 线上现象：用户在**主对话**（AI 工作台）里问业务问题，助手却把几分钟前在业务工作台里
- * 留下的页面快照当成"你眼前这一屏"，还照着它去读页面证据。快照本身没有"我还在不在页面"
- * 的语义，所以要单独判定：
+ * 线上现象：用户在**主对话**（AI 工作台首页）里问业务问题，助手却把之前在工作台里
+ * 留下的页面快照当成"你眼前这一屏"，还照着它去读页面证据。
  *
- * 1. 页面桥心跳（页面每秒轮询会刷新声明）——最权威；
- * 2. HTML 插件页的页面身份（90 秒内活动过）；
- * 3. 原生工作台快照的新鲜度——页面停止上报超过窗口就只算"上次留下的"。
+ * 现在只认一个事实：前端上报的菜单状态字段（见 host/workbench-surface.ts）。
+ *   - 没上报过 / 报了 `main` → 主对话：不交页面证据；
+ *   - 报了某个业务菜单      → 在工作台，且知道是哪一页菜单。
+ *
+ * 不用页面心跳或快照新鲜度当判据：它们只能证明"页面还在轮询"，证明不了"用户在看这一页"。
  */
-
-/** 快照多久没更新就不再当作"当前这一屏"。 */
-export const WORKBENCH_PRESENCE_TTL_MS = 60_000;
+import {
+  MAIN_MENU,
+  surfaceLabel,
+  type WorkbenchSurface,
+} from "./workbench-surface.ts";
 
 export type WorkbenchPresence = {
   inWorkbench: boolean;
-  /** 判断依据，写进工具结果，方便模型和排查时对照。 */
-  signal: "page-bridge" | "page-identity" | "snapshot-fresh" | "none";
-  /** 手上那份快照的年龄（秒）；没有快照时 undefined。 */
-  staleSnapshotSeconds?: number;
+  /** 判断依据：菜单状态字段是唯一权威来源。 */
+  signal: "menu";
+  /** 菜单 id；主对话时为 `main`。 */
+  menu: string;
+  /** 菜单名（人话）。 */
+  menuTitle: string;
+  /** 前端上报时间（ISO），排查用；没上报过就没有。 */
+  menuReportedAt?: string;
 };
 
 export function workbenchPresence(input: {
-  /** 页面桥心跳：这个会话此刻有活着的业务页面。 */
-  livePage?: boolean;
-  /** 这个会话当前的页面身份（HTML 插件页）。 */
-  hasPageIdentity?: boolean;
-  /** 最近一次原生工作台快照的接收时间（毫秒）；没有快照就不传。 */
-  snapshotReceivedAt?: number;
-  now?: number;
-  ttlMs?: number;
+  /** 前端上报的菜单状态；没上报过就不传。 */
+  surface?: WorkbenchSurface;
 }): WorkbenchPresence {
-  const now = input.now ?? Date.now();
-  const ttl = input.ttlMs ?? WORKBENCH_PRESENCE_TTL_MS;
-  const age =
-    input.snapshotReceivedAt === undefined
-      ? undefined
-      : Math.max(0, Math.round((now - input.snapshotReceivedAt) / 1000));
-  const withAge = age === undefined ? {} : { staleSnapshotSeconds: age };
-  if (input.livePage === true)
-    return { inWorkbench: true, signal: "page-bridge", ...withAge };
-  if (input.hasPageIdentity === true)
-    return { inWorkbench: true, signal: "page-identity", ...withAge };
-  if (
-    input.snapshotReceivedAt !== undefined &&
-    now - input.snapshotReceivedAt <= ttl
-  )
-    return { inWorkbench: true, signal: "snapshot-fresh", ...withAge };
-  return { inWorkbench: false, signal: "none", ...withAge };
+  const surface = input.surface;
+  return {
+    inWorkbench: surface !== undefined && surface.menu !== MAIN_MENU,
+    signal: "menu",
+    menu: surface?.menu ?? MAIN_MENU,
+    menuTitle: surfaceLabel(surface),
+    ...(surface === undefined
+      ? {}
+      : { menuReportedAt: new Date(surface.at).toISOString() }),
+  };
 }

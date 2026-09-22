@@ -25,6 +25,29 @@ export function isGeaBusinessPanel(panel: string | null | undefined, entries: re
 export type BusinessPanel = { id: string; title: string; order: number };
 
 /**
+ * 菜单状态字段里的"主对话"。宿主（host/workbench-surface.ts）与会话侧共用这一个值：
+ * 默认就是它，用户点业务菜单时才换成对应菜单 id。
+ */
+export const MAIN_MENU = "main";
+
+/** 菜单 id → 菜单名：优先用已注册页面自己的标题，其次用原型目录里的名字。 */
+export function businessMenuTitle(
+  id: string,
+  panels: readonly BusinessPanel[] = [],
+  override: Readonly<Record<string, string>> = {},
+): string {
+  if (id === MAIN_MENU) return "主对话";
+  const registered = panels.find((panel) => panel.id === id)?.title;
+  if (registered) return registered;
+  if (override[id]) return override[id]!;
+  for (const group of BUSINESS_MENU_PRESET)
+    for (const item of group.items)
+      if (item.id === id)
+        return item.title.replace(/\((开发中|待设计)\)$/, "");
+  return id;
+}
+
+/**
  * 左侧业务菜单的分组与顺序以原型（GEA_AI工作台_右侧目录.html）为准：
  * 产销协同 → 计划管理 → 库存管理 → 订单管理。
  * 原型中尚未接入的页面也保留为禁用占位，避免不同账号看到的目录结构跳动。
