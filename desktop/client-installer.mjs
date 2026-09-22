@@ -6,6 +6,9 @@ import {join} from 'node:path';
 
 const MAX_BYTES=1024*1024*1024;
 const version=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const CHANNEL_ATTEMPT_TIMEOUT_MS=15000;
+/** 兼容版频道来源：单个地址，或按优先级排列的地址列表。 */
+const channelCandidates=value=>Array.isArray(value)?value.filter(item=>typeof item==='string'&&item.length>0):typeof value==='string'&&value.length>0?[value]:[];
 const fail=code=>{throw Error(code);};
 export function validateInstallerManifest(value,source,channel,platform,arch) {
   if(value?.schema!==1||value.channel!==channel||!version.test(value.release?.version??''))fail('INVALID_DESKTOP_MANIFEST');
@@ -31,24 +34,38 @@ const newer=(a,b)=>{const x=a.split('.').map(Number),y=b.split('.').map(Number);
 async function fileDigest(path){const hash=createHash('sha256');for await(const chunk of createReadStream(path))hash.update(chunk);return hash.digest('hex');}
 
 export function createClientInstaller({data,currentVersion,platform=process.platform,arch=process.arch,sources,openPath,fetchImpl=fetch}) {
-  let state={supported:true,currentVersion,platform,arch,channel:'stable',phase:'idle',checking:false,downloadedBytes:0,error:null};
+  let state={supported:true,currentVersion,platform,arch,channel:'stable',checkSource:null,phase:'idle',checking:false,downloadedBytes:0,error:null};
   let selected,ready,work,controller,closed=false;
   const status=()=>({...state,release:selected?{version:selected.version,notes:selected.notes,bytes:selected.artifact?.bytes??0,platformSupported:Boolean(selected.artifact)}:null,updateAvailable:!!selected&&newer(selected.version,currentVersion)});
   const request=async(url,signal)=>{const response=await fetchImpl(url,{signal,redirect:'error',headers:{Accept:'application/octet-stream'}});if(!response.ok||!response.body)fail('DESKTOP_DOWNLOAD_HTTP');return response;};
   const check=async({channel='stable'}={})=>{
     if(closed||work||state.checking)fail('DESKTOP_INSTALLER_BUSY');
-    if(!['stable','test'].includes(channel)||!sources[channel])fail('INVALID_DESKTOP_CHANNEL');
+    const candidates=channelCandidates(sources?.[channel]);
+    if(!['stable','test'].includes(channel)||!candidates.length)fail('INVALID_DESKTOP_CHANNEL');
     state={...state,channel,checking:true,error:null};
     controller=new AbortController();
     work=(async()=>{
       try{
-        const response=await request(sources[channel],AbortSignal.any([controller.signal,AbortSignal.timeout(15000)]));
-        const chunks=[];let size=0;
-        for await(const chunk of response.body){size+=chunk.length;if(size>65536)fail('INVALID_DESKTOP_MANIFEST');chunks.push(chunk);}
-        const next=validateInstallerManifest(JSON.parse(Buffer.concat(chunks).toString()),sources[channel],channel,platform,arch);
+        // 兼容版频道读取：一个频道可以有多个来源，按顺序尝试；清单里的产物地址按命中的那个来源校验。
+        let next,failure;
+        for(const candidate of candidates){
+          try{
+            const response=await request(candidate,AbortSignal.any([controller.signal,AbortSignal.timeout(CHANNEL_ATTEMPT_TIMEOUT_MS)]));
+            const chunks=[];let size=0;
+            for await(const chunk of response.body){size+=chunk.length;if(size>65536)fail('INVALID_DESKTOP_MANIFEST');chunks.push(chunk);}
+            next=validateInstallerManifest(JSON.parse(Buffer.concat(chunks).toString()),candidate,channel,platform,arch);
+            state.checkSource=candidate;
+            break;
+          }catch(error){
+            failure=error;
+            // 主动取消（关闭应用）不算来源不可用，不再继续尝试后面的来源。
+            if(controller.signal.aborted)break;
+          }
+        }
+        if(!next)throw failure;
         if(ready?.sha256!==next.artifact?.sha256){ready=undefined;state.phase='idle';state.downloadedBytes=0;}
         selected=next;
-      }catch(error){selected=undefined;ready=undefined;state.phase='failed';state.error=error.message;}
+      }catch(error){selected=undefined;ready=undefined;state.checkSource=null;state.phase='failed';state.error=error.message;}
       finally{state.checking=false;}
     })().finally(()=>{work=undefined;controller=undefined;});
     await work;return status();

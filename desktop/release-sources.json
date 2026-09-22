@@ -1,4 +1,10 @@
 {
-  "stable": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/dsh-0.1.6-stable.json",
-  "test": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/dsh-0.1.6-test.json"
+  "stable": [
+    "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/dsh-0.1.6-stable.json",
+    "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/dsh-0.1.6-stable.json"
+  ],
+  "test": [
+    "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/dsh-0.1.6-test.json",
+    "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/dsh-0.1.6-test.json"
+  ]
 }

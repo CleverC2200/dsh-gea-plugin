@@ -9,9 +9,9 @@ const source='http://company.test/team/releases/raw/main/channels/desktop-stable
 const bytes=Buffer.from('installer fixture');
 const digest=createHash('sha256').update(bytes).digest('hex');
 const manifest=()=>({schema:1,channel:'stable',release:{version:'0.0.9',notes:{zh:'新版',en:'New'},artifacts:[{platform:'darwin',arch:'arm64',bytes:bytes.length,sha256:digest,url:`http://company.test/team/releases/raw/${'a'.repeat(40)}/desktop/GEA-Desktop-0.0.9-mac-arm64.dmg`}]}});
-async function fixture(t,{fetchImpl,platform='darwin',arch='arm64'}={}){
+async function fixture(t,{fetchImpl,platform='darwin',arch='arm64',sources={stable:source}}={}){
  const data=await mkdtemp(join(tmpdir(),'gea-installer-test-'));let opened=[];
- const manager=createClientInstaller({data,currentVersion:'0.0.8',platform,arch,sources:{stable:source},openPath:async path=>{opened.push(path);return '';},fetchImpl:fetchImpl??(async url=>url===source?Response.json(manifest()):new Response(bytes))});
+ const manager=createClientInstaller({data,currentVersion:'0.0.8',platform,arch,sources,openPath:async path=>{opened.push(path);return '';},fetchImpl:fetchImpl??(async url=>url===source?Response.json(manifest()):new Response(bytes))});
  t.after(async()=>{await manager.close();await rm(data,{recursive:true,force:true});});
  return {manager,data,opened};
 }
@@ -49,4 +49,53 @@ test('manifest rejects wrong origin, mutable paths, traversal, platform, channel
 test('unsupported platform and unavailable manifest produce actionable state without downloads',async t=>{
  const {manager}=await fixture(t,{platform:'linux',arch:'x64'});await manager.check();assert.equal(manager.status().release.platformSupported,false);await assert.rejects(manager.download(),/UNAVAILABLE/);
  const f=await fixture(t,{fetchImpl:async()=>new Response('',{status:404})});await f.manager.check();assert.equal(f.manager.status().phase,'failed');assert.equal(f.manager.status().checking,false);
+});
+
+// 兼容版频道来源：一个频道可以有多个地址，按顺序尝试，前一个读不到才用下一个。
+test('installer channel prefers the first source and falls back to the next one only when it fails',async t=>{
+ const candidates=['https://oss.test/client-release/raw/channels/desktop-stable.json',source];
+ const seen=[];
+ const fetchImpl=async url=>{seen.push(url);if(url===candidates[0])return new Response('',{status:404});return url===source?Response.json(manifest()):new Response(bytes);};
+ const {manager}=await fixture(t,{fetchImpl,sources:{stable:candidates}});
+ await manager.check();
+ assert.deepEqual(seen,candidates);
+ assert.equal(manager.status().checkSource,source);
+ assert.equal(manager.status().updateAvailable,true);
+});
+
+test('a broken installer channel reports the last error and offers nothing',async t=>{
+ const candidates=['https://oss.test/a.json','https://oss.test/b.json'];
+ const {manager}=await fixture(t,{fetchImpl:async()=>new Response('',{status:503}),sources:{stable:candidates}});
+ await manager.check();
+ assert.equal(manager.status().phase,'failed');
+ assert.equal(manager.status().checkSource,null);
+ assert.equal(manager.status().release,null);
+ assert.equal(manager.status().updateAvailable,false);
+});
+
+test('a single installer channel address still works without a fallback list',async t=>{
+ const seen=[];const {manager}=await fixture(t,{fetchImpl:async url=>{seen.push(url);return url===source?Response.json(manifest()):new Response(bytes);}});
+ await manager.check();
+ assert.deepEqual(seen,[source]);
+ assert.equal(manager.status().checkSource,source);
+});
+
+// OSS 上的安装包沿用“不可变 raw 路径”，客户端校验规则不用放宽。
+test('an oss installer channel keeps the immutable raw layout that binds artifacts to its own origin',()=>{
+ const ossSource='https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/channels/desktop-stable.json';
+ const ossManifest={schema:1,channel:'stable',release:{version:'0.0.18',notes:{zh:'新版',en:'New'},artifacts:[{platform:'darwin',arch:'arm64',bytes:bytes.length,sha256:digest,url:`https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/${'b'.repeat(40)}/desktop/GEA-Desktop-0.0.18-mac-arm64.dmg`}]}};
+ assert.equal(validateInstallerManifest(ossManifest,ossSource,'stable','darwin','arm64').artifact.url,ossManifest.release.artifacts[0].url);
+ assert.throws(()=>validateInstallerManifest(ossManifest,source,'stable','darwin','arm64'),/INVALID_DESKTOP_URL/);
+});
+
+test('the shipped installer channel configuration keeps a public source ahead of the company GitLab fallback',async()=>{
+ const sources=JSON.parse(await readFile(new URL('./desktop-release-sources.json',import.meta.url),'utf8'));
+ for(const channel of ['stable','test']){
+  const candidates=sources[channel];
+  assert.ok(Array.isArray(candidates)&&candidates.length>=2,channel+' must carry a fallback list');
+  assert.match(candidates[0],/^https:\/\//,channel+' must try the public https source first');
+  assert.ok(candidates[0].includes('/raw/'),channel+' must keep the immutable raw channel path');
+  assert.ok(!candidates[0].includes('100.100.6.191'),channel+' must not try the internal GitLab host first');
+  assert.match(candidates[candidates.length-1],/^http:\/\/100\.100\.6\.191:20656\/chenyonghao\/dsh-plugin-releases\//,channel+' must keep the company GitLab channel last');
+ }
 });

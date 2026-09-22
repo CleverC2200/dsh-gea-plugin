@@ -5,7 +5,11 @@ import {mkdir,readFile,rename,rm,writeFile} from 'node:fs/promises';
 import {dirname,join,resolve,sep} from 'node:path';
 import {gunzipSync} from 'node:zlib';
 
-export const HTML_PLUGIN_CHANNEL='http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/gea-html-preview.json';
+// 兼容版频道来源：按顺序尝试，OSS 读不到时回退到公司 GitLab。
+export const HTML_PLUGIN_CHANNELS=[
+  'https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/gea-html-preview.json',
+  'http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/gea-html-preview.json',
+];
 const CHANNEL_KIND='gea-html-v1';
 const REQUEST_TIMEOUT_MS=15000;
 
@@ -82,16 +86,21 @@ async function extractArchive(archive,target){
   }
 }
 
-export async function prepareHtmlPlugins({runtime,channelUrl=HTML_PLUGIN_CHANNEL,fetchImpl=globalThis.fetch,log=console.error}={}){
+export async function prepareHtmlPlugins({runtime,channelUrl=HTML_PLUGIN_CHANNELS,fetchImpl=globalThis.fetch,log=console.error}={}){
   const base=join(runtime,'html-plugins');
   const result={roots:{},installed:[],reused:[],failed:[]};
-  let channel;
-  try{
-    const raw=await download(channelUrl,fetchImpl);
-    channel=JSON.parse(raw.toString('utf8'));
-    if(channel?.kind!==CHANNEL_KIND||!Array.isArray(channel.plugins))throw new Error('HTML_PLUGIN_CHANNEL_INVALID');
-  }catch(error){
-    log(`[html-plugins] channel unavailable: ${error?.message??error}`);
+  const candidates=(Array.isArray(channelUrl)?channelUrl:[channelUrl]).filter(item=>typeof item==='string'&&item.length>0);
+  let channel,failure;
+  for(const candidate of candidates){
+    try{
+      const raw=await download(candidate,fetchImpl);
+      const value=JSON.parse(raw.toString('utf8'));
+      if(value?.kind!==CHANNEL_KIND||!Array.isArray(value.plugins))throw new Error('HTML_PLUGIN_CHANNEL_INVALID');
+      channel=value;failure=undefined;break;
+    }catch(error){failure=error;}
+  }
+  if(!channel){
+    log(`[html-plugins] channel unavailable: ${failure?.message??failure}`);
     return result;
   }
   await mkdir(base,{recursive:true,mode:0o700});

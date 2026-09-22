@@ -137,6 +137,24 @@ Windows payload 准备显式使用 `virtualStoreDirMaxLength: 60`，Mac 使用 1
 
 Windows 包验收先记录 GitLab 网络可达性。能访问公司网络时执行在线检查、下载和重启；公共 CI 无法访问内网时，通过应用原有的本地插件菜单安装与 GitLab 摘要一致的归档并切换版本，报告单独标记 `local-verified-archive`，不能据此声称 Windows 已完成内网下载验证。Mac 验收直接读取真实 GitLab 频道。
 
+## 频道兼容：公网优先、GitLab 兜底
+
+三个更新频道都改成**按优先级排列的地址列表**，宿主按顺序尝试，第一个读到的清单生效，全部读不到才报错（错误码取最后一个来源）。当前顺序是公司 OSS 在前、公司 GitLab 在后，这样外网或客户网络连不上内网时仍能更新：
+
+| 频道 | 配置位置 | OSS 地址（排第一） |
+|---|---|---|
+| 插件正式/测试 | `release-sources.json` | `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/dsh-0.1.6-{stable,test}.json` |
+| HTML 插件（库存等业务入口） | `html-plugins.mjs` 的 `HTML_PLUGIN_CHANNELS` | `.../plugin-release/channels/gea-html-preview.json` |
+| 桌面安装包正式/测试 | `desktop-release-sources.json` | `.../client-release/raw/channels/desktop-{stable,test}.json` |
+
+三条频道的兜底来源都是公司 GitLab raw。规则细节：
+
+- 回退只发生在“读取频道清单”这一步。来源一旦选定，清单里的地址一律按该来源下载，不跨来源混用；单字符串地址仍按单来源处理，向后兼容。
+- `GET /updates/status` 的 `channelSource` 和安装器的 `checkSource` 给出本次实际使用的清单地址，用于确认走的哪条来源；检查失败时该字段为 `null`。
+- **桌面安装包在 OSS 上必须沿用不可变 raw 布局**：清单放 `client-release/raw/channels/<频道>.json`，产物放 `client-release/raw/<打包提交的40位SHA>/desktop/GEA-Desktop-<版本>-<平台后缀>`。安装器校验要求产物与清单同源且落在该 `raw` 前缀下，这样摆放无需放宽任何校验规则。
+- 同一份产物在 OSS 与 GitLab 上必须是**同一份字节**（SHA-256 一致）。插件侧同一个 `包@版本` 摘要不同会被既有防线判为 `RELEASE_VERSION_REPLACED` 并拒绝更新。
+- 旧客户端（0.0.17 及以前）的渠道地址写在安装包内，服务端改不动它们；这版兼容层要随新桌面包发出，老客户端在此之前仍靠 GitLab 更新，因此**每版新产物在 GitLab 与 OSS 上都要发布**。
+
 ## 启动修复 0.0.8
 
 本版包含系统凭据授权等待修复，以及客户端组合脚本的换行计数优化。`prepare-payload.py` 使用 pnpm 的 `patchedDependencies` 应用 `patches/client-modules-newline-scan.patch`；官方归档保持原始字节，补丁和锁随桌面版本固定。插件安装保留补丁声明，重建依赖后仍使用相同实现。上游源码对应 deepseek-harness PR #10。

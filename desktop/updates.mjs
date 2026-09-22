@@ -6,9 +6,12 @@ import {createRequire} from 'node:module';
 const OPTIONAL_PLUGINS={'@dsh-external/dsh-visualize':{name:'@dsh-external/dsh-visualize'},'dsh-raw-html-v2':{name:'dsh-raw-html-v2'},'dsh-worktable':{name:'dsh-worktable'}};
 const code=value=>typeof value==='string'&&/^[A-Z][A-Z_0-9]+$/.test(value);
 const errorCode=error=>code(error?.message)?error.message:code(error?.code)?error.code:'UPDATE_FAILED';
+const CHANNEL_ATTEMPT_TIMEOUT_MS=30000;
+/** 兼容版频道来源：单个地址，或按优先级排列的地址列表。 */
+const channelCandidates=value=>Array.isArray(value)?value.filter(item=>typeof item==='string'&&item.length>0):typeof value==='string'&&value.length>0?[value]:[];
 export async function createUpdates({data,store,desktopVersion,releases,install,restart,restartRuntime,sources,token,checkDesktop}) {
   const path=join(data,'plugins/update-state.json');const optionalPath=join(data,'plugins/optional-state.json');await mkdir(join(data,'plugins'),{recursive:true});
-  let state={settings:{automatic:true,intervalHours:2,channel:'stable'},history:{},updateHistory:[],phase:'idle',releases:[]};
+  let state={settings:{automatic:true,intervalHours:2,channel:'stable'},history:{},updateHistory:[],phase:'idle',releases:[],channelSource:null};
   // The release list is session state: only a check that completed in this run may offer a version.
   // A list restored from disk could otherwise outlive the channel it came from and be re-installed forever.
   try{state={...state,...JSON.parse(await readFile(path,'utf8')),releases:[]};}catch(error){if(error.code!=='ENOENT')throw Error('UPDATE_STATE_INVALID');}
@@ -27,6 +30,24 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
   const status=async()=>{
     return {...state,phase:state.phase==='pending'&&preparing?'installing':state.phase,current:await versions(),optional:await optionalStatus(),checking:Boolean(checking),capabilities:{batchPrepare:true,automaticUpdates:true,prepareAndRestart:true,optionalPluginToggle:true}};
   };
+  // 兼容版频道读取：一个频道可以有多个来源，按顺序尝试，前一个读不到才用下一个。
+  // 只在“读取频道”这一步回退；来源一旦成功，就用它返回的清单，不再混用其他来源。
+  const fetchChannel=async(channel,host)=>{
+    const candidates=channelCandidates(sources?.[channel]);
+    if(!candidates.length)throw Error('INVALID_RELEASE_URL');
+    let failure;
+    for(const source of candidates){
+      try{
+        const result=await releases.fetchCompanyChannel(source,channel,host,{token,signal:AbortSignal.any([checkAbort.signal,AbortSignal.timeout(CHANNEL_ATTEMPT_TIMEOUT_MS)])});
+        return {result,source};
+      }catch(error){
+        failure=error;
+        // 主动取消（关闭应用）不算来源不可用，不再继续尝试后面的来源。
+        if(checkAbort.signal.aborted)break;
+      }
+    }
+    throw failure;
+  };
   const check=()=>{
     if(closed)return Promise.resolve({error:'DESKTOP_CLOSING'});
     if(checking)return checking;
@@ -39,8 +60,8 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
         // Reading the selected graph is part of the check: if it fails, the previous release list
         // must be dropped too, otherwise the client keeps re-offering a version it cannot install.
         const current=await versions();
-        const result=await releases.fetchCompanyChannel(sources[channel],channel,{dsh:current['@deepseek-ai/dsh'],workbench:current['@cleverc2200/dsh-agent-workbench'],desktop:desktopVersion},{token,signal:AbortSignal.any([checkAbort.signal,AbortSignal.timeout(60000)])});
-        state.history=releases.verifyReleaseHistory(result,state.history);state.releases=result.releases;state.lastCheck=new Date().toISOString();state.checkError=null;
+        const {result,source}=await fetchChannel(channel,{dsh:current['@deepseek-ai/dsh'],workbench:current['@cleverc2200/dsh-agent-workbench'],desktop:desktopVersion});
+        state.history=releases.verifyReleaseHistory(result,state.history);state.releases=result.releases;state.channelSource=source;state.lastCheck=new Date().toISOString();state.checkError=null;
         // Keep the failure notice only while a retry would repeat exactly the batch that failed. A batch that
         // changed — even when one package kept its version — is a different operation, so the page must not
         // keep reporting "update needs attention" from the previous attempt.
@@ -48,7 +69,7 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
         const attempted=(state.targets??[]).map(key).sort().join(',');
         const offered=state.releases.filter(release=>current[release.package]!==release.version).map(key).sort().join(',');
         if(state.phase==='failed'&&attempted!==offered) {state.phase='idle';state.error=null;delete state.targets;delete state.target;delete state.progress;delete state.timings;delete state.pending;}
-      }catch(error){state.releases=[];state.lastCheck=new Date().toISOString();state.checkError=errorCode(error);}
+      }catch(error){state.releases=[];state.channelSource=null;state.lastCheck=new Date().toISOString();state.checkError=errorCode(error);}
       await desktopCheck;await save();return status();
     })().finally(()=>{checking=undefined;});
     return checking;
@@ -125,7 +146,7 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
     status,check,settings,prepare,optional:optionalStatus,optionalToggle,
     cancel:async()=>{autoRestart=false;abort?.abort();if(state.phase==='pending'){state.phase='cancelled';finishHistory(false);await save();}return {ok:true};},
     restart:restartPrepared,
-    start:async()=>{if(started)return;started=true;const generation=(await store.status()).dataSchema??1;if((state.dataSchema??1)!==generation){state={settings:state.settings,history:state.history,updateHistory:Array.isArray(state.updateHistory)?state.updateHistory:[],phase:'idle',releases:[],dataSchema:generation};await save();}if(state.phase==='restarting'){const selection=await store.status();state.phase=selection.active===state.pending&&!selection.booting?'succeeded':'failed';state.error=state.phase==='failed'?'UPDATE_ROLLED_BACK':null;finishHistory(state.phase==='succeeded');await save();}void check().catch(()=>{});},
+    start:async()=>{if(started)return;started=true;const generation=(await store.status()).dataSchema??1;if((state.dataSchema??1)!==generation){state={settings:state.settings,history:state.history,updateHistory:Array.isArray(state.updateHistory)?state.updateHistory:[],phase:'idle',releases:[],channelSource:null,dataSchema:generation};await save();}if(state.phase==='restarting'){const selection=await store.status();state.phase=selection.active===state.pending&&!selection.booting?'succeeded':'failed';state.error=state.phase==='failed'?'UPDATE_ROLLED_BACK':null;finishHistory(state.phase==='succeeded');await save();}void check().catch(()=>{});},
     close:async()=>{closed=true;clearTimeout(restartTimer);abort?.abort();checkAbort?.abort();await preparing;await checking;await restartTask;await writes;},
   };
 }

@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,rm,readFile,readdir} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';
 import {PluginStore} from './plugin-store.mjs';import {createUpdates} from './updates.mjs';
 const until=async(fn,predicate)=>{for(let i=0;i<150;i++){const value=await fn();if(predicate(value))return value;await new Promise(r=>setTimeout(r,20));}throw Error('timed out');};
-async function fixture(t,overrides={},initialState){
+async function fixture(t,overrides={},initialState,sources){
  const data=await mkdtemp(join(tmpdir(),'gea-updates-'));const baseline=join(data,'baseline');
  const dependencies={'@deepseek-ai/dsh':'0.1.5-rc.2','@cleverc2200/dsh-agent-workbench':'0.1.1','dsh-plugin':'1.4.3-company.1'};
  for(const [name,version] of Object.entries(dependencies)){await mkdir(join(baseline,'node_modules',name),{recursive:true});await writeFile(join(baseline,'node_modules',name,'package.json'),JSON.stringify({name,version}));}
@@ -10,7 +10,7 @@ async function fixture(t,overrides={},initialState){
  if(initialState){await mkdir(join(data,'plugins'),{recursive:true});await writeFile(join(data,'plugins/update-state.json'),JSON.stringify(initialState));}
  const store=new PluginStore({data,baseline});const release={package:'dsh-plugin',version:'1.4.3-company.2',notes:{zh:'更新',en:'Update'}};
  let installs=0,restarts=0,checks=0,desktopChecks=0;
- const updates=await createUpdates({data,store,desktopVersion:'0.0.2',sources:{stable:'stable',test:'test'},checkDesktop:async()=>{desktopChecks++;},
+ const updates=await createUpdates({data,store,desktopVersion:'0.0.2',sources:sources??{stable:'stable',test:'test'},checkDesktop:async()=>{desktopChecks++;},
   releases:{validateReleaseChannel:value=>value,fetchCompanyChannel:async(source)=>{checks++;return {releases:source==='stable'?[release]:[]}},verifyReleaseHistory:(_,history)=>history,fetchReleasePackage:async()=>new Uint8Array([1]),...overrides},
   install:async directory=>{installs++;await writeFile(join(directory,'node_modules/dsh-plugin/package.json'),JSON.stringify({name:'dsh-plugin',version:release.version}));},
   restartRuntime:overrides.restartRuntime,
@@ -212,4 +212,54 @@ test('rejects a batch whose resulting host combination is incompatible before do
  await updates.check();await assert.rejects(updates.prepare({all:true}),/INCOMPATIBLE_TARGET/);
  assert.deepEqual(hosts,['0.1.1','0.1.2']);assert.equal(downloads,0);assert.equal(counts().installs,0);
  assert.equal((await store.selected()).id,'baseline');
+});
+
+// 兼容版频道来源：一个频道可以有多个地址，按顺序尝试，前一个读不到才用下一个。
+test('prefers the first channel source and falls back to the next one only when it fails',async t=>{
+ const candidates=['https://oss.example/dsh-0.1.6-stable.json','http://gitlab.example/dsh-0.1.6-stable.json'];
+ const attempts=[];
+ const fallback=await fixture(t,{fetchCompanyChannel:async source=>{attempts.push(source);if(source===candidates[0])throw Error('RELEASE_HTTP_404');return {releases:[{package:'dsh-plugin',version:'1.4.3-company.2'}]}}},undefined,{stable:candidates,test:candidates});
+ const state=await fallback.updates.check();
+ assert.deepEqual(attempts,candidates);
+ assert.equal(state.channelSource,candidates[1]);
+ assert.equal(state.checkError,null);
+ assert.equal(state.releases.length,1);
+
+ attempts.length=0;
+ const preferred=await fixture(t,{fetchCompanyChannel:async source=>{attempts.push(source);return {releases:[{package:'dsh-plugin',version:'1.4.3-company.2'}]}}},undefined,{stable:candidates,test:candidates});
+ const first=await preferred.updates.check();
+ assert.deepEqual(attempts,[candidates[0]],'a working first source must not be re-fetched from the fallback');
+ assert.equal(first.channelSource,candidates[0]);
+});
+
+test('reports the last error and offers nothing when every channel source fails',async t=>{
+ const candidates=['https://oss.example/dsh-0.1.6-stable.json','http://gitlab.example/dsh-0.1.6-stable.json'];
+ const attempts=[];
+ const {updates}=await fixture(t,{fetchCompanyChannel:async source=>{attempts.push(source);throw Error(source===candidates[0]?'RELEASE_HTTP_404':'RELEASE_HTTP_503')}},undefined,{stable:candidates,test:candidates});
+ const state=await updates.check();
+ assert.deepEqual(attempts,candidates);
+ assert.equal(state.channelSource,null);
+ assert.equal(state.checkError,'RELEASE_HTTP_503');
+ assert.deepEqual(state.releases,[]);
+});
+
+test('a single channel address still works without a fallback list',async t=>{
+ const attempts=[];
+ const {updates}=await fixture(t,{fetchCompanyChannel:async source=>{attempts.push(source);return {releases:[{package:'dsh-plugin',version:'1.4.3-company.2'}]}}});
+ const state=await updates.check();
+ assert.deepEqual(attempts,['stable']);
+ assert.equal(state.channelSource,'stable');
+});
+
+// 随包发出去的频道配置必须真的做到“公网来源优先、公司 GitLab 兜底”。
+test('the shipped channel configuration keeps a public source ahead of the company GitLab fallback',async()=>{
+ const sources=JSON.parse(await readFile(new URL('./release-sources.json',import.meta.url),'utf8'));
+ for(const channel of ['stable','test']){
+  const candidates=sources[channel];
+  assert.ok(Array.isArray(candidates)&&candidates.length>=2,channel+' must carry a fallback list');
+  assert.ok(candidates.every(url=>typeof url==='string'&&/^https?:\/\//.test(url)),channel+' entries must be absolute URLs');
+  assert.match(candidates[0],/^https:\/\//,channel+' must try the public https source first');
+  assert.ok(!candidates[0].includes('100.100.6.191'),channel+' must not try the internal GitLab host first');
+  assert.match(candidates[candidates.length-1],/^http:\/\/100\.100\.6\.191:20656\/chenyonghao\/dsh-plugin-releases\//,channel+' must keep the company GitLab channel last');
+ }
 });
