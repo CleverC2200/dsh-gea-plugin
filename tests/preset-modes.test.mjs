@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, writeFile, readFile, readdir, realpath, rm, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, realpath, rm, symlink, lstat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,6 +52,76 @@ test("切换组合时替换上一版的 preset 软链，并且可以重复执行
     assert.equal(await realpath(link), await realpath(join(next, "agent.cordis.yml")));
     assert.equal(await readFile(link, "utf8"), "composition version-b\n");
     await prepareNativePreset(runtime, next);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// 0.0.13 及更早的桌面把标准预设复制成真实目录（不是软链）。升级到软链布局后这里曾经直接抛
+// EEXIST 让工作台起不来；内容一致的副本必须原样沿用。
+test("旧版复制布局留下的组合副本直接沿用，不再 EEXIST 崩启动", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gea-presets-copy-"));
+  try {
+    const source = join(dir, "version-a");
+    await mkdir(source, { recursive: true });
+    const composition = "composition version-a\n";
+    await writeFile(join(source, "agent.cordis.yml"), composition);
+    await writeFile(join(source, "preset.yml"), "name: 标准模式\n");
+    const runtime = join(dir, "runtime");
+    const copied = join(runtime, "native-presets", DEFAULT_PRESET_ID);
+    await mkdir(copied, { recursive: true });
+    await writeFile(join(copied, "agent.cordis.yml"), composition);
+    await prepareNativePreset(runtime, source);
+    assert.equal(await readFile(join(copied, "agent.cordis.yml"), "utf8"), composition);
+    assert.equal((await lstat(join(copied, "agent.cordis.yml"))).isSymbolicLink(), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// 副本落后于当前 DSH 包时按原始内容刷新，不能继续用上一版组合。
+test("旧副本落后于当前组合时按 DSH 原始内容刷新", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gea-presets-refresh-"));
+  try {
+    const source = join(dir, "version-b");
+    await mkdir(source, { recursive: true });
+    const composition = "composition version-b\n";
+    await writeFile(join(source, "agent.cordis.yml"), composition);
+    await writeFile(join(source, "preset.yml"), "name: 标准模式\n");
+    const runtime = join(dir, "runtime");
+    const stale = join(runtime, "native-presets", DEFAULT_PRESET_ID);
+    await mkdir(stale, { recursive: true });
+    await writeFile(join(stale, "agent.cordis.yml"), "composition version-a\n");
+    await prepareNativePreset(runtime, source);
+    assert.equal(await readFile(join(stale, "agent.cordis.yml"), "utf8"), composition);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// Windows 普通账户没有 SeCreateSymbolicLinkPrivilege 时 symlink 抛 EPERM（现场日志里的
+// `EPERM: operation not permitted, symlink`）；必须退回内容相同的副本，不能把工作台打死。
+test("没有文件软链权限时退回写副本，并且可以重复执行", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gea-presets-eperm-"));
+  try {
+    const source = join(dir, "version-a");
+    await mkdir(source, { recursive: true });
+    const composition = "composition version-a\n";
+    await writeFile(join(source, "agent.cordis.yml"), composition);
+    await writeFile(join(source, "preset.yml"), "name: 标准模式\n");
+    const runtime = join(dir, "runtime");
+    const denied = async () => {
+      const error = new Error("EPERM: operation not permitted, symlink");
+      error.code = "EPERM";
+      throw error;
+    };
+    await prepareNativePreset(runtime, source, { createLink: denied });
+    const link = join(runtime, "native-presets", DEFAULT_PRESET_ID, "agent.cordis.yml");
+    assert.equal(await readFile(link, "utf8"), composition);
+    assert.equal((await lstat(link)).isSymbolicLink(), false);
+    // 第二次启动看到的是上一轮留下的真实文件，不能再抛 EEXIST。
+    await prepareNativePreset(runtime, source, { createLink: denied });
+    assert.equal(await readFile(link, "utf8"), composition);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

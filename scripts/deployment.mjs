@@ -293,8 +293,52 @@ function presetRoots(root) {
     .map((path) => ({ path, trust: "system" }));
 }
 
+/**
+ * 把组合文件放进 native-presets：优先软链 DSH 原始文件，保证能力集不被改动。
+ *
+ * Windows 创建文件软链需要 SeCreateSymbolicLinkPrivilege（开发者模式或管理员），
+ * 普通账户只会拿到 EPERM；目录还能退到 junction，文件没有等价物，所以这里退回写一份
+ * 内容逐字节相同的副本 —— native-presets 是启动器每次启动重建的派生目录，副本同样会在
+ * 下一次启动被刷新，能力集不变。
+ */
+async function placeCompositionFile(link, source, createLink) {
+  const content = await readFile(source);
+  let entry = null;
+  try {
+    entry = await lstat(link);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (entry?.isSymbolicLink()) {
+    // 切换已准备版本后这里仍指向上一版组合目录。只替换软链本身。
+    let current = null;
+    try {
+      current = await realpath(link);
+    } catch {
+      current = null;
+    }
+    if (current === (await realpath(source))) return;
+    await unlink(link);
+    entry = null;
+  }
+  if (entry) {
+    // 真实文件：内容一致就是旧版复制布局留下的副本，原样沿用。
+    const existing = await readFile(link).catch(() => null);
+    if (existing?.equals(content)) return;
+    // 内容落后于当前 DSH 包：重写。这里和同目录的 preset.yml 一样，是启动器自己的派生目录。
+    await writeFile(link, content, { mode: 0o600 });
+    return;
+  }
+  try {
+    await createLink(source, link, "file");
+  } catch (error) {
+    if (error.code !== "EPERM" && error.code !== "EACCES") throw error;
+    await writeFile(link, content, { mode: 0o600 });
+  }
+}
+
 /** Expose only the original standard preset, without copying or modifying DSH's composition. */
-export async function prepareNativePreset(runtime, target) {
+export async function prepareNativePreset(runtime, target, { createLink = symlink } = {}) {
   const parent = resolve(runtime, "native-presets");
   await readFile(resolve(target, "agent.cordis.yml"), "utf8");
   await mkdir(parent, { recursive: true });
@@ -320,32 +364,12 @@ export async function prepareNativePreset(runtime, target) {
     if (error.code !== "ENOENT") throw error;
   }
   await mkdir(directory, { recursive: true });
-  // 组合文件继续软链 DSH 原始文件，保证能力集不被改动。
-  const link = resolve(directory, "agent.cordis.yml");
-  const source = resolve(target, "agent.cordis.yml");
-  // 切换已准备版本后这里仍指向上一版组合目录。只替换软链本身；真实文件保持不动，避免覆盖用户改动。
-  try {
-    if ((await lstat(link)).isSymbolicLink()) {
-      let current = null;
-      try {
-        current = await realpath(link);
-      } catch {
-        current = null;
-      }
-      if (current !== (await realpath(source))) await unlink(link);
-    }
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-  try {
-    await symlink(source, link, "file");
-  } catch (error) {
-    if (
-      error.code !== "EEXIST" ||
-      (await realpath(link)) !== (await realpath(source))
-    )
-      throw error;
-  }
+  // 组合文件继续软链 DSH 原始文件，保证能力集不被改动；没有软链权限的机器退回副本。
+  await placeCompositionFile(
+    resolve(directory, "agent.cordis.yml"),
+    resolve(target, "agent.cordis.yml"),
+    createLink,
+  );
   // 只有显示名不一样：写自己的一份 preset.yml。
   // 老版本在这里留的是指向 DSH 包内的软链，必须先删掉，否则会顺着链接改到包里。
   const preset = await readFile(resolve(target, "preset.yml"), "utf8");
