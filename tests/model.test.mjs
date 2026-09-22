@@ -85,7 +85,10 @@ test(
     assert.deepEqual(
       body.tools.map((tool) => tool.function.name).sort(),
       [
-        "gea_plugin_read",
+        // 问答侧关掉受管 SQL 之后，取数工具只剩模块 MCP（gea_module_mcp）与计划只读。
+        "gea_gateway_catalog",
+        "gea_module_mcp",
+        "gea_page",
         "gea_sales_plan_read",
         "gea_skill_reference_read",
         "gea_visible_workbench_context",
@@ -94,6 +97,12 @@ test(
         "skill",
         "validate_dsh_ui",
       ],
+    );
+    // 默认不允许模型自己写 SQL：受管只读工具不能出现在工具清单里。
+    assert.equal(
+      body.tools.some((tool) => tool.function.name === "gea_plugin_read"),
+      false,
+      "默认配置下不给模型暴露 gea_plugin_read",
     );
     const submitted = rows.find(
       (row) =>
@@ -139,5 +148,76 @@ test(
       ).includes("未提供 SKU"),
     );
     assert.equal(JSON.stringify(rows).includes("fixture-model-key"), false);
+  },
+);
+
+test(
+  "显式打开 agentSqlRead 时，受管只读 SQL 工具才回到工具清单",
+  { timeout: 60000 },
+  async (t) => {
+    const app = await profile(t, {
+      config: (base) => ({
+        agentSqlRead: true,
+        analysis: {
+          mode: "model",
+          baseUrl: base + "/v1",
+          model: "fixture-model",
+          apiKeyEnv: "GEA_TEST_MODEL_KEY",
+          contextWindow: 32768,
+          maxTokens: 2048,
+        },
+      }),
+      env: { GEA_TEST_MODEL_KEY: "fixture-model-key" },
+    });
+    const modelRequests = [];
+    app.route((req, res) => {
+      if (req.url.pathname !== "/v1/chat/completions") return;
+      modelRequests.push(req);
+      res.setHeader("Content-Type", "text/event-stream");
+      res.end(
+        "data: " +
+          JSON.stringify({
+            id: "fixture-completion",
+            object: "chat.completion.chunk",
+            choices: [
+              { index: 0, delta: { content: "已按只读通道作答。" }, finish_reason: null },
+            ],
+          }) +
+          "\n\ndata: " +
+          JSON.stringify({
+            id: "fixture-completion",
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          }) +
+          "\n\ndata: [DONE]\n\n",
+      );
+      return true;
+    });
+    await app.login();
+    const page = (await app.rpc("plans")).value;
+    const prepared = (
+      await app.rpc("prepare", {
+        queryId: page.queryId,
+        planId: page.records[0].planId,
+      })
+    ).value;
+    const sent = await app.rpc("submit", { previewId: prepared.previewId });
+    assert.equal(sent.ok, true, JSON.stringify(sent));
+    await until(
+      () => readSession(app.runtime, sent.value.sessionId),
+      (rows) => rows.some((row) => row.type === "turn/end"),
+    );
+    const names = JSON.parse(modelRequests[0].body).tools.map(
+      (tool) => tool.function.name,
+    );
+    assert.ok(names.includes("gea_plugin_read"), "显式打开后 SQL 工具应存在");
+    // 索引只挂一份：SQL 通道开着时挂在 gea_plugin_read，不再重复挂在 MCP 说明里。
+    const mcp = JSON.parse(modelRequests[0].body).tools.find(
+      (tool) => tool.function.name === "gea_module_mcp",
+    );
+    assert.equal(
+      mcp.function.description.includes("模块清单（只有名称与编码，细节按需取）："),
+      false,
+      "索引只挂一份：SQL 通道开着时不再重复挂到 MCP 说明里",
+    );
   },
 );

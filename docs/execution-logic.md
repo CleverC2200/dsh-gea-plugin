@@ -10,8 +10,11 @@
 ## 一、一句话总览
 
 把"垂直堆叠的业务模块"（页面 + 数据 + 提示词 + 查询）用一份**能力契约**统一暴露给同一个对话入口，
-对话侧只认契约、不认具体页面；取数与操作一共**四条通道**，宿主先算出"该走哪条"再交给模型，
-每条通道都有硬边界、预算和止损。
+对话侧只认契约、不认具体页面；取数与操作一共**三条通道**（页面证据 / 页面桥 / 模块 MCP），
+宿主先算出"该走哪条"再交给模型，每条通道都有硬边界、预算和止损。
+
+> **问答侧不写 SQL**：受管只读 SQL（`/ai/gateway/sql/execute`）默认**关闭**，模型看不到
+> `gea_plugin_read` 这个工具。原因与开关见第十节。
 
 ```
 用户在右侧提问
@@ -24,7 +27,7 @@
       │  工具说明 = 契约编译出来的（只给名称与一句话）
       ├─────────────┬─────────────┬─────────────┬─────────────┐
       ▼             ▼             ▼             ▼
- ① gea_page    ② 页面桥       ③ gea_module_mcp  ④ gea_plugin_read
+ ① gea_page    ② 页面桥       ③ gea_module_mcp  ④ gea_plugin_read（默认关闭）
  读这一屏/页面动作 改草稿/审批   模块自带查询      受管只读 SQL + 配方
       │             │             │             │
  宿主内部       AG-UI → iframe   /ai/gateway/    /ai/gateway/
@@ -63,9 +66,11 @@
 
 1. **用哪个 GEA agent**：`agentCode = 当前页身份对应的 consumerCode`（没页面才回落默认）；
    网关据此注入该模块的系统提示词 —— 这就是"模块技能跟着页面走"。
-2. **带什么工具**：`gea_plugin_read`（说明里内嵌契约生成的**模块清单**）、`gea_module_mcp`、
+2. **带什么工具**：`gea_module_mcp`（说明里内嵌契约生成的**模块清单**）、
    `gea_visible_workbench_context`、`gea_page`（唯一页面入口）、页面桥工具、`gea_sales_plan_read`、
-   渲染类工具。
+   `gea_gateway_catalog`（网关语义模型目录，执行走 MCP）、渲染类工具。
+   `gea_plugin_read` 只在部署配置打开 `agentSqlRead` 时才注册；那时模块清单挂在它身上，
+   MCP 说明里不再重复挂一份。
 3. **说明文字只给"名称 + 一句话"**，细节按需取（见第六节）。
 
 ### 第 2 步：模型选通道（宿主已经把顺序算好）
@@ -74,7 +79,7 @@
 |---|---|---|
 | "这一屏 / 这几行 / 这家客户" | `gea_page`（action=context，可带 focus）→ 拿页面证据 | 快照里已有那行就直接答，不再跨模块取数（先答后取） |
 | "改草稿 / 筛选 / 审批" | 页面桥工具（`gea_plugin_page_apply` 或 `gea_workbench_apply`） | 先 `directory=true` 取字段索引，再 `invoke/setValue/select/clear` |
-| "按月 / 按范围 / 跨模块" | `gea_module_mcp` 优先（模块自带查询），否则 `gea_plugin_read` | 受管只读先 `describe=true` 取表与配方 |
+| "按月 / 按范围 / 跨模块" | `gea_module_mcp`（模块自带查询 + 网关 `query_business_data`）；计划事实另有 `gea_sales_plan_read` | 先只传 `consumerCode` 列工具，再 `tool` + `arguments` 调用；写入前先用 `gea_gateway_catalog` 取语义模型成员名 |
 
 宿主侧的硬边界（避免模型自己猜）：
 
@@ -86,14 +91,14 @@
 
 ---
 
-## 四、四条通道对照
+## 四、通道对照
 
 | 工具 | 是什么 | 链路 | 边界 |
 |---|---|---|---|
 | `gea_page` | 宿主工具：读这一屏 / 执行页面自述动作 | 宿主 `sessions.invoke` → 页面 context | 只作用于当前页；context 默认只回摘要 |
 | 页面桥 `gea_plugin_page_apply` / `gea_workbench_apply` | 页面桥（**不是 MCP**）：改草稿、筛选、审批 | 对话 → AG-UI 前端工具事件 → 同源 iframe → 回执 | 只读元素永不下发写；提交/审批必须页面声明可点且带 `confirm=true`；限流与超时见第七节 |
 | `gea_module_mcp` | **唯一的 MCP**：模块自带查询 | `/ai/gateway/session` 申请 → `/ai/gateway/mcp/proxy/mcp` | 只读清单过滤（`readOnlyHint:false` / `destructiveHint:true` 剔除）；权限不足按业务状态返回 |
-| `gea_plugin_read` | 受管只读 SQL + 配方 | `/ai/gateway/sql/execute` | 只允许只读语句；参数化；pageSize 钳到 200；同模块失败熔断 |
+| `gea_plugin_read`（默认**不注册**） | 受管只读 SQL + 配方 | `/ai/gateway/sql/execute` | 只允许只读语句；参数化；pageSize 钳到 200；同模块失败熔断。问答侧默认关闭，见第十节；页面自己的受控查询仍然走这条链路 |
 
 ---
 
@@ -187,7 +192,35 @@
 
 ---
 
-## 十、本轮从源码到 0.0.100 的发布流程
+## 十、问答侧不写 SQL（默认关闭）
+
+**现在问答只允许用 MCP 取数**：模型工具清单里没有 `gea_plugin_read`，取数只剩
+`gea_module_mcp`（模块自带查询 + 网关 `query_business_data`）、`gea_sales_plan_read`
+和页面证据。开关是部署配置 `agentSqlRead`，默认 `false`。
+
+为什么关（本机全部会话的实测，13 条失败 SQL 逐条对过真实列清单）：
+
+| 失败类别 | 条数 | 例子 | 责任方 |
+|---|---|---|---|
+| 双 LIMIT：模型自己写 `limit 30`，宿主又追加分页 `LIMIT/OFFSET` | 3 | `... group by ... limit 30` | 宿主整形 |
+| 日期列当文本或参数用 | 9 | `where target_month = :m`、`where target_month like '2026-1%'`、`substr(snapshot_date,1,7)` | 写法不兼容网关绑定 |
+| 列名/函数不存在 | 4 | `snapshot_date`（真名 `inventory_snapshot_time`）、`sku_code`、`live_qty`（真名 `qtylive`）、`datediff` | 模型猜列名 |
+
+而网关只回一句「受控 SQL 执行失败」（业务码 500），**不给原因码**，定位只能靠猜。
+
+边界与后果（必须知道）：
+
+- **只影响问答侧**。业务页面自己的受控查询、页面桥、页面证据照旧；
+  `gea_plugin_read` 的代码与测试都还在，部署配置写 `agentSqlRead: true` 就能整体打开。
+- **MCP 权限决定可问范围**。按 2026-09-22 的逐个探测，12 个模块里只有 4 个 MCP 可调用
+  （基地安全库存 / 经销商库存 / 分仓库存 / 全链路库存），其余 8 个是 `AGENT_ACCESS_DENIED`。
+  关掉 SQL 之后，这 8 个模块的问答取数会变成"没有可用通道"——要么让 GEA 侧开通 MCP 权限，
+  要么把那几个模块的问答按"资料不足"如实作答。
+- 通道计划 `channelPlan` 同步收口：关掉后不再出现"③受管只读"，只留"①当前页 → ②模块 MCP"。
+
+---
+
+## 十一、本轮从源码到 0.0.100 的发布流程
 
 1. **刷新远端 main** → `071bb81`；从它拉 `codex/release-gea-0.0.100`。
 2. **合并** `codex/page-bridge-v3`（25 个提交）。冲突 4 个文件，按"保留 main 新基线 +
@@ -210,7 +243,7 @@
 
 ---
 
-## 十一、已知限制与下一步
+## 十二、已知限制与下一步
 
 | 项 | 现状 | 下一步 |
 |---|---|---|
@@ -222,7 +255,7 @@
 
 ---
 
-## 十二、命令速查
+## 十三、命令速查
 
 ```sh
 # 用当前源码起 dev 客户端（本机 3199）

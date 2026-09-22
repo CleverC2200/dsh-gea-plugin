@@ -738,7 +738,9 @@ test(
         assert.match(result.content, /当前客户/);
         // 通道顺序由宿主算好一起给出，模型不必自己挑通道。
         assert.match(result.content, /"channels"/);
-        assert.match(result.content, /gea_plugin_read/);
+        // 问答侧关掉受管 SQL 之后，取数通道指向模块 MCP。
+        assert.match(result.content, /gea_module_mcp/);
+        assert.equal(result.content.includes("gea_plugin_read"), false);
         assert.equal(
           rows.some(
             (entry) =>
@@ -942,35 +944,33 @@ test(
       },
     );
     await t.test(
-      "只读数据工具的说明由模块自述生成：装了什么模块、能读哪些表，模型不用猜",
+      "问答只给 MCP 取数：模块清单挂在 gea_module_mcp 上，受管 SQL 工具默认不注册",
       async () => {
         outcome = "success";
         modelRequests = [];
         await ended(await submit());
-        const tool = modelRequests[0].tools.find(
-          (candidate) => candidate.function.name === "gea_plugin_read",
+        // 默认（部署配置没打开 agentSqlRead）不给模型写 SQL 的机会。
+        assert.equal(
+          modelRequests[0].tools.some(
+            (candidate) => candidate.function.name === "gea_plugin_read",
+          ),
+          false,
+          "默认不应注册 gea_plugin_read",
         );
-        assert.ok(tool, "只读数据工具已注册");
-        // 模块清单来自契约：模块名 + consumerCode；表、列、配方、口径都按需 describe。
+        const tool = modelRequests[0].tools.find(
+          (candidate) => candidate.function.name === "gea_module_mcp",
+        );
+        assert.ok(tool, "模块 MCP 工具已注册");
+        // 模块清单来自契约：模块名 + consumerCode；表名关键词帮着选模块，列与口径不进说明。
         assert.match(tool.function.description, /探针页面/);
         assert.match(tool.function.description, /consumerCode=probe-consumer/);
         assert.match(tool.function.description, /能力层/);
         assert.equal(
           tool.function.description.includes("agents_scm_probe_thing"),
           false,
-          "表名不再写进说明，改用 describe=true 取",
+          "表名不写全名，只用去前缀的关键词",
         );
-        assert.ok(tool.function.description.includes("describe=true"));
-        // 枚举按装了什么模块生成，不再写死一份固定名单。
-        assert.deepEqual(tool.function.parameters.properties.consumerCode.enum, [
-          "probe-consumer",
-          "branch-inventory",
-        ]);
-        // 列名不确定时先 describe，工具自己也把这条路径写清楚了。
-        assert.equal(
-          tool.function.parameters.properties.describe.type,
-          "boolean",
-        );
+        assert.ok(tool.function.description.includes("不允许自己写 SQL"));
       },
     );
     await t.test(

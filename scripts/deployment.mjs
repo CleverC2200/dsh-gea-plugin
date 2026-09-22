@@ -233,6 +233,9 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
                   analysis.contextWindow - analysis.maxTokens - 1000,
                 )
               : config.maxSnapshotBytes,
+            // 问答侧默认关掉"模型自己写 SQL"：取数只走模块 MCP + 页面证据。
+            // 需要临时打开时在部署配置里写 agentSqlRead: true。
+            agentSqlRead: config.agentSqlRead === true,
             visibleContextSubagent: config.visibleContextSubagent ?? true,
           },
         },

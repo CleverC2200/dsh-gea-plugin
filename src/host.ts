@@ -59,6 +59,11 @@ export const Config = z.object({
   analysisMode: z.union(["receipt", "model"]).required(),
   analysisModel: z.string().required(),
   inputByteBudget: z.natural().min(1).required(),
+  /**
+   * 问答侧是否允许调用受管只读 SQL（`/ai/gateway/sql/execute`）。
+   * 默认关闭：问答取数只走模块 MCP + 页面证据，模型不再自己写 SQL。
+   */
+  agentSqlRead: z.boolean().default(false),
 });
 
 /** 执行标准模型调用，但不发起外部推理请求。 */

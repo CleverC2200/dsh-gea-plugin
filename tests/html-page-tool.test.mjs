@@ -81,9 +81,9 @@ test("a page tool reports not-in-workbench instead of failing the conversation",
     assert.equal(result.availability, "not-in-workbench", name);
     assert.equal(result.code, "PAGE_NOT_IN_WORKBENCH", name);
     assert.equal(result.action, name);
-    // 没有打开任何页面时不说具体模块，只给"改用直读"的下一步。
+    // 没有打开任何页面时不说具体模块，只给"改用模块 MCP"的下一步。
     assert.equal(result.page, undefined);
-    assert.match(result.reason, /gea_plugin_read/);
+    assert.match(result.reason, /gea_module_mcp/);
   }
 });
 

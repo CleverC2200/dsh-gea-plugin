@@ -104,6 +104,11 @@ export interface Deployment {
   analysisAgentCode: string;
   analysisSource: "gea" | "direct" | "receipt";
   inputByteBudget: number;
+  /**
+   * 问答侧是否允许调用受管只读 SQL（`/ai/gateway/sql/execute`）。
+   * 默认关闭：问答取数只走模块 MCP + 页面证据（页面自己的查询不受影响）。
+   */
+  agentSqlRead?: boolean;
   /** 将当前页快照交给 DSH 一次性子 Agent 压缩；测试/旧宿主可显式关闭。 */
   visibleContextSubagent?: boolean;
 }
@@ -935,7 +940,7 @@ export class Business {
         code: "PAGE_NOT_IN_WORKBENCH",
         reason:
           `这个对话在「${presence.menuTitle}」（主对话），没有业务页面证据：不要推断用户在看哪一页，也不要去打开页面。` +
-          "这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答（gea_plugin_read、模块 MCP、gea_sales_plan_read），不要因此拒答或索要经销商编码。" +
+          "这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答（gea_module_mcp、gea_sales_plan_read；不要自己写 SQL），不要因此拒答或索要经销商编码。" +
           "确实需要“这一屏”时，说清需要哪一页，让用户从左侧功能区点开对应菜单。本工具每轮最多调用一次，不要重复调用。",
       });
     }
@@ -1852,7 +1857,7 @@ export class Business {
           new Error(
             rejected.permission
               ? `AGENT_ACCESS_DENIED：当前账号没有「${consumerCode}」这个模块的 MCP 权限（刚才网关已明确拒绝，10 分钟内不再重试）。需要管理员开通该 Agent/模块权限。`
-              : `GEA_MCP_HTTP_REJECTED：网关刚才已拒绝过「${consumerCode}」的 MCP 调用，10 分钟内不要再试它。改用 gea_plugin_read 直读（先 describe=true），或读页面证据。`,
+              : `GEA_MCP_HTTP_REJECTED：网关刚才已拒绝过「${consumerCode}」的 MCP 调用，10 分钟内不要再试它。换一个已开通的模块，或读页面证据。`,
           ),
           rejected.permission
             ? { code: "AGENT_ACCESS_DENIED", retryable: false }
@@ -1896,7 +1901,7 @@ export class Business {
           permission: false,
         });
         throw new Error(
-          `GEA_MCP_HTTP_REJECTED：网关拒绝了这个模块的 MCP 调用（${message}）。10 分钟内不要再试它：改用 gea_plugin_read 直读（先 describe=true），或读页面证据。`,
+          `GEA_MCP_HTTP_REJECTED：网关拒绝了这个模块的 MCP 调用（${message}）。10 分钟内不要再试它：换一个已开通的模块，或读页面证据。`,
         );
       }
       throw error;

@@ -26,8 +26,8 @@ export type ChannelPlan = {
   page?: ChannelChoice;
   /** 命中模块、且模块自带受管查询时用。 */
   module?: ChannelChoice;
-  /** 兜底：受管只读（sql / recipe / describe）。 */
-  read: ChannelChoice;
+  /** 兜底：受管只读（sql / recipe / describe）；问答侧关掉 SQL 时没有这一条。 */
+  read?: ChannelChoice;
   /** 选择顺序（一句话）。 */
   note: string;
 };
@@ -42,6 +42,11 @@ export type ChannelInput = {
     readableTables?: number;
     hasModuleMcp?: boolean;
   };
+  /**
+   * 问答侧是否还允许调用受管只读 SQL（`/ai/gateway/sql/execute`）。
+   * 默认允许；关掉之后取数只剩页面证据和模块 MCP 两条路。
+   */
+  governedRead?: boolean;
 };
 
 export function channelPlan(input: ChannelInput = {}): ChannelPlan {
@@ -67,29 +72,35 @@ export function channelPlan(input: ChannelInput = {}): ChannelPlan {
           "模块自带的受管查询，先只带 consumerCode 列工具，再一次调用。",
       }
     : undefined;
-  const readChoice: ChannelChoice = {
-    channel: "governed-read",
-    tool: "gea_plugin_read",
-    ...(module === undefined
-      ? {}
-      : { consumerCode: module.consumerCode, label: module.label }),
-    when:
-      "口径、范围或跨模块的数据问题用它：先 describe=true 取表与列名，常见问题优先用契约里的 recipe。" +
-      (module?.readableTables === 0
-        ? "（这个模块没有登记可直读的表，只能读页面或走模块 MCP。）"
-        : ""),
-  };
+  const governedRead = input.governedRead !== false;
+  const readChoice: ChannelChoice | undefined = governedRead
+    ? {
+        channel: "governed-read",
+        tool: "gea_plugin_read",
+        ...(module === undefined
+          ? {}
+          : { consumerCode: module.consumerCode, label: module.label }),
+        when:
+          "口径、范围或跨模块的数据问题用它：先 describe=true 取表与列名，常见问题优先用契约里的 recipe。" +
+          (module?.readableTables === 0
+            ? "（这个模块没有登记可直读的表，只能读页面或走模块 MCP。）"
+            : ""),
+      }
+    : undefined;
   const order = [
     pageChoice ? "①当前页" : undefined,
     moduleChoice ? "②模块 MCP" : undefined,
-    "③受管只读",
+    readChoice ? "③受管只读" : undefined,
+    !readChoice && !moduleChoice ? "②模块 MCP" : undefined,
   ].filter(Boolean);
   return {
     ...(pageChoice ? { page: pageChoice } : {}),
     ...(moduleChoice ? { module: moduleChoice } : {}),
-    read: readChoice,
+    ...(readChoice ? { read: readChoice } : {}),
     note:
-      `按 ${order.join(" → ")} 选一条就够：同一条问题不要三条通道各试一遍。` +
+      (readChoice
+        ? `按 ${order.join(" → ")} 选一条就够：同一条问题不要三条通道各试一遍。`
+        : `按 ${order.join(" → ")} 选一条就够：同一条问题不要重复试。取数只能走模块 MCP（gea_module_mcp）：先按模块清单里的 consumerCode 列工具，再调用；不要尝试写 SQL。`) +
       (page?.mock
         ? `注意：当前页「${page.label}」是演示模块，它的数字不能当业务事实引用。`
         : ""),
