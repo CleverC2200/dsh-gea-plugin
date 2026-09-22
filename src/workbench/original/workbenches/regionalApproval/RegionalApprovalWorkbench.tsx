@@ -817,10 +817,6 @@ const RegionalApprovalWorkbench: React.FC<{
     () => visibleRows.filter((row) => selectedRowIds.includes(row.id)),
     [selectedRowIds, visibleRows]
   );
-  const selectedLiveRows = useMemo(
-    () => liveRows.filter((row) => selectedRowIds.includes(row.planId)),
-    [liveRows, selectedRowIds]
-  );
   const selectedLiveTableRowIds = useMemo(() => {
     const selected = new Set(selectedRowIds);
     const visit = (rows: RegionalApprovalLiveTableRow[]) => {
@@ -834,6 +830,24 @@ const RegionalApprovalWorkbench: React.FC<{
     visit(liveTableRows);
     return [...selected];
   }, [liveTableRows, selectedRowIds]);
+  /**
+   * 选中行必须与表格里「勾上的那些行」一一对应：按行的 tableRowId 展开成计划，
+   * 再按计划 ID 兜底。用字符串比较是为了不受上游 planId 是数字还是字符串的影响；
+   * 只按 liveRows.planId 过滤时，一旦选中集合里混进分组行 id，就会出现
+   * 「行是勾上的、通过/退回却是灰的」。
+   */
+  const selectedLiveRows = useMemo(() => {
+    const ids = new Set(selectedRowIds.map((id) => String(id)));
+    const picked = new Map<string, RegionalApprovalLiveRow>();
+    const add = (plan: RegionalApprovalLiveRow) => picked.set(String(plan.planId), plan);
+    for (const row of liveTableRows) {
+      if (row.kind !== 'plan' || !ids.has(String(row.tableRowId))) continue;
+      if (row.members?.length) row.members.forEach(add);
+      else add(row.plan);
+    }
+    for (const row of liveRows) if (ids.has(String(row.planId))) add(row);
+    return [...picked.values()];
+  }, [liveRows, liveTableRows, selectedRowIds]);
   const displayStage = liveQuery.enabled ? liveStageFilter : currentStage;
   const effectiveStage: SalesPlanContextApprovalStage = liveQuery.enabled ? (liveStageFilter ?? 'all') : currentStage;
   const contextAppliedFilters = useMemo<ApprovalContextFilters>(
@@ -1056,6 +1070,25 @@ const RegionalApprovalWorkbench: React.FC<{
         ? { row, access }
         : { row, skipReason: liveActionDisabledReason(row, kind) ?? 'missingAuthority' };
     });
+  /**
+   * 勾选口径必须和「勾上以后按钮能不能用」是同一把尺子：分组行看组里的每条计划，
+   * 只要有一条还能提交或退回就允许勾选，整组都不能操作才置灰。否则会出现「能勾上、按不动」。
+   */
+  const liveRowSelectable = (row: RegionalApprovalLiveTableRow) => {
+    if (row.kind !== 'plan') return false;
+    const plans = row.members?.length ? row.members : [row.plan];
+    return plans.some(
+      (plan) =>
+        liveActionDisabledReason(plan, 'APPROVE') === undefined ||
+        liveActionDisabledReason(plan, 'REJECT') === undefined
+    );
+  };
+  /** 选中的行全都做不了这个动作时，把第一条的原因作为灰按钮上的提示，别让用户只能猜。 */
+  const batchDisabledReason = (kind: LiveActionKind) => {
+    if (!selectedLiveRows.length || liveActionPlanId !== undefined) return undefined;
+    const reasons = selectedLiveRows.map((row) => liveActionDisabledReason(row, kind));
+    return reasons.every(Boolean) ? reasons[0] : undefined;
+  };
   const metrics = useMemo(() => {
     if (liveQuery.enabled) {
       const detailMetrics = liveRows.map((row) => versionMetrics[row.planId]);
@@ -2481,7 +2514,12 @@ const RegionalApprovalWorkbench: React.FC<{
           disabled={
             selectedLiveRows.length === 0 ||
             liveActionPlanId !== undefined ||
-            selectedLiveRows.every((row) => Boolean(liveActionDisabledReason(row, 'REJECT')))
+            batchDisabledReason('REJECT') !== undefined
+          }
+          title={
+            batchDisabledReason('REJECT')
+              ? t(`common.assistantSurface.regionalApproval.liveAction.disabled.${batchDisabledReason('REJECT')}`)
+              : undefined
           }
           onClick={() => {
             if (!selectedLiveRows.length) return;
@@ -2506,7 +2544,12 @@ const RegionalApprovalWorkbench: React.FC<{
           disabled={
             selectedLiveRows.length === 0 ||
             liveActionPlanId !== undefined ||
-            selectedLiveRows.every((row) => Boolean(liveActionDisabledReason(row, 'APPROVE')))
+            batchDisabledReason('APPROVE') !== undefined
+          }
+          title={
+            batchDisabledReason('APPROVE')
+              ? t(`common.assistantSurface.regionalApproval.liveAction.disabled.${batchDisabledReason('APPROVE')}`)
+              : undefined
           }
           onClick={() => {
             if (!selectedLiveRows.length) return;
@@ -3316,12 +3359,11 @@ const RegionalApprovalWorkbench: React.FC<{
                         setSelectedRowIds([...planIds]);
                       },
                       checkboxProps: (row) => ({
-                        // 队列已按节点收口：退回给本节点的单据可以勾选、改完继续提交；
-                        // 真正不可操作的（例如别的节点的退回单）仍不可勾选。
-                        disabled:
-                          row.kind !== 'plan' ||
-                          (liveActionDisabledReason(row.plan, 'APPROVE') !== undefined &&
-                            liveActionDisabledReason(row.plan, 'REJECT') !== undefined),
+                        // 只要行里有能提交或退回的计划就允许勾选；整行都不可操作才置灰，
+                        // 保证「能勾上的行，按钮一定点得动」。
+                        // 只要行里有能提交或退回的计划就允许勾选；整行都不可操作才置灰，
+                        // 保证「能勾上的行，按钮一定点得动」。
+                        disabled: !liveRowSelectable(row),
                       }),
                     }}
                     pagination={false}
