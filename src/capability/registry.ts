@@ -9,6 +9,7 @@ import {
   type CapabilityContract,
   type CapabilityEffect,
 } from "./contract.ts";
+import { recipesFor } from "./recipes.ts";
 
 export type CapabilityRegistry = {
   /** 全部契约（稳定顺序，模块 id 排序）。 */
@@ -110,7 +111,17 @@ export function createCapabilityRegistry(
           const rules = data.rules.length
             ? `；口径：${data.rules.join(" / ")}`
             : "";
-          return `- ${contract.label}：consumerCode=${data.consumerCode}；可读表：${tableList(data.tables, 12)}${rules}`;
+          // 配方优先写在最前面：常见问题直接用配方查，不必自己拼 SQL。
+          const recipes = recipesFor(data.consumerCode);
+          const recipeText = recipes.length
+            ? `；配方（优先用 recipe= 直接执行）：${recipes
+                .map((recipe) => `${recipe.id}（${recipe.title}）`)
+                .join("；")}`
+            : "";
+          return `- ${contract.label}：consumerCode=${data.consumerCode}；可读表：${tableList(
+            data.tables,
+            12,
+          )}${recipeText}${rules}`;
         })
         .join("\n");
     },

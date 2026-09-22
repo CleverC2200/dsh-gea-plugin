@@ -5,6 +5,11 @@ import type { Business } from "./business.ts";
 import type { CapabilityRegistry } from "../capability/registry.ts";
 import { pluginReadHint } from "./plugin-query.ts";
 import { readableMessage } from "./error-envelope.ts";
+import {
+  findRecipe,
+  missingRecipeParams,
+  recipesFor,
+} from "../capability/recipes.ts";
 
 /** 只注册已认证的读取；可见记录仍以 GEA 为权威。
  * @param ctx 拥有工具注册和释放生命周期的 Host 上下文。
@@ -107,6 +112,11 @@ export function registerGeaTools(
             type: "string",
             description: "只读 SELECT 语句；表名取上面该模块列出的可读表，字段先 describe 或取返回列。",
           },
+          recipe: {
+            type: "string",
+            description:
+              "契约里登记的只读配方 id。常见问题优先用它：直接执行已验证的 SQL，不必自己拼；配方的参数用 parameters 传（例如 base、group）。",
+          },
           describe: {
             type: "boolean",
             description:
@@ -150,16 +160,55 @@ export function registerGeaTools(
           if (args.describe === true) {
             const module = capability?.byConsumer(String(args.consumerCode));
             return JSON.stringify(
-              await business.pluginSchema(
-                {
-                  consumerCode: args.consumerCode,
-                  tables: module?.data?.tables ?? [],
-                },
-                exec.signal,
-              ),
+              {
+                ...(await business.pluginSchema(
+                  {
+                    consumerCode: args.consumerCode,
+                    tables: module?.data?.tables ?? [],
+                  },
+                  exec.signal,
+                ) as object),
+                // 配方清单跟着列清单一起来：模型先看"这类问题有没有现成配方"。
+                recipes: recipesFor(String(args.consumerCode)).map((recipe) => ({
+                  id: recipe.id,
+                  title: recipe.title,
+                  params: (recipe.params ?? []).map((param) => ({
+                    name: param.name,
+                    description: param.description,
+                    required: param.required === true,
+                  })),
+                })),
+              },
             );
           }
-          if (typeof args.sql !== "string" || !args.sql.trim())
+          // 配方优先：模型不必写 SQL，参数也由契约声明。
+          const recipe =
+            typeof args.recipe === "string" && args.recipe.trim()
+              ? findRecipe(String(args.consumerCode), args.recipe.trim())
+              : undefined;
+          if (typeof args.recipe === "string" && args.recipe.trim() && !recipe)
+            throw new Error(
+              `GEA_PLUGIN_RECIPE_UNKNOWN：该模块没有这条配方，先 describe=true 看可用配方：${recipesFor(
+                String(args.consumerCode),
+              )
+                .map((item) => item.id)
+                .join("、") || "（该模块暂无配方）"}`,
+            );
+          const parameters =
+            args.parameters && typeof args.parameters === "object"
+              ? (args.parameters as Record<string, unknown>)
+              : {};
+          if (recipe) {
+            const missing = missingRecipeParams(recipe, parameters);
+            if (missing.length)
+              throw new Error(
+                `GEA_PLUGIN_RECIPE_PARAMS：配方 ${recipe.id} 缺少参数 ${missing.join(
+                  "、",
+                )}，用 parameters 传给它`,
+              );
+          }
+          const statement = recipe ? recipe.sql : args.sql;
+          if (typeof statement !== "string" || !statement.trim())
             throw new Error("GEA_PLUGIN_SQL_INVALID");
           // 真机观察：模型侧默认回 200 行×55 列会把输入预算吃光，它只能靠反复试探收敛。
           // 这里把"给模型看的一页"收紧到 50 行；总数照旧返回，要更多自己翻页。
@@ -167,7 +216,7 @@ export function registerGeaTools(
           try {
             return JSON.stringify(
               await business.pluginSql(
-                { pageSize: 50, ...args },
+                { pageSize: 50, ...args, sql: statement },
                 exec.signal,
               ),
             );
