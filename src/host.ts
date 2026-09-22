@@ -431,6 +431,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   ctx.effect(() => () => desktopNavigation.dispose());
   pageBridgeHost.declare = (sessionId, catalog, source) =>
     pageTools.declare(sessionId, catalog, source);
+  // "这个对话还在业务工作台里吗"由页面桥心跳判定（见 host/workbench-presence.ts）。
+  business.setPageLiveness((sessionId) => pageTools.isLive(sessionId));
   ctx.provide("geaMcp", {
     version: 1 as const,
     defaultConsumer: { consumerType: "AGENT" as const, consumerCode: config.analysisAgentCode },

@@ -24,6 +24,10 @@ import {
   pageIdentityFresh,
   type PageIdentity,
 } from "./page-identity.ts";
+import {
+  workbenchPresence,
+  type WorkbenchPresence,
+} from "./workbench-presence.ts";
 import { compressForModel } from "../shared/payload-budget.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
@@ -649,6 +653,8 @@ export class Business {
    * 见 page-identity.ts：这是"当前页是谁"的唯一权威来源。
    */
   private readonly pageIdentities = new Map<string, PageIdentity>();
+  /** 页面桥心跳：宿主在注册页面工具注册表后注入，用来判断"这个对话还在不在工作台"。 */
+  private pageLiveness?: (sessionId: string) => boolean;
   /** 上一次返回的页面上下文正文：内容没变就不重复发送（历史里不用再背一份）。 */
   private readonly lastContextReplies = new Map<string, string>();
   private requests = new Map<string, AbortController>();
@@ -842,6 +848,27 @@ export class Business {
     this.pageIdentities.delete(sessionId);
   }
 
+  /** 注入页面桥心跳（由 host.ts 在页面工具注册表建好后调用）。 */
+  setPageLiveness(fn: (sessionId: string) => boolean): void {
+    this.pageLiveness = fn;
+  }
+
+  /**
+   * 这个对话此刻是否还在业务工作台里。
+   * 依据见 host/workbench-presence.ts：页面桥心跳 → HTML 页身份 → 快照新鲜度。
+   */
+  workbenchPresenceFor(sessionId: string): import("./workbench-presence.ts").WorkbenchPresence {
+    const snapshot = this.visibleWorkbenchContexts.get(sessionId);
+    const receivedAt = snapshot ? Date.parse(snapshot.receivedAt) : undefined;
+    return workbenchPresence({
+      livePage: this.pageLiveness?.(sessionId) === true,
+      hasPageIdentity: this.currentPageIdentity(sessionId) !== undefined,
+      ...(receivedAt === undefined || !Number.isFinite(receivedAt)
+        ? {}
+        : { snapshotReceivedAt: receivedAt }),
+    });
+  }
+
   /** 当前页身份；超过 TTL 没活动就当没有页面。 */
   currentPageIdentity(sessionId: string): PageIdentity | undefined {
     const value = this.pageIdentities.get(sessionId);
@@ -861,6 +888,38 @@ export class Business {
    */
   visibleWorkbenchContext(sessionId: string, focus?: string): string {
     const value = this.visibleWorkbenchContexts.get(sessionId);
+    // 先校验"这个对话到底在不在业务工作台"，再决定要不要交页面证据：
+    // 主对话里可能残留上一次打开页面时的快照，那不是本轮证据（见 workbench-presence.ts）。
+    const presence = this.workbenchPresenceFor(sessionId);
+    if (!presence.inWorkbench) {
+      const identity = this.currentPageIdentity(sessionId);
+      if (identity) return currentPageEnvelope(identity);
+      const age = presence.staleSnapshotSeconds;
+      const view = (value?.context as { view?: unknown } | undefined)?.view;
+      return JSON.stringify({
+        source: "GEA_RENDERED_WORKBENCH",
+        coverage: "none",
+        authority: "read-only-ui-context",
+        inWorkbench: false,
+        signal: presence.signal,
+        availability: "not-in-workbench",
+        code: "PAGE_NOT_IN_WORKBENCH",
+        ...(age === undefined
+          ? {}
+          : {
+              staleSnapshotSeconds: age,
+              ...(typeof view === "string" ? { staleSnapshotView: view } : {}),
+            }),
+        reason:
+          age === undefined
+            ? "这个对话当前不在业务工作台：读不到页面数据，也不会去打开页面。这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答，不要因此拒答或索要经销商编码。本工具每轮最多调用一次，不要重复调用。"
+            : `这个对话现在不在业务工作台（没有活跃的业务页面）。手上这份快照是 ${
+                age
+              } 秒前${
+                typeof view === "string" ? `「${view}」视图` : ""
+              }留下的，只代表上一次打开过的页面：不要当本轮证据，也不要据此推断用户在看什么。数据问题直接用 gea_plugin_read（或模块 MCP）查；确实需要“这一屏”时，请让用户重新打开对应页面。`,
+      });
+    }
     if (!value) {
       // 页面开着但不是原生工作台页（HTML 插件页没有可见行快照）时，至少把"当前页是
       // 谁、该用哪个工具"说清楚——比一句"不在业务工作台"准确得多。
@@ -870,10 +929,12 @@ export class Business {
         source: "GEA_RENDERED_WORKBENCH",
         coverage: "none",
         authority: "read-only-ui-context",
-        availability: "not-in-workbench",
-        code: "PAGE_NOT_IN_WORKBENCH",
+        inWorkbench: true,
+        signal: presence.signal,
+        availability: "in-workbench-no-snapshot",
+        code: "PAGE_HAS_NO_SNAPSHOT",
         reason:
-          "这个对话当前不在业务工作台：读不到页面数据，也不会去打开页面。这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答，不要因此拒答或索要经销商编码。本工具每轮最多调用一次，不要重复调用。",
+          "这个对话在业务工作台里，但这一屏还没有上报可见行快照：先用 gea_page 读这一屏，或直接按范围用只读数据工具查询。",
       });
     }
     const compressed = compressForModel(value.context, {
@@ -890,6 +951,8 @@ export class Business {
       renderedAt: value.receivedAt,
       coverage: "current-visible-page",
       authority: "read-only-ui-context",
+      inWorkbench: true,
+      signal: presence.signal,
       context,
       ...(compressed.compressed
         ? { contextNote: compressed.note, contextOmitted: compressed.omitted }

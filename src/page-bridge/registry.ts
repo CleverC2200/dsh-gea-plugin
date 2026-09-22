@@ -489,6 +489,14 @@ export function createPageToolRegistry(
         `[page-bridge] registered tool=${effective.tool} session=${sessionId} source=${source} elements=${effective.elements?.length ?? 0} actions=${effective.actions?.length ?? 0} descLen=${description.length}`,
       );
     },
+    /**
+     * 这个会话此刻还有没有活着的业务页面（页面桥心跳）。
+     * 原生工作台页与 HTML 插件页都周期性声明，所以它是"当前是否在工作台"的权威信号。
+     */
+    isLive(sessionId: string): boolean {
+      const entry = registered.get(sessionId);
+      return entry !== undefined && Date.now() - entry.at <= staleMs;
+    },
     /** 会话结束或身份变化时清掉。 */
     dispose(sessionId: string): void {
       dispose(sessionId);
