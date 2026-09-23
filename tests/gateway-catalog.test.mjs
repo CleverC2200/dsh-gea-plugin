@@ -27,6 +27,7 @@ const {
   resultText,
   rowsFromPayload,
   rowsFromText,
+  sampleRowsByDataset,
   spillPathFrom,
 } = module.exports;
 
@@ -205,7 +206,58 @@ test("样例值：从 rows 里取一行真实值，给出格式要求", () => {
   assert.match(manyText, /2026-05/);
   assert.equal(manyText.includes("2026-06"), false);
 
-  assert.match(formatSampleValues([{ member: "a.b", rows: [] }]), /没有取到样例值/);
+  const noneText = formatSampleValues([{ member: "a.b", rows: [] }]);
+  assert.match(noneText, /没取到样例值/);
+  // 关键：不能说成"这张表没有数据"——上一轮模型就是被这句话带偏，写下"没有品类字段"
+  assert.match(noneText, /不能据此断言/);
+});
+
+// 线上实测（session-424510f0）：取样走 SDK 客户端，不会跟制品链接，6 个成员全被报成
+// "取不到行"，模型据此在答复里写下"这张表没有品类维度"。两种返回形状都要能解析。
+test("取样结果两种形状都能解析：inline datasets 与 queryArtifact 分页文本", () => {
+  const names = ["sample_0", "sample_1"];
+  const inline = JSON.stringify({
+    datasets: [
+      { name: "sample_0", rows: [{ "m.plane_date": "2026-08" }] },
+      { name: "sample_1", rows: [{ "m.region_name": "" }] },
+    ],
+  });
+  const a = sampleRowsByDataset(inline, names);
+  assert.equal(a.get("sample_0")[0]["m.plane_date"], "2026-08");
+  assert.equal(a.get("sample_1")[0]["m.region_name"], "");
+
+  const artifact = JSON.stringify({
+    queryArtifact: {
+      hydrated: true,
+      resources: [
+        {
+          pageCount: 1,
+          contents: [
+            {
+              text: JSON.stringify({
+                datasetName: "sample_0",
+                page: 1,
+                rows: [{ "m.plane_date": "2026-01" }, { "m.plane_date": "2026-02" }],
+              }),
+            },
+            {
+              text: JSON.stringify({
+                datasetName: "sample_1",
+                page: 1,
+                rows: [{ "m.region_name": "" }],
+              }),
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const b = sampleRowsByDataset(artifact, names);
+  assert.equal(b.get("sample_0").length, 2);
+  assert.equal(b.get("sample_0")[1]["m.plane_date"], "2026-02");
+  assert.equal(b.get("sample_1").length, 1);
+  // 认不出来时返回 undefined，交给调用方回退
+  assert.equal(sampleRowsByDataset("不是 JSON", names), undefined);
 });
 
 // 线上实测：模型拿业务词当模型名，而目录里的模型名/说明用了别的字（库龄 vs 货龄）。

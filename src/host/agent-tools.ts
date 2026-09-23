@@ -208,13 +208,14 @@ export function registerGeaTools(
     const verdict = business.repeatReads().note(scope, key);
     if (verdict === "fresh") return undefined;
     wasteScope(scope);
-    if (verdict === "stop")
+    if (verdict === "stop") {
+      const reason = `同一份东西重复读了 ${business.repeatReads().repeats(scope)} 次（${what}）`;
+      business.stopTurn(scope, reason);
       throw new Error(
-        `GEA_TURN_REPEAT_STOPPED: 这一轮同一份东西已经重复读了 ${business
-          .repeatReads()
-          .repeats(scope)} 次（${what}）。现在停手：不要再重复读目录/成员/同一条查询，` +
-          "用已经拿到的证据作答；确实缺数据就直接说清缺哪一项、需要谁补，然后结束这一轮。",
+        `GEA_TURN_REPEAT_STOPPED: 这一轮${reason}。现在停手：本轮所有取数工具都已停用，` +
+          "请直接用已经拿到的证据作答；确实缺数据就直接说清缺哪一项、需要谁补，然后结束这一轮。",
       );
+    }
     return JSON.stringify({
       source: "GEA_READ_DEDUP",
       availability: "already-read",
@@ -289,6 +290,13 @@ export function registerGeaTools(
           // 同一条只读查询在同一轮里重复发（线上实测同一个 9 月 periods 读了 15 次）：
           // 前两次照常查，之后就只回"本轮已读过"，并把重复计入本轮总账。
           const scope = exec.agent?.id ?? "global";
+          const stop = business.turnStopped(scope);
+          if (stop)
+            return JSON.stringify({
+              source: "GEA_TURN_STOPPED",
+              availability: "turn-stopped",
+              note: `【本轮已停手】${stop}。本轮所有取数工具都已停用：不要再换工具/换写法试，直接用已经拿到的证据作答；确实缺数据就如实说清缺哪一项，然后结束这一轮。`,
+            });
           const key = `plan|${JSON.stringify(args)}`;
           const repeat = overRepeated(
             scope,
@@ -572,10 +580,23 @@ export function registerGeaTools(
         execute: async (args, exec) => {
           const consumerCode = String(args.consumerCode);
           const scope = exec.agent?.id ?? "global";
+          const stop = business.turnStopped(scope);
+          if (stop)
+            return JSON.stringify({
+              source: "GEA_TURN_STOPPED",
+              availability: "turn-stopped",
+              note: `【本轮已停手】${stop}。本轮所有取数工具都已停用：不要再换工具/换写法试，直接用已经拿到的证据作答；确实缺数据就如实说清缺哪一项，然后结束这一轮。`,
+            });
           const waste = business.moduleMcpWaste();
           const dedup = business.metadataDedup();
           // 本轮整体熔断：单个模块的熔断挡不住"换着模块试"（线上实测一轮白跑 50+ 次）。
-          waste.check(scope);
+          // 触发即置整轮闸门：模型换个工具接着试也要被拦住（见 business.turnStopped）。
+          try {
+            waste.check(scope);
+          } catch (error) {
+            business.stopTurn(scope, "本轮白跑次数到上限");
+            throw error;
+          }
           // 演示（mock）模块没有真实数据通道：直接说清，不去网关撞一次 400 / 权限拒绝。
           if (capability?.byConsumer(consumerCode)?.data?.mock === true) {
             waste.waste(scope);
@@ -748,7 +769,12 @@ export function registerGeaTools(
             );
           // 熔断：同一个模块连续失败到上限就停手，不要再换模型/成员/写法试。
           const failures = business.moduleMcpFailures();
-          failures.check(consumerCode);
+          try {
+            failures.check(consumerCode);
+          } catch (error) {
+            business.stopTurn(scope, `${consumerCode} 连续失败到上限`);
+            throw error;
+          }
           try {
             const output = await module.call(toolName, parameters, exec.signal);
             // 权限拒绝是以可读文本返回的（不是抛错），也算失败——这类最会诱发"换模块再试"。
@@ -912,6 +938,13 @@ export function registerGeaTools(
             args.values === true ? "values" : "plain"
           }`;
           const scope = exec.agent?.id ?? "global";
+          const stop = business.turnStopped(scope);
+          if (stop)
+            return JSON.stringify({
+              source: "GEA_TURN_STOPPED",
+              availability: "turn-stopped",
+              note: `【本轮已停手】${stop}。本轮所有取数工具都已停用：不要再换工具/换写法试，直接用已经拿到的证据作答；确实缺数据就如实说清缺哪一项，然后结束这一轮。`,
+            });
           const repeat = overRepeated(
             scope,
             dedupKey,
@@ -960,7 +993,21 @@ export function registerGeaTools(
                 },
               });
               const sampleText = resultText(sampled);
-              const byDataset = sampleRowsByDataset(sampleText, names);
+              let byDataset = sampleRowsByDataset(sampleText, names);
+              // 线上实测（session-424510f0）：取样这条走 SDK 客户端，**不会跟制品链接**，
+              // 结果 6 个成员全被报成"取不到行"，模型据此在答复里写下"这张表没有品类维度"——
+              // 而它自己刚查到的 material_group_name 就是品类。这里补上和 inspect 同一条路：
+              // 没有内联行时按 resource_link 把制品读回来再解析。
+              if (!byDataset) {
+                const uri = extractArtifactUri(sampleText);
+                if (uri) {
+                  const resource = await client.readResource({ uri });
+                  byDataset = sampleRowsByDataset(
+                    await catalogText(resultText(resource)),
+                    names,
+                  );
+                }
+              }
               // 认不出 datasets 形状时回退到老的单段解析（只对单个成员有意义，但至少不炸）。
               if (!byDataset && !rowsFromText(sampleText))
                 throw new Error(`GEA_CATALOG_SAMPLE_FAILED: ${sampleText.slice(0, 200)}`);

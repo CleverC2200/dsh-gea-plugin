@@ -109,8 +109,8 @@ export function formatSampleValues(
   const anyValue = samples.some((sample) => sample.rows.length > 0);
   if (!anyValue)
     return [
-      "没有取到样例值：这些成员在当前身份下都取不到行（可能整张模型没有可见数据，或成员名不对）。",
-      "不要再换模型/换成员试样例值；如实说明取不到，或换一条链路取数。",
+      "这次没取到样例值：宿主没读到结果（制品没拿到），或者成员名不对——**不能据此断言「这张表没有数据或没有这个维度」**。",
+      "确认办法：用 gea_module_mcp 直接查一行（dimensions=[该成员] + limit 1）看有没有值；确认没有就如实说明缺哪一项，不要再换模型/换成员试样例值。",
       ...lines,
     ].join("\n");
   return [
@@ -136,23 +136,45 @@ export function sampleRowsByDataset(
   } catch {
     return undefined;
   }
-  const datasets = (payload as { datasets?: unknown })?.datasets;
-  if (!Array.isArray(datasets)) return undefined;
+  const rowsOf = (value: unknown): Array<Record<string, unknown>> =>
+    Array.isArray(value)
+      ? value.filter(
+          (row): row is Record<string, unknown> =>
+            row !== null && typeof row === "object",
+        )
+      : [];
   const out = new Map<string, Array<Record<string, unknown>>>();
-  for (const entry of datasets) {
-    const name = (entry as { name?: unknown })?.name;
-    const rows = (entry as { rows?: unknown })?.rows;
-    if (typeof name !== "string" || !names.includes(name)) continue;
-    out.set(
-      name,
-      Array.isArray(rows)
-        ? rows.filter(
-            (row): row is Record<string, unknown> =>
-              row !== null && typeof row === "object",
-          )
-        : [],
-    );
-  }
+  // 形状一（inline_complete）：{"datasets":[{"name":…,"rows":[…]}]}
+  const datasets = (payload as { datasets?: unknown })?.datasets;
+  if (Array.isArray(datasets))
+    for (const entry of datasets) {
+      const name = (entry as { name?: unknown })?.name;
+      if (typeof name !== "string" || !names.includes(name)) continue;
+      out.set(name, rowsOf((entry as { rows?: unknown })?.rows));
+    }
+  // 形状二（resource 模式/制品）：queryArtifact.resources[].contents[].text 里是转义的
+  // 分页 JSON（datasetName + rows）——规约 §13.3 要求适配器把这一层解开，否则只会看到
+  // "有制品但没有行"，线上就把这种情况误报成"取不到样例值"了。
+  const resources = (payload as { queryArtifact?: { resources?: unknown } })?.queryArtifact
+    ?.resources;
+  if (Array.isArray(resources))
+    for (const resource of resources) {
+      const contents = (resource as { contents?: unknown })?.contents;
+      if (!Array.isArray(contents)) continue;
+      for (const content of contents) {
+        const inner = (content as { text?: unknown })?.text;
+        if (typeof inner !== "string") continue;
+        let page: unknown;
+        try {
+          page = JSON.parse(inner);
+        } catch {
+          continue;
+        }
+        const name = (page as { datasetName?: unknown })?.datasetName;
+        if (typeof name !== "string" || !names.includes(name)) continue;
+        out.set(name, [...(out.get(name) ?? []), ...rowsOf((page as { rows?: unknown }).rows)]);
+      }
+    }
   return out.size > 0 ? out : undefined;
 }
 

@@ -791,6 +791,7 @@ export class Business {
     this.mcpWasteGuard.clear();
     this.cubeGapLedger.clear();
     this.repeatGuard.clear();
+    this.turnStops.clear();
     this.resubmissions.clear();
     this.correctionRequests.clear();
     this.qr = undefined;
@@ -1983,6 +1984,27 @@ export class Business {
 
   repeatReads(): RepeatGuard {
     return this.repeatGuard;
+  }
+
+  /**
+   * "这一轮别再取数了"的整轮闸门。
+   *
+   * 线上实测（session-424510f0）：重复读闸门在第 40 步就抛了 GEA_TURN_REPEAT_STOPPED，
+   * 但模型换个工具（gea_sales_plan_read）接着试，又跑了 15 步才被白跑总账拦住。
+   * 停手必须是整轮的：一旦置位，本轮所有取数工具都只回一句"已停手"，逼它用已拿到的证据作答。
+   */
+  private readonly turnStops = new Map<string, { at: number; reason: string }>();
+
+  stopTurn(scope: string, reason: string): void {
+    this.turnStops.set(scope || "global", { at: Date.now(), reason });
+  }
+
+  turnStopped(scope: string): string | undefined {
+    return this.turnStops.get(scope || "global")?.reason;
+  }
+
+  clearTurnStops(): void {
+    this.turnStops.clear();
   }
 
   /**
