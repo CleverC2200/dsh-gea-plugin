@@ -65,6 +65,33 @@ order / limit` 的形状，只能猜；猜错被 `AI_SCHEMA_INVALID` 拦下之�
 要么把 `requestId/traceId` 透传到下游日志里。两条都不做，这句 `suggestedAction`
 就是空头支票。
 
+## 4. 补充（同日，来自桌面端真实截图）：分类会把写法问题标成授权问题
+
+`AI_GATEWAY_DATA_PERMISSION_DENIED` 还被用在"跨模型查询"上：
+
+```json
+{"businessCode":"AI_GATEWAY_DATA_PERMISSION_DENIED","code":"AI_GATEWAY_DATA_PERMISSION_DENIED",
+ "category":"AUTHORIZATION","success":false,
+ "requestId":"be732058-e66e-4b63-b252-09cf230f8125",
+ "traceId":"1ba26e37-253d-42d6-9093-641873f7d6c6",
+ "message":"Cube 查询成员未唯一匹配数据目录资源；模型须与 dataAssetCode 一致，跨模型查询请分别调用"}
+```
+
+这条的真实含义是"一次查询里混了多个模型"（`details` 里也没有 `path`，只有 message），
+但码和 `category` 都指向"授权"。按授权去排查会白跑；客户端现在只能靠 message 里的
+关键词（`dataAssetCode` / 未唯一匹配）把它归类成写法问题。
+
+请求：跨模型/成员不匹配这类**参数与数据目录**问题，请用 `VALIDATION` 类码
+（并带上 `details.path`），别复用 `AUTHORIZATION` 的码。
+
+## 附：平台直挂的 `mcp__gea-gateway__*` 不走本仓库的翻译
+
+桌面端同时存在 `dsh-agent-manage` 直挂的 `mcp__gea-gateway__*` 工具（含它自己的
+`dsh_read_resource`）。模型一旦走那条路，失败就是**原始 JSON 报文**（截图里
+`Error: {"retryable":false,"businessCode":"MCP_UPSTREAM_TOOL_ERROR",…}`），
+宿主这边的错误翻译、资源内联与熔断都不生效。我们已在注入协议里要求统一经
+`gea_module_mcp` 调用；如果希望彻底避免两条路并存，需要 agent-manage 侧调整直挂策略。
+
 ## 客户端已经做掉的部分（不需要服务端配合）
 
 - 失败优先判定（顶层 / structuredContent / 对象 text 三种都认），不再把失败当数据；
