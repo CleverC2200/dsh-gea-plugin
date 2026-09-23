@@ -2,6 +2,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { Business } from "./business.ts";
+import { PERMISSION_NOTICE_PREFIX } from "./mcp-client.ts";
 import { readFile } from "node:fs/promises";
 import {
   contentText,
@@ -498,7 +499,18 @@ export function registerGeaTools(
             throw new Error(
               `GEA_MCP_TOOL_PARAMS：${toolName} 缺少参数 ${missing.join("、")}`,
             );
-          return await module.call(toolName, parameters, exec.signal);
+          // 熔断：同一个模块连续失败到上限就停手，不要再换模型/成员/写法试。
+          const failures = business.moduleMcpFailures();
+          failures.check(consumerCode);
+          try {
+            const output = await module.call(toolName, parameters, exec.signal);
+            // 权限拒绝是以可读文本返回的（不是抛错），也算失败——这类最会诱发"换模块再试"。
+            failures.note(consumerCode, !output.startsWith(PERMISSION_NOTICE_PREFIX));
+            return output;
+          } catch (error) {
+            failures.note(consumerCode, false);
+            throw error;
+          }
         },
       }),
     ),

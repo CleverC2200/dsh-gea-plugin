@@ -83,6 +83,10 @@ import { resolveNavigationTarget, type NavigationInput } from './navigation-targ
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
 import { createPageBridge, type PageBridge } from "../page-bridge/index.ts";
+import {
+  createMcpFailureGuard,
+  type McpFailureGuard,
+} from "./mcp-failure-guard.ts";
 
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
@@ -1928,6 +1932,16 @@ export class Business {
     }
     this.moduleMcpCache.set(consumerCode, { token: auth.token, module });
     return module;
+  }
+
+  /**
+   * 模块 MCP 通道的失败熔断（见 host/mcp-failure-guard.ts）。
+   * 工具层在真调数据前后各记一次：连续失败到上限就停手，别再换模型/换写法试。
+   */
+  private readonly mcpFailureGuard = createMcpFailureGuard();
+
+  moduleMcpFailures(): McpFailureGuard {
+    return this.mcpFailureGuard;
   }
 
   /**
