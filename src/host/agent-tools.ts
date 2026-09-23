@@ -37,6 +37,7 @@ import {
 import { LAYER_POLICY } from "../capability/layers.ts";
 import { channelPlan, type ChannelPlan } from "../capability/channel.ts";
 import { yearMonthHint, yearMonthValues } from "./cube-query-guard.ts";
+import { didYouMean } from "../shared/name-lookup.ts";
 
 /** 只注册已认证的读取；可见记录仍以 GEA 为权威。
  * @param ctx 拥有工具注册和释放生命周期的 Host 上下文。
@@ -311,11 +312,24 @@ export function registerGeaTools(
               : undefined;
           if (typeof args.recipe === "string" && args.recipe.trim() && !recipe)
             throw new Error(
-              `GEA_PLUGIN_RECIPE_UNKNOWN：该模块没有这条配方，先 describe=true 看可用配方：${recipesFor(
-                String(args.consumerCode),
-              )
-                .map((item) => item.id)
-                .join("、") || "（该模块暂无配方）"}`,
+              // 配方 id 也是英文标识，模型常拿配方的中文标题来调：先把最像的说出来。
+              `GEA_PLUGIN_RECIPE_UNKNOWN：${
+                didYouMean(
+                  String(args.recipe),
+                  recipesFor(String(args.consumerCode)).map((item) => ({
+                    id: item.id,
+                    fields: [
+                      { text: item.id, label: "配方 id", identity: true },
+                      { text: item.title, label: "配方名" },
+                    ],
+                  })),
+                  { label: "配方" },
+                ) || `该模块没有「${String(args.recipe)}」这条配方。`
+              }先 describe=true 看可用配方：${
+                recipesFor(String(args.consumerCode))
+                  .map((item) => item.id)
+                  .join("、") || "（该模块暂无配方）"
+              }`,
             );
           const parameters =
             args.parameters && typeof args.parameters === "object"
@@ -491,10 +505,25 @@ export function registerGeaTools(
           const tool = module.tools().find((item) => item.name === toolName);
           if (!tool)
             throw new Error(
-              `GEA_MCP_TOOL_UNKNOWN：该模块没有 ${toolName}；可用：${module
-                .tools()
-                .map((item) => item.name)
-                .join("、") || "（该模块没有暴露查询工具）"}`,
+              // 工具名也常被写成业务词：先说最像的是哪个，再列全量，模型才知道往哪改。
+              `GEA_MCP_TOOL_UNKNOWN：该模块没有 ${toolName}。${didYouMean(
+                toolName,
+                module.tools().map((item) => ({
+                  id: item.name,
+                  fields: [
+                    { text: item.name, label: "工具名", identity: true },
+                    ...(item.description
+                      ? [{ text: item.description, label: "工具说明" }]
+                      : []),
+                  ],
+                })),
+                { label: "工具" },
+              )}可用：${
+                module
+                  .tools()
+                  .map((item) => item.name)
+                  .join("、") || "（该模块没有暴露查询工具）"
+              }`,
             );
           // 参数规则来自服务端 schema；我们只做压缩与两级读取，不另造一套契约。
           if (args.schema === true)
@@ -700,7 +729,11 @@ export function registerGeaTools(
             const text = await catalogText(resultText(resource));
             return projectCatalog(parseFirstJsonObject(text), { model: args.model });
           } catch (error) {
-            throw new Error(`GEA_CATALOG_MCP_FAILED: ${(error as Error).message} (listed=${listed})`);
+            const message = (error as Error).message;
+            // 自己的目录错误（模型名不对、目录为空…）原样抛：套一层"MCP 失败"会把
+            // "模型名写错了"说成"通道坏了"，模型就会去重试通道而不是改模型名。
+            if (/^GEA_CATALOG_/.test(message)) throw error;
+            throw new Error(`GEA_CATALOG_MCP_FAILED: ${message} (listed=${listed})`);
           } finally {
             await client.close().catch(() => {});
           }
