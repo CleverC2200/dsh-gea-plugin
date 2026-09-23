@@ -98,9 +98,10 @@ export function mountTurnAnchor(ctx: Context): () => void {
     const decision = await next();
     if (decision.kind === "reject" || signal.aborted) return decision;
     const current = decision.messages ?? [];
+    const question = lastUserQuestion(current);
     const nextMessages = anchorMessages(
       current,
-      lastUserQuestion(current),
+      question,
       (text) =>
         createUserMessage({
           source: {
@@ -112,6 +113,9 @@ export function mountTurnAnchor(ctx: Context): () => void {
           content: [{ type: "text", text }],
         }),
     );
-    return nextMessages === current ? decision : { ...decision, messages: [...nextMessages] };
+    if (nextMessages === current) return decision;
+    // 运行日志（桌面端落进 desktop.log）：确认锚点真的注入了，也便于回看是哪一轮。
+    console.log(`[turn-anchor] 已钉住本轮用户提问 chars=${question?.length ?? 0}`);
+    return { ...decision, messages: [...nextMessages] };
   });
 }
