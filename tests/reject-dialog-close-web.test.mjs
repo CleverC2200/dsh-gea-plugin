@@ -115,7 +115,9 @@ test('reject dialog still closes after the request failed with a conflict', { ti
   const remark = await openReject();
   await remark.fill('测试退回原因');
   await frame.getByRole('button', { name: '确认退回', exact: true }).click();
-  await expect(frame.getByText('版本状态已变化或存在并发操作；未修改本地状态，请刷新权威队列。', { exact: false })).toBeVisible({ timeout: 20000 });
+  // 失败提示按上游原因码给说法（这里是通知载荷被拒），不再统一说"并发、请刷新"；
+  // 这条用例只关心"失败之后弹窗还关不关得掉"，所以只等失败提示出来。
+  await expect(frame.getByText(/错误编号：[A-Z0-9]{6}/)).toBeVisible({ timeout: 20000 });
   assert.equal(writes.length, 1);
   await closeThroughDiscardConfirm(remark);
   // 报错后这一批没被受理，勾选不能留在界面上（否则用户看到"还选中着"容易再点一次）。

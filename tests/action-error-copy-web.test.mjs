@@ -45,8 +45,11 @@ test('action failure dialog shows business copy plus a transferable error id', {
   await expect(dialog.getByLabel('退回原因（必填）', { exact: true })).toBeVisible();
   await dialog.getByLabel('退回原因（必填）', { exact: true }).fill('测试退回原因');
   await dialog.getByRole('button', { name: '确认退回', exact: true }).click();
-  await expect(dialog.getByText('版本状态已变化或存在并发操作；未修改本地状态，请刷新权威队列。', { exact: false })).toBeVisible({ timeout: 20000 });
+  // 上游 409 带着原因码时，不能统一说成"并发冲突、请刷新"——这条是服务端通知载荷被拒，
+  // 刷新解决不了，必须直接告诉用户去找后端。
+  await expect(dialog.getByText('服务端在生成审批通知时被拒绝，属于服务端问题，刷新无法解决', { exact: false })).toBeVisible({ timeout: 20000 });
   const dialogText = await dialog.innerText();
+  assert.ok(!dialogText.includes('并发'), `服务端业务拒绝不应被描述成并发冲突：${dialogText}`);
   for (const leak of ['payload', 'plan_month', 'GEA_HTTP', 'NOTIFICATION_PAYLOAD_INVALID', '必填字段']) {
     assert.ok(!dialogText.includes(leak), `界面上不应出现「${leak}」，实际：${dialogText}`);
   }

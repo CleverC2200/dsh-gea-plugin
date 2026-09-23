@@ -4,9 +4,9 @@ import { chromium, expect } from '@playwright/test';
 import { profile } from './profile.mjs';
 
 /**
- * 上级退回给本节点的单据，要能在这里改完继续提交：
- * 退回态（如 8=退回省区）对该节点的审批人可写，提交后按流程推进到下一节点（8 → 3）。
- * 退回给别的节点的单子仍然不可写。
+ * 退回态（如 8=退回省区）在管理端只有"退回重提"这条路：重提会生成新版本，
+ * 状态按 8→3 回到下一节点；而动作接口只接受 1–4 的待审单。
+ * 所以月度页对退回单要收掉"通过/退回"，改给"退回重提"，别再把注定失败的请求发给上游。
  */
 const plan = {
   planId: 'p8', versionId: 'v8', periodId: '20260901', planTypeCode: 'Y', orderType: 'M', status: 8,
@@ -19,7 +19,7 @@ const sku = {
   regionConfirmedQty: '100', provinceConfirmedQty: null,
 };
 
-test('a plan returned to this node can be resubmitted here', { timeout: 90000 }, async (t) => {
+test('a returned plan offers resubmit instead of approve/reject', { timeout: 90000 }, async (t) => {
   const app = await profile(t, { roles: [{ code: 'sales_plan_province_approver', name: '省区审批' }] });
   const writes = [];
   app.route((req, _res, reply) => {
@@ -60,17 +60,23 @@ test('a plan returned to this node can be resubmitted here', { timeout: 90000 },
 
   const row = frame.locator('tbody tr').filter({ hasText: plan.baseName }).first();
   await expect(row).toBeVisible();
-  // 退回给本节点的单据可以勾选（旧行为是 6–9 一律禁用）。
+  // 退回单仍然可以勾选——它的出路是退回重提，不是通过/退回。
   const checkbox = row.locator('label.arco-checkbox');
   await expect(checkbox).not.toHaveClass(/arco-checkbox-disabled/);
   await checkbox.click();
 
   const approve = frame.getByRole('button', { name: '通过', exact: true });
-  await expect(approve).toBeEnabled();
-  await approve.click();
-  await expect.poll(() => writes.length).toBe(1);
-  assert.equal(writes[0].action, 'APPROVE');
-  assert.equal(writes[0].expectedStatus, 8, '退回态以本节点状态提交，由流程推进到下一节点');
-  assert.equal(writes[0].approvalRole, undefined, '上游报文只发接口文档声明的字段');
-  assert.equal(writes[0].approvalPolicy, undefined);
+  const reject = frame.getByRole('button', { name: '退回', exact: true });
+  // 通过/退回对退回单置灰，并直接说明该走哪条路。
+  await expect(approve).toBeDisabled();
+  await expect(reject).toBeDisabled();
+  await expect(approve).toHaveAttribute('title', /退回的单子不能直接通过或退回/);
+
+  // 退回重提按钮可用，点开的是重提对话框（走生成新版本的提交通道）。
+  const resubmit = frame.getByRole('button', { name: '退回重提', exact: true });
+  await expect(resubmit).toBeEnabled();
+  await resubmit.click();
+  await expect(frame.getByRole('dialog', { name: '真实销售计划退回重提', exact: true })).toBeVisible();
+  // 退回单不会再往动作接口发写请求。
+  assert.equal(writes.length, 0, '退回态不发上游动作请求');
 });

@@ -1049,6 +1049,12 @@ const RegionalApprovalWorkbench: React.FC<{
     return () => controller.abort();
   }, [detailClient, focusedLiveRow?.planId, focusedLiveRow?.versionId, liveQuery.enabled]);
 
+  /**
+   * 退回态（6–9）归"退回重提"管：管理端状态机里退回态的重提是生成新版本（6→1/7→2/8→3/9→4），
+   * 而不是在同一版本上做动作。
+   */
+  const isReturnedForResubmit = (row: Pick<RegionalApprovalLiveRow, 'status'>) =>
+    row.status >= 6 && row.status <= 9;
   const liveActionDisabledReason = (row: RegionalApprovalLiveRow, kind: LiveActionKind = 'APPROVE') => {
     if (historicalSummaryUnavailable) return 'queueNotFresh';
     if (!liveActionsEnabled) return 'missingAuthority';
@@ -1056,6 +1062,9 @@ const RegionalApprovalWorkbench: React.FC<{
     if (permissionDeniedVersions.has(row.versionId)) return 'permission';
     if (liveQuery.queueState.status !== 'success') return 'queueNotFresh';
     if (liveAccess.failedVersions.has(row.versionId)) return 'detailUnavailable';
+    // 退回态（6–9）不能走"通过/退回"：管理端的动作接口只接受 1–4 的待审单，
+    // 退回的单子必须走"退回重提"（生成新版本）。以前照样放行，请求必然被服务端 409 拒。
+    if (isReturnedForResubmit(row)) return 'returnedNeedsResubmit';
     const detail = liveAccess.entries[row.versionId];
     // allowReturned：上级退回给本节点的单据也要能改完继续提交（退回给别处的单子在模型里仍被拒）。
     if (!detail || !(liveStageFilter ? [liveStageFilter] : ['region','province','area','category'] as const).some(role => salesPlanAccessForRow(row, detail, roleStages, role, undefined, { allowReturned: true })?.allowedActions.includes(kind)))
@@ -1068,6 +1077,8 @@ const RegionalApprovalWorkbench: React.FC<{
     !liveActionDisabledReason(row, 'APPROVE');
   /** 与单笔按钮同源的角色解析：多角色账号按当前节点过滤逐个尝试，取第一个允许该动作的角色。 */
   const liveActionAccessFor = (row: RegionalApprovalLiveRow, kind: LiveActionKind) => {
+    // 退回态不给动作授权：批量里会按 returnedNeedsResubmit 报成"跳过"，不会发请求出去挨 409。
+    if (isReturnedForResubmit(row)) return undefined;
     const detail = liveAccess.entries[row.versionId];
     if (!detail) return undefined;
     const candidates: readonly ApprovalStageId[] = liveStageFilter
@@ -1086,6 +1097,16 @@ const RegionalApprovalWorkbench: React.FC<{
         ? { row, access }
         : { row, skipReason: liveActionDisabledReason(row, kind) ?? 'missingAuthority' };
     });
+  /** 重提表单一次只填一张单，所以这里只支持单笔。 */
+  const resubmitRow = selectedLiveRows.length === 1 ? selectedLiveRows[0] : undefined;
+  const resubmitPeriod = resubmitRow
+    ? liveQuery.selectedPeriods.find((period) => period.periodId === resubmitRow.periodId)
+    : undefined;
+  const resubmitDisabledReason = (() => {
+    if (selectedLiveRows.length === 0) return undefined;
+    if (selectedLiveRows.length > 1) return 'resubmitMultiple';
+    return isReturnedForResubmit(selectedLiveRows[0]) ? undefined : 'notReturned';
+  })();
   /**
    * 勾选口径必须和「勾上以后按钮能不能用」是同一把尺子：分组行看组里的每条计划，
    * 只要有一条还能提交或退回就允许勾选，整组都不能操作才置灰。否则会出现「能勾上、按不动」。
@@ -1096,7 +1117,9 @@ const RegionalApprovalWorkbench: React.FC<{
     return plans.some(
       (plan) =>
         liveActionDisabledReason(plan, 'APPROVE') === undefined ||
-        liveActionDisabledReason(plan, 'REJECT') === undefined
+        liveActionDisabledReason(plan, 'REJECT') === undefined ||
+        // 退回单不能被通过/退回，但它的出路"退回重提"同样要能勾选选中。
+        isReturnedForResubmit(plan)
     );
   };
   /** 选中的行全都做不了这个动作时，把第一条的原因作为灰按钮上的提示，别让用户只能猜。 */
@@ -2584,6 +2607,33 @@ const RegionalApprovalWorkbench: React.FC<{
           }}
         >
           {t('common.assistantSurface.regionalApproval.liveAction.approve')}
+        </Button>
+      ) : null}
+      {/*
+        退回态的唯一出路：退回重提（走 /sales-plan/submit 生成新版本）。
+        管理端的动作接口只接受 1–4 的待审单，所以这里把退回单从"通过/退回"里摘出来。
+      */}
+      {liveActionsEnabled && onResubmit ? (
+        <Button
+          size='small'
+          disabled={
+            selectedLiveRows.length !== 1 ||
+            resubmitDisabledReason !== undefined ||
+            liveActionPlanId !== undefined ||
+            !resubmitPeriod
+          }
+          title={
+            resubmitDisabledReason
+              ? t(`common.assistantSurface.regionalApproval.liveAction.disabled.${resubmitDisabledReason}`)
+              : undefined
+          }
+          onClick={() => {
+            if (!resubmitRow || !resubmitPeriod) return;
+            selectLivePlanContext(resubmitRow);
+            onResubmit(resubmitRow.planId, resubmitRow.versionId, resubmitPeriod);
+          }}
+        >
+          {t('common.assistantSurface.regionalApproval.liveAction.resubmit')}
         </Button>
       ) : null}
     </>

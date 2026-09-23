@@ -23,9 +23,16 @@ test('Host binds role writes to fresh permission and capability evidence while r
  mode='supported';
  // 未提报、待回写、回写完成都不是审批动作，仍然写不了。
  for(status of [0,5,10]) assert.equal((await action()).ok,false,`status ${status}`);
- // 退回态只要队列里看得见就能改完继续提交，不再要求「必须退回给本节点」；
- // 角色、组织、版本和状态是否真的允许由 GEA 写接口校验。
- for(status of [6,7,8,9]) assert.equal((await action()).ok,true,`status ${status} 可以改完继续提交`);
+ // 退回态（6–9）不能直接通过/退回：管理端的状态机里退回态只有"重提"这一条路
+ // （6→1/7→2/8→3/9→4，且生成新版本），动作接口只接受 1–4 的待审单。
+ // 这里必须提前拦下并说清出路，不能把请求发给上游再挨一个被翻译成"并发"的 409。
+ for(status of [6,7,8,9]) {
+   const denied=await action();
+   assert.equal(denied.ok,false,`status ${status} 不能直接通过/退回`);
+   assert.equal(denied.error.code,'GEA_HTTP_409');
+   assert.match(denied.error.message,/退回重提/);
+ }
+ assert.equal(writes,0,'退回态不发上游写请求');
  status=6;
  const returnedSave=await app.rpc('sales-plan/action',{planId:'p',versionId:'v',requestId:`r${++attempt}`,idempotencyKey:`role:${attempt}`,request:{action:'SAVE',expectedStatus:6,expectedSnapshot:snapshot}});
  assert.equal(returnedSave.ok,false,'returned SAVE');

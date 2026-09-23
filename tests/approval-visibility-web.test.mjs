@@ -68,13 +68,17 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   for (const status of [0,8,9]) await expect(table.getByText(`scope-${status}-row`,{exact:true})).toHaveCount(0);
   const returned = table.locator('tr').filter({hasText:'scope-7-row'});
   await returned.locator('label.arco-checkbox').click();
-  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeEnabled();
-  await expect(frame.getByRole('button',{name:'退回',exact:true})).toBeEnabled();
+  // 退回态（6–9）在管理端只能"退回重提"（生成新版本），动作接口只接受 1–4 的待审单，
+  // 所以这里通过/退回必须置灰，改由「退回重提」接管。
+  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeDisabled();
+  await expect(frame.getByRole('button',{name:'退回',exact:true})).toBeDisabled();
+  await expect(frame.getByRole('button',{name:'退回重提',exact:true})).toBeEnabled();
   const tracked = table.locator('tr').filter({hasText:'scope-6-row'});
   await returned.locator('label.arco-checkbox').click();
   await tracked.locator('label.arco-checkbox').click();
-  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeEnabled();
-  await expect(frame.getByRole('button',{name:'退回',exact:true})).toBeEnabled();
+  // 退回销售（6）同样不能直接通过/退回。
+  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeDisabled();
+  await expect(frame.getByRole('button',{name:'退回重提',exact:true})).toBeEnabled();
   await region.click();
   await expect(table.getByText('scope-6-row',{exact:true})).toHaveCount(0);
   await expect(region).toHaveAttribute('aria-pressed', 'true');
