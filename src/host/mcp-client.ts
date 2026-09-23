@@ -33,6 +33,11 @@ export type McpModule = {
     length: number,
     signal: AbortSignal,
   ): Promise<string>;
+  /**
+   * 一个制品的**完整**正文（读一次即缓存）。给宿主自己用——例如从 inspect 产物里
+   * 建成员清单索引；给模型的仍然是 chunk() 那种一段段的小片。
+   */
+  artifact(uri: string, signal: AbortSignal): Promise<string>;
 };
 
 /**
@@ -53,6 +58,11 @@ const MAX_RESOURCE_LINKS = 2;
 const MAX_ARTIFACT_CHARS = 4_000_000;
 /** 单个模块会话最多缓存多少字符：超了按最早读到的先丢。 */
 const MAX_ARTIFACT_TOTAL_CHARS = 12_000_000;
+/**
+ * 制品超过这个字符数就先提醒"接近授权上限"：实测同一口径 limit=300 时的回包是
+ * `超过数据授权限制，actualBytes=380,959, maxBytes=262,144`，也就是 256KB 的硬上限。
+ */
+const ARTIFACT_SIZE_WARN_CHARS = 180_000;
 
 type JsonRpcReply = {
   id?: unknown;
@@ -406,11 +416,10 @@ function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error
     error: new Error(
       `GEA_MCP_TOOL_ERROR：下游工具执行失败（${detail}）${
         failure.message ? `：${failure.message}` : ""
-      }。这是网关下游的错误，不是参数问题；${
-        failure.retryable === false
-          ? "不要原样自动重试，修好参数或稍后可发起新的一次调用"
-          : "可按同一参数重试一次"
-      }；把 requestId 交给排查。`,
+      }。注意：网关会把下游的真实原因吞掉——实测成员名写错、查询计划被下游拒，回的都是这一句，` +
+        "所以先自查这两件再决定：① 查询里引用的成员名是否逐字来自目录（凭业务词猜名是最常见的失败）；② 是否把维度写进了 measures。" +
+        `改好参数再发起一次新调用${failure.retryable === false ? "" : "（retryable=true 时才可按同一参数重试）"}；` +
+        "还查不出来就把 requestId 交给排查。对用户只说这一块暂时取不到，不暴露 requestId 等技术细节。",
     ),
   };
 }
@@ -481,6 +490,70 @@ function resourceContentsText(result: unknown): string {
 }
 
 /**
+ * 制品正文里的数字字段。网关把每个数据集又包了一层字符串
+ * （`queryArtifact.resources[].contents[].text`），键名在原文里是转义过的
+ * （`\"totalRows\"`），所以两种写法都要认。
+ */
+function escapedNumber(text: string, key: string): number | undefined {
+  const found = new RegExp(`\\\\?"${key}\\\\?"\\s*:\\s*(\\d+)`).exec(text);
+  return found ? Number(found[1]) : undefined;
+}
+
+/** 制品里每个数据集的别名与它自报的行数（`datasetName` / `totalRows`）。 */
+function datasetPages(text: string): { name: string; totalRows?: number }[] {
+  const pages: { name: string; totalRows?: number }[] = [];
+  const names = /\\?"datasetName\\?"\s*:\s*\\?"([^"\\]{1,160})\\?"/g;
+  let found = names.exec(text);
+  while (found !== null) {
+    // 只看这一段的附近：别名后面的 page/pageSize/totalRows 就是这一页的元数据。
+    const total = escapedNumber(text.slice(found.index, found.index + 400), "totalRows");
+    pages.push({ name: found[1], ...(total === undefined ? {} : { totalRows: total }) });
+    found = names.exec(text);
+  }
+  return pages;
+}
+
+/** 模型这次自己发的 limit（按查询别名），用来自查"这一页是不是刚好被 limit 截断"。 */
+function queryLimits(args: unknown): { name: string; limit?: number }[] {
+  const queries = (args as { queries?: unknown })?.queries;
+  if (!Array.isArray(queries)) return [];
+  const out: { name: string; limit?: number }[] = [];
+  for (const item of queries) {
+    const name = (item as { name?: unknown })?.name;
+    const limit = (item as { query?: { limit?: unknown } })?.query?.limit;
+    if (typeof name === "string")
+      out.push({ name, ...(typeof limit === "number" ? { limit } : {}) });
+  }
+  return out;
+}
+
+/**
+ * 行数护栏。线上实测：`totalRows` / `complete=true` / `hasMore=false` 都**不能**证明取全了——
+ * limit=10 时 totalRows 就回 10（把 limit 原样回显），而 offset 翻页能翻到全新的一页、两页零重叠，
+ * 也就是说第一页本身就是被 limit 截断的。唯一能对上的证据是我们自己发出去的 limit：
+ * 返回的行数正好等于 limit 时，几乎不可能取全。
+ */
+function rowPageHints(text: string, args: unknown): string[] {
+  const queries = queryLimits(args);
+  if (queries.length === 0) return [];
+  const hints: string[] = [];
+  for (const page of datasetPages(text)) {
+    const query =
+      queries.find((item) => item.name === page.name) ??
+      (queries.length === 1 ? queries[0] : undefined);
+    if (!query?.limit || page.totalRows === undefined || page.totalRows < query.limit)
+      continue;
+    hints.push(
+      `\n（注意：这个结果 totalRows=${page.totalRows}，正好等于你给的 limit=${query.limit}。` +
+        "totalRows / complete / hasMore 都不可信——它们会把 limit 原样回显；实测用 offset 翻页还能翻到全新的一页。" +
+        "别把这一页当全量：要合计或计数就按 offset 翻页取全后自己累加，" +
+        "或者先用 filters 把口径收窄到一页放得下；答案里只用了一页就写明用的是哪一页、哪个范围。）",
+    );
+  }
+  return hints;
+}
+
+/**
  * 建立模块 MCP 会话并取回工具清单。传输层已经负责会话头、路由码与重连，
  * 这里只按协议顺序调用；initialize 成功后 MCP-Session-Id 由传输层维护。
  */
@@ -524,6 +597,23 @@ export async function openModuleMcp(
       artifactChars -= artifacts.get(oldest)?.length ?? 0;
       artifacts.delete(oldest);
     }
+  };
+  /**
+   * 每个制品已经给模型看过的字符区间。实测一轮里同一个制品会被重复读（0–12000 读两遍），
+   * 这里记下来，重复那段就不用再看一次。
+   */
+  const readRanges = new Map<string, { start: number; end: number }[]>();
+  const markRead = (uri: string, start: number, end: number): void => {
+    const ranges = [...(readRanges.get(uri) ?? []), { start, end }].sort(
+      (left, right) => left.start - right.start,
+    );
+    const merged: { start: number; end: number }[] = [];
+    for (const range of ranges) {
+      const last = merged[merged.length - 1];
+      if (last && range.start <= last.end) last.end = Math.max(last.end, range.end);
+      else merged.push({ ...range });
+    }
+    readRanges.set(uri, merged);
   };
   let lastError: unknown;
   for (const version of PROTOCOL_VERSIONS) {
@@ -592,15 +682,27 @@ export async function openModuleMcp(
       const size = Math.max(1_000, Math.min(Math.trunc(length), MAX_RESOURCE_INLINE_CHARS));
       const body = text.slice(start, start + size);
       const end = start + body.length;
+      const repeat = (readRanges.get(uri) ?? []).find(
+        (range) => range.start < end && range.end > start,
+      );
+      markRead(uri, start, end);
       const tail =
         end < text.length
           ? `\n（还有 ${text.length - end} 字符没读：继续读就再调一次，offset=${end}。）`
           : "\n（已到结尾。）";
-      return `【制品片段 ${uri}｜字符 ${start}–${end} / 共 ${text.length}】\n${body}${tail}`.slice(
-        0,
-        MAX_RESULT_CHARS,
+      const alreadyRead =
+        repeat === undefined
+          ? ""
+          : `\n（字符 ${Math.max(repeat.start, start)}–${Math.min(repeat.end, end)} 你刚读过；` +
+            `同一段不用重复读，往后看就直接 offset=${end}。）`;
+      return (
+        `【制品片段 ${uri}｜字符 ${start}–${end} / 共 ${text.length}】\n${body}${tail}${alreadyRead}`.slice(
+          0,
+          MAX_RESULT_CHARS,
+        )
       );
     },
+    artifact: (uri, artifactSignal) => readArtifact(uri, artifactSignal),
     call: async (name, args, callSignal) => {
       const id = randomUUID();
       const response = await post(
@@ -630,20 +732,30 @@ export async function openModuleMcp(
         2_000,
         Math.min(
           MAX_RESOURCE_INLINE_CHARS,
-          Math.floor((MAX_RESULT_CHARS - 1_200) / Math.max(1, shown.length)),
+          Math.floor((MAX_RESULT_CHARS - 1_600) / Math.max(1, shown.length)),
         ),
       );
       for (const link of shown) {
         try {
           const text = await readArtifact(link.uri, callSignal);
           const head = text.slice(0, chunkChars);
+          markRead(link.uri, 0, head.length);
           const more =
             head.length < text.length
               ? `\n\n（只内联了前 ${head.length} 字符，全文 ${text.length} 字符。` +
                 `要下一段：再调一次 gea_module_mcp，带上 artifact="${link.uri}" 和 offset=${head.length}；` +
                 "如果只是想要更少的行，也可以加 filters 或把 limit 调小重新查一次，不要重复整条大查询。）"
               : "";
-          parts.push(`【结果内容 ${link.uri}】\n${head}${more}`);
+          // 行数正好等于 limit、或已经接近 256KB 授权上限时，当场把话说明白：
+          // 前者拦住"拿被截断的一页当总量"，后者拦住"再撞一次上限"。
+          const sizeHint =
+            text.length > ARTIFACT_SIZE_WARN_CHARS
+              ? `\n（这份制品 ${text.length} 字符，已经贴着数据授权上限（实测 262,144 字节，超了整批被拒）。` +
+                "要汇总时先只取真正用得上的 2–4 列，再用 filters 把快照时间/月份/版本钉死，不要整份拉明细。）"
+              : "";
+          parts.push(
+            `【结果内容 ${link.uri}】\n${head}${more}${sizeHint}${rowPageHints(text, args).join("")}`,
+          );
         } catch (error) {
           parts.push(
             `【结果内容读不回来：${link.uri}（${

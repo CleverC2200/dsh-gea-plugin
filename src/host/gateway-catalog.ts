@@ -40,9 +40,13 @@ export function resultText(message: unknown): string {
   }
 }
 
-/** 结果里引用的 data-artifact 资源地址。 */
+/**
+ * 结果里引用的 data-artifact 资源地址。
+ * 注意：宿主自己内联的那段是 `【结果内容 data-artifact://…#】`，所以中文右括号也要当分隔符，
+ * 否则地址会带上 `】` 去读资源，网关直接回 "Resource 不存在"。
+ */
 export function extractArtifactUri(text: string): string | undefined {
-  return /data-artifact:\/\/[^\s)"'\\]+/.exec(text)?.[0];
+  return /data-artifact:\/\/[^\s)"'\\】」）》]+/.exec(text)?.[0];
 }
 
 /** 结果被宿主截断时，完整正文落在本机 spill 文件里；返回该路径。 */

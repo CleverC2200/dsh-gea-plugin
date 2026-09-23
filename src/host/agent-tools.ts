@@ -39,6 +39,69 @@ import { LAYER_POLICY } from "../capability/layers.ts";
 import { channelPlan, type ChannelPlan } from "../capability/channel.ts";
 import { yearMonthHint, yearMonthValues } from "./cube-query-guard.ts";
 import { didYouMean } from "../shared/name-lookup.ts";
+import {
+  measureHint,
+  memberHint,
+  memberIndex,
+  misplacedMeasures,
+  queryMembers,
+  rememberMemberIndex,
+  unknownMembers,
+} from "./member-index.ts";
+
+/**
+ * 成员名护栏：目录里没有的成员、以及被写进 measures 的维度，都是"发出去必然被上游拒"
+ * 的一类，就地拦下并说清真名。清单不在手（还没读过目录）时不拦——那种情况交给
+ * repairUpstreamFailure 用失败回填。
+ */
+function memberGuard(queries: unknown): string | undefined {
+  const index = memberIndex();
+  if (!index) return undefined;
+  const unknown = unknownMembers(queryMembers(queries), index);
+  if (unknown.length > 0) return memberHint(unknown, index);
+  const misplaced = misplacedMeasures(queries, index);
+  return misplaced.length > 0 ? measureHint(misplaced, index, queries) : undefined;
+}
+
+/** 借同一条模块会话读一次 inspect，把成员清单补进缓存（读不回来就算了，不盖掉真实失败）。 */
+async function loadMemberIndex(
+  module: import("./mcp-client.ts").McpModule,
+  signal: AbortSignal,
+): Promise<void> {
+  try {
+    const inspect = await module.call(
+      "query_business_data",
+      { action: "inspect", queries: [] },
+      signal,
+    );
+    const uri = extractArtifactUri(inspect);
+    if (!uri) return;
+    rememberMemberIndex(
+      parseFirstJsonObject(await module.artifact(uri, signal)),
+    );
+  } catch {
+    // 目录读不回来是另一件事：这次按原始失败报出去。
+  }
+}
+
+/**
+ * 网关把下游真实原因吞了（只回 MCP_UPSTREAM_TOOL_ERROR，没有 details）：实测最常见的原因
+ * 就是成员名不在目录里。这里补一次判断，判出来就把失败换成"照着改就能过"的提示。
+ */
+async function repairUpstreamFailure(
+  error: unknown,
+  module: import("./mcp-client.ts").McpModule,
+  toolName: string,
+  parameters: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<Error | undefined> {
+  if (toolName !== "query_business_data" || parameters.action !== "query") return undefined;
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/MCP_UPSTREAM_TOOL_ERROR/.test(message)) return undefined;
+  if (!memberIndex()) await loadMemberIndex(module, signal);
+  const guard = memberGuard(parameters.queries);
+  return guard ? new Error(guard) : undefined;
+}
 
 /** 只注册已认证的读取；可见记录仍以 GEA 为权威。
  * @param ctx 拥有工具注册和释放生命周期的 Host 上下文。
@@ -547,6 +610,10 @@ export function registerGeaTools(
           if (toolName === "query_business_data" && parameters.action === "query") {
             const hits = yearMonthValues(parameters.queries);
             if (hits.length > 0) throw new Error(yearMonthHint(hits));
+            // 成员名必须逐字来自目录：实测模型会拿业务词造一个（"品类" → category_name），
+            // 而网关只回一句"下游工具执行失败"，不给真实原因，模型无从改起。
+            const guard = memberGuard(parameters.queries);
+            if (guard) throw new Error(guard);
           }
           const missing = tool.required.filter(
             (name) => parameters[name] === undefined || parameters[name] === null,
@@ -564,8 +631,17 @@ export function registerGeaTools(
             failures.note(consumerCode, !output.startsWith(PERMISSION_NOTICE_PREFIX));
             return output;
           } catch (error) {
+            // 网关把下游真实原因吞了（只回 MCP_UPSTREAM_TOOL_ERROR）：补一次成员名判断，
+            // 判出来就把失败换成"照着改就能过"的提示——这类是模型改一下就能过的。
+            const repaired = await repairUpstreamFailure(
+              error,
+              module,
+              toolName,
+              parameters,
+              exec.signal,
+            );
             failures.note(consumerCode, false);
-            throw error;
+            throw repaired ?? error;
           }
         },
       }),
@@ -739,7 +815,10 @@ export function registerGeaTools(
             // 资源正文用 MCP 的 resources/read 读（dsh_read_resource 是宿主自己的工具，不在网关工具表里）。
             const resource = await client.readResource({ uri });
             const text = await catalogText(resultText(resource));
-            return projectCatalog(parseFirstJsonObject(text), { model: args.model });
+            const payload = parseFirstJsonObject(text);
+            // 顺手把成员清单记下来：发查询前用它逐字校验成员名（见 member-index.ts）。
+            rememberMemberIndex(payload);
+            return projectCatalog(payload, { model: args.model });
           } catch (error) {
             const message = (error as Error).message;
             // 自己的目录错误（模型名不对、目录为空…）原样抛：套一层"MCP 失败"会把
