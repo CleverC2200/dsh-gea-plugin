@@ -332,10 +332,13 @@ test("下游工具失败：抛成可读错误（含 requestId），不是把 JSO
       assert.match(error.message, /GEA_MCP_TOOL_ERROR/);
       assert.match(error.message, /下游工具执行失败/);
       assert.match(error.message, /requestId=37fff70a-0705-4f82-892c-41b10229096e/);
-      // retryable:false → 不许原样自动重试，但可发起新的一次调用（不再用一句
-      // "不要换参数重试"盖住所有错误类型）。
-      assert.match(error.message, /不要原样自动重试/);
-      assert.equal(error.message.includes("不要换参数重试"), false);
+      // 线上实测：网关把下游真实原因吞了（成员名写错、查询计划被拒都长这样），
+      // 所以文案不能再写"不是参数问题"，要先让模型自查成员名与 measures。
+      assert.equal(error.message.includes("不是参数问题"), false);
+      assert.match(error.message, /成员名是否逐字来自目录/);
+      assert.match(error.message, /写进了 measures/);
+      // retryable:false → 只允许"改好再发起新调用"，不给"可原样重试"的口子。
+      assert.equal(error.message.includes("可按同一参数重试"), false);
       return true;
     },
   );
@@ -545,4 +548,126 @@ test("服务端 schema 很大时，完整定义也不能超过上限", async () 
   const full = module.schema("wide");
   assert.ok(full.length <= 2100, `schema 太大：${full.length}`);
   assert.match(full, /定义过长已截断/);
+});
+
+/** 一个"网关把数据集包成字符串"的制品，跟线上原样结构一致（键名在原文里是转义的）。 */
+function pageArtifact({ datasetName, totalRows, rows, pad = 0 }) {
+  const inner = JSON.stringify({
+    artifactId: "query-756673fc1a8e4fbfa7f05be418cf28db",
+    datasetName,
+    page: 1,
+    pageSize: 200,
+    totalRows,
+    rows: [...rows, ...(pad ? ["x".repeat(pad)] : [])],
+  });
+  return JSON.stringify({
+    queryArtifact: {
+      schemaVersion: "3.0",
+      hydrated: true,
+      resources: [{ pageCount: 1, contents: [{ text: inner }] }],
+    },
+  });
+}
+
+function artifactTransport(uri, artifact) {
+  return fakeTransport((body) => {
+    if (body.method === "initialize")
+      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+    if (body.method === "notifications/initialized") return new Response("", { status: 202 });
+    if (body.method === "tools/list")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] },
+      });
+    if (body.method === "tools/call")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { isError: false, content: [{ type: "resource_link", uri, mimeType: "application/json" }] },
+      });
+    if (body.method === "resources/read")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { contents: [{ uri: body.params.uri, mimeType: "application/json", text: artifact }] },
+      });
+    throw new Error("unexpected method " + body.method);
+  });
+}
+
+// 线上实测：totalRows / complete=true / hasMore=false 都不能证明取全了——limit=10 时 totalRows 就回 10
+// （把 limit 原样回显），而 offset 翻页还能翻到全新的一页、两页零重叠。结果里要当场把这件事说清楚。
+test("行数正好等于 limit 时说清“别把这一页当全量”，同一段重复读要拦一下", async () => {
+  const uri = "data-artifact://gateway/38789c1e";
+  const artifact = pageArtifact({
+    datasetName: "zz_dumpling",
+    totalRows: 100,
+    rows: [{ "agents_scm_safety_stock.material_name": "CX495g手打天下猪肉白菜水饺（12袋）" }],
+  });
+  const { seen, transport } = artifactTransport(uri, artifact);
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  const value = await module.call(
+    "query_business_data",
+    {
+      action: "query",
+      response_mode: "resource",
+      queries: [
+        {
+          name: "zz_dumpling",
+          query: { dimensions: ["agents_scm_safety_stock.material_name"], limit: 100 },
+        },
+      ],
+    },
+    new AbortController().signal,
+  );
+  assert.match(value, /totalRows=100/);
+  assert.match(value, /正好等于你给的 limit=100/);
+  assert.match(value, /别把这一页当全量/);
+  // 列比 limit 小（真取全了）时不能乱提示。
+  assert.equal(value.includes("offset 翻页"), true);
+
+  const again = await module.chunk(uri, 0, 12_000, new AbortController().signal);
+  assert.match(again, /你刚读过/);
+  assert.match(again, /offset=\d+/);
+  // 重复读命中的是宿主缓存，不再打一次 resources/read。
+  assert.equal(seen.filter((item) => item.method === "resources/read").length, 1);
+});
+
+test("取全了（行数小于 limit）时不提示截断", async () => {
+  const uri = "data-artifact://gateway/small";
+  const artifact = pageArtifact({
+    datasetName: "zz_latest",
+    totalRows: 12,
+    rows: [{ "agents_scm_safety_stock.material_name": "思念1kg冷鲜肉水饺" }],
+  });
+  const { transport } = artifactTransport(uri, artifact);
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  const value = await module.call(
+    "query_business_data",
+    { action: "query", queries: [{ name: "zz_latest", query: { limit: 100 } }] },
+    new AbortController().signal,
+  );
+  assert.equal(value.includes("别把这一页当全量"), false);
+});
+
+test("制品贴着授权上限时先提醒缩口径，而不是等网关整批拒掉", async () => {
+  const uri = "data-artifact://gateway/wide";
+  const artifact = pageArtifact({
+    datasetName: "wide",
+    totalRows: 3,
+    rows: [],
+    pad: 200_000,
+  });
+  assert.ok(artifact.length > 180_000);
+  const { transport } = artifactTransport(uri, artifact);
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  const value = await module.call(
+    "query_business_data",
+    { action: "query", queries: [{ name: "wide", query: { limit: 300 } }] },
+    new AbortController().signal,
+  );
+  assert.ok(value.length <= 20_000, "单次结果不能超上限：" + value.length);
+  assert.match(value, /贴着数据授权上限/);
+  assert.match(value, /只取真正用得上的 2–4 列/);
 });

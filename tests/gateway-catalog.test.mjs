@@ -64,6 +64,12 @@ test("工具结果文本与资源地址解析", () => {
   assert.match(contentText(message), /data-artifact/);
   assert.equal(extractArtifactUri(contentText(message)), "data-artifact://gateway/abc-123");
   assert.equal(extractArtifactUri("没有资源"), undefined);
+  // 宿主内联的那段是「【结果内容 data-artifact://…#】」：右括号不能算进地址里，
+  // 否则拿它去读资源会被网关回 "Resource 不存在"。
+  assert.equal(
+    extractArtifactUri("【结果内容 data-artifact://gateway/abc-123】\n{\"rows\":[]}"),
+    "data-artifact://gateway/abc-123",
+  );
 });
 
 test("resources/read 形式的返回也能取到正文", () => {

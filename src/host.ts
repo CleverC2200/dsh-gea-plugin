@@ -457,6 +457,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         "GEA 网关 MCP 取数协议（只有工作台页面上看不到的数据才用它）：",
         "- 计划事实（提报状态、版本、明细、变更记录）优先用 gea_sales_plan_read；历史发货、经销商/分仓库存、货龄、补货周期、政策、节令、把握度，以及知识库类问题，用当前已加载的 GEA 网关 MCP 工具——**统一经 gea_module_mcp 调用**（给定 consumerCode + tool + arguments）。不要直接用平台直挂的 `mcp__gea-gateway__*` 工具：那条路的失败是原始报文，宿主不会把它翻成可读原因，也不会替你收口。",
         "- 先取语义模型目录再查询：调用 gea_gateway_catalog（需要看某个模型时带 model=模型名），拿到模型名与成员名；成员名照抄，不要凭业务名猜。**model 只填模型名（英文标识）或它的子串**；把业务词当模型名是命中不到的——这时目录不会报错，而是按内容把最像的模型和完整索引回给你，照它挑一个再调即可，不要重复猜名字。目录里的成员名形如 模型.字段，就是查询时要用的成员。成员名后的 [time]/[number] 是类型：`[time]` 取值要写完整日期，`[number]` 只是数值类型的维度（仍放 dimensions）。拿不准某个成员的值长什么样时，用 `members=[成员名…] + values=true` 先取一行真实值，照它的格式写查询。",
+        "- 成员名**只能逐字来自目录**，不要自己把业务词翻成英文：线上实测把“品类”写成 category_name，而这个 cube 里叫 product_categ_name，整批查询直接被下游拒。**读目录与发查询分两步走，不要放在同一个回合里并行调**——目录结果还没回来就把查询发出去，参数只能是猜的。同一份目录读到一次就记住，后续步骤直接引用，不要反复重读。",
         '- 不要自己去读 inspect 的原始产物：它约 33 万字符，宿主只会内联前 30KB，剩下的存成本机文件，你没有读文件的工具。目录工具已经把它压到可一次读完的大小。',
         '- 再查询：action="query"，queries 放 1 到 8 个具名 Cube 查询对象，每项形如 {"name":"<别名>","query":{…}}，其中 query 必须是 Cube 查询对象（不能写成字符串或自然语言）；response_mode 默认 "resource"，只有需要直接看行时才用 "inline_complete"。',
         '- Cube 查询对象里**只放这几个键**：dimensions（成员名数组）、measures（成员名数组）、filters（[{"member":成员,"operator":"equals|contains|…","values":[…]}]）、order、limit。不确定形状时先 `tool=query_business_data` + `schema=true` 读服务端定义；服务端当前没声明到的嵌套形状（order 就是），以它返回的校验报错为准——这几行只是 schema 补全前的临时说明。',
@@ -467,6 +468,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         "- 日期/时间成员（snapshot_date、snapshot_time、target_month、stat_date、inventory_snapshot_time 这类）的值必须是完整日期 `YYYY-MM-DD`（带时间的用 `YYYY-MM-DD HH:mm:ss`）：写 `2026-09` 这种只有年月的值，Cube 会以 `invalid input syntax for type date` 报错。拿不准就先查一次该成员的现有值，再照抄格式。",
         '- 结果返回 `data-artifact://gateway/…` 链接时：**gea_module_mcp 的结果宿主已经把正文读回来内联了，不需要你再读一次**。**大结果只内联第一段**，正文里会写明"只内联了前 N 字符，全文 M 字符"；要接着看就再调一次 gea_module_mcp（consumerCode 同上 + `artifact="`原样的 data-artifact:// URI`"` + `offset=`上一段结尾给的位置），**不要重复跑整条大查询**，也不要自己拼 URI、不要当 HTTP 链接去抓。正文里若写"还有几个制品没有内联"，同样用 `artifact=<URI>` 去读那几个。万一是平台直挂的网关工具返回链接，才用 read_mcp_resource，且 server 必须是网关那一个（gea-gateway）——**绝不要用 browser**（那个服务没连，只会报 server is disconnected，白跑一轮）。',
         "- 报错先按错误文本改参数再试一次；同一错误不要连续重试，更不要改用编造的数据或改写用户的问题。",
+        "- 查询被网关回“下游工具执行失败”（只给 requestId、没有具体原因）时，先自查这两件：① 成员名是否逐字来自目录；② 是否把维度（含数值字段）写进了 measures。改好再发新的一次调用；仍失败就把 requestId 交给排查，不要用同一份参数反复重试。",
       ].join("\n"),
     });
     // 每个模型步骤都把"这个对话在不在业务工作台、在哪一页菜单"作为宿主事实注入。
