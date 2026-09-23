@@ -21,9 +21,12 @@ new Function("require", "module", "exports", outputFiles[0].text)(
 const {
   contentText,
   extractArtifactUri,
+  formatSampleValues,
   parseFirstJsonObject,
   projectCatalog,
   resultText,
+  rowsFromPayload,
+  rowsFromText,
   spillPathFrom,
 } = module.exports;
 
@@ -36,6 +39,7 @@ const sample = {
       dimensions: [
         { name: "agent_branch_cycle_config.warehouse_id", type: "string" },
         { name: "agent_branch_cycle_config.rules", type: "string" },
+        { name: "agent_branch_cycle_config.updated_time", type: "time" },
       ],
       measures: [],
       segments: [],
@@ -45,7 +49,7 @@ const sample = {
       title: "客户库存货龄",
       description: "经销商库存货龄。",
       dimensions: [{ name: "agents_scm_wl_cust_stock_age_governed.cust_code" }],
-      measures: [{ name: "agents_scm_wl_cust_stock_age_governed.qty" }],
+      measures: [{ name: "agents_scm_wl_cust_stock_age_governed.qty", type: "number" }],
       segments: [],
     },
   ],
@@ -95,6 +99,11 @@ test("不带 model 只回模型索引：名字完整、不带成员名", () => {
   // 一个 measure 都没定义的 cube：索引里必须直接说清"只能放 dimensions"，
   // 否则模型会把数值字段写进 measures，被上游拒掉整批查询计划（线上实测）。
   assert.match(all, /无度量：所有成员都是维度，只放 dimensions/);
+  // 索引里也要提一句"这个模型有时间成员"，模型挑模型时就知道要注意格式。
+  assert.match(
+    all.split("\n").find((line) => line.includes("agent_branch_cycle_config")),
+    /含 1 个时间成员/,
+  );
   assert.match(all, /只有列在“度量”里的成员才写进 measures/);
   const withMeasures = all
     .split("\n")
@@ -110,6 +119,13 @@ test("带 model 才回成员名；猜错时列出可用模型", () => {
   const noMeasures = projectCatalog(sample, { model: "branch_cycle" });
   assert.match(noMeasures, /度量：无/);
   assert.match(noMeasures, /所有成员一律放 dimensions/);
+
+  // 成员类型要带出来：模型以前看不到类型，才会把 2026-10 当日期、把 number 维度塞进 measures。
+  assert.match(noMeasures, /agent_branch_cycle_config\.updated_time\[time\]/);
+  assert.doesNotMatch(noMeasures, /agent_branch_cycle_config\.warehouse_id\[/);
+  assert.match(noMeasures, /\[time\] 是时间成员：取值要写完整日期/);
+  const withNumber = projectCatalog(sample, { model: "stock_age" });
+  assert.match(withNumber, /agents_scm_wl_cust_stock_age_governed\.qty\[number\]/);
 
   assert.throws(
     () => projectCatalog(sample, { model: "不存在的模型" }),
@@ -141,4 +157,22 @@ test("预算不够时先保名字完整，再退成只有名字；成员只在�
   assert.match(details, /model_1/);
   assert.match(details, /成员名超过单次上限/);
   assert.doesNotMatch(details, /目录已截断/);
+});
+
+test("样例值：从 rows 里取一行真实值，给出格式要求", () => {
+  assert.deepEqual(rowsFromPayload({ rows: [{ a: 1 }] }), [{ a: 1 }]);
+  assert.deepEqual(rowsFromPayload({ result: { rows: [{ a: 2 }] } }), [{ a: 2 }]);
+  assert.equal(rowsFromPayload({ rows: "nope" }), null);
+  assert.deepEqual(rowsFromText('{"result":{"rows":[{"x":1}]}}'), [{ x: 1 }]);
+
+  const text = formatSampleValues(
+    [{ "agents_scm_safety_stock.target_month": "2026-10-01", "agents_scm_safety_stock.inventory_version": "滚动" }],
+    ["agents_scm_safety_stock.target_month", "agents_scm_safety_stock.inventory_version"],
+  );
+  assert.match(text, /成员样例值（取 1 行，共 2 个成员）/);
+  assert.match(text, /agents_scm_safety_stock\.target_month = "2026-10-01"/);
+  assert.match(text, /inventory_version = "滚动"/);
+  assert.match(text, /时间是完整日期（如 2026-10-01）/);
+
+  assert.match(formatSampleValues([], ["a.b"]), /没有取到样例值/);
 });

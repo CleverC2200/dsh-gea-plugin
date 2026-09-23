@@ -67,6 +67,6 @@ export function yearMonthHint(hits: readonly YearMonthHit[]): string {
     "这类值发出去会被数据库拒（invalid input syntax for type date）：" +
     "如果这个成员是日期/时间类型，写完整日期并按整月过滤就用该月第一天，例如 2026-10-01；" +
     "如果它其实是文本年月（目录里现有值形如 202608），就照目录里的格式写。" +
-    "本次调用没有发出；改好之后再调一次。"
+    "拿不准时先用 gea_gateway_catalog 的 members + values=true 取一行真实值。本次调用没有发出；改好之后再调一次。"
   );
 }
