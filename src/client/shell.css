@@ -577,11 +577,12 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   z-index: 30;
   background: #fff;
 }
-
+/* The welcome area fills the space above the composer. The composer scrollport
+   must start at its top: flex-end clips the card's upper edge on short rails. */
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
   [data-phase="hero"]
   [data-conversation-scroll] {
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
@@ -675,6 +676,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   background: linear-gradient(180deg, #fff8f9 0, #fff 35%);
 }
 [data-phase="hero"] [data-composer-seat] {
+  /* Keep the composer outline above the column resize handles. */
   position: relative;
   inset: auto;
   /* 宿主的列拖拽条是 z-index:11 且左右各压进边界 4px，会压到输入框左上角；
@@ -1106,12 +1108,6 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   box-shadow: none !important;
 }
 
-/* 业务页已经把右侧对话栏固定在布局里，原生抽屉手柄会压住工作台最右侧的 iframe 区域。
-   这里不需要再用手柄切换右栏；隐藏它也避免它拦截业务页最后一列的点击。 */
-.AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_handle {
-  display: none;
-}
-
 /*
  * 窄宽度不再改成上下两行：只按档位收缩左右两栏，最后把左侧菜单收进图标列，
  * 始终保留「中间工作台 + 右边对话」。
@@ -1172,6 +1168,100 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 
 /* 窄栏或矮窗口时欢迎区内容高于一屏：从顶部顺序排布并可滚动，
    否则原生居中会把推荐问题压到输入框下面，看起来像「少了东西」。 */
-.AppFrame_rightbarCol [data-phase="hero"] [class*="wSkVaW_scrollBody"] {
+.AppFrame_rightbarCol [data-phase="hero"] [data-conversation-scroll] {
   justify-content: flex-start !important;
 }
+
+/* APS uses the welcome identity rather than a second rail title. */
+.AppFrame_frame:has([data-gea-business-entry="inventory-apsplan"][aria-current="page"]) .gea-agent-head { display: none; }
+.AppFrame_frame:has([data-gea-business-entry="inventory-apsplan"][aria-current="page"]) .gea-agent-welcome { padding-top: 50px; margin-top: 0; }
+.AppFrame_frame:has([data-gea-business-entry="inventory-apsplan"][aria-current="page"]) .gea-agent-identity { margin-top: 0; padding-top: 0; }
+
+/* The composer card has its own outline; no full-width rule above it on any Agent. */
+.AppFrame_frame [data-rightbar-col] [data-composer-seat] {
+  border-top: 0;
+  box-shadow: none;
+}
+
+/* Keep the actual composer outline visible, including its top edge. */
+.AppFrame_frame:has([data-gea-business-entry="inventory-apsplan"][aria-current="page"]) [data-rightbar-col] [data-slot="conversation.composer.bar"] {
+  --dsw-alias-border-l1: #c9cfd8;
+  --dsw-alias-border-l2: #c9cfd8;
+  box-shadow: inset 0 0 0 1px #c9cfd8;
+  border-radius: 12px;
+}
+
+/* Inventory and order Agent headers; sales planning is intentionally excluded. */
+.AppFrame_frame:has(:is([data-gea-business-entry="inventory-apsplan"],[data-gea-business-entry="inventory-aqkc"],[data-gea-business-entry="inventory-customer"],[data-gea-business-entry="inventory-dealer"],[data-gea-business-entry="inventory-fc"],[data-gea-business-entry="inventory-orderfulfillment"],[data-gea-business-entry="inventory-orderworkbench"],[data-gea-business-entry="inventory-personal"],[data-gea-business-entry="inventory-qll"])[aria-current="page"]) .gea-agent-head { display:none; }
+.AppFrame_frame:has(:is([data-gea-business-entry="inventory-apsplan"],[data-gea-business-entry="inventory-aqkc"],[data-gea-business-entry="inventory-customer"],[data-gea-business-entry="inventory-dealer"],[data-gea-business-entry="inventory-fc"],[data-gea-business-entry="inventory-orderfulfillment"],[data-gea-business-entry="inventory-orderworkbench"],[data-gea-business-entry="inventory-personal"],[data-gea-business-entry="inventory-qll"])[aria-current="page"]) .gea-agent-welcome { padding-top:50px; margin-top:0; }
+.AppFrame_frame:has(:is([data-gea-business-entry="inventory-apsplan"],[data-gea-business-entry="inventory-aqkc"],[data-gea-business-entry="inventory-customer"],[data-gea-business-entry="inventory-dealer"],[data-gea-business-entry="inventory-fc"],[data-gea-business-entry="inventory-orderfulfillment"],[data-gea-business-entry="inventory-orderworkbench"],[data-gea-business-entry="inventory-personal"],[data-gea-business-entry="inventory-qll"])[aria-current="page"]) .gea-agent-identity { margin-top:0; padding-top:0; }
+.AppFrame_frame:has(:is([data-gea-business-entry="inventory-apsplan"],[data-gea-business-entry="inventory-aqkc"],[data-gea-business-entry="inventory-customer"],[data-gea-business-entry="inventory-dealer"],[data-gea-business-entry="inventory-fc"],[data-gea-business-entry="inventory-orderfulfillment"],[data-gea-business-entry="inventory-orderworkbench"],[data-gea-business-entry="inventory-personal"],[data-gea-business-entry="inventory-qll"])[aria-current="page"]) [data-rightbar-col] [data-slot="conversation.composer.bar"] { --dsw-alias-border-l1:#c9cfd8; --dsw-alias-border-l2:#c9cfd8; box-shadow:inset 0 0 0 1px #c9cfd8; border-radius:12px; }
+
+/* Agent view controls live above the active content column, so either maximized
+   view still has a visible way back to the split view. */
+.AppFrame_frame[data-gea-conversation-view] {
+  --gea-sidebar-track: 280px;
+}
+@media (max-width: 1679px) { .AppFrame_frame[data-gea-conversation-view] { --gea-sidebar-track: 240px; } }
+@media (max-width: 1200px) { .AppFrame_frame[data-gea-conversation-view] { --gea-sidebar-track: 180px; } }
+.AppFrame_frame[data-gea-conversation-view][data-sidebar-collapsed] { --gea-sidebar-track: 56px; }
+@media (min-width: 801px) and (max-width: 1200px) {
+  .AppFrame_frame[data-gea-conversation-view][data-sidebar-collapsed] { --gea-sidebar-track: 64px; }
+}
+.AppFrame_frame[data-gea-conversation-view] > .AppFrame_centerCol,
+.AppFrame_frame[data-gea-conversation-view] > .AppFrame_rightbarCol {
+  position: relative;
+  box-sizing: border-box;
+}
+.AppFrame_frame[data-gea-conversation-view="split"] > .AppFrame_rightbarCol,
+.AppFrame_frame[data-gea-conversation-view="chat"] > .AppFrame_rightbarCol,
+.AppFrame_frame[data-gea-conversation-view="center"] > .AppFrame_centerCol {
+  padding-top: 58px;
+}
+.AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="center"]:is(.gea-business-shell, .gea-rail-docked) {
+  grid-template-columns: var(--gea-sidebar-track) minmax(0, 1fr) 0px !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+.AppFrame_frame[data-gea-conversation-view="center"] > .AppFrame_rightbarCol { display: none; }
+.AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="center"]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_centerCol { grid-column: 2; grid-row: 1; }
+.AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="chat"]:is(.gea-business-shell, .gea-rail-docked) {
+  grid-template-columns: var(--gea-sidebar-track) 0px minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+.AppFrame_frame[data-gea-conversation-view="chat"] > .AppFrame_centerCol { display: none; }
+.AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="chat"]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_rightbarCol { grid-column: 3; grid-row: 1; border-top: 0; }
+@media (min-width: 801px) and (max-width: 1200px) {
+  .AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="center"][data-sidebar-collapsed]:has(iframe[data-gea-workbench]),
+  .AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="chat"][data-sidebar-collapsed]:has(iframe[data-gea-workbench]) {
+    grid-template-columns: var(--gea-sidebar-track) minmax(0, 1fr) 0px !important;
+    grid-template-rows: minmax(0, 1fr) !important;
+  }
+  .AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="chat"][data-sidebar-collapsed]:has(iframe[data-gea-workbench]) {
+    grid-template-columns: var(--gea-sidebar-track) 0px minmax(0, 1fr) !important;
+  }
+}
+.AppFrame_frame[data-gea-conversation-view="center"] > .AppFrame_handle,
+.AppFrame_frame[data-gea-conversation-view="chat"] > .AppFrame_handle { display: none; }
+.gea-conversation-toolbar {
+  position: absolute;
+  z-index: 16;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  box-sizing: border-box;
+  height: 58px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  border-bottom: 1px solid #e5e9f0;
+  background: #fff;
+}
+.gea-conversation-view-switch { display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid #dfe5ef; border-radius: 14px; background: #f7f9fc; }
+.gea-conversation-toolbar button { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 10px; background: transparent; color: #687487; cursor: pointer; }
+.gea-conversation-toolbar button:hover { background: #edf1f7; color: #283444; }
+.gea-conversation-toolbar button[aria-pressed="true"] { background: #fff; color: #d0132c; box-shadow: 0 1px 4px #2025311f; }
+.gea-conversation-toolbar button:focus-visible { outline: 2px solid #d0132c; outline-offset: 2px; }
+.gea-conversation-toolbar svg { width: 22px; height: 22px; }
+.gea-conversation-toolbar-action:last-of-type { margin-left: auto; }
+.gea-conversation-toolbar-error { position: absolute; right: 10px; top: 58px; padding: 5px 8px; border: 1px solid #e7acb5; border-radius: 5px; background: #fff6f7; color: #b51931; font-size: 12px; }

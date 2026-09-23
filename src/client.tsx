@@ -79,6 +79,7 @@ type SidebarSections = Record<SidebarSection, boolean>;
 
 /** 展开侧栏：0.1.6 的按钮文案是「打开侧边栏」，旧版本是「展开侧边栏」，找不到文案就按类名找。 */
 function nativeExpandSidebar(): void {
+  if (!document.querySelector("[data-sidebar-collapsed]")) return;
   const button =
     document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']") ??
     document.querySelector<HTMLButtonElement>("button[aria-label='打开侧边栏']") ??
@@ -704,6 +705,30 @@ export function apply(ctx: Context): void {
     const [conversationHero, setConversationHero] = useState<HTMLElement | null>(null);
     const [homeHero, setHomeHero] = useState<HTMLElement | null>(null);
     const [railColumn, setRailColumn] = useState<HTMLElement | null>(null);
+    const [centerColumn, setCenterColumn] = useState<HTMLElement | null>(null);
+    const [conversationView, setConversationView] = useState<"center" | "split" | "chat">("split");
+    const [conversationActionError, setConversationActionError] = useState("");
+    const currentConversationSession = useSessions((snapshot) => snapshot.current);
+    const historyPanel = useRef<MainPanelId | null>(null);
+    const linkedHistorySession = useRef<SessionId | null>(null);
+    useEffect(() => {
+      const panel = historyPanel.current;
+      if (!panel || !currentConversationSession || currentConversationSession === linkedHistorySession.current) return;
+      linkedHistorySession.current = currentConversationSession;
+      // Native history selection opens the main Conversation. Reattach that
+      // exact durable Session to the Agent page so its center stays mounted.
+      void ctx.agentWorkbench.open(panel, "gea-history", currentConversationSession)
+        .catch((error: unknown) => setConversationActionError(String(error instanceof Error ? error.message : error)));
+    }, [currentConversationSession]);
+    useEffect(() => {
+      if (activePanel && historyPanel.current && activePanel !== historyPanel.current) historyPanel.current = null;
+    }, [activePanel]);
+    useEffect(() => {
+      const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
+      if (!frame || !business) return;
+      frame.dataset.geaConversationView = conversationView;
+      return () => { delete frame.dataset.geaConversationView; };
+    }, [business, conversationView]);
     // 左栏改成两个互斥抽屉：功能区在品牌下方从上往下展开，工作区贴底从下往上展开。
     const [drawer, setDrawer] = useState<"function" | "workspace" | "none">(
       () => (business ? "function" : "workspace"),
@@ -857,6 +882,7 @@ export function apply(ctx: Context): void {
         );
         setLogoRow(document.querySelector<HTMLElement>("[class*='_logoRow']"));
         setRailColumn(document.querySelector<HTMLElement>(".AppFrame_rightbarCol"));
+        setCenterColumn(document.querySelector<HTMLElement>(".AppFrame_centerCol"));
         // 主页面（没有业务面板时）中心列就是 GEA 的主视觉；业务页时中心列是工作台 iframe。
         setHomeHero(
           document.querySelector<HTMLElement>(
@@ -984,8 +1010,10 @@ export function apply(ctx: Context): void {
         ?.click();
     };
     // 工作区 only swaps the sidebar surface: the center document and the rail conversation stay.
-    const toggleDrawer = (name: "function" | "workspace") =>
+    const toggleDrawer = (name: "function" | "workspace") => {
+      if (name !== "workspace") historyPanel.current = null;
       setDrawer((value) => (value === name ? "none" : name));
+    };
     const drawerPortal = createPortal(
       <>
         {/* 两个抽屉上下挨着：业务工作台在上、历史会话紧跟其下，展开都往下走。 */}
@@ -1045,6 +1073,23 @@ export function apply(ctx: Context): void {
         150,
       );
     };
+    const newBusinessConversation = () => {
+      historyPanel.current = null;
+      if (!activePanel || !business || activePanel === API_LOG_PANEL) {
+        newConversation();
+        return;
+      }
+      setConversationActionError("");
+      setConversationView("split");
+      void ctx.agentWorkbench.open(activePanel, `gea-new-${crypto.randomUUID()}`)
+        .catch((error: unknown) => setConversationActionError(String(error instanceof Error ? error.message : error)));
+    };
+    const showConversationHistory = () => {
+      historyPanel.current = activePanel;
+      linkedHistorySession.current = currentConversationSession ?? null;
+      setDrawer("workspace");
+      nativeExpandSidebar();
+    };
     const railItem = (label: string, icon: NavIconKind, selected: boolean, onClick: () => void) => (
       <button
         type="button"
@@ -1080,6 +1125,16 @@ export function apply(ctx: Context): void {
             <NavIcon kind="bell" />
           </button>,
           logoRow,
+        )}
+        {business && (conversationView === "center" ? centerColumn : railColumn) && createPortal(
+          <ConversationToolbar
+            view={conversationView}
+            onViewChange={setConversationView}
+            onHistory={showConversationHistory}
+            onNewConversation={newBusinessConversation}
+            error={conversationActionError}
+          />,
+          (conversationView === "center" ? centerColumn : railColumn)!,
         )}
         {railColumn && createPortal(<ConversationHead agent={conversationAgentFor(activePanel)} />, railColumn)}
         {conversationHero && createPortal(
@@ -1245,6 +1300,43 @@ function GeaHomeHero({
       <p className="gea-home-description">{copy.description}</p>
     </section>
   );
+}
+
+type ConversationView = "center" | "split" | "chat";
+
+/** The three layout choices share one toolbar, even when either content column is hidden. */
+function ConversationToolbar({
+  view,
+  onViewChange,
+  onHistory,
+  onNewConversation,
+  error,
+}: {
+  view: ConversationView;
+  onViewChange: (view: ConversationView) => void;
+  onHistory: () => void;
+  onNewConversation: () => void;
+  error: string;
+}) {
+  const choices: { view: ConversationView; label: string; icon: React.ReactNode }[] = [
+    { view: "center", label: "中间区域最大，隐藏会话区", icon: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></> },
+    { view: "split", label: "同时显示中间区域和会话区", icon: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M12 3v18" /></> },
+    { view: "chat", label: "会话区最大，隐藏中间区域", icon: <path d="M4 4h16v13H9l-5 4V4Zm4 4h8m-8 4h6" /> },
+  ];
+  return <div className="gea-conversation-toolbar" role="toolbar" aria-label="对话区视图与会话操作">
+    <div className="gea-conversation-view-switch" role="group" aria-label="区域显示方式">
+      {choices.map((choice) => <button key={choice.view} type="button" aria-label={choice.label} title={choice.label} aria-pressed={view === choice.view} onClick={() => onViewChange(choice.view)}>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{choice.icon}</svg>
+      </button>)}
+    </div>
+    <button type="button" className="gea-conversation-toolbar-action" aria-label="历史对话" title="历史对话" onClick={onHistory}>
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 10a9 9 0 1 1 0 4M3 4v6h6M12 7v5l3 2" /></svg>
+    </button>
+    <button type="button" className="gea-conversation-toolbar-action" aria-label="新建对话" title="新建对话" onClick={onNewConversation}>
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M12 7v10M7 12h10" /></svg>
+    </button>
+    {error && <span className="gea-conversation-toolbar-error" role="alert" title={error}>新建对话失败</span>}
+  </div>;
 }
 
 /** 会话栏顶部常驻头（原型 phead）：冻结在会话区上方，不随内容滚动。 */

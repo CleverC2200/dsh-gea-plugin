@@ -124,6 +124,51 @@ test(
     assert.equal(await page.locator(".gea-agent-head-sub").count(), 0);
     assert.equal(await page.locator(".gea-agent-head-name").textContent(), "销售计划助手");
 
+    // The Agent toolbar remains reachable in both maximized views; history
+    // opens the existing native list in the left drawer.
+    await page.getByRole("button", { name: "中间区域最大，隐藏会话区" }).click();
+    assert.equal(await page.locator(".AppFrame_frame").getAttribute("data-gea-conversation-view"), "center");
+    assert.equal(await page.locator(".AppFrame_rightbarCol").evaluate((el) => getComputedStyle(el).display), "none");
+    await page.waitForFunction(() => document.querySelector(".AppFrame_centerCol")?.getBoundingClientRect().width > 900);
+    await page.getByRole("button", { name: "会话区最大，隐藏中间区域" }).click();
+    assert.equal(await page.locator(".AppFrame_frame").getAttribute("data-gea-conversation-view"), "chat");
+    assert.equal(await page.locator(".AppFrame_centerCol").evaluate((el) => getComputedStyle(el).display), "none");
+    await page.waitForFunction(() => document.querySelector(".AppFrame_rightbarCol")?.getBoundingClientRect().width > 900);
+    await page.setViewportSize({ width: 1000, height: 920 });
+    await page.waitForFunction(() => document.querySelector(".AppFrame_rightbarCol")?.getBoundingClientRect().width > 700);
+    const narrowChat = await page.evaluate(() => {
+      const shell = document.querySelector(".AppFrame_frame");
+      const rail = document.querySelector(".AppFrame_rightbarCol");
+      return { width: rail?.getBoundingClientRect().width, grid: shell && getComputedStyle(shell).gridTemplateColumns, collapsed: shell?.hasAttribute("data-sidebar-collapsed") };
+    });
+    assert.ok(narrowChat.width > 700, JSON.stringify(narrowChat));
+    await page.setViewportSize({ width: 1536, height: 920 });
+    await page.getByRole("button", { name: "同时显示中间区域和会话区" }).click();
+    assert.equal(await page.locator(".AppFrame_frame").getAttribute("data-gea-conversation-view"), "split");
+    await page.waitForFunction(() => document.querySelector(".AppFrame_handle")?.getBoundingClientRect().width > 0);
+    await page.locator(".gea-conversation-toolbar").getByRole("button", { name: "新建对话" }).click();
+    assert.equal(await page.locator(".AppFrame_frame").getAttribute("data-gea-conversation-view"), "split");
+    await page.getByRole("button", { name: "历史对话", exact: true }).last().click();
+    assert.equal(await page.locator(".gea-drawer-workspace .gea-sidebar-tab").getAttribute("aria-expanded"), "true");
+    assert.equal(await page.locator('[data-slot="sidebar.workspaces"]').evaluate((el) => getComputedStyle(el).display), "flex");
+    await page.locator(".gea-drawer-function .gea-sidebar-tab").click();
+
+    // A new Agent conversation must show the entire composer card above its
+    // scrollport edge; flex-end can otherwise clip the top of a tall card.
+    await page.setViewportSize({ width: 1536, height: 620 });
+    const composerGeometry = await page.evaluate(() => {
+      const scroll = document.querySelector('[data-rightbar-col] [data-phase="hero"] [data-conversation-scroll]');
+      const card = scroll?.querySelector('[data-composer-card]');
+      if (!scroll || !card) return null;
+      const viewport = scroll.getBoundingClientRect();
+      const outline = card.getBoundingClientRect();
+      return { top: outline.top, scrollTop: viewport.top, bottom: outline.bottom, scrollBottom: viewport.bottom };
+    });
+    assert.ok(composerGeometry, "new Agent conversation composer must be measurable");
+    assert.ok(composerGeometry.top >= composerGeometry.scrollTop - 1, JSON.stringify(composerGeometry));
+    assert.ok(composerGeometry.bottom <= composerGeometry.scrollBottom + 1, JSON.stringify(composerGeometry));
+    await page.setViewportSize({ width: 1536, height: 920 });
+
     // 登记 51：销售计划审批默认不展开筛选。
     const filterToggle = frame.locator("button[aria-expanded]").first();
     await filterToggle.waitFor();
