@@ -5,11 +5,7 @@
  * 「agent 发起前端工具调用 -> 页面执行 -> 用 tool 消息回填结果」这一次往返。
  * 业务方负责告诉桥"工具叫什么、参数长什么样、怎么执行"。
  *
- * 一手出处（官方仓库原文）：
- * - 前端工具与工具调用生命周期：docs/concepts/tools.mdx
- *   https://github.com/ag-ui-protocol/ag-ui/blob/main/docs/concepts/tools.mdx
- * - ToolMessage 形状、error 表示客户端工具失败：docs/sdk/js/core/types.mdx
- *   https://github.com/ag-ui-protocol/ag-ui/blob/main/docs/sdk/js/core/types.mdx
+ * 协议依据：AG-UI 的前端工具调用生命周期与 ToolMessage 类型。
  *
  * 不引 @ag-ui/core：官方包是纯类型+常量（zod 为可选 peer）。字段名严格对齐，
  * 将来要换成官方包或换成真 SSE 端点，是机械替换。
