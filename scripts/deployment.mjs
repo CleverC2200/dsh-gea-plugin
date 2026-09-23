@@ -183,12 +183,12 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
         ],
       },
     },
-    // 默认助手（标准模式）要能操作浏览器：挂 Playwright MCP，工具名形如 mcp__browser__browser_navigate。
-    // 本机文件与 Shell 由标准模式自带的 fs/bash 工具承担；这里只补浏览器这一块。
-    // 每次启动都会拉起一个 npx 进程 + 浏览器，测试和批量启动的场合用 GEA_BROWSER_MCP=0 关掉。
-    ...(process.env.GEA_BROWSER_MCP === "0"
-      ? []
-      : [
+    // 浏览器 MCP（Playwright）**默认不挂**：它一次注入 25 个 mcp__browser__* 工具，实测
+    // 合计 18,498 字符，占工具清单 2/3（整块从 12.2k 推到 27.7k）——业务问答用不到它，
+    // 却每次请求都付这份上下文；每次启动还会拉起一个 npx 进程 + 浏览器。
+    // 需要浏览器自动化的场合显式打开：GEA_BROWSER_MCP=1。
+    ...(process.env.GEA_BROWSER_MCP === "1"
+      ? [
           {
             insert: [
               {
@@ -203,7 +203,8 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
               },
             ],
           },
-        ]),
+        ]
+      : []),
     {
       insert: [
         {

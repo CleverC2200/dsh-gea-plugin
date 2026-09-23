@@ -25,6 +25,7 @@ import { Business, object, type Deployment } from "./host/business.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
 import { surfacePromptLine } from "./host/workbench-surface.ts";
 import { mountTurnAnchor } from "./host/turn-anchor.ts";
+import { mountSessionToolRestraint } from "./host/session-tool-restraint.ts";
 import { networkError } from "./shared/net-error.ts";
 import { registerHtmlPlugins, type PageBridgeHost } from "./html-plugins.ts";
 import { injectPageScan } from "./html-page-scan.ts";
@@ -457,6 +458,10 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       forgetModelConsumers();
     }),
   );
+  // 业务会话里把"浏览器自动化 + 终端/侧栏"这类全局工具从模型可见清单里摘掉：
+  // 它们与业务问答无关，却每次请求都占上下文（实测浏览器 25 个工具 = 18.5k 字符）。
+  // 必须在第一步之前装好，所以挂在 agent/pre-step 上、每个 agent 只装一次。
+  ctx.effect(() => mountSessionToolRestraint(ctx, (message) => console.log(message)));
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());
   pageBridgeHost.declare = (sessionId, catalog, source) =>
