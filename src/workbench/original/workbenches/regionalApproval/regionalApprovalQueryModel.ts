@@ -43,11 +43,13 @@ export const approvalStageProgressForSalesPlanStatusTotals = (
       if (!Number.isSafeInteger(total) || total <= 0 || pending === undefined) return [role, 0];
       const completed = SALES_PLAN_PROGRESS_STATUSES.reduce<number>((sum, status) => {
         // 退回目标保留其确认结果；发起退回的节点必须再次审批。
+        // 状态 5（审批完成·待回写）代表全部审批节点都已经签过字，品类也不例外——
+        // 之前把品类排除在外，导致"品类已审批（待回写）"一条都不计入品类进度，永远是 0%。
         const active = workflow.actor(status);
         const activePending = active && workflow.pending(active);
         const done =
           status === 10 ||
-          (status === 5 && role !== 'category') ||
+          status === 5 ||
           (activePending !== undefined && activePending > pending);
         return sum + (done ? Math.max(0, statusTotals[status] ?? 0) : 0);
       }, 0);
@@ -73,11 +75,12 @@ export const approvalStageProgressForSalesPlanPeriods = (
         if (pending === undefined || period.total <= 0) continue;
         total += period.total;
         completed += SALES_PLAN_PROGRESS_STATUSES.reduce<number>((sum, status) => {
+          // 同上：状态 5 已经走完品类审批，算该节点完成。
           const active = workflow.actor(status);
           const activePending = active && workflow.pending(active);
           const done =
             status === 10 ||
-            (status === 5 && role !== 'category') ||
+            status === 5 ||
             (activePending !== undefined && activePending > pending);
           return sum + (done ? Math.max(0, period.statusTotals[status] ?? 0) : 0);
         }, 0);
