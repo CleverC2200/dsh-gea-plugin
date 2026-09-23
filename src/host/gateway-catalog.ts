@@ -1,5 +1,12 @@
 /** GEA 网关语义模型的紧凑目录：把 inspect 产物压到模型能一次读完的大小。 */
 
+import {
+  rankByName,
+  type NameCandidate,
+  type NameField,
+  type NameMatch,
+} from "../shared/name-lookup.ts";
+
 /** 从 MCP 工具结果里取出文本。 */
 export function contentText(message: unknown): string {
   const content = (message as { content?: Array<{ type?: string; text?: string }> } | undefined)?.content;
@@ -195,8 +202,11 @@ function typedCounts(model: Model): { time: number; number: number } {
  * - 不带 model：只回**模型索引**（名字 + 一行说明 + 成员数量），并保证**名字完整**——
  *   线上实测：以前把名字和成员混在一起按 12KB 砍，尾部模型名整段丢失，模型以为目录不全，
  *   于是开始猜模型名（know/knowledge/age…），一轮打了 23 次调用还没答。
- * - 带 model：回该模型的成员名（按模型名子串匹配），成员超上限时只截成员，不再说"目录被截断"。
- * - 没有匹配：报错里**列出可用模型名**，让模型直接挑，而不是继续猜。
+ * - 带 model：按名字或内容回该模型的成员名，成员超上限时只截成员，不再说"目录被截断"。
+ * - 对不上时**不报错**：先给按内容最像的几个模型，实在不像就把带说明的完整索引回出去。
+ *   中文业务词和模型名/说明的用词常常不是一回事，报一句"没有这个模型"只会让模型继续猜。
+ *
+ * 名字怎么对上是 shared/name-lookup.ts 那套通用相似度（对任何业务词都成立，不为某个词写映射）。
  *
  * @param payload inspect 返回的 {"semanticModel":[...]}。
  */
@@ -208,27 +218,97 @@ export function projectCatalog(
     (model) => model && typeof model.name === "string" && model.name.trim(),
   );
   if (models.length === 0) throw new Error("GEA_CATALOG_EMPTY");
-  const filter = options.model?.trim().toLowerCase();
   const maxChars = options.maxChars ?? 12_000;
+  const filter = options.model?.trim();
   if (!filter) return modelIndex(models, maxChars);
-  const matched = models.filter((model) =>
-    (model.name ?? "").toLowerCase().includes(filter),
-  );
-  if (matched.length === 0)
-    throw new Error(
-      `GEA_CATALOG_MODEL_NOT_FOUND: ${options.model ?? ""}；可用模型：${models
-        .map((model) => model.name)
-        .slice(0, 20)
-        .join("、")}${models.length > 20 ? `（共 ${models.length} 个）` : ""}`,
-    );
-  return modelDetails(matched, {
+  const detailBudget = {
     maxMembers: options.maxMembersPerModel ?? 120,
     maxChars,
-  });
+  };
+  const ranked = rankByName(filter, models.map(catalogCandidate), { limit: MATCH_LIMIT + 8 });
+  // 一个都不像：把带说明的完整索引直接回给模型，一步挑对，省一次往返。
+  if (ranked.length === 0) return missedModel(filter, models, maxChars);
+  const hits = ranked.filter((match) => match.score >= HIT_SCORE);
+  // 只有"内容像"（说明/成员名里出现这个词、字面并不相等）：先按最像的给明细，并说清这是匹配结果。
+  if (hits.length === 0) return weakMatch(filter, models, ranked, detailBudget);
+  const shown = hits.slice(0, MATCH_LIMIT);
+  const rest = hits.slice(MATCH_LIMIT);
+  const parts: string[] = [];
+  // 靠说明/成员名命中的，要说清"为什么给你这几个"，模型才知道这不是完整名单。
+  if (!shown.some((match) => match.field.identity))
+    parts.push(
+      `（下面的模型是「${filter}」按内容命中的：${shown
+        .map((match) => `${match.id}=${match.field.label}`)
+        .join("、")}。model 只填模型名（英文标识）或它的子串，别把业务词当模型名。）`,
+    );
+  parts.push(modelDetails(picked(models, shown), detailBudget));
+  if (rest.length)
+    parts.push(
+      `（还有 ${rest.length} 个同样是内容命中的模型：${rest
+        .slice(0, 6)
+        .map((match) => match.id)
+        .join("、")}${rest.length > 6 ? " 等" : ""}；要哪个带完整名字再调一次。）`,
+    );
+  return parts.join("\n");
+}
+
+/** 一次最多回几个模型的明细：再多会把模型自己的上下文挤爆。 */
+const MATCH_LIMIT = 3;
+/** 名字/说明里**字面**出现查询词——够确定，直接当命中；再低的只算"像"。 */
+const HIT_SCORE = 0.8;
+
+const MEMBER_KEYS = ["dimensions", "measures", "segments"] as const;
+
+/** 一个模型能被搜到的全部文本：模型名、标题、说明，以及成员名（业务词可能就是某个成员）。 */
+function catalogCandidate(model: Model): NameCandidate {
+  const name = model.name ?? "";
+  const fields: NameField[] = [{ text: name, label: "模型名", identity: true }];
+  if (model.title) fields.push({ text: model.title, label: "标题" });
+  if (model.description) fields.push({ text: model.description, label: "说明" });
+  for (const key of MEMBER_KEYS)
+    for (const member of membersOf(model, key))
+      if (member) fields.push({ text: member, label: "成员名" });
+  return { id: name, fields };
+}
+
+/** 按名次取出对应的模型，保持传入名次顺序。 */
+function picked(models: readonly Model[], matches: readonly NameMatch[]): Model[] {
+  return matches
+    .map((match) => models.find((model) => model.name === match.id))
+    .filter((model): model is Model => Boolean(model));
+}
+
+/** 只有"内容像"时：给最像的几个的明细 + 其余候选名，别让这一轮空手。 */
+function weakMatch(
+  filter: string,
+  models: readonly Model[],
+  ranked: readonly NameMatch[],
+  budget: { maxMembers: number; maxChars: number },
+): string {
+  const shown = ranked.slice(0, 2);
+  const rest = ranked.slice(2);
+  return [
+    `「${filter}」不是任何一个模型名：model 只填模型名（英文标识）或它的子串；业务词先不带 model 调一次看完整索引。`,
+    "下面这些是按内容最像的（像的程度从高到低），先按第一个给你明细：",
+    ...shown.map((match) => `- ${match.id}：${match.field.label}命中「${match.field.text.slice(0, 60)}」`),
+    modelDetails(picked(models, shown), budget),
+    `其它候选：${rest.map((match) => match.id).join("、") || "（没有更像的了）"}`,
+    "（想看全部模型：不带 model 再调一次。）",
+  ].join("\n");
+}
+
+/** 一个都不像：不报错，直接把带说明的完整索引回出去。 */
+function missedModel(filter: string, models: readonly Model[], maxChars: number): string {
+  return (
+    `没有叫「${filter}」的模型：model 只能填模型名（英文标识）或它的子串，` +
+    "说明里的用词和模型名常常不是一回事，请照下面的说明挑。\n" +
+    "请从下面挑一个模型，带 model=模型名 再调一次：\n" +
+    modelIndex(models, maxChars)
+  );
 }
 
 /** 模型索引：先给名字与一句话，够模型挑一个再要明细。 */
-function modelIndex(models: Model[], maxChars: number): string {
+function modelIndex(models: readonly Model[], maxChars: number): string {
   const header =
     "GEA 网关语义模型索引（成员名可直接用于 Cube 查询，形如 模型.字段）：";
   const rich = (model: Model) => {
@@ -271,7 +351,7 @@ function modelIndex(models: Model[], maxChars: number): string {
 
 /** 指定模型后的明细：成员名按上限截断，但不让模型以为"目录"不完整。 */
 function modelDetails(
-  models: Model[],
+  models: readonly Model[],
   options: { maxMembers: number; maxChars: number },
 ): string {
   const lines: string[] = [

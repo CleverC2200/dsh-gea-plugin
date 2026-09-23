@@ -4,6 +4,7 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import { resolve } from "node:path";
 import type {} from "@deepseek-ai/dsh-skill";
 import type {} from "@deepseek-ai/dsh-fs";
+import { didYouMean } from "./shared/name-lookup.ts";
 
 export const inject = ["tools", "skills", "fs"];
 
@@ -49,7 +50,16 @@ export function apply(host: Context): void {
             const available = (await host.skills.list(view))
               .filter((item) => item.invocation.modelInvocable)
               .map((item) => item.name);
-            throw new Error(`该 Skill 当前不可用。当前可用技能：${available.join("、") || "无"}。先用 skill 工具加载完整技能名，再读取正文明确链接的参考文件；不要猜测技能名或用 SKILL.md 代替参考路径。`);
+            // 技能名同样是英文标识：先把最像的说出来，再列全量，别只回一句"当前不可用"。
+            const closest = didYouMean(
+              String(args.skill),
+              available.map((name) => ({
+                id: name,
+                fields: [{ text: name, label: "技能名", identity: true }],
+              })),
+              { label: "Skill" },
+            );
+            throw new Error(`${closest || "该 Skill 当前不可用。"}当前可用技能：${available.join("、") || "无"}。先用 skill 工具加载完整技能名，再读取正文明确链接的参考文件；不要猜测技能名或用 SKILL.md 代替参考路径。`);
           }
           if (skill.resourceBase?.kind !== "directory")
             throw new Error("该 Skill 没有本地参考目录，请使用正文提供的资源读取方式。");
