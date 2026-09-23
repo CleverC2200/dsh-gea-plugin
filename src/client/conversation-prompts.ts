@@ -125,6 +125,22 @@ export const approvalConversation: ConversationPromptConfig = {
   ],
 };
 
+/** 主生产计划（MPS）：沿用原型里的「主计划参谋」定位与推荐问题。 */
+export const mpsPlanConversation: ConversationPromptConfig = {
+  name: "主计划参谋",
+  intro: "我按链路口径帮你核对月计划：三路需求是否齐备、主数据与约束是否就位，缺口和调拨拆分该怎么看。",
+  boundary: "只出建议、不改计划；正式计划仍以月计划编制流程为准。",
+  hideActions: true,
+  actions: [],
+  prompts: [
+    "生成 10 月滚动计划初稿",
+    "看各基地 M+2 产能",
+    "三路需求对不上的地方",
+    "M+2 缺口怎么处置",
+    "这个月调拨品拆分规则",
+  ],
+};
+
 /** 经销商补货（库存）业务页沿用原有助手文案。 */
 export const regionalPlanConversation: ConversationPromptConfig = {
   name: "区域计划助手",

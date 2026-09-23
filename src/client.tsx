@@ -34,6 +34,7 @@ import {
   inboxConversation,
   inventoryConversation,
   inventoryWorkbenchConversation,
+  mpsPlanConversation,
   orderFulfillmentConversation,
   orderManagementConversation,
   regionalPlanConversation,
@@ -49,6 +50,7 @@ import brandLogo from "./client/brand-logo.png";
 import shellCss from "./client/shell.css";
 import workbenchCss from "./workbench/workbench.css";
 import categoryPlanPrototype from "./workbench/prototypes/category-plan-v5.html";
+import mpsPlanPrototype from "./workbench/prototypes/mps-plan-v0.html";
 import regionalPlanPrototype from "./workbench/prototypes/regional-plan-v9.html";
 import { ApiLogCenter } from "./workbench/api-log-center.tsx";
 
@@ -60,6 +62,11 @@ import { ApiLogCenter } from "./workbench/api-log-center.tsx";
 const categoryPlanDocument = categoryPlanPrototype.replace(
   "</head>",
   '<style data-gea-embed="single-conversation">.app{grid-template-columns:minmax(0,1fr)!important}aside.chat{display:none!important}</style></head>',
+);
+/** 主生产计划（MPS）数字人原型：同样只关掉它自带的右侧会话列，会话统一由外壳承载。 */
+const mpsPlanDocument = mpsPlanPrototype.replace(
+  "</head>",
+  '<style data-gea-embed="single-conversation">.ap-app{grid-template-columns:minmax(0,1fr)!important}aside.ap-dock{display:none!important}</style></head>',
 );
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
@@ -74,6 +81,7 @@ const PANEL = "gea-proof" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;
 const REGIONAL_PLAN_PANEL = "gea-regional-plan" as MainPanelId;
 const CATEGORY_PLAN_PANEL = "plan-region-category" as MainPanelId;
+const MPS_PLAN_PANEL = "plan-category-production" as MainPanelId;
 type SidebarSection = BusinessMenuSection;
 type SidebarSections = Record<SidebarSection, boolean>;
 
@@ -102,6 +110,7 @@ export function apply(ctx: Context): void {
         [PANEL]: t("salesPlan"),
         [REGIONAL_PLAN_PANEL]: t("regionalPlanWorkbench"),
         [CATEGORY_PLAN_PANEL]: t("categoryPlanWorkbench"),
+        [MPS_PLAN_PANEL]: t("mpsPlanWorkbench"),
         [INBOX]: t("businessInbox"),
       },
     );
@@ -325,6 +334,32 @@ export function apply(ctx: Context): void {
       </>
     );
   }
+  // 主生产计划（MPS）：内嵌业务侧的「月计划协调数字人」V0 原型（纯模拟数据，不连 GEA/SAP/DMS）。
+  function MpsPlanPage() {
+    const [sessionError, setSessionError] = useState("");
+    useEffect(() => {
+      // 和其他业务页一样挂一个只读会话，让右侧会话区常驻。
+      const hide = ctx.agentWorkbench.showConversation(MPS_PLAN_PANEL);
+      void ctx.agentWorkbench
+        .open(MPS_PLAN_PANEL)
+        .catch((error) => setSessionError(String(error.message)));
+      return () => hide();
+    }, []);
+    return (
+      <>
+        <style>{shellCss}</style>
+        {sessionError && <div role="alert">{sessionError}</div>}
+        <section className="gea-workbench-shell">
+          <iframe
+            className="gea-workbench-frame"
+            title={t("mpsPlanWorkbench")}
+            sandbox="allow-scripts"
+            srcDoc={mpsPlanDocument}
+          />
+        </section>
+      </>
+    );
+  }
   function ApiLogPage() {
     const [environment, setEnvironment] = useState<"production" | "test">("production");
     useEffect(() => {
@@ -479,6 +514,7 @@ export function apply(ctx: Context): void {
     available.set(PANEL, t("salesPlan"));
     available.set(REGIONAL_PLAN_PANEL, t("regionalPlanWorkbench"));
     available.set(CATEGORY_PLAN_PANEL, t("categoryPlanWorkbench"));
+    available.set(MPS_PLAN_PANEL, t("mpsPlanWorkbench"));
     const menu = resolveBusinessMenu(BUSINESS_MENU_PRESET, available);
     return (
       <nav
@@ -634,9 +670,14 @@ export function apply(ctx: Context): void {
       { name: "main", key: CATEGORY_PLAN_PANEL, locale: "geaProof" },
       CategoryPlanPage,
     );
+    yield ctx.slots.register(
+      { name: "main", key: MPS_PLAN_PANEL, locale: "geaProof" },
+      MpsPlanPage,
+    );
     yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
     yield ctx.agentWorkbench.register({ id: REGIONAL_PLAN_PANEL, preset: "gea-readonly" });
     yield ctx.agentWorkbench.register({ id: CATEGORY_PLAN_PANEL, preset: "gea-readonly" });
+    yield ctx.agentWorkbench.register({ id: MPS_PLAN_PANEL, preset: "gea-readonly" });
     // 业务待办页也要有自己的会话栏：不登记的话右侧对话框整块不出现。
     yield ctx.agentWorkbench.register({ id: INBOX, preset: "gea-readonly" });
     ctx.layout.selectPanel(PANEL);
@@ -1356,6 +1397,7 @@ const BUSINESS_CONVERSATIONS: Record<string, ConversationPromptConfig> = {
   [PANEL]: approvalConversation,
   [REGIONAL_PLAN_PANEL]: regionalPlanConversation,
   [CATEGORY_PLAN_PANEL]: categoryPlanConversation,
+  [MPS_PLAN_PANEL]: mpsPlanConversation,
   "inventory-dealer": inventoryConversation,
   "inventory-apsdemand": demandOpsConversation,
   "inventory-apsdelivery": deliveryOpsConversation,

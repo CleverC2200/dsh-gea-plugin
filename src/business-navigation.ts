@@ -85,7 +85,7 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
       { id: "plan-region-category", title: "品类计划工作台(开发中)" },
       { id: "gea-proof", title: "销售计划" },
       { id: "gea-regional-plan", title: "区域计划(开发中)" },
-      { id: "plan-category-production", title: "品类与生产计划(开发中)" },
+      { id: "plan-category-production", title: "主生产计划（MPS）(开发中)" },
       { id: "plan-capacity-assessment", title: "产能评估(待设计)" },
     ],
   },
