@@ -596,6 +596,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "status",
     "notifications",
     "workflow/config",
+    // 界面刷新时重新解析账号角色（管理员刚改完权限不必重新登录）。
+    "approval/roles",
     "sales-plan/action",
     "sales-plan/draft",
     "sales-plan/submit",
@@ -752,6 +754,12 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 break;
               case "workflow/config":
                 value = await business.workflowConfig(payload, request.signal);
+                break;
+              // 界面上的「刷新」会走这里：重新解析当前账号角色，管理员刚改完权限的人也
+              // 不用重新登录就能看到新的可审批节点。
+              case "approval/roles":
+                await business.refreshApprovalRoles(request.signal, { force: true });
+                value = { roles: business.status().roles ?? [] };
                 break;
               case "notifications":
                 value = await business.notifications(payload, request.signal);
