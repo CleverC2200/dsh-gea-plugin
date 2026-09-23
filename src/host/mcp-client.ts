@@ -14,10 +14,14 @@ export type McpTool = {
   /** 入参名清单（给模型看的最小信息，完整 schema 太大）。 */
   parameters: string[];
   required: string[];
+  /** 服务端原样返回的入参 schema：只在按工具名取完整定义时才展开给模型。 */
+  inputSchema?: unknown;
 };
 
 export type McpModule = {
   tools(): McpTool[];
+  /** 某个工具的完整入参定义（含类型、枚举、嵌套字段）；名字不存在返回 undefined。 */
+  schema(name: string): string | undefined;
   call(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string>;
 };
 
@@ -31,6 +35,8 @@ const MAX_TOOLS = 40;
 const MAX_RESULT_CHARS = 20_000;
 /** 单条资源结果内联上限：够模型读出结论，又不至于把一次查询塞爆上下文。 */
 const MAX_RESOURCE_INLINE_CHARS = 12_000;
+/** 单个工具入参定义的上限：Schema 是服务端给的，不能让它把上下文吃爆。 */
+const MAX_TOOL_SCHEMA_CHARS = 2_000;
 
 type JsonRpcReply = {
   id?: unknown;
@@ -82,12 +88,12 @@ function toolList(result: unknown): McpTool[] {
   if (!Array.isArray(tools)) return [];
   return tools
     .slice(0, MAX_TOOLS)
-    .map((raw) => {
+    .map((raw): McpTool | null => {
       const tool = (raw ?? {}) as {
         name?: unknown;
         description?: unknown;
         annotations?: { readOnlyHint?: unknown; destructiveHint?: unknown };
-        inputSchema?: { properties?: Record<string, unknown>; required?: unknown };
+        inputSchema?: unknown;
       };
       // MCP annotations are advisory, but a module that explicitly marks a tool
       // destructive or non-read-only must never pass through this read-only client.
@@ -97,9 +103,10 @@ function toolList(result: unknown): McpTool[] {
         tool.annotations?.destructiveHint === true
       )
         return null;
-      const properties = tool.inputSchema?.properties;
-      const required = Array.isArray(tool.inputSchema?.required)
-        ? tool.inputSchema!.required.filter(
+      const schema = asRecord(tool.inputSchema) ?? {};
+      const properties = asRecord(schema.properties);
+      const required = Array.isArray(schema.required)
+        ? schema.required.filter(
             (item): item is string => typeof item === "string",
           )
         : [];
@@ -110,6 +117,7 @@ function toolList(result: unknown): McpTool[] {
           : {}),
         parameters: properties ? Object.keys(properties).slice(0, 30) : [],
         required,
+        ...(tool.inputSchema ? { inputSchema: tool.inputSchema } : {}),
       };
     })
     .filter((tool): tool is McpTool => tool !== null && tool.name.length > 0);
@@ -135,6 +143,269 @@ function resultText(result: unknown): string {
 
 /** 结果里的资源链接（大结果以 `resource_link` 返回，正文要另读一次）。 */
 type ResourceLink = { uri: string; ossUrl?: string };
+
+/**
+ * 把一个字段的 schema 压成一行：类型、枚举、嵌套字段名。
+ * 服务端 schema 可能是空壳（例如 `queries.items.properties` 为空），如实写"未声明"，
+ * 不要替服务端编一套契约。
+ */
+function fieldLine(name: string, schema: unknown, required: boolean): string {
+  const value = asRecord(schema) ?? {};
+  const types = [
+    ...(typeof value.type === "string" ? [value.type] : []),
+    ...(Array.isArray(value.type) ? value.type.filter((t): t is string => typeof t === "string") : []),
+  ];
+  const enumValues = Array.isArray(value.enum)
+    ? value.enum.filter((item) => typeof item === "string" || typeof item === "number")
+    : [];
+  const items = asRecord(value.items);
+  const itemProps = asRecord(items?.properties);
+  const nested = itemProps ? Object.keys(itemProps) : [];
+  const parts = [
+    `- ${name}（${required ? "必填" : "可选"}${types.length ? `，${types.join("|")}` : ""}${
+      enumValues.length ? `，枚举：${enumValues.join("|")}` : ""
+    }）`,
+  ];
+  const description = str(value.description);
+  if (description) parts.push(`：${description.replace(/\s+/g, " ").slice(0, 160)}`);
+  if (items) {
+    parts.push(
+      nested.length
+        ? `　[数组，元素字段：${nested.slice(0, 12).join("、")}]`
+        : "　[数组，元素结构服务端未声明]",
+    );
+  } else if (value.properties && Object.keys(asRecord(value.properties) ?? {}).length) {
+    parts.push(`　[对象，字段：${Object.keys(asRecord(value.properties)!).slice(0, 12).join("、")}]`);
+  }
+  return parts.join("");
+}
+
+/** 工具的完整入参定义：给模型看的可读文本，带上限。 */
+export function describeToolSchema(tool: McpTool): string {
+  const schema = asRecord(tool.inputSchema) ?? {};
+  const properties = asRecord(schema.properties) ?? {};
+  const required = new Set(tool.required);
+  const lines = [
+    `${tool.name}（${required.size ? `必填参数：${[...required].join("、")}` : "无必填参数"}）`,
+    ...(tool.description ? [`说明：${tool.description}`] : []),
+  ];
+  const names = Object.keys(properties);
+  if (names.length === 0) lines.push("入参：服务端没有声明 inputSchema（按工具说明调用）。");
+  else
+    for (const name of names)
+      lines.push(fieldLine(name, properties[name], required.has(name)));
+  const text = lines.join("\n");
+  return text.length > MAX_TOOL_SCHEMA_CHARS
+    ? `${text.slice(0, MAX_TOOL_SCHEMA_CHARS)}…（定义过长已截断；按上面列出的字段与枚举调用）`
+    : text;
+}
+
+/**
+ * 工具结果里的失败信封：HTTP 200、JSON-RPC 也没有 error，但正文里写着失败。
+ *
+ * 实测它有三种长相，都要认：
+ * 1) 顶层 `{success:false, businessCode:"MCP_UPSTREAM_TOOL_ERROR", …}`；
+ * 2) 藏在 `structuredContent` 里（`{"result":{"isError":true,"structuredContent":{…}}}`）；
+ * 3) `content[].text` 是**对象**（不是字符串），内容同上。
+ *
+ * 只认顶层的代价就是：失败被原样当数据回给模型，界面上"报错都不展示了"。
+ */
+type ToolFailureKind = "validation" | "permission" | "upstream";
+
+type ToolFailure = {
+  code: string;
+  message: string;
+  kind: ToolFailureKind;
+  retryable?: boolean;
+  requestId?: string;
+  traceId?: string;
+  auditId?: string;
+  suggestedAction?: string;
+  /** 出错的字段路径，例如 queries[0].query.order。 */
+  path?: string;
+};
+
+const POLICY_FAILURE_CODES = new Set([
+  "AI_GATEWAY_DATA_PERMISSION_DENIED",
+  "AGENT_ACCESS_DENIED",
+  "GEA_PLUGIN_SESSION_REJECTED",
+  "DATA_GRANTS_EMPTY",
+]);
+
+/** 失败码的形态：`OK` 这类正常码不能误判成失败。 */
+const FAILURE_CODE =
+  /(ERROR|FAILED|FAILURE|DENIED|REJECTED|INVALID|EXCEEDED|NOT_FOUND|EMPTY|UNKNOWN|UNAVAILABLE|TIMEOUT|EXPIRED|FORBIDDEN)/;
+
+const str = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim() ? value : undefined;
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** 对象，或者是 JSON 字符串；其它一律 undefined。 */
+function asJsonRecord(value: unknown): Record<string, unknown> | undefined {
+  const direct = asRecord(value);
+  if (direct) return direct;
+  const text = str(value);
+  if (!text || !text.trim().startsWith("{")) return undefined;
+  try {
+    return asRecord(JSON.parse(text));
+  } catch {
+    return undefined;
+  }
+}
+
+/** 一处候选对象是不是失败信封；不是就返回 undefined。 */
+function failureOf(record: Record<string, unknown> | undefined): ToolFailure | undefined {
+  if (!record) return undefined;
+  const nested = asRecord(record.structuredContent);
+  const code = [record.businessCode, record.code, nested?.businessCode, nested?.code]
+    .map(str)
+    .find((item): item is string => item !== undefined && FAILURE_CODE.test(item));
+  const failed = record.isError === true || record.success === false || nested?.success === false;
+  // success:false / isError:true 是明确的失败；没有它们时只看"失败形态的码"。
+  if (!failed && !code) return undefined;
+  const message =
+    str(record.message) ?? str(nested?.message) ?? str(record.error) ?? "";
+  if (!code && !message) return undefined;
+  const details = asRecord(record.details) ?? asRecord(nested?.details);
+  const category = str(record.category) ?? str(nested?.category);
+  const suggestedAction = str(record.suggestedAction) ?? str(nested?.suggestedAction);
+  const resolved = code ?? "GEA_MCP_TOOL_ERROR";
+  const permission =
+    POLICY_FAILURE_CODES.has(resolved) ||
+    (/DENIED|FORBIDDEN/.test(resolved) && !/INVALID/.test(resolved)) ||
+    /授权|权限/.test(message);
+  const validation =
+    !permission &&
+    (resolved === "AI_SCHEMA_INVALID" ||
+      category === "VALIDATION" ||
+      suggestedAction === "FIX_ARGUMENTS" ||
+      /参数|字段|格式|必须/.test(message));
+  return {
+    code: resolved,
+    message,
+    kind: permission ? "permission" : validation ? "validation" : "upstream",
+    ...(typeof record.retryable === "boolean"
+      ? { retryable: record.retryable }
+      : typeof nested?.retryable === "boolean"
+        ? { retryable: nested.retryable as boolean }
+        : {}),
+    ...(str(record.requestId) ?? str(nested?.requestId)
+      ? { requestId: (str(record.requestId) ?? str(nested?.requestId))! }
+      : {}),
+    ...(str(record.traceId) ?? str(nested?.traceId)
+      ? { traceId: (str(record.traceId) ?? str(nested?.traceId))! }
+      : {}),
+    ...(str(record.auditId) ?? str(nested?.auditId)
+      ? { auditId: (str(record.auditId) ?? str(nested?.auditId))! }
+      : {}),
+    ...(suggestedAction ? { suggestedAction } : {}),
+    ...(str(details?.path) ? { path: str(details?.path)! } : {}),
+  };
+}
+
+/** 从整条工具结果里找失败：顶层 / structuredContent / content[].text（对象或 JSON 字符串）。 */
+function toolFailure(result: unknown): ToolFailure | undefined {
+  const top = asRecord(result);
+  const fromTop = failureOf(top);
+  if (fromTop) return fromTop;
+  const content = (top?.content ?? (Array.isArray(result) ? result : undefined)) as unknown;
+  if (!Array.isArray(content)) return undefined;
+  for (const item of content) {
+    const entry = asRecord(item);
+    const fromText = failureOf(asJsonRecord(entry?.text));
+    if (fromText) return fromText;
+    const fromItem = failureOf(entry);
+    if (fromItem) return fromItem;
+  }
+  return undefined;
+}
+
+/**
+ * 把失败信封翻成人话：授权类如实回报（不是红色调用失败，延续"无权限要说清楚"的要求），
+ * 真失败则抛错，界面上就是红色错误 + 可读原因 + requestId。
+ */
+/**
+ * 按错误类型给修复动作（不再用一句"不要换参数重试"盖住所有情况）：
+ * - 参数校验失败 → 指出字段与格式要求，允许改好参数后重新调用；
+ * - 权限/授权 → 如实说明缺哪一项，不要换模块凑；
+ * - 下游执行失败 → 展示原因与 requestId，并按 retryable 讲清能不能重试。
+ */
+function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error } {
+  const detail = [
+    failure.code,
+    failure.path ? `字段=${failure.path}` : undefined,
+    failure.requestId ? `requestId=${failure.requestId}` : undefined,
+    failure.traceId ? `traceId=${failure.traceId}` : undefined,
+    failure.auditId ? `auditId=${failure.auditId}` : undefined,
+    failure.suggestedAction ? `建议动作=${failure.suggestedAction}` : undefined,
+  ]
+    .filter(Boolean)
+    .join("，");
+  const queriesHint = /queries/i.test(failure.path ?? "") || /queries/i.test(failure.message)
+    ? "（提示：Cube 查询要放在 arguments.queries 里，不要提到工具顶层。）"
+    : "";
+  if (failure.kind === "permission")
+    return {
+      text:
+        `模块数据未授权：${failure.message || failure.code}（${detail}）。` +
+        "这是当前账号/Agent 的权限或数据授权没配置，不是参数问题：说清缺哪一项授权，不要换模块或换写法重试。",
+    };
+  if (failure.kind === "validation")
+    return {
+      error: new Error(
+        `GEA_MCP_TOOL_ERROR：入参没通过网关校验（${detail}）：${
+          failure.message || failure.code
+        }${queriesHint}。照它的提示改好参数后可以重新调用一次；不要用同一份参数原样重试。`,
+      ),
+    };
+  return {
+    error: new Error(
+      `GEA_MCP_TOOL_ERROR：下游工具执行失败（${detail}）${
+        failure.message ? `：${failure.message}` : ""
+      }。这是网关下游的错误，不是参数问题；${
+        failure.retryable === false
+          ? "不要原样自动重试，修好参数或稍后可发起新的一次调用"
+          : "可按同一参数重试一次"
+      }；把 requestId 交给排查。`,
+    ),
+  };
+}
+
+/** 结果正文：`text` 可能是字符串，也可能是对象（实测网关两种都发过）。 */
+function readableTexts(result: unknown): string {
+  const content = (result as { content?: unknown })?.content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((item) => {
+      const text = (item as { text?: unknown })?.text;
+      if (typeof text === "string") return text;
+      if (text !== null && typeof text === "object")
+        return JSON.stringify(text);
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+/** 先判失败，再取正文：失败按类型分支处理，正常结果才原样返回。 */
+function readableToolOutcome(result: unknown, text: string): string {
+  const failure = toolFailure(result);
+  if (!failure) {
+    // 认不出信封但网关自己标了失败：至少别把原文当成功数据。
+    if ((result as { isError?: unknown })?.isError === true)
+      throw new Error(`GEA_MCP_TOOL_ERROR：${text || "工具返回失败但没给原因"}`);
+    return text;
+  }
+  const outcome = formatToolFailure(failure);
+  if (outcome.error) throw outcome.error;
+  return outcome.text ?? text;
+}
 
 function resourceLinks(result: unknown): ResourceLink[] {
   const content = (result as { content?: unknown })?.content;
@@ -238,6 +509,10 @@ export async function openModuleMcp(
   const tools = await listModuleTools(transport, signal, negotiated);
   return {
     tools: () => tools,
+    schema: (name) => {
+      const tool = tools.find((item) => item.name === name);
+      return tool ? describeToolSchema(tool) : undefined;
+    },
     call: async (name, args, callSignal) => {
       const id = randomUUID();
       const response = await post(
@@ -251,7 +526,8 @@ export async function openModuleMcp(
       );
       const result = await readReply(response, id, callSignal);
       const links = resourceLinks(result);
-      if (links.length === 0) return resultText(result);
+      if (links.length === 0)
+        return readableToolOutcome(result, readableTexts(result) || resultText(result));
       // 线上实测：这类结果以 `data-artifact://gateway/…` 链接返回，模型得再调一次
       // 平台的读资源工具；它会把 server 猜成 browser（那个服务没连），整轮白跑。
       // 宿主在同一条 MCP 会话里读回来内联，模型一次调用就能看到内容。

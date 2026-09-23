@@ -971,6 +971,9 @@ test(
           "表名不写全名，只用去前缀的关键词",
         );
         assert.ok(tool.function.description.includes("不允许自己写 SQL"));
+        // 参数形状走服务端 schema 的两级读取：先摘要，再按工具名要完整定义。
+        assert.ok(tool.function.description.includes("schema=true"));
+        assert.equal(tool.function.parameters.properties.schema.type, "boolean");
       },
     );
     await t.test(

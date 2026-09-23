@@ -84,6 +84,22 @@ test(
       JSON.stringify(body.messages).includes("【业务位置｜宿主事实】"),
       "系统提示里要带当前业务位置",
     );
+    // Cube 侧实测的两类错法要写进协议：dimension 塞进 measures 会回
+    // "not found for path"；日期值写成年月会报 invalid input syntax for type date。
+    assert.ok(
+      instructions.includes("not found for path"),
+      "协议里要写清 Cube 的 not found for path 该怎么理解",
+    );
+    assert.ok(
+      instructions.includes("YYYY-MM-DD"),
+      "协议里要写清日期成员的取值格式",
+    );
+    // 网关只校验 action/queries/response_mode，嵌套的 Cube 查询没有 schema——
+    // order 形状写错就回 AI_SCHEMA_INVALID，所以形状必须由我们讲清楚。
+    assert.ok(
+      instructions.includes("推荐对象") && instructions.includes("AI_SCHEMA_INVALID"),
+      "协议里要写清 Cube 查询/order 的字段形状",
+    );
     assert.ok(instructions.includes("不要展示或解释接口、工具名、字段名、JSON、哈希"));
     // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在
     // 回答里渲染界面；这里显式记录该行为，避免它变成无声的提示词漂移。
