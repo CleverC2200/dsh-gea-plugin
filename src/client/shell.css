@@ -1213,6 +1213,21 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   position: relative;
   box-sizing: border-box;
 }
+/* Draw one continuous boundary beside the Agent conversation, below its toolbar.
+   A phase-level border leaves a gap and moves when the welcome view changes. */
+@media (min-width: 801px) {
+.AppFrame_frame[data-gea-conversation-view="split"]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_rightbarCol::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 58px;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: #d9dde3;
+  pointer-events: none;
+}
+}
 .AppFrame_frame[data-gea-conversation-view="split"] > .AppFrame_rightbarCol,
 .AppFrame_frame[data-gea-conversation-view="chat"] > .AppFrame_rightbarCol,
 .AppFrame_frame[data-gea-conversation-view="center"] > .AppFrame_centerCol {
