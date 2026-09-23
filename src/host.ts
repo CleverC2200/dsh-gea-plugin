@@ -457,7 +457,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       text: [
         "GEA 网关 MCP 取数协议（只有工作台页面上看不到的数据才用它）：",
         "- 计划事实（提报状态、版本、明细、变更记录）优先用 gea_sales_plan_read；历史发货、经销商/分仓库存、货龄、补货周期、政策、节令、把握度，以及知识库类问题，用当前已加载的 GEA 网关 MCP 工具——**统一经 gea_module_mcp 调用**（给定 consumerCode + tool + arguments）。不要直接用平台直挂的 `mcp__gea-gateway__*` 工具：那条路的失败是原始报文，宿主不会把它翻成可读原因，也不会替你收口。",
-        "- 先取语义模型目录再查询：调用 gea_gateway_catalog（需要看某个模型时带 model=模型名），拿到模型名与成员名；成员名照抄，不要凭业务名猜。目录里的成员名形如 模型.字段，就是查询时要用的成员。成员名后的 [time]/[number] 是类型：`[time]` 取值要写完整日期，`[number]` 只是数值类型的维度（仍放 dimensions）。拿不准某个成员的值长什么样时，用 `members=[成员名…] + values=true` 先取一行真实值，照它的格式写查询。",
+        "- 先取语义模型目录再查询：调用 gea_gateway_catalog（需要看某个模型时带 model=模型名），拿到模型名与成员名；成员名照抄，不要凭业务名猜。**model 只填模型名（英文标识）或它的子串**；把业务词当模型名是命中不到的——这时目录不会报错，而是按内容把最像的模型和完整索引回给你，照它挑一个再调即可，不要重复猜名字。目录里的成员名形如 模型.字段，就是查询时要用的成员。成员名后的 [time]/[number] 是类型：`[time]` 取值要写完整日期，`[number]` 只是数值类型的维度（仍放 dimensions）。拿不准某个成员的值长什么样时，用 `members=[成员名…] + values=true` 先取一行真实值，照它的格式写查询。",
         '- 不要自己去读 inspect 的原始产物：它约 33 万字符，宿主只会内联前 30KB，剩下的存成本机文件，你没有读文件的工具。目录工具已经把它压到可一次读完的大小。',
         '- 再查询：action="query"，queries 放 1 到 8 个具名 Cube 查询对象，每项形如 {"name":"<别名>","query":{…}}，其中 query 必须是 Cube 查询对象（不能写成字符串或自然语言）；response_mode 默认 "resource"，只有需要直接看行时才用 "inline_complete"。',
         '- Cube 查询对象里**只放这几个键**：dimensions（成员名数组）、measures（成员名数组）、filters（[{"member":成员,"operator":"equals|contains|…","values":[…]}]）、order、limit。不确定形状时先 `tool=query_business_data` + `schema=true` 读服务端定义；服务端当前没声明到的嵌套形状（order 就是），以它返回的校验报错为准——这几行只是 schema 补全前的临时说明。',
