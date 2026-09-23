@@ -11,7 +11,6 @@ export const runtimePackages = [
   "@cleverc2200/dsh-agent-workbench",
   "dsh-agent-manage",
   "dsh-plugin",
-  "@dsh-external/dsh-visualize",
 ];
 
 async function packageVersion(root, name) {

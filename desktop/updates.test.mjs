@@ -170,14 +170,14 @@ test('optional plugin toggle persists and restarts the runtime graph',async t=>{
   let runtimeRestarts=0;
   const f=await fixture(t,{restartRuntime:async()=>{runtimeRestarts++;}});
   const manifest=JSON.parse(await readFile(join(f.data,'baseline/package.json'),'utf8'));
-  manifest.dependencies['@dsh-external/dsh-visualize']='0.1.2';
+  manifest.dependencies['dsh-raw-html-v2']='0.1.0';
   await writeFile(join(f.data,'baseline/package.json'),JSON.stringify(manifest));
-  await mkdir(join(f.data,'baseline/node_modules/@dsh-external/dsh-visualize'),{recursive:true});
-  await writeFile(join(f.data,'baseline/node_modules/@dsh-external/dsh-visualize/package.json'),JSON.stringify({name:'@dsh-external/dsh-visualize',version:'0.1.2'}));
-  assert.equal((await f.updates.status()).optional.plugins.find(p=>p.key==='@dsh-external/dsh-visualize').enabled,true);
-  await f.updates.optionalToggle({name:'@dsh-external/dsh-visualize',enabled:false});
-  assert.equal(runtimeRestarts,1);assert.equal((await f.updates.status()).optional.plugins.find(p=>p.key==='@dsh-external/dsh-visualize').enabled,false);
-  const saved=JSON.parse(await readFile(join(f.data,'plugins/optional-state.json'),'utf8'));assert.equal(saved['@dsh-external/dsh-visualize'],false);
+  await mkdir(join(f.data,'baseline/node_modules/dsh-raw-html-v2'),{recursive:true});
+  await writeFile(join(f.data,'baseline/node_modules/dsh-raw-html-v2/package.json'),JSON.stringify({name:'dsh-raw-html-v2',version:'0.1.0'}));
+  assert.equal((await f.updates.status()).optional.plugins.find(p=>p.key==='dsh-raw-html-v2').enabled,true);
+  await f.updates.optionalToggle({name:'dsh-raw-html-v2',enabled:false});
+  assert.equal(runtimeRestarts,1);assert.equal((await f.updates.status()).optional.plugins.find(p=>p.key==='dsh-raw-html-v2').enabled,false);
+  const saved=JSON.parse(await readFile(join(f.data,'plugins/optional-state.json'),'utf8'));assert.equal(saved['dsh-raw-html-v2'],false);
 });
 test('interval settings validate and persist; the plugin owns the schedule',async t=>{
   const {updates,counts,data}=await fixture(t);

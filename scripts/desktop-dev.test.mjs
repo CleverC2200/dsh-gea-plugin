@@ -17,7 +17,6 @@ test("desktop dev records the payload runtime and refuses incomplete payloads", 
   const names = [
     "@deepseek-ai/dsh", "@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app",
     "@cleverc2200/dsh-agent-workbench", "dsh-agent-manage", "dsh-plugin",
-    "@dsh-external/dsh-visualize",
   ];
   for (const name of names) {
     const path = join(payload, "node_modules", name);

@@ -3,7 +3,7 @@ import {readFile,writeFile,mkdir,rename,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
-const OPTIONAL_PLUGINS={'@dsh-external/dsh-visualize':{name:'@dsh-external/dsh-visualize'},'dsh-raw-html-v2':{name:'dsh-raw-html-v2'},'dsh-worktable':{name:'dsh-worktable'}};
+const OPTIONAL_PLUGINS={'dsh-raw-html-v2':{name:'dsh-raw-html-v2'},'dsh-worktable':{name:'dsh-worktable'}};
 const code=value=>typeof value==='string'&&/^[A-Z][A-Z_0-9]+$/.test(value);
 const errorCode=error=>code(error?.message)?error.message:code(error?.code)?error.code:'UPDATE_FAILED';
 /**

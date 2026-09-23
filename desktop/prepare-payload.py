@@ -21,7 +21,7 @@ for archive in sorted(args.archives.resolve().glob('*.tgz')):
     if name in records:
         raise SystemExit('Provide exactly one version per package: ' + name)
     records[name] = {'version': manifest['version'], 'file': archive.name, 'sha256': hashlib.sha256(archive.read_bytes()).hexdigest()}
-roots = ['@deepseek-ai/dsh', '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@cleverc2200/gea-dsh-prototype', '@cleverc2200/dsh-agent-workbench', 'dsh-plugin', 'dsh-agent-manage', '@dsh-external/dsh-visualize']
+roots = ['@deepseek-ai/dsh', '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@cleverc2200/gea-dsh-prototype', '@cleverc2200/dsh-agent-workbench', 'dsh-plugin', 'dsh-agent-manage']
 for name in roots:
     if name not in records:
         raise SystemExit('Missing required package: ' + name)
