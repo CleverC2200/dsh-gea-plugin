@@ -45,6 +45,49 @@ export function spillPathFrom(text: string): string | undefined {
   return match?.[1]?.replace(/[.,;:]+$/, "");
 }
 
+/**
+ * 从资源/工具结果里找 `rows` 数组（inline_complete 的返回形状可能被包一层）。
+ * 只认第一处，够用；找不到就返回 null。
+ */
+export function rowsFromPayload(payload: unknown): Array<Record<string, unknown>> | null {
+  if (Array.isArray(payload))
+    return payload.every((row) => row !== null && typeof row === "object")
+      ? (payload as Array<Record<string, unknown>>)
+      : null;
+  if (payload === null || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const direct = rowsFromPayload(record.rows ?? record.records ?? record.data ?? record.result ?? []);
+  return direct;
+}
+
+/** 工具返回的文本里夹着 JSON 时，取出里面的 rows。 */
+export function rowsFromText(text: string): Array<Record<string, unknown>> | null {
+  const parsed = parseFirstJsonObject(text);
+  return rowsFromPayload(parsed);
+}
+
+/**
+ * 把样例值排成人读的清单：模型查之前先看一眼"这一列长什么样"，
+ * 就不会再把 `2026-10` 当日期、把 `202608` 当完整日期。
+ */
+export function formatSampleValues(
+  rows: readonly Record<string, unknown>[],
+  members: readonly string[],
+): string {
+  if (rows.length === 0)
+    return "没有取到样例值（该模型在当前身份下可能没有数据，或这些成员都为空）。";
+  const first = rows[0] ?? {};
+  const lines = members.map((member) => {
+    const value = first[member];
+    return `- ${member} = ${value === undefined ? "（该行没有这个字段）" : JSON.stringify(value)}`;
+  });
+  return [
+    `成员样例值（取 1 行，共 ${members.length} 个成员）：`,
+    ...lines,
+    "查询里请照这些值的格式写：时间是完整日期（如 2026-10-01），文本年月是哪几位就写哪几位（如 202608）。",
+  ].join("\n");
+}
+
 /** 解析第一段完整 JSON 对象：工具结果常常是 JSON + 尾部提示文本。 */
 export function parseFirstJsonObject(text: string): unknown {
   const start = text.indexOf("{");
@@ -76,7 +119,7 @@ export function parseFirstJsonObject(text: string): unknown {
   throw new Error("GEA_CATALOG_TRUNCATED");
 }
 
-type Member = { name?: string };
+type Member = { name?: string; type?: string };
 type Model = {
   name?: string;
   title?: string;
@@ -88,11 +131,62 @@ type Model = {
 
 /** 语义模型里某一类成员的名字。 */
 function membersOf(model: Model, key: "dimensions" | "measures" | "segments"): string[] {
+  return memberEntriesOf(model, key).map((entry) => entry.name);
+}
+
+/**
+ * 成员名 + 类型。inspect 产物里每个成员都带 `type`（string/time/number/boolean），
+ * 我们以前只留名字，导致模型不知道哪个是日期（于是把 `2026-10` 当日期传）、
+ * 哪个是 number 类型的维度（于是塞进 measures 被拒）。这里把类型带出来。
+ */
+function memberEntriesOf(
+  model: Model,
+  key: "dimensions" | "measures" | "segments",
+): Array<{ name: string; type?: string }> {
   const list = model[key];
   if (!Array.isArray(list)) return [];
   return list
-    .map((member) => (typeof member?.name === "string" ? member.name : undefined))
-    .filter((name): name is string => Boolean(name));
+    .map((member) => {
+      const name = typeof member?.name === "string" ? member.name : undefined;
+      if (!name) return undefined;
+      const type = typeof member?.type === "string" ? member.type.trim().toLowerCase() : undefined;
+      return type ? { name, type } : { name };
+    })
+    .filter((entry): entry is { name: string; type?: string } => Boolean(entry));
+}
+
+/**
+ * 给成员名标类型。只标 time/number/boolean：
+ * - `string` 是绝大多数（854 个成员里 474 个），标了纯占字节，不标；
+ * - `[time]` 是这次最要紧的：看到它就知道"值要写成完整日期"。
+ */
+const typeTag = (entry: { name: string; type?: string }): string => {
+  const type = entry.type;
+  if (type === "time") return `${entry.name}[time]`;
+  if (type === "number") return `${entry.name}[number]`;
+  if (type === "boolean") return `${entry.name}[bool]`;
+  return entry.name;
+};
+
+/** 标好类型的成员名清单，供明细与索引共用。 */
+function taggedMembers(
+  model: Model,
+  key: "dimensions" | "measures" | "segments",
+): string[] {
+  return memberEntriesOf(model, key).map(typeTag);
+}
+
+/** 该模型的时间/数值成员数量：索引里用一句短话提示"这个模型要小心格式"。 */
+function typedCounts(model: Model): { time: number; number: number } {
+  const all = [
+    ...memberEntriesOf(model, "dimensions"),
+    ...memberEntriesOf(model, "measures"),
+    ...memberEntriesOf(model, "segments"),
+  ];
+  return {
+    time: all.filter((entry) => entry.type === "time").length,
+    number: all.filter((entry) => entry.type === "number").length,
+  };
 }
 
 /**
@@ -140,13 +234,15 @@ function modelIndex(models: Model[], maxChars: number): string {
   const rich = (model: Model) => {
     const description = (model.description ?? "").replace(/\s+/g, " ").trim();
     const measures = membersOf(model, "measures").length;
+    const typed = typedCounts(model);
     return (
       `- ${model.name}` +
       (description ? `  说明：${description.slice(0, 120)}` : "") +
       `  维度 ${membersOf(model, "dimensions").length} / 度量 ${measures} / 分段 ${membersOf(model, "segments").length}` +
       // 线上实测：模型把数值字段（如 agents_scm_inventory_age.qty）写进 measures，
       // 而这些 cube 一个 measure 都没定义，上游直接拒掉整批查询计划。
-      (measures === 0 ? "（无度量：所有成员都是维度，只放 dimensions）" : "")
+      (measures === 0 ? "（无度量：所有成员都是维度，只放 dimensions）" : "") +
+      (typed.time > 0 ? `（含 ${typed.time} 个时间成员，取值要完整日期）` : "")
     );
   };
   const namesOnly = (model: Model) => `- ${model.name}`;
@@ -181,13 +277,14 @@ function modelDetails(
   const lines: string[] = [
     "GEA 网关语义模型成员（可直接用于 Cube 查询，形如 模型.字段）：",
     "成员放 dimensions 还是 measures 由下面的类型决定：只有在“度量”里列出的成员才写进 measures。",
+    "成员名后的 [time] 是时间成员：取值要写完整日期（如 2026-10-01）；[number] 只是数值类型的维度，仍然放在 dimensions 里。",
   ];
   let membersTruncated = false;
   for (const model of models) {
     const name = model.name ?? "";
-    const dimensions = membersOf(model, "dimensions");
-    const measures = membersOf(model, "measures");
-    const segments = membersOf(model, "segments");
+    const dimensions = taggedMembers(model, "dimensions");
+    const measures = taggedMembers(model, "measures");
+    const segments = taggedMembers(model, "segments");
     const parts = [`- ${name}${model.title && model.title !== name ? `（${model.title}）` : ""}`];
     const description = (model.description ?? "").replace(/\s+/g, " ").trim();
     if (description) parts.push(`  说明：${description.slice(0, 160)}`);
