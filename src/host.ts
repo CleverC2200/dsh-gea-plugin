@@ -507,7 +507,15 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   });
   // 每步把"用户这一轮问的是什么"钉在消息末尾：系统提示里的位置段只能劝阻，
   // 长轮次（一轮 17 次工具调用）里模型会把用户那条消息丢掉，最后说自己"没收到提问"。
-  ctx.effect(() => mountTurnAnchor(ctx));
+  // 用户换了问题 = 新的一轮：把"本轮"级的计数清零（重复读闸门、本轮白跑总账）。
+  ctx.effect(() =>
+    mountTurnAnchor(ctx, {
+      onNewQuestion: () => {
+        business.repeatReads().clear();
+        business.moduleMcpWaste().clear();
+      },
+    }),
+  );
   ctx.effect(() => async () => { await desktopLogin.dispose(); await webLogin.dispose(); business.dispose(); });
   if (config.analysisMode === "receipt")
     ctx.effect(() =>

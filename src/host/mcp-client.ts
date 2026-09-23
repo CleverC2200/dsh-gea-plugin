@@ -6,6 +6,7 @@
  * 最上面那层 JSON-RPC：initialize → tools/list → tools/call。
  */
 import { randomUUID } from "node:crypto";
+import { readableError, throwIfAborted } from "../shared/abort.ts";
 import { createParser } from "eventsource-parser";
 
 export type McpTool = {
@@ -77,7 +78,7 @@ async function readReply(
   signal: AbortSignal,
 ): Promise<unknown> {
   const text = await response.text();
-  signal.throwIfAborted();
+  throwIfAborted(signal);
   const messages: unknown[] = [];
   if (response.headers.get("content-type")?.includes("text/event-stream")) {
     createParser({
@@ -633,18 +634,25 @@ export async function openModuleMcp(
   const post = async (
     body: unknown,
     options: { version?: string; expectId?: string } = {},
-  ): Promise<Response> =>
-    transport.fetch(transport.url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json, text/event-stream",
-        ...(options.version ? { "MCP-Protocol-Version": options.version } : {}),
-      },
-      body: JSON.stringify(body),
-      signal,
-      redirect: "error",
-    });
+  ): Promise<Response> => {
+    try {
+      return await transport.fetch(transport.url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+          ...(options.version ? { "MCP-Protocol-Version": options.version } : {}),
+        },
+        body: JSON.stringify(body),
+        signal,
+        redirect: "error",
+      });
+    } catch (error) {
+      // 中止（用户点停止）时 fetch 会以 `signal.reason` 为拒绝原因——dsh 的 reason 是对象，
+      // 原样往上抛就会显示成 `[object Object]`。在最早的边界翻成可读错误。
+      throw readableError(error);
+    }
+  };
 
   let initialized = false;
   /** 协商成功的协议版本：网关要求后续每次请求都带上它（缺了 tools/list 会被 400）。 */
@@ -852,17 +860,23 @@ export async function listModuleTools(
   version?: string,
 ): Promise<McpTool[]> {
   const id = randomUUID();
-  const response = await transport.fetch(transport.url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json, text/event-stream",
-      // 线上实测：网关要求每个请求都带协议版本；缺了它 tools/list 直接 400。
-      ...(version ? { "MCP-Protocol-Version": version } : {}),
-    },
-    body: JSON.stringify({ jsonrpc: "2.0", id, method: "tools/list", params: {} }),
-    signal,
-    redirect: "error",
-  });
+  let response: Response;
+  try {
+    response = await transport.fetch(transport.url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        // 线上实测：网关要求每个请求都带协议版本；缺了它 tools/list 直接 400。
+        ...(version ? { "MCP-Protocol-Version": version } : {}),
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id, method: "tools/list", params: {} }),
+      signal,
+      redirect: "error",
+    });
+  } catch (error) {
+    // 与上面同理：中止原因可能是对象，别让它变成 [object Object]。
+    throw readableError(error);
+  }
   return toolList(await readReply(response, id, signal));
 }

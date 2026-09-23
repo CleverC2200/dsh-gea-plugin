@@ -44,6 +44,7 @@ import {
   rememberModelConsumers,
 } from "./catalog-consumers.ts";
 import { modelOfQueries } from "./cube-gap-ledger.ts";
+import { isAbortError, readableError } from "../shared/abort.ts";
 import { didYouMean } from "../shared/name-lookup.ts";
 import {
   measureHint,
@@ -191,6 +192,39 @@ export function registerGeaTools(
     }
   };
 
+  /**
+   * 同一轮里的重复读闸门（见 host/repeat-guard.ts）。
+   *
+   * 线上实测一轮 117 步：同一个模型明细读了 31 次、同一份目录索引 24 次。元信息去重只省了
+   * 带宽，模型还是每次都占一步。返回 undefined 表示"照常读"；返回字符串就是"别读了"的提示；
+   * 一轮里的重复累计超过上限就直接抛停手（和模块熔断同一套止损口径）。
+   */
+  const overRepeated = (
+    scope: string,
+    key: string,
+    what: string,
+  ): string | undefined => {
+    const verdict = business.repeatReads().note(scope, key);
+    if (verdict === "fresh") return undefined;
+    wasteScope(scope);
+    if (verdict === "stop")
+      throw new Error(
+        `GEA_TURN_REPEAT_STOPPED: 这一轮同一份东西已经重复读了 ${business
+          .repeatReads()
+          .repeats(scope)} 次（${what}）。现在停手：不要再重复读目录/成员/同一条查询，` +
+          "用已经拿到的证据作答；确实缺数据就直接说清缺哪一项、需要谁补，然后结束这一轮。",
+      );
+    return JSON.stringify({
+      source: "GEA_READ_DEDUP",
+      availability: "already-read",
+      note: `「${what}」这一轮已经读过了（同一份内容最多认真回两次）：直接用手上的结果，别再读一遍；要看别的模型/别的范围就换参数。`,
+    });
+  };
+  /** 记一次白跑；scope 为空时按全局记。 */
+  const wasteScope = (scope: string): void => {
+    business.moduleMcpWaste().waste(scope || "global");
+  };
+
   ctx.effect(() =>
     ctx.tools.register(
       defineTool({
@@ -250,7 +284,24 @@ export function registerGeaTools(
           title: "GEA · " + args.kind,
           rawInput: args.query,
         }),
-        execute: (args, exec) => business.agentQuery(args, exec.signal),
+        execute: async (args, exec) => {
+          // 同一条只读查询在同一轮里重复发（线上实测同一个 9 月 periods 读了 15 次）：
+          // 前两次照常查，之后就只回"本轮已读过"，并把重复计入本轮总账。
+          const scope = exec.agent?.id ?? "global";
+          const key = `plan|${JSON.stringify(args)}`;
+          const repeat = overRepeated(
+            scope,
+            key,
+            `销售计划 ${String(args.kind)}`,
+          );
+          if (repeat) return repeat;
+          try {
+            return await business.agentQuery(args, exec.signal);
+          } catch (error) {
+            // 中止（用户点停止）不是取数失败：翻成可读的中止说明，别抛成 [object Object]。
+            throw readableError(error);
+          }
+        },
       }),
     ),
   );
@@ -549,6 +600,8 @@ export function registerGeaTools(
           try {
             module = await business.moduleMcp(consumerCode, exec.signal);
           } catch (error) {
+            // 中止（用户点停止）不是通道故障：别记白跑，回可读的中止说明。
+            if (isAbortError(error)) throw readableError(error);
             const code =
               error && typeof error === "object" && "code" in error
                 ? String((error as { code?: unknown }).code)
@@ -572,7 +625,7 @@ export function registerGeaTools(
                 note: "这是权限未开通，不是调用失败：不用重试，也不要换别的模块凑答案。",
               });
             }
-            throw error;
+            throw readableError(error);
           }
           // 大结果的分段读：完整正文宿主已经缓存，这里只按 offset 取一段。
           // 不算进失败熔断——它不是一次新的取数，读不回来往往是制品过期。
@@ -591,6 +644,8 @@ export function registerGeaTools(
           if (!toolName) {
             // 同一份工具清单只给一次（线上实测同一模块的清单被反复列了十几次）。
             const listKey = `tools|${consumerCode}`;
+            const repeat = overRepeated(scope, listKey, `模块 ${consumerCode} 的工具清单`);
+            if (repeat) return repeat;
             const cachedList = dedup.hit(listKey);
             if (cachedList) return cachedList;
             return dedup.remember(
@@ -712,6 +767,8 @@ export function registerGeaTools(
             else waste.progress(scope);
             return output;
           } catch (error) {
+            // 用户中止不是取数失败：不记熔断、不记白跑，只回可读的中止说明。
+            if (isAbortError(error)) throw readableError(error);
             // 网关把下游真实原因吞了（只回 MCP_UPSTREAM_TOOL_ERROR）：补一次成员名判断，
             // 判出来就把失败换成"照着改就能过"的提示——这类是模型改一下就能过的。
             const repaired = await repairUpstreamFailure(
@@ -723,7 +780,7 @@ export function registerGeaTools(
             );
             failures.note(consumerCode, false);
             waste.waste(scope);
-            throw repaired ?? error;
+            throw readableError(repaired ?? error);
           }
         },
       }),
@@ -853,6 +910,13 @@ export function registerGeaTools(
           const dedupKey = `catalog|${String(args.model ?? "")}|${members.join(",")}|${
             args.values === true ? "values" : "plain"
           }`;
+          const scope = exec.agent?.id ?? "global";
+          const repeat = overRepeated(
+            scope,
+            dedupKey,
+            args.model ? `模型 ${String(args.model)} 的成员` : "模型索引",
+          );
+          if (repeat) return repeat;
           const cached = dedup.hit(dedupKey);
           if (cached) return cached;
           const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
@@ -914,9 +978,33 @@ export function registerGeaTools(
               name: "query_business_data",
               arguments: { action: "inspect", queries: [] },
             });
-            // inspect 的产物可能是 text，也可能是 resource_link：两种都要能取到地址。
-            const uri = extractArtifactUri(resultText(inspect));
-            if (!uri) throw new Error(`GEA_CATALOG_RESOURCE_MISSING: tools=${listed}`);
+            const inspectText = resultText(inspect);
+            // inspect 的产物可能是 resource_link，也可能直接内联 JSON：两种都要认。
+            const inline = inspectText.trim().startsWith("{")
+              ? parseFirstJsonObject(inspectText)
+              : undefined;
+            const uri = extractArtifactUri(inspectText);
+            if (!uri && inline && Array.isArray((inline as { semanticModel?: unknown }).semanticModel)) {
+              rememberMemberIndex(inline);
+              rememberModelConsumers(business.config.analysisAgentCode, inline);
+              return dedup.remember(
+                dedupKey,
+                projectCatalog(inline, {
+                  model: args.model,
+                  consumers: modelConsumers(),
+                }),
+              );
+            }
+            if (!uri)
+              // 线上踩过：这一句只报 tools=N，把真实报文吞了，事后完全看不出是会话失效、
+              // 还是返回形状变了。把原文前面一段带出来（已脱敏：这里只有网关的返回）。
+              throw new Error(
+                `GEA_CATALOG_RESOURCE_MISSING: tools=${listed}；原始返回=${(
+                  inspectText || JSON.stringify(inspect)
+                )
+                  .replace(/\s+/g, " ")
+                  .slice(0, 200)}`,
+              );
             // 资源正文用 MCP 的 resources/read 读（dsh_read_resource 是宿主自己的工具，不在网关工具表里）。
             const resource = await client.readResource({ uri });
             const text = await catalogText(resultText(resource));
@@ -934,7 +1022,8 @@ export function registerGeaTools(
               }),
             );
           } catch (error) {
-            const message = (error as Error).message;
+            // 中止/非 Error 抛出都要有可读原因（否则这里会拼出 "undefined"）。
+            const message = readableError(error).message;
             // 自己的目录错误（模型名不对、目录为空…）原样抛：套一层"MCP 失败"会把
             // "模型名写错了"说成"通道坏了"，模型就会去重试通道而不是改模型名。
             if (/^GEA_CATALOG_/.test(message)) throw error;

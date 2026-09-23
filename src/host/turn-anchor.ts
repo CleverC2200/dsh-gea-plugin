@@ -92,13 +92,30 @@ export function anchorMessages<T extends AnyMessage>(
   return next;
 }
 
-/** 挂上锚点（每个 agent 生效，含子代理）；返回卸载函数。 */
-export function mountTurnAnchor(ctx: Context): () => void {
+/**
+ * 挂上锚点（每个 agent 生效，含子代理）；返回卸载函数。
+ *
+ * `onNewQuestion` 在"用户换了问题"时回调一次——也就是新一轮的开始。宿主用它把
+ * "本轮"级别的计数（重复读、白跑）清零：不然跨轮累加会把正常提问误判成重复。
+ */
+export function mountTurnAnchor(
+  ctx: Context,
+  hooks: { onNewQuestion?: (question: string, scope: string) => void } = {},
+): () => void {
+  /** 每个 agent 上一次看到的提问，用来判断"是不是新的一轮"。 */
+  const lastQuestion = new Map<string, string>();
   return ctx.on("agent/pre-step", async ({ signal }, next) => {
     const decision = await next();
     if (decision.kind === "reject" || signal.aborted) return decision;
     const current = decision.messages ?? [];
     const question = lastUserQuestion(current);
+    if (question) {
+      const scope = (decision as { agent?: { id?: string } }).agent?.id ?? "global";
+      if (lastQuestion.get(scope) !== question) {
+        lastQuestion.set(scope, question);
+        hooks.onNewQuestion?.(question, scope);
+      }
+    }
     const nextMessages = anchorMessages(
       current,
       question,

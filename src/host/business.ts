@@ -34,6 +34,7 @@ import {
 } from "./workbench-surface.ts";
 import { compressForModel } from "../shared/payload-budget.ts";
 import { createCubeGapLedger, type CubeGapLedger } from "./cube-gap-ledger.ts";
+import { createRepeatGuard, type RepeatGuard } from "./repeat-guard.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
 const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
@@ -789,6 +790,7 @@ export class Business {
     this.readDedup.clear();
     this.mcpWasteGuard.clear();
     this.cubeGapLedger.clear();
+    this.repeatGuard.clear();
     this.resubmissions.clear();
     this.correctionRequests.clear();
     this.qr = undefined;
@@ -1974,6 +1976,13 @@ export class Business {
 
   cubeGaps(): CubeGapLedger {
     return this.cubeGapLedger;
+  }
+
+  /** 同一轮里的重复读收敛（见 host/repeat-guard.ts）。 */
+  private readonly repeatGuard = createRepeatGuard();
+
+  repeatReads(): RepeatGuard {
+    return this.repeatGuard;
   }
 
   /**

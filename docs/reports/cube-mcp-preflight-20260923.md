@@ -65,6 +65,16 @@
 
 ## 还没做 / 需要外部配合
 
+### 追加一轮（同一会话 session-af74ce65 的复盘后修复）
+
+那次一轮 117 步、224 次调用、11 分钟，最后被用户中止。复盘出三件事，都已修：
+
+| 问题 | 修法 | 位置 |
+| --- | --- | --- |
+| 点停止后界面显示 `Error: [object Object]` | 中止信号的对象 reason（dsh 中止时携带）在最早边界翻成可读的 `GEA_TURN_ABORTED: 已中止…`；中止不计熔断、不计白跑 | `src/shared/abort.ts`（新增）、`mcp-client.ts`、`gateway-mcp.ts`、`agent-tools.ts` |
+| 首步目录失败只报 `GEA_CATALOG_RESOURCE_MISSING: tools=5`，真因被吞 | 拿不到制品 URI 时把原始返回前 200 字带出来；同时支持 inspect 直接内联 JSON | `src/host/agent-tools.ts` |
+| 同一份东西被反复读（同一模型明细 31 次、索引 24 次、同一条计划查询 15 次） | 新增重复读闸门：同一 key 最多认真回 2 次，一轮累计重复 8 次就停手；换问题（新一轮）自动清零 | `src/host/repeat-guard.ts`（新增）、`agent-tools.ts`、`turn-anchor.ts`、`host.ts` |
+
 1. **Cube 目录缓存没刷新**（实测 inspect 仍只显示旧度量）：缓存在网关/下游 MCP 侧，需要平台侧配合刷新；
    规约 §5 要求"查询前持有当前 inspect"，这条不解决，模型会继续以为没有度量可用。
 2. **库龄资源缺 ALLOW、方案不匹配**（§16 快照）：属平台配置，参数改不动，只能如实回报。

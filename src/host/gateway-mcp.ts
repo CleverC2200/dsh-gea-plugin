@@ -1,6 +1,8 @@
 /** 绑定登录身份的 GEA Gateway 能力；密钥不会离开 Fetch 闭包。 */
 import { randomUUID } from "node:crypto";
 import { createParser } from "eventsource-parser";
+import { readableError, throwIfAborted } from "../shared/abort.ts";
+
 const nonempty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 
 /**
@@ -29,7 +31,7 @@ export async function prepareGatewayMcp(
     !consumer.consumerCode.trim()
   )
     throw new Error("GEA_MCP_CONSUMER_REQUIRED");
-  identity.throwIfAborted();
+  throwIfAborted(identity);
   const response = await fetchImpl(base + "/ai/gateway/session", {
     method: "POST",
     redirect: "error",
@@ -48,7 +50,7 @@ export async function prepareGatewayMcp(
   });
   if (!response.ok) throw new Error("GEA_MCP_SESSION_HTTP_" + response.status);
   const payload = await response.json();
-  identity.throwIfAborted();
+  throwIfAborted(identity);
   const result = payload?.result;
   const context = result?.gatewayContext;
 
@@ -97,20 +99,31 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
   let initializeBody: string | undefined;
   let transportSession: string | undefined;
   let reconnect: Promise<void> | undefined;
-  const send = (init: RequestInit) => fetchImpl(url, {
-    ...init,
-    redirect: "error",
-    signal: AbortSignal.any([
-      identity,
-      ...(init.signal ? [init.signal] : []),
-      AbortSignal.timeout(timeoutMs),
-    ]),
-  });
+  /**
+   * 中止（用户点停止）时 fetch 以 `signal.reason` 为拒绝原因，而 dsh 的 reason 是对象
+   * （`{kind:"aborted",reason:{kind:"user"}}`）——原样抛出去界面上就是 `Error: [object Object]`。
+   * 传输层是最早的边界，在这里统一翻成可读错误。
+   */
+  const send = async (init: RequestInit): Promise<Response> => {
+    try {
+      return await fetchImpl(url, {
+        ...init,
+        redirect: "error",
+        signal: AbortSignal.any([
+          identity,
+          ...(init.signal ? [init.signal] : []),
+          AbortSignal.timeout(timeoutMs),
+        ]),
+      });
+    } catch (error) {
+      throw readableError(error);
+    }
+  };
   const restore = async (headers: Headers) => {
     // 重新初始化只恢复传输会话，不重新申请业务权限，也不接受调用方自带身份。
     headers.delete("MCP-Session-Id");
     const response = await send({ method: "POST", headers, body: initializeBody });
-    identity.throwIfAborted();
+    throwIfAborted(identity);
     if (!response.ok) {
       await response.body?.cancel();
       throw new Error(`GEA_MCP_RECONNECT_HTTP_${response.status}`);
@@ -124,13 +137,13 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
     });
     await ready.body?.cancel();
-    identity.throwIfAborted();
+    throwIfAborted(identity);
     if (!ready.ok) throw new Error(`GEA_MCP_RECONNECT_HTTP_${ready.status}`);
     transportSession = session;
   };
   const gatewayFetch: typeof fetch = async (input, init) => {
     // 仅把 MCP 方法名映射为服务端分配的路由码；调用方不能直接指定 GEA 路由。
-    identity.throwIfAborted();
+    throwIfAborted(identity);
     const target = input instanceof Request ? input.url : String(input);
     if (target !== url) throw new Error("GEA_MCP_ENDPOINT_REJECTED");
     let body = init?.body;
@@ -185,12 +198,12 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
         reconnect ??= restore(new Headers(headers)).finally(() => { reconnect = undefined; });
         await reconnect;
       }
-      identity.throwIfAborted();
-      init?.signal?.throwIfAborted();
+      throwIfAborted(identity);
+      throwIfAborted(init?.signal);
       headers.set("MCP-Session-Id", transportSession!);
       res = await send({ ...init, headers, body });
     }
-    identity.throwIfAborted();
+    throwIfAborted(identity);
     if (!res.ok && init?.method === "POST") {
       await res.body?.cancel();
       // 限流是"等一下还能用"，不是"连接坏了"：规约 §14 要求按 Retry-After 等待，
@@ -215,7 +228,7 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
     }
     if (discovery && res.ok) {
       const text = await res.clone().text();
-      identity.throwIfAborted();
+      throwIfAborted(identity);
       const messages: unknown[] = [];
       if (res.headers.get("content-type")?.includes("text/event-stream")) {
         createParser({
