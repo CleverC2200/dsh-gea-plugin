@@ -27,6 +27,7 @@ const {
   lastUserQuestion,
   mountTurnAnchor,
   turnAnchorText,
+  userTurnCount,
 } = module.exports;
 
 const { createUserMessage } = createRequire(import.meta.url)("@deepseek-ai/dsh-llm");
@@ -125,4 +126,41 @@ test("挂到 agent/pre-step 上：每一步都能拿到带锚点的消息列表"
   );
   assert.equal(empty.messages.length, 1);
   dispose();
+});
+
+// 线上踩坑（session-c1f22d8b）：用户重复问同一句话时，"提问文本没变"被当成同一轮，
+// 上一轮的重读闸门/计划计数/停手闸门全被继承，这一轮第一下就被判"已读过/该给计划"，
+// 模型于是放弃取数。新一轮必须按"用户消息条数"判，而不是按文本。
+test("同一句话重问也算新一轮：按用户消息条数判定", async () => {
+  const userMsg = (text) => ({
+    role: "user",
+    source: { kind: "user" },
+    content: [{ type: "text", text }],
+  });
+  const toolMsg = (text) => ({
+    role: "user",
+    source: { kind: "tool" },
+    content: [{ type: "text", text }],
+  });
+
+  // 同一句问两遍：用户消息条数 1 → 2，必须判成两次新一轮
+  assert.equal(userTurnCount([userMsg("重复的问题")]), 1);
+  assert.equal(userTurnCount([userMsg("重复的问题"), userMsg("重复的问题")]), 2);
+  assert.equal(userTurnCount([userMsg("问"), toolMsg("结果")]), 1, "工具结果不算用户消息");
+
+  const seen = [];
+  const hooks = [];
+  const ctx = { on: (_name, handler) => (hooks.push(handler), () => {}) };
+  const dispose = mountTurnAnchor(ctx, { onNewQuestion: (question) => seen.push(question) });
+  const run = (messages) =>
+    hooks[0](
+      { agent: { id: "s-repeat" }, messages: [], step: 1, turn: 1, signal: new AbortController().signal },
+      async () => ({ kind: "accept", messages }),
+    );
+  const base = [userMsg("同一句问题")];
+  await run(base);
+  await run(base); // 同一轮再跑一步：不该重复报新一轮
+  await run([...base, userMsg("同一句问题")]); // 用户又问了一遍：必须报新一轮
+  dispose();
+  assert.deepEqual(seen, ["同一句问题", "同一句问题"], "第二次提问要再报一次新一轮");
 });

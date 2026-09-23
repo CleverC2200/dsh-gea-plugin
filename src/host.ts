@@ -541,6 +541,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         business.rememberTurnQuestion(scope, question);
         // 新一轮：把"有没有开口/调了几次"清零（见 host/plan-first.ts）。
         business.resetTurnPlan(scope);
+        // 上一轮的"整轮停手"不能卡住这一轮（重复问同一句时最容易被继承）。
+        business.clearTurnStops();
       },
       onStep: ({ scope, spoke }) => business.rememberTurnSpoke(scope, spoke),
     }),

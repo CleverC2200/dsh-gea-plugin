@@ -56,6 +56,25 @@ export function lastUserQuestion(messages: readonly unknown[]): string | undefin
   return undefined;
 }
 
+/**
+ * 这一轮是第几条"用户自己发的"消息——用它当"新一轮"的判据。
+ *
+ * 原来我用"提问文本变没变"判断新一轮，线上立刻踩坑（session-c1f22d8b）：
+ * 用户**重复问同一句话**时文本没变 → 上一轮的重读闸门/计划计数/停手闸门全被继承，
+ * 这一轮第一次调用就被判成"本轮已读过""该先给计划了"，模型于是直接放弃取数。
+ * 改成数"用户消息条数"：每问一次就 +1（文本相同也一样）。
+ */
+export function userTurnCount(messages: readonly unknown[]): number {
+  let count = 0;
+  for (const message of messages) {
+    const item = message as AnyMessage;
+    if (item?.role !== "user") continue;
+    if (item.source?.kind !== "user") continue;
+    count += 1;
+  }
+  return count;
+}
+
 /** 锚点正文：把用户原话和"别的消息都不算提问"写在一起。 */
 export function turnAnchorText(question: string): string {
   const text = question.replace(/\s+/g, " ").trim().slice(0, MAX_QUESTION_CHARS);
@@ -106,8 +125,8 @@ export function mountTurnAnchor(
     onStep?: (info: { scope: string; spoke: boolean }) => void;
   } = {},
 ): () => void {
-  /** 每个 agent 上一次看到的提问，用来判断"是不是新的一轮"。 */
-  const lastQuestion = new Map<string, string>();
+  /** 每个 agent 上一次记录到的"用户消息条数"，用来判断"是不是新的一轮"。 */
+  const lastTurnCount = new Map<string, number>();
   return ctx.on("agent/pre-step", async ({ signal }, next) => {
     const decision = await next();
     if (decision.kind === "reject" || signal.aborted) return decision;
@@ -115,8 +134,9 @@ export function mountTurnAnchor(
     const question = lastUserQuestion(current);
     if (question) {
       const scope = (decision as { agent?: { id?: string } }).agent?.id ?? "global";
-      if (lastQuestion.get(scope) !== question) {
-        lastQuestion.set(scope, question);
+      const turnCount = userTurnCount(current);
+      if (lastTurnCount.get(scope) !== turnCount) {
+        lastTurnCount.set(scope, turnCount);
         hooks.onNewQuestion?.(question, scope);
       }
       const scopeId = scope;
