@@ -42,7 +42,7 @@ test("催促与暂停的文案：说清要什么，并带稳定 code", () => {
   assert.match(pause.note, /先给计划/);
 });
 
-test("接线：三个取数工具都过检查点；每步回报是否开口；提示词要求先给计划", async () => {
+test("接线：三个取数工具都过检查点；每步回报是否开口（提示词那条已由检查点替代）", async () => {
   const tools = await readFile("src/host/agent-tools.ts", "utf8");
   assert.match(tools, /const plan = planCheck\(scope\);/, "plan read / module mcp 都要过检查点");
   assert.match(tools, /const catalogPlan = planCheck\(catalogScope\);/);
@@ -51,5 +51,10 @@ test("接线：三个取数工具都过检查点；每步回报是否开口；�
   assert.match(anchor, /hooks\.onStep\?\.\(\{ scope: scopeId, spoke \}\)/);
   const host = await readFile("src/host.ts", "utf8");
   assert.match(host, /business\.rememberTurnSpoke\(scope, spoke\)/);
-  assert.match(host, /先给一句计划，再动手取数/);
+  // "先给一句计划"不再占提示词：第 2 次调用催、第 5 次暂停由 plan-first 确定性执行
+  // （提示词里那条已删，见 docs/reports 的收口记录）。
+  assert.match(host, /business\.resetTurnPlan\(scope\)/);
+  const planFirst = await readFile("src/host/plan-first.ts", "utf8");
+  assert.match(planFirst, /PLAN_NUDGE_AFTER = 2/);
+  assert.match(planFirst, /PLAN_PAUSE_AFTER = 5/);
 });
