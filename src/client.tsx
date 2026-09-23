@@ -40,8 +40,6 @@ import {
   regionalPlanConversation,
   safetyStockConversation,
   supplyCoordinationConversation,
-  type ConversationActionIcon,
-  type ConversationActionTone,
   type ConversationPromptConfig,
 } from "./client/conversation-prompts.ts";
 import {BUSINESS_MENU_PRESET,MAIN_MENU,businessMenuTitle,isGeaBusinessPanel,registeredBusinessPanels,resolveBusinessMenu,type BusinessMenuSection} from "./business-navigation.ts";
@@ -1182,7 +1180,6 @@ export function apply(ctx: Context): void {
           <AgentWelcome
             agent={conversationAgentFor(activePanel)}
             onFill={(prompt) => writeConversationPrompt(prompt, false)}
-            onSend={(prompt) => writeConversationPrompt(prompt, true)}
           />,
           conversationHero,
         )}
@@ -1283,11 +1280,9 @@ function writeConversationPrompt(prompt: string, submit: boolean): void {
 function AgentWelcome({
   agent,
   onFill,
-  onSend,
 }: {
   agent: ConversationPromptConfig;
   onFill: (prompt: string) => void;
-  onSend: (prompt: string) => void;
 }) {
   return (
     <section className="gea-agent-welcome" aria-label={agent.name}>
@@ -1296,21 +1291,6 @@ function AgentWelcome({
         <h2>{agent.name}</h2>
         <p className="gea-agent-intro">{agent.intro}<b>{agent.boundary}</b></p>
       </div>
-      {agent.hideActions ? null : <div className="gea-agent-block">
-        <h3>常用功能</h3>
-        <div className="gea-agent-actions">
-          {agent.actions.map((action) => (
-            <button key={action.label} type="button" onClick={() => onSend(action.prompt)}>
-              <AgentActionIcon kind={action.icon} tone={action.tone} />
-              <span className="gea-agent-action-copy">
-                <span className="gea-agent-action-title">{action.label}</span>
-                <span className="gea-agent-action-detail">{action.detail}</span>
-              </span>
-              <b className="gea-agent-action-arrow" aria-hidden="true">›</b>
-            </button>
-          ))}
-        </div>
-      </div>}
       <div className="gea-agent-block gea-agent-prompts">
         <h3>你可以这样问</h3>
         {agent.prompts.map((prompt) => <button key={prompt} type="button" onClick={() => onFill(prompt)}>{prompt}</button>)}
@@ -1392,7 +1372,7 @@ function ConversationHead({ agent }: { agent: ConversationPromptConfig }) {
   );
 }
 
-/** 每个业务页配各自的会话助手：名字、常用功能、推荐提问都跟那一页的工作台对齐。 */
+/** 每个业务页配各自的会话助手：名字、介绍、推荐提问都跟那一页的工作台对齐。 */
 const BUSINESS_CONVERSATIONS: Record<string, ConversationPromptConfig> = {
   [PANEL]: approvalConversation,
   [REGIONAL_PLAN_PANEL]: regionalPlanConversation,
@@ -1415,24 +1395,6 @@ function conversationAgentFor(panel: MainPanelId | null | undefined): Conversati
   if (!panel) return homeConversation;
   if (panel === INBOX) return inboxConversation;
   return BUSINESS_CONVERSATIONS[panel] ?? homeConversation;
-}
-
-function AgentActionIcon({ kind, tone }: { kind: ConversationActionIcon; tone: ConversationActionTone }) {
-  const paths: Record<ConversationActionIcon, React.ReactNode> = {
-    chart: <><rect x="3" y="13" width="3" height="8" rx=".8" /><rect x="10" y="8" width="3" height="13" rx=".8" /><rect x="17" y="3" width="3" height="18" rx=".8" /></>,
-    alert: <><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>,
-    info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7h.01" /></>,
-    check: <><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></>,
-    versions: <><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M16 8V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h4" /></>,
-    opinion: <><path d="M14 3H6a2 2 0 0 0-2 2v15a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5M8 12h7M8 16h7" /></>,
-    box: <><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="m3 8 9 5 9-5M12 13v8" /></>,
-    users: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20c.6-3.2 2.6-4.8 6-4.8s5.4 1.6 6 4.8" /><path d="M16.5 5.6a3 3 0 0 1 0 5.6M18 15.4c1.7.4 2.7 1.7 3 3.6" /></>,
-  };
-  return (
-    <svg className="gea-agent-action-icon" data-tone={tone} width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {paths[kind]}
-    </svg>
-  );
 }
 
 type NavIconKind = "bot" | "bell" | "desktop" | "users" | "calendar" | "warehouse" | "grid" | "folder" | "apps" | "newChat" | BusinessGroupIcon;

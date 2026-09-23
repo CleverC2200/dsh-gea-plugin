@@ -1259,16 +1259,17 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   box-sizing: border-box;
   height: 58px;
   align-items: center;
-  gap: 12px;
+  justify-content: flex-end;
+  gap: 6px;
   padding: 0 14px;
   border-bottom: 1px solid #e5e9f0;
   background: #fff;
 }
-.gea-conversation-view-switch { display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid #dfe5ef; border-radius: 14px; background: #f7f9fc; }
-.gea-conversation-toolbar button { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 10px; background: transparent; color: #687487; cursor: pointer; }
+.gea-conversation-view-switch { display: flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; }
+.gea-conversation-toolbar button { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #687487; cursor: pointer; }
 .gea-conversation-toolbar button:hover { background: #edf1f7; color: #283444; }
-.gea-conversation-toolbar button[aria-pressed="true"] { background: #fff; color: #d0132c; box-shadow: 0 1px 4px #2025311f; }
+.gea-conversation-toolbar button[aria-pressed="true"] { background: #fff0f2; color: #df1732; box-shadow: none; }
 .gea-conversation-toolbar button:focus-visible { outline: 2px solid #d0132c; outline-offset: 2px; }
 .gea-conversation-toolbar svg { width: 22px; height: 22px; }
-.gea-conversation-toolbar-action:last-of-type { margin-left: auto; }
+.gea-conversation-toolbar-action { margin: 0; }
 .gea-conversation-toolbar-error { position: absolute; right: 10px; top: 58px; padding: 5px 8px; border: 1px solid #e7acb5; border-radius: 5px; background: #fff6f7; color: #b51931; font-size: 12px; }
