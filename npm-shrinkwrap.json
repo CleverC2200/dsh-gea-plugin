@@ -1,12 +1,12 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.116",
+  "version": "0.0.117",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "@cleverc2200/gea-dsh-prototype",
-      "version": "0.0.116",
+      "version": "0.0.117",
       "license": "Apache-2.0",
       "workspaces": [
         "packages/*"
