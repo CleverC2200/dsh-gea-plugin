@@ -41,6 +41,11 @@ import { channelPlan, type ChannelPlan } from "../capability/channel.ts";
 import { preflightCubeArguments } from "./cube-preflight.ts";
 import { pageIntentOf } from "./page-intent.ts";
 import {
+  PLAN_NUDGE_NOTE,
+  planPausePayload,
+  planVerdict,
+} from "./plan-first.ts";
+import {
   modelConsumers,
   modelsForConsumer,
   rememberModelConsumers,
@@ -228,6 +233,23 @@ export function registerGeaTools(
     business.moduleMcpWaste().waste(scope || "global");
   };
 
+  /**
+   * "先给计划"的检查点（见 host/plan-first.ts）：这一轮还没说过一句话就一路调工具时，
+   * 第 2 次催一句、第 5 次直接暂停取数。每次取数调用只记一次数。
+   */
+  const planCheck = (scope: string): { pause?: string; nudge: string } => {
+    const callIndex = business.notePlanCall(scope);
+    const verdict = planVerdict(callIndex, business.hasTurnSpoken(scope));
+    if (verdict === "pause") {
+      wasteScope(scope);
+      return { pause: planPausePayload(callIndex), nudge: "" };
+    }
+    return { nudge: verdict === "nudge" ? PLAN_NUDGE_NOTE : "" };
+  };
+  /** 把"先给计划"的提示挂到结果后面（不改变结果本身）。 */
+  const withPlanNudge = (value: string, nudge: string): string =>
+    nudge ? value + nudge : value;
+
   ctx.effect(() =>
     ctx.tools.register(
       defineTool({
@@ -305,8 +327,10 @@ export function registerGeaTools(
             `销售计划 ${String(args.kind)}`,
           );
           if (repeat) return repeat;
+          const plan = planCheck(scope);
+          if (plan.pause) return plan.pause;
           try {
-            return await business.agentQuery(args, exec.signal);
+            return withPlanNudge(await business.agentQuery(args, exec.signal), plan.nudge);
           } catch (error) {
             // 中止（用户点停止）不是取数失败：翻成可读的中止说明，别抛成 [object Object]。
             throw readableError(error);
@@ -739,6 +763,8 @@ export function registerGeaTools(
           }
           // 结构性缺口：这个（模块 + 模型）刚确认过"不是参数问题、就是取不到"，
           // 就不必再发一次注定失败的调用——直接把结论回给模型。
+          const plan = planCheck(scope);
+          if (plan.pause) return plan.pause;
           const queriedModel =
             toolName === "query_business_data" && parameters.action === "query"
               ? modelOfQueries(parameters.queries)
@@ -782,6 +808,7 @@ export function registerGeaTools(
             const denied = output.startsWith(PERMISSION_NOTICE_PREFIX);
             failures.note(consumerCode, !denied);
             // 真的拿到数据就把"本轮白跑"的账清零；被拒/空手则记一笔总账（跨模块也算）。
+            const withNudge = !denied && plan.nudge ? output + plan.nudge : output;
             if (denied) {
               waste.waste(scope);
               // 记成结构性缺口：下一次同样的（模块 + 模型）直接给结论，不再撞一次。
@@ -793,7 +820,7 @@ export function registerGeaTools(
                 });
             }
             else waste.progress(scope);
-            return output;
+            return withNudge;
           } catch (error) {
             // 用户中止不是取数失败：不记熔断、不记白跑，只回可读的中止说明。
             if (isAbortError(error)) throw readableError(error);
@@ -945,6 +972,9 @@ export function registerGeaTools(
         }),
         execute: async (args, exec) => {
           // 同轮去重：同一份目录/成员清单被反复读时直接回上一次的（线上实测一轮读 93 次）。
+          const catalogScope = exec.agent?.id ?? "global";
+          const catalogPlan = planCheck(catalogScope);
+          if (catalogPlan.pause) return catalogPlan.pause;
           const dedup = business.metadataDedup();
           const members = Array.isArray(args.members)
             ? args.members
@@ -971,7 +1001,7 @@ export function registerGeaTools(
           );
           if (repeat) return repeat;
           const cached = dedup.hit(dedupKey);
-          if (cached) return cached;
+          if (cached) return withPlanNudge(cached, catalogPlan.nudge);
           const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
           const { StreamableHTTPClientTransport } = await import(
             "@modelcontextprotocol/sdk/client/streamableHttp.js"
@@ -1051,7 +1081,10 @@ export function registerGeaTools(
               } else {
                 emptySamples.delete(scope);
               }
-              return dedup.remember(dedupKey, formatSampleValues(samples));
+              return withPlanNudge(
+                dedup.remember(dedupKey, formatSampleValues(samples)),
+                catalogPlan.nudge,
+              );
             }
             const inspect = await client.callTool({
               name: "query_business_data",
@@ -1093,12 +1126,15 @@ export function registerGeaTools(
             // 同时记下"这些模型是用哪个 consumerCode 读到的"：目录里的模型名要能对上
             // 一条查询通道，否则模型看得见表却不知道该用哪个 consumerCode（线上真的会放弃）。
             rememberModelConsumers(business.config.analysisAgentCode, payload);
-            return dedup.remember(
-              dedupKey,
-              projectCatalog(payload, {
-                model: args.model,
-                consumers: modelConsumers(),
-              }),
+            return withPlanNudge(
+              dedup.remember(
+                dedupKey,
+                projectCatalog(payload, {
+                  model: args.model,
+                  consumers: modelConsumers(),
+                }),
+              ),
+              catalogPlan.nudge,
             );
           } catch (error) {
             // 中止/非 Error 抛出都要有可读原因（否则这里会拼出 "undefined"）。

@@ -484,6 +484,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       order: 120,
       text: [
         "GEA 网关 MCP 取数协议（只有工作台页面上看不到的数据才用它）：",
+        // 线上实测：3/6 个会话从头到尾 0 字符文本，只有一个到第 25 步才开口——
+        // 预设里那句"不汇报内部计划"把规划逼成了隐形的，结果边试边查、把上下文读爆。
+        "- **先给一句计划，再动手取数**（这一条优先于预设里「不汇报内部计划」的说法：它指不要逐步刷屏，不指禁止开头这一两句）：用 1–2 句说清①这问要回答什么②要取哪几个数（哪张模型/哪几个成员/什么口径）③走哪条通道④拿不到就说什么；然后一次性作答，正文里不要逐步播报工具调用与中间结果。已经能用手上信息回答的，直接答、不要取数。",
         "- 计划事实（提报状态、版本、明细、变更记录）优先用 gea_sales_plan_read；历史发货、经销商/分仓库存、货龄、补货周期、政策、节令、把握度，以及知识库类问题，用当前已加载的 GEA 网关 MCP 工具——**统一经 gea_module_mcp 调用**（给定 consumerCode + tool + arguments）。不要直接用平台直挂的 `mcp__gea-gateway__*` 工具：那条路的失败是原始报文，宿主不会把它翻成可读原因，也不会替你收口。",
         "- 先取语义模型目录再查询：调用 gea_gateway_catalog（需要看某个模型时带 model=模型名），拿到模型名与成员名；成员名照抄，不要凭业务名猜。**model 只填模型名（英文标识）或它的子串**；把业务词当模型名是命中不到的——这时目录不会报错，而是按内容把最像的模型和完整索引回给你，照它挑一个再调即可，不要重复猜名字。目录里的成员名形如 模型.字段，就是查询时要用的成员。成员名后的 [time]/[number] 是类型：`[time]` 取值要写完整日期，`[number]` 只是数值类型的维度（仍放 dimensions）；**目录里标 string 的年月成员（值形如 2026-08）就照它自己的格式写，不要改成完整日期**。拿不准某个成员有哪些取值时，用 `members=[成员名…] + values=true` 取它的真实取值（会列出最多 5 个），照这些值的格式写查询。",
         "- **先看分布，再定过滤**（这条能省掉大半返工）：想知道某个维度有哪些取值、覆盖哪些月份/版本，就把这个成员当维度、配一个度量 group by 一次（例如 dimensions=[月份成员]+measures=[row_count]，一条查询就能看到有没有值、有哪些值、覆盖范围）；不要先猜一个取值去 equals 过滤，过滤出 0 行时第一件事也是回到这一步看分布，而不是换写法继续试。如果看完发现这个成员只有空串或只有一个取值，说明它答不了「有哪些大区/哪些值」这类问题——直接说明，并换能提供该维度的模型或链路。",
@@ -536,7 +539,10 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         business.moduleMcpWaste().clear();
         // 记下这一轮的原话：页面快照工具据此判"用户有没有页面意图"（默认不读页面）。
         business.rememberTurnQuestion(scope, question);
+        // 新一轮：把"有没有开口/调了几次"清零（见 host/plan-first.ts）。
+        business.resetTurnPlan(scope);
       },
+      onStep: ({ scope, spoke }) => business.rememberTurnSpoke(scope, spoke),
     }),
   );
   ctx.effect(() => async () => { await desktopLogin.dispose(); await webLogin.dispose(); business.dispose(); });

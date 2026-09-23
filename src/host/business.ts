@@ -2012,6 +2012,36 @@ export class Business {
     return this.turnQuestions.get(scope || "global");
   }
 
+  /**
+   * "这一轮模型开口说话了没有" + "这一轮调了几次取数工具"。
+   * 由 agent/pre-step 每步更新 spoke，工具层读它决定要不要催计划/暂停取数
+   * （见 host/plan-first.ts）。用户换问题时一起清零。
+   */
+  private readonly turnSpoke = new Map<string, boolean>();
+  private readonly turnPlanCalls = new Map<string, number>();
+
+  rememberTurnSpoke(scope: string, spoke: boolean): void {
+    if (spoke) this.turnSpoke.set(scope || "global", true);
+  }
+
+  hasTurnSpoken(scope: string): boolean {
+    return this.turnSpoke.get(scope || "global") === true;
+  }
+
+  /** 记一次取数调用，返回这是本轮第几次。 */
+  notePlanCall(scope: string): number {
+    const key = scope || "global";
+    const next = (this.turnPlanCalls.get(key) ?? 0) + 1;
+    this.turnPlanCalls.set(key, next);
+    return next;
+  }
+
+  resetTurnPlan(scope: string): void {
+    const key = scope || "global";
+    this.turnSpoke.delete(key);
+    this.turnPlanCalls.delete(key);
+  }
+
   stopTurn(scope: string, reason: string): void {
     this.turnStops.set(scope || "global", { at: Date.now(), reason });
   }

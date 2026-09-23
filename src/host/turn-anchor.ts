@@ -100,7 +100,11 @@ export function anchorMessages<T extends AnyMessage>(
  */
 export function mountTurnAnchor(
   ctx: Context,
-  hooks: { onNewQuestion?: (question: string, scope: string) => void } = {},
+  hooks: {
+    onNewQuestion?: (question: string, scope: string) => void;
+    /** 每一步回报"这一轮模型开口说话了没有"（给"先给计划"的检查点用）。 */
+    onStep?: (info: { scope: string; spoke: boolean }) => void;
+  } = {},
 ): () => void {
   /** 每个 agent 上一次看到的提问，用来判断"是不是新的一轮"。 */
   const lastQuestion = new Map<string, string>();
@@ -115,6 +119,14 @@ export function mountTurnAnchor(
         lastQuestion.set(scope, question);
         hooks.onNewQuestion?.(question, scope);
       }
+      const scopeId = scope;
+      // 这一轮里模型是否已经输出过文本：assistant 消息里有非空 text 就算开口
+      // （工具结果和宿主注入都是 user 角色，不会误判）。
+      const spoke = current.some((message) => {
+        const item = message as AnyMessage;
+        return item?.role === "assistant" && textOf(item.content).length > 0;
+      });
+      hooks.onStep?.({ scope: scopeId, spoke });
     }
     const nextMessages = anchorMessages(
       current,
