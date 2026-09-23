@@ -441,8 +441,11 @@ function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error
     .filter(Boolean)
     .join("，");
   const queriesHint = /queries/i.test(failure.path ?? "") || /queries/i.test(failure.message)
-    ? "（提示：Cube 查询要放在 arguments.queries 里，不要提到工具顶层；同样的位置问题在别的 query 里也要一并改掉，不要一次只改一处。）"
+    ? "（提示：Cube 查询要放在 arguments.queries 里，不要提到工具顶层。）"
     : "";
+  // 规约 §17：修正要覆盖整份请求——query 0 的 order 错了，query 1–7 的同类问题要一起改，
+  // 不要一次只改一处、来回撞。网关一次只报一个位置，所以这句话由我们补。
+  const sweepHint = failure.kind === "validation" ? "（同类问题一次全改：同一个字段形状在其它 query 里可能有一样的错——order/filters/limit 都照着一起核对，别一次只改一处。）" : "";
   const crossModelHint = QUERY_SHAPE_FAILURE.test(failure.message)
     ? "（提示：一次调用里的成员必须属于同一个模型/dataAssetCode——把不同模型的成员拆成两次调用再来一次。）"
     : "";
@@ -475,7 +478,7 @@ function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error
       error: new Error(
         `GEA_MCP_TOOL_ERROR：入参没通过网关校验（${detail}）：${
           failure.message || failure.code
-        }${queriesHint}${crossModelHint}。照它的提示改好参数后可以重新调用一次；不要用同一份参数原样重试。`,
+        }${queriesHint}${crossModelHint}${sweepHint}。照它的提示改好参数后可以重新调用一次；不要用同一份参数原样重试。`,
       ),
     };
   return {

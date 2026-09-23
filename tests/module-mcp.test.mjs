@@ -389,6 +389,8 @@ test("structuredContent + 对象 text 的校验失败：给字段路径并允许
       // 校验类错误必须允许改好参数后重新调用（跟"下游错误别重试"区分开）。
       assert.match(error.message, /改好参数后可以重新调用一次/);
       assert.match(error.message, /arguments\.queries/);
+      // 规约 §17：网关一次只报一个位置，整份请求的同类问题要一起改。
+      assert.match(error.message, /同类问题一次全改/);
       assert.equal(error.message.includes("不要换参数重试"), false);
       return true;
     },

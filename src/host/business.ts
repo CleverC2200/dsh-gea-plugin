@@ -33,6 +33,7 @@ import {
   type WorkbenchSurface,
 } from "./workbench-surface.ts";
 import { compressForModel } from "../shared/payload-budget.ts";
+import { createCubeGapLedger, type CubeGapLedger } from "./cube-gap-ledger.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
 const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
@@ -787,6 +788,7 @@ export class Business {
     // 元信息缓存与"本轮白跑"计数都跟身份绑定：换身份一律作废。
     this.readDedup.clear();
     this.mcpWasteGuard.clear();
+    this.cubeGapLedger.clear();
     this.resubmissions.clear();
     this.correctionRequests.clear();
     this.qr = undefined;
@@ -1965,6 +1967,13 @@ export class Business {
 
   metadataDedup(): CallDedup {
     return this.readDedup;
+  }
+
+  /** 结构性缺口账本：某个（模块 + 模型）确认取不到时，第二次直接给结论（见 cube-gap-ledger.ts）。 */
+  private readonly cubeGapLedger = createCubeGapLedger();
+
+  cubeGaps(): CubeGapLedger {
+    return this.cubeGapLedger;
   }
 
   /**

@@ -43,6 +43,7 @@ import {
   modelsForConsumer,
   rememberModelConsumers,
 } from "./catalog-consumers.ts";
+import { modelOfQueries } from "./cube-gap-ledger.ts";
 import { didYouMean } from "../shared/name-lookup.ts";
 import {
   measureHint,
@@ -658,6 +659,27 @@ export function registerGeaTools(
             const blocked = preflightCubeArguments(parameters, memberIndex());
             if (blocked) throw new Error(blocked);
           }
+          // 结构性缺口：这个（模块 + 模型）刚确认过"不是参数问题、就是取不到"，
+          // 就不必再发一次注定失败的调用——直接把结论回给模型。
+          const queriedModel =
+            toolName === "query_business_data" && parameters.action === "query"
+              ? modelOfQueries(parameters.queries)
+              : undefined;
+          if (queriedModel) {
+            const gap = business.cubeGaps().find(consumerCode, queriedModel);
+            if (gap)
+              return JSON.stringify({
+                source: "GEA_MODULE_MCP",
+                availability: "known-gap",
+                consumerCode,
+                model: queriedModel,
+                code: gap.code,
+                message: gap.detail,
+                note:
+                  "这个模型在这个模块下刚刚已经确认取不到（不是参数问题：改参数、换成员、换写法都不会通）。" +
+                  "不要再重试，也不要换别的模块凑答案；对用户说清缺的是哪一项，管理员配好之后再问一次。",
+              });
+          }
           const missing = tool.required.filter(
             (name) => parameters[name] === undefined || parameters[name] === null,
           );
@@ -674,7 +696,16 @@ export function registerGeaTools(
             const denied = output.startsWith(PERMISSION_NOTICE_PREFIX);
             failures.note(consumerCode, !denied);
             // 真的拿到数据就把"本轮白跑"的账清零；被拒/空手则记一笔总账（跨模块也算）。
-            if (denied) waste.waste(scope);
+            if (denied) {
+              waste.waste(scope);
+              // 记成结构性缺口：下一次同样的（模块 + 模型）直接给结论，不再撞一次。
+              if (queriedModel)
+                business.cubeGaps().note(consumerCode, queriedModel, {
+                  kind: "resource-permission",
+                  code: "AI_GATEWAY_DATA_PERMISSION_DENIED",
+                  detail: output.replace(PERMISSION_NOTICE_PREFIX, "").slice(0, 400),
+                });
+            }
             else waste.progress(scope);
             return output;
           } catch (error) {
