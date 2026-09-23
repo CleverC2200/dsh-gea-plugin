@@ -99,3 +99,42 @@ order / limit` 的形状，只能猜；猜错被 `AI_SCHEMA_INVALID` 拦下之�
   `retryable` 指引；
 - 工具入参 schema 两级取用：`gea_module_mcp` 摘要照旧，`tool=名称 + schema=true` 回服务端
   完整定义（2KB 上限）；服务端没声明的形状如实写"未声明"，不另造契约。
+
+## 5. 补充（2026-09-23 下午）：成员不存在也走 `MCP_UPSTREAM_TOOL_ERROR`，把锅甩给了"下游"
+
+两条真实失败（都只回一句"下游工具执行失败"）：
+
+```json
+{"result":{"isError":true,"structuredContent":{
+  "businessCode":"MCP_UPSTREAM_TOOL_ERROR","category":"UPSTREAM","retryable":false,
+  "suggestedAction":"CHECK_UPSTREAM_LOGS",
+  "message":"下游工具执行失败，请按 requestId 查看下游工具错误记录",
+  "requestId":"d6f0b66f-0e09-4369-95ae-22348f2b3524",
+  "traceId":"fe52aa41-038d-47d7-aa91-a192f523671f",
+  "auditId":"b46fbb3d-4cc7-46eb-af9e-f193632b8c90"}}}
+```
+
+（另一条 `requestId=bc916472-e3e7-4a82-ae5c-5a6cea03d916`，报文形状相同。）
+
+**真实原因不是下游故障，而是参数里写了不存在的成员**：两次查询分别引用了
+`agents_scm_safety_stock.category_name` 与 `agents_scm_safety_stock.category_1_name`，
+而这个模型（55 个维度、0 度量）里的真名是 `product_categ` / `product_categ_name`。
+只读 A/B 对照（同身份、同会话，只改成员名）：
+
+| 维度组合 | 结果 |
+| --- | --- |
+| `base_name` + `category_name` | ❌ `MCP_UPSTREAM_TOOL_ERROR` |
+| `base_name` + `category_1_name` | ❌ 同一个错 |
+| `base_name` + `product_categ` / `product_categ_name` / `sample_quality_status` | ✅ 成功 |
+| 同一条查询（3 维度 + 3 过滤 + limit=300）换成真名 | ✅ 成功 |
+
+**请求**：成员/路径不存在这类**参数与目录**问题，请用 `VALIDATION` + `details.path`
+（最好把 Cube 的 `not found for path '模型.成员'` 原文带上）。现在的三个连带后果：
+
+1. `suggestedAction=CHECK_UPSTREAM_LOGS` 指向下游日志，那里根本没有这条记录；
+2. 审计页把这几次标成"决策结果＝拒绝、数据授权＝-"，看的人以为是权限问题；
+3. 客户端只能照文案告诉用户"这是下游错误，不是参数问题"——方向完全反了，模型因此改不动参数。
+
+**客户端已经兜住的部分**（不依赖服务端）：宿主在发查询前用 inspect 产物里的成员清单逐字校验
+`dimensions/measures/filters/order`，不认识的成员直接不发，就地回"最像的真名 + 这个模型有哪些成员"；
+被网关拒又查不出原因时，会借同一条会话补读一次目录再判断。见 `docs/reports/cube-member-guard-20260923.md`。
