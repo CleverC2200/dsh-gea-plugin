@@ -58,7 +58,10 @@ export function channelPlan(input: ChannelInput = {}): ChannelPlan {
         tool: page.pageTool,
         consumerCode: page.consumerCode,
         label: page.label,
-        when: `问"这一屏 / 这几行 / 当前选中的对象"时用它：当前页就是「${page.label}」，页面证据最近。`,
+        when:
+          `**默认不要用它**（快照会带整屏的行与字段，一进来就读会把上下文撑爆）。` +
+          `只有用户这一轮明确表达了页面意图——说"这一屏 / 这几行 / 展开 / 当前选中的 / 这单 / 当前页"——` +
+          `才用它生成一次快照（当前页是「${page.label}」），并把用户提到的对象或字段放进 focus。`,
       }
     : undefined;
   const moduleChoice: ChannelChoice | undefined = module
@@ -98,6 +101,9 @@ export function channelPlan(input: ChannelInput = {}): ChannelPlan {
     ...(moduleChoice ? { module: moduleChoice } : {}),
     ...(readChoice ? { read: readChoice } : {}),
     note:
+      (pageChoice
+        ? "默认走模块 MCP/受管只读取数；①当前页**只在用户明确要看这一屏时**才用（快照占上下文，别一进来就读）。"
+        : "") +
       (readChoice
         ? `按 ${order.join(" → ")} 选一条就够：同一条问题不要三条通道各试一遍。`
         : `按 ${order.join(" → ")} 选一条就够：同一条问题不要重复试。取数只能走模块 MCP（gea_module_mcp）：先按模块清单里的 consumerCode 列工具，再调用；不要尝试写 SQL。`) +

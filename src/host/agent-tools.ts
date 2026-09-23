@@ -39,6 +39,7 @@ import {
 import { LAYER_POLICY } from "../capability/layers.ts";
 import { channelPlan, type ChannelPlan } from "../capability/channel.ts";
 import { preflightCubeArguments } from "./cube-preflight.ts";
+import { pageIntentOf } from "./page-intent.ts";
 import {
   modelConsumers,
   modelsForConsumer,
@@ -818,7 +819,7 @@ export function registerGeaTools(
       defineTool({
         name: "gea_visible_workbench_context",
         description:
-          "读「这一屏」的只读快照，只在问题依赖屏幕上有什么时用（「这几家客户」「当前页」「这一屏的表」）。把用户提到的对象或字段名放进 focus，结果就只带相关的行与字段；不带 focus 只回摘要（行数、字段名、页面范围，不带整行），需要哪一行再按 focus 取。返回内容带渲染时间与覆盖范围，不会重新去 GEA 读，也不能提交或审批或改数据。若返回 not-in-workbench，说明这个对话没有页面数据：不要推断或编造页面内容，也不要去打开页面；for month- or scope-wide questions answer from the read-only data tools (gea_module_mcp、gea_sales_plan_read；不要自己写 SQL)。Call this tool at most once per turn.",
+          "读「这一屏」的只读快照。**默认不要调用**：只有用户这一轮明确表达了页面意图——说「这一屏/这几行/当前页/展开/选中的/这单」这类指代——才调它生成快照；for month- or scope-wide questions answer from the read-only data tools (gea_module_mcp、gea_sales_plan_read；不要自己写 SQL)，不要读页面。宿主按用户原话判定，没有页面意图时会直接回 PAGE_INTENT_MISSING 而不生成快照。调的时候把用户提到的对象或字段名放进 focus，结果就只带相关的行与字段；不带 focus 只回摘要（行数、字段名、页面范围，不带整行）。返回内容带渲染时间与覆盖范围，不会重新去 GEA 读，也不能提交或审批或改数据。若返回 not-in-workbench，说明这个对话没有页面数据：不要推断或编造页面内容，也不要去打开页面。Call this tool at most once per turn.",
         parameters: {
           focus: {
             type: "string",
@@ -842,6 +843,24 @@ export function registerGeaTools(
         }),
         execute: async (args, exec) => {
           if (!exec.agent) throw new Error("WORKBENCH_SESSION_REQUIRED");
+          // 默认不读页面：只有用户这一轮明确表达了页面意图（"这一屏/这几行/展开/选中/这单"…）
+          // 才生成快照。宿主判定，不靠模型自觉——线上实测一进对话就先拉一份整屏快照，
+          // 上下文当场被撑起来。
+          const question = business.turnQuestion(exec.agent.id);
+          const intent = pageIntentOf(question);
+          if (question && !intent)
+            return JSON.stringify({
+              source: "GEA_RENDERED_WORKBENCH",
+              coverage: "none",
+              availability: "no-page-intent",
+              code: "PAGE_INTENT_MISSING",
+              question,
+              note:
+                "这一轮用户没有页面意图（默认不读页面，免得把整屏数据塞进上下文）：" +
+                "只有用户明确说「读这一屏/看这几行/展开/选中的/这单」这类话时才读页面快照。" +
+                "当前问题请直接取数：按月/按范围用 gea_module_mcp（先列工具再调用）或 gea_sales_plan_read；" +
+                "如果用户确实需要屏幕上的内容，直接说明「要看这一屏请明确说一声」。",
+            });
           const focus =
             typeof args?.focus === "string" ? args.focus : undefined;
           const sequence = business.workbenchStateSnapshot?.(exec.agent.id)

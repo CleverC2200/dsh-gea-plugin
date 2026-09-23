@@ -111,4 +111,9 @@ test("每轮注入的「业务位置」：业务菜单才允许读这一屏", ()
   assert.match(line, /业务菜单「全链库存工作台」/);
   assert.match(line, /gea_page/);
   assert.match(line, /位置可能在本轮中途变化/);
+  // 用户要求：默认不读页面；只有用户这条消息里出现页面意图（这一屏/这几行/展开/选中/这单）才读，
+  // 免得一进对话就拉整屏快照把上下文撑爆。
+  assert.match(line, /默认不要读这一屏/);
+  assert.match(line, /页面意图/);
+  assert.match(line, /没有页面意图/);
 });

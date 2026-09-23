@@ -513,9 +513,11 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   // 用户换了问题 = 新的一轮：把"本轮"级的计数清零（重复读闸门、本轮白跑总账）。
   ctx.effect(() =>
     mountTurnAnchor(ctx, {
-      onNewQuestion: () => {
+      onNewQuestion: (question, scope) => {
         business.repeatReads().clear();
         business.moduleMcpWaste().clear();
+        // 记下这一轮的原话：页面快照工具据此判"用户有没有页面意图"（默认不读页面）。
+        business.rememberTurnQuestion(scope, question);
       },
     }),
   );

@@ -78,7 +78,8 @@ export function surfacePromptLine(
     ].join("");
   return [
     `【业务位置｜宿主事实】这个对话现在在业务菜单「${surfaceLabel(surface)}」：`,
-    "可以读这一屏（gea_page 的 action=context，必要时带 focus），也可以按月份/范围走 gea_module_mcp 或 gea_sales_plan_read；",
-    "要这一屏以外的数据就直接走 MCP，不要反复读页面。位置可能在本轮中途变化（以最新一次为准），但那不影响回答用户那条消息。",
+    "**默认不要读这一屏**（快照可能带整屏的行与字段，一进来就读会把上下文撑爆）：先看用户这条消息有没有页面意图——出现“这一屏/这几行/展开/选中/这单/当前页”这类指代才算有。",
+    "有页面意图时，再调 gea_page 的 action=context 生成一次快照（把用户提到的对象或字段放进 focus，只取相关行）；没有页面意图，或问题是按月/按范围/要全量的，直接走 gea_module_mcp 或 gea_sales_plan_read，不要读页面。",
+    "位置可能在本轮中途变化（以最新一次为准），但那不影响回答用户那条消息。",
   ].join("");
 }

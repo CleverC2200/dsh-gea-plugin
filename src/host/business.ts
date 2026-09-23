@@ -791,6 +791,7 @@ export class Business {
     this.mcpWasteGuard.clear();
     this.cubeGapLedger.clear();
     this.repeatGuard.clear();
+    this.turnQuestions.clear();
     this.turnStops.clear();
     this.resubmissions.clear();
     this.correctionRequests.clear();
@@ -1994,6 +1995,22 @@ export class Business {
    * 停手必须是整轮的：一旦置位，本轮所有取数工具都只回一句"已停手"，逼它用已拿到的证据作答。
    */
   private readonly turnStops = new Map<string, { at: number; reason: string }>();
+
+  /**
+   * 这一轮用户的原话（每个会话一条）。页面快照工具用它判"用户有没有页面意图"——
+   * 默认不读页面，只有原话里出现"这一屏/这几行/展开/选中/这单"这类指代才允许生成快照，
+   * 免得一进对话就把整屏的行与字段塞进上下文。
+   */
+  private readonly turnQuestions = new Map<string, string>();
+
+  rememberTurnQuestion(scope: string, question: string): void {
+    const text = question.replace(/\s+/g, " ").trim();
+    if (text) this.turnQuestions.set(scope || "global", text);
+  }
+
+  turnQuestion(scope: string): string | undefined {
+    return this.turnQuestions.get(scope || "global");
+  }
 
   stopTurn(scope: string, reason: string): void {
     this.turnStops.set(scope || "global", { at: Date.now(), reason });
