@@ -17,9 +17,16 @@ export type ModelMembers = {
   dimensions: string[];
   measures: string[];
   segments: string[];
+  /**
+   * dimensions 里类型是时间/日期的那些成员。`timeDimensions.dimension` 只能用它们——
+   * 线上有把字符串日期（`agents_scm_inventory_age.productdate`）当时间维度用的写法，
+   * 下游会拒。清单里既然带了类型信息，就别让模型猜。
+   */
+  time: string[];
 };
 
-type MemberIndex = Map<string, ModelMembers>;
+/** 成员清单索引：模型名 → 成员。校验函数只读，所以按 ReadonlyMap 收。 */
+export type MemberIndex = ReadonlyMap<string, ModelMembers>;
 
 /** 清单缓存：模型定义一天内基本不动，10 分钟足够；过期后重新读一次目录。 */
 const INDEX_TTL_MS = 10 * 60 * 1000;
@@ -53,10 +60,28 @@ function memberNames(value: unknown, model: string): string[] {
     .filter(Boolean);
 }
 
+/** 时间/日期类型：Cube 的 `type` 常见取值是 time / date / timestamp。 */
+const isTimeType = (value: unknown): boolean =>
+  typeof value === "string" && /^(time|date)/i.test(value.trim());
+
+/** dimensions 里类型是时间的成员（用同一套补前缀规则）。 */
+function timeNames(value: unknown, model: string): string[] {
+  if (!Array.isArray(value)) return [];
+  const names: string[] = [];
+  for (const item of value) {
+    if (!isTimeType((item as { type?: unknown })?.type)) continue;
+    const name = typeof item === "string" ? item : (item as { name?: unknown })?.name;
+    if (typeof name !== "string" || !name.trim()) continue;
+    const trimmed = name.trim();
+    names.push(trimmed.includes(".") ? trimmed : `${model}.${trimmed}`);
+  }
+  return names;
+}
+
 /** 把 inspect 产物（`{"semanticModel":[…]}`）压成 模型名 → 成员清单。 */
 export function memberIndexFrom(payload: unknown): MemberIndex {
   const models = (payload as { semanticModel?: unknown })?.semanticModel;
-  const index: MemberIndex = new Map();
+  const index = new Map<string, ModelMembers>();
   if (!Array.isArray(models)) return index;
   for (const model of models) {
     const name = (model as { name?: unknown })?.name;
@@ -65,6 +90,7 @@ export function memberIndexFrom(payload: unknown): MemberIndex {
       dimensions: memberNames((model as { dimensions?: unknown }).dimensions, name),
       measures: memberNames((model as { measures?: unknown }).measures, name),
       segments: memberNames((model as { segments?: unknown }).segments, name),
+      time: timeNames((model as { dimensions?: unknown }).dimensions, name),
     });
   }
   return index;

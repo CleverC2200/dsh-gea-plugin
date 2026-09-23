@@ -216,22 +216,30 @@ function typedCounts(model: Model): { time: number; number: number } {
  */
 export function projectCatalog(
   payload: unknown,
-  options: { model?: string; maxMembersPerModel?: number; maxChars?: number } = {},
+  options: {
+    model?: string;
+    maxMembersPerModel?: number;
+    maxChars?: number;
+    /** 模型 → consumerCode：告诉模型"这张表用哪条模块通道查"。 */
+    consumers?: ReadonlyMap<string, string>;
+  } = {},
 ): string {
   const models = ((payload as { semanticModel?: Model[] })?.semanticModel ?? []).filter(
     (model) => model && typeof model.name === "string" && model.name.trim(),
   );
   if (models.length === 0) throw new Error("GEA_CATALOG_EMPTY");
   const maxChars = options.maxChars ?? 12_000;
+  const consumers = options.consumers;
   const filter = options.model?.trim();
-  if (!filter) return modelIndex(models, maxChars);
+  if (!filter) return modelIndex(models, maxChars, consumers);
   const detailBudget = {
     maxMembers: options.maxMembersPerModel ?? 120,
     maxChars,
+    ...(consumers ? { consumers } : {}),
   };
   const ranked = rankByName(filter, models.map(catalogCandidate), { limit: MATCH_LIMIT + 8 });
   // 一个都不像：把带说明的完整索引直接回给模型，一步挑对，省一次往返。
-  if (ranked.length === 0) return missedModel(filter, models, maxChars);
+  if (ranked.length === 0) return missedModel(filter, models, maxChars, consumers);
   const hits = ranked.filter((match) => match.score >= HIT_SCORE);
   // 只有"内容像"（说明/成员名里出现这个词、字面并不相等）：先按最像的给明细，并说清这是匹配结果。
   if (hits.length === 0) return weakMatch(filter, models, ranked, detailBudget);
@@ -287,7 +295,11 @@ function weakMatch(
   filter: string,
   models: readonly Model[],
   ranked: readonly NameMatch[],
-  budget: { maxMembers: number; maxChars: number },
+  budget: {
+    maxMembers: number;
+    maxChars: number;
+    consumers?: ReadonlyMap<string, string>;
+  },
 ): string {
   const shown = ranked.slice(0, 2);
   const rest = ranked.slice(2);
@@ -302,17 +314,26 @@ function weakMatch(
 }
 
 /** 一个都不像：不报错，直接把带说明的完整索引回出去。 */
-function missedModel(filter: string, models: readonly Model[], maxChars: number): string {
+function missedModel(
+  filter: string,
+  models: readonly Model[],
+  maxChars: number,
+  consumers?: ReadonlyMap<string, string>,
+): string {
   return (
     `没有叫「${filter}」的模型：model 只能填模型名（英文标识）或它的子串，` +
     "说明里的用词和模型名常常不是一回事，请照下面的说明挑。\n" +
     "请从下面挑一个模型，带 model=模型名 再调一次：\n" +
-    modelIndex(models, maxChars)
+    modelIndex(models, maxChars, consumers)
   );
 }
 
 /** 模型索引：先给名字与一句话，够模型挑一个再要明细。 */
-function modelIndex(models: readonly Model[], maxChars: number): string {
+function modelIndex(
+  models: readonly Model[],
+  maxChars: number,
+  consumers?: ReadonlyMap<string, string>,
+): string {
   const header =
     "GEA 网关语义模型索引（成员名可直接用于 Cube 查询，形如 模型.字段）：";
   const rich = (model: Model) => {
@@ -342,6 +363,9 @@ function modelIndex(models: readonly Model[], maxChars: number): string {
     lines.push(
       "（成员放 dimensions 还是 measures 由这里的类型决定：只有列在“度量”里的成员才写进 measures；标了“无度量”的模型一律放 dimensions。）",
       "（要某个模型的成员名，带 model=模型名 再调一次；model 按模型名子串匹配。）",
+      ...(consumers?.size
+        ? ["（选好模型后，明细里会给出该模型的 consumerCode——调 gea_module_mcp 时用它。）"]
+        : []),
     );
     return lines.join("\n");
   };
@@ -356,7 +380,11 @@ function modelIndex(models: readonly Model[], maxChars: number): string {
 /** 指定模型后的明细：成员名按上限截断，但不让模型以为"目录"不完整。 */
 function modelDetails(
   models: readonly Model[],
-  options: { maxMembers: number; maxChars: number },
+  options: {
+    maxMembers: number;
+    maxChars: number;
+    consumers?: ReadonlyMap<string, string>;
+  },
 ): string {
   const lines: string[] = [
     "GEA 网关语义模型成员（可直接用于 Cube 查询，形如 模型.字段）：",
@@ -372,6 +400,11 @@ function modelDetails(
     const parts = [`- ${name}${model.title && model.title !== name ? `（${model.title}）` : ""}`];
     const description = (model.description ?? "").replace(/\s+/g, " ").trim();
     if (description) parts.push(`  说明：${description.slice(0, 160)}`);
+    const consumerCode = options.consumers?.get(name);
+    if (consumerCode)
+      parts.push(
+        `  查询通道：consumerCode=${consumerCode}（调 gea_module_mcp 时带它；这表示该身份能看见这个模型，不代表每行数据都已授权）`,
+      );
     if (dimensions.length)
       parts.push(`  维度(${dimensions.length})：${dimensions.slice(0, options.maxMembers).join(", ")}`);
     if (measures.length)

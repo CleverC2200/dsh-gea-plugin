@@ -575,3 +575,38 @@ test("宿主对拒绝过的模块在窗口内不再重试，并给出可读的�
   assert.match(source, /GEA_MCP_HTTP_REJECTED：网关拒绝了这个模块的 MCP 调用/);
   assert.match(source, /10 分钟内不要再试它/);
 });
+
+test("HTTP 429 按 Retry-After 给出等待建议，不当作连接坏了", async () => {
+  // 规约 §14：限流要么回 429 + Retry-After（REST /call），要么在 200 的业务信封里回；
+  // 两种情况都要给"等多久"，并且明确不能原样立刻重试。
+  let calls = 0;
+  const connection = await prepareGatewayMcp("https://gea.test", auth, consumer,
+    new AbortController().signal, 1000, async (url, init) => {
+      if (url.endsWith("/session")) return Response.json(session());
+      const message = JSON.parse(init.body);
+      if (message.method === "initialize")
+        return Response.json({ result: { protocolVersion: "2025-11-25" } },
+          { headers: { "MCP-Session-Id": "session-1" } });
+      if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
+      calls++;
+      return new Response("rate limited", { status: 429, headers: { "Retry-After": "3" } });
+    });
+  const headers = { "MCP-Protocol-Version": "2025-11-25" };
+  await connection.fetch(connection.url, { method: "POST", headers,
+    body: JSON.stringify({ method: "initialize" }) });
+  await assert.rejects(
+    () => connection.fetch(connection.url, { method: "POST", headers,
+      body: JSON.stringify({ method: "resources/list", params: {} }) }),
+    (error) => {
+      assert.match(error.message, /GEA_MCP_RATE_LIMITED/);
+      assert.match(error.message, /等 3 秒再试/);
+      assert.equal(error.message.includes("upstream-secret"), false);
+      // 限流不是"重新登录"能修的，别给那条误导建议。
+      assert.equal(error.message.includes("请检查连接或重新登录"), false);
+      assert.equal(error.retryable, true);
+      return true;
+    },
+  );
+  // 429 不做传输层自动重试（规约：不原样立刻重试，由调用方按等待时间决定）。
+  assert.equal(calls, 1);
+});

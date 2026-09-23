@@ -37,7 +37,8 @@ import {
 } from "../capability/recipes.ts";
 import { LAYER_POLICY } from "../capability/layers.ts";
 import { channelPlan, type ChannelPlan } from "../capability/channel.ts";
-import { yearMonthHint, yearMonthValues } from "./cube-query-guard.ts";
+import { preflightCubeArguments } from "./cube-preflight.ts";
+import { modelConsumers, rememberModelConsumers } from "./catalog-consumers.ts";
 import { didYouMean } from "../shared/name-lookup.ts";
 import {
   measureHint,
@@ -635,15 +636,14 @@ export function registerGeaTools(
             args.arguments && typeof args.arguments === "object"
               ? (args.arguments as Record<string, unknown>)
               : {};
-          // 年月当日期传是"发出去必被数据库拒"的一类：先在宿主拦下并给出写法，
-          // 省掉一次注定失败的往返（cube-core 实测 invalid input syntax for type date）。
-          if (toolName === "query_business_data" && parameters.action === "query") {
-            const hits = yearMonthValues(parameters.queries);
-            if (hits.length > 0) throw new Error(yearMonthHint(hits));
-            // 成员名必须逐字来自目录：实测模型会拿业务词造一个（"品类" → category_name），
-            // 而网关只回一句"下游工具执行失败"，不给真实原因，模型无从改起。
-            const guard = memberGuard(parameters.queries);
-            if (guard) throw new Error(guard);
+          // 出站预检闸门（规约 G3–G6、§17）：形态、单模型、成员名与类别、排序分页能确定性
+          // 判定的都在这里拦下，不发出去被网关拒。规约同时要求"查询前必须持有当前 inspect"，
+          // 所以清单不在手时先补读一次目录（读不回来就只做形状校验，不因此拒绝服务）。
+          if (toolName === "query_business_data") {
+            if (parameters.action === "query" && !memberIndex())
+              await loadMemberIndex(module, exec.signal);
+            const blocked = preflightCubeArguments(parameters, memberIndex());
+            if (blocked) throw new Error(blocked);
           }
           const missing = tool.required.filter(
             (name) => parameters[name] === undefined || parameters[name] === null,
@@ -876,7 +876,16 @@ export function registerGeaTools(
             const payload = parseFirstJsonObject(text);
             // 顺手把成员清单记下来：发查询前用它逐字校验成员名（见 member-index.ts）。
             rememberMemberIndex(payload);
-            return dedup.remember(dedupKey, projectCatalog(payload, { model: args.model }));
+            // 同时记下"这些模型是用哪个 consumerCode 读到的"：目录里的模型名要能对上
+            // 一条查询通道，否则模型看得见表却不知道该用哪个 consumerCode（线上真的会放弃）。
+            rememberModelConsumers(business.config.analysisAgentCode, payload);
+            return dedup.remember(
+              dedupKey,
+              projectCatalog(payload, {
+                model: args.model,
+                consumers: modelConsumers(),
+              }),
+            );
           } catch (error) {
             const message = (error as Error).message;
             // 自己的目录错误（模型名不对、目录为空…）原样抛：套一层"MCP 失败"会把

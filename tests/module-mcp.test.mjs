@@ -671,3 +671,74 @@ test("制品贴着授权上限时先提醒缩口径，而不是等网关整批�
   assert.match(value, /贴着数据授权上限/);
   assert.match(value, /只取真正用得上的 2–4 列/);
 });
+
+test("限流：HTTP 200 + 业务信封也认，给等待建议而不是让人改参数", async () => {
+  // 同事核对的 GEA 实现：REST /call 回 429 + Retry-After，但标准 MCP 的工具业务失败
+  // 走 HTTP 200 + 失败信封。只处理 HTTP 码会漏掉这一半。
+  const envelope = {
+    retryable: true,
+    retryAfterMs: 2000,
+    businessCode: "AI_GATEWAY_RATE_LIMITED",
+    code: "AI_GATEWAY_RATE_LIMITED",
+    success: false,
+    message: "请求过于频繁，请稍后重试",
+    category: "RATE_LIMIT",
+  };
+  const { transport } = fakeTransport((body) => {
+    if (body.method === "initialize")
+      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+    if (body.method === "notifications/initialized") return new Response("", { status: 202 });
+    if (body.method === "tools/list")
+      return json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] } });
+    if (body.method === "tools/call")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          isError: true,
+          structuredContent: envelope,
+          content: [{ text: envelope, type: "text" }],
+        },
+      });
+    throw new Error("unexpected method " + body.method);
+  });
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  await assert.rejects(
+    () => module.call("query_business_data", {}, new AbortController().signal),
+    (error) => {
+      assert.match(error.message, /GEA_MCP_RATE_LIMITED/);
+      assert.match(error.message, /等约 2 秒再试/);
+      assert.match(error.message, /不是参数问题/);
+      assert.match(error.message, /不要立刻原样重试/);
+      // 限流不能被说成"改好参数后可以重新调用一次"
+      assert.equal(error.message.includes("改好参数后可以重新调用一次"), false);
+      return true;
+    },
+  );
+});
+
+test("权限失败要保留 details 里的诊断项，说清缺的是哪一项", async () => {
+  // GEA 把 reasonCode/resourceCode/configurationPath/decisionId 放在 details 里，
+  // suggestedAction 在信封顶层。少一项就只能回"没权限"，没人知道该配什么。
+  const { transport } = envelopeTransport({
+    retryable: false,
+    code: "AI_GATEWAY_DATA_PERMISSION_DENIED",
+    businessCode: "AI_GATEWAY_DATA_PERMISSION_DENIED",
+    success: false,
+    suggestedAction: "CONFIGURE_DATA_GRANTS",
+    message: "本次匹配到的访问策略中没有该资源的 ALLOW 授权",
+    details: {
+      reasonCode: "RESOURCE_ALLOW_MISSING",
+      resourceCode: "agents_scm_inventory_age-cube",
+      configurationPath: "策略 v7 / 资源授权",
+      decisionId: "07d7c69d-d7c3-4089-825f-bb42477f12ff",
+    },
+  });
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  const value = await module.call("query_business_data", {}, new AbortController().signal);
+  assert.match(value, /模块数据未授权/);
+  assert.match(value, /reasonCode=RESOURCE_ALLOW_MISSING/);
+  assert.match(value, /资源=agents_scm_inventory_age-cube/);
+  assert.match(value, /授权项=07d7c69d/);
+  assert.match(value, /配置位置=策略 v7/);
+});

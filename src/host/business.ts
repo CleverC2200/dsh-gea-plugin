@@ -1881,11 +1881,7 @@ export class Business {
     consumerCode: string,
     signal: AbortSignal,
   ): Promise<import("./mcp-client.ts").McpModule> {
-    const allowedConsumers = this.pluginConsumers?.size
-      ? this.pluginConsumers
-      : DEFAULT_PLUGIN_CONSUMERS;
-    if (!allowedConsumers.has(consumerCode))
-      throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
+    if (!this.consumerAllowed(consumerCode)) throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
     const auth = this.authenticated();
     const rejected = this.moduleMcpRejections.get(consumerCode);
     if (rejected !== undefined) {
@@ -2182,10 +2178,7 @@ export class Business {
     const consumerCode = text(payload.consumerCode ?? query.consumerCode);
     // 白名单来自能力契约（由宿主在启动时注入）；一个契约都没有时（例如单元测试或
     // 没装任何 HTML 插件）用内置兜底清单，避免把历史编码一起挡掉。
-    const allowedConsumers = this.pluginConsumers?.size
-      ? this.pluginConsumers
-      : DEFAULT_PLUGIN_CONSUMERS;
-    if (!allowedConsumers.has(consumerCode)) throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
+    if (!this.consumerAllowed(consumerCode)) throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
     // 同一个模块连续失败就到此为止：线上实测模型会换着表/换着 SQL 一直重试
     // （38 步、4 分钟不输出）。熔断后强制它用手上的证据作答，或说明缺什么。
     const failures = this.pluginFailures.get(consumerCode);
@@ -2247,6 +2240,26 @@ export class Business {
   /** 用能力契约里的模块清单替换内置白名单：装了什么模块，就允许读什么。 */
   setPluginConsumers(consumerCodes: readonly string[]): void {
     this.pluginConsumers = new Set(consumerCodes);
+  }
+
+  /**
+   * 这个模块编码能不能走受管通道。
+   *
+   * 白名单来自能力契约（装了什么模块就允许读什么），**外加宿主自己的分析身份**：
+   * 网关目录（gea_gateway_catalog 的 inspect）就是用 `analysisAgentCode` 建的会话，
+   * 同一个身份看得见的模型，同一个身份当然能查——这不是"换身份探测"，而是把目录
+   * 通道与查询通道对齐到同一份身份上。
+   *
+   * 线上问题：目录里明明列着 `agents_sales_plan_detail_mi`，但查它要用 `sales_forecast`，
+   * 而它不在契约白名单里，模型只能去撞别的模块（被挡或撞到演示模块），最后放弃 Cube，
+   * 把工作台那 30 条计划单当成答案。数据本身是否可见仍由网关按用户与资源授权判定。
+   */
+  private consumerAllowed(consumerCode: string): boolean {
+    if (consumerCode === this.config.analysisAgentCode) return true;
+    const allowedConsumers = this.pluginConsumers?.size
+      ? this.pluginConsumers
+      : DEFAULT_PLUGIN_CONSUMERS;
+    return allowedConsumers.has(consumerCode);
   }
 
   /**

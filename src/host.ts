@@ -28,6 +28,8 @@ import { mountTurnAnchor } from "./host/turn-anchor.ts";
 import { registerHtmlPlugins, type PageBridgeHost } from "./html-plugins.ts";
 import { injectPageScan } from "./html-page-scan.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
+import { forgetMemberIndex } from "./host/member-index.ts";
+import { forgetModelConsumers } from "./host/catalog-consumers.ts";
 import {
   createPageBridge,
   createPageToolRegistry,
@@ -434,6 +436,14 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   });
   // 身份变化后旧会话的页面工具一律注销；页面下一轮声明会重新注册。
   ctx.effect(() => business.watchIdentity(() => pageTools.disposeAll()));
+  // 目录缓存（成员清单 + 模型 → consumerCode）也跟着身份走：换了账号或环境，上一份
+  // inspect 里的成员和可见模型都不能再用——规约 G5 要的是"当前模型版本的 inspect"。
+  ctx.effect(() =>
+    business.watchIdentity(() => {
+      forgetMemberIndex();
+      forgetModelConsumers();
+    }),
+  );
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());
   pageBridgeHost.declare = (sessionId, catalog, source) =>
@@ -458,13 +468,13 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         "GEA 网关 MCP 取数协议（只有工作台页面上看不到的数据才用它）：",
         "- 计划事实（提报状态、版本、明细、变更记录）优先用 gea_sales_plan_read；历史发货、经销商/分仓库存、货龄、补货周期、政策、节令、把握度，以及知识库类问题，用当前已加载的 GEA 网关 MCP 工具——**统一经 gea_module_mcp 调用**（给定 consumerCode + tool + arguments）。不要直接用平台直挂的 `mcp__gea-gateway__*` 工具：那条路的失败是原始报文，宿主不会把它翻成可读原因，也不会替你收口。",
         "- 先取语义模型目录再查询：调用 gea_gateway_catalog（需要看某个模型时带 model=模型名），拿到模型名与成员名；成员名照抄，不要凭业务名猜。**model 只填模型名（英文标识）或它的子串**；把业务词当模型名是命中不到的——这时目录不会报错，而是按内容把最像的模型和完整索引回给你，照它挑一个再调即可，不要重复猜名字。目录里的成员名形如 模型.字段，就是查询时要用的成员。成员名后的 [time]/[number] 是类型：`[time]` 取值要写完整日期，`[number]` 只是数值类型的维度（仍放 dimensions）。拿不准某个成员的值长什么样时，用 `members=[成员名…] + values=true` 先取一行真实值，照它的格式写查询。",
-        "- 成员名**只能逐字来自目录**，不要自己把业务词翻成英文：线上实测把“品类”写成 category_name，而这个 cube 里叫 product_categ_name，整批查询直接被下游拒。**读目录与发查询分两步走，不要放在同一个回合里并行调**——目录结果还没回来就把查询发出去，参数只能是猜的。同一份目录读到一次就记住，后续步骤直接引用，不要反复重读。",
+        "- 成员名**只能逐字来自目录**，不要自己把业务词翻成英文（把“品类”写成 category_name 这类会被宿主在发出去之前拦下）。**读目录与发查询分两步走，不要放在同一个回合里并行调**——目录结果还没回来就把查询发出去，参数只能是猜的。同一份目录读到一次就记住，后续步骤直接引用，不要反复重读。",
         '- 不要自己去读 inspect 的原始产物：它约 33 万字符，宿主只会内联前 30KB，剩下的存成本机文件，你没有读文件的工具。目录工具已经把它压到可一次读完的大小。',
         '- 再查询：action="query"，queries 放 1 到 8 个具名 Cube 查询对象，每项形如 {"name":"<别名>","query":{…}}，其中 query 必须是 Cube 查询对象（不能写成字符串或自然语言）；response_mode 默认 "resource"，只有需要直接看行时才用 "inline_complete"。',
         '- Cube 查询对象里**只放这几个键**：dimensions（成员名数组）、measures（成员名数组）、filters（[{"member":成员,"operator":"equals|contains|…","values":[…]}]）、order、limit。不确定形状时先 `tool=query_business_data` + `schema=true` 读服务端定义；服务端当前没声明到的嵌套形状（order 就是），以它返回的校验报错为准——这几行只是 schema 补全前的临时说明。',
-        '- order 的写法：**推荐对象 {"<成员名>":"asc"|"desc"}**；要写成数组时，每个元素必须是 [成员, 方向] 两元组，例如 [["模型.字段","desc"]]。别用 {"member":…,"direction":…} 这类别的形状；网关回 AI_SCHEMA_INVALID 时，照它给的字段与格式要求改好再调一次，不要用同一份参数原样重试。',
-        "- 一次只查一个模型：同一次调用的成员必须属于同一个 dataAssetCode，跨模型要分开调用；报“成员未唯一匹配数据目录资源”就是这条没满足。",
-        "- 成员放 dimensions 还是 measures **由目录标出的类型决定**：只有目录里“度量”下列出的成员才写进 measures；标了“无度量”的模型（库存、库存快照、补货周期这几类基本都是）全部成员——数值字段也一样——只能放 dimensions。线上实测：把数值字段写进 measures，上游 Cube 会直接拒绝整批查询计划。",
+        '- order 推荐对象写法 {"<成员名>":"asc"|"desc"}；写数组时每个元素必须是 [成员, 方向] 两元组。形状写错、跨模型、成员名不在目录、只有年月的日期值，宿主都会在发出去之前拦下并告诉你正确写法——照提示改一次即可，不要原样重试。',
+        "- 一次只查一个模型：跨模型的调用会被宿主拦下并按模型给你拆分方案。",
+        "- 成员放 dimensions 还是 measures **由目录标出的类型决定**：只有目录里“度量”下列出的成员才写进 measures；标了“无度量”的模型（库存、库存快照、补货周期这几类基本都是）全部成员——数值字段也一样——只能放 dimensions。",
         "- **要“合计 / 平均 / 最大最小 / 计数”时先用度量，不要拉明细本地算**：目录里“度量”下列出的成员（形如 xxx_sum、xxx_count）直接写进 query.measures，一次调用出结果。线上实测：用明细求和要上百行、十几万字符，还可能撞到数据授权上限被拒；用度量只要 1 行、几百字节。",
         "- **聚合前先把“行粒度”钉住**（这一步最容易出错）：度量只对“当前过滤出来的那些表行”求和，过滤没钉全，同一个对象就会被算好几遍。做法：从目录说明里读出这个模型**按哪些维度区分一条记录**（时间/快照、版本、周期月、批次…），这些维度要么全部在 filters 里固定成唯一取值，要么放进 dimensions 分组展示。",
         "- **怎么判断有没有钉全**：同一次查询里对比 `row_count` 与对象数（如 SKU 数），两者不相等就说明同一个对象存在多个粒度组合——这时不要直接对数量求和，先补过滤或按维度分组；拿不准就先分组查一次，用返回的行数确认。",
@@ -475,7 +485,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         "- **同一轮里，同一份信息只读一次**：模型索引、某个模型的成员清单、某个模块的工具清单，读过就记住、后面直接引用；重复读同一个东西只会浪费一轮。要的是别的模型就换 model 参数。",
         "- **空结果、被拒、演示模块都不要再换着试**：样例值取不到就别再换模型试样例值（它只是用来确认格式，不是查询前提——按目录里的类型标注照写即可）；演示模块调过一次就够；同一个模块失败两次、或本轮累计白跑若干次时，宿主会直接叫停，那时请用已有证据作答或说清缺哪一项，然后结束这一轮。",
         "- 如果 Cube 回 `'某个成员' not found for path '模型.某成员'`：先怀疑这个成员被放进了 measures（这些 cube 多数只有 dimensions）。成员在目录里列过就说明它存在，不要改去猜别的名字或换模型。",
-        "- 日期/时间成员（snapshot_date、snapshot_time、target_month、stat_date、inventory_snapshot_time 这类）的值必须是完整日期 `YYYY-MM-DD`（带时间的用 `YYYY-MM-DD HH:mm:ss`）：写 `2026-09` 这种只有年月的值，Cube 会以 `invalid input syntax for type date` 报错。拿不准就先查一次该成员的现有值，再照抄格式。",
+        "- 日期/时间成员的值必须是完整日期 `YYYY-MM-DD`（带时间的用 `YYYY-MM-DD HH:mm:ss`）；只有年月的值会被宿主拦下。拿不准就先查一次该成员的现有值，再照抄格式。",
         '- 结果返回 `data-artifact://gateway/…` 链接时：**gea_module_mcp 的结果宿主已经把正文读回来内联了，不需要你再读一次**。**大结果只内联第一段**，正文里会写明"只内联了前 N 字符，全文 M 字符"；要接着看就再调一次 gea_module_mcp（consumerCode 同上 + `artifact="`原样的 data-artifact:// URI`"` + `offset=`上一段结尾给的位置），**不要重复跑整条大查询**，也不要自己拼 URI、不要当 HTTP 链接去抓。正文里若写"还有几个制品没有内联"，同样用 `artifact=<URI>` 去读那几个。万一是平台直挂的网关工具返回链接，才用 read_mcp_resource，且 server 必须是网关那一个（gea-gateway）——**绝不要用 browser**（那个服务没连，只会报 server is disconnected，白跑一轮）。',
         "- 报错先按错误文本改参数再试一次；同一错误不要连续重试，更不要改用编造的数据或改写用户的问题。",
         "- 查询被网关回“下游工具执行失败”（只给 requestId、没有具体原因）时，先自查这两件：① 成员名是否逐字来自目录；② 是否把维度（含数值字段）写进了 measures。改好再发新的一次调用；仍失败就把 requestId 交给排查，不要用同一份参数反复重试。",

@@ -3,6 +3,18 @@ import { randomUUID } from "node:crypto";
 import { createParser } from "eventsource-parser";
 const nonempty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 
+/**
+ * `Retry-After` 的两种形态都认：秒数（`2`）和 HTTP 日期。
+ * 拿不到就返回 undefined——那就只说"限流了"，不编一个等待时间。
+ */
+function retryAfterMs(headers: Headers): number | undefined {
+  const raw = headers.get("Retry-After")?.trim();
+  if (!raw) return undefined;
+  if (/^\d+$/.test(raw)) return Number(raw) * 1000;
+  const at = Date.parse(raw);
+  return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now());
+}
+
 /** 先用当前登录身份申请 Gateway 上下文，再封装只带该上下文的 MCP Fetch 能力；传输会话协商仍由 MCP SDK 负责。 */
 export async function prepareGatewayMcp(
   base: string,
@@ -181,6 +193,24 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
     identity.throwIfAborted();
     if (!res.ok && init?.method === "POST") {
       await res.body?.cancel();
+      // 限流是"等一下还能用"，不是"连接坏了"：规约 §14 要求按 Retry-After 等待，
+      // 并降低并发/缩小查询范围，不能原样立刻重试。REST /call 会回 429 + Retry-After；
+      // 这里的 MCP 入口同样要认。
+      if (res.status === 429) {
+        const waitMs = retryAfterMs(res.headers);
+        throw Object.assign(
+          new Error(
+            `GEA_MCP_RATE_LIMITED: 网关限流（HTTP 429）${
+              waitMs === undefined ? "" : `，建议等 ${Math.ceil(waitMs / 1000)} 秒再试`
+            }。请降低并发或缩小查询范围后再来，不要原样立刻重试。`,
+          ),
+          {
+            code: "GEA_MCP_RATE_LIMITED",
+            retryable: true,
+            ...(waitMs === undefined ? {} : { retryAfterMs: waitMs }),
+          },
+        );
+      }
       throw new Error(`GEA_MCP_HTTP_${res.status}: 网关请求被拒绝，请检查连接或重新登录；不要原样重复调用。`);
     }
     if (discovery && res.ok) {

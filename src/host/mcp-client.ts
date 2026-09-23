@@ -236,7 +236,7 @@ export function describeToolSchema(tool: McpTool): string {
  *
  * 只认顶层的代价就是：失败被原样当数据回给模型，界面上"报错都不展示了"。
  */
-type ToolFailureKind = "validation" | "permission" | "upstream";
+type ToolFailureKind = "validation" | "permission" | "rate-limit" | "upstream";
 
 /**
  * 权限类失败以可读文本返回（不当红色调用失败），所以调用方只能按这个前缀认出它。
@@ -249,16 +249,27 @@ type ToolFailure = {
   message: string;
   kind: ToolFailureKind;
   retryable?: boolean;
+  /** 网关给的建议等待时间（限流类默认 1000ms，其它错误可能为空）。 */
+  retryAfterMs?: number;
   requestId?: string;
   traceId?: string;
   auditId?: string;
   suggestedAction?: string;
   /** 出错的字段路径，例如 queries[0].query.order。 */
   path?: string;
+  /**
+   * 权限诊断字段。GEA 把这几项放在 `details` 里（suggestedAction 在信封顶层），
+   * 少一个都说不清"到底缺哪一项授权"——只回一句"没权限"会让人去改参数或换模块。
+   */
+  reasonCode?: string;
+  resourceCode?: string;
+  configurationPath?: string;
+  decisionId?: string;
 };
 
 const POLICY_FAILURE_CODES = new Set([
   "AI_GATEWAY_DATA_PERMISSION_DENIED",
+  "RESOURCE_ALLOW_MISSING",
   "AGENT_ACCESS_DENIED",
   "GEA_PLUGIN_SESSION_REJECTED",
   "DATA_GRANTS_EMPTY",
@@ -266,7 +277,14 @@ const POLICY_FAILURE_CODES = new Set([
 
 /** 失败码的形态：`OK` 这类正常码不能误判成失败。 */
 const FAILURE_CODE =
-  /(ERROR|FAILED|FAILURE|DENIED|REJECTED|INVALID|EXCEEDED|NOT_FOUND|EMPTY|UNKNOWN|UNAVAILABLE|TIMEOUT|EXPIRED|FORBIDDEN)/;
+  /(ERROR|FAILED|FAILURE|DENIED|REJECTED|INVALID|EXCEEDED|NOT_FOUND|MISSING|EMPTY|UNKNOWN|UNAVAILABLE|TIMEOUT|EXPIRED|FORBIDDEN|RATE_LIMIT|QUOTA|THROTTLED)/;
+
+/**
+ * 限流/排队：REST `/call` 会映射成 HTTP 429 + `Retry-After`，但标准 MCP 的工具业务失败
+ * 走的是 **HTTP 200 + 失败信封**（同事核对的 GEA 实现），只看 HTTP 码会漏。两类都要认，
+ * 并给出等待建议，而不是把它当参数错误让人反复改参数。
+ */
+const RATE_LIMIT_FAILURE = /RATE_LIMIT|RATE_LIMITED|TOO_MANY|THROTTLED|QUOTA|限流|频率|排队/;
 
 /**
  * 网关会把"查询写错"也标成 `AI_GATEWAY_DATA_PERMISSION_DENIED`/`AUTHORIZATION`。
@@ -280,6 +298,9 @@ const QUERY_SHAPE_FAILURE =
 
 const str = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim() ? value : undefined;
+
+const asNumber = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -319,27 +340,47 @@ function failureOf(record: Record<string, unknown> | undefined): ToolFailure | u
   const resolved = code ?? "GEA_MCP_TOOL_ERROR";
   // message 先说清是写法问题的，优先按写法问题分类（网关的码/category 会误导）。
   const queryShape = QUERY_SHAPE_FAILURE.test(`${message} ${details?.path ?? ""}`);
+  const rateLimit =
+    !queryShape &&
+    (RATE_LIMIT_FAILURE.test(resolved) ||
+      RATE_LIMIT_FAILURE.test(category ?? "") ||
+      RATE_LIMIT_FAILURE.test(message));
   const permission =
     !queryShape &&
+    !rateLimit &&
     (POLICY_FAILURE_CODES.has(resolved) ||
       (/DENIED|FORBIDDEN/.test(resolved) && !/INVALID/.test(resolved)) ||
       /授权|权限/.test(message));
   const validation =
     !permission &&
+    !rateLimit &&
     (queryShape ||
       resolved === "AI_SCHEMA_INVALID" ||
       category === "VALIDATION" ||
       suggestedAction === "FIX_ARGUMENTS" ||
       /参数|字段|格式|必须/.test(message));
+  const retryAfterMs =
+    asNumber(record.retryAfterMs) ?? asNumber(nested?.retryAfterMs) ?? asNumber(details?.retryAfterMs);
+  const reasonCode = str(details?.reasonCode) ?? str(record.reasonCode);
+  const resourceCode = str(details?.resourceCode) ?? str(record.resourceCode);
+  const configurationPath = str(details?.configurationPath) ?? str(record.configurationPath);
+  const decisionId = str(details?.decisionId) ?? str(record.decisionId);
   return {
     code: resolved,
     message,
-    kind: permission ? "permission" : validation ? "validation" : "upstream",
+    kind: rateLimit
+      ? "rate-limit"
+      : permission
+        ? "permission"
+        : validation
+          ? "validation"
+          : "upstream",
     ...(typeof record.retryable === "boolean"
       ? { retryable: record.retryable }
       : typeof nested?.retryable === "boolean"
         ? { retryable: nested.retryable as boolean }
         : {}),
+    ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
     ...(str(record.requestId) ?? str(nested?.requestId)
       ? { requestId: (str(record.requestId) ?? str(nested?.requestId))! }
       : {}),
@@ -351,6 +392,10 @@ function failureOf(record: Record<string, unknown> | undefined): ToolFailure | u
       : {}),
     ...(suggestedAction ? { suggestedAction } : {}),
     ...(str(details?.path) ? { path: str(details?.path)! } : {}),
+    ...(reasonCode ? { reasonCode } : {}),
+    ...(resourceCode ? { resourceCode } : {}),
+    ...(configurationPath ? { configurationPath } : {}),
+    ...(decisionId ? { decisionId } : {}),
   };
 }
 
@@ -385,6 +430,9 @@ function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error
   const detail = [
     failure.code,
     failure.path ? `字段=${failure.path}` : undefined,
+    failure.retryAfterMs === undefined
+      ? undefined
+      : `建议等待=${Math.ceil(failure.retryAfterMs / 1000)}s`,
     failure.requestId ? `requestId=${failure.requestId}` : undefined,
     failure.traceId ? `traceId=${failure.traceId}` : undefined,
     failure.auditId ? `auditId=${failure.auditId}` : undefined,
@@ -393,16 +441,34 @@ function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error
     .filter(Boolean)
     .join("，");
   const queriesHint = /queries/i.test(failure.path ?? "") || /queries/i.test(failure.message)
-    ? "（提示：Cube 查询要放在 arguments.queries 里，不要提到工具顶层。）"
+    ? "（提示：Cube 查询要放在 arguments.queries 里，不要提到工具顶层；同样的位置问题在别的 query 里也要一并改掉，不要一次只改一处。）"
     : "";
   const crossModelHint = QUERY_SHAPE_FAILURE.test(failure.message)
     ? "（提示：一次调用里的成员必须属于同一个模型/dataAssetCode——把不同模型的成员拆成两次调用再来一次。）"
     : "";
+  // 限流是"等一下还能用"，不是"参数错了"：给等待建议，别让人反复改参数。
+  if (failure.kind === "rate-limit")
+    return {
+      error: new Error(
+        `GEA_MCP_RATE_LIMITED：网关限流/排队（${detail}）${
+          failure.message ? `：${failure.message}` : ""
+        }。这是流量限制，不是参数问题：${
+          failure.retryAfterMs === undefined
+            ? "等一会儿再试"
+            : `等约 ${Math.ceil(failure.retryAfterMs / 1000)} 秒再试`
+        }，并降低并发或缩小查询范围（合并同模型查询、加 filters、调小 limit）；不要立刻原样重试。对用户就说这块数据暂时取不到，稍后再问。`,
+      ),
+    };
   if (failure.kind === "permission")
     return {
       text:
         `${PERMISSION_NOTICE_PREFIX}${failure.message || failure.code}（${detail}）。` +
-        "这是当前账号/Agent 的权限或数据授权没配置，不是参数问题：说清缺哪一项授权，不要换模块或换写法重试。",
+        "这是当前账号/Agent 的权限或数据授权没配置，不是参数问题：说清缺哪一项授权，不要换模块或换写法重试。" +
+        (failure.reasonCode ? `缺的具体项：reasonCode=${failure.reasonCode}` : "") +
+        (failure.resourceCode ? `，资源=${failure.resourceCode}` : "") +
+        (failure.decisionId ? `，授权项=${failure.decisionId}` : "") +
+        (failure.configurationPath ? `，配置位置=${failure.configurationPath}` : "") +
+        (failure.reasonCode || failure.resourceCode ? "。" : ""),
     };
   if (failure.kind === "validation")
     return {
