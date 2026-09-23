@@ -24,6 +24,7 @@ import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
 import { surfacePromptLine } from "./host/workbench-surface.ts";
+import { mountTurnAnchor } from "./host/turn-anchor.ts";
 import { registerHtmlPlugins, type PageBridgeHost } from "./html-plugins.ts";
 import { injectPageScan } from "./html-page-scan.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
@@ -485,6 +486,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       },
     });
   });
+  // 每步把"用户这一轮问的是什么"钉在消息末尾：系统提示里的位置段只能劝阻，
+  // 长轮次（一轮 17 次工具调用）里模型会把用户那条消息丢掉，最后说自己"没收到提问"。
+  ctx.effect(() => mountTurnAnchor(ctx));
   ctx.effect(() => async () => { await desktopLogin.dispose(); await webLogin.dispose(); business.dispose(); });
   if (config.analysisMode === "receipt")
     ctx.effect(() =>

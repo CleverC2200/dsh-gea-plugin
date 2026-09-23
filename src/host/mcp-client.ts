@@ -238,6 +238,12 @@ export function describeToolSchema(tool: McpTool): string {
  */
 type ToolFailureKind = "validation" | "permission" | "upstream";
 
+/**
+ * 权限类失败以可读文本返回（不当红色调用失败），所以调用方只能按这个前缀认出它。
+ * 熔断要靠它把"被拒"也算成失败，否则模型会一直换模块试。
+ */
+export const PERMISSION_NOTICE_PREFIX = "模块数据未授权：";
+
 type ToolFailure = {
   code: string;
   message: string;
@@ -395,7 +401,7 @@ function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error
   if (failure.kind === "permission")
     return {
       text:
-        `模块数据未授权：${failure.message || failure.code}（${detail}）。` +
+        `${PERMISSION_NOTICE_PREFIX}${failure.message || failure.code}（${detail}）。` +
         "这是当前账号/Agent 的权限或数据授权没配置，不是参数问题：说清缺哪一项授权，不要换模块或换写法重试。",
     };
   if (failure.kind === "validation")

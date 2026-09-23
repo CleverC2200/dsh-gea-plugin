@@ -2,6 +2,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { Business } from "./business.ts";
+import { PERMISSION_NOTICE_PREFIX } from "./mcp-client.ts";
 import { readFile } from "node:fs/promises";
 import {
   contentText,
@@ -621,9 +622,17 @@ export function registerGeaTools(
             throw new Error(
               `GEA_MCP_TOOL_PARAMS：${toolName} 缺少参数 ${missing.join("、")}`,
             );
+          // 熔断：同一个模块连续失败到上限就停手，不要再换模型/成员/写法试。
+          const failures = business.moduleMcpFailures();
+          failures.check(consumerCode);
           try {
-            return await module.call(toolName, parameters, exec.signal);
+            const output = await module.call(toolName, parameters, exec.signal);
+            // 权限拒绝是以可读文本返回的（不是抛错），也算失败——这类最会诱发"换模块再试"。
+            failures.note(consumerCode, !output.startsWith(PERMISSION_NOTICE_PREFIX));
+            return output;
           } catch (error) {
+            // 网关把下游真实原因吞了（只回 MCP_UPSTREAM_TOOL_ERROR）：补一次成员名判断，
+            // 判出来就把失败换成"照着改就能过"的提示——这类是模型改一下就能过的。
             const repaired = await repairUpstreamFailure(
               error,
               module,
@@ -631,6 +640,7 @@ export function registerGeaTools(
               parameters,
               exec.signal,
             );
+            failures.note(consumerCode, false);
             throw repaired ?? error;
           }
         },
