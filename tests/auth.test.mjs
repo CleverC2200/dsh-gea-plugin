@@ -125,7 +125,19 @@ test(
     assert.equal((await app.rpc("status")).value.authenticated, true);
     app.route(undefined);
     assert.equal((await app.rpc("plans")).ok, true);
-    assert.ok(app.requests.every((request) => request.method === "GET"));
+    // 审批身份要走网关会话解析当前用户角色：这两条是身份查询（POST 只为带 body），
+    // 不是业务写入；除此之外读路径不许发非 GET。
+    const identityLookups = [
+      "/ai/gateway/agent/session",
+      "/ai/gateway/agent/session/current-user/resolve",
+    ];
+    assert.ok(
+      app.requests.every(
+        (request) =>
+          request.method === "GET" ||
+          identityLookups.some((path) => request.url.pathname.endsWith(path)),
+      ),
+    );
   },
 );
 

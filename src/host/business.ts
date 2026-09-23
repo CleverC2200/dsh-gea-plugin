@@ -3062,7 +3062,12 @@ export class Business {
             : { logsOmitted: cappedLogs.omitted }),
         };
       }
-      return { ...detail, currentVersion, skus, versions, logs };
+      // 通知不参与审批身份：上游万一塞回 workflowApproval 也不再透传，
+      // 免得这个已废弃的字段重新变成界面上的判断依据。
+      const rest = { ...detail };
+      delete rest.workflowApproval;
+      delete rest.workflow_approval;
+      return { ...rest, currentVersion, skus, versions, logs };
     }
     const values = records(result);
     if (kind === "versionSkus") this.materialNames.apply(values);

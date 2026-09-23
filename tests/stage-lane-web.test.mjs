@@ -93,30 +93,30 @@ test('collapsing the flow lane keeps filters and inline edits', { timeout: 90000
 });
 
 /**
- * 没有 sales-plan 权限码、只被服务端派了同版本可处理任务的账号，
- * 默认也要落到「第一个有权限审批的节点」，而不是全部节点。
+ * 节点身份只认账号角色：有省区审批角色的账号进来就默认落到「省区审批」，
+ * 而不是「全部节点」；通知和权限码都不参与判定。
  */
-test('default node falls back to the first actionable node instead of every node', { timeout: 90000 }, async (t) => {
-  const app = await profile(t);
+test('default node follows the account role, not every node', { timeout: 90000 }, async (t) => {
+  const app = await profile(t, { roles: [{ code: 'sales_plan_province_approver', name: '省区审批' }] });
   const plan = { planId: 'p', versionId: 'v', seq: 1, periodId: 'period-1', planTypeCode: 'Y', orderType: 'M', dealerCode: 'd', dealerName: '客户A', orgCode: 'org', orgName: '宝阳销售组', provinceCode: 'province', provinceName: '华南省区', areaCode: 'area', areaName: '华南大区', status: 1, currentQty: '20', currentAmount: '200', targetQty: '40', targetAmount: '400', skuCount: 1 };
   const sku = { id: 's', skuCode: '1001', versionId: 'v', productCategName: '汤圆', materialDescription: '黑芝麻汤圆 500g', qty: '20', baseQty: '10', amt: '200', amtBase: '100', price: '10' };
   const requestedStatuses = [];
   app.route((req, _res, reply) => {
     const path = req.url.pathname;
     const send = (result) => { reply({ success: true, result }); return true; };
-    // 没有任何 sales-plan 权限码。
+    // 权限码全空：节点身份不再看它。
     if (path.endsWith('/getPermCode')) return send({ codeList: [] });
-    if (path.endsWith('/notifications/n')) return send({ id: 'n', approval: { biz_key: 'sales-plan:version:v', instance_id: 'i', actionable: true } });
-    if (path.endsWith('/notifications')) return send({ items: [{ id: 'n', approval: { biz_key: 'sales-plan:version:v', instance_id: 'i', actionable: true } }], total: 1 });
+    // 上游故意派了同版本可处理任务：它只该被当成提醒，不改变节点口径。
+    if (path.endsWith('/notifications/n')) return send({ id: 'n', approval: { bizKey: 'sales-plan:version:v', instanceId: 'i', actionable: true } });
+    if (path.endsWith('/notifications')) return send({ items: [{ id: 'n', approval: { bizKey: 'sales-plan:version:v', instanceId: 'i', actionable: true } }], total: 1 });
     if (path.endsWith('/plans')) {
       const status = req.url.searchParams.get('status');
       requestedStatuses.push(status);
-      // 首屏（不带 status）也要能看到这条计划，才能从它的可处理任务里认出用户所在节点。
-      const records = status === null || status === '1' ? [plan] : [];
+      // 省区审批节点看的是待省区确认（2）与退回到省区的（7/8）。
+      const records = status === null || ['2', '7', '8'].includes(status) ? [plan] : [];
       return send({ records, total: records.length, pages: 1, current: 1, size: 20 });
     }
-    // 只有同版本可处理任务，没有 actionContext。
-    if (path.endsWith('/plans/p')) return send({ currentVersion: { ...plan, id: 'v', effective: true }, skus: [sku], versions: [], logs: [], workflowApproval: { versionId: 'v', notificationId: 'n', instanceId: 'i', actionable: true } });
+    if (path.endsWith('/plans/p')) return send({ currentVersion: { ...plan, id: 'v', effective: true }, skus: [sku], versions: [], logs: [] });
     if (path.endsWith('/versions')) return send([{ ...plan, id: 'v', effective: true }]);
     if (path.endsWith('/versions/v/skus')) return send([sku]);
     return false;
@@ -132,10 +132,14 @@ test('default node falls back to the first actionable node instead of every node
   const frame = page.frameLocator('iframe[data-gea-workbench]');
   await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
 
-  // 默认节点 = 城市经理（待办所在节点），不是「全部节点」。
-  await expect(frame.getByTestId('regional-approval-flow-toggle')).toContainText('当前节点：城市经理审批', { timeout: 20000 });
+  // 默认节点 = 账号角色对应的省区审批，不是「全部节点」。
+  await expect(frame.getByTestId('regional-approval-flow-toggle')).toContainText('当前节点：省区审批', { timeout: 20000 });
   await expect.poll(() => requestedStatuses.filter((status) => status !== null).length, { timeout: 20000 })
-    .toBeGreaterThanOrEqual(2); // 切到该节点后按它的状态（1 / 7）重新取数
+    .toBeGreaterThanOrEqual(1); // 按省区审批节点的状态重新取数
   await frame.getByTestId('regional-approval-flow-toggle').click();
-  await expect(frame.getByTestId('regional-approval-stage-region')).toHaveAttribute('aria-pressed', 'true');
+  await expect(frame.getByTestId('regional-approval-stage-province')).toHaveAttribute('aria-pressed', 'true');
+  // 只有账号有角色的节点可点，其它节点留在表里但置灰。
+  await expect(frame.getByTestId('regional-approval-stage-province')).toBeEnabled();
+  for (const stage of ['customer', 'region', 'area', 'category'])
+    await expect(frame.getByTestId(`regional-approval-stage-${stage}`)).toBeDisabled();
 });
