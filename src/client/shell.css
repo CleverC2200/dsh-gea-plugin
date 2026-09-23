@@ -1260,16 +1260,21 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   height: 58px;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
-  padding: 0 14px;
+  gap: 8px;
+  padding: 0 20px;
   border-bottom: 1px solid #e5e9f0;
   background: #fff;
 }
-.gea-conversation-view-switch { display: flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; }
-.gea-conversation-toolbar button { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #687487; cursor: pointer; }
-.gea-conversation-toolbar button:hover { background: #edf1f7; color: #283444; }
-.gea-conversation-toolbar button[aria-pressed="true"] { background: #fff0f2; color: #df1732; box-shadow: none; }
+/* Match the business Agent web toolbar: compact segmented views and icon actions. */
+.gea-conversation-view-switch { display: flex; flex: none; align-items: center; gap: 1px; height: 32px; box-sizing: border-box; margin-right: 6px; padding: 2px; border: 1px solid #dfe4eb; border-radius: 12px; background: #f5f7fa; }
+.gea-conversation-toolbar button { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; box-sizing: border-box; padding: 0; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #606977; cursor: pointer; transition: background-color .2s ease, border-color .2s ease, color .2s ease; }
+.gea-conversation-toolbar button:hover { border-color: #e8ebf0; background: #fbfcfd; color: #df1d28; }
+.gea-conversation-view-switch button { width: 26px; height: 26px; border: 0; border-radius: 6px; }
+.gea-conversation-toolbar button[aria-pressed="true"] { background: #fff; color: #df1d28; box-shadow: 0 1px 3px rgba(15,34,64,.14); }
 .gea-conversation-toolbar button:focus-visible { outline: 2px solid #d0132c; outline-offset: 2px; }
-.gea-conversation-toolbar svg { width: 22px; height: 22px; }
+.gea-conversation-toolbar svg { width: 16px; height: 16px; }
 .gea-conversation-toolbar-action { margin: 0; }
 .gea-conversation-toolbar-error { position: absolute; right: 10px; top: 58px; padding: 5px 8px; border: 1px solid #e7acb5; border-radius: 5px; background: #fff6f7; color: #b51931; font-size: 12px; }
+
+/* Plan pages share the compact welcome layout without a duplicate title row. */
+.AppFrame_frame:has(:is([data-gea-business-entry="gea-proof"],[data-gea-business-entry="gea-regional-plan"],[data-gea-business-entry="plan-region-category"])[aria-current="page"]) .gea-agent-welcome { padding-top: 0; }

@@ -1175,7 +1175,7 @@ export function apply(ctx: Context): void {
           />,
           (conversationView === "center" ? centerColumn : railColumn)!,
         )}
-        {railColumn && createPortal(<ConversationHead agent={conversationAgentFor(activePanel)} />, railColumn)}
+        {railColumn && ![PANEL, REGIONAL_PLAN_PANEL, CATEGORY_PLAN_PANEL].includes(activePanel as MainPanelId) && createPortal(<ConversationHead agent={conversationAgentFor(activePanel)} />, railColumn)}
         {conversationHero && createPortal(
           <AgentWelcome
             agent={conversationAgentFor(activePanel)}
