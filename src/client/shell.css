@@ -556,6 +556,21 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 
 /* The GEA side conversation keeps its native composer at the column foot. */
+/* 输入区在任何列宽、任何窗口高度下都必须压在业务页面之上：
+   宿主列拖拽条是 z-index:11，外壳自己的上下拖动条是 12，这里再抬一档，
+   并让对话列自成一个层叠上下文，页面内容不可能盖到输入框。 */
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > [data-rightbar-col] {
+  position: relative;
+  z-index: 2;
+}
+[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
+  [data-rightbar-col]
+  [data-composer-seat] {
+  position: relative;
+  z-index: 30;
+  background: #fff;
+}
+
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
   [data-phase="hero"]
   [data-conversation-scroll] {
@@ -1091,59 +1106,34 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 
 /*
- * 三栏宽度不再由外壳写死：DSH 的 AppFrame 用 inline style 管 grid 轨道，并带两侧拖拽手柄
- * （computeColumns：侧栏 clamp(264–420)、对话栏 clamp(300–viewport*ratio)、主区至少留 400）。
- * 之前用 `grid-template-columns: … !important` 定分档宽度会压掉这个 inline style，
- * 结果两侧手柄拖不动了。要改默认宽度就走客户端自己的布局偏好（拖一次即持久化），
- * 外壳只在 ≤1200 的两行布局里接管列定义（见下）。
+ * 窄宽度不再改成上下两行：只按档位收缩左右两栏，最后把左侧菜单收进图标列，
+ * 始终保留「中间工作台 + 右边对话」。
+ * >1200 完全交给宿主的列宽策略与两侧拖拽手柄（拖一次即记忆）；
+ * ≤1200 宿主会隐藏左右手柄，所以这里可以安全接管列定义，不会压坏手柄。
  */
-@media (min-width: 801px) and (max-width: 1200px) {
+@media (max-width: 1200px) {
   .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) {
-    grid-template-columns: 180px minmax(0, 1fr) !important;
-    /* 两行比例可以由用户拖动（--gea-stacked-split 由外壳在拖动时写入）。 */
-    grid-template-rows: minmax(200px, var(--gea-stacked-split, 62%)) minmax(220px, 1fr);
+    --gea-side-col: 220px;
+    --gea-chat-col: 360px;
+    grid-template-columns: var(--gea-side-col) minmax(0, 1fr) var(--gea-chat-col) !important;
     transition: none;
   }
-  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_sidebarCol { grid-row: 1 / -1; }
-  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_centerCol { grid-column: 2; grid-row: 1; min-height: 0; }
-  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_rightbarCol { grid-column: 2; grid-row: 2; min-height: 0; border-top: 1px solid var(--dsw-alias-border-l3); }
   .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_handle { display: none; }
-  /* 侧栏整列一直铺到对话行，它的 1px 右边框就贴着输入框左边画下来，看着像竖线切进对话框。
-     两行布局里这条边框只服务上方工作台行，去掉；对话行的分隔由右栏自己的上边框承担。 */
-  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_sidebarCol { border-right: 0 !important; }
-  .AppFrame_frame[data-conversation-beside-panel][data-sidebar-collapsed]:has(iframe[data-gea-workbench]) { grid-template-columns: 64px minmax(0, 1fr) !important; }
+  /* 宿主自己的收起按钮仍然生效：收起时左栏只剩图标列。 */
+  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)[data-sidebar-collapsed] {
+    --gea-side-col: 64px;
+  }
 }
-
-/*
- * 窄窗口（两行布局）里的上下拖动条：宿主在 ≤1200 会隐藏左右手柄，
- * 这里补一条贴着工作台底边的横向拖动条（一直延伸到输入区那一侧）。
- */
-.gea-stacked-splitter {
-  display: none;
-  grid-column: 2;
-  grid-row: 1;
-  align-self: end;
-  height: 12px;
-  margin-bottom: -6px;
-  cursor: row-resize;
-  touch-action: none;
-  z-index: 12;
-  background: transparent;
+/* 再窄一档：菜单自动收进图标列，只留「工作台 + 对话」。 */
+@media (max-width: 1024px) {
+  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) {
+    --gea-side-col: 64px;
+    --gea-chat-col: 320px;
+  }
 }
-.gea-stacked-splitter::after {
-  content: "";
-  display: block;
-  height: 2px;
-  margin: 5px 10px 0;
-  border-radius: 2px;
-  background: rgba(223, 23, 50, 0.16);
-  transition: background-color 120ms ease;
-}
-.gea-stacked-splitter:hover::after,
-.gea-stacked-splitter[data-dragging]::after { background: #d0132c; }
-@media (min-width: 801px) and (max-width: 1200px) {
-  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) .gea-stacked-splitter {
-    display: block;
+@media (max-width: 860px) {
+  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) {
+    --gea-chat-col: 300px;
   }
 }
 

@@ -125,11 +125,12 @@ const RegionalApprovalLiveActionDialog: React.FC<{
 }) => {
   const [snapshot] = useState(evidence);
   const Container = embedded ? InlineAction : Modal;
-  const availableRoles = SALES_PLAN_ROLES.filter(role => snapshot && salesPlanAccessForRow(row, snapshot, permissionCodes, role));
+  // allowReturned：上级退回给本节点的单据同样要能选到角色并继续提交。
+  const availableRoles = SALES_PLAN_ROLES.filter(role => snapshot && salesPlanAccessForRow(row, snapshot, permissionCodes, role, undefined, { allowReturned: true }));
   const [selectedRole, setSelectedRole] = useState<ApprovalStageId | undefined>(
     availableRoles.includes(approvalStage) ? approvalStage : availableRoles.length === 1 ? availableRoles[0] : undefined
   );
-  const access = snapshot && selectedRole && salesPlanAccessForRow(row, snapshot, permissionCodes, selectedRole);
+  const access = snapshot && selectedRole && salesPlanAccessForRow(row, snapshot, permissionCodes, selectedRole, undefined, { allowReturned: true });
   const unsupportedRole = Boolean(access && !access.roleContractSupported && salesPlanWorkflow(row.planTypeCode).actor(row.status) !== access.approvalRole);
   const submittedRequest = useRef<GeaSalesPlanActionRequest | undefined>(undefined);
   const [kind, setKind] = useState<LiveActionKind>(initialAction);

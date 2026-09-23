@@ -48,11 +48,22 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   await expect(frame.getByRole('option',{name:'2026-09',exact:true})).toHaveCount(1);
   await expect(frame.getByRole('option')).toHaveCount(1);
   await page.keyboard.press('Escape');
-  const region = frame.getByRole('button',{name:/区域审批.*进度/});
+  // 节点条默认收起（V1.8 #05），先展开才能看到各节点。
+  if (!(await frame.getByTestId('regional-approval-flow-lane').isVisible()))
+    await frame.getByTestId('regional-approval-flow-toggle').click();
+  // 节点条始终展示全部五个节点：角色决定能进哪个节点，没权限的节点置灰不可点。
+  await expect(frame.locator('[data-testid^="regional-approval-stage-"]')).toHaveCount(5);
+  const region = frame.getByTestId('regional-approval-stage-region');
   await expect(region).toHaveAttribute('aria-pressed', 'true');
+  for (const stage of ['customer', 'province', 'area', 'category'])
+    await expect(frame.getByTestId(`regional-approval-stage-${stage}`)).toBeDisabled();
   await expect(frame.getByRole('button',{name:/客户提报.*进度/})).not.toContainText('进度 0%');
   await region.click();
+  await expect(region).toHaveAttribute('aria-pressed', 'false');
+  await expect(frame.getByTestId('regional-approval-flow-toggle')).toContainText('当前节点：全部节点');
   const table = frame.locator('tbody').first();
+  // 切到「全部节点」后队列按数据权限重取；表里出现的行都能直接提交或退回，不再卡在「轮到哪个节点」。
+  await expect(table.getByText('scope-1-row',{exact:true})).toBeVisible({timeout:15000});
   for (const status of [1,2,3,4,5,6,7,10]) await expect(table.getByText(`scope-${status}-row`,{exact:true})).toBeVisible();
   for (const status of [0,8,9]) await expect(table.getByText(`scope-${status}-row`,{exact:true})).toHaveCount(0);
   const returned = table.locator('tr').filter({hasText:'scope-7-row'});
@@ -69,10 +80,6 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   await expect(region).toHaveAttribute('aria-pressed', 'true');
   await region.click();
   await expect(table.getByText('scope-6-row',{exact:true})).toBeVisible();
-  await frame.getByRole('tab',{name:'纠偏',exact:true}).click();
-  for (const status of [1,2,3,4,5,6,7,10]) await expect(table.getByText(`scope-${status}-row`,{exact:true})).toBeVisible();
-  for (const status of [0,8,9]) await expect(table.getByText(`scope-${status}-row`,{exact:true})).toHaveCount(0);
-  assert.ok(app.requests.some(r => r.url.searchParams.get('orderType') === 'Z'));
   const queries = app.requests.filter(r=>r.url.pathname.endsWith('/plans'));
   assert.ok(queries.length);
   const queueQueries = queries.filter(r => r.url.searchParams.has('status') && r.url.searchParams.get('pageSize') !== '1');
@@ -97,4 +104,9 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   const rejectDialog = frame.getByRole('dialog',{name:'退回',exact:true});
   await expect(rejectDialog.getByRole('textbox',{name:'退回原因（必填）',exact:true})).toBeVisible();
   await expect(rejectDialog.getByTestId('regional-approval-live-action-checksum')).toHaveCount(0);
+  await frame.getByRole('button',{name:'取消',exact:true}).click();
+  // 纠偏是另一个工作台：切过去以后审批工作台整个换掉，纠偏自己的用例在 correction-web 里。
+  await frame.getByRole('tab',{name:'纠偏',exact:true}).click();
+  await expect(frame.getByRole('tab',{name:'纠偏',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(frame.getByTestId('regional-approval-workbench')).toHaveCount(0);
 });
