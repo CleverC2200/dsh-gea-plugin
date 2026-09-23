@@ -25,6 +25,7 @@ import {registerHtmlClient} from "./html-client.tsx";
 import {
   approvalConversation,
   branchStockConversation,
+  categoryPlanConversation,
   customerStockConversation,
   deliveryOpsConversation,
   demandOpsConversation,
@@ -47,8 +48,19 @@ import {BUSINESS_GROUP_ICON_PATHS,type BusinessGroupIcon} from "./client/busines
 import brandLogo from "./client/brand-logo.png";
 import shellCss from "./client/shell.css";
 import workbenchCss from "./workbench/workbench.css";
+import categoryPlanPrototype from "./workbench/prototypes/category-plan-v5.html";
 import regionalPlanPrototype from "./workbench/prototypes/regional-plan-v9.html";
 import { ApiLogCenter } from "./workbench/api-log-center.tsx";
+
+/**
+ * 原型自带的右侧会话区（aside.chat）和外壳的「品类计划助手」会话栏内容重复，
+ * 只在这里把原型的空列关掉，原型的其它交互与交付文件保持一致。
+ * 其它业务页（含厂商发布的 HTML 插件页）都不自带会话区，会话一律由外壳承载。
+ */
+const categoryPlanDocument = categoryPlanPrototype.replace(
+  "</head>",
+  '<style data-gea-embed="single-conversation">.app{grid-template-columns:minmax(0,1fr)!important}aside.chat{display:none!important}</style></head>',
+);
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
   interface LocaleNamespaceMap {
@@ -61,6 +73,7 @@ const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;
 const REGIONAL_PLAN_PANEL = "gea-regional-plan" as MainPanelId;
+const CATEGORY_PLAN_PANEL = "plan-region-category" as MainPanelId;
 type SidebarSection = BusinessMenuSection;
 type SidebarSections = Record<SidebarSection, boolean>;
 
@@ -87,6 +100,7 @@ export function apply(ctx: Context): void {
       {
         [PANEL]: t("salesPlan"),
         [REGIONAL_PLAN_PANEL]: t("regionalPlanWorkbench"),
+        [CATEGORY_PLAN_PANEL]: t("categoryPlanWorkbench"),
         [INBOX]: t("businessInbox"),
       },
     );
@@ -284,6 +298,32 @@ export function apply(ctx: Context): void {
       </>
     );
   }
+  // 品类计划工作台：内嵌业务侧原型（V5，纯模拟数据，不连 SAP/DMS/BI/APS/OMS）。
+  function CategoryPlanPage() {
+    const [sessionError, setSessionError] = useState("");
+    useEffect(() => {
+      // 和其他业务页一样挂一个只读会话，让右侧会话区常驻。
+      const hide = ctx.agentWorkbench.showConversation(CATEGORY_PLAN_PANEL);
+      void ctx.agentWorkbench
+        .open(CATEGORY_PLAN_PANEL)
+        .catch((error) => setSessionError(String(error.message)));
+      return () => hide();
+    }, []);
+    return (
+      <>
+        <style>{shellCss}</style>
+        {sessionError && <div role="alert">{sessionError}</div>}
+        <section className="gea-workbench-shell">
+          <iframe
+            className="gea-workbench-frame"
+            title={t("categoryPlanWorkbench")}
+            sandbox="allow-scripts"
+            srcDoc={categoryPlanDocument}
+          />
+        </section>
+      </>
+    );
+  }
   function ApiLogPage() {
     const [environment, setEnvironment] = useState<"production" | "test">("production");
     useEffect(() => {
@@ -437,6 +477,7 @@ export function apply(ctx: Context): void {
     const available = new Map<string, string>(panels.map((panel) => [panel.id, panel.title]));
     available.set(PANEL, t("salesPlan"));
     available.set(REGIONAL_PLAN_PANEL, t("regionalPlanWorkbench"));
+    available.set(CATEGORY_PLAN_PANEL, t("categoryPlanWorkbench"));
     const menu = resolveBusinessMenu(BUSINESS_MENU_PRESET, available);
     return (
       <nav
@@ -588,8 +629,13 @@ export function apply(ctx: Context): void {
       { name: "main", key: REGIONAL_PLAN_PANEL, locale: "geaProof" },
       RegionalPlanPage,
     );
+    yield ctx.slots.register(
+      { name: "main", key: CATEGORY_PLAN_PANEL, locale: "geaProof" },
+      CategoryPlanPage,
+    );
     yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
     yield ctx.agentWorkbench.register({ id: REGIONAL_PLAN_PANEL, preset: "gea-readonly" });
+    yield ctx.agentWorkbench.register({ id: CATEGORY_PLAN_PANEL, preset: "gea-readonly" });
     // 业务待办页也要有自己的会话栏：不登记的话右侧对话框整块不出现。
     yield ctx.agentWorkbench.register({ id: INBOX, preset: "gea-readonly" });
     ctx.layout.selectPanel(PANEL);
@@ -1217,6 +1263,7 @@ function ConversationHead({ agent }: { agent: ConversationPromptConfig }) {
 const BUSINESS_CONVERSATIONS: Record<string, ConversationPromptConfig> = {
   [PANEL]: approvalConversation,
   [REGIONAL_PLAN_PANEL]: regionalPlanConversation,
+  [CATEGORY_PLAN_PANEL]: categoryPlanConversation,
   "inventory-dealer": inventoryConversation,
   "inventory-apsdemand": demandOpsConversation,
   "inventory-apsdelivery": deliveryOpsConversation,

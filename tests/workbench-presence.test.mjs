@@ -88,7 +88,7 @@ test("菜单名解析：注册页面优先 → 原型目录 → 回退 id", () =
     "全链库存",
   );
   assert.equal(businessMenuTitle("inventory-qll"), "全链库存工作台");
-  assert.equal(businessMenuTitle("plan-region-category"), "区域及品类计划工作台");
+  assert.equal(businessMenuTitle("plan-region-category"), "品类计划工作台");
   assert.equal(businessMenuTitle("unknown-page"), "unknown-page");
 });
 

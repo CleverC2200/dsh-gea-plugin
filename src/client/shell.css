@@ -556,6 +556,13 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 
 /* The GEA side conversation keeps its native composer at the column foot. */
+/* 会话统计（「N 轮 M 步」）原生挂在输入卡下面，会把输入卡顶离列底。
+   统一挪到输入卡上方：输入卡于是成为对话列最下面一块，贴着列底。
+   主对话和工作台右侧会话列用的是同一个输入条组件，一条规则两边都生效。 */
+[data-composer-seat] [data-slot="conversation.composer.dock"],
+[data-composer-seat] [data-composer-stats] {
+  order: -1;
+}
 /* 输入区在任何列宽、任何窗口高度下都必须压在业务页面之上：
    宿主列拖拽条是 z-index:11，外壳自己的上下拖动条是 12，这里再抬一档，
    并让对话列自成一个层叠上下文，页面内容不可能盖到输入框。 */
