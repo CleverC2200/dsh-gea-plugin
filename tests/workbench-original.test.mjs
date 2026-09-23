@@ -20,7 +20,7 @@ const { outputFiles } = await build({
 const {
   aggregateSalesPlanExportAmounts,
   salesPlanAccessForRow,
-  salesPlanStagesForPermissions,
+  salesPlanStagesForRoles,
   verifySavedSalesPlan,
   bindWorkbenchHost,
   salesPlan,
@@ -72,8 +72,12 @@ const detail = {
 };
 
 test('copied action projection does not infer write permission from readable plans', () => {
-  assert.deepEqual(salesPlanStagesForPermissions(), []);
-  assert.deepEqual(salesPlanStagesForPermissions(['sales-plan:plan:approve']), []);
+  // 审批身份只看账号角色：角色编码（或中文名）决定能进哪些节点，其它来源一律不发身份。
+  assert.deepEqual(salesPlanStagesForRoles(), []);
+  assert.deepEqual(salesPlanStagesForRoles([{ code: 'sales-plan:plan:approve' }]), []);
+  assert.deepEqual(salesPlanStagesForRoles([{ code: 'sales_plan_province_approver' }]), ['province']);
+  assert.deepEqual(salesPlanStagesForRoles([{ name: '区域审批' }, { name: '品类审批' }]), ['region', 'category']);
+  assert.deepEqual(salesPlanStagesForRoles([{ code: 'admin', name: '管理员' }]), []);
   assert.equal(salesPlanAccessForRow(plan, detail), undefined);
   assert.equal(salesPlanAccessForRow(plan, { ...detail, actionContext: undefined }), undefined);
   assert.equal(salesPlanAccessForRow({ ...plan, versionId: 'other' }, detail), undefined);
@@ -118,33 +122,33 @@ test('workbench bridge keeps host request identity and cannot reuse a released d
   assert.throws(() => salesPlan.list.invoke(query), /WORKBENCH_HOST_NOT_BOUND/);
 });
 
-test('approval identity comes from the account grant or an assigned task', () => {
+test('approval identity comes from the account role, and a notification never grants it', () => {
   const row = { planId: 'p', versionId: 'v', status: 1, planTypeCode: 'Y' };
   const value = { currentVersion: { id: 'v', planId: 'p', status: 1, planTypeCode: 'Y', effective: true }, skus: [], versions: [], logs: [] };
-  const granted = ['sales-plan:plan:region-approve'];
   assert.equal(salesPlanAccessForRow(row, value), undefined);
-  assert.equal(salesPlanAccessForRow(row, value, granted)?.approvalRole, 'region');
-  assert.equal(salesPlanAccessForRow(row, value, granted, 'province'), undefined);
+  assert.equal(salesPlanAccessForRow(row, value, ['region'])?.approvalRole, 'region');
+  assert.equal(salesPlanAccessForRow(row, value, ['region'], 'province'), undefined);
+  // 通知只是提醒：哪怕服务端派了同版本任务，也不授予审批身份。
   const assigned = { ...value, workflowApproval: { versionId: 'v', notificationId: 'n', instanceId: 'i', actionable: true } };
-  assert.equal(salesPlanAccessForRow(row, assigned)?.approvalRole, 'region');
-  assert.equal(salesPlanAccessForRow(row, { ...assigned, workflowApproval: { ...assigned.workflowApproval, versionId: 'old' } }), undefined);
+  assert.equal(salesPlanAccessForRow(row, assigned), undefined);
+  assert.equal(salesPlanAccessForRow(row, assigned, ['region'])?.approvalRole, 'region');
 });
 
 for (const [typeCode, status, actor, wrong] of [['Y', 1, 'region', 'province'], ['Y', 2, 'province', 'area'], ['Y', 3, 'area', 'category'], ['XN', 2, 'province', 'region']]) {
   test(`${typeCode} ${status}: account grant determines identity, data scope determines the row`, () => {
     const row = { planId: 'p', versionId: 'v', status, planTypeCode: typeCode };
     const value = { currentVersion: { id: 'v', planId: 'p', status, planTypeCode: typeCode, effective: true } };
-    const permission = role => [`sales-plan:plan:${role}-approve`];
-    // 角色决定身份，数据权限决定明细：有权限码的角色就是审批人，不再按「这行当前停在哪个节点」卡一遍，
+    const granted = [actor];
+    // 角色决定身份，数据权限决定明细：只要有这个节点的角色就是审批人，不再按「这行当前停在哪个节点」卡一遍，
     // 表里看得见的行都能提交或退回；写权限最终由 GEA 按组织、角色、版本和状态校验。
-    assert.deepEqual(salesPlanAccessForRow(row, value, permission(actor))?.allowedActions, ['APPROVE', 'REJECT']);
-    assert.equal(salesPlanAccessForRow(row, value, permission(wrong))?.approvalRole, wrong);
-    // 没有权限码就没有身份；显式指定的角色也必须在这个账号的权限里。
+    assert.deepEqual(salesPlanAccessForRow(row, value, granted)?.allowedActions, ['APPROVE', 'REJECT']);
+    assert.equal(salesPlanAccessForRow(row, value, [wrong])?.approvalRole, wrong);
+    // 没有角色就没有身份；显式指定的节点也必须在这个账号的角色里。
     assert.equal(salesPlanAccessForRow(row, value, []), undefined);
-    assert.equal(salesPlanAccessForRow(row, value, permission(actor), wrong), undefined);
-    assert.equal(salesPlanAccessForRow(row, {...value, currentVersion: {...value.currentVersion, effective: false}}, permission(actor)), undefined);
-    assert.equal(salesPlanAccessForRow(row, {...value, currentVersion: {...value.currentVersion, id: 'new'}}, permission(actor)), undefined);
-    assert.equal(salesPlanAccessForRow(row, {...value, actionContext: {versionId: 'v', status, nodeOrder: 2, snapshotHash: 'a'.repeat(64), allowedActions: []}}, permission(actor))?.allowedActions.length, 0);
+    assert.equal(salesPlanAccessForRow(row, value, granted, wrong), undefined);
+    assert.equal(salesPlanAccessForRow(row, {...value, currentVersion: {...value.currentVersion, effective: false}}, granted), undefined);
+    assert.equal(salesPlanAccessForRow(row, {...value, currentVersion: {...value.currentVersion, id: 'new'}}, granted), undefined);
+    assert.equal(salesPlanAccessForRow(row, {...value, actionContext: {versionId: 'v', status, nodeOrder: 2, snapshotHash: 'a'.repeat(64), allowedActions: []}}, granted)?.allowedActions.length, 0);
   });
 }
 
@@ -153,7 +157,7 @@ test('returned plans cannot regain ordinary approval through a visible role gran
     const row = { planId: 'p', versionId: 'v', status, planTypeCode: 'Y' };
     const detail = { currentVersion: { ...row, id: 'v', effective: true } };
     for (const role of ['region', 'province', 'area', 'category']) {
-      assert.equal(salesPlanAccessForRow(row, detail, [`sales-plan:plan:${role}-approve`], role), undefined);
+      assert.equal(salesPlanAccessForRow(row, detail, [role], role), undefined);
     }
   }
 });

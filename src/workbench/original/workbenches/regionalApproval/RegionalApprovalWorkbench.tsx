@@ -13,7 +13,6 @@ import {
 import { useSalesPlanAccess } from './hooks/useSalesPlanAccess.ts';
 import {
   salesPlanAccessForRow,
-  salesPlanStagesForPermissions,
   verifySavedSalesPlan,
 } from './models/salesPlanAccessModel.ts';
 import { salesPlanProgressBarColor } from './models/salesPlanProgressModel.ts';
@@ -422,7 +421,8 @@ const RegionalApprovalWorkbench: React.FC<{
   liveActionsEnabled?: boolean;
   automaticAnalysisEnabled?: boolean;
   onResubmit?: (planId: string, versionId: string, period: GeaSalesPlanPeriod) => void;
-  permissionCodes?: readonly string[];
+  /** 当前账号可审批的节点：由账号角色映射得出（Host 经网关解析用户角色后传入）。 */
+  approvalStages?: readonly ApprovalStageId[];
   /** AG-UI 前端工具调用：agent 让页面改这一屏怎么看。 */
   toolCall?: { toolCallId: string; command: Record<string, unknown> };
   onToolResult?: (toolCallId: string, applied: boolean, error?: string) => void;
@@ -439,7 +439,7 @@ const RegionalApprovalWorkbench: React.FC<{
   liveActionClient,
   liveActionsEnabled = false,
   automaticAnalysisEnabled = false,
-  permissionCodes,
+  approvalStages,
   onResubmit,
   toolCall,
   onToolResult,
@@ -505,11 +505,15 @@ const RegionalApprovalWorkbench: React.FC<{
   const [inlinePlanId, setInlinePlanId] = useState<string>();
   const [draftLiveFilters, setDraftLiveFilters] = useState<LiveApprovalFilters>(EMPTY_LIVE_APPROVAL_FILTERS);
   const [appliedLiveFilters, setAppliedLiveFilters] = useState<LiveApprovalFilters>(EMPTY_LIVE_APPROVAL_FILTERS);
-  const roleStages = useMemo(() => salesPlanStagesForPermissions(permissionCodes), [permissionCodes]);
+  // 节点口径只认账号角色；没有角色就一个节点都没有（界面全灰），不再用通知/任务反推。
+  const roleKey = [...(approvalStages ?? [])].join(',');
+  const roleStages = useMemo(
+    () => [...new Set((approvalStages ?? []).filter((stage) => stage !== 'customer'))],
+    [roleKey]
+  );
   const [liveStageFilter, setLiveStageFilter] = useState<ApprovalStageId | undefined>(() => roleStages[0]);
-  const roleKey = roleStages.join(',');
   useEffect(() => {
-    const firstStage = salesPlanStagesForPermissions(permissionCodes)[0];
+    const firstStage = roleStages[0];
     setLiveStageFilter(firstStage);
     if (queryClient && firstStage) setDimension(APPROVAL_DIMENSIONS_BY_STAGE[firstStage][0]);
     setSelectedRowIds([]);
@@ -931,24 +935,8 @@ const RegionalApprovalWorkbench: React.FC<{
     liveQuery.enabled && liveActionsEnabled && liveQuery.queueState.status === 'success'
   );
 
-  // 有权限审批的节点：先看账号权限码；没有权限码但服务端把同版本任务派给了当前用户时，
-  // 用那条任务推断所属节点。服务端给的角色能力不参与身份判定。
-  const authorizedStages = useMemo(() => {
-    const fromPermissions = roleStages.filter(
-      (stage): stage is Exclude<ApprovalStageId, 'customer'> => stage !== 'customer'
-    );
-    if (fromPermissions.length) return fromPermissions;
-    if (!liveQuery.enabled) return [];
-    const capable = new Set<ApprovalStageId>();
-    for (const detail of Object.values(liveAccess.entries)) {
-      const version = detail.currentVersion;
-      if (detail.workflowApproval?.actionable === true && detail.workflowApproval.versionId === version.id) {
-        const actor = salesPlanWorkflow(version.planTypeCode).actor(version.status);
-        if (actor) capable.add(actor);
-      }
-    }
-    return SALES_PLAN_ROLES.filter((stage) => capable.has(stage) && stage !== 'customer');
-  }, [liveAccess.entries, liveQuery.enabled, roleStages]);
+  // 能审批的节点只来自账号角色：通知、任务、服务端对象能力都不参与身份判定。
+  const authorizedStages = roleStages;
   // 收起态的节点口径跟展开态高亮一致：用户选了哪个节点就显示哪个，切到「全部节点」就显示全部节点。
   const stageIndicatorStage = displayStage;
   // 默认节点：权限码给出的已在上面的 effect 设好；这里补“没有权限码、但服务端给了同版本可处理任务”的账号，
@@ -1042,7 +1030,7 @@ const RegionalApprovalWorkbench: React.FC<{
     if (liveAccess.failedVersions.has(row.versionId)) return 'detailUnavailable';
     const detail = liveAccess.entries[row.versionId];
     // allowReturned：上级退回给本节点的单据也要能改完继续提交（退回给别处的单子在模型里仍被拒）。
-    if (!detail || !(liveStageFilter ? [liveStageFilter] : ['region','province','area','category'] as const).some(role => salesPlanAccessForRow(row, detail, permissionCodes, role, undefined, { allowReturned: true })?.allowedActions.includes(kind)))
+    if (!detail || !(liveStageFilter ? [liveStageFilter] : ['region','province','area','category'] as const).some(role => salesPlanAccessForRow(row, detail, roleStages, role, undefined, { allowReturned: true })?.allowedActions.includes(kind)))
       return 'missingAuthority';
     if (kind === 'SAVE') return undefined;
 
@@ -1058,7 +1046,7 @@ const RegionalApprovalWorkbench: React.FC<{
       ? [liveStageFilter]
       : (['region', 'province', 'area', 'category'] as const);
     for (const role of candidates) {
-      const access = salesPlanAccessForRow(row, detail, permissionCodes, role, undefined, { allowReturned: true });
+      const access = salesPlanAccessForRow(row, detail, roleStages, role, undefined, { allowReturned: true });
       if (access?.allowedActions.includes(kind)) return access;
     }
     return undefined;
@@ -2608,7 +2596,7 @@ const RegionalApprovalWorkbench: React.FC<{
         initialAction={liveActionKind}
         t={t}
         client={liveActionClient}
-        permissionCodes={permissionCodes}
+        approvalStages={roleStages}
         evidence={liveAccess.entries[activeLiveActionRow.versionId]}
         pendingValues={livePendingValues[activeLiveActionRow.planId]}
         onPermissionDenied={(versionId) => setPermissionDeniedVersions((current) => new Set(current).add(versionId))}
@@ -2668,13 +2656,12 @@ const RegionalApprovalWorkbench: React.FC<{
       (candidate) => candidate.currentVersion.planId === row.planId && candidate.currentVersion.id === row.versionId,
     );
     if (!detail) return { detail: undefined, role: undefined, canEdit: false };
-    const accessRoles: Exclude<ApprovalStageId, 'customer'>[] = roleStages.length
-      ? roleStages.filter((candidate): candidate is Exclude<ApprovalStageId, 'customer'> => candidate !== 'customer')
-      : ['region', 'province', 'area', 'category'];
+    // 能编辑/审批的角色只来自账号角色；没有审批角色时只能靠服务端给的详情可读能力。
+    const accessRoles = roleStages;
     const editableRole = accessRoles
       .map((candidate) => ({
         candidate,
-        access: salesPlanAccessForRow(row, detail, permissionCodes, candidate),
+        access: salesPlanAccessForRow(row, detail, roleStages, candidate),
       }))
       .find(({ access }) => access?.allowedActions.includes('SAVE') || access?.allowedActions.includes('APPROVE'));
     const actionContextAllowsEdit = detail.actionContext?.allowedActions.some(
@@ -3570,7 +3557,7 @@ const SalesPlanWorkbench: React.FC<React.ComponentProps<typeof RegionalApprovalW
       </Button>)}
     </div>;
   return orderType === 'M' ? <RegionalApprovalWorkbench {...props} headerControls={headerControls} queryClient={monthlyClient} onContextChange={onContextChange} /> :
-      <CorrectionWorkbench headerControls={headerControls} t={props.t} queryClient={props.queryClient} detailClient={props.detailClient} actionClient={props.liveActionsEnabled ? props.liveActionClient : undefined} onResubmit={props.onResubmit} />;
+      <CorrectionWorkbench headerControls={headerControls} t={props.t} queryClient={props.queryClient} detailClient={props.detailClient} actionClient={props.liveActionsEnabled ? props.liveActionClient : undefined} onResubmit={props.onResubmit} approvalStages={props.approvalStages} />;
 
 };
 export default SalesPlanWorkbench;

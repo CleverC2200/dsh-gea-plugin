@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { salesPlanDraftMatches, salesPlanDraftSnapshot, type SalesPlanLocalDraft } from '../workbench/original/workbenches/regionalApproval/models/salesPlanLocalDraftModel.ts';
 import { correctionAccess, correctionAdjustments, correctionDecimal } from '../workbench/original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';
-import { salesPlanAccessForRow, salesPlanVersionEvidenceStale } from '../workbench/original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';
+import { salesPlanAccessForRow, salesPlanStagesForRoles, salesPlanVersionEvidenceStale, type SalesPlanApprovalRole } from '../workbench/original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';
 import { salesPlanWorkflow } from '../workbench/original/salesPlanWorkflow.ts';
 import type { ApprovalStageId } from '../workbench/original/workbenches/regionalApproval/regionalApprovalFixture.ts';
 import { validateSalesPlanActionInput } from '../workbench/original/workbenches/regionalApproval/models/salesPlanActionModel.ts';
@@ -644,7 +644,7 @@ export class Business {
     }
   }
 
-  private auth?: { token: string; tenantId: string; name: string; id: string; username: string; avatar?: string; permissionCodes?: string[] };
+  private auth?: { token: string; tenantId: string; name: string; id: string; username: string; avatar?: string; permissionCodes?: string[]; roles?: SalesPlanApprovalRole[] };
   private qr?: { id: string; loginId: string; createdAt: number };
   private epoch = new AbortController();
   private queryEpoch = new AbortController();
@@ -1068,6 +1068,64 @@ export class Business {
     return refresh;
   }
 
+  private readonly roleRefreshes = new WeakMap<object, Promise<void>>();
+  private gatewaySession?: { authToken: string; conversationId: string; sessionId: string; delegationToken: string };
+
+  /**
+   * 审批身份只认账号角色：经网关会话解析当前用户，拿角色编码/名称映射到审批节点。
+   * 通知与任务不参与身份判定；角色读取失败时该账号视为没有审批节点（界面全灰），不阻断其它功能。
+   */
+  async refreshApprovalRoles(signal: AbortSignal): Promise<void> {
+    const auth = this.auth;
+    if (!auth || auth.roles !== undefined) return;
+    const pending = this.roleRefreshes.get(auth);
+    if (pending) return pending;
+    const refresh = (async () => {
+      try {
+        const combined = AbortSignal.any([signal, this.epoch.signal]);
+        const agentCode = this.config.analysisAgentCode;
+        let session = this.gatewaySession && this.gatewaySession.authToken === auth.token
+          ? this.gatewaySession : undefined;
+        if (!session) {
+          const requestId = randomUUID(), conversationId = randomUUID();
+          const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
+            method: "POST", redirect: "error", signal: combined,
+            headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": requestId },
+            body: JSON.stringify({ agentCode, channel: "AI_PORTAL", requestId, conversationId }),
+          });
+          if (!response.ok) throw await geaResponseError(response, [auth.token]);
+          const body = object(parseJson(await response.text()));
+          const result = object(body.result);
+          const context = object(result.gatewayContext);
+          const sessionId = text(context.sessionId);
+          const delegationToken = text(result.delegationToken);
+          if (body.success !== true || object(result.accessDecision).allowed !== true || !sessionId || !delegationToken)
+            throw new Error("GEA_APPROVAL_SESSION_REJECTED");
+          session = { authToken: auth.token, conversationId, sessionId, delegationToken };
+          this.gatewaySession = session;
+        }
+        const resolved = object(await this.postJson("/ai/gateway/agent/session/current-user/resolve", auth, combined, {
+          agentCode,
+          sessionId: session.sessionId,
+          conversationId: session.conversationId,
+          delegationToken: session.delegationToken,
+        }));
+        if (resolved.success !== true) throw new Error("GEA_APPROVAL_ROLES_UNAVAILABLE");
+        const roles = Array.isArray(resolved.roles) ? resolved.roles : [];
+        const mapped: SalesPlanApprovalRole[] = roles
+          .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry))
+          .map((entry) => ({ code: text(entry.code), name: text(entry.name) }));
+        if (this.auth === auth) auth.roles = mapped;
+      } catch (error) {
+        this.roleRefreshes.delete(auth);
+        if (signal.aborted || !this.auth) throw error;
+        // 角色读不到就不是审批人：保留只读浏览，不放开审批入口。
+      }
+    })();
+    this.roleRefreshes.set(auth, refresh);
+    return refresh;
+  }
+
   /** 对外状态永远不包含 GEA 凭证。 */
   status() {
     const models = this.modelRoutes.get(this.config.analysisAgentCode)?.models;
@@ -1082,6 +1140,7 @@ export class Business {
           ? "expired"
           : "signed-out",
       permissionCodes: this.auth?.permissionCodes,
+      roles: this.auth?.roles,
       user: this.auth
         ? { name: this.auth.name, tenantId: this.auth.tenantId, id: this.auth.id, username: this.auth.username, avatar: this.auth.avatar }
         : null,
@@ -1163,46 +1222,6 @@ export class Business {
   private authenticated(): NonNullable<Business["auth"]> {
     if (!this.auth) throw new Error("LOGIN_REQUIRED");
     return this.auth;
-  }
-
-  /**
-   * 将服务端最新分配的审批任务匹配到指定销售计划版本。
-   * 上游 approval 段的业务键是驼峰 `bizKey`；同时接受 `biz_key`，避免字段写法变化再次让这条来源静默失效。
-   */
-  private async workflowApproval(versionId: string, caller: AbortSignal) {
-    const auth = this.authenticated();
-    const signal = AbortSignal.any([caller, this.epoch.signal]);
-    const bizKeyOf = (row: Record<string, unknown> | undefined): string | undefined => {
-      const value = row?.bizKey ?? row?.biz_key;
-      return typeof value === "string" ? value : undefined;
-    };
-    let pageNo = 1;
-    while (true) {
-      const page = object(await this.get(`/api/v1/notifications?pageNo=${pageNo}&pageSize=100`, auth, signal));
-      if (!Array.isArray(page.items)) throw new Error("NOTIFICATION_INVALID_RESPONSE");
-      for (const item of page.items) {
-        const row = object(item);
-        const approval = row.approval == null ? undefined : object(row.approval);
-        if (bizKeyOf(approval) !== `sales-plan:version:${versionId}` || approval?.actionable !== true) continue;
-        const fresh = object(await this.get("/api/v1/notifications/" + encodeURIComponent(text(row.id)), auth, signal));
-        const confirmed = fresh.approval == null ? undefined : object(fresh.approval);
-        if (fresh.id !== row.id) throw new Error("NOTIFICATION_INVALID_RESPONSE");
-        if (bizKeyOf(confirmed) === `sales-plan:version:${versionId}` && confirmed?.actionable === true) {
-          if (this.auth !== auth) throw new Error("STALE_LOGIN");
-          const instanceId = confirmed.instanceId ?? confirmed.instance_id ?? row.instanceId ?? row.instance_id;
-          return {
-            versionId,
-            notificationId: text(row.id),
-            instanceId: instanceId == null ? undefined : text(instanceId),
-            actionable: true as const,
-          };
-        }
-      }
-      const total = integer(page.total, 0);
-      if (pageNo * 100 >= total) return undefined;
-      if (!page.items.length || pageNo >= 100) throw new Error("NOTIFICATION_SCAN_INCOMPLETE");
-      pageNo++;
-    }
   }
 
   /**
@@ -1364,7 +1383,7 @@ export class Business {
       // 版本或状态已经变化属于并发冲突：提示刷新，而不是笼统地报成无权限并禁用本轮操作。
       if (salesPlanVersionEvidenceStale(detail, {planId, versionId, status: request.expectedStatus as number}))
         throw new GeaResponseError(409,{message:'该计划版本或审批状态已变化，请刷新权威队列后重试'});
-      const access = salesPlanAccessForRow(row, detail, auth.permissionCodes, role, workflowRows, { allowReturned: true });
+      const access = salesPlanAccessForRow(row, detail, salesPlanStagesForRoles(auth.roles), role, workflowRows, { allowReturned: true });
       if (!access?.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']))
         throw new GeaResponseError(403,{message:'当前角色不具备该版本的操作权限'});
       if (request.expectedSnapshot !== access.snapshotHash)
@@ -1383,7 +1402,7 @@ export class Business {
       await this.refreshPermissions(signal);
       if (salesPlanVersionEvidenceStale(detail, {planId, versionId, status: request.expectedStatus as number}))
         throw new GeaResponseError(409,{message:'该计划版本或审批状态已变化，请刷新权威队列后重试'});
-      const access=correctionAccess(detail,workflowRows,request.approvalRole as GeaSalesPlanActionRequest['approvalRole'],auth.permissionCodes);
+      const access=correctionAccess(detail,workflowRows,request.approvalRole as GeaSalesPlanActionRequest['approvalRole'],salesPlanStagesForRoles(auth.roles));
       if (!access || !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']) || !detail.currentVersion.submitter || detail.currentVersion.submitter === auth.id)
         throw new GeaResponseError(403,{message:'纠偏契约、月初终审或角色权限未获确认'});
       if (detail.currentVersion.id !== versionId || access.status !== request.expectedStatus || access.snapshotHash !== request.expectedSnapshot)
@@ -1798,6 +1817,7 @@ export class Business {
     this.auth = { token, tenantId, name, id: text(user.id), username: text(user.username || user.realname), avatar: avatarUrl(user.avatar, this.base) };
     this.qr = undefined;
     await this.refreshPermissions(combined);
+    await this.refreshApprovalRoles(combined);
     combined.throwIfAborted();
     this.notifyIdentity();
     return { status: "authenticated", ...this.status() };
@@ -3007,17 +3027,6 @@ export class Business {
         )
       )
         throw new Error("GEA_IDENTITY_MISMATCH");
-      // 服务端把这一笔派给当前用户时也要能识别节点；上游字段是驼峰 bizKey，
-      // 历史上按 biz_key 读取导致这条来源一直没生效，这里两种写法都接受。
-      let workflowApproval;
-      try {
-        if (!detail.actionContext && currentVersion.effective === true &&
-            [1, 2, 3, 4, 7, 8, 9].includes(Number(currentVersion.status)))
-          workflowApproval = await this.workflowApproval(versionId, signal);
-      } catch (error) {
-        if (signal.aborted || !this.auth) throw error;
-        // 通知发现失败时仍保留业务详情可读，但不授予审批能力。
-      }
       if (options.forModel) {
         // 模型侧只回投影后的字段：上游整包带着该计划的全部 SKU 与内部字段，
         // 直接展开必然超过输入预算，detail 会永远 SNAPSHOT_TOO_LARGE。
@@ -3051,10 +3060,9 @@ export class Business {
           ...(cappedLogs.omitted === 0
             ? {}
             : { logsOmitted: cappedLogs.omitted }),
-          ...(workflowApproval === undefined ? {} : { workflowApproval }),
         };
       }
-      return { ...detail, currentVersion, skus, versions, logs, workflowApproval };
+      return { ...detail, currentVersion, skus, versions, logs };
     }
     const values = records(result);
     if (kind === "versionSkus") this.materialNames.apply(values);

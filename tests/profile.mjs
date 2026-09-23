@@ -126,7 +126,36 @@ export async function profile(t, options = {}) {
             },
           });
         else if (path.endsWith("/ai/gateway/agent/session"))
-          reply({ success: true, code: 200, result: { accessDecision: { allowed: true }, delegationToken: "fixture-delegation" } });
+          reply({
+            success: true,
+            code: 200,
+            result: {
+              accessDecision: { allowed: true },
+              delegationToken: "fixture-delegation",
+              gatewayContext: { sessionId: "SES-fixture" },
+            },
+          });
+        else if (path.endsWith("/ai/gateway/agent/session/current-user/resolve")) {
+          // 审批身份只认账号角色：默认给"区域审批"，用例可用 roles 覆盖（[] 表示任何节点都不可点）。
+          const roles = options.roles ?? [
+            { code: "sales_plan_region_approver", name: "区域审批" },
+          ];
+          reply({
+            success: true,
+            code: 200,
+            result: {
+              success: true,
+              userId: "9007199254740993",
+              username: "10006800",
+              tenantId: "0",
+              realName: "测试用户",
+              roleCodes: roles.map((role) => role.code).join(","),
+              roleNames: roles.map((role) => role.name).join(","),
+              roles,
+              departments: [],
+            },
+          });
+        }
         else if (path.endsWith("/ai/gateway/sql/execute")) {
           const body = JSON.parse(request.body);
           const rows = ['0', '1', '2', '3', '4', 'Y'].map((node, level) => ({ id: level + 1, type_code: 'Y', examine_level: String(level), node_num: node }));

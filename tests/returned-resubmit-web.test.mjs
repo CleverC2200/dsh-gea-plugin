@@ -20,7 +20,7 @@ const sku = {
 };
 
 test('a plan returned to this node can be resubmitted here', { timeout: 90000 }, async (t) => {
-  const app = await profile(t);
+  const app = await profile(t, { roles: [{ code: 'sales_plan_province_approver', name: '省区审批' }] });
   const writes = [];
   app.route((req, _res, reply) => {
     const path = req.url.pathname;

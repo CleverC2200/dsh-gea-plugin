@@ -13,19 +13,31 @@ import { salesPlanSkusMatchVersion } from './salesPlanDetailModel.ts';
 import { salesPlanApprovalNodeForStatus } from './salesPlanActionModel.ts';
 import type { ApprovalStageId } from '../regionalApprovalFixture.ts';
 
-const NODE_PERMISSIONS: readonly [ApprovalStageId, string][] = [
-  ['customer', 'sales-confirm'],
-  ['region', 'region-approve'],
-  ['province', 'province-approve'],
-  ['area', 'area-approve'],
-  ['category', 'category-approve'],
+/**
+ * 审批身份只看账号角色：GEA 网关解析出的角色编码（或中文名）→ 审批节点。
+ * 节点名字在客户端与后端流程里叫法不同（region 后端叫"区域审批"、客户端叫"城市经理审批"），
+ * 所以编码优先、名字兜底；角色以外的任何东西（通知、任务）都不参与身份判定。
+ */
+const NODE_ROLES: readonly [Exclude<ApprovalStageId, 'customer'>, string, string][] = [
+  ['region', 'sales_plan_region_approver', '区域审批'],
+  ['province', 'sales_plan_province_approver', '省区审批'],
+  ['area', 'sales_plan_area_approver', '大区审批'],
+  ['category', 'sales_plan_category_approver', '品类审批'],
 ];
 
-/** 已认证的节点权限只决定 UI 入口；每次写入仍由 GEA 校验。 */
-export const salesPlanStagesForPermissions = (permissions: readonly string[] = []): ApprovalStageId[] =>
-  NODE_PERMISSIONS.filter(([, permission]) => permissions.includes(`sales-plan:plan:${permission}`)).map(
-    ([stage]) => stage
-  );
+export type SalesPlanApprovalRole = { code?: string | null; name?: string | null };
+
+/** 当前账号能审批哪些节点；只有这几个节点在界面上可点。 */
+export const salesPlanStagesForRoles = (
+  roles: readonly SalesPlanApprovalRole[] = []
+): Exclude<ApprovalStageId, 'customer'>[] =>
+  NODE_ROLES.filter(([, code, name]) =>
+    roles.some((role) => {
+      const roleCode = (role?.code ?? '').trim().toLowerCase();
+      const roleName = (role?.name ?? '').trim();
+      return (roleCode.length > 0 && roleCode === code) || (roleName.length > 0 && roleName === name);
+    })
+  ).map(([stage]) => stage);
 
 export type SalesPlanAccess = Omit<GeaSalesPlanActionContext, 'snapshotHash'> & {
   snapshotHash?: string;
@@ -53,11 +65,11 @@ export const salesPlanVersionEvidenceStale = (
   );
 };
 
-/** 能力结果是 UI 入口的保守投影；审批身份只认账号的节点审批权限码，写入时仍由 GEA 校验。 */
+/** 能力结果是 UI 入口的保守投影；审批身份只认账号角色推出的节点，写入时仍由 GEA 校验。 */
 export const salesPlanAccessForRow = (
   row: Pick<GeaSalesPlanListItem, 'planId' | 'versionId' | 'status'> & Partial<Pick<GeaSalesPlanListItem, 'planTypeCode'>>,
   detail: GeaSalesPlanDetail,
-  permissions: readonly string[] = [],
+  grantedStages: readonly ApprovalStageId[] = [],
   stage?: ApprovalStageId,
   workflowRows?: readonly SalesPlanWorkflowRow[],
   options: { allowReturned?: boolean } = {},
@@ -78,16 +90,9 @@ export const salesPlanAccessForRow = (
       !entry || !['region','province','area','category'].includes(entry.role) ||
       !Array.isArray(entry.allowedActions) || !knownActions(entry.allowedActions)) ||
       new Set(context.roleActions.map(entry => entry.role)).size !== context.roleActions.length)) return undefined;
-  // 审批身份有两个来源：账号的节点审批权限码，以及 Host 对同版本重新确认的可处理任务。
-  // 后者只映射到当前状态的节点，不能用来处理其它节点或旧版本；服务端给的角色能力不授予身份。
-  // 是否“轮到这个节点”不在这里判定：角色决定能看到哪些节点，数据权限决定明细，
+  // 审批身份只来自账号角色：角色决定能进哪些节点，数据权限决定明细，
   // 只要这一行出现在表里就允许提交/退回，最终由 GEA 写接口按组织、角色、版本、状态和快照校验。
-  const workflowRole = detail.workflowApproval?.versionId === v.id && detail.workflowApproval.actionable === true
-    ? flow.actor(row.status) : undefined;
-  const roles = [...new Set([
-    ...salesPlanStagesForPermissions(permissions),
-    ...(workflowRole && workflowRole !== 'customer' ? [workflowRole] : []),
-  ])].filter(role => role !== 'customer');
+  const roles = [...new Set(grantedStages)].filter(role => role !== 'customer');
   // 多角色用户必须在动作对话框中明确选择角色。
   const role = stage ?? (roles.length === 1 ? roles[0] : undefined);
   if (!role || role === 'customer' || !roles.includes(role)) return undefined;

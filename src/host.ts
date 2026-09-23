@@ -749,7 +749,11 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 value = await business.notifications(payload, request.signal);
                 break;
               case "status":
-                await Promise.all([business.refreshMissingAvatar(request.signal), business.refreshPermissions(request.signal)]);
+                await Promise.all([
+                  business.refreshMissingAvatar(request.signal),
+                  business.refreshPermissions(request.signal),
+                  business.refreshApprovalRoles(request.signal),
+                ]);
                 // 前端不写死"哪个页面属于哪个模块"：模块索引由能力契约产出。
                 value = {
                   ...business.status(),

@@ -91,7 +91,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   t: TFunction;
   client?: SalesPlanActionClient;
   evidence?: GeaSalesPlanDetail;
-  permissionCodes?: readonly string[];
+  approvalStages?: readonly ApprovalStageId[];
   /** 内联明细当前显示的本节点确认量（用户改过、可能还没落盘）；比本地草稿更新，优先采用。 */
   pendingValues?: Record<string, string>;
   onPermissionDenied: (versionId: string) => void;
@@ -113,7 +113,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   t,
   client,
   evidence,
-  permissionCodes,
+  approvalStages,
   pendingValues,
   onPermissionDenied,
   onSucceeded,
@@ -126,11 +126,11 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   const [snapshot] = useState(evidence);
   const Container = embedded ? InlineAction : Modal;
   // allowReturned：上级退回给本节点的单据同样要能选到角色并继续提交。
-  const availableRoles = SALES_PLAN_ROLES.filter(role => snapshot && salesPlanAccessForRow(row, snapshot, permissionCodes, role, undefined, { allowReturned: true }));
+  const availableRoles = SALES_PLAN_ROLES.filter(role => snapshot && salesPlanAccessForRow(row, snapshot, approvalStages ?? [], role, undefined, { allowReturned: true }));
   const [selectedRole, setSelectedRole] = useState<ApprovalStageId | undefined>(
     availableRoles.includes(approvalStage) ? approvalStage : availableRoles.length === 1 ? availableRoles[0] : undefined
   );
-  const access = snapshot && selectedRole && salesPlanAccessForRow(row, snapshot, permissionCodes, selectedRole, undefined, { allowReturned: true });
+  const access = snapshot && selectedRole && salesPlanAccessForRow(row, snapshot, approvalStages ?? [], selectedRole, undefined, { allowReturned: true });
   const unsupportedRole = Boolean(access && !access.roleContractSupported && salesPlanWorkflow(row.planTypeCode).actor(row.status) !== access.approvalRole);
   const submittedRequest = useRef<GeaSalesPlanActionRequest | undefined>(undefined);
   const [kind, setKind] = useState<LiveActionKind>(initialAction);

@@ -24,8 +24,8 @@ import {
   correctionDecimal,
   verifyCorrectionAction,
 } from './models/salesPlanCorrectionModel.ts';
-import { salesPlanStagesForPermissions } from './models/salesPlanAccessModel.ts';
 import { salesPlanVarianceClass } from './models/salesPlanVarianceModel.ts';
+import type { ApprovalStageId } from './regionalApprovalFixture.ts';
 import { salesPlanVisibleStatuses, chooseInitialSalesPlanPeriod } from './regionalApprovalQueryModel.ts';
 import { isBackendHttpError } from '../../http-error.ts';
 import { salesPlanWorkflow } from '../../salesPlanWorkflow.ts';
@@ -54,11 +54,11 @@ export function CorrectionWorkbench({
   detailClient,
   actionClient,
   onResubmit,
-  permissionCodes,
+  approvalStages,
 }: {
   headerControls?: React.ReactNode;
   t: TFunction;
-  permissionCodes?: readonly string[];
+  approvalStages?: readonly ApprovalStageId[];
   queryClient?: SalesPlanQueryClient | null;
   detailClient?: SalesPlanDetailClient;
   actionClient?: SalesPlanActionClient;
@@ -76,7 +76,7 @@ export function CorrectionWorkbench({
   const [selected, setSelected] = useState<GeaSalesPlanListItem>();
   const [stage, setStage] = useState('current');
   const period = periods.find((p) => p.periodId === periodId);
-  const roleStages = salesPlanStagesForPermissions(permissionCodes);
+  const roleStages = [...(approvalStages ?? [])];
   const statusScope = roleStages.length ? salesPlanVisibleStatuses(period?.planTypeCode ?? '', roleStages) : undefined;
   const selectedStatuses = stage === 'current' ? statusScope
     : salesPlanWorkflow(period?.planTypeCode ?? '').pendingStatuses(stage as 'region' | 'province' | 'area' | 'category')
@@ -309,7 +309,7 @@ export function CorrectionWorkbench({
           key={`${selected.versionId}:${stage}`}
           row={selected}
           stage={stage}
-          permissionCodes={permissionCodes}
+          approvalStages={approvalStages}
           client={detailClient}
           actionClient={actionClient}
           onClose={() => setSelected(undefined)}
@@ -324,7 +324,7 @@ function CorrectionDetail({
   t,
   row,
   stage,
-  permissionCodes,
+  approvalStages,
   client,
   actionClient,
   onClose,
@@ -333,7 +333,7 @@ function CorrectionDetail({
   t: TFunction;
   row: GeaSalesPlanListItem;
   stage: string;
-  permissionCodes?: readonly string[];
+  approvalStages?: readonly ApprovalStageId[];
   client: SalesPlanDetailClient;
   actionClient?: SalesPlanActionClient;
   onClose: () => void;
@@ -372,7 +372,7 @@ function CorrectionDetail({
     };
   }, [client, row.planId, row.versionId]);
   const actor = detail && salesPlanWorkflow(detail.currentVersion.planTypeCode).actor(detail.currentVersion.status);
-  const access = detail && correctionAccess(detail, undefined, stage === 'current' ? undefined : stage as 'region' | 'province' | 'area' | 'category', permissionCodes);
+  const access = detail && correctionAccess(detail, undefined, stage === 'current' ? undefined : stage as 'region' | 'province' | 'area' | 'category', approvalStages);
   const writable = Boolean(access && actionClient && (access.roleContractSupported || access.approvalRole === actor));
   const lines = useMemo(
     () =>

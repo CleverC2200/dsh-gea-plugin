@@ -16,6 +16,7 @@ import {
 import commonEn from "./original/en-US.json" with { type: "json" };
 import commonZh from "./original/zh-CN.json" with { type: "json" };
 import { salesPlan } from "./original/bridge.ts";
+import { salesPlanStagesForRoles } from "./original/workbenches/regionalApproval/models/salesPlanAccessModel.ts";
 import type { Business, Preview } from "../host/business.ts";
 import type { CopyKey } from "../client/locales.ts";
 import "./workbench.css";
@@ -733,7 +734,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
                   key={workbenchRevision}
                   stateScope={`gea-dsh:${status.environment}:${status.user?.tenantId}:${status.user?.id}`}
                   t={locale.t.bind(locale)} onContextChange={onContextChange} queryClient={salesPlan} detailClient={salesPlan}
-                  permissionCodes={status.permissionCodes} liveActionsEnabled={true}
+                  approvalStages={salesPlanStagesForRoles(status.roles)} liveActionsEnabled={true}
                   liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
                   onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })} automaticAnalysisEnabled={true}
                   onCatalogChange={(elements) => {

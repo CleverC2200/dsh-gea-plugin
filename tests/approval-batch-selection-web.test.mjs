@@ -8,7 +8,7 @@ import { profile } from './profile.mjs';
  * 整行都不能操作才置灰。否则会出现「点两个不行、点三个才行」这种能勾上却按不动的状态。
  */
 test('grouped queue rows stay selectable exactly when the batch buttons can run', { timeout: 90000 }, async (t) => {
-  const app = await profile(t);
+  const app = await profile(t, { roles: [{ code: 'sales_plan_province_approver', name: '省区审批' }] });
   const plan = (key, province, status) => ({
     planId: `p-${key}`,
     versionId: `v-${key}`,

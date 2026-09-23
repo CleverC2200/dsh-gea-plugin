@@ -177,7 +177,6 @@ export type GeaSalesPlanDetail = {
   /** 当前用户任务分配；由已认证 Host 匹配并刷新。 */
   actionContext?: GeaSalesPlanActionContext;
   /** 服务端把该版本的可处理审批任务派给当前用户时由 Host 匹配；代表"这一笔现在归你办"。 */
-  workflowApproval?: { versionId: string; notificationId: string; instanceId?: string; actionable: true };
 
   currentVersion: GeaSalesPlanVersion;
   skus: GeaSalesPlanSku[];
