@@ -1,8 +1,8 @@
 param([switch]$Silent, [string]$Destination, [int]$MaxMinutes=60)
 $ErrorActionPreference='Stop'
 # No process termination, uninstall, security changes, or business-file collection.
-if ($Silent -and $env:GITHUB_ACTIONS -ne 'true') { throw 'Silent mode is reserved for disposable CI validation.' }
-if ($Destination -and (-not $Silent -or -not ([IO.Path]::GetFullPath($Destination)).StartsWith(([IO.Path]::GetFullPath($env:RUNNER_TEMP)).TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase))) { throw 'CI destination must be inside RUNNER_TEMP.' }
+if ($Silent -and ($env:GITLAB_CI -ne 'true' -or $env:OS -ne 'Windows_NT')) { throw 'Silent mode is reserved for disposable GitLab Windows CI validation.' }
+if ($Destination -and (-not $Silent -or -not ([IO.Path]::GetFullPath($Destination)).StartsWith(([IO.Path]::GetFullPath($env:TEMP)).TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase))) { throw 'CI destination must be inside TEMP.' }
 $manifest=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'diagnostic-package.json') -Raw | ConvertFrom-Json
 $installer=Join-Path $PSScriptRoot $manifest.file
 if ([IO.Path]::GetFileName($manifest.file) -ne $manifest.file) { throw 'Invalid installer filename' }

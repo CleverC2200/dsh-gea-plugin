@@ -149,7 +149,7 @@
 +  runtimeStatus?: RuntimeStatus
    /** npm 包名（profile 依赖 key） */
    name: string
-   /** manifest spec（github:owner/repo、git+https://…、或 npm 版本号） */
+   /** manifest spec（Git 仓库 URL 或 npm 版本号） */
 @@ -192,6 +199,7 @@
    paths: Record<string, string> | null,
    loadedNames: string[] | null,

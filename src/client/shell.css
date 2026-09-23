@@ -1213,6 +1213,13 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   position: relative;
   box-sizing: border-box;
 }
+/* A real rail border stays visible above the native conversation surface.
+   The toolbar covers its first 58px; the line starts at the toolbar edge. */
+@media (min-width: 801px) {
+  .AppFrame_frame[data-gea-conversation-view="split"]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_rightbarCol {
+    border-left: 1px solid #adb9c8 !important;
+  }
+}
 .AppFrame_frame[data-gea-conversation-view="split"] > .AppFrame_rightbarCol,
 .AppFrame_frame[data-gea-conversation-view="chat"] > .AppFrame_rightbarCol,
 .AppFrame_frame[data-gea-conversation-view="center"] > .AppFrame_centerCol {
