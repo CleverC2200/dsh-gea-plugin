@@ -187,6 +187,93 @@ test("resource_link 结果由宿主读回内联，模型不必自己读资源", 
   );
 });
 
+// 线上实测：大结果（37 万字符的查询制品）以前只内联前 12,000 字符，而且**不说明被截断**，
+// 模型可能拿开头那一段当全量。现在：第一段 + 明确写着还有多少、下一段怎么读，
+// 完整正文留在宿主缓存里按需分段取，不用重跑整条查询。
+test("大结果只内联一段，并说清还有多少、下一段怎么读（不用重新查）", async () => {
+  const big = JSON.stringify({
+    rows: Array.from({ length: 1500 }, (_, index) => ({
+      id: index,
+      material_code: "SKU" + index,
+      qty: index * 2,
+    })),
+  });
+  assert.ok(big.length > 30_000, "测试数据要够大：" + big.length);
+  const uri = "data-artifact://gateway/big-result";
+  const { seen, transport } = fakeTransport((body) => {
+    if (body.method === "initialize")
+      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+    if (body.method === "notifications/initialized") return new Response("", { status: 202 });
+    if (body.method === "tools/list")
+      return json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] } });
+    if (body.method === "tools/call")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { isError: false, content: [{ type: "resource_link", uri, mimeType: "application/json" }] },
+      });
+    if (body.method === "resources/read")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { contents: [{ uri: body.params.uri, mimeType: "application/json", text: big }] },
+      });
+    throw new Error("unexpected method " + body.method);
+  });
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  const value = await module.call("query_business_data", { action: "query" }, new AbortController().signal);
+  assert.ok(value.length <= 20_000, "单次结果不能超上限：" + value.length);
+  assert.match(value, /只内联了前 \d+ 字符/);
+  assert.match(value, new RegExp(`全文 ${big.length} 字符`));
+  assert.match(value, /artifact="data-artifact:\/\/gateway\/big-result"/);
+  assert.match(value, /offset=\d+/);
+  assert.match(value, /不要重复整条大查询/);
+  // 第一段确实是正文开头。
+  const firstChunk = Number(/只内联了前 (\d+) 字符/.exec(value)[1]);
+  assert.equal(value.includes(big.slice(0, 200)), true);
+
+  // 第二段按 offset 取，命中的是缓存，不再打一次 resources/read。
+  const next = await module.chunk(uri, firstChunk, 12_000, new AbortController().signal);
+  assert.match(next, new RegExp(`字符 ${firstChunk}–${firstChunk + 12_000} / 共 ${big.length}`));
+  assert.equal(next.includes(big.slice(firstChunk, firstChunk + 200)), true);
+  assert.equal(seen.filter((item) => item.method === "resources/read").length, 1);
+  // 读到结尾要明确说"已到结尾"，不能让人以为还有。
+  const tail = await module.chunk(uri, big.length - 10, 12_000, new AbortController().signal);
+  assert.match(tail, /已到结尾/);
+});
+
+test("一次返回多个制品时，没内联的那些要把 URI 报出来（别直接丢）", async () => {
+  const links = ["a", "b", "c"].map((id) => `data-artifact://gateway/${id}`);
+  const { transport } = fakeTransport((body) => {
+    if (body.method === "initialize")
+      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+    if (body.method === "notifications/initialized") return new Response("", { status: 202 });
+    if (body.method === "tools/list")
+      return json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] } });
+    if (body.method === "tools/call")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          isError: false,
+          content: links.map((uri) => ({ type: "resource_link", uri, mimeType: "application/json" })),
+        },
+      });
+    if (body.method === "resources/read")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { contents: [{ uri: body.params.uri, mimeType: "application/json", text: '{"rows":[]}' }] },
+      });
+    throw new Error("unexpected method " + body.method);
+  });
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  const value = await module.call("query_business_data", { action: "query" }, new AbortController().signal);
+  assert.match(value, /还返回了 1 个制品没有内联/);
+  assert.match(value, /data-artifact:\/\/gateway\/c/);
+  assert.match(value, /artifact=<URI>/);
+});
+
 test("资源读不回来时给可读说明，不让模型拿着链接乱试", async () => {
   const { transport } = fakeTransport((body) => {
     if (body.method === "initialize")

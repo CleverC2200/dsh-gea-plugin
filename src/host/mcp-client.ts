@@ -23,6 +23,16 @@ export type McpModule = {
   /** 某个工具的完整入参定义（含类型、枚举、嵌套字段）；名字不存在返回 undefined。 */
   schema(name: string): string | undefined;
   call(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string>;
+  /**
+   * 读大结果制品的某一段。完整正文由宿主按制品 URI 缓存，模型按需一段段取，
+   * 不用把几十万字符一次塞进上下文。
+   */
+  chunk(
+    uri: string,
+    offset: number,
+    length: number,
+    signal: AbortSignal,
+  ): Promise<string>;
 };
 
 /**
@@ -33,10 +43,16 @@ const PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 
 const MAX_TOOLS = 40;
 const MAX_RESULT_CHARS = 20_000;
-/** 单条资源结果内联上限：够模型读出结论，又不至于把一次查询塞爆上下文。 */
+/** 单条资源结果单次内联上限：够模型读出结论，又不至于把一次查询塞爆上下文。 */
 const MAX_RESOURCE_INLINE_CHARS = 12_000;
 /** 单个工具入参定义的上限：Schema 是服务端给的，不能让它把上下文吃爆。 */
 const MAX_TOOL_SCHEMA_CHARS = 2_000;
+/** 一次最多内联几个制品链接：其余的把 URI 报给模型，按需再读。 */
+const MAX_RESOURCE_LINKS = 2;
+/** 单个制品正文在宿主侧最多缓存多少字符（制品本身可能有 10MiB 上限，不能照单全收）。 */
+const MAX_ARTIFACT_CHARS = 4_000_000;
+/** 单个模块会话最多缓存多少字符：超了按最早读到的先丢。 */
+const MAX_ARTIFACT_TOTAL_CHARS = 12_000_000;
 
 type JsonRpcReply = {
   id?: unknown;
@@ -485,6 +501,24 @@ export async function openModuleMcp(
   let initialized = false;
   /** 协商成功的协议版本：网关要求后续每次请求都带上它（缺了 tools/list 会被 400）。 */
   let negotiated: string | undefined;
+  /**
+   * 制品正文缓存：大结果读一次放这里，模型用 chunk() 一段段取。
+   * 只在本模块会话内有效——身份变化会换掉整个 McpModule，缓存跟着走。
+   */
+  const artifacts = new Map<string, string>();
+  let artifactChars = 0;
+  const rememberArtifact = (uri: string, text: string): void => {
+    const kept = text.length > MAX_ARTIFACT_CHARS ? text.slice(0, MAX_ARTIFACT_CHARS) : text;
+    artifactChars += kept.length - (artifacts.get(uri)?.length ?? 0);
+    // 重新 set 一次保证 Map 顺序按"最近写入"排，淘汰时丢最早的。
+    artifacts.delete(uri);
+    artifacts.set(uri, kept);
+    while (artifactChars > MAX_ARTIFACT_TOTAL_CHARS && artifacts.size > 1) {
+      const oldest = artifacts.keys().next().value as string;
+      artifactChars -= artifacts.get(oldest)?.length ?? 0;
+      artifacts.delete(oldest);
+    }
+  };
   let lastError: unknown;
   for (const version of PROTOCOL_VERSIONS) {
     const id = randomUUID();
@@ -524,11 +558,42 @@ export async function openModuleMcp(
 
   // 先取工具清单：传输层靠 tools/list 把工具名映射成服务端路由码，tools/call 才认得。
   const tools = await listModuleTools(transport, signal, negotiated);
+  /** 读一个制品的完整正文（缓存优先）；读不回来就按原样抛，由调用方翻成人话。 */
+  const readArtifact = async (uri: string, readSignal: AbortSignal): Promise<string> => {
+    const cached = artifacts.get(uri);
+    if (cached !== undefined) return cached;
+    const readId = randomUUID();
+    const readResponse = await post(
+      { jsonrpc: "2.0", id: readId, method: "resources/read", params: { uri } },
+      { ...(negotiated ? { version: negotiated } : {}) },
+    );
+    const text = resourceContentsText(
+      await readReply(readResponse, readId, readSignal),
+    );
+    if (!text) throw new Error("GEA_MCP_RESOURCE_EMPTY");
+    rememberArtifact(uri, text);
+    return text;
+  };
   return {
     tools: () => tools,
     schema: (name) => {
       const tool = tools.find((item) => item.name === name);
       return tool ? describeToolSchema(tool) : undefined;
+    },
+    chunk: async (uri, offset, length, chunkSignal) => {
+      const text = await readArtifact(uri, chunkSignal);
+      const start = Math.max(0, Math.min(Math.trunc(offset), text.length));
+      const size = Math.max(1_000, Math.min(Math.trunc(length), MAX_RESOURCE_INLINE_CHARS));
+      const body = text.slice(start, start + size);
+      const end = start + body.length;
+      const tail =
+        end < text.length
+          ? `\n（还有 ${text.length - end} 字符没读：继续读就再调一次，offset=${end}。）`
+          : "\n（已到结尾。）";
+      return `【制品片段 ${uri}｜字符 ${start}–${end} / 共 ${text.length}】\n${body}${tail}`.slice(
+        0,
+        MAX_RESULT_CHARS,
+      );
     },
     call: async (name, args, callSignal) => {
       const id = randomUUID();
@@ -548,26 +613,31 @@ export async function openModuleMcp(
       // 线上实测：这类结果以 `data-artifact://gateway/…` 链接返回，模型得再调一次
       // 平台的读资源工具；它会把 server 猜成 browser（那个服务没连），整轮白跑。
       // 宿主在同一条 MCP 会话里读回来内联，模型一次调用就能看到内容。
+      //
+      // 大结果（例如 37 万字符的查询制品）不能整段塞进上下文：内联第一段，把"还有多少、
+      // 怎么读下一段"写在正文里；完整正文留在宿主缓存里，按需 chunk() 取。
       const parts: string[] = [];
-      for (const link of links.slice(0, 2)) {
+      const shown = links.slice(0, MAX_RESOURCE_LINKS);
+      const skipped = links.slice(MAX_RESOURCE_LINKS);
+      // 每段预留提示文字，保证整体不超过单次结果上限。
+      const chunkChars = Math.max(
+        2_000,
+        Math.min(
+          MAX_RESOURCE_INLINE_CHARS,
+          Math.floor((MAX_RESULT_CHARS - 1_200) / Math.max(1, shown.length)),
+        ),
+      );
+      for (const link of shown) {
         try {
-          const readId = randomUUID();
-          const readResponse = await post(
-            {
-              jsonrpc: "2.0",
-              id: readId,
-              method: "resources/read",
-              params: { uri: link.uri },
-            },
-            { ...(negotiated ? { version: negotiated } : {}) },
-          );
-          const text = resourceContentsText(
-            await readReply(readResponse, readId, callSignal),
-          );
-          if (!text) throw new Error("GEA_MCP_RESOURCE_EMPTY");
-          parts.push(
-            `【结果内容 ${link.uri}】\n${text.slice(0, MAX_RESOURCE_INLINE_CHARS)}`,
-          );
+          const text = await readArtifact(link.uri, callSignal);
+          const head = text.slice(0, chunkChars);
+          const more =
+            head.length < text.length
+              ? `\n\n（只内联了前 ${head.length} 字符，全文 ${text.length} 字符。` +
+                `要下一段：再调一次 gea_module_mcp，带上 artifact="${link.uri}" 和 offset=${head.length}；` +
+                "如果只是想要更少的行，也可以加 filters 或把 limit 调小重新查一次，不要重复整条大查询。）"
+              : "";
+          parts.push(`【结果内容 ${link.uri}】\n${head}${more}`);
         } catch (error) {
           parts.push(
             `【结果内容读不回来：${link.uri}（${
@@ -577,6 +647,12 @@ export async function openModuleMcp(
           );
         }
       }
+      if (skipped.length)
+        parts.push(
+          `（这次还返回了 ${skipped.length} 个制品没有内联：${skipped
+            .map((link) => link.uri)
+            .join("、")}。要哪个就用 gea_module_mcp 带 artifact=<URI> 去读，别重新跑一遍查询。）`,
+        );
       return parts.join("\n").slice(0, MAX_RESULT_CHARS);
     },
   };
