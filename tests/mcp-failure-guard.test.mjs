@@ -21,7 +21,13 @@ new Function("require", "module", "exports", outputFiles[0].text)(
   module,
   module.exports,
 );
-const { createMcpFailureGuard, MCP_FAILURE_LIMIT, MCP_FAILURE_WINDOW_MS } = module.exports;
+const {
+  createMcpFailureGuard,
+  createMcpWasteGuard,
+  MCP_FAILURE_LIMIT,
+  MCP_FAILURE_WINDOW_MS,
+  MCP_WASTE_LIMIT,
+} = module.exports;
 
 test("默认上限是 2 次、窗口 10 分钟", () => {
   assert.equal(MCP_FAILURE_LIMIT, 2);
@@ -79,4 +85,37 @@ test("计数按模块分开，且只在窗口内累加", () => {
   guard.note("b", false);
   assert.throws(() => guard.check("b"), /GEA_MCP_RETRY_STOPPED/);
   guard.check("a");
+});
+
+test("本轮整体熔断：跨模块白跑到上限就停手（换模块也拦）", () => {
+  const waste = createMcpWasteGuard();
+  assert.equal(MCP_WASTE_LIMIT, 6);
+  for (let i = 0; i < 5; i += 1) waste.waste("session-1");
+  waste.check("session-1"); // 还没到上限
+  waste.waste("session-1");
+  assert.throws(
+    () => waste.check("session-1"),
+    (error) => {
+      assert.match(error.message, /^GEA_TURN_RETRY_STOPPED: /);
+      assert.match(error.message, /不要再换模块、换模型、换成员或换写法试/);
+      return true;
+    },
+  );
+  // 别的会话不受影响；同一个会话拿到真数据后清零。
+  waste.check("session-2");
+  waste.progress("session-1");
+  waste.check("session-1");
+});
+
+test("白跑计数窗口过了自动放行；clear 清空全部", () => {
+  let now = 0;
+  const waste = createMcpWasteGuard({ limit: 2, windowMs: 1000, now: () => now });
+  waste.waste("s");
+  waste.waste("s");
+  assert.throws(() => waste.check("s"), /GEA_TURN_RETRY_STOPPED/);
+  now += 1001;
+  waste.check("s");
+  waste.waste("s");
+  waste.clear();
+  waste.check("s");
 });

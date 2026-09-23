@@ -84,9 +84,12 @@ import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
 import { createPageBridge, type PageBridge } from "../page-bridge/index.ts";
 import {
+  createMcpWasteGuard,
   createMcpFailureGuard,
   type McpFailureGuard,
+  type McpWasteGuard,
 } from "./mcp-failure-guard.ts";
+import { createCallDedup, type CallDedup } from "./call-dedup.ts";
 
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
@@ -781,6 +784,9 @@ export class Business {
     this.pluginDelegations.clear();
     this.moduleMcpCache.clear();
     this.moduleMcpRejections.clear();
+    // 元信息缓存与"本轮白跑"计数都跟身份绑定：换身份一律作废。
+    this.readDedup.clear();
+    this.mcpWasteGuard.clear();
     this.resubmissions.clear();
     this.correctionRequests.clear();
     this.qr = undefined;
@@ -1949,6 +1955,20 @@ export class Business {
 
   moduleMcpFailures(): McpFailureGuard {
     return this.mcpFailureGuard;
+  }
+
+  /** 本轮整体熔断：单个模块的熔断挡不住"换着模块试"（见 mcp-failure-guard.ts）。 */
+  private readonly mcpWasteGuard = createMcpWasteGuard();
+
+  moduleMcpWaste(): McpWasteGuard {
+    return this.mcpWasteGuard;
+  }
+
+  /** 只读元信息（目录/成员/工具清单）的同轮去重，避免同一份东西被读几十遍。 */
+  private readonly readDedup = createCallDedup();
+
+  metadataDedup(): CallDedup {
+    return this.readDedup;
   }
 
   /**

@@ -472,6 +472,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         "- 目录里标“无度量”的模型聚合不了：这时**只取必需的那几列**（2–4 列），再用时间/版本把范围钉小；不要一次取十几列、上百行。确实需要合计就如实说明“这张表当前没有可聚合度量”，不要拿前 N 行硬加出总数。",
         "- 极值分两种问法：“最大/最小是多少”用 max/min 度量；“哪个 SKU 最大、哪几行最高”用维度排序取 TopN（度量只给数值，不会告诉你行标识）。",
         "- 要明细清单时用 limit 分页；**行数正好等于 limit 时说明可能还有更多**（返回里的 totalRows/complete/hasMore 只描述这一次查询窗口，不代表业务全集），接着翻页确认，或者改用度量。",
+        "- **同一轮里，同一份信息只读一次**：模型索引、某个模型的成员清单、某个模块的工具清单，读过就记住、后面直接引用；重复读同一个东西只会浪费一轮。要的是别的模型就换 model 参数。",
+        "- **空结果、被拒、演示模块都不要再换着试**：样例值取不到就别再换模型试样例值（它只是用来确认格式，不是查询前提——按目录里的类型标注照写即可）；演示模块调过一次就够；同一个模块失败两次、或本轮累计白跑若干次时，宿主会直接叫停，那时请用已有证据作答或说清缺哪一项，然后结束这一轮。",
         "- 如果 Cube 回 `'某个成员' not found for path '模型.某成员'`：先怀疑这个成员被放进了 measures（这些 cube 多数只有 dimensions）。成员在目录里列过就说明它存在，不要改去猜别的名字或换模型。",
         "- 日期/时间成员（snapshot_date、snapshot_time、target_month、stat_date、inventory_snapshot_time 这类）的值必须是完整日期 `YYYY-MM-DD`（带时间的用 `YYYY-MM-DD HH:mm:ss`）：写 `2026-09` 这种只有年月的值，Cube 会以 `invalid input syntax for type date` 报错。拿不准就先查一次该成员的现有值，再照抄格式。",
         '- 结果返回 `data-artifact://gateway/…` 链接时：**gea_module_mcp 的结果宿主已经把正文读回来内联了，不需要你再读一次**。**大结果只内联第一段**，正文里会写明"只内联了前 N 字符，全文 M 字符"；要接着看就再调一次 gea_module_mcp（consumerCode 同上 + `artifact="`原样的 data-artifact:// URI`"` + `offset=`上一段结尾给的位置），**不要重复跑整条大查询**，也不要自己拼 URI、不要当 HTTP 链接去抓。正文里若写"还有几个制品没有内联"，同样用 `artifact=<URI>` 去读那几个。万一是平台直挂的网关工具返回链接，才用 read_mcp_resource，且 server 必须是网关那一个（gea-gateway）——**绝不要用 browser**（那个服务没连，只会报 server is disconnected，白跑一轮）。',

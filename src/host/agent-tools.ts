@@ -112,6 +112,8 @@ export function registerGeaTools(
   business: Business,
   capability?: CapabilityRegistry,
 ): void {
+  /** 样例值连续取空的次数（按会话/Agent 记）：第二次就明确叫停，不再换模型试。 */
+  const emptySamples = new Map<string, number>();
   /**
    * 宿主替模型算好的通道顺序：当前页是谁、命中哪个模块、该先用哪条道。
    * 线上实测"选通道"这一步最容易翻车，所以不由模型自己猜（见 capability/channel.ts）。
@@ -511,14 +513,32 @@ export function registerGeaTools(
         isConcurrencySafe: () => true,
         execute: async (args, exec) => {
           const consumerCode = String(args.consumerCode);
+          const scope = exec.agent?.id ?? "global";
+          const waste = business.moduleMcpWaste();
+          const dedup = business.metadataDedup();
+          // 本轮整体熔断：单个模块的熔断挡不住"换着模块试"（线上实测一轮白跑 50+ 次）。
+          waste.check(scope);
           // 演示（mock）模块没有真实数据通道：直接说清，不去网关撞一次 400 / 权限拒绝。
-          if (capability?.byConsumer(consumerCode)?.data?.mock === true)
-            return JSON.stringify({
-              source: "GEA_MODULE_MCP",
-              availability: "mock-module",
-              consumerCode,
-              note: "「演示模块」没有 MCP 数据通道：页面里的数字是原型数据。要演示数据请读页面；真实口径请用已开通模块的 MCP 工具。",
-            });
+          if (capability?.byConsumer(consumerCode)?.data?.mock === true) {
+            waste.waste(scope);
+            const mockKey = `mock|${consumerCode}`;
+            if (dedup.hit(mockKey))
+              return JSON.stringify({
+                source: "GEA_MODULE_MCP",
+                availability: "mock-module",
+                consumerCode,
+                note: "这个演示模块之前已经说过一次了：它没有 MCP 数据通道。别再调它——要演示数据读页面，要真实数据换已开通模块。",
+              });
+            return dedup.remember(
+              mockKey,
+              JSON.stringify({
+                source: "GEA_MODULE_MCP",
+                availability: "mock-module",
+                consumerCode,
+                note: "「演示模块」没有 MCP 数据通道：页面里的数字是原型数据。要演示数据请读页面；真实口径请用已开通模块的 MCP 工具——**不要重复调用演示模块**。",
+              }),
+            );
+          }
           let module: import("./mcp-client.ts").McpModule;
           try {
             module = await business.moduleMcp(consumerCode, exec.signal);
@@ -528,7 +548,8 @@ export function registerGeaTools(
                 ? String((error as { code?: unknown }).code)
                 : "";
             // 权限没开通是业务状态，不是调用失败：回正常结果，别显示成红色错误。
-            if (code === "AGENT_ACCESS_DENIED")
+            if (code === "AGENT_ACCESS_DENIED") {
+              waste.waste(scope);
               return JSON.stringify({
                 source: "GEA_MODULE_MCP",
                 availability: "permission-required",
@@ -544,6 +565,7 @@ export function registerGeaTools(
                 ],
                 note: "这是权限未开通，不是调用失败：不用重试，也不要换别的模块凑答案。",
               });
+            }
             throw error;
           }
           // 大结果的分段读：完整正文宿主已经缓存，这里只按 offset 取一段。
@@ -560,12 +582,20 @@ export function registerGeaTools(
             return await module.chunk(args.artifact.trim(), offset, length, exec.signal);
           }
           const toolName = typeof args.tool === "string" ? args.tool.trim() : "";
-          if (!toolName)
-            return JSON.stringify({
+          if (!toolName) {
+            // 同一份工具清单只给一次（线上实测同一模块的清单被反复列了十几次）。
+            const listKey = `tools|${consumerCode}`;
+            const cachedList = dedup.hit(listKey);
+            if (cachedList) return cachedList;
+            return dedup.remember(
+              listKey,
+              JSON.stringify({
               consumerCode: args.consumerCode,
               tools: module.tools(),
               note: "先在这里挑一个工具，再用 tool + arguments 调用；要看某个工具的完整入参定义，用 tool=工具名 + schema=true。",
-            });
+              }),
+            );
+          }
           const tool = module.tools().find((item) => item.name === toolName);
           if (!tool)
             throw new Error(
@@ -628,7 +658,11 @@ export function registerGeaTools(
           try {
             const output = await module.call(toolName, parameters, exec.signal);
             // 权限拒绝是以可读文本返回的（不是抛错），也算失败——这类最会诱发"换模块再试"。
-            failures.note(consumerCode, !output.startsWith(PERMISSION_NOTICE_PREFIX));
+            const denied = output.startsWith(PERMISSION_NOTICE_PREFIX);
+            failures.note(consumerCode, !denied);
+            // 真的拿到数据就把"本轮白跑"的账清零；被拒/空手则记一笔总账（跨模块也算）。
+            if (denied) waste.waste(scope);
+            else waste.progress(scope);
             return output;
           } catch (error) {
             // 网关把下游真实原因吞了（只回 MCP_UPSTREAM_TOOL_ERROR）：补一次成员名判断，
@@ -641,6 +675,7 @@ export function registerGeaTools(
               exec.signal,
             );
             failures.note(consumerCode, false);
+            waste.waste(scope);
             throw repaired ?? error;
           }
         },
@@ -759,6 +794,20 @@ export function registerGeaTools(
           rawInput: args,
         }),
         execute: async (args, exec) => {
+          // 同轮去重：同一份目录/成员清单被反复读时直接回上一次的（线上实测一轮读 93 次）。
+          const dedup = business.metadataDedup();
+          const members = Array.isArray(args.members)
+            ? args.members
+                .filter((item): item is string => typeof item === "string")
+                .map((item) => item.trim())
+                .filter(Boolean)
+                .slice(0, 6)
+            : [];
+          const dedupKey = `catalog|${String(args.model ?? "")}|${members.join(",")}|${
+            args.values === true ? "values" : "plain"
+          }`;
+          const cached = dedup.hit(dedupKey);
+          if (cached) return cached;
           const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
           const { StreamableHTTPClientTransport } = await import(
             "@modelcontextprotocol/sdk/client/streamableHttp.js"
@@ -777,14 +826,6 @@ export function registerGeaTools(
             // 不先列一次工具，调用会被拒成 GEA_MCP_TOOL_ROUTE_REQUIRED。
             const list = await client.listTools();
             listed = Array.isArray(list?.tools) ? list.tools.length : 0;
-            // values=true：拿一行真实值，让模型照着写日期/年月格式，而不是猜。
-            const members = Array.isArray(args.members)
-              ? args.members
-                  .filter((item): item is string => typeof item === "string")
-                  .map((item) => item.trim())
-                  .filter(Boolean)
-                  .slice(0, 6)
-              : [];
             if (args.values === true) {
               if (members.length === 0)
                 throw new Error(
@@ -803,7 +844,24 @@ export function registerGeaTools(
               const sampleText = resultText(sampled);
               const rows = rowsFromText(sampleText);
               if (!rows) throw new Error(`GEA_CATALOG_SAMPLE_FAILED: ${sampleText.slice(0, 200)}`);
-              return formatSampleValues(rows, members);
+              const scope = exec.agent?.id ?? "global";
+              if (rows.length === 0) {
+                // 线上实测：样例值连续取不到时模型会换着模型一直试（一轮 27 次）。第二次就明确叫停。
+                const misses = (emptySamples.get(scope) ?? 0) + 1;
+                emptySamples.set(scope, misses);
+                if (misses >= 2) {
+                  business.moduleMcpWaste().waste(scope);
+                  return (
+                    "【样例值连续取不到，别再试了】这个身份连着两次取不到样例值：模型在当前身份下没有可见行，或这些成员本来就为空。\n" +
+                    "样例值只是用来**确认取值格式**，不是查询的前提——不要再换模型/换成员试样例值，直接按目录里的类型标注写查询：" +
+                    "[time] 取值写完整日期、[number] 仍是 dimensions、文本年月按业务惯例；确实拿不准就先查这一行数据本身。\n" +
+                    "如果连数据也取不到，直接说清缺哪一项（哪张模型、缺哪项授权），不要再换着试。"
+                  );
+                }
+              } else {
+                emptySamples.delete(scope);
+              }
+              return dedup.remember(dedupKey, formatSampleValues(rows, members));
             }
             const inspect = await client.callTool({
               name: "query_business_data",
@@ -818,7 +876,7 @@ export function registerGeaTools(
             const payload = parseFirstJsonObject(text);
             // 顺手把成员清单记下来：发查询前用它逐字校验成员名（见 member-index.ts）。
             rememberMemberIndex(payload);
-            return projectCatalog(payload, { model: args.model });
+            return dedup.remember(dedupKey, projectCatalog(payload, { model: args.model }));
           } catch (error) {
             const message = (error as Error).message;
             // 自己的目录错误（模型名不对、目录为空…）原样抛：套一层"MCP 失败"会把

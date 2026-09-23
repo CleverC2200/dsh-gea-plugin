@@ -18,6 +18,63 @@ export type McpFailureGuard = {
 
 export const MCP_FAILURE_LIMIT = 2;
 export const MCP_FAILURE_WINDOW_MS = 10 * 60 * 1000;
+/** 本轮"白跑"多少次就整体停手（授权拒绝 / 上游失败 / 样例值取空 / 演示模块 / 模块未开通…）。 */
+export const MCP_WASTE_LIMIT = 6;
+
+export type McpWasteGuard = {
+  /** 白跑一次（这类调用没有带来任何新证据）。 */
+  waste(scope: string): void;
+  /** 真拿到数据了：把这一轮的账清零，允许继续。 */
+  progress(scope: string): void;
+  /** 白跑到上限就抛 `GEA_TURN_RETRY_STOPPED`。 */
+  check(scope: string): void;
+  /** 换身份时清空。 */
+  clear(): void;
+};
+
+/**
+ * 本轮整体熔断：单个模块的熔断挡不住"换着模块试"。
+ * 线上实测一轮 119 步、168 次调用，其中样例值取空 27 次、演示模块 24 次、授权拒绝若干——
+ * 单个 consumer 的熔断对它们无效，所以这里按"会话 + 时间窗"记总账。
+ */
+export function createMcpWasteGuard(
+  options: { limit?: number; windowMs?: number; now?: () => number } = {},
+): McpWasteGuard {
+  const limit = options.limit ?? MCP_WASTE_LIMIT;
+  const windowMs = options.windowMs ?? MCP_FAILURE_WINDOW_MS;
+  const now = options.now ?? Date.now;
+  const wasted = new Map<string, { count: number; at: number }>();
+  const read = (scope: string) => {
+    const entry = wasted.get(scope);
+    if (!entry) return undefined;
+    if (now() - entry.at >= windowMs) {
+      wasted.delete(scope);
+      return undefined;
+    }
+    return entry;
+  };
+  return {
+    waste(scope) {
+      const entry = read(scope);
+      wasted.set(scope, { count: (entry?.count ?? 0) + 1, at: now() });
+    },
+    progress(scope) {
+      wasted.delete(scope);
+    },
+    check(scope) {
+      const entry = read(scope);
+      if (!entry || entry.count < limit) return;
+      throw new Error(
+        `GEA_TURN_RETRY_STOPPED: 这一轮已经白跑了 ${entry.count} 次（找不到的模块、取不到的样例值、被拒的查询都算），` +
+          "现在停手：不要再换模块、换模型、换成员或换写法试。请用已经拿到的证据作答；" +
+          "确实缺数据时，直接说清缺哪一项、需要谁补，然后结束这一轮。",
+      );
+    },
+    clear() {
+      wasted.clear();
+    },
+  };
+}
 
 export function createMcpFailureGuard(
   options: { limit?: number; windowMs?: number; now?: () => number } = {},
