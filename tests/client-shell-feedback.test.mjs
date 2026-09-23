@@ -206,6 +206,8 @@ test(
           seat: box(seat),
           input: box(input),
           borderLeft: getComputedStyle(rail).borderLeftWidth,
+          borderLeftStyle: getComputedStyle(rail).borderLeftStyle,
+          borderLeftColor: getComputedStyle(rail).borderLeftColor,
         };
       });
     const dragHandle = async (dx) => {
@@ -226,13 +228,15 @@ test(
     assert.ok(layoutWider.sidebar - layoutBefore.sidebar >= 60, JSON.stringify({ layoutBefore, layoutWider }));
     const railAfterPageResize = await conversationRail();
     assert.ok(railAfterPageResize, "调整页面宽度后右侧对话栏必须仍存在");
-    assert.equal(railAfterPageResize.borderLeft, "0px", JSON.stringify(railAfterPageResize));
+    assert.equal(railAfterPageResize.borderLeft, "1px", JSON.stringify(railAfterPageResize));
+    assert.equal(railAfterPageResize.borderLeftStyle, "solid", JSON.stringify(railAfterPageResize));
+    assert.equal(railAfterPageResize.borderLeftColor, "rgb(173, 185, 200)", JSON.stringify(railAfterPageResize));
     assert.ok(
       // 宿主列宽求解在两次测量间可能有几像素差（滚动条/clamp），4px 内视为"没跟着工作台变"。
       Math.abs(railAfterPageResize.rail.width - railBefore.rail.width) <= 4,
       `调整工作台宽度不能改变对话栏宽度: ${JSON.stringify({ railBefore, railAfterPageResize })}`,
     );
-    assert.equal(railAfterPageResize.seat.left, railAfterPageResize.rail.left, JSON.stringify(railAfterPageResize));
+    assert.ok(railAfterPageResize.seat.left - railAfterPageResize.rail.left <= 1, JSON.stringify(railAfterPageResize));
     assert.ok(railAfterPageResize.input.left >= railAfterPageResize.rail.left, JSON.stringify(railAfterPageResize));
     assert.ok(railAfterPageResize.input.right <= railAfterPageResize.rail.right, JSON.stringify(railAfterPageResize));
     await dragHandle(-80);
