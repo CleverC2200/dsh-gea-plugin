@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 const { outputFiles } = await build({stdin: {contents: "export * from './src/workbench/original/workbenches/regionalApproval/regionalApprovalQueryModel.ts'; export * from './src/workbench/original/salesPlanWorkflow.ts';", resolveDir: process.cwd()}, bundle: true, write: false, platform: 'node', format: 'esm'});
-const { approvalStageProgressForSalesPlanPeriods, approvalStageProgressForSalesPlanStatusTotals, salesPlanPeriodMonths, salesPlanPeriodsForMonth, salesPlanPeriodOptionLabel, salesPlanVisibleStatuses, salesPlanWorkflow } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].contents).toString('base64'));
+const { approvalStageProgressForSalesPlanPeriods, approvalStageProgressForSalesPlanStatusTotals, salesPlanStagePercent, salesPlanStageTallies, salesPlanPeriodMonths, salesPlanPeriodsForMonth, salesPlanPeriodOptionLabel, salesPlanVisibleStatuses, salesPlanWorkflow } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].contents).toString('base64'));
 test('period options expose one month while keeping all workflow periods in its query scope', () => {
   const periods = [
     {periodId:'20261001',periodMonth:'2026-10',planTypeCode:'Y',status:'OPEN'},
@@ -67,6 +67,29 @@ test('每个状态算哪些节点已完成（进度分子口径）', () => {
       );
     }
   }
+});
+test('分子/分母：界面悬停展示的两个数就是这里算的', () => {
+  // 2026-10 实测数据：Y 计划 28 条 + DC 计划 2 条，分母 30。
+  const tallies = salesPlanStageTallies([
+    { planTypeCode: 'Y', total: 28, statusTotals: { 1: 7, 2: 4, 3: 4, 4: 3, 5: 1, 6: 6, 7: 2, 8: 1 } },
+    { planTypeCode: 'DC', total: 2, statusTotals: { 2: 2 } },
+  ]);
+  assert.deepEqual(tallies.customer, { completed: 24, total: 30 });
+  // DC 链里没有「区域」节点，城市经理的分母只算 Y 的 28 条——不能把 DC 的单子算进来。
+  assert.deepEqual(tallies.region, { completed: 13, total: 28 });
+  assert.deepEqual(tallies.province, { completed: 8, total: 30 });
+  assert.deepEqual(tallies.area, { completed: 4, total: 30 });
+  assert.deepEqual(tallies.category, { completed: 1, total: 30 });
+  // 百分比就是从这两个数来的，两处不能各算一套。
+  const percent = approvalStageProgressForSalesPlanPeriods([
+    { planTypeCode: 'Y', total: 28, statusTotals: { 1: 7, 2: 4, 3: 4, 4: 3, 5: 1, 6: 6, 7: 2, 8: 1 } },
+    { planTypeCode: 'DC', total: 2, statusTotals: { 2: 2 } },
+  ]);
+  for (const role of ['customer','region','province','area','category'])
+    assert.equal(percent[role], salesPlanStagePercent(tallies[role]));
+  // 分母为 0（该月一条单都没有）时记 0%，不是 NaN。
+  assert.deepEqual(salesPlanStageTallies([]).customer, { completed: 0, total: 0 });
+  assert.equal(salesPlanStagePercent({ completed: 0, total: 0 }), 0);
 });
 test('Y visibility includes pending, own returns and read-only tracking, excludes other returns and earlier steps', () => {
   const expected = {customer: [0,1,2,3,4,5,6,10], region: [1,2,3,4,5,6,7,10], province: [2,3,4,5,7,8,10], area: [3,4,5,8,9,10], category: [4,5,9,10]};

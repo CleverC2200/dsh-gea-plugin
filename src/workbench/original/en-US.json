@@ -432,6 +432,7 @@
         "collapse": "Collapse approval flow"
       },
       "stageProgress": "Progress {{progress}}%",
+      "stageProgressDetail": "{{completed}} of {{total}} plans in this month are past this node",
       "contextSummary": "City manager approval · {{stage}} · {{count}} organization plans",
       "authorityContextSummary": "{{source}} · {{stage}} · plan {{planId}} · status {{status}}",
       "contextSources": {

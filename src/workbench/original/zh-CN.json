@@ -432,6 +432,7 @@
         "collapse": "收起审批流程图"
       },
       "stageProgress": "进度 {{progress}}%",
+      "stageProgressDetail": "本节点已完成 {{completed}} 单 / 该月共 {{total}} 单",
       "contextSummary": "城市经理审批 · {{stage}} · 当前 {{count}} 条组织计划",
       "authorityContextSummary": "{{source}} · {{stage}} · 计划 {{planId}} · 状态 {{status}}",
       "contextSources": {

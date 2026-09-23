@@ -670,6 +670,19 @@ const RegionalApprovalWorkbench: React.FC<{
     area: 0,
     category: 0,
   };
+  /**
+   * 悬停百分比时给出分子/分母：分母是该月该范围内全部状态的计划单数，分子是"已过本节点"的单数。
+   * 口径见 regionalApprovalQueryModel 的 salesPlanStageTallies，矩阵锁在 tests/approval-visibility。
+   */
+  const stageProgressDetail = (stageId: ApprovalStageId) => {
+    const tally =
+      liveQuery.progressState.status === 'success' ? liveQuery.progressState.tallies?.[stageId] : undefined;
+    if (!tally || tally.total <= 0) return undefined;
+    return t('common.assistantSurface.regionalApproval.stageProgressDetail', {
+      completed: tally.completed,
+      total: tally.total,
+    });
+  };
 
   useEffect(() => {
     if (availableDimensions.includes(dimension)) return;
@@ -2920,7 +2933,7 @@ const RegionalApprovalWorkbench: React.FC<{
                       ) : null}
                       {t(stageLabelKey(stage.id))}
                     </strong>
-                    <small>
+                    <small title={stageProgressDetail(stage.id)}>
                       {t('common.assistantSurface.regionalApproval.stageProgress', {
                         progress: liveQuery.enabled ? liveStageProgress[stage.id] : stage.progress,
                       })}

@@ -18,8 +18,10 @@ import {
   SALES_PLAN_PROGRESS_STATUSES,
   salesPlanPeriodMonths,
   salesPlanPeriodsForMonth,
+  salesPlanStageTallies,
   salesPlanVisibleStatuses,
   type RegionalApprovalQueryScope,
+  type SalesPlanStageTally,
 } from './regionalApprovalQueryModel.ts';
 import type { ApprovalStageId } from './regionalApprovalFixture.ts';
 import { REGIONAL_PLAN_EVALUATION_STATUSES } from './regionalApprovalFixture.ts';
@@ -122,7 +124,11 @@ export const useRegionalApprovalQuery = ({
   const [periodsState, setPeriodsState] = useState<QueryState<GeaSalesPlanPeriod[]>>(idle);
   const [queueState, setQueueState] = useState<QueryState<GeaSalesPlanPage<GeaSalesPlanListItem>>>(idle);
   const [progressState, setProgressState] = useState<
-    QueryState<Record<ApprovalStageId, number>> & { statusTotals?: Partial<Record<number, number>> }
+    QueryState<Record<ApprovalStageId, number>> & {
+      statusTotals?: Partial<Record<number, number>>;
+      /** 每个节点的分子/分母，界面悬停百分比时展示；百分比本身就是它算出来的。 */
+      tallies?: Record<ApprovalStageId, SalesPlanStageTally>;
+    }
   >(idle);
   const [selectedPeriodMonth, setSelectedPeriodMonth] = useState<string>();
   const [queueSettledPage, setQueueSettledPage] = useState<number>();
@@ -334,6 +340,7 @@ export const useRegionalApprovalQuery = ({
           status: 'success',
           data: approvalStageProgressForSalesPlanPeriods(periodTotals),
           statusTotals,
+          tallies: salesPlanStageTallies(periodTotals),
         });
       })
       .catch((error: unknown) => {
