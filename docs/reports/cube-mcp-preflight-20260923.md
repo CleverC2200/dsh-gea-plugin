@@ -18,10 +18,14 @@
 | 接进发送点 | `src/host/agent-tools.ts` | `gea_module_mcp` 调 `query_business_data` 前调用闸门；清单不在手时**先补读一次 inspect**（G5 要求持有当前 inspect） |
 | 成员清单增强 | `src/host/member-index.ts` | 清单额外记时间成员（`time`），用于判断 `timeDimensions` 用得对不对 |
 | 模型 → consumerCode | `src/host/catalog-consumers.ts`（新增） | 目录会话看到的模型，就是这个 consumerCode 能查的模型；目录明细直接标出来 |
+| 模块清单反向标模型 | `src/host/agent-tools.ts`、`src/host/catalog-consumers.ts` | `gea_module_mcp` 列工具时一并给出该 consumerCode 能读到的模型名（只给名字） |
 | 通道白名单 | `src/host/business.ts` | 受管通道额外允许宿主自己的分析身份（`analysisAgentCode`），它不是"换身份探测"，而是与目录通道对齐 |
 | 目录缓存随身份失效 | `src/host.ts` | 换账号/环境时清空成员清单与模型→通道映射 |
 | 限流 | `src/host/gateway-mcp.ts`、`src/host/mcp-client.ts` | HTTP 429 + `Retry-After` 与 **HTTP 200 + 业务信封**两种限流都认，给等待时间 |
 | 权限诊断 | `src/host/mcp-client.ts` | 保留 `reasonCode/resourceCode/configurationPath/decisionId`，"缺哪一项"能说清 |
+| 结构性缺口账本 | `src/host/cube-gap-ledger.ts`（新增） | 某个（模块 + 模型）确认取不到时记一笔，第二次同样组合直接给结论；TTL 10 分钟、换身份清空 |
+| 同类问题一次全改 | `src/host/mcp-client.ts` | 网关一次只报一个位置，提示里补上"其它 query 的同类问题一并核对"（规约 §17） |
+| 请求体体积 | `src/host/cube-preflight.ts` | `CUBE_MAX_REQUEST_CHARS=32000`，超了拦下并给拆调用建议（规约 §17.8） |
 | 提示词瘦身 | `src/host.ts` | 宿主已确定性拦下的写法规则从提示词删掉，只留"业务意图怎么表达" |
 
 ## 为什么这样改

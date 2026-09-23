@@ -667,7 +667,9 @@ export function registerGeaTools(
               : undefined;
           if (queriedModel) {
             const gap = business.cubeGaps().find(consumerCode, queriedModel);
-            if (gap)
+            if (gap) {
+              // 和"被授权拒绝"一样算一次白跑：同一条缺口被反复问时，靠本轮总账兜住。
+              waste.waste(scope);
               return JSON.stringify({
                 source: "GEA_MODULE_MCP",
                 availability: "known-gap",
@@ -679,6 +681,7 @@ export function registerGeaTools(
                   "这个模型在这个模块下刚刚已经确认取不到（不是参数问题：改参数、换成员、换写法都不会通）。" +
                   "不要再重试，也不要换别的模块凑答案；对用户说清缺的是哪一项，管理员配好之后再问一次。",
               });
+            }
           }
           const missing = tool.required.filter(
             (name) => parameters[name] === undefined || parameters[name] === null,
