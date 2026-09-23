@@ -108,8 +108,7 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   await expect(rejectDialog.getByRole('textbox',{name:'退回原因（必填）',exact:true})).toBeVisible();
   await expect(rejectDialog.getByTestId('regional-approval-live-action-checksum')).toHaveCount(0);
   await frame.getByRole('button',{name:'取消',exact:true}).click();
-  // 纠偏是另一个工作台：切过去以后审批工作台整个换掉，纠偏自己的用例在 correction-web 里。
-  await frame.getByRole('tab',{name:'纠偏',exact:true}).click();
-  await expect(frame.getByRole('tab',{name:'纠偏',exact:true})).toHaveAttribute('aria-selected','true');
-  await expect(frame.getByTestId('regional-approval-workbench')).toHaveCount(0);
+  // 纠偏标签已按业务方反馈收起（2026-09-23）：月度页不再提供切换入口，也就切不到纠偏页。
+  await expect(frame.getByRole('tab',{name:'纠偏',exact:true})).toHaveCount(0);
+  await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
 });

@@ -1255,7 +1255,7 @@ function AgentWelcome({
         <h2>{agent.name}</h2>
         <p className="gea-agent-intro">{agent.intro}<b>{agent.boundary}</b></p>
       </div>
-      <div className="gea-agent-block">
+      {agent.hideActions ? null : <div className="gea-agent-block">
         <h3>常用功能</h3>
         <div className="gea-agent-actions">
           {agent.actions.map((action) => (
@@ -1269,7 +1269,7 @@ function AgentWelcome({
             </button>
           ))}
         </div>
-      </div>
+      </div>}
       <div className="gea-agent-block gea-agent-prompts">
         <h3>你可以这样问</h3>
         {agent.prompts.map((prompt) => <button key={prompt} type="button" onClick={() => onFill(prompt)}>{prompt}</button>)}

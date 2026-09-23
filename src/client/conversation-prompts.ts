@@ -31,6 +31,8 @@ export type ConversationPromptConfig = {
   intro: string;
   /** 简介里加粗的边界句。 */
   boundary: string;
+  /** 收起「常用功能」区块（业务方 2026-09-23 反馈：审批页不需要这几个快捷入口）。 */
+  hideActions?: boolean;
   actions: ConversationPromptAction[];
   prompts: string[];
 };
@@ -84,6 +86,7 @@ export const approvalConversation: ConversationPromptConfig = {
   name: "销售计划助手",
   intro: "我可以按你当前节点的口径核对这张计划：先给结论，再给依据，异常项逐条给处理建议。",
   boundary: "我只做分析建议，不改变审批状态。",
+  hideActions: true,
   actions: [
     {
       icon: "check",

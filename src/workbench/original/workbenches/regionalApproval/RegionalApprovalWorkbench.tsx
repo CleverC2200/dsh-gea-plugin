@@ -3,6 +3,11 @@ import { correctionMetrics } from './models/salesPlanCorrectionModel.ts';
 import { CorrectionWorkbench } from './CorrectionWorkbench.tsx';
 import type { GeaSalesPlanPeriod } from '../../contracts.ts';
 /** 改编自 AionUi（Apache-2.0）：已替换为本地导入并使用显式 DSH Host 适配器，见 SOURCE.md。 */
+/**
+ * 版本 / 对比两个下拉暂时收起（业务方 2026-09-23 反馈：这两个选项对审批人没有用，容易误操作）。
+ * 需要放回来时把它改成 true 即可，下面的取值逻辑与默认值一直保留。
+ */
+const SHOW_VERSION_CONTROLS = false;
 import { salesPlanQueueStatusText, salesPlanStatusText } from './regionalApprovalQueryModel.ts';
 import { SALES_PLAN_RETURN_CODES, SALES_PLAN_ROLES, salesPlanWorkflow } from '../../salesPlanWorkflow.ts';
 import {
@@ -2838,6 +2843,7 @@ const RegionalApprovalWorkbench: React.FC<{
               </Select>
             )}
           </span>
+          {SHOW_VERSION_CONTROLS ? (
           <div
             className={styles.versionControls}
             aria-label={t('common.assistantSurface.regionalApproval.versions.group')}
@@ -2917,6 +2923,7 @@ const RegionalApprovalWorkbench: React.FC<{
               />
             </Tooltip>
           </div>
+          ) : null}
         </div>
         </div>
       </header>
@@ -3623,7 +3630,12 @@ const SalesPlanWorkbench: React.FC<React.ComponentProps<typeof RegionalApprovalW
       evidence: { ...context.current.evidence, queryState: 'loading' } }, null);
     setOrderType(value);
   };
-  const headerControls = <div role="tablist" aria-label={props.t("common.correction.tabs")} className={styles.orderTabs}>
+  /**
+   * 「纠偏」标签暂时收起（业务方 2026-09-23 反馈）。纠偏页本身保留，需要时把开关改回 true
+   * 就能连同标签一起恢复；开关关掉时页面固定停在「月初」。
+   */
+  const SHOW_ORDER_TABS = false;
+  const headerControls = !SHOW_ORDER_TABS ? undefined : <div role="tablist" aria-label={props.t("common.correction.tabs")} className={styles.orderTabs}>
       {(['M','Z'] as const).map(value => <Button size='small' key={value} role="tab" aria-selected={orderType === value}
         type={orderType === value ? 'primary' : 'secondary'} onClick={() => select(value)}>
         {props.t(value === 'M' ? 'common.correction.monthly' : 'common.correction.correction')}

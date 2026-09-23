@@ -54,23 +54,22 @@ test('editable quantity inputs are white, outlined and rounded', { timeout: 9000
 /** V1.8 #03：顶部标签加粗，取值保持常规字重。 */
 test('top toolbar labels are bold while their values stay normal', { timeout: 90000 }, async (t) => {
   const { frame } = await openWorkbench(t);
-  const measured = await frame.getByRole('tablist').first().evaluate((el) => {
+  const measured = await frame.getByTestId('regional-approval-workbench').evaluate((el) => {
     const doc = el.ownerDocument;
     const weight = (node) => (node ? Number(getComputedStyle(node).fontWeight) : 0);
     const labels = [...doc.querySelectorAll('small')]
       .filter((node) => ['计划月份', '版本', '对比'].includes(node.textContent.trim()))
       .map((node) => ({ text: node.textContent.trim(), weight: weight(node) }));
-    const tab = el.querySelector('[role="tab"]');
     // 取值要和标签同一个字段容器，避免 CSS Module 类名被哈希后选不中。
     const values = [...doc.querySelectorAll('small')]
       .filter((node) => ['计划月份', '版本', '对比'].includes(node.textContent.trim()))
       .flatMap((label) => [...(label.parentElement?.querySelectorAll('.arco-select-view-value') ?? [])])
       .map((node) => ({ text: node.textContent.trim().slice(0, 12), weight: weight(node) }));
-    return { labels, tabWeight: weight(tab), values };
+    return { labels, values };
   });
-  assert.equal(measured.labels.length, 3, '顶部三个标签都要在');
+  // 版本 / 对比两个下拉已按业务方反馈收起，顶部只剩「计划月份」。
+  assert.equal(measured.labels.length, 1, `顶部只剩计划月份标签，实际：${JSON.stringify(measured.labels)}`);
   for (const label of measured.labels) assert.ok(label.weight >= 600, `${label.text} 要加粗，实际 ${label.weight}`);
-  assert.ok(measured.tabWeight >= 600, `月初/纠偏 切换项要加粗，实际 ${measured.tabWeight}`);
   assert.ok(measured.values.length > 0, '顶部要能读到取值');
   for (const value of measured.values) assert.equal(value.weight, 400, `取值「${value.text}」保持常规字重`);
 });
