@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.109",
+  "version": "0.0.110",
   "private": true,
   "packageManager": "pnpm@11.27.0",
   "type": "module",
