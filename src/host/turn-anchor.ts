@@ -127,13 +127,21 @@ export function mountTurnAnchor(
 ): () => void {
   /** 每个 agent 上一次记录到的"用户消息条数"，用来判断"是不是新的一轮"。 */
   const lastTurnCount = new Map<string, number>();
-  return ctx.on("agent/pre-step", async ({ signal }, next) => {
+  return ctx.on("agent/pre-step", async (payload, next) => {
+    const { signal } = payload as { signal: AbortSignal };
     const decision = await next();
     if (decision.kind === "reject" || signal.aborted) return decision;
     const current = decision.messages ?? [];
     const question = lastUserQuestion(current);
     if (question) {
-      const scope = (decision as { agent?: { id?: string } }).agent?.id ?? "global";
+      // 作用域必须和工具层一致：工具里用的是 `exec.agent.id`（真实 session id）。
+      // 之前我误从 decision 上取 agent（那里没有），永远退化成 "global"——
+      // 于是"新一轮清零"清的是 global、计数却存在 session 下，永远清不掉；
+      // "模型开口了没有"也永远读成 false（session-01aea3a7 的 10 次调用就是这么被打回去的）。
+      const scope =
+        (payload as { agent?: { id?: string } }).agent?.id ??
+        (decision as { agent?: { id?: string } }).agent?.id ??
+        "global";
       const turnCount = userTurnCount(current);
       if (lastTurnCount.get(scope) !== turnCount) {
         lastTurnCount.set(scope, turnCount);

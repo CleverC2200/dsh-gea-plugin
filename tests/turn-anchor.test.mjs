@@ -149,9 +149,15 @@ test("同一句话重问也算新一轮：按用户消息条数判定", async ()
   assert.equal(userTurnCount([userMsg("问"), toolMsg("结果")]), 1, "工具结果不算用户消息");
 
   const seen = [];
+  const scopes = [];
   const hooks = [];
   const ctx = { on: (_name, handler) => (hooks.push(handler), () => {}) };
-  const dispose = mountTurnAnchor(ctx, { onNewQuestion: (question) => seen.push(question) });
+  const dispose = mountTurnAnchor(ctx, {
+    onNewQuestion: (question, scope) => {
+      seen.push(question);
+      scopes.push(scope);
+    },
+  });
   const run = (messages) =>
     hooks[0](
       { agent: { id: "s-repeat" }, messages: [], step: 1, turn: 1, signal: new AbortController().signal },
@@ -163,4 +169,7 @@ test("同一句话重问也算新一轮：按用户消息条数判定", async ()
   await run([...base, userMsg("同一句问题")]); // 用户又问了一遍：必须报新一轮
   dispose();
   assert.deepEqual(seen, ["同一句问题", "同一句问题"], "第二次提问要再报一次新一轮");
+  // 作用域必须来自 hook 载荷里的 agent（和工具层的 exec.agent.id 是同一个），
+  // 不能退化成 "global"——否则"新一轮清零"清不到工具层用的那份计数。
+  assert.deepEqual(scopes, ["s-repeat", "s-repeat"], "scope 必须是会话 id，不能是 global");
 });
