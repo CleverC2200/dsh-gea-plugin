@@ -17,6 +17,7 @@ import {
   verifySavedSalesPlan,
 } from './models/salesPlanAccessModel.ts';
 import { salesPlanProgressBarColor } from './models/salesPlanProgressModel.ts';
+import type { SalesPlanSubmitClient } from './models/salesPlanSubmitModel.ts';
 import { salesPlanVarianceClass } from './models/salesPlanVarianceModel.ts';
 import {
   Alert,
@@ -424,6 +425,9 @@ const RegionalApprovalWorkbench: React.FC<{
   onResubmit?: (planId: string, versionId: string, period: GeaSalesPlanPeriod) => void;
   /** 当前账号可审批的节点：由账号角色映射得出（Host 经网关解析用户角色后传入）。 */
   approvalStages?: readonly ApprovalStageId[];
+  /** 退回重提通道：退回单点「通过」时走它（生成新版本），批量也走同一条通道。 */
+  resubmitClient?: SalesPlanSubmitClient;
+  resubmitConnected?: boolean;
   /** AG-UI 前端工具调用：agent 让页面改这一屏怎么看。 */
   toolCall?: { toolCallId: string; command: Record<string, unknown> };
   onToolResult?: (toolCallId: string, applied: boolean, error?: string) => void;
@@ -441,6 +445,8 @@ const RegionalApprovalWorkbench: React.FC<{
   liveActionsEnabled = false,
   automaticAnalysisEnabled = false,
   approvalStages,
+  resubmitClient,
+  resubmitConnected = false,
   onResubmit,
   toolCall,
   onToolResult,
@@ -1051,10 +1057,11 @@ const RegionalApprovalWorkbench: React.FC<{
 
   /**
    * 退回态（6–9）归"退回重提"管：管理端状态机里退回态的重提是生成新版本（6→1/7→2/8→3/9→4），
-   * 而不是在同一版本上做动作。
+   * 而不是在同一版本上做动作。界面上不再单开按钮：退回单点「通过」就是重提。
    */
   const isReturnedForResubmit = (row: Pick<RegionalApprovalLiveRow, 'status'>) =>
     row.status >= 6 && row.status <= 9;
+  const resubmitReady = Boolean(resubmitClient && resubmitConnected);
   const liveActionDisabledReason = (row: RegionalApprovalLiveRow, kind: LiveActionKind = 'APPROVE') => {
     if (historicalSummaryUnavailable) return 'queueNotFresh';
     if (!liveActionsEnabled) return 'missingAuthority';
@@ -1062,9 +1069,12 @@ const RegionalApprovalWorkbench: React.FC<{
     if (permissionDeniedVersions.has(row.versionId)) return 'permission';
     if (liveQuery.queueState.status !== 'success') return 'queueNotFresh';
     if (liveAccess.failedVersions.has(row.versionId)) return 'detailUnavailable';
-    // 退回态（6–9）不能走"通过/退回"：管理端的动作接口只接受 1–4 的待审单，
-    // 退回的单子必须走"退回重提"（生成新版本）。以前照样放行，请求必然被服务端 409 拒。
-    if (isReturnedForResubmit(row)) return 'returnedNeedsResubmit';
+    // 退回态（6–9）：管理端的动作接口只接受 1–4 的待审单，退回单必须重提（生成新版本）。
+    // 所以「通过」在退回单上等于重提；「退回」对退回单没有意义。
+    if (isReturnedForResubmit(row)) {
+      if (kind === 'REJECT') return 'returnedNeedsResubmit';
+      return resubmitReady ? undefined : 'resubmitUnavailable';
+    }
     const detail = liveAccess.entries[row.versionId];
     // allowReturned：上级退回给本节点的单据也要能改完继续提交（退回给别处的单子在模型里仍被拒）。
     if (!detail || !(liveStageFilter ? [liveStageFilter] : ['region','province','area','category'] as const).some(role => salesPlanAccessForRow(row, detail, roleStages, role, undefined, { allowReturned: true })?.allowedActions.includes(kind)))
@@ -1092,21 +1102,21 @@ const RegionalApprovalWorkbench: React.FC<{
   };
   const batchItemsFor = (rows: readonly RegionalApprovalLiveRow[], kind: LiveActionKind): BatchActionItem[] =>
     rows.map((row) => {
+      // 退回单的「通过」=退回重提：批量时和待审单一起逐笔处理，各自走各自的通道。
+      if (kind === 'APPROVE' && isReturnedForResubmit(row)) {
+        const period = liveQuery.selectedPeriods.find((candidate) => candidate.periodId === row.periodId);
+        if (!resubmitReady || !period) return { row, skipReason: 'resubmitUnavailable' };
+        return { row, resubmit: true, period };
+      }
       const access = liveActionAccessFor(row, kind);
       return access
         ? { row, access }
         : { row, skipReason: liveActionDisabledReason(row, kind) ?? 'missingAuthority' };
     });
-  /** 重提表单一次只填一张单，所以这里只支持单笔。 */
-  const resubmitRow = selectedLiveRows.length === 1 ? selectedLiveRows[0] : undefined;
-  const resubmitPeriod = resubmitRow
-    ? liveQuery.selectedPeriods.find((period) => period.periodId === resubmitRow.periodId)
+  /** 单笔退回单走可编辑的重提对话框（能核对数量）；多笔走批量，按当前数量直接重提。 */
+  const resubmitPeriod = selectedLiveRows.length === 1
+    ? liveQuery.selectedPeriods.find((period) => period.periodId === selectedLiveRows[0].periodId)
     : undefined;
-  const resubmitDisabledReason = (() => {
-    if (selectedLiveRows.length === 0) return undefined;
-    if (selectedLiveRows.length > 1) return 'resubmitMultiple';
-    return isReturnedForResubmit(selectedLiveRows[0]) ? undefined : 'notReturned';
-  })();
   /**
    * 勾选口径必须和「勾上以后按钮能不能用」是同一把尺子：分组行看组里的每条计划，
    * 只要有一条还能提交或退回就允许勾选，整组都不能操作才置灰。否则会出现「能勾上、按不动」。
@@ -2598,6 +2608,13 @@ const RegionalApprovalWorkbench: React.FC<{
             if (!selectedLiveRows.length) return;
             if (selectedLiveRows.length === 1) {
               const row = selectedLiveRows[0];
+              // 退回单没有"通过"这个动作：它的提交=退回重提（生成新版本），
+              // 单笔时打开可核对数量的重提对话框，多笔时在批量里按当前数量逐笔重提。
+              if (isReturnedForResubmit(row) && onResubmit && resubmitPeriod) {
+                selectLivePlanContext(row);
+                onResubmit(row.planId, row.versionId, resubmitPeriod);
+                return;
+              }
               selectLivePlanContext(row);
               setLiveActionKind('APPROVE');
               setLiveActionPlanId(row.planId);
@@ -2607,33 +2624,6 @@ const RegionalApprovalWorkbench: React.FC<{
           }}
         >
           {t('common.assistantSurface.regionalApproval.liveAction.approve')}
-        </Button>
-      ) : null}
-      {/*
-        退回态的唯一出路：退回重提（走 /sales-plan/submit 生成新版本）。
-        管理端的动作接口只接受 1–4 的待审单，所以这里把退回单从"通过/退回"里摘出来。
-      */}
-      {liveActionsEnabled && onResubmit ? (
-        <Button
-          size='small'
-          disabled={
-            selectedLiveRows.length !== 1 ||
-            resubmitDisabledReason !== undefined ||
-            liveActionPlanId !== undefined ||
-            !resubmitPeriod
-          }
-          title={
-            resubmitDisabledReason
-              ? t(`common.assistantSurface.regionalApproval.liveAction.disabled.${resubmitDisabledReason}`)
-              : undefined
-          }
-          onClick={() => {
-            if (!resubmitRow || !resubmitPeriod) return;
-            selectLivePlanContext(resubmitRow);
-            onResubmit(resubmitRow.planId, resubmitRow.versionId, resubmitPeriod);
-          }}
-        >
-          {t('common.assistantSurface.regionalApproval.liveAction.resubmit')}
         </Button>
       ) : null}
     </>
@@ -2720,6 +2710,8 @@ const RegionalApprovalWorkbench: React.FC<{
         items={batchAction.items}
         t={t}
         client={liveActionClient}
+        resubmitClient={resubmitClient}
+        resubmitConnected={resubmitConnected}
         onPermissionDenied={(versionId) => setPermissionDeniedVersions((current) => new Set(current).add(versionId))}
         onCompleted={async (outcomes: readonly BatchActionOutcome[]) => {
           if (outcomes.some((outcome) => outcome.status === 'success')) refreshLiveAuthority();

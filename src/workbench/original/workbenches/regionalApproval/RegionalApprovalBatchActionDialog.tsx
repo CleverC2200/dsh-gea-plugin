@@ -2,7 +2,7 @@
 import { Alert, Button, Checkbox, Input, Modal, Spin } from '@arco-design/web-react';
 import type { TFunction } from 'i18next';
 import React, { useEffect, useRef, useState } from 'react';
-import type { GeaSalesPlanActionRequest } from '../../bridge.ts';
+import type { GeaSalesPlanActionRequest, GeaSalesPlanPeriod } from '../../bridge.ts';
 import {
   SalesPlanActionAttempt,
   classifySalesPlanActionError,
@@ -10,6 +10,13 @@ import {
   type SalesPlanActionError,
 } from './models/salesPlanActionModel.ts';
 import type { SalesPlanAccess } from './models/salesPlanAccessModel.ts';
+import {
+  SalesPlanSubmitAttempt,
+  classifySalesPlanSubmitError,
+  prepareSalesPlanResubmit,
+  salesPlanResubmitReadbackMatches,
+  type SalesPlanSubmitClient,
+} from './models/salesPlanSubmitModel.ts';
 import type { RegionalApprovalLiveRow } from './regionalApprovalQueryModel.ts';
 import { actionErrorText } from './RegionalApprovalLiveActionDialog.tsx';
 import styles from './RegionalApprovalActionDialog.module.css';
@@ -23,6 +30,10 @@ export type BatchActionItem = {
   row: RegionalApprovalLiveRow;
   /** 与单笔按钮同源的能力证据；缺失时该笔不提交，只在结果里说明原因。 */
   access?: SalesPlanAccess;
+  /** 退回单：走"退回重提"（生成新版本），不走动作接口。 */
+  resubmit?: boolean;
+  /** 重提需要的周期快照，来自当前选中的计划月份。 */
+  period?: GeaSalesPlanPeriod;
   /** 与单笔按钮同源的置灰原因键，用于把「为什么这一笔没提交」说清楚。 */
   skipReason?: string;
 };
@@ -56,10 +67,13 @@ const RegionalApprovalBatchActionDialog: React.FC<{
   items: readonly BatchActionItem[];
   t: TFunction;
   client?: SalesPlanActionClient;
+  /** 退回单的重提通道；缺失或未连接时这些行按"跳过"处理。 */
+  resubmitClient?: SalesPlanSubmitClient;
+  resubmitConnected?: boolean;
   onPermissionDenied: (versionId: string) => void;
   onCompleted: (outcomes: readonly BatchActionOutcome[]) => void | Promise<void>;
   onClose: () => void;
-}> = ({ visible, kind, items, t, client, onPermissionDenied, onCompleted, onClose }) => {
+}> = ({ visible, kind, items, t, client, resubmitClient, resubmitConnected = false, onPermissionDenied, onCompleted, onClose }) => {
   const [remark, setRemark] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [attempted, setAttempted] = useState(false);
@@ -86,7 +100,11 @@ const RegionalApprovalBatchActionDialog: React.FC<{
     closeRef.current();
   }, [secondsToClose]);
 
-  const submittable = items.filter((item) => item.access?.allowedActions.includes(kind));
+  const resubmitUsable = Boolean(resubmitClient && resubmitConnected);
+  /** 能提交的两类：拿到动作授权的待审单，和走重提通道的退回单。 */
+  const submittable = items.filter((item) =>
+    item.resubmit ? resubmitUsable && Boolean(item.period) : item.access?.allowedActions.includes(kind)
+  );
   const submitted = outcomes?.filter((outcome) => outcome.status === 'success').length ?? 0;
   const failed = outcomes?.filter((outcome) => outcome.status === 'failed').length ?? 0;
   const skipped = outcomes?.filter((outcome) => outcome.status === 'skipped').length ?? 0;
@@ -98,6 +116,27 @@ const RegionalApprovalBatchActionDialog: React.FC<{
       ? t(`common.assistantSurface.regionalApproval.liveAction.disabled.${item.skipReason}`)
       : t('common.assistantSurface.regionalApproval.liveBatch.skipped');
 
+  /**
+   * 退回单的重提：读权威来源（详情/当前用户/SKU）→ 组装请求 → 提交 → 回读校验。
+   * 和单笔重提对话框走同一条通道；任何一笔失败只影响这一笔。
+   */
+  const submitResubmit = async (item: BatchActionItem) => {
+    const submitClient = resubmitClient;
+    const period = item.period;
+    if (!submitClient || !period) throw new Error('resubmitUnavailable');
+    const { planId, versionId } = item.row;
+    const [detail, currentUser] = await Promise.all([
+      submitClient.detail.invoke({ planId }),
+      submitClient.currentUser.invoke(),
+    ]);
+    const skus = await submitClient.versionSkus.invoke({ versionId });
+    const input = prepareSalesPlanResubmit({ period, planId, versionId, detail, skus, currentUser });
+    const attempt = new SalesPlanSubmitAttempt(submitClient);
+    const receipt = await attempt.submit(input);
+    const after = await submitClient.detail.invoke({ planId });
+    if (!salesPlanResubmitReadbackMatches(versionId, receipt, after, input.request)) throw new Error('readback');
+  };
+
   const submit = async () => {
     setAttempted(true);
     if (invalid || locked || !client) return;
@@ -106,6 +145,26 @@ const RegionalApprovalBatchActionDialog: React.FC<{
     for (const item of items) {
       const label = planLabel(item.row);
       const context = planContext(item.row) || undefined;
+      if (item.resubmit) {
+        if (!resubmitUsable || !item.period) {
+          collected.push({ planId: item.row.planId, label, ...(context ? { context } : {}), status: 'skipped', detail: skipText(item) });
+          continue;
+        }
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await submitResubmit(item);
+          collected.push({ planId: item.row.planId, label, ...(context ? { context } : {}), status: 'success' });
+        } catch (error) {
+          collected.push({
+            planId: item.row.planId,
+            label,
+            ...(context ? { context } : {}),
+            status: 'failed',
+            detail: t(`common.assistantSurface.regionalApproval.liveSubmit.errors.${classifySalesPlanSubmitError(error).kind}`),
+          });
+        }
+        continue;
+      }
       if (!item.access?.allowedActions.includes(kind)) {
         collected.push({ planId: item.row.planId, label, ...(context ? { context } : {}), status: 'skipped', detail: skipText(item) });
         continue;
@@ -198,7 +257,11 @@ const RegionalApprovalBatchActionDialog: React.FC<{
             <li key={item.row.planId}>
               <strong>{planLabel(item.row)}</strong>
               {planContext(item.row) ? <span> · {planContext(item.row)}</span> : null}
-              {item.access?.allowedActions.includes(kind) ? null : <span> · {skipText(item)}</span>}
+              {item.resubmit && resubmitUsable && item.period ? (
+                <span> · {t('common.assistantSurface.regionalApproval.liveBatch.resubmitTag')}</span>
+              ) : item.access?.allowedActions.includes(kind) ? null : (
+                <span> · {skipText(item)}</span>
+              )}
             </li>
           ))}
         </ul>
