@@ -236,6 +236,16 @@ const POLICY_FAILURE_CODES = new Set([
 const FAILURE_CODE =
   /(ERROR|FAILED|FAILURE|DENIED|REJECTED|INVALID|EXCEEDED|NOT_FOUND|EMPTY|UNKNOWN|UNAVAILABLE|TIMEOUT|EXPIRED|FORBIDDEN)/;
 
+/**
+ * 网关会把"查询写错"也标成 `AI_GATEWAY_DATA_PERMISSION_DENIED`/`AUTHORIZATION`。
+ * 实测原样报文：
+ * `{"businessCode":"AI_GATEWAY_DATA_PERMISSION_DENIED","category":"AUTHORIZATION",
+ *   "message":"Cube 查询成员未唯一匹配数据目录资源；模型须与 dataAssetCode 一致，跨模型查询请分别调用"}`
+ * 这条按"缺授权"去解释会把人带到沟里，必须按 message 认出来是写法问题。
+ */
+const QUERY_SHAPE_FAILURE =
+  /未唯一匹配数据目录资源|dataAssetCode|跨模型|成员必须属于|分别调用/;
+
 const str = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim() ? value : undefined;
 
@@ -275,13 +285,17 @@ function failureOf(record: Record<string, unknown> | undefined): ToolFailure | u
   const category = str(record.category) ?? str(nested?.category);
   const suggestedAction = str(record.suggestedAction) ?? str(nested?.suggestedAction);
   const resolved = code ?? "GEA_MCP_TOOL_ERROR";
+  // message 先说清是写法问题的，优先按写法问题分类（网关的码/category 会误导）。
+  const queryShape = QUERY_SHAPE_FAILURE.test(`${message} ${details?.path ?? ""}`);
   const permission =
-    POLICY_FAILURE_CODES.has(resolved) ||
-    (/DENIED|FORBIDDEN/.test(resolved) && !/INVALID/.test(resolved)) ||
-    /授权|权限/.test(message);
+    !queryShape &&
+    (POLICY_FAILURE_CODES.has(resolved) ||
+      (/DENIED|FORBIDDEN/.test(resolved) && !/INVALID/.test(resolved)) ||
+      /授权|权限/.test(message));
   const validation =
     !permission &&
-    (resolved === "AI_SCHEMA_INVALID" ||
+    (queryShape ||
+      resolved === "AI_SCHEMA_INVALID" ||
       category === "VALIDATION" ||
       suggestedAction === "FIX_ARGUMENTS" ||
       /参数|字段|格式|必须/.test(message));
@@ -349,6 +363,9 @@ function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error
   const queriesHint = /queries/i.test(failure.path ?? "") || /queries/i.test(failure.message)
     ? "（提示：Cube 查询要放在 arguments.queries 里，不要提到工具顶层。）"
     : "";
+  const crossModelHint = QUERY_SHAPE_FAILURE.test(failure.message)
+    ? "（提示：一次调用里的成员必须属于同一个模型/dataAssetCode——把不同模型的成员拆成两次调用再来一次。）"
+    : "";
   if (failure.kind === "permission")
     return {
       text:
@@ -360,7 +377,7 @@ function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error
       error: new Error(
         `GEA_MCP_TOOL_ERROR：入参没通过网关校验（${detail}）：${
           failure.message || failure.code
-        }${queriesHint}。照它的提示改好参数后可以重新调用一次；不要用同一份参数原样重试。`,
+        }${queriesHint}${crossModelHint}。照它的提示改好参数后可以重新调用一次；不要用同一份参数原样重试。`,
       ),
     };
   return {

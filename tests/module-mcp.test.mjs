@@ -326,6 +326,35 @@ test("text 是对象但不是失败时：内容不能丢", async () => {
   assert.match(value, /"qty":12/);
 });
 
+// 网关把"跨模型查询"标成 AI_GATEWAY_DATA_PERMISSION_DENIED / AUTHORIZATION，
+// 按"缺授权"解释会把人带沟里——必须按 message 认出来是写法问题。
+test("跨模型成员被标成 PERMISSION_DENIED 时，仍按写法问题给动作", async () => {
+  const { transport } = envelopeTransport({
+    retryable: false,
+    traceId: "1ba26e37-253d-42d6-9093-641873f7d6c6",
+    auditId: "a7013311-fbeb-4617-a918-9953d6d5488d",
+    businessCode: "AI_GATEWAY_DATA_PERMISSION_DENIED",
+    code: "AI_GATEWAY_DATA_PERMISSION_DENIED",
+    success: false,
+    requestId: "be732058-e66e-4b63-b252-09cf230f8125",
+    message: "Cube 查询成员未唯一匹配数据目录资源；模型须与 dataAssetCode 一致，跨模型查询请分别调用",
+    category: "AUTHORIZATION",
+  });
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  await assert.rejects(
+    () => module.call("query_business_data", {}, new AbortController().signal),
+    (error) => {
+      assert.match(error.message, /dataAssetCode/);
+      assert.match(error.message, /拆成两次调用/);
+      assert.match(error.message, /改好参数后可以重新调用一次/);
+      // 不能误导成"缺授权"。
+      assert.equal(error.message.includes("模块数据未授权"), false);
+      assert.equal(error.message.includes("权限或数据授权没配置"), false);
+      return true;
+    },
+  );
+});
+
 test("授权类失败：给可读业务状态、不抛红色错误", async () => {
   const { transport } = envelopeTransport({
     retryable: false,
