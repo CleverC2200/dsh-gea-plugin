@@ -94,11 +94,13 @@ test(
       instructions.includes("YYYY-MM-DD"),
       "协议里要写清日期成员的取值格式",
     );
-    // 网关只校验 action/queries/response_mode，嵌套的 Cube 查询没有 schema——
-    // order 形状写错就回 AI_SCHEMA_INVALID，所以形状必须由我们讲清楚。
+    // 网关只校验 action/queries/response_mode，嵌套的 Cube 查询没有 schema。
+    // 现在 order/跨模型/成员名/年月值这几类不再靠一句 AI_SCHEMA_INVALID 让模型自己悟：
+    // 宿主在发送前就拦下并给出正确形状（src/host/cube-preflight.ts），协议里要说明这一点。
+    assert.ok(instructions.includes("推荐对象"), "协议里要写清 Cube 查询/order 的字段形状");
     assert.ok(
-      instructions.includes("推荐对象") && instructions.includes("AI_SCHEMA_INVALID"),
-      "协议里要写清 Cube 查询/order 的字段形状",
+      instructions.includes("宿主都会在发出去之前拦下"),
+      "协议里要说明写错形状会在发送前被拦下、照提示改一次即可",
     );
     assert.ok(instructions.includes("不要展示或解释接口、工具名、字段名、JSON、哈希"));
     // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在

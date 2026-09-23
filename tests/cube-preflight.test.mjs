@@ -2,6 +2,7 @@
 // 用例按规约 §18 的反向清单组织：结构、单模型、成员类别、排序、分页、筛选、时间维度。
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { build } from "esbuild";
 
 const { outputFiles } = await build({
@@ -142,6 +143,40 @@ test("G4 单模型：跨模型拦下并给出拆分方案，加 queries 项也�
   assert.match(String(hint), new RegExp(AGE));
 });
 
+test("G4 单模型：同一个 query 里 dimensions 与 filters/order 用不同模型也要拦", () => {
+  // 规约 §18 的"模型反向"用例：dimensions 来自 A，filters/order 来自 B。
+  const viaFilter = withIndex(
+    query("mixed", {
+      dimensions: [`${STOCK}.warehouseid`],
+      filters: [{ member: `${AGE}.id`, operator: "equals", values: ["1"] }],
+      limit: 10,
+    }),
+  );
+  assert.match(String(viaFilter), /出现了 2 个模型/);
+  const viaOrder = withIndex(
+    query("mixed", {
+      dimensions: [`${STOCK}.warehouseid`],
+      order: { [`${AGE}.id`]: "asc" },
+      limit: 10,
+    }),
+  );
+  assert.match(String(viaOrder), /出现了 2 个模型/);
+});
+
+test("接线：闸门在发送前调用，且清单不在手时先补读一次 inspect（G5）", async () => {
+  // 这两个行为是"规约由调用层确定性执行"的落点，改别处很容易把它们丢掉，
+  // 所以在源码层面钉一条。
+  const source = await readFile("src/host/agent-tools.ts", "utf8");
+  assert.match(source, /parameters\.action === "query" && !memberIndex\(\)/);
+  assert.match(source, /await loadMemberIndex\(module, exec\.signal\)/);
+  assert.match(source, /preflightCubeArguments\(parameters, memberIndex\(\)\)/);
+  assert.ok(
+    source.indexOf("preflightCubeArguments(parameters, memberIndex())") <
+      source.indexOf("await module.call(toolName, parameters, exec.signal)"),
+    "闸门必须在真正发送之前",
+  );
+});
+
 test("G5 成员：不存在的成员拦下并给真名；维度不能进 measures；measures 上限按清单", () => {
   const unknown = withIndex(query("cat", { dimensions: [`${STOCK}.category_name`], limit: 20 }));
   assert.match(String(unknown), /GEA_CUBE_MEMBER_UNKNOWN/);
@@ -276,4 +311,32 @@ test("清单不在手时只做形状校验，不编造成员结论", () => {
   // 没有清单：成员名对错判不了，但结构错误照样拦。
   assert.equal(shapeOnly(query("x", { dimensions: ["whatever.field"], limit: 10 })), undefined);
   assert.match(String(shapeOnly(query("x", { dimensions: [`${STOCK}.id`], limit: 0 }))), /limit 必须是正整数/);
+});
+
+test("§17.8 请求体字节：把整表列全的写法拦下，正常查询放行", () => {
+  // 8 项 × 大量成员：字符数远超单次上限。
+  const huge = {
+    action: "query",
+    queries: Array.from({ length: 8 }, (_, index) => ({
+      name: `q${index}`,
+      query: {
+        dimensions: Array.from({ length: 120 }, (_, i) => `${STOCK}.column_name_number_${i}`),
+        limit: 10,
+      },
+    })),
+  };
+  const hint = shapeOnly(huge);
+  assert.match(String(hint), /超过单次上限/);
+  assert.match(String(hint), /拆成多次调用/);
+  // 正常规模（8 项 × 十几列）不受影响
+  assert.equal(
+    shapeOnly({
+      action: "query",
+      queries: Array.from({ length: 8 }, (_, index) => ({
+        name: `q${index}`,
+        query: { dimensions: [`${STOCK}.id`, `${STOCK}.warehouseid`], limit: 20 },
+      })),
+    }),
+    undefined,
+  );
 });

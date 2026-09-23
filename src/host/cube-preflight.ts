@@ -54,6 +54,12 @@ export const CUBE_MAX_NAME_CHARS = 120;
  * 真正的行数/字节闸门仍在网关；超过这个数就要求用稳定排序 + offset 分页，或改聚合口径。
  */
 export const CUBE_MAX_LIMIT = 1000;
+/**
+ * 整份 `queries` 序列化后的字符上限（规约 §17.8：发送前看字节数）。
+ * 正常查询是"8 项 × 十几个成员"，几千字符；到这个量级说明模型在把整张表的列名往里塞，
+ * 先拆成多次调用比发出去被下游拒更省事。
+ */
+export const CUBE_MAX_REQUEST_CHARS = 32_000;
 
 type Issue = {
   /** 出问题的位置，例如 queries[1].query.order。 */
@@ -560,6 +566,23 @@ export function preflightCubeArguments(
   // 年月当日期传：发出去必被数据库拒（cube-core 原样日志）。
   const yearMonths = yearMonthValues(queries);
   if (yearMonths.length > 0) return yearMonthHint(yearMonths);
+
+  // §17.8：请求体本身的体积。成员名是最占字符的部分，超了就是"想把整表列全"。
+  // 放在成员校验之前——它不需要清单也能判，所以清单不在手时也要拦。
+  let requestChars = 0;
+  try {
+    requestChars = JSON.stringify(queries).length;
+  } catch {
+    requestChars = 0;
+  }
+  if (requestChars > CUBE_MAX_REQUEST_CHARS)
+    return blocked([
+      {
+        path: "arguments.queries",
+        problem: `这次请求约 ${requestChars} 字符，超过单次上限 ${CUBE_MAX_REQUEST_CHARS}`,
+        fix: "减少重复成员与无关列（只留这次真正要用的 2–4 列维度），或按模型/口径拆成多次调用",
+      },
+    ]);
 
   if (!index) return undefined;
   const namesOf = members.map((entry) => entry.member);

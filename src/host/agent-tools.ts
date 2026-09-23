@@ -38,7 +38,11 @@ import {
 import { LAYER_POLICY } from "../capability/layers.ts";
 import { channelPlan, type ChannelPlan } from "../capability/channel.ts";
 import { preflightCubeArguments } from "./cube-preflight.ts";
-import { modelConsumers, rememberModelConsumers } from "./catalog-consumers.ts";
+import {
+  modelConsumers,
+  modelsForConsumer,
+  rememberModelConsumers,
+} from "./catalog-consumers.ts";
 import { didYouMean } from "../shared/name-lookup.ts";
 import {
   measureHint,
@@ -591,9 +595,18 @@ export function registerGeaTools(
             return dedup.remember(
               listKey,
               JSON.stringify({
-              consumerCode: args.consumerCode,
-              tools: module.tools(),
-              note: "先在这里挑一个工具，再用 tool + arguments 调用；要看某个工具的完整入参定义，用 tool=工具名 + schema=true。",
+                consumerCode: args.consumerCode,
+                tools: module.tools(),
+                // 这条通道在目录里能看到哪些模型：省掉"有这个编码但不知道能查什么"的往返。
+                // 只给模型名（渐进式暴露），成员名用 gea_gateway_catalog 带 model= 再取。
+                ...(modelsForConsumer(consumerCode).length > 0
+                  ? {
+                      models: modelsForConsumer(consumerCode),
+                      modelsNote:
+                        "这些是目录里通过该 consumerCode 能看到的模型（只给名字；成员名用 gea_gateway_catalog 带 model= 取）。",
+                    }
+                  : {}),
+                note: "先在这里挑一个工具，再用 tool + arguments 调用；要看某个工具的完整入参定义，用 tool=工具名 + schema=true。",
               }),
             );
           }

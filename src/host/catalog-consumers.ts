@@ -73,3 +73,24 @@ export function modelConsumers(): ReadonlyMap<string, string> {
 export function forgetModelConsumers(): void {
   cached = new Map();
 }
+
+/**
+ * 反查：这条 consumerCode 通道能读到哪些模型（目录里看到过的）。
+ *
+ * 给 `gea_module_mcp` 的模块清单用——模型先要了 consumerCode 列工具时，顺手把它能查的
+ * 模型名列出来，"有这个编码但不知道能查什么"就不用再去翻一遍目录。
+ */
+export function modelsForConsumer(consumerCode: string, limit = 20): string[] {
+  const code = consumerCode.trim();
+  if (!code) return [];
+  const now = Date.now();
+  const out: string[] = [];
+  for (const [model, entry] of cached) {
+    if (expired(entry, now)) {
+      cached.delete(model);
+      continue;
+    }
+    if (entry.consumerCode === code && out.length < limit) out.push(model);
+  }
+  return out.sort();
+}

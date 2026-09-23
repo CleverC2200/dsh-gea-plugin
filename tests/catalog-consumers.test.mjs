@@ -75,3 +75,16 @@ test("目录索引在有关联关系时提示下一步会给出 channel", () => 
   const plain = m.projectCatalog(payload, { consumers: m.modelConsumers() });
   assert.equal(plain.includes("明细里会给出该模型的 consumerCode"), false);
 });
+
+test("反查：这条 consumerCode 通道能读哪些模型（模块清单用）", () => {
+  m.forgetModelConsumers();
+  m.rememberModelConsumers("sales_forecast", payload);
+  assert.deepEqual(m.modelsForConsumer("sales_forecast"), [
+    "agents_sales_plan_detail_mi",
+    "agents_scm_safety_stock",
+  ]);
+  assert.deepEqual(m.modelsForConsumer("branch-inventory"), []);
+  m.rememberModelConsumers("branch-inventory", { semanticModel: [payload.semanticModel[1]] });
+  assert.deepEqual(m.modelsForConsumer("branch-inventory"), ["agents_scm_safety_stock"]);
+  assert.deepEqual(m.modelsForConsumer("sales_forecast"), ["agents_sales_plan_detail_mi"]);
+});
