@@ -420,6 +420,20 @@ export function registerGeaTools(
             description:
               "true 时只回该工具的服务端入参定义（类型、枚举、嵌套字段、必填），不调用它。不确定参数形状（比如 Cube 查询里的 order）时先看它，别凭猜。",
           },
+          artifact: {
+            type: "string",
+            description:
+              "读大结果制品的一段。结果正文里出现「只内联了前 N 字符」或「还有几个制品没有内联」时，用这里给的 data-artifact://… 原样填进来再调一次；不要重新跑一遍查询，也不要自己去抓链接。",
+          },
+          offset: {
+            type: "integer",
+            description:
+              "配合 artifact：从第几个字符开始读（默认 0；上一段结尾会告诉你下一次该填多少）。",
+          },
+          length: {
+            type: "integer",
+            description: "配合 artifact：这一段最多读多少字符（默认 12000，上限也是 12000）。",
+          },
         },
         output: {
           schema: { type: "string" },
@@ -468,6 +482,19 @@ export function registerGeaTools(
                 note: "这是权限未开通，不是调用失败：不用重试，也不要换别的模块凑答案。",
               });
             throw error;
+          }
+          // 大结果的分段读：完整正文宿主已经缓存，这里只按 offset 取一段。
+          // 不算进失败熔断——它不是一次新的取数，读不回来往往是制品过期。
+          if (typeof args.artifact === "string" && args.artifact.trim()) {
+            const offset =
+              Number.isSafeInteger(args.offset) && Number(args.offset) >= 0
+                ? Number(args.offset)
+                : 0;
+            const length =
+              Number.isSafeInteger(args.length) && Number(args.length) > 0
+                ? Number(args.length)
+                : 12_000;
+            return await module.chunk(args.artifact.trim(), offset, length, exec.signal);
           }
           const toolName = typeof args.tool === "string" ? args.tool.trim() : "";
           if (!toolName)
