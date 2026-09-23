@@ -57,5 +57,12 @@ test(
       box.width < viewport.width * 0.9,
       `workbench frame must stay inside the center column, got ${box.width} of ${viewport.width}`,
     );
+    // 右栏和产销协同等工作台页共用同一套业务页布局：DSH 原生欢迎区的品牌块
+    // （鲸鱼「探索未至之境」）和「工作区 / Agent 预设」选择器都要让开，否则主计划页会退回原生落地页样式。
+    await expect(page.locator(".AppFrame_frame")).toHaveClass(/gea-business-shell/);
+    await expect(page.locator(".AppFrame_frame")).toHaveClass(/gea-rail-docked/);
+    const conversation = page.locator("[data-slot='main.conversation']");
+    await expect(conversation.getByText("探索未至之境").first()).toBeHidden();
+    await expect(conversation.getByText("workspace", { exact: true }).first()).toBeHidden();
   },
 );

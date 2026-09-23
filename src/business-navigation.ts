@@ -19,8 +19,22 @@ export function registeredBusinessPanels(entries: readonly Entry[]) {
   .sort((a,b) => a.order-b.order || a.id.localeCompare(b.id));
 }
 export function isGeaBusinessPanel(panel: string | null | undefined, entries: readonly Entry[]): boolean {
- return panel==='gea-proof' || panel==='gea-regional-plan' || panel==='plan-region-category' || panel==='gea-inbox' || registeredBusinessPanels(entries).some(item=>item.id===panel);
+ return GEA_SHELL_PANELS.includes(panel ?? "") || registeredBusinessPanels(entries).some(item=>item.id===panel);
 }
+
+/**
+ * 由 GEA 外壳自己接管右栏布局的面板：原生主对话、业务工作台、待办，以及内嵌原型的工作台页。
+ * 这些页面共用「欢迎区在上、输入区在下」的右栏，DSH 原生欢迎区（品牌标题、工作区/Agent 预设
+ * 选择器）要一并让开；漏登记一个 id，那一页就会退回原生落地页样式（鲸鱼 + 两个选择器都冒出来）。
+ * `inventory-*` 的 HTML 插件页不写在这里：它们按注册上来的面板动态判定。
+ */
+export const GEA_SHELL_PANELS: readonly string[] = [
+  "gea-proof",
+  "gea-regional-plan",
+  "plan-region-category",
+  "plan-category-production",
+  "gea-inbox",
+];
 
 export type BusinessPanel = { id: string; title: string; order: number };
 
