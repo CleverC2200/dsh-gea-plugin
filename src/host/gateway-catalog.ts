@@ -82,21 +82,78 @@ export function rowsFromText(text: string): Array<Record<string, unknown>> | nul
  * 就不会再把 `2026-10` 当日期、把 `202608` 当完整日期。
  */
 export function formatSampleValues(
-  rows: readonly Record<string, unknown>[],
-  members: readonly string[],
+  samples: readonly {
+    member: string;
+    rows: readonly Record<string, unknown>[];
+  }[],
 ): string {
-  if (rows.length === 0)
-    return "没有取到样例值（该模型在当前身份下可能没有数据，或这些成员都为空）。";
-  const first = rows[0] ?? {};
-  const lines = members.map((member) => {
-    const value = first[member];
-    return `- ${member} = ${value === undefined ? "（该行没有这个字段）" : JSON.stringify(value)}`;
+  const lines = samples.map(({ member, rows }) => {
+    const values = [
+      ...new Set(
+        rows
+          .map((row) => row[member])
+          .filter((value) => value !== undefined)
+          .map((value) => JSON.stringify(value)),
+      ),
+    ];
+    if (values.length === 0) return `- ${member} = 取不到（没有可见行，或它全是空）`;
+    const shown = values.slice(0, 5);
+    const extra =
+      values.length === 1 && values[0] === '""'
+        ? "　← 只有空串：这个成员在这张模型里没有可用取值"
+        : values.length === 1
+          ? "　← 只有一个取值"
+          : "";
+    return `- ${member} = ${shown.join("、")}${extra}`;
   });
+  const anyValue = samples.some((sample) => sample.rows.length > 0);
+  if (!anyValue)
+    return [
+      "没有取到样例值：这些成员在当前身份下都取不到行（可能整张模型没有可见数据，或成员名不对）。",
+      "不要再换模型/换成员试样例值；如实说明取不到，或换一条链路取数。",
+      ...lines,
+    ].join("\n");
   return [
-    `成员样例值（取 1 行，共 ${members.length} 个成员）：`,
+    "成员真实取值（每个成员最多列 5 个，按取值分布取，不是随便一行）：",
     ...lines,
-    "查询里请照这些值的格式写：时间是完整日期（如 2026-10-01），文本年月是哪几位就写哪几位（如 202608）。",
+    "照这些值的格式写查询：日期/时间成员写完整日期（如 2026-10-01）；文本年月是哪几位就写哪几位（如 2026-08）。",
+    "如果某个成员只有空串或只有一个取值，说明它答不了「有哪些取值/哪些大区」这类问题——直接说明并换能提供该维度的模型或链路，不要靠换写法硬凑。",
   ].join("\n");
+}
+
+/**
+ * 从"每个成员一条具名查询"的结果里按 dataset 名取回各自的 rows。
+ * 网关的 inline_complete 返回形如 `{"datasets":[{"name":"sample_0","rows":[...]}]}`；
+ * 形状认不出来时返回 undefined，由调用方回退到单成员解析。
+ */
+export function sampleRowsByDataset(
+  text: string,
+  names: readonly string[],
+): Map<string, Array<Record<string, unknown>>> | undefined {
+  let payload: unknown;
+  try {
+    payload = parseFirstJsonObject(text);
+  } catch {
+    return undefined;
+  }
+  const datasets = (payload as { datasets?: unknown })?.datasets;
+  if (!Array.isArray(datasets)) return undefined;
+  const out = new Map<string, Array<Record<string, unknown>>>();
+  for (const entry of datasets) {
+    const name = (entry as { name?: unknown })?.name;
+    const rows = (entry as { rows?: unknown })?.rows;
+    if (typeof name !== "string" || !names.includes(name)) continue;
+    out.set(
+      name,
+      Array.isArray(rows)
+        ? rows.filter(
+            (row): row is Record<string, unknown> =>
+              row !== null && typeof row === "object",
+          )
+        : [],
+    );
+  }
+  return out.size > 0 ? out : undefined;
 }
 
 /** 解析第一段完整 JSON 对象：工具结果常常是 JSON + 尾部提示文本。 */

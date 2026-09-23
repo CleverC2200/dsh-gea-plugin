@@ -30,6 +30,8 @@ const payload = {
         { name: "agents_scm_branch_inventory_snapshot.warehouseid", type: "string" },
         { name: "agents_scm_branch_inventory_snapshot.available_qty", type: "number" },
         { name: "agents_scm_branch_inventory_snapshot.snapshot_date", type: "time" },
+        // 文本年月列：值形如 2026-08，用 2026-10 过滤它是合法写法（不该被年月拦截误伤）。
+        { name: "agents_scm_branch_inventory_snapshot.plan_month", type: "string" },
       ],
       measures: [],
       segments: [{ name: "agents_scm_branch_inventory_snapshot.latest_snapshot", type: "string" }],
@@ -306,14 +308,36 @@ test("裸字段、物理表名、SQL 表达式都不是合法成员名", () => {
   }
 });
 
-test("年月当日期传仍然在闸门里拦（沿用 cube-query-guard）", () => {
-  const hint = shapeOnly(
+test("年月值：时间成员拦下并给正确写法，文本年月列放行", () => {
+  // 时间成员（snapshot_date 声明 time）：年月值发出去会被数据库拒
+  const blocked = withIndex(
     query("x", {
       dimensions: [`${STOCK}.id`],
       filters: [{ member: `${STOCK}.snapshot_date`, operator: "equals", values: ["2026-10"] }],
     }),
   );
-  assert.match(String(hint), /只有年月的值|2026-10/);
+  assert.match(String(blocked), /时间成员/);
+  assert.match(String(blocked), /timeDimensions/);
+  // 文本年月列（plan_month 声明 string，真实值就是 2026-08 这种）：不能拦
+  assert.equal(
+    withIndex(
+      query("x", {
+        dimensions: [`${STOCK}.id`],
+        filters: [{ member: `${STOCK}.plan_month`, operator: "equals", values: ["2026-10"] }],
+      }),
+    ),
+    undefined,
+  );
+  // 没有成员清单（类型未知）时也不拦——误拦代价更大
+  assert.equal(
+    shapeOnly(
+      query("x", {
+        dimensions: [`${STOCK}.id`],
+        filters: [{ member: `${STOCK}.snapshot_date`, operator: "equals", values: ["2026-10"] }],
+      }),
+    ),
+    undefined,
+  );
 });
 
 test("清单不在手时只做形状校验，不编造成员结论", () => {

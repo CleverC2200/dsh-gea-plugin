@@ -169,16 +169,43 @@ test("样例值：从 rows 里取一行真实值，给出格式要求", () => {
   assert.equal(rowsFromPayload({ rows: "nope" }), null);
   assert.deepEqual(rowsFromText('{"result":{"rows":[{"x":1}]}}'), [{ x: 1 }]);
 
-  const text = formatSampleValues(
-    [{ "agents_scm_safety_stock.target_month": "2026-10-01", "agents_scm_safety_stock.inventory_version": "滚动" }],
-    ["agents_scm_safety_stock.target_month", "agents_scm_safety_stock.inventory_version"],
-  );
-  assert.match(text, /成员样例值（取 1 行，共 2 个成员）/);
+  const text = formatSampleValues([
+    {
+      member: "agents_scm_safety_stock.target_month",
+      rows: [{ "agents_scm_safety_stock.target_month": "2026-10-01" }],
+    },
+    {
+      member: "agents_scm_safety_stock.inventory_version",
+      rows: [{ "agents_scm_safety_stock.inventory_version": "滚动" }],
+    },
+  ]);
+  assert.match(text, /成员真实取值/);
   assert.match(text, /agents_scm_safety_stock\.target_month = "2026-10-01"/);
   assert.match(text, /inventory_version = "滚动"/);
-  assert.match(text, /时间是完整日期（如 2026-10-01）/);
+  assert.match(text, /完整日期（如 2026-10-01）/);
 
-  assert.match(formatSampleValues([], ["a.b"]), /没有取到样例值/);
+  // 只有空串 / 只有一个取值：要把"这个维度用不了"说出来（线上 region_name 就是全空）
+  const emptyText = formatSampleValues([
+    { member: "agents_sales_plan_detail_mi.region_name", rows: [{ "agents_sales_plan_detail_mi.region_name": "" }] },
+  ]);
+  assert.match(emptyText, /只有空串/);
+  const singleText = formatSampleValues([
+    { member: "agents_sales_plan_detail_mi.order_status", rows: [{ "agents_sales_plan_detail_mi.order_status": "Y" }] },
+  ]);
+  assert.match(singleText, /只有一个取值/);
+  // 多取值：最多列 5 个
+  const manyText = formatSampleValues([
+    {
+      member: "agents_sales_plan_detail_mi.plane_date",
+      rows: ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"].map((v) => ({
+        "agents_sales_plan_detail_mi.plane_date": v,
+      })),
+    },
+  ]);
+  assert.match(manyText, /2026-05/);
+  assert.equal(manyText.includes("2026-06"), false);
+
+  assert.match(formatSampleValues([{ member: "a.b", rows: [] }]), /没有取到样例值/);
 });
 
 // 线上实测：模型拿业务词当模型名，而目录里的模型名/说明用了别的字（库龄 vs 货龄）。

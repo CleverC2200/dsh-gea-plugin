@@ -8,6 +8,7 @@ import {
   contentText,
   extractArtifactUri,
   formatSampleValues,
+  sampleRowsByDataset,
   parseFirstJsonObject,
   projectCatalog,
   resultText,
@@ -942,37 +943,49 @@ export function registerGeaTools(
                 throw new Error(
                   "GEA_CATALOG_SAMPLE_MEMBERS_REQUIRED: values=true 时要给 members（形如 模型.字段，最多 6 个）。",
                 );
+              // 一个成员一条具名查询：某个成员名字写错/取不到时，不会把整批样例值带垮
+              // （线上踩过：6 个成员里混了一个错的模型前缀 → 整批"取不到样例值"，模型开始换着试）。
+              const names = members.map((_, index) => `sample_${index}`);
               const sampled = await client.callTool({
                 name: "query_business_data",
                 arguments: {
                   action: "query",
                   response_mode: "inline_complete",
-                  queries: [
-                    { name: "sample", query: { dimensions: members, limit: 1 } },
-                  ],
+                  queries: members.map((member, index) => ({
+                    name: names[index],
+                    // 取 5 行而不是 1 行：能看到这个成员的真实取值分布（只有空串 / 只有一个值 / 覆盖哪些月份），
+                    // 比"随便一行的值"有用得多，也直接回答"有没有这个维度"。
+                    query: { dimensions: [member], limit: 5 },
+                  })),
                 },
               });
               const sampleText = resultText(sampled);
-              const rows = rowsFromText(sampleText);
-              if (!rows) throw new Error(`GEA_CATALOG_SAMPLE_FAILED: ${sampleText.slice(0, 200)}`);
+              const byDataset = sampleRowsByDataset(sampleText, names);
+              // 认不出 datasets 形状时回退到老的单段解析（只对单个成员有意义，但至少不炸）。
+              if (!byDataset && !rowsFromText(sampleText))
+                throw new Error(`GEA_CATALOG_SAMPLE_FAILED: ${sampleText.slice(0, 200)}`);
+              const samples = members.map((member, index) => ({
+                member,
+                rows: byDataset?.get(names[index]) ?? [],
+              }));
+              const rows = samples.flatMap((sample) => sample.rows);
               const scope = exec.agent?.id ?? "global";
               if (rows.length === 0) {
-                // 线上实测：样例值连续取不到时模型会换着模型一直试（一轮 27 次）。第二次就明确叫停。
+                // 一个成员都没取到：按"连续取不到"止损（线上实测模型会换着模型一直试，一轮 27 次）。
                 const misses = (emptySamples.get(scope) ?? 0) + 1;
                 emptySamples.set(scope, misses);
                 if (misses >= 2) {
                   business.moduleMcpWaste().waste(scope);
                   return (
-                    "【样例值连续取不到，别再试了】这个身份连着两次取不到样例值：模型在当前身份下没有可见行，或这些成员本来就为空。\n" +
-                    "样例值只是用来**确认取值格式**，不是查询的前提——不要再换模型/换成员试样例值，直接按目录里的类型标注写查询：" +
-                    "[time] 取值写完整日期、[number] 仍是 dimensions、文本年月按业务惯例；确实拿不准就先查这一行数据本身。\n" +
-                    "如果连数据也取不到，直接说清缺哪一项（哪张模型、缺哪项授权），不要再换着试。"
+                    "【样例值连续取不到，别再试了】这些成员连着两次都取不到行：这个身份在这张模型上看不到数据，" +
+                    "或者成员名不对。不要再换模型/换成员继续试；按目录里的类型标注写查询，" +
+                    "或者直接说清缺哪一项（哪张模型、缺哪项授权）。"
                   );
                 }
               } else {
                 emptySamples.delete(scope);
               }
-              return dedup.remember(dedupKey, formatSampleValues(rows, members));
+              return dedup.remember(dedupKey, formatSampleValues(samples));
             }
             const inspect = await client.callTool({
               name: "query_business_data",

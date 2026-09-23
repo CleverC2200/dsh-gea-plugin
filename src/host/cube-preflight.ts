@@ -563,8 +563,13 @@ export function preflightCubeArguments(
       },
     ]);
 
-  // 年月当日期传：发出去必被数据库拒（cube-core 原样日志）。
-  const yearMonths = yearMonthValues(queries);
+  // 年月当日期传：**只在该成员确实是时间类型时才拦**。文本年月列（例如
+  // agents_sales_plan_detail_mi.plane_date，声明 string、值形如 2026-01）用 2026-10 过滤是合法写法，
+  // 拦下来反而会把模型推向 0 行的写法——这条线上实测踩过。
+  const yearMonths = yearMonthValues(queries, (member) => {
+    const model = index?.get(modelOf(member) ?? "");
+    return model ? model.time.includes(member) : false;
+  });
   if (yearMonths.length > 0) return yearMonthHint(yearMonths);
 
   // §17.8：请求体本身的体积。成员名是最占字符的部分，超了就是"想把整表列全"。

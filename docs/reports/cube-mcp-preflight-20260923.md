@@ -75,6 +75,20 @@
 | 首步目录失败只报 `GEA_CATALOG_RESOURCE_MISSING: tools=5`，真因被吞 | 拿不到制品 URI 时把原始返回前 200 字带出来；同时支持 inspect 直接内联 JSON | `src/host/agent-tools.ts` |
 | 同一份东西被反复读（同一模型明细 31 次、索引 24 次、同一条计划查询 15 次） | 新增重复读闸门：同一 key 最多认真回 2 次，一轮累计重复 8 次就停手；换问题（新一轮）自动清零 | `src/host/repeat-guard.ts`（新增）、`agent-tools.ts`、`turn-anchor.ts`、`host.ts` |
 
+### 再追加一轮（"年月误拦"复盘）
+
+截图里的 `入参预检未通过：filters 里出现了只有年月的值 2026-10` 是**误伤**：那次过滤的
+`agents_sales_plan_detail_mi.plane_date` 声明类型是 **string**、真实值就是 `2026-01`…`2026-08`
+这种文本年月，拿 `2026-10` 过滤它是合法写法（实测 `contains "2026-10"` 就是它的正常用法）。
+而提示里"写完整日期 / 用该月第一天"的导向在这列上**必然 0 行**，等于把人往更错的方向推。
+
+| 问题 | 修法 | 位置 |
+| --- | --- | --- |
+| 年月拦截拿单个样本（safety_stock.target_month 是真 date 列）当全局规则，误伤文本年月列 | 改成**按类型判**：只有目录里声明 time 的成员才拦；string 年月列与"类型未知"一律放行；提示改成"筛整月用 timeDimensions/dateRange 或 gte+lt，不要 equals 该月第一天" | `src/host/cube-query-guard.ts`、`cube-preflight.ts` |
+| 取样一次传 6 个成员，一个错名字就整批"取不到样例值" | 改成**一个成员一条具名查询**（一条 tool 调用最多 6 条），坏成员不拖垮整批；并把 `limit 1` 改成 `limit 5`，直接给**取值分布**（只有空串 / 只有一个值 / 覆盖哪些月份） | `src/host/agent-tools.ts`、`gateway-catalog.ts` |
+| 模型一直靠"猜一个取值去过滤"，0 行后换写法继续试 | 提示词加一条通用做法：**先看分布，再定过滤**——把成员当维度 + 配一个度量 group by 一次就能看到有没有值、有哪些值 | `src/host.ts` |
+| 维度在这张模型里不可用（`region_name` 全空、`order_status` 只有一个值）时没人说清 | 取样结果直接标注"只有空串/只有一个取值：它答不了『有哪些取值』这类问题，请换模型或链路" | `gateway-catalog.ts` |
+
 1. **Cube 目录缓存没刷新**（实测 inspect 仍只显示旧度量）：缓存在网关/下游 MCP 侧，需要平台侧配合刷新；
    规约 §5 要求"查询前持有当前 inspect"，这条不解决，模型会继续以为没有度量可用。
 2. **库龄资源缺 ALLOW、方案不匹配**（§16 快照）：属平台配置，参数改不动，只能如实回报。
