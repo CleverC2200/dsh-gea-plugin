@@ -405,43 +405,71 @@ const RegionalApprovalLiveActionDialog: React.FC<{
 
   if (directApproval) return null;
 
+  /*
+   * 「放弃未保存的调整」确认框必须两个分支都能渲染：退回弹窗和通过/保存弹窗共用
+   * requestClose，一旦这里有未保存的调整，关闭动作会先走这道确认。之前它只挂在
+   * 通过/保存分支上，退回弹窗点 X / 取消只会把状态设成"要确认"，界面上却什么都不出现，
+   * 表现成"报错了就关不掉"。
+   */
+  const discardConfirmModal = (
+    <Modal
+      visible={discardConfirmVisible}
+      title={t('common.assistantSurface.regionalApproval.liveAction.adjustments.discardTitle')}
+      okText={t('common.assistantSurface.regionalApproval.liveAction.adjustments.discard')}
+      cancelText={t('common.assistantSurface.regionalApproval.liveAction.adjustments.keepEditing')}
+      okButtonProps={{ status: 'danger' }}
+      maskClosable={false}
+      focusLock
+      onCancel={() => setDiscardConfirmVisible(false)}
+      onOk={() => {
+        setDiscardConfirmVisible(false);
+        onClose();
+      }}
+    >
+      {t('common.assistantSurface.regionalApproval.liveAction.adjustments.discardDescription')}
+    </Modal>
+  );
+
   if (kind === 'REJECT') {
     return (
-      <Modal
-        visible={visible}
-        className={styles.liveRejectModal}
-        title={t('common.assistantSurface.regionalApproval.liveAction.reject')}
-        maskClosable={false}
-        closable={canClose}
-        okText={t('common.assistantSurface.regionalApproval.liveAction.confirmReject')}
-        cancelText={t('common.cancel')}
-        okButtonProps={{ disabled: invalid || loading || action.state.status === 'success', status: 'danger' }}
-        onCancel={requestClose}
-        onOk={submit}
-      >
-        <div className={styles.compactRejectBody}>
-          <label className={styles.formControl}>
-            <span>{t('common.assistantSurface.regionalApproval.liveAction.rejectRemark')}</span>
-            <Input.TextArea
-              value={remark}
-              maxLength={1000}
-              showWordLimit
-              autoFocus
-              disabled={intentLocked}
-              status={attempted && !remark.trim() ? 'error' : undefined}
-              aria-label={t('common.assistantSurface.regionalApproval.liveAction.rejectRemark')}
-              placeholder={t('common.assistantSurface.regionalApproval.liveAction.remarkPlaceholder')}
-              autoSize={{ minRows: 3, maxRows: 5 }}
-              onChange={setRemark}
-            />
-          </label>
-          {attempted && invalid ? <Alert type='error' showIcon content={t('common.assistantSurface.regionalApproval.liveAction.required')} /> : null}
-          {loading ? <div className={styles.loadingState}><Spin size={16} /><span>{t('common.assistantSurface.regionalApproval.liveAction.loading')}</span></div> : null}
-          {action.state.status === 'error' ? (
-            <Alert type='error' showIcon content={actionErrorText(t, action.state.error)} />
-          ) : null}
-        </div>
-      </Modal>
+      <>
+        <Modal
+          visible={visible}
+          className={styles.liveRejectModal}
+          title={t('common.assistantSurface.regionalApproval.liveAction.reject')}
+          maskClosable={false}
+          closable={canClose}
+          okText={t('common.assistantSurface.regionalApproval.liveAction.confirmReject')}
+          cancelText={t('common.cancel')}
+          okButtonProps={{ disabled: invalid || loading || action.state.status === 'success', status: 'danger' }}
+          onCancel={requestClose}
+          onOk={submit}
+        >
+          <div className={styles.compactRejectBody}>
+            <label className={styles.formControl}>
+              <span>{t('common.assistantSurface.regionalApproval.liveAction.rejectRemark')}</span>
+              <Input.TextArea
+                value={remark}
+                maxLength={1000}
+                showWordLimit
+                autoFocus
+                disabled={intentLocked}
+                status={attempted && !remark.trim() ? 'error' : undefined}
+                aria-label={t('common.assistantSurface.regionalApproval.liveAction.rejectRemark')}
+                placeholder={t('common.assistantSurface.regionalApproval.liveAction.remarkPlaceholder')}
+                autoSize={{ minRows: 3, maxRows: 5 }}
+                onChange={setRemark}
+              />
+            </label>
+            {attempted && invalid ? <Alert type='error' showIcon content={t('common.assistantSurface.regionalApproval.liveAction.required')} /> : null}
+            {loading ? <div className={styles.loadingState}><Spin size={16} /><span>{t('common.assistantSurface.regionalApproval.liveAction.loading')}</span></div> : null}
+            {action.state.status === 'error' ? (
+              <Alert type='error' showIcon content={actionErrorText(t, action.state.error)} />
+            ) : null}
+          </div>
+        </Modal>
+        {discardConfirmModal}
+      </>
     );
   }
 
@@ -841,22 +869,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
           ) : null}
         </div>
       </Container>
-      <Modal
-        visible={discardConfirmVisible}
-        title={t('common.assistantSurface.regionalApproval.liveAction.adjustments.discardTitle')}
-        okText={t('common.assistantSurface.regionalApproval.liveAction.adjustments.discard')}
-        cancelText={t('common.assistantSurface.regionalApproval.liveAction.adjustments.keepEditing')}
-        okButtonProps={{ status: 'danger' }}
-        maskClosable={false}
-        focusLock
-        onCancel={() => setDiscardConfirmVisible(false)}
-        onOk={() => {
-          setDiscardConfirmVisible(false);
-          onClose();
-        }}
-      >
-        {t('common.assistantSurface.regionalApproval.liveAction.adjustments.discardDescription')}
-      </Modal>
+      {discardConfirmModal}
     </>
   );
 };
