@@ -64,5 +64,7 @@ test(
     const conversation = page.locator("[data-slot='main.conversation']");
     await expect(conversation.getByText("探索未至之境").first()).toBeHidden();
     await expect(conversation.getByText("workspace", { exact: true }).first()).toBeHidden();
+    // 欢迎区里已经有助手名片，右栏顶部不再重复一行「主计划参谋」标题。
+    await expect(page.locator(".AppFrame_rightbarCol .gea-agent-head")).toHaveCount(0);
   },
 );

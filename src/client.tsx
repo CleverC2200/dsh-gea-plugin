@@ -1175,7 +1175,8 @@ export function apply(ctx: Context): void {
           />,
           (conversationView === "center" ? centerColumn : railColumn)!,
         )}
-        {railColumn && ![PANEL, REGIONAL_PLAN_PANEL, CATEGORY_PLAN_PANEL].includes(activePanel as MainPanelId) && createPortal(<ConversationHead agent={conversationAgentFor(activePanel)} />, railColumn)}
+        {/* 计划类原型页的欢迎区自己就带助手名片，右栏顶部不再重复一行标题。 */}
+        {railColumn && ![PANEL, REGIONAL_PLAN_PANEL, CATEGORY_PLAN_PANEL, MPS_PLAN_PANEL].includes(activePanel as MainPanelId) && createPortal(<ConversationHead agent={conversationAgentFor(activePanel)} />, railColumn)}
         {conversationHero && createPortal(
           <AgentWelcome
             agent={conversationAgentFor(activePanel)}

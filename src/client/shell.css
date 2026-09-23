@@ -1277,4 +1277,4 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-conversation-toolbar-error { position: absolute; right: 10px; top: 58px; padding: 5px 8px; border: 1px solid #e7acb5; border-radius: 5px; background: #fff6f7; color: #b51931; font-size: 12px; }
 
 /* Plan pages share the compact welcome layout without a duplicate title row. */
-.AppFrame_frame:has(:is([data-gea-business-entry="gea-proof"],[data-gea-business-entry="gea-regional-plan"],[data-gea-business-entry="plan-region-category"])[aria-current="page"]) .gea-agent-welcome { padding-top: 0; }
+.AppFrame_frame:has(:is([data-gea-business-entry="gea-proof"],[data-gea-business-entry="gea-regional-plan"],[data-gea-business-entry="plan-region-category"],[data-gea-business-entry="plan-category-production"])[aria-current="page"]) .gea-agent-welcome { padding-top: 0; }
