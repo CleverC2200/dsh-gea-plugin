@@ -41,9 +41,10 @@ test('节点百分比悬停显示分子/分母', { timeout: 90000 }, async (t) =
     await frame.getByTestId('regional-approval-flow-toggle').click();
 
   const progressOf = (stage) => frame.getByTestId(`regional-approval-stage-${stage}`).locator('small');
-  // 状态 1 = 等区域处理：只有「客户提报」这一步算完成。
-  await expect(progressOf('customer')).toHaveAttribute('title', '本节点已完成 1 单 / 该月共 4 单');
-  await expect(progressOf('customer')).toContainText('进度 25%');
+  // 客户提报节点已按业务方反馈去掉，节点条只剩四个审批节点。
+  await expect(frame.getByTestId('regional-approval-stage-customer')).toHaveCount(0);
+  // 状态 1 = 等区域处理：这一步没人签完，区域节点的分子是 0。
   await expect(progressOf('region')).toHaveAttribute('title', '本节点已完成 0 单 / 该月共 4 单');
+  await expect(progressOf('region')).toContainText('进度 0%');
   await expect(progressOf('category')).toHaveAttribute('title', '本节点已完成 0 单 / 该月共 4 单');
 });

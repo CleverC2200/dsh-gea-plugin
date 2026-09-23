@@ -2205,7 +2205,13 @@ const RegionalApprovalWorkbench: React.FC<{
     }
   };
 
-  const visibleStageFixtures = APPROVAL_STAGE_FIXTURES.filter((stage) => stage.id !== ('evaluation' as ApprovalStageId));
+  /**
+   * 节点条按业务方 2026-09-23 反馈只保留四个审批节点：
+   * 「客户提报」是销售侧动作、审批人这里用不到，去掉。
+   */
+  const visibleStageFixtures = APPROVAL_STAGE_FIXTURES.filter(
+    (stage) => stage.id !== ('evaluation' as ApprovalStageId) && stage.id !== ('customer' as ApprovalStageId)
+  );
   // 节点条始终展示全部节点：角色决定能进哪些节点，没权限的节点置灰不可点，
   // 明细由数据权限决定，因此「全部节点」这一视图保留。
   const stageAuthorized = (id: ApprovalStageId) =>
@@ -2398,9 +2404,13 @@ const RegionalApprovalWorkbench: React.FC<{
     {
       title: t('common.correction.plan'),
       width: liveColumnWidths[2],
-      render: (_, tableRow) => tableRow.kind === 'category' ? <div className={styles.stackCell}><span>{exactMoney(tableRow.category.amount)}</span></div> : <div className={styles.stackCell} data-testid={`regional-approval-month-plan-${tableRow.tableRowId}`}>
+      render: (_, tableRow) => tableRow.kind === 'category' ? <div className={styles.stackCell} data-testid={`regional-approval-month-plan-${tableRow.tableRowId}`}>
+        <span>{exactMoney(tableRow.category.amount)}</span>
+        {/* 品类汇总行也带数量，单位跟指标卡一致：业务方 2026-09-23 反馈"数量要带件"。 */}
+        <small>{/^-?\d+(?:\.\d+)?$/.test(tableRow.category.quantity ?? '') ? `${quantityText(tableRow.category.quantity)} ${t('common.assistantSurface.regionalApproval.scopeTotals.quantityUnit')}` : '—'}</small>
+      </div> : <div className={styles.stackCell} data-testid={`regional-approval-month-plan-${tableRow.tableRowId}`}>
         <span>{/^-?\d+(?:\.\d+)?$/.test(tableRow.plan.mPlanAmount ?? '') ? exactMoney(tableRow.plan.mPlanAmount!) : '—'}</span>
-        <small>{/^-?\d+(?:\.\d+)?$/.test(tableRow.plan.mPlanQty ?? '') ? quantityText(tableRow.plan.mPlanQty!) : '—'}</small>
+        <small>{/^-?\d+(?:\.\d+)?$/.test(tableRow.plan.mPlanQty ?? '') ? `${quantityText(tableRow.plan.mPlanQty!)} ${t('common.assistantSurface.regionalApproval.scopeTotals.quantityUnit')}` : '—'}</small>
         {tableRow.kind === 'plan' && comparisonFor(tableRow).compareAmount && <small>{t('common.assistantSurface.regionalApproval.comparePlan', {amount:exactMoney(comparisonFor(tableRow).compareAmount!),qty:quantityText(comparisonFor(tableRow).compareQty ?? '—')})}</small>}
       </div>,
     },
@@ -2444,16 +2454,6 @@ const RegionalApprovalWorkbench: React.FC<{
               size='small'
               color={salesPlanProgressBarColor(categoryProgress)}
             />
-            <small>
-              {t('common.assistantSurface.regionalApproval.categoryRows.targetAmount', {
-                amount: categoryTarget == null ? '—' : exactMoney(Number(categoryTarget).toFixed(2)),
-              })}
-            </small>
-            <small>
-              {t('common.assistantSurface.regionalApproval.categoryRows.planAmount', {
-                amount: exactMoney(category.amount),
-              })}
-            </small>
           </div>
         );
       },
@@ -2774,7 +2774,6 @@ const RegionalApprovalWorkbench: React.FC<{
       </h1>
       <header className={styles.header}>
         <div className={styles.titleLine}>
-          <span className={styles.workspaceTitle}>{t('common.assistantSurface.regionalApproval.title')}</span>
           {headerControls}
           {!liveQuery.enabled ? (
             <Tag className={styles.fixtureTag} color='red'>

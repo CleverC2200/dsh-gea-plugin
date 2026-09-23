@@ -47,8 +47,9 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  assert.equal(modelCalls,0,'opening the workbench must not trigger analysis');
  const readProgress=()=>frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
  // 节点条始终展示全部五个节点，进度按状态统计，跟当前选中的节点无关。
- await expect.poll(readProgress).toEqual(['进度 100%','进度 0%','进度 0%','进度 0%','进度 0%']);
- const before=await readProgress(); assert.equal(before.length,5);
+ // 客户提报节点已按业务方反馈去掉：节点条只剩四个审批节点，这一步没人签完所以都是 0%。
+ await expect.poll(readProgress).toEqual(['进度 0%','进度 0%','进度 0%','进度 0%']);
+ const before=await readProgress(); assert.equal(before.length,4);
  // V1.8 #05：流程图默认收起，点标题行右侧的入口展开后才能点各节点。
  if(!(await frame.getByTestId('regional-approval-flow-lane').isVisible())) await frame.getByTestId('regional-approval-flow-toggle').click();
  // 角色决定能进哪个节点：没权限的节点置灰不可点。
@@ -64,7 +65,8 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  await expect(frame.getByTestId('regional-approval-status-p').locator('xpath=ancestor::table[1]/thead')).not.toContainText('审批状态');
  const monthPlan=frame.getByTestId('regional-approval-month-plan-p');
  await expect(monthPlan.locator('span').first()).toHaveText('¥100');
- await expect(monthPlan.locator('small').first()).toHaveText('10');
+ // 数量带单位：月计划列的数量显示成「10 件」。
+ await expect(monthPlan.locator('small').first()).toHaveText('10 件');
  await expect(frame.locator('tbody').first()).toContainText('25.0%');
  await expect(frame.locator('tbody').first()).toContainText('版本②：¥100 / 10');
  await expect(frame.locator('tbody').first()).toContainText('该版本不含月度目标');
@@ -85,7 +87,8 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  const editor=frame.getByRole('spinbutton',{name:'确认计划量 1001',exact:true});
  await expect(editor).toHaveValue('20');
  await editor.fill('22.125');
- await expect(frame.getByText('22.125 件',{exact:true})).toBeVisible();
+ // 明细汇总里的数量；月计划列现在也会显示同一个「22.125 件」，所以要限定在汇总卡里找。
+ await expect(frame.getByLabel('当前页明细汇总').getByText('22.125 件',{exact:true})).toBeVisible();
  await expect(frame.getByLabel('当前页明细汇总').getByText('¥221.25',{exact:true})).toBeVisible();
  await expect(frame.getByTestId('regional-approval-month-plan-p')).toContainText('22.125');
  await expect(frame.getByTestId('regional-approval-month-plan-p')).toContainText('¥221.25');
