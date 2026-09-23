@@ -34,6 +34,7 @@ import {
 } from "../capability/recipes.ts";
 import { LAYER_POLICY } from "../capability/layers.ts";
 import { channelPlan, type ChannelPlan } from "../capability/channel.ts";
+import { yearMonthHint, yearMonthValues } from "./cube-query-guard.ts";
 
 /** 只注册已认证的读取；可见记录仍以 GEA 为权威。
  * @param ctx 拥有工具注册和释放生命周期的 Host 上下文。
@@ -482,6 +483,12 @@ export function registerGeaTools(
             args.arguments && typeof args.arguments === "object"
               ? (args.arguments as Record<string, unknown>)
               : {};
+          // 年月当日期传是"发出去必被数据库拒"的一类：先在宿主拦下并给出写法，
+          // 省掉一次注定失败的往返（cube-core 实测 invalid input syntax for type date）。
+          if (toolName === "query_business_data" && parameters.action === "query") {
+            const hits = yearMonthValues(parameters.queries);
+            if (hits.length > 0) throw new Error(yearMonthHint(hits));
+          }
           const missing = tool.required.filter(
             (name) => parameters[name] === undefined || parameters[name] === null,
           );
