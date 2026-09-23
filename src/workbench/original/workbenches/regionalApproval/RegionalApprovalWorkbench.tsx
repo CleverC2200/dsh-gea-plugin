@@ -1072,7 +1072,7 @@ const RegionalApprovalWorkbench: React.FC<{
     // 退回态（6–9）：管理端的动作接口只接受 1–4 的待审单，退回单必须重提（生成新版本）。
     // 所以「通过」在退回单上等于重提；「退回」对退回单没有意义。
     if (isReturnedForResubmit(row)) {
-      if (kind === 'REJECT') return 'returnedNeedsResubmit';
+      if (kind === 'REJECT') return 'returnedCannotReject';
       return resubmitReady ? undefined : 'resubmitUnavailable';
     }
     const detail = liveAccess.entries[row.versionId];

@@ -862,6 +862,7 @@
           "completed": "This version already has a server receipt, so duplicate actions are blocked.",
           "permission": "The server denied this user. This version is disabled for the current round.",
           "returnedNeedsResubmit": "A returned plan cannot be approved or rejected directly. Use Resubmit returned plan, which creates a new version.",
+          "returnedCannotReject": "A returned version cannot be returned again: the server currently only supports resubmitting it as a new version.",
           "resubmitMultiple": "Resubmit returned plan handles one plan at a time — select exactly one row.",
           "resubmitUnavailable": "A returned plan has to be resubmitted (which creates a new version), but service credentials or user authorization are unavailable in this environment.",
           "notReturned": "Resubmit returned plan only applies to returned plans (status 6–9).",
