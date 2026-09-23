@@ -19,7 +19,7 @@ export function registeredBusinessPanels(entries: readonly Entry[]) {
   .sort((a,b) => a.order-b.order || a.id.localeCompare(b.id));
 }
 export function isGeaBusinessPanel(panel: string | null | undefined, entries: readonly Entry[]): boolean {
- return panel==='gea-proof' || panel==='gea-regional-plan' || panel==='gea-inbox' || registeredBusinessPanels(entries).some(item=>item.id===panel);
+ return panel==='gea-proof' || panel==='gea-regional-plan' || panel==='plan-region-category' || panel==='gea-inbox' || registeredBusinessPanels(entries).some(item=>item.id===panel);
 }
 
 export type BusinessPanel = { id: string; title: string; order: number };
@@ -82,7 +82,7 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
     title: "计划管理",
     icon: "calendar",
     items: [
-      { id: "plan-region-category", title: "区域及品类计划工作台(开发中)" },
+      { id: "plan-region-category", title: "品类计划工作台(开发中)" },
       { id: "gea-proof", title: "销售计划" },
       { id: "gea-regional-plan", title: "区域计划(开发中)" },
       { id: "plan-category-production", title: "品类与生产计划(开发中)" },

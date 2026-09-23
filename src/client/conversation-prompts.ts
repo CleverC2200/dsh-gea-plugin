@@ -165,6 +165,50 @@ export const regionalPlanConversation: ConversationPromptConfig = {
   ],
 };
 
+/** 品类计划工作台：文案沿用原型内的「品类计划助手」（简介 / 4 项固定功能 / 4 条推荐问题）。 */
+export const categoryPlanConversation: ConversationPromptConfig = {
+  name: "品类计划助手",
+  intro:
+    "我按品类计划在管的指标组织事实：原始订单满足率、需求计划准确率、库存周转天数、全链周转与产品新鲜度，并说明每一项未达标的驱动原因。",
+  boundary: "负责预警与建议，人来决策与授权。",
+  actions: [
+    {
+      icon: "chart",
+      tone: "brand",
+      label: "查看品类计划在管的指标",
+      detail: "点击任意指标查看口径与明细",
+      prompt: "查看品类计划在管哪些指标",
+    },
+    {
+      icon: "alert",
+      tone: "brand",
+      label: "订单满足率的缺口在哪",
+      detail: "未满足订单的成因与短缺客户",
+      prompt: "订单满足率的缺口在哪里",
+    },
+    {
+      icon: "info",
+      tone: "info",
+      label: "计划准确率为什么没达标",
+      detail: "偏差来源、上报记录与目标未报备",
+      prompt: "需求计划准确率为什么没达标",
+    },
+    {
+      icon: "box",
+      tone: "success",
+      label: "周转天数与新鲜度",
+      detail: "全链周转、工厂仓周转与超期批次",
+      prompt: "库存周转天数与产品新鲜度怎么样",
+    },
+  ],
+  prompts: [
+    "粽子缺口对订单满足率影响多大？",
+    "库存周转差 0.7 天卡在哪？",
+    "产品新鲜度低于目标怎么办？",
+    "全链周转目标为什么没备案？",
+  ],
+};
+
 /** 经销商补货（库存）业务页沿用原有助手文案。 */
 export const inventoryConversation: ConversationPromptConfig = {
   name: "经销商补货助手",

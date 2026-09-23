@@ -38,7 +38,8 @@ test(
       .click();
 
     // 独立的菜单页：内嵌业务原型，不依赖 GEA 登录或业务接口。
-    await page.getByRole("button", { name: "区域计划工作台", exact: true }).click();
+    // 侧栏用的是原型目录里的名字（保留「开发中」标记），页面标题才是「区域计划工作台」。
+    await page.locator('[data-gea-business-entry="gea-regional-plan"]').click();
     const prototype = page.frameLocator("iframe[title='区域计划工作台']");
     await expect(
       prototype.getByRole("heading", { name: /区域计划工作台/ }),

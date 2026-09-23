@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>区域计划工作台 V9 · 事件线版</title>
+<title>区域计划工作台 V9.2 · 事件线版</title>
 <style>
   /* =========================================================================
      workbench-ui-style 规范实现层
@@ -237,7 +237,9 @@
   /* ===== 全链路进度 ===== */
   .flow{display:flex;align-items:flex-start;padding:4px 0 8px}
   .fstep{flex:1 1 0;min-width:0;text-align:center;position:relative;padding-top:34px}
-  .fstep::before{content:"";position:absolute;top:16px;left:calc(50% + 16px);width:calc(100% - 32px);height:2px;background:var(--line)}
+  /* 连接线连「前一节点 → 本节点」：left 从 -50% 起算（即前一节点圆心），两端各伸入圆圈 5px 由圆圈盖住，
+     整体向左回退一个节点宽度——否则线会右移一格，导致 1→2 之间无线、末节点右侧多出一段线 */
+  .fstep::before{content:"";position:absolute;top:16px;left:calc(-50% + 10px);width:calc(100% - 20px);height:2px;background:var(--line)}
   .fstep:first-child::before{display:none}
   .fstep .dot{position:absolute;top:2px;left:50%;transform:translateX(-50%);width:30px;height:30px;border-radius:50%;
     display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;
@@ -301,6 +303,8 @@
   }
   .modtab.on .n{background:var(--brand-soft);color:var(--brand)}
   .modtab:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+  .tabs-note{margin-left:auto;padding-right:16px;align-self:center;white-space:nowrap;
+    font-size:10px;line-height:1.4;color:var(--muted)}
 
   /* ===== 行政区/维度切换：紧凑页签（31px） ===== */
   .seg{display:inline-flex;align-items:stretch;gap:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-xs);overflow:hidden}
@@ -312,10 +316,6 @@
   }
   .seg button:hover{color:var(--brand);background:var(--hover-bg)}
   .seg button.on{color:var(--brand);background:var(--card);font-weight:800;border-bottom-color:var(--brand)}
-
-  /* ===== 主体布局 ===== */
-  .main{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:12px;align-items:start}
-  .side{position:sticky;top:16px;display:flex;flex-direction:column;gap:12px}
 
   /* ===== 表格 ===== */
   table{width:100%;border-collapse:collapse;font-size:10px}
@@ -391,22 +391,6 @@
   .dimlist .di .dc{font-size:11px;line-height:1.7;color:var(--sub)}
   .dimlist .di .dc b{display:block;font-size:12px;line-height:1.4;font-weight:700;margin-bottom:2px;color:var(--txt)}
 
-  /* ===== 侧栏 ===== */
-  .assistant{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
-  .assistant h3{font-size:12px;line-height:1.4;font-weight:700;color:var(--txt);display:flex;align-items:center;gap:6px;margin-bottom:6px}
-  .assistant h3 .sp{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
-  .assistant p{font-size:10px;line-height:1.65;color:var(--muted);margin-bottom:12px}
-  .qa{display:block;width:100%;text-align:left;background:var(--sunken);border:1px solid var(--line);color:var(--txt);
-    border-radius:var(--radius-xs);padding:10px 12px;margin-bottom:8px;cursor:pointer;font-size:11px;line-height:1.7;
-    font-family:inherit;transition:background var(--t),border-color var(--t),color var(--t)}
-  .qa:hover{background:var(--hover-bg);border-color:var(--hover-bd);color:var(--brand)}
-  .qa .ans{display:none;margin-top:6px;color:var(--brand);font-weight:600;font-size:10px;line-height:1.65}
-  .qa.open .ans{display:block}
-  .duty h3{font-size:12px;line-height:1.4;font-weight:700;color:var(--txt);margin-bottom:12px}
-  .duty ul{list-style:none;display:flex;flex-direction:column;gap:8px}
-  .duty li{font-size:10px;line-height:1.65;color:var(--sub);padding-left:12px;position:relative}
-  .duty li::before{content:"";position:absolute;left:0;top:6px;width:4px;height:4px;border-radius:50%;background:var(--brand)}
-  .duty li b{color:var(--txt);font-weight:700}
   .src{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);font-size:10px;line-height:1.65;color:var(--muted)}
 
   /* ===== 模块入口 ===== */
@@ -442,10 +426,6 @@
   .re-foot{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
   .re-hint{font-size:10px;line-height:1.65;color:var(--muted);margin-top:12px}
 
-  /* ===== 页脚 / 提示 ===== */
-  .foot{color:var(--sub);font-size:10px;line-height:1.7;background:var(--card);border:1px solid var(--line);
-    border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
-  .foot b{color:var(--txt);font-weight:700}
   .hidden{display:none !important}
 
   .toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,8px);z-index:90;background:var(--txt);color:#fff;
@@ -455,22 +435,17 @@
   .toast.show{opacity:1;transform:translate(-50%,0)}
 
   /* ===== 响应式（1200 / 900 / 720 / 520） ===== */
-  @media (max-width:1360px){
-    .main{grid-template-columns:minmax(0,1fr)}
-    .side{position:static;flex-direction:row;flex-wrap:wrap}
-    .side>*{flex:1 1 300px}
-  }
   @media (max-width:1200px){
     .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
   }
   @media (max-width:900px){
     .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .tabs-note{display:none}
     .tl-inner{min-width:620px}
     .trend{grid-template-columns:minmax(0,1fr)}
     .quad{grid-template-columns:1fr}
     .flow{overflow-x:auto;padding-bottom:8px}
     .fstep{flex:0 0 128px}
-    .main{grid-template-columns:minmax(0,1fr)}
   }
   @media (max-width:720px){
     .topbar{align-items:flex-start}
@@ -511,7 +486,7 @@
     <div class="brand">
       <div class="logo">区</div>
       <div>
-        <h1>区域计划工作台 <span class="demo-tag">V9 事件线版 · 模拟数据</span></h1>
+        <h1>区域计划工作台 <span class="demo-tag">V9.2 事件线版 · 模拟数据</span></h1>
         <div class="org">
           <span>华中大区</span><span class="sep">/</span><span>河南省区</span><span class="sep">/</span><span>郑州区域</span>
           <span class="sep">|</span><span>角色：区域计划</span>
@@ -579,10 +554,10 @@
     <button class="modtab" data-mod="category">品类</button>
     <button class="modtab" data-mod="review">复盘与达成</button>
     <button class="modtab" data-mod="analysis">分析与异常 <span class="n" id="alertN">0</span></button>
+    <span class="tabs-note">区域计划不参与审批与退回，仅跟踪、评估与跟催</span>
   </div>
 
-  <div class="main">
-    <div class="stack">
+  <div class="stack">
 
       <!-- 总览 -->
       <section id="mod-overview">
@@ -692,29 +667,7 @@
         </div>
       </section>
 
-    </div>
-
-    <div class="side">
-      <div class="assistant">
-        <h3><span class="sp"></span>区域计划助手</h3>
-        <p>跨模块盯进度、找异常，给提报与跟催的参考意见。试试问我：</p>
-        <button class="qa" type="button">本月还有哪些客户未提报？<span class="ans" id="qa1"></span></button>
-        <button class="qa" type="button">哪个品类达成最低？<span class="ans" id="qa2"></span></button>
-        <button class="qa" type="button">哪个审批节点滞留最多？<span class="ans" id="qa3"></span></button>
-      </div>
-      <div class="card duty">
-        <h3>工作台与职责映射</h3>
-        <ul>
-          <li><b>提报跟进</b>：客户提报进度、量达成、节点审批进度跟进（职责第 2 条）。</li>
-          <li><b>分析评估</b>：月计划与纠偏计划的分析评估，给提报参考意见（职责第 1 条）。</li>
-          <li><b>品类视角</b>：品类达成与品类×大区结构差异。</li>
-          <li><b>异常通晒</b>：异常客户与区域通晒、限时报数（职责第 3 条）。</li>
-        </ul>
-        <div class="src">期间与节奏按提报窗口配置自动判定；区域计划不参与审批与退回，仅跟踪、评估与跟催。</div>
-      </div>
-    </div>
   </div>
-  <div class="foot" id="foot"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </div>
 
@@ -811,7 +764,7 @@
 
   /* ================= 2. 组织与模拟数据 ================= */
 
-  var NODES = ['区域经理审批', '省区经理审批', '大区总监', '品类计划审批'];
+  var NODES = ['城市经理审批', '省区经理审批', '大区总监', '品类计划审批'];
   var CATS = ['水饺', '汤圆', '面点', '粽子', '馄饨'];
   var BIG = [
     { name: '华中大区', provinces: [{ name: '河南省区', regions: ['郑州区域', '洛阳区域'] }, { name: '湖北省区', regions: ['武汉区域', '襄阳区域'] }] },
@@ -1148,7 +1101,7 @@
     var rep = pct(sub.length, total);
     var kpis = [
       { l: '提报完成率', v: rep + '<small>%</small>', s: sub.length + ' / ' + total + ' 家已提报', c: rep >= 90 ? 'c-green' : 'c-red' },
-      { l: '提报量达成', v: pct(qty, tQty) + '<small>%</small>', s: fmt(qty) + ' / ' + fmt(tQty) + ' 箱', c: pct(qty, tQty) >= 80 ? 'c-green' : 'c-orange' },
+      { l: '提报量达成', v: pct(qty, tQty) + '<small>%</small>', s: fmt(qty) + ' / ' + fmt(tQty) + ' 件', c: pct(qty, tQty) >= 80 ? 'c-green' : 'c-orange' },
       { l: '审批通过率', v: pct(pass, sub.length) + '<small>%</small>', s: pass + ' / ' + sub.length + ' 家已通过', c: pct(pass, sub.length) >= 80 ? 'c-green' : 'c-orange' },
       { l: '节点滞留 >48h', v: stay + '<small> 条</small>', s: stay ? '需优先跟催' : '无滞留', c: stay ? 'c-red' : 'c-green' },
       { l: '品类最低达成', v: catMin + '<small>%</small>', s: '达成最低品类（全量）', c: catMin >= 70 ? 'c-green' : 'c-orange' },
@@ -1222,7 +1175,7 @@
 
     h.push('<p class="np"><span class="nt">二、提报与审批进度研判</span>'
       + '本区域应提报 <b>' + total + ' 家</b>，已提报 <b>' + sub.length + ' 家</b>（完成率 <b class="' + (repRate >= 90 ? 'hi-b' : 'hi-r') + '">' + repRate + '%</b>），'
-      + '提报量达成 <b>' + qtyRate + '%</b>（' + fmt(qty) + ' / ' + fmt(tQty) + ' 箱）。'
+      + '提报量达成 <b>' + qtyRate + '%</b>（' + fmt(qty) + ' / ' + fmt(tQty) + ' 件）。'
       + (miss ? '仍有 <b class="hi-r">' + miss + ' 家</b>未提报，是当前最直接的缺口来源。' : '全部客户已提报。')
       + '审批侧，滞留超 48 小时 <b class="' + (stayRows.length ? 'hi-o' : 'hi-b') + '">' + stayRows.length + ' 条</b>'
       + (stayRows.length ? '（平均已停留 ' + avgStay + ' 小时），集中在 <b>' + nodeCnt[0].n + '</b>（在办 ' + nodeCnt[0].c + ' 条）；滞留越靠前，对后续节点排期的挤压越大。' : '，链路整体顺畅。')
@@ -1351,7 +1304,7 @@
     var html;
     if (dim === 'customer') {
       html = '<table><thead><tr><th>客户 / 系统</th><th>类型</th><th>大区</th><th>省区</th><th>所属区域</th>'
-        + '<th>提报进度</th><th class="num">已提 / 应提</th><th class="num">提报量(箱)</th><th>量达成</th><th class="num">提报额(万元)</th></tr></thead><tbody>'
+        + '<th>提报进度</th><th class="num">已提 / 应提</th><th class="num">提报量(件)</th><th>量达成</th><th class="num">提报额(万元)</th></tr></thead><tbody>'
         + rows.map(function (r) {
           var tCls = r.t.type === '经销商' ? 'b-blue' : r.t.type.indexOf('直营') >= 0 ? 'b-purple' : 'b-gray';
           return '<tr><td class="strong">' + esc(r.label) + '</td><td><span class="badge ' + tCls + '">' + r.t.type + '</span></td>'
@@ -1363,7 +1316,7 @@
     } else {
       var dn = DIM_NAME[dim];
       html = '<table><thead><tr><th>' + dn + '</th><th>提报进度</th><th class="num">已提 / 应提</th>'
-        + '<th class="num">提报量(箱)</th><th>量达成</th><th class="num">提报额(万元)</th><th>未提报</th></tr></thead><tbody>'
+        + '<th class="num">提报量(件)</th><th>量达成</th><th class="num">提报额(万元)</th><th>未提报</th></tr></thead><tbody>'
         + rows.map(function (r) {
           return '<tr><td class="strong">' + esc(r.label) + '</td>'
             + '<td class="prog-cell">' + r.p + '%' + barHtml(r.p, r.cls) + '</td><td class="num">' + r.subN + ' / ' + r.totN + '</td>'
@@ -1431,7 +1384,7 @@
     }).sort(function (a, b) { return a.p - b.p; });
 
     $('catBody').innerHTML = '<table><thead><tr><th>品类</th><th class="num">客户 × 品类</th>'
-      + '<th class="num">提报量(箱)</th><th class="num">目标量(箱)</th><th>量达成</th><th class="num">缺口(箱)</th><th>研判</th></tr></thead><tbody>'
+      + '<th class="num">提报量(件)</th><th class="num">目标量(件)</th><th>量达成</th><th class="num">缺口(件)</th><th>研判</th></tr></thead><tbody>'
       + rows.map(function (r) {
         var judge = r.p >= 90 ? '<span class="badge b-green">达成良好</span>'
           : r.p >= 70 ? '<span class="badge b-blue">基本达标</span>'
@@ -1496,15 +1449,15 @@
     HIST.forEach(function (x) {
       th += '<div class="trend-col">'
         + '<div class="tm"><span>' + x.label + '</span>' + (x.closed ? '<span class="badge b-green">已关账</span>' : '<span class="badge b-orange">进行中</span>') + '</div>'
-        + '<div class="tv" style="color:' + (x.dev > 0 ? 'var(--orange)' : 'var(--blue)') + '">' + x.dir + ' ' + fmt(Math.abs(x.dev)) + ' 箱</div>'
+        + '<div class="tv" style="color:' + (x.dev > 0 ? 'var(--orange)' : 'var(--blue)') + '">' + x.dir + ' ' + fmt(Math.abs(x.dev)) + ' 件</div>'
         + bar('销售目标', x.target, 'p-blue') + bar('提报量', x.report, 'p-purple') + bar('实际发货', x.actual, 'p-green')
         + '<div class="bl" style="margin-top:7px"><span>预测准确率</span><b>' + p1(x.acc) + '%</b></div></div>';
     });
     th += '</div>';
     $('reviewTrend').innerHTML = th;
 
-    var t = '<table><thead><tr><th>月份</th><th class="num">销售目标(箱)</th><th class="num">提报量(箱)</th>'
-      + '<th class="num">提报 ÷ 目标</th><th class="num">实际发货(箱)</th><th class="num">偏差量(箱)</th><th>偏差方向</th>'
+    var t = '<table><thead><tr><th>月份</th><th class="num">销售目标(件)</th><th class="num">提报量(件)</th>'
+      + '<th class="num">提报 ÷ 目标</th><th class="num">实际发货(件)</th><th class="num">偏差量(件)</th><th>偏差方向</th>'
       + '<th class="num">预测准确率</th><th class="num">达成率</th></tr></thead><tbody>';
     HIST.forEach(function (x) {
       t += '<tr><td class="strong">' + x.label + (x.closed ? '' : ' <span class="muted" style="font-size:11px;font-weight:400">全月预估</span>') + '</td>'
@@ -1540,7 +1493,7 @@
   }
 
   var NEXT_DIM = [
-    { t: '把偏差换算成金额', d: '偏差现在用「箱」，管理层对钱更敏感。偏差量 × 均价即偏差金额：高报对应占压资金与后续库存，低报对应丢失的销售机会。' },
+    { t: '把偏差换算成金额', d: '偏差现在用「件」，管理层对钱更敏感。偏差量 × 均价即偏差金额：高报对应占压资金与后续库存，低报对应丢失的销售机会。' },
     { t: '结构性偏差（总量准 ≠ 结构准）', d: '总量可能只差 3%，但品类之间互相抵消——水饺高报 20%、汤圆低报 18%，结果既有积压又缺货。建议单列「品类结构偏差」。' },
     { t: '偏差的结构归因', d: '现在只知道整体偏高还是偏低，不知道是谁造成的。建议加「偏差贡献度 = 该单元偏差 ÷ 总偏差」，判断是全局问题还是几个大户问题。' },
     { t: '品类预测准确率排行', d: '大区不准只能催，品类不准可以直接调系数，品类排名比大区排名更有行动性。' },
@@ -1609,7 +1562,7 @@
       return;
     }
     $('unsubList').innerHTML = '<table><thead><tr><th>客户 / 系统</th><th>类型</th><th>大区</th><th>省区</th>'
-      + '<th>所属区域</th><th>上期提报量(箱)</th><th>跟进动作</th></tr></thead><tbody>'
+      + '<th>所属区域</th><th>上期提报量(件)</th><th>跟进动作</th></tr></thead><tbody>'
       + un.map(function (c) {
         var tCls = c.type === '经销商' ? 'b-blue' : c.type.indexOf('直营') >= 0 ? 'b-purple' : 'b-gray';
         return '<tr><td class="strong">' + esc(c.name) + '</td>'
@@ -1619,24 +1572,6 @@
           + '<td class="num muted">' + fmt(Math.round(c.targetQty * 0.92)) + '</td>'
           + '<td><button class="btn btn-sm" data-ev="chase" data-who="' + esc(c.name) + '" type="button">催办</button></td></tr>';
       }).join('') + '</tbody></table>';
-  }
-
-  function renderQA() {
-    var un = customers.filter(function (c) { return !c.submitted; });
-    var provs = [];
-    un.forEach(function (c) { if (provs.indexOf(c.prov) < 0) provs.push(c.prov); });
-    $('qa1').textContent = un.length
-      ? '共 ' + un.length + ' 家未提报，集中在 ' + provs.slice(0, 3).join('、') + '，建议按省区通晒限时报数。'
-      : '全部客户已提报。';
-    var catStats = CATS.map(function (cat) {
-      var rs = catRows.filter(function (r) { return r.cat === cat; });
-      return { cat: cat, p: pct(rs.reduce(function (a, r) { return a + r.qty; }, 0), rs.reduce(function (a, r) { return a + r.targetQty; }, 0)) };
-    }).sort(function (a, b) { return a.p - b.p; });
-    $('qa2').textContent = '「' + catStats[0].cat + '」达成最低（' + catStats[0].p + '%），建议核对品类目标与提报缺口。';
-    var cnt = NODES.map(function (n, i) {
-      return { n: n, c: customers.filter(function (c) { return c.submitted && !c.rejected && c.node === i; }).length };
-    }).sort(function (a, b) { return b.c - a.c; });
-    $('qa3').textContent = '「' + cnt[0].n + '」在办 ' + cnt[0].c + ' 条最多，建议优先提醒该节点负责人。';
   }
 
   /* ================= 15. 节奏维护 ================= */
@@ -1738,18 +1673,12 @@ var MODS = ['overview', 'follow', 'category', 'review', 'analysis'];
     $('winPill').className = 'win-pill ' + ws.cls;
     $('syncTime').textContent = '数据更新：' + pad(ctx.date.getMonth() + 1) + '-' + pad(ctx.day) + ' 17:40';
 
-renderTimeline(); renderEventDetail(); renderCadence();
-    renderKpi(); renderFlow(); renderAdvice(); renderFollow();
+    renderTimeline(); renderEventDetail(); renderCadence();
     renderKpi(); renderFlow(); renderAdvice(); renderFollow();
     renderReport(state.repDim); renderApproval(state.repDim);
     renderCat(); renderCatMatrix(); renderReview(); renderNextDim();
-    renderAlert(); renderEntrance(); renderUnsub(); renderQA();
+    renderAlert(); renderEntrance(); renderUnsub();
 
-    $('foot').innerHTML = '<b>口径说明</b>：提报量 = 销售侧提报的需求；实际发货 = 最终真实发出；偏差量 = 提报量 − 实际发货；'
-      + '预测准确率 = 1 − ｜偏差量｜ ÷ 实际发货；提报达成 = 提报量 ÷ 销售目标。<br>'
-      + '<b>本版视觉按《工作台视觉规范 workbench-ui-style》重做（字体、字号、颜色、间距、圆角、阴影、页签、卡片、表格、状态、动效、响应式全部对齐规范）</b>：保留 V6 的模块下钻、全链路进度与文字化分析；'
-      + '新增按提报窗口自动判定期间（无需手动切换月初/纠偏）、横向事件线（按日期规则驱动、可维护节奏）；'
-      + '并修正「区域计划不参与审批与退回」的角色口径（原以「区域审批待办」呈现）。全部业务数据为模拟数据。';
   }
 
   /* ================= 18. 事件 ================= */
@@ -1850,8 +1779,6 @@ renderTimeline(); renderEventDetail(); renderCadence();
     else { toast('打开明细（原型演示）'); }
   });
 
-  var QAS = document.querySelectorAll('.qa');
-  [].forEach.call(QAS, function (b) { b.addEventListener('click', function () { b.classList.toggle('open'); }); });
 
   // 原型演示：模拟日期，验证「按提报窗口自动判定期间」，非手动切换期间
   $('simBtn').addEventListener('click', function () {
