@@ -29,6 +29,8 @@ const PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 
 const MAX_TOOLS = 40;
 const MAX_RESULT_CHARS = 20_000;
+/** 单条资源结果内联上限：够模型读出结论，又不至于把一次查询塞爆上下文。 */
+const MAX_RESOURCE_INLINE_CHARS = 12_000;
 
 type JsonRpcReply = {
   id?: unknown;
@@ -131,6 +133,43 @@ function resultText(result: unknown): string {
   return (isError ? "GEA_MCP_TOOL_ERROR: " : "") + fallback.slice(0, MAX_RESULT_CHARS);
 }
 
+/** 结果里的资源链接（大结果以 `resource_link` 返回，正文要另读一次）。 */
+type ResourceLink = { uri: string; ossUrl?: string };
+
+function resourceLinks(result: unknown): ResourceLink[] {
+  const content = (result as { content?: unknown })?.content;
+  if (!Array.isArray(content)) return [];
+  const links: ResourceLink[] = [];
+  for (const item of content) {
+    const entry = item as {
+      type?: unknown;
+      uri?: unknown;
+      _meta?: { oss_url?: unknown };
+    };
+    if (entry?.type !== "resource_link" || typeof entry.uri !== "string") continue;
+    const ossUrl = entry._meta?.oss_url;
+    links.push({
+      uri: entry.uri,
+      ...(typeof ossUrl === "string" ? { ossUrl } : {}),
+    });
+  }
+  return links;
+}
+
+/** `resources/read` 返回的正文。 */
+function resourceContentsText(result: unknown): string {
+  const contents = (result as { contents?: unknown })?.contents;
+  if (!Array.isArray(contents)) return "";
+  return contents
+    .map((part) => {
+      const text = (part as { text?: unknown })?.text;
+      return typeof text === "string" ? text : "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
 /**
  * 建立模块 MCP 会话并取回工具清单。传输层已经负责会话头、路由码与重连，
  * 这里只按协议顺序调用；initialize 成功后 MCP-Session-Id 由传输层维护。
@@ -211,7 +250,41 @@ export async function openModuleMcp(
         { expectId: id, ...(negotiated ? { version: negotiated } : {}) },
       );
       const result = await readReply(response, id, callSignal);
-      return resultText(result);
+      const links = resourceLinks(result);
+      if (links.length === 0) return resultText(result);
+      // 线上实测：这类结果以 `data-artifact://gateway/…` 链接返回，模型得再调一次
+      // 平台的读资源工具；它会把 server 猜成 browser（那个服务没连），整轮白跑。
+      // 宿主在同一条 MCP 会话里读回来内联，模型一次调用就能看到内容。
+      const parts: string[] = [];
+      for (const link of links.slice(0, 2)) {
+        try {
+          const readId = randomUUID();
+          const readResponse = await post(
+            {
+              jsonrpc: "2.0",
+              id: readId,
+              method: "resources/read",
+              params: { uri: link.uri },
+            },
+            { ...(negotiated ? { version: negotiated } : {}) },
+          );
+          const text = resourceContentsText(
+            await readReply(readResponse, readId, callSignal),
+          );
+          if (!text) throw new Error("GEA_MCP_RESOURCE_EMPTY");
+          parts.push(
+            `【结果内容 ${link.uri}】\n${text.slice(0, MAX_RESOURCE_INLINE_CHARS)}`,
+          );
+        } catch (error) {
+          parts.push(
+            `【结果内容读不回来：${link.uri}（${
+              error instanceof Error ? error.message : String(error)
+            }）】不要再换别的工具去读这个链接：说明这次数据没取到，` +
+              "需要行数据时改用 response_mode=inline_complete 再查一次。",
+          );
+        }
+      }
+      return parts.join("\n").slice(0, MAX_RESULT_CHARS);
     },
   };
 }

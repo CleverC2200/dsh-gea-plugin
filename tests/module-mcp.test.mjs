@@ -139,3 +139,73 @@ test("协议版本协商失败时给出可读错误，不静默成功", async ()
     /GEA_MCP_INIT_FAILED/,
   );
 });
+
+test("resource_link 结果由宿主读回内联，模型不必自己读资源", async () => {
+  const { seen, transport } = fakeTransport((body) => {
+    if (body.method === "initialize")
+      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+    if (body.method === "notifications/initialized") return new Response("", { status: 202 });
+    if (body.method === "tools/list")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { tools: [{ name: "query_business_data", inputSchema: { properties: { action: {} } } }] },
+      });
+    if (body.method === "tools/call")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          isError: false,
+          content: [
+            {
+              type: "resource_link",
+              name: "query_business_data-result",
+              mimeType: "application/json",
+              uri: "data-artifact://gateway/de861c7a",
+              _meta: { oss_url: "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/gea/data-artifacts/x.json" },
+            },
+          ],
+        },
+      });
+    if (body.method === "resources/read")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { contents: [{ uri: body.params.uri, mimeType: "application/json", text: '{"rows":[{"d":"2026-09-23"}]}' }] },
+      });
+    throw new Error("unexpected method " + body.method);
+  });
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  const value = await module.call("query_business_data", { action: "query" }, new AbortController().signal);
+  // 正文直接内联，模型不用再调平台的读资源工具（它会猜错 server）。
+  assert.match(value, /结果内容 data-artifact:\/\/gateway\/de861c7a/);
+  assert.match(value, /2026-09-23/);
+  assert.deepEqual(
+    seen.map((item) => item.method),
+    ["initialize", "notifications/initialized", "tools/list", "tools/call", "resources/read"],
+  );
+});
+
+test("资源读不回来时给可读说明，不让模型拿着链接乱试", async () => {
+  const { transport } = fakeTransport((body) => {
+    if (body.method === "initialize")
+      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+    if (body.method === "notifications/initialized") return new Response("", { status: 202 });
+    if (body.method === "tools/list")
+      return json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] } });
+    if (body.method === "tools/call")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { content: [{ type: "resource_link", uri: "data-artifact://gateway/abc" }] },
+      });
+    return json({ jsonrpc: "2.0", id: body.id, error: { code: -32601, message: "method not found: resources/read" } });
+  });
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  const value = await module.call("query_business_data", { action: "query" }, new AbortController().signal);
+  assert.match(value, /结果内容读不回来/);
+  assert.match(value, /response_mode=inline_complete/);
+  // 不能把"去读浏览器 MCP"这类错误留给模型自己撞。
+  assert.equal(value.includes("browser"), false);
+});
