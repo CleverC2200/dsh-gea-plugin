@@ -47,9 +47,8 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  assert.equal(modelCalls,0,'opening the workbench must not trigger analysis');
  const readProgress=()=>frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
  // 节点条始终展示全部五个节点，进度按状态统计，跟当前选中的节点无关。
- // 客户提报节点已按业务方反馈去掉：节点条只剩四个审批节点，这一步没人签完所以都是 0%。
- await expect.poll(readProgress).toEqual(['进度 0%','进度 0%','进度 0%','进度 0%']);
- const before=await readProgress(); assert.equal(before.length,4);
+ await expect.poll(readProgress).toEqual(['进度 100%','进度 0%','进度 0%','进度 0%','进度 0%']);
+ const before=await readProgress(); assert.equal(before.length,5);
  // V1.8 #05：流程图默认收起，点标题行右侧的入口展开后才能点各节点。
  if(!(await frame.getByTestId('regional-approval-flow-lane').isVisible())) await frame.getByTestId('regional-approval-flow-toggle').click();
  // 角色决定能进哪个节点：没权限的节点置灰不可点。

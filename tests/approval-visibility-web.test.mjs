@@ -51,14 +51,13 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   // 节点条默认收起（V1.8 #05），先展开才能看到各节点。
   if (!(await frame.getByTestId('regional-approval-flow-lane').isVisible()))
     await frame.getByTestId('regional-approval-flow-toggle').click();
-  // 节点条展示四个审批节点（客户提报按业务方反馈去掉）：没权限的节点置灰不可点。
-  await expect(frame.locator('[data-testid^="regional-approval-stage-"]')).toHaveCount(4);
+  // 节点条始终展示全部五个节点：角色决定能进哪个节点，没权限的节点置灰不可点。
+  await expect(frame.locator('[data-testid^="regional-approval-stage-"]')).toHaveCount(5);
   const region = frame.getByTestId('regional-approval-stage-region');
   await expect(region).toHaveAttribute('aria-pressed', 'true');
-  for (const stage of ['province', 'area', 'category'])
+  for (const stage of ['customer', 'province', 'area', 'category'])
     await expect(frame.getByTestId(`regional-approval-stage-${stage}`)).toBeDisabled();
-  // 客户提报节点已按业务方反馈去掉，节点条只剩四个审批节点。
-  await expect(frame.getByRole('button',{name:/客户提报.*进度/})).toHaveCount(0);
+  await expect(frame.getByRole('button',{name:/客户提报.*进度/})).not.toContainText('进度 0%');
   await region.click();
   await expect(region).toHaveAttribute('aria-pressed', 'false');
   await expect(frame.getByTestId('regional-approval-flow-toggle')).toContainText('当前节点：全部节点');

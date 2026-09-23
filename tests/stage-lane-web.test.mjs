@@ -43,15 +43,14 @@ test('approval flow lane is collapsed by default and toggles from the title row'
   // 收起态仍然能看到队列。
   await expect(frame.getByTestId('regional-approval-queue-footer')).toBeVisible();
 
-  // 点开在标题行下方展开，四个审批节点可见（客户提报按业务方反馈去掉）。
+  // 点开在标题行下方展开，五个节点可见。
   await toggle.click();
   await expect(lane).toBeVisible();
   assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
-  // 节点条始终展示全部四个审批节点：角色决定能进哪个节点，没权限的节点置灰不可点。
-  await expect(frame.locator('[data-testid^="regional-approval-stage-"]')).toHaveCount(4);
-  await expect(frame.getByTestId('regional-approval-stage-customer')).toHaveCount(0);
+  // 节点条始终展示全部五个节点：角色决定能进哪个节点，没权限的节点置灰不可点。
+  await expect(frame.locator('[data-testid^="regional-approval-stage-"]')).toHaveCount(5);
   await expect(frame.getByTestId('regional-approval-stage-region')).toBeEnabled();
-  for (const stage of ['province', 'area', 'category'])
+  for (const stage of ['customer', 'province', 'area', 'category'])
     await expect(frame.getByTestId(`regional-approval-stage-${stage}`)).toBeDisabled();
   await expect(toggle).toContainText('当前节点：城市经理审批');
   // 再点当前节点就回到「全部节点」，队列按数据权限取数。
@@ -141,6 +140,6 @@ test('default node follows the account role, not every node', { timeout: 90000 }
   await expect(frame.getByTestId('regional-approval-stage-province')).toHaveAttribute('aria-pressed', 'true');
   // 只有账号有角色的节点可点，其它节点留在表里但置灰。
   await expect(frame.getByTestId('regional-approval-stage-province')).toBeEnabled();
-  for (const stage of ['region', 'area', 'category'])
+  for (const stage of ['customer', 'region', 'area', 'category'])
     await expect(frame.getByTestId(`regional-approval-stage-${stage}`)).toBeDisabled();
 });

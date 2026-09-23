@@ -2205,13 +2205,7 @@ const RegionalApprovalWorkbench: React.FC<{
     }
   };
 
-  /**
-   * 节点条按业务方 2026-09-23 反馈只保留四个审批节点：
-   * 「客户提报」是销售侧动作、审批人这里用不到，去掉。
-   */
-  const visibleStageFixtures = APPROVAL_STAGE_FIXTURES.filter(
-    (stage) => stage.id !== ('evaluation' as ApprovalStageId) && stage.id !== ('customer' as ApprovalStageId)
-  );
+  const visibleStageFixtures = APPROVAL_STAGE_FIXTURES.filter((stage) => stage.id !== ('evaluation' as ApprovalStageId));
   // 节点条始终展示全部节点：角色决定能进哪些节点，没权限的节点置灰不可点，
   // 明细由数据权限决定，因此「全部节点」这一视图保留。
   const stageAuthorized = (id: ApprovalStageId) =>
