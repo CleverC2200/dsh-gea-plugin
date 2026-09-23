@@ -49,21 +49,21 @@ test("business menu labels rename inventory pages without republishing plugin bu
 const menuOf = (ids) => resolveBusinessMenu(BUSINESS_MENU_PRESET, new Map(ids.map(id => [id, `${id} 名称`])));
 test("left menu follows the fixed prototype directory and disables unavailable pages", () => {
   const groups = menuOf(['gea-proof', 'gea-regional-plan', 'inventory-apsplan', 'inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-dealer', 'inventory-customer', 'inventory-personal']);
-  assert.deepEqual(groups.map(group => [group.key, group.title]), [['supply', '产销协同'], ['plan', '计划管理'], ['inventory', '库存管理'], ['orders', '订单管理']]);
+  assert.deepEqual(groups.map(group => [group.key, group.title]), [['supply', '产销协同'], ['plan', '计划管理'], ['inventory', '库存管理']]);
   assert.equal(groups[0].flat, false);
   assert.deepEqual(groups[0].entries.map(entry => entry.id), ['inventory-apsplan']);
   assert.deepEqual(groups[1].entries.map(entry => entry.id), ['plan-region-category', 'gea-proof', 'gea-regional-plan', 'plan-category-production', 'plan-capacity-assessment']);
-  assert.deepEqual(groups[2].entries.map(entry => entry.id), ['inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-customer']);
+  assert.deepEqual(groups[2].entries.map(entry => entry.id), ['inventory-qll', 'inventory-aqkc', 'inventory-fc']);
   assert.equal(groups[2].entries[0].title, '全链库存工作台');
   assert.equal(groups[2].entries[0].disabled, false);
-  assert.deepEqual(groups[3].entries.map(entry => entry.id), ['inventory-orderworkbench', 'inventory-orderfulfillment']);
   assert.equal(groups[1].entries[0].disabled, true);
   assert.equal(groups[1].entries[1].disabled, false);
-  assert.equal(groups[3].entries.every(entry => entry.disabled), true);
 });
-test("registered development pages become clickable without changing their labels", () => {
-  const groups = menuOf(['inventory-orderworkbench', 'inventory-orderfulfillment']);
-  const orders = groups.find(group => group.key === 'orders');
-  assert.equal(orders.entries.every(entry => entry.disabled === false), true);
-  assert.deepEqual(orders.entries.map(entry => entry.title), ['订单管理工作台(开发中)', '订单履约(开发中)']);
+test("演示与下架模块即便已安装也不占菜单位", () => {
+  // 订单管理整组都是演示（mock）页面：装上了也不该冒出来；空分组直接不渲染。
+  const groups = menuOf(['inventory-orderworkbench', 'inventory-orderfulfillment', 'inventory-customer', 'inventory-personal']);
+  assert.equal(groups.some(group => group.key === 'orders'), false);
+  const ids = groups.flatMap(group => group.entries.map(entry => entry.id));
+  for (const id of ['inventory-orderworkbench', 'inventory-orderfulfillment', 'inventory-customer', 'inventory-personal'])
+    assert.equal(ids.includes(id), false, `${id} 不该出现在业务菜单里`);
 });

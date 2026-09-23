@@ -2,7 +2,11 @@
   "hidden": [
     "inventory-apsboard",
     "inventory-apsdemand",
-    "inventory-apsdelivery"
+    "inventory-apsdelivery",
+    "inventory-customer",
+    "inventory-orderworkbench",
+    "inventory-orderfulfillment",
+    "inventory-personal"
   ],
   "labels": {
     "inventory-apsplan": { "name": "产销协同Agent" },

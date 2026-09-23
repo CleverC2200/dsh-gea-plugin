@@ -322,6 +322,9 @@ export function registerHtmlClient(ctx: any) {
         if (!envelope.ok || !envelope.value?.htmlPlugins) return;
         const items = await request("plugins");
         for (const plugin of items) {
+          // 下架与演示（mock）模块不注册面板：宿主已经不给它们生成 Agent 预设，
+          // 留了入口只会点出一个绑不上会话的空页面。
+          if (plugin.retired === true) continue;
           const pages = Array.isArray(plugin.pages) && plugin.pages.length
             ? plugin.pages
             : [{ id: plugin.id, name: plugin.name, view: "", order: 20 }];

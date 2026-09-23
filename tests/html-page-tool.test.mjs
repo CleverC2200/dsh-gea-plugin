@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
@@ -13,6 +13,8 @@ async function probePlugin(options = {}) {
   const id = options.id ?? "inventory-probe";
   const name = options.name ?? "探针页面";
   const skillName = options.skillName ?? "inventory-probe";
+  // 探针默认是演示（mock）模块：它和真实模块共用同一套页面工具，但没有数据通道。
+  const mode = options.mock === false ? undefined : "mock";
   const root = await mkdtemp(join(tmpdir(), "gea-html-probe-"));
   await mkdir(join(root, "skills", "probe"), { recursive: true });
   await writeFile(join(root, "index.html"), "<!doctype html><html><body>probe</body></html>\n");
@@ -28,7 +30,7 @@ async function probePlugin(options = {}) {
     html: "index.html",
     skills: ["skills/probe/SKILL.md"],
     mcp: "mcp.json",
-    mode: "mock",
+    mode,
     gea: { consumerCode: id + "-consumer", readonly: true, contract: "gea-html-v1" },
   }));
   await writeFile(join(root, "mcp.json"), JSON.stringify({
@@ -43,7 +45,7 @@ async function probePlugin(options = {}) {
 
 async function registeredPlugins(options = {}) {
   const roots = options.roots ?? [await probePlugin(options)];
-  const runtimeDir = await mkdtemp(join(tmpdir(), "gea-html-runtime-"));
+  const runtimeDir = options.runtimeDir ?? (await mkdtemp(join(tmpdir(), "gea-html-runtime-")));
   const tools = [];
   const routes = [];
   const identities = new Map();
@@ -189,9 +191,9 @@ test("each plugin's SKILL.md is published for the main conversation", async () =
 test("preset names follow the repo override table and full-chain legacy sessions keep working", async () => {
   const { runtimeDir } = await registeredPlugins({
     roots: [
-      await probePlugin(),
-      await probePlugin({ id: "inventory-aqkc", name: "安全库存", skillName: "inventory-aqkc" }),
-      await probePlugin({ id: "inventory-qll", name: "全链路库存", skillName: "inventory-qll" }),
+      await probePlugin({ mock: false }),
+      await probePlugin({ id: "inventory-aqkc", name: "安全库存", skillName: "inventory-aqkc", mock: false }),
+      await probePlugin({ id: "inventory-qll", name: "全链路库存", skillName: "inventory-qll", mock: false }),
     ],
   });
   const read = async (id) =>
@@ -218,7 +220,7 @@ test("preset names follow the repo override table and full-chain legacy sessions
 });
 
 test("each page agent card describes its own capability", async () => {
-  const { runtimeDir } = await registeredPlugins();
+  const { runtimeDir } = await registeredPlugins({ roots: [await probePlugin({ mock: false })] });
   // 没登记在 presets/agent-capabilities.json 的插件，回退到它自己 SKILL.md 的 description。
   const probe = parseYaml(
     await readFile(join(runtimeDir, "native-presets", "gea-html-inventory-probe", "preset.yml"), "utf8"),
@@ -237,4 +239,29 @@ test("each page agent card describes its own capability", async () => {
   ])
     assert.ok(capabilities[id]?.length, `${id} 有独立介绍`);
   assert.notEqual(capabilities["inventory-fc"], capabilities["inventory-aqkc"]);
+});
+
+test("mock 与下架模块不进 Agent 预设列表，老版本留下的预设目录也会被清掉", async () => {
+  const runtimeDir = await mkdtemp(join(tmpdir(), "gea-html-runtime-"));
+  const native = join(runtimeDir, "native-presets");
+  const residue = async (name) => {
+    await mkdir(join(native, name), { recursive: true });
+    await writeFile(join(native, name, "preset.yml"), "name: 老版本残留\n");
+  };
+  // 老版本装过的：全能业务助手、被产销协同 Agent 替代的看板、已经整包卸掉的 ghost 模块。
+  for (const name of ["gea-agent-hub", "gea-html-inventory-apsboard", "gea-html-inventory-ghost"])
+    await residue(name);
+  // 不是本仓库生成的预设目录，清理时不能顺手删。
+  await residue("auto-negotiation");
+  await registeredPlugins({
+    runtimeDir,
+    roots: [
+      // 真实模块照常出现在预设列表里。
+      await probePlugin({ mock: false }),
+      // 演示（mock）模块与下架名单里的模块都不能被选中。
+      await probePlugin({ id: "inventory-customer", name: "客户库存" }),
+      await probePlugin({ id: "inventory-personal", name: "库存管理工作台", mock: false }),
+    ],
+  });
+  assert.deepEqual((await readdir(native)).sort(), ["auto-negotiation", "gea-html-inventory-probe"]);
 });
