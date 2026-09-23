@@ -25,6 +25,7 @@ import { Business, object, type Deployment } from "./host/business.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
 import { surfacePromptLine } from "./host/workbench-surface.ts";
 import { mountTurnAnchor } from "./host/turn-anchor.ts";
+import { networkError } from "./shared/net-error.ts";
 import { registerHtmlPlugins, type PageBridgeHost } from "./html-plugins.ts";
 import { injectPageScan } from "./html-page-scan.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
@@ -205,6 +206,9 @@ class GeaModelAdapter extends LlmAdapter {
       ]),
     );
     const signal = transport.signal;
+    // 只在"连接阶段"和"流式阶段"区分，好在报错里说清断在哪一步。
+    let stage = "连接";
+    const modelHost = "GEA 模型网关";
     try {
       const route = await this.business.modelRoute(
         signal,
@@ -231,6 +235,7 @@ class GeaModelAdapter extends LlmAdapter {
         throw new Error("GEA_MODEL_HTTP_" + response.status);
       }
       if (!response.body) throw new Error("GEA_MODEL_HTTP_NO_BODY");
+      stage = "流式读取";
       if (
         !response.headers
           .get("content-type")
@@ -241,6 +246,14 @@ class GeaModelAdapter extends LlmAdapter {
       yield* geaTextStream(response.body, signal, {
         names: options.tools?.map((tool) => tool.name) ?? [],
         maxBytes: this.business.config.maxSnapshotBytes,
+      });
+    } catch (error) {
+      // 线上实测：模型请求断线时界面只有 `fetch failed` + UNKNOWN（undici 的真实原因在 cause 里）。
+      // 统一翻成可读、带 code 的错误：连哪个 host、断在连接还是流式阶段、原因码是什么。
+      throw networkError(error, {
+        what: `模型网关 ${modelHost}`,
+        stage,
+        timeoutMs: this.business.config.modelRequestTimeoutMs,
       });
     } finally {
       transport.dispose();

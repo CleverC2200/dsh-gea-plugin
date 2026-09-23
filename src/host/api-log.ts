@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { networkError } from "../shared/net-error.ts";
 
 const DEFAULT_LIMIT = 500;
 const BODY_LIMIT = 4 * 1024 * 1024;
@@ -683,7 +684,12 @@ export class GeaApiLogCenter {
         ),
       };
       this.finish(record, started);
-      throw error;
+      // 线上实测：这类失败原样抛出去，界面只有 `fetch failed` + UNKNOWN（真实原因在 cause 里）。
+      // 统一翻成可读、带 code 的错误，并把"在连哪个接口"写进去。
+      throw networkError(error, {
+        what: safeUrl.path,
+        stage: "请求",
+      });
     }
   }
 
