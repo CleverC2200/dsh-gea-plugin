@@ -175,6 +175,15 @@ test("接线：闸门在发送前调用，且清单不在手时先补读一次 i
       source.indexOf("await module.call(toolName, parameters, exec.signal)"),
     "闸门必须在真正发送之前",
   );
+  // 结构性缺口：已知取不到的组合要在发送前短路，且和被拒那次一样计入本轮总账。
+  assert.match(source, /business\.cubeGaps\(\)\.find\(consumerCode, queriedModel\)/);
+  assert.match(source, /availability: "known-gap"/);
+  assert.match(source, /business\.cubeGaps\(\)\.note\(consumerCode, queriedModel/);
+  assert.ok(
+    source.indexOf('business.cubeGaps().find(consumerCode, queriedModel)') <
+      source.indexOf("await module.call(toolName, parameters, exec.signal)"),
+    "已知缺口必须在真正发送之前短路",
+  );
 });
 
 test("G5 成员：不存在的成员拦下并给真名；维度不能进 measures；measures 上限按清单", () => {
