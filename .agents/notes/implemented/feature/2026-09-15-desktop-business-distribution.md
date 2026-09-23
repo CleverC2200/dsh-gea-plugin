@@ -1,6 +1,6 @@
 # GEA Desktop business distribution
 
-GEA Desktop 0.0.7 provisions company deployment settings, an offline company suite catalog, and an archive refresh URL without asking business users for GitHub repository details or credentials. Existing resource checkouts and account/session data survive application restarts and plugin updates. Suites remain selectable in Agent Manage; startup does not automatically enable new capabilities.
+GEA Desktop 0.0.7 provisions company deployment settings, an offline company suite catalog, and a company source URL without asking business users for repository details or credentials. Existing resource checkouts and account/session data survive application restarts and plugin updates. Suites remain selectable in Agent Manage; startup does not automatically enable new capabilities.
 
 The desktop bundles the company GitLab stable and test channel URLs and Hub 1.4.3-company.7. Downloads require no GitLab login; the network must reach the configured company GitLab host. Channels explicitly include Desktop 0.0.7 compatibility, and immutable package digests remain the authority for downloads.
 
@@ -14,4 +14,4 @@ Plugin preparation runs pnpm install in the private staging graph before adding 
 
 After pnpm materialization, the installer reuses baseline browser build outputs only when the installed source digest equals the recorded build input or output digest. Different plugin content remains untouched. The baseline output digest and node_modules-relative paths are checked before copying; this preserves shared-module startup performance across plugin updates without recompiling on the user machine.
 
-The installer pins pnpm 11.27.0. The earlier 11.19.0 bundle clears the worker pool during shutdown; late package fetches can recreate a pool and prevent process exit after the completion log. The maintained version includes [upstream worker shutdown fix #13226](https://github.com/pnpm/pnpm/pull/13226). Installation still requires the official DSH command to exit successfully; log text is never treated as completion.
+The installer pins pnpm 11.27.0. The earlier 11.19.0 bundle clears the worker pool during shutdown; late package fetches can recreate a pool and prevent process exit after the completion log. The maintained version includes the upstream worker shutdown fix (#13226). Installation still requires the official DSH command to exit successfully; log text is never treated as completion.
