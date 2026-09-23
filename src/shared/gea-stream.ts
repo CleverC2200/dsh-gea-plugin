@@ -27,6 +27,9 @@ const STREAM_FAILURES: Record<string, string> = {
     "模型返回了无法识别的结束原因，本轮已中止",
   GEA_MODEL_EMPTY_RESPONSE: "模型这一轮没有给出任何内容，请重发一次",
   GEA_MODEL_INVALID_SSE: "模型返回的数据格式无法解析，本轮已中止",
+  GEA_MODEL_GATEWAY_ERROR: "模型网关在流里回了错误，本轮已中止",
+  GEA_MODEL_CONTEXT_TOO_LONG:
+    "这一轮上下文超出模型上限，本轮已中止：把问题拆小（少读几份明细、换成聚合口径）再问一次",
 };
 
 function streamFailure(code: string, detail?: string): Error {
@@ -48,6 +51,34 @@ function argumentTail(argumentsText: string, max = 160): string {
   return flat.length > max ? "…" + flat.slice(-max) : flat;
 }
 
+/**
+ * 出问题时的那一段原文（截断、去控制字符）。
+ * 线上实测（session-c391a75f，27 步 / 44 次调用）：流里回了错误对象，
+ * 我们只报"格式无法解析"，把网关给的真因吞了——所以每处失败都要带上这个片段。
+ */
+function snippet(text: string, max = 160): string {
+  const flat = text.replace(/[\u0000-\u001f]+/g, " ").trim();
+  return flat.length > max ? flat.slice(0, max) + "…" : flat;
+}
+
+/** 上下文超限的常见说法（网关/模型侧措辞不一，统一归类）。 */
+const CONTEXT_LIMIT_SIGN =
+  /context length|context_length|maximum context|too many tokens|token limit|reduce the length|max_tokens/i;
+
+/** 流里的错误对象压成一句可读原因（含 code/type）。 */
+function gatewayErrorDetail(value: unknown): string {
+  const record_ = record(value);
+  const code = typeof record_.code === "string" ? record_.code : undefined;
+  const type = typeof record_.type === "string" ? record_.type : undefined;
+  const message =
+    typeof record_.message === "string" && record_.message.trim()
+      ? record_.message
+      : typeof value === "string"
+        ? value
+        : snippet(JSON.stringify(value) ?? "");
+  return [code, type, message].filter(Boolean).join(" | ");
+}
+
 function logRejectedToolCall(name: string, reason: string, argumentsText: string): void {
   console.log(
     `[model-stream] dropped tool call name=${name || "(no name)"} reason=${reason} bytes=${new TextEncoder().encode(argumentsText).byteLength} tail=${argumentTail(argumentsText)}`,
@@ -64,27 +95,36 @@ function completion(data: string): {
   try {
     parsed = JSON.parse(data);
   } catch {
-    invalid("GEA_MODEL_INVALID_SSE");
+    invalid(
+      "GEA_MODEL_INVALID_SSE",
+      `这一帧不是 JSON（${new TextEncoder().encode(data).byteLength} 字节）：${snippet(data)}`,
+    );
   }
   const payload = record(parsed);
-  if (
-    payload.error ||
-    !Array.isArray(payload.choices) ||
-    payload.choices.length > 1
-  )
-    invalid("GEA_MODEL_INVALID_SSE");
+  // 网关用 SSE 回错误对象时（上下文超限、上游模型报错、限流…），要把它的话原样带出来：
+  // 一律报"格式无法解析"等于把真因吞掉（线上就是这么被误导的）。
+  if (payload.error != null) {
+    const detail = gatewayErrorDetail(payload.error);
+    if (CONTEXT_LIMIT_SIGN.test(detail))
+      invalid("GEA_MODEL_CONTEXT_TOO_LONG", detail);
+    invalid("GEA_MODEL_GATEWAY_ERROR", detail);
+  }
+  if (!Array.isArray(payload.choices))
+    invalid("GEA_MODEL_INVALID_SSE", `choices 不是数组：${snippet(data)}`);
+  if (payload.choices.length > 1)
+    invalid("GEA_MODEL_INVALID_SSE", `choices 多于一条（${payload.choices.length}）`);
   if (payload.choices.length === 0) return {};
   const choice = record(payload.choices[0]);
   if (choice.index !== undefined && choice.index !== 0)
-    invalid("GEA_MODEL_INVALID_SSE");
+    invalid("GEA_MODEL_INVALID_SSE", `choice.index=${String(choice.index)}`);
   const delta = choice.delta == null ? {} : record(choice.delta);
   if (delta.function_call != null)
     invalid("GEA_MODEL_UNSUPPORTED_TOOL_CALL");
   if (delta.tool_calls != null && !Array.isArray(delta.tool_calls))
-    invalid("GEA_MODEL_INVALID_SSE");
+    invalid("GEA_MODEL_INVALID_SSE", `tool_calls 不是数组：${snippet(data)}`);
   const tools = delta.tool_calls as unknown[] | undefined;
   if (delta.content != null && typeof delta.content !== "string")
-    invalid("GEA_MODEL_INVALID_SSE");
+    invalid("GEA_MODEL_INVALID_SSE", `content 类型是 ${typeof delta.content}`);
   const text = typeof delta.content === "string" ? delta.content : undefined;
   // reasoning_content 不会被投影为最终答案。
   if (choice.finish_reason == null) return { text, tools };

@@ -274,3 +274,64 @@ test("流失败的报错带上人话，同时保留错误码", async () => {
     },
   );
 });
+
+// 线上实测（session-c391a75f，27 步 / 44 次调用、工具结果合计 21.3 万字符）：
+// 网关在流里回了错误对象，我们却报成"格式无法解析"，真因被吞。三种要分开：
+test("流里的错误对象：上下文超限单独成码，并带上网关原话", async () => {
+  const frame = `data: ${JSON.stringify({
+    error: {
+      code: "context_length_exceeded",
+      type: "invalid_request_error",
+      message: "This model's maximum context length is 65536 tokens",
+    },
+  })}\r\n\r\n`;
+  await assert.rejects(
+    collect(geaTextStream(streamOf(frame))),
+    (error) => {
+      assert.equal(error.code, "GEA_MODEL_CONTEXT_TOO_LONG");
+      assert.match(error.message, /GEA_MODEL_CONTEXT_TOO_LONG/);
+      assert.match(error.message, /maximum context length/);
+      assert.match(error.message, /上下文超出模型上限/);
+      return true;
+    },
+  );
+});
+
+test("流里的其它网关错误：按 GEA_MODEL_GATEWAY_ERROR 报，带 code 与 message", async () => {
+  const frame = `data: ${JSON.stringify({
+    error: { code: "upstream_error", message: "模型服务暂时不可用" },
+  })}\r\n\r\n`;
+  await assert.rejects(
+    collect(geaTextStream(streamOf(frame))),
+    (error) => {
+      assert.equal(error.code, "GEA_MODEL_GATEWAY_ERROR");
+      assert.match(error.message, /upstream_error/);
+      assert.match(error.message, /模型服务暂时不可用/);
+      return true;
+    },
+  );
+});
+
+test("不是 JSON 的帧：报 INVALID_SSE，并把那一帧原文带出来", async () => {
+  await assert.rejects(
+    collect(geaTextStream(streamOf("data: <html>502 Bad Gateway</html>\r\n\r\n"))),
+    (error) => {
+      assert.equal(error.code, "GEA_MODEL_INVALID_SSE");
+      assert.match(error.message, /这一帧不是 JSON/);
+      assert.match(error.message, /502 Bad Gateway/);
+      return true;
+    },
+  );
+});
+
+test("choices 形状不对：也要说清是哪一项不对", async () => {
+  const frame = `data: ${JSON.stringify({ choices: "nope" })}\r\n\r\n`;
+  await assert.rejects(
+    collect(geaTextStream(streamOf(frame))),
+    (error) => {
+      assert.equal(error.code, "GEA_MODEL_INVALID_SSE");
+      assert.match(error.message, /choices 不是数组/);
+      return true;
+    },
+  );
+});
