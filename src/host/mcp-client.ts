@@ -136,6 +136,88 @@ function resultText(result: unknown): string {
 /** 结果里的资源链接（大结果以 `resource_link` 返回，正文要另读一次）。 */
 type ResourceLink = { uri: string; ossUrl?: string };
 
+/**
+ * 网关的"业务失败信封"：HTTP 200、JSON-RPC 也没有 error，但 result 正文里写着
+ * `success:false` + `businessCode`。
+ *
+ * 线上现象：下游工具失败时报 `MCP_UPSTREAM_TOOL_ERROR` +"请按 requestId 查看下游工具
+ * 错误记录"，我们原样把 JSON 当数据回给模型——界面上既不是红色错误、也不是人话，
+ * 用户看到的就是"报错都不展示了"。
+ */
+type GatewayFailure = {
+  code: string;
+  message: string;
+  requestId?: string;
+  suggestedAction?: string;
+  /** 授权/权限类：属于业务状态，如实回报；其余按失败抛错。 */
+  policy: boolean;
+};
+
+const POLICY_FAILURE_CODES = new Set([
+  "AI_GATEWAY_DATA_PERMISSION_DENIED",
+  "AGENT_ACCESS_DENIED",
+  "GEA_PLUGIN_SESSION_REJECTED",
+]);
+
+/** 失败码的形态：`OK` 这类正常码不能误判成失败。 */
+const FAILURE_CODE =
+  /(ERROR|FAILED|FAILURE|DENIED|REJECTED|INVALID|EXCEEDED|NOT_FOUND|EMPTY|UNKNOWN|UNAVAILABLE|TIMEOUT|EXPIRED|FORBIDDEN)/;
+
+function gatewayFailure(text: string): GatewayFailure | undefined {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{")) return undefined;
+  let value: Record<string, unknown>;
+  try {
+    value = JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+  if (!value || typeof value !== "object") return undefined;
+  const code = [value.businessCode, value.code].find(
+    (item): item is string =>
+      typeof item === "string" && FAILURE_CODE.test(item),
+  );
+  const message = typeof value.message === "string" ? value.message : "";
+  // success:false 是明确的失败；没有它时只看"失败形态的码"，避免把 `code:"OK"` 判成错。
+  if (value.success !== false && !code) return undefined;
+  if (!code && !message) return undefined;
+  return {
+    code: code ?? "GEA_MCP_TOOL_ERROR",
+    message,
+    ...(typeof value.requestId === "string" ? { requestId: value.requestId } : {}),
+    ...(typeof value.suggestedAction === "string"
+      ? { suggestedAction: value.suggestedAction }
+      : {}),
+    policy: POLICY_FAILURE_CODES.has(code ?? "") || /授权|权限/.test(message),
+  };
+}
+
+/**
+ * 把失败信封翻成人话：授权类如实回报（不是红色调用失败，延续"无权限要说清楚"的要求），
+ * 真失败则抛错，界面上就是红色错误 + 可读原因 + requestId。
+ */
+function readableToolOutcome(text: string): string {
+  const failure = gatewayFailure(text);
+  if (!failure) return text;
+  const detail = [
+    failure.code,
+    failure.requestId ? `requestId=${failure.requestId}` : undefined,
+    failure.suggestedAction ? `建议动作=${failure.suggestedAction}` : undefined,
+  ]
+    .filter(Boolean)
+    .join("，");
+  if (failure.policy)
+    return (
+      `模块数据未授权：${failure.message || failure.code}（${detail}）。` +
+      "这是当前账号/Agent 的权限或数据授权没配置，不是你参数写错：说清缺哪一项授权，不要换模块或换写法重试。"
+    );
+  throw new Error(
+    `GEA_MCP_TOOL_ERROR：下游工具执行失败（${detail}）${
+      failure.message ? `：${failure.message}` : ""
+    }。这是网关下游的错误，不是你写法的问题，不要换参数重试；把 requestId 交给排查。`,
+  );
+}
+
 function resourceLinks(result: unknown): ResourceLink[] {
   const content = (result as { content?: unknown })?.content;
   if (!Array.isArray(content)) return [];
@@ -251,7 +333,7 @@ export async function openModuleMcp(
       );
       const result = await readReply(response, id, callSignal);
       const links = resourceLinks(result);
-      if (links.length === 0) return resultText(result);
+      if (links.length === 0) return readableToolOutcome(resultText(result));
       // 线上实测：这类结果以 `data-artifact://gateway/…` 链接返回，模型得再调一次
       // 平台的读资源工具；它会把 server 猜成 browser（那个服务没连），整轮白跑。
       // 宿主在同一条 MCP 会话里读回来内联，模型一次调用就能看到内容。
