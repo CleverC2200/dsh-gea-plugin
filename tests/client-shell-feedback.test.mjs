@@ -119,10 +119,12 @@ test(
     assert.ok(Math.abs(menuIndent.headingInset) <= 2, JSON.stringify(menuIndent));
     assert.ok(Math.abs(menuIndent.headingText - menuIndent.childText) <= 2, JSON.stringify(menuIndent));
 
-    // 登记 32 / 48：会话框标题只留「模块名 + 助手」，副标整行去掉。
-    await page.locator(".gea-agent-head").waitFor();
+    // 计划页不重复显示顶部头像标题，欢迎页统一使用 Agent。
+    await page.locator(".gea-agent-welcome").waitFor();
     assert.equal(await page.locator(".gea-agent-head-sub").count(), 0);
-    assert.equal(await page.locator(".gea-agent-head-name").textContent(), "销售计划助手");
+    assert.equal(await page.locator(".gea-agent-head").count(), 0);
+    assert.equal(await page.locator(".gea-agent-identity h2").textContent(), "销售计划Agent");
+    assert.equal(await page.locator(".gea-agent-actions").count(), 0);
 
     // The Agent toolbar remains reachable in both maximized views; history
     // opens the existing native list in the left drawer.
