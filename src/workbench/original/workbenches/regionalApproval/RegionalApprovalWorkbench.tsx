@@ -817,10 +817,6 @@ const RegionalApprovalWorkbench: React.FC<{
     () => visibleRows.filter((row) => selectedRowIds.includes(row.id)),
     [selectedRowIds, visibleRows]
   );
-  const selectedLiveRows = useMemo(
-    () => liveRows.filter((row) => selectedRowIds.includes(row.planId)),
-    [liveRows, selectedRowIds]
-  );
   const selectedLiveTableRowIds = useMemo(() => {
     const selected = new Set(selectedRowIds);
     const visit = (rows: RegionalApprovalLiveTableRow[]) => {
@@ -834,6 +830,24 @@ const RegionalApprovalWorkbench: React.FC<{
     visit(liveTableRows);
     return [...selected];
   }, [liveTableRows, selectedRowIds]);
+  /**
+   * 选中行必须与表格里「勾上的那些行」一一对应：按行的 tableRowId 展开成计划，
+   * 再按计划 ID 兜底。用字符串比较是为了不受上游 planId 是数字还是字符串的影响；
+   * 只按 liveRows.planId 过滤时，一旦选中集合里混进分组行 id，就会出现
+   * 「行是勾上的、通过/退回却是灰的」。
+   */
+  const selectedLiveRows = useMemo(() => {
+    const ids = new Set(selectedRowIds.map((id) => String(id)));
+    const picked = new Map<string, RegionalApprovalLiveRow>();
+    const add = (plan: RegionalApprovalLiveRow) => picked.set(String(plan.planId), plan);
+    for (const row of liveTableRows) {
+      if (row.kind !== 'plan' || !ids.has(String(row.tableRowId))) continue;
+      if (row.members?.length) row.members.forEach(add);
+      else add(row.plan);
+    }
+    for (const row of liveRows) if (ids.has(String(row.planId))) add(row);
+    return [...picked.values()];
+  }, [liveRows, liveTableRows, selectedRowIds]);
   const displayStage = liveQuery.enabled ? liveStageFilter : currentStage;
   const effectiveStage: SalesPlanContextApprovalStage = liveQuery.enabled ? (liveStageFilter ?? 'all') : currentStage;
   const contextAppliedFilters = useMemo<ApprovalContextFilters>(
@@ -935,8 +949,8 @@ const RegionalApprovalWorkbench: React.FC<{
     }
     return SALES_PLAN_ROLES.filter((stage) => capable.has(stage) && stage !== 'customer');
   }, [liveAccess.entries, liveQuery.enabled, roleStages]);
-  // 流程图收起态的节点口径：与展开态高亮一致（用户所选的节点，默认即其第一个有权限审批的节点）。
-  const stageIndicatorStage = displayStage ?? authorizedStages[0];
+  // 收起态的节点口径跟展开态高亮一致：用户选了哪个节点就显示哪个，切到「全部节点」就显示全部节点。
+  const stageIndicatorStage = displayStage;
   // 默认节点：权限码给出的已在上面的 effect 设好；这里补“没有权限码、但服务端给了同版本可处理任务”的账号，
   // 且只自动设一次，之后用户自己切到「全部节点」或别的节点都不再覆盖。
   const defaultStageApplied = useRef(false);
@@ -1027,7 +1041,8 @@ const RegionalApprovalWorkbench: React.FC<{
     if (liveQuery.queueState.status !== 'success') return 'queueNotFresh';
     if (liveAccess.failedVersions.has(row.versionId)) return 'detailUnavailable';
     const detail = liveAccess.entries[row.versionId];
-    if (!detail || !(liveStageFilter ? [liveStageFilter] : ['region','province','area','category'] as const).some(role => salesPlanAccessForRow(row, detail, permissionCodes, role)?.allowedActions.includes(kind)))
+    // allowReturned：上级退回给本节点的单据也要能改完继续提交（退回给别处的单子在模型里仍被拒）。
+    if (!detail || !(liveStageFilter ? [liveStageFilter] : ['region','province','area','category'] as const).some(role => salesPlanAccessForRow(row, detail, permissionCodes, role, undefined, { allowReturned: true })?.allowedActions.includes(kind)))
       return 'missingAuthority';
     if (kind === 'SAVE') return undefined;
 
@@ -1043,7 +1058,7 @@ const RegionalApprovalWorkbench: React.FC<{
       ? [liveStageFilter]
       : (['region', 'province', 'area', 'category'] as const);
     for (const role of candidates) {
-      const access = salesPlanAccessForRow(row, detail, permissionCodes, role);
+      const access = salesPlanAccessForRow(row, detail, permissionCodes, role, undefined, { allowReturned: true });
       if (access?.allowedActions.includes(kind)) return access;
     }
     return undefined;
@@ -1055,6 +1070,25 @@ const RegionalApprovalWorkbench: React.FC<{
         ? { row, access }
         : { row, skipReason: liveActionDisabledReason(row, kind) ?? 'missingAuthority' };
     });
+  /**
+   * 勾选口径必须和「勾上以后按钮能不能用」是同一把尺子：分组行看组里的每条计划，
+   * 只要有一条还能提交或退回就允许勾选，整组都不能操作才置灰。否则会出现「能勾上、按不动」。
+   */
+  const liveRowSelectable = (row: RegionalApprovalLiveTableRow) => {
+    if (row.kind !== 'plan') return false;
+    const plans = row.members?.length ? row.members : [row.plan];
+    return plans.some(
+      (plan) =>
+        liveActionDisabledReason(plan, 'APPROVE') === undefined ||
+        liveActionDisabledReason(plan, 'REJECT') === undefined
+    );
+  };
+  /** 选中的行全都做不了这个动作时，把第一条的原因作为灰按钮上的提示，别让用户只能猜。 */
+  const batchDisabledReason = (kind: LiveActionKind) => {
+    if (!selectedLiveRows.length || liveActionPlanId !== undefined) return undefined;
+    const reasons = selectedLiveRows.map((row) => liveActionDisabledReason(row, kind));
+    return reasons.every(Boolean) ? reasons[0] : undefined;
+  };
   const metrics = useMemo(() => {
     if (liveQuery.enabled) {
       const detailMetrics = liveRows.map((row) => versionMetrics[row.planId]);
@@ -1519,6 +1553,7 @@ const RegionalApprovalWorkbench: React.FC<{
 
   const changeStage = (stage: ApprovalStageId) => {
     if (liveQuery.enabled) {
+      // 再点当前节点就回到「全部节点」；没权限的节点已置灰，切不过来。
       const nextStage = liveStageFilter === stage ? undefined : stage;
       setLiveStageFilter(nextStage);
       setDimension(APPROVAL_DIMENSIONS_BY_STAGE[nextStage ?? 'category'][0]);
@@ -2117,6 +2152,10 @@ const RegionalApprovalWorkbench: React.FC<{
   };
 
   const visibleStageFixtures = APPROVAL_STAGE_FIXTURES.filter((stage) => stage.id !== ('evaluation' as ApprovalStageId));
+  // 节点条始终展示全部节点：角色决定能进哪些节点，没权限的节点置灰不可点，
+  // 明细由数据权限决定，因此「全部节点」这一视图保留。
+  const stageAuthorized = (id: ApprovalStageId) =>
+    (authorizedStages as readonly ApprovalStageId[]).includes(id);
   const currentStageIndex = visibleStageFixtures.findIndex((stage) => stage.id === displayStage);
   const healthColors: Record<ApprovalHealth, 'green' | 'orange' | 'red'> = {
     healthy: 'green',
@@ -2479,7 +2518,12 @@ const RegionalApprovalWorkbench: React.FC<{
           disabled={
             selectedLiveRows.length === 0 ||
             liveActionPlanId !== undefined ||
-            selectedLiveRows.every((row) => Boolean(liveActionDisabledReason(row, 'REJECT')))
+            batchDisabledReason('REJECT') !== undefined
+          }
+          title={
+            batchDisabledReason('REJECT')
+              ? t(`common.assistantSurface.regionalApproval.liveAction.disabled.${batchDisabledReason('REJECT')}`)
+              : undefined
           }
           onClick={() => {
             if (!selectedLiveRows.length) return;
@@ -2504,7 +2548,12 @@ const RegionalApprovalWorkbench: React.FC<{
           disabled={
             selectedLiveRows.length === 0 ||
             liveActionPlanId !== undefined ||
-            selectedLiveRows.every((row) => Boolean(liveActionDisabledReason(row, 'APPROVE')))
+            batchDisabledReason('APPROVE') !== undefined
+          }
+          title={
+            batchDisabledReason('APPROVE')
+              ? t(`common.assistantSurface.regionalApproval.liveAction.disabled.${batchDisabledReason('APPROVE')}`)
+              : undefined
           }
           onClick={() => {
             if (!selectedLiveRows.length) return;
@@ -2851,7 +2900,7 @@ const RegionalApprovalWorkbench: React.FC<{
                   aria-pressed={liveQuery.enabled ? liveStageFilter === stage.id : undefined}
                   disabled={
                     liveQuery.enabled &&
-                    liveQuery.progressState.status !== 'success'
+                    (liveQuery.progressState.status !== 'success' || !stageAuthorized(stage.id))
                   }
                   onClick={() => changeStage(stage.id)}
                 >
@@ -3314,8 +3363,11 @@ const RegionalApprovalWorkbench: React.FC<{
                         setSelectedRowIds([...planIds]);
                       },
                       checkboxProps: (row) => ({
-                        // 返回状态只能进入纠偏重提流程，不能在当前审批节点再次提交。
-                        disabled: row.kind !== 'plan' || (row.kind === 'plan' && row.plan.status >= 6 && row.plan.status <= 9),
+                        // 只要行里有能提交或退回的计划就允许勾选；整行都不可操作才置灰，
+                        // 保证「能勾上的行，按钮一定点得动」。
+                        // 只要行里有能提交或退回的计划就允许勾选；整行都不可操作才置灰，
+                        // 保证「能勾上的行，按钮一定点得动」。
+                        disabled: !liveRowSelectable(row),
                       }),
                     }}
                     pagination={false}

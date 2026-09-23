@@ -80,13 +80,14 @@ export const salesPlanAccessForRow = (
       new Set(context.roleActions.map(entry => entry.role)).size !== context.roleActions.length)) return undefined;
   // 审批身份有两个来源：账号的节点审批权限码，以及 Host 对同版本重新确认的可处理任务。
   // 后者只映射到当前状态的节点，不能用来处理其它节点或旧版本；服务端给的角色能力不授予身份。
+  // 是否“轮到这个节点”不在这里判定：角色决定能看到哪些节点，数据权限决定明细，
+  // 只要这一行出现在表里就允许提交/退回，最终由 GEA 写接口按组织、角色、版本、状态和快照校验。
   const workflowRole = detail.workflowApproval?.versionId === v.id && detail.workflowApproval.actionable === true
     ? flow.actor(row.status) : undefined;
   const roles = [...new Set([
     ...salesPlanStagesForPermissions(permissions),
     ...(workflowRole && workflowRole !== 'customer' ? [workflowRole] : []),
   ])].filter(role => role !== 'customer');
-  if (!roles.some(role => flow.visibility(row.status, role) !== 'denied')) return undefined;
   // 多角色用户必须在动作对话框中明确选择角色。
   const role = stage ?? (roles.length === 1 ? roles[0] : undefined);
   if (!role || role === 'customer' || !roles.includes(role)) return undefined;
