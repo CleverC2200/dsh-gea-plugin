@@ -459,6 +459,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         "- 先取语义模型目录再查询：调用 gea_gateway_catalog（需要看某个模型时带 model=模型名），拿到模型名与成员名；成员名照抄，不要凭业务名猜。目录里的成员名形如 模型.字段，就是查询时要用的成员。",
         '- 不要自己去读 inspect 的原始产物：它约 33 万字符，宿主只会内联前 30KB，剩下的存成本机文件，你没有读文件的工具。目录工具已经把它压到可一次读完的大小。',
         '- 再查询：action="query"，queries 放 1 到 8 个具名 Cube 查询对象，每项形如 {"name":"<别名>","query":{…}}，其中 query 必须是 Cube 查询对象（不能写成字符串或自然语言）；response_mode 默认 "resource"，只有需要直接看行时才用 "inline_complete"。',
+        '- Cube 查询对象里**只放这几个键**：dimensions（成员名数组）、measures（成员名数组）、filters（[{"member":成员,"operator":"equals|contains|…","values":[…]}]）、order、limit。',
+        '- order 的写法（网关会按形状校验，写错回 AI_SCHEMA_INVALID 并指出 path）：**推荐对象 {"<成员名>":"asc"|"desc"}**；要写成数组时，每个元素必须是 [成员, 方向] 两元组，例如 [["模型.字段","desc"]]。别用 {"member":…,"direction":…} 这类别的形状；网关报错后照它的提示改一次即可，不要连着重试。',
         "- 一次只查一个模型：同一次调用的成员必须属于同一个 dataAssetCode，跨模型要分开调用；报“成员未唯一匹配数据目录资源”就是这条没满足。",
         "- 成员放 dimensions 还是 measures **由目录标出的类型决定**：只有目录里“度量”下列出的成员才写进 measures；标了“无度量”的模型（库存、库存快照、补货周期这几类基本都是）全部成员——数值字段也一样——只能放 dimensions。线上实测：把数值字段写进 measures，上游 Cube 会直接拒绝整批查询计划。",
         "- 如果 Cube 回 `'某个成员' not found for path '模型.某成员'`：先怀疑这个成员被放进了 measures（这些 cube 多数只有 dimensions）。成员在目录里列过就说明它存在，不要改去猜别的名字或换模型。",
