@@ -167,7 +167,8 @@ if(owned){
     await pluginStore.recoverPreparation();
     const {createControlServer}=await import('./control-server.mjs');
     const {createClientInstaller}=await import('./client-installer.mjs');
-    clientInstaller=createClientInstaller({data,currentVersion:require('./package.json').version,sources:require('./desktop-release-sources.json'),openPath:path=>shell.openPath(path)});
+    // 下载完成后只在文件管理器中定位安装包，由用户自己决定何时安装；不替用户直接拉起安装器。
+    clientInstaller=createClientInstaller({data,currentVersion:require('./package.json').version,sources:require('./desktop-release-sources.json'),openPath:path=>{shell.showItemInFolder(path);return '';}});
     control=await createControlServer({
       'GET /navigation/pending':async()=>navigation.pending(),
       'POST /navigation/complete':async value=>navigation.complete(value),
