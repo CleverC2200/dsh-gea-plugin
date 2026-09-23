@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 const { outputFiles } = await build({stdin: {contents: "export * from './src/workbench/original/workbenches/regionalApproval/regionalApprovalQueryModel.ts'; export * from './src/workbench/original/salesPlanWorkflow.ts';", resolveDir: process.cwd()}, bundle: true, write: false, platform: 'node', format: 'esm'});
-const { approvalStageProgressForSalesPlanPeriods, salesPlanPeriodMonths, salesPlanPeriodsForMonth, salesPlanPeriodOptionLabel, salesPlanVisibleStatuses, salesPlanWorkflow } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].contents).toString('base64'));
+const { approvalStageProgressForSalesPlanPeriods, approvalStageProgressForSalesPlanStatusTotals, salesPlanPeriodMonths, salesPlanPeriodsForMonth, salesPlanPeriodOptionLabel, salesPlanVisibleStatuses, salesPlanWorkflow } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].contents).toString('base64'));
 test('period options expose one month while keeping all workflow periods in its query scope', () => {
   const periods = [
     {periodId:'20261001',periodMonth:'2026-10',planTypeCode:'Y',status:'OPEN'},
@@ -45,6 +45,28 @@ test('品类节点把「品类已审批（待回写）」算作已完成', () =>
   assert.equal(returned.province, 75);
   // 这一组里状态 5 和状态 10 都算品类完成（2/4），退回省区那条不影响品类。
   assert.equal(returned.category, 50);
+});
+test('每个状态算哪些节点已完成（进度分子口径）', () => {
+  // 规则：正在处理该状态的节点、以及排在它后面的节点都还没完成；排在前面的都算完成。
+  // 例外：5（审批完成·待回写）和 10（回写完成）算全部完成；0（待提交）和 6（退回销售）谁都不算。
+  const done = {
+    customer: [1,2,3,4,5,7,8,9,10],
+    region:   [2,3,4,5,8,9,10],
+    province: [3,4,5,9,10],
+    area:     [4,5,10],
+    category: [5,10],
+  };
+  for (const [role, statuses] of Object.entries(done)) {
+    // 单独放 1 条、总数 1 条：显示 100% 就代表这个状态计入该节点的分子。
+    for (let status = 0; status <= 10; status++) {
+      const progress = approvalStageProgressForSalesPlanStatusTotals(1, { [status]: 1 }, 'Y');
+      assert.equal(
+        progress[role] === 100,
+        statuses.includes(status),
+        `${role} 在状态 ${status} 的判定不符合口径`,
+      );
+    }
+  }
 });
 test('Y visibility includes pending, own returns and read-only tracking, excludes other returns and earlier steps', () => {
   const expected = {customer: [0,1,2,3,4,5,6,10], region: [1,2,3,4,5,6,7,10], province: [2,3,4,5,7,8,10], area: [3,4,5,8,9,10], category: [4,5,9,10]};
