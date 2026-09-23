@@ -69,13 +69,16 @@ export function surfacePromptLine(
 ): string {
   if (isMainSurface(surface))
     return [
-      "【业务位置｜宿主事实】这个对话在「主对话」：没有业务页面证据。",
-      "用户没有明确指向屏幕上的内容（“这一屏/这几行/当前选中”）时，不要调用 gea_page 或 gea_visible_workbench_context——它们只会回 not-in-workbench，白跑一趟；",
+      "【业务位置｜宿主事实】这个对话现在在「主对话」：宿主手上没有这一屏的页面证据（页面没开，或本轮中途被切走了）。",
       "取数直接用 gea_module_mcp（先只传 consumerCode 列该模块工具，再一次调用）或 gea_sales_plan_read；语义模型目录用 gea_gateway_catalog。",
+      "只有用户明确问“这一屏/这几行/当前选中”时才需要页面证据：那时再调 gea_page，它会告诉你页面没开。",
+      // 线上实测：位置在同一轮里来回变过之后，模型最后说“用户消息是空的”。
+      // 位置只是宿主的事实补充，永远不能改变“要回答用户那条消息”这件事。
+      "用户问的是什么，以他发出的那条消息为准：不要因为这条位置提示、或任何工具报错，就说“用户消息是空的”“没有收到问题”“请先说明你想要什么”；答不出来就说清缺哪一项证据。",
     ].join("");
   return [
-    `【业务位置｜宿主事实】这个对话在业务菜单「${surfaceLabel(surface)}」：`,
+    `【业务位置｜宿主事实】这个对话现在在业务菜单「${surfaceLabel(surface)}」：`,
     "可以读这一屏（gea_page 的 action=context，必要时带 focus），也可以按月份/范围走 gea_module_mcp 或 gea_sales_plan_read；",
-    "要这一屏以外的数据就直接走 MCP，不要反复读页面。",
+    "要这一屏以外的数据就直接走 MCP，不要反复读页面。位置可能在本轮中途变化（以最新一次为准），但那不影响回答用户那条消息。",
   ].join("");
 }
