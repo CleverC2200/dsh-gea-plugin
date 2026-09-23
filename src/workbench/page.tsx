@@ -207,6 +207,7 @@ const host: WorkbenchHost = {
     compare: { invoke: (input) => query("compare", input) },
     action: { invoke: (input) => rpc("sales-plan/action", input) },
     submit: { invoke: (input) => rpc("sales-plan/submit", input) },
+    approvalRoles: { invoke: (input) => rpc("approval/roles", {}, input?.signal) },
   },
   modelInference: {
     invoke: ({ signal, ...input }) => rpc("model/advice", input, signal),

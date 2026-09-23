@@ -118,4 +118,6 @@ test('reject dialog still closes after the request failed with a conflict', { ti
   await expect(frame.getByText('版本状态已变化或存在并发操作；未修改本地状态，请刷新权威队列。', { exact: false })).toBeVisible({ timeout: 20000 });
   assert.equal(writes.length, 1);
   await closeThroughDiscardConfirm(remark);
+  // 报错后这一批没被受理，勾选不能留在界面上（否则用户看到"还选中着"容易再点一次）。
+  await expect(frame.locator('tbody label.arco-checkbox:has(input[value="p"]) input')).not.toBeChecked();
 });

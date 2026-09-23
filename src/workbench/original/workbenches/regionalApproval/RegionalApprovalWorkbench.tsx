@@ -13,6 +13,7 @@ import {
 import { useSalesPlanAccess } from './hooks/useSalesPlanAccess.ts';
 import {
   salesPlanAccessForRow,
+  salesPlanStagesForRoles,
   verifySavedSalesPlan,
 } from './models/salesPlanAccessModel.ts';
 import { salesPlanProgressBarColor } from './models/salesPlanProgressModel.ts';
@@ -506,11 +507,24 @@ const RegionalApprovalWorkbench: React.FC<{
   const [draftLiveFilters, setDraftLiveFilters] = useState<LiveApprovalFilters>(EMPTY_LIVE_APPROVAL_FILTERS);
   const [appliedLiveFilters, setAppliedLiveFilters] = useState<LiveApprovalFilters>(EMPTY_LIVE_APPROVAL_FILTERS);
   // 节点口径只认账号角色；没有角色就一个节点都没有（界面全灰），不再用通知/任务反推。
-  const roleKey = [...(approvalStages ?? [])].join(',');
+  // 默认用登录时那一份；点刷新会重新解析角色并覆盖，管理员刚改完权限的人不必重新登录。
+  const [refreshedStages, setRefreshedStages] = useState<readonly ApprovalStageId[]>();
+  const roleSource = refreshedStages ?? approvalStages ?? [];
+  const roleKey = [...roleSource].join(',');
   const roleStages = useMemo(
-    () => [...new Set((approvalStages ?? []).filter((stage) => stage !== 'customer'))],
+    () => [...new Set(roleSource.filter((stage) => stage !== 'customer'))],
     [roleKey]
   );
+  const refreshApprovalStages = async () => {
+    const client = queryClient?.approvalRoles;
+    if (!client) return;
+    try {
+      const result = await client.invoke({});
+      setRefreshedStages(salesPlanStagesForRoles(result.roles ?? []));
+    } catch {
+      // 角色一时读不到就沿用当前节点口径，不把用户突然变成"一个节点都不能点"。
+    }
+  };
   const [liveStageFilter, setLiveStageFilter] = useState<ApprovalStageId | undefined>(() => roleStages[0]);
   useEffect(() => {
     const firstStage = roleStages[0];
@@ -962,6 +976,7 @@ const RegionalApprovalWorkbench: React.FC<{
     setPermissionDeniedVersions(new Set());
     liveAccess.refresh();
     liveQuery.retryQueue();
+    void refreshApprovalStages();
   };
   const activeLiveActionRow = liveRows.find((row) => row.planId === liveActionPlanId);
   const activeActionRow = visibleRows.find((row) => row.id === actionRowId);
@@ -2623,6 +2638,8 @@ const RegionalApprovalWorkbench: React.FC<{
           refreshLiveAuthority();
         }}
         onRefresh={refreshLiveAuthority}
+        // 退回/通过只要没被服务端受理，勾选立刻收掉：留着会让人以为这批还能直接再点一次。
+        onAttemptFailed={() => setSelectedRowIds([])}
         onFailed={() => {
           setLiveActionPlanId(undefined);
           setExportFeedback({ type: 'error', message: t('common.assistantSurface.regionalApproval.liveAction.errors.failed') });
@@ -3037,6 +3054,7 @@ const RegionalApprovalWorkbench: React.FC<{
                       setPermissionDeniedVersions(new Set());
                       liveAccess.refresh();
                       liveQuery.refresh();
+                      void refreshApprovalStages();
                     }}
                   aria-label={t('common.assistantSurface.regionalApproval.toolbar.refreshData')}
                   title={t('common.assistantSurface.regionalApproval.toolbar.refreshData')}

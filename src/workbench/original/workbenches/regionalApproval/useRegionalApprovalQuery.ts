@@ -23,6 +23,7 @@ import {
 } from './regionalApprovalQueryModel.ts';
 import type { ApprovalStageId } from './regionalApprovalFixture.ts';
 import { REGIONAL_PLAN_EVALUATION_STATUSES } from './regionalApprovalFixture.ts';
+import type { SalesPlanApprovalRole } from './models/salesPlanAccessModel.ts';
 
 const QUERY_TIMEOUT_MS = 15_000;
 
@@ -30,6 +31,8 @@ const QUERY_TIMEOUT_MS = 15_000;
 export type SalesPlanQueryClient = {
   periods: { invoke: (query?: GeaSalesPlanPeriodQuery) => Promise<GeaSalesPlanPage<GeaSalesPlanPeriod>> };
   list: { invoke: (query?: GeaSalesPlanPageQuery) => Promise<GeaSalesPlanPage<GeaSalesPlanListItem>> };
+  /** 可选：点刷新时重新解析账号角色，拿到管理员刚改过的节点权限。 */
+  approvalRoles?: { invoke: (input: { signal?: AbortSignal }) => Promise<{ roles: SalesPlanApprovalRole[] }> };
 };
 
 export type RegionalApprovalQueryError = 'workflow' | 'permission' | 'expired' | 'timeout' | 'unavailable' | 'cancelled' | 'failed';

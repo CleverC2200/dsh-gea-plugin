@@ -1074,10 +1074,12 @@ export class Business {
   /**
    * 审批身份只认账号角色：经网关会话解析当前用户，拿角色编码/名称映射到审批节点。
    * 通知与任务不参与身份判定；角色读取失败时该账号视为没有审批节点（界面全灰），不阻断其它功能。
+   * 默认沿用登录时解析的结果（避免每次查状态都往网关跑）；`force` 由界面刷新触发，
+   * 让管理员刚改完角色的人不用重新登录。
    */
-  async refreshApprovalRoles(signal: AbortSignal): Promise<void> {
+  async refreshApprovalRoles(signal: AbortSignal, options: { force?: boolean } = {}): Promise<void> {
     const auth = this.auth;
-    if (!auth || auth.roles !== undefined) return;
+    if (!auth || (!options.force && auth.roles !== undefined)) return;
     const pending = this.roleRefreshes.get(auth);
     if (pending) return pending;
     const refresh = (async () => {
@@ -1117,12 +1119,17 @@ export class Business {
           .map((entry) => ({ code: text(entry.code), name: text(entry.name) }));
         if (this.auth === auth) auth.roles = mapped;
       } catch (error) {
-        this.roleRefreshes.delete(auth);
         if (signal.aborted || !this.auth) throw error;
         // 角色读不到就不是审批人：保留只读浏览，不放开审批入口。
+        // 强制刷新失败时保留上一次解析到的角色——一次查询失败不等于角色被收回。
       }
     })();
     this.roleRefreshes.set(auth, refresh);
+    // 这张表只用來合并"正在飞"的请求；落地后必须清掉，否则强制刷新会直接拿到
+    // 登录时那条已经完成的结果，等于没重新解析。
+    void refresh.catch(() => {}).finally(() => {
+      if (this.roleRefreshes.get(auth) === refresh) this.roleRefreshes.delete(auth);
+    });
     return refresh;
   }
 

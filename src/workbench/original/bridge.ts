@@ -1,4 +1,5 @@
 import type { SalesPlanLocalDraft } from './workbenches/regionalApproval/models/salesPlanLocalDraftModel.ts';
+import type { SalesPlanApprovalRole } from './workbenches/regionalApproval/models/salesPlanAccessModel.ts';
 /** 这是独立工作台与 Host 的唯一端口；不加载 AionUi 进程或 IPC，认证、授权和写入仍由 Host 负责。 */
 import type * as Api from './contracts.ts';
 
@@ -17,6 +18,8 @@ export interface WorkbenchHost {
     compare: { invoke(query: Api.GeaSalesPlanCompareQuery): Promise<Api.GeaSalesPlanSkuDiff[]> };
     action: { invoke(params: Api.GeaSalesPlanActionParams): Promise<Api.GeaSalesPlanActionReceipt> };
     submit: { invoke(params: Api.GeaSalesPlanSubmitParams): Promise<Api.GeaSalesPlanSubmitReceipt> };
+    /** 重新解析当前账号角色（管理员刚改完权限时用界面刷新触发）；返回角色编码与名称。 */
+    approvalRoles?: { invoke(input: { signal?: AbortSignal }): Promise<{ roles: SalesPlanApprovalRole[] }> };
   };
   modelInference: {
     invoke(params: { question: string; signal?: AbortSignal }): Promise<{
@@ -60,6 +63,7 @@ export const salesPlan: WorkbenchHost['salesPlan'] = {
   compare: { invoke: (query) => host().salesPlan.compare.invoke(query) },
   action: { invoke: (params) => host().salesPlan.action.invoke(params) },
   submit: { invoke: (params) => host().salesPlan.submit.invoke(params) },
+  approvalRoles: { invoke: (input) => { const adapter = host().salesPlan.approvalRoles; if (!adapter) return Promise.reject(new Error('APPROVAL_ROLES_UNAVAILABLE')); return adapter.invoke(input); } },
 };
 
 /** 无状态 SKU 建议保留原有响应状态。 */

@@ -58,9 +58,14 @@ test('action failure dialog shows business copy plus a transferable error id', {
   // 直接「通过」失败时弹窗会关掉、错误落到队列顶部，这条路径同样不能出现技术文案。
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
   await expect(dialog).toHaveCount(0);
+  // 退回请求失败后这一笔没被受理，勾选已经清掉；再点「通过」要重新勾一次。
+  await expect(frame.locator('label.arco-checkbox:has(input[value="p"]) input')).not.toBeChecked();
+  await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
   await frame.getByRole('button', { name: '通过', exact: true }).click();
   const queueAlert = frame.locator('[class*="exportFeedback"]');
   await expect(queueAlert).toBeVisible({ timeout: 20000 });
+  // 失败后勾选要一起清掉：这一批没被受理，留着的勾选会让人以为还能直接再点。
+  await expect(frame.locator('label.arco-checkbox:has(input[value="p"]) input')).not.toBeChecked();
   const queueText = await queueAlert.innerText();
   assert.ok(queueText.includes('操作请求失败且未更新本地状态'), `队列提示应是业务文案，实际：${queueText}`);
   for (const leak of ['payload', 'plan_month', 'GEA_HTTP', 'NOTIFICATION_PAYLOAD_INVALID']) {

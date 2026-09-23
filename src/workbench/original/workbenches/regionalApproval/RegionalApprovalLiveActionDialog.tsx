@@ -97,6 +97,8 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   onPermissionDenied: (versionId: string) => void;
   onSucceeded: (receipt: GeaSalesPlanActionReceipt, request: GeaSalesPlanActionRequest) => void | Promise<void>;
   onRefresh: () => void;
+  /** 动作请求失败（含并发冲突、权限被拒）都会回调，用来收掉调用方的选中态。 */
+  onAttemptFailed?: () => void;
   onFailed?: () => void;
   onClose: () => void;
   /** 对话下发的“退回理由”草稿（等价于人工在理由框里输入）。 */
@@ -118,6 +120,7 @@ const RegionalApprovalLiveActionDialog: React.FC<{
   onPermissionDenied,
   onSucceeded,
   onRefresh,
+  onAttemptFailed,
   onFailed,
   onClose,
   remarkPatch,
@@ -331,8 +334,13 @@ const RegionalApprovalLiveActionDialog: React.FC<{
         if (directApproval) onFailed?.();
       }
     } catch (error) {
+      // 权限被拒时保留勾选：这一行会被标记成本轮不可操作，留着勾选才能让灰按钮上的
+      // 「服务端已拒绝当前用户权限」有对象可解释。其它失败（并发冲突等）这一批根本没被
+      // 受理，勾选要收掉，免得用户看着"还选着"又点一次同一个失败请求。
       if (error && typeof error === 'object' && 'kind' in error && error.kind === 'permission') {
         onPermissionDenied(row.versionId);
+      } else {
+        onAttemptFailed?.();
       }
       if (directApproval) onFailed?.();
     }
