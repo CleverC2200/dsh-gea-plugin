@@ -461,6 +461,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         '- 再查询：action="query"，queries 放 1 到 8 个具名 Cube 查询对象，每项形如 {"name":"<别名>","query":{…}}，其中 query 必须是 Cube 查询对象（不能写成字符串或自然语言）；response_mode 默认 "resource"，只有需要直接看行时才用 "inline_complete"。',
         "- 一次只查一个模型：同一次调用的成员必须属于同一个 dataAssetCode，跨模型要分开调用；报“成员未唯一匹配数据目录资源”就是这条没满足。",
         "- 成员放 dimensions 还是 measures **由目录标出的类型决定**：只有目录里“度量”下列出的成员才写进 measures；标了“无度量”的模型（库存、库存快照、补货周期这几类基本都是）全部成员——数值字段也一样——只能放 dimensions。线上实测：把数值字段写进 measures，上游 Cube 会直接拒绝整批查询计划。",
+        "- 如果 Cube 回 `'某个成员' not found for path '模型.某成员'`：先怀疑这个成员被放进了 measures（这些 cube 多数只有 dimensions）。成员在目录里列过就说明它存在，不要改去猜别的名字或换模型。",
+        "- 日期/时间成员（snapshot_date、snapshot_time、target_month、stat_date、inventory_snapshot_time 这类）的值必须是完整日期 `YYYY-MM-DD`（带时间的用 `YYYY-MM-DD HH:mm:ss`）：写 `2026-09` 这种只有年月的值，Cube 会以 `invalid input syntax for type date` 报错。拿不准就先查一次该成员的现有值，再照抄格式。",
         '- 结果返回 `data-artifact://gateway/…` 链接时：**gea_module_mcp 的结果宿主已经把正文读回来内联了，不需要你再读一次**。万一是平台直挂的网关工具返回链接，才用 read_mcp_resource 去读，且 server 必须是网关那一个（gea-gateway）——**绝不要用 browser**（那个服务没连，只会报 server is disconnected，白跑一轮）；不要自己拼 URI，也不要把它当 HTTP 链接去抓。',
         "- 报错先按错误文本改参数再试一次；同一错误不要连续重试，更不要改用编造的数据或改写用户的问题。",
       ].join("\n"),
