@@ -111,15 +111,18 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
       { id: "inventory-qll", title: "全链库存工作台" },
       { id: "inventory-aqkc", title: "基地库存" },
       { id: "inventory-fc", title: "分仓库存" },
+      { id: "inventory-customer", title: "客户库存(开发中)" },
     ],
   },
-  // 订单管理下的页面目前都是演示（mock）数据：没有真实数据通道、答不了业务问题，
-  // 与其在菜单里占位不如整组不展示，等接了真实数据的页面再加回来。
+  // 保留开发中页面入口；页面仍遵守 mock 数据限制。
   {
     key: "orders",
     title: "订单管理",
     icon: "orders",
-    items: [],
+    items: [
+      { id: "inventory-orderworkbench", title: "订单管理工作台(开发中)" },
+      { id: "inventory-orderfulfillment", title: "订单履约(开发中)" },
+    ],
   },
 ];
 

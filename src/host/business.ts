@@ -2170,35 +2170,54 @@ export class Business {
     if (typeof sqlValue !== "string" || !sqlValue.trim() || sqlValue.length > 200_000)
       throw new Error("GEA_PLUGIN_SQL_INVALID");
     const signal = AbortSignal.any([caller, this.epoch.signal]);
-    let delegation = this.pluginDelegations.get(consumerCode);
-    if (!delegation || delegation.authToken !== auth.token) {
+    const getDelegation = async () => {
+      let delegation = this.pluginDelegations.get(consumerCode);
+      if (delegation?.authToken === auth.token) return delegation;
       const requestId = randomUUID();
       const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
         method: "POST", redirect: "error", signal,
         headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": requestId },
         body: JSON.stringify({ agentCode: consumerCode, channel: "AI_PORTAL", requestId, conversationId: randomUUID() }),
       });
-      if (!response.ok) throw await geaResponseError(response, [auth.token]);
+      if (!response.ok) {
+        const error = await geaResponseError(response, [auth.token]);
+        if (response.status === 401 && this.auth?.token === auth.token)
+          this.clearLogin(true);
+        throw error;
+      }
       const body = object(await response.json());
       const result = object(body.result);
       if (body.success !== true || object(result.accessDecision).allowed !== true || typeof result.delegationToken !== "string" || !result.delegationToken)
         throw new Error("GEA_PLUGIN_SESSION_REJECTED");
       delegation = { authToken: auth.token, delegationToken: result.delegationToken };
       this.pluginDelegations.set(consumerCode, delegation);
-    }
+      return delegation;
+    };
     try {
-      // 统一走分页路径：同一条 SQL 不分页时会报底层错误，模型也不该被要求记住页码。
-      const result = await readHtmlQuery(withDefaultPaging(query), {
-        endpoint: this.base.replace(/\/$/, "") + "/ai/gateway/sql/execute",
-        token: delegation.delegationToken,
-        fetch: this.apiLog.fetch,
-        signal,
-      });
-      this.pluginFailures.delete(consumerCode);
-      return result;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const delegation = await getDelegation();
+        try {
+          // 统一走分页路径：同一条 SQL 不分页时会报底层错误，模型也不该被要求记住页码。
+          const result = await readHtmlQuery(withDefaultPaging(query), {
+            endpoint: this.base.replace(/\/$/, "") + "/ai/gateway/sql/execute",
+            token: delegation.delegationToken,
+            fetch: this.apiLog.fetch,
+            signal,
+          });
+          this.pluginFailures.delete(consumerCode);
+          return result;
+        } catch (error) {
+          if ((error as { code?: string })?.code === "GEA_GATEWAY_SESSION_REJECTED") {
+            if (this.pluginDelegations.get(consumerCode) === delegation)
+              this.pluginDelegations.delete(consumerCode);
+            if (attempt === 0 && !signal.aborted) continue;
+          }
+          throw error;
+        }
+      }
+      throw new Error("GEA_PLUGIN_SESSION_REJECTED");
     } catch (error) {
-      // A rejected/expired delegated credential must never poison the next
-      // page refresh; the next call obtains a fresh Agent-scoped delegation.
+      // A failed delegated credential must not poison the next page refresh.
       if (error instanceof GeaResponseError) this.pluginDelegations.delete(consumerCode);
       const previous = this.pluginFailures.get(consumerCode);
       this.pluginFailures.set(consumerCode, {

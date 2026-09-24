@@ -18,6 +18,7 @@ import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import { zh, en, type CopyKey } from "./client/locales.ts";
+import { mountFloatingComposers } from "./client/floating-composer.ts";
 import { AgentAvatar } from "./client/agent-avatar.tsx";
 import { Inbox } from "./client/inbox.tsx";
 import { DesktopNavigation, createNavigationSelection, type ReadyNavigation } from './client/desktop-navigation.tsx';
@@ -59,12 +60,16 @@ import { ApiLogCenter } from "./workbench/api-log-center.tsx";
  */
 const categoryPlanDocument = categoryPlanPrototype.replace(
   "</head>",
-  '<style data-gea-embed="single-conversation">.app{grid-template-columns:minmax(0,1fr)!important}aside.chat{display:none!important}</style></head>',
+  '<style data-gea-embed="single-conversation">.app{grid-template-columns:minmax(0,1fr)!important}aside.chat{display:none!important}.work-body{scrollbar-width:none}.work-body::-webkit-scrollbar{display:none}.boundary,.work-head-row>div:first-child{display:none!important}.work-head{height:58px;box-sizing:border-box;padding:8px 16px;background:#fff}.work-head-row{height:100%;align-items:center}.work-head-actions{margin-left:0}</style></head>',
 );
 /** 主生产计划（MPS）数字人原型：同样只关掉它自带的右侧会话列，会话统一由外壳承载。 */
+const regionalPlanDocument = regionalPlanPrototype.replace(
+  "</head>",
+  '<style data-gea-embed="compact-header">.topbar>.brand{display:none!important}.wrap{padding-top:0!important}.topbar{height:58px;min-height:58px;box-sizing:border-box;flex:none;align-items:center!important;flex-wrap:nowrap;padding:8px 16px;border:0;border-bottom:1px solid var(--line);border-radius:0;box-shadow:none;margin-left:-16px;margin-right:-16px}.topctl{flex-wrap:nowrap;overflow-x:auto;width:100%}</style></head>',
+);
 const mpsPlanDocument = mpsPlanPrototype.replace(
   "</head>",
-  '<style data-gea-embed="single-conversation">.ap-app{grid-template-columns:minmax(0,1fr)!important}aside.ap-dock{display:none!important}</style></head>',
+  '<style data-gea-embed="single-conversation">.ap-app{grid-template-columns:minmax(0,1fr)!important}aside.ap-dock{display:none!important}.ap-brando{display:none!important}.ap-page-tabs{height:58px;box-sizing:border-box;align-items:center;padding-top:8px;padding-bottom:7px}</style></head>',
 );
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
@@ -300,7 +305,7 @@ export function apply(ctx: Context): void {
             className="gea-workbench-frame"
             title={t("regionalPlanWorkbench")}
             sandbox="allow-scripts"
-            srcDoc={regionalPlanPrototype}
+            srcDoc={regionalPlanDocument}
           />
         </section>
       </>
@@ -912,6 +917,7 @@ export function apply(ctx: Context): void {
         resize.disconnect();
       };
     }, []);
+    useEffect(mountFloatingComposers, []);
     useEffect(() => {
       const findRegions = () => {
         setRegion(
@@ -1119,7 +1125,6 @@ export function apply(ctx: Context): void {
         return;
       }
       setConversationActionError("");
-      setConversationView("split");
       void ctx.agentWorkbench.open(activePanel, `gea-new-${crypto.randomUUID()}`)
         .catch((error: unknown) => setConversationActionError(String(error instanceof Error ? error.message : error)));
     };

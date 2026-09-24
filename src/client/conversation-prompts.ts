@@ -122,9 +122,9 @@ export const approvalConversation: ConversationPromptConfig = {
   ],
 };
 
-/** 主生产计划（MPS）：沿用原型里的「主计划参谋」定位与推荐问题。 */
+/** 主生产计划（MPS）：统一 Agent 命名，保留原型定位与推荐问题。 */
 export const mpsPlanConversation: ConversationPromptConfig = {
-  name: "主计划参谋",
+  name: "主生产计划Agent",
   intro: "我按链路口径帮你核对月计划：三路需求是否齐备、主数据与约束是否就位，缺口和调拨拆分该怎么看。",
   boundary: "只出建议、不改计划；正式计划仍以月计划编制流程为准。",
   actions: [],
