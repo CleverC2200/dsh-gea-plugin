@@ -68,15 +68,14 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   for (const status of [0,8,9]) await expect(table.getByText(`scope-${status}-row`,{exact:true})).toHaveCount(0);
   const returned = table.locator('tr').filter({hasText:'scope-7-row'});
   await returned.locator('label.arco-checkbox').click();
-  // 退回态（6–9）不能直接通过/退回：管理端的动作接口只接受 1–4 的待审单，退回单要走
-  // "退回重提"（生成新版本）。这条用例没有配置重提服务账号，所以「通过」按未就绪置灰并说明原因。
+  // 退回态不能直接通过；状态 7 由区域角色可继续退回客户。这里未配置重提凭据，
+  // 所以共用的「通过」按钮置灰。
   await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeDisabled();
-  await expect(frame.getByRole('button',{name:'通过',exact:true})).toHaveAttribute('title', /退回单要重新提交/);
-  await expect(frame.getByRole('button',{name:'退回',exact:true})).toBeDisabled();
+  await expect(frame.getByRole('button',{name:'退回',exact:true})).toBeEnabled();
   const tracked = table.locator('tr').filter({hasText:'scope-6-row'});
   await returned.locator('label.arco-checkbox').click();
   await tracked.locator('label.arco-checkbox').click();
-  // 退回销售（6）同样不能直接通过/退回。
+  // 退回销售（6）已到客户起点，不能再向前退回。
   await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeDisabled();
   await region.click();
   await expect(table.getByText('scope-6-row',{exact:true})).toHaveCount(0);

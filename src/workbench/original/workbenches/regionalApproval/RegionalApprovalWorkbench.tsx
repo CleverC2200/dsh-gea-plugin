@@ -1,4 +1,5 @@
 import { InlineSkuDetails } from './InlineSkuDetails.tsx';
+import { GroupSkuSummary } from './GroupSkuSummary.tsx';
 import { correctionMetrics } from './models/salesPlanCorrectionModel.ts';
 import { CorrectionWorkbench } from './CorrectionWorkbench.tsx';
 import type { GeaSalesPlanPeriod } from '../../contracts.ts';
@@ -1060,13 +1061,18 @@ const RegionalApprovalWorkbench: React.FC<{
     return () => controller.abort();
   }, [detailClient, focusedLiveRow?.planId, focusedLiveRow?.versionId, liveQuery.enabled]);
 
-  /**
-   * 退回态（6–9）归"退回重提"管：管理端状态机里退回态的重提是生成新版本（6→1/7→2/8→3/9→4），
-   * 而不是在同一版本上做动作。界面上不再单开按钮：退回单点「通过」就是重提。
-   */
+  /** 退回态（6–9）由主操作触发重提，不能调用当前版本的审批通过接口。 */
   const isReturnedForResubmit = (row: Pick<RegionalApprovalLiveRow, 'status'>) =>
     row.status >= 6 && row.status <= 9;
   const resubmitReady = Boolean(resubmitClient && resubmitConnected);
+  const liveActionRolesFor = (row: RegionalApprovalLiveRow): readonly ApprovalStageId[] => {
+    const candidates: readonly ApprovalStageId[] = liveStageFilter
+      ? [liveStageFilter]
+      : (['region', 'province', 'area', 'category'] as const);
+    if (!isReturnedForResubmit(row)) return candidates;
+    const actor = salesPlanWorkflow(row.planTypeCode).actor(row.status);
+    return candidates.filter((role) => role === actor);
+  };
   const liveActionDisabledReason = (row: RegionalApprovalLiveRow, kind: LiveActionKind = 'APPROVE') => {
     if (historicalSummaryUnavailable) return 'queueNotFresh';
     if (!liveActionsEnabled) return 'missingAuthority';
@@ -1074,15 +1080,13 @@ const RegionalApprovalWorkbench: React.FC<{
     if (permissionDeniedVersions.has(row.versionId)) return 'permission';
     if (liveQuery.queueState.status !== 'success') return 'queueNotFresh';
     if (liveAccess.failedVersions.has(row.versionId)) return 'detailUnavailable';
-    // 退回态（6–9）：管理端的动作接口只接受 1–4 的待审单，退回单必须重提（生成新版本）。
-    // 所以「通过」在退回单上等于重提；「退回」对退回单没有意义。
     if (isReturnedForResubmit(row)) {
-      if (kind === 'REJECT') return 'returnedCannotReject';
-      return resubmitReady ? undefined : 'resubmitUnavailable';
+      if (kind !== 'REJECT') return 'returnedCannotApprove';
+      if (row.status === 6) return 'returnedCannotReject';
     }
     const detail = liveAccess.entries[row.versionId];
     // allowReturned：上级退回给本节点的单据也要能改完继续提交（退回给别处的单子在模型里仍被拒）。
-    if (!detail || !(liveStageFilter ? [liveStageFilter] : ['region','province','area','category'] as const).some(role => salesPlanAccessForRow(row, detail, roleStages, role, undefined, { allowReturned: true })?.allowedActions.includes(kind)))
+    if (!detail || !liveActionRolesFor(row).some(role => salesPlanAccessForRow(row, detail, roleStages, role, undefined, { allowReturned: true })?.allowedActions.includes(kind)))
       return 'missingAuthority';
     if (kind === 'SAVE') return undefined;
 
@@ -1092,14 +1096,10 @@ const RegionalApprovalWorkbench: React.FC<{
     !liveActionDisabledReason(row, 'APPROVE');
   /** 与单笔按钮同源的角色解析：多角色账号按当前节点过滤逐个尝试，取第一个允许该动作的角色。 */
   const liveActionAccessFor = (row: RegionalApprovalLiveRow, kind: LiveActionKind) => {
-    // 退回态不给动作授权：批量里会按 returnedNeedsResubmit 报成"跳过"，不会发请求出去挨 409。
-    if (isReturnedForResubmit(row)) return undefined;
+    if (isReturnedForResubmit(row) && (kind !== 'REJECT' || row.status === 6)) return undefined;
     const detail = liveAccess.entries[row.versionId];
     if (!detail) return undefined;
-    const candidates: readonly ApprovalStageId[] = liveStageFilter
-      ? [liveStageFilter]
-      : (['region', 'province', 'area', 'category'] as const);
-    for (const role of candidates) {
+    for (const role of liveActionRolesFor(row)) {
       const access = salesPlanAccessForRow(row, detail, roleStages, role, undefined, { allowReturned: true });
       if (access?.allowedActions.includes(kind)) return access;
     }
@@ -1107,25 +1107,22 @@ const RegionalApprovalWorkbench: React.FC<{
   };
   const batchItemsFor = (rows: readonly RegionalApprovalLiveRow[], kind: LiveActionKind): BatchActionItem[] =>
     rows.map((row) => {
-      // 退回单的「通过」=退回重提：批量时和待审单一起逐笔处理，各自走各自的通道。
       if (kind === 'APPROVE' && isReturnedForResubmit(row)) {
         const period = liveQuery.selectedPeriods.find((candidate) => candidate.periodId === row.periodId);
-        if (!resubmitReady || !period) return { row, skipReason: 'resubmitUnavailable' };
-        return { row, resubmit: true, period };
+        return resubmitReady && onResubmit && period
+          ? { row, resubmit: true, period }
+          : { row, skipReason: 'resubmitUnavailable' };
       }
       const access = liveActionAccessFor(row, kind);
       return access
         ? { row, access }
         : { row, skipReason: liveActionDisabledReason(row, kind) ?? 'missingAuthority' };
     });
-  /** 单笔退回单走可编辑的重提对话框（能核对数量）；多笔走批量，按当前数量直接重提。 */
+  /** 单笔退回重提进入可核对数量的对话框。 */
   const resubmitPeriod = selectedLiveRows.length === 1
     ? liveQuery.selectedPeriods.find((period) => period.periodId === selectedLiveRows[0].periodId)
     : undefined;
-  /**
-   * 勾选口径必须和「勾上以后按钮能不能用」是同一把尺子：分组行看组里的每条计划，
-   * 只要有一条还能提交或退回就允许勾选，整组都不能操作才置灰。否则会出现「能勾上、按不动」。
-   */
+  /** 分组行只要有可审批、可退回或可重提的成员就允许勾选。 */
   const liveRowSelectable = (row: RegionalApprovalLiveTableRow) => {
     if (row.kind !== 'plan') return false;
     const plans = row.members?.length ? row.members : [row.plan];
@@ -1133,15 +1130,14 @@ const RegionalApprovalWorkbench: React.FC<{
       (plan) =>
         liveActionDisabledReason(plan, 'APPROVE') === undefined ||
         liveActionDisabledReason(plan, 'REJECT') === undefined ||
-        // 退回单不能被通过/退回，但它的出路"退回重提"同样要能勾选选中。
         isReturnedForResubmit(plan)
     );
   };
-  /** 选中的行全都做不了这个动作时，把第一条的原因作为灰按钮上的提示，别让用户只能猜。 */
+  /** 选中范围只要含有不能执行该动作的计划，整个动作便不可用。 */
   const batchDisabledReason = (kind: LiveActionKind) => {
     if (!selectedLiveRows.length || liveActionPlanId !== undefined) return undefined;
     const reasons = selectedLiveRows.map((row) => liveActionDisabledReason(row, kind));
-    return reasons.every(Boolean) ? reasons[0] : undefined;
+    return reasons.find(Boolean);
   };
   const metrics = useMemo(() => {
     if (liveQuery.enabled) {
@@ -2226,12 +2222,6 @@ const RegionalApprovalWorkbench: React.FC<{
       .toReversed()
       .find((result) => result.scope.organizationId === row.id && result.scope.version === primaryVersion);
   // 先保留可读的最小宽度，再把面板剩余空间分配给内容列。
-  const comparisonFor = (row: Extract<RegionalApprovalLiveTableRow, {kind:'plan'}>) => {
-    const metrics = (row.members ?? [row.plan]).map(plan=>versionMetrics[plan.planId]);
-    const sum = (field:'compareQty'|'compareAmount'|'compareTargetQty'|'compareTargetAmount') => metrics.length && metrics.every(value=>value?.[field] && /^-?\d+(?:\.\d+)?$/.test(value[field]!))
-      ? addExactDecimals(metrics.map(value=>value[field]!)) : '';
-    return {compareQty:sum('compareQty'),compareAmount:sum('compareAmount'),compareTargetQty:sum('compareTargetQty'),compareTargetAmount:sum('compareTargetAmount')};
-  };
   // Keep the approval queue dense once its columns have enough room to scan.
   // The expanded SKU table deliberately follows a separate, roomier layout.
   const liveMinimumWidths = [220, 112, 112, 136];
@@ -2405,7 +2395,6 @@ const RegionalApprovalWorkbench: React.FC<{
       </div> : <div className={styles.stackCell} data-testid={`regional-approval-month-plan-${tableRow.tableRowId}`}>
         <span>{/^-?\d+(?:\.\d+)?$/.test(tableRow.plan.mPlanAmount ?? '') ? exactMoney(tableRow.plan.mPlanAmount!) : '—'}</span>
         <small>{/^-?\d+(?:\.\d+)?$/.test(tableRow.plan.mPlanQty ?? '') ? `${quantityText(tableRow.plan.mPlanQty!)} ${t('common.assistantSurface.regionalApproval.scopeTotals.quantityUnit')}` : '—'}</small>
-        {tableRow.kind === 'plan' && comparisonFor(tableRow).compareAmount && <small>{t('common.assistantSurface.regionalApproval.comparePlan', {amount:exactMoney(comparisonFor(tableRow).compareAmount!),qty:quantityText(comparisonFor(tableRow).compareQty ?? '—')})}</small>}
       </div>,
     },
     {
@@ -2425,9 +2414,6 @@ const RegionalApprovalWorkbench: React.FC<{
               size='small'
               color={salesPlanProgressBarColor(progress.amount)}
             />
-            {comparisonFor(tableRow).compareAmount && <small>{t('common.assistantSurface.regionalApproval.compareProgress', {value:comparisonFor(tableRow).compareTargetAmount
-              ? formattedProgress(regionalApprovalLiveProgress({...tableRow.plan,currentQty:comparisonFor(tableRow).compareQty!,currentAmount:comparisonFor(tableRow).compareAmount!,targetQty:comparisonFor(tableRow).compareTargetQty!,targetAmount:comparisonFor(tableRow).compareTargetAmount!}).amount)
-              : t('common.assistantSurface.regionalApproval.versionTargetMissing')})}</small>}
 
           </div>;
         }
@@ -2557,6 +2543,14 @@ const RegionalApprovalWorkbench: React.FC<{
         ]
       : []),
   ];
+  const selectedOnlyReturned = selectedLiveRows.length > 0 && selectedLiveRows.every(isReturnedForResubmit);
+  const primaryActionDisabledReason = selectedLiveRows
+    .map((row) => isReturnedForResubmit(row)
+      ? !resubmitReady || !onResubmit || !liveQuery.selectedPeriods.some((period) => period.periodId === row.periodId)
+        ? 'resubmitUnavailable'
+        : undefined
+      : liveActionDisabledReason(row, 'APPROVE'))
+    .find(Boolean);
   const approvalActionButtons = liveQuery.enabled ? (
     <>
       {liveActionsEnabled ? (
@@ -2596,20 +2590,19 @@ const RegionalApprovalWorkbench: React.FC<{
           disabled={
             selectedLiveRows.length === 0 ||
             liveActionPlanId !== undefined ||
-            batchDisabledReason('APPROVE') !== undefined
+            primaryActionDisabledReason !== undefined
           }
           title={
-            batchDisabledReason('APPROVE')
-              ? t(`common.assistantSurface.regionalApproval.liveAction.disabled.${batchDisabledReason('APPROVE')}`)
+            primaryActionDisabledReason
+              ? t(`common.assistantSurface.regionalApproval.liveAction.disabled.${primaryActionDisabledReason}`)
               : undefined
           }
           onClick={() => {
-            if (!selectedLiveRows.length) return;
+            if (!selectedLiveRows.length || primaryActionDisabledReason) return;
             if (selectedLiveRows.length === 1) {
               const row = selectedLiveRows[0];
-              // 退回单没有"通过"这个动作：它的提交=退回重提（生成新版本），
-              // 单笔时打开可核对数量的重提对话框，多笔时在批量里按当前数量逐笔重提。
-              if (isReturnedForResubmit(row) && onResubmit && resubmitPeriod) {
+              if (selectedOnlyReturned) {
+                if (!resubmitPeriod || !onResubmit) return;
                 selectLivePlanContext(row);
                 onResubmit(row.planId, row.versionId, resubmitPeriod);
                 return;
@@ -3360,7 +3353,13 @@ const RegionalApprovalWorkbench: React.FC<{
                     tableLayoutFixed
                     indentSize={20}
                     expandedRowRender={(record) => {
-                      if (record.kind === 'plan' && record.members) return null;
+                      if (record.kind === 'plan' && record.members) return <GroupSkuSummary
+                        members={record.members}
+                        approvalRole={liveStageFilter}
+                        pendingValues={livePendingValues}
+                        client={detailClient ?? salesPlan}
+                        t={t}
+                      />;
                       const access = inlineSkuAccess(record.plan);
                       return (
                         <InlineSkuDetails

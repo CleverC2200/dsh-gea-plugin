@@ -101,6 +101,11 @@ const RegionalApprovalBatchActionDialog: React.FC<{
   }, [secondsToClose]);
 
   const resubmitUsable = Boolean(resubmitClient && resubmitConnected);
+  const resubmitOnly = items.length > 0 && items.every((item) => item.resubmit);
+  const mixedActions = kind === 'APPROVE' && items.some((item) => item.resubmit) && !resubmitOnly;
+  const mixedReject = kind === 'REJECT' && items.some((item) => item.row.status >= 7 && item.row.status <= 9)
+    && items.some((item) => item.row.status >= 1 && item.row.status <= 4);
+  const resubmitCount = items.filter((item) => item.resubmit).length;
   /** 能提交的两类：拿到动作授权的待审单，和走重提通道的退回单。 */
   const submittable = items.filter((item) =>
     item.resubmit ? resubmitUsable && Boolean(item.period) : item.access?.allowedActions.includes(kind)
@@ -108,6 +113,7 @@ const RegionalApprovalBatchActionDialog: React.FC<{
   const submitted = outcomes?.filter((outcome) => outcome.status === 'success').length ?? 0;
   const failed = outcomes?.filter((outcome) => outcome.status === 'failed').length ?? 0;
   const skipped = outcomes?.filter((outcome) => outcome.status === 'skipped').length ?? 0;
+  const unsuccessful = outcomes?.filter((outcome) => outcome.status !== 'success') ?? [];
   const locked = busy || outcomes !== undefined;
   const invalid = !submittable.length || !confirmed || (kind === 'REJECT' && !remark.trim());
 
@@ -212,9 +218,13 @@ const RegionalApprovalBatchActionDialog: React.FC<{
       visible={visible}
       className={styles.liveModal}
       title={t(
-        kind === 'APPROVE'
-          ? 'common.assistantSurface.regionalApproval.liveBatch.approveTitle'
-          : 'common.assistantSurface.regionalApproval.liveBatch.rejectTitle',
+        mixedActions
+          ? 'common.assistantSurface.regionalApproval.liveBatch.mixedTitle'
+          : resubmitOnly
+          ? 'common.assistantSurface.regionalApproval.liveBatch.resubmitTitle'
+          : kind === 'APPROVE'
+            ? 'common.assistantSurface.regionalApproval.liveBatch.approveTitle'
+            : 'common.assistantSurface.regionalApproval.liveBatch.rejectTitle',
         { count: items.length },
       )}
       maskClosable={false}
@@ -237,9 +247,13 @@ const RegionalApprovalBatchActionDialog: React.FC<{
             onClick={() => void submit()}
           >
             {t(
-              kind === 'APPROVE'
-                ? 'common.assistantSurface.regionalApproval.liveBatch.confirmApprove'
-                : 'common.assistantSurface.regionalApproval.liveBatch.confirmReject',
+              mixedActions
+                ? 'common.assistantSurface.regionalApproval.liveBatch.confirmMixed'
+                : resubmitOnly
+                ? 'common.assistantSurface.regionalApproval.liveBatch.confirmResubmit'
+                : kind === 'APPROVE'
+                  ? 'common.assistantSurface.regionalApproval.liveBatch.confirmApprove'
+                  : 'common.assistantSurface.regionalApproval.liveBatch.confirmReject',
             )}
           </Button>
         </div>
@@ -247,10 +261,15 @@ const RegionalApprovalBatchActionDialog: React.FC<{
     >
       <div className={styles.body} data-testid='regional-approval-batch-action-dialog'>
         <p data-testid='regional-approval-batch-summary'>
-          {t('common.assistantSurface.regionalApproval.liveBatch.summary', {
-            total: items.length,
-            ready: submittable.length,
-          })}
+          {mixedActions
+            ? t('common.assistantSurface.regionalApproval.liveBatch.mixedSummary', {
+                approve: items.length - resubmitCount,
+                resubmit: resubmitCount,
+              })
+            : t('common.assistantSurface.regionalApproval.liveBatch.summary', {
+                total: items.length,
+                ready: submittable.length,
+              })}
         </p>
         <ul className={styles.businessChecksum} data-testid='regional-approval-batch-items'>
           {items.map((item) => (
@@ -259,16 +278,22 @@ const RegionalApprovalBatchActionDialog: React.FC<{
               {planContext(item.row) ? <span> · {planContext(item.row)}</span> : null}
               {item.resubmit && resubmitUsable && item.period ? (
                 <span> · {t('common.assistantSurface.regionalApproval.liveBatch.resubmitTag')}</span>
-              ) : item.access?.allowedActions.includes(kind) ? null : (
+              ) : item.access?.allowedActions.includes(kind) ? (
+                mixedActions ? <span> · {t('common.assistantSurface.regionalApproval.liveBatch.approveTag')}</span>
+                  : mixedReject ? <span> · {t(`common.assistantSurface.regionalApproval.liveBatch.${item.row.status >= 7 ? 'repeatRejectTag' : 'rejectTag'}`)}</span>
+                    : null
+              ) : (
                 <span> · {skipText(item)}</span>
               )}
             </li>
           ))}
         </ul>
-        <label className={styles.formControl}>
+        {!resubmitOnly ? <label className={styles.formControl}>
           <span>
             {t(
-              kind === 'REJECT'
+              mixedActions
+                ? 'common.assistantSurface.regionalApproval.liveBatch.mixedRemark'
+                : kind === 'REJECT'
                 ? 'common.assistantSurface.regionalApproval.liveAction.rejectRemark'
                 : 'common.assistantSurface.regionalApproval.liveBatch.approveRemark',
             )}
@@ -284,9 +309,15 @@ const RegionalApprovalBatchActionDialog: React.FC<{
             autoSize={{ minRows: 3, maxRows: 5 }}
             onChange={setRemark}
           />
-        </label>
+        </label> : null}
         <Checkbox checked={confirmed} disabled={locked} onChange={setConfirmed}>
-          {t('common.assistantSurface.regionalApproval.liveBatch.confirmation', { count: submittable.length })}
+          {t(mixedActions
+            ? 'common.assistantSurface.regionalApproval.liveBatch.mixedConfirmation'
+            : 'common.assistantSurface.regionalApproval.liveBatch.confirmation', {
+            count: submittable.length,
+            approve: items.length - resubmitCount,
+            resubmit: resubmitCount,
+          })}
         </Checkbox>
         {attempted && invalid && !locked ? (
           <Alert type='error' showIcon content={t('common.assistantSurface.regionalApproval.liveBatch.required')} />
@@ -313,17 +344,15 @@ const RegionalApprovalBatchActionDialog: React.FC<{
                 {t('common.assistantSurface.regionalApproval.liveBatch.autoClose', { seconds: secondsToClose })}
               </p>
             )}
-            <ul className={styles.businessChecksum}>
-              {outcomes
-                .filter((outcome) => outcome.status !== 'success')
-                .map((outcome) => (
+            {unsuccessful.length > 0 ? <ul className={styles.businessChecksum}>
+              {unsuccessful.map((outcome) => (
                   <li key={outcome.planId}>
                     <strong>{outcome.label}</strong>
                     {outcome.context ? <span> · {outcome.context}</span> : null}
                     <span> · {outcome.detail ?? t('common.assistantSurface.regionalApproval.liveBatch.skipped')}</span>
                   </li>
                 ))}
-            </ul>
+            </ul> : null}
           </div>
         ) : null}
       </div>

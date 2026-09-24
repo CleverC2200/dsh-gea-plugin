@@ -712,6 +712,13 @@
           "aiAdvice": "AI 建议"
         }
       },
+      "groupSku": {
+        "title": "组织 SKU 汇总明细",
+        "scope": "{{plans}} 份计划 · {{skus}} 种 SKU，按当前版本汇总",
+        "loadError": "组织内有计划的 SKU 明细缺失或读取失败，未显示不完整的汇总。",
+        "retry": "重试读取",
+        "empty": "当前组织没有 SKU 明细。"
+      },
       "liveSubmit": {
         "title": "真实销售计划退回重提",
         "column": "退回重提",
@@ -861,7 +868,8 @@
           "completed": "该版本已收到服务端回执，已阻止重复操作。",
           "permission": "服务端已拒绝当前用户权限；该版本在本轮已禁用。",
           "returnedNeedsResubmit": "退回的单子不能直接通过或退回：请用「退回重提」重新提交（会生成新版本）。",
-          "returnedCannotReject": "退回版本不能再退：管理端目前只支持「退回重提」生成新版本，暂不支持在退回单上继续退回。",
+          "returnedCannotReject": "已退回客户提报端，不能再向前退回；请由客户修改后重提。",
+          "returnedCannotApprove": "退回版本不能直接通过，请使用「退回重提」生成新版本。",
           "resubmitMultiple": "退回重提一次只能处理一笔，请只勾选一笔。",
           "resubmitUnavailable": "退回单要重新提交（生成新版本），但当前环境的服务凭据或用户授权未就绪，暂不能提交。",
           "notReturned": "退回重提只适用于状态 6–9 的退回单。",
@@ -893,19 +901,29 @@
       },
       "liveBatch": {
         "approveTitle": "批量通过（{{count}} 笔）",
+        "resubmitTitle": "批量退回重提（{{count}} 笔）",
+        "mixedTitle": "批量提交（{{count}} 笔）",
         "rejectTitle": "批量退回（{{count}} 笔）",
         "summary": "本次选择 {{total}} 笔计划，其中 {{ready}} 笔可提交；不可提交的计划会在结果里说明原因。",
+        "mixedSummary": "本次将通过 {{approve}} 笔待审计划，重提 {{resubmit}} 笔退回计划；每笔按对应通道提交。",
+        "mixedRemark": "审批备注（仅用于通过的计划）",
         "approveRemark": "审批备注（可选，作用于本次全部计划）",
         "remarkLabel": "批量审批备注",
         "confirmation": "我已核对本次 {{count}} 笔计划与当前状态，确认逐笔提交。",
+        "mixedConfirmation": "我已核对 {{approve}} 笔通过和 {{resubmit}} 笔退回重提，确认逐笔提交。",
         "required": "请填写退回原因并确认本次提交范围。",
         "loading": "正在逐笔提交 {{count}} 笔计划，请勿关闭…",
         "result": "本次提交完成：成功 {{success}} 笔，失败 {{failed}} 笔，跳过 {{skipped}} 笔。",
         "resubmitTag": "退回重提（生成新版本）",
+        "approveTag": "审批通过（当前版本）",
+        "repeatRejectTag": "退回版本继续逐级退回",
+        "rejectTag": "正常审批退回",
         "autoClose": "{{seconds}} 秒后自动关闭",
         "skipped": "该计划当前不可操作",
         "close": "关闭",
         "confirmApprove": "确认批量通过",
+        "confirmResubmit": "确认批量重提",
+        "confirmMixed": "确认批量提交",
         "confirmReject": "确认批量退回"
       },
       "action": {

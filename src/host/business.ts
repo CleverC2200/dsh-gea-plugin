@@ -1390,10 +1390,12 @@ export class Business {
       // 版本或状态已经变化属于并发冲突：提示刷新，而不是笼统地报成无权限并禁用本轮操作。
       if (salesPlanVersionEvidenceStale(detail, {planId, versionId, status: request.expectedStatus as number}))
         throw new GeaResponseError(409,{message:'该计划版本或审批状态已变化，请刷新权威队列后重试'});
-      // 退回态（6–9）在管理端只有"退回重提"这条路（生成新版本号）；动作接口只接受 1–4 的待审单。
-      // 以前放行到上游，只会拿到一个被翻译成"并发冲突、请刷新"的 409，这里提前把出路说清楚。
-      if (row.status >= 6 && row.status <= 9 && (request.action === 'APPROVE' || request.action === 'REJECT'))
-        throw new GeaResponseError(409,{message:'退回的单子不能直接通过或退回：请用「退回重提」重新提交（会生成新版本）'});
+      // 当前正式服务支持责任节点将退回态 7–9 再逐级退回；状态 6 已到客户起点。
+      // 退回态仍不能直接通过，必须由提报端生成新版本重提。
+      if (row.status >= 6 && row.status <= 9 &&
+          (request.action === 'APPROVE' || row.status === 6 ||
+           salesPlanWorkflow(row.planTypeCode, workflowRows).actor(row.status) !== role))
+        throw new GeaResponseError(409,{message:'该退回版本不能执行本次审批动作，请核对当前责任节点或使用退回重提'});
       const access = salesPlanAccessForRow(row, detail, salesPlanStagesForRoles(auth.roles), role, workflowRows, { allowReturned: true });
       if (!access?.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']))
         throw new GeaResponseError(403,{message:'当前角色不具备该版本的操作权限'});
