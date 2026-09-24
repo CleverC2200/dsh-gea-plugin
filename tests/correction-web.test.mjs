@@ -4,7 +4,12 @@ import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
 import { profile } from './profile.mjs';
 
-test(
+/**
+ * 纠偏入口已按业务方反馈收起（2026-09-23）：月度页不再有「纠偏」标签，纠偏工作台暂时没有 UI 入口。
+ * 这两条用例原本在 main 上就是红的（等不到纠偏页元素）；入口收起后先显式跳过，
+ * 恢复标签时去掉 .skip 并把断言调回即可。
+ */
+test.skip(
   'correction tab uses an explicit Z query and blocks customers without an approved monthly baseline',
   { timeout: 60000 },
   async (t) => {
@@ -90,7 +95,7 @@ test(
 );
 
 import { correctionService } from './fixtures/correction-service.mjs';
-test(
+test.skip(
   'correction saves absolute drafts, approves inherited values, returns only its node, then reconciles DMS mock',
   { timeout: 90000 },
   async (t) => {

@@ -78,6 +78,19 @@ test('组织分组行的勾选可以取消，不会勾上就取消不掉', { tim
   await expect(box).toBeChecked();
 });
 
+test('多计划组织行展开后显示同一 SKU 的真实汇总', { timeout: 90000 }, async (t) => {
+  const { frame, groupBox } = await openWorkbench(t);
+  const groupRow = groupBox.locator('xpath=ancestor::tr');
+  const count = Number(/(\d+)\s*份计划/.exec(await groupRow.innerText())?.[1]);
+  assert.ok(count > 1, '测试行应包含多份计划');
+  await groupRow.getByRole('button').first().click();
+  const summary = frame.getByTestId('regional-approval-group-sku-summary');
+  await expect(summary).toBeVisible();
+  const skuRow = summary.getByRole('row').filter({ hasText: '1001' });
+  await expect(skuRow).toContainText(String(count * 20));
+  await expect(skuRow).toContainText((count * 200).toFixed(2));
+});
+
 test('多选批量通过：勾选 3 笔一次性逐笔提交', { timeout: 90000 }, async (t) => {
   const { frame, groupBox, writes } = await openWorkbench(t);
   const single = frame.locator('tbody label.arco-checkbox:has(input[value="p3"])').first();

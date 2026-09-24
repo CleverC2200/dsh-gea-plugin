@@ -4,7 +4,7 @@ import { chromium, expect } from '@playwright/test';
 import { profile } from './profile.mjs';
 
 test('one month merges Y and DC plans and synchronises the combined page with the conversation', {timeout:90000}, async t => {
-  const app = await profile(t);
+  const app = await profile(t, {roles:[{code:'sales_plan_province_approver',name:'省区审批'}]});
   const plans = {
     '20261001': {planId:'plan-y',versionId:'version-y',seq:1,periodId:'20261001',planTypeCode:'Y',status:2,baseName:'月度计划客户',dealerCode:'dealer-y',dealerName:'月度计划客户',orgCode:'org',orgName:'南京直营分区',provinceCode:'province',provinceName:'华东直营省区',areaCode:'area',areaName:'直营渠道销售',currentQty:'1',currentAmount:'10',targetQty:'2',targetAmount:'20',skuCount:0},
     '20261002': {planId:'plan-dc',versionId:'version-dc',seq:1,periodId:'20261002',planTypeCode:'DC',status:2,baseName:'大仓计划客户',dealerCode:'dealer-dc',dealerName:'大仓计划客户',orgCode:'org',orgName:'南京直营分区',provinceCode:'province',provinceName:'华东直营省区',areaCode:'area',areaName:'直营渠道销售',currentQty:'3',currentAmount:'30',targetQty:'4',targetAmount:'40',skuCount:0},
@@ -30,6 +30,8 @@ test('one month merges Y and DC plans and synchronises the combined page with th
       const records = candidates.filter(plan => status === null || Number(status) === plan.status);
       return send({records,total:records.length,current:Number(req.url.searchParams.get('pageNo') ?? 1),size:Number(req.url.searchParams.get('pageSize') ?? 20),pages:1});
     }
+    const detail = Object.values(plans).find(plan => path.endsWith('/plans/' + plan.planId));
+    if (detail) return send({currentVersion:{...detail,id:detail.versionId,effective:true,orderType:'M'},skus:[],versions:[],logs:[],actionContext:{versionId:detail.versionId,status:detail.status,nodeOrder:3,allowedActions:['APPROVE','REJECT'],snapshotHash:'a'.repeat(64)}});
     if (path.endsWith('/versions')) return send([]);
     if (path.endsWith('/skus')) return send([]);
     if (path.endsWith('/notifications')) return send({items:[],total:0});

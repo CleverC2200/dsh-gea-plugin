@@ -21,7 +21,6 @@
   "website": "Website",
   "version": "Version",
   "contact": "Contact",
-  "github": "Github",
   "loading": "Please wait...",
   "copy": "Copy",
   "reply": "Reply",
@@ -432,6 +431,7 @@
         "collapse": "Collapse approval flow"
       },
       "stageProgress": "Progress {{progress}}%",
+      "stageProgressDetail": "{{completed}} of {{total}} plans in this month are past this node",
       "contextSummary": "City manager approval · {{stage}} · {{count}} organization plans",
       "authorityContextSummary": "{{source}} · {{stage}} · plan {{planId}} · status {{status}}",
       "contextSources": {
@@ -712,6 +712,13 @@
           "aiAdvice": "AI guidance"
         }
       },
+      "groupSku": {
+        "title": "Organization SKU summary",
+        "scope": "{{plans}} plans · {{skus}} SKUs, summarized from current versions",
+        "loadError": "Some plan SKU details are missing or could not be loaded. No partial summary is shown.",
+        "retry": "Retry",
+        "empty": "This organization has no SKU details."
+      },
       "liveSubmit": {
         "title": "Live sales plan resubmission",
         "column": "Resubmit",
@@ -814,6 +821,7 @@
         "action": "Action type",
         "approve": "Approve",
         "reject": "Reject",
+        "resubmit": "Resubmit returned plan",
         "finalNode": "Category approval is complete, so this plan cannot be approved or rejected again. The server remains authoritative.",
         "approveRemark": "Approval remark (optional)",
         "rejectRemark": "Reject reason (required)",
@@ -859,6 +867,12 @@
         "disabled": {
           "completed": "This version already has a server receipt, so duplicate actions are blocked.",
           "permission": "The server denied this user. This version is disabled for the current round.",
+          "returnedNeedsResubmit": "A returned plan cannot be approved or rejected directly. Use Resubmit returned plan, which creates a new version.",
+          "returnedCannotReject": "This plan has reached the customer submission step and cannot be returned further. The customer must revise and resubmit it.",
+          "returnedCannotApprove": "A returned version cannot be approved directly. Use Resubmit returned plan to create a new version.",
+          "resubmitMultiple": "Resubmit returned plan handles one plan at a time — select exactly one row.",
+          "resubmitUnavailable": "A returned plan has to be resubmitted (which creates a new version), but service credentials or user authorization are unavailable in this environment.",
+          "notReturned": "Resubmit returned plan only applies to returned plans (status 6–9).",
           "readOnly": "This business surface only queries live GEA data. Approval, rejection, and submission are disabled.",
           "missingAuthority": "Actions are unavailable because authorization for this version could not be verified. Refresh, or ask an administrator to check the API.",
           "detailUnavailable": "Actions are unavailable because plan details could not be loaded. Refresh; the list record may not match its details.",
@@ -874,7 +888,12 @@
           "rateLimited": "Too many requests. Retry later with the same idempotency key; no second action will be created.",
           "unavailable": "The result is unknown. Close and refresh authoritative state, or retry here with the same idempotency key. Do not start a new action intent.",
           "failed": "The request failed and local state was not changed. Refresh the authoritative queue before deciding.",
-          "reference": " (Error reference: {{id}}, quote it to your administrator)"
+          "reference": " (Error reference: {{id}}, quote it to your administrator)",
+          "upstream": {
+            "SALES_PLAN_APPROVAL_STATE_INVALID": "This plan's status does not allow a direct approve or reject. Returned plans must be resubmitted (Resubmit returned plan), then refresh the queue.",
+            "NOTIFICATION_PAYLOAD_INVALID": "The server rejected the approval notification payload. This is a server-side problem that refreshing cannot fix - send the error reference to the backend team.",
+            "APPROVAL_OPERATOR_NOT_ALLOWED": "The server says this account no longer holds the role or org scope for this node. Refresh and retry, and ask an administrator to check your roles."
+          }
         },
         "approvalRole": "Approval role",
         "selectRole": "Choose the role for this action",
@@ -882,18 +901,29 @@
       },
       "liveBatch": {
         "approveTitle": "Approve {{count}} plans",
+        "resubmitTitle": "Resubmit {{count}} returned plans",
+        "mixedTitle": "Submit {{count}} plans",
         "rejectTitle": "Return {{count}} plans",
         "summary": "{{total}} plans selected, {{ready}} can be submitted. Plans that cannot be submitted are listed with the reason afterwards.",
+        "mixedSummary": "Approve {{approve}} pending plans and resubmit {{resubmit}} returned plans through their respective actions.",
+        "mixedRemark": "Approval note (applies only to pending plans)",
         "approveRemark": "Approval note (optional, applies to every selected plan)",
         "remarkLabel": "Batch approval note",
         "confirmation": "I have reviewed these {{count}} plans and their current status, and confirm submitting each of them.",
+        "mixedConfirmation": "I have reviewed {{approve}} approvals and {{resubmit}} resubmissions, and confirm submitting each plan.",
         "required": "Add a return reason and confirm the scope before submitting.",
         "loading": "Submitting {{count}} plans one by one. Do not close this dialog.",
         "result": "Submission finished: {{success}} succeeded, {{failed}} failed, {{skipped}} skipped.",
+        "resubmitTag": "Resubmit returned plan (creates a new version)",
+        "approveTag": "Approve current version",
+        "repeatRejectTag": "Return an already returned version to the previous step",
+        "rejectTag": "Return a pending approval",
         "autoClose": "Closing in {{seconds}}s",
         "skipped": "This plan cannot be submitted right now",
         "close": "Close",
         "confirmApprove": "Approve all",
+        "confirmResubmit": "Resubmit all",
+        "confirmMixed": "Submit all",
         "confirmReject": "Return all"
       },
       "action": {

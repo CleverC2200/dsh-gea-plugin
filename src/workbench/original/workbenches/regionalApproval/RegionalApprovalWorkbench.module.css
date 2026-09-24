@@ -1273,6 +1273,17 @@
   scrollbar-width: thin;
   scrollbar-color: var(--bg-4) var(--bg-1);
 }
+/* 表格正文独立滚动时，列标题始终留在可视区域顶部。 */
+.organizationTable :global(.arco-table-content-inner > table > thead > tr > th.arco-table-th) {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--bg-2);
+}
+.organizationTable :global(.arco-table-content-inner > table > thead > tr > th.arco-table-col-fixed-left),
+.organizationTable :global(.arco-table-content-inner > table > thead > tr > th.arco-table-col-fixed-right) {
+  z-index: 4;
+}
 /* Sticky identity and status columns must leave room for values in small panels. */
 @container (max-width: 620px) {
   .organizationTable :global(.arco-table-col-fixed-left),
@@ -1543,3 +1554,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Align the business header border with the shared conversation toolbar. */
+.header { box-sizing: border-box; height: 58px; min-height: 58px; max-height: 58px; flex: 0 0 58px; border-top: 0; flex-wrap: nowrap; }

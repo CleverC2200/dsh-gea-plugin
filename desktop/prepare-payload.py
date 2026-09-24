@@ -1,6 +1,6 @@
 """Assemble a new platform runtime from audited package archives and an upstream Node distribution."""
 from pathlib import Path
-import argparse, hashlib, json, shutil, subprocess, tarfile
+import argparse, hashlib, json, os, shutil, subprocess, tarfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('platform', choices=['mac', 'win'])
@@ -44,14 +44,11 @@ for name in ['runtime-start.mjs', 'onboarding.mjs', 'company-resources.mjs', 'ht
     shutil.copy2(desktop / name, target / ('start.mjs' if name == 'runtime-start.mjs' else name))
 subprocess.run(['node', str(desktop / 'prepare-tools.mjs'), str(target)], check=True)
 subprocess.run(['node', str(target / 'tools/node_modules/pnpm/bin/pnpm.cjs'), 'install', '--prod', '--ignore-scripts', '--prefer-offline'], cwd=target, check=True)
-subprocess.run(['node', '--input-type=module', '--eval', """
-import {pathToFileURL} from 'node:url';
-import {join} from 'node:path';
-import {writeFile} from 'node:fs/promises';
-const root=process.argv[1];
-const {archiveInstall}=await import(pathToFileURL(join(root,'node_modules/dsh-agent-manage/lib/catalog/archive.js')));
-const source='https://api.github.com/repos/CleverC2200/company-agent-suites/zipball/main';
-const result=await archiveInstall(source,join(root,'resources/company-agent-suites'));
-await writeFile(join(root,'resources/receipt.json'),JSON.stringify({source,...result},null,2)+'\\n');
-""", str(target)], check=True)
+source = 'http://100.100.6.191:20656/chenyonghao/company-agent-suites.git'
+resource = target / 'resources' / 'company-agent-suites'
+subprocess.run(['git', 'clone', '--depth', '1', '--branch', 'main', source, str(resource)],
+               check=True, env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'})
+commit = subprocess.check_output(['git', '-C', str(resource), 'rev-parse', 'HEAD'], text=True).strip()
+shutil.rmtree(resource / '.git')
+(target / 'resources' / 'receipt.json').write_text(json.dumps({'source': source, 'commit': commit}, indent=2) + '\n')
 print(target)

@@ -180,6 +180,7 @@ export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName
     {items.map((sku,index)=>{
      const changed = formatExactDecimal(sku.baseQty) !== formatExactDecimal(sku.qty) || formatExactDecimal(sku.amtBase) !== formatExactDecimal(sku.amt);
      const code=String(sku.skuCode), baseline=baselineFor(sku), confirmed=confirmedValues[code] ?? editableQuantityText(baseline);
+     const confirmedAmount=multiplyExactDecimals(confirmed, String(sku.price));
      return <tr key={code+':'+index} className={changed ? styles.changed : undefined}>
       <td><span className={styles.sku}>{code}</span><span className={styles.description}>{sku.materialDescription || sku.skuName || tr('missingDescription')}</span></td>
       <td>{quantityText(sku.baseQty)}</td><td>{canEdit ? <div className={styles.quantityCell}>
@@ -188,7 +189,7 @@ export function InlineSkuDetails({row,t,detail,canEdit,approvalRole,categoryName
         <span className={styles.draftFailedText}>{tr('draft.failedShort')}</span>
         <button type='button' className={styles.draftRetry} onClick={()=>setSaveRetry(value=>value+1)}>{tr('draft.retryShort')}</button>
        </span> : draftState === 'saving' ? <span className={styles.draftSaving} role='status'>{tr('draft.saving')}</span> : null}
-      </div> : quantityText(sku.qty)}</td><td>{formatExactDecimal(sku.amtBase)}</td><td>{formatExactDecimal(sku.amt)}</td></tr>;
+      </div> : quantityText(sku.qty)}</td><td>{formatExactDecimal(sku.amtBase)}</td><td>{confirmedAmount === undefined ? '—' : formatExactDecimal(confirmedAmount)}</td></tr>;
     })}
    </tbody>)}
    </table></div>}

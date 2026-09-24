@@ -42,12 +42,12 @@ test(
     await expect(entry).toBeEnabled();
     await entry.click();
     const prototype = page.frameLocator("iframe[title='品类计划工作台']");
-    await expect(prototype.getByText("品类计划管理工作台").first()).toBeVisible();
+    await expect(prototype.getByText("品类计划管理工作台").first()).toBeHidden();
     await expect(prototype.getByText("品类计划指标监控").first()).toBeVisible();
     // 原型自带的那一列会话区要关掉，会话只留外壳右侧这一个。
     await expect(prototype.locator("aside.chat")).toBeHidden();
     // 右侧会话区跟着这一页换成品类计划助手。
-    await expect(page.getByText("品类计划助手").first()).toBeVisible();
+    await expect(page.getByText("品类计划Agent").first()).toBeVisible();
     // 已登录时工作台必须落在中间列里，不能铺成整屏登录遮罩。
     const frame = page.locator("iframe[title='品类计划工作台']");
     await expect(frame).not.toHaveClass(/gea-login-frame/);

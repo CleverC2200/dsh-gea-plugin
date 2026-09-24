@@ -31,30 +31,85 @@ export const salesPlanVisibleStatuses = (typeCode: string, roles: readonly Appro
   );
 };
 
-export const approvalStageProgressForSalesPlanStatusTotals = (
-  total: number,
-  statusTotals: Readonly<Partial<Record<number, number>>>,
-  typeCode = 'Y'
-): Record<ApprovalStageId, number> => {
-  const workflow = salesPlanWorkflow(typeCode);
+/** 一个节点的分子/分母：界面上悬停百分比时直接展示这两个数，不必再靠人肉对照口径。 */
+export type SalesPlanStageTally = {
+  /** 分子：该范围内"已经过这个节点"的计划单数。 */
+  completed: number;
+  /** 分母：该范围内全部状态的计划单数；月度把 Y/DC/FC… 各条流程分别统计后相加。 */
+  total: number;
+};
+
+const emptySalesPlanStageTally = (): SalesPlanStageTally => ({ completed: 0, total: 0 });
+
+/** 分母为 0 记 0%；没全完成时封顶 99%，避免四舍五入被读成"已经全审完"。 */
+export const salesPlanStagePercent = ({ completed, total }: SalesPlanStageTally): number =>
+  total > 0
+    ? Math.max(0, Math.min(completed >= total ? 100 : 99, Math.round((completed / total) * 100)))
+    : 0;
+
+/** 单条工作流的分子/分母；哪些状态算哪个节点已完成见 tests/approval-visibility 的口径矩阵。 */
+export const salesPlanStageTalliesForWorkflow = (period: {
+  total: number;
+  statusTotals: Readonly<Partial<Record<number, number>>>;
+  planTypeCode: string;
+}): Record<ApprovalStageId, SalesPlanStageTally> => {
+  const workflow = salesPlanWorkflow(period.planTypeCode);
   return Object.fromEntries(
     SALES_PLAN_ROLES.map((role) => {
       const pending = workflow.pending(role);
-      if (!Number.isSafeInteger(total) || total <= 0 || pending === undefined) return [role, 0];
-      const completed = SALES_PLAN_PROGRESS_STATUSES.reduce<number>((sum, status) => {
+      const tally = emptySalesPlanStageTally();
+      if (!Number.isSafeInteger(period.total) || period.total <= 0 || pending === undefined) return [role, tally];
+      tally.total = period.total;
+      tally.completed = SALES_PLAN_PROGRESS_STATUSES.reduce<number>((sum, status) => {
         // 退回目标保留其确认结果；发起退回的节点必须再次审批。
+        // 状态 5（审批完成·待回写）代表全部审批节点都已经签过字，品类也不例外——
+        // 之前把品类排除在外，导致"品类已审批（待回写）"一条都不计入品类进度，永远是 0%。
         const active = workflow.actor(status);
         const activePending = active && workflow.pending(active);
         const done =
           status === 10 ||
-          (status === 5 && role !== 'category') ||
+          status === 5 ||
           (activePending !== undefined && activePending > pending);
-        return sum + (done ? Math.max(0, statusTotals[status] ?? 0) : 0);
+        return sum + (done ? Math.max(0, period.statusTotals[status] ?? 0) : 0);
       }, 0);
-      return [role, Math.max(0, Math.min(completed >= total ? 100 : 99, Math.round((completed / total) * 100)))];
+      return [role, tally];
     })
-  ) as Record<ApprovalStageId, number>;
+  ) as Record<ApprovalStageId, SalesPlanStageTally>;
 };
+
+const salesPlanStagePercents = (
+  tallies: Record<ApprovalStageId, SalesPlanStageTally>
+): Record<ApprovalStageId, number> =>
+  Object.fromEntries(
+    SALES_PLAN_ROLES.map((role) => [role, salesPlanStagePercent(tallies[role])])
+  ) as Record<ApprovalStageId, number>;
+
+export const approvalStageProgressForSalesPlanStatusTotals = (
+  total: number,
+  statusTotals: Readonly<Partial<Record<number, number>>>,
+  typeCode = 'Y'
+): Record<ApprovalStageId, number> =>
+  salesPlanStagePercents(salesPlanStageTalliesForWorkflow({ total, statusTotals, planTypeCode: typeCode }));
+
+/** 月度分子/分母：先把该月每条工作流分别算出来，再按节点相加。 */
+export const salesPlanStageTallies = (
+  periods: readonly {
+    total: number;
+    statusTotals: Readonly<Partial<Record<number, number>>>;
+    planTypeCode: string;
+  }[]
+): Record<ApprovalStageId, SalesPlanStageTally> =>
+  Object.fromEntries(
+    SALES_PLAN_ROLES.map((role) => {
+      const sum = emptySalesPlanStageTally();
+      for (const period of periods) {
+        const tally = salesPlanStageTalliesForWorkflow(period)[role];
+        sum.completed += tally.completed;
+        sum.total += tally.total;
+      }
+      return [role, sum];
+    })
+  ) as Record<ApprovalStageId, SalesPlanStageTally>;
 
 export const approvalStageProgressForSalesPlanPeriods = (
   periods: readonly {
@@ -62,29 +117,7 @@ export const approvalStageProgressForSalesPlanPeriods = (
     statusTotals: Readonly<Partial<Record<number, number>>>;
     planTypeCode: string;
   }[]
-): Record<ApprovalStageId, number> =>
-  Object.fromEntries(
-    SALES_PLAN_ROLES.map((role) => {
-      let total = 0;
-      let completed = 0;
-      for (const period of periods) {
-        const workflow = salesPlanWorkflow(period.planTypeCode);
-        const pending = workflow.pending(role);
-        if (pending === undefined || period.total <= 0) continue;
-        total += period.total;
-        completed += SALES_PLAN_PROGRESS_STATUSES.reduce<number>((sum, status) => {
-          const active = workflow.actor(status);
-          const activePending = active && workflow.pending(active);
-          const done =
-            status === 10 ||
-            (status === 5 && role !== 'category') ||
-            (activePending !== undefined && activePending > pending);
-          return sum + (done ? Math.max(0, period.statusTotals[status] ?? 0) : 0);
-        }, 0);
-      }
-      return [role, total > 0 ? Math.max(0, Math.min(completed >= total ? 100 : 99, Math.round((completed / total) * 100))) : 0];
-    })
-  ) as Record<ApprovalStageId, number>;
+): Record<ApprovalStageId, number> => salesPlanStagePercents(salesPlanStageTallies(periods));
 
 export type RegionalApprovalQueryScope = Pick<
   GeaSalesPlanPageQuery,

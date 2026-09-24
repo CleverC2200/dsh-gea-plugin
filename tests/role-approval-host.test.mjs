@@ -23,9 +23,14 @@ test('Host binds role writes to fresh permission and capability evidence while r
  mode='supported';
  // 未提报、待回写、回写完成都不是审批动作，仍然写不了。
  for(status of [0,5,10]) assert.equal((await action()).ok,false,`status ${status}`);
- // 退回态只要队列里看得见就能改完继续提交，不再要求「必须退回给本节点」；
- // 角色、组织、版本和状态是否真的允许由 GEA 写接口校验。
- for(status of [6,7,8,9]) assert.equal((await action()).ok,true,`status ${status} 可以改完继续提交`);
+ // 退回态不能直接通过，仍需走生成新版本的重提通道。
+ for(status of [6,7,8,9]) {
+   const denied=await action();
+   assert.equal(denied.ok,false,`status ${status} 不能直接通过/退回`);
+   assert.equal(denied.error.code,'GEA_HTTP_409');
+   assert.match(denied.error.message,/退回重提/);
+ }
+ assert.equal(writes,0,'退回态不发上游写请求');
  status=6;
  const returnedSave=await app.rpc('sales-plan/action',{planId:'p',versionId:'v',requestId:`r${++attempt}`,idempotencyKey:`role:${attempt}`,request:{action:'SAVE',expectedStatus:6,expectedSnapshot:snapshot}});
  assert.equal(returnedSave.ok,false,'returned SAVE');
@@ -41,6 +46,34 @@ test('Host binds role writes to fresh permission and capability evidence while r
  assert.equal(writes,2);
  const deniedDowngrade=await action({approvalPolicy:undefined});assert.equal(deniedDowngrade.ok,false);
  assert.equal(writes,2);
+});
+
+test('Host allows a returned regional plan to be rejected once more toward the customer', {timeout:60000}, async t=>{
+ const app=await profile(t);
+ const snapshot='a'.repeat(64);
+ let writes=0;
+ app.route((req,_res,reply)=>{
+   const path=req.url.pathname;
+   const send=result=>{reply({success:true,result});return true;};
+   if(path.endsWith('/getPermCode')) return send({codeList:['sales-plan:plan:region-approve']});
+   if(path.endsWith('/plans/p')) return send({currentVersion:{id:'v',planId:'p',status:7,effective:true,planTypeCode:'Y'},skus:[],versions:[],logs:[],
+     actionContext:{versionId:'v',status:7,nodeOrder:2,snapshotHash:snapshot,allowedActions:['REJECT']}});
+   if(path.endsWith('/versions/v/actions')) {
+     const body=JSON.parse(req.body);
+     assert.equal(body.action,'REJECT');
+     assert.equal(body.expectedStatus,7);
+     assert.equal(body.remark,'继续退回客户核对');
+     writes++;
+     return send({planId:'p',versionId:'v',fromStatus:7,toStatus:6,requestId:req.headers['x-request-id'],traceId:'t',auditId:'a',replayed:false});
+   }
+   return false;
+ });
+ await app.login();
+ const result=await app.rpc('sales-plan/action',{planId:'p',versionId:'v',requestId:'repeat-reject',idempotencyKey:'repeat-reject',
+   request:{action:'REJECT',approvalRole:'region',expectedStatus:7,expectedSnapshot:snapshot,remark:'继续退回客户核对'}});
+ assert.equal(result.ok,true,JSON.stringify(result));
+ assert.equal(result.value.toStatus,6);
+ assert.equal(writes,1);
 });
 
 test('Host accepts approval backed by an assigned task, matching the upstream camelCase bizKey', {timeout:60000}, async t=>{

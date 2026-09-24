@@ -197,9 +197,10 @@ test(
         [headings[0].hit],
         JSON.stringify(navRows),
       );
-      // 业务导航整块贴侧栏左边缘：条目命中区顶到面板最左边，图标只留一点呼吸位。
+      // 业务条目与其导航容器左边缘一致；主线原生侧栏保留外层留白。
+      const navigationBox = await page.locator(".gea-shell-navigation").boundingBox();
       assert.ok(
-        headings[0].hit <= 2 && children.every((row) => row.hit <= 2),
+        Math.abs(headings[0].hit - navigationBox.x) <= 2 && children.every((row) => Math.abs(row.hit - navigationBox.x) <= 2),
         JSON.stringify(navRows),
       );
       // 「AI 工作台」入口（原生新建会话）也走同一条左线：整块贴左、内容左对齐。
@@ -240,7 +241,7 @@ test(
         await expect.poll(() => table.evaluate((element) => ({
           viewport: element.clientWidth,
           table: Math.round(element.querySelector("table").getBoundingClientRect().width),
-        }))).toEqual({ viewport: width - 2, table: Math.max(660, width - 2) });
+        }))).toMatchObject({ viewport: width - 1, table: Math.max(660, width - 1) });
         const headers = await table.locator("thead th").evaluateAll((cells) =>
           cells.map((cell) => ({
             left: cell.getBoundingClientRect().left,
@@ -256,7 +257,7 @@ test(
         if (style === null) element.removeAttribute("style");
         else element.setAttribute("style", style);
       }, originalStyle);
-      await frame.getByRole("tab", { name: "按基地", exact: true }).click();
+      await frame.getByRole("tab", { name: "按区域", exact: true }).click();
       await frame.locator("tbody label.arco-checkbox").first().click();
       const approve = frame.getByRole("button", { name: "通过", exact: true });
       const reject = frame.getByRole("button", { name: "退回", exact: true });
@@ -270,14 +271,15 @@ test(
       await approvalDialog
         .getByRole("button", { name: "取消", exact: true })
         .click();
-      const provinceStage = frame.getByRole("button", {
-        name: /省区审批.*进度/,
-      });
-      await provinceStage.click();
-      await expect(provinceStage).toHaveAttribute("aria-pressed", "true");
+      if (!(await frame.getByTestId('regional-approval-flow-lane').isVisible()))
+        await frame.getByTestId('regional-approval-flow-toggle').click();
+      await expect(frame.getByTestId('regional-approval-stage-province')).toBeDisabled();
+      const currentStage = frame.getByTestId('regional-approval-stage-region');
+      await currentStage.click();
+      await expect(currentStage).toHaveAttribute('aria-pressed', 'false');
       await expect(approve).toBeDisabled();
-      await provinceStage.click();
-      await expect(provinceStage).toHaveAttribute("aria-pressed", "false");
+      await currentStage.click();
+      await expect(currentStage).toHaveAttribute('aria-pressed', 'true');
       assert.equal(
         app.requests.some(
           (r) => r.method === "POST" && r.url.pathname.endsWith("/actions"),

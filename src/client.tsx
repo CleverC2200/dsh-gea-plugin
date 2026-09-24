@@ -18,6 +18,7 @@ import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import { zh, en, type CopyKey } from "./client/locales.ts";
+import { mountFloatingComposers } from "./client/floating-composer.ts";
 import { AgentAvatar } from "./client/agent-avatar.tsx";
 import { Inbox } from "./client/inbox.tsx";
 import { DesktopNavigation, createNavigationSelection, type ReadyNavigation } from './client/desktop-navigation.tsx';
@@ -34,13 +35,12 @@ import {
   inboxConversation,
   inventoryConversation,
   inventoryWorkbenchConversation,
+  mpsPlanConversation,
   orderFulfillmentConversation,
   orderManagementConversation,
   regionalPlanConversation,
   safetyStockConversation,
   supplyCoordinationConversation,
-  type ConversationActionIcon,
-  type ConversationActionTone,
   type ConversationPromptConfig,
 } from "./client/conversation-prompts.ts";
 import {BUSINESS_MENU_PRESET,MAIN_MENU,businessMenuTitle,isGeaBusinessPanel,registeredBusinessPanels,resolveBusinessMenu,type BusinessMenuSection} from "./business-navigation.ts";
@@ -49,6 +49,7 @@ import brandLogo from "./client/brand-logo.png";
 import shellCss from "./client/shell.css";
 import workbenchCss from "./workbench/workbench.css";
 import categoryPlanPrototype from "./workbench/prototypes/category-plan-v5.html";
+import mpsPlanPrototype from "./workbench/prototypes/mps-plan-v0.html";
 import regionalPlanPrototype from "./workbench/prototypes/regional-plan-v9.html";
 import { ApiLogCenter } from "./workbench/api-log-center.tsx";
 
@@ -59,7 +60,16 @@ import { ApiLogCenter } from "./workbench/api-log-center.tsx";
  */
 const categoryPlanDocument = categoryPlanPrototype.replace(
   "</head>",
-  '<style data-gea-embed="single-conversation">.app{grid-template-columns:minmax(0,1fr)!important}aside.chat{display:none!important}</style></head>',
+  '<style data-gea-embed="single-conversation">.app{grid-template-columns:minmax(0,1fr)!important}aside.chat{display:none!important}.work-body{scrollbar-width:none}.work-body::-webkit-scrollbar{display:none}.boundary,.work-head-row>div:first-child{display:none!important}.work-head{height:58px;box-sizing:border-box;padding:8px 16px;background:#fff}.work-head-row{height:100%;align-items:center}.work-head-actions{margin-left:0}</style></head>',
+);
+/** 主生产计划（MPS）数字人原型：同样只关掉它自带的右侧会话列，会话统一由外壳承载。 */
+const regionalPlanDocument = regionalPlanPrototype.replace(
+  "</head>",
+  '<style data-gea-embed="compact-header">.topbar>.brand{display:none!important}.wrap{padding-top:0!important}.topbar{height:58px;min-height:58px;box-sizing:border-box;flex:none;align-items:center!important;flex-wrap:nowrap;padding:8px 16px;border:0;border-bottom:1px solid var(--line);border-radius:0;box-shadow:none;margin-left:-16px;margin-right:-16px}.topctl{flex-wrap:nowrap;overflow-x:auto;width:100%}</style></head>',
+);
+const mpsPlanDocument = mpsPlanPrototype.replace(
+  "</head>",
+  '<style data-gea-embed="single-conversation">.ap-app{grid-template-columns:minmax(0,1fr)!important}aside.ap-dock{display:none!important}.ap-brando{display:none!important}.ap-page-tabs{height:58px;box-sizing:border-box;align-items:center;padding-top:8px;padding-bottom:7px}</style></head>',
 );
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
@@ -74,6 +84,7 @@ const PANEL = "gea-proof" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;
 const REGIONAL_PLAN_PANEL = "gea-regional-plan" as MainPanelId;
 const CATEGORY_PLAN_PANEL = "plan-region-category" as MainPanelId;
+const MPS_PLAN_PANEL = "plan-category-production" as MainPanelId;
 type SidebarSection = BusinessMenuSection;
 type SidebarSections = Record<SidebarSection, boolean>;
 
@@ -102,6 +113,7 @@ export function apply(ctx: Context): void {
         [PANEL]: t("salesPlan"),
         [REGIONAL_PLAN_PANEL]: t("regionalPlanWorkbench"),
         [CATEGORY_PLAN_PANEL]: t("categoryPlanWorkbench"),
+        [MPS_PLAN_PANEL]: t("mpsPlanWorkbench"),
         [INBOX]: t("businessInbox"),
       },
     );
@@ -293,7 +305,7 @@ export function apply(ctx: Context): void {
             className="gea-workbench-frame"
             title={t("regionalPlanWorkbench")}
             sandbox="allow-scripts"
-            srcDoc={regionalPlanPrototype}
+            srcDoc={regionalPlanDocument}
           />
         </section>
       </>
@@ -320,6 +332,32 @@ export function apply(ctx: Context): void {
             title={t("categoryPlanWorkbench")}
             sandbox="allow-scripts"
             srcDoc={categoryPlanDocument}
+          />
+        </section>
+      </>
+    );
+  }
+  // 主生产计划（MPS）：内嵌业务侧的「月计划协调数字人」V0 原型（纯模拟数据，不连 GEA/SAP/DMS）。
+  function MpsPlanPage() {
+    const [sessionError, setSessionError] = useState("");
+    useEffect(() => {
+      // 和其他业务页一样挂一个只读会话，让右侧会话区常驻。
+      const hide = ctx.agentWorkbench.showConversation(MPS_PLAN_PANEL);
+      void ctx.agentWorkbench
+        .open(MPS_PLAN_PANEL)
+        .catch((error) => setSessionError(String(error.message)));
+      return () => hide();
+    }, []);
+    return (
+      <>
+        <style>{shellCss}</style>
+        {sessionError && <div role="alert">{sessionError}</div>}
+        <section className="gea-workbench-shell">
+          <iframe
+            className="gea-workbench-frame"
+            title={t("mpsPlanWorkbench")}
+            sandbox="allow-scripts"
+            srcDoc={mpsPlanDocument}
           />
         </section>
       </>
@@ -479,6 +517,7 @@ export function apply(ctx: Context): void {
     available.set(PANEL, t("salesPlan"));
     available.set(REGIONAL_PLAN_PANEL, t("regionalPlanWorkbench"));
     available.set(CATEGORY_PLAN_PANEL, t("categoryPlanWorkbench"));
+    available.set(MPS_PLAN_PANEL, t("mpsPlanWorkbench"));
     const menu = resolveBusinessMenu(BUSINESS_MENU_PRESET, available);
     return (
       <nav
@@ -634,9 +673,14 @@ export function apply(ctx: Context): void {
       { name: "main", key: CATEGORY_PLAN_PANEL, locale: "geaProof" },
       CategoryPlanPage,
     );
+    yield ctx.slots.register(
+      { name: "main", key: MPS_PLAN_PANEL, locale: "geaProof" },
+      MpsPlanPage,
+    );
     yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
     yield ctx.agentWorkbench.register({ id: REGIONAL_PLAN_PANEL, preset: "gea-readonly" });
     yield ctx.agentWorkbench.register({ id: CATEGORY_PLAN_PANEL, preset: "gea-readonly" });
+    yield ctx.agentWorkbench.register({ id: MPS_PLAN_PANEL, preset: "gea-readonly" });
     // 业务待办页也要有自己的会话栏：不登记的话右侧对话框整块不出现。
     yield ctx.agentWorkbench.register({ id: INBOX, preset: "gea-readonly" });
     ctx.layout.selectPanel(PANEL);
@@ -873,6 +917,7 @@ export function apply(ctx: Context): void {
         resize.disconnect();
       };
     }, []);
+    useEffect(mountFloatingComposers, []);
     useEffect(() => {
       const findRegions = () => {
         setRegion(
@@ -1080,7 +1125,6 @@ export function apply(ctx: Context): void {
         return;
       }
       setConversationActionError("");
-      setConversationView("split");
       void ctx.agentWorkbench.open(activePanel, `gea-new-${crypto.randomUUID()}`)
         .catch((error: unknown) => setConversationActionError(String(error instanceof Error ? error.message : error)));
     };
@@ -1136,12 +1180,12 @@ export function apply(ctx: Context): void {
           />,
           (conversationView === "center" ? centerColumn : railColumn)!,
         )}
-        {railColumn && createPortal(<ConversationHead agent={conversationAgentFor(activePanel)} />, railColumn)}
+        {/* 计划类原型页的欢迎区自己就带助手名片，右栏顶部不再重复一行标题。 */}
+        {railColumn && ![PANEL, REGIONAL_PLAN_PANEL, CATEGORY_PLAN_PANEL, MPS_PLAN_PANEL].includes(activePanel as MainPanelId) && createPortal(<ConversationHead agent={conversationAgentFor(activePanel)} />, railColumn)}
         {conversationHero && createPortal(
           <AgentWelcome
             agent={conversationAgentFor(activePanel)}
             onFill={(prompt) => writeConversationPrompt(prompt, false)}
-            onSend={(prompt) => writeConversationPrompt(prompt, true)}
           />,
           conversationHero,
         )}
@@ -1242,11 +1286,9 @@ function writeConversationPrompt(prompt: string, submit: boolean): void {
 function AgentWelcome({
   agent,
   onFill,
-  onSend,
 }: {
   agent: ConversationPromptConfig;
   onFill: (prompt: string) => void;
-  onSend: (prompt: string) => void;
 }) {
   return (
     <section className="gea-agent-welcome" aria-label={agent.name}>
@@ -1254,21 +1296,6 @@ function AgentWelcome({
         <AgentAvatar className="gea-agent-avatar" />
         <h2>{agent.name}</h2>
         <p className="gea-agent-intro">{agent.intro}<b>{agent.boundary}</b></p>
-      </div>
-      <div className="gea-agent-block">
-        <h3>常用功能</h3>
-        <div className="gea-agent-actions">
-          {agent.actions.map((action) => (
-            <button key={action.label} type="button" onClick={() => onSend(action.prompt)}>
-              <AgentActionIcon kind={action.icon} tone={action.tone} />
-              <span className="gea-agent-action-copy">
-                <span className="gea-agent-action-title">{action.label}</span>
-                <span className="gea-agent-action-detail">{action.detail}</span>
-              </span>
-              <b className="gea-agent-action-arrow" aria-hidden="true">›</b>
-            </button>
-          ))}
-        </div>
       </div>
       <div className="gea-agent-block gea-agent-prompts">
         <h3>你可以这样问</h3>
@@ -1351,11 +1378,12 @@ function ConversationHead({ agent }: { agent: ConversationPromptConfig }) {
   );
 }
 
-/** 每个业务页配各自的会话助手：名字、常用功能、推荐提问都跟那一页的工作台对齐。 */
+/** 每个业务页配各自的会话助手：名字、介绍、推荐提问都跟那一页的工作台对齐。 */
 const BUSINESS_CONVERSATIONS: Record<string, ConversationPromptConfig> = {
   [PANEL]: approvalConversation,
   [REGIONAL_PLAN_PANEL]: regionalPlanConversation,
   [CATEGORY_PLAN_PANEL]: categoryPlanConversation,
+  [MPS_PLAN_PANEL]: mpsPlanConversation,
   "inventory-dealer": inventoryConversation,
   "inventory-apsdemand": demandOpsConversation,
   "inventory-apsdelivery": deliveryOpsConversation,
@@ -1373,24 +1401,6 @@ function conversationAgentFor(panel: MainPanelId | null | undefined): Conversati
   if (!panel) return homeConversation;
   if (panel === INBOX) return inboxConversation;
   return BUSINESS_CONVERSATIONS[panel] ?? homeConversation;
-}
-
-function AgentActionIcon({ kind, tone }: { kind: ConversationActionIcon; tone: ConversationActionTone }) {
-  const paths: Record<ConversationActionIcon, React.ReactNode> = {
-    chart: <><rect x="3" y="13" width="3" height="8" rx=".8" /><rect x="10" y="8" width="3" height="13" rx=".8" /><rect x="17" y="3" width="3" height="18" rx=".8" /></>,
-    alert: <><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>,
-    info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7h.01" /></>,
-    check: <><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></>,
-    versions: <><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M16 8V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h4" /></>,
-    opinion: <><path d="M14 3H6a2 2 0 0 0-2 2v15a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5M8 12h7M8 16h7" /></>,
-    box: <><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="m3 8 9 5 9-5M12 13v8" /></>,
-    users: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20c.6-3.2 2.6-4.8 6-4.8s5.4 1.6 6 4.8" /><path d="M16.5 5.6a3 3 0 0 1 0 5.6M18 15.4c1.7.4 2.7 1.7 3 3.6" /></>,
-  };
-  return (
-    <svg className="gea-agent-action-icon" data-tone={tone} width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {paths[kind]}
-    </svg>
-  );
 }
 
 type NavIconKind = "bot" | "bell" | "desktop" | "users" | "calendar" | "warehouse" | "grid" | "folder" | "apps" | "newChat" | BusinessGroupIcon;

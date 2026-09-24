@@ -362,13 +362,15 @@ export function createGeaSqlDatabase(
                   /^[A-Z][A-Z0-9_]{2,127}$/.test(value),
               )
             : null;
-          const rejected =
-            typeof upstreamCode === "string" &&
-            /^(AI_GATEWAY_SESSION_(MAX_LIFETIME_EXCEEDED|EXPIRED|REVOKED|NOT_FOUND)|GEA_GATEWAY_SESSION_REJECTED)$/.test(
-              upstreamCode,
-            );
-          const denied =
-            response.status === 401 || response.status === 403 || rejected;
+          // This endpoint authenticates with a delegated token. A bare 401
+          // therefore means the delegation can be renewed; a 403 remains a
+          // genuine access decision and must not trigger a retry.
+          const rejected = response.status === 401 ||
+            (typeof upstreamCode === "string" &&
+              /^(AI_GATEWAY_SESSION_(MAX_LIFETIME_EXCEEDED|EXPIRED|REVOKED|NOT_FOUND)|GEA_GATEWAY_SESSION_REJECTED)$/.test(
+                upstreamCode,
+              ));
+          const denied = response.status === 403;
           throw new GeaSqlError(
             rejected
               ? "GEA_GATEWAY_SESSION_REJECTED"

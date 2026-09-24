@@ -1491,6 +1491,12 @@ export class Business {
       // 版本或状态已经变化属于并发冲突：提示刷新，而不是笼统地报成无权限并禁用本轮操作。
       if (salesPlanVersionEvidenceStale(detail, {planId, versionId, status: request.expectedStatus as number}))
         throw new GeaResponseError(409,{message:'该计划版本或审批状态已变化，请刷新权威队列后重试'});
+      // 当前正式服务支持责任节点将退回态 7–9 再逐级退回；状态 6 已到客户起点。
+      // 退回态仍不能直接通过，必须由提报端生成新版本重提。
+      if (row.status >= 6 && row.status <= 9 &&
+          (request.action === 'APPROVE' || row.status === 6 ||
+           salesPlanWorkflow(row.planTypeCode, workflowRows).actor(row.status) !== role))
+        throw new GeaResponseError(409,{message:'该退回版本不能执行本次审批动作，请核对当前责任节点或使用退回重提'});
       const access = salesPlanAccessForRow(row, detail, salesPlanStagesForRoles(auth.roles), role, workflowRows, { allowReturned: true });
       if (!access?.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']))
         throw new GeaResponseError(403,{message:'当前角色不具备该版本的操作权限'});
@@ -2447,35 +2453,54 @@ export class Business {
     if (typeof sqlValue !== "string" || !sqlValue.trim() || sqlValue.length > 200_000)
       throw new Error("GEA_PLUGIN_SQL_INVALID");
     const signal = AbortSignal.any([caller, this.epoch.signal]);
-    let delegation = this.pluginDelegations.get(consumerCode);
-    if (!delegation || delegation.authToken !== auth.token) {
+    const getDelegation = async () => {
+      let delegation = this.pluginDelegations.get(consumerCode);
+      if (delegation?.authToken === auth.token) return delegation;
       const requestId = randomUUID();
       const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
         method: "POST", redirect: "error", signal,
         headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": requestId },
         body: JSON.stringify({ agentCode: consumerCode, channel: "AI_PORTAL", requestId, conversationId: randomUUID() }),
       });
-      if (!response.ok) throw await geaResponseError(response, [auth.token]);
+      if (!response.ok) {
+        const error = await geaResponseError(response, [auth.token]);
+        if (response.status === 401 && this.auth?.token === auth.token)
+          this.clearLogin(true);
+        throw error;
+      }
       const body = object(await response.json());
       const result = object(body.result);
       if (body.success !== true || object(result.accessDecision).allowed !== true || typeof result.delegationToken !== "string" || !result.delegationToken)
         throw new Error("GEA_PLUGIN_SESSION_REJECTED");
       delegation = { authToken: auth.token, delegationToken: result.delegationToken };
       this.pluginDelegations.set(consumerCode, delegation);
-    }
+      return delegation;
+    };
     try {
-      // 统一走分页路径：同一条 SQL 不分页时会报底层错误，模型也不该被要求记住页码。
-      const result = await readHtmlQuery(withDefaultPaging(query), {
-        endpoint: this.base.replace(/\/$/, "") + "/ai/gateway/sql/execute",
-        token: delegation.delegationToken,
-        fetch: this.apiLog.fetch,
-        signal,
-      });
-      this.pluginFailures.delete(consumerCode);
-      return result;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const delegation = await getDelegation();
+        try {
+          // 统一走分页路径：同一条 SQL 不分页时会报底层错误，模型也不该被要求记住页码。
+          const result = await readHtmlQuery(withDefaultPaging(query), {
+            endpoint: this.base.replace(/\/$/, "") + "/ai/gateway/sql/execute",
+            token: delegation.delegationToken,
+            fetch: this.apiLog.fetch,
+            signal,
+          });
+          this.pluginFailures.delete(consumerCode);
+          return result;
+        } catch (error) {
+          if ((error as { code?: string })?.code === "GEA_GATEWAY_SESSION_REJECTED") {
+            if (this.pluginDelegations.get(consumerCode) === delegation)
+              this.pluginDelegations.delete(consumerCode);
+            if (attempt === 0 && !signal.aborted) continue;
+          }
+          throw error;
+        }
+      }
+      throw new Error("GEA_PLUGIN_SESSION_REJECTED");
     } catch (error) {
-      // A rejected/expired delegated credential must never poison the next
-      // page refresh; the next call obtains a fresh Agent-scoped delegation.
+      // A failed delegated credential must not poison the next page refresh.
       if (error instanceof GeaResponseError) this.pluginDelegations.delete(consumerCode);
       const previous = this.pluginFailures.get(consumerCode);
       this.pluginFailures.set(consumerCode, {

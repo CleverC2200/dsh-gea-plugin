@@ -119,10 +119,12 @@ test(
     assert.ok(Math.abs(menuIndent.headingInset) <= 2, JSON.stringify(menuIndent));
     assert.ok(Math.abs(menuIndent.headingText - menuIndent.childText) <= 2, JSON.stringify(menuIndent));
 
-    // 登记 32 / 48：会话框标题只留「模块名 + 助手」，副标整行去掉。
-    await page.locator(".gea-agent-head").waitFor();
+    // 计划页不重复显示顶部头像标题，欢迎页统一使用 Agent。
+    await page.locator(".gea-agent-welcome").waitFor();
     assert.equal(await page.locator(".gea-agent-head-sub").count(), 0);
-    assert.equal(await page.locator(".gea-agent-head-name").textContent(), "销售计划助手");
+    assert.equal(await page.locator(".gea-agent-head").count(), 0);
+    assert.equal(await page.locator(".gea-agent-identity h2").textContent(), "销售计划Agent");
+    assert.equal(await page.locator(".gea-agent-actions").count(), 0);
 
     // The Agent toolbar remains reachable in both maximized views; history
     // opens the existing native list in the left drawer.
@@ -153,21 +155,43 @@ test(
     assert.equal(await page.locator('[data-slot="sidebar.workspaces"]').evaluate((el) => getComputedStyle(el).display), "flex");
     await page.locator(".gea-drawer-function .gea-sidebar-tab").click();
 
-    // A new Agent conversation must show the entire composer card above its
-    // scrollport edge; flex-end can otherwise clip the top of a tall card.
-    await page.setViewportSize({ width: 1536, height: 620 });
-    const composerGeometry = await page.evaluate(() => {
-      const scroll = document.querySelector('[data-rightbar-col] [data-phase="hero"] [data-conversation-scroll]');
-      const card = scroll?.querySelector('[data-composer-card]');
-      if (!scroll || !card) return null;
-      const viewport = scroll.getBoundingClientRect();
-      const outline = card.getBoundingClientRect();
-      return { top: outline.top, scrollTop: viewport.top, bottom: outline.bottom, scrollBottom: viewport.bottom };
-    });
-    assert.ok(composerGeometry, "new Agent conversation composer must be measurable");
-    assert.ok(composerGeometry.top >= composerGeometry.scrollTop - 1, JSON.stringify(composerGeometry));
-    assert.ok(composerGeometry.bottom <= composerGeometry.scrollBottom + 1, JSON.stringify(composerGeometry));
+    const desktopRailWidth = await page.locator(".AppFrame_rightbarCol").evaluate(el => el.getBoundingClientRect().width);
+    // Every view keeps the visible input border 20px above the window bottom,
+    // including short windows and while the welcome area is scrolled.
+    for (const viewport of [{ width: 1536, height: 620 }, { width: 1024, height: 768 }]) {
+      await page.setViewportSize(viewport);
+      for (const view of ["会话区最大，隐藏中间区域", "同时显示中间区域和会话区"]) {
+        await page.getByRole("button", { name: view }).click();
+        await page.waitForFunction(() => {
+          const card = document.querySelector('[data-rightbar-col] [data-composer-card]');
+          const column = document.querySelector('.AppFrame_rightbarCol')?.getBoundingClientRect();
+          const rect = card?.getBoundingClientRect();
+          return rect && column && Math.abs(innerHeight - rect.bottom - 20) < 1 && Math.abs((rect.left + rect.right - column.left - column.right) / 2) < 2;
+        });
+        await page.locator('.gea-agent-welcome').evaluate(el => { el.scrollTo({ top: 0, behavior: 'instant' }); });
+        const inset = await page.locator('.gea-agent-welcome').evaluate(el => el.querySelector('.gea-agent-identity').getBoundingClientRect().top - el.getBoundingClientRect().top);
+        assert.equal(inset, 50, 'plan Agent avatar must match the APS top inset');
+        const centered = await page.evaluate(() => {
+          const column = document.querySelector('.AppFrame_rightbarCol').getBoundingClientRect();
+          return ['.gea-agent-identity', '.gea-agent-prompts', '[data-rightbar-col] [data-composer-card]'].map(selector => {
+            const rect = document.querySelector(selector).getBoundingClientRect();
+            return { selector, width: rect.width, offset: Math.abs((rect.left + rect.right) / 2 - (column.left + column.right) / 2) };
+          });
+        });
+        for (const box of centered) {
+          assert.ok(box.width <= 760.5, JSON.stringify(box));
+          assert.ok(box.offset <= 2, JSON.stringify(box));
+        }
+        const before = await page.locator('[data-rightbar-col] [data-composer-card]').boundingBox();
+        await page.locator('.gea-agent-welcome').evaluate(el => { el.scrollTop = el.scrollHeight; });
+        const after = await page.locator('[data-rightbar-col] [data-composer-card]').boundingBox();
+        assert.ok(Math.abs(before.y - after.y) < 1, "scrolling must not move the input");
+        assert.ok(after.y > 58 && after.x >= 0 && after.x + after.width <= viewport.width + 1);
+      }
+    }
     await page.setViewportSize({ width: 1536, height: 920 });
+
+    await page.waitForFunction(expected => Math.abs(document.querySelector('.AppFrame_rightbarCol').getBoundingClientRect().width - expected) < 1, desktopRailWidth);
 
     // 登记 51：销售计划审批默认不展开筛选。
     const filterToggle = frame.locator("button[aria-expanded]").first();
@@ -206,6 +230,8 @@ test(
           seat: box(seat),
           input: box(input),
           borderLeft: getComputedStyle(rail).borderLeftWidth,
+          borderLeftStyle: getComputedStyle(rail).borderLeftStyle,
+          borderLeftColor: getComputedStyle(rail).borderLeftColor,
         };
       });
     const dragHandle = async (dx) => {
@@ -226,13 +252,15 @@ test(
     assert.ok(layoutWider.sidebar - layoutBefore.sidebar >= 60, JSON.stringify({ layoutBefore, layoutWider }));
     const railAfterPageResize = await conversationRail();
     assert.ok(railAfterPageResize, "调整页面宽度后右侧对话栏必须仍存在");
-    assert.equal(railAfterPageResize.borderLeft, "0px", JSON.stringify(railAfterPageResize));
+    assert.equal(railAfterPageResize.borderLeft, "1px", JSON.stringify(railAfterPageResize));
+    assert.equal(railAfterPageResize.borderLeftStyle, "solid", JSON.stringify(railAfterPageResize));
+    assert.equal(railAfterPageResize.borderLeftColor, "rgb(173, 185, 200)", JSON.stringify(railAfterPageResize));
     assert.ok(
       // 宿主列宽求解在两次测量间可能有几像素差（滚动条/clamp），4px 内视为"没跟着工作台变"。
       Math.abs(railAfterPageResize.rail.width - railBefore.rail.width) <= 4,
       `调整工作台宽度不能改变对话栏宽度: ${JSON.stringify({ railBefore, railAfterPageResize })}`,
     );
-    assert.equal(railAfterPageResize.seat.left, railAfterPageResize.rail.left, JSON.stringify(railAfterPageResize));
+    assert.ok(railAfterPageResize.seat.left - railAfterPageResize.rail.left <= 1, JSON.stringify(railAfterPageResize));
     assert.ok(railAfterPageResize.input.left >= railAfterPageResize.rail.left, JSON.stringify(railAfterPageResize));
     assert.ok(railAfterPageResize.input.right <= railAfterPageResize.rail.right, JSON.stringify(railAfterPageResize));
     await dragHandle(-80);

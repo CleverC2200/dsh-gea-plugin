@@ -4,6 +4,7 @@ import { mkdtemp, readFile, stat, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build } from "esbuild";
+import { createRequire } from "node:module";
 
 const { outputFiles } = await build({
   stdin: {
@@ -13,10 +14,12 @@ const { outputFiles } = await build({
   bundle: true,
   write: false,
   platform: "node",
-  format: "esm",
-  banner: { js: `import {createRequire} from 'node:module'; const require=createRequire(${JSON.stringify(process.cwd() + "/package.json")});` },
+  format: "cjs",
+  packages: "external",
 });
-const { Business, attachWebLogin } = await import("data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64"));
+const compiled = {exports:{}};
+new Function("require", "module", "exports", outputFiles[0].text)(createRequire(import.meta.url), compiled, compiled.exports);
+const { Business, attachWebLogin } = compiled.exports;
 
 test("local web login survives restart and clears on logout and expiration", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "gea-login-"));

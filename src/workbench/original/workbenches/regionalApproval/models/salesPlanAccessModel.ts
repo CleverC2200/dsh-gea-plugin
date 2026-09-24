@@ -11,7 +11,9 @@ import type {
 import { addExactDecimals, multiplyExactDecimals } from '../regionalApprovalQueryModel.ts';
 import { salesPlanSkusMatchVersion } from './salesPlanDetailModel.ts';
 import { salesPlanApprovalNodeForStatus } from './salesPlanActionModel.ts';
+import { salesPlanEditableQuantity } from './salesPlanQuantityModel.ts';
 import type { ApprovalStageId } from '../regionalApprovalFixture.ts';
+export { salesPlanEditableQuantity };
 
 /**
  * 审批身份只看账号角色：GEA 网关解析出的角色编码（或中文名）→ 审批节点。
@@ -109,25 +111,6 @@ export const salesPlanAccessForRow = (
     ...(context?.snapshotHash ? {snapshotHash: context.snapshotHash} : {}),
     roleContractSupported: supported,
   };
-};
-
-/** 已保存节点仍是下一次编辑和后续审批的基线。 */
-export const salesPlanEditableQuantity = (sku: GeaSalesPlanSku, status: number, typeCode = 'Y', role?: ApprovalStageId): string | undefined => {
-  const fields = {
-    customer: 'qty',
-    region: 'regionConfirmedQty',
-    province: 'provinceConfirmedQty',
-    area: 'areaConfirmedQty',
-    category: 'categoryConfirmedQty',
-  } as const;
-  const flow = salesPlanWorkflow(typeCode);
-  const roles = role ? SALES_PLAN_ROLES.slice(0, SALES_PLAN_ROLES.indexOf(role) + 1).toReversed()
-    .filter(r => r === role || flow.pending(r) !== undefined) : flow.confirmationRoles(status);
-  for (const role of roles) {
-    const value = sku[fields[role]];
-    if (value !== null && value !== undefined) return String(value);
-  }
-  return undefined;
 };
 
 /** 写入成功回执之后必须读取同一版本，并包含对应审计日志。 */

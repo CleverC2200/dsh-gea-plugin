@@ -42,9 +42,9 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  const shot=async name=>{await page.waitForTimeout(400);await page.screenshot({path:'.runtime/v16-visual/'+name+'.png',fullPage:true,animations:'disabled'});};
  const frame=page.frameLocator('iframe[data-gea-workbench]');
  await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
- await expect(frame.getByText('待我审批 1 条',{exact:true})).toBeVisible();
+ await expect(frame.getByText('待我审批 1 条',{exact:true})).toHaveCount(0);
  await expect(frame.getByText('审批核对队列',{exact:true})).toHaveCount(0);
- const overview=frame.getByRole('region',{name:'当前筛选范围统计'});
+ const overview=frame.getByRole('region',{name:'当前页明细汇总'});
  await expect(overview).toContainText('目标金额');
  await expect(overview).toContainText('¥400');
  await expect(overview).toContainText('计划金额');
@@ -55,7 +55,7 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  await expect(overview).toContainText('20 件');
  await expect(frame.getByRole('button',{name:'保存调整',exact:true})).toHaveCount(0);
  await expect(frame.getByRole('button',{name:'重提',exact:true})).toHaveCount(0);
- const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toBeVisible();
+ const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toHaveCount(0);
  await expect(page.getByRole('dialog',{name:'建议生成失败',exact:true})).toHaveCount(0);
  await shot('01-02-09-initial');
  const compactHeader=frame.getByTestId('regional-approval-workbench').locator('header').first();
@@ -64,15 +64,18 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  const stages=['region','province','area'];
  const readProgress=()=>frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
  const before=await readProgress(); assert.equal(before.length,5);
- for(const stage of stages){await frame.getByTestId('regional-approval-stage-'+stage).click();assert.deepEqual(await readProgress(),before);await shot('04-05-'+stage);}
+ if(!(await frame.getByTestId('regional-approval-flow-lane').isVisible())) await frame.getByTestId('regional-approval-flow-toggle').click();
+ for(const stage of ['province','area','category']) await expect(frame.getByTestId('regional-approval-stage-'+stage)).toBeDisabled();
+ await frame.getByTestId('regional-approval-stage-region').click(); assert.deepEqual(await readProgress(),before);
  await frame.getByTestId('regional-approval-stage-region').click();
  await frame.getByRole('tab',{name:'按区域',exact:true}).click();
  const monthPlan=frame.getByTestId('regional-approval-month-plan-p');
  await expect(monthPlan.locator('span').first()).toHaveText('¥100');
- await expect(monthPlan.locator('small').first()).toHaveText('10');
- await expect(frame.locator('tbody').first()).toContainText('50.0%');
- await expect(frame.locator('tbody').first()).toContainText('版本②：¥100 / 10');
- await expect(frame.locator('tbody').first()).toContainText('该版本不含月度目标');
+ // 数量带单位：月计划列的数量显示成「10 件」。
+ await expect(monthPlan.locator('small').first()).toHaveText('10 件');
+ await expect(frame.locator('tbody').first()).toContainText('25.0%');
+ await expect(frame.locator('tbody').first()).not.toContainText('版本②：¥100 / 10');
+ await expect(frame.locator('tbody').first()).not.toContainText('该版本不含月度目标');
  await shot('03-version-comparison');
  await frame.getByRole('button',{name:/查看.*宝阳销售组|宝阳销售组.*调整/}).click();
  await expect(frame.locator('tbody').first()).toContainText('黑芝麻汤圆 500g');
@@ -98,8 +101,9 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  assert.equal(writes,0);
  const result=await app.rpc('sales-plan/draft',{planId:'p',versionId:'v'});
  assert.equal(result.value.draft.adjustments[0].adjustQty,'2.125');
- const forged=await app.rpc('sales-plan/draft',{planId:'p',versionId:'v',draft:{...result.value.draft,sourceSnapshot:'forged'}});
- assert.equal(forged.ok,true,'本地草稿保存不回查 GEA，也不把 sourceSnapshot 当服务端令牌');
+ const forged=await app.rpc('sales-plan/draft',{planId:'p',versionId:'v',draft:{...result.value.draft,sourceSnapshot:'f'.repeat(64)}});
+ assert.equal(forged.ok,false,'草稿必须绑定当前版本快照，伪造快照不能保存');
+ assert.equal(forged.error.code,'STALE_DRAFT');
  const unchanged=await app.rpc('sales-plan/draft',{planId:'p',versionId:'v'});assert.equal(unchanged.value.draft.adjustments[0].adjustQty,'2.125');
  await mkdir('.runtime/v16-feedback',{recursive:true});await page.screenshot({path:'.runtime/v16-feedback/web-desktop.png',fullPage:true});
  await page.reload();
@@ -115,18 +119,10 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  await page.getByRole('button',{name:/收起侧边栏|Collapse sidebar/}).click();
  await shot('10-sidebar-collapsed');
  await expect(page.locator('.gea-shell-navigation .gea-shell-label').first()).toBeHidden();
- const collapsedMenu=page.getByRole('button',{name:'展开业务菜单',exact:true});
+ const collapsedMenu=page.getByRole('button',{name:/展开侧边栏|打开侧边栏|Expand sidebar/}).first();
  await expect(collapsedMenu).toBeVisible();
- await expect(page.locator('.gea-shell-navigation [data-nav-icon]')).toHaveCount(1);
- await expect(collapsedMenu.locator('[data-nav-icon="menu"]')).toBeVisible();
- assert.equal(await collapsedMenu.evaluate(el=>{
-  const frame=el.closest('[data-sidebar-collapsed]');
-  return frame?.firstElementChild ? getComputedStyle(frame.firstElementChild).boxShadow : null;
- }),'none');
- assert.equal(await collapsedMenu.evaluate(el=>{
-  const frame=el.closest('[data-sidebar-collapsed]');
-  return frame?.firstElementChild ? getComputedStyle(frame.firstElementChild).backgroundColor : null;
- }),'rgba(0, 0, 0, 0)');
+ const railWidth=await page.locator('.gea-sidebar-rail').evaluate(el=>el.getBoundingClientRect().width);
+ assert.ok(railWidth>0 && railWidth<=60, '收起后保持窄图标栏');
  await collapsedMenu.click();
  await expect(page.getByRole('button',{name:/收起侧边栏|Collapse sidebar/})).toBeVisible();
  await expect(page.locator('.gea-shell-navigation [data-nav-icon]')).toHaveCount(0);

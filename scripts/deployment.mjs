@@ -282,7 +282,7 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
  * DSH 对内置 id `standard` 会强行用它自带的显示名（标准模式），换个 id 才能改显示名。
  */
 export const DEFAULT_PRESET_ID = "auto-negotiation";
-export const DEFAULT_PRESET_NAME = "流程编排Agent";
+export const DEFAULT_PRESET_NAME = "全能助手";
 
 /**
  * 预设发现目录：先找插件包内的 default-presets（桌面端整包安装后的布局），

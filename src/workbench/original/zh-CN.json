@@ -21,7 +21,6 @@
   "website": "官网",
   "version": "版本号",
   "contact": "联系我们",
-  "github": "Github",
   "loading": "请稍候...",
   "copy": "复制",
   "reply": "引用",
@@ -432,6 +431,7 @@
         "collapse": "收起审批流程图"
       },
       "stageProgress": "进度 {{progress}}%",
+      "stageProgressDetail": "本节点已完成 {{completed}} 单 / 该月共 {{total}} 单",
       "contextSummary": "城市经理审批 · {{stage}} · 当前 {{count}} 条组织计划",
       "authorityContextSummary": "{{source}} · {{stage}} · 计划 {{planId}} · 状态 {{status}}",
       "contextSources": {
@@ -712,6 +712,13 @@
           "aiAdvice": "AI 建议"
         }
       },
+      "groupSku": {
+        "title": "组织 SKU 汇总明细",
+        "scope": "{{plans}} 份计划 · {{skus}} 种 SKU，按当前版本汇总",
+        "loadError": "组织内有计划的 SKU 明细缺失或读取失败，未显示不完整的汇总。",
+        "retry": "重试读取",
+        "empty": "当前组织没有 SKU 明细。"
+      },
       "liveSubmit": {
         "title": "真实销售计划退回重提",
         "column": "退回重提",
@@ -814,6 +821,7 @@
         "action": "操作类型",
         "approve": "通过",
         "reject": "退回",
+        "resubmit": "退回重提",
         "finalNode": "该计划已完成品类审批，不能重复通过或退回；最终状态仍由服务端校验。",
         "approveRemark": "审批备注（可选）",
         "rejectRemark": "退回原因（必填）",
@@ -859,6 +867,12 @@
         "disabled": {
           "completed": "该版本已收到服务端回执，已阻止重复操作。",
           "permission": "服务端已拒绝当前用户权限；该版本在本轮已禁用。",
+          "returnedNeedsResubmit": "退回的单子不能直接通过或退回：请用「退回重提」重新提交（会生成新版本）。",
+          "returnedCannotReject": "已退回客户提报端，不能再向前退回；请由客户修改后重提。",
+          "returnedCannotApprove": "退回版本不能直接通过，请使用「退回重提」生成新版本。",
+          "resubmitMultiple": "退回重提一次只能处理一笔，请只勾选一笔。",
+          "resubmitUnavailable": "退回单要重新提交（生成新版本），但当前环境的服务凭据或用户授权未就绪，暂不能提交。",
+          "notReturned": "退回重提只适用于状态 6–9 的退回单。",
           "readOnly": "当前业务版仅开放真实 GEA 数据查询；审批、退回和提交均未启用。",
           "missingAuthority": "暂不可操作：未取得当前版本的操作授权信息，请刷新重试；若仍未恢复，请联系管理员核对接口。",
           "detailUnavailable": "暂不可操作：计划详情读取失败，请刷新重试；列表中的记录可能与详情不一致。",
@@ -874,7 +888,12 @@
           "rateLimited": "请求过于频繁；可稍后使用原幂等键重试，不会创建第二个动作。",
           "unavailable": "结果暂时未知；可关闭弹窗后刷新权威状态，或在此处使用原幂等键重试。请勿重新发起新的操作意图。",
           "failed": "操作请求失败且未更新本地状态；请刷新权威队列后再决定。",
-          "reference": "（错误编号：{{id}}，可将编号告知系统管理员）"
+          "reference": "（错误编号：{{id}}，可将编号告知系统管理员）",
+          "upstream": {
+            "SALES_PLAN_APPROVAL_STATE_INVALID": "这条单子的状态不允许直接通过或退回；退回的单子请用「退回重提」重新提交，再刷新队列。",
+            "NOTIFICATION_PAYLOAD_INVALID": "服务端在生成审批通知时被拒绝，属于服务端问题，刷新无法解决；请把错误编号发给后端核对。",
+            "APPROVAL_OPERATOR_NOT_ALLOWED": "服务端认为当前账号已不具备该节点的角色或组织权限；请刷新后重试，并联系管理员核对角色。"
+          }
         },
         "approvalRole": "本次审批角色",
         "selectRole": "请选择本次审批角色",
@@ -882,18 +901,29 @@
       },
       "liveBatch": {
         "approveTitle": "批量通过（{{count}} 笔）",
+        "resubmitTitle": "批量退回重提（{{count}} 笔）",
+        "mixedTitle": "批量提交（{{count}} 笔）",
         "rejectTitle": "批量退回（{{count}} 笔）",
         "summary": "本次选择 {{total}} 笔计划，其中 {{ready}} 笔可提交；不可提交的计划会在结果里说明原因。",
+        "mixedSummary": "本次将通过 {{approve}} 笔待审计划，重提 {{resubmit}} 笔退回计划；每笔按对应通道提交。",
+        "mixedRemark": "审批备注（仅用于通过的计划）",
         "approveRemark": "审批备注（可选，作用于本次全部计划）",
         "remarkLabel": "批量审批备注",
         "confirmation": "我已核对本次 {{count}} 笔计划与当前状态，确认逐笔提交。",
+        "mixedConfirmation": "我已核对 {{approve}} 笔通过和 {{resubmit}} 笔退回重提，确认逐笔提交。",
         "required": "请填写退回原因并确认本次提交范围。",
         "loading": "正在逐笔提交 {{count}} 笔计划，请勿关闭…",
         "result": "本次提交完成：成功 {{success}} 笔，失败 {{failed}} 笔，跳过 {{skipped}} 笔。",
+        "resubmitTag": "退回重提（生成新版本）",
+        "approveTag": "审批通过（当前版本）",
+        "repeatRejectTag": "退回版本继续逐级退回",
+        "rejectTag": "正常审批退回",
         "autoClose": "{{seconds}} 秒后自动关闭",
         "skipped": "该计划当前不可操作",
         "close": "关闭",
         "confirmApprove": "确认批量通过",
+        "confirmResubmit": "确认批量重提",
+        "confirmMixed": "确认批量提交",
         "confirmReject": "确认批量退回"
       },
       "action": {

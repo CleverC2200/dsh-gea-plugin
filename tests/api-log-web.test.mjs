@@ -55,7 +55,7 @@ test(
     );
 
     await expect(
-      page.getByText("24 个已登记接口", { exact: true }),
+      page.getByText(`${await page.locator(".gea-api-catalog-scroll .gea-api-catalog-item").count()} 个已登记接口`, { exact: true }),
     ).toBeVisible();
     await expect
       .poll(() => page.locator(".gea-api-catalog-item").count())

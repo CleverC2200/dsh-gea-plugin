@@ -1213,6 +1213,13 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   position: relative;
   box-sizing: border-box;
 }
+/* A real rail border stays visible above the native conversation surface.
+   The toolbar covers its first 58px; the line starts at the toolbar edge. */
+@media (min-width: 801px) {
+  .AppFrame_frame[data-gea-conversation-view="split"]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_rightbarCol {
+    border-left: 1px solid #adb9c8 !important;
+  }
+}
 .AppFrame_frame[data-gea-conversation-view="split"] > .AppFrame_rightbarCol,
 .AppFrame_frame[data-gea-conversation-view="chat"] > .AppFrame_rightbarCol,
 .AppFrame_frame[data-gea-conversation-view="center"] > .AppFrame_centerCol {
@@ -1252,16 +1259,79 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   box-sizing: border-box;
   height: 58px;
   align-items: center;
-  gap: 12px;
-  padding: 0 14px;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 20px;
   border-bottom: 1px solid #e5e9f0;
   background: #fff;
 }
-.gea-conversation-view-switch { display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid #dfe5ef; border-radius: 14px; background: #f7f9fc; }
-.gea-conversation-toolbar button { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 10px; background: transparent; color: #687487; cursor: pointer; }
-.gea-conversation-toolbar button:hover { background: #edf1f7; color: #283444; }
-.gea-conversation-toolbar button[aria-pressed="true"] { background: #fff; color: #d0132c; box-shadow: 0 1px 4px #2025311f; }
+/* Match the business Agent web toolbar: compact segmented views and icon actions. */
+.gea-conversation-view-switch { display: flex; flex: none; align-items: center; gap: 1px; height: 32px; box-sizing: border-box; margin-right: 6px; padding: 2px; border: 1px solid #dfe4eb; border-radius: 12px; background: #f5f7fa; }
+.gea-conversation-toolbar button { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; box-sizing: border-box; padding: 0; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #606977; cursor: pointer; transition: background-color .2s ease, border-color .2s ease, color .2s ease; }
+.gea-conversation-toolbar button:hover { border-color: #e8ebf0; background: #fbfcfd; color: #df1d28; }
+.gea-conversation-view-switch button { width: 26px; height: 26px; border: 0; border-radius: 6px; }
+.gea-conversation-toolbar button[aria-pressed="true"] { background: #fff; color: #df1d28; box-shadow: 0 1px 3px rgba(15,34,64,.14); }
 .gea-conversation-toolbar button:focus-visible { outline: 2px solid #d0132c; outline-offset: 2px; }
-.gea-conversation-toolbar svg { width: 22px; height: 22px; }
-.gea-conversation-toolbar-action:last-of-type { margin-left: auto; }
+.gea-conversation-toolbar svg { width: 16px; height: 16px; }
+.gea-conversation-toolbar-action { margin: 0; }
 .gea-conversation-toolbar-error { position: absolute; right: 10px; top: 58px; padding: 5px 8px; border: 1px solid #e7acb5; border-radius: 5px; background: #fff6f7; color: #b51931; font-size: 12px; }
+
+/* Plan Agents share the same 50px welcome inset as the APS Agent. */
+.AppFrame_frame:has(:is([data-gea-business-entry="gea-proof"],[data-gea-business-entry="gea-regional-plan"],[data-gea-business-entry="plan-region-category"])[aria-current="page"]) .gea-agent-welcome { padding-top: 50px; margin-top: 0; }
+
+/* Float every native Agent input over its own column, 20px above the window edge. */
+.AppFrame_frame [data-slot="main.conversation"] [data-composer-seat][data-gea-floating-composer] {
+  position: fixed !important;
+  inset: auto auto var(--gea-composer-bottom, 20px) var(--gea-composer-left) !important;
+  width: var(--gea-composer-width);
+  box-sizing: border-box;
+  z-index: 30;
+  margin: 0;
+  background: transparent;
+}
+.AppFrame_frame [data-slot="main.conversation"] [data-conversation-scroll]:has([data-gea-floating-composer]) {
+  padding-bottom: var(--gea-composer-reserve, 200px);
+  scroll-padding-bottom: var(--gea-composer-reserve, 200px);
+}
+.AppFrame_frame [data-slot="main.conversation"] [data-phase="hero"] > [class*="_body"] {
+  min-height: var(--gea-composer-reserve, 200px);
+}
+
+/* One readable, centered content width in both split and expanded Agent views. */
+.AppFrame_frame [data-slot="main.conversation"] {
+  --gea-conversation-content-max-width: 760px;
+}
+.gea-agent-welcome > .gea-agent-identity,
+.gea-agent-welcome > .gea-agent-block {
+  width: 100%;
+  max-width: var(--gea-conversation-content-max-width, 760px);
+  box-sizing: border-box;
+  margin-left: auto;
+  margin-right: auto;
+}
+.AppFrame_frame [data-slot="main.conversation"] [data-composer-seat] {
+  --dsh-composer-card-max-width: var(--gea-conversation-content-max-width, 760px);
+}
+.AppFrame_frame [data-slot="main.conversation"] [data-conversation-scroll] {
+  --dsh-chat-content-width: min(calc(100% - 36px), var(--gea-conversation-content-max-width, 760px));
+}
+
+
+/* Align the MPS welcome with the other business Agents. */
+.AppFrame_frame:has([data-gea-business-entry="plan-category-production"][aria-current="page"]) .gea-agent-welcome { padding-top: 50px; margin-top: 0; }
+
+/* Hide native auxiliary pane launchers on every conversation, including history. */
+.AppFrame_frame [data-dsh-bottom-toggle],
+.AppFrame_frame [data-sidebar-right-expand] { display: none !important; }
+
+/* Removed pane launchers must not leave an empty corner or utility divider. */
+.AppFrame_frame [data-conversation-header-corner]:has([data-sidebar-right-expand]) {
+  display: none !important;
+}
+.AppFrame_frame [class*="_headerUtilities"]:has([data-dsh-bottom-toggle]) {
+  border: 0 !important;
+}
+.AppFrame_frame [class*="_headerUtilities"]:has([data-dsh-bottom-toggle])::before,
+.AppFrame_frame [class*="_headerUtilities"]:has([data-dsh-bottom-toggle])::after {
+  display: none !important;
+}

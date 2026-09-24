@@ -9,6 +9,7 @@ const compiled = await build({
   write: false,
   platform: 'node',
   format: 'cjs',
+  packages: 'external',
 });
 const module = { exports: {} };
 new Function('require', 'module', 'exports', Buffer.from(compiled.outputFiles[0].contents).toString())(

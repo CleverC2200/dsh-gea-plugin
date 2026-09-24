@@ -42,7 +42,8 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
  await expect(frame.getByRole('button',{name:'保存调整',exact:true})).toHaveCount(0);
  await expect(frame.getByRole('button',{name:'重提',exact:true})).toHaveCount(0);
- const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toBeVisible();
+ // 单据类型切换（月初/纠偏）已按业务方反馈收起，审批页只做月度计划。
+ const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toHaveCount(0);
  assert.equal(modelCalls,0,'opening the workbench must not trigger analysis');
  const readProgress=()=>frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
  // 节点条始终展示全部五个节点，进度按状态统计，跟当前选中的节点无关。
@@ -63,10 +64,11 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  await expect(frame.getByTestId('regional-approval-status-p').locator('xpath=ancestor::table[1]/thead')).not.toContainText('审批状态');
  const monthPlan=frame.getByTestId('regional-approval-month-plan-p');
  await expect(monthPlan.locator('span').first()).toHaveText('¥100');
- await expect(monthPlan.locator('small').first()).toHaveText('10');
+ // 数量带单位：月计划列的数量显示成「10 件」。
+ await expect(monthPlan.locator('small').first()).toHaveText('10 件');
  await expect(frame.locator('tbody').first()).toContainText('25.0%');
- await expect(frame.locator('tbody').first()).toContainText('版本②：¥100 / 10');
- await expect(frame.locator('tbody').first()).toContainText('该版本不含月度目标');
+ await expect(frame.locator('tbody').first()).not.toContainText('版本②：¥100 / 10');
+ await expect(frame.locator('tbody').first()).not.toContainText('该版本不含月度目标');
  await frame.getByRole('button',{name:/查看.*宝阳销售组|宝阳销售组.*调整/}).click();
  await expect(frame.locator('tbody').first()).toContainText('黑芝麻汤圆 500g');
  await expect(frame.locator('tbody th[scope="rowgroup"]')).toContainText('汤圆 · 1 SKU');
@@ -84,7 +86,8 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  const editor=frame.getByRole('spinbutton',{name:'确认计划量 1001',exact:true});
  await expect(editor).toHaveValue('20');
  await editor.fill('22.125');
- await expect(frame.getByText('22.125 件',{exact:true})).toBeVisible();
+ // 明细汇总里的数量；月计划列现在也会显示同一个「22.125 件」，所以要限定在汇总卡里找。
+ await expect(frame.getByLabel('当前页明细汇总').getByText('22.125 件',{exact:true})).toBeVisible();
  await expect(frame.getByLabel('当前页明细汇总').getByText('¥221.25',{exact:true})).toBeVisible();
  await expect(frame.getByTestId('regional-approval-month-plan-p')).toContainText('22.125');
  await expect(frame.getByTestId('regional-approval-month-plan-p')).toContainText('¥221.25');

@@ -12,6 +12,8 @@ test('grouped queue rows stay selectable exactly when the batch buttons can run'
   const plan = (key, province, status) => ({
     planId: `p-${key}`,
     versionId: `v-${key}`,
+    seq: 1,
+    orderType: 'M',
     periodId: '20260901',
     planTypeCode: 'Y',
     status,
@@ -53,7 +55,7 @@ test('grouped queue rows stay selectable exactly when the batch buttons can run'
     if (detail) {
       const row = plans.find((item) => item.planId === detail[1]);
       return send(row
-        ? { currentVersion: { ...row, id: row.versionId, effective: true }, versions: [], skus: [], logs: [] }
+        ? { currentVersion: { ...row, id: row.versionId, effective: true }, versions: [], skus: [], logs: [], actionContext: {versionId:row.versionId,status:row.status,nodeOrder:3,allowedActions:row.status===2?["APPROVE","REJECT"]:[],snapshotHash:"a".repeat(64)} }
         : {});
     }
     if (path.endsWith('/skus')) return send([]);

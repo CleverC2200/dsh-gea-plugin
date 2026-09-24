@@ -67,11 +67,36 @@ export const actionErrorText = (t: TFunction, error: SalesPlanActionError): stri
   const fallback = t(errorKey(error.kind));
   const cause = error.cause;
   if (!isBackendHttpError(cause) || cause.status >= 500) return fallback;
+  // 服务端业务拒绝的原文通常是「GEA_HTTP_409：…」，会被判成技术文案而统一换成
+  // "版本状态已变化或存在并发操作、请刷新"——把"该重提"和"该找后端"这两种完全不同的
+  // 结论都盖掉了。这里按上游原因码给出能落地的说法（不暴露原因码本身）。
+  const businessReason = upstreamRejectionText(t, cause);
+  if (businessReason) {
+    const id = reportSalesPlanError('sales-plan-action', cause);
+    return `${businessReason}${t('common.assistantSurface.regionalApproval.liveAction.errors.reference', { id })}`;
+  }
   const safe = businessSafeErrorMessage(cause.backendMessage);
   if (safe) return safe;
   if (typeof cause.backendMessage !== 'string' || !cause.backendMessage.trim()) return fallback;
   const id = reportSalesPlanError('sales-plan-action', cause);
   return `${fallback}${t('common.assistantSurface.regionalApproval.liveAction.errors.reference', { id })}`;
+};
+
+/** 只认识已在生产验证过的原因码；其它原因保持通用文案，不把技术码抛给业务。 */
+const UPSTREAM_REJECTION_CODES = [
+  'SALES_PLAN_APPROVAL_STATE_INVALID',
+  'NOTIFICATION_PAYLOAD_INVALID',
+  'APPROVAL_OPERATOR_NOT_ALLOWED',
+] as const;
+
+const upstreamRejectionText = (t: TFunction, cause: { details?: unknown }): string | undefined => {
+  const details = cause.details;
+  const code =
+    details && typeof details === 'object' && typeof (details as { upstreamCode?: unknown }).upstreamCode === 'string'
+      ? (details as { upstreamCode: string }).upstreamCode
+      : '';
+  if (!(UPSTREAM_REJECTION_CODES as readonly string[]).includes(code)) return undefined;
+  return t(`common.assistantSurface.regionalApproval.liveAction.errors.upstream.${code}`);
 };
 
 const InlineAction: React.FC<React.ComponentProps<typeof Modal>> = ({ children, footer }) => (
@@ -128,8 +153,13 @@ const RegionalApprovalLiveActionDialog: React.FC<{
 }) => {
   const [snapshot] = useState(evidence);
   const Container = embedded ? InlineAction : Modal;
-  // allowReturned：上级退回给本节点的单据同样要能选到角色并继续提交。
-  const availableRoles = SALES_PLAN_ROLES.filter(role => snapshot && salesPlanAccessForRow(row, snapshot, approvalStages ?? [], role, undefined, { allowReturned: true }));
+  // 退回态只能由当前责任节点继续逐级退回，不能借多角色账号选其他节点。
+  const returnedRole = row.status >= 6 && row.status <= 9
+    ? salesPlanWorkflow(row.planTypeCode).actor(row.status)
+    : undefined;
+  const availableRoles = SALES_PLAN_ROLES.filter(role =>
+    (!returnedRole || role === returnedRole) && snapshot &&
+    salesPlanAccessForRow(row, snapshot, approvalStages ?? [], role, undefined, { allowReturned: true }));
   const [selectedRole, setSelectedRole] = useState<ApprovalStageId | undefined>(
     availableRoles.includes(approvalStage) ? approvalStage : availableRoles.length === 1 ? availableRoles[0] : undefined
   );

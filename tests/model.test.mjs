@@ -98,8 +98,8 @@ test(
     );
     // 形状类（order/跨模型/成员名/年月）都在发送前拦下：协议里只需要说明"会被拦下"。
     assert.ok(
-      instructions.includes("宿主都会在发出去之前拦下"),
-      "协议里要说明写错形状会在发送前被拦下、照提示改一次即可",
+      instructions.includes("Cube 业务查询优先使用 gea_cube_query"),
+      "协议与实际注册的类型化 Cube 查询入口一致",
     );
     assert.ok(instructions.includes("不要展示或解释接口、工具名、字段名、JSON、哈希"));
     // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在
@@ -109,6 +109,7 @@ test(
       body.tools.map((tool) => tool.function.name).sort(),
       [
         // 问答侧关掉受管 SQL 之后，取数工具只剩模块 MCP（gea_module_mcp）与计划只读。
+        "gea_cube_query",
         "gea_gateway_catalog",
         "gea_module_mcp",
         "gea_page",

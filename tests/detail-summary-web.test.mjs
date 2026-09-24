@@ -4,7 +4,7 @@ import {chromium,expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {profile} from './profile.mjs';
 
-test('Dashboard matches monthly detail totals and categories expand SKU', {timeout:90000}, async t=>{
+test('Dashboard shows current SKU totals while monthly baseline and categories retain their own basis', {timeout:90000}, async t=>{
  const app=await profile(t,{config:base=>({analysis:{mode:'model',source:'direct',baseUrl:base+'/v1',model:'fixture-model',apiKeyEnv:'GEA_V16_MODEL_KEY',contextWindow:32768,maxTokens:2048}}),env:{GEA_V16_MODEL_KEY:'fixture-key'}});
  let modelCalls=0;
  const plan={planId:'p',versionId:'v',seq:1,periodId:'period-1',planTypeCode:'Y',orderType:'M',dealerCode:'d',dealerName:'客户A',orgCode:'org',orgName:'宝阳销售组',provinceCode:'province',provinceName:'华南省区',areaCode:'area',areaName:'华南大区',status:1,currentQty:'20',currentAmount:'200',targetQty:'40',targetAmount:'400',skuCount:1};
@@ -43,12 +43,13 @@ test('Dashboard matches monthly detail totals and categories expand SKU', {timeo
  await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
  await expect(frame.getByRole('button',{name:'保存调整',exact:true})).toHaveCount(0);
  await expect(frame.getByRole('button',{name:'重提',exact:true})).toHaveCount(0);
- const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toBeVisible();
+ // 单据类型切换（月初/纠偏）已按业务方反馈收起。
+ const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toHaveCount(0);
  assert.equal(modelCalls,0,'opening the workbench must not trigger analysis');
 
  const totals=frame.getByRole('region',{name:'当前页明细汇总',exact:true});
- await expect(totals).toContainText('¥150');
- await expect(totals).toContainText('15 件');
+ await expect(totals).toContainText('¥500');
+ await expect(totals).toContainText('50 件');
  await expect(totals).not.toContainText('¥200');
  const monthPlan=frame.getByTestId('regional-approval-month-plan-p');
  await expect(monthPlan.locator('span').first()).toHaveText('¥150');

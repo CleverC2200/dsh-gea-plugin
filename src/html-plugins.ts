@@ -19,6 +19,12 @@ import { compressForModel } from "./shared/payload-budget.ts";
 const publishedSkillDirs: string[] = [];
 
 /**
+ * 老版本客户端装过、现在已下线的预设目录：插件包升级后源码不再生成它们，
+ * 但 native-presets 是启动器按目录复用的派生目录，不会自己消失，得顺手清掉。
+ */
+const RETIRED_LEGACY_PRESETS = ["gea-agent-hub"];
+
+/**
  * 页面上下文进模型前先收窄：带 focus 只留相关行/字段，不带就只给摘要；
  * 超预算继续收紧，并如实说明省略了多少、下一步怎么取。避免整屏 17KB 反复塞进上下文。
  */
@@ -254,8 +260,11 @@ export async function registerHtmlPlugins(
       "native-presets",
       "gea-html-" + manifest.id,
     );
-    if (presetLabels.hidden.includes(manifest.id)) {
-      // 已下架的模块：页面可能还在装，但不再出现在 Agent 预设列表里。
+    // 默认隐藏演示和已下架模块；客户库存与订单管理按需保留开发中入口及会话绑定。
+    // 保留入口不会改变原有 mock 数据来源或授予真实业务数据权限。
+    const retainedPreview = ["inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment"].includes(manifest.id);
+    const retired = (mock && !retainedPreview) || presetLabels.hidden.includes(manifest.id);
+    if (retired) {
       await rm(preset, { recursive: true, force: true });
     } else {
       const name = presetLabels.labels[manifest.id]?.name ?? manifest.name;
@@ -293,6 +302,7 @@ export async function registerHtmlPlugins(
       ...manifest,
       pages,
       mock,
+      retired,
       skillName: frontmatter("name") ?? manifest.id,
       skillDescription: frontmatter("description") ?? manifest.name,
       skillText: skill,
@@ -303,6 +313,26 @@ export async function registerHtmlPlugins(
   }
   // Retire old APS routes, tools and panels together, regardless of root order.
   items.splice(0, items.length, ...selectHtmlPlugins(items));
+  // 只留"当前应当存在的预设"：下架、演示（mock）以及被合并替代的模块都不会再生成目录，
+  // 但老版本装过的那份还在 native-presets 里，光靠上面的 rm 清不掉（插件可能已经
+  // 被 selectHtmlPlugins 剔除，甚至整包卸载，注册循环根本走不到），会一直留在预设选择器里。
+  const presetHome = resolve(business.config.runtimeDir, "native-presets");
+  const expectedPresets = new Set<string>();
+  for (const item of items) {
+    if (item.retired === true) continue;
+    expectedPresets.add("gea-html-" + item.id);
+    for (const alias of presetAliases[item.id] ?? [])
+      expectedPresets.add("gea-html-" + alias);
+  }
+  for (const entry of await readdir(presetHome, { withFileTypes: true }).catch(() => [])) {
+    const name = entry.name;
+    if (RETIRED_LEGACY_PRESETS.includes(name)) {
+      await rm(resolve(presetHome, name), { recursive: true, force: true });
+      continue;
+    }
+    if (!name.startsWith("gea-html-") || expectedPresets.has(name)) continue;
+    await rm(resolve(presetHome, name), { recursive: true, force: true });
+  }
   const unwatch = business.watchIdentity(() => {
     sessions.clear();
     lastPageContext.clear();
@@ -388,7 +418,22 @@ export async function registerHtmlPlugins(
       const html = await readFile(path, "utf8");
       if (Buffer.byteLength(html) > 5000000) throw Error("HTML_TOO_LARGE");
       // 页面本身不用改：宿主把"读这一屏 / 收改单"的适配器注入进去。
-      return new Response(injectPageScan(html), {
+      // CSS modules are minified in release HTML. Resolve exported names instead of
+      // guessing a development-only class suffix.
+      const toolbarMaps = html.match(/\{[^{}]*workspaceToolbar:["'][A-Za-z_][\w-]*["'][^{}]*\}/g) ?? [];
+      const toolbarClasses = [...toolbarMaps.join("\n").matchAll(/(?:workspaceToolbar|boardHeader|header):["']([A-Za-z_][\w-]*)["']/g)]
+        .map((match) => "." + match[1]);
+      const toolbarSelectors = [".agent-topbar", ".top-header", ...toolbarClasses].join(",");
+      const toolbarStyle = `<style data-gea-toolbar-alignment>
+${toolbarSelectors} {
+  box-sizing:border-box!important;height:58px!important;min-height:58px!important;max-height:58px!important;
+  flex-shrink:0!important;flex-wrap:nowrap!important;margin-top:0!important;
+  overflow-x:auto!important;overflow-y:hidden!important;
+}
+</style>`;
+      // Release HTML may omit optional </head>; append so the rule is always present.
+      const alignedHtml = html + toolbarStyle;
+      return new Response(injectPageScan(alignedHtml), {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",

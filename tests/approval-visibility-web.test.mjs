@@ -68,13 +68,15 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   for (const status of [0,8,9]) await expect(table.getByText(`scope-${status}-row`,{exact:true})).toHaveCount(0);
   const returned = table.locator('tr').filter({hasText:'scope-7-row'});
   await returned.locator('label.arco-checkbox').click();
-  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeEnabled();
+  // 退回态不能直接通过；状态 7 由区域角色可继续退回客户。这里未配置重提凭据，
+  // 所以共用的「通过」按钮置灰。
+  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeDisabled();
   await expect(frame.getByRole('button',{name:'退回',exact:true})).toBeEnabled();
   const tracked = table.locator('tr').filter({hasText:'scope-6-row'});
   await returned.locator('label.arco-checkbox').click();
   await tracked.locator('label.arco-checkbox').click();
-  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeEnabled();
-  await expect(frame.getByRole('button',{name:'退回',exact:true})).toBeEnabled();
+  // 退回销售（6）已到客户起点，不能再向前退回。
+  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeDisabled();
   await region.click();
   await expect(table.getByText('scope-6-row',{exact:true})).toHaveCount(0);
   await expect(region).toHaveAttribute('aria-pressed', 'true');
@@ -105,8 +107,7 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   await expect(rejectDialog.getByRole('textbox',{name:'退回原因（必填）',exact:true})).toBeVisible();
   await expect(rejectDialog.getByTestId('regional-approval-live-action-checksum')).toHaveCount(0);
   await frame.getByRole('button',{name:'取消',exact:true}).click();
-  // 纠偏是另一个工作台：切过去以后审批工作台整个换掉，纠偏自己的用例在 correction-web 里。
-  await frame.getByRole('tab',{name:'纠偏',exact:true}).click();
-  await expect(frame.getByRole('tab',{name:'纠偏',exact:true})).toHaveAttribute('aria-selected','true');
-  await expect(frame.getByTestId('regional-approval-workbench')).toHaveCount(0);
+  // 纠偏标签已按业务方反馈收起（2026-09-23）：月度页不再提供切换入口，也就切不到纠偏页。
+  await expect(frame.getByRole('tab',{name:'纠偏',exact:true})).toHaveCount(0);
+  await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
 });

@@ -37,6 +37,14 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
               { id: "inventory-apsdelivery", name: "交付运营管理", view: "delivery" },
             ],
           },
+          // 下架/演示模块：宿主标了 retired，客户端不能再给它注册面板，否则会点出一个
+          // 绑不上会话（宿主已不生成该预设）的空页面。
+          {
+            id: "inventory-customer",
+            name: "客户库存",
+            retired: true,
+            pages: [{ id: "inventory-customer", name: "客户库存", view: "" }],
+          },
         ]);
       }
       throw Error("unexpected fetch: " + path);

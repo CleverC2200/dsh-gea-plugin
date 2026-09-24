@@ -83,8 +83,10 @@ test(
       boxes.stats.bottom <= boxes.card.top,
       `统计胶囊必须在输入框上方: ${JSON.stringify(boxes)}`,
     );
-    assert.equal(boxes.stats.left, boxes.card.left);
-    assert.equal(boxes.stats.right, boxes.card.right);
+    const leftInset = boxes.stats.left - boxes.card.left;
+    const rightInset = boxes.card.right - boxes.stats.right;
+    assert.equal(leftInset, rightInset, "统计与输入卡应保持相同中心线");
+    assert.ok(leftInset >= 0 && leftInset <= 16, JSON.stringify(boxes));
     // 输入框贴住面板底部：底部只留原生的一点点内边距。
     assert.ok(
       boxes.seat.bottom - boxes.card.bottom <= 12,
@@ -106,7 +108,9 @@ test(
       };
     });
     assert.ok(railBoundary, "右侧对话栏和输入区必须存在");
-    assert.equal(railBoundary.borderLeftWidth, "0px", JSON.stringify(railBoundary));
-    assert.equal(railBoundary.seatLeft, railBoundary.railLeft, JSON.stringify(railBoundary));
+    // 分栏改成真 border 之后（见 e8920b8「render Agent split divider as a real border」），
+    // 右栏左侧固定 1px 分隔线，输入区紧贴在这条线右侧、不再被压进去。
+    assert.equal(railBoundary.borderLeftWidth, "1px", JSON.stringify(railBoundary));
+    assert.equal(railBoundary.seatLeft, railBoundary.railLeft + 1, JSON.stringify(railBoundary));
   },
 );

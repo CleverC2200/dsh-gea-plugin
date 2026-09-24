@@ -23,6 +23,11 @@ export function registerHtmlClient(ctx: any) {
       [error, setError] = useState(""),
       [revision, setRevision] = useState(0),
       [opened, setOpened] = useState(false);
+    const binding = useRef<any>(null);
+    const readyBinding = useRef<Promise<any>>(Promise.resolve(null));
+    const rebindPage = useRef<((value: any) => void) | null>(null);
+    const registrations = useRef(new Map<string, any>());
+    const pageContext = useRef<any>(undefined);
     useEffect(() => {
       let active = true;
       let hide = () => {};
@@ -48,21 +53,38 @@ export function registerHtmlClient(ctx: any) {
       };
     }, [workbenchId, session]);
     useEffect(() => {
-      if (!session || !opened) return;
+      if (!session || !opened) {
+        readyBinding.current = Promise.resolve(null);
+        return;
+      }
       const controller = new AbortController();
       let lease: string | undefined;
-      setConnection(null);
       setError("");
-      void request(plugin.id + "/open", { session }, controller.signal)
+      const opening = request(plugin.id + "/open", { session }, controller.signal)
         .then((result) => {
           lease = result.lease;
-          if (!controller.signal.aborted) setConnection(result);
+          if (controller.signal.aborted) return null;
+          const next = { ...result, session };
+          binding.current = next;
+          return Promise.all([
+            ...[...registrations.current.values()].map(parameters => request(plugin.id + "/call", { lease, method: "register", parameters }, controller.signal)),
+            ...(pageContext.current === undefined ? [] : [request(plugin.id + "/call", { lease, method: "context", parameters: pageContext.current }, controller.signal)]),
+          ]).then(() => {
+            if (controller.signal.aborted) return null;
+            // A new conversation changes authority, never the mounted business page.
+            setConnection((current: any) => current ?? next);
+            rebindPage.current?.(next);
+            return next;
+          });
         })
         .catch((e) => {
           if (!controller.signal.aborted) setError(e.message);
+          return null;
         });
+      readyBinding.current = opening;
       return () => {
         controller.abort();
+        if (binding.current?.lease === lease) binding.current = null;
         if (lease)
           void request(plugin.id + "/call", { lease, method: "close" }).catch(
             () => {},
@@ -84,16 +106,15 @@ export function registerHtmlClient(ctx: any) {
       >();
       let connected = false,
         pollTimer: any;
-      const call = (
+      const call = async (
         method: string,
         parameters?: any,
         signal = controller.signal,
-      ) =>
-        request(
-          plugin.id + "/call",
-          { lease: connection.lease, method, parameters },
-          signal,
-        );
+      ) => {
+        const current = await readyBinding.current;
+        if (!current || current !== binding.current) throw Error("页面会话连接暂不可用，请重试");
+        return request(plugin.id + "/call", { lease: current.lease, method, parameters }, signal);
+      };
       const pending = new Map<string, AbortController>();
       const fail = (e: Error) => {
         if (controller.signal.aborted) return;
@@ -107,10 +128,9 @@ export function registerHtmlClient(ctx: any) {
         if (!m || typeof m !== "object") return;
         try {
           if (m.type === "register") {
-            await call("register", {
-              name: m.name,
-              description: m.description,
-            });
+            const definition = { name: m.name, description: m.description };
+            registrations.current.set(m.name, definition);
+            await call("register", definition);
             return;
           }
           if (m.type === "invoked") {
@@ -135,9 +155,13 @@ export function registerHtmlClient(ctx: any) {
                 JSON.stringify(context ?? {}).length > 100000
               )
                 throw Error("对话内容过长");
-              await call("context", context);
+              pageContext.current = context;
+              const current = await readyBinding.current;
+              if (!current || current !== binding.current) throw Error("页面会话连接暂不可用，请重试");
+              await request(plugin.id + "/call", { lease: current.lease, method: "context", parameters: context });
+              if (current !== binding.current) throw Error("会话已切换，请重新发送");
               const sent = await ctx.remote.session.prompt({
-                sessionId: session,
+                sessionId: current.session,
                 requestId: crypto.randomUUID(),
                 mode: "queue",
                 content: [
@@ -151,13 +175,14 @@ export function registerHtmlClient(ctx: any) {
               });
               if (!sent.ok) throw Error(sent.error.message);
               result = { sent: true };
-            } else if (["sql", "workspace", "access", "context"].includes(m.method))
+            } else if (["sql", "workspace", "access", "context"].includes(m.method)) {
+              if (m.method === "context") pageContext.current = m.parameters;
               result = await call(
                 m.method,
                 m.parameters,
                 AbortSignal.any([controller.signal, task.signal]),
               );
-            else throw Error("HTML_METHOD_NOT_ALLOWED");
+            } else throw Error("HTML_METHOD_NOT_ALLOWED");
             port.port1.postMessage({ type: "response", id: m.id, result });
           } finally {
             pending.delete(m.id);
@@ -210,17 +235,17 @@ export function registerHtmlClient(ctx: any) {
           {
             protocol: "gea-html-v1",
             type: "connect",
-            context: { plugin: plugin.id, session },
+            context: { plugin: plugin.id, session: binding.current?.session },
           },
           { targetOrigin: "*", transfer: [port.port2] },
         );
       };
       window.addEventListener("message", attach);
       port.port1.start();
-      const pageBridge = startPageBridgeClient({
+      const createPageBridge = (current: any) => startPageBridgeClient({
         endpoint: "page-bridge",
-        request: (endpoint, payload) => call(endpoint, payload),
-        sessionId: session,
+        request: (endpoint, payload) => request(plugin.id + "/call", { lease: current.lease, method: endpoint, parameters: payload }),
+        sessionId: current.session,
         // 页面自己报了元素就按自述算，否则是宿主扫出来的。
         pageSource: () => (reported.elements === null ? "dom-scan" : "self-report"),
         catalog: () => {
@@ -259,17 +284,26 @@ export function registerHtmlClient(ctx: any) {
             );
           }),
       });
+      let pageBridge = createPageBridge(binding.current ?? connection);
+      rebindPage.current = current => { pageBridge(); pageBridge = createPageBridge(current); };
       const poll = async () => {
+        const pollBinding = await readyBinding.current;
         try {
-          const events = await call("events");
-          for (const event of events) port.port1.postMessage(event);
+          if (!pollBinding) throw Error("页面会话连接暂不可用，请重试");
+          const events = await request(plugin.id + "/call", { lease: pollBinding.lease, method: "events" }, controller.signal);
+          if (pollBinding === binding.current)
+            for (const event of events) port.port1.postMessage(event);
           if (!controller.signal.aborted) pollTimer = setTimeout(poll, 1000);
         } catch (e) {
-          fail(e as Error);
+          // Closing an old lease during New conversation must not tear down the page.
+          if (pollBinding !== binding.current) {
+            if (!controller.signal.aborted) pollTimer = setTimeout(poll, 1000);
+          } else fail(e as Error);
         }
       };
       void poll();
       return () => {
+        rebindPage.current = null;
         pageBridge();
         controller.abort();
         clearTimeout(pollTimer);
@@ -278,19 +312,19 @@ export function registerHtmlClient(ctx: any) {
         port.port2.close();
         for (const task of pending.values()) task.abort();
       };
-    }, [connection, session]);
+    }, [connection]);
     return (
       <section
         style={{ height: "100%", display: "flex", flexDirection: "column" }}
       >
-        {error ? (
+        {error && (
           <p role="alert">
             {error}{" "}
             <button onClick={() => setRevision((x) => x + 1)}>重新连接</button>
           </p>
-        ) : connection ? (
+        )}
+        {connection ? (
           <iframe
-            key={connection.lease}
             ref={frame}
             title={plugin.name}
             sandbox="allow-scripts allow-downloads"
@@ -322,6 +356,9 @@ export function registerHtmlClient(ctx: any) {
         if (!envelope.ok || !envelope.value?.htmlPlugins) return;
         const items = await request("plugins");
         for (const plugin of items) {
+          // 下架与演示（mock）模块不注册面板：宿主已经不给它们生成 Agent 预设，
+          // 留了入口只会点出一个绑不上会话的空页面。
+          if (plugin.retired === true) continue;
           const pages = Array.isArray(plugin.pages) && plugin.pages.length
             ? plugin.pages
             : [{ id: plugin.id, name: plugin.name, view: "", order: 20 }];

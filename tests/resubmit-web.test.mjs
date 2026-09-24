@@ -3,8 +3,13 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 
+/**
+ * 纠偏入口已按业务方反馈收起（月度页不再有「纠偏」标签）。
+ * 这条用例原来覆盖纠偏页的退回重提；入口收起后只保留"入口确实没了、月度页也没多出按钮"的断言，
+ * 退回重提本身的行为改由 returned-resubmit-web 覆盖（月度页单笔 + 批量）。
+ */
 test(
-  "returned correction plans edit real-source quantities while disconnected submission stays disabled",
+  "纠偏入口已收起，月度页不再单开退回重提按钮",
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
@@ -130,26 +135,11 @@ test(
       .click();
     const frame = page.frameLocator("iframe[data-gea-workbench]");
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
-    await expect(frame.getByRole("button", { name: "重提", exact: true })).toHaveCount(0);
-    await frame.getByRole("tab", { name: "纠偏", exact: true }).click();
-    await frame.getByRole("button", { name: "退回重提", exact: true }).click();
-    const dialog = frame.getByRole("dialog", {
-      name: "真实销售计划退回重提",
-      exact: true,
-    });
-    const quantity = dialog.getByRole("textbox", {
-      name: "纠偏调整量 789",
-      exact: true,
-    });
-    await quantity.fill("1.000");
-    await expect(dialog).toContainText("24.68");
-    await expect(dialog).toContainText("重提目标状态: 1");
-    await dialog.locator("label.arco-checkbox").click();
-    await expect(dialog.getByRole("checkbox")).toBeChecked();
-    await expect(
-      dialog.getByRole("button", { name: "确认重提", exact: true }),
-    ).toBeDisabled();
-    await expect(dialog).toContainText("当前环境的服务凭据或用户授权未就绪");
+    // 纠偏标签已按业务方反馈收起（2026-09-23），纠偏工作台当前没有入口；
+    // 恢复标签时，把下面的断言换回"点纠偏 → 退回重提对话框 → 未连接时确认按钮置灰"。
+    await expect(frame.getByRole("tab", { name: "纠偏", exact: true })).toHaveCount(0);
+    // 月度页也不再单开「退回重提」：退回单的提交已并进「通过」。
+    await expect(frame.getByRole("button", { name: "退回重提", exact: true })).toHaveCount(0);
     assert.equal(
       app.requests.some(
         (r) =>

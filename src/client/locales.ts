@@ -298,6 +298,7 @@ const copy = {
   salesPlan: ["销售计划", "Sales plan"],
   regionalPlanWorkbench: ["区域计划工作台", "Regional plan workbench"],
   categoryPlanWorkbench: ["品类计划工作台", "Category plan workbench"],
+  mpsPlanWorkbench: ["主生产计划（MPS）", "MPS workbench"],
   apiLog: ["接口日志", "API logs"],
   inboxNotConnected: [
     "消息待办接口尚未接入",

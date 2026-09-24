@@ -172,7 +172,8 @@ test(
       .getByRole("button", { name: "Fixture task", exact: true })
       .waitFor();
     mode = "paging";
-    await ui.getByRole("button", { name: "刷新消息", exact: true }).click();
+    await ui.reload();
+    await ui.getByRole("button", { name: "消息待办", exact: true }).click();
     await ui
       .getByRole("button", { name: "Second task", exact: true })
       .waitFor();
@@ -269,9 +270,8 @@ test(
           };
           delete contentItem.expected;
           mode = "content";
-          await ui
-            .getByRole("button", { name: "刷新消息", exact: true })
-            .click();
+          await ui.reload();
+          await ui.getByRole("button", {name:"消息待办",exact:true}).click();
           await ui
             .getByRole("button", { name: contentItem.title, exact: true })
             .click();
@@ -312,6 +312,7 @@ test(
     assert.equal(
       app.requests
         .slice(readStart)
+        .filter(r => r.url.pathname.includes("/api/v1/notifications"))
         .every(
           (r) =>
             r.method === "GET" &&
@@ -320,7 +321,8 @@ test(
       true,
     );
     mode = "denied";
-    await ui.getByRole("button", { name: "刷新消息", exact: true }).click();
+    await ui.reload();
+    await ui.getByRole("button", { name: "消息待办", exact: true }).click();
     await ui.getByRole("alert").waitFor();
     assert.equal(
       await ui
@@ -330,7 +332,8 @@ test(
     );
     assert.match(await ui.getByRole("alert").innerText(), /权限/);
     mode = "empty";
-    await ui.getByRole("button", { name: "刷新消息", exact: true }).click();
+    await ui.reload();
+    await ui.getByRole("button", { name: "消息待办", exact: true }).click();
     await ui.getByText("本次查询没有记录", { exact: true }).waitFor();
     mode = "expired";
     assert.equal(

@@ -35,7 +35,7 @@ const {
 
 // 文案来源：《销售计划 · 右侧 AI 会话区原型说明 V1》，原型见 docs/prototypes/。
 test("提报版对话区文案按原型说明 V1 落地", () => {
-  assert.equal(reportingConversation.name, "销售计划助手");
+  assert.equal(reportingConversation.name, "销售计划Agent");
   assert.match(reportingConversation.intro, /核对本月计划的合理性与风险/);
   assert.equal(reportingConversation.boundary, "最终提交仍然由你自己在确认入口完成。");
   assert.deepEqual(
@@ -60,7 +60,7 @@ test("提报版对话区文案按原型说明 V1 落地", () => {
 });
 
 test("审批版对话区文案按原型说明 V1 落地", () => {
-  assert.equal(approvalConversation.name, "销售计划助手");
+  assert.equal(approvalConversation.name, "销售计划Agent");
   assert.match(approvalConversation.intro, /先给结论，再给依据/);
   assert.equal(approvalConversation.boundary, "我只做分析建议，不改变审批状态。");
   assert.deepEqual(
@@ -92,7 +92,7 @@ test("两版共用同一套结构，库存助手文案保持不变", () => {
       assert.ok(action.icon && action.label && action.prompt);
     }
   }
-  assert.equal(inventoryConversation.name, "经销商补货助手");
+  assert.equal(inventoryConversation.name, "经销商补货Agent");
   assert.deepEqual(inventoryConversation.prompts, [
     "哪些客户需要补货？",
     "重点客户的库存情况如何？",
@@ -104,21 +104,21 @@ test("两版共用同一套结构，库存助手文案保持不变", () => {
 // 每个业务页一套助手文案，名字 / 固定功能 / 推荐提问都跟那一页的工作台对齐。
 test("每个工作台页都有对齐的助手名称与四段文案", () => {
   const expected = [
-    [homeConversation, "AI 工作台助手"],
+    [homeConversation, "AI 工作台Agent"],
     [inboxConversation, "业务待办Agent"],
-    [demandOpsConversation, "需求运营助手"],
-    [deliveryOpsConversation, "交付运营助手"],
+    [demandOpsConversation, "需求运营Agent"],
+    [deliveryOpsConversation, "交付运营Agent"],
     [safetyStockConversation, "基地库存Agent"],
     [branchStockConversation, "分仓库存Agent"],
-    [inventoryWorkbenchConversation, "库存管理助手"],
+    [inventoryWorkbenchConversation, "库存管理Agent"],
     [fullChainStockConversation, "全链库存管理Agent"],
-    [inventoryConversation, "经销商补货助手"],
-    [regionalPlanConversation, "区域计划助手"],
-    [approvalConversation, "销售计划助手"],
+    [inventoryConversation, "经销商补货Agent"],
+    [regionalPlanConversation, "区域计划Agent"],
+    [approvalConversation, "销售计划Agent"],
   ];
   for (const [config, name] of expected) {
     assert.equal(config.name, name);
-    // 登记 32：会话框标题只留「模块名 + 助手」，副标（需求预测 Agent 等）整行去掉。
+    // 主线统一使用「模块名 + Agent」，不恢复已移除的副标。
     assert.equal(config.headerSub, undefined);
     assert.match(config.name, /(助手|Agent)$/);
     assert.equal(config.actions.length, 4);

@@ -26,7 +26,7 @@ export type ConversationPromptAction = {
 };
 
 export type ConversationPromptConfig = {
-  /** 会话区顶栏名称：统一用「功能模块名 + 助手」，和左侧菜单保持一致；不再挂副标。 */
+  /** 会话区顶栏名称：统一用「功能模块名 + Agent」，和左侧菜单保持一致；不再挂副标。 */
   name: string;
   intro: string;
   /** 简介里加粗的边界句。 */
@@ -37,7 +37,7 @@ export type ConversationPromptConfig = {
 
 /** 方案 A · 提报版：客户 / 代报人（KA、行销综合、业务员）的提报界面。 */
 export const reportingConversation: ConversationPromptConfig = {
-  name: "销售计划助手",
+  name: "销售计划Agent",
   intro:
     "我可以帮你核对本月计划的合理性与风险，解释每个商品是怎么算出来的，并按你的意见调整草稿的数量与金额。",
   boundary: "最终提交仍然由你自己在确认入口完成。",
@@ -81,7 +81,7 @@ export const reportingConversation: ConversationPromptConfig = {
 
 /** 方案 B · 审批版：城市经理（区域计划审批）/ 省区总 / 大区总 / 品类计划审核人的审批工作台。 */
 export const approvalConversation: ConversationPromptConfig = {
-  name: "销售计划助手",
+  name: "销售计划Agent",
   intro: "我可以按你当前节点的口径核对这张计划：先给结论，再给依据，异常项逐条给处理建议。",
   boundary: "我只做分析建议，不改变审批状态。",
   actions: [
@@ -122,9 +122,24 @@ export const approvalConversation: ConversationPromptConfig = {
   ],
 };
 
+/** 主生产计划（MPS）：统一 Agent 命名，保留原型定位与推荐问题。 */
+export const mpsPlanConversation: ConversationPromptConfig = {
+  name: "主生产计划Agent",
+  intro: "我按链路口径帮你核对月计划：三路需求是否齐备、主数据与约束是否就位，缺口和调拨拆分该怎么看。",
+  boundary: "只出建议、不改计划；正式计划仍以月计划编制流程为准。",
+  actions: [],
+  prompts: [
+    "生成 10 月滚动计划初稿",
+    "看各基地 M+2 产能",
+    "三路需求对不上的地方",
+    "M+2 缺口怎么处置",
+    "这个月调拨品拆分规则",
+  ],
+};
+
 /** 经销商补货（库存）业务页沿用原有助手文案。 */
 export const regionalPlanConversation: ConversationPromptConfig = {
-  name: "区域计划助手",
+  name: "区域计划Agent",
   intro: "我可以跨模块盯提报进度、找异常，给提报与跟催的参考意见。",
   boundary: "区域计划不参与审批与退回，我只做跟踪、评估与跟催。",
   actions: [
@@ -167,7 +182,7 @@ export const regionalPlanConversation: ConversationPromptConfig = {
 
 /** 品类计划工作台：文案沿用原型内的「品类计划助手」（简介 / 4 项固定功能 / 4 条推荐问题）。 */
 export const categoryPlanConversation: ConversationPromptConfig = {
-  name: "品类计划助手",
+  name: "品类计划Agent",
   intro:
     "我按品类计划在管的指标组织事实：原始订单满足率、需求计划准确率、库存周转天数、全链周转与产品新鲜度，并说明每一项未达标的驱动原因。",
   boundary: "负责预警与建议，人来决策与授权。",
@@ -211,7 +226,7 @@ export const categoryPlanConversation: ConversationPromptConfig = {
 
 /** 经销商补货（库存）业务页沿用原有助手文案。 */
 export const inventoryConversation: ConversationPromptConfig = {
-  name: "经销商补货助手",
+  name: "经销商补货Agent",
   intro: "我可以帮你分析客户库存，生成补货建议并跟进执行进度。",
   boundary: "建议只做参考，补货决策仍由你确认。",
   actions: [
@@ -254,7 +269,7 @@ export const inventoryConversation: ConversationPromptConfig = {
 
 /** AI 工作台首页：没有打开具体业务页时的通用助手。 */
 export const homeConversation: ConversationPromptConfig = {
-  name: "AI 工作台助手",
+  name: "AI 工作台Agent",
   intro: "我可以从你正在解决的问题入手：找数据、看计划进度、盯库存和交付风险。",
   boundary: "所有动作先给建议，再由你确认。",
   actions: [
@@ -340,7 +355,7 @@ export const inboxConversation: ConversationPromptConfig = {
 
 /** 需求运营管理页：需求信号研判。 */
 export const demandOpsConversation: ConversationPromptConfig = {
-  name: "需求运营助手",
+  name: "需求运营Agent",
   intro: "我可以帮你看需求波动、预测偏差和需求共识待办，给出下期需求计划的调整参考。",
   boundary: "我只做研判与建议，不直接改预测数字。",
   actions: [
@@ -383,7 +398,7 @@ export const demandOpsConversation: ConversationPromptConfig = {
 
 /** 交付运营管理页：订单履约风险。 */
 export const deliveryOpsConversation: ConversationPromptConfig = {
-  name: "交付运营助手",
+  name: "交付运营Agent",
   intro: "我可以帮你看订单履约：准交率、在途订单和重点客户延期，给出优先处理顺序。",
   boundary: "我只做风险研判与建议，不下发派车、不改订单。",
   actions: [
@@ -512,7 +527,7 @@ export const branchStockConversation: ConversationPromptConfig = {
 
 /** 库存管理工作台：基地 + 分仓的今日运营。 */
 export const inventoryWorkbenchConversation: ConversationPromptConfig = {
-  name: "库存管理助手",
+  name: "库存管理Agent",
   intro: "我可以把基地和分仓的今日运营情况汇总起来，按优先级说清今天先处理什么。",
   boundary: "我只做汇总和建议，处理动作仍由你和责任角色确认。",
   actions: [
