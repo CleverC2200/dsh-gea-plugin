@@ -11,9 +11,10 @@
 
 export type McpFailureGuard = {
   /** 到上限就抛 `GEA_MCP_RETRY_STOPPED`；窗口过了自动放行。 */
-  check(consumerCode: string): void;
+  check(consumerCode: string, scope?: string): void;
   /** 记一次结果：成功清零，失败累加。 */
-  note(consumerCode: string, ok: boolean): void;
+  note(consumerCode: string, ok: boolean, scope?: string, reason?: string): void;
+  clear(scope?: string): void;
 };
 
 export const MCP_FAILURE_LIMIT = 2;
@@ -82,28 +83,39 @@ export function createMcpFailureGuard(
   const limit = options.limit ?? MCP_FAILURE_LIMIT;
   const windowMs = options.windowMs ?? MCP_FAILURE_WINDOW_MS;
   const now = options.now ?? Date.now;
-  const failures = new Map<string, { count: number; at: number }>();
+  const failures = new Map<string, { count: number; at: number; scope: string; reason?: string }>();
+  const keyOf = (consumerCode: string, scope: string) => JSON.stringify([scope, consumerCode]);
   return {
-    check(consumerCode) {
-      const entry = failures.get(consumerCode);
+    check(consumerCode, scope = 'global') {
+      const key = keyOf(consumerCode, scope);
+      const entry = failures.get(key);
       if (!entry || entry.count < limit) return;
       if (now() - entry.at >= windowMs) {
-        failures.delete(consumerCode);
+        failures.delete(key);
         return;
       }
       throw new Error(
-        `GEA_MCP_RETRY_STOPPED: ${consumerCode} 已经连续失败 ${entry.count} 次，本轮不要再换模型、换成员或换写法重试。请用已经拿到的证据作答；确实缺数据时，直接说清缺哪一项（哪张模型、缺哪项授权），让用户去找管理员补。`,
+        `GEA_MCP_RETRY_STOPPED: ${consumerCode} 已经连续失败 ${entry.count} 次，本轮此通道不要再换模型、换成员或换写法重试。` +
+        `最近失败：${entry.reason ?? '原因未确定'}。其它已成功取得的数据仍有效；按原始错误说明缺口，不能一概归为缺授权。`,
       );
     },
-    note(consumerCode, ok) {
+    note(consumerCode, ok, scope = 'global', reason) {
+      const key = keyOf(consumerCode, scope);
       if (ok) {
-        failures.delete(consumerCode);
+        failures.delete(key);
         return;
       }
-      failures.set(consumerCode, {
-        count: (failures.get(consumerCode)?.count ?? 0) + 1,
+      const previous = failures.get(key);
+      failures.set(key, {
+        count: previous && now() - previous.at < windowMs ? previous.count + 1 : 1,
         at: now(),
+        scope,
+        reason: reason?.slice(0, 800),
       });
+    },
+    clear(scope) {
+      if (scope === undefined) failures.clear();
+      else for (const [key, entry] of failures) if (entry.scope === scope) failures.delete(key);
     },
   };
 }

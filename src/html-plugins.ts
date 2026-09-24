@@ -115,13 +115,19 @@ async function readContractSources(directory: string): Promise<string[]> {
  * 业务页面自带的 SKILL.md 不只是该页面 agent 的提示词，也要让主对话（标准 agent）能按需加载：
  * 复制到 DSH 用户技能根 `<DSH_HOME>/skills/<插件id>/SKILL.md`，由 skill-filesystem 扫描。
  */
-async function publishAgentSkill(id: string, content: string): Promise<void> {
+async function publishAgentSkill(id: string, content: string, managed = false): Promise<void> {
   const home = process.env.DSH_HOME;
   if (!home) return;
   const directory = resolve(home, "skills", id);
   await mkdir(directory, { recursive: true });
   await writeFile(resolve(directory, "SKILL.md"), content, { mode: 0o600 });
   publishedSkillDirs.push(directory);
+  if (managed) {
+    const managedDirectory = resolve(home, 'gea-business-skills', id);
+    await mkdir(managedDirectory, { recursive: true });
+    await writeFile(resolve(managedDirectory, 'SKILL.md'), content, { mode: 0o600 });
+    publishedSkillDirs.push(managedDirectory);
+  }
 }
 
 export async function registerHtmlPlugins(
@@ -234,8 +240,13 @@ export async function registerHtmlPlugins(
     );
     if (!skillPath.startsWith(directory + sep))
       throw Error("INVALID_SKILL_PATH");
-    const skill = await readFile(skillPath, "utf8");
-    await publishAgentSkill(manifest.id, skill);
+    // 宿主管理真实库存模块的 Agent 指令；保留已安装页面包和演示模块的原始边界。
+    const managedConsumers: Record<string, string> = {'inventory-aqkc': 'base-safety-stock', 'inventory-dealer': 'dealer-inventory-replenishment'};
+    const managedSkill = !mock && managedConsumers[manifest.id] === manifest.gea.consumerCode;
+    const skill = await readFile(managedSkill
+      ? new URL(`../presets/${manifest.id}.skill.md`, import.meta.url)
+      : skillPath, 'utf8');
+    await publishAgentSkill(manifest.id, skill, managedSkill);
     const frontmatter = (key: string) =>
       new RegExp(`^${key}:\\s*(.+)$`, "m").exec(skill)?.[1]?.trim();
     const preset = resolve(

@@ -193,6 +193,7 @@ test("Business login notifications and transport capabilities follow logout and 
     write: false,
     platform: "node",
     format: "cjs",
+    packages: "external",
   });
   const module = { exports: {} };
   new Function(
@@ -249,6 +250,7 @@ test("Business login notifications and transport capabilities follow logout and 
     business.logout({});
     assert.equal(notifications, 3);
     await assert.rejects(() => connection.fetch(connection.url, {}));
+    await assert.rejects(() => connection.authorizedResources("query_business_data",new AbortController().signal));
     business.selectEnvironment({ environment: "test" });
     assert.equal(notifications, 4);
     unwatch();

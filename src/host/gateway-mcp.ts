@@ -2,6 +2,8 @@
 import { randomUUID } from "node:crypto";
 import { createParser } from "eventsource-parser";
 import { readableError, throwIfAborted } from "../shared/abort.ts";
+import { parseAuthorizedResources, type ResourceReader } from './authorized-resources.ts';
+export type GatewayMcpTransport = {url: string; fetch: typeof fetch; authorizedResources: ResourceReader};
 
 const nonempty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 
@@ -25,7 +27,7 @@ export async function prepareGatewayMcp(
   identity: AbortSignal,
   timeoutMs: number,
   fetchImpl: typeof fetch = fetch,
-): Promise<{ url: string; fetch: typeof fetch }> {
+): Promise<GatewayMcpTransport> {
   if (
     !["AGENT", "CLIENT_APP"].includes(consumer.consumerType) ||
     !consumer.consumerCode.trim()
@@ -93,7 +95,7 @@ export async function prepareGatewayMcp(
   };
   return gatewayMcpTransport(base, meta, identity, timeoutMs, fetchImpl);
 }
-export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversationId:string;delegationToken:string;agentCode?:string}, identity:AbortSignal, timeoutMs:number, fetchImpl:typeof fetch=fetch):{url:string;fetch:typeof fetch} {
+export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversationId:string;delegationToken:string;agentCode?:string}, identity:AbortSignal, timeoutMs:number, fetchImpl:typeof fetch=fetch):GatewayMcpTransport {
   const url = base + "/ai/gateway/mcp/proxy/mcp";
   const routes = new Map<string, string>();
   let initializeBody: string | undefined;
@@ -259,5 +261,27 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
     }
     return res;
   };
-  return { url, fetch: gatewayFetch };
+  const authorizedResources: ResourceReader = async (toolName, signal) => {
+    throwIfAborted(identity); throwIfAborted(signal);
+    const mcpCode = routes.get(toolName);
+    if (!mcpCode) throw Error('GEA_MCP_TOOL_ROUTE_REQUIRED');
+    const response = await fetchImpl(base + '/ai/gateway/mcp/proxy/resources', {
+      method: 'POST', redirect: 'error',
+      headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+      body: JSON.stringify({...meta, mcpCode, toolName}),
+      signal: AbortSignal.any([identity, signal, AbortSignal.timeout(timeoutMs)]),
+    });
+    throwIfAborted(identity); throwIfAborted(signal);
+    if (response.status === 429) {
+      const retryAfter = retryAfterMs(response.headers);
+      await response.body?.cancel();
+      throw Object.assign(Error(`GEA_RESOURCE_DISCOVERY_RATE_LIMITED: ${retryAfter === undefined ? '遵循 Retry-After' : '至少等待 '+Math.ceil(retryAfter/1000)+' 秒'}，停止本次资源发现，不立即重试。`), {retryAfterMs: retryAfter});
+    }
+    if (!response.ok) { await response.body?.cancel(); throw Error('GEA_RESOURCE_DISCOVERY_HTTP_' + response.status); }
+    let payload: unknown;
+    try { payload = await response.json(); } catch { throw Error('GEA_RESOURCE_DISCOVERY_INVALID_JSON'); }
+    throwIfAborted(identity); throwIfAborted(signal);
+    return parseAuthorizedResources(payload, `MCP_TOOL:${mcpCode}:${toolName}`);
+  };
+  return { url, fetch: gatewayFetch, authorizedResources };
 }

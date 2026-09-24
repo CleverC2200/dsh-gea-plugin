@@ -41,6 +41,8 @@ test(
     const agentsHome = await mkdtemp(join(tmpdir(), "gea-agents-home-"));
     await mkdir(join(agentsHome, "skills", "inventory-probe"), { recursive: true });
     await writeFile(join(agentsHome, "skills", "inventory-probe", "SKILL.md"), probeSkill);
+    await mkdir(join(agentsHome, "skills", "tdd"), {recursive: true});
+    await writeFile(join(agentsHome, "skills", "tdd", "SKILL.md"), "---\nname: tdd\ndescription: DEVELOPER_SKILL_MUST_NOT_LEAK\n---\nDeveloper-only rules.\n");
     await writeFile(
       join(probeRoot, "plugin.json"),
       JSON.stringify({
@@ -626,6 +628,9 @@ test(
           "completed",
         );
         assert.equal(modelRequests.length, 2);
+        const promptMessages = JSON.stringify(modelRequests[0].messages);
+        assert.match(promptMessages, /inventory-probe/);
+        assert.doesNotMatch(promptMessages, /DEVELOPER_SKILL_MUST_NOT_LEAK/);
         // 只要求核心工具在列；部署补丁还会挂其他工具（例如浏览器 MCP），不在这里锁死全集。
         const toolNames = modelRequests[0].tools.map((x) => x.function.name);
         for (const expected of [
@@ -1671,18 +1676,18 @@ test(
     await t.test(
       "Skill references use the local reader in the actual model-tool-model loop",
       async () => {
-        await mkdir(`${app.runtime}/workspace/.agents/skills/reference-scope`, {
+        await mkdir(`${app.runtime}/home/business-skills/reference-scope`, {
           recursive: true,
         });
-        await mkdir(`${app.runtime}/workspace/.agents/references`, {
+        await mkdir(`${app.runtime}/home/references`, {
           recursive: true,
         });
         await writeFile(
-          `${app.runtime}/workspace/.agents/skills/reference-scope/SKILL.md`,
+          `${app.runtime}/home/business-skills/reference-scope/SKILL.md`,
           "---\nname: reference-scope\ndescription: 需求预测规则测试\n---\n先读 [规则](../../references/rules.md)\n",
         );
         await writeFile(
-          `${app.runtime}/workspace/.agents/references/rules.md`,
+          `${app.runtime}/home/references/rules.md`,
           "按实际期间查询；缺失数据不能编造。\n",
         );
         outcome = "skill-reference";

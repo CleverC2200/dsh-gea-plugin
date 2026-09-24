@@ -125,11 +125,17 @@ export function createCapabilityRegistry(
             .join("、");
           const more =
             data.tables.length > 3 ? ` 等 ${data.tables.length} 张` : "";
+          // 演示模块要标出来：它的数字是原型数据、没有真实通道，调它只会拿到
+          // mock-module 提示并被计进"白跑总账"（线上实测 6 次就到上限停手）。
+          const mock =
+            data.mock === true
+              ? "；**演示模块**：页面数字是原型数据，没有真实数据通道，不要调它取数"
+              : "";
           return `- ${contract.label}：consumerCode=${
             data.consumerCode
           }；${truncateText(contract.routing.summary, 80)}；表：${
             tables || "（未登记）"
-          }${more}；能力层：${layersOf(contract).join("、")}`;
+          }${more}；能力层：${layersOf(contract).join("、")}${mock}`;
         })
         .join("\n");
     },

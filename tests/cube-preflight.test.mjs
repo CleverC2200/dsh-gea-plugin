@@ -169,12 +169,12 @@ test("接线：闸门在发送前调用，且清单不在手时先补读一次 i
   // 这两个行为是"规约由调用层确定性执行"的落点，改别处很容易把它们丢掉，
   // 所以在源码层面钉一条。
   const source = await readFile("src/host/agent-tools.ts", "utf8");
-  assert.match(source, /parameters\.action === "query" && !memberIndex\(\)/);
-  assert.match(source, /await loadMemberIndex\(module, exec\.signal\)/);
-  assert.match(source, /preflightCubeArguments\(parameters, memberIndex\(\)\)/);
+  assert.match(source, /await moduleIndexFor\(module,exec\.signal\)/);
+  assert.match(source, /await loadMemberIndex\(module,signal\)/);
+  assert.match(source, /preflightCubeArguments\(parameters, activeIndex\)/);
   assert.ok(
-    source.indexOf("preflightCubeArguments(parameters, memberIndex())") <
-      source.indexOf("await module.call(toolName, parameters, exec.signal)"),
+    source.indexOf("preflightCubeArguments(parameters, activeIndex)") <
+      source.indexOf("await module.call(toolName, parameters, exec.signal"),
     "闸门必须在真正发送之前",
   );
   // 结构性缺口：已知取不到的组合要在发送前短路，且和被拒那次一样计入本轮总账。
@@ -183,7 +183,7 @@ test("接线：闸门在发送前调用，且清单不在手时先补读一次 i
   assert.match(source, /business\.cubeGaps\(\)\.note\(consumerCode, queriedModel/);
   assert.ok(
     source.indexOf('business.cubeGaps().find(consumerCode, queriedModel)') <
-      source.indexOf("await module.call(toolName, parameters, exec.signal)"),
+      source.indexOf("await module.call(toolName, parameters, exec.signal"),
     "已知缺口必须在真正发送之前短路",
   );
 });
@@ -372,4 +372,11 @@ test("§17.8 请求体字节：把整表列全的写法拦下，正常查询放�
     }),
     undefined,
   );
+});
+
+test('unknown measure errors offer actual measures, never numeric dimensions as replacements',()=>{
+ const models=m.memberIndexFrom({semanticModel:[{name:'inv',dimensions:[{name:'inv.stock_qty',type:'number'}],measures:[{name:'inv.total_stock_qty',type:'number'}]}]});
+ const error=m.preflightCubeArguments(query('stock',{measures:['inv.stock_qty_sum']}),models);
+ assert.match(error,/inv.total_stock_qty/);assert.doesNotMatch(error,/最像的是 inv.stock_qty/);
+ assert.match(error,/数值维度不能代替度量/);
 });

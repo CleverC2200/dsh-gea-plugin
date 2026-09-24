@@ -212,3 +212,10 @@ test("streaming and oversized response bodies are summarized instead of buffered
     );
   }
 });
+
+test('authorized resource discovery is classified, redacted and cannot replay short-lived credentials',async()=>{
+ const center=new GeaApiLogCenter(()=>'test',20,async()=>Response.json({success:true,resources:[]}));
+ const response=await center.fetch('https://fixture/ai/gateway/mcp/proxy/resources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agentCode:'sales_forecast',mcpCode:'cube',toolName:'query_business_data',delegationToken:'private-delegation',sessionId:'private-session',conversationId:'conversation'})});
+ await response.text();const snapshot=center.snapshot();assert.equal(snapshot.records[0].catalogId,'gateway.authorized-resources');assert.equal(snapshot.records[0].replayAvailable,false);assert.doesNotMatch(JSON.stringify(snapshot),/private-delegation|private-session/);
+ await assert.rejects(center.replay(snapshot.records[0].id,false),/REPLAY/);
+});

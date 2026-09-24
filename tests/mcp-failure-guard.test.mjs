@@ -119,3 +119,11 @@ test("白跑计数窗口过了自动放行；clear 清空全部", () => {
   waste.clear();
   waste.check("s");
 });
+
+test('failure budgets are scoped to the conversation; resetting one preserves the other and keeps the actual cause', () => {
+  const guard=createMcpFailureGuard();
+  for (const scope of ['one','two']) for(let n=0;n<2;n++)guard.note('sales_forecast',false,scope,'GEA_MCP_RESOURCE_MAPPING_FAILED');
+  guard.clear('one');guard.check('sales_forecast','one');
+  assert.throws(()=>guard.check('sales_forecast','two'),/GEA_MCP_RESOURCE_MAPPING_FAILED/);
+  guard.clear();guard.check('sales_forecast','two');
+});

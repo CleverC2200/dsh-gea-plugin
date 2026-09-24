@@ -418,9 +418,8 @@ test("text 是对象但不是失败时：内容不能丢", async () => {
   assert.match(value, /"qty":12/);
 });
 
-// 网关把"跨模型查询"标成 AI_GATEWAY_DATA_PERMISSION_DENIED / AUTHORIZATION，
-// 按"缺授权"解释会把人带沟里——必须按 message 认出来是写法问题。
-test("跨模型成员被标成 PERMISSION_DENIED 时，仍按写法问题给动作", async () => {
+// 单模型请求也会收到同一句资源匹配错误，不能仅凭文案断言跨模型或缺授权。
+test("资源未唯一匹配时保留映射诊断，不武断归为参数或授权错误", async () => {
   const { transport } = envelopeTransport({
     retryable: false,
     traceId: "1ba26e37-253d-42d6-9093-641873f7d6c6",
@@ -437,8 +436,9 @@ test("跨模型成员被标成 PERMISSION_DENIED 时，仍按写法问题给动�
     () => module.call("query_business_data", {}, new AbortController().signal),
     (error) => {
       assert.match(error.message, /dataAssetCode/);
-      assert.match(error.message, /拆成两次调用/);
-      assert.match(error.message, /改好参数后可以重新调用一次/);
+      assert.match(error.message, /GEA_MCP_RESOURCE_MAPPING_FAILED/);
+      assert.match(error.message, /资源映射/);
+      assert.doesNotMatch(error.message, /改好参数后可以重新调用一次|入参没通过网关校验/);
       // 不能误导成"缺授权"。
       assert.equal(error.message.includes("模块数据未授权"), false);
       assert.equal(error.message.includes("权限或数据授权没配置"), false);
@@ -743,4 +743,14 @@ test("权限失败要保留 details 里的诊断项，说清缺的是哪一项",
   assert.match(value, /资源=agents_scm_inventory_age-cube/);
   assert.match(value, /授权项=07d7c69d/);
   assert.match(value, /配置位置=策略 v7/);
+});
+
+test('host evidence callback receives hydrated content before the model preview is truncated',async()=>{
+ const uri='data-artifact://gateway/evidence-large';
+ const artifact=pageArtifact({datasetName:'customers',totalRows:1,rows:[{code:'customer-001',detail:'x'.repeat(24000)}]});
+ const {seen,transport}=artifactTransport(uri,artifact);
+ const module=await m.openModuleMcp(transport,new AbortController().signal);let captured;
+ const output=await module.call('query_business_data',{action:'query',queries:[{name:'customers',query:{dimensions:['inv.code'],limit:1}}]},new AbortController().signal,text=>{captured=text;});
+ assert.equal(captured,artifact);assert.ok(output.length<artifact.length);assert.match(output,/只内联/);
+ assert.equal(seen.filter(x=>x.method==='resources/read').length,1,'evidence does not issue an extra query or page read');
 });

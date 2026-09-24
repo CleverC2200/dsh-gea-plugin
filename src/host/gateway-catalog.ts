@@ -71,10 +71,67 @@ export function rowsFromPayload(payload: unknown): Array<Record<string, unknown>
   return direct;
 }
 
-/** 工具返回的文本里夹着 JSON 时，取出里面的 rows。 */
+/**
+ * 制品形状（resource 模式）里的行：`queryArtifact.resources[].contents[].text` 是**逐页转义的
+ * JSON**（datasetName + rows）。规约 §13.3 要求适配器把这一层解开——不解析就只能看到
+ * "有制品、没有行"，线上会把这种情况误报成"取不到样例值"，也会让"取值可用性"账本永远是空的。
+ */
+function rowsFromArtifact(payload: unknown): Array<Record<string, unknown>> | null {
+  const resources = (payload as { queryArtifact?: { resources?: unknown } })?.queryArtifact
+    ?.resources;
+  if (!Array.isArray(resources)) return null;
+  const rows: Array<Record<string, unknown>> = [];
+  for (const resource of resources) {
+    const contents = (resource as { contents?: unknown })?.contents;
+    if (!Array.isArray(contents)) continue;
+    for (const content of contents) {
+      const inner = (content as { text?: unknown })?.text;
+      if (typeof inner !== "string") continue;
+      let page: unknown;
+      try {
+        page = JSON.parse(inner);
+      } catch {
+        continue;
+      }
+      const pageRows = rowsFromPayload(page);
+      if (pageRows?.length) rows.push(...pageRows);
+    }
+  }
+  return rows.length ? rows : null;
+}
+
+/** 工具返回的文本里夹着 JSON 时，取出里面的 rows（顶层形状和制品形状都认）。 */
 export function rowsFromText(text: string): Array<Record<string, unknown>> | null {
-  const parsed = parseFirstJsonObject(text);
-  return rowsFromPayload(parsed);
+  let parsed: unknown;
+  try {
+    parsed = parseFirstJsonObject(text);
+  } catch {
+    return null;
+  }
+  const direct = rowsFromPayload(parsed);
+  if (direct?.length) return direct;
+  return rowsFromArtifact(parsed) ?? direct;
+}
+
+/** 样本观察只描述本次返回，不从少量空值推断整张表不可用。 */
+export function noteMemberSamples(notes: Map<string, string>, rows: readonly Record<string, unknown>[], dimensions: readonly string[]): void {
+  for (const member of dimensions) {
+    if (!member.includes('.')) continue;
+    const values = rows.map(row => row[member]).filter(value => value !== undefined);
+    if (!values.length) continue;
+    const unique = [...new Set(values.filter(value => value !== null && String(value).trim() !== '').map(String))];
+    notes.delete(member);
+    if (!unique.length) notes.set(member, `本次 ${values.length} 行样本均为空；不能据此断定全量为空`);
+    else if (unique.length === 1) notes.set(member, `本次 ${values.length} 行样本只见「${unique[0].slice(0, 20)}」；不代表全量分布`);
+    while (notes.size > 200) notes.delete(notes.keys().next().value!);
+  }
+}
+
+/** 对无观察标注的缓存正文补上最新观察；成员名已在目录中不代表已有观察。 */
+export function appendMemberSamples(text: string, notes: ReadonlyMap<string, string>, model?: string): string {
+  const selected = [...notes].filter(([member]) => !model || member.startsWith(`${model}.`));
+  if (!selected.length) return text;
+  return text + '\n取值观察（仅本轮样本）：' + selected.slice(0, 6).map(([member,note]) => `${member} — ${note}`).join('；');
 }
 
 /**
@@ -96,13 +153,13 @@ export function formatSampleValues(
           .map((value) => JSON.stringify(value)),
       ),
     ];
-    if (values.length === 0) return `- ${member} = 取不到（没有可见行，或它全是空）`;
+    if (values.length === 0) return `- ${member} = 本次样本未返回可见值（不能推断整表为空）`;
     const shown = values.slice(0, 5);
     const extra =
       values.length === 1 && values[0] === '""'
-        ? "　← 只有空串：这个成员在这张模型里没有可用取值"
+        ? "　← 本次样本只有空串，不能据此判断全量缺失"
         : values.length === 1
-          ? "　← 只有一个取值"
+          ? "　← 本次样本只有一个取值"
           : "";
     return `- ${member} = ${shown.join("、")}${extra}`;
   });
@@ -117,7 +174,7 @@ export function formatSampleValues(
     "成员真实取值（每个成员最多列 5 个，按取值分布取，不是随便一行）：",
     ...lines,
     "照这些值的格式写查询：日期/时间成员写完整日期（如 2026-10-01）；文本年月是哪几位就写哪几位（如 2026-08）。",
-    "如果某个成员只有空串或只有一个取值，说明它答不了「有哪些取值/哪些大区」这类问题——直接说明并换能提供该维度的模型或链路，不要靠换写法硬凑。",
+    "样例只用于确认格式和本次已观察到的值，不代表全量分布。只有一个有效值仍可如实回答；空样本不能推出整表或维度不可用。按问题范围、快照和权限完成业务查询，不反复读取同一样例。",
   ].join("\n");
 }
 
@@ -179,7 +236,7 @@ export function sampleRowsByDataset(
 }
 
 /** 解析第一段完整 JSON 对象：工具结果常常是 JSON + 尾部提示文本。 */
-export function parseFirstJsonObject(text: string): unknown {
+export function parseFirstJsonObject(text: string, parse: (text: string) => unknown = JSON.parse): unknown {
   const start = text.indexOf("{");
   if (start < 0) throw new Error("GEA_CATALOG_NOT_JSON");
   let depth = 0;
@@ -203,7 +260,7 @@ export function parseFirstJsonObject(text: string): unknown {
     if (char === "{") depth += 1;
     else if (char === "}") {
       depth -= 1;
-      if (depth === 0) return JSON.parse(text.slice(start, index + 1));
+      if (depth === 0) return parse(text.slice(start, index + 1));
     }
   }
   throw new Error("GEA_CATALOG_TRUNCATED");
@@ -301,6 +358,8 @@ export function projectCatalog(
     maxChars?: number;
     /** 模型 → consumerCode：告诉模型"这张表用哪条模块通道查"。 */
     consumers?: ReadonlyMap<string, string>;
+    /** 成员取值可用性（实测）：key 形如 `模型.字段`。 */
+    memberNotes?: ReadonlyMap<string, string>;
   } = {},
 ): string {
   const models = ((payload as { semanticModel?: Model[] })?.semanticModel ?? []).filter(
@@ -310,11 +369,12 @@ export function projectCatalog(
   const maxChars = options.maxChars ?? 12_000;
   const consumers = options.consumers;
   const filter = options.model?.trim();
-  if (!filter) return modelIndex(models, maxChars, consumers);
+  if (!filter) return modelIndex(models, maxChars, consumers, options.memberNotes);
   const detailBudget = {
     maxMembers: options.maxMembersPerModel ?? 120,
     maxChars,
     ...(consumers ? { consumers } : {}),
+    ...(options.memberNotes?.size ? { memberNotes: options.memberNotes } : {}),
   };
   const ranked = rankByName(filter, models.map(catalogCandidate), { limit: MATCH_LIMIT + 8 });
   // 一个都不像：把带说明的完整索引直接回给模型，一步挑对，省一次往返。
@@ -378,6 +438,7 @@ function weakMatch(
     maxMembers: number;
     maxChars: number;
     consumers?: ReadonlyMap<string, string>;
+    memberNotes?: ReadonlyMap<string, string>;
   },
 ): string {
   const shown = ranked.slice(0, 2);
@@ -407,14 +468,57 @@ function missedModel(
   );
 }
 
+/** 索引里最多列出几个度量名：再多就退回只写数量。 */
+const INDEX_MEASURE_NAMES = 3;
+
+/**
+ * 度量少的时候，索引里直接把度量名写出来。
+ *
+ * 线上实测（session-bbd8f3be）：索引只写"度量 1"，模型看不见"金额/数量类度量不在了"，
+ * 于是一连换了 6 个模型、24 步才得出结论；而同一天早些时候这张模型的度量还是 11 个。
+ * 名字写出来，模型第一步就能判断"这张表能不能做合计"，不用再调一次拿明细。
+ */
+function measureHint(model: Model): string {
+  const names = membersOf(model, "measures");
+  if (names.length === 0 || names.length > INDEX_MEASURE_NAMES) return "";
+  const short = names.map((name) => {
+    const at = name.lastIndexOf(".");
+    return at > 0 ? name.slice(at + 1) : name;
+  });
+  const countOnly = short.length === 1 && short[0] === 'row_count';
+  return (
+    `（度量：${short.join("、")}` +
+    (countOnly
+      ? "；只有行数度量，不能用于金额或数量合计"
+      : "") +
+    "）"
+  );
+}
+
 /** 模型索引：先给名字与一句话，够模型挑一个再要明细。 */
 function modelIndex(
   models: readonly Model[],
   maxChars: number,
   consumers?: ReadonlyMap<string, string>,
+  /** 成员取值可用性（实测）：带 model 的明细用，索引里只摘该模型的已知缺口。 */
+  memberNotes?: ReadonlyMap<string, string>,
 ): string {
   const header =
     "GEA 网关语义模型索引（成员名可直接用于 Cube 查询，形如 模型.字段）：";
+  /**
+   * 该模型的已知缺口（最多两条）：把"某列实测全为空串/只有一个取值"这类结论提前写在索引里，
+   * 模型第一次读索引就能排除，不用一个模型一个模型去试。
+   */
+  const gapHint = (model: Model): string => {
+    if (!memberNotes?.size) return "";
+    const prefix = `${model.name}.`;
+    const hits = [...memberNotes.entries()]
+      .filter(([member]) => member.startsWith(prefix))
+      .map(([member, note]) => `${member.slice(prefix.length)}=${note.replace(/^本轮实测/, "")}`);
+    if (!hits.length) return "";
+    const shown = hits.slice(0, 2).join("；");
+    return `（已知缺口：${shown}${hits.length > 2 ? `；等 ${hits.length} 项` : ""}）`;
+  };
   const rich = (model: Model) => {
     const description = (model.description ?? "").replace(/\s+/g, " ").trim();
     const measures = membersOf(model, "measures").length;
@@ -426,6 +530,8 @@ function modelIndex(
       // 线上实测：模型把数值字段（如 agents_scm_inventory_age.qty）写进 measures，
       // 而这些 cube 一个 measure 都没定义，上游直接拒掉整批查询计划。
       (measures === 0 ? "（无度量：所有成员都是维度，只放 dimensions）" : "") +
+      measureHint(model) +
+      gapHint(model) +
       (typed.time > 0 ? `（含 ${typed.time} 个时间成员，取值要完整日期）` : "")
     );
   };
@@ -463,6 +569,8 @@ function modelDetails(
     maxMembers: number;
     maxChars: number;
     consumers?: ReadonlyMap<string, string>;
+    /** 成员取值可用性（实测）：key 形如 `模型.字段`，如"取值全为空串"。 */
+    memberNotes?: ReadonlyMap<string, string>;
   },
 ): string {
   const lines: string[] = [
@@ -482,7 +590,7 @@ function modelDetails(
     const consumerCode = options.consumers?.get(name);
     if (consumerCode)
       parts.push(
-        `  查询通道：consumerCode=${consumerCode}（调 gea_module_mcp 时带它；这表示该身份能看见这个模型，不代表每行数据都已授权）`,
+        `  查询通道：consumerCode=${consumerCode}（调 gea_cube_query 时带它；当前快照有资源级授权，字段与业务行范围仍需执行校验）`,
       );
     if (dimensions.length)
       parts.push(`  维度(${dimensions.length})：${dimensions.slice(0, options.maxMembers).join(", ")}`);
@@ -493,6 +601,21 @@ function modelDetails(
       parts.push("  度量：无（这个模型没有定义 measure：所有成员一律放 dimensions，数值字段也不要写进 measures）");
     if (segments.length)
       parts.push(`  分段(${segments.length})：${segments.slice(0, options.maxMembers).join(", ")}`);
+    // 实测过的"这列取不到可用值"直接写在成员清单里：省掉模型"一个模型一个模型试"的过程
+    // （线上实测 session-bbd8f3be：大区列全为空串，模型换 6 个模型、24 步才得出结论）。
+    if (options.memberNotes?.size) {
+      const flagged = [...dimensions, ...measures, ...segments]
+        .map((tagged) => tagged.replace(/\[[^\]]*\]$/, ""))
+        .map((member) => ({ member, note: options.memberNotes?.get(member) }))
+        .filter((item): item is { member: string; note: string } => Boolean(item.note));
+      if (flagged.length)
+        parts.push(
+          `  取值可用性（实测）：${flagged
+            .slice(0, 6)
+            .map((item) => `${item.member} — ${item.note}`)
+            .join("；")}`,
+        );
+    }
     if (
       dimensions.length > options.maxMembers ||
       measures.length > options.maxMembers ||

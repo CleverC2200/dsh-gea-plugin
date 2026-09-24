@@ -4,6 +4,7 @@ lib/
 .env
 gea.config.json
 .idea/
+.DS_Store
 
 # Local CodeGraph database and issue publishing drafts
 .codegraph/

@@ -66,7 +66,7 @@ test("查出不存在的成员，并说清最像的真名与该模型的现有�
   assert.match(hint, /GEA_CUBE_MEMBER_UNKNOWN/);
   assert.match(hint, /category_name/);
   // 最像的必须是真名，且要列出这个模型的现有成员——模型照着抄就能改对。
-  assert.match(hint, /category_name → 最像的是 agents_scm_safety_stock\.product_categ_name/);
+  assert.match(hint, /category_name → 拼写相近的是 agents_scm_safety_stock\.product_categ_name/);
   assert.match(hint, /现有成员：/);
   assert.match(hint, /base_name/);
 });

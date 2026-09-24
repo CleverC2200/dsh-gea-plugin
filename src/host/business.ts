@@ -35,6 +35,8 @@ import {
 import { compressForModel } from "../shared/payload-budget.ts";
 import { createCubeGapLedger, type CubeGapLedger } from "./cube-gap-ledger.ts";
 import { createRepeatGuard, type RepeatGuard } from "./repeat-guard.ts";
+import { createMcpReadLedger } from "./mcp-read-evidence.ts";
+import { aggregateSalesPlans } from "./sales-plan-aggregate.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
 const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
@@ -400,6 +402,87 @@ function integer(
     throw new Error("INVALID_QUERY");
   return value;
 }
+/** 销售计划各 kind 允许的查询字段。 */
+const PLAN_QUERY_FIELDS: Record<string, string[]> = {
+  aggregate: ["periodId", "orderType", "planTypeCode", "dealerCode", "areaCode", "provinceCode", "orgCode", "baseName", "status"],
+  periods: ["periodMonth", "planType", "pageNo", "pageSize"],
+  list: [
+    "orderType",
+    "periodId",
+    "planTypeCode",
+    "dealerCode",
+    "areaCode",
+    "provinceCode",
+    "orgCode",
+    "baseName",
+    "status",
+    "pageNo",
+    "pageSize",
+  ],
+  detail: ["planId"],
+  versions: ["planId"],
+  logs: ["planId", "pageNo", "pageSize"],
+  versionSkus: ["versionId", "pageNo", "pageSize"],
+  compare: ["planId", "fromVersionId", "toVersionId"],
+};
+
+/**
+ * 销售计划查询的形状校验 + 容错。
+ *
+ * 分页参数对不分页的 kind（detail/versions/compare…）没有意义，但也不算错：线上实测模型
+ * 会给 detail 顺手带上 pageSize，严格拒绝等于白烧一轮。同理，模型常把 detail 的 planId
+ * 顺手带进 versionSkus（session-2bb0684f 就因为这个多余字段连撞 5 次 INVALID_QUERY）。
+ * 这两类"多余但无害"的字段直接丢掉继续跑；真正用错的 key（例如给 detail 传 versionId）
+ * 仍然报错，并给出该怎么改。
+ *
+ * @param kind 查询种类（periods/list/detail/versions/logs/versionSkus/compare）。
+ * @param query 模型给的查询对象；返回的是"过滤后的有效字段"。
+ */
+export function normalizePlanQuery(
+  kind: string,
+  query: Record<string, unknown>,
+): Record<string, unknown> {
+  const allowed = PLAN_QUERY_FIELDS;
+  if (!Object.hasOwn(allowed, kind)) throw new Error("INVALID_QUERY");
+  const ignoredPaging = Object.keys(query).filter(
+    (key) =>
+      (key === "pageNo" || key === "pageSize") && !allowed[kind].includes(key),
+  );
+  // 只在"必需的那个 id 已经在了"时才忽略多余字段，避免把"拿 planId 当版本号"这种真错误吞掉。
+  const benignExtras: Record<string, string[]> = { versionSkus: ["planId"] };
+  const ignoredBenign =
+    kind === "versionSkus" && query.versionId != null
+      ? (benignExtras[kind] ?? []).filter((key) => query[key] !== undefined)
+      : [];
+  const ignoredKeys = [...ignoredPaging, ...ignoredBenign];
+  const effective =
+    ignoredKeys.length === 0
+      ? query
+      : Object.fromEntries(
+          Object.entries(query).filter(([key]) => !ignoredKeys.includes(key)),
+        );
+  const unsupported = Object.keys(effective).filter(
+    (key) => !allowed[kind].includes(key),
+  );
+  if (unsupported.length) {
+    // 这些提示直接决定模型下一轮能不能纠正，不要只说"参数不支持"。
+    const guidance =
+      kind === "list"
+        ? " For a month, call kind=periods with periodMonth (YYYY-MM) first, then pass the returned periodId together with planTypeCode from that result; never invent periodId or planTypeCode."
+        : kind === "detail"
+          ? " kind=detail takes only planId, taken from kind=list or kind=versions output; never pass versionId here and never invent an id."
+          : kind === "versionSkus"
+            ? " kind=versionSkus takes only versionId (detail 的 currentVersion.id，或 list 的 versionId) plus pageNo/pageSize; planId is not needed."
+            : kind === "periods"
+              ? " periodMonth must be YYYY-MM, for example 2026-09."
+              : "";
+    throw new Error(
+      `INVALID_QUERY: kind=${kind} accepts only ${allowed[kind].join(", ")}.${guidance}`,
+    );
+  }
+  return effective;
+}
+
 function versionNumber(value: unknown): number {
   if (typeof value === "number") return integer(value, 0);
   if (typeof value === "string" && /^[0-9]+$/.test(value)) {
@@ -789,8 +872,10 @@ export class Business {
     // 元信息缓存与"本轮白跑"计数都跟身份绑定：换身份一律作废。
     this.readDedup.clear();
     this.mcpWasteGuard.clear();
+    this.mcpFailureGuard.clear();
     this.cubeGapLedger.clear();
     this.repeatGuard.clear();
+    this.clearTurnReplays();
     this.turnQuestions.clear();
     this.turnStops.clear();
     this.resubmissions.clear();
@@ -1988,6 +2073,117 @@ export class Business {
   }
 
   /**
+   * 本轮"已经读过"的内容副本：去重命中时把内容还回去，不再只回一句话。
+   *
+   * 线上实测（session-bbd8f3be）：模型索引被读了 8 次——头两次拿全文，之后只拿到
+   * "这一轮已经读过了"的空壳；模型手上有用的正是那份目录，拿不回来就只能再发一次，
+   * 一直到整轮停手。所以去重要"省带宽"，但不能"扣内容"：命中时重放内容（长内容只重放开头）。
+   */
+  private readonly turnReplays = new Map<string, { text: string; at: number }>();
+  private readonly planReadCounts = new Map<string, { detail: number; aggregate: number }>();
+  private readonly turnReadRevisions = new Map<string, number>();
+  readTurnRevision(scope: string): number { return this.turnReadRevisions.get(scope) ?? 0; }
+  allowPlanRead(scope: string, aggregate: boolean): boolean {
+    const counts = this.planReadCounts.get(scope) ?? {detail: 0, aggregate: 0};
+    this.planReadCounts.set(scope, counts);
+    return aggregate ? ++counts.aggregate <= 8 : ++counts.detail <= 20;
+  }
+
+  rememberTurnReplay(scope: string, key: string, text: string): void {
+    if (!text) return;
+    const full = `${scope || "global"}\u0000${key}`;
+    this.turnReplays.delete(full);
+    this.turnReplays.set(full, { text, at: Date.now() });
+    while (this.turnReplays.size > 60) {
+      const oldest = this.turnReplays.keys().next().value as string;
+      this.turnReplays.delete(oldest);
+    }
+  }
+
+  turnReplay(scope: string, key: string): string | undefined {
+    return this.turnReplays.get(`${scope || "global"}\u0000${key}`)?.text;
+  }
+
+  private readonly mcpReadLedger = createMcpReadLedger();
+
+  mcpReadEpoch(scope: string): object { return this.mcpReadLedger.epoch(scope); }
+
+  rememberPendingMcpQueries(scope: string, consumer: string, parameters: Record<string, unknown>, epoch?: object): void {
+    this.mcpReadLedger.rememberPending(scope, consumer, parameters, epoch);
+  }
+
+  rememberMcpRead(scope: string, consumer: string, parameters: Record<string, unknown>, output: string, epoch?: object): void {
+    this.mcpReadLedger.success(scope, consumer, parameters, output, epoch);
+  }
+
+  pendingMcpQueries(scope: string) { return this.mcpReadLedger.pending(scope); }
+
+  successfulReadEvidence(scope: string): Record<string, unknown>[] {
+    return [...this.successfulPlanEvidence(scope), ...this.mcpReadLedger.evidence(scope)];
+  }
+
+  /** 本轮成功聚合的有界摘要；读取失败/停手不抹掉已有事实，换轮或身份沿用回执清理。 */
+  successfulPlanEvidence(scope: string): Record<string, unknown>[] {
+    const receipts: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    const prefix = `${scope || "global"}\u0000plan|`;
+    // 优先保留先取得的整体范围，避免后续小范围探查把完整汇总挤出摘要。
+    for (const [key, entry] of this.turnReplays) {
+      if (!key.startsWith(prefix)) continue;
+      try {
+        const result = object(JSON.parse(entry.text));
+        const query = object(result.query);
+        const value = object(result.value);
+        if (result.source !== 'GEA_LIVE_READONLY' || result.coverage !== 'complete' || query.kind !== 'aggregate' || !Array.isArray(value.totals)) continue;
+        const fingerprint = JSON.stringify(value);
+        if (seen.has(fingerprint)) continue;
+        seen.add(fingerprint);
+        const receipt: Record<string, unknown> = {
+          source: result.source, environment: result.environment, fetchedAt: result.fetchedAt,
+          query, coverage: 'complete', evidenceProjection: 'summary',
+          geography: 'baseName 是基地，不代表组织大区',
+          statusBasis: object(value.basis ?? {}).status,
+          scopeBasis: object(value.basis ?? {}).scope,
+          deliveryBasis: object(value.basis ?? {}).delivery,
+          planCount: value.planCount, skuRowCount: value.skuRowCount, distinctSkuCount: value.distinctSkuCount,
+          totals: value.totals, bases: value.bases,
+          categoryTotals: value.categoryTotals,
+          categoryGroupCount: Array.isArray(value.groups) ? value.groups.length : 0,
+          groups: Array.isArray(value.groups) ? value.groups.map(row => {
+            const group = object(row);
+            return Object.fromEntries(['orderType','planTypeCode','baseName','productCategName','amt','qty','amountShareWithinBase'].map(field => [field,group[field]]));
+          }) : [],
+          note: '这是成功结果的摘要，不是新的查询。若标有 categoryRowsOmitted/baseRowsOmitted，仅表示此摘要省略；完整表已在对应 aggregate 成功结果中，不能说未取到。',
+        };
+        if (Buffer.byteLength(JSON.stringify([...receipts,receipt]), 'utf8') > 24_000) {
+          delete receipt.groups;
+          receipt.categoryRowsOmitted = true;
+        }
+        if (Buffer.byteLength(JSON.stringify([...receipts,receipt]), 'utf8') > 24_000) {
+          delete receipt.bases;
+          receipt.baseRowsOmitted = true;
+        }
+        if (Buffer.byteLength(JSON.stringify([...receipts,receipt]), 'utf8') > 24_000) break;
+        receipts.push(receipt);
+      } catch { /* 非聚合正文或无效回执不能成为成功证据。 */ }
+    }
+    return receipts;
+  }
+
+  clearTurnReplays(scope?: string): void {
+    this.mcpReadLedger.clear(scope);
+    if (scope !== undefined) {
+      for (const key of this.turnReplays.keys()) if (key.startsWith(`${scope || "global"}\u0000`)) this.turnReplays.delete(key);
+      this.planReadCounts.delete(scope);
+      this.turnReadRevisions.set(scope, this.readTurnRevision(scope) + 1);
+    } else {
+      this.turnReplays.clear();
+      this.planReadCounts.clear();
+      this.turnReadRevisions.clear();
+    }
+  }
+
+  /**
    * "这一轮别再取数了"的整轮闸门。
    *
    * 线上实测（session-424510f0）：重复读闸门在第 40 步就抛了 GEA_TURN_REPEAT_STOPPED，
@@ -2012,36 +2208,6 @@ export class Business {
     return this.turnQuestions.get(scope || "global");
   }
 
-  /**
-   * "这一轮模型开口说话了没有" + "这一轮调了几次取数工具"。
-   * 由 agent/pre-step 每步更新 spoke，工具层读它决定要不要催计划/暂停取数
-   * （见 host/plan-first.ts）。用户换问题时一起清零。
-   */
-  private readonly turnSpoke = new Map<string, boolean>();
-  private readonly turnPlanCalls = new Map<string, number>();
-
-  rememberTurnSpoke(scope: string, spoke: boolean): void {
-    if (spoke) this.turnSpoke.set(scope || "global", true);
-  }
-
-  hasTurnSpoken(scope: string): boolean {
-    return this.turnSpoke.get(scope || "global") === true;
-  }
-
-  /** 记一次取数调用，返回这是本轮第几次。 */
-  notePlanCall(scope: string): number {
-    const key = scope || "global";
-    const next = (this.turnPlanCalls.get(key) ?? 0) + 1;
-    this.turnPlanCalls.set(key, next);
-    return next;
-  }
-
-  resetTurnPlan(scope: string): void {
-    const key = scope || "global";
-    this.turnSpoke.delete(key);
-    this.turnPlanCalls.delete(key);
-  }
-
   stopTurn(scope: string, reason: string): void {
     this.turnStops.set(scope || "global", { at: Date.now(), reason });
   }
@@ -2050,8 +2216,9 @@ export class Business {
     return this.turnStops.get(scope || "global")?.reason;
   }
 
-  clearTurnStops(): void {
-    this.turnStops.clear();
+  clearTurnStops(scope?: string): void {
+    if (scope !== undefined) this.turnStops.delete(scope || "global");
+    else this.turnStops.clear();
   }
 
   /**
@@ -2987,55 +3154,7 @@ export class Business {
     keys(payload, ["kind", "query"]);
     let query = object(payload.query ?? {});
     const kind = text(payload.kind);
-    const allowed: Record<string, string[]> = {
-      periods: ["periodMonth", "planType", "pageNo", "pageSize"],
-      list: [
-        "orderType",
-        "periodId",
-        "planTypeCode",
-        "dealerCode",
-        "areaCode",
-        "provinceCode",
-        "orgCode",
-        "baseName",
-        "status",
-        "pageNo",
-        "pageSize",
-      ],
-      detail: ["planId"],
-      versions: ["planId"],
-      logs: ["planId", "pageNo", "pageSize"],
-      versionSkus: ["versionId", "pageNo", "pageSize"],
-      compare: ["planId", "fromVersionId", "toVersionId"],
-    };
-    if (!Object.hasOwn(allowed, kind)) throw new Error("INVALID_QUERY");
-    // 分页参数对不分页的 kind（detail/versions/compare…）没有意义，但也不算错：
-    // 线上实测模型会给 detail 顺手带上 pageSize，严格拒绝等于白烧一轮。
-    // 这里把它丢掉继续跑；真正用错的 key（比如给 detail 传 versionId）仍然照旧报错。
-    const ignoredPaging = Object.keys(query).filter(
-      (key) =>
-        (key === "pageNo" || key === "pageSize") && !allowed[kind].includes(key),
-    );
-    const effective =
-      ignoredPaging.length === 0
-        ? query
-        : Object.fromEntries(
-            Object.entries(query).filter(([key]) => !ignoredPaging.includes(key)),
-          );
-    const unsupported = Object.keys(effective).filter(key => !allowed[kind].includes(key));
-    if (unsupported.length) {
-      // 这些提示直接决定模型下一轮能不能纠正，不要只说“参数不支持”。
-      const guidance =
-        kind === "list"
-          ? " For a month, call kind=periods with periodMonth (YYYY-MM) first, then pass the returned periodId together with planTypeCode from that result; never invent periodId or planTypeCode."
-          : kind === "detail"
-            ? " kind=detail takes only planId, taken from kind=list or kind=versions output; never pass versionId here and never invent an id."
-            : kind === "periods"
-              ? " periodMonth must be YYYY-MM, for example 2026-09."
-              : "";
-      throw new Error(`INVALID_QUERY: kind=${kind} accepts only ${allowed[kind].join(", ")}.${guidance}`);
-    }
-    query = effective;
+    query = normalizePlanQuery(kind, query);
     if (
       kind === "periods" &&
       query.periodMonth != null &&
@@ -3046,6 +3165,7 @@ export class Business {
       );
     if (query.orderType != null && !["M", "Z"].includes(String(query.orderType))) throw new Error("INVALID_QUERY");
     if (kind === "periods") return this.salesPlanPeriodPage(query, signal);
+    if (kind === "aggregate") return aggregateSalesPlans((input, active) => this.readWorkbenchQuery(input, active), query, signal);
     const id = (key: string) => encodeURIComponent(text(query[key]));
     const paths: Record<string, () => string> = {
       list: () => "/sales-plan/plans",

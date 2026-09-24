@@ -60,8 +60,8 @@ export function lastUserQuestion(messages: readonly unknown[]): string | undefin
  * 这一轮是第几条"用户自己发的"消息——用它当"新一轮"的判据。
  *
  * 原来我用"提问文本变没变"判断新一轮，线上立刻踩坑（session-c1f22d8b）：
- * 用户**重复问同一句话**时文本没变 → 上一轮的重读闸门/计划计数/停手闸门全被继承，
- * 这一轮第一次调用就被判成"本轮已读过""该先给计划了"，模型于是直接放弃取数。
+ * 用户**重复问同一句话**时文本没变 → 上一轮的重读闸门/停手闸门全被继承，
+ * 这一轮第一次调用就被判成"本轮已读过"，模型于是直接放弃取数。
  * 改成数"用户消息条数"：每问一次就 +1（文本相同也一样）。
  */
 export function userTurnCount(messages: readonly unknown[]): number {
@@ -121,8 +121,6 @@ export function mountTurnAnchor(
   ctx: Context,
   hooks: {
     onNewQuestion?: (question: string, scope: string) => void;
-    /** 每一步回报"这一轮模型开口说话了没有"（给"先给计划"的检查点用）。 */
-    onStep?: (info: { scope: string; spoke: boolean }) => void;
   } = {},
 ): () => void {
   /** 每个 agent 上一次记录到的"用户消息条数"，用来判断"是不是新的一轮"。 */
@@ -133,28 +131,19 @@ export function mountTurnAnchor(
     if (decision.kind === "reject" || signal.aborted) return decision;
     const current = decision.messages ?? [];
     const question = lastUserQuestion(current);
+    const scope =
+      (payload as { agent?: { id?: string } }).agent?.id ??
+      (decision as { agent?: { id?: string } }).agent?.id ??
+      "global";
     if (question) {
       // 作用域必须和工具层一致：工具里用的是 `exec.agent.id`（真实 session id）。
       // 之前我误从 decision 上取 agent（那里没有），永远退化成 "global"——
-      // 于是"新一轮清零"清的是 global、计数却存在 session 下，永远清不掉；
-      // "模型开口了没有"也永远读成 false（session-01aea3a7 的 10 次调用就是这么被打回去的）。
-      const scope =
-        (payload as { agent?: { id?: string } }).agent?.id ??
-        (decision as { agent?: { id?: string } }).agent?.id ??
-        "global";
+      // 于是"新一轮清零"清的是 global、计数却存在 session 下，永远清不掉。
       const turnCount = userTurnCount(current);
       if (lastTurnCount.get(scope) !== turnCount) {
         lastTurnCount.set(scope, turnCount);
         hooks.onNewQuestion?.(question, scope);
       }
-      const scopeId = scope;
-      // 这一轮里模型是否已经输出过文本：assistant 消息里有非空 text 就算开口
-      // （工具结果和宿主注入都是 user 角色，不会误判）。
-      const spoke = current.some((message) => {
-        const item = message as AnyMessage;
-        return item?.role === "assistant" && textOf(item.content).length > 0;
-      });
-      hooks.onStep?.({ scope: scopeId, spoke });
     }
     const nextMessages = anchorMessages(
       current,

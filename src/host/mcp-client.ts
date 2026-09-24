@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { readableError, throwIfAborted } from "../shared/abort.ts";
 import { createParser } from "eventsource-parser";
+import type { ResourceReader } from './authorized-resources.ts';
 
 export type McpTool = {
   name: string;
@@ -20,10 +21,12 @@ export type McpTool = {
 };
 
 export type McpModule = {
+  authorizedResources: ResourceReader;
   tools(): McpTool[];
   /** 某个工具的完整入参定义（含类型、枚举、嵌套字段）；名字不存在返回 undefined。 */
   schema(name: string): string | undefined;
-  call(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string>;
+  /** onResult sees successful content before presentation truncation; it never fetches extra pages. */
+  call(name: string, args: Record<string, unknown>, signal: AbortSignal, onResult?: (text: string) => void): Promise<string>;
   /**
    * 读大结果制品的某一段。完整正文由宿主按制品 URI 缓存，模型按需一段段取，
    * 不用把几十万字符一次塞进上下文。
@@ -237,7 +240,7 @@ export function describeToolSchema(tool: McpTool): string {
  *
  * 只认顶层的代价就是：失败被原样当数据回给模型，界面上"报错都不展示了"。
  */
-type ToolFailureKind = "validation" | "permission" | "rate-limit" | "upstream";
+type ToolFailureKind = "validation" | "permission" | "rate-limit" | "resource-mapping" | "upstream";
 
 /**
  * 权限类失败以可读文本返回（不当红色调用失败），所以调用方只能按这个前缀认出它。
@@ -292,7 +295,7 @@ const RATE_LIMIT_FAILURE = /RATE_LIMIT|RATE_LIMITED|TOO_MANY|THROTTLED|QUOTA|限
  * 实测原样报文：
  * `{"businessCode":"AI_GATEWAY_DATA_PERMISSION_DENIED","category":"AUTHORIZATION",
  *   "message":"Cube 查询成员未唯一匹配数据目录资源；模型须与 dataAssetCode 一致，跨模型查询请分别调用"}`
- * 这条按"缺授权"去解释会把人带到沟里，必须按 message 认出来是写法问题。
+ * 同一句也出现在已通过单模型预检的请求中；资源匹配错误不能直接当成跨模型或缺授权。
  */
 const QUERY_SHAPE_FAILURE =
   /未唯一匹配数据目录资源|dataAssetCode|跨模型|成员必须属于|分别调用/;
@@ -339,7 +342,8 @@ function failureOf(record: Record<string, unknown> | undefined): ToolFailure | u
   const category = str(record.category) ?? str(nested?.category);
   const suggestedAction = str(record.suggestedAction) ?? str(nested?.suggestedAction);
   const resolved = code ?? "GEA_MCP_TOOL_ERROR";
-  // message 先说清是写法问题的，优先按写法问题分类（网关的码/category 会误导）。
+  const resourceMapping = /未唯一匹配数据目录资源/.test(message);
+  // 其它有明确字段路径/参数说明的错误仍按校验失败处理。
   const queryShape = QUERY_SHAPE_FAILURE.test(`${message} ${details?.path ?? ""}`);
   const rateLimit =
     !queryShape &&
@@ -369,7 +373,9 @@ function failureOf(record: Record<string, unknown> | undefined): ToolFailure | u
   return {
     code: resolved,
     message,
-    kind: rateLimit
+    kind: resourceMapping
+      ? "resource-mapping"
+      : rateLimit
       ? "rate-limit"
       : permission
         ? "permission"
@@ -474,6 +480,12 @@ function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error
         (failure.configurationPath ? `，配置位置=${failure.configurationPath}` : "") +
         (failure.reasonCode || failure.resourceCode ? "。" : ""),
     };
+  if (failure.kind === "resource-mapping")
+    return {error: new Error(
+      `GEA_MCP_RESOURCE_MAPPING_FAILED：网关未能唯一匹配数据资源（${detail}）：${failure.message}。` +
+      '先核对是否单模型、成员是否来自目录；若这两项已满足，需要核对 GEA 的模型与 dataAssetCode 资源映射。' +
+      '当前不能据此断言缺少区域授权，也不要继续换成员重试；其它已成功的取数结果仍然有效。',
+    )};
   if (failure.kind === "validation")
     return {
       error: new Error(
@@ -616,7 +628,7 @@ function rowPageHints(text: string, args: unknown): string[] {
     hints.push(
       `\n（注意：这个结果 totalRows=${page.totalRows}，正好等于你给的 limit=${query.limit}。` +
         "totalRows / complete / hasMore 都不可信——它们会把 limit 原样回显；实测用 offset 翻页还能翻到全新的一页。" +
-        "别把这一页当全量：要合计或计数就按 offset 翻页取全后自己累加，" +
+        "别把这一页当全量：合计或计数应使用受管聚合度量，不反复翻页让模型心算，" +
         "或者先用 filters 把口径收窄到一页放得下；答案里只用了一页就写明用的是哪一页、哪个范围。）",
     );
   }
@@ -628,7 +640,7 @@ function rowPageHints(text: string, args: unknown): string[] {
  * 这里只按协议顺序调用；initialize 成功后 MCP-Session-Id 由传输层维护。
  */
 export async function openModuleMcp(
-  transport: { url: string; fetch: typeof fetch },
+  transport: { url: string; fetch: typeof fetch; authorizedResources?: ResourceReader },
   signal: AbortSignal,
 ): Promise<McpModule> {
   const post = async (
@@ -749,6 +761,10 @@ export async function openModuleMcp(
   };
   return {
     tools: () => tools,
+    authorizedResources: (name, active) => {
+      if (!transport.authorizedResources) throw Error('GEA_RESOURCE_DISCOVERY_UNAVAILABLE');
+      return transport.authorizedResources(name, active);
+    },
     schema: (name) => {
       const tool = tools.find((item) => item.name === name);
       return tool ? describeToolSchema(tool) : undefined;
@@ -780,7 +796,7 @@ export async function openModuleMcp(
       );
     },
     artifact: (uri, artifactSignal) => readArtifact(uri, artifactSignal),
-    call: async (name, args, callSignal) => {
+    call: async (name, args, callSignal, onResult) => {
       const id = randomUUID();
       const response = await post(
         {
@@ -793,8 +809,11 @@ export async function openModuleMcp(
       );
       const result = await readReply(response, id, callSignal);
       const links = resourceLinks(result);
-      if (links.length === 0)
-        return readableToolOutcome(result, readableTexts(result) || resultText(result));
+      if (links.length === 0) {
+        const text = readableToolOutcome(result, readableTexts(result) || resultText(result));
+        if (!text.startsWith(PERMISSION_NOTICE_PREFIX)) onResult?.(text);
+        return text;
+      }
       // 线上实测：这类结果以 `data-artifact://gateway/…` 链接返回，模型得再调一次
       // 平台的读资源工具；它会把 server 猜成 browser（那个服务没连），整轮白跑。
       // 宿主在同一条 MCP 会话里读回来内联，模型一次调用就能看到内容。
@@ -815,6 +834,7 @@ export async function openModuleMcp(
       for (const link of shown) {
         try {
           const text = await readArtifact(link.uri, callSignal);
+          onResult?.(text);
           const head = text.slice(0, chunkChars);
           markRead(link.uri, 0, head.length);
           const more =

@@ -7,12 +7,13 @@
  *
  * - 单键：同一个 key（同一份目录/成员明细/同参数的查询）最多"认真回" `perKey` 次，
  *   再读就只回一句"本轮已经读过"，不再把正文塞回去；
- * - 一轮总量：累计重复读超过 `perTurn` 次就直接停手，逼模型用手上的证据作答。
+ * - 一轮总量：累计重复读超过 `perTurn` 次返回 stop，由调用层停止对应读取类别。
  *
  * 判据只有"同一轮 + 同一个 key"，不认识任何具体业务问题。
  */
 
 export const REPEAT_PER_KEY_LIMIT = 2;
+/** 聚合入口已承接全量需求，重复读 8 次即收敛，避免目录循环拖长上下文。 */
 export const REPEAT_TURN_LIMIT = 8;
 
 export type RepeatVerdict = "fresh" | "repeat" | "stop";
@@ -20,12 +21,12 @@ export type RepeatVerdict = "fresh" | "repeat" | "stop";
 export type RepeatGuard = {
   /**
    * 记一次读取。`fresh` = 照常读（前 perKey 次）；`repeat` = 本轮已读过，回一句提示；
-   * `stop` = 一轮里的重复已经太多，直接停手。
+   * `stop` = 一轮里的重复已经太多；元数据停止探索，业务读取使用整轮止损。
    */
   note(scope: string, key: string): RepeatVerdict;
   /** 同一轮里重复读了多少次（诊断/测试用）。 */
   repeats(scope: string): number;
-  clear(): void;
+  clear(scope?: string): void;
 };
 
 export function createRepeatGuard(
@@ -46,9 +47,14 @@ export function createRepeatGuard(
       return total >= perTurnLimit ? "stop" : "repeat";
     },
     repeats: (scope) => perTurn.get(scope) ?? 0,
-    clear() {
-      perKey.clear();
-      perTurn.clear();
+    clear(scope) {
+      if (scope !== undefined) {
+        for (const key of perKey.keys()) if (key.startsWith(`${scope}|`)) perKey.delete(key);
+        perTurn.delete(scope);
+      } else {
+        perKey.clear();
+        perTurn.clear();
+      }
     },
   };
 }

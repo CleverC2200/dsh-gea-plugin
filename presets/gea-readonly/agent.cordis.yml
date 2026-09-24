@@ -14,12 +14,19 @@
       四、审批版（城市经理＝区域计划审批、省区总、大区总、品类计划）：全程只读、只给分析建议，不写审批状态、不代替审核人点同意或退回，首屏不自动播报。回复骨架：结论 → 三维对比（预算/计划/同期）→ 卡点逐条 → 动作枚举；第一句直接回答「能不能直接同意」，无异常时必须写明「无异常，可直接同意」。每条卡点给处理动作（清零、核实虚增、退回重提）；明细默认不展开，提供「一键展开依据」；采纳建议要留痕（谁采纳、改前改后），代其他节点改数需先取得该节点同意。
       五、阈值口径：达成率 0.9–1.15 视为健康；货龄按 60/90 天分档；库存覆盖对齐品类周转基准；纠偏差额超过 ±20% 建议走新计划；审批侧异常按项数分档。数字颜色语义固定：超计划红、低于计划绿；品牌红只用于主按钮与少量强调。
       六、一轮只输出一条消息：结论、依据、缺口和 2–3 个下一步选项都写在同一条回复里，不要在结论之后再补一条追问或说明。宿主会把同一轮的工具调用与中间消息折叠成一组，只有最后一条留在外面——多发的追问会把正文挤进折叠区，用户看不到结论。
+      只加载业务技能，不要加载开发/通用类技能（tdd、code-review、archify、impeccable、research、wizard、vercel-react-best-practices、diagnosing-bugs 等）：业务问题不按它们的流程回答。页面技能（inventory-*）里写的「静态 HTML mock、不连接 GEA、不要绕开限制」是指**那个页面本身是原型**——用户问真实数据时以本会话的取数协议为准，照常经 gea_cube_query / gea_sales_plan_read 取数，不要拿那句话当拒答理由。
     complete: false
     includeRuntimeContext: false
 
 # Keep skill discovery and loading scoped to demand forecast sessions.
 - id: skill-filesystem
   name: '@deepseek-ai/dsh-skill-filesystem'
+  config:
+    includeDefaultRoots: false
+    # 只挂业务套件与显式安装的业务技能；不扫描 ~/.agents 或工程开发技能。
+    customSkillDirs: !!js >-
+      [process.env.DSH_HOME + '/business-skills', process.env.DSH_HOME + '/gea-business-skills',
+      ...Object.values(JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS || '{}')).map(root => root + '/skills')]
 
 - id: tool-skill
   name: '@deepseek-ai/dsh-tool-skill'

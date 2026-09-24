@@ -220,20 +220,28 @@ export function memberSuggestion(
 export function memberHint(
   unknown: readonly string[],
   index: MemberIndex,
+  requestedMeasures: readonly string[] = [],
 ): string {
   const lines: string[] = [
     `GEA_CUBE_MEMBER_UNKNOWN：这些成员名不在目录里（查询没有发出去）：${unknown.join("、")}。`,
   ];
-  for (const member of unknown.slice(0, MAX_SUGGESTIONS)) {
+  const measureSet = new Set(requestedMeasures);
+  const measureModels = new Set(requestedMeasures.map(member => splitMember(member)?.model).filter(Boolean));
+  for (const modelName of measureModels) {
+    const measures = index.get(modelName!)?.measures ?? [];
+    lines.push(`- ${modelName} 可用于 measures 的真实度量：${measures.join('、') || '没有可用度量'}。数值维度不能代替度量；不自动添加 _sum/_count 后缀。`);
+  }
+  for (const member of [...new Set(unknown)].slice(0, MAX_SUGGESTIONS)) {
+    if (measureSet.has(member)) continue;
     const suggestion = memberSuggestion(member, index);
-    if (suggestion) lines.push(`- ${member} → 最像的是 ${suggestion}`);
+    if (suggestion) lines.push(`- ${member} → 拼写相近的是 ${suggestion}（仅供定位，不代表业务含义相同，不能直接替换）`);
   }
   // 受影响的模型各列一次可用成员，模型照着抄就能改对。
   const listed = new Set<string>();
   for (const member of unknown) {
     const parts = splitMember(member);
     const model = parts ? index.get(parts.model) : undefined;
-    if (!parts || !model || listed.has(parts.model)) continue;
+    if (!parts || !model || listed.has(parts.model) || measureModels.has(parts.model)) continue;
     listed.add(parts.model);
     lines.push(`- ${parts.model} 现有成员：${memberListFor(model, parts.model)}`);
   }
@@ -267,7 +275,7 @@ export function measureHint(
     `GEA_CUBE_MEASURE_MISMATCH：${misplaced.join("、")} 是**维度**，不能写进 measures（上游会拒掉整批查询）。` +
     (measures.length
       ? `${modelName} 里能写进 measures 的成员只有：${measures.join("、")}。`
-      : `${modelName} 没有定义任何度量：所有成员——包括数值字段——都只能放 dimensions，合计只能取回行以后自己汇总（并按快照/月份/版本把口径钉到唯一）。`) +
+      : `${modelName} 没有定义任何度量：所有成员——包括数值字段——都只能放 dimensions，合计需补受管度量或使用已有确定性汇总；不要拉全量明细让模型心算。`) +
     (used.length ? `这次查询里用对的度量：${used.join("、")}。` : "") +
     "改好参数再发一次。"
   );

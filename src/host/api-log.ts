@@ -383,6 +383,15 @@ const CATALOG: CatalogDefinition[] = [
   ),
   endpoint(
     {
+      id: 'gateway.authorized-resources', group: 'MCP 网关', name: '查询授权资源快照',
+      method: 'POST', path: '/ai/gateway/mcp/proxy/resources',
+      description: '在当前可信会话内读取指定工具的资源级授权快照。',
+      requestFields: ['agentCode','mcpCode','toolName'], replayPolicy: 'blocked', replayNote: blocked,
+    },
+    /^\/ai\/gateway\/mcp\/proxy\/resources$/,
+  ),
+  endpoint(
+    {
       id: "service.token",
       group: "服务账号重提",
       name: "交换服务令牌",

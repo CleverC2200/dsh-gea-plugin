@@ -93,6 +93,33 @@ const asTrimmed = (value: unknown): string | undefined =>
 const modelOf = (member: string): string | undefined =>
   MODEL_MEMBER.test(member) ? member.slice(0, member.lastIndexOf(".")) : undefined;
 
+/**
+ * 模型偶尔把有序排序写成 [{"模型.字段":"desc"}]。仅当每个对象恰有一个合法成员
+ * 和明确方向时，转换为网关接受的二元数组；其余形状继续交给 G6 拦截。
+ */
+export function normalizeCubeOrderArguments(parameters: Record<string, unknown>): Record<string, unknown> {
+  if (parameters.action !== 'query' || !Array.isArray(parameters.queries)) return parameters;
+  let changed = false;
+  const queries = parameters.queries.map(raw => {
+    const item = asObject(raw);
+    const query = asObject(item?.query);
+    if (!item || !query || !Array.isArray(query.order)) return raw;
+    const order = query.order.map(entry => {
+      if (Array.isArray(entry)) return entry;
+      const object = asObject(entry);
+      if (!object) return entry;
+      const keys = Object.keys(object);
+      const member = keys[0];
+      const direction = object[member];
+      if (keys.length !== 1 || !MODEL_MEMBER.test(member) || (direction !== 'asc' && direction !== 'desc')) return entry;
+      changed = true;
+      return [member, direction];
+    });
+    return {...item, query: {...query, order}};
+  });
+  return changed ? {...parameters, queries} : parameters;
+}
+
 /** 递归取 filters 里引用的成员；顺便把形状问题记下来。 */
 function walkFilters(
   filters: unknown,
@@ -411,6 +438,7 @@ function blocked(issues: readonly Issue[], extra?: string): string {
 export function preflightCubeArguments(
   parameters: Record<string, unknown> | undefined,
   index?: ReadonlyMap<string, ModelMembers>,
+  options: { allowMultipleModels?: boolean } = {},
 ): string | undefined {
   const args = asObject(parameters);
   if (!args) return undefined;
@@ -528,7 +556,7 @@ export function preflightCubeArguments(
         .filter((model): model is string => model !== undefined),
     ),
   ];
-  if (models.length > 1) {
+  if (models.length > 1 && !options.allowMultipleModels) {
     const grouped = models
       .map(
         (model) =>
@@ -592,7 +620,7 @@ export function preflightCubeArguments(
   if (!index) return undefined;
   const namesOf = members.map((entry) => entry.member);
   const unknown = unknownMembers(namesOf, index);
-  if (unknown.length > 0) return memberHint(unknown, index);
+  if (unknown.length > 0) return memberHint(unknown, index, members.filter(entry => entry.where === 'measures').map(entry => entry.member));
   const misplaced = misplacedMeasures(queries, index);
   if (misplaced.length > 0) return measureHint(misplaced, index, queries);
   // 其余"类别与位置不一致"：度量进 dimensions、分段进 dimensions/measures、
@@ -641,4 +669,11 @@ export function preflightCubeArguments(
   }
   if (placement.length > 0) return blocked(placement);
   return undefined;
+}
+
+/** Collect model references from every member-bearing position, including filters and order. */
+export function cubeQueryModels(queries: unknown): string[] {
+  const collected: Collected = {members: [], issues: []};
+  if (Array.isArray(queries)) for (const item of queries) inspectQuery(asObject(item)?.query, 'query', collected);
+  return [...new Set(collected.members.map(entry => modelOf(entry.member)).filter((model): model is string => !!model))];
 }
