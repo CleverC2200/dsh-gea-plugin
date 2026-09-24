@@ -6,6 +6,8 @@ const base = args.get('--base-tag');
 if (!base) throw new Error('Usage: pnpm release:preflight -- --base-tag gea-vX.Y.Z');
 const run = (...command) => execFileSync(command[0], command.slice(1), {encoding:'utf8'}).trim();
 if (run('git','status','--porcelain')) throw new Error('RELEASE_DIRTY: commit or remove all working-tree changes first');
+// 版本号相同也可能有技能漂移；发布前在线核对两项团队技能。
+execFileSync('python3', ['scripts/team-workflow.py', 'check'], {stdio: 'inherit'});
 const head = run('git','rev-parse','HEAD');
 const tag = run('git','rev-parse',base);
 const manifest = JSON.parse(readFileSync('package.json','utf8'));

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "skills": [
+    {
+      "name": "gitlab-collaboration",
+      "repository": ".",
+      "url": "http://100.100.6.191:20656/chenyonghao/dsh-gea-plugin.git",
+      "branch": "main",
+      "path": ".agents/skills/gitlab-collaboration"
+    },
+    {
+      "name": "dsh-plugin-release",
+      "repository": "../dsh-plugin-releases",
+      "checkoutEnv": "DSH_RELEASE_SKILLS_REPO",
+      "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases.git",
+      "branch": "main",
+      "path": "skills/dsh-plugin-release"
+    }
+  ]
+}

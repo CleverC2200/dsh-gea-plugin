@@ -17,3 +17,9 @@
 普通 GEA 页面、文案、样式和插件业务逻辑改动默认只构建、验证和发布 GEA 插件；插件任务中的“发布”默认指插件发布。在桌面中验证插件不等于重打客户端。只有 Electron 壳、启动器、内置运行时、安装或桌面更新协议需要改变，或者用户明确要求发布客户端时，才按 `desktop/README.md` 构建客户端安装包。
 
 GEA 新版本仅发布到 `dsh-0.1.6-test.json` 和 `dsh-0.1.6-stable.json`。旧的 `test.json`、`stable.json` 只保留其最后兼容版本，不再推进 GEA 新版本。
+
+## GitLab 多人协作与错题记录
+
+拉取/同步、合入、覆盖排查及提交记录使用仓库内 [gitlab-collaboration](.agents/skills/gitlab-collaboration/SKILL.md)。开始任务、同步后及发布前运行 `python3 scripts/team-workflow.py check`，同时核对协作技能和发布技能；不能仅按版本号判断最新。标准拉取入口为 `python3 scripts/team-workflow.py sync`。首次使用按 [团队说明](docs/team/README.md) 安装技能和本仓库 hook；本机配置不会随 Git 自动安装。
+
+任务用独立分支/工作树，合入前刷新主线并核对最终差异；不恢复整份旧文件覆盖新主线。排查前搜索 `docs/team/lessons/`，同根因更新原记录；有复用价值的问题写证据、引入/修复提交及防复发检查。提交前写 `docs/team/changes/` 任务记录，候选/合并 SHA 留在 GitLab MR，未验证的层级保留未知。
