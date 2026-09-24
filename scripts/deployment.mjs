@@ -14,6 +14,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** Parse an HTTPS endpoint and reject credentials or URL routing metadata. */
 function httpsEndpoint(value, code) {
@@ -324,7 +325,7 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
  * DSH 对内置 id `standard` 会强行用它自带的显示名（标准模式），换个 id 才能改显示名。
  */
 export const DEFAULT_PRESET_ID = "auto-negotiation";
-export const DEFAULT_PRESET_NAME = "全能助手";
+export const DEFAULT_PRESET_NAME = "智能编排";
 
 /**
  * 预设发现目录：先找插件包内的 default-presets（桌面端整包安装后的布局），
@@ -384,7 +385,7 @@ async function placeCompositionFile(link, source, createLink) {
   }
 }
 
-/** Expose only the original standard preset, without copying or modifying DSH's composition. */
+/** Prepare the renamed DSH standard preset and the ordered sales-plan preset. */
 export async function prepareNativePreset(runtime, target, { createLink = symlink } = {}) {
   const parent = resolve(runtime, "native-presets");
   await readFile(resolve(target, "agent.cordis.yml"), "utf8");
@@ -424,4 +425,37 @@ export async function prepareNativePreset(runtime, target, { createLink = symlin
   const presetPath = resolve(directory, "preset.yml");
   await rm(presetPath, { force: true });
   await writeFile(presetPath, renamed, { mode: 0o600 });
+
+  // 销售计划原本位于后面的插件包预设根，无法排在产销协同与库存之间。
+  // 以相同 id 放进第一个派生根；发现时先根获胜，旧会话仍使用 gea-readonly。
+  const businessSource = fileURLToPath(new URL("../presets/gea-readonly/", import.meta.url));
+  const businessDirectory = resolve(parent, "gea-readonly");
+  await mkdir(businessDirectory, { recursive: true });
+  // 搬到 runtime 后，相对模块名会按新目录解析；改为包内文件 URL，避免会话创建失败。
+  const sourceComposition = await readFile(resolve(businessSource, "agent.cordis.yml"), "utf8");
+  const relativeSkillReference = "name: '../../lib/skill-reference.js'";
+  if (!sourceComposition.includes(relativeSkillReference))
+    throw new Error("GEA_BUSINESS_PRESET_REFERENCE_CHANGED");
+  const skillReferenceUrl = pathToFileURL(
+    fileURLToPath(new URL("../lib/skill-reference.js", import.meta.url)),
+  ).href;
+  const businessCompositionPath = resolve(businessDirectory, "agent.cordis.yml");
+  await rm(businessCompositionPath, { force: true });
+  await writeFile(
+    businessCompositionPath,
+    sourceComposition.replace(relativeSkillReference, `name: '${skillReferenceUrl}'`),
+    { mode: 0o600 },
+  );
+  const orderConfig = JSON.parse(
+    await readFile(new URL("../presets/agent-presets.json", import.meta.url), "utf8"),
+  );
+  const businessOrder = orderConfig.order?.indexOf("gea-readonly") + 1;
+  if (!Number.isInteger(businessOrder) || businessOrder < 1)
+    throw new Error("GEA_PRESET_ORDER_INVALID");
+  const businessMetadata = (await readFile(resolve(businessSource, "preset.yml"), "utf8"))
+    .replace(/^order:.*(?:\r?\n|$)/m, "")
+    .trimEnd();
+  const businessPresetPath = resolve(businessDirectory, "preset.yml");
+  await rm(businessPresetPath, { force: true });
+  await writeFile(businessPresetPath, `${businessMetadata}\norder: ${businessOrder}\n`, { mode: 0o600 });
 }

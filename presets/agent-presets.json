@@ -3,7 +3,19 @@
     "inventory-apsboard",
     "inventory-apsdemand",
     "inventory-apsdelivery",
+    "inventory-customer",
+    "inventory-orderworkbench",
+    "inventory-orderfulfillment",
     "inventory-personal"
+  ],
+  "order": [
+    "auto-negotiation",
+    "inventory-apsplan",
+    "gea-readonly",
+    "inventory-qll",
+    "inventory-aqkc",
+    "inventory-fc",
+    "inventory-dealer"
   ],
   "labels": {
     "inventory-apsplan": {

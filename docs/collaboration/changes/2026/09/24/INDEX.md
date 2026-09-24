@@ -4,3 +4,4 @@
 | 编号 | 模块 | 状态 | 详情 |
 |---|---|---|---|
 | CHANGE-20260924-gea-query-release | 构建发布 | 待提交 | [GEA 授权取数、计划汇总与桌面运行配置发行整合](gea-query-release.md) |
+| CHANGE-20260924-gea-plugin-125 | 构建发布 | 已验证待发布 | [GEA 0.0.125 Agent 列表与桌面重提修复](gea-plugin-125.md) |

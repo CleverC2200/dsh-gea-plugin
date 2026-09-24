@@ -5,3 +5,5 @@
 |---|---|---|---|---|---|---|---|
 | BUG-20260924-test-module-loading | 2026-09-24 | 构建发布 | 构建发布 | 外部依赖 | P2 | 已验证待发布 | [业务模块测试夹具错误内联 ESM 依赖](BUG-20260924-test-module-loading.md) |
 | BUG-20260924-group-terminal-block | 2026-09-24 | 销售计划 | 功能逻辑 | 原始遗漏 | P2 | 已验证待发布 | [混合终态的审批分组可选但动作被整体锁住](BUG-20260924-group-terminal-block.md) |
+| BUG-20260924-gea-desktop-resubmit | 2026-09-24 | 销售计划 | 功能逻辑 | 原始遗漏 | P2 | 已验证待发布 | [桌面端退回计划无法重提](BUG-20260924-gea-desktop-resubmit.md) |
+| BUG-20260924-gea-agent-picker | 2026-09-24 | Agent 预设 | 界面 | 原始遗漏 | P2 | 已验证待发布 | [新会话 Agent 列表有重复和演示入口](BUG-20260924-gea-agent-picker.md) |
