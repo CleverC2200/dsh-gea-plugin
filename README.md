@@ -133,7 +133,7 @@ The in-process `geaMcp` v1 service lets the market discover authorized MCP tools
 }
 ```
 
-macOS 启动器从钥匙串中 `service=keychainService`、`account=service-account` 的项目读取包含 `clientId` 与 `secret` 的 JSON，只传入 Host 进程环境。其他平台省略 `keychainService`，由密钥管理系统注入对应的 `GEA_` 环境变量。允许的用户和租户由部署配置明确指定，只有读取权限并不会自动获得服务账号重提权限。缺少凭据或用户未获授权时，重提确认按钮保持禁用。
+macOS 的 GEA 插件部署入口从钥匙串中 `service=keychainService`、`account=service-account` 的项目读取包含 `clientId` 与 `secret` 的 JSON，只传入 Host 进程环境；Web 和桌面启动都调用这个入口。其他平台省略 `keychainService`，由密钥管理系统注入对应的 `GEA_` 环境变量。桌面端须在自己的 `userData/gea.config.json` 中配置同一段不含密钥的 `serviceAccounts` 引用；插件更新不会覆盖已有的用户配置。允许的用户和租户由部署配置明确指定，只有读取权限并不会自动获得服务账号重提权限。缺少凭据或用户未获授权时，重提确认按钮保持禁用。
 
 Host 每次发送前使用表单 `client_credentials` 获取短期 Token，不向浏览器返回凭据。相同幂等键绑定同一请求，当前登录期间的失败重试复用已核验的请求正文；结果未知时只提供原键重试。退出或重启后需重新回读计划，不能把新操作当成旧操作的重试。成功回执仍需核对新有效版本、旧版本失效和重提日志，才能视为工作台验收完成。
 
