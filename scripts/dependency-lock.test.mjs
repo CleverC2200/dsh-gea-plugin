@@ -118,11 +118,15 @@ test(
       join(fixture, "pnpm-workspace.yaml"),
       YAML.stringify({ verifyDepsBeforeRun: workspace.verifyDepsBeforeRun }),
     );
+    // pnpm run 对子脚本注入 false，避免重复检查；独立空目录应使用自己的配置。
+    const fixtureEnv = { ...process.env };
+    delete fixtureEnv.pnpm_config_verify_deps_before_run;
     const child = spawn(
       process.platform === "win32" ? "corepack.cmd" : "corepack",
       ["pnpm", "run", "probe"],
       {
         cwd: fixture,
+        env: fixtureEnv,
         stdio: ["ignore", "pipe", "pipe"],
         shell: process.platform === "win32",
         timeout: 25000,
