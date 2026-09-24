@@ -241,7 +241,7 @@ test("each page agent card describes its own capability", async () => {
   assert.notEqual(capabilities["inventory-fc"], capabilities["inventory-aqkc"]);
 });
 
-test("mock 与下架模块不进 Agent 预设列表，老版本留下的预设目录也会被清掉", async () => {
+test("保留指定开发中页面的预设，其他 mock 与下架残留仍清理", async () => {
   const runtimeDir = await mkdtemp(join(tmpdir(), "gea-html-runtime-"));
   const native = join(runtimeDir, "native-presets");
   const residue = async (name) => {
@@ -260,8 +260,11 @@ test("mock 与下架模块不进 Agent 预设列表，老版本留下的预设�
       await probePlugin({ mock: false }),
       // 演示（mock）模块与下架名单里的模块都不能被选中。
       await probePlugin({ id: "inventory-customer", name: "客户库存" }),
+      await probePlugin({ id: "inventory-orderworkbench", name: "订单工作台" }),
+      await probePlugin({ id: "inventory-orderfulfillment", name: "订单履约" }),
+      await probePlugin({ id: "inventory-otherdemo", name: "其他演示" }),
       await probePlugin({ id: "inventory-personal", name: "库存管理工作台", mock: false }),
     ],
   });
-  assert.deepEqual((await readdir(native)).sort(), ["auto-negotiation", "gea-html-inventory-probe"]);
+  assert.deepEqual((await readdir(native)).sort(), ["auto-negotiation", "gea-html-inventory-customer", "gea-html-inventory-orderfulfillment", "gea-html-inventory-orderworkbench", "gea-html-inventory-probe"]);
 });

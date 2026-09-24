@@ -1543,3 +1543,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Align the business header border with the shared conversation toolbar. */
+.header { box-sizing: border-box; height: 58px; min-height: 58px; max-height: 58px; flex: 0 0 58px; border-top: 0; flex-wrap: nowrap; }

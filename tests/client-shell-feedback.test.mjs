@@ -155,21 +155,43 @@ test(
     assert.equal(await page.locator('[data-slot="sidebar.workspaces"]').evaluate((el) => getComputedStyle(el).display), "flex");
     await page.locator(".gea-drawer-function .gea-sidebar-tab").click();
 
-    // A new Agent conversation must show the entire composer card above its
-    // scrollport edge; flex-end can otherwise clip the top of a tall card.
-    await page.setViewportSize({ width: 1536, height: 620 });
-    const composerGeometry = await page.evaluate(() => {
-      const scroll = document.querySelector('[data-rightbar-col] [data-phase="hero"] [data-conversation-scroll]');
-      const card = scroll?.querySelector('[data-composer-card]');
-      if (!scroll || !card) return null;
-      const viewport = scroll.getBoundingClientRect();
-      const outline = card.getBoundingClientRect();
-      return { top: outline.top, scrollTop: viewport.top, bottom: outline.bottom, scrollBottom: viewport.bottom };
-    });
-    assert.ok(composerGeometry, "new Agent conversation composer must be measurable");
-    assert.ok(composerGeometry.top >= composerGeometry.scrollTop - 1, JSON.stringify(composerGeometry));
-    assert.ok(composerGeometry.bottom <= composerGeometry.scrollBottom + 1, JSON.stringify(composerGeometry));
+    const desktopRailWidth = await page.locator(".AppFrame_rightbarCol").evaluate(el => el.getBoundingClientRect().width);
+    // Every view keeps the visible input border 20px above the window bottom,
+    // including short windows and while the welcome area is scrolled.
+    for (const viewport of [{ width: 1536, height: 620 }, { width: 1024, height: 768 }]) {
+      await page.setViewportSize(viewport);
+      for (const view of ["会话区最大，隐藏中间区域", "同时显示中间区域和会话区"]) {
+        await page.getByRole("button", { name: view }).click();
+        await page.waitForFunction(() => {
+          const card = document.querySelector('[data-rightbar-col] [data-composer-card]');
+          const column = document.querySelector('.AppFrame_rightbarCol')?.getBoundingClientRect();
+          const rect = card?.getBoundingClientRect();
+          return rect && column && Math.abs(innerHeight - rect.bottom - 20) < 1 && Math.abs((rect.left + rect.right - column.left - column.right) / 2) < 2;
+        });
+        await page.locator('.gea-agent-welcome').evaluate(el => { el.scrollTo({ top: 0, behavior: 'instant' }); });
+        const inset = await page.locator('.gea-agent-welcome').evaluate(el => el.querySelector('.gea-agent-identity').getBoundingClientRect().top - el.getBoundingClientRect().top);
+        assert.equal(inset, 50, 'plan Agent avatar must match the APS top inset');
+        const centered = await page.evaluate(() => {
+          const column = document.querySelector('.AppFrame_rightbarCol').getBoundingClientRect();
+          return ['.gea-agent-identity', '.gea-agent-prompts', '[data-rightbar-col] [data-composer-card]'].map(selector => {
+            const rect = document.querySelector(selector).getBoundingClientRect();
+            return { selector, width: rect.width, offset: Math.abs((rect.left + rect.right) / 2 - (column.left + column.right) / 2) };
+          });
+        });
+        for (const box of centered) {
+          assert.ok(box.width <= 760.5, JSON.stringify(box));
+          assert.ok(box.offset <= 2, JSON.stringify(box));
+        }
+        const before = await page.locator('[data-rightbar-col] [data-composer-card]').boundingBox();
+        await page.locator('.gea-agent-welcome').evaluate(el => { el.scrollTop = el.scrollHeight; });
+        const after = await page.locator('[data-rightbar-col] [data-composer-card]').boundingBox();
+        assert.ok(Math.abs(before.y - after.y) < 1, "scrolling must not move the input");
+        assert.ok(after.y > 58 && after.x >= 0 && after.x + after.width <= viewport.width + 1);
+      }
+    }
     await page.setViewportSize({ width: 1536, height: 920 });
+
+    await page.waitForFunction(expected => Math.abs(document.querySelector('.AppFrame_rightbarCol').getBoundingClientRect().width - expected) < 1, desktopRailWidth);
 
     // 登记 51：销售计划审批默认不展开筛选。
     const filterToggle = frame.locator("button[aria-expanded]").first();

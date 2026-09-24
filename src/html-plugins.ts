@@ -249,9 +249,10 @@ export async function registerHtmlPlugins(
       "native-presets",
       "gea-html-" + manifest.id,
     );
-    // 演示（mock）模块没有真实数据通道、答不了业务问题，下架模块也不再提供选择：
-    // 两者都不进 Agent 预设列表（页面本身照装照开，只是不再有可选的会话助手）。
-    const retired = mock || presetLabels.hidden.includes(manifest.id);
+    // 默认隐藏演示和已下架模块；客户库存与订单管理按需保留开发中入口及会话绑定。
+    // 保留入口不会改变原有 mock 数据来源或授予真实业务数据权限。
+    const retainedPreview = ["inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment"].includes(manifest.id);
+    const retired = (mock && !retainedPreview) || presetLabels.hidden.includes(manifest.id);
     if (retired) {
       await rm(preset, { recursive: true, force: true });
     } else {
@@ -406,7 +407,22 @@ export async function registerHtmlPlugins(
       const html = await readFile(path, "utf8");
       if (Buffer.byteLength(html) > 5000000) throw Error("HTML_TOO_LARGE");
       // 页面本身不用改：宿主把"读这一屏 / 收改单"的适配器注入进去。
-      return new Response(injectPageScan(html), {
+      // CSS modules are minified in release HTML. Resolve exported names instead of
+      // guessing a development-only class suffix.
+      const toolbarMaps = html.match(/\{[^{}]*workspaceToolbar:["'][A-Za-z_][\w-]*["'][^{}]*\}/g) ?? [];
+      const toolbarClasses = [...toolbarMaps.join("\n").matchAll(/(?:workspaceToolbar|boardHeader|header):["']([A-Za-z_][\w-]*)["']/g)]
+        .map((match) => "." + match[1]);
+      const toolbarSelectors = [".agent-topbar", ".top-header", ...toolbarClasses].join(",");
+      const toolbarStyle = `<style data-gea-toolbar-alignment>
+${toolbarSelectors} {
+  box-sizing:border-box!important;height:58px!important;min-height:58px!important;max-height:58px!important;
+  flex-shrink:0!important;flex-wrap:nowrap!important;margin-top:0!important;
+  overflow-x:auto!important;overflow-y:hidden!important;
+}
+</style>`;
+      // Release HTML may omit optional </head>; append so the rule is always present.
+      const alignedHtml = html + toolbarStyle;
+      return new Response(injectPageScan(alignedHtml), {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
