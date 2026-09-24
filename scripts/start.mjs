@@ -123,47 +123,8 @@ try {
   if (config.analysis.mode === "model" && config.analysis.source !== "gea")
     env[config.analysis.apiKeyEnv] = process.env[config.analysis.apiKeyEnv];
   for (const account of Object.values(config.serviceAccounts ?? {})) {
-    if (
-      ![account.clientIdEnv, account.clientSecretEnv].every((name) =>
-        /^GEA_[A-Z0-9_]+$/.test(name ?? ""),
-      )
-    )
-      throw new Error("INVALID_SERVICE_ACCOUNTS");
-    if (account.keychainService) {
-      if (
-        process.platform !== "darwin" ||
-        !/^[a-zA-Z0-9._-]+$/.test(account.keychainService)
-      )
-        throw new Error("GEA_KEYCHAIN_UNAVAILABLE");
-      let credentials;
-      try {
-        credentials = JSON.parse(
-          execFileSync(
-            "/usr/bin/security",
-            [
-              "find-generic-password",
-              "-a",
-              "service-account",
-              "-s",
-              account.keychainService,
-              "-w",
-            ],
-            { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-          ),
-        );
-      } catch {
-        throw new Error("GEA_KEYCHAIN_CREDENTIAL_MISSING");
-      }
-      if (!credentials.clientId || !credentials.secret)
-        throw new Error("GEA_KEYCHAIN_CREDENTIAL_INVALID");
-      env[account.clientIdEnv] = credentials.clientId;
-      env[account.clientSecretEnv] = credentials.secret;
-    }
     for (const name of [account.clientIdEnv, account.clientSecretEnv]) {
-      if (!/^GEA_[A-Z0-9_]+$/.test(name ?? ""))
-        throw new Error("INVALID_SERVICE_ACCOUNTS");
-      if (!account.keychainService && process.env[name])
-        env[name] = process.env[name];
+      if (process.env[name]) env[name] = process.env[name];
     }
   }
   env.DSH_HOME = resolve(runtime, "home");
