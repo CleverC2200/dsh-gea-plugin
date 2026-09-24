@@ -156,13 +156,8 @@ export async function registerHtmlPlugins(
       return {};
     }
   })();
-  // 兼容已经保存了旧页面 ID 的客户端会话。全链库存曾以 inventory-all
-  // 注册工作台；新版页面使用 inventory-qll，但旧会话仍会请求旧预设。
-  const presetAliases: Readonly<Record<string, readonly string[]>> = {
-    "inventory-qll": ["inventory-all"],
-  };
-  // 预设显示名与隐藏清单：plugin.json 由别的仓库发布，改预设名/下架条目不必重发插件包。
-  const presetLabels: { hidden: string[]; labels: Record<string, { name?: string }> } =
+  // 预设显示名、顺序与隐藏清单：plugin.json 由别的仓库发布，改选择器不必重发插件包。
+  const presetLabels: { hidden: string[]; order: string[]; labels: Record<string, { name?: string }> } =
     await (async () => {
       try {
         const value = JSON.parse(
@@ -172,11 +167,14 @@ export async function registerHtmlPlugins(
           hidden: Array.isArray(value?.hidden)
             ? value.hidden.filter((id: unknown) => typeof id === "string")
             : [],
+          order: Array.isArray(value?.order)
+            ? value.order.filter((id: unknown) => typeof id === "string")
+            : [],
           labels:
             value?.labels && typeof value.labels === "object" ? value.labels : {},
         };
       } catch {
-        return { hidden: [], labels: {} };
+        return { hidden: [], order: [], labels: {} };
       }
     })();
   const candidates = await Promise.all(roots.map(async root => {
@@ -249,10 +247,8 @@ export async function registerHtmlPlugins(
       "native-presets",
       "gea-html-" + manifest.id,
     );
-    // 默认隐藏演示和已下架模块；客户库存与订单管理按需保留开发中入口及会话绑定。
-    // 保留入口不会改变原有 mock 数据来源或授予真实业务数据权限。
-    const retainedPreview = ["inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment"].includes(manifest.id);
-    const retired = (mock && !retainedPreview) || presetLabels.hidden.includes(manifest.id);
+    // 演示和已下架模块仍可展示页面，但不进入新会话的 Agent 选择器。
+    const retired = mock || presetLabels.hidden.includes(manifest.id);
     if (retired) {
       await rm(preset, { recursive: true, force: true });
     } else {
@@ -261,11 +257,12 @@ export async function registerHtmlPlugins(
         capabilities[manifest.id] ??
         frontmatter("description") ??
         manifest.name;
+      const orderIndex = presetLabels.order.indexOf(manifest.id);
       const writePreset = async (directory: string) => {
         await mkdir(directory, { recursive: true });
         await writeFile(
           resolve(directory, "preset.yml"),
-          JSON.stringify({ name, description }),
+          JSON.stringify({ name, description, ...(orderIndex < 0 ? {} : { order: orderIndex + 1 }) }),
         );
         await writeFile(
           resolve(directory, "agent.cordis.yml"),
@@ -283,9 +280,6 @@ export async function registerHtmlPlugins(
         );
       };
       await writePreset(preset);
-      for (const alias of presetAliases[manifest.id] ?? []) {
-        await writePreset(resolve(business.config.runtimeDir, "native-presets", "gea-html-" + alias));
-      }
     }
     items.push({
       ...manifest,
@@ -310,8 +304,6 @@ export async function registerHtmlPlugins(
   for (const item of items) {
     if (item.retired === true) continue;
     expectedPresets.add("gea-html-" + item.id);
-    for (const alias of presetAliases[item.id] ?? [])
-      expectedPresets.add("gea-html-" + alias);
   }
   for (const entry of await readdir(presetHome, { withFileTypes: true }).catch(() => [])) {
     const name = entry.name;

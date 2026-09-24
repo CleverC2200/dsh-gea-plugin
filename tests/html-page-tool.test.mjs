@@ -1,12 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { mkdtemp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { discoverPresets } from "@deepseek-ai/dsh-agent-presets";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
+import { BUSINESS_MENU_PRESET } from "../src/business-navigation.ts";
+import { prepareNativePreset } from "../scripts/deployment.mjs";
 import { parse as parseYaml } from "yaml";
 
 const session = "session-11111111-1111-1111-1111-111111111111";
+const require = createRequire(import.meta.url);
+const standardPreset = resolve(
+  dirname(require.resolve("@deepseek-ai/dsh-agent-presets/package.json")),
+  "presets/standard",
+);
 
 /** 建一个最小可用的 HTML 业务插件，只用来验证页面工具对模型的行为。 */
 async function probePlugin(options = {}) {
@@ -188,7 +197,7 @@ test("each plugin's SKILL.md is published for the main conversation", async () =
   }
 });
 
-test("preset names follow the repo override table and full-chain legacy sessions keep working", async () => {
+test("preset names follow the repo override table without a duplicate full-chain choice", async () => {
   const { runtimeDir } = await registeredPlugins({
     roots: [
       await probePlugin({ mock: false }),
@@ -208,15 +217,57 @@ test("preset names follow the repo override table and full-chain legacy sessions
   // 登记过的模块用仓库里的业务名，改名不必重发插件包。
   assert.equal((await read("inventory-aqkc")).name, "基地库存Agent");
   assert.equal((await read("inventory-qll")).name, "全链库存管理Agent");
-  assert.equal(
-    JSON.parse(
-      await readFile(
-        join(runtimeDir, "native-presets", "gea-html-inventory-all", "preset.yml"),
-        "utf8",
-      ),
-    ).name,
-    "全链库存管理Agent",
+  await assert.rejects(
+    readFile(join(runtimeDir, "native-presets", "gea-html-inventory-all", "preset.yml"), "utf8"),
+    { code: "ENOENT" },
   );
+});
+
+test("new-conversation preset roster follows the left business menu", async () => {
+  const runtimeDir = await mkdtemp(join(tmpdir(), "gea-preset-order-"));
+  await prepareNativePreset(runtimeDir, standardPreset);
+  await registeredPlugins({
+    runtimeDir,
+    roots: [
+      await probePlugin({ id: "inventory-apsplan", name: "产销协同工作台", mock: false }),
+      await probePlugin({ id: "inventory-qll", name: "全链库存", mock: false }),
+      await probePlugin({ id: "inventory-aqkc", name: "基地库存", mock: false }),
+      await probePlugin({ id: "inventory-fc", name: "分仓库存", mock: false }),
+      await probePlugin({ id: "inventory-dealer", name: "经销商库存", mock: false }),
+      await probePlugin({ id: "inventory-customer", name: "客户库存" }),
+      await probePlugin({ id: "inventory-orderworkbench", name: "订单工作台" }),
+      await probePlugin({ id: "inventory-orderfulfillment", name: "订单履约" }),
+    ],
+  });
+  const roster = await discoverPresets(
+    [
+      { path: join(runtimeDir, "native-presets"), trust: "system" },
+      { path: resolve("presets"), trust: "system" },
+    ],
+    import.meta.url,
+  );
+  // 此单元环境未安装桌面运行图的所有可选包；只核对 DSH 扫描器返回的真实排序。
+  assert.deepEqual(roster.map((preset) => preset.id), [
+    "auto-negotiation",
+    "gea-html-inventory-apsplan",
+    "gea-readonly",
+    "gea-html-inventory-qll",
+    "gea-html-inventory-aqkc",
+    "gea-html-inventory-fc",
+    "gea-html-inventory-dealer",
+  ]);
+  assert.equal(roster[0].name, "智能编排");
+  const menuIdByPreset = new Map([
+    ["gea-html-inventory-apsplan", "inventory-apsplan"],
+    ["gea-readonly", "gea-proof"],
+    ["gea-html-inventory-qll", "inventory-qll"],
+    ["gea-html-inventory-aqkc", "inventory-aqkc"],
+    ["gea-html-inventory-fc", "inventory-fc"],
+  ]);
+  const inPicker = roster.map((preset) => menuIdByPreset.get(preset.id)).filter(Boolean);
+  const inSidebar = BUSINESS_MENU_PRESET.flatMap((group) => group.items.map((item) => item.id))
+    .filter((id) => inPicker.includes(id));
+  assert.deepEqual(inPicker, inSidebar);
 });
 
 test("each page agent card describes its own capability", async () => {
@@ -241,7 +292,7 @@ test("each page agent card describes its own capability", async () => {
   assert.notEqual(capabilities["inventory-fc"], capabilities["inventory-aqkc"]);
 });
 
-test("保留指定开发中页面的预设，其他 mock 与下架残留仍清理", async () => {
+test("开发中演示页仍可登记，但不留下 Agent 预设", async () => {
   const runtimeDir = await mkdtemp(join(tmpdir(), "gea-html-runtime-"));
   const native = join(runtimeDir, "native-presets");
   const residue = async (name) => {
@@ -249,7 +300,7 @@ test("保留指定开发中页面的预设，其他 mock 与下架残留仍清�
     await writeFile(join(native, name, "preset.yml"), "name: 老版本残留\n");
   };
   // 老版本装过的：全能业务助手、被产销协同 Agent 替代的看板、已经整包卸掉的 ghost 模块。
-  for (const name of ["gea-agent-hub", "gea-html-inventory-apsboard", "gea-html-inventory-ghost"])
+  for (const name of ["gea-agent-hub", "gea-html-inventory-apsboard", "gea-html-inventory-ghost", "gea-html-inventory-all"])
     await residue(name);
   // 不是本仓库生成的预设目录，清理时不能顺手删。
   await residue("auto-negotiation");
@@ -266,5 +317,5 @@ test("保留指定开发中页面的预设，其他 mock 与下架残留仍清�
       await probePlugin({ id: "inventory-personal", name: "库存管理工作台", mock: false }),
     ],
   });
-  assert.deepEqual((await readdir(native)).sort(), ["auto-negotiation", "gea-html-inventory-customer", "gea-html-inventory-orderfulfillment", "gea-html-inventory-orderworkbench", "gea-html-inventory-probe"]);
+  assert.deepEqual((await readdir(native)).sort(), ["auto-negotiation", "gea-html-inventory-probe"]);
 });
