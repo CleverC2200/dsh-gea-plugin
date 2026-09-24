@@ -1,4 +1,0 @@
-interface:
-  display_name: "GitLab 协作与错题本"
-  short_description: "同步主线和团队技能，核对提交及合并证据，记录可复用的错误与回归检查"
-  default_prompt: "使用 $gitlab-collaboration 检查当前仓库与团队技能是否最新，并完成本次协作记录。"
