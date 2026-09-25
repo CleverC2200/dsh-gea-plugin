@@ -3,4 +3,4 @@
 
 | 编号 | 模块 | 状态 | 详情 |
 |---|---|---|---|
-| CHANGE-20260925-gea-agent-query-reliability | GEA MCP 授权查询 | 待提交 | [GEA Agent 查询止损与金额易读展示候选](gea-agent-query-reliability.md) |
+| CHANGE-20260925-gea-agent-query-reliability | GEA MCP 授权查询 | 待审 | [GEA Agent 查询止损与金额易读展示候选](gea-agent-query-reliability.md) |
