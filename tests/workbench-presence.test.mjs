@@ -94,12 +94,12 @@ test("菜单名解析：注册页面优先 → 原型目录 → 回退 id", () =
 
 test("每轮注入的「业务位置」：主对话就明说别读页面", () => {
   const main = surfacePromptLine(undefined);
-  assert.match(main, /业务位置/);
-  assert.match(main, /主对话/);
-  assert.match(main, /gea_module_mcp/);
+  assert.match(main, /页面/);
+  assert.match(main, /未绑定/);
+  assert.match(main, /gea_cube_query/);
   // 线上实测：位置提示来回变之后，模型说"用户消息是空的"——这条必须钉住。
-  assert.match(main, /以他发出的那条消息为准/);
-  assert.match(main, /不要因为这条位置提示、或任何工具报错，就说“用户消息是空的”/);
+  assert.match(main, /用户指向这一屏/);
+  assert.match(main, /不空读页面/);
   // 报了 main 与没上报过是同一种事实，措辞一致。
   assert.equal(surfacePromptLine(normalizeSurface({ menu: MAIN_MENU })), main);
 });
@@ -108,12 +108,12 @@ test("每轮注入的「业务位置」：业务菜单才允许读这一屏", ()
   const line = surfacePromptLine(
     normalizeSurface({ menu: "inventory-qll", title: "全链库存工作台" }),
   );
-  assert.match(line, /业务菜单「全链库存工作台」/);
-  assert.match(line, /gea_page/);
-  assert.match(line, /位置可能在本轮中途变化/);
+  assert.match(line, /页面：全链库存工作台/);
+  assert.match(line, /页面证据/);
+
   // 用户要求：默认不读页面；只有用户这条消息里出现页面意图（这一屏/这几行/展开/选中/这单）才读，
   // 免得一进对话就拉整屏快照把上下文撑爆。
-  assert.match(line, /默认不要读这一屏/);
-  assert.match(line, /页面意图/);
-  assert.match(line, /没有页面意图/);
+  assert.match(line, /仅用户引用可见内容时/);
+
+  assert.match(line, /独立范围问题/);
 });

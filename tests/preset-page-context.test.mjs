@@ -1,65 +1,21 @@
-/**
- * 防回归：业务预设不能把“当前页上下文”当成拒答前提。
- *
- * 线上问题：预设里原来的硬边界规则写死了“页面不可用 + 用户没给经销商编码时，
- * 只能说明当前页不可用、不得做泛化查询”，导致“查一下 9 月份需求预测的数据”
- * 这类按月问题也被拒答。这里把两边（预设正文 + 工具描述/返回值）都钉住。
- */
-import test from "node:test";
-import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {surfacePromptLine} from '../src/host/workbench-surface.ts';
+import {profileFor,allowedTools,COMMON_PROMPT,TOOL_DESCRIPTIONS} from '../src/host/prompt-policy.ts';
 
-const root = fileURLToPath(new URL("../", import.meta.url));
-const read = (relative) => readFile(new URL(relative, import.meta.url), "utf8");
-
-test("业务预设不再把当前页上下文当成拒答前提", async () => {
-  const preset = await read("../presets/gea-readonly/agent.cordis.yml");
-  // 旧的硬边界措辞必须消失——它让模型对“按月查数据”直接拒答。
-  assert.equal(preset.includes("当前页引用是硬边界"), false);
-  assert.equal(preset.includes("不得据此输出审批维度、风险表、建议或泛化查询"), false);
-  // 新规则必须存在：按月/按范围的问题，页面上下文不是必要条件。
-  assert.ok(preset.includes("页面上下文不是必要条件"));
-  assert.ok(preset.includes("不得因为页面不可用而拒答"));
-  assert.ok(preset.includes("gea_visible_workbench_context 每轮最多调用一次"));
-  // 宿主会把"工具调用 + 中间消息"折成一组，只有最后一条留在外面：
-  // 预设必须要求一轮只发一条消息，否则正文会被折进折叠区。
-  assert.ok(preset.includes("一轮只输出一条消息"));
+test('scope queries do not require a bound page; page references cannot fabricate a page',()=>{
+ const main=surfacePromptLine(undefined);assert.match(main,/未绑定/);assert.match(main,/不空读页面/);assert.match(main,/gea_cube_query/);
+ assert.match(COMMON_PROMPT,/独立范围查询不要求先打开页面/);
+ const profile=profileFor('gea-readonly');assert.ok(allowedTools(profile,new Set()).has('gea_sales_plan_read'));assert.ok(!allowedTools(profile,new Set()).has('gea_page'));
+ assert.ok(allowedTools(profile,new Set(['page'])).has('gea_page'));
 });
-
-test("页面上下文工具的描述与返回值都要求“按月问题去查数据、一轮一次”", async () => {
-  const tools = await readFile(new URL("../src/host/agent-tools.ts", import.meta.url), "utf8");
-  assert.match(
-    tools,
-    /for month- or scope-wide questions answer from the read-only data tools/i,
-  );
-  assert.ok(tools.includes("Call this tool at most once per turn."));
-  assert.equal(tools.includes("do not read, infer or invent business data"), false);
-  // 这条工具现在还会按 focus 收窄：不带 focus 只回摘要，避免整屏塞进上下文。
-  assert.match(tools, /不带 focus 只回摘要/);
-
-  const business = await readFile(new URL("../src/host/business.ts", import.meta.url), "utf8");
-  assert.ok(business.includes("按月或按范围的数据问题请直接用只读数据工具查询并作答"));
-  assert.ok(business.includes("本工具每轮最多调用一次"));
+test('page context keeps a narrow focus and does not claim complete scope',async()=>{
+ assert.match(TOOL_DESCRIPTIONS.gea_visible_workbench_context,/focus/);assert.match(TOOL_DESCRIPTIONS.gea_visible_workbench_context,/不是全量/);
+ const business=await readFile(new URL('../src/host/business.ts',import.meta.url),'utf8');assert.match(business,/本工具每轮最多调用一次/);
 });
-
-test("业务预设要求先加载对应技能，且只允许清单里出现过的技能名", async () => {
-  const preset = await read("../presets/gea-readonly/agent.cordis.yml");
-  // 预设只约束技能选择规则，不写死当前部署的技能名。
-  assert.ok(
-    preset.includes("必须是本次系统提示 <available_skills> 里出现过的名字"),
-    "缺少“只能用清单里的技能名”约束",
-  );
-  assert.ok(
-    preset.includes("绝不根据业务工具名猜造"),
-    "缺少禁止猜造技能名的约束",
-  );
-  assert.ok(
-    preset.includes("涉及需求预测、销售计划或审批口径的问题，先加载对应业务技能再取数作答"),
-    "缺少需求预测类问题先加载对应业务技能的约束",
-  );
-  assert.ok(
-    preset.includes("清单里没有对应技能时按普通会话作答"),
-    "缺少未安装套件时的降级说明",
-  );
+test('ordinary statistics do not mandate a skill and private development roots stay disabled',async()=>{
+ const source=await readFile(new URL('../presets/gea-readonly/agent.cordis.yml',import.meta.url),'utf8');assert.match(source,/includeDefaultRoots: false/);assert.doesNotMatch(source,/@deepseek-ai\/dsh-tool-skill/);
+ const core=allowedTools(profileFor('gea-readonly'),new Set());assert.ok(core.has('gea_skill'));assert.ok(core.has('gea_capabilities'));assert.ok(!core.has('subagents_run'));
+ assert.equal(profileFor('auto-negotiation'),undefined);
 });

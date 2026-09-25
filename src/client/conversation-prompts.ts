@@ -83,7 +83,7 @@ export const reportingConversation: ConversationPromptConfig = {
 export const approvalConversation: ConversationPromptConfig = {
   name: "销售计划Agent",
   intro: "我可以按你当前节点的口径核对这张计划：先给结论，再给依据，异常项逐条给处理建议。",
-  boundary: "我只做分析建议，不改变审批状态。",
+  boundary: "分析默认只读；按你的明确要求操作已开放页面，审批须有权限并以系统回执为准。",
   actions: [
     {
       icon: "check",

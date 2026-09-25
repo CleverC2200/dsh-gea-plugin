@@ -1,0 +1,202 @@
+{
+  "audit_date": "2026-09-25",
+  "scope": "Installed selected GEA graph; no application changes or new business/model requests",
+  "active_graph": "channel-12c7927e-1771-4e2c-b58d-e206f2a3cae5",
+  "gea_version": "0.0.125",
+  "sample_session": "session-6cdb67c8-057a-4faf-bb9d-3834f0a998b9",
+  "sample_created_shanghai": "2026-09-24T18:25:25.443000+08:00",
+  "token_method": "DSH heuristic UTF-16 code units / 4 plus framing, not model tokenizer or provider usage",
+  "system_versions": [
+    {
+      "seq": 9,
+      "step": 1,
+      "characters": 10380,
+      "heuristic_tokens": 2599
+    },
+    {
+      "seq": 36,
+      "step": 4,
+      "characters": 23774,
+      "heuristic_tokens": 5948
+    }
+  ],
+  "first_system_parts": [
+    {
+      "name": "DSH身份与销售计划Persona",
+      "characters": 2656
+    },
+    {
+      "name": "全局GEA取数协议",
+      "characters": 2194
+    },
+    {
+      "name": "销售计划汇总协议",
+      "characters": 349
+    },
+    {
+      "name": "业务位置提示",
+      "characters": 296
+    },
+    {
+      "name": "文件交付格式",
+      "characters": 301
+    },
+    {
+      "name": "GenUI常驻规范",
+      "characters": 3172
+    },
+    {
+      "name": "Harness源码路径提示",
+      "characters": 420
+    },
+    {
+      "name": "Web开发环境提示",
+      "characters": 992
+    }
+  ],
+  "tools_characters": 22299,
+  "tools_heuristic_tokens": 5579,
+  "tools": [
+    {
+      "name": "gea_cube_query",
+      "json_characters": 3886,
+      "description_characters": 117
+    },
+    {
+      "name": "gea_gateway_catalog",
+      "json_characters": 1682,
+      "description_characters": 984
+    },
+    {
+      "name": "gea_module_mcp",
+      "json_characters": 2449,
+      "description_characters": 1556
+    },
+    {
+      "name": "gea_page",
+      "json_characters": 746,
+      "description_characters": 381
+    },
+    {
+      "name": "gea_sales_plan_read",
+      "json_characters": 1866,
+      "description_characters": 610
+    },
+    {
+      "name": "gea_skill_reference_read",
+      "json_characters": 457,
+      "description_characters": 165
+    },
+    {
+      "name": "gea_visible_workbench_context",
+      "json_characters": 648,
+      "description_characters": 455
+    },
+    {
+      "name": "gea_workbench_apply",
+      "json_characters": 1584,
+      "description_characters": 544
+    },
+    {
+      "name": "mcp__gea-gateway__dsh_read_resource",
+      "json_characters": 361,
+      "description_characters": 166
+    },
+    {
+      "name": "mcp__gea-gateway__gateway_session_currentUser_resol_23e1fd5dce66",
+      "json_characters": 217,
+      "description_characters": 35
+    },
+    {
+      "name": "mcp__gea-gateway__lightrag_list_docs",
+      "json_characters": 257,
+      "description_characters": 145
+    },
+    {
+      "name": "mcp__gea-gateway__lightrag_query",
+      "json_characters": 863,
+      "description_characters": 607
+    },
+    {
+      "name": "mcp__gea-gateway__lightrag_query_data",
+      "json_characters": 1056,
+      "description_characters": 697
+    },
+    {
+      "name": "mcp__gea-gateway__query_business_data",
+      "json_characters": 585,
+      "description_characters": 40
+    },
+    {
+      "name": "render_ui",
+      "json_characters": 1708,
+      "description_characters": 520
+    },
+    {
+      "name": "skill",
+      "json_characters": 376,
+      "description_characters": 183
+    },
+    {
+      "name": "subagents_run",
+      "json_characters": 550,
+      "description_characters": 251
+    },
+    {
+      "name": "validate_dsh_ui",
+      "json_characters": 1079,
+      "description_characters": 645
+    },
+    {
+      "name": "visualize",
+      "json_characters": 1909,
+      "description_characters": 621
+    }
+  ],
+  "skill_catalog_count": 16,
+  "skill_catalog_characters": 2210,
+  "skill_catalog_heuristic_tokens": 561,
+  "skill_catalog_names": [
+    "business-requirements-brief",
+    "genui",
+    "inventory-apsplan",
+    "inventory-aqkc",
+    "inventory-customer",
+    "inventory-dealer",
+    "inventory-fc",
+    "inventory-orderfulfillment",
+    "inventory-orderworkbench",
+    "inventory-personal-workbench",
+    "inventory-qll",
+    "sinian-demand-baseline",
+    "sinian-demand-dialogue",
+    "sinian-forecast-review",
+    "sinian-forecast-scope",
+    "visualize"
+  ],
+  "agent_persona_characters": {
+    "gea-readonly": 2604,
+    "gea-html-inventory-qll": 1149,
+    "gea-html-inventory-apsplan": 2202,
+    "gea-html-inventory-dealer": 2310,
+    "gea-html-inventory-aqkc": 1602,
+    "gea-html-inventory-fc": 2543
+  },
+  "evidence_files": {
+    "session_log": "/Users/synear/Library/Application Support/dsh-gea-desktop/data/home/sessions/--Users-synear-Library-Application~0020Support-dsh-gea-desktop-data-workspace--/session-6cdb67c8-057a-4faf-bb9d-3834f0a998b9/session.v3.jsonl.zstd",
+    "session_projection": "/Users/synear/Library/Application Support/dsh-gea-desktop/data/home/storages/session_projcache/sessions/session-6cdb67c8-057a-4faf-bb9d-3834f0a998b9.json",
+    "active_plugin": "/Users/synear/Library/Application Support/dsh-gea-desktop/plugins/versions/channel-12c7927e-1771-4e2c-b58d-e206f2a3cae5/node_modules/@cleverc2200/gea-dsh-prototype"
+  },
+  "other_initial_injections": [
+    {
+      "source": "plugin",
+      "characters": 173,
+      "heuristic_tokens": 52
+    },
+    {
+      "source": "subagent-catalog",
+      "characters": 803,
+      "heuristic_tokens": 209
+    }
+  ]
+}

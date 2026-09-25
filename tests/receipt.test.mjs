@@ -30,7 +30,7 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
     const messages = rows.filter((row) => row.type === "user/message");
-    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 1);
+    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 0);
     assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
     const snapshot = messages.find(
       (row) => row.data.source.plugin === "gea-proof",
@@ -116,7 +116,7 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
     const messages = rows.filter((row) => row.type === "user/message");
-    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 1);
+    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 0);
     assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
   },
 );

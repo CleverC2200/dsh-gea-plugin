@@ -60,10 +60,10 @@ test("只认用户自己发的消息：工具结果、宿主注入都不算提�
 
 test("锚点正文把原话和「别的都不算提问」写在一起", () => {
   const text = turnAnchorText("郑州基地的大日期库存有哪些？分别有多少？");
-  assert.match(text, /【宿主事实｜本轮用户提问】/);
-  assert.match(text, /「郑州基地的大日期库存有哪些？分别有多少？」/);
-  assert.match(text, /都不是用户的提问/);
-  assert.match(text, /不能因此说“没收到提问”“用户消息是空的”/);
+  assert.match(text, /【本轮用户问题】/);
+  assert.match(text, /郑州基地的大日期库存有哪些？分别有多少？/);
+  assert.match(text, /不是新问题/);
+  assert.match(text, /交付已核实结果并说明缺口/);
   // 超长问题要截断，别把上下文再撑大。
   assert.ok(turnAnchorText("问".repeat(2000)).length < 800);
 });

@@ -9,7 +9,7 @@ const { outputFiles } = await build({
   platform: "node",
   format: "esm",
 });
-const { geaTextStream } = await import(
+const { geaTextStream, geaUsage } = await import(
   "data:text/javascript;base64," +
     Buffer.from(outputFiles[0].contents).toString("base64")
 );
@@ -334,4 +334,15 @@ test("choices 形状不对：也要说清是哪一项不对", async () => {
       return true;
     },
   );
+});
+
+
+test("provider usage is captured after finish without inventing zero usage or double counting cache", async () => {
+  assert.equal(geaUsage(undefined), undefined);
+  assert.equal(geaUsage({prompt_tokens:100}), undefined);
+  assert.equal(geaUsage({prompt_tokens:100,completion_tokens:20,prompt_cache_hit_tokens:200}), undefined);
+  const wire=event({content:"完成"},"stop")+'data: '+JSON.stringify({choices:[],usage:{prompt_tokens:100,completion_tokens:20,prompt_tokens_details:{cached_tokens:60},completion_tokens_details:{reasoning_tokens:10}}})+'\n\ndata: [DONE]\n\n';
+  const chunks=await collect(geaTextStream(streamOf(wire)));
+  assert.deepEqual(chunks.find(x=>x.type==='usage').usage,{inputTokens:40,outputTokens:20,cacheReadTokens:60,reasoningTokens:10,totalTokens:120});
+  assert.equal(chunks.at(-1).type,'finish');
 });

@@ -39,9 +39,13 @@ test('safety stock uses the maintained skill in the real assembled prompt, witho
       reply({jsonrpc:'2.0',id:b.id,result});return true;
     }
     if(req.url.pathname!=='/v1/chat/completions')return false;
-    const body=JSON.parse(req.body);requests.push(body);res.setHeader('Content-Type','text/event-stream');
+    const body=JSON.parse(req.body);res.setHeader('Content-Type','text/event-stream');
+    if(loadSkill&&!body.messages.some(message=>message.tool_call_id==='load-extra-skill')) {
+      res.end('data: '+JSON.stringify({choices:[{index:0,delta:{tool_calls:[{index:0,id:'load-extra-skill',type:'function',function:{name:'gea_capabilities',arguments:JSON.stringify({skill:'inventory-aqkc'})}}]},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n');return true;
+    }
+    body.messages=body.messages.filter(message=>message.tool_call_id!=='load-extra-skill'&&!message.tool_calls?.some(call=>call.id==='load-extra-skill'));requests.push(body);
     const callTool=!body.messages.some(x=>x.role==='tool');
-    const delta=callTool?{tool_calls:[{index:0,id:'load-stock-context',type:'function',function:{name:loadSkill?'skill':'gea_gateway_catalog',arguments:JSON.stringify(loadSkill?{name:'inventory-aqkc'}:{model:'stock_cube'})}}]}:{content:'收到。'};
+    const delta=callTool?{tool_calls:[{index:0,id:'load-stock-context',type:'function',function:{name:loadSkill?'gea_skill':'gea_gateway_catalog',arguments:JSON.stringify(loadSkill?{name:'inventory-aqkc'}:{model:'stock_cube'})}}]}:{content:'收到。'};
     res.end('data: '+JSON.stringify({choices:[{index:0,delta,finish_reason:callTool?'tool_calls':'stop'}]})+'\n\ndata: [DONE]\n\n');return true;
   });
   await app.login();
@@ -56,19 +60,19 @@ test('safety stock uses the maintained skill in the real assembled prompt, witho
   }
   const stock=await ask('gea-html-inventory-aqkc');
   const system=stock.messages.filter(x=>x.role==='system').map(x=>x.content).join('\n');
-  assert.match(system,/base-safety-stock/);assert.match(system,/action=context/);
-  assert.match(system,/明细清单可以是交付物/);assert.match(system,/完整业务键/);
+  assert.match(system,/base-safety-stock/);assert.match(system,/不空读页面/);
+  assert.match(system,/明细被截断时说明实际覆盖范围/);assert.match(system,/业务键/);
   assert.doesNotMatch(system,/inventory_aqkc_page|name=context|明细既不做交付物|没有任何模型同时具备|HMR receiver|pnpm run dev:web|销售计划汇总例外/);
-  assert.ok(stock.tools.some(x=>x.function.name==='gea_module_mcp'));
-  assert.ok(stock.tools.some(x=>x.function.name==='gea_page'));
+  assert.ok(stock.tools.some(x=>x.function.name==='gea_cube_query'));
+  assert.ok(!stock.tools.some(x=>x.function.name==='gea_page'));
   const stockCatalog=JSON.stringify(stock.messages.filter(x=>x.role==='tool'));
   assert.match(stockCatalog,/consumerCode=base-safety-stock/);assert.doesNotMatch(stockCatalog,/consumerCode=sales_forecast/);
   const managed=await readFile(join(app.runtime,'home','gea-business-skills','inventory-aqkc','SKILL.md'),'utf8');
   assert.match(managed,/action=context/);assert.doesNotMatch(managed,/inventory_aqkc_page/);
   assert.equal(await readFile(join(root,'skills','aqkc','SKILL.md'),'utf8'),oldSkill,'the installed page artifact is unchanged');
   const sales=await ask('gea-readonly');const salesSystem=sales.messages.filter(x=>x.role==='system').map(x=>x.content).join('\n');
-  assert.match(salesSystem,/销售计划汇总例外/);assert.match(salesSystem,/kind=aggregate/);
-  assert.match(salesSystem,/HMR receiver/,'the scoped change must not remove another preset section');
+  assert.match(salesSystem,/查询提报汇总时使用聚合结果/);assert.match(salesSystem,/gea_cube_query/);
+  assert.doesNotMatch(salesSystem,/HMR receiver/,'business presets share the scoped non-development policy');
   assert.match(JSON.stringify(sales.messages.filter(x=>x.role==='tool')),/consumerCode=sales_forecast/);
   assert.deepEqual(catalogConsumers,['base-safety-stock','sales_forecast'],'catalog transport and cache must stay in the owning Agent context');
   loadSkill=true;

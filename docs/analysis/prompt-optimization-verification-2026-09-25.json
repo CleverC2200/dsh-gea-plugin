@@ -1,0 +1,128 @@
+{
+  "status": "implemented-local-not-released",
+  "geaBase": "13a35ea39570172b8eef80cde8f5895c41719322",
+  "suiteBase": "374a0ab62eee184d3edb3a99e594836ee685534f",
+  "branch": "codex/gea-prompt-optimization",
+  "metric": "first request system and wire tool definitions, characters; not provider tokens",
+  "scenario": "isolated Harness, deterministic model/backend fixtures, no bound page",
+  "agents": [
+    {
+      "preset": "gea-readonly",
+      "system": 1210,
+      "tools": 7210,
+      "total": 8420,
+      "names": [
+        "gea_capabilities",
+        "gea_cube_query",
+        "gea_evidence_read",
+        "gea_gateway_catalog",
+        "gea_sales_plan_read",
+        "gea_skill"
+      ]
+    },
+    {
+      "preset": "gea-html-inventory-apsplan",
+      "system": 1179,
+      "tools": 5791,
+      "total": 6970,
+      "names": [
+        "gea_capabilities",
+        "gea_cube_query",
+        "gea_evidence_read",
+        "gea_gateway_catalog",
+        "gea_skill"
+      ]
+    },
+    {
+      "preset": "gea-html-inventory-qll",
+      "system": 1178,
+      "tools": 5791,
+      "total": 6969,
+      "names": [
+        "gea_capabilities",
+        "gea_cube_query",
+        "gea_evidence_read",
+        "gea_gateway_catalog",
+        "gea_skill"
+      ]
+    },
+    {
+      "preset": "gea-html-inventory-aqkc",
+      "system": 1178,
+      "tools": 5791,
+      "total": 6969,
+      "names": [
+        "gea_capabilities",
+        "gea_cube_query",
+        "gea_evidence_read",
+        "gea_gateway_catalog",
+        "gea_skill"
+      ]
+    },
+    {
+      "preset": "gea-html-inventory-fc",
+      "system": 1204,
+      "tools": 5791,
+      "total": 6995,
+      "names": [
+        "gea_capabilities",
+        "gea_cube_query",
+        "gea_evidence_read",
+        "gea_gateway_catalog",
+        "gea_skill"
+      ]
+    },
+    {
+      "preset": "gea-html-inventory-dealer",
+      "system": 1183,
+      "tools": 5791,
+      "total": 6974,
+      "names": [
+        "gea_capabilities",
+        "gea_cube_query",
+        "gea_evidence_read",
+        "gea_gateway_catalog",
+        "gea_skill"
+      ]
+    }
+  ],
+  "validation": {
+    "fullSuite": {
+      "tests": 598,
+      "passed": 595,
+      "failed": 0,
+      "skipped": 3
+    },
+    "finalTargeted": {
+      "tests": 50,
+      "passed": 50
+    },
+    "originalSuitePython": {
+      "passed": 16
+    },
+    "referenceCalculatorScenarios": 14,
+    "review": "no remaining actionable findings after fixes",
+    "typecheck": "passed",
+    "build": "host/client/workbench passed; example built for full regression"
+  },
+  "unverified": [
+    "real production model answer quality and latency",
+    "packaged artifact and update channel",
+    "installed-client upgrade",
+    "production end-to-end business acceptance"
+  ],
+  "offlineHtmlQa": {
+    "externalRequests": 0,
+    "errors": [],
+    "desktop": {
+      "width": 1280,
+      "scroll": 1280,
+      "rows": 6
+    },
+    "mobile": {
+      "width": 390,
+      "scroll": 390
+    },
+    "expanded": true
+  }
+}

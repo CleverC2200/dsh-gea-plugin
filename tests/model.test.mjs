@@ -76,12 +76,12 @@ test(
     const instructions = JSON.stringify(
       body.messages.filter((message) => message.role !== "user"),
     );
-    assert.ok(instructions.includes("只有用户明确要求时才动用页面操作工具"));
-    assert.ok(instructions.includes("只使用当前已加载且有权限的 GEA MCP 工具"));
+    assert.ok(instructions.includes("真实写入必须同时满足本轮明确意图"));
+    assert.ok(instructions.includes("目录可见不等于业务授权"));
     // 位置事实由宿主每轮注入：没有业务菜单的会话直接告诉模型"别读页面"，
     // 免得它先调页面工具去问一次（那一次必然白跑）。
     assert.ok(
-      JSON.stringify(body.messages).includes("【业务位置｜宿主事实】"),
+      JSON.stringify(body.messages).includes("页面："),
       "系统提示里要带当前业务位置",
     );
     // 这两类错法（成员名 → not found for path；年月值）现在由宿主代码兜：协议里不再复述，
@@ -98,30 +98,14 @@ test(
     );
     // 形状类（order/跨模型/成员名/年月）都在发送前拦下：协议里只需要说明"会被拦下"。
     assert.ok(
-      instructions.includes("Cube 业务查询优先使用 gea_cube_query"),
+      instructions.includes("gea_cube_query"),
       "协议与实际注册的类型化 Cube 查询入口一致",
     );
-    assert.ok(instructions.includes("不要展示或解释接口、工具名、字段名、JSON、哈希"));
+    assert.ok(instructions.includes("业务字段说明不得暴露凭据"));
     // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在
     // 回答里渲染界面；这里显式记录该行为，避免它变成无声的提示词漂移。
-    assert.ok(instructions.includes("dsh-ui"));
-    assert.deepEqual(
-      body.tools.map((tool) => tool.function.name).sort(),
-      [
-        // 问答侧关掉受管 SQL 之后，取数工具只剩模块 MCP（gea_module_mcp）与计划只读。
-        "gea_cube_query",
-        "gea_gateway_catalog",
-        "gea_module_mcp",
-        "gea_page",
-        "gea_sales_plan_read",
-        "gea_skill_reference_read",
-        "gea_visible_workbench_context",
-        // 内置插件 dsh-genui 注册的界面渲染与校验工具。
-        "render_ui",
-        "skill",
-        "validate_dsh_ui",
-      ],
-    );
+    assert.equal(instructions.includes("默认就该出 UI"), false);
+    assert.deepEqual(body.tools.map(tool=>tool.function.name).sort(),['gea_capabilities','gea_cube_query','gea_evidence_read','gea_gateway_catalog','gea_sales_plan_read','gea_skill']);
     // 默认不允许模型自己写 SQL：受管只读工具不能出现在工具清单里。
     assert.equal(
       body.tools.some((tool) => tool.function.name === "gea_plugin_read"),
@@ -239,7 +223,7 @@ test(
       (tool) => tool.function.name === "gea_module_mcp",
     );
     assert.equal(
-      mcp.function.description.includes("模块清单（只有名称与编码，细节按需取）："),
+      (mcp?.function.description ?? "").includes("模块清单（只有名称与编码，细节按需取）："),
       false,
       "索引只挂一份：SQL 通道开着时不再重复挂到 MCP 说明里",
     );

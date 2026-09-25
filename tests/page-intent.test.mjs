@@ -54,7 +54,7 @@ test("接线：快照工具在发送前判意图，位置提示不再默认引�
   assert.match(tools, /PAGE_INTENT_MISSING/);
   // 位置提示：业务菜单那一支必须写"默认不要读这一屏"
   const surface = await readFile("src/host/workbench-surface.ts", "utf8");
-  assert.match(surface, /默认不要读这一屏/);
+  assert.match(surface, /仅用户引用可见内容时/);
   // 通道顺序：页面通道标成默认不用
   const channel = await readFile("src/capability/channel.ts", "utf8");
   assert.match(channel, /默认不要用它/);

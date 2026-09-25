@@ -191,6 +191,7 @@ export type GeaModelRoute = {
   agentCode: string;
   models: string[];
   names: Record<string, string>;
+  contextWindows?: Record<string, number>;
 };
 
 const planFields = [
@@ -380,8 +381,8 @@ function businessBrief(snapshot: object): string {
   });
   return [
     "请根据以下销售计划资料，向业务同事给出简洁说明。",
-    "默认按“本次结果、需要关注、请确认或补充、下一步”回答；没有风险时直接说明“暂未发现明显异常”。",
-    "不要展示或解释系统字段、接口地址、哈希、抓取时间、JSON、字段路径、内部状态码、覆盖范围或计算中间过程；不要复述本段原文。",
+    "先说本次结果和必要依据；说明影响判断的范围或缺口，有实际价值时再给下一步。仅在已核对范围内说明暂未发现明显异常。",
+    "默认不倾倒系统字段、接口地址、哈希、JSON、内部状态码或计算中间过程；用业务语言说明实际覆盖范围和重要数据时间，不复述本段原文。",
     "仅在用户明确要求核对明细、审计依据或技术排查时，才补充必要的业务口径说明。不得执行审批、保存、提交或写回。",
     "",
     `业务资料（共 ${lines.length} 条计划）：`,
@@ -1788,6 +1789,7 @@ export class Business {
     );
     if (!models.length) throw new Error("GEA_MODEL_EMPTY");
     const names: Record<string, string> = {};
+    const contextWindows: Record<string, number> = {};
     for (const id of [...new Set(models)]) {
       const item = modelsPayload.data.find(
         (entry: unknown) =>
@@ -1795,6 +1797,8 @@ export class Business {
           entry !== null &&
           object(entry).id === id,
       );
+      const capacity = item && typeof item === 'object' ? object(item).contextWindow ?? object(item).context_window : undefined;
+      if (typeof capacity === 'number' && Number.isSafeInteger(capacity) && capacity > 0) contextWindows[id] = capacity;
       let label =
         item && typeof item === "object" ? object(item).name : undefined;
       if (typeof label !== "string" || !label.trim()) {
@@ -1823,6 +1827,7 @@ export class Business {
       agentCode,
       models: [...new Set(models)],
       names,
+      contextWindows,
     };
     epoch.throwIfAborted();
     signal.throwIfAborted();
@@ -2201,7 +2206,7 @@ export class Business {
    * 但模型换个工具（gea_sales_plan_read）接着试，又跑了 15 步才被白跑总账拦住。
    * 停手必须是整轮的：一旦置位，本轮所有取数工具都只回一句"已停手"，逼它用已拿到的证据作答。
    */
-  private readonly turnStops = new Map<string, { at: number; reason: string }>();
+  private readonly turnStops = new Map<string, { at: number; reason: string; kind: "query" | "session-expired" }>();
 
   /**
    * 这一轮用户的原话（每个会话一条）。页面快照工具用它判"用户有没有页面意图"——
@@ -2219,9 +2224,11 @@ export class Business {
     return this.turnQuestions.get(scope || "global");
   }
 
-  stopTurn(scope: string, reason: string): void {
-    this.turnStops.set(scope || "global", { at: Date.now(), reason });
+  stopTurn(scope: string, reason: string, kind: "query" | "session-expired" = "query"): void {
+    this.turnStops.set(scope || "global", { at: Date.now(), reason, kind });
   }
+
+  turnStopKind(scope: string): "query" | "session-expired" | undefined { return this.turnStops.get(scope || "global")?.kind; }
 
   turnStopped(scope: string): string | undefined {
     return this.turnStops.get(scope || "global")?.reason;

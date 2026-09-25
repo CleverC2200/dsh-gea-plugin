@@ -62,7 +62,8 @@ test("提报版对话区文案按原型说明 V1 落地", () => {
 test("审批版对话区文案按原型说明 V1 落地", () => {
   assert.equal(approvalConversation.name, "销售计划Agent");
   assert.match(approvalConversation.intro, /先给结论，再给依据/);
-  assert.equal(approvalConversation.boundary, "我只做分析建议，不改变审批状态。");
+  assert.match(approvalConversation.boundary, /分析默认只读/);
+  assert.match(approvalConversation.boundary, /明确要求.*权限.*系统回执/);
   assert.deepEqual(
     approvalConversation.actions.map((action) => action.label),
     ["审这张单", "看异常清理清单", "看双版本差异", "生成审批意见"],

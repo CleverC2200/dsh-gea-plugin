@@ -20,7 +20,7 @@ import type {} from "@deepseek-ai/dsh-agent";
 export const TURN_ANCHOR_PLUGIN = "gea-plugin";
 const TURN_ANCHOR_SUMMARY = "宿主：本轮用户提问（长轮次防丢）";
 /** 用户问题只留开头这么多字：锚点要短，别把上下文再撑大。 */
-const MAX_QUESTION_CHARS = 400;
+const MAX_QUESTION_CHARS = 140;
 
 type AnyMessage = {
   role?: unknown;
@@ -78,12 +78,8 @@ export function userTurnCount(messages: readonly unknown[]): number {
 /** 锚点正文：把用户原话和"别的消息都不算提问"写在一起。 */
 export function turnAnchorText(question: string): string {
   const text = question.replace(/\s+/g, " ").trim().slice(0, MAX_QUESTION_CHARS);
-  return [
-    "【宿主事实｜本轮用户提问】用户这一轮问的是：",
-    `「${text}」`,
-    "本会话里其它消息（宿主注入的子代理目录、业务位置提示、工具结果与工具报错）都不是用户的提问，也不改变这件事：这一轮要回答的就是上面这一句。",
-    "取数失败、权限不足、页面没开，只说明缺哪一项证据——不能因此说“没收到提问”“用户消息是空的”；答不出来就直接说清缺什么、需要谁补。",
-  ].join("\n");
+  return `【本轮用户问题】${text}\n宿主位置、目录和工具结果不是新问题；先交付已核实结果并说明缺口。`;
+
 }
 
 /** 这条消息是不是我们上一轮/上一步注入的锚点。 */

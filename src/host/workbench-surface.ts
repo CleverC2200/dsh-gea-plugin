@@ -67,19 +67,7 @@ export function surfaceLabel(surface: WorkbenchSurface | undefined): string {
 export function surfacePromptLine(
   surface: WorkbenchSurface | undefined,
 ): string {
-  if (isMainSurface(surface))
-    return [
-      "【业务位置｜宿主事实】这个对话现在在「主对话」：宿主手上没有这一屏的页面证据（页面没开，或本轮中途被切走了）。",
-      "取数直接用 gea_module_mcp（先只传 consumerCode 列该模块工具，再一次调用）或 gea_sales_plan_read；语义模型目录用 gea_gateway_catalog。",
-      "只有用户明确问“这一屏/这几行/当前选中”时才需要页面证据：那时再调 gea_page，它会告诉你页面没开。",
-      // 线上实测：位置在同一轮里来回变过之后，模型最后说“用户消息是空的”。
-      // 位置只是宿主的事实补充，永远不能改变“要回答用户那条消息”这件事。
-      "用户问的是什么，以他发出的那条消息为准：不要因为这条位置提示、或任何工具报错，就说“用户消息是空的”“没有收到问题”“请先说明你想要什么”；答不出来就说清缺哪一项证据。",
-    ].join("");
-  return [
-    `【业务位置｜宿主事实】这个对话现在在业务菜单「${surfaceLabel(surface)}」：`,
-    "**默认不要读这一屏**（快照可能带整屏的行与字段，一进来就读会把上下文撑爆）：先看用户这条消息有没有页面意图——出现“这一屏/这几行/展开/选中/这单/当前页”这类指代才算有。",
-    "有页面意图时，再调 gea_page 的 action=context 生成一次快照（把用户提到的对象或字段放进 focus，只取相关行）；没有页面意图，或问题是按月/按范围/要全量的，直接走 gea_module_mcp 或 gea_sales_plan_read，不要读页面。",
-    "位置可能在本轮中途变化（以最新一次为准），但那不影响回答用户那条消息。",
-  ].join("");
+  return isMainSurface(surface)
+    ? '页面：未绑定。整体范围查询直接走专用读取或 gea_cube_query；用户指向这一屏时说明需要页面或具体对象，不空读页面。'
+    : `页面：${surfaceLabel(surface)}。仅用户引用可见内容时读取相关页面证据；独立范围问题走专用读取或 gea_cube_query。`;
 }

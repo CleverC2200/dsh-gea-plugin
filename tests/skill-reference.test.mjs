@@ -89,15 +89,11 @@ test("forecast can read a Skill local reference without sending file URI to MCP"
   assert.equal(reads.length, 1);
 });
 
-test("forecast language and resource routing are present before the first model call", async () => {
-  const source = await readFile(
-    new URL("../presets/gea-readonly/agent.cordis.yml", import.meta.url),
-    "utf8",
-  );
-  assert.match(source, /所有面向业务用户的答复一律使用简体中文/);
-  assert.match(source, /不汇报工具调用、查询过程或内部计划/);
-  assert.match(source, /gea_skill_reference_read/);
-  assert.match(source, /file:\/\//);
+test("business output policy and reference reader remain separate", async () => {
+ const policy=JSON.parse(await readFile(new URL('../presets/prompt-policy.json',import.meta.url),'utf8'));
+ assert.match(policy.output,/用户要求的语言/);assert.match(policy.output,/业务字段说明不得暴露凭据/);
+ const runtime=await readFile(new URL('../src/host/prompt-runtime.ts',import.meta.url),'utf8');
+ assert.match(runtime,/GEA_SKILL_REFERENCE_NOT_LINKED/);assert.match(runtime,/GEA_SKILL_NOT_LOADED/);
 });
 
 test("reference reader respects current skill visibility, cancellation and paging", async () => {

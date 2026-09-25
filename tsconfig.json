@@ -13,7 +13,8 @@
       "ESNext",
       "DOM",
       "DOM.Iterable"
-    ]
+    ],
+    "resolveJsonModule": true
   },
   "include": [
     "src/**/*.ts",

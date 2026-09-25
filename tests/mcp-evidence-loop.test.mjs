@@ -33,7 +33,11 @@ test('native model loop retains ordinary MCP evidence after later failure and re
       reply({jsonrpc:'2.0',id:b.id,result});return true;
     }
     if(path==='/v1/chat/completions'){
-      const body=JSON.parse(req.body);requests.push(body);res.setHeader('Content-Type','text/event-stream');
+      const body=JSON.parse(req.body);res.setHeader('Content-Type','text/event-stream');
+      if(!body.tools.some(tool=>tool.function.name==='gea_module_mcp')){
+        res.end(event({tool_calls:[{index:0,id:'load-knowledge',type:'function',function:{name:'gea_capabilities',arguments:JSON.stringify({pack:'knowledge'})}}]},'tool_calls')+'data: [DONE]\n\n');return true;
+      }
+      body.messages=body.messages.filter(message=>message.tool_call_id!=='load-knowledge'&&!message.tool_calls?.some(call=>call.id==='load-knowledge'));requests.push(body);
       const n=requests.length;
       if(secondTurn||n===6){res.end(event({content:secondTurn?'本轮未重新取数。':'已取得库存查询记录数 60948；大区查询失败，库存记录数不是客户数。'},'stop')+'data: [DONE]\n\n');return true;}
       const name='gea_module_mcp';
@@ -51,12 +55,12 @@ test('native model loop retains ordinary MCP evidence after later failure and re
   assert.equal(rows.find(r=>r.type==='turn/end').data.reason.kind,'completed');
   assert.equal(upstreamQueries,2,'third query stays blocked locally');assert.equal(requests.length,6);
   const notices=i=>JSON.stringify(requests[i].messages.filter(m=>m.role==='system'));
-  assert.match(notices(1),/本轮成功取数回执/);assert.match(notices(4),/60948/);assert.match(notices(4),/query-scope-only/);
-  assert.match(notices(4),/inventory/,'MCP evidence must survive another query failing');
+  assert.match(notices(1),/本轮已返回证据/);assert.doesNotMatch(notices(4),/60948/);assert.match(JSON.stringify(requests[4].messages.filter(m=>m.role==='tool')),/query-scope-only/);
+  assert.match(JSON.stringify(requests[4].messages.filter(m=>m.role==='tool')),/inventory/,'MCP evidence survives in tool history without copying it into system');
   const stopped=JSON.stringify(requests[4].messages.filter(m=>m.role==='tool'));
-  assert.match(stopped,/channel-stopped/);assert.match(stopped,/availableEvidence/);assert.match(stopped,/60948/);
+  assert.match(stopped,/channel-stopped/);assert.doesNotMatch(stopped,/availableEvidence/,"historical facts remain only in their original tool result");assert.match(stopped,/60948/);
   assert.doesNotMatch(stopped,/GEA_TURN_STOPPED/);
   secondTurn=true;assert.equal((await prompt('新一轮，仅说明尚未重新取数')).ok,true);
   await until(()=>readSession(app.runtime,id),x=>x.filter(r=>r.type==='turn/end').length===2,10000);
-  assert.doesNotMatch(notices(6),/本轮成功取数回执/,'previous turn must not appear as current-turn evidence');
+  assert.doesNotMatch(notices(6),/本轮已返回证据/,'previous turn must not appear as current-turn evidence');
 });

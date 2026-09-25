@@ -219,16 +219,25 @@ test(
       }
       if (path !== "/personal/chat/completions") return false;
       const body = JSON.parse(req.body);
-      modelRequests.push(body);
       res.setHeader("Content-Type", "text/event-stream");
+      const names=body.tools.map(tool=>tool.function.name);
+      const wantsPage=/visible-context/.test(outcome)||outcome==='page-evidence-guard'||outcome==='page-tool';
+      const pack=outcome.startsWith('module-mcp')?'knowledge':wantsPage?'page':undefined;
+      const ready=pack==='knowledge'?names.includes('gea_module_mcp'):pack==='page'?names.includes('gea_visible_workbench_context'):true;
+      const skillReady=outcome!=='skill-reference'||body.messages.some(message=>message.tool_call_id==='bootstrap-skill');
+      if(!ready||!skillReady){
+        res.end(event({tool_calls:[{index:0,id:!skillReady?'bootstrap-skill':'bootstrap-pack',type:'function',function:{name:'gea_capabilities',arguments:JSON.stringify(!skillReady?{skill:'reference-scope'}:{pack})}}]},'tool_calls'));return true;
+      }
+      body.messages=body.messages.filter(message=>!message.tool_call_id?.startsWith('bootstrap-')&&!message.tool_calls?.some(call=>call.id.startsWith('bootstrap-')));
+      modelRequests.push(body);
       if (outcome === "skill-reference") {
         const results = body.messages.filter((x) => x.role === "tool");
         const name =
-          results.length === 0 ? "skill" : "gea_skill_reference_read";
+          "gea_skill";
         const args =
           results.length === 0
             ? { name: "reference-scope" }
-            : { skill: "reference-scope", path: "../../references/rules.md" };
+            : { name: "reference-scope", path: "../../references/rules.md" };
         res.end(
           results.length < 2
             ? event(
@@ -629,16 +638,16 @@ test(
         );
         assert.equal(modelRequests.length, 2);
         const promptMessages = JSON.stringify(modelRequests[0].messages);
-        assert.match(promptMessages, /inventory-probe/);
+        assert.doesNotMatch(promptMessages, /inventory-probe/, "mock skills do not enter the business startup catalog");
         assert.doesNotMatch(promptMessages, /DEVELOPER_SKILL_MUST_NOT_LEAK/);
         // 只要求核心工具在列；部署补丁还会挂其他工具（例如浏览器 MCP），不在这里锁死全集。
         const toolNames = modelRequests[0].tools.map((x) => x.function.name);
         for (const expected of [
           "gea_sales_plan_read",
-          "gea_skill_reference_read",
+          "gea_skill",
           "gea_visible_workbench_context",
           "gea_page",
-          "skill",
+          "gea_capabilities",
         ])
           assert.ok(toolNames.includes(expected), `${expected} 在工具列表里`);
         assert.match(
@@ -646,7 +655,7 @@ test(
             .filter((message) => message.role === "system")
             .map((message) => message.content)
             .join("\n"),
-          /不得引用其他会话、模型记忆或历史回答中的公司名、月份、状态、数量、金额、退回原因/,
+          /不得把其他会话的记录或模型记忆当作公司事实/,
         );
         const result = modelRequests[1].messages.find((x) => x.role === "tool");
         assert.equal(result.tool_call_id, "read-1");
@@ -962,23 +971,10 @@ test(
           false,
           "默认不应注册 gea_plugin_read",
         );
-        const tool = modelRequests[0].tools.find(
-          (candidate) => candidate.function.name === "gea_module_mcp",
-        );
-        assert.ok(tool, "模块 MCP 工具已注册");
-        // 模块清单来自契约：模块名 + consumerCode；表名关键词帮着选模块，列与口径不进说明。
-        assert.match(tool.function.description, /探针页面/);
-        assert.match(tool.function.description, /consumerCode=probe-consumer/);
-        assert.match(tool.function.description, /能力层/);
-        assert.equal(
-          tool.function.description.includes("agents_scm_probe_thing"),
-          false,
-          "表名不写全名，只用去前缀的关键词",
-        );
-        assert.ok(tool.function.description.includes("不允许自己写 SQL"));
-        // 参数形状走服务端 schema 的两级读取：先摘要，再按工具名要完整定义。
-        assert.ok(tool.function.description.includes("schema=true"));
-        assert.equal(tool.function.parameters.properties.schema.type, "boolean");
+        assert.equal(modelRequests[0].tools.some(tool=>tool.function.name==='gea_module_mcp'),false);
+        assert.ok(modelRequests[0].tools.some(tool=>tool.function.name==='gea_capabilities'));
+        assert.ok(modelRequests[0].tools.some(tool=>tool.function.name==='gea_cube_query'));
+
       },
     );
     await t.test(
@@ -1698,7 +1694,7 @@ test(
           .filter((x) => x.role === "system")
           .map((x) => x.content)
           .join("\n");
-        assert.match(initialSystem, /所有面向业务用户的答复一律使用简体中文/);
+        assert.match(initialSystem, /使用用户要求的语言/);
         const results = modelRequests[2].messages.filter(
           (x) => x.role === "tool",
         );

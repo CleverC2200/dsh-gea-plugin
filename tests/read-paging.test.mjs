@@ -8,6 +8,7 @@
  *   - 单页仍然超预算时自动缩页，而不是报 SNAPSHOT_TOO_LARGE。
  * 页面自身的工作台读取不受影响，这里只看模型读到的内容。
  */
+import {readFile} from "node:fs/promises";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { profile, readSession, until } from "./profile.mjs";
@@ -364,7 +365,12 @@ test(
     assert.ok(bytes <= INPUT_BUDGET, "自动缩页后仍然超过输入预算");
     const value = JSON.parse(payload).value;
     assert.ok(value.pageSize < 50, "超预算时没有缩页: " + value.pageSize);
-    assert.ok(value.records.length === value.pageSize);
+    assert.ok(value.records.length <= value.pageSize);
+    if (value.records.length < value.pageSize) {
+      const projected=JSON.parse(payload);assert.equal(projected.projection,'partial');assert.match(projected.evidenceId,/^ev-/);
+      const original=JSON.parse(await readFile(`${app.runtime}/prompt-evidence/${projected.evidenceId}.txt`,'utf8'));
+      assert.equal(original.value.records.length,original.value.pageSize,'host paging remains intact behind the bounded model projection');
+    }
     assert.equal(value.nextPageNo, 2);
     assert.equal(JSON.parse(payload).coverage, "partial");
   },

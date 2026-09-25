@@ -1,2 +1,2 @@
 name: 销售计划Agent
-description: 使用业务 Skills、代理角色和 GEA MCP 查询、分析销售需求预测；不执行审批或业务写入。
+description: 查询与分析销售计划；按明确请求操作已开放页面，真实业务动作受权限与确认流程控制。

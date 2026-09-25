@@ -85,6 +85,24 @@ function logRejectedToolCall(name: string, reason: string, argumentsText: string
   );
 }
 
+/** Provider counters are authoritative; missing usage is not zero usage. */
+export function geaUsage(value: unknown): import('@deepseek-ai/dsh-llm').TokenUsage | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  const details = (value: unknown) => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const valid = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 0;
+  const input = raw.prompt_tokens ?? raw.input_tokens, output = raw.completion_tokens ?? raw.output_tokens;
+  if (!valid(input) || !valid(output)) return undefined;
+  const cached = details(raw.prompt_tokens_details).cached_tokens ?? raw.prompt_cache_hit_tokens ?? 0;
+  const written = raw.cache_creation_input_tokens ?? 0;
+  if (!valid(cached) || !valid(written) || cached + written > input) return undefined;
+  const reasoning = details(raw.completion_tokens_details).reasoning_tokens;
+  return {inputTokens: input - cached - written, outputTokens: output,
+    ...(cached ? {cacheReadTokens: cached} : {}), ...(written ? {cacheWriteTokens: written} : {}),
+    ...(valid(reasoning) && reasoning <= output ? {reasoningTokens: reasoning} : {}),
+    totalTokens: input + output};
+}
+
 function completion(data: string): {
   text?: string;
   finish?: "stop" | "max-tokens" | "tool-calls";
@@ -169,12 +187,26 @@ export async function* geaTextStream(
     { id: string; name: string; arguments: string }
   >();
   let callBytes = 0;
+  let terminal: 'stop' | 'max-tokens' | 'tool-calls' | undefined;
+  let usage: import('@deepseek-ai/dsh-llm').TokenUsage | undefined;
+  let usageDeadline = 0;
   try {
     signal?.throwIfAborted();
     yield { type: "block-start", index: 0, blockType: "text" };
     while (true) {
       signal?.throwIfAborted();
-      const read = await reader.read();
+      if (terminal && Date.now() >= usageDeadline) {
+        if (usage) yield {type: 'usage', usage};
+        yield {type: 'finish', reason: {kind: terminal}};
+        return;
+      }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const read = terminal ? await Promise.race([
+        reader.read(),
+        new Promise<ReadableStreamReadResult<Uint8Array>>(done => {
+          timer = setTimeout(() => done({done:true, value:undefined}), Math.max(1, usageDeadline - Date.now()));
+        }),
+      ]).finally(() => {if (timer) clearTimeout(timer);}) : await reader.read();
       signal?.throwIfAborted();
       parser.feed(
         read.done
@@ -183,7 +215,17 @@ export async function* geaTextStream(
       );
       for (const data of events.splice(0)) {
         signal?.throwIfAborted();
+        if (data.trim() === '[DONE]' && terminal) {
+          if (usage) yield {type: 'usage', usage};
+          yield {type: 'finish', reason: {kind: terminal}};
+          return;
+        }
+        try { usage = geaUsage(record(JSON.parse(data)).usage) ?? usage; } catch { /* completion reports malformed frames. */ }
         const chunk = completion(data);
+        if (terminal) {
+          if (chunk.text || chunk.tools?.length || chunk.finish) invalid('GEA_MODEL_INVALID_SSE', 'content after finish_reason');
+          continue;
+        }
         for (const value of chunk.tools ?? []) {
           if (!offered?.names.length)
             invalid("GEA_MODEL_UNSUPPORTED_TOOL_CALL");
@@ -306,11 +348,16 @@ export async function* geaTextStream(
             index++;
           }
           signal?.throwIfAborted();
-          yield { type: "finish", reason: { kind: finishKind } };
-          return;
+          terminal = finishKind;
+          usageDeadline = Date.now() + 250;
         }
       }
-      if (read.done) invalid("GEA_MODEL_INCOMPLETE_STREAM");
+      if (read.done) {
+        if (!terminal) invalid("GEA_MODEL_INCOMPLETE_STREAM");
+        if (usage) yield {type: 'usage', usage};
+        yield {type: 'finish', reason: {kind: terminal}};
+        return;
+      }
     }
   } finally {
     signal?.removeEventListener("abort", onAbort);
