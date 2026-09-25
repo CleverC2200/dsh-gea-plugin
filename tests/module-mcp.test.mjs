@@ -312,6 +312,17 @@ function envelopeTransport(payload) {
   });
 }
 
+test('business Session expiry does not suggest changing Cube members or retrying the old request',async()=>{
+  const {transport}=envelopeTransport({success:false,businessCode:'AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED',code:'AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED',category:'SESSION',retryable:false,requestId:'fixture-request',message:'网关会话已超过最大生命周期'});
+  const module=await m.openModuleMcp(transport,new AbortController().signal);
+  await assert.rejects(module.call('t',{},new AbortController().signal),error=>{
+    assert.match(error.message,/GEA_GATEWAY_SESSION_EXPIRED/);
+    assert.match(error.message,/requestId=fixture-request/);
+    assert.doesNotMatch(error.message,/成员名|measures|改参数/);
+    return true;
+  });
+});
+
 test("下游工具失败：抛成可读错误（含 requestId），不是把 JSON 当数据", async () => {
   const { transport } = envelopeTransport({
     retryable: false,

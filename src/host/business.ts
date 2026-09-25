@@ -1961,6 +1961,11 @@ export class Business {
     string,
     { token: string; module: import("./mcp-client.ts").McpModule }
   >();
+  /** A rejected business Session cannot authorize later reads, even if the login stays valid. */
+  invalidateModuleMcp(consumerCode: string): void {
+    this.moduleMcpCache.delete(consumerCode);
+    this.moduleMcpRejections.delete(consumerCode);
+  }
   /**
    * 网关明确拒绝过 MCP 会话的模块：短窗口内不再重试。
    * 线上实测：网关回 rejected 后模型会换模块反复试（一轮三次），每次都白等一次往返。

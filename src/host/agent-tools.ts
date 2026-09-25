@@ -62,6 +62,12 @@ function memberGuard(queries: unknown): string | undefined {
   return misplaced.length > 0 ? measureHint(misplaced, index, queries) : undefined;
 }
 
+function gatewaySessionExpired(error: unknown): boolean {
+  const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b(?:GEA_GATEWAY_SESSION_EXPIRED|AI_GATEWAY_SESSION_(?:MAX_LIFETIME_EXCEEDED|EXPIRED|REVOKED))\b/.test(code + ' ' + message);
+}
+
 /** 借同一条模块会话读一次 inspect，把成员清单补进缓存（读不回来就算了，不盖掉真实失败）。 */
 async function loadMemberIndex(
   module: import('./mcp-client.ts').McpModule,
@@ -74,7 +80,7 @@ async function loadMemberIndex(
     const payload=parseFirstJsonObject(full);
     const index=memberIndexFrom(payload);
     if (index.size) { rememberMemberIndex(payload); return index; }
-  } catch (error) { if (signal.aborted || isAbortError(error)) throw readableError(error); }
+  } catch (error) { if (signal.aborted || isAbortError(error) || gatewaySessionExpired(error)) throw readableError(error); }
   return undefined;
 }
 
@@ -623,7 +629,20 @@ export function registerGeaTools(
     ),
   );
   if (business.config.agentSqlRead === true) registerPluginRead();
+  const expiredSession = (consumerCode: string, scope: string, error: unknown): Error | undefined => {
+    if (!gatewaySessionExpired(error)) return undefined;
+    business.invalidateModuleMcp(consumerCode);
+    business.stopTurn(scope, '网关会话已失效。');
+    const diagnostic = (error instanceof Error ? error.message : String(error)).match(/\b(?:requestId|traceId|auditId)=[0-9a-f-]{36}\b/g)?.join('，');
+    return Object.assign(new Error('GEA_GATEWAY_SESSION_EXPIRED: 网关会话已失效，本轮查询已停止。重新发起问题时会按当前登录身份建立新会话并重新核对授权；不要换工具或参数继续尝试。'+(diagnostic?' 诊断标识：'+diagnostic:'')), {code:'GEA_GATEWAY_SESSION_EXPIRED'});
+  };
   const executeModuleMcp = async (args: Record<string, unknown>, exec: ToolRunContext, prepared = false): Promise<string> => {
+    const consumerCode = String(args.consumerCode);
+    const scope = exec.agent?.id ?? 'global';
+    try { return await runModuleMcp(args,exec,prepared); }
+    catch(error) { throw expiredSession(consumerCode,scope,error) ?? error; }
+  };
+  const runModuleMcp = async (args: Record<string, unknown>, exec: ToolRunContext, prepared = false): Promise<string> => {
           const consumerCode = String(args.consumerCode);
           const scope = exec.agent?.id ?? "global";
           const readEpoch = business.mcpReadEpoch(scope);
@@ -818,6 +837,7 @@ export function registerGeaTools(
                     ...(omitted?{artifact:extractArtifactUri(result),note:'这里只是结果预览，不能当作全量；完整制品沿用 gea_module_mcp artifact 读取。'}:{})});
                 } catch (error) {
                   if (exec.signal.aborted || isAbortError(error)) throw readableError(error);
+                  if (gatewaySessionExpired(error)) throw error;
                   results.push({model:group.model,names:group.names,status:'failed',message:(readableMessage(error) ?? String(error)).split('\n【本轮已经成功取得的数据')[0]});
                 }
               }
@@ -1134,11 +1154,14 @@ export function registerGeaTools(
         }),
         execute: async (args, exec) => {
           const scope = exec.agent?.id ?? 'global';
+          const stopped = business.turnStopped(scope);
+          if (stopped) return JSON.stringify({source:'GEA_TURN_STOPPED',availability:'turn-stopped',availableEvidence:business.successfulReadEvidence(scope),note:stopped});
           const preset = exec.agent?.session ? ctx.sessionProjections.stateOf(exec.agent.session, 'agentPreset') : undefined;
           const owner = typeof preset === 'string' && preset.startsWith('gea-html-') ? capability?.get(preset.slice('gea-html-'.length)) : undefined;
           const page = business.currentPageIdentity?.(scope);
           const consumerCode = typeof args.consumerCode === 'string' && args.consumerCode.trim() ? args.consumerCode.trim()
             : owner?.data && !owner.data.mock ? owner.data.consumerCode : page?.consumerCode && !page.mock ? page.consumerCode : business.config.analysisAgentCode;
+          try {
           const module = await business.moduleMcp(consumerCode, exec.signal);
           const snapshot = await module.authorizedResources('query_business_data', exec.signal);
           noteResourceSnapshot(module,snapshot);
@@ -1156,17 +1179,27 @@ export function registerGeaTools(
           if (args.values === true) {
             if (!members.length) throw Error('GEA_CATALOG_SAMPLE_MEMBERS_REQUIRED');
             const samples: Array<{member:string;rows:Record<string,unknown>[]}> = [];
+            const rejected: Array<{member:string;code:string;message:string}> = [];
             for (const member of members) {
               const model = member.slice(0,member.indexOf('.'));
-              if (resources.filter(resource=>resource.queryTarget===model).length !== 1) throw Error('GEA_RESOURCE_NOT_AUTHORIZED_OR_AMBIGUOUS: 样例目标没有唯一授权资源。');
-              const result = await executeModuleMcp({consumerCode,tool:'query_business_data',arguments:{action:'query',response_mode:'inline_complete',queries:[{name:'sample',query:{dimensions:[member],limit:5}}]}},exec);
-              const uri = extractArtifactUri(result);
-              const text = uri ? await module.artifact(uri,exec.signal) : result;
-              const rows = sampleRowsByDataset(text,['sample'])?.get('sample');
-              if (!rows) throw Error('GEA_CATALOG_SAMPLE_FAILED: 未获得可识别的样例结果，不能据此断定业务数据为空。');
-              samples.push({member,rows});
+              const matches = resources.filter(resource=>resource.queryTarget===model);
+              if (matches.length !== 1) {
+                rejected.push({member,code:matches.length?'GEA_RESOURCE_AMBIGUOUS':'GEA_RESOURCE_NOT_AUTHORIZED',message:matches.length?'该模型对应多个授权资源，需平台核对绑定。':'当前 Agent 无此模型的授权资源。'});
+                continue;
+              }
+              try {
+                const result = await executeModuleMcp({consumerCode,tool:'query_business_data',arguments:{action:'query',response_mode:'inline_complete',queries:[{name:'sample',query:{dimensions:[member],limit:5}}]}},exec);
+                const uri = extractArtifactUri(result);
+                const text = uri ? await module.artifact(uri,exec.signal) : result;
+                const rows = sampleRowsByDataset(text,['sample'])?.get('sample');
+                if (!rows) throw Error('GEA_CATALOG_SAMPLE_FAILED');
+                samples.push({member,rows});
+              } catch(error) {
+                if (exec.signal.aborted || isAbortError(error) || gatewaySessionExpired(error)) throw error;
+                rejected.push({member,code:'GEA_CATALOG_SAMPLE_FAILED',message:'未取得可识别的样例值，不能据此断定业务数据为空。'});
+              }
             }
-            return formatSampleValues(samples);
+            return [samples.length?formatSampleValues(samples):'',...rejected.map(item=>`- ${item.member}：${item.code}；${item.message}`)].filter(Boolean).join('\n');
           }
           const cached = dedup.hit(cacheKey);
           if (cached) return appendMemberSamples(cached,notesFor(scope),args.model);
@@ -1180,6 +1213,7 @@ export function registerGeaTools(
           const limits = resources.filter(resource=>!args.model||resource.queryTarget.includes(String(args.model))).map(resource=>({queryTarget:resource.queryTarget,resourceCode:resource.resourceCode,version:resource.version,maxRows:resource.maxRows,maxBytes:resource.maxBytes}));
           const output = projectCatalog(permitted,{model:args.model,consumers}) + '\n授权资源快照：' + JSON.stringify(limits) + '\n仅限当前 Agent 的资源级授权；字段、业务行范围和运行条件仍由实际查询校验。空限制值不表示无限制。同一 queryTarget 对应多个资源时需平台核对绑定，不能自行任选。';
           return dedup.remember(cacheKey,output);
+          } catch(error) { throw expiredSession(consumerCode,scope,error) ?? error; }
         },
       }),
     ),

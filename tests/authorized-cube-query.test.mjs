@@ -26,11 +26,13 @@ test('resource discovery uses the negotiated route and trusted session, handles 
  assert.doesNotMatch(sent.url,/fixture-secret|login-secret/);assert.equal(new Headers(sent.headers).has('X-Access-Token'),false);
  response={success:false,code:'AI_GATEWAY_AUDIT_UNAVAILABLE',resources:[resource('hidden')]};
  await assert.rejects(t.authorizedResources('query_business_data',signal),e=>/AUDIT_UNAVAILABLE/.test(e.message)&&!e.message.includes('hidden'));
+ response={success:false,code:'AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED',category:'SESSION',resources:[resource('hidden')]};
+ await assert.rejects(t.authorizedResources('query_business_data',signal),e=>e.code==='AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED'&&!e.message.includes('hidden'));
  response={success:true,resources:[resource('inv',{maxRows:-1})]};await assert.rejects(t.authorizedResources('query_business_data',signal),/INVALID_LIMIT/);
  response={success:true,resources:[resource('inv',{version:''})]};await assert.rejects(t.authorizedResources('query_business_data',signal),/INVALID_RESOURCE/);
  response={success:true,resources:[resource('inv',{capabilityCode:'MCP_TOOL:other:query_business_data'})]};await assert.rejects(t.authorizedResources('query_business_data',signal),/INVALID_RESOURCE/);
  rate=true;await assert.rejects(t.authorizedResources('query_business_data',signal),e=>e.retryAfterMs===12000);
- assert.equal(calls.filter(x=>x.url.endsWith('/resources')).length,6);
+ assert.equal(calls.filter(x=>x.url.endsWith('/resources')).length,7);
 });
 
 test('planner separates independent models, rejects internal joins and ambiguous or unauthorized targets, and enforces resource bounds',()=>{
@@ -82,6 +84,48 @@ test('two Agent catalogs in one host do not share authorization or metadata',asy
  t.mock.method(f.business,'moduleMcp',async consumer=>({tools:()=>[],authorizedResources:async()=>snapshot(consumer==='one'?['inv']:['ship']),call:async()=>JSON.stringify({semanticModel:[{name:'inv',measures:[{name:'inv.row_count'}]},{name:'ship',measures:[{name:'ship.row_count'}]}]})}));
  const a=await f.call('gea_gateway_catalog',{consumerCode:'one'}),b=await f.call('gea_gateway_catalog',{consumerCode:'two'});
  assert.match(a,/inv/);assert.doesNotMatch(a,/ship/);assert.match(b,/ship/);assert.doesNotMatch(b,/inv/);
+});
+
+test('expired gateway session stops every read entry for this turn and never falls back to inspect',async t=>{
+ const f=fixture(t);let opened=0,inspects=0;
+ t.mock.method(f.business,'moduleMcp',async()=>{opened++;return {tools:()=>[{name:'query_business_data',required:['action','queries']}],authorizedResources:async()=>{throw Object.assign(Error('AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED'),{code:'AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED',category:'SESSION'});},call:async()=>{inspects++;return '{}';}}});
+ await assert.rejects(f.call('gea_gateway_catalog',{consumerCode:'sales_forecast'}),/GEA_GATEWAY_SESSION_EXPIRED/);
+ const stopped=JSON.parse(await f.call('gea_module_mcp',{consumerCode:'sales_forecast',tool:'query_business_data',arguments:{action:'inspect',queries:[]}}));
+ assert.equal(stopped.availability,'turn-stopped');assert.equal(opened,1);assert.equal(inspects,0);
+});
+
+test('expired session in a model group stops the batch before another model is sent',async t=>{
+ const f=fixture(t);let calls=0;
+ t.mock.method(f.business,'moduleMcp',async()=>({tools:()=>[{name:'query_business_data',required:['action','queries']}],authorizedResources:async()=>snapshot(),call:async(_name,args)=>{if(args.action==='inspect')return '{}';calls++;throw Object.assign(Error('AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED'),{code:'AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED'});}}));
+ await assert.rejects(f.call('gea_cube_query',{consumerCode:'sales_forecast',queries:[query('inv'),query('ship')]}),/GEA_GATEWAY_SESSION_EXPIRED/);
+ assert.equal(calls,1);
+});
+
+test('invalidating an expired business Session creates a fresh module on the next turn',async t=>{
+ const f=fixture(t);const signal=new AbortController().signal;let opened=0;
+ f.business.restoreDesktopLogin({schema:1,environment:'production',base:'https://fixture',auth:{token:'login',tenantId:'0',name:'Fixture',id:'user',username:'fixture',avatar:''}});
+ t.mock.method(f.business,'openMcpConnection',async()=>{
+  opened++;
+  return {url:'https://fixture/mcp',authorizedResources:async()=>snapshot(),fetch:async(_url,init)=>{
+   const body=JSON.parse(init.body);
+   if(body.method==='notifications/initialized')return new Response('',{status:202});
+   const result=body.method==='initialize'?{protocolVersion:body.params.protocolVersion}:{tools:[{name:'query_business_data',inputSchema:{type:'object',properties:{}}}]};
+   return Response.json({jsonrpc:'2.0',id:body.id,result},{headers:{'MCP-Session-Id':'fixture-transport'}});
+  }};
+ });
+ const old=await f.business.moduleMcp('sales_forecast',signal);
+ assert.equal(await f.business.moduleMcp('sales_forecast',signal),old);
+ f.business.invalidateModuleMcp('sales_forecast');
+ const fresh=await f.business.moduleMcp('sales_forecast',signal);
+ assert.notEqual(fresh,old);assert.equal(opened,2);
+});
+
+test('sample lookup keeps authorized models when another member has ambiguous resources',async t=>{
+ const f=fixture(t);let sent=0;
+ const module={tools:()=>[{name:'query_business_data',required:['action','queries']}],authorizedResources:async()=>({fetchedAt:'now',resources:[resource('inv'),resource('accuracy'),resource('accuracy',{resourceCode:'accuracy-other'})]}),call:async(_name,args)=>{if(args.action==='inspect')return '{}';sent++;return JSON.stringify({datasets:[{name:'sample',rows:[{'inv.date':'2026-10-01'}]}]});},artifact:async()=>''};
+ t.mock.method(f.business,'moduleMcp',async()=>module);
+ const result=await f.call('gea_gateway_catalog',{consumerCode:'sales_forecast',members:['inv.date','accuracy.month'],values:true});
+ assert.match(result,/inv.date/);assert.match(result,/GEA_RESOURCE_AMBIGUOUS/);assert.match(result,/accuracy.month/);assert.equal(sent,1);
 });
 
 test('resource version change refreshes the same module field index',async t=>{

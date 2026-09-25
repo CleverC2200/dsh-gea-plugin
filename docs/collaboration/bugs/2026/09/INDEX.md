@@ -3,6 +3,9 @@
 
 | 编号 | 创建日期 | 模块 | 类别 | 根因 | 严重度 | 状态 | 详情 |
 |---|---|---|---|---|---|---|---|
+| BUG-20260925-gea-session-expiry | 2026-09-25 | GEA MCP 授权查询 | 功能逻辑 | 原始遗漏 | P0 | 已修复待验证 | [网关业务会话过期后仍尝试取数且提示检查查询字段](BUG-20260925-gea-session-expiry.md) |
+| BUG-20260925-gea-sample-ambiguity | 2026-09-25 | GEA MCP 授权查询 | 功能逻辑 | 原始遗漏 | P1 | 已修复待验证 | [成员样例混合查询遇资源歧义时丢弃其它已授权样例](BUG-20260925-gea-sample-ambiguity.md) |
+| BUG-20260925-gea-amount-display | 2026-09-25 | 销售计划 | 数据计算 | 待定位 | P1 | 修复中 | [金额默认长数字且模型答复单位与汇总口径不稳](BUG-20260925-gea-amount-display.md) |
 | BUG-20260924-test-module-loading | 2026-09-24 | 构建发布 | 构建发布 | 外部依赖 | P2 | 已验证待发布 | [业务模块测试夹具错误内联 ESM 依赖](BUG-20260924-test-module-loading.md) |
 | BUG-20260924-group-terminal-block | 2026-09-24 | 销售计划 | 功能逻辑 | 原始遗漏 | P2 | 已验证待发布 | [混合终态的审批分组可选但动作被整体锁住](BUG-20260924-group-terminal-block.md) |
 | BUG-20260924-gea-desktop-resubmit | 2026-09-24 | 销售计划 | 功能逻辑 | 原始遗漏 | P2 | 已验证待发布 | [桌面端退回计划无法重提](BUG-20260924-gea-desktop-resubmit.md) |

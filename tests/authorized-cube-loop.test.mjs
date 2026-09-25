@@ -36,6 +36,8 @@ test('native typed query exposes its schema, splits requests and refuses a revok
  assert.equal(queries.length,2);assert.ok(queries.every(x=>x.queries.length===1));
  const schema=requests[0].tools.find(x=>x.function.name==='gea_cube_query').function.parameters;
  assert.deepEqual(schema.properties.queries.items.properties.query.properties.order.items.properties.direction.enum,['asc','desc']);
+ assert.match(JSON.stringify(requests[0].messages),/用户明确指定月份、组织和省区/);
+ assert.match(JSON.stringify(requests[0].messages),/金额计算保留工具原值和精度/);
  assert.match(JSON.stringify(requests[1].messages),/42/);assert.doesNotMatch(JSON.stringify(requests),/delegation-fixture-secret|trusted-session/);
  assert.ok(discovery.every(x=>x.agentCode==='sales_forecast'&&x.mcpCode==='cube'&&x.sessionId==='trusted-session'));
  revoked=true;await ask('重新查询库存。');await until(()=>readSession(app.runtime,id),rows=>rows.filter(x=>x.type==='turn/end').length===2);

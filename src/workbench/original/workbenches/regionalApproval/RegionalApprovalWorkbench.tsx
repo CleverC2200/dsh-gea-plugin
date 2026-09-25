@@ -114,6 +114,7 @@ import {
   type RegionalApprovalLiveCategorySummary,
   type RegionalApprovalLiveRow,
 } from './regionalApprovalQueryModel.ts';
+import { readableMoney } from './models/readableMoney.ts';
 import {
   useRegionalApprovalQuery,
   type RegionalApprovalQueryError,
@@ -3021,16 +3022,16 @@ const RegionalApprovalWorkbench: React.FC<{
             >
               <span>
                 <small>{t('common.assistantSurface.regionalApproval.scopeTotals.targetAmount')}</small>
-                <strong>{(liveQuery.enabled && !dashboardReady) || metrics.targetAmount === undefined ? '—' : exactMoney(metrics.targetAmount)}</strong>
+                <strong title={(liveQuery.enabled && !dashboardReady) || metrics.targetAmount === undefined ? undefined : readableMoney(metrics.targetAmount).exact}>{(liveQuery.enabled && !dashboardReady) || metrics.targetAmount === undefined ? '—' : readableMoney(metrics.targetAmount).display}</strong>
               </span>
               <span>
                 <small>{t('common.assistantSurface.regionalApproval.scopeTotals.planAmount')}</small>
-                <strong>{liveQuery.enabled && !dashboardReady ? '—' : exactMoney(metrics.amount)}</strong>
+                <strong title={liveQuery.enabled && !dashboardReady ? undefined : readableMoney(metrics.amount).exact}>{liveQuery.enabled && !dashboardReady ? '—' : readableMoney(metrics.amount).display}</strong>
               </span>
               <span>
                 <small>{t('common.assistantSurface.regionalApproval.scopeTotals.amountVariance')}</small>
-                <strong className={salesPlanVarianceClass(amountVariance, styles.variancePositive, styles.varianceNegative)}>
-                  {liveQuery.enabled && !dashboardReady || amountVariance === undefined ? '—' : exactSignedMoney(amountVariance)}
+                <strong title={liveQuery.enabled && !dashboardReady || amountVariance === undefined ? undefined : exactSignedMoney(amountVariance)} className={salesPlanVarianceClass(amountVariance, styles.variancePositive, styles.varianceNegative)}>
+                  {liveQuery.enabled && !dashboardReady || amountVariance === undefined ? '—' : readableMoney(amountVariance).display}
                 </strong>
               </span>
               <span>

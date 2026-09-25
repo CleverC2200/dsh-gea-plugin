@@ -240,7 +240,7 @@ export function describeToolSchema(tool: McpTool): string {
  *
  * 只认顶层的代价就是：失败被原样当数据回给模型，界面上"报错都不展示了"。
  */
-type ToolFailureKind = "validation" | "permission" | "rate-limit" | "resource-mapping" | "upstream";
+type ToolFailureKind = "session" | "validation" | "permission" | "rate-limit" | "resource-mapping" | "upstream";
 
 /**
  * 权限类失败以可读文本返回（不当红色调用失败），所以调用方只能按这个前缀认出它。
@@ -342,6 +342,7 @@ function failureOf(record: Record<string, unknown> | undefined): ToolFailure | u
   const category = str(record.category) ?? str(nested?.category);
   const suggestedAction = str(record.suggestedAction) ?? str(nested?.suggestedAction);
   const resolved = code ?? "GEA_MCP_TOOL_ERROR";
+  const session = category === 'SESSION' || /^AI_GATEWAY_SESSION_(?:MAX_LIFETIME_EXCEEDED|EXPIRED|REVOKED)$/.test(resolved);
   const resourceMapping = /未唯一匹配数据目录资源/.test(message);
   // 其它有明确字段路径/参数说明的错误仍按校验失败处理。
   const queryShape = QUERY_SHAPE_FAILURE.test(`${message} ${details?.path ?? ""}`);
@@ -373,7 +374,9 @@ function failureOf(record: Record<string, unknown> | undefined): ToolFailure | u
   return {
     code: resolved,
     message,
-    kind: resourceMapping
+    kind: session
+      ? "session"
+      : resourceMapping
       ? "resource-mapping"
       : rateLimit
       ? "rate-limit"
@@ -447,6 +450,8 @@ function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error
   ]
     .filter(Boolean)
     .join("，");
+  if (failure.kind === 'session')
+    return {error: Object.assign(new Error(`GEA_GATEWAY_SESSION_EXPIRED：网关会话已失效（${detail}）。本轮停止取数；下次提问会按当前登录身份建立新会话并重新核对授权。不要修改查询字段或用旧请求重试。`),{code:'GEA_GATEWAY_SESSION_EXPIRED'})};
   const queriesHint = /queries/i.test(failure.path ?? "") || /queries/i.test(failure.message)
     ? "（提示：Cube 查询要放在 arguments.queries 里，不要提到工具顶层。）"
     : "";
