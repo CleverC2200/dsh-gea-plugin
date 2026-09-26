@@ -3,4 +3,4 @@
 
 | 编号 | 模块 | 状态 | 详情 |
 |---|---|---|---|
-| CHANGE-20260926-gea-prompt-release | 业务Agent与发布 | 待发布 | [GEA 0.0.127 Prompt与证据链客户端发布](gea-prompt-release.md) |
+| CHANGE-20260926-gea-prompt-release | 业务Agent与发布 | 已发布待验收 | [GEA 0.0.127 Prompt与证据链客户端发布](gea-prompt-release.md) |

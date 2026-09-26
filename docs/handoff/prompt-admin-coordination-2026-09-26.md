@@ -1,6 +1,6 @@
 # GEA Prompt优化：管理端改动与协调交接
 
-日期：2026-09-26。对应客户端插件候选：GEA 0.0.127。本文是本轮管理端/业务协作的统一交接入口；未实施事项不是“已上线”。发布状态以本次MR与发行记录读回为准。
+日期：2026-09-26。对应已发布客户端插件：GEA 0.0.127（MR !184已合并，测试/正式频道均已更新）。本文是本轮管理端/业务协作的统一交接入口；未实施事项不是“已上线”。发布状态以本次MR与发行记录读回为准。
 
 ## 一、本次客户端包含什么
 
@@ -16,6 +16,8 @@
 | sinian-demand-forecaster角色 | 已缩短常驻说明，明确分析与真实写入边界 | 审核suites/sinian-demand-forecast/agents/sinian-demand-forecaster.md | 常驻角色不重复灌入全部工作流；分析不声称保存/提交 |
 | 四份sinian Skill | dialogue、baseline、scope、review有入口/触发与执行边界调整 | 审核suites/sinian-demand-forecast/skills/及references/dialogue-workflows.md、sales-review-thresholds.md | 原公式和阈值含适用条件；模型能读到对应参考，版本一致 |
 | Cube预测增量候选 | 本地YAML和合成SQL样例通过，尚未目标Cube编译、部署或实际数据对账 | 查看下文候选路径，先编译/对账再登记受控资源 | 原51维度、row_count和2个segment不丢；M实际包含未拆分行；Z覆盖与回退正确 |
+
+新套件涉及按需能力和计算工具，应先确认客户端0.0.127的对应能力可用，再审阅、同步管理端指令，避免旧客户端提前收到不支持的工具要求。
 
 套件与客户端是独立交付层。此前真实测试曾在隔离Harness中加载这份本地套件，不能将测试结果当成已安装管理资源全部更新。客户端自身托管的inventory-* Skill随插件更新；sinian-*的来源和管理端版本需单独核对。
 

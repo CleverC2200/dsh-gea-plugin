@@ -3,7 +3,7 @@
 
 | 编号 | 创建日期 | 模块 | 类别 | 根因 | 严重度 | 状态 | 详情 |
 |---|---|---|---|---|---|---|---|
-| BUG-20260926-prompt-pack-files | 2026-09-26 | 业务Agent与打包 | 构建发布 | 原始遗漏 | P1 | 已修复待验证 | [新增托管Prompt与Skill未显式进入打包白名单](BUG-20260926-prompt-pack-files.md) |
+| BUG-20260926-prompt-pack-files | 2026-09-26 | 业务Agent与打包 | 构建发布 | 原始遗漏 | P1 | 已发布待验收 | [新增托管Prompt与Skill未显式进入打包白名单](BUG-20260926-prompt-pack-files.md) |
 | BUG-20260926-prompt-fact-use | 2026-09-26 | 业务Agent | 功能逻辑 | 待定位 | P1 | 待定位 | [工具已返回成员或状态字典却被最终答复否认](BUG-20260926-prompt-fact-use.md) |
 | BUG-20260925-gea-session-expiry | 2026-09-25 | GEA MCP 授权查询 | 功能逻辑 | 原始遗漏 | P0 | 已修复待验证 | [网关业务会话过期后仍尝试取数且提示检查查询字段](BUG-20260925-gea-session-expiry.md) |
 | BUG-20260925-gea-sample-ambiguity | 2026-09-25 | GEA MCP 授权查询 | 功能逻辑 | 原始遗漏 | P1 | 已修复待验证 | [成员样例混合查询遇资源歧义时丢弃其它已授权样例](BUG-20260925-gea-sample-ambiguity.md) |
