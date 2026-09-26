@@ -1,0 +1,24 @@
+{
+  "base": "96b9715",
+  "sourceHashes": {
+    "presets/inventory-aqkc.skill.md": "772c59cc11d27d9c8b6839a96d8f5041befa5ed59b1e6e6b395e30936e163ec6",
+    "presets/inventory-fc.skill.md": "7b615b281783266c68a20e49d7323d5c44ec264526f31d5feadfa253026002fc",
+    "presets/inventory-qll.skill.md": "493e07c4c353e86f4528e820cfcbc938fe91d5d011f8d13d18ef449f27e62c16",
+    "presets/prompt-policy.json": "2b76b7303d114b774aa2064380fa4f4602170639862fcaad1d05fd5361a24b18",
+    "src/host/prompt-result.ts": "c9f4390fc365a6e987870c775f67a8c9e1a0269e3276936b99a2ba9cf671ce9a",
+    "src/host/prompt-runtime.ts": "0bda0a39423828c969fa35955f0d6ca4b724f6fbc316d4af0c1837cdb405c579",
+    "tests/prompt-runtime.test.mjs": "bf0a105b2d8ef6393e61605b87f67a88dcfac2ef1f6798612934938b60e34ee0",
+    "tests/prompt-v2.test.mjs": "94b582594536ebb7baf7df961903d8b0cef7e90998de69b20e147fb238359d56"
+  },
+  "primaryModel": "deepseek-v4-pro / 2085162185715609601",
+  "apsRuleModel": "deepseek-v4-flash / 2075867101766672385 (same as prior supplemental cases)",
+  "permissionDeferred": [
+    "chain-summary",
+    "aps-summary",
+    "aps-rules"
+  ],
+  "expectedLiveCases": 24,
+  "note": "All live cases use the final candidate source. Baseline chain-compare follows a prior denied data question; this round is a fresh rule turn because that permission case is deferred. Do not overclaim strict latency comparability.",
+  "candidate": "verified schema-stable guard + explicit unknown stagnation definition",
+  "experiments": "24-case initial candidate retained separately; final candidate replays all24"
+}

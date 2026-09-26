@@ -298,9 +298,15 @@ export function resultReceipt(
   args: Row,
   id: string,
   raw: string,
+  display?: string,
 ): string {
   const data = parsed(raw);
-  const facts: Row = { evidenceId: id, tool, outcome: resultOutcome(raw) };
+  const facts: Row = {
+    evidenceId: id,
+    tool,
+    outcome: resultOutcome(raw),
+    ...(display ? { display } : {}),
+  };
   if (typeof args.kind === "string") facts.kind = args.kind;
   if (record(args.query)) facts.scope = args.query;
   if (Array.isArray(args.queries))
@@ -324,6 +330,7 @@ export function resultReceipt(
         evidenceId: id,
         tool,
         outcome: resultOutcome(raw),
+        ...(display ? { display } : {}),
         kind: args.kind,
         note: "已有结果，范围查看原回执",
       });

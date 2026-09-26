@@ -256,7 +256,7 @@ test(
 );
 
 test(
-  "mixed-model batch retains every full body and reads it under current authorization",
+  "catalog stalls block backend repetition without removing tools, while mixed-model evidence stays recoverable",
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t, {
@@ -291,6 +291,9 @@ test(
     let phase = 0,
       evidenceId,
       rawDone = false;
+    let catalogCalls = 0,
+      catalogPaused = false,
+      checkedResume = false;
     const pages = [];
     app.route((req, res, reply) => {
       const path = req.url.pathname;
@@ -379,7 +382,32 @@ test(
       if (path !== "/v1/chat/completions") return false;
       const b = JSON.parse(req.body);
       let call;
-      if (phase++ === 0)
+      const offersCatalog =
+        b.tools?.some((x) => x.function?.name === "gea_gateway_catalog") ??
+        false;
+      if (!catalogPaused) {
+        if (catalogCalls < 5) {
+          catalogCalls++;
+          call = {
+            name: "gea_gateway_catalog",
+            arguments: JSON.stringify({ model: "a" }),
+          };
+        } else {
+          assert.equal(
+            offersCatalog,
+            true,
+            "keep the tool schema stable for provider validation",
+          );
+          assert.match(
+            b.messages.filter((m) => m.role === "tool").at(-1).content,
+            /GEA_CATALOG_NO_PROGRESS/,
+          );
+          catalogPaused = true;
+        }
+      }
+      if (call) {
+        /* The next model step observes the catalog result. */
+      } else if (phase++ === 0)
         call = {
           name: "gea_cube_query",
           arguments: JSON.stringify({
@@ -390,6 +418,14 @@ test(
           }),
         };
       else {
+        if (!checkedResume) {
+          assert.equal(
+            offersCatalog,
+            true,
+            "a real query attempt restores targeted discovery",
+          );
+          checkedResume = true;
+        }
         const value = JSON.parse(
           b.messages.filter((m) => m.role === "tool").at(-1).content,
         );
@@ -466,6 +502,16 @@ test(
       () => readSession(app.runtime, sessionId),
       (r) => r.some((e) => e.type === "turn/end"),
       40000,
+    );
+    assert.ok(
+      catalogPaused && checkedResume,
+      JSON.stringify({
+        catalogCalls,
+        catalogPaused,
+        checkedResume,
+        events: (await readSession(app.runtime, sessionId)).slice(-3),
+        output: app.output.slice(-4000),
+      }),
     );
     const raw = JSON.parse(pages.join(""));
     assert.equal(raw.source, "GEA_CUBE_BATCH");

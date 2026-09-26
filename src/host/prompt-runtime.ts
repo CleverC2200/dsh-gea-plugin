@@ -62,6 +62,9 @@ type State = {
   deniedConsumers: Set<string>;
   reads: Map<string, string>;
   failures: Map<string, string>;
+  catalogOutputs: Set<string>;
+  catalogStalls: number;
+  catalogGeneration: number;
 };
 
 /** Only a still-visible tool result with the actual body counts; a compacted digest or user quote does not. */
@@ -104,6 +107,10 @@ export function mountBusinessPrompts(
 ): () => void {
   const states = new Map<Agent, State>();
   const executionEpochs = new Map<symbol, number>();
+  const catalogExecutions = new Map<
+    symbol,
+    { state: State; generation: number }
+  >();
   const executionGrants = new Map<symbol, EvidenceGrant>();
   const runtimeId = randomUUID();
   const hash = (value: unknown) =>
@@ -183,6 +190,9 @@ export function mountBusinessPrompts(
         deniedConsumers: new Set(),
         reads: new Map(),
         failures: new Map(),
+        catalogOutputs: new Set(),
+        catalogStalls: 0,
+        catalogGeneration: 0,
       };
       // Restore only successful capability-loader choices, not arbitrary data that mentions a tool pack.
       const requests = new Map<string, { pack?: ToolPack; skill?: string }>();
@@ -285,6 +295,9 @@ export function mountBusinessPrompts(
       state.deniedConsumers.clear();
       state.reads.clear();
       state.failures.clear();
+      state.catalogOutputs.clear();
+      state.catalogStalls = 0;
+      state.catalogGeneration++;
     }
   };
   const offs: Array<() => void> = [
@@ -305,6 +318,9 @@ export function mountBusinessPrompts(
       state.deniedConsumers.clear();
       state.reads.clear();
       state.failures.clear();
+      state.catalogOutputs.clear();
+      state.catalogStalls = 0;
+      state.catalogGeneration++;
       state.evidence = [];
       state.limit = PROMPT_BUDGET.calls;
     }),
@@ -355,6 +371,8 @@ export function mountBusinessPrompts(
         return "GEA_CALL_BUDGET: 本轮调用/步骤额度已用完，请交付已有结果并明确未完成项。";
       // Reserve before dispatch: parallel calls must not all pass against the same stale counter.
       state.calls++;
+      if (exec.name === "gea_gateway_catalog" && state.catalogStalls >= 2)
+        return "GEA_CATALOG_NO_PROGRESS: 目录连续未提供新信息；使用已返回成员执行最小gea_cube_query或说明具体缺口，查询后可按错误修正目录。本轮其它工具仍可用。";
       if (["render_ui", "validate_dsh_ui"].includes(exec.name)) {
         const issue = businessUiIssue(exec.arguments);
         if (issue) return issue;
@@ -364,6 +382,18 @@ export function mountBusinessPrompts(
   offs.push(
     ctx.on("tools/execute", async (exec, next) => {
       if (exec.agent && profileOf(exec.agent)) {
+        // An actual query attempt, including a member error, permits targeted rediscovery.
+        if (exec.name === "gea_cube_query") {
+          stateOf(exec.agent).catalogStalls = 0;
+          stateOf(exec.agent).catalogGeneration++;
+        }
+        if (exec.name === "gea_gateway_catalog") {
+          const state = stateOf(exec.agent);
+          catalogExecutions.set(exec.token, {
+            state,
+            generation: state.catalogGeneration,
+          });
+        }
         executionEpochs.set(exec.token, store.epoch());
         const args = exec.arguments as Record<string, unknown>;
         const grant: EvidenceGrant = {
@@ -388,6 +418,8 @@ export function mountBusinessPrompts(
       const decision = await next();
       const agent = exec.agent;
       const executionEpoch = executionEpochs.get(exec.token);
+      const catalogExecution = catalogExecutions.get(exec.token);
+      catalogExecutions.delete(exec.token);
       executionEpochs.delete(exec.token);
       const grant = executionGrants.get(exec.token);
       const authorization = authorizations.get(exec.token);
@@ -409,6 +441,23 @@ export function mountBusinessPrompts(
           .map((b) => (b.type === "text" ? b.text : ""))
           .join("\n");
         const state = stateOf(agent);
+        if (
+          exec.name === "gea_gateway_catalog" &&
+          catalogExecution?.state === state &&
+          catalogExecution.generation === state.catalogGeneration &&
+          executionEpoch === store.epoch() &&
+          decision.kind === "accept" &&
+          !result.isError &&
+          !permissionDenied(texts)
+        ) {
+          const fingerprint = hash(texts);
+          const reused = texts.includes('"source":"GEA_CATALOG_REUSED"');
+          state.catalogStalls =
+            reused || state.catalogOutputs.has(fingerprint)
+              ? state.catalogStalls + 1
+              : 0;
+          if (!reused) state.catalogOutputs.add(fingerprint);
+        }
         if (result.isError || resultOutcome(texts) === "blocked") {
           state.failures.set(
             hash([exec.name, exec.arguments]),
@@ -521,16 +570,6 @@ export function mountBusinessPrompts(
       const state = stateOf(agent);
       const alreadyDelivered = state.evidence.includes(id);
       const receiptKey = id;
-      state.receipts.set(
-        receiptKey,
-        resultReceipt(
-          exec.name,
-          exec.arguments as Record<string, unknown>,
-          id,
-          text,
-        ),
-      );
-
       state.evidence = [...new Set([...state.evidence, id])].slice(-8);
       let projected = alreadyDelivered
         ? JSON.stringify({
@@ -551,6 +590,24 @@ export function mountBusinessPrompts(
           datasetIndex(text, id),
           PROMPT_BUDGET.result,
         );
+      let display = "complete";
+      if (projected !== text) {
+        try {
+          display = JSON.parse(projected).projection ?? "complete";
+        } catch {
+          display = "partial";
+        }
+      }
+      state.receipts.set(
+        receiptKey,
+        resultReceipt(
+          exec.name,
+          exec.arguments as Record<string, unknown>,
+          id,
+          text,
+          display,
+        ),
+      );
       state.returned += projected.length;
       return {
         ...decision,
@@ -988,6 +1045,14 @@ export function mountBusinessPrompts(
             shortSkillCatalog(skills),
         },
         { name: "gea:facts", text: facts },
+        ...(state.catalogStalls >= 2
+          ? [
+              {
+                name: "gea:query-progress",
+                text: "目录连续未提供新信息，暂不继续探索目录。已有成员用于最小gea_cube_query，原结果用nextRead按数据集续读；执行查询后可再按具体错误核对目录。规则题直接用已核验规则，数据缺口明确记录，不换关键词或加载知识来代替取数。",
+              },
+            ]
+          : []),
         {
           name: "gea:evidence-index",
           text: state.evidence.length
@@ -999,7 +1064,7 @@ export function mountBusinessPrompts(
               {
                 name: "gea:result-status",
                 text:
-                  "本轮已取得的历史回执（不等于任务完成或当前授权）；参数/其它范围失败不抹掉历史成功事实，权限撤销的原范围不可继续复用。交付前核对范围，不能说这些结果从未取得：\n" +
+                  "本轮历史回执（不等于任务完成或当前授权）。display=complete表示已返回正文完整展示，无需为读外层封装重读原文；partial用数据集nextRead补行。两者都不证明业务全量。其它范围失败不抹掉历史成功事实，权限撤销的原范围不可复用。交付核对范围，不说这些结果从未取得：\n" +
                   [...state.receipts.values()]
                     .slice(0, 4)
                     .concat([...state.receipts.values()].slice(4).slice(-4))
@@ -1076,6 +1141,7 @@ export function mountBusinessPrompts(
     for (const state of states.values()) state.dispose?.();
     states.clear();
     executionEpochs.clear();
+    catalogExecutions.clear();
     executionGrants.clear();
     authorizations.clear();
     store.clear();

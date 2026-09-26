@@ -1,0 +1,1094 @@
+{
+  "base": "96b9715",
+  "permissionDeferred": [
+    "chain-summary",
+    "aps-summary",
+    "aps-rules"
+  ],
+  "rows": [
+    {
+      "id": "fc-aging",
+      "preset": "gea-html-inventory-fc",
+      "question": "郑州分仓的大日期库存有哪些？分别有多少？只列前10个SKU，说明大日期口径、快照日期和单位。",
+      "before": {
+        "seconds": 79.62,
+        "toolAttempts": 20,
+        "cubeQueries": 0,
+        "catalogAttempts": 11,
+        "catalogGuardResults": 0,
+        "toolTextChars": 38036,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 43.95,
+        "toolAttempts": 12,
+        "cubeQueries": 0,
+        "catalogAttempts": 7,
+        "catalogGuardResults": 0,
+        "toolTextChars": 22452,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "GEA_MODEL_INVALID_TOOL_CALL：模型这一轮回复里的工具调用不合法，本轮已中止，请重发一次",
+            "code": "GEA_MODEL_INVALID_TOOL_CALL"
+          }
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 110.8,
+        "toolAttempts": 21,
+        "cubeQueries": 0,
+        "catalogAttempts": 13,
+        "catalogGuardResults": 1,
+        "toolTextChars": 38369,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "分仓大日期Top10",
+      "verdict": "未完成",
+      "note": "21次尝试、0次目标Cube查询；成员已返回却被说成未返回。"
+    },
+    {
+      "id": "fc-overlap",
+      "preset": "gea-html-inventory-fc",
+      "question": "大日期库存和滞库数量可以直接相加吗？只解释口径，不重新查数。",
+      "before": {
+        "seconds": 13.14,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 13.87,
+        "toolAttempts": 2,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 4061,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 42.57,
+        "toolAttempts": 3,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 4179,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "大日期/滞库重叠",
+      "verdict": "改善",
+      "note": "不直接相加，交集未知不报确定并集；不再自定滞库起算日。"
+    },
+    {
+      "id": "fc-missing",
+      "preset": "gea-html-inventory-fc",
+      "question": "另一个独立示例：某SKU可用库存100箱、备单中30箱、已占用10箱、调拨中20箱、缺货0箱，周期7天，但本月计划缺失。能否给补货建议量？调拨中量应扣几次？只核对规则，不查真实业务数据。",
+      "before": {
+        "seconds": 19.4,
+        "toolAttempts": 2,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 3864,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 5.68,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 6.41,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "缺计划补货规则",
+      "verdict": "保持正确",
+      "note": "缺计划保持未知，调拨只扣一次。"
+    },
+    {
+      "id": "fc-summary",
+      "preset": "gea-html-inventory-fc",
+      "question": "查一下我有权限看的全部分仓，分别有多少可用库存和调拨在途，按分仓汇总，注明快照日期和单位。",
+      "before": {
+        "seconds": 128.32,
+        "toolAttempts": 20,
+        "cubeQueries": 2,
+        "catalogAttempts": 8,
+        "catalogGuardResults": 0,
+        "toolTextChars": 52644,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "GEA_MODEL_TOOL_TEXT: 模型把工具调用写成了文本，未执行这些调用，也未完成业务答复。",
+            "code": "PROVIDER_PROTOCOL"
+          }
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 117.96,
+        "toolAttempts": 19,
+        "cubeQueries": 1,
+        "catalogAttempts": 9,
+        "catalogGuardResults": 0,
+        "toolTextChars": 69248,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "GEA_MODEL_INVALID_TOOL_CALL：模型这一轮回复里的工具调用不合法，本轮已中止，请重发一次",
+            "code": "GEA_MODEL_INVALID_TOOL_CALL"
+          }
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 180.09,
+        "toolAttempts": 20,
+        "cubeQueries": 1,
+        "catalogAttempts": 13,
+        "catalogGuardResults": 1,
+        "toolTextChars": 31818,
+        "termination": {
+          "kind": "aborted",
+          "reason": {
+            "kind": "user"
+          }
+        },
+        "qaTimeout": true
+      },
+      "model": "2085162185715609601",
+      "label": "全分仓库存/在途",
+      "verdict": "未完成",
+      "note": "180秒被QA观察窗口取消，无最终答案；这不是权限失败。"
+    },
+    {
+      "id": "chain-compare",
+      "preset": "gea-html-inventory-qll",
+      "question": "基地计划周转和分仓近30日实际周转能直接平均成公司周转吗？客户库存是否计入公司库存？只解释口径，不查新数据。",
+      "before": {
+        "seconds": 13.38,
+        "toolAttempts": 2,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2498,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 33.45,
+        "toolAttempts": 2,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2483,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 23.35,
+        "toolAttempts": 2,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2483,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "全链周转/公司边界",
+      "verdict": "保持正确",
+      "note": "计划与实际周转不直接平均，客户库存不并入公司库存。"
+    },
+    {
+      "id": "base-summary",
+      "preset": "gea-html-inventory-aqkc",
+      "question": "查一下当前各基地的库存情况，哪些基地缺货最严重？给出数量依据和快照日期，缺失数据不要当成零。",
+      "before": {
+        "seconds": 129.57,
+        "toolAttempts": 21,
+        "cubeQueries": 2,
+        "catalogAttempts": 6,
+        "catalogGuardResults": 0,
+        "toolTextChars": 75549,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 150.96,
+        "toolAttempts": 16,
+        "cubeQueries": 2,
+        "catalogAttempts": 3,
+        "catalogGuardResults": 0,
+        "toolTextChars": 33807,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "GEA_MODEL_GATEWAY_ERROR：模型网关在流里回了错误，本轮已中止（STREAM_TRANSPORT_ERROR | server_error | 流式传输失败）",
+            "code": "GEA_MODEL_GATEWAY_ERROR"
+          }
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 138.88,
+        "toolAttempts": 20,
+        "cubeQueries": 1,
+        "catalogAttempts": 7,
+        "catalogGuardResults": 0,
+        "toolTextChars": 46444,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "GEA_MODEL_TOOL_TEXT: 模型把工具调用写成了文本，未执行这些调用，也未完成业务答复。",
+            "code": "PROVIDER_PROTOCOL"
+          }
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "基地库存/缺货排名",
+      "verdict": "未完成",
+      "note": "末尾出现DSML工具文本，已拦截，未作为业务完成。"
+    },
+    {
+      "id": "base-duplicate",
+      "preset": "gea-html-inventory-aqkc",
+      "question": "同一SKU在两个不同基地各一行，能认定重复吗？对于安全库存目标，纠偏、月初和滚动数据应怎么回退？只核对规则，不重新查业务数。",
+      "before": {
+        "seconds": 17.53,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 1728,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 0.47,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "GEA_MODEL_GATEWAY_ERROR：模型网关在流里回了错误，本轮已中止（STREAM_TRANSPORT_ERROR | server_error | 流式传输失败）",
+            "code": "GEA_MODEL_GATEWAY_ERROR"
+          }
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 14.18,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2180,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "基地主键/版本回退",
+      "verdict": "已修正",
+      "note": "补齐两条日期回退链、显式上下文优先及同键去重条件。"
+    },
+    {
+      "id": "sales-control",
+      "preset": "gea-readonly",
+      "question": "查一下2026年9月销售计划提报的总体情况，按省区汇总，不要逐单拉明细。",
+      "before": {
+        "seconds": 47.2,
+        "toolAttempts": 3,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 8353,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 98.06,
+        "toolAttempts": 13,
+        "cubeQueries": 0,
+        "catalogAttempts": 1,
+        "catalogGuardResults": 0,
+        "toolTextChars": 52628,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 51.93,
+        "toolAttempts": 5,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 14027,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "销售按省区汇总",
+      "verdict": "部分进展",
+      "note": "用7条计划级列表生成省区表，没有逐单读取SKU；但已返回status字典仍被说成没有，数量单位及确定性汇总路径仍需核对。"
+    },
+    {
+      "id": "fc-missing-fresh",
+      "preset": "gea-html-inventory-fc",
+      "question": "另一个独立示例：某SKU可用库存100箱、备单中30箱、已占用10箱、调拨中20箱、缺货0箱，周期7天，但本月计划缺失。能否给补货建议量？调拨中量应扣几次？只核对规则，不查真实业务数据。",
+      "before": {
+        "seconds": 16.15,
+        "toolAttempts": 2,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 3836,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 17.85,
+        "toolAttempts": 2,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 4061,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 14.6,
+        "toolAttempts": 2,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 4123,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "新会话缺计划规则",
+      "verdict": "保持正确",
+      "note": "新会话重新加载规则，缺失不补零。"
+    },
+    {
+      "id": "holdout-fc-zero",
+      "preset": "gea-html-inventory-fc",
+      "question": "规则题：一条记录本月计划明确为0，另一条计划字段为空。两条都能视为零计划并算出相同补货量吗？可用100、备单30、占用10、调拨20，说明能算与不能算的部分，不查业务数据。",
+      "before": {
+        "seconds": 31.89,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2778,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 31.55,
+        "toolAttempts": 2,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 4061,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 26.64,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 3065,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "零计划/空计划",
+      "verdict": "保持正确",
+      "note": "明确0与缺失分开，缺缺货量不强给最终补货数。"
+    },
+    {
+      "id": "dealer-summary",
+      "preset": "gea-html-inventory-dealer",
+      "question": "我有权限看的经销商一共有多少家？其中哪些经销商库存风险需要优先关注，先列前五家及依据。",
+      "before": {
+        "seconds": 50.55,
+        "toolAttempts": 20,
+        "cubeQueries": 0,
+        "catalogAttempts": 16,
+        "catalogGuardResults": 0,
+        "toolTextChars": 54053,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 156.71,
+        "toolAttempts": 20,
+        "cubeQueries": 3,
+        "catalogAttempts": 14,
+        "catalogGuardResults": 0,
+        "toolTextChars": 70626,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 206.96,
+        "toolAttempts": 21,
+        "cubeQueries": 3,
+        "catalogAttempts": 13,
+        "catalogGuardResults": 0,
+        "toolTextChars": 65815,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "经销商数量/Top5",
+      "verdict": "未完成",
+      "note": "从上一轮0次目标Cube查询到本轮3次，但数量/Top5均未交付，仍耗尽额度。"
+    },
+    {
+      "id": "holdout-base-zero",
+      "preset": "gea-html-inventory-aqkc",
+      "question": "规则题：有10个SKU库存为0，但没有未满足订单和安全库存目标。能说缺货率10%或者这是缺货最严重的基地吗？要补什么证据？",
+      "before": {
+        "seconds": 14.47,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 21.82,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2180,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 15.78,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2180,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "零库存/缺目标",
+      "verdict": "已修正",
+      "note": "缺目标时是否低于目标未知，不再解释为未低于。"
+    },
+    {
+      "id": "holdout-chain-date",
+      "preset": "gea-html-inventory-qll",
+      "question": "基地库存是9月25日快照，分仓是9月24日快照，客户是9月20日快照，单位都为箱。能直接合计为今天的公司库存吗？只讲口径。",
+      "before": {
+        "seconds": 13.46,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 9.84,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 8.96,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "异日快照/公司边界",
+      "verdict": "部分修正",
+      "note": "客户不计公司库存已正确；仍建议异日库存可作近似合计，未满足不混加的完整边界。"
+    },
+    {
+      "id": "dealer-boundary",
+      "preset": "gea-html-inventory-dealer",
+      "question": "你刚才统计的是全部授权客户，还是库存中出现的客户？如果缺少销量，仅库存高是否足以判滞销？请核对刚才结论和范围。",
+      "before": {
+        "seconds": 10.79,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 20.06,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 36.57,
+        "toolAttempts": 2,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 10218,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "经销商范围复核",
+      "verdict": "保持边界",
+      "note": "区分当前取数范围与授权客户母集，未伪造客户总数或风险排名。"
+    },
+    {
+      "id": "holdout-dealer-threshold",
+      "preset": "gea-html-inventory-dealer",
+      "question": "某经销商库存5000箱，近30天销量字段为空，另一家库存也是5000箱且销量明确为0。能否给出相同周转天数并判定滞销？只核对规则。",
+      "before": {
+        "seconds": 46.98,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2482,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 14.34,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2482,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 19.85,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2482,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "空销量/零销量",
+      "verdict": "保持正确",
+      "note": "未知分母与零分母分开，不给相同有限周转天数。"
+    },
+    {
+      "id": "holdout-fc-focused",
+      "preset": "gea-html-inventory-fc",
+      "question": "只查郑州分仓的最新可用库存合计，给出快照日期和单位。如果授权数据无法证明合计完整，明确说明缺口。",
+      "before": {
+        "seconds": 53.55,
+        "toolAttempts": 4,
+        "cubeQueries": 1,
+        "catalogAttempts": 3,
+        "catalogGuardResults": 0,
+        "toolTextChars": 10336,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 45.72,
+        "toolAttempts": 5,
+        "cubeQueries": 1,
+        "catalogAttempts": 4,
+        "catalogGuardResults": 0,
+        "toolTextChars": 12185,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 44.73,
+        "toolAttempts": 4,
+        "cubeQueries": 2,
+        "catalogAttempts": 2,
+        "catalogGuardResults": 0,
+        "toolTextChars": 12301,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "郑州单分仓",
+      "verdict": "范围已修正",
+      "note": "主结论锁定单仓名与ID，未再用基地所辖11仓领答；单位和完整快照仍未知。"
+    },
+    {
+      "id": "holdout-sales-enum",
+      "preset": "gea-readonly",
+      "question": "销售计划接口只返回planTypeCode=Y，没有返回中文名称。Y能直接解释成年计划吗？预测明细里的M/Z能否直接套到销售计划上？不查询，只解释取证要求。",
+      "before": {
+        "seconds": 18.21,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 13.31,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 120.07,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "GEA_NETWORK_TIMEOUT: 连接 模型网关 GEA 模型网关 时流式读取超时（上限 120 秒）。这不是参数问题：稍后重试一次；持续超时请检查到该地址的网络或代理。",
+            "code": "GEA_NETWORK_TIMEOUT"
+          }
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "销售Y/M/Z字典",
+      "verdict": "运行失败",
+      "note": "约120秒模型请求失败，没有可评答案；不计为规则通过。"
+    },
+    {
+      "id": "aps-supported-rules",
+      "preset": "gea-html-inventory-apsplan",
+      "question": "独立规则例子：需求1000、缺货5，库存100但没有目标，只有产量没有生产计划。哪些指标可以判达标，哪些不能？只核对规则，不查真实业务数据。",
+      "before": {
+        "seconds": 9.22,
+        "toolAttempts": 2,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 3475,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 7.42,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2412,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 7.19,
+        "toolAttempts": 2,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 3503,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2075867101766672385",
+      "label": "APS规则/已有flash",
+      "verdict": "保持正确",
+      "note": "用既有可用模型，按已加载阈值解释，缺目标/分母不评价。"
+    },
+    {
+      "id": "holdout-aps-995",
+      "preset": "gea-html-inventory-apsplan",
+      "question": "若标准要求订单满足率严格大于99.5%，需求2000、缺货10是否达标？若要求大于等于99.5%又怎样？缺少生产计划时可以从产量高判断计划达成吗？只计算示例。",
+      "before": {
+        "seconds": 3.52,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 5.81,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 7.14,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2075867101766672385",
+      "label": "APS阈值等号边界",
+      "verdict": "保持正确",
+      "note": "严格大于与大于等于分开，生产缺分母不判达成。"
+    },
+    {
+      "id": "holdout-base-focused",
+      "preset": "gea-html-inventory-aqkc",
+      "question": "从我授权可见的基地中选一个，只列最新库存快照日期、可用库存合计和单位。不要判断缺货，不查其它基地。",
+      "before": {
+        "seconds": 105.68,
+        "toolAttempts": 8,
+        "cubeQueries": 1,
+        "catalogAttempts": 5,
+        "catalogGuardResults": 0,
+        "toolTextChars": 30573,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "experimentA": {
+        "seconds": 89.74,
+        "toolAttempts": 7,
+        "cubeQueries": 2,
+        "catalogAttempts": 4,
+        "catalogGuardResults": 0,
+        "toolTextChars": 24875,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 95.76,
+        "toolAttempts": 7,
+        "cubeQueries": 2,
+        "catalogAttempts": 4,
+        "catalogGuardResults": 0,
+        "toolTextChars": 29807,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "单基地可用库存",
+      "verdict": "未完成",
+      "note": "取得日期与记录行数；qtylive仍无受管求和度量，单位缺失。"
+    },
+    {
+      "id": "new-base-calendar",
+      "preset": "gea-html-inventory-aqkc",
+      "question": "只核对默认规则：用户没有指定月份和版本，9月20日、9月21日、12月31日各取哪个目标月，优先版本缺失分别回退到什么？是同月纠偏→月初→滚动三级链吗？不要查数。",
+      "before": null,
+      "experimentA": {
+        "seconds": 12.74,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2180,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 12.49,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2180,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "9/20、9/21、12/31边界",
+      "verdict": "主结论正确",
+      "note": "当月纠偏→月初；次月月初→滚动；正确跨年且拒绝三级连续链。"
+    },
+    {
+      "id": "new-chain-channel",
+      "preset": "gea-html-inventory-qll",
+      "question": "同一时点、同一单位且无重复：基地100箱、分仓可用20箱、客户30箱。公司库存与全渠道观测库存分别是多少？客户数已验证时，能否把它并入公司库存？纯示例。",
+      "before": null,
+      "experimentA": {
+        "seconds": 5.53,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 4.32,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "公司/全渠道示例",
+      "verdict": "主结论正确",
+      "note": "公司120箱、全渠道150箱，客户不进入公司口径；但资产归属解释仍超出统计定义本身。"
+    },
+    {
+      "id": "new-base-zero-target",
+      "preset": "gea-html-inventory-aqkc",
+      "question": "A和B库存都为0。A安全库存目标未设置，B安全库存目标明确为0。分别能否判低于目标或有实际缺货？两者都没有提供订单数据，只解释规则。",
+      "before": null,
+      "experimentA": {
+        "seconds": 15.52,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2180,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 12.6,
+        "toolAttempts": 1,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 2180,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "未设目标与目标0",
+      "verdict": "主结论正确",
+      "note": "未设目标未知；库存0/目标0未低于；两者缺订单均不判实际缺货。"
+    },
+    {
+      "id": "new-fc-intersection",
+      "preset": "gea-html-inventory-fc",
+      "question": "纯集合示例：同仓同日同单位，大日期10箱、滞库7箱，经核实交集3箱。两类风险的并集是多少？如果交集未知还能报17箱吗？滞库能直接定义为入库库龄吗？不查数。",
+      "before": null,
+      "experimentA": {
+        "seconds": 9.24,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 5.79,
+        "toolAttempts": 0,
+        "cubeQueries": 0,
+        "catalogAttempts": 0,
+        "catalogGuardResults": 0,
+        "toolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "model": "2085162185715609601",
+      "label": "交集已知/未知示例",
+      "verdict": "主结论正确",
+      "note": "10+7−3=14；交集未知不把上限17当确定值；不自创滞库公式。"
+    }
+  ],
+  "initialSystemToolsChars": {
+    "gea-html-inventory-fc": 7823,
+    "gea-html-inventory-aqkc": 7760,
+    "gea-html-inventory-qll": 7709,
+    "gea-html-inventory-dealer": 7667,
+    "gea-readonly": 9511,
+    "gea-html-inventory-apsplan": 7663
+  },
+  "requestCount": 110,
+  "maxRequestMessageAndToolsChars": 99749,
+  "providerUsagePresent": 0,
+  "notes": [
+    "Same pinned models; APS only already-allowed flash. No permission changes.",
+    "Experiment A retained in full; candidate changed from schema hiding to execution guard after protocol errors.",
+    "Elapsed time is one sample, not controlled performance benchmark. Fresh chain rule session differs from prior following a denied data task.",
+    "completed means runtime ended, not business acceptance. Grades are manual in the report."
+  ]
+}

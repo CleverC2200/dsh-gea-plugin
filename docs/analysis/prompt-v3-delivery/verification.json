@@ -1,0 +1,28 @@
+{
+  "buildHost": "pass",
+  "typecheck": "pass",
+  "fullTests": {
+    "tests": 634,
+    "pass": 630,
+    "fail": 1,
+    "skipped": 3
+  },
+  "uiRecheck": {
+    "tests": 6,
+    "pass": 6,
+    "fail": 0,
+    "skipped": 0
+  },
+  "fullFailure": "returned-resubmit-web checkbox click timeout; no source change to that UI; module rerun separately",
+  "fullLogSha256": "c4da7f6e3091c627ee51cff1b80c90a8da95c5837403d98b5baef7972a56d12e",
+  "reviews": {
+    "Standards": "no remaining must-fix issues",
+    "Spec": "no remaining must-fix issues"
+  },
+  "concurrencyRegression": "query, turn, preset and identity late replies covered",
+  "liveExperimentA": 24,
+  "liveFinalCandidate": 24,
+  "sourceHashesMatch": true,
+  "productionPermissions": "unchanged",
+  "publication": "not performed"
+}

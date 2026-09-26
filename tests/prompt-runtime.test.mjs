@@ -759,3 +759,129 @@ test("large top-level data and reserved metadata fields remain represented in th
   assert.ok(projected.omittedPaths.includes("$.meta"));
   assert.ok(!projected.omittedPaths.includes("$.data"));
 });
+
+test("late catalog replies cannot undo query recovery or leak into a new turn or preset", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "gea-catalog-generation-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const handlers = new Map(),
+    masks = new Set();
+  const names = [
+    "gea_capabilities",
+    "gea_skill",
+    "gea_evidence_read",
+    "gea_gateway_catalog",
+    "gea_cube_query",
+    "gea_sales_plan_read",
+  ];
+  let preset = "gea-readonly",
+    revision = 1,
+    identityChanged,
+    guard;
+  const toolService = {
+    register: () => () => {},
+    guard: (fn) => {
+      guard = fn;
+      return () => {};
+    },
+    restrict({ allow }) {
+      if (!allow) throw Error("known global tools: " + names.join(","));
+      const mask = new Set(allow);
+      masks.add(mask);
+      return () => masks.delete(mask);
+    },
+    schemas: () =>
+      names
+        .filter((n) => [...masks].every((m) => m.has(n)))
+        .map((name) => ({ name })),
+  };
+  const agent = {
+    id: "fixture",
+    ctx: { tools: toolService, effect: (fn) => fn() },
+    session: {
+      header: { cwd: dir },
+      snapshotEvents: () => [],
+      deriveMessages: () => [],
+    },
+  };
+  const ctx = {
+    tools: toolService,
+    agents: { get: () => agent },
+    sessionProjections: { stateOf: () => preset },
+    skills: { list: async () => [] },
+    on: (event, fn) => {
+      handlers.set(event, fn);
+      return () => {};
+    },
+    inject: () => {},
+  };
+  const business = {
+    config: { runtimeDir: dir, analysisAgentCode: "sales_forecast" },
+    status: () => ({ source: "fixture", user: { id: "one" } }),
+    watchIdentity: (fn) => {
+      identityChanged = fn;
+      return () => {};
+    },
+    readTurnRevision: () => revision,
+    surfaceFor: () => undefined,
+  };
+  t.after(
+    mountBusinessPrompts(ctx, business, { readModules: () => [] }, new Map()),
+  );
+  const start = async (name = "gea_gateway_catalog") => {
+    const exec = {
+      name,
+      token: Symbol(),
+      agent,
+      arguments: {},
+      signal: new AbortController().signal,
+    };
+    await handlers.get("tools/execute")(exec, async () => {});
+    return exec;
+  };
+  const finish = (exec) =>
+    handlers.get("tools/post-execute")(
+      exec,
+      { content: [{ type: "text", text: '{"source":"GEA_CATALOG_REUSED"}' }] },
+      async () => ({ kind: "accept" }),
+    );
+  const visible = async () => {
+    await handlers.get("agent/pre-step")({ agent }, async () => ({
+      kind: "accept",
+      messages: [],
+    }));
+    return toolService.schemas().map((x) => x.name);
+  };
+  for (const transition of ["query", "turn", "preset", "identity"]) {
+    const old1 = await start(),
+      old2 = await start();
+    if (transition === "query") await start("gea_cube_query");
+    if (transition === "turn") {
+      revision++;
+      handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
+    }
+    if (transition === "preset") preset = "gea-html-inventory-aqkc";
+    if (transition === "identity") identityChanged();
+    await finish(old1);
+    await finish(old2);
+    assert.ok((await visible()).includes("gea_gateway_catalog"), transition);
+    assert.equal(guard({name:"gea_gateway_catalog",agent,arguments:{}}), undefined, transition+" ignores stale replies");
+    await finish(await start());
+    await finish(await start());
+    const paused = await visible();
+    assert.match(
+      guard({name:"gea_gateway_catalog",agent,arguments:{}}),
+      /GEA_CATALOG_NO_PROGRESS/,
+      transition + " current duplicate replies should pause",
+    );
+    assert.ok(
+      paused.includes("gea_cube_query"),
+      "actual query remains callable",
+    );
+    await start("gea_cube_query");
+    assert.ok((await visible()).includes("gea_gateway_catalog"));
+    assert.equal(
+      guard({ name: "gea_gateway_catalog", agent, arguments: {} }),
+      undefined,
+    );
+  }
+});
