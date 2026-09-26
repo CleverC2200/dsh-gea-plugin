@@ -507,6 +507,26 @@ test("capability cancellation, catalog and native restriction failures commit no
     ctx: { tools: toolService, effect: (fn) => effects.push(fn()) },
     session: { header: { cwd: tmpdir() }, snapshotEvents: () => [] },
   };
+  const readEvidence = (args) =>
+    registered
+      .get("gea_evidence_read")
+      .execute(args, { agent, signal: new AbortController().signal });
+  await assert.rejects(
+    readEvidence({ evidenceId: "fixture", rowOffset: 30, rowLimit: 30 }),
+    /GEA_EVIDENCE_READ_MODE/,
+  );
+  await assert.rejects(
+    readEvidence({ evidenceId: "fixture", dataset: "a", offset: 30 }),
+    /GEA_EVIDENCE_READ_MODE/,
+  );
+  await assert.rejects(
+    readEvidence({ evidenceId: "fixture", dataset: "a", datasetId: "b" }),
+    /GEA_EVIDENCE_ARGUMENT/,
+  );
+  await assert.rejects(
+    readEvidence({ evidenceId: "fixture", dataset: "a", page: 2 }),
+    /GEA_EVIDENCE_ARGUMENT/,
+  );
   const execute = (args, signal = new AbortController().signal) =>
     registered
       .get("gea_capabilities")

@@ -1,0 +1,918 @@
+cubes:
+- name: agents_sales_forecast_detail_mi
+  title: 销售计划预测明细表
+  sql_table: '"data_service"."agents_sales_forecast_detail_mi"'
+  data_source: gea_agent
+  public: true
+  description: 销售预测明细；M预测仅使用is_split=1，M实际必须包含全部M行；同时查询两者时不得施加全局is_split=1。原表Z仅代表纠偏覆盖子集；纠偏后整月版本须使用独立effective模型。按计划月、授权范围、来源版本和单位解释。品类预算可能跨SKU重复，不能直接相加。本候选新指标尚待真实单位、回填与权限验收。
+  meta:
+    semantic_version: business-tables-20260923-1
+    semantic_status: observed
+    evidence:
+    - docs/SOURCES.md#agents_sales_forecast_detail_mi
+    business_grain_status: DDL主键不是业务粒度证明；详见来源卡
+    candidate_status: not_deployed_pending_business_and_cube_acceptance
+  segments:
+  - name: month_start_m
+    sql: '{CUBE}."order_type" = ''M'''
+    public: true
+    description: 仅 M 月初预测；还须指定计划月，不能与 Z 纠偏结果相加。
+  - name: correction_z
+    sql: '{CUBE}."order_type" = ''Z'''
+    public: true
+    description: 仅 Z 月中纠偏；还须指定计划月，不能与 M 月初结果相加。
+  dimensions:
+  - name: id
+    title: 主键ID
+    sql: '{CUBE}."id"'
+    type: number
+    public: true
+    description: 主键ID 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.id
+      source_type: bigint
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 主键ID 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/id
+    primary_key: true
+  - name: plan_month
+    title: 计划所属月份
+    sql: '{CUBE}."plan_month"'
+    type: string
+    public: true
+    description: 计划所属月份 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.plan_month
+      source_type: character varying(6)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 计划所属月份 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/plan_month
+  - name: dealer_code
+    title: 经销商编码
+    sql: '{CUBE}."dealer_code"'
+    type: string
+    public: true
+    description: 经销商编码 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.dealer_code
+      source_type: character varying
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 经销商编码 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/dealer_code
+  - name: dealer_name
+    title: 经销商名称
+    sql: '{CUBE}."dealer_name"'
+    type: string
+    public: true
+    description: 经销商名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.dealer_name
+      source_type: character varying(255)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 经销商名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/dealer_name
+  - name: sku_code
+    title: SKU编码
+    sql: '{CUBE}."sku_code"'
+    type: number
+    public: true
+    description: SKU编码 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.sku_code
+      source_type: bigint
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: SKU编码 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/sku_code
+  - name: sku_name
+    title: SKU名称
+    sql: '{CUBE}."sku_name"'
+    type: string
+    public: true
+    description: SKU名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.sku_name
+      source_type: character varying(255)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: SKU名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/sku_name
+  - name: material_group_name
+    title: 物料组名称
+    sql: '{CUBE}."material_group_name"'
+    type: string
+    public: true
+    description: 物料组名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.material_group_name
+      source_type: character varying(255)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 物料组名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/material_group_name
+  - name: model_path
+    title: 模型路径
+    sql: '{CUBE}."model_path"'
+    type: string
+    public: true
+    description: 模型路径 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.model_path
+      source_type: text
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 模型路径 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/model_path
+  - name: category_basis
+    title: 分类依据
+    sql: '{CUBE}."category_basis"'
+    type: string
+    public: true
+    description: 分类依据 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.category_basis
+      source_type: character varying(255)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 分类依据 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/category_basis
+  - name: candidate_source
+    title: 候选来源
+    sql: '{CUBE}."candidate_source"'
+    type: string
+    public: true
+    description: 候选来源 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.candidate_source
+      source_type: character varying(255)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 候选来源 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/candidate_source
+  - name: category_model_path
+    title: 品类模型路径
+    sql: '{CUBE}."category_model_path"'
+    type: string
+    public: true
+    description: 品类模型路径 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.category_model_path
+      source_type: text
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 品类模型路径 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/category_model_path
+  - name: category_budget_share
+    title: 品类预算份额
+    sql: '{CUBE}."category_budget_share"'
+    type: number
+    public: true
+    description: 品类预算份额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.category_budget_share
+      source_type: numeric(10,6)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 品类预算份额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/category_budget_share
+  - name: category_budget_amount
+    title: 品类预算金额
+    sql: '{CUBE}."category_budget_amount"'
+    type: number
+    public: true
+    description: 品类预算金额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.category_budget_amount
+      source_type: numeric(18,4)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 品类预算金额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/category_budget_amount
+  - name: category_shrink_level
+    title: 品类收缩层级
+    sql: '{CUBE}."category_shrink_level"'
+    type: string
+    public: true
+    description: 品类收缩层级 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.category_shrink_level
+      source_type: text
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 品类收缩层级 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/category_shrink_level
+  - name: delivery_probability
+    title: 发货发生概率
+    sql: '{CUBE}."delivery_probability"'
+    type: number
+    public: true
+    description: 发货发生概率 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 本次有限样例全为NULL，不能据此断言全表缺失。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.delivery_probability
+      source_type: numeric(10,6)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 发货发生概率 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 本次有限样例全为NULL，不能据此断言全表缺失。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/delivery_probability
+  - name: probability_status
+    title: 概率状态
+    sql: '{CUBE}."probability_status"'
+    type: string
+    public: true
+    description: 概率状态 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.probability_status
+      source_type: character varying(100)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 概率状态 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/probability_status
+  - name: probability_model_path
+    title: 概率模型路径
+    sql: '{CUBE}."probability_model_path"'
+    type: string
+    public: true
+    description: 概率模型路径 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.probability_model_path
+      source_type: text
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 概率模型路径 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/probability_model_path
+  - name: probability_sample_size
+    title: 概率样本量
+    sql: '{CUBE}."probability_sample_size"'
+    type: number
+    public: true
+    description: 概率样本量 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.probability_sample_size
+      source_type: integer
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 概率样本量 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/probability_sample_size
+  - name: probability_positive_count
+    title: 概率正例数
+    sql: '{CUBE}."probability_positive_count"'
+    type: number
+    public: true
+    description: 概率正例数 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.probability_positive_count
+      source_type: integer
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 概率正例数 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/probability_positive_count
+  - name: probability_calibration_version
+    title: 概率校准版本
+    sql: '{CUBE}."probability_calibration_version"'
+    type: string
+    public: true
+    description: 概率校准版本 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.probability_calibration_version
+      source_type: character varying(100)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 概率校准版本 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/probability_calibration_version
+  - name: category_conditional_share
+    title: 品类内条件份额
+    sql: '{CUBE}."category_conditional_share"'
+    type: number
+    public: true
+    description: 品类内条件份额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.category_conditional_share
+      source_type: numeric(10,6)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 品类内条件份额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/category_conditional_share
+  - name: category_sku_share
+    title: 品类内SKU份额
+    sql: '{CUBE}."category_sku_share"'
+    type: number
+    public: true
+    description: 品类内SKU份额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.category_sku_share
+      source_type: numeric(10,6)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 品类内SKU份额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/category_sku_share
+  - name: holiday_cycle
+    title: 节日周期
+    sql: '{CUBE}."holiday_cycle"'
+    type: string
+    public: true
+    description: 节日周期 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.holiday_cycle
+      source_type: character varying(100)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 节日周期 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/holiday_cycle
+  - name: holiday_stage
+    title: 节日阶段
+    sql: '{CUBE}."holiday_stage"'
+    type: string
+    public: true
+    description: 节日阶段 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.holiday_stage
+      source_type: character varying(100)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 节日阶段 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/holiday_stage
+  - name: is_business_review_added
+    title: 是否业务审核新增
+    sql: '{CUBE}."is_business_review_added"'
+    type: number
+    public: true
+    description: 是否业务审核新增 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.is_business_review_added
+      source_type: smallint
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 是否业务审核新增 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/is_business_review_added
+  - name: is_fallback_used
+    title: 是否使用回退
+    sql: '{CUBE}."is_fallback_used"'
+    type: number
+    public: true
+    description: 是否使用回退 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.is_fallback_used
+      source_type: smallint
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 是否使用回退 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/is_fallback_used
+  - name: model_version
+    title: 模型版本
+    sql: '{CUBE}."model_version"'
+    type: string
+    public: true
+    description: 模型版本 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.model_version
+      source_type: character varying(100)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 模型版本 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/model_version
+  - name: parameter_version
+    title: 参数版本
+    sql: '{CUBE}."parameter_version"'
+    type: string
+    public: true
+    description: 参数版本 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.parameter_version
+      source_type: character varying(150)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 参数版本 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/parameter_version
+  - name: predicted_share
+    title: 预测份额
+    sql: '{CUBE}."predicted_share"'
+    type: number
+    public: true
+    description: 预测份额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.predicted_share
+      source_type: numeric(10,6)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 预测份额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/predicted_share
+  - name: predicted_sales_amount
+    title: 预测销额
+    sql: '{CUBE}."predicted_sales_amount"'
+    type: number
+    public: true
+    description: 预测销额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.predicted_sales_amount
+      source_type: numeric(18,4)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 预测销额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/predicted_sales_amount
+  - name: landed_price_excl_tax
+    title: 未税到岸单价
+    sql: '{CUBE}."landed_price_excl_tax"'
+    type: number
+    public: true
+    description: 未税到岸单价 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.landed_price_excl_tax
+      source_type: numeric(18,4)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 未税到岸单价 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/landed_price_excl_tax
+  - name: predicted_quantity
+    title: 预测数量
+    sql: '{CUBE}."predicted_quantity"'
+    type: number
+    public: true
+    description: 预测数量 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.predicted_quantity
+      source_type: bigint
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 预测数量 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/predicted_quantity
+  - name: quantity_status
+    title: 数量状态
+    sql: '{CUBE}."quantity_status"'
+    type: string
+    public: true
+    description: 数量状态 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.quantity_status
+      source_type: character varying(100)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 数量状态 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/quantity_status
+  - name: quantity_sales_amount
+    title: 数量对应销额
+    sql: '{CUBE}."quantity_sales_amount"'
+    type: number
+    public: true
+    description: 数量对应销额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.quantity_sales_amount
+      source_type: numeric(18,4)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 数量对应销额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/quantity_sales_amount
+  - name: quantity_amount_diff
+    title: 数量金额差额
+    sql: '{CUBE}."quantity_amount_diff"'
+    type: number
+    public: true
+    description: 数量金额差额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.quantity_amount_diff
+      source_type: numeric(18,4)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 数量金额差额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/quantity_amount_diff
+  - name: prediction_logic
+    title: 预测逻辑
+    sql: '{CUBE}."prediction_logic"'
+    type: string
+    public: true
+    description: 预测逻辑 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.prediction_logic
+      source_type: text
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 预测逻辑 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/prediction_logic
+  - name: actual_sales_amount
+    title: 实际发货金额
+    sql: '{CUBE}."actual_sales_amount"'
+    type: number
+    public: true
+    description: 实际发货金额；实际销售金额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 本次有限样例全为NULL，不能据此断言全表缺失。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.actual_sales_amount
+      source_type: numeric(18,4)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 实际发货金额；实际销售金额 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 本次有限样例全为NULL，不能据此断言全表缺失。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/actual_sales_amount
+  - name: hit_confidence
+    title: 命中把握
+    sql: '{CUBE}."hit_confidence"'
+    type: string
+    public: true
+    description: 命中把握 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.hit_confidence
+      source_type: character varying(50)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 命中把握 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/hit_confidence
+  - name: created_at
+    title: 创建时间
+    sql: '{CUBE}."created_at"'
+    type: time
+    public: true
+    description: 创建时间 技术时间不得自动替代业务日期。 源日期/时间按原类型映射；业务时区及完整批次仍需上线核验。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.created_at
+      source_type: timestamp(6) with time zone
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 创建时间 技术时间不得自动替代业务日期。 源日期/时间按原类型映射；业务时区及完整批次仍需上线核验。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/created_at
+  - name: sales_group_code
+    title: 销售组编码
+    sql: '{CUBE}."sales_group_code"'
+    type: string
+    public: true
+    description: 销售组编码 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.sales_group_code
+      source_type: character varying
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 销售组编码 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/sales_group_code
+  - name: sales_group_name
+    title: 销售组名称
+    sql: '{CUBE}."sales_group_name"'
+    type: string
+    public: true
+    description: 销售组名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.sales_group_name
+      source_type: character varying
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 销售组名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/sales_group_name
+  - name: region_code
+    title: 大区编码
+    sql: '{CUBE}."region_code"'
+    type: string
+    public: true
+    description: 大区编码 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.region_code
+      source_type: character varying
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 大区编码 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/region_code
+  - name: region_name
+    title: 大区名称
+    sql: '{CUBE}."region_name"'
+    type: string
+    public: true
+    description: 大区名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.region_name
+      source_type: character varying
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 大区名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/region_name
+  - name: province_region_code
+    title: 省区编码
+    sql: '{CUBE}."province_region_code"'
+    type: string
+    public: true
+    description: 省区编码 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.province_region_code
+      source_type: character varying
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 省区编码 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/province_region_code
+  - name: province_region_name
+    title: 省区名称
+    sql: '{CUBE}."province_region_name"'
+    type: string
+    public: true
+    description: 省区名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.province_region_name
+      source_type: character varying
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 省区名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/province_region_name
+  - name: product_categ_name
+    title: 品类名称
+    sql: '{CUBE}."product_categ_name"'
+    type: string
+    public: true
+    description: 品类名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.product_categ_name
+      source_type: character varying(255)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 品类名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/product_categ_name
+  - name: actual_sales_quantity
+    title: 实际发货数量
+    sql: '{CUBE}."actual_sales_quantity"'
+    type: number
+    public: true
+    description: 实际发货数量 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 本次有限样例全为NULL，不能据此断言全表缺失。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.actual_sales_quantity
+      source_type: numeric(18,4)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 实际发货数量 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 本次有限样例全为NULL，不能据此断言全表缺失。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/actual_sales_quantity
+  - name: belong_base
+    title: 基地名称
+    sql: '{CUBE}."belong_base"'
+    type: string
+    public: true
+    description: 基地名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.belong_base
+      source_type: character varying(255)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 基地名称 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/belong_base
+  - name: is_ai_new_candidate
+    title: 1=客户当前可售、但预测时点前无该客户历史发货的AI候选
+    sql: '{CUBE}."is_ai_new_candidate"'
+    type: number
+    public: true
+    description: 1=客户当前可售、但预测时点前无该客户历史发货的AI候选；不等同于人工业务新增 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.is_ai_new_candidate
+      source_type: integer
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 1=客户当前可售、但预测时点前无该客户历史发货的AI候选；不等同于人工业务新增 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/is_ai_new_candidate
+  - name: is_split
+    title: 1=已进入AI拆分并承接目标
+    sql: '{CUBE}."is_split"'
+    type: number
+    public: true
+    description: 1=承接拆分目标，0=可售范围内未拆分；M预测指标限定1，M实际发货指标必须包含0和1。不能对两类指标一起加全局is_split=1；不把零预测等同缺失。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.is_split
+      source_type: smallint
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 1=已进入AI拆分并承接目标；0=可售范围内未拆分SKU，预测数量和金额为0 数值维度显示单行原值，不自动求和；ID、价格、比率、天数不得作为可加数量。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/is_split
+  - name: order_type
+    title: 数据类型，M代表月初预测结果，Z代表月中纠偏
+    sql: '{CUBE}."order_type"'
+    type: string
+    public: true
+    description: M月初、Z纠偏整月值。同键两者不能相加；本表Z指标只表示子集。只有独立effective模型按已确认口径以Z覆盖M；不得对已有Z行的NULL字段偷偷回填M。
+    meta:
+      source_column: data_service.agents_sales_forecast_detail_mi.order_type
+      source_type: character(1)
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      ai_context: 数据类型，M代表月初预测结果，Z代表月中纠偏 保留编码、前导零、空字符串及NULL；文本日期/金额不因样例看似可转换就强转。 月份×M/Z类型×客户×SKU预测；不合计月初与纠偏版本；未拆分可售SKU的0不等于预测缺失，实际销额可NULL；价格、份额、概率不求和。
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+      sample_profile: docs/sample-profile.json#/tables/agents_sales_forecast_detail_mi/order_type
+  measures:
+  - name: row_count
+    title: 记录行数
+    type: count
+    public: true
+    description: 筛选范围内物理记录计数；不是客户、政策、订单去重数，也不是库存数量。
+    meta:
+      semantic_status: observed
+      semantic_version: business-tables-20260923-1
+      unit: 行
+      evidence:
+      - docs/SOURCES.md#agents_sales_forecast_detail_mi
+  - name: monthly_initial_predicted_sales_amount
+    title: 月初已拆分预测金额
+    sql: '{CUBE}."predicted_sales_amount"'
+    type: sum
+    description: 仅M且is_split=1的预测金额，单位元；查询仍需明确月份和授权范围。
+    filters:
+    - sql: '{CUBE}."order_type" = ''M'' AND {CUBE}."is_split" = 1'
+    meta:
+      semantic_status: needs_confirmation
+      unit: 元
+      evidence:
+      - SRC-DDL-001
+      - SRC-USER-001
+  - name: monthly_initial_actual_sales_amount
+    title: 月初全范围实际发货金额
+    sql: '{CUBE}."actual_sales_amount"'
+    type: sum
+    description: 所有M行的实际发货金额，包含is_split=0；当前月为截至查询时，单位元。
+    filters:
+    - sql: '{CUBE}."order_type" = ''M'''
+    meta:
+      semantic_status: needs_confirmation
+      unit: 元
+      evidence:
+      - SRC-DDL-001
+      - SRC-USER-005
+  - name: monthly_initial_attainment_rate
+    title: 月初实际达成比率
+    sql: 1.0 * {monthly_initial_actual_sales_amount} / NULLIF({monthly_initial_predicted_sales_amount}, 0)
+    type: number
+    format: percent
+    description: 全部M实际发货金额除以is_split=1的M预测金额；零或缺失分母为NULL，当前月仅为截至查询时达成。
+    meta:
+      semantic_status: needs_confirmation
+      evidence:
+      - SRC-USER-002
+      - SRC-USER-004
+      - SRC-USER-005
+  - name: correction_rows_predicted_sales_amount
+    title: 纠偏覆盖子集预测金额
+    sql: '{CUBE}."predicted_sales_amount"'
+    type: sum
+    description: 仅Z行的整月预测金额；Z只覆盖部分客户/SKU，不能代表全范围纠偏后总额。
+    filters:
+    - sql: '{CUBE}."order_type" = ''Z'''
+    meta:
+      semantic_status: needs_confirmation
+      unit: 元
+      evidence:
+      - SRC-DDL-001
+      - SRC-USER-003
+  - name: correction_rows_actual_sales_amount
+    title: 纠偏覆盖子集实际发货金额
+    sql: '{CUBE}."actual_sales_amount"'
+    type: sum
+    description: 仅Z行对应客户/SKU的整月实际发货金额；Z子集不能代表全大区实际。
+    filters:
+    - sql: '{CUBE}."order_type" = ''Z'''
+    meta:
+      semantic_status: needs_confirmation
+      unit: 元
+      evidence:
+      - SRC-DDL-001
+      - SRC-USER-003
+  - name: monthly_initial_predicted_quantity
+    title: 月初已拆分预测数量
+    sql: '{CUBE}."predicted_quantity"'
+    type: sum
+    description: 仅M且is_split=1的预测数量，单位件。
+    filters:
+    - sql: '{CUBE}."order_type" = ''M'' AND {CUBE}."is_split" = 1'
+    meta:
+      semantic_status: needs_confirmation
+      unit: 件
+      evidence:
+      - SRC-DDL-001
+      - SRC-USER-005
+  - name: monthly_initial_actual_sales_quantity
+    title: 月初全范围实际发货数量
+    sql: '{CUBE}."actual_sales_quantity"'
+    type: sum
+    description: 所有M行的实际发货数量，包含is_split=0；当前月为截至查询时，单位件。
+    filters:
+    - sql: '{CUBE}."order_type" = ''M'''
+    meta:
+      semantic_status: needs_confirmation
+      unit: 件
+      evidence:
+      - SRC-DDL-001
+      - SRC-USER-005
+  - name: correction_rows_predicted_quantity
+    title: 纠偏覆盖子集预测数量
+    sql: '{CUBE}."predicted_quantity"'
+    type: sum
+    description: 仅Z行的整月预测数量，单位件；不能代表全范围纠偏后数量。
+    filters:
+    - sql: '{CUBE}."order_type" = ''Z'''
+    meta:
+      semantic_status: needs_confirmation
+      unit: 件
+      evidence:
+      - SRC-DDL-001
+      - SRC-USER-005
+  - name: correction_rows_actual_sales_quantity
+    title: 纠偏覆盖子集实际发货数量
+    sql: '{CUBE}."actual_sales_quantity"'
+    type: sum
+    description: 仅Z行对应客户/SKU的整月实际发货数量，单位件；不能代表全范围。
+    filters:
+    - sql: '{CUBE}."order_type" = ''Z'''
+    meta:
+      semantic_status: needs_confirmation
+      unit: 件
+      evidence:
+      - SRC-DDL-001
+      - SRC-USER-005

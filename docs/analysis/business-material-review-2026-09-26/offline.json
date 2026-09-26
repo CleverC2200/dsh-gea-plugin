@@ -1,0 +1,118 @@
+{
+  "forecast": {
+    "status": "pass",
+    "result": {
+      "offline": "pass",
+      "checks": [
+        "YAML members and filters",
+        "Q01 REST query members and filter",
+        "base measure SQL filters and sums",
+        "effective model SQL selection",
+        "M actual includes unsplit rows",
+        "M and Z amount and piece totals",
+        "effective amount and attainment",
+        "region shares with unassigned",
+        "current month fixture"
+      ],
+      "fixture_version": "sales-forecast-fixture-2",
+      "cube_compile": "not_run",
+      "cube_query": "not_run",
+      "gea_replay": "not_run",
+      "production_validation": "not_run"
+    }
+  },
+  "branch": {
+    "status": "pass",
+    "result": {
+      "status": "pass",
+      "model_version": "example-3",
+      "documentation": {
+        "content_files": 10,
+        "paired_readmes": 10,
+        "local_links_checked": 87
+      },
+      "case_count": 14,
+      "calculated_query_cases": 7,
+      "non_execution_fixture_cases": 7,
+      "cases": [
+        {
+          "id": "Q01",
+          "status": "pass",
+          "scope": "结构/前提/夹具分组计算",
+          "result_rows": 1
+        },
+        {
+          "id": "Q02",
+          "status": "pass",
+          "scope": "结构/前提/夹具分组计算",
+          "result_rows": 2
+        },
+        {
+          "id": "Q03",
+          "status": "pass",
+          "scope": "结构/前提/夹具分组计算",
+          "result_rows": 2
+        },
+        {
+          "id": "Q04",
+          "status": "pass",
+          "scope": "结构/前提/夹具分组计算",
+          "result_rows": 0
+        },
+        {
+          "id": "Q05",
+          "status": "pass",
+          "scope": "结构/前提/夹具分组计算",
+          "result_rows": 1
+        },
+        {
+          "id": "Q06",
+          "status": "pass",
+          "scope": "结构及异常输入构造；未验证GEA决策/回答"
+        },
+        {
+          "id": "Q07",
+          "status": "pass",
+          "scope": "结构及异常输入构造；未验证GEA决策/回答"
+        },
+        {
+          "id": "Q08",
+          "status": "pass",
+          "scope": "结构及异常输入构造；未验证GEA决策/回答"
+        },
+        {
+          "id": "Q09",
+          "status": "pass",
+          "scope": "结构及异常输入构造；未验证GEA决策/回答"
+        },
+        {
+          "id": "Q10",
+          "status": "pass",
+          "scope": "结构及异常输入构造；未验证GEA决策/回答"
+        },
+        {
+          "id": "Q11",
+          "status": "pass",
+          "scope": "结构及异常输入构造；未验证GEA决策/回答"
+        },
+        {
+          "id": "Q12",
+          "status": "pass",
+          "scope": "结构及异常输入构造；未验证GEA决策/回答"
+        },
+        {
+          "id": "Q13",
+          "status": "pass",
+          "scope": "结构/前提/夹具分组计算",
+          "result_rows": 1
+        },
+        {
+          "id": "Q14",
+          "status": "pass",
+          "scope": "结构/前提/夹具分组计算",
+          "result_rows": 1
+        }
+      ]
+    }
+  }
+}

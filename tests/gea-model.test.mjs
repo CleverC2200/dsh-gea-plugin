@@ -67,7 +67,9 @@ test(
       modelRequests.push(request);
       response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
       response.write(": heartbeat\r\n\r\n");
-      for (const content of parts)
+      for (const content of mode === "dsml"
+        ? ['<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="gea_cube_query">']
+        : parts)
         response.write(
           event({
             choices: [{ index: 0, delta: { content }, finish_reason: null }],
@@ -82,8 +84,15 @@ test(
       else if (mode === "done-only") response.end("data: [DONE]\r\n\r\n");
       else
         response.end(
-          event({ choices: [{ index: 0, delta: {}, finish_reason: mode }] }) +
-            "data: [DONE]\r\n\r\n",
+          event({
+            choices: [
+              {
+                index: 0,
+                delta: {},
+                finish_reason: mode === "dsml" ? "stop" : mode,
+              },
+            ],
+          }) + "data: [DONE]\r\n\r\n",
         );
       return true;
     });
@@ -171,6 +180,64 @@ test(
             failure,
           );
         }
+      },
+    );
+    await t.test(
+      "tool syntax in plain text is rejected rather than completed or executed",
+      async () => {
+        mode = "dsml";
+        const rows = await ended(await submit());
+        assert.notEqual(
+          rows.find((row) => row.type === "turn/end").data.reason.kind,
+          "completed",
+        );
+        assert.equal(rows.filter((row) => row.type === "tool/call").length, 0);
+        assert.match(JSON.stringify(rows), /GEA_MODEL_TOOL_TEXT/);
+        assert.match(JSON.stringify(rows), /PROVIDER_PROTOCOL/);
+      },
+    );
+    await t.test(
+      "scoped discovery reports its consumer and rejects unknown presets",
+      async () => {
+        const found = await app.rpc("model/discover", {
+          agentPreset: "gea-html-inventory-apsplan",
+        });
+        assert.equal(found.ok, true, JSON.stringify(found));
+        assert.equal(found.value.consumerCode, "aps");
+        const unknown = await app.rpc("model/discover", {
+          agentPreset: "made-up",
+        });
+        assert.equal(unknown.ok, false);
+        assert.match(JSON.stringify(unknown), /GEA_AGENT_PRESET_UNSUPPORTED/);
+      },
+    );
+    await t.test(
+      "unsupported model fails with a specific code before a completion request",
+      async () => {
+        const created = await app.remote("session/create", {
+          cwd: app.runtime + "/workspace",
+          agentPreset: "gea-readonly",
+        });
+        const sessionId = created.value.sessionId;
+        await app.remote("session/selectModel", {
+          sessionId,
+          provider: "gea-analysis",
+          model: "not-allowed",
+        });
+        const count = modelRequests.length;
+        await app.remote("session/prompt", {
+          sessionId,
+          requestId: crypto.randomUUID(),
+          mode: "queue",
+          content: [{ type: "text", text: "fixture" }],
+        });
+        const rows = await ended(sessionId);
+        assert.equal(modelRequests.length, count);
+        assert.match(JSON.stringify(rows), /MODEL_NOT_FOUND/);
+        assert.notEqual(
+          rows.find((row) => row.type === "turn/end").data.reason.kind,
+          "completed",
+        );
       },
     );
     await t.test(

@@ -1,4 +1,5 @@
 import { TOOL_DESCRIPTIONS, profileFor } from "./host/prompt-policy.ts";
+import { sessionConsumer } from "./host/business-identity.ts";
 import { readFile, readdir, realpath, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -707,13 +708,7 @@ ${toolbarSelectors} {
   );
 
   return {
-    // 模型侧用的 GEA agentCode 也只看当前页身份：技能/口径才能跟着页面走。
-    // 演示（mock）模块的 consumerCode 只是本地标识，不作为网关 agentCode 使用。
-    consumerForSession: (session?: string) => {
-      if (!session) return undefined;
-      const identity = business.currentPageIdentity?.(session);
-      return identity && !identity.mock ? identity.consumerCode : undefined;
-    },
+    consumerForSession: (session?: string) => sessionConsumer(ctx, business, session),
     capabilityContracts,
   };
 }

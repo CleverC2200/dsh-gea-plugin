@@ -1,0 +1,66 @@
+{
+  "requests": [
+    {
+      "i": 0,
+      "roles": [
+        "system",
+        "user",
+        "user"
+      ],
+      "containsBody": false
+    },
+    {
+      "i": 1,
+      "roles": [
+        "system",
+        "user",
+        "user",
+        "assistant",
+        "tool"
+      ],
+      "containsBody": true
+    },
+    {
+      "i": 2,
+      "roles": [
+        "system",
+        "user",
+        "user",
+        "assistant",
+        "tool",
+        "assistant",
+        "user",
+        "user"
+      ],
+      "containsBody": true
+    },
+    {
+      "i": 3,
+      "roles": [
+        "system",
+        "user",
+        "user",
+        "assistant",
+        "tool",
+        "assistant",
+        "user",
+        "user",
+        "assistant",
+        "tool"
+      ],
+      "containsBody": true
+    }
+  ],
+  "replies": [
+    {
+      "hasBody": true,
+      "instructionId": "6572ac3c09857cc67830cf42"
+    },
+    {
+      "alreadyLoaded": true,
+      "hasBody": false,
+      "instructionId": "6572ac3c09857cc67830cf42"
+    }
+  ],
+  "secondTurnFalsePositive": false
+}

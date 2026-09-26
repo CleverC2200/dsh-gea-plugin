@@ -20,13 +20,15 @@ export type McpTool = {
   inputSchema?: unknown;
 };
 
+export type McpDelivery = {sourceReadComplete: boolean; unreadArtifacts: Array<{uri: string; reason: "read-failed" | "not-inlined"}>; notes: string[]};
+
 export type McpModule = {
   authorizedResources: ResourceReader;
   tools(): McpTool[];
   /** 某个工具的完整入参定义（含类型、枚举、嵌套字段）；名字不存在返回 undefined。 */
   schema(name: string): string | undefined;
   /** onResult sees successful content before presentation truncation; it never fetches extra pages. */
-  call(name: string, args: Record<string, unknown>, signal: AbortSignal, onResult?: (text: string) => void): Promise<string>;
+  call(name: string, args: Record<string, unknown>, signal: AbortSignal, onResult?: (text: string) => void, onDelivery?: (delivery: McpDelivery) => void): Promise<string>;
   /**
    * 读大结果制品的某一段。完整正文由宿主按制品 URI 缓存，模型按需一段段取，
    * 不用把几十万字符一次塞进上下文。
@@ -801,7 +803,7 @@ export async function openModuleMcp(
       );
     },
     artifact: (uri, artifactSignal) => readArtifact(uri, artifactSignal),
-    call: async (name, args, callSignal, onResult) => {
+    call: async (name, args, callSignal, onResult, onDelivery) => {
       const id = randomUUID();
       const response = await post(
         {
@@ -817,6 +819,7 @@ export async function openModuleMcp(
       if (links.length === 0) {
         const text = readableToolOutcome(result, readableTexts(result) || resultText(result));
         if (!text.startsWith(PERMISSION_NOTICE_PREFIX)) onResult?.(text);
+        onDelivery?.({sourceReadComplete:true,unreadArtifacts:[],notes:rowPageHints(text,args)});
         return text;
       }
       // 线上实测：这类结果以 `data-artifact://gateway/…` 链接返回，模型得再调一次
@@ -828,6 +831,7 @@ export async function openModuleMcp(
       const parts: string[] = [];
       const shown = links.slice(0, MAX_RESOURCE_LINKS);
       const skipped = links.slice(MAX_RESOURCE_LINKS);
+      const delivery: McpDelivery = {sourceReadComplete:skipped.length===0,unreadArtifacts:skipped.map(link=>({uri:link.uri,reason:"not-inlined"})),notes:[]};
       // 每段预留提示文字，保证整体不超过单次结果上限。
       const chunkChars = Math.max(
         2_000,
@@ -840,6 +844,7 @@ export async function openModuleMcp(
         try {
           const text = await readArtifact(link.uri, callSignal);
           onResult?.(text);
+          delivery.notes.push(...rowPageHints(text,args));
           const head = text.slice(0, chunkChars);
           markRead(link.uri, 0, head.length);
           const more =
@@ -859,6 +864,8 @@ export async function openModuleMcp(
             `【结果内容 ${link.uri}】\n${head}${more}${sizeHint}${rowPageHints(text, args).join("")}`,
           );
         } catch (error) {
+          delivery.sourceReadComplete=false;
+          delivery.unreadArtifacts.push({uri:link.uri,reason:"read-failed"});
           parts.push(
             `【结果内容读不回来：${link.uri}（${
               error instanceof Error ? error.message : String(error)
@@ -873,6 +880,7 @@ export async function openModuleMcp(
             .map((link) => link.uri)
             .join("、")}。要哪个就用 gea_module_mcp 带 artifact=<URI> 去读，别重新跑一遍查询。）`,
         );
+      onDelivery?.(delivery);
       return parts.join("\n").slice(0, MAX_RESULT_CHARS);
     },
   };

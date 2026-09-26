@@ -5,7 +5,7 @@ const filter = (depth: number): ValueSchemaSpec => depth === 0 ? leaf : {oneOf:[
   {type:'object',additionalProperties:false,properties:{and:{type:'array',required:true,items:filter(depth-1)}}},
   {type:'object',additionalProperties:false,properties:{or:{type:'array',required:true,items:filter(depth-1)}}}]};
 export const cubeQueryParameters = {
-  consumerCode:{type:'string',required:true,description:'已注册业务 Agent 编码，使用系统协议或业务模块清单里的原始编码，不能按业务名称自行翻译。使用所选业务身份，拒绝后不换身份重试。'},
+  consumerCode:{type:'string',description:'省略时由宿主使用所选业务Agent身份。只有明确的跨业务任务才指定已注册编码；授权拒绝后不得换身份试探。'},
   queries:{type:'array',required:true,description:'1–8 条独立具名查询；每条只引用一个模型。宿主按模型分开执行。',items:{type:'object',additionalProperties:false,properties:{
     name:{type:'string',required:true},
     query:{type:'object',required:true,additionalProperties:false,properties:{

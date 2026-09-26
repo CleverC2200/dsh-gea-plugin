@@ -266,7 +266,7 @@ export function parseFirstJsonObject(text: string, parse: (text: string) => unkn
   throw new Error("GEA_CATALOG_TRUNCATED");
 }
 
-type Member = { name?: string; type?: string };
+type Member = { name?: string; type?: string; description?: string; meta?: {unit?: string; ai_context?: string} };
 type Model = {
   name?: string;
   title?: string;
@@ -601,6 +601,13 @@ function modelDetails(
       parts.push("  度量：无（这个模型没有定义 measure：所有成员一律放 dimensions，数值字段也不要写进 measures）");
     if (segments.length)
       parts.push(`  分段(${segments.length})：${segments.slice(0, options.maxMembers).join(", ")}`);
+    const semantics = (model.measures ?? []).filter(member=>typeof member?.name === "string")
+      .slice(0,8).map(member=>{
+        const notes=[member.description,member.meta?.unit?`单位：${member.meta.unit}`:undefined,member.meta?.ai_context]
+          .filter((text): text is string=>typeof text === "string" && !!text.trim());
+        return notes.length ? `  ${member.name} 语义：${(notes.join("；").length<=1200?notes.join("；").replace(/\s+/g," "):"完整语义较长未展开，需核对原始规则；不得据省略内容推断公式或单位。")}` : "";
+      }).filter(Boolean);
+    parts.push(...semantics);
     // 实测过的"这列取不到可用值"直接写在成员清单里：省掉模型"一个模型一个模型试"的过程
     // （线上实测 session-bbd8f3be：大区列全为空串，模型换 6 个模型、24 步才得出结论）。
     if (options.memberNotes?.size) {

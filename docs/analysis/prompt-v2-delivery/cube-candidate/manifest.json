@@ -1,0 +1,35 @@
+{
+  "source": "read-only GET /playground/files at 100.100.1.228:4000",
+  "baseFile": "cubes/agents_sales_forecast_detail_mi.yml",
+  "baseSha256": "1fbefa53aa0e246b6c346874a80327f0764674b97d22045f11cfd2e29998c1c4",
+  "candidateSha256": "106f383e4c7daaf73fab473e92a8e9de1146a082f587acd5102069e4a1a3acc9",
+  "preservedMeasures": [
+    "row_count"
+  ],
+  "preservedSegments": [
+    "month_start_m",
+    "correction_z"
+  ],
+  "addedMeasures": [
+    "monthly_initial_predicted_sales_amount",
+    "monthly_initial_actual_sales_amount",
+    "monthly_initial_attainment_rate",
+    "correction_rows_predicted_sales_amount",
+    "correction_rows_actual_sales_amount",
+    "monthly_initial_predicted_quantity",
+    "monthly_initial_actual_sales_quantity",
+    "correction_rows_predicted_quantity",
+    "correction_rows_actual_sales_quantity"
+  ],
+  "dimensions": 51,
+  "status": "prepared_not_deployed",
+  "cubeCompilation": "not_run",
+  "resourceAuthorization": "not_changed",
+  "pending": [
+    "Historical quantity units and actual backfill verification",
+    "Target Cube compilation and exact SQL/data reconciliation",
+    "Register effective model and authorized resources for actual consumers",
+    "Business shortage metric and full-chain/aps resource mapping"
+  ],
+  "effectiveCandidateSha256": "621245301dc53def474a0dce844d377416177f78db18c0b623443ef399b245e9"
+}

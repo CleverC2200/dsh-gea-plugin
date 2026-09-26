@@ -81,7 +81,7 @@ test("已有 code 的错误与用户中止保持原样（不重复包装）", ()
 
 test("接线：模型流式请求与 GEA 请求出口都走这套翻译", async () => {
   const host = await readFile("src/host.ts", "utf8");
-  assert.match(host, /throw networkError\(error, \{/);
+  assert.match(host, /(?:throw |const converted\s*=\s*)networkError\(error,\s*\{/);
   assert.match(host, /stage = "流式读取"/);
   const log = await readFile("src/host/api-log.ts", "utf8");
   assert.match(log, /throw networkError\(error, \{/);

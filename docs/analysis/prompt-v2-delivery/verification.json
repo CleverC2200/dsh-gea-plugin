@@ -1,0 +1,45 @@
+{
+  "status": "local_implementation_verified_business_acceptance_not_passed",
+  "sourceBase": "ee8a0264379109973e972b79dd7c9f713a10f0ed",
+  "buildHost": "pass",
+  "typecheck": "pass",
+  "fullTests": {
+    "tests": 633,
+    "pass": 630,
+    "fail": 0,
+    "skipped": 3
+  },
+  "durationMs": 258730.677667,
+  "testLogSha256": "5ac9b9d36af11a7e44febe7696734e8582626dad48e2bd46e29ac4d6bd1f50ab",
+  "skipped": "3 pre-existing correction UI cases; not changed to skip in this task",
+  "reviews": {
+    "implementation": "No remaining confirmed actionable finding after fixes",
+    "spec": "No remaining must-fix issue after symmetric evidence-read argument check"
+  },
+  "realModel": {
+    "r1Primary": 14,
+    "r2Primary": 14,
+    "r2Additional": 9,
+    "dataTasksFullyCompleted": 0,
+    "dataTasksTotal": 7,
+    "providerUsage": "not supplied",
+    "deploy": "not performed",
+    "productionAuthChanges": "not performed",
+    "installedClientSwitch": "not performed"
+  },
+  "sourceHashes": {
+    "presets/prompt-policy.json": "517fce95024ce3c29a162c0beabfc5b3a1a07567646b49ea2b577b4df713d42b",
+    "src/host.ts": "71f0d9db9423f95b4eecf99026836a366e641e68ce463270484ebb256a014216",
+    "src/host/agent-tools.ts": "55d3697427d32ddf9dfa0bc8857072c9ac6bd8592f46731505ae03bf8bb0d1ef",
+    "src/host/business-identity.ts": "797bac2346dd0fabd93af0889636a7cd1bbb3d6d2182e0247df4b2166cde5796",
+    "src/host/prompt-result.ts": "b76f46aedccc055bae2434f8ba72601935c89b6c882d285bbcd7b31a41506d08",
+    "src/host/prompt-runtime.ts": "78a119137dfdc5f5fa8748a1cccc08cc2ef3075caa14e7f672a79ecc3839a4db",
+    "src/host/prompt-evidence.ts": "7d4cb7962bfcd587c6ad46d4a3fd6ef54a1d604c110ffdcd3cb347466babb391",
+    "src/host/gateway-catalog.ts": "13fe2170ffe40307d5297b3d982c5ed580a16d3c4d658b4232bec28988b08644",
+    "src/host/mcp-client.ts": "a88b159656d569b9949577b079218748a9588d9ecaad1fe8c1699b34fb4a7a57",
+    "src/host/cube-query-schema.ts": "12f532caa6fa32cc2f993cb3d9675360f22c5051e9db3e5408dd5dc4c585bc96",
+    "src/host/prompt-policy.ts": "6690ba8b3bd9576fe816dcb6ea2000a1618de7801b7852dc8f569e7e092335ef",
+    "src/html-plugins.ts": "7f7b67f564e320335eba8d4e4065448f7f3dee97feaf435d33d691946300abe2",
+    "src/shared/transport-signal.ts": "15cf878f9faa0dd5e2da059f06c08a994589fc52e5ab73dc7d23f2743fffabdb"
+  }
+}

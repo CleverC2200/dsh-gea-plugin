@@ -16,6 +16,7 @@ export type PromptProfile = {
   consumerCode: string;
   persona: string;
   skills: string[];
+  crossConsumers?: string[];
 };
 export const PROFILES: Readonly<Record<string, PromptProfile>> =
   policy.profiles;

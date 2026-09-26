@@ -12,6 +12,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-agent";
 import {
   LlmAdapter,
+  LlmError,
   ReasoningEffortId,
   createUserMessage,
   type GenerateOptions,
@@ -24,6 +25,7 @@ import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
 import { lastUserQuestion, mountTurnAnchor } from "./host/turn-anchor.ts";
+import { profileFor } from "./host/prompt-policy.ts";
 import { mountBusinessPrompts } from "./host/prompt-runtime.ts";
 import { mountSessionToolRestraint } from "./host/session-tool-restraint.ts";
 import { networkError } from "./shared/net-error.ts";
@@ -218,8 +220,11 @@ class GeaModelAdapter extends LlmAdapter {
         this.htmlConsumer(options.sessionId) ?? this.business.config.analysisAgentCode,
       );
       if (!route.models.includes(options.model))
-        throw new Error("GEA_MODEL_NOT_FOUND");
+        throw new LlmError("GEA_MODEL_NOT_FOUND: 当前Agent不支持所选模型，请按当前Agent重新发现并选择模型；不能借用其它Agent的模型身份。", "MODEL_NOT_FOUND");
       const requestBody = toGeaRequest(options);
+      const requestId=randomUUID();
+      console.info(JSON.stringify({event:"GEA_MODEL_REQUEST",requestId,sessionId:options.sessionId,consumerCode:route.agentCode,model:options.model,
+        messageChars:JSON.stringify(requestBody.messages).length,toolSchemaChars:JSON.stringify(requestBody.tools??[]).length}));
       const response = await this.business.fetchExternal(route.baseUrl + "/chat/completions", {
         method: "POST",
         headers: {
@@ -246,18 +251,27 @@ class GeaModelAdapter extends LlmAdapter {
           .startsWith("text/event-stream")
       )
         throw new Error("GEA_MODEL_NOT_SSE");
-      yield* geaTextStream(response.body, signal, {
+      let reportedUsage=false;
+      let responsePrefix="";
+      for await (const chunk of geaTextStream(response.body, signal, {
         names: options.tools?.map((tool) => tool.name) ?? [],
         maxBytes: this.business.config.maxSnapshotBytes,
-      });
+      })) {
+        if(chunk.type === "text-delta" && responsePrefix.length<500)responsePrefix=(responsePrefix+chunk.text).slice(0,500);
+        if(chunk.type === "finish" && chunk.reason.kind === "stop" && /^\s*<[|｜]{2}DSML[|｜]{2}(?:tool_calls|invoke)/.test(responsePrefix))
+          throw new LlmError("GEA_MODEL_TOOL_TEXT: 模型把工具调用写成了文本，未执行这些调用，也未完成业务答复。", "PROVIDER_PROTOCOL");
+        if (chunk.type === "usage") { reportedUsage=true; console.info(JSON.stringify({event:"GEA_MODEL_USAGE",requestId,sessionId:options.sessionId,usage:chunk.usage})); }
+        yield chunk;
+      }
+      if(!reportedUsage) console.info(JSON.stringify({event:"GEA_MODEL_USAGE",requestId,sessionId:options.sessionId,usage:null}));
     } catch (error) {
       // 线上实测：模型请求断线时界面只有 `fetch failed` + UNKNOWN（undici 的真实原因在 cause 里）。
       // 统一翻成可读、带 code 的错误：连哪个 host、断在连接还是流式阶段、原因码是什么。
-      throw networkError(error, {
-        what: `模型网关 ${modelHost}`,
-        stage,
-        timeoutMs: this.business.config.modelRequestTimeoutMs,
-      });
+      if(error instanceof LlmError)throw error;
+      const converted=networkError(error, {what:`模型网关 ${modelHost}`,stage,timeoutMs:this.business.config.modelRequestTimeoutMs});
+      if(converted.name === "AbortError")throw converted;
+      const code=(converted as Error & {code?:unknown}).code;
+      throw new LlmError(converted.message,typeof code === "string"?code:"NETWORK");
     } finally {
       transport.dispose();
     }
@@ -818,9 +832,12 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
               }
               case "model/discover": {
                 if (!business.status().authenticated) throw new Error('LOGIN_REQUIRED');
+                const requestedPreset=payload.agentPreset;
+                if(requestedPreset !== undefined && (typeof requestedPreset !== "string" || !profileFor(requestedPreset)))throw Error("GEA_AGENT_PRESET_UNSUPPORTED");
+                const discoveryConsumer=typeof requestedPreset === "string" && requestedPreset !== "gea-readonly"?profileFor(requestedPreset)!.consumerCode:config.analysisAgentCode;
                 const route = config.analysisSource === 'direct' ? {models:[config.analysisModel],names:{[config.analysisModel]:config.analysisModel}} : await business.modelRoute(
                   request.signal,
-                  config.analysisAgentCode,
+                  discoveryConsumer,
                 );
                 const selected = route.models.includes(config.analysisModel)
                   ? config.analysisModel
@@ -830,12 +847,13 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 const kept = geaKeptReasoningEffort(
                   ctx.agentDefaultModel.currentSelection(),
                 );
-                await ctx.agentDefaultModel.saveSelection({
+                if(requestedPreset === undefined)await ctx.agentDefaultModel.saveSelection({
                   provider: "gea-analysis",
                   model: selected,
                   ...(kept === undefined ? {} : { reasoningEffort: kept }),
                 });
                 value = {
+                  ...(requestedPreset===undefined?{}:{consumerCode:discoveryConsumer}),
                   models: route.models,
                   selected,
                   names: route.names,

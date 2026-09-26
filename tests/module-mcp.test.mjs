@@ -765,3 +765,18 @@ test('host evidence callback receives hydrated content before the model preview 
  assert.equal(captured,artifact);assert.ok(output.length<artifact.length);assert.match(output,/只内联/);
  assert.equal(seen.filter(x=>x.method==='resources/read').length,1,'evidence does not issue an extra query or page read');
 });
+
+test('delivery metadata preserves failed and unhydrated resources beside one successful body', async () => {
+  const links=['data-artifact://gateway/ok','data-artifact://gateway/failed','data-artifact://gateway/skipped'];
+  const {transport}=fakeTransport(body=>{
+    if(body.method==='initialize')return json({jsonrpc:'2.0',id:body.id,result:{}});
+    if(body.method==='notifications/initialized')return new Response('',{status:202});
+    if(body.method==='tools/list')return json({jsonrpc:'2.0',id:body.id,result:{tools:[{name:'read_inventory',inputSchema:{type:'object',properties:{}}}]}});
+    if(body.method==='tools/call')return json({jsonrpc:'2.0',id:body.id,result:{content:links.map(uri=>({type:'resource_link',uri,mimeType:'application/json'}))}});
+    if(body.method==='resources/read')return body.params.uri===links[0]?json({jsonrpc:'2.0',id:body.id,result:{contents:[{uri:links[0],mimeType:'application/json',text:'{"rows":[{"qty":"12.3400"}]}'}]}}):json({jsonrpc:'2.0',id:body.id,error:{code:-32000,message:'fixture resource unavailable'}});
+    throw Error('unexpected '+body.method);
+  });
+  const module=await m.openModuleMcp(transport,new AbortController().signal),bodies=[];let delivery;
+  const text=await module.call('read_inventory',{},new AbortController().signal,body=>bodies.push(body),value=>delivery=value);
+  assert.equal(bodies.length,1);assert.equal(delivery.sourceReadComplete,false);assert.deepEqual(delivery.unreadArtifacts.map(x=>x.reason).sort(),['not-inlined','read-failed']);assert.match(text,/读不回来/);assert.match(text,/没有内联/);
+});

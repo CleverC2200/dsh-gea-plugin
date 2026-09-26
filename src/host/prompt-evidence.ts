@@ -53,15 +53,25 @@ export function projectEvidence(
   text: string,
   evidenceId: string,
   limit = 6000,
+  view?: unknown,
 ): string {
   if (text.length <= limit) return text;
   let data: unknown;
   try {
-    data = exactResult(text);
+    data = view ?? exactResult(text);
   } catch {
     data = undefined;
   }
   const omitted: string[] = [];
+  if (view !== undefined) {
+    const fullView = JSON.stringify({
+      evidenceId,
+      projection: "complete",
+      data: view,
+      note: "已展示本次收到的结构化内容；数据是否全量以来源覆盖信息为准。",
+    });
+    if (fullView.length <= limit) return fullView;
+  }
   const bounded = (value: unknown, path: string, depth: number): unknown => {
     if (depth > 12) {
       omitted.push(path);
@@ -93,6 +103,10 @@ export function projectEvidence(
     projection: "partial",
     totalChars: text.length,
     nextOffset: 0,
+    nextRead: {
+      tool: "gea_evidence_read",
+      args: { evidenceId, offset: 0, limit: 4000 },
+    },
     note: "仅为结果投影，不是完整明细，不能据此重算全量。完整正文用 gea_evidence_read 按原 evidenceId 续读；不要重跑查询。",
     omittedPaths: omitted.slice(0, 30),
     data: preview,
@@ -198,6 +212,7 @@ export class PromptEvidenceStore {
     offset = 0,
     limit = 4000,
     authorize?: (grant: EvidenceGrant, tool: string) => Promise<void>,
+    render?: (raw: string) => Record<string, unknown>,
   ) {
     if (!/^ev-[a-f0-9]{24}$/.test(id)) throw Error("GEA_EVIDENCE_UNAVAILABLE");
     let record = this.records.get(id);
@@ -238,6 +253,7 @@ export class PromptEvidenceStore {
       throw Error("GEA_EVIDENCE_IDENTITY_CHANGED");
     if (createHash("sha256").update(text).digest("hex") !== record.digest)
       throw Error("GEA_EVIDENCE_CORRUPT");
+    if (render) return { evidenceId: id, tool: record.tool, ...render(text) };
     return {
       evidenceId: id,
       tool: record.tool,
@@ -245,6 +261,13 @@ export class PromptEvidenceStore {
       offset,
       totalChars: text.length,
       nextOffset: offset + limit < text.length ? offset + limit : null,
+      nextRead:
+        offset + limit < text.length
+          ? {
+              tool: "gea_evidence_read",
+              args: { evidenceId: id, offset: offset + limit, limit },
+            }
+          : null,
       content: text.slice(offset, offset + limit),
     };
   }

@@ -1,0 +1,454 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GEA Prompt V2 实施与效果对比</title><style>
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#eef2f5;color:#192c3b;font:16px/1.75 system-ui,-apple-system,sans-serif}main{max-width:1200px;margin:28px auto;background:#fff;padding:34px;border:1px solid #d8e1e7;border-radius:12px}h1{font-size:30px;line-height:1.35;margin:12px 0 20px}h2{font-size:23px;border-top:1px solid #dde5ec;padding-top:26px;margin-top:36px;scroll-margin-top:20px}h3{font-size:19px}p,li{overflow-wrap:anywhere}a{color:#205e89;overflow-wrap:anywhere}a:focus-visible,button:focus-visible,.table-scroll:focus-visible{outline:3px solid #b98019;outline-offset:3px}.meta{color:#526c7b;font-size:14px}.banner{background:#fff3dc;border-left:4px solid #9c6d12;padding:16px 20px;margin:18px 0}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}.card{padding:17px;border:1px solid #d8e1e7;border-radius:8px}.card strong{display:block;font-size:32px;line-height:1.25}.card small{color:#526c7b}.toc{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}.toc a{padding:7px 10px;background:#eef4f7;border-radius:5px;text-decoration:none;font-size:14px}.table-scroll{max-width:100%;overflow:auto;margin:18px 0}table{border-collapse:collapse;width:100%;min-width:710px;font-size:14px;line-height:1.7}th,td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid #d8e1e7}th{background:#eff4f7}tr:nth-child(even){background:#f8fafb}td:first-child{min-width:92px}code{font-size:.91em;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f6f8;padding:16px}.badge{display:inline-block;white-space:nowrap;font-weight:600}.pass{color:#20634b}.gap{color:#885816}footer{border-top:1px solid #d8e1e7;margin-top:28px;padding-top:18px;color:#526c7b;font-size:14px}@media(max-width:700px){main{margin:0;padding:20px;border:0;border-radius:0}h1{font-size:25px}h2{font-size:21px}.cards{gap:8px}.card{padding:11px}.card strong{font-size:25px}.card small{font-size:12px}.toc a{font-size:13px}}@media print{body{background:#fff}main{border:0;margin:0;max-width:none;padding:0}.toc{display:none}.table-scroll{overflow:visible}table{min-width:0;font-size:10px}h2{break-after:avoid}tr{break-inside:avoid}}
+</style></head><body><main><p class="meta">2026-09-26 · 本地候选 · 基线 ee8a026 · 未发布 / 未改生产授权</p><div class="banner"><strong>工程修复已完成，业务整体验收仍有缺口。</strong><br>不把快速拒绝、短回答、测试脚本退出0算成业务完成；本页同时保留提升、退步和新发现。</div><div class="cards"><div class="card"><strong>630 / 633</strong><small>自动回归通过，0失败 / 3既有跳过</small></div><div class="card"><strong>23</strong><small>真实提问：14同题 + 9新增</small></div><div class="card"><strong>0 / 7</strong><small>原实际取数题完整完成；仍需修复</small></div></div><nav class="toc" aria-label="报告目录"><a href="#section-1">1. 已实施到哪里</a><a href="#section-2">2. 具体改动与行为边界</a><a href="#section-3">3. 怎么测、哪些数字不能混比</a><a href="#section-4">4. 原14题逐题对照</a><a href="#section-5">5. 新增9题：检查是否只适应旧问法</a><a href="#section-6">6. 上下文与成本：真实数字</a><a href="#section-7">7. 新发现/尚未解决的问题及根因</a><a href="#section-8">8. Cube候选已做与未做</a><a href="#section-9">9. 下一步实施顺序与发布判断</a><a href="#section-10">10. 可复核证据</a></nav><article><h1>GEA Prompt V2：实施结果、效果对比与剩余问题</h1>
+<p><strong>本地代码修复、审查和测试已完成；业务整体验收尚未通过，不建议直接发布。</strong> 原14题完成同题复测，另加9题。身份、原文保存、参数契约和错误分类等实现问题已修；规则追问明显减少往返，但复杂库存任务仍有循环和语义错误，7道实际取数题仍全部未完整完成。</p>
+<p>日期：2026-09-26。对照基线：<code>ee8a0264379109973e972b79dd7c9f713a10f0ed</code>。工作分支：<code>codex/gea-prompt-optimization</code>。本报告相对上一轮已经优化过的版本，不重复把最初“上下文占一半”的问题计算成这一轮收益。</p>
+<h2 id="section-1">1. 已实施到哪里</h2>
+<div class="table-scroll" tabindex="0"><table>
+<thead>
+<tr>
+<th>批次</th>
+<th>本次交付</th>
+<th>验收状态</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A：调用身份与参数</td>
+<td>六个业务Agent在未绑定页面时按会话身份发模型请求；工具省略consumer时沿用当前身份；跨域只接受登记路由；Skill/证据参数起点、默认值、nextRead统一；保留超时类别</td>
+<td>实现与回归通过；原生模型选择器的会话感知仍是外部接入缺口</td>
+</tr>
+<tr>
+<td>B：证据与知识返回</td>
+<td>先保存完整成功正文，再投影；混合模型结果和部分失败各自保留；小表紧凑展示，大表按数据集与行续读；有界知识片段；授权/身份/时效/摘要校验不变</td>
+<td>结构测试通过；真实小表可完整续读；知识片段的语义覆盖仍不能自动保证</td>
+</tr>
+<tr>
+<td>C：减少重复、保留事实</td>
+<td>成功、失败、已读事实分别记录；同轮Skill复用、新轮首次完整加载；相同授权/版本的成功目录结果复用；保留20/40上限；真实R1/R2对照</td>
+<td>代码与试验完成，行为出口未通过：多道题仍耗尽额度；短规则仍可能漏业务分支</td>
+</tr>
+<tr>
+<td>D：业务数据能力</td>
+<td>从现有Cube模型增量准备9个指标，保留51维度、row_count和2个segment；准备纠偏后整月模型；合成数据SQL验证与兼容性检查</td>
+<td>本地候选准备完成；未部署、未调整授权，真实指标/单位/资源验收待完成</td>
+</tr>
+</tbody></table></div>
+<p>复用现有6个Agent、工具与证据库，没有按同事建议强行套10个Prompt章节，没有新增通用编排/规则编译平台，也没有自动安装两个候选大Skill。公司suite本轮未改，用户Downloads原件保留。</p>
+<p>未发布插件或客户端，未切换已安装桌面，未部署Cube、修改生产授权、合并或推送远端。本地隔离Harness接现有只读GEA通道完成实测。</p>
+<h2 id="section-2">2. 具体改动与行为边界</h2>
+<div class="table-scroll" tabindex="0"><table>
+<thead>
+<tr>
+<th>改动</th>
+<th>解决的问题</th>
+<th>边界</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>统一sessionConsumer与toolConsumer</td>
+<td>无页面库存问答错发sales_forecast；显式换consumer任意探查</td>
+<td>业务Agent只能使用当前身份或代码登记的base/aps→sales路由；coding模式沿用既有行为。权限失败不通过切身份绕行</td>
+</tr>
+<tr>
+<td>原文先落证据库</td>
+<td>旧批次先按字节截断，后面续读也拿不到丢失正文</td>
+<td>展示可短，原文可核验；上游本来没返回的部分不伪造。资源一成功一失败时仍显示部分失败</td>
+</tr>
+<tr>
+<td>数据集唯一key与行模式</td>
+<td>同名结果串来源、索引覆盖业务datasets、逐字符拆JSON成本高</td>
+<td>依来源路径隔离；业务JSON列不递归解释；保留来源覆盖。availableRows只代表本次已收到行数</td>
+</tr>
+<tr>
+<td>明确参数模式</td>
+<td>模型猜datasetId、offset/rowOffset混用，静默退回原文</td>
+<td>兼容datasetId；未知键、冲突别名、混合模式、无dataset传行参数均报错；继续兼容原有0起点字符读取</td>
+</tr>
+<tr>
+<td>知识有界投影</td>
+<td>十几万字符知识正文反复进入上下文</td>
+<td>无可复用授权证明时只给一次性有出处的片段，不捏造全文evidenceId；最长4段、每段至多1200字符，整包至多6000字符。仅恢复截断JSON前部可完整解析对象，不声称读全</td>
+</tr>
+<tr>
+<td>事实回执与目录复用</td>
+<td>一次失败覆盖先前成功；反复问同样目录</td>
+<td>回执是历史事实而非当前授权。目录先重验授权再复用，refresh可显式刷新；失败不会被误算为成功缓存</td>
+</tr>
+<tr>
+<td>模型错误和观测</td>
+<td>Timeout变Abort/UNKNOWN，伪工具调用被当最终答复</td>
+<td>保留MODEL_NOT_FOUND/超时等代码；已观察到的回答开头DSML工具标记会失败结束，绝不把文本执行为工具；不声称能识别所有伪调用</td>
+</tr>
+<tr>
+<td>agentPreset模型发现</td>
+<td>用销售默认模型选择APS后直接失败</td>
+<td>新RPC可发现APS自己的模型，但原生SDK list/resolve没有会话参数，库存选择器仍待接入；不偷偷借用销售身份或自动换模型</td>
+</tr>
+</tbody></table></div>
+<p>部分旧测试的consumer测试夹具已改为当前Agent自己的业务编码，用于继续测试后台授权拒绝；新增测试单独覆盖跨域拒绝。模拟模块仅返回本地静态说明，不走真实后端。旧网络接线测试从限定“直接throw networkError”调整为也认可转换后包装LlmError；真实Harness补测了错误码、伪完成拒绝和取消行为。</p>
+<h2 id="section-3">3. 怎么测、哪些数字不能混比</h2>
+<ul>
+<li><strong>自动回归</strong>：最终全量633项，630通过、0失败、3项既有纠偏UI用例跳过。<code>build:host</code>、<code>typecheck</code>通过；新定向测试覆盖6身份、全文复原、部分交付、来源隔离、结构续读、参数别名/错误、知识投影、模型错误和取消。两次独立源码审查最后无剩余必须修复项。</li>
+<li><strong>真实模型R1</strong>：原14题，中间候选；暴露datasetId静默回退、APS模型范围不符、DSML伪完成和销售枚举臆测，之后修复。保留全部记录，不择优拼接。</li>
+<li><strong>真实模型R2</strong>：原14题固定<code>deepseek-v4-pro</code>，7道新题也用pro；APS另做2题，用该身份实际支持的<code>deepseek-v4-flash</code>。共23次提问、16个会话，模型自主选工具，2路并行；只读GEA真实数据。</li>
+<li><strong>版本细节</strong>：R2启动后补了“无dataset不能传行参数”的最后一条参数拒绝。逐条审计R2没有触发这种参数形态；最终注册工具测试与全量回归覆盖了它。不能称23题全部重跑了最后一字节相同的构建。</li>
+<li><strong>判分</strong>：框架completed/脚本退出0只是结束，不等于业务正确。必须答完用户指定对象、范围、期间、单位和指标，且证据支持解释；正确拒绝另记边界通过，不能冒充取数完成。</li>
+<li><strong>可比性限制</strong>：单次样本，服务负载/缓存/数据可能变动，非严谨性能基准。主要问题相同，但本轮修正了错误身份，这本身也改变上游路由。APS两次0.4秒以内拒绝不能当提速；flash结果不能和pro直接比较质量/成本。</li>
+</ul>
+<p>早期两次分仓实验分别只答出部分结果、以及180秒被QA观察窗口取消，都未算成功。中途全量测试曾发现旧夹具冲突、一个接线源码断言过严；修复后重新跑全量，以上是最终结果，不隐藏中间失败。</p>
+<h2 id="section-4">4. 原14题逐题对照</h2>
+<p>“秒 / 次”为单次观测耗时与工具尝试数，包含被额度拒绝的尝试；20次额度下日志出现第21次被拒绝，不代表接受了21次执行。</p>
+<div class="table-scroll" tabindex="0"><table>
+<thead>
+<tr>
+<th>同题</th>
+<th align="right">上一版</th>
+<th align="right">本次R2</th>
+<th>实际效果</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>分仓库存/在途</td>
+<td align="right">161.9秒 / 20次</td>
+<td align="right">128.3秒 / 20次</td>
+<td><span class="badge gap">未完成</span>：协议错误，未交付业务答案；25行库存与31/33行在途探查可按行读取，但随后反复读旧原文耗尽额度</td>
+</tr>
+<tr>
+<td>分仓大日期Top10</td>
+<td align="right">117.8秒 / 20次</td>
+<td align="right">79.6秒 / 20次</td>
+<td><span class="badge gap">未完成</span>：20次探索未执行业务查询；大日期阈值未取得，模型还猜测未登记模型名</td>
+</tr>
+<tr>
+<td>基地库存/缺货排名</td>
+<td align="right">174.4秒 / 13次</td>
+<td align="right">129.6秒 / 21次</td>
+<td><span class="badge gap">未完成</span>：不再把零库存行数直接称缺货率；仍未完成库存量和缺货排名</td>
+</tr>
+<tr>
+<td>大日期/滞库重叠</td>
+<td align="right">57.6秒 / 6次</td>
+<td align="right">13.1秒 / 0次</td>
+<td><span class="badge gap">部分/有误</span>：不能直接相加方向正确，但将滞库直接解释为入库库龄，未取得业务定义</td>
+</tr>
+<tr>
+<td>基地重复/版本回退</td>
+<td align="right">86.0秒 / 14次</td>
+<td align="right">17.5秒 / 1次</td>
+<td><span class="badge gap">部分</span>：跨基地同SKU不等于重复；只给短规则，遗漏上次已取得的日期分段和两条回退链</td>
+</tr>
+<tr>
+<td>计划缺失补货规则</td>
+<td align="right">120.0秒 / 0次</td>
+<td align="right">19.4秒 / 2次</td>
+<td><span class="badge pass">通过</span>：缺计划保持未知，调拨只扣一次，中间量可算</td>
+</tr>
+<tr>
+<td>全链三层库存</td>
+<td align="right">75.2秒 / 20次</td>
+<td align="right">91.0秒 / 20次</td>
+<td><span class="badge gap">阻断</span>：当前身份无可用数据资源，未越权，但仍20次探索，未完成业务目标</td>
+</tr>
+<tr>
+<td>经销商数量/Top5</td>
+<td align="right">60.8秒 / 21次</td>
+<td align="right">50.6秒 / 20次</td>
+<td><span class="badge gap">未完成</span>：20次探索仍未实际查询；授权客户母集与风险排名未回答</td>
+</tr>
+<tr>
+<td>经销商统计范围复核</td>
+<td align="right">17.1秒 / 0次</td>
+<td align="right">10.8秒 / 0次</td>
+<td><span class="badge pass">通过</span>：说明上一问未取得结果；没有销量不把库存高直接判滞销</td>
+</tr>
+<tr>
+<td>产销实际数据</td>
+<td align="right">18.9秒 / 2次</td>
+<td align="right">0.4秒 / 0次</td>
+<td><span class="badge gap">阻断</span>：正确APS身份不支持固定对照用pro模型，MODEL_NOT_FOUND</td>
+</tr>
+<tr>
+<td>产销规则题/固定pro</td>
+<td align="right">60.0秒 / 8次</td>
+<td align="right">0.1秒 / 0次</td>
+<td><span class="badge gap">阻断</span>：同上，不能把拒绝速度算作效果提升</td>
+</tr>
+<tr>
+<td>全链周转/公司边界</td>
+<td align="right">125.0秒 / 21次</td>
+<td align="right">13.4秒 / 2次</td>
+<td><span class="badge pass">通过</span>：计划与实际周转不平均，客户库存不计公司库存</td>
+</tr>
+<tr>
+<td>销售计划按省区汇总</td>
+<td align="right">177.6秒 / 21次</td>
+<td align="right">47.2秒 / 3次</td>
+<td><span class="badge gap">未完成</span>：3次取得两个周期的聚合；识别baseName是基地，不冒充省区；仍未按用户指定维度完成</td>
+</tr>
+<tr>
+<td>新会话缺计划规则</td>
+<td align="right">44.4秒 / 3次</td>
+<td align="right">16.1秒 / 2次</td>
+<td><span class="badge pass">通过</span>：新会话可正确加载规则，缺失不补零</td>
+</tr>
+</tbody></table></div>
+<p><strong>不能用一个平均提速率概括本轮。</strong> 7道实际取数题仍是0/7完整完成；规则/边界题里，缺计划、全链周转、经销商范围和新会话缺计划4题达到本题要求。大日期/滞库解释、基地版本细则仍有缺口；APS固定pro被正确拒绝。因此并未证明整体业务完成率显著提高。</p>
+<p>具体改善：全链周转从21次工具尝试降为2次，125.0秒降为13.4秒且口径正确；新会话缺计划从44.4秒降为16.1秒；销售从21次降为3次，改走聚合且不再把基地当省区，但没有完成省区汇总。</p>
+<p>明确退步：分仓汇总上一版至少交付25仓可用库存，本轮最后因DSML拒绝而没有正式业务答复；基地规则题虽从86.0秒降到17.5秒，却丢失上次已取得的完整回退分支，不能算提效。</p>
+<h2 id="section-5">5. 新增9题：检查是否只适应旧问法</h2>
+<div class="table-scroll" tabindex="0"><table>
+<thead>
+<tr>
+<th>题目</th>
+<th align="right">耗时 / 工具尝试</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>零计划与缺失计划</td>
+<td align="right">31.9秒 / 1次</td>
+<td><span class="badge pass">通过</span>：区分0与空；补货最终还缺缺货量，不强给结果</td>
+</tr>
+<tr>
+<td>零库存与缺目标</td>
+<td align="right">14.5秒 / 0次</td>
+<td><span class="badge gap">有误</span>：开头拒绝缺货率正确，但把未设安全目标说成未低于目标；必要条件缺失被误判为不触发</td>
+</tr>
+<tr>
+<td>异日快照与公司边界</td>
+<td align="right">13.5秒 / 0次</td>
+<td><span class="badge gap">有误</span>：正确拒绝今天合计，但随后允许三层改称混合时点公司库存，漏掉客户库存所有权边界</td>
+</tr>
+<tr>
+<td>空销量与0销量</td>
+<td align="right">47.0秒 / 1次</td>
+<td><span class="badge pass">通过</span>：未知分母与零分母分开；不强给相同周转天数或滞销结论</td>
+</tr>
+<tr>
+<td>Y/M/Z字典解释</td>
+<td align="right">18.2秒 / 0次</td>
+<td><span class="badge pass">通过</span>：不从字母猜中文名称，不跨接口套枚举</td>
+</tr>
+<tr>
+<td>单分仓可用库存</td>
+<td align="right">53.6秒 / 4次</td>
+<td><span class="badge gap">部分</span>：仅4次取得相关数值，但主结论先用了郑州基地11仓范围，再补单仓说明；单位仍缺</td>
+</tr>
+<tr>
+<td>单基地可用库存</td>
+<td align="right">105.7秒 / 8次</td>
+<td><span class="badge gap">未完成</span>：只得日期/行数；qtylive为数值维度、无聚合measure，单位未知</td>
+</tr>
+<tr>
+<td>产销规则/本身份flash</td>
+<td align="right">9.2秒 / 2次</td>
+<td><span class="badge pass">通过</span>：改用APS实际支持的flash模型后能解释已加载阈值、缺分母和缺目标；不可与pro混比</td>
+</tr>
+<tr>
+<td>99.5%边界/本身份flash</td>
+<td align="right">3.5秒 / 0次</td>
+<td><span class="badge pass">通过</span>：严格大于与大于等于分开，缺生产计划不判达成</td>
+</tr>
+</tbody></table></div>
+<p>新增题5题达到本题要求，2题暴露语义错误，2道窄范围取数仍未完整完成。这个分母包含APS两个不同模型的补充测试，不能并入pro准确率。</p>
+<h2 id="section-6">6. 上下文与成本：真实数字</h2>
+<p>首轮system+tool schema没有进一步缩小，因为增加了参数、范围和读取契约：</p>
+<div class="table-scroll" tabindex="0"><table>
+<thead>
+<tr>
+<th>Agent</th>
+<th align="right">前：字符</th>
+<th align="right">后：字符</th>
+<th align="right">增加</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>fc</td>
+<td align="right">6,769</td>
+<td align="right">7,588</td>
+<td align="right">+819</td>
+</tr>
+<tr>
+<td>aqkc</td>
+<td align="right">6,743</td>
+<td align="right">7,594</td>
+<td align="right">+851</td>
+</tr>
+<tr>
+<td>qll</td>
+<td align="right">6,743</td>
+<td align="right">7,541</td>
+<td align="right">+798</td>
+</tr>
+<tr>
+<td>dealer</td>
+<td align="right">6,748</td>
+<td align="right">7,546</td>
+<td align="right">+798</td>
+</tr>
+<tr>
+<td>apsplan</td>
+<td align="right">6,744</td>
+<td align="right">7,542</td>
+<td align="right">+798</td>
+</tr>
+<tr>
+<td>sales</td>
+<td align="right">8,502</td>
+<td align="right">9,390</td>
+<td align="right">+888</td>
+</tr>
+</tbody></table></div>
+<p>当前首轮约7.5k～9.4k字符，增幅约10%～13%。这不是token，也不是整个会话。收集了112次模型请求的消息（含历史）与工具Schema长度，R2单次输入最大111,795字符；因此“首轮短”仍不能证明后续上下文压力解决。</p>
+<p>模型网关本轮没有返回可用usage；112次请求的实际token、缓存命中和费用均未知。上一轮也没有完整请求口径的token记录，不能宣称总token或费用降低某个百分比。</p>
+<div class="table-scroll" tabindex="0"><table>
+<thead>
+<tr>
+<th>场景</th>
+<th align="right">工具正文前</th>
+<th align="right">工具正文后</th>
+<th>如何解读</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>基地版本规则</td>
+<td align="right">151,731字符</td>
+<td align="right">1,728字符</td>
+<td>降很多，但业务分支也缺失，不能算合格成本收益</td>
+</tr>
+<tr>
+<td>全链周转解释</td>
+<td align="right">45,132字符</td>
+<td align="right">2,498字符</td>
+<td>本题回答正确，属于有意义改善</td>
+</tr>
+<tr>
+<td>销售省区题</td>
+<td align="right">50,168字符</td>
+<td align="right">8,353字符</td>
+<td>聚合路径更短，但用户要求的省区维度仍欠缺</td>
+</tr>
+<tr>
+<td>基地库存/缺货</td>
+<td align="right">38,793字符</td>
+<td align="right">75,549字符</td>
+<td>反而增长约95%，复杂题没有普遍降耗</td>
+</tr>
+<tr>
+<td>分仓库存/在途</td>
+<td align="right">63,279字符</td>
+<td align="right">52,644字符</td>
+<td>表可按行续读，但最终未答完，不能算成功任务成本</td>
+</tr>
+</tbody></table></div>
+<p>工具正文累积长度不等于模型累计输入：历史会被多次发送。报告与comparison.json把这两种计量分开。已能证明的是有界展示、原文可恢复与部分任务减少往返；尚不能证明所有任务成本下降。</p>
+<h2 id="section-7">7. 新发现/尚未解决的问题及根因</h2>
+<div class="table-scroll" tabindex="0"><table>
+<thead>
+<tr>
+<th>编号</th>
+<th>严重度</th>
+<th>现象</th>
+<th>根因与确认程度</th>
+<th>下一步最小改法</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>N01</td>
+<td>P1</td>
+<td>分仓/经销商仍20次探索而未完成；全链无授权仍重复探索</td>
+<td>已证实重复目录、不同拼写、refresh、Skill reload；当前只限制同请求的成功目录复用，未解决无进展的不同请求/失败探索。不能简单归因模型“没读到”</td>
+<td>给确定错误做一次可修复提示与有限重试；按实际进展提示直接执行已合法查询或明确缺口，不普遍增加调用额度</td>
+</tr>
+<tr>
+<td>N02</td>
+<td>P1</td>
+<td>基地回退规则变短但丢失日期分支；滞库被解释成单纯库龄</td>
+<td>短Skill是入口摘要，缺完整业务定义；模型把摘要当充分证据，R2没取得原先知识规则。知识预算和完整性不是一回事</td>
+<td>把已核验的“适用条件+阈值/日期+例外+来源”作为少量完整规则片段按题加载，不照搬整篇知识库；为回退日期边界补异形题</td>
+</tr>
+<tr>
+<td>N03</td>
+<td>P1</td>
+<td>缺安全目标被解释成未低于目标</td>
+<td>缺字段、0、未触发条件三态在自然语言推理里仍被混淆；全局一句“不补零”不够</td>
+<td>把是否可评价作为明确输出条件，缺目标保持未知；用0/空/不适用三组测试验收，而非再叠大量禁止句</td>
+</tr>
+<tr>
+<td>N04</td>
+<td>P1</td>
+<td>三层异日库存被允许称混合时点公司库存</td>
+<td>模型只抓住最新问句的时间问题，遗漏公司/渠道范围约束；同一Agent前一类题答对不保证新题保持</td>
+<td>全链合计回答同时核对所有权边界与快照，不把时间对齐当充分条件；公司=基地+分仓与客户渠道明确并排</td>
+</tr>
+<tr>
+<td>N05</td>
+<td>P1</td>
+<td>单“郑州分仓”题主结论用了郑州基地下11仓</td>
+<td>名称相近时把地区/基地筛选当单仓实体；consumer正确不能替代业务对象正确</td>
+<td>名称解析返回实体类型与唯一ID；有歧义先列可核实候选，不以范围更大的基地汇总领答</td>
+</tr>
+<tr>
+<td>N06</td>
+<td>P1</td>
+<td>当前APS不能使用销售默认pro模型</td>
+<td>修正身份暴露真实模型清单差异；原生SDK发现没有会话参数，执行校验有、选择入口接入不全</td>
+<td>在库存选择入口接入按preset发现，显式选择该身份可用模型；不自动换模型。此次flash两题只证明该身份规则路径可用</td>
+</tr>
+<tr>
+<td>N07</td>
+<td>P1</td>
+<td>最终答复曾变成DSML工具标记</td>
+<td>已观察到模型在额度结束/无工具可用后输出工具语法文本；精确生成原因仍待提供方调查，不能把相关性当确定因果</td>
+<td>本轮已拦截已知形式，后续评估提供方协议/模板与有限失败恢复；不能解析文本伪调用直接执行</td>
+</tr>
+<tr>
+<td>N08</td>
+<td>P1</td>
+<td>基地量无法求和、全链缺资源、单位缺、销售省区聚合不可得</td>
+<td>数据能力问题：qtylive等仅数值dimension、row_count非数量；已有聚合维度是基地；授权目录与业务母集不能替代数据</td>
+<td>定向补quantity measure/单位/省区聚合/正式缺货定义和正确资源；按身份读回验收，不靠Prompt猜单位或换consumer</td>
+</tr>
+<tr>
+<td>N09</td>
+<td>P2</td>
+<td>小表已完整读到仍回头逐字符读旧原文</td>
+<td>已证实事实回执只说明读过；模型仍不稳定使用已提供的小表/nextRead。原文可恢复解决丢数，不等于会高效用数</td>
+<td>优先保留本题需要的小聚合表与实际读取范围，重读提示按问题相关性给nextRead；继续同题与变形题对照</td>
+</tr>
+<tr>
+<td>N10</td>
+<td>P2</td>
+<td>长知识源存在内层JSON截断；单位/语义卡不齐</td>
+<td>原始返回本身不完整是上游问题，投影不能恢复丢失后半段；目前元数据主要显示有限measure说明，未覆盖全部维度语义</td>
+<td>上游返回可分页且可授权的知识正文；保留sourceComplete=false；按成员取相关完整语义卡，不全量灌目录</td>
+</tr>
+<tr>
+<td>N11</td>
+<td>P2</td>
+<td>仍无法量化token和成本；多轮输入可达111k字符</td>
+<td>提供方未返回usage；初始prompt预算不含全部历史成本</td>
+<td>对接真实usage或标明估算器/模型版本后再设总预算；先观测，不用字符冒充token</td>
+</tr>
+</tbody></table></div>
+<p>这些问题分为本地行为不足、业务契约不足和平台接入缺口，不能用一份更长的全局提示词同时解决。N02～N05尤其说明：仅压缩正文、写“必须遵守”并不能保证业务判断稳定。</p>
+<h2 id="section-8">8. Cube候选已做与未做</h2>
+<p>本地候选：<a href="prompt-v2-delivery/cube-candidate/README.md">说明与执行方法</a>、<a href="prompt-v2-delivery/cube-candidate/manifest.json">来源与增量清单</a>、<a href="prompt-v2-delivery/cube-candidate/preservation-report.json">结构保留检查</a>、<a href="prompt-v2-delivery/cube-candidate/validation-report.json">合成样本SQL结果</a>。</p>
+<p>已验证当前模型51维度、row_count与两segment的原SQL/类型/主键/public保留；新增9个measure的筛选与样例数值，M实际含未拆分行，Z优先回退M、数量金额与份额计算通过离线测试。effective SQL不自动消除同版本重复业务键，说明中已明确。</p>
+<p>尚未验证目标Cube编译、历史数据唯一性、生产单位与回填、GEA行字段授权及对应页面实际取数。这些需要真实业务口径确认和单独的部署/授权变更。<strong>未部署不是源码测试失败，也不是已具备线上能力。</strong></p>
+<h2 id="section-9">9. 下一步实施顺序与发布判断</h2>
+<ol>
+<li><strong>先修N02～N05的业务语义回退</strong>：少量已核验完整规则与实体/范围契约，优先复测基地日期回退、缺目标、公司边界、郑州单仓。不能只再加更严的全局提示词。</li>
+<li><strong>再修无进展探索和小表复用</strong>：保留证据与授权边界，降低重复/失败探查成本；原14题中有能力执行的项目要实际回答完成。</li>
+<li><strong>单独完成数据/平台依赖</strong>：Cube指标与单位、省区聚合、APS模型选择器和全链/APS资源；先审具体变更，再部署和读回。</li>
+<li>同身份、同模型、同问题+变形题复测，重点检查新退步，不做“单次答对即稳定”的承诺。以上未过前不建议发正式版或切换本机。</li>
+</ol>
+<p>待办阻断：业务数据和授权/模型入口尚未具备，且本轮真实问答仍存在已记录失败；不是缺少再一轮用户确认来运行已有只读测试。本轮已完成可执行的本地修复、验证和候选准备，剩余验收失败明确保留。</p>
+<h2 id="section-10">10. 可复核证据</h2>
+<ul>
+<li><a href="prompt-v2-delivery/comparison.json">逐题耗时、调用、正文字符与会话输入计量</a>：保留R1和R2，不收录真实业务明细。</li>
+<li><a href="prompt-v2-delivery/verification.json">最终自动回归与审查记录</a>：注明跳过、失败修复及验证层次。</li>
+<li><a href="prompt-remediation-plan-v2-2026-09-26.md">批准的V2方案</a>与<a href="prompt-inventory-qa-2026-09-26.md">上一轮14题问题报告</a>。</li>
+<li>原始事件、真实回答和完整日志留在本机忽略目录<code>.runtime/prompt-v2-effect/</code>，权限0600；报告只保留统计及脱敏现象，未复制登录快照或凭据。</li>
+</ul>
+</article><footer>全部正文、样式已内嵌，可离线阅读。证据链接为本地补充材料。本报告不含凭据或真实业务明细导出。</footer></main></body></html>

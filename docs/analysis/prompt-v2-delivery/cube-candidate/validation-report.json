@@ -1,0 +1,19 @@
+{
+  "offline": "pass",
+  "checks": [
+    "YAML members and filters",
+    "Q01 REST query members and filter",
+    "base measure SQL filters and sums",
+    "effective model SQL selection",
+    "M actual includes unsplit rows",
+    "M and Z amount and piece totals",
+    "effective amount and attainment",
+    "region shares with unassigned",
+    "current month fixture"
+  ],
+  "fixture_version": "sales-forecast-fixture-2",
+  "cube_compile": "not_run",
+  "cube_query": "not_run",
+  "gea_replay": "not_run",
+  "production_validation": "not_run"
+}

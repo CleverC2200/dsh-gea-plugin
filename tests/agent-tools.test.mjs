@@ -300,7 +300,7 @@ test(
                       function: {
                         name: "gea_module_mcp",
                         arguments: JSON.stringify({
-                          consumerCode: "branch-inventory",
+                          consumerCode: "sales_forecast",
                         }),
                       },
                     },
