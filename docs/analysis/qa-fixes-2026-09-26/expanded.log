@@ -1,0 +1,38 @@
+▶ independent acceptance, no production writes
+  ✔ first prompt with four fixture forecast Skills stays below the declared 12k limit (184.27525ms)
+  ✔ a failed capability load must not enable its package or enlarge this turn budget (142.591542ms)
+  ✔ complex allowance resets on a fresh user turn (155.233833ms)
+  ✔ identical Skill bodies reuse the visible instruction instead of loading again (120.394ms)
+  ✔ explicit null growth should mark only that row partial, not the valid row in the same forecast batch (150.606125ms)
+  ✔ omitted growth control preserves the independent valid row (111.357458ms)
+  ✔ a same-user follow-up can read the rest of an already computed large provided draft without recalculation (190.0015ms)
+  ✔ model-only provided and live inputs never gain a cross-turn source grant (308.631625ms)
+  ✔ null quantities and eligibility block only their own row (117.986291ms)
+  ✔ failed upgrades preserve a previously loaded package without enabling UI (5642.067709ms)
+  ✔ provided computations restore after restart but never cross sessions (5721.180791ms)
+  ✔ same-turn control can read the complete computed draft (108.216167ms)
+  ✔ ASCII signed table cells are rejected by the business UI guard (111.346958ms)
+  ✔ equivalent signed text and hero delta cannot bypass the business UI guard (279.161625ms)
+  ✔ successful packages really restore after stopping and starting the Harness process (5619.012417ms)
+✔ independent acceptance, no production writes (24455.90075ms)
+✔ evidence projection preserves exact numbers and scope; original reads cannot cross identities or sessions (9.034917ms)
+✔ forecast calculator preserves §5.5, missing/new/seasonal branches, exact decimals and no writes (1.304ms)
+✔ real Harness business prompt starts small, expands typed tools, loads domain rules, and preserves coding mode (6540.232ms)
+✔ protected evidence restores after restart only with current authorization (1.793584ms)
+✔ instruction reuse requires the exact body still on the model-visible surface (0.145875ms)
+✔ capability cancellation, catalog and native restriction failures commit no state (1.5825ms)
+✔ forecast never silently treats an unsafe JSON integer as exact (0.235458ms)
+✔ forecast tool schema accepts missing data but continues to reject numeric decimal inputs (1.391958ms)
+✔ computation provenance requires exact complete JSON in a genuine user message (6.287542ms)
+✔ business UI rejects sign-based colours and unverified automatic totals (0.248875ms)
+✔ decimal calculator matches the unchanged suite reference across fourteen scenario groups (2.744667ms)
+✔ one evidence grant never includes another consumer historical receipt (0.156667ms)
+✔ large top-level data and reserved metadata fields remain represented in the preview (0.084583ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 24531.5325

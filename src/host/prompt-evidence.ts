@@ -122,6 +122,7 @@ export type EvidenceGrant = {
   query?: Record<string, unknown>;
   valueHash?: string;
   ephemeral?: string;
+  computation?: { inputHash: string; version: string };
 };
 type EvidenceRecord = {
   scope: string;

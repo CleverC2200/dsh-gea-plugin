@@ -1,0 +1,21 @@
+▶ independent acceptance, no production writes
+  ✔ first prompt with the actual four forecast Skills stays below the declared 12k limit (283.090917ms)
+  ✔ a failed capability load must not enable its package or enlarge this turn budget (179.638125ms)
+  ✔ complex allowance resets on a fresh user turn (206.479083ms)
+  ✔ identical Skill bodies reuse the visible instruction instead of loading again (130.805292ms)
+  ✔ explicit null growth should block only that row, not the valid row in the same forecast batch (166.637709ms)
+  ✔ omitted growth control preserves the independent valid row (130.789625ms)
+  ✔ a same-user follow-up can read the rest of an already computed large provided draft without recalculation (236.740375ms)
+  ✔ same-turn control can read the complete computed draft (165.633166ms)
+  ✔ ASCII signed table cells are rejected by the business UI guard (188.654958ms)
+  ✔ equivalent signed text and hero delta cannot bypass the business UI guard (399.351208ms)
+  ✔ successful packages really restore after stopping and starting the Harness process (8771.68725ms)
+✔ independent acceptance, no production writes (17733.632458ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17813.473667

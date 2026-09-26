@@ -2,6 +2,7 @@ import { Decimal } from "decimal.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 
 const D = Decimal.clone({ precision: 40 });
+export const FORECAST_VERSION = "gea-v2-5.5-decimal-1";
 type RecordValue = Record<string, unknown>;
 function text(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim())
@@ -206,7 +207,7 @@ export function computeForecast(data: RecordValue): RecordValue {
   const rows = data.records.map((row) => rowResult(row as RecordValue));
   return {
     schema_version: 1,
-    calculator_version: "gea-v2-5.5-decimal-1",
+    calculator_version: FORECAST_VERSION,
     decimalPrecision: 40,
     artifact_status: "draft",
     business_review: "pending",
@@ -235,8 +236,9 @@ export function computeForecast(data: RecordValue): RecordValue {
 }
 
 const decimal = {
-  type: "string",
-  description: "精确十进制字符串，不传 JSON 浮点数。",
+  oneOf: [{ type: "string" }, { type: "null" }],
+  description:
+    "精确十进制字符串；null 或省略表示缺失，不补零。不传 JSON 浮点数。",
 } as const;
 export const forecastTool = defineTool({
   name: "gea_forecast_compute",
@@ -267,13 +269,13 @@ export const forecastTool = defineTool({
           sku_id: { type: "string" },
           unit: { type: "string" },
           source_ref: { type: "string" },
-          eligible: { type: "boolean" },
+          eligible: { oneOf: [{ type: "boolean" }, { type: "null" }] },
           exclusion_reason: { type: "string" },
           product_kind: {
             type: "string",
             enum: ["regular", "new", "short_shelf"],
           },
-          seasonal: { type: "boolean" },
+          seasonal: { oneOf: [{ type: "boolean" }, { type: "null" }] },
           quality_issues: { type: "array", items: { type: "string" } },
           base_plan_qty: decimal,
           base_actual_to_cutoff_qty: decimal,

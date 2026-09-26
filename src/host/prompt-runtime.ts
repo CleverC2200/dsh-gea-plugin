@@ -23,7 +23,8 @@ import {
   type ToolPack,
 } from "./prompt-policy.ts";
 import { stopExpiredGateway } from "./agent-tools.ts";
-import { forecastTool } from "./forecast-compute.ts";
+import { forecastTool, FORECAST_VERSION } from "./forecast-compute.ts";
+import { forecastInputHash, hasUserForecastInput } from "./forecast-source.ts";
 import {
   PromptEvidenceStore,
   projectEvidence,
@@ -104,6 +105,14 @@ export function mountBusinessPrompts(
   };
   const ephemeral = (agent: Agent) =>
     `${runtimeId}:${business.readTurnRevision(agent.id)}:${business.surfaceFor(agent.id)?.menu ?? ""}`;
+  const userSupplied = (agent: Agent, digest: string) =>
+    hasUserForecastInput(
+      agent.session
+        .snapshotEvents()
+        .filter((event) => event.type === "user/message")
+        .map((event) => event.data),
+      digest,
+    );
   const resourceProof = async (
     consumer: string,
     tool: string,
@@ -208,23 +217,22 @@ export function mountBusinessPrompts(
     }
     return state;
   };
-  const namesFor = (agent: Agent) => {
+  const namesFor = (agent: Agent, state = stateOf(agent)) => {
     const profile = profileOf(agent)!;
-    const state = stateOf(agent);
     const names = allowedTools(profile, state.packs);
     if (business.config.agentSqlRead === true) names.add("gea_plugin_read");
     if (!isMainSurface(business.surfaceFor(agent.id)))
       for (const name of TOOL_PACKS.page) names.add(name);
     return names;
   };
-  const refreshMask = (agent: Agent) => {
+  const refreshMask = (agent: Agent, candidate?: State) => {
     if (!profileOf(agent)) {
       states.get(agent)?.dispose?.();
       states.delete(agent);
       return;
     }
-    const state = stateOf(agent);
-    const names = namesFor(agent);
+    const state = candidate ?? stateOf(agent);
+    const names = namesFor(agent, state);
     // Probe only the public restriction contract; schemas() cannot see already masked names.
     let known: string[] = [];
     try {
@@ -320,6 +328,11 @@ export function mountBusinessPrompts(
           ephemeral: ephemeral(exec.agent),
         };
         if (exec.name === "gea_sales_plan_read") grant.query = args;
+        if (exec.name === "gea_forecast_compute") {
+          const inputHash = forecastInputHash(args);
+          if (userSupplied(exec.agent, inputHash))
+            grant.computation = { inputHash, version: FORECAST_VERSION };
+        }
         if (exec.name === "gea_cube_query" || exec.name === "gea_module_mcp")
           grant.kind = "mcp";
         executionGrants.set(exec.token, grant);
@@ -427,15 +440,8 @@ export function mountBusinessPrompts(
         async execute(args, exec) {
           if (!exec.agent || !profileOf(exec.agent))
             throw Error("GEA_BUSINESS_SESSION_REQUIRED");
-          const state = stateOf(exec.agent);
-          if (args.pack) {
-            state.packs.add(args.pack as ToolPack);
-            if (args.pack === "ui") {
-              state.skillNames.add("genui");
-              state.skillNames.add("visualize");
-            }
-          }
-          if (args.complex) state.limit = PROMPT_BUDGET.complexCalls;
+          const previous = stateOf(exec.agent);
+          const revision = business.readTurnRevision(exec.agent.id);
           const available = (
             await ctx.skills.list({
               scope: exec.agent,
@@ -460,12 +466,34 @@ export function mountBusinessPrompts(
                   skill.name,
                 )),
           );
-          if (args.skill) {
-            if (!available.some((skill) => skill.name === args.skill))
-              throw Error("GEA_SKILL_UNAVAILABLE");
-            state.skillNames.add(args.skill);
+          if (
+            args.skill &&
+            !available.some((skill) => skill.name === args.skill)
+          )
+            throw Error("GEA_SKILL_UNAVAILABLE");
+          exec.signal.throwIfAborted();
+          if (
+            stateOf(exec.agent) !== previous ||
+            business.readTurnRevision(exec.agent.id) !== revision
+          )
+            throw Error("GEA_CAPABILITY_STATE_CHANGED");
+          const state: State = {
+            ...previous,
+            packs: new Set(previous.packs),
+            skillNames: new Set(previous.skillNames),
+          };
+          if (args.pack) {
+            state.packs.add(args.pack as ToolPack);
+            if (args.pack === "ui") {
+              state.skillNames.add("genui");
+              state.skillNames.add("visualize");
+            }
           }
-          refreshMask(exec.agent);
+          if (args.complex) state.limit = PROMPT_BUDGET.complexCalls;
+          if (args.skill) state.skillNames.add(args.skill);
+          refreshMask(exec.agent, state);
+          // No async work between validation, native restriction replacement and commit.
+          Object.assign(previous, state);
           return JSON.stringify({
             preset: presetOf(exec.agent),
             packs: Object.keys(TOOL_PACKS),
@@ -649,6 +677,17 @@ export function mountBusinessPrompts(
                   if (valueHash(current) !== grant.valueHash)
                     throw Error(
                       "GEA_EVIDENCE_STALE: 数据或权限范围已改变，请取得新的结果。",
+                    );
+                } else if (
+                  tool === "gea_forecast_compute" &&
+                  grant.computation
+                ) {
+                  if (
+                    grant.computation.version !== FORECAST_VERSION ||
+                    !userSupplied(agent, grant.computation.inputHash)
+                  )
+                    throw Error(
+                      "GEA_EVIDENCE_STALE: 计算规则或用户输入来源无法核对。",
                     );
                 } else if (grant.ephemeral !== ephemeral(agent))
                   throw Error(

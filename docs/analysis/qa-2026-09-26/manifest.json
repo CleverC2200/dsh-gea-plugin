@@ -1,0 +1,17 @@
+{
+  "geaCommit": "66c1ff5aabd45e27eb6111ed349b08df6ae56a03",
+  "suiteCommit": "891c123b416631711477b0831d23d10374d83c14",
+  "hostBundleSha256": "a7d513324812bb5010e4dd415b24f6abf413f102672b2f6bf72539c9d94cfcd0",
+  "existingTargeted": {
+    "passed": 24,
+    "failed": 0
+  },
+  "newScenarios": {
+    "total": 11,
+    "passed": 7,
+    "failed": 4
+  },
+  "model": "scripted local fixture, not a production LLM",
+  "businessBackend": "isolated local fixture; no production writes",
+  "sourceChanged": false
+}

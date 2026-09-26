@@ -1,0 +1,21 @@
+{
+  "firstError": "Error: GEA_SKILL_UNAVAILABLE",
+  "loaded": [],
+  "callLimit": 20,
+  "secondRequestTools": [
+    "gea_capabilities",
+    "gea_cube_query",
+    "gea_evidence_read",
+    "gea_gateway_catalog",
+    "gea_sales_plan_read",
+    "gea_skill"
+  ],
+  "afterInspectionTools": [
+    "gea_capabilities",
+    "gea_cube_query",
+    "gea_evidence_read",
+    "gea_gateway_catalog",
+    "gea_sales_plan_read",
+    "gea_skill"
+  ]
+}

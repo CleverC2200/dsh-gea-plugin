@@ -1,0 +1,34 @@
+✔ native typed query exposes its schema, splits requests and refuses a revoked resource next turn (6640.909791ms)
+[model-stream] dropped tool call name=gea_sales_plan_read reason=参数不是 JSON 对象 bytes=2 tail=[]
+[model-stream] dropped tool call name=gea_sales_plan_read reason=参数不是合法 JSON（多半被截断，或引号/括号错位） bytes=1 tail={
+✔ SSE framing preserves split UTF-8 and multiline data in the final text block (257.836417ms)
+✔ EOF, unsupported tools, unknown terminal reasons and reasoning-only stops fail closed (1.248667ms)
+✔ abort cancels a pending read and returning early releases the reader (0.375667ms)
+✔ interleaved tool arguments assemble into distinct validated final blocks (0.335458ms)
+✔ unoffered, duplicate, changed, oversized and incomplete tools never produce executable blocks (0.566125ms)
+✔ 参数不是合法 JSON 只判这一次调用失败：整轮继续，并把可读原因回给模型 (0.27275ms)
+✔ 参数能解析但不是对象、或与结束原因对不上，仍然按各自的规矩处理 (0.388459ms)
+✔ 流失败的报错带上人话，同时保留错误码 (0.223875ms)
+✔ 流里的错误对象：上下文超限单独成码，并带上网关原话 (0.244083ms)
+✔ 流里的其它网关错误：按 GEA_MODEL_GATEWAY_ERROR 报，带 code 与 message (0.193375ms)
+✔ 不是 JSON 的帧：报 INVALID_SSE，并把那一帧原文带出来 (0.136083ms)
+✔ choices 形状不对：也要说清是哪一项不对 (0.094333ms)
+✔ provider usage is captured after finish without inventing zero usage or double counting cache (0.146209ms)
+✔ evidence projection preserves exact numbers and scope; original reads cannot cross identities or sessions (11.886083ms)
+✔ forecast calculator preserves §5.5, missing/new/seasonal branches, exact decimals and no writes (1.744166ms)
+✔ real Harness business prompt starts small, expands typed tools, loads domain rules, and preserves coding mode (7098.289417ms)
+✔ protected evidence restores after restart only with current authorization (1.690833ms)
+✔ instruction reuse requires the exact body still on the model-visible surface (0.155959ms)
+✔ forecast never silently treats an unsafe JSON integer as exact (0.245292ms)
+✔ business UI rejects sign-based colours and unverified automatic totals (0.168958ms)
+✔ decimal calculator matches the unchanged suite reference across fourteen scenario groups (1.840542ms)
+✔ one evidence grant never includes another consumer historical receipt (0.194667ms)
+✔ large top-level data and reserved metadata fields remain represented in the preview (0.119709ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7313.497417

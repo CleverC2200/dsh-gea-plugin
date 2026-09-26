@@ -11,9 +11,16 @@ import {
   withoutHistoricalEvidence,
   exactResult,
 } from "../src/host/prompt-evidence.ts";
-import { instructionVisible } from "../src/host/prompt-runtime.ts";
+import {
+  instructionVisible,
+  mountBusinessPrompts,
+} from "../src/host/prompt-runtime.ts";
 import { businessUiIssue } from "../src/host/prompt-policy.ts";
-import { computeForecast } from "../src/host/forecast-compute.ts";
+import { computeForecast, forecastTool } from "../src/host/forecast-compute.ts";
+import {
+  forecastInputHash,
+  hasUserForecastInput,
+} from "../src/host/forecast-source.ts";
 
 test("evidence projection preserves exact numbers and scope; original reads cannot cross identities or sessions", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "gea-evidence-"));
@@ -440,6 +447,104 @@ test("instruction reuse requires the exact body still on the model-visible surfa
   assert.equal(instructionVisible([message], "new-version", content), false);
 });
 
+test("capability cancellation, catalog and native restriction failures commit no state", async (t) => {
+  const registered = new Map(),
+    masks = new Set(),
+    effects = [];
+  const names = [
+    "gea_capabilities",
+    "gea_skill",
+    "gea_evidence_read",
+    "gea_gateway_catalog",
+    "gea_cube_query",
+    "gea_sales_plan_read",
+    "gea_forecast_compute",
+    "render_ui",
+    "validate_dsh_ui",
+  ];
+  let list = async () => [],
+    failMask = false,
+    revision = 1;
+  const toolService = {
+    register(tool) {
+      registered.set(tool.name, tool);
+      return () => {};
+    },
+    guard() {
+      return () => {};
+    },
+    restrict({ allow }) {
+      if (!allow) throw Error("known global tools: " + names.join(","));
+      if (failMask) throw Error("restriction fixture failure");
+      const mask = new Set(allow);
+      masks.add(mask);
+      return () => masks.delete(mask);
+    },
+    schemas() {
+      return names
+        .filter((name) => [...masks].every((mask) => mask.has(name)))
+        .map((name) => ({ name }));
+    },
+  };
+  const ctx = {
+    tools: toolService,
+    sessionProjections: { stateOf: () => "gea-readonly" },
+    skills: { list: (...args) => list(...args) },
+    on: () => () => {},
+    inject: () => {},
+  };
+  const business = {
+    config: { runtimeDir: tmpdir() },
+    watchIdentity: () => () => {},
+    readTurnRevision: () => revision,
+    surfaceFor: () => undefined,
+  };
+  t.after(
+    mountBusinessPrompts(ctx, business, { readModules: () => [] }, new Map()),
+  );
+  const agent = {
+    id: "fixture",
+    ctx: { tools: toolService, effect: (fn) => effects.push(fn()) },
+    session: { header: { cwd: tmpdir() }, snapshotEvents: () => [] },
+  };
+  const execute = (args, signal = new AbortController().signal) =>
+    registered
+      .get("gea_capabilities")
+      .execute(args, { agent, signal })
+      .then(JSON.parse);
+  assert.deepEqual((await execute({ pack: "forecast" })).loaded, ["forecast"]);
+  let release;
+  list = () => new Promise((resolve) => (release = resolve));
+  const controller = new AbortController();
+  const pending = execute({ pack: "ui", complex: true }, controller.signal);
+  controller.abort();
+  release([]);
+  await assert.rejects(pending, /abort/i);
+  list = async () => {
+    throw Error("catalog fixture failure");
+  };
+  await assert.rejects(
+    execute({ pack: "ui", complex: true }),
+    /catalog fixture/,
+  );
+  list = async () => [];
+  failMask = true;
+  await assert.rejects(
+    execute({ pack: "ui", complex: true }),
+    /restriction fixture/,
+  );
+  failMask = false;
+  const state = await execute({});
+  assert.deepEqual(state.loaded, ["forecast"]);
+  assert.equal(state.callLimit, 20);
+  assert.ok(!state.tools.includes("render_ui"));
+  assert.equal(masks.size, 1);
+  await execute({ pack: "ui" });
+  assert.equal(masks.size, 1);
+  for (const cleanup of effects) cleanup();
+  assert.equal(masks.size, 0);
+});
+
 test("forecast never silently treats an unsafe JSON integer as exact", () => {
   const input = forecastInput();
   input.records[0].base_plan_qty = Number("9007199254740993");
@@ -448,7 +553,89 @@ test("forecast never silently treats an unsafe JSON integer as exact", () => {
   assert.notEqual(computeForecast(input).rows[0].status, "blocked");
 });
 
+test("forecast tool schema accepts missing data but continues to reject numeric decimal inputs", async () => {
+  for (const field of [
+    "base_plan_qty",
+    "base_actual_to_cutoff_qty",
+    "prior_base_actual_qty",
+    "prior_target_actual_qty",
+    "eligible",
+    "seasonal",
+    "target_yoy_growth",
+    "target_mom_growth",
+  ]) {
+    const data = forecastInput();
+    data.records.push({ ...data.records[0], sku_id: "valid" });
+    data.records[0][field] = null;
+    const result = JSON.parse(await forecastTool.execute(data, {}));
+    assert.equal(result.coverage.calculated, 1, field);
+    assert.notEqual(result.rows[0].status, "calculated", field);
+    assert.equal(result.rows[0].final_forecast, null, field);
+  }
+  for (const numeric of [0.1, Number("9007199254740993")]) {
+    const data = forecastInput();
+    data.records[0].base_plan_qty = numeric;
+    await assert.rejects(forecastTool.execute(data, {}), /invalid arguments/);
+  }
+});
+
+test("computation provenance requires exact complete JSON in a genuine user message", () => {
+  const data = forecastInput(),
+    digest = forecastInputHash(data);
+  const message = (kind, text) => ({
+    source: { kind },
+    content: [{ type: "text", text }],
+  });
+  const pretty = "Input:\n```json\n" + JSON.stringify(data, null, 2) + "\n```";
+  assert.equal(hasUserForecastInput([message("user", pretty)], digest), true);
+  for (const kind of ["tool", "plugin", "assistant"])
+    assert.equal(hasUserForecastInput([message(kind, pretty)], digest), false);
+  assert.equal(
+    hasUserForecastInput([message("user", "data_mode=provided")], digest),
+    false,
+  );
+  assert.equal(
+    hasUserForecastInput(
+      [message("user", pretty)],
+      forecastInputHash({ ...data, snapshot_at: "changed" }),
+    ),
+    false,
+  );
+  const live = { ...data, data_mode: "live" };
+  assert.equal(
+    hasUserForecastInput(
+      [message("user", JSON.stringify(live))],
+      forecastInputHash(live),
+    ),
+    false,
+  );
+  const reordered = Object.fromEntries(Object.entries(data).reverse());
+  assert.equal(forecastInputHash(reordered), digest);
+});
+
 test("business UI rejects sign-based colours and unverified automatic totals", () => {
+  for (const cell of [" +10", "\t−10", " -.5", "+.2", "\n+  10"])
+    assert.match(
+      businessUiIssue({
+        spec: { items: [{ type: "table", columns: ["差额"], rows: [[cell]] }] },
+      }),
+      /SEMANTICS/,
+    );
+  for (const type of ["hero", "stat"])
+    assert.match(
+      businessUiIssue({ spec: { items: [{ type, delta: "−10" }] } }),
+      /SEMANTICS/,
+    );
+  assert.equal(
+    businessUiIssue({
+      spec: {
+        items: [
+          { type: "table", columns: ["差额"], rows: [[-10], ["少于计划 10"]] },
+        ],
+      },
+    }),
+    undefined,
+  );
   assert.match(
     businessUiIssue({
       items: [{ type: "stat", label: "计划差额", value: "100", delta: "+100" }],

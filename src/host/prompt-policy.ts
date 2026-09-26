@@ -110,7 +110,11 @@ export function businessUiIssue(input: unknown): string | undefined {
     if (Array.isArray(node)) return node.some(visit);
     if (!node || typeof node !== "object") return false;
     const record = node as Record<string, unknown>;
-    if (record.type === "stat" && record.delta !== undefined) return true;
+    if (
+      ["stat", "hero"].includes(String(record.type)) &&
+      record.delta !== undefined
+    )
+      return true;
     if (
       record.type === "table" &&
       (record.total === true ||
@@ -120,7 +124,9 @@ export function businessUiIssue(input: unknown): string | undefined {
             (row) =>
               Array.isArray(row) &&
               row.some(
-                (cell) => typeof cell === "string" && /^[+-]\s*\d/.test(cell),
+                (cell) =>
+                  typeof cell === "string" &&
+                  /^[+−-]\s*[\d.]/.test(cell.trim()),
               ),
           )))
     )

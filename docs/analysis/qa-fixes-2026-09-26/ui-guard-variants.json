@@ -1,0 +1,17 @@
+[
+  {
+    "name": "leading whitespace",
+    "isError": true,
+    "text": "Error: GEA_UI_BUSINESS_SEMANTICS: 不使用自动合计或按正负自动着色的 delta。使用已核实汇总；差额写成带业务含义的中性文字（例如“超计划 100”），需要颜色时明确业务状态。"
+  },
+  {
+    "name": "Unicode minus",
+    "isError": true,
+    "text": "Error: GEA_UI_BUSINESS_SEMANTICS: 不使用自动合计或按正负自动着色的 delta。使用已核实汇总；差额写成带业务含义的中性文字（例如“超计划 100”），需要颜色时明确业务状态。"
+  },
+  {
+    "name": "hero delta",
+    "isError": true,
+    "text": "Error: GEA_UI_BUSINESS_SEMANTICS: 不使用自动合计或按正负自动着色的 delta。使用已核实汇总；差额写成带业务含义的中性文字（例如“超计划 100”），需要颜色时明确业务状态。"
+  }
+]
