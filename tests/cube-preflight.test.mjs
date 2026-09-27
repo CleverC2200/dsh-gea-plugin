@@ -380,3 +380,14 @@ test('unknown measure errors offer actual measures, never numeric dimensions as 
  assert.match(error,/inv.total_stock_qty/);assert.doesNotMatch(error,/最像的是 inv.stock_qty/);
  assert.match(error,/数值维度不能代替度量/);
 });
+
+test('filter operators reject SQL aliases and retain supported Cube predicates', () => {
+  for (const operator of ['=', 'IN', 'between', 'is null']) {
+    const issue = m.preflightCubeArguments({action:'query',queries:[{name:'stock',query:{dimensions:['stock.sku'],filters:[{member:'stock.qty',operator,values:['0']}]}}]});
+    assert.match(issue ?? '', /operator/);
+  }
+  for (const operator of ['equals','gt','gte','notContains','notStartsWith','inDateRange','beforeOrOnDate','set','notSet']) {
+    const issue=m.preflightCubeArguments({action:'query',queries:[{name:'stock',query:{dimensions:['stock.sku'],filters:[{member:'stock.qty',operator,...(['set','notSet'].includes(operator)?{}:{values:['0']})}]}}]});
+    assert.equal(issue,undefined,operator);
+  }
+});

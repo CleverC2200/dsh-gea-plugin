@@ -44,6 +44,7 @@ const QUERY_FIELDS = new Set([
 ]);
 
 /** `模型.字段`；裸字段、SQL 表达式、`*` 都不匹配。 */
+import { CUBE_FILTER_OPERATORS } from './cube-operators.ts';
 const MODEL_MEMBER = /^[A-Za-z_][A-Za-z0-9_$]*\.[A-Za-z_][A-Za-z0-9_$]*$/;
 
 export const CUBE_MAX_QUERIES = 8;
@@ -188,7 +189,11 @@ function walkFilters(
       return;
     }
     // set / notSet 这类运算符本来就不带值，其余一律要求 values。
-    const valueFree = operator === "set" || operator === "notSet";
+    if (!(CUBE_FILTER_OPERATORS as readonly string[]).includes(operator)) {
+      out.issues.push({path: `${at}.operator`, problem: `operator=${operator} 不是支持的Cube操作符`, fix: '等于使用equals，大于使用gt；不能用SQL的=、IN或BETWEEN。'});
+      return;
+    }
+    const valueFree = operator === "set" || operator === "notSet" || operator === "measureFilter";
     if (!valueFree && !Array.isArray(node.values)) {
       out.issues.push({
         path: `${at}.values`,

@@ -55,7 +55,7 @@ export function projectEvidence(
   limit = 6000,
   view?: unknown,
 ): string {
-  if (text.length <= limit) return text;
+  if (text.length <= limit && view === undefined) return text;
   let data: unknown;
   try {
     data = view ?? exactResult(text);

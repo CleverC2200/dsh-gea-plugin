@@ -347,6 +347,8 @@ function datasetPages(
   if (depth > 10) return [];
   const value = parsed(raw);
   if (!record(value)) return [];
+  const status = Object.fromEntries(['status','error','errors','warnings','coverage','partial','truncated'].filter(k=>Object.hasOwn(value,k)).map(k=>[k,value[k]]));
+  if (Object.keys(status).length) provenance = {...provenance,envelopeStatus:[...(Array.isArray(provenance.envelopeStatus)?provenance.envelopeStatus:[]),{path,...status}]};
   if (value.source === "GEA_CUBE_BATCH" && Array.isArray(value.results))
     return value.results.flatMap((r, i) =>
       record(r) && r.status === "returned"
@@ -443,6 +445,25 @@ export function datasetIndex(raw: string, evidenceId: string) {
       },
     };
   });
+}
+/** Business rows first; retain coverage and exact values, with the original available for audit.
+ * Mixed failures keep the existing envelope projection so no rejected query disappears.
+ */
+export function compactDatasetProjection(raw: string, evidenceId: string, limit = 6000): string | undefined {
+  if (resultOutcome(raw) !== 'returned') return undefined;
+  const index = datasetIndex(raw, evidenceId);
+  if (!index.length || index.length > 8) return undefined;
+  for (const rowLimit of [100, 30, 10, 3, 1]) {
+    try {
+      const datasets = index.map(d => readDataset(raw, evidenceId, d.key, 0, rowLimit));
+      const incomplete = datasets.some(d => d.nextRead !== null);
+      const value = JSON.stringify({evidenceId, projection: incomplete ? 'partial' : 'complete', sourceOutcome: resultOutcome(raw), datasets,
+        evidenceDatasets: index.map((d,i)=>({...d,nextRead:datasets[i]!.nextRead})),
+        note:'业务行已结构化展示；完整表示本次返回行已展示，不证明源数据全量。无需再读外层JSON；仅未展示行沿nextRead读取。原产物保留供核对。'});
+      if (value.length <= limit) return value;
+    } catch { return undefined; }
+  }
+  return undefined;
 }
 export function indexProjection(
   projected: string,

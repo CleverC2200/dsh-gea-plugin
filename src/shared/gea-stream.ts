@@ -15,6 +15,8 @@ function record(value: unknown): Record<string, unknown> {
  * 后面跟一句人能看懂的话，界面上不再只显示一个裸代号。
  */
 const STREAM_FAILURES: Record<string, string> = {
+  GEA_MODEL_TOOL_TEXT:
+    "模型把工具调用写成了文本；这些调用未执行，本轮业务答复未完成",
   GEA_MODEL_INCOMPLETE_STREAM:
     "模型这一轮没返回结束标记就断流了，本轮已中止，请重发一次",
   GEA_MODEL_UNSUPPORTED_TOOL_CALL:
@@ -270,6 +272,9 @@ export async function* geaTextStream(
         }
         if (chunk.text) {
           text += chunk.text;
+          // Reject raw protocol before yielding its completed marker, including split SSE chunks.
+          if (/^\s*<[|｜]{2}DSML[|｜]{2}\s*(?:tool_calls|calls|invoke)\b/.test(text))
+            invalid('GEA_MODEL_TOOL_TEXT');
           yield { type: "text-delta", index: 0, text: chunk.text };
         }
         if (chunk.finish) {

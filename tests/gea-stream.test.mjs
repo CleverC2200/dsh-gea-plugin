@@ -111,6 +111,14 @@ const streamOf = (wire) =>
     },
   });
 const offered = { names: ["gea_sales_plan_read"], maxBytes: 2000 };
+test('raw DSML protocol is never a completed business response, including split markers', async () => {
+  for (const text of ['<｜｜DSML｜｜ calls>', '<｜｜DSML｜｜ tool_calls>', '<||DSML||invoke name="x">', '  <｜｜DSML｜｜ invoke name="x">']) {
+    const wire = [...text].map(c => event({content:c})).join('') + event({}, 'stop');
+    await assert.rejects(collect(geaTextStream(streamOf(wire), undefined, offered)), /GEA_MODEL_TOOL_TEXT/);
+  }
+  const valid = await collect(geaTextStream(streamOf(event({content:'已取得15个SKU，单位件。'}, 'stop'))));
+  assert.equal(valid.at(-1).reason.kind, 'stop');
+});
 const toolDelta = (index, id, args, name = "gea_sales_plan_read") => ({
   tool_calls: [
     {

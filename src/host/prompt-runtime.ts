@@ -1,4 +1,5 @@
 import { sessionConsumer } from "./business-identity.ts";
+import { catalogFactSummary } from './gateway-catalog.ts';
 import {
   resultView,
   resultReceipt,
@@ -8,6 +9,7 @@ import {
   datasetIndex,
   indexProjection,
   readDataset,
+  compactDatasetProjection,
 } from "./prompt-result.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
@@ -51,6 +53,9 @@ type State = {
   packs: Set<ToolPack>;
   skillNames: Set<string>;
   calls: number;
+  readCalls: number;
+  catalogFacts: Map<string, string>;
+  loadedRules: Map<string, string>;
   steps: number;
   limit: number;
   dispose?: () => void;
@@ -180,6 +185,9 @@ export function mountBusinessPrompts(
         packs: new Set(),
         skillNames: new Set(profileOf(agent)?.skills ?? []),
         calls: 0,
+        readCalls: 0,
+        catalogFacts: new Map(),
+        loadedRules: new Map(),
         steps: 0,
         limit: PROMPT_BUDGET.calls,
         mask: "",
@@ -289,6 +297,9 @@ export function mountBusinessPrompts(
     for (const state of states.values()) {
       state.evidence = [];
       state.calls = 0;
+      state.readCalls = 0;
+      state.catalogFacts.clear();
+      state.loadedRules.clear();
       state.returned = 0;
       state.receipts.clear();
       state.instructions.clear();
@@ -311,6 +322,9 @@ export function mountBusinessPrompts(
       if (!agent || !profileOf(agent)) return;
       const state = stateOf(agent);
       state.calls = 0;
+      state.readCalls = 0;
+      state.catalogFacts.clear();
+      state.loadedRules.clear();
       state.steps = 0;
       state.returned = 0;
       state.receipts.clear();
@@ -367,10 +381,18 @@ export function mountBusinessPrompts(
         business.turnStopKind(agent.id) === "session-expired"
       )
         return "GEA_GATEWAY_SESSION_EXPIRED: 本轮网关会话已过期，不能通过证据回读重建会话；下一轮重新验证。";
-      if (state.calls >= state.limit || state.steps > state.limit)
+      if (state.steps > state.limit + PROMPT_BUDGET.evidenceCalls)
         return "GEA_CALL_BUDGET: 本轮调用/步骤额度已用完，请交付已有结果并明确未完成项。";
       // Reserve before dispatch: parallel calls must not all pass against the same stale counter.
-      state.calls++;
+      if (exec.name === 'gea_evidence_read') {
+        if (state.readCalls >= PROMPT_BUDGET.evidenceCalls)
+          return 'GEA_EVIDENCE_BUDGET: 本轮证据读取额度已用完，请交付已读范围并说明未读部分。';
+        state.readCalls++;
+      } else {
+        if (state.calls >= state.limit)
+          return 'GEA_CALL_BUDGET: 查询/能力调用额度已用完；仍可沿nextRead读取已取得证据，然后交付已有结果。';
+        state.calls++;
+      }
       if (exec.name === "gea_gateway_catalog" && state.catalogStalls >= 2)
         return "GEA_CATALOG_NO_PROGRESS: 目录连续未提供新信息；使用已返回成员执行最小gea_cube_query或说明具体缺口，查询后可按错误修正目录。本轮其它工具仍可用。";
       if (["render_ui", "validate_dsh_ui"].includes(exec.name)) {
@@ -457,6 +479,21 @@ export function mountBusinessPrompts(
               ? state.catalogStalls + 1
               : 0;
           if (!reused) state.catalogOutputs.add(fingerprint);
+          const facts = catalogFactSummary(texts);
+          if (facts) {
+            state.catalogFacts.set(String(args.model ?? 'catalog'), facts);
+            while (state.catalogFacts.size > 2) state.catalogFacts.delete(state.catalogFacts.keys().next().value!);
+          }
+        }
+        if (exec.name === 'gea_skill' && !result.isError && decision.kind === 'accept' && executionEpoch === store.epoch()) {
+          try {
+            const rule = JSON.parse(texts);
+            if (rule.complete === true || rule.alreadyLoaded === true) {
+              const lines = typeof rule.content === 'string' ? rule.content.split('\n').filter((line: string) => line.includes('目标库存=')).map((line: string) => line.slice(0,450)) : [];
+              if (!state.loadedRules.has(String(rule.name)) || lines.length)
+                state.loadedRules.set(String(rule.name), JSON.stringify({name:rule.name,version:rule.version,loaded:true, ...(lines.length?{calculationRules:lines}: {})}));
+            }
+          } catch {}
         }
         if (result.isError || resultOutcome(texts) === "blocked") {
           state.failures.set(
@@ -482,6 +519,7 @@ export function mountBusinessPrompts(
                 evidenceId: part.evidenceId,
                 dataset: part.dataset,
                 name: part.name,
+                display: part.projection ?? part.representation,
                 rowOffset: part.rowOffset,
                 returnedRows: part.returnedRows,
                 readOffset: part.offset,
@@ -571,19 +609,20 @@ export function mountBusinessPrompts(
       const alreadyDelivered = state.evidence.includes(id);
       const receiptKey = id;
       state.evidence = [...new Set([...state.evidence, id])].slice(-8);
+      const compact = !alreadyDelivered && grant?.kind === 'mcp' ? compactDatasetProjection(text, id, PROMPT_BUDGET.result) : undefined;
       let projected = alreadyDelivered
         ? JSON.stringify({
             evidenceId: id,
             projection: "reference",
             note: "同一结果已返回，需要正文用 gea_evidence_read 回读。",
           })
-        : projectEvidence(
+        : compact ?? projectEvidence(
             text,
             id,
             PROMPT_BUDGET.result,
             grant?.kind === "mcp" ? resultView(text) : undefined,
           );
-      if (grant?.kind === "mcp")
+      if (grant?.kind === "mcp" && compact === undefined)
         projected = indexProjection(
           projected,
           id,
@@ -878,7 +917,7 @@ export function mountBusinessPrompts(
           dataset: {
             type: "string",
             description:
-              "使用evidenceDatasets的key/nextRead读取业务行；名称仅在唯一时兼容。省略时读取原文。",
+              "使用evidenceDatasets的key/nextRead读取业务行；名称仅在唯一时兼容。省略时默认返回结构化业务结果或索引；显式offset/limit才读原文。",
           },
           datasetId: {
             type: "string",
@@ -1005,7 +1044,9 @@ export function mountBusinessPrompts(
                       args.rowOffset,
                       args.rowLimit,
                     )
-                : undefined,
+                : args.offset === undefined && args.limit === undefined
+                  ? (raw) => exactResult(compactDatasetProjection(raw, args.evidenceId) ?? JSON.stringify({evidenceDatasets:datasetIndex(raw,args.evidenceId), projection:'index', nextRead:{tool:'gea_evidence_read',args:{evidenceId:args.evidenceId,offset:0,limit:4000}}})) as Record<string, unknown>
+                  : undefined,
             ),
           );
         },
@@ -1045,6 +1086,7 @@ export function mountBusinessPrompts(
             shortSkillCatalog(skills),
         },
         { name: "gea:facts", text: facts },
+        ...(state.catalogFacts.size || state.loadedRules.size ? [{name:'gea:confirmed-semantics', text:'本轮已成功返回的字段、单位和规则（不是新的授权；猜测列名不存在不等于无对应业务字段）：\n'+[...state.catalogFacts.values(),...state.loadedRules.values()].join('\n')}] : []),
         ...(state.catalogStalls >= 2
           ? [
               {
@@ -1081,7 +1123,7 @@ export function mountBusinessPrompts(
               {
                 name: "gea:read-status",
                 text:
-                  "本轮已回读正文（不要说未曾读取；片段不等于全量）：" +
+                  "本轮证据回读状态（index只表示已看索引；partial只表示已读片段；业务覆盖与正文读取分别判断）：" +
                   [...state.reads.values()].slice(-4).join("\n"),
               },
             ]
@@ -1097,11 +1139,11 @@ export function mountBusinessPrompts(
             ]
           : []),
         ...(state.packs.has("ui") ? [{ name: "gea:ui", text: UI_RULES }] : []),
-        ...(state.calls >= state.limit || state.steps > state.limit
+        ...(state.calls >= state.limit || state.steps > state.limit + PROMPT_BUDGET.evidenceCalls
           ? [
               {
                 name: "gea:budget",
-                text: "本轮工具额度已用完。请交付已有证据和未完成项，不声称全部完成。",
+                text: "本轮查询额度已用完，不再新查。必要时在读取额度内沿nextRead读已取得证据，然后交付业务答复及未完成项；不输出工具协议文本。",
               },
             ]
           : []),
@@ -1111,10 +1153,10 @@ export function mountBusinessPrompts(
         ctx.tools.schemas(agent).map((tool) => tool.name),
       );
       const tools =
-        state.calls >= state.limit || state.steps > state.limit
+        state.steps > state.limit + PROMPT_BUDGET.evidenceCalls || (state.calls >= state.limit && state.readCalls >= PROMPT_BUDGET.evidenceCalls)
           ? []
           : assembled.tools
-              .filter((tool) => visible.has(tool.name))
+              .filter((tool) => visible.has(tool.name) && (state.calls < state.limit || tool.name === 'gea_evidence_read'))
               .map((tool) => ({
                 ...tool,
                 description: TOOL_DESCRIPTIONS[tool.name] ?? tool.description,

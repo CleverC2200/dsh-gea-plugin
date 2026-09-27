@@ -224,7 +224,8 @@ class GeaModelAdapter extends LlmAdapter {
       const requestBody = toGeaRequest(options);
       const requestId=randomUUID();
       console.info(JSON.stringify({event:"GEA_MODEL_REQUEST",requestId,sessionId:options.sessionId,consumerCode:route.agentCode,model:options.model,
-        messageChars:JSON.stringify(requestBody.messages).length,toolSchemaChars:JSON.stringify(requestBody.tools??[]).length}));
+        messageChars:JSON.stringify(requestBody.messages).length,toolSchemaChars:JSON.stringify(requestBody.tools??[]).length,
+        messageBreakdown: ['system','user','assistant','tool'].map(role=>({role,count:requestBody.messages.filter(m=>m.role===role).length,chars:JSON.stringify(requestBody.messages.filter(m=>m.role===role)).length}))}));
       const response = await this.business.fetchExternal(route.baseUrl + "/chat/completions", {
         method: "POST",
         headers: {
@@ -252,14 +253,10 @@ class GeaModelAdapter extends LlmAdapter {
       )
         throw new Error("GEA_MODEL_NOT_SSE");
       let reportedUsage=false;
-      let responsePrefix="";
       for await (const chunk of geaTextStream(response.body, signal, {
         names: options.tools?.map((tool) => tool.name) ?? [],
         maxBytes: this.business.config.maxSnapshotBytes,
       })) {
-        if(chunk.type === "text-delta" && responsePrefix.length<500)responsePrefix=(responsePrefix+chunk.text).slice(0,500);
-        if(chunk.type === "finish" && chunk.reason.kind === "stop" && /^\s*<[|｜]{2}DSML[|｜]{2}(?:tool_calls|invoke)/.test(responsePrefix))
-          throw new LlmError("GEA_MODEL_TOOL_TEXT: 模型把工具调用写成了文本，未执行这些调用，也未完成业务答复。", "PROVIDER_PROTOCOL");
         if (chunk.type === "usage") { reportedUsage=true; console.info(JSON.stringify({event:"GEA_MODEL_USAGE",requestId,sessionId:options.sessionId,usage:chunk.usage})); }
         yield chunk;
       }
@@ -268,6 +265,8 @@ class GeaModelAdapter extends LlmAdapter {
       // 线上实测：模型请求断线时界面只有 `fetch failed` + UNKNOWN（undici 的真实原因在 cause 里）。
       // 统一翻成可读、带 code 的错误：连哪个 host、断在连接还是流式阶段、原因码是什么。
       if(error instanceof LlmError)throw error;
+      if ((error as {code?:string})?.code === 'GEA_MODEL_TOOL_TEXT')
+        throw new LlmError((error as Error).message, 'PROVIDER_PROTOCOL');
       const converted=networkError(error, {what:`模型网关 ${modelHost}`,stage,timeoutMs:this.business.config.modelRequestTimeoutMs});
       if(converted.name === "AbortError")throw converted;
       const code=(converted as Error & {code?:unknown}).code;

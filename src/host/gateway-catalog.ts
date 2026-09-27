@@ -266,6 +266,15 @@ export function parseFirstJsonObject(text: string, parse: (text: string) => unkn
   throw new Error("GEA_CATALOG_TRUNCATED");
 }
 
+/** Small factual reminder drawn only from a successful catalog, not from model guesses. */
+export function catalogFactSummary(text: string): string {
+  if (!text.startsWith('GEA 网关语义模型成员')) return '';
+  const skuMembers = [...new Set(text.match(/[A-Za-z_][\w]*\.(?:material_code|material_name|sku_code|sku_name)\b/g) ?? [])].slice(0, 8);
+  const units = text.split('\n').filter(line => /语义：/.test(line) && /单位/.test(line))
+    .sort((a,b)=>Number(/_count\b/.test(a))-Number(/_count\b/.test(b)))
+    .slice(0, 4).map(line => line.trim().slice(0, 230));
+  return skuMembers.length || units.length ? JSON.stringify({returnedSkuMembers:skuMembers,returnedMeasureSemantics:units}) : '';
+}
 type Member = { name?: string; type?: string; description?: string; meta?: {unit?: string; ai_context?: string} };
 type Model = {
   name?: string;

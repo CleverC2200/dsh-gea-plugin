@@ -148,7 +148,11 @@
     "presets/prompt-policy.json",
     "presets/inventory-apsplan.skill.md",
     "presets/inventory-fc.skill.md",
-    "presets/inventory-qll.skill.md"
+    "presets/inventory-qll.skill.md",
+    "business-skills/aps/sales-forecast-result-analysis.skill.md",
+    "business-skills/aps/sales-ops-problem-analysis.skill.md",
+    "business-skills/aps/references/metric-definitions.md",
+    "business-skills/aps/references/data-mapping.md"
   ],
   "workspaces": [
     "packages/*"

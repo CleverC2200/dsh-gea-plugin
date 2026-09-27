@@ -16,6 +16,7 @@ import {
   datasetIndex,
   indexProjection,
   readDataset,
+  compactDatasetProjection,
 } from "../src/host/prompt-result.ts";
 import { projectEvidence } from "../src/host/prompt-evidence.ts";
 import {
@@ -712,4 +713,27 @@ test("knowledge projection uses cited chunks instead of a cut JSON envelope", ()
   );
   assert.equal(partial.sourceComplete, false);
   assert.equal(partial.excerpts.length, 1);
+});
+
+test('small nested artifacts expose exact business rows with coverage, not escaped envelopes', () => {
+  const rows=[{'inventory.material_code':'SKU01','inventory.qty':'12.3400'},{'inventory.material_code':'SKU02','inventory.qty':null}];
+  const raw=JSON.stringify({source:'GEA_MCP_CONTENT',delivery:{sourceReadComplete:true,notes:['not a complete snapshot']},payloads:[JSON.stringify({warnings:['source batch unverified'],queryArtifact:{resources:[{contents:[{text:JSON.stringify({datasetName:'stock',rows,totalRows:2,hasMore:false})}]}]}})]});
+  const output=JSON.parse(compactDatasetProjection(raw,'ev-fixture'));
+  assert.equal(output.projection,'complete');
+  assert.deepEqual(output.datasets[0].table.rows,rows);
+  assert.equal(output.evidenceDatasets[0].nextRead,null);
+  assert.match(JSON.stringify(output),/not a complete snapshot|source batch unverified/);
+  assert.ok(!JSON.stringify(output).includes('\\\\\\"rows'));
+  const mixed=JSON.stringify({source:'GEA_CUBE_BATCH',results:[{status:'returned',result:raw},{status:'rejected',code:'DENIED'}]});
+  assert.equal(compactDatasetProjection(mixed,'ev-fixture'),undefined);
+});
+
+test('compact dataset paging never presents its row slice as the full returned dataset', () => {
+  const raw=JSON.stringify({rows:Array.from({length:150},(_,i)=>({sku:'SKU'+i,qty:i===1?null:i})),hasMore:true,totalRows:999});
+  const output=JSON.parse(compactDatasetProjection(raw,'ev-fixture',3000));
+  assert.equal(output.projection,'partial');
+  assert.equal(output.datasets[0].sourceCoverage[0].hasMore,true);
+  assert.equal(output.datasets[0].sourceCoverage[0].totalRows,999);
+  assert.ok(output.datasets[0].nextRead.args.rowOffset>0);
+  assert.ok(JSON.stringify(output).length<=3000);
 });
