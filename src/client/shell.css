@@ -10,7 +10,10 @@
   display: none !important;
 }
 /* 面板切换瞬间不做列宽动画，避免业务页面连续重排（看起来像闪动）。 */
-.AppFrame_frame.gea-panel-switching {
+.AppFrame_frame:is(.gea-panel-switching, .gea-session-switching) {
+  transition: none !important;
+}
+.AppFrame_frame:is(.gea-panel-switching, .gea-session-switching) > :is(.AppFrame_centerCol, .AppFrame_rightbarCol, .AppFrame_handle) {
   transition: none !important;
 }
 .gea-workbench-frame {
@@ -704,20 +707,6 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   background: #fff;
 }
 .gea-agent-identity { text-align: center; }
-.gea-agent-head {
-  order: -1;
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 9px;
-  padding: 11px 16px;
-  border-bottom: 1px solid #eceff3;
-  background: #fffdfd;
-  z-index: 3;
-}
-.gea-agent-head-avatar { flex: none; width: 30px; height: 30px; border-radius: 50%; }
-.gea-agent-head-copy { display: grid; min-width: 0; gap: 0; }
-.gea-agent-head-name { color: #242b38; font-size: 14px; font-weight: 600; line-height: 1.35; }
 .gea-agent-avatar {
   display: block;
   width: 72px;
@@ -1172,10 +1161,10 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   justify-content: flex-start !important;
 }
 
-/* APS uses the welcome identity rather than a second rail title. */
-.AppFrame_frame:has([data-gea-business-entry="inventory-apsplan"][aria-current="page"]) .gea-agent-head { display: none; }
-.AppFrame_frame:has([data-gea-business-entry="inventory-apsplan"][aria-current="page"]) .gea-agent-welcome { padding-top: 50px; margin-top: 0; }
-.AppFrame_frame:has([data-gea-business-entry="inventory-apsplan"][aria-current="page"]) .gea-agent-identity { margin-top: 0; padding-top: 0; }
+/* Right-rail geometry follows the active business panel, not the sidebar's
+   currently rendered menu item (which disappears when its drawer closes). */
+.AppFrame_frame.gea-business-shell .gea-agent-welcome { padding-top: 50px; margin-top: 0; }
+.AppFrame_frame.gea-business-shell .gea-agent-identity { margin-top: 0; padding-top: 0; }
 
 /* The composer card has its own outline; no full-width rule above it on any Agent. */
 .AppFrame_frame [data-rightbar-col] [data-composer-seat] {
@@ -1184,18 +1173,12 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 
 /* Keep the actual composer outline visible, including its top edge. */
-.AppFrame_frame:has([data-gea-business-entry="inventory-apsplan"][aria-current="page"]) [data-rightbar-col] [data-slot="conversation.composer.bar"] {
+.AppFrame_frame.gea-business-shell [data-rightbar-col] [data-slot="conversation.composer.bar"] {
   --dsw-alias-border-l1: #c9cfd8;
   --dsw-alias-border-l2: #c9cfd8;
   box-shadow: inset 0 0 0 1px #c9cfd8;
   border-radius: 12px;
 }
-
-/* Inventory and order Agent headers; sales planning is intentionally excluded. */
-.AppFrame_frame:has(:is([data-gea-business-entry="inventory-apsplan"],[data-gea-business-entry="inventory-aqkc"],[data-gea-business-entry="inventory-customer"],[data-gea-business-entry="inventory-dealer"],[data-gea-business-entry="inventory-fc"],[data-gea-business-entry="inventory-orderfulfillment"],[data-gea-business-entry="inventory-orderworkbench"],[data-gea-business-entry="inventory-personal"],[data-gea-business-entry="inventory-qll"])[aria-current="page"]) .gea-agent-head { display:none; }
-.AppFrame_frame:has(:is([data-gea-business-entry="inventory-apsplan"],[data-gea-business-entry="inventory-aqkc"],[data-gea-business-entry="inventory-customer"],[data-gea-business-entry="inventory-dealer"],[data-gea-business-entry="inventory-fc"],[data-gea-business-entry="inventory-orderfulfillment"],[data-gea-business-entry="inventory-orderworkbench"],[data-gea-business-entry="inventory-personal"],[data-gea-business-entry="inventory-qll"])[aria-current="page"]) .gea-agent-welcome { padding-top:50px; margin-top:0; }
-.AppFrame_frame:has(:is([data-gea-business-entry="inventory-apsplan"],[data-gea-business-entry="inventory-aqkc"],[data-gea-business-entry="inventory-customer"],[data-gea-business-entry="inventory-dealer"],[data-gea-business-entry="inventory-fc"],[data-gea-business-entry="inventory-orderfulfillment"],[data-gea-business-entry="inventory-orderworkbench"],[data-gea-business-entry="inventory-personal"],[data-gea-business-entry="inventory-qll"])[aria-current="page"]) .gea-agent-identity { margin-top:0; padding-top:0; }
-.AppFrame_frame:has(:is([data-gea-business-entry="inventory-apsplan"],[data-gea-business-entry="inventory-aqkc"],[data-gea-business-entry="inventory-customer"],[data-gea-business-entry="inventory-dealer"],[data-gea-business-entry="inventory-fc"],[data-gea-business-entry="inventory-orderfulfillment"],[data-gea-business-entry="inventory-orderworkbench"],[data-gea-business-entry="inventory-personal"],[data-gea-business-entry="inventory-qll"])[aria-current="page"]) [data-rightbar-col] [data-slot="conversation.composer.bar"] { --dsw-alias-border-l1:#c9cfd8; --dsw-alias-border-l2:#c9cfd8; box-shadow:inset 0 0 0 1px #c9cfd8; border-radius:12px; }
 
 /* Agent view controls live above the active content column, so either maximized
    view still has a visible way back to the split view. */
