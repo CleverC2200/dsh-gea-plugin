@@ -1,6 +1,9 @@
 /** Apply the GEA desktop's notice preference using DSH 0.1.5-rc.2 settings. */
 import {readFile,writeFile} from 'node:fs/promises';
-import YAML from 'yaml';
+import {createRequire} from 'node:module';
+import {join} from 'node:path';
+const dependency=createRequire(process.env.GEA_LAYERED_CORE?join(process.env.GEA_LAYERED_CORE,'package.json'):import.meta.url);
+const YAML=dependency('yaml');
 /** Preserve unrelated settings and comments while skipping the informational welcome notice. */
 export async function configureWelcomeNotice(path) {
   let text='';

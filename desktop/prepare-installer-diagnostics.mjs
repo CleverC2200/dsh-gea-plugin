@@ -3,6 +3,7 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
+import {optimizeInstallerTransfer} from './prepare-installer-transfer.mjs';
 const marker=stage=>`!insertmacro GEA_INSTALL_TIMING_LOG "${stage}"`;
 export function instrument(name,source){
   const original=source;
@@ -53,14 +54,20 @@ export function instrument(name,source){
   assert.equal(stripped,original,`${name}: instrumentation changed upstream operations`);
   return source;
 }
-export async function prepare(builderRoot,output){
+export async function prepare(builderRoot,output,{fastMove=false}={}){
   assert.equal(JSON.parse(await readFile(join(builderRoot,'package.json'),'utf8')).version,'26.15.3');
   const templates=join(builderRoot,'templates/nsis');
   await mkdir(output,{recursive:false});
   await mkdir(join(output,'include'));
+  if(fastMove){
+    await writeFile(join(output,'include/installer-transfer.nsh'),await readFile(new URL('./build/installer-transfer.nsh',import.meta.url),'utf8'));
+  }
   const names=['installer.nsi','installSection.nsh','include/extractAppPackage.nsh','include/installer.nsh','include/installUtil.nsh'];
   for(const name of names){
     let source=instrument(name,await readFile(join(templates,name),'utf8'));
+    if(fastMove&&name==='include/extractAppPackage.nsh'){
+      source=`!include "${join(output,'include/installer-transfer.nsh')}"\n`+optimizeInstallerTransfer(source);
+    }
     for(const target of names){
       const basename=target.split('/').at(-1);
       source=source.replaceAll(`!include "${basename}"`,`!include "${join(output,target)}"`)
@@ -71,5 +78,7 @@ export async function prepare(builderRoot,output){
   return join(output,'installer.nsi');
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
-  console.log(await prepare(resolve(process.argv[2]),resolve(process.argv[3])));
+  const option=process.argv[4];
+  assert.ok(!option||option==='--fast-move','Expected --fast-move or no extra argument');
+  console.log(await prepare(resolve(process.argv[2]),resolve(process.argv[3]),{fastMove:option==='--fast-move'}));
 }

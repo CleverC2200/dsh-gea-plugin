@@ -27,7 +27,17 @@ async function showNavigationErrors(){
 if(owned)attachNavigation({app,queue:navigation,argv:process.argv,getWindow:()=>window,onError:navigationError});
 let startupReason='startup';
 let lifecycle=Promise.resolve();
+let maintenanceTimer,maintenance;
 function runLifecycle(action){const next=lifecycle.then(()=>action());lifecycle=next.catch(()=>{});return next;}
+function scheduleStorageMaintenance(){
+  clearTimeout(maintenanceTimer);
+  if(development)return;
+  maintenanceTimer=setTimeout(()=>{
+    if(quitting)return;
+    maintenance=pluginStore.collectGarbage().then(result=>appendFile(join(data,'desktop.log'),new Date().toISOString()+' PLUGIN_STORAGE '+JSON.stringify({removed:result.removed.length,coresRemoved:result.coresRemoved?.length??0,failed:result.failed.length,skipped:result.skipped??null})+'\n',{mode:0o600})).catch(()=>{});
+  },15000);
+  maintenanceTimer.unref();
+}
 const payload=!app.isPackaged&&process.env.GEA_DESKTOP_PAYLOAD?process.env.GEA_DESKTOP_PAYLOAD:join(process.resourcesPath,'payload');
 const development=process.env.GEA_DESKTOP_DEV==='1';
 const developmentGraph=process.env.DSH_PLUGIN_GRAPH;
@@ -78,10 +88,10 @@ async function start(recovered=false,reason='startup'){
     if(recovered)throw error;
     await pluginStore.failBoot('PLUGIN_SELECTION_INVALID');return start(true,'recovery');
   }
-  const node=join(payload,'node',process.platform==='win32'?'node.exe':'bin/node');
+  const node=selected.core?process.execPath:join(payload,'node',process.platform==='win32'?'node.exe':'bin/node');
   const runtimeEnv={...process.env};delete runtimeEnv.GEA_RELEASE_TOKEN;
-  const child=spawn(node,[join(payload,'start.mjs')],{cwd:payload,detached:process.platform!=='win32',windowsHide:true,
-    env:{...runtimeEnv,GEA_CONFIG:configPath,DSH_FULL_DATA_DIR:join(data,'data'),DSH_FULL_PORT:'0',DSH_FULL_NO_OPEN:'1',DSH_PLUGIN_GRAPH:developmentGraph||selected.path,DSH_DESKTOP_BASELINE:payload,GEA_DESKTOP_DEV:development?'1':undefined,GEA_DESKTOP_CONTROL_URL:control.url,GEA_DESKTOP_CONTROL_TOKEN:control.token},
+  const child=spawn(node,[...(selected.core?['--expose-internals']:[]),join(payload,'start.mjs')],{cwd:payload,detached:process.platform!=='win32',windowsHide:true,
+    env:{...runtimeEnv,ELECTRON_RUN_AS_NODE:selected.core?'1':undefined,GEA_LAYERED_GRAPH:selected.core?selected.path:undefined,GEA_LAYERED_CORE:selected.core?.path,GEA_CONFIG:configPath,DSH_FULL_DATA_DIR:join(data,'data'),DSH_FULL_PORT:'0',DSH_FULL_NO_OPEN:'1',DSH_PLUGIN_GRAPH:developmentGraph||selected.path,DSH_DESKTOP_BASELINE:payload,GEA_DESKTOP_DEV:development?'1':undefined,GEA_DESKTOP_CONTROL_URL:control.url,GEA_DESKTOP_CONTROL_TOKEN:control.token},
     stdio:['ignore','pipe','pipe','ipc']});
   backend=child;
   let pending='';
@@ -113,6 +123,7 @@ async function start(recovered=false,reason='startup'){
     const healthy=await bounded(window.webContents.executeJavaScript(`fetch('/api/gea-proof/status',{method:'POST',headers:{'Content-Type':'application/json','X-GEA-Desktop-Health':'1'},body:'{}',signal:AbortSignal.timeout(10000)}).then(r=>r.json()).then(r=>r.ok===true)`),15000,'LOCAL_HEALTH_TIMEOUT');
     if(!healthy)throw Error('LOCAL_PLUGIN_START_FAILED');
     await pluginStore.confirmBoot();
+    scheduleStorageMaintenance();
   } catch(error){
     window.webContents.stop();
     await stop();
@@ -168,7 +179,7 @@ if(owned){
     const {createControlServer}=await import('./control-server.mjs');
     const {createClientInstaller}=await import('./client-installer.mjs');
     // 下载完成后只在文件管理器中定位安装包，由用户自己决定何时安装；不替用户直接拉起安装器。
-    clientInstaller=createClientInstaller({data,currentVersion:require('./package.json').version,sources:require('./desktop-release-sources.json'),openPath:path=>{shell.showItemInFolder(path);return '';}});
+    clientInstaller=createClientInstaller({data,currentVersion:require('./package.json').version,sources:require('./desktop-release-sources.json'),trust:require('./windows-update-trust.json'),openPath:path=>{shell.showItemInFolder(path);return '';}});
     control=await createControlServer({
       'GET /navigation/pending':async()=>navigation.pending(),
       'POST /navigation/complete':async value=>navigation.complete(value),
@@ -215,6 +226,7 @@ if(owned){
   app.on('before-quit',event=>{
     if(quitting)return;
     event.preventDefault();quitting=true;
+    clearTimeout(maintenanceTimer);
     const updatesClosing=Promise.all([updates?.close(),clientInstaller?.close()]);
     void runLifecycle(stop).finally(async()=>{await updatesClosing;await control?.close();app.quit();});
   });

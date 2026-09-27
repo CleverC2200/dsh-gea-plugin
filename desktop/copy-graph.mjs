@@ -1,7 +1,8 @@
 /** Bound filesystem work while keeping every copied file independent of the running graph. */
-import {mkdir,readdir,copyFile,cp,lstat,readFile,writeFile} from 'node:fs/promises';
+import {mkdir,readdir,copyFile,cp,lstat,readFile,writeFile,chmod} from 'node:fs/promises';
 import {join,resolve,relative} from 'node:path';
 import {constants} from 'node:fs';
+import {executableBits} from './core-file-mode.mjs';
 
 export async function copyGraphEntry(source,target,{signal}={}) {
   const pending=new Set();
@@ -22,9 +23,14 @@ export async function copyGraphEntry(source,target,{signal}={}) {
         await copy(join(source,child.name),join(target,child.name),child);
       }
     } else {
-      await schedule(()=>entry.isFile()
-        ? copyFile(source,target,constants.COPYFILE_FICLONE)
-        : cp(source,target,{recursive:true,dereference:true,mode:constants.COPYFILE_FICLONE}));
+      await schedule(async()=>{
+        if(entry.isFile()){
+          await copyFile(source,target,constants.COPYFILE_FICLONE);
+          // Electron's ASAR copyFile materializes bytes but may drop executable
+          // bits. Preserve shims/helpers without creating writable hard links.
+          const bits=await executableBits(source,entry);if(bits)await chmod(target,0o644|bits);
+        }else await cp(source,target,{recursive:true,dereference:true,mode:constants.COPYFILE_FICLONE});
+      });
     }
   };
   try {await copy(source,target,await lstat(source));await Promise.all(pending);check();}

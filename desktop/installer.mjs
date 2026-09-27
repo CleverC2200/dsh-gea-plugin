@@ -65,6 +65,7 @@ const run=args=>new Promise((resolve,reject)=>{
   try {
     await new Promise((resolve,reject)=>{
       const installEnv={...process.env};delete installEnv.GEA_RELEASE_TOKEN;delete installEnv.GEA_DESKTOP_CONTROL_TOKEN;
+      delete installEnv.GEA_LAYERED_GRAPH;delete installEnv.GEA_LAYERED_CORE;
       const child=spawn(node,[cli,'plugin','--profile','prepared','add',...targets],{
         cwd:directory,detached:process.platform!=='win32',windowsHide:true,stdio:['ignore','pipe','pipe'],
         env:{...installEnv,DSH_HOME:home,PATH:bin+(process.platform==='win32'?';':':')+dirname(node),GEA_INSTALL_NODE:node,GEA_INSTALL_PNPM:pnpm,GEA_INSTALL_DRIVER:wrapper,GEA_INSTALL_TARGETS:JSON.stringify(targets),CI:'true'},
@@ -112,9 +113,9 @@ async function restoreClientArtifacts(directory,baseline) {
   try {receipt=JSON.parse(await readFile(join(baseline,'client-artifacts.json'),'utf8'));}
   catch(error){if(error.code==='ENOENT')return;throw error;}
   const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
-  const modules=await realpath(join(directory,'node_modules')),baselineModules=await realpath(join(baseline,'node_modules'));
+  const modules=await realpath(join(directory,'node_modules'));
   for(const record of receipt.files){
-    const source=resolve(baseline,record.file),target=resolve(directory,record.file);
+    let source=resolve(baseline,record.file);const target=resolve(directory,record.file);
     if(!source.startsWith(resolve(baseline,'node_modules')+sep)||!target.startsWith(resolve(directory,'node_modules')+sep)||![record.beforeSha256,record.afterSha256].every(value=>/^[a-f0-9]{64}$/.test(value)))throw Error('CLIENT_ARTIFACT_RECEIPT_INVALID');
     let installed;
     try {
@@ -122,6 +123,12 @@ async function restoreClientArtifacts(directory,baseline) {
       installed=await readFile(target);
     }catch(error){if(error.code==='ENOENT')continue;throw error;}
     if(![record.beforeSha256,record.afterSha256].includes(digest(installed)))continue;
+    let baselineModules=await realpath(join(baseline,'node_modules'));
+    try{await readFile(source);}catch(error){
+      if(error.code!=='ENOENT')throw error;
+      source=join(baseline,'node_modules.asar',record.file);
+      baselineModules=await realpath(join(baseline,'node_modules.asar','node_modules'));
+    }
     const optimized=await readFile(source);
     if(digest(optimized)!==record.afterSha256)throw Error('CLIENT_ARTIFACT_DIGEST_MISMATCH');
     if(!(await realpath(source)).startsWith(baselineModules+sep)||!(await realpath(source+'.map')).startsWith(baselineModules+sep))throw Error('CLIENT_ARTIFACT_PATH_INVALID');

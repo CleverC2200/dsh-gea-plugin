@@ -9,3 +9,6 @@ gea.config.json
 # Local CodeGraph database and issue publishing drafts
 .codegraph/
 .scratch/
+desktop/download-differential.cjs
+desktop/download-differential.LICENSE.txt
+desktop/core-asar-reader.cjs

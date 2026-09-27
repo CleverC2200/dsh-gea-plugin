@@ -9,9 +9,9 @@ const source='http://company.test/team/releases/raw/main/channels/desktop-stable
 const bytes=Buffer.from('installer fixture');
 const digest=createHash('sha256').update(bytes).digest('hex');
 const manifest=()=>({schema:1,channel:'stable',release:{version:'0.0.9',notes:{zh:'新版',en:'New'},artifacts:[{platform:'darwin',arch:'arm64',bytes:bytes.length,sha256:digest,url:`http://company.test/team/releases/raw/${'a'.repeat(40)}/desktop/GEA-Desktop-0.0.9-mac-arm64.dmg`}]}});
-async function fixture(t,{fetchImpl,platform='darwin',arch='arm64',sources={stable:source}}={}){
+async function fixture(t,{fetchImpl,platform='darwin',arch='arm64',sources={stable:source},...options}={}){
  const data=await mkdtemp(join(tmpdir(),'gea-installer-test-'));let opened=[];
- const manager=createClientInstaller({data,currentVersion:'0.0.8',platform,arch,sources,openPath:async path=>{opened.push(path);return '';},fetchImpl:fetchImpl??(async url=>url===source?Response.json(manifest()):new Response(bytes))});
+ const manager=createClientInstaller({data,currentVersion:'0.0.8',platform,arch,sources,openPath:async path=>{opened.push(path);return '';},fetchImpl:fetchImpl??(async url=>url===source?Response.json(manifest()):new Response(bytes)),...options});
  t.after(async()=>{await manager.close();await rm(data,{recursive:true,force:true});});
  return {manager,data,opened};
 }
@@ -39,6 +39,27 @@ test('cancel aborts download, deletes partial files and allows retry',async t=>{
  await manager.check();await manager.download();await assert.rejects(manager.download(),/BUSY/);
  await new Promise(r=>setTimeout(r,10));manager.cancel();await wait(manager,'cancelled');assert.deepEqual(await readdir(join(data,'desktop-downloads')),[]);
  slow=false;await manager.download();await wait(manager,'ready');
+});
+test('an HTTP error cancels its streaming body',async t=>{
+ let cancelled=false;
+ const {manager}=await fixture(t,{fetchImpl:async url=>url===source?Response.json(manifest()):new Response(new ReadableStream({cancel(){cancelled=true;}}),{status:503})});
+ await manager.check();await manager.download();await wait(manager,'failed');assert.equal(cancelled,true);
+});
+test('idle timeout stops a stalled transfer and removes partial bytes',async t=>{
+ const {manager,data}=await fixture(t,{idleTimeoutMs:30,fetchImpl:async(url,{signal})=>{
+  if(url===source)return Response.json(manifest());
+  return new Response(new ReadableStream({start(controller){controller.enqueue(bytes.subarray(0,3));signal.addEventListener('abort',()=>controller.error(signal.reason),{once:true});}}));
+ }});
+ await manager.check();await manager.download();await wait(manager,'failed');
+ assert.equal(manager.status().error,'DESKTOP_DOWNLOAD_IDLE_TIMEOUT');assert.deepEqual(await readdir(join(data,'desktop-downloads')),[]);
+});
+test('cancelling during publisher verification cannot become ready',async t=>{
+ let release;
+ const {manager,opened}=await fixture(t,{verifySignature:()=>new Promise(r=>{release=r;})});
+ await manager.check();await manager.download();await wait(manager,'verifying');
+ for(let i=0;i<200&&!release;i++)await new Promise(r=>setTimeout(r,5));assert.ok(release);
+ manager.cancel();release({verified:true});await wait(manager,'cancelled');
+ await assert.rejects(manager.open(),/NOT_READY/);assert.deepEqual(opened,[]);
 });
 test('manifest rejects wrong origin, mutable paths, traversal, platform, channel and size',()=>{
  for(const change of [m=>m.channel='test',m=>m.release.artifacts[0].url='https://evil.test/a.dmg',m=>m.release.artifacts[0].url=m.release.artifacts[0].url.replace('a'.repeat(40),'main'),m=>m.release.artifacts[0].url+='?token=x',m=>m.release.artifacts[0].bytes=2**40,m=>m.release.artifacts.push(m.release.artifacts[0]),m=>m.release.artifacts[0].url=m.release.artifacts[0].url.replace('desktop/','desktop/../')]){

@@ -235,8 +235,9 @@ export async function profile(t, options = {}) {
       if (error.code !== "ENOENT") throw error;
     }
     child = spawn(
-      process.execPath,
+      options.executablePath ?? process.execPath,
       [
+        ...(options.execArgv ?? []),
         ...(options.desktopGraph ? [resolve(defaultRoot, "desktop/runtime-start.mjs")] : ["scripts/start.mjs",
         ...(options.bundle ? ["--bundle"] : []),
         "--config",

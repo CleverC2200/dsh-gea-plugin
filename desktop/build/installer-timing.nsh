@@ -59,12 +59,21 @@
 # electron-builder calls this immediately after the bundled 7z has been
 # extracted to a temporary directory and copied into the destination.
 !macro customFiles_x64
-  !insertmacro GEA_INSTALL_TIMING_LOG "payload-ready"
+  !ifdef GEA_DIRECTORY_INSTALL
+    !insertmacro GEA_INSTALL_TIMING_LOG "stage-payload-ready"
+  !else
+    !insertmacro GEA_INSTALL_TIMING_LOG "payload-ready"
+  !endif
 !macroend
 
 # Called after registry entries and shortcuts have been written.
 !macro customInstall
   !insertmacro GEA_REGISTER_NAVIGATION
+  !ifdef GEA_DIRECTORY_INSTALL
+    !insertmacro GEA_INSTALL_STEP "4/4 正在清理旧安装目录…" 0
+    !insertmacro geaFinishDirectories
+    !insertmacro GEA_INSTALL_STEP "安装完成" 1
+  !endif
   !insertmacro GEA_INSTALL_TIMING_LOG "install-complete"
 !macroend
 
@@ -76,6 +85,9 @@
     !insertmacro GEA_INSTALL_TIMING_LOG "install-failed"
   FunctionEnd
   Function .onGUIEnd
+    !ifdef GEA_DIRECTORY_INSTALL
+      Call geaCleanupDirectories
+    !endif
     !insertmacro GEA_INSTALL_TIMING_LOG "gui-end-before-nsis-cleanup"
   FunctionEnd
 !endif

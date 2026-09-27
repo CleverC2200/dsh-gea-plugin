@@ -5,10 +5,15 @@
  * native dependencies. Keeping it outside the staging project also prevents
  * electron-builder from walking the parent workspace's node_modules.
  */
-import { cp, mkdir, readFile, rm, stat } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import {buildDesktopTools} from './build-desktop-tools.mjs';
+import {prepareDesktopTrust} from './prepare-desktop-trust.mjs';
+import {prepareCoreLayout} from '../desktop/prepare-core-layout.mjs';
+import {readCoreLayout} from '../desktop/core-layer.mjs';
+import {describeInstaller} from '../desktop/installer-artifact.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(root, "desktop");
@@ -24,10 +29,23 @@ export const SHELL_FILES = [
   "boot-watch.cjs",
   "updates.mjs",
   "client-installer.mjs",
+  "installer-cache.mjs",
+  "installer-blockmap.mjs",
+  "installer-signature.mjs",
+  "download-differential.cjs",
+  "download-differential.LICENSE.txt",
+  "windows-update-trust.json",
+  "THIRD_PARTY_DESKTOP_NOTICES.txt",
   "desktop-release-sources.json",
   "release-sources.json",
   "control-server.mjs",
   "plugin-store.mjs",
+  "plugin-store-lock.mjs",
+  "plugin-storage.mjs",
+  "core-layer.mjs",
+  "core-file-mode.mjs",
+  "core-asar-reader.cjs",
+  "physical-fs.mjs",
   "copy-graph.mjs",
   "installer.mjs",
   "runtime-cookies.cjs",
@@ -76,6 +94,7 @@ async function prepareStaging(target) {
   const staged = stagedManifest(manifest);
   const { writeFile } = await import("node:fs/promises");
   await writeFile(join(staging, "package.json"), JSON.stringify(staged, null, 2) + "\n");
+  await prepareDesktopTrust(staging,{target});
   return staging;
 }
 
@@ -105,12 +124,27 @@ export async function validateDesktopPackage({ target, payloadRoot }) {
 export async function main(argv = process.argv.slice(2)) {
   const values = parseArgs(argv);
   if (!values) return;
-  const payloadRoot = resolve(process.env.GEA_DESKTOP_PAYLOAD_ROOT || join(buildRoot, "payload"));
+  let payloadRoot = resolve(process.env.GEA_DESKTOP_PAYLOAD_ROOT || join(buildRoot, "payload"));
   await validateDesktopPackage({ target: values.target, payloadRoot });
+  await buildDesktopTools();
+  // Windows is the validated installation target for this change. macOS can
+  // exercise the same layout explicitly before its separate signing acceptance.
+  if((values.target==='win'||process.env.GEA_ENABLE_LAYERED_MAC==='1')&&!await readCoreLayout(join(payloadRoot,values.target,'payload'))){
+    await mkdir(buildRoot,{recursive:true});const next=await mkdtemp(join(buildRoot,'layered-'));
+    await mkdir(join(next,values.target));
+    await prepareCoreLayout(join(payloadRoot,values.target,'payload'),join(next,values.target,'payload'));
+    payloadRoot=next;
+  }
   const staging = await prepareStaging(values.target);
   process.env.GEA_DESKTOP_PAYLOAD_ROOT = payloadRoot;
   try {
     await runBuilder({ target: values.target, staging, dir: values.dir });
+    if(!values.dir){
+      const manifest=JSON.parse(await readFile(join(staging,'package.json'),'utf8'));
+      const file=join(buildRoot,'final',values.target,`GEA-Desktop-${manifest.version}-${values.target==='win'?'win-x64.exe':'mac-arm64.dmg'}`);
+      const {writeFile}=await import('node:fs/promises');
+      await writeFile(file+'.artifact.json',JSON.stringify(await describeInstaller(file),null,2)+'\n');
+    }
   } finally {
     if (!values.keepStaging) await rm(staging, { recursive: true, force: true });
   }

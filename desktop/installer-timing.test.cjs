@@ -9,7 +9,7 @@ const configPath=join(project,'electron-builder.cjs');
 const includePath=join(project,'build','installer-timing.nsh');
 
 function loadConfig(diagnostic){
-  const script=`process.env.GEA_DESKTOP_TARGET='win';process.env.GEA_INSTALL_TIMING_LOG='${diagnostic?'1':'0'}';process.stdout.write(JSON.stringify(require(${JSON.stringify(configPath)}).nsis));`;
+  const script=`process.env.GEA_DESKTOP_TARGET='win';process.env.GEA_LEGACY_NSIS_DIAGNOSTIC='1';process.env.GEA_INSTALL_TIMING_LOG='${diagnostic?'1':'0'}';process.stdout.write(JSON.stringify(require(${JSON.stringify(configPath)}).nsis));`;
   const result=spawnSync(process.execPath,['-e',script],{encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
   return JSON.parse(result.stdout);

@@ -38,6 +38,23 @@ try {
   try { $environment.antivirus=@(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntivirusProduct | Select-Object displayName,productState) } catch { Record-Error 'security-center' $_ }
   try { $environment.defender=Get-MpComputerStatus | Select-Object AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,BehaviorMonitorEnabled,IoavProtectionEnabled,AntivirusSignatureVersion } catch { Record-Error 'defender' $_ }
   Save-Json 'environment.json' $environment
+  # Optional candidate preflight executes only disposable test files. A failed
+  # transfer probe must stop before touching the user's installed application.
+  if($manifest.transferProbe -or $manifest.directoryProbe){
+    $probe=$manifest.transferProbe
+    $probeComplete='transfer-probe-pass(\r?\n|$)'
+    if($manifest.directoryProbe){$probe=$manifest.directoryProbe;$probeComplete='directory-probe-pass(\r?\n|$)'}
+    if([IO.Path]::GetFileName($probe.file) -ne $probe.file){throw 'Invalid transfer probe filename'}
+    $probePath=Join-Path $PSScriptRoot $probe.file
+    if((Get-FileHash -LiteralPath $probePath -Algorithm SHA256).Hash.ToLower() -ne $probe.sha256){throw 'Transfer probe checksum mismatch'}
+    Write-Host 'Checking installer transfer with disposable test files...'
+    $probeProcess=Start-Process -FilePath $probePath -PassThru
+    if(-not $probeProcess.WaitForExit(120000)){throw 'Transfer probe timed out; installation was not started'}
+    $probeProcess.Refresh()
+    if($probeProcess.ExitCode -ne 0){throw 'Transfer probe failed; installation was not started'}
+    $probeLog=(@(Get-ChildItem -LiteralPath $output -Filter 'stages-*.log' | ForEach-Object {Get-Content -LiteralPath $_.FullName}) -join "`n")
+    if($probeLog -notmatch $probeComplete){throw 'Transfer probe completion was not recorded; installation was not started'}
+  }
   Write-Host 'Installing with live diagnostics. Use the installer normally.'
   Write-Host 'At the finish page, UNCHECK launch application, then close the installer.'
   Write-Host 'Keep this console open. S saves a snapshot; Q ends collection WITHOUT stopping installation.'
@@ -102,5 +119,11 @@ finally {
 if($Silent){
   if($reason -ne 'process-tree-exited' -or $root.ExitCode -ne 0){throw 'CI installation did not complete successfully'}
   $logs=(@(Get-ChildItem -LiteralPath $output -Filter '*stages-*.log' | ForEach-Object {Get-Content -LiteralPath $_.FullName}) -join "`n")
-  foreach($stage in @('install-section-begin','check-running-begin','check-running-end','uninstall-SHELL_CONTEXT-begin','uninstall-SHELL_CONTEXT-end','embedded-archive-begin','embedded-archive-end','sevenzip-extract-begin','sevenzip-extract-end','copy-files-begin','copy-files-end','cache-installer-begin','cache-installer-end','registry-begin','registry-end','install-complete','install-success')){if($logs -notmatch ([Regex]::Escape($stage)+'(\r?\n|$)')){throw "Missing installer phase: $stage"}}
+  $requiredStages=@('install-section-begin','check-running-begin','check-running-end','uninstall-SHELL_CONTEXT-begin','uninstall-SHELL_CONTEXT-end','embedded-archive-begin','embedded-archive-end','sevenzip-extract-begin','sevenzip-extract-end','cache-installer-begin','cache-installer-end','registry-begin','registry-end','install-complete','install-success')
+  if($manifest.transferProbe){$requiredStages+=@('move-new-entries-begin','move-new-entries-end','install-stage-cleanup-begin','install-stage-cleanup-end','transfer-probe-pass')}
+  if($manifest.directoryProbe){$requiredStages=@('directory-probe-pass','directory-stage-begin','sevenzip-extract-begin','sevenzip-extract-end result=0','directory-stage-end','directory-promote-begin','directory-promote-end','old-directory-cleanup-end','install-complete','install-success')}
+  else{$requiredStages+=@('copy-files-begin','copy-files-end')}
+  foreach($stage in $requiredStages){if($logs -notmatch ([Regex]::Escape($stage)+'(\r?\n|$)')){throw "Missing installer phase: $stage"}}
+  $installerLogs=(@(Get-ChildItem -LiteralPath $output -Filter '*stages-*.log' | ForEach-Object {$text=Get-Content -LiteralPath $_.FullName -Raw;if($text -match 'install-section-begin'){$text}}) -join "`n")
+  if($installerLogs -match 'transfer-result needsCopy=1' -and $installerLogs -notmatch 'copy-files-end'){throw 'Fallback copy did not record completion'}
 }

@@ -42,6 +42,8 @@ Windows 安装耗时专项使用 [一次运行采集说明](INSTALL-DIAGNOSTICS-
 
 诊断构建用 `prepare-installer-diagnostics.mjs <app-builder-lib目录> <新模板目录>` 给固定 26.15.3 模板加阶段日志，再用 `build-diagnostic-installer.cjs <node_modules目录> <独立桌面导出目录> <win-unpacked目录> <新模板目录> <输出目录>` 复用同一 payload；设置 `GEA_DESKTOP_TARGET=win`、`GEA_INSTALL_TIMING_LOG=1` 及 `GEA_DESKTOP_PAYLOAD_ROOT`。导出目录中的 `build/installer-timing.nsh` 必须来自本次源码。不修改共享构建缓存，不更换默认 7z 算法。`installer-timing-probe.nsi` 在 Windows 上验证日志追加、寄存器/栈及错误标记不受日志成功或失败影响；云端 clean/upgrade 验证不能冒充 Windows 10/11 实机性能验收。
 
+给模板准备命令追加 `--fast-move` 可构建同盘移动候选，普通诊断/正式构建默认行为保持不变。候选将解压暂存移到安装目录内，以继承目标权限并保证同盘；只移动目标不存在的顶层条目，剩余条目继续执行上游复制/重试。非递归删除暂存目录成功后才可跳过复制，避免枚举期间移动文件导致漏装。模板仍固定 26.15.3，锚点漂移即构建失败。`GEA_BUILDER_LIB=<app-builder-lib目录> node --test desktop/installer-transfer.test.mjs desktop/installer-timing.test.cjs` 检查模板保真；`installer-transfer-probe.nsi` 必须另用 NSIS 编译并在 Windows 运行，模板测试不能代替文件操作验收。候选诊断清单的 `transferProbe: {file, sha256}` 让采集器先验证并执行自检，再开始覆盖安装。
+
 常规交付按本次改动选择定向检查、构建及包内容/摘要校验。启动时长、业务接口和资源同步属于问题专项验收；已通过后，仅在再次出现相关问题或明确要求时复查，不作为每次构建、发布、提交或合并的前置条件。下文的启动、同步和更新脚本供相应问题排查使用。
 
 同一组源码、依赖锁、平台、公司配置和资源快照只准备一份 payload；已验证的最终包直接用于发布和频道提升，不因提交、合并或切换频道重新打包。只有输入改变才重建受影响的平台，Mac 与 Windows 可以并行构建，原生依赖分别准备。保留依赖下载缓存、最终包及摘要/构建记录；发行完成后清理本次未被进程使用的 raw/compact、解包应用和隔离验收副本，保留用户数据及正在使用的目录。
@@ -94,13 +96,13 @@ GEA 登录由 Electron safeStorage 使用操作系统加密保存为 userData/lo
 
 准备脚本从公司 GitLab 克隆资源到 `payload/resources/company-agent-suites`，记录提交号并移除克隆元数据；这一步只在构建机联网，客户端启动不下载。Mac 和 Windows 使用相同的纯文本资源快照，各自安装平台依赖。两份最终 payload 均检查平台原生模块，再调用 electron-builder。MCP、客户端启动与同步验证按上述问题专项规则运行；报告分别注明本次执行和复用的证据，不将交叉构建描述为真机验收。
 
-Windows 保留 NSIS 默认 7z 安装方式，通过减少依赖文件和包体缩短安装过程。资源同步使用 Agent Manage 0.6.3-company.4，修复 Windows 解压路径分隔符检查和大归档并发写入问题。
+Windows 继续使用 NSIS + 7z；0.0.23 候选改为同盘相邻目录完整解压和目录切换，减少重复复制，并为提升失败保留旧目录恢复机会。资源同步使用 Agent Manage 0.6.3-company.4，修复 Windows 解压路径分隔符检查和大归档并发写入问题。
 
-Windows NSIS 构建固定使用 `ELECTRON_BUILDER_7Z_FILTER=BCJ`，避免 electron-builder 26.15.x 生成的 BCJ2 归档与安装时 Nsis7z 解码器不兼容；同时启用 `nsis.differentialPackage=true`，供更新器减少差分下载。该设置不能消除首次安装的本地逐文件复制耗时，也不替代安装后文件完整性验收。
+Windows NSIS 构建固定使用 `ELECTRON_BUILDER_7Z_FILTER=BCJ`，避免 electron-builder 26.15.x 生成的 BCJ2 归档与安装时 Nsis7z 解码器不兼容；同时启用 `nsis.differentialPackage=true` 生成 blockmap；0.0.23 消费经过校验的可选差分清单，缺少基底或清单时下载全量。该设置不能消除首次安装的本地逐文件复制耗时，也不替代安装后文件完整性验收。
 
 Electron 内置语言包只保留 `en-US`、简体中文和繁体中文变体，避免把不使用的 locale 文件复制进 Windows 安装器；业务插件自己的多语言资源不受此白名单影响。
 
-Windows 签名默认关闭，仅用于本机内测。正式或 Windows 真机验收构建使用证书环境变量，不把证书和密码提交到仓库：`WIN_CSC_LINK=/secure/path/gea.pfx WIN_CSC_KEY_PASSWORD=... GEA_WIN_REQUIRE_SIGNING=1`。也可使用 electron-builder 支持的 `CSC_LINK`/`CSC_KEY_PASSWORD`。开启强制模式后没有证书会直接失败；证书的 Subject/Publisher 必须与 AppX 配置中的 `GEA_MSIX_PUBLISHER` 一致。证书密码只通过 CI Secret、Windows 凭据管理器或临时环境变量注入，构建结束后清除。
+Windows 签名默认关闭，仅用于本机内测。正式或 Windows 真机验收构建使用证书环境变量，不把证书和密码提交到仓库：`WIN_CSC_LINK=/secure/path/gea.pfx WIN_CSC_KEY_PASSWORD=... GEA_WIN_REQUIRE_SIGNING=1 GEA_WIN_PUBLISHER_CERT=/secure/path/gea-public.cer`。也可使用 electron-builder 支持的 `CSC_LINK`/`CSC_KEY_PASSWORD`。开启强制模式后没有证书会直接失败；证书的 Subject/Publisher 必须与 AppX 配置中的 `GEA_MSIX_PUBLISHER` 一致。证书密码只通过 CI Secret、Windows 凭据管理器或临时环境变量注入，构建结束后清除。
 
 仅供 Windows 10/11 内部验收时，可在 PowerShell 运行 `desktop/create-windows-test-certificate.ps1` 生成自签名测试证书。脚本会把证书加入当前用户的 `TrustedPeople`，仅该用户/机器信任；不要把生成的目录、密码或证书提交到 Git。自签名证书不能用于正式发布或替代公开信任的公司证书。
 
@@ -207,3 +209,33 @@ Mac 本机构建对照中，再次启动中位耗时由 2.875 秒降至 2.105 �
 内置 DSH 0.1.6 公司核心，更新下载状态靠近设置入口显示，并提供进行中的动画；准备完成后的“下载并重启”操作改为红色强调。
 业务版移除默认的本地工作区快捷打开按钮，仍保留“选择打开方式”菜单。
 数据代际仍为 2，不修改用户登录、会话或工作区。
+
+
+## 0.0.23 安装与存储候选
+
+本轮实现与实测边界见 [实施记录](../docs/desktop-install-storage-implementation-20260927.md)。当前未发布，Windows 真机与公司证书验收仍待完成。
+
+`node scripts/package-desktop.mjs --target win` 会构建壳工具，并把未分层的 Windows payload 转换到新的目录，再打包；不会原地改写输入 payload。工具链为 electron-builder/app-builder-lib 26.15.3。Mac 默认保持原布局，仅在独立验收中设置 `GEA_ENABLE_LAYERED_MAC=1`。打包产生最终 EXE/DMG 的 `.artifact.json`，其中安装包地址待发布时绑定固定 SHA 路径；EXE 的 blockmap 和 SHA-512 来自最终字节，不能签名后沿用旧摘要。
+
+新增构建依赖是精确固定的 `@electron/asar`、`electron-updater`、`builder-util-runtime`，只用于构建壳内工具，未给业务插件增加生产依赖。`scripts/build-desktop-tools.mjs` 生成两个独立 CJS 工具及许可证合辑；不初始化官方 autoUpdater。
+
+核心布局含 `core-layout.json`、`node_modules.asar` 和必要 unpacked 文件。用 Electron 的 ASAR 文件系统读取模块，原始归档复制/删除使用 `original-fs`。只在固定核心闭包完全一致时共享；真实 pnpm 提升布局变化可能触发完整图回退，保留功能正确性。`plugins/cores/<id>` 使旧插件的核心不依赖当前安装目录。共享收据的 `layered-v1:2` 标记阻止旧壳误运行该布局，业务数据 schema 仍为 2。
+
+版本回收在正常启动确认后延迟 15 秒，不阻塞安装；当前、上一套可用、待重启、固定、手动及迁移引用保持不动。损坏收据和未知 staging 保留，不能宣称“全部旧文件都清掉”。下载缓存由成功下载触发保留/回收，不清理全局缓存或任意同名 EXE。
+
+Windows 签名构建除私钥签名环境外，还必须提供 `GEA_WIN_PUBLISHER_CERT` 公开证书，客户端只写入其 Subject；缺失则失败。当前无证书的本地候选明确保留 `legacy-unsigned`，不能称为发布者验证成功。远端清单不得替换本地信任身份。
+
+定向验证：
+
+```sh
+GEA_BUILDER_LIB=<fixed-app-builder-lib-root> corepack pnpm test:desktop
+ELECTRON_RUN_AS_NODE=1 GEA_LAYERED_TEST_PAYLOAD=<layered-payload> \
+  <electron-executable> --expose-internals --test desktop/layered-native-smoke.test.mjs
+ELECTRON_RUN_AS_NODE=1 GEA_LAYERED_TEST_PAYLOAD=<layered-payload> \
+  <electron-executable> --expose-internals --test desktop/layered-storage-smoke.test.mjs
+ELECTRON_RUN_AS_NODE=1 GEA_LAYERED_TEST_PAYLOAD=<layered-payload> \
+  GEA_PLUGIN_ARTIFACT=<verified-plugin.tgz> \
+  <electron-executable> --expose-internals --test desktop/layered-install-smoke.test.mjs
+```
+
+存储 smoke 会临时移动该测试 payload 的核心归档再恢复，以证明旧安装移除后的独立性。只对本任务的隔离 payload 运行，不指向安装中的应用，不与其他 smoke 并行共享同一 payload。

@@ -6,11 +6,14 @@ import {spawn} from 'node:child_process';
 import {configureWelcomeNotice} from './onboarding.mjs';
 import {companySources,provisionCompanyResources} from './company-resources.mjs';
 import {prepareHtmlPlugins} from './html-plugins.mjs';
+import {openCoreRuntime} from './core-runtime.mjs';
 const payload=dirname(fileURLToPath(import.meta.url));
 const root=resolve(process.env.DSH_PLUGIN_GRAPH||payload);
+const core=process.env.GEA_LAYERED_CORE?resolve(process.env.GEA_LAYERED_CORE):root;
 process.chdir(root);
 const runtime=resolve(payload,process.env.DSH_FULL_DATA_DIR||'data');
 const configPath=resolve(payload,process.env.GEA_CONFIG||'gea.config.json');
+const coreContext=process.env.GEA_LAYERED_CORE?await openCoreRuntime(core,root,join(runtime,'home')):null;
 if(!existsSync(configPath)) {console.error('公司运行配置缺失，请联系管理员重新安装桌面应用。');process.exit(1);}
 const port=Number(process.env.DSH_FULL_PORT||'3198');
 if(!Number.isInteger(port)||port<0||port>65535)throw Error('INVALID_PORT');
@@ -22,7 +25,7 @@ await mkdir(join(runtime,'workspace'),{recursive:true});
 // 首启的准备阶段很慢又没有别的输出，这里留下进度：桌面端据此判活，日志里也能看出卡在哪一步。
 console.log('[startup] 准备默认预设');
 // 默认 preset 用和 web 开发态同一套发布逻辑：组合沿用 DSH 标准，只把显示名改成 DEFAULT_PRESET_NAME。
-await prepareNativePreset(runtime,join(root,'node_modules/@deepseek-ai/dsh-agent-presets/presets/standard'));
+await prepareNativePreset(runtime,join(core,'node_modules/@deepseek-ai/dsh-agent-presets/presets/standard'));
 const patchPath=join(runtime,'deployment.patch.json');
 const patch=deploymentPatch(config,gea,runtime,{bundle:true});
 patch.push({id:'dsh-agent-manage',config:{sources:companySources}});
@@ -59,8 +62,8 @@ const htmlPlugins=await prepareHtmlPlugins({runtime});
 const htmlPluginEnv=Object.keys(htmlPlugins.roots).length?{GEA_HTML_PLUGIN_ROOTS:JSON.stringify(htmlPlugins.roots)}:{};
 
 console.log('[startup] 启动 DSH 核心');
-const child=spawn(process.execPath,[join(root,'node_modules/@deepseek-ai/dsh/lib/bin.js'),'--profile','full','--patch',patchPath,'--host','127.0.0.1','--port',String(port),...(process.env.DSH_FULL_NO_OPEN?['--no-open']:[])],{cwd:root,env:{...process.env,DSH_HOME:home,...htmlPluginEnv},stdio:'inherit'});
+const child=spawn(process.execPath,[...(process.env.GEA_LAYERED_CORE?['--expose-internals']:[]),join(core,'node_modules/@deepseek-ai/dsh/lib/bin.js'),'--profile','full','--patch',patchPath,'--host','127.0.0.1','--port',String(port),...(process.env.DSH_FULL_NO_OPEN?['--no-open']:[])],{cwd:root,env:{...process.env,DSH_HOME:home,...htmlPluginEnv},stdio:'inherit'});
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>child.kill(signal));
 process.on('message',message=>{if(message?.type==='stop')child.kill('SIGTERM');});
 process.on('disconnect',()=>child.kill('SIGTERM'));
-child.on('exit',code=>{process.exitCode=code??1;if(process.connected)process.disconnect();});
+child.on('exit',async code=>{await coreContext?.fiber.dispose();process.exitCode=code??1;if(process.connected)process.disconnect();});
