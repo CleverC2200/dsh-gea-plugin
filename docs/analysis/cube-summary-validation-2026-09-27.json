@@ -1,0 +1,117 @@
+{
+  "compiler": "installed Cube 1.7.2",
+  "tests": [
+    {
+      "name": "all-models-compile",
+      "pass": true,
+      "files": 46
+    },
+    {
+      "name": "live-agents_sales_plan_detail_mi-matches-source",
+      "pass": true,
+      "period": "2026-08",
+      "rows": "62616"
+    },
+    {
+      "name": "live-plan-province-groups-match-source",
+      "pass": true,
+      "groups": 1
+    },
+    {
+      "name": "live-plan-missing-province-matches-source",
+      "pass": true,
+      "missing": "62616"
+    },
+    {
+      "name": "live-agents_scm_inventory_age-matches-source",
+      "pass": true,
+      "period": "2026-09-27",
+      "rows": "29188"
+    },
+    {
+      "name": "live-dealer-quality-matches-source",
+      "pass": true,
+      "period": "2026-09-22",
+      "quality": {
+        "customer_count": "435",
+        "inventory_snapshot_date_count": "52",
+        "missing_stock_qty_count": "4",
+        "missing_in_transit_qty_count": "46978",
+        "missing_stock_amt_count": "5",
+        "missing_snapshot_count": "1978"
+      }
+    },
+    {
+      "name": "all-29-added-members-generate-sql-and-fit-postgres-identifiers",
+      "pass": true
+    },
+    {
+      "name": "empty-plan-is-null-not-zero",
+      "pass": true
+    },
+    {
+      "name": "plan-single-scope",
+      "pass": true
+    },
+    {
+      "name": "plan-cross-month",
+      "pass": true
+    },
+    {
+      "name": "plan-cross-batch",
+      "pass": true
+    },
+    {
+      "name": "plan-missing-month",
+      "pass": true
+    },
+    {
+      "name": "plan-missing-batch",
+      "pass": true
+    },
+    {
+      "name": "plan-missing-initial-keeps-final",
+      "pass": true
+    },
+    {
+      "name": "plan-missing-final-keeps-initial",
+      "pass": true
+    },
+    {
+      "name": "plan-duplicate-candidate-grain",
+      "pass": true
+    },
+    {
+      "name": "plan-confirmed-zero-kept",
+      "pass": true
+    },
+    {
+      "name": "base-single-snapshot",
+      "pass": true
+    },
+    {
+      "name": "base-cross-date",
+      "pass": true
+    },
+    {
+      "name": "base-cross-time",
+      "pass": true
+    },
+    {
+      "name": "base-missing-quantity",
+      "pass": true
+    },
+    {
+      "name": "base-missing-snapshot",
+      "pass": true
+    },
+    {
+      "name": "base-confirmed-zero-kept",
+      "pass": true
+    },
+    {
+      "name": "base-empty-is-null",
+      "pass": true
+    }
+  ]
+}

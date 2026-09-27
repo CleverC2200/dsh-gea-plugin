@@ -1,0 +1,74 @@
+{
+  "filesBefore": 46,
+  "filesAfter": 46,
+  "onlyExpectedFilesChanged": true,
+  "models": [
+    {
+      "fileName": "cubes/agents_sales_plan_detail_mi.yml",
+      "existingModelPreserved": true,
+      "addedMeasures": 12
+    },
+    {
+      "fileName": "cubes/agents_scm_inventory_age.yml",
+      "existingModelPreserved": true,
+      "addedMeasures": 7
+    },
+    {
+      "fileName": "cubes/agents_scm_cust_inventory_daily.yml",
+      "existingModelPreserved": true,
+      "addedMeasures": 10
+    }
+  ],
+  "manifest": [
+    {
+      "fileName": "cubes/agents_sales_plan_detail_mi.yml",
+      "originalSha256": "17e5e086a34c054f8ede79c9289a0383a9b5ab07f27cbaa017edaba9419d1ffd",
+      "candidateSha256": "d455b2c2431eb3c150bc984a58ef56bb8ef1a7cf09dde1c048732c02c0ea8d69",
+      "addedMeasures": [
+        "customer_count",
+        "sku_count",
+        "plan_month_count",
+        "load_batch_count",
+        "missing_scope_count",
+        "missing_plannum_count",
+        "missing_allnum_count",
+        "missing_customer_count",
+        "missing_province_count",
+        "candidate_grain_count",
+        "plannum_sum",
+        "allnum_sum"
+      ]
+    },
+    {
+      "fileName": "cubes/agents_scm_inventory_age.yml",
+      "originalSha256": "cd4e13a21093c1a0b2e63d4a310959f7bace482de379baf3c5a2d9b61d27dcb6",
+      "candidateSha256": "3309fa33ca3b5ce7a61cf95b78a241bdcb7b5a9f6f83ce3169c4b2e462432fe9",
+      "addedMeasures": [
+        "warehouse_count",
+        "sku_count",
+        "snapshot_date_count",
+        "snapshot_batch_count",
+        "missing_snapshot_count",
+        "missing_qtylive_count",
+        "available_qty_sum"
+      ]
+    },
+    {
+      "fileName": "cubes/agents_scm_cust_inventory_daily.yml",
+      "originalSha256": "188638af9ccfe56adac29e982892c409a8b2001d4e575ce9e17fd88b0806c3a4",
+      "candidateSha256": "980df98a16da3232ed68b88c1ad0840e4f2bdbfd6e262c6b7d34b2be988947b1",
+      "addedMeasures": [
+        "customer_count",
+        "sku_count",
+        "stat_date_count",
+        "inventory_snapshot_date_count",
+        "missing_stock_qty_count",
+        "missing_in_transit_qty_count",
+        "missing_stock_amt_count",
+        "missing_snapshot_count",
+        "missing_stat_date_count",
+        "missing_customer_count"
+      ]
+    }
+  ]
+}
