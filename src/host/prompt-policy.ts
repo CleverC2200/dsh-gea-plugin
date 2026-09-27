@@ -158,7 +158,7 @@ export function promptMeasurement(
 
 export const TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = {
   gea_sales_plan_read:
-    "只读销售计划。月份先 periods 取实际 periodId；整体和分布用 aggregate，list/detail 等仅作有界核对。M/Z、业务类型分别解释；baseName 是基地。金额和 ID 保持精确，完整性以结果为准。",
+    "只读在线销售计划工作流：实时审批状态、日志、操作前版本及用户明确指定的在线数据核对。销售计划提报结果/计划结果应通过 gea_cube_query 查询Hive模型agents_sales_plan_detail_mi，本工具不是该源的替代。在线周期先periods取periodId，仅在线工作流统计用aggregate；baseName是基地。金额和ID保持精确，来源与覆盖如实说明。",
   gea_gateway_catalog:
     "查看所选 Agent 的授权模型；不带 model 返回索引，带 model 返回成员及类型。members + values 可核对取值。成员照目录使用：度量用于聚合，分段用于筛选。目录可见不替代字段和行权限校验；查询使用 gea_cube_query。",
   gea_module_mcp:

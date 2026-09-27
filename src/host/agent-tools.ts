@@ -344,6 +344,7 @@ export function registerGeaTools(
           kind: {
             type: "string",
             required: true,
+            description: "在线工作流读取种类；periods/aggregate不用于替代Hive销售计划结果查询。",
             enum: [
               "periods",
               "list",
