@@ -71,7 +71,7 @@ test('safety stock uses the maintained skill in the real assembled prompt, witho
   assert.match(managed,/action=context/);assert.doesNotMatch(managed,/inventory_aqkc_page/);
   assert.equal(await readFile(join(root,'skills','aqkc','SKILL.md'),'utf8'),oldSkill,'the installed page artifact is unchanged');
   const sales=await ask('gea-readonly');const salesSystem=sales.messages.filter(x=>x.role==='system').map(x=>x.content).join('\n');
-  assert.match(salesSystem,/查询提报汇总时使用聚合结果/);assert.match(salesSystem,/gea_cube_query/);
+  assert.match(salesSystem,/agents_sales_plan_detail_mi/);assert.match(salesSystem,/实时审批状态/);assert.match(salesSystem,/gea_cube_query/);
   assert.doesNotMatch(salesSystem,/HMR receiver/,'business presets share the scoped non-development policy');
   assert.match(JSON.stringify(sales.messages.filter(x=>x.role==='tool')),/consumerCode=sales_forecast/);
   assert.deepEqual(catalogConsumers,['base-safety-stock','sales_forecast'],'catalog transport and cache must stay in the owning Agent context');

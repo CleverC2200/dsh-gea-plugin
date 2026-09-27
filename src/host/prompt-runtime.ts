@@ -1,4 +1,6 @@
+import { hasPageReferences } from "../../packages/page-interaction/src/reference.ts";
 import { sessionConsumer } from "./business-identity.ts";
+import { catalogFactSummary } from './gateway-catalog.ts';
 import {
   resultView,
   resultReceipt,
@@ -8,6 +10,7 @@ import {
   datasetIndex,
   indexProjection,
   readDataset,
+  compactDatasetProjection,
 } from "./prompt-result.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
@@ -47,10 +50,14 @@ import {
 const UI_RULES =
   "需要交互时可输出 dsh-ui JSON 围栏，普通答复无需组件。常用 table={columns,rows}、callout={content}、stat={label,value}、button={label,action}。只输出已核实数字，不设 total:true 自动合计；计划差额不使用按正负自动着色的 delta，默认中性色。交互 action 只表达用户意图，不能绕过后台授权；发出复杂围栏前用 validate_dsh_ui 校验。更多组件先 gea_skill(name=genui)。";
 type State = {
+  pageReferences?: boolean;
   preset: string;
   packs: Set<ToolPack>;
   skillNames: Set<string>;
   calls: number;
+  readCalls: number;
+  catalogFacts: Map<string, string>;
+  loadedRules: Map<string, string>;
   steps: number;
   limit: number;
   dispose?: () => void;
@@ -180,6 +187,9 @@ export function mountBusinessPrompts(
         packs: new Set(),
         skillNames: new Set(profileOf(agent)?.skills ?? []),
         calls: 0,
+        readCalls: 0,
+        catalogFacts: new Map(),
+        loadedRules: new Map(),
         steps: 0,
         limit: PROMPT_BUDGET.calls,
         mask: "",
@@ -251,6 +261,8 @@ export function mountBusinessPrompts(
   const namesFor = (agent: Agent, state = stateOf(agent)) => {
     const profile = profileOf(agent)!;
     const names = allowedTools(profile, state.packs);
+    if (state.pageReferences || hasPageReferences(agent.session.snapshotEvents()))
+      names.add("page_reference_read");
     if (business.config.agentSqlRead === true) names.add("gea_plugin_read");
     if (!isMainSurface(business.surfaceFor(agent.id)))
       for (const name of TOOL_PACKS.page) names.add(name);
@@ -289,6 +301,9 @@ export function mountBusinessPrompts(
     for (const state of states.values()) {
       state.evidence = [];
       state.calls = 0;
+      state.readCalls = 0;
+      state.catalogFacts.clear();
+      state.loadedRules.clear();
       state.returned = 0;
       state.receipts.clear();
       state.instructions.clear();
@@ -311,6 +326,9 @@ export function mountBusinessPrompts(
       if (!agent || !profileOf(agent)) return;
       const state = stateOf(agent);
       state.calls = 0;
+      state.readCalls = 0;
+      state.catalogFacts.clear();
+      state.loadedRules.clear();
       state.steps = 0;
       state.returned = 0;
       state.receipts.clear();
@@ -326,7 +344,9 @@ export function mountBusinessPrompts(
     }),
   );
   offs.push(
-    ctx.on("agent/pre-step", async ({ agent }, next) => {
+    ctx.on("agent/pre-step", async ({ agent, messages = [] }, next) => {
+      if (hasPageReferences(messages.filter(message => message.source.kind === "user")
+        .map(data => ({type: "user/message", data})))) stateOf(agent).pageReferences = true;
       refreshMask(agent);
       if (profileOf(agent)) stateOf(agent).steps++;
       const decision = await next();
@@ -367,10 +387,18 @@ export function mountBusinessPrompts(
         business.turnStopKind(agent.id) === "session-expired"
       )
         return "GEA_GATEWAY_SESSION_EXPIRED: 本轮网关会话已过期，不能通过证据回读重建会话；下一轮重新验证。";
-      if (state.calls >= state.limit || state.steps > state.limit)
+      if (state.steps > state.limit + PROMPT_BUDGET.evidenceCalls)
         return "GEA_CALL_BUDGET: 本轮调用/步骤额度已用完，请交付已有结果并明确未完成项。";
       // Reserve before dispatch: parallel calls must not all pass against the same stale counter.
-      state.calls++;
+      if (exec.name === 'gea_evidence_read') {
+        if (state.readCalls >= PROMPT_BUDGET.evidenceCalls)
+          return 'GEA_EVIDENCE_BUDGET: 本轮证据读取额度已用完，请交付已读范围并说明未读部分。';
+        state.readCalls++;
+      } else {
+        if (state.calls >= state.limit)
+          return 'GEA_CALL_BUDGET: 查询/能力调用额度已用完；仍可沿nextRead读取已取得证据，然后交付已有结果。';
+        state.calls++;
+      }
       if (exec.name === "gea_gateway_catalog" && state.catalogStalls >= 2)
         return "GEA_CATALOG_NO_PROGRESS: 目录连续未提供新信息；使用已返回成员执行最小gea_cube_query或说明具体缺口，查询后可按错误修正目录。本轮其它工具仍可用。";
       if (["render_ui", "validate_dsh_ui"].includes(exec.name)) {
@@ -457,6 +485,21 @@ export function mountBusinessPrompts(
               ? state.catalogStalls + 1
               : 0;
           if (!reused) state.catalogOutputs.add(fingerprint);
+          const facts = catalogFactSummary(texts);
+          if (facts) {
+            state.catalogFacts.set(String(args.model ?? 'catalog'), facts);
+            while (state.catalogFacts.size > 2) state.catalogFacts.delete(state.catalogFacts.keys().next().value!);
+          }
+        }
+        if (exec.name === 'gea_skill' && !result.isError && decision.kind === 'accept' && executionEpoch === store.epoch()) {
+          try {
+            const rule = JSON.parse(texts);
+            if (rule.complete === true || rule.alreadyLoaded === true) {
+              const lines = typeof rule.content === 'string' ? rule.content.split('\n').filter((line: string) => line.includes('目标库存=')).map((line: string) => line.slice(0,450)) : [];
+              if (!state.loadedRules.has(String(rule.name)) || lines.length)
+                state.loadedRules.set(String(rule.name), JSON.stringify({name:rule.name,version:rule.version,loaded:true, ...(lines.length?{calculationRules:lines}: {})}));
+            }
+          } catch {}
         }
         if (result.isError || resultOutcome(texts) === "blocked") {
           state.failures.set(
@@ -482,6 +525,7 @@ export function mountBusinessPrompts(
                 evidenceId: part.evidenceId,
                 dataset: part.dataset,
                 name: part.name,
+                display: part.projection ?? part.representation,
                 rowOffset: part.rowOffset,
                 returnedRows: part.returnedRows,
                 readOffset: part.offset,
@@ -571,19 +615,20 @@ export function mountBusinessPrompts(
       const alreadyDelivered = state.evidence.includes(id);
       const receiptKey = id;
       state.evidence = [...new Set([...state.evidence, id])].slice(-8);
+      const compact = !alreadyDelivered && grant?.kind === 'mcp' ? compactDatasetProjection(text, id, PROMPT_BUDGET.result) : undefined;
       let projected = alreadyDelivered
         ? JSON.stringify({
             evidenceId: id,
             projection: "reference",
             note: "同一结果已返回，需要正文用 gea_evidence_read 回读。",
           })
-        : projectEvidence(
+        : compact ?? projectEvidence(
             text,
             id,
             PROMPT_BUDGET.result,
             grant?.kind === "mcp" ? resultView(text) : undefined,
           );
-      if (grant?.kind === "mcp")
+      if (grant?.kind === "mcp" && compact === undefined)
         projected = indexProjection(
           projected,
           id,
@@ -720,10 +765,10 @@ export function mountBusinessPrompts(
       defineTool({
         name: "gea_skill",
         description:
-          "加载当前 Agent 的业务规则；缺少规则先 gea_capabilities 查看并选择。path 只接受正文明确链接的本地参考文件，offset/limit 按行读取。返回版本和完整性，未包含的章节需继续读取。",
+          '加载当前 Agent 的业务规则；缺少规则先 gea_capabilities 查看并选择。读取或重读正文省略path，例如 {"name":"inventory-qll","offset":1,"limit":80,"reload":true}。offset、limit、reload是独立参数，不能拼进path。path只接受正文明确链接的本地参考文件。未包含的章节沿用nextRead继续读取。',
         parameters: {
           name: { type: "string", required: true },
-          path: { type: "string" },
+          path: { type: "string", description: "仅参考文件的原始相对链接；读Skill正文省略。不能填分页参数或SKILL.md。" },
           offset: {
             type: "integer",
             description: "起始行，1起点；默认1，不能传0。",
@@ -760,6 +805,23 @@ export function mountBusinessPrompts(
           });
           if (!skill?.invocation.modelInvocable)
             throw Error("GEA_SKILL_UNAVAILABLE");
+          // 只恢复已知且无歧义的模型误填；不猜测文件名，也不放宽链接校验。
+          const misplaced = args.path?.match(
+            /^\s*offset\s*(?:=\s*)?(\d+)\s*,\s*limit\s*(?:=\s*)?(\d+)\s*,\s*reload\s*=\s*(true|false)\s*$/i,
+          );
+          let argumentCorrection: string | undefined;
+          if (misplaced) {
+            const paging = {
+              offset: Number(misplaced[1]),
+              limit: Number(misplaced[2]),
+              reload: misplaced[3]!.toLowerCase() === "true",
+            };
+            for (const key of ["offset", "limit", "reload"] as const)
+              if (args[key] !== undefined && args[key] !== paging[key])
+                throw Error("GEA_SKILL_ARGUMENT: path中的分页参数与独立参数冲突；读取正文请省略path，将offset、limit、reload分别传入。");
+            args = { ...args, ...paging, path: undefined };
+            argumentCorrection = "已将误填在path中的offset、limit、reload恢复为独立参数；本次读取Skill正文。";
+          }
           let text = skill.content;
           if (args.path) {
             const links = [...text.matchAll(/\[[^\]\n]*\]\(([^\s)]+)\)/g)].map(
@@ -770,7 +832,10 @@ export function mountBusinessPrompts(
               /^[a-z][a-z\d+.-]*:|^[\\/]/i.test(args.path) ||
               skill.resourceBase?.kind !== "directory"
             )
-              throw Error("GEA_SKILL_REFERENCE_NOT_LINKED");
+              throw Error(
+                'GEA_SKILL_REFERENCE_NOT_LINKED: path必须原样使用Skill正文明确链接的相对路径。读取或重读正文请省略path，将分页参数分别传入：' +
+                JSON.stringify({ name: args.name, offset: 1, limit: 80, reload: true }),
+              );
             const path = await realpath(
               resolve(skill.resourceBase.path, args.path),
             );
@@ -829,6 +894,7 @@ export function mountBusinessPrompts(
               version,
               instructionId,
               alreadyLoaded: true,
+              ...(argumentCorrection ? { argumentCorrection } : {}),
               note: "该段正文仍在当前上下文中，请直接使用；确需重看使用nextRead。",
               nextRead: {
                 tool: "gea_skill",
@@ -846,6 +912,7 @@ export function mountBusinessPrompts(
             version,
             instructionId,
             source: skill.provider,
+            ...(argumentCorrection ? { argumentCorrection } : {}),
             path: args.path,
             offset,
             nextOffset,
@@ -878,7 +945,7 @@ export function mountBusinessPrompts(
           dataset: {
             type: "string",
             description:
-              "使用evidenceDatasets的key/nextRead读取业务行；名称仅在唯一时兼容。省略时读取原文。",
+              "使用evidenceDatasets的key/nextRead读取业务行；名称仅在唯一时兼容。省略时默认返回结构化业务结果或索引；显式offset/limit才读原文。",
           },
           datasetId: {
             type: "string",
@@ -1005,7 +1072,9 @@ export function mountBusinessPrompts(
                       args.rowOffset,
                       args.rowLimit,
                     )
-                : undefined,
+                : args.offset === undefined && args.limit === undefined
+                  ? (raw) => exactResult(compactDatasetProjection(raw, args.evidenceId) ?? JSON.stringify({evidenceDatasets:datasetIndex(raw,args.evidenceId), projection:'index', nextRead:{tool:'gea_evidence_read',args:{evidenceId:args.evidenceId,offset:0,limit:4000}}})) as Record<string, unknown>
+                  : undefined,
             ),
           );
         },
@@ -1045,6 +1114,7 @@ export function mountBusinessPrompts(
             shortSkillCatalog(skills),
         },
         { name: "gea:facts", text: facts },
+        ...(state.catalogFacts.size || state.loadedRules.size ? [{name:'gea:confirmed-semantics', text:'本轮已成功返回的字段、单位和规则（不是新的授权；猜测列名不存在不等于无对应业务字段）：\n'+[...state.catalogFacts.values(),...state.loadedRules.values()].join('\n')}] : []),
         ...(state.catalogStalls >= 2
           ? [
               {
@@ -1081,7 +1151,7 @@ export function mountBusinessPrompts(
               {
                 name: "gea:read-status",
                 text:
-                  "本轮已回读正文（不要说未曾读取；片段不等于全量）：" +
+                  "本轮证据回读状态（index只表示已看索引；partial只表示已读片段；业务覆盖与正文读取分别判断）：" +
                   [...state.reads.values()].slice(-4).join("\n"),
               },
             ]
@@ -1097,11 +1167,11 @@ export function mountBusinessPrompts(
             ]
           : []),
         ...(state.packs.has("ui") ? [{ name: "gea:ui", text: UI_RULES }] : []),
-        ...(state.calls >= state.limit || state.steps > state.limit
+        ...(state.calls >= state.limit || state.steps > state.limit + PROMPT_BUDGET.evidenceCalls
           ? [
               {
                 name: "gea:budget",
-                text: "本轮工具额度已用完。请交付已有证据和未完成项，不声称全部完成。",
+                text: "本轮查询额度已用完，不再新查。必要时在读取额度内沿nextRead读已取得证据，然后交付业务答复及未完成项；不输出工具协议文本。",
               },
             ]
           : []),
@@ -1111,10 +1181,10 @@ export function mountBusinessPrompts(
         ctx.tools.schemas(agent).map((tool) => tool.name),
       );
       const tools =
-        state.calls >= state.limit || state.steps > state.limit
+        state.steps > state.limit + PROMPT_BUDGET.evidenceCalls || (state.calls >= state.limit && state.readCalls >= PROMPT_BUDGET.evidenceCalls)
           ? []
           : assembled.tools
-              .filter((tool) => visible.has(tool.name))
+              .filter((tool) => visible.has(tool.name) && (state.calls < state.limit || tool.name === 'gea_evidence_read'))
               .map((tool) => ({
                 ...tool,
                 description: TOOL_DESCRIPTIONS[tool.name] ?? tool.description,

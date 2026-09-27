@@ -1,0 +1,67 @@
+{
+  "base": "2a3ce39ffd6e0c0184e394953d83e01dcd01b336",
+  "status": "local_change_not_released",
+  "policyVersion": 4,
+  "requestedTable": "data_service.agents_sales_plan_detail_mi",
+  "queryModel": "agents_sales_plan_detail_mi",
+  "modelDefinitionSha256": "17e5e086a34c054f8ede79c9289a0383a9b5ab07f27cbaa017edaba9419d1ffd",
+  "currentMeasures": [
+    "agents_sales_plan_detail_mi.row_count"
+  ],
+  "dimensions": 31,
+  "buildHost": "pass",
+  "typecheck": "pass",
+  "regressionTests": {
+    "passed": 48,
+    "failed": 0
+  },
+  "liveModel": "deepseek-v4-flash (current configured model, not a timing comparison with prior pro runs)",
+  "routeChecks": {
+    "salesResultUsesHive": true,
+    "noOnlineFallbackForHiveResult": true,
+    "onlineWorkflowStillUsesOnlineApi": true
+  },
+  "liveCases": [
+    {
+      "id": "hive-results",
+      "toolNames": [
+        "gea_gateway_catalog",
+        "gea_gateway_catalog",
+        "gea_cube_query",
+        "gea_cube_query"
+      ],
+      "termination": {
+        "kind": "completed"
+      },
+      "toolErrorCount": 0
+    },
+    {
+      "id": "online-status",
+      "toolNames": [
+        "gea_sales_plan_read",
+        "gea_sales_plan_read",
+        "gea_sales_plan_read",
+        "gea_sales_plan_read",
+        "gea_sales_plan_read",
+        "gea_evidence_read",
+        "gea_evidence_read",
+        "gea_sales_plan_read",
+        "gea_sales_plan_read",
+        "gea_evidence_read",
+        "gea_evidence_read",
+        "gea_evidence_read"
+      ],
+      "termination": {
+        "kind": "completed"
+      },
+      "toolErrorCount": 3
+    }
+  ],
+  "limitations": [
+    "Routing verified, not complete business acceptance",
+    "Hive quantity measure attempt rejected by GEA_CUBE_MEASURE_MISMATCH; existing guard preserved",
+    "Online test hit unsupported aggregate filters; existing behavior not changed",
+    "Permissions and Cube definitions not modified",
+    "No new plugin version published"
+  ]
+}

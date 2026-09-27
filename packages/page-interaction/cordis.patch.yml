@@ -1,0 +1,3 @@
+- insert:
+    - id: page-interaction
+      name: "@cleverc2200/dsh-page-interaction"

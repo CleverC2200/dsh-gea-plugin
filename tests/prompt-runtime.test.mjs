@@ -184,7 +184,11 @@ test(
       res.setHeader("Content-Type", "text/event-stream");
       const toolReplies = body.messages.filter((x) => x.role === "tool");
       const delta =
-        phase === "skill" && toolReplies.length === 0
+        phase === 'inventory-recovery' && toolReplies.length === 0
+          ? {tool_calls:[{index:0,id:'inventory-recovery',type:'function',function:{name:'gea_skill',arguments:JSON.stringify({name:'inventory-qll',path:'offset 1, limit 80, reload=true'})}}]}
+          : phase === 'reference' && toolReplies.length < 2
+          ? {tool_calls:[{index:0,id:'ref-'+toolReplies.length,type:'function',function:{name:'gea_skill',arguments:JSON.stringify({name:skillName,...(toolReplies.length===1?{path:'references/metric-definitions.md'}:{})})}}]}
+          : phase === "skill" && toolReplies.length === 0
           ? {
               tool_calls: [
                 {
@@ -240,7 +244,7 @@ test(
       return true;
     });
     await app.login();
-    const ask = async (preset) => {
+    const ask = async (preset, question = "看下本月提报情况。") => {
       const made = await app.remote("session/create", {
         cwd: app.runtime + "/workspace",
         agentPreset: preset,
@@ -256,7 +260,7 @@ test(
         requestId: randomUUID(),
         sessionId: id,
         mode: "queue",
-        content: [{ type: "text", text: "看下本月提报情况。" }],
+        content: [{ type: "text", text: question }],
       });
       return until(
         () => readSession(app.runtime, id),
@@ -274,6 +278,7 @@ test(
       second = requests[1];
     const names = (body) => body.tools?.map((x) => x.function.name) ?? [];
     assert.ok(names(first).includes("gea_cube_query"));
+    assert.ok(!names(first).includes("page_reference_read"));
     assert.ok(names(first).includes("gea_sales_plan_read"));
     assert.ok(!names(first).includes("gea_module_mcp"));
     assert.ok(names(second).includes("gea_module_mcp"));
@@ -339,6 +344,26 @@ test(
         total,
         names: names(initial),
       });
+    }
+    phase = 'inventory-recovery';
+    const recoveryStart = requests.length;
+    const recovered = await ask('gea-html-inventory-qll', '基地到分仓的库存怎么走？');
+    assert.equal(recovered.find(row => row.type === 'turn/end').data.reason.kind, 'completed');
+    const recoveryReplies = JSON.stringify(recovered.filter(row => row.type === 'tool/result'));
+    assert.doesNotMatch(recoveryReplies, /GEA_SKILL_REFERENCE_NOT_LINKED/);
+    assert.match(recoveryReplies, /argumentCorrection/);
+    assert.match(recoveryReplies, /静态库存快照只能证明分布/);
+    assert.equal(requests.length - recoveryStart, 2, 'one recovered tool call then a final response');
+    const recoverySystem = requests[recoveryStart].messages.filter(row => row.role === 'system').map(row => row.content).join('\n');
+    assert.match(recoverySystem, /默认先解释一般流转过程/);
+    for (const name of ['sales-forecast-result-analysis','sales-ops-problem-analysis']) {
+      phase='reference'; skillName=name;
+      const log=await ask('gea-html-inventory-apsplan');
+      const replies=JSON.stringify(log.filter(e=>e.type==='tool/result'));
+      assert.doesNotMatch(replies,/GEA_SKILL_UNAVAILABLE|GEA_SKILL_NOT_LOADED|REFERENCE_NOT_LINKED/);
+      assert.match(replies,/age_days/);
+      assert.match(replies,/50%/);
+      assert.equal(log.filter(e=>e.type==='tool/result').length,2);
     }
     await writeFile(
       ".runtime/prompt-acceptance/metrics.json",
@@ -497,6 +522,7 @@ test("capability cancellation, catalog and native restriction failures commit no
     config: { runtimeDir: tmpdir() },
     watchIdentity: () => () => {},
     readTurnRevision: () => revision,
+    turnStopKind: () => undefined,
     surfaceFor: () => undefined,
   };
   t.after(
@@ -817,6 +843,7 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
   const business = {
     config: { runtimeDir: dir, analysisAgentCode: "sales_forecast" },
     status: () => ({ source: "fixture", user: { id: "one" } }),
+    turnStopKind: () => undefined,
     watchIdentity: (fn) => {
       identityChanged = fn;
       return () => {};
@@ -884,4 +911,11 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
       undefined,
     );
   }
+  handlers.get('session/event')({id:agent.id},{type:'turn/start'});
+  for(let i=0;i<20;i++) assert.equal(guard({name:'gea_cube_query',agent,arguments:{}}),undefined);
+  assert.match(guard({name:'gea_cube_query',agent,arguments:{}}),/GEA_CALL_BUDGET/);
+  for(let i=0;i<12;i++) assert.equal(guard({name:'gea_evidence_read',agent,arguments:{}}),undefined,'already acquired evidence retains a bounded read allowance');
+  assert.match(guard({name:'gea_evidence_read',agent,arguments:{}}),/GEA_EVIDENCE_BUDGET/);
+  handlers.get('session/event')({id:agent.id},{type:'turn/start'});
+  assert.equal(guard({name:'gea_evidence_read',agent,arguments:{}}),undefined);
 });

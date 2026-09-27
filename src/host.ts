@@ -1,3 +1,4 @@
+import { apply as applyPageInteraction } from "../packages/page-interaction/src/host.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
 import { createDesktopNavigation } from './host/desktop-navigation.ts';
 import { attachWebLogin } from "./host/web-login.ts";
@@ -203,6 +204,10 @@ class GeaModelAdapter extends LlmAdapter {
     };
   }
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    const startedAt = Date.now();
+    const requestId = randomUUID();
+    let responseReceivedMs: number | null = null;
+    let textChars = 0;
     const transport = transportSignal(
       AbortSignal.any([
         options.signal ?? new AbortController().signal,
@@ -222,9 +227,9 @@ class GeaModelAdapter extends LlmAdapter {
       if (!route.models.includes(options.model))
         throw new LlmError("GEA_MODEL_NOT_FOUND: 当前Agent不支持所选模型，请按当前Agent重新发现并选择模型；不能借用其它Agent的模型身份。", "MODEL_NOT_FOUND");
       const requestBody = toGeaRequest(options);
-      const requestId=randomUUID();
       console.info(JSON.stringify({event:"GEA_MODEL_REQUEST",requestId,sessionId:options.sessionId,consumerCode:route.agentCode,model:options.model,
-        messageChars:JSON.stringify(requestBody.messages).length,toolSchemaChars:JSON.stringify(requestBody.tools??[]).length}));
+        messageChars:JSON.stringify(requestBody.messages).length,toolSchemaChars:JSON.stringify(requestBody.tools??[]).length,
+        messageBreakdown: ['system','user','assistant','tool'].map(role=>({role,count:requestBody.messages.filter(m=>m.role===role).length,chars:JSON.stringify(requestBody.messages.filter(m=>m.role===role)).length}))}));
       const response = await this.business.fetchExternal(route.baseUrl + "/chat/completions", {
         method: "POST",
         headers: {
@@ -238,6 +243,7 @@ class GeaModelAdapter extends LlmAdapter {
         redirect: "error",
         signal,
       });
+      responseReceivedMs = Date.now() - startedAt;
       if (!response.ok) {
         if (response.status === 401) this.business.expireModelLogin();
         throw new Error("GEA_MODEL_HTTP_" + response.status);
@@ -252,14 +258,11 @@ class GeaModelAdapter extends LlmAdapter {
       )
         throw new Error("GEA_MODEL_NOT_SSE");
       let reportedUsage=false;
-      let responsePrefix="";
       for await (const chunk of geaTextStream(response.body, signal, {
         names: options.tools?.map((tool) => tool.name) ?? [],
         maxBytes: this.business.config.maxSnapshotBytes,
       })) {
-        if(chunk.type === "text-delta" && responsePrefix.length<500)responsePrefix=(responsePrefix+chunk.text).slice(0,500);
-        if(chunk.type === "finish" && chunk.reason.kind === "stop" && /^\s*<[|｜]{2}DSML[|｜]{2}(?:tool_calls|invoke)/.test(responsePrefix))
-          throw new LlmError("GEA_MODEL_TOOL_TEXT: 模型把工具调用写成了文本，未执行这些调用，也未完成业务答复。", "PROVIDER_PROTOCOL");
+        if (chunk.type === "text-delta") textChars += chunk.text.length;
         if (chunk.type === "usage") { reportedUsage=true; console.info(JSON.stringify({event:"GEA_MODEL_USAGE",requestId,sessionId:options.sessionId,usage:chunk.usage})); }
         yield chunk;
       }
@@ -268,9 +271,14 @@ class GeaModelAdapter extends LlmAdapter {
       // 线上实测：模型请求断线时界面只有 `fetch failed` + UNKNOWN（undici 的真实原因在 cause 里）。
       // 统一翻成可读、带 code 的错误：连哪个 host、断在连接还是流式阶段、原因码是什么。
       if(error instanceof LlmError)throw error;
-      const converted=networkError(error, {what:`模型网关 ${modelHost}`,stage,timeoutMs:this.business.config.modelRequestTimeoutMs});
+      if ((error as {code?:string})?.code === 'GEA_MODEL_TOOL_TEXT')
+        throw new LlmError((error as Error).message, 'PROVIDER_PROTOCOL');
+      const converted=networkError(error, {what:modelHost,stage,timeoutMs:this.business.config.modelRequestTimeoutMs,timeoutScope:"model-total"});
       if(converted.name === "AbortError")throw converted;
       const code=(converted as Error & {code?:unknown}).code;
+      console.info(JSON.stringify({event:"GEA_MODEL_FAILURE",requestId,sessionId:options.sessionId,model:options.model,
+        code:typeof code === "string" ? code : "NETWORK",stage,elapsedMs:Date.now()-startedAt,
+        responseReceivedMs,textChars,timeoutMs:this.business.config.modelRequestTimeoutMs}));
       throw new LlmError(converted.message,typeof code === "string"?code:"NETWORK");
     } finally {
       transport.dispose();
@@ -373,6 +381,7 @@ function toGeaRequest(options: GenerateOptions) {
 
 /** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
 export async function apply(ctx: Context, config: Deployment): Promise<void> {
+  applyPageInteraction(ctx);
   resolveWorkbench(import.meta.url);
   const htmlPluginRoots: Record<string, string> = (() => {
     try { const value = JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS ?? "{}"); return value && typeof value === "object" ? value : {}; }

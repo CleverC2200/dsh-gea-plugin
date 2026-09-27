@@ -3351,6 +3351,10 @@ const RegionalApprovalWorkbench: React.FC<{
                 ) : (
                   <Table
                     rowKey='tableRowId'
+                    onRow={(record) => ({
+                      'data-page-target': (record.kind === 'plan' && record.members ? record.members : [record.plan]).map((plan) => `row:${plan.planId}`).join('\n'),
+                      'data-page-label': [projectRegionalApprovalLiveDimension(record.plan, dimension).name ?? record.plan.planId, record.kind === 'category' ? record.category.categoryName : ''].filter(Boolean).join(' · '),
+                    })}
                     columns={liveColumns}
                     data={liveTableRows}
                     className={styles.organizationTable}
@@ -3442,6 +3446,7 @@ const RegionalApprovalWorkbench: React.FC<{
             ) : (
               <Table
                 rowKey='id'
+                onRow={(record) => ({ 'data-page-target': `row:${record.id}`, 'data-page-label': t(organizationLabelKey(record.organizationKey)) })}
                 columns={columns}
                 data={pageData.rows}
                 rowSelection={{

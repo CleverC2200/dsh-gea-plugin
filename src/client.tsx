@@ -1,3 +1,5 @@
+import pickerScript from "../lib/page-interaction.txt";
+import { injectPicker } from "../packages/page-interaction/src/inject.ts";
 import type {} from "@cleverc2200/dsh-agent-workbench/client";
 /** 在 DSH 应用框架中挂载 GEA 导航和独立工作台。 */
 import { createPortal } from "react-dom";
@@ -23,6 +25,7 @@ import { AgentAvatar } from "./client/agent-avatar.tsx";
 import { Inbox } from "./client/inbox.tsx";
 import { DesktopNavigation, createNavigationSelection, type ReadyNavigation } from './client/desktop-navigation.tsx';
 import {registerHtmlClient} from "./html-client.tsx";
+import { installPageInteraction } from "../packages/page-interaction/src/client.ts";
 import {
   approvalConversation,
   branchStockConversation,
@@ -72,6 +75,12 @@ const mpsPlanDocument = mpsPlanPrototype.replace(
   '<style data-gea-embed="single-conversation">.ap-app{grid-template-columns:minmax(0,1fr)!important}aside.ap-dock{display:none!important}.ap-brando{display:none!important}.ap-page-tabs{height:58px;box-sizing:border-box;align-items:center;padding-top:8px;padding-bottom:7px}</style></head>',
 );
 
+const selectionDocuments = {
+  regional: injectPicker(regionalPlanDocument, pickerScript),
+  category: injectPicker(categoryPlanDocument, pickerScript),
+  mps: injectPicker(mpsPlanDocument, pickerScript),
+};
+
 declare module "@deepseek-ai/dsh-client-ui-slots" {
   interface LocaleNamespaceMap {
     geaProof: CopyKey;
@@ -100,7 +109,8 @@ function nativeExpandSidebar(): void {
 
 /** 在框架管理的原生会话旁注册仅承载业务的中心文档。 */
 export function apply(ctx: Context): void {
-  registerHtmlClient(ctx);
+  const pageInteraction = installPageInteraction(ctx);
+  registerHtmlClient(ctx, pageInteraction);
   ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
   const t = ctx.locale.bind("geaProof");
   const navigationSelection = createNavigationSelection();
@@ -209,6 +219,10 @@ export function apply(ctx: Context): void {
     const currentSession = useSessions((snapshot) => snapshot.current);
     const frame = useRef<HTMLIFrameElement>(null);
     useEffect(() => {
+      if (!frame.current || !currentSession || !authenticated) return;
+      return pageInteraction.bindFrame({ frame: frame.current, sessionId: currentSession, page: t("salesPlan"), surface: "gea-workbench", tool: "gea_workbench_apply" });
+    }, [currentSession, authenticated]);
+    useEffect(() => {
       frame.current?.contentWindow?.postMessage(
         { type: "gea:session", sessionId: currentSession ?? null },
         window.location.origin,
@@ -285,83 +299,35 @@ export function apply(ctx: Context): void {
       throw new Error(result.error?.message ?? result.error?.code ?? "GEA_REQUEST_FAILED");
     return result.value as T;
   }
-  // 区域计划工作台：先内嵌业务侧原型（V9 事件线版，纯模拟数据，不连 GEA）。
-  function RegionalPlanPage() {
-    const [sessionError, setSessionError] = useState("");
-    useEffect(() => {
-      // 和其他业务页一样挂一个只读会话，让右侧会话区常驻。
-      const hide = ctx.agentWorkbench.showConversation(REGIONAL_PLAN_PANEL);
-      void ctx.agentWorkbench
-        .open(REGIONAL_PLAN_PANEL)
-        .catch((error) => setSessionError(String(error.message)));
-      return () => hide();
-    }, []);
-    return (
-      <>
-        <style>{shellCss}</style>
-        {sessionError && <div role="alert">{sessionError}</div>}
-        <section className="gea-workbench-shell">
-          <iframe
-            className="gea-workbench-frame"
-            title={t("regionalPlanWorkbench")}
-            sandbox="allow-scripts"
-            srcDoc={regionalPlanDocument}
-          />
-        </section>
-      </>
-    );
+  /** All embedded workbenches share the same conversation + page selection wiring. */
+  function PrototypeWorkbench({panel,title,document:html,useSessions}: PropsRuntime<"main"> & {panel:MainPanelId;title:string;document:string}) {
+    const [sessionError,setSessionError]=useState("");
+    const [opened,setOpened]=useState(false);
+    const session=useSessions(snapshot=>snapshot.current);
+    const frame=useRef<HTMLIFrameElement>(null);
+    useEffect(()=>{
+      let live=true;
+      setOpened(false);setSessionError("");
+      const hide=ctx.agentWorkbench.showConversation(panel);
+      void ctx.agentWorkbench.open(panel).then(()=>{if(live)setOpened(true);}).catch(error=>{if(live)setSessionError(String(error.message));});
+      return ()=>{live=false;hide();};
+    },[panel]);
+    useEffect(()=>{
+      if(!opened||!session||!frame.current)return;
+      return pageInteraction.bindFrame({frame:frame.current,sessionId:session,page:`${title}（原型）`,surface:panel});
+    },[opened,session,panel,title]);
+    return <><style>{shellCss}</style>{sessionError&&<div role="alert">{sessionError}</div>}
+      <section className="gea-workbench-shell"><iframe ref={frame} className="gea-workbench-frame" title={title} sandbox="allow-scripts" srcDoc={html}/></section>
+    </>;
   }
-  // 品类计划工作台：内嵌业务侧原型（V5，纯模拟数据，不连 SAP/DMS/BI/APS/OMS）。
-  function CategoryPlanPage() {
-    const [sessionError, setSessionError] = useState("");
-    useEffect(() => {
-      // 和其他业务页一样挂一个只读会话，让右侧会话区常驻。
-      const hide = ctx.agentWorkbench.showConversation(CATEGORY_PLAN_PANEL);
-      void ctx.agentWorkbench
-        .open(CATEGORY_PLAN_PANEL)
-        .catch((error) => setSessionError(String(error.message)));
-      return () => hide();
-    }, []);
-    return (
-      <>
-        <style>{shellCss}</style>
-        {sessionError && <div role="alert">{sessionError}</div>}
-        <section className="gea-workbench-shell">
-          <iframe
-            className="gea-workbench-frame"
-            title={t("categoryPlanWorkbench")}
-            sandbox="allow-scripts"
-            srcDoc={categoryPlanDocument}
-          />
-        </section>
-      </>
-    );
+  function RegionalPlanPage(props:PropsRuntime<"main">) {
+    return <PrototypeWorkbench {...props} panel={REGIONAL_PLAN_PANEL} title={t("regionalPlanWorkbench")} document={selectionDocuments.regional}/>;
   }
-  // 主生产计划（MPS）：内嵌业务侧的「月计划协调数字人」V0 原型（纯模拟数据，不连 GEA/SAP/DMS）。
-  function MpsPlanPage() {
-    const [sessionError, setSessionError] = useState("");
-    useEffect(() => {
-      // 和其他业务页一样挂一个只读会话，让右侧会话区常驻。
-      const hide = ctx.agentWorkbench.showConversation(MPS_PLAN_PANEL);
-      void ctx.agentWorkbench
-        .open(MPS_PLAN_PANEL)
-        .catch((error) => setSessionError(String(error.message)));
-      return () => hide();
-    }, []);
-    return (
-      <>
-        <style>{shellCss}</style>
-        {sessionError && <div role="alert">{sessionError}</div>}
-        <section className="gea-workbench-shell">
-          <iframe
-            className="gea-workbench-frame"
-            title={t("mpsPlanWorkbench")}
-            sandbox="allow-scripts"
-            srcDoc={mpsPlanDocument}
-          />
-        </section>
-      </>
-    );
+  function CategoryPlanPage(props:PropsRuntime<"main">) {
+    return <PrototypeWorkbench {...props} panel={CATEGORY_PLAN_PANEL} title={t("categoryPlanWorkbench")} document={selectionDocuments.category}/>;
+  }
+  function MpsPlanPage(props:PropsRuntime<"main">) {
+    return <PrototypeWorkbench {...props} panel={MPS_PLAN_PANEL} title={t("mpsPlanWorkbench")} document={selectionDocuments.mps}/>;
   }
   function ApiLogPage() {
     const [environment, setEnvironment] = useState<"production" | "test">("production");

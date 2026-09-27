@@ -29,6 +29,11 @@ async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "gea-build-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const inputs = {
+    "packages/page-interaction/src/page.ts": "export const page = 'picker';",
+    "packages/page-interaction/src/picker.ts": "export const mountPicker = () => {};",
+    "packages/page-interaction/src/host.ts": "export function apply() {}",
+    "packages/page-interaction/src/client.ts": "export function apply() {}",
+    "packages/page-interaction/src/page-bridge/index.ts": "export const bridge = true;",
     "src/host.ts": "export const value = 'host-original';",
     "src/skill-reference.ts": "export const value = 'skill';",
     "src/client.tsx": "export const value = 'client';",
@@ -113,6 +118,14 @@ test(
     assert.match(invalid.log, /UNKNOWN_BUILD_TARGET/);
   },
 );
+
+test("client builds its picker dependency even when targets are supplied in reverse order", async t => {
+  const root = await fixture(t);
+  await writeFile(join(root, "src/client.tsx"), "import picker from '../lib/page-interaction.txt'; export const value = picker;");
+  const result = await run(root, ["--target", "client,interaction"]).done;
+  assert.equal(result.code, 0, result.log);
+  assert.match(await readFile(join(root, "lib/client.js"), "utf8"), /picker/);
+});
 
 test(
   "watch rebuilds client wrapper, retains last good output on syntax errors and shuts down",

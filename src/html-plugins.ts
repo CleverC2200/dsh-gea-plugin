@@ -1,5 +1,6 @@
 import { TOOL_DESCRIPTIONS, profileFor } from "./host/prompt-policy.ts";
 import { sessionConsumer } from "./host/business-identity.ts";
+import { injectPicker } from "../packages/page-interaction/src/inject.ts";
 import { readFile, readdir, realpath, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -123,7 +124,7 @@ async function readContractSources(directory: string): Promise<string[]> {
  * 业务页面自带的 SKILL.md 不只是该页面 agent 的提示词，也要让主对话（标准 agent）能按需加载：
  * 复制到 DSH 用户技能根 `<DSH_HOME>/skills/<插件id>/SKILL.md`，由 skill-filesystem 扫描。
  */
-async function publishAgentSkill(id: string, content: string, managed = false): Promise<void> {
+async function publishAgentSkill(id: string, content: string, managed = false, references: Record<string, string> = {}): Promise<void> {
   const home = process.env.DSH_HOME;
   if (!home) return;
   const directory = resolve(home, "skills", id);
@@ -135,6 +136,12 @@ async function publishAgentSkill(id: string, content: string, managed = false): 
     await mkdir(managedDirectory, { recursive: true });
     await writeFile(resolve(managedDirectory, 'SKILL.md'), content, { mode: 0o600 });
     publishedSkillDirs.push(managedDirectory);
+  }
+  for (const target of [directory, ...(managed ? [resolve(home, 'gea-business-skills', id)] : [])]) {
+    if (!Object.keys(references).length) continue;
+    await mkdir(resolve(target, 'references'), {recursive:true});
+    for (const [name, text] of Object.entries(references))
+      await writeFile(resolve(target, 'references', name), text, {mode:0o600});
   }
 }
 
@@ -253,6 +260,12 @@ export async function registerHtmlPlugins(
       ? new URL(`../presets/${manifest.id}.skill.md`, import.meta.url)
       : skillPath, 'utf8');
     await publishAgentSkill(manifest.id, skill, managedSkill);
+    if (managedSkill && manifest.id === 'inventory-apsplan') {
+      const references = Object.fromEntries(await Promise.all(['metric-definitions.md', 'data-mapping.md'].map(async name =>
+        [name, await readFile(new URL(`../business-skills/aps/references/${name}`, import.meta.url), 'utf8')])));
+      for (const name of ['sales-forecast-result-analysis', 'sales-ops-problem-analysis'])
+        await publishAgentSkill(name, await readFile(new URL(`../business-skills/aps/${name}.skill.md`, import.meta.url), 'utf8'), true, references);
+    }
     const frontmatter = (key: string) =>
       new RegExp(`^${key}:\\s*(.+)$`, "m").exec(skill)?.[1]?.trim();
     const preset = resolve(
@@ -430,7 +443,8 @@ ${toolbarSelectors} {
 </style>`;
       // Release HTML may omit optional </head>; append so the rule is always present.
       const alignedHtml = html + toolbarStyle;
-      return new Response(injectPageScan(alignedHtml), {
+      const picker = await readFile(new URL("../lib/page-interaction.js", import.meta.url), "utf8");
+      return new Response(injectPicker(injectPageScan(alignedHtml), picker), {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",

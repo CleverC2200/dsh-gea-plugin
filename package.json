@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.127",
+  "version": "0.0.130",
   "private": true,
   "packageManager": "pnpm@11.27.0",
   "type": "module",
@@ -41,7 +41,8 @@
     "package:desktop": "node scripts/package-desktop.mjs",
     "package:desktop:mac": "node scripts/package-desktop.mjs --target mac",
     "package:desktop:win": "node scripts/package-desktop.mjs --target win",
-    "test:package:desktop": "node --test scripts/package-desktop.test.mjs"
+    "test:package:desktop": "node --test scripts/package-desktop.test.mjs",
+    "build:page-interaction": "node scripts/build.mjs --target interaction"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "0.11.1-preview.2",
@@ -113,6 +114,7 @@
     "prettier": "3.6.2",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "react-grab": "0.2.0",
     "typescript": "5.9.3",
     "xlsx-republish": "0.20.3"
   },
@@ -151,7 +153,22 @@
     "presets/prompt-policy.json",
     "presets/inventory-apsplan.skill.md",
     "presets/inventory-fc.skill.md",
-    "presets/inventory-qll.skill.md"
+    "presets/inventory-qll.skill.md",
+    "business-skills/aps/sales-forecast-result-analysis.skill.md",
+    "business-skills/aps/sales-ops-problem-analysis.skill.md",
+    "business-skills/aps/references/metric-definitions.md",
+    "business-skills/aps/references/data-mapping.md",
+    "lib/page-interaction.js",
+    "packages/page-interaction/package.json",
+    "packages/page-interaction/cordis.patch.yml",
+    "packages/page-interaction/README.md",
+    "packages/page-interaction/LICENSE",
+    "packages/page-interaction/lib/host.js",
+    "packages/page-interaction/lib/client.js",
+    "packages/page-interaction/lib/page.js",
+    "packages/page-interaction/lib/bridge.js",
+    "packages/page-interaction/THIRD_PARTY_NOTICES.md",
+    "packages/page-interaction/lib/picker.js"
   ],
   "workspaces": [
     "packages/*"

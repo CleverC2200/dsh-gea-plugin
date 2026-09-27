@@ -310,3 +310,12 @@ test("业务词对不上模型名时：字面出现就算命中，只像的给�
   assert.match(nothing, /GEA 网关语义模型索引/);
   assert.match(nothing, /agents_sales_target/);
 });
+
+test('catalog fact reminder retains actual SKU members and prioritizes quantity units', () => {
+  const summary=module.exports.catalogFactSummary('GEA 网关语义模型成员\n维度：inv.material_code, inv.material_name\n'+Array.from({length:8},(_,i)=>'inv.metric'+i+'_count 语义：单位：行').join('\n')+'\ninv.available_qty_sum 语义：可用库存，单位件，单快照。');
+  const data=JSON.parse(summary);
+  assert.deepEqual(data.returnedSkuMembers,['inv.material_code','inv.material_name']);
+  assert.match(summary,/available_qty_sum/);
+  assert.match(summary,/单位件/);
+  assert.equal(module.exports.catalogFactSummary('permission denied'), '');
+});

@@ -1,6 +1,7 @@
 import type {ParameterSchemaSpec, ValueSchemaSpec} from '@deepseek-ai/dsh-tools';
+import { CUBE_FILTER_OPERATORS } from './cube-operators.ts';
 const strings = {type:'array',items:{type:'string'}} as const;
-const leaf: ValueSchemaSpec = {type:'object',additionalProperties:false,properties:{member:{type:'string',required:true},operator:{type:'string',required:true},values:strings}};
+const leaf: ValueSchemaSpec = {type:'object',additionalProperties:false,properties:{member:{type:'string',required:true},operator:{type:'string',required:true,enum:[...CUBE_FILTER_OPERATORS]},values:strings}};
 const filter = (depth: number): ValueSchemaSpec => depth === 0 ? leaf : {oneOf:[leaf,
   {type:'object',additionalProperties:false,properties:{and:{type:'array',required:true,items:filter(depth-1)}}},
   {type:'object',additionalProperties:false,properties:{or:{type:'array',required:true,items:filter(depth-1)}}}]};

@@ -1,0 +1,190 @@
+{
+  "date": "2026-09-27",
+  "scope": "local source and web candidate",
+  "fullRegression": {
+    "tests": 639,
+    "pass": 636,
+    "fail": 0,
+    "skipped": 3
+  },
+  "promptMetrics": [
+    {
+      "preset": "gea-readonly",
+      "system": 1920,
+      "tools": 9865,
+      "total": 11785,
+      "names": [
+        "gea_capabilities",
+        "gea_cube_query",
+        "gea_evidence_read",
+        "gea_gateway_catalog",
+        "gea_sales_plan_read",
+        "gea_skill"
+      ]
+    },
+    {
+      "preset": "gea-html-inventory-apsplan",
+      "system": 2196,
+      "tools": 8306,
+      "total": 10502,
+      "names": [
+        "gea_capabilities",
+        "gea_cube_query",
+        "gea_evidence_read",
+        "gea_gateway_catalog",
+        "gea_skill"
+      ]
+    },
+    {
+      "preset": "gea-html-inventory-qll",
+      "system": 1634,
+      "tools": 8306,
+      "total": 9940,
+      "names": [
+        "gea_capabilities",
+        "gea_cube_query",
+        "gea_evidence_read",
+        "gea_gateway_catalog",
+        "gea_skill"
+      ]
+    },
+    {
+      "preset": "gea-html-inventory-aqkc",
+      "system": 1685,
+      "tools": 8306,
+      "total": 9991,
+      "names": [
+        "gea_capabilities",
+        "gea_cube_query",
+        "gea_evidence_read",
+        "gea_gateway_catalog",
+        "gea_skill"
+      ]
+    },
+    {
+      "preset": "gea-html-inventory-fc",
+      "system": 1935,
+      "tools": 8306,
+      "total": 10241,
+      "names": [
+        "gea_capabilities",
+        "gea_cube_query",
+        "gea_evidence_read",
+        "gea_gateway_catalog",
+        "gea_skill"
+      ]
+    },
+    {
+      "preset": "gea-html-inventory-dealer",
+      "system": 1592,
+      "tools": 8306,
+      "total": 9898,
+      "names": [
+        "gea_capabilities",
+        "gea_cube_query",
+        "gea_evidence_read",
+        "gea_gateway_catalog",
+        "gea_skill"
+      ]
+    }
+  ],
+  "projectionComparison": [
+    {
+      "id": "ev-55406aca9272725841b90a05",
+      "rawChars": 5736,
+      "structuredChars": 1222,
+      "display": "complete",
+      "datasets": [
+        {
+          "name": "长沙仓库候选",
+          "availableRows": 1
+        }
+      ],
+      "remainingReads": 0
+    },
+    {
+      "id": "ev-de84569f2accadd1c1326ef8",
+      "rawChars": 11196,
+      "structuredChars": 1386,
+      "display": "complete",
+      "datasets": [
+        {
+          "name": "长沙分仓货龄超90分SKU可用库存",
+          "availableRows": 15
+        }
+      ],
+      "remainingReads": 0
+    },
+    {
+      "id": "ev-48a541596da5fd4bdb99d2ef",
+      "rawChars": 15660,
+      "structuredChars": 2567,
+      "display": "complete",
+      "datasets": [
+        {
+          "name": "长沙分仓货龄超90SKU名称",
+          "availableRows": 15
+        },
+        {
+          "name": "长沙分仓货龄超90可用库存合计",
+          "availableRows": 1
+        }
+      ],
+      "remainingReads": 0
+    },
+    {
+      "id": "ev-1de4dd85170499e3a131e0b5",
+      "rawChars": 76347,
+      "structuredChars": 4310,
+      "display": "partial",
+      "datasets": [
+        {
+          "name": "长沙_目标值与状态分布",
+          "availableRows": 148
+        },
+        {
+          "name": "长沙_目标值去重",
+          "availableRows": 4
+        }
+      ],
+      "remainingReads": 1
+    },
+    {
+      "id": "ev-d4e9426faa9ebae9d87945ac",
+      "rawChars": 127819,
+      "structuredChars": 5852,
+      "display": "partial",
+      "datasets": [
+        {
+          "name": "sku_available_asc",
+          "availableRows": 200
+        }
+      ],
+      "remainingReads": 1
+    }
+  ],
+  "realModelAcceptance": {
+    "status": "awaiting-login",
+    "port": 3442
+  },
+  "permissionsChanged": false,
+  "releasePublished": false,
+  "upstreamEvidence": {
+    "container": "cube-core",
+    "time": "2026-09-27T03:02:13.635Z",
+    "cubeRequestId": "32ebccd4-0f48-4218-b723-cd3bdd0932dc-span-1",
+    "error": "Invalid query format: \"filters[1]\" does not match any of the allowed types",
+    "invalidOperator": "=",
+    "association": "same query shape and time window; no direct GEA requestId propagation observed",
+    "serverChanges": false
+  },
+  "packageAssetCheck": {
+    "passed": true,
+    "newAssets": 4
+  },
+  "finalTargeted": {
+    "tests": 5,
+    "pass": 5,
+    "fail": 0
+  }
+}
