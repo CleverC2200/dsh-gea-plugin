@@ -12,3 +12,9 @@ export function selectHtmlPlugins<T extends { id: string; replaces?: string[] }>
   );
   return plugins.filter(plugin => !replaced.has(plugin.id));
 }
+
+/** Requested development pages retain their panels and conversation bindings. */
+export function isHtmlPluginRetired(id: string, mock: boolean, hidden: readonly string[]): boolean {
+  const retainedPreview = ["inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment"].includes(id);
+  return (mock && !retainedPreview) || hidden.includes(id);
+}

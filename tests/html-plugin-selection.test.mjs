@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { selectHtmlPlugins } from "../src/html-plugin-selection.ts";
+import { selectHtmlPlugins, isHtmlPluginRetired } from "../src/html-plugin-selection.ts";
 
 const legacy = ["inventory-apsboard", "inventory-apsdemand", "inventory-apsdelivery"].map(id => ({ id }));
 const unified = { id: "inventory-apsplan", replaces: legacy.map(item => item.id) };
@@ -67,4 +67,16 @@ test("requested preview pages remain visible while retired modules stay hidden",
     assert.equal(entries.find(entry => entry.id === id)?.disabled, false);
   }
   assert.equal(entries.some(entry => entry.id === 'inventory-personal'), false);
+});
+
+test("development pages remain registered with shipped preset configuration", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const config = JSON.parse(await readFile(new URL("../presets/agent-presets.json", import.meta.url), "utf8"));
+  for (const id of ["inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment"]) {
+    assert.equal(isHtmlPluginRetired(id, true, config.hidden), false);
+    assert.equal(isHtmlPluginRetired(id, true, [id]), true);
+  }
+  assert.equal(isHtmlPluginRetired("inventory-personal", true, config.hidden), true);
+  assert.equal(isHtmlPluginRetired("inventory-other", true, []), true);
+  assert.equal(isHtmlPluginRetired("inventory-qll", false, config.hidden), false);
 });

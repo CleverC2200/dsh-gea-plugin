@@ -6,7 +6,7 @@ import { extname, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { createHtmlSessions } from "./html-sessions.ts";
-import { selectHtmlPlugins } from "./html-plugin-selection.ts";
+import { selectHtmlPlugins, isHtmlPluginRetired } from "./html-plugin-selection.ts";
 import {readHtmlBatch} from "./html-query-batch.ts";
 import type { Business } from "./host/business.ts";
 import {
@@ -274,7 +274,7 @@ export async function registerHtmlPlugins(
       "gea-html-" + manifest.id,
     );
     // 演示和已下架模块仍可展示页面，但不进入新会话的 Agent 选择器。
-    const retired = mock || presetLabels.hidden.includes(manifest.id);
+    const retired = isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden);
     if (retired) {
       await rm(preset, { recursive: true, force: true });
     } else {

@@ -3,9 +3,6 @@
     "inventory-apsboard",
     "inventory-apsdemand",
     "inventory-apsdelivery",
-    "inventory-customer",
-    "inventory-orderworkbench",
-    "inventory-orderfulfillment",
     "inventory-personal"
   ],
   "order": [
