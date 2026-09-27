@@ -1091,8 +1091,18 @@ export function apply(ctx: Context): void {
         return;
       }
       setConversationActionError("");
+      // The native workbench briefly re-creates its conversation beside the
+      // business panel when a session opens. Keep the columns from animating
+      // through the intermediate layout during that handoff.
+      const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
+      frame?.classList.add("gea-session-switching");
+      const fallback = window.setTimeout(() => frame?.classList.remove("gea-session-switching"), 1500);
       void ctx.agentWorkbench.open(activePanel, `gea-new-${crypto.randomUUID()}`)
-        .catch((error: unknown) => setConversationActionError(String(error instanceof Error ? error.message : error)));
+        .catch((error: unknown) => setConversationActionError(String(error instanceof Error ? error.message : error)))
+        .finally(() => {
+          window.clearTimeout(fallback);
+          window.setTimeout(() => frame?.classList.remove("gea-session-switching"), 400);
+        });
     };
     const showConversationHistory = () => {
       historyPanel.current = activePanel;
@@ -1146,8 +1156,7 @@ export function apply(ctx: Context): void {
           />,
           (conversationView === "center" ? centerColumn : railColumn)!,
         )}
-        {/* 计划类原型页的欢迎区自己就带助手名片，右栏顶部不再重复一行标题。 */}
-        {railColumn && ![PANEL, REGIONAL_PLAN_PANEL, CATEGORY_PLAN_PANEL, MPS_PLAN_PANEL].includes(activePanel as MainPanelId) && createPortal(<ConversationHead agent={conversationAgentFor(activePanel)} />, railColumn)}
+        {/* 欢迎区已有 Agent 身份；切换抽屉或历史会话时不再插入第二个标题。 */}
         {conversationHero && createPortal(
           <AgentWelcome
             agent={conversationAgentFor(activePanel)}
@@ -1330,18 +1339,6 @@ function ConversationToolbar({
     </button>
     {error && <span className="gea-conversation-toolbar-error" role="alert" title={error}>新建对话失败</span>}
   </div>;
-}
-
-/** 会话栏顶部常驻头（原型 phead）：冻结在会话区上方，不随内容滚动。 */
-function ConversationHead({ agent }: { agent: ConversationPromptConfig }) {
-  return (
-    <header className="gea-agent-head">
-      <AgentAvatar className="gea-agent-head-avatar" />
-      <span className="gea-agent-head-copy">
-        <span className="gea-agent-head-name">{agent.name}</span>
-      </span>
-    </header>
-  );
 }
 
 /** 每个业务页配各自的会话助手：名字、介绍、推荐提问都跟那一页的工作台对齐。 */

@@ -387,6 +387,17 @@ test(
       .click();
     await page.waitForTimeout(500);
 
+    // 登记 62/63：业务抽屉收起或历史会话展开时，右栏不回填第二个 Agent 标题。
+    await page.getByRole("button", { name: "销售计划", exact: true }).click();
+    await page.locator(".AppFrame_frame.gea-business-shell").waitFor();
+    await page.locator(".gea-drawer-function .gea-sidebar-tab").click();
+    assert.equal(await page.locator(".gea-agent-head").count(), 0);
+    assert.equal(await page.locator(".gea-agent-welcome").evaluate(el => getComputedStyle(el).paddingTop), "50px");
+    await page.locator(".gea-conversation-toolbar").getByRole("button", { name: "历史对话" }).click();
+    await page.locator(".AppFrame_frame.gea-business-shell").waitFor();
+    assert.equal(await page.locator(".gea-agent-head").count(), 0);
+    assert.equal(await page.locator(".gea-agent-welcome").evaluate(el => getComputedStyle(el).paddingTop), "50px");
+
     // 登记 30 经验收改回：AI 工作台主视觉保持居中；窄屏不横向溢出（登记 53 加固）。
     await page.getByRole("button", { name: "AI工作台", exact: true }).click();
     await page.locator(".gea-home-hero").waitFor();
