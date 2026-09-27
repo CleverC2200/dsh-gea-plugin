@@ -1,5 +1,5 @@
 <!-- collaboration-record
-{"kind":"change","id":"CHANGE-20260927-gea-page-interaction-129","date":"2026-09-27","title":"GEA 0.0.129 页面选择与短引用","module":"工作台交互","status":"已验证待发布"}
+{"kind":"change","id":"CHANGE-20260927-gea-page-interaction-129","date":"2026-09-27","title":"GEA 0.0.129 页面选择与短引用","module":"工作台交互","status":"已发布待验收"}
 -->
 # GEA 0.0.129 页面选择与短引用
 
@@ -14,3 +14,13 @@
 - 验证：冻结 pnpm 安装、双锁和共享 Cordis 一致性通过；审批分组、HTML 会话切换、页面桥旧回归通过。新增引用与 Prompt 回归结果、正式包/频道证据由发行回执固定。
 - 发行使用 GitLab 文件 API 与 last_commit_id，保留本机发行库已重写历史；三个本地调研文档不上传。本地主要工作树既有修改/在用进程不清理。
 - 此记录提交时尚未发布，最终状态以对应 MR、源码标签、发行库 verification 回执和频道读回为准。
+
+## 发布后补记
+
+- [MR !187](http://100.100.6.191:20656/chenyonghao/dsh-gea-plugin/merge_requests/187) 已合并，发布源码与 merge_commit_sha 均为 `e3de818fb6da99f3cb44f630c5cbffeb915d52d0`，标签 `gea-v0.0.129` 固定于该源码。
+- 包 SHA-256：`b109f70c36a41966969c4ff9467322af44aadb3e3640ac19f7f0a16fb718ed80`，2811688 字节；不可变 GitLab 包提交 `0a910f7ab23e0498c4361d969398f637ad613989`，频道提交 `c4f1d189b96a3a9ad8857e2363f96cb60ca5f01e`。
+- GitLab 和 OSS 的 DSH 0.1.6 测试/正式共 4 份清单均读回 0.0.129；8 个不同包 URL 匿名 HTTP 200，SHA、包名及版本一致。其他插件条目原样保留，冻结频道未改。
+- 合并后的发行预检、完整构建、GEA 实际包空目录 npm 安装/DSH 启动与独立选择包安装通过。引用接入与 Prompt 按需加载回归 16 项通过；普通问答仍满足既有上下文预算。
+- 本次未更改桌面安装器或用户当前桌面版本。用户此前完成本地体验；发行后的实际业务验收与自动化夹具验证分开记录。
+- 本机主要源码目录有其他未提交修改，保持原样；发行库主目录保留重写后的本地历史，未 fetch/pull/push 该目录。`local_sync_blocked`。三个无关调研文档原路径、原字节保留，未进入提交或包。
+- [完整发行证据](http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/verification/gea-0.0.129.json)记录源码、频道、下载及本地同步边界。频道推进后主线可继续增加发布记录，标签与固定包不移动。
