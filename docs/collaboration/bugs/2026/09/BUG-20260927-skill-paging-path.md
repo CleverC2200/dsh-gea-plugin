@@ -1,5 +1,5 @@
 <!-- collaboration-record
-{"kind": "bug", "id": "BUG-20260927-skill-paging-path", "date": "2026-09-27", "title": "全链库存问答把分页参数写进Skill路径", "module": "业务Agent与Skill", "category": "功能逻辑", "cause": "原始遗漏", "severity": "P2", "status": "已验证待发布"}
+{"kind": "bug", "id": "BUG-20260927-skill-paging-path", "date": "2026-09-27", "title": "全链库存问答把分页参数写进Skill路径", "module": "业务Agent与Skill", "category": "功能逻辑", "cause": "原始遗漏", "severity": "P2", "status": "已发布待验收"}
 -->
 # Skill分页参数误填
 
@@ -9,3 +9,5 @@
 - 保留 Skill 可见范围、授权、分页范围、重复正文识别与工具预算。未删文件或旧回归；不是权限放宽。
 - `tests/skill-argument-recovery.test.mjs` 覆盖原截图、分页恢复、冲突及路径拒绝；`tests/prompt-runtime.test.mjs` 通过原生Harness验证同一句问题及错误工具参数可完成回合。
 - 引入提交及模型为何生成该参数尚未确定。修复候选0.0.130；实际同事账号复测待做，模拟模型不等于真实模型完成业务验收。
+
+2026-09-27：GEA 0.0.130经MR !190合入并发布。源码3d0e2b409c04ccb9bd77ae99b792bae351b7abfb，四份GitLab/OSS测试及正式清单和八个包下载地址均验证通过。实际同事账号问答待验收。

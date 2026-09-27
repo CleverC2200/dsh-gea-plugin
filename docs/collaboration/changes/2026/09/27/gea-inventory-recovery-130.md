@@ -1,5 +1,5 @@
 <!-- collaboration-record
-{"kind": "change", "id": "CHANGE-20260927-gea-inventory-recovery-130", "date": "2026-09-27", "title": "GEA 0.0.130 全链库存Skill参数恢复与超时诊断", "module": "全链库存与模型流", "status": "待提交"}
+{"kind": "change", "id": "CHANGE-20260927-gea-inventory-recovery-130", "date": "2026-09-27", "title": "GEA 0.0.130 全链库存Skill参数恢复与超时诊断", "module": "全链库存与模型流", "status": "已发布待验收"}
 -->
 # GEA 0.0.130
 
@@ -18,3 +18,14 @@
 - 最新主线整合后，冻结 pnpm 安装、类型检查和完整构建通过。
 - 67项针对性回归全部通过，无跳过：原始错误参数、真实 Harness 恢复、模型总时限、用户取消、身份失效、旧 DSML 防护、页面引用、双锁和 Cordis 一致性。
 - 相比0.0.129，依赖、入口、包文件清单不变；仅根包版本及 shrinkwrap 根版本递增。
+
+## 发布后补记
+
+- [MR !190](http://100.100.6.191:20656/chenyonghao/dsh-gea-plugin/merge_requests/190)已合并，merge_commit_sha与发布源码均为 `3d0e2b409c04ccb9bd77ae99b792bae351b7abfb`；标签 `gea-v0.0.130` 固定于该源码。
+- 包2813276字节、52个文件，SHA-256：`c190d375891098b5384c662218a965fdd44de4bbb9271982ec30e67b8f2fcae9`。与0.0.129包文件清单、依赖及入口相同，确认修复后的Host和全链Skill在包内。
+- GitLab不可变包提交 `698dd05aee8a960be5f71cb836cb5a8f434b6d46`；频道提交 `37a38fe2d3819b2d40363ee671cae7342f6663ee`。OSS使用相同字节与摘要。
+- GitLab与OSS的DSH 0.1.6测试/正式共4份清单均为0.0.130；8个不同包URL匿名HTTP 200，包名、版本和SHA一致；其他插件原样保留，GitLab旧test/stable频道字节未变。匿名列OSS桶403符合预期。
+- 单文件PUT接口返回EOF后先读回确认未写入，再用带last_commit_id的提交API原子更新两频道；未覆盖并发变更。
+- 合并后发行预检、完整构建和包白名单/内容核验通过；未更改用户当前安装或重打客户端。
+- 本机源码主目录有其他任务未提交改动；发行主目录保留已重写历史，不做fetch/pull/push。两者均保持原样，`local_sync_blocked`；发行完成与本地同步分开记录。
+- [完整发行证据](http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/verification/gea-0.0.130.json)。源码主线增加本次发布记录时，不移动标签或替换包。
