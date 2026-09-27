@@ -3,6 +3,8 @@
 
 | 编号 | 创建日期 | 模块 | 类别 | 根因 | 严重度 | 状态 | 详情 |
 |---|---|---|---|---|---|---|---|
+| BUG-20260927-dsml-spaced-calls | 2026-09-27 | 模型流与业务Agent | 功能逻辑 | 原始遗漏 | P1 | 已验证待发布 | [带空格的DSML calls文本漏检并被记为完成](BUG-20260927-dsml-spaced-calls.md) |
+| BUG-20260927-cube-operator-preflight | 2026-09-27 | 受控查询 | 功能逻辑 | 原始遗漏 | P1 | 已验证待发布 | [Cube操作符未枚举导致SQL等号漏过预检](BUG-20260927-cube-operator-preflight.md) |
 | BUG-20260926-prompt-pack-files | 2026-09-26 | 业务Agent与打包 | 构建发布 | 原始遗漏 | P1 | 已发布待验收 | [新增托管Prompt与Skill未显式进入打包白名单](BUG-20260926-prompt-pack-files.md) |
 | BUG-20260926-prompt-fact-use | 2026-09-26 | 业务Agent | 功能逻辑 | 待定位 | P1 | 待定位 | [工具已返回成员或状态字典却被最终答复否认](BUG-20260926-prompt-fact-use.md) |
 | BUG-20260925-gea-session-expiry | 2026-09-25 | GEA MCP 授权查询 | 功能逻辑 | 原始遗漏 | P0 | 已修复待验证 | [网关业务会话过期后仍尝试取数且提示检查查询字段](BUG-20260925-gea-session-expiry.md) |
