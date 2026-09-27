@@ -11,13 +11,17 @@ const { values } = parseArgs({
 });
 const selected =
   values.target === "all"
-    ? ["host", "client", "workbench", "example"]
+    ? ["interaction", "host", "client", "workbench", "example"]
     : values.target.split(",");
 for (const name of selected) {
-  if (!["host", "client", "workbench", "example"].includes(name)) {
+  if (
+    !["interaction", "host", "client", "workbench", "example"].includes(name)
+  ) {
     throw new Error("UNKNOWN_BUILD_TARGET: " + name);
   }
 }
+if (selected.some((name) => ["host", "client", "workbench"].includes(name)))
+  selected.splice(0, selected.length, "interaction", ...selected.filter(name => name !== "interaction"));
 
 // One-shot and watch builds use identical wrappers and retain output on errors.
 function clientOutput(file, id) {
@@ -41,6 +45,74 @@ function clientOutput(file, id) {
 }
 
 const targets = {
+  interaction: [
+    {
+      entryPoints: ["packages/page-interaction/src/page.ts"],
+      bundle: true,
+      minify: true,
+      format: "iife",
+      platform: "browser",
+      target: "es2022",
+      outfile: "lib/page-interaction.txt",
+    },
+    {
+      entryPoints: ["packages/page-interaction/src/picker.ts"],
+      bundle: true,
+      minify: true,
+      format: "esm",
+      platform: "browser",
+      target: "es2022",
+      outfile: "packages/page-interaction/lib/picker.js",
+    },
+    {
+      entryPoints: ["packages/page-interaction/src/page.ts"],
+      bundle: true,
+      minify: true,
+      format: "iife",
+      platform: "browser",
+      target: "es2022",
+      outfile: "lib/page-interaction.js",
+    },
+    {
+      entryPoints: ["packages/page-interaction/src/page.ts"],
+      bundle: true,
+      minify: true,
+      format: "iife",
+      platform: "browser",
+      target: "es2022",
+      outfile: "packages/page-interaction/lib/page.js",
+    },
+    {
+      entryPoints: ["packages/page-interaction/src/host.ts"],
+      bundle: true,
+      packages: "external",
+      format: "esm",
+      platform: "node",
+      outfile: "packages/page-interaction/lib/host.js",
+    },
+    {
+      entryPoints: ["packages/page-interaction/src/page-bridge/index.ts"],
+      bundle: true,
+      packages: "external",
+      format: "esm",
+      platform: "node",
+      outfile: "packages/page-interaction/lib/bridge.js",
+    },
+    {
+      entryPoints: ["packages/page-interaction/src/client.ts"],
+      external: ["react"],
+      bundle: true,
+      write: false,
+      format: "cjs",
+      platform: "browser",
+      plugins: [
+        clientOutput(
+          "packages/page-interaction/lib/client.js",
+          "'@cleverc2200/dsh-page-interaction'",
+        ),
+      ],
+    },
+  ],
   host: [
     {
       entryPoints: ["src/host.ts", "src/skill-reference.ts"],
@@ -61,7 +133,12 @@ const targets = {
       platform: "browser",
       target: "es2022",
       external: ["react"],
-      loader: { ".css": "text", ".png": "dataurl", ".html": "text" },
+      loader: {
+        ".css": "text",
+        ".png": "dataurl",
+        ".html": "text",
+        ".txt": "text",
+      },
       plugins: [
         clientOutput("lib/client.js", "'@cleverc2200/gea-dsh-prototype'"),
       ],

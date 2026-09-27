@@ -1,3 +1,4 @@
+import { apply as applyPageInteraction } from "../packages/page-interaction/src/host.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
 import { createDesktopNavigation } from './host/desktop-navigation.ts';
 import { attachWebLogin } from "./host/web-login.ts";
@@ -372,6 +373,7 @@ function toGeaRequest(options: GenerateOptions) {
 
 /** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
 export async function apply(ctx: Context, config: Deployment): Promise<void> {
+  applyPageInteraction(ctx);
   resolveWorkbench(import.meta.url);
   const htmlPluginRoots: Record<string, string> = (() => {
     try { const value = JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS ?? "{}"); return value && typeof value === "object" ? value : {}; }

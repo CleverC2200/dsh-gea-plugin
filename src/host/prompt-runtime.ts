@@ -1,3 +1,4 @@
+import { hasPageReferences } from "../../packages/page-interaction/src/reference.ts";
 import { sessionConsumer } from "./business-identity.ts";
 import { catalogFactSummary } from './gateway-catalog.ts';
 import {
@@ -49,6 +50,7 @@ import {
 const UI_RULES =
   "需要交互时可输出 dsh-ui JSON 围栏，普通答复无需组件。常用 table={columns,rows}、callout={content}、stat={label,value}、button={label,action}。只输出已核实数字，不设 total:true 自动合计；计划差额不使用按正负自动着色的 delta，默认中性色。交互 action 只表达用户意图，不能绕过后台授权；发出复杂围栏前用 validate_dsh_ui 校验。更多组件先 gea_skill(name=genui)。";
 type State = {
+  pageReferences?: boolean;
   preset: string;
   packs: Set<ToolPack>;
   skillNames: Set<string>;
@@ -259,6 +261,8 @@ export function mountBusinessPrompts(
   const namesFor = (agent: Agent, state = stateOf(agent)) => {
     const profile = profileOf(agent)!;
     const names = allowedTools(profile, state.packs);
+    if (state.pageReferences || hasPageReferences(agent.session.snapshotEvents()))
+      names.add("page_reference_read");
     if (business.config.agentSqlRead === true) names.add("gea_plugin_read");
     if (!isMainSurface(business.surfaceFor(agent.id)))
       for (const name of TOOL_PACKS.page) names.add(name);
@@ -340,7 +344,9 @@ export function mountBusinessPrompts(
     }),
   );
   offs.push(
-    ctx.on("agent/pre-step", async ({ agent }, next) => {
+    ctx.on("agent/pre-step", async ({ agent, messages = [] }, next) => {
+      if (hasPageReferences(messages.filter(message => message.source.kind === "user")
+        .map(data => ({type: "user/message", data})))) stateOf(agent).pageReferences = true;
       refreshMask(agent);
       if (profileOf(agent)) stateOf(agent).steps++;
       const decision = await next();

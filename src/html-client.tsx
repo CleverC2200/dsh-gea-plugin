@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { businessMenuLabel } from "./business-navigation.ts";
 import { startPageBridgeClient } from "./page-bridge/client.ts";
-export function registerHtmlClient(ctx: any) {
+import type { PageInteraction } from "../packages/page-interaction/src/client.ts";
+export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) {
   async function request(path: string, body?: any, signal?: AbortSignal) {
     const response = await fetch("/api/gea-html/" + path, {
       method: body === undefined ? "GET" : "POST",
@@ -91,6 +92,10 @@ export function registerHtmlClient(ctx: any) {
           );
       };
     }, [session, revision, opened]);
+    useEffect(() => {
+      if (!pageInteraction || !connection || !session || !frame.current) return;
+      return pageInteraction.bindFrame({ frame: frame.current, sessionId: session, page: plugin.name, surface: `gea-html-${plugin.id}`, tool: "gea_plugin_page_apply" });
+    }, [connection, session]);
     useEffect(() => {
       if (!connection) return;
       const controller = new AbortController(),

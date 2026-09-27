@@ -1,5 +1,6 @@
 import { TOOL_DESCRIPTIONS, profileFor } from "./host/prompt-policy.ts";
 import { sessionConsumer } from "./host/business-identity.ts";
+import { injectPicker } from "../packages/page-interaction/src/inject.ts";
 import { readFile, readdir, realpath, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -442,7 +443,8 @@ ${toolbarSelectors} {
 </style>`;
       // Release HTML may omit optional </head>; append so the rule is always present.
       const alignedHtml = html + toolbarStyle;
-      return new Response(injectPageScan(alignedHtml), {
+      const picker = await readFile(new URL("../lib/page-interaction.js", import.meta.url), "utf8");
+      return new Response(injectPicker(injectPageScan(alignedHtml), picker), {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",

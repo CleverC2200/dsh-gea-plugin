@@ -276,6 +276,7 @@ test(
       second = requests[1];
     const names = (body) => body.tools?.map((x) => x.function.name) ?? [];
     assert.ok(names(first).includes("gea_cube_query"));
+    assert.ok(!names(first).includes("page_reference_read"));
     assert.ok(names(first).includes("gea_sales_plan_read"));
     assert.ok(!names(first).includes("gea_module_mcp"));
     assert.ok(names(second).includes("gea_module_mcp"));

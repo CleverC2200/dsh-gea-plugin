@@ -10,7 +10,7 @@ test('new conversation rebinds the existing HTML page without losing page state 
     import {registerHtmlClient} from './src/html-client.tsx';
     const root=createRoot(document.getElementById('app'));
     function useSessions(select) {const [value,set]=React.useState('session-1');window.changeSession=set;return select({current:value});}
-    registerHtmlClient({effect:f=>f(),agentWorkbench:{register:()=>()=>{},open:async()=>{},showConversation:()=>()=>{}},layout:{selectPanel(){}},remote:{session:{prompt:async input=>{window.sent=input;return {ok:true}}}},slots:{inject:(_,f)=>f(),register:(_,Component)=>{root.render(<Component useSessions={useSessions}/>);return ()=>{}}}});
+    registerHtmlClient({effect:f=>f(),agentWorkbench:{register:()=>()=>{},open:async()=>{},showConversation:()=>()=>{}},layout:{selectPanel(){}},remote:{session:{prompt:async input=>{window.sent=input;return {ok:true}}}},slots:{inject:(_,f)=>f(),register:(_,Component)=>{root.render(<Component useSessions={useSessions}/>);return ()=>{}}}}, {bindFrame:({sessionId})=>{window.selectionSession=sessionId;return ()=>{window.selectionSession=null}}});
   `, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false, format: 'iife', platform: 'browser' });
   const browser = await chromium.launch({channel:'chrome',headless:true});
   try {
@@ -41,6 +41,7 @@ test('new conversation rebinds the existing HTML page without losing page state 
     await page.waitForTimeout(250);
     await child.evaluate(()=>{window.read();window.ask()});
     await page.waitForFunction(()=>window.sent?.sessionId==='session-2', null, {timeout:5000}).catch(async error=>{console.log(JSON.stringify({calls,state:await page.evaluate(()=>({sent:window.sent,text:document.body.innerText}))}));throw error;});
+    assert.equal(await page.evaluate(()=>window.selectionSession),'session-2');
     assert.equal(htmlLoads,1);
     assert.equal(await frame.locator('#filter').inputValue(),'华东');
     assert.equal(await child.evaluate(()=>window.marker),'retained');

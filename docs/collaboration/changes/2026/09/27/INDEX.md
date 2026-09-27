@@ -3,4 +3,5 @@
 
 | 编号 | 模块 | 状态 | 详情 |
 |---|---|---|---|
+| CHANGE-20260927-gea-page-interaction-129 | 工作台交互 | 已验证待发布 | [GEA 0.0.129 页面选择与短引用](gea-page-interaction-129.md) |
 | CHANGE-20260927-gea-128-aps-fc | 业务Agent与发布 | 已验证待发布 | [GEA 0.0.128产销协同技能与分仓证据处理](gea-128-aps-fc.md) |

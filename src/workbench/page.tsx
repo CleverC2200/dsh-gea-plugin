@@ -21,6 +21,7 @@ import type { Business, Preview } from "../host/business.ts";
 import type { CopyKey } from "../client/locales.ts";
 import "./workbench.css";
 import logo from "./gea-logo.png";
+import { mountPicker } from "../../packages/page-interaction/src/picker.ts";
 import { ApiLogCenter } from "./api-log-center.tsx";
 import type { PageElement } from "../page-bridge/catalog.ts";
 import { workbenchCatalog } from "../shared/workbench-actions.ts";
@@ -396,6 +397,15 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   }>();
   // 页面桥的工具定义来自工作台当前这一屏上报的元素清单。
   const catalogElements = useRef<PageElement[]>([]);
+  const quotedContext = useRef(conversationContext);
+  quotedContext.current = conversationContext;
+  useEffect(() => {
+    if (!status?.authenticated || shellView !== "workbench" || apiLogOpen) return;
+    return mountPicker({ describe: (_element, reference) => ({
+      ...reference,
+      scope: quotedContext.current ? `月份 ${quotedContext.current.scope.month} · 计划类型 ${quotedContext.current.scope.planType} · 审批阶段 ${quotedContext.current.scope.approvalStage} · 维度 ${quotedContext.current.scope.dimension ?? "当前页"}` : "",
+    }) });
+  }, [status?.authenticated, shellView, apiLogOpen]);
   // 桥把一次调用交给我们后，等组件执行完再回填结果。
   const pendingToolResult = useRef<{
     toolCallId: string;

@@ -65,6 +65,8 @@ export const PAGE_SCAN_SCRIPT = String.raw`(function () {
   var MAX_LABEL = 200;
   var MAX_OPTIONS = 24;
   var cancelled = Object.create(null);
+  var readoutIds = new WeakMap();
+  var readoutCounts = Object.create(null);
   var CONTROL_SELECTOR =
     "input, textarea, select, button, [role=button], [role=option], [role=menuitem]," +
     "[role=tab], [role=switch], [role=radio], [role=checkbox], [contenteditable]";
@@ -278,7 +280,7 @@ export const PAGE_SCAN_SCRIPT = String.raw`(function () {
       var bump = 2;
       while (used[id]) id = base + ":" + bump++;
       used[id] = true;
-      if (typeof node.setAttribute === "function") node.setAttribute("data-gea-el", id);
+      if (typeof node.setAttribute === "function" && attr(node, "data-gea-el") !== id) node.setAttribute("data-gea-el", id);
       var isButton =
         clickable(node) ||
         type === "button" ||
@@ -345,8 +347,18 @@ export const PAGE_SCAN_SCRIPT = String.raw`(function () {
           var header = "";
           var headers = tables[index].querySelectorAll("thead th") || [];
           if (headers[cellIndex]) header = slug(trim(headers[cellIndex].textContent), "");
+          var readoutBase = "readout:" + key + ":" + (header || "c" + cellIndex);
+          var identity = readoutIds.get(cell);
+          if (!identity || identity.base !== readoutBase) {
+            var serial = (readoutCounts[readoutBase] || 0) + 1;
+            readoutCounts[readoutBase] = serial;
+            identity = { base: readoutBase, id: readoutBase + (serial === 1 ? "" : ":" + serial) };
+            readoutIds.set(cell, identity);
+          }
+          var readoutId = identity.id;
+          if (typeof cell.setAttribute === "function" && attr(cell, "data-gea-el") !== readoutId) cell.setAttribute("data-gea-el", readoutId);
           pushUnique(elements, {
-            id: "readout:" + key + ":" + (header || "c" + cellIndex),
+            id: readoutId,
             role: "field",
             label: bounded((header || "第 " + (cellIndex + 1) + " 列") + " · " + key, MAX_LABEL),
             value: value,
