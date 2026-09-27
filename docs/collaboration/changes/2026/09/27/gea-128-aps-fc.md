@@ -1,5 +1,5 @@
 <!-- collaboration-record
-{"kind":"change","id":"CHANGE-20260927-gea-128-aps-fc","date":"2026-09-27","title":"GEA 0.0.128产销协同技能与分仓证据处理","module":"业务Agent与发布","status":"已验证待发布"}
+{"kind":"change","id":"CHANGE-20260927-gea-128-aps-fc","date":"2026-09-27","title":"GEA 0.0.128产销协同技能与分仓证据处理","module":"业务Agent与发布","status":"已发布待验收"}
 -->
 # GEA 0.0.128
 
@@ -13,3 +13,15 @@
 - 实现候选完整回归636通过、3原有跳过、0失败；追加定向5项通过；Host构建、类型检查和新技能包文件检查通过。合并后继续预检、发行构建与实际包空目录安装。
 - 未完成边界：真实账号七题复测仍待新环境扫码；权限、上游同步和数据覆盖缺口按协调文档处理。
 - MR、版本标签、固定包与频道证据在发布后补记；当前没有把准备状态记为已发布。
+
+
+## 发布后补记
+
+- MR !186已merged；merge_commit_sha/releaseSourceSha=688991d3e0b20efa035acbc14ee3c9337bfdb1a5，标签gea-v0.0.128固定于该提交。
+- 包SHA-256：fabdad3485ce5cd74d1c7a68f6bfa8ec652092440b7e710cacee7bfb1c8be7fc；2711701字节，41个白名单文件。GitLab不可变包提交0ac6abf21a6206c071756ce2ca0234996bf9d331，频道提交01a74e8daf75503c8f6cecc32afd34ea0a78753c。
+- OSS与GitLab测试/正式四份清单均读回0.0.128和同一摘要；8个不同URL匿名200，包内名称、版本和摘要一致；匿名列桶403。其他插件条目及冻结旧频道未修改。
+- 版本变动后pnpm元数据校验曾阻断脚本启动；冻结安装跳过解析、依赖未变，重新执行预检/完整构建/打包安装均通过。初次GitLab包写入返回500，读回404确认未写入后，显式JSON Content-Type提交成功；没有重复覆盖包。
+- 发行库沿用上次API方式和文件last_commit_id更新，不fetch/pull/push本机已重写历史的发行库。团队技能17文件一致。
+- 第一个频道提交时间06:00:46Z；主线在随后06:02:06Z进入e3de818的页面交互功能（0.0.129候选）。本次不重打已发布固定包，记录mainAdvancedAfterRelease=true，发布源码仍是后续main祖先。
+- 本地主源码main仍有原有未提交内容，安全同步返回blocked_dirty；发行库本地main保留重写历史。未reset、stash或强推，local_sync_blocked。
+- 真实账号七题仍待扫码，未替用户更新当前桌面客户端；这与包和频道发布成功分别记录。
