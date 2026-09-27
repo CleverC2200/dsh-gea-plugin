@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile,rm,cp} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,rm,cp,symlink,lstat} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createRequire} from 'node:module';
@@ -44,4 +45,14 @@ test('a previously absent optional dependency appearing in the new graph forces 
   await mkdir(join(graph,'node_modules/c'));await writeFile(join(graph,'node_modules/c/package.json'),'{"name":"c","version":"1.0.0"}');
   assert.deepEqual(await compactGraph(graph,core),{layout:'full',reason:'core-dependency-changed'});
   assert.ok(await readFile(join(graph,'node_modules/a/package.json')));
+});
+test('core command links leave no dangling package links and work after hydration',async t=>{
+  const {root,graph,core}=await fixture(t);
+  for(const dir of [graph,core.path])await writeFile(join(dir,'node_modules/a/cli.cjs'),"#!/usr/bin/env node\nconsole.log(require('b'))\n",{mode:0o755});
+  core.metadata.packages.a.sha256=await packageDigest(join(core.path,'node_modules/a'));
+  await mkdir(join(graph,'node_modules/.bin'));await symlink('../a/cli.cjs',join(graph,'node_modules/.bin/a'));
+  assert.equal((await compactGraph(graph,core)).layout,'layered');
+  await assert.rejects(lstat(join(graph,'node_modules/.bin/a')),{code:'ENOENT'});
+  const restored=join(root,'restored');await materializeGraph({path:graph,core},restored);
+  assert.equal(execFileSync(process.execPath,[join(restored,'node_modules/.bin/a')],{encoding:'utf8'}).trim(),'old');
 });

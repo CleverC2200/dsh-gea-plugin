@@ -5,7 +5,7 @@ import {join,resolve,relative} from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {createPackageWithOptions,listPackage,statFile,extractFile} from '@electron/asar';
-import {corePackageInventory,readCoreLayout} from './core-layer.mjs';
+import {corePackageInventory,readCoreLayout,detachCoreBinLinks} from './core-layer.mjs';
 
 export async function patchLayeredCli(payload){
   const dir=join(payload,'node_modules/@deepseek-ai/dsh');const manifest=JSON.parse(await readFile(join(dir,'package.json'),'utf8'));
@@ -52,6 +52,7 @@ export async function prepareCoreLayout(source,destination){
   await patchLayeredCli(destination);
   const packages=await corePackageInventory(destination),stage=destination+'.core-build';await mkdir(stage);
   try{
+    const bins=await detachCoreBinLinks(destination,packages);
     await mkdir(join(stage,'node_modules'));
     for(const name of Object.keys(packages))await cp(join(destination,'node_modules',name),join(stage,'node_modules',name),{recursive:true,verbatimSymlinks:true,mode:constants.COPYFILE_FICLONE});
     try{await cp(join(destination,'packages'),join(stage,'packages'),{recursive:true,verbatimSymlinks:true,mode:constants.COPYFILE_FICLONE});}catch(error){if(error.code!=='ENOENT')throw error;}
@@ -70,7 +71,7 @@ export async function prepareCoreLayout(source,destination){
     const archiveSha256=createHash('sha256').update(await readFile(archive)).digest('hex');
     const layout={schema:1,runtimeVersion:1,archive:'node_modules.asar',archiveSha256,packages};
     await writeFile(join(destination,'core-layout.json'),JSON.stringify(layout));
-    await writeFile(join(destination,'layer.json'),JSON.stringify({schema:1,packages}));
+    await writeFile(join(destination,'layer.json'),JSON.stringify({schema:1,packages,bins}));
     for(const name of Object.keys(packages))await rm(join(destination,'node_modules',name),{recursive:true});
     await rm(join(destination,'packages'),{recursive:true,force:true});
     return layout;

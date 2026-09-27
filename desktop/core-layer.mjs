@@ -92,6 +92,46 @@ export async function readCachedCore(root,id){
   if(metadata.schema!==1||metadata.id!==id||!metadata.packages||!Object.keys(metadata.packages).every(name=>packageName.test(name)))throw Error('CORE_CACHE_INVALID');
   return {id,path:join(directory,'node_modules.asar'),metadata};
 }
+const binName=/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+function binTarget(modules,value,packages){
+  if(typeof value!=='string'||!/^[a-zA-Z0-9@._/-]+$/.test(value))throw Error('CORE_BIN_LINK_UNSAFE');
+  const path=resolve(modules,value),rel=relative(modules,path);
+  const parts=rel.split(sep),name=parts[0].startsWith('@')?parts.slice(0,2).join('/'):parts[0];
+  if(rel.startsWith('..')||!packages[name])throw Error('CORE_BIN_LINK_UNSAFE');
+  return path;
+}
+/** Keep aliases as data while their targets live inside ASAR, not dangling links. */
+export async function detachCoreBinLinks(graph,packages){
+  const modules=join(graph,'node_modules'),directory=join(modules,'.bin'),bins={};
+  let entries;try{entries=await readdir(directory,{withFileTypes:true});}catch(error){if(error.code==='ENOENT')return bins;throw error;}
+  for(const entry of entries){
+    if(!entry.isSymbolicLink())continue;
+    const file=join(directory,entry.name),target=resolve(directory,await readlink(file)),rel=relative(modules,target).split(sep).join('/');
+    const parts=rel.split('/'),name=parts[0].startsWith('@')?parts.slice(0,2).join('/'):parts[0];
+    if(!packages[name])continue;
+    if(!binName.test(entry.name))throw Error('CORE_BIN_LINK_UNSAFE');binTarget(modules,rel,packages);
+    const native=/\.exe$/i.test(rel);
+    if(!native&&!/^#![^\n]*\bnode\b/.test((await readFile(target)).subarray(0,256).toString()))throw Error('CORE_BIN_INTERPRETER_UNSUPPORTED');
+    bins[entry.name]={path:rel,kind:native?'native':'node'};await rm(file);
+  }
+  return bins;
+}
+async function restoreCoreBins(selected,target){
+  const layer=await readJson(join(selected.path,'layer.json')),modules=join(target,'node_modules'),directory=join(modules,'.bin');
+  for(const [name,entry] of Object.entries(layer.bins??{})){
+    if(!binName.test(name)||!['node','native'].includes(entry?.kind))throw Error('CORE_BIN_LINK_UNSAFE');
+    const file=binTarget(modules,entry.path,selected.core.metadata.packages);
+    await mkdir(directory,{recursive:true});
+    if(process.platform==='win32'){
+      // pnpm recreates its ordinary shims on install. This temporary launcher
+      // works without Windows symlink privileges and uses the installer Node PATH.
+      const command=entry.kind==='node'?'node ':'';
+      await writeFile(join(directory,name+'.cmd'),'@echo off\r\n'+command+'"%~dp0..\\'+entry.path.replaceAll('/','\\')+'" %*\r\n');
+    }else{
+      const alias=join(directory,name);await rm(alias,{force:true});await symlink(relative(directory,file),alias,'file');
+    }
+  }
+}
 export async function materializeGraph(selected,target,{signal}={}){
   if(selected.core){
     for(const name of ['node_modules','packages'])try{await copyGraphEntry(join(selected.core.path,name),join(target,name),{signal});}catch(error){if(error.code!=='ENOENT')throw error;}
@@ -115,6 +155,7 @@ export async function materializeGraph(selected,target,{signal}={}){
         }else await copyGraphEntry(source,destination,{signal});
       }
     }catch(error){if(error.code!=='ENOENT')throw error;}
+    await restoreCoreBins(selected,target);
   }
   for(const name of [...(selected.core?[]:['node_modules']),'package.json','packages','pnpm-lock.yaml','pnpm-workspace.yaml']){
     try{await copyGraphEntry(join(selected.path,name),join(target,name),{signal});}catch(error){if(error.code!=='ENOENT')throw error;}
@@ -128,11 +169,12 @@ export async function compactGraph(graph,core){
   try{current=await corePackageInventory(graph,{seeds:Object.keys(core.metadata.packages)});}
   catch(error){if(error.code==='ENOENT'||error.message.startsWith('CORE_'))return {layout:'full',reason:'core-dependency-changed'};throw error;}
   if(JSON.stringify(current)!==JSON.stringify(core.metadata.packages))return {layout:'full',reason:'core-dependency-changed'};
+  const bins=await detachCoreBinLinks(graph,core.metadata.packages);
   for(const name of Object.keys(core.metadata.packages))await rm(join(graph,'node_modules',name),{recursive:true});
   // Identical baseline archives are available from the core during hydration.
   try{for(const entry of await readdir(join(graph,'packages'),{withFileTypes:true}))if(entry.isFile()){
     const file=join(graph,'packages',entry.name);try{if(digest(await readFile(file))===digest(await readFile(join(core.path,'packages',entry.name))))await rm(file);}catch(error){if(error.code!=='ENOENT')throw error;}
   }}catch(error){if(error.code!=='ENOENT')throw error;}
-  await writeFile(join(graph,'layer.json'),JSON.stringify({schema:1,coreId:core.id,packages:core.metadata.packages}),{mode:0o600});
+  await writeFile(join(graph,'layer.json'),JSON.stringify({schema:1,coreId:core.id,packages:core.metadata.packages,bins}),{mode:0o600});
   return {layout:'layered',coreId:core.id};
 }
