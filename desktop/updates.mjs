@@ -47,7 +47,11 @@ export async function createUpdates({data,store,desktopVersion,releases,install,
   const save=()=>{const bytes=JSON.stringify(state,null,2);const next=writes.catch(()=>{}).then(async()=>{const temp=path+'.'+randomUUID();await writeFile(temp,bytes,{mode:0o600});await rename(temp,path);});writes=next;return next;};
   const versions=async()=>{
     const selected=await store.selected();const require=createRequire(join(selected.path,'package.json'));const manifest=JSON.parse(await readFile(join(selected.path,'package.json'),'utf8'));const result={};
-    for(const name of Object.keys(manifest.dependencies??{}))result[name]=JSON.parse(await readFile(require.resolve(name+'/package.json'),'utf8')).version;
+    const coreRequire=selected.core?createRequire(join(selected.core.path,'package.json')):null;
+    for(const name of Object.keys(manifest.dependencies??{})){
+      const owner=coreRequire&&Object.hasOwn(selected.core.metadata.packages,name)?coreRequire:require;
+      result[name]=JSON.parse(await readFile(owner.resolve(name+'/package.json'),'utf8')).version;
+    }
     return result;
   };
   let optionalState={};try{optionalState=JSON.parse(await readFile(optionalPath,'utf8'));}catch(error){if(error.code!=='ENOENT')throw Error('OPTIONAL_STATE_INVALID');}

@@ -2,7 +2,10 @@
 import {readFile,writeFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
-const dependency=createRequire(process.env.GEA_LAYERED_CORE?join(process.env.GEA_LAYERED_CORE,'package.json'):import.meta.url);
+// An upgraded shell can still run a prepared full graph through standalone
+// Node. Its dependencies belong to that graph, not to the new ASAR baseline.
+const dependencyRoot=process.env.GEA_LAYERED_CORE||process.env.DSH_PLUGIN_GRAPH;
+const dependency=createRequire(dependencyRoot?join(dependencyRoot,'package.json'):import.meta.url);
 const YAML=dependency('yaml');
 /** Preserve unrelated settings and comments while skipping the informational welcome notice. */
 export async function configureWelcomeNotice(path) {
