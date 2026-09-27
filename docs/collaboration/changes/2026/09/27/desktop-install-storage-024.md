@@ -1,0 +1,12 @@
+<!-- collaboration-record
+{"kind":"change","id":"CHANGE-20260927-desktop-install-storage-024","date":"2026-09-27","title":"桌面0.0.24：安装提速、存储回收并内置GEA0.0.130","module":"客户端安装与更新","status":"待发布"}
+-->
+# 桌面0.0.24
+
+- 用户授权：重新用最新插件打安装包，并上传OSS供用户更新。此前已授权安装/存储推荐方案全量执行。
+- 初始基线2a3ce39ffd6e0c0184e394953d83e01dcd01b336，整合最新主线e202feb5cf1fb24859a46f63df64db73520728a1；保留同事0.0.128/129/130业务与页面引用修改。
+- 核对同事当日Bug/发布记录和待审MR，不混入未合入修改。依赖锁冲突仅是双方不同新增依赖相邻插入，均保留，冻结安装、typecheck及4项双锁/Cordis检查通过。
+- 发布技能团队SHA37a38fe2d3819b2d40363ee671cae7342f6663ee，17个受管理文件一致，仅本机钥匙串说明额外存在：current_with_local_notes。
+- 本轮问题：BUG-20260927-windows-install-io、BUG-20260927-plugin-history-growth。范围与历史修复审查见 docs/reviews/desktop-0.0.24-release-20260927.md。
+- 整合主线后122项桌面测试及完整构建通过。0.0.23已有Windows安装及隔离目录探针证据；0.0.24内置GEA0.0.130，最终摘要、源码MR、频道与验收待补。
+- 发行库本机历史重写目录不fetch/pull/push；发行元数据使用带版本检查的API，保留其他组件及冻结频道。

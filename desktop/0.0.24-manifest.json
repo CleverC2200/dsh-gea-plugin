@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "desktopVersion": "0.0.24",
+  "dataSchema": 2,
+  "baseDesktopVersion": "0.0.22",
+  "baseWindowsInstallerSha256": "b97f23d044a6a07edeba1ccd8db82a5df366a6860b93da09791cfaec675658d9",
+  "coreVersion": "0.1.6-alpha.1-company.1",
+  "bundledPlugins": [
+    {
+      "package": "@cleverc2200/dsh-agent-workbench",
+      "version": "0.1.1",
+      "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/91a8981321950b4ad56697e6e1e02b696b3873615ce4f2d096e21169689bbe25/cleverc2200-dsh-agent-workbench-0.1.1.tgz",
+      "sha256": "91a8981321950b4ad56697e6e1e02b696b3873615ce4f2d096e21169689bbe25"
+    },
+    {
+      "package": "dsh-agent-manage",
+      "version": "0.6.3-company.6",
+      "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/57a5d1d53113165c475ef69bde5599342985b2dc0b7b3bcaf3eb97329d5ab9ed/dsh-agent-manage-0.6.3-company.6.tgz",
+      "sha256": "57a5d1d53113165c475ef69bde5599342985b2dc0b7b3bcaf3eb97329d5ab9ed"
+    },
+    {
+      "package": "dsh-plugin",
+      "version": "1.4.3-company.35",
+      "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/0505deb9491f75444ef5f5a7c5c0c1588ad0eb1c9021e466efe23879f451ec8d/dsh-plugin-1.4.3-company.35.tgz",
+      "sha256": "0505deb9491f75444ef5f5a7c5c0c1588ad0eb1c9021e466efe23879f451ec8d"
+    },
+    {
+      "package": "@cleverc2200/gea-dsh-prototype",
+      "version": "0.0.130",
+      "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/c190d375891098b5384c662218a965fdd44de4bbb9271982ec30e67b8f2fcae9/cleverc2200-gea-dsh-prototype-0.0.130.tgz",
+      "sha256": "c190d375891098b5384c662218a965fdd44de4bbb9271982ec30e67b8f2fcae9"
+    }
+  ],
+  "windowsLayout": "layered-asar-v1",
+  "macLayout": "full",
+  "windowsSigning": "legacy-unsigned",
+  "macSigning": "ad-hoc",
+  "publication": "pending"
+}

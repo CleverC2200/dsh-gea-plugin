@@ -6,3 +6,4 @@
 | CHANGE-20260927-gea-page-interaction-129 | 工作台交互 | 已发布待验收 | [GEA 0.0.129 页面选择与短引用](gea-page-interaction-129.md) |
 | CHANGE-20260927-gea-inventory-recovery-130 | 全链库存与模型流 | 已发布待验收 | [GEA 0.0.130 全链库存Skill参数恢复与超时诊断](gea-inventory-recovery-130.md) |
 | CHANGE-20260927-gea-128-aps-fc | 业务Agent与发布 | 已发布待验收 | [GEA 0.0.128产销协同技能与分仓证据处理](gea-128-aps-fc.md) |
+| CHANGE-20260927-desktop-install-storage-024 | 客户端安装与更新 | 待发布 | [桌面0.0.24：安装提速、存储回收并内置GEA0.0.130](desktop-install-storage-024.md) |
