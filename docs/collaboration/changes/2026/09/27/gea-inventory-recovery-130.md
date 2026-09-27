@@ -28,4 +28,6 @@
 - 单文件PUT接口返回EOF后先读回确认未写入，再用带last_commit_id的提交API原子更新两频道；未覆盖并发变更。
 - 合并后发行预检、完整构建和包白名单/内容核验通过；未更改用户当前安装或重打客户端。
 - 本机源码主目录有其他任务未提交改动；发行主目录保留已重写历史，不做fetch/pull/push。两者均保持原样，`local_sync_blocked`；发行完成与本地同步分开记录。
-- [完整发行证据](http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/verification/gea-0.0.130.json)。源码主线增加本次发布记录时，不移动标签或替换包。
+- [完整发行证据](../../../../../releases/gea-0.0.130-verification.json)。源码主线增加本次发布记录时，不移动标签或替换包。
+
+- Independent distribution verification JSON upload returned HTTP 502 and readback confirmed no file was created. The complete receipt is stored in the source repository at the link above; package and channel publication remain verified.
