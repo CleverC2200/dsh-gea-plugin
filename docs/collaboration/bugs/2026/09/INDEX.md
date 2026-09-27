@@ -7,6 +7,7 @@
 | BUG-20260927-skill-paging-path | 2026-09-27 | 业务Agent与Skill | 功能逻辑 | 原始遗漏 | P2 | 已发布待验收 | [全链库存问答把分页参数写进Skill路径](BUG-20260927-skill-paging-path.md) |
 | BUG-20260927-plugin-history-growth | 2026-09-27 | 客户端更新 | 构建发布 | 原始遗漏 | P1 | 已修复待验证 | [成功更新后旧插件完整图持续累积](BUG-20260927-plugin-history-growth.md) |
 | BUG-20260927-model-total-timeout | 2026-09-27 | 模型流 | 其他 | 待定位 | P2 | 待定位 | [模型总时限超时提示误归因网络，实际耗时待定位](BUG-20260927-model-total-timeout.md) |
+| BUG-20260927-layered-runtime-resolution | 2026-09-27 | 客户端启动与更新 | 构建发布 | 原始遗漏 | P1 | 已修复待验证 | [ASAR新壳启动旧插件失败且基线无法读取更新状态](BUG-20260927-layered-runtime-resolution.md) |
 | BUG-20260927-dsml-spaced-calls | 2026-09-27 | 模型流与业务Agent | 功能逻辑 | 原始遗漏 | P1 | 已发布待验收 | [带空格的DSML calls文本漏检并被记为完成](BUG-20260927-dsml-spaced-calls.md) |
 | BUG-20260927-cube-operator-preflight | 2026-09-27 | 受控查询 | 功能逻辑 | 原始遗漏 | P1 | 已发布待验收 | [Cube操作符未枚举导致SQL等号漏过预检](BUG-20260927-cube-operator-preflight.md) |
 | BUG-20260926-prompt-pack-files | 2026-09-26 | 业务Agent与打包 | 构建发布 | 原始遗漏 | P1 | 已发布待验收 | [新增托管Prompt与Skill未显式进入打包白名单](BUG-20260926-prompt-pack-files.md) |
