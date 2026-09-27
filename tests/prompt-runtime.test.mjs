@@ -184,7 +184,9 @@ test(
       res.setHeader("Content-Type", "text/event-stream");
       const toolReplies = body.messages.filter((x) => x.role === "tool");
       const delta =
-        phase === 'reference' && toolReplies.length < 2
+        phase === 'inventory-recovery' && toolReplies.length === 0
+          ? {tool_calls:[{index:0,id:'inventory-recovery',type:'function',function:{name:'gea_skill',arguments:JSON.stringify({name:'inventory-qll',path:'offset 1, limit 80, reload=true'})}}]}
+          : phase === 'reference' && toolReplies.length < 2
           ? {tool_calls:[{index:0,id:'ref-'+toolReplies.length,type:'function',function:{name:'gea_skill',arguments:JSON.stringify({name:skillName,...(toolReplies.length===1?{path:'references/metric-definitions.md'}:{})})}}]}
           : phase === "skill" && toolReplies.length === 0
           ? {
@@ -242,7 +244,7 @@ test(
       return true;
     });
     await app.login();
-    const ask = async (preset) => {
+    const ask = async (preset, question = "看下本月提报情况。") => {
       const made = await app.remote("session/create", {
         cwd: app.runtime + "/workspace",
         agentPreset: preset,
@@ -258,7 +260,7 @@ test(
         requestId: randomUUID(),
         sessionId: id,
         mode: "queue",
-        content: [{ type: "text", text: "看下本月提报情况。" }],
+        content: [{ type: "text", text: question }],
       });
       return until(
         () => readSession(app.runtime, id),
@@ -343,6 +345,17 @@ test(
         names: names(initial),
       });
     }
+    phase = 'inventory-recovery';
+    const recoveryStart = requests.length;
+    const recovered = await ask('gea-html-inventory-qll', '基地到分仓的库存怎么走？');
+    assert.equal(recovered.find(row => row.type === 'turn/end').data.reason.kind, 'completed');
+    const recoveryReplies = JSON.stringify(recovered.filter(row => row.type === 'tool/result'));
+    assert.doesNotMatch(recoveryReplies, /GEA_SKILL_REFERENCE_NOT_LINKED/);
+    assert.match(recoveryReplies, /argumentCorrection/);
+    assert.match(recoveryReplies, /静态库存快照只能证明分布/);
+    assert.equal(requests.length - recoveryStart, 2, 'one recovered tool call then a final response');
+    const recoverySystem = requests[recoveryStart].messages.filter(row => row.role === 'system').map(row => row.content).join('\n');
+    assert.match(recoverySystem, /默认先解释一般流转过程/);
     for (const name of ['sales-forecast-result-analysis','sales-ops-problem-analysis']) {
       phase='reference'; skillName=name;
       const log=await ask('gea-html-inventory-apsplan');

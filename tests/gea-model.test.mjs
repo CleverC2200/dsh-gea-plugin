@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { profile, readSession, until } from "./profile.mjs";
 
 test(
@@ -8,6 +9,7 @@ test(
   async (t) => {
     const app = await profile(t, {
       config: () => ({
+        modelRequestTimeoutMs: 1000,
         analysis: {
           mode: "model",
           source: "gea",
@@ -279,6 +281,33 @@ test(
         );
       },
     );
+    await t.test('stream total timeout preserves partial output and writes bounded diagnostics', async () => {
+      mode = 'hold';
+      held = undefined;
+      heldClosed = false;
+      const id = await submit();
+      const rows = await ended(id);
+      assert.notEqual(rows.find(row => row.type === 'turn/end').data.reason.kind, 'completed');
+      assert.match(JSON.stringify(rows), /GEA_NETWORK_TIMEOUT/);
+      assert.match(JSON.stringify(rows), /总时限/);
+      assert.match(JSON.stringify(rows), /已收到响应/);
+      assert.doesNotMatch(JSON.stringify(rows), /这不是参数问题/);
+      await until(async () => heldClosed, Boolean);
+      const log = await readFile(app.runtime + '/server.log', 'utf8');
+      const failure = log.split('\n').filter(line => line.includes('GEA_MODEL_FAILURE')).map(line => {
+        try { return JSON.parse(line.slice(line.indexOf('{'))); } catch { return null; }
+      }).find(row => row?.sessionId === id);
+      assert.ok(failure, log.slice(-3000));
+      assert.equal(failure.code, 'GEA_NETWORK_TIMEOUT');
+      assert.equal(failure.stage, '流式读取');
+      assert.ok(failure.responseReceivedMs >= 0);
+      assert.ok(failure.elapsedMs >= 900);
+      assert.equal(failure.textChars, parts.join('').length);
+      assert.equal(failure.timeoutMs, 1000);
+      assert.doesNotMatch(JSON.stringify(failure), /fixture-personal-model-secret|源数据/);
+      const request = log.split('\n').find(line => line.includes('GEA_MODEL_REQUEST') && line.includes(failure.requestId));
+      assert.ok(request, 'failure must correlate with its request');
+    });
     await t.test(
       "changing environment closes an active model stream and clears authentication",
       async () => {

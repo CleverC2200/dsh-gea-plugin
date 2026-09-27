@@ -765,10 +765,10 @@ export function mountBusinessPrompts(
       defineTool({
         name: "gea_skill",
         description:
-          "加载当前 Agent 的业务规则；缺少规则先 gea_capabilities 查看并选择。path 只接受正文明确链接的本地参考文件，offset/limit 按行读取。返回版本和完整性，未包含的章节需继续读取。",
+          '加载当前 Agent 的业务规则；缺少规则先 gea_capabilities 查看并选择。读取或重读正文省略path，例如 {"name":"inventory-qll","offset":1,"limit":80,"reload":true}。offset、limit、reload是独立参数，不能拼进path。path只接受正文明确链接的本地参考文件。未包含的章节沿用nextRead继续读取。',
         parameters: {
           name: { type: "string", required: true },
-          path: { type: "string" },
+          path: { type: "string", description: "仅参考文件的原始相对链接；读Skill正文省略。不能填分页参数或SKILL.md。" },
           offset: {
             type: "integer",
             description: "起始行，1起点；默认1，不能传0。",
@@ -805,6 +805,23 @@ export function mountBusinessPrompts(
           });
           if (!skill?.invocation.modelInvocable)
             throw Error("GEA_SKILL_UNAVAILABLE");
+          // 只恢复已知且无歧义的模型误填；不猜测文件名，也不放宽链接校验。
+          const misplaced = args.path?.match(
+            /^\s*offset\s*(?:=\s*)?(\d+)\s*,\s*limit\s*(?:=\s*)?(\d+)\s*,\s*reload\s*=\s*(true|false)\s*$/i,
+          );
+          let argumentCorrection: string | undefined;
+          if (misplaced) {
+            const paging = {
+              offset: Number(misplaced[1]),
+              limit: Number(misplaced[2]),
+              reload: misplaced[3]!.toLowerCase() === "true",
+            };
+            for (const key of ["offset", "limit", "reload"] as const)
+              if (args[key] !== undefined && args[key] !== paging[key])
+                throw Error("GEA_SKILL_ARGUMENT: path中的分页参数与独立参数冲突；读取正文请省略path，将offset、limit、reload分别传入。");
+            args = { ...args, ...paging, path: undefined };
+            argumentCorrection = "已将误填在path中的offset、limit、reload恢复为独立参数；本次读取Skill正文。";
+          }
           let text = skill.content;
           if (args.path) {
             const links = [...text.matchAll(/\[[^\]\n]*\]\(([^\s)]+)\)/g)].map(
@@ -815,7 +832,10 @@ export function mountBusinessPrompts(
               /^[a-z][a-z\d+.-]*:|^[\\/]/i.test(args.path) ||
               skill.resourceBase?.kind !== "directory"
             )
-              throw Error("GEA_SKILL_REFERENCE_NOT_LINKED");
+              throw Error(
+                'GEA_SKILL_REFERENCE_NOT_LINKED: path必须原样使用Skill正文明确链接的相对路径。读取或重读正文请省略path，将分页参数分别传入：' +
+                JSON.stringify({ name: args.name, offset: 1, limit: 80, reload: true }),
+              );
             const path = await realpath(
               resolve(skill.resourceBase.path, args.path),
             );
@@ -874,6 +894,7 @@ export function mountBusinessPrompts(
               version,
               instructionId,
               alreadyLoaded: true,
+              ...(argumentCorrection ? { argumentCorrection } : {}),
               note: "该段正文仍在当前上下文中，请直接使用；确需重看使用nextRead。",
               nextRead: {
                 tool: "gea_skill",
@@ -891,6 +912,7 @@ export function mountBusinessPrompts(
             version,
             instructionId,
             source: skill.provider,
+            ...(argumentCorrection ? { argumentCorrection } : {}),
             path: args.path,
             offset,
             nextOffset,

@@ -3,6 +3,8 @@
 
 | 编号 | 创建日期 | 模块 | 类别 | 根因 | 严重度 | 状态 | 详情 |
 |---|---|---|---|---|---|---|---|
+| BUG-20260927-skill-paging-path | 2026-09-27 | 业务Agent与Skill | 功能逻辑 | 原始遗漏 | P2 | 已验证待发布 | [全链库存问答把分页参数写进Skill路径](BUG-20260927-skill-paging-path.md) |
+| BUG-20260927-model-total-timeout | 2026-09-27 | 模型流 | 其他 | 待定位 | P2 | 待定位 | [模型总时限超时提示误归因网络，实际耗时待定位](BUG-20260927-model-total-timeout.md) |
 | BUG-20260927-dsml-spaced-calls | 2026-09-27 | 模型流与业务Agent | 功能逻辑 | 原始遗漏 | P1 | 已发布待验收 | [带空格的DSML calls文本漏检并被记为完成](BUG-20260927-dsml-spaced-calls.md) |
 | BUG-20260927-cube-operator-preflight | 2026-09-27 | 受控查询 | 功能逻辑 | 原始遗漏 | P1 | 已发布待验收 | [Cube操作符未枚举导致SQL等号漏过预检](BUG-20260927-cube-operator-preflight.md) |
 | BUG-20260926-prompt-pack-files | 2026-09-26 | 业务Agent与打包 | 构建发布 | 原始遗漏 | P1 | 已发布待验收 | [新增托管Prompt与Skill未显式进入打包白名单](BUG-20260926-prompt-pack-files.md) |

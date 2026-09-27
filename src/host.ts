@@ -204,6 +204,10 @@ class GeaModelAdapter extends LlmAdapter {
     };
   }
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    const startedAt = Date.now();
+    const requestId = randomUUID();
+    let responseReceivedMs: number | null = null;
+    let textChars = 0;
     const transport = transportSignal(
       AbortSignal.any([
         options.signal ?? new AbortController().signal,
@@ -223,7 +227,6 @@ class GeaModelAdapter extends LlmAdapter {
       if (!route.models.includes(options.model))
         throw new LlmError("GEA_MODEL_NOT_FOUND: 当前Agent不支持所选模型，请按当前Agent重新发现并选择模型；不能借用其它Agent的模型身份。", "MODEL_NOT_FOUND");
       const requestBody = toGeaRequest(options);
-      const requestId=randomUUID();
       console.info(JSON.stringify({event:"GEA_MODEL_REQUEST",requestId,sessionId:options.sessionId,consumerCode:route.agentCode,model:options.model,
         messageChars:JSON.stringify(requestBody.messages).length,toolSchemaChars:JSON.stringify(requestBody.tools??[]).length,
         messageBreakdown: ['system','user','assistant','tool'].map(role=>({role,count:requestBody.messages.filter(m=>m.role===role).length,chars:JSON.stringify(requestBody.messages.filter(m=>m.role===role)).length}))}));
@@ -240,6 +243,7 @@ class GeaModelAdapter extends LlmAdapter {
         redirect: "error",
         signal,
       });
+      responseReceivedMs = Date.now() - startedAt;
       if (!response.ok) {
         if (response.status === 401) this.business.expireModelLogin();
         throw new Error("GEA_MODEL_HTTP_" + response.status);
@@ -258,6 +262,7 @@ class GeaModelAdapter extends LlmAdapter {
         names: options.tools?.map((tool) => tool.name) ?? [],
         maxBytes: this.business.config.maxSnapshotBytes,
       })) {
+        if (chunk.type === "text-delta") textChars += chunk.text.length;
         if (chunk.type === "usage") { reportedUsage=true; console.info(JSON.stringify({event:"GEA_MODEL_USAGE",requestId,sessionId:options.sessionId,usage:chunk.usage})); }
         yield chunk;
       }
@@ -268,9 +273,12 @@ class GeaModelAdapter extends LlmAdapter {
       if(error instanceof LlmError)throw error;
       if ((error as {code?:string})?.code === 'GEA_MODEL_TOOL_TEXT')
         throw new LlmError((error as Error).message, 'PROVIDER_PROTOCOL');
-      const converted=networkError(error, {what:`模型网关 ${modelHost}`,stage,timeoutMs:this.business.config.modelRequestTimeoutMs});
+      const converted=networkError(error, {what:modelHost,stage,timeoutMs:this.business.config.modelRequestTimeoutMs,timeoutScope:"model-total"});
       if(converted.name === "AbortError")throw converted;
       const code=(converted as Error & {code?:unknown}).code;
+      console.info(JSON.stringify({event:"GEA_MODEL_FAILURE",requestId,sessionId:options.sessionId,model:options.model,
+        code:typeof code === "string" ? code : "NETWORK",stage,elapsedMs:Date.now()-startedAt,
+        responseReceivedMs,textChars,timeoutMs:this.business.config.modelRequestTimeoutMs}));
       throw new LlmError(converted.message,typeof code === "string"?code:"NETWORK");
     } finally {
       transport.dispose();
