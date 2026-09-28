@@ -1,5 +1,5 @@
 <!-- collaboration-record
-{"kind":"change","id":"CHANGE-20260928-gea-hide-preview-agents","date":"2026-09-28","title":"隐藏三个演示 Agent 并保留业务页面","module":"Agent 预设","status":"已验证待发布"}
+{"kind":"change","id":"CHANGE-20260928-gea-hide-preview-agents","date":"2026-09-28","title":"隐藏三个演示 Agent 并保留业务页面","module":"Agent 预设","status":"已发布待验收"}
 -->
 # 隐藏三个演示 Agent 并保留业务页面
 
@@ -13,3 +13,5 @@
 - 边界：尚未发布、尚未进行真实客户端界面及旧预设历史会话恢复验收；用户会话数据不作迁移或删除。
 - 关联问题：[Agent 列表演示入口复发](../../../../bugs/2026/09/BUG-20260924-gea-agent-picker.md)。
 - 团队记录核对范围：本模块既有 Bug 卡及最近更新索引；本次按原问题追加复发记录，未新建重复 Bug。
+
+2026-09-28：按用户明确要求随GEA 0.0.134发布，合并来源MR !201；页面仍保留。频道及包验证见 docs/releases/gea-0.0.134-verification.json，真实客户端验收待进行。
