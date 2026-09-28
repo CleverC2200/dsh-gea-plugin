@@ -23,7 +23,7 @@ test('member lookup selects tail measures and dimensions, not the first eight',(
  assert.match(dimensionsOnly,/模型已有13个度量/);
 });
 test('source-specific text months are checked before dispatch; unrelated strings unchanged',()=>{
- for(const [name,field,bad,good] of [[model,'plane_date','202608','2026-08'],['agents_sales_shipment','plan_month','2026-08','202608'],['agents_sales_target','plan_month','2026-08','202608']]){
+ for(const [name,field,bad,good] of [[model,'plane_date','202608','2026-08'],['agents_sales_shipment','plan_month','2026-08','202608'],['agents_sales_target','plan_month','2026-08','202608'],['agents_sales_forecast_detail_mi','plan_month','2026-09','202609']]){
   const member=name+'.'+field,index=memberIndexFrom({semanticModel:[{name,dimensions:[{name:member,type:'string'}],measures:[]}]});
   const args=value=>({action:'query',queries:[{name:'month',query:{dimensions:[member],filters:[{or:[{member,operator:'equals',values:[value]}]}]}}]});
   assert.match(preflightCubeArguments(args(bad),index)||'',/GEA_CUBE_MONTH_FORMAT/);

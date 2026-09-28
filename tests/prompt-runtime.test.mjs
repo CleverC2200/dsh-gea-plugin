@@ -916,6 +916,8 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
   assert.match(guard({name:'gea_cube_query',agent,arguments:{}}),/GEA_CALL_BUDGET/);
   for(let i=0;i<12;i++) assert.equal(guard({name:'gea_evidence_read',agent,arguments:{}}),undefined,'already acquired evidence retains a bounded read allowance');
   assert.match(guard({name:'gea_evidence_read',agent,arguments:{}}),/GEA_EVIDENCE_BUDGET/);
+  for(const name of ['gea_cube_query','gea_capabilities','gea_gateway_catalog'])
+    assert.match(guard({name,agent,arguments:{}}),/GEA_EVIDENCE_BUDGET/,'read exhaustion cannot be bypassed via '+name);
   handlers.get('session/event')({id:agent.id},{type:'turn/start'});
   assert.equal(guard({name:'gea_evidence_read',agent,arguments:{}}),undefined);
 });

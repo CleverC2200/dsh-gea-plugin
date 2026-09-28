@@ -1135,7 +1135,7 @@ export function registerGeaTools(
           values: {
             type: "boolean",
             description:
-              "true 时对 members 取一行真实值（不聚合、只读 1 行），用来确认日期/文本的取值格式。",
+              "true 时仅对维度取最多 5 行样例，确认日期/文本格式；度量和分段不支持，样例不代表全量。",
           },
         },
         output: {
@@ -1193,6 +1193,12 @@ export function registerGeaTools(
                 continue;
               }
               try {
+                const known = (await moduleIndexFor(module,exec.signal))?.get(model);
+                if (known && !known.dimensions.includes(member)) {
+                  const kind = known.measures.includes(member) ? '度量' : known.segments.includes(member) ? '分段' : '未发布成员';
+                  rejected.push({member,code:'GEA_CATALOG_SAMPLE_NOT_DIMENSION',message:`该成员是${kind}；样例只支持维度。请按目录类型使用，无需重复探测。`});
+                  continue;
+                }
                 const result = await executeModuleMcp({consumerCode,tool:'query_business_data',arguments:{action:'query',response_mode:'inline_complete',queries:[{name:'sample',query:{dimensions:[member],limit:5}}]}},exec);
                 const uri = extractArtifactUri(result);
                 const text = uri ? await module.artifact(uri,exec.signal) : result;

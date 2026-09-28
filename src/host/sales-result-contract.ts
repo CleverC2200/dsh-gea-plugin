@@ -4,6 +4,7 @@ const MONTHS: Readonly<Record<string, string>> = {
   'agents_sales_plan_detail_mi.plane_date': '2026-08',
   'agents_sales_shipment.plan_month': '202608',
   'agents_sales_target.plan_month': '202608',
+  'agents_sales_forecast_detail_mi.plan_month': '202609',
 };
 export function monthEncoding(member: string): string | undefined { return MONTHS[member]; }
 export function monthFormatIssue(queries: unknown): string | undefined {
@@ -29,6 +30,7 @@ export function monthFormatIssue(queries: unknown): string | undefined {
 }
 
 export function salesQueryGuide(model: string): string {
+  if (model === 'agents_sales_forecast_detail_mi') return '预测概览：plan_month用YYYYMM（如202609），先只查请求月，不扫描全部月份。M月初与Z纠偏分别展示，不能相加。按当前目录的合法度量查数；predicted_quantity/predicted_sales_amount若列为维度，不能塞入measures或把样本相加冒充全量。若无数量/金额SUM，说明总预测量/额暂不可得；概览可用order_type+quantity_status分组、row_count统计记录状态，一次精简查询即可，版本仅必要时单查。概览按已返回状态作答；同步时间/批次未返回就标未知，不为补齐说明另查created_at或逐日拆分。用户核对同步、批次或时效时再查。不要主动展开节庆、算法标记、省区、基地或客户SKU样本；用户追问再按范围查询。仅需确认未知文本格式时取维度样例，分段和度量不取维度样例。供应缺口还需同期间、同范围、同单位的需求与供应；只有短期供应不能代表整月。取得必要事实或确认缺少合法汇总后交付卡片，不以多查字段弥补缺口。';
   if (model === SALES_PLAN_MODEL) return '销售结果查询：月份用plane_date equals YYYY-MM（如2026-08）；原计划量/最终量用plannum_sum/allnum_sum，单位件。只查请求月：总量取两个SUM及row_count、plan_month_count、load_batch_count、candidate_grain_count、missing_scope_count、对应缺量计数；missing_scope_count仅检查月份/加载时间，不检查组织归属。客户SKU前N按cust_code/material_code分组，用受管SUM和排序limit=N。省区用province_region_name并查missing_province_count；省区为空或双方无同口径度量时立即说明缺口并给必要事实，不继续拉另一侧全量分布或查其它层级。单月单批次/候选键唯一不证明同步全量；SUM为NULL且有记录应检查保护条件，不能说无数据。原量=最终量只证明总净差0，是否发生调整未知。order_status无可信字典时保留原码；预测M/Z不适用于此源。结果满足问题就结束，不额外查其它月份或调整。';
   if (model === 'agents_sales_shipment' || model === 'agents_sales_target') return `月份文本用${model}.plan_month（如202608），不要沿用Hive计划的2026-08。按请求层级、前N和合法度量取数；名称不自动分类。单位/币种只认该源已确认语义，不从销售计划件数外推。`;
   return '';

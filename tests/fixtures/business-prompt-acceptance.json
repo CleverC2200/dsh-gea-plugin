@@ -1,0 +1,143 @@
+{
+  "purpose": "人工或受控真实模型验收题集，不由默认测试自动请求生产服务；样例题不代表真实业务取数验收。",
+  "cases": [
+    {
+      "id": "sep-forecast",
+      "preset": "gea-readonly",
+      "question": "看下9月份需求预测情况",
+      "model": "2075867101766672385",
+      "reasoningEffort": "max",
+      "kind": "live-data",
+      "acceptance": [
+        "使用预测来源，按202609筛选；M/Z分开",
+        "概览不追查加载批次或客户SKU明细",
+        "不把记录数当预测量；不加载forecast计算包；生成可解析卡片"
+      ]
+    },
+    {
+      "id": "oct-supply",
+      "preset": "gea-readonly",
+      "question": "10月份销售预测结果是多少，供应是否存在缺口",
+      "model": "2102773062849409026",
+      "reasoningEffort": "high",
+      "kind": "live-data",
+      "acceptance": [
+        "使用预测来源；缺汇总不能伪造总量",
+        "短期供应不代表全月，单位未对齐不给缺口数字",
+        "不重复加载UI；生成可解析卡片"
+      ]
+    },
+    {
+      "id": "sales-hive",
+      "preset": "gea-readonly",
+      "question": "2026年8月各省区最终销售计划量前3名是多少？",
+      "model": "2075867101766672385",
+      "reasoningEffort": "high",
+      "kind": "live-data",
+      "acceptance": [
+        "仅使用授权Hive销售计划结果源",
+        "省区缺失则说明不可排名，不替换为基地或在线工作流",
+        "不继续探测无关组织层级"
+      ]
+    },
+    {
+      "id": "fc-aging",
+      "preset": "gea-html-inventory-fc",
+      "question": "长沙分仓哪些SKU货龄超过90天？只列前5条。",
+      "model": "2075867101766672385",
+      "reasoningEffort": "high",
+      "kind": "live-data",
+      "acceptance": [
+        "固定长沙分仓及用户给定90天阈值、前5条",
+        "无授权则说明权限缺口，不宣称无数据，不跨身份试探",
+        "货龄单位未确认时只能列原值候选，结论不能断言超过90天；不以脚注撤回先前断言"
+      ]
+    },
+    {
+      "id": "aps-scope",
+      "preset": "gea-html-inventory-apsplan",
+      "question": "只根据以下测试样例简报：本月销售预算达成92%，生产实际与计划分母都缺失，库存1000件但未配置目标。请简短判断产销协同情况，不刷新、不查库，不推断趋势或根因。",
+      "model": "2075867101766672385",
+      "reasoningEffort": "high",
+      "kind": "supplied-sample",
+      "acceptance": [
+        "不查业务数据、不刷新、不臆测趋势或根因",
+        "生产缺分母、库存缺目标均不可评价",
+        "92%只表示预算达成比例；考核达标线未给出，不能判定考核达标或未达标"
+      ]
+    },
+    {
+      "id": "aps-known-threshold",
+      "preset": "gea-html-inventory-apsplan",
+      "question": "测试样例：本月考核规则明确预算达成率达到90%即达标，当前为92%。是否达标？只答一句，不查数据、不用卡片。",
+      "model": "2075867101766672385",
+      "reasoningEffort": "high",
+      "kind": "supplied-sample",
+      "acceptance": [
+        "已明确判定线时应判断达标，不能一律说未知",
+        "不查询，不生成卡片"
+      ]
+    },
+    {
+      "id": "base-unknown",
+      "preset": "gea-html-inventory-aqkc",
+      "question": "测试样例：A产品基地库存为0件，但没有安全库存目标，也没有待发订单和需求数据。能认定没有风险或已经缺货吗？只用两句话，不查数据、不用卡片。",
+      "model": "2075867101766672385",
+      "reasoningEffort": "high",
+      "kind": "supplied-sample",
+      "acceptance": [
+        "零库存不直接等于缺货；缺目标不等于安全",
+        "不查询，不生成卡片"
+      ]
+    },
+    {
+      "id": "fullchain-scope",
+      "preset": "gea-html-inventory-qll",
+      "question": "只解释测试样例的归属：基地库存、分仓可用库存、客户库存三项是否都算公司库存？混合快照日期能改变这个归属吗？不查数据，不用卡片，简短回答。",
+      "model": "2075867101766672385",
+      "reasoningEffort": "high",
+      "kind": "supplied-sample",
+      "acceptance": [
+        "公司库存含基地及分仓可用，客户库存不计入",
+        "混合快照不改变归属；不查询、不生成卡片"
+      ]
+    },
+    {
+      "id": "dealer-quote",
+      "preset": "gea-html-inventory-dealer",
+      "question": "测试样例：经销商库存数量已知，但没有有效报价。能直接给库存金额和滞销结论吗？不查数据、不用卡片，两句话回答。",
+      "model": "2075867101766672385",
+      "reasoningEffort": "high",
+      "kind": "supplied-sample",
+      "acceptance": [
+        "无有效报价不能给金额，库存规模不能证明滞销",
+        "不查询，不生成卡片"
+      ]
+    },
+    {
+      "id": "plain-control",
+      "preset": "gea-readonly",
+      "question": "只用一句文字解释：原计划量与最终计划量相等能否说明没有调整？不要卡片，不查数据。",
+      "model": "2075867101766672385",
+      "reasoningEffort": "high",
+      "kind": "supplied-sample",
+      "acceptance": [
+        "净差为0不能证明无调整",
+        "不查询，不生成卡片"
+      ]
+    },
+    {
+      "id": "fc-shortage-ranking",
+      "preset": "gea-html-inventory-fc",
+      "question": "哪些分仓缺货最严重？",
+      "model": "2075867101766672385",
+      "reasoningEffort": "max",
+      "kind": "live-data",
+      "acceptance": [
+        "先核对同一口径的缺货量/率及有效快照；缺口径不以零库存、待发量、字段名匹配或样本排全量名次",
+        "证据额度耗尽后结束工具阶段，交付已有结果和未完成项",
+        "保留实际授权边界，不提高调用额度或模型超时"
+      ]
+    }
+  ]
+}

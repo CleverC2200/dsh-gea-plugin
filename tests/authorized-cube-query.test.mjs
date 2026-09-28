@@ -136,3 +136,16 @@ test('resource version change refreshes the same module field index',async t=>{
  const result=await f.call('gea_cube_query',{consumerCode:'sales_forecast',queries:[{name:'new',query:{measures:['inv.new_count'],limit:1}}]});
  assert.doesNotMatch(result,/GEA_CUBE_MEMBER_UNKNOWN/);assert.equal(inspects,2);
 });
+
+
+test('catalog samples reject measures and segments before dispatch and keep valid dimensions',async t=>{
+ const f=fixture(t);const sent=[];
+ const module={tools:()=>[{name:'query_business_data',required:['action','queries']}],authorizedResources:async()=>snapshot(['inv']),call:async(_name,args)=>{
+  if(args.action==='inspect')return JSON.stringify({semanticModel:[{name:'inv',dimensions:[{name:'inv.month'}],measures:[{name:'inv.count'}],segments:[{name:'inv.active'}]}]});
+  sent.push(args);return JSON.stringify({datasets:[{name:'sample',rows:[{'inv.month':'202609'}]}]});
+ }};
+ t.mock.method(f.business,'moduleMcp',async()=>module);
+ const result=await f.call('gea_gateway_catalog',{consumerCode:'sales_forecast',members:['inv.month','inv.count','inv.active','inv.missing'],values:true});
+ assert.match(result,/202609/);assert.match(result,/该成员是度量/);assert.match(result,/该成员是分段/);assert.match(result,/该成员是未发布成员/);
+ assert.equal(sent.length,1);assert.deepEqual(sent[0].queries[0].query.dimensions,['inv.month']);
+});

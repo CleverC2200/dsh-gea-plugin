@@ -2,6 +2,7 @@ import { hasPageReferences } from "../../packages/page-interaction/src/reference
 import { sessionConsumer } from "./business-identity.ts";
 import { catalogFactSummary } from './gateway-catalog.ts';
 import { salesSourceIssueForTurns, requestedOutputScope } from './sales-result-contract.ts';
+import { prefersBusinessCards } from './business-presentation.ts';
 import {
   resultView,
   resultReceipt,
@@ -49,7 +50,8 @@ import {
 } from "./prompt-evidence.ts";
 
 const UI_RULES =
-  "需要交互时可输出 dsh-ui JSON 围栏，普通答复无需组件。常用 table={columns,rows}、callout={content}、stat={label,value}、button={label,action}。只输出已核实数字，不设 total:true 自动合计；计划差额不使用按正负自动着色的 delta，默认中性色。交互 action 只表达用户意图，不能绕过后台授权；发出复杂围栏前用 validate_dsh_ui 校验。更多组件先 gea_skill(name=genui)。";
+  '业务概览、多指标、预测/库存结构或对比优先轻量卡片；简单事实或明确纯文字不用。用dsh-ui JSON围栏，根对象{"title":"标题","items":[节点]}；stat={type:"stat",label,value}、table={type:"table",columns,rows}、callout={type:"callout",content}。先1句结论，再1组卡片；结论、表格、说明各说一次，卡片后不重复数字和长篇解释。stat只放已核实数字，最多2项；版本名、未知量和缺口原因用短说明，不能放大成指标。按窄聊天栏设计：表格优先2列，最多3个短列，遵守前N；来源、日期范围、单位和版本放表外短注，不塞长列。标题和标签用业务中文，原始字段/表名仅排查时展示。缺数据说明影响，不补0；记录数不能改叫预测量。禁total:true自动合计、差额delta自动着色。复杂图表才读genui并校验；简单卡片无需通读Skill。按钮不授予写权限。';
+const isUiSkill = (name: unknown) => name === 'genui' || name === 'visualize';
 type State = {
   pageReferences?: boolean;
   preset: string;
@@ -208,14 +210,14 @@ export function mountBusinessPrompts(
         evidenceViews: new Map(),
       };
       // Restore only successful capability-loader choices, not arbitrary data that mentions a tool pack.
-      const requests = new Map<string, { pack?: ToolPack; skill?: string }>();
+      const requests = new Map<string, { tool?: string; name?: string; pack?: ToolPack; skill?: string }>();
       for (const event of agent.session.snapshotEvents()) {
         if (
           event.type === "tool/call" &&
-          event.data.name === "gea_capabilities"
+          (event.data.name === "gea_capabilities" || event.data.name === "gea_skill")
         ) {
           try {
-            requests.set(event.data.callId, JSON.parse(event.data.arguments));
+            requests.set(event.data.callId, {...JSON.parse(event.data.arguments), tool:event.data.name});
           } catch {
             /* Invalid old call. */
           }
@@ -229,6 +231,10 @@ export function mountBusinessPrompts(
                 try {
                   const receipt = JSON.parse(part.text);
                   if (receipt.preset !== preset) continue;
+                  if (call.tool === 'gea_skill') {
+                    if (isUiSkill(call.name) && receipt.name === call.name && typeof receipt.instructionId === 'string') state.packs.add('ui');
+                    continue;
+                  }
                   if (
                     call.pack &&
                     call.pack in TOOL_PACKS &&
@@ -242,6 +248,7 @@ export function mountBusinessPrompts(
                     )
                   )
                     state.skillNames.add(call.skill);
+                  if (isUiSkill(call.skill) && receipt.loaded?.includes('ui')) state.packs.add('ui');
                 } catch {
                   /* A partial or failed loader receipt grants nothing. */
                 }
@@ -401,12 +408,13 @@ export function mountBusinessPrompts(
         business.turnStopKind(agent.id) === "session-expired"
       )
         return "GEA_GATEWAY_SESSION_EXPIRED: 本轮网关会话已过期，不能通过证据回读重建会话；下一轮重新验证。";
+      // A spent read allowance ends this turn's tool phase; new queries would create evidence we cannot read.
+      if (state.readCalls >= PROMPT_BUDGET.evidenceCalls)
+        return "GEA_EVIDENCE_BUDGET: 本轮证据读取额度已用完，请交付已读范围并说明未读部分。";
       if (state.steps > state.limit + PROMPT_BUDGET.evidenceCalls)
         return "GEA_CALL_BUDGET: 本轮调用/步骤额度已用完，请交付已有结果并明确未完成项。";
       // Reserve before dispatch: parallel calls must not all pass against the same stale counter.
       if (exec.name === 'gea_evidence_read') {
-        if (state.readCalls >= PROMPT_BUDGET.evidenceCalls)
-          return 'GEA_EVIDENCE_BUDGET: 本轮证据读取额度已用完，请交付已读范围并说明未读部分。';
         state.readCalls++;
       } else {
         if (state.calls >= state.limit)
@@ -483,6 +491,19 @@ export function mountBusinessPrompts(
           .map((b) => (b.type === "text" ? b.text : ""))
           .join("\n");
         const state = stateOf(agent);
+        // Expand presentation only once the business read has returned, not in every initial context.
+        const dataReturned = ['gea_cube_query','gea_page','gea_visible_workbench_context','gea_forecast_compute'].includes(exec.name)
+          || (exec.name === 'gea_module_mcp' && args.tool === 'query_business_data' && (args.arguments as {action?:unknown} | undefined)?.action === 'query')
+          || (exec.name === 'gea_gateway_catalog' && permissionDenied(texts));
+        if (dataReturned && !result.isError && decision.kind === 'accept' && executionEpoch === store.epoch() && !state.packs.has('ui')) {
+          const user = agent.session.snapshotEvents().findLast(event => event.type === 'user/message' && event.data.source.kind === 'user');
+          const question = user?.type === 'user/message' ? user.data.content.filter(b=>b.type==='text').map(b=>b.type==='text'?b.text:'').join('\n') : '';
+          if (prefersBusinessCards(question)) {
+            const presentation: State = {...state,packs:new Set(state.packs),skillNames:new Set(state.skillNames)};
+            presentation.packs.add('ui');presentation.skillNames.add('genui');presentation.skillNames.add('visualize');
+            refreshMask(agent,presentation);Object.assign(state,presentation);
+          }
+        }
         if (
           exec.name === "gea_gateway_catalog" &&
           catalogExecution?.state === state &&
@@ -686,7 +707,7 @@ export function mountBusinessPrompts(
       defineTool({
         name: "gea_capabilities",
         description:
-          "按需查看或加载额外工具包/业务规则。加载只改变本会话可见能力，不改变业务授权；工具参数在下一步的真实 Schema 中提供。复杂任务可选择 complex 额度。",
+          "按需发现规则或加载缺少的工具包；已提供工具直接用。加载不改变业务授权；复杂任务可选择complex额度。",
         parameters: {
           pack: { type: "string", enum: Object.keys(TOOL_PACKS) },
           skill: { type: "string" },
@@ -735,6 +756,11 @@ export function mountBusinessPrompts(
           }
           if (args.complex) state.limit = PROMPT_BUDGET.complexCalls;
           if (args.skill) state.skillNames.add(args.skill);
+          if (isUiSkill(args.skill)) {
+            state.packs.add('ui');
+            state.skillNames.add('genui');
+            state.skillNames.add('visualize');
+          }
           refreshMask(exec.agent, state);
           // No async work between validation, native restriction replacement and commit.
           Object.assign(previous, state);
@@ -877,7 +903,15 @@ export function mountBusinessPrompts(
           const content = selected.join("\n");
           exec.signal.throwIfAborted();
           if (stateOf(exec.agent) !== state || business.readTurnRevision(exec.agent.id) !== revision) throw Error('GEA_CAPABILITY_STATE_CHANGED');
-          state.skillNames.add(args.name);
+          const selection: State = {...state,packs:new Set(state.packs),skillNames:new Set(state.skillNames)};
+          selection.skillNames.add(args.name);
+          if (isUiSkill(args.name)) {
+            selection.packs.add('ui');
+            selection.skillNames.add('genui');
+            selection.skillNames.add('visualize');
+            refreshMask(exec.agent,selection);
+          }
+          Object.assign(state,selection);
           const instructionId = hash([
             args.name,
             args.path ?? "",
@@ -899,6 +933,7 @@ export function mountBusinessPrompts(
           )
             return JSON.stringify({
               name: args.name,
+              preset: presetOf(exec.agent),
               version,
               instructionId,
               alreadyLoaded: true,
@@ -917,6 +952,7 @@ export function mountBusinessPrompts(
             });
           return JSON.stringify({
             name: args.name,
+            preset: presetOf(exec.agent),
             version,
             instructionId,
             source: skill.provider,
@@ -1129,7 +1165,7 @@ export function mountBusinessPrompts(
         {
           name: "gea:capabilities",
           text:
-            "专项规则用 gea_skill；需要页面、知识库、图表、委派或预测计算时用 gea_capabilities 加载对应包。普通取数不必加载 Skill。\n" +
+            `可见工具直接用；缺工具才gea_capabilities。forecast仅做预测计算，查预测用Cube；规则缺失才gea_skill，查数不用Skill。${state.packs.size ? `已加载工具包：${[...state.packs].sort().join("、")}。` : ""}\n` +
             shortSkillCatalog(skills),
         },
         { name: "gea:facts", text: facts },
@@ -1187,11 +1223,13 @@ export function mountBusinessPrompts(
             ]
           : []),
         ...(state.packs.has("ui") ? [{ name: "gea:ui", text: UI_RULES }] : []),
-        ...(state.calls >= state.limit || state.steps > state.limit + PROMPT_BUDGET.evidenceCalls
+        ...(state.readCalls >= PROMPT_BUDGET.evidenceCalls || state.calls >= state.limit || state.steps > state.limit + PROMPT_BUDGET.evidenceCalls
           ? [
               {
                 name: "gea:budget",
-                text: "本轮查询额度已用完，不再新查。必要时在读取额度内沿nextRead读已取得证据，然后交付业务答复及未完成项；不输出工具协议文本。",
+                text: state.readCalls >= PROMPT_BUDGET.evidenceCalls
+                  ? "本轮证据读取额度已用完，工具阶段结束。停止新查询、能力加载和证据回读；直接用已展示数据交付结论、实际覆盖范围和未完成项。未读结果保持未知，不重建查询或等待工具；不输出工具协议文本。"
+                  : "本轮查询额度已用完，不再新查。必要时在读取额度内沿nextRead读已取得证据，然后交付业务答复及未完成项；不输出工具协议文本。",
               },
             ]
           : []),
@@ -1201,7 +1239,7 @@ export function mountBusinessPrompts(
         ctx.tools.schemas(agent).map((tool) => tool.name),
       );
       const tools =
-        state.steps > state.limit + PROMPT_BUDGET.evidenceCalls || (state.calls >= state.limit && state.readCalls >= PROMPT_BUDGET.evidenceCalls)
+        state.steps > state.limit + PROMPT_BUDGET.evidenceCalls || state.readCalls >= PROMPT_BUDGET.evidenceCalls
           ? []
           : assembled.tools
               .filter((tool) => visible.has(tool.name) && (state.calls < state.limit || tool.name === 'gea_evidence_read'))

@@ -6,6 +6,9 @@
 | BUG-20260928-skill-selection | 2026-09-28 | 业务Agent与Skill | 功能逻辑 | 原始遗漏 | P2 | 已发布待验收 | [可发现业务Skill仍需先选择导致NOT_LOADED](BUG-20260928-skill-selection.md) |
 | BUG-20260928-sales-month-encoding | 2026-09-28 | 销售结果查询 | 功能逻辑 | 原始遗漏 | P2 | 已发布待验收 | [销售结果跨来源月份格式混用造成假空结果](BUG-20260928-sales-month-encoding.md) |
 | BUG-20260928-returned-role-approval | 2026-09-28 | 销售计划 | 功能逻辑 | 其他 | P2 | 已修复待验证 | [退回计划的通过错误依赖客户重提服务账号](BUG-20260928-returned-role-approval.md) |
+| BUG-20260928-evidence-budget-stop | 2026-09-28 | 业务Agent与证据 | 功能逻辑 | 原始遗漏 | P2 | 已验证待发布 | [证据额度耗尽后仍提供工具导致连续超限](BUG-20260928-evidence-budget-stop.md) |
+| BUG-20260928-desktop26-channel-compat | 2026-09-28 | 客户端更新 | 构建发布 | 原始遗漏 | P2 | 已验证待发布 | [插件频道兼容名单遗漏桌面0.0.26](BUG-20260928-desktop26-channel-compat.md) |
+| BUG-20260928-business-card-output | 2026-09-28 | 业务Agent与展示 | 功能逻辑 | 修复回退 | P2 | 已验证待发布 | [业务概览仅返回文字且UI规则未启用工具](BUG-20260928-business-card-output.md) |
 | BUG-20260927-windows-install-io | 2026-09-27 | 客户端安装 | 构建发布 | 外部依赖 | P1 | 已修复待验证 | [Windows 安装重复复制及小文件解压耗时](BUG-20260927-windows-install-io.md) |
 | BUG-20260927-skill-paging-path | 2026-09-27 | 业务Agent与Skill | 功能逻辑 | 原始遗漏 | P2 | 已发布待验收 | [全链库存问答把分页参数写进Skill路径](BUG-20260927-skill-paging-path.md) |
 | BUG-20260927-plugin-history-growth | 2026-09-27 | 客户端更新 | 构建发布 | 原始遗漏 | P1 | 已修复待验证 | [成功更新后旧插件完整图持续累积](BUG-20260927-plugin-history-growth.md) |
