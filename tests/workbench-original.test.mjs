@@ -152,12 +152,13 @@ for (const [typeCode, status, actor, wrong] of [['Y', 1, 'region', 'province'], 
   });
 }
 
-test('returned plans cannot regain ordinary approval through a visible role grant', () => {
+test('returned plans keep ordinary approval for the explicitly granted visible role', () => {
   for (const status of [6, 7, 8, 9]) {
     const row = { planId: 'p', versionId: 'v', status, planTypeCode: 'Y' };
     const detail = { currentVersion: { ...row, id: 'v', effective: true } };
     for (const role of ['region', 'province', 'area', 'category']) {
-      assert.equal(salesPlanAccessForRow(row, detail, [role], role), undefined);
+      assert.deepEqual(salesPlanAccessForRow(row, detail, [role], role)?.allowedActions, ['APPROVE', 'REJECT']);
+      assert.equal(salesPlanAccessForRow(row, detail, [], role), undefined);
     }
   }
 });
