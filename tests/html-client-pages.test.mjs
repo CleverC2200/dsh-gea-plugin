@@ -11,6 +11,7 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
   const output = resolve(temporary, "html-client.mjs");
   const originalFetch = globalThis.fetch;
   const agents = [];
+  const presets = new Map();
   const panels = [];
   try {
     await build({
@@ -37,13 +38,19 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
               { id: "inventory-apsdelivery", name: "交付运营管理", view: "delivery" },
             ],
           },
-          // 下架/演示模块：宿主标了 retired，客户端不能再给它注册面板，否则会点出一个
-          // 绑不上会话（宿主已不生成该预设）的空页面。
+          ...["inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment"].map(id => ({
+            id,
+            name: id,
+            mock: true,
+            retired: false,
+            presetHidden: true,
+          })),
+          // 已下架模块继续不注册面板。
           {
-            id: "inventory-customer",
-            name: "客户库存",
+            id: "inventory-personal",
+            name: "库存管理工作台",
             retired: true,
-            pages: [{ id: "inventory-customer", name: "客户库存", view: "" }],
+            pages: [{ id: "inventory-personal", name: "库存管理工作台", view: "" }],
           },
         ]);
       }
@@ -55,8 +62,9 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
         callback();
       },
       agentWorkbench: {
-        register({ id }) {
+        register({ id, preset }) {
           agents.push(id);
+          presets.set(id, preset);
           return () => {};
         },
       },
@@ -77,8 +85,14 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
       "inventory-apsboard",
       "inventory-apsdemand",
       "inventory-apsdelivery",
+      "inventory-customer",
+      "inventory-orderworkbench",
+      "inventory-orderfulfillment",
     ]);
     assert.deepEqual(agents, panels);
+    for (const id of ["inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment"])
+      assert.equal(presets.get(id), "auto-negotiation", "演示页面绑定已有默认助手，不引用已隐藏的预设");
+    assert.equal(presets.get("inventory-apsplan"), "gea-html-inventory-aps");
   } finally {
     globalThis.fetch = originalFetch;
     await rm(temporary, { recursive: true, force: true });

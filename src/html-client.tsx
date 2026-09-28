@@ -361,8 +361,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
         if (!envelope.ok || !envelope.value?.htmlPlugins) return;
         const items = await request("plugins");
         for (const plugin of items) {
-          // 下架与演示（mock）模块不注册面板：宿主已经不给它们生成 Agent 预设，
-          // 留了入口只会点出一个绑不上会话的空页面。
+          // 已下架模块不注册面板；保留的演示页使用默认助手，不依赖独立 Agent 预设。
           if (plugin.retired === true) continue;
           const pages = Array.isArray(plugin.pages) && plugin.pages.length
             ? plugin.pages
@@ -373,7 +372,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
             registered.add(page.id);
             cleanups.push(ctx.agentWorkbench.register({
               id: page.id,
-              preset: "gea-html-" + plugin.id,
+              preset: plugin.presetHidden === true ? "auto-negotiation" : "gea-html-" + plugin.id,
             }));
           cleanups.push(
             ctx.slots.inject("main", () => {

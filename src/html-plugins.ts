@@ -273,9 +273,10 @@ export async function registerHtmlPlugins(
       "native-presets",
       "gea-html-" + manifest.id,
     );
-    // 演示和已下架模块仍可展示页面，但不进入新会话的 Agent 选择器。
+    // 页面是否下架与 Agent 是否可选分开：保留的演示页不生成独立预设。
     const retired = isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden);
-    if (retired) {
+    const presetHidden = mock || retired;
+    if (presetHidden) {
       await rm(preset, { recursive: true, force: true });
     } else {
       const name = presetLabels.labels[manifest.id]?.name ?? manifest.name;
@@ -315,6 +316,7 @@ export async function registerHtmlPlugins(
       pages,
       mock,
       retired,
+      presetHidden,
       skillName: frontmatter("name") ?? manifest.id,
       skillDescription: frontmatter("description") ?? manifest.name,
       skillText: skill,
@@ -331,7 +333,7 @@ export async function registerHtmlPlugins(
   const presetHome = resolve(business.config.runtimeDir, "native-presets");
   const expectedPresets = new Set<string>();
   for (const item of items) {
-    if (item.retired === true) continue;
+    if (item.presetHidden === true) continue;
     expectedPresets.add("gea-html-" + item.id);
   }
   for (const entry of await readdir(presetHome, { withFileTypes: true }).catch(() => [])) {

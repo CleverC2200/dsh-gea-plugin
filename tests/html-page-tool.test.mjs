@@ -300,11 +300,12 @@ test("开发中演示页仍可登记，但不留下 Agent 预设", async () => {
     await writeFile(join(native, name, "preset.yml"), "name: 老版本残留\n");
   };
   // 老版本装过的：全能业务助手、被产销协同 Agent 替代的看板、已经整包卸掉的 ghost 模块。
-  for (const name of ["gea-agent-hub", "gea-html-inventory-apsboard", "gea-html-inventory-ghost", "gea-html-inventory-all"])
+  for (const name of ["gea-agent-hub", "gea-html-inventory-apsboard", "gea-html-inventory-ghost", "gea-html-inventory-all",
+    "gea-html-inventory-customer", "gea-html-inventory-orderworkbench", "gea-html-inventory-orderfulfillment"])
     await residue(name);
   // 不是本仓库生成的预设目录，清理时不能顺手删。
   await residue("auto-negotiation");
-  await registeredPlugins({
+  const { routes } = await registeredPlugins({
     runtimeDir,
     roots: [
       // 真实模块照常出现在预设列表里。
@@ -318,4 +319,17 @@ test("开发中演示页仍可登记，但不留下 Agent 预设", async () => {
     ],
   });
   assert.deepEqual((await readdir(native)).sort(), ["auto-negotiation", "gea-html-inventory-probe"]);
+  const list = routes.find(route => route.path === "/api/gea-html/plugins");
+  const plugins = await (await list.fetch(new Request("http://local/api/gea-html/plugins"))).json();
+  for (const id of ["inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment"]) {
+    const plugin = plugins.find(item => item.id === id);
+    assert.equal(plugin.retired, false, "隐藏 Agent 不下架业务页面");
+    assert.equal(plugin.presetHidden, true);
+    const open = routes.find(route => route.path === `/api/gea-html/${id}/open`);
+    const response = await open.fetch(new Request(`http://local/api/gea-html/${id}/open`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ session }),
+    }));
+    assert.equal(response.status, 200, "演示页面仍可建立页面会话");
+    assert.ok((await response.json()).lease);
+  }
 });
