@@ -42,8 +42,8 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
  await expect(frame.getByRole('button',{name:'保存调整',exact:true})).toHaveCount(0);
  await expect(frame.getByRole('button',{name:'重提',exact:true})).toHaveCount(0);
- // 单据类型切换（月初/纠偏）已按业务方反馈收起，审批页只做月度计划。
- const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toHaveCount(0);
+ // 月初/纠偏切换入口恢复。
+ const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toBeVisible();
  assert.equal(modelCalls,0,'opening the workbench must not trigger analysis');
  const readProgress=()=>frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
  // 节点条始终展示全部五个节点，进度按状态统计，跟当前选中的节点无关。
@@ -91,8 +91,8 @@ test('V1.6 Web: compact header, stable progress, inline SKU and approval editing
  await expect(frame.getByLabel('当前页明细汇总').getByText('¥221.25',{exact:true})).toBeVisible();
  await expect(frame.getByTestId('regional-approval-month-plan-p')).toContainText('22.125');
  await expect(frame.getByTestId('regional-approval-month-plan-p')).toContainText('¥221.25');
- await expect(frame.getByRole('status')).toContainText('正在暂存',{timeout:10000});
- await expect(frame.getByRole('status')).toHaveCount(0,{timeout:10000});
+ await expect(frame.getByRole('status').filter({hasText:'正在暂存'})).toContainText('正在暂存',{timeout:10000});
+ await expect(frame.getByRole('status').filter({hasText:'正在暂存'})).toHaveCount(0,{timeout:10000});
  assert.equal(writes,0);
  const result=await app.rpc('sales-plan/draft',{planId:'p',versionId:'v'});
  assert.equal(result.value.draft.adjustments[0].adjustQty,'2.125');

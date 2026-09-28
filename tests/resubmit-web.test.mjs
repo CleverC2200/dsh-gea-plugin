@@ -3,13 +3,8 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 
-/**
- * 纠偏入口已按业务方反馈收起（月度页不再有「纠偏」标签）。
- * 这条用例原来覆盖纠偏页的退回重提；入口收起后只保留"入口确实没了、月度页也没多出按钮"的断言，
- * 客户重提契约由 resubmit/service-account 测试覆盖；月度审批重审不生成新版本。
- */
 test(
-  "纠偏入口已收起，月度页不再单开退回重提按钮",
+  "月初与纠偏入口恢复，客户重提仍受服务授权控制",
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
@@ -135,11 +130,17 @@ test(
       .click();
     const frame = page.frameLocator("iframe[data-gea-workbench]");
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
-    // 纠偏标签已按业务方反馈收起（2026-09-23），纠偏工作台当前没有入口；
-    // 恢复标签时，把下面的断言换回"点纠偏 → 退回重提对话框 → 未连接时确认按钮置灰"。
-    await expect(frame.getByRole("tab", { name: "纠偏", exact: true })).toHaveCount(0);
-    // 月度审批页只提供角色审批，不把审批重审转成客户重提。
+    await expect(frame.getByRole("tab", { name: "月初", exact: true })).toHaveAttribute('aria-selected','true');
     await expect(frame.getByRole("button", { name: "退回重提", exact: true })).toHaveCount(0);
+    await frame.getByRole("tab", { name: "纠偏", exact: true }).click();
+    await expect(frame.getByRole("tab", { name: "纠偏", exact: true })).toHaveAttribute('aria-selected','true');
+    await frame.getByRole("button", { name: "退回重提", exact: true }).click();
+    const dialog=frame.getByRole("dialog", {name:"真实销售计划退回重提",exact:true});
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", {name:"确认重提",exact:true})).toBeDisabled();
+    await dialog.getByRole("button", {name:"关闭",exact:true}).click();
+    await frame.getByRole("tab", { name: "月初", exact: true }).click();
+    await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     assert.equal(
       app.requests.some(
         (r) =>

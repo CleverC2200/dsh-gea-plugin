@@ -4,12 +4,7 @@ import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
 import { profile } from './profile.mjs';
 
-/**
- * 纠偏入口已按业务方反馈收起（2026-09-23）：月度页不再有「纠偏」标签，纠偏工作台暂时没有 UI 入口。
- * 这两条用例原本在 main 上就是红的（等不到纠偏页元素）；入口收起后先显式跳过，
- * 恢复标签时去掉 .skip 并把断言调回即可。
- */
-test.skip(
+test(
   'correction tab uses an explicit Z query and blocks customers without an approved monthly baseline',
   { timeout: 60000 },
   async (t) => {
@@ -21,6 +16,11 @@ test.skip(
         return true;
       }
       if (req.url.pathname.endsWith('/plans')) {
+        const requestedStatus = req.url.searchParams.get('status');
+        if (requestedStatus !== null && Number(requestedStatus) !== 1) {
+          reply({success:true,result:{records:[],total:0,current:1,size:20,pages:1}});
+          return true;
+        }
         reply({
           success: true,
           result: {
@@ -31,7 +31,7 @@ test.skip(
                 seq: 1,
                 periodId: '20260901',
                 planTypeCode: 'Y',
-                orderType: legacyResponse ? 'M' : req.url.searchParams.get('orderType') ?? 'M',
+                orderType: legacyResponse ? 'M' : req.url.searchParams.get('orderType') ?? 'Z',
                 dealerCode: '123',
                 dealerName: '纠偏客户',
                 status: 1,
@@ -85,7 +85,7 @@ test.skip(
     await expect(frame.getByText('不可纠偏：月初未终审', { exact: true })).toBeVisible();
     await expect(frame.getByRole('button', { name: '调整明细', exact: true })).toBeDisabled();
     assert.ok(app.requests.some((r) => r.url.searchParams.get('orderType') === 'Z'));
-    assert.ok(app.requests.some((r) => r.url.pathname.endsWith('/periods') && r.url.searchParams.get('planType') === 'CORRECTION'));
+    await expect(frame.getByRole('combobox',{name:'纠偏周期',exact:true})).toContainText('2026-09');
     legacyResponse = true;
     await frame.getByRole('button', { name: '刷新纠偏', exact: true }).click();
     await expect(frame.getByText(/非纠偏数据/)).toBeVisible();
@@ -95,11 +95,11 @@ test.skip(
 );
 
 import { correctionService } from './fixtures/correction-service.mjs';
-test.skip(
+test(
   'correction saves absolute drafts, approves inherited values, returns only its node, then reconciles DMS mock',
   { timeout: 90000 },
   async (t) => {
-    const app = await profile(t);
+    const app = await profile(t, {roles:['region','province','area','category'].map(role=>({code:`sales_plan_${role}_approver`,name:role}))});
     const service = correctionService();
     app.route(service.route);
     await app.login();
@@ -121,7 +121,14 @@ test.skip(
     const f = page.frameLocator('iframe[data-gea-workbench]');
     await f.getByRole('tab', { name: '纠偏', exact: true }).click();
     await expect(f.getByText('金额 50.00%', { exact: true })).toBeVisible();
-    const open = () => f.getByRole('button', { name: '调整明细', exact: true }).click();
+    const open = async () => {
+      const status=service.detail().currentVersion.status;
+      const node=status >= 5 && status <= 10 && status !== 9 ? '品类' : ({1:'区域',2:'省区',3:'大区',4:'品类',9:'大区'})[status];
+      // 多角色账号明确选择本次查看/审批角色；不再由状态冒充账号身份。
+      await f.getByRole('combobox',{name:'纠偏查看节点',exact:true}).click();
+      await f.getByRole('option',{name:status===5 || status===10 ? '当前节点' : node,exact:true}).click();
+      await f.getByRole('button', { name: '调整明细', exact: true }).click();
+    };
     await open();
     let d = f.getByRole('dialog', { name: '纠偏调整明细', exact: true });
     await expect(d.getByRole('textbox', { name: '调整量 123' })).toHaveValue('2');

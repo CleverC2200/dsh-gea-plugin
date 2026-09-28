@@ -3,12 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
 import { profile } from './profile.mjs';
 
-/**
- * 纠偏入口已按业务方反馈收起（2026-09-23）：月度页不再有「纠偏」标签，纠偏工作台暂时没有 UI 入口。
- * 这条用例原本在 main 上就是红的（等不到纠偏页的退回重提按钮）；入口收起后先显式跳过，
- * 恢复标签时去掉 .skip 并把断言调回即可。
- */
-test.skip(
+test(
   'returned Z plan resubmits fixed baseline with edited correction and verifies successor node fields are empty',
   { timeout: 60000 },
   async (t) => {
@@ -86,6 +81,11 @@ test.skip(
         return true;
       }
       if (path.endsWith('/plans')) {
+        const requestedStatus = req.url.searchParams.get('status');
+        if (requestedStatus !== null && Number(requestedStatus) !== current.status) {
+          reply({success:true,result:{records:[],total:0,size:20,current:1,pages:1}});
+          return true;
+        }
         reply({
           success: true,
           result: {
@@ -95,7 +95,7 @@ test.skip(
                 versionId: current.id,
                 monthlyApproved: true,
                 hasCorrection: true,
-                orderType: req.url.searchParams.get('orderType') ?? 'M',
+                orderType: req.url.searchParams.get('orderType') ?? 'Z',
               },
             ],
             total: 1,

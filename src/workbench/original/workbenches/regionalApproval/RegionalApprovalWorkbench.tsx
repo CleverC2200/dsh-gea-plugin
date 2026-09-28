@@ -3584,12 +3584,7 @@ const SalesPlanWorkbench: React.FC<React.ComponentProps<typeof RegionalApprovalW
       evidence: { ...context.current.evidence, queryState: 'loading' } }, null);
     setOrderType(value);
   };
-  /**
-   * 「纠偏」标签暂时收起（业务方 2026-09-23 反馈）。纠偏页本身保留，需要时把开关改回 true
-   * 就能连同标签一起恢复；开关关掉时页面固定停在「月初」。
-   */
-  const SHOW_ORDER_TABS = false;
-  const headerControls = !SHOW_ORDER_TABS ? undefined : <div role="tablist" aria-label={props.t("common.correction.tabs")} className={styles.orderTabs}>
+  const headerControls = <div role="tablist" aria-label={props.t("common.correction.tabs")} className={styles.orderTabs}>
       {(['M','Z'] as const).map(value => <Button size='small' key={value} role="tab" aria-selected={orderType === value}
         type={orderType === value ? 'primary' : 'secondary'} onClick={() => select(value)}>
         {props.t(value === 'M' ? 'common.correction.monthly' : 'common.correction.correction')}

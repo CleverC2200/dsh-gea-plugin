@@ -49,7 +49,7 @@ test(
       prototype.getByRole("button", { name: "总览", exact: true }),
     ).toBeVisible();
 
-    // 单据类型切换（月初/纠偏）按业务方反馈收起（2026-09-23），审批页只做月度计划；
+    // 月初/纠偏切换入口恢复；
     // 不能出现「区域计划评估」这排工作台页签。
     await page.getByRole("button", { name: "销售计划", exact: true }).click();
     const workbench = page.frameLocator("iframe[data-gea-workbench]");
@@ -57,7 +57,7 @@ test(
     await expect(
       workbench.getByRole("heading", { name: "销售计划审批", exact: true }),
     ).toBeVisible();
-    await expect(header.getByRole("tab", { name: "月初", exact: true })).toHaveCount(0);
+    await expect(header.getByRole("tab", { name: "月初", exact: true })).toBeVisible();
     await expect(
       workbench.getByRole("tab", { name: "区域计划评估", exact: true }),
     ).toHaveCount(0);
