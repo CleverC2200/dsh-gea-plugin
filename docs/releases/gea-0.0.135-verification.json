@@ -1,0 +1,316 @@
+{
+  "version": "0.0.135",
+  "recordedAt": "2026-09-28T08:06:06.842Z",
+  "scope": {
+    "includedMRs": [
+      206,
+      207
+    ],
+    "inheritedMRs": [
+      205
+    ],
+    "excludedMRs": [
+      203,
+      197,
+      194,
+      182,
+      165,
+      161,
+      160,
+      144,
+      125,
+      124,
+      117
+    ],
+    "desktopReleased": false,
+    "channelCompatibilityAdded": "0.0.26"
+  },
+  "initialBaseSha": "64f78d5da3d1e8a2dcdcb6283a9a7952d6a3ee56",
+  "candidateSha": "1bf847b967c2199b47ef79154f8af5cc5a0fdec7",
+  "mergedMainSha": "1bf847b967c2199b47ef79154f8af5cc5a0fdec7",
+  "releaseSourceSha": "1bf847b967c2199b47ef79154f8af5cc5a0fdec7",
+  "sourceTag": "gea-v0.0.135",
+  "sourceTagObjectSha": "000b07ccfbd043aa294b27013b779833e7f5da0f",
+  "mergeRequests": [
+    {
+      "iid": 206,
+      "url": "http://100.100.6.191:20656/chenyonghao/dsh-gea-plugin/merge_requests/206",
+      "state": "merged",
+      "sha": "da9e67da32d58d00c1658d897aabd8a116c67e5c",
+      "merge_commit_sha": "da9e67da32d58d00c1658d897aabd8a116c67e5c"
+    },
+    {
+      "iid": 207,
+      "url": "http://100.100.6.191:20656/chenyonghao/dsh-gea-plugin/merge_requests/207",
+      "state": "merged",
+      "sha": "1bf847b967c2199b47ef79154f8af5cc5a0fdec7",
+      "merge_commit_sha": "1bf847b967c2199b47ef79154f8af5cc5a0fdec7"
+    }
+  ],
+  "artifact": {
+    "plugin": "@cleverc2200/gea-dsh-prototype",
+    "version": "0.0.135",
+    "sourceSha": "1bf847b967c2199b47ef79154f8af5cc5a0fdec7",
+    "sourceTag": "gea-v0.0.135",
+    "mergedMRs": [
+      206,
+      207
+    ],
+    "inheritedMRs": [
+      205
+    ],
+    "sha256": "90978ddd04801301b09f7925a6b24724e4bd9207f5952c651912bbbd08dd7990",
+    "bytes": 2820376,
+    "files": [
+      "LICENSE",
+      "README.md",
+      "business-skills/aps/references/data-mapping.md",
+      "business-skills/aps/references/metric-definitions.md",
+      "business-skills/aps/sales-forecast-result-analysis.skill.md",
+      "business-skills/aps/sales-ops-problem-analysis.skill.md",
+      "cordis.patch.yml",
+      "default-presets/auto-negotiation/agent.cordis.yml",
+      "default-presets/auto-negotiation/preset.yml",
+      "docs/install.md",
+      "gea.config.example.json",
+      "gea.direct.example.json",
+      "lib/client.js",
+      "lib/host.js",
+      "lib/page-interaction.js",
+      "lib/skill-reference.js",
+      "lib/workbench.css",
+      "lib/workbench.js",
+      "npm-shrinkwrap.json",
+      "package.json",
+      "packages/page-interaction/cordis.patch.yml",
+      "packages/page-interaction/lib/bridge.js",
+      "packages/page-interaction/lib/client.js",
+      "packages/page-interaction/lib/host.js",
+      "packages/page-interaction/lib/page.js",
+      "packages/page-interaction/lib/picker.js",
+      "packages/page-interaction/LICENSE",
+      "packages/page-interaction/package.json",
+      "packages/page-interaction/README.md",
+      "packages/page-interaction/THIRD_PARTY_NOTICES.md",
+      "packages/workbench-example/lib/client.js",
+      "packages/workbench-example/lib/host.js",
+      "packages/workbench-example/package.json",
+      "packages/workbench-example/README.md",
+      "presets/agent-capabilities.json",
+      "presets/agent-presets.json",
+      "presets/gea-readonly/agent.cordis.yml",
+      "presets/gea-readonly/preset.yml",
+      "presets/inventory-apsplan.skill.md",
+      "presets/inventory-aqkc.skill.md",
+      "presets/inventory-dealer.skill.md",
+      "presets/inventory-fc.skill.md",
+      "presets/inventory-qll.skill.md",
+      "presets/prompt-policy.json",
+      "scripts/deployment.mjs",
+      "scripts/start.mjs",
+      "scripts/verify.mjs",
+      "src/shared/environments.js",
+      "src/workbench/original/LICENSE",
+      "src/workbench/original/README.md",
+      "src/workbench/original/source-manifest.json",
+      "src/workbench/original/SOURCE.md"
+    ],
+    "validation": {
+      "regressions": 141,
+      "cleanMergedBuild": true,
+      "packageInstallSmoke": true,
+      "typecheck": true,
+      "desktop26ChannelValidator": true,
+      "windowsDeviceAcceptance": "pending",
+      "productionApprovalAcceptance": "pending"
+    }
+  },
+  "artifactCommit": "2bf47f131c3ff060f07fd30e3d915d95aaa4733b",
+  "channelCommit": "6704d4267c296bdf9b322a22dcbb66795646ebbe",
+  "publication": {
+    "checks": [
+      {
+        "source": "gitlab",
+        "channel": "test",
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/dsh-0.1.6-test.json",
+        "httpStatus": 200,
+        "version": "0.0.135"
+      },
+      {
+        "source": "gitlab",
+        "channel": "stable",
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/dsh-0.1.6-stable.json",
+        "httpStatus": 200,
+        "version": "0.0.135"
+      },
+      {
+        "source": "oss",
+        "channel": "test",
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/dsh-0.1.6-test.json",
+        "httpStatus": 200,
+        "version": "0.0.135"
+      },
+      {
+        "source": "oss",
+        "channel": "stable",
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/dsh-0.1.6-stable.json",
+        "httpStatus": 200,
+        "version": "0.0.135"
+      }
+    ],
+    "downloads": [
+      {
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/58546621e5e6c321715884f0d1cab66c387e6681/packages/cleverc2200-dsh-agent-workbench-0.1.1.tgz",
+        "package": "@cleverc2200/dsh-agent-workbench",
+        "version": "0.1.1",
+        "httpStatus": 200,
+        "sha256": "91a8981321950b4ad56697e6e1e02b696b3873615ce4f2d096e21169689bbe25",
+        "bytes": 17497
+      },
+      {
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/77db92013c41a69bff8b28fab4a7135945268d2c/packages/dsh-agent-manage-0.6.3-company.6.tgz",
+        "package": "dsh-agent-manage",
+        "version": "0.6.3-company.6",
+        "httpStatus": 200,
+        "sha256": "57a5d1d53113165c475ef69bde5599342985b2dc0b7b3bcaf3eb97329d5ab9ed",
+        "bytes": 654562
+      },
+      {
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/2a9f46ee3b7f3375a241e994c764b6791bc7bb11/packages/dsh-plugin-1.4.3-company.35.tgz",
+        "package": "dsh-plugin",
+        "version": "1.4.3-company.35",
+        "httpStatus": 200,
+        "sha256": "0505deb9491f75444ef5f5a7c5c0c1588ad0eb1c9021e466efe23879f451ec8d",
+        "bytes": 587254
+      },
+      {
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/2bf47f131c3ff060f07fd30e3d915d95aaa4733b/packages/cleverc2200-gea-dsh-prototype-0.0.135.tgz",
+        "package": "@cleverc2200/gea-dsh-prototype",
+        "version": "0.0.135",
+        "httpStatus": 200,
+        "sha256": "90978ddd04801301b09f7925a6b24724e4bd9207f5952c651912bbbd08dd7990",
+        "bytes": 2820376
+      },
+      {
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/91a8981321950b4ad56697e6e1e02b696b3873615ce4f2d096e21169689bbe25/cleverc2200-dsh-agent-workbench-0.1.1.tgz",
+        "package": "@cleverc2200/dsh-agent-workbench",
+        "version": "0.1.1",
+        "httpStatus": 200,
+        "sha256": "91a8981321950b4ad56697e6e1e02b696b3873615ce4f2d096e21169689bbe25",
+        "bytes": 17497
+      },
+      {
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/57a5d1d53113165c475ef69bde5599342985b2dc0b7b3bcaf3eb97329d5ab9ed/dsh-agent-manage-0.6.3-company.6.tgz",
+        "package": "dsh-agent-manage",
+        "version": "0.6.3-company.6",
+        "httpStatus": 200,
+        "sha256": "57a5d1d53113165c475ef69bde5599342985b2dc0b7b3bcaf3eb97329d5ab9ed",
+        "bytes": 654562
+      },
+      {
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/0505deb9491f75444ef5f5a7c5c0c1588ad0eb1c9021e466efe23879f451ec8d/dsh-plugin-1.4.3-company.35.tgz",
+        "package": "dsh-plugin",
+        "version": "1.4.3-company.35",
+        "httpStatus": 200,
+        "sha256": "0505deb9491f75444ef5f5a7c5c0c1588ad0eb1c9021e466efe23879f451ec8d",
+        "bytes": 587254
+      },
+      {
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/90978ddd04801301b09f7925a6b24724e4bd9207f5952c651912bbbd08dd7990/cleverc2200-gea-dsh-prototype-0.0.135.tgz",
+        "package": "@cleverc2200/gea-dsh-prototype",
+        "version": "0.0.135",
+        "httpStatus": 200,
+        "sha256": "90978ddd04801301b09f7925a6b24724e4bd9207f5952c651912bbbd08dd7990",
+        "bytes": 2820376
+      }
+    ],
+    "bucketListStatus": 403
+  },
+  "verification": {
+    "tests": 141,
+    "typecheck": "passed",
+    "cleanMergedBuild": "passed",
+    "packageInstallSmoke": "passed",
+    "packageBytesMatchSmoke": true,
+    "channelValidator": "passed for 0.0.25 and 0.0.26",
+    "windowsDevice": "pending",
+    "productionApproval": "pending"
+  },
+  "skillFreshness": {
+    "base": "d336bb476d37e3fa457ac2674274ab728515aead",
+    "checked": 17,
+    "diff": [],
+    "at": "2026-09-28T07:41:39.669Z"
+  },
+  "sourceSync": {
+    "status": "local_sync_blocked",
+    "finalRemoteMainSha": "1bf847b967c2199b47ef79154f8af5cc5a0fdec7",
+    "finalLocalMainSha": "a6ad4f24162f6f6b475266837f565002a26793ac",
+    "reason": "primary checkout contains unrelated uncommitted work; preserved"
+  },
+  "distributionSync": {
+    "status": "local_sync_blocked",
+    "remoteMainSha": "6704d4267c296bdf9b322a22dcbb66795646ebbe",
+    "localMainSha": "11125bf77cfe64ee29935da523b6fd361b1ce19f",
+    "reason": "preserved prior local history rewrite; verified metadata transport used; primary checkout not changed"
+  },
+  "mainAdvancedAfterRelease": false,
+  "checkpoint": "before documentation-only receipt MR; final readback remains in task receipt",
+  "excludedMergeRequestsReadback": [
+    {
+      "iid": 203,
+      "state": "opened",
+      "sha": "5de2275fccab205e15c09a533ee137d7dd79b283"
+    },
+    {
+      "iid": 197,
+      "state": "opened",
+      "sha": "337490e84e47b876b96a8730f7a51fa02c58e0b6"
+    },
+    {
+      "iid": 194,
+      "state": "opened",
+      "sha": "9fd61d0e08dd149e0849bbea37afc7d614caa907"
+    },
+    {
+      "iid": 182,
+      "state": "opened",
+      "sha": "5c4d8077d19bbc1c1c546f79dbf0cce0f301ed4d"
+    },
+    {
+      "iid": 165,
+      "state": "opened",
+      "sha": "2d2ddf62c37c531afbdaf3cb1f82bdce314de3a2"
+    },
+    {
+      "iid": 161,
+      "state": "opened",
+      "sha": "585ff0861f57ceffcb74671ae91dc97bc80b80e8"
+    },
+    {
+      "iid": 160,
+      "state": "opened",
+      "sha": "3bbd9d4e6dddfbbc32d3afcf0787cb106e2e7973"
+    },
+    {
+      "iid": 144,
+      "state": "opened",
+      "sha": "d70143ccb2cb5120e8f62ab93717820ed20e1578"
+    },
+    {
+      "iid": 125,
+      "state": "opened",
+      "sha": "3e2f5db1d62a78086c14508e0b89f09b1ad04b1e"
+    },
+    {
+      "iid": 124,
+      "state": "opened",
+      "sha": "974a835ccd75dc003cead6fd67a29dfa3ef89eb1"
+    },
+    {
+      "iid": 117,
+      "state": "opened",
+      "sha": "eb467a5ffdbc9387d41890bacaa25ffab83df535"
+    }
+  ]
+}

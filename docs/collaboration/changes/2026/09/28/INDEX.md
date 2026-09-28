@@ -3,8 +3,8 @@
 
 | 编号 | 模块 | 状态 | 详情 |
 |---|---|---|---|
-| CHANGE-20260928-returned-role-approval | 销售计划 | 待合入 | [退回计划按审批角色重审当前版本](gea-returned-role-approval.md) |
-| CHANGE-20260928-restore-plan-tabs | 销售计划 | 待合入 | [恢复月初与纠偏切换入口](gea-restore-plan-tabs.md) |
-| CHANGE-20260928-gea-plugin-135 | 业务Agent与销售计划 | 已验证待发布 | [GEA0.0.135卡片与证据停止、月初纠偏入口](gea-plugin-135.md) |
+| CHANGE-20260928-returned-role-approval | 销售计划 | 已发布待验收 | [退回计划按审批角色重审当前版本](gea-returned-role-approval.md) |
+| CHANGE-20260928-restore-plan-tabs | 销售计划 | 已发布待验收 | [恢复月初与纠偏切换入口](gea-restore-plan-tabs.md) |
+| CHANGE-20260928-gea-plugin-135 | 业务Agent与销售计划 | 已发布待验收 | [GEA0.0.135卡片与证据停止、月初纠偏入口](gea-plugin-135.md) |
 | CHANGE-20260928-gea-plugin-134 | 业务Agent与插件发行 | 已发布待验收 | [GEA 0.0.134仅整合MR200与MR201](gea-plugin-134.md) |
 | CHANGE-20260928-gea-hide-preview-agents | Agent 预设 | 已发布待验收 | [隐藏三个演示 Agent 并保留业务页面](gea-hide-preview-agents.md) |

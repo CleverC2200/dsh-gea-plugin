@@ -1,5 +1,5 @@
 <!-- collaboration-record
-{"kind":"bug","id":"BUG-20260928-returned-role-approval","date":"2026-09-28","title":"退回计划的通过错误依赖客户重提服务账号","module":"销售计划","category":"功能逻辑","cause":"其他","severity":"P2","status":"已修复待验证"}
+{"kind":"bug","id":"BUG-20260928-returned-role-approval","date":"2026-09-28","title":"退回计划的通过错误依赖客户重提服务账号","module":"销售计划","category":"功能逻辑","cause":"其他","severity":"P2","status":"已发布待验收"}
 -->
 # 退回计划的通过错误依赖客户重提服务账号
 
@@ -17,3 +17,5 @@
 | 日期 | 状态 | 证据 |
 |---|---|---|
 | 2026-09-28 | 已修复待验证 | 本地回归通过；真实服务验收未完成，暂不关闭 |
+
+2026-09-28：GEA 0.0.135经MR !206、!207合并发布；四份频道和8个不同包地址匿名校验通过。发行回执：docs/releases/gea-0.0.135-verification.json。Windows实机更新与真实后端审批仍待验收。

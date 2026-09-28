@@ -1,5 +1,5 @@
 <!-- collaboration-record
-{"kind":"change","id":"CHANGE-20260928-restore-plan-tabs","date":"2026-09-28","title":"恢复月初与纠偏切换入口","module":"销售计划","status":"待合入"}
+{"kind":"change","id":"CHANGE-20260928-restore-plan-tabs","date":"2026-09-28","title":"恢复月初与纠偏切换入口","module":"销售计划","status":"已发布待验收"}
 -->
 # 恢复月初与纠偏切换入口
 
@@ -10,3 +10,5 @@
 - 用户已明确要求恢复入口并提交 MR；本次不合并、不发布。真实生产业务验收未执行。
 - 无新增独立 Bug，未改原有 Bug 状态；历史行为与测试迁移见 [提交审查](../../../../../reviews/restore-plan-tabs-20260928.md)。
 - MR 与候选提交在创建后的 MR 描述/回执中记录；本记录不预填自身提交 SHA。
+
+2026-09-28：GEA 0.0.135经MR !206、!207合并发布；四份频道和8个不同包地址匿名校验通过。发行回执：docs/releases/gea-0.0.135-verification.json。Windows实机更新与真实后端审批仍待验收。
