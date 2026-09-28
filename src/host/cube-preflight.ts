@@ -26,6 +26,7 @@ import {
   type ModelMembers,
 } from "./member-index.ts";
 import { yearMonthHint, yearMonthValues } from "./cube-query-guard.ts";
+import { monthFormatIssue } from './sales-result-contract.ts';
 
 /** 下游 `CubeJsonQuery.additionalProperties=false`：只能用这些字段。 */
 const QUERY_FIELDS = new Set([
@@ -604,6 +605,8 @@ export function preflightCubeArguments(
     return model ? model.time.includes(member) : false;
   });
   if (yearMonths.length > 0) return yearMonthHint(yearMonths);
+  const monthIssue = monthFormatIssue(queries);
+  if (monthIssue) return monthIssue;
 
   // §17.8：请求体本身的体积。成员名是最占字符的部分，超了就是"想把整表列全"。
   // 放在成员校验之前——它不需要清单也能判，所以清单不在手时也要拦。

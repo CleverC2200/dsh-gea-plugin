@@ -323,8 +323,14 @@ export function resultReceipt(
         )
         .slice(0, 8);
   }
+  const pages = datasetPages(raw);
+  if (pages.length) facts.businessFacts = pages.slice(0, 4).map(page => {
+    // System receipts retain state only; business values stay in their authorized tool result.
+    const {observedValues, ...status} = datasetBusinessFacts(page.rows);
+    return {name:page.name, ...status};
+  });
   const text = JSON.stringify(facts);
-  return text.length <= 500
+  return text.length <= 1500
     ? text
     : JSON.stringify({
         evidenceId: id,
@@ -450,7 +456,10 @@ export function datasetIndex(raw: string, evidenceId: string) {
  * Mixed failures keep the existing envelope projection so no rejected query disappears.
  */
 export function compactDatasetProjection(raw: string, evidenceId: string, limit = 6000): string | undefined {
-  if (resultOutcome(raw) !== 'returned') return undefined;
+  if (resultOutcome(raw) === 'blocked') return undefined;
+  const envelope = parsed(raw);
+  const queryFailures = record(envelope) && Array.isArray(envelope.results)
+    ? envelope.results.filter(r => record(r) && r.status !== 'returned').map(r => ({names:r.names,status:r.status,code:r.code,message:r.message})) : [];
   const index = datasetIndex(raw, evidenceId);
   if (!index.length || index.length > 8) return undefined;
   for (const rowLimit of [100, 30, 10, 3, 1]) {
@@ -458,12 +467,21 @@ export function compactDatasetProjection(raw: string, evidenceId: string, limit 
       const datasets = index.map(d => readDataset(raw, evidenceId, d.key, 0, rowLimit));
       const incomplete = datasets.some(d => d.nextRead !== null);
       const value = JSON.stringify({evidenceId, projection: incomplete ? 'partial' : 'complete', sourceOutcome: resultOutcome(raw), datasets,
+        ...(queryFailures.length ? {queryFailures} : {}),
         evidenceDatasets: index.map((d,i)=>({...d,nextRead:datasets[i]!.nextRead})),
         note:'业务行已结构化展示；完整表示本次返回行已展示，不证明源数据全量。无需再读外层JSON；仅未展示行沿nextRead读取。原产物保留供核对。'});
       if (value.length <= limit) return value;
     } catch { return undefined; }
   }
   return undefined;
+}
+
+/** Facts about displayed rows only; no model-created aggregates or inferred status dictionaries. */
+export function datasetBusinessFacts(rows: Row[]) {
+  const nullWithRows = rows.some(row => Object.entries(row).some(([key,value]) => /\.row_count$/.test(key) && Number(value)>0) && Object.entries(row).some(([key,value]) => /_sum$/.test(key) && value === null));
+  const emptyGroups = [...new Set(rows.flatMap(row => Object.entries(row).filter(([key,value]) => /\.(?:province_region_name|region_name)$/.test(key) && (value===null || typeof value==='string'&&!value.trim())).map(([key])=>key)))];
+  const totals = rows.length===1 ? Object.fromEntries(Object.entries(rows[0]!).filter(([key]) => /(?:_sum|\.row_count|\.customer_count|\.sku_count)$/.test(key)).slice(0,6)) : undefined;
+  return {displayedRows:rows.length, ...(totals?{observedValues:totals}:{}), ...(nullWithRows?{quantityState:'guarded-null',note:'有记录但汇总为NULL：检查批次、候选粒度、缺量等保护条件，不能判无数据。'}:{}), ...(emptyGroups.length?{emptyGroupMembers:emptyGroups,noteGroup:'存在组织成员为空的展示行；这些行不能归入已知省区，也不能换成基地。其它有效分组仍可展示并注明缺失覆盖。'}:{})};
 }
 export function indexProjection(
   projected: string,
@@ -541,6 +559,7 @@ export function readDataset(
     returnedRows: selected.length,
     sourceCoverage: pages.map((p) => ({ ...p.source, fields: undefined })),
     table: tablePage({ rows: selected }),
+    businessFacts: datasetBusinessFacts(selected),
     nextRead:
       next === null
         ? null

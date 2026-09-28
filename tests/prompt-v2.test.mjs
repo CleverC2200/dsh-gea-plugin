@@ -435,7 +435,7 @@ test(
           assert.ok(evidenceId);
           call = {
             name: "gea_evidence_read",
-            arguments: JSON.stringify({ evidenceId, limit: 6000 }),
+            arguments: JSON.stringify({ evidenceId, format:'raw', limit: 6000 }),
           };
         } else if (!rawDone) {
           pages.push(value.content);
@@ -725,7 +725,10 @@ test('small nested artifacts expose exact business rows with coverage, not escap
   assert.match(JSON.stringify(output),/not a complete snapshot|source batch unverified/);
   assert.ok(!JSON.stringify(output).includes('\\\\\\"rows'));
   const mixed=JSON.stringify({source:'GEA_CUBE_BATCH',results:[{status:'returned',result:raw},{status:'rejected',code:'DENIED'}]});
-  assert.equal(compactDatasetProjection(mixed,'ev-fixture'),undefined);
+  const partial=JSON.parse(compactDatasetProjection(mixed,'ev-fixture'));
+  assert.equal(partial.sourceOutcome,'partial');
+  assert.equal(partial.queryFailures[0].code,'DENIED');
+  assert.deepEqual(partial.datasets[0].table.rows,rows);
 });
 
 test('compact dataset paging never presents its row slice as the full returned dataset', () => {

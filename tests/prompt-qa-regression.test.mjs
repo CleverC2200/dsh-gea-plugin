@@ -502,7 +502,7 @@ test(
                   }
                 });
               const found = values.find((v) => v.evidenceId);
-              return { evidenceId: found.evidenceId, offset: 0, limit: 1000 };
+              return { evidenceId: found.evidenceId, format:'raw', offset: 0, limit: 1000 };
             }),
           ],
           "计算后在同轮读取明细",

@@ -159,9 +159,9 @@ export function promptMeasurement(
 
 export const TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = {
   gea_sales_plan_read:
-    "只读在线销售计划工作流：实时审批状态、日志、操作前版本及用户明确指定的在线数据核对。销售计划提报结果/计划结果应通过 gea_cube_query 查询Hive模型agents_sales_plan_detail_mi，本工具不是该源的替代。在线周期先periods取periodId，仅在线工作流统计用aggregate；baseName是基地。金额和ID保持精确，来源与覆盖如实说明。",
+    "在线销售计划只读：实时审批、日志、操作前版本或用户指定的在线数据。提报/计划结果走授权Hive Cube，不作替代。周期先periods取periodId；在线汇总用aggregate；baseName是基地。金额/ID保持精确，注明覆盖。",
   gea_gateway_catalog:
-    "查看所选 Agent 的授权模型；不带 model 返回索引，带 model 返回成员及类型。members + values 可核对取值。成员照目录使用：度量用于聚合，分段用于筛选。目录可见不替代字段和行权限校验；查询使用 gea_cube_query。",
+    "查看所选Agent授权模型：model精确匹配优先；members定向读成员定义、单位和格式，values=true才抽样取值。已有成员直接gea_cube_query，重复目录不会补出隐藏知识。目录不替代字段/行权限。",
   gea_module_mcp:
     "调用其它受管 MCP 能力或续读产物。仅传 consumerCode 列工具，tool + schema=true 读参数，tool + arguments 执行。Cube 查询用 gea_cube_query。产物已内联则无需重读；后续片段传原 artifact 和 offset。只读，不绕过授权。",
   gea_visible_workbench_context:

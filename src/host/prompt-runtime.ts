@@ -1,6 +1,7 @@
 import { hasPageReferences } from "../../packages/page-interaction/src/reference.ts";
 import { sessionConsumer } from "./business-identity.ts";
 import { catalogFactSummary } from './gateway-catalog.ts';
+import { salesSourceIssueForTurns, requestedOutputScope } from './sales-result-contract.ts';
 import {
   resultView,
   resultReceipt,
@@ -72,6 +73,7 @@ type State = {
   catalogOutputs: Set<string>;
   catalogStalls: number;
   catalogGeneration: number;
+  evidenceViews: Map<string, string>;
 };
 
 /** Only a still-visible tool result with the actual body counts; a compacted digest or user quote does not. */
@@ -203,6 +205,7 @@ export function mountBusinessPrompts(
         catalogOutputs: new Set(),
         catalogStalls: 0,
         catalogGeneration: 0,
+        evidenceViews: new Map(),
       };
       // Restore only successful capability-loader choices, not arbitrary data that mentions a tool pack.
       const requests = new Map<string, { pack?: ToolPack; skill?: string }>();
@@ -258,6 +261,10 @@ export function mountBusinessPrompts(
     }
     return state;
   };
+  const businessSkill = (name: string, resourceBase?: {kind:string;path?:string}) =>
+    /^sinian-/.test(name) || Object.values(PROFILES).some(profile => profile.skills.includes(name)) ||
+    (resourceBase?.kind === 'directory' && typeof resourceBase.path === 'string' && resourceBase.path.startsWith(resolve(process.env.DSH_HOME || business.config.runtimeDir,'business-skills')+'/')) ||
+    ['business-requirements-brief','genui','visualize'].includes(name);
   const namesFor = (agent: Agent, state = stateOf(agent)) => {
     const profile = profileOf(agent)!;
     const names = allowedTools(profile, state.packs);
@@ -309,6 +316,7 @@ export function mountBusinessPrompts(
       state.instructions.clear();
       state.deniedConsumers.clear();
       state.reads.clear();
+      state.evidenceViews.clear();
       state.failures.clear();
       state.catalogOutputs.clear();
       state.catalogStalls = 0;
@@ -335,6 +343,7 @@ export function mountBusinessPrompts(
       state.instructions.clear();
       state.deniedConsumers.clear();
       state.reads.clear();
+      state.evidenceViews.clear();
       state.failures.clear();
       state.catalogOutputs.clear();
       state.catalogStalls = 0;
@@ -371,6 +380,11 @@ export function mountBusinessPrompts(
       if (!profileOf(agent) || !agent) return;
       const state = stateOf(agent);
       const callArgs = exec.arguments as Record<string, unknown>;
+      if (exec.name === 'gea_sales_plan_read') {
+        const questions = agent.session.snapshotEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'user').map(event => event.type === 'user/message' ? event.data.content.filter(b => b.type === 'text').map(b => b.type === 'text' ? b.text : '').join('\n') : '');
+        const issue = salesSourceIssueForTurns(questions);
+        if (issue) return issue;
+      }
       const currentConsumer = sessionConsumer(ctx, business, agent.id);
       if (
         state.deniedConsumers.has(currentConsumer) &&
@@ -694,20 +708,7 @@ export function mountBusinessPrompts(
           ).filter(
             (skill) =>
               skill.invocation.modelInvocable &&
-              (/^sinian-/.test(skill.name) ||
-                Object.values(PROFILES).some((profile) =>
-                  profile.skills.includes(skill.name),
-                ) ||
-                (skill.resourceBase?.kind === "directory" &&
-                  skill.resourceBase.path.startsWith(
-                    resolve(
-                      process.env.DSH_HOME || business.config.runtimeDir,
-                      "business-skills",
-                    ) + "/",
-                  )) ||
-                ["business-requirements-brief", "genui", "visualize"].includes(
-                  skill.name,
-                )),
+              businessSkill(skill.name,skill.resourceBase),
           );
           if (
             args.skill &&
@@ -754,6 +755,9 @@ export function mountBusinessPrompts(
             skills: available.map((skill) => ({
               name: skill.name,
               description: skill.description.slice(0, 70),
+              enabled: state.skillNames.has(skill.name),
+              bodyLoaded: state.loadedRules.has(skill.name),
+              loadWith: 'gea_skill',
             })),
           });
         },
@@ -765,7 +769,7 @@ export function mountBusinessPrompts(
       defineTool({
         name: "gea_skill",
         description:
-          '加载当前 Agent 的业务规则；缺少规则先 gea_capabilities 查看并选择。读取或重读正文省略path，例如 {"name":"inventory-qll","offset":1,"limit":80,"reload":true}。offset、limit、reload是独立参数，不能拼进path。path只接受正文明确链接的本地参考文件。未包含的章节沿用nextRead继续读取。',
+          '按名称选择并加载当前会话可用业务规则，无需先capabilities选择。读正文省略path，例如 {"name":"inventory-qll","offset":1,"limit":80,"reload":true}。分页参数分别传入，不拼进path；path只接受正文链接的参考文件。未读章节沿nextRead读取。',
         parameters: {
           name: { type: "string", required: true },
           path: { type: "string", description: "仅参考文件的原始相对链接；读Skill正文省略。不能填分页参数或SKILL.md。" },
@@ -789,15 +793,16 @@ export function mountBusinessPrompts(
             throw Error("GEA_BUSINESS_SESSION_REQUIRED");
           const state = stateOf(exec.agent);
           const ownProfile = profileOf(exec.agent)!;
+          const revision = business.readTurnRevision(exec.agent.id);
           if (
             args.name === ownProfile.consumerCode &&
             ownProfile.skills.length === 1
           )
             args = { ...args, name: ownProfile.skills[0]! };
-          if (!state.skillNames.has(args.name))
-            throw Error(
-              "GEA_SKILL_NOT_LOADED: 先 gea_capabilities 选择该业务规则。",
-            );
+          if (!state.skillNames.has(args.name)) {
+            const available = await ctx.skills.list({scope:exec.agent,cwd:exec.agent.session.header.cwd,signal:exec.signal});
+            if (!available.some(skill => skill.name === args.name && skill.invocation.modelInvocable && businessSkill(skill.name, skill.resourceBase))) throw Error('GEA_SKILL_UNAVAILABLE');
+          }
           const skill = await ctx.skills.get(args.name, {
             scope: exec.agent,
             cwd: exec.agent.session.header.cwd,
@@ -870,6 +875,9 @@ export function mountBusinessPrompts(
               ? offset + selected.length
               : null;
           const content = selected.join("\n");
+          exec.signal.throwIfAborted();
+          if (stateOf(exec.agent) !== state || business.readTurnRevision(exec.agent.id) !== revision) throw Error('GEA_CAPABILITY_STATE_CHANGED');
+          state.skillNames.add(args.name);
           const instructionId = hash([
             args.name,
             args.path ?? "",
@@ -940,12 +948,14 @@ export function mountBusinessPrompts(
       defineTool({
         name: "gea_evidence_read",
         description:
-          "回读本会话已取得的结果原文，不重新执行查询。仅接受宿主返回的 evidenceId；offset/limit 为字符位置，分段不等于全量业务覆盖。",
+          "仅在nextRead非空时续读未展示业务行；完整结果直接使用。默认结构化结果，原始审计需format=raw。回读不重新查询，不改变权限或数据覆盖。",
         parameters: {
+          format: {type:'string',enum:['structured','raw'],description:'默认structured；raw仅审计原始包，不能用它替代已展示的业务行。'},
+          reload: {type:'boolean',description:'明确需要重新展示已读视图时使用，不重新查询。'},
           dataset: {
             type: "string",
             description:
-              "使用evidenceDatasets的key/nextRead读取业务行；名称仅在唯一时兼容。省略时默认返回结构化业务结果或索引；显式offset/limit才读原文。",
+              "使用evidenceDatasets的key/nextRead读取业务行；省略时返回结构化业务结果或索引。",
           },
           datasetId: {
             type: "string",
@@ -984,6 +994,8 @@ export function mountBusinessPrompts(
                 "rowLimit",
                 "offset",
                 "limit",
+                "format",
+                "reload",
               ].includes(key),
           );
           if (unknown.length)
@@ -996,6 +1008,7 @@ export function mountBusinessPrompts(
             throw Error("GEA_EVIDENCE_ARGUMENT: dataset与datasetId不能不同。");
           if (args.datasetId && !args.dataset)
             args = { ...args, dataset: args.datasetId };
+          if (args.dataset && args.format === 'raw') throw Error('GEA_EVIDENCE_READ_MODE: dataset和raw不能混用。');
 
           if (
             !args.dataset &&
@@ -1011,8 +1024,7 @@ export function mountBusinessPrompts(
             throw Error(
               "GEA_EVIDENCE_READ_MODE: dataset模式使用rowOffset/rowLimit，原文模式使用offset/limit，按nextRead调用。",
             );
-          return JSON.stringify(
-            await store.read(
+          const read = await store.read(
               agent.id,
               args.evidenceId,
               args.offset,
@@ -1063,20 +1075,25 @@ export function mountBusinessPrompts(
                     "GEA_EVIDENCE_STALE: 页面或临时结果需要重新读取。",
                   );
               },
-              args.dataset
-                ? (raw) =>
-                    readDataset(
-                      raw,
-                      args.evidenceId,
-                      args.dataset!,
-                      args.rowOffset,
-                      args.rowLimit,
-                    )
-                : args.offset === undefined && args.limit === undefined
-                  ? (raw) => exactResult(compactDatasetProjection(raw, args.evidenceId) ?? JSON.stringify({evidenceDatasets:datasetIndex(raw,args.evidenceId), projection:'index', nextRead:{tool:'gea_evidence_read',args:{evidenceId:args.evidenceId,offset:0,limit:4000}}})) as Record<string, unknown>
-                  : undefined,
-            ),
-          );
+              args.format === 'raw' || (args.format === undefined && Number(args.offset) > 0) ? undefined : (raw) => {
+                const index = datasetIndex(raw,args.evidenceId);
+                // Old non-Cube consumers use character slices (e.g. calculation drafts).
+                if (!index.length && args.format === undefined && (args.offset !== undefined || args.limit !== undefined)) {
+                  const offset=args.offset??0,limit=args.limit??4000,nextOffset=offset+limit<raw.length?offset+limit:null;
+                  return {projection:offset===0&&raw.length<=limit?'complete':'partial',offset,totalChars:raw.length,nextOffset,content:raw.slice(offset,offset+limit),nextRead:nextOffset===null?null:{tool:'gea_evidence_read',args:{evidenceId:args.evidenceId,format:'raw',offset:nextOffset,limit}}};
+                }
+                const view = args.dataset ? readDataset(raw,args.evidenceId,args.dataset,args.rowOffset,args.rowLimit)
+                  : exactResult(compactDatasetProjection(raw,args.evidenceId) ?? (index.length ? JSON.stringify({evidenceDatasets:index,projection:'index',nextRead:index[0]?.nextRead}) : projectEvidence(raw,args.evidenceId))) as Record<string,unknown>;
+                const state = stateOf(agent), viewId=hash(view), key = `${args.evidenceId}:${viewId}`;
+                const prior = state.evidenceViews.get(key);
+                const visible = prior && JSON.stringify(agent.session.deriveMessages()).includes(viewId);
+                if (visible && !args.reload) return {evidenceId:args.evidenceId,projection:'already-delivered',note:'此视图已完整返回并仍在上下文，直接使用已有业务行。无需重读。',evidenceDatasets:index,businessFacts:(view as {datasets?: Array<{businessFacts?:unknown}>}).datasets?.map(d=>d.businessFacts),nextRead:(view as {nextRead?:unknown}).nextRead??null};
+                state.evidenceViews.set(key, viewId);
+                while(state.evidenceViews.size>32)state.evidenceViews.delete(state.evidenceViews.keys().next().value!);
+                return {...view,viewId};
+              },
+            );
+          return JSON.stringify(read);
         },
       }),
     ),
@@ -1102,6 +1119,8 @@ export function mountBusinessPrompts(
         day: "2-digit",
       }).format(new Date());
       const consumer = sessionConsumer(ctx, business, agent.id);
+      const user = agent.session.snapshotEvents().findLast(event => event.type === 'user/message' && event.data.source.kind === 'user');
+      const outputScope = requestedOutputScope(user?.type === 'user/message' ? user.data.content.filter(b=>b.type==='text').map(b=>b.type==='text'?b.text:'').join('\n') : '');
       const facts = `日期：${date}；时区：Asia/Shanghai。Agent：${profile.label}；业务编码：${consumer}。\n${surfacePromptLine(business.surfaceFor(agent.id))}`;
       const sections = [
         ...businessSections(assembled.sections),
@@ -1114,6 +1133,7 @@ export function mountBusinessPrompts(
             shortSkillCatalog(skills),
         },
         { name: "gea:facts", text: facts },
+        ...(outputScope ? [{name:'gea:output-scope',text:outputScope}] : []),
         ...(state.catalogFacts.size || state.loadedRules.size ? [{name:'gea:confirmed-semantics', text:'本轮已成功返回的字段、单位和规则（不是新的授权；猜测列名不存在不等于无对应业务字段）：\n'+[...state.catalogFacts.values(),...state.loadedRules.values()].join('\n')}] : []),
         ...(state.catalogStalls >= 2
           ? [

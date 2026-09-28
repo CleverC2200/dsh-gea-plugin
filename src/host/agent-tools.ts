@@ -1067,7 +1067,7 @@ export function registerGeaTools(
               note:
                 "这一轮用户没有页面意图（默认不读页面，免得把整屏数据塞进上下文）：" +
                 "只有用户明确说「读这一屏/看这几行/展开/选中的/这单」这类话时才读页面快照。" +
-                "当前问题请直接取数：按月/按范围用 gea_module_mcp（先列工具再调用）或 gea_sales_plan_read；" +
+                "当前问题请直接取数：销售提报/计划结果用授权Hive Cube模型，在线工具仅用于实时审批；其它数据按授权模型读取；" +
                 "如果用户确实需要屏幕上的内容，直接说明「要看这一屏请明确说一声」。",
             });
           const focus =
@@ -1216,7 +1216,7 @@ export function registerGeaTools(
           const permitted = authorizedCatalog(payload,snapshot);
           const consumers = resourceConsumers(snapshot,consumerCode);
           const limits = resources.filter(resource=>!args.model||resource.queryTarget.includes(String(args.model))).map(resource=>({queryTarget:resource.queryTarget,resourceCode:resource.resourceCode,version:resource.version,maxRows:resource.maxRows,maxBytes:resource.maxBytes}));
-          const output = projectCatalog(permitted,{model:args.model,consumers}) + '\n授权资源快照：' + JSON.stringify(limits) + '\n仅限当前 Agent 的资源级授权；字段、业务行范围和运行条件仍由实际查询校验。空限制值不表示无限制。同一 queryTarget 对应多个资源时需平台核对绑定，不能自行任选。';
+          const output = projectCatalog(permitted,{model:args.model,members,consumers}) + '\n授权资源快照：' + JSON.stringify(limits) + '\n仅限当前 Agent 的资源级授权；字段、业务行范围和运行条件仍由实际查询校验。空限制值不表示无限制。同一 queryTarget 对应多个资源时需平台核对绑定，不能自行任选。';
           return delivered(dedup.remember(cacheKey,output));
           } catch(error) { throw expiredSession(consumerCode,scope,error) ?? error; }
         },

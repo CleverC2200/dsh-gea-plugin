@@ -93,7 +93,7 @@ test("business output policy and reference reader remain separate", async () => 
  const policy=JSON.parse(await readFile(new URL('../presets/prompt-policy.json',import.meta.url),'utf8'));
  assert.match(policy.output,/用户要求的语言/);assert.match(policy.output,/业务字段说明不得暴露凭据/);
  const runtime=await readFile(new URL('../src/host/prompt-runtime.ts',import.meta.url),'utf8');
- assert.match(runtime,/GEA_SKILL_REFERENCE_NOT_LINKED/);assert.match(runtime,/GEA_SKILL_NOT_LOADED/);
+ assert.match(runtime,/GEA_SKILL_REFERENCE_NOT_LINKED/);assert.match(runtime,/GEA_SKILL_UNAVAILABLE/);
 });
 
 test("reference reader respects current skill visibility, cancellation and paging", async () => {

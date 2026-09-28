@@ -265,7 +265,7 @@ export class PromptEvidenceStore {
         offset + limit < text.length
           ? {
               tool: "gea_evidence_read",
-              args: { evidenceId: id, offset: offset + limit, limit },
+              args: { evidenceId: id, format: 'raw', offset: offset + limit, limit },
             }
           : null,
       content: text.slice(offset, offset + limit),

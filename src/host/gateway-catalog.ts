@@ -1,4 +1,5 @@
 /** GEA 网关语义模型的紧凑目录：把 inspect 产物压到模型能一次读完的大小。 */
+import { monthEncoding, salesQueryGuide } from './sales-result-contract.ts';
 
 import {
   rankByName,
@@ -363,6 +364,7 @@ export function projectCatalog(
   payload: unknown,
   options: {
     model?: string;
+    members?: readonly string[];
     maxMembersPerModel?: number;
     maxChars?: number;
     /** 模型 → consumerCode：告诉模型"这张表用哪条模块通道查"。 */
@@ -378,13 +380,17 @@ export function projectCatalog(
   const maxChars = options.maxChars ?? 12_000;
   const consumers = options.consumers;
   const filter = options.model?.trim();
-  if (!filter) return modelIndex(models, maxChars, consumers, options.memberNotes);
+  if (!filter && !options.members?.length) return modelIndex(models, maxChars, consumers, options.memberNotes);
   const detailBudget = {
     maxMembers: options.maxMembersPerModel ?? 120,
     maxChars,
+    members: options.members,
     ...(consumers ? { consumers } : {}),
     ...(options.memberNotes?.size ? { memberNotes: options.memberNotes } : {}),
   };
+  const exact = models.filter(model => model.name === filter || (!filter && options.members?.some(member => member.startsWith(model.name + '.'))));
+  if (exact.length) return modelDetails(exact, detailBudget);
+  if (!filter) return modelIndex(models, maxChars, consumers, options.memberNotes);
   const ranked = rankByName(filter, models.map(catalogCandidate), { limit: MATCH_LIMIT + 8 });
   // 一个都不像：把带说明的完整索引直接回给模型，一步挑对，省一次往返。
   if (ranked.length === 0) return missedModel(filter, models, maxChars, consumers);
@@ -446,6 +452,7 @@ function weakMatch(
   budget: {
     maxMembers: number;
     maxChars: number;
+    members?: readonly string[];
     consumers?: ReadonlyMap<string, string>;
     memberNotes?: ReadonlyMap<string, string>;
   },
@@ -577,6 +584,7 @@ function modelDetails(
   options: {
     maxMembers: number;
     maxChars: number;
+    members?: readonly string[];
     consumers?: ReadonlyMap<string, string>;
     /** 成员取值可用性（实测）：key 形如 `模型.字段`，如"取值全为空串"。 */
     memberNotes?: ReadonlyMap<string, string>;
@@ -590,10 +598,13 @@ function modelDetails(
   let membersTruncated = false;
   for (const model of models) {
     const name = model.name ?? "";
-    const dimensions = taggedMembers(model, "dimensions");
-    const measures = taggedMembers(model, "measures");
-    const segments = taggedMembers(model, "segments");
+    const selected = options.members?.length ? new Set(options.members) : undefined;
+    const selectedModel = selected ? {...model, ...Object.fromEntries(MEMBER_KEYS.map(key => [key, (model[key] ?? []).filter(member => selected.has(member.name ?? ''))]))} : model;
+    const dimensions = taggedMembers(selectedModel, "dimensions");
+    const measures = taggedMembers(selectedModel, "measures");
+    const segments = taggedMembers(selectedModel, "segments");
     const parts = [`- ${name}${model.title && model.title !== name ? `（${model.title}）` : ""}`];
+    if (selected) parts.push(`  定向成员视图：仅展示本次请求的成员，未列出不代表不存在或无权限。该模型共${(model.dimensions??[]).length}个维度、${(model.measures??[]).length}个度量；要完整目录请带model不带members。`);
     const description = (model.description ?? "").replace(/\s+/g, " ").trim();
     if (description) parts.push(`  说明：${description.slice(0, 160)}`);
     const consumerCode = options.consumers?.get(name);
@@ -605,18 +616,31 @@ function modelDetails(
       parts.push(`  维度(${dimensions.length})：${dimensions.slice(0, options.maxMembers).join(", ")}`);
     if (measures.length)
       parts.push(`  度量(${measures.length})：${measures.slice(0, options.maxMembers).join(", ")}`);
+    else if (selected && (model.measures?.length ?? 0)>0)
+      parts.push(`  本次未选择度量；模型已有${model.measures!.length}个度量，不能据此判模型无度量。`);
     else
       // 一个 measure 都没有的 cube：数值字段也是维度，写进 measures 会被上游拒掉整批查询。
       parts.push("  度量：无（这个模型没有定义 measure：所有成员一律放 dimensions，数值字段也不要写进 measures）");
     if (segments.length)
       parts.push(`  分段(${segments.length})：${segments.slice(0, options.maxMembers).join(", ")}`);
-    const semantics = (model.measures ?? []).filter(member=>typeof member?.name === "string")
-      .slice(0,8).map(member=>{
+    const semanticMembers = selected ? MEMBER_KEYS.flatMap(key => selectedModel[key] ?? []) : model.measures ?? [];
+    const omitted: string[] = [];
+    let semanticChars = 0;
+    const semantics = semanticMembers.filter(member=>typeof member?.name === "string")
+      .sort((a,b)=>Number(/_count$/.test(a.name!))-Number(/_count$/.test(b.name!))).map(member=>{
         const notes=[member.description,member.meta?.unit?`单位：${member.meta.unit}`:undefined,member.meta?.ai_context]
           .filter((text): text is string=>typeof text === "string" && !!text.trim());
-        return notes.length ? `  ${member.name} 语义：${(notes.join("；").length<=1200?notes.join("；").replace(/\s+/g," "):"完整语义较长未展开，需核对原始规则；不得据省略内容推断公式或单位。")}` : "";
+        const month = monthEncoding(member.name!);
+        if (month) notes.push(`月份文本格式：${month.includes('-')?'YYYY-MM（7字符）':'YYYYMM（6字符）'}，示例${month}`);
+        const line = notes.length ? `  ${member.name} 语义：${[...new Set(notes)].join('；').replace(/\s+/g,' ')}` : '';
+        if (!selected && semanticChars + line.length > Math.max(1500, options.maxChars - parts.join('\n').length - 1500)) { omitted.push(member.name!); return ''; }
+        semanticChars += line.length;
+        return line;
       }).filter(Boolean);
     parts.push(...semantics);
+    if (omitted.length) parts.push(`  另有${omitted.length}项说明未展开：${omitted.join('、')}。用gea_gateway_catalog(model="${name}", members=[所需完整成员名])定向读取。`);
+    const guide = salesQueryGuide(name);
+    if (guide) parts.push(`  查询规则：${guide}`);
     // 实测过的"这列取不到可用值"直接写在成员清单里：省掉模型"一个模型一个模型试"的过程
     // （线上实测 session-bbd8f3be：大区列全为空串，模型换 6 个模型、24 步才得出结论）。
     if (options.memberNotes?.size) {
