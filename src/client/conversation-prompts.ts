@@ -622,7 +622,7 @@ export const supplyCoordinationConversation: ConversationPromptConfig = {
     { icon: "box", tone: "info", label: "看库存与订单", detail: "库存水位和订单履约异常", prompt: "请分析库存与订单风险" },
     { icon: "check", tone: "success", label: "生成行动建议", detail: "按优先级整理协同动作", prompt: "请生成产销协同行动建议" },
   ],
-  prompts: ["当前产销协同情况如何？", "哪些指标偏离目标？", "库存与订单有哪些风险？", "下一步如何协调产销？"],
+  prompts: ["哪些指标偏离目标？", "订单满足率近3个月的指标情况如何？", "可发货天数异常的产品有哪些？", "目前哪一个产品缺货较为严重"],
 };
 
 /** 客户库存页：客户库存健康度、周转与大日期风险。 */
