@@ -68,15 +68,14 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   for (const status of [0,8,9]) await expect(table.getByText(`scope-${status}-row`,{exact:true})).toHaveCount(0);
   const returned = table.locator('tr').filter({hasText:'scope-7-row'});
   await returned.locator('label.arco-checkbox').click();
-  // 退回态不能直接通过；状态 7 由区域角色可继续退回客户。这里未配置重提凭据，
-  // 所以共用的「通过」按钮置灰。
-  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeDisabled();
+  // 当前退回版本按角色重审，不依赖重提服务凭据。
+  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeEnabled();
   await expect(frame.getByRole('button',{name:'退回',exact:true})).toBeEnabled();
   const tracked = table.locator('tr').filter({hasText:'scope-6-row'});
   await returned.locator('label.arco-checkbox').click();
   await tracked.locator('label.arco-checkbox').click();
-  // 退回销售（6）已到客户起点，不能再向前退回。
-  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeDisabled();
+  // 状态 6 的退回目标是客户；区域审批人员仍可按自己的角色重审。
+  await expect(frame.getByRole('button',{name:'通过',exact:true})).toBeEnabled();
   await region.click();
   await expect(table.getByText('scope-6-row',{exact:true})).toHaveCount(0);
   await expect(region).toHaveAttribute('aria-pressed', 'true');
@@ -96,9 +95,9 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   await expect(frame.getByRole('dialog',{name:'销售计划审批',exact:true})).toHaveCount(0);
   await expect.poll(() => writes.length).toBe(1);
   assert.equal(writes.length,1);
-  assert.equal(writes[0].approvalRole,undefined,'上游报文只发接口文档声明的字段');
-  assert.equal(writes[0].approvalPolicy,undefined);
-  assert.equal(writes[0].expectedSnapshot,undefined);
+  assert.equal(writes[0].approvalRole,'region');
+  assert.equal(writes[0].approvalPolicy,'role-visible-v1');
+  assert.equal(writes[0].expectedSnapshot,'a'.repeat(64));
   assert.equal(writes[0].expectedStatus,2);
   await expect(regionCanReview.locator('label.arco-checkbox')).toBeVisible();
   await regionCanReview.locator('label.arco-checkbox').click();

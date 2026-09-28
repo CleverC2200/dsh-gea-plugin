@@ -746,7 +746,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
                   stateScope={`gea-dsh:${status.environment}:${status.user?.tenantId}:${status.user?.id}`}
                   t={locale.t.bind(locale)} onContextChange={onContextChange} queryClient={salesPlan} detailClient={salesPlan}
                   approvalStages={salesPlanStagesForRoles(status.roles)} liveActionsEnabled={true}
-                  resubmitClient={resubmitClient} resubmitConnected={status?.resubmitConnected === true}
                   liveActionClient={{ action: { invoke: (input) => rpc("sales-plan/action", input) } }}
                   onResubmit={(planId, versionId, period) => setResubmit({ planId, versionId, period })} automaticAnalysisEnabled={true}
                   onCatalogChange={(elements) => {

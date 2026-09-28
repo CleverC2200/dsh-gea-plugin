@@ -536,9 +536,8 @@ function keys(payload: Record<string, unknown>, allowed: string[]): void {
 }
 
 /**
- * 上游 action 报文只发接口文档声明的字段。
- * approvalRole / approvalPolicy / expectedSnapshot / adjustmentMode 只服务本地闸门，
- * 既不在 GEA 契约里，发出去也只会被服务端当未知字段丢掉。
+ * 旧服务仅接收基础动作字段；显式协商 role-visible-v1 后保留操作角色和快照，
+ * 让上游对同一个角色、同一份审批依据执行校验和写入。
  */
 const UPSTREAM_ACTION_FIELDS = [
   "action",
@@ -553,6 +552,10 @@ function upstreamActionBody(
   const body: Record<string, unknown> = {};
   for (const field of UPSTREAM_ACTION_FIELDS)
     if (request[field] !== undefined) body[field] = request[field];
+  if (request.approvalPolicy === 'role-visible-v1') {
+    for (const field of ['approvalRole', 'approvalPolicy', 'expectedSnapshot'])
+      if (request[field] !== undefined) body[field] = request[field];
+  }
   return body;
 }
 
@@ -1476,8 +1479,6 @@ export class Business {
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     if (![1,2,3,4,6,7,8,9].includes(request.expectedStatus as number))
       throw new GeaResponseError(400, {message:'未提交、已完成或无效状态不允许写入'});
-    // 退回态不再一律拒绝：上级退回给当前节点的单据要能改完继续提交（是否归本节点由下面的角色判定约束），
-    // 退回给别处的单子仍会被 salesPlanAccessForRow 判为不可写。纠偏重提（adjustmentMode）继续走原通道。
     if (request.approvalRole == null && request.adjustmentMode == null && request.action !== 'SAVE')
       throw new GeaResponseError(400,{message:'请明确本次审批角色'});
     if (request.approvalPolicy != null && (request.approvalPolicy !== 'role-visible-v1' || !request.approvalRole)) throw new Error('INVALID_PAYLOAD');
@@ -1492,13 +1493,8 @@ export class Business {
       // 版本或状态已经变化属于并发冲突：提示刷新，而不是笼统地报成无权限并禁用本轮操作。
       if (salesPlanVersionEvidenceStale(detail, {planId, versionId, status: request.expectedStatus as number}))
         throw new GeaResponseError(409,{message:'该计划版本或审批状态已变化，请刷新权威队列后重试'});
-      // 当前正式服务支持责任节点将退回态 7–9 再逐级退回；状态 6 已到客户起点。
-      // 退回态仍不能直接通过，必须由提报端生成新版本重提。
-      if (row.status >= 6 && row.status <= 9 &&
-          (request.action === 'APPROVE' || row.status === 6 ||
-           salesPlanWorkflow(row.planTypeCode, workflowRows).actor(row.status) !== role))
-        throw new GeaResponseError(409,{message:'该退回版本不能执行本次审批动作，请核对当前责任节点或使用退回重提'});
-      const access = salesPlanAccessForRow(row, detail, salesPlanStagesForRoles(auth.roles), role, workflowRows, { allowReturned: true });
+      // 退回版本按本次账号角色重审；退回目标不授予或撤销审批权限。
+      const access = salesPlanAccessForRow(row, detail, salesPlanStagesForRoles(auth.roles), role, workflowRows);
       if (!access?.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']))
         throw new GeaResponseError(403,{message:'当前角色不具备该版本的操作权限'});
       if (request.expectedSnapshot !== access.snapshotHash)

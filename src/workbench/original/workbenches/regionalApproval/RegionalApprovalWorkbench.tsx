@@ -10,7 +10,7 @@ import type { GeaSalesPlanPeriod } from '../../contracts.ts';
  */
 const SHOW_VERSION_CONTROLS = false;
 import { salesPlanQueueStatusText, salesPlanStatusText } from './regionalApprovalQueryModel.ts';
-import { SALES_PLAN_RETURN_CODES, SALES_PLAN_ROLES, salesPlanWorkflow } from '../../salesPlanWorkflow.ts';
+import { SALES_PLAN_RETURN_CODES, SALES_PLAN_ROLES } from '../../salesPlanWorkflow.ts';
 import {
   aggregateSalesPlanExportAmounts,
   SALES_PLAN_EXPORT_AMOUNT_PAIRS,
@@ -23,7 +23,6 @@ import {
   verifySavedSalesPlan,
 } from './models/salesPlanAccessModel.ts';
 import { salesPlanProgressBarColor } from './models/salesPlanProgressModel.ts';
-import type { SalesPlanSubmitClient } from './models/salesPlanSubmitModel.ts';
 import { salesPlanVarianceClass } from './models/salesPlanVarianceModel.ts';
 import {
   Alert,
@@ -432,9 +431,6 @@ const RegionalApprovalWorkbench: React.FC<{
   onResubmit?: (planId: string, versionId: string, period: GeaSalesPlanPeriod) => void;
   /** 当前账号可审批的节点：由账号角色映射得出（Host 经网关解析用户角色后传入）。 */
   approvalStages?: readonly ApprovalStageId[];
-  /** 退回重提通道：退回单点「通过」时走它（生成新版本），批量也走同一条通道。 */
-  resubmitClient?: SalesPlanSubmitClient;
-  resubmitConnected?: boolean;
   /** AG-UI 前端工具调用：agent 让页面改这一屏怎么看。 */
   toolCall?: { toolCallId: string; command: Record<string, unknown> };
   onToolResult?: (toolCallId: string, applied: boolean, error?: string) => void;
@@ -452,9 +448,6 @@ const RegionalApprovalWorkbench: React.FC<{
   liveActionsEnabled = false,
   automaticAnalysisEnabled = false,
   approvalStages,
-  resubmitClient,
-  resubmitConnected = false,
-  onResubmit,
   toolCall,
   onToolResult,
   onCatalogChange,
@@ -1062,18 +1055,10 @@ const RegionalApprovalWorkbench: React.FC<{
     return () => controller.abort();
   }, [detailClient, focusedLiveRow?.planId, focusedLiveRow?.versionId, liveQuery.enabled]);
 
-  /** 退回态（6–9）由主操作触发重提，不能调用当前版本的审批通过接口。 */
-  const isReturnedForResubmit = (row: Pick<RegionalApprovalLiveRow, 'status'>) =>
-    row.status >= 6 && row.status <= 9;
-  const resubmitReady = Boolean(resubmitClient && resubmitConnected);
-  const liveActionRolesFor = (row: RegionalApprovalLiveRow): readonly ApprovalStageId[] => {
-    const candidates: readonly ApprovalStageId[] = liveStageFilter
-      ? [liveStageFilter]
-      : (['region', 'province', 'area', 'category'] as const);
-    if (!isReturnedForResubmit(row)) return candidates;
-    const actor = salesPlanWorkflow(row.planTypeCode).actor(row.status);
-    return candidates.filter((role) => role === actor);
-  };
+  // 节点身份由账号和当前选择决定；退回目标只决定通知位置。
+  const liveActionRolesFor = (): readonly ApprovalStageId[] => liveStageFilter
+    ? [liveStageFilter]
+    : roleStages;
   const liveActionDisabledReason = (row: RegionalApprovalLiveRow, kind: LiveActionKind = 'APPROVE') => {
     if (historicalSummaryUnavailable) return 'queueNotFresh';
     if (!liveActionsEnabled) return 'missingAuthority';
@@ -1081,13 +1066,8 @@ const RegionalApprovalWorkbench: React.FC<{
     if (permissionDeniedVersions.has(row.versionId)) return 'permission';
     if (liveQuery.queueState.status !== 'success') return 'queueNotFresh';
     if (liveAccess.failedVersions.has(row.versionId)) return 'detailUnavailable';
-    if (isReturnedForResubmit(row)) {
-      if (kind !== 'REJECT') return 'returnedCannotApprove';
-      if (row.status === 6) return 'returnedCannotReject';
-    }
     const detail = liveAccess.entries[row.versionId];
-    // allowReturned：上级退回给本节点的单据也要能改完继续提交（退回给别处的单子在模型里仍被拒）。
-    if (!detail || !liveActionRolesFor(row).some(role => salesPlanAccessForRow(row, detail, roleStages, role, undefined, { allowReturned: true })?.allowedActions.includes(kind)))
+    if (!detail || !liveActionRolesFor().some(role => salesPlanAccessForRow(row, detail, roleStages, role)?.allowedActions.includes(kind)))
       return 'missingAuthority';
     if (kind === 'SAVE') return undefined;
 
@@ -1097,41 +1077,29 @@ const RegionalApprovalWorkbench: React.FC<{
     !liveActionDisabledReason(row, 'APPROVE');
   /** 与单笔按钮同源的角色解析：多角色账号按当前节点过滤逐个尝试，取第一个允许该动作的角色。 */
   const liveActionAccessFor = (row: RegionalApprovalLiveRow, kind: LiveActionKind) => {
-    if (isReturnedForResubmit(row) && (kind !== 'REJECT' || row.status === 6)) return undefined;
     const detail = liveAccess.entries[row.versionId];
     if (!detail) return undefined;
-    for (const role of liveActionRolesFor(row)) {
-      const access = salesPlanAccessForRow(row, detail, roleStages, role, undefined, { allowReturned: true });
+    for (const role of liveActionRolesFor()) {
+      const access = salesPlanAccessForRow(row, detail, roleStages, role);
       if (access?.allowedActions.includes(kind)) return access;
     }
     return undefined;
   };
   const batchItemsFor = (rows: readonly RegionalApprovalLiveRow[], kind: LiveActionKind): BatchActionItem[] =>
     rows.map((row) => {
-      if (kind === 'APPROVE' && isReturnedForResubmit(row)) {
-        const period = liveQuery.selectedPeriods.find((candidate) => candidate.periodId === row.periodId);
-        return resubmitReady && onResubmit && period
-          ? { row, resubmit: true, period }
-          : { row, skipReason: 'resubmitUnavailable' };
-      }
       const access = liveActionAccessFor(row, kind);
       return access
         ? { row, access }
         : { row, skipReason: liveActionDisabledReason(row, kind) ?? 'missingAuthority' };
     });
-  /** 单笔退回重提进入可核对数量的对话框。 */
-  const resubmitPeriod = selectedLiveRows.length === 1
-    ? liveQuery.selectedPeriods.find((period) => period.periodId === selectedLiveRows[0].periodId)
-    : undefined;
-  /** 分组行只要有可审批、可退回或可重提的成员就允许勾选。 */
+  /** 分组内有可按角色审批或退回的成员时允许勾选。 */
   const liveRowSelectable = (row: RegionalApprovalLiveTableRow) => {
     if (row.kind !== 'plan') return false;
     const plans = row.members?.length ? row.members : [row.plan];
     return plans.some(
       (plan) =>
         liveActionDisabledReason(plan, 'APPROVE') === undefined ||
-        liveActionDisabledReason(plan, 'REJECT') === undefined ||
-        isReturnedForResubmit(plan)
+        liveActionDisabledReason(plan, 'REJECT') === undefined
     );
   };
   // 分组选择会包含待回写/已回写成员；这两类终态在批次中明确跳过。
@@ -2547,14 +2515,7 @@ const RegionalApprovalWorkbench: React.FC<{
         ]
       : []),
   ];
-  const selectedOnlyReturned = selectedLiveRows.length > 0 && selectedLiveRows.every(isReturnedForResubmit);
-  const primaryActionDisabledReason = selectedLiveRows.length && !selectedPendingActionRows.length ? 'missingAuthority' : selectedPendingActionRows
-    .map((row) => isReturnedForResubmit(row)
-      ? !resubmitReady || !onResubmit || !liveQuery.selectedPeriods.some((period) => period.periodId === row.periodId)
-        ? 'resubmitUnavailable'
-        : undefined
-      : liveActionDisabledReason(row, 'APPROVE'))
-    .find(Boolean);
+  const primaryActionDisabledReason = batchDisabledReason('APPROVE');
   const approvalActionButtons = liveQuery.enabled ? (
     <>
       {liveActionsEnabled ? (
@@ -2605,12 +2566,6 @@ const RegionalApprovalWorkbench: React.FC<{
             if (!selectedLiveRows.length || primaryActionDisabledReason) return;
             if (selectedLiveRows.length === 1) {
               const row = selectedLiveRows[0];
-              if (selectedOnlyReturned) {
-                if (!resubmitPeriod || !onResubmit) return;
-                selectLivePlanContext(row);
-                onResubmit(row.planId, row.versionId, resubmitPeriod);
-                return;
-              }
               selectLivePlanContext(row);
               setLiveActionKind('APPROVE');
               setLiveActionPlanId(row.planId);
@@ -2706,8 +2661,6 @@ const RegionalApprovalWorkbench: React.FC<{
         items={batchAction.items}
         t={t}
         client={liveActionClient}
-        resubmitClient={resubmitClient}
-        resubmitConnected={resubmitConnected}
         onPermissionDenied={(versionId) => setPermissionDeniedVersions((current) => new Set(current).add(versionId))}
         onCompleted={async (outcomes: readonly BatchActionOutcome[]) => {
           if (outcomes.some((outcome) => outcome.status === 'success')) refreshLiveAuthority();

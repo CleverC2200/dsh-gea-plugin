@@ -11,15 +11,24 @@ const hash='a'.repeat(64);
 const row=(status=2,type='Y')=>({planId:'p',versionId:'v',status,planTypeCode:type});
 const detail=(status=2,type='Y')=>({currentVersion:{id:'v',planId:'p',effective:true,status,planTypeCode:type},skus:[],versions:[],logs:[]});
 const policy=(roles=['region'],status=2)=>({versionId:'v',status,snapshotHash:hash,policy:'role-visible-v1',allowedActions:[],roleActions:roles.map(role=>({role,allowedActions:['SAVE','APPROVE','REJECT']}))});
-test('visible role can act on pending plans but not returned plans',()=>{
-  for(const status of [1,2,3,4]) {
+test('visible role can act on pending and returned plans without a resubmit service account',()=>{
+  for(const status of [1,2,3,4,6,7,8,9]) {
     const access=m.salesPlanAccessForRow(row(status),detail(status),['region']);
     assert.equal(access.approvalRole,'region');
     assert.deepEqual(access.allowedActions,['APPROVE','REJECT']);
   }
-  for(const status of [0,5,6,7,8,9,10]) assert.equal(m.salesPlanAccessForRow(row(status),detail(status),['region']),undefined);
-  for(const status of [2,3,4]) assert.equal(m.salesPlanAccessForRow(row(status,'XN'),detail(status,'XN'),['province']).approvalRole,'province');
-  for(const status of [6,7,8,9]) assert.equal(m.salesPlanAccessForRow(row(status,'XN'),detail(status,'XN'),['province']),undefined);
+  for(const status of [0,5,10]) assert.equal(m.salesPlanAccessForRow(row(status),detail(status),['region']),undefined);
+  for(const status of [2,3,4,6,8,9]) assert.equal(m.salesPlanAccessForRow(row(status,'XN'),detail(status,'XN'),['province']).approvalRole,'province');
+});
+
+test('returned plans use the explicitly granted role, never the return target as authority',()=>{
+  for (const [status,role] of [[6,'region'],[7,'province'],[8,'area'],[9,'category']]) {
+    const d={...detail(status),actionContext:policy([],status)};
+    assert.deepEqual(m.salesPlanAccessForRow(row(status),d,[role],role).allowedActions,['APPROVE','REJECT']);
+    assert.equal(m.salesPlanAccessForRow(row(status),d,[],role),undefined);
+    assert.equal(m.salesPlanAccessForRow(row(status),{...d,currentVersion:{...d.currentVersion,effective:false}},[role],role),undefined);
+    assert.equal(m.salesPlanAccessForRow(row(status),{...d,actionContext:{...d.actionContext,status:1}},[role],role),undefined);
+  }
 });
 test('a notification is only a reminder: it never grants approval identity',()=>{
   const d={...detail(),workflowApproval:{versionId:'v',notificationId:'n',instanceId:'i',actionable:true}};

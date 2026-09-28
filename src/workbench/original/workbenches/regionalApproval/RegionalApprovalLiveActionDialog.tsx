@@ -153,17 +153,12 @@ const RegionalApprovalLiveActionDialog: React.FC<{
 }) => {
   const [snapshot] = useState(evidence);
   const Container = embedded ? InlineAction : Modal;
-  // 退回态只能由当前责任节点继续逐级退回，不能借多角色账号选其他节点。
-  const returnedRole = row.status >= 6 && row.status <= 9
-    ? salesPlanWorkflow(row.planTypeCode).actor(row.status)
-    : undefined;
-  const availableRoles = SALES_PLAN_ROLES.filter(role =>
-    (!returnedRole || role === returnedRole) && snapshot &&
-    salesPlanAccessForRow(row, snapshot, approvalStages ?? [], role, undefined, { allowReturned: true }));
+  const availableRoles = SALES_PLAN_ROLES.filter(role => snapshot &&
+    salesPlanAccessForRow(row, snapshot, approvalStages ?? [], role));
   const [selectedRole, setSelectedRole] = useState<ApprovalStageId | undefined>(
     availableRoles.includes(approvalStage) ? approvalStage : availableRoles.length === 1 ? availableRoles[0] : undefined
   );
-  const access = snapshot && selectedRole && salesPlanAccessForRow(row, snapshot, approvalStages ?? [], selectedRole, undefined, { allowReturned: true });
+  const access = snapshot && selectedRole && salesPlanAccessForRow(row, snapshot, approvalStages ?? [], selectedRole);
   const unsupportedRole = Boolean(access && !access.roleContractSupported && salesPlanWorkflow(row.planTypeCode).actor(row.status) !== access.approvalRole);
   const submittedRequest = useRef<GeaSalesPlanActionRequest | undefined>(undefined);
   const [kind, setKind] = useState<LiveActionKind>(initialAction);
