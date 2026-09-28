@@ -3,4 +3,5 @@
 
 | 编号 | 模块 | 状态 | 详情 |
 |---|---|---|---|
+| CHANGE-20260928-gea-plugin-134 | 业务Agent与插件发行 | 验证中 | [GEA 0.0.134仅整合MR200与MR201](gea-plugin-134.md) |
 | CHANGE-20260928-gea-hide-preview-agents | Agent 预设 | 已验证待发布 | [隐藏三个演示 Agent 并保留业务页面](gea-hide-preview-agents.md) |
