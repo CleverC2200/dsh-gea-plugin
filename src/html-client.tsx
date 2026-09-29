@@ -113,6 +113,24 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       >();
       let connected = false,
         pollTimer: any;
+      let readyWindow: Window | null = null;
+      const connectPage = async () => {
+        if (!readyWindow || connected || controller.signal.aborted) return;
+        const current = await readyBinding.current;
+        if (
+          !current || current !== binding.current || connected ||
+          controller.signal.aborted || readyWindow !== frame.current?.contentWindow
+        ) return;
+        connected = true;
+        readyWindow.postMessage(
+          {
+            protocol: "gea-html-v1",
+            type: "connect",
+            context: { plugin: plugin.id, session: current.session },
+          },
+          { targetOrigin: "*", transfer: [port.port2] },
+        );
+      };
       let themeRequested = false;
       // Read the ui-theme presenter's output; this bridge never owns settings or parent DOM.
       const sendTheme = () => {
@@ -264,15 +282,8 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
           return;
         }
         if (event.data.type !== "ready" || connected) return;
-        connected = true;
-        event.source!.postMessage(
-          {
-            protocol: "gea-html-v1",
-            type: "connect",
-            context: { plugin: plugin.id, session: binding.current?.session },
-          },
-          { targetOrigin: "*", transfer: [port.port2] },
-        );
+        readyWindow = frame.current!.contentWindow;
+        void connectPage();
       };
       window.addEventListener("message", attach);
       port.port1.start();
@@ -322,6 +333,8 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       rebindPage.current = current => {
         pageBridge();
         pageBridge = createPageBridge(current);
+        // A first ready can precede this lease, or wait on a Session that was superseded.
+        void connectPage();
         port.port1.postMessage({ type: "context", context: { plugin: plugin.id, session: current.session } });
         sendTheme();
       };
