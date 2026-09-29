@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { chromium, expect } from "@playwright/test";
+import { changeThemeSetting } from "./theme-settings.mjs";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 
 // Only external GEA and model endpoints are fixtures. Workbench, Agent Manage,
@@ -275,6 +276,23 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/ })
       .getByRole("button", { name: "继续", exact: true })
       .click();
+    const openThemeSettings = async () => {
+      await page.getByRole("button", { name: "账户菜单", exact: true }).click();
+      await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+      await page.getByRole("button", { name: "通用设置", exact: true }).click();
+    };
+    await openThemeSettings();
+    await changeThemeSetting(page, "深色", "preference");
+    await changeThemeSetting(page, "增大字号", "fontSize");
+    await page.getByRole("button", { name: "关闭", exact: true }).click();
+    const checkSharedTheme = async (background) => {
+      await expect(page.locator("body")).toHaveCSS("background-color", background);
+      await expect(page.locator(".AppFrame_frame")).toHaveCSS("font-size", "15px");
+      assert.equal(await page.locator("body").evaluate(element =>
+        getComputedStyle(element).getPropertyValue("--workbench-theme-version").trim()), '"1.0.0"');
+      await expect(page.locator('style[data-plugin-css$="/workbench-theme.css"]')).toHaveCount(1);
+      await expect(page.locator('meta[name="theme-color"]')).toHaveCount(1);
+    };
     for (const [id, name] of [
       ["inventory-fc", "分仓库存"],
       ["inventory-aqkc", "基地库存"],
@@ -286,6 +304,7 @@ test(
         `iframe[src*="/api/gea-html/${id}/html"]`,
       );
       await expect(frame.getByRole("heading", { name })).toBeVisible();
+      await checkSharedTheme("rgb(27, 29, 33)");
       await frame.getByRole("button", { name: "读取样例" }).click();
       await expect(frame.locator("output")).toContainText("42");
       const count = sqlRequests.length;
@@ -297,6 +316,8 @@ test(
         "write rejected before external service",
       );
     }
+    await page.reload();
+    await checkSharedTheme("rgb(27, 29, 33)");
     assert.equal(sqlRequests.length, 2);
     assert.ok(
       app.requests
@@ -348,6 +369,11 @@ test(
     assert.match(JSON.stringify(readToolResults(rows)), /SPLIT_MCP_RESULT_42/);
     assert.deepEqual(errors, []);
     await mkdir(".runtime/split-declarations", { recursive: true });
+    await page.screenshot({ path: ".runtime/split-declarations/dark.png", fullPage: true });
+    await openThemeSettings();
+    await changeThemeSetting(page, "浅色", "preference");
+    await page.getByRole("button", { name: "关闭", exact: true }).click();
+    await checkSharedTheme("rgb(247, 248, 250)");
     await page.screenshot({
       path: ".runtime/split-declarations/page.png",
       fullPage: true,
@@ -361,6 +387,7 @@ test(
           mcpCalls: mcpCalls.length,
           tools: modelTools,
           pageErrors: errors,
+          sharedTheme: { version: "1.0.0", fontSize: 15, schemes: ["dark", "light"], survivesReload: true },
         },
         null,
         2,
