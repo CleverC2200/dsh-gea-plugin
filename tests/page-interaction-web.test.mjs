@@ -189,7 +189,7 @@ test(
     });
     await page.goto(app.origin);
     await page
-      .getByRole("dialog", { name: "内测声明", exact: true })
+      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
     const frame = page.frameLocator("iframe[data-gea-workbench]");
@@ -438,7 +438,7 @@ test(
     });
     await page.goto(app.origin);
     await page
-      .getByRole("dialog", { name: "内测声明", exact: true })
+      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
     if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))

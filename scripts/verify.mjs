@@ -1,10 +1,10 @@
 /** Verify one explicit durable Session; fresh live acceptance additionally requires the current Host run. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { zstdDecompressSync, constants } from "node:zlib";
+import { readSessionRows } from "./session-log.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -19,32 +19,7 @@ assert.ok(
 );
 assert.match(values.session, /^session-[a-zA-Z0-9-]+$/);
 const runtime = resolve(values.runtime);
-const home = resolve(runtime, "home/sessions");
-let rows;
-for (const workspace of await readdir(home)) {
-  let compressed;
-  try {
-    compressed = await readFile(
-      resolve(home, workspace, values.session, "session.v3.jsonl.zstd"),
-    );
-  } catch (error) {
-    if (error.code === "ENOENT") continue;
-    throw error;
-  }
-  let offset = 0,
-    content = "";
-  while (offset < compressed.length) {
-    const frame = zstdDecompressSync(compressed.subarray(offset), {
-      info: true,
-      finishFlush: constants.ZSTD_e_flush,
-    });
-    assert.ok(frame.engine.bytesWritten > 0);
-    offset += frame.engine.bytesWritten;
-    content += frame.buffer.toString();
-  }
-  rows = content.trim().split("\n").map(JSON.parse);
-  break;
-}
+const rows = await readSessionRows(runtime, values.session);
 assert.ok(rows, "SESSION_NOT_FOUND");
 const legacyUser = rows.find(
   (row) =>

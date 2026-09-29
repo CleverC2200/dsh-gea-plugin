@@ -1,3 +1,4 @@
+import type {} from "../shared/message-source.ts";
 /**
  * 每步把"用户这一轮问的是什么"钉进消息列表。
  *
@@ -85,7 +86,8 @@ export function turnAnchorText(question: string): string {
 /** 这条消息是不是我们上一轮/上一步注入的锚点。 */
 export function isTurnAnchor(message: unknown): boolean {
   const source = (message as AnyMessage | undefined)?.source;
-  return source?.kind === "plugin" && source.plugin === TURN_ANCHOR_PLUGIN;
+  return source?.kind === "gea-turn-anchor" ||
+    (source?.kind === "plugin" && source.plugin === TURN_ANCHOR_PLUGIN);
 }
 
 /**
@@ -147,8 +149,7 @@ export function mountTurnAnchor(
       (text) =>
         createUserMessage({
           source: {
-            kind: "plugin",
-            plugin: TURN_ANCHOR_PLUGIN,
+            kind: "gea-turn-anchor",
             form: "notice",
             summary: TURN_ANCHOR_SUMMARY,
           },

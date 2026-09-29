@@ -43,7 +43,7 @@ test("Chrome logout works from both shells, retries failure and signs out other 
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  await page.getByRole("dialog", { name: "内测声明", exact: true }).getByRole("button", { name: "继续", exact: true }).click();
+  await page.getByRole("dialog", { name: /内测声明|预览版说明/, exact: true }).getByRole("button", { name: "继续", exact: true }).click();
   await page.frameLocator("iframe[data-gea-workbench]").getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
   // 未登录时才铺整屏登录遮罩，扫码页保持全屏。
   await expect(page.locator("iframe[data-gea-workbench]")).toHaveClass(/gea-login-frame/);

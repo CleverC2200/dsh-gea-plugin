@@ -128,6 +128,7 @@ test(
     // 审批身份要走网关会话解析当前用户角色：这两条是身份查询（POST 只为带 body），
     // 不是业务写入；除此之外读路径不许发非 GET。
     const identityLookups = [
+      "/ai/gateway/session",
       "/ai/gateway/agent/session",
       "/ai/gateway/agent/session/current-user/resolve",
     ];
@@ -137,6 +138,7 @@ test(
           request.method === "GET" ||
           identityLookups.some((path) => request.url.pathname.endsWith(path)),
       ),
+      JSON.stringify(app.requests.filter(request => request.method !== "GET" && !identityLookups.some(path => request.url.pathname.endsWith(path))).map(request => ({ method: request.method, path: request.url.pathname }))),
     );
   },
 );

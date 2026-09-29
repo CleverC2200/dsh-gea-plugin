@@ -41,7 +41,7 @@ test('region sees own pending and tracking rows; other returns stay hidden and v
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  await page.getByRole('dialog',{name:'内测声明',exact:true}).getByRole('button',{name:'继续',exact:true}).click();
+  await page.getByRole('dialog',{name: /内测声明|预览版说明/,exact:true}).getByRole('button',{name:'继续',exact:true}).click();
   const frame = page.frameLocator('iframe[data-gea-workbench]');
   await frame.getByRole('heading',{name:'销售计划审批',exact:true}).waitFor();
   await frame.getByRole('combobox',{name:'销售计划周期',exact:true}).click();

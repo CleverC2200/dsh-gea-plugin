@@ -31,7 +31,7 @@ test(
     page.on("pageerror", (error) => errors.push(error.message));
     page.setDefaultTimeout(15000);
     await page.goto(app.origin);
-    const notice = page.getByRole("dialog", { name: "内测声明", exact: true });
+    const notice = page.getByRole("dialog", { name: /内测声明|预览版说明/, exact: true });
     try {
       await notice.waitFor({ state: "visible", timeout: 5000 });
       await notice.getByRole("button", { name: "继续", exact: true }).click();

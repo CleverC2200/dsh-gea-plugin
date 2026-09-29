@@ -35,7 +35,7 @@ test('action failure dialog shows business copy plus a transferable error id', {
   const warned = [];
   page.on('console', (message) => { if (message.type() === 'warning' || message.type() === 'warn') warned.push(message.text()); });
   await page.goto(app.origin);
-  await page.getByRole('dialog', { name: '内测声明', exact: true }).getByRole('button', { name: '继续', exact: true }).click();
+  await page.getByRole('dialog', { name: /内测声明|预览版说明/, exact: true }).getByRole('button', { name: '继续', exact: true }).click();
   const frame = page.frameLocator('iframe[data-gea-workbench]');
   await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
   await frame.locator('label.arco-checkbox:has(input[value="p"])').click();

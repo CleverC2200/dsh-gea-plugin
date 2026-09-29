@@ -164,7 +164,7 @@ test(
     const ui = await context.newPage();
     await ui.goto(app.origin);
     await ui
-      .getByRole("dialog", { name: "内测声明", exact: true })
+      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
     await ui.getByRole("button", { name: "消息待办", exact: true }).click();

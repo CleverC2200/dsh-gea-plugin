@@ -1,8 +1,9 @@
 /** Product tests own the Web process and replace only external HTTP services. */
 import { spawn, execFileSync } from "node:child_process";
+import { appendFileSync } from "node:fs";
 import { createServer } from "node:https";
-import { mkdtemp, readFile, writeFile, rm, readdir } from "node:fs/promises";
-import { zstdDecompressSync, constants } from "node:zlib";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { readSessionRows } from "../scripts/session-log.mjs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { once } from "node:events";
@@ -11,39 +12,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
 export async function readSession(runtime, id) {
-  const home = resolve(runtime, "home/sessions");
-  let workspaces;
-  try {
-    workspaces = await readdir(home);
-  } catch (error) {
-    if (error.code === "ENOENT") return [];
-    throw error;
-  }
-  for (const workspace of workspaces) {
-    let compressed;
-    try {
-      compressed = await readFile(
-        resolve(home, workspace, id, "session.v3.jsonl.zstd"),
-      );
-    } catch (error) {
-      if (error.code === "ENOENT") continue;
-      throw error;
-    }
-    let offset = 0,
-      text = "";
-    while (offset < compressed.length) {
-      const frame = zstdDecompressSync(compressed.subarray(offset), {
-        info: true,
-        finishFlush: constants.ZSTD_e_flush,
-      });
-      if (frame.engine.bytesWritten === 0)
-        throw new Error("Invalid zstd frame");
-      text += frame.buffer.toString();
-      offset += frame.engine.bytesWritten;
-    }
-    return text.trim().split("\n").map(JSON.parse);
-  }
-  return [];
+  return (await readSessionRows(runtime, id)) ?? [];
 }
 export async function until(read, predicate, timeout = 10000) {
   const deadline = Date.now() + timeout;
@@ -59,6 +28,8 @@ export async function until(read, predicate, timeout = 10000) {
 }
 export async function profile(t, options = {}) {
   const root = options.pluginRoot ?? defaultRoot;
+  if (process.env.GEA_TEST_SOURCE_CORE === "1" && resolve(root) !== defaultRoot)
+    throw new Error("SOURCE_TEST_REQUIRES_CURRENT_CHECKOUT: packaged artifacts use the installed-runtime test lane");
   const dir = await mkdtemp(resolve(tmpdir(), "gea-profile-"));
   const key = resolve(dir, "key.pem"),
     cert = resolve(dir, "cert.pem");
@@ -207,27 +178,42 @@ export async function profile(t, options = {}) {
         : options.config),
     }),
   );
-  let child,
+  let child, childClosed, childIsClosed = true,
     output = "",
     cookie = "",
     origin = "";
   async function stop() {
-    if (!child || child.exitCode !== null || child.signalCode !== null) return;
-    const ended = once(child, "exit");
-    child.kill("SIGTERM");
-    const timer = setTimeout(() => child.kill("SIGKILL"), 10000);
-    await ended;
-    clearTimeout(timer);
+    if (!child || childIsClosed) return;
+    const signalTree = (signal) => {
+      try {
+        if (process.platform === "win32") {
+          if (child.exitCode === null && child.signalCode === null)
+            execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+        } else process.kill(-child.pid, signal);
+      } catch (error) { if (error.code !== "ESRCH") throw error; }
+    };
+    signalTree("SIGTERM");
+    let deadline;
+    const timer = setTimeout(() => signalTree("SIGKILL"), 10000);
+    try {
+      await Promise.race([childClosed, new Promise((_, reject) => {
+        deadline = setTimeout(() => reject(new Error("PROFILE_SHUTDOWN_TIMEOUT: runtime preserved")), 15000);
+      })]);
+    } finally { clearTimeout(timer); clearTimeout(deadline); }
   }
   t.after(async () => {
-    await stop();
-    server.closeAllConnections();
-    await new Promise((done) => server.close(done));
-    await rm(dir, { recursive: true, force: true });
+    let stopped = false;
+    try { await stop(); stopped = true; }
+    finally {
+      server.closeAllConnections();
+      await new Promise((done) => server.close(done));
+      if (stopped) await rm(dir, { recursive: true, force: true });
+    }
   });
   async function start() {
     output = "";
     let logOffset = 0;
+    await mkdir(runtime, { recursive: true, mode: 0o700 });
     try {
       logOffset = (await readFile(resolve(runtime, "server.log"), "utf8"))
         .length;
@@ -238,7 +224,7 @@ export async function profile(t, options = {}) {
       options.executablePath ?? process.execPath,
       [
         ...(options.execArgv ?? []),
-        ...(options.desktopGraph ? [resolve(defaultRoot, "desktop/runtime-start.mjs")] : ["scripts/start.mjs",
+        ...(process.env.GEA_TEST_SOURCE_CORE === "1" && !options.desktopGraph ? [resolve(defaultRoot, "tests/source-profile-start.mjs"), config, runtime] : options.desktopGraph ? [resolve(defaultRoot, "desktop/runtime-start.mjs")] : ["scripts/start.mjs",
         ...(options.bundle ? ["--bundle"] : []),
         "--config",
         config,
@@ -249,14 +235,23 @@ export async function profile(t, options = {}) {
       ],
       {
         cwd: root,
+        detached: process.platform !== "win32",
         // 测试里不挂浏览器 MCP：每次启动都拉 npx + Chrome 会拖慢并让并发用例超时。
         env: { ...process.env, NODE_EXTRA_CA_CERTS: cert, GEA_BROWSER_MCP: "0", ...(options.desktopGraph ? {DSH_PLUGIN_GRAPH: options.desktopGraph, DSH_FULL_DATA_DIR: runtime, GEA_CONFIG: config, DSH_FULL_PORT: "0", DSH_FULL_NO_OPEN: "1"} : {}), ...options.env },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
+    childIsClosed = false;
+    childClosed = new Promise((done, reject) => {
+      child.once("close", () => { childIsClosed = true; done(); });
+      child.once("error", reject);
+    });
+    void childClosed.catch(() => {});
     for (const stream of [child.stdout, child.stderr])
       stream.on("data", (data) => {
         output += data;
+        if (process.env.GEA_TEST_SOURCE_CORE === "1" && !options.desktopGraph)
+          appendFileSync(resolve(runtime, "server.log"), data, { mode: 0o600 });
       });
     const deadline = Date.now() + 45000;
     let launch;
@@ -269,7 +264,7 @@ export async function profile(t, options = {}) {
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
-      launch = [...(options.desktopGraph ? output : freshLog).matchAll(/dsh web: (http[^\s]+)(?=\r?\n)/g)].at(
+      launch = [...(options.desktopGraph || process.env.GEA_TEST_SOURCE_CORE === "1" ? output : freshLog).matchAll(/dsh web: (http[^\s]+)(?=\r?\n)/g)].at(
         -1,
       )?.[1];
       if (launch) break;

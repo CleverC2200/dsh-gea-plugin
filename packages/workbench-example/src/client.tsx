@@ -32,7 +32,7 @@ export function apply(ctx: Context): void {
   const t = ctx.locale.bind("workbenchExample");
   let remove = () => {};
   function Page({ useSessions }: PropsRuntime<"main">) {
-    const session = useSessions((s) => s.current);
+    const session = useSessions((s) => Object.values(s.byId).find((row) => (row.retainedBy.mainView ?? 0) > 0)?.id);
     const [error, setError] = useState("");
     const open = (instance?: string) => {
       void ctx.agentWorkbench

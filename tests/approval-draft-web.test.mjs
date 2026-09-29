@@ -35,7 +35,7 @@ for (const scenario of ['delayed', 'stale', 'unavailable']) {
     page.on('pageerror',error=>errors.push(error.message));
     await page.context().addCookies(app.cookie.split('; ').map(pair=>({name:pair.slice(0,pair.indexOf('=')),value:pair.slice(pair.indexOf('=')+1),url:app.origin})));
     await page.goto(app.origin);
-    await page.getByRole('dialog',{name:'内测声明',exact:true}).getByRole('button',{name:'继续',exact:true}).click();
+    await page.getByRole('dialog',{name: /内测声明|预览版说明/,exact:true}).getByRole('button',{name:'继续',exact:true}).click();
     const frame = page.frameLocator('iframe[data-gea-workbench]');
     await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
     const approve = frame.getByRole('button',{name:'通过',exact:true});

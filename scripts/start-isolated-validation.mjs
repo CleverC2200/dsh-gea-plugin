@@ -110,15 +110,31 @@ export async function runProfile(payload, runtime) {
 }
 
 /** Boot the official profile from artifacts built in the pinned source checkout. */
-export async function runSourceProfile(core, runtime) {
+export async function runSourceProfile(
+  core,
+  runtime,
+  plugins = false,
+  deployment,
+) {
   const profile = join(runtime, "home/profiles/plugin-split-validation");
   await mkdir(profile, { recursive: true, mode: 0o700 });
+  await mkdir(join(runtime, "workspace"), { recursive: true, mode: 0o700 });
+  const composition = plugins
+    ? await (
+        await import("./source-profile.mjs")
+      ).prepareSourcePlugins(core, runtime, deployment)
+    : { dependencies: {}, bundles: [], patches: [] };
   await save(join(profile, "package.json"), {
     name: "plugin-split-validation",
     private: true,
+    dependencies: composition.dependencies,
     dsh: {
       profile: {
-        bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"],
+        bundles: [
+          "@deepseek-ai/dsh-base",
+          "@deepseek-ai/dsh-web-app",
+          ...composition.bundles,
+        ],
       },
     },
   });
@@ -130,6 +146,7 @@ export async function runSourceProfile(core, runtime) {
       "plugin-split-validation",
       "--patch",
       join(core, "apps/web/tests/pin-browse-picker.overlay.yml"),
+      ...composition.patches.flatMap((path) => ["--patch", path]),
       "--host",
       "127.0.0.1",
       "--port",
@@ -150,6 +167,7 @@ async function launch() {
   const { values } = parseArgs({
     options: {
       core: { type: "string" },
+      plugins: { type: "boolean" },
       payload: { type: "string" },
       help: { type: "boolean" },
     },
@@ -162,6 +180,8 @@ async function launch() {
   }
   if (process.platform !== "darwin")
     throw Error("ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX");
+  if (values.plugins && values.payload)
+    throw Error("COMPANY_PLUGINS_REQUIRE_SOURCE_MODE");
   if (values.core && values.payload)
     throw Error("CHOOSE_SOURCE_OR_CONTROL_PAYLOAD");
   const source = !values.payload;
@@ -226,6 +246,7 @@ async function launch() {
   await writeFile(sandboxPath, sandbox, { mode: 0o600 });
   await save(join(runtime, "provenance.json"), {
     mode: source ? "official-source-build" : "installed-payload-baseline",
+    companyPlugins: values.plugins === true,
     generatedAt: new Date().toISOString(),
     payload,
     payloadVersion: manifest.version,
@@ -250,12 +271,12 @@ async function launch() {
     }).trim(),
     launcherSha256: await digest(new URL(import.meta.url)),
     runtime,
-    sourceOverlay: false,
+    sourceOverlay: source && values.plugins === true,
     outboundNetwork: "denied",
     writableRoot: runtime,
     limitations: [
       source
-        ? "Native core profile; company plugin compatibility still pending"
+        ? values.plugins ? "Company plugin bootstrap only; full business and enhancement acceptance pending" : "Native core profile without company plugins"
         : "Installed package versions, not unbuilt source checkouts",
       "No GEA login, business data, remote channels, or Electron shell validation",
     ],
@@ -269,7 +290,7 @@ async function launch() {
     LANG: "en_US.UTF-8",
     DSH_TELEMETRY_DISABLED: "1",
   };
-  const code = `import(${JSON.stringify(import.meta.url)}).then(m => m.${source ? "runSourceProfile" : "runProfile"}(${JSON.stringify(payload)}, ${JSON.stringify(runtime)}))`;
+  const code = `import(${JSON.stringify(import.meta.url)}).then(m => m.${source ? "runSourceProfile" : "runProfile"}(${JSON.stringify(payload)}, ${JSON.stringify(runtime)}, ${values.plugins === true}))`;
   const log = await open(join(runtime, "server.log"), "a", 0o600);
   const child = spawn(
     "/usr/bin/sandbox-exec",

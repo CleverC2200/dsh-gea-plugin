@@ -33,7 +33,7 @@ test(
     assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 0);
     assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
     const snapshot = messages.find(
-      (row) => row.data.source.plugin === "gea-proof",
+      (row) => row.data.source.kind === "gea-proof" || row.data.source.plugin === "gea-proof",
     );
     assert.equal(snapshot.data.source.form, "notice");
     assert.equal(

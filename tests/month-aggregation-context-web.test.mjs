@@ -56,7 +56,7 @@ test('one month merges Y and DC plans and synchronises the combined page with th
     if (payload.value?.records?.length) listResponses.push({query:request.query,plans:payload.value.records.map(row=>row.planId)});
   });
   await page.goto(app.origin);
-  await page.getByRole('dialog',{name:'内测声明',exact:true}).getByRole('button',{name:'继续',exact:true}).click();
+  await page.getByRole('dialog',{name: /内测声明|预览版说明/,exact:true}).getByRole('button',{name:'继续',exact:true}).click();
   const frame = page.frameLocator('iframe[data-gea-workbench]');
   const month = frame.getByRole('combobox',{name:'销售计划周期'});
   await expect(month).toHaveText('2026-10');

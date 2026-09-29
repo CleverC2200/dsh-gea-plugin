@@ -58,7 +58,7 @@ const openWorkbench = async (t) => {
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  await page.getByRole('dialog', { name: '内测声明', exact: true }).getByRole('button', { name: '继续', exact: true }).click();
+  await page.getByRole('dialog', { name: /内测声明|预览版说明/, exact: true }).getByRole('button', { name: '继续', exact: true }).click();
   const frame = page.frameLocator('iframe[data-gea-workbench]');
   await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
   const groupBox = frame.locator('tbody label.arco-checkbox:has(input[value*="group:"])').first();
@@ -159,7 +159,7 @@ test('批量里一笔冲突不影响其它笔，结果逐笔说明原因', { tim
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  await page.getByRole('dialog', { name: '内测声明', exact: true }).getByRole('button', { name: '继续', exact: true }).click();
+  await page.getByRole('dialog', { name: /内测声明|预览版说明/, exact: true }).getByRole('button', { name: '继续', exact: true }).click();
   const frame = page.frameLocator('iframe[data-gea-workbench]');
   await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
   const groupBox = frame.locator('tbody label.arco-checkbox:has(input[value*="group:"])').first();

@@ -345,6 +345,17 @@ export async function registerHtmlPlugins(
     if (!name.startsWith("gea-html-") || expectedPresets.has(name)) continue;
     await rm(resolve(presetHome, name), { recursive: true, force: true });
   }
+  const presetRegistry = ctx.get?.("agentPresets");
+  if (typeof presetRegistry?.register === "function") {
+    ctx.effect(async function* () {
+      for (const id of expectedPresets) {
+        const directory = resolve(presetHome, id);
+        const metadata = JSON.parse(await readFile(resolve(directory, "preset.yml"), "utf8"));
+        const plugins = JSON.parse(await readFile(resolve(directory, "agent.cordis.yml"), "utf8"));
+        yield await presetRegistry.register({ ...metadata, id, plugins });
+      }
+    });
+  }
   const unwatch = business.watchIdentity(() => {
     sessions.clear();
     lastPageContext.clear();

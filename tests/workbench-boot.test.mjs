@@ -31,7 +31,7 @@ test(
     await page.goto(app.origin);
     try {
       await page
-        .getByRole("dialog", { name: "内测声明", exact: true })
+        .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
         .waitFor({ timeout: 12000 });
     } catch {
       throw new Error(

@@ -34,7 +34,7 @@ const both = async (t, planAmount, targetAmount) => {
   await context.addCookies(app.cookie.split('; ').map((pair) => ({ name: pair.slice(0, pair.indexOf('=')), value: pair.slice(pair.indexOf('=') + 1), url: app.origin })));
   const page = await context.newPage(); page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  await page.getByRole('dialog', { name: '内测声明', exact: true }).getByRole('button', { name: '继续', exact: true }).click();
+  await page.getByRole('dialog', { name: /内测声明|预览版说明/, exact: true }).getByRole('button', { name: '继续', exact: true }).click();
   const frame = page.frameLocator('iframe[data-gea-workbench]');
   await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
   const metrics = frame.getByRole('region', { name: '当前页明细汇总' });

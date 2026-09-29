@@ -90,7 +90,7 @@ const fixture = async (t, {role = 'region', returnedStatus = 7, denyApproval = f
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  await page.getByRole('dialog', { name: '内测声明', exact: true }).getByRole('button', { name: '继续', exact: true }).click();
+  await page.getByRole('dialog', { name: /内测声明|预览版说明/, exact: true }).getByRole('button', { name: '继续', exact: true }).click();
   const frame = page.frameLocator('iframe[data-gea-workbench]');
   await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
   await expect(frame.getByTestId('regional-approval-flow-toggle')).toBeVisible();

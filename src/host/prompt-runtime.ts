@@ -1,4 +1,5 @@
 import { hasPageReferences } from "../../packages/page-interaction/src/reference.ts";
+import { toolResults } from "../shared/tool-results.ts";
 import { sessionConsumer } from "./business-identity.ts";
 import { catalogFactSummary } from './gateway-catalog.ts';
 import { salesSourceIssueForTurns, requestedOutputScope } from './sales-result-contract.ts';
@@ -224,12 +225,10 @@ export function mountBusinessPrompts(
         } else if (event.type === "tool/result") {
           const call = requests.get(event.data.message.source.callId);
           if (!call) continue;
-          for (const block of event.data.message.content) {
-            if (block.type !== "tool-result" || block.isError) continue;
-            for (const part of block.content)
-              if (part.type === "text") {
+          for (const result of toolResults(event.data.message)) {
+              if (!result.isError) {
                 try {
-                  const receipt = JSON.parse(part.text);
+                  const receipt = JSON.parse(result.text);
                   if (receipt.preset !== preset) continue;
                   if (call.tool === 'gea_skill') {
                     if (isUiSkill(call.name) && receipt.name === call.name && typeof receipt.instructionId === 'string') state.packs.add('ui');

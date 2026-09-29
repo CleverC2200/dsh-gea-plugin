@@ -1,3 +1,4 @@
+import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import pickerScript from "../lib/page-interaction.txt";
 import { injectPicker } from "../packages/page-interaction/src/inject.ts";
 import type {} from "@cleverc2200/dsh-agent-workbench/client";
@@ -96,6 +97,11 @@ const CATEGORY_PLAN_PANEL = "plan-region-category" as MainPanelId;
 const MPS_PLAN_PANEL = "plan-category-production" as MainPanelId;
 type SidebarSection = BusinessMenuSection;
 type SidebarSections = Record<SidebarSection, boolean>;
+
+/** Read the Session owned by the main view from the shared catalog. */
+function selectedSession(snapshot: ReturnType<ISessions["list"]["getSnapshot"]>): SessionId | undefined {
+  return Object.values(snapshot.byId).find((session) => (session.retainedBy.mainView ?? 0) > 0)?.id;
+}
 
 /** 展开侧栏：0.1.6 的按钮文案是「打开侧边栏」，旧版本是「展开侧边栏」，找不到文案就按类名找。 */
 function nativeExpandSidebar(): void {
@@ -216,7 +222,7 @@ export function apply(ctx: Context): void {
       };
     }, [authenticated]);
     const language = useGeaLocale((snapshot) => snapshot.active);
-    const currentSession = useSessions((snapshot) => snapshot.current);
+    const currentSession = useSessions(selectedSession);
     const frame = useRef<HTMLIFrameElement>(null);
     useEffect(() => {
       if (!frame.current || !currentSession || !authenticated) return;
@@ -244,7 +250,9 @@ export function apply(ctx: Context): void {
           workbenchAuthenticated = message.authenticated === true;
           if (message.authenticated !== true) {
             ctx.agentWorkbench.forget(PANEL);
-            (ctx.get("sessions") as unknown as ISessions).clear();
+            const navigation = ctx.get("uiWorkspace");
+            if (!navigation) throw new Error("GEA session navigation unavailable");
+            navigation.selectSession(undefined);
           }
         }
         if (
@@ -303,7 +311,7 @@ export function apply(ctx: Context): void {
   function PrototypeWorkbench({panel,title,document:html,useSessions}: PropsRuntime<"main"> & {panel:MainPanelId;title:string;document:string}) {
     const [sessionError,setSessionError]=useState("");
     const [opened,setOpened]=useState(false);
-    const session=useSessions(snapshot=>snapshot.current);
+    const session=useSessions(snapshot=>Object.values(snapshot.byId).find((session) => (session.retainedBy.mainView ?? 0) > 0)?.id);
     const frame=useRef<HTMLIFrameElement>(null);
     useEffect(()=>{
       let live=true;
@@ -449,7 +457,7 @@ export function apply(ctx: Context): void {
     const [expanded, setExpanded] = useState<SidebarSections>({ supply: true, plan: true, inventory: true, orders: true });
     const open = sections ?? expanded;
     const activePanel = usePanelInfo((info) => info.activePanelId);
-    const session = useSessions((snapshot) => snapshot.current);
+    const session = useSessions(selectedSession);
     const [panels,setPanels]=useState(()=>registeredBusinessPanels(ctx.slots.entries("main")));
     useEffect(()=>{const refresh=()=>setPanels(registeredBusinessPanels(ctx.slots.entries("main")));refresh();return ctx.slots.subscribe("main",refresh);},[]);
     if (!wide) {
@@ -654,14 +662,15 @@ export function apply(ctx: Context): void {
   function NavigationMode({
     usePanelInfo,
     useSessions,
-    useSessionPendingInteraction,
+    useSessionStatus,
+    useSessionRetainInfo,
     useWorkspaces,
   }: PropsRuntime<"shell.overlay">) {
     const activePanel = usePanelInfo((info) => info.activePanelId);
     const business = usePanelInfo(
       (info) => isGeaBusinessPanel(info.activePanelId, ctx.slots.entries("main")) || info.activePanelId === API_LOG_PANEL,
     );
-    const surfaceSession = useSessions((snapshot) => snapshot.current);
+    const surfaceSession = useSessions(selectedSession);
     // 菜单状态字段：面板或会话一变就上报（默认主对话），宿主据此判定"主对话 / 哪一页业务菜单"。
     // 只认这一份事实，所以不在这里做去抖：漏报一次就会让页面证据对不上。
     useEffect(() => {
@@ -718,7 +727,7 @@ export function apply(ctx: Context): void {
     const [centerColumn, setCenterColumn] = useState<HTMLElement | null>(null);
     const [conversationView, setConversationView] = useState<"center" | "split" | "chat">("split");
     const [conversationActionError, setConversationActionError] = useState("");
-    const currentConversationSession = useSessions((snapshot) => snapshot.current);
+    const currentConversationSession = useSessions(selectedSession);
     const historyPanel = useRef<MainPanelId | null>(null);
     const linkedHistorySession = useRef<SessionId | null>(null);
     useEffect(() => {
@@ -1058,7 +1067,8 @@ export function apply(ctx: Context): void {
             <Navigation
               usePanelInfo={usePanelInfo}
               useSessions={useSessions}
-              useSessionPendingInteraction={useSessionPendingInteraction}
+              useSessionStatus={useSessionStatus}
+              useSessionRetainInfo={useSessionRetainInfo}
               useWorkspaces={useWorkspaces}
               wide
               expandSidebar={expandSidebar}
