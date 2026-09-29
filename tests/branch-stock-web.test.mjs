@@ -367,6 +367,17 @@ for (const mode of ["denied", "error", "empty", "missing"]) {
         })),
       );
       const page = await context.newPage();
+      const publishedContexts = [];
+      page.on("request", (request) => {
+        if (
+          !request.url().endsWith("/api/gea-html/inventory-fc/call") ||
+          !request.postData()
+        )
+          return;
+        const payload = request.postDataJSON();
+        if (payload.method === "context")
+          publishedContexts.push(payload.parameters);
+      });
       await page.goto(app.origin);
       await page
         .getByRole("dialog", { name: /内测声明|预览版说明/ })
@@ -413,6 +424,13 @@ for (const mode of ["denied", "error", "empty", "missing"]) {
           await expect(
             frame.getByRole("button", { name: "选择分仓", exact: true }),
           ).toContainText("郑州分仓");
+          await expect
+            .poll(() => publishedContexts.at(-1)?.parts?.queryState)
+            .toEqual({ state: "ready", warehouseId: "zhengzhou" });
+          assert.equal(
+            publishedContexts.at(-1).parts.pageFilters.warehouseId,
+            "zhengzhou",
+          );
           assert.ok(
             state.rest.some((request) =>
               Object.values(request.parameters).includes("34"),
@@ -442,6 +460,7 @@ for (const mode of ["denied", "error", "empty", "missing"]) {
                   ? await page.locator("body").innerText()
                   : await frame.locator("body").innerText(),
               restCount: state.rest.length,
+              queryState: publishedContexts.at(-1)?.parts?.queryState,
             },
             null,
             2,
