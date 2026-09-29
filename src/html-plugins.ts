@@ -442,7 +442,7 @@ export async function registerHtmlPlugins(
     () =>
       json(
         items.map(
-          ({ htmlSource, htmlPath, htmlDirectory, capabilityContract, managedSkill, loadedAgentResources, ...manifest }) => manifest,
+          ({ htmlSource, htmlPath, htmlDirectory, capabilityContract, managedSkill, loadedAgentResources, skillText, ...manifest }) => manifest,
         ),
       ),
     false,
