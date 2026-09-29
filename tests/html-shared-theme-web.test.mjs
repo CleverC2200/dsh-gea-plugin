@@ -158,6 +158,15 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   await frame.locator('#table-region').scrollIntoViewIfNeeded();
   await expect(frame.locator('tbody tr').last()).toBeVisible();
   await page.screenshot({ path: fileURLToPath(new URL('narrow.png', output)), fullPage: true });
+  const narrowSuggestion = page.locator('.gea-agent-prompts button').last();
+  await narrowSuggestion.scrollIntoViewIfNeeded();
+  await expect(narrowSuggestion).toBeInViewport();
+  const narrowPrompt = await narrowSuggestion.innerText();
+  await narrowSuggestion.click();
+  const narrowComposer = page.locator('[contenteditable="true"], textarea').first();
+  await expect(narrowComposer).toHaveText(narrowPrompt);
+  await expect(narrowComposer).toBeInViewport();
+  await page.screenshot({ path: fileURLToPath(new URL('narrow-right.png', output)), fullPage: true });
   await page.getByRole('button', { name: '中间区域最大，隐藏会话区', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 900 });
   await child.evaluate(() => { scrollTo(0, 0); document.querySelector('.table-scroll').scrollLeft = 0; });
