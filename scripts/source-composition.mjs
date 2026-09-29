@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 
 const resources = [
   "package.json", "cordis.patch.yml", "lib", "client", "schemas", "presets",
-  "default-presets", "business-skills", "scripts/deployment.mjs", "src/shared",
+  "default-presets", "business-skills", "business-resources", "scripts/deployment.mjs", "src/shared",
 ];
 
 export const sourcePlugins = [

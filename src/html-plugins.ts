@@ -1,4 +1,4 @@
-import { TOOL_DESCRIPTIONS, profileFor } from "./host/prompt-policy.ts";
+import { TOOL_DESCRIPTIONS, profileFor, installPromptProfile, type PromptProfile } from "./host/prompt-policy.ts";
 import { sessionConsumer } from "./host/business-identity.ts";
 import { injectPicker } from "../packages/page-interaction/src/inject.ts";
 import { readFile, readdir, realpath, mkdir, rm, stat, writeFile } from "node:fs/promises";
@@ -258,7 +258,22 @@ export async function registerHtmlPlugins(
     // 宿主管理真实库存模块的 Agent 指令；保留已安装页面包和演示模块的原始边界。
     const managedConsumers: Record<string, string> = {'inventory-aqkc':'base-safety-stock','inventory-dealer':'dealer-inventory-replenishment','inventory-fc':'branch-inventory','inventory-qll':'full-chain-inventory','inventory-apsplan':'aps'};
     const managedSkill = !mock && managedConsumers[manifest.id] === manifest.gea.consumerCode;
-    const skill = await readFile(managedSkill
+    // Split resources use the Agent Manage loader; legacy bundles retain their adapter.
+    let agentResources: {
+      skill: string; profile: PromptProfile;
+      mount(ctx: unknown, home: string): Promise<void>;
+    } | undefined;
+    if (manifest.agentResources !== undefined) {
+      if (!manifest.declarations || manifest.agentResources.provider !== 'dsh-agent-manage')
+        throw Error('INVALID_AGENT_RESOURCE_OWNER');
+      const moduleName = 'dsh-agent-manage/business-resources';
+      const loader = await import(moduleName);
+      agentResources = await loader.loadBusinessResources(directory, {
+        id: manifest.id, consumerCode: manifest.gea.consumerCode,
+        skill: manifest.skills[0], prompt: manifest.agentResources.prompt,
+      });
+    }
+    const skill = agentResources?.skill ?? await readFile(managedSkill
       ? new URL(`../presets/${manifest.id}.skill.md`, import.meta.url)
       : skillPath, 'utf8');
     const frontmatter = (key: string) =>
@@ -268,6 +283,7 @@ export async function registerHtmlPlugins(
     items.push({
       ...manifest,
       managedSkill,
+      agentResources,
       capabilityContract: await readPluginContract(directory, manifest.declarations, contractFromPlugin({
         id: manifest.id, label: manifest.name, consumerCode: manifest.gea.consumerCode,
         pageIds: pages.map((page: { id: string }) => page.id), skill, mock, maxEffect: "view",
@@ -291,7 +307,11 @@ export async function registerHtmlPlugins(
   for (const item of items) {
     const manifest = item;
     const { skillText: skill, managedSkill, presetHidden } = item;
-    await publishAgentSkill(manifest.id, skill, managedSkill);
+    if (item.agentResources) {
+      ctx.effect(() => installPromptProfile('gea-html-' + manifest.id, item.agentResources.profile));
+      await item.agentResources.mount(ctx, process.env.DSH_HOME || business.config.runtimeDir);
+    }
+    else await publishAgentSkill(manifest.id, skill, managedSkill);
     if (managedSkill && manifest.id === 'inventory-apsplan') {
       const references = Object.fromEntries(await Promise.all(['metric-definitions.md', 'data-mapping.md'].map(async name =>
         [name, await readFile(new URL(`../business-skills/aps/references/${name}`, import.meta.url), 'utf8')])));
@@ -325,7 +345,7 @@ export async function registerHtmlPlugins(
               id: "persona",
               name: "@deepseek-ai/dsh-persona",
               config: {
-                prefix: profileFor("gea-html-" + manifest.id)?.persona ?? skill,
+                prefix: item.agentResources?.profile.persona ?? profileFor("gea-html-" + manifest.id)?.persona ?? skill,
                 complete: false,
                 includeRuntimeContext: false,
               },
