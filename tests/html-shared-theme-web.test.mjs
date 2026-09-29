@@ -92,7 +92,22 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
     await expect(frame.getByLabel('交付进度')).toBeFocused();
     await expect(frame.getByLabel('交付进度')).toHaveCSS('outline-width', '2px');
     await expect(frame.getByLabel('交付进度')).toHaveCSS('outline-style', 'solid');
-    samples.push({ label, size, background: color, focus: await frame.getByLabel('交付进度').evaluate(el => getComputedStyle(el).outlineColor) });
+    const placeholder = await frame.getByLabel('项目名称').evaluate(el => {
+      const luminance = color => {
+        const channels = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(value => {
+          const channel = value / 255;
+          return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+        });
+        return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722;
+      };
+      const style = getComputedStyle(el, '::placeholder');
+      const background = getComputedStyle(el).backgroundColor;
+      const levels = [luminance(style.color), luminance(background)].sort((a, b) => b - a);
+      return { color: style.color, background, opacity: style.opacity, contrast: (levels[0] + .05) / (levels[1] + .05) };
+    });
+    assert.equal(placeholder.opacity, '1');
+    assert.ok(placeholder.contrast >= 4.5, 'placeholder must remain readable in each theme');
+    samples.push({ label, size, background: color, placeholder, focus: await frame.getByLabel('交付进度').evaluate(el => getComputedStyle(el).outlineColor) });
     await page.screenshot({ path: fileURLToPath(new URL(label === '深色' ? 'dark.png' : 'light.png', output)), fullPage: true });
   }
   await page.setViewportSize({ width: 720, height: 900 });
