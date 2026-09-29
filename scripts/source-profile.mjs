@@ -14,7 +14,10 @@ import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
-const genuiCommit = "382db5575ad3068efeff0322eec9cc499f79ae01";
+const upstreamCommits = {
+  "dsh-genui": "382db5575ad3068efeff0322eec9cc499f79ae01",
+  "dsh-better-sidebar": "a2751cfbde2dd425b8150737574bc6d1d57f73b8",
+};
 
 function clientEntry(manifest) {
   const entry = manifest.exports?.["./client"];
@@ -45,13 +48,15 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
     "dsh-agent-manage",
     "dsh-gea-plugin",
     "dsh-genui",
+    "dsh-better-sidebar",
   ]) {
     const source = join(workspace, repo);
-    if (repo === "dsh-genui") {
+    const expectedCommit = upstreamCommits[repo];
+    if (expectedCommit) {
       const commit = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
         cwd: source, encoding: "utf8",
       }).trim();
-      if (commit !== genuiCommit) throw Error(`SOURCE_GENUI_COMMIT_MISMATCH: expected ${genuiCommit}, got ${commit}`);
+      if (commit !== expectedCommit) throw Error(`SOURCE_PLUGIN_COMMIT_MISMATCH: ${repo} expected ${expectedCommit}, got ${commit}`);
     }
     const manifest = JSON.parse(
       await readFile(join(source, "package.json"), "utf8"),
@@ -70,6 +75,7 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
       "scripts/deployment.mjs",
       "src/shared",
       ...(repo === "dsh-genui" ? ["SKILL.md", "docs", "src", "pnpm-lock.yaml"] : []),
+      ...(repo === "dsh-better-sidebar" ? ["locale", "icon.svg", "src", "pnpm-lock.yaml"] : []),
     ]) {
       try {
         await cp(join(source, file), join(target, file), { recursive: true });
@@ -104,6 +110,7 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
       manifest.main ?? manifest.exports?.["."]?.default ?? "lib/host.js",
       clientEntry(manifest),
       ...(name === "@changfenhuang/dsh-genui" ? ["SKILL.md", "pnpm-lock.yaml"] : []),
+      ...(name === "dsh-better-sidebar" ? ["pnpm-lock.yaml", "locale/en.json", "locale/zh.json", "icon.svg"] : []),
     ];
     const digests = {};
     for (const file of files)

@@ -38,6 +38,7 @@ for (const name of [
   "dsh-agent-manage",
   "dsh-gea-plugin",
   "dsh-genui",
+  "dsh-better-sidebar",
 ]) {
   const cwd = join(workspace, name);
   const configurations =
@@ -94,7 +95,7 @@ for (const name of [
       stdio: "inherit",
     });
   } else {
-    execFileSync("corepack", ["pnpm", "run", name === "dsh-genui" ? "build" : "build:plugin"], {
+    execFileSync("corepack", ["pnpm", "run", name === "dsh-gea-plugin" ? "build:plugin" : "build"], {
       cwd,
       stdio: "inherit",
     });
