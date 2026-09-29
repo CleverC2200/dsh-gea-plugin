@@ -196,3 +196,5 @@ Demand Forecast follows the user's language for both progress and final answers.
 公共工作台的 `lib/samples/html-table.html` 仅用于验证；`GEA_TEST_SOURCE_CORE=1 node --test tests/html-shared-theme-web.test.mjs` 通过临时 mock 描述加载，不新增发行插件或真实库存页面。页面内嵌同版 1.0.0 资源，保留现有 sandbox/CSP。
 
 已连接 iframe 可以在原有 MessageChannel 发送 `{type: "theme:subscribe", session}`。承载器核对当前租约会话，读取 ui-theme 已投影的 `--workbench-*` 变量，再发回 `{type: "theme", context: {plugin, session}, version, colorScheme, tokens}`。这只同步显示，不授予 SQL、工具或其他权限。旧页面不订阅则不接收主题消息。切换会话依次发送空 `context`（暂停）和新 `context`（重新绑定），不重建 iframe；卸载断开观察器和端口。样板拒绝来源、页面或会话不匹配的消息，并在缺资源、版本不兼容及连接异常时显示诊断。
+
+业务页右侧 Agent 欢迎区、简介、建议按钮与输入区底座同样消费 `--workbench-*` 语义颜色，随宿主明暗切换；不保留固定的浅色渐变。HTML主题浏览器用例同时断言这一原生会话区域、往返切换、建议按钮填入和键盘焦点，避免只验证中央iframe。

@@ -580,7 +580,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   [data-composer-seat] {
   position: relative;
   z-index: 30;
-  background: #fff;
+  background: var(--workbench-surface, #fff);
 }
 /* The welcome area fills the space above the composer. The composer scrollport
    must start at its top: flex-end clips the card's upper edge on short rails. */
@@ -612,7 +612,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 
 /* The right rail is the single native conversation surface. */
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] {
-  background: #fff;
+  background: var(--workbench-surface, #fff);
   border-left: 0;
 }
 /* 宿主的列拖拽条宽 8px、左右各压过边界 4px，会压进右侧会话区、在输入框那一行切出一条竖线。
@@ -649,7 +649,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   margin-right: 0;
 }
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] [data-composer-seat] {
-  background: #fff;
+  background: var(--workbench-surface, #fff);
 }
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] .wSkVaW_composerHero > .pXSMma_root,
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] .wSkVaW_heroWorkspaceRow {
@@ -678,7 +678,8 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   z-index: 1;
   overflow: auto;
   padding: 28px 18px 16px;
-  background: linear-gradient(180deg, #fff8f9 0, #fff 35%);
+  background: var(--workbench-surface, #fff);
+  color: var(--workbench-body, #555d68);
 }
 [data-phase="hero"] [data-composer-seat] {
   /* Keep the composer outline above the column resize handles. */
@@ -689,7 +690,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   z-index: 12;
   flex: 0 0 auto;
   min-height: 0;
-  background: #fff;
+  background: var(--workbench-surface, #fff);
 }
 /* With the workbench beside it, the landing surface takes the space above the docked composer. */
 [data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] > .gea-agent-welcome {
@@ -706,7 +707,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   z-index: 12;
   flex: 0 0 auto;
   min-height: 0;
-  background: #fff;
+  background: var(--workbench-surface, #fff);
 }
 .gea-agent-identity { text-align: center; }
 .gea-agent-avatar {
@@ -716,21 +717,21 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   margin: 0 auto 8px;
 }
 /* 去掉名称下的「辅助」标签后，标题和简介之间留一点间距。 */
-.gea-agent-identity h2 { margin: 0 0 10px; color: #242b38; font-size: 17px; font-weight: 600; }
+.gea-agent-identity h2 { margin: 0 0 10px; color: var(--workbench-text, #20232a); font-size: 17px; font-weight: 600; }
 .gea-agent-intro {
   margin: 0;
   padding: 9px 11px;
-  border: 1px solid #eceff3;
+  border: 1px solid var(--workbench-border, #e3e6ea);
   border-radius: 10px;
-  background: #fff;
-  color: #5f5f5a;
+  background: var(--workbench-surface, #fff);
+  color: var(--workbench-body, #555d68);
   font-size: 12px;
   line-height: 1.75;
   text-align: left;
 }
-.gea-agent-intro b { color: #242b38; font-weight: 600; }
+.gea-agent-intro b { color: var(--workbench-text, #20232a); font-weight: 600; }
 .gea-agent-block { margin-top: 16px; }
-.gea-agent-block h3 { margin: 0 0 8px; color: #5f5f5a; font-size: 12px; font-weight: 600; }
+.gea-agent-block h3 { margin: 0 0 8px; color: var(--workbench-body, #555d68); font-size: 12px; font-weight: 600; }
 .gea-agent-actions { display: grid; gap: 7px; }
 .gea-agent-actions button,
 .gea-agent-prompts button {
@@ -740,10 +741,10 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   align-items: center;
   gap: 10px;
   padding: 9px 11px;
-  border: 1px solid #e8ebf0;
+  border: 1px solid var(--workbench-control-border, #d9dde3);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.85);
-  color: #3f4856;
+  background: var(--workbench-surface, #fff);
+  color: var(--workbench-body, #555d68);
   font: inherit;
   font-size: 12px;
   text-align: left;
@@ -751,16 +752,18 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
 }
 .gea-agent-actions button:hover,
-.gea-agent-prompts button:hover { border-color: #e7a4ae; background: #fff5f6; color: #c52138; }
+.gea-agent-prompts button:hover { border-color: var(--workbench-brand, #df1732); background: var(--workbench-hover, #fffafb); color: var(--workbench-selected-text, #d0132c); }
 .gea-agent-action-icon { flex: none; color: #e1251b; }
 .gea-agent-action-icon[data-tone="info"] { color: #185fa5; }
 .gea-agent-action-icon[data-tone="success"] { color: #0f6e56; }
 .gea-agent-action-copy { display: grid; min-width: 0; flex: 1 1 auto; gap: 1px; text-align: left; }
-.gea-agent-action-title { color: #242b38; font-size: 13px; font-weight: 600; line-height: 1.4; }
-.gea-agent-action-detail { color: #9a9a96; font-size: 11px; line-height: 1.45; }
-.gea-agent-action-arrow { margin-left: auto; color: #9a9a96; font-size: 12px; font-weight: 400; }
+.gea-agent-action-title { color: var(--workbench-text, #20232a); font-size: 13px; font-weight: 600; line-height: 1.4; }
+.gea-agent-action-detail { color: var(--workbench-muted, #626b78); font-size: 11px; line-height: 1.45; }
+.gea-agent-action-arrow { margin-left: auto; color: var(--workbench-muted, #626b78); font-size: 12px; font-weight: 400; }
 .gea-agent-prompts { padding-top: 2px; }
-.gea-agent-prompts button { min-height: 34px; margin-bottom: 7px; padding: 7px 14px; border-radius: 999px; color: #5f5f5a; }
+.gea-agent-prompts button { min-height: 34px; margin-bottom: 7px; padding: 7px 14px; border-radius: 999px; color: var(--workbench-body, #555d68); }
+.gea-agent-actions button:focus-visible,
+.gea-agent-prompts button:focus-visible { outline: 2px solid var(--workbench-brand, #df1732); outline-offset: 2px; }
 /* 矮窗口（≤940px 高，覆盖 768/864/900 这类常见笔记本高度）压缩欢迎区：
    隐藏常用功能的一行说明、常用功能只留前两条、收紧间距，
    让「你可以这样问」的推荐问题一屏可见，而不是要滚动才看得到。 */

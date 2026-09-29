@@ -87,6 +87,32 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
     await expect(frame.locator('body')).toHaveCSS('font-size', size + 'px');
     await expect(page.locator('.AppFrame_frame')).toHaveCSS('font-size', size + 'px');
     await expect(page.locator('body')).toHaveCSS('background-color', color);
+    const surface = label === '深色' ? 'rgb(36, 38, 43)' : 'rgb(255, 255, 255)';
+    const bodyText = label === '深色' ? 'rgb(199, 205, 214)' : 'rgb(85, 93, 104)';
+    for (const selector of ['.gea-agent-welcome', '.gea-agent-intro', '.gea-agent-prompts button']) {
+      for (const element of await page.locator(selector).all()) {
+        await expect(element).toHaveCSS('background-color', surface);
+        await expect(element).toHaveCSS('color', bodyText);
+      }
+    }
+    await expect(page.locator('.gea-agent-welcome')).toHaveCSS('background-image', 'none');
+    await expect(page.locator('.gea-agent-identity h2')).toHaveCSS('color', label === '深色' ? 'rgb(237, 240, 245)' : 'rgb(32, 35, 42)');
+    const welcomeCanvas = await page.locator('.gea-agent-welcome').evaluate(el => getComputedStyle(el.closest('[data-phase]')).backgroundColor);
+    assert.equal(welcomeCanvas, surface, 'the entire conversation canvas must follow its theme');
+    const suggestion = page.locator('.gea-agent-prompts button').first();
+    await suggestion.hover();
+    await expect(suggestion).toHaveCSS('background-color', label === '深色' ? 'rgb(53, 39, 46)' : 'rgb(255, 250, 251)');
+    await suggestion.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(suggestion).toBeFocused();
+    await expect(suggestion).toHaveCSS('outline-width', '2px');
+    const promptText = await suggestion.innerText();
+    await suggestion.click();
+    const composer = page.locator('[contenteditable="true"], textarea').first();
+    await expect(composer).toHaveText(promptText);
+    await composer.fill('');
+    await page.mouse.move(0, 0);
     await frame.getByLabel('项目名称').focus();
     await page.keyboard.press('Tab');
     await expect(frame.getByLabel('交付进度')).toBeFocused();
@@ -110,6 +136,17 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
     samples.push({ label, size, background: color, placeholder, focus: await frame.getByLabel('交付进度').evaluate(el => getComputedStyle(el).outlineColor) });
     await page.screenshot({ path: fileURLToPath(new URL(label === '深色' ? 'dark.png' : 'light.png', output)), fullPage: true });
   }
+  // Theme switches must also restore the same mounted welcome, without a reload.
+  await settings();
+  await changeThemeSetting(page, '浅色', 'preference');
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(page.locator('.gea-agent-welcome')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(frame.locator('body')).toHaveCSS('background-color', 'rgb(247, 248, 250)');
+  await page.screenshot({ path: fileURLToPath(new URL('restored-light.png', output)), fullPage: true });
+  await settings();
+  await changeThemeSetting(page, '深色', 'preference');
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(page.locator('.gea-agent-welcome')).toHaveCSS('background-color', 'rgb(36, 38, 43)');
   await page.setViewportSize({ width: 720, height: 900 });
   await expect(frame.getByRole('button', { name: '查询', exact: true })).toBeVisible();
   const dimensions = await child.evaluate(() => ({ width: innerWidth, document: document.documentElement.scrollWidth, table: document.querySelector('.table-scroll').scrollWidth, region: document.querySelector('.table-scroll').clientWidth }));
