@@ -64,7 +64,7 @@ async function probePlugin(id = "inventory-probe", name = "探针页面", option
   return root;
 }
 
-async function registered(specs = ["inventory-probe"]) {
+async function registered(specs = ["inventory-probe"], options = {}) {
   const roots = [];
   for (const spec of specs) {
     const item = typeof spec === "string" ? { id: spec } : spec;
@@ -74,6 +74,9 @@ async function registered(specs = ["inventory-probe"]) {
   const routes = [];
   const declared = [];
   const tools = [];
+  const identityListeners = new Set();
+  let identityScope = "fixture-scope";
+  let identityController = new AbortController();
   const ctx = {
     effect: (fn) => fn(),
     tools: {
@@ -89,9 +92,10 @@ async function registered(specs = ["inventory-probe"]) {
   const business = {
     config: { runtimeDir },
     status: () => ({ authenticated: true, user: { id: "u-1" } }),
-    watchIdentity: () => () => {},
-    identitySignal: () => new AbortController().signal,
-    htmlLaunch: async (consumerCode) => ({ sessionId: "deleg-" + consumerCode }),
+    pageSessionScope: () => identityScope,
+    watchIdentity: (listener) => { identityListeners.add(listener); return () => identityListeners.delete(listener); },
+    identitySignal: () => identityController.signal,
+    htmlLaunch: options.htmlLaunch ?? (async (consumerCode) => ({ sessionId: "deleg-" + consumerCode })),
     pullPageBridgeEvents: (sessionId, toolMessages) => ({
       events: [{ sessionId, received: toolMessages }],
     }),
@@ -115,6 +119,12 @@ async function registered(specs = ["inventory-probe"]) {
     identities,
     plugin: plugins.capabilityContracts[0],
     consumerForSession: plugins.consumerForSession,
+    changeIdentity: () => {
+      identityController.abort();
+      identityController = new AbortController();
+      identityScope = "next-scope";
+      for (const listener of identityListeners) listener();
+    },
   };
 }
 
@@ -270,7 +280,7 @@ test("页面关掉后身份清空；真实模块的模型 agentCode 跟着当前
   const open = routes.find((route) => route.path === "/api/gea-html/inventory-real/open");
   const call = routes.find((route) => route.path === "/api/gea-html/inventory-real/call");
 
-  const { lease } = await (await post(open, { session })).json();
+  const { lease } = await (await post(open, { session, scope: "fixture-scope" })).json();
   assert.equal(identities.get(session).pluginId, "inventory-real");
   assert.equal(identities.get(session).mock, false);
   // 模型侧的 agentCode（决定技能/口径）必须跟着当前页，而不是上一个页面。
@@ -279,4 +289,21 @@ test("页面关掉后身份清空；真实模块的模型 agentCode 跟着当前
   await post(call, { lease, method: "close" });
   assert.equal(identities.get(session), undefined);
   assert.equal(consumerForSession(session), undefined, "没有页面时回到默认 agent");
+});
+
+test("a page launch finishing after identity change cannot mount its old lease", async () => {
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const { routes, identities, changeIdentity } = await registered(
+    [{ id: "inventory-real", mock: false }],
+    { htmlLaunch: async () => { entered.resolve(); await release.promise; return { sessionId: "old-delegation" }; } },
+  );
+  const open = routes.find(route => route.path === "/api/gea-html/inventory-real/open");
+  const pending = post(open, { session, scope: "fixture-scope" });
+  await entered.promise;
+  changeIdentity();
+  release.resolve();
+  const response = await pending;
+  assert.equal(response.status, 400);
+  assert.equal(identities.has(session), false, "late launch must not install a page identity");
 });

@@ -154,10 +154,11 @@ test("branch stock filter, quote and two authorized Agents keep separate Session
   await promptPage(qllSession, "evidenceId");
   await promptPage(qllSession, "REFERENCE_UNAVAILABLE", `请解释 @[FC001](dsh-page:${referenceId})`);
   await promptPage(branchSession, "PAGE_NOT_IN_WORKBENCH");
+  const currentAuthority = await page.evaluate(() => fetch("/api/gea-html/identity").then(response => response.json()).then(value => value.scope));
   const mismatch = await page.evaluate(async (body) => {
     const response = await fetch("/api/gea-html/inventory-fc/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     return { status: response.status, value: await response.json() };
-  }, { session: branchSession, agentPreset: "gea-html-inventory-qll" });
+  }, { session: branchSession, agentPreset: "gea-html-inventory-qll", scope: currentAuthority });
   assert.equal(mismatch.status, 400);
   assert.equal(mismatch.value.error, "PAGE_AGENT_SESSION_MISMATCH");
   const unsupportedSession = await app.remote("session/create", { cwd: app.runtime + "/workspace", agentPreset: "gea-readonly" });
@@ -165,23 +166,24 @@ test("branch stock filter, quote and two authorized Agents keep separate Session
   const unsupported = await page.evaluate(async (body) => {
     const response = await fetch("/api/gea-html/inventory-fc/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     return { status: response.status, value: await response.json() };
-  }, { session: unsupportedSession.value.sessionId, agentPreset: "gea-readonly" });
+  }, { session: unsupportedSession.value.sessionId, agentPreset: "gea-readonly", scope: currentAuthority });
   assert.equal(unsupported.status, 400);
   assert.equal(unsupported.value.error, "PAGE_AGENT_PRESET_NOT_ALLOWED");
   denyQll = true;
   const denied = await page.evaluate(async (body) => {
     const response = await fetch("/api/gea-html/inventory-fc/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     return { status: response.status, value: await response.json() };
-  }, { session: qllSession, agentPreset: "gea-html-inventory-qll" });
+  }, { session: qllSession, agentPreset: "gea-html-inventory-qll", scope: currentAuthority });
   assert.equal(denied.status, 400);
   await app.rpc("logout");
   await expect(chooser).toHaveCount(0);
   tenantId = "1";
   await app.login();
+  const tenantScope = await page.evaluate(() => fetch("/api/gea-html/identity").then(response => response.json()).then(value => value.scope));
   const crossIdentity = await page.evaluate(async (body) => {
     const response = await fetch("/api/gea-html/inventory-fc/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     return { status: response.status, value: await response.json() };
-  }, { session: branchSession, agentPreset: "gea-html-inventory-fc" });
+  }, { session: branchSession, agentPreset: "gea-html-inventory-fc", scope: tenantScope });
   assert.equal(crossIdentity.status, 400);
   assert.equal(crossIdentity.value.error, "PAGE_SESSION_IDENTITY_MISMATCH");
   await promptPage(branchSession, "REFERENCE_UNAVAILABLE", `请解释 @[FC001](dsh-page:${referenceId})`);
@@ -189,10 +191,11 @@ test("branch stock filter, quote and two authorized Agents keep separate Session
   userId = "9007199254740994";
   tenantId = "0";
   await app.login();
+  const userScope = await page.evaluate(() => fetch("/api/gea-html/identity").then(response => response.json()).then(value => value.scope));
   const crossUser = await page.evaluate(async (body) => {
     const response = await fetch("/api/gea-html/inventory-fc/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     return { status: response.status, value: await response.json() };
-  }, { session: branchSession, agentPreset: "gea-html-inventory-fc" });
+  }, { session: branchSession, agentPreset: "gea-html-inventory-fc", scope: userScope });
   assert.equal(crossUser.status, 400);
   assert.equal(crossUser.value.error, "PAGE_SESSION_IDENTITY_MISMATCH");
   assert.deepEqual(errors, []);

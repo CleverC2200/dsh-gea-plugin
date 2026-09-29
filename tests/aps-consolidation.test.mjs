@@ -22,6 +22,7 @@ test("APS V0.2 replaces legacy plugin routes and tools without GEA login", async
     config: { runtimeDir: runtime },
     watchIdentity: () => () => {},
     status: () => ({ authenticated: false }),
+    pageSessionScope: () => undefined,
   };
   const call = async (path, body) =>
     routes.get(path).fetch(

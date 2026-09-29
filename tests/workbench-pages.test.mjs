@@ -107,12 +107,7 @@ test(
         .click();
       await expect.poll(currentId).toBe(a);
       await page.reload();
-      await frame
-        .getByRole("heading", { name: "销售计划审批", exact: true })
-        .waitFor();
-      await page
-        .getByRole("button", { name: "示例 Agent", exact: true })
-        .click();
+      await page.locator("[data-workbench-example]").waitFor();
       await expect.poll(currentId).toBe(a);
       await page.getByRole("button", { name: "合同 B", exact: true }).click();
       await expect.poll(currentId).toBe(b);

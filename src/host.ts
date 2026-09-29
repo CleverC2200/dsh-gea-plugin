@@ -26,7 +26,6 @@ import {
 } from "@deepseek-ai/dsh-llm";
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
-import { businessIdentityKey } from "./host/business-identity.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
 import { lastUserQuestion, mountTurnAnchor } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
@@ -379,9 +378,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   const pageBridgeHost: PageBridgeHost = {};
   const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlRoots,pageBridgeHost);
   const clearPageReferences = applyPageInteraction(ctx, { authorize: htmlPlugins.authorizeReference });
-  let referenceOwner = businessIdentityKey(business);
+  let referenceOwner = business.pageSessionScope();
   ctx.effect(() => business.watchIdentity(() => {
-    const next = businessIdentityKey(business);
+    const next = business.pageSessionScope();
     if (next === referenceOwner) return;
     referenceOwner = next;
     clearPageReferences();
@@ -420,7 +419,13 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     ],
   });
   // 身份变化后旧会话的页面工具一律注销；页面下一轮声明会重新注册。
-  ctx.effect(() => business.watchIdentity(() => pageTools.disposeAll()));
+  let pageToolOwner = business.pageSessionScope();
+  ctx.effect(() => business.watchIdentity(() => {
+    const next = business.pageSessionScope();
+    if (next === pageToolOwner) return;
+    pageToolOwner = next;
+    pageTools.disposeAll();
+  }));
   // 目录缓存（成员清单 + 模型 → consumerCode）也跟着身份走：换了账号或环境，上一份
   // inspect 里的成员和可见模型都不能再用——规约 G5 要的是"当前模型版本的 inspect"。
   ctx.effect(() =>

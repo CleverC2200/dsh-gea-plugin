@@ -66,6 +66,8 @@ async function registeredPlugins(options = {}) {
   const business = {
     config: { runtimeDir },
     status: () => ({ authenticated: true, user: { id: "u-1" } }),
+    pageSessionScope: () => "fixture-scope",
+    identitySignal: () => new AbortController().signal,
     watchIdentity: () => () => {},
     // 宿主侧"当前页身份"：页面打开/轮询时刷新（见 host/page-identity.ts）。
     touchPageIdentity: (sessionId, identity) =>

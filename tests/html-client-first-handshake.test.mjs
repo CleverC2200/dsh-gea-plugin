@@ -47,6 +47,7 @@ async function fixture(t, { managed = false } = {}) {
     const data = route.request().postDataJSON();
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: `<style>${css}</style><div id="app"></div>` });
     if (url.pathname.endsWith('/status')) return route.fulfill({ json: { ok: true, value: { htmlPlugins: true } } });
+    if (url.pathname.endsWith('/identity')) return route.fulfill({ json: { scope: 'fixture-identity' } });
     if (url.pathname.endsWith('/plugins')) return route.fulfill({ json: [{ id: 'inventory-fc', name: '表格样板', ...(managed ? { agentResources: { provider: 'dsh-agent-manage' } } : {}) }] });
     if (url.pathname.endsWith('/open')) {
       const gate = opens.get(data.session);

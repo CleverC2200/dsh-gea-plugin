@@ -653,7 +653,11 @@ export function apply(ctx: Context): void {
     yield ctx.agentWorkbench.register({ id: MPS_PLAN_PANEL, preset: "gea-readonly" });
     // 业务待办页也要有自己的会话栏：不登记的话右侧对话框整块不出现。
     yield ctx.agentWorkbench.register({ id: INBOX, preset: "gea-readonly" });
-    ctx.layout.selectPanel(PANEL);
+    const workbench = ctx.agentWorkbench as typeof ctx.agentWorkbench & {
+      selectDefault?: (id: MainPanelId) => void;
+    };
+    if (workbench.selectDefault) workbench.selectDefault(PANEL);
+    else ctx.layout.selectPanel(PANEL);
   });
   function NavigationMode({
     useSessions,

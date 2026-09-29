@@ -21,6 +21,7 @@ test('HTML theme subscription is scoped to the frame, live session and mounted c
       const data = route.request().postDataJSON();
       if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<style>body{--workbench-theme-version:"1.0.0";--workbench-font-size:14px;--workbench-page:#f7f8fa}</style><div id="app"></div>' });
       if (url.pathname.endsWith('/status')) return route.fulfill({ json: { ok: true, value: { htmlPlugins: true } } });
+      if (url.pathname.endsWith('/identity')) return route.fulfill({ json: { scope: 'fixture-identity' } });
       if (url.pathname.endsWith('/plugins')) return route.fulfill({ json: [{ id: 'inventory-fc', name: '验收' }] });
       if (url.pathname.endsWith('/open')) return route.fulfill({ json: { lease: 'lease-' + data.session } });
       if (url.pathname.endsWith('/call')) return route.fulfill({ json: data.method === 'events' ? [] : {} });

@@ -20,6 +20,7 @@ test('new conversation rebinds the existing HTML page without losing page state 
       const url=new URL(route.request().url()); const data=route.request().postDataJSON();
       if(url.pathname==='/') return route.fulfill({contentType:'text/html',body:'<div id="app"></div>'});
       if(url.pathname.endsWith('/status')) return route.fulfill({json:{ok:true,value:{htmlPlugins:true}}});
+      if(url.pathname.endsWith('/identity')) return route.fulfill({json:{scope:'fixture-identity'}});
       if(url.pathname.endsWith('/plugins')) return route.fulfill({json:[{id:'inventory-fc',name:'分仓库存'}]});
       if(url.pathname.endsWith('/open')) return route.fulfill({json:{lease:'lease-'+data.session}});
       if(url.pathname.endsWith('/call')) { calls.push(data);return route.fulfill({json:data.method==='events'?[]:{ok:true}}); }

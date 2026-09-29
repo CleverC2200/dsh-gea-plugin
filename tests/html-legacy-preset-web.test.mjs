@@ -41,6 +41,7 @@ for (const preset of [undefined, "user-custom"]) test(`legacy page preserves an 
     const path = new URL(route.request().url()).pathname;
     if (path === "/") return route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' });
     if (path.endsWith("/status")) return route.fulfill({ json: { ok: true, value: { htmlPlugins: true } } });
+    if (path.endsWith("/identity")) return route.fulfill({ json: { scope: "fixture-identity" } });
     if (path.endsWith("/plugins")) return route.fulfill({ json: manifests });
     if (path.endsWith("/open")) return route.fulfill({ json: { lease: "fixture-lease" } });
     if (path.endsWith("/call")) return route.fulfill({ json: [] });

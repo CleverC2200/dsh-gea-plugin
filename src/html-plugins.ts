@@ -394,7 +394,11 @@ export async function registerHtmlPlugins(
       }
     });
   }
+  let identityScope = business.pageSessionScope();
   const unwatch = business.watchIdentity(() => {
+    const next = business.pageSessionScope();
+    if (next === identityScope) return;
+    identityScope = next;
     sessions.clear();
     lastPageContext.clear();
   });
@@ -436,7 +440,10 @@ export async function registerHtmlPlugins(
           try {
             if (requireGea && !business.status().authenticated)
               return json({ error: "请先登录 GEA" }, 401);
-            return await handler(request);
+            const identity = requireGea ? business.identitySignal() : undefined;
+            const response = await handler(request);
+            if (identity?.aborted) throw Error("PAGE_IDENTITY_CHANGED");
+            return response;
           } catch (error) {
             return json(
               {
@@ -465,6 +472,8 @@ export async function registerHtmlPlugins(
       ),
     false,
   );
+  register("/api/gea-html/identity", ["GET"], () =>
+    json({ scope: business.pageSessionScope() ?? null }), false);
   for (const item of items) {
     const prefix = "/api/gea-html/" + item.id;
     register(prefix + "/agents", ["GET"], async (request) => {
@@ -511,15 +520,19 @@ ${toolbarSelectors} {
       });
     });
     register(prefix + "/open", ["POST"], async (request) => {
-      const { session, agentPreset } = await request.json();
+      const started = item.mock ? undefined : business.identitySignal();
+      const { session, agentPreset, scope } = await request.json();
       if (
         typeof session !== "string" ||
         !/^session-[a-z0-9-]{20,80}$/.test(session)
       )
         throw Error("INVALID_CONVERSATION");
-      const principalKey = businessIdentityKey(business);
+      const principal = businessIdentityKey(business);
+      const principalKey = principal && `${principal}:${business.pageSessionScope()}`;
       if (!item.mock && !principalKey) throw Error("GEA_IDENTITY_INCOMPLETE");
       if (!item.mock && sessionPrincipals.has(session) && sessionPrincipals.get(session) !== principalKey)
+        throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
+      if (!item.mock && scope !== business.pageSessionScope())
         throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
       let authorizedAgent: Awaited<ReturnType<typeof pageAgent>> | undefined;
       if (!item.mock && item.loadedAgentResources) {
@@ -556,6 +569,9 @@ ${toolbarSelectors} {
           ...(credentials.roleProfile ?? {}),
         };
       }
+      started?.throwIfAborted();
+      if (!item.mock && scope !== business.pageSessionScope())
+        throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
       // 打开页面即确立"当前页"：mock 页也要记，否则演示页会被当成没打开。
       business.touchPageIdentity?.(session, {
         pluginId: item.id,
@@ -797,7 +813,8 @@ ${toolbarSelectors} {
       const value = input as { sessionId?: string; surface?: string; lease?: string };
       if (typeof value.sessionId !== "string" || typeof value.surface !== "string" || !ctx.agents?.get(value.sessionId))
         throw Error("PAGE_REFERENCE_ACCESS_DENIED");
-      const principal = businessIdentityKey(business);
+      const identity = businessIdentityKey(business);
+      const principal = identity && `${identity}:${business.pageSessionScope()}`;
       const owner = sessionPrincipals.get(value.sessionId);
       if (owner !== undefined && owner !== principal) throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
       if (value.surface.startsWith("gea-html-") || owner !== undefined) {

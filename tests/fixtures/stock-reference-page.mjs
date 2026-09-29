@@ -5,7 +5,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile, readSession, readToolResults, until } from "../profile.mjs";
 import { stockState, installStockRoutes } from "./branch-stock.mjs";
 
-export async function stockReferencePage(t, { editable = false, holdMessage } = {}) {
+export async function stockReferencePage(t, { editable = false, holdMessage, environments = false } = {}) {
   const identity = { userId: "9007199254740993", tenantId: "0" };
   const state = stockState();
   if (editable) state.mode = "editable";
@@ -18,7 +18,10 @@ export async function stockReferencePage(t, { editable = false, holdMessage } = 
       : { tool_calls: [{ index: 0, id: randomUUID(), type: "function", function: { name: "page_reference_read", arguments: JSON.stringify({ id }) } }] };
   });
   const app = await profile(t, {
-    config: base => ({ analysis: { mode: "model", baseUrl: base + "/v1", model: "fixture", apiKeyEnv: "GEA_TEST_MODEL_KEY", contextWindow: 32768, maxTokens: 2048 } }),
+    config: base => ({
+      ...(environments ? { environment: "test", geaEnvironments: { production: base + "/production", test: base + "/test" } } : {}),
+      analysis: { mode: "model", baseUrl: base + "/v1", model: "fixture", apiKeyEnv: "GEA_TEST_MODEL_KEY", contextWindow: 32768, maxTokens: 2048 },
+    }),
     env: { GEA_TEST_MODEL_KEY: "fixture-key", GEA_HTML_PLUGIN_ROOTS: JSON.stringify([resolve("../dsh-agent-workbench/lib/business/inventory-fc")]) },
   });
   app.route((request, response, reply) => {

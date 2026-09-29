@@ -743,6 +743,7 @@ export class Business {
   private auth?: { token: string; tenantId: string; name: string; id: string; username: string; avatar?: string; permissionCodes?: string[]; roles?: SalesPlanApprovalRole[] };
   private qr?: { id: string; loginId: string; createdAt: number };
   private epoch = new AbortController();
+  private pageIdentityGeneration = randomUUID();
   private queryEpoch = new AbortController();
   private page?: Page;
   private preview?: Preview;
@@ -788,6 +789,11 @@ export class Business {
   /** 登录环境变化时取消推理和查询。 */
   identitySignal(): AbortSignal {
     return this.epoch.signal;
+  }
+
+  /** Opaque authority for browser page associations; changes on logout and environment switches. */
+  pageSessionScope(): string | undefined {
+    return this.auth ? `${this.runId}:${this.pageIdentityGeneration}` : undefined;
   }
 
   /** 选择已配置环境，并立即丢弃凭证、二维码和预览。 */
@@ -868,6 +874,7 @@ export class Business {
     this.apiLog.invalidateReplays();
     this.epoch.abort();
     this.epoch = new AbortController();
+    this.pageIdentityGeneration = randomUUID();
     this.auth = undefined;
     this.modelRoutes.clear();
     this.pluginDelegations.clear();

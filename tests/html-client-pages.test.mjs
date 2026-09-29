@@ -13,6 +13,7 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
   const agents = [];
   const presets = new Map();
   const panels = [];
+  let dispose;
   try {
     await build({
       entryPoints: [resolve("src/html-client.tsx")],
@@ -54,12 +55,13 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
           },
         ]);
       }
+      if (path === "/api/gea-html/identity") return Response.json({ scope: null });
       throw Error("unexpected fetch: " + path);
     };
     const { registerHtmlClient } = await import(pathToFileURL(output));
     registerHtmlClient({
       effect(callback) {
-        callback();
+        dispose = callback();
       },
       agentWorkbench: {
         register({ id, preset }) {
@@ -94,6 +96,7 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
       assert.equal(presets.get(id), "auto-negotiation", "演示页面绑定已有默认助手，不引用已隐藏的预设");
     assert.equal(presets.get("inventory-apsplan"), "gea-html-inventory-aps");
   } finally {
+    dispose?.();
     globalThis.fetch = originalFetch;
     await rm(temporary, { recursive: true, force: true });
   }

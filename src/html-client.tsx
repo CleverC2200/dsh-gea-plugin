@@ -35,51 +35,82 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
     const suspendPage = useRef<(() => void) | null>(null);
     const registrations = useRef(new Map<string, any>());
     const pageContext = useRef<any>(undefined);
+    const identityRevision = useRef(0);
+    const identityActive = useRef(true);
     const legacySession = plugin.agentResources ? undefined : session;
     useEffect(() => {
-      if (!plugin.agentResources) return;
+      const changed = () => {
+        identityRevision.current++;
+        identityActive.current = false;
+        binding.current = null;
+        readyBinding.current = Promise.resolve(null);
+        setOpened(false);
+        setConnection(null);
+        setAgents([]);
+        setSwitchingAgent(false);
+        setError("登录身份已变化，请重新打开业务页");
+        setRevision((value) => value + 1);
+      };
+      window.addEventListener("gea-business-identity-changed", changed);
+      return () => window.removeEventListener("gea-business-identity-changed", changed);
+    }, []);
+    useEffect(() => {
+      if (!plugin.agentResources || !identityActive.current) return;
       const controller = new AbortController();
+      const revisionAtStart = identityRevision.current;
       void request(plugin.id + "/agents", undefined, controller.signal)
-        .then((value) => { if (!controller.signal.aborted) setAgents(value); })
-        .catch((failure) => { if (!controller.signal.aborted) setError(failure.message); });
+        .then((value) => { if (!controller.signal.aborted && revisionAtStart === identityRevision.current) setAgents(value); })
+        .catch((failure) => { if (!controller.signal.aborted && revisionAtStart === identityRevision.current) setError(failure.message); });
       return () => controller.abort();
-    }, [plugin.id, revision]);
+    }, [plugin.id, revision, opened]);
     useEffect(() => {
       let active = true;
+      const revisionAtStart = identityRevision.current;
       let hide = () => {};
       const defaultPreset = plugin.presetHidden === true ? "auto-negotiation" : `gea-html-${plugin.id}`;
-      let opening: Promise<void>;
-      if (plugin.agentResources)
-        opening = ctx.agentWorkbench.open(workbenchId, defaultPreset, undefined, defaultPreset);
-      else if (legacySession)
-        opening = ctx.agentWorkbench.open(workbenchId, "default", legacySession);
-      else
-        opening = ctx.agentWorkbench.open(workbenchId, "default");
-      void opening
-        .then(() => {
-          if (active) {
-            hide = ctx.agentWorkbench.showConversation(workbenchId);
-            setOpened(true);
-          }
-        })
+      const open = (): Promise<boolean | void> => {
+        if (plugin.agentResources)
+          return ctx.agentWorkbench.open(workbenchId, defaultPreset, undefined, defaultPreset);
+        if (legacySession)
+          return ctx.agentWorkbench.open(workbenchId, "default", legacySession);
+        return ctx.agentWorkbench.open(workbenchId, "default");
+      };
+      void (async () => {
+        let committed = await open();
+        if (committed === false && active && revisionAtStart === identityRevision.current &&
+            ctx.layout?.panelInfo?.getSnapshot()?.activePanelId === workbenchId)
+          committed = await open();
+        if (committed === false) {
+          if (active && revisionAtStart === identityRevision.current)
+            setError("页面会话切换未完成，请重新打开业务页");
+          return;
+        }
+        if (active && revisionAtStart === identityRevision.current) {
+          identityActive.current = true;
+          hide = ctx.agentWorkbench.showConversation(workbenchId);
+          setOpened(true);
+        }
+      })()
         .catch((e: Error) => {
-          if (active) setError(e.message);
+          if (active && revisionAtStart === identityRevision.current) setError(e.message);
         });
       return () => {
         active = false;
         hide();
       };
-    }, [workbenchId, legacySession]);
+    }, [workbenchId, legacySession, revision]);
     const switchAgent = async (nextPreset: string) => {
       if (switchingAgent || !agents.some((agent) => agent.preset === nextPreset)) return;
+      const revisionAtStart = identityRevision.current;
       setSwitchingAgent(true);
       setError("");
       try {
         await ctx.agentWorkbench.open(workbenchId, nextPreset, undefined, nextPreset);
       } catch (failure) {
-        setError(failure instanceof Error ? failure.message : "能力切换失败");
+        if (revisionAtStart === identityRevision.current)
+          setError(failure instanceof Error ? failure.message : "能力切换失败");
       } finally {
-        setSwitchingAgent(false);
+        if (revisionAtStart === identityRevision.current) setSwitchingAgent(false);
       }
     };
     useEffect(() => {
@@ -88,20 +119,22 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
         return;
       }
       const controller = new AbortController();
+      const revisionAtStart = identityRevision.current;
       let lease: string | undefined;
       pageContext.current = undefined;
       setError("");
-      const opening = request(plugin.id + "/open", { session, agentPreset: preset }, controller.signal)
+      const opening = request("identity", undefined, controller.signal)
+        .then(authority => request(plugin.id + "/open", { session, agentPreset: preset, scope: authority.scope }, controller.signal))
         .then((result) => {
           lease = result.lease;
-          if (controller.signal.aborted) return null;
+          if (controller.signal.aborted || revisionAtStart !== identityRevision.current) return null;
           const next = { ...result, session };
           binding.current = next;
           return Promise.all([
             ...[...registrations.current.values()].map(parameters => request(plugin.id + "/call", { lease, method: "register", parameters }, controller.signal)),
             ...(pageContext.current === undefined ? [] : [request(plugin.id + "/call", { lease, method: "context", parameters: pageContext.current }, controller.signal)]),
           ]).then(() => {
-            if (controller.signal.aborted) return null;
+            if (controller.signal.aborted || revisionAtStart !== identityRevision.current) return null;
             // A new conversation changes authority, never the mounted business page.
             setConnection((current: any) => current ?? next);
             rebindPage.current?.(next);
@@ -109,7 +142,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
           });
         })
         .catch((e) => {
-          if (!controller.signal.aborted) setError(e.message);
+          if (!controller.signal.aborted && revisionAtStart === identityRevision.current) setError(e.message);
           return null;
         });
       readyBinding.current = opening;
@@ -130,6 +163,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
         surface: `gea-html-${plugin.id}`, tool: "gea_plugin_page_apply",
         referenceLease: () => binding.current?.session === session ? binding.current.lease : undefined,
         validateReference: (reference) => {
+          if (!identityActive.current) throw Error("登录身份已变化，请重新选择引用。");
           if (!plugin.agentResources || plugin.id !== "inventory-fc") return;
           const parts = pageContext.current?.parts;
           if (parts?.queryState?.state !== "ready" ||
@@ -197,7 +231,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
         port.port1.postMessage({ type: "context", context: null });
       };
       const requireBinding = (expected: any) => {
-        if (!expected || expected !== binding.current || controller.signal.aborted)
+        if (!identityActive.current || !expected || expected !== binding.current || controller.signal.aborted)
           throw Error("页面会话已切换，请重新操作");
       };
       const call = async (
@@ -284,6 +318,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
                 ],
               });
               if (!sent.ok) throw Error(sent.error.message);
+              requireBinding(requestBinding);
               result = { sent: true };
             } else if (["sql", "workspace", "access", "context"].includes(m.method)) {
               result = await call(
@@ -294,16 +329,18 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
               );
               if (m.method === "context") pageContext.current = m.parameters;
             } else throw Error("HTML_METHOD_NOT_ALLOWED");
+            requireBinding(requestBinding);
             port.port1.postMessage({ type: "response", id: m.id, result });
           } finally {
             pending.delete(m.id);
           }
         } catch (e) {
-          port.port1.postMessage({
-            type: "response",
-            id: m.id,
-            error: (e as Error).message,
-          });
+          if (!controller.signal.aborted && identityActive.current)
+            port.port1.postMessage({
+              type: "response",
+              id: m.id,
+              error: (e as Error).message,
+            });
         }
       };
       const attach = (event: MessageEvent) => {
@@ -359,7 +396,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
         apply: (args, meta, signal) =>
           new Promise((resolve) => {
             const cancel = () => {
-              if (!pendingApplies.delete(meta.toolCallId)) return;
+              if (!pendingApplies.has(meta.toolCallId)) return;
               frame.current?.contentWindow?.postMessage(
                 {
                   protocol: "gea-html-v2",
@@ -368,6 +405,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
                 },
                 "*",
               );
+              settle({ applied: false, error: "PAGE_ACTION_CANCELLED" });
             };
             const settle = (result: { applied: boolean; error?: string }) => {
               pendingApplies.delete(meta.toolCallId);
@@ -375,6 +413,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
               resolve(result);
             };
             pendingApplies.set(meta.toolCallId, settle);
+            if (signal.aborted) return settle({ applied: false, error: "PAGE_ACTION_CANCELLED" });
             signal.addEventListener("abort", cancel, { once: true });
             frame.current?.contentWindow?.postMessage(
               {
@@ -424,6 +463,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
         port.port1.close();
         port.port2.close();
         for (const task of pending.values()) task.abort();
+        for (const settle of pendingApplies.values()) settle({ applied: false, error: "PAGE_ACTION_CANCELLED" });
       };
     }, [connection]);
     return (
@@ -461,9 +501,28 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
   // Public manifest metadata uses DSH connection authentication; business reads additionally require GEA login.
   ctx.effect(() => {
     let disposed = false,
-      timer: any;
+      timer: any,
+      identityTimer: any;
     const cleanups: Array<() => void> = [];
     const registered = new Set<string>();
+    let currentScope: string | null | undefined;
+    const pollIdentity = async () => {
+      try {
+        const value = await request("identity");
+        if (disposed) return;
+        const next = typeof value.scope === "string" ? value.scope : null;
+        if (currentScope !== undefined && currentScope !== next) {
+          for (const id of registered) ctx.agentWorkbench.forget(id);
+          const active = ctx.layout.panelInfo.getSnapshot().activePanelId;
+          if (active && registered.has(active)) ctx.layout.selectPanel(active);
+          window.dispatchEvent(new Event("gea-business-identity-changed"));
+        }
+        currentScope = next;
+      } catch {
+        // A failed poll cannot establish a new identity. Keep the mounted page until a real status arrives.
+      }
+      if (!disposed) identityTimer = setTimeout(pollIdentity, 1000);
+    };
     const discover = async () => {
       try {
         const statusResponse = await fetch("/api/gea-proof/status", {
@@ -490,6 +549,11 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
               id: page.id,
               preset: plugin.presetHidden === true ? "auto-negotiation" : "gea-html-" + plugin.id,
               allowedPresets: plugin.agentResources ? plugin.pageAgents : undefined,
+              scope: plugin.mock ? undefined : async () => {
+                const value = await request("identity");
+                if (typeof value.scope !== "string") throw Error("请先登录 GEA");
+                return value.scope;
+              },
             }));
           cleanups.push(
             ctx.slots.inject("main", () => {
@@ -513,10 +577,11 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       } catch {}
       if (!disposed) timer = setTimeout(discover, 5000);
     };
-    void discover();
+    void pollIdentity().then(discover);
     return () => {
       disposed = true;
       clearTimeout(timer);
+      clearTimeout(identityTimer);
       cleanups.forEach((f) => f());
     };
   });
