@@ -204,3 +204,5 @@ Demand Forecast follows the user's language for both progress and final answers.
 ### 分仓试点资源组合
 
 任务06的页面由同级工作台构建到 `lib/business/inventory-fc`，能力资源源文件归 Agent Manage。`agentResources.provider=dsh-agent-manage` 的显式分离包调用其资源装载器并替换既有 preset 提示词；Consumer、surface、pageIds、maxEffect 仍由原契约适配器验证。GEA 保留登录、只读执行、接口日志和旧包兼容。分离资源不会授予任何新业务权限。通过现有 `GEA_HTML_PLUGIN_ROOTS` 选择新包，移除该选择可恢复旧资源。
+
+`/api/gea-html/plugins` 保留 `agentResources` 的公开 provider/prompt 声明；已装载的 Skill、profile 和内部来源路径仅供宿主使用，不进入浏览器目录。资源装载、提示词安装和生命周期继续由原 loader 执行。

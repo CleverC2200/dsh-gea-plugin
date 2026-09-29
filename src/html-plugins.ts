@@ -259,7 +259,7 @@ export async function registerHtmlPlugins(
     const managedConsumers: Record<string, string> = {'inventory-aqkc':'base-safety-stock','inventory-dealer':'dealer-inventory-replenishment','inventory-fc':'branch-inventory','inventory-qll':'full-chain-inventory','inventory-apsplan':'aps'};
     const managedSkill = !mock && managedConsumers[manifest.id] === manifest.gea.consumerCode;
     // Split resources use the Agent Manage loader; legacy bundles retain their adapter.
-    let agentResources: {
+    let loadedAgentResources: {
       skill: string; profile: PromptProfile;
       mount(ctx: unknown, home: string): Promise<void>;
     } | undefined;
@@ -268,12 +268,12 @@ export async function registerHtmlPlugins(
         throw Error('INVALID_AGENT_RESOURCE_OWNER');
       const moduleName = 'dsh-agent-manage/business-resources';
       const loader = await import(moduleName);
-      agentResources = await loader.loadBusinessResources(directory, {
+      loadedAgentResources = await loader.loadBusinessResources(directory, {
         id: manifest.id, consumerCode: manifest.gea.consumerCode,
         skill: manifest.skills[0], prompt: manifest.agentResources.prompt,
       });
     }
-    const skill = agentResources?.skill ?? await readFile(managedSkill
+    const skill = loadedAgentResources?.skill ?? await readFile(managedSkill
       ? new URL(`../presets/${manifest.id}.skill.md`, import.meta.url)
       : skillPath, 'utf8');
     const frontmatter = (key: string) =>
@@ -283,7 +283,7 @@ export async function registerHtmlPlugins(
     items.push({
       ...manifest,
       managedSkill,
-      agentResources,
+      loadedAgentResources,
       capabilityContract: await readPluginContract(directory, manifest.declarations, contractFromPlugin({
         id: manifest.id, label: manifest.name, consumerCode: manifest.gea.consumerCode,
         pageIds: pages.map((page: { id: string }) => page.id), skill, mock, maxEffect: "view",
@@ -307,9 +307,9 @@ export async function registerHtmlPlugins(
   for (const item of items) {
     const manifest = item;
     const { skillText: skill, managedSkill, presetHidden } = item;
-    if (item.agentResources) {
-      ctx.effect(() => installPromptProfile('gea-html-' + manifest.id, item.agentResources.profile));
-      await item.agentResources.mount(ctx, process.env.DSH_HOME || business.config.runtimeDir);
+    if (item.loadedAgentResources) {
+      ctx.effect(() => installPromptProfile('gea-html-' + manifest.id, item.loadedAgentResources.profile));
+      await item.loadedAgentResources.mount(ctx, process.env.DSH_HOME || business.config.runtimeDir);
     }
     else await publishAgentSkill(manifest.id, skill, managedSkill);
     if (managedSkill && manifest.id === 'inventory-apsplan') {
@@ -345,7 +345,7 @@ export async function registerHtmlPlugins(
               id: "persona",
               name: "@deepseek-ai/dsh-persona",
               config: {
-                prefix: item.agentResources?.profile.persona ?? profileFor("gea-html-" + manifest.id)?.persona ?? skill,
+                prefix: item.loadedAgentResources?.profile.persona ?? profileFor("gea-html-" + manifest.id)?.persona ?? skill,
                 complete: false,
                 includeRuntimeContext: false,
               },
@@ -442,7 +442,7 @@ export async function registerHtmlPlugins(
     () =>
       json(
         items.map(
-          ({ htmlSource, htmlPath, htmlDirectory, capabilityContract, managedSkill, ...manifest }) => manifest,
+          ({ htmlSource, htmlPath, htmlDirectory, capabilityContract, managedSkill, loadedAgentResources, ...manifest }) => manifest,
         ),
       ),
     false,

@@ -339,17 +339,35 @@ test(
   },
 );
 
-for (const mode of ["denied", "error", "empty", "missing"]) {
+for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
   test(
     "branch page distinguishes " + mode + " data",
     { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 90000 },
     async (t) => {
       const state = stockState();
-      state.mode = mode;
+      state.mode = mode === "empty-error" ? "empty" : mode;
       const app = await profile(t, {
         env: { GEA_HTML_PLUGIN_ROOTS: JSON.stringify([migrated]) },
       });
-      installStockRoutes(app, state, () => ({ content: "未连接外部模型" }));
+      let stockRoute;
+      installStockRoutes({ route: handler => { stockRoute = handler; } }, state, () => ({ content: "未连接外部模型" }));
+      const heldRead = Promise.withResolvers();
+      let waitingForWarehouse = false;
+      app.route(async (request, response, reply) => {
+        if (["empty", "empty-error"].includes(mode) && request.url.pathname.endsWith("/ai/gateway/sql/execute")) {
+          const body = JSON.parse(request.body);
+          if (Object.values(body.parameters ?? {}).includes("34")) {
+            waitingForWarehouse = true;
+            await heldRead.promise;
+            if (mode === "empty-error") {
+              reply({ success: false, code: 500, message: "固定样本查询失败" }, 503);
+              return true;
+            }
+          }
+        }
+        return stockRoute(request, response, reply);
+      });
+      t.after(() => heldRead.resolve());
       await app.login();
       const browser = await chromium.launch({
         channel: "chrome",
@@ -408,7 +426,7 @@ for (const mode of ["denied", "error", "empty", "missing"]) {
               0,
               "rejected delegation cannot reach SQL",
             );
-        } else if (mode === "empty") {
+        } else if (mode === "empty" || mode === "empty-error") {
           await expect(
             frame.getByText("当前授权范围暂无库存与计划数据"),
           ).toBeVisible({ timeout: 20000 });
@@ -418,6 +436,28 @@ for (const mode of ["denied", "error", "empty", "missing"]) {
           await frame
             .getByRole("option", { name: "郑州分仓", exact: true })
             .click();
+          await expect.poll(() => waitingForWarehouse).toBe(true);
+          await expect.poll(() => publishedContexts.at(-1)?.parts?.queryState?.state).toBe("loading");
+          const loadingParts = publishedContexts.at(-1).parts;
+          assert.equal(loadingParts.queryState.warehouseId, "zhengzhou");
+          assert.equal(loadingParts.pageFilters.warehouseId, "zhengzhou");
+          assert.equal(loadingParts.data, undefined);
+          assert.equal(loadingParts.inventoryInsight, undefined);
+          assert.equal(loadingParts.branchDraft, undefined);
+          heldRead.resolve();
+          if (mode === "empty-error") {
+            await expect(frame.getByText("无法进入分仓库存", { exact: true })).toBeVisible();
+            await expect.poll(() => publishedContexts.at(-1)?.parts?.queryState?.state).toBe("error");
+            const errorParts = publishedContexts.at(-1).parts;
+            assert.equal(errorParts.data, undefined);
+            assert.equal(errorParts.inventoryInsight, undefined);
+            assert.equal(errorParts.branchDraft, undefined);
+            assert.equal(errorParts.queryState.warehouseId, "zhengzhou");
+            assert.ok(errorParts.queryState.message);
+            await mkdir(out, { recursive: true });
+            await writeFile(resolve(out, "loading-error-context.json"), JSON.stringify({ loadingParts, errorParts }, null, 2));
+            return;
+          }
           await expect(
             frame.getByText("FC001", { exact: true }).first(),
           ).toBeVisible({ timeout: 20000 });
@@ -436,6 +476,23 @@ for (const mode of ["denied", "error", "empty", "missing"]) {
               Object.values(request.parameters).includes("34"),
             ),
           );
+          await frame.getByRole("button", { name: "选择分仓", exact: true }).click();
+          await frame.getByRole("option", { name: "长沙分仓", exact: true }).click();
+          await expect(frame.getByText("当前授权范围暂无库存与计划数据")).toBeVisible();
+          await expect.poll(() => publishedContexts.at(-1)?.parts?.queryState?.state).toBe("empty");
+          const emptyParts = publishedContexts.at(-1).parts;
+          await mkdir(out, { recursive: true });
+          await writeFile(resolve(out, "empty-return-context.json"), JSON.stringify(emptyParts, null, 2));
+          assert.equal(emptyParts.queryState.warehouseId, "changsha");
+          assert.equal(emptyParts.pageFilters.warehouseId, "changsha");
+          assert.equal(emptyParts.data, undefined);
+          assert.equal(emptyParts.inventoryInsight, undefined);
+          assert.equal(emptyParts.branchDraft, undefined);
+          await frame.getByRole("button", { name: "选择分仓", exact: true }).click();
+          await frame.getByRole("option", { name: "郑州分仓", exact: true }).click();
+          await expect.poll(() => publishedContexts.at(-1)?.parts?.queryState).toEqual({ state: "ready", warehouseId: "zhengzhou" });
+          await expect.poll(() => publishedContexts.at(-1)?.parts?.inventoryInsight?.summary).toMatch(/当前库存/);
+          assert.equal(publishedContexts.at(-1).parts.branchDraft.warehouseId, "zhengzhou");
         } else {
           await expect(
             frame.getByText("FC001", { exact: true }).first(),
@@ -486,6 +543,7 @@ for (const mode of ["denied", "error", "empty", "missing"]) {
           .catch(() => {});
         throw error;
       } finally {
+        heldRead.resolve();
         await browser.close();
         await app.stop();
       }
