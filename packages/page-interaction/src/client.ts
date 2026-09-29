@@ -191,6 +191,23 @@ export function installPageInteraction(ctx: any): PageInteraction {
       const configure = () => {
         if (generation) send({ type: "configure", page, externalTrigger: triggers.size > 0 });
       };
+      const confirmReference = (requestId: string, signal: AbortSignal) => new Promise<boolean>(resolve => {
+        if (signal.aborted) return resolve(false);
+        const finish = (valid: boolean) => {
+          window.removeEventListener("message", confirmed);
+          signal.removeEventListener("abort", aborted);
+          resolve(valid);
+        };
+        const aborted = () => finish(false);
+        const confirmed = (event: MessageEvent) => {
+          if (event.source === frame.contentWindow && event.data?.protocol === PAGE_INTERACTION &&
+              event.data.channel === channel && event.data.type === "reference-committed" &&
+              event.data.requestId === requestId) finish(event.data.ok === true);
+        };
+        window.addEventListener("message", confirmed);
+        signal.addEventListener("abort", aborted, { once: true });
+        send({ type: "commit-reference", requestId });
+      });
       const binding: PickerBinding = {
         frame,
         sessionId,
@@ -264,6 +281,11 @@ export function installPageInteraction(ctx: any): PageInteraction {
           if (!active || controller.signal.aborted) return;
           if (!response.ok)
             throw Error(receipt.error || "引用未保存，请重试。");
+          if (value.scope) {
+            const confirmed = await confirmReference(requestId, controller.signal);
+            if (!active || controller.signal.aborted) return;
+            if (!confirmed) throw Error("页面引用已失效，请按当前显示内容重新选择。");
+          }
           if (!ready || selectedSession() !== sessionId)
             throw Error("已切换对话，请在当前页面重新引用。");
           validateReference?.(value);

@@ -57,7 +57,7 @@ test("group references retain every declared target", () => {
   );
 });
 
-test("a saved reference cannot enter the composer after its frame is disposed", async (t) => {
+for (const phase of ["saving", "confirmation"]) test(`a saved reference cannot enter the composer after disposal during ${phase}`, async (t) => {
   const previousWindow = globalThis.window;
   const previousFetch = globalThis.fetch;
   t.after(() => {
@@ -66,8 +66,11 @@ test("a saved reference cannot enter the composer after its frame is disposed", 
   });
   const listeners = new Map();
   globalThis.window = {
-    addEventListener: (name, fn) => listeners.set(name, fn),
-    removeEventListener: (name) => listeners.delete(name),
+    addEventListener: (name, fn) => {
+      if (!listeners.has(name)) listeners.set(name, new Set());
+      listeners.get(name).add(fn);
+    },
+    removeEventListener: (name, fn) => listeners.get(name)?.delete(fn),
   };
   let resolveFetch;
   globalThis.fetch = (url) => url === "/api/page-interaction/binding"
@@ -104,10 +107,12 @@ test("a saved reference cannot enter the composer after its frame is disposed", 
     inject: (_names, fn) => fn(scope),
   };
   let channel;
+  const confirmation = Promise.withResolvers();
   const frame = {
     contentWindow: {
       postMessage: (message) => {
         channel = message.channel;
+        if (message.type === "commit-reference") confirmation.resolve();
       },
     },
     addEventListener: () => {},
@@ -120,20 +125,28 @@ test("a saved reference cannot enter the composer after its frame is disposed", 
     surface: "page",
   });
   await new Promise(resolve => setImmediate(resolve));
-  const received = listeners.get("message")({
+  const receive = [...listeners.get("message")][0];
+  const received = receive({
     source: frame.contentWindow,
     data: {
       protocol: "dsh-page-interaction-v1",
       channel,
       type: "reference",
       requestId: "pending",
-      reference: { label: "整行", text: "120", targets: [] },
+      reference: { label: "整行", text: "120", targets: [], ...(phase === "confirmation" ? { scope: "current" } : {}) },
     },
   });
-  dispose();
-  resolveFetch(Response.json({ id: "R123456abcdef", label: "表格 · 整行" }));
+  if (phase === "confirmation") {
+    resolveFetch(Response.json({ id: "R123456abcdef", label: "表格 · 整行" }));
+    await confirmation.promise;
+    dispose();
+  } else {
+    dispose();
+    resolveFetch(Response.json({ id: "R123456abcdef", label: "表格 · 整行" }));
+  }
   await received;
   assert.equal(inserts, 0);
+  assert.equal(listeners.get("message").size, 0, "disposal removes both binding and confirmation listeners");
 });
 
 test("sent references project to the same label without leaking the wire ID", () => {

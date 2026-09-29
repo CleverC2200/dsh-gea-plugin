@@ -5,7 +5,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile, readSession, readToolResults, until } from "../profile.mjs";
 import { stockState, installStockRoutes } from "./branch-stock.mjs";
 
-export async function stockReferencePage(t, { editable = false } = {}) {
+export async function stockReferencePage(t, { editable = false, holdCancellation = false } = {}) {
   const identity = { userId: "9007199254740993", tenantId: "0" };
   const state = stockState();
   if (editable) state.mode = "editable";
@@ -38,6 +38,24 @@ export async function stockReferencePage(t, { editable = false } = {}) {
   await context.addCookies(app.cookie.split("; ").map(pair => ({ name: pair.slice(0, pair.indexOf("=")), value: pair.slice(pair.indexOf("=") + 1), url: app.origin })));
   const page = await context.newPage();
   page.setDefaultTimeout(20000);
+  if (holdCancellation) await page.addInitScript(() => {
+    // Control delivery order while keeping the real iframe event and HTTP response.
+    const held = [];
+    let hold = true;
+    window.heldReferenceCancellations = held;
+    window.releaseReferenceCancellations = () => {
+      hold = false;
+      for (const event of held.splice(0)) dispatchEvent(new MessageEvent("message", {
+        data: event.data, source: event.source, origin: event.origin,
+      }));
+    };
+    addEventListener("message", event => {
+      if (hold && event.data?.protocol === "dsh-page-interaction-v1" && event.data.type === "cancel-reference") {
+        event.stopImmediatePropagation();
+        held.push(event);
+      }
+    }, true);
+  });
   const opens = [], contexts = [];
   page.on("request", request => {
     if (!request.postData()) return;

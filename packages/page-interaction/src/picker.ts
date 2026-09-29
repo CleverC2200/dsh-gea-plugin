@@ -245,11 +245,14 @@ export function mountPicker(options: PickerOptions = {}): () => void {
     send({ type: "selection-error", error: status.textContent });
   };
   const pendingObserver = new MutationObserver(checkPending);
-  const clearPending = () => {
-    clearTimeout(timer);
+  const stopObservingPending = () => {
     pendingObserver.disconnect();
     pending?.target.removeEventListener("input", checkPending, true);
     pending?.target.removeEventListener("change", checkPending, true);
+  };
+  const clearPending = () => {
+    clearTimeout(timer);
+    stopObservingPending();
     pending = undefined;
   };
   const cancelPending = () => {
@@ -414,6 +417,17 @@ export function mountPicker(options: PickerOptions = {}): () => void {
       altSuppressed = false;
       mode(false);
       ui.hidden = true;
+    }
+    if (data.type === "commit-reference" && typeof data.requestId === "string") {
+      if (pending?.id === data.requestId) checkPending();
+      const valid = pending?.id === data.requestId;
+      if (valid && pending) {
+        // Acceptance is decided in the same frame event loop as edits; later edits cannot rewrite this snapshot.
+        stopObservingPending();
+        pending.version = undefined;
+      }
+      send({ type: "reference-committed", requestId: data.requestId, ok: valid });
+      return;
     }
     if (data.type === "result" && data.requestId === pending?.id) {
       clearPending();
