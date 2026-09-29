@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 import { profile } from './profile.mjs';
 import { changeThemeSetting } from './theme-settings.mjs';
@@ -48,10 +49,13 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   assert.equal(await child.evaluate(() => { try { return !!parent.document; } catch { return false; } }), false);
   assert.equal(await child.evaluate(async () => { try { await fetch('/api/gea-html/plugins'); return true; } catch { return false; } }), false);
   await frame.getByLabel('项目名称').fill('页面');
-  await frame.getByRole('button', { name: '查询', exact: true }).click();
-  await expect(frame.locator('#results')).toHaveAttribute('aria-busy', 'true');
+  const loading = await frame.getByRole('button', { name: '查询', exact: true }).evaluate(button => { button.click(); return document.querySelector('#results').getAttribute('aria-busy'); });
+  assert.equal(loading, 'true', 'submitting immediately enters the loading state');
   await expect(frame.locator('#summary')).toHaveText('共 1 个项目');
   await expect(frame.locator('tbody tr')).toHaveCount(1);
+  await frame.getByLabel('项目名称').fill('归档');
+  await frame.getByLabel('项目名称').press('Enter');
+  await expect(frame.locator('tbody')).toContainText('月度资料归档');
   await frame.getByRole('button', { name: '重置', exact: true }).click();
   await frame.getByLabel('交付进度').selectOption('已完成');
   await frame.getByRole('button', { name: '查询', exact: true }).click();
@@ -63,7 +67,7 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   await expect(frame.getByText('没有匹配的项目')).toBeVisible();
   await frame.getByRole('button', { name: '演示查询失败' }).click();
   await expect(frame.getByText('暂时无法读取项目')).toBeVisible();
-  await page.screenshot({ path: new URL('error.png', output).pathname, fullPage: true });
+  await page.screenshot({ path: fileURLToPath(new URL('error.png', output)), fullPage: true });
   await frame.getByRole('button', { name: '重新查询' }).click();
   await expect(frame.locator('#summary')).toHaveText('共 4 个项目');
   const settings = async () => {
@@ -89,7 +93,7 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
     await expect(frame.getByLabel('交付进度')).toHaveCSS('outline-width', '2px');
     await expect(frame.getByLabel('交付进度')).toHaveCSS('outline-style', 'solid');
     samples.push({ label, size, background: color, focus: await frame.getByLabel('交付进度').evaluate(el => getComputedStyle(el).outlineColor) });
-    await page.screenshot({ path: new URL(label === '深色' ? 'dark.png' : 'light.png', output).pathname, fullPage: true });
+    await page.screenshot({ path: fileURLToPath(new URL(label === '深色' ? 'dark.png' : 'light.png', output)), fullPage: true });
   }
   await page.setViewportSize({ width: 720, height: 900 });
   await expect(frame.getByRole('button', { name: '查询', exact: true })).toBeVisible();
@@ -98,7 +102,16 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   assert.ok(dimensions.table > dimensions.region);
   await frame.locator('.table-scroll').evaluate(el => { el.scrollLeft = el.scrollWidth; });
   await expect.poll(() => frame.locator('.table-scroll').evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
-  await page.screenshot({ path: new URL('narrow.png', output).pathname, fullPage: true });
+  await page.screenshot({ path: fileURLToPath(new URL('narrow-top.png', output)), fullPage: true });
+  await frame.locator('#table-region').scrollIntoViewIfNeeded();
+  await expect(frame.locator('tbody tr').last()).toBeVisible();
+  await page.screenshot({ path: fileURLToPath(new URL('narrow.png', output)), fullPage: true });
+  await page.getByRole('button', { name: '中间区域最大，隐藏会话区', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 900 });
+  await child.evaluate(() => { scrollTo(0, 0); document.querySelector('.table-scroll').scrollLeft = 0; });
+  await expect(frame.getByRole('button', { name: '查询', exact: true })).toBeVisible();
+  assert.equal(await child.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: fileURLToPath(new URL('mobile.png', output)), fullPage: true });
   // Removing or replacing the parent resource must produce a visible diagnosis.
   await page.evaluate(() => document.body.style.setProperty('--workbench-theme-version', '"2.0.0"'));
   await expect(frame.getByRole('alert')).toContainText('版本不兼容');
@@ -117,7 +130,7 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   assert.deepEqual(errors, []);
   await writeFile(new URL('observations.json', output), JSON.stringify({ samples, dimensions, sandbox: await iframe.getAttribute('sandbox'), errors }, null, 2));
   } catch (error) {
-    await page.screenshot({ path: new URL('failure.png', output).pathname, fullPage: true });
+    await page.screenshot({ path: fileURLToPath(new URL('failure.png', output)), fullPage: true });
     await writeFile(new URL('failure.txt', output), await page.locator('body').innerText());
     throw error;
   }
