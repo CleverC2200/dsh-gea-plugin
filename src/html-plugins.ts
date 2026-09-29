@@ -287,7 +287,7 @@ export async function registerHtmlPlugins(
       ...manifest,
       managedSkill,
       loadedAgentResources,
-      pageAgents: loadedAgentResources?.pageAgents ?? [`gea-html-${manifest.id}`],
+      pageAgents: loadedAgentResources?.pageAgents,
       capabilityContract: await readPluginContract(directory, manifest.declarations, contractFromPlugin({
         id: manifest.id, label: manifest.name, consumerCode: manifest.gea.consumerCode,
         pageIds: pages.map((page: { id: string }) => page.id), skill, mock, maxEffect: "view",
@@ -469,7 +469,7 @@ export async function registerHtmlPlugins(
     const prefix = "/api/gea-html/" + item.id;
     register(prefix + "/agents", ["GET"], async (request) => {
       const agents = [];
-      for (const preset of item.pageAgents) {
+      for (const preset of item.pageAgents ?? []) {
         try {
           const { credentials: _credentials, ...entry } = await pageAgent(item, preset, AbortSignal.any([request.signal, business.identitySignal()]));
           agents.push(entry);
@@ -792,6 +792,25 @@ ${toolbarSelectors} {
   );
 
   return {
+    authorizeReference(input: unknown): void {
+      if (!input || typeof input !== "object") throw Error("PAGE_REFERENCE_ACCESS_DENIED");
+      const value = input as { sessionId?: string; surface?: string; lease?: string };
+      if (typeof value.sessionId !== "string" || typeof value.surface !== "string" || !ctx.agents?.get(value.sessionId))
+        throw Error("PAGE_REFERENCE_ACCESS_DENIED");
+      const principal = businessIdentityKey(business);
+      const owner = sessionPrincipals.get(value.sessionId);
+      if (owner !== undefined && owner !== principal) throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
+      if (value.surface.startsWith("gea-html-") || owner !== undefined) {
+        if (typeof value.lease !== "string") throw Error("PAGE_REFERENCE_LEASE_REQUIRED");
+        const page = sessions.get(value.lease);
+        if (page.session !== value.sessionId || value.surface !== `gea-html-${page.plugin}`)
+          throw Error("PAGE_REFERENCE_ACCESS_DENIED");
+        if (page.access.mode !== "mock" && (!principal || owner !== principal))
+          throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
+      } else if (!business.status().authenticated) {
+        throw Error("PAGE_REFERENCE_LOGIN_REQUIRED");
+      }
+    },
     consumerForSession: (session?: string) => sessionConsumer(ctx, business, session),
     capabilityContracts,
   };

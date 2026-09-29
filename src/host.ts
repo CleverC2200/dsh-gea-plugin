@@ -319,7 +319,6 @@ function toGeaRequest(options: GenerateOptions) {
 
 /** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
 export async function apply(ctx: Context, config: Deployment): Promise<void> {
-  const clearPageReferences = applyPageInteraction(ctx);
   resolveWorkbench(import.meta.url);
   const htmlPluginRoots: Record<string, string> = (() => {
     try { const value = JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS ?? "{}"); return value && typeof value === "object" ? value : {}; }
@@ -371,13 +370,6 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     );
   const pageBridge = createPageBridge();
   const business = new Business(config, pageBridge);
-  let referenceOwner = businessIdentityKey(business);
-  ctx.effect(() => business.watchIdentity(() => {
-    const next = businessIdentityKey(business);
-    if (next === referenceOwner) return;
-    referenceOwner = next;
-    clearPageReferences();
-  }));
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);
   const htmlRootConfig=JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS || "[]");
@@ -386,6 +378,15 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   // 迁移页面的页面桥入口：注册表建好后再接上（页面第一次轮询是 500ms 之后）。
   const pageBridgeHost: PageBridgeHost = {};
   const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlRoots,pageBridgeHost);
+  const clearPageReferences = applyPageInteraction(ctx, { authorize: htmlPlugins.authorizeReference });
+  let referenceOwner = businessIdentityKey(business);
+  ctx.effect(() => business.watchIdentity(() => {
+    const next = businessIdentityKey(business);
+    if (next === referenceOwner) return;
+    referenceOwner = next;
+    clearPageReferences();
+  }));
+
   // 能力契约注册表：页面白名单、草稿白名单、只读模块清单全部由它产出，宿主不再按模块写分支。
   const capability = createCapabilityRegistry([
     ...htmlPlugins.capabilityContracts,

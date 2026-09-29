@@ -205,8 +205,8 @@ export function mountPicker(options: PickerOptions = {}): () => void {
   let active = false,
     hover: Element | null = null,
     channel = "",
-    page = document.title,
-    pending = "";
+    page = document.title;
+  let pending: { id: string; target: Element; version?: string } | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let lastSelection: { target: EventTarget | null; at: number } | undefined;
   const repeatClick = (event: Event) =>
@@ -232,10 +232,23 @@ export function mountPicker(options: PickerOptions = {}): () => void {
       height: `${box.height}px`,
     });
   };
+  const referenceVersion = (reference: PageReference) => JSON.stringify([reference.scope, reference.text, reference.targets]);
+  const pendingObserver = new MutationObserver(() => {
+    if (!pending?.version) return;
+    let current: string | undefined;
+    try {
+      if (pending.target.isConnected) current = referenceVersion(describeElement(pending.target, page));
+    } catch { /* A non-ready page has no valid selection snapshot. */ }
+    if (current === pending.version) return;
+    cancelPending();
+    status.textContent = "页面引用已失效，请按当前显示内容重新选择。";
+    send({ type: "selection-error", error: status.textContent });
+  });
   const cancelPending = () => {
-    if (pending) send({ type: "cancel-reference", requestId: pending });
+    if (pending) send({ type: "cancel-reference", requestId: pending.id });
     clearTimeout(timer);
-    pending = "";
+    pendingObserver.disconnect();
+    pending = undefined;
   };
   const mode = (next: boolean, cancel = true) => {
     active = next;
@@ -321,9 +334,13 @@ export function mountPicker(options: PickerOptions = {}): () => void {
     lastSelection = { target: event.target, at: performance.now() };
     hover = target;
     paint(target);
-    pending = crypto.randomUUID();
+    pending = { id: crypto.randomUUID(), target, version: original.scope ? referenceVersion(original) : undefined };
+    if (pending.version) pendingObserver.observe(document.body, {
+      subtree: true, childList: true, attributes: true,
+      attributeFilter: ["data-page-reference-scope", "data-page-reference-ready", "hidden", "style", "class", "aria-hidden"],
+    });
     status.textContent = "正在加入对话…";
-    send({ type: "reference", requestId: pending, reference });
+    send({ type: "reference", requestId: pending.id, reference });
     timer = setTimeout(() => {
       cancelPending();
       status.textContent = "引用未加入，请重试。";
@@ -387,9 +404,10 @@ export function mountPicker(options: PickerOptions = {}): () => void {
       mode(false);
       ui.hidden = true;
     }
-    if (data.type === "result" && data.requestId === pending) {
+    if (data.type === "result" && data.requestId === pending?.id) {
       clearTimeout(timer);
-      pending = "";
+      pendingObserver.disconnect();
+      pending = undefined;
       if (data.ok) {
         hover = null;
         paint(null);

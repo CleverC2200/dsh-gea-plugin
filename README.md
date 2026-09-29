@@ -207,3 +207,5 @@ Demand Forecast follows the user's language for both progress and final answers.
 任务06的页面由同级工作台构建到 `lib/business/inventory-fc`，能力资源源文件归 Agent Manage。`agentResources.provider=dsh-agent-manage` 的显式分离包调用其资源装载器并替换既有 preset 提示词；Consumer、surface、pageIds、maxEffect 仍由原契约适配器验证。GEA 保留登录、只读执行、接口日志和旧包兼容。分离资源不会授予任何新业务权限。通过现有 `GEA_HTML_PLUGIN_ROOTS` 选择新包，移除该选择可恢复旧资源。
 
 `/api/gea-html/plugins` 保留 `agentResources` 的公开 provider/prompt 声明和页面需要的 skillName/skillDescription，不返回 skillText；已装载的 Skill、profile 和内部来源路径仅供宿主使用，不进入浏览器目录。资源装载、提示词安装和生命周期继续由原 loader 执行。
+
+页面引用保存会核对实际 Session；HTML 页还需提供当前页面租约，匹配页面与 Session，受业务身份约束。注销清空引用同时取消在途写入。对声明了引用范围的页面，待提交的行快照在范围、就绪状态或已显示内容改变时取消，已保存快照保持原来的不可变语义。旧页面不接入受管预设名单，显式 Agent Manage 页面仍执行07的本地预设及服务端权限校验。

@@ -44,3 +44,7 @@ const dispose = ctx.pageInteraction.bindFrame({
 GEA中的工作台使用统一接线：原生审批、PrototypeWorkbench承载的计划原型，以及所有注册的HTML工作台。新原型页复用PrototypeWorkbench即可获得入口及会话绑定；HTML页面由Host统一内联离线选择器，不需要各页面再加按钮。
 
 默认通过原生 `conversation.input.left` 自动挂载，无需每个工作台另加按钮。按住 Alt 临时选择，松开退出；工具栏点击开启持续选择，Esc 退出（再次点击也可退出）。已经左键确认的引用不会因为松开 Alt 丢失。`mountTrigger` 保留给非标准宿主使用，标准 DSH 输入框不应重复调用。
+
+宿主集成可向 `apply(ctx, { authorize })` 提供同步写入校验；`clear` 和卸载会取消尚在读取请求体的保存操作。HTML 承载器通过 `referenceLease` 传入当前租约，该字段只参与写入校验，不进入已保存的引用。带 `data-page-reference-scope` 的页面在引用提交期间观察范围和显示内容变化，变更则取消该次请求；范围字段仍限制为1000字符，旧的无范围页面保持原行为。
+
+点选承载器先读取 `/api/page-interaction/binding` 的当前引用代次，配置完成后才允许采集；保存时附带该代次。清空后，旧代次的请求即使尚未到达服务端，也不能重新写入。代次不替代宿主授权或HTML页面租约，失效请求不自动重放。

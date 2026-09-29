@@ -128,6 +128,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       return pageInteraction.bindFrame({
         frame: frame.current, sessionId: session, page: plugin.name,
         surface: `gea-html-${plugin.id}`, tool: "gea_plugin_page_apply",
+        referenceLease: () => binding.current?.session === session ? binding.current.lease : undefined,
         validateReference: (reference) => {
           if (!plugin.agentResources || plugin.id !== "inventory-fc") return;
           const parts = pageContext.current?.parts;
@@ -488,7 +489,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
             cleanups.push(ctx.agentWorkbench.register({
               id: page.id,
               preset: plugin.presetHidden === true ? "auto-negotiation" : "gea-html-" + plugin.id,
-              allowedPresets: plugin.pageAgents,
+              allowedPresets: plugin.agentResources ? plugin.pageAgents : undefined,
             }));
           cleanups.push(
             ctx.slots.inject("main", () => {

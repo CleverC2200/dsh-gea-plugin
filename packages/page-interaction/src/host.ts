@@ -1,12 +1,26 @@
+import { randomUUID } from "node:crypto";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { createReferenceStore } from "./reference-store.ts";
 import { hasPageReferences } from "./reference.ts";
 
-export function apply(ctx: any): () => void {
+export function apply(ctx: any, options: { authorize?: (input: unknown) => void } = {}): () => void {
   const references = createReferenceStore();
-  ctx.effect(() => () => references.dispose());
+  const writeScope = () => ({ controller: new AbortController(), generation: randomUUID() });
+  let writes = writeScope();
+  const clear = () => {
+    writes.controller.abort();
+    writes = writeScope();
+    references.clearAll();
+  };
+  ctx.effect(() => () => { writes.controller.abort(); references.dispose(); });
   ctx.on("agent/disposed", ({ agent }: any) => references.clear(agent.id));
   ctx.inject(["connection", "tools"], (scope: any) => {
+    scope.effect(() => scope.connection.fetch.register({
+      path: "/api/page-interaction/binding",
+      methods: ["GET"],
+      requestBody: "buffered",
+      fetch: () => Response.json({ generation: writes.generation }, { headers: { "cache-control": "no-store" } }),
+    }));
     scope.effect(() =>
       scope.connection.fetch.register({
         path: "/api/page-interaction/reference",
@@ -14,7 +28,11 @@ export function apply(ctx: any): () => void {
         requestBody: "buffered",
         fetch: async (request: Request) => {
           try {
-            return Response.json(references.put(await request.json()));
+            const current = writes;
+            const input = await request.json();
+            if (current.controller.signal.aborted || input?.generation !== current.generation) throw Error("引用已失效，请重新打开当前页面后选择。");
+            options.authorize?.(input);
+            return Response.json(references.put(input));
           } catch (error) {
             return Response.json(
               {
@@ -62,5 +80,5 @@ export function apply(ctx: any): () => void {
           : "",
     }),
   );
-  return () => references.clearAll();
+  return clear;
 }

@@ -70,8 +70,9 @@ test("a saved reference cannot enter the composer after its frame is disposed", 
     removeEventListener: (name) => listeners.delete(name),
   };
   let resolveFetch;
-  globalThis.fetch = () =>
-    new Promise((resolve) => {
+  globalThis.fetch = (url) => url === "/api/page-interaction/binding"
+    ? Promise.resolve(Response.json({ generation: "fixture" }))
+    : new Promise((resolve) => {
       resolveFetch = resolve;
     });
   let inserts = 0;
@@ -118,6 +119,7 @@ test("a saved reference cannot enter the composer after its frame is disposed", 
     page: "表格",
     surface: "page",
   });
+  await new Promise(resolve => setImmediate(resolve));
   const received = listeners.get("message")({
     source: frame.contentWindow,
     data: {
