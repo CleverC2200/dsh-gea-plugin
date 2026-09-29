@@ -9,7 +9,7 @@ for (const change of ["hidden", "reordered", "quantity", "reason", "quantity-res
 }, async t => {
   const quantity = change.startsWith("quantity");
   const responseFirst = change === "quantity-response-first";
-  const { page, frame, quote, readReference } = await stockReferencePage(t, { editable: quantity || change === "reason", holdCancellation: responseFirst });
+  const { page, frame, quote, readReference } = await stockReferencePage(t, { editable: quantity || change === "reason", holdMessage: responseFirst ? "cancel-reference" : undefined });
   let edited;
   if (quantity) edited = frame.getByRole("textbox", { name: "FC001 实际补货量", exact: true });
   if (change === "reason") edited = frame.getByRole("textbox", { name: "FC001调减原因", exact: true });
@@ -63,16 +63,16 @@ for (const change of ["hidden", "reordered", "quantity", "reason", "quantity-res
       assert.equal(await frame.locator("main.agent-root").getAttribute("data-page-reference-scope"), posted.scope,
         "this edit must exercise the unchanged-scope path before blur");
     }
-    if (responseFirst) await expect.poll(() => page.evaluate(() => heldReferenceCancellations.length)).toBe(1);
+    if (responseFirst) await expect.poll(() => page.evaluate(() => heldReferenceMessages.length)).toBe(1);
     release.resolve();
     await completed.promise;
     await page.waitForTimeout(500);
     const text = await page.locator('[contenteditable="true"]').first().innerText();
     await mkdir(".runtime/reference-columns-evidence", { recursive: true });
-    await writeFile(`.runtime/reference-columns-evidence/${change}.json`, JSON.stringify({ change, quotedText: posted.text, beforeScope: posted.scope, afterScope: await frame.locator("main.agent-root").getAttribute("data-page-reference-scope"), composer: text, inputValue: edited ? await edited.inputValue() : undefined, inputFocused: edited ? await edited.evaluate(input => input === document.activeElement) : undefined, heldCancelMessages: responseFirst ? await page.evaluate(() => heldReferenceCancellations.length) : undefined, errors: await page.evaluate(() => referenceErrors) }, null, 2));
+    await writeFile(`.runtime/reference-columns-evidence/${change}.json`, JSON.stringify({ change, quotedText: posted.text, beforeScope: posted.scope, afterScope: await frame.locator("main.agent-root").getAttribute("data-page-reference-scope"), composer: text, inputValue: edited ? await edited.inputValue() : undefined, inputFocused: edited ? await edited.evaluate(input => input === document.activeElement) : undefined, heldCancelMessages: responseFirst ? await page.evaluate(() => heldReferenceMessages.length) : undefined, errors: await page.evaluate(() => referenceErrors) }, null, 2));
     assert.equal(text.trim(), "", "obsolete visible content must not be inserted into the current question");
     await expect.poll(() => page.evaluate(() => referenceErrors.join("\n"))).toMatch(/引用已失效/);
-    if (responseFirst) await page.evaluate(() => releaseReferenceCancellations());
+    if (responseFirst) await page.evaluate(() => releaseReferenceMessages());
     await page.unroute("**/api/page-interaction/reference");
     const fresh = page.waitForResponse(response => response.url().endsWith("/api/page-interaction/reference") && response.status() === 200);
     if (edited) {
@@ -93,7 +93,7 @@ for (const change of ["hidden", "reordered", "quantity", "reason", "quantity-res
       assert.equal(saved.text, read.text, "a completed reference remains an immutable snapshot after later input edits");
     }
   } finally {
-    if (responseFirst) await page.evaluate(() => releaseReferenceCancellations());
+    if (responseFirst) await page.evaluate(() => releaseReferenceMessages());
     release.resolve();
     await page.keyboard.up("Alt");
   }

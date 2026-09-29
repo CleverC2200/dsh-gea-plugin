@@ -206,7 +206,7 @@ export function mountPicker(options: PickerOptions = {}): () => void {
     hover: Element | null = null,
     channel = "",
     page = document.title;
-  let pending: { id: string; target: Element; version?: string } | undefined;
+  let pending: { id: string; target: Element; version?: string; committed?: boolean } | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let lastSelection: { target: EventTarget | null; at: number } | undefined;
   const repeatClick = (event: Event) =>
@@ -234,7 +234,7 @@ export function mountPicker(options: PickerOptions = {}): () => void {
   };
   const referenceVersion = (reference: PageReference) => JSON.stringify([reference.scope, reference.text, reference.targets]);
   const checkPending = () => {
-    if (!pending?.version) return;
+    if (!pending?.version || pending.committed) return;
     let current: string | undefined;
     try {
       if (pending.target.isConnected) current = referenceVersion(describeElement(pending.target, page));
@@ -256,6 +256,7 @@ export function mountPicker(options: PickerOptions = {}): () => void {
     pending = undefined;
   };
   const cancelPending = () => {
+    if (pending?.committed) return;
     if (pending) send({ type: "cancel-reference", requestId: pending.id });
     clearPending();
   };
@@ -395,6 +396,8 @@ export function mountPicker(options: PickerOptions = {}): () => void {
       return;
     const data = event.data;
     if (data.type === "configure" && typeof data.channel === "string") {
+      cancelPending();
+      clearPending();
       channel = data.channel;
       page = typeof data.page === "string" ? data.page : document.title;
       toggle.hidden = data.externalTrigger === true;
@@ -416,6 +419,7 @@ export function mountPicker(options: PickerOptions = {}): () => void {
       altHeld = false;
       altSuppressed = false;
       mode(false);
+      clearPending();
       ui.hidden = true;
     }
     if (data.type === "commit-reference" && typeof data.requestId === "string") {
@@ -423,8 +427,9 @@ export function mountPicker(options: PickerOptions = {}): () => void {
       const valid = pending?.id === data.requestId;
       if (valid && pending) {
         // Acceptance is decided in the same frame event loop as edits; later edits cannot rewrite this snapshot.
+        clearTimeout(timer);
         stopObservingPending();
-        pending.version = undefined;
+        pending.committed = true;
       }
       send({ type: "reference-committed", requestId: data.requestId, ok: valid });
       return;
@@ -463,6 +468,7 @@ export function mountPicker(options: PickerOptions = {}): () => void {
   send({ type: "ready" });
   return () => {
     cancelPending();
+    clearPending();
     window.removeEventListener("message", message);
     window.removeEventListener("pointermove", move, true);
     for (const type of suppressed)

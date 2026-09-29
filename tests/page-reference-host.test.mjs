@@ -12,7 +12,7 @@ function host(authorize) {
     tools: { register: () => () => {} }, systemPrompt: { section: () => () => {} },
   };
   const clear = apply({ ...scope, on: () => () => {}, inject: (_services, install) => install(scope) }, { authorize });
-  return { clear, request: request => routes.get("/api/page-interaction/reference")(request), payload: async () => ({ ...input, ...(await (await routes.get("/api/page-interaction/binding")()).json()) }), dispose: () => disposals.reverse().forEach(dispose => dispose()) };
+  return { clear, confirm: request => routes.get("/api/page-interaction/reference/confirm")(request), request: request => routes.get("/api/page-interaction/reference")(request), payload: async () => ({ ...input, ...(await (await routes.get("/api/page-interaction/binding")()).json()) }), dispose: () => disposals.reverse().forEach(dispose => dispose()) };
 }
 
 test("clearing references invalidates a POST already parsing, while a new authorized POST can succeed", async () => {
@@ -42,4 +42,26 @@ test("authorization runs on the parsed POST and teardown prevents a late commit"
   subject.dispose();
   body.resolve(saved);
   assert.equal((await pending).status, 400);
+});
+
+test("confirming a saved receipt rechecks its generation, authorization and stored surface", async () => {
+  let authorized = true;
+  const subject = host(() => { if (!authorized) throw Error("LEASE_EXPIRED"); });
+  const payload = await subject.payload();
+  const receipt = await (await subject.request({ json: async () => payload })).json();
+  const confirm = { ...payload, id: receipt.id };
+  assert.equal((await subject.confirm({ json: async () => confirm })).status, 200);
+  authorized = false;
+  assert.equal((await subject.confirm({ json: async () => confirm })).status, 400);
+  authorized = true;
+  assert.equal((await subject.confirm({ json: async () => ({ ...confirm, surface: "another-page" }) })).status, 400);
+  const body = Promise.withResolvers();
+  const pending = subject.confirm({ json: () => body.promise });
+  subject.clear();
+  body.resolve(confirm);
+  assert.equal((await pending).status, 400, "identity clear during body parsing invalidates confirmation");
+  const current = await subject.payload();
+  assert.equal((await subject.confirm({ json: async () => ({ ...current, id: receipt.id }) })).status, 400,
+    "using the new generation cannot restore a cleared receipt");
+  subject.dispose();
 });

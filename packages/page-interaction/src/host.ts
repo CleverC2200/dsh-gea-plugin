@@ -21,9 +21,9 @@ export function apply(ctx: any, options: { authorize?: (input: unknown) => void 
       requestBody: "buffered",
       fetch: () => Response.json({ generation: writes.generation }, { headers: { "cache-control": "no-store" } }),
     }));
-    scope.effect(() =>
+    for (const confirm of [false, true]) scope.effect(() =>
       scope.connection.fetch.register({
-        path: "/api/page-interaction/reference",
+        path: `/api/page-interaction/reference${confirm ? "/confirm" : ""}`,
         methods: ["POST"],
         requestBody: "buffered",
         fetch: async (request: Request) => {
@@ -32,6 +32,12 @@ export function apply(ctx: any, options: { authorize?: (input: unknown) => void 
             const input = await request.json();
             if (current.controller.signal.aborted || input?.generation !== current.generation) throw Error("引用已失效，请重新打开当前页面后选择。");
             options.authorize?.(input);
+            if (confirm) {
+              const snapshot = references.read(input?.sessionId, input?.id);
+              if ("error" in snapshot || snapshot.surface !== input?.surface)
+                throw Error("引用已失效，请在当前页面重新选择内容。");
+              return Response.json({ ok: true });
+            }
             return Response.json(references.put(input));
           } catch (error) {
             return Response.json(

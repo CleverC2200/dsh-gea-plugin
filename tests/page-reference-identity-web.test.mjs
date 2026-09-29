@@ -58,3 +58,34 @@ for (const mode of ["logout", "new-user"]) test(`a delayed reference POST cannot
     release.resolve();
   }
 });
+
+for (const mode of ["logout", "new-user"]) test(`a saved response delayed until after ${mode} cannot insert a cleared receipt`, {
+  skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 90000,
+}, async t => {
+  const { app, page, identity, quote, readReference } = await stockReferencePage(t);
+  const stored = Promise.withResolvers(), release = Promise.withResolvers(), delivered = Promise.withResolvers();
+  t.after(() => release.resolve());
+  await page.route("**/api/page-interaction/reference", async route => {
+    const response = await route.fetch();
+    stored.resolve({ status: response.status(), receipt: await response.json() });
+    await release.promise;
+    await route.fulfill({ response }).catch(() => {});
+    delivered.resolve();
+  });
+  try {
+    await quote();
+    const outcome = await stored.promise;
+    assert.equal(outcome.status, 200, "the Host has already saved this reference");
+    await app.rpc("logout");
+    if (mode === "new-user") { identity.userId = "9007199254740994"; await app.login(); }
+    release.resolve();
+    await delivered.promise;
+    await page.waitForTimeout(500);
+    const composer = await page.locator('[contenteditable="true"]').first().innerText();
+    const read = await readReference(outcome.receipt.id);
+    await mkdir(".runtime/reference-identity-evidence", { recursive: true });
+    await writeFile(`.runtime/reference-identity-evidence/response-${mode}.json`, JSON.stringify({ mode, outcome, composer, read }, null, 2));
+    assert.match(read.text, /REFERENCE_UNAVAILABLE/);
+    assert.equal(composer.trim(), "", "a cleared reference must not be presented as usable after identity changes");
+  } finally { release.resolve(); }
+});

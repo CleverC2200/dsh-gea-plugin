@@ -5,7 +5,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile, readSession, readToolResults, until } from "../profile.mjs";
 import { stockState, installStockRoutes } from "./branch-stock.mjs";
 
-export async function stockReferencePage(t, { editable = false, holdCancellation = false } = {}) {
+export async function stockReferencePage(t, { editable = false, holdMessage } = {}) {
   const identity = { userId: "9007199254740993", tenantId: "0" };
   const state = stockState();
   if (editable) state.mode = "editable";
@@ -38,24 +38,28 @@ export async function stockReferencePage(t, { editable = false, holdCancellation
   await context.addCookies(app.cookie.split("; ").map(pair => ({ name: pair.slice(0, pair.indexOf("=")), value: pair.slice(pair.indexOf("=") + 1), url: app.origin })));
   const page = await context.newPage();
   page.setDefaultTimeout(20000);
-  if (holdCancellation) await page.addInitScript(() => {
+  if (holdMessage) await page.addInitScript(messageType => {
     // Control delivery order while keeping the real iframe event and HTTP response.
     const held = [];
-    let hold = true;
-    window.heldReferenceCancellations = held;
-    window.releaseReferenceCancellations = () => {
-      hold = false;
-      for (const event of held.splice(0)) dispatchEvent(new MessageEvent("message", {
+    let hold = true, replaying = false;
+    window.heldReferenceMessages = held;
+    window.releaseReferenceMessages = (type) => {
+      if (!type) hold = false;
+      const ready = held.filter(event => !type || event.data.type === type);
+      for (const event of ready) held.splice(held.indexOf(event), 1);
+      replaying = true;
+      for (const event of ready) dispatchEvent(new MessageEvent("message", {
         data: event.data, source: event.source, origin: event.origin,
       }));
+      replaying = false;
     };
     addEventListener("message", event => {
-      if (hold && event.data?.protocol === "dsh-page-interaction-v1" && event.data.type === "cancel-reference") {
+      if (hold && !replaying && event.data?.protocol === "dsh-page-interaction-v1" && [].concat(messageType).includes(event.data.type)) {
         event.stopImmediatePropagation();
         held.push(event);
       }
     }, true);
-  });
+  }, holdMessage);
   const opens = [], contexts = [];
   page.on("request", request => {
     if (!request.postData()) return;

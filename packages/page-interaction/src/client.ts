@@ -258,6 +258,11 @@ export function installPageInteraction(ctx: any): PageInteraction {
         const requestId = event.data.requestId;
         const controller = new AbortController();
         requests.set(requestId, controller);
+        const deadline = setTimeout(() => {
+          if (!active || controller.signal.aborted) return;
+          controller.abort();
+          send({ type: "result", requestId, ok: false, error: "引用未加入，请重试。" });
+        }, 5000);
         try {
           if (!ready || !generation || selectedSession() !== sessionId)
             throw Error("请先打开当前页面的对话，再加入提问。");
@@ -286,6 +291,15 @@ export function installPageInteraction(ctx: any): PageInteraction {
             if (!active || controller.signal.aborted) return;
             if (!confirmed) throw Error("页面引用已失效，请按当前显示内容重新选择。");
           }
+          const validity = await fetch("/api/page-interaction/reference/confirm", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id: receipt.id, sessionId, surface, generation, lease: referenceLease?.() }),
+            signal: controller.signal,
+          });
+          const confirmation = await validity.json();
+          if (!active || controller.signal.aborted) return;
+          if (!validity.ok) throw Error(confirmation.error || "引用已失效，请重新选择。");
           if (!ready || selectedSession() !== sessionId)
             throw Error("已切换对话，请在当前页面重新引用。");
           validateReference?.(value);
@@ -319,11 +333,21 @@ export function installPageInteraction(ctx: any): PageInteraction {
               error instanceof Error ? error.message : "引用未加入，请重试。",
           });
         } finally {
+          clearTimeout(deadline);
           requests.delete(requestId);
         }
       };
+      const reloaded = () => {
+        if (requests.size) {
+          for (const controller of requests.values()) controller.abort();
+          requests.clear();
+          const current = ready?.sessions.binding(sessionId);
+          if (current) ready.conversation.input.for(current.ctx).notify("error", "页面已重新加载，请重新选择引用。");
+        }
+        configure();
+      };
       window.addEventListener("message", receive);
-      frame.addEventListener("load", configure);
+      frame.addEventListener("load", reloaded);
       void fetch("/api/page-interaction/binding", { cache: "no-store", signal: bindingRequest.signal })
         .then(async response => {
           const value = await response.json();
@@ -346,7 +370,7 @@ export function installPageInteraction(ctx: any): PageInteraction {
         requests.clear();
         send({ type: "disconnect" });
         window.removeEventListener("message", receive);
-        frame.removeEventListener("load", configure);
+        frame.removeEventListener("load", reloaded);
       };
     },
   };

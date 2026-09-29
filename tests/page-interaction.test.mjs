@@ -57,7 +57,7 @@ test("group references retain every declared target", () => {
   );
 });
 
-for (const phase of ["saving", "confirmation"]) test(`a saved reference cannot enter the composer after disposal during ${phase}`, async (t) => {
+for (const phase of ["saving", "confirmation", "reload"]) test(`a saved reference cannot enter the composer after disposal during ${phase}`, async (t) => {
   const previousWindow = globalThis.window;
   const previousFetch = globalThis.fetch;
   t.after(() => {
@@ -79,6 +79,8 @@ for (const phase of ["saving", "confirmation"]) test(`a saved reference cannot e
       resolveFetch = resolve;
     });
   let inserts = 0;
+  const notifications = [];
+  const frameListeners = new Map();
   const scope = {
     effect: (fn) => fn(),
     inputTriggers: { registerSource: () => () => {} },
@@ -92,6 +94,7 @@ for (const phase of ["saving", "confirmation"]) test(`a saved reference cannot e
     conversation: {
       input: {
         for: () => ({
+          notify: (_level, message) => notifications.push(message),
           state: { getSnapshot: () => ({ draft: "", draftRev: 0 }) },
           insertReference: () => {
             inserts++;
@@ -115,8 +118,8 @@ for (const phase of ["saving", "confirmation"]) test(`a saved reference cannot e
         if (message.type === "commit-reference") confirmation.resolve();
       },
     },
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addEventListener: (name, listener) => frameListeners.set(name, listener),
+    removeEventListener: name => frameListeners.delete(name),
   };
   const dispose = installPageInteraction(ctx).bindFrame({
     frame,
@@ -133,19 +136,24 @@ for (const phase of ["saving", "confirmation"]) test(`a saved reference cannot e
       channel,
       type: "reference",
       requestId: "pending",
-      reference: { label: "整行", text: "120", targets: [], ...(phase === "confirmation" ? { scope: "current" } : {}) },
+      reference: { label: "整行", text: "120", targets: [], ...(phase !== "saving" ? { scope: "current" } : {}) },
     },
   });
-  if (phase === "confirmation") {
+  if (phase !== "saving") {
     resolveFetch(Response.json({ id: "R123456abcdef", label: "表格 · 整行" }));
     await confirmation.promise;
-    dispose();
+    if (phase === "reload") frameListeners.get("load")();
+    else dispose();
   } else {
     dispose();
     resolveFetch(Response.json({ id: "R123456abcdef", label: "表格 · 整行" }));
   }
   await received;
   assert.equal(inserts, 0);
+  if (phase === "reload") {
+    assert.deepEqual(notifications, ["页面已重新加载，请重新选择引用。"]);
+    dispose();
+  }
   assert.equal(listeners.get("message").size, 0, "disposal removes both binding and confirmation listeners");
 });
 
