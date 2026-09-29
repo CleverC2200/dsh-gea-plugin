@@ -5,9 +5,10 @@ import { chromium, expect } from "@playwright/test";
 import { profile, readSession, readToolResults, until } from "../profile.mjs";
 import { stockState, installStockRoutes } from "./branch-stock.mjs";
 
-export async function stockReferencePage(t) {
+export async function stockReferencePage(t, { editable = false } = {}) {
   const identity = { userId: "9007199254740993", tenantId: "0" };
   const state = stockState();
+  if (editable) state.mode = "editable";
   let stockRoute;
   installStockRoutes({ route: fn => { stockRoute = fn; } }, state, body => {
     const index = body.messages.findLastIndex(message => message.role === "user");

@@ -233,7 +233,7 @@ export function mountPicker(options: PickerOptions = {}): () => void {
     });
   };
   const referenceVersion = (reference: PageReference) => JSON.stringify([reference.scope, reference.text, reference.targets]);
-  const pendingObserver = new MutationObserver(() => {
+  const checkPending = () => {
     if (!pending?.version) return;
     let current: string | undefined;
     try {
@@ -243,12 +243,18 @@ export function mountPicker(options: PickerOptions = {}): () => void {
     cancelPending();
     status.textContent = "页面引用已失效，请按当前显示内容重新选择。";
     send({ type: "selection-error", error: status.textContent });
-  });
-  const cancelPending = () => {
-    if (pending) send({ type: "cancel-reference", requestId: pending.id });
+  };
+  const pendingObserver = new MutationObserver(checkPending);
+  const clearPending = () => {
     clearTimeout(timer);
     pendingObserver.disconnect();
+    pending?.target.removeEventListener("input", checkPending, true);
+    pending?.target.removeEventListener("change", checkPending, true);
     pending = undefined;
+  };
+  const cancelPending = () => {
+    if (pending) send({ type: "cancel-reference", requestId: pending.id });
+    clearPending();
   };
   const mode = (next: boolean, cancel = true) => {
     active = next;
@@ -335,10 +341,15 @@ export function mountPicker(options: PickerOptions = {}): () => void {
     hover = target;
     paint(target);
     pending = { id: crypto.randomUUID(), target, version: original.scope ? referenceVersion(original) : undefined };
-    if (pending.version) pendingObserver.observe(document.body, {
-      subtree: true, childList: true, attributes: true,
-      attributeFilter: ["data-page-reference-scope", "data-page-reference-ready", "hidden", "style", "class", "aria-hidden"],
-    });
+    if (pending.version) {
+      pendingObserver.observe(document.body, {
+        subtree: true, childList: true, attributes: true,
+        attributeFilter: ["data-page-reference-scope", "data-page-reference-ready", "hidden", "style", "class", "aria-hidden"],
+      });
+      // Typing changes DOM values without necessarily changing attributes.
+      target.addEventListener("input", checkPending, true);
+      target.addEventListener("change", checkPending, true);
+    }
     status.textContent = "正在加入对话…";
     send({ type: "reference", requestId: pending.id, reference });
     timer = setTimeout(() => {
@@ -405,9 +416,7 @@ export function mountPicker(options: PickerOptions = {}): () => void {
       ui.hidden = true;
     }
     if (data.type === "result" && data.requestId === pending?.id) {
-      clearTimeout(timer);
-      pendingObserver.disconnect();
-      pending = undefined;
+      clearPending();
       if (data.ok) {
         hover = null;
         paint(null);

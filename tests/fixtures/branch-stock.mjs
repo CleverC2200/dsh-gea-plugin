@@ -94,7 +94,7 @@ export function stockRows(sql, mode = "ok", parameters = {}) {
     rows = stock.map((r) => ({ sku: r.material_code, shipped_qty: 20 }));
   else if (sql.includes("o.metric_group"))
     rows = stock.flatMap((r) =>
-      ["actual_shipped_qty", "in_transit_qty"].map((metric_name) => ({
+      ["actual_shipped_qty", "in_transit_qty", ...(mode === "editable" ? ["open_pending_qty", "open_shipped_qty"] : [])].map((metric_name) => ({
         snapshot_date: "2026-09-29",
         period_month: "2026-09-01",
         business_date: "2026-09-29",
