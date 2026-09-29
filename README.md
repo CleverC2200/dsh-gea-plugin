@@ -189,4 +189,4 @@ Demand Forecast follows the user's language for both progress and final answers.
 
 ## 源码组合维护
 
-隔离源码工具共用 `scripts/source-composition.mjs` 的五插件清单、构建差异、快照资源及核心包扫描范围。`source:check` 检查当前核心声明，`source:build` 依次构建；启动器装配同一组合。预设由 YAML 节点转换，保留 `!!js` 标签，结构不兼容时报告输入文件。主会话读取来自核心 `uiSession.mainSessionId`，槽位通过 `inject.hooks` 订阅；新建会话按钮和输入底栏使用核心语义标记。此组合要求同次更新核心、工作台与 GEA。
+隔离源码工具共用 `scripts/source-composition.mjs` 的六插件清单（含插件中心）、构建差异、快照资源及核心包扫描范围。`source:check` 检查当前核心声明，`source:build` 依次构建；启动器装配同一组合。预设由 YAML 节点转换，保留 `!!js` 标签，结构不兼容时报告输入文件。主会话读取来自核心 `uiSession.mainSessionId`，槽位通过 `inject.hooks` 订阅；新建会话按钮和输入底栏使用核心语义标记。此组合要求同次更新核心、工作台与 GEA。

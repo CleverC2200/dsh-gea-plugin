@@ -68,3 +68,9 @@ corepack pnpm run test:source
 本入口不改原应用、payload 或正式数据，不需要对正式环境回滚。停止本次进程后即可回到原工作方式；重跑创建另一份干净目录，旧证据保留。
 
 2026-09-29 最终五插件源码组合回归：681 项全部通过，0 失败、0 跳过。增强侧栏官方测试串行全套 1491 通过、9 跳过；本项目五插件核心类型检查通过。任务 01 已满足隔离源码组合验收，后续迁移以这组固定输入为基线。
+
+## Management theme acceptance
+
+The source composition includes the sibling `dsh-plugin-hub` checkout, initially pinned at `3b990aa771fa1d829c8a0f3ce595965828a884bc`, with its existing npm lock and build. Its client declaration injects ui-theme; actual host routes and client mounting are checked on DSH 0.2. Both management interfaces consume workbench resource `1.0.0` from ui-theme without importing workbench private runtime code. Run the workbench resource sync check before source validation.
+
+`GEA_TEST_SOURCE_CORE=1 node --test tests/management-theme-source-web.test.mjs` uses a temporary HOME/profile and local suite for install, enable, disable and uninstall. It checks both themes, user font size, narrow layout, loading and error states. Browser fixtures replace desktop update endpoints; check and prepare actions record local requests only. This is not desktop installer, Windows/Electron or production-channel acceptance. Screenshots and computed values are saved under `.runtime/management-theme-evidence/`.

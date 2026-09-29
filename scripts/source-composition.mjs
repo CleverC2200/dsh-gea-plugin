@@ -1,4 +1,4 @@
-/** The five-plugin source composition; order also defines build dependencies. */
+/** The plugin source composition; order also defines build dependencies. */
 import { glob, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -8,6 +8,14 @@ const resources = [
 ];
 
 export const sourcePlugins = [
+  {
+    repo: "dsh-plugin-hub",
+    configs: ["tsconfig.server.json", "tsconfig.client.json"],
+    build: "hub",
+    resources,
+    digests: [],
+    bundleOrder: 2,
+  },
   {
     repo: "dsh-agent-workbench",
     configs: ["tsconfig.json"],
