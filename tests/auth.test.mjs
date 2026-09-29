@@ -147,6 +147,12 @@ test(
 test("restored desktop login fetches its missing avatar on status", { timeout: 60000 }, async t => {
   let saved;
   const control = createServer((req, res) => {
+    // The desktop fixture owns login only; other mounted plugins may probe updates.
+    if (req.url !== '/login') {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: 'DESKTOP_ACTION_UNSUPPORTED' }));
+      return;
+    }
     if (req.method === 'GET') { res.end(JSON.stringify(saved)); return; }
     let body = ''; req.on('data', chunk => body += chunk);
     req.on('end', () => { saved = JSON.parse(body); res.end('null'); });

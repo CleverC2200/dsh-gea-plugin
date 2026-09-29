@@ -80,6 +80,8 @@ for (const plugin of sourcePlugins) {
       cwd,
       stdio: "inherit",
     });
+  } else if (plugin.build === "hub") {
+    execFileSync("npm", ["run", "build"], { cwd, stdio: "inherit" });
   } else {
     execFileSync("corepack", ["pnpm", "run", plugin.build], {
       cwd,

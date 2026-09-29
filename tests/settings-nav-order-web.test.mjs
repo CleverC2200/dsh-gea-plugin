@@ -5,7 +5,7 @@ import { profile } from "./profile.mjs";
 
 /**
  * 设置弹窗左栏顺序由各插件注册的 order 决定，第三方「侧边卡片」会落到系统项后面。
- * 夹具环境装不齐桌面上的那些系统项，所以这里自己往左栏塞「侧边卡片」和「软件更新」两行，
+ * 复用已经装载的插件导航，仅在旧夹具缺项时补行，再把两行摆成待排序的顺序，
  * 验证外壳的排序逻辑（卡片要排在系统项前面，并且不会反复上移）。
  */
 test(
@@ -55,11 +55,12 @@ test(
     const navList = page.locator('[role="dialog"] [class*="navList"]');
     await navList.waitFor();
 
-    // 模拟桌面上才有的两行：第三方的「侧边卡片」排在系统项「软件更新」后面。
+    // 同时支持已装载插件中心的源码组合和缺少该插件的旧运行环境。
     await page.evaluate(() => {
       const list = document.querySelector('[role="dialog"] [class*="navList"]');
       const add = (label) => {
-        const cell = document.createElement("button");
+        const cell = [...list.children].find(node => node.textContent?.trim() === label)
+          ?? document.createElement("button");
         cell.type = "button";
         cell.textContent = label;
         list.append(cell);
