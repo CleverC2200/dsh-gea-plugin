@@ -1,8 +1,10 @@
 /** Check/build this isolated workspace's plugins against the built sibling DSH source. */
-import { readFile, writeFile, mkdir, glob } from "node:fs/promises";
+import { writeFile, mkdir } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { parseArgs } from "node:util";
+
+import { corePackages, sourcePlugins } from "./source-composition.mjs";
 
 const { values } = parseArgs({ options: { build: { type: "boolean" } } });
 const root = resolve(import.meta.dirname, "..");
@@ -11,12 +13,7 @@ const core = join(workspace, "deepseek-harness");
 const output = join(root, ".runtime/source-compatibility");
 await mkdir(output, { recursive: true });
 const paths = {};
-for await (const file of glob(
-  ["packages/*/*/package.json", "apps/*/package.json", "vendor/*/package.json"],
-  { cwd: core },
-)) {
-  const manifest = JSON.parse(await readFile(join(core, file), "utf8"));
-  const directory = resolve(core, file, "..");
+for (const { manifest, directory } of await corePackages(core)) {
   for (const [key, value] of Object.entries(manifest.exports ?? {})) {
     if (typeof value === "object" && value?.types) {
       paths[manifest.name + (key === "." ? "" : key.slice(1))] = [
@@ -27,26 +24,15 @@ for await (const file of glob(
   if (manifest.types)
     paths[manifest.name] ??= [resolve(directory, manifest.types)];
 }
-paths["@cleverc2200/dsh-agent-workbench"] = [
-  join(workspace, "dsh-agent-workbench/lib/types/host.d.ts"),
-];
-paths["@cleverc2200/dsh-agent-workbench/client"] = [
-  join(workspace, "dsh-agent-workbench/lib/types/client.d.ts"),
-];
-for (const name of [
-  "dsh-agent-workbench",
-  "dsh-agent-manage",
-  "dsh-gea-plugin",
-  "dsh-genui",
-  "dsh-better-sidebar",
-]) {
+for (const plugin of sourcePlugins) {
+  for (const [name, file] of Object.entries(plugin.typeEntries ?? {}))
+    paths[name] = [join(workspace, plugin.repo, file)];
+}
+for (const plugin of sourcePlugins) {
+  const name = plugin.repo;
   const cwd = join(workspace, name);
-  const configurations =
-    name === "dsh-agent-manage"
-      ? ["tsconfig.json", "tsconfig.client.json"]
-      : ["tsconfig.json"];
   const projects = [];
-  for (const config of configurations) {
+  for (const config of plugin.configs) {
     const target = join(output, `${name}-${config}`);
     await writeFile(
       target,
@@ -72,13 +58,13 @@ for (const name of [
     projects.push(target);
   }
   if (!values.build) continue;
-  if (name === "dsh-agent-workbench") {
+  if (plugin.build === "workbench") {
     execFileSync(process.execPath, ["scripts/build.mjs"], {
       cwd,
       env: { ...process.env, DSH_TYPECHECK_PROJECT: projects[0] },
       stdio: "inherit",
     });
-  } else if (name === "dsh-agent-manage") {
+  } else if (plugin.build === "manage") {
     execFileSync(
       process.execPath,
       [
@@ -95,7 +81,7 @@ for (const name of [
       stdio: "inherit",
     });
   } else {
-    execFileSync("corepack", ["pnpm", "run", name === "dsh-gea-plugin" ? "build:plugin" : "build"], {
+    execFileSync("corepack", ["pnpm", "run", plugin.build], {
       cwd,
       stdio: "inherit",
     });

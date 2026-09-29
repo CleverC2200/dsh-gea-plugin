@@ -1,4 +1,3 @@
-import { selectedSession } from "./client/session-selection.ts";
 import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import pickerScript from "../lib/page-interaction.txt";
 import { injectPicker } from "../packages/page-interaction/src/inject.ts";
@@ -88,7 +87,7 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
   }
 }
 
-export const inject = ["slots", "layout", "locale", "uiWorkspace", "sessions", "agentWorkbench", "remote", "remote.session"];
+export const inject = ["slots", "uiSession", "layout", "locale", "uiWorkspace", "sessions", "agentWorkbench", "remote", "remote.session"];
 const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;
@@ -181,16 +180,18 @@ export function apply(ctx: Context): void {
   });
   const injected = {
     hooks: {
+      mainSessionId: ctx.uiSession.mainSessionId,
       geaLocale: {
         getSnapshot: () => ctx.locale.getSnapshot(),
         subscribe: (listener: () => void) => ctx.locale.subscribe(listener),
       } satisfies HostObservable<LocaleSnapshot>,
     },
   };
+  type MainSessionProps = Pick<InjectFace<typeof injected>, "useMainSessionId">;
   let workbenchAuthenticated = false;
   let hideWorkbenchConversation: (() => void) | undefined;
   function Workbench({
-    useSessions,
+    useMainSessionId,
     useGeaLocale,
   }: PropsRuntime<"main"> & InjectFace<typeof injected>) {
     const [authenticated, setAuthenticated] = useState(false);
@@ -217,7 +218,7 @@ export function apply(ctx: Context): void {
       };
     }, [authenticated]);
     const language = useGeaLocale((snapshot) => snapshot.active);
-    const currentSession = useSessions(selectedSession);
+    const currentSession = useMainSessionId(id => id);
     const frame = useRef<HTMLIFrameElement>(null);
     useEffect(() => {
       if (!frame.current || !currentSession || !authenticated) return;
@@ -303,10 +304,10 @@ export function apply(ctx: Context): void {
     return result.value as T;
   }
   /** All embedded workbenches share the same conversation + page selection wiring. */
-  function PrototypeWorkbench({panel,title,document:html,useSessions}: PropsRuntime<"main"> & {panel:MainPanelId;title:string;document:string}) {
+  function PrototypeWorkbench({panel,title,document:html,useMainSessionId}: PropsRuntime<"main"> & MainSessionProps & {panel:MainPanelId;title:string;document:string}) {
     const [sessionError,setSessionError]=useState("");
     const [opened,setOpened]=useState(false);
-    const session=useSessions(selectedSession);
+    const session=useMainSessionId(id => id);
     const frame=useRef<HTMLIFrameElement>(null);
     useEffect(()=>{
       let live=true;
@@ -323,13 +324,13 @@ export function apply(ctx: Context): void {
       <section className="gea-workbench-shell"><iframe ref={frame} className="gea-workbench-frame" title={title} sandbox="allow-scripts" srcDoc={html}/></section>
     </>;
   }
-  function RegionalPlanPage(props:PropsRuntime<"main">) {
+  function RegionalPlanPage(props:PropsRuntime<"main"> & MainSessionProps) {
     return <PrototypeWorkbench {...props} panel={REGIONAL_PLAN_PANEL} title={t("regionalPlanWorkbench")} document={selectionDocuments.regional}/>;
   }
-  function CategoryPlanPage(props:PropsRuntime<"main">) {
+  function CategoryPlanPage(props:PropsRuntime<"main"> & MainSessionProps) {
     return <PrototypeWorkbench {...props} panel={CATEGORY_PLAN_PANEL} title={t("categoryPlanWorkbench")} document={selectionDocuments.category}/>;
   }
-  function MpsPlanPage(props:PropsRuntime<"main">) {
+  function MpsPlanPage(props:PropsRuntime<"main"> & MainSessionProps) {
     return <PrototypeWorkbench {...props} panel={MPS_PLAN_PANEL} title={t("mpsPlanWorkbench")} document={selectionDocuments.mps}/>;
   }
   function ApiLogPage() {
@@ -440,19 +441,19 @@ export function apply(ctx: Context): void {
   }
   function Navigation({
     usePanelInfo,
-    useSessions,
+    useMainSessionId,
     wide,
     expandSidebar,
     sections,
     onToggleSection,
-  }: PropsRuntime<"sidebar.workspaces"> & {
+  }: PropsRuntime<"sidebar.workspaces"> & MainSessionProps & {
     sections?: SidebarSections;
     onToggleSection?: (section: SidebarSection) => void;
   }) {
     const [expanded, setExpanded] = useState<SidebarSections>({ supply: true, plan: true, inventory: true, orders: true });
     const open = sections ?? expanded;
     const activePanel = usePanelInfo((info) => info.activePanelId);
-    const session = useSessions(selectedSession);
+    const session = useMainSessionId(id => id);
     const [panels,setPanels]=useState(()=>registeredBusinessPanels(ctx.slots.entries("main")));
     useEffect(()=>{const refresh=()=>setPanels(registeredBusinessPanels(ctx.slots.entries("main")));refresh();return ctx.slots.subscribe("main",refresh);},[]);
     if (!wide) {
@@ -635,15 +636,15 @@ export function apply(ctx: Context): void {
       ApiLogPage,
     );
     yield ctx.slots.register(
-      { name: "main", key: REGIONAL_PLAN_PANEL, locale: "geaProof" },
+      { name: "main", key: REGIONAL_PLAN_PANEL, locale: "geaProof", inject: () => injected },
       RegionalPlanPage,
     );
     yield ctx.slots.register(
-      { name: "main", key: CATEGORY_PLAN_PANEL, locale: "geaProof" },
+      { name: "main", key: CATEGORY_PLAN_PANEL, locale: "geaProof", inject: () => injected },
       CategoryPlanPage,
     );
     yield ctx.slots.register(
-      { name: "main", key: MPS_PLAN_PANEL, locale: "geaProof" },
+      { name: "main", key: MPS_PLAN_PANEL, locale: "geaProof", inject: () => injected },
       MpsPlanPage,
     );
     yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
@@ -655,17 +656,18 @@ export function apply(ctx: Context): void {
     ctx.layout.selectPanel(PANEL);
   });
   function NavigationMode({
-    usePanelInfo,
     useSessions,
+    usePanelInfo,
+    useMainSessionId,
     useSessionStatus,
     useSessionRetainInfo,
     useWorkspaces,
-  }: PropsRuntime<"shell.overlay">) {
+  }: PropsRuntime<"shell.overlay"> & MainSessionProps) {
     const activePanel = usePanelInfo((info) => info.activePanelId);
     const business = usePanelInfo(
       (info) => isGeaBusinessPanel(info.activePanelId, ctx.slots.entries("main")) || info.activePanelId === API_LOG_PANEL,
     );
-    const surfaceSession = useSessions(selectedSession);
+    const surfaceSession = useMainSessionId(id => id);
     // 菜单状态字段：面板或会话一变就上报（默认主对话），宿主据此判定"主对话 / 哪一页业务菜单"。
     // 只认这一份事实，所以不在这里做去抖：漏报一次就会让页面证据对不上。
     useEffect(() => {
@@ -722,7 +724,7 @@ export function apply(ctx: Context): void {
     const [centerColumn, setCenterColumn] = useState<HTMLElement | null>(null);
     const [conversationView, setConversationView] = useState<"center" | "split" | "chat">("split");
     const [conversationActionError, setConversationActionError] = useState("");
-    const currentConversationSession = useSessions(selectedSession);
+    const currentConversationSession = useMainSessionId(id => id);
     const historyPanel = useRef<MainPanelId | null>(null);
     const linkedHistorySession = useRef<SessionId | null>(null);
     useEffect(() => {
@@ -757,8 +759,8 @@ export function apply(ctx: Context): void {
     }, [business]);
     useEffect(() => {
       const renameNewSession = () => {
-        const button = document.querySelector<HTMLButtonElement>("button[class*='_newSession']");
-        const label = button?.querySelector<HTMLElement>("[class*='_newSessionLabel']:not([class*='_newSessionLabelMask'])");
+        const button = document.querySelector<HTMLButtonElement>("[data-sidebar-new-session]");
+        const label = button?.querySelector<HTMLElement>("[data-sidebar-new-session-label]");
         if (!button || !label) return;
         if (label.textContent !== "AI工作台") label.textContent = "AI工作台";
         if (button.getAttribute("aria-label") !== "AI工作台") button.setAttribute("aria-label", "AI工作台");
@@ -1062,6 +1064,7 @@ export function apply(ctx: Context): void {
             <Navigation
               usePanelInfo={usePanelInfo}
               useSessions={useSessions}
+              useMainSessionId={useMainSessionId}
               useSessionStatus={useSessionStatus}
               useSessionRetainInfo={useSessionRetainInfo}
               useWorkspaces={useWorkspaces}
@@ -1085,7 +1088,7 @@ export function apply(ctx: Context): void {
       nativeExpandSidebar();
       // 等原生侧栏渲染出来再触发它自己的「新建会话」，避免在收起态点到不存在的节点。
       window.setTimeout(
-        () => document.querySelector<HTMLButtonElement>("button[class*='_newSession']")?.click(),
+        () => document.querySelector<HTMLButtonElement>("[data-sidebar-new-session]")?.click(),
         150,
       );
     };
@@ -1189,7 +1192,7 @@ export function apply(ctx: Context): void {
   ));
   ctx.slots.inject("shell.overlay", () =>
     ctx.slots.register(
-      { name: "shell.overlay", id: "gea-navigation-mode", locale: "geaProof" },
+      { name: "shell.overlay", id: "gea-navigation-mode", locale: "geaProof", inject: () => injected },
       NavigationMode,
     ),
   );

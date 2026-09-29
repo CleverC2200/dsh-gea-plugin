@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import type { Context } from "@deepseek-ai/cordis";
 import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
-import type { PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
+import type { PropsRuntime, InjectFace } from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@cleverc2200/dsh-agent-workbench/client";
 import type {} from "@deepseek-ai/dsh-client-ui-sidebar/client";
 const id = "workbench-example" as MainPanelId;
@@ -26,13 +26,14 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
     workbenchExample: keyof typeof zh;
   }
 }
-export const inject = ["slots", "agentWorkbench", "locale"];
+export const inject = ["slots", "uiSession", "agentWorkbench", "locale"];
 export function apply(ctx: Context): void {
   ctx.effect(() => ctx.locale.register("workbenchExample", { zh, en }));
   const t = ctx.locale.bind("workbenchExample");
+  const injected = { hooks: { mainSessionId: ctx.uiSession.mainSessionId } };
   let remove = () => {};
-  function Page({ useSessions }: PropsRuntime<"main">) {
-    const session = useSessions((s) => Object.values(s.byId).find((row) => (row.retainedBy.mainView ?? 0) > 0)?.id);
+  function Page({ useMainSessionId }: PropsRuntime<"main"> & InjectFace<typeof injected>) {
+    const session = useMainSessionId(id => id);
     const [error, setError] = useState("");
     const open = (instance?: string) => {
       void ctx.agentWorkbench
@@ -75,7 +76,7 @@ export function apply(ctx: Context): void {
   }
   ctx.slots.inject("main", () => {
     const unmount = ctx.slots.register(
-      { name: "main", key: id, locale: "workbenchExample" },
+      { name: "main", key: id, inject: () => injected, locale: "workbenchExample" },
       Page,
     );
     // 跟随部署默认预设（scripts/deployment.mjs 的 DEFAULT_PRESET_ID=auto-negotiation）。

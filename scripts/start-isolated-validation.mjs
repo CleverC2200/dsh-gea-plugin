@@ -8,13 +8,14 @@ import {
   realpath,
   symlink,
   writeFile,
-  glob,
 } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+
+import { corePackages } from "./source-composition.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const required = [
@@ -191,17 +192,8 @@ async function launch() {
   const manifest = await json(join(payload, "package.json"));
   const packages = {};
   if (source) {
-    for await (const entry of glob(
-      [
-        "apps/*/package.json",
-        "packages/*/*/package.json",
-        "vendor/*/package.json",
-      ],
-      { cwd: payload },
-    )) {
-      const pkg = await json(join(payload, entry));
+    for (const { manifest: pkg } of await corePackages(payload))
       packages[pkg.name] = pkg.version;
-    }
     await readFile(join(payload, "apps/cli/lib/bin.js"));
     await readFile(join(payload, "apps/web/dist/index.html"));
   } else {

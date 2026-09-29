@@ -44,6 +44,12 @@ test(
       .getByRole("button", { name: "继续", exact: true })
       .click();
 
+    const newSession = page.locator('[data-sidebar-new-session]');
+    await expect(newSession).toHaveAccessibleName("AI工作台");
+    await expect(newSession.locator('[data-sidebar-new-session-label]')).toHaveText("AI工作台");
+    await expect(newSession.locator('[data-sidebar-new-session-content] svg')).toHaveCount(1);
+    await expect(page.locator('[data-composer-dock]').first()).toBeAttached();
+
     /** 发一条消息（receipt 模式是本地回执，不调模型），让宿主渲染出统计行。 */
     const ask = async (root) => {
       const input = page.locator(`${root} [contenteditable="true"]`).first();

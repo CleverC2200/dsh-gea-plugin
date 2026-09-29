@@ -7,18 +7,14 @@ import {
   realpath,
   symlink,
   writeFile,
-  glob,
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
-const upstreamCommits = {
-  "dsh-genui": "382db5575ad3068efeff0322eec9cc499f79ae01",
-  "dsh-better-sidebar": "a2751cfbde2dd425b8150737574bc6d1d57f73b8",
-};
-
+import { composeSourcePresets } from "./source-presets.mjs";
+import { corePackages, sourcePlugins } from "./source-composition.mjs";
 function clientEntry(manifest) {
   const entry = manifest.exports?.["./client"];
   return typeof entry === "string"
@@ -30,28 +26,14 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
   const workspace = resolve(import.meta.dirname, "../..");
   const profile = join(runtime, "home/profiles/plugin-split-validation");
   const modules = join(profile, "node_modules");
-  const packages = new Map();
-  for await (const file of glob(
-    [
-      "packages/*/*/package.json",
-      "apps/*/package.json",
-      "vendor/*/package.json",
-    ],
-    { cwd: core },
-  )) {
-    const data = JSON.parse(await readFile(join(core, file), "utf8"));
-    packages.set(data.name, resolve(core, file, ".."));
-  }
+  const packages = new Map((await corePackages(core)).map(
+    ({ manifest, directory }) => [manifest.name, directory],
+  ));
   const plugins = new Map();
-  for (const repo of [
-    "dsh-agent-workbench",
-    "dsh-agent-manage",
-    "dsh-gea-plugin",
-    "dsh-genui",
-    "dsh-better-sidebar",
-  ]) {
+  for (const plugin of sourcePlugins) {
+    const repo = plugin.repo;
     const source = join(workspace, repo);
-    const expectedCommit = upstreamCommits[repo];
+    const expectedCommit = plugin.commit;
     if (expectedCommit) {
       const commit = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
         cwd: source, encoding: "utf8",
@@ -63,20 +45,7 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
     );
     const target = join(modules, manifest.name);
     await mkdir(target, { recursive: true });
-    for (const file of [
-      "package.json",
-      "cordis.patch.yml",
-      "lib",
-      "client",
-      "schemas",
-      "presets",
-      "default-presets",
-      "business-skills",
-      "scripts/deployment.mjs",
-      "src/shared",
-      ...(repo === "dsh-genui" ? ["SKILL.md", "docs", "src", "pnpm-lock.yaml"] : []),
-      ...(repo === "dsh-better-sidebar" ? ["locale", "icon.svg", "src", "pnpm-lock.yaml"] : []),
-    ]) {
+    for (const file of plugin.resources) {
       try {
         await cp(join(source, file), join(target, file), { recursive: true });
       } catch (error) {
@@ -90,18 +59,18 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
       ),
     );
     await readFile(join(target, clientEntry(manifest)));
-    if (repo === "dsh-gea-plugin" && deployment?.workbenchExample === true) {
-      const fixture = "packages/workbench-example";
+    if (plugin.example && deployment?.workbenchExample === true) {
+      const fixture = plugin.example;
       await readFile(join(source, fixture, "lib/host.js"));
       await cp(join(source, fixture), join(target, fixture), {
         recursive: true,
         filter: path => !path.split(/[\\/]/).includes("node_modules"),
       });
     }
-    plugins.set(manifest.name, { source, target, version: manifest.version });
+    plugins.set(manifest.name, { source, target, version: manifest.version, plugin });
   }
   const snapshots = {};
-  for (const [name, { source, target, version }] of plugins) {
+  for (const [name, { source, target, version, plugin }] of plugins) {
     const manifest = JSON.parse(
       await readFile(join(target, "package.json"), "utf8"),
     );
@@ -109,8 +78,7 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
       "package.json",
       manifest.main ?? manifest.exports?.["."]?.default ?? "lib/host.js",
       clientEntry(manifest),
-      ...(name === "@changfenhuang/dsh-genui" ? ["SKILL.md", "pnpm-lock.yaml"] : []),
-      ...(name === "dsh-better-sidebar" ? ["pnpm-lock.yaml", "locale/en.json", "locale/zh.json", "icon.svg"] : []),
+      ...plugin.digests,
     ];
     const digests = {};
     for (const file of files)
@@ -205,38 +173,19 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
     join(runtime, "deployment.patch.json"),
     JSON.stringify(patch, null, 2),
   );
-  const standard = await readFile(
-    join(core, "packages/bundle/web-app/presets/standard.patch.yml"),
-    "utf8",
+  const standard = join(core, "packages/bundle/web-app/presets/standard.patch.yml");
+  const business = join(gea, "presets/gea-readonly/agent.cordis.yml");
+  const presetPatch = composeSourcePresets(
+    { source: standard, text: await readFile(standard, "utf8") },
+    { source: business, text: await readFile(business, "utf8") },
+    join(gea, "lib/skill-reference.js"),
   );
-  if (
-    !standard.includes("id: preset-standard") ||
-    !standard.includes("id: standard")
-  )
-    throw Error("SOURCE_STANDARD_PRESET_CHANGED");
-  const native = standard
-    .replace("id: preset-standard", "id: preset-auto-negotiation")
-    .replace("id: standard", "id: auto-negotiation");
-  const business = (
-    await readFile(join(gea, "presets/gea-readonly/agent.cordis.yml"), "utf8")
-  ).replace(
-    "'../../lib/skill-reference.js'",
-    JSON.stringify(join(gea, "lib/skill-reference.js")),
-  );
-  const presetPatch =
-    native +
-    "\n- insert:\n    - id: preset-gea-readonly\n      name: '@deepseek-ai/dsh-agent-preset'\n      config:\n        id: gea-readonly\n        plugins:\n" +
-    business
-      .split("\n")
-      .map((line) => "          " + line)
-      .join("\n") +
-    "\n";
   await writeFile(join(runtime, "presets.patch.yml"), presetPatch);
   return {
     dependencies: Object.fromEntries(
       [...plugins].map(([name, data]) => [name, data.version]),
     ),
-    bundles: ["@cleverc2200/gea-dsh-prototype", "dsh-agent-manage"],
+    bundles: [...plugins].filter(([, data]) => data.plugin.bundleOrder !== undefined).sort((a, b) => a[1].plugin.bundleOrder - b[1].plugin.bundleOrder).map(([name]) => name),
     patches: [
       join(runtime, "deployment.patch.json"),
       join(runtime, "presets.patch.yml"),

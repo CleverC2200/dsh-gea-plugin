@@ -1,4 +1,3 @@
-import type { SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
 import React, { useEffect, useRef } from "react";
 import { installReferenceDisplay } from "./reference-display.ts";
 import {
@@ -41,12 +40,7 @@ export function installPageInteraction(ctx: any): PageInteraction {
   };
   const bindings = new Set<PickerBinding>();
   const triggers = new Set<HTMLButtonElement>();
-  const selectedSession = () => {
-    const snapshot = ready?.sessions.list.getSnapshot() as SessionListState | undefined;
-    return snapshot && Object.values(snapshot.byId).find(
-      row => (row.retainedBy.mainView ?? 0) > 0,
-    )?.id;
-  };
+  const selectedSession = () => ready?.uiSession.mainSessionId.getSnapshot();
   const currentPicker = () =>
     [...bindings]
       .reverse()
@@ -77,7 +71,7 @@ export function installPageInteraction(ctx: any): PageInteraction {
         : "选择内容（按住 Alt 临时选择，Esc 退出）";
     }
   };
-  ctx.inject(["inputTriggers", "conversation", "sessions"], (scope: any) => {
+  ctx.inject(["inputTriggers", "conversation", "sessions", "uiSession"], (scope: any) => {
     scope.effect(() =>
       scope.inputTriggers.registerSource({
         trigger: "@",
@@ -138,7 +132,7 @@ export function installPageInteraction(ctx: any): PageInteraction {
     });
     updateTriggers();
     scope.effect(
-      () => scope.sessions.list.subscribe?.(updateTriggers) ?? (() => {}),
+      () => scope.uiSession.mainSessionId.subscribe(updateTriggers),
     );
     scope.effect(() => () => {
       if (ready === scope) ready = undefined;
@@ -347,5 +341,5 @@ export function installPageInteraction(ctx: any): PageInteraction {
   return api;
 }
 
-export const inject = ["sessions", "conversation", "inputTriggers"];
+export const inject = ["sessions", "conversation", "inputTriggers", "uiSession"];
 export const apply = installPageInteraction;

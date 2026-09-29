@@ -1,4 +1,3 @@
-import { selectedSession } from "./client/session-selection.ts";
 import React, { useEffect, useRef, useState } from "react";
 import { businessMenuLabel } from "./business-navigation.ts";
 import { startPageBridgeClient } from "./page-bridge/client.ts";
@@ -17,9 +16,9 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
     if (!response.ok) throw Error(value.error ?? "GEA 页面连接失败");
     return value;
   }
-  function Frame({ plugin, useSessions }: any) {
+  function Frame({ plugin, useMainSessionId }: any) {
     const workbenchId = plugin.workbenchId ?? plugin.id;
-    const session = useSessions(selectedSession),
+    const session = useMainSessionId((id: string | undefined) => id),
       frame = useRef<HTMLIFrameElement>(null),
       [connection, setConnection] = useState<any>(null),
       [error, setError] = useState(""),
@@ -379,7 +378,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
             ctx.slots.inject("main", () => {
               const a = ctx.slots.register(
                 {
-                  name: "main",
+                  name: "main", inject: () => ({ hooks: { mainSessionId: ctx.uiSession.mainSessionId } }),
                   key: page.id,
                   label: () => businessMenuLabel(page.id, page.name),
                   order: page.order ?? 20,

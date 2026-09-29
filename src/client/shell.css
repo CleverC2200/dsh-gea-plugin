@@ -226,18 +226,18 @@
 }
 [data-gea-narrow] .gea-sidebar-rail-item { width: 36px; height: 36px; }
 /* 收起态这三个入口由 GEA 提供，原生重复的「新建会话」按钮收起来。 */
-[data-gea-narrow] [class*="_newSession"] {
+[data-gea-narrow] [data-sidebar-new-session] {
   display: none !important;
 }
 /* 「AI 工作台」（原生新建会话）跟业务导航同一条左线：整块贴左、内容左对齐。 */
-button[class*="_newSession"] {
+button[data-sidebar-new-session] {
   justify-content: flex-start !important;
   margin-left: -12px !important;
   padding-left: 7px !important;
 }
 /* 文字跟业务导航的一级标题落在同一条竖线上（图标线都是 x=8）。 */
-button[class*="_newSession"] :is(svg, img) { margin-right: 8px; }
-button[class*="_newSession"] [class*="_newSessionContent"] {
+button[data-sidebar-new-session] :is(svg, img) { margin-right: 8px; }
+button[data-sidebar-new-session] [data-sidebar-new-session-content] {
   justify-content: flex-start;
   gap: 0;
 }
@@ -564,7 +564,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
    统一挪到输入卡上方：输入卡于是成为对话列最下面一块，贴着列底。
    主对话和工作台右侧会话列用的是同一个输入条组件，一条规则两边都生效。 */
 [data-composer-seat] [data-slot="conversation.composer.dock"],
-[data-composer-seat] [data-composer-card] + div,
+[data-composer-seat] [data-composer-dock],
 [data-composer-seat] [data-composer-stats] {
   order: -1;
 }
