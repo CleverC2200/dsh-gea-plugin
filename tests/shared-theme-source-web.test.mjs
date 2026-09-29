@@ -67,6 +67,7 @@ test("shared theme follows settings and survives stylesheet reorder and refresh"
     await page.getByRole("button", { name: "关闭", exact: true }).click();
     await expect.poll(async () => (await sample()).axis).toBe(`${size}px`);
     await composer.fill("输入框字号与焦点验收");
+    await expect(composer).toBeFocused();
     await composer.press("Tab");
     await composer.press("Shift+Tab");
     const value = await sample();
@@ -78,7 +79,8 @@ test("shared theme follows settings and survives stylesheet reorder and refresh"
       assert.equal(value.body.background, label === "深色" ? "rgb(27, 29, 33)" : "rgb(247, 248, 250)");
       assert.equal(value.source, label === "深色" ? "dark" : "light");
       assert.equal(value.metas, 1);
-      assert.equal(value.focus.style, "solid");
+      assert.notEqual(value.focus.style, "none");
+      assert.equal(value.focus.width, "2px");
       assert.equal(value.focus.color, label === "深色" ? "rgb(255, 128, 146)" : "rgb(223, 23, 50)");
       assert.equal(value.menu.color, label === "深色" ? "rgb(237, 240, 245)" : "rgb(32, 35, 42)");
     }

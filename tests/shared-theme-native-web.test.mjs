@@ -52,6 +52,8 @@ test("native profile consumes shared theme without loading workbench", {
   await page.reload();
   await expect(page.locator("body")).toHaveCSS("background-color", "rgb(27, 29, 33)");
   await expect(composer).toHaveCSS("font-size", "15px");
+  await page.getByRole("button", { name: "稍后配置", exact: true }).click();
+  await expect(page.getByRole("button", { name: "稍后配置", exact: true })).toHaveCount(0);
   await page.screenshot({ path: ".runtime/theme-evidence/native-dark.png", fullPage: true });
   assert.deepEqual(errors, []);
 });
