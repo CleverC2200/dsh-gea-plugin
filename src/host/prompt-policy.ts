@@ -31,14 +31,24 @@ export function profileFor(
     : undefined;
 }
 
+const mountedProfiles = new Set<string>();
+
 /** Replace the existing preset's prompt with its validated Agent Manage resource. */
 export function installPromptProfile(preset: string, profile: PromptProfile): () => void {
+  if (mountedProfiles.has(preset)) throw Error("PROMPT_PROFILE_ALREADY_MOUNTED");
   const previous = policy.profiles[preset as keyof typeof policy.profiles];
   if (!previous || previous.consumerCode !== profile.consumerCode)
     throw Error("PROMPT_PROFILE_IDENTITY_MISMATCH");
   const profiles: Record<string, PromptProfile> = policy.profiles;
+  mountedProfiles.add(preset);
   profiles[preset] = profile;
-  return () => { if (profiles[preset] === profile) profiles[preset] = previous; };
+  let mounted = true;
+  return () => {
+    if (!mounted) return;
+    mounted = false;
+    mountedProfiles.delete(preset);
+    if (profiles[preset] === profile) profiles[preset] = previous;
+  };
 }
 
 export const TOOL_PACKS = {

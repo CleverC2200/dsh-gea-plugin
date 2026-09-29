@@ -109,13 +109,11 @@ test(
         viewport: { width: 1440, height: 1000 },
       });
       await context.addCookies(
-        app.cookie
-          .split("; ")
-          .map((pair) => ({
-            name: pair.slice(0, pair.indexOf("=")),
-            value: pair.slice(pair.indexOf("=") + 1),
-            url: app.origin,
-          })),
+        app.cookie.split("; ").map((pair) => ({
+          name: pair.slice(0, pair.indexOf("=")),
+          value: pair.slice(pair.indexOf("=") + 1),
+          url: app.origin,
+        })),
       );
       const page = await context.newPage();
       page.setDefaultTimeout(25000);
@@ -362,13 +360,11 @@ for (const mode of ["denied", "error", "empty", "missing"]) {
         viewport: { width: 1440, height: 1000 },
       });
       await context.addCookies(
-        app.cookie
-          .split("; ")
-          .map((pair) => ({
-            name: pair.slice(0, pair.indexOf("=")),
-            value: pair.slice(pair.indexOf("=") + 1),
-            url: app.origin,
-          })),
+        app.cookie.split("; ").map((pair) => ({
+          name: pair.slice(0, pair.indexOf("=")),
+          value: pair.slice(pair.indexOf("=") + 1),
+          url: app.origin,
+        })),
       );
       const page = await context.newPage();
       await page.goto(app.origin);
@@ -401,11 +397,28 @@ for (const mode of ["denied", "error", "empty", "missing"]) {
               0,
               "rejected delegation cannot reach SQL",
             );
-        } else if (mode === "empty")
+        } else if (mode === "empty") {
           await expect(
             frame.getByText("当前授权范围暂无库存与计划数据"),
           ).toBeVisible({ timeout: 20000 });
-        else {
+          await frame
+            .getByRole("button", { name: "选择分仓", exact: true })
+            .click();
+          await frame
+            .getByRole("option", { name: "郑州分仓", exact: true })
+            .click();
+          await expect(
+            frame.getByText("FC001", { exact: true }).first(),
+          ).toBeVisible({ timeout: 20000 });
+          await expect(
+            frame.getByRole("button", { name: "选择分仓", exact: true }),
+          ).toContainText("郑州分仓");
+          assert.ok(
+            state.rest.some((request) =>
+              Object.values(request.parameters).includes("34"),
+            ),
+          );
+        } else {
           await expect(
             frame.getByText("FC001", { exact: true }).first(),
           ).toBeVisible({ timeout: 20000 });

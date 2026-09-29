@@ -21,43 +21,56 @@ export const stock = [
     updated_time: "2026-09-29 08:00:00",
   },
 ];
-export function stockRows(sql, mode = "ok") {
+export function stockRows(sql, mode = "ok", parameters = {}) {
+  const empty = mode === "empty" && !Object.values(parameters).includes("34");
   let rows;
   if (sql.includes("SELECT DISTINCT branch_pickup_point, branch_name"))
-    rows = [{ branch_pickup_point: "06", branch_name: "长沙分仓" }];
+    rows = [
+      { branch_pickup_point: "06", branch_name: "长沙分仓" },
+      ...(mode === "empty"
+        ? [{ branch_pickup_point: "34", branch_name: "郑州分仓" }]
+        : []),
+    ];
   else if (
     sql.includes("SELECT DISTINCT pickup_code, warehouseid, warehouse_name")
   )
     rows = [
       { pickup_code: "06", warehouseid: "FC06", warehouse_name: "长沙分仓" },
+      ...(mode === "empty"
+        ? [
+            {
+              pickup_code: "34",
+              warehouseid: "FC34",
+              warehouse_name: "郑州分仓",
+            },
+          ]
+        : []),
     ];
   else if (sql.includes("p.plan_snapshot_date::text AS plan_snapshot_date"))
-    rows =
-      mode === "empty"
-        ? []
-        : stock.map((r) => ({
-            ...r,
-            plan_snapshot_date: "2026-09-29",
-            target_month: "2026-09-01",
-            plan_version: "MONTH_START",
-            plan_source: "fixture",
-            plan_status: "READY",
-            bi_target_status: "READY",
-            current_inventory_qty: r.live_qty,
-            replenishment_cycle_days: 7,
-            cycle_rule_source: "fixture",
-            shipment_plan_qty: 300,
-            transfer_plan_qty: 0,
-            expected_month_end_inventory_qty: 100,
-            bi_target_amount: 10000,
-          }));
+    rows = empty
+      ? []
+      : stock.map((r) => ({
+          ...r,
+          plan_snapshot_date: "2026-09-29",
+          target_month: "2026-09-01",
+          plan_version: "MONTH_START",
+          plan_source: "fixture",
+          plan_status: "READY",
+          bi_target_status: "READY",
+          current_inventory_qty: r.live_qty,
+          replenishment_cycle_days: 7,
+          cycle_rule_source: "fixture",
+          shipment_plan_qty: 300,
+          transfer_plan_qty: 0,
+          expected_month_end_inventory_qty: 100,
+          bi_target_amount: 10000,
+        }));
   else if (sql.includes("i.prod_date::text AS prod_date"))
-    rows =
-      mode === "empty"
-        ? []
-        : stock.map((r) =>
-            mode === "missing" ? { ...r, available_qty: null } : { ...r },
-          );
+    rows = empty
+      ? []
+      : stock.map((r) =>
+          mode === "missing" ? { ...r, available_qty: null } : { ...r },
+        );
   else if (sql.includes("SUM(f.metric_value) FILTER"))
     rows = [
       { order_qty: 100, shipped_qty: 80, updated_time: "2026-09-29 08:00:00" },
@@ -143,7 +156,7 @@ export function installStockRoutes(app, state, model) {
       if (state.mode === "error")
         reply({ success: false, code: 500, message: "固定样本查询失败" }, 503);
       else {
-        const rows = stockRows(body.sql, state.mode);
+        const rows = stockRows(body.sql, state.mode, body.parameters);
         reply({
           success: true,
           code: 200,
