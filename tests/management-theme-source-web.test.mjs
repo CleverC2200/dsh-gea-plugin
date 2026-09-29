@@ -106,6 +106,22 @@ test('management and hub consume one theme and retain fixture operations', {
     await page.screenshot({ path: resolve(evidence, `hub-${size}.png`) });
     await hub.getByRole('button', { name: '自定义安装', exact: true }).click();
     await expect(hub.locator('input').first()).toBeVisible();
+    await hub.locator('input').first().fill('@fixture/theme-check');
+    const install = hub.getByRole('button', { name: '安装', exact: true }).first();
+    await expect(install).toBeEnabled();
+    const colors = await install.evaluate(el => {
+      const style = getComputedStyle(el);
+      return { foreground: style.color, background: style.backgroundColor };
+    });
+    const luminance = color => {
+      const rgb = color.match(/\d+(?:\.\d+)?/g).slice(0, 3).map(Number).map(x => x / 255);
+      const linear = rgb.map(x => x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4);
+      return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+    };
+    const a = luminance(colors.foreground), b = luminance(colors.background);
+    const contrast = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    assert.ok(contrast >= 4.5, JSON.stringify({ theme, colors, contrast }));
+    samples.at(-1).enabledFormButton = { ...colors, contrast };
     await page.screenshot({ path: resolve(evidence, `hub-form-${size}.png`) });
     await hub.getByRole('button', { name: '软件更新', exact: true }).click();
   }
@@ -152,6 +168,7 @@ test('management and hub consume one theme and retain fixture operations', {
       await states.screenshot({ path: resolve(evidence, `manage-loading-${theme}.png`) });
       releaseManage();
       await expect(states.getByText('Agent Plugins 目录加载失败，请稍后重试', { exact: true })).toBeVisible();
+      await expect(states.getByRole('alert').filter({ hasText: 'Agent Plugins 目录加载失败，请稍后重试' })).toHaveCSS('opacity', '1');
       await states.screenshot({ path: resolve(evidence, `manage-error-${theme}.png`) });
       await states.getByRole('button', { name: '软件更新', exact: true }).first().click();
       await expect(states.getByText('正在读取更新状态…', { exact: true })).toBeVisible();
