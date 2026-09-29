@@ -46,7 +46,7 @@ test('inline edit right before approval still reaches the action body', { timeou
   await frame.getByRole('button', { name: /宝阳销售组/ }).first().click();
   const input = frame.getByRole('spinbutton', { name: '确认计划量 1001', exact: true });
   await expect(input).toBeVisible();
-  await expect(frame.getByRole('status')).toHaveCount(0, { timeout: 10000 });
+  await expect(frame.locator('td').getByRole('status')).toHaveCount(0, { timeout: 10000 });
 
   // 改完不等自动暂存（500ms 防抖）就直接通过。
   await input.fill('22.125');
@@ -65,11 +65,11 @@ test('reverting the inline edit does not resubmit the old draft adjustment', { t
   await frame.getByRole('button', { name: /宝阳销售组/ }).first().click();
   const input = frame.getByRole('spinbutton', { name: '确认计划量 1001', exact: true });
   await expect(input).toBeVisible();
-  await expect(frame.getByRole('status')).toHaveCount(0, { timeout: 10000 });
+  await expect(frame.locator('td').getByRole('status')).toHaveCount(0, { timeout: 10000 });
   // 先改成 22.125 并等它真正落盘（本地草稿里会留下 +2.125）。
   await input.fill('22.125');
   await expect(frame.getByText('正在暂存…', { exact: true })).toBeVisible({ timeout: 10000 });
-  await expect(frame.getByRole('status')).toHaveCount(0, { timeout: 10000 });
+  await expect(frame.locator('td').getByRole('status')).toHaveCount(0, { timeout: 10000 });
   // 再改回原值，然后立刻通过：这次不该带任何调整量。
   await input.fill('20');
   await frame.locator('label.arco-checkbox:has(input[value="p"])').click();

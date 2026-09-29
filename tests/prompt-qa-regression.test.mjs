@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { profile, readSession, until } from "./profile.mjs";
+import { profile, readSession, readToolResults, until } from "./profile.mjs";
 
 const out = new URL("../.runtime/prompt-qa-regression/", import.meta.url);
 await mkdir(out, { recursive: true });
@@ -36,20 +36,7 @@ const input = (count = 2) => ({
   })),
 });
 const action = (name, args) => ({ name, args });
-const decode = (rows) =>
-  rows
-    .filter((e) => e.type === "tool/result")
-    .map((e) => ({
-      callId: e.data.message.source.callId,
-      ...e.data.message.content.find((b) => b.type === "tool-result"),
-    }))
-    .map((e) => ({
-      ...e,
-      text: e.content
-        .filter((b) => b.type === "text")
-        .map((b) => b.text)
-        .join("\n"),
-    }));
+const decode = readToolResults;
 const resultObject = (e) => {
   try {
     return JSON.parse(e.text);

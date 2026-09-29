@@ -92,7 +92,7 @@ test(
     assert.equal(archive.snapshotHash, prepared.value.snapshotHash);
     assert.equal(createHash("sha256").update(JSON.stringify(archive.snapshot, null, 2)).digest("hex"), archive.snapshotHash);
     assert.equal((await stat(archivePath)).mode & 0o777, 0o600);
-    const notice = rows.find(row => row.type === "user/message" && row.data.source.plugin === "gea-proof");
+    const notice = rows.find(row => row.type === "user/message" && (row.data.source.kind === "gea-proof" || row.data.source.plugin === "gea-proof"));
     assert.ok(notice);
     assert.equal(JSON.stringify(notice).includes(archive.snapshotHash), false);
     assert.equal(

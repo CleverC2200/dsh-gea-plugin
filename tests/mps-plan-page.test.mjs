@@ -41,7 +41,7 @@ test(
     const entry = page.locator('[data-gea-business-entry="plan-category-production"]');
     await expect(entry).toBeEnabled();
     await entry.click();
-    const prototype = page.frameLocator("iframe[title='主生产计划（MPS）']");
+    const prototype = page.frameLocator("iframe[title='主生产计划(MPS)']");
     await expect(prototype.getByText("需求确认").first()).toBeVisible();
     await expect(prototype.getByText("三路数据").first()).toBeVisible();
     // 原型自带的数字人会话列关掉，会话只留外壳右侧这一个。
@@ -49,7 +49,7 @@ test(
     // 右侧会话区跟着这一页换成「主计划参谋」。
     await expect(page.getByText("主生产计划Agent").first()).toBeVisible();
     // 已登录时工作台必须落在中间列里，不能铺成整屏登录遮罩。
-    const frame = page.locator("iframe[title='主生产计划（MPS）']");
+    const frame = page.locator("iframe[title='主生产计划(MPS)']");
     await expect(frame).not.toHaveClass(/gea-login-frame/);
     const box = await frame.boundingBox();
     const viewport = page.viewportSize();

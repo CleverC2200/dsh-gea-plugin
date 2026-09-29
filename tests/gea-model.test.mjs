@@ -100,6 +100,7 @@ test(
     });
     await app.login();
     const discovered = await app.rpc("model/discover");
+    assert.equal(discovered.ok, true, JSON.stringify(discovered));
     assert.deepEqual(discovered.value, {
       models: ["fixture-gea-model"],
       selected: "fixture-gea-model",
@@ -221,12 +222,18 @@ test(
           agentPreset: "gea-readonly",
         });
         const sessionId = created.value.sessionId;
-        await app.remote("session/selectModel", {
+        const count = modelRequests.length;
+        const selection = await app.remote("session/selectModel", {
           sessionId,
           provider: "gea-analysis",
           model: "not-allowed",
         });
-        const count = modelRequests.length;
+        if (!selection.ok) {
+          assert.equal(selection.error.code, "session/model-unavailable");
+          assert.equal(selection.error.details.model, "not-allowed");
+          assert.equal(modelRequests.length, count);
+          return;
+        }
         await app.remote("session/prompt", {
           sessionId,
           requestId: crypto.randomUUID(),

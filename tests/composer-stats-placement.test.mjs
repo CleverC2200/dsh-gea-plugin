@@ -62,10 +62,7 @@ test(
       const editable = document.querySelector(`${scope} [contenteditable="true"]`);
       if (!seat || !stats || !editable) return null;
       const dock = stats.closest('[data-slot="conversation.composer.dock"]') ?? stats;
-      // 输入卡：从输入框往上找圆角 22px 的那一层。
-      let card = editable;
-      while (card && card !== seat && getComputedStyle(card).borderTopLeftRadius !== "22px")
-        card = card.parentElement;
+      const card = editable.closest('[data-composer-card]');
       const box = (element) => {
         const rect = element.getBoundingClientRect();
         return {

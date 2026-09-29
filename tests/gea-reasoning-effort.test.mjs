@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { parse, stringify } from "yaml";
 import { profile, readSession, until } from "./profile.mjs";
 
 /**
@@ -84,7 +85,8 @@ test(
       return true;
     });
     await app.login();
-    const settingsPath = resolve(app.runtime, "home/settings.yaml");
+    const sourceProfile = process.env.GEA_TEST_SOURCE_CORE === "1";
+    const settingsPath = resolve(app.runtime, sourceProfile ? "home/profiles/plugin-split-validation/cordis.patch.yml" : "home/settings.yaml");
     const settings = async () => {
       try {
         return await readFile(settingsPath, "utf8");
@@ -161,7 +163,10 @@ test(
       await app.stop();
       await writeFile(
         settingsPath,
-        stored.replace(
+        sourceProfile ? stringify([
+          ...parse(stored).filter(row => row.id !== "agent-default-model"),
+          { id: "agent-default-model", config: { provider: "gea-analysis", model: "fixture-gea-model", reasoningEffort: "max" } },
+        ]) : stored.replace(
           /agent-default-model:\n( {2}.*\n)*/,
           "",
         ) +
@@ -176,9 +181,10 @@ test(
       await app.start();
       await app.login();
       await app.rpc("model/discover");
-      assert.match(
-        await settings(),
-        /agent-default-model:[\s\S]*reasoningEffort: max/,
+      const saved = parse(await settings());
+      assert.equal(
+        (sourceProfile ? saved.find(row => row.id === "agent-default-model")?.config : saved["agent-default-model"])?.reasoningEffort,
+        "max",
         "模型发现重写默认选择时必须保留已选档位",
       );
       await submit();

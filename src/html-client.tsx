@@ -1,3 +1,4 @@
+import { selectedSession } from "./client/session-selection.ts";
 import React, { useEffect, useRef, useState } from "react";
 import { businessMenuLabel } from "./business-navigation.ts";
 import { startPageBridgeClient } from "./page-bridge/client.ts";
@@ -18,7 +19,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
   }
   function Frame({ plugin, useSessions }: any) {
     const workbenchId = plugin.workbenchId ?? plugin.id;
-    const session = useSessions((s: any) => s.current),
+    const session = useSessions(selectedSession),
       frame = useRef<HTMLIFrameElement>(null),
       [connection, setConnection] = useState<any>(null),
       [error, setError] = useState(""),

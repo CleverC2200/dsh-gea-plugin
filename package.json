@@ -41,7 +41,7 @@
     "test:isolated-validation": "node --test scripts/isolated-validation.test.mjs scripts/session-log.test.mjs",
     "source:check": "node scripts/check-source-plugins.mjs",
     "source:build": "node scripts/check-source-plugins.mjs --build",
-    "test:source": "GEA_TEST_SOURCE_CORE=1 node --test --test-concurrency=2 --test-timeout=90000 tests/*.test.mjs scripts/gea-error.test.mjs scripts/isolated-validation.test.mjs scripts/session-log.test.mjs",
+    "test:source": "node scripts/build.mjs --target example && GEA_TEST_SOURCE_CORE=1 node --test --test-concurrency=2 --test-timeout=90000 tests/*.test.mjs scripts/gea-error.test.mjs scripts/isolated-validation.test.mjs scripts/session-log.test.mjs",
     "package:desktop": "node scripts/package-desktop.mjs",
     "package:desktop:mac": "node scripts/package-desktop.mjs --target mac",
     "package:desktop:win": "node scripts/package-desktop.mjs --target win",

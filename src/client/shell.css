@@ -239,6 +239,10 @@ button[class*="_newSession"] {
 }
 /* 文字跟业务导航的一级标题落在同一条竖线上（图标线都是 x=8）。 */
 button[class*="_newSession"] :is(svg, img) { margin-right: 8px; }
+button[class*="_newSession"] [class*="_newSessionContent"] {
+  justify-content: flex-start;
+  gap: 0;
+}
 .gea-sidebar-rail-item {
   display: flex;
   align-items: center;
@@ -563,6 +567,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
    统一挪到输入卡上方：输入卡于是成为对话列最下面一块，贴着列底。
    主对话和工作台右侧会话列用的是同一个输入条组件，一条规则两边都生效。 */
 [data-composer-seat] [data-slot="conversation.composer.dock"],
+[data-composer-seat] [data-composer-card] + div,
 [data-composer-seat] [data-composer-stats] {
   order: -1;
 }

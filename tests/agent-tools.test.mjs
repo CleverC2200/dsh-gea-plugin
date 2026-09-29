@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { profile, readSession, until } from "./profile.mjs";
+import { profile, readSession, readToolResults, until } from "./profile.mjs";
 
 test(
   "GEA tools use the native model-tool-model loop and persist success, permission errors and cancellation",
@@ -655,7 +655,7 @@ test(
             .filter((message) => message.role === "system")
             .map((message) => message.content)
             .join("\n"),
-          /不得把其他会话的记录或模型记忆当作公司事实/,
+          /不用其它会话或记忆充当公司事实/,
         );
         const result = modelRequests[1].messages.find((x) => x.role === "tool");
         assert.equal(result.tool_call_id, "read-1");
@@ -1694,7 +1694,7 @@ test(
           .filter((x) => x.role === "system")
           .map((x) => x.content)
           .join("\n");
-        assert.match(initialSystem, /使用用户要求的语言/);
+        assert.match(initialSystem, /沿用用户语言及指定格式/);
         const results = modelRequests[2].messages.filter(
           (x) => x.role === "tool",
         );
@@ -1765,8 +1765,7 @@ test(
             new RegExp(code),
           );
           assert.ok(
-            rows.find((x) => x.type === "tool/result").data.message.content[0]
-              .isError,
+            readToolResults(rows)[0].isError,
           );
           if (mode === "invalid")
             assert.equal(

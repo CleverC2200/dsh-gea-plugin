@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdir,writeFile} from 'node:fs/promises';
-import {profile,readSession,until} from './profile.mjs';
+import {profile,readSession,readToolResults,until} from './profile.mjs';
 test('native result route, atomic skill load and structured evidence reuse retain authorization',{timeout:90000},async t=>{
  const app=await profile(t,{config:base=>({analysis:{mode:'model',baseUrl:base+'/v1',model:'fixture',apiKeyEnv:'GEA_TEST_MODEL_KEY',agentCode:'sales_forecast',contextWindow:32768,maxTokens:2048}}),env:{GEA_TEST_MODEL_KEY:'fixture'}});
  const skillDir=app.runtime+'/home/business-skills/sales-result-fixture';await mkdir(skillDir,{recursive:true});await writeFile(skillDir+'/SKILL.md','---\nname: sales-result-fixture\ndescription: result fixture\n---\nScoped rule body.');
@@ -32,7 +32,7 @@ test('native result route, atomic skill load and structured evidence reuse retai
  });
  await app.login();const made=await app.remote('session/create',{cwd:app.runtime+'/workspace',agentPreset:'gea-readonly'});const id=made.value.sessionId;await app.remote('session/selectModel',{sessionId:id,provider:'gea-analysis',model:'fixture'});
  let count=0;
- async function run(question,steps){script=steps;captured=[];const before=await readSession(app.runtime,id);await app.remote('session/prompt',{requestId:randomUUID(),sessionId:id,mode:'queue',content:[{type:'text',text:question}]});const events=await until(()=>readSession(app.runtime,id),e=>e.filter(x=>x.type==='turn/end').length>count,30000);count++;return events.slice(before.length).filter(x=>x.type==='tool/result').flatMap(x=>x.data.message.content).filter(x=>x.type==='tool-result').map(x=>({isError:x.isError,text:x.content.map(x=>x.text||'').join('\n')}));}
+ async function run(question,steps){script=steps;captured=[];const before=await readSession(app.runtime,id);await app.remote('session/prompt',{requestId:randomUUID(),sessionId:id,mode:'queue',content:[{type:'text',text:question}]});const events=await until(()=>readSession(app.runtime,id),e=>e.filter(x=>x.type==='turn/end').length>count,30000);count++;return readToolResults(events.slice(before.length));}
  let replies=await run('8月最终销售计划，只能使用Hive，不要使用在线计划接口。',[['gea_sales_plan_read',{kind:'periods'}]]);
  assert.match(replies[0].text,/GEA_SALES_RESULT_SOURCE/);assert.equal(online,0);
  replies=await run('核对当前在线审批工作流周期。',[['gea_sales_plan_read',{kind:'periods'}]]);assert.equal(replies[0].isError,false,replies[0].text);assert(online>0);

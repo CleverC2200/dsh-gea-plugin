@@ -1,3 +1,4 @@
+import type { SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
 import React, { useEffect, useRef } from "react";
 import { installReferenceDisplay } from "./reference-display.ts";
 import {
@@ -40,13 +41,19 @@ export function installPageInteraction(ctx: any): PageInteraction {
   };
   const bindings = new Set<PickerBinding>();
   const triggers = new Set<HTMLButtonElement>();
+  const selectedSession = () => {
+    const snapshot = ready?.sessions.list.getSnapshot() as SessionListState | undefined;
+    return snapshot && Object.values(snapshot.byId).find(
+      row => (row.retainedBy.mainView ?? 0) > 0,
+    )?.id;
+  };
   const currentPicker = () =>
     [...bindings]
       .reverse()
       .find(
         (binding) =>
           binding.available &&
-          binding.sessionId === ready?.sessions.list.getSnapshot().current &&
+          binding.sessionId === selectedSession() &&
           binding.frame.isConnected &&
           binding.frame.getClientRects().length > 0,
       );
@@ -236,7 +243,7 @@ export function installPageInteraction(ctx: any): PageInteraction {
         const controller = new AbortController();
         requests.set(requestId, controller);
         try {
-          if (!ready || ready.sessions.list.getSnapshot().current !== sessionId)
+          if (!ready || selectedSession() !== sessionId)
             throw Error("请先打开当前页面的对话，再加入提问。");
           const selected = pageReference(event.data.reference);
           if (!selected) throw Error("未读到选中内容，请重新选择。");
@@ -257,7 +264,7 @@ export function installPageInteraction(ctx: any): PageInteraction {
           if (!active || controller.signal.aborted) return;
           if (!response.ok)
             throw Error(receipt.error || "引用未保存，请重试。");
-          if (!ready || ready.sessions.list.getSnapshot().current !== sessionId)
+          if (!ready || selectedSession() !== sessionId)
             throw Error("已切换对话，请在当前页面重新引用。");
           const binding = ready.sessions.binding(sessionId);
           if (!binding) throw Error("对话尚未就绪，请稍后重试。");

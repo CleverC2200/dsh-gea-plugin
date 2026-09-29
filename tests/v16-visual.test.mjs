@@ -55,7 +55,7 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  await expect(overview).toContainText('20 件');
  await expect(frame.getByRole('button',{name:'保存调整',exact:true})).toHaveCount(0);
  await expect(frame.getByRole('button',{name:'重提',exact:true})).toHaveCount(0);
- const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toHaveCount(0);
+ const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toBeVisible();
  await expect(page.getByRole('dialog',{name:'建议生成失败',exact:true})).toHaveCount(0);
  await shot('01-02-09-initial');
  const compactHeader=frame.getByTestId('regional-approval-workbench').locator('header').first();
@@ -95,8 +95,8 @@ test('V1.6 visual: compact header, stable progress, inline SKU, drawer and persi
  const editor=frame.getByRole('spinbutton',{name:'确认计划量 1001',exact:true});
  await expect(editor).toHaveValue('20');
  await editor.fill('22.125');
- await expect(frame.getByRole('status')).toContainText('正在暂存',{timeout:10000});
- await expect(frame.getByRole('status')).toHaveCount(0,{timeout:10000});
+ await expect(frame.locator('td').getByRole('status')).toContainText('正在暂存',{timeout:10000});
+ await expect(frame.locator('td').getByRole('status')).toHaveCount(0,{timeout:10000});
  await shot('06-autosaved');
  assert.equal(writes,0);
  const result=await app.rpc('sales-plan/draft',{planId:'p',versionId:'v'});

@@ -1,3 +1,4 @@
+import { selectedSession } from "./client/session-selection.ts";
 import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import pickerScript from "../lib/page-interaction.txt";
 import { injectPicker } from "../packages/page-interaction/src/inject.ts";
@@ -13,7 +14,6 @@ import type {
 import type {} from "@deepseek-ai/dsh-client-ui-session/client";
 import type {} from "@deepseek-ai/dsh-client-ui-sidebar/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type { ISessions } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { Context } from "@deepseek-ai/cordis";
 import type { SessionId } from "@deepseek-ai/dsh-api-remotes/client";
 import type { LocaleSnapshot } from "@deepseek-ai/dsh-client-locale/client";
@@ -97,11 +97,6 @@ const CATEGORY_PLAN_PANEL = "plan-region-category" as MainPanelId;
 const MPS_PLAN_PANEL = "plan-category-production" as MainPanelId;
 type SidebarSection = BusinessMenuSection;
 type SidebarSections = Record<SidebarSection, boolean>;
-
-/** Read the Session owned by the main view from the shared catalog. */
-function selectedSession(snapshot: ReturnType<ISessions["list"]["getSnapshot"]>): SessionId | undefined {
-  return Object.values(snapshot.byId).find((session) => (session.retainedBy.mainView ?? 0) > 0)?.id;
-}
 
 /** 展开侧栏：0.1.6 的按钮文案是「打开侧边栏」，旧版本是「展开侧边栏」，找不到文案就按类名找。 */
 function nativeExpandSidebar(): void {
@@ -311,7 +306,7 @@ export function apply(ctx: Context): void {
   function PrototypeWorkbench({panel,title,document:html,useSessions}: PropsRuntime<"main"> & {panel:MainPanelId;title:string;document:string}) {
     const [sessionError,setSessionError]=useState("");
     const [opened,setOpened]=useState(false);
-    const session=useSessions(snapshot=>Object.values(snapshot.byId).find((session) => (session.retainedBy.mainView ?? 0) > 0)?.id);
+    const session=useSessions(selectedSession);
     const frame=useRef<HTMLIFrameElement>(null);
     useEffect(()=>{
       let live=true;
@@ -763,7 +758,7 @@ export function apply(ctx: Context): void {
     useEffect(() => {
       const renameNewSession = () => {
         const button = document.querySelector<HTMLButtonElement>("button[class*='_newSession']");
-        const label = button?.querySelector<HTMLElement>("[class*='_newSessionLabel']");
+        const label = button?.querySelector<HTMLElement>("[class*='_newSessionLabel']:not([class*='_newSessionLabelMask'])");
         if (!button || !label) return;
         if (label.textContent !== "AI工作台") label.textContent = "AI工作台";
         if (button.getAttribute("aria-label") !== "AI工作台") button.setAttribute("aria-label", "AI工作台");

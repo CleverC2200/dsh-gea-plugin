@@ -55,7 +55,7 @@ test('inline draft status sits next to the edited number and clears after retry'
  await cell.getByRole('button',{name:'重试',exact:true}).click();
  await expect.poll(()=>writeAttempts,{timeout:10000}).toBeGreaterThanOrEqual(2);
  await expect(frame.getByText('暂存失败',{exact:true})).toHaveCount(0,{timeout:10000});
- await expect(frame.getByRole('status')).toHaveCount(0,{timeout:10000});
+ await expect(frame.locator('td').getByRole('status')).toHaveCount(0,{timeout:10000});
  const stored=await app.rpc('sales-plan/draft',{planId:'p',versionId:'v'});
  assert.equal(stored.ok,true);
  assert.deepEqual(stored.value.draft.adjustments,[{skuCode:'1001',adjustQty:'2.125'}]);

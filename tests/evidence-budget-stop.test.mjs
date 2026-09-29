@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {profile,readSession,until} from './profile.mjs';
+import {profile,readSession,readToolResults,until} from './profile.mjs';
 
 for(const batchSize of [1,3])test('evidence budget ends tool use and resets on a new user turn; batch size '+batchSize,{timeout:90000},async t=>{
  const app=await profile(t,{config:base=>({analysis:{mode:'model',baseUrl:base+'/v1',model:'fixture',apiKeyEnv:'GEA_BUDGET_TEST_KEY',agentCode:'sales_forecast',contextWindow:32768,maxTokens:2048}}),env:{GEA_BUDGET_TEST_KEY:'fixture'}});
@@ -40,7 +40,7 @@ for(const batchSize of [1,3])test('evidence budget ends tool use and resets on a
  assert.equal(after.body.tools?.length??0,0,'exhausted evidence must end tool use even when ordinary query allowance remains');
  assert.match(JSON.stringify(after.body.messages),/42/,'successful evidence survives the stop');
  assert.match(JSON.stringify(after.body.messages),/证据读取额度已用完/,'the final-answer request must explain the stop');
- const replies=events.filter(e=>e.type==='tool/result').flatMap(e=>e.data.message.content).filter(c=>c.type==='tool-result');assert.ok(replies.every(r=>!r.isError),'no repeated budget errors should be generated');
+ const replies=readToolResults(events);assert.ok(replies.length > 0);assert.ok(replies.every(r=>!r.isError),'no repeated budget errors should be generated');
  assert.equal(events.filter(e=>e.type==='tool/call'&&e.data.name==='gea_evidence_read').length,12);
  phase='next-turn';step=0;await ask('下一轮只解释缺货口径，不查数据。');await until(()=>readSession(app.runtime,sessionId),r=>r.filter(e=>e.type==='turn/end').length===2,15000);
  assert.ok(captured.find(r=>r.phase==='next-turn').body.tools.some(t=>t.function.name==='gea_evidence_read'),'new user turn restores the bounded read allowance');

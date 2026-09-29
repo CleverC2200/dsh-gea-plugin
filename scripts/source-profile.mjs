@@ -74,6 +74,14 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
       ),
     );
     await readFile(join(target, clientEntry(manifest)));
+    if (repo === "dsh-gea-plugin" && deployment?.workbenchExample === true) {
+      const fixture = "packages/workbench-example";
+      await readFile(join(source, fixture, "lib/host.js"));
+      await cp(join(source, fixture), join(target, fixture), {
+        recursive: true,
+        filter: path => !path.split(/[\\/]/).includes("node_modules"),
+      });
+    }
     plugins.set(manifest.name, { source, target, version: manifest.version });
   }
   const snapshots = {};
@@ -163,6 +171,13 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
     runtime,
     { bundle: true },
   ).filter((row) => row.id !== "agent-presets");
+  const modelIndex = patch.findIndex(row => row.id === "agent-default-model");
+  if (modelIndex < 0) throw Error("SOURCE_MODEL_DEFAULT_MISSING");
+  const [modelDefault] = patch.splice(modelIndex, 1);
+  // User-selectable defaults belong to the editable profile, not a read-only CLI overlay.
+  try {
+    await writeFile(join(profile, "cordis.patch.yml"), JSON.stringify([modelDefault], null, 2), { flag: "wx", mode: 0o600 });
+  } catch (error) { if (error.code !== "EEXIST") throw error; }
   patch.push({
     id: "agent-preset-registry",
     config: { default: "auto-negotiation" },

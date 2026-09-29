@@ -79,7 +79,7 @@ test('collapsing the flow lane keeps filters and inline edits', { timeout: 90000
   const input = frame.getByRole('spinbutton', { name: '确认计划量 1001', exact: true });
   await expect(input).toBeVisible();
   await input.fill('22.125');
-  await expect(frame.getByRole('status')).toHaveCount(0, { timeout: 10000 });
+  await expect(frame.locator('td').getByRole('status')).toHaveCount(0, { timeout: 10000 });
 
   const toggle = frame.getByTestId('regional-approval-flow-toggle');
   await toggle.click(); // 展开

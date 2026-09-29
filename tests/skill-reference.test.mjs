@@ -91,7 +91,7 @@ test("forecast can read a Skill local reference without sending file URI to MCP"
 
 test("business output policy and reference reader remain separate", async () => {
  const policy=JSON.parse(await readFile(new URL('../presets/prompt-policy.json',import.meta.url),'utf8'));
- assert.match(policy.output,/用户要求的语言/);assert.match(policy.output,/业务字段说明不得暴露凭据/);
+ assert.match(policy.output,/沿用用户语言及指定格式/);assert.match(policy.output,/不暴露凭据/);
  const runtime=await readFile(new URL('../src/host/prompt-runtime.ts',import.meta.url),'utf8');
  assert.match(runtime,/GEA_SKILL_REFERENCE_NOT_LINKED/);assert.match(runtime,/GEA_SKILL_UNAVAILABLE/);
 });

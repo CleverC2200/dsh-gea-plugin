@@ -43,8 +43,8 @@ test('Dashboard shows current SKU totals while monthly baseline and categories r
  await expect(frame.getByTestId('regional-approval-workbench')).toBeVisible();
  await expect(frame.getByRole('button',{name:'保存调整',exact:true})).toHaveCount(0);
  await expect(frame.getByRole('button',{name:'重提',exact:true})).toHaveCount(0);
- // 单据类型切换（月初/纠偏）已按业务方反馈收起。
- const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toHaveCount(0);
+ // 月初/纠偏入口保留；当前明细汇总仍使用选中的月初范围。
+ const header=frame.locator('header').first();await expect(header.getByRole('tab',{name:'月初',exact:true})).toBeVisible();
  assert.equal(modelCalls,0,'opening the workbench must not trigger analysis');
 
  const totals=frame.getByRole('region',{name:'当前页明细汇总',exact:true});

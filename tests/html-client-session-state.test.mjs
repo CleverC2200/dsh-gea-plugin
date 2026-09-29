@@ -9,7 +9,7 @@ test('new conversation rebinds the existing HTML page without losing page state 
     import {createRoot} from 'react-dom/client';
     import {registerHtmlClient} from './src/html-client.tsx';
     const root=createRoot(document.getElementById('app'));
-    function useSessions(select) {const [value,set]=React.useState('session-1');window.changeSession=set;return select({current:value});}
+    function useSessions(select) {const [value,set]=React.useState('session-1');window.changeSession=set;return select({byId:{[value]:{id:value,retainedBy:{mainView:1}}}});}
     registerHtmlClient({effect:f=>f(),agentWorkbench:{register:()=>()=>{},open:async()=>{},showConversation:()=>()=>{}},layout:{selectPanel(){}},remote:{session:{prompt:async input=>{window.sent=input;return {ok:true}}}},slots:{inject:(_,f)=>f(),register:(_,Component)=>{root.render(<Component useSessions={useSessions}/>);return ()=>{}}}}, {bindFrame:({sessionId})=>{window.selectionSession=sessionId;return ()=>{window.selectionSession=null}}});
   `, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false, format: 'iife', platform: 'browser' });
   const browser = await chromium.launch({channel:'chrome',headless:true});

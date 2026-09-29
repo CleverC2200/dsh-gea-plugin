@@ -79,7 +79,9 @@ test("a saved reference cannot enter the composer after its frame is disposed", 
     effect: (fn) => fn(),
     inputTriggers: { registerSource: () => () => {} },
     sessions: {
-      list: { getSnapshot: () => ({ current: "session-test" }) },
+      list: { getSnapshot: () => ({
+        byId: { "session-test": { id: "session-test", retainedBy: { mainView: 1 } } },
+      }) },
       binding: () => ({ ctx: {} }),
     },
     conversation: {

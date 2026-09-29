@@ -6,7 +6,7 @@ import {profileFor,allowedTools,COMMON_PROMPT,TOOL_DESCRIPTIONS} from '../src/ho
 
 test('scope queries do not require a bound page; page references cannot fabricate a page',()=>{
  const main=surfacePromptLine(undefined);assert.match(main,/未绑定/);assert.match(main,/不空读页面/);assert.match(main,/gea_cube_query/);
- assert.match(COMMON_PROMPT,/独立范围查询不要求先打开页面/);
+ assert.match(COMMON_PROMPT,/独立查询无需开页面/);
  const profile=profileFor('gea-readonly');assert.ok(allowedTools(profile,new Set()).has('gea_sales_plan_read'));assert.ok(!allowedTools(profile,new Set()).has('gea_page'));
  assert.ok(allowedTools(profile,new Set(['page'])).has('gea_page'));
 });

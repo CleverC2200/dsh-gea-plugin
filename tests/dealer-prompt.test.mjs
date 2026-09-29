@@ -49,6 +49,12 @@ test('dealer inventory uses the maintained skill in the real assembled prompt, w
     res.end('data: '+JSON.stringify({choices:[{index:0,delta,finish_reason:callTool?'tool_calls':'stop'}]})+'\n\ndata: [DONE]\n\n');return true;
   });
   await app.login();
+  if (process.env.GEA_TEST_SOURCE_CORE === '1') {
+    // The combined profile also connects Agent Manage's default MCP bridge at login.
+    await until(() => catalogConsumers, values => values.length > 0);
+    assert.deepEqual(catalogConsumers, ['sales_forecast']);
+    catalogConsumers.length = 0;
+  }
   async function ask(preset){
     const created=await app.remote('session/create',{cwd:app.runtime+'/workspace',agentPreset:preset});assert.equal(created.ok,true,JSON.stringify(created));
     const id=created.value.sessionId;
@@ -61,7 +67,7 @@ test('dealer inventory uses the maintained skill in the real assembled prompt, w
   const stock=await ask('gea-html-inventory-dealer');
   const system=stock.messages.filter(x=>x.role==='system').map(x=>x.content).join('\n');
   assert.match(system,/dealer-inventory-replenishment/);assert.match(system,/不空读页面/);
-  assert.match(system,/明细被截断时说明实际覆盖范围/);assert.match(system,/业务键/);
+  assert.match(system,/截断明细注明覆盖范围，不能冒充全量/);assert.match(system,/业务键/);
   assert.doesNotMatch(system,/inventory_dealer_page|name=context|明细既不做交付物|没有任何模型同时具备|HMR receiver|pnpm run dev:web|销售计划汇总例外/);
   assert.ok(stock.tools.some(x=>x.function.name==='gea_cube_query'));
   assert.ok(!stock.tools.some(x=>x.function.name==='gea_page'));

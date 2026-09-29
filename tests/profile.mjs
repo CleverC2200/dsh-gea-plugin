@@ -8,9 +8,21 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
+import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
+/** Decode persisted tool receipts at the test boundary; never omit a malformed result. */
+export function readToolResults(rows) {
+  return rows.filter(row => row.type === "tool/result").map(row => {
+    const message = row.data.message;
+    const result = message.role === "tool" ? message : message.content.find(block => block.type === "tool-result");
+    assert.ok(result && Array.isArray(result.content), "Tool receipt must carry content");
+    assert.equal(result.toolCallId, message.source.callId, "Tool receipt call identity must match its source");
+    return { callId: result.toolCallId, isError: result.isError === true,
+      text: result.content.filter(block => block.type === "text").map(block => block.text).join("\n") };
+  });
+}
 export async function readSession(runtime, id) {
   return (await readSessionRows(runtime, id)) ?? [];
 }
