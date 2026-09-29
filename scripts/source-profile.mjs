@@ -14,6 +14,8 @@ import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
+const genuiCommit = "382db5575ad3068efeff0322eec9cc499f79ae01";
+
 function clientEntry(manifest) {
   const entry = manifest.exports?.["./client"];
   return typeof entry === "string"
@@ -42,8 +44,15 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
     "dsh-agent-workbench",
     "dsh-agent-manage",
     "dsh-gea-plugin",
+    "dsh-genui",
   ]) {
     const source = join(workspace, repo);
+    if (repo === "dsh-genui") {
+      const commit = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
+        cwd: source, encoding: "utf8",
+      }).trim();
+      if (commit !== genuiCommit) throw Error(`SOURCE_GENUI_COMMIT_MISMATCH: expected ${genuiCommit}, got ${commit}`);
+    }
     const manifest = JSON.parse(
       await readFile(join(source, "package.json"), "utf8"),
     );
@@ -60,6 +69,7 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
       "business-skills",
       "scripts/deployment.mjs",
       "src/shared",
+      ...(repo === "dsh-genui" ? ["SKILL.md", "docs", "src", "pnpm-lock.yaml"] : []),
     ]) {
       try {
         await cp(join(source, file), join(target, file), { recursive: true });
@@ -93,6 +103,7 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
       "package.json",
       manifest.main ?? manifest.exports?.["."]?.default ?? "lib/host.js",
       clientEntry(manifest),
+      ...(name === "@changfenhuang/dsh-genui" ? ["SKILL.md", "pnpm-lock.yaml"] : []),
     ];
     const digests = {};
     for (const file of files)

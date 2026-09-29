@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {profile,readSession,until} from './profile.mjs';
+import {profile,readSession,readToolResults,until} from './profile.mjs';
 import {prefersBusinessCards} from '../src/host/business-presentation.ts';
 
 test('business presentation respects plain text requests and leaves one-off facts alone',()=>{
@@ -25,7 +25,9 @@ test('reading genui enables rendering atomically and survives restart without ex
  const ask=async(text,count)=>{await app.remote('session/prompt',{requestId:randomUUID(),sessionId:id,mode:'queue',content:[{type:'text',text}]});return until(()=>readSession(app.runtime,id),rows=>rows.filter(e=>e.type==='turn/end').length===count,30000);};
  const rows=await ask('用轻量卡片展示样例：已完成3，待处理2。不查询数据。',1);
  assert.equal(requests[0].body.tools.some(t=>t.function.name==='render_ui'),false,'UI tools are not injected into every initial request');
- assert.ok(rows.filter(e=>e.type==='tool/result').every(e=>e.data.message.content.every(b=>!b.isError)));
+ const receipts=readToolResults(rows);
+ assert.ok(receipts.length>0);
+ assert.ok(receipts.every(receipt=>!receipt.isError));
  assert.ok(requests[1].body.tools.some(t=>t.function.name==='render_ui'),'genui body read must enable its render tool');
  assert.ok(requests[1].body.tools.some(t=>t.function.name==='validate_dsh_ui'));
  phase='restored';await app.stop();await app.start();await app.login();await ask('继续按刚才的形式展示，不重新查数。',2);
@@ -34,7 +36,7 @@ test('reading genui enables rendering atomically and survives restart without ex
   phase=scenario;step=0;const made=await app.remote('session/create',{cwd:app.runtime+'/workspace',agentPreset:'gea-readonly'});id=made.value.sessionId;await app.remote('session/selectModel',{sessionId:id,provider:'gea-analysis',model:'fixture'});
   const events=await ask('读取可视化规则，只使用样例。',1);
   if(scenario==='invalid'){
-   assert.ok(events.filter(e=>e.type==='tool/result').some(e=>e.data.message.content.some(b=>b.isError)));
+   assert.ok(readToolResults(events).some(receipt=>receipt.isError));
    assert.equal(requests.at(-1).body.tools.some(t=>t.function.name==='render_ui'),false,'failed Skill read must not grant UI tools');
   }else{
    assert.ok(requests.at(-1).body.tools.some(t=>t.function.name==='render_ui'));

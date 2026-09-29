@@ -54,12 +54,12 @@ test(
       [0, 0],
     );
 
-    await expect(
-      page.getByText(`${await page.locator(".gea-api-catalog-scroll .gea-api-catalog-item").count()} 个已登记接口`, { exact: true }),
-    ).toBeVisible();
     await expect
       .poll(() => page.locator(".gea-api-catalog-item").count())
       .toBeGreaterThanOrEqual(20);
+    await expect(
+      page.getByText(`${await page.locator(".gea-api-catalog-scroll .gea-api-catalog-item").count()} 个已登记接口`, { exact: true }),
+    ).toBeVisible();
     assert.ok((await page.locator(".gea-api-call-row").count()) >= 3);
     const visibleText = await page.locator(".gea-api-log-center").innerText();
     assert.equal(visibleText.includes("fixture-gea-token"), false);
