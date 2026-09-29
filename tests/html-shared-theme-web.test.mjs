@@ -1,0 +1,124 @@
+/** Real profile/iframe acceptance; the table itself is a workbench-owned local sample. */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { chromium, expect } from '@playwright/test';
+import { profile } from './profile.mjs';
+import { changeThemeSetting } from './theme-settings.mjs';
+
+const output = new URL('../.runtime/html-theme-evidence/', import.meta.url);
+test('workbench HTML sample shares theme inside the restricted iframe', {
+  skip: process.env.GEA_TEST_SOURCE_CORE !== '1', timeout: 120000,
+}, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'workbench-html-sample-'));
+  const sample = await readFile(new URL('../../dsh-agent-workbench/lib/samples/html-table.html', import.meta.url), 'utf8');
+  await writeFile(join(root, 'index.html'), sample);
+  // Temporary verification material consumed by the existing loader, never a shipped plugin.
+  await writeFile(join(root, 'plugin.json'), JSON.stringify({ schemaVersion: 1, id: 'inventory-customer', name: '项目清单样板', version: '0.0.0', mode: 'mock', html: 'index.html', skills: ['SKILL.md'], mcp: 'mcp.json', gea: { consumerCode: 'html-style-fixture', readonly: true, contract: 'gea-html-v1' } }));
+  await writeFile(join(root, 'SKILL.md'), '---\nname: html-style-fixture\ndescription: 本地样板验收\n---\n仅演示数据，不调用业务服务。\n');
+  await writeFile(join(root, 'mcp.json'), JSON.stringify({ provider: 'gea', transport: 'host-provided', contract: 'gea-html-v1', consumer: { consumerType: 'AGENT', consumerCode: 'html-style-fixture' }, capabilities: ['governed-sql-read'] }));
+  const app = await profile(t, { env: { GEA_HTML_PLUGIN_ROOTS: JSON.stringify([root]) } });
+  t.after(async () => { await app.stop(); await rm(root, { recursive: true, force: true }); });
+  await app.login();
+  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  t.after(() => browser.close());
+  const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } });
+  await context.addCookies(app.cookie.split('; ').map(pair => ({ name: pair.slice(0, pair.indexOf('=')), value: pair.slice(pair.indexOf('=') + 1), url: app.origin })));
+  const page = await context.newPage();
+  page.setDefaultTimeout(20000);
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await mkdir(output, { recursive: true });
+  let htmlResponse;
+  page.on('response', response => { if (response.url().includes('/api/gea-html/inventory-customer/html')) htmlResponse = response; });
+  try {
+  await page.goto(app.origin);
+  await page.getByRole('dialog', { name: /内测声明|预览版说明/ }).getByRole('button', { name: '继续', exact: true }).click();
+  if (!(await page.getByText('客户库存(开发中)', { exact: true }).isVisible())) await page.getByText('库存管理', { exact: true }).click();
+  await page.getByText('客户库存(开发中)', { exact: true }).click();
+  const iframe = page.locator('iframe[src*="/api/gea-html/inventory-customer/html"]');
+  const frame = iframe.contentFrame();
+  await expect(frame.getByRole('heading', { name: '项目交付清单' })).toBeVisible();
+  await expect(frame.locator('#summary')).toHaveText('共 4 个项目');
+  assert.equal(htmlResponse.headers()['content-security-policy'], "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'");
+  await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts allow-downloads');
+  const child = page.frames().find(f => f.url().includes('/api/gea-html/inventory-customer/html'));
+  assert.equal(await child.evaluate(() => { try { return !!parent.document; } catch { return false; } }), false);
+  assert.equal(await child.evaluate(async () => { try { await fetch('/api/gea-html/plugins'); return true; } catch { return false; } }), false);
+  await frame.getByLabel('项目名称').fill('页面');
+  await frame.getByRole('button', { name: '查询', exact: true }).click();
+  await expect(frame.locator('#results')).toHaveAttribute('aria-busy', 'true');
+  await expect(frame.locator('#summary')).toHaveText('共 1 个项目');
+  await expect(frame.locator('tbody tr')).toHaveCount(1);
+  await frame.getByRole('button', { name: '重置', exact: true }).click();
+  await frame.getByLabel('交付进度').selectOption('已完成');
+  await frame.getByRole('button', { name: '查询', exact: true }).click();
+  await expect(frame.locator('tbody')).toContainText('月度资料归档');
+  await frame.getByRole('button', { name: '重置', exact: true }).click();
+  await expect(frame.locator('#summary')).toHaveText('共 4 个项目');
+  await frame.getByText('演示状态', { exact: true }).click();
+  await frame.getByRole('button', { name: '演示空结果' }).click();
+  await expect(frame.getByText('没有匹配的项目')).toBeVisible();
+  await frame.getByRole('button', { name: '演示查询失败' }).click();
+  await expect(frame.getByText('暂时无法读取项目')).toBeVisible();
+  await page.screenshot({ path: new URL('error.png', output).pathname, fullPage: true });
+  await frame.getByRole('button', { name: '重新查询' }).click();
+  await expect(frame.locator('#summary')).toHaveText('共 4 个项目');
+  const settings = async () => {
+    await page.getByRole('button', { name: '账户菜单', exact: true }).click();
+    await page.getByRole('menuitem', { name: '设置', exact: true }).click();
+    await page.getByRole('button', { name: '通用设置', exact: true }).click();
+  };
+  const samples = [];
+  for (const [label, size, color] of [['浅色', 14, 'rgb(247, 248, 250)'], ['深色', 17, 'rgb(27, 29, 33)']]) {
+    await settings();
+    if (label === '深色') {
+      await changeThemeSetting(page, label, 'preference');
+      for (let n = 14; n < size; n++) await changeThemeSetting(page, '增大字号', 'fontSize');
+    } else await page.getByRole('button', { name: label, exact: true }).click();
+    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await expect(frame.locator('body')).toHaveCSS('background-color', color);
+    await expect(frame.locator('body')).toHaveCSS('font-size', size + 'px');
+    await expect(page.locator('.AppFrame_frame')).toHaveCSS('font-size', size + 'px');
+    await expect(page.locator('body')).toHaveCSS('background-color', color);
+    await frame.getByLabel('项目名称').focus();
+    await page.keyboard.press('Tab');
+    await expect(frame.getByLabel('交付进度')).toBeFocused();
+    await expect(frame.getByLabel('交付进度')).toHaveCSS('outline-width', '2px');
+    await expect(frame.getByLabel('交付进度')).toHaveCSS('outline-style', 'solid');
+    samples.push({ label, size, background: color, focus: await frame.getByLabel('交付进度').evaluate(el => getComputedStyle(el).outlineColor) });
+    await page.screenshot({ path: new URL(label === '深色' ? 'dark.png' : 'light.png', output).pathname, fullPage: true });
+  }
+  await page.setViewportSize({ width: 720, height: 900 });
+  await expect(frame.getByRole('button', { name: '查询', exact: true })).toBeVisible();
+  const dimensions = await child.evaluate(() => ({ width: innerWidth, document: document.documentElement.scrollWidth, table: document.querySelector('.table-scroll').scrollWidth, region: document.querySelector('.table-scroll').clientWidth }));
+  assert.equal(dimensions.document, dimensions.width, 'only the table may scroll horizontally');
+  assert.ok(dimensions.table > dimensions.region);
+  await frame.locator('.table-scroll').evaluate(el => { el.scrollLeft = el.scrollWidth; });
+  await expect.poll(() => frame.locator('.table-scroll').evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+  await page.screenshot({ path: new URL('narrow.png', output).pathname, fullPage: true });
+  // Removing or replacing the parent resource must produce a visible diagnosis.
+  await page.evaluate(() => document.body.style.setProperty('--workbench-theme-version', '"2.0.0"'));
+  await expect(frame.getByRole('alert')).toContainText('版本不兼容');
+  await expect(frame.getByRole('button', { name: '查询', exact: true })).toBeDisabled();
+  await page.evaluate(() => document.body.style.removeProperty('--workbench-theme-version'));
+  await expect(frame.locator('#summary')).toHaveText('共 4 个项目');
+  await expect(frame.getByRole('alert')).toBeHidden();
+  await page.evaluate(() => { window.removedTheme = document.querySelector('style[data-plugin-css$="/workbench-theme.css"]'); window.removedTheme.remove(); });
+  await expect(frame.getByRole('alert')).toContainText('资源缺失');
+  await page.evaluate(() => document.head.append(window.removedTheme));
+  await expect(frame.getByRole('alert')).toBeHidden();
+  // The fixed iframe resource also refuses a damaged assembled sample.
+  await writeFile(join(root, 'index.html'), sample.replace(/<style data-workbench-resource="1.0.0">[\s\S]*?<\/style>/, ''));
+  await child.goto(child.url());
+  await expect(frame.getByRole('alert')).toContainText('共享样式资源缺失');
+  assert.deepEqual(errors, []);
+  await writeFile(new URL('observations.json', output), JSON.stringify({ samples, dimensions, sandbox: await iframe.getAttribute('sandbox'), errors }, null, 2));
+  } catch (error) {
+    await page.screenshot({ path: new URL('failure.png', output).pathname, fullPage: true });
+    await writeFile(new URL('failure.txt', output), await page.locator('body').innerText());
+    throw error;
+  }
+});

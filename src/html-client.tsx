@@ -27,6 +27,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
     const binding = useRef<any>(null);
     const readyBinding = useRef<Promise<any>>(Promise.resolve(null));
     const rebindPage = useRef<((value: any) => void) | null>(null);
+    const suspendPage = useRef<(() => void) | null>(null);
     const registrations = useRef(new Map<string, any>());
     const pageContext = useRef<any>(undefined);
     useEffect(() => {
@@ -85,6 +86,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       readyBinding.current = opening;
       return () => {
         controller.abort();
+        suspendPage.current?.();
         if (binding.current?.lease === lease) binding.current = null;
         if (lease)
           void request(plugin.id + "/call", { lease, method: "close" }).catch(
@@ -111,6 +113,26 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       >();
       let connected = false,
         pollTimer: any;
+      let themeRequested = false;
+      // Read the ui-theme presenter's output; this bridge never owns settings or parent DOM.
+      const sendTheme = () => {
+        if (!connected || !themeRequested || !binding.current || controller.signal.aborted) return;
+        const styles = getComputedStyle(document.body);
+        const tokens = Object.fromEntries(Array.from(styles)
+          .filter(name => /^--workbench-[a-z-]+$/.test(name))
+          .map(name => [name, styles.getPropertyValue(name).trim()]));
+        port.port1.postMessage({
+          type: "theme",
+          context: { plugin: plugin.id, session: binding.current.session },
+          version: styles.getPropertyValue("--workbench-theme-version").trim().replace(/^"|"$/g, ""),
+          colorScheme: document.body.hasAttribute("data-ds-dark-theme") ? "dark" : "light",
+          tokens,
+        });
+      };
+      const themeObserver = new MutationObserver(sendTheme);
+      themeObserver.observe(document.body, { attributes: true, attributeFilter: ["style", "data-ds-dark-theme"] });
+      themeObserver.observe(document.head, { childList: true, subtree: true, characterData: true });
+      suspendPage.current = () => port.port1.postMessage({ type: "context", context: null });
       const call = async (
         method: string,
         parameters?: any,
@@ -132,6 +154,13 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
         const m = event.data;
         if (!m || typeof m !== "object") return;
         try {
+          if (m.type === "theme:subscribe") {
+            const current = await readyBinding.current;
+            if (!current || current !== binding.current || m.session !== current.session || controller.signal.aborted) return;
+            themeRequested = true;
+            sendTheme();
+            return;
+          }
           if (m.type === "register") {
             const definition = { name: m.name, description: m.description };
             registrations.current.set(m.name, definition);
@@ -290,7 +319,12 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
           }),
       });
       let pageBridge = createPageBridge(binding.current ?? connection);
-      rebindPage.current = current => { pageBridge(); pageBridge = createPageBridge(current); };
+      rebindPage.current = current => {
+        pageBridge();
+        pageBridge = createPageBridge(current);
+        port.port1.postMessage({ type: "context", context: { plugin: plugin.id, session: current.session } });
+        sendTheme();
+      };
       const poll = async () => {
         const pollBinding = await readyBinding.current;
         try {
@@ -309,6 +343,8 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       void poll();
       return () => {
         rebindPage.current = null;
+        suspendPage.current = null;
+        themeObserver.disconnect();
         pageBridge();
         controller.abort();
         clearTimeout(pollTimer);

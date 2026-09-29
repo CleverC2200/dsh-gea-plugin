@@ -190,3 +190,9 @@ Demand Forecast follows the user's language for both progress and final answers.
 ## 源码组合维护
 
 隔离源码工具共用 `scripts/source-composition.mjs` 的五插件清单、构建差异、快照资源及核心包扫描范围。`source:check` 检查当前核心声明，`source:build` 依次构建；启动器装配同一组合。预设由 YAML 节点转换，保留 `!!js` 标签，结构不兼容时报告输入文件。主会话读取来自核心 `uiSession.mainSessionId`，槽位通过 `inject.hooks` 订阅；新建会话按钮和输入底栏使用核心语义标记。此组合要求同次更新核心、工作台与 GEA。
+
+### 隔离 HTML 样板主题同步
+
+公共工作台的 `lib/samples/html-table.html` 仅用于验证；`GEA_TEST_SOURCE_CORE=1 node --test tests/html-shared-theme-web.test.mjs` 通过临时 mock 描述加载，不新增发行插件或真实库存页面。页面内嵌同版 1.0.0 资源，保留现有 sandbox/CSP。
+
+已连接 iframe 可以在原有 MessageChannel 发送 `{type: "theme:subscribe", session}`。承载器核对当前租约会话，读取 ui-theme 已投影的 `--workbench-*` 变量，再发回 `{type: "theme", context: {plugin, session}, version, colorScheme, tokens}`。这只同步显示，不授予 SQL、工具或其他权限。旧页面不订阅则不接收主题消息。切换会话依次发送空 `context`（暂停）和新 `context`（重新绑定），不重建 iframe；卸载断开观察器和端口。样板拒绝来源、页面或会话不匹配的消息，并在缺资源、版本不兼容及连接异常时显示诊断。
