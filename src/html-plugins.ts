@@ -1,5 +1,5 @@
 import { TOOL_DESCRIPTIONS, profileFor, installPromptProfile, type PromptProfile } from "./host/prompt-policy.ts";
-import { sessionConsumer } from "./host/business-identity.ts";
+import { businessIdentityKey, sessionConsumer } from "./host/business-identity.ts";
 import { injectPicker } from "../packages/page-interaction/src/inject.ts";
 import { readFile, readdir, realpath, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
@@ -517,9 +517,9 @@ ${toolbarSelectors} {
         !/^session-[a-z0-9-]{20,80}$/.test(session)
       )
         throw Error("INVALID_CONVERSATION");
-      const principalId = business.status().user?.id;
-      if (!item.mock && !principalId) throw Error("GEA_IDENTITY_INCOMPLETE");
-      if (!item.mock && sessionPrincipals.has(session) && sessionPrincipals.get(session) !== principalId)
+      const principalKey = businessIdentityKey(business);
+      if (!item.mock && !principalKey) throw Error("GEA_IDENTITY_INCOMPLETE");
+      if (!item.mock && sessionPrincipals.has(session) && sessionPrincipals.get(session) !== principalKey)
         throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
       let authorizedAgent: Awaited<ReturnType<typeof pageAgent>> | undefined;
       if (!item.mock && item.loadedAgentResources) {
@@ -565,7 +565,7 @@ ${toolbarSelectors} {
         mock: item.mock === true,
       });
       const lease = sessions.open(item.id, session, credentials, access);
-      if (!item.mock && principalId) sessionPrincipals.set(session, principalId);
+      if (!item.mock && principalKey) sessionPrincipals.set(session, principalKey);
       return json({
         lease,
         plugin: item.id,

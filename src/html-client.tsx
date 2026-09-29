@@ -43,7 +43,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
         .then((value) => { if (!controller.signal.aborted) setAgents(value); })
         .catch((failure) => { if (!controller.signal.aborted) setError(failure.message); });
       return () => controller.abort();
-    }, [plugin.id]);
+    }, [plugin.id, revision]);
     useEffect(() => {
       let active = true;
       let hide = () => {};
@@ -190,28 +190,44 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       const themeObserver = new MutationObserver(sendTheme);
       themeObserver.observe(document.body, { attributes: true, attributeFilter: ["style", "data-ds-dark-theme"] });
       themeObserver.observe(document.head, { childList: true, subtree: true, characterData: true });
-      suspendPage.current = () => port.port1.postMessage({ type: "context", context: null });
+      const pending = new Map<string, AbortController>();
+      suspendPage.current = () => {
+        for (const task of pending.values()) task.abort();
+        port.port1.postMessage({ type: "context", context: null });
+      };
+      const requireBinding = (expected: any) => {
+        if (!expected || expected !== binding.current || controller.signal.aborted)
+          throw Error("页面会话已切换，请重新操作");
+      };
       const call = async (
         method: string,
         parameters?: any,
+        expected?: any,
         signal = controller.signal,
       ) => {
+        requireBinding(expected);
         const current = await readyBinding.current;
-        if (!current || current !== binding.current) throw Error("页面会话连接暂不可用，请重试");
-        return request(plugin.id + "/call", { lease: current.lease, method, parameters }, signal);
+        if (current !== expected) throw Error("页面会话已切换，请重新操作");
+        const result = await request(plugin.id + "/call", { lease: current.lease, method, parameters }, signal);
+        requireBinding(expected);
+        return result;
       };
-      const pending = new Map<string, AbortController>();
       const fail = (e: Error) => {
         if (controller.signal.aborted) return;
         port.port1.postMessage({ type: "identity-changed" });
         controller.abort();
+        setAgents([]);
         setConnection(null);
         setError(e.message);
       };
       port.port1.onmessage = async (event) => {
         const m = event.data;
         if (!m || typeof m !== "object") return;
+        const requestBinding = binding.current;
         try {
+          if (plugin.agentResources && ["request", "register", "invoked"].includes(m.type) &&
+              m.session !== requestBinding?.session)
+            throw Error("页面会话已切换，请重新操作");
           if (m.type === "theme:subscribe") {
             const current = await readyBinding.current;
             if (!current || current !== binding.current || m.session !== current.session || controller.signal.aborted) return;
@@ -222,11 +238,11 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
           if (m.type === "register") {
             const definition = { name: m.name, description: m.description };
             registrations.current.set(m.name, definition);
-            await call("register", definition);
+            await call("register", definition, requestBinding);
             return;
           }
           if (m.type === "invoked") {
-            await call("reply", m);
+            await call("reply", m, requestBinding);
             return;
           }
           if (m.type === "cancel") {
@@ -247,11 +263,12 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
                 JSON.stringify(context ?? {}).length > 100000
               )
                 throw Error("对话内容过长");
+              requireBinding(requestBinding);
               pageContext.current = context;
               const current = await readyBinding.current;
-              if (!current || current !== binding.current) throw Error("页面会话连接暂不可用，请重试");
-              await request(plugin.id + "/call", { lease: current.lease, method: "context", parameters: context });
-              if (current !== binding.current) throw Error("会话已切换，请重新发送");
+              if (current !== requestBinding) throw Error("会话已切换，请重新发送");
+              await call("context", context, requestBinding, AbortSignal.any([controller.signal, task.signal]));
+              requireBinding(requestBinding);
               const sent = await ctx.remote.session.prompt({
                 sessionId: current.session,
                 requestId: crypto.randomUUID(),
@@ -268,12 +285,13 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
               if (!sent.ok) throw Error(sent.error.message);
               result = { sent: true };
             } else if (["sql", "workspace", "access", "context"].includes(m.method)) {
-              if (m.method === "context") pageContext.current = m.parameters;
               result = await call(
                 m.method,
                 m.parameters,
+                requestBinding,
                 AbortSignal.any([controller.signal, task.signal]),
               );
+              if (m.method === "context") pageContext.current = m.parameters;
             } else throw Error("HTML_METHOD_NOT_ALLOWED");
             port.port1.postMessage({ type: "response", id: m.id, result });
           } finally {

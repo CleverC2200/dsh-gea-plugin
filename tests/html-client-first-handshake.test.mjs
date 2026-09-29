@@ -22,11 +22,12 @@ const bundle = await build({ stdin: { contents: `
     }}});
 `, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false, format: 'iife', platform: 'browser' });
 
-async function fixture(t) {
+async function fixture(t, { managed = false } = {}) {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   t.after(() => browser.close());
   const page = await browser.newPage();
   const errors = [];
+  const calls = [];
   page.on('pageerror', error => errors.push(error.message));
   const html = Promise.withResolvers();
   const requestedHtml = Promise.withResolvers();
@@ -46,7 +47,7 @@ async function fixture(t) {
     const data = route.request().postDataJSON();
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: `<style>${css}</style><div id="app"></div>` });
     if (url.pathname.endsWith('/status')) return route.fulfill({ json: { ok: true, value: { htmlPlugins: true } } });
-    if (url.pathname.endsWith('/plugins')) return route.fulfill({ json: [{ id: 'inventory-fc', name: '表格样板' }] });
+    if (url.pathname.endsWith('/plugins')) return route.fulfill({ json: [{ id: 'inventory-fc', name: '表格样板', ...(managed ? { agentResources: { provider: 'dsh-agent-manage' } } : {}) }] });
     if (url.pathname.endsWith('/open')) {
       const gate = opens.get(data.session);
       if (gate) { gate.requested.resolve(); await gate.release.promise; }
@@ -54,11 +55,16 @@ async function fixture(t) {
       gate?.completed.resolve();
       return;
     }
-    if (url.pathname.endsWith('/call')) return route.fulfill({ json: data.method === 'events' ? [] : {} });
+    if (url.pathname.endsWith('/call')) {
+      calls.push(data);
+      return route.fulfill({ json: data.method === 'events' ? [] : {} });
+    }
     if (url.pathname.endsWith('/html')) {
       requestedHtml.resolve();
       await html.promise;
-      return route.fulfill({ contentType: 'text/html', body: sample });
+      return route.fulfill({ contentType: 'text/html', body: managed
+        ? sample.replace('port = event.ports[0];', 'port = event.ports[0]; window.testPort = port; window.testSession = () => context?.session;')
+        : sample });
     }
     return route.abort();
   });
@@ -71,7 +77,7 @@ async function fixture(t) {
   const child = page.frames().find(frame => frame !== page.mainFrame());
   await child.waitForSelector('#controls');
   await page.waitForFunction(() => readyCount > 0);
-  return { page, child, opens, errors };
+  return { page, child, opens, errors, calls };
 }
 
 test('first ready during a Session switch connects the actual sample after its current lease is ready', async t => {
@@ -123,5 +129,21 @@ test('unmount cancels a pending first handshake before its opening completes', a
   await opens.get('session-2').completed.promise;
   await expect(page.locator('iframe')).toHaveCount(0);
   await page.evaluate(() => new Promise(requestAnimationFrame));
+  assert.deepEqual(errors, []);
+});
+
+test('a late managed page request cannot follow a new Session lease', async t => {
+  const { page, child, opens, calls, errors } = await fixture(t, { managed: true });
+  opens.get('session-2').release.resolve();
+  await expect(child.locator('#query')).toBeEnabled();
+  await page.evaluate(() => window.changeSession('session-3'));
+  await opens.get('session-3').requested.promise;
+  opens.get('session-3').release.resolve();
+  await child.waitForFunction(() => window.testSession?.() === 'session-3');
+  await child.evaluate(() => window.testPort.postMessage({ type: 'request', id: 'stale', method: 'context', parameters: { marker: 'old' }, session: 'session-2' }));
+  await child.evaluate(() => window.testPort.postMessage({ type: 'request', id: 'current', method: 'context', parameters: { marker: 'new' }, session: 'session-3' }));
+  await expect.poll(() => calls.some(call => call.method === 'context' && call.parameters?.marker === 'new')).toBe(true);
+  assert.equal(calls.some(call => call.method === 'context' && call.parameters?.marker === 'old'), false);
+  assert.equal(calls.find(call => call.parameters?.marker === 'new').lease, 'lease-session-3');
   assert.deepEqual(errors, []);
 });

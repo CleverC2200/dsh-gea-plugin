@@ -26,6 +26,7 @@ import {
 } from "@deepseek-ai/dsh-llm";
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
+import { businessIdentityKey } from "./host/business-identity.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
 import { lastUserQuestion, mountTurnAnchor } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
@@ -370,13 +371,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     );
   const pageBridge = createPageBridge();
   const business = new Business(config, pageBridge);
-  const referenceIdentity = () => {
-    const status = business.status();
-    return JSON.stringify([status.environment, status.user?.tenantId, status.user?.id]);
-  };
-  let referenceOwner = referenceIdentity();
+  let referenceOwner = businessIdentityKey(business);
   ctx.effect(() => business.watchIdentity(() => {
-    const next = referenceIdentity();
+    const next = businessIdentityKey(business);
     if (next === referenceOwner) return;
     referenceOwner = next;
     clearPageReferences();

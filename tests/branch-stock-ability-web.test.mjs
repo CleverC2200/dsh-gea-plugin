@@ -33,13 +33,14 @@ test("branch stock filter, quote and two authorized Agents keep separate Session
   });
   let denyQll = false;
   let userId = "9007199254740993";
+  let tenantId = "0";
   const app = await profile(t, {
     config: (base) => ({ analysis: { mode: "model", baseUrl: base + "/v1", model: "fixture", apiKeyEnv: "GEA_TEST_MODEL_KEY", contextWindow: 32768, maxTokens: 2048 } }),
     env: { GEA_TEST_MODEL_KEY: "fixture-key", GEA_HTML_PLUGIN_ROOTS: JSON.stringify([branchPage, qll]) },
   });
   app.route(async (request, response, reply) => {
     if (request.url.pathname.endsWith("/getUserInfo")) {
-      reply({ success: true, result: { userInfo: { id: userId, realname: "测试用户", loginTenantId: "0" } } });
+      reply({ success: true, result: { userInfo: { id: userId, realname: "测试用户", loginTenantId: tenantId } } });
       return true;
     }
     if (request.url.pathname.endsWith("/ai/gateway/session")) {
@@ -144,7 +145,12 @@ test("branch stock filter, quote and two authorized Agents keep separate Session
   assert.notEqual(qllSession, branchSession);
   await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
   await expect.poll(() => contexts.length).toBeGreaterThan(contextsBeforeSwitch);
-  await expect.poll(() => contexts.at(-1)?.parts?.pageReference?.scope).toBe(refreshedScope);
+  await expect.poll(() => {
+    const parts = contexts.at(-1)?.parts;
+    return parts?.queryState?.state === "ready" &&
+      typeof parts.pageReference?.scope === "string" &&
+      parts.pageReference.scope !== refreshedScope;
+  }).toBe(true);
   await promptPage(qllSession, "evidenceId");
   await promptPage(qllSession, "REFERENCE_UNAVAILABLE", `请解释 @[FC001](dsh-page:${referenceId})`);
   await promptPage(branchSession, "PAGE_NOT_IN_WORKBENCH");
@@ -169,7 +175,8 @@ test("branch stock filter, quote and two authorized Agents keep separate Session
   }, { session: qllSession, agentPreset: "gea-html-inventory-qll" });
   assert.equal(denied.status, 400);
   await app.rpc("logout");
-  userId = "9007199254740994";
+  await expect(chooser).toHaveCount(0);
+  tenantId = "1";
   await app.login();
   const crossIdentity = await page.evaluate(async (body) => {
     const response = await fetch("/api/gea-html/inventory-fc/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -178,6 +185,16 @@ test("branch stock filter, quote and two authorized Agents keep separate Session
   assert.equal(crossIdentity.status, 400);
   assert.equal(crossIdentity.value.error, "PAGE_SESSION_IDENTITY_MISMATCH");
   await promptPage(branchSession, "REFERENCE_UNAVAILABLE", `请解释 @[FC001](dsh-page:${referenceId})`);
+  await app.rpc("logout");
+  userId = "9007199254740994";
+  tenantId = "0";
+  await app.login();
+  const crossUser = await page.evaluate(async (body) => {
+    const response = await fetch("/api/gea-html/inventory-fc/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    return { status: response.status, value: await response.json() };
+  }, { session: branchSession, agentPreset: "gea-html-inventory-fc" });
+  assert.equal(crossUser.status, 400);
+  assert.equal(crossUser.value.error, "PAGE_SESSION_IDENTITY_MISMATCH");
   assert.deepEqual(errors, []);
   assert.ok(state.gateway.some((request) => request.consumerCode === "full-chain-inventory"));
   if (process.env.GEA_TICKET07_EVIDENCE) {
@@ -191,7 +208,7 @@ test("branch stock filter, quote and two authorized Agents keep separate Session
         visibleSkus: value.parts?.branchDraft?.visibleReplenishments?.map((row) => row.sku),
       })),
       gatewayConsumers: state.gateway.map((request) => request.consumerCode),
-      rejected: { mismatch: mismatch.value.error, unsupported: unsupported.value.error, consumer: denied.value.error, crossIdentity: crossIdentity.value.error },
+      rejected: { mismatch: mismatch.value.error, unsupported: unsupported.value.error, consumer: denied.value.error, crossTenant: crossIdentity.value.error, crossUser: crossUser.value.error },
       modelCalls: state.models.length,
     }, null, 2));
   }

@@ -2,6 +2,14 @@ import type { Context } from "@deepseek-ai/cordis";
 import type { Business } from "./business.ts";
 import { profileFor } from "./prompt-policy.ts";
 
+/** The GEA environment, tenant and user jointly own page Sessions and saved references. */
+export function businessIdentityKey(business: Business): string | undefined {
+  const status = business.status();
+  return status.user?.id
+    ? JSON.stringify([status.environment, status.user.tenantId ?? null, status.user.id])
+    : undefined;
+}
+
 /** The selected business preset owns model and tool identity, including unbound sessions. */
 export function sessionConsumer(
   ctx: Context,

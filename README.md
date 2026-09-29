@@ -186,7 +186,7 @@ Demand Forecast follows the user's language for both progress and final answers.
 ### 页面与能力分离声明
 
 页面与能力可以使用独立声明文件，并经现有契约入口装载；旧业务包继续兼容。格式、权限约束与兼容入口删除条件见 [能力契约](docs/capability-contract.md#页面与能力分离声明隔离开发任务-02)。本项属于隔离源码迁移，不是发行变更。
-分仓页的“解读能力”来自 Agent Manage 的 `pageAgents`，仅显示已安装且当前 GEA 登录授权的预设。切换时工作台按预设选择独立 Session，GEA 的 `/agents` 与 `/open` 分别校验名单、实际 Session 预设及 Consumer；页面 SQL 仍用分仓页面自己的受管身份。页面引用只接受当前 ready 筛选范围和快照版本；切页、重新查询或会话切换后需重新引用。
+分仓页的“解读能力”来自 Agent Manage 的 `pageAgents`，仅显示已安装且当前 GEA 登录授权的预设。切换时工作台按预设选择独立 Session，GEA 的 `/agents` 与 `/open` 分别校验名单、实际 Session 预设及 Consumer；页面 SQL 仍用分仓页面自己的受管身份。环境、租户、用户共同限定 Session 与引用身份；登录变化会清空旧能力列表。页面引用只接受当前 ready 筛选范围和快照版本；切页、重新查询或会话切换后需重新引用。既有页面请求在会话切换时取消，新会话重新读取当前筛选页。
 
 ## 源码组合维护
 
