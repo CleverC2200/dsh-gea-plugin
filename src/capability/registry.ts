@@ -5,6 +5,7 @@
  * 宿主其它地方不再按模块写死分支（加一个模块 = 注册表里多一条契约）。
  */
 import {
+  CAPABILITY_EFFECTS,
   effectRank,
   type CapabilityContract,
   type CapabilityEffect,
@@ -63,12 +64,25 @@ export function createCapabilityRegistry(
   contracts: readonly CapabilityContract[],
 ): CapabilityRegistry {
   const byId = new Map<string, CapabilityContract>();
+  const surfaces = new Map<string, CapabilityContract>();
+  const pages = new Map<string, CapabilityContract>();
+  const claim = (map: Map<string, CapabilityContract>, id: string, contract: CapabilityContract, code: string) => {
+    const previous = map.get(id);
+    if (previous) throw Error(`${code}: ${id} [source: ${previous.source ?? previous.id}; ${contract.source ?? contract.id}]`);
+    map.set(id, contract);
+  };
   for (const contract of contracts) {
-    if (byId.has(contract.id))
-      throw new Error("DUPLICATE_CAPABILITY_CONTRACT: " + contract.id);
+    const source = contract.source ?? contract.id;
+    if (!CAPABILITY_EFFECTS.includes(contract.maxEffect))
+      throw Error(`INVALID_CAPABILITY_EFFECT: ${contract.maxEffect} [source: ${source}]`);
     if (contract.data && !CONSUMER_PATTERN.test(contract.data.consumerCode))
-      throw new Error("INVALID_CONSUMER_CODE: " + contract.data.consumerCode);
-    byId.set(contract.id, contract);
+      throw Error(`INVALID_CONSUMER_CODE: ${contract.data.consumerCode} [source: ${source}]`);
+    claim(byId, contract.id, contract, "DUPLICATE_CAPABILITY_CONTRACT");
+    if (contract.view) {
+      claim(surfaces, contract.view.surface, contract, "DUPLICATE_CAPABILITY_SURFACE");
+      for (const page of contract.view.pageIds)
+        claim(pages, page, contract, "DUPLICATE_CAPABILITY_PAGE");
+    }
   }
   const ordered = () => [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
   const surfaceOf = (contract: CapabilityContract) =>
@@ -143,7 +157,8 @@ export function createCapabilityRegistry(
       for (const contract of ordered())
         if (surfaceOf(contract) === surface) {
           // 统一按能力层判定：读层看这个页面在不在、写层看模块声明的层。
-          return layersOf(contract).includes(layerForEffect(effect));
+          return effectRank(effect) <= effectRank(contract.maxEffect) &&
+            layersOf(contract).includes(layerForEffect(effect));
         }
       return false;
     },

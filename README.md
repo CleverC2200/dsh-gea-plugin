@@ -178,3 +178,5 @@ GEA 发行包声明 `dsh.bundle.patch`，在官方 base/web 后挂载 GEA 和固
 需求预测预设的进度说明和最终回答跟随用户语言；中文问题使用中文。Skill 的本地参考文件通过 `gea_skill_reference_read` 按技能名及正文链接的相对路径只读加载，支持 `offset`/`limit` 分段读取。MCP 资源读取只接收服务返回的 URI，本地 `file://` 链接会被拦截并提示正确工具。
 
 Demand Forecast follows the user's language for both progress and final answers. Its `gea_skill_reference_read` tool reads local references linked by a visible skill, with `offset`/`limit` pagination. MCP resource reads use server-returned URIs; local `file://` links are rejected with guidance to the correct reader.
+
+页面与能力可以使用独立声明文件，并经现有契约入口装载；旧业务包继续兼容。格式、权限约束与兼容入口删除条件见 [能力契约](docs/capability-contract.md#页面与能力分离声明隔离开发任务-02)。本项属于隔离源码迁移，不是发行变更。

@@ -73,3 +73,55 @@
 - 契约派生与注册表：`tests/capability-contract.test.mjs`。
 - 契约驱动的工具说明与枚举：`tests/agent-tools.test.mjs`（"只读数据工具的说明由模块自述生成"）。
 - 真机：`POST /api/gea-proof/status` 的 `value.modules` 能列出本机安装的模块、`surface` 与 `consumerCode`。
+
+## 页面与能力分离声明（隔离开发，任务 02）
+
+旧 `plugin.json` 未提供 `declarations` 时，仍由 `contractFromPlugin` 从现有页面、Consumer、Skill 与代码派生契约。旧消费者无需同时迁移。
+
+新声明在 `plugin.json` 增加以下可选字段。两个文件都必须位于该安装目录内；可分别由公共工作台的页面资源与 Agent 管理的能力资源生成，部署时组合到同一个只读模块目录。当前只完成兼容接入，未迁移业务仓库，也未增加新的运行时插件或业务注册表。
+
+```json
+{"declarations":{"page":"page.json","capability":"capability.json"}}
+```
+
+页面声明 `page.json`：
+
+```json
+{
+  "surface": "gea-html-inventory-probe",
+  "protocol": "dom-scan",
+  "pageIds": ["inventory-probe"],
+  "consumerCode": "probe-consumer",
+  "maxEffect": "view"
+}
+```
+
+能力声明 `capability.json` 使用现有 `CapabilityContract` 的字段，省略 `view`：
+
+```json
+{
+  "id": "inventory-probe",
+  "label": "分离声明验收",
+  "data": {"consumerCode": "probe-consumer", "tables": ["agents_scm_probe"], "rules": ["只读"]},
+  "maxEffect": "view",
+  "skills": ["inventory-probe"],
+  "routing": {"keywords": ["验收"], "summary": "隔离只读能力"}
+}
+```
+
+GEA 在注册前读取两份文件，通过 `consumerCode` 关联，核对 `pageIds` 与已安装页面完全一致，再合成现有契约。`surface` 与页面桥标识一致；`maxEffect` 必须显式声明并与安装模块的上限一致。现有 `gea-html-v1` 仅接受只读模块，因此不能通过新文件升级为 draft、submit 或 approve。显式能力层也不能超过安装模块允许的层。`mcp.json` 的受管通道校验、服务器授权、登录取消、页面租约及卸载行为仍生效；声明不授予业务权限。
+
+重复模块 ID、surface、page ID、文件不存在、缺失页面引用、Consumer/协议不匹配与非法影响等级均中止装载，诊断包含源文件路径；冲突诊断包含双方来源。新文件解析失败不会回退旧声明。完整所选 HTML 模块集先完成校验，随后才发布 Skill、预设、路由与工具。来源字段只用于宿主诊断，不下发到浏览器目录。
+
+公共工作台继续通过原 `agentWorkbench.register/open` 显示页面；Agent 管理继续经版本 1 的 `geaMcp` 服务、当前 Consumer 与登录生命周期挂载工具。两者不需要同时变更 API。浏览器验收使用真实源码宿主与两个模块目录，仅把外部 GEA 和模型服务替换为本机测试端点；不代表生产业务或桌面发行验收。
+
+### 删除旧兼容入口的条件
+
+只有以下条件全部成立，后续独立任务才能删除 `readPluginContract` 中缺省 `declarations` 的兼容分支：
+
+1. 所有受支持的安装模块及回退版本都已提供两份声明，实际安装清单不存在旧入口使用者。
+2. 工作台页面、Agent 管理能力资源的部署流程能一起提供关联文件，并验证引用完整性。
+3. 新声明已覆盖页面显示、能力装载、受控调用、拒绝提权及登录/卸载取消的回归验收。
+4. 明确停止支持旧包的版本范围与回退方案，并获得删除兼容入口的单独批准。
+
+在此之前，保留旧声明与新声明的等价性测试。本次不修改版本号、发行目的地、锁文件或生产配置。
