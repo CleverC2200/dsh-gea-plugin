@@ -178,3 +178,7 @@ GEA 发行包声明 `dsh.bundle.patch`，在官方 base/web 后挂载 GEA 和固
 需求预测预设的进度说明和最终回答跟随用户语言；中文问题使用中文。Skill 的本地参考文件通过 `gea_skill_reference_read` 按技能名及正文链接的相对路径只读加载，支持 `offset`/`limit` 分段读取。MCP 资源读取只接收服务返回的 URI，本地 `file://` 链接会被拦截并提示正确工具。
 
 Demand Forecast follows the user's language for both progress and final answers. Its `gea_skill_reference_read` tool reads local references linked by a visible skill, with `offset`/`limit` pagination. MCP resource reads use server-returned URIs; local `file://` links are rejected with guidance to the correct reader.
+
+### 隔离共享主题适配
+
+本项目受控源码组合的导航、会话工具栏与原生输入框边框消费工作台共享语义变量；未安装共享资源时保留原有边框后备值。资源由同级工作台 `theme/` 维护并编入宿主，GEA 不保存第二套主题状态。业务页面主题迁移不在此适配中。

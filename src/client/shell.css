@@ -33,7 +33,7 @@
   min-height: 0;
   overflow: hidden;
   /* 两个抽屉（业务工作台菜单 / 历史会话列表）统一正文色，改这一处即可。 */
-  --gea-sidebar-ink: rgb(31, 31, 31);
+  --gea-sidebar-ink: var(--dsw-alias-label-primary, rgb(31, 31, 31));
   --gea-menu-left: 10px;
 }
 .gea-sidebar-drawer {
@@ -59,27 +59,25 @@
   background: transparent !important;
   color: var(--gea-sidebar-ink);
   font: inherit;
-  font-size: 13px;
+  font-size: calc(var(--workbench-font-size, 14px) - 1px);
   text-align: left;
   cursor: pointer;
   transition: background-color 140ms ease, color 140ms ease;
 }
-.gea-sidebar-tab:hover { background: #eceff2 !important; color: #202531; }
+.gea-sidebar-tab:hover { background: var(--workbench-hover, #eceff2) !important; color: var(--workbench-text, #202531); }
 .gea-sidebar-tab[aria-expanded="true"] {
   /* 展开态用浅红底，不再铺白卡片：白卡片会和右侧原生图标压出边缘，看着像被切掉。 */
-  background: #fff0f2 !important;
-  /* 浅红底上 #df1732 只有 4.41:1，统一改成 #d0132c（4.98:1）。 */
-  color: #d0132c;
+  background: var(--workbench-brand-soft, #fff0f2) !important;
+  /* 选中文字使用独立语义色，保证在品牌浅底上的对比度。 */
+  color: var(--workbench-selected-text, #d0132c);
   font-weight: 600;
   box-shadow: none;
 }
-/* 焦点描边内描，避免被侧栏的 overflow 裁掉只剩一条边。
-   登记 20：选中/聚焦都不要深红色描边，统一用中性灰环。 */
-.gea-sidebar-tab:focus-visible { outline: 2px solid #9aa4b2; outline-offset: -2px; box-shadow: none; }
+/* 焦点描边内描，避免被侧栏的 overflow 裁掉；选中态仍保留键盘焦点。 */
+.gea-sidebar-tab:focus-visible { outline: 2px solid var(--workbench-brand, #9aa4b2); outline-offset: -2px; box-shadow: none; }
 .gea-sidebar-tab[aria-expanded="true"],
 .gea-sidebar-tab.is-active {
   border: 0 !important;
-  outline-color: transparent !important;
   box-shadow: none !important;
 }
 .gea-sidebar-tab .gea-drawer-title {
@@ -133,7 +131,7 @@
 [data-slot="sidebar.workspaces"] [class*="_title"],
 [data-slot="sidebar.workspaces"] [class*="_sessionOverflowButton"],
 [data-slot="sidebar.workspaces"] [class*="_empty"] {
-  font-size: 12px;
+  font-size: calc(var(--workbench-font-size, 14px) - 2px);
 }
 [data-slot="sidebar.workspaces"] [class*="_projectRow"],
 [data-slot="sidebar.workspaces"] [class*="_sessionRow"],
@@ -252,19 +250,19 @@ button[class*="_newSession"] [class*="_newSessionContent"] {
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: #3d4654;
+  color: var(--workbench-body, #3d4654);
   cursor: pointer;
 }
 .gea-sidebar-rail-item:hover {
-  background: #eceef2;
-  color: #202531;
+  background: var(--workbench-hover, #eceef2);
+  color: var(--workbench-text, #202531);
 }
 .gea-sidebar-rail-item.is-active {
-  background: #fff0f2;
-  color: #df1732;
+  background: var(--workbench-brand-soft, #fff0f2);
+  color: var(--workbench-brand, #df1732);
 }
 .gea-sidebar-rail-item:focus-visible {
-  outline: 2px solid #df1732;
+  outline: 2px solid var(--workbench-brand, #df1732);
   outline-offset: 2px;
 }
 [class*="_logoRow"]:has(.gea-inbox-quick-action) {
@@ -283,14 +281,14 @@ button[class*="_newSession"] [class*="_newSessionContent"] {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #687282;
+  color: var(--workbench-muted, #687282);
   cursor: pointer;
   transform: translateY(-50%);
 }
 .gea-inbox-quick-action:hover,
 .gea-inbox-quick-action[aria-current="page"] {
-  background: #fff0f2;
-  color: #df1732;
+  background: var(--workbench-brand-soft, #fff0f2);
+  color: var(--workbench-brand, #df1732);
 }
 [data-gea-narrow] .gea-inbox-quick-action {
   display: none;
@@ -310,10 +308,10 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   height: 100%;
   min-width: 0;
   container: gea-sidebar / inline-size;
-  background: #f5f6f8;
+  background: var(--workbench-muted-surface, #f5f6f8);
   color: var(--gea-sidebar-ink);
-  font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
-  font-size: 12px;
+  font-family: var(--workbench-font-family, "Microsoft YaHei UI"), sans-serif;
+  font-size: calc(var(--workbench-font-size, 14px) - 2px);
   line-height: 1.7;
 }
 .gea-shell-navigation-content {
@@ -322,7 +320,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   flex-direction: column;
   gap: 4px;
   padding: 0 14px 12px;
-  background: #f5f6f8;
+  background: var(--workbench-muted-surface, #f5f6f8);
 }
 .gea-shell-navigation * {
   box-sizing: border-box;
@@ -338,8 +336,8 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   gap: 16px;
   height: 54px;
   flex-shrink: 0;
-  border-bottom: 1px solid #e3e6ea;
-  color: #20232a;
+  border-bottom: 1px solid var(--workbench-border, #e3e6ea);
+  color: var(--workbench-text, #20232a);
   font-size: 14px;
   font-weight: 700;
 }
@@ -389,7 +387,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   cursor: default;
 }
 [data-slot="sidebar.brand.name"] span {
-  color: #d70a1c;
+  color: var(--workbench-brand, #d70a1c);
   font-family: "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", Arial, sans-serif;
   font-size: 19px;
   font-weight: 700;
@@ -398,7 +396,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-brand-subtitle {
   /* 对比度：原来 #96999f 在 #f9fafb 上只有 2.73:1，加深到 5.06:1（WCAG AA）。 */
-  color: #666c76;
+  color: var(--workbench-muted, #666c76);
   font-size: 11px;
   font-weight: 400;
   line-height: 1.3;
@@ -407,7 +405,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-shell-caption {
   padding: 4px 7px;
   color: var(--gea-sidebar-ink);
-  font-size: 12px;
+  font-size: calc(var(--workbench-font-size, 14px) - 2px);
 }
 .gea-shell-navigation-content > button,
 .gea-shell-workspaces > button {
@@ -429,9 +427,9 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   cursor: default;
 }
 .gea-shell-navigation button.is-active {
-  background: #fff0f2;
-  /* 浅红底上 #df1732 只有 4.41:1，统一改成 #d0132c（4.98:1）。 */
-  color: #d0132c;
+  background: var(--workbench-brand-soft, #fff0f2);
+  /* 选中文字使用独立语义色，保证在品牌浅底上的对比度。 */
+  color: var(--workbench-selected-text, #d0132c);
   font-weight: 600;
 }
 .gea-shell-navigation-content > .gea-shell-child {
@@ -439,12 +437,12 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-shell-navigation-content > button:hover,
 .gea-shell-navigation-content > .gea-shell-child:hover {
-  background: #eceef2 !important;
-  color: #202531;
+  background: var(--workbench-hover, #eceef2) !important;
+  color: var(--workbench-text, #202531);
 }
 .gea-shell-navigation button:focus-visible {
-  /* 登记 20：选中态与焦点环都不再用深红描边。 */
-  outline: 2px solid #9aa4b2;
+  /* 键盘焦点随共享主题变化。 */
+  outline: 2px solid var(--workbench-brand, #9aa4b2);
   outline-offset: 2px;
 }
 .gea-shell-navigation button.is-active,
@@ -452,7 +450,6 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-shell-nav-child.is-active,
 .gea-shell-nav-heading.is-active {
   border: 0 !important;
-  outline-color: transparent !important;
   box-shadow: none !important;
 }
 .gea-shell-group {
@@ -461,7 +458,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   align-items: center;
   padding: 18px 12px 4px;
   color: var(--gea-sidebar-ink);
-  font-size: 13px;
+  font-size: calc(var(--workbench-font-size, 14px) - 1px);
 }
 .gea-shell-group::before {
   content: "";
@@ -473,10 +470,10 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 }
 .gea-shell-plugin-group { display: grid; gap: 2px; margin-top: 2px; padding-top: 4px; }
 .gea-shell-plugin { min-height: 32px !important; padding-block: 6px !important; padding-left: 40px !important; color: var(--gea-sidebar-ink) !important; font-size: 12px !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
-.gea-shell-plugin:hover { color: #df1732 !important; background: #fffafb !important; }
-.gea-shell-plugin.is-active { color: #d0132c !important; background: #fff0f2 !important; }
+.gea-shell-plugin:hover { color: var(--workbench-brand, #df1732) !important; background: var(--workbench-hover, #fffafb) !important; }
+.gea-shell-plugin.is-active { color: var(--workbench-selected-text, #d0132c) !important; background: var(--workbench-brand-soft, #fff0f2) !important; }
 .gea-shell-plugin-dot { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #c7ced8; }
-.gea-shell-plugin:hover .gea-shell-plugin-dot, .gea-shell-plugin.is-active .gea-shell-plugin-dot { background: #df1732; }
+.gea-shell-plugin:hover .gea-shell-plugin-dot, .gea-shell-plugin.is-active .gea-shell-plugin-dot { background: var(--workbench-brand, #df1732); }
 /* 业务导航保留宿主与导航内容层的左侧留白，和本地原型的层级线一致。 */
 .gea-shell-nav-section { display: grid; gap: 2px; margin: 8px 0 0 4px; }
 .gea-shell-nav-heading,
@@ -486,20 +483,20 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   background: transparent !important; color: var(--gea-sidebar-ink); font: inherit; text-align: left; cursor: pointer;
 }
 .gea-shell-nav-heading { font-weight: 600; }
-.gea-shell-nav-heading:hover, .gea-shell-nav-item:hover { background: #fffafb !important; color: #df1732; }
-.gea-shell-nav-item.is-active { background: #fff0f2 !important; color: #d0132c; font-weight: 700; }
+.gea-shell-nav-heading:hover, .gea-shell-nav-item:hover { background: var(--workbench-hover, #fffafb) !important; color: var(--workbench-brand, #df1732); }
+.gea-shell-nav-item.is-active { background: var(--workbench-brand-soft, #fff0f2) !important; color: var(--workbench-selected-text, #d0132c); font-weight: 700; }
 .gea-shell-nav-icon { flex: 0 0 auto; color: currentColor; }
 .gea-shell-chevron { margin-left: auto; transition: transform 160ms ease; }
 .gea-shell-chevron.is-open { transform: rotate(180deg); }
 /* 二级条目在一级图标后再缩进一层，保持原型的父子层级。 */
 .gea-shell-nav-children { display: grid; gap: 1px; padding: 1px 0 3px 28px; }
 .gea-shell-nav-child { min-height: 36px; padding: 7px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--gea-sidebar-ink); font: inherit; text-align: left; cursor: pointer; }
-.gea-shell-nav-child:hover { background: #fffafb; color: #df1732; }
-.gea-shell-nav-child.is-active { background: #fff0f2; color: #d0132c; font-weight: 700; }
-.gea-shell-nav-child:disabled { background: transparent; color: #a7aeb8; cursor: default; opacity: 1; }
-.gea-shell-nav-child:disabled:hover { background: transparent; color: #a7aeb8; }
+.gea-shell-nav-child:hover { background: var(--workbench-hover, #fffafb); color: var(--workbench-brand, #df1732); }
+.gea-shell-nav-child.is-active { background: var(--workbench-brand-soft, #fff0f2); color: var(--workbench-selected-text, #d0132c); font-weight: 700; }
+.gea-shell-nav-child:disabled { background: transparent; color: var(--workbench-muted, #a7aeb8); cursor: default; opacity: 1; }
+.gea-shell-nav-child:disabled:hover { background: transparent; color: var(--workbench-muted, #a7aeb8); }
 .gea-shell-nav-section.is-flat { margin-top: 2px; }
-.gea-shell-nav-heading:focus-visible, .gea-shell-nav-item:focus-visible, .gea-shell-nav-child:focus-visible { outline: 2px solid #df1732; outline-offset: 2px; }
+.gea-shell-nav-heading:focus-visible, .gea-shell-nav-item:focus-visible, .gea-shell-nav-child:focus-visible { outline: 2px solid var(--workbench-brand, #df1732); outline-offset: 2px; }
 .gea-panel-function .gea-shell-navigation { margin-left: 0; padding-left: 0; }
 .gea-panel-function .gea-shell-navigation-content { padding-left: 0; padding-right: 0; }
 .gea-panel-function .gea-shell-nav-section { margin-left: 0; }
@@ -511,7 +508,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   display: flex;
   align-items: center;
   gap: 8px;
-  border-top: 1px solid #e3e6ea;
+  border-top: 1px solid var(--workbench-border, #e3e6ea);
   padding: 14px 8px 0;
   margin-top: auto;
 }
@@ -1179,9 +1176,9 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 
 /* Keep the actual composer outline visible, including its top edge. */
 .AppFrame_frame.gea-business-shell [data-rightbar-col] [data-slot="conversation.composer.bar"] {
-  --dsw-alias-border-l1: #c9cfd8;
-  --dsw-alias-border-l2: #c9cfd8;
-  box-shadow: inset 0 0 0 1px #c9cfd8;
+  --dsw-alias-border-l1: var(--workbench-control-border, #c9cfd8);
+  --dsw-alias-border-l2: var(--workbench-control-border, #c9cfd8);
+  box-shadow: inset 0 0 0 1px var(--workbench-control-border, #c9cfd8);
   border-radius: 12px;
 }
 
@@ -1250,16 +1247,16 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   justify-content: flex-end;
   gap: 8px;
   padding: 0 20px;
-  border-bottom: 1px solid #e5e9f0;
-  background: #fff;
+  border-bottom: 1px solid var(--workbench-border, #e5e9f0);
+  background: var(--workbench-surface, #fff);
 }
 /* Match the business Agent web toolbar: compact segmented views and icon actions. */
-.gea-conversation-view-switch { display: flex; flex: none; align-items: center; gap: 1px; height: 32px; box-sizing: border-box; margin-right: 6px; padding: 2px; border: 1px solid #dfe4eb; border-radius: 12px; background: #f5f7fa; }
-.gea-conversation-toolbar button { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; box-sizing: border-box; padding: 0; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #606977; cursor: pointer; transition: background-color .2s ease, border-color .2s ease, color .2s ease; }
-.gea-conversation-toolbar button:hover { border-color: #e8ebf0; background: #fbfcfd; color: #df1d28; }
+.gea-conversation-view-switch { display: flex; flex: none; align-items: center; gap: 1px; height: 32px; box-sizing: border-box; margin-right: 6px; padding: 2px; border: 1px solid var(--workbench-control-border, #dfe4eb); border-radius: 12px; background: var(--workbench-muted-surface, #f5f7fa); }
+.gea-conversation-toolbar button { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; box-sizing: border-box; padding: 0; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--workbench-body, #606977); cursor: pointer; transition: background-color .2s ease, border-color .2s ease, color .2s ease; }
+.gea-conversation-toolbar button:hover { border-color: var(--workbench-border, #e8ebf0); background: var(--workbench-hover, #fbfcfd); color: var(--workbench-brand, #df1d28); }
 .gea-conversation-view-switch button { width: 26px; height: 26px; border: 0; border-radius: 6px; }
-.gea-conversation-toolbar button[aria-pressed="true"] { background: #fff; color: #df1d28; box-shadow: 0 1px 3px rgba(15,34,64,.14); }
-.gea-conversation-toolbar button:focus-visible { outline: 2px solid #d0132c; outline-offset: 2px; }
+.gea-conversation-toolbar button[aria-pressed="true"] { background: var(--workbench-surface, #fff); color: var(--workbench-brand, #df1d28); box-shadow: 0 1px 3px rgba(15,34,64,.14); }
+.gea-conversation-toolbar button:focus-visible { outline: 2px solid var(--workbench-brand, #d0132c); outline-offset: 2px; }
 .gea-conversation-toolbar svg { width: 16px; height: 16px; }
 .gea-conversation-toolbar-action { margin: 0; }
 .gea-conversation-toolbar-error { position: absolute; right: 10px; top: 58px; padding: 5px 8px; border: 1px solid #e7acb5; border-radius: 5px; background: #fff6f7; color: #b51931; font-size: 12px; }
