@@ -38,6 +38,7 @@
     "release:preflight": "node scripts/release-preflight.mjs",
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "test:desktop:dev": "node --test scripts/desktop-dev.test.mjs",
+    "test:isolated-validation": "node --test scripts/isolated-validation.test.mjs",
     "package:desktop": "node scripts/package-desktop.mjs",
     "package:desktop:mac": "node scripts/package-desktop.mjs --target mac",
     "package:desktop:win": "node scripts/package-desktop.mjs --target win",
