@@ -23,22 +23,38 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       [connection, setConnection] = useState<any>(null),
       [error, setError] = useState(""),
       [revision, setRevision] = useState(0),
-      [opened, setOpened] = useState(false);
+      [opened, setOpened] = useState(false),
+      [agents, setAgents] = useState<Array<{ preset: string; label: string }>>([]),
+      [switchingAgent, setSwitchingAgent] = useState(false);
+    const preset = session
+      ? ctx.sessions?.list?.getSnapshot()?.byId?.[session]?.projectionValues?.agentPreset
+      : undefined;
     const binding = useRef<any>(null);
     const readyBinding = useRef<Promise<any>>(Promise.resolve(null));
     const rebindPage = useRef<((value: any) => void) | null>(null);
     const suspendPage = useRef<(() => void) | null>(null);
     const registrations = useRef(new Map<string, any>());
     const pageContext = useRef<any>(undefined);
+    const legacySession = plugin.agentResources ? undefined : session;
+    useEffect(() => {
+      if (!plugin.agentResources) return;
+      const controller = new AbortController();
+      void request(plugin.id + "/agents", undefined, controller.signal)
+        .then((value) => { if (!controller.signal.aborted) setAgents(value); })
+        .catch((failure) => { if (!controller.signal.aborted) setError(failure.message); });
+      return () => controller.abort();
+    }, [plugin.id]);
     useEffect(() => {
       let active = true;
       let hide = () => {};
-      // 业务数据页面和右侧对话必须是同一个会话：有当前会话就显式交给公共工作台，
-      // 否则工作台会给页面另建一个会话，页面租约和对话成了两个身份，模型读不到页面。
-      // 还没有当前会话时不挡着，仍按老样子让工作台先建一个（建好后 session 会更新并重新绑定）。
-      const opening = session
-        ? ctx.agentWorkbench.open(workbenchId, "default", session)
-        : ctx.agentWorkbench.open(workbenchId, "default");
+      const defaultPreset = plugin.presetHidden === true ? "auto-negotiation" : `gea-html-${plugin.id}`;
+      let opening: Promise<void>;
+      if (plugin.agentResources)
+        opening = ctx.agentWorkbench.open(workbenchId, defaultPreset, undefined, defaultPreset);
+      else if (legacySession)
+        opening = ctx.agentWorkbench.open(workbenchId, "default", legacySession);
+      else
+        opening = ctx.agentWorkbench.open(workbenchId, "default");
       void opening
         .then(() => {
           if (active) {
@@ -53,7 +69,19 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
         active = false;
         hide();
       };
-    }, [workbenchId, session]);
+    }, [workbenchId, legacySession]);
+    const switchAgent = async (nextPreset: string) => {
+      if (switchingAgent || !agents.some((agent) => agent.preset === nextPreset)) return;
+      setSwitchingAgent(true);
+      setError("");
+      try {
+        await ctx.agentWorkbench.open(workbenchId, nextPreset, undefined, nextPreset);
+      } catch (failure) {
+        setError(failure instanceof Error ? failure.message : "能力切换失败");
+      } finally {
+        setSwitchingAgent(false);
+      }
+    };
     useEffect(() => {
       if (!session || !opened) {
         readyBinding.current = Promise.resolve(null);
@@ -61,8 +89,9 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       }
       const controller = new AbortController();
       let lease: string | undefined;
+      pageContext.current = undefined;
       setError("");
-      const opening = request(plugin.id + "/open", { session }, controller.signal)
+      const opening = request(plugin.id + "/open", { session, agentPreset: preset }, controller.signal)
         .then((result) => {
           lease = result.lease;
           if (controller.signal.aborted) return null;
@@ -93,10 +122,21 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
             () => {},
           );
       };
-    }, [session, revision, opened]);
+    }, [session, preset, revision, opened]);
     useEffect(() => {
       if (!pageInteraction || !connection || !session || !frame.current) return;
-      return pageInteraction.bindFrame({ frame: frame.current, sessionId: session, page: plugin.name, surface: `gea-html-${plugin.id}`, tool: "gea_plugin_page_apply" });
+      return pageInteraction.bindFrame({
+        frame: frame.current, sessionId: session, page: plugin.name,
+        surface: `gea-html-${plugin.id}`, tool: "gea_plugin_page_apply",
+        validateReference: (reference) => {
+          if (!plugin.agentResources || plugin.id !== "inventory-fc") return;
+          const parts = pageContext.current?.parts;
+          if (parts?.queryState?.state !== "ready" ||
+              !parts?.pageReference?.scope ||
+              reference.scope !== parts.pageReference.scope)
+            throw Error("页面引用已失效，请在当前筛选结果中重新选择。");
+        },
+      });
     }, [connection, session]);
     useEffect(() => {
       if (!connection) return;
@@ -377,6 +417,14 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
             <button onClick={() => setRevision((x) => x + 1)}>重新连接</button>
           </p>
         )}
+        {agents.length > 1 && <label style={{ padding: "6px 12px" }}>
+          解读能力{" "}
+          <select aria-label="选择解读能力" value={typeof preset === "string" ? preset : `gea-html-${plugin.id}`}
+            disabled={switchingAgent || !opened}
+            onChange={(event) => void switchAgent(event.target.value)}>
+            {agents.map((agent) => <option key={agent.preset} value={agent.preset}>{agent.label}</option>)}
+          </select>
+        </label>}
         {connection ? (
           <iframe
             ref={frame}
@@ -422,6 +470,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
             cleanups.push(ctx.agentWorkbench.register({
               id: page.id,
               preset: plugin.presetHidden === true ? "auto-negotiation" : "gea-html-" + plugin.id,
+              allowedPresets: plugin.pageAgents,
             }));
           cleanups.push(
             ctx.slots.inject("main", () => {

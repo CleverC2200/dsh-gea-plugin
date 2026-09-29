@@ -44,6 +44,9 @@ export function createReferenceStore() {
     clear(sessionId: string) {
       sessions.delete(sessionId);
     },
+    clearAll() {
+      sessions.clear();
+    },
     dispose() {
       sessions.clear();
     },

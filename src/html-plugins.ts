@@ -164,6 +164,8 @@ export async function registerHtmlPlugins(
     items: any[] = [];
   /** 上一次给模型的页面上下文：内容没变就不重复发送。 */
   const lastPageContext = new Map<string, string>();
+  /** A page Session cannot be reopened under a different GEA principal in this host lifetime. */
+  const sessionPrincipals = new Map<string, string>();
   const capabilities: Record<string, string> = await (async () => {
     try {
       return JSON.parse(
@@ -261,6 +263,7 @@ export async function registerHtmlPlugins(
     // Split resources use the Agent Manage loader; legacy bundles retain their adapter.
     let loadedAgentResources: {
       skill: string; profile: PromptProfile;
+      pageAgents: string[];
       mount(ctx: unknown, home: string): Promise<void>;
     } | undefined;
     if (manifest.agentResources !== undefined) {
@@ -284,6 +287,7 @@ export async function registerHtmlPlugins(
       ...manifest,
       managedSkill,
       loadedAgentResources,
+      pageAgents: loadedAgentResources?.pageAgents ?? [`gea-html-${manifest.id}`],
       capabilityContract: await readPluginContract(directory, manifest.declarations, contractFromPlugin({
         id: manifest.id, label: manifest.name, consumerCode: manifest.gea.consumerCode,
         pageIds: pages.map((page: { id: string }) => page.id), skill, mock, maxEffect: "view",
@@ -403,6 +407,20 @@ export async function registerHtmlPlugins(
   });
   const json = (value: any, status = 200) =>
     Response.json(value, { status, headers: { "cache-control": "no-store" } });
+  /** The page declaration narrows choices; the installed preset and GEA Gateway authorize each choice. */
+  const pageAgent = async (item: any, preset: unknown, signal: AbortSignal, conversationId?: string) => {
+    if (typeof preset !== "string" || !item.pageAgents.includes(preset))
+      throw Error("PAGE_AGENT_PRESET_NOT_ALLOWED");
+    const target = items.find((candidate) => `gea-html-${candidate.id}` === preset && !candidate.presetHidden && !candidate.mock);
+    const profile = profileFor(preset);
+    if (!target || !profile || profile.consumerCode !== target.gea.consumerCode)
+      throw Error("PAGE_AGENT_MISSING");
+    if (typeof presetRegistry?.resolve !== "function" || (await presetRegistry.resolve(preset)).id !== preset)
+      throw Error("PAGE_AGENT_MISSING");
+    const credentials = await business.htmlLaunch(profile.consumerCode, signal, conversationId);
+    signal.throwIfAborted();
+    return { preset, label: profile.label, consumerCode: profile.consumerCode, credentials };
+  };
   const register = (
     path: string,
     methods: string[],
@@ -449,6 +467,17 @@ export async function registerHtmlPlugins(
   );
   for (const item of items) {
     const prefix = "/api/gea-html/" + item.id;
+    register(prefix + "/agents", ["GET"], async (request) => {
+      const agents = [];
+      for (const preset of item.pageAgents) {
+        try {
+          const { credentials: _credentials, ...entry } = await pageAgent(item, preset, AbortSignal.any([request.signal, business.identitySignal()]));
+          agents.push(entry);
+        }
+        catch (error) { if (request.signal.aborted) throw error; }
+      }
+      return json(agents);
+    });
     register(prefix + "/html", ["GET"], async () => {
       const path = await realpath(item.htmlPath);
       if (!path.startsWith(item.htmlDirectory + sep))
@@ -482,12 +511,25 @@ ${toolbarSelectors} {
       });
     });
     register(prefix + "/open", ["POST"], async (request) => {
-      const { session } = await request.json();
+      const { session, agentPreset } = await request.json();
       if (
         typeof session !== "string" ||
         !/^session-[a-z0-9-]{20,80}$/.test(session)
       )
         throw Error("INVALID_CONVERSATION");
+      const principalId = business.status().user?.id;
+      if (!item.mock && !principalId) throw Error("GEA_IDENTITY_INCOMPLETE");
+      if (!item.mock && sessionPrincipals.has(session) && sessionPrincipals.get(session) !== principalId)
+        throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
+      let authorizedAgent: Awaited<ReturnType<typeof pageAgent>> | undefined;
+      if (!item.mock && item.loadedAgentResources) {
+        const preset = agentPreset ?? `gea-html-${item.id}`;
+        const agent = ctx.agents?.get(session);
+        if (!agent) throw Error("PAGE_AGENT_MISSING");
+        if (ctx.sessionProjections.stateOf(agent.session, "agentPreset") !== preset)
+          throw Error("PAGE_AGENT_SESSION_MISMATCH");
+        authorizedAgent = await pageAgent(item, preset, AbortSignal.any([request.signal, business.identitySignal()]), session.slice(8));
+      }
       let credentials: any;
       let access: any;
       if (item.mock) {
@@ -501,11 +543,9 @@ ${toolbarSelectors} {
         access = { principalId: user.id, trusted: true, mode: "local-database", workspaceQuery: !!local.workspace };
       } else {
         const identity = business.identitySignal();
-        credentials = await business.htmlLaunch(
-          item.gea.consumerCode,
-          AbortSignal.any([identity, request.signal]),
-          session.slice(8),
-        );
+        credentials = authorizedAgent && authorizedAgent.consumerCode === item.gea.consumerCode
+          ? authorizedAgent.credentials
+          : await business.htmlLaunch(item.gea.consumerCode, AbortSignal.any([identity, request.signal]), session.slice(8));
         identity.throwIfAborted();
         const user = business.status().user;
         if (!user?.id) throw Error("GEA_IDENTITY_INCOMPLETE");
@@ -524,8 +564,10 @@ ${toolbarSelectors} {
         pageTool: PAGE_TOOL,
         mock: item.mock === true,
       });
+      const lease = sessions.open(item.id, session, credentials, access);
+      if (!item.mock && principalId) sessionPrincipals.set(session, principalId);
       return json({
-        lease: sessions.open(item.id, session, credentials, access),
+        lease,
         plugin: item.id,
       });
     }, !item.mock);

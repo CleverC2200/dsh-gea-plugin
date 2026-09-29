@@ -2,7 +2,7 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import { createReferenceStore } from "./reference-store.ts";
 import { hasPageReferences } from "./reference.ts";
 
-export function apply(ctx: any): void {
+export function apply(ctx: any): () => void {
   const references = createReferenceStore();
   ctx.effect(() => () => references.dispose());
   ctx.on("agent/disposed", ({ agent }: any) => references.clear(agent.id));
@@ -62,4 +62,5 @@ export function apply(ctx: any): void {
           : "",
     }),
   );
+  return () => references.clearAll();
 }

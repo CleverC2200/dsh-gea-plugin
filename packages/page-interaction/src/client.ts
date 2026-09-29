@@ -14,6 +14,7 @@ export type FrameBinding = {
   page: string;
   surface: string;
   tool?: string;
+  validateReference?: (reference: BoundReference) => void;
 };
 export type PageInteraction = {
   bindFrame(options: FrameBinding): () => void;
@@ -175,7 +176,7 @@ export function installPageInteraction(ctx: any): PageInteraction {
         for (const binding of bindings) binding.configure();
       };
     },
-    bindFrame({ frame, sessionId, page, surface, tool }) {
+    bindFrame({ frame, sessionId, page, surface, tool, validateReference }) {
       const channel = crypto.randomUUID();
       let active = true;
       const requests = new Map<string, AbortController>();
@@ -248,6 +249,7 @@ export function installPageInteraction(ctx: any): PageInteraction {
             surface,
             tool,
           };
+          validateReference?.(value);
           const response = await fetch("/api/page-interaction/reference", {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -260,6 +262,7 @@ export function installPageInteraction(ctx: any): PageInteraction {
             throw Error(receipt.error || "引用未保存，请重试。");
           if (!ready || selectedSession() !== sessionId)
             throw Error("已切换对话，请在当前页面重新引用。");
+          validateReference?.(value);
           const binding = ready.sessions.binding(sessionId);
           if (!binding) throw Error("对话尚未就绪，请稍后重试。");
           const input = ready.conversation.input.for(binding.ctx);

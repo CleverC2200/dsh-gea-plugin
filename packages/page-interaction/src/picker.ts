@@ -87,14 +87,17 @@ function rowText(row: Element) {
 }
 
 export function describeElement(element: Element, page: string): PageReference {
+  const pageState = element.closest("[data-page-reference-ready]");
+  if (pageState && pageState.getAttribute("data-page-reference-ready") !== "true")
+    throw Error("页面数据正在更新，请完成查询后重新选择。");
   const kind: SelectionKind = element.matches("tr,[role=row]")
     ? "row"
     : element.matches("table,[role=table],[role=grid]")
       ? "table"
       : "block";
+  const rowCell = element.querySelector("td:not(:has(input[type=checkbox]))");
   const rowLabel = clean(
-    element.getAttribute("data-page-label") ||
-      element.querySelector("td:not(:has(input[type=checkbox]))")?.textContent,
+    element.getAttribute("data-page-label") || (rowCell ? visibleText(rowCell) : ""),
   );
   const targets = new Set<string>();
   const ownTarget = element.getAttribute("data-page-target");
@@ -131,9 +134,9 @@ export function describeElement(element: Element, page: string): PageReference {
             .map((row, index) => `第 ${index + 1} 行\n${rowText(row)}`)
             .join("\n\n") || visibleText(element)
         : cellText(element);
+  const headingElement = element.querySelector("caption,h1,h2,h3,h4,[role=heading]");
   const heading = clean(
-    element.getAttribute("aria-label") ||
-      element.querySelector("caption,h1,h2,h3,h4,[role=heading]")?.textContent,
+    element.getAttribute("aria-label") || (headingElement ? visibleText(headingElement) : ""),
   );
   const label =
     kind === "row"
@@ -149,6 +152,9 @@ export function describeElement(element: Element, page: string): PageReference {
     row: kind === "row" ? rowLabel : "",
     targets: [...targets],
     capturedAt: new Date().toISOString(),
+    ...(pageState?.getAttribute("data-page-reference-scope")
+      ? { scope: pageState.getAttribute("data-page-reference-scope")! }
+      : {}),
     truncated: body.length > 6000,
   };
 }
@@ -304,7 +310,12 @@ export function mountPicker(options: PickerOptions = {}): () => void {
     if (event.button !== 0 || pending) return;
     const target = hit(event);
     if (!target) return;
-    const original = describeElement(target, page);
+    let original: PageReference;
+    try { original = describeElement(target, page); }
+    catch (error) {
+      send({ type: "selection-error", error: error instanceof Error ? error.message : "页面引用暂不可用" });
+      return;
+    }
     const reference = options.describe?.(target, original) ?? original;
     if (!reference.text) return;
     lastSelection = { target: event.target, at: performance.now() };
