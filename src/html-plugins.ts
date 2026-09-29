@@ -14,6 +14,8 @@ import {
   type CapabilityContract,
 } from "./capability/contract.ts";
 import { injectPageScan, pageCatalogFromScan } from "./html-page-scan.ts";
+import { readPluginContract } from "./capability/declarations.ts";
+import { createCapabilityRegistry } from "./capability/registry.ts";
 import { PAGE_TOOL } from "./host/page-identity.ts";
 import { LAYER_POLICY } from "./capability/layers.ts";
 import { compressForModel } from "./shared/payload-budget.ts";
@@ -214,7 +216,7 @@ export async function registerHtmlPlugins(
       (typeof manifest.gea.consumerCode !== "string" || !/^[a-z0-9][a-z0-9-]{0,127}$/.test(manifest.gea.consumerCode)) ||
       manifest.html !== "index.html"
     )
-      throw Error("INVALID_HTML_PLUGIN");
+      throw Error(`INVALID_HTML_PLUGIN [source: ${directory}/plugin.json]`);
     if (
       !Array.isArray(pages) ||
       pages.length < 1 ||
@@ -229,7 +231,7 @@ export async function registerHtmlPlugins(
       ) ||
       new Set(pages.map((page: any) => page.id)).size !== pages.length
     )
-      throw Error("INVALID_HTML_PLUGIN_PAGES");
+      throw Error(`INVALID_HTML_PLUGIN_PAGES [source: ${directory}/plugin.json]`);
     const mcpPath = await realpath(resolve(directory, manifest.mcp ?? ""));
     if (!mcpPath.startsWith(directory + sep)) throw Error("INVALID_MCP_PATH");
     const mcp = JSON.parse(await readFile(mcpPath, "utf8"));
@@ -241,9 +243,9 @@ export async function registerHtmlPlugins(
       mcp.consumer?.consumerType !== "AGENT" ||
       JSON.stringify(mcp.capabilities) !== JSON.stringify(["governed-sql-read"])
     )
-      throw Error("INVALID_GEA_CAPABILITY");
+      throw Error(`INVALID_GEA_CAPABILITY [source: ${mcpPath}]`);
     if (items.some((item) => item.id === manifest.id))
-      throw Error("DUPLICATE_HTML_PLUGIN");
+      throw Error(`DUPLICATE_HTML_PLUGIN [source: ${items.find(item => item.id === manifest.id)?.htmlDirectory}/plugin.json; ${directory}/plugin.json]`);
     const path = await realpath(resolve(directory, manifest.html));
     if (!path.startsWith(directory + sep)) throw Error("INVALID_HTML_PATH");
     const html = await readFile(path, "utf8");
@@ -259,6 +261,36 @@ export async function registerHtmlPlugins(
     const skill = await readFile(managedSkill
       ? new URL(`../presets/${manifest.id}.skill.md`, import.meta.url)
       : skillPath, 'utf8');
+    const frontmatter = (key: string) =>
+      new RegExp(`^${key}:\\s*(.+)$`, "m").exec(skill)?.[1]?.trim();
+    const retired = isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden);
+    const presetHidden = mock || retired;
+    items.push({
+      ...manifest,
+      managedSkill,
+      capabilityContract: await readPluginContract(directory, manifest.declarations, contractFromPlugin({
+        id: manifest.id, label: manifest.name, consumerCode: manifest.gea.consumerCode,
+        pageIds: pages.map((page: { id: string }) => page.id), skill, mock, maxEffect: "view",
+        sources: await readContractSources(directory),
+      })),
+      pages,
+      mock,
+      retired,
+      presetHidden,
+      skillName: frontmatter("name") ?? manifest.id,
+      skillDescription: frontmatter("description") ?? manifest.name,
+      skillText: skill,
+      htmlSource: html,
+      htmlPath: path,
+      htmlDirectory: directory,
+    });
+  }
+  const capabilityContracts: CapabilityContract[] = items.map(item => item.capabilityContract);
+  // Validate the complete selected set before publishing skills, presets, routes or tools.
+  createCapabilityRegistry(capabilityContracts);
+  for (const item of items) {
+    const manifest = item;
+    const { skillText: skill, managedSkill, presetHidden } = item;
     await publishAgentSkill(manifest.id, skill, managedSkill);
     if (managedSkill && manifest.id === 'inventory-apsplan') {
       const references = Object.fromEntries(await Promise.all(['metric-definitions.md', 'data-mapping.md'].map(async name =>
@@ -266,24 +298,19 @@ export async function registerHtmlPlugins(
       for (const name of ['sales-forecast-result-analysis', 'sales-ops-problem-analysis'])
         await publishAgentSkill(name, await readFile(new URL(`../business-skills/aps/${name}.skill.md`, import.meta.url), 'utf8'), true, references);
     }
-    const frontmatter = (key: string) =>
-      new RegExp(`^${key}:\\s*(.+)$`, "m").exec(skill)?.[1]?.trim();
     const preset = resolve(
       business.config.runtimeDir,
       "native-presets",
       "gea-html-" + manifest.id,
     );
     // 页面是否下架与 Agent 是否可选分开：保留的演示页不生成独立预设。
-    const retired = isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden);
-    const presetHidden = mock || retired;
     if (presetHidden) {
       await rm(preset, { recursive: true, force: true });
     } else {
       const name = presetLabels.labels[manifest.id]?.name ?? manifest.name;
       const description =
         capabilities[manifest.id] ??
-        frontmatter("description") ??
-        manifest.name;
+        item.skillDescription;
       const orderIndex = presetLabels.order.indexOf(manifest.id);
       const writePreset = async (directory: string) => {
         await mkdir(directory, { recursive: true });
@@ -311,19 +338,6 @@ export async function registerHtmlPlugins(
       };
       await writePreset(preset);
     }
-    items.push({
-      ...manifest,
-      pages,
-      mock,
-      retired,
-      presetHidden,
-      skillName: frontmatter("name") ?? manifest.id,
-      skillDescription: frontmatter("description") ?? manifest.name,
-      skillText: skill,
-      htmlSource: html,
-      htmlPath: path,
-      htmlDirectory: directory,
-    });
   }
   // Retire old APS routes, tools and panels together, regardless of root order.
   items.splice(0, items.length, ...selectHtmlPlugins(items));
@@ -360,25 +374,6 @@ export async function registerHtmlPlugins(
     sessions.clear();
     lastPageContext.clear();
   });
-  // 每个模块一份能力契约：页面范围、只读数据范围与口径、允许的最大改动等级。
-  // 模块自己声明，宿主不再按模块写分支（工单 #7）。
-  const capabilityContracts: CapabilityContract[] = await Promise.all(
-    items.map(async (item) =>
-      contractFromPlugin({
-        id: item.id,
-        label: item.name,
-        consumerCode: item.gea.consumerCode,
-        pageIds: (item.pages as Array<{ id: string }>).map((page) => page.id),
-        skill: item.skillText,
-        // 演示模块要在契约里标出来：它没有真实数据通道，别再去试模块 MCP。
-        mock: item.mock === true,
-        // All accepted HTML modules declare gea.readonly=true; keep that
-        // manifest fact in the capability contract instead of defaulting to draft.
-        maxEffect: "view",
-        sources: await readContractSources(item.htmlDirectory),
-      }),
-    ),
-  );
   ctx.effect(() => () => {
     unwatch();
     sessions.clear();
@@ -427,7 +422,7 @@ export async function registerHtmlPlugins(
     () =>
       json(
         items.map(
-          ({ htmlSource, htmlPath, htmlDirectory, ...manifest }) => manifest,
+          ({ htmlSource, htmlPath, htmlDirectory, capabilityContract, managedSkill, ...manifest }) => manifest,
         ),
       ),
     false,

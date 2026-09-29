@@ -64,6 +64,8 @@ export type CapabilityRouting = {
 };
 
 export type CapabilityContract = {
+  /** Installed declaration files for load diagnostics; never used as authority. */
+  source?: string;
   id: string;
   label: string;
   view?: CapabilityView;
