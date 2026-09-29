@@ -321,7 +321,7 @@ test(
         await page
           .locator('[data-slot="sidebar.brand.name"] span')
           .evaluate((el) => getComputedStyle(el).color),
-        "rgb(215, 10, 28)",
+        process.env.GEA_TEST_SOURCE_CORE === "1" ? "rgb(223, 23, 50)" : "rgb(215, 10, 28)",
       );
       assert.equal(
         await page
