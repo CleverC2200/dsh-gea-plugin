@@ -7,6 +7,7 @@ import {
   readFile,
   rm,
   symlink,
+  realpath,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,7 +19,9 @@ import {
 } from "../scripts/source-profile.mjs";
 
 test("selection rejects changed resources and a running Host, preserving the last selected combination", async (t) => {
-  const runtime = await mkdtemp(join(tmpdir(), "source-combination-"));
+  const runtime = await realpath(
+    await mkdtemp(join(tmpdir(), "source-combination-")),
+  );
   t.after(() => rm(runtime, { recursive: true, force: true }));
   const id = randomUUID(),
     dir = join(runtime, "source-combinations", id);
@@ -60,7 +63,9 @@ test("selection rejects changed resources and a running Host, preserving the las
 });
 
 test("same source revision with changed dependency bytes refuses recovery", async (t) => {
-  const runtime = await mkdtemp(join(tmpdir(), "source-dependency-"));
+  const runtime = await realpath(
+    await mkdtemp(join(tmpdir(), "source-dependency-")),
+  );
   t.after(() => rm(runtime, { recursive: true, force: true }));
   const id = randomUUID(),
     directory = join(runtime, "source-combinations", id),
@@ -93,7 +98,9 @@ test("same source revision with changed dependency bytes refuses recovery", asyn
 });
 
 test("one-time layout upgrade preserves the old code directory and leaves user state in place", async (t) => {
-  const runtime = await mkdtemp(join(tmpdir(), "source-layout-"));
+  const runtime = await realpath(
+    await mkdtemp(join(tmpdir(), "source-layout-")),
+  );
   t.after(() => rm(runtime, { recursive: true, force: true }));
   const modules = join(
     runtime,
@@ -117,7 +124,9 @@ test("one-time layout upgrade preserves the old code directory and leaves user s
 });
 
 test("recovery rejects a transitive dependency retarget or added file while old bytes remain", async (t) => {
-  const runtime = await mkdtemp(join(tmpdir(), "source-topology-"));
+  const runtime = await realpath(
+    await mkdtemp(join(tmpdir(), "source-topology-")),
+  );
   t.after(() => rm(runtime, { recursive: true, force: true }));
   const id = randomUUID(),
     directory = join(runtime, "source-combinations", id),
