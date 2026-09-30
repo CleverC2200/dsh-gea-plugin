@@ -278,16 +278,6 @@ test(
       }
       assert.equal(
         (
-          await request("open", {
-            session: durableSession,
-            agentPreset: "gea-html-inventory-fc",
-            scope,
-          })
-        ).status,
-        200,
-      );
-      assert.equal(
-        (
           await app.remote("session/selectModel", {
             sessionId: durableSession,
             provider: "gea-analysis",
@@ -295,6 +285,16 @@ test(
           })
         ).ok,
         true,
+      );
+      assert.equal(
+        (
+          await request("open", {
+            session: durableSession,
+            agentPreset: "gea-html-inventory-fc",
+            scope,
+          })
+        ).status,
+        200,
       );
       const turns = (await readSession(app.runtime, durableSession)).filter(
         (value) => value.type === "turn/end",

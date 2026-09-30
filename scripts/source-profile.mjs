@@ -233,7 +233,8 @@ export async function prepareSourcePlugins(
   const files = await resourceDigests(snapshot);
   externalDirectories.add(join(core, "apps/web/dist"));
   const externalFiles = await dependencyDigests(externalDirectories);
-  const locks = {};
+  const locks = {},
+    externalLockFiles = [];
   for (const [name, directory] of [
     ["core", core],
     ...[...plugins].map(([name, data]) => [name, data.source]),
@@ -247,6 +248,7 @@ export async function prepareSourcePlugins(
       try {
         locks[name][file] = await fileDigest(join(directory, file));
         externalFiles[join(directory, file)] = locks[name][file];
+        externalLockFiles.push(join(directory, file));
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
@@ -259,6 +261,8 @@ export async function prepareSourcePlugins(
         composition,
         files,
         externalFiles,
+        externalRoots: [...externalDirectories],
+        externalLockFiles,
         locks,
         core: execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
           cwd: core,
@@ -318,10 +322,14 @@ export async function readSourceCombination(runtime, id, core) {
     JSON.stringify(Object.entries(record.files).sort())
   )
     throw Error("SOURCE_COMBINATION_DIGEST_MISMATCH");
-  for (const [file, expected] of Object.entries(record.externalFiles)) {
-    if ((await fileDigest(file)) !== expected)
-      throw Error("SOURCE_DEPENDENCY_DIGEST_MISMATCH: " + file);
-  }
+  const external = await dependencyDigests(record.externalRoots);
+  for (const file of record.externalLockFiles)
+    external[file] = await fileDigest(file);
+  if (
+    JSON.stringify(Object.entries(external).sort()) !==
+    JSON.stringify(Object.entries(record.externalFiles).sort())
+  )
+    throw Error("SOURCE_DEPENDENCY_DIGEST_MISMATCH");
   return record.composition;
 }
 
@@ -353,6 +361,7 @@ async function dependencyDigests(directories) {
       if (entry.isFile()) files[file] = await fileDigest(file);
       else if (entry.isDirectory() || entry.isSymbolicLink()) {
         const resolved = await realpath(file);
+        if (entry.isSymbolicLink()) files[file] = "link:" + resolved;
         if ((await lstat(resolved)).isDirectory()) await visit(resolved);
         else files[resolved] = await fileDigest(resolved);
       }

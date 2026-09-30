@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  rm,
+  symlink,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -22,6 +29,8 @@ test("selection rejects changed resources and a running Host, preserving the las
     JSON.stringify({
       composition: { id },
       externalFiles: {},
+      externalRoots: [],
+      externalLockFiles: [],
       files: {
         "page.html": createHash("sha256").update("current page").digest("hex"),
       },
@@ -55,14 +64,17 @@ test("same source revision with changed dependency bytes refuses recovery", asyn
   t.after(() => rm(runtime, { recursive: true, force: true }));
   const id = randomUUID(),
     directory = join(runtime, "source-combinations", id),
-    dependency = join(runtime, "core.js");
+    dependency = join(runtime, "dependency/core.js");
   await mkdir(directory, { recursive: true });
+  await mkdir(join(runtime, "dependency"), { recursive: true });
   await writeFile(dependency, "built core A");
   await writeFile(
     join(directory, "combination.json"),
     JSON.stringify({
       composition: { id },
       files: {},
+      externalRoots: [join(runtime, "dependency")],
+      externalLockFiles: [],
       externalFiles: {
         [dependency]: createHash("sha256").update("built core A").digest("hex"),
       },
@@ -101,5 +113,54 @@ test("one-time layout upgrade preserves the old code directory and leaves user s
   assert.equal(
     await readFile(join(runtime, "session.json"), "utf8"),
     "persistent data",
+  );
+});
+
+test("recovery rejects a transitive dependency retarget or added file while old bytes remain", async (t) => {
+  const runtime = await mkdtemp(join(tmpdir(), "source-topology-"));
+  t.after(() => rm(runtime, { recursive: true, force: true }));
+  const id = randomUUID(),
+    directory = join(runtime, "source-combinations", id),
+    root = join(runtime, "external"),
+    a = join(runtime, "A"),
+    b = join(runtime, "B");
+  for (const path of [directory, join(root, "node_modules"), a, b])
+    await mkdir(path, { recursive: true });
+  await writeFile(join(a, "entry.js"), "version A");
+  await writeFile(join(b, "entry.js"), "version B");
+  const link = join(root, "node_modules/dep");
+  await symlink(a, link);
+  await writeFile(
+    join(directory, "combination.json"),
+    JSON.stringify({
+      composition: { id },
+      files: {},
+      externalRoots: [root],
+      externalLockFiles: [],
+      externalFiles: {
+        [link]: "link:" + a,
+        [join(a, "entry.js")]: createHash("sha256")
+          .update("version A")
+          .digest("hex"),
+      },
+    }),
+  );
+  await selectSourceCombination(runtime, id);
+  await rm(link);
+  await symlink(b, link);
+  await assert.rejects(
+    selectSourceCombination(runtime, id),
+    /DEPENDENCY_DIGEST_MISMATCH/,
+  );
+  await rm(link);
+  await symlink(a, link);
+  await writeFile(join(root, "entry.js"), "new resolver input");
+  await assert.rejects(
+    selectSourceCombination(runtime, id),
+    /DEPENDENCY_DIGEST_MISMATCH/,
+  );
+  assert.deepEqual(
+    JSON.parse(await readFile(join(runtime, "source-selection.json"), "utf8")),
+    { id },
   );
 });
