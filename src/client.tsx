@@ -112,6 +112,11 @@ function nativeExpandSidebar(): void {
 export function apply(ctx: Context): void {
   const pageInteraction = installPageInteraction(ctx);
   const readBusinessIdentityScope = createBusinessIdentityReader();
+  ctx.provide("geaIdentity", {
+    getSnapshot: readBusinessIdentityScope.getSnapshot,
+    subscribe: readBusinessIdentityScope.subscribe,
+  });
+  ctx.effect(() => readBusinessIdentityScope.start());
   registerHtmlClient(ctx, pageInteraction, readBusinessIdentityScope);
   ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
   const t = ctx.locale.bind("geaProof");
@@ -192,48 +197,40 @@ export function apply(ctx: Context): void {
   const openMountedWorkbench = async (panel: MainPanelId, mounted: () => boolean) => {
     const current = () => mounted() && ctx.layout.panelInfo.getSnapshot().activePanelId === panel;
     if (!current()) return false;
-    let opened = await ctx.agentWorkbench.open(panel);
-    if (opened === false && current()) opened = await ctx.agentWorkbench.open(panel);
+    const opened = await ctx.agentWorkbench.open(panel);
     return current() && opened !== false;
   };
-  const useBusinessIdentityRevision = (onChanged?: (scope: string | null) => void) => {
+  const useBusinessIdentityRevision = () => {
     const [revision, setRevision] = useState(0);
     useEffect(() => {
-      const changed = (event: Event) => {
-        const scope = (event as CustomEvent).detail?.scope;
-        if (scope === null || typeof scope === "string") onChanged?.(scope);
+      const changed = () => {
         setRevision(value => value + 1);
       };
       window.addEventListener("gea-business-identity-changed", changed);
       return () => window.removeEventListener("gea-business-identity-changed", changed);
-    }, [onChanged]);
+    }, []);
     return revision;
   };
   type MainSessionProps = Pick<InjectFace<typeof injected>, "useMainSessionId">;
-  let workbenchAuthenticated = false;
   let hideWorkbenchConversation: (() => void) | undefined;
   function Workbench({
     useMainSessionId,
     useGeaLocale,
   }: PropsRuntime<"main"> & InjectFace<typeof injected>) {
-    const [authenticated, setAuthenticated] = useState(false);
-    const [loginOverlay, setLoginOverlay] = useState(false);
-    const identityRevision = useBusinessIdentityRevision(React.useCallback((scope: string | null) => {
-      setAuthenticated(scope !== null);
-      setLoginOverlay(scope === null);
-    }, []));
+    const identity = React.useSyncExternalStore(readBusinessIdentityScope.subscribe, readBusinessIdentityScope.getSnapshot);
+    const authenticated = identity.state === "confirmed" && identity.status?.authenticated === true;
+    const loginOverlay = identity.state === "confirmed" && !authenticated;
+    const identityRevision = useBusinessIdentityRevision();
     const incoming = React.useSyncExternalStore(navigationSelection.subscribe,navigationSelection.getSnapshot);
     useEffect(() => {if (authenticated && incoming?.panel === PANEL) incoming.visible();},[authenticated,incoming]);
     // Host身份或子文档明确未登录后才铺遮罩，初次未知时保持页面稳定。
     const [sessionError, setSessionError] = useState("");
     useEffect(() => {
       if (!authenticated) {
-        workbenchAuthenticated = false;
         hideWorkbenchConversation?.();
         hideWorkbenchConversation = undefined;
         return;
       }
-      workbenchAuthenticated = true;
       const hide = ctx.agentWorkbench.showConversation(PANEL);
       hideWorkbenchConversation = hide;
       let mounted = true;
@@ -250,7 +247,7 @@ export function apply(ctx: Context): void {
     useEffect(() => {
       if (!frame.current || !currentSession || !authenticated) return;
       return pageInteraction.bindFrame({ frame: frame.current, sessionId: currentSession, page: t("salesPlan"), surface: "gea-workbench", tool: "gea_workbench_apply" });
-    }, [currentSession, authenticated]);
+    }, [currentSession, authenticated, identity.scope]);
     useEffect(() => {
       frame.current?.contentWindow?.postMessage(
         { type: "gea:session", sessionId: currentSession ?? null },
@@ -267,17 +264,8 @@ export function apply(ctx: Context): void {
         const message: unknown = event.data;
         if (!message || typeof message !== "object" || !("type" in message))
           return;
-        if (message.type === "gea:identity" && "authenticated" in message) {
-          setAuthenticated(message.authenticated === true);
-          setLoginOverlay(message.authenticated !== true);
-          workbenchAuthenticated = message.authenticated === true;
-          if (message.authenticated !== true) {
-            ctx.agentWorkbench.forget(PANEL);
-            const navigation = ctx.get("uiWorkspace");
-            if (!navigation) throw new Error("GEA session navigation unavailable");
-            navigation.selectSession(undefined);
-          }
-        }
+        if (message.type === "gea:identity")
+          void readBusinessIdentityScope.refresh().catch(() => {});
         if (
           message.type === "gea:open-session" &&
           "sessionId" in message &&
@@ -291,22 +279,24 @@ export function apply(ctx: Context): void {
       window.addEventListener("message", onMessage);
       return () => window.removeEventListener("message", onMessage);
     }, []);
+    useEffect(() => {
+      frame.current?.contentWindow?.postMessage({ type: "gea:identity-snapshot", snapshot: identity }, window.location.origin);
+    }, [identity]);
     return (
       <>
         <style>{shellCss}</style>
         {sessionError && <div role="alert">{sessionError}</div>}
+        {identity.state === "error" && <div role="alert">{identity.error ?? "登录状态读取失败，请重试。"}</div>}
         <div className="gea-workbench-shell">
           <iframe
             ref={frame}
             className={`gea-workbench-frame${loginOverlay ? " gea-login-frame" : ""}`}
             data-gea-workbench
             title={t("approvalTitle")}
-            onLoad={() =>
-              frame.current?.contentWindow?.postMessage(
-                { type: "gea:session", sessionId: currentSession ?? null },
-                window.location.origin,
-              )
-            }
+            onLoad={() => {
+              frame.current?.contentWindow?.postMessage({ type: "gea:session", sessionId: currentSession ?? null }, window.location.origin);
+              frame.current?.contentWindow?.postMessage({ type: "gea:identity-snapshot", snapshot: identity }, window.location.origin);
+            }}
             src={`/api/gea-proof/workbench?locale=${encodeURIComponent(language)}`}
           />
         </div>
@@ -405,32 +395,9 @@ export function apply(ctx: Context): void {
     );
   }
   function useIdentity() {
-    const [identity, setIdentity] = useState({ name: "", avatarUrl: "" });
-    const updateIdentity = (authenticated: boolean, user: { name?: unknown; avatar?: unknown } | null | undefined) => {
-      setIdentity({
-        name: authenticated && typeof user?.name === "string" ? user.name : "",
-        avatarUrl: authenticated && typeof user?.avatar === "string" ? user.avatar : "",
-      });
-    };
-    useEffect(() => {
-      const controller = new AbortController();
-      let revision = 0;
-      const onIdentity = (event: MessageEvent) => {
-        const frame = document.querySelector<HTMLIFrameElement>('iframe[data-gea-workbench]');
-        if (event.origin !== window.location.origin || !frame || event.source !== frame.contentWindow || event.data?.type !== "gea:identity") return;
-        revision++;
-        updateIdentity(event.data.authenticated === true, event.data);
-      };
-      window.addEventListener("message", onIdentity);
-      void fetch("/api/gea-proof/status", {
-        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-        body: "{}", signal: controller.signal,
-      }).then(response => response.json()).then(result => {
-        if (result.ok && revision === 0 && !controller.signal.aborted) updateIdentity(result.value.authenticated === true, result.value.user);
-      }).catch(() => { /* 身份不可用时保持账户控件为未登录状态。 */ });
-      return () => { controller.abort(); window.removeEventListener("message", onIdentity); };
-    }, []);
-    return identity;
+    const identity = React.useSyncExternalStore(readBusinessIdentityScope.subscribe, readBusinessIdentityScope.getSnapshot);
+    const user = identity.state === "confirmed" && identity.status?.authenticated ? identity.status.user : null;
+    return { name: user?.name ?? "", avatarUrl: user?.avatar ?? "" };
   }
   let authChannel: BroadcastChannel | undefined;
   ctx.effect(() => {
@@ -679,7 +646,10 @@ export function apply(ctx: Context): void {
     );
     const nativePages = [PANEL, REGIONAL_PLAN_PANEL, CATEGORY_PLAN_PANEL, MPS_PLAN_PANEL, INBOX];
     const controller = new AbortController();
-    const scope = async () => (await readBusinessIdentityScope(controller.signal)) ?? "gea:anonymous";
+    const scope = async () => {
+      const identity = readBusinessIdentityScope.getSnapshot();
+      return (identity.state === "confirmed" ? identity.scope : await readBusinessIdentityScope(controller.signal)) ?? "gea:anonymous";
+    };
     for (const id of nativePages) yield ctx.agentWorkbench.register({ id, preset: "gea-readonly", scope });
     const changed = () => {
       for (const id of nativePages) ctx.agentWorkbench.forget(id);
@@ -755,7 +725,7 @@ export function apply(ctx: Context): void {
         hideWorkbenchConversation = undefined;
         return;
       }
-      if (activePanel === PANEL && workbenchAuthenticated && !hideWorkbenchConversation)
+      if (activePanel === PANEL && readBusinessIdentityScope.getSnapshot().status?.authenticated && !hideWorkbenchConversation)
         hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
     }, [activePanel]);
     const [region, setRegion] = useState<HTMLElement | null>(null);

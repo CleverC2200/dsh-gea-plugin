@@ -4,6 +4,10 @@ import { createBusinessIdentityReader } from "./business-identity-client.ts";
 import { startPageBridgeClient } from "./page-bridge/client.ts";
 import type { PageInteraction } from "../packages/page-interaction/src/client.ts";
 export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, readBusinessIdentityScope = createBusinessIdentityReader()) {
+  const currentScope = (signal?: AbortSignal) => {
+    const snapshot = readBusinessIdentityScope.getSnapshot();
+    return snapshot.state === "confirmed" ? Promise.resolve(snapshot.scope) : readBusinessIdentityScope(signal);
+  };
   async function request(path: string, body?: any, signal?: AbortSignal) {
     const response = await fetch("/api/gea-html/" + path, {
       method: body === undefined ? "GET" : "POST",
@@ -37,12 +41,10 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
     const registrations = useRef(new Map<string, any>());
     const pageContext = useRef<any>(undefined);
     const identityRevision = useRef(0);
-    const identityActive = useRef(true);
     const legacySession = plugin.agentResources ? undefined : session;
     useEffect(() => {
       const changed = () => {
         identityRevision.current++;
-        identityActive.current = false;
         binding.current = null;
         readyBinding.current = Promise.resolve(null);
         setOpened(false);
@@ -56,7 +58,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
       return () => window.removeEventListener("gea-business-identity-changed", changed);
     }, []);
     useEffect(() => {
-      if (!plugin.agentResources || !identityActive.current) return;
+      if (!plugin.agentResources) return;
       const controller = new AbortController();
       const revisionAtStart = identityRevision.current;
       void request(plugin.id + "/agents", undefined, controller.signal)
@@ -77,17 +79,13 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
         return ctx.agentWorkbench.open(workbenchId, "default");
       };
       void (async () => {
-        let committed = await open();
-        if (committed === false && active && revisionAtStart === identityRevision.current &&
-            ctx.layout?.panelInfo?.getSnapshot()?.activePanelId === workbenchId)
-          committed = await open();
+        const committed = await open();
         if (committed === false) {
           if (active && revisionAtStart === identityRevision.current)
             setError("页面会话切换未完成，请重新打开业务页");
           return;
         }
         if (active && revisionAtStart === identityRevision.current) {
-          identityActive.current = true;
           hide = ctx.agentWorkbench.showConversation(workbenchId);
           setOpened(true);
         }
@@ -124,7 +122,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
       let lease: string | undefined;
       pageContext.current = undefined;
       setError("");
-      const opening = readBusinessIdentityScope(controller.signal)
+      const opening = currentScope(controller.signal)
         .then(scope => request(plugin.id + "/open", { session, agentPreset: preset, scope }, controller.signal))
         .then((result) => {
           lease = result.lease;
@@ -163,15 +161,6 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
         frame: frame.current, sessionId: session, page: plugin.name,
         surface: `gea-html-${plugin.id}`, tool: "gea_plugin_page_apply",
         referenceLease: () => binding.current?.session === session ? binding.current.lease : undefined,
-        validateReference: (reference) => {
-          if (!identityActive.current) throw Error("登录身份已变化，请重新选择引用。");
-          if (!plugin.agentResources || plugin.id !== "inventory-fc") return;
-          const parts = pageContext.current?.parts;
-          if (parts?.queryState?.state !== "ready" ||
-              !parts?.pageReference?.scope ||
-              reference.scope !== parts.pageReference.scope)
-            throw Error("页面引用已失效，请在当前筛选结果中重新选择。");
-        },
       });
     }, [connection, session]);
     useEffect(() => {
@@ -232,7 +221,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
         port.port1.postMessage({ type: "context", context: null });
       };
       const requireBinding = (expected: any) => {
-        if (!identityActive.current || !expected || expected !== binding.current || controller.signal.aborted)
+        if (!expected || expected !== binding.current || controller.signal.aborted)
           throw Error("页面会话已切换，请重新操作");
       };
       const call = async (
@@ -336,7 +325,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
             pending.delete(m.id);
           }
         } catch (e) {
-          if (!controller.signal.aborted && identityActive.current)
+          if (!controller.signal.aborted)
             port.port1.postMessage({
               type: "response",
               id: m.id,
@@ -502,8 +491,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
   // Public manifest metadata uses DSH connection authentication; business reads additionally require GEA login.
   ctx.effect(() => {
     let disposed = false,
-      timer: any,
-      identityTimer: any;
+      timer: any;
     const cleanups: Array<() => void> = [];
     const controller = new AbortController();
     const registered = new Set<string>();
@@ -513,14 +501,6 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
       if (active && registered.has(active)) ctx.layout.selectPanel(active);
     };
     window.addEventListener("gea-business-identity-changed", changed);
-    const pollIdentity = async () => {
-      try {
-        await readBusinessIdentityScope(controller.signal);
-      } catch {
-        // A failed poll cannot establish a new identity. Keep the mounted page until a real status arrives.
-      }
-      if (!disposed) identityTimer = setTimeout(pollIdentity, 1000);
-    };
     const discover = async () => {
       try {
         const statusResponse = await fetch("/api/gea-proof/status", {
@@ -549,7 +529,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
               preset: plugin.presetHidden === true ? "auto-negotiation" : "gea-html-" + plugin.id,
               allowedPresets: plugin.agentResources ? plugin.pageAgents : undefined,
               scope: plugin.mock ? undefined : async () => {
-                const scope = await readBusinessIdentityScope(controller.signal);
+                const scope = await currentScope(controller.signal);
                 if (scope === null) throw Error("请先登录 GEA");
                 return scope;
               },
@@ -576,14 +556,12 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
       } catch {}
       if (!disposed) timer = setTimeout(discover, 5000);
     };
-    void pollIdentity();
     void discover();
     return () => {
       disposed = true;
       controller.abort();
       window.removeEventListener("gea-business-identity-changed", changed);
       clearTimeout(timer);
-      clearTimeout(identityTimer);
       cleanups.forEach((f) => f());
     };
   });

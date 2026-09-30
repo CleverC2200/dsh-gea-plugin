@@ -105,7 +105,7 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
   }
 });
 
-test("HTML discovery runs during a stalled identity observation and disposal aborts that observation", async () => {
+test("HTML discovery does not start a second identity observation", async () => {
   const temporary = await mkdtemp(resolve(tmpdir(), "gea-identity-observer-"));
   const output = resolve(temporary, "html-client.mjs");
   const originalFetch = globalThis.fetch;
@@ -134,12 +134,10 @@ test("HTML discovery runs during a stalled identity observation and disposal abo
     });
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(pages, ["inventory-fixture"]);
-    assert.equal(signals.length, 1);
-    assert.equal(signals[0].aborted, false);
+    assert.equal(signals.length, 0, "the GEA client owns the only identity observer");
     dispose();
-    assert.equal(signals[0].aborted, true);
     await new Promise(resolve => setTimeout(resolve, 1100));
-    assert.equal(signals.length, 1, "unmount must not schedule another identity observation");
+    assert.equal(signals.length, 0, "HTML registration must not schedule identity polling");
   } finally {
     dispose?.();
     globalThis.fetch = originalFetch;

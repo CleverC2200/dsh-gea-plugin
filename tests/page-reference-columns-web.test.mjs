@@ -4,12 +4,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { expect } from "@playwright/test";
 import { stockReferencePage } from "./fixtures/stock-reference-page.mjs";
 
-for (const change of ["hidden", "reordered", "quantity", "reason", "quantity-response-first"]) test(`a ${change} change invalidates a pending row reference`, {
+for (const change of ["hidden", "reordered", "quantity", "reason"]) test(`a ${change} change preserves the click-time row snapshot`, {
   skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 90000,
 }, async t => {
   const quantity = change.startsWith("quantity");
-  const responseFirst = change === "quantity-response-first";
-  const { page, frame, quote, readReference } = await stockReferencePage(t, { editable: quantity || change === "reason", holdMessage: responseFirst ? "cancel-reference" : undefined });
+  const { page, frame, readReference } = await stockReferencePage(t, { editable: quantity || change === "reason" });
   let edited;
   if (quantity) edited = frame.getByRole("textbox", { name: "FC001 实际补货量", exact: true });
   if (change === "reason") edited = frame.getByRole("textbox", { name: "FC001调减原因", exact: true });
@@ -21,17 +20,12 @@ for (const change of ["hidden", "reordered", "quantity", "reason", "quantity-res
   }
   const release = Promise.withResolvers(), completed = Promise.withResolvers();
   t.after(() => release.resolve());
-  let posted;
-  await page.evaluate(() => {
-    window.referenceErrors = [];
-    addEventListener('message', event => {
-      if (event.data?.protocol === 'dsh-page-interaction-v1' && event.data.type === 'selection-error') referenceErrors.push(event.data.error);
-    });
-  });
+  let posted, receipt;
   await page.route("**/api/page-interaction/reference", async route => {
     posted = route.request().postDataJSON();
     await release.promise;
     const response = await route.fetch();
+    receipt = await response.json();
     await route.fulfill({ response }).catch(() => {});
     completed.resolve();
   });
@@ -63,37 +57,24 @@ for (const change of ["hidden", "reordered", "quantity", "reason", "quantity-res
       assert.equal(await frame.locator("main.agent-root").getAttribute("data-page-reference-scope"), posted.scope,
         "this edit must exercise the unchanged-scope path before blur");
     }
-    if (responseFirst) await expect.poll(() => page.evaluate(() => heldReferenceMessages.length)).toBe(1);
     release.resolve();
     await completed.promise;
-    await page.waitForTimeout(500);
+    await expect(page.locator('[contenteditable="true"]').first()).toContainText("FC001");
     const text = await page.locator('[contenteditable="true"]').first().innerText();
-    await mkdir(".runtime/reference-columns-evidence", { recursive: true });
-    await writeFile(`.runtime/reference-columns-evidence/${change}.json`, JSON.stringify({ change, quotedText: posted.text, beforeScope: posted.scope, afterScope: await frame.locator("main.agent-root").getAttribute("data-page-reference-scope"), composer: text, inputValue: edited ? await edited.inputValue() : undefined, inputFocused: edited ? await edited.evaluate(input => input === document.activeElement) : undefined, heldCancelMessages: responseFirst ? await page.evaluate(() => heldReferenceMessages.length) : undefined, errors: await page.evaluate(() => referenceErrors) }, null, 2));
-    assert.equal(text.trim(), "", "obsolete visible content must not be inserted into the current question");
-    await expect.poll(() => page.evaluate(() => referenceErrors.join("\n"))).toMatch(/引用已失效/);
-    if (responseFirst) await page.evaluate(() => releaseReferenceMessages());
-    await page.unroute("**/api/page-interaction/reference");
-    const fresh = page.waitForResponse(response => response.url().endsWith("/api/page-interaction/reference") && response.status() === 200);
-    if (edited) {
-      await page.keyboard.down("Alt");
-      await expect(page.locator("[data-page-selection-trigger]")).toHaveAttribute("aria-pressed", "true");
-      await edited.click();
-      await page.keyboard.up("Alt");
-    } else await quote();
-    const receipt = await (await fresh).json();
     const read = await readReference(receipt.id);
+    await mkdir(".runtime/reference-columns-evidence", { recursive: true });
+    await writeFile(`.runtime/reference-columns-evidence/${change}.json`, JSON.stringify({ change, quotedText: posted.text, beforeScope: posted.scope, afterScope: await frame.locator("main.agent-root").getAttribute("data-page-reference-scope"), composer: text, read: read.text }, null, 2));
     assert.match(read.text, /USER_PAGE_REFERENCE/);
-    if (change === "hidden") assert.doesNotMatch(read.text, /产品名称|测试常温奶/);
+    assert.equal(JSON.parse(read.text).text, posted.text, "saved content remains the click-time snapshot");
+    if (change === "hidden") assert.match(read.text, /产品名称|测试常温奶/);
     if (edited) {
-      if (quantity) assert.match(JSON.parse(read.text).text, /实际补货量：12(?:\n|$)/);
-      else assert.match(read.text, /新调减原因/);
+      if (quantity) assert.match(JSON.parse(read.text).text, /实际补货量：11(?:\n|$)/);
+      else assert.doesNotMatch(read.text, /新调减原因/);
       await edited.fill(quantity ? "13" : "再次修改原因");
       const saved = await readReference(receipt.id);
       assert.equal(saved.text, read.text, "a completed reference remains an immutable snapshot after later input edits");
     }
   } finally {
-    if (responseFirst) await page.evaluate(() => releaseReferenceMessages());
     release.resolve();
     await page.keyboard.up("Alt");
   }

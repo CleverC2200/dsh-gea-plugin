@@ -57,7 +57,7 @@ test("group references retain every declared target", () => {
   );
 });
 
-for (const phase of ["saving", "confirmation", "reload"]) test(`a saved reference cannot enter the composer after disposal during ${phase}`, async (t) => {
+for (const phase of ["saving", "reload"]) test(`a saved reference cannot enter the composer after disposal during ${phase}`, async (t) => {
   const previousWindow = globalThis.window;
   const previousFetch = globalThis.fetch;
   t.after(() => {
@@ -110,12 +110,10 @@ for (const phase of ["saving", "confirmation", "reload"]) test(`a saved referenc
     inject: (_names, fn) => fn(scope),
   };
   let channel;
-  const confirmation = Promise.withResolvers();
   const frame = {
     contentWindow: {
       postMessage: (message) => {
         channel = message.channel;
-        if (message.type === "commit-reference") confirmation.resolve();
       },
     },
     addEventListener: (name, listener) => frameListeners.set(name, listener),
@@ -139,22 +137,16 @@ for (const phase of ["saving", "confirmation", "reload"]) test(`a saved referenc
       reference: { label: "整行", text: "120", targets: [], ...(phase !== "saving" ? { scope: "current" } : {}) },
     },
   });
-  if (phase !== "saving") {
-    resolveFetch(Response.json({ id: "R123456abcdef", label: "表格 · 整行" }));
-    await confirmation.promise;
-    if (phase === "reload") frameListeners.get("load")();
-    else dispose();
-  } else {
-    dispose();
-    resolveFetch(Response.json({ id: "R123456abcdef", label: "表格 · 整行" }));
-  }
+  if (phase === "reload") frameListeners.get("load")();
+  else dispose();
+  resolveFetch(Response.json({ id: "R123456abcdef", label: "表格 · 整行" }));
   await received;
   assert.equal(inserts, 0);
   if (phase === "reload") {
     assert.deepEqual(notifications, ["页面已重新加载，请重新选择引用。"]);
     dispose();
   }
-  assert.equal(listeners.get("message").size, 0, "disposal removes both binding and confirmation listeners");
+  assert.equal(listeners.get("message").size, 0, "disposal removes the binding listener");
 });
 
 test("sent references project to the same label without leaking the wire ID", () => {

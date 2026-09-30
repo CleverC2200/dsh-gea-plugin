@@ -41,3 +41,39 @@ test("page and observer reads share one identity, ignore older replies and stop 
   await assert.rejects(committing, { name: "AbortError" });
   assert.equal(changes.length, 1, "disposal between parsing and publishing must not notify a newer page");
 });
+
+test("concurrent initial reads share one Host request and errors never invent a login", async t => {
+  const originalFetch = globalThis.fetch, originalWindow = globalThis.window;
+  t.after(() => { globalThis.fetch = originalFetch; globalThis.window = originalWindow; });
+  globalThis.window = new EventTarget();
+  const pending = Promise.withResolvers();
+  let requests = 0;
+  globalThis.fetch = () => { requests++; return pending.promise; };
+  const read = createBusinessIdentityReader();
+  assert.equal(read.getSnapshot().state, "unknown");
+  const first = read(), second = read(new AbortController().signal);
+  assert.equal(requests, 1);
+  pending.resolve(Response.json({ scope: "A", status: { environment: "test", authenticated: true, loginState: "authenticated", user: { name: "Alice" } } }));
+  assert.deepEqual(await Promise.all([first, second]), ["A", "A"]);
+  assert.equal(read.getSnapshot().status.user.name, "Alice");
+  globalThis.fetch = async () => { throw Error("offline"); };
+  await assert.rejects(read(), /offline/);
+  assert.equal(read.getSnapshot().scope, "A", "a transient read failure keeps the last confirmed identity");
+  assert.equal(read.getSnapshot().state, "confirmed");
+});
+
+test("a confirmed refresh wins over a late initial response", async t => {
+  const originalFetch = globalThis.fetch, originalWindow = globalThis.window;
+  t.after(() => { globalThis.fetch = originalFetch; globalThis.window = originalWindow; });
+  globalThis.window = new EventTarget();
+  const pending = [];
+  globalThis.fetch = () => { const request = Promise.withResolvers(); pending.push(request); return request.promise; };
+  const read = createBusinessIdentityReader();
+  const initial = read();
+  const refresh = read.refresh();
+  pending[1].resolve(Response.json({ scope: null, status: { authenticated: false, loginState: "signed-out", user: null, environment: "test" } }));
+  assert.equal(await refresh, null);
+  pending[0].resolve(Response.json({ scope: "old", status: { authenticated: true, loginState: "authenticated", user: { name: "Old" }, environment: "test" } }));
+  assert.equal(await initial, null);
+  assert.equal(read.getSnapshot().status.authenticated, false);
+});

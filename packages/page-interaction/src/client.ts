@@ -191,23 +191,6 @@ export function installPageInteraction(ctx: any): PageInteraction {
       const configure = () => {
         if (generation) send({ type: "configure", page, externalTrigger: triggers.size > 0 });
       };
-      const confirmReference = (requestId: string, signal: AbortSignal) => new Promise<boolean>(resolve => {
-        if (signal.aborted) return resolve(false);
-        const finish = (valid: boolean) => {
-          window.removeEventListener("message", confirmed);
-          signal.removeEventListener("abort", aborted);
-          resolve(valid);
-        };
-        const aborted = () => finish(false);
-        const confirmed = (event: MessageEvent) => {
-          if (event.source === frame.contentWindow && event.data?.protocol === PAGE_INTERACTION &&
-              event.data.channel === channel && event.data.type === "reference-committed" &&
-              event.data.requestId === requestId) finish(event.data.ok === true);
-        };
-        window.addEventListener("message", confirmed);
-        signal.addEventListener("abort", aborted, { once: true });
-        send({ type: "commit-reference", requestId });
-      });
       const binding: PickerBinding = {
         frame,
         sessionId,
@@ -286,20 +269,14 @@ export function installPageInteraction(ctx: any): PageInteraction {
           if (!active || controller.signal.aborted) return;
           if (!response.ok)
             throw Error(receipt.error || "引用未保存，请重试。");
-          if (value.scope) {
-            const confirmed = await confirmReference(requestId, controller.signal);
-            if (!active || controller.signal.aborted) return;
-            if (!confirmed) throw Error("页面引用已失效，请按当前显示内容重新选择。");
-          }
-          const validity = await fetch("/api/page-interaction/reference/confirm", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ id: receipt.id, sessionId, surface, generation, lease: referenceLease?.() }),
-            signal: controller.signal,
+          // The Host may rotate identity while a successful save response is delayed in transit.
+          const bindingResponse = await fetch("/api/page-interaction/binding", {
+            cache: "no-store", signal: controller.signal,
           });
-          const confirmation = await validity.json();
+          const currentBinding = await bindingResponse.json();
           if (!active || controller.signal.aborted) return;
-          if (!validity.ok) throw Error(confirmation.error || "引用已失效，请重新选择。");
+          if (!bindingResponse.ok || currentBinding.generation !== generation)
+            throw Error("登录身份已变化，请重新选择引用。");
           if (!ready || selectedSession() !== sessionId)
             throw Error("已切换对话，请在当前页面重新引用。");
           validateReference?.(value);

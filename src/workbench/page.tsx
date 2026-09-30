@@ -240,7 +240,19 @@ function requestErrorMessage(error: unknown, t: Translate): string {
 
 /** 只挂载真实 GEA 数据；未认证或查询失败时绝不切换到 fixture。 */
 export function WorkbenchPage({ t }: { t: Translate }) {
-  const [status, setStatus] = useState<Status>();
+  const [businessStatus, setBusinessStatus] = useState<{
+    scope: string | null | undefined;
+    value: Omit<Status, "authenticated" | "loginState" | "user" | "environment">;
+  }>();
+  const setStatus = (value: Status) => {
+    const { authenticated: _authenticated, loginState: _loginState, user: _user, environment: _environment, ...business } = value;
+    setBusinessStatus({ scope: identity?.scope, value: business });
+  };
+  const [identity, setIdentity] = useState<{ state: "unknown" | "confirmed" | "error"; scope: string | null; status: Status | null }>();
+  const [loginEnvironment, setLoginEnvironment] = useState<Status["environment"]>();
+  const status: Status | undefined = identity?.state === "confirmed" && identity.status && businessStatus?.scope === identity.scope
+    ? { ...businessStatus.value, environment: identity.status.environment, authenticated: identity.status.authenticated,
+        loginState: identity.status.loginState, user: identity.status.user } : undefined;
   const directApiLog = new URLSearchParams(window.location.search).get("view") === "api-log";
   const initialView = new URLSearchParams(window.location.search).get("plugin") ?? "workbench";
   const [shellView, setShellView] = useState<"plugin" | "workbench">(initialView === "workbench" ? "workbench" : "plugin");
@@ -276,18 +288,14 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     pluginConsumers.current = map;
   }, [status]);
   useEffect(() => {
-    if (!status) return;
+    if (!businessStatus) return;
     window.parent.postMessage(
       {
         type: "gea:identity",
-        avatar: status?.authenticated ? (status.user?.avatar ?? "") : "",
-        authenticated: status?.authenticated === true,
-        name: status?.authenticated ? (status.user?.name ?? "") : "",
-        avatarUrl: status?.authenticated ? (status.user?.avatar ?? "") : "",
       },
       window.location.origin,
     );
-  }, [status]);
+  }, [businessStatus]);
   const notifyPluginIdentity = useCallback(() => {
     pluginFrame.current?.contentWindow?.postMessage(
       {
@@ -305,6 +313,11 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   }, [notifyPluginIdentity]);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
+      if (event.origin === window.location.origin && event.source === window.parent && event.data?.type === "gea:identity-snapshot") {
+        const next = event.data.snapshot;
+        if (next?.state === "confirmed" || next?.state === "unknown" || next?.state === "error") setIdentity(next);
+        return;
+      }
       if (
         event.origin !== window.location.origin ||
         event.source !== window.parent ||
@@ -527,7 +540,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   useEffect(() => {
     const controller = new AbortController();
     void rpc<Status>("status", {}, controller.signal)
-      .then(setStatus)
+      .then(value => { if (!controller.signal.aborted) setStatus(value); })
       .catch((error) => {
         if (!controller.signal.aborted) setError(requestErrorMessage(error, t));
       });
@@ -535,7 +548,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       controller.abort();
       request.current?.abort();
     };
-  }, []);
+  }, [identity?.scope]);
   useEffect(() => {
     if (!qr) return;
     const controller = new AbortController();
@@ -580,9 +593,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       if (!controller.signal.aborted) {
         setError(requestErrorMessage(error, t));
         if (error instanceof BackendHttpError && error.status === 401)
-          setStatus((previous) =>
-            previous ? { ...previous, authenticated: false } : previous,
-          );
+          window.parent.postMessage({ type: "gea:identity" }, window.location.origin);
       }
     } finally {
       if (request.current === controller) setBusy(false);
@@ -599,7 +610,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     setExpired(false);
     void rpc<{ image: string; loginId: string }>(
       "login/start",
-      { environment: status.environment },
+      { environment: loginEnvironment ?? status.environment },
       controller.signal,
     )
       .then((value) => {
@@ -612,7 +623,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
         if (request.current === controller) setBusy(false);
       });
     return () => controller.abort();
-  }, [status?.authenticated, status?.environment, qrRefresh]);
+  }, [status?.authenticated, status?.environment, loginEnvironment, qrRefresh]);
   useEffect(() => {
     setModelState("");
     if (!status?.authenticated || status.mode !== "model") return;
@@ -684,17 +695,9 @@ export function WorkbenchPage({ t }: { t: Translate }) {
                     type="radio"
                     name="environment"
                     value={environment}
-                    checked={status?.environment === environment}
+                    checked={(loginEnvironment ?? status?.environment) === environment}
                     onChange={() => {
-                      setStatus((previous) =>
-                        previous
-                          ? {
-                              ...previous,
-                              environment: environment as Status["environment"],
-                              authenticated: false,
-                            }
-                          : previous,
-                      );
+                      setLoginEnvironment(environment as Status["environment"]);
                       setQr(undefined);
                       setExpired(false);
                       setPreview(undefined);

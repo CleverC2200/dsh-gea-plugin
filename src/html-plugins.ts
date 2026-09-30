@@ -472,8 +472,10 @@ export async function registerHtmlPlugins(
       ),
     false,
   );
-  register("/api/gea-html/identity", ["GET"], () =>
-    json({ scope: business.pageSessionScope() ?? null }), false);
+  register("/api/gea-html/identity", ["GET"], () => {
+    const { environment, authenticated, loginState, user } = business.status();
+    return json({ scope: business.pageSessionScope() ?? null, status: { environment, authenticated, loginState, user } });
+  }, false);
   for (const item of items) {
     const prefix = "/api/gea-html/" + item.id;
     register(prefix + "/agents", ["GET"], async (request) => {

@@ -206,7 +206,7 @@ export function mountPicker(options: PickerOptions = {}): () => void {
     hover: Element | null = null,
     channel = "",
     page = document.title;
-  let pending: { id: string; target: Element; version?: string; committed?: boolean } | undefined;
+  let pending: { id: string } | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let lastSelection: { target: EventTarget | null; at: number } | undefined;
   const repeatClick = (event: Event) =>
@@ -232,31 +232,11 @@ export function mountPicker(options: PickerOptions = {}): () => void {
       height: `${box.height}px`,
     });
   };
-  const referenceVersion = (reference: PageReference) => JSON.stringify([reference.scope, reference.text, reference.targets]);
-  const checkPending = () => {
-    if (!pending?.version || pending.committed) return;
-    let current: string | undefined;
-    try {
-      if (pending.target.isConnected) current = referenceVersion(describeElement(pending.target, page));
-    } catch { /* A non-ready page has no valid selection snapshot. */ }
-    if (current === pending.version) return;
-    cancelPending();
-    status.textContent = "页面引用已失效，请按当前显示内容重新选择。";
-    send({ type: "selection-error", error: status.textContent });
-  };
-  const pendingObserver = new MutationObserver(checkPending);
-  const stopObservingPending = () => {
-    pendingObserver.disconnect();
-    pending?.target.removeEventListener("input", checkPending, true);
-    pending?.target.removeEventListener("change", checkPending, true);
-  };
   const clearPending = () => {
     clearTimeout(timer);
-    stopObservingPending();
     pending = undefined;
   };
   const cancelPending = () => {
-    if (pending?.committed) return;
     if (pending) send({ type: "cancel-reference", requestId: pending.id });
     clearPending();
   };
@@ -344,16 +324,7 @@ export function mountPicker(options: PickerOptions = {}): () => void {
     lastSelection = { target: event.target, at: performance.now() };
     hover = target;
     paint(target);
-    pending = { id: crypto.randomUUID(), target, version: original.scope ? referenceVersion(original) : undefined };
-    if (pending.version) {
-      pendingObserver.observe(document.body, {
-        subtree: true, childList: true, attributes: true,
-        attributeFilter: ["data-page-reference-scope", "data-page-reference-ready", "hidden", "style", "class", "aria-hidden"],
-      });
-      // Typing changes DOM values without necessarily changing attributes.
-      target.addEventListener("input", checkPending, true);
-      target.addEventListener("change", checkPending, true);
-    }
+    pending = { id: crypto.randomUUID() };
     status.textContent = "正在加入对话…";
     send({ type: "reference", requestId: pending.id, reference });
     timer = setTimeout(() => {
@@ -421,18 +392,6 @@ export function mountPicker(options: PickerOptions = {}): () => void {
       mode(false);
       clearPending();
       ui.hidden = true;
-    }
-    if (data.type === "commit-reference" && typeof data.requestId === "string") {
-      if (pending?.id === data.requestId) checkPending();
-      const valid = pending?.id === data.requestId;
-      if (valid && pending) {
-        // Acceptance is decided in the same frame event loop as edits; later edits cannot rewrite this snapshot.
-        clearTimeout(timer);
-        stopObservingPending();
-        pending.committed = true;
-      }
-      send({ type: "reference-committed", requestId: data.requestId, ok: valid });
-      return;
     }
     if (data.type === "result" && data.requestId === pending?.id) {
       clearPending();
