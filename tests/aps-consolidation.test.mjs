@@ -1,3 +1,4 @@
+import {currentHtmlResource} from "./fixtures/html-resource.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
@@ -41,15 +42,16 @@ test("APS V0.2 replaces legacy plugin routes and tools without GEA login", async
       await writeFile(resolve(directory, "plugin.json"), JSON.stringify({
         schemaVersion: 1, id, name: id, mode: "mock", html: "index.html",
         skills: ["SKILL.md"], mcp: "mcp.json",
-        gea: { consumerCode: id, readonly: true, contract: "gea-html-v1" },
+        gea: { consumerCode: id, readonly: true, contract: "gea-html-v2" },
         ...(id === "inventory-apsplan" ? { replaces: ids.slice(1) } : {}),
       }));
       await writeFile(resolve(directory, "mcp.json"), JSON.stringify({
-        provider: "gea", transport: "host-provided", contract: "gea-html-v1",
+        provider: "gea", transport: "host-provided", contract: "gea-html-v2",
         consumer, capabilities: ["governed-sql-read"],
       }));
-      await writeFile(resolve(directory, "SKILL.md"), "Local demonstration only.");
+      await writeFile(resolve(directory, "SKILL.md"), `---\nname: ${id}\ndescription: Local demonstration only\n---\n`);
       await writeFile(resolve(directory, "index.html"), "<!doctype html><title>APS</title>");
+      await currentHtmlResource(directory);
       return directory;
     }));
     const api = await registerHtmlPlugins(ctx, business, roots);

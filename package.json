@@ -78,7 +78,12 @@
         "@deepseek-ai/dsh-client-ui-workspace",
         "@deepseek-ai/dsh-client-locale",
         "@cleverc2200/dsh-agent-workbench",
-        "@deepseek-ai/dsh-client-ui-theme"
+        "@deepseek-ai/dsh-client-ui-theme",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-chat"
+      ],
+      "external": [
+        "@deepseek-ai/dsh-client-store"
       ]
     },
     "bundle": {

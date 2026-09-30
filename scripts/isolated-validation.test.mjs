@@ -14,7 +14,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 
 const launcher = resolve(import.meta.dirname, "start-isolated-validation.mjs");
-for (const mode of ["payload", "core"])
+for (const mode of ["core"])
   test(
     `${mode} launcher serves a profile, denies outside writes and outbound network, then stops`,
     { skip: process.platform !== "darwin", timeout: 20000 },
@@ -45,7 +45,7 @@ for (const mode of ["payload", "core"])
           await mkdir(dir, { recursive: true });
           await writeFile(
             join(dir, "package.json"),
-            JSON.stringify({ name, version: "1.0.0", type: "module" }),
+            JSON.stringify({ name, version: "0.2.0-rc.1", type: "module" }),
           );
         }
         await mkdir(join(payload, "node/bin"), { recursive: true });
@@ -56,7 +56,7 @@ for (const mode of ["payload", "core"])
             private: true,
             version: "fixture",
             dependencies: Object.fromEntries(
-              packages.map((name) => [name, "1.0.0"]),
+              packages.map((name) => [name, "0.2.0-rc.1"]),
             ),
           }),
         );
@@ -159,12 +159,12 @@ for (const mode of ["payload", "core"])
         assert.equal(
           provenance.mode,
           mode === "core"
-            ? "official-source-build"
+            ? "current-source-build"
             : "installed-payload-baseline",
         );
         if (mode === "core")
           assert.match(provenance.coreSource, /^[a-f0-9]{40}$/);
-        assert.equal(provenance.packages["dsh-agent-manage"], "1.0.0");
+        assert.equal(provenance.packages["dsh-agent-manage"], "0.2.0-rc.1");
         const exited = once(child, "exit");
         child.kill("SIGTERM");
         assert.equal((await exited)[0], 0);
@@ -201,3 +201,7 @@ for (const mode of ["payload", "core"])
       }
     },
   );
+
+test("installed payload mode is explicitly unsupported", () => {
+  assert.throws(() => execFileSync(process.execPath, [launcher, "--payload", "not-a-source-checkout"], {stdio: "pipe"}), error => /Unknown option.*payload/.test(error.stderr.toString()));
+});

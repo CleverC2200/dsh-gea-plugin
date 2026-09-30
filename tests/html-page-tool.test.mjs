@@ -1,4 +1,8 @@
-import test from "node:test";
+import {currentHtmlResource} from "./fixtures/html-resource.mjs";
+import test, {afterEach} from "node:test";
+import {profileFor} from "../src/host/prompt-policy.ts";
+const effectCleanups = [];
+afterEach(async () => {for (const cleanup of effectCleanups.splice(0).reverse()) await cleanup();});
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { mkdtemp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
@@ -20,8 +24,9 @@ const standardPreset = resolve(
 /** 建一个最小可用的 HTML 业务插件，只用来验证页面工具对模型的行为。 */
 async function probePlugin(options = {}) {
   const id = options.id ?? "inventory-probe";
+  const consumerCode = profileFor(`gea-html-${id}`)?.consumerCode ?? id + "-consumer";
   const name = options.name ?? "探针页面";
-  const skillName = options.skillName ?? "inventory-probe";
+  const skillName = id;
   // 探针默认是演示（mock）模块：它和真实模块共用同一套页面工具，但没有数据通道。
   const mode = options.mock === false ? undefined : "mock";
   const root = await mkdtemp(join(tmpdir(), "gea-html-probe-"));
@@ -40,15 +45,16 @@ async function probePlugin(options = {}) {
     skills: ["skills/probe/SKILL.md"],
     mcp: "mcp.json",
     mode,
-    gea: { consumerCode: id + "-consumer", readonly: true, contract: "gea-html-v1" },
+    gea: { consumerCode, readonly: true, contract: "gea-html-v2" },
   }));
   await writeFile(join(root, "mcp.json"), JSON.stringify({
     provider: "gea",
     transport: "host-provided",
-    contract: "gea-html-v1",
-    consumer: { consumerType: "AGENT", consumerCode: id + "-consumer" },
+    contract: "gea-html-v2",
+    consumer: { consumerType: "AGENT", consumerCode },
     capabilities: ["governed-sql-read"],
   }));
+  await currentHtmlResource(root);
   return root;
 }
 
@@ -59,7 +65,7 @@ async function registeredPlugins(options = {}) {
   const routes = [];
   const identities = new Map();
   const ctx = {
-    effect: (fn) => fn(),
+    effect: (fn) => {const cleanup = fn(); if (typeof cleanup === "function") effectCleanups.push(cleanup); return cleanup;},
     tools: { register: (tool) => tools.push(tool) },
     connection: { fetch: { register: (route) => routes.push(route) } },
   };

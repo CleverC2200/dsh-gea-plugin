@@ -236,7 +236,7 @@ export async function profile(t, options = {}) {
       options.executablePath ?? process.execPath,
       [
         ...(options.execArgv ?? []),
-        ...(process.env.GEA_TEST_SOURCE_CORE === "1" && !options.desktopGraph ? [resolve(defaultRoot, "tests/source-profile-start.mjs"), config, runtime] : options.desktopGraph ? [resolve(defaultRoot, "desktop/runtime-start.mjs")] : ["scripts/start.mjs",
+        ...(process.env.GEA_TEST_SOURCE_CORE === "1" && !options.desktopGraph && !options.normalStartup ? [resolve(defaultRoot, "tests/source-profile-start.mjs"), config, runtime, ...(options.coreOnly ? ["native-only"] : [])] : options.desktopGraph ? [resolve(defaultRoot, "desktop/runtime-start.mjs")] : ["scripts/start.mjs",
         ...(options.bundle ? ["--bundle"] : []),
         "--config",
         config,

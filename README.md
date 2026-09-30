@@ -165,7 +165,7 @@ DMS 继续使用 mock。受控 GEA 终审流程可连接既有模拟接收方验
 
 ## 标准 bundle
 
-GEA 发行包声明 `dsh.bundle.patch`，在官方 base/web 后挂载 GEA 和固定版本的独立工作台。连接配置通过 profile overlay 提供，不放入 bundle。`pnpm start --bundle --config <本地配置> --runtime <独立数据目录> --port 0` 验证标准 bundle 加载；省略 `--bundle` 兼容既有启动方式。`pnpm run test:package` 从空目录安装发行包并验证登录、业务页面、原生对话及重启后的历史。
+本隔离项目的 `pnpm start` 只启动当前源码组合，以 `scripts/current-core.json` 登记核心版本、官方来源与本地适配提交。`--bundle` 和 installed payload 旧启动方式不再支持。连接配置通过独立 profile overlay 提供；正常开发默认加载工作台构建的 FC v2 资源，缺少产物时明确失败，不下载旧包或修补旧 HTML。发行、上传和生产客户端仍不在本项目授权范围。
 
 缺失工作台时报 `WORKBENCH_MISSING`；非 0.1.x 公共接口版本时报 `WORKBENCH_INCOMPATIBLE`。工作台控制器测试已迁至独立仓库，GEA 保留跨插件浏览器集成测试。发行包由明确文件清单校验，拒绝本机路径和凭据。
 
@@ -204,7 +204,7 @@ Demand Forecast follows the user's language for both progress and final answers.
 
 ### 分仓试点资源组合
 
-任务06的页面由同级工作台构建到 `lib/business/inventory-fc`，能力资源源文件归 Agent Manage。`agentResources.provider=dsh-agent-manage` 的显式分离包调用其资源装载器并替换既有 preset 提示词；Consumer、surface、pageIds、maxEffect 仍由原契约适配器验证。GEA 保留登录、只读执行、接口日志和旧包兼容。分离资源不会授予任何新业务权限。通过现有 `GEA_HTML_PLUGIN_ROOTS` 选择新包，移除该选择可恢复旧资源。
+任务06的页面由同级工作台构建到 `lib/business/inventory-fc`，能力资源源文件归 Agent Manage。`agentResources.provider=dsh-agent-manage` 的显式分离包调用其资源装载器并替换既有 preset 提示词；Consumer、surface、pageIds、maxEffect 由当前声明校验器验证。GEA 保留登录、只读执行和接口日志，资源声明不增加业务权限。`GEA_HTML_PLUGIN_ROOTS` 只接受当前 v2 资源；不含声明的旧包拒绝装载，移除选择不会恢复旧资源。
 
 `/api/gea-html/plugins` 保留 `agentResources` 的公开 provider/prompt 声明和页面需要的 skillName/skillDescription，不返回 skillText；已装载的 Skill、profile 和内部来源路径仅供宿主使用，不进入浏览器目录。资源装载、提示词安装和生命周期继续由原 loader 执行。
 
@@ -219,3 +219,9 @@ Demand Forecast follows the user's language for both progress and final answers.
 ### 唯一 HTML 资源与页面协议
 
 本隔离项目只支持 `gea-html-v2` 与独立 page/capability、Agent Manage prompt/Skill 声明。旧 manifest 直接拒绝，不自动生成资源、不复用旧 Session。页面通过唯一 MessageChannel 主动发布 `{type: "catalog", session, elements}`，所有调用和动作回执携带当前 Session，宿主不再注入扫描器或默认扫描来源。FC 筛选、刷新与草稿字段复用原有 React 回调；目录来自当前分页与已确认状态，加载时撤回读数。mock 不获取 GEA 凭据，能力上限和正式业务写权限保持原声明。审批文档只承载审批功能，HTML 页由统一承载器打开，不再嵌套第二条 HTML 通道。
+
+### 当前源码支持范围
+
+唯一 HTML 发布方是工作台内已迁移 FC 源码；本地样板/mock 以同一 v2 与显式资源声明验证。审批、区域计划、品类计划、MPS 原型、业务待办、设置、接口日志与原生对话仍由现有源码入口承载。旧启动器声明的 APS/base/dealer/chain 等九个下载包未属于本次源码 profile 的载入组合，已删除下载、旧包修补和支持声明；没有将这些包或后续业务迁移票算作已迁移。本地源码支持清单以实际组合、资源文件与定向验收为证据。
+
+外壳导航、欢迎、等待文案、工具栏和全屏占位通过当前正式座位/布局命令实现。标题、列尺寸、三种会话呈现和占位生命周期由布局拥有者管理；提示词通过原生 InputActions 写入。GEA 不观察或修改其他组件的内部 DOM。账号菜单只操作自己的 DOM refs 和浮层。

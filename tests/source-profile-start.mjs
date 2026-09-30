@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { readDeployment } from "../scripts/deployment.mjs";
 import { runSourceProfile } from "../scripts/start-isolated-validation.mjs";
 
-const [configPath, runtime] = process.argv.slice(2);
+const [configPath, runtime, mode] = process.argv.slice(2);
 const deployment = await readDeployment(configPath);
 for (const endpoint of [
   deployment.geaBaseUrl,
@@ -18,6 +18,6 @@ process.env.DSH_TELEMETRY_DISABLED = "1";
 await runSourceProfile(
   resolve(import.meta.dirname, "../../deepseek-harness"),
   resolve(runtime),
-  true,
+  mode !== "native-only",
   deployment,
 );

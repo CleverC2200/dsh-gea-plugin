@@ -44,8 +44,8 @@ Inbox、API Log 和任意未知字符串不因此成为引用入口。三张计�
 | HTML theme DOM 观察 | 已删除 computed CSS 和 MutationObserver；直接订阅 ui-theme 的 getTheme / theme/change，页面消费公开快照 |
 | legacySession、旧 Agent 资源 adapter | 已删除；当前 FC/sample/mock fixture 使用独立资源声明和唯一 v2 端口，旧 manifest 明确拒绝 |
 | self-report / DOM scan 双来源 | 已删除宿主扫描脚本、注入和双来源分支；FC 与 sample 从自己的当前状态发布目录、动作和回执 |
-| GEA 外壳 DOM 补丁 | 仍需菜单、欢迎区、入口与布局接公开接口，删除外部 DOM 猜测 |
-| 旧包启动与支持矩阵 | 仍需移除旧发行包下载/回退，只加载已迁移的源码页 |
+| GEA 外壳 DOM 补丁 | 已删除所有 GEA 外部 DOM 观察/定位/注入；导航、欢迎、等待文案走正式槽位，布局、标题和全屏由拥有者呈现 |
+| 旧包启动与支持矩阵 | 已删除九个旧包下载/修补和 installed payload 启动；正常启动仅当前核心与源码资源，未迁移业务票不称完成 |
 
 当前主题验证覆盖实际样板的浅/深色、字号和窄屏、公开事件订阅与卸载释放。父页面 CSS 修改不能伪造主题状态；样板自带资源损坏仍给出可见报错。各阶段的固定提交与测试原始输出保存于隔离项目 evidence。
 

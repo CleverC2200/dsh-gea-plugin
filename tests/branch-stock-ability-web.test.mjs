@@ -1,3 +1,4 @@
+import {currentHtmlResource} from "./fixtures/html-resource.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -18,9 +19,10 @@ test("branch stock filter, quote and two authorized Agents keep separate Session
   t.after(() => rm(qll, { recursive: true, force: true }));
   await mkdir(join(qll, "skills"));
   await writeFile(join(qll, "skills/SKILL.md"), "---\nname: inventory-qll\ndescription: 全链库存\n---\n按授权范围解释库存。\n");
-  await writeFile(join(qll, "plugin.json"), JSON.stringify({ schemaVersion: 1, id: "inventory-qll", name: "全链库存", version: "0.0.0", html: "index.html", skills: ["skills/SKILL.md"], mcp: "mcp.json", gea: { consumerCode: "full-chain-inventory", readonly: true, contract: "gea-html-v1" } }));
-  await writeFile(join(qll, "mcp.json"), JSON.stringify({ provider: "gea", transport: "host-provided", contract: "gea-html-v1", consumer: { consumerType: "AGENT", consumerCode: "full-chain-inventory" }, capabilities: ["governed-sql-read"] }));
+  await writeFile(join(qll, "plugin.json"), JSON.stringify({ schemaVersion: 1, id: "inventory-qll", name: "全链库存", version: "0.0.0", html: "index.html", skills: ["skills/SKILL.md"], mcp: "mcp.json", gea: { consumerCode: "full-chain-inventory", readonly: true, contract: "gea-html-v2" } }));
+  await writeFile(join(qll, "mcp.json"), JSON.stringify({ provider: "gea", transport: "host-provided", contract: "gea-html-v2", consumer: { consumerType: "AGENT", consumerCode: "full-chain-inventory" }, capabilities: ["governed-sql-read"] }));
   await writeFile(join(qll, "index.html"), "<!doctype html><html><title>全链库存</title><body>固定样本辅助 Agent</body></html>");
+  await currentHtmlResource(qll);
   const state = stockState();
   let stockRoute;
   installStockRoutes({ route: (handler) => { stockRoute = handler; } }, state, (body) => {

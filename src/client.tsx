@@ -20,7 +20,10 @@ import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import { zh, en, type CopyKey } from "./client/locales.ts";
-import { mountFloatingComposers } from "./client/floating-composer.ts";
+import {createSnapshotStore} from "@deepseek-ai/dsh-client-store";
+import type {ILayout as WorkbenchLayout} from "@cleverc2200/dsh-agent-workbench/client";
+import type {} from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type {} from "@deepseek-ai/dsh-client-ui-chat/client";
 import { AgentAvatar } from "./client/agent-avatar.tsx";
 import { Inbox } from "./client/inbox.tsx";
 import { DesktopNavigation, createNavigationSelection, type ReadyNavigation } from './client/desktop-navigation.tsx';
@@ -98,18 +101,10 @@ const MPS_PLAN_PANEL = "plan-category-production" as MainPanelId;
 type SidebarSection = BusinessMenuSection;
 type SidebarSections = Record<SidebarSection, boolean>;
 
-/** 展开侧栏：0.1.6 的按钮文案是「打开侧边栏」，旧版本是「展开侧边栏」，找不到文案就按类名找。 */
-function nativeExpandSidebar(): void {
-  if (!document.querySelector("[data-sidebar-collapsed]")) return;
-  const button =
-    document.querySelector<HTMLButtonElement>("button[aria-label='展开侧边栏']") ??
-    document.querySelector<HTMLButtonElement>("button[aria-label='打开侧边栏']") ??
-    document.querySelector<HTMLButtonElement>("[class*='_sidebarCol'] button[class*='_toggle']");
-  button?.click();
-}
-
 /** 在框架管理的原生会话旁注册仅承载业务的中心文档。 */
 export function apply(ctx: Context): void {
+  const layout = ctx.layout as WorkbenchLayout;
+  const navigation = createSnapshotStore({drawer: "function" as "function" | "workspace" | "none", historyPanel: null as MainPanelId | null, linkedSession: null as SessionId | null, error: ""});
   const pageInteraction = installPageInteraction(ctx);
   const readBusinessIdentityScope = createBusinessIdentityReader();
   ctx.provide("geaIdentity", {
@@ -175,17 +170,6 @@ export function apply(ctx: Context): void {
     catch(error) {if(navigationSelection.getSnapshot()?.receipt===target.receipt)navigationSelection.set(null);throw error;}
     finally {clear();}
   };
-  // 左上角标题固定成品牌名：DSH 会随会话主题改写 document.title（窗口标题跟着变），这里把它按住。
-  ctx.effect(() => {
-    const fixed = t("geaBusiness");
-    const applyTitle = () => {
-      if (document.title !== fixed) document.title = fixed;
-    };
-    applyTitle();
-    const observer = new MutationObserver(applyTitle);
-    observer.observe(document.head, { childList: true, subtree: true, characterData: true });
-    return () => observer.disconnect();
-  });
   const injected = {
     hooks: {
       mainSessionId: ctx.uiSession.mainSessionId,
@@ -353,6 +337,7 @@ export function apply(ctx: Context): void {
     return <PrototypeWorkbench {...props} panel={MPS_PLAN_PANEL} title={t("mpsPlanWorkbench")} document={selectionDocuments.mps}/>;
   }
   function ApiLogPage() {
+    useEffect(() => layout.registerFullscreenPanel(API_LOG_PANEL), []);
     const [environment, setEnvironment] = useState<"production" | "test">("production");
     useEffect(() => {
       const controller = new AbortController();
@@ -511,7 +496,7 @@ export function apply(ctx: Context): void {
     // 收起侧栏后点它就是「展开侧栏」，这样图标列里不用再单独放一个展开图标。
     const expandWhenCollapsed = (event: React.MouseEvent) => {
       event.stopPropagation();
-      if (document.querySelector("[data-sidebar-collapsed]")) nativeExpandSidebar();
+      layout.expandSidebar();
     };
     return (
       <>
@@ -659,534 +644,99 @@ export function apply(ctx: Context): void {
       controller.abort();
       window.removeEventListener("gea-business-identity-changed", changed);
     };
-    const workbench = ctx.agentWorkbench as typeof ctx.agentWorkbench & {
-      selectDefault?: (id: MainPanelId) => void;
-    };
-    if (workbench.selectDefault) workbench.selectDefault(PANEL);
-    else ctx.layout.selectPanel(PANEL);
+    ctx.agentWorkbench.selectDefault(PANEL);
   });
-  function NavigationMode({
-    useSessions,
-    usePanelInfo,
-    useMainSessionId,
-    useSessionStatus,
-    useSessionRetainInfo,
-    useWorkspaces,
-  }: PropsRuntime<"shell.overlay"> & MainSessionProps) {
-    const activePanel = usePanelInfo((info) => info.activePanelId);
-    const business = usePanelInfo(
-      (info) => isGeaBusinessPanel(info.activePanelId, ctx.slots.entries("main")) || info.activePanelId === API_LOG_PANEL,
-    );
-    const surfaceSession = useMainSessionId(id => id);
-    // 菜单状态字段：面板或会话一变就上报（默认主对话），宿主据此判定"主对话 / 哪一页业务菜单"。
-    // 只认这一份事实，所以不在这里做去抖：漏报一次就会让页面证据对不上。
+  function NavigationLifecycle({useMainSessionId, usePanelInfo, useGeaLocale}: PropsRuntime<"shell.overlay"> & MainSessionProps & InjectFace<{hooks: {geaLocale: HostObservable<LocaleSnapshot>}}>) {
+    const activePanel = usePanelInfo(info => info.activePanelId);
+    const session = useMainSessionId(id => id);
+    const wasBusiness = useRef(false);
+    const locale = useGeaLocale(value => value);
+    useEffect(() => layout.registerDocumentTitle(t("geaBusiness")), [locale]);
     useEffect(() => {
-      reportSurface(surfaceSession ?? null, activePanel ?? null);
-    }, [activePanel, surfaceSession]);
-    useEffect(() => {
-      const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
-      frame?.classList.toggle("gea-api-fullscreen", activePanel === API_LOG_PANEL);
-      // 业务页（含 HTML 插件页）共用同一套「欢迎区在上、对话框在下」的右栏布局；
-      // 只按原生 data-conversation-beside-panel 判断会漏掉 HTML 插件页。
-      frame?.classList.toggle("gea-business-shell", business && activePanel !== API_LOG_PANEL);
-      return () => {
-        frame?.classList.remove("gea-api-fullscreen");
-        frame?.classList.remove("gea-business-shell");
-      };
-    }, [activePanel, business]);
-    // 会话栏沿用「工作台在旁边」的停靠布局：输入框贴底、首页区块在流内。
-    // 所有带会话栏的业务页（含 HTML 插件页和业务待办）都要停靠，
-    // 否则欢迎区会绝对定位浮在输入框上面，输入框点不进去。
-    useEffect(() => {
-      const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
-      frame?.classList.toggle("gea-rail-docked", business && activePanel !== API_LOG_PANEL);
-      return () => frame?.classList.remove("gea-rail-docked");
-    }, [business, activePanel]);
-    // 业务面板之间切换时，框架默认会用 400ms 动画改列宽，
-    // 动画期间工作台跟着连续重排，看起来像页面闪动；切换瞬间先关掉这个动画。
-    useEffect(() => {
-      const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
-      if (!frame) return;
-      frame.classList.add("gea-panel-switching");
-      const timer = window.setTimeout(
-        () => frame.classList.remove("gea-panel-switching"),
-        400,
-      );
-      return () => {
-        window.clearTimeout(timer);
-        frame.classList.remove("gea-panel-switching");
-      };
+      const business = isGeaBusinessPanel(activePanel, ctx.slots.entries("main"));
+      const state = navigation.getSnapshot();
+      if (business && !wasBusiness.current && !state.historyPanel) navigation.set({...state, drawer: "function"});
+      wasBusiness.current = business;
     }, [activePanel]);
-    const [region, setRegion] = useState<HTMLElement | null>(null);
-    const [logoRow, setLogoRow] = useState<HTMLElement | null>(null);
-    const [conversationHero, setConversationHero] = useState<HTMLElement | null>(null);
-    const [homeHero, setHomeHero] = useState<HTMLElement | null>(null);
-    const [railColumn, setRailColumn] = useState<HTMLElement | null>(null);
-    const [centerColumn, setCenterColumn] = useState<HTMLElement | null>(null);
-    const [conversationView, setConversationView] = useState<"center" | "split" | "chat">("split");
-    const [conversationActionError, setConversationActionError] = useState("");
-    const currentConversationSession = useMainSessionId(id => id);
-    const historyPanel = useRef<MainPanelId | null>(null);
-    const linkedHistorySession = useRef<SessionId | null>(null);
+    useEffect(() => { reportSurface(session ?? null, activePanel ?? null); }, [session, activePanel]);
     useEffect(() => {
-      const panel = historyPanel.current;
-      if (!panel || !currentConversationSession || currentConversationSession === linkedHistorySession.current) return;
-      linkedHistorySession.current = currentConversationSession;
-      // Native history selection opens the main Conversation. Reattach that
-      // exact durable Session to the Agent page so its center stays mounted.
-      void ctx.agentWorkbench.open(panel, "gea-history", currentConversationSession)
-        .catch((error: unknown) => setConversationActionError(String(error instanceof Error ? error.message : error)));
-    }, [currentConversationSession]);
+      const state = navigation.getSnapshot();
+      if (!state.historyPanel || !session || session === state.linkedSession) return;
+      navigation.set({...state, linkedSession: session});
+      void ctx.agentWorkbench.open(state.historyPanel, "gea-history", session)
+        .then(committed => { if (committed === false) throw Error("当前会话不能绑定到此业务页"); })
+        .catch(error => navigation.set({...navigation.getSnapshot(), error: error.message}));
+    }, [session]);
     useEffect(() => {
-      if (activePanel && historyPanel.current && activePanel !== historyPanel.current) historyPanel.current = null;
+      const state = navigation.getSnapshot();
+      if (activePanel && state.historyPanel && activePanel !== state.historyPanel)
+        navigation.set({...state, historyPanel: null});
     }, [activePanel]);
-    useEffect(() => {
-      const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
-      if (!frame || !business) return;
-      frame.dataset.geaConversationView = conversationView;
-      return () => { delete frame.dataset.geaConversationView; };
-    }, [business, conversationView]);
-    // 左栏改成两个互斥抽屉：功能区在品牌下方从上往下展开，工作区贴底从下往上展开。
-    const [drawer, setDrawer] = useState<"function" | "workspace" | "none">(
-      () => (business ? "function" : "workspace"),
-    );
-    // 业务菜单各分组的展开状态由这里持有，切抽屉不会丢。
-    const [sections, setSections] = useState<SidebarSections>({ supply: true, plan: true, inventory: true, orders: true });
-    const previousBusiness = useRef(business);
-    useEffect(() => {
-      // 进业务页自动展开功能区；回到 AI 工作台保留用户自己选的抽屉，不强行切换。
-      if (business && !previousBusiness.current) setDrawer("function");
-      previousBusiness.current = business;
-    }, [business]);
-    useEffect(() => {
-      const renameNewSession = () => {
-        const button = document.querySelector<HTMLButtonElement>("[data-sidebar-new-session]");
-        const label = button?.querySelector<HTMLElement>("[data-sidebar-new-session-label]");
-        if (!button || !label) return;
-        if (label.textContent !== "AI工作台") label.textContent = "AI工作台";
-        if (button.getAttribute("aria-label") !== "AI工作台") button.setAttribute("aria-label", "AI工作台");
-      };
-      renameNewSession();
-      const observer = new MutationObserver(renameNewSession);
-      observer.observe(document.body, { childList: true, subtree: true });
-      return () => observer.disconnect();
-    }, []);
-    useEffect(() => {
-      // 登记 41：宿主等待态文案是「深度求索中...」，这里只改文案为「深度思考中」，
-      // 颜色沿用宿主自己的渐变微光，不覆盖（验收确认不用思念红）。
-      const hostText = "深度求索中";
-      const geaText = "深度思考中";
-      const rewrite = () => {
-        for (const node of document.querySelectorAll<HTMLElement>('[role="status"]')) {
-          for (const child of Array.from(node.childNodes)) {
-            if (child.nodeType !== Node.TEXT_NODE) continue;
-            const text = child.textContent ?? "";
-            if (text.includes(hostText)) child.textContent = text.split(hostText).join(geaText);
-          }
-        }
-      };
-      rewrite();
-      const observer = new MutationObserver(rewrite);
-      observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-      return () => observer.disconnect();
-    }, []);
-    useEffect(() => {
-      const onPluginPrompt = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin || event.data?.type !== "gea:send-prompt" || typeof event.data.prompt !== "string") return;
-        const frame = document.querySelector<HTMLIFrameElement>(".AppFrame_centerCol iframe");
-        if (!frame || event.source !== frame.contentWindow) return;
-        writeConversationPrompt(event.data.prompt, true);
-      };
-      window.addEventListener("message", onPluginPrompt);
-      return () => window.removeEventListener("message", onPluginPrompt);
-    }, []);
-    useEffect(() => {
-      // 收起/展开是宿主做的动画（宽度 280→56，约 240ms）。如果直接跟着 [data-sidebar-collapsed] 立刻换内容，
-      // 会出现「抽屉瞬间消失、图标列铺满整条宽度再滑回左边」的闪动。
-      // 规则：侧栏窄到 ≤100px，或者收起标志已经过了动画时间（宿主在宽屏下会把宽度钉住、压根不缩），
-      // 才换成图标列；展开时只按宽度判断，避免窄列里提前塞进抽屉内容。
-      if (!region) return;
-      // 品牌行/图标列在 region 之外，所以收起标记要同时打在侧栏列和 region 上。
-      const sidebarColumn = region.closest<HTMLElement>("[class*='_sidebarCol']");
-      const targets = [region, sidebarColumn].filter((element): element is HTMLElement => Boolean(element));
-      const measureTarget = sidebarColumn ?? region;
-      const SETTLE_MS = 280;
-      let collapsedAt = 0;
-      let settleTimer: number | undefined;
-      const isCollapsed = () => Boolean(document.querySelector("[data-sidebar-collapsed]"));
-      const sync = () => {
-        const collapsed = isCollapsed();
-        if (collapsed && collapsedAt === 0) collapsedAt = Date.now();
-        if (!collapsed) collapsedAt = 0;
-        const settled = collapsedAt !== 0 && Date.now() - collapsedAt >= SETTLE_MS;
-        const narrow = measureTarget.getBoundingClientRect().width <= 100 || settled;
-        for (const target of targets) {
-          if (narrow) target.setAttribute("data-gea-narrow", "");
-          else target.removeAttribute("data-gea-narrow");
-        }
-        if (settleTimer !== undefined) {
-          window.clearTimeout(settleTimer);
-          settleTimer = undefined;
-        }
-        if (collapsed && !settled) settleTimer = window.setTimeout(sync, SETTLE_MS);
-      };
-      sync();
-      const resizeObserver = new ResizeObserver(sync);
-      resizeObserver.observe(measureTarget);
-      const flagObserver = new MutationObserver(sync);
-      flagObserver.observe(document.body, {
-        attributes: true,
-        attributeFilter: ["data-sidebar-collapsed"],
-        subtree: true,
-      });
-      return () => {
-        resizeObserver.disconnect();
-        flagObserver.disconnect();
-        if (settleTimer !== undefined) window.clearTimeout(settleTimer);
-        for (const target of targets) target.removeAttribute("data-gea-narrow");
-      };
-    }, [region]);
-    useEffect(() => {
-      // 会话区里的宽表/图表比栏宽宽时会被裁掉：打标记交给 CSS 横向滚动；
-      // 栏宽变化（拖手柄、改窗口）时重扫，避免拖宽后内容不重排。
-      const conversation = () =>
-        document.querySelector<HTMLElement>(
-          ".AppFrame_centerCol [data-slot='main.conversation'], .AppFrame_rightbarCol [data-slot='main.conversation']",
-        );
-      const selector =
-        "table, pre, img, svg, canvas, [class*='genui'], [class*='Genui'], [class*='chart'], [class*='Chart']";
-      let frameId = 0;
-      const scan = () => {
-        const root = conversation();
-        if (!root) return;
-        for (const marked of root.querySelectorAll<HTMLElement>("[data-gea-wide]")) {
-          if (marked.scrollWidth <= marked.clientWidth + 4) marked.removeAttribute("data-gea-wide");
-        }
-        for (const element of root.querySelectorAll<HTMLElement>(selector)) {
-          if (element.clientWidth > 60 && element.scrollWidth > element.clientWidth + 4)
-            element.setAttribute("data-gea-wide", "");
-          // 表格/图表自己不一定溢出，装它的气泡才会：把外层也一起标记，让它横向滚动。
-          const holder = element.parentElement;
-          if (holder && holder.clientWidth > 60 && holder.scrollWidth > holder.clientWidth + 4)
-            holder.setAttribute("data-gea-wide", "");
-        }
-      };
-      const schedule = () => {
-        if (frameId) return;
-        frameId = window.requestAnimationFrame(() => {
-          frameId = 0;
-          scan();
-        });
-      };
-      schedule();
-      const observer = new MutationObserver(schedule);
-      observer.observe(document.body, { childList: true, subtree: true });
-      const resize = new ResizeObserver(schedule);
-      const root = conversation();
-      if (root) resize.observe(root);
-      return () => {
-        if (frameId) window.cancelAnimationFrame(frameId);
-        observer.disconnect();
-        resize.disconnect();
-      };
-    }, []);
-    useEffect(mountFloatingComposers, []);
-    useEffect(() => {
-      const findRegions = () => {
-        setRegion(
-          document.querySelector<HTMLElement>("[class*='_regionArea']") ??
-            document.querySelector<HTMLElement>('[data-slot="sidebar.workspaces"]')?.parentElement ??
-            null,
-        );
-        setLogoRow(document.querySelector<HTMLElement>("[class*='_logoRow']"));
-        setRailColumn(document.querySelector<HTMLElement>(".AppFrame_rightbarCol"));
-        setCenterColumn(document.querySelector<HTMLElement>(".AppFrame_centerCol"));
-        // 主页面（没有业务面板时）中心列就是 GEA 的主视觉；业务页时中心列是工作台 iframe。
-        setHomeHero(
-          document.querySelector<HTMLElement>(
-            ".AppFrame_centerCol [data-slot='main.conversation'] [data-phase='hero'] [data-conversation-scroll]",
-          ),
-        );
-        setConversationHero(document.querySelector<HTMLElement>(
-          ".AppFrame_rightbarCol [data-slot='main.conversation'] [data-phase='hero']",
-        ));
-      };
-      findRegions();
-      const observer = new MutationObserver(findRegions);
-      observer.observe(document.body, { childList: true, subtree: true });
-      return () => observer.disconnect();
-    }, []);
-    useEffect(() => {
-      if (!region) return;
-      region.setAttribute("data-gea-drawer", drawer);
-      return () => region.removeAttribute("data-gea-drawer");
-    }, [region, drawer]);
-    // 会话搜索展开时，原生的搜索行要从「历史会话」标题右边一直铺到右边，
-    // 这里把标题右边缘量出来给 CSS 用（中英文标题宽度不同，写死会压字）。
-    useEffect(() => {
-      if (!region || drawer !== "workspace") {
-        region?.style.removeProperty("--gea-search-left");
-        return;
-      }
-      const sync = () => {
-        const slot = region.querySelector<HTMLElement>('[data-slot="sidebar.workspaces"]');
-        const title = region.querySelector<HTMLElement>(".gea-drawer-workspace .gea-drawer-title");
-        if (!slot || !title) return;
-        // 量文字本身（Range）而不是盒子：标题盒子会随内边距变化，量盒子会来回抖。
-        const range = document.createRange();
-        range.selectNodeContents(title);
-        const text = range.getBoundingClientRect();
-        const right = text.width > 0 ? text.right : title.getBoundingClientRect().right;
-        const left = Math.round(right - slot.getBoundingClientRect().left) + 6;
-        region.style.setProperty("--gea-search-left", `${left}px`);
-      };
-      sync();
-      const observer = new MutationObserver(sync);
-      observer.observe(region, { childList: true, subtree: true, characterData: true });
-      window.addEventListener("resize", sync);
-      return () => {
-        observer.disconnect();
-        window.removeEventListener("resize", sync);
-        region.style.removeProperty("--gea-search-left");
-      };
-    }, [region, drawer]);
-    // 设置弹窗左栏的顺序由各插件注册的 order 决定，第三方「侧边卡片」落在系统项后面。
-    // 弹窗一出现就把它提到「软件更新」前面；按锚点判断是否已就位，重复触发不会继续上移。
-    useEffect(() => {
-      const cellLabel = (cell: Element) =>
-        cell.textContent?.replace(/\s+/g, "").trim() ?? "";
-      const place = () => {
-        const list = document.querySelector<HTMLElement>(
-          '[role="dialog"] [class*="navList"]',
-        );
-        if (!list) return;
-        const cells = [...list.children];
-        const anchor = cells.find((cell) => cellLabel(cell) === "软件更新");
-        if (!anchor) return;
-        const anchorIndex = cells.indexOf(anchor);
-        for (const card of cells.filter((cell) => cellLabel(cell) === "侧边卡片")) {
-          // 已经在系统项前面就不再动，避免每次变更来回搬。
-          if (cells.indexOf(card) < anchorIndex) continue;
-          list.insertBefore(card, anchor);
-        }
-      };
-      place();
-      const observer = new MutationObserver(place);
-      observer.observe(document.body, { childList: true, subtree: true });
-      return () => observer.disconnect();
-    }, []);
-    useEffect(() => {
-      if (!business) return;
-      const hideConversationChrome = () => {
-        const conversation = document.querySelector<HTMLElement>(
-          ".AppFrame_rightbarCol [data-slot='main.conversation']",
-        );
-        if (!conversation) return;
-        const hide = (element: Element | null | undefined) => element?.setAttribute("data-gea-hidden-session-chrome", "");
-        const text = (element: Element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "";
-        // 每次重算前先撤掉上一轮的标记：首屏标记过的容器在会话开始后就是消息列表，
-        // 不能让它一直停在被隐藏的状态（否则真实回复用户看不到）。
-        for (const marked of conversation.querySelectorAll("[data-gea-hidden-session-chrome]"))
-          marked.removeAttribute("data-gea-hidden-session-chrome");
-        // 首屏（hero）才把原生欢迎区整段让开。0.1.6 的欢迎区是品牌行 + 工作区/预设选择器，
-        // 业务外壳自己铺了这一屏；会话开始后这些兄弟节点是消息列表，必须保留。
-        if (conversation.querySelector("[data-phase='hero']")) {
-          const composer = conversation.querySelector("textarea, [contenteditable='true']");
-          for (let node: Element | null = composer; node && node !== conversation; node = node.parentElement) {
-            for (const sibling of [...(node.parentElement?.children ?? [])]) {
-              if (sibling === node) break;
-              if (sibling.querySelector(".gea-agent-welcome")) continue;
-              hide(sibling);
-            }
-          }
-        }
-        hide(conversation.querySelector("[aria-label='选择工作区']"));
-        hide(conversation.querySelector("[aria-label='需求预测']"));
-        hide([...conversation.querySelectorAll("button, [role='button']")].find((element) => text(element) === "workspace"));
-        for (const label of ["选择打开方式", "更多操作"]) {
-          hide(conversation.querySelector(`button[aria-label='${label}']`));
-        }
-        hide([...conversation.querySelectorAll("[role='tab']")].find((element) => text(element) === "轨迹"));
-      };
-      hideConversationChrome();
-      const observer = new MutationObserver(hideConversationChrome);
-      observer.observe(document.body, { childList: true, subtree: true });
-      return () => {
-        observer.disconnect();
-        document.querySelectorAll("[data-gea-hidden-session-chrome]").forEach((element) =>
-          element.removeAttribute("data-gea-hidden-session-chrome"),
-        );
-      };
-    }, [business]);
-    if (!region) return null;
-    const expandSidebar = () => {
-      // 不同内核版本把同一个按钮标成「打开侧边栏」或「展开侧边栏」，两种都认。
-      document
-        .querySelector<HTMLButtonElement>(
-          "button[aria-label='打开侧边栏'], button[aria-label='展开侧边栏']",
-        )
-        ?.click();
-    };
-    // 工作区 only swaps the sidebar surface: the center document and the rail conversation stay.
-    const toggleDrawer = (name: "function" | "workspace") => {
-      if (name !== "workspace") historyPanel.current = null;
-      setDrawer((value) => (value === name ? "none" : name));
-    };
-    const drawerPortal = createPortal(
-      <>
-        {/* 两个抽屉上下挨着：业务工作台在上、历史会话紧跟其下，展开都往下走。 */}
-        <div className="gea-sidebar-drawer gea-drawer-function">
-          <button
-            type="button"
-            className="gea-sidebar-tab"
-            aria-expanded={drawer === "function"}
-            aria-controls="gea-panel-function"
-            onClick={() => toggleDrawer("function")}
-          >
-            <span className="gea-drawer-title">{t("functionArea")}</span>
-            <Chevron open={drawer === "function"} />
-          </button>
-        </div>
-        <div className="gea-sidebar-drawer gea-drawer-workspace">
-          <button
-            type="button"
-            className="gea-sidebar-tab"
-            aria-expanded={drawer === "workspace"}
-            aria-controls="gea-panel-workspace"
-            onClick={() => toggleDrawer("workspace")}
-          >
-            <span className="gea-drawer-title">{t("workspaceArea")}</span>
-            <Chevron open={drawer === "workspace"} />
-          </button>
-        </div>
-        {/* 面板统一放在两行下面，这样两个标题始终挨着，展开都是往下长。 */}
-        {drawer === "function" && (
-          <div className="gea-sidebar-panel gea-panel-function" id="gea-panel-function">
-            <Navigation
-              usePanelInfo={usePanelInfo}
-              useSessions={useSessions}
-              useMainSessionId={useMainSessionId}
-              useSessionStatus={useSessionStatus}
-              useSessionRetainInfo={useSessionRetainInfo}
-              useWorkspaces={useWorkspaces}
-              wide
-              expandSidebar={expandSidebar}
-              sections={sections}
-              onToggleSection={(section) => setSections((value) => ({ ...value, [section]: !value[section] }))}
-            />
-          </div>
-        )}
-      </>,
-      region,
-    );
-    // 侧栏收起后只留图标列：点哪个先把侧栏展开，再打开对应的抽屉（和展开态一一对应）。
-    const openDrawerFromRail = (name: "function" | "workspace") => {
-      setDrawer(name);
-      nativeExpandSidebar();
-    };
-    const newConversation = () => {
-      setDrawer("workspace");
-      nativeExpandSidebar();
-      // 等原生侧栏渲染出来再触发它自己的「新建会话」，避免在收起态点到不存在的节点。
-      window.setTimeout(
-        () => document.querySelector<HTMLButtonElement>("[data-sidebar-new-session]")?.click(),
-        150,
-      );
-    };
-    const newBusinessConversation = () => {
-      historyPanel.current = null;
-      if (!activePanel || !business || activePanel === API_LOG_PANEL) {
-        newConversation();
-        return;
-      }
-      setConversationActionError("");
-      // The native workbench briefly re-creates its conversation beside the
-      // business panel when a session opens. Keep the columns from animating
-      // through the intermediate layout during that handoff.
-      const frame = document.querySelector<HTMLElement>(".AppFrame_frame");
-      frame?.classList.add("gea-session-switching");
-      const fallback = window.setTimeout(() => frame?.classList.remove("gea-session-switching"), 1500);
-      void ctx.agentWorkbench.open(activePanel, `gea-new-${crypto.randomUUID()}`)
-        .catch((error: unknown) => setConversationActionError(String(error instanceof Error ? error.message : error)))
-        .finally(() => {
-          window.clearTimeout(fallback);
-          window.setTimeout(() => frame?.classList.remove("gea-session-switching"), 400);
-        });
-    };
-    const showConversationHistory = () => {
-      historyPanel.current = activePanel;
-      linkedHistorySession.current = currentConversationSession ?? null;
-      setDrawer("workspace");
-      nativeExpandSidebar();
-    };
-    const railItem = (label: string, icon: NavIconKind, selected: boolean, onClick: () => void) => (
-      <button
-        type="button"
-        className={`gea-sidebar-rail-item${selected ? " is-active" : ""}`}
-        title={label}
-        aria-label={label}
-        aria-current={selected ? "page" : undefined}
-        onClick={onClick}
-      >
-        <NavIcon kind={icon} />
-      </button>
-    );
-    const sidebarRail = createPortal(
-      <div className="gea-sidebar-rail" data-gea-sidebar-rail>
-        {railItem("新建对话", "newChat", false, newConversation)}
-        {railItem(t("functionArea"), "apps", drawer === "function", () => openDrawerFromRail("function"))}
-        {railItem(t("workspaceArea"), "folder", drawer === "workspace", () => openDrawerFromRail("workspace"))}
-      </div>,
-      region,
-    );
-    return (
-      <>
-        {sidebarRail}
-        {drawerPortal}
-        {logoRow && createPortal(
-          <button
-            type="button"
-            className="gea-inbox-quick-action"
-            aria-label={t("messageInbox")}
-            title="业务代办"
-            onClick={() => ctx.layout.selectPanel(INBOX)}
-          >
-            <NavIcon kind="bell" />
-          </button>,
-          logoRow,
-        )}
-        {business && (conversationView === "center" ? centerColumn : railColumn) && createPortal(
-          <ConversationToolbar
-            view={conversationView}
-            onViewChange={setConversationView}
-            onHistory={showConversationHistory}
-            onNewConversation={newBusinessConversation}
-            error={conversationActionError}
-          />,
-          (conversationView === "center" ? centerColumn : railColumn)!,
-        )}
-        {/* 欢迎区已有 Agent 身份；切换抽屉或历史会话时不再插入第二个标题。 */}
-        {conversationHero && createPortal(
-          <AgentWelcome
-            agent={conversationAgentFor(activePanel)}
-            onFill={(prompt) => writeConversationPrompt(prompt, false)}
-          />,
-          conversationHero,
-        )}
-        {!business && homeHero && createPortal(
-          <GeaHomeHero
-            copy={{
-              label: t("geaBusiness"),
-              eyebrow: t("homeEyebrow"),
-              title: t("homeTitle"),
-              description: t("homeDescription"),
-            }}
-          />,
-          homeHero,
-        )}
-      </>
-    );
+    return null;
   }
+
+  function SidebarNavigation(props: PropsRuntime<"sidebar.navigation"> & MainSessionProps) {
+    const state = React.useSyncExternalStore(navigation.subscribe, navigation.getSnapshot);
+    const selectDrawer = (drawer: typeof state.drawer) => {
+      navigation.set({...state, drawer: state.drawer === drawer ? "none" : drawer, historyPanel: null});
+    };
+    const startSession = () => { navigation.set({...state, drawer: "workspace", historyPanel: null}); props.startSession(); };
+    const expand = (drawer: typeof state.drawer) => { navigation.set({...state, drawer}); props.expandSidebar(); };
+    if (!props.wide) return <nav className="gea-sidebar-rail" aria-label={t("businessNavigation")}>
+      <style>{shellCss}</style>
+      <button aria-label={t("startConversation")} onClick={startSession}><NavIcon kind="newChat"/></button>
+      <button aria-label={t("functionArea")} onClick={() => expand("function")}><NavIcon kind="apps"/></button>
+      <button aria-label={t("workspaceArea")} onClick={() => expand("workspace")}><NavIcon kind="folder"/></button>
+    </nav>;
+    return <div className="gea-sidebar-navigation">
+      <style>{shellCss}</style>
+      <button type="button" className="gea-sidebar-tab" aria-label={t("aiWorkbench")} onClick={startSession}><NavIcon kind="newChat"/><span>{t("aiWorkbench")}</span></button>
+      <button type="button" className="gea-sidebar-tab" aria-expanded={state.drawer === "function"} onClick={() => selectDrawer("function")}><span>{t("functionArea")}</span><Chevron open={state.drawer === "function"}/></button>
+      <button type="button" className="gea-sidebar-tab" aria-expanded={state.drawer === "workspace"} onClick={() => selectDrawer("workspace")}><span>{t("workspaceArea")}</span><Chevron open={state.drawer === "workspace"}/></button>
+      <div className="gea-sidebar-browser">
+        {state.drawer === "function" && <Navigation {...props} wide={props.wide} expandSidebar={props.expandSidebar}/>}
+        <div hidden={state.drawer !== "workspace"}>{props.renderWorkspaces()}</div>
+      </div>
+    </div>;
+  }
+
+  function BusinessConversationToolbar({usePanelInfo, useMainSessionId}: PropsRuntime<"shell.conversation.toolbar"> & MainSessionProps) {
+    const activePanel = usePanelInfo(info => info.activePanelId);
+    const session = useMainSessionId(id => id);
+    const presentation = React.useSyncExternalStore(layout.shellPresentation.subscribe, layout.shellPresentation.getSnapshot);
+    const state = React.useSyncExternalStore(navigation.subscribe, navigation.getSnapshot);
+    if (!activePanel || !isGeaBusinessPanel(activePanel, ctx.slots.entries("main"))) return null;
+    return <ConversationToolbar view={presentation.conversationView} onViewChange={view => layout.setConversationView(view)} error={state.error}
+      onHistory={() => { navigation.set({...state, drawer: "workspace", historyPanel: activePanel, linkedSession: session ?? null}); layout.expandSidebar(); }}
+      onNewConversation={() => {
+        navigation.set({...state, historyPanel: null, error: ""});
+        void ctx.agentWorkbench.open(activePanel, `gea-new-${crypto.randomUUID()}`)
+          .then(committed => { if (committed === false) throw Error("页面会话切换未完成"); })
+          .catch(error => navigation.set({...navigation.getSnapshot(), error: error.message}));
+      }}/>
+  }
+
+  function Welcome({usePanelInfo, inputActions}: PropsRuntime<"conversation.hero.content">) {
+    const activePanel = usePanelInfo(info => info.activePanelId);
+    return <div className="gea-welcome-content"><style>{shellCss}</style>
+      {activePanel ? <AgentWelcome agent={conversationAgentFor(activePanel)} onFill={prompt => inputActions?.setDraft(prompt)}/> :
+        <GeaHomeHero copy={{label: t("geaBusiness"), eyebrow: t("homeEyebrow"), title: t("homeTitle"), description: t("homeDescription")}}/>}
+    </div>;
+  }
+
+  ctx.slots.inject("sidebar.navigation", () => ctx.slots.register({name: "sidebar.navigation", locale: "geaProof", inject: () => injected}, SidebarNavigation));
+  ctx.slots.inject("sidebar.footer.action", () => ctx.slots.register({name: "sidebar.footer.action", id: "gea-inbox", locale: "geaProof"}, function InboxShortcut() {
+    return <button className="gea-inbox-quick-action" aria-label={t("messageInbox")} onClick={() => ctx.layout.selectPanel(INBOX)}><NavIcon kind="bell"/></button>;
+  }));
+  ctx.slots.inject("conversation.chat.running.text", () => ctx.slots.register({name: "conversation.chat.running.text", locale: "geaProof"}, function WaitingText({duration}: PropsRuntime<"conversation.chat.running.text">) {
+    return duration === undefined ? t("thinking") : t("thinkingFor").replace("{duration}", duration);
+  }));
+  ctx.slots.inject("shell.conversation.toolbar", () => ctx.slots.register({name: "shell.conversation.toolbar", locale: "geaProof", inject: () => injected}, BusinessConversationToolbar));
+  ctx.slots.inject("conversation.header.content", () => ctx.slots.register({name: "conversation.header.content"}, function HeaderContent({usePanelInfo, renderDefault}: PropsRuntime<"conversation.header.content">) {
+    const panel = usePanelInfo(info => info.activePanelId);
+    return isGeaBusinessPanel(panel, ctx.slots.entries("main")) ? null : renderDefault();
+  }));
+  ctx.slots.inject("conversation.hero.content", () => ctx.slots.register({name: "conversation.hero.content", locale: "geaProof"}, Welcome));
   ctx.slots.inject('shell.overlay', () => ctx.slots.register(
     {name:'shell.overlay',id:'gea-identity-sync-notice'},
     function IdentitySyncNotice() {
@@ -1200,8 +750,8 @@ export function apply(ctx: Context): void {
   ));
   ctx.slots.inject("shell.overlay", () =>
     ctx.slots.register(
-      { name: "shell.overlay", id: "gea-navigation-mode", locale: "geaProof", inject: () => injected },
-      NavigationMode,
+      { name: "shell.overlay", id: "gea-navigation-lifecycle", locale: "geaProof", inject: () => injected },
+      NavigationLifecycle,
     ),
   );
   ctx.slots.inject("sidebar.brand.mark", () =>
@@ -1247,37 +797,6 @@ declare module "@deepseek-ai/cordis" {
   interface Context {
     geaIdentity: BusinessIdentityProjection;
   }
-}
-
-function writeConversationPrompt(prompt: string, submit: boolean): void {
-  const conversation = document.querySelector<HTMLElement>(
-    ".AppFrame_rightbarCol [data-slot='main.conversation'], .AppFrame_centerCol [data-slot='main.conversation']",
-  );
-  if (!conversation) return;
-  const input = Array.from(conversation.querySelectorAll<HTMLElement>("textarea, [contenteditable='true']"))
-    .find((element) => element.getClientRects().length > 0 && !element.hasAttribute("disabled"));
-  if (!input) return;
-  if (input instanceof HTMLTextAreaElement) {
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(input, prompt);
-    input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
-  } else {
-    input.focus();
-    document.execCommand("selectAll", false);
-    if (!document.execCommand("insertText", false, prompt)) {
-      input.replaceChildren(document.createTextNode(prompt));
-      input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
-    }
-  }
-  input.focus();
-  if (!submit) return;
-  window.setTimeout(() => {
-    const send = Array.from(conversation.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
-      const label = `${button.getAttribute("aria-label") ?? ""} ${button.getAttribute("title") ?? ""}`;
-      return !button.disabled && button.getClientRects().length > 0 && /(发送|send)/i.test(label);
-    });
-    if (send) send.click();
-    else input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
-  }, 0);
 }
 
 function AgentWelcome({

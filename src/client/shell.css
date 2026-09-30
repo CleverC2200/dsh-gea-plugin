@@ -5,36 +5,12 @@
   min-width: 0;
   min-height: 0;
 }
-/* DSH session chrome the business shell replaces with its own panel. */
-[data-gea-hidden-session-chrome] {
-  display: none !important;
-}
-/* 面板切换瞬间不做列宽动画，避免业务页面连续重排（看起来像闪动）。 */
-.AppFrame_frame:is(.gea-panel-switching, .gea-session-switching) {
-  transition: none !important;
-}
-.AppFrame_frame:is(.gea-panel-switching, .gea-session-switching) > :is(.AppFrame_centerCol, .AppFrame_rightbarCol, .AppFrame_handle) {
-  transition: none !important;
-}
 .gea-workbench-frame {
   display: block;
   border: 0;
   width: 100%;
   height: 100%;
   background: #f8f9fb;
-}
-/*
- * 左侧两个互斥抽屉：业务工作台在上、历史会话紧跟其下，两个面板都往下弹。
- * 两个面板铺在同一块底色上，同一时刻只开一个。
- */
-[class*="_regionArea"] {
-  display: flex !important;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  /* 两个抽屉（业务工作台菜单 / 历史会话列表）统一正文色，改这一处即可。 */
-  --gea-sidebar-ink: var(--dsw-alias-label-primary, rgb(31, 31, 31));
-  --gea-menu-left: 10px;
 }
 .gea-sidebar-drawer {
   display: flex;
@@ -102,144 +78,18 @@
   /* 两个抽屉共用一块底色：菜单不再自己铺灰底，跟原生会话列表保持一致。 */
   background: transparent;
 }
-[class*="_regionArea"] > [data-slot="sidebar.workspaces"] {
-  order: 4;
-  min-height: 0;
-}
-/* 展开功能区：菜单占满这一行下面，工作区列表收起。 */
-[data-gea-drawer="function"] > [data-slot="sidebar.workspaces"],
-[data-gea-drawer="none"] > [data-slot="sidebar.workspaces"] {
-  display: none !important;
-}
-/* 展开工作区：原生会话列表顶到这一行下面，自己滚；功能区让位。 */
-[data-gea-drawer="workspace"] > [data-slot="sidebar.workspaces"] {
-  display: flex !important;
-  flex-direction: column;
-  position: relative;
-  /* 会话列表在「历史会话」下面往下长，自己滚。
-     这里不做滚动容器：原生那一行的搜索/排序/新建按钮要能上移到抽屉标题那一行。 */
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: visible;
-}
-[data-gea-drawer="workspace"] > [data-slot="sidebar.workspaces"] > * { flex: 1 1 auto; min-height: 0; }
-[data-gea-drawer="workspace"] [class*="_listArea"] { flex: 1 1 auto; min-height: 0; }
-/*
- * 历史会话列表跟随业务工作台的文字规格：字号与菜单正文一致（12px），
- * 颜色统一为同一个深灰，避免两边一大一小、一深一浅。
- */
-[data-slot="sidebar.workspaces"] [class*="_title"],
-[data-slot="sidebar.workspaces"] [class*="_sessionOverflowButton"],
-[data-slot="sidebar.workspaces"] [class*="_empty"] {
-  font-size: calc(var(--workbench-font-size, 14px) - 2px);
-}
-[data-slot="sidebar.workspaces"] [class*="_projectRow"],
-[data-slot="sidebar.workspaces"] [class*="_sessionRow"],
-[data-slot="sidebar.workspaces"] [class*="_title"],
-[data-slot="sidebar.workspaces"] [class*="_time"],
-[data-slot="sidebar.workspaces"] [class*="_meta"],
-[data-slot="sidebar.workspaces"] [class*="_sessionOverflowButton"],
-[data-slot="sidebar.workspaces"] [class*="_empty"] {
-  color: var(--gea-sidebar-ink);
-}
-/*
- * 原生那一行（搜索/排序/新建工作区）上移到「历史会话」标题右边，合成一行。
- * 原生节点在 DSH 的 React 树里搬不动，所以用定位把它落上去。
- */
-[data-gea-drawer="workspace"] [class*="_sectionHeader"] {
-  position: absolute;
-  top: -38px;
-  /* 右边留出收起箭头的位置，箭头排在整行最右边。 */
-  right: 30px;
-  left: auto;
-  z-index: 2;
-  width: auto;
-  height: 36px;
-  padding: 0;
-}
-/* 标题给右边的按钮和箭头让位，避免压字。 */
-[data-gea-drawer="workspace"] .gea-drawer-workspace .gea-sidebar-tab { padding-right: 8px; }
-/*
- * 点搜索后：原生那一行从「历史会话」标题右边一直铺到侧栏右边，输入框拉满；
- * 这一行的收起箭头让位（原来被挤到中间，看着像跑偏了）。
- */
-[class*="_regionArea"]:has([class*="_searchExpanded"]) [class*="_sectionHeader"] {
-  left: var(--gea-search-left, 96px);
-  right: 8px;
-  width: auto;
-}
-[class*="_regionArea"]:has([class*="_searchExpanded"]) [class*="_searchSlot"],
-[class*="_regionArea"]:has([class*="_searchExpanded"]) [class*="_search"] {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-[class*="_regionArea"]:has([class*="_searchExpanded"]) [class*="_searchInput"] {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: auto;
-}
-[class*="_regionArea"]:has([class*="_searchExpanded"]) .gea-drawer-workspace .gea-shell-chevron {
-  display: none;
-}
-[data-gea-drawer="workspace"] .gea-sidebar-panel { display: none; }
-/* 原生那一行的「工作区」标题由抽屉标题代替，只保留搜索/排序/新建按钮。 */
-[data-gea-drawer="workspace"] [class*="_sectionLabel"] { display: none; }
 /* 两个面板都是从上往下弹。 */
 @keyframes gea-panel-down {
   from { opacity: 0; transform: translateY(-12px); }
   to { opacity: 1; transform: none; }
 }
 .gea-panel-function { animation: gea-panel-down 200ms ease-out; }
-[data-gea-drawer="workspace"] > [data-slot="sidebar.workspaces"] { animation: gea-panel-down 220ms ease-out; }
-@media (prefers-reduced-motion: reduce) {
-  .gea-panel-function,
-  [data-gea-drawer="workspace"] > [data-slot="sidebar.workspaces"] { animation: none; }
-}
-/* 抽屉/图标列的切换按侧栏实测宽度走（data-gea-narrow），不跟宿主的收起标志同步切换，
-   否则宽度还在动画时抽屉就消失、图标列铺满整条栏再滑回左边，看起来就是"闪动"。 */
-[data-gea-narrow] .gea-sidebar-drawer,
-[data-gea-narrow] .gea-sidebar-panel { display: none; }
 /* 收起动画一开始就让抽屉淡出，避免中途被挤成一条时露出截断文字。 */
 .gea-sidebar-drawer,
 .gea-sidebar-panel { transition: opacity 120ms ease-out; }
-[data-sidebar-collapsed] .gea-sidebar-drawer,
-[data-sidebar-collapsed] .gea-sidebar-panel { opacity: 0; pointer-events: none; }
-[data-gea-narrow] [class*="_regionArea"] > [data-slot="sidebar.workspaces"] {
-  display: none !important;
-}
 /* 侧栏收起时只剩图标列：新建对话 / 业务工作台 / 历史会话，点哪个都会先展开侧栏。 */
 .gea-sidebar-rail {
   display: none;
-}
-[data-gea-narrow] .gea-sidebar-rail {
-  order: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 0;
-  /* 固定成收起态的列宽并贴左，宽度动画过程中图标不再横向漂移。 */
-  align-self: flex-start;
-  /* 跟宿主收起态的品牌按钮同宽（36px）：圆标和图标列落在同一条中线上。 */
-  width: 36px;
-  max-width: 100%;
-}
-[data-gea-narrow] .gea-sidebar-rail-item { width: 36px; height: 36px; }
-/* 收起态这三个入口由 GEA 提供，原生重复的「新建会话」按钮收起来。 */
-[data-gea-narrow] [data-sidebar-new-session] {
-  display: none !important;
-}
-/* 「AI 工作台」（原生新建会话）跟业务导航同一条左线：整块贴左、内容左对齐。 */
-button[data-sidebar-new-session] {
-  justify-content: flex-start !important;
-  margin-left: -12px !important;
-  padding-left: 7px !important;
-}
-/* 文字跟业务导航的一级标题落在同一条竖线上（图标线都是 x=8）。 */
-button[data-sidebar-new-session] :is(svg, img) { margin-right: 8px; }
-button[data-sidebar-new-session] [data-sidebar-new-session-content] {
-  justify-content: flex-start;
-  gap: 0;
 }
 .gea-sidebar-rail-item {
   display: flex;
@@ -265,9 +115,6 @@ button[data-sidebar-new-session] [data-sidebar-new-session-content] {
   outline: 2px solid var(--workbench-brand, #df1732);
   outline-offset: 2px;
 }
-[class*="_logoRow"]:has(.gea-inbox-quick-action) {
-  position: relative;
-}
 .gea-inbox-quick-action {
   position: absolute;
   top: 50%;
@@ -289,9 +136,6 @@ button[data-sidebar-new-session] [data-sidebar-new-session-content] {
 .gea-inbox-quick-action[aria-current="page"] {
   background: var(--workbench-brand-soft, #fff0f2);
   color: var(--workbench-brand, #df1732);
-}
-[data-gea-narrow] .gea-inbox-quick-action {
-  display: none;
 }
 /* The business profile keeps the application chooser but not the default
    workspace quick-launch. Older desktop cores do not yet understand the
@@ -351,48 +195,12 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   margin-right: 10px;
   object-fit: contain;
 }
-/* 登记 24：宿主在品牌位未挂载时的兜底文案是「DSH 本地构建」，GEA 外壳不出现构建文案。 */
-[class*="fallbackBrandName"] { display: none !important; }
-/* 登记 28：侧栏收起后品牌圆标跟下面的图标列走同一条中线。 */
-[data-gea-narrow] [class*="_logoRow"] [class*="_brand"] {
-  justify-content: center !important;
-  /* 和图标列同宽（56px）并贴同一条左边缘，圆标才会落在图标列的中线上。 */
-  width: 56px;
-  min-width: 56px;
-  max-width: 56px;
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-}
-[data-gea-narrow] [class*="_logoRow"] { padding-left: 0 !important; }
-/* 收起态品牌圆标缩小到跟图标列同一量级，不再占满整条宽度。 */
-[data-gea-narrow] .gea-shell-logo {
-  width: 26px;
-  height: 26px;
-  margin-right: 0 !important;
-}
-/* 品牌区照原型：思念圆标 + 思念红标题 + 一行浅灰说明。 */
-[class*="_logoRow"] [class*="_brand"] {
-  height: auto;
-  min-height: 44px;
-  overflow: visible;
-}
-[data-slot="sidebar.brand.name"] {
-  min-width: 0;
-}
 .gea-brand-copy {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 1px;
   cursor: default;
-}
-[data-slot="sidebar.brand.name"] span {
-  color: var(--workbench-brand, #d70a1c);
-  font-family: "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", Arial, sans-serif;
-  font-size: 19px;
-  font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: 0.2px;
 }
 .gea-brand-subtitle {
   /* 对比度：原来 #96999f 在 #f9fafb 上只有 2.73:1，加深到 5.06:1（WCAG AA）。 */
@@ -558,115 +366,6 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   width: 100vw;
   height: 100dvh;
 }
-
-/* The GEA side conversation keeps its native composer at the column foot. */
-/* 会话统计（「N 轮 M 步」）原生挂在输入卡下面，会把输入卡顶离列底。
-   统一挪到输入卡上方：输入卡于是成为对话列最下面一块，贴着列底。
-   主对话和工作台右侧会话列用的是同一个输入条组件，一条规则两边都生效。 */
-[data-composer-seat] [data-slot="conversation.composer.dock"],
-[data-composer-seat] [data-composer-dock],
-[data-composer-seat] [data-composer-stats] {
-  order: -1;
-}
-/* 输入区在任何列宽、任何窗口高度下都必须压在业务页面之上：
-   宿主列拖拽条是 z-index:11，外壳自己的上下拖动条是 12，这里再抬一档，
-   并让对话列自成一个层叠上下文，页面内容不可能盖到输入框。 */
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > [data-rightbar-col] {
-  position: relative;
-  z-index: 2;
-}
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
-  [data-rightbar-col]
-  [data-composer-seat] {
-  position: relative;
-  z-index: 30;
-  background: var(--workbench-surface, #fff);
-}
-/* The welcome area fills the space above the composer. The composer scrollport
-   must start at its top: flex-end clips the card's upper edge on short rails. */
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
-  [data-phase="hero"]
-  [data-conversation-scroll] {
-  justify-content: flex-start;
-}
-
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
-  [data-phase="hero"]
-  [data-composer-seat] {
-  flex: 1;
-}
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
-  [data-phase="hero"]
-  [data-chain-overlay-fallback="conversation.composer"]
-  > div {
-  flex: 1;
-}
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
-  [data-phase="hero"]
-  [data-chain-overlay-fallback="conversation.composer"]
-  > div
-  > div:first-child {
-  flex: 1;
-  height: auto;
-}
-
-/* The right rail is the single native conversation surface. */
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] {
-  background: var(--workbench-surface, #fff);
-  border-left: 0;
-}
-/* 宿主的列拖拽条宽 8px、左右各压过边界 4px，会压进右侧会话区、在输入框那一行切出一条竖线。
-   整个挪到左边界外侧，拖动照样可用，但不再切进对话框。 */
-.AppFrame_handle {
-  width: 6px;
-  margin-left: -6px;
-}
-/* DSH 右栏自带的整列 border 会一直画到输入区，页面宽度变化时就像分隔条切进对话框。
-   业务会话自己保留内容边界，输入区不再继承宿主整列分隔线。 */
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-rightbar-col] {
-  border-left: 0 !important;
-}
-/* The rail keeps DSH's native composer card; only its clearance is tightened, because the
-   hero-sized clearance wastes most of a 440px column. Both conversation phases inherit it,
-   and it must sit on the conversation root because DSH declares the same vars there. */
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
-  [data-rightbar-col]
-  [data-phase] {
-  --dsh-composer-card-max-width: 100%;
-  --dsh-composer-side-clearance: 8px;
-}
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
-  [data-phase="hero"]
-  :has(> [data-slot="conversation.composer.bar"]) {
-  padding: 8px 0;
-}
-/* The rail reserves a scrollbar gutter the composer never uses; drop it so the card sits
-   symmetrically against both rail edges instead of 8px further from the right one. */
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)
-  [data-rightbar-col]
-  [data-conversation-scroll] {
-  scrollbar-gutter: auto;
-  margin-right: 0;
-}
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] [data-composer-seat] {
-  background: var(--workbench-surface, #fff);
-}
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] .wSkVaW_composerHero > .pXSMma_root,
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] .wSkVaW_heroWorkspaceRow {
-  display: none;
-}
-/* Agent landing surface: keep DSH's native composer and put GEA's useful entry points above it. */
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] {
-  position: relative;
-  overflow: hidden;
-  flex-direction: column;
-}
-/* The conversation body shrinks to the composer so the composer is docked, not overlaid. */
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] > .wSkVaW_body {
-  flex: 0 0 auto;
-  height: auto;
-  min-height: 0;
-}
 .gea-agent-welcome {
   /* 首页原来用绝对定位、底边只留 104px：输入区比这高时会盖住输入框、点不进去。
      改成和业务页一样的"上欢迎区、下输入区"弹性排布。 */
@@ -680,34 +379,6 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   padding: 28px 18px 16px;
   background: var(--workbench-surface, #fff);
   color: var(--workbench-body, #555d68);
-}
-[data-phase="hero"] [data-composer-seat] {
-  /* Keep the composer outline above the column resize handles. */
-  position: relative;
-  inset: auto;
-  /* 宿主的列拖拽条是 z-index:11 且左右各压进边界 4px，会压到输入框左上角；
-     输入区排在它上面（上色不透明），拖动条照旧可见，但不会盖住对话框。 */
-  z-index: 12;
-  flex: 0 0 auto;
-  min-height: 0;
-  background: var(--workbench-surface, #fff);
-}
-/* With the workbench beside it, the landing surface takes the space above the docked composer. */
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] > .gea-agent-welcome {
-  position: relative;
-  inset: auto;
-  order: -1;
-  flex: 1 1 auto;
-  min-height: 0;
-  z-index: 1;
-}
-[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) [data-phase="hero"] [data-composer-seat] {
-  position: relative;
-  inset: auto;
-  z-index: 12;
-  flex: 0 0 auto;
-  min-height: 0;
-  background: var(--workbench-surface, #fff);
 }
 .gea-agent-identity { text-align: center; }
 .gea-agent-avatar {
@@ -777,25 +448,6 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 /* 更矮（≤780px 高）时连头像一起收掉，保证推荐问题不被折叠。 */
 @media (max-height: 780px) {
   .gea-agent-avatar { display: none; }
-}
-/*
- * AI 工作台主页面主视觉（原型 mid 区）：品牌引言 + 三个入口，
- * 原生会话区只留输入卡，DSH 自己的欢迎品牌（探索未至之境/预览版）不再出现。
- * 内核换版本时类名哈希前缀会变（pXSMma_… → 别的），后缀不变，
- * 所以除了写死的哈希，再按 *_titleGroup / *_headline 后缀兜一层。
- */
-.AppFrame_centerCol [data-slot="main.conversation"] [data-phase="hero"] .pXSMma_root {
-  display: none;
-}
-.AppFrame_centerCol [data-slot="main.conversation"] [data-phase="hero"] [class*="_titleGroup"],
-.AppFrame_centerCol [data-slot="main.conversation"] [data-phase="hero"] [class*="_headline"],
-.AppFrame_centerCol [data-slot="main.conversation"] [class*="_composerHero"] [class*="_titleGroup"],
-.AppFrame_centerCol [data-slot="main.conversation"] [class*="_composerHero"] [class*="_headline"] {
-  display: none !important;
-}
-/* 会话一旦开始（chat 阶段），主视觉就不再占位。 */
-.AppFrame_centerCol [data-slot="main.conversation"] [data-phase]:not([data-phase="hero"]) .gea-home-hero {
-  display: none;
 }
 .gea-home-hero {
   order: -1;
@@ -1094,149 +746,7 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   .gea-shell-navigation-content .gea-shell-label { display: none; }
 }
 
-/* The collapsed rail is a transparent launcher: one menu glyph, no residual panel. */
-[data-sidebar-collapsed] > :has(.gea-shell-navigation),
-[data-sidebar-collapsed] .gea-shell-navigation,
-[data-sidebar-collapsed]:has(.gea-shell-navigation) > :first-child {
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-/*
- * 窄宽度不再改成上下两行：只按档位收缩左右两栏，最后把左侧菜单收进图标列，
- * 始终保留「中间工作台 + 右边对话」。
- * >1200 完全交给宿主的列宽策略与两侧拖拽手柄（拖一次即记忆）；
- * ≤1200 宿主会隐藏左右手柄，所以这里可以安全接管列定义，不会压坏手柄。
- */
-@media (max-width: 1200px) {
-  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) {
-    --gea-side-col: 220px;
-    --gea-chat-col: 360px;
-    grid-template-columns: var(--gea-side-col) minmax(0, 1fr) var(--gea-chat-col) !important;
-    transition: none;
-  }
-  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_handle { display: none; }
-  /* 宿主自己的收起按钮仍然生效：收起时左栏只剩图标列。 */
-  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked)[data-sidebar-collapsed] {
-    --gea-side-col: 64px;
-  }
-}
-/* 再窄一档：菜单自动收进图标列，只留「工作台 + 对话」。 */
-@media (max-width: 1024px) {
-  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) {
-    --gea-side-col: 64px;
-    --gea-chat-col: 320px;
-  }
-}
-@media (max-width: 860px) {
-  .AppFrame_frame[data-conversation-beside-panel]:is(.gea-business-shell, .gea-rail-docked) {
-    --gea-chat-col: 300px;
-  }
-}
-
-/* 会话区内容跟随栏宽：宽表/图表横向滚动，不再被裁。 */
-[data-slot="main.conversation"] :is(img, svg, video, canvas) { max-width: 100%; height: auto; }
-[data-slot="main.conversation"] [data-gea-wide] {
-  max-width: 100%;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-}
-[data-slot="main.conversation"] table[data-gea-wide] { display: block; }
-
 .gea-shell-navigation .gea-shell-collaboration { margin-top: 12px; font-weight: 600; }
-
-/* 会话统计（「N 轮 M 步」）本来在输入框下方，会把输入框顶上去。
-   这里把它排到输入框上面，输入框自己贴住面板底部；横向留白沿用原生变量。 */
-/* 统计行绝对定位在输入框上方：这一行出现/消失都不再挤动输入框（否则整块会向下跳一下）。 */
-[class*="uV2eYG_root"] { position: relative; }
-[class*="uV2eYG_root"] [class*="bOPqQW_root"] {
-  position: absolute;
-  bottom: 100%;
-  left: var(--dsh-composer-side-clearance, 0px);
-  right: var(--dsh-composer-side-clearance, 0px);
-  width: auto;
-  padding-top: 0;
-  padding-bottom: 0;
-  margin-bottom: 6px;
-}
-
-/* 窄栏或矮窗口时欢迎区内容高于一屏：从顶部顺序排布并可滚动，
-   否则原生居中会把推荐问题压到输入框下面，看起来像「少了东西」。 */
-.AppFrame_rightbarCol [data-phase="hero"] [data-conversation-scroll] {
-  justify-content: flex-start !important;
-}
-
-/* Right-rail geometry follows the active business panel, not the sidebar's
-   currently rendered menu item (which disappears when its drawer closes). */
-.AppFrame_frame.gea-business-shell .gea-agent-welcome { padding-top: 50px; margin-top: 0; }
-.AppFrame_frame.gea-business-shell .gea-agent-identity { margin-top: 0; padding-top: 0; }
-
-/* The composer card has its own outline; no full-width rule above it on any Agent. */
-.AppFrame_frame [data-rightbar-col] [data-composer-seat] {
-  border-top: 0;
-  box-shadow: none;
-}
-
-/* Keep the actual composer outline visible, including its top edge. */
-.AppFrame_frame.gea-business-shell [data-rightbar-col] [data-slot="conversation.composer.bar"] {
-  --dsw-alias-border-l1: var(--workbench-control-border, #c9cfd8);
-  --dsw-alias-border-l2: var(--workbench-control-border, #c9cfd8);
-  box-shadow: inset 0 0 0 1px var(--workbench-control-border, #c9cfd8);
-  border-radius: 12px;
-}
-
-/* Agent view controls live above the active content column, so either maximized
-   view still has a visible way back to the split view. */
-.AppFrame_frame[data-gea-conversation-view] {
-  --gea-sidebar-track: 280px;
-}
-@media (max-width: 1679px) { .AppFrame_frame[data-gea-conversation-view] { --gea-sidebar-track: 240px; } }
-@media (max-width: 1200px) { .AppFrame_frame[data-gea-conversation-view] { --gea-sidebar-track: 180px; } }
-.AppFrame_frame[data-gea-conversation-view][data-sidebar-collapsed] { --gea-sidebar-track: 56px; }
-@media (min-width: 801px) and (max-width: 1200px) {
-  .AppFrame_frame[data-gea-conversation-view][data-sidebar-collapsed] { --gea-sidebar-track: 64px; }
-}
-.AppFrame_frame[data-gea-conversation-view] > .AppFrame_centerCol,
-.AppFrame_frame[data-gea-conversation-view] > .AppFrame_rightbarCol {
-  position: relative;
-  box-sizing: border-box;
-}
-/* A real rail border stays visible above the native conversation surface.
-   The toolbar covers its first 58px; the line starts at the toolbar edge. */
-@media (min-width: 801px) {
-  .AppFrame_frame[data-gea-conversation-view="split"]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_rightbarCol {
-    border-left: 1px solid #adb9c8 !important;
-  }
-}
-.AppFrame_frame[data-gea-conversation-view="split"] > .AppFrame_rightbarCol,
-.AppFrame_frame[data-gea-conversation-view="chat"] > .AppFrame_rightbarCol,
-.AppFrame_frame[data-gea-conversation-view="center"] > .AppFrame_centerCol {
-  padding-top: 58px;
-}
-.AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="center"]:is(.gea-business-shell, .gea-rail-docked) {
-  grid-template-columns: var(--gea-sidebar-track) minmax(0, 1fr) 0px !important;
-  grid-template-rows: minmax(0, 1fr) !important;
-}
-.AppFrame_frame[data-gea-conversation-view="center"] > .AppFrame_rightbarCol { display: none; }
-.AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="center"]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_centerCol { grid-column: 2; grid-row: 1; }
-.AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="chat"]:is(.gea-business-shell, .gea-rail-docked) {
-  grid-template-columns: var(--gea-sidebar-track) 0px minmax(0, 1fr) !important;
-  grid-template-rows: minmax(0, 1fr) !important;
-}
-.AppFrame_frame[data-gea-conversation-view="chat"] > .AppFrame_centerCol { display: none; }
-.AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="chat"]:is(.gea-business-shell, .gea-rail-docked) > .AppFrame_rightbarCol { grid-column: 3; grid-row: 1; border-top: 0; }
-@media (min-width: 801px) and (max-width: 1200px) {
-  .AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="center"][data-sidebar-collapsed]:has(iframe[data-gea-workbench]),
-  .AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="chat"][data-sidebar-collapsed]:has(iframe[data-gea-workbench]) {
-    grid-template-columns: var(--gea-sidebar-track) minmax(0, 1fr) 0px !important;
-    grid-template-rows: minmax(0, 1fr) !important;
-  }
-  .AppFrame_frame[data-conversation-beside-panel][data-gea-conversation-view="chat"][data-sidebar-collapsed]:has(iframe[data-gea-workbench]) {
-    grid-template-columns: var(--gea-sidebar-track) 0px minmax(0, 1fr) !important;
-  }
-}
-.AppFrame_frame[data-gea-conversation-view="center"] > .AppFrame_handle,
-.AppFrame_frame[data-gea-conversation-view="chat"] > .AppFrame_handle { display: none; }
 .gea-conversation-toolbar {
   position: absolute;
   z-index: 16;
@@ -1263,32 +773,6 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-conversation-toolbar svg { width: 16px; height: 16px; }
 .gea-conversation-toolbar-action { margin: 0; }
 .gea-conversation-toolbar-error { position: absolute; right: 10px; top: 58px; padding: 5px 8px; border: 1px solid #e7acb5; border-radius: 5px; background: #fff6f7; color: #b51931; font-size: 12px; }
-
-/* Plan Agents share the same 50px welcome inset as the APS Agent. */
-.AppFrame_frame:has(:is([data-gea-business-entry="gea-proof"],[data-gea-business-entry="gea-regional-plan"],[data-gea-business-entry="plan-region-category"])[aria-current="page"]) .gea-agent-welcome { padding-top: 50px; margin-top: 0; }
-
-/* Float every native Agent input over its own column, 20px above the window edge. */
-.AppFrame_frame [data-slot="main.conversation"] [data-composer-seat][data-gea-floating-composer] {
-  position: fixed !important;
-  inset: auto auto var(--gea-composer-bottom, 20px) var(--gea-composer-left) !important;
-  width: var(--gea-composer-width);
-  box-sizing: border-box;
-  z-index: 30;
-  margin: 0;
-  background: transparent;
-}
-.AppFrame_frame [data-slot="main.conversation"] [data-conversation-scroll]:has([data-gea-floating-composer]) {
-  padding-bottom: var(--gea-composer-reserve, 200px);
-  scroll-padding-bottom: var(--gea-composer-reserve, 200px);
-}
-.AppFrame_frame [data-slot="main.conversation"] [data-phase="hero"] > [class*="_body"] {
-  min-height: var(--gea-composer-reserve, 200px);
-}
-
-/* One readable, centered content width in both split and expanded Agent views. */
-.AppFrame_frame [data-slot="main.conversation"] {
-  --gea-conversation-content-max-width: 760px;
-}
 .gea-agent-welcome > .gea-agent-identity,
 .gea-agent-welcome > .gea-agent-block {
   width: 100%;
@@ -1297,29 +781,10 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   margin-left: auto;
   margin-right: auto;
 }
-.AppFrame_frame [data-slot="main.conversation"] [data-composer-seat] {
-  --dsh-composer-card-max-width: var(--gea-conversation-content-max-width, 760px);
-}
-.AppFrame_frame [data-slot="main.conversation"] [data-conversation-scroll] {
-  --dsh-chat-content-width: min(calc(100% - 36px), var(--gea-conversation-content-max-width, 760px));
-}
 
-
-/* Align the MPS welcome with the other business Agents. */
-.AppFrame_frame:has([data-gea-business-entry="plan-category-production"][aria-current="page"]) .gea-agent-welcome { padding-top: 50px; margin-top: 0; }
-
-/* Hide native auxiliary pane launchers on every conversation, including history. */
-.AppFrame_frame [data-dsh-bottom-toggle],
-.AppFrame_frame [data-sidebar-right-expand] { display: none !important; }
-
-/* Removed pane launchers must not leave an empty corner or utility divider. */
-.AppFrame_frame [data-conversation-header-corner]:has([data-sidebar-right-expand]) {
-  display: none !important;
-}
-.AppFrame_frame [class*="_headerUtilities"]:has([data-dsh-bottom-toggle]) {
-  border: 0 !important;
-}
-.AppFrame_frame [class*="_headerUtilities"]:has([data-dsh-bottom-toggle])::before,
-.AppFrame_frame [class*="_headerUtilities"]:has([data-dsh-bottom-toggle])::after {
-  display: none !important;
-}
+.gea-sidebar-navigation {display:flex;flex:1;min-height:0;flex-direction:column;overflow:hidden;padding:4px 10px;color:var(--workbench-text)}
+.gea-sidebar-browser {flex:1;min-height:0;overflow:auto}
+.gea-sidebar-rail {display:flex;flex-direction:column;align-items:center;gap:8px}
+.gea-sidebar-rail button {width:36px;height:36px;border:0;background:transparent;color:var(--workbench-text)}
+.gea-welcome-content {width:100%;max-width:760px;margin:auto;min-width:0}
+.gea-conversation-toolbar {position:static;flex-shrink:0;width:100%;box-sizing:border-box;padding:12px 16px;justify-content:flex-end;background:var(--workbench-surface)}

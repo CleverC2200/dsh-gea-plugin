@@ -1,5 +1,9 @@
 /** 独立销售计划页面使用的本地化文案。 */
 const copy = {
+  aiWorkbench: ["AI工作台", "AI workspace"],
+  startConversation: ["新建对话", "New conversation"],
+  thinking: ["深度思考中", "Thinking"],
+  thinkingFor: ["深度思考中，用时 {duration}", "Thinking for {duration}"],
   navigationLogin: ['请登录以打开飞书消息。','Sign in to open the Feishu message.'],
   navigationLoginAction: ['登录并继续','Sign in and continue'],
   navigationOpening: ['正在打开消息对应页面…','Opening the message destination…'],

@@ -132,7 +132,7 @@ const targets = {
       format: "cjs",
       platform: "browser",
       target: "es2022",
-      external: ["react"],
+      external: ["react", "@deepseek-ai/dsh-client-store"],
       loader: {
         ".css": "text",
         ".png": "dataurl",

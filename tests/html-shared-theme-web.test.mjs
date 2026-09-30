@@ -47,6 +47,7 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   await expect(frame.locator('#summary')).toHaveText('共 4 个项目');
   assert.equal(htmlResponse.headers()['content-security-policy'], "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'");
   await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts allow-downloads');
+  const sandbox = await iframe.getAttribute("sandbox");
   const child = page.frames().find(f => f.url().includes('/api/gea-html/inventory-customer/html'));
   assert.equal(await child.evaluate(() => { try { return !!parent.document; } catch { return false; } }), false);
   assert.equal(await child.evaluate(async () => { try { await fetch('/api/gea-html/plugins'); return true; } catch { return false; } }), false);
@@ -151,11 +152,10 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   await expect(page.locator('.gea-agent-welcome')).toHaveCSS('background-color', 'rgb(36, 38, 43)');
   await page.setViewportSize({ width: 720, height: 900 });
   await expect(frame.getByRole('button', { name: '查询', exact: true })).toBeVisible();
+  // AppFrame commits its ResizeObserver measurement on the next animation frame.
+  await expect.poll(() => child.evaluate(() => innerWidth > 0 && document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const dimensions = await child.evaluate(() => ({ width: innerWidth, document: document.documentElement.scrollWidth, table: document.querySelector('.table-scroll').scrollWidth, region: document.querySelector('.table-scroll').clientWidth }));
   assert.equal(dimensions.document, dimensions.width, 'only the table may scroll horizontally');
-  assert.ok(dimensions.table > dimensions.region);
-  await frame.locator('.table-scroll').evaluate(el => { el.scrollLeft = el.scrollWidth; });
-  await expect.poll(() => frame.locator('.table-scroll').evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
   await page.screenshot({ path: fileURLToPath(new URL('narrow-top.png', output)), fullPage: true });
   await frame.locator('#table-region').scrollIntoViewIfNeeded();
   await expect(frame.locator('tbody tr').last()).toBeVisible();
@@ -174,7 +174,25 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   await child.evaluate(() => { scrollTo(0, 0); document.querySelector('.table-scroll').scrollLeft = 0; });
   await expect(frame.getByRole('button', { name: '查询', exact: true })).toBeVisible();
   assert.equal(await child.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  // The shared layout stacks at 720px; the smaller page exercises real table overflow.
+  await expect.poll(() => child.evaluate(() => innerWidth > 0 && document.querySelector('.table-scroll').scrollWidth > document.querySelector('.table-scroll').clientWidth)).toBe(true);
+  await frame.locator('.table-scroll').evaluate(el => {el.scrollLeft = el.scrollWidth});
+  await expect.poll(() => frame.locator('.table-scroll').evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+
   await page.screenshot({ path: fileURLToPath(new URL('mobile.png', output)), fullPage: true });
+  await child.evaluate(() => {window.retainedPageMarker = 'same-frame'});
+  const retainedValue = await frame.getByLabel('项目名称').inputValue();
+  await page.getByRole('button', {name: '会话区最大，隐藏中间区域', exact: true}).click();
+  await expect(iframe).toBeHidden();
+  await expect(page.locator('.gea-agent-welcome')).toBeVisible();
+  assert.equal(await child.evaluate(() => window.retainedPageMarker), 'same-frame');
+  await page.getByRole('button', {name: '同时显示中间区域和会话区', exact: true}).click();
+  await expect(iframe).toBeVisible();
+  assert.equal(await child.evaluate(() => window.retainedPageMarker), 'same-frame');
+  assert.equal(await frame.getByLabel('项目名称').inputValue(), retainedValue);
+  assert.equal(await page.locator('.gea-agent-welcome').count(), 1, 'one Conversation is mounted');
+  await page.getByRole('button', {name: '中间区域最大，隐藏会话区', exact: true}).click();
+  await expect(page.getByRole('button', {name: '同时显示中间区域和会话区', exact: true})).toBeVisible();
   // Parent DOM edits are not theme authority; the public snapshot owns updates.
   await page.evaluate(() => document.body.style.setProperty('--workbench-theme-version', '"2.0.0"'));
   await expect(frame.locator('#summary')).toHaveText('共 4 个项目');
@@ -184,8 +202,14 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   await writeFile(join(root, 'index.html'), sample.replace(/<style data-workbench-resource="1.0.0">[\s\S]*?<\/style>/, ''));
   await child.goto(child.url());
   await expect(frame.getByRole('alert')).toContainText('共享样式资源缺失');
+  await page.setViewportSize({width: 1440, height: 900});
+  await page.getByRole('button', {name: '账户菜单', exact: true}).click();
+  await page.getByRole('menuitem', {name: '设置', exact: true}).click();
+  await page.getByRole('button', {name: '接口日志', exact: true}).click();
+  await expect(page.locator('.AppFrame_frame')).toHaveAttribute('data-main-fullscreen', 'true');
+  await expect(page.locator('.AppFrame_sidebarCol')).toBeHidden();
   assert.deepEqual(errors, []);
-  await writeFile(new URL('observations.json', output), JSON.stringify({ samples, dimensions, sandbox: await iframe.getAttribute('sandbox'), errors }, null, 2));
+  await writeFile(new URL('observations.json', output), JSON.stringify({ samples, dimensions, sandbox, errors }, null, 2));
   } catch (error) {
     await page.screenshot({ path: fileURLToPath(new URL('failure.png', output)), fullPage: true });
     await writeFile(new URL('failure.txt', output), await page.locator('body').innerText());

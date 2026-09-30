@@ -35,7 +35,8 @@ async function fixture(t) {
 test("分离声明进入现有目录，页面关联与只读权限和旧声明相同", async (t) => {
   const f = await fixture(t);
   const split = await readPluginContract(f.root, f.declarations, f.legacy);
-  const legacy = await readPluginContract(f.root, undefined, f.legacy);
+  await assert.rejects(readPluginContract(f.root, undefined, f.legacy), /UNSUPPORTED_HTML_RESOURCE_PROTOCOL/);
+  const legacy = f.legacy;
   const registry = createCapabilityRegistry([split]);
   assert.deepEqual(
     registry.modules(),
@@ -168,10 +169,11 @@ test("重复安装声明在发布 Skill、预设和路由之前被拒绝", async
       skills: ["SKILL.md"],
       mcp: "mcp.json",
       declarations: f.declarations,
+      agentResources: {provider:"dsh-agent-manage",prompt:"prompt.json"},
       gea: {
         consumerCode: "probe-consumer",
         readonly: true,
-        contract: "gea-html-v1",
+        contract: "gea-html-v2",
       },
     }),
   );
@@ -180,7 +182,7 @@ test("重复安装声明在发布 Skill、预设和路由之前被拒绝", async
     JSON.stringify({
       provider: "gea",
       transport: "host-provided",
-      contract: "gea-html-v1",
+      contract: "gea-html-v2",
       consumer: { consumerType: "AGENT", consumerCode: "probe-consumer" },
       capabilities: ["governed-sql-read"],
     }),
@@ -193,6 +195,7 @@ test("重复安装声明在发布 Skill、预设和路由之前被拒绝", async
     join(f.root, "SKILL.md"),
     "---\nname: inventory-probe\ndescription: probe\n---\n",
   );
+  await writeFile(join(f.root,"prompt.json"),JSON.stringify({consumerCode:"probe-consumer",persona:"只读探针",skills:["inventory-probe"]}));
   const runtimeDir = join(f.root, "runtime");
   await mkdir(runtimeDir);
   await assert.rejects(
