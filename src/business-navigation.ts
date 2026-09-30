@@ -146,3 +146,10 @@ export function resolveBusinessMenu(
     }))
     .filter((group) => group.entries.length > 0);
 }
+/** Actual Native quote consumers and their existing Host menu context. HTML pages use their own leases. */
+export const NATIVE_REFERENCE_MENUS: Readonly<Record<string, string>> = {
+  "gea-workbench": "gea-proof",
+  "gea-regional-plan": "gea-regional-plan",
+  "plan-region-category": "plan-region-category",
+  "plan-category-production": "plan-category-production",
+};

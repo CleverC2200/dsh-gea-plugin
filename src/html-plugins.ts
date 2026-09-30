@@ -1,3 +1,4 @@
+import { NATIVE_REFERENCE_MENUS } from "./business-navigation.ts";
 import { TOOL_DESCRIPTIONS, profileFor, installPromptProfile, type PromptProfile } from "./host/prompt-policy.ts";
 import { businessIdentityKey, sessionConsumer } from "./host/business-identity.ts";
 import { injectPicker } from "../packages/page-interaction/src/inject.ts";
@@ -819,16 +820,22 @@ ${toolbarSelectors} {
       const principal = identity && `${identity}:${business.pageSessionScope()}`;
       const owner = sessionPrincipals.get(value.sessionId);
       if (owner !== undefined && owner !== principal) throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
-      if (value.surface.startsWith("gea-html-") || owner !== undefined) {
+      if (value.surface.startsWith("gea-html-")) {
         if (typeof value.lease !== "string") throw Error("PAGE_REFERENCE_LEASE_REQUIRED");
         const page = sessions.get(value.lease);
         if (page.session !== value.sessionId || value.surface !== `gea-html-${page.plugin}`)
           throw Error("PAGE_REFERENCE_ACCESS_DENIED");
         if (page.access.mode !== "mock" && (!principal || owner !== principal))
           throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
-      } else if (!business.status().authenticated) {
-        throw Error("PAGE_REFERENCE_LOGIN_REQUIRED");
+        return;
       }
+      // A registered HTML owner cannot escape its lease by claiming a Native surface.
+      if (owner !== undefined) throw Error("PAGE_REFERENCE_ACCESS_DENIED");
+      const menu = Object.hasOwn(NATIVE_REFERENCE_MENUS, value.surface) ? NATIVE_REFERENCE_MENUS[value.surface] : undefined;
+      if (!menu) throw Error("PAGE_REFERENCE_ACCESS_DENIED");
+      if (!principal) throw Error("PAGE_REFERENCE_LOGIN_REQUIRED");
+      if (business.surfaceFor(value.sessionId)?.menu !== menu)
+        throw Error("PAGE_REFERENCE_CONTEXT_MISMATCH");
     },
     consumerForSession: (session?: string) => sessionConsumer(ctx, business, session),
     capabilityContracts,

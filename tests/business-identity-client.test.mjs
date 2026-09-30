@@ -51,7 +51,7 @@ test("concurrent initial reads share one Host request and errors never invent a 
   globalThis.fetch = () => { requests++; return pending.promise; };
   const read = createBusinessIdentityReader();
   assert.equal(read.getSnapshot().state, "unknown");
-  const first = read(), second = read(new AbortController().signal);
+  const first = read.readScope(), second = read.readScope(new AbortController().signal);
   assert.equal(requests, 1);
   pending.resolve(Response.json({ scope: "A", status: { environment: "test", authenticated: true, loginState: "authenticated", user: { name: "Alice" } } }));
   assert.deepEqual(await Promise.all([first, second]), ["A", "A"]);
@@ -63,6 +63,7 @@ test("concurrent initial reads share one Host request and errors never invent a 
   assert.equal(read.getSnapshot().scope, "A", "a transient read failure keeps the last confirmed identity");
   assert.equal(read.getSnapshot().state, "confirmed");
   assert.equal(read.getSnapshot().error, "offline");
+  assert.equal(await read.readScope(), "A", "page opens consume the confirmed projection without another read");
   assert.equal(notices, 1, "a repeated identical failure is one visible condition");
   globalThis.fetch = async () => Response.json({ scope: "A", status: { environment: "test", authenticated: true, loginState: "authenticated", user: { name: "Alice" } } });
   assert.equal(await read.refresh(), "A");

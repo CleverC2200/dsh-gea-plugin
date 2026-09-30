@@ -1,7 +1,12 @@
 import type { Business } from "./host/business.ts";
 
-type IdentityStatus = Pick<ReturnType<Business["status"]>, "environment" | "authenticated" | "loginState" | "user">;
-export type IdentitySnapshot = { state: "unknown" | "confirmed" | "error"; scope: string | null; status: IdentityStatus | null; error?: string };
+type IdentityStatus = Readonly<Pick<ReturnType<Business["status"]>, "environment" | "authenticated" | "loginState" | "user">>;
+export type IdentitySnapshot = Readonly<{ state: "unknown" | "confirmed" | "error"; scope: string | null; status: IdentityStatus | null; error?: string }>;
+export interface BusinessIdentityProjection {
+  getSnapshot(): IdentitySnapshot;
+  subscribe(listener: () => void): () => void;
+  readScope(signal?: AbortSignal): Promise<string | null>;
+}
 
 /** Read the Host-owned authority; clients never derive a scope from user labels. */
 async function requestBusinessIdentityScope(signal?: AbortSignal): Promise<{ scope: string | null; status: IdentityStatus | null }> {
@@ -69,14 +74,16 @@ export function createBusinessIdentityReader() {
       signal.addEventListener("abort", abort, { once: true });
       void initial!.then(resolve, reject).then(() => signal.removeEventListener("abort", abort));
     });
-  }) as typeof read & {
-    getSnapshot(): IdentitySnapshot;
-    subscribe(listener: () => void): () => void;
+  }) as typeof read & BusinessIdentityProjection & {
     start(): () => void;
     refresh(signal?: AbortSignal): Promise<string | null>;
   };
   reader.getSnapshot = () => snapshot;
   reader.subscribe = listener => { listeners.add(listener); return () => listeners.delete(listener); };
+  reader.readScope = async signal => {
+    signal?.throwIfAborted();
+    return snapshot.state === "confirmed" ? snapshot.scope : reader(signal);
+  };
   reader.refresh = read;
   reader.start = () => {
     const controller = new AbortController();

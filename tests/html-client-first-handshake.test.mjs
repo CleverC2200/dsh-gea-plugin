@@ -11,6 +11,7 @@ const bundle = await build({ stdin: { contents: `
   import React from 'react';
   import {createRoot} from 'react-dom/client';
   import {registerHtmlClient} from './src/html-client.tsx';
+  import {createBusinessIdentityReader} from './src/business-identity-client.ts';
   const root=createRoot(document.getElementById('app'));
   window.unmount=()=>root.unmount();
   function useMainSessionId(select) {
@@ -19,7 +20,7 @@ const bundle = await build({ stdin: { contents: `
   registerHtmlClient({effect:f=>f(),agentWorkbench:{register:()=>()=>{},open:async()=>{},showConversation:()=>()=>{}},
     layout:{selectPanel(){}},slots:{inject:(_,f)=>f(),register:(_,Component)=>{
       root.render(<Component useMainSessionId={useMainSessionId}/>);return ()=>{};
-    }}});
+    }}}, undefined, createBusinessIdentityReader());
 `, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false, format: 'iife', platform: 'browser' });
 
 async function fixture(t, { managed = false } = {}) {

@@ -8,10 +8,11 @@ test('HTML theme subscription is scoped to the frame, live session and mounted c
     import React from 'react';
     import {createRoot} from 'react-dom/client';
     import {registerHtmlClient} from './src/html-client.tsx';
+  import {createBusinessIdentityReader} from './src/business-identity-client.ts';
     const root=createRoot(document.getElementById('app'));
     window.unmount=()=>root.unmount();
     function useMainSessionId(select) {const [value,set]=React.useState('session-1');window.changeSession=set;return select(value);}
-    registerHtmlClient({effect:f=>f(),agentWorkbench:{register:()=>()=>{},open:async()=>{},showConversation:()=>()=>{}},layout:{selectPanel(){}},slots:{inject:(_,f)=>f(),register:(_,Component)=>{root.render(<Component useMainSessionId={useMainSessionId}/>);return ()=>{}}}});
+    registerHtmlClient({effect:f=>f(),agentWorkbench:{register:()=>()=>{},open:async()=>{},showConversation:()=>()=>{}},layout:{selectPanel(){}},slots:{inject:(_,f)=>f(),register:(_,Component)=>{root.render(<Component useMainSessionId={useMainSessionId}/>);return ()=>{}}}}, undefined, createBusinessIdentityReader());
   `, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false, format: 'iife', platform: 'browser' });
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {

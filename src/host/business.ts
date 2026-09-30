@@ -895,6 +895,7 @@ export class Business {
     this.loginExpired = expired;
     // 身份变化后，之前的可见页快照一律作废。
     this.visibleWorkbenchContexts.clear();
+    this.surfaces.clear();
     // 页面身份同理：换了身份，"当前页"这件事也算不清了。
     this.pageIdentities.clear();
     this.lastContextReplies.clear();

@@ -1,3 +1,4 @@
+import { createBusinessIdentityReader } from "../src/business-identity-client.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -82,7 +83,7 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
           return () => {};
         },
       },
-    });
+    }, undefined, createBusinessIdentityReader());
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(panels, [
       "inventory-apsplan",
@@ -131,7 +132,7 @@ test("HTML discovery does not start a second identity observation", async () => 
       effect(callback) { dispose = callback(); },
       agentWorkbench: { register(page) { pages.push(page.id); return () => {}; } },
       slots: { inject(_name, callback) { callback(); return () => {}; }, register() { return () => {}; } },
-    });
+    }, undefined, createBusinessIdentityReader());
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(pages, ["inventory-fixture"]);
     assert.equal(signals.length, 0, "the GEA client owns the only identity observer");

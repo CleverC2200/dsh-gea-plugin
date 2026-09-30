@@ -78,6 +78,8 @@ async function registered(specs = ["inventory-probe"], options = {}) {
   let identityScope = "fixture-scope";
   let identityController = new AbortController();
   const ctx = {
+    agents: { get: id => id === session ? { session: {} } : undefined },
+    sessionProjections: { stateOf: () => undefined },
     effect: (fn) => fn(),
     tools: {
       register: (tool) => {
@@ -119,6 +121,8 @@ async function registered(specs = ["inventory-probe"], options = {}) {
     identities,
     plugin: plugins.capabilityContracts[0],
     consumerForSession: plugins.consumerForSession,
+    authorizeReference: plugins.authorizeReference,
+    business,
     changeIdentity: () => {
       identityController.abort();
       identityController = new AbortController();
@@ -136,6 +140,20 @@ const post = (route, body) =>
       body: JSON.stringify(body),
     }),
   );
+
+test("mock HTML references retain their real Session/lease boundary without GEA login", async () => {
+  const fixture = await registered();
+  fixture.business.status = () => ({ authenticated: false, user: null });
+  const open = fixture.routes.find(route => route.path.endsWith("/open"));
+  const { lease } = await (await post(open, { session })).json();
+  assert.equal(typeof lease, "string");
+  const reference = { sessionId: session, surface: "gea-html-inventory-probe", lease };
+  assert.doesNotThrow(() => fixture.authorizeReference(reference));
+  assert.throws(() => fixture.authorizeReference({ ...reference, lease: undefined }), /LEASE_REQUIRED/);
+  assert.throws(() => fixture.authorizeReference({ ...reference, surface: "gea-html-another" }), /ACCESS_DENIED/);
+  assert.throws(() => fixture.authorizeReference({ ...reference, sessionId: "missing-session" }), /ACCESS_DENIED/);
+  assert.throws(() => fixture.authorizeReference({ ...reference, surface: "gea-workbench" }), /LOGIN_REQUIRED|ACCESS_DENIED/);
+});
 
 test("页面 HTML 里被注入扫描脚本，页面自己不用改", async () => {
   const { routes } = await registered();

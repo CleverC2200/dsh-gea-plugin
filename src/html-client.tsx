@@ -1,13 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { businessMenuLabel } from "./business-navigation.ts";
-import { createBusinessIdentityReader } from "./business-identity-client.ts";
+import type { BusinessIdentityProjection } from "./business-identity-client.ts";
 import { startPageBridgeClient } from "./page-bridge/client.ts";
 import type { PageInteraction } from "../packages/page-interaction/src/client.ts";
-export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, readBusinessIdentityScope = createBusinessIdentityReader()) {
-  const currentScope = (signal?: AbortSignal) => {
-    const snapshot = readBusinessIdentityScope.getSnapshot();
-    return snapshot.state === "confirmed" ? Promise.resolve(snapshot.scope) : readBusinessIdentityScope(signal);
-  };
+export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | undefined, identity: BusinessIdentityProjection) {
   async function request(path: string, body?: any, signal?: AbortSignal) {
     const response = await fetch("/api/gea-html/" + path, {
       method: body === undefined ? "GET" : "POST",
@@ -122,7 +118,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
       let lease: string | undefined;
       pageContext.current = undefined;
       setError("");
-      const opening = currentScope(controller.signal)
+      const opening = identity.readScope(controller.signal)
         .then(scope => request(plugin.id + "/open", { session, agentPreset: preset, scope }, controller.signal))
         .then((result) => {
           lease = result.lease;
@@ -529,7 +525,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, 
               preset: plugin.presetHidden === true ? "auto-negotiation" : "gea-html-" + plugin.id,
               allowedPresets: plugin.agentResources ? plugin.pageAgents : undefined,
               scope: plugin.mock ? undefined : async () => {
-                const scope = await currentScope(controller.signal);
+                const scope = await identity.readScope(controller.signal);
                 if (scope === null) throw Error("请先登录 GEA");
                 return scope;
               },

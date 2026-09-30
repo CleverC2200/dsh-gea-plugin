@@ -9,6 +9,7 @@ const built = await build({ stdin: { contents: `
   import React from 'react';
   import {createRoot} from 'react-dom/client';
   import {registerHtmlClient} from './src/html-client.tsx';
+  import {createBusinessIdentityReader} from './src/business-identity-client.ts';
   import {WorkbenchController} from '../dsh-agent-workbench/src/workbench.ts';
   const root=createRoot(document.getElementById('app'));
   let navigation=new AbortController();
@@ -23,7 +24,7 @@ const built = await build({ stdin: { contents: `
   window.bindAnother=()=>controller.open('inventory-fc','default','session-existing');
   const useMainSessionId=select=>select('session-old');
   registerHtmlClient({effect:f=>f(),agentWorkbench:controller,layout:{selectPanel(){}},
-    slots:{inject:(_,f)=>f(),register:(_,Component)=>{root.render(<Component useMainSessionId={useMainSessionId}/>);return ()=>{};}}});
+    slots:{inject:(_,f)=>f(),register:(_,Component)=>{root.render(<Component useMainSessionId={useMainSessionId}/>);return ()=>{};}}}, undefined, createBusinessIdentityReader());
 `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", platform: "browser" });
 
 for (const preset of [undefined, "user-custom"]) test(`legacy page preserves an existing Session with ${preset ?? "missing"} preset metadata`, {

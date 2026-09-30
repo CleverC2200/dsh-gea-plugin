@@ -25,7 +25,7 @@ import { AgentAvatar } from "./client/agent-avatar.tsx";
 import { Inbox } from "./client/inbox.tsx";
 import { DesktopNavigation, createNavigationSelection, type ReadyNavigation } from './client/desktop-navigation.tsx';
 import {registerHtmlClient} from "./html-client.tsx";
-import { createBusinessIdentityReader } from "./business-identity-client.ts";
+import { createBusinessIdentityReader, type BusinessIdentityProjection } from "./business-identity-client.ts";
 import { installPageInteraction } from "../packages/page-interaction/src/client.ts";
 import {
   approvalConversation,
@@ -115,9 +115,10 @@ export function apply(ctx: Context): void {
   ctx.provide("geaIdentity", {
     getSnapshot: readBusinessIdentityScope.getSnapshot,
     subscribe: readBusinessIdentityScope.subscribe,
+    readScope: readBusinessIdentityScope.readScope,
   });
   ctx.effect(() => readBusinessIdentityScope.start());
-  registerHtmlClient(ctx, pageInteraction, readBusinessIdentityScope);
+  registerHtmlClient(ctx, pageInteraction, ctx.geaIdentity);
   ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
   const t = ctx.locale.bind("geaProof");
   const navigationSelection = createNavigationSelection();
@@ -216,7 +217,7 @@ export function apply(ctx: Context): void {
     useMainSessionId,
     useGeaLocale,
   }: PropsRuntime<"main"> & InjectFace<typeof injected>) {
-    const identity = React.useSyncExternalStore(readBusinessIdentityScope.subscribe, readBusinessIdentityScope.getSnapshot);
+    const identity = React.useSyncExternalStore(ctx.geaIdentity.subscribe, ctx.geaIdentity.getSnapshot);
     const authenticated = identity.state === "confirmed" && identity.status?.authenticated === true;
     const loginOverlay = identity.state === "confirmed" && !authenticated;
     const identityRevision = useBusinessIdentityRevision();
@@ -287,7 +288,6 @@ export function apply(ctx: Context): void {
       <>
         <style>{shellCss}</style>
         {sessionError && <div role="alert">{sessionError}</div>}
-        {identity.error && <div role="alert">{identity.error}</div>}
         <div className="gea-workbench-shell">
           <iframe
             ref={frame}
@@ -396,7 +396,7 @@ export function apply(ctx: Context): void {
     );
   }
   function useIdentity() {
-    const identity = React.useSyncExternalStore(readBusinessIdentityScope.subscribe, readBusinessIdentityScope.getSnapshot);
+    const identity = React.useSyncExternalStore(ctx.geaIdentity.subscribe, ctx.geaIdentity.getSnapshot);
     const user = identity.state === "confirmed" && identity.status?.authenticated ? identity.status.user : null;
     return { name: user?.name ?? "", avatarUrl: user?.avatar ?? "" };
   }
@@ -647,10 +647,7 @@ export function apply(ctx: Context): void {
     );
     const nativePages = [PANEL, REGIONAL_PLAN_PANEL, CATEGORY_PLAN_PANEL, MPS_PLAN_PANEL, INBOX];
     const controller = new AbortController();
-    const scope = async () => {
-      const identity = readBusinessIdentityScope.getSnapshot();
-      return (identity.state === "confirmed" ? identity.scope : await readBusinessIdentityScope(controller.signal)) ?? "gea:anonymous";
-    };
+    const scope = async () => (await ctx.geaIdentity.readScope(controller.signal)) ?? "gea:anonymous";
     for (const id of nativePages) yield ctx.agentWorkbench.register({ id, preset: "gea-readonly", scope });
     const changed = () => {
       for (const id of nativePages) ctx.agentWorkbench.forget(id);
@@ -1191,6 +1188,13 @@ export function apply(ctx: Context): void {
     );
   }
   ctx.slots.inject('shell.overlay', () => ctx.slots.register(
+    {name:'shell.overlay',id:'gea-identity-sync-notice'},
+    function IdentitySyncNotice() {
+      const identity = React.useSyncExternalStore(ctx.geaIdentity.subscribe, ctx.geaIdentity.getSnapshot);
+      return identity.error ? <div role="alert" data-gea-identity-error style={{position:"fixed",top:12,left:"50%",transform:"translateX(-50%)",zIndex:2200,maxWidth:"min(680px, calc(100vw - 24px))",padding:"10px 16px",borderRadius:8,background:"var(--dsw-alias-container-base, #fff)",color:"var(--dsw-alias-label-primary, #20232a)",boxShadow:"0 4px 20px #0003"}}>GEA 身份同步暂不可用：{identity.error}</div> : null;
+    },
+  ));
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register(
     {name:'shell.overlay',id:'gea-desktop-navigation',locale:'geaProof'},
     () => <DesktopNavigation t={t} open={openNavigation} login={()=>ctx.layout.selectPanel(PANEL)} />,
   ));
@@ -1237,6 +1241,12 @@ export function apply(ctx: Context): void {
       },
     ),
   );
+}
+
+declare module "@deepseek-ai/cordis" {
+  interface Context {
+    geaIdentity: BusinessIdentityProjection;
+  }
 }
 
 function writeConversationPrompt(prompt: string, submit: boolean): void {
