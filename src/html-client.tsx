@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { businessMenuLabel } from "./business-navigation.ts";
-import { readBusinessIdentityScope } from "./business-identity-client.ts";
+import { createBusinessIdentityReader } from "./business-identity-client.ts";
 import { startPageBridgeClient } from "./page-bridge/client.ts";
 import type { PageInteraction } from "../packages/page-interaction/src/client.ts";
-export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) {
+export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction, readBusinessIdentityScope = createBusinessIdentityReader()) {
   async function request(path: string, body?: any, signal?: AbortSignal) {
     const response = await fetch("/api/gea-html/" + path, {
       method: body === undefined ? "GET" : "POST",
@@ -507,18 +507,15 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
     const cleanups: Array<() => void> = [];
     const controller = new AbortController();
     const registered = new Set<string>();
-    let currentScope: string | null | undefined;
+    const changed = () => {
+      for (const id of registered) ctx.agentWorkbench.forget(id);
+      const active = ctx.layout.panelInfo.getSnapshot().activePanelId;
+      if (active && registered.has(active)) ctx.layout.selectPanel(active);
+    };
+    window.addEventListener("gea-business-identity-changed", changed);
     const pollIdentity = async () => {
       try {
-        const next = await readBusinessIdentityScope(controller.signal);
-        if (disposed) return;
-        if (currentScope !== undefined && currentScope !== next) {
-          for (const id of registered) ctx.agentWorkbench.forget(id);
-          const active = ctx.layout.panelInfo.getSnapshot().activePanelId;
-          if (active && registered.has(active)) ctx.layout.selectPanel(active);
-          window.dispatchEvent(new Event("gea-business-identity-changed"));
-        }
-        currentScope = next;
+        await readBusinessIdentityScope(controller.signal);
       } catch {
         // A failed poll cannot establish a new identity. Keep the mounted page until a real status arrives.
       }
@@ -584,6 +581,7 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
     return () => {
       disposed = true;
       controller.abort();
+      window.removeEventListener("gea-business-identity-changed", changed);
       clearTimeout(timer);
       clearTimeout(identityTimer);
       cleanups.forEach((f) => f());

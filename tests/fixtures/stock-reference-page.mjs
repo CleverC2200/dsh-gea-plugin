@@ -5,7 +5,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile, readSession, readToolResults, until } from "../profile.mjs";
 import { stockState, installStockRoutes } from "./branch-stock.mjs";
 
-export async function stockReferencePage(t, { editable = false, holdMessage, environments = false } = {}) {
+export async function stockReferencePage(t, { editable = false, holdMessage, environments = false, preparePage } = {}) {
   const identity = { userId: "9007199254740993", tenantId: "0" };
   const state = stockState();
   if (editable) state.mode = "editable";
@@ -72,6 +72,7 @@ export async function stockReferencePage(t, { editable = false, holdMessage, env
       if (body.method === "context") contexts.push(body.parameters);
     }
   });
+  await preparePage?.(page);
   await page.goto(app.origin);
   await page.getByRole("dialog", { name: /内测声明|预览版说明/ }).getByRole("button", { name: "继续", exact: true }).click();
   if (!await page.getByText("分仓库存", { exact: true }).isVisible()) await page.getByText("库存管理", { exact: true }).click();

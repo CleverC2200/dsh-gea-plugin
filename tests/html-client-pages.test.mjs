@@ -10,6 +10,8 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
   const temporary = await mkdtemp(resolve(tmpdir(), "gea-html-client-"));
   const output = resolve(temporary, "html-client.mjs");
   const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  globalThis.window = new EventTarget();
   const agents = [];
   const presets = new Map();
   const panels = [];
@@ -98,6 +100,7 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
   } finally {
     dispose?.();
     globalThis.fetch = originalFetch;
+    globalThis.window = originalWindow;
     await rm(temporary, { recursive: true, force: true });
   }
 });
@@ -106,6 +109,8 @@ test("HTML discovery runs during a stalled identity observation and disposal abo
   const temporary = await mkdtemp(resolve(tmpdir(), "gea-identity-observer-"));
   const output = resolve(temporary, "html-client.mjs");
   const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  globalThis.window = new EventTarget();
   const signals = [], pages = [];
   let dispose;
   try {
@@ -138,6 +143,7 @@ test("HTML discovery runs during a stalled identity observation and disposal abo
   } finally {
     dispose?.();
     globalThis.fetch = originalFetch;
+    globalThis.window = originalWindow;
     await rm(temporary, { recursive: true, force: true });
   }
 });

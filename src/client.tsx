@@ -25,7 +25,7 @@ import { AgentAvatar } from "./client/agent-avatar.tsx";
 import { Inbox } from "./client/inbox.tsx";
 import { DesktopNavigation, createNavigationSelection, type ReadyNavigation } from './client/desktop-navigation.tsx';
 import {registerHtmlClient} from "./html-client.tsx";
-import { readBusinessIdentityScope } from "./business-identity-client.ts";
+import { createBusinessIdentityReader } from "./business-identity-client.ts";
 import { installPageInteraction } from "../packages/page-interaction/src/client.ts";
 import {
   approvalConversation,
@@ -111,7 +111,8 @@ function nativeExpandSidebar(): void {
 /** 在框架管理的原生会话旁注册仅承载业务的中心文档。 */
 export function apply(ctx: Context): void {
   const pageInteraction = installPageInteraction(ctx);
-  registerHtmlClient(ctx, pageInteraction);
+  const readBusinessIdentityScope = createBusinessIdentityReader();
+  registerHtmlClient(ctx, pageInteraction, readBusinessIdentityScope);
   ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
   const t = ctx.locale.bind("geaProof");
   const navigationSelection = createNavigationSelection();
@@ -195,6 +196,19 @@ export function apply(ctx: Context): void {
     if (opened === false && current()) opened = await ctx.agentWorkbench.open(panel);
     return current() && opened !== false;
   };
+  const useBusinessIdentityRevision = (onChanged?: (scope: string | null) => void) => {
+    const [revision, setRevision] = useState(0);
+    useEffect(() => {
+      const changed = (event: Event) => {
+        const scope = (event as CustomEvent).detail?.scope;
+        if (scope === null || typeof scope === "string") onChanged?.(scope);
+        setRevision(value => value + 1);
+      };
+      window.addEventListener("gea-business-identity-changed", changed);
+      return () => window.removeEventListener("gea-business-identity-changed", changed);
+    }, [onChanged]);
+    return revision;
+  };
   type MainSessionProps = Pick<InjectFace<typeof injected>, "useMainSessionId">;
   let workbenchAuthenticated = false;
   let hideWorkbenchConversation: (() => void) | undefined;
@@ -203,11 +217,14 @@ export function apply(ctx: Context): void {
     useGeaLocale,
   }: PropsRuntime<"main"> & InjectFace<typeof injected>) {
     const [authenticated, setAuthenticated] = useState(false);
+    const [loginOverlay, setLoginOverlay] = useState(false);
+    const identityRevision = useBusinessIdentityRevision(React.useCallback((scope: string | null) => {
+      setAuthenticated(scope !== null);
+      setLoginOverlay(scope === null);
+    }, []));
     const incoming = React.useSyncExternalStore(navigationSelection.subscribe,navigationSelection.getSnapshot);
     useEffect(() => {if (authenticated && incoming?.panel === PANEL) incoming.visible();},[authenticated,incoming]);
-    // 只有子文档明确上报「未登录」时才铺整屏登录遮罩；
-    // 首次挂载还不知道登录态，直接铺遮罩会让切进业务面板时整屏闪一下。
-    const [loginOverlay, setLoginOverlay] = useState(false);
+    // Host身份或子文档明确未登录后才铺遮罩，初次未知时保持页面稳定。
     const [sessionError, setSessionError] = useState("");
     useEffect(() => {
       if (!authenticated) {
@@ -226,7 +243,7 @@ export function apply(ctx: Context): void {
         hide();
         if (hideWorkbenchConversation === hide) hideWorkbenchConversation = undefined;
       };
-    }, [authenticated]);
+    }, [authenticated, identityRevision]);
     const language = useGeaLocale((snapshot) => snapshot.active);
     const currentSession = useMainSessionId(id => id);
     const frame = useRef<HTMLIFrameElement>(null);
@@ -315,6 +332,7 @@ export function apply(ctx: Context): void {
   }
   /** All embedded workbenches share the same conversation + page selection wiring. */
   function PrototypeWorkbench({panel,title,document:html,useMainSessionId}: PropsRuntime<"main"> & MainSessionProps & {panel:MainPanelId;title:string;document:string}) {
+    const identityRevision = useBusinessIdentityRevision();
     const [sessionError,setSessionError]=useState("");
     const [opened,setOpened]=useState(false);
     const session=useMainSessionId(id => id);
@@ -325,7 +343,7 @@ export function apply(ctx: Context): void {
       const hide=ctx.agentWorkbench.showConversation(panel);
       void openMountedWorkbench(panel, () => live).then(opened=>{if(live)setOpened(opened);}).catch(error=>{if(live)setSessionError(String(error.message));});
       return ()=>{live=false;hide();};
-    },[panel]);
+    },[panel, identityRevision]);
     useEffect(()=>{
       if(!opened||!session||!frame.current)return;
       return pageInteraction.bindFrame({frame:frame.current,sessionId:session,page:`${title}（原型）`,surface:panel});
@@ -369,6 +387,7 @@ export function apply(ctx: Context): void {
   }
   /** 业务待办页：和业务工作台一样自带右侧会话栏（否则整块对话框不出现）。 */
   function InboxPage() {
+    const identityRevision = useBusinessIdentityRevision();
     const incoming = React.useSyncExternalStore(navigationSelection.subscribe,navigationSelection.getSnapshot);
     useEffect(() => {
       const hide = ctx.agentWorkbench.showConversation(INBOX);
@@ -377,7 +396,7 @@ export function apply(ctx: Context): void {
         /* 会话打不开时页面照常可看，不额外打扰用户。 */
       });
       return () => { mounted = false; hide(); };
-    }, []);
+    }, [identityRevision]);
     return (
       <>
         <style>{shellCss}</style>
@@ -665,12 +684,7 @@ export function apply(ctx: Context): void {
     const changed = () => {
       for (const id of nativePages) ctx.agentWorkbench.forget(id);
       const active = ctx.layout.panelInfo.getSnapshot().activePanelId;
-      if (active && nativePages.includes(active)) {
-        ctx.layout.selectPanel(active);
-        void openMountedWorkbench(active, () => !controller.signal.aborted).catch(() => {
-          /* Reopening the page retries a failed refresh; the old association stays invalid. */
-        });
-      }
+      if (active && nativePages.includes(active)) ctx.layout.selectPanel(active);
     };
     window.addEventListener("gea-business-identity-changed", changed);
     yield () => {

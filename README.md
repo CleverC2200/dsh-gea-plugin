@@ -214,4 +214,4 @@ Demand Forecast follows the user's language for both progress and final answers.
 
 原生销售计划、区域计划、品类计划、MPS和业务待办，与HTML业务页使用同一Host身份scope；身份变化清理页面关联并为仍显示的原生页恢复当前身份关联，不删除宿主持久Session。原生未登录页面使用独立匿名关联，保留登录/页面入口；已登录关联不能在该状态下恢复。挂载页只在仍为当前页面时重试一次被导航取消的open，不把取消结果当成功。
 
-`business-identity-client` 统一读取Host scope，5秒超时并接受调用方取消。目录发现独立启动；身份观察失败不能阻止元数据注册，真正打开HTML页仍由Host核scope和权限。卸载取消身份观察及目录请求，不再安排下一次轮询。本次接口配套同级源码工作台08候选验证，类型门禁使用`source:check`；普通独立依赖的旧声明不代表该源码组合。
+`business-identity-client` 在同一GEA客户端内共享轮询和页面打开得到的Host scope；旧请求迟到不能倒退身份，已取消读取不发布身份事件。读取有5秒超时并接受调用方取消。目录发现独立启动；身份观察失败不能阻止元数据注册，真正打开HTML页仍由Host核scope和权限。卸载取消身份观察及目录请求，不再安排下一次轮询。本次接口配套同级源码工作台08候选验证，类型门禁使用`source:check`；普通独立依赖的旧声明不代表该源码组合。

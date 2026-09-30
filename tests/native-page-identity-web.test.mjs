@@ -75,3 +75,38 @@ for (const panel of ["gea-proof", "gea-inbox"]) test(`a mounted native ${panel} 
   await mkdir(".runtime/review-08-evidence", { recursive: true });
   await writeFile(`.runtime/review-08-evidence/native-live-${panel}.json`, JSON.stringify({ panel, before, after, durableOldSessionStillExists: true }, null, 2));
 });
+
+
+test("a failed first identity observation cannot leave an independently opened native Session bound to a prior user", {
+  skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 120000,
+}, async t => {
+  const release = Promise.withResolvers();
+  t.after(() => release.resolve());
+  let calls = 0, firstFailed = false;
+  const { app, page, identity } = await stockReferencePage(t, { preparePage: async page => {
+    page.on("requestfailed", request => { if (request.url().endsWith("/api/gea-html/identity")) firstFailed = true; });
+    await page.route("**/api/gea-html/identity", async route => {
+      if (++calls > 1) return route.continue();
+      await release.promise;
+      await route.abort().catch(() => {});
+    });
+  } });
+  const binding = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("agent-workbench:v1") ?? "[]")
+    .find(row => row[0] === "gea-regional-plan"));
+  try {
+    await page.locator('[data-gea-business-entry="gea-regional-plan"]').click();
+    await expect.poll(async () => (await binding())?.[2]?.[0]?.[1]).toMatch(/^session-/);
+    const before = await binding(), session = before[2][0][1];
+    assert.equal(firstFailed, false, "the page must bind independently before the first observation finishes");
+    await app.rpc("logout");
+    identity.userId = "9007199254740994";
+    await app.login();
+    await expect.poll(() => firstFailed, { timeout: 7000 }).toBe(true);
+    try {
+      await expect.poll(async () => (await binding())?.[2]?.[0]?.[1], { timeout: 7000 }).not.toBe(session);
+    } finally {
+      await mkdir(".runtime/review-08-evidence", { recursive: true });
+      await writeFile(".runtime/review-08-evidence/first-observation.json", JSON.stringify({ before, after: await binding(), firstFailed, identityRequests: calls }, null, 2));
+    }
+  } finally { release.resolve(); }
+});
