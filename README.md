@@ -216,11 +216,15 @@ Demand Forecast follows the user's language for both progress and final answers.
 
 原生销售计划、区域计划、品类计划、MPS和业务待办，与HTML业务页使用同一Host身份scope；身份变化清理页面关联并为仍显示的原生页恢复当前身份关联，不删除宿主持久Session。原生未登录页面使用独立匿名关联，保留登录/页面入口；已登录关联不能在该状态下恢复。挂载页只在仍为当前页面时重试一次被导航取消的open，不把取消结果当成功。
 
+原生业务页订阅公共 `panelInfo`：切到后台释放页面绑定和会话呈现登记，再次成为当前页时恢复合法关联；保留的页面 DOM 与持久 Session 不删除。待办入口作为 `sidebar.footer.action` 的普通布局内容，不使用外壳绝对定位或旧宿主结构选择器。
+
 `business-identity-client` 在同一GEA客户端内共享轮询和页面打开得到的Host scope；旧请求迟到不能倒退身份，已取消读取不发布身份事件。读取有5秒超时并接受调用方取消。目录发现独立启动；身份观察失败不能阻止元数据注册，真正打开HTML页仍由Host核scope和权限。卸载取消身份观察及目录请求，不再安排下一次轮询。本次接口配套同级源码工作台08候选验证，类型门禁使用`source:check`；普通独立依赖的旧声明不代表该源码组合。
 
 ### 唯一 HTML 资源与页面协议
 
 本隔离项目只支持 `gea-html-v2` 与独立 page/capability、Agent Manage prompt/Skill 声明。旧 manifest 直接拒绝，不自动生成资源、不复用旧 Session。页面通过唯一 MessageChannel 主动发布 `{type: "catalog", session, elements}`，所有调用和动作回执携带当前 Session，宿主不再注入扫描器或默认扫描来源。FC 筛选、刷新与草稿字段复用原有 React 回调；目录来自当前分页与已确认状态，加载时撤回读数。mock 不获取 GEA 凭据，能力上限和正式业务写权限保持原声明。审批文档只承载审批功能，HTML 页由统一承载器打开，不再嵌套第二条 HTML 通道。
+
+页面关闭、租约过期、身份失效或资源停用统一撤回该租约拥有的当前页身份、能力目录与上下文缓存；迟到调用拒绝旧租约。清理旧页面不清除同一 Session 上另一页面的当前身份，不删除持久 Session 或改写已选 Agent。
 
 ### 当前源码支持范围
 

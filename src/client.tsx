@@ -202,6 +202,7 @@ export function apply(ctx: Context): void {
     useGeaLocale,
   }: PropsRuntime<"main"> & InjectFace<typeof injected>) {
     const identity = React.useSyncExternalStore(ctx.geaIdentity.subscribe, ctx.geaIdentity.getSnapshot);
+    const activePanel = React.useSyncExternalStore(layout.panelInfo.subscribe, layout.panelInfo.getSnapshot).activePanelId;
     const authenticated = identity.state === "confirmed" && identity.status?.authenticated === true;
     const loginOverlay = identity.state === "confirmed" && !authenticated;
     const identityRevision = useBusinessIdentityRevision();
@@ -213,7 +214,7 @@ export function apply(ctx: Context): void {
     useEffect(() => {
       setOpened(false);
       setSessionError("");
-      if (!authenticated) return;
+      if (!authenticated || activePanel !== PANEL) return;
       let mounted = true;
       let hide = () => {};
       void openMountedWorkbench(PANEL, () => mounted).then(opened => {
@@ -226,7 +227,7 @@ export function apply(ctx: Context): void {
         mounted = false;
         hide();
       };
-    }, [authenticated, identityRevision]);
+    }, [authenticated, identityRevision, activePanel]);
     const language = useGeaLocale((snapshot) => snapshot.active);
     const currentSession = useMainSessionId(id => id);
     const frame = useRef<HTMLIFrameElement>(null);
@@ -308,6 +309,7 @@ export function apply(ctx: Context): void {
   /** All embedded workbenches share the same conversation + page selection wiring. */
   function PrototypeWorkbench({panel,title,document:html,useMainSessionId}: PropsRuntime<"main"> & MainSessionProps & {panel:MainPanelId;title:string;document:string}) {
     const identityRevision = useBusinessIdentityRevision();
+    const activePanel = React.useSyncExternalStore(layout.panelInfo.subscribe, layout.panelInfo.getSnapshot).activePanelId;
     const [sessionError,setSessionError]=useState("");
     const [opened,setOpened]=useState(false);
     const session=useMainSessionId(id => id);
@@ -315,10 +317,11 @@ export function apply(ctx: Context): void {
     useEffect(()=>{
       let live=true;
       setOpened(false);setSessionError("");
+      if (activePanel !== panel) return;
       const hide=ctx.agentWorkbench.showConversation(panel);
       void openMountedWorkbench(panel, () => live).then(opened=>{if(live)setOpened(opened);}).catch(error=>{if(live)setSessionError(String(error.message));});
       return ()=>{live=false;hide();};
-    },[panel, identityRevision]);
+    },[panel, identityRevision, activePanel]);
     useEffect(()=>{
       if(!opened||!session||!frame.current)return;
       return pageInteraction.bindFrame({frame:frame.current,sessionId:session,page:`${title}（原型）`,surface:panel});
@@ -364,15 +367,17 @@ export function apply(ctx: Context): void {
   /** 业务待办页：和业务工作台一样自带右侧会话栏（否则整块对话框不出现）。 */
   function InboxPage() {
     const identityRevision = useBusinessIdentityRevision();
+    const activePanel = React.useSyncExternalStore(layout.panelInfo.subscribe, layout.panelInfo.getSnapshot).activePanelId;
     const incoming = React.useSyncExternalStore(navigationSelection.subscribe,navigationSelection.getSnapshot);
     useEffect(() => {
+      if (activePanel !== INBOX) return;
       const hide = ctx.agentWorkbench.showConversation(INBOX);
       let mounted = true;
       void openMountedWorkbench(INBOX, () => mounted).catch(() => {
         /* 会话打不开时页面照常可看，不额外打扰用户。 */
       });
       return () => { mounted = false; hide(); };
-    }, [identityRevision]);
+    }, [identityRevision, activePanel]);
     return (
       <>
         <style>{shellCss}</style>

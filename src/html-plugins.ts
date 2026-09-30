@@ -133,10 +133,16 @@ export async function registerHtmlPlugins(
     return provider.createProvider(config);
   })() : null;
   if (local) ctx.effect(() => () => local.close());
-  const sessions = createHtmlSessions(),
-    items: any[] = [];
   /** 上一次给模型的页面上下文：内容没变就不重复发送。 */
   const lastPageContext = new Map<string, string>();
+  const sessions = createHtmlSessions((plugin, session) => {
+    lastPageContext.delete(session + ":" + plugin);
+    const current = business.currentPageIdentity?.(session);
+    if (current && current.pluginId !== plugin) return;
+    business.clearPageIdentity?.(session, plugin);
+    pageBridgeHost.declare?.(session, null, "self-report");
+  });
+  const items: any[] = [];
   /** A page Session cannot be reopened under a different GEA principal in this host lifetime. */
   const sessionPrincipals = new Map<string, string>();
   const capabilities: Record<string, string> = await (async () => {
@@ -624,8 +630,6 @@ export async function registerHtmlPlugins(
           return json({ ok: true });
         case "close":
           sessions.close(input.lease);
-          business.clearPageIdentity?.(page.session, item.id);
-          lastPageContext.delete(page.session + ":" + item.id);
           return json({ ok: true });
         default:
           throw Error("METHOD_NOT_ALLOWED");

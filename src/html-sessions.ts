@@ -6,8 +6,8 @@ type Pending = {
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 };
-/** Conversation-owned page leases; neither model arguments nor HTML can select another conversation. */
-export function createHtmlSessions() {
+/** Conversation-owned leases; models and HTML cannot choose another conversation. Destruction releases the owning page's projections. */
+export function createHtmlSessions(onClose?: (plugin: string, session: string) => void) {
   const pages = new Map<string, any>();
   const destroy = (key: string) => {
     const page = pages.get(key);
@@ -18,6 +18,7 @@ export function createHtmlSessions() {
       item.reject(Error("页面已关闭或登录已变化"));
     }
     pages.delete(key);
+    onClose?.(page.plugin, page.session);
   };
   return {
     open(plugin: string, session: string, credentials: any, access: any) {

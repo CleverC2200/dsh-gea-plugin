@@ -110,7 +110,8 @@ async function registered(t, specs = ["inventory-probe"], options = {}) {
   const plugins = await registerHtmlPlugins(ctx, business, roots, {
     declare: (sessionId, catalog) => declared.push({ sessionId, catalog }),
   });
-  t.after(async () => { for (const dispose of disposers.reverse()) await dispose(); });
+  const dispose = async () => { for (const cleanup of disposers.splice(0).reverse()) await cleanup(); };
+  t.after(dispose);
   return {
     routes,
     declared,
@@ -120,6 +121,7 @@ async function registered(t, specs = ["inventory-probe"], options = {}) {
     consumerForSession: plugins.consumerForSession,
     authorizeReference: plugins.authorizeReference,
     business,
+    dispose,
     changeIdentity: () => {
       identityController.abort();
       identityController = new AbortController();
@@ -320,4 +322,30 @@ test("a page launch finishing after identity change cannot mount its old lease",
   const response = await pending;
   assert.equal(response.status, 400);
   assert.equal(identities.has(session), false, "late launch must not install a page identity");
+});
+
+test("resource teardown clears its page identity and rejects the old lease", async t => {
+  const subject = await registered(t, [{id:"inventory-real",mock:false}]);
+  const open = subject.routes.find(route => route.path.endsWith("/open"));
+  const call = subject.routes.find(route => route.path.endsWith("/call"));
+  const {lease} = await (await post(open, {session,scope:"fixture-scope"})).json();
+  assert.equal(subject.identities.get(session)?.pluginId,"inventory-real");
+  await subject.dispose();
+  assert.equal(subject.identities.has(session),false,"disabled resources cannot remain the current page");
+  assert.equal(subject.declared.at(-1)?.catalog,null,"resource teardown must withdraw page capabilities");
+  const response = await post(call,{lease,method:"context",parameters:{rows:[{name:"late"}]}});
+  assert.equal(response.status,400);
+  assert.match((await response.json()).error,/PAGE_LEASE_EXPIRED/);
+});
+test("closing a previous page lease cannot clear another page's current identity", async t => {
+  const subject = await registered(t,["inventory-a","inventory-b"]);
+  const openA = subject.routes.find(route => route.path === "/api/gea-html/inventory-a/open");
+  const openB = subject.routes.find(route => route.path === "/api/gea-html/inventory-b/open");
+  const callA = subject.routes.find(route => route.path === "/api/gea-html/inventory-a/call");
+  const {lease} = await (await post(openA,{session})).json();
+  await post(openB,{session});
+  const declarations = subject.declared.length;
+  assert.equal((await post(callA,{lease,method:"close"})).status,200);
+  assert.equal(subject.identities.get(session)?.pluginId,"inventory-b");
+  assert.equal(subject.declared.length,declarations);
 });

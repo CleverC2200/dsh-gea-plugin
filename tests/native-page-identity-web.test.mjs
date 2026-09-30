@@ -58,7 +58,15 @@ for (const panel of ["gea-proof", "gea-inbox"]) test(`a mounted native ${panel} 
 }, async t => {
   const { app, page } = await stockReferencePage(t);
   const binding = () => page.evaluate(id => JSON.parse(sessionStorage.getItem("agent-workbench:v1") ?? "[]").find(row => row[0] === id), panel);
-  if (panel === "gea-inbox") await page.locator(".gea-inbox-quick-action").click();
+  if (panel === "gea-inbox") {
+    const shortcut = page.locator(".gea-inbox-quick-action");
+    const button = await shortcut.boundingBox();
+    const sidebar = await page.locator(".AppFrame_sidebarCol").boundingBox();
+    assert.ok(button && sidebar);
+    assert.ok(button.x >= sidebar.x && button.x + button.width <= sidebar.x + sidebar.width, "the inbox action must stay inside its owning sidebar");
+    assert.ok(button.y >= sidebar.y && button.y + button.height <= sidebar.y + sidebar.height);
+    await shortcut.click();
+  }
   else await page.locator(`[data-gea-business-entry="${panel}"]`).click();
   await expect.poll(async () => (await binding())?.[2]?.[0]?.[1]).toMatch(/^session-/);
   const before = await binding(), session = before[2][0][1];
