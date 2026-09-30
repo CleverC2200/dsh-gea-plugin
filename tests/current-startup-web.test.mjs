@@ -14,6 +14,7 @@ test('normal startup loads only built current-source HTML resources and records 
   assert.equal(pages[0].agentResources.provider,'dsh-agent-manage');
   const core = JSON.parse(await readFile(join(app.runtime,'core-source.json'),'utf8'));
   const supported = JSON.parse(await readFile(new URL('../scripts/current-core.json',import.meta.url),'utf8'));
+  assert.equal(supported.upstream,'4878cdabd87d4041bdaff61d04c966883b9fd07a');
   assert.equal(core.version,supported.version);
   assert.equal(core.adaptation,supported.adaptation);
   assert.equal(core.upstream,supported.upstream);
