@@ -1,3 +1,4 @@
+import {currentHtmlResource} from "./fixtures/html-resource.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
@@ -314,9 +315,9 @@ test(
         skills: ["skills/probe/SKILL.md"],
         mcp: "mcp.json",
         gea: {
-          consumerCode: "inventory-probe",
+          consumerCode: "branch-inventory",
           readonly: true,
-          contract: "gea-html-v1",
+          contract: "gea-html-v2",
         },
       }),
     );
@@ -325,15 +326,16 @@ test(
       JSON.stringify({
         provider: "gea",
         transport: "host-provided",
-        contract: "gea-html-v1",
-        consumer: { consumerType: "AGENT", consumerCode: "inventory-probe" },
+        contract: "gea-html-v2",
+        consumer: { consumerType: "AGENT", consumerCode: "branch-inventory" },
         capabilities: ["governed-sql-read"],
       }),
     );
     await writeFile(
       join(root, "index.html"),
-      `<!doctype html><html lang="zh-CN"><head><title>分仓库存</title><style>body{font:14px sans-serif;padding:24px;color:#202531}table{border-collapse:collapse;width:80%}td,th{padding:16px;border:1px solid #ddd;text-align:left}</style></head><body><h1>分仓库存</h1><section aria-label="订单概览" style="padding:16px;margin-bottom:16px;border:1px solid #ddd"><span id="tiny-metric">待补货</span><strong>8笔订单</strong><label>区域<select><option value="east">华东</option><option value="south" selected>华南</option></select></label></section><table><thead><tr><th>客户</th><th>库存</th><th>动作</th></tr></thead><tbody><tr><td>客户甲</td><td>120 件</td><td><button id="business" onclick="this.textContent='已执行'">查看库存</button></td></tr><tr><td>无关客户乙</td><td>987654 件</td></tr><tr style="display:none" data-page-target="row:hidden"><td>隐藏客户</td><td>隐秘900件</td></tr><tr><td>客户甲</td><td>250 件</td></tr></tbody></table><script>parent.postMessage({protocol:'gea-html-v1',type:'ready'},'*')</script></body></html>`,
+      `<!doctype html><html lang="zh-CN"><head><title>分仓库存</title><style>body{font:14px sans-serif;padding:24px;color:#202531}table{border-collapse:collapse;width:80%}td,th{padding:16px;border:1px solid #ddd;text-align:left}</style></head><body><h1>分仓库存</h1><section aria-label="订单概览" style="padding:16px;margin-bottom:16px;border:1px solid #ddd"><span id="tiny-metric">待补货</span><strong>8笔订单</strong><label>区域<select><option value="east">华东</option><option value="south" selected>华南</option></select></label></section><table><thead><tr><th>客户</th><th>库存</th><th>动作</th></tr></thead><tbody><tr><td>客户甲</td><td id="stock-one" data-gea-el="readout:stock-one">120 件</td><td><button id="business" onclick="this.textContent='已执行'">查看库存</button></td></tr><tr><td>无关客户乙</td><td id="stock-two" data-gea-el="readout:stock-two">987654 件</td></tr><tr style="display:none" data-page-target="row:hidden"><td>隐藏客户</td><td>隐秘900件</td></tr><tr><td>客户甲</td><td id="stock-three" data-gea-el="readout:stock-three">250 件</td></tr></tbody></table><script>let pagePort,pageContext;window.publishCurrentCatalog=()=>{const elements=['stock-one','stock-two','stock-three'].map(id=>({id:'readout:'+id,role:'field',label:'库存',value:document.getElementById(id).textContent}));if(pagePort)pagePort.postMessage({type:'catalog',session:pageContext.session,elements});return elements;};addEventListener('message',event=>{if(event.data.protocol!=='gea-html-v2'||event.data.type!=='connect')return;pagePort=event.ports[0];pageContext=event.data.context;pagePort.start();window.publishCurrentCatalog();});parent.postMessage({protocol:'gea-html-v2',type:'ready'},'*')</script></body></html>`,
     );
+    await currentHtmlResource(root);
     const app = await profile(t, {
       config: (base) => ({
         analysis: {
@@ -594,8 +596,7 @@ test(
       .locator("tbody")
       .evaluate((tbody, secondId) => {
         tbody.prepend(tbody.lastElementChild);
-        return window.__geaPageScan
-          .scan()
+        return window.publishCurrentCatalog()
           .find((entry) => entry.id === secondId)?.value;
       }, ids[2]);
     assert.equal(

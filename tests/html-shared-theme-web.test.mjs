@@ -45,6 +45,7 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   const frame = iframe.contentFrame();
   await expect(frame.getByRole('heading', { name: '项目交付清单' })).toBeVisible();
   await expect(frame.locator('#summary')).toHaveText('共 4 个项目');
+  const sidebarPreferenceWidth = await page.locator('.AppFrame_sidebarCol').evaluate(el => Math.round(el.getBoundingClientRect().width));
   assert.equal(htmlResponse.headers()['content-security-policy'], "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'");
   await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts allow-downloads');
   const sandbox = await iframe.getAttribute("sandbox");
@@ -208,6 +209,13 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   await page.getByRole('button', {name: '接口日志', exact: true}).click();
   await expect(page.locator('.AppFrame_frame')).toHaveAttribute('data-main-fullscreen', 'true');
   await expect(page.locator('.AppFrame_sidebarCol')).toBeHidden();
+  await expect.poll(() => page.locator('.AppFrame_centerCol').evaluate(el => Math.round(el.getBoundingClientRect().width))).toBe(1440);
+  assert.equal(await page.locator('.AppFrame_frame').evaluate(el => getComputedStyle(el).gridTemplateColumns), '0px 1440px 0px');
+  await page.getByRole('button', {name: '返回工作台', exact: true}).click();
+  await expect(page.locator('.AppFrame_frame')).not.toHaveAttribute('data-main-fullscreen', 'true');
+  await expect.poll(() => page.locator('.AppFrame_sidebarCol').evaluate(el => Math.round(el.getBoundingClientRect().width))).toBe(sidebarPreferenceWidth);
+
+
   assert.deepEqual(errors, []);
   await writeFile(new URL('observations.json', output), JSON.stringify({ samples, dimensions, sandbox, errors }, null, 2));
   } catch (error) {

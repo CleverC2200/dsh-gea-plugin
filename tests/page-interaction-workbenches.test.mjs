@@ -1,3 +1,5 @@
+import {currentHtmlResource} from "./fixtures/html-resource.mjs";
+import {profileFor} from "../src/host/prompt-policy.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
@@ -33,7 +35,7 @@ test(
           html: "index.html",
           skills: ["skills/page/SKILL.md"],
           mcp: "mcp.json",
-          gea: { consumerCode: id, readonly: true, contract: "gea-html-v1" },
+          gea: { consumerCode: profileFor(`gea-html-${id}`).consumerCode, readonly: true, contract: "gea-html-v2" },
         }),
       );
       await writeFile(
@@ -41,8 +43,8 @@ test(
         JSON.stringify({
           provider: "gea",
           transport: "host-provided",
-          contract: "gea-html-v1",
-          consumer: { consumerType: "AGENT", consumerCode: id },
+          contract: "gea-html-v2",
+          consumer: { consumerType: "AGENT", consumerCode: profileFor(`gea-html-${id}`).consumerCode },
           capabilities: ["governed-sql-read"],
         }),
       );
@@ -52,8 +54,9 @@ test(
       );
       await writeFile(
         join(root, "index.html"),
-        `<!doctype html><html><body><section style="padding:24px"><h1>${name}</h1><table><thead><tr><th>客户</th><th>计划</th></tr></thead><tbody><tr><td>客户甲</td><td>120</td></tr></tbody></table></section><script>parent.postMessage({protocol:'gea-html-v1',type:'ready'},'*')</script></body></html>`,
+        `<!doctype html><html><body><section style="padding:24px"><h1>${name}</h1><table><thead><tr><th>客户</th><th>计划</th></tr></thead><tbody><tr><td>客户甲</td><td>120</td></tr></tbody></table></section><script>addEventListener('message',event=>{if(event.data.protocol!=='gea-html-v2'||event.data.type!=='connect')return;const port=event.ports[0];port.start();port.postMessage({type:'catalog',session:event.data.context.session,elements:[{id:'readout:customer',role:'field',label:'客户',value:'客户甲'},{id:'readout:plan',role:'field',label:'计划',value:'120'}]});});parent.postMessage({protocol:'gea-html-v2',type:'ready'},'*')</script></body></html>`,
       );
+      await currentHtmlResource(root);
     }
     const app = await profile(t, {
       env: { GEA_HTML_PLUGIN_ROOTS: JSON.stringify(roots) },
