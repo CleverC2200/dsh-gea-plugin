@@ -22,6 +22,7 @@ export function createBusinessIdentityReader() {
   return async (signal?: AbortSignal): Promise<string | null> => {
     const request = ++issued;
     const next = await requestBusinessIdentityScope(signal);
+    signal?.throwIfAborted();
     if (request < accepted && scope !== undefined) return scope;
     const previous = scope;
     accepted = request;

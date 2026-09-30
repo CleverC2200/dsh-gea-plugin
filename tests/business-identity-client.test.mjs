@@ -32,4 +32,12 @@ test("page and observer reads share one identity, ignore older replies and stop 
   assert.equal(changes.length, 1, "an aborted read cannot notify mounted pages");
   await assert.rejects(read(controller.signal), { name: "AbortError" });
   assert.equal(pending.length, 4, "an already aborted owner cannot start another request");
+  const disposing = new AbortController();
+  const committing = read(disposing.signal);
+  pending[4].resolve({ ok: true, json: () => {
+    queueMicrotask(() => queueMicrotask(() => disposing.abort()));
+    return Promise.resolve({ scope: "C" });
+  } });
+  await assert.rejects(committing, { name: "AbortError" });
+  assert.equal(changes.length, 1, "disposal between parsing and publishing must not notify a newer page");
 });
