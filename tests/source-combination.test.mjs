@@ -7,6 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   readSourceCombination,
   selectSourceCombination,
+  upgradeSourceProfileLayout,
 } from "../scripts/source-profile.mjs";
 
 test("selection rejects changed resources and a running Host, preserving the last selected combination", async (t) => {
@@ -20,6 +21,7 @@ test("selection rejects changed resources and a running Host, preserving the las
     join(dir, "combination.json"),
     JSON.stringify({
       composition: { id },
+      externalFiles: {},
       files: {
         "page.html": createHash("sha256").update("current page").digest("hex"),
       },
@@ -45,5 +47,59 @@ test("selection rejects changed resources and a running Host, preserving the las
   await assert.rejects(
     readSourceCombination(runtime, "../../outside"),
     /INVALID_SOURCE_COMBINATION/,
+  );
+});
+
+test("same source revision with changed dependency bytes refuses recovery", async (t) => {
+  const runtime = await mkdtemp(join(tmpdir(), "source-dependency-"));
+  t.after(() => rm(runtime, { recursive: true, force: true }));
+  const id = randomUUID(),
+    directory = join(runtime, "source-combinations", id),
+    dependency = join(runtime, "core.js");
+  await mkdir(directory, { recursive: true });
+  await writeFile(dependency, "built core A");
+  await writeFile(
+    join(directory, "combination.json"),
+    JSON.stringify({
+      composition: { id },
+      files: {},
+      externalFiles: {
+        [dependency]: createHash("sha256").update("built core A").digest("hex"),
+      },
+    }),
+  );
+  await selectSourceCombination(runtime, id);
+  await writeFile(dependency, "built core B");
+  await assert.rejects(
+    selectSourceCombination(runtime, id),
+    /DEPENDENCY_DIGEST_MISMATCH/,
+  );
+  assert.deepEqual(
+    JSON.parse(await readFile(join(runtime, "source-selection.json"), "utf8")),
+    { id },
+  );
+});
+
+test("one-time layout upgrade preserves the old code directory and leaves user state in place", async (t) => {
+  const runtime = await mkdtemp(join(tmpdir(), "source-layout-"));
+  t.after(() => rm(runtime, { recursive: true, force: true }));
+  const modules = join(
+    runtime,
+    "home/profiles/plugin-split-validation/node_modules",
+  );
+  await mkdir(modules, { recursive: true });
+  await writeFile(join(modules, "old-module.js"), "old code");
+  await writeFile(join(runtime, "session.json"), "persistent data");
+  await upgradeSourceProfileLayout(runtime);
+  const record = JSON.parse(
+    await readFile(join(runtime, "source-layout-upgrade.json"), "utf8"),
+  );
+  assert.equal(
+    await readFile(join(record.backup, "old-module.js"), "utf8"),
+    "old code",
+  );
+  assert.equal(
+    await readFile(join(runtime, "session.json"), "utf8"),
+    "persistent data",
   );
 });

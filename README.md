@@ -239,3 +239,5 @@ Demand Forecast follows the user's language for both progress and final answers.
 当前源码profile将插件、页面、Skill、主题及覆盖配置保存为独立 `source-combinations/<id>` 快照，记录完整资源SHA-256、源码提交、锁文件摘要和核心提交。启动前校验实际资源；缺失、残留或被改写的文件拒绝载入。准备新组合不会覆盖已选组合，`selectSourceCombination(runtime, id, core)` 仅在Host停止时选用完整本地快照。启动锁与选择共用同一排他文件；异常退出留下锁时先核对记录PID及进程是否已停止，再移除该锁，不能强制抢占运行中的Host。
 
 更新和恢复保持同一 `home`、工作目录与可编辑profile配置，只替换源码profile的模块链接和只读覆盖配置。Host重启产生新业务身份scope；旧页面lease不能恢复，保留Session日志也不授予旧scope权限。这里不运行旧安装payload或旧资源适配，也不写远端频道。09的本地模拟频道与浏览器恢复记录由 `tests/branch-stock-upgrade-web.test.mjs` 生成，外部GEA/模型仅用loopback fixture。
+
+已有08源码profile的实体 `node_modules` 在停机后先显式执行一次 `upgradeSourceProfileLayout(runtime)`；该步骤把原代码目录移到同运行目录的备份，Session、home存储和用户配置不移动。然后选择已校验的当前接口快照。后续启动只使用组合模块链接，不保留旧格式运行时适配。依赖图的实际链接、传递依赖文件、核心构建产物和锁摘要一并校验；固定HEAD下重建造成字节变化也拒绝恢复，需保留或重新准备原依赖产物。普通 `pnpm start` 的默认页面也由所选快照提供。

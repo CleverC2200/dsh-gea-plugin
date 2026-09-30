@@ -10,6 +10,7 @@ import {
   rename,
   open,
   unlink,
+  lstat,
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -125,6 +126,7 @@ export async function prepareSourcePlugins(
     join(snapshot, "company-plugins.json"),
     JSON.stringify(snapshots, null, 2),
   );
+  const externalDirectories = new Set();
   for (const { source, target } of plugins.values()) {
     const dependencies = new Map(packages);
     for (const entry of await readdir(join(source, "node_modules"))) {
@@ -144,6 +146,8 @@ export async function prepareSourcePlugins(
     }
     for (const [name, plugin] of plugins) dependencies.set(name, plugin.target);
     for (const [name, path] of dependencies) {
+      if (!path.startsWith(snapshot + "/"))
+        externalDirectories.add(await realpath(path));
       const link = join(target, "node_modules", name);
       await mkdir(resolve(link, ".."), { recursive: true });
       try {
@@ -227,6 +231,8 @@ export async function prepareSourcePlugins(
     ],
   };
   const files = await resourceDigests(snapshot);
+  externalDirectories.add(join(core, "apps/web/dist"));
+  const externalFiles = await dependencyDigests(externalDirectories);
   const locks = {};
   for (const [name, directory] of [
     ["core", core],
@@ -240,6 +246,7 @@ export async function prepareSourcePlugins(
     ]) {
       try {
         locks[name][file] = await fileDigest(join(directory, file));
+        externalFiles[join(directory, file)] = locks[name][file];
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
@@ -251,6 +258,7 @@ export async function prepareSourcePlugins(
       {
         composition,
         files,
+        externalFiles,
         locks,
         core: execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
           cwd: core,
@@ -274,11 +282,12 @@ const fileDigest = async (file) =>
 async function resourceDigests(directory, prefix = "") {
   const files = {};
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (entry.name === "node_modules" && prefix) continue;
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
     const file = join(directory, entry.name);
     if (entry.isDirectory())
       Object.assign(files, await resourceDigests(file, relative));
+    else if (entry.isSymbolicLink())
+      files[relative] = "link:" + (await realpath(file));
     else if (entry.isFile() && relative !== "combination.json")
       files[relative] = await fileDigest(file);
   }
@@ -309,6 +318,10 @@ export async function readSourceCombination(runtime, id, core) {
     JSON.stringify(Object.entries(record.files).sort())
   )
     throw Error("SOURCE_COMBINATION_DIGEST_MISMATCH");
+  for (const [file, expected] of Object.entries(record.externalFiles)) {
+    if ((await fileDigest(file)) !== expected)
+      throw Error("SOURCE_DEPENDENCY_DIGEST_MISMATCH: " + file);
+  }
   return record.composition;
 }
 
@@ -320,6 +333,53 @@ export async function selectSourceCombination(runtime, id, core) {
     const temporary = join(runtime, `source-selection-${randomUUID()}.json`);
     await writeFile(temporary, JSON.stringify({ id }) + "\n", { mode: 0o600 });
     await rename(temporary, join(runtime, "source-selection.json"));
+  } finally {
+    await lock.close();
+    await unlink(join(runtime, "source-profile.lock"));
+  }
+}
+
+/** Fix the resolved dependency graph, including built core files and transitive links. */
+async function dependencyDigests(directories) {
+  const files = {},
+    visited = new Set();
+  async function visit(directory) {
+    const physical = await realpath(directory);
+    if (visited.has(physical)) return;
+    visited.add(physical);
+    for (const entry of await readdir(physical, { withFileTypes: true })) {
+      if (entry.name.startsWith(".")) continue;
+      const file = join(physical, entry.name);
+      if (entry.isFile()) files[file] = await fileDigest(file);
+      else if (entry.isDirectory() || entry.isSymbolicLink()) {
+        const resolved = await realpath(file);
+        if ((await lstat(resolved)).isDirectory()) await visit(resolved);
+        else files[resolved] = await fileDigest(resolved);
+      }
+    }
+  }
+  for (const directory of directories) await visit(directory);
+  return files;
+}
+
+/** One-time offline upgrade of the ticket08 code directory; never moves user state. */
+export async function upgradeSourceProfileLayout(runtime) {
+  const lock = await open(join(runtime, "source-profile.lock"), "wx", 0o600);
+  try {
+    const modules = join(
+      runtime,
+      "home/profiles/plugin-split-validation/node_modules",
+    );
+    const info = await lstat(modules);
+    if (info.isSymbolicLink()) return;
+    if (!info.isDirectory()) throw Error("INVALID_SOURCE_PROFILE_LAYOUT");
+    const backup = join(runtime, "before09-modules-" + randomUUID());
+    await rename(modules, backup);
+    await writeFile(
+      join(runtime, "source-layout-upgrade.json"),
+      JSON.stringify({ backup, upgradedAt: new Date().toISOString() }) + "\n",
+      { mode: 0o600 },
+    );
   } finally {
     await lock.close();
     await unlink(join(runtime, "source-profile.lock"));

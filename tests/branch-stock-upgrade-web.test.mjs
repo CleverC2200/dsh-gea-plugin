@@ -11,6 +11,7 @@ import {
   prepareSourcePlugins,
   readSourceCombination,
   selectSourceCombination,
+  upgradeSourceProfileLayout,
 } from "../scripts/source-profile.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
 
@@ -24,6 +25,7 @@ test(
     await mkdir(parent, { recursive: true });
     let previous, candidate;
     const app = await profile(t, {
+      normalStartup: true,
       runtimeParent: parent,
       preserveRuntime: true,
       config: (base) => ({
@@ -43,6 +45,18 @@ test(
           recursive: true,
         });
         const deployment = await readDeployment(config);
+        const baselineAssembler = await import(
+          new URL(
+            "../../../../dsh-gea-plugin/scripts/source-profile.mjs",
+            import.meta.url,
+          )
+        );
+        await baselineAssembler.prepareSourcePlugins(core, runtime, deployment);
+        await writeFile(
+          join(runtime, "workspace/preexisting-user.txt"),
+          "ticket08 user state",
+        );
+        await upgradeSourceProfileLayout(runtime);
         // The recovery artifacts are read from the clean, registered ticket08 checkout.
         previous = await prepareSourcePlugins(core, runtime, deployment, {
           workspace: resolve("../../.."),
@@ -124,7 +138,7 @@ test(
       app.runtime,
       "home/profiles/plugin-split-validation/cordis.patch.yml",
     );
-    const settingsBefore = hash(await readFile(settingsFile));
+    let settingsBefore;
     const records = [];
     let durableSession, oldScope, oldLease, oldRows;
     for (const [phase, combination] of [
@@ -136,6 +150,7 @@ test(
         await app.stop();
         await selectSourceCombination(app.runtime, combination.id, core);
         await app.start();
+        assert.equal(hash(await readFile(settingsFile)), settingsBefore);
         assert.deepEqual(
           await readSession(app.runtime, durableSession),
           oldRows,
@@ -311,6 +326,13 @@ test(
       assert.match(receipts[1].text, /100/);
       assert.match(receipts[1].text, /30/);
       assert.match(JSON.stringify(rows), /合计130件/);
+      assert.equal(
+        await readFile(
+          join(app.runtime, "workspace/preexisting-user.txt"),
+          "utf8",
+        ),
+        "ticket08 user state",
+      );
       const modules = await realpath(
         join(app.runtime, "home/profiles/plugin-split-validation/node_modules"),
       );
@@ -338,6 +360,7 @@ test(
         loadedScripts.includes(pageScript),
         "iframe executes the selected snapshot's page bytes",
       );
+      if (!settingsBefore) settingsBefore = hash(await readFile(settingsFile));
       assert.equal(hash(await readFile(settingsFile)), settingsBefore);
       assert.equal(
         await readFile(userFile, "utf8"),
