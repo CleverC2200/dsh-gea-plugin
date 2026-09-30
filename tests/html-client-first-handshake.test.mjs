@@ -99,7 +99,7 @@ test('repeated ready and a superseded opening transfer only the latest Session p
   await page.evaluate(() => window.changeSession('session-3'));
   await opens.get('session-3').requested.promise;
   await child.evaluate(() => {
-    for (let i = 0; i < 3; i++) parent.postMessage({ protocol: 'gea-html-v1', type: 'ready' }, '*');
+    for (let i = 0; i < 3; i++) parent.postMessage({ protocol: 'gea-html-v2', type: 'ready' }, '*');
   });
   opens.get('session-3').release.resolve();
   await expect(child.locator('#query')).toBeEnabled({ timeout: 2500 });
@@ -113,7 +113,7 @@ test('repeated ready and a superseded opening transfer only the latest Session p
 test('ready survives an absent Session until a later valid binding is available', async t => {
   const { page, child, opens, errors } = await fixture(t);
   await page.evaluate(() => window.changeSession(undefined));
-  await child.evaluate(() => parent.postMessage({ protocol: 'gea-html-v1', type: 'ready' }, '*'));
+  await child.evaluate(() => parent.postMessage({ protocol: 'gea-html-v2', type: 'ready' }, '*'));
   assert.deepEqual(await child.evaluate(() => connects), []);
   await page.evaluate(() => window.changeSession('session-3'));
   await opens.get('session-3').requested.promise;

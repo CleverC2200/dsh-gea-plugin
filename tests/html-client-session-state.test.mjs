@@ -30,8 +30,8 @@ test('new conversation rebinds the existing HTML page without losing page state 
       if(url.pathname.endsWith('/html')) {
         htmlLoads++;
         return route.fulfill({contentType:'text/html',body:`<input id="filter"><div style="height:2000px">table</div><script>
-        window.addEventListener('message',event=>{if(event.data.type!=='connect'||window.port)return;window.port=event.ports[0];port.start();port.postMessage({type:'register',name:'filter',description:'Filter rows'});window.read=()=>port.postMessage({type:'request',id:'read',method:'workspace'});window.ask=()=>port.postMessage({type:'request',id:'ask',method:'conversation',parameters:{text:'hello',context:{filter:document.querySelector('input').value}}});});
-        parent.postMessage({protocol:'gea-html-v1',type:'ready'},'*');</script>`});
+        window.addEventListener('message',event=>{if(event.data.type!=='connect'||window.port)return;window.context=event.data.context;window.port=event.ports[0];port.onmessage=event=>{if(event.data.type==='context')window.context=event.data.context};port.start();port.postMessage({type:'register',session:window.context?.session,name:'filter',description:'Filter rows'});window.read=()=>port.postMessage({type:'request',session:window.context?.session,id:'read',method:'workspace'});window.ask=()=>port.postMessage({type:'request',session:window.context?.session,id:'ask',method:'conversation',parameters:{text:'hello',context:{filter:document.querySelector('input').value}}});});
+        parent.postMessage({protocol:'gea-html-v2',type:'ready'},'*');</script>`});
       }
       return route.abort();
     });

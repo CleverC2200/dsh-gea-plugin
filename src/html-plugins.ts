@@ -1,5 +1,5 @@
 import { NATIVE_REFERENCE_MENUS } from "./business-navigation.ts";
-import { TOOL_DESCRIPTIONS, profileFor, installPromptProfile, type PromptProfile } from "./host/prompt-policy.ts";
+import { TOOL_DESCRIPTIONS, profileFor, installPromptProfile } from "./host/prompt-policy.ts";
 import { businessIdentityKey, sessionConsumer } from "./host/business-identity.ts";
 import { injectPicker } from "../packages/page-interaction/src/inject.ts";
 import { readFile, readdir, realpath, mkdir, rm, stat, writeFile } from "node:fs/promises";
@@ -14,15 +14,12 @@ import {
   contractFromPlugin,
   type CapabilityContract,
 } from "./capability/contract.ts";
-import { injectPageScan, pageCatalogFromScan } from "./html-page-scan.ts";
+import { htmlPageCatalog } from "./html-page-catalog.ts";
 import { readPluginContract } from "./capability/declarations.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { PAGE_TOOL } from "./host/page-identity.ts";
 import { LAYER_POLICY } from "./capability/layers.ts";
 import { compressForModel } from "./shared/payload-budget.ts";
-
-/** 已经挂到 DSH 技能根下的业务技能目录，用于插件卸载时回收。 */
-const publishedSkillDirs: string[] = [];
 
 /**
  * 老版本客户端装过、现在已下线的预设目录：插件包升级后源码不再生成它们，
@@ -71,7 +68,7 @@ export type PageBridgeHost = {
   declare?: (
     sessionId: string,
     catalog: unknown,
-    source: "self-report" | "dom-scan",
+    source: "self-report",
   ) => void;
 };
 
@@ -121,31 +118,6 @@ async function readContractSources(directory: string): Promise<string[]> {
   };
   await walk(directory, 1);
   return sources;
-}
-
-/**
- * 业务页面自带的 SKILL.md 不只是该页面 agent 的提示词，也要让主对话（标准 agent）能按需加载：
- * 复制到 DSH 用户技能根 `<DSH_HOME>/skills/<插件id>/SKILL.md`，由 skill-filesystem 扫描。
- */
-async function publishAgentSkill(id: string, content: string, managed = false, references: Record<string, string> = {}): Promise<void> {
-  const home = process.env.DSH_HOME;
-  if (!home) return;
-  const directory = resolve(home, "skills", id);
-  await mkdir(directory, { recursive: true });
-  await writeFile(resolve(directory, "SKILL.md"), content, { mode: 0o600 });
-  publishedSkillDirs.push(directory);
-  if (managed) {
-    const managedDirectory = resolve(home, 'gea-business-skills', id);
-    await mkdir(managedDirectory, { recursive: true });
-    await writeFile(resolve(managedDirectory, 'SKILL.md'), content, { mode: 0o600 });
-    publishedSkillDirs.push(managedDirectory);
-  }
-  for (const target of [directory, ...(managed ? [resolve(home, 'gea-business-skills', id)] : [])]) {
-    if (!Object.keys(references).length) continue;
-    await mkdir(resolve(target, 'references'), {recursive:true});
-    for (const [name, text] of Object.entries(references))
-      await writeFile(resolve(target, 'references', name), text, {mode:0o600});
-  }
 }
 
 export async function registerHtmlPlugins(
@@ -214,7 +186,7 @@ export async function registerHtmlPlugins(
       manifest.schemaVersion !== 1 ||
       !/^inventory-[a-z]+$/.test(manifest.id) ||
       (manifest.mode !== undefined && !mock) ||
-      manifest.gea?.contract !== "gea-html-v1" ||
+      manifest.gea?.contract !== "gea-html-v2" ||
       manifest.gea?.readonly !== true ||
       (typeof manifest.gea.consumerCode !== "string" || !/^[a-z0-9][a-z0-9-]{0,127}$/.test(manifest.gea.consumerCode)) ||
       manifest.html !== "index.html"
@@ -241,7 +213,7 @@ export async function registerHtmlPlugins(
     if (
       mcp.provider !== "gea" ||
       mcp.transport !== "host-provided" ||
-      mcp.contract !== "gea-html-v1" ||
+      mcp.contract !== "gea-html-v2" ||
       mcp.consumer?.consumerCode !== manifest.gea.consumerCode ||
       mcp.consumer?.consumerType !== "AGENT" ||
       JSON.stringify(mcp.capabilities) !== JSON.stringify(["governed-sql-read"])
@@ -258,37 +230,24 @@ export async function registerHtmlPlugins(
     );
     if (!skillPath.startsWith(directory + sep))
       throw Error("INVALID_SKILL_PATH");
-    // 宿主管理真实库存模块的 Agent 指令；保留已安装页面包和演示模块的原始边界。
-    const managedConsumers: Record<string, string> = {'inventory-aqkc':'base-safety-stock','inventory-dealer':'dealer-inventory-replenishment','inventory-fc':'branch-inventory','inventory-qll':'full-chain-inventory','inventory-apsplan':'aps'};
-    const managedSkill = !mock && managedConsumers[manifest.id] === manifest.gea.consumerCode;
-    // Split resources use the Agent Manage loader; legacy bundles retain their adapter.
-    let loadedAgentResources: {
-      skill: string; profile: PromptProfile;
-      pageAgents: string[];
-      mount(ctx: unknown, home: string): Promise<void>;
-    } | undefined;
-    if (manifest.agentResources !== undefined) {
-      if (!manifest.declarations || manifest.agentResources.provider !== 'dsh-agent-manage')
-        throw Error('INVALID_AGENT_RESOURCE_OWNER');
-      const moduleName = 'dsh-agent-manage/business-resources';
-      const loader = await import(moduleName);
-      loadedAgentResources = await loader.loadBusinessResources(directory, {
-        id: manifest.id, consumerCode: manifest.gea.consumerCode,
-        skill: manifest.skills[0], prompt: manifest.agentResources.prompt,
-      });
-    }
-    const skill = loadedAgentResources?.skill ?? await readFile(managedSkill
-      ? new URL(`../presets/${manifest.id}.skill.md`, import.meta.url)
-      : skillPath, 'utf8');
+    if (!manifest.declarations || manifest.agentResources?.provider !== 'dsh-agent-manage')
+      throw Error(`UNSUPPORTED_HTML_RESOURCE_PROTOCOL [source: ${directory}/plugin.json]`);
+    const moduleName = 'dsh-agent-manage/business-resources';
+    const loader = await import(moduleName);
+    const loadedAgentResources = await loader.loadBusinessResources(directory, {
+      id: manifest.id, consumerCode: manifest.gea.consumerCode,
+      skill: manifest.skills[0], prompt: manifest.agentResources.prompt,
+    });
+    const skill = loadedAgentResources.skill;
     const frontmatter = (key: string) =>
       new RegExp(`^${key}:\\s*(.+)$`, "m").exec(skill)?.[1]?.trim();
     const retired = isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden);
     const presetHidden = mock || retired;
     items.push({
       ...manifest,
-      managedSkill,
+
       loadedAgentResources,
-      pageAgents: loadedAgentResources?.pageAgents,
+      pageAgents: loadedAgentResources.pageAgents,
       capabilityContract: await readPluginContract(directory, manifest.declarations, contractFromPlugin({
         id: manifest.id, label: manifest.name, consumerCode: manifest.gea.consumerCode,
         pageIds: pages.map((page: { id: string }) => page.id), skill, mock, maxEffect: "view",
@@ -311,18 +270,9 @@ export async function registerHtmlPlugins(
   createCapabilityRegistry(capabilityContracts);
   for (const item of items) {
     const manifest = item;
-    const { skillText: skill, managedSkill, presetHidden } = item;
-    if (item.loadedAgentResources) {
-      ctx.effect(() => installPromptProfile('gea-html-' + manifest.id, item.loadedAgentResources.profile));
-      await item.loadedAgentResources.mount(ctx, process.env.DSH_HOME || business.config.runtimeDir);
-    }
-    else await publishAgentSkill(manifest.id, skill, managedSkill);
-    if (managedSkill && manifest.id === 'inventory-apsplan') {
-      const references = Object.fromEntries(await Promise.all(['metric-definitions.md', 'data-mapping.md'].map(async name =>
-        [name, await readFile(new URL(`../business-skills/aps/references/${name}`, import.meta.url), 'utf8')])));
-      for (const name of ['sales-forecast-result-analysis', 'sales-ops-problem-analysis'])
-        await publishAgentSkill(name, await readFile(new URL(`../business-skills/aps/${name}.skill.md`, import.meta.url), 'utf8'), true, references);
-    }
+    const { presetHidden } = item;
+    if (!item.mock) ctx.effect(() => installPromptProfile('gea-html-' + manifest.id, item.loadedAgentResources.profile));
+    await item.loadedAgentResources.mount(ctx, process.env.DSH_HOME || business.config.runtimeDir);
     const preset = resolve(
       business.config.runtimeDir,
       "native-presets",
@@ -350,14 +300,14 @@ export async function registerHtmlPlugins(
               id: "persona",
               name: "@deepseek-ai/dsh-persona",
               config: {
-                prefix: item.loadedAgentResources?.profile.persona ?? profileFor("gea-html-" + manifest.id)?.persona ?? skill,
+                prefix: item.loadedAgentResources.profile.persona,
                 complete: false,
                 includeRuntimeContext: false,
               },
             },
-            ...(managedSkill ? [{id: "skill-filesystem", name: "@deepseek-ai/dsh-skill-filesystem", config: {
+            ...([{id: "skill-filesystem", name: "@deepseek-ai/dsh-skill-filesystem", config: {
               includeDefaultRoots: false, customSkillDirs: [resolve(process.env.DSH_HOME || business.config.runtimeDir, "gea-business-skills")],
-            }}] : []),
+            }}]),
           ]),
         );
       };
@@ -406,9 +356,6 @@ export async function registerHtmlPlugins(
   ctx.effect(() => () => {
     unwatch();
     sessions.clear();
-    publishedSkillDirs.splice(0).forEach((directory) => {
-      void rm(resolve(directory, "SKILL.md"), { force: true });
-    });
   });
   const json = (value: any, status = 200) =>
     Response.json(value, { status, headers: { "cache-control": "no-store" } });
@@ -468,7 +415,7 @@ export async function registerHtmlPlugins(
     () =>
       json(
         items.map(
-          ({ htmlSource, htmlPath, htmlDirectory, capabilityContract, managedSkill, loadedAgentResources, skillText, ...manifest }) => manifest,
+          ({ htmlSource, htmlPath, htmlDirectory, capabilityContract, loadedAgentResources, skillText, ...manifest }) => manifest,
         ),
       ),
     false,
@@ -496,24 +443,8 @@ export async function registerHtmlPlugins(
         throw Error("INVALID_HTML_PATH");
       const html = await readFile(path, "utf8");
       if (Buffer.byteLength(html) > 5000000) throw Error("HTML_TOO_LARGE");
-      // 页面本身不用改：宿主把"读这一屏 / 收改单"的适配器注入进去。
-      // CSS modules are minified in release HTML. Resolve exported names instead of
-      // guessing a development-only class suffix.
-      const toolbarMaps = html.match(/\{[^{}]*workspaceToolbar:["'][A-Za-z_][\w-]*["'][^{}]*\}/g) ?? [];
-      const toolbarClasses = [...toolbarMaps.join("\n").matchAll(/(?:workspaceToolbar|boardHeader|header):["']([A-Za-z_][\w-]*)["']/g)]
-        .map((match) => "." + match[1]);
-      const toolbarSelectors = [".agent-topbar", ".top-header", ...toolbarClasses].join(",");
-      const toolbarStyle = `<style data-gea-toolbar-alignment>
-${toolbarSelectors} {
-  box-sizing:border-box!important;height:58px!important;min-height:58px!important;max-height:58px!important;
-  flex-shrink:0!important;flex-wrap:nowrap!important;margin-top:0!important;
-  overflow-x:auto!important;overflow-y:hidden!important;
-}
-</style>`;
-      // Release HTML may omit optional </head>; append so the rule is always present.
-      const alignedHtml = html + toolbarStyle;
       const picker = await readFile(new URL("../lib/page-interaction.js", import.meta.url), "utf8");
-      return new Response(injectPicker(injectPageScan(alignedHtml), picker), {
+      return new Response(injectPicker(html, picker), {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
@@ -538,7 +469,7 @@ ${toolbarSelectors} {
       if (!item.mock && scope !== business.pageSessionScope())
         throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
       let authorizedAgent: Awaited<ReturnType<typeof pageAgent>> | undefined;
-      if (!item.mock && item.loadedAgentResources) {
+      if (!item.mock) {
         const preset = agentPreset ?? `gea-html-${item.id}`;
         const agent = ctx.agents?.get(session);
         if (!agent) throw Error("PAGE_AGENT_MISSING");
@@ -661,7 +592,7 @@ ${toolbarSelectors} {
             input.parameters && typeof input.parameters === "object"
               ? input.parameters
               : {};
-          const catalog = pageCatalogFromScan({
+          const catalog = htmlPageCatalog({
             pluginId: item.id,
             label: item.name,
             elements:
@@ -669,15 +600,14 @@ ${toolbarSelectors} {
                 ? (parameters.catalog as { elements?: unknown }).elements
                 : undefined,
           });
+          if (parameters.pageSource !== undefined && parameters.pageSource !== "self-report")
+            throw Error("UNSUPPORTED_PAGE_CATALOG_SOURCE");
           try {
-            // 页面自己实现自述协议时按自述算，否则是宿主扫出来的。
-            const source =
-              parameters.pageSource === "self-report" ? "self-report" : "dom-scan";
-            pageBridgeHost.declare?.(page.session, catalog, source);
+            pageBridgeHost.declare?.(page.session, catalog, "self-report");
           } catch (error) {
             // 页面报的元素超出宿主上限：留一条日志，页面下一轮还会重报。
             console.log(
-              `[page-bridge] scan declare rejected plugin=${item.id} session=${
+              `[page-bridge] declare rejected plugin=${item.id} session=${
                 page.session
               } code=${error instanceof Error ? error.message : String(error)}`,
             );

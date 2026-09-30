@@ -35,8 +35,8 @@ export function effectRank(effect: CapabilityEffect): number {
   return EFFECT_RANK[effect];
 }
 
-/** 页面自述的协议：self-report = 页面自己报元素；dom-scan = 宿主扫同源页面。 */
-export type CapabilityViewProtocol = "self-report" | "dom-scan";
+/** Pages publish their own elements through the current protocol. */
+export type CapabilityViewProtocol = "self-report";
 
 export type CapabilityView = {
   /** 页面桥用的页面标识，例如 `gea-workbench`、`gea-html-inventory-fc`。 */
@@ -200,12 +200,7 @@ export type PluginContractInput = {
   mock?: boolean;
 };
 
-/**
- * 从"迁移过来的 HTML 业务页面"派生契约。
- *
- * 页面协议判为 dom-scan：这类页面没有自带页面桥，宿主在同源框架里自己扫元素
- * （页面升级成自述后改 protocol 即可，宿主侧消费方式不变）。
- */
+/** Derive the installed identity and permission bounds checked against required declarations. */
 export function contractFromPlugin(input: PluginContractInput): CapabilityContract {
   const tables = tablesFromSource(...(input.sources ?? []));
   const rules = rulesFromSkill(input.skill ?? "");
@@ -217,7 +212,7 @@ export function contractFromPlugin(input: PluginContractInput): CapabilityContra
     view: {
       // 页面标识只允许小写字母/数字/点/横线（工具名的同一套约束），所以用横线连接。
       surface: `gea-html-${input.id}`,
-      protocol: "dom-scan",
+      protocol: "self-report",
       pageIds: [...input.pageIds],
     },
     data: {
@@ -299,7 +294,7 @@ export function normalizeContract(value: unknown): CapabilityContract {
     const pageIds = candidate.pageIds;
     if (typeof surface !== "string" || !NAME_PATTERN.test(surface))
       throw new Error("INVALID_CAPABILITY_CONTRACT");
-    if (protocol !== "self-report" && protocol !== "dom-scan")
+    if (protocol !== "self-report")
       throw new Error("INVALID_CAPABILITY_CONTRACT");
     if (
       !Array.isArray(pageIds) ||

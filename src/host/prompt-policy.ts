@@ -33,11 +33,11 @@ export function profileFor(
 
 const mountedProfiles = new Set<string>();
 
-/** Replace the existing preset's prompt with its validated Agent Manage resource. */
+/** Mount a validated Agent Manage resource; an existing identity cannot be overwritten. */
 export function installPromptProfile(preset: string, profile: PromptProfile): () => void {
   if (mountedProfiles.has(preset)) throw Error("PROMPT_PROFILE_ALREADY_MOUNTED");
   const previous = policy.profiles[preset as keyof typeof policy.profiles];
-  if (!previous || previous.consumerCode !== profile.consumerCode)
+  if (previous && previous.consumerCode !== profile.consumerCode)
     throw Error("PROMPT_PROFILE_IDENTITY_MISMATCH");
   const profiles: Record<string, PromptProfile> = policy.profiles;
   mountedProfiles.add(preset);
@@ -47,7 +47,10 @@ export function installPromptProfile(preset: string, profile: PromptProfile): ()
     if (!mounted) return;
     mounted = false;
     mountedProfiles.delete(preset);
-    if (profiles[preset] === profile) profiles[preset] = previous;
+    if (profiles[preset] === profile) {
+      if (previous) profiles[preset] = previous;
+      else delete profiles[preset];
+    }
   };
 }
 

@@ -37,7 +37,6 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
     const registrations = useRef(new Map<string, any>());
     const pageContext = useRef<any>(undefined);
     const identityRevision = useRef(0);
-    const legacySession = plugin.agentResources ? undefined : session;
     useEffect(() => {
       const changed = () => {
         identityRevision.current++;
@@ -54,7 +53,7 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
       return () => window.removeEventListener("gea-business-identity-changed", changed);
     }, []);
     useEffect(() => {
-      if (!plugin.agentResources) return;
+      if (plugin.mock) return;
       const controller = new AbortController();
       const revisionAtStart = identityRevision.current;
       void request(plugin.id + "/agents", undefined, controller.signal)
@@ -67,15 +66,8 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
       const revisionAtStart = identityRevision.current;
       let hide = () => {};
       const defaultPreset = plugin.presetHidden === true ? "auto-negotiation" : `gea-html-${plugin.id}`;
-      const open = (): Promise<boolean | void> => {
-        if (plugin.agentResources)
-          return ctx.agentWorkbench.open(workbenchId, defaultPreset, undefined, defaultPreset);
-        if (legacySession)
-          return ctx.agentWorkbench.open(workbenchId, "default", legacySession);
-        return ctx.agentWorkbench.open(workbenchId, "default");
-      };
       void (async () => {
-        const committed = await open();
+        const committed = await ctx.agentWorkbench.open(workbenchId, defaultPreset, undefined, defaultPreset);
         if (committed === false) {
           if (active && revisionAtStart === identityRevision.current)
             setError("页面会话切换未完成，请重新打开业务页");
@@ -93,7 +85,7 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
         active = false;
         hide();
       };
-    }, [workbenchId, legacySession, revision]);
+    }, [workbenchId, revision]);
     const switchAgent = async (nextPreset: string) => {
       if (switchingAgent || !agents.some((agent) => agent.preset === nextPreset)) return;
       const revisionAtStart = identityRevision.current;
@@ -163,11 +155,7 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
       if (!connection) return;
       const controller = new AbortController(),
         port = new MessageChannel();
-      // 页面桥：这一屏的"元素目录"由注入脚本在页面里扫出来，"改草稿"再交回页面执行。
-      // 页面本身不用改；页面没报目录（还没渲染/被清空）时就当作没有能力。
-      // 两种来源：页面自己报（新协议）优先，页面没实现时用宿主扫出来的（迁移期回退）。
-      const reported = { elements: null as unknown[] | null };
-      const scanned = { elements: null as unknown[] | null };
+      let elements: unknown[] | null = null;
       const pendingApplies = new Map<
         string,
         (result: { applied: boolean; error?: string }) => void
@@ -185,7 +173,7 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
         connected = true;
         readyWindow.postMessage(
           {
-            protocol: "gea-html-v1",
+            protocol: "gea-html-v2",
             type: "connect",
             context: { plugin: plugin.id, session: current.session },
           },
@@ -209,6 +197,7 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
       const stopTheme = ctx.on("theme/change", sendTheme);
       const pending = new Map<string, AbortController>();
       suspendPage.current = () => {
+        elements = null;
         for (const task of pending.values()) task.abort();
         port.port1.postMessage({ type: "context", context: null });
       };
@@ -242,7 +231,7 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
         if (!m || typeof m !== "object") return;
         const requestBinding = binding.current;
         try {
-          if (plugin.agentResources && ["request", "register", "invoked"].includes(m.type) &&
+          if (["request", "register", "invoked", "catalog", "applied", "cancel"].includes(m.type) &&
               m.session !== requestBinding?.session)
             throw Error("页面会话已切换，请重新操作");
           if (m.type === "theme:subscribe") {
@@ -250,6 +239,15 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
             if (!current || current !== binding.current || m.session !== current.session || controller.signal.aborted) return;
             themeRequested = true;
             sendTheme();
+            return;
+          }
+          if (m.type === "catalog") {
+            elements = Array.isArray(m.elements) && m.elements.length ? m.elements : null;
+            return;
+          }
+          if (m.type === "applied" && typeof m.toolCallId === "string") {
+            const settle = pendingApplies.get(m.toolCallId);
+            if (settle) settle({applied: m.applied === true, ...(typeof m.error === "string" ? {error: m.error} : {})});
             return;
           }
           if (m.type === "register") {
@@ -327,32 +325,7 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
       };
       const attach = (event: MessageEvent) => {
         if (event.source !== frame.current?.contentWindow) return;
-        // 第二代协议（页面桥）：页面报"这一屏有什么"，并把改动结果回填。
-        if (event.data?.protocol === "gea-html-v2") {
-          if (event.data.type === "catalog") {
-            const elements = Array.isArray(event.data.elements)
-              ? event.data.elements
-              : [];
-            const target = event.data.source === "page" ? reported : scanned;
-            target.elements = elements.length ? elements : null;
-          } else if (
-            event.data.type === "applied" &&
-            typeof event.data.toolCallId === "string"
-          ) {
-            const settle = pendingApplies.get(event.data.toolCallId);
-            if (settle) {
-              pendingApplies.delete(event.data.toolCallId);
-              settle({
-                applied: event.data.applied === true,
-                ...(typeof event.data.error === "string"
-                  ? { error: event.data.error }
-                  : {}),
-              });
-            }
-          }
-          return;
-        }
-        if (event.data?.protocol !== "gea-html-v1") return;
+        if (event.data?.protocol !== "gea-html-v2") return;
         if (event.data.type === "navigate") {
           const panel = event.data.panel;
           if (typeof panel === "string" && /^inventory-[a-z]+$/.test(panel))
@@ -369,23 +342,18 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
         endpoint: "page-bridge",
         request: (endpoint, payload) => request(plugin.id + "/call", { lease: current.lease, method: endpoint, parameters: payload }),
         sessionId: current.session,
-        // 页面自己报了元素就按自述算，否则是宿主扫出来的。
-        pageSource: () => (reported.elements === null ? "dom-scan" : "self-report"),
-        catalog: () => {
-          const elements = reported.elements ?? scanned.elements;
-          return elements === null ? null : { elements };
-        },
+        pageSource: "self-report",
+        catalog: () => elements === null ? null : { elements },
         apply: (args, meta, signal) =>
           new Promise((resolve) => {
             const cancel = () => {
               if (!pendingApplies.has(meta.toolCallId)) return;
-              frame.current?.contentWindow?.postMessage(
+              port.port1.postMessage(
                 {
-                  protocol: "gea-html-v2",
+                  session: current.session,
                   type: "cancel",
                   toolCallId: meta.toolCallId,
                 },
-                "*",
               );
               settle({ applied: false, error: "PAGE_ACTION_CANCELLED" });
             };
@@ -397,15 +365,14 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
             pendingApplies.set(meta.toolCallId, settle);
             if (signal.aborted) return settle({ applied: false, error: "PAGE_ACTION_CANCELLED" });
             signal.addEventListener("abort", cancel, { once: true });
-            frame.current?.contentWindow?.postMessage(
+            port.port1.postMessage(
               {
-                protocol: "gea-html-v2",
+                session: current.session,
                 type: "apply",
                 toolCallId: meta.toolCallId,
                 toolCallName: meta.toolCallName,
                 args,
               },
-              "*",
             );
           }),
       });
@@ -519,7 +486,7 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
             cleanups.push(ctx.agentWorkbench.register({
               id: page.id,
               preset: plugin.presetHidden === true ? "auto-negotiation" : "gea-html-" + plugin.id,
-              allowedPresets: plugin.agentResources ? plugin.pageAgents : undefined,
+              allowedPresets: plugin.mock ? ["auto-negotiation"] : plugin.pageAgents,
               scope: plugin.mock ? undefined : async () => {
                 const scope = await identity.readScope(controller.signal);
                 if (scope === null) throw Error("请先登录 GEA");

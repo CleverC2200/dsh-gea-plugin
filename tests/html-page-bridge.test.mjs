@@ -1,12 +1,5 @@
-/**
- * 迁移过来的 HTML 业务页面：宿主把适配器注入页面，页面通过它报元素、收改单。
- *
- * 这里验证接线而不是重复验证扫描算法（算法在 html-page-scan.test.mjs 里跑真实脚本）：
- *   - 页面 HTML 被注入扫描脚本（页面本身不用改）；
- *   - 页面报的元素经宿主校验后变成页面目录（surface / tool / 说明由宿主写死）；
- *   - 页面报空或撤走时，宿主撤掉这个会话的页面能力；
- *   - 页面的改动回执原样交给桥。
- */
+import {currentHtmlResource} from "./fixtures/html-resource.mjs";
+/** Current pages own their catalogs; Host validates identity and permissions. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
@@ -47,7 +40,7 @@ async function probePlugin(id = "inventory-probe", name = "探针页面", option
       gea: {
         consumerCode: id + "-consumer",
         readonly: true,
-        contract: "gea-html-v1",
+        contract: "gea-html-v2",
       },
     }),
   );
@@ -56,15 +49,16 @@ async function probePlugin(id = "inventory-probe", name = "探针页面", option
     JSON.stringify({
       provider: "gea",
       transport: "host-provided",
-      contract: "gea-html-v1",
+      contract: "gea-html-v2",
       consumer: { consumerType: "AGENT", consumerCode: id + "-consumer" },
       capabilities: ["governed-sql-read"],
     }),
   );
+  await currentHtmlResource(root);
   return root;
 }
 
-async function registered(specs = ["inventory-probe"], options = {}) {
+async function registered(t, specs = ["inventory-probe"], options = {}) {
   const roots = [];
   for (const spec of specs) {
     const item = typeof spec === "string" ? { id: spec } : spec;
@@ -77,10 +71,12 @@ async function registered(specs = ["inventory-probe"], options = {}) {
   const identityListeners = new Set();
   let identityScope = "fixture-scope";
   let identityController = new AbortController();
+  const disposers = [];
   const ctx = {
     agents: { get: id => id === session ? { session: {} } : undefined },
-    sessionProjections: { stateOf: () => undefined },
-    effect: (fn) => fn(),
+    sessionProjections: { stateOf: () => `gea-html-${specs.find(spec => typeof spec !== "string" && spec.mock === false)?.id}` },
+    get: name => name === "agentPresets" ? {resolve: async id => ({id})} : undefined,
+    effect: (fn) => { const value = fn(); if (typeof value === "function") disposers.push(value); return value; },
     tools: {
       register: (tool) => {
         tools.push(tool);
@@ -114,6 +110,7 @@ async function registered(specs = ["inventory-probe"], options = {}) {
   const plugins = await registerHtmlPlugins(ctx, business, roots, {
     declare: (sessionId, catalog) => declared.push({ sessionId, catalog }),
   });
+  t.after(async () => { for (const dispose of disposers.reverse()) await dispose(); });
   return {
     routes,
     declared,
@@ -141,8 +138,8 @@ const post = (route, body) =>
     }),
   );
 
-test("mock HTML references retain their real Session/lease boundary without GEA login", async () => {
-  const fixture = await registered();
+test("mock HTML references retain their real Session/lease boundary without GEA login", async t => {
+  const fixture = await registered(t);
   fixture.business.status = () => ({ authenticated: false, user: null });
   const open = fixture.routes.find(route => route.path.endsWith("/open"));
   const { lease } = await (await post(open, { session })).json();
@@ -155,18 +152,17 @@ test("mock HTML references retain their real Session/lease boundary without GEA 
   assert.throws(() => fixture.authorizeReference({ ...reference, surface: "gea-workbench" }), /LOGIN_REQUIRED|ACCESS_DENIED/);
 });
 
-test("页面 HTML 里被注入扫描脚本，页面自己不用改", async () => {
-  const { routes } = await registered();
+test("宿主保留页面内容和引用工具，不再注入扫描器", async t => {
+  const { routes } = await registered(t);
   const html = routes.find((route) => route.path.endsWith("/html"));
   const body = await (await html.fetch(new Request("http://local/html"))).text();
-  assert.match(body, /gea-html-v2/);
-  assert.match(body, /__geaPageScan/);
+  assert.doesNotMatch(body, /__geaPageScan|MutationObserver|gea-html-v1/);
   // 页面原本的内容还在。
   assert.match(body, /SKU-1/);
 });
 
-test("页面报的元素经宿主校验后变成这一屏的页面能力", async () => {
-  const { routes, declared, plugin } = await registered();
+test("页面报的元素经宿主校验后变成这一屏的页面能力", async t => {
+  const { routes, declared, plugin } = await registered(t);
   const open = routes.find((route) => route.path.endsWith("/open"));
   const call = routes.find((route) => route.path.endsWith("/call"));
   const { lease } = await (await post(open, { session })).json();
@@ -227,8 +223,8 @@ test("页面报的元素经宿主校验后变成这一屏的页面能力", async
   assert.ok(compiled.parameters.some((parameter) => parameter.name === "confirm"));
 });
 
-test("页面报空或撤走时，宿主把这个会话的页面能力撤掉", async () => {
-  const { routes, declared } = await registered();
+test("页面报空或撤走时，宿主把这个会话的页面能力撤掉", async t => {
+  const { routes, declared } = await registered(t);
   const open = routes.find((route) => route.path.endsWith("/open"));
   const call = routes.find((route) => route.path.endsWith("/call"));
   const { lease } = await (await post(open, { session })).json();
@@ -246,9 +242,9 @@ test("页面报空或撤走时，宿主把这个会话的页面能力撤掉", as
   assert.equal(declared.at(-1).catalog, null);
 });
 
-test("页面入口只有一个工具：按当前页身份路由，切页后同一个工具读新页", async () => {
+test("页面入口只有一个工具：按当前页身份路由，切页后同一个工具读新页", async t => {
   // 模块 id 受宿主校验（^inventory-[a-z]+$），第二个页面用 inventory-two。
-  const { routes, identities, tools } = await registered([
+  const { routes, identities, tools } = await registered(t, [
     "inventory-probe",
     { id: "inventory-two", name: "第二个页面" },
   ]);
@@ -291,8 +287,8 @@ test("页面入口只有一个工具：按当前页身份路由，切页后同�
   assert.deepEqual(onB.context, { rows: [{ name: "B 行" }] });
 });
 
-test("页面关掉后身份清空；真实模块的模型 agentCode 跟着当前页走", async () => {
-  const { routes, identities, consumerForSession } = await registered([
+test("页面关掉后身份清空；真实模块的模型 agentCode 跟着当前页走", async t => {
+  const { routes, identities, consumerForSession } = await registered(t, [
     { id: "inventory-real", mock: false },
   ]);
   const open = routes.find((route) => route.path === "/api/gea-html/inventory-real/open");
@@ -306,13 +302,13 @@ test("页面关掉后身份清空；真实模块的模型 agentCode 跟着当前
 
   await post(call, { lease, method: "close" });
   assert.equal(identities.get(session), undefined);
-  assert.equal(consumerForSession(session), undefined, "没有页面时回到默认 agent");
+  assert.equal(consumerForSession(session), "inventory-real-consumer", "关闭页面不改变持久Session已选Agent的授权身份");
 });
 
-test("a page launch finishing after identity change cannot mount its old lease", async () => {
+test("a page launch finishing after identity change cannot mount its old lease", async t => {
   const entered = Promise.withResolvers();
   const release = Promise.withResolvers();
-  const { routes, identities, changeIdentity } = await registered(
+  const { routes, identities, changeIdentity } = await registered(t,
     [{ id: "inventory-real", mock: false }],
     { htmlLaunch: async () => { entered.resolve(); await release.promise; return { sessionId: "old-delegation" }; } },
   );

@@ -83,7 +83,7 @@ test("口径只摘带口径/规则/边界的小节，并有长度上限", () => 
   assert.deepEqual(m.rulesFromSkill("x".repeat(10000)), []);
 });
 
-test("迁移页面派生成 dom-scan 契约，工作台派生成 self-report 契约", () => {
+test("迁移页面派生成 self-report 契约，工作台派生成 self-report 契约", () => {
   const plugin = m.contractFromPlugin({
     id: "inventory-fc",
     label: "分仓库存",
@@ -93,7 +93,7 @@ test("迁移页面派生成 dom-scan 契约，工作台派生成 self-report 契
     sources: ["SELECT * FROM data_service.agents_scm_branch_inventory_snapshot"],
   });
   assert.equal(plugin.view.surface, "gea-html-inventory-fc");
-  assert.equal(plugin.view.protocol, "dom-scan");
+  assert.equal(plugin.view.protocol, "self-report");
   assert.equal(plugin.data.consumerCode, "branch-inventory");
   assert.deepEqual(plugin.data.tables, ["agents_scm_branch_inventory_snapshot"]);
   assert.equal(plugin.maxEffect, "draft");
@@ -189,7 +189,7 @@ test("模块自己交的契约形状不对就整份丢掉", () => {
     label: "某页面",
     view: {
       surface: "gea-html-inventory-x",
-      protocol: "dom-scan",
+      protocol: "self-report",
       pageIds: ["inventory-x"],
     },
     data: {

@@ -1,6 +1,6 @@
 # GEA 销售计划只读插件
 
-独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；通用工作台插件负责布局与会话关联，运行使用未修改的 npm DSH `0.1.5-rc.2`。
+独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；通用工作台插件负责布局与会话关联。本隔离项目只支持 repositories.json 登记的当前官方核心源码与拆分接口，不使用旧 npm 核心或旧包运行回退。
 
 本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。`pnpm run package` 输出可核对 SHA-256 的 tarball，尚不是桌面安装器。
 
@@ -74,7 +74,7 @@ GEA token 仅保存在当前 Host 内存中；重启后需要重新登录。GEA 
 
 ## 当前验证状态
 
-当前三栏基线使用 npm DSH `0.1.5-rc.2` 与独立工作台插件，浏览器回归启动真实 Web profile，仅将外部 GEA/模型响应替换为固定测试服务。覆盖原工作台登录/查询/选择、独立文档与原生会话同时显示、持久化回执、窄屏排列。Host 测试覆盖精确金额、接口限制、数据身份和登录/预览失效。原工作台模型测试覆盖导出、权限和 SAVE 回读语义；这些测试不执行真实业务写回。
+当前三栏使用隔离项目登记的官方核心源码基线与独立工作台插件，浏览器回归启动真实 Web profile，仅将外部 GEA/模型响应替换为固定测试服务。覆盖原工作台登录/查询/选择、独立文档与原生会话同时显示、持久化回执、窄屏排列。Host 测试覆盖精确金额、接口限制、数据身份和登录/预览失效。原工作台模型测试覆盖导出、权限和 SAVE 回读语义；这些测试不执行真实业务写回。
 
 本次三栏重构的检查、真实查询证据和未完成项见 [2026-09-11 验收记录](docs/acceptance-2026-09-11.md)。此前的真实 GEA/模型验证记录见 [早期验收记录](docs/acceptance-2026-09-10.md)，它不能替代当前发布版 DSH + 工作台插件的真实环境验收；独立安装包、写操作和生产验收也仍未完成。
 
@@ -198,7 +198,7 @@ Demand Forecast follows the user's language for both progress and final answers.
 
 首次 `ready` 只登记当前 iframe 的来源，等当前租约完成后才发送带会话身份的 `connect` 并转移端口；等待期间再次切换会话，由新租约就绪接续握手。重复 `ready` 只连接一次，卸载后不补发，页面无需定时重试。
 
-已连接 iframe 可以在原有 MessageChannel 发送 `{type: "theme:subscribe", session}`。承载器核对当前租约会话，读取 ui-theme 已投影的 `--workbench-*` 变量，再发回 `{type: "theme", context: {plugin, session}, version, colorScheme, tokens}`。这只同步显示，不授予 SQL、工具或其他权限。旧页面不订阅则不接收主题消息。切换会话依次发送空 `context`（暂停）和新 `context`（重新绑定），不重建 iframe；卸载断开观察器和端口。样板拒绝来源、页面或会话不匹配的消息，并在缺资源、版本不兼容及连接异常时显示诊断。
+主题承载器通过 `getTheme()` 与 `theme/change` 发布公开 `{colorScheme, fontSize, tokens}` 快照；页面使用本地共享样式与 `--dsw-*` overrides 呈现。Session、租约、来源和卸载边界不变，父页面 CSS 不构成主题通知。样板自身资源损坏仍报错。
 
 业务页右侧 Agent 欢迎区、简介、建议按钮与输入区底座同样消费 `--workbench-*` 语义颜色，随宿主明暗切换；不保留固定的浅色渐变。HTML主题浏览器用例同时断言这一原生会话区域、往返切换、建议按钮填入和键盘焦点，避免只验证中央iframe。
 
@@ -215,3 +215,7 @@ Demand Forecast follows the user's language for both progress and final answers.
 原生销售计划、区域计划、品类计划、MPS和业务待办，与HTML业务页使用同一Host身份scope；身份变化清理页面关联并为仍显示的原生页恢复当前身份关联，不删除宿主持久Session。原生未登录页面使用独立匿名关联，保留登录/页面入口；已登录关联不能在该状态下恢复。挂载页只在仍为当前页面时重试一次被导航取消的open，不把取消结果当成功。
 
 `business-identity-client` 在同一GEA客户端内共享轮询和页面打开得到的Host scope；旧请求迟到不能倒退身份，已取消读取不发布身份事件。读取有5秒超时并接受调用方取消。目录发现独立启动；身份观察失败不能阻止元数据注册，真正打开HTML页仍由Host核scope和权限。卸载取消身份观察及目录请求，不再安排下一次轮询。本次接口配套同级源码工作台08候选验证，类型门禁使用`source:check`；普通独立依赖的旧声明不代表该源码组合。
+
+### 唯一 HTML 资源与页面协议
+
+本隔离项目只支持 `gea-html-v2` 与独立 page/capability、Agent Manage prompt/Skill 声明。旧 manifest 直接拒绝，不自动生成资源、不复用旧 Session。页面通过唯一 MessageChannel 主动发布 `{type: "catalog", session, elements}`，所有调用和动作回执携带当前 Session，宿主不再注入扫描器或默认扫描来源。FC 筛选、刷新与草稿字段复用原有 React 回调；目录来自当前分页与已确认状态，加载时撤回读数。mock 不获取 GEA 凭据，能力上限和正式业务写权限保持原声明。审批文档只承载审批功能，HTML 页由统一承载器打开，不再嵌套第二条 HTML 通道。

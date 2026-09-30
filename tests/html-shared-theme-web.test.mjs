@@ -1,3 +1,4 @@
+import {currentHtmlResource} from "./fixtures/html-resource.mjs";
 /** Real profile/iframe acceptance; the table itself is a workbench-owned local sample. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,12 +18,13 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   const sample = await readFile(new URL('../../dsh-agent-workbench/lib/samples/html-table.html', import.meta.url), 'utf8');
   await writeFile(join(root, 'index.html'), sample);
   // Temporary verification material consumed by the existing loader, never a shipped plugin.
-  await writeFile(join(root, 'plugin.json'), JSON.stringify({ schemaVersion: 1, id: 'inventory-customer', name: '项目清单样板', version: '0.0.0', mode: 'mock', html: 'index.html', skills: ['SKILL.md'], mcp: 'mcp.json', gea: { consumerCode: 'html-style-fixture', readonly: true, contract: 'gea-html-v1' } }));
-  await writeFile(join(root, 'SKILL.md'), '---\nname: html-style-fixture\ndescription: 本地样板验收\n---\n仅演示数据，不调用业务服务。\n');
-  await writeFile(join(root, 'mcp.json'), JSON.stringify({ provider: 'gea', transport: 'host-provided', contract: 'gea-html-v1', consumer: { consumerType: 'AGENT', consumerCode: 'html-style-fixture' }, capabilities: ['governed-sql-read'] }));
+  await writeFile(join(root, 'plugin.json'), JSON.stringify({ schemaVersion: 1, id: 'inventory-customer', name: '项目清单样板', version: '0.0.0', mode: 'mock', html: 'index.html', skills: ['SKILL.md'], mcp: 'mcp.json', gea: { consumerCode: 'html-style-fixture', readonly: true, contract: 'gea-html-v2' } }));
+  await writeFile(join(root, 'SKILL.md'), '---\nname: inventory-customer\ndescription: 本地样板验收\n---\n仅演示数据，不调用业务服务。\n');
+  await writeFile(join(root, 'mcp.json'), JSON.stringify({ provider: 'gea', transport: 'host-provided', contract: 'gea-html-v2', consumer: { consumerType: 'AGENT', consumerCode: 'html-style-fixture' }, capabilities: ['governed-sql-read'] }));
+  await currentHtmlResource(root);
   const app = await profile(t, { env: { GEA_HTML_PLUGIN_ROOTS: JSON.stringify([root]) } });
   t.after(async () => { await app.stop(); await rm(root, { recursive: true, force: true }); });
-  await app.login();
+  try { await app.login(); } catch (error) { await writeFile(new URL("../.runtime/unified-sample-start.log", import.meta.url), app.output); throw error; }
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   t.after(() => browser.close());
   const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } });

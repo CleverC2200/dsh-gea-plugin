@@ -42,8 +42,8 @@ Inbox、API Log 和任意未知字符串不因此成为引用入口。三张计�
 | Manage page-mode DOM 回退 | 已删除模块与挂载、旧页面样式；只注册 settings.section / settings.plugin.item |
 | 三/四字段浏览器关联并行解码 | 已删除三字段运行时分支；独立离线转换工具保留 Session ID，运行时只读四字段 |
 | HTML theme DOM 观察 | 已删除 computed CSS 和 MutationObserver；直接订阅 ui-theme 的 getTheme / theme/change，页面消费公开快照 |
-| legacySession、旧 Agent 资源 adapter | 仍需迁移所有实际载入页并删除，不视为完成 |
-| self-report / DOM scan 双来源 | 仍需 FC 与 sample 真正主动发布目录，删除宿主扫描及桥 fallback |
+| legacySession、旧 Agent 资源 adapter | 已删除；当前 FC/sample/mock fixture 使用独立资源声明和唯一 v2 端口，旧 manifest 明确拒绝 |
+| self-report / DOM scan 双来源 | 已删除宿主扫描脚本、注入和双来源分支；FC 与 sample 从自己的当前状态发布目录、动作和回执 |
 | GEA 外壳 DOM 补丁 | 仍需菜单、欢迎区、入口与布局接公开接口，删除外部 DOM 猜测 |
 | 旧包启动与支持矩阵 | 仍需移除旧发行包下载/回退，只加载已迁移的源码页 |
 

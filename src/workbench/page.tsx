@@ -30,10 +30,6 @@ import {
   type PageBridgeApplyResult,
 } from "../page-bridge/client.ts";
 
-type HtmlPlugin = { id: string; label: string; group: string; url: string };
-const HTML_PLUGINS: HtmlPlugin[] = [
-  ...[["inventory-apsplan", "产销协同工作台", "产销协同"], ["inventory-personal", "库存管理工作台", "库存管理"], ["inventory-aqkc", "基地库存", "库存管理"], ["inventory-dealer", "经销商库存", "库存管理"], ["inventory-fc", "分仓库存", "库存管理"], ["inventory-qll", "全链库存", "库存管理"], ["inventory-customer", "客户库存", "库存管理"], ["inventory-orderworkbench", "订单工作台", "订单履约"], ["inventory-orderfulfillment", "订单履约", "订单履约"]].map(([id, label, group]) => ({ id, label, group, url: `/api/gea-html-plugin/${id}` })),
-];
 /** 宿主按能力契约给出的模块索引：页面用它把 pageId 映射到受管 consumerCode。 */
 type ModuleInfo = {
   id: string;
@@ -254,14 +250,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     ? { ...businessStatus.value, pageScope: identity.scope, environment: identity.status.environment, authenticated: identity.status.authenticated,
         loginState: identity.status.loginState, user: identity.status.user } : undefined;
   const directApiLog = new URLSearchParams(window.location.search).get("view") === "api-log";
-  const initialView = new URLSearchParams(window.location.search).get("plugin") ?? "workbench";
-  const [shellView, setShellView] = useState<"plugin" | "workbench">(initialView === "workbench" ? "workbench" : "plugin");
-  const [selectedPlugin, setSelectedPlugin] = useState<HtmlPlugin>(HTML_PLUGINS.find((plugin) => plugin.id === initialView) ?? HTML_PLUGINS[0]);
-  const selectedPluginRef = useRef(selectedPlugin);
-  const pluginFrame = useRef<HTMLIFrameElement>(null);
-  const pluginPort = useRef<MessagePort>();
-  // 页面 -> 模块 -> 受管 consumerCode 的映射来自宿主契约，前端不再写死。
-  const pluginConsumers = useRef<Record<string, string>>({});
   const [apiLogOpen, setApiLogOpen] = useState(directApiLog);
   const [workbenchRevision, setWorkbenchRevision] = useState(0);
   const [resubmit, setResubmit] = useState<{ planId: string; versionId: string; period: GeaSalesPlanPeriod }>();
@@ -279,14 +267,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const [analysisScope, setAnalysisScope] = useState<AnalysisScope>("summary");
   const [preview, setPreview] = useState<Preview>();
   const [sessionId, setSessionId] = useState<string | null>(null);
-  useEffect(() => { selectedPluginRef.current = selectedPlugin; }, [selectedPlugin]);
-  useEffect(() => {
-    const map: Record<string, string> = {};
-    for (const module of status?.modules ?? [])
-      for (const pageId of module.pageIds ?? [])
-        if (module.consumerCode) map[pageId] = module.consumerCode;
-    pluginConsumers.current = map;
-  }, [status]);
   useEffect(() => {
     if (!businessStatus) return;
     window.parent.postMessage(
@@ -296,21 +276,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       window.location.origin,
     );
   }, [businessStatus]);
-  const notifyPluginIdentity = useCallback(() => {
-    pluginFrame.current?.contentWindow?.postMessage(
-      {
-        type: "gea:identity",
-        authenticated: status?.authenticated === true,
-        name: status?.user?.name ?? "",
-        avatarUrl: status?.user?.avatar ?? "",
-        environment: status?.environment,
-      },
-      "*",
-    );
-  }, [status]);
-  useEffect(() => {
-    notifyPluginIdentity();
-  }, [notifyPluginIdentity]);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.origin === window.location.origin && event.source === window.parent && event.data?.type === "gea:identity-snapshot") {
@@ -331,71 +296,9 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       )
         setSessionId(value);
     };
-    const onPluginSelection = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || event.source !== window.parent) return;
-      const pluginId = event.data?.pluginId;
-      if (event.data?.type !== "gea:select-plugin") return;
-      if (pluginId === "workbench") {
-        setShellView("workbench");
-        return;
-      }
-      if (typeof pluginId !== "string") return;
-      const plugin = HTML_PLUGINS.find((item) => item.id === pluginId);
-      if (plugin) {
-        setSelectedPlugin(plugin);
-        setShellView("plugin");
-      }
-    };
-    const onPluginRequest = (event: MessageEvent) => {
-      if (event.source !== pluginFrame.current?.contentWindow) return;
-      const message = event.data;
-      if (!message || message.type !== "gea:request" || typeof message.requestId !== "string" || typeof message.endpoint !== "string") return;
-      const allowed = new Set(["status", "notifications", "workflow/config", "periods", "plans", "detail", "versions", "skus"]);
-      if (!allowed.has(message.endpoint)) {
-        (event.source as WindowProxy).postMessage({ type: "gea:response", requestId: message.requestId, ok: false, error: "GEA_ENDPOINT_NOT_ALLOWED" }, { targetOrigin: event.origin });
-        return;
-      }
-      void rpc(message.endpoint, message.payload && typeof message.payload === "object" ? message.payload : {})
-        .then(value => (event.source as WindowProxy).postMessage({ type: "gea:response", requestId: message.requestId, ok: true, value }, { targetOrigin: event.origin }))
-        .catch(error => (event.source as WindowProxy).postMessage({ type: "gea:response", requestId: message.requestId, ok: false, error: error instanceof Error ? error.message : "GEA_REQUEST_FAILED" }, { targetOrigin: event.origin }));
-    };
-    const onHtmlPluginReady = (event: MessageEvent) => {
-      if (event.source !== pluginFrame.current?.contentWindow || event.data?.protocol !== "gea-html-v1" || event.data?.type !== "ready") return;
-      const channel = new MessageChannel();
-      pluginPort.current?.close(); pluginPort.current = channel.port1;
-      channel.port1.onmessage = (message: MessageEvent) => {
-        const request = message.data;
-        if (request?.type !== "request" || typeof request.id !== "string") return;
-        const method = request.method === "context" ? "status" : request.method;
-        if (method !== "status" && method !== "notifications" && method !== "periods" && method !== "plans" && method !== "detail" && method !== "versions" && method !== "skus" && method !== "sql") {
-          channel.port1.postMessage({ type: "response", id: request.id, error: "GEA_METHOD_NOT_ALLOWED" }); return;
-        }
-        const parameters = request.parameters && typeof request.parameters === "object" ? request.parameters : {};
-        const endpoint = method === "sql" ? "plugin/sql" : method;
-        const payload = method === "sql"
-          ? {
-              ...parameters,
-              ...(parameters.query && typeof parameters.query === "object" && !Array.isArray(parameters.query) ? parameters.query : {}),
-              consumerCode: pluginConsumers.current[selectedPluginRef.current?.id ?? ""] ?? "",
-            }
-          : parameters;
-        void rpc(endpoint, payload)
-          .then(value => channel.port1.postMessage({ type: "response", id: request.id, result: value }))
-          .catch(error => channel.port1.postMessage({ type: "response", id: request.id, error: error instanceof Error ? error.message : "GEA_REQUEST_FAILED" }));
-      };
-      channel.port1.start();
-      if (event.source) event.source.postMessage({ protocol: "gea-html-v1", type: "connect", context: { authenticated: status?.authenticated === true, user: status?.user ?? null } }, "*", [channel.port2]);
-    };
     window.addEventListener("message", onMessage);
-    window.addEventListener("message", onPluginSelection);
-    window.addEventListener("message", onPluginRequest);
-    window.addEventListener("message", onHtmlPluginReady);
     return () => {
       window.removeEventListener("message", onMessage);
-      window.removeEventListener("message", onPluginSelection);
-      window.removeEventListener("message", onPluginRequest);
-      window.removeEventListener("message", onHtmlPluginReady);
-      pluginPort.current?.close();
     };
   }, []);
   const request = useRef<AbortController>();
@@ -413,12 +316,12 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const quotedContext = useRef(conversationContext);
   quotedContext.current = conversationContext;
   useEffect(() => {
-    if (!status?.authenticated || shellView !== "workbench" || apiLogOpen) return;
+    if (!status?.authenticated || apiLogOpen) return;
     return mountPicker({ describe: (_element, reference) => ({
       ...reference,
       scope: quotedContext.current ? `月份 ${quotedContext.current.scope.month} · 计划类型 ${quotedContext.current.scope.planType} · 审批阶段 ${quotedContext.current.scope.approvalStage} · 维度 ${quotedContext.current.scope.dimension ?? "当前页"}` : "",
     }) });
-  }, [status?.authenticated, shellView, apiLogOpen]);
+  }, [status?.authenticated, apiLogOpen]);
   // 桥把一次调用交给我们后，等组件执行完再回填结果。
   const pendingToolResult = useRef<{
     toolCallId: string;
@@ -523,12 +426,9 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       // 页面自述能力：工具的定义与说明由桥按这份目录生成。
       // 只有"审批工作台"这一屏才报目录；切到迁移过来的插件页面时这一屏不是它，
       // 必须报 null，让宿主把上一屏的元素立刻注销（否则模型会对着上一屏下指令）。
-      catalog: () =>
-        shellView === "workbench"
-          ? workbenchCatalog(catalogElements.current)
-          : null,
+      catalog: () => workbenchCatalog(catalogElements.current),
     });
-  }, [sessionId, shellView, selectedPlugin.id]);
+  }, [sessionId]);
   // 离开这一屏时（切页、切插件、切会话、关页面），把"当前这一屏"从宿主里撤掉：
   // 元素目录随桥的关闭撤掉，可见上下文在这里显式清空。
   useEffect(() => {
@@ -536,7 +436,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     return () => {
       void rpc("workbench/context", { sessionId, context: null }).catch(() => {});
     };
-  }, [sessionId, shellView, selectedPlugin.id]);
+  }, [sessionId]);
   useEffect(() => {
     if (identity?.state !== "confirmed") return;
     const controller = new AbortController();
@@ -740,9 +640,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
         />
       ) : (
         <section className="gea-center-surface" aria-label="插件内容">
-          {shellView === "plugin" ? (
-            <iframe ref={pluginFrame} onLoad={notifyPluginIdentity} title={selectedPlugin.label} src={selectedPlugin.url} sandbox="allow-scripts allow-same-origin allow-forms" />
-          ) : (
             <WorkbenchSessionProvider value={{ conversationId: sessionId }}>
               <div className="gea-original-workbench">
                 <RegionalApprovalWorkbench
@@ -766,7 +663,6 @@ export function WorkbenchPage({ t }: { t: Translate }) {
               </div>
               {resubmit && <RegionalApprovalResubmitDialog key={resubmit.versionId} {...resubmit} client={resubmitClient} connected={status?.resubmitConnected === true} t={locale.t.bind(locale)} onClose={() => setResubmit(undefined)} onSucceeded={() => { setSelection([]); setWorkbenchRevision(value => value + 1); }} />}
             </WorkbenchSessionProvider>
-          )}
         </section>
       )}
     </div>

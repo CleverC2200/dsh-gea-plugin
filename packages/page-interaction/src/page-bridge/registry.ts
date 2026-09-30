@@ -63,12 +63,8 @@ export type PageToolConsumer = {
   draftLayer?: DraftLayer;
 };
 
-/**
- * 这一屏的目录从哪来：
- * - self-report：页面自己上报（新协议，最准）；
- * - dom-scan：宿主扫同源页面生成（迁移期回退，页面不用改）。
- */
-export type PageCatalogSource = "self-report" | "dom-scan";
+/** Only page-owned declarations are supported. */
+export type PageCatalogSource = "self-report";
 
 function parsePageContent(content: string): unknown {
   try {

@@ -34,7 +34,7 @@ test('HTML theme subscription is scoped to the frame, live session and mounted c
           if(event.source!==parent||event.data?.type!=='connect'||window.port)return;
           window.port=event.ports[0];port.onmessage=e=>received.push(e.data);port.start();
         });
-        parent.postMessage({protocol:'gea-html-v1',type:'ready'},'*');
+        parent.postMessage({protocol:'gea-html-v2',type:'ready'},'*');
       </script>` });
       return route.abort();
     });
@@ -44,7 +44,7 @@ test('HTML theme subscription is scoped to the frame, live session and mounted c
     const child = page.frames().find(frame => frame.url().includes('/html'));
     await child.waitForFunction(() => !!window.port);
     // Window messages are not the authenticated port; a sibling cannot subscribe either.
-    await page.evaluate(() => window.postMessage({ protocol: 'gea-html-v1', type: 'ready' }, '*'));
+    await page.evaluate(() => window.postMessage({ protocol: 'gea-html-v2', type: 'ready' }, '*'));
     await child.evaluate(() => port.postMessage({ type: 'theme:subscribe', session: 'stale-session' }));
     await page.waitForTimeout(100);
     assert.equal(await child.evaluate(() => received.filter(m => m.type === 'theme').length), 0);

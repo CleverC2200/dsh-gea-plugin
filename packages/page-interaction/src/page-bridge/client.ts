@@ -45,10 +45,9 @@ export type PageBridgeClientOptions = {
    */
   closeOnDispose?: boolean;
   /**
-   * 这一屏的目录是谁报的：页面自己（self-report）还是宿主扫出来的（dom-scan）。
-   * 宿主据此记录来源，也方便对比两种方式的结果。
+   * 页面主动发布目录。
    */
-  pageSource?: string | (() => string);
+  pageSource?: "self-report" | (() => "self-report");
   /**
    * 页面自述的能力目录：这一屏此刻能做什么。
    * 桥据此为这个会话生成工具；不声明（返回 null）就等于没有可调用动作。

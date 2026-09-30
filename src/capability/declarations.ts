@@ -16,14 +16,14 @@ export type CapabilityPageDeclaration = CapabilityView & {
 /** Agent-owned metadata has no page implementation; it keeps the existing contract fields. */
 export type CapabilityDeclaration = Omit<CapabilityContract, "view" | "source">;
 
-/** Read separate page/capability files into the existing contract; absent declarations use the legacy adapter. */
+/** Read separate page/capability files into the existing contract; declarations are required on the sole supported resource protocol. */
 export async function readPluginContract(
   directory: string,
   declarations: unknown,
-  legacy: CapabilityContract,
+  installed: CapabilityContract,
 ): Promise<CapabilityContract> {
   const manifest = resolve(directory, "plugin.json");
-  if (declarations === undefined) return { ...legacy, source: manifest };
+  if (declarations === undefined) throw Error(`UNSUPPORTED_HTML_RESOURCE_PROTOCOL [source: ${manifest}]`);
   let source = manifest;
   try {
     if (
@@ -66,7 +66,7 @@ export async function readPluginContract(
     if (
       capability.layers !== undefined &&
       (!Array.isArray(capability.layers) ||
-        capability.layers.some((layer) => !legacy.layers?.includes(layer)))
+        capability.layers.some((layer) => !installed.layers?.includes(layer)))
     )
       throw Error(
         "INCOMPATIBLE_SPLIT_DECLARATION: unsupported capability layer",
@@ -80,7 +80,7 @@ export async function readPluginContract(
     if (
       capability.skills !== undefined &&
       (!Array.isArray(capability.skills) ||
-        capability.skills.some((id) => !legacy.skills.includes(id)))
+        capability.skills.some((id) => !installed.skills.includes(id)))
     )
       throw Error("MISSING_SKILL_REFERENCE");
     const joined = normalizeContract({
@@ -93,22 +93,22 @@ export async function readPluginContract(
     });
     const ids = joined.view!.pageIds;
     if (new Set(ids).size !== ids.length) throw Error("DUPLICATE_PAGE_ID");
-    const installed = legacy.view!;
+    const installedView = installed.view!;
     if (
-      ids.length !== installed.pageIds.length ||
-      ids.some((id) => !installed.pageIds.includes(id))
+      ids.length !== installedView.pageIds.length ||
+      ids.some((id) => !installedView.pageIds.includes(id))
     )
       throw Error("MISSING_PAGE_REFERENCE");
     if (
-      joined.id !== legacy.id ||
-      page.surface !== installed.surface ||
-      page.protocol !== installed.protocol ||
+      joined.id !== installed.id ||
+      page.surface !== installedView.surface ||
+      page.protocol !== installedView.protocol ||
       page.consumerCode !== joined.data?.consumerCode ||
-      page.consumerCode !== legacy.data?.consumerCode ||
+      page.consumerCode !== installed.data?.consumerCode ||
       page.maxEffect !== joined.maxEffect ||
-      joined.maxEffect !== legacy.maxEffect ||
-      (joined.data?.mock === true) !== (legacy.data?.mock === true) ||
-      joined.layers?.some((layer) => !legacy.layers?.includes(layer))
+      joined.maxEffect !== installed.maxEffect ||
+      (joined.data?.mock === true) !== (installed.data?.mock === true) ||
+      joined.layers?.some((layer) => !installed.layers?.includes(layer))
     )
       throw Error(
         "INCOMPATIBLE_SPLIT_DECLARATION: installed identity or permission differs",
