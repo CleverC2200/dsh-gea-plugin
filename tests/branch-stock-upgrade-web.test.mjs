@@ -181,27 +181,30 @@ test(
           agentPreset: "gea-html-inventory-fc",
           scope: oldScope,
         });
-        assert.equal(rejectedScope.body.ok, false);
+        assert.equal(rejectedScope.status, 400);
+        assert.equal(
+          rejectedScope.body.error,
+          "PAGE_SESSION_IDENTITY_MISMATCH",
+        );
         rejectedLease = await request("call", {
           session: durableSession,
           lease: oldLease,
           method: "context",
           parameters: {},
         });
-        assert.equal(rejectedLease.body.ok, false);
+        assert.equal(rejectedLease.status, 400);
+        assert.match(rejectedLease.body.error, /LEASE/);
       }
       const context = await browser.newContext({
         locale: "zh-CN",
         viewport: { width: 1440, height: 1000 },
       });
       await context.addCookies(
-        app.cookie
-          .split("; ")
-          .map((pair) => ({
-            name: pair.slice(0, pair.indexOf("=")),
-            value: pair.slice(pair.indexOf("=") + 1),
-            url: app.origin,
-          })),
+        app.cookie.split("; ").map((pair) => ({
+          name: pair.slice(0, pair.indexOf("=")),
+          value: pair.slice(pair.indexOf("=") + 1),
+          url: app.origin,
+        })),
       );
       const page = await context.newPage();
       page.setDefaultTimeout(20000);
@@ -229,7 +232,7 @@ test(
       await expect(
         frame.getByText("FC002", { exact: true }).first(),
       ).toBeVisible();
-      await expect.poll(() => opened?.ok).toBe(true);
+      await expect.poll(() => typeof opened?.lease).toBe("string");
       const agentsResponse = await fetch(
         app.origin + "/api/gea-html/inventory-fc/agents",
         { headers: { Cookie: app.cookie } },
@@ -264,8 +267,8 @@ test(
             agentPreset: "gea-html-inventory-fc",
             scope,
           })
-        ).body.ok,
-        true,
+        ).status,
+        200,
       );
       assert.equal(
         (
@@ -379,7 +382,7 @@ test(
         userDataSha256: hash(await readFile(userFile)),
       });
       oldScope = scope;
-      oldLease = opened.value.lease;
+      oldLease = opened.lease;
       oldRows = rows;
       await context.close();
     }
