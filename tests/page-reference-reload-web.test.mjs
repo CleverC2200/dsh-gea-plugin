@@ -28,6 +28,9 @@ test("reload while a saved response is delayed cannot insert into the replacemen
   assert.equal((await page.locator('[contenteditable="true"]').first().innerText()).trim(), "");
   await page.unroute("**/api/page-interaction/reference");
   await page.getByText("AI工作台", { exact: true }).click();
+  await page.getByRole("button", { name: "业务工作台", exact: true }).click();
+  if (!await page.getByText("分仓库存", { exact: true }).isVisible())
+    await page.getByText("库存管理", { exact: true }).click();
   await page.getByText("分仓库存", { exact: true }).click();
   await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible({ timeout: 15000 });
   const fresh = page.waitForResponse(response => response.url().endsWith("/api/page-interaction/reference") && response.status() === 200);

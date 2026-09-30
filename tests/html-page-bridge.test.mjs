@@ -349,3 +349,28 @@ test("closing a previous page lease cannot clear another page's current identity
   assert.equal(subject.identities.get(session)?.pluginId,"inventory-b");
   assert.equal(subject.declared.length,declarations);
 });
+test("reopening the same page keeps the new lease's current identity", async t => {
+  const subject = await registered(t,["inventory-probe"]);
+  const open = subject.routes.find(route => route.path.endsWith("/open"));
+  const call = subject.routes.find(route => route.path.endsWith("/call"));
+  const first = await (await post(open,{session})).json();
+  const second = await (await post(open,{session})).json();
+  assert.notEqual(second.lease,first.lease);
+  assert.equal(subject.identities.get(session)?.pluginId,"inventory-probe");
+  assert.equal((await post(call,{lease:second.lease,method:"context",parameters:{rows:[]}})).status,200);
+  assert.equal((await post(call,{lease:first.lease,method:"context",parameters:{rows:[]}})).status,400);
+});
+test("an opening finished after resource teardown cannot install a page identity", async t => {
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  const subject = await registered(t,[{id:"inventory-real",mock:false}],{
+    htmlLaunch: async () => {entered.resolve();await release.promise;return {sessionId:"late-delegation"};},
+  });
+  const open = subject.routes.find(route => route.path.endsWith("/open"));
+  const opening = post(open,{session,scope:"fixture-scope"});
+  await entered.promise;
+  await subject.dispose();
+  release.resolve();
+  const response = await opening;
+  assert.equal(response.status,400);
+  assert.equal(subject.identities.has(session),false);
+});

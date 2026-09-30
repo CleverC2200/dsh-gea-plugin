@@ -142,6 +142,7 @@ export async function registerHtmlPlugins(
     business.clearPageIdentity?.(session, plugin);
     pageBridgeHost.declare?.(session, null, "self-report");
   });
+  const lifetime = new AbortController();
   const items: any[] = [];
   /** A page Session cannot be reopened under a different GEA principal in this host lifetime. */
   const sessionPrincipals = new Map<string, string>();
@@ -360,6 +361,7 @@ export async function registerHtmlPlugins(
     lastPageContext.clear();
   });
   ctx.effect(() => () => {
+    lifetime.abort();
     unwatch();
     sessions.clear();
   });
@@ -460,6 +462,7 @@ export async function registerHtmlPlugins(
       });
     });
     register(prefix + "/open", ["POST"], async (request) => {
+      lifetime.signal.throwIfAborted();
       const started = item.mock ? undefined : business.identitySignal();
       const { session, agentPreset, scope } = await request.json();
       if (
@@ -481,7 +484,7 @@ export async function registerHtmlPlugins(
         if (!agent) throw Error("PAGE_AGENT_MISSING");
         if (ctx.sessionProjections.stateOf(agent.session, "agentPreset") !== preset)
           throw Error("PAGE_AGENT_SESSION_MISMATCH");
-        authorizedAgent = await pageAgent(item, preset, AbortSignal.any([request.signal, business.identitySignal()]), session.slice(8));
+        authorizedAgent = await pageAgent(item, preset, AbortSignal.any([request.signal, business.identitySignal(), lifetime.signal]), session.slice(8));
       }
       let credentials: any;
       let access: any;
@@ -498,7 +501,7 @@ export async function registerHtmlPlugins(
         const identity = business.identitySignal();
         credentials = authorizedAgent && authorizedAgent.consumerCode === item.gea.consumerCode
           ? authorizedAgent.credentials
-          : await business.htmlLaunch(item.gea.consumerCode, AbortSignal.any([identity, request.signal]), session.slice(8));
+          : await business.htmlLaunch(item.gea.consumerCode, AbortSignal.any([identity, request.signal, lifetime.signal]), session.slice(8));
         identity.throwIfAborted();
         const user = business.status().user;
         if (!user?.id) throw Error("GEA_IDENTITY_INCOMPLETE");
@@ -510,9 +513,11 @@ export async function registerHtmlPlugins(
         };
       }
       started?.throwIfAborted();
+      lifetime.signal.throwIfAborted();
       if (!item.mock && scope !== business.pageSessionScope())
         throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
-      // 打开页面即确立"当前页"：mock 页也要记，否则演示页会被当成没打开。
+      const lease = sessions.open(item.id, session, credentials, access);
+      // Replacing a lease withdraws the old projection before the new page owns it.
       business.touchPageIdentity?.(session, {
         pluginId: item.id,
         consumerCode: item.gea.consumerCode,
@@ -520,7 +525,6 @@ export async function registerHtmlPlugins(
         pageTool: PAGE_TOOL,
         mock: item.mock === true,
       });
-      const lease = sessions.open(item.id, session, credentials, access);
       if (!item.mock && principalKey) sessionPrincipals.set(session, principalKey);
       return json({
         lease,
