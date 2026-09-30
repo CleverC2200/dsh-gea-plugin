@@ -81,11 +81,11 @@ for (const mode of ["logout", "new-user"]) test(`a saved response delayed until 
     release.resolve();
     await delivered.promise;
     await page.waitForTimeout(500);
-    const composer = await page.locator('[contenteditable="true"]').first().innerText();
+    const composer = await page.locator('[contenteditable="true"]').allInnerTexts();
     const read = await readReference(outcome.receipt.id);
     await mkdir(".runtime/reference-identity-evidence", { recursive: true });
     await writeFile(`.runtime/reference-identity-evidence/response-${mode}.json`, JSON.stringify({ mode, outcome, composer, read }, null, 2));
     assert.match(read.text, /REFERENCE_UNAVAILABLE/);
-    assert.equal(composer.trim(), "", "a cleared reference must not be presented as usable after identity changes");
+    assert.ok(composer.every(text => text.trim() === ""), "a cleared reference must not appear in any current composer after identity changes; logout may unmount the composer");
   } finally { release.resolve(); }
 });

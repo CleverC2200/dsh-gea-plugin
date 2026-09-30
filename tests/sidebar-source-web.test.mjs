@@ -14,6 +14,8 @@ test("source sidebar mounts native tabs and saves a workspace file across refres
   t.after(() => rm(shellHome, { recursive: true, force: true }));
   const file = join(app.runtime, "workspace/sidebar-smoke.txt");
   await writeFile(file, "original sidebar fixture\n");
+  const workspace = await app.remote("workspace/create", { path: join(app.runtime, "workspace") });
+  assert.equal(workspace.ok, true, "the sidebar fixture must register its isolated workspace before native startup chooses a default");
   await app.login();
   const browser = await chromium.launch({ channel: "chrome", headless: true });
   t.after(() => browser.close());
