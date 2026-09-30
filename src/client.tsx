@@ -286,7 +286,7 @@ export function apply(ctx: Context): void {
       <>
         <style>{shellCss}</style>
         {sessionError && <div role="alert">{sessionError}</div>}
-        {identity.state === "error" && <div role="alert">{identity.error ?? "登录状态读取失败，请重试。"}</div>}
+        {identity.error && <div role="alert">{identity.error}</div>}
         <div className="gea-workbench-shell">
           <iframe
             ref={frame}

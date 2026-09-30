@@ -56,10 +56,19 @@ test("concurrent initial reads share one Host request and errors never invent a 
   pending.resolve(Response.json({ scope: "A", status: { environment: "test", authenticated: true, loginState: "authenticated", user: { name: "Alice" } } }));
   assert.deepEqual(await Promise.all([first, second]), ["A", "A"]);
   assert.equal(read.getSnapshot().status.user.name, "Alice");
+  let notices = 0;
+  const unsubscribe = read.subscribe(() => notices++);
   globalThis.fetch = async () => { throw Error("offline"); };
-  await assert.rejects(read(), /offline/);
+  for (let attempt = 0; attempt < 3; attempt++) await assert.rejects(read.refresh(), /offline/);
   assert.equal(read.getSnapshot().scope, "A", "a transient read failure keeps the last confirmed identity");
   assert.equal(read.getSnapshot().state, "confirmed");
+  assert.equal(read.getSnapshot().error, "offline");
+  assert.equal(notices, 1, "a repeated identical failure is one visible condition");
+  globalThis.fetch = async () => Response.json({ scope: "A", status: { environment: "test", authenticated: true, loginState: "authenticated", user: { name: "Alice" } } });
+  assert.equal(await read.refresh(), "A");
+  assert.equal(read.getSnapshot().error, undefined);
+  assert.equal(notices, 2, "recovery clears the warning even when identity is unchanged");
+  unsubscribe();
 });
 
 test("a confirmed refresh wins over a late initial response", async t => {

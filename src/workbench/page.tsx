@@ -241,17 +241,17 @@ function requestErrorMessage(error: unknown, t: Translate): string {
 /** 只挂载真实 GEA 数据；未认证或查询失败时绝不切换到 fixture。 */
 export function WorkbenchPage({ t }: { t: Translate }) {
   const [businessStatus, setBusinessStatus] = useState<{
-    scope: string | null | undefined;
-    value: Omit<Status, "authenticated" | "loginState" | "user" | "environment">;
+    scope: string | null;
+    value: Omit<Status, "authenticated" | "loginState" | "user" | "environment" | "pageScope">;
   }>();
   const setStatus = (value: Status) => {
-    const { authenticated: _authenticated, loginState: _loginState, user: _user, environment: _environment, ...business } = value;
-    setBusinessStatus({ scope: identity?.scope, value: business });
+    const { authenticated: _authenticated, loginState: _loginState, user: _user, environment: _environment, pageScope, ...business } = value;
+    setBusinessStatus({ scope: pageScope, value: business });
   };
   const [identity, setIdentity] = useState<{ state: "unknown" | "confirmed" | "error"; scope: string | null; status: Status | null }>();
   const [loginEnvironment, setLoginEnvironment] = useState<Status["environment"]>();
   const status: Status | undefined = identity?.state === "confirmed" && identity.status && businessStatus?.scope === identity.scope
-    ? { ...businessStatus.value, environment: identity.status.environment, authenticated: identity.status.authenticated,
+    ? { ...businessStatus.value, pageScope: identity.scope, environment: identity.status.environment, authenticated: identity.status.authenticated,
         loginState: identity.status.loginState, user: identity.status.user } : undefined;
   const directApiLog = new URLSearchParams(window.location.search).get("view") === "api-log";
   const initialView = new URLSearchParams(window.location.search).get("plugin") ?? "workbench";

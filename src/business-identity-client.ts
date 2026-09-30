@@ -37,7 +37,7 @@ export function createBusinessIdentityReader() {
       const previous = snapshot;
       accepted = request;
       snapshot = { state: "confirmed", ...next };
-      if (previous.state !== "confirmed" || previous.scope !== next.scope || previous.status?.loginState !== next.status?.loginState ||
+      if (previous.state !== "confirmed" || previous.error || previous.scope !== next.scope || previous.status?.loginState !== next.status?.loginState ||
           previous.status?.environment !== next.status?.environment || previous.status?.user?.name !== next.status?.user?.name ||
           previous.status?.user?.avatar !== next.status?.user?.avatar) {
         for (const listener of listeners) listener();
@@ -46,9 +46,12 @@ export function createBusinessIdentityReader() {
       }
       return next.scope;
     } catch (error) {
-      if (!signal?.aborted && request >= accepted && snapshot.state !== "confirmed") {
-        snapshot = { ...snapshot, state: "error", error: error instanceof Error ? error.message : String(error) };
-        for (const listener of listeners) listener();
+      if (!signal?.aborted && request >= accepted) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (snapshot.error !== message || snapshot.state === "unknown") {
+          snapshot = { ...snapshot, state: snapshot.state === "confirmed" ? "confirmed" : "error", error: message };
+          for (const listener of listeners) listener();
+        }
       }
       throw error;
     }

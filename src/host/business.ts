@@ -1252,6 +1252,7 @@ export class Business {
       environment: this.environment,
       environments: Object.keys(this.environments),
       authenticated: Boolean(this.auth),
+      pageScope: this.pageSessionScope() ?? null,
       resubmitConnected: serviceAccountReady(this.config.serviceAccounts?.[this.environment], this.auth),
       loginState: this.auth
         ? "authenticated"
