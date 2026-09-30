@@ -212,7 +212,6 @@ export function apply(ctx: Context): void {
     return revision;
   };
   type MainSessionProps = Pick<InjectFace<typeof injected>, "useMainSessionId">;
-  let hideWorkbenchConversation: (() => void) | undefined;
   function Workbench({
     useMainSessionId,
     useGeaLocale,
@@ -221,39 +220,41 @@ export function apply(ctx: Context): void {
     const authenticated = identity.state === "confirmed" && identity.status?.authenticated === true;
     const loginOverlay = identity.state === "confirmed" && !authenticated;
     const identityRevision = useBusinessIdentityRevision();
+    const [opened, setOpened] = useState(false);
     const incoming = React.useSyncExternalStore(navigationSelection.subscribe,navigationSelection.getSnapshot);
-    useEffect(() => {if (authenticated && incoming?.panel === PANEL) incoming.visible();},[authenticated,incoming]);
+    useEffect(() => {if (opened && incoming?.panel === PANEL) incoming.visible();},[opened,incoming]);
     // Host身份或子文档明确未登录后才铺遮罩，初次未知时保持页面稳定。
     const [sessionError, setSessionError] = useState("");
     useEffect(() => {
-      if (!authenticated) {
-        hideWorkbenchConversation?.();
-        hideWorkbenchConversation = undefined;
-        return;
-      }
-      const hide = ctx.agentWorkbench.showConversation(PANEL);
-      hideWorkbenchConversation = hide;
+      setOpened(false);
+      setSessionError("");
+      if (!authenticated) return;
       let mounted = true;
-      void openMountedWorkbench(PANEL, () => mounted).catch(error => { if (mounted) setSessionError(String(error.message)); });
+      let hide = () => {};
+      void openMountedWorkbench(PANEL, () => mounted).then(opened => {
+        if (!mounted) return;
+        if (!opened) { setSessionError("页面会话切换未完成，请重新打开业务页"); return; }
+        hide = ctx.agentWorkbench.showConversation(PANEL);
+        setOpened(true);
+      }).catch(error => { if (mounted) setSessionError(String(error.message)); });
       return () => {
         mounted = false;
         hide();
-        if (hideWorkbenchConversation === hide) hideWorkbenchConversation = undefined;
       };
     }, [authenticated, identityRevision]);
     const language = useGeaLocale((snapshot) => snapshot.active);
     const currentSession = useMainSessionId(id => id);
     const frame = useRef<HTMLIFrameElement>(null);
     useEffect(() => {
-      if (!frame.current || !currentSession || !authenticated) return;
+      if (!frame.current || !currentSession || !opened) return;
       return pageInteraction.bindFrame({ frame: frame.current, sessionId: currentSession, page: t("salesPlan"), surface: "gea-workbench", tool: "gea_workbench_apply" });
-    }, [currentSession, authenticated, identity.scope]);
+    }, [currentSession, opened, identity.scope]);
     useEffect(() => {
       frame.current?.contentWindow?.postMessage(
-        { type: "gea:session", sessionId: currentSession ?? null },
+        { type: "gea:session", sessionId: opened ? currentSession ?? null : null },
         window.location.origin,
       );
-    }, [currentSession]);
+    }, [currentSession, opened]);
     useEffect(() => {
       const onMessage = (event: MessageEvent) => {
         if (
@@ -294,7 +295,7 @@ export function apply(ctx: Context): void {
             data-gea-workbench
             title={t("approvalTitle")}
             onLoad={() => {
-              frame.current?.contentWindow?.postMessage({ type: "gea:session", sessionId: currentSession ?? null }, window.location.origin);
+              frame.current?.contentWindow?.postMessage({ type: "gea:session", sessionId: opened ? currentSession ?? null : null }, window.location.origin);
               frame.current?.contentWindow?.postMessage({ type: "gea:identity-snapshot", snapshot: identity }, window.location.origin);
             }}
             src={`/api/gea-proof/workbench?locale=${encodeURIComponent(language)}`}
@@ -718,15 +719,6 @@ export function apply(ctx: Context): void {
         window.clearTimeout(timer);
         frame.classList.remove("gea-panel-switching");
       };
-    }, [activePanel]);
-    useEffect(() => {
-      if (activePanel === API_LOG_PANEL) {
-        hideWorkbenchConversation?.();
-        hideWorkbenchConversation = undefined;
-        return;
-      }
-      if (activePanel === PANEL && readBusinessIdentityScope.getSnapshot().status?.authenticated && !hideWorkbenchConversation)
-        hideWorkbenchConversation = ctx.agentWorkbench.showConversation(PANEL);
     }, [activePanel]);
     const [region, setRegion] = useState<HTMLElement | null>(null);
     const [logoRow, setLogoRow] = useState<HTMLElement | null>(null);

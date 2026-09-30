@@ -110,7 +110,7 @@ test("rapid page switches keep the branch Session and do not mount the old page"
   await writeFile(`${evidence}/rapid-switch.json`, JSON.stringify({ session, retainedAssociation: true, finalPage: "inventory-fc", finalOpenSession: opens.at(-1)?.session }, null, 2));
 });
 
-test("a confirmed old reference delivered after logout never reappears in the composer", {
+test("a saved reference response delivered after logout never reappears in the composer", {
   skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 180000,
 }, async t => {
   const { app, page, quote, readReference, session } = await stockReferencePage(t);
@@ -118,19 +118,20 @@ test("a confirmed old reference delivered after logout never reappears in the co
   assert.equal(typeof before, "string");
   let release;
   const gate = new Promise(resolve => { release = resolve; });
-  let confirm;
-  const confirmed = new Promise(resolve => { confirm = resolve; });
+  let saved;
+  const stored = new Promise(resolve => { saved = resolve; });
   t.after(() => release());
-  await page.route("**/api/page-interaction/reference/confirm", async route => {
-    const id = route.request().postDataJSON().id;
+  await page.route("**/api/page-interaction/reference", async route => {
     const response = await route.fetch();
-    confirm({ status: response.status(), id });
+    const receipt = await response.json();
+    saved({ status: response.status(), id: receipt.id });
     await gate;
     await route.fulfill({ response }).catch(() => {});
   });
   await quote();
-  const host = await confirmed;
-  assert.equal(host.status, 200, "Host must have accepted the reference before logout");
+  const host = await stored;
+  assert.equal(host.status, 200, "Host must have saved the click-time snapshot before logout");
+  assert.match(host.id, /^R[a-f0-9]{12}$/);
   await app.rpc("logout");
   await expect.poll(async () => (await identity(page)).scope).toBe(null);
   await expect(page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]')).toHaveCount(0);

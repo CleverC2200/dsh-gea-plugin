@@ -47,11 +47,26 @@ test("source GenUI renders a persisted model reply and restores local input afte
   })));
   const page = await context.newPage();
   page.setDefaultTimeout(20000);
+  const opening = Promise.withResolvers(), releaseOpening = Promise.withResolvers();
+  let heldOpening = false;
+  t.after(() => releaseOpening.resolve());
+  await page.route("**/api/agent-workbench/config", async route => {
+    if (heldOpening) return route.continue();
+    heldOpening = true;
+    opening.resolve();
+    await releaseOpening.promise;
+    await route.continue();
+  });
   const messages = [];
   page.on("console", message => messages.push(message.text()));
   await page.goto(app.origin);
   await page.getByRole("dialog", { name: /内测声明|预览版说明/ }).getByRole("button", { name: "继续", exact: true }).click();
   const composer = page.locator('[contenteditable="true"], textarea').first();
+  await opening.promise;
+  await expect(page.locator("iframe[data-gea-workbench]")).toBeVisible();
+  await expect(composer).toBeHidden();
+  releaseOpening.resolve();
+  await expect(composer).toBeVisible();
   await composer.fill("用卡片展示测试样例，不查询业务数据。");
   await composer.press("Enter");
   const card = page.locator("[data-genui]").filter({ hasText: "样例已完成" }).first();
