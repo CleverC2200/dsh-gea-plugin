@@ -538,6 +538,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
     };
   }, [sessionId, shellView, selectedPlugin.id]);
   useEffect(() => {
+    if (identity?.state !== "confirmed") return;
     const controller = new AbortController();
     void rpc<Status>("status", {}, controller.signal)
       .then(value => { if (!controller.signal.aborted) setStatus(value); })
@@ -548,7 +549,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       controller.abort();
       request.current?.abort();
     };
-  }, [identity?.scope]);
+  }, [identity?.state, identity?.scope]);
   useEffect(() => {
     if (!qr) return;
     const controller = new AbortController();
