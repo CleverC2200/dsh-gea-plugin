@@ -52,6 +52,7 @@ test(
           )
         );
         await baselineAssembler.prepareSourcePlugins(core, runtime, deployment);
+        await mkdir(join(runtime, "workspace"), { recursive: true });
         await writeFile(
           join(runtime, "workspace/preexisting-user.txt"),
           "ticket08 user state",
