@@ -12,12 +12,14 @@ const bundle = await build({ stdin: { contents: `
   import {createRoot} from 'react-dom/client';
   import {registerHtmlClient} from './src/html-client.tsx';
   import {createBusinessIdentityReader} from './src/business-identity-client.ts';
+  import {createThemeClient} from './tests/fixtures/theme-client.mjs';
+  const themeContext=createThemeClient();window.testTheme=themeContext;
   const root=createRoot(document.getElementById('app'));
   window.unmount=()=>root.unmount();
   function useMainSessionId(select) {
     const [value,set]=React.useState('session-1');window.changeSession=set;return select(value);
   }
-  registerHtmlClient({effect:f=>f(),agentWorkbench:{register:()=>()=>{},open:async()=>{},showConversation:()=>()=>{}},
+  registerHtmlClient({...themeContext,effect:f=>f(),agentWorkbench:{register:()=>()=>{},open:async()=>{},showConversation:()=>()=>{}},
     layout:{selectPanel(){}},slots:{inject:(_,f)=>f(),register:(_,Component)=>{
       root.render(<Component useMainSessionId={useMainSessionId}/>);return ()=>{};
     }}}, undefined, createBusinessIdentityReader());

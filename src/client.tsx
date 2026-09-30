@@ -88,7 +88,7 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
   }
 }
 
-export const inject = ["slots", "uiSession", "layout", "locale", "uiWorkspace", "sessions", "agentWorkbench", "remote", "remote.session"];
+export const inject = ["slots", "uiSession", "layout", "locale", "uiWorkspace", "sessions", "agentWorkbench", "theme", "remote", "remote.session"];
 const INBOX = "gea-inbox" as MainPanelId;
 const PANEL = "gea-proof" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;

@@ -9,9 +9,11 @@ test('new conversation rebinds the existing HTML page without losing page state 
     import {createRoot} from 'react-dom/client';
     import {registerHtmlClient} from './src/html-client.tsx';
   import {createBusinessIdentityReader} from './src/business-identity-client.ts';
+  import {createThemeClient} from './tests/fixtures/theme-client.mjs';
+  const themeContext=createThemeClient();window.testTheme=themeContext;
     const root=createRoot(document.getElementById('app'));
     function useMainSessionId(select) {const [value,set]=React.useState('session-1');window.changeSession=set;return select(value);}
-    registerHtmlClient({effect:f=>f(),agentWorkbench:{register:()=>()=>{},open:async()=>{},showConversation:()=>()=>{}},layout:{selectPanel(){}},remote:{session:{prompt:async input=>{window.sent=input;return {ok:true}}}},slots:{inject:(_,f)=>f(),register:(_,Component)=>{root.render(<Component useMainSessionId={useMainSessionId}/>);return ()=>{}}}}, {bindFrame:({sessionId})=>{window.selectionSession=sessionId;return ()=>{window.selectionSession=null}}}, createBusinessIdentityReader());
+    registerHtmlClient({...themeContext,effect:f=>f(),agentWorkbench:{register:()=>()=>{},open:async()=>{},showConversation:()=>()=>{}},layout:{selectPanel(){}},remote:{session:{prompt:async input=>{window.sent=input;return {ok:true}}}},slots:{inject:(_,f)=>f(),register:(_,Component)=>{root.render(<Component useMainSessionId={useMainSessionId}/>);return ()=>{}}}}, {bindFrame:({sessionId})=>{window.selectionSession=sessionId;return ()=>{window.selectionSession=null}}}, createBusinessIdentityReader());
   `, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false, format: 'iife', platform: 'browser' });
   const browser = await chromium.launch({channel:'chrome',headless:true});
   try {

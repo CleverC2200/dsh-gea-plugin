@@ -193,24 +193,20 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
         );
       };
       let themeRequested = false;
-      // Read the ui-theme presenter's output; this bridge never owns settings or parent DOM.
+      // Forward the current ui-theme projection; pages present their own shared stylesheet.
       const sendTheme = () => {
         if (!connected || !themeRequested || !binding.current || controller.signal.aborted) return;
-        const styles = getComputedStyle(document.body);
-        const tokens = Object.fromEntries(Array.from(styles)
-          .filter(name => /^--workbench-[a-z-]+$/.test(name))
-          .map(name => [name, styles.getPropertyValue(name).trim()]));
+        const theme = ctx.theme.getTheme();
         port.port1.postMessage({
           type: "theme",
           context: { plugin: plugin.id, session: binding.current.session },
-          version: styles.getPropertyValue("--workbench-theme-version").trim().replace(/^"|"$/g, ""),
-          colorScheme: document.body.hasAttribute("data-ds-dark-theme") ? "dark" : "light",
-          tokens,
+          version: "1.0.0",
+          colorScheme: theme.active.colorScheme,
+          fontSize: theme.fontSize,
+          tokens: theme.active.tokens,
         });
       };
-      const themeObserver = new MutationObserver(sendTheme);
-      themeObserver.observe(document.body, { attributes: true, attributeFilter: ["style", "data-ds-dark-theme"] });
-      themeObserver.observe(document.head, { childList: true, subtree: true, characterData: true });
+      const stopTheme = ctx.on("theme/change", sendTheme);
       const pending = new Map<string, AbortController>();
       suspendPage.current = () => {
         for (const task of pending.values()) task.abort();
@@ -441,7 +437,7 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
       return () => {
         rebindPage.current = null;
         suspendPage.current = null;
-        themeObserver.disconnect();
+        stopTheme();
         pageBridge();
         controller.abort();
         clearTimeout(pollTimer);
