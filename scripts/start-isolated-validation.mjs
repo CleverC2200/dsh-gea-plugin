@@ -8,6 +8,8 @@ import {
   realpath,
   symlink,
   writeFile,
+  rename,
+  unlink,
 } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
@@ -36,57 +38,123 @@ export async function runSourceProfile(
 ) {
   const supported = await json(new URL("./current-core.json", import.meta.url));
   const cli = await json(join(core, "apps/cli/package.json"));
-  if (cli.version !== supported.version) throw Error("UNSUPPORTED_CORE_VERSION: build the registered current source");
-  const coreSha = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {cwd:core, encoding:"utf8"}).trim();
-  if (plugins && (await realpath(core) !== await realpath(resolve(root, "../deepseek-harness")) || coreSha !== supported.adaptation))
-    throw Error("UNSUPPORTED_CORE_BASELINE: use the registered isolated checkout");
-  await mkdir(runtime, {recursive:true, mode:0o700});
-  await save(join(runtime, "core-source.json"), {upstream: supported.upstream, adaptation: coreSha, dirty: execFileSync("/usr/bin/git", ["status", "--porcelain"], {cwd:core, encoding:"utf8"}).trim(), version:cli.version});
+  if (cli.version !== supported.version)
+    throw Error(
+      "UNSUPPORTED_CORE_VERSION: build the registered current source",
+    );
+  const coreSha = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
+    cwd: core,
+    encoding: "utf8",
+  }).trim();
+  if (
+    plugins &&
+    ((await realpath(core)) !==
+      (await realpath(resolve(root, "../deepseek-harness"))) ||
+      coreSha !== supported.adaptation)
+  )
+    throw Error(
+      "UNSUPPORTED_CORE_BASELINE: use the registered isolated checkout",
+    );
+  await mkdir(runtime, { recursive: true, mode: 0o700 });
+  await save(join(runtime, "core-source.json"), {
+    upstream: supported.upstream,
+    adaptation: coreSha,
+    dirty: execFileSync("/usr/bin/git", ["status", "--porcelain"], {
+      cwd: core,
+      encoding: "utf8",
+    }).trim(),
+    version: cli.version,
+  });
   const profile = join(runtime, "home/profiles/plugin-split-validation");
   await mkdir(profile, { recursive: true, mode: 0o700 });
   await mkdir(join(runtime, "workspace"), { recursive: true, mode: 0o700 });
-  const composition = plugins
-    ? await (
-        await import("./source-profile.mjs")
-      ).prepareSourcePlugins(core, runtime, deployment)
-    : { dependencies: {}, bundles: [], patches: [] };
-  await save(join(profile, "package.json"), {
-    name: "plugin-split-validation",
-    private: true,
-    dependencies: composition.dependencies,
-    dsh: {
-      profile: {
-        bundles: [
-          "@deepseek-ai/dsh-base",
-          "@deepseek-ai/dsh-web-app",
-          ...composition.bundles,
-        ],
+  const lock = await open(join(runtime, "source-profile.lock"), "wx", 0o600);
+  try {
+    await lock.writeFile(JSON.stringify({ pid: process.pid }));
+    let composition = { dependencies: {}, bundles: [], patches: [] };
+    if (plugins) {
+      const { prepareSourcePlugins, readSourceCombination } = await import(
+        "./source-profile.mjs"
+      );
+      let selected;
+      try {
+        selected = await json(join(runtime, "source-selection.json"));
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      composition = selected
+        ? await readSourceCombination(runtime, selected.id, core)
+        : await prepareSourcePlugins(core, runtime, deployment);
+      await save(join(runtime, "source-selection.json"), {
+        id: composition.id,
+      });
+      process.env.GEA_HTML_PLUGIN_ROOTS ??= JSON.stringify([
+        join(
+          runtime,
+          "source-combinations",
+          composition.id,
+          "node_modules/@cleverc2200/dsh-agent-workbench/lib/business/inventory-fc",
+        ),
+      ]);
+      const temporary = join(profile, `node_modules-${composition.id}`);
+      await symlink(
+        join(runtime, "source-combinations", composition.id, "node_modules"),
+        temporary,
+      );
+      await rename(temporary, join(profile, "node_modules"));
+      await save(
+        join(runtime, "company-plugins.json"),
+        await json(
+          join(
+            runtime,
+            "source-combinations",
+            composition.id,
+            "company-plugins.json",
+          ),
+        ),
+      );
+    }
+    await save(join(profile, "package.json"), {
+      name: "plugin-split-validation",
+      private: true,
+      dependencies: composition.dependencies,
+      dsh: {
+        profile: {
+          bundles: [
+            "@deepseek-ai/dsh-base",
+            "@deepseek-ai/dsh-web-app",
+            ...composition.bundles,
+          ],
+        },
       },
-    },
-  });
-  const child = spawn(
-    process.execPath,
-    [
-      join(core, "apps/cli/lib/bin.js"),
-      "--profile",
-      "plugin-split-validation",
-      "--patch",
-      join(core, "apps/web/tests/pin-browse-picker.overlay.yml"),
-      ...composition.patches.flatMap((path) => ["--patch", path]),
-      "--host",
-      "127.0.0.1",
-      "--port",
-      String(port),
-      "--no-open",
-    ],
-    { cwd: join(runtime, "workspace"), env: process.env, stdio: "inherit" },
-  );
-  process.on("SIGTERM", () => child.kill("SIGTERM"));
-  process.on("SIGINT", () => child.kill("SIGINT"));
-  process.exitCode = await new Promise((done, fail) => {
-    child.once("error", fail);
-    child.once("exit", (code) => done(code ?? 1));
-  });
+    });
+    const child = spawn(
+      process.execPath,
+      [
+        join(core, "apps/cli/lib/bin.js"),
+        "--profile",
+        "plugin-split-validation",
+        "--patch",
+        join(core, "apps/web/tests/pin-browse-picker.overlay.yml"),
+        ...composition.patches.flatMap((path) => ["--patch", path]),
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--no-open",
+      ],
+      { cwd: join(runtime, "workspace"), env: process.env, stdio: "inherit" },
+    );
+    process.on("SIGTERM", () => child.kill("SIGTERM"));
+    process.on("SIGINT", () => child.kill("SIGINT"));
+    process.exitCode = await new Promise((done, fail) => {
+      child.once("error", fail);
+      child.once("exit", (code) => done(code ?? 1));
+    });
+  } finally {
+    await lock.close();
+    await unlink(join(runtime, "source-profile.lock"));
+  }
 }
 
 async function launch() {
@@ -105,10 +173,13 @@ async function launch() {
   }
   if (process.platform !== "darwin")
     throw Error("ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX");
-  const core = await realpath(values.core ?? resolve(root, "../deepseek-harness"));
+  const core = await realpath(
+    values.core ?? resolve(root, "../deepseek-harness"),
+  );
   const manifest = await json(join(core, "package.json"));
   const packages = {};
-  for (const {manifest: pkg} of await corePackages(core)) packages[pkg.name] = pkg.version;
+  for (const { manifest: pkg } of await corePackages(core))
+    packages[pkg.name] = pkg.version;
   await readFile(join(core, "apps/cli/lib/bin.js"));
   await readFile(join(core, "apps/web/dist/index.html"));
   const base = join(root, ".runtime/plugin-split-validation");
@@ -137,13 +208,13 @@ async function launch() {
     coreVersion: manifest.version,
     packages,
     coreSource: execFileSync("git", ["rev-parse", "HEAD"], {
-          cwd: core,
-          encoding: "utf8",
-        }).trim(),
+      cwd: core,
+      encoding: "utf8",
+    }).trim(),
     coreDirty: execFileSync("git", ["status", "--porcelain"], {
-          cwd: core,
-          encoding: "utf8",
-        }).trim(),
+      cwd: core,
+      encoding: "utf8",
+    }).trim(),
     packageSha256: await digest(join(core, "package.json")),
     lockSha256: await digest(join(core, "pnpm-lock.yaml")),
     launcherSource: execFileSync("git", ["rev-parse", "HEAD"], {
@@ -156,7 +227,9 @@ async function launch() {
     outboundNetwork: "denied",
     writableRoot: runtime,
     limitations: [
-      values.plugins ? "Company source composition; live business acceptance is separate" : "Native core profile without company plugins",
+      values.plugins
+        ? "Company source composition; live business acceptance is separate"
+        : "Native core profile without company plugins",
       "No GEA login, business data, remote channels, or Electron shell validation",
     ],
   });
@@ -173,14 +246,7 @@ async function launch() {
   const log = await open(join(runtime, "server.log"), "a", 0o600);
   const child = spawn(
     "/usr/bin/sandbox-exec",
-    [
-      "-f",
-      sandboxPath,
-      process.execPath,
-      "--input-type=module",
-      "-e",
-      code,
-    ],
+    ["-f", sandboxPath, process.execPath, "--input-type=module", "-e", code],
     { cwd: runtime, env, detached: true, stdio: ["ignore", "pipe", "pipe"] },
   );
   const ended = new Promise((done, fail) => {

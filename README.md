@@ -233,3 +233,9 @@ Demand Forecast follows the user's language for both progress and final answers.
 唯一 HTML 发布方是工作台内已迁移 FC 源码；本地样板/mock 以同一 v2 与显式资源声明验证。审批、区域计划、品类计划、MPS 原型、业务待办、设置、接口日志与原生对话仍由现有源码入口承载。旧启动器声明的 APS/base/dealer/chain 等九个下载包未属于本次源码 profile 的载入组合，已删除下载、旧包修补和支持声明；没有将这些包或后续业务迁移票算作已迁移。本地源码支持清单以实际组合、资源文件与定向验收为证据。
 
 外壳导航、欢迎、等待文案、工具栏和全屏占位通过当前正式座位/布局命令实现。标题、列尺寸、三种会话呈现和占位生命周期由布局拥有者管理；提示词通过原生 InputActions 写入。GEA 不观察或修改其他组件的内部 DOM。账号菜单只操作自己的 DOM refs 和浮层。
+
+### 本地组合切换与恢复
+
+当前源码profile将插件、页面、Skill、主题及覆盖配置保存为独立 `source-combinations/<id>` 快照，记录完整资源SHA-256、源码提交、锁文件摘要和核心提交。启动前校验实际资源；缺失、残留或被改写的文件拒绝载入。准备新组合不会覆盖已选组合，`selectSourceCombination(runtime, id, core)` 仅在Host停止时选用完整本地快照。启动锁与选择共用同一排他文件；异常退出留下锁时先核对记录PID及进程是否已停止，再移除该锁，不能强制抢占运行中的Host。
+
+更新和恢复保持同一 `home`、工作目录与可编辑profile配置，只替换源码profile的模块链接和只读覆盖配置。Host重启产生新业务身份scope；旧页面lease不能恢复，保留Session日志也不授予旧scope权限。这里不运行旧安装payload或旧资源适配，也不写远端频道。09的本地模拟频道与浏览器恢复记录由 `tests/branch-stock-upgrade-web.test.mjs` 生成，外部GEA/模型仅用loopback fixture。

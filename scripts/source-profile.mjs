@@ -7,10 +7,13 @@ import {
   realpath,
   symlink,
   writeFile,
+  rename,
+  open,
+  unlink,
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
 import { composeSourcePresets } from "./source-presets.mjs";
@@ -22,13 +25,23 @@ function clientEntry(manifest) {
     : (entry?.default ?? "client/client.js");
 }
 
-export async function prepareSourcePlugins(core, runtime, deployment) {
-  const workspace = resolve(import.meta.dirname, "../..");
+export async function prepareSourcePlugins(
+  core,
+  runtime,
+  deployment,
+  { workspace = resolve(import.meta.dirname, "../..") } = {},
+) {
+  const id = randomUUID();
+  const snapshot = join(runtime, "source-combinations", id);
   const profile = join(runtime, "home/profiles/plugin-split-validation");
-  const modules = join(profile, "node_modules");
-  const packages = new Map((await corePackages(core)).map(
-    ({ manifest, directory }) => [manifest.name, directory],
-  ));
+  const modules = join(snapshot, "node_modules");
+  await mkdir(modules, { recursive: true });
+  const packages = new Map(
+    (await corePackages(core)).map(({ manifest, directory }) => [
+      manifest.name,
+      directory,
+    ]),
+  );
   const plugins = new Map();
   for (const plugin of sourcePlugins) {
     const repo = plugin.repo;
@@ -36,9 +49,13 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
     const expectedCommit = plugin.commit;
     if (expectedCommit) {
       const commit = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
-        cwd: source, encoding: "utf8",
+        cwd: source,
+        encoding: "utf8",
       }).trim();
-      if (commit !== expectedCommit) throw Error(`SOURCE_PLUGIN_COMMIT_MISMATCH: ${repo} expected ${expectedCommit}, got ${commit}`);
+      if (commit !== expectedCommit)
+        throw Error(
+          `SOURCE_PLUGIN_COMMIT_MISMATCH: ${repo} expected ${expectedCommit}, got ${commit}`,
+        );
     }
     const manifest = JSON.parse(
       await readFile(join(source, "package.json"), "utf8"),
@@ -64,10 +81,15 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
       await readFile(join(source, fixture, "lib/host.js"));
       await cp(join(source, fixture), join(target, fixture), {
         recursive: true,
-        filter: path => !path.split(/[\\/]/).includes("node_modules"),
+        filter: (path) => !path.split(/[\\/]/).includes("node_modules"),
       });
     }
-    plugins.set(manifest.name, { source, target, version: manifest.version, plugin });
+    plugins.set(manifest.name, {
+      source,
+      target,
+      version: manifest.version,
+      plugin,
+    });
   }
   const snapshots = {};
   for (const [name, { source, target, version, plugin }] of plugins) {
@@ -100,7 +122,7 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
     };
   }
   await writeFile(
-    join(runtime, "company-plugins.json"),
+    join(snapshot, "company-plugins.json"),
     JSON.stringify(snapshots, null, 2),
   );
   for (const { source, target } of plugins.values()) {
@@ -157,38 +179,149 @@ export async function prepareSourcePlugins(core, runtime, deployment) {
     runtime,
     { bundle: true },
   ).filter((row) => row.id !== "agent-presets");
-  const modelIndex = patch.findIndex(row => row.id === "agent-default-model");
+  const modelIndex = patch.findIndex((row) => row.id === "agent-default-model");
   if (modelIndex < 0) throw Error("SOURCE_MODEL_DEFAULT_MISSING");
   const [modelDefault] = patch.splice(modelIndex, 1);
   // User-selectable defaults belong to the editable profile, not a read-only CLI overlay.
   try {
-    await writeFile(join(profile, "cordis.patch.yml"), JSON.stringify([modelDefault], null, 2), { flag: "wx", mode: 0o600 });
-  } catch (error) { if (error.code !== "EEXIST") throw error; }
+    await writeFile(
+      join(profile, "cordis.patch.yml"),
+      JSON.stringify([modelDefault], null, 2),
+      { flag: "wx", mode: 0o600 },
+    );
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+  }
   patch.push({
     id: "agent-preset-registry",
     config: { default: "auto-negotiation" },
   });
   patch.push({ id: "dsh-agent-manage", config: { sources: [] } });
   await writeFile(
-    join(runtime, "deployment.patch.json"),
+    join(snapshot, "deployment.patch.json"),
     JSON.stringify(patch, null, 2),
   );
-  const standard = join(core, "packages/bundle/web-app/presets/standard.patch.yml");
+  const standard = join(
+    core,
+    "packages/bundle/web-app/presets/standard.patch.yml",
+  );
   const business = join(gea, "presets/gea-readonly/agent.cordis.yml");
   const presetPatch = composeSourcePresets(
     { source: standard, text: await readFile(standard, "utf8") },
     { source: business, text: await readFile(business, "utf8") },
     join(gea, "lib/skill-reference.js"),
   );
-  await writeFile(join(runtime, "presets.patch.yml"), presetPatch);
-  return {
+  await writeFile(join(snapshot, "presets.patch.yml"), presetPatch);
+  const composition = {
+    id,
     dependencies: Object.fromEntries(
       [...plugins].map(([name, data]) => [name, data.version]),
     ),
-    bundles: [...plugins].filter(([, data]) => data.plugin.bundleOrder !== undefined).sort((a, b) => a[1].plugin.bundleOrder - b[1].plugin.bundleOrder).map(([name]) => name),
+    bundles: [...plugins]
+      .filter(([, data]) => data.plugin.bundleOrder !== undefined)
+      .sort((a, b) => a[1].plugin.bundleOrder - b[1].plugin.bundleOrder)
+      .map(([name]) => name),
     patches: [
-      join(runtime, "deployment.patch.json"),
-      join(runtime, "presets.patch.yml"),
+      join(snapshot, "deployment.patch.json"),
+      join(snapshot, "presets.patch.yml"),
     ],
   };
+  const files = await resourceDigests(snapshot);
+  const locks = {};
+  for (const [name, directory] of [
+    ["core", core],
+    ...[...plugins].map(([name, data]) => [name, data.source]),
+  ]) {
+    locks[name] = {};
+    for (const file of [
+      "pnpm-lock.yaml",
+      "package-lock.json",
+      "npm-shrinkwrap.json",
+    ]) {
+      try {
+        locks[name][file] = await fileDigest(join(directory, file));
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+  }
+  await writeFile(
+    join(snapshot, "combination.json"),
+    JSON.stringify(
+      {
+        composition,
+        files,
+        locks,
+        core: execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
+          cwd: core,
+          encoding: "utf8",
+        }).trim(),
+        assembler: await fileDigest(new URL(import.meta.url)),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  return composition;
+}
+
+const fileDigest = async (file) =>
+  createHash("sha256")
+    .update(await readFile(file))
+    .digest("hex");
+
+/** Hash shipped resources, excluding dependency links and their writable stores. */
+async function resourceDigests(directory, prefix = "") {
+  const files = {};
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.name === "node_modules" && prefix) continue;
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const file = join(directory, entry.name);
+    if (entry.isDirectory())
+      Object.assign(files, await resourceDigests(file, relative));
+    else if (entry.isFile() && relative !== "combination.json")
+      files[relative] = await fileDigest(file);
+  }
+  return files;
+}
+
+/** Reject incomplete snapshots before changing the selected combination. */
+export async function readSourceCombination(runtime, id, core) {
+  if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
+  const directory = join(runtime, "source-combinations", id);
+  const record = JSON.parse(
+    await readFile(join(directory, "combination.json"), "utf8"),
+  );
+  if (record.composition.id !== id)
+    throw Error("SOURCE_COMBINATION_ID_MISMATCH");
+  if (
+    core &&
+    record.core !==
+      execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
+        cwd: core,
+        encoding: "utf8",
+      }).trim()
+  )
+    throw Error("SOURCE_COMBINATION_CORE_MISMATCH");
+  const actual = await resourceDigests(directory);
+  if (
+    JSON.stringify(Object.entries(actual).sort()) !==
+    JSON.stringify(Object.entries(record.files).sort())
+  )
+    throw Error("SOURCE_COMBINATION_DIGEST_MISMATCH");
+  return record.composition;
+}
+
+/** Select a verified local combination only while its Host is stopped. */
+export async function selectSourceCombination(runtime, id, core) {
+  const lock = await open(join(runtime, "source-profile.lock"), "wx", 0o600);
+  try {
+    await readSourceCombination(runtime, id, core);
+    const temporary = join(runtime, `source-selection-${randomUUID()}.json`);
+    await writeFile(temporary, JSON.stringify({ id }) + "\n", { mode: 0o600 });
+    await rename(temporary, join(runtime, "source-selection.json"));
+  } finally {
+    await lock.close();
+    await unlink(join(runtime, "source-profile.lock"));
+  }
 }

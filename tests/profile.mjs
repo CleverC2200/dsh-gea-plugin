@@ -42,7 +42,7 @@ export async function profile(t, options = {}) {
   const root = options.pluginRoot ?? defaultRoot;
   if (process.env.GEA_TEST_SOURCE_CORE === "1" && resolve(root) !== defaultRoot)
     throw new Error("SOURCE_TEST_REQUIRES_CURRENT_CHECKOUT: packaged artifacts use the installed-runtime test lane");
-  const dir = await mkdtemp(resolve(tmpdir(), "gea-profile-"));
+  const dir = await mkdtemp(resolve(options.runtimeParent ?? tmpdir(), "gea-profile-"));
   const key = resolve(dir, "key.pem"),
     cert = resolve(dir, "cert.pem");
   execFileSync(
@@ -219,7 +219,7 @@ export async function profile(t, options = {}) {
     finally {
       server.closeAllConnections();
       await new Promise((done) => server.close(done));
-      if (stopped) await rm(dir, { recursive: true, force: true });
+      if (stopped && !options.preserveRuntime) await rm(dir, { recursive: true, force: true });
     }
   });
   async function start() {
@@ -351,6 +351,7 @@ export async function profile(t, options = {}) {
       return api.rpc("login/poll", { loginId: qr.value.loginId });
     },
   };
+  await options.beforeStart?.({ runtime, config });
   await start();
   return api;
 }
