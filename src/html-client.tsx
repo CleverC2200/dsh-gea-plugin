@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { businessMenuLabel } from "./business-navigation.ts";
+import { readBusinessIdentityScope } from "./business-identity-client.ts";
 import { startPageBridgeClient } from "./page-bridge/client.ts";
 import type { PageInteraction } from "../packages/page-interaction/src/client.ts";
 export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) {
@@ -123,8 +124,8 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       let lease: string | undefined;
       pageContext.current = undefined;
       setError("");
-      const opening = request("identity", undefined, controller.signal)
-        .then(authority => request(plugin.id + "/open", { session, agentPreset: preset, scope: authority.scope }, controller.signal))
+      const opening = readBusinessIdentityScope(controller.signal)
+        .then(scope => request(plugin.id + "/open", { session, agentPreset: preset, scope }, controller.signal))
         .then((result) => {
           lease = result.lease;
           if (controller.signal.aborted || revisionAtStart !== identityRevision.current) return null;
@@ -504,13 +505,13 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       timer: any,
       identityTimer: any;
     const cleanups: Array<() => void> = [];
+    const controller = new AbortController();
     const registered = new Set<string>();
     let currentScope: string | null | undefined;
     const pollIdentity = async () => {
       try {
-        const value = await request("identity");
+        const next = await readBusinessIdentityScope(controller.signal);
         if (disposed) return;
-        const next = typeof value.scope === "string" ? value.scope : null;
         if (currentScope !== undefined && currentScope !== next) {
           for (const id of registered) ctx.agentWorkbench.forget(id);
           const active = ctx.layout.panelInfo.getSnapshot().activePanelId;
@@ -530,11 +531,12 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
           headers: { "content-type": "application/json" },
           body: "{}",
           cache: "no-store",
+          signal: controller.signal,
         });
         if (!statusResponse.ok) return;
         const envelope = await statusResponse.json();
         if (!envelope.ok || !envelope.value?.htmlPlugins) return;
-        const items = await request("plugins");
+        const items = await request("plugins", undefined, controller.signal);
         for (const plugin of items) {
           // 已下架模块不注册面板；保留的演示页使用默认助手，不依赖独立 Agent 预设。
           if (plugin.retired === true) continue;
@@ -550,9 +552,9 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
               preset: plugin.presetHidden === true ? "auto-negotiation" : "gea-html-" + plugin.id,
               allowedPresets: plugin.agentResources ? plugin.pageAgents : undefined,
               scope: plugin.mock ? undefined : async () => {
-                const value = await request("identity");
-                if (typeof value.scope !== "string") throw Error("请先登录 GEA");
-                return value.scope;
+                const scope = await readBusinessIdentityScope(controller.signal);
+                if (scope === null) throw Error("请先登录 GEA");
+                return scope;
               },
             }));
           cleanups.push(
@@ -577,9 +579,11 @@ export function registerHtmlClient(ctx: any, pageInteraction?: PageInteraction) 
       } catch {}
       if (!disposed) timer = setTimeout(discover, 5000);
     };
-    void pollIdentity().then(discover);
+    void pollIdentity();
+    void discover();
     return () => {
       disposed = true;
+      controller.abort();
       clearTimeout(timer);
       clearTimeout(identityTimer);
       cleanups.forEach((f) => f());

@@ -25,6 +25,7 @@ import { AgentAvatar } from "./client/agent-avatar.tsx";
 import { Inbox } from "./client/inbox.tsx";
 import { DesktopNavigation, createNavigationSelection, type ReadyNavigation } from './client/desktop-navigation.tsx';
 import {registerHtmlClient} from "./html-client.tsx";
+import { readBusinessIdentityScope } from "./business-identity-client.ts";
 import { installPageInteraction } from "../packages/page-interaction/src/client.ts";
 import {
   approvalConversation,
@@ -187,6 +188,13 @@ export function apply(ctx: Context): void {
       } satisfies HostObservable<LocaleSnapshot>,
     },
   };
+  const openMountedWorkbench = async (panel: MainPanelId, mounted: () => boolean) => {
+    const current = () => mounted() && ctx.layout.panelInfo.getSnapshot().activePanelId === panel;
+    if (!current()) return false;
+    let opened = await ctx.agentWorkbench.open(panel);
+    if (opened === false && current()) opened = await ctx.agentWorkbench.open(panel);
+    return current() && opened !== false;
+  };
   type MainSessionProps = Pick<InjectFace<typeof injected>, "useMainSessionId">;
   let workbenchAuthenticated = false;
   let hideWorkbenchConversation: (() => void) | undefined;
@@ -211,8 +219,10 @@ export function apply(ctx: Context): void {
       workbenchAuthenticated = true;
       const hide = ctx.agentWorkbench.showConversation(PANEL);
       hideWorkbenchConversation = hide;
-      void ctx.agentWorkbench.open(PANEL).catch(error => setSessionError(String(error.message)));
+      let mounted = true;
+      void openMountedWorkbench(PANEL, () => mounted).catch(error => { if (mounted) setSessionError(String(error.message)); });
       return () => {
+        mounted = false;
         hide();
         if (hideWorkbenchConversation === hide) hideWorkbenchConversation = undefined;
       };
@@ -313,7 +323,7 @@ export function apply(ctx: Context): void {
       let live=true;
       setOpened(false);setSessionError("");
       const hide=ctx.agentWorkbench.showConversation(panel);
-      void ctx.agentWorkbench.open(panel).then(()=>{if(live)setOpened(true);}).catch(error=>{if(live)setSessionError(String(error.message));});
+      void openMountedWorkbench(panel, () => live).then(opened=>{if(live)setOpened(opened);}).catch(error=>{if(live)setSessionError(String(error.message));});
       return ()=>{live=false;hide();};
     },[panel]);
     useEffect(()=>{
@@ -362,10 +372,11 @@ export function apply(ctx: Context): void {
     const incoming = React.useSyncExternalStore(navigationSelection.subscribe,navigationSelection.getSnapshot);
     useEffect(() => {
       const hide = ctx.agentWorkbench.showConversation(INBOX);
-      void ctx.agentWorkbench.open(INBOX).catch(() => {
+      let mounted = true;
+      void openMountedWorkbench(INBOX, () => mounted).catch(() => {
         /* 会话打不开时页面照常可看，不额外打扰用户。 */
       });
-      return () => hide();
+      return () => { mounted = false; hide(); };
     }, []);
     return (
       <>
@@ -647,12 +658,25 @@ export function apply(ctx: Context): void {
       { name: "main", key: MPS_PLAN_PANEL, locale: "geaProof", inject: () => injected },
       MpsPlanPage,
     );
-    yield ctx.agentWorkbench.register({ id: PANEL, preset: "gea-readonly" });
-    yield ctx.agentWorkbench.register({ id: REGIONAL_PLAN_PANEL, preset: "gea-readonly" });
-    yield ctx.agentWorkbench.register({ id: CATEGORY_PLAN_PANEL, preset: "gea-readonly" });
-    yield ctx.agentWorkbench.register({ id: MPS_PLAN_PANEL, preset: "gea-readonly" });
-    // 业务待办页也要有自己的会话栏：不登记的话右侧对话框整块不出现。
-    yield ctx.agentWorkbench.register({ id: INBOX, preset: "gea-readonly" });
+    const nativePages = [PANEL, REGIONAL_PLAN_PANEL, CATEGORY_PLAN_PANEL, MPS_PLAN_PANEL, INBOX];
+    const controller = new AbortController();
+    const scope = async () => (await readBusinessIdentityScope(controller.signal)) ?? "gea:anonymous";
+    for (const id of nativePages) yield ctx.agentWorkbench.register({ id, preset: "gea-readonly", scope });
+    const changed = () => {
+      for (const id of nativePages) ctx.agentWorkbench.forget(id);
+      const active = ctx.layout.panelInfo.getSnapshot().activePanelId;
+      if (active && nativePages.includes(active)) {
+        ctx.layout.selectPanel(active);
+        void openMountedWorkbench(active, () => !controller.signal.aborted).catch(() => {
+          /* Reopening the page retries a failed refresh; the old association stays invalid. */
+        });
+      }
+    };
+    window.addEventListener("gea-business-identity-changed", changed);
+    yield () => {
+      controller.abort();
+      window.removeEventListener("gea-business-identity-changed", changed);
+    };
     const workbench = ctx.agentWorkbench as typeof ctx.agentWorkbench & {
       selectDefault?: (id: MainPanelId) => void;
     };

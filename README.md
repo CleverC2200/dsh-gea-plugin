@@ -209,3 +209,9 @@ Demand Forecast follows the user's language for both progress and final answers.
 `/api/gea-html/plugins` 保留 `agentResources` 的公开 provider/prompt 声明和页面需要的 skillName/skillDescription，不返回 skillText；已装载的 Skill、profile 和内部来源路径仅供宿主使用，不进入浏览器目录。资源装载、提示词安装和生命周期继续由原 loader 执行。
 
 页面引用保存会核对实际 Session；HTML 页还需提供当前页面租约，匹配页面与 Session，受业务身份约束。注销清空引用同时取消在途写入。对声明了引用范围的页面，待提交的行快照在范围、就绪状态或已显示内容改变时取消，已保存快照保持原来的不可变语义。旧页面不接入受管预设名单，显式 Agent Manage 页面仍执行07的本地预设及服务端权限校验。
+
+### 08 原生页面身份与目录发现
+
+原生销售计划、区域计划、品类计划、MPS和业务待办，与HTML业务页使用同一Host身份scope；身份变化清理页面关联并为仍显示的原生页恢复当前身份关联，不删除宿主持久Session。原生未登录页面使用独立匿名关联，保留登录/页面入口；已登录关联不能在该状态下恢复。挂载页只在仍为当前页面时重试一次被导航取消的open，不把取消结果当成功。
+
+`business-identity-client` 统一读取Host scope，5秒超时并接受调用方取消。目录发现独立启动；身份观察失败不能阻止元数据注册，真正打开HTML页仍由Host核scope和权限。卸载取消身份观察及目录请求，不再安排下一次轮询。本次接口配套同级源码工作台08候选验证，类型门禁使用`source:check`；普通独立依赖的旧声明不代表该源码组合。

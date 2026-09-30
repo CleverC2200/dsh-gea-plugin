@@ -101,3 +101,43 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
     await rm(temporary, { recursive: true, force: true });
   }
 });
+
+test("HTML discovery runs during a stalled identity observation and disposal aborts that observation", async () => {
+  const temporary = await mkdtemp(resolve(tmpdir(), "gea-identity-observer-"));
+  const output = resolve(temporary, "html-client.mjs");
+  const originalFetch = globalThis.fetch;
+  const signals = [], pages = [];
+  let dispose;
+  try {
+    await build({ entryPoints: [resolve("src/html-client.tsx")], outfile: output, bundle: true, format: "esm", platform: "node" });
+    globalThis.fetch = async (url, options) => {
+      if (url === "/api/gea-html/identity") {
+        signals.push(options.signal);
+        return new Promise((_resolve, reject) => {
+          options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+        });
+      }
+      if (url === "/api/gea-proof/status") return Response.json({ ok: true, value: { htmlPlugins: true } });
+      if (url === "/api/gea-html/plugins") return Response.json([{ id: "inventory-fixture", name: "fixture", mock: true }]);
+      throw Error("unexpected fetch: " + url);
+    };
+    const { registerHtmlClient } = await import(pathToFileURL(output));
+    registerHtmlClient({
+      effect(callback) { dispose = callback(); },
+      agentWorkbench: { register(page) { pages.push(page.id); return () => {}; } },
+      slots: { inject(_name, callback) { callback(); return () => {}; }, register() { return () => {}; } },
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(pages, ["inventory-fixture"]);
+    assert.equal(signals.length, 1);
+    assert.equal(signals[0].aborted, false);
+    dispose();
+    assert.equal(signals[0].aborted, true);
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    assert.equal(signals.length, 1, "unmount must not schedule another identity observation");
+  } finally {
+    dispose?.();
+    globalThis.fetch = originalFetch;
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
