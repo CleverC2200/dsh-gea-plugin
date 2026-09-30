@@ -204,16 +204,44 @@ test('workbench HTML sample shares theme inside the restricted iframe', {
   await child.goto(child.url());
   await expect(frame.getByRole('alert')).toContainText('共享样式资源缺失');
   await page.setViewportSize({width: 1440, height: 900});
+
+  await page.getByRole('button', {name: 'AI工作台', exact: true}).click();
+  const nativeComposer = page.locator('[contenteditable="true"], textarea').first();
+  await nativeComposer.fill('全屏日志把手验收');
+  await nativeComposer.press('Enter');
+  await expect(page.getByText('本地验证回执（非 AI 分析）：业务资料已进入会话。', {exact:true})).toBeVisible();
+  await page.keyboard.press('ControlOrMeta+Shift+B');
+  const nativeRightbar = page.locator('[data-sidebar-right-panel]');
+  await expect(nativeRightbar).toBeVisible();
+  const nativeSessionId = await nativeRightbar.getAttribute('data-sidebar-right-session');
+  assert.match(nativeSessionId, /^session-/);
+  const nativeRightbarWidth = await nativeRightbar.evaluate(el => Math.round(el.getBoundingClientRect().width));
+  await expect(page.locator('.AppFrame_handle[data-side="rightbar"]')).toBeVisible();
   await page.getByRole('button', {name: '账户菜单', exact: true}).click();
   await page.getByRole('menuitem', {name: '设置', exact: true}).click();
   await page.getByRole('button', {name: '接口日志', exact: true}).click();
   await expect(page.locator('.AppFrame_frame')).toHaveAttribute('data-main-fullscreen', 'true');
   await expect(page.locator('.AppFrame_sidebarCol')).toBeHidden();
+  await expect(page.locator('.AppFrame_handle')).toHaveCount(0);
   await expect.poll(() => page.locator('.AppFrame_centerCol').evaluate(el => Math.round(el.getBoundingClientRect().width))).toBe(1440);
   assert.equal(await page.locator('.AppFrame_frame').evaluate(el => getComputedStyle(el).gridTemplateColumns), '0px 1440px 0px');
   await page.getByRole('button', {name: '返回工作台', exact: true}).click();
   await expect(page.locator('.AppFrame_frame')).not.toHaveAttribute('data-main-fullscreen', 'true');
   await expect.poll(() => page.locator('.AppFrame_sidebarCol').evaluate(el => Math.round(el.getBoundingClientRect().width))).toBe(sidebarPreferenceWidth);
+  const history = page.getByRole('button', {name: '历史会话', exact: true});
+  if (await history.getAttribute('aria-expanded') !== 'true') await history.click();
+  await page.locator('.AppFrame_sidebarCol').getByText('全屏日志把手验收', {exact:true}).click();
+  await expect(nativeRightbar).toBeVisible();
+  await expect(nativeRightbar).toHaveAttribute('data-sidebar-right-session', nativeSessionId);
+  await expect.poll(() => nativeRightbar.evaluate(el => Math.round(el.getBoundingClientRect().width))).toBe(nativeRightbarWidth);
+  await expect(page.locator('.AppFrame_handle[data-side="rightbar"]')).toBeVisible();
+  const restoredHandle = await page.locator('.AppFrame_handle[data-side="rightbar"]').boundingBox();
+  await page.mouse.move(restoredHandle.x + restoredHandle.width / 2, restoredHandle.y + 60);
+  await page.mouse.down();
+  await page.mouse.move(restoredHandle.x - 20, restoredHandle.y + 60, {steps:3});
+  await page.mouse.up();
+  await expect.poll(() => nativeRightbar.evaluate(el => Math.round(el.getBoundingClientRect().width))).not.toBe(nativeRightbarWidth);
+
 
 
   assert.deepEqual(errors, []);
