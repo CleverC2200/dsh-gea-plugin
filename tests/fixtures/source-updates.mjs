@@ -98,6 +98,11 @@ export async function sourceUpdateFixture(t) {
       dependencies[name] = version;
       plugins[name] = {
         source: originDirectory,
+        origin: execFileSync(
+          "git",
+          ["-C", originDirectory, "remote", "get-url", "source"],
+          { encoding: "utf8" },
+        ).trim(),
         version,
         commit: "a".repeat(40),
         dirty: "",
@@ -154,6 +159,16 @@ export async function sourceUpdateFixture(t) {
           patches,
         },
         core: coreSha,
+        compatibility: Object.fromEntries(
+          names.map((name) => [
+            name,
+            {
+              core: [coreSha],
+              interface: "current-unified-v2",
+              workbench: ["1.0.0", "1.1.0", "1.2.0"],
+            },
+          ]),
+        ),
         files: await hashes(dir),
         externalFiles: Object.fromEntries(
           Object.entries(await hashes(join(core, "apps/web/dist"))).map(
@@ -198,7 +213,22 @@ export async function sourceUpdateFixture(t) {
     for (const name of components) {
       const actual = sourceComponent(record, plugins, name),
         artifact = join(channel, randomUUID() + ".json");
-      const bytes = Buffer.from(JSON.stringify({ combination, package: name }));
+      const bytes = Buffer.from(
+        JSON.stringify({
+          combination,
+          package: name,
+          manifestSha256: digest(
+            await fs.readFile(
+              join(
+                runtime,
+                "source-combinations",
+                combination,
+                "combination.json",
+              ),
+            ),
+          ),
+        }),
+      );
       await fs.writeFile(artifact, bytes);
       entries.push({
         package: name,

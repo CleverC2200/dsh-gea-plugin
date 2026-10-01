@@ -25,18 +25,26 @@ export async function readSourceUpdateBaseline(
   );
   await readSourceCombination(runtime, selection.id, core);
   const directory = join(runtime, "source-combinations", selection.id);
-  const record = await json(join(directory, "combination.json"));
-  const plugins = await json(join(directory, "company-plugins.json"));
+  const recordBytes = await fs.readFile(join(directory, "combination.json"));
+  const record = JSON.parse(recordBytes);
+  const manifestSha256 = digest(recordBytes);
+  if (selection.manifestSha256 !== manifestSha256)
+    throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
+  const pluginBytes = await fs.readFile(
+    join(directory, "company-plugins.json"),
+  );
+  if (digest(pluginBytes) !== record.files["company-plugins.json"])
+    throw Error("SOURCE_COMBINATION_DIGEST_MISMATCH");
+  const plugins = JSON.parse(pluginBytes);
   const components = {};
   for (const name of Object.keys(record.composition.dependencies))
     components[name] = sourceComponent(record, plugins, name);
   return {
     id: selection.id,
-    manifestSha256: digest(
-      await fs.readFile(join(directory, "combination.json")),
-    ),
+    manifestSha256,
     core: record.core,
     components,
+    compatibility: record.compatibility,
     history: selection.releaseHistory ?? {},
   };
 }
@@ -61,6 +69,7 @@ export async function applySourceUpdate(
       mode: 0o600,
     });
   try {
+    proposal = structuredClone(proposal);
     if (
       !proposal ||
       proposal.kind !== "current-source-update-v1" ||
@@ -89,7 +98,12 @@ export async function applySourceUpdate(
           "source-combinations",
           reference.combination,
         );
-        const record = await json(join(directory, "combination.json"));
+        const recordBytes = await fs.readFile(
+          join(directory, "combination.json"),
+        );
+        if (digest(recordBytes) !== reference.manifestSha256)
+          throw Error("SOURCE_ARTIFACT_MANIFEST_MISMATCH");
+        const record = JSON.parse(recordBytes);
         const plugins = await json(join(directory, "company-plugins.json"));
         const actual = sourceComponent(record, plugins, release.package);
         if (
@@ -101,6 +115,7 @@ export async function applySourceUpdate(
         prepared.set(release.package, {
           combination: reference.combination,
           actual,
+          compatibility: record.compatibility?.[release.package],
           release,
         });
         operation.prepared.push(release.package);
@@ -138,27 +153,52 @@ export async function applySourceUpdate(
         throw Error("SOURCE_UPDATE_NOT_NEWER");
       planned[name] = candidate.actual;
     }
-    for (const { release } of prepared.values()) {
+    const compatibility = structuredClone(current.compatibility);
+    if (!compatibility) throw Error("SOURCE_COMPATIBILITY_REQUIRED");
+    for (const [name, candidate] of prepared) {
+      const declared = candidate.compatibility,
+        advertised = candidate.release.compatible;
       if (
-        !release.compatible?.core?.includes(current.core) ||
-        release.compatible.interface !== "current-unified-v2" ||
-        !release.compatible.workbench?.includes(
+        declared?.interface !== "current-unified-v2" ||
+        advertised?.interface !== "current-unified-v2" ||
+        !Array.isArray(declared.core) ||
+        !Array.isArray(advertised.core) ||
+        !Array.isArray(declared.workbench) ||
+        !Array.isArray(advertised.workbench)
+      )
+        throw Error("SOURCE_RELEASE_INCOMPATIBLE");
+      compatibility[name] = {
+        core: declared.core.filter((value) => advertised.core.includes(value)),
+        interface: "current-unified-v2",
+        workbench: declared.workbench.filter((value) =>
+          advertised.workbench.includes(value),
+        ),
+      };
+    }
+    for (const name of Object.keys(planned)) {
+      const accepted = compatibility[name];
+      if (
+        !accepted?.core?.includes(current.core) ||
+        accepted.interface !== "current-unified-v2" ||
+        !accepted.workbench?.includes(
           planned["@cleverc2200/dsh-agent-workbench"].version,
         )
       )
         throw Error("SOURCE_RELEASE_INCOMPATIBLE");
     }
+    const observedHistory = releases.verifyReleaseHistory(
+      {
+        releases: Object.entries(current.components).map(([name, value]) => ({
+          package: name,
+          version: value.version,
+          sha256: value.sha256,
+        })),
+      },
+      current.history,
+    );
     const history = releases.verifyReleaseHistory(
       { releases: [...prepared.values()].map(({ release }) => release) },
-      {
-        ...Object.fromEntries(
-          Object.entries(current.components).map(([name, value]) => [
-            name + "@" + value.version,
-            value.sha256,
-          ]),
-        ),
-        ...current.history,
-      },
+      observedHistory,
     );
     operation.phase = "assembling";
     const combination = await mergeSourceComponents(
@@ -189,12 +229,23 @@ export async function applySourceUpdate(
         )
       )
         throw Error("SOURCE_MERGE_IDENTITY_MISMATCH");
+    assembledRecord.compatibility = compatibility;
+    const assembledBytes = JSON.stringify(assembledRecord, null, 2) + "\n";
+    await fs.writeFile(
+      join(runtime, "source-combinations", combination.id, "combination.json"),
+      assembledBytes,
+    );
+    const manifestSha256 = digest(assembledBytes);
     await readSourceCombination(runtime, combination.id, core);
     operation.phase = "writing";
     const temporary = join(runtime, `source-selection-${operation.id}.json`);
     await io.writeFile(
       temporary,
-      JSON.stringify({ id: combination.id, releaseHistory: history }) + "\n",
+      JSON.stringify({
+        id: combination.id,
+        manifestSha256,
+        releaseHistory: history,
+      }) + "\n",
       { mode: 0o600 },
     );
     await io.rename(temporary, join(runtime, "source-selection.json"));
@@ -203,7 +254,11 @@ export async function applySourceUpdate(
     const actual = JSON.parse(
       await io.readFile(join(runtime, "source-selection.json"), "utf8"),
     );
-    if (actual.id !== combination.id || !equal(actual.releaseHistory, history))
+    if (
+      actual.id !== combination.id ||
+      actual.manifestSha256 !== manifestSha256 ||
+      !equal(actual.releaseHistory, history)
+    )
       throw Error("SOURCE_SELECTION_READBACK_MISMATCH");
     operation.after = await readSourceUpdateBaseline(runtime, core, { io });
     operation.activation = "verified";

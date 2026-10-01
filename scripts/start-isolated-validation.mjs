@@ -85,9 +85,23 @@ export async function runSourceProfile(
       composition = selected
         ? await readSourceCombination(runtime, selected.id, core)
         : await prepareSourcePlugins(core, runtime, deployment);
+      const manifestSha256 = await digest(
+        join(
+          runtime,
+          "source-combinations",
+          composition.id,
+          "combination.json",
+        ),
+      );
+      if (
+        selected?.manifestSha256 &&
+        selected.manifestSha256 !== manifestSha256
+      )
+        throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
       if (!selected)
         await save(join(runtime, "source-selection.json"), {
           id: composition.id,
+          manifestSha256,
         });
       process.env.GEA_HTML_PLUGIN_ROOTS ??= JSON.stringify([
         join(

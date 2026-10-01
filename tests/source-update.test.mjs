@@ -221,11 +221,11 @@ for (const failure of ["write", "rename-after-write", "readback"])
 test("current package version must match the candidate metadata even when all hashes are valid", async (t) => {
   const f = await sourceUpdateFixture(t),
     id = await f.snapshot({ [gea]: { version: "1.1.0" } });
-  const proposal = await f.proposal(id, [gea]);
   const file = join(f.runtime, "source-combinations", id, "combination.json"),
     record = JSON.parse(await fs.readFile(file, "utf8"));
   record.composition.dependencies[gea] = "2.0.0";
   await fs.writeFile(file, JSON.stringify(record));
+  const proposal = await f.proposal(id, [gea]);
   const result = await applySourceUpdate(f.runtime, proposal, options);
   assert.equal(result.phase, "prepare-failed");
   assert.equal(result.failed[0].error, "SOURCE_COMPONENT_VERSION_MISMATCH");
@@ -243,5 +243,102 @@ test("a stopped-profile lock cannot be bypassed while the Host owns it", async (
     await fs.readFile(join(f.runtime, "source-profile.lock"), "utf8"),
     "running Host",
   );
+  assert.equal((await readSourceUpdateBaseline(f.runtime, core)).id, f.initial);
+});
+
+test("caller mutation while waiting for the lock cannot change the verified release or baseline", async (t) => {
+  const f = await sourceUpdateFixture(t),
+    id = await f.snapshot({ [gea]: { version: "1.1.0" } }),
+    proposal = await f.proposal(id, [gea]);
+  const original = structuredClone(proposal),
+    reached = Promise.withResolvers(),
+    resume = Promise.withResolvers();
+  const update = applySourceUpdate(f.runtime, proposal, {
+    ...options,
+    io: {
+      ...fs,
+      open: async (...args) => {
+        reached.resolve();
+        await resume.promise;
+        return fs.open(...args);
+      },
+    },
+  });
+  await reached.promise;
+  proposal.releases[0].version = "9.9.9";
+  proposal.releases[0].sha256 = "b".repeat(64);
+  proposal.baseline.core = "b".repeat(40);
+  resume.resolve();
+  const result = await update;
+  assert.equal(result.phase, "succeeded");
+  const current = await readSourceUpdateBaseline(f.runtime, core);
+  assert.equal(current.components[gea].version, "1.1.0");
+  assert.equal(current.history[gea + "@1.1.0"], original.releases[0].sha256);
+  assert.equal(current.history[gea + "@9.9.9"], undefined);
+});
+
+test("a frozen source origin does not follow later Git remote changes", async (t) => {
+  const f = await sourceUpdateFixture(t),
+    before = await readSourceUpdateBaseline(f.runtime, core);
+  const { execFileSync } = await import("node:child_process");
+  execFileSync("git", [
+    "-C",
+    join(f.runtime, "source"),
+    "remote",
+    "set-url",
+    "source",
+    "https://example.invalid/changed-origin.git",
+  ]);
+  assert.deepEqual(await readSourceUpdateBaseline(f.runtime, core), before);
+});
+
+test("a retained GEA compatibility restriction rejects an independent Workbench update", async (t) => {
+  const f = await sourceUpdateFixture(t),
+    a = await f.snapshot({ [gea]: { version: "1.1.0" } }),
+    b = await f.snapshot({ [workbench]: { version: "1.1.0" } });
+  const first = await f.proposal(a, [gea]),
+    second = await f.proposal(b, [workbench]);
+  first.releases[0].compatible.workbench = ["1.0.0"];
+  const installed = await applySourceUpdate(f.runtime, first, options);
+  assert.equal(installed.phase, "succeeded");
+  const rejected = await applySourceUpdate(f.runtime, second, options);
+  assert.equal(rejected.phase, "failed");
+  assert.equal(rejected.failed[0].error, "SOURCE_RELEASE_INCOMPATIBLE");
+  const current = await readSourceUpdateBaseline(f.runtime, core);
+  assert.equal(current.id, installed.target);
+  assert.equal(current.components[workbench].version, "1.0.0");
+  assert.deepEqual(current.compatibility[gea].workbench, ["1.0.0"]);
+});
+
+test("an artifact's manifest cannot be changed behind its downloaded reference", async (t) => {
+  const f = await sourceUpdateFixture(t),
+    id = await f.snapshot({ [gea]: { version: "1.1.0" } }),
+    proposal = await f.proposal(id, [gea]);
+  const file = join(f.runtime, "source-combinations", id, "combination.json"),
+    record = JSON.parse(await fs.readFile(file, "utf8"));
+  record.compatibility[gea].workbench.push("9.9.9");
+  await fs.writeFile(file, JSON.stringify(record));
+  const result = await applySourceUpdate(f.runtime, proposal, options);
+  assert.equal(result.phase, "prepare-failed");
+  assert.equal(result.failed[0].error, "SOURCE_ARTIFACT_MANIFEST_MISMATCH");
+  assert.equal((await readSourceUpdateBaseline(f.runtime, core)).id, f.initial);
+});
+
+test("channel compatibility cannot widen a candidate snapshot's declared range", async (t) => {
+  const f = await sourceUpdateFixture(t),
+    candidate = await f.snapshot({ [workbench]: { version: "1.1.0" } });
+  const file = join(
+      f.runtime,
+      "source-combinations",
+      candidate,
+      "combination.json",
+    ),
+    record = JSON.parse(await fs.readFile(file, "utf8"));
+  record.compatibility[workbench].workbench = ["1.0.0"];
+  await fs.writeFile(file, JSON.stringify(record));
+  const proposal = await f.proposal(candidate, [workbench]);
+  proposal.releases[0].compatible.workbench = ["1.1.0"];
+  const result = await applySourceUpdate(f.runtime, proposal, options);
+  assert.equal(result.failed[0].error, "SOURCE_RELEASE_INCOMPATIBLE");
   assert.equal((await readSourceUpdateBaseline(f.runtime, core)).id, f.initial);
 });

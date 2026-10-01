@@ -65,6 +65,23 @@ test(
           await readDeployment(config),
           { workspace: project },
         );
+        const baseRecordFile = join(
+            runtime,
+            "source-combinations",
+            base.id,
+            "combination.json",
+          ),
+          baseRecord = await json(baseRecordFile);
+        const workbenchVersion = baseRecord.composition.dependencies[workbench]
+          .split("-")[0]
+          .split(".")
+          .map(Number);
+        workbenchVersion[2]++;
+        const plannedWorkbench = workbenchVersion.join(".");
+        // This loopback fixture explicitly declares its unchanged code compatible with the test manifest version.
+        for (const accepted of Object.values(baseRecord.compatibility))
+          accepted.workbench.push(plannedWorkbench);
+        await fs.writeFile(baseRecordFile, JSON.stringify(baseRecord, null, 2));
         await selectSourceCombination(runtime, base.id, core);
         baseline = await readSourceUpdateBaseline(runtime, core);
         const channel = join(runtime, "simulated-channel");
@@ -84,7 +101,8 @@ test(
             pkg = await json(pkgFile),
             version = pkg.version.split("-")[0].split(".").map(Number);
           version[2]++;
-          pkg.version = version.join(".") + "-local.10";
+          pkg.version =
+            version.join(".") + (name === workbench ? "" : "-local.10");
           record.composition.dependencies[name] = pkg.version;
           plugins[name].version = pkg.version;
           const pkgBytes = JSON.stringify(pkg, null, 2) + "\n",
@@ -108,6 +126,9 @@ test(
             bytes = JSON.stringify({
               combination: candidate.id,
               package: name,
+              manifestSha256: digest(
+                await fs.readFile(join(directory, "combination.json")),
+              ),
             });
           await fs.writeFile(artifact, bytes);
           proposals.push({
@@ -257,13 +278,11 @@ test(
         viewport: { width: 1440, height: 1000 },
       });
       await context.addCookies(
-        app.cookie
-          .split("; ")
-          .map((pair) => ({
-            name: pair.slice(0, pair.indexOf("=")),
-            value: pair.slice(pair.indexOf("=") + 1),
-            url: app.origin,
-          })),
+        app.cookie.split("; ").map((pair) => ({
+          name: pair.slice(0, pair.indexOf("=")),
+          value: pair.slice(pair.indexOf("=") + 1),
+          url: app.origin,
+        })),
       );
       const page = await context.newPage();
       page.setDefaultTimeout(20000);

@@ -93,7 +93,12 @@ test("same source revision with changed dependency bytes refuses recovery", asyn
   );
   assert.deepEqual(
     JSON.parse(await readFile(join(runtime, "source-selection.json"), "utf8")),
-    { id },
+    {
+      id,
+      manifestSha256: createHash("sha256")
+        .update(await readFile(join(directory, "combination.json")))
+        .digest("hex"),
+    },
   );
 });
 
@@ -170,6 +175,11 @@ test("recovery rejects a transitive dependency retarget or added file while old 
   );
   assert.deepEqual(
     JSON.parse(await readFile(join(runtime, "source-selection.json"), "utf8")),
-    { id },
+    {
+      id,
+      manifestSha256: createHash("sha256")
+        .update(await readFile(join(directory, "combination.json")))
+        .digest("hex"),
+    },
   );
 });

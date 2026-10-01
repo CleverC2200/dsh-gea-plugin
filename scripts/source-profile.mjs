@@ -111,6 +111,10 @@ export async function prepareSourcePlugins(
     snapshots[name] = {
       version,
       source,
+      origin: execFileSync("/usr/bin/git", ["remote", "get-url", "source"], {
+        cwd: source,
+        encoding: "utf8",
+      }).trim(),
       commit: execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
         cwd: source,
         encoding: "utf8",
@@ -259,6 +263,23 @@ export async function prepareSourcePlugins(
     JSON.stringify(
       {
         composition,
+        compatibility: Object.fromEntries(
+          [...plugins.keys()].map((name) => [
+            name,
+            {
+              core: [
+                execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
+                  cwd: core,
+                  encoding: "utf8",
+                }).trim(),
+              ],
+              interface: "current-unified-v2",
+              workbench: [
+                composition.dependencies["@cleverc2200/dsh-agent-workbench"],
+              ],
+            },
+          ]),
+        ),
         files,
         externalFiles,
         externalRoots: [...externalDirectories],
@@ -375,6 +396,7 @@ export async function selectSourceCombination(
   core,
   { expected } = {},
 ) {
+  expected = expected && structuredClone(expected);
   const lock = await open(join(runtime, "source-profile.lock"), "wx", 0o600);
   try {
     let current;
@@ -401,6 +423,9 @@ export async function selectSourceCombination(
       temporary,
       JSON.stringify({
         id,
+        manifestSha256: await fileDigest(
+          join(runtime, "source-combinations", id, "combination.json"),
+        ),
         ...(current?.releaseHistory
           ? { releaseHistory: current.releaseHistory }
           : {}),
@@ -475,10 +500,9 @@ export function sourceComponent(record, plugins, name) {
     .sort();
   const source = plugins[name];
   if (!source || !files.length) throw Error("SOURCE_COMPONENT_MISSING");
-  const origin = execFileSync("/usr/bin/git", ["remote", "get-url", "source"], {
-    cwd: source.source,
-    encoding: "utf8",
-  }).trim();
+  if (typeof source.origin !== "string" || !source.origin)
+    throw Error("SOURCE_ORIGIN_REQUIRED");
+  const origin = source.origin;
   return {
     version: record.composition.dependencies[name],
     sha256: createHash("sha256").update(JSON.stringify(files)).digest("hex"),
