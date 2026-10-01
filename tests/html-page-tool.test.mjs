@@ -168,7 +168,7 @@ test("同一屏第二次读取只回 unchanged：不把整包重复塞进历史"
       body: JSON.stringify({
         lease,
         method: "context",
-        parameters: { rows: [{ name: "中心仓" }, { name: "分仓二" }], parts:{pageFilters:{allowedFields:["bases","tab"],tabs:["基地结构","品类结构","货龄结构"],bases:["华东基地","华南基地"]}} },
+        parameters: { rows: [{ name: "中心仓" }, { name: "分仓二" }], parts:{pageFilters:{allowedFields:["bases","tab"],tabs:["基地结构","品类结构","货龄结构"],bases:["华东基地","华南基地"]},inventoryInsight:{evidence:{sources:{consumerCode:"base-safety-stock",bases:["华东"],targetMonth:"2026-10-01",targetVersions:["滚动"],targetSnapshots:["2026-09-30 09:00:00+08"],inventorySnapshots:["2026-09-30 09:00:00+08"],orderSnapshots:["2026-09-30 07:25:53.201+08"]}}}} },
       }),
     }),
   );
@@ -192,6 +192,10 @@ test("同一屏第二次读取只回 unchanged：不把整包重复塞进历史"
   assert.deepEqual(focused.context.parts.pageFilters.allowedFields, ["bases","tab"]);
   assert.deepEqual(focused.context.parts.pageFilters.tabs, ["基地结构","品类结构","货龄结构"]);
   assert.deepEqual(focused.context.parts.pageFilters.bases, ["华东基地","华南基地"]);
+  assert.deepEqual(focused.context.parts.inventoryInsight.evidence.sources.targetVersions, ["滚动"]);
+  assert.deepEqual(focused.context.parts.inventoryInsight.evidence.sources.targetSnapshots, ["2026-09-30 09:00:00+08"]);
+  assert.deepEqual(focused.context.parts.inventoryInsight.evidence.sources.orderSnapshots, ["2026-09-30 07:25:53.201+08"]);
+  assert.ok(!JSON.stringify(focused.context.rows).includes("分仓二"), "focus still narrows business rows");
 });
 
 test("each plugin's SKILL.md is published for the main conversation", async () => {

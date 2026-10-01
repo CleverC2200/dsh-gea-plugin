@@ -39,12 +39,20 @@ function compressPageContext(
     return result;
   const value = result as Record<string, unknown>;
   const source = value.context as {parts?: Record<string, unknown>} | null;
-  // Filter choices describe valid actions, rather than result rows matching a question.
+  // Choices and source lists describe the query, rather than rows matching a question.
   const controls = source?.parts?.pageFilters === undefined ? undefined
     : compressForModel(source.parts.pageFilters, {budgetBytes: 2000});
-  const payload = controls ? {...source, parts:{...source!.parts, pageFilters:undefined}} : value.context ?? null;
+  const insight = source?.parts?.inventoryInsight as {evidence?: Record<string, unknown>} | undefined;
+  const sources = insight?.evidence?.sources === undefined ? undefined
+    : compressForModel(insight.evidence.sources, {budgetBytes: 1000});
+  const payload = controls || sources ? {...source, parts:{
+    ...source?.parts,
+    ...(controls ? {pageFilters: undefined} : {}),
+    ...(sources ? {inventoryInsight:{...insight, evidence:{...insight?.evidence, sources:undefined}}} : {}),
+  }} : value.context ?? null;
+  const metadataBytes = [controls, sources].reduce((total, item) => total + (item ? Buffer.byteLength(item.json, "utf8") + 100 : 0), 0);
   const compressed = compressForModel(payload, {
-    budgetBytes: MODEL_PAYLOAD_BUDGET - (controls ? Buffer.byteLength(controls.json, "utf8") + 100 : 0),
+    budgetBytes: MODEL_PAYLOAD_BUDGET - metadataBytes,
     ...(options.focus === undefined ? {} : { focus: options.focus }),
   });
   let context: unknown = value.context ?? null;
@@ -53,9 +61,15 @@ function compressPageContext(
   } catch {
     // 压缩结果不是合法 JSON 时退回原值：宁可大一点，也不能让上下文消失。
   }
-  if (controls && context && typeof context === "object" && !Array.isArray(context)) {
+  if ((controls || sources) && context && typeof context === "object" && !Array.isArray(context)) {
     const record = context as Record<string, unknown>;
-    context = {...record, parts:{...(record.parts as Record<string, unknown>), pageFilters:JSON.parse(controls.json)}};
+    const parts = {...record.parts as Record<string, unknown>};
+    if (controls) parts.pageFilters = JSON.parse(controls.json);
+    if (sources) {
+      const narrowed = parts.inventoryInsight as typeof insight;
+      parts.inventoryInsight = {...narrowed, evidence:{...narrowed?.evidence, sources:JSON.parse(sources.json)}};
+    }
+    context = {...record, parts};
   }
   const actions = Array.isArray(value.actions) ? value.actions : [];
   return {
@@ -64,8 +78,8 @@ function compressPageContext(
     ...(actions.length > 10
       ? { actions: actions.slice(0, 10), actionsTotal: actions.length }
       : {}),
-    ...(compressed.compressed || controls?.compressed
-      ? { contextNote: [compressed.note, controls?.note].filter(Boolean).join("；"), contextOmitted: compressed.omitted + (controls?.omitted ?? 0) }
+    ...(compressed.compressed || controls?.compressed || sources?.compressed
+      ? { contextNote: [compressed.note, controls?.note, sources?.note].filter(Boolean).join("；"), contextOmitted: compressed.omitted + (controls?.omitted ?? 0) + (sources?.omitted ?? 0) }
       : {}),
   };
 }
