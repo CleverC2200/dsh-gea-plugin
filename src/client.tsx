@@ -113,9 +113,9 @@ export function apply(ctx: Context): void {
     readScope: readBusinessIdentityScope.readScope,
   });
   ctx.effect(() => readBusinessIdentityScope.start());
-  registerHtmlClient(ctx, pageInteraction, ctx.geaIdentity);
   ctx.effect(() => ctx.locale.register("geaProof", { zh, en }));
   const t = ctx.locale.bind("geaProof");
+  registerHtmlClient(ctx, pageInteraction, ctx.geaIdentity, t);
   const navigationSelection = createNavigationSelection();
   /** 当前"这一页菜单叫什么"，给宿主上报用：优先用页面自己的标题，其次用原型目录名。 */
   const menuTitleOf = (menu: string | null | undefined): string =>
@@ -522,40 +522,14 @@ export function apply(ctx: Context): void {
       </div>
     );
   }
-  function UserAvatar({ wide }: PropsRuntime<"settings.trigger">) {
+  function UserAvatar({ wide, settingsOpen, openSettings, settingsShortcut }: PropsRuntime<"settings.launcher">) {
     const { name, avatarUrl } = useIdentity();
     const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
     useEffect(() => { setFailedAvatar(null); }, [avatarUrl]);
-    const avatar = useRef<HTMLSpanElement>(null);
     const menu = useRef<HTMLDivElement>(null);
     const trigger = useRef<HTMLButtonElement | null>(null);
-    const openSettings = useRef(false);
     const [position, setPosition] = useState<{ left: number; bottom: number } | null>(null);
-    // 原生插槽只提供按钮内容；保留设置动作，同时把鼠标和键盘激活转由账户菜单处理。
-    useEffect(() => {
-      const button = avatar.current?.closest("button");
-      if (!button) return;
-      trigger.current = button;
-      const activate = (event: MouseEvent) => {
-        if (openSettings.current) return;
-        event.preventDefault(); event.stopImmediatePropagation();
-        const rect = button.getBoundingClientRect();
-        setPosition(current => current ? null : { left: Math.min(rect.left, window.innerWidth - 212), bottom: window.innerHeight - rect.top + 6 });
-      };
-      button.addEventListener("click", activate);
-      return () => { button.removeEventListener("click", activate); trigger.current = null; };
-    }, []);
-    useEffect(() => {
-      const button = trigger.current;
-      if (!button) return;
-      const previous = ["aria-label", "aria-haspopup", "aria-expanded"].map(key => button.getAttribute(key));
-      button.setAttribute("aria-label", t("accountMenu"));
-      button.setAttribute("aria-haspopup", "menu");
-      button.setAttribute("aria-expanded", String(position !== null));
-      return () => { ["aria-label", "aria-haspopup", "aria-expanded"].forEach((key, index) => {
-        const value = previous[index]; if (value === null) button.removeAttribute(key); else button.setAttribute(key, value!);
-      }); };
-    }, [position]);
+    useEffect(() => { if (settingsOpen) setPosition(null); }, [settingsOpen]);
     useEffect(() => {
       if (!position) return;
       menu.current?.querySelector<HTMLButtonElement>("button")?.focus();
@@ -582,12 +556,19 @@ export function apply(ctx: Context): void {
     }, [position]);
     return <>
       <style>{shellCss}</style>
-      <span ref={avatar} className="gea-user-avatar" aria-hidden="true">
+      <button ref={trigger} type="button" className="gea-account-trigger" aria-label={t("accountMenu")}
+        aria-haspopup="menu" aria-expanded={position !== null} aria-keyshortcuts={settingsShortcut?.aria}
+        onClick={event => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          setPosition(current => current ? null : { left: Math.min(rect.left, window.innerWidth - 212), bottom: window.innerHeight - rect.top + 6 });
+        }}>
+      <span className="gea-user-avatar" aria-hidden="true">
         {avatarUrl && failedAvatar !== avatarUrl
           ? <img key={avatarUrl} src={avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setFailedAvatar(avatarUrl)} />
           : name.slice(0, 1) || "G"}
       </span>
       {wide && <span>{name || t("signedOut")}</span>}
+      </button>
       {position && createPortal(<div ref={menu} role="menu" aria-label={t("accountMenu")} className="gea-account-menu" style={position}
         onClick={event => event.stopPropagation()}
         onKeyDown={event => {
@@ -603,8 +584,7 @@ export function apply(ctx: Context): void {
           }
         }}>
         <button type="button" role="menuitem" className="gea-logout-button" onClick={() => {
-          setPosition(null); openSettings.current = true;
-          try { trigger.current?.click(); } finally { openSettings.current = false; }
+          setPosition(null); openSettings();
         }}><span aria-hidden="true">⚙</span><span>{t("settings")}</span></button>
         <Logout name={name} />
       </div>, document.body)}
@@ -771,9 +751,9 @@ export function apply(ctx: Context): void {
       BrandName,
     ),
   );
-  ctx.slots.inject("settings.trigger", () =>
+  ctx.slots.inject("settings.launcher", () =>
     ctx.slots.register(
-      { name: "settings.trigger", locale: "geaProof", priority: -10 },
+      { name: "settings.launcher", locale: "geaProof", priority: -10 },
       UserAvatar,
     ),
   );

@@ -775,6 +775,9 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-sidebar-browser {flex:1;min-height:0;overflow:auto}
 .gea-sidebar-rail {display:flex;flex-direction:column;align-items:center;gap:8px}
 .gea-sidebar-rail button {width:36px;height:36px;border:0;background:transparent;color:var(--workbench-text)}
+.gea-account-trigger {display:flex;align-items:center;gap:8px;min-width:0;padding:8px;border:0;border-radius:8px;background:transparent;color:var(--workbench-text);font:inherit;cursor:pointer}
+.gea-account-trigger:hover {background:var(--workbench-hover)}
+.gea-account-trigger:focus-visible {outline:2px solid var(--workbench-brand);outline-offset:2px}
 .gea-welcome-content {width:100%;max-width:760px;margin:auto;min-width:0}
 .gea-conversation-toolbar {position:static;flex-shrink:0;width:100%;box-sizing:border-box;padding:12px 16px;justify-content:flex-end;background:var(--workbench-surface)}
 
@@ -788,3 +791,6 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
   .gea-agent-welcome { padding: 12px 16px; }
   .gea-agent-avatar { width: 40px; height: 40px; margin-bottom: 4px; }
 }
+
+.gea-page-discovery-error {position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;max-width:calc(100% - 32px);padding:12px 16px;border:1px solid var(--workbench-border);border-radius:8px;background:var(--workbench-surface);color:var(--workbench-text)}
+.gea-page-discovery-error button {flex:none;padding:6px 12px;border:1px solid var(--workbench-control-border);border-radius:6px;background:var(--workbench-surface);color:inherit;cursor:pointer}

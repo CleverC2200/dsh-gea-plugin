@@ -15,6 +15,8 @@ const copy = {
   settings: ["设置", "Settings"],
   logout: ["退出登录", "Sign out"],
   loggingOut: ["正在退出…", "Signing out…"],
+  pageDiscoveryFailed: ["业务页面暂时无法加载。", "Business pages could not be loaded."],
+  retryAction: ["重试", "Retry"],
   logoutFailed: ["退出失败，请重试。", "Sign-out failed. Retry."],
   close: ["关闭", "Close"],
   inboxUnreadMessages: ["条未读消息", "unread messages"],

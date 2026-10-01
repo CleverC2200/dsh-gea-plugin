@@ -1,5 +1,8 @@
 import { createReferenceStore } from "../packages/page-interaction/src/reference-store.ts";
-import { installPageInteraction } from "../packages/page-interaction/src/client.ts";
+import { build } from "esbuild";
+import { resolve } from "node:path";
+const { outputFiles } = await build({ entryPoints: ["packages/page-interaction/src/client.ts"], bundle: true, write: false, outdir: ".", platform: "node", format: "esm", loader: { ".css": "empty" }, alias: { "@deepseek-ai/dsh-client-ui-primitives": resolve("../deepseek-harness/packages/client/ui-primitives/src/user-text.tsx") } });
+const { installPageInteraction } = await import("data:text/javascript;base64," + Buffer.from(outputFiles.find(file => file.path.endsWith(".js")).contents).toString("base64"));
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -105,6 +108,7 @@ for (const phase of ["saving", "reload"]) test(`a saved reference cannot enter t
     },
   };
   const ctx = {
+    slots: { inject(_key, setup) { return setup(); }, register() { return () => {}; } },
     get: () => undefined,
     provide: () => {},
     inject: (_names, fn) => fn(scope),
@@ -173,4 +177,9 @@ test("reference labels round-trip brackets, slashes, percent and Unicode", () =>
       .text,
     label + " ",
   );
+});
+
+test("historical literal receipts remain original text rather than activating a legacy decoder", () => {
+  const text = "【引用 R123456abcdef：库存范围】";
+  assert.deepEqual(projectReferenceText(text), { text, labels: [], ranges: [] });
 });

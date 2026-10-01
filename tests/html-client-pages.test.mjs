@@ -6,6 +6,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
+import { createRequire } from "node:module";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 test("every HTML plugin page registers a matching workbench panel", async () => {
   const temporary = await mkdtemp(resolve(tmpdir(), "gea-html-client-"));
@@ -19,6 +22,7 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
   let dispose;
   try {
     await build({
+      alias: { "@deepseek-ai/dsh-client-store": resolve("../deepseek-harness/packages/client/store/src/index.ts") },
       entryPoints: [resolve("src/html-client.tsx")],
       outfile: output,
       bundle: true,
@@ -79,11 +83,11 @@ test("every HTML plugin page registers a matching workbench panel", async () => 
           return () => {};
         },
         register(options) {
-          panels.push(options.key);
+          if (options.name === "main") panels.push(options.key);
           return () => {};
         },
       },
-    }, undefined, createBusinessIdentityReader());
+    }, undefined, createBusinessIdentityReader(), key => key);
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(panels, [
       "inventory-apsplan",
@@ -115,7 +119,8 @@ test("HTML discovery does not start a second identity observation", async () => 
   const signals = [], pages = [];
   let dispose;
   try {
-    await build({ entryPoints: [resolve("src/html-client.tsx")], outfile: output, bundle: true, format: "esm", platform: "node" });
+    await build({
+      alias: { "@deepseek-ai/dsh-client-store": resolve("../deepseek-harness/packages/client/store/src/index.ts") }, entryPoints: [resolve("src/html-client.tsx")], outfile: output, bundle: true, format: "esm", platform: "node" });
     globalThis.fetch = async (url, options) => {
       if (url === "/api/gea-html/identity") {
         signals.push(options.signal);
@@ -132,7 +137,7 @@ test("HTML discovery does not start a second identity observation", async () => 
       effect(callback) { dispose = callback(); },
       agentWorkbench: { register(page) { pages.push(page.id); return () => {}; } },
       slots: { inject(_name, callback) { callback(); return () => {}; }, register() { return () => {}; } },
-    }, undefined, createBusinessIdentityReader());
+    }, undefined, createBusinessIdentityReader(), key => key);
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(pages, ["inventory-fixture"]);
     assert.equal(signals.length, 0, "the GEA client owns the only identity observer");
@@ -146,3 +151,33 @@ test("HTML discovery does not start a second identity observation", async () => 
     await rm(temporary, { recursive: true, force: true });
   }
 });
+
+for (const failure of ["HTTP", "network"]) {
+  test(`${failure} discovery failures remain visible without silent polling`, async t => {
+    const temporary = await mkdtemp(resolve(tmpdir(), "gea-discovery-failed-"));
+    t.after(() => rm(temporary, { recursive: true, force: true }));
+    const output = resolve(temporary, "client.mjs");
+    const require = createRequire(import.meta.url);
+    await build({ entryPoints: [resolve("src/html-client.tsx")], outfile: output, bundle: true, format: "esm", platform: "node",
+      alias: { "@deepseek-ai/dsh-client-store": resolve("../deepseek-harness/packages/client/store/src/index.ts") },
+      plugins: [{ name: "shared-react", setup(b) { b.onResolve({ filter: /^react(?:\/jsx-runtime)?$/ }, args => ({ path: require.resolve(args.path), external: true })); } }],
+    });
+    const originalFetch = globalThis.fetch, originalWindow = globalThis.window;
+    let calls = 0, notice, dispose;
+    globalThis.window = new EventTarget();
+    globalThis.fetch = async () => { calls++; if (failure === "network") throw Error("offline"); return Response.json({}, { status: 503 }); };
+    try {
+      const { registerHtmlClient } = await import(pathToFileURL(output));
+      registerHtmlClient({ effect(fn) { dispose = fn(); }, slots: { inject(_key, fn) { return fn(); }, register(options, component) { if (options.name === "shell.overlay") notice = component; return () => {}; } } }, undefined, createBusinessIdentityReader(), key => key);
+      await new Promise(setImmediate);
+      const html = renderToStaticMarkup(React.createElement(notice));
+      assert.match(html, /role="alert"/);
+      assert.match(html, failure === "HTTP" ? /HTTP 503/ : /offline/);
+      assert.match(html, /retryAction/);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      assert.equal(calls, 1);
+      dispose();
+      assert.equal(renderToStaticMarkup(React.createElement(notice)), "");
+    } finally { dispose?.(); globalThis.fetch = originalFetch; globalThis.window = originalWindow; }
+  });
+}

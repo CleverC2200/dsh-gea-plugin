@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { installReferenceDisplay } from "./reference-display.ts";
+import { installReferenceDisplay } from "./reference-display.tsx";
 import {
   PAGE_INTERACTION,
   REFERENCE_SOURCE,

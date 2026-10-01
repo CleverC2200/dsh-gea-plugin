@@ -44,6 +44,8 @@ function clientOutput(file, id) {
   };
 }
 
+const clientExternals = ["react", "@deepseek-ai/dsh-client-store", "@deepseek-ai/dsh-client-ui-primitives"];
+
 const targets = {
   interaction: [
     {
@@ -100,7 +102,7 @@ const targets = {
     },
     {
       entryPoints: ["packages/page-interaction/src/client.ts"],
-      external: ["react"],
+      external: clientExternals,
       bundle: true,
       write: false,
       format: "cjs",
@@ -132,7 +134,7 @@ const targets = {
       format: "cjs",
       platform: "browser",
       target: "es2022",
-      external: ["react", "@deepseek-ai/dsh-client-store"],
+      external: clientExternals,
       loader: {
         ".css": "text",
         ".png": "dataurl",
@@ -169,7 +171,7 @@ const targets = {
       write: false,
       format: "cjs",
       platform: "browser",
-      external: ["react"],
+      external: clientExternals,
       plugins: [
         clientOutput(
           "packages/workbench-example/lib/client.js",

@@ -4,7 +4,8 @@ import { build } from 'esbuild';
 import { chromium } from '@playwright/test';
 
 test('new conversation rebinds the existing HTML page without losing page state or its port', async () => {
-  const bundle = await build({ stdin: { contents: `
+  const bundle = await build({
+      alias: { "@deepseek-ai/dsh-client-store": resolve("../deepseek-harness/packages/client/store/src/index.ts") }, stdin: { contents: `
     import React from 'react';
     import {createRoot} from 'react-dom/client';
     import {registerHtmlClient} from './src/html-client.tsx';
@@ -13,7 +14,7 @@ test('new conversation rebinds the existing HTML page without losing page state 
   const themeContext=createThemeClient();window.testTheme=themeContext;
     const root=createRoot(document.getElementById('app'));
     function useMainSessionId(select) {const [value,set]=React.useState('session-1');window.changeSession=set;return select(value);}
-    registerHtmlClient({...themeContext,effect:f=>f(),agentWorkbench:{register:()=>()=>{},open:async()=>{},showConversation:()=>()=>{}},layout:{selectPanel(){}},remote:{session:{prompt:async input=>{window.sent=input;return {ok:true}}}},slots:{inject:(_,f)=>f(),register:(_,Component)=>{root.render(<Component useMainSessionId={useMainSessionId}/>);return ()=>{}}}}, {bindFrame:({sessionId})=>{window.selectionSession=sessionId;return ()=>{window.selectionSession=null}}}, createBusinessIdentityReader());
+    registerHtmlClient({...themeContext,effect:f=>f(),agentWorkbench:{register:()=>()=>{},open:async()=>{},showConversation:()=>()=>{}},layout:{selectPanel(){}},remote:{session:{prompt:async input=>{window.sent=input;return {ok:true}}}},slots:{inject:(_,f)=>f(),register:(options,Component)=>{if(options.name!=="main")return ()=>{};root.render(<Component useMainSessionId={useMainSessionId}/>);return ()=>{}}}}, {bindFrame:({sessionId})=>{window.selectionSession=sessionId;return ()=>{window.selectionSession=null}}}, createBusinessIdentityReader(), key => key);
   `, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false, format: 'iife', platform: 'browser' });
   const browser = await chromium.launch({channel:'chrome',headless:true});
   try {

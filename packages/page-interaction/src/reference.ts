@@ -54,26 +54,25 @@ export function serializeReference(value: ReferenceReceipt): string {
   return `[${label}](dsh-page:${value.id}) `;
 }
 
-/** Pure display projection, including legacy receipts; never used to rewrite model text. */
+/** Pure display projection of the current receipt form; never used to rewrite model text. */
 export function projectReferenceText(text: string): {
   text: string;
   labels: string[];
   ranges: Array<{ start: number; end: number }>;
 } {
   const pattern =
-    /@?\[([^\]\n]+)\]\(dsh-page:(R[a-f0-9]{12})\)|【引用 (R[a-f0-9]{12})：([^】\n]+)】/g;
+    /@?\[([^\]\n]+)\]\(dsh-page:(R[a-f0-9]{12})\)/g;
   const labels: string[] = [];
   const ranges: Array<{ start: number; end: number }> = [];
   let display = "",
     cursor = 0;
   for (const match of text.matchAll(pattern)) {
     display += text.slice(cursor, match.index);
-    let label = match[1] ?? match[4];
-    if (match[1])
-      try {
+    let label = match[1];
+    try {
         label = decodeURIComponent(label);
       } catch {
-        /* Older receipts used literal labels. */
+        /* Malformed labels remain readable text; receipt identity is unchanged. */
       }
     const start = display.length;
     display += label;

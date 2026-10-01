@@ -246,8 +246,6 @@ export async function registerHtmlPlugins(
       skill: manifest.skills[0], prompt: manifest.agentResources.prompt,
     });
     const skill = loadedAgentResources.skill;
-    const frontmatter = (key: string) =>
-      new RegExp(`^${key}:\\s*(.+)$`, "m").exec(skill)?.[1]?.trim();
     const retired = isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden);
     const presetHidden = mock || retired;
     items.push({
@@ -264,8 +262,8 @@ export async function registerHtmlPlugins(
       mock,
       retired,
       presetHidden,
-      skillName: frontmatter("name") ?? manifest.id,
-      skillDescription: frontmatter("description") ?? manifest.name,
+      skillName: loadedAgentResources.skillName,
+      skillDescription: loadedAgentResources.skillDescription,
       skillText: skill,
       htmlSource: html,
       htmlPath: path,

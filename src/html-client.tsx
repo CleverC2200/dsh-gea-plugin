@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createSnapshotStore } from "@deepseek-ai/dsh-client-store";
 import { businessMenuLabel } from "./business-navigation.ts";
 import type { BusinessIdentityProjection } from "./business-identity-client.ts";
 import { startPageBridgeClient } from "./page-bridge/client.ts";
 import type { PageInteraction } from "../packages/page-interaction/src/client.ts";
-export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | undefined, identity: BusinessIdentityProjection) {
+export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | undefined, identity: BusinessIdentityProjection, t: (key: "pageDiscoveryFailed" | "retryAction") => string) {
   async function request(path: string, body?: any, signal?: AbortSignal) {
     const response = await fetch("/api/gea-html/" + path, {
       method: body === undefined ? "GET" : "POST",
@@ -447,10 +448,19 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
       </section>
     );
   }
+  const discoveryError = createSnapshotStore<string | null>(null);
+  let retryDiscovery = () => {};
+  function DiscoveryNotice() {
+    const error = useSyncExternalStore(discoveryError.subscribe, discoveryError.getSnapshot, discoveryError.getSnapshot);
+    return error === null ? null : <div className="gea-page-discovery-error" role="alert">
+      <span>{t("pageDiscoveryFailed")} <span>{error}</span></span>
+      <button type="button" onClick={() => retryDiscovery()}>{t("retryAction")}</button>
+    </div>;
+  }
+  ctx.slots.inject("shell.overlay", () => ctx.slots.register({ name: "shell.overlay", id: "gea-page-discovery" }, DiscoveryNotice));
   // Public manifest metadata uses DSH connection authentication; business reads additionally require GEA login.
   ctx.effect(() => {
-    let disposed = false,
-      timer: any;
+    let disposed = false, discovering = false;
     const cleanups: Array<() => void> = [];
     const controller = new AbortController();
     const registered = new Set<string>();
@@ -461,6 +471,9 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
     };
     window.addEventListener("gea-business-identity-changed", changed);
     const discover = async () => {
+      if (disposed || discovering) return;
+      discovering = true;
+      discoveryError.set(null);
       try {
         const statusResponse = await fetch("/api/gea-proof/status", {
           method: "POST",
@@ -469,10 +482,12 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
           cache: "no-store",
           signal: controller.signal,
         });
-        if (!statusResponse.ok) return;
+        if (!statusResponse.ok) throw Error(`HTTP ${statusResponse.status}`);
         const envelope = await statusResponse.json();
-        if (!envelope.ok || !envelope.value?.htmlPlugins) return;
+        if (!envelope.ok) throw Error(envelope.error ?? "GEA_STATUS_FAILED");
+        if (!envelope.value?.htmlPlugins) return;
         const items = await request("plugins", undefined, controller.signal);
+        controller.signal.throwIfAborted();
         for (const plugin of items) {
           // 已下架模块不注册面板；保留的演示页使用默认助手，不依赖独立 Agent 预设。
           if (plugin.retired === true) continue;
@@ -512,15 +527,21 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
           }
         }
         return;
-      } catch {}
-      if (!disposed) timer = setTimeout(discover, 5000);
+      } catch (error) {
+        if (!disposed && !controller.signal.aborted)
+          discoveryError.set(error instanceof Error ? error.message : String(error));
+      } finally {
+        discovering = false;
+      }
     };
+    retryDiscovery = () => { void discover(); };
     void discover();
     return () => {
       disposed = true;
       controller.abort();
       window.removeEventListener("gea-business-identity-changed", changed);
-      clearTimeout(timer);
+      retryDiscovery = () => {};
+      discoveryError.set(null);
       cleanups.forEach((f) => f());
     };
   });

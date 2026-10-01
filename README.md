@@ -257,3 +257,5 @@ Demand Forecast follows the user's language for both progress and final answers.
 合并覆盖配置、核心/业务预设和锁文件时，校验本次实际读取的字节再用于转换；不能先验一份文件、后来读取变动后的配置并重新生成摘要授信。资源被改写的失败不会触发旧清单整体覆盖或自动恢复。
 
 在公共 `workbench-conversation` 矮面板内，GEA自有欢迎内容限制高度并独立滚动，头像和间距收紧；输入与工具栏保留可见，介绍和推荐问题不删。适配跟随面板高度，不按整个窗口高度猜测半屏会话，也不修改核心DOM或重建会话。
+
+账户入口通过当前 `settings.launcher` 接口和 `openSettings` 动作提供自有按钮；页面引用通过 `conversation.user.text` 只读显示投影进入原生消息与队列，不扫描或修改宿主 DOM。页面发现的网络/HTTP 失败保留可见错误和手动重试入口；不后台循环重试，不把失败当作未安装。Skill 名称和说明直接使用 Agent Manage 的 YAML 解析结果。
