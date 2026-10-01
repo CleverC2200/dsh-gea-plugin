@@ -168,7 +168,7 @@ test("同一屏第二次读取只回 unchanged：不把整包重复塞进历史"
       body: JSON.stringify({
         lease,
         method: "context",
-        parameters: { rows: [{ name: "中心仓" }, { name: "分仓二" }] },
+        parameters: { rows: [{ name: "中心仓" }, { name: "分仓二" }], parts:{pageFilters:{allowedFields:["bases","tab"],tabs:["基地结构","品类结构","货龄结构"],bases:["华东基地","华南基地"]}} },
       }),
     }),
   );
@@ -189,6 +189,9 @@ test("同一屏第二次读取只回 unchanged：不把整包重复塞进历史"
   );
   assert.equal(focused.unchanged, undefined);
   assert.ok(JSON.stringify(focused.context).includes("中心仓"));
+  assert.deepEqual(focused.context.parts.pageFilters.allowedFields, ["bases","tab"]);
+  assert.deepEqual(focused.context.parts.pageFilters.tabs, ["基地结构","品类结构","货龄结构"]);
+  assert.deepEqual(focused.context.parts.pageFilters.bases, ["华东基地","华南基地"]);
 });
 
 test("each plugin's SKILL.md is published for the main conversation", async () => {
