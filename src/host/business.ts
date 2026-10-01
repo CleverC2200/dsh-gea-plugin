@@ -2517,6 +2517,8 @@ export class Business {
       }
       throw new Error("GEA_PLUGIN_SESSION_REJECTED");
     } catch (error) {
+      // Page refresh, range changes and identity cancellation are not failed reads.
+      signal.throwIfAborted();
       // A failed delegated credential must not poison the next page refresh.
       if (error instanceof GeaResponseError) this.pluginDelegations.delete(consumerCode);
       const previous = this.pluginFailures.get(consumerCode);
