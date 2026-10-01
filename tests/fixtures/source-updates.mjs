@@ -171,11 +171,24 @@ export async function sourceUpdateFixture(t) {
         ),
         files: await hashes(dir),
         externalFiles: Object.fromEntries(
-          Object.entries(await hashes(join(core, "apps/web/dist"))).map(
-            ([file, hash]) => [join(core, "apps/web/dist", file), hash],
-          ),
+          (
+            await Promise.all(
+              [
+                join(core, "apps/web/dist"),
+                join(core, "packages/bundle/web-app/presets"),
+              ].map(async (root) =>
+                Object.entries(await hashes(root)).map(([file, hash]) => [
+                  join(root, file),
+                  hash,
+                ]),
+              ),
+            )
+          ).flat(),
         ),
-        externalRoots: [join(core, "apps/web/dist")],
+        externalRoots: [
+          join(core, "apps/web/dist"),
+          join(core, "packages/bundle/web-app/presets"),
+        ],
         externalLockFiles: [],
         locks: { core: {} },
       }),

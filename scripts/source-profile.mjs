@@ -540,6 +540,17 @@ export async function mergeSourceComponents(
     records.set(id, record);
     metadata.set(id, JSON.parse(pluginBytes));
   }
+  const expectedExternal = {};
+  for (const record of records.values()) {
+    for (const [file, expected] of Object.entries(record.externalFiles)) {
+      if (
+        expectedExternal[file] !== undefined &&
+        expectedExternal[file] !== expected
+      )
+        throw Error("SOURCE_DEPENDENCY_BASELINE_CONFLICT");
+      expectedExternal[file] = expected;
+    }
+  }
   const original = records.get(latest);
   const id = randomUUID(),
     directory = join(runtime, "source-combinations", id),
@@ -600,6 +611,7 @@ export async function mergeSourceComponents(
     }
   }
   externalRoots.add(join(core, "apps/web/dist"));
+  externalRoots.add(join(core, "packages/bundle/web-app/presets"));
   for (const file of original.externalLockFiles)
     if (file.startsWith(core + "/")) externalLockFiles.add(file);
   await writeFile(
@@ -612,8 +624,16 @@ export async function mergeSourceComponents(
     latest,
     "node_modules",
   );
+  const overlayFile = join(
+    runtime,
+    "source-combinations",
+    latest,
+    "deployment.patch.json",
+  );
+  if (original.composition.patches[0] !== overlayFile)
+    throw Error("INVALID_SOURCE_OVERLAY_PATH");
   const patch = JSON.parse(
-    await readFile(original.composition.patches[0], "utf8"),
+    await readPinnedInput(overlayFile, original.files["deployment.patch.json"]),
   );
   const rewritten = JSON.stringify(patch, null, 2)
     .split(oldModules)
@@ -628,8 +648,24 @@ export async function mergeSourceComponents(
   await writeFile(
     join(directory, "presets.patch.yml"),
     composeSourcePresets(
-      { source: standard, text: await readFile(standard, "utf8") },
-      { source: business, text: await readFile(business, "utf8") },
+      {
+        source: standard,
+        text: (
+          await readPinnedInput(standard, expectedExternal[standard])
+        ).toString(),
+      },
+      {
+        source: business,
+        text: (
+          await readPinnedInput(
+            business,
+            records.get(updates["@cleverc2200/gea-dsh-prototype"] ?? latest)
+              .files[
+              "node_modules/@cleverc2200/gea-dsh-prototype/presets/gea-readonly/agent.cordis.yml"
+            ],
+          )
+        ).toString(),
+      },
       join(gea, "lib/skill-reference.js"),
     ),
   );
@@ -643,22 +679,13 @@ export async function mergeSourceComponents(
     ],
   };
   const externalFiles = await dependencyDigests(externalRoots);
-  const expectedExternal = {};
-  for (const record of records.values()) {
-    for (const [file, expected] of Object.entries(record.externalFiles)) {
-      if (
-        expectedExternal[file] !== undefined &&
-        expectedExternal[file] !== expected
-      )
-        throw Error("SOURCE_DEPENDENCY_BASELINE_CONFLICT");
-      expectedExternal[file] = expected;
-    }
-  }
   for (const [file, hash] of Object.entries(externalFiles))
     if (expectedExternal[file] !== hash)
       throw Error("SOURCE_DEPENDENCY_DIGEST_MISMATCH");
   for (const file of externalLockFiles)
-    externalFiles[file] = await fileDigest(file);
+    externalFiles[file] = createHash("sha256")
+      .update(await readPinnedInput(file, expectedExternal[file]))
+      .digest("hex");
   await writeFile(
     join(directory, "combination.json"),
     JSON.stringify(
@@ -677,4 +704,13 @@ export async function mergeSourceComponents(
     ) + "\n",
   );
   return composition;
+}
+
+/** Use only bytes covered by the input snapshot's frozen resource or dependency digest. */
+async function readPinnedInput(file, expected) {
+  if (!expected) throw Error("SOURCE_INPUT_DIGEST_MISSING: " + file);
+  const bytes = await readFile(file);
+  if (createHash("sha256").update(bytes).digest("hex") !== expected)
+    throw Error("SOURCE_INPUT_DIGEST_MISMATCH: " + file);
+  return bytes;
 }

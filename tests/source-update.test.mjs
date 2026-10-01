@@ -392,3 +392,45 @@ test("rewriting a candidate manifest and dependency while waiting for the lock c
   assert.equal(result.failed[0].error, "SOURCE_ARTIFACT_MANIFEST_MISMATCH");
   assert.equal((await readSourceUpdateBaseline(f.runtime, core)).id, f.initial);
 });
+
+test("late deployment overlay changes cannot be rehashed into a newly authorized combination", async (t) => {
+  const f = await sourceUpdateFixture(t),
+    candidate = await f.snapshot({ [gea]: { version: "1.1.0" } }),
+    proposal = await f.proposal(candidate, [gea]);
+  const originalFile = join(
+      f.runtime,
+      "source-combinations",
+      f.initial,
+      "deployment.patch.json",
+    ),
+    original = await fs.readFile(originalFile);
+  const { watch } = await import("node:fs");
+  const changed = Promise.withResolvers();
+  const watcher = watch(
+    join(f.runtime, "source-combinations"),
+    (event, filename) => {
+      const name = String(filename);
+      if (event !== "rename" || [f.initial, candidate].includes(name)) return;
+      watcher.close();
+      fs.writeFile(
+        originalFile,
+        JSON.stringify([
+          { id: "unrequested-overlay-change", config: { altered: true } },
+        ]),
+      ).then(changed.resolve, changed.reject);
+    },
+  );
+  t.after(() => watcher.close());
+  const result = await applySourceUpdate(f.runtime, proposal, options);
+  await changed.promise;
+  assert.equal(result.phase, "failed");
+  assert.match(result.failed[0].error, /SOURCE_INPUT_DIGEST_MISMATCH/);
+  assert.equal(
+    JSON.parse(
+      await fs.readFile(join(f.runtime, "source-selection.json"), "utf8"),
+    ).id,
+    f.initial,
+  );
+  await fs.writeFile(originalFile, original);
+  assert.equal((await readSourceUpdateBaseline(f.runtime, core)).id, f.initial);
+});
