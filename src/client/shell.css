@@ -777,3 +777,14 @@ button[data-state][aria-label]:has(+ button[aria-haspopup='menu']) + button[aria
 .gea-sidebar-rail button {width:36px;height:36px;border:0;background:transparent;color:var(--workbench-text)}
 .gea-welcome-content {width:100%;max-width:760px;margin:auto;min-width:0}
 .gea-conversation-toolbar {position:static;flex-shrink:0;width:100%;box-sizing:border-box;padding:12px 16px;justify-content:flex-end;background:var(--workbench-surface)}
+
+/* Size the owned welcome content against the Conversation panel, including stacked layouts. */
+@container workbench-conversation (max-height: 600px) {
+  .gea-welcome-content {
+    max-height: max(0px, calc(100cqh - 160px));
+    margin: 0;
+    overflow-y: auto;
+  }
+  .gea-agent-welcome { padding: 12px 16px; }
+  .gea-agent-avatar { width: 40px; height: 40px; margin-bottom: 4px; }
+}
