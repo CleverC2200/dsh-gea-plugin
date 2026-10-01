@@ -181,17 +181,14 @@ export function rulesFromSkill(
   return picked;
 }
 
-/** SKILL.md 的 frontmatter description：模块一句话自述。 */
-export function skillDescription(skill: string): string | undefined {
-  return /^description:\s*(.+)$/m.exec(skill)?.[1]?.trim();
-}
-
 export type PluginContractInput = {
   id: string;
   label: string;
   consumerCode: string;
   pageIds: readonly string[];
   skill?: string;
+  /** Parsed by the Agent resource owner; GEA does not parse Skill metadata. */
+  description?: string;
   /** 模块自己的文本资源（index.html、脚本等），用来静态提取可读表。 */
   sources?: readonly string[];
   /** 该模块允许被对话改到的最大等级，默认只改页面草稿。 */
@@ -204,7 +201,7 @@ export type PluginContractInput = {
 export function contractFromPlugin(input: PluginContractInput): CapabilityContract {
   const tables = tablesFromSource(...(input.sources ?? []));
   const rules = rulesFromSkill(input.skill ?? "");
-  const description = skillDescription(input.skill ?? "");
+  const description = input.description;
   const maxEffect = input.maxEffect ?? "draft";
   return {
     id: input.id,

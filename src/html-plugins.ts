@@ -255,7 +255,7 @@ export async function registerHtmlPlugins(
       pageAgents: loadedAgentResources.pageAgents,
       capabilityContract: await readPluginContract(directory, manifest.declarations, contractFromPlugin({
         id: manifest.id, label: manifest.name, consumerCode: manifest.gea.consumerCode,
-        pageIds: pages.map((page: { id: string }) => page.id), skill, mock, maxEffect: "view",
+        pageIds: pages.map((page: { id: string }) => page.id), skill, description: loadedAgentResources.skillDescription, mock, maxEffect: "view",
         sources: await readContractSources(directory),
       })),
       pages,

@@ -79,7 +79,7 @@ test("口径只摘带口径/规则/边界的小节，并有长度上限", () => 
   assert.match(rules[0], /order-net-gap-v3/);
   assert.match(rules[1], /不持有凭据/);
   assert.ok(!rules.join("").includes("先读页面再回答"));
-  assert.equal(m.skillDescription(skill), "分仓库存页面。");
+  assert.equal("skillDescription" in m, false);
   assert.deepEqual(m.rulesFromSkill("x".repeat(10000)), []);
 });
 
@@ -89,6 +89,7 @@ test("迁移页面派生成 self-report 契约，工作台派生成 self-report 
     label: "分仓库存",
     consumerCode: "branch-inventory",
     pageIds: ["inventory-fc"],
+    description: "分仓库存页面。",
     skill: "---\ndescription: 分仓库存页面。\n---\n\n## 口径\n\n按 V3 计算。\n",
     sources: ["SELECT * FROM data_service.agents_scm_branch_inventory_snapshot"],
   });
@@ -112,6 +113,7 @@ test("注册表只由契约产出白名单与只读模块清单", () => {
     label: "分仓库存",
     consumerCode: "branch-inventory",
     pageIds: ["inventory-fc"],
+    description: "分仓库存页面。",
     skill: "---\ndescription: 分仓库存页面。\n---\n\n## 口径\n\n按 V3 计算。\n",
     sources: ["SELECT * FROM data_service.agents_scm_branch_inventory_snapshot"],
   });
