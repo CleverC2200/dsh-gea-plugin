@@ -168,7 +168,7 @@ test("同一屏第二次读取只回 unchanged：不把整包重复塞进历史"
       body: JSON.stringify({
         lease,
         method: "context",
-        parameters: { rows: [{ name: "中心仓" }, { name: "分仓二" }], parts:{pageFilters:{allowedFields:["bases","tab"],tabs:["基地结构","品类结构","货龄结构"],bases:["华东基地","华南基地"]},inventoryInsight:{evidence:{sources:{consumerCode:"base-safety-stock",bases:["华东"],targetMonth:"2026-10-01",targetVersions:["滚动"],targetSnapshots:["2026-09-30 09:00:00+08"],inventorySnapshots:["2026-09-30 09:00:00+08"],orderSnapshots:["2026-09-30 07:25:53.201+08"]}}}} },
+        parameters: { rows: [{ name: "中心仓" }, { name: "分仓二" }], parts:{pageFilters:{allowedFields:["bases","tab"],tabs:["基地结构","品类结构","货龄结构"],bases:["华东基地","华南基地"]},inventoryInsight:{evidence:{missing:["目标不全"],metrics:{shortage:53},completeRanking:true,top:[{base:"中心仓",shortage:53},{base:"分仓二",shortage:1}],sources:{consumerCode:"base-safety-stock",bases:["华东"],targetMonth:"2026-10-01",targetVersions:["滚动"],targetSnapshots:["2026-09-30 09:00:00+08"],inventorySnapshots:["2026-09-30 09:00:00+08"],orderSnapshots:["2026-09-30 07:25:53.201+08"]}}}} },
       }),
     }),
   );
@@ -196,6 +196,9 @@ test("同一屏第二次读取只回 unchanged：不把整包重复塞进历史"
   assert.deepEqual(focused.context.parts.inventoryInsight.evidence.sources.targetSnapshots, ["2026-09-30 09:00:00+08"]);
   assert.deepEqual(focused.context.parts.inventoryInsight.evidence.sources.orderSnapshots, ["2026-09-30 07:25:53.201+08"]);
   assert.ok(!JSON.stringify(focused.context.rows).includes("分仓二"), "focus still narrows business rows");
+  assert.deepEqual(focused.context.parts.inventoryInsight.evidence.missing, ["目标不全"]);
+  assert.equal(focused.context.parts.inventoryInsight.evidence.metrics.shortage, 53);
+  assert.deepEqual(focused.context.parts.inventoryInsight.evidence.top, [{base:"中心仓",shortage:53}]);
 });
 
 test("each plugin's SKILL.md is published for the main conversation", async () => {
