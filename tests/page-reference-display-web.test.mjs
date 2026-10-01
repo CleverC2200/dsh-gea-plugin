@@ -49,3 +49,36 @@ test("queue previews limit decoded labels instead of cutting their receipt", asy
   assert.ok(html.includes("…"));
   assert.ok(!html.includes("dsh-page:"));
 });
+
+test("queue previews fold native session and file references before limiting", async t => {
+  const { PageReferenceText } = await renderer(t);
+  const prefix = "读".repeat(170);
+  for (const reference of [
+    "@[库存会话](dsh-session:InNlc3Npb24tNDM0)",
+    `@${"long-directory/".repeat(20)}库存.txt`,
+  ]) {
+    const html = renderToStaticMarkup(React.createElement(PageReferenceText, {
+      text: prefix + " " + reference + " 后续说明", sessionLabels: [], maxLength: 200,
+    }));
+    const visible = html.replace(/<[^>]*>/g, "");
+    assert.ok(visible.endsWith(" 后续说明"));
+    assert.ok(!visible.includes("dsh-session:"));
+    assert.ok(!visible.includes("…"));
+  }
+});
+
+test("mixed page and native references share one Unicode preview budget", async t => {
+  const { PageReferenceText } = await renderer(t);
+  const page = serializeReference({ id: "R123456abcdef", label: "😀库存页" });
+  const wire = "@[会话](dsh-session:" + "a".repeat(300) + ") " + page + "@目录/库存.txt 后续说明";
+  for (const maxLength of [0, 2, 3, 7, 12, 14, 200]) {
+    const html = renderToStaticMarkup(React.createElement(PageReferenceText, {
+      text: wire, sessionLabels: [], maxLength,
+    }));
+    const visible = html.replace(/<[^>]*>/g, "");
+    const expected = "会话 😀库存页 库存.txt 后续说明";
+    const chars = Array.from(expected);
+    assert.equal(visible, chars.length > maxLength ? chars.slice(0, maxLength).join("") + "…" : expected);
+    assert.ok(wire.includes("dsh-page:R123456abcdef"));
+  }
+});

@@ -82,6 +82,8 @@ export async function runSourceProfile(
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
+      if (selected !== undefined && !selected?.manifestSha256)
+        throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
       composition = selected
         ? await readSourceCombination(runtime, selected.id, core)
         : await prepareSourcePlugins(core, runtime, deployment);
@@ -94,7 +96,7 @@ export async function runSourceProfile(
         ),
       );
       if (
-        selected?.manifestSha256 &&
+        selected &&
         selected.manifestSha256 !== manifestSha256
       )
         throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
@@ -110,6 +112,7 @@ export async function runSourceProfile(
           composition.id,
           "node_modules/@cleverc2200/dsh-agent-workbench/lib/business/inventory-fc",
         ),
+        join(runtime, "source-combinations", composition.id, "node_modules/@cleverc2200/dsh-agent-workbench/lib/business/inventory-aqkc"),
       ]);
       const temporary = join(profile, `node_modules-${composition.id}`);
       await symlink(
