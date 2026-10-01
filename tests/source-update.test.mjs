@@ -342,3 +342,53 @@ test("channel compatibility cannot widen a candidate snapshot's declared range",
   assert.equal(result.failed[0].error, "SOURCE_RELEASE_INCOMPATIBLE");
   assert.equal((await readSourceUpdateBaseline(f.runtime, core)).id, f.initial);
 });
+
+test("rewriting a candidate manifest and dependency while waiting for the lock cannot reauthorize changed bytes", async (t) => {
+  const f = await sourceUpdateFixture(t),
+    candidate = await f.snapshot({ [gea]: { version: "1.1.0" } });
+  const directory = join(f.runtime, "source-combinations", candidate),
+    file = join(directory, "combination.json"),
+    record = JSON.parse(await fs.readFile(file, "utf8"));
+  const external = join(f.runtime, "external"),
+    dependency = join(external, "value.js");
+  await fs.mkdir(external);
+  await fs.writeFile(dependency, "original dependency");
+  const link = join(
+    directory,
+    "node_modules",
+    gea,
+    "node_modules",
+    "fixture-dependency",
+  );
+  await fs.symlink(external, link);
+  const { createHash } = await import("node:crypto");
+  const hash = (value) => createHash("sha256").update(value).digest("hex");
+  record.files[`node_modules/${gea}/node_modules/fixture-dependency`] =
+    "link:" + external;
+  record.externalRoots.push(external);
+  record.externalFiles[dependency] = hash("original dependency");
+  await fs.writeFile(file, JSON.stringify(record));
+  const proposal = await f.proposal(candidate, [gea]),
+    reached = Promise.withResolvers(),
+    resume = Promise.withResolvers();
+  const pending = applySourceUpdate(f.runtime, proposal, {
+    ...options,
+    io: {
+      ...fs,
+      open: async (...args) => {
+        reached.resolve();
+        await resume.promise;
+        return fs.open(...args);
+      },
+    },
+  });
+  await reached.promise;
+  await fs.writeFile(dependency, "changed dependency");
+  record.externalFiles[dependency] = hash("changed dependency");
+  await fs.writeFile(file, JSON.stringify(record));
+  resume.resolve();
+  const result = await pending;
+  assert.equal(result.phase, "failed");
+  assert.equal(result.failed[0].error, "SOURCE_ARTIFACT_MANIFEST_MISMATCH");
+  assert.equal((await readSourceUpdateBaseline(f.runtime, core)).id, f.initial);
+});

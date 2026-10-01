@@ -114,6 +114,7 @@ export async function applySourceUpdate(
           throw Error("SOURCE_ARTIFACT_IDENTITY_MISMATCH");
         prepared.set(release.package, {
           combination: reference.combination,
+          manifestSha256: reference.manifestSha256,
           actual,
           compatibility: record.compatibility?.[release.package],
           release,
@@ -208,6 +209,17 @@ export async function applySourceUpdate(
         [...prepared].map(([name, value]) => [name, value.combination]),
       ),
       core,
+      {
+        expectedManifests: {
+          [current.id]: current.manifestSha256,
+          ...Object.fromEntries(
+            [...prepared.values()].map((value) => [
+              value.combination,
+              value.manifestSha256,
+            ]),
+          ),
+        },
+      },
     );
     operation.target = combination.id;
     const assembledRecord = await json(

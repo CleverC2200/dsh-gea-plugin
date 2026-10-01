@@ -12,7 +12,7 @@ import {
   unlink,
   lstat,
 } from "node:fs/promises";
-import { join, resolve, basename } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -512,29 +512,33 @@ export function sourceComponent(record, plugins, name) {
 }
 
 /** Assemble selected component artifacts without replacing the latest unrelated components. */
-export async function mergeSourceComponents(runtime, latest, updates, core) {
+export async function mergeSourceComponents(
+  runtime,
+  latest,
+  updates,
+  core,
+  { expectedManifests } = {},
+) {
   const records = new Map(),
     metadata = new Map();
   for (const id of new Set([latest, ...Object.values(updates)])) {
+    const directory = join(runtime, "source-combinations", id);
+    const bytes = await readFile(join(directory, "combination.json"));
+    if (
+      expectedManifests &&
+      createHash("sha256").update(bytes).digest("hex") !== expectedManifests[id]
+    )
+      throw Error("SOURCE_ARTIFACT_MANIFEST_MISMATCH");
+    const record = JSON.parse(bytes);
     await readSourceCombination(runtime, id, core);
-    records.set(
-      id,
-      JSON.parse(
-        await readFile(
-          join(runtime, "source-combinations", id, "combination.json"),
-          "utf8",
-        ),
-      ),
-    );
-    metadata.set(
-      id,
-      JSON.parse(
-        await readFile(
-          join(runtime, "source-combinations", id, "company-plugins.json"),
-          "utf8",
-        ),
-      ),
-    );
+    const pluginBytes = await readFile(join(directory, "company-plugins.json"));
+    if (
+      createHash("sha256").update(pluginBytes).digest("hex") !==
+      record.files["company-plugins.json"]
+    )
+      throw Error("SOURCE_COMBINATION_DIGEST_MISMATCH");
+    records.set(id, record);
+    metadata.set(id, JSON.parse(pluginBytes));
   }
   const original = records.get(latest);
   const id = randomUUID(),

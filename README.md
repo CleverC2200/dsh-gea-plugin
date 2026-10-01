@@ -251,3 +251,5 @@ Demand Forecast follows the user's language for both progress and final answers.
 每次操作保存`source-update-<id>.json`：部分准备失败为`prepare-failed`，写入失败为`write-failed`，读回失败为`readback-failed`，记录成功准备项、失败项和实际选择观察。无法观察时为`unknown`，不能自动回滚或报完整成功；重新调用读取API取得当前id与manifest摘要后，使用`selectSourceCombination(runtime, recoveryId, core, { expected: current })`在锁内再次验证当前状态，旧恢复请求拒绝。明确恢复保留发行摘要历史、原Session和用户数据。
 
 入口先固定请求数据，不在异步准备后继续使用调用者可变对象。组件来源在准备时写入受快照摘要保护的元数据，Git remote后续变化不会改写历史来源；09未记录该信息的快照需按固定登记来源重新准备，不能在更新时追溯补猜来源。本地引用还绑定完整manifest摘要，选择记录绑定同一摘要。新发布的兼容范围与快照声明取交集，已装和新增组件的完整清单都需兼容；有效范围保存在组合快照，重启及明确恢复不会丢失约束或发行摘要历史。
+
+准备阶段保存引用绑定的manifest摘要；锁内合并再次核对该摘要，并用读取时固定的资源/依赖期望验证复制结果。等待锁时同步改写候选清单及依赖，也不能借重新扫描清单把变动后的字节授信。
