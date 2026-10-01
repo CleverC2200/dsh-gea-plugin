@@ -68,7 +68,7 @@ export function registerHtmlClient(ctx: any, pageInteraction: PageInteraction | 
       let hide = () => {};
       const defaultPreset = plugin.presetHidden === true ? "auto-negotiation" : `gea-html-${plugin.id}`;
       void (async () => {
-        const committed = await ctx.agentWorkbench.open(workbenchId, defaultPreset, undefined, defaultPreset);
+        const committed = await ctx.agentWorkbench.open(workbenchId, undefined, undefined, defaultPreset);
         if (committed === false) {
           if (active && revisionAtStart === identityRevision.current)
             setError("页面会话切换未完成，请重新打开业务页");
