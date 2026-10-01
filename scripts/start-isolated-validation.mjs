@@ -85,9 +85,10 @@ export async function runSourceProfile(
       composition = selected
         ? await readSourceCombination(runtime, selected.id, core)
         : await prepareSourcePlugins(core, runtime, deployment);
-      await save(join(runtime, "source-selection.json"), {
-        id: composition.id,
-      });
+      if (!selected)
+        await save(join(runtime, "source-selection.json"), {
+          id: composition.id,
+        });
       process.env.GEA_HTML_PLUGIN_ROOTS ??= JSON.stringify([
         join(
           runtime,

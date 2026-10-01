@@ -12,7 +12,7 @@ const errorCode=error=>code(error?.message)?error.message:code(error?.code)?erro
  * 本地没装过这个包时按“需要安装”处理，保持既有行为。
  */
 const versionParts=value=>{const [core,pre]=String(value??'').split('-',2);return {core:core.split('.').map(Number),pre:pre===undefined?null:pre.split('.')};};
-const isNewer=(candidate,current)=>{
+export const isNewer=(candidate,current)=>{
   if(current===undefined||current===null)return true;
   const next=versionParts(candidate),now=versionParts(current);
   for(let index=0;index<3;index+=1){

@@ -241,3 +241,11 @@ Demand Forecast follows the user's language for both progress and final answers.
 更新和恢复保持同一 `home`、工作目录与可编辑profile配置，只替换源码profile的模块链接和只读覆盖配置。Host重启产生新业务身份scope；旧页面lease不能恢复，保留Session日志也不授予旧scope权限。这里不运行旧安装payload或旧资源适配，也不写远端频道。09的本地模拟频道与浏览器恢复记录由 `tests/branch-stock-upgrade-web.test.mjs` 生成，外部GEA/模型仅用loopback fixture。
 
 已有08源码profile的实体 `node_modules` 在停机后先显式执行一次 `upgradeSourceProfileLayout(runtime)`；该步骤把原代码目录移到同运行目录的备份，Session、home存储和用户配置不移动。然后选择已校验的当前接口快照。后续启动只使用组合模块链接，不保留旧格式运行时适配。依赖图的实际链接、传递依赖文件、核心构建产物和锁摘要一并校验；固定HEAD下重建造成字节变化也拒绝恢复，需保留或重新准备原依赖产物。普通 `pnpm start` 的默认页面也由所选快照提供。
+
+### 本地更新比较与失败状态
+
+`readSourceUpdateBaseline(runtime, core)` 从实际已选快照读取版本、组件资源摘要、Git source来源/提交和核心基线，并返回用于恢复的组合id及manifest摘要。`applySourceUpdate(runtime, proposal, { core, releases })` 使用现有发行模块的`verifyReleaseHistory`及版本比较；仅处理`current-source-update-v1`本地file频道引用，不访问正式发行地址。每个组件声明`version/sha256/source`、本地引用文件的`downloadSha256/url`及`compatible.core/interface/workbench`；引用文件只指定已校验的当前接口快照及包名，实际组件字节仍由09完整快照校验负责。
+
+准备在独立快照完成；锁内重读最新组合，只核对本次目标组件的完整基线并保留其他组件的后续更新。同版不同摘要、来源改变、过期基线、降级、坏下载、实际package版本不符及兼容范围不符均拒绝。合并重新接好插件间依赖与当前覆盖配置/预设，校验新组合后才原子选择。`succeeded`仅表示本地选择写入并读回验证完成，不代替Host启动验收。
+
+每次操作保存`source-update-<id>.json`：部分准备失败为`prepare-failed`，写入失败为`write-failed`，读回失败为`readback-failed`，记录成功准备项、失败项和实际选择观察。无法观察时为`unknown`，不能自动回滚或报完整成功；重新调用读取API取得当前id与manifest摘要后，使用`selectSourceCombination(runtime, recoveryId, core, { expected: current })`在锁内再次验证当前状态，旧恢复请求拒绝。明确恢复保留发行摘要历史、原Session和用户数据。

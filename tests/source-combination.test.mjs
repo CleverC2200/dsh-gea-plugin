@@ -30,7 +30,7 @@ test("selection rejects changed resources and a running Host, preserving the las
   await writeFile(
     join(dir, "combination.json"),
     JSON.stringify({
-      composition: { id },
+      composition: { id, dependencies: {} },
       externalFiles: {},
       externalRoots: [],
       externalLockFiles: [],
@@ -76,7 +76,7 @@ test("same source revision with changed dependency bytes refuses recovery", asyn
   await writeFile(
     join(directory, "combination.json"),
     JSON.stringify({
-      composition: { id },
+      composition: { id, dependencies: {} },
       files: {},
       externalRoots: [join(runtime, "dependency")],
       externalLockFiles: [],
@@ -142,7 +142,7 @@ test("recovery rejects a transitive dependency retarget or added file while old 
   await writeFile(
     join(directory, "combination.json"),
     JSON.stringify({
-      composition: { id },
+      composition: { id, dependencies: {} },
       files: {},
       externalRoots: [root],
       externalLockFiles: [],

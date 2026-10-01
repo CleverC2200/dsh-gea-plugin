@@ -1,0 +1,247 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  applySourceUpdate,
+  readSourceUpdateBaseline,
+} from "../scripts/source-update.mjs";
+import { selectSourceCombination } from "../scripts/source-profile.mjs";
+import {
+  sourceUpdateFixture,
+  core,
+  releases,
+  gea,
+  workbench,
+  manage,
+} from "./fixtures/source-updates.mjs";
+const options = { core, releases };
+
+test("an old delayed candidate cannot overwrite a newer selected version", async (t) => {
+  const f = await sourceUpdateFixture(t),
+    old = await f.snapshot({ [gea]: { version: "1.1.0" } }),
+    next = await f.snapshot({ [gea]: { version: "1.2.0" } });
+  const oldProposal = await f.proposal(old, [gea]),
+    nextProposal = await f.proposal(next, [gea]);
+  const held = Promise.withResolvers(),
+    reached = Promise.withResolvers();
+  const late = applySourceUpdate(f.runtime, oldProposal, {
+    ...options,
+    io: {
+      ...fs,
+      readFile: async (file, ...args) => {
+        if (file === fileURLToPath(oldProposal.releases[0].url)) {
+          reached.resolve();
+          await held.promise;
+        }
+        return fs.readFile(file, ...args);
+      },
+    },
+  });
+  await reached.promise;
+  const installed = await applySourceUpdate(f.runtime, nextProposal, options);
+  assert.equal(installed.phase, "succeeded");
+  held.resolve();
+  const rejected = await late;
+  assert.equal(rejected.phase, "failed");
+  assert.equal(rejected.failed[0].error, "STALE_SOURCE_UPDATE");
+  const current = await readSourceUpdateBaseline(f.runtime, core);
+  assert.equal(current.id, installed.target);
+  assert.equal(current.components[gea].version, "1.2.0");
+});
+
+test("component updates merge into the latest list and keep unrelated changes", async (t) => {
+  const f = await sourceUpdateFixture(t),
+    a = await f.snapshot({ [gea]: { version: "1.1.0" } }),
+    b = await f.snapshot({ [workbench]: { version: "1.1.0" } });
+  const first = await f.proposal(a, [gea]),
+    second = await f.proposal(b, [workbench]);
+  assert.equal(
+    (await applySourceUpdate(f.runtime, first, options)).phase,
+    "succeeded",
+  );
+  const result = await applySourceUpdate(f.runtime, second, options);
+  assert.equal(result.phase, "succeeded");
+  const current = await readSourceUpdateBaseline(f.runtime, core);
+  assert.equal(current.components[gea].version, "1.1.0");
+  assert.equal(current.components[workbench].version, "1.1.0");
+  assert.deepEqual(current.components[manage], f.baseline.components[manage]);
+  const module = await import(
+    pathToFileURL(
+      join(
+        f.runtime,
+        "source-combinations",
+        current.id,
+        "node_modules",
+        gea,
+        "lib/host.js",
+      ),
+    )
+  );
+  assert.equal(module.default.version, "1.1.0");
+  assert.equal(
+    await fs.readFile(join(f.runtime, "workspace/user.txt"), "utf8"),
+    "keep user data",
+  );
+});
+
+for (const scenario of [
+  "same-version",
+  "bad-download",
+  "incompatible",
+  "origin",
+  "baseline-digest",
+  "baseline-core",
+])
+  test(`rejects ${scenario} without changing selection`, async (t) => {
+    const f = await sourceUpdateFixture(t),
+      candidate = await f.snapshot({
+        [gea]: {
+          version: scenario === "same-version" ? "1.0.0" : "1.1.0",
+          label: "new artifact",
+        },
+      });
+    const proposal = await f.proposal(candidate, [gea]);
+    if (scenario === "bad-download")
+      await fs.writeFile(
+        fileURLToPath(proposal.releases[0].url),
+        "corrupted download",
+      );
+    if (scenario === "incompatible")
+      proposal.releases[0].compatible.core = ["b".repeat(40)];
+    if (scenario === "baseline-digest")
+      proposal.baseline.components[gea].sha256 = "b".repeat(64);
+    if (scenario === "baseline-core") proposal.baseline.core = "b".repeat(40);
+    if (scenario === "origin")
+      proposal.releases[0].source.origin =
+        "https://example.invalid/other-source.git";
+    const result = await applySourceUpdate(f.runtime, proposal, options);
+    assert.notEqual(result.phase, "succeeded");
+    assert.equal(
+      (await readSourceUpdateBaseline(f.runtime, core)).id,
+      f.initial,
+    );
+    assert.ok(result.failed.length);
+  });
+
+test("a partial preparation failure reports prepared and failed components without activation", async (t) => {
+  const f = await sourceUpdateFixture(t),
+    candidate = await f.snapshot({
+      [gea]: { version: "1.1.0" },
+      [workbench]: { version: "1.1.0" },
+    }),
+    proposal = await f.proposal(candidate, [gea, workbench]);
+  await fs.writeFile(
+    fileURLToPath(proposal.releases[1].url),
+    "bad second artifact",
+  );
+  const result = await applySourceUpdate(f.runtime, proposal, options);
+  assert.equal(result.phase, "prepare-failed");
+  assert.deepEqual(result.prepared, [gea]);
+  assert.equal(result.failed[0].package, workbench);
+  assert.equal(result.activation, "unchanged");
+  assert.equal((await readSourceUpdateBaseline(f.runtime, core)).id, f.initial);
+});
+
+for (const failure of ["write", "rename-after-write", "readback"])
+  test(`reports real ${failure} state and rechecks before recovery`, async (t) => {
+    const f = await sourceUpdateFixture(t),
+      candidate = await f.snapshot({ [gea]: { version: "1.1.0" } }),
+      proposal = await f.proposal(candidate, [gea]);
+    const io = {
+      ...fs,
+      writeFile: async (path, ...args) => {
+        if (failure === "write" && path.includes("source-selection-"))
+          throw Object.assign(Error("disk write failed"), { code: "EIO" });
+        return fs.writeFile(path, ...args);
+      },
+      rename: async (from, to) => {
+        await fs.rename(from, to);
+        if (failure === "rename-after-write")
+          throw Object.assign(Error("rename acknowledgement lost"), {
+            code: "EIO",
+          });
+      },
+      readFile: async (file, ...args) => {
+        if (
+          failure === "readback" &&
+          file === join(f.runtime, "source-selection.json")
+        )
+          throw Object.assign(Error("selection unreadable"), { code: "EIO" });
+        return fs.readFile(file, ...args);
+      },
+    };
+    const result = await applySourceUpdate(f.runtime, proposal, {
+      ...options,
+      io,
+    });
+    assert.equal(
+      result.phase,
+      failure === "readback" ? "readback-failed" : "write-failed",
+    );
+    const actual = await readSourceUpdateBaseline(f.runtime, core);
+    assert.equal(actual.id === f.initial, failure === "write");
+    assert.equal(
+      result.activation,
+      failure === "write"
+        ? "unchanged"
+        : failure === "readback"
+          ? "unknown"
+          : "selected-unverified",
+    );
+    if (failure !== "write") {
+      await assert.rejects(
+        selectSourceCombination(f.runtime, f.initial, core, {
+          expected: f.baseline,
+        }),
+        /STALE_SOURCE_RECOVERY/,
+      );
+      await selectSourceCombination(f.runtime, f.initial, core, {
+        expected: actual,
+      });
+      assert.equal(
+        (await readSourceUpdateBaseline(f.runtime, core)).id,
+        f.initial,
+      );
+      assert.equal(
+        await fs.readFile(join(f.runtime, "workspace/user.txt"), "utf8"),
+        "keep user data",
+      );
+    }
+    const saved = JSON.parse(
+      await fs.readFile(
+        join(f.runtime, `source-update-${result.id}.json`),
+        "utf8",
+      ),
+    );
+    assert.equal(saved.phase, result.phase);
+  });
+
+test("current package version must match the candidate metadata even when all hashes are valid", async (t) => {
+  const f = await sourceUpdateFixture(t),
+    id = await f.snapshot({ [gea]: { version: "1.1.0" } });
+  const proposal = await f.proposal(id, [gea]);
+  const file = join(f.runtime, "source-combinations", id, "combination.json"),
+    record = JSON.parse(await fs.readFile(file, "utf8"));
+  record.composition.dependencies[gea] = "2.0.0";
+  await fs.writeFile(file, JSON.stringify(record));
+  const result = await applySourceUpdate(f.runtime, proposal, options);
+  assert.equal(result.phase, "prepare-failed");
+  assert.equal(result.failed[0].error, "SOURCE_COMPONENT_VERSION_MISMATCH");
+  assert.equal((await readSourceUpdateBaseline(f.runtime, core)).id, f.initial);
+});
+
+test("a stopped-profile lock cannot be bypassed while the Host owns it", async (t) => {
+  const f = await sourceUpdateFixture(t),
+    candidate = await f.snapshot({ [gea]: { version: "1.1.0" } }),
+    proposal = await f.proposal(candidate, [gea]);
+  await fs.writeFile(join(f.runtime, "source-profile.lock"), "running Host");
+  const result = await applySourceUpdate(f.runtime, proposal, options);
+  assert.notEqual(result.phase, "succeeded");
+  assert.equal(
+    await fs.readFile(join(f.runtime, "source-profile.lock"), "utf8"),
+    "running Host",
+  );
+  assert.equal((await readSourceUpdateBaseline(f.runtime, core)).id, f.initial);
+});

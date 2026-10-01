@@ -12,7 +12,7 @@ import {
   unlink,
   lstat,
 } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, resolve, basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -316,6 +316,41 @@ export async function readSourceCombination(runtime, id, core) {
       }).trim()
   )
     throw Error("SOURCE_COMBINATION_CORE_MISMATCH");
+  if (
+    !record.composition.dependencies ||
+    typeof record.composition.dependencies !== "object" ||
+    Array.isArray(record.composition.dependencies)
+  )
+    throw Error("INVALID_SOURCE_DEPENDENCIES");
+  if (Object.keys(record.composition.dependencies).length) {
+    const plugins = JSON.parse(
+      await readFile(join(directory, "company-plugins.json"), "utf8"),
+    );
+    for (const [name, version] of Object.entries(
+      record.composition.dependencies,
+    )) {
+      if (
+        !/^(?:@[a-zA-Z0-9][a-zA-Z0-9._-]*\/)?[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(
+          name,
+        ) ||
+        typeof version !== "string" ||
+        !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(version)
+      )
+        throw Error("INVALID_SOURCE_COMPONENT");
+      const manifest = JSON.parse(
+        await readFile(
+          join(directory, "node_modules", name, "package.json"),
+          "utf8",
+        ),
+      );
+      if (
+        manifest.name !== name ||
+        manifest.version !== version ||
+        plugins[name]?.version !== version
+      )
+        throw Error("SOURCE_COMPONENT_VERSION_MISMATCH");
+    }
+  }
   const actual = await resourceDigests(directory);
   if (
     JSON.stringify(Object.entries(actual).sort()) !==
@@ -334,12 +369,44 @@ export async function readSourceCombination(runtime, id, core) {
 }
 
 /** Select a verified local combination only while its Host is stopped. */
-export async function selectSourceCombination(runtime, id, core) {
+export async function selectSourceCombination(
+  runtime,
+  id,
+  core,
+  { expected } = {},
+) {
   const lock = await open(join(runtime, "source-profile.lock"), "wx", 0o600);
   try {
+    let current;
+    try {
+      current = JSON.parse(
+        await readFile(join(runtime, "source-selection.json"), "utf8"),
+      );
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    if (expected) {
+      if (current?.id !== expected.id) throw Error("STALE_SOURCE_RECOVERY");
+      await readSourceCombination(runtime, current.id, core);
+      if (
+        (await fileDigest(
+          join(runtime, "source-combinations", current.id, "combination.json"),
+        )) !== expected.manifestSha256
+      )
+        throw Error("STALE_SOURCE_RECOVERY");
+    }
     await readSourceCombination(runtime, id, core);
     const temporary = join(runtime, `source-selection-${randomUUID()}.json`);
-    await writeFile(temporary, JSON.stringify({ id }) + "\n", { mode: 0o600 });
+    await writeFile(
+      temporary,
+      JSON.stringify({
+        id,
+        ...(current?.releaseHistory
+          ? { releaseHistory: current.releaseHistory }
+          : {}),
+      }) + "\n",
+      { mode: 0o600 },
+    );
     await rename(temporary, join(runtime, "source-selection.json"));
   } finally {
     await lock.close();
@@ -393,4 +460,193 @@ export async function upgradeSourceProfileLayout(runtime) {
     await lock.close();
     await unlink(join(runtime, "source-profile.lock"));
   }
+}
+
+/** A component's shipped files and declared source form its update identity. */
+export function sourceComponent(record, plugins, name) {
+  const prefix = `node_modules/${name}/`;
+  const files = Object.entries(record.files)
+    .filter(
+      ([file]) =>
+        file.startsWith(prefix) &&
+        !file.slice(prefix.length).startsWith("node_modules/"),
+    )
+    .map(([file, hash]) => [file.slice(prefix.length), hash])
+    .sort();
+  const source = plugins[name];
+  if (!source || !files.length) throw Error("SOURCE_COMPONENT_MISSING");
+  const origin = execFileSync("/usr/bin/git", ["remote", "get-url", "source"], {
+    cwd: source.source,
+    encoding: "utf8",
+  }).trim();
+  return {
+    version: record.composition.dependencies[name],
+    sha256: createHash("sha256").update(JSON.stringify(files)).digest("hex"),
+    source: { origin, commit: source.commit },
+    core: record.core,
+  };
+}
+
+/** Assemble selected component artifacts without replacing the latest unrelated components. */
+export async function mergeSourceComponents(runtime, latest, updates, core) {
+  const records = new Map(),
+    metadata = new Map();
+  for (const id of new Set([latest, ...Object.values(updates)])) {
+    await readSourceCombination(runtime, id, core);
+    records.set(
+      id,
+      JSON.parse(
+        await readFile(
+          join(runtime, "source-combinations", id, "combination.json"),
+          "utf8",
+        ),
+      ),
+    );
+    metadata.set(
+      id,
+      JSON.parse(
+        await readFile(
+          join(runtime, "source-combinations", id, "company-plugins.json"),
+          "utf8",
+        ),
+      ),
+    );
+  }
+  const original = records.get(latest);
+  const id = randomUUID(),
+    directory = join(runtime, "source-combinations", id),
+    modules = join(directory, "node_modules");
+  await mkdir(modules, { recursive: true });
+  const plugins = {},
+    dependencies = {},
+    externalRoots = new Set(),
+    externalLockFiles = new Set(),
+    locks = { core: original.locks.core };
+  const names = Object.keys(original.composition.dependencies);
+  for (const name of names) {
+    const selected = updates[name] ?? latest;
+    const record = records.get(selected);
+    const source = join(
+        runtime,
+        "source-combinations",
+        selected,
+        "node_modules",
+        name,
+      ),
+      target = join(modules, name);
+    await cp(source, target, {
+      recursive: true,
+      filter: (file) =>
+        !file.slice(source.length).split(/[\\/]/).includes("node_modules"),
+    });
+    dependencies[name] = record.composition.dependencies[name];
+    plugins[name] = metadata.get(selected)[name];
+    locks[name] = record.locks[name];
+    for (const file of record.externalLockFiles)
+      if (file.startsWith(plugins[name].source + "/"))
+        externalLockFiles.add(file);
+    const nodeModules = join(source, "node_modules");
+    const packages = [];
+    for (const entry of await readdir(nodeModules)) {
+      if (entry.startsWith(".")) continue;
+      if (entry.startsWith("@"))
+        for (const child of await readdir(join(nodeModules, entry)))
+          packages.push(`${entry}/${child}`);
+      else packages.push(entry);
+    }
+    for (const dependency of packages) {
+      const location = names.includes(dependency)
+        ? join(modules, dependency)
+        : await realpath(join(nodeModules, dependency));
+      if (!names.includes(dependency)) {
+        if (
+          record.files[`node_modules/${name}/node_modules/${dependency}`] !==
+          "link:" + location
+        )
+          throw Error("SOURCE_DEPENDENCY_LINK_CHANGED");
+        externalRoots.add(location);
+      }
+      const link = join(target, "node_modules", dependency);
+      await mkdir(resolve(link, ".."), { recursive: true });
+      await symlink(location, link);
+    }
+  }
+  externalRoots.add(join(core, "apps/web/dist"));
+  for (const file of original.externalLockFiles)
+    if (file.startsWith(core + "/")) externalLockFiles.add(file);
+  await writeFile(
+    join(directory, "company-plugins.json"),
+    JSON.stringify(plugins, null, 2),
+  );
+  const oldModules = join(
+    runtime,
+    "source-combinations",
+    latest,
+    "node_modules",
+  );
+  const patch = JSON.parse(
+    await readFile(original.composition.patches[0], "utf8"),
+  );
+  const rewritten = JSON.stringify(patch, null, 2)
+    .split(oldModules)
+    .join(modules);
+  await writeFile(join(directory, "deployment.patch.json"), rewritten);
+  const standard = join(
+    core,
+    "packages/bundle/web-app/presets/standard.patch.yml",
+  );
+  const gea = join(modules, "@cleverc2200/gea-dsh-prototype");
+  const business = join(gea, "presets/gea-readonly/agent.cordis.yml");
+  await writeFile(
+    join(directory, "presets.patch.yml"),
+    composeSourcePresets(
+      { source: standard, text: await readFile(standard, "utf8") },
+      { source: business, text: await readFile(business, "utf8") },
+      join(gea, "lib/skill-reference.js"),
+    ),
+  );
+  const composition = {
+    ...original.composition,
+    id,
+    dependencies,
+    patches: [
+      join(directory, "deployment.patch.json"),
+      join(directory, "presets.patch.yml"),
+    ],
+  };
+  const externalFiles = await dependencyDigests(externalRoots);
+  const expectedExternal = {};
+  for (const record of records.values()) {
+    for (const [file, expected] of Object.entries(record.externalFiles)) {
+      if (
+        expectedExternal[file] !== undefined &&
+        expectedExternal[file] !== expected
+      )
+        throw Error("SOURCE_DEPENDENCY_BASELINE_CONFLICT");
+      expectedExternal[file] = expected;
+    }
+  }
+  for (const [file, hash] of Object.entries(externalFiles))
+    if (expectedExternal[file] !== hash)
+      throw Error("SOURCE_DEPENDENCY_DIGEST_MISMATCH");
+  for (const file of externalLockFiles)
+    externalFiles[file] = await fileDigest(file);
+  await writeFile(
+    join(directory, "combination.json"),
+    JSON.stringify(
+      {
+        ...original,
+        composition,
+        files: await resourceDigests(directory),
+        externalRoots: [...externalRoots],
+        externalFiles,
+        externalLockFiles: [...externalLockFiles],
+        locks,
+        assembler: await fileDigest(new URL(import.meta.url)),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  return composition;
 }
