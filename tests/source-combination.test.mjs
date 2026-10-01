@@ -183,3 +183,17 @@ test("recovery rejects a transitive dependency retarget or added file while old 
     },
   );
 });
+
+test('a verified rebuild replaces drifted dependencies while retaining the selection CAS', async t => {
+ const runtime=await realpath(await mkdtemp(join(tmpdir(),'source-rebuild-')));
+ t.after(()=>rm(runtime,{recursive:true,force:true}));
+ const dependencies=join(runtime,'dependencies');await mkdir(dependencies);const input=join(dependencies,'input.txt');
+ const hash=text=>createHash('sha256').update(text).digest('hex');
+ async function snapshot(id,content){const dir=join(runtime,'source-combinations',id);await mkdir(dir,{recursive:true});await writeFile(join(dir,'page.html'),content);await writeFile(join(dir,'combination.json'),JSON.stringify({composition:{id,dependencies:{}},files:{'page.html':hash(content)},externalRoots:[dependencies],externalFiles:{[input]:hash(content)},externalLockFiles:[]}));}
+ const before=randomUUID(),after=randomUUID();await writeFile(input,'before');await snapshot(before,'before');await selectSourceCombination(runtime,before);const expected=JSON.parse(await readFile(join(runtime,'source-selection.json'),'utf8'));
+ await writeFile(input,'after');await snapshot(after,'after');await assert.rejects(readSourceCombination(runtime,before),/DEPENDENCY_DIGEST_MISMATCH/);
+ await assert.rejects(selectSourceCombination(runtime,after,undefined,{expected:{...expected,manifestSha256:'wrong'}}),/STALE_SOURCE_RECOVERY/);
+ await selectSourceCombination(runtime,after,undefined,{expected});assert.equal(JSON.parse(await readFile(join(runtime,'source-selection.json'),'utf8')).id,after);
+ await assert.rejects(selectSourceCombination(runtime,before,undefined,{expected}),/STALE_SOURCE_RECOVERY/);
+ await writeFile(input,'drift-again');const current=JSON.parse(await readFile(join(runtime,'source-selection.json'),'utf8'));await assert.rejects(selectSourceCombination(runtime,after,undefined,{expected:current}),/DEPENDENCY_DIGEST_MISMATCH/);
+});

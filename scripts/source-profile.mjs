@@ -408,8 +408,10 @@ export async function selectSourceCombination(
       if (error.code !== "ENOENT") throw error;
     }
     if (expected) {
-      if (current?.id !== expected.id) throw Error("STALE_SOURCE_RECOVERY");
-      await readSourceCombination(runtime, current.id, core);
+      // Bind the previous choice, even when its dependencies are the reason for rebuilding.
+      // The target below must independently pass the complete artifact/dependency gate.
+      if (current?.id !== expected.id || current?.manifestSha256 !== expected.manifestSha256)
+        throw Error("STALE_SOURCE_RECOVERY");
       if (
         (await fileDigest(
           join(runtime, "source-combinations", current.id, "combination.json"),
