@@ -42,7 +42,7 @@ test('cancelled and superseded loads cannot reinstall old configuration; failure
 
 test('DSH Host authenticates fixed config reads and rejects caller SQL', {timeout:60000}, async t=>{
  const {profile}=await import('./profile.mjs');
- const app=await profile(t);
+ const app=await profile(t,{normalStartup:process.env.GEA_TEST_SOURCE_CORE === "1"});
  assert.equal((await app.rpc('workflow/config')).ok,false);
  await app.login();
  assert.equal((await app.rpc('workflow/config',{sql:'SELECT * FROM secret'})).ok,false);
