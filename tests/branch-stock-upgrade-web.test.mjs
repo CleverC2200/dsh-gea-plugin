@@ -86,7 +86,7 @@ test(
       const tools = body.messages
         .slice(index + 1)
         .filter((message) => message.role === "tool");
-      const name = tools.length === 0 ? "gea_skill" : "gea_cube_query";
+      const name = tools.length === 0 ? "skill" : "gea_cube_query";
       if (tools.length < 2)
         return {
           tool_calls: [
@@ -97,7 +97,7 @@ test(
               function: {
                 name,
                 arguments: JSON.stringify(
-                  name === "gea_skill"
+                  name === "skill"
                     ? { name: "inventory-fc", offset: 1, limit: 80 }
                     : {
                         consumerCode: "branch-inventory",

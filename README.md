@@ -52,7 +52,7 @@ pnpm start --dev --config gea.config.json --runtime .runtime/workbench-developme
 | `src/workbench/` | 独立业务文档、工作流加载器及从 AionUi 适配的原审批工作台 |
 | `src/mocks/` | 仅供测试和演示使用的 DMS、销售计划模拟实现 |
 
-`src/host.ts`、`src/client.tsx`、`src/workbench-entry.tsx` 和 `src/skill-reference.ts` 保持为构建入口；发布后的 `lib/host.js`、`lib/client.js`、`lib/workbench.js`、`lib/skill-reference.js` 及 package exports 不变。
+`src/host.ts`、`src/client.tsx`、`src/workbench-entry.tsx` 保持为构建入口；发布后的 `lib/host.js`、`lib/client.js`、`lib/workbench.js` 及 package exports 不变。
 
 原件来源、许可证及改动范围见 [SOURCE.md](src/workbench/original/SOURCE.md)。旧的三栏仿写组件及占位对话栏已经删除。完整迁移尚未验收：审批保存/通过/退回、消息处理和独立 SKU 推理适配尚未接入；原件中的相应写操作保持禁用。当前 AionUi 源码没有单独的需求提报页面，不能把审批页或未挂载的提报模型当作已迁移页面。
 
@@ -177,9 +177,9 @@ DMS 继续使用 mock。受控 GEA 终审流程可连接既有模拟接收方验
 
 流程配置加载失败时，审批页明确显示流程配置错误，并保留脱敏的请求阶段、HTTP 状态、请求编号和跟踪编号，供技术支持定位。访问令牌、委托令牌和未定义的上游响应字段不会返回浏览器。
 
-需求预测预设的进度说明和最终回答跟随用户语言；中文问题使用中文。Skill 的本地参考文件通过 `gea_skill_reference_read` 按技能名及正文链接的相对路径只读加载，支持 `offset`/`limit` 分段读取。MCP 资源读取只接收服务返回的 URI，本地 `file://` 链接会被拦截并提示正确工具。
+需求预测预设的进度说明和最终回答跟随用户语言；中文问题使用中文。Skill 的本地参考文件通过 Manage 的 `skill_reference_read` 按技能名及正文链接的相对路径只读加载，支持 `offset`/`limit` 分段读取。MCP 资源读取只接收服务返回的 URI，本地 `file://` 链接会被拦截并提示正确工具。
 
-Demand Forecast follows the user's language for both progress and final answers. Its `gea_skill_reference_read` tool reads local references linked by a visible skill, with `offset`/`limit` pagination. MCP resource reads use server-returned URIs; local `file://` links are rejected with guidance to the correct reader.
+Demand Forecast follows the user's language for both progress and final answers. Its Manage-owned `skill_reference_read` tool reads local references linked by a visible skill, with `offset`/`limit` pagination. MCP resource reads use server-returned URIs; local `file://` links are rejected with guidance to the correct reader.
 
 ### 历史隔离共享主题适配（不用于规格41）
 
@@ -273,3 +273,5 @@ Demand Forecast follows the user's language for both progress and final answers.
 Page interaction 的 browser 实现与 wire/reference 公共资源归 Workbench。GEA src/page-interaction 只持有受控引用 Host，src/page-bridge/capability持有实际执行与规则，退出旧兼容 re-export 与独立 page-interaction/example 插件装载。原审批源及其业务规则保留；共同受控 frame 与显式 Session 生命周期由 Workbench承载。HTML startup只读声明/执行 metadata，不读 HTML/Skill/prompt正文，不进行源码 DOM/SQL扫描。
 
 行为验证与真实授权分开：明确管理端未授权项可按本轮分类跳过或用显式mock验收输入，普通500/超时/空结果不推断权限；不在生产请求中自动mock降级。
+
+纯 §5.5 预测计算由 Manage 的 `forecast_compute` 提供，沿当前会话工作区核对已安装启用的 `sinian-demand-baseline`；GEA 不注册纯计算、Skill 正文或参考读取工具。原公式与十进制版本保持，计算来源 hash/完整用户 JSON 核对不授予 Consumer 权限。官方 Skill catalog/loader 保持原文，GEA 仅追加身份、实际业务事实、证据和执行限制。

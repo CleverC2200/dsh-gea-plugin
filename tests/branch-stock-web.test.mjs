@@ -87,7 +87,7 @@ test(
         step++;
         if (step === 1)
           return tool(
-            "gea_skill",
+            "skill",
             { name: "inventory-fc", offset: 1, limit: 80 },
             "stock-skill",
           );

@@ -45,7 +45,7 @@ test('safety stock uses the maintained skill in the real assembled prompt, witho
     }
     body.messages=body.messages.filter(message=>message.tool_call_id!=='load-extra-skill'&&!message.tool_calls?.some(call=>call.id==='load-extra-skill'));requests.push(body);
     const callTool=!body.messages.some(x=>x.role==='tool');
-    const delta=callTool?{tool_calls:[{index:0,id:'load-stock-context',type:'function',function:{name:loadSkill?'gea_skill':'gea_gateway_catalog',arguments:JSON.stringify(loadSkill?{name:'inventory-aqkc'}:{model:'stock_cube'})}}]}:{content:'收到。'};
+    const delta=callTool?{tool_calls:[{index:0,id:'load-stock-context',type:'function',function:{name:loadSkill?'skill':'gea_gateway_catalog',arguments:JSON.stringify(loadSkill?{name:'inventory-aqkc'}:{model:'stock_cube'})}}]}:{content:'收到。'};
     res.end('data: '+JSON.stringify({choices:[{index:0,delta,finish_reason:callTool?'tool_calls':'stop'}]})+'\n\ndata: [DONE]\n\n');return true;
   });
   await app.login();

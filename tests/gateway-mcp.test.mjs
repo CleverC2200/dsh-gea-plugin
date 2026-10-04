@@ -409,7 +409,7 @@ test("local Skill file URI is rejected before gateway IO with the correct reader
           params: { uri: "file:///suite/references/rules-and-conflicts.md" },
         }),
       }),
-    /gea_skill_reference_read/,
+    /skill_reference_read/,
   );
   assert.equal(messages.length, 0);
   const uri = "data-artifact://gateway/returned-artifact";
