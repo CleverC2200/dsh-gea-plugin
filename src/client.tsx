@@ -29,6 +29,13 @@ export function apply(ctx: Context): void {
   const identity = createBusinessIdentityReader();
   ctx.provide("geaIdentity", { getSnapshot: identity.getSnapshot, subscribe: identity.subscribe, readScope: identity.readScope });
   ctx.effect(() => identity.start());
+  ctx.provide('businessAccount',{
+    getSnapshot:identity.getSnapshot,
+    subscribe:identity.subscribe,
+    startLogin:signal=>request('login/start',{},AbortSignal.any([signal,AbortSignal.timeout(10000)])),
+    pollLogin:async(loginId,signal)=>{const value=await request<{status:string}>('login/poll',{loginId},AbortSignal.any([signal,AbortSignal.timeout(10000)]));if(value.status==='expired')throw Error('二维码已过期，请重新登录。');if(value.status==='authenticated')await identity.refresh(signal);return value.status==='authenticated';},
+    logout:async signal=>{const value=await request<{authenticated:boolean}>('logout',{},AbortSignal.any([signal,AbortSignal.timeout(10000)]));if(value.authenticated!==false)throw Error('LOGOUT_FAILED');await identity.refresh(signal);},
+  });
   const incoming = createNavigationSelection();
 
   function InboxPage() {

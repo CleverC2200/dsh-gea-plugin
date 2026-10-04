@@ -15,7 +15,7 @@ const { outputFiles } = await build({
   },
   bundle: true, write: false, platform: 'browser', format: 'iife',
 });
-const css = await readFile(new URL('../src/client/shell.css', import.meta.url), 'utf8');
+const css = await readFile(new URL('../src/client/native-pages.css', import.meta.url), 'utf8');
 
 /** 上游真实下发的形状：业务类型、来源、通知类型都是内部编码，聚合标识是 UUID。 */
 const aggregateId = '31babed6-1b81-4d7b-a2c3-52bfa571bd23';
