@@ -46,45 +46,20 @@ test("deny 目标：浏览器全禁；终端/侧栏在业务预设里也禁，�
   assert.deepEqual(m.denyTargetsFor(["gea_module_mcp", "skill"], undefined), []);
 });
 
-test("presetOf：顶层与 meta 两种位置都能取到", () => {
-  assert.equal(m.presetOf({ session: { header: { agentPreset: "gea-readonly" } } }), "gea-readonly");
-  assert.equal(m.presetOf({ session: { header: { meta: { agentPreset: "inventory-aqkc" } } } }), "inventory-aqkc");
-  assert.equal(m.presetOf({}), undefined);
-});
-
-test("restrictToolsForAgent：先探已知清单再 deny；探不到就安静放弃", () => {
-  const calls = [];
-  const agent = {
-    session: { header: { agentPreset: "gea-readonly" } },
-    ctx: {
-      tools: {
-        restrict(filter) {
-          calls.push(filter);
-          if (filter.deny.includes("__session_restraint_probe__"))
-            throw new Error(
-              'tools.restrict() names unknown global tools "__session_restraint_probe__"; known global tools: mcp__browser__browser_click, terminal_create, sidebar_open, gea_module_mcp',
-            );
-          return () => {};
-        },
-      },
-    },
-  };
-  assert.equal(typeof m.restrictToolsForAgent(agent), "function");
-  assert.equal(calls.length, 2);
-  assert.deepEqual(calls[1].deny.sort(), [
-    "mcp__browser__browser_click",
-    "sidebar_open",
-    "terminal_create",
-  ]);
-
-  // 探测失败（拿不到已知清单）：只探一次，然后放弃，不抛错
-  let probes = 0;
-  const blind = {
-    session: { header: {} },
-    ctx: { tools: { restrict() { probes += 1; throw new Error("没有这句 known global tools"); } } },
-  };
-  assert.equal(m.restrictToolsForAgent(blind), undefined);
-  assert.equal(probes, 1);
+test("the public restraint uses official projected presets and registry schemas without probing unknown tools", async()=>{
+ const handlers=new Map();const restrictions=[];let known=[...KNOWN];let preset='gea-readonly';
+ const agent={session:{header:{agentPreset:'standard'}},ctx:{tools:{restrict:filter=>{restrictions.push(filter);return ()=>{};}}}};
+ const ctx={tools:{schemas:()=>known.map(name=>({name}))},agents:{list:()=>[agent]},sessionProjections:{stateOf:()=>preset},on:(name,handler)=>{handlers.set(name,handler);return ()=>handlers.delete(name);}};
+ const dispose=m.mountSessionToolRestraint(ctx);
+ await handlers.get('agent/pre-step')({agent},async()=>({kind:'enter'}));
+ assert.equal(restrictions.length,1);
+ assert.deepEqual(restrictions[0].deny.sort(),m.denyTargetsFor(KNOWN,'gea-readonly').sort());
+ known.push('mcp__browser__new_tool');handlers.get('tools/change')();
+ assert.ok(restrictions.at(-1).deny.includes('mcp__browser__new_tool'));
+ preset='standard';handlers.get('agent-preset/selected')();
+ assert.equal(restrictions.at(-1).deny.includes('terminal_create'),false);
+ assert.ok(restrictions.every(filter=>!filter.deny.some(name=>name.includes('probe')||name==='run_code')));
+ dispose();assert.equal(handlers.size,0);
 });
 
 test("接线：宿主在 agent/pre-step 上装一次，且部署补丁默认不挂浏览器 MCP", async () => {

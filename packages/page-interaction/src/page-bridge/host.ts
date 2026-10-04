@@ -46,7 +46,7 @@ export type PageBridge = {
   take(sessionId: string, toolCallId: string): AgUiToolMessage | undefined;
   /** 取消尚未完成的调用；迟到的页面回执不会再进入宿主结果队列。 */
   cancel(sessionId: string, toolCallId: string): void;
-  wait(sessionId: string, toolCallId: string, waitMs: number, pollMs?: number): Promise<AgUiToolMessage | undefined>;
+  wait(sessionId: string, toolCallId: string, waitMs: number, pollMs?: number, signal?: AbortSignal): Promise<AgUiToolMessage | undefined>;
   reset(sessionId: string): void;
   /** 身份或部署整体变化时清空所有会话。 */
   resetAll(): void;
@@ -91,6 +91,18 @@ export function createPageBridge(options: PageBridgeOptions = {}): PageBridge {
     return result.message;
   };
 
+  const cancel = (sessionId: string, toolCallId: string): void => {
+      const session = sessions.get(sessionId);
+      if (!session) return;
+      session.toolCalls = session.toolCalls.filter(
+        (call) => call.toolCallId !== toolCallId,
+      );
+      session.results.delete(toolCallId);
+      session.cancelled.set(toolCallId, now());
+      prune(session, now());
+  };
+
+
   return {
     enqueue(sessionId, input) {
       const session = sessionOf(sessionId);
@@ -107,8 +119,11 @@ export function createPageBridge(options: PageBridgeOptions = {}): PageBridge {
     },
 
     pull(sessionId, toolMessages) {
-      const session = sessionOf(sessionId);
+      const session = sessions.get(sessionId);
+      if(!session)return [];
+      prune(session,now());
       for (const message of validateToolMessages(toolMessages)) {
+        if(!session.toolCalls.some(call=>call.toolCallId===message.toolCallId))continue;
         // 超时取消后，页面可能已经在执行并迟到回传；这条回执不能复活调用。
         if (session.cancelled.has(message.toolCallId)) continue;
         session.results.set(message.toolCallId, {
@@ -137,25 +152,28 @@ export function createPageBridge(options: PageBridgeOptions = {}): PageBridge {
 
     take,
 
-    cancel(sessionId, toolCallId) {
-      const session = sessions.get(sessionId);
-      if (!session) return;
-      session.toolCalls = session.toolCalls.filter(
-        (call) => call.toolCallId !== toolCallId,
-      );
-      session.results.delete(toolCallId);
-      session.cancelled.set(toolCallId, now());
-      prune(session, now());
-    },
+    cancel,
 
-    async wait(sessionId, toolCallId, waitMs, pollMs = 100) {
-      const deadline = now() + waitMs;
-      for (;;) {
-        const result = take(sessionId, toolCallId);
-        if (result) return result;
-        if (now() >= deadline) return undefined;
-        await new Promise((resolve) => setTimeout(resolve, pollMs));
-      }
+    async wait(sessionId, toolCallId, waitMs, pollMs = 100, signal) {
+      signal?.throwIfAborted();
+      const owner=sessions.get(sessionId);
+      if(!owner)return undefined;
+      const deadline=now()+waitMs;
+      try {
+        for(;;){
+          signal?.throwIfAborted();
+          if(sessions.get(sessionId)!==owner)throw Error("PAGE_TOOL_OWNER_CHANGED");
+          const result=take(sessionId,toolCallId);
+          if(result)return result;
+          if(now()>=deadline){cancel(sessionId,toolCallId);return undefined;}
+          await new Promise<void>((resolve,reject)=>{
+            const abort=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);reject(signal?.reason);};
+            const timer=setTimeout(()=>{signal?.removeEventListener('abort',abort);resolve();},Math.min(pollMs,Math.max(0,deadline-now())));
+            signal?.addEventListener('abort',abort,{once:true});
+            if(signal?.aborted)abort();
+          });
+        }
+      }catch(error){cancel(sessionId,toolCallId);throw error;}
     },
 
     reset(sessionId) {
