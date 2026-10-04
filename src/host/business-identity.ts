@@ -42,9 +42,6 @@ export function toolConsumer(
   sessionId: string | undefined,
   requested: unknown,
 ): string {
-  const current = sessionConsumer(ctx, business, sessionId);
-  if (typeof requested !== "string" || !requested.trim()) return current;
-  const target = requested.trim();
   const agent = sessionId
     ? ctx.agents?.get(sessionId as Parameters<typeof ctx.agents.get>[0])
     : undefined;
@@ -52,11 +49,15 @@ export function toolConsumer(
     ? ctx.sessionProjections.stateOf(agent.session, "agentPreset")
     : undefined;
   const profile = profileFor(preset ?? undefined);
+  if(!profile)throw Error("GEA_BUSINESS_PROFILE_REQUIRED: 请先选用已安装启用的业务资源；Skill或页面可见不授予Consumer业务权限。");
+  const current=sessionConsumer(ctx,business,sessionId);
+  if(typeof requested!=="string" || !requested.trim())return current;
+  const target=requested.trim();
   const routes =
     profile?.crossConsumers?.map((code) =>
       code === "sales_forecast" ? business.config.analysisAgentCode : code,
     ) ?? [];
-  if (profile && target !== current && !routes.includes(target))
+  if (target !== current && !routes.includes(target))
     throw Error(
       "GEA_CONSUMER_ROUTE_NOT_REGISTERED: 当前Agent未登记此跨业务路径；不得通过更换consumer试探。请使用当前身份或交付该范围的能力缺口。",
     );

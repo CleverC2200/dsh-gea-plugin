@@ -292,18 +292,10 @@ export function mountBusinessPrompts(
     }
     const state = candidate ?? stateOf(agent);
     const names = namesFor(agent, state);
-    // Probe only the public restriction contract; schemas() cannot see already masked names.
-    let known: string[] = [];
-    try {
-      agent.ctx.tools.restrict({ deny: ["__gea_prompt_capability_probe__"] });
-    } catch (error) {
-      known = (/known global tools: (.*)$/.exec(String(error))?.[1] ?? "")
-        .split(",")
-        .map((name) => name.trim())
-        .filter(Boolean);
-    }
-    if (!known.length) throw Error("GEA_TOOL_SCOPE_UNAVAILABLE");
-    const allow = known.filter((name) => names.has(name));
+    const known = ctx.tools.schemas().map(tool=>tool.name).filter(name=>name!=="run_code");
+    // These selected preset capabilities live on ancestors, not in the global registry projection.
+    const selected = ["skill","gea_skill_reference_read"].filter(name=>ctx.tools.get(name,agent)!==undefined);
+    const allow = [...new Set([...known.filter(name=>names.has(name)),...selected])];
     const signature = allow.sort().join("|");
     if (signature === state.mask) return;
     // Install the replacement before disposing the previous restriction: never a permissive gap.
@@ -375,7 +367,10 @@ export function mountBusinessPrompts(
   offs.push(
     ctx.tools.guard((exec) => {
       const agent = exec.agent;
-      if (!profileOf(agent) || !agent) return;
+      if (!profileOf(agent) || !agent) {
+        if(exec.name.startsWith("gea_") && exec.name!=="gea_skill_reference_read")return "GEA_BUSINESS_PROFILE_REQUIRED: Skill和页面可见不授予Consumer业务权限，请选用已安装启用的业务资源。";
+        return;
+      }
       const state = stateOf(agent);
       const callArgs = exec.arguments as Record<string, unknown>;
       if (exec.name === 'gea_sales_plan_read') {

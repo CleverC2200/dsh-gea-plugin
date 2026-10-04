@@ -147,11 +147,13 @@ export function createPageToolRegistry(
       at: number;
       dispose: () => void;
       restraint?: () => void;
+      controller: AbortController;
       /** 这一屏的目录是页面自己报的，还是宿主扫出来的。 */
       source: PageCatalogSource;
     }
   >();
   const restrictionFailed = new Set<string>();
+  let closed=false;
 
   /**
    * 只在该 agent 作用域禁用指定全局工具。
@@ -161,18 +163,7 @@ export function createPageToolRegistry(
     agent: { ctx: { tools: { restrict: (f: { deny: string[] }) => () => void } } },
     candidates: readonly string[],
   ): (() => void) | undefined => {
-    // 先探一次，从错误信息里拿到"当前实际存在的全局工具名"：
-    // restrict 对未知名字是整体抛错，硬编名单会随部署增删工具而失效。
-    let known: string[] = [];
-    try {
-      agent.ctx.tools.restrict({ deny: ["__page_bridge_probe__"] });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      known = (/known global tools: (.*)$/.exec(message)?.[1] ?? "")
-        .split(",")
-        .map((name) => name.trim())
-        .filter(Boolean);
-    }
+    const known = ctx.tools.schemas().map(tool=>tool.name).filter(name=>name!=="run_code");
     const target = new Set<string>();
     for (const name of candidates) if (known.includes(name)) target.add(name);
     // 兜底：所有浏览器 MCP 工具（按前缀，未来新增的也覆盖）。
@@ -198,8 +189,7 @@ export function createPageToolRegistry(
     const now = Date.now();
     for (const [sessionId, entry] of [...registered])
       if (now - entry.at > staleMs) {
-        registered.delete(sessionId);
-        entry.dispose();
+        dispose(sessionId);
       }
   }, Math.min(staleMs, 10_000));
   sweep.unref?.();
@@ -208,8 +198,9 @@ export function createPageToolRegistry(
     sessionId: string,
     catalog: PageCatalog,
     args: Record<string, unknown>,
-    options: { dataAllowed: boolean; source: PageCatalogSource },
+    options: { dataAllowed: boolean; source: PageCatalogSource; signal:AbortSignal },
   ): Promise<string> => {
+    options.signal.throwIfAborted();
     const kind = typeof args.kind === "string" ? args.kind : null;
     // 只要目录、不做事：目录本身不再写进工具说明（那会让每次请求都付一次 token）。
     // 线上实测模型会把"要目录"写成 kind=directory（不在动词枚举里），两种写法都认。
@@ -283,11 +274,20 @@ export function createPageToolRegistry(
       ? consumer.validate(args, sessionId)
       : args;
     const before = consumer.stateSnapshot?.(sessionId)?.sequence ?? 0;
+    options.signal.throwIfAborted();
     const toolCallId = bridge.enqueue(sessionId, {
       toolCallName: catalog.tool,
       args: validated,
     });
-    const message = await bridge.wait(sessionId, toolCallId, waitMs);
+    let message;
+    try {
+      message = await bridge.wait(sessionId, toolCallId, waitMs,100,options.signal);
+      options.signal.throwIfAborted();
+    }catch(error){
+      bridge.cancel(sessionId,toolCallId);
+      drafts.finish(begun.receiptId,{applied:false,error:"PAGE_TOOL_CANCELLED"});
+      throw error;
+    }
     if (message === undefined) bridge.cancel(sessionId, toolCallId);
     let pageApplied = message !== undefined && message.error === undefined;
     if (pageApplied && message) {
@@ -318,10 +318,13 @@ export function createPageToolRegistry(
     if (applied && consumer.stateSnapshot) {
       const deadline = Date.now() + refreshWaitMs;
       while ((snapshot?.sequence ?? 0) <= before && Date.now() < deadline) {
+        options.signal.throwIfAborted();
         await new Promise((resolve) => setTimeout(resolve, 100));
+        options.signal.throwIfAborted();
         snapshot = consumer.stateSnapshot(sessionId);
       }
     }
+    options.signal.throwIfAborted();
     const snapshotAfterApply = (snapshot?.sequence ?? 0) > before;
     return JSON.stringify({
       source: "PAGE_BRIDGE",
@@ -366,6 +369,8 @@ export function createPageToolRegistry(
     const existing = registered.get(sessionId);
     if (!existing) return;
     registered.delete(sessionId);
+    existing.controller.abort(new Error("PAGE_TOOL_OWNER_RELEASED"));
+    bridge.reset(sessionId);
     existing.dispose();
     existing.restraint?.();
   };
@@ -381,6 +386,7 @@ export function createPageToolRegistry(
       rawCatalog: unknown,
       source: PageCatalogSource = "self-report",
     ): void {
+      if(closed)throw Error("PAGE_TOOL_REGISTRY_CLOSED");
       if (rawCatalog === undefined) return;
       if (rawCatalog === null) {
         dispose(sessionId);
@@ -428,6 +434,7 @@ export function createPageToolRegistry(
         return;
       }
       dispose(sessionId);
+      const controller=new AbortController();
       const { description, parameters } = compilePageCatalog(effective);
       const disposeTool = agent.ctx.tools.register(
         defineTool({
@@ -454,11 +461,12 @@ export function createPageToolRegistry(
             title: `${effective.tool} · ${String(args.kind ?? "")}`,
             rawInput: args,
           }),
-          execute: async (args, exec) =>
-            invoke(exec.agent?.id ?? sessionId, effective, args, {
-              dataAllowed,
-              source,
-            }),
+          execute: async (args, exec) => {
+            if(exec.agent?.id!==sessionId)throw Error("PAGE_TOOL_SESSION_MISMATCH");
+            return invoke(sessionId, effective, args, {
+              dataAllowed,source,signal:AbortSignal.any([exec.signal,controller.signal]),
+            });
+          },
         }),
       );
       const restraint = consumer.denyGlobalToolsInWorkbench
@@ -477,6 +485,7 @@ export function createPageToolRegistry(
         key,
         at: Date.now(),
         dispose: disposeTool,
+        controller,
         source,
         ...(restraint === undefined ? {} : { restraint }),
       });
@@ -492,6 +501,8 @@ export function createPageToolRegistry(
     disposeAll(): void {
       for (const sessionId of [...registered.keys()]) dispose(sessionId);
     },
+    /** End this owner, including its stale-entry timer. Identity resets use disposeAll instead. */
+    shutdown():void {closed=true;clearInterval(sweep);for(const sessionId of [...registered.keys()])dispose(sessionId);},
     /** 最近的"改草稿"回执，供诊断与验收复核。 */
     receipts: () => drafts.receipts(),
   };

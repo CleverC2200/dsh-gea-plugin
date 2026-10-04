@@ -422,6 +422,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       "mcp__browser__browser_snapshot",
     ],
   });
+  ctx.effect(() => () => {pageTools.shutdown();pageBridge.resetAll();});
+  ctx.effect(() => ctx.on("agent/disposed",({agent})=>pageTools.dispose(agent.id)));
   // 身份变化后旧会话的页面工具一律注销；页面下一轮声明会重新注册。
   let pageToolOwner = business.pageSessionScope();
   ctx.effect(() => business.watchIdentity(() => {
@@ -440,7 +442,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   // 业务会话里把"浏览器自动化 + 终端/侧栏"这类全局工具从模型可见清单里摘掉：
   // 它们与业务问答无关，却每次请求都占上下文（实测浏览器 25 个工具 = 18.5k 字符）。
   // 必须在第一步之前装好，所以挂在 agent/pre-step 上、每个 agent 只装一次。
-  ctx.effect(() => mountSessionToolRestraint(ctx, (message) => console.log(message)));
+  ctx.effect(() => mountSessionToolRestraint(ctx));
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());
   pageBridgeHost.declare = (sessionId, catalog, source) =>

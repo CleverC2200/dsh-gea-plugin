@@ -505,11 +505,8 @@ test("capability cancellation, catalog and native restriction failures commit no
       masks.add(mask);
       return () => masks.delete(mask);
     },
-    schemas() {
-      return names
-        .filter((name) => [...masks].every((mask) => mask.has(name)))
-        .map((name) => ({ name }));
-    },
+    schemas(scope) {return names.filter(name=>scope===undefined || [...masks].every(mask=>mask.has(name))).map(name=>({name}));},
+    get(name,scope) {return this.schemas(scope).find(tool=>tool.name===name);},
   };
   const ctx = {
     tools: toolService,
@@ -815,10 +812,8 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
       masks.add(mask);
       return () => masks.delete(mask);
     },
-    schemas: () =>
-      names
-        .filter((n) => [...masks].every((m) => m.has(n)))
-        .map((name) => ({ name })),
+    schemas: scope => names.filter(n=>scope===undefined || [...masks].every(m=>m.has(n))).map(name=>({name})),
+    get: (name,scope) => (scope===undefined || [...masks].every(m=>m.has(name))) && names.includes(name) ? {name} : undefined,
   };
   const agent = {
     id: "fixture",
@@ -876,7 +871,7 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
       kind: "accept",
       messages: [],
     }));
-    return toolService.schemas().map((x) => x.name);
+    return toolService.schemas(agent).map((x) => x.name);
   };
   for (const transition of ["query", "turn", "preset", "identity"]) {
     const old1 = await start(),

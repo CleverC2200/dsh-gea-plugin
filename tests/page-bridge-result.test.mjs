@@ -67,7 +67,7 @@ test("元素目录改成按需取：说明里只有数量，directory=true 才�
 
   // 要目录时才回，且默认有上限、可 focus 收窄。
   const all = JSON.parse(
-    await registered.execute({ kind: "invoke", directory: true }, { agent }),
+    await registered.execute({ kind: "invoke", directory: true }, { agent, signal:new AbortController().signal }),
   );
   assert.equal(all.directory.counts.total, 3);
   assert.equal(all.directory.counts.interactive, 2);
@@ -80,7 +80,7 @@ test("元素目录改成按需取：说明里只有数量，directory=true 才�
   const focused = JSON.parse(
     await registered.execute(
       { kind: "invoke", directory: true, focus: "长沙", values: true },
-      { agent },
+      { agent, signal:new AbortController().signal },
     ),
   );
   assert.deepEqual(
@@ -92,12 +92,12 @@ test("元素目录改成按需取：说明里只有数量，directory=true 才�
 
   // 线上实测：模型会把"要目录"写成 kind=directory（不在动词枚举里）→ 这里也认。
   const alias = JSON.parse(
-    await registered.execute({ kind: "directory" }, { agent }),
+    await registered.execute({ kind: "directory" }, { agent, signal:new AbortController().signal }),
   );
   assert.ok(alias.directory, "kind=directory 当作要目录");
 
   // 既没给动词也不要目录：给一句能照着改的说明，而不是看不懂的元素错误。
-  const missing = JSON.parse(await registered.execute({}, { agent }));
+  const missing = JSON.parse(await registered.execute({}, { agent, signal:new AbortController().signal }));
   assert.equal(missing.error, "PAGE_KIND_REQUIRED");
   assert.match(missing.note, /directory=true/);
 });
@@ -141,7 +141,7 @@ test("页面明确回填 applied=false 时，宿主不会误报成功", async ()
   const result = JSON.parse(
     await registered.execute(
       { kind: "invoke", target: "row:1", action: "expand" },
-      { agent },
+      { agent, signal:new AbortController().signal },
     ),
   );
   assert.equal(result.applied, false);
@@ -185,7 +185,7 @@ test("页面等待超时会取消排队调用", async () => {
   const result = JSON.parse(
     await registered.execute(
       { kind: "invoke", target: "row:1", action: "expand" },
-      { agent },
+      { agent, signal:new AbortController().signal },
     ),
   );
   assert.equal(result.error, "PAGE_TOOL_PENDING");
