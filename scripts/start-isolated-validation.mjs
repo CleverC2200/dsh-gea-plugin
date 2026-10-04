@@ -175,11 +175,26 @@ export async function runSourceProfile(
       ],
       { cwd: join(runtime, "workspace"), env: process.env, stdio: "inherit" },
     );
+    const processRecord = {
+      launcherPid: process.pid,
+      hostPid: child.pid,
+      core: coreSha,
+      combination: composition.id ?? null,
+      status: "running",
+      port,
+    };
+    await save(join(runtime, "source-host.json"), processRecord);
     process.on("SIGTERM", () => child.kill("SIGTERM"));
     process.on("SIGINT", () => child.kill("SIGINT"));
     process.exitCode = await new Promise((done, fail) => {
       child.once("error", fail);
       child.once("exit", (code) => done(code ?? 1));
+    });
+    await save(join(runtime, "source-host.json"), {
+      ...processRecord,
+      status: "exited",
+      exitCode: child.exitCode,
+      signal: child.signalCode,
     });
   } finally {
     await lock.close();

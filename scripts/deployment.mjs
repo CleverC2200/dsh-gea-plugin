@@ -158,8 +158,46 @@ export function resolveWorkbench(anchor = import.meta.url) {
   }
 }
 
+/**
+ * Resolve the built-in content plugins every GEA composition mounts.
+ *
+ * genui renders model-authored inline UI; better-sidebar adds the right-Sidebar
+ * explorer/editor/terminal/git/browser tab types. Both are ordinary
+ * dependencies of this package, so a release install resolves them from its own
+ * node_modules; a source checkout resolves them from the development install.
+ * The rows carry an absolute entry path in non-bundle compositions and lose it
+ * in bundle compositions, where the package's own `cordis.patch.yml` mounts the
+ * same ids by package name.
+ */
+export function resolveBuiltinPlugins(anchor = import.meta.url) {
+  const dependency = createRequire(anchor);
+  const entry = (specifier, id) => {
+    const manifest = JSON.parse(
+      readFileSync(dependency.resolve(`${specifier}/package.json`), "utf8"),
+    );
+    if (!/^0\.\d+\.\d+/.test(manifest.version))
+      throw new Error(`BUILTIN_PLUGIN_INCOMPATIBLE: ${manifest.name}@${manifest.version}`);
+    return { id, name: dependency.resolve(manifest.name) };
+  };
+  try {
+    return [
+      {
+        ...entry("@changfenhuang/dsh-genui", "genui"),
+        // 围栏渲染失败时把逐节点诊断送回同一轮，让模型重发修正版。
+        config: { fenceFeedback: true },
+      },
+      entry("dsh-better-sidebar", "better-sidebar"),
+    ];
+  } catch (error) {
+    if (error.message.startsWith("BUILTIN_PLUGIN_INCOMPATIBLE")) throw error;
+    throw new Error(
+      `BUILTIN_PLUGIN_MISSING: install the bundled genui and better-sidebar dependencies (${error.message})`,
+    );
+  }
+}
+
 /** Build ordinary patch rows for the supported dsh profile launcher. */
-export function deploymentPatch(config, root, runtime, { bundle = false } = {}) {
+export function businessDeploymentPatch(config, root, runtime, { bundle = false } = {}) {
   const model = config.analysis.mode === "model";
   const analysis = config.analysis;
   const rows = [
@@ -171,28 +209,6 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
         model: model ? analysis.model : "receipt",
       },
     },
-    // 浏览器 MCP（Playwright）**默认不挂**：它一次注入 25 个 mcp__browser__* 工具，实测
-    // 合计 18,498 字符，占工具清单 2/3（整块从 12.2k 推到 27.7k）——业务问答用不到它，
-    // 却每次请求都付这份上下文；每次启动还会拉起一个 npx 进程 + 浏览器。
-    // 需要浏览器自动化的场合显式打开：GEA_BROWSER_MCP=1。
-    ...(process.env.GEA_BROWSER_MCP === "1"
-      ? [
-          {
-            insert: [
-              {
-                id: "mcp-browser",
-                name: "@deepseek-ai/dsh-mcp-client",
-                config: {
-                  serverName: "browser",
-                  transport: "stdio",
-                  command: "npx",
-                  args: ["-y", "@playwright/mcp@0.0.82", "--browser", "chrome"],
-                },
-              },
-            ],
-          },
-        ]
-      : []),
     {
       insert: [
         {
@@ -258,6 +274,48 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
   if (bundle) return rows.flatMap(row => {
     if (row.id === "ui-layout") return [];
     if (row.insert?.some(entry => entry.id === "gea-proof")) return row.insert.map(({ name, ...entry }) => entry);
+    return [row];
+  });
+  return rows;
+}
+
+/** Historical company Desktop composition; the current official source launcher never calls this interface. */
+export function deploymentPatch(config, root, runtime, { bundle = false } = {}) {
+  const [title, model, ...business] = businessDeploymentPatch(config, root, runtime);
+  const rows = [
+    { insert: [{ id: "agent-workbench", name: resolveWorkbench(), config: { cwd: resolve(runtime, "workspace") } }] },
+    { insert: resolveBuiltinPlugins() },
+    title, model,
+    { id: "agent-presets", config: {
+      default: DEFAULT_PRESET_ID, includeShippedRoot: false, includeUserRoot: false,
+      roots: [{path:resolve(runtime,"native-presets"),trust:"system"},...presetRoots(root)],
+    } },
+    // 浏览器 MCP（Playwright）**默认不挂**：它一次注入 25 个 mcp__browser__* 工具，实测
+    // 合计 18,498 字符，占工具清单 2/3（整块从 12.2k 推到 27.7k）——业务问答用不到它，
+    // 却每次请求都付这份上下文；每次启动还会拉起一个 npx 进程 + 浏览器。
+    // 需要浏览器自动化的场合显式打开：GEA_BROWSER_MCP=1。
+    ...(process.env.GEA_BROWSER_MCP === "1"
+      ? [
+          {
+            insert: [
+              {
+                id: "mcp-browser",
+                name: "@deepseek-ai/dsh-mcp-client",
+                config: {
+                  serverName: "browser",
+                  transport: "stdio",
+                  command: "npx",
+                  args: ["-y", "@playwright/mcp@0.0.82", "--browser", "chrome"],
+                },
+              },
+            ],
+          },
+        ]
+      : []),
+    ...business,
+  ];
+  if (bundle) return rows.flatMap(row => {
+    if (row.insert?.some(entry => ["agent-workbench", "genui", "better-sidebar", "gea-proof"].includes(entry.id))) return row.insert.map(({name,...entry})=>entry);
     return [row];
   });
   return rows;

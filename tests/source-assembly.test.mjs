@@ -76,7 +76,7 @@ test(
         await mkdir(join(source, "scripts"));
         await writeFile(
           join(source, "scripts/deployment.mjs"),
-          "export function deploymentPatch(){return [{id:'agent-default-model',config:{provider:'fixture',model:'fixture'}},{id:'gea-proof',config:{analysisMode:'receipt'}}]}\n",
+          "export function businessDeploymentPatch(){return [{id:'agent-default-model',config:{provider:'fixture',model:'fixture'}},{id:'gea-proof',config:{analysisMode:'receipt'}}]}\n",
         );
       }
       execFileSync("git", ["init", "-q"], { cwd: source });

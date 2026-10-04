@@ -234,11 +234,11 @@ export async function prepareSourcePlugins(
     }
   }
   const gea = plugins.get("@cleverc2200/gea-dsh-prototype").target;
-  const { deploymentPatch } = await import(
+  const { businessDeploymentPatch } = await import(
     pathToFileURL(join(gea, "scripts/deployment.mjs"))
   );
   const endpoint = "https://127.0.0.1:1";
-  const patch = deploymentPatch(
+  const patch = businessDeploymentPatch(
     deployment ?? {
       geaBaseUrl: endpoint,
       environment: "test",
@@ -254,7 +254,7 @@ export async function prepareSourcePlugins(
     gea,
     runtime,
     { bundle: true },
-  ).filter((row) => row.id !== "agent-presets");
+  );
   const modelIndex = patch.findIndex((row) => row.id === "agent-default-model");
   if (modelIndex < 0) throw Error("SOURCE_MODEL_DEFAULT_MISSING");
   const [modelDefault] = patch.splice(modelIndex, 1);

@@ -14,14 +14,32 @@ import { setTimeout as delay } from "node:timers/promises";
 const defaultRoot = resolve(import.meta.dirname, "..");
 /** Decode persisted tool receipts at the test boundary; never omit a malformed result. */
 export function readToolResults(rows) {
-  return rows.filter(row => row.type === "tool/result").map(row => {
-    const message = row.data.message;
-    const result = message.role === "tool" ? message : message.content.find(block => block.type === "tool-result");
-    assert.ok(result && Array.isArray(result.content), "Tool receipt must carry content");
-    assert.equal(result.toolCallId, message.source.callId, "Tool receipt call identity must match its source");
-    return { callId: result.toolCallId, isError: result.isError === true,
-      text: result.content.filter(block => block.type === "text").map(block => block.text).join("\n") };
-  });
+  return rows
+    .filter((row) => row.type === "tool/result")
+    .map((row) => {
+      const message = row.data.message;
+      const result =
+        message.role === "tool"
+          ? message
+          : message.content.find((block) => block.type === "tool-result");
+      assert.ok(
+        result && Array.isArray(result.content),
+        "Tool receipt must carry content",
+      );
+      assert.equal(
+        result.toolCallId,
+        message.source.callId,
+        "Tool receipt call identity must match its source",
+      );
+      return {
+        callId: result.toolCallId,
+        isError: result.isError === true,
+        text: result.content
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("\n"),
+      };
+    });
 }
 export async function readSession(runtime, id) {
   return (await readSessionRows(runtime, id)) ?? [];
@@ -41,8 +59,12 @@ export async function until(read, predicate, timeout = 10000) {
 export async function profile(t, options = {}) {
   const root = options.pluginRoot ?? defaultRoot;
   if (process.env.GEA_TEST_SOURCE_CORE === "1" && resolve(root) !== defaultRoot)
-    throw new Error("SOURCE_TEST_REQUIRES_CURRENT_CHECKOUT: packaged artifacts use the installed-runtime test lane");
-  const dir = await mkdtemp(resolve(options.runtimeParent ?? tmpdir(), "gea-profile-"));
+    throw new Error(
+      "SOURCE_TEST_REQUIRES_CURRENT_CHECKOUT: packaged artifacts use the installed-runtime test lane",
+    );
+  const dir = await mkdtemp(
+    resolve(options.runtimeParent ?? tmpdir(), "gea-profile-"),
+  );
   const key = resolve(dir, "key.pem"),
     cert = resolve(dir, "cert.pem");
   execFileSync(
@@ -66,6 +88,15 @@ export async function profile(t, options = {}) {
     ],
     { stdio: "ignore" },
   );
+  const recordLifecycle = (value) => {
+    if (process.env.GEA_TEST_LIFECYCLE_RECEIPT)
+      appendFileSync(
+        process.env.GEA_TEST_LIFECYCLE_RECEIPT,
+        JSON.stringify({ testName: t.name, directory: dir, ...value }) + "\n",
+        { mode: 0o600 },
+      );
+  };
+  recordLifecycle({ event: "temporary-directory-created" });
   const requests = [];
   let route;
   const server = createServer(
@@ -118,7 +149,9 @@ export async function profile(t, options = {}) {
               gatewayContext: { sessionId: "SES-fixture" },
             },
           });
-        else if (path.endsWith("/ai/gateway/agent/session/current-user/resolve")) {
+        else if (
+          path.endsWith("/ai/gateway/agent/session/current-user/resolve")
+        ) {
           // 审批身份只认账号角色：默认给"区域审批"，用例可用 roles 覆盖（[] 表示任何节点都不可点）。
           const roles = options.roles ?? [
             { code: "sales_plan_region_approver", name: "区域审批" },
@@ -138,13 +171,28 @@ export async function profile(t, options = {}) {
               departments: [],
             },
           });
-        }
-        else if (path.endsWith("/ai/gateway/sql/execute")) {
+        } else if (path.endsWith("/ai/gateway/sql/execute")) {
           const body = JSON.parse(request.body);
-          const rows = ['0', '1', '2', '3', '4', 'Y'].map((node, level) => ({ id: level + 1, type_code: 'Y', examine_level: String(level), node_num: node }));
-          reply({ success: true, code: 200, result: { requestId: request.headers['x-request-id'], operation: 'SELECT', tables: ['agents_scm_plan_workflow_config'], total: rows.length, pageNo: body.pageNo, pageSize: body.pageSize, rows } });
-        }
-        else if (path.endsWith("/periods"))
+          const rows = ["0", "1", "2", "3", "4", "Y"].map((node, level) => ({
+            id: level + 1,
+            type_code: "Y",
+            examine_level: String(level),
+            node_num: node,
+          }));
+          reply({
+            success: true,
+            code: 200,
+            result: {
+              requestId: request.headers["x-request-id"],
+              operation: "SELECT",
+              tables: ["agents_scm_plan_workflow_config"],
+              total: rows.length,
+              pageNo: body.pageNo,
+              pageSize: body.pageSize,
+              rows,
+            },
+          });
+        } else if (path.endsWith("/periods"))
           reply({
             success: true,
             result: {
@@ -190,7 +238,9 @@ export async function profile(t, options = {}) {
         : options.config),
     }),
   );
-  let child, childClosed, childIsClosed = true,
+  let child,
+    childClosed,
+    childIsClosed = true,
     output = "",
     cookie = "",
     origin = "";
@@ -200,26 +250,59 @@ export async function profile(t, options = {}) {
       try {
         if (process.platform === "win32") {
           if (child.exitCode === null && child.signalCode === null)
-            execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+            execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+              stdio: "ignore",
+            });
         } else process.kill(-child.pid, signal);
-      } catch (error) { if (error.code !== "ESRCH") throw error; }
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+      }
     };
     signalTree("SIGTERM");
     let deadline;
     const timer = setTimeout(() => signalTree("SIGKILL"), 10000);
     try {
-      await Promise.race([childClosed, new Promise((_, reject) => {
-        deadline = setTimeout(() => reject(new Error("PROFILE_SHUTDOWN_TIMEOUT: runtime preserved")), 15000);
-      })]);
-    } finally { clearTimeout(timer); clearTimeout(deadline); }
+      await Promise.race([
+        childClosed,
+        new Promise((_, reject) => {
+          deadline = setTimeout(
+            () =>
+              reject(new Error("PROFILE_SHUTDOWN_TIMEOUT: runtime preserved")),
+            15000,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+      clearTimeout(deadline);
+    }
   }
   t.after(async () => {
     let stopped = false;
-    try { await stop(); stopped = true; }
-    finally {
+    try {
+      await stop();
+      stopped = true;
+    } finally {
       server.closeAllConnections();
       await new Promise((done) => server.close(done));
-      if (stopped && !options.preserveRuntime) await rm(dir, { recursive: true, force: true });
+      let host;
+      try {
+        host = JSON.parse(
+          await readFile(resolve(runtime, "source-host.json"), "utf8"),
+        );
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      recordLifecycle({
+        event: "process-cleanup",
+        wrapperPid: child?.pid,
+        wrapperExited: childIsClosed,
+        host,
+      });
+      if (stopped && !options.preserveRuntime) {
+        await rm(dir, { recursive: true, force: true });
+        recordLifecycle({ event: "temporary-directory-removed" });
+      }
     }
   });
   async function start() {
@@ -236,26 +319,60 @@ export async function profile(t, options = {}) {
       options.executablePath ?? process.execPath,
       [
         ...(options.execArgv ?? []),
-        ...(process.env.GEA_TEST_SOURCE_CORE === "1" && !options.desktopGraph && !options.normalStartup ? [resolve(defaultRoot, "tests/source-profile-start.mjs"), config, runtime, ...(options.coreOnly ? ["native-only"] : [])] : options.desktopGraph ? [resolve(defaultRoot, "desktop/runtime-start.mjs")] : ["scripts/start.mjs",
-        ...(options.bundle ? ["--bundle"] : []),
-        "--config",
-        config,
-        "--runtime",
-        runtime,
-        "--port",
-        "0"]),
+        ...(process.env.GEA_TEST_SOURCE_CORE === "1" &&
+        !options.desktopGraph &&
+        !options.normalStartup
+          ? [
+              resolve(defaultRoot, "tests/source-profile-start.mjs"),
+              config,
+              runtime,
+              ...(options.coreOnly ? ["native-only"] : []),
+            ]
+          : options.desktopGraph
+            ? [resolve(defaultRoot, "desktop/runtime-start.mjs")]
+            : [
+                "scripts/start.mjs",
+                ...(options.bundle ? ["--bundle"] : []),
+                "--config",
+                config,
+                "--runtime",
+                runtime,
+                "--port",
+                "0",
+                ...(process.env.GEA_TEST_SOURCE_INPUTS
+                  ? ["--sources", process.env.GEA_TEST_SOURCE_INPUTS]
+                  : []),
+              ]),
       ],
       {
         cwd: root,
         detached: process.platform !== "win32",
         // 测试里不挂浏览器 MCP：每次启动都拉 npx + Chrome 会拖慢并让并发用例超时。
-        env: { ...process.env, NODE_EXTRA_CA_CERTS: cert, GEA_BROWSER_MCP: "0", ...(options.desktopGraph ? {DSH_PLUGIN_GRAPH: options.desktopGraph, DSH_FULL_DATA_DIR: runtime, GEA_CONFIG: config, DSH_FULL_PORT: "0", DSH_FULL_NO_OPEN: "1"} : {}), ...options.env },
+        env: {
+          ...process.env,
+          NODE_EXTRA_CA_CERTS: cert,
+          GEA_BROWSER_MCP: "0",
+          ...(options.desktopGraph
+            ? {
+                DSH_PLUGIN_GRAPH: options.desktopGraph,
+                DSH_FULL_DATA_DIR: runtime,
+                GEA_CONFIG: config,
+                DSH_FULL_PORT: "0",
+                DSH_FULL_NO_OPEN: "1",
+              }
+            : {}),
+          ...options.env,
+        },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
+    recordLifecycle({ event: "wrapper-spawned", wrapperPid: child.pid });
     childIsClosed = false;
     childClosed = new Promise((done, reject) => {
-      child.once("close", () => { childIsClosed = true; done(); });
+      child.once("close", () => {
+        childIsClosed = true;
+        done();
+      });
       child.once("error", reject);
     });
     void childClosed.catch(() => {});
@@ -276,15 +393,19 @@ export async function profile(t, options = {}) {
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
-      launch = [...(options.desktopGraph || process.env.GEA_TEST_SOURCE_CORE === "1" ? output : freshLog).matchAll(/dsh web: (http[^\s]+)(?=\r?\n)/g)].at(
-        -1,
-      )?.[1];
+      launch = [
+        ...(options.desktopGraph || process.env.GEA_TEST_SOURCE_CORE === "1"
+          ? output
+          : freshLog
+        ).matchAll(/dsh web: (http[^\s]+)(?=\r?\n)/g),
+      ].at(-1)?.[1];
       if (launch) break;
       if (child.exitCode !== null) throw new Error("Profile exited: " + output);
       await delay(50);
     }
     if (!launch) throw new Error("Profile not ready: " + output);
     origin = new URL(launch).origin;
+    recordLifecycle({ event: "host-ready", origin });
     const exchange = await fetch(launch, { redirect: "manual" });
     cookie = exchange.headers
       .getSetCookie()

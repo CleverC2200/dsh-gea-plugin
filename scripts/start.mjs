@@ -18,7 +18,7 @@ try {
   });
   if (values.help)
     console.log(
-      "pnpm start --config <deployment.json> [--runtime <isolated directory>] [--port <port or 0>] [--dev]",
+      "pnpm start --config <deployment.json> [--sources <fixed-source-records.json>] [--runtime <isolated directory>] [--port <port or 0>] [--dev]",
     );
   else {
     const deployment = await readDeployment(

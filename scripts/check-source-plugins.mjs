@@ -18,6 +18,9 @@ const records = values.sources
       repo: plugin.repo,
       source: join(workspace, plugin.repo),
     }));
+const inputFor = (repo) => records.find((entry) => entry.repo === repo);
+const dependencyFor = (repo) =>
+  inputFor(repo)?.dependencies ?? join(sourceFor(repo), "node_modules");
 const sourceFor = (repo) =>
   records.find((entry) => entry.repo === repo)?.source ??
   (() => {
@@ -54,7 +57,7 @@ for (const plugin of sourcePlugins) {
           extends: join(cwd, config),
           compilerOptions: {
             paths,
-            typeRoots: [join(cwd, "node_modules/@types")],
+            typeRoots: [join(dependencyFor(name), "@types")],
             noEmit: true,
             emitDeclarationOnly: false,
           },
@@ -65,7 +68,7 @@ for (const plugin of sourcePlugins) {
     );
     execFileSync(
       process.execPath,
-      [join(cwd, "node_modules/typescript/bin/tsc"), "-p", target],
+      [join(dependencyFor(name), "typescript/bin/tsc"), "-p", target],
       { cwd, stdio: "inherit" },
     );
     projects.push(target);

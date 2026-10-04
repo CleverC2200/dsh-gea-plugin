@@ -7,11 +7,13 @@
 `source-profile.mjs`是唯一assembler：固定sources可声明source、commit、integration，以及需复用的assets/files和dependencies。源和integration必须clean且一致；只复制发布资产、不复制依赖或SDK。corePackages供同一type/check/build/组合链解析官方包。每次组合记录原件及实际依赖hash，选择在独占锁内通过CAS、原子写入、读回验证；unknown不自动重写/回滚。
 
 ```sh
-corepack pnpm run source:check -- --sources /absolute/fixed-sources.json
-corepack pnpm run source:build -- --sources /absolute/fixed-sources.json
+corepack pnpm run source:check --sources /absolute/fixed-sources.json
+corepack pnpm run source:build --sources /absolute/fixed-sources.json
 corepack pnpm start --config /absolute/deployment.json --sources /absolute/fixed-sources.json --runtime /absolute/owned-runtime --port 0
 ```
 
 不得让源准备过程改user profile。模型默认seed写入新snapshot，真正launcher在自己的profile以flagwx采用；已存在用户选择保持。正常真实客户端/组合切换由root串行执行。workflow Host定向fixture仅临时home/profile、loopback服务和port0，不能接真实GEA、模型或生产端点；记录它自己的PID并清理，不触root/旧运行。
 
 旧Hub/example、source-presets及旧reader的装配路径不在当前组合。历史公司桌面壳源码及仍被其使用的preset helper/测试不属此次官方客户端目标；保持原件，不重做其兼容，不把当前源码门禁说成旧壳发布/验收。
+
+current source-profile直接调用businessDeploymentPatch，仅给GEA真实业务/模型配置；旧公司desktop仍调用deploymentPatch中的历史UI/preset装配，业务声明共享现有module同一规则，不把旧helper带进最新source启动。

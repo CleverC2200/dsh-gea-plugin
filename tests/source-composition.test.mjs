@@ -28,3 +28,28 @@ test("the registered source composition contains the five current owners and onl
     adaptation: "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
   });
 });
+
+test("current source configuration uses actual business declarations without resolving historical UI or preset paths", async () => {
+  const { businessDeploymentPatch } = await import("../scripts/deployment.mjs");
+  const rows = businessDeploymentPatch(
+    { geaBaseUrl: "https://127.0.0.1:1", analysis: { mode: "receipt" } },
+    process.cwd(),
+    "/fixture/runtime",
+    { bundle: true },
+  );
+  assert.equal(
+    rows.find((row) => row.id === "agent-default-model").config.provider,
+    "gea-proof",
+  );
+  const business = rows.find((row) => row.id === "gea-proof");
+  assert.equal(business.config.analysisAgentCode, "sales_forecast");
+  assert.equal(business.config.analysisMode, "receipt");
+  assert.ok(
+    !rows.some(
+      (row) =>
+        row.id === "agent-presets" ||
+        ["agent-workbench", "genui", "better-sidebar"].includes(row.id),
+    ),
+  );
+  assert.ok(!rows.some((row) => row.insert));
+});
