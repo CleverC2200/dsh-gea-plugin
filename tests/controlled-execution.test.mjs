@@ -47,20 +47,6 @@ test("releasing a page tool owner cancels queued commands and the waiting public
   const { build } = await import("esbuild");
   const { outputFiles } = await build({
     entryPoints: ["../dsh-agent-workbench/src/page-bridge/registry.ts"],
-    plugins: [
-      {
-        name: "fixed-official-tools",
-        setup(builder) {
-          builder.onResolve({ filter: /^@deepseek-ai\/dsh-tools$/ }, () => ({
-            path: new URL(
-              "../../official-core/packages/core/tools/lib/index.js",
-              new URL("../", import.meta.url),
-            ).href,
-            external: true,
-          }));
-        },
-      },
-    ],
     bundle: true,
     write: false,
     platform: "node",
