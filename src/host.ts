@@ -362,12 +362,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   const business = new Business(config, pageBridge);
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);
-  const htmlRootConfig=JSON.parse(process.env.GEA_HTML_PLUGIN_ROOTS || "[]");
-  const htmlRoots=Array.isArray(htmlRootConfig) ? htmlRootConfig : (htmlRootConfig && typeof htmlRootConfig === "object" ? Object.values(htmlRootConfig) : []);
-  if(htmlRoots.some(root=>typeof root!=="string"))throw Error("INVALID_HTML_PLUGIN_ROOTS");
   // 迁移页面的页面桥入口：注册表建好后再接上（页面第一次轮询是 500ms 之后）。
   const pageBridgeHost: PageBridgeHost = {};
-  const htmlPackages = await ctx.workbenchPages.registerHtml(htmlRoots);
+  const htmlPackages = ctx.workbenchPages.packages().filter(item=>item.manifest.gea?.contract === "gea-html-v2");
   const releaseOriginalResources = await ctx.agentResources.register([{
     id:"gea-readonly",label:profileFor("gea-readonly")!.label,
     root:fileURLToPath(new URL("../",import.meta.url)),prompt:"presets/prompt-policy.json",profileKey:"gea-readonly",
@@ -763,7 +760,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 // 前端不写死"哪个页面属于哪个模块"：模块索引由能力契约产出。
                 value = {
                   ...business.status(),
-                  htmlPlugins: htmlRoots.length > 0,
+                  htmlPlugins: htmlPackages.length > 0,
                   modules: capability.modules(),
                 };
                 break;
