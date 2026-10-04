@@ -2,8 +2,8 @@ import { NATIVE_REFERENCE_MENUS } from "./business-navigation.ts";
 import { TOOL_DESCRIPTIONS, profileFor, installPromptProfile } from "./host/prompt-policy.ts";
 import { businessIdentityKey, sessionConsumer } from "./host/business-identity.ts";
 import type { HtmlPackage } from "@cleverc2200/dsh-agent-workbench";
-import { readFile, readdir, realpath, stat } from "node:fs/promises";
-import { extname, resolve, sep } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { createHtmlSessions } from "./html-sessions.ts";
@@ -19,7 +19,7 @@ import { readPluginContract } from "./capability/declarations.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { PAGE_TOOL } from "./host/page-identity.ts";
 import { LAYER_POLICY } from "./capability/layers.ts";
-import { compressForModel, MODEL_PAYLOAD_BUDGET } from "./shared/payload-budget.ts";
+import { compressForModel, MODEL_PAYLOAD_BUDGET } from "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget";
 
 /**
  * 页面上下文进模型前先收窄：带 focus 只留相关行/字段，不带就只给摘要；
@@ -90,54 +90,6 @@ export type PageBridgeHost = {
     source: "self-report",
   ) => void;
 };
-
-/** 契约从模块自己的代码里派生：只看会写受管 SQL 的文件，不看说明文档。 */
-const CONTRACT_SOURCE_EXTENSIONS = new Set([
-  ".html",
-  ".js",
-  ".mjs",
-  ".cjs",
-  ".ts",
-  ".tsx",
-]);
-const CONTRACT_SOURCE_MAX_FILE_BYTES = 2_000_000;
-const CONTRACT_SOURCE_MAX_TOTAL_BYTES = 8_000_000;
-
-/** 读模块自带的前端代码，用来静态导出"这个模块能读哪些业务表"。 */
-async function readContractSources(directory: string): Promise<string[]> {
-  const sources: string[] = [];
-  let total = 0;
-  const walk = async (dir: string, depth: number): Promise<void> => {
-    if (depth > 2 || total >= CONTRACT_SOURCE_MAX_TOTAL_BYTES) return;
-    let entries;
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (total >= CONTRACT_SOURCE_MAX_TOTAL_BYTES) return;
-      const path = resolve(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
-        await walk(path, depth + 1);
-        continue;
-      }
-      if (!CONTRACT_SOURCE_EXTENSIONS.has(extname(entry.name).toLowerCase()))
-        continue;
-      try {
-        const size = (await stat(path)).size;
-        if (size === 0 || size > CONTRACT_SOURCE_MAX_FILE_BYTES) continue;
-        total += size;
-        sources.push(await readFile(path, "utf8"));
-      } catch {
-        // 读不到的附属文件不影响模块本身可用。
-      }
-    }
-  };
-  await walk(directory, 1);
-  return sources;
-}
 
 export async function registerHtmlPlugins(
   ctx: any,
@@ -259,7 +211,7 @@ export async function registerHtmlPlugins(
       capabilityContract: await readPluginContract(directory, manifest.declarations, contractFromPlugin({
         id: manifest.id, label: manifest.name, consumerCode: manifest.gea.consumerCode,
         pageIds: pages.map((page: { id: string }) => page.id), description: manifest.name, mock, maxEffect: "view",
-        sources: await readContractSources(directory),
+        sources: [],
       })),
       pages,
       mock,

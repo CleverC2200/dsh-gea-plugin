@@ -3,7 +3,7 @@ import {
   pageReference,
   type BoundReference,
   type ReferenceReceipt,
-} from "./reference.ts";
+} from "@cleverc2200/dsh-agent-workbench/page-interaction/reference";
 
 /** Immutable, session-local snapshots; the conversation only carries a small receipt. */
 export function createReferenceStore() {

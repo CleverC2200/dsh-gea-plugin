@@ -262,6 +262,14 @@ Demand Forecast follows the user's language for both progress and final answers.
 
 ## 规格41的官方入口适配候选
 
-当前客户端贡献 `gea-proof`、`gea-inbox`、`gea-api-log` 原生页面以及原区域／品类／MPS HTML 文档，由 Workbench 统一发现和呈现。GEA 不再注册定制侧栏导航、Conversation 壳槽或读取 `uiSession.mainSessionId`。HTML 安装根交给 Workbench Host 登记、读取 manifest 与安全呈现，GEA 只接收原声明并检查业务能力。`cordis.patch.yml` 和 `deploymentPatch` 不再禁用官方布局。
+当前客户端贡献 `gea-proof` 的原文档位置与必要受控连接，以及 `gea-inbox`、`gea-api-log` 原生页面；区域／品类／MPS HTML 原文与目录移入 Workbench 的独立静态资源，按选页 HTTP 装载。GEA 不再注册定制侧栏导航、Conversation 壳槽或读取 `uiSession.mainSessionId`。HTML 安装根交给 Workbench Host 登记、读取 manifest 与安全呈现，GEA 只接收原声明并检查业务能力。`cordis.patch.yml` 和 `deploymentPatch` 不再禁用官方布局。
 
 `tsconfig.official.json` 检查本插件运行入口及传递依赖，精确消费官方标准声明；未装配的示例独立包不属于本轮三插件类型门禁。旧六插件装配、主题同步和定制 Core 测试保持历史用途，其通过不能证明本次官方组合。现有审批、计划和库存业务桥的显式会话／引用／受控操作接续清单由规格41票04维护，静态呈现通过不等于这部分已验收。原业务源码、持久 Session、认证和历史材料均保留。
+
+## 当前消费者与同组源码依赖
+
+本隔离候选的 Workbench、GenUI、BetterSidebar 开发依赖明确 link 到本票同级固定源码；退出旧 npm GenUI/Sidebar 和旧 Git Workbench 作为新组合输入。正式发布不在授权范围。官方 SDK 在类型/运行装配中仍使用同组4878标准产物，开发工具锁不作为官方运行证明。
+
+Page interaction 的 browser 实现与 wire/reference 公共资源归 Workbench。GEA src/page-interaction 只持有受控引用 Host，src/page-bridge/capability持有实际执行与规则，退出旧兼容 re-export 与独立 page-interaction/example 插件装载。原审批源及其业务规则保留；共同受控 frame 与显式 Session 生命周期由 Workbench承载。HTML startup只读声明/执行 metadata，不读 HTML/Skill/prompt正文，不进行源码 DOM/SQL扫描。
+
+行为验证与真实授权分开：明确管理端未授权项可按本轮分类跳过或用显式mock验收输入，普通500/超时/空结果不推断权限；不在生产请求中自动mock降级。

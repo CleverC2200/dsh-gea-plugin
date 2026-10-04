@@ -1,9 +1,11 @@
 import type { Context } from "@deepseek-ai/cordis";
-import type {} from "@cleverc2200/dsh-agent-workbench/client";
+import type {WorkbenchPageExecution,PageExecutionConnection} from "@cleverc2200/dsh-agent-workbench/client";
+import type {} from "@deepseek-ai/dsh-api-remotes/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
 import type {} from "@deepseek-ai/dsh-client-ui-theme/client";
 import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
+import {brandString} from "@deepseek-ai/dsh-brand";
 import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { zh, en, type CopyKey } from "./client/locales.ts";
 import { Inbox } from "./client/inbox.tsx";
@@ -11,11 +13,8 @@ import { DesktopNavigation, createNavigationSelection, type ReadyNavigation } fr
 import { createBusinessIdentityReader } from "./business-identity-client.ts";
 import { ApiLogCenter } from "./workbench/api-log-center.tsx";
 import nativeCss from "./client/native-pages.css";
-import categoryPlanPrototype from "./workbench/prototypes/category-plan-v5.html";
-import mpsPlanPrototype from "./workbench/prototypes/mps-plan-v0.html";
-import regionalPlanPrototype from "./workbench/prototypes/regional-plan-v9.html";
 
-export const inject = ["slots", "layout", "locale", "agentWorkbench", "theme"];
+export const inject = ["slots", "layout", "locale", "agentWorkbench", "theme", "remote", "remote.session"];
 const PANEL = "gea-proof" as MainPanelId;
 const INBOX = "gea-inbox" as MainPanelId;
 const API_LOG_PANEL = "gea-api-log" as MainPanelId;
@@ -32,32 +31,6 @@ export function apply(ctx: Context): void {
   ctx.effect(() => identity.start());
   const incoming = createNavigationSelection();
 
-  function Workbench() {
-    const frame = useRef<HTMLIFrameElement>(null);
-    const [loaded, setLoaded] = useState(false);
-    const snapshot = useSyncExternalStore(identity.subscribe, identity.getSnapshot);
-    const navigation = useSyncExternalStore(incoming.subscribe, incoming.getSnapshot);
-    const send = () => {
-      frame.current?.contentWindow?.postMessage({ type: "gea:identity-snapshot", snapshot: identity.getSnapshot() }, window.location.origin);
-      const theme = ctx.theme.getTheme();
-      frame.current?.contentWindow?.postMessage({ protocol: "agent-workbench-theme", dark: theme.active.colorScheme === "dark", fontSize: theme.fontSize }, window.location.origin);
-    };
-    useEffect(send, [snapshot]);
-    useEffect(() => { const stop = ctx.on("theme/change", send); return () => { stop(); }; }, []);
-    useEffect(() => {
-      if (loaded && snapshot.status?.authenticated && navigation?.panel === PANEL) navigation.visible();
-    }, [loaded, snapshot, navigation]);
-    useEffect(() => {
-      const changed = (event: MessageEvent) => {
-        if (event.source === frame.current?.contentWindow && event.origin === window.location.origin && event.data?.type === "gea:identity")
-          void identity.refresh().catch(() => {});
-      };
-      window.addEventListener("message", changed);
-      return () => window.removeEventListener("message", changed);
-    }, []);
-    const language = ctx.locale.getSnapshot().active;
-    return <iframe ref={frame} title={t("approvalTitle")} className="agent-workbench-html" src={`/api/gea-proof/workbench?locale=${encodeURIComponent(language)}`} onLoad={() => { setLoaded(true); send(); }} />;
-  }
   function InboxPage() {
     const navigation = useSyncExternalStore(incoming.subscribe, incoming.getSnapshot);
     return <section className="agent-workbench-ui gea-native-page" style={{ height: "100%", overflow: "auto" }}><style>{nativeCss}</style><Inbox t={t} navigation={navigation?.panel === INBOX ? navigation : null} /></section>;
@@ -74,20 +47,41 @@ export function apply(ctx: Context): void {
     return <section className="agent-workbench-ui gea-native-page" style={{ height: "100%" }}><style>{nativeCss}</style><ApiLogCenter environment={environment} request={request} onClose={() => ctx.layout.selectPanel(PANEL)} /></section>;
   }
   for (const [id, label, component] of [
-    [PANEL, "salesPlan", Workbench], [INBOX, "businessInbox", InboxPage], [API_LOG_PANEL, "apiLog", LogPage],
+    [INBOX, "businessInbox", InboxPage], [API_LOG_PANEL, "apiLog", LogPage],
   ] as const) ctx.slots.inject("main", () => {
     const unregister = ctx.agentWorkbench.register({id, label: () => t(label)});
     const dispose = ctx.slots.register({ name: "main", key: id }, component);
     return () => { dispose(); unregister(); };
   });
-  ctx.slots.inject("main", () => {
-    const disposers = [
-      ctx.agentWorkbench.registerHtml({ id: "gea-regional-plan" as MainPanelId, label: () => t("regionalPlanWorkbench"), html: regionalPlanPrototype }),
-      ctx.agentWorkbench.registerHtml({ id: "plan-region-category" as MainPanelId, label: () => t("categoryPlanWorkbench"), html: categoryPlanPrototype }),
-      ctx.agentWorkbench.registerHtml({ id: "plan-category-production" as MainPanelId, label: () => t("mpsPlanWorkbench"), html: mpsPlanPrototype }),
-    ];
-    return () => disposers.reverse().forEach(dispose => dispose());
-  });
+  const execution:WorkbenchPageExecution={
+    identity,
+    open:async(page,sessionId,resourceId,signal)=>{
+      const scope=await identity.readScope(signal);if(!scope)throw Error("请先登录 GEA");
+      if(page.kind==="html"){
+        const result=await htmlRequest<{lease:string}>(page.pluginId+"/open",{session:sessionId,agentPreset:resourceId,scope},signal);
+        signal.throwIfAborted();return {page,sessionId,resourceId,scope,lease:result.lease};
+      }
+      if(resourceId!==page.resourceId)throw Error("PAGE_RESOURCE_NOT_ALLOWED");
+      await request("surface",{sessionId,menu:page.id,title:typeof page.label==="function"?page.label():page.label},signal);
+      signal.throwIfAborted();return {page,sessionId,resourceId,scope};
+    },
+    call:async(connection,method,parameters,signal)=>{
+      if(connection.page.kind!=="html"||!connection.lease)throw Error("HTML_CONNECTION_REQUIRED");
+      return htmlRequest(connection.page.pluginId+"/call",{lease:connection.lease,method,parameters},signal);
+    },
+    close:async(connection)=>{
+      if(connection.page.kind==="html"&&connection.lease)await htmlRequest(connection.page.pluginId+"/call",{lease:connection.lease,method:"close"},AbortSignal.timeout(5000));
+      else await request("workbench/context",{sessionId:connection.sessionId,context:null},AbortSignal.timeout(5000));
+    },
+    prompt:async(connection,text,signal)=>{
+      const currentScope=await identity.refresh(signal);
+      signal.throwIfAborted();if(currentScope!==connection.scope)throw Error("PAGE_IDENTITY_CHANGED");
+      const result=await ctx.remote.session.prompt({sessionId:connection.sessionId as Parameters<typeof ctx.remote.session.prompt>[0]["sessionId"],requestId:brandString<Parameters<typeof ctx.remote.session.prompt>[0]["requestId"]>(crypto.randomUUID()),mode:"queue",content:[{type:"text",text}]});
+      signal.throwIfAborted();if(!result.ok)throw Error(result.error.message);
+    },
+  };
+  ctx.provide("geaPageExecution",execution);
+  ctx.slots.inject("main",()=>ctx.agentWorkbench.registerFrame({id:PANEL,label:()=>t("salesPlan"),kind:"native",resourceId:"gea-readonly",src:()=>`/api/gea-proof/workbench?locale=${encodeURIComponent(ctx.locale.getSnapshot().active)}`,onVisible:()=>{const navigation=incoming.getSnapshot();if(identity.getSnapshot().status?.authenticated&&navigation?.panel===PANEL)navigation.visible();}}));
   const openNavigation = async (target: ReadyNavigation, signal: AbortSignal) => {
     if (![PANEL, INBOX].includes(target.panel as MainPanelId)) throw Error("NAVIGATION_TARGET_UNSUPPORTED");
     signal.throwIfAborted();
@@ -114,3 +108,8 @@ async function request<T>(endpoint: string, payload: object = {}, signal?: Abort
 }
 
 declare module "@deepseek-ai/cordis" { interface Context { geaIdentity: import("./business-identity-client.ts").BusinessIdentityProjection; } }
+
+async function htmlRequest<T>(endpoint:string,payload:object|undefined,signal:AbortSignal):Promise<T>{
+ const response=await fetch("/api/gea-html/"+endpoint,{method:payload===undefined?"GET":"POST",credentials:"same-origin",headers:payload===undefined?undefined:{"content-type":"application/json"},body:payload===undefined?undefined:JSON.stringify(payload),cache:"no-store",signal});
+ const value=await response.json();signal.throwIfAborted();if(!response.ok)throw Error(value.error??"GEA_HTML_FAILED");return value as T;
+}

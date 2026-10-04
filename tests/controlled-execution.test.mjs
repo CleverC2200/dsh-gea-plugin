@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {toolConsumer,sessionConsumer} from '../src/host/business-identity.ts';
-import {createPageBridge} from '../packages/page-interaction/src/page-bridge/host.ts';
+import {createPageBridge} from '../src/page-bridge/host.ts';
  test('a generic Skill session can use ordinary model routing but cannot claim a business Consumer',()=>{
   const ctx={agents:{get:()=>({session:{}})},sessionProjections:{stateOf:()=> 'agent-resource-skill'}};
   const business={config:{analysisAgentCode:'sales'},currentPageIdentity:()=>({consumerCode:'branch-inventory'})};
@@ -20,7 +20,7 @@ import {createPageBridge} from '../packages/page-interaction/src/page-bridge/hos
 
 test('releasing a page tool owner cancels queued commands and the waiting public execution',async()=>{
  const {build}=await import('esbuild');
- const {outputFiles}=await build({entryPoints:['packages/page-interaction/src/page-bridge/registry.ts'],bundle:true,write:false,platform:'node',format:'esm'});
+ const {outputFiles}=await build({entryPoints:['src/page-bridge/registry.ts'],bundle:true,write:false,platform:'node',format:'esm'});
  const {mkdir,writeFile}=await import('node:fs/promises');const {pathToFileURL}=await import('node:url');await mkdir('.scratch',{recursive:true});const file=process.cwd()+'/.scratch/ticket03-controlled-registry.mjs';await writeFile(file,outputFiles[0].text);const {createPageToolRegistry}=await import(pathToFileURL(file).href);
  const bridge=createPageBridge();let tool;
  const agent={id:'session-owned',ctx:{tools:{register:value=>{tool=value;return ()=>{}}}}};

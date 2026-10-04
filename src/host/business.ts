@@ -32,7 +32,7 @@ import {
   normalizeSurface,
   type WorkbenchSurface,
 } from "./workbench-surface.ts";
-import { compressForModel } from "../shared/payload-budget.ts";
+import { compressForModel } from "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget";
 import { createCubeGapLedger, type CubeGapLedger } from "./cube-gap-ledger.ts";
 import { createRepeatGuard, type RepeatGuard } from "./repeat-guard.ts";
 import { createMcpReadLedger } from "./mcp-read-evidence.ts";

@@ -1,6 +1,6 @@
 import { toGeaMessages } from "./host/gea-messages.ts";
 import type {} from "./shared/message-source.ts";
-import { apply as applyPageInteraction } from "../packages/page-interaction/src/host.ts";
+import { apply as applyPageInteraction } from "./page-interaction/host.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
 import { createDesktopNavigation } from './host/desktop-navigation.ts';
 import { attachWebLogin } from "./host/web-login.ts";

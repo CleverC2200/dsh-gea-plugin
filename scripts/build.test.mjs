@@ -21,29 +21,20 @@ const outputs = [
   "lib/client.js",
   "lib/workbench.js",
   "lib/workbench.css",
-  "packages/workbench-example/lib/host.js",
-  "packages/workbench-example/lib/client.js",
 ];
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "gea-build-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const inputs = {
-    "packages/page-interaction/src/page.ts": "export const page = 'picker';",
-    "packages/page-interaction/src/picker.ts": "export const mountPicker = () => {};",
-    "packages/page-interaction/src/host.ts": "export function apply() {}",
-    "packages/page-interaction/src/client.ts": "export function apply() {}",
-    "packages/page-interaction/src/page-bridge/index.ts": "export const bridge = true;",
+    "src/page-interaction/host.ts": "export function apply() {}",
+    "src/page-bridge/index.ts": "export const bridge = true;",
     "src/host.ts": "export const value = 'host-original';",
     "src/skill-reference.ts": "export const value = 'skill';",
     "src/client.tsx": "export const value = 'client';",
     "src/workbench-entry.tsx":
       "import './style.css'; export const value = 'workbench';",
     "src/style.css": "body { color: red; }",
-    "packages/workbench-example/src/host.ts":
-      "export const value = 'example-host';",
-    "packages/workbench-example/src/client.tsx":
-      "export const value = 'example-client';",
   };
   for (const [file, content] of Object.entries(inputs)) {
     await mkdir(join(root, file, ".."), { recursive: true });
@@ -119,13 +110,6 @@ test(
   },
 );
 
-test("client builds its picker dependency even when targets are supplied in reverse order", async t => {
-  const root = await fixture(t);
-  await writeFile(join(root, "src/client.tsx"), "import picker from '../lib/page-interaction.txt'; export const value = picker;");
-  const result = await run(root, ["--target", "client,interaction"]).done;
-  assert.equal(result.code, 0, result.log);
-  assert.match(await readFile(join(root, "lib/client.js"), "utf8"), /picker/);
-});
 
 test(
   "watch rebuilds client wrapper, retains last good output on syntax errors and shuts down",

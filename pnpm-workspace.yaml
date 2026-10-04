@@ -1,5 +1,4 @@
-packages:
-  - packages/*
+packages: []
 # Keep installs explicit; stale dependencies fail before scripts execute.
 verifyDepsBeforeRun: error
 # Existing native/runtime dependencies that need their installation scripts.
@@ -10,9 +9,3 @@ allowBuilds:
   koffi: true
   node-pty: true
   protobufjs: true
-peerDependencyRules:
-  ignoreMissing:
-    - '@cleverc2200/dsh-agent-workbench'
-# The private example peer must resolve to the same pinned package as the host.
-overrides:
-  '@cleverc2200/dsh-agent-workbench': 'git+http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench.git#8558e64c0af6275a1f3289dd2d10a83203dfd03a'

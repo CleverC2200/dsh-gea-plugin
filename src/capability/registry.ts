@@ -15,7 +15,7 @@ import {
   layersForContract,
   type CapabilityLayer,
 } from "./layers.ts";
-import { truncateText } from "../shared/payload-budget.ts";
+import { truncateText } from "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget";
 
 export type CapabilityRegistry = {
   /** 全部契约（稳定顺序，模块 id 排序）。 */

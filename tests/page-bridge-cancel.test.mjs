@@ -14,7 +14,7 @@ const bundle = async (contents, platform = "node") => {
 };
 
 const host = await bundle("export * from './src/page-bridge/host.ts';");
-const client = await bundle("export * from './src/page-bridge/client.ts';", "browser");
+const client = await bundle("export * from '../dsh-agent-workbench/src/page-interaction/page-bridge/client.ts';", "browser");
 
 test("宿主超时取消后不会再下发调用，也会丢弃迟到回执", async () => {
   const bridge = host.createPageBridge({ id: () => "call-1" });

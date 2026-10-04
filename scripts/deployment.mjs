@@ -309,7 +309,6 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
         },
       },
     });
-  if (config.workbenchExample === true) rows.push({ insert: [{ id: "workbench-example", name: resolve(root, "packages/workbench-example/lib/host.js") }] });
   if (bundle) return rows.flatMap(row => {
     if (row.id === "ui-layout") return [];
     if (row.insert?.some(entry => ["agent-workbench", "genui", "better-sidebar"].includes(entry.id))) return row.insert.map(({ name, ...entry }) => entry);

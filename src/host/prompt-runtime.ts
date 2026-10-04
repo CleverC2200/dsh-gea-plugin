@@ -1,4 +1,4 @@
-import { hasPageReferences } from "../../packages/page-interaction/src/reference.ts";
+import { hasPageReferences } from "@cleverc2200/dsh-agent-workbench/page-interaction/reference";
 import { toolResults } from "../shared/tool-results.ts";
 import { sessionConsumer } from "./business-identity.ts";
 import { catalogFactSummary } from './gateway-catalog.ts';

@@ -1821,6 +1821,27 @@
       ],
       "dsh-agent-manage/business-resources": [
         "../dsh-agent-manage/lib/types/runtime/business-resources.d.ts"
+      ],
+      "@cleverc2200/dsh-agent-workbench/page-interaction/client": [
+        "../dsh-agent-workbench/lib/types/page-interaction/client.d.ts"
+      ],
+      "@cleverc2200/dsh-agent-workbench/page-interaction/picker": [
+        "../dsh-agent-workbench/lib/types/page-interaction/picker.d.ts"
+      ],
+      "@cleverc2200/dsh-agent-workbench/page-interaction/bridge": [
+        "../dsh-agent-workbench/lib/types/page-interaction/page-bridge/client.d.ts"
+      ],
+      "@cleverc2200/dsh-agent-workbench/page-interaction/reference": [
+        "../dsh-agent-workbench/lib/types/page-interaction/reference.d.ts"
+      ],
+      "@cleverc2200/dsh-agent-workbench/page-interaction/protocol": [
+        "../dsh-agent-workbench/lib/types/page-interaction/page-bridge/protocol.d.ts"
+      ],
+      "@cleverc2200/dsh-agent-workbench/page-interaction/inject": [
+        "../dsh-agent-workbench/lib/types/page-interaction/inject.d.ts"
+      ],
+      "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget": [
+        "../dsh-agent-workbench/lib/types/page-interaction/shared/payload-budget.d.ts"
       ]
     }
   },

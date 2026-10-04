@@ -11,11 +11,11 @@ const { values } = parseArgs({
 });
 const selected =
   values.target === "all"
-    ? ["interaction", "host", "client", "workbench", "example"]
+    ? ["interaction", "host", "client", "workbench"]
     : values.target.split(",");
 for (const name of selected) {
   if (
-    !["interaction", "host", "client", "workbench", "example"].includes(name)
+    !["interaction", "host", "client", "workbench"].includes(name)
   ) {
     throw new Error("UNKNOWN_BUILD_TARGET: " + name);
   }
@@ -48,72 +48,8 @@ const clientExternals = ["react", "@deepseek-ai/dsh-client-store", "@deepseek-ai
 
 const targets = {
   interaction: [
-    {
-      entryPoints: ["packages/page-interaction/src/page.ts"],
-      bundle: true,
-      minify: true,
-      format: "iife",
-      platform: "browser",
-      target: "es2022",
-      outfile: "lib/page-interaction.txt",
-    },
-    {
-      entryPoints: ["packages/page-interaction/src/picker.ts"],
-      bundle: true,
-      minify: true,
-      format: "esm",
-      platform: "browser",
-      target: "es2022",
-      outfile: "packages/page-interaction/lib/picker.js",
-    },
-    {
-      entryPoints: ["packages/page-interaction/src/page.ts"],
-      bundle: true,
-      minify: true,
-      format: "iife",
-      platform: "browser",
-      target: "es2022",
-      outfile: "lib/page-interaction.js",
-    },
-    {
-      entryPoints: ["packages/page-interaction/src/page.ts"],
-      bundle: true,
-      minify: true,
-      format: "iife",
-      platform: "browser",
-      target: "es2022",
-      outfile: "packages/page-interaction/lib/page.js",
-    },
-    {
-      entryPoints: ["packages/page-interaction/src/host.ts"],
-      bundle: true,
-      packages: "external",
-      format: "esm",
-      platform: "node",
-      outfile: "packages/page-interaction/lib/host.js",
-    },
-    {
-      entryPoints: ["packages/page-interaction/src/page-bridge/index.ts"],
-      bundle: true,
-      packages: "external",
-      format: "esm",
-      platform: "node",
-      outfile: "packages/page-interaction/lib/bridge.js",
-    },
-    {
-      entryPoints: ["packages/page-interaction/src/client.ts"],
-      external: clientExternals,
-      bundle: true,
-      write: false,
-      format: "cjs",
-      platform: "browser",
-      plugins: [
-        clientOutput(
-          "packages/page-interaction/lib/client.js",
-          "'@cleverc2200/dsh-page-interaction'",
-        ),
-      ],
-    },
+    {entryPoints:["src/page-interaction/host.ts"],bundle:true,format:"esm",platform:"node",external:["@deepseek-ai/*"],outfile:"lib/page-interaction-host.js"},
+    {entryPoints:["src/page-bridge/index.ts"],bundle:true,format:"esm",platform:"node",external:["@deepseek-ai/*"],outfile:"lib/page-bridge.js"},
   ],
   host: [
     {
@@ -157,29 +93,7 @@ const targets = {
       loader: { ".css": "css", ".module.css": "local-css", ".png": "dataurl" },
     },
   ],
-  example: [
-    {
-      entryPoints: ["packages/workbench-example/src/host.ts"],
-      bundle: true,
-      format: "esm",
-      platform: "node",
-      outfile: "packages/workbench-example/lib/host.js",
-    },
-    {
-      entryPoints: ["packages/workbench-example/src/client.tsx"],
-      bundle: true,
-      write: false,
-      format: "cjs",
-      platform: "browser",
-      external: clientExternals,
-      plugins: [
-        clientOutput(
-          "packages/workbench-example/lib/client.js",
-          '"@cleverc2200/dsh-workbench-example"',
-        ),
-      ],
-    },
-  ],
+
 };
 
 const contexts = [];

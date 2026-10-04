@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { createReferenceStore } from "./reference-store.ts";
-import { hasPageReferences } from "./reference.ts";
+import { hasPageReferences } from "@cleverc2200/dsh-agent-workbench/page-interaction/reference";
 
 export function apply(ctx: any, options: { authorize?: (input: unknown) => void } = {}): () => void {
   const references = createReferenceStore();

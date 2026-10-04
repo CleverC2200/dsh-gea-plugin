@@ -10,7 +10,7 @@ import {
   MODEL_PAYLOAD_BUDGET,
   compressForModel,
   focusTokens,
-} from "../src/shared/payload-budget.ts";
+} from "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget";
 
 const rows = (count) =>
   Array.from({ length: count }, (_, index) => ({
