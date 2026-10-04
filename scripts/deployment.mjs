@@ -159,15 +159,15 @@ export function resolveWorkbench(anchor = import.meta.url) {
 }
 
 /**
- * Resolve the built-in content plugins every GEA composition mounts.
+ * Resolve the content plugins mounted by the historical company Desktop.
  *
  * genui renders model-authored inline UI; better-sidebar adds the right-Sidebar
  * explorer/editor/terminal/git/browser tab types. Both are ordinary
  * dependencies of this package, so a release install resolves them from its own
  * node_modules; a source checkout resolves them from the development install.
  * The rows carry an absolute entry path in non-bundle compositions and lose it
- * in bundle compositions, where the package's own `cordis.patch.yml` mounts the
- * same ids by package name.
+ * in historical bundle compositions. The current official source launcher
+ * mounts each sibling from its own bundle patch and never calls this resolver.
  */
 export function resolveBuiltinPlugins(anchor = import.meta.url) {
   const dependency = createRequire(anchor);

@@ -244,7 +244,7 @@ Demand Forecast follows the user's language for both progress and final answers.
 
 ### 本地更新比较与失败状态
 
-`readSourceUpdateBaseline(runtime, core)` 从实际已选快照读取版本、组件资源摘要、Git source来源/提交和核心基线，并返回用于恢复的组合id及manifest摘要。`applySourceUpdate(runtime, proposal, { core, releases })` 使用现有发行模块的`verifyReleaseHistory`及版本比较；仅处理`current-source-update-v1`本地file频道引用，不访问正式发行地址。每个组件声明`version/sha256/source`、本地引用文件的`downloadSha256/url`及`compatible.core/interface/workbench`；引用文件只指定已校验的当前接口快照及包名，实际组件字节仍由09完整快照校验负责。
+`readSourceUpdateBaseline(runtime, core)` 从实际已选快照读取版本、组件资源摘要、Git source来源/提交和核心基线，并返回用于恢复的组合id及manifest摘要。`applySourceUpdate(runtime, proposal, { core })` 在现有source-update模块维护同版摘要不可替换的`verifyReleaseHistory`规则，并复用原版本比较；仅处理`current-source-update-v1`本地file频道引用，不访问正式发行地址。每个组件声明`version/sha256/source`、本地引用文件的`downloadSha256/url`及`compatible.core/interface/workbench`；引用文件只指定已校验的当前接口快照及包名，实际组件字节仍由完整快照校验负责。
 
 准备在独立快照完成；锁内重读最新组合，只核对本次目标组件的完整基线并保留其他组件的后续更新。同版不同摘要、来源改变、过期基线、降级、坏下载、实际package版本不符及兼容范围不符均拒绝。合并重新接好插件间依赖与当前覆盖配置/预设，校验新组合后才原子选择。`succeeded`仅表示本地选择写入并读回验证完成，不代替Host启动验收。
 
