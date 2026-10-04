@@ -144,6 +144,9 @@ importers:
       builder-util-runtime:
         specifier: 9.7.0
         version: 9.7.0
+      dsh-agent-manage:
+        specifier: link:../dsh-agent-manage
+        version: link:../dsh-agent-manage
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9

@@ -112,7 +112,8 @@
     "@deepseek-ai/dsh-llm-pi-ai": "link:../../official-latest-standard/packages/llm/llm-pi-ai",
     "@deepseek-ai/dsh-persona": "link:../../official-latest-standard/packages/preset/persona",
     "@deepseek-ai/dsh-tools": "link:../../official-latest-standard/packages/core/tools",
-    "@deepseek-ai/schemastery": "link:../../official-latest-standard/vendor/schemastery"
+    "@deepseek-ai/schemastery": "link:../../official-latest-standard/vendor/schemastery",
+    "dsh-agent-manage": "link:../dsh-agent-manage"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -156,6 +157,7 @@
     "@deepseek-ai/dsh-llm-pi-ai": "0.2.1-alpha.1",
     "@deepseek-ai/dsh-persona": "0.2.1-alpha.1",
     "@deepseek-ai/dsh-tools": "0.2.1-alpha.1",
-    "@deepseek-ai/schemastery": "3.18.5-alpha.1"
+    "@deepseek-ai/schemastery": "3.18.5-alpha.1",
+    "dsh-agent-manage": "0.6.3-company.6"
   }
 }
