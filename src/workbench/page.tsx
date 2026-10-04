@@ -21,14 +21,14 @@ import type { Business, Preview } from "../host/business.ts";
 import type { CopyKey } from "../client/locales.ts";
 import "./workbench.css";
 import logo from "./gea-logo.png";
-import { mountPicker } from "../../packages/page-interaction/src/picker.ts";
+import { mountPicker } from "@cleverc2200/dsh-agent-workbench/page-interaction/picker";
 import { ApiLogCenter } from "./api-log-center.tsx";
 import type { PageElement } from "../page-bridge/catalog.ts";
 import { workbenchCatalog } from "../shared/workbench-actions.ts";
 import {
   startPageBridgeClient,
   type PageBridgeApplyResult,
-} from "../page-bridge/client.ts";
+} from "@cleverc2200/dsh-agent-workbench/page-interaction/bridge";
 
 /** 宿主按能力契约给出的模块索引：页面用它把 pageId 映射到受管 consumerCode。 */
 type ModuleInfo = {
