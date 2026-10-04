@@ -15,7 +15,7 @@ import {
 } from "../scripts/source-profile.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
 
-const core = resolve("../deepseek-harness"),
+const core = resolve("../../official-latest-standard"),
   parent = resolve(".runtime/ticket-09");
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 test(

@@ -11,6 +11,18 @@ import {
   sourceComponent,
 } from "./source-profile.mjs";
 
+/** The existing immutable release-history rule, now owned by this local source-update module. */
+export function verifyReleaseHistory(channel, previous) {
+  const next = { ...previous };
+  for (const release of channel.releases) {
+    const key = release.package + "@" + release.version;
+    if (next[key] !== undefined && next[key] !== release.sha256)
+      throw Error("RELEASE_VERSION_REPLACED");
+    next[key] = release.sha256;
+  }
+  return next;
+}
+
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const json = async (file) => JSON.parse(await fs.readFile(file, "utf8"));
 
@@ -50,11 +62,7 @@ export async function readSourceUpdateBaseline(
 }
 
 /** Apply local channel artifacts; preparation failures never activate a partial combination. */
-export async function applySourceUpdate(
-  runtime,
-  proposal,
-  { core, releases, io = fs },
-) {
+export async function applySourceUpdate(runtime, proposal, { core, io = fs }) {
   const operation = {
     id: randomUUID(),
     phase: "preparing",
@@ -187,7 +195,7 @@ export async function applySourceUpdate(
       )
         throw Error("SOURCE_RELEASE_INCOMPATIBLE");
     }
-    const observedHistory = releases.verifyReleaseHistory(
+    const observedHistory = verifyReleaseHistory(
       {
         releases: Object.entries(current.components).map(([name, value]) => ({
           package: name,
@@ -197,7 +205,7 @@ export async function applySourceUpdate(
       },
       current.history,
     );
-    const history = releases.verifyReleaseHistory(
+    const history = verifyReleaseHistory(
       { releases: [...prepared.values()].map(({ release }) => release) },
       observedHistory,
     );

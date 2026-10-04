@@ -1,24 +1,4 @@
-# Install after the official base and web bundles. Deployment values belong in the profile overlay.
-- id: ui-open-in-app
-  # 业务版保留“选择打开方式”菜单；不显示默认的本地目录快捷打开按钮。
-  config:
-    showPrimaryAction: false
+# GEA owns only its business identity, model and controlled execution.
 - insert:
-    - id: agent-workbench
-      name: "@cleverc2200/dsh-agent-workbench"
-      config:
-        cwd: !!js process.cwd()
-    # Built-in content plugins: the model renders inline UI (genui) and the
-    # right sidebar gains explorer/editor/terminal/git/browser tabs.
-    # Both are mounted here rather than through `dsh.profile.bundles` so the
-    # plugin-channel update delivers them without a desktop rebuild.
-    - id: genui
-      name: "@changfenhuang/dsh-genui"
-      config:
-        # 围栏渲染失败时，借宿主的轮内转向把逐节点诊断送回同一轮，让模型
-        # 重发修正版（每轮至多一次、同一围栏至多一次、子代理不触发）。
-        fenceFeedback: true
-    - id: better-sidebar
-      name: "dsh-better-sidebar"
     - id: gea-proof
       name: "@cleverc2200/gea-dsh-prototype"

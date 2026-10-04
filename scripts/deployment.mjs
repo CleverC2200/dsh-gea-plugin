@@ -158,71 +158,17 @@ export function resolveWorkbench(anchor = import.meta.url) {
   }
 }
 
-/**
- * Resolve the built-in content plugins every GEA composition mounts.
- *
- * genui renders model-authored inline UI; better-sidebar adds the right-Sidebar
- * explorer/editor/terminal/git/browser tab types. Both are ordinary
- * dependencies of this package, so a release install resolves them from its own
- * node_modules; a source checkout resolves them from the development install.
- * The rows carry an absolute entry path in non-bundle compositions and lose it
- * in bundle compositions, where the package's own `cordis.patch.yml` mounts the
- * same ids by package name.
- */
-export function resolveBuiltinPlugins(anchor = import.meta.url) {
-  const dependency = createRequire(anchor);
-  const entry = (specifier, id) => {
-    const manifest = JSON.parse(
-      readFileSync(dependency.resolve(`${specifier}/package.json`), "utf8"),
-    );
-    if (!/^0\.\d+\.\d+/.test(manifest.version))
-      throw new Error(`BUILTIN_PLUGIN_INCOMPATIBLE: ${manifest.name}@${manifest.version}`);
-    return { id, name: dependency.resolve(manifest.name) };
-  };
-  try {
-    return [
-      {
-        ...entry("@changfenhuang/dsh-genui", "genui"),
-        // 围栏渲染失败时把逐节点诊断送回同一轮，让模型重发修正版。
-        config: { fenceFeedback: true },
-      },
-      entry("dsh-better-sidebar", "better-sidebar"),
-    ];
-  } catch (error) {
-    if (error.message.startsWith("BUILTIN_PLUGIN_INCOMPATIBLE")) throw error;
-    throw new Error(
-      `BUILTIN_PLUGIN_MISSING: install the bundled genui and better-sidebar dependencies (${error.message})`,
-    );
-  }
-}
-
 /** Build ordinary patch rows for the supported dsh profile launcher. */
 export function deploymentPatch(config, root, runtime, { bundle = false } = {}) {
   const model = config.analysis.mode === "model";
   const analysis = config.analysis;
   const rows = [
-    { insert: [{ id: "agent-workbench", name: resolveWorkbench(), config: { cwd: resolve(runtime, "workspace") } }] },
-    { insert: resolveBuiltinPlugins() },
     { id: "session-title-llm", disabled: true },
     {
       id: "agent-default-model",
       config: {
         provider: model ? "gea-analysis" : "gea-proof",
         model: model ? analysis.model : "receipt",
-      },
-    },
-    {
-      id: "agent-presets",
-      config: {
-        default: DEFAULT_PRESET_ID,
-        includeShippedRoot: false,
-        includeUserRoot: false,
-        // 默认预设随插件包分发（default-presets/）：客户端只更新插件、外壳还是旧的时候，
-        // 也必须能解析到 auto-negotiation，否则默认预设会找不到。
-        roots: [
-          { path: resolve(runtime, "native-presets"), trust: "system" },
-          ...presetRoots(root),
-        ],
       },
     },
     // 浏览器 MCP（Playwright）**默认不挂**：它一次注入 25 个 mcp__browser__* 工具，实测
@@ -311,7 +257,6 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
     });
   if (bundle) return rows.flatMap(row => {
     if (row.id === "ui-layout") return [];
-    if (row.insert?.some(entry => ["agent-workbench", "genui", "better-sidebar"].includes(entry.id))) return row.insert.map(({ name, ...entry }) => entry);
     if (row.insert?.some(entry => entry.id === "gea-proof")) return row.insert.map(({ name, ...entry }) => entry);
     return [row];
   });

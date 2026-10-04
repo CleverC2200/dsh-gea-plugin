@@ -11,12 +11,11 @@ import { selectSourceCombination } from "../scripts/source-profile.mjs";
 import {
   sourceUpdateFixture,
   core,
-  releases,
   gea,
   workbench,
   manage,
 } from "./fixtures/source-updates.mjs";
-const options = { core, releases };
+const options = { core };
 
 test("an old delayed candidate cannot overwrite a newer selected version", async (t) => {
   const f = await sourceUpdateFixture(t),

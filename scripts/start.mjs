@@ -9,6 +9,7 @@ try {
   const { values } = parseArgs({
     options: {
       config: { type: "string" },
+      sources: { type: "string" },
       runtime: { type: "string" },
       port: { type: "string", default: "3198" },
       dev: { type: "boolean" },
@@ -32,11 +33,20 @@ try {
     process.env.DSH_TELEMETRY_DISABLED = "1";
     if (values.dev) process.env.GEA_WEB_LOGIN_PERSIST = "1";
     await runSourceProfile(
-      resolve(root, "../deepseek-harness"),
+      resolve(root, "../../official-latest-standard"),
       runtime,
       true,
       deployment,
       port,
+      {
+        sources: values.sources
+          ? JSON.parse(
+              await (
+                await import("node:fs/promises")
+              ).readFile(values.sources, "utf8"),
+            )
+          : undefined,
+      },
     );
   }
 } catch (error) {

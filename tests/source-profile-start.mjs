@@ -16,8 +16,18 @@ for (const endpoint of [
 process.env.DSH_HOME = resolve(runtime, "home");
 process.env.DSH_TELEMETRY_DISABLED = "1";
 await runSourceProfile(
-  resolve(import.meta.dirname, "../../deepseek-harness"),
+  resolve(import.meta.dirname, "../../../official-latest-standard"),
   resolve(runtime),
   mode !== "native-only",
   deployment,
+  0,
+  {
+    sources: process.env.GEA_TEST_SOURCE_INPUTS
+      ? JSON.parse(
+          await (
+            await import("node:fs/promises")
+          ).readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"),
+        )
+      : undefined,
+  },
 );

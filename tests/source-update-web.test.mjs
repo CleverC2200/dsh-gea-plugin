@@ -21,16 +21,11 @@ import {
 } from "../scripts/source-update.mjs";
 
 const project = resolve(import.meta.dirname, "../../../.."),
-  core = resolve("../deepseek-harness");
+  core = resolve("../../official-latest-standard");
 const parent = resolve(".runtime/ticket-10"),
   gea = "@cleverc2200/gea-dsh-prototype",
   workbench = "@cleverc2200/dsh-agent-workbench";
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
-const releases = await import(
-  pathToFileURL(
-    resolve(project, "dsh-plugin-hub/src/server/services/release-channel.ts"),
-  )
-);
 const json = async (path) => JSON.parse(await fs.readFile(path, "utf8"));
 
 test(
@@ -232,7 +227,6 @@ test(
           const proposal = phase === "gea-updated" ? proposalA : proposalB;
           const result = await applySourceUpdate(app.runtime, proposal, {
             core,
-            releases,
           });
           assert.equal(
             result.phase,
@@ -243,7 +237,6 @@ test(
           if (phase === "gea-updated") {
             const late = await applySourceUpdate(app.runtime, proposalA, {
               core,
-              releases,
             });
             assert.equal(late.failed[0].error, "STALE_SOURCE_UPDATE");
             updates.push(late);

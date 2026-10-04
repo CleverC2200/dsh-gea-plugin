@@ -35,6 +35,7 @@ export async function runSourceProfile(
   plugins = false,
   deployment,
   port = 0,
+  { sources, workspace } = {},
 ) {
   const supported = await json(new URL("./current-core.json", import.meta.url));
   const cli = await json(join(core, "apps/cli/package.json"));
@@ -46,12 +47,7 @@ export async function runSourceProfile(
     cwd: core,
     encoding: "utf8",
   }).trim();
-  if (
-    plugins &&
-    ((await realpath(core)) !==
-      (await realpath(resolve(root, "../deepseek-harness"))) ||
-      coreSha !== supported.adaptation)
-  )
+  if (plugins && coreSha !== supported.adaptation)
     throw Error(
       "UNSUPPORTED_CORE_BASELINE: use the registered isolated checkout",
     );
@@ -86,7 +82,10 @@ export async function runSourceProfile(
         throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
       composition = selected
         ? await readSourceCombination(runtime, selected.id, core)
-        : await prepareSourcePlugins(core, runtime, deployment);
+        : await prepareSourcePlugins(core, runtime, deployment, {
+            sources,
+            workspace,
+          });
       const manifestSha256 = await digest(
         join(
           runtime,
@@ -95,10 +94,7 @@ export async function runSourceProfile(
           "combination.json",
         ),
       );
-      if (
-        selected &&
-        selected.manifestSha256 !== manifestSha256
-      )
+      if (selected && selected.manifestSha256 !== manifestSha256)
         throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
       if (!selected)
         await save(join(runtime, "source-selection.json"), {
@@ -112,8 +108,24 @@ export async function runSourceProfile(
           composition.id,
           "node_modules/@cleverc2200/dsh-agent-workbench/lib/business/inventory-fc",
         ),
-        join(runtime, "source-combinations", composition.id, "node_modules/@cleverc2200/dsh-agent-workbench/lib/business/inventory-aqkc"),
+        join(
+          runtime,
+          "source-combinations",
+          composition.id,
+          "node_modules/@cleverc2200/dsh-agent-workbench/lib/business/inventory-aqkc",
+        ),
       ]);
+      if (composition.profileDefaults) {
+        const seed = await readFile(composition.profileDefaults);
+        try {
+          await writeFile(join(profile, "cordis.patch.yml"), seed, {
+            flag: "wx",
+            mode: 0o600,
+          });
+        } catch (error) {
+          if (error.code !== "EEXIST") throw error;
+        }
+      }
       const temporary = join(profile, `node_modules-${composition.id}`);
       await symlink(
         join(runtime, "source-combinations", composition.id, "node_modules"),
@@ -180,19 +192,20 @@ async function launch() {
     options: {
       core: { type: "string" },
       plugins: { type: "boolean" },
+      sources: { type: "string" },
       help: { type: "boolean" },
     },
   });
   if (values.help) {
     console.log(
-      "node scripts/start-isolated-validation.mjs [--core <built current source checkout>]\nDefaults to the sibling deepseek-harness source checkout. macOS only; fresh offline profile; Ctrl-C stops this instance.",
+      "node scripts/start-isolated-validation.mjs [--core <built current source checkout>]\nDefaults to the registered official-latest-standard checkout; --sources accepts the fixed source records. macOS only; fresh offline profile; Ctrl-C stops this instance.",
     );
     return;
   }
   if (process.platform !== "darwin")
     throw Error("ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX");
   const core = await realpath(
-    values.core ?? resolve(root, "../deepseek-harness"),
+    values.core ?? resolve(root, "../../official-latest-standard"),
   );
   const manifest = await json(join(core, "package.json"));
   const packages = {};
@@ -260,7 +273,10 @@ async function launch() {
     LANG: "en_US.UTF-8",
     DSH_TELEMETRY_DISABLED: "1",
   };
-  const code = `import(${JSON.stringify(import.meta.url)}).then(m => m.runSourceProfile(${JSON.stringify(core)}, ${JSON.stringify(runtime)}, ${values.plugins === true}))`;
+  const fixedSources = values.sources
+    ? await json(resolve(values.sources))
+    : undefined;
+  const code = `import(${JSON.stringify(import.meta.url)}).then(m => m.runSourceProfile(${JSON.stringify(core)}, ${JSON.stringify(runtime)}, ${values.plugins === true}, undefined, 0, ${JSON.stringify({ sources: fixedSources })}))`;
   const log = await open(join(runtime, "server.log"), "a", 0o600);
   const child = spawn(
     "/usr/bin/sandbox-exec",

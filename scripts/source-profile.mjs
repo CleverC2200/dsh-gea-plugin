@@ -12,12 +12,11 @@ import {
   unlink,
   lstat,
 } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, resolve, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
-import { composeSourcePresets } from "./source-presets.mjs";
 import { corePackages, sourcePlugins } from "./source-composition.mjs";
 function clientEntry(manifest) {
   const entry = manifest.exports?.["./client"];
@@ -30,12 +29,47 @@ export async function prepareSourcePlugins(
   core,
   runtime,
   deployment,
-  { workspace = resolve(import.meta.dirname, "../..") } = {},
+  {
+    workspace = resolve(import.meta.dirname, "../.."),
+    sources,
+    id = randomUUID(),
+  } = {},
 ) {
-  const id = randomUUID();
+  if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
   const snapshot = join(runtime, "source-combinations", id);
-  const profile = join(runtime, "home/profiles/plugin-split-validation");
   const modules = join(snapshot, "node_modules");
+  const supported = JSON.parse(
+    await readFile(new URL("./current-core.json", import.meta.url), "utf8"),
+  );
+  const coreCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: core,
+    encoding: "utf8",
+  }).trim();
+  if (
+    coreCommit !== supported.adaptation ||
+    execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
+      cwd: core,
+      encoding: "utf8",
+    }).trim()
+  )
+    throw Error("FIXED_OFFICIAL_INPUT_REQUIRED");
+  const entries =
+    sources ??
+    sourcePlugins.map((plugin) => ({
+      repo: plugin.repo,
+      source: join(workspace, plugin.repo),
+    }));
+  if (
+    !Array.isArray(entries) ||
+    entries.length !== sourcePlugins.length ||
+    new Set(entries.map((entry) => entry.repo)).size !== entries.length ||
+    entries.some(
+      (entry) => !sourcePlugins.some((plugin) => plugin.repo === entry.repo),
+    )
+  )
+    throw Error("INVALID_SOURCE_PLUGIN_SET");
+  await mkdir(join(runtime, "source-combinations"), { recursive: true });
+  await mkdir(snapshot, { recursive: false });
   await mkdir(modules, { recursive: true });
   const packages = new Map(
     (await corePackages(core)).map(({ manifest, directory }) => [
@@ -46,8 +80,34 @@ export async function prepareSourcePlugins(
   const plugins = new Map();
   for (const plugin of sourcePlugins) {
     const repo = plugin.repo;
-    const source = join(workspace, repo);
-    const expectedCommit = plugin.commit;
+    const input = entries.find((entry) => entry.repo === repo);
+    const source = await realpath(input.source);
+    const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: source,
+      encoding: "utf8",
+    }).trim();
+    if (
+      execFileSync("git", ["status", "--porcelain"], {
+        cwd: source,
+        encoding: "utf8",
+      }).trim()
+    )
+      throw Error("SOURCE_PLUGIN_DIRTY: " + repo);
+    if (input.integration) {
+      const integration = await realpath(input.integration);
+      if (
+        execFileSync("git", ["rev-parse", "HEAD"], {
+          cwd: integration,
+          encoding: "utf8",
+        }).trim() !== commit ||
+        execFileSync("git", ["status", "--porcelain"], {
+          cwd: integration,
+          encoding: "utf8",
+        }).trim()
+      )
+        throw Error("SOURCE_PLUGIN_UNMERGED: " + repo);
+    }
+    const expectedCommit = input.commit;
     if (expectedCommit) {
       const commit = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
         cwd: source,
@@ -61,11 +121,26 @@ export async function prepareSourcePlugins(
     const manifest = JSON.parse(
       await readFile(join(source, "package.json"), "utf8"),
     );
+    const assetRoot = input.assets ? await realpath(input.assets) : source;
+    if (input.assets) {
+      if (!input.files)
+        throw Error("SOURCE_ASSET_PROVENANCE_REQUIRED: " + repo);
+      const actual = await resourceDigests(assetRoot, "", true);
+      if (
+        JSON.stringify(Object.entries(actual).sort()) !==
+        JSON.stringify(Object.entries(input.files).sort())
+      )
+        throw Error("SOURCE_ASSET_DIGEST_MISMATCH: " + repo);
+    }
     const target = join(modules, manifest.name);
     await mkdir(target, { recursive: true });
     for (const file of plugin.resources) {
       try {
-        await cp(join(source, file), join(target, file), { recursive: true });
+        await cp(join(assetRoot, file), join(target, file), {
+          recursive: true,
+          filter: (path) =>
+            !relative(assetRoot, path).split(/[\\/]/).includes("node_modules"),
+        });
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
@@ -77,16 +152,12 @@ export async function prepareSourcePlugins(
       ),
     );
     await readFile(join(target, clientEntry(manifest)));
-    if (plugin.example && deployment?.workbenchExample === true) {
-      const fixture = plugin.example;
-      await readFile(join(source, fixture, "lib/host.js"));
-      await cp(join(source, fixture), join(target, fixture), {
-        recursive: true,
-        filter: (path) => !path.split(/[\\/]/).includes("node_modules"),
-      });
-    }
     plugins.set(manifest.name, {
       source,
+      assetRoot,
+      dependencyRoot: await realpath(
+        input.dependencies ?? join(source, "node_modules"),
+      ),
       target,
       version: manifest.version,
       plugin,
@@ -131,21 +202,18 @@ export async function prepareSourcePlugins(
     JSON.stringify(snapshots, null, 2),
   );
   const externalDirectories = new Set();
-  for (const { source, target } of plugins.values()) {
+  for (const { dependencyRoot, target } of plugins.values()) {
     const dependencies = new Map(packages);
-    for (const entry of await readdir(join(source, "node_modules"))) {
+    for (const entry of await readdir(dependencyRoot)) {
       if (entry.startsWith(".")) continue;
       const names = entry.startsWith("@")
-        ? (await readdir(join(source, "node_modules", entry))).map(
+        ? (await readdir(join(dependencyRoot, entry))).map(
             (name) => `${entry}/${name}`,
           )
         : [entry];
       for (const name of names) {
-        if (!dependencies.has(name))
-          dependencies.set(
-            name,
-            await realpath(join(source, "node_modules", name)),
-          );
+        if (!dependencies.has(name) && !plugins.has(name))
+          dependencies.set(name, await realpath(join(dependencyRoot, name)));
       }
     }
     for (const [name, plugin] of plugins) dependencies.set(name, plugin.target);
@@ -190,36 +258,22 @@ export async function prepareSourcePlugins(
   const modelIndex = patch.findIndex((row) => row.id === "agent-default-model");
   if (modelIndex < 0) throw Error("SOURCE_MODEL_DEFAULT_MISSING");
   const [modelDefault] = patch.splice(modelIndex, 1);
-  // User-selectable defaults belong to the editable profile, not a read-only CLI overlay.
-  try {
-    await writeFile(
-      join(profile, "cordis.patch.yml"),
-      JSON.stringify([modelDefault], null, 2),
-      { flag: "wx", mode: 0o600 },
-    );
-  } catch (error) {
-    if (error.code !== "EEXIST") throw error;
-  }
+  // The verified snapshot carries a seed; only the actual stopped-profile launcher
+  // may adopt it, without overwriting an existing user-selected default.
+  await writeFile(
+    join(snapshot, "profile-defaults.json"),
+    JSON.stringify([modelDefault], null, 2),
+    { mode: 0o600 },
+  );
   patch.push({
     id: "agent-preset-registry",
-    config: { default: "auto-negotiation" },
+    config: { default: "standard" },
   });
   patch.push({ id: "dsh-agent-manage", config: { sources: [] } });
   await writeFile(
     join(snapshot, "deployment.patch.json"),
     JSON.stringify(patch, null, 2),
   );
-  const standard = join(
-    core,
-    "packages/bundle/web-app/presets/standard.patch.yml",
-  );
-  const business = join(gea, "presets/gea-readonly/agent.cordis.yml");
-  const presetPatch = composeSourcePresets(
-    { source: standard, text: await readFile(standard, "utf8") },
-    { source: business, text: await readFile(business, "utf8") },
-    join(gea, "lib/skill-reference.js"),
-  );
-  await writeFile(join(snapshot, "presets.patch.yml"), presetPatch);
   const composition = {
     id,
     dependencies: Object.fromEntries(
@@ -229,10 +283,8 @@ export async function prepareSourcePlugins(
       .filter(([, data]) => data.plugin.bundleOrder !== undefined)
       .sort((a, b) => a[1].plugin.bundleOrder - b[1].plugin.bundleOrder)
       .map(([name]) => name),
-    patches: [
-      join(snapshot, "deployment.patch.json"),
-      join(snapshot, "presets.patch.yml"),
-    ],
+    patches: [join(snapshot, "deployment.patch.json")],
+    profileDefaults: join(snapshot, "profile-defaults.json"),
   };
   const files = await resourceDigests(snapshot);
   externalDirectories.add(join(core, "apps/web/dist"));
@@ -304,13 +356,21 @@ const fileDigest = async (file) =>
     .digest("hex");
 
 /** Hash shipped resources, excluding dependency links and their writable stores. */
-async function resourceDigests(directory, prefix = "") {
+async function resourceDigests(
+  directory,
+  prefix = "",
+  excludeDependencies = false,
+) {
   const files = {};
   for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (excludeDependencies && entry.name === "node_modules") continue;
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
     const file = join(directory, entry.name);
     if (entry.isDirectory())
-      Object.assign(files, await resourceDigests(file, relative));
+      Object.assign(
+        files,
+        await resourceDigests(file, relative, excludeDependencies),
+      );
     else if (entry.isSymbolicLink())
       files[relative] = "link:" + (await realpath(file));
     else if (entry.isFile() && relative !== "combination.json")
@@ -410,7 +470,10 @@ export async function selectSourceCombination(
     if (expected) {
       // Bind the previous choice, even when its dependencies are the reason for rebuilding.
       // The target below must independently pass the complete artifact/dependency gate.
-      if (current?.id !== expected.id || current?.manifestSha256 !== expected.manifestSha256)
+      if (
+        current?.id !== expected.id ||
+        current?.manifestSha256 !== expected.manifestSha256
+      )
         throw Error("STALE_SOURCE_RECOVERY");
       if (
         (await fileDigest(
@@ -641,44 +704,29 @@ export async function mergeSourceComponents(
     .split(oldModules)
     .join(modules);
   await writeFile(join(directory, "deployment.patch.json"), rewritten);
-  const standard = join(
-    core,
-    "packages/bundle/web-app/presets/standard.patch.yml",
-  );
-  const gea = join(modules, "@cleverc2200/gea-dsh-prototype");
-  const business = join(gea, "presets/gea-readonly/agent.cordis.yml");
-  await writeFile(
-    join(directory, "presets.patch.yml"),
-    composeSourcePresets(
-      {
-        source: standard,
-        text: (
-          await readPinnedInput(standard, expectedExternal[standard])
-        ).toString(),
-      },
-      {
-        source: business,
-        text: (
-          await readPinnedInput(
-            business,
-            records.get(updates["@cleverc2200/gea-dsh-prototype"] ?? latest)
-              .files[
-              "node_modules/@cleverc2200/gea-dsh-prototype/presets/gea-readonly/agent.cordis.yml"
-            ],
-          )
-        ).toString(),
-      },
-      join(gea, "lib/skill-reference.js"),
-    ),
-  );
+  let profileDefaults;
+  if (original.composition.profileDefaults) {
+    const defaultsPath = join(
+      runtime,
+      "source-combinations",
+      latest,
+      "profile-defaults.json",
+    );
+    if (original.composition.profileDefaults !== defaultsPath)
+      throw Error("INVALID_SOURCE_DEFAULTS_PATH");
+    const defaults = await readPinnedInput(
+      defaultsPath,
+      original.files["profile-defaults.json"],
+    );
+    await writeFile(join(directory, "profile-defaults.json"), defaults);
+    profileDefaults = join(directory, "profile-defaults.json");
+  }
   const composition = {
     ...original.composition,
     id,
     dependencies,
-    patches: [
-      join(directory, "deployment.patch.json"),
-      join(directory, "presets.patch.yml"),
-    ],
+    patches: [join(directory, "deployment.patch.json")],
+    ...(profileDefaults ? { profileDefaults } : {}),
   };
   const externalFiles = await dependencyDigests(externalRoots);
   for (const [file, hash] of Object.entries(externalFiles))

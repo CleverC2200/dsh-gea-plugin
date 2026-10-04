@@ -1,15 +1,28 @@
 /** Check/build this isolated workspace's plugins against the built sibling DSH source. */
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { parseArgs } from "node:util";
 
 import { corePackages, sourcePlugins } from "./source-composition.mjs";
 
-const { values } = parseArgs({ options: { build: { type: "boolean" } } });
+const { values } = parseArgs({
+  options: { build: { type: "boolean" }, sources: { type: "string" } },
+});
 const root = resolve(import.meta.dirname, "..");
 const workspace = resolve(root, "..");
-const core = join(workspace, "deepseek-harness");
+const core = resolve(root, "../../official-latest-standard");
+const records = values.sources
+  ? JSON.parse(await readFile(values.sources, "utf8"))
+  : sourcePlugins.map((plugin) => ({
+      repo: plugin.repo,
+      source: join(workspace, plugin.repo),
+    }));
+const sourceFor = (repo) =>
+  records.find((entry) => entry.repo === repo)?.source ??
+  (() => {
+    throw Error("SOURCE_PLUGIN_MISSING: " + repo);
+  })();
 const output = join(root, ".runtime/source-compatibility");
 await mkdir(output, { recursive: true });
 const paths = {};
@@ -26,11 +39,11 @@ for (const { manifest, directory } of await corePackages(core)) {
 }
 for (const plugin of sourcePlugins) {
   for (const [name, file] of Object.entries(plugin.typeEntries ?? {}))
-    paths[name] = [join(workspace, plugin.repo, file)];
+    paths[name] = [join(sourceFor(plugin.repo), file)];
 }
 for (const plugin of sourcePlugins) {
   const name = plugin.repo;
-  const cwd = join(workspace, name);
+  const cwd = sourceFor(name);
   const projects = [];
   for (const config of plugin.configs) {
     const target = join(output, `${name}-${config}`);
@@ -80,8 +93,6 @@ for (const plugin of sourcePlugins) {
       cwd,
       stdio: "inherit",
     });
-  } else if (plugin.build === "hub") {
-    execFileSync("npm", ["run", "build"], { cwd, stdio: "inherit" });
   } else {
     execFileSync("corepack", ["pnpm", "run", plugin.build], {
       cwd,

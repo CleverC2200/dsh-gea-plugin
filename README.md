@@ -33,24 +33,24 @@ pnpm start --dev --config gea.config.json --runtime .runtime/workbench-developme
 
 ### 页面组成
 
-| 层            | 代码                             | 职责                                                                            |
-| ------------- | -------------------------------- | ------------------------------------------------------------------------------- |
-| 外层 DSH 插件 | `src/client.tsx`                 | GEA 导航、独立页面 iframe、Session 选择与语言同步                               |
-| 通用工作台 | [独立工作台仓库](http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench) | 页面目录、HTML呈现、插件公共规范；原生布局与会话归官方宿主 |
-| 示例 Agent | `packages/workbench-example/` | 独立插件验证多页面接入，仅在 `workbenchExample: true` 时加载 |
-| 独立业务文档  | `src/workbench/page.tsx`         | 登录、GEA 适配、预览与发送；不实现聊天输入框                                    |
-| 原审批组件    | `src/workbench/original/`        | 从 AionUi 原源码复制的工作台、CSS、组织维度、筛选、版本、详情和导出             |
-| GEA Host      | `src/host/business.ts`、`src/host.ts` | 持有登录凭证、固定只读查询、精确数据和持久化 Session 输入                       |
+| 层            | 代码                                                                         | 职责                                                                |
+| ------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 外层 DSH 插件 | `src/client.tsx`                                                             | GEA 导航、独立页面 iframe、Session 选择与语言同步                   |
+| 通用工作台    | [独立工作台仓库](http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench) | 页面目录、HTML呈现、插件公共规范；原生布局与会话归官方宿主          |
+| 示例 Agent    | `packages/workbench-example/`                                                | 独立插件验证多页面接入，仅在 `workbenchExample: true` 时加载        |
+| 独立业务文档  | `src/workbench/page.tsx`                                                     | 登录、GEA 适配、预览与发送；不实现聊天输入框                        |
+| 原审批组件    | `src/workbench/original/`                                                    | 从 AionUi 原源码复制的工作台、CSS、组织维度、筛选、版本、详情和导出 |
+| GEA Host      | `src/host/business.ts`、`src/host.ts`                                        | 持有登录凭证、固定只读查询、精确数据和持久化 Session 输入           |
 
 ### 源码目录
 
-| 目录 | 职责 |
-| --- | --- |
-| `src/client.tsx` | 唯一业务身份与账户动作的只读客户端投影 |
-| `src/host/` | GEA Host 业务编排、身份和权限边界、MCP、服务账号与工作流配置 |
-| `src/shared/` | Host 与构建脚本共用的环境解析、错误脱敏、流解析、取消信号和通知投影 |
-| Workbench `src/workbench/` | 原独立业务文档、工作流加载器及审批页面；GEA只提供实际业务adapter |
-| `src/mocks/` | 仅供测试和演示使用的 DMS、销售计划模拟实现 |
+| 目录                       | 职责                                                                |
+| -------------------------- | ------------------------------------------------------------------- |
+| `src/client.tsx`           | 唯一业务身份与账户动作的只读客户端投影                              |
+| `src/host/`                | GEA Host 业务编排、身份和权限边界、MCP、服务账号与工作流配置        |
+| `src/shared/`              | Host 与构建脚本共用的环境解析、错误脱敏、流解析、取消信号和通知投影 |
+| Workbench `src/workbench/` | 原独立业务文档、工作流加载器及审批页面；GEA只提供实际业务adapter    |
+| `src/mocks/`               | 仅供测试和演示使用的 DMS、销售计划模拟实现                          |
 
 GEA构建入口只有 `src/host.ts`、`src/client.tsx`，产物为 `lib/host.js`、`lib/client.js`；Native页面与通用桥从GEA构建退出。
 
@@ -192,7 +192,7 @@ Demand Forecast follows the user's language for both progress and final answers.
 
 ## 源码组合维护
 
-隔离源码工具共用 `scripts/source-composition.mjs` 的六插件清单（含插件中心）、构建差异、快照资源及核心包扫描范围。`source:check` 检查当前核心声明，`source:build` 依次构建；启动器装配同一组合。预设由 YAML 节点转换，保留 `!!js` 标签，结构不兼容时报告输入文件。主会话读取来自核心 `uiSession.mainSessionId`，槽位通过 `inject.hooks` 订阅；新建会话按钮和输入底栏使用核心语义标记。此组合要求同次更新核心、工作台与 GEA。
+本轮只适配固定官方 `dsh-v0.2.1-alpha.1` / `5badb15009ae1756c3afe0ae0cef1faafc290ccc`，读取其标准构建与公开 SDK；不修改 Core，不再装配 Hub、示例或改写官方 preset。`scripts/source-profile.mjs` 是唯一源码组合 helper，登记 Workbench、Manage、GEA、GenUI、Better Sidebar 五个现有 owner；root 的固定组合夹具复用该 helper。`source:check`/`source:build` 与 `start --sources <固定源JSON>` 消费同一来源记录，保来源/产物摘要、运行锁、CAS及失败读回保护。原提示词/Skill由Manage按选用发布，GEA只给窄源贡献及真实Consumer/执行配置。
 
 ### 历史 HTML 样板主题同步（不用于规格41）
 
@@ -281,3 +281,11 @@ Native/HTML 页面源码、样式、静态 Fetch、bundle 构建、通用 queue/
 GEA Host 向现有 `workbenchPages.registerBusinessPage` 登记实际业务 grant，集中保持官方选用资源/Session、Consumer、身份代际、受管 SQL、审批业务规则、validated visible context 和取消。GEA client 只提供唯一业务身份与账户动作的只读投影。两种 HTML 页面动作及内容引用由 Workbench 使用自己的 authenticated Fetch 和 exact owner 处理；GEA不保存第二份通用页面owner/队列。`/api/gea-html/identity` 是当前身份投影，不授予业务能力。
 
 纯 §5.5 预测计算由 Manage 的 `forecast_compute` 提供，沿当前会话工作区核对已安装启用的 `sinian-demand-baseline`；GEA 不注册纯计算、Skill 正文或参考读取工具。原公式与十进制版本保持，计算来源 hash/完整用户 JSON 核对不授予 Consumer 权限。官方 Skill catalog/loader 保持原文，GEA 仅追加身份、实际业务事实、证据和执行限制。
+
+### 最新官方客户端与源码调试
+
+官方输入为同级登记的 `official-latest-standard`。SDK 开发依赖真实链接其构建包，必要 peer 声明对应这个固定 release；不以旧 npm SDK 或旧客户端资源作为最新版证明。正常客户端反馈使用官方的 `pnpm dev:desktop` / `pnpm start:desktop`，插件安装/启用仍由官方管理入口负责。本隔离项目不发行或验收旧公司桌面壳，不修改正式运行目录。
+
+定向源码 Host 调试可使用 `pnpm start --config <deployment.json> --sources <固定源JSON> --runtime <自有目录> --port 0`。固定源包含每个当前repo的 `source`；可给 `commit`/`integration`核一致性，复用已核产物时给 `assets`及完整 `files`摘要，依赖来自自己的 `dependencies`只读目录。准备阶段只写新不可变快照；用户默认模型的seed由实际launcher以flagwx采用，不覆盖已有选择。
+
+`desktop/runtime-start.mjs`及其仍消费的 `prepareNativePreset`、default-presets/sync helper、旧桌面测试属于历史公司壳输入，本轮新 source/start/check/build不调用它们。没有为保旧壳恢复运行兼容，也不宣称整个源码历史不存在旧代码。

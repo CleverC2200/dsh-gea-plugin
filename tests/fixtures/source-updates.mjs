@@ -9,11 +9,9 @@ import { readSourceUpdateBaseline } from "../../scripts/source-update.mjs";
 import { selectSourceCombination } from "../../scripts/source-profile.mjs";
 
 const project = resolve(import.meta.dirname, "../../../../..");
-export const core = resolve(project, ".parallel/ticket-09/deepseek-harness");
-export const releases = await import(
-  pathToFileURL(
-    resolve(project, "dsh-plugin-hub/src/server/services/release-channel.ts"),
-  )
+export const core = resolve(
+  import.meta.dirname,
+  "../../../../official-latest-standard",
 );
 export const gea = "@cleverc2200/gea-dsh-prototype",
   workbench = "@cleverc2200/dsh-agent-workbench",
@@ -22,7 +20,6 @@ export const names = [
   gea,
   workbench,
   manage,
-  "dsh-plugin",
   "@changfenhuang/dsh-genui",
   "dsh-better-sidebar",
 ];
@@ -110,20 +107,6 @@ export async function sourceUpdateFixture(t) {
       };
     }
     const geaRoot = join(dir, "node_modules", gea);
-    await fs.mkdir(join(geaRoot, "presets/gea-readonly"), { recursive: true });
-    await fs.writeFile(
-      join(geaRoot, "presets/gea-readonly/agent.cordis.yml"),
-      await fs.readFile(
-        resolve(
-          project,
-          "dsh-gea-plugin/presets/gea-readonly/agent.cordis.yml",
-        ),
-      ),
-    );
-    await fs.writeFile(
-      join(geaRoot, "lib/skill-reference.js"),
-      "export default {};",
-    );
     for (const name of names)
       for (const dependency of names) {
         const link = join(
@@ -136,15 +119,11 @@ export async function sourceUpdateFixture(t) {
         await fs.mkdir(resolve(link, ".."), { recursive: true });
         await fs.symlink(join(dir, "node_modules", dependency), link);
       }
-    const patches = [
-      join(dir, "deployment.patch.json"),
-      join(dir, "presets.patch.yml"),
-    ];
+    const patches = [join(dir, "deployment.patch.json")];
     await fs.writeFile(
       patches[0],
       JSON.stringify([{ id: "gea-proof", name: join(geaRoot, "lib/host.js") }]),
     );
-    await fs.writeFile(patches[1], "[]\n");
     await fs.writeFile(
       join(dir, "company-plugins.json"),
       JSON.stringify(plugins),
@@ -155,7 +134,13 @@ export async function sourceUpdateFixture(t) {
         composition: {
           id,
           dependencies,
-          bundles: [gea, manage, "dsh-plugin"],
+          bundles: [
+            workbench,
+            manage,
+            "@changfenhuang/dsh-genui",
+            "dsh-better-sidebar",
+            gea,
+          ],
           patches,
         },
         core: coreSha,
