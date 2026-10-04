@@ -8,10 +8,13 @@ import {
   realpath,
   rm,
   access,
+  cp,
+  readdir,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   prepareSourcePlugins,
   readSourceCombination,
@@ -26,7 +29,7 @@ const names = [
 ];
 
 test(
-  "the single fixed-source assembler publishes five owners without old preset rewriting or profile writes",
+  "the single assembler verifies reused published assets without source locks, while source-lock changes remain rejected",
   { timeout: 180000 },
   async (t) => {
     const root = await realpath(
@@ -65,6 +68,10 @@ test(
         await mkdir(resolve(source, file, ".."), { recursive: true });
         await writeFile(join(source, file), "original fixture input\n");
       }
+      await writeFile(
+        join(source, "pnpm-lock.yaml"),
+        "source-only locked dependency input\n",
+      );
       if (index === 2) {
         await mkdir(join(source, "scripts"));
         await writeFile(
@@ -92,9 +99,39 @@ test(
         ],
         { cwd: source },
       );
+      const assets = join(root, "published-assets", plugin.repo);
+      await mkdir(assets, { recursive: true });
+      for (const file of plugin.resources.filter(
+        (file) => file !== "pnpm-lock.yaml",
+      )) {
+        try {
+          await cp(join(source, file), join(assets, file), { recursive: true });
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+      }
+      const files = {};
+      async function hashes(directory, prefix = "") {
+        for (const entry of await readdir(directory, { withFileTypes: true })) {
+          const file = join(prefix, entry.name),
+            absolute = join(directory, entry.name);
+          if (entry.isDirectory()) await hashes(absolute, file);
+          else
+            files[file] = createHash("sha256")
+              .update(await readFile(absolute))
+              .digest("hex");
+        }
+      }
+      await hashes(assets);
+      await assert.rejects(access(join(assets, "pnpm-lock.yaml")), {
+        code: "ENOENT",
+      });
       sources.push({
         repo: plugin.repo,
         source,
+        assets,
+        files,
+        dependencies: join(source, "node_modules"),
         commit: execFileSync("git", ["rev-parse", "HEAD"], {
           cwd: source,
           encoding: "utf8",
@@ -135,5 +172,20 @@ test(
     );
     assert.ok(!JSON.stringify(composition).includes("dsh-plugin-hub"));
     assert.ok(!JSON.stringify(composition).includes("skill-reference"));
+    const record = JSON.parse(
+      await readFile(join(directory, "combination.json"), "utf8"),
+    );
+    const originalLock = join(sources[3].source, "pnpm-lock.yaml");
+    assert.ok(record.externalLockFiles.includes(originalLock));
+    assert.equal(
+      record.externalFiles[originalLock],
+      record.locks[names[3]]["pnpm-lock.yaml"],
+    );
+    assert.match(record.externalFiles[originalLock], /^[a-f0-9]{64}$/);
+    await writeFile(originalLock, "changed source dependency input\n");
+    await assert.rejects(
+      readSourceCombination(runtime, composition.id, core),
+      /SOURCE_DEPENDENCY_DIGEST_MISMATCH/,
+    );
   },
 );

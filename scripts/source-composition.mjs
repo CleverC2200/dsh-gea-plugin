@@ -16,6 +16,8 @@ const resources = [
   "src/shared",
 ];
 
+// Digests describe publishable assets. Source lockfiles are independently bound
+// through source-profile locks/externalLockFiles, even when reused assets omit them.
 export const sourcePlugins = [
   {
     repo: "dsh-agent-workbench",
@@ -49,16 +51,16 @@ export const sourcePlugins = [
     repo: "dsh-genui",
     configs: ["tsconfig.json"],
     build: "build",
-    resources: [...resources, "SKILL.md", "docs", "src", "pnpm-lock.yaml"],
-    digests: ["SKILL.md", "pnpm-lock.yaml"],
+    resources: [...resources, "SKILL.md", "docs", "src"],
+    digests: ["SKILL.md"],
     bundleOrder: 2,
   },
   {
     repo: "dsh-better-sidebar",
     configs: ["tsconfig.json"],
     build: "build",
-    resources: [...resources, "locale", "icon.svg", "src", "pnpm-lock.yaml"],
-    digests: ["pnpm-lock.yaml", "locale/en.json", "locale/zh.json", "icon.svg"],
+    resources: [...resources, "locale", "icon.svg", "src"],
+    digests: ["locale/en.json", "locale/zh.json", "icon.svg"],
     bundleOrder: 3,
   },
 ];
