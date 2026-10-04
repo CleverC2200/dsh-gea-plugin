@@ -177,9 +177,9 @@ DMS 继续使用 mock。受控 GEA 终审流程可连接既有模拟接收方验
 
 流程配置加载失败时，审批页明确显示流程配置错误，并保留脱敏的请求阶段、HTTP 状态、请求编号和跟踪编号，供技术支持定位。访问令牌、委托令牌和未定义的上游响应字段不会返回浏览器。
 
-需求预测预设的进度说明和最终回答跟随用户语言；中文问题使用中文。Skill 的本地参考文件通过 `gea_skill_reference_read` 按技能名及正文链接的相对路径只读加载，支持 `offset`/`limit` 分段读取。MCP 资源读取只接收服务返回的 URI，本地 `file://` 链接会被拦截并提示正确工具。
+需求预测预设的进度说明和最终回答跟随用户语言；中文问题使用中文。Skill 的本地参考文件通过 Manage 的 `skill_reference_read` 按技能名及正文链接的相对路径只读加载，支持 `offset`/`limit` 分段读取。MCP 资源读取只接收服务返回的 URI，本地 `file://` 链接会被拦截并提示正确工具。
 
-Demand Forecast follows the user's language for both progress and final answers. Its `gea_skill_reference_read` tool reads local references linked by a visible skill, with `offset`/`limit` pagination. MCP resource reads use server-returned URIs; local `file://` links are rejected with guidance to the correct reader.
+Demand Forecast follows the user's language for both progress and final answers. Its Manage-owned `skill_reference_read` tool reads local references linked by a visible skill, with `offset`/`limit` pagination. MCP resource reads use server-returned URIs; local `file://` links are rejected with guidance to the correct reader.
 
 ### 历史隔离共享主题适配（不用于规格41）
 
@@ -279,3 +279,5 @@ Page interaction 的 browser 实现与 wire/reference 公共资源归 Workbench�
 Native/HTML 页面源码、样式、静态 Fetch、bundle 构建、通用 queue/catalog/动作/引用及 owner 释放由 Workbench 持有。GEA `build:plugin` 只构建 `host,client`；不再提供 `/api/gea-proof/workbench(.js/.css)`、`surface`、`agui/workbench` 或 `workbench/context` 页面编排接口。
 
 GEA Host 向现有 `workbenchPages.registerBusinessPage` 登记实际业务 grant，集中保持官方选用资源/Session、Consumer、身份代际、受管 SQL、审批业务规则、validated visible context 和取消。GEA client 只提供唯一业务身份与账户动作的只读投影。两种 HTML 页面动作及内容引用由 Workbench 使用自己的 authenticated Fetch 和 exact owner 处理；GEA不保存第二份通用页面owner/队列。`/api/gea-html/identity` 是当前身份投影，不授予业务能力。
+
+纯 §5.5 预测计算由 Manage 的 `forecast_compute` 提供，沿当前会话工作区核对已安装启用的 `sinian-demand-baseline`；GEA 不注册纯计算、Skill 正文或参考读取工具。原公式与十进制版本保持，计算来源 hash/完整用户 JSON 核对不授予 Consumer 权限。官方 Skill catalog/loader 保持原文，GEA 仅追加身份、实际业务事实、证据和执行限制。

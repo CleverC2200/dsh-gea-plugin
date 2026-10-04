@@ -36,7 +36,7 @@ test('native result route, atomic skill load and structured evidence reuse retai
  let replies=await run('8月最终销售计划，只能使用Hive，不要使用在线计划接口。',[['gea_sales_plan_read',{kind:'periods'}]]);
  assert.match(replies[0].text,/GEA_SALES_RESULT_SOURCE/);assert.equal(online,0);
  replies=await run('核对当前在线审批工作流周期。',[['gea_sales_plan_read',{kind:'periods'}]]);assert.equal(replies[0].isError,false,replies[0].text);assert(online>0);
- replies=await run('加载业务规则解释口径。',[['gea_skill',{name:'sales-result-fixture'}],['gea_capabilities',{}]]);
+ replies=await run('加载业务规则解释口径。',[['skill',{name:'sales-result-fixture'}],['gea_capabilities',{}]]);
  assert.equal(replies[0].isError,false,replies[0].text);assert.match(replies[0].text,/Scoped rule body/);const chosen=JSON.parse(replies[1].text).skills.find(x=>x.name==='sales-result-fixture');assert.equal(chosen.enabled,true);assert.equal(chosen.bodyLoaded,true);
  const readArgs=body=>{evidenceId??=JSON.parse(body.messages.filter(m=>m.role==='tool').at(-1).content).evidenceId;return {evidenceId,limit:4000};};
  replies=await run('查询库存数量。',[['gea_cube_query',{queries:[{name:'inv',query:{measures:['inv.row_count']}}]}],['gea_evidence_read',readArgs],['gea_evidence_read',readArgs],['gea_evidence_read',()=>({evidenceId,format:'raw',offset:0,limit:100})]]);

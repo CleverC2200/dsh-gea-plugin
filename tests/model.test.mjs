@@ -105,7 +105,7 @@ test(
     // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在
     // 回答里渲染界面；这里显式记录该行为，避免它变成无声的提示词漂移。
     assert.equal(instructions.includes("默认就该出 UI"), false);
-    assert.deepEqual(body.tools.map(tool=>tool.function.name).sort(),['gea_capabilities','gea_cube_query','gea_evidence_read','gea_gateway_catalog','gea_sales_plan_read','gea_skill']);
+    assert.deepEqual(body.tools.map(tool=>tool.function.name).sort(),['gea_capabilities','gea_cube_query','gea_evidence_read','gea_gateway_catalog','gea_sales_plan_read','skill']);
     // 默认不允许模型自己写 SQL：受管只读工具不能出现在工具清单里。
     assert.equal(
       body.tools.some((tool) => tool.function.name === "gea_plugin_read"),

@@ -251,8 +251,8 @@ test(
         const r = await run(
           await create(),
           [
-            action("gea_skill", { name: "sinian-demand-dialogue" }),
-            action("gea_skill", { name: "sinian-demand-dialogue" }),
+            action("skill", { name: "sinian-demand-dialogue" }),
+            action("skill", { name: "sinian-demand-dialogue" }),
           ],
           "核对业务规则",
         );
@@ -275,7 +275,7 @@ test(
           await create(),
           [
             action("gea_capabilities", { pack: "forecast" }),
-            action("gea_forecast_compute", data),
+            action("forecast_compute", data),
           ],
           "两行输入，一行增长规划缺失，继续计算另一行",
         );
@@ -302,7 +302,7 @@ test(
           await create(),
           [
             action("gea_capabilities", { pack: "forecast" }),
-            action("gea_forecast_compute", data),
+            action("forecast_compute", data),
           ],
           "缺失规划字段省略，其余一行继续",
         );
@@ -323,7 +323,7 @@ test(
           id,
           [
             action("gea_capabilities", { pack: "forecast" }),
-            action("gea_forecast_compute", supplied),
+            action("forecast_compute", supplied),
           ],
           "按我提供的以下输入计算24行：" + JSON.stringify(supplied),
         );
@@ -369,7 +369,7 @@ test(
             id,
             [
               action("gea_capabilities", { pack: "forecast" }),
-              action("gea_forecast_compute", data),
+              action("forecast_compute", data),
             ],
             mode === "live"
               ? "以下是 live 输入：" + JSON.stringify(data)
@@ -396,7 +396,7 @@ test(
           await create(),
           [
             action("gea_capabilities", { pack: "forecast" }),
-            action("gea_forecast_compute", data),
+            action("forecast_compute", data),
           ],
           "检查缺失行与正常行",
         );
@@ -433,7 +433,7 @@ test(
         await app.login();
         const restored = await run(id, [], "重启后检查失败加载没有恢复");
         const names = restored.requests[0].tools.map((t) => t.function.name);
-        assert.ok(names.includes("gea_forecast_compute"));
+        assert.ok(names.includes("forecast_compute"));
         assert.ok(!names.includes("render_ui"));
       },
     );
@@ -447,7 +447,7 @@ test(
           id,
           [
             action("gea_capabilities", { pack: "forecast" }),
-            action("gea_forecast_compute", data),
+            action("forecast_compute", data),
           ],
           "输入：\n" + JSON.stringify(data, null, 2),
         );
@@ -477,7 +477,7 @@ test(
           await create(),
           [
             action("gea_capabilities", { pack: "forecast" }),
-            action("gea_forecast_compute", input(24)),
+            action("forecast_compute", input(24)),
             action("gea_evidence_read", (body) => {
               const values = body.messages
                 .filter((m) => m.role === "tool")

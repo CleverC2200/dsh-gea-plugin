@@ -233,7 +233,7 @@ test(
       if (outcome === "skill-reference") {
         const results = body.messages.filter((x) => x.role === "tool");
         const name =
-          "gea_skill";
+          "skill";
         const args =
           results.length === 0
             ? { name: "reference-scope" }
@@ -644,7 +644,7 @@ test(
         const toolNames = modelRequests[0].tools.map((x) => x.function.name);
         for (const expected of [
           "gea_sales_plan_read",
-          "gea_skill",
+          "skill",
           "gea_visible_workbench_context",
           "gea_page",
           "gea_capabilities",

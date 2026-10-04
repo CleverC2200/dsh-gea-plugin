@@ -29,8 +29,12 @@ export function profileFor(
 const mountedProfiles = new Set<string>();
 
 /** Mount a validated Agent Manage resource; an existing identity cannot be overwritten. */
-export function installPromptProfile(preset: string, profile: PromptProfile): () => void {
-  if (mountedProfiles.has(preset)) throw Error("PROMPT_PROFILE_ALREADY_MOUNTED");
+export function installPromptProfile(
+  preset: string,
+  profile: PromptProfile,
+): () => void {
+  if (mountedProfiles.has(preset))
+    throw Error("PROMPT_PROFILE_ALREADY_MOUNTED");
   const previous = policy.profiles[preset as keyof typeof policy.profiles];
   if (previous && previous.consumerCode !== profile.consumerCode)
     throw Error("PROMPT_PROFILE_IDENTITY_MISMATCH");
@@ -49,67 +53,38 @@ export function installPromptProfile(preset: string, profile: PromptProfile): ()
   };
 }
 
-export const TOOL_PACKS = {
-  page: [
-    "gea_page",
-    "gea_visible_workbench_context",
-    "gea_workbench_apply",
-    "gea_plugin_page_apply",
-  ],
-  knowledge: ["gea_module_mcp"],
-  sales: ["gea_sales_plan_read"],
-  ui: ["render_ui", "validate_dsh_ui", "visualize"],
-  delegate: ["subagents_run"],
-  forecast: ["gea_forecast_compute"],
-} as const;
-export type ToolPack = keyof typeof TOOL_PACKS;
+/** GEA owns only actual business execution. Installed Manage tools keep their own visibility and guards. */
 export const CORE_TOOLS = [
   "gea_capabilities",
-  "gea_skill",
   "gea_evidence_read",
   "gea_gateway_catalog",
   "gea_cube_query",
 ];
-
-/** A small fixed vocabulary, not a free-form tool proxy. Existing tools retain their schemas. */
 export function allowedTools(
   profile: PromptProfile,
-  packs: ReadonlySet<ToolPack>,
+  boundPage = false,
 ): Set<string> {
   const names = new Set(CORE_TOOLS);
+  for (const name of [
+    "skill",
+    "skill_reference_read",
+    "forecast_compute",
+    "gea_module_mcp",
+    "render_ui",
+    "validate_dsh_ui",
+    "visualize",
+  ])
+    names.add(name);
+  if (boundPage)
+    for (const name of [
+      "gea_page",
+      "gea_visible_workbench_context",
+      "gea_workbench_apply",
+      "gea_plugin_page_apply",
+    ])
+      names.add(name);
   if (profile === PROFILES["gea-readonly"]) names.add("gea_sales_plan_read");
-  for (const pack of packs)
-    for (const name of TOOL_PACKS[pack]) names.add(name);
   return names;
-}
-
-/** Known application prose only. Platform safety, permission and other unknown sections survive. */
-const APPLICATION_SECTIONS = new Set([
-  "deployment:persona-prefix",
-  "deployment:persona-suffix",
-  "app:web-surface",
-  "app:harness-source",
-  "genui:fence",
-  "harness:source",
-  "ui:deliverable-file-references",
-  "gea:gateway-mcp-protocol",
-  "gea:sales-plan-protocol",
-  "gea:successful-read-evidence",
-  "gea:workbench-surface",
-  "tools:changed-files",
-]);
-export function businessSections<T extends { name: string; text: string }>(
-  sections: T[],
-): T[] {
-  return sections.filter((section) => !APPLICATION_SECTIONS.has(section.name));
-}
-
-export function shortSkillCatalog(
-  skills: { name: string; description: string }[],
-): string {
-  return skills
-    .map((skill) => `${skill.name}：${skill.description.slice(0, 70)}`)
-    .join("\n");
 }
 
 /** GenUI's sign-based colours and auto totals have no domain meaning. Require explicit business labels instead. */
