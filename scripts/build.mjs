@@ -11,18 +11,15 @@ const { values } = parseArgs({
 });
 const selected =
   values.target === "all"
-    ? ["interaction", "host", "client", "workbench"]
+    ? ["host", "client"]
     : values.target.split(",");
 for (const name of selected) {
   if (
-    !["interaction", "host", "client", "workbench"].includes(name)
+    !["host", "client"].includes(name)
   ) {
     throw new Error("UNKNOWN_BUILD_TARGET: " + name);
   }
 }
-if (selected.some((name) => ["host", "client", "workbench"].includes(name)))
-  selected.splice(0, selected.length, "interaction", ...selected.filter(name => name !== "interaction"));
-
 // One-shot and watch builds use identical wrappers and retain output on errors.
 function clientOutput(file, id) {
   return {
@@ -47,13 +44,9 @@ function clientOutput(file, id) {
 const clientExternals = ["react", "@deepseek-ai/dsh-client-store", "@deepseek-ai/dsh-client-ui-primitives"];
 
 const targets = {
-  interaction: [
-    {entryPoints:["src/page-interaction/host.ts"],bundle:true,format:"esm",platform:"node",external:["@deepseek-ai/*"],outfile:"lib/page-interaction-host.js"},
-    {entryPoints:["src/page-bridge/index.ts"],bundle:true,format:"esm",platform:"node",external:["@deepseek-ai/*"],outfile:"lib/page-bridge.js"},
-  ],
   host: [
     {
-      entryPoints: ["src/host.ts", "src/skill-reference.ts"],
+      entryPoints: ["src/host.ts"],
       bundle: true,
       packages: "external",
       format: "esm",
@@ -80,17 +73,6 @@ const targets = {
       plugins: [
         clientOutput("lib/client.js", "'@cleverc2200/gea-dsh-prototype'"),
       ],
-    },
-  ],
-  workbench: [
-    {
-      entryPoints: ["src/workbench-entry.tsx"],
-      bundle: true,
-      format: "esm",
-      platform: "browser",
-      target: "es2022",
-      outfile: "lib/workbench.js",
-      loader: { ".css": "css", ".module.css": "local-css", ".png": "dataurl" },
     },
   ],
 

@@ -24,11 +24,10 @@
     "test:desktop:electron": "node --test desktop/startup-state.test.mjs desktop/electron-recovery.test.mjs desktop/slow-login.test.mjs desktop/business-ready.test.mjs",
     "test:desktop:update-channel": "node desktop/update-speed-smoke.mjs",
     "build": "node scripts/build.mjs",
-    "build:plugin": "node scripts/build.mjs --target host,client,workbench",
+    "build:plugin": "node scripts/build.mjs --target host,client",
     "build:host": "node scripts/build.mjs --target host",
     "build:client": "node scripts/build.mjs --target client",
-    "build:workbench": "node scripts/build.mjs --target workbench",
-    "dev": "node scripts/build.mjs --target host,client,workbench --watch",
+    "dev": "node scripts/build.mjs --target host,client --watch",
     "start": "node scripts/start.mjs",
     "verify": "node scripts/verify.mjs",
     "package": "node scripts/package.mjs",
@@ -44,7 +43,6 @@
     "package:desktop:mac": "node scripts/package-desktop.mjs --target mac",
     "package:desktop:win": "node scripts/package-desktop.mjs --target win",
     "test:package:desktop": "node --test scripts/package-desktop.test.mjs",
-    "build:page-interaction": "node scripts/build.mjs --target interaction",
     "typecheck:official": "node ../dsh-agent-workbench/scripts/verify-official-input.mjs && tsc -p tsconfig.official.json"
   },
   "dependencies": {
@@ -70,17 +68,7 @@
   "dsh": {
     "client": {
       "platform": "web",
-      "inject": [
-        "@deepseek-ai/dsh-api-remotes",
-        "@deepseek-ai/dsh-client-ui-sidebar",
-        "@deepseek-ai/dsh-client-ui-renderer",
-        "@deepseek-ai/dsh-client-ui-workspace",
-        "@deepseek-ai/dsh-client-locale",
-        "@cleverc2200/dsh-agent-workbench",
-        "@deepseek-ai/dsh-client-ui-theme",
-        "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-chat"
-      ],
+      "inject": [],
       "external": [
         "@deepseek-ai/dsh-client-store"
       ]
@@ -133,10 +121,7 @@
   "license": "Apache-2.0",
   "files": [
     "lib/host.js",
-    "lib/skill-reference.js",
     "lib/client.js",
-    "lib/workbench.js",
-    "lib/workbench.css",
     "presets/",
     "default-presets/",
     "scripts/start.mjs",
@@ -144,14 +129,10 @@
     "scripts/verify.mjs",
     "scripts/session-log.mjs",
     "src/shared/environments.js",
-    "src/workbench/original/LICENSE",
-    "src/workbench/original/SOURCE.md",
-    "src/workbench/original/source-manifest.json",
     "gea.direct.example.json",
     "gea.config.example.json",
     "README.md",
     "docs/install.md",
-    "src/workbench/original/README.md",
     "npm-shrinkwrap.json",
     "cordis.patch.yml",
     "presets/inventory-aqkc.skill.md",

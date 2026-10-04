@@ -1,5 +1,5 @@
 /** 仅供显式 mock 验收使用的确定性内存销售计划工作流。 */
-import { salesPlanWorkflow } from '../workbench/original/salesPlanWorkflow.ts';
+import { salesPlanWorkflow } from "@cleverc2200/dsh-agent-workbench/sales-plan";
 
 export type MockSku = { skuCode: string; qty: string; amount: string; confirmed: Record<string, string | null> };
 export type MockPlan = { planId: string; typeCode: string; status: number; versionId: string; seq: number; skus: MockSku[]; logs: Array<{ action: string; from: number; to: number; requestId: string }> };

@@ -46,15 +46,15 @@ pnpm start --dev --config gea.config.json --runtime .runtime/workbench-developme
 
 | 目录 | 职责 |
 | --- | --- |
-| `src/client/` | DSH 客户端壳层、导航、通知收件箱、文案与样式 |
+| `src/client.tsx` | 唯一业务身份与账户动作的只读客户端投影 |
 | `src/host/` | GEA Host 业务编排、身份和权限边界、MCP、服务账号与工作流配置 |
 | `src/shared/` | Host 与构建脚本共用的环境解析、错误脱敏、流解析、取消信号和通知投影 |
-| `src/workbench/` | 独立业务文档、工作流加载器及从 AionUi 适配的原审批工作台 |
+| Workbench `src/workbench/` | 原独立业务文档、工作流加载器及审批页面；GEA只提供实际业务adapter |
 | `src/mocks/` | 仅供测试和演示使用的 DMS、销售计划模拟实现 |
 
-`src/host.ts`、`src/client.tsx`、`src/workbench-entry.tsx` 和 `src/skill-reference.ts` 保持为构建入口；发布后的 `lib/host.js`、`lib/client.js`、`lib/workbench.js`、`lib/skill-reference.js` 及 package exports 不变。
+GEA构建入口只有 `src/host.ts`、`src/client.tsx`，产物为 `lib/host.js`、`lib/client.js`；Native页面与通用桥从GEA构建退出。
 
-原件来源、许可证及改动范围见 [SOURCE.md](src/workbench/original/SOURCE.md)。旧的三栏仿写组件及占位对话栏已经删除。完整迁移尚未验收：审批保存/通过/退回、消息处理和独立 SKU 推理适配尚未接入；原件中的相应写操作保持禁用。当前 AionUi 源码没有单独的需求提报页面，不能把审批页或未挂载的提报模型当作已迁移页面。
+原件来源、许可证及改动范围见 [Workbench SOURCE.md](../dsh-agent-workbench/src/workbench/original/SOURCE.md)。职责迁移保留原SQL、审批角色、金额、草稿与结果校验口径；源码候选仍需主任务完成同组正式UI对照和真实授权运行，不能将源码与离线通过当作实际提交/审批结果。
 
 GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`requestTimeoutMs` 用于普通 GEA 查询和模型发现；`mcpRequestTimeoutMs` 单独限制 MCP 网关请求，默认 60 秒，可配置为 1–120 秒，旧配置不填时自动使用默认值；`modelRequestTimeoutMs` 单独限制模型流，总时限默认 120 秒，可配置为 1–600 秒。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
 
@@ -273,3 +273,9 @@ Demand Forecast follows the user's language for both progress and final answers.
 Page interaction 的 browser 实现与 wire/reference 公共资源归 Workbench。GEA src/page-interaction 只持有受控引用 Host，src/page-bridge/capability持有实际执行与规则，退出旧兼容 re-export 与独立 page-interaction/example 插件装载。原审批源及其业务规则保留；共同受控 frame 与显式 Session 生命周期由 Workbench承载。HTML startup只读声明/执行 metadata，不读 HTML/Skill/prompt正文，不进行源码 DOM/SQL扫描。
 
 行为验证与真实授权分开：明确管理端未授权项可按本轮分类跳过或用显式mock验收输入，普通500/超时/空结果不推断权限；不在生产请求中自动mock降级。
+
+### 规格42页面与业务 seam
+
+Native/HTML 页面源码、样式、静态 Fetch、bundle 构建、通用 queue/catalog/动作/引用及 owner 释放由 Workbench 持有。GEA `build:plugin` 只构建 `host,client`；不再提供 `/api/gea-proof/workbench(.js/.css)`、`surface`、`agui/workbench` 或 `workbench/context` 页面编排接口。
+
+GEA Host 向现有 `workbenchPages.registerBusinessPage` 登记实际业务 grant，集中保持官方选用资源/Session、Consumer、身份代际、受管 SQL、审批业务规则、validated visible context 和取消。GEA client 只提供唯一业务身份与账户动作的只读投影。两种 HTML 页面动作及内容引用由 Workbench 使用自己的 authenticated Fetch 和 exact owner 处理；GEA不保存第二份通用页面owner/队列。`/api/gea-html/identity` 是当前身份投影，不授予业务能力。

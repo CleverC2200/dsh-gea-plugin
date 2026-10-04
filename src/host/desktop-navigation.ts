@@ -7,9 +7,8 @@ type BusinessPort = Pick<Business, 'status' | 'identitySignal' | 'watchIdentity'
 type ControlRequest = (path: string, body?: unknown) => Promise<unknown>;
 type Delivery = NavigationInput & {id: string};
 type Active = {id: string; receipt: string; signal: AbortSignal; target?: NavigationTarget; error?: string; visible: boolean; acked: boolean};
-export type NavigationView = ({state: 'idle' | 'unavailable' | 'login'} |
-  {state: 'error'; receipt?: string; code: string} |
-  {state: 'ready'; receipt: string; panel: string; notificationId?: string; interactionRequestId?: string}) & {identityRevision?: number};
+import type {NavigationView} from '@cleverc2200/dsh-agent-workbench/client';
+export type {NavigationView} from '@cleverc2200/dsh-agent-workbench/client';
 
 /** 原始异常可能包含网络地址，只有受控机器码可离开此模块。 */
 function errorCode(error: unknown): string {

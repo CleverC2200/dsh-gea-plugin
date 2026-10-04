@@ -4,7 +4,7 @@ import {
   salesPlanWorkflow,
   SALES_PLAN_WORKFLOW_ROWS,
   type SalesPlanWorkflowRow,
-} from "../workbench/original/salesPlanWorkflow.ts";
+} from "@cleverc2200/dsh-agent-workbench/sales-plan";
 
 export type DmsMockSku = {
   skuCode: string;

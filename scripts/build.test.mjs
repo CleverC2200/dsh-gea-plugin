@@ -17,24 +17,15 @@ import { setTimeout as delay } from "node:timers/promises";
 const builder = fileURLToPath(new URL("./build.mjs", import.meta.url));
 const outputs = [
   "lib/host.js",
-  "lib/skill-reference.js",
   "lib/client.js",
-  "lib/workbench.js",
-  "lib/workbench.css",
 ];
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "gea-build-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const inputs = {
-    "src/page-interaction/host.ts": "export function apply() {}",
-    "src/page-bridge/index.ts": "export const bridge = true;",
     "src/host.ts": "export const value = 'host-original';",
-    "src/skill-reference.ts": "export const value = 'skill';",
     "src/client.tsx": "export const value = 'client';",
-    "src/workbench-entry.tsx":
-      "import './style.css'; export const value = 'workbench';",
-    "src/style.css": "body { color: red; }",
   };
   for (const [file, content] of Object.entries(inputs)) {
     await mkdir(join(root, file, ".."), { recursive: true });
@@ -84,7 +75,7 @@ test(
       /window\.__ModuleLoader__\.load/,
     );
     const unaffected = outputs.filter(
-      (file) => !["lib/host.js", "lib/skill-reference.js"].includes(file),
+      (file) => !["lib/host.js"].includes(file),
     );
     const before = await Promise.all(
       unaffected.map((file) => stat(join(root, file))),

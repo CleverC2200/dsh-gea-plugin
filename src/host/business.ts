@@ -1,13 +1,13 @@
+import {
+  salesPlanDraftMatches, salesPlanDraftSnapshot, type SalesPlanLocalDraft,
+  correctionAccess, correctionAdjustments, correctionDecimal,
+  salesPlanAccessForRow, salesPlanStagesForRoles, salesPlanVersionEvidenceStale, type SalesPlanApprovalRole,
+  salesPlanWorkflow, type ApprovalStageId, validateSalesPlanActionInput, type GeaSalesPlanActionRequest,
+  prepareSalesPlanResubmit, type GeaSalesPlanDetail, type GeaSalesPlanPeriod, type GeaSalesPlanSku,
+} from "@cleverc2200/dsh-agent-workbench/sales-plan";
 import { avatarUrl } from "./avatar.ts";
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { salesPlanDraftMatches, salesPlanDraftSnapshot, type SalesPlanLocalDraft } from '../workbench/original/workbenches/regionalApproval/models/salesPlanLocalDraftModel.ts';
-import { correctionAccess, correctionAdjustments, correctionDecimal } from '../workbench/original/workbenches/regionalApproval/models/salesPlanCorrectionModel.ts';
-import { salesPlanAccessForRow, salesPlanStagesForRoles, salesPlanVersionEvidenceStale, type SalesPlanApprovalRole } from '../workbench/original/workbenches/regionalApproval/models/salesPlanAccessModel.ts';
-import { salesPlanWorkflow } from '../workbench/original/salesPlanWorkflow.ts';
-import type { ApprovalStageId } from '../workbench/original/workbenches/regionalApproval/regionalApprovalFixture.ts';
-import { validateSalesPlanActionInput } from '../workbench/original/workbenches/regionalApproval/models/salesPlanActionModel.ts';
-import type { GeaSalesPlanActionRequest } from '../workbench/original/contracts.ts';
 /**
  * Host 侧业务门面：集中维护 GEA 身份、查询选择、权限校验和只读快照。
  * 浏览器只能提交资源标识与用户意图，凭证、来源数据和最终写入校验都留在这里。
@@ -73,8 +73,6 @@ const DEFAULT_PLUGIN_CONSUMERS = new Set([
 ]);
 import { isDeepStrictEqual } from 'node:util';
 import { validateServiceAccounts, serviceAccountReady, submitWithServiceAccount, type ServiceAccounts } from './service-account.ts';
-import { prepareSalesPlanResubmit } from '../workbench/original/workbenches/regionalApproval/models/salesPlanSubmitModel.ts';
-import type { GeaSalesPlanDetail, GeaSalesPlanPeriod, GeaSalesPlanSku } from '../workbench/original/contracts.ts';
 import { readSalesPlanWorkflowConfig } from "./workflow-config.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { brandString, type Branded } from "@deepseek-ai/dsh-brand";
@@ -82,11 +80,10 @@ import QRCode from "qrcode";
 import { resolveEnvironments } from "../shared/environments.js";
 import { Decimal } from "decimal.js";
 import { transportSignal } from "../shared/transport-signal.ts";
-import { notificationPage, notificationDetail } from "../shared/notifications.ts";
+import { notificationPage, notificationDetail } from "@cleverc2200/dsh-agent-workbench/notifications";
 import { resolveNavigationTarget, type NavigationInput } from './navigation-target.ts';
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
-import { createPageBridge, type PageBridge } from "../page-bridge/index.ts";
 import {
   createMcpWasteGuard,
   createMcpFailureGuard,
@@ -817,8 +814,6 @@ export class Business {
 
   constructor(
     readonly config: Deployment,
-    /** 通用页面桥：对话与页面之间的前端工具通道，业务只提供工具名与参数。 */
-    readonly pageBridge: PageBridge = createPageBridge(),
   ) {
     validateServiceAccounts(config.serviceAccounts);
     const resolved = resolveEnvironments(config);
@@ -926,21 +921,7 @@ export class Business {
       throw new Error("INVALID_WORKBENCH_SESSION");
     this.visibleWorkbenchContexts.delete(sessionId);
     // 离开工作台后，之前发起但还没被执行的前端工具调用一律作废。
-    this.pageBridge.reset(sessionId);
-  }
 
-  /**
-   * 工作台页面轮询这一步的 AG-UI 事件：交给通用页面桥处理队列与回填，
-   * 这里只补业务自身的鉴权与会话格式校验。
-   */
-  pullPageBridgeEvents(
-    sessionId: string,
-    toolMessages: unknown,
-  ): { events: ReturnType<PageBridge["pull"]> } {
-    this.authenticated();
-    if (!/^session-[0-9a-f-]{36}$/.test(sessionId))
-      throw new Error("INVALID_WORKBENCH_SESSION");
-    return { events: this.pageBridge.pull(sessionId, toolMessages) };
   }
 
   /** 当前会话的页面状态与序列号；页面桥用它判断"改动后的状态是否已报回"。 */
@@ -1000,7 +981,7 @@ export class Business {
       this.visibleWorkbenchContexts.delete(sessionId);
       this.pageIdentities.delete(sessionId);
       this.lastContextReplies.delete(sessionId);
-      this.pageBridge.reset(sessionId);
+
     }
     return next;
   }

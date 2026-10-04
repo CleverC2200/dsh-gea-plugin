@@ -1,6 +1,6 @@
 import { GeaResponseError } from '../shared/gea-error.js';
 import { randomUUID } from 'node:crypto';
-import { salesPlanWorkflow, type SalesPlanWorkflowRow } from '../workbench/original/salesPlanWorkflow.ts';
+import { salesPlanWorkflow, type SalesPlanWorkflowRow } from "@cleverc2200/dsh-agent-workbench/sales-plan";
 
 const SQL =
   'SELECT id, type_code, examine_level, node_num FROM agents_scm_plan_workflow_config WHERE status = :active AND delete_status = :notDeleted ORDER BY type_code, examine_level, id';

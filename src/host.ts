@@ -1,10 +1,8 @@
 import { toGeaMessages } from "./host/gea-messages.ts";
 import type {} from "./shared/message-source.ts";
-import { apply as applyPageInteraction } from "./page-interaction/host.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
 import { createDesktopNavigation } from './host/desktop-navigation.ts';
 import { attachWebLogin } from "./host/web-login.ts";
-import { resolveWorkbench } from "../scripts/deployment.mjs";
 /** GEA 外部 Fetch 能力和显式本地回执提供者的 DSH 插件入口。 */
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -27,23 +25,18 @@ import {
 } from "@deepseek-ai/dsh-llm";
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
-import { createNativePageOwner } from "./host/native-page-owner.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
 import { lastUserQuestion, mountTurnAnchor } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
 import { mountBusinessPrompts } from "./host/prompt-runtime.ts";
 import { mountSessionToolRestraint } from "./host/session-tool-restraint.ts";
 import { networkError } from "./shared/net-error.ts";
-import { registerHtmlPlugins, type PageBridgeHost } from "./html-plugins.ts";
+import { registerHtmlPlugins } from "./html-plugins.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
 import { forgetMemberIndex } from "./host/member-index.ts";
-import {
-  createPageBridge,
-  createPageToolRegistry,
-} from "./page-bridge/index.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { workbenchContract } from "./capability/contract.ts";
-import { WORKBENCH_SURFACE } from "./shared/workbench-actions.ts";
+const WORKBENCH_SURFACE="gea-workbench";
 import { transportSignal } from "./shared/transport-signal.ts";
 import { geaTextStream } from "./shared/gea-stream.ts";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
@@ -323,53 +316,15 @@ function toGeaRequest(options: GenerateOptions) {
 
 /** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
 export async function apply(ctx: Context, config: Deployment): Promise<void> {
-  resolveWorkbench(import.meta.url);
-  const workbenchHtml =
-    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GEA</title><link rel="stylesheet" href="/api/gea-proof/workbench.css"><link rel="stylesheet" href="/api/agent-workbench/theme.css"><style>html,body,#gea-workbench{height:100%;margin:0}</style></head><body><div id="gea-workbench"></div><script type="module" src="/api/gea-proof/workbench.js"></script></body></html>';
-  for (const [path, type, content] of [
-    [
-      "workbench",
-      "text/html; charset=utf-8",
-      () => Promise.resolve(workbenchHtml),
-    ],
-    [
-      "workbench.css",
-      "text/css; charset=utf-8",
-      () => readFile(new URL("./workbench.css", import.meta.url), "utf8"),
-    ],
-    [
-      "workbench.js",
-      "text/javascript; charset=utf-8",
-      () => readFile(new URL("./workbench.js", import.meta.url), "utf8"),
-    ],
-  ] as const)
-    ctx.effect(() =>
-      ctx.connection.fetch.register({
-        path: "/api/gea-proof/" + path,
-        methods: ["GET"],
-        requestBody: "buffered",
-        fetch: async () =>
-          new Response(await content(), {
-            headers: {
-              "Content-Type": type,
-              "Cache-Control": "no-store",
-              "X-Content-Type-Options": "nosniff",
-              "Content-Security-Policy": "frame-ancestors 'self'",
-            },
-          }),
-      }),
-    );
-  const pageBridge = createPageBridge();
-  const business = new Business(config, pageBridge);
+  const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);
   // 迁移页面的页面桥入口：注册表建好后再接上（页面第一次轮询是 500ms 之后）。
-  const pageBridgeHost: PageBridgeHost = {};
   const htmlPackages = ctx.workbenchPages.packages().filter(item=>item.manifest.gea?.contract === "gea-html-v2");
   const releaseOriginalResources = await ctx.agentResources.register([{
     id:"gea-readonly",label:profileFor("gea-readonly")!.label,
     root:fileURLToPath(new URL("../",import.meta.url)),prompt:"presets/prompt-policy.json",profileKey:"gea-readonly",
-    profile:profileFor("gea-readonly")!,plugins:[{id:"gea-skill-reference",name:new URL("./skill-reference.js",import.meta.url).href}]
+    profile:profileFor("gea-readonly")!
   }]);
   ctx.effect(() => releaseOriginalResources);
   const releaseBundledSkills = await ctx.agentResources.register([{
@@ -378,20 +333,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     skillFiles:{"sales-forecast-result-analysis":"business-skills/aps/sales-forecast-result-analysis.skill.md","sales-ops-problem-analysis":"business-skills/aps/sales-ops-problem-analysis.skill.md"}
   }]);
   ctx.effect(() => releaseBundledSkills);
-  const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlPackages,pageBridgeHost);
-  const clearPageReferences = applyPageInteraction(ctx, { authorize: input => {
-    htmlPlugins.authorizeReference(input);
-    const reference = input as {sessionId: string; surface: string; lease?: string};
-    if (reference.surface === "gea-workbench") nativePages.assert(reference.sessionId, reference.lease);
-  } });
-  let referenceOwner = business.pageSessionScope();
-  ctx.effect(() => business.watchIdentity(() => {
-    const next = business.pageSessionScope();
-    if (next === referenceOwner) return;
-    referenceOwner = next;
-    clearPageReferences();
-  }));
-
+  const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlPackages);
   // 能力契约注册表：页面白名单、草稿白名单、只读模块清单全部由它产出，宿主不再按模块写分支。
   const capability = createCapabilityRegistry([
     ...htmlPlugins.capabilityContracts,
@@ -407,37 +349,19 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       .readModules()
       .map((contract) => contract.data!.consumerCode),
   );
-  // 页面自述能力 -> 该会话专属的模型工具（页面关闭即注销）。
-  const pageTools = createPageToolRegistry(ctx, pageBridge, {
-    stateSnapshot: (sessionId) => business.workbenchStateSnapshot(sessionId),
-    // 只有"随客户端安装、且契约里声明了页面"的模块才允许被对话操作。
-    allowSurfaces: capability.surfaces(),
-    // 契约声明到草稿及以上等级的页面，才允许通过对话写页面草稿。
-    dataActionSurfaces: capability.draftSurfaces(),
-    // 提交/审批类元素只有契约声明到该等级的页面才允许下发。
-    allowsEffect: (surface, effect) => capability.allows(surface, effect),
-    // 工作台会话里不让它用浏览器/MCP 去扒页面数据（普通对话不受影响）。
-    denyGlobalToolsInWorkbench: [
-      "mcp__browser__browser_find",
-      "mcp__browser__browser_evaluate",
-      "mcp__browser__browser_navigate",
-      "mcp__browser__browser_snapshot",
-    ],
-  });
-  const nativePages = createNativePageOwner(business, pageTools);
-  ctx.effect(() => () => nativePages.disposeAll());
-  ctx.effect(() => () => {pageTools.shutdown();pageBridge.resetAll();});
-  ctx.effect(() => ctx.on("agent/disposed",({agent})=>{
-    nativePages.dispose(agent.id);
-  }));
-  // 身份变化后旧会话的页面工具一律注销；页面下一轮声明会重新注册。
-  let pageToolOwner = business.pageSessionScope();
-  ctx.effect(() => business.watchIdentity(() => {
-    const next = business.pageSessionScope();
-    if (next === pageToolOwner) return;
-    pageToolOwner = next;
-    nativePages.disposeAll();
-    pageTools.disposeAll();
+  ctx.effect(()=>ctx.workbenchPages.registerBusinessPage({id:'gea-proof',kind:'native',label:'销售计划',resourceId:'gea-readonly',catalog:{surface:WORKBENCH_SURFACE,tool:'gea_workbench_apply'}},async(sessionId,resourceId,signal)=>{
+    if(!business.status().authenticated||!business.pageSessionScope())throw Error('PAGE_REFERENCE_LOGIN_REQUIRED');
+    const agent=ctx.agents.get(sessionId as SessionId);
+    if(!agent||ctx.sessionProjections.stateOf(agent.session,'agentPreset')!==resourceId)throw Error('PAGE_AGENT_SESSION_MISMATCH');
+    signal.throwIfAborted();
+    const projection=business.setSurface(sessionId,{menu:'gea-proof',title:'销售计划'});
+    return {
+      signal:business.identitySignal(),access:{authenticated:true},
+      allowsEffect:effect=>capability.allows(WORKBENCH_SURFACE,effect),
+      snapshot:()=>business.workbenchStateSnapshot(sessionId),
+      observe:context=>business.updateVisibleWorkbenchContext(sessionId,context),
+      release:()=>{if(business.surfaceFor(sessionId)!==projection)return;business.clearVisibleWorkbenchContext(sessionId);business.clearSurface(sessionId,'gea-proof');},
+    };
   }));
   // 目录缓存（成员清单 + 模型 → consumerCode）也跟着身份走：换了账号或环境，上一份
   // inspect 里的成员和可见模型都不能再用——规约 G5 要的是"当前模型版本的 inspect"。
@@ -452,8 +376,6 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   ctx.effect(() => mountSessionToolRestraint(ctx));
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());
-  pageBridgeHost.declare = (sessionId, catalog, source) =>
-    pageTools.declare(sessionId, catalog, source);
   ctx.provide("geaMcp", {
     version: 1 as const,
     defaultConsumer: { consumerType: "AGENT" as const, consumerCode: config.analysisAgentCode },
@@ -616,10 +538,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     "workbench/query",
     "plugin/sql",
     "workbench/prepare",
-    "workbench/context",
-    "agui/workbench",
     // 前端上报"这个对话现在停在哪一页菜单"（默认主对话，点菜单时带菜单名）。
-    "surface",
     "api-log/snapshot",
     "api-log/replay",
     "api-log/clear",
@@ -672,59 +591,9 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                   request.signal,
                 );
                 break;
-              case "agui/workbench": {
-                if (
-                  Object.keys(payload).some(
-                    (key) =>
-                      key !== "sessionId" &&
-                      key !== "toolMessages" &&
-                      key !== "lease" &&
-                      key !== "catalog",
-                  )
-                )
-                  throw new Error("INVALID_AGUI_REQUEST");
-                if (typeof payload.sessionId !== "string")
-                  throw new Error("INVALID_WORKBENCH_SESSION");
-                value = nativePages.poll(payload.sessionId, payload.lease, payload.catalog, payload.toolMessages);
-                break;
-              }
-              case "workbench/context": {
-                if (
-                  Object.keys(payload).some(
-                    (key) => key !== "sessionId" && key !== "context" && key !== "lease",
-                  )
-                )
-                  throw new Error("INVALID_WORKBENCH_CONTEXT");
-                if (typeof payload.sessionId !== "string")
-                  throw new Error("INVALID_WORKBENCH_SESSION");
-                const sessionId = payload.sessionId;
-                value = nativePages.context(sessionId, payload.lease, payload.context === null ? null : object(payload.context));
-                break;
-              }
               case "sales-plan/submit":
                 value = await business.salesPlanSubmit(payload, request.signal);
                 break;
-              case "surface": {
-                // 菜单状态只有"哪个会话 + 哪个菜单"两件事，多一个字段都拒掉，防止被当成旁路写入。
-                if (
-                  Object.keys(payload).some(
-                    (key) =>
-                      key !== "sessionId" && key !== "menu" && key !== "title",
-                  )
-                )
-                  throw new Error("INVALID_SURFACE_REQUEST");
-                if (typeof payload.sessionId !== "string")
-                  throw new Error("INVALID_WORKBENCH_SESSION");
-                const surface = nativePages.open(payload.sessionId, {
-                  menu: payload.menu,
-                  title: payload.title,
-                });
-                console.log(
-                  `[workbench-surface] session=${payload.sessionId} menu=${surface.menu} title=${surface.title}`,
-                );
-                value = { synced: true, ...surface };
-                break;
-              }
               case "sales-plan/draft":
                 value = await business.salesPlanDraft(payload, request.signal);
                 break;

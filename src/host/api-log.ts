@@ -1,3 +1,5 @@
+import type {ApiReplayPolicy,ApiCatalogEntry,ApiLogRecord,ApiLogSnapshot} from "@cleverc2200/dsh-agent-workbench/api-log";
+export type {ApiReplayPolicy,ApiCatalogEntry,ApiLogRecord,ApiLogSnapshot} from "@cleverc2200/dsh-agent-workbench/api-log";
 import { randomUUID } from "node:crypto";
 import { networkError } from "../shared/net-error.ts";
 
@@ -10,19 +12,9 @@ const SENSITIVE_KEY =
 const SENSITIVE_QUERY =
   /^(?:token|secret|password|client_id|client_secret|qrcodeId|credentialId)$/i;
 
-export type ApiReplayPolicy = "safe" | "idempotent" | "blocked";
 
-export type ApiCatalogEntry = {
-  id: string;
-  group: string;
-  name: string;
-  method: string;
-  path: string;
-  description: string;
-  requestFields: string[];
-  replayPolicy: ApiReplayPolicy;
-  replayNote: string;
-};
+
+
 
 type CatalogDefinition = ApiCatalogEntry & {
   matches(method: string, path: string): boolean;
@@ -426,43 +418,9 @@ const CATALOG: CatalogDefinition[] = [
   ),
 ];
 
-export type ApiLogRecord = {
-  id: string;
-  sequence: number;
-  catalogId: string | null;
-  catalogName: string;
-  group: string;
-  environment: string;
-  startedAt: string;
-  endedAt?: string;
-  durationMs?: number;
-  outcome: "pending" | "success" | "error";
-  replayPolicy: ApiReplayPolicy;
-  replayAvailable: boolean;
-  replayedFrom?: string;
-  request: {
-    method: string;
-    url: string;
-    path: string;
-    query: Record<string, string>;
-    headers: Record<string, string>;
-    body: unknown;
-  };
-  response?: {
-    status: number;
-    statusText: string;
-    headers: Record<string, string>;
-    body: unknown;
-  };
-  error?: { name: string; message: string };
-};
 
-export type ApiLogSnapshot = {
-  revision: number;
-  limit: number;
-  catalog: ApiCatalogEntry[];
-  records: ApiLogRecord[];
-};
+
+
 
 type PrivateRecord = ApiLogRecord & {
   replay?: (

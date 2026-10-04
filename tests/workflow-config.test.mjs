@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-const { outputFiles } = await build({stdin:{contents: "export * from './src/host/workflow-config.ts'; export * from './src/workbench/workflow-loader.ts'; export * from './src/workbench/original/salesPlanWorkflow.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm'});
+const { outputFiles } = await build({stdin:{contents: "export * from './src/host/workflow-config.ts'; export * from '../dsh-agent-workbench/src/workbench/workflow-loader.ts'; export * from '../dsh-agent-workbench/src/workbench/original/salesPlanWorkflow.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm'});
 const { readSalesPlanWorkflowConfig, salesPlanWorkflow, createWorkflowLoader } = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].contents).toString('base64'));
 const rows = ['0','4','Y'].map((node,i)=>({id:i+1,type_code:'JD',examine_level:String([0,2,3][i]),node_num:node}));
 function mock(change = x=>x) {
