@@ -266,7 +266,9 @@ export function WorkbenchPage({ t }: { t: Translate }) {
   const [selection, setSelection] = useState<string[]>([]);
   const [analysisScope, setAnalysisScope] = useState<AnalysisScope>("summary");
   const [preview, setPreview] = useState<Preview>();
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [pageConnection, setPageConnection] = useState<{sessionId:string;lease:string} | null>(null);
+  const sessionId = pageConnection?.sessionId ?? null;
+  const lease = pageConnection?.lease;
   useEffect(() => {
     if (!businessStatus) return;
     window.parent.postMessage(
@@ -290,11 +292,9 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       )
         return;
       const value = event.data.sessionId;
-      if (
-        value === null ||
-        (typeof value === "string" && /^session-[0-9a-f-]{36}$/.test(value))
-      )
-        setSessionId(value);
+      if (value === null) setPageConnection(null);
+      else if (typeof value === "string" && /^session-[0-9a-f-]{36}$/.test(value) && typeof event.data.lease === "string")
+        setPageConnection({sessionId:value,lease:event.data.lease});
     };
     window.addEventListener("message", onMessage);
     return () => {
@@ -381,7 +381,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       controller = new AbortController();
       void rpc(
         "workbench/context",
-        { sessionId, context: conversationContext ?? null },
+        { sessionId, lease, context: conversationContext ?? null },
         controller.signal,
       ).catch(() => {
         // 上下文同步失败不能影响审批工作台；下一轮会自动重试。
@@ -394,14 +394,14 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       clearInterval(heartbeat);
       controller.abort();
     };
-  }, [conversationContext, sessionId]);
+  }, [conversationContext, sessionId, lease]);
   useEffect(() => {
     if (!sessionId) return;
     // 通用页面桥：取走 agent 发起的前端工具调用，交给工作台执行，再把结果回填。
     // 桥不可用不能影响审批工作台本身；参数怎么解释由本页的 apply 决定。
     return startPageBridgeClient({
       endpoint: "agui/workbench",
-      request: rpc,
+      request: (endpoint, payload) => rpc(endpoint, {...payload, lease}),
       sessionId,
       apply: (args, meta, signal) =>
         new Promise<PageBridgeApplyResult>((resolve) => {
@@ -428,15 +428,15 @@ export function WorkbenchPage({ t }: { t: Translate }) {
       // 必须报 null，让宿主把上一屏的元素立刻注销（否则模型会对着上一屏下指令）。
       catalog: () => workbenchCatalog(catalogElements.current),
     });
-  }, [sessionId]);
+  }, [sessionId, lease]);
   // 离开这一屏时（切页、切插件、切会话、关页面），把"当前这一屏"从宿主里撤掉：
   // 元素目录随桥的关闭撤掉，可见上下文在这里显式清空。
   useEffect(() => {
     if (!sessionId) return;
     return () => {
-      void rpc("workbench/context", { sessionId, context: null }).catch(() => {});
+      void rpc("workbench/context", { sessionId, lease, context: null }).catch(() => {});
     };
-  }, [sessionId]);
+  }, [sessionId, lease]);
   useEffect(() => {
     if (identity?.state !== "confirmed") return;
     const controller = new AbortController();
@@ -603,7 +603,7 @@ export function WorkbenchPage({ t }: { t: Translate }) {
                       setExpired(false);
                       setPreview(undefined);
                       setSelection([]);
-                      setSessionId(null);
+                      setPageConnection(null);
                     }}
                   />
                   <span>

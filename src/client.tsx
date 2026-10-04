@@ -62,8 +62,8 @@ export function apply(ctx: Context): void {
         signal.throwIfAborted();return {page,sessionId,resourceId,scope,lease:result.lease};
       }
       if(resourceId!==page.resourceId)throw Error("PAGE_RESOURCE_NOT_ALLOWED");
-      await request("surface",{sessionId,menu:page.id,title:typeof page.label==="function"?page.label():page.label},signal);
-      signal.throwIfAborted();return {page,sessionId,resourceId,scope};
+      const result=await request<{lease:string}>("surface",{sessionId,menu:page.id,title:typeof page.label==="function"?page.label():page.label},signal);
+      signal.throwIfAborted();return {page,sessionId,resourceId,scope,lease:result.lease};
     },
     call:async(connection,method,parameters,signal)=>{
       if(connection.page.kind!=="html"||!connection.lease)throw Error("HTML_CONNECTION_REQUIRED");
@@ -71,7 +71,7 @@ export function apply(ctx: Context): void {
     },
     close:async(connection)=>{
       if(connection.page.kind==="html"&&connection.lease)await htmlRequest(connection.page.pluginId+"/call",{lease:connection.lease,method:"close"},AbortSignal.timeout(5000));
-      else await request("workbench/context",{sessionId:connection.sessionId,context:null},AbortSignal.timeout(5000));
+      else await request("workbench/context",{sessionId:connection.sessionId,lease:connection.lease,context:null},AbortSignal.timeout(5000));
     },
     prompt:async(connection,text,signal)=>{
       const currentScope=await identity.refresh(signal);

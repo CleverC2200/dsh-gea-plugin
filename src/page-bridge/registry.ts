@@ -10,6 +10,7 @@
  */
 import type { Context } from "@deepseek-ai/cordis";
 import type { SessionId } from "@deepseek-ai/dsh-session";
+import type { Agent } from "@deepseek-ai/dsh-agent";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import {
   compilePageCatalog,
@@ -148,6 +149,9 @@ export function createPageToolRegistry(
       dispose: () => void;
       restraint?: () => void;
       controller: AbortController;
+      agent: Agent;
+      surface: string;
+      tool: string;
       /** 这一屏的目录是页面自己报的，还是宿主扫出来的。 */
       source: PageCatalogSource;
     }
@@ -418,10 +422,6 @@ export function createPageToolRegistry(
       };
       const key = JSON.stringify(effective);
       const existing = registered.get(sessionId);
-      if (existing?.key === key) {
-        existing.at = Date.now();
-        return;
-      }
       const agent = ctx.agents.get(sessionId as SessionId);
       // 没有活跃会话就先不注册；页面下一轮轮询会再声明。
       if (!agent) {
@@ -433,8 +433,19 @@ export function createPageToolRegistry(
         }
         return;
       }
-      dispose(sessionId);
-      const controller=new AbortController();
+      // A refreshed view catalog is still the same live page owner. Its own
+      // command can change that catalog before the next poll returns its result.
+      const sameOwner = existing?.agent === agent &&
+        existing.surface === effective.surface && existing.tool === effective.tool;
+      if (sameOwner && existing.key === key) {
+        existing.at = Date.now();
+        return;
+      }
+      if (sameOwner) {
+        existing.dispose();
+        existing.restraint?.();
+      } else dispose(sessionId);
+      const controller = sameOwner ? existing.controller : new AbortController();
       const { description, parameters } = compilePageCatalog(effective);
       const disposeTool = agent.ctx.tools.register(
         defineTool({
@@ -486,6 +497,9 @@ export function createPageToolRegistry(
         at: Date.now(),
         dispose: disposeTool,
         controller,
+        agent,
+        surface: effective.surface,
+        tool: effective.tool,
         source,
         ...(restraint === undefined ? {} : { restraint }),
       });

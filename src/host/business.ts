@@ -1010,6 +1010,13 @@ export class Business {
     return this.surfaces.get(sessionId);
   }
 
+  /** Withdraw only the surface owned by the closing page. */
+  clearSurface(sessionId: string, menu: string): void {
+    if (this.surfaces.get(sessionId)?.menu !== menu) return;
+    this.surfaces.delete(sessionId);
+    this.lastContextReplies.delete(sessionId);
+  }
+
   /**
    * 这个对话此刻是否还在业务工作台里。
    * 只认菜单状态字段，见 host/workbench-presence.ts。

@@ -27,6 +27,7 @@ import {
 } from "@deepseek-ai/dsh-llm";
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
+import { createNativePageOwner } from "./host/native-page-owner.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
 import { lastUserQuestion, mountTurnAnchor } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
@@ -378,7 +379,11 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   }]);
   ctx.effect(() => releaseBundledSkills);
   const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlPackages,pageBridgeHost);
-  const clearPageReferences = applyPageInteraction(ctx, { authorize: htmlPlugins.authorizeReference });
+  const clearPageReferences = applyPageInteraction(ctx, { authorize: input => {
+    htmlPlugins.authorizeReference(input);
+    const reference = input as {sessionId: string; surface: string; lease?: string};
+    if (reference.surface === "gea-workbench") nativePages.assert(reference.sessionId, reference.lease);
+  } });
   let referenceOwner = business.pageSessionScope();
   ctx.effect(() => business.watchIdentity(() => {
     const next = business.pageSessionScope();
@@ -419,14 +424,19 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       "mcp__browser__browser_snapshot",
     ],
   });
+  const nativePages = createNativePageOwner(business, pageTools);
+  ctx.effect(() => () => nativePages.disposeAll());
   ctx.effect(() => () => {pageTools.shutdown();pageBridge.resetAll();});
-  ctx.effect(() => ctx.on("agent/disposed",({agent})=>pageTools.dispose(agent.id)));
+  ctx.effect(() => ctx.on("agent/disposed",({agent})=>{
+    nativePages.dispose(agent.id);
+  }));
   // 身份变化后旧会话的页面工具一律注销；页面下一轮声明会重新注册。
   let pageToolOwner = business.pageSessionScope();
   ctx.effect(() => business.watchIdentity(() => {
     const next = business.pageSessionScope();
     if (next === pageToolOwner) return;
     pageToolOwner = next;
+    nativePages.disposeAll();
     pageTools.disposeAll();
   }));
   // 目录缓存（成员清单 + 模型 → consumerCode）也跟着身份走：换了账号或环境，上一份
@@ -668,47 +678,27 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                     (key) =>
                       key !== "sessionId" &&
                       key !== "toolMessages" &&
+                      key !== "lease" &&
                       key !== "catalog",
                   )
                 )
                   throw new Error("INVALID_AGUI_REQUEST");
                 if (typeof payload.sessionId !== "string")
                   throw new Error("INVALID_WORKBENCH_SESSION");
-                try {
-                  // 审批工作台是自述型页面：目录由页面自己报。
-                  pageTools.declare(payload.sessionId, payload.catalog, "self-report");
-                } catch (error) {
-                  // 页面声明无效（例如说明超长）会让工具注册不上，页面侧又是静默重试，
-                  // 必须留一条日志，避免"功能突然不可用但没有任何线索"。
-                  console.log(
-                    `[page-bridge] declare rejected session=${payload.sessionId} code=${
-                      error instanceof Error ? error.message : String(error)
-                    }`,
-                  );
-                }
-                value = business.pullPageBridgeEvents(
-                  payload.sessionId,
-                  payload.toolMessages,
-                );
+                value = nativePages.poll(payload.sessionId, payload.lease, payload.catalog, payload.toolMessages);
                 break;
               }
               case "workbench/context": {
                 if (
                   Object.keys(payload).some(
-                    (key) => key !== "sessionId" && key !== "context",
+                    (key) => key !== "sessionId" && key !== "context" && key !== "lease",
                   )
                 )
                   throw new Error("INVALID_WORKBENCH_CONTEXT");
                 if (typeof payload.sessionId !== "string")
                   throw new Error("INVALID_WORKBENCH_SESSION");
                 const sessionId = payload.sessionId;
-                if (payload.context === null) {
-                  business.clearVisibleWorkbenchContext(sessionId);
-                  value = { synced: false };
-                } else {
-                  business.updateVisibleWorkbenchContext(sessionId, object(payload.context));
-                  value = { synced: true };
-                }
+                value = nativePages.context(sessionId, payload.lease, payload.context === null ? null : object(payload.context));
                 break;
               }
               case "sales-plan/submit":
@@ -725,14 +715,14 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                   throw new Error("INVALID_SURFACE_REQUEST");
                 if (typeof payload.sessionId !== "string")
                   throw new Error("INVALID_WORKBENCH_SESSION");
-                const surface = business.setSurface(payload.sessionId, {
+                const surface = nativePages.open(payload.sessionId, {
                   menu: payload.menu,
                   title: payload.title,
                 });
                 console.log(
                   `[workbench-surface] session=${payload.sessionId} menu=${surface.menu} title=${surface.title}`,
                 );
-                value = { synced: true, menu: surface.menu, title: surface.title };
+                value = { synced: true, ...surface };
                 break;
               }
               case "sales-plan/draft":
