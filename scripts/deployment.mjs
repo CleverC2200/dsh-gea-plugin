@@ -425,36 +425,6 @@ export async function prepareNativePreset(runtime, target, { createLink = symlin
   await rm(presetPath, { force: true });
   await writeFile(presetPath, renamed, { mode: 0o600 });
 
-  // 销售计划原本位于后面的插件包预设根，无法排在产销协同与库存之间。
-  // 以相同 id 放进第一个派生根；发现时先根获胜，旧会话仍使用 gea-readonly。
-  const businessSource = fileURLToPath(new URL("../presets/gea-readonly/", import.meta.url));
-  const businessDirectory = resolve(parent, "gea-readonly");
-  await mkdir(businessDirectory, { recursive: true });
-  // 搬到 runtime 后，相对模块名会按新目录解析；改为包内文件 URL，避免会话创建失败。
-  const sourceComposition = await readFile(resolve(businessSource, "agent.cordis.yml"), "utf8");
-  const relativeSkillReference = "name: '../../lib/skill-reference.js'";
-  if (!sourceComposition.includes(relativeSkillReference))
-    throw new Error("GEA_BUSINESS_PRESET_REFERENCE_CHANGED");
-  const skillReferenceUrl = pathToFileURL(
-    fileURLToPath(new URL("../lib/skill-reference.js", import.meta.url)),
-  ).href;
-  const businessCompositionPath = resolve(businessDirectory, "agent.cordis.yml");
-  await rm(businessCompositionPath, { force: true });
-  await writeFile(
-    businessCompositionPath,
-    sourceComposition.replace(relativeSkillReference, `name: '${skillReferenceUrl}'`),
-    { mode: 0o600 },
-  );
-  const orderConfig = JSON.parse(
-    await readFile(new URL("../presets/agent-presets.json", import.meta.url), "utf8"),
-  );
-  const businessOrder = orderConfig.order?.indexOf("gea-readonly") + 1;
-  if (!Number.isInteger(businessOrder) || businessOrder < 1)
-    throw new Error("GEA_PRESET_ORDER_INVALID");
-  const businessMetadata = (await readFile(resolve(businessSource, "preset.yml"), "utf8"))
-    .replace(/^order:.*(?:\r?\n|$)/m, "")
-    .trimEnd();
-  const businessPresetPath = resolve(businessDirectory, "preset.yml");
-  await rm(businessPresetPath, { force: true });
-  await writeFile(businessPresetPath, `${businessMetadata}\norder: ${businessOrder}\n`, { mode: 0o600 });
+  // Business resources are published on selection by Agent Manage; never copy their compositions.
+
 }

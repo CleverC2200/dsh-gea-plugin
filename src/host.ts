@@ -46,11 +46,14 @@ import { WORKBENCH_SURFACE } from "./shared/workbench-actions.ts";
 import { transportSignal } from "./shared/transport-signal.ts";
 import { geaTextStream } from "./shared/gea-stream.ts";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
+import type {} from "dsh-agent-manage/business-resources";
+import { fileURLToPath } from "node:url";
 import type {} from "@deepseek-ai/dsh-client-connection";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
 
 export const inject = [
   "workbenchPages",
+  "agentResources",
   "agents",
   "connection",
   "tools",
@@ -365,6 +368,18 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   // 迁移页面的页面桥入口：注册表建好后再接上（页面第一次轮询是 500ms 之后）。
   const pageBridgeHost: PageBridgeHost = {};
   const htmlPackages = await ctx.workbenchPages.registerHtml(htmlRoots);
+  const releaseOriginalResources = await ctx.agentResources.register([{
+    id:"gea-readonly",label:profileFor("gea-readonly")!.label,
+    root:fileURLToPath(new URL("../",import.meta.url)),prompt:"presets/prompt-policy.json",profileKey:"gea-readonly",
+    profile:profileFor("gea-readonly")!,plugins:[{id:"gea-skill-reference",name:new URL("./skill-reference.js",import.meta.url).href}]
+  }]);
+  ctx.effect(() => releaseOriginalResources);
+  const releaseBundledSkills = await ctx.agentResources.register([{
+    id:"gea-bundled-skills",label:"GEA Skill",root:fileURLToPath(new URL("../",import.meta.url)),
+    profile:{label:"GEA Skill",consumerCode:"aps",skills:["sales-forecast-result-analysis","sales-ops-problem-analysis"]},
+    skillFiles:{"sales-forecast-result-analysis":"business-skills/aps/sales-forecast-result-analysis.skill.md","sales-ops-problem-analysis":"business-skills/aps/sales-ops-problem-analysis.skill.md"}
+  }]);
+  ctx.effect(() => releaseBundledSkills);
   const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlPackages,pageBridgeHost);
   const clearPageReferences = applyPageInteraction(ctx, { authorize: htmlPlugins.authorizeReference });
   let referenceOwner = business.pageSessionScope();

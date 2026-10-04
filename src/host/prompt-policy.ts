@@ -1,4 +1,4 @@
-import policy from "../../presets/prompt-policy.json" with { type: "json" };
+import policy from "../../presets/execution-policy.json" with { type: "json" };
 
 export const PROMPT_VERSION = policy.version;
 export const COMMON_PROMPT = policy.common + "\n" + policy.output;
@@ -15,7 +15,6 @@ export const PROMPT_BUDGET = {
 export type PromptProfile = {
   label: string;
   consumerCode: string;
-  persona: string;
   skills: string[];
   crossConsumers?: string[];
 };
@@ -24,11 +23,7 @@ export const PROFILES: Readonly<Record<string, PromptProfile>> =
 export function profileFor(
   preset: string | undefined,
 ): PromptProfile | undefined {
-  return preset
-    ? PROFILES[
-        preset === "gea-html-inventory-all" ? "gea-html-inventory-qll" : preset
-      ]
-    : undefined;
+  return preset ? PROFILES[preset] : undefined;
 }
 
 const mountedProfiles = new Set<string>();

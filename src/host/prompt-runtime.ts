@@ -274,6 +274,9 @@ export function mountBusinessPrompts(
   const namesFor = (agent: Agent, state = stateOf(agent)) => {
     const profile = profileOf(agent)!;
     const names = allowedTools(profile, state.packs);
+    // Native selected resources must keep the official loader and their scoped read-only references.
+    names.add("skill");
+    names.add("gea_skill_reference_read");
     if (state.pageReferences || hasPageReferences(agent.session.snapshotEvents()))
       names.add("page_reference_read");
     if (business.config.agentSqlRead === true) names.add("gea_plugin_read");
@@ -366,18 +369,7 @@ export function mountBusinessPrompts(
       if (profileOf(agent)) stateOf(agent).steps++;
       const decision = await next();
       if (decision.kind === "reject" || !profileOf(agent)) return decision;
-      // Legacy presets may still install the generic loader. Business catalogs come from our scoped index.
-      return {
-        ...decision,
-        messages: decision.messages.filter(
-          (message) =>
-            !["skill-catalog", "subagent-catalog"].includes(
-              message.source.kind,
-            ) ||
-            (String(message.source.kind) === "subagent-catalog" &&
-              stateOf(agent).packs.has("delegate")),
-        ),
-      };
+      return decision;
     }),
   );
   offs.push(
@@ -1158,9 +1150,8 @@ export function mountBusinessPrompts(
       const outputScope = requestedOutputScope(user?.type === 'user/message' ? user.data.content.filter(b=>b.type==='text').map(b=>b.type==='text'?b.text:'').join('\n') : '');
       const facts = `日期：${date}；时区：Asia/Shanghai。Agent：${profile.label}；业务编码：${consumer}。\n${surfacePromptLine(business.surfaceFor(agent.id))}`;
       const sections = [
-        ...businessSections(assembled.sections),
+        ...businessSections(assembled.sections).concat(assembled.sections.filter(section => section.name === "deployment:persona-prefix" || section.name === "deployment:persona-suffix")),
         { name: "gea:common", text: COMMON_PROMPT },
-        { name: "gea:persona", text: profile.persona },
         {
           name: "gea:capabilities",
           text:

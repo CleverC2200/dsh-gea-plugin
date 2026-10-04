@@ -2,7 +2,7 @@ import { NATIVE_REFERENCE_MENUS } from "./business-navigation.ts";
 import { TOOL_DESCRIPTIONS, profileFor, installPromptProfile } from "./host/prompt-policy.ts";
 import { businessIdentityKey, sessionConsumer } from "./host/business-identity.ts";
 import type { HtmlPackage } from "@cleverc2200/dsh-agent-workbench";
-import { readFile, readdir, realpath, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defineTool } from "@deepseek-ai/dsh-tools";
@@ -20,12 +20,6 @@ import { createCapabilityRegistry } from "./capability/registry.ts";
 import { PAGE_TOOL } from "./host/page-identity.ts";
 import { LAYER_POLICY } from "./capability/layers.ts";
 import { compressForModel, MODEL_PAYLOAD_BUDGET } from "./shared/payload-budget.ts";
-
-/**
- * 老版本客户端装过、现在已下线的预设目录：插件包升级后源码不再生成它们，
- * 但 native-presets 是启动器按目录复用的派生目录，不会自己消失，得顺手清掉。
- */
-const RETIRED_LEGACY_PRESETS = ["gea-agent-hub"];
 
 /**
  * 页面上下文进模型前先收窄：带 focus 只留相关行/字段，不带就只给摘要；
@@ -244,122 +238,42 @@ export async function registerHtmlPlugins(
       throw Error(`INVALID_GEA_CAPABILITY [source: ${mcpPath}]`);
     if (items.some((item) => item.id === manifest.id))
       throw Error(`DUPLICATE_HTML_PLUGIN [source: ${items.find(item => item.id === manifest.id)?.htmlDirectory}/plugin.json; ${directory}/plugin.json]`);
-    const skillPath = await realpath(
-      resolve(directory, manifest.skills?.[0] ?? ""),
-    );
-    if (!skillPath.startsWith(directory + sep))
-      throw Error("INVALID_SKILL_PATH");
     if (!manifest.declarations || manifest.agentResources?.provider !== 'dsh-agent-manage')
       throw Error(`UNSUPPORTED_HTML_RESOURCE_PROTOCOL [source: ${directory}/plugin.json]`);
-    const moduleName = 'dsh-agent-manage/business-resources';
-    const loader = await import(moduleName);
-    const loadedAgentResources = await loader.loadBusinessResources(directory, {
-      id: manifest.id, consumerCode: manifest.gea.consumerCode,
-      skill: manifest.skills[0], prompt: manifest.agentResources.prompt,
-    });
-    const skill = loadedAgentResources.skill;
+    const preset = "gea-html-" + manifest.id;
+    const profile = profileFor(preset) ?? {label:manifest.name,consumerCode:manifest.gea.consumerCode,skills:[manifest.id]};
+    if (profile.consumerCode !== manifest.gea.consumerCode) throw Error("INVALID_AGENT_RESOURCE_IDENTITY");
+    ctx.effect(() => installPromptProfile(preset,profile));
+    const releaseResources = await ctx.agentResources.register([{
+      id:preset,label:manifest.name,root:directory,prompt:manifest.agentResources.prompt,profile,
+      enabled:!mock && !isHtmlPluginRetired(manifest.id,mock,presetLabels.hidden),
+      skillFiles:{[manifest.id]:manifest.skills?.[0]}
+    }]);
+    ctx.effect(() => releaseResources);
     const retired = isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden);
     const presetHidden = mock || retired;
     items.push({
       ...manifest,
 
-      loadedAgentResources,
-      pageAgents: loadedAgentResources.pageAgents,
+      pageAgents: [preset],
       capabilityContract: await readPluginContract(directory, manifest.declarations, contractFromPlugin({
         id: manifest.id, label: manifest.name, consumerCode: manifest.gea.consumerCode,
-        pageIds: pages.map((page: { id: string }) => page.id), skill, description: loadedAgentResources.skillDescription, mock, maxEffect: "view",
+        pageIds: pages.map((page: { id: string }) => page.id), description: manifest.name, mock, maxEffect: "view",
         sources: await readContractSources(directory),
       })),
       pages,
       mock,
       retired,
       presetHidden,
-      skillName: loadedAgentResources.skillName,
-      skillDescription: loadedAgentResources.skillDescription,
-      skillText: skill,
+      skillName: manifest.id,
+      skillDescription: manifest.name,
       htmlPath: path,
       htmlDirectory: directory,
     });
   }
   const capabilityContracts: CapabilityContract[] = items.map(item => item.capabilityContract);
-  // Validate the complete selected set before publishing skills, presets, routes or tools.
   createCapabilityRegistry(capabilityContracts);
-  for (const item of items) {
-    const manifest = item;
-    const { presetHidden } = item;
-    if (!item.mock) ctx.effect(() => installPromptProfile('gea-html-' + manifest.id, item.loadedAgentResources.profile));
-    await item.loadedAgentResources.mount(ctx, process.env.DSH_HOME || business.config.runtimeDir);
-    const preset = resolve(
-      business.config.runtimeDir,
-      "native-presets",
-      "gea-html-" + manifest.id,
-    );
-    // 页面是否下架与 Agent 是否可选分开：保留的演示页不生成独立预设。
-    if (presetHidden) {
-      await rm(preset, { recursive: true, force: true });
-    } else {
-      const name = presetLabels.labels[manifest.id]?.name ?? manifest.name;
-      const description =
-        capabilities[manifest.id] ??
-        item.skillDescription;
-      const orderIndex = presetLabels.order.indexOf(manifest.id);
-      const writePreset = async (directory: string) => {
-        await mkdir(directory, { recursive: true });
-        await writeFile(
-          resolve(directory, "preset.yml"),
-          JSON.stringify({ name, description, ...(orderIndex < 0 ? {} : { order: orderIndex + 1 }) }),
-        );
-        await writeFile(
-          resolve(directory, "agent.cordis.yml"),
-          JSON.stringify([
-            {
-              id: "persona",
-              name: "@deepseek-ai/dsh-persona",
-              config: {
-                prefix: item.loadedAgentResources.profile.persona,
-                complete: false,
-                includeRuntimeContext: false,
-              },
-            },
-            ...([{id: "skill-filesystem", name: "@deepseek-ai/dsh-skill-filesystem", config: {
-              includeDefaultRoots: false, customSkillDirs: [resolve(process.env.DSH_HOME || business.config.runtimeDir, "gea-business-skills")],
-            }}]),
-          ]),
-        );
-      };
-      await writePreset(preset);
-    }
-  }
-  // Retire old APS routes, tools and panels together, regardless of root order.
-  // 只留"当前应当存在的预设"：下架、演示（mock）以及被合并替代的模块都不会再生成目录，
-  // 但老版本装过的那份还在 native-presets 里，光靠上面的 rm 清不掉（插件可能已经
-  // 被 selectHtmlPlugins 剔除，甚至整包卸载，注册循环根本走不到），会一直留在预设选择器里。
-  const presetHome = resolve(business.config.runtimeDir, "native-presets");
-  const expectedPresets = new Set<string>();
-  for (const item of items) {
-    if (item.presetHidden === true) continue;
-    expectedPresets.add("gea-html-" + item.id);
-  }
-  for (const entry of await readdir(presetHome, { withFileTypes: true }).catch(() => [])) {
-    const name = entry.name;
-    if (RETIRED_LEGACY_PRESETS.includes(name)) {
-      await rm(resolve(presetHome, name), { recursive: true, force: true });
-      continue;
-    }
-    if (!name.startsWith("gea-html-") || expectedPresets.has(name)) continue;
-    await rm(resolve(presetHome, name), { recursive: true, force: true });
-  }
   const presetRegistry = ctx.get?.("agentPresets");
-  if (typeof presetRegistry?.register === "function") {
-    ctx.effect(async function* () {
-      for (const id of expectedPresets) {
-        const directory = resolve(presetHome, id);
-        const metadata = JSON.parse(await readFile(resolve(directory, "preset.yml"), "utf8"));
-        const plugins = JSON.parse(await readFile(resolve(directory, "agent.cordis.yml"), "utf8"));
-        yield await presetRegistry.register({ ...metadata, id, plugins });
-      }
-    });
-  }
   let identityScope = business.pageSessionScope();
   const unwatch = business.watchIdentity(() => {
     const next = business.pageSessionScope();
@@ -377,7 +291,7 @@ export async function registerHtmlPlugins(
     Response.json(value, { status, headers: { "cache-control": "no-store" } });
   /** The page declaration narrows choices; the installed preset and GEA Gateway authorize each choice. */
   const pageAgent = async (item: any, preset: unknown, signal: AbortSignal, conversationId?: string) => {
-    if (typeof preset !== "string" || !item.pageAgents.includes(preset))
+    if (typeof preset !== "string" || !ctx.agentResources.interpreters("gea-html-"+item.id).includes(preset))
       throw Error("PAGE_AGENT_PRESET_NOT_ALLOWED");
     const target = items.find((candidate) => `gea-html-${candidate.id}` === preset && !candidate.presetHidden && !candidate.mock);
     const profile = profileFor(preset);
@@ -431,7 +345,7 @@ export async function registerHtmlPlugins(
     () =>
       json(
         items.map(
-          ({ htmlSource, htmlPath, htmlDirectory, capabilityContract, loadedAgentResources, skillText, ...manifest }) => manifest,
+          ({ htmlPath, htmlDirectory, capabilityContract, ...manifest }) => manifest,
         ),
       ),
     false,
@@ -444,7 +358,7 @@ export async function registerHtmlPlugins(
     const prefix = "/api/gea-html/" + item.id;
     register(prefix + "/agents", ["GET"], async (request) => {
       const agents = [];
-      for (const preset of item.pageAgents ?? []) {
+      for (const preset of ctx.agentResources.interpreters("gea-html-"+item.id)) {
         try {
           const { credentials: _credentials, ...entry } = await pageAgent(item, preset, AbortSignal.any([request.signal, business.identitySignal()]));
           agents.push(entry);
