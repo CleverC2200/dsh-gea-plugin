@@ -52,7 +52,8 @@ export function createNativePageOwner(
     ) {
       if (context === null) {
         // A delayed close from an old iframe cannot remove the replacement owner.
-        if (owners.get(sessionId)?.lease === lease) release(sessionId);
+        if (typeof lease === "string" && owners.get(sessionId)?.lease === lease)
+          release(sessionId);
         return { synced: false };
       }
       assert(sessionId, lease);

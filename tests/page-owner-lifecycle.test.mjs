@@ -237,6 +237,16 @@ test("closing the exact native connection removes catalog and surface and reject
   owner.disposeAll();
   assert.equal(ctx.tools.get("gea_workbench_apply", agent), undefined);
   assert.equal(surface, undefined);
+  registry.declare(agent.id, {
+    ...catalog("all"),
+    surface: "gea-html-inventory-fc",
+    tool: "gea_plugin_page_apply",
+  });
+  owner.context(agent.id, undefined, null);
+  assert.ok(
+    ctx.tools.get("gea_plugin_page_apply", agent),
+    "a missing native lease cannot release another page's owner",
+  );
 });
 
 test("a changed page surface releases the previous pending owner", async (t) => {
