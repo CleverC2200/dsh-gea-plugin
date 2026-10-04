@@ -1,6 +1,6 @@
 # GEA 销售计划只读插件
 
-独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；通用工作台插件负责布局与会话关联。本隔离项目只支持 repositories.json 登记的固定官方源码及其本地适配组合，不使用旧 npm 核心或旧包运行回退。
+独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；通用工作台插件负责页面目录与 HTML 呈现。本隔离项目只支持 repositories.json 登记的未修改官方源码 4878cdab 与同组插件候选，不使用旧 npm 核心或旧包运行回退。
 
 本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。`pnpm run package` 输出可核对 SHA-256 的 tarball，尚不是桌面安装器。
 
@@ -23,7 +23,7 @@ pnpm start --dev --config gea.config.json --runtime .runtime/workbench-developme
 
 桌面端调试运行 `pnpm desktop:dev`。它复用本机已安装的 Electron 运行时，只将当前项目的 GEA 插件源码挂入桌面进程；不会写入正式插件版本目录，也不会改变正式插件版本号。改动 UI 后重新编译，在桌面菜单选择“视图 → 重新加载”即可查看。
 
-开发启动通过安装依赖中的 `dsh --profile gea-workbench`，并把当前源码目录挂进独立 Harness home；改完源码后重新构建并刷新客户端即可看到，不需要先安装插件。`pnpm dev` 持续编译 Host、Client 和 Workbench，`--dev` 同时启用 profile 的实时 patch 重载。发行包仍使用不带 `--dev` 的安装启动方式。profile 禁用内置 `ui-layout`，启用 `@cleverc2200/dsh-agent-workbench`；其他 DSH 包使用 npm 发布物。原生聊天、输入框及 Session 继续由 DSH 提供。
+开发启动通过安装依赖中的 `dsh --profile gea-workbench`，并把当前源码目录挂进独立 Harness home；改完源码后重新构建并刷新客户端即可看到，不需要先安装插件。`pnpm dev` 持续编译 Host、Client 和 Workbench，`--dev` 同时启用 profile 的实时 patch 重载。发行包仍使用不带 `--dev` 的安装启动方式。profile 保留官方 `ui-layout`，启用 `@cleverc2200/dsh-agent-workbench`；本轮官方装配必须解析同组官方 SDK 产物。原生聊天、输入框及 Session 继续由 DSH 提供。
 
 使用启动日志中的带认证参数链接进入全屏登录页，默认自动加载正式环境的二维码，可切换「正式」或「测试」后直接飞书扫码登录；切换环境会自动换码，「刷新二维码」用于重试或更新过期二维码。页面不显示或要求输入服务器地址。登录后进入 GEA 导航、原销售计划审批工作台、原生 DSH 会话的三栏界面。选择组织行与分析范围，点击「预览发送范围」，核对 Host 重新获取的当前计划数据，再确认送入右侧原生 DSH 会话。左栏「DSH 对话」切换到原生对话与工作区侧栏；原生侧栏「GEA 业务版」返回工作台，往返保留当前 Session。空会话欢迎图标居于右栏内容区中央，输入框位于底部。选中 Session 不会关闭业务页面，后续输入、流式回答、取消和历史记录仍由 DSH 负责。
 
@@ -36,7 +36,7 @@ pnpm start --dev --config gea.config.json --runtime .runtime/workbench-developme
 | 层            | 代码                             | 职责                                                                            |
 | ------------- | -------------------------------- | ------------------------------------------------------------------------------- |
 | 外层 DSH 插件 | `src/client.tsx`                 | GEA 导航、独立页面 iframe、Session 选择与语言同步                               |
-| 通用工作台 | [独立工作台仓库](http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench) | 页面注册、业务实例与会话关联、原生对话布局和窄屏排列 |
+| 通用工作台 | [独立工作台仓库](http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench) | 页面目录、HTML呈现、插件公共规范；原生布局与会话归官方宿主 |
 | 示例 Agent | `packages/workbench-example/` | 独立插件验证多页面接入，仅在 `workbenchExample: true` 时加载 |
 | 独立业务文档  | `src/workbench/page.tsx`         | 登录、GEA 适配、预览与发送；不实现聊天输入框                                    |
 | 原审批组件    | `src/workbench/original/`        | 从 AionUi 原源码复制的工作台、CSS、组织维度、筛选、版本、详情和导出             |
@@ -74,7 +74,7 @@ GEA token 仅保存在当前 Host 内存中；重启后需要重新登录。GEA 
 
 ## 当前验证状态
 
-当前三栏使用隔离项目登记的固定官方源码及其本地适配组合与独立工作台插件，浏览器回归启动真实 Web profile，仅将外部 GEA/模型响应替换为固定测试服务。覆盖原工作台登录/查询/选择、独立文档与原生会话同时显示、持久化回执、窄屏排列。Host 测试覆盖精确金额、接口限制、数据身份和登录/预览失效。原工作台模型测试覆盖导出、权限和 SAVE 回读语义；这些测试不执行真实业务写回。
+当前三栏使用隔离项目登记的未修改官方源码 4878cdab 与同组插件候选与独立工作台插件，浏览器回归启动真实 Web profile，仅将外部 GEA/模型响应替换为固定测试服务。覆盖原工作台登录/查询/选择、独立文档与原生会话同时显示、持久化回执、窄屏排列。Host 测试覆盖精确金额、接口限制、数据身份和登录/预览失效。原工作台模型测试覆盖导出、权限和 SAVE 回读语义；这些测试不执行真实业务写回。
 
 本次三栏重构的检查、真实查询证据和未完成项见 [2026-09-11 验收记录](docs/acceptance-2026-09-11.md)。此前的真实 GEA/模型验证记录见 [早期验收记录](docs/acceptance-2026-09-10.md)，它不能替代当前发布版 DSH + 工作台插件的真实环境验收；独立安装包、写操作和生产验收也仍未完成。
 
@@ -181,7 +181,7 @@ DMS 继续使用 mock。受控 GEA 终审流程可连接既有模拟接收方验
 
 Demand Forecast follows the user's language for both progress and final answers. Its `gea_skill_reference_read` tool reads local references linked by a visible skill, with `offset`/`limit` pagination. MCP resource reads use server-returned URIs; local `file://` links are rejected with guidance to the correct reader.
 
-### 隔离共享主题适配
+### 历史隔离共享主题适配（不用于规格41）
 
 本项目受控源码组合的导航、会话工具栏与原生输入框边框消费工作台共享语义变量；未安装共享资源时保留原有边框后备值。资源由同级工作台 `theme/` 维护并编入宿主，GEA 不保存第二套主题状态。业务页面主题迁移不在此适配中。
 
@@ -194,7 +194,7 @@ Demand Forecast follows the user's language for both progress and final answers.
 
 隔离源码工具共用 `scripts/source-composition.mjs` 的六插件清单（含插件中心）、构建差异、快照资源及核心包扫描范围。`source:check` 检查当前核心声明，`source:build` 依次构建；启动器装配同一组合。预设由 YAML 节点转换，保留 `!!js` 标签，结构不兼容时报告输入文件。主会话读取来自核心 `uiSession.mainSessionId`，槽位通过 `inject.hooks` 订阅；新建会话按钮和输入底栏使用核心语义标记。此组合要求同次更新核心、工作台与 GEA。
 
-### 隔离 HTML 样板主题同步
+### 历史 HTML 样板主题同步（不用于规格41）
 
 公共工作台的 `lib/samples/html-table.html` 仅用于验证；`GEA_TEST_SOURCE_CORE=1 node --test tests/html-shared-theme-web.test.mjs` 通过临时 mock 描述加载，不新增发行插件或真实库存页面。页面内嵌同版 1.0.0 资源，保留现有 sandbox/CSP。
 
@@ -259,3 +259,9 @@ Demand Forecast follows the user's language for both progress and final answers.
 在公共 `workbench-conversation` 矮面板内，GEA自有欢迎内容限制高度并独立滚动，头像和间距收紧；输入与工具栏保留可见，介绍和推荐问题不删。适配跟随面板高度，不按整个窗口高度猜测半屏会话，也不修改核心DOM或重建会话。
 
 账户入口通过当前 `settings.launcher` 接口和 `openSettings` 动作提供自有按钮；页面引用通过 `conversation.user.text` 只读显示投影进入原生消息与队列，不扫描或修改宿主 DOM。页面发现的网络/HTTP 失败保留可见错误和手动重试入口；不后台循环重试，不把失败当作未安装。Skill 名称和说明直接使用 Agent Manage 的 YAML 解析结果。
+
+## 规格41的官方入口适配候选
+
+当前客户端贡献 `gea-proof`、`gea-inbox`、`gea-api-log` 原生页面以及原区域／品类／MPS HTML 文档，由 Workbench 统一发现和呈现。GEA 不再注册定制侧栏导航、Conversation 壳槽或读取 `uiSession.mainSessionId`。HTML 安装根交给 Workbench Host 登记、读取 manifest 与安全呈现，GEA 只接收原声明并检查业务能力。`cordis.patch.yml` 和 `deploymentPatch` 不再禁用官方布局。
+
+`tsconfig.official.json` 检查本插件运行入口及传递依赖，精确消费官方标准声明；未装配的示例独立包不属于本轮三插件类型门禁。旧六插件装配、主题同步和定制 Core 测试保持历史用途，其通过不能证明本次官方组合。现有审批、计划和库存业务桥的显式会话／引用／受控操作接续清单由规格41票04维护，静态呈现通过不等于这部分已验收。原业务源码、持久 Session、认证和历史材料均保留。

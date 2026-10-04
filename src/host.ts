@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { brandString } from "@deepseek-ai/dsh-brand";
 import type { SessionId } from "@deepseek-ai/dsh-session";
+import type {} from "@cleverc2200/dsh-agent-workbench";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-agent";
 import {
@@ -49,6 +50,7 @@ import type {} from "@deepseek-ai/dsh-client-connection";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
 
 export const inject = [
+  "workbenchPages",
   "agents",
   "connection",
   "tools",
@@ -319,7 +321,7 @@ function toGeaRequest(options: GenerateOptions) {
 export async function apply(ctx: Context, config: Deployment): Promise<void> {
   resolveWorkbench(import.meta.url);
   const workbenchHtml =
-    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GEA</title><link rel="stylesheet" href="/api/gea-proof/workbench.css"><style>html,body,#gea-workbench{height:100%;margin:0}</style></head><body><div id="gea-workbench"></div><script type="module" src="/api/gea-proof/workbench.js"></script></body></html>';
+    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GEA</title><link rel="stylesheet" href="/api/gea-proof/workbench.css"><link rel="stylesheet" href="/api/agent-workbench/theme.css"><style>html,body,#gea-workbench{height:100%;margin:0}</style></head><body><div id="gea-workbench"></div><script type="module" src="/api/gea-proof/workbench.js"></script></body></html>';
   for (const [path, type, content] of [
     [
       "workbench",
@@ -362,7 +364,8 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   if(htmlRoots.some(root=>typeof root!=="string"))throw Error("INVALID_HTML_PLUGIN_ROOTS");
   // 迁移页面的页面桥入口：注册表建好后再接上（页面第一次轮询是 500ms 之后）。
   const pageBridgeHost: PageBridgeHost = {};
-  const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlRoots,pageBridgeHost);
+  const htmlPackages = await ctx.workbenchPages.registerHtml(htmlRoots);
+  const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlPackages,pageBridgeHost);
   const clearPageReferences = applyPageInteraction(ctx, { authorize: htmlPlugins.authorizeReference });
   let referenceOwner = business.pageSessionScope();
   ctx.effect(() => business.watchIdentity(() => {

@@ -1,13 +1,13 @@
 import { NATIVE_REFERENCE_MENUS } from "./business-navigation.ts";
 import { TOOL_DESCRIPTIONS, profileFor, installPromptProfile } from "./host/prompt-policy.ts";
 import { businessIdentityKey, sessionConsumer } from "./host/business-identity.ts";
-import { injectPicker } from "../packages/page-interaction/src/inject.ts";
+import type { HtmlPackage } from "@cleverc2200/dsh-agent-workbench";
 import { readFile, readdir, realpath, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { createHtmlSessions } from "./html-sessions.ts";
-import { selectHtmlPlugins, isHtmlPluginRetired } from "./html-plugin-selection.ts";
+import { isHtmlPluginRetired } from "./html-plugin-selection.ts";
 import {readHtmlBatch} from "./html-query-batch.ts";
 import type { Business } from "./host/business.ts";
 import {
@@ -148,7 +148,7 @@ async function readContractSources(directory: string): Promise<string[]> {
 export async function registerHtmlPlugins(
   ctx: any,
   business: Business,
-  roots: string[],
+  packages: readonly HtmlPackage[],
   pageBridgeHost: PageBridgeHost = {},
 ) {
   const localConfig = process.env.GEA_HTML_LOCAL_QUERY_CONFIG;
@@ -201,18 +201,9 @@ export async function registerHtmlPlugins(
         return { hidden: [], order: [], labels: {} };
       }
     })();
-  const candidates = await Promise.all(roots.map(async root => {
-    const directory = await realpath(root);
-    const manifest = JSON.parse(await readFile(resolve(directory, "plugin.json"), "utf8"));
-    return { ...manifest, directory };
-  }));
-  for (const candidate of selectHtmlPlugins(candidates)) {
-    const root = candidate.directory;
-    const directory = await realpath(root),
-      manifest = JSON.parse(
-        await readFile(resolve(directory, "plugin.json"), "utf8"),
-      ),
-      mock = manifest.mode === "mock";
+  for (const resource of packages) {
+    const { directory, htmlPath: path, manifest } = resource;
+    const mock = manifest.mode === "mock";
     const pages = manifest.pages ?? [{ id: manifest.id, name: manifest.name, view: "" }];
     if (
       manifest.schemaVersion !== 1 ||
@@ -253,10 +244,6 @@ export async function registerHtmlPlugins(
       throw Error(`INVALID_GEA_CAPABILITY [source: ${mcpPath}]`);
     if (items.some((item) => item.id === manifest.id))
       throw Error(`DUPLICATE_HTML_PLUGIN [source: ${items.find(item => item.id === manifest.id)?.htmlDirectory}/plugin.json; ${directory}/plugin.json]`);
-    const path = await realpath(resolve(directory, manifest.html));
-    if (!path.startsWith(directory + sep)) throw Error("INVALID_HTML_PATH");
-    const html = await readFile(path, "utf8");
-    if (Buffer.byteLength(html) > 5000000) throw Error("HTML_TOO_LARGE");
     const skillPath = await realpath(
       resolve(directory, manifest.skills?.[0] ?? ""),
     );
@@ -290,7 +277,6 @@ export async function registerHtmlPlugins(
       skillName: loadedAgentResources.skillName,
       skillDescription: loadedAgentResources.skillDescription,
       skillText: skill,
-      htmlSource: html,
       htmlPath: path,
       htmlDirectory: directory,
     });
@@ -345,7 +331,6 @@ export async function registerHtmlPlugins(
     }
   }
   // Retire old APS routes, tools and panels together, regardless of root order.
-  items.splice(0, items.length, ...selectHtmlPlugins(items));
   // 只留"当前应当存在的预设"：下架、演示（mock）以及被合并替代的模块都不会再生成目录，
   // 但老版本装过的那份还在 native-presets 里，光靠上面的 rm 清不掉（插件可能已经
   // 被 selectHtmlPlugins 剔除，甚至整包卸载，注册循环根本走不到），会一直留在预设选择器里。
@@ -467,22 +452,6 @@ export async function registerHtmlPlugins(
         catch (error) { if (request.signal.aborted) throw error; }
       }
       return json(agents);
-    });
-    register(prefix + "/html", ["GET"], async () => {
-      const path = await realpath(item.htmlPath);
-      if (!path.startsWith(item.htmlDirectory + sep))
-        throw Error("INVALID_HTML_PATH");
-      const html = await readFile(path, "utf8");
-      if (Buffer.byteLength(html) > 5000000) throw Error("HTML_TOO_LARGE");
-      const picker = await readFile(new URL("../lib/page-interaction.js", import.meta.url), "utf8");
-      return new Response(injectPicker(html, picker), {
-        headers: {
-          "content-type": "text/html; charset=utf-8",
-          "cache-control": "no-store",
-          "content-security-policy":
-            "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'",
-        },
-      });
     });
     register(prefix + "/open", ["POST"], async (request) => {
       lifetime.signal.throwIfAborted();

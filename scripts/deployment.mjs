@@ -201,7 +201,6 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
   const model = config.analysis.mode === "model";
   const analysis = config.analysis;
   const rows = [
-    { id: "ui-layout", disabled: true },
     { insert: [{ id: "agent-workbench", name: resolveWorkbench(), config: { cwd: resolve(runtime, "workspace") } }] },
     { insert: resolveBuiltinPlugins() },
     { id: "session-title-llm", disabled: true },

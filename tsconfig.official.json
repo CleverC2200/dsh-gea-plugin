@@ -1,0 +1,1829 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "allowJs": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "resolveJsonModule": true,
+    "paths": {
+      "@deepseek-ai/dsh-webhook": [
+        "../../official-core/packages/webhook/webhook/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-webhook/types": [
+        "../../official-core/packages/webhook/webhook/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-webhook/invariant": [
+        "../../official-core/packages/webhook/webhook/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-webhook-github": [
+        "../../official-core/packages/webhook/webhook-github/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-webhook-github/types": [
+        "../../official-core/packages/webhook/webhook-github/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-settings": [
+        "../../official-core/packages/settings/settings/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-settings/types": [
+        "../../official-core/packages/settings/settings/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-computer-use-cua-driver-native": [
+        "../../official-core/packages/experimental/computer-use-cua-driver-native/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-webworker-runtime": [
+        "../../official-core/packages/experimental/webworker-runtime/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-webworker-runtime/client": [
+        "../../official-core/packages/experimental/webworker-runtime/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-speech-to-text": [
+        "../../official-core/packages/experimental/speech-to-text/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-speech-to-text/types": [
+        "../../official-core/packages/experimental/speech-to-text/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-speech-to-text/wave": [
+        "../../official-core/packages/experimental/speech-to-text/lib/types/wave.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-browser-use-runtime": [
+        "../../official-core/packages/experimental/browser-use-runtime/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-browser-use-runtime/mcp": [
+        "../../official-core/packages/experimental/browser-use-runtime/lib/types/mcp.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-browser-use-chrome-devtools-mcp": [
+        "../../official-core/packages/experimental/browser-use-chrome-devtools-mcp/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-inspector": [
+        "../../official-core/packages/experimental/inspector/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-inspector/client": [
+        "../../official-core/packages/experimental/inspector/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-agent-team-profile": [
+        "../../official-core/packages/experimental/agent-team-profile/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-browser-use-stagehand-native": [
+        "../../official-core/packages/experimental/browser-use-stagehand-native/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-browser-use-stagehand-native/worker": [
+        "../../official-core/packages/experimental/browser-use-stagehand-native/lib/types/worker.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-computer-use-cua-driver-mcp": [
+        "../../official-core/packages/experimental/computer-use-cua-driver-mcp/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-ptc-runtime-python": [
+        "../../official-core/packages/experimental/ptc-runtime-python/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-client-ui-voice-input": [
+        "../../official-core/packages/experimental/client-ui-voice-input/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-client-ui-voice-input/client": [
+        "../../official-core/packages/experimental/client-ui-voice-input/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-agent-team": [
+        "../../official-core/packages/experimental/agent-team/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-agent-team/invariant": [
+        "../../official-core/packages/experimental/agent-team/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-agent-team/client": [
+        "../../official-core/packages/experimental/agent-team/lib/types/client.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-agent-team/types": [
+        "../../official-core/packages/experimental/agent-team/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-tool-agent-team": [
+        "../../official-core/packages/experimental/tool-agent-team/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-client-ui-agent-team": [
+        "../../official-core/packages/experimental/client-ui-agent-team/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-client-ui-agent-team/client": [
+        "../../official-core/packages/experimental/client-ui-agent-team/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-auto-review": [
+        "../../official-core/packages/experimental/auto-review/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-webworker-packer": [
+        "../../official-core/packages/experimental/webworker-packer/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-speech-to-text-sensevoice": [
+        "../../official-core/packages/experimental/speech-to-text-sensevoice/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-speech-to-text-sensevoice/worker": [
+        "../../official-core/packages/experimental/speech-to-text-sensevoice/lib/types/worker.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-voice-input-bundle": [
+        "../../official-core/packages/experimental/voice-input-bundle/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-schedule-bundle": [
+        "../../official-core/packages/experimental/schedule-bundle/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-api-speech-to-text": [
+        "../../official-core/packages/experimental/api-speech-to-text/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-api-speech-to-text/types": [
+        "../../official-core/packages/experimental/api-speech-to-text/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-api-speech-to-text/typert": [
+        "../../official-core/packages/experimental/api-speech-to-text/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-api-speech-to-text/remote": [
+        "../../official-core/packages/experimental/api-speech-to-text/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-experimental-browser-use-playwright-mcp": [
+        "../../official-core/packages/experimental/browser-use-playwright-mcp/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-schedule": [
+        "../../official-core/packages/schedule/schedule/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-schedule/invariant": [
+        "../../official-core/packages/schedule/schedule/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-schedule/client": [
+        "../../official-core/packages/schedule/schedule/lib/types/client.d.ts"
+      ],
+      "@deepseek-ai/dsh-schedule/typert": [
+        "../../official-core/packages/schedule/schedule/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-schedule/remote": [
+        "../../official-core/packages/schedule/schedule/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm": [
+        "../../official-core/packages/llm/llm/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm/invariant": [
+        "../../official-core/packages/llm/llm/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm/types": [
+        "../../official-core/packages/llm/llm/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm/brand": [
+        "../../official-core/packages/llm/llm/lib/types/brand.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm/message": [
+        "../../official-core/packages/llm/llm/lib/types/message.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm/assistant-stream": [
+        "../../official-core/packages/llm/llm/lib/types/assistant-stream.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm/typert": [
+        "../../official-core/packages/llm/llm/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm/remote": [
+        "../../official-core/packages/llm/llm/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-deepseek-llm-api-extensions": [
+        "../../official-core/packages/llm/deepseek-llm-api-extensions/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-deepseek-llm-api-extensions/types": [
+        "../../official-core/packages/llm/deepseek-llm-api-extensions/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm-retry": [
+        "../../official-core/packages/llm/llm-retry/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm-retry/invariant": [
+        "../../official-core/packages/llm/llm-retry/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm-retry/types": [
+        "../../official-core/packages/llm/llm-retry/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm-deepseek-account": [
+        "../../official-core/packages/llm/llm-deepseek-account/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-token-meter": [
+        "../../official-core/packages/llm/token-meter/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-token-meter/client": [
+        "../../official-core/packages/llm/token-meter/lib/types/client.d.ts"
+      ],
+      "@deepseek-ai/dsh-token-meter/estimate": [
+        "../../official-core/packages/llm/token-meter/lib/types/estimate.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm-pi-ai": [
+        "../../official-core/packages/llm/llm-pi-ai/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-plugin-package-inventory-deepseek": [
+        "../../official-core/packages/llm/plugin-package-inventory-deepseek/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-plugin-package-inventory-deepseek/types": [
+        "../../official-core/packages/llm/plugin-package-inventory-deepseek/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm-deepseek-api-key": [
+        "../../official-core/packages/llm/llm-deepseek-api-key/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm-deepseek": [
+        "../../official-core/packages/llm/llm-deepseek/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tmux-context": [
+        "../../official-core/packages/context/tmux-context/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-file-reference": [
+        "../../official-core/packages/context/file-reference/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-file-reference/grammar": [
+        "../../official-core/packages/context/file-reference/lib/types/grammar.d.ts"
+      ],
+      "@deepseek-ai/dsh-file-reference/types": [
+        "../../official-core/packages/context/file-reference/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-instructions": [
+        "../../official-core/packages/context/agent-instructions/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-file-reference-local": [
+        "../../official-core/packages/context/file-reference-local/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-file-reference-local/search": [
+        "../../official-core/packages/context/file-reference-local/lib/types/search.d.ts"
+      ],
+      "@deepseek-ai/dsh-time-context": [
+        "../../official-core/packages/context/time-context/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-time-context/invariant": [
+        "../../official-core/packages/context/time-context/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-reference": [
+        "../../official-core/packages/context/session-reference/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-reference/types": [
+        "../../official-core/packages/context/session-reference/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-reference/typert": [
+        "../../official-core/packages/context/session-reference/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-reference/remote": [
+        "../../official-core/packages/context/session-reference/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-loop": [
+        "../../official-core/packages/core/agent-loop/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-loop/invariant": [
+        "../../official-core/packages/core/agent-loop/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-tools": [
+        "../../official-core/packages/core/tools/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tools/invariant": [
+        "../../official-core/packages/core/tools/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-tools/types": [
+        "../../official-core/packages/core/tools/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-tools/presentation": [
+        "../../official-core/packages/core/tools/lib/types/presentation.d.ts"
+      ],
+      "@deepseek-ai/dsh-system-prompt": [
+        "../../official-core/packages/core/system-prompt/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-system-prompt/invariant": [
+        "../../official-core/packages/core/system-prompt/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-tool-presentation": [
+        "../../official-core/packages/core/agent-tool-presentation/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent": [
+        "../../official-core/packages/core/agent/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent/invariant": [
+        "../../official-core/packages/core/agent/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent/types": [
+        "../../official-core/packages/core/agent/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-scope": [
+        "../../official-core/packages/core/scope/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-scope/invariant": [
+        "../../official-core/packages/core/scope/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-default-model": [
+        "../../official-core/packages/core/agent-default-model/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session": [
+        "../../official-core/packages/core/session/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session/invariant": [
+        "../../official-core/packages/core/session/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-session/types": [
+        "../../official-core/packages/core/session/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-session/fork": [
+        "../../official-core/packages/core/session/lib/types/fork.d.ts"
+      ],
+      "@deepseek-ai/dsh-session/surface": [
+        "../../official-core/packages/core/session/lib/types/surface.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-directory-picker-native": [
+        "../../official-core/packages/host/directory-picker-native/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-directory-picker-native/worker": [
+        "../../official-core/packages/host/directory-picker-native/lib/types/win32-dialog-worker.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-plugin-inventory": [
+        "../../official-core/packages/host/plugin-inventory/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-plugin-inventory/types": [
+        "../../official-core/packages/host/plugin-inventory/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-plugin-inventory/typert": [
+        "../../official-core/packages/host/plugin-inventory/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-plugin-inventory/remote": [
+        "../../official-core/packages/host/plugin-inventory/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-product-telemetry-otel": [
+        "../../official-core/packages/host/product-telemetry-otel/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-frontend-static": [
+        "../../official-core/packages/host/frontend-static/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-webserver": [
+        "../../official-core/packages/host/webserver/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-open-in-app": [
+        "../../official-core/packages/host/open-in-app/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-open-in-app/shared": [
+        "../../official-core/packages/host/open-in-app/lib/types/shared.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-directory-picker-auto": [
+        "../../official-core/packages/host/directory-picker-auto/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-directory-picker": [
+        "../../official-core/packages/host/directory-picker/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-directory-picker/types": [
+        "../../official-core/packages/host/directory-picker/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-host-directory-picker-browse": [
+        "../../official-core/packages/host/directory-picker-browse/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-plugin-manager": [
+        "../../official-core/packages/boot/plugin-manager/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-plugin-manager/types": [
+        "../../official-core/packages/boot/plugin-manager/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-plugin-manager/registry": [
+        "../../official-core/packages/boot/plugin-manager/lib/types/registry.d.ts"
+      ],
+      "@deepseek-ai/dsh-plugin-manager/typert": [
+        "../../official-core/packages/boot/plugin-manager/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-plugin-manager/remote": [
+        "../../official-core/packages/boot/plugin-manager/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-plugin-manager/operations": [
+        "../../official-core/packages/boot/plugin-manager/lib/types/operations.d.ts"
+      ],
+      "@deepseek-ai/dsh-plugin-manager/tools": [
+        "../../official-core/packages/boot/plugin-manager/lib/types/tools.d.ts"
+      ],
+      "@deepseek-ai/dsh-config-editor": [
+        "../../official-core/packages/boot/config-editor/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-hmr": [
+        "../../official-core/packages/boot/hmr/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-cmdline": [
+        "../../official-core/packages/boot/cmdline/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-app-boot": [
+        "../../official-core/packages/boot/app-boot/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-app-boot/worker/profile-resolution-bootstrap": [
+        "../../official-core/packages/boot/app-boot/lib/types/profile-resolution/worker-bootstrap.d.ts"
+      ],
+      "@deepseek-ai/dsh-anonymous-user-id": [
+        "../../official-core/packages/identity/anonymous-user-id/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-skill-filesystem": [
+        "../../official-core/packages/skill/skill-filesystem/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-skill": [
+        "../../official-core/packages/skill/tool-skill/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-skill": [
+        "../../official-core/packages/skill/skill/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-skill-badge": [
+        "../../official-core/packages/skill/skill-badge/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-skill-office": [
+        "../../official-core/packages/skill/skill-office/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-workspace-dependencies": [
+        "../../official-core/packages/skill/tool-workspace-dependencies/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-lazy-require": [
+        "../../official-core/packages/util/lazy-require/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-chunked-list": [
+        "../../official-core/packages/util/chunked-list/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-util-crypto": [
+        "../../official-core/packages/util/crypto/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-home-paths": [
+        "../../official-core/packages/util/home-paths/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-brand": [
+        "../../official-core/packages/util/brand/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-launch-environment": [
+        "../../official-core/packages/util/launch-environment/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-timeout": [
+        "../../official-core/packages/util/timeout/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-util-values": [
+        "../../official-core/packages/util/values/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-util-time": [
+        "../../official-core/packages/util/time/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-deque": [
+        "../../official-core/packages/util/deque/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-output-retention": [
+        "../../official-core/packages/util/output-retention/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-util-code-language": [
+        "../../official-core/packages/util/code-language/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-util-workspace-path": [
+        "../../official-core/packages/util/workspace-path/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-atomic-write": [
+        "../../official-core/packages/util/atomic-write/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-http-proxy": [
+        "../../official-core/packages/util/http-proxy/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-package-manifest": [
+        "../../official-core/packages/util/package-manifest/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-native-command": [
+        "../../official-core/packages/util/native-command/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-native-command/types": [
+        "../../official-core/packages/util/native-command/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-preset": [
+        "../../official-core/packages/preset/agent-preset/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-persona": [
+        "../../official-core/packages/preset/persona/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-preset-registry": [
+        "../../official-core/packages/preset/agent-preset-registry/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-preset-registry/invariant": [
+        "../../official-core/packages/preset/agent-preset-registry/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-preset-registry/types": [
+        "../../official-core/packages/preset/agent-preset-registry/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-preset-registry/display": [
+        "../../official-core/packages/preset/agent-preset-registry/lib/types/display.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-preset-registry/typert": [
+        "../../official-core/packages/preset/agent-preset-registry/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-preset-registry/remote": [
+        "../../official-core/packages/preset/agent-preset-registry/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-shell-env": [
+        "../../official-core/packages/shell/shell-env/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-pwsh-sandbox": [
+        "../../official-core/packages/shell/pwsh-sandbox/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-shell": [
+        "../../official-core/packages/shell/shell/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-bash-sandbox": [
+        "../../official-core/packages/shell/bash-sandbox/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-bash-persistent": [
+        "../../official-core/packages/shell/tool-bash-persistent/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-bash": [
+        "../../official-core/packages/shell/tool-bash/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-pwsh-local": [
+        "../../official-core/packages/shell/pwsh-local/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-bash-local": [
+        "../../official-core/packages/shell/bash-local/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-pwsh": [
+        "../../official-core/packages/shell/tool-pwsh/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-pwsh-persistent": [
+        "../../official-core/packages/shell/tool-pwsh-persistent/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-plan-mode": [
+        "../../official-core/packages/plan/plan-mode/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-plan-mode/invariant": [
+        "../../official-core/packages/plan/plan-mode/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-plan-mode/types": [
+        "../../official-core/packages/plan/plan-mode/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-plan-mode/client": [
+        "../../official-core/packages/plan/plan-mode/lib/types/client.d.ts"
+      ],
+      "@deepseek-ai/dsh-web": [
+        "../../official-core/packages/web/web/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-web-search-perplexity": [
+        "../../official-core/packages/web/web-search-perplexity/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-web-search-deepseek": [
+        "../../official-core/packages/web/web-search-deepseek/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-web-fetch-http": [
+        "../../official-core/packages/web/web-fetch-http/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-web-search-exa": [
+        "../../official-core/packages/web/web-search-exa/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-web": [
+        "../../official-core/packages/web/tool-web/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-typert-protocol": [
+        "../../official-core/packages/typert/protocol/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-typert-protocol/types": [
+        "../../official-core/packages/typert/protocol/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-typert-generator": [
+        "../../official-core/packages/typert/generator/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-typert-generator/tsdown": [
+        "../../official-core/packages/typert/generator/lib/types/tsdown-plugin.d.ts"
+      ],
+      "@deepseek-ai/dsh-typert-loader": [
+        "../../official-core/packages/typert/loader/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-typert-registry": [
+        "../../official-core/packages/typert/registry/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-typert-registry/client": [
+        "../../official-core/packages/typert/registry/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-typert-registry/types": [
+        "../../official-core/packages/typert/registry/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-attachment": [
+        "../../official-core/packages/attachment/attachment/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-attachment/types": [
+        "../../official-core/packages/attachment/attachment/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-attachment-local": [
+        "../../official-core/packages/attachment/attachment-local/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-workspace": [
+        "../../official-core/packages/workspace/workspace/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-workspace/invariant": [
+        "../../official-core/packages/workspace/workspace/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-workspace/types": [
+        "../../official-core/packages/workspace/workspace/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-terminal-bash": [
+        "../../official-core/packages/terminal/terminal-bash/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-terminal": [
+        "../../official-core/packages/terminal/terminal/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-terminal": [
+        "../../official-core/packages/terminal/tool-terminal/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-compaction": [
+        "../../official-core/packages/compaction/compaction/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-compaction/invariant": [
+        "../../official-core/packages/compaction/compaction/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-compaction/types": [
+        "../../official-core/packages/compaction/compaction/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-compaction/checkpoint": [
+        "../../official-core/packages/compaction/compaction/lib/types/checkpoint.d.ts"
+      ],
+      "@deepseek-ai/dsh-command-compact": [
+        "../../official-core/packages/compaction/command-compact/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-compaction-tool-result-pruner": [
+        "../../official-core/packages/compaction/compaction-tool-result-pruner/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-compaction-image-offload": [
+        "../../official-core/packages/compaction/compaction-image-offload/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-compaction-image-offload/projection": [
+        "../../official-core/packages/compaction/compaction-image-offload/lib/types/projection.d.ts"
+      ],
+      "@deepseek-ai/dsh-compaction-basic": [
+        "../../official-core/packages/compaction/compaction-basic/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-web-app": [
+        "../../official-core/packages/bundle/web-app/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-web-app/startup": [
+        "../../official-core/packages/bundle/web-app/lib/types/startup.d.ts"
+      ],
+      "@deepseek-ai/dsh-sdk-minimal": [
+        "../../official-core/packages/bundle/sdk-minimal/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-headless": [
+        "../../official-core/packages/bundle/headless/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-headless/startup": [
+        "../../official-core/packages/bundle/headless/lib/types/startup.d.ts"
+      ],
+      "@deepseek-ai/dsh-sdk-app": [
+        "../../official-core/packages/bundle/sdk-app/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-acp-app": [
+        "../../official-core/packages/bundle/acp-app/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-base": [
+        "../../official-core/packages/bundle/base/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-lsp-stdio": [
+        "../../official-core/packages/lsp/lsp-stdio/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-lsp": [
+        "../../official-core/packages/lsp/lsp/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-lsp": [
+        "../../official-core/packages/lsp/tool-lsp/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-mcp-resources": [
+        "../../official-core/packages/mcp/mcp-resources/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-mcp-client": [
+        "../../official-core/packages/mcp/mcp-client/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-office-to-pdf": [
+        "../../official-core/packages/document/office-to-pdf/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-office-to-pdf/types": [
+        "../../official-core/packages/document/office-to-pdf/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-office-to-pdf/remote": [
+        "../../official-core/packages/document/office-to-pdf/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-office-to-pdf/typert": [
+        "../../official-core/packages/document/office-to-pdf/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-command-feedback": [
+        "../../official-core/packages/feedback/command-feedback/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-command-feedback/types": [
+        "../../official-core/packages/feedback/command-feedback/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-command-feedback/typert": [
+        "../../official-core/packages/feedback/command-feedback/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-command-feedback/remote": [
+        "../../official-core/packages/feedback/command-feedback/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-message-feedback": [
+        "../../official-core/packages/feedback/message-feedback/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-message-feedback/types": [
+        "../../official-core/packages/feedback/message-feedback/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-message-feedback/typert": [
+        "../../official-core/packages/feedback/message-feedback/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-message-feedback/remote": [
+        "../../official-core/packages/feedback/message-feedback/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-storage-domain": [
+        "../../official-core/packages/storage/storage-domain/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-storage-domain/invariant": [
+        "../../official-core/packages/storage/storage-domain/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-storage": [
+        "../../official-core/packages/storage/storage/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-storage-sqlite": [
+        "../../official-core/packages/storage/storage-sqlite/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-storage-json": [
+        "../../official-core/packages/storage/storage-json/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-cordis-host-runner": [
+        "../../official-core/packages/extensions/cordis-host-runner/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-cordis-host-runner/types": [
+        "../../official-core/packages/extensions/cordis-host-runner/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-cordis-host-runner/typert": [
+        "../../official-core/packages/extensions/cordis-host-runner/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-cordis-host-runner/remote": [
+        "../../official-core/packages/extensions/cordis-host-runner/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-cordis": [
+        "../../official-core/packages/extensions/tool-cordis/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-cordis/host": [
+        "../../official-core/packages/extensions/tool-cordis/lib/types/host.d.ts"
+      ],
+      "@deepseek-ai/dsh-cordis-client-runner": [
+        "../../official-core/packages/extensions/cordis-client-runner/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-cordis-client-runner/client": [
+        "../../official-core/packages/extensions/cordis-client-runner/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-cordis": [
+        "../../official-core/packages/extensions/ui-cordis/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-cordis/client": [
+        "../../official-core/packages/extensions/ui-cordis/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-todo": [
+        "../../official-core/packages/todo/tool-todo/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-todo/invariant": [
+        "../../official-core/packages/todo/tool-todo/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-todo/client": [
+        "../../official-core/packages/todo/tool-todo/lib/types/client.d.ts"
+      ],
+      "@deepseek-ai/dsh-win32-process": [
+        "../../official-core/packages/subprocess/win32-process/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-subprocess": [
+        "../../official-core/packages/subprocess/subprocess/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-subprocess/control": [
+        "../../official-core/packages/subprocess/subprocess/lib/types/control.d.ts"
+      ],
+      "@deepseek-ai/dsh-subprocess-local": [
+        "../../official-core/packages/subprocess/subprocess-local/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-subprocess-local/runner": [
+        "../../official-core/packages/subprocess/subprocess-local/lib/types/bin.d.ts"
+      ],
+      "@deepseek-ai/dsh-subprocess-local/output": [
+        "../../official-core/packages/subprocess/subprocess-local/lib/types/output.d.ts"
+      ],
+      "@deepseek-ai/dsh-workspace-changes": [
+        "../../official-core/packages/deliverables/workspace-changes/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-workspace-changes/types": [
+        "../../official-core/packages/deliverables/workspace-changes/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-present": [
+        "../../official-core/packages/deliverables/tool-present/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-present/types": [
+        "../../official-core/packages/deliverables/tool-present/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-fs-ssh": [
+        "../../official-core/packages/ssh/fs-ssh/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-subprocess-ssh": [
+        "../../official-core/packages/ssh/subprocess-ssh/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-sandbox-ssh": [
+        "../../official-core/packages/ssh/sandbox-ssh/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-ssh": [
+        "../../official-core/packages/ssh/ssh/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-ssh/helper": [
+        "../../official-core/packages/ssh/ssh/lib/types/helper-entry.d.ts"
+      ],
+      "@deepseek-ai/dsh-ssh/protocol": [
+        "../../official-core/packages/ssh/ssh/lib/types/protocol.d.ts"
+      ],
+      "@deepseek-ai/dsh-ssh/schemas": [
+        "../../official-core/packages/ssh/ssh/lib/types/schemas.d.ts"
+      ],
+      "@deepseek-ai/dsh-sandbox-policy": [
+        "../../official-core/packages/sandbox/sandbox-policy/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-sandbox-policy/invariant": [
+        "../../official-core/packages/sandbox/sandbox-policy/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-sandbox": [
+        "../../official-core/packages/sandbox/sandbox/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-sandbox-windows-acl": [
+        "../../official-core/packages/sandbox/sandbox-windows-acl/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-sandbox-windows-acl/runner": [
+        "../../official-core/packages/sandbox/sandbox-windows-acl/lib/types/runner.d.ts"
+      ],
+      "@deepseek-ai/dsh-sandbox-local": [
+        "../../official-core/packages/sandbox/sandbox-local/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-session-query": [
+        "../../official-core/packages/session-query/tool-session-query/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-log-export": [
+        "../../official-core/packages/session-query/session-log-export/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-log-export/client": [
+        "../../official-core/packages/session-query/session-log-export/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-query": [
+        "../../official-core/packages/session-query/session-query/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-query-sqlite": [
+        "../../official-core/packages/session-query/session-query-sqlite/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-sdk-jsonrpc-server": [
+        "../../official-core/packages/sdk/server/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-sdk-protocol": [
+        "../../official-core/packages/sdk/protocol/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-sdk-client": [
+        "../../official-core/packages/sdk/client/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-hooks-claude-code": [
+        "../../official-core/packages/hooks/hooks-claude-code/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-hooks-codex": [
+        "../../official-core/packages/hooks/hooks-codex/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-hook-protocol": [
+        "../../official-core/packages/hooks/hook-protocol/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-hook-protocol/invariant": [
+        "../../official-core/packages/hooks/hook-protocol/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-workflow": [
+        "../../official-core/packages/workflow/tool-workflow/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-workflow/invariant": [
+        "../../official-core/packages/workflow/tool-workflow/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-workflow/types": [
+        "../../official-core/packages/workflow/tool-workflow/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-workflow-ptc": [
+        "../../official-core/packages/workflow/workflow-ptc/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-ralph": [
+        "../../official-core/packages/workflow/tool-ralph/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-workflow": [
+        "../../official-core/packages/workflow/workflow/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-workflow/invariant": [
+        "../../official-core/packages/workflow/workflow/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-workflow/types": [
+        "../../official-core/packages/workflow/workflow/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-ptc-runtime-node": [
+        "../../official-core/packages/ptc-runtime/ptc-runtime-node/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-ptc-runtime-node/process": [
+        "../../official-core/packages/ptc-runtime/ptc-runtime-node/lib/types/process-entry.d.ts"
+      ],
+      "@deepseek-ai/dsh-ptc-runtime": [
+        "../../official-core/packages/ptc-runtime/ptc-runtime/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-session-controller": [
+        "../../official-core/packages/api/session-controller/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-session-controller/types": [
+        "../../official-core/packages/api/session-controller/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-session-controller/remote-events": [
+        "../../official-core/packages/api/session-controller/lib/types/remote-events.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-session-controller/client": [
+        "../../official-core/packages/api/session-controller/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-session-controller/typert": [
+        "../../official-core/packages/api/session-controller/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-session-controller/remote": [
+        "../../official-core/packages/api/session-controller/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-job-controller": [
+        "../../official-core/packages/api/job-controller/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-job-controller/types": [
+        "../../official-core/packages/api/job-controller/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-job-controller/client": [
+        "../../official-core/packages/api/job-controller/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-job-controller/typert": [
+        "../../official-core/packages/api/job-controller/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-job-controller/remote": [
+        "../../official-core/packages/api/job-controller/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-remotes": [
+        "../../official-core/packages/api/remotes/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-remotes/client": [
+        "../../official-core/packages/api/remotes/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-remotes/types": [
+        "../../official-core/packages/api/remotes/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-workspace-files": [
+        "../../official-core/packages/api/workspace-files/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-workspace-files/types": [
+        "../../official-core/packages/api/workspace-files/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-workspace-files/client": [
+        "../../official-core/packages/api/workspace-files/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-workspace-files/typert": [
+        "../../official-core/packages/api/workspace-files/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-workspace-files/remote": [
+        "../../official-core/packages/api/workspace-files/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-terminal-controller": [
+        "../../official-core/packages/api/terminal-controller/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-terminal-controller/types": [
+        "../../official-core/packages/api/terminal-controller/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-terminal-controller/client": [
+        "../../official-core/packages/api/terminal-controller/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-terminal-controller/typert": [
+        "../../official-core/packages/api/terminal-controller/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-terminal-controller/remote": [
+        "../../official-core/packages/api/terminal-controller/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-workspace-controller": [
+        "../../official-core/packages/api/workspace-controller/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-workspace-controller/types": [
+        "../../official-core/packages/api/workspace-controller/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-workspace-controller/client": [
+        "../../official-core/packages/api/workspace-controller/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-workspace-controller/default-workspace": [
+        "../../official-core/packages/api/workspace-controller/lib/types/default-workspace.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-workspace-controller/typert": [
+        "../../official-core/packages/api/workspace-controller/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-workspace-controller/remote": [
+        "../../official-core/packages/api/workspace-controller/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-settings-controller": [
+        "../../official-core/packages/api/settings-controller/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-settings-controller/types": [
+        "../../official-core/packages/api/settings-controller/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-settings-controller/typert": [
+        "../../official-core/packages/api/settings-controller/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-settings-controller/remote": [
+        "../../official-core/packages/api/settings-controller/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-gateway": [
+        "../../official-core/packages/api/gateway/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-gateway/client": [
+        "../../official-core/packages/api/gateway/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-gateway/types": [
+        "../../official-core/packages/api/gateway/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-gateway/stream-protocol": [
+        "../../official-core/packages/api/gateway/lib/types/stream-protocol.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-account-controller": [
+        "../../official-core/packages/api/account-controller/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-account-controller/types": [
+        "../../official-core/packages/api/account-controller/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-account-controller/typert": [
+        "../../official-core/packages/api/account-controller/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-api-account-controller/remote": [
+        "../../official-core/packages/api/account-controller/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-otel": [
+        "../../official-core/packages/telemetry/otel/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-loader-smoke": [
+        "../../official-core/packages/test-support/loader-smoke/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-snapshot": [
+        "../../official-core/packages/test-support/session-snapshot/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-remote-mock": [
+        "../../official-core/packages/test-support/remote-mock/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-test-runtime": [
+        "../../official-core/packages/test-support/client-runtime/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm-replay": [
+        "../../official-core/packages/test-support/llm-replay/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-llm-mock-server": [
+        "../../official-core/packages/test-support/llm-mock-server/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-agent-loop-testkit": [
+        "../../official-core/packages/test-support/agent-loop-testkit/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-jobs-local": [
+        "../../official-core/packages/jobs/jobs-local/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-jobs": [
+        "../../official-core/packages/jobs/tool-jobs/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-jobs": [
+        "../../official-core/packages/jobs/jobs/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-jobs/invariant": [
+        "../../official-core/packages/jobs/jobs/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-jobs/brand": [
+        "../../official-core/packages/jobs/jobs/lib/types/brand.d.ts"
+      ],
+      "@deepseek-ai/dsh-jobs/view": [
+        "../../official-core/packages/jobs/jobs/lib/types/view.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-call-timeout-policy": [
+        "../../official-core/packages/guard/timeout-policy/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-repeat-tool-reminder": [
+        "../../official-core/packages/guard/repeat-tool-reminder/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-computer-use": [
+        "../../official-core/packages/computer-use/computer-use/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-computer-use/brand": [
+        "../../official-core/packages/computer-use/computer-use/lib/types/brand.d.ts"
+      ],
+      "@deepseek-ai/dsh-browser-use": [
+        "../../official-core/packages/browser-use/browser-use/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-browser-use/brand": [
+        "../../official-core/packages/browser-use/browser-use/lib/types/brand.d.ts"
+      ],
+      "@deepseek-ai/dsh-spill-policy": [
+        "../../official-core/packages/spill/spill-policy/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-spill-policy/notice": [
+        "../../official-core/packages/spill/spill-policy/lib/types/notice.d.ts"
+      ],
+      "@deepseek-ai/dsh-spill-local": [
+        "../../official-core/packages/spill/spill-local/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-spill": [
+        "../../official-core/packages/spill/spill/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-fs-observation-policy": [
+        "../../official-core/packages/fs/fs-observation-policy/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-fs": [
+        "../../official-core/packages/fs/tool-fs/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-fs-sandbox": [
+        "../../official-core/packages/fs/fs-sandbox/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-fs-search": [
+        "../../official-core/packages/fs/tool-fs-search/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-fs-local": [
+        "../../official-core/packages/fs/fs-local/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-fs": [
+        "../../official-core/packages/fs/fs/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-fs/invariant": [
+        "../../official-core/packages/fs/fs/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-str-replace-editor": [
+        "../../official-core/packages/fs/tool-str-replace-editor/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-acp": [
+        "../../official-core/packages/acp/acp/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar-documentpreview": [
+        "../../official-core/packages/client/ui-sidebar-documentpreview/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client": [
+        "../../official-core/packages/client/ui-sidebar-documentpreview/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-open-in-app": [
+        "../../official-core/packages/client/ui-open-in-app/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-open-in-app/client": [
+        "../../official-core/packages/client/ui-open-in-app/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-session": [
+        "../../official-core/packages/client/ui-session/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-session/client": [
+        "../../official-core/packages/client/ui-session/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar-terminal": [
+        "../../official-core/packages/client/ui-sidebar-terminal/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar-terminal/client": [
+        "../../official-core/packages/client/ui-sidebar-terminal/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-account": [
+        "../../official-core/packages/client/ui-settings-account/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-account/client": [
+        "../../official-core/packages/client/ui-settings-account/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-theme": [
+        "../../official-core/packages/client/ui-theme/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-theme/client": [
+        "../../official-core/packages/client/ui-theme/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-locale": [
+        "../../official-core/packages/client/locale/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-locale/client": [
+        "../../official-core/packages/client/locale/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-reference": [
+        "../../official-core/packages/client/ui-reference/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-reference/client": [
+        "../../official-core/packages/client/ui-reference/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-connection": [
+        "../../official-core/packages/client/connection/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-connection/client": [
+        "../../official-core/packages/client/connection/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-shell": [
+        "../../official-core/packages/client/ui-settings-shell/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-shell/client": [
+        "../../official-core/packages/client/ui-settings-shell/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-chat": [
+        "../../official-core/packages/client/ui-chat/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-chat/client": [
+        "../../official-core/packages/client/ui-chat/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-directory-picker-browse": [
+        "../../official-core/packages/client/ui-directory-picker-browse/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-directory-picker-browse/client": [
+        "../../official-core/packages/client/ui-directory-picker-browse/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-model-selection": [
+        "../../official-core/packages/client/ui-model-selection/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-model-selection/client": [
+        "../../official-core/packages/client/ui-model-selection/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-plan": [
+        "../../official-core/packages/client/ui-plan/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-plan/client": [
+        "../../official-core/packages/client/ui-plan/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-layout": [
+        "../../official-core/packages/client/ui-layout/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-layout/client": [
+        "../../official-core/packages/client/ui-layout/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-web": [
+        "../../official-core/packages/client/web/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-web/injections": [
+        "../../official-core/packages/client/web/lib/types/apply-injections.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-hmr": [
+        "../../official-core/packages/client/hmr/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-hmr/invariant": [
+        "../../official-core/packages/client/hmr/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-hmr/client": [
+        "../../official-core/packages/client/hmr/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-primitives": [
+        "../../official-core/packages/client/ui-primitives/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar-files": [
+        "../../official-core/packages/client/ui-sidebar-files/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar-files/client": [
+        "../../official-core/packages/client/ui-sidebar-files/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-resources": [
+        "../../official-core/packages/client/resources/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-resources/client": [
+        "../../official-core/packages/client/resources/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-trajectory": [
+        "../../official-core/packages/client/ui-trajectory/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-trajectory/client": [
+        "../../official-core/packages/client/ui-trajectory/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-slots": [
+        "../../official-core/packages/client/ui-slots/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-input-trigger": [
+        "../../official-core/packages/client/ui-input-trigger/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-input-trigger/client": [
+        "../../official-core/packages/client/ui-input-trigger/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-shortcuts": [
+        "../../official-core/packages/client/ui-shortcuts/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-shortcuts/client": [
+        "../../official-core/packages/client/ui-shortcuts/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings": [
+        "../../official-core/packages/client/ui-settings/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings/client": [
+        "../../official-core/packages/client/ui-settings/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-renderer": [
+        "../../official-core/packages/client/ui-renderer/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-renderer/invariant": [
+        "../../official-core/packages/client/ui-renderer/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-renderer/client": [
+        "../../official-core/packages/client/ui-renderer/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-product-analytics": [
+        "../../official-core/packages/client/product-analytics/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-product-analytics/client": [
+        "../../official-core/packages/client/product-analytics/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-product-analytics/typert": [
+        "../../official-core/packages/client/product-analytics/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-product-analytics/remote": [
+        "../../official-core/packages/client/product-analytics/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-product-analytics/types": [
+        "../../official-core/packages/client/product-analytics/lib/types/events.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-agent-loop": [
+        "../../official-core/packages/client/ui-settings-agent-loop/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-agent-loop/client": [
+        "../../official-core/packages/client/ui-settings-agent-loop/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-schedule": [
+        "../../official-core/packages/client/ui-schedule/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-schedule/client": [
+        "../../official-core/packages/client/ui-schedule/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-dockkit": [
+        "../../official-core/packages/client/ui-dockkit/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-attachment": [
+        "../../official-core/packages/client/ui-attachment/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-attachment/client": [
+        "../../official-core/packages/client/ui-attachment/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-subagent": [
+        "../../official-core/packages/client/ui-subagent/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-subagent/client": [
+        "../../official-core/packages/client/ui-subagent/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-workspace": [
+        "../../official-core/packages/client/ui-workspace/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-workspace/client": [
+        "../../official-core/packages/client/ui-workspace/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-plugins": [
+        "../../official-core/packages/client/ui-settings-plugins/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-plugins/client": [
+        "../../official-core/packages/client/ui-settings-plugins/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-general": [
+        "../../official-core/packages/client/ui-settings-general/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-general/client": [
+        "../../official-core/packages/client/ui-settings-general/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-general/types": [
+        "../../official-core/packages/client/ui-settings-general/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-subagent": [
+        "../../official-core/packages/client/ui-settings-subagent/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-subagent/client": [
+        "../../official-core/packages/client/ui-settings-subagent/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-plugin-inventory": [
+        "../../official-core/packages/client/ui-settings-plugin-inventory/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-plugin-inventory/client": [
+        "../../official-core/packages/client/ui-settings-plugin-inventory/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-approval": [
+        "../../official-core/packages/client/ui-approval/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-approval/client": [
+        "../../official-core/packages/client/ui-approval/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-conversation": [
+        "../../official-core/packages/client/ui-conversation/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-conversation/client": [
+        "../../official-core/packages/client/ui-conversation/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-commands": [
+        "../../official-core/packages/client/ui-commands/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-commands/client": [
+        "../../official-core/packages/client/ui-commands/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-permission-presets": [
+        "../../official-core/packages/client/ui-permission-presets/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-permission-presets/client": [
+        "../../official-core/packages/client/ui-permission-presets/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-file-upload": [
+        "../../official-core/packages/client/file-upload/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-file-upload/client": [
+        "../../official-core/packages/client/file-upload/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-file-upload/types": [
+        "../../official-core/packages/client/file-upload/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-file-upload/typert": [
+        "../../official-core/packages/client/file-upload/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-file-upload/remote": [
+        "../../official-core/packages/client/file-upload/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-plugin-manager": [
+        "../../official-core/packages/client/ui-plugin-manager/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-plugin-manager/client": [
+        "../../official-core/packages/client/ui-plugin-manager/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-plugin-manager/typert": [
+        "../../official-core/packages/client/ui-plugin-manager/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-plugin-manager/remote": [
+        "../../official-core/packages/client/ui-plugin-manager/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-shortcuts": [
+        "../../official-core/packages/client/shortcuts/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-shortcuts/client": [
+        "../../official-core/packages/client/shortcuts/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-shortcuts/protocol": [
+        "../../official-core/packages/client/shortcuts/lib/types/protocol.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-skill": [
+        "../../official-core/packages/client/ui-skill/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-skill/client": [
+        "../../official-core/packages/client/ui-skill/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-web-search": [
+        "../../official-core/packages/client/ui-settings-web-search/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-web-search/client": [
+        "../../official-core/packages/client/ui-settings-web-search/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-directory-picker-native": [
+        "../../official-core/packages/client/ui-directory-picker-native/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-directory-picker-native/client": [
+        "../../official-core/packages/client/ui-directory-picker-native/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-agent-preset": [
+        "../../official-core/packages/client/ui-agent-preset/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-agent-preset/client": [
+        "../../official-core/packages/client/ui-agent-preset/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-workflow-run": [
+        "../../official-core/packages/client/ui-workflow-run/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-workflow-run/client": [
+        "../../official-core/packages/client/ui-workflow-run/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-models": [
+        "../../official-core/packages/client/ui-settings-models/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-models/client": [
+        "../../official-core/packages/client/ui-settings-models/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-modules": [
+        "../../official-core/packages/client/modules/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-modules/client": [
+        "../../official-core/packages/client/modules/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-modules/invariant": [
+        "../../official-core/packages/client/modules/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-jobs": [
+        "../../official-core/packages/client/ui-jobs/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-jobs/client": [
+        "../../official-core/packages/client/ui-jobs/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar": [
+        "../../official-core/packages/client/ui-sidebar/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar/client": [
+        "../../official-core/packages/client/ui-sidebar/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-user-questions": [
+        "../../official-core/packages/client/ui-user-questions/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-user-questions/client": [
+        "../../official-core/packages/client/ui-user-questions/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar-right": [
+        "../../official-core/packages/client/ui-sidebar-right/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar-right/client": [
+        "../../official-core/packages/client/ui-sidebar-right/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-brand-official": [
+        "../../official-core/packages/client/ui-brand-official/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-brand-official/client": [
+        "../../official-core/packages/client/ui-brand-official/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar-browser": [
+        "../../official-core/packages/client/ui-sidebar-browser/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar-browser/client": [
+        "../../official-core/packages/client/ui-sidebar-browser/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-sidebar-browser/types": [
+        "../../official-core/packages/client/ui-sidebar-browser/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-message-feedback": [
+        "../../official-core/packages/client/ui-message-feedback/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-message-feedback/client": [
+        "../../official-core/packages/client/ui-message-feedback/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-session-log": [
+        "../../official-core/packages/client/ui-settings-session-log/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-settings-session-log/client": [
+        "../../official-core/packages/client/ui-settings-session-log/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-deliverables": [
+        "../../official-core/packages/client/ui-deliverables/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-deliverables/client": [
+        "../../official-core/packages/client/ui-deliverables/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-store": [
+        "../../official-core/packages/client/store/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-tool": [
+        "../../official-core/packages/client/ui-tool/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-tool/client": [
+        "../../official-core/packages/client/ui-tool/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-goal": [
+        "../../official-core/packages/client/ui-goal/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-goal/client": [
+        "../../official-core/packages/client/ui-goal/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-permission-presets": [
+        "../../official-core/packages/interaction/permission-presets/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-permission-presets/invariant": [
+        "../../official-core/packages/interaction/permission-presets/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-permission-presets/types": [
+        "../../official-core/packages/interaction/permission-presets/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-permission-presets/client": [
+        "../../official-core/packages/interaction/permission-presets/lib/types/client.d.ts"
+      ],
+      "@deepseek-ai/dsh-permission-presets/typert": [
+        "../../official-core/packages/interaction/permission-presets/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-permission-presets/remote": [
+        "../../official-core/packages/interaction/permission-presets/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-user-questions": [
+        "../../official-core/packages/interaction/user-questions/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-user-questions/types": [
+        "../../official-core/packages/interaction/user-questions/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-commands": [
+        "../../official-core/packages/interaction/commands/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-commands/invariant": [
+        "../../official-core/packages/interaction/commands/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-commands/types": [
+        "../../official-core/packages/interaction/commands/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-commands/brand": [
+        "../../official-core/packages/interaction/commands/lib/types/brand.d.ts"
+      ],
+      "@deepseek-ai/dsh-commands/typert": [
+        "../../official-core/packages/interaction/commands/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-commands/remote": [
+        "../../official-core/packages/interaction/commands/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-user-approval": [
+        "../../official-core/packages/interaction/user-approval/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-user-approval/invariant": [
+        "../../official-core/packages/interaction/user-approval/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-user-approval/types": [
+        "../../official-core/packages/interaction/user-approval/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-ask-user": [
+        "../../official-core/packages/interaction/tool-ask-user/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent-acp": [
+        "../../official-core/packages/subagent/subagent-acp/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent-fork-in-process": [
+        "../../official-core/packages/subagent/subagent-fork-in-process/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-subagent-control": [
+        "../../official-core/packages/subagent/tool-subagent-control/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-subagent-control/list-agents": [
+        "../../official-core/packages/subagent/tool-subagent-control/lib/types/list-agents.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent-in-process-driver": [
+        "../../official-core/packages/subagent/subagent-in-process-driver/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent-spawn-in-process": [
+        "../../official-core/packages/subagent/subagent-spawn-in-process/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-subagent": [
+        "../../official-core/packages/subagent/tool-subagent/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-subagent/model-selection-settings": [
+        "../../official-core/packages/subagent/tool-subagent/lib/types/model-selection-settings.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-subagent/invariant": [
+        "../../official-core/packages/subagent/tool-subagent/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent-claude-code": [
+        "../../official-core/packages/subagent/subagent-claude-code/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent": [
+        "../../official-core/packages/subagent/subagent/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent/internal": [
+        "../../official-core/packages/subagent/subagent/lib/types/internal.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent/invariant": [
+        "../../official-core/packages/subagent/subagent/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent/client": [
+        "../../official-core/packages/subagent/subagent/lib/types/client.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent/typert": [
+        "../../official-core/packages/subagent/subagent/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent/remote": [
+        "../../official-core/packages/subagent/subagent/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent-codex": [
+        "../../official-core/packages/subagent/subagent-codex/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-subagent-dsh-sdk": [
+        "../../official-core/packages/subagent/subagent-dsh-sdk/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-invariants": [
+        "../../official-core/packages/runtime-diagnostics/invariants/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-tool-goal": [
+        "../../official-core/packages/goal/tool-goal/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-goal-round-driver": [
+        "../../official-core/packages/goal/goal-round-driver/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-goal-round-driver/invariant": [
+        "../../official-core/packages/goal/goal-round-driver/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-command-goal": [
+        "../../official-core/packages/goal/command-goal/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-goal": [
+        "../../official-core/packages/goal/goal/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-goal/invariant": [
+        "../../official-core/packages/goal/goal/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-goal/types": [
+        "../../official-core/packages/goal/goal/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-goal/client": [
+        "../../official-core/packages/goal/goal/lib/types/client.d.ts"
+      ],
+      "@deepseek-ai/dsh-goal/typert": [
+        "../../official-core/packages/goal/goal/lib/typert.host.d.ts"
+      ],
+      "@deepseek-ai/dsh-goal/remote": [
+        "../../official-core/packages/goal/goal/lib/typert.remote-client.d.ts"
+      ],
+      "@deepseek-ai/dsh-credentials-local": [
+        "../../official-core/packages/credentials/credentials-local/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-deepseek-account-platform": [
+        "../../official-core/packages/credentials/deepseek-account-platform/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-deepseek-account-platform/types": [
+        "../../official-core/packages/credentials/deepseek-account-platform/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-deepseek-account": [
+        "../../official-core/packages/credentials/deepseek-account/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-deepseek-account/types": [
+        "../../official-core/packages/credentials/deepseek-account/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-authorization": [
+        "../../official-core/packages/credentials/authorization/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-authorization/invariant": [
+        "../../official-core/packages/credentials/authorization/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-authorization/types": [
+        "../../official-core/packages/credentials/authorization/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-credentials": [
+        "../../official-core/packages/credentials/credentials/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-credentials/invariant": [
+        "../../official-core/packages/credentials/credentials/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-credentials/types": [
+        "../../official-core/packages/credentials/credentials/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-format-v1-to-v2": [
+        "../../official-core/packages/session/session-format-v1-to-v2/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-format-v3-to-v4": [
+        "../../official-core/packages/session/session-format-v3-to-v4/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-title-all-prompts-llm": [
+        "../../official-core/packages/session/session-title-all-prompts-llm/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-title": [
+        "../../official-core/packages/session/session-title/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-title/invariant": [
+        "../../official-core/packages/session/session-title/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-title/types": [
+        "../../official-core/packages/session/session-title/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-title/client": [
+        "../../official-core/packages/session/session-title/lib/types/client.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-projection-cache": [
+        "../../official-core/packages/session/session-projection-cache/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-format-v2-to-v3": [
+        "../../official-core/packages/session/session-format-v2-to-v3/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-checkpoint-policy": [
+        "../../official-core/packages/session/session-checkpoint-policy/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-log-deepseek": [
+        "../../official-core/packages/session/session-log-deepseek/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-log-deepseek/invariant": [
+        "../../official-core/packages/session/session-log-deepseek/lib/types/invariant.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-log-deepseek/types": [
+        "../../official-core/packages/session/session-log-deepseek/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-projection": [
+        "../../official-core/packages/session/session-projection/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-projection/types": [
+        "../../official-core/packages/session/session-projection/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-title-llm": [
+        "../../official-core/packages/session/session-title-llm/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-stats": [
+        "../../official-core/packages/session/session-stats/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-stats/types": [
+        "../../official-core/packages/session/session-stats/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-stats/client": [
+        "../../official-core/packages/session/session-stats/lib/types/client.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-telemetry-otel": [
+        "../../official-core/packages/session/session-telemetry-otel/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-title-first-prompt-llm": [
+        "../../official-core/packages/session/session-title-first-prompt-llm/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-persistence-jsonl": [
+        "../../official-core/packages/session/session-persistence-jsonl/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-format-catalog": [
+        "../../official-core/packages/session/session-format-catalog/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-format-catalog/message-projections": [
+        "../../official-core/packages/session/session-format-catalog/lib/types/message-projections.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-telemetry": [
+        "../../official-core/packages/session/session-telemetry/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-turn-outline": [
+        "../../official-core/packages/session/session-turn-outline/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-turn-outline/types": [
+        "../../official-core/packages/session/session-turn-outline/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-turn-outline/client": [
+        "../../official-core/packages/session/session-turn-outline/lib/types/client.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-format-v0-to-v1": [
+        "../../official-core/packages/session/session-format-v0-to-v1/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-format": [
+        "../../official-core/packages/session/session-format/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-persistence": [
+        "../../official-core/packages/session/session-persistence/lib/types/index.d.ts"
+      ],
+      "@cleverc2200/dsh-agent-workbench": [
+        "../dsh-agent-workbench/lib/types/host.d.ts"
+      ],
+      "@cleverc2200/dsh-agent-workbench/client": [
+        "../dsh-agent-workbench/lib/types/client.d.ts"
+      ],
+      "@deepseek-ai/cordis": [
+        "../../official-core/vendor/cordis/lib/types/index.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/shared/gea-error.js"
+  ]
+}

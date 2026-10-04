@@ -46,7 +46,8 @@
     "package:desktop:mac": "node scripts/package-desktop.mjs --target mac",
     "package:desktop:win": "node scripts/package-desktop.mjs --target win",
     "test:package:desktop": "node --test scripts/package-desktop.test.mjs",
-    "build:page-interaction": "node scripts/build.mjs --target interaction"
+    "build:page-interaction": "node scripts/build.mjs --target interaction",
+    "typecheck:official": "node ../dsh-agent-workbench/scripts/verify-official-input.mjs && tsc -p tsconfig.official.json"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "0.11.1-preview.2",
