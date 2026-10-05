@@ -192,7 +192,7 @@ Demand Forecast follows the user's language for both progress and final answers.
 
 ## 源码组合维护
 
-本轮只适配固定官方 `dsh-v0.2.1-alpha.1` / `5badb15009ae1756c3afe0ae0cef1faafc290ccc`，读取其标准构建与公开 SDK；不修改 Core，不再装配 Hub、示例或改写官方 preset。`scripts/source-profile.mjs` 是唯一源码组合 helper，登记 Workbench、Manage、GEA、GenUI、Better Sidebar 五个现有 owner；root 的固定组合夹具复用该 helper。`source:check`/`source:build` 与 `start --sources <固定源JSON>` 消费同一来源记录，保来源/产物摘要、运行锁、CAS及失败读回保护。原提示词/Skill由Manage按选用发布，GEA只给窄源贡献及真实Consumer/执行配置。
+本轮只适配固定官方 `dsh-v0.2.1-alpha.1` / `5badb15009ae1756c3afe0ae0cef1faafc290ccc`，读取其标准构建与公开 SDK；不修改 Core，不再装配 Hub、示例或改写官方 preset。`scripts/source-profile.mjs` 是唯一源码组合 helper，登记 Workbench、Manage、GEA、GenUI、Better Sidebar 五个现有 owner；root 的固定组合夹具复用该 helper。新组合的 `source:check -- --sources <固定源JSON>` / `source:build -- --sources <固定源JSON>` 与 `start --sources <固定源JSON>` 必须消费同一明确五源记录（repo/source、可选commit/integration/dependencies及assets/files），不按同级repo目录兜底。已选完整组合可无新sources正常读回；冻结assets由source-profile统一验来源、完整摘要及入口后复用，不运行其源码tsc/build，损坏拒绝而不重建。普通source仍走原固定工具链检查/构建。保来源/产物摘要、运行锁、CAS及失败读回保护。原提示词/Skill由Manage按选用发布，GEA只给窄源贡献及真实Consumer/执行配置。
 
 ### 历史 HTML 样板主题同步（不用于规格41）
 

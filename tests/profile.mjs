@@ -337,11 +337,14 @@ export async function profile(t, options = {}) {
                 config,
                 "--runtime",
                 runtime,
+                ...((options.sourcesFile ?? process.env.GEA_TEST_SOURCE_INPUTS)
+                  ? [
+                      "--sources",
+                      options.sourcesFile ?? process.env.GEA_TEST_SOURCE_INPUTS,
+                    ]
+                  : []),
                 "--port",
                 "0",
-                ...(process.env.GEA_TEST_SOURCE_INPUTS
-                  ? ["--sources", process.env.GEA_TEST_SOURCE_INPUTS]
-                  : []),
               ]),
       ],
       {

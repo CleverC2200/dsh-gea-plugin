@@ -29,14 +29,25 @@ const digest = async (path) =>
     .digest("hex");
 
 /** Boot the official profile from artifacts built in the pinned source checkout. */
+import {
+  resolveSourceInputs,
+  readSourceSelection,
+} from "./source-profile.mjs";
+
 export async function runSourceProfile(
   core,
   runtime,
   plugins = false,
   deployment,
   port = 0,
-  { sources, workspace } = {},
+  { sources } = {},
 ) {
+  let selected;
+  if (plugins) {
+    selected = await readSourceSelection(runtime);
+    if (selected === undefined)
+      await resolveSourceInputs(sources, { requireEntries: true });
+  }
   const supported = await json(new URL("./current-core.json", import.meta.url));
   const cli = await json(join(core, "apps/cli/package.json"));
   if (cli.version !== supported.version)
@@ -72,19 +83,10 @@ export async function runSourceProfile(
       const { prepareSourcePlugins, readSourceCombination } = await import(
         "./source-profile.mjs"
       );
-      let selected;
-      try {
-        selected = await json(join(runtime, "source-selection.json"));
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
-      if (selected !== undefined && !selected?.manifestSha256)
-        throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
       composition = selected
         ? await readSourceCombination(runtime, selected.id, core)
         : await prepareSourcePlugins(core, runtime, deployment, {
             sources,
-            workspace,
           });
       const manifestSha256 = await digest(
         join(
@@ -219,6 +221,11 @@ async function launch() {
   }
   if (process.platform !== "darwin")
     throw Error("ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX");
+  const fixedSources = values.sources
+    ? await json(resolve(values.sources))
+    : undefined;
+  if (values.plugins === true)
+    await resolveSourceInputs(fixedSources, { requireEntries: true });
   const core = await realpath(
     values.core ?? resolve(root, "../../official-latest-standard"),
   );
@@ -288,9 +295,6 @@ async function launch() {
     LANG: "en_US.UTF-8",
     DSH_TELEMETRY_DISABLED: "1",
   };
-  const fixedSources = values.sources
-    ? await json(resolve(values.sources))
-    : undefined;
   const code = `import(${JSON.stringify(import.meta.url)}).then(m => m.runSourceProfile(${JSON.stringify(core)}, ${JSON.stringify(runtime)}, ${values.plugins === true}, undefined, 0, ${JSON.stringify({ sources: fixedSources })}))`;
   const log = await open(join(runtime, "server.log"), "a", 0o600);
   const child = spawn(
