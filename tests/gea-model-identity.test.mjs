@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { profile, readSession } from "./profile.mjs";
+import { profile, readSession, until } from "./profile.mjs";
 
 test("the public model catalog follows GEA identity without rewriting Session selection", {
   skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 90000,
@@ -45,7 +45,7 @@ test("the public model catalog follows GEA identity without rewriting Session se
   const sessionId = created.value.sessionId;
   assert.equal((await app.remote("session/selectModel", { sessionId, provider: "gea-analysis", model: "first-model" })).ok, true);
   const selected = await readSession(app.runtime, sessionId);
-  const selectedDefault = (await catalog()).default;
+  const selectedDefault = (await until(catalog, value => value.default.model === "first-model")).default;
   assert.equal((await app.rpc("logout")).ok, true);
   absent(await catalog());
   model = "second-model";
