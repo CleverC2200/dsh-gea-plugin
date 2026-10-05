@@ -153,6 +153,9 @@ test(
           JSON.parse(modelRequests[0].body).model,
           "fixture-gea-model",
         );
+        const request = JSON.parse(modelRequests[0].body);
+        assert.match(JSON.stringify(request.messages), /你负责销售计划的提报情况、版本明细、需求预测和审批依据分析/);
+        assert.ok(request.tools.some(tool => tool.function.name === "skill"), "the managed preset must mount the official Skill tool");
         assert.equal(
           JSON.stringify(rows).includes("fixture-personal-model-secret"),
           false,
