@@ -40,7 +40,7 @@ test("the public model catalog follows GEA identity without rewriting Session se
   assert.equal((await app.login()).ok, true);
   const initial = await catalog();
   assert.deepEqual(initial.groups.find(group => group.id === "gea-analysis").models.map(row => [row.id, row.name]), [["first-model", "首次目录模型"]]);
-  const created = await app.remote("session/create", { cwd: app.runtime + "/workspace", agentPreset: "gea-readonly" });
+  const created = await app.remote("session/create", { cwd: app.runtime + "/workspace" });
   assert.equal(created.ok, true, JSON.stringify(created));
   const sessionId = created.value.sessionId;
   assert.equal((await app.remote("session/selectModel", { sessionId, provider: "gea-analysis", model: "first-model" })).ok, true);
