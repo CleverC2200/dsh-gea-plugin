@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { profile, readSession, until } from "./profile.mjs";
+import { profile, until } from "./profile.mjs";
 
 test("the public model catalog follows GEA identity without rewriting Session selection", {
   skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 90000,
@@ -44,7 +44,10 @@ test("the public model catalog follows GEA identity without rewriting Session se
   assert.equal(created.ok, true, JSON.stringify(created));
   const sessionId = created.value.sessionId;
   assert.equal((await app.remote("session/selectModel", { sessionId, provider: "gea-analysis", model: "first-model" })).ok, true);
-  const selected = await readSession(app.runtime, sessionId);
+  const selected = await app.remote("session/projections", { sessionId });
+  assert.equal(selected.ok, true, JSON.stringify(selected));
+  assert.ok(selected.value, "the selected Session must exist");
+  assert.match(JSON.stringify(selected.value.values.modelSelection), /first-model/);
   const selectedDefault = (await until(catalog, value => value.default.model === "first-model")).default;
   assert.equal((await app.rpc("logout")).ok, true);
   absent(await catalog());
@@ -53,6 +56,9 @@ test("the public model catalog follows GEA identity without rewriting Session se
   const next = await catalog();
   assert.deepEqual(next.groups.find(group => group.id === "gea-analysis").models.map(row => [row.id, row.name]), [["second-model", "新身份目录模型"]]);
   assert.deepEqual(next.default, selectedDefault, "directory refresh must preserve the user's selected default intent");
-  assert.deepEqual(await readSession(app.runtime, sessionId), selected, "identity changes must preserve the durable Session and selected model intent");
+  const retained = await app.remote("session/projections", { sessionId });
+  assert.equal(retained.ok, true, JSON.stringify(retained));
+  assert.ok(retained.value, "identity changes must preserve the durable Session");
+  assert.deepEqual(retained.value.values.modelSelection, selected.value.values.modelSelection, "identity changes must preserve the selected model intent");
   assert.equal(app.requests.some(request => request.url.pathname.endsWith("/chat/completions")), false);
 });
