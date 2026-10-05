@@ -45,13 +45,14 @@ test("the public model catalog follows GEA identity without rewriting Session se
   const sessionId = created.value.sessionId;
   assert.equal((await app.remote("session/selectModel", { sessionId, provider: "gea-analysis", model: "first-model" })).ok, true);
   const selected = await readSession(app.runtime, sessionId);
+  const selectedDefault = (await catalog()).default;
   assert.equal((await app.rpc("logout")).ok, true);
   absent(await catalog());
   model = "second-model";
   assert.equal((await app.login()).ok, true);
   const next = await catalog();
   assert.deepEqual(next.groups.find(group => group.id === "gea-analysis").models.map(row => [row.id, row.name]), [["second-model", "新身份目录模型"]]);
-  assert.deepEqual(next.default, initial.default, "directory refresh must preserve deployment default intent");
+  assert.deepEqual(next.default, selectedDefault, "directory refresh must preserve the user's selected default intent");
   assert.deepEqual(await readSession(app.runtime, sessionId), selected, "identity changes must preserve the durable Session and selected model intent");
   assert.equal(app.requests.some(request => request.url.pathname.endsWith("/chat/completions")), false);
 });
