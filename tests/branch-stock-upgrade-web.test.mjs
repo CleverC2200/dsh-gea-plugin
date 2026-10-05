@@ -45,13 +45,10 @@ test(
           recursive: true,
         });
         const deployment = await readDeployment(config);
-        const baselineAssembler = await import(
-          new URL(
-            "../../../../dsh-gea-plugin/scripts/source-profile.mjs",
-            import.meta.url,
-          )
+        const sources = JSON.parse(
+          await readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"),
         );
-        await baselineAssembler.prepareSourcePlugins(core, runtime, deployment);
+        await prepareSourcePlugins(core, runtime, deployment, { sources });
         await mkdir(join(runtime, "workspace"), { recursive: true });
         await writeFile(
           join(runtime, "workspace/preexisting-user.txt"),
@@ -60,9 +57,11 @@ test(
         await upgradeSourceProfileLayout(runtime);
         // The recovery artifacts are read from the clean, registered ticket08 checkout.
         previous = await prepareSourcePlugins(core, runtime, deployment, {
-          workspace: resolve("../../.."),
+          sources,
         });
-        candidate = await prepareSourcePlugins(core, runtime, deployment);
+        candidate = await prepareSourcePlugins(core, runtime, deployment, {
+          sources,
+        });
         await writeFile(
           join(runtime, "local-channel.json"),
           JSON.stringify(

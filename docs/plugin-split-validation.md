@@ -4,7 +4,7 @@
 
 源码组合只有既有 Workbench、Manage、GEA、GenUI、Better Sidebar；它们由自己的官方bundle/profile入口装配，GEA patch只登记业务接入本身。官方插件生命周期与Manage Suite/Skill/MCP资源状态分开。原资源窄source贡献、业务算法/权限/取消保持，官方standard preset不重写。
 
-`source-profile.mjs`是唯一assembler：固定sources可声明source、commit、integration，以及需复用的assets/files和dependencies。源和integration必须clean且一致；只复制发布资产、不复制依赖或SDK。corePackages供同一type/check/build/组合链解析官方包。每次组合记录原件及实际依赖hash，选择在独占锁内通过CAS、原子写入、读回验证；unknown不自动重写/回滚。
+`source-profile.mjs`是唯一assembler：固定sources可声明source、commit、integration，以及需复用的assets/files和dependencies。新prepare/check/build必须明确提供同一五源records；缺来源在SDK扫描/写入前拒绝，不存在workspace/sibling默认。源包name须匹配登记owner，source和integration必须clean且一致；只复制发布资产、不复制依赖或SDK。corePackages供同一type/check/build/组合链解析官方包。声明assets/files时统一校验全部发布文件与必要host/client/patch入口，不tsc/build冻结资产；损坏拒绝且不重建。普通source按原工具链执行；已选历史完整组合读回不要求新records。每次组合记录原件及实际依赖hash，选择在独占锁内通过CAS、原子写入、读回验证；unknown不自动重写/回滚。
 
 ```sh
 corepack pnpm run source:check --sources /absolute/fixed-sources.json

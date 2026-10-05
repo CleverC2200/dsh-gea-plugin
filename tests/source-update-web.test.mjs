@@ -58,7 +58,11 @@ test(
           core,
           runtime,
           await readDeployment(config),
-          { workspace: project },
+          {
+            sources: JSON.parse(
+              await fs.readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"),
+            ),
+          },
         );
         const baseRecordFile = join(
             runtime,

@@ -9,10 +9,10 @@ import { readSourceUpdateBaseline } from "../../scripts/source-update.mjs";
 import { selectSourceCombination } from "../../scripts/source-profile.mjs";
 
 const project = resolve(import.meta.dirname, "../../../../..");
-export const core = resolve(
+export const core = await fs.realpath(resolve(
   import.meta.dirname,
   "../../../../official-latest-standard",
-);
+));
 export const gea = "@cleverc2200/gea-dsh-prototype",
   workbench = "@cleverc2200/dsh-agent-workbench",
   manage = "dsh-agent-manage";

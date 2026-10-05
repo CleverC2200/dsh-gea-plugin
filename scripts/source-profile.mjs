@@ -12,7 +12,7 @@ import {
   unlink,
   lstat,
 } from "node:fs/promises";
-import { join, resolve, relative } from "node:path";
+import { join, resolve, relative, isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -25,59 +25,47 @@ function clientEntry(manifest) {
     : (entry?.default ?? "client/client.js");
 }
 
-export async function prepareSourcePlugins(
-  core,
-  runtime,
-  deployment,
-  {
-    workspace = resolve(import.meta.dirname, "../.."),
-    sources,
-    id = randomUUID(),
-  } = {},
-) {
-  if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
-  const snapshot = join(runtime, "source-combinations", id);
-  const modules = join(snapshot, "node_modules");
-  const supported = JSON.parse(
-    await readFile(new URL("./current-core.json", import.meta.url), "utf8"),
-  );
-  const coreCommit = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: core,
-    encoding: "utf8",
-  }).trim();
+/** A new composition/check/build always names the same explicit five owners. No directory fallback. */
+export function requireSourceInputs(sources) {
+  if (sources === undefined) throw Error("EXPLICIT_SOURCE_INPUTS_REQUIRED");
   if (
-    coreCommit !== supported.adaptation ||
-    execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
-      cwd: core,
-      encoding: "utf8",
-    }).trim()
-  )
-    throw Error("FIXED_OFFICIAL_INPUT_REQUIRED");
-  const entries =
-    sources ??
-    sourcePlugins.map((plugin) => ({
-      repo: plugin.repo,
-      source: join(workspace, plugin.repo),
-    }));
-  if (
-    !Array.isArray(entries) ||
-    entries.length !== sourcePlugins.length ||
-    new Set(entries.map((entry) => entry.repo)).size !== entries.length ||
-    entries.some(
-      (entry) => !sourcePlugins.some((plugin) => plugin.repo === entry.repo),
+    !Array.isArray(sources) ||
+    sources.length !== sourcePlugins.length ||
+    new Set(sources.map((entry) => entry?.repo)).size !== sources.length ||
+    sources.some(
+      (entry) =>
+        !entry ||
+        !sourcePlugins.some((plugin) => plugin.repo === entry.repo) ||
+        typeof entry.source !== "string" ||
+        !isAbsolute(entry.source),
     )
   )
     throw Error("INVALID_SOURCE_PLUGIN_SET");
-  await mkdir(join(runtime, "source-combinations"), { recursive: true });
-  await mkdir(snapshot, { recursive: false });
-  await mkdir(modules, { recursive: true });
-  const packages = new Map(
-    (await corePackages(core)).map(({ manifest, directory }) => [
-      manifest.name,
-      directory,
-    ]),
-  );
-  const plugins = new Map();
+  return sources;
+}
+
+/** Read an already-selected combination without deriving any new source paths. */
+export async function readSourceSelection(runtime) {
+  let selected;
+  try {
+    selected = JSON.parse(
+      await readFile(join(runtime, "source-selection.json"), "utf8"),
+    );
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (selected !== undefined && !selected?.manifestSha256)
+    throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
+  return selected;
+}
+
+/** Resolve clean declared sources and verify frozen assets in one place for all callers. */
+export async function resolveSourceInputs(
+  sources,
+  { requireEntries = false } = {},
+) {
+  const entries = requireSourceInputs(sources);
+  const resolved = [];
   for (const plugin of sourcePlugins) {
     const repo = plugin.repo;
     const input = entries.find((entry) => entry.repo === repo);
@@ -121,6 +109,8 @@ export async function prepareSourcePlugins(
     const manifest = JSON.parse(
       await readFile(join(source, "package.json"), "utf8"),
     );
+    if (manifest.name !== plugin.name)
+      throw Error("SOURCE_PLUGIN_IDENTITY_MISMATCH: " + repo);
     const assetRoot = input.assets ? await realpath(input.assets) : source;
     if (input.assets) {
       if (!input.files)
@@ -132,6 +122,77 @@ export async function prepareSourcePlugins(
       )
         throw Error("SOURCE_ASSET_DIGEST_MISMATCH: " + repo);
     }
+    const assetManifest = input.assets
+      ? JSON.parse(await readFile(join(assetRoot, "package.json"), "utf8"))
+      : manifest;
+    if (
+      assetManifest.name !== manifest.name ||
+      assetManifest.version !== manifest.version
+    )
+      throw Error("SOURCE_ASSET_IDENTITY_MISMATCH: " + repo);
+    if (input.assets || requireEntries)
+      for (const file of [
+        assetManifest.main ??
+          (typeof assetManifest.exports?.["."] === "string"
+            ? assetManifest.exports["."]
+            : assetManifest.exports?.["."]?.default) ??
+          "lib/host.js",
+        clientEntry(assetManifest),
+        "cordis.patch.yml",
+        ...plugin.digests,
+      ])
+        await readFile(join(assetRoot, file));
+    resolved.push({
+      ...input,
+      source,
+      assetRoot,
+      manifest: assetManifest,
+      commit,
+      plugin,
+    });
+  }
+  return resolved;
+}
+
+export async function prepareSourcePlugins(
+  core,
+  runtime,
+  deployment,
+  { sources, id = randomUUID() } = {},
+) {
+  const entries = await resolveSourceInputs(sources, { requireEntries: true });
+  if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
+  const snapshot = join(runtime, "source-combinations", id);
+  const modules = join(snapshot, "node_modules");
+  const supported = JSON.parse(
+    await readFile(new URL("./current-core.json", import.meta.url), "utf8"),
+  );
+  const coreCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: core,
+    encoding: "utf8",
+  }).trim();
+  if (
+    coreCommit !== supported.adaptation ||
+    execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
+      cwd: core,
+      encoding: "utf8",
+    }).trim()
+  )
+    throw Error("FIXED_OFFICIAL_INPUT_REQUIRED");
+  await mkdir(join(runtime, "source-combinations"), { recursive: true });
+  await mkdir(snapshot, { recursive: false });
+  await mkdir(modules, { recursive: true });
+  const packages = new Map(
+    (await corePackages(core)).map(({ manifest, directory }) => [
+      manifest.name,
+      directory,
+    ]),
+  );
+  const plugins = new Map();
+  for (const plugin of sourcePlugins) {
+    const repo = plugin.repo;
+    const input = entries.find((entry) => entry.repo === repo);
+    const { source, assetRoot, manifest } = input;
     const target = join(modules, manifest.name);
     await mkdir(target, { recursive: true });
     for (const file of plugin.resources) {
@@ -373,7 +434,10 @@ async function resourceDigests(
       );
     else if (entry.isSymbolicLink())
       files[relative] = "link:" + (await realpath(file));
-    else if (entry.isFile() && relative !== "combination.json")
+    else if (
+      entry.isFile() &&
+      (excludeDependencies || relative !== "combination.json")
+    )
       files[relative] = await fileDigest(file);
   }
   return files;

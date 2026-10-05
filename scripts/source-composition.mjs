@@ -21,6 +21,7 @@ const resources = [
 export const sourcePlugins = [
   {
     repo: "dsh-agent-workbench",
+    name: "@cleverc2200/dsh-agent-workbench",
     configs: ["tsconfig.json"],
     build: "workbench",
     resources,
@@ -33,6 +34,7 @@ export const sourcePlugins = [
   },
   {
     repo: "dsh-agent-manage",
+    name: "dsh-agent-manage",
     configs: ["tsconfig.json", "tsconfig.client.json"],
     build: "manage",
     resources,
@@ -41,6 +43,7 @@ export const sourcePlugins = [
   },
   {
     repo: "dsh-gea-plugin",
+    name: "@cleverc2200/gea-dsh-prototype",
     configs: ["tsconfig.json"],
     build: "build:plugin",
     resources,
@@ -49,6 +52,7 @@ export const sourcePlugins = [
   },
   {
     repo: "dsh-genui",
+    name: "@changfenhuang/dsh-genui",
     configs: ["tsconfig.json"],
     build: "build",
     resources: [...resources, "SKILL.md", "docs", "src"],
@@ -57,6 +61,7 @@ export const sourcePlugins = [
   },
   {
     repo: "dsh-better-sidebar",
+    name: "dsh-better-sidebar",
     configs: ["tsconfig.json"],
     build: "build",
     resources: [...resources, "locale", "icon.svg", "src"],

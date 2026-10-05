@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { readDeployment } from "./deployment.mjs";
 import { runSourceProfile } from "./start-isolated-validation.mjs";
+import { readSourceSelection, requireSourceInputs } from "./source-profile.mjs";
 const root = resolve(import.meta.dirname, "..");
 try {
   const { values } = parseArgs({
@@ -21,10 +22,19 @@ try {
       "pnpm start --config <deployment.json> [--sources <fixed-source-records.json>] [--runtime <isolated directory>] [--port <port or 0>] [--dev]",
     );
   else {
+    const runtime = resolve(values.runtime ?? ".runtime/workbench-development");
+    const sources = values.sources
+      ? JSON.parse(
+          await (
+            await import("node:fs/promises")
+          ).readFile(values.sources, "utf8"),
+        )
+      : undefined;
+    if ((await readSourceSelection(runtime)) === undefined)
+      requireSourceInputs(sources);
     const deployment = await readDeployment(
       resolve(values.config ?? "gea.config.json"),
     );
-    const runtime = resolve(values.runtime ?? ".runtime/workbench-development");
     const port = Number(values.port);
     if (!Number.isInteger(port) || port < 0 || port > 65535)
       throw Error("GEA_PORT_INVALID");
@@ -39,13 +49,7 @@ try {
       deployment,
       port,
       {
-        sources: values.sources
-          ? JSON.parse(
-              await (
-                await import("node:fs/promises")
-              ).readFile(values.sources, "utf8"),
-            )
-          : undefined,
+        sources,
       },
     );
   }
