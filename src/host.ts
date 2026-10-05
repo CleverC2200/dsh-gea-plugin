@@ -483,10 +483,13 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
           ? config.analysisModel
           : route.models[0]!;
       }
+      const cwd = resolve(config.runtimeDir, "workspace");
+      const resource = await ctx.agentResources.select("gea-readonly", signal, cwd);
+      signal.throwIfAborted();
       const session = await ctx.sessionController.create({
         sessionId: attempt.sessionId,
-        cwd: resolve(config.runtimeDir, "workspace"),
-        agentPreset: "gea-readonly",
+        cwd,
+        agentPreset: resource.preset,
       });
       signal.throwIfAborted();
       business.prepared(preview.previewId);
