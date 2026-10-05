@@ -418,9 +418,29 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       ),
     );
   if (config.analysisMode === "model" && config.analysisSource === "gea")
-    ctx.effect(() =>
-      ctx.llm.registerAdapter(["gea-analysis"], new GeaModelAdapter(business, htmlPlugins.consumerForSession)),
-    );
+    ctx.effect(() => {
+      const registration = ctx.llm.registerAdapter(
+        ["gea-analysis"],
+        new GeaModelAdapter(business, htmlPlugins.consumerForSession),
+      );
+      let identity = business.identitySignal();
+      let authenticated = business.status().authenticated;
+      if (!authenticated) registration.replace([]);
+      // 官方模型菜单通过路由变更刷新目录。只观察 Host 身份代际和有效性，
+      // 头像等展示变化不能重新发现模型，也不改 Session 的模型选择。
+      const unwatch = business.watchIdentity(() => {
+        const nextIdentity = business.identitySignal();
+        const nextAuthenticated = business.status().authenticated;
+        if (identity === nextIdentity && authenticated === nextAuthenticated) return;
+        registration.replace(nextAuthenticated ? ["gea-analysis"] : []);
+        identity = nextIdentity;
+        authenticated = nextAuthenticated;
+      });
+      return () => {
+        unwatch();
+        registration();
+      };
+    });
   let submission:
     | {
         id: string;
