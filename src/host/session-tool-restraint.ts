@@ -3,11 +3,10 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 export const BROWSER_TOOL_PREFIX='mcp__browser';
 export const TERMINAL_TOOL_PREFIX='terminal_';
-export const SIDEBAR_TOOL_NAME='sidebar_open';
 export const CODING_PRESETS=['auto-negotiation','standard'];
 export function denyTargetsFor(known:readonly string[],preset:string|undefined):string[]{
  const coding=preset!==undefined&&CODING_PRESETS.includes(preset);
- return known.filter(name=>name.startsWith(BROWSER_TOOL_PREFIX)||(!coding&&(name.startsWith(TERMINAL_TOOL_PREFIX)||name===SIDEBAR_TOOL_NAME)));
+ return known.filter(name=>name.startsWith(BROWSER_TOOL_PREFIX)||(!coding&&name.startsWith(TERMINAL_TOOL_PREFIX)));
 }
 /** One explicit scoped mask, based on registry data rather than an error-message probe. */
 export function restrictToolsForAgent(agent:Pick<Agent,'ctx'>,known:readonly string[],preset:string|undefined):(()=>void)|undefined {

@@ -53,7 +53,7 @@ export function installPromptProfile(
   };
 }
 
-/** GEA owns only actual business execution. Installed Manage tools keep their own visibility and guards. */
+/** GEA owns actual business execution. Optional UI tools keep their Host registration and user-setting guards. */
 export const CORE_TOOLS = [
   "gea_capabilities",
   "gea_evidence_read",
@@ -73,6 +73,7 @@ export function allowedTools(
     "render_ui",
     "validate_dsh_ui",
     "visualize",
+    "sidebar_open",
   ])
     names.add(name);
   if (boundPage)

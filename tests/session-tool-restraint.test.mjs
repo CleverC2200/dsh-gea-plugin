@@ -29,11 +29,10 @@ const KNOWN = [
   "skill",
 ];
 
-test("deny 目标：浏览器全禁；终端/侧栏在业务预设里也禁，编码预设里保留", () => {
+test("deny 目标：浏览器全禁；终端在业务预设里禁；侧栏工具的注册归原BSP用户开关", () => {
   assert.deepEqual(m.denyTargetsFor(KNOWN, "gea-readonly").sort(), [
     "mcp__browser__browser_click",
     "mcp__browser__browser_snapshot",
-    "sidebar_open",
     "terminal_create",
     "terminal_send",
   ]);
