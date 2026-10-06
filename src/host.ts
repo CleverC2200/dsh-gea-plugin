@@ -30,6 +30,7 @@ import { lastUserQuestion, mountTurnAnchor } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
 import { mountBusinessPrompts } from "./host/prompt-runtime.ts";
 import { mountSessionToolRestraint } from "./host/session-tool-restraint.ts";
+import { mountSidebarToolVisibility } from "./host/sidebar-tool-visibility.ts";
 import { networkError } from "./shared/net-error.ts";
 import { registerHtmlPlugins } from "./html-plugins.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
@@ -374,6 +375,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   // 它们与业务问答无关，却每次请求都占上下文（实测浏览器 25 个工具 = 18.5k 字符）。
   // 必须在第一步之前装好，所以挂在 agent/pre-step 上、每个 agent 只装一次。
   ctx.effect(() => mountSessionToolRestraint(ctx));
+  ctx.effect(() => mountSidebarToolVisibility(ctx, business));
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());
   ctx.provide("geaMcp", {
