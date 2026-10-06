@@ -46,10 +46,10 @@
     "typecheck:official": "node ../dsh-agent-workbench/scripts/verify-official-input.mjs && tsc -p tsconfig.official.json"
   },
   "dependencies": {
-    "@changfenhuang/dsh-genui": "link:../dsh-genui",
+    "@changfenhuang/dsh-genui": "link:../../../current-mainline-closeout-44/upstream-assets/genui-0.11.3",
     "@cleverc2200/dsh-agent-workbench": "link:../dsh-agent-workbench",
     "decimal.js": "10.6.0",
-    "dsh-better-sidebar": "link:../dsh-better-sidebar",
+    "dsh-better-sidebar": "link:../../../current-mainline-closeout-44/upstream-reference/dsh-better-sidebar",
     "esbuild": "0.25.9",
     "eventsource-parser": "3.1.1",
     "qrcode": "1.5.4",
