@@ -1,10 +1,14 @@
+import { currentHtmlResource } from "./fixtures/html-resource.mjs";
+import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
+import { selectBusinessResource } from "./fixtures/business-session.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { profile, readSession, until } from "./profile.mjs";
+import { readSession, until } from "./profile.mjs";
+import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 import { transportSignal } from "../src/shared/transport-signal.ts";
 import { networkError } from "../src/shared/net-error.ts";
 import {
@@ -19,10 +23,7 @@ import {
   compactDatasetProjection,
 } from "../src/host/prompt-result.ts";
 import { projectEvidence } from "../src/host/prompt-evidence.ts";
-import {
-  sessionConsumer,
-  toolConsumer,
-} from "../src/host/business-identity.ts";
+import { sessionConsumer, toolConsumer } from "../src/host/business-identity.ts";
 
 test("timeout keeps its category while arbitrary caller reasons stay private", () => {
   const c = new AbortController(),
@@ -96,9 +97,7 @@ test("artifact presentation decodes rows without modifying JSON business columns
     ],
     rows[0].jsonColumn,
   );
-  const projection = JSON.parse(
-    projectEvidence(raw + " ".repeat(7000), "ev-test", 6000, view),
-  );
+  const projection = JSON.parse(projectEvidence(raw + " ".repeat(7000), "ev-test", 6000, view));
   assert.equal(projection.projection, "complete");
   assert.equal(projection.data.queryArtifact.pages[0].complete, false);
 });
@@ -160,7 +159,9 @@ test(
         }),
       );
     }
+    for (const path of Object.values(roots)) await currentHtmlResource(path);
     const app = await profile(t, {
+      beforeStart: fixtureWorkbench(Object.values(roots)),
       config: {
         analysis: {
           mode: "model",
@@ -230,6 +231,7 @@ test(
       ["gea-readonly", "sales_forecast"],
       ...configs.map(([s, c]) => ["gea-html-inventory-" + s, c]),
     ]) {
+      await selectBusinessResource(app, preset);
       const made = await app.remote("session/create", {
         cwd: app.runtime + "/workspace",
         agentPreset: preset,
@@ -333,8 +335,7 @@ test(
       if (path.endsWith("/ai/gateway/mcp/proxy/mcp")) {
         const b = JSON.parse(req.body);
         let result = {};
-        if (b.method === "initialize")
-          result = { protocolVersion: b.params.protocolVersion };
+        if (b.method === "initialize") result = { protocolVersion: b.params.protocolVersion };
         else if (b.method === "notifications/initialized") {
           res.statusCode = 202;
           res.end();
@@ -367,9 +368,7 @@ test(
                     ? JSON.stringify({
                         semanticModel: ["a", "b"].map((name) => ({
                           name,
-                          measures: [
-                            { name: name + ".row_count", type: "number" },
-                          ],
+                          measures: [{ name: name + ".row_count", type: "number" }],
                         })),
                       })
                     : bodies[a.queries[0].name],
@@ -384,8 +383,7 @@ test(
       const b = JSON.parse(req.body);
       let call;
       const offersCatalog =
-        b.tools?.some((x) => x.function?.name === "gea_gateway_catalog") ??
-        false;
+        b.tools?.some((x) => x.function?.name === "gea_gateway_catalog") ?? false;
       if (!catalogPaused) {
         if (catalogCalls < 5) {
           catalogCalls++;
@@ -394,11 +392,7 @@ test(
             arguments: JSON.stringify({ model: "a" }),
           };
         } else {
-          assert.equal(
-            offersCatalog,
-            true,
-            "keep the tool schema stable for provider validation",
-          );
+          assert.equal(offersCatalog, true, "keep the tool schema stable for provider validation");
           assert.match(
             b.messages.filter((m) => m.role === "tool").at(-1).content,
             /GEA_CATALOG_NO_PROGRESS/,
@@ -420,22 +414,16 @@ test(
         };
       else {
         if (!checkedResume) {
-          assert.equal(
-            offersCatalog,
-            true,
-            "a real query attempt restores targeted discovery",
-          );
+          assert.equal(offersCatalog, true, "a real query attempt restores targeted discovery");
           checkedResume = true;
         }
-        const value = JSON.parse(
-          b.messages.filter((m) => m.role === "tool").at(-1).content,
-        );
+        const value = JSON.parse(b.messages.filter((m) => m.role === "tool").at(-1).content);
         if (!evidenceId) {
           evidenceId = value.evidenceId;
           assert.ok(evidenceId);
           call = {
             name: "gea_evidence_read",
-            arguments: JSON.stringify({ evidenceId, format:'raw', limit: 6000 }),
+            arguments: JSON.stringify({ evidenceId, format: "raw", limit: 6000 }),
           };
         } else if (!rawDone) {
           pages.push(value.content);
@@ -465,24 +453,21 @@ test(
       }
       const delta = call
         ? {
-            tool_calls: [
-              { index: 0, id: randomUUID(), type: "function", function: call },
-            ],
+            tool_calls: [{ index: 0, id: randomUUID(), type: "function", function: call }],
           }
         : { content: "complete" };
       res.setHeader("Content-Type", "text/event-stream");
       res.end(
         "data: " +
           JSON.stringify({
-            choices: [
-              { index: 0, delta, finish_reason: call ? "tool_calls" : "stop" },
-            ],
+            choices: [{ index: 0, delta, finish_reason: call ? "tool_calls" : "stop" }],
           }) +
           "\n\ndata: [DONE]\n\n",
       );
       return true;
     });
     await app.login();
+    await selectBusinessResource(app, "gea-readonly");
     const made = await app.remote("session/create", {
       cwd: app.runtime + "/workspace",
       agentPreset: "gea-readonly",
@@ -529,19 +514,14 @@ test("permission and partial delivery are not ordinary successful receipts", () 
   const denial = "模块数据未授权：fixture";
   assert.equal(permissionDenied(denial), true);
   assert.equal(resultOutcome(denial), "blocked");
-  assert.equal(
-    JSON.parse(resultReceipt("gea_module_mcp", {}, "ev", denial)).outcome,
-    "blocked",
-  );
+  assert.equal(JSON.parse(resultReceipt("gea_module_mcp", {}, "ev", denial)).outcome, "blocked");
   const raw = {
     source: "GEA_MCP_CONTENT",
     payloads: ['{"rows":[{"qty":"1"}]}'],
     presentation: "first resource succeeded; second failed",
     delivery: {
       sourceReadComplete: false,
-      unreadArtifacts: [
-        { uri: "data-artifact://missing", reason: "read-failed" },
-      ],
+      unreadArtifacts: [{ uri: "data-artifact://missing", reason: "read-failed" }],
       notes: ["partial coverage"],
     },
   };
@@ -549,10 +529,7 @@ test("permission and partial delivery are not ordinary successful receipts", () 
   assert.equal(view.delivery.sourceReadComplete, false);
   assert.equal(view.delivery.unreadArtifacts.length, 1);
   assert.equal(resultOutcome(JSON.stringify(raw)), "partial");
-  assert.equal(
-    resultOutcome(JSON.stringify({ ...raw, payloads: [] })),
-    "blocked",
-  );
+  assert.equal(resultOutcome(JSON.stringify({ ...raw, payloads: [] })), "blocked");
   assert.equal(
     resultOutcome(
       JSON.stringify({
@@ -611,9 +588,7 @@ test("structured evidence paginates actual rows, preserves coverage and never pa
     const table = page.table.displayTable;
     if (table)
       restored.push(
-        ...table.values.map((row) =>
-          Object.fromEntries(table.columns.map((k, i) => [k, row[i]])),
-        ),
+        ...table.values.map((row) => Object.fromEntries(table.columns.map((k, i) => [k, row[i]]))),
       );
     else restored.push(...page.table.rows);
     offset = page.nextRead?.args.rowOffset ?? null;
@@ -632,19 +607,13 @@ test("explicit cross-domain calls require trusted profile routes", () => {
     config: { analysisAgentCode: "custom-sales" },
     currentPageIdentity: () => undefined,
   };
-  assert.equal(
-    toolConsumer(ctx, business, "id", undefined),
-    "branch-inventory",
-  );
+  assert.equal(toolConsumer(ctx, business, "id", undefined), "branch-inventory");
   assert.throws(
     () => toolConsumer(ctx, business, "id", "base-safety-stock"),
     /ROUTE_NOT_REGISTERED/,
   );
   preset = "gea-html-inventory-aqkc";
-  assert.equal(
-    toolConsumer(ctx, business, "id", "custom-sales"),
-    "custom-sales",
-  );
+  assert.equal(toolConsumer(ctx, business, "id", "custom-sales"), "custom-sales");
   assert.throws(
     () => toolConsumer(ctx, business, "id", "branch-inventory"),
     /ROUTE_NOT_REGISTERED/,
@@ -676,9 +645,7 @@ test("same dataset labels from different models keep distinct source keys", () =
 });
 test("adding an evidence index never replaces inline datasets or their coverage", () => {
   const raw = JSON.stringify({
-    datasets: [
-      { name: "stock", rows: [{ quantity: "123.45" }], complete: false },
-    ],
+    datasets: [{ name: "stock", rows: [{ quantity: "123.45" }], complete: false }],
   });
   const shown = JSON.parse(indexProjection(raw, "ev", datasetIndex(raw, "ev")));
   assert.equal(shown.datasets[0].rows[0].quantity, "123.45");
@@ -693,8 +660,7 @@ test("knowledge projection uses cited chunks instead of a cut JSON envelope", ()
     content: "业务规则。".repeat(500),
   }));
   const raw =
-    JSON.stringify({ result: JSON.stringify({ document_ids: [], chunks }) }) +
-    "\ntransport note";
+    JSON.stringify({ result: JSON.stringify({ document_ids: [], chunks }) }) + "\ntransport note";
   const shown = JSON.parse(transientResult(raw, 6000, true));
   assert.equal(shown.source, "GEA_KNOWLEDGE_EXCERPTS");
   assert.ok(shown.excerpts.length > 0);
@@ -703,40 +669,72 @@ test("knowledge projection uses cited chunks instead of a cut JSON envelope", ()
   assert.ok(JSON.stringify(shown).length <= 6000);
   assert.equal(shown.rawAvailable, false);
   const broken = JSON.stringify({
-    result:
-      '{"chunks":[' +
-      JSON.stringify(chunks[0]) +
-      ',{"chunk_id":"broken","content":"cut',
+    result: '{"chunks":[' + JSON.stringify(chunks[0]) + ',{"chunk_id":"broken","content":"cut',
   });
-  const partial = JSON.parse(
-    transientResult(broken + " ".repeat(7000), 6000, true),
-  );
+  const partial = JSON.parse(transientResult(broken + " ".repeat(7000), 6000, true));
   assert.equal(partial.sourceComplete, false);
   assert.equal(partial.excerpts.length, 1);
 });
 
-test('small nested artifacts expose exact business rows with coverage, not escaped envelopes', () => {
-  const rows=[{'inventory.material_code':'SKU01','inventory.qty':'12.3400'},{'inventory.material_code':'SKU02','inventory.qty':null}];
-  const raw=JSON.stringify({source:'GEA_MCP_CONTENT',delivery:{sourceReadComplete:true,notes:['not a complete snapshot']},payloads:[JSON.stringify({warnings:['source batch unverified'],queryArtifact:{resources:[{contents:[{text:JSON.stringify({datasetName:'stock',rows,totalRows:2,hasMore:false})}]}]}})]});
-  const output=JSON.parse(compactDatasetProjection(raw,'ev-fixture'));
-  assert.equal(output.projection,'complete');
-  assert.deepEqual(output.datasets[0].table.rows,rows);
-  assert.equal(output.evidenceDatasets[0].nextRead,null);
-  assert.match(JSON.stringify(output),/not a complete snapshot|source batch unverified/);
+test("small nested artifacts expose exact business rows with coverage, not escaped envelopes", () => {
+  const rows = [
+    { "inventory.material_code": "SKU01", "inventory.qty": "12.3400" },
+    { "inventory.material_code": "SKU02", "inventory.qty": null },
+  ];
+  const raw = JSON.stringify({
+    source: "GEA_MCP_CONTENT",
+    delivery: { sourceReadComplete: true, notes: ["not a complete snapshot"] },
+    payloads: [
+      JSON.stringify({
+        warnings: ["source batch unverified"],
+        queryArtifact: {
+          resources: [
+            {
+              contents: [
+                {
+                  text: JSON.stringify({
+                    datasetName: "stock",
+                    rows,
+                    totalRows: 2,
+                    hasMore: false,
+                  }),
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ],
+  });
+  const output = JSON.parse(compactDatasetProjection(raw, "ev-fixture"));
+  assert.equal(output.projection, "complete");
+  assert.deepEqual(output.datasets[0].table.rows, rows);
+  assert.equal(output.evidenceDatasets[0].nextRead, null);
+  assert.match(JSON.stringify(output), /not a complete snapshot|source batch unverified/);
   assert.ok(!JSON.stringify(output).includes('\\\\\\"rows'));
-  const mixed=JSON.stringify({source:'GEA_CUBE_BATCH',results:[{status:'returned',result:raw},{status:'rejected',code:'DENIED'}]});
-  const partial=JSON.parse(compactDatasetProjection(mixed,'ev-fixture'));
-  assert.equal(partial.sourceOutcome,'partial');
-  assert.equal(partial.queryFailures[0].code,'DENIED');
-  assert.deepEqual(partial.datasets[0].table.rows,rows);
+  const mixed = JSON.stringify({
+    source: "GEA_CUBE_BATCH",
+    results: [
+      { status: "returned", result: raw },
+      { status: "rejected", code: "DENIED" },
+    ],
+  });
+  const partial = JSON.parse(compactDatasetProjection(mixed, "ev-fixture"));
+  assert.equal(partial.sourceOutcome, "partial");
+  assert.equal(partial.queryFailures[0].code, "DENIED");
+  assert.deepEqual(partial.datasets[0].table.rows, rows);
 });
 
-test('compact dataset paging never presents its row slice as the full returned dataset', () => {
-  const raw=JSON.stringify({rows:Array.from({length:150},(_,i)=>({sku:'SKU'+i,qty:i===1?null:i})),hasMore:true,totalRows:999});
-  const output=JSON.parse(compactDatasetProjection(raw,'ev-fixture',3000));
-  assert.equal(output.projection,'partial');
-  assert.equal(output.datasets[0].sourceCoverage[0].hasMore,true);
-  assert.equal(output.datasets[0].sourceCoverage[0].totalRows,999);
-  assert.ok(output.datasets[0].nextRead.args.rowOffset>0);
-  assert.ok(JSON.stringify(output).length<=3000);
+test("compact dataset paging never presents its row slice as the full returned dataset", () => {
+  const raw = JSON.stringify({
+    rows: Array.from({ length: 150 }, (_, i) => ({ sku: "SKU" + i, qty: i === 1 ? null : i })),
+    hasMore: true,
+    totalRows: 999,
+  });
+  const output = JSON.parse(compactDatasetProjection(raw, "ev-fixture", 3000));
+  assert.equal(output.projection, "partial");
+  assert.equal(output.datasets[0].sourceCoverage[0].hasMore, true);
+  assert.equal(output.datasets[0].sourceCoverage[0].totalRows, 999);
+  assert.ok(output.datasets[0].nextRead.args.rowOffset > 0);
+  assert.ok(JSON.stringify(output).length <= 3000);
 });

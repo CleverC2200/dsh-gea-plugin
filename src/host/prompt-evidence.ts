@@ -79,9 +79,7 @@ export function projectEvidence(
     }
     if (Array.isArray(value)) {
       if (value.length > 3) omitted.push(path);
-      return value
-        .slice(0, 3)
-        .map((item, i) => bounded(item, `${path}[${i}]`, depth + 1));
+      return value.slice(0, 3).map((item, i) => bounded(item, `${path}[${i}]`, depth + 1));
     }
     if (value && typeof value === "object")
       return Object.fromEntries(
@@ -96,8 +94,7 @@ export function projectEvidence(
     }
     return value;
   };
-  const preview =
-    data === undefined ? { text: text.slice(0, 2500) } : bounded(data, "$", 0);
+  const preview = data === undefined ? { text: text.slice(0, 2500) } : bounded(data, "$", 0);
   const result = {
     evidenceId,
     projection: "partial",
@@ -119,8 +116,7 @@ export function projectEvidence(
   ) {
     const compatible = { ...preview, ...result };
     delete (compatible as Record<string, unknown>).data;
-    if (JSON.stringify(compatible).length <= limit)
-      return JSON.stringify(compatible);
+    if (JSON.stringify(compatible).length <= limit) return JSON.stringify(compatible);
   }
   if (JSON.stringify(result).length <= limit) return JSON.stringify(result);
   return JSON.stringify({ ...result, data: undefined, omittedPaths: ["$"] });
@@ -135,6 +131,9 @@ export type EvidenceGrant = {
   resources?: string;
   query?: Record<string, unknown>;
   valueHash?: string;
+  inputHash?: string;
+  baselineHash?: string;
+  calculatorVersion?: string;
   ephemeral?: string;
 };
 type EvidenceRecord = {
@@ -167,23 +166,18 @@ export class PromptEvidenceStore {
     revision = this.revision,
     grant?: EvidenceGrant,
   ): Promise<string> {
-    if (revision !== this.revision)
-      throw Error("GEA_EVIDENCE_IDENTITY_CHANGED");
-    if (Buffer.byteLength(text) > 8_000_000)
-      throw Error("GEA_EVIDENCE_TOO_LARGE");
+    if (revision !== this.revision) throw Error("GEA_EVIDENCE_IDENTITY_CHANGED");
+    if (Buffer.byteLength(text) > 8_000_000) throw Error("GEA_EVIDENCE_TOO_LARGE");
     const digest = createHash("sha256").update(text).digest("hex");
     const id =
       "ev-" +
       createHash("sha256")
-        .update(
-          `${scope}\0${revision}\0${tool}\0${JSON.stringify(grant)}\0${digest}`,
-        )
+        .update(`${scope}\0${revision}\0${tool}\0${JSON.stringify(grant)}\0${digest}`)
         .digest("hex")
         .slice(0, 24);
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     await writeFile(join(this.directory, id + ".txt"), text, { mode: 0o600 });
-    if (revision !== this.revision)
-      throw Error("GEA_EVIDENCE_IDENTITY_CHANGED");
+    if (revision !== this.revision) throw Error("GEA_EVIDENCE_IDENTITY_CHANGED");
     const record = {
       scope,
       revision,
@@ -193,16 +187,10 @@ export class PromptEvidenceStore {
       digest,
       grant,
     };
-    await writeFile(
-      join(this.directory, id + ".json"),
-      JSON.stringify(record),
-      { mode: 0o600 },
-    );
-    if (revision !== this.revision)
-      throw Error("GEA_EVIDENCE_IDENTITY_CHANGED");
+    await writeFile(join(this.directory, id + ".json"), JSON.stringify(record), { mode: 0o600 });
+    if (revision !== this.revision) throw Error("GEA_EVIDENCE_IDENTITY_CHANGED");
     this.records.set(id, record);
-    while (this.records.size > 128)
-      this.records.delete(this.records.keys().next().value!);
+    while (this.records.size > 128) this.records.delete(this.records.keys().next().value!);
     return id;
   }
   async read(
@@ -218,9 +206,7 @@ export class PromptEvidenceStore {
     const revision = this.revision;
     if (!record && authorize) {
       try {
-        record = JSON.parse(
-          await readFile(join(this.directory, id + ".json"), "utf8"),
-        );
+        record = JSON.parse(await readFile(join(this.directory, id + ".json"), "utf8"));
       } catch {
         /* Unknown reference stays unavailable. */
       }
@@ -232,9 +218,7 @@ export class PromptEvidenceStore {
       !Number.isFinite(record.at) ||
       Date.now() - record.at > 30 * 60_000
     )
-      throw Error(
-        "GEA_EVIDENCE_UNAVAILABLE: 引用已失效或不属于当前会话，请重新核对来源。",
-      );
+      throw Error("GEA_EVIDENCE_UNAVAILABLE: 引用已失效或不属于当前会话，请重新核对来源。");
     if (
       !Number.isSafeInteger(offset) ||
       offset < 0 ||
@@ -248,8 +232,7 @@ export class PromptEvidenceStore {
       await authorize(record.grant, record.tool);
     }
     const text = await readFile(join(this.directory, id + ".txt"), "utf8");
-    if (revision !== this.revision)
-      throw Error("GEA_EVIDENCE_IDENTITY_CHANGED");
+    if (revision !== this.revision) throw Error("GEA_EVIDENCE_IDENTITY_CHANGED");
     if (createHash("sha256").update(text).digest("hex") !== record.digest)
       throw Error("GEA_EVIDENCE_CORRUPT");
     if (render) return { evidenceId: id, tool: record.tool, ...render(text) };
@@ -264,7 +247,7 @@ export class PromptEvidenceStore {
         offset + limit < text.length
           ? {
               tool: "gea_evidence_read",
-              args: { evidenceId: id, format: 'raw', offset: offset + limit, limit },
+              args: { evidenceId: id, format: "raw", offset: offset + limit, limit },
             }
           : null,
       content: text.slice(offset, offset + limit),

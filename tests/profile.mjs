@@ -10,6 +10,8 @@ import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
+import { readProfileSources } from "./fixtures/profile-inputs.mjs";
+import { readDeployment } from "../scripts/deployment.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
 /** Decode persisted tool receipts at the test boundary; never omit a malformed result. */
@@ -22,10 +24,7 @@ export function readToolResults(rows) {
         message.role === "tool"
           ? message
           : message.content.find((block) => block.type === "tool-result");
-      assert.ok(
-        result && Array.isArray(result.content),
-        "Tool receipt must carry content",
-      );
+      assert.ok(result && Array.isArray(result.content), "Tool receipt must carry content");
       assert.equal(
         result.toolCallId,
         message.source.callId,
@@ -52,19 +51,17 @@ export async function until(read, predicate, timeout = 10000) {
     if (predicate(value)) return value;
     await delay(30);
   }
-  throw new Error(
-    "Condition not reached: " + JSON.stringify(value).slice(-2500),
-  );
+  throw new Error("Condition not reached: " + JSON.stringify(value).slice(-2500));
 }
 export async function profile(t, options = {}) {
   const root = options.pluginRoot ?? defaultRoot;
+  const sourcesFile = options.sourcesFile ?? process.env.GEA_TEST_SOURCE_INPUTS;
+  if (!options.desktopGraph && !options.coreOnly) await readProfileSources(sourcesFile);
   if (process.env.GEA_TEST_SOURCE_CORE === "1" && resolve(root) !== defaultRoot)
     throw new Error(
       "SOURCE_TEST_REQUIRES_CURRENT_CHECKOUT: packaged artifacts use the installed-runtime test lane",
     );
-  const dir = await mkdtemp(
-    resolve(options.runtimeParent ?? tmpdir(), "gea-profile-"),
-  );
+  const dir = await mkdtemp(resolve(options.runtimeParent ?? tmpdir(), "gea-profile-"));
   const key = resolve(dir, "key.pem"),
     cert = resolve(dir, "cert.pem");
   execFileSync(
@@ -149,13 +146,9 @@ export async function profile(t, options = {}) {
               gatewayContext: { sessionId: "SES-fixture" },
             },
           });
-        else if (
-          path.endsWith("/ai/gateway/agent/session/current-user/resolve")
-        ) {
+        else if (path.endsWith("/ai/gateway/agent/session/current-user/resolve")) {
           // 审批身份只认账号角色：默认给"区域审批"，用例可用 roles 覆盖（[] 表示任何节点都不可点）。
-          const roles = options.roles ?? [
-            { code: "sales_plan_region_approver", name: "区域审批" },
-          ];
+          const roles = options.roles ?? [{ code: "sales_plan_region_approver", name: "区域审批" }];
           reply({
             success: true,
             code: 200,
@@ -233,9 +226,7 @@ export async function profile(t, options = {}) {
       requestTimeoutMs: 2000,
       maxSnapshotBytes: 100000,
       analysis: { mode: "receipt" },
-      ...(typeof options.config === "function"
-        ? options.config(base)
-        : options.config),
+      ...(typeof options.config === "function" ? options.config(base) : options.config),
     }),
   );
   let child,
@@ -266,8 +257,7 @@ export async function profile(t, options = {}) {
         childClosed,
         new Promise((_, reject) => {
           deadline = setTimeout(
-            () =>
-              reject(new Error("PROFILE_SHUTDOWN_TIMEOUT: runtime preserved")),
+            () => reject(new Error("PROFILE_SHUTDOWN_TIMEOUT: runtime preserved")),
             15000,
           );
         }),
@@ -279,17 +269,19 @@ export async function profile(t, options = {}) {
   }
   t.after(async () => {
     let stopped = false;
+    const errors = [];
     try {
       await stop();
       stopped = true;
-    } finally {
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
       server.closeAllConnections();
       await new Promise((done) => server.close(done));
       let host;
       try {
-        host = JSON.parse(
-          await readFile(resolve(runtime, "source-host.json"), "utf8"),
-        );
+        host = JSON.parse(await readFile(resolve(runtime, "source-host.json"), "utf8"));
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
@@ -303,25 +295,39 @@ export async function profile(t, options = {}) {
         await rm(dir, { recursive: true, force: true });
         recordLifecycle({ event: "temporary-directory-removed" });
       }
+    } catch (error) {
+      errors.push(error);
     }
+    if (errors.length)
+      throw errors.length === 1
+        ? errors[0]
+        : new AggregateError(errors, "PROFILE_CLEANUP_FAILED", { cause: errors[0] });
   });
   async function start() {
+    const deployment = await readDeployment(config);
+    for (const endpoint of [
+      deployment.geaBaseUrl,
+      ...Object.values(deployment.geaEnvironments ?? {}),
+      deployment.analysis.baseUrl,
+    ].filter(Boolean))
+      if (!["127.0.0.1", "localhost", "[::1]"].includes(new URL(endpoint).hostname))
+        throw new Error("SOURCE_TEST_REQUIRES_LOOPBACK_SERVICES");
     output = "";
     let logOffset = 0;
     await mkdir(runtime, { recursive: true, mode: 0o700 });
     try {
-      logOffset = (await readFile(resolve(runtime, "server.log"), "utf8"))
-        .length;
+      logOffset = (await readFile(resolve(runtime, "server.log"), "utf8")).length;
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
     child = spawn(
       options.executablePath ?? process.execPath,
       [
+        ...(process.platform !== "win32"
+          ? ["--import", new URL("./fixtures/profile-parent-lifetime.mjs", import.meta.url).href]
+          : []),
         ...(options.execArgv ?? []),
-        ...(process.env.GEA_TEST_SOURCE_CORE === "1" &&
-        !options.desktopGraph &&
-        !options.normalStartup
+        ...(!options.desktopGraph && !options.normalStartup
           ? [
               resolve(defaultRoot, "tests/source-profile-start.mjs"),
               config,
@@ -332,19 +338,13 @@ export async function profile(t, options = {}) {
             ? [resolve(defaultRoot, "desktop/runtime-start.mjs")]
             : [
                 "scripts/start.mjs",
-                ...(options.bundle ? ["--bundle"] : []),
                 "--config",
                 config,
                 "--runtime",
                 runtime,
-                ...((options.sourcesFile ?? process.env.GEA_TEST_SOURCE_INPUTS)
-                  ? [
-                      "--sources",
-                      options.sourcesFile ?? process.env.GEA_TEST_SOURCE_INPUTS,
-                    ]
-                  : []),
+                ...(sourcesFile ? ["--sources", sourcesFile] : []),
                 "--port",
-                "0",
+                options.reusePort && origin ? new URL(origin).port : "0",
               ]),
       ],
       {
@@ -365,8 +365,12 @@ export async function profile(t, options = {}) {
               }
             : {}),
           ...options.env,
+          ...(sourcesFile ? { GEA_TEST_SOURCE_INPUTS: sourcesFile } : {}),
         },
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio:
+          process.platform === "win32"
+            ? ["ignore", "pipe", "pipe"]
+            : ["ignore", "pipe", "pipe", "ipc"],
       },
     );
     recordLifecycle({ event: "wrapper-spawned", wrapperPid: child.pid });
@@ -390,9 +394,7 @@ export async function profile(t, options = {}) {
     while (Date.now() < deadline) {
       let freshLog = "";
       try {
-        freshLog = (
-          await readFile(resolve(runtime, "server.log"), "utf8")
-        ).slice(logOffset);
+        freshLog = (await readFile(resolve(runtime, "server.log"), "utf8")).slice(logOffset);
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
@@ -464,9 +466,7 @@ export async function profile(t, options = {}) {
         }),
       });
       if (!response.ok)
-        throw new Error(
-          "Remote HTTP " + response.status + ": " + (await response.text()),
-        );
+        throw new Error("Remote HTTP " + response.status + ": " + (await response.text()));
       return (await response.json()).result;
     },
     async login() {

@@ -289,3 +289,5 @@ GEA Host 向现有 `workbenchPages.registerBusinessPage` 登记实际业务 gran
 定向源码 Host 调试可使用 `pnpm start --config <deployment.json> --sources <固定源JSON> --runtime <自有目录> --port 0`。固定源包含每个当前repo的 `source`；可给 `commit`/`integration`核一致性，复用已核产物时给 `assets`及完整 `files`摘要，依赖来自自己的 `dependencies`只读目录。准备阶段只写新不可变快照；用户默认模型的seed由实际launcher以flagwx采用，不覆盖已有选择。
 
 `desktop/runtime-start.mjs`及其仍消费的 `prepareNativePreset`、default-presets/sync helper、旧桌面测试属于历史公司壳输入，本轮新 source/start/check/build不调用它们。当前源码配置直接消费同一deployment module的businessDeploymentPatch；历史deploymentPatch只作为旧壳的UI/preset包装消费这份业务规则，未恢复到新launcher。没有为保旧壳恢复运行兼容，也不宣称整个源码历史不存在旧代码。
+
+Business pages authorize the Interpreter projected by the actual Core Session. Their read-only identity responses include the current subject for Workbench recovery and revocation checks. GEA retains Consumer authorization and checks a login rejection against the current execution before forwarding it. Calculation evidence uses Manage's shared input and baseline checks and remains bound to its original Session and subject.
