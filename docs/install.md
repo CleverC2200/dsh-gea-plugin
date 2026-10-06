@@ -29,3 +29,13 @@ node scripts/freeze-package-profile.mjs --profile /absolute/ordinary-profile --c
 ```
 
 freeze 入口核 profile 依赖与输入 npm 图一致，拒绝 immutable源组合的模块链接，并沿官方 runProfilePnpm 调用 import 和 install --frozen-lockfile。后续升级须有新的明确五包来源和完整图；回切保原图与 pnpm 锁，拒绝未锁定的改动。冻结成功仅证明安装锁消费，不代替实际 Native功能验收。
+
+## 非 DSH 命名的 SDK peer
+
+Core 的安装兼容检查只检查 dsh/dsh-* peer，Cordis 同路径也不能代替其它 SDK peer 的解析核对。当前原 Sidebar 声明了 Schemastery 3.18.4 范围的普通依赖，可能遮住 Manage/GEA 要求的 3.18.5-alpha.1 peer。对本票声明的源码型官方 Core，正常 profile 可通过官方命令显式引用 installation 中已经存在的同一只读 SDK 模块：
+
+```sh
+dsh plugin --profile <name> add link:/absolute/registered-core/vendor/schemastery
+```
+
+这是普通 profile 的包引用，不复制 SDK，不更改 Core、vendor、peer 范围或 pnpm override。实际记录须确认 Manage/GEA 的解析路径为该 installation 的同一模块、版本符合其 exact peer；Sidebar 自身普通依赖可能仍在它的私有依赖目录，不能将其称为 Core SDK 单例。随后重新捕获包含该 SDK 引用的完整 profile npm 图、import 与冻结。当前源码安装路径是本票目标，不能据此推出另一台机器或不同安装形态的路径。
