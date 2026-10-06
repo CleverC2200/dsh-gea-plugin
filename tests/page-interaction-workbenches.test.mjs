@@ -1,5 +1,11 @@
-import {currentHtmlResource} from "./fixtures/html-resource.mjs";
-import {profileFor} from "../src/host/prompt-policy.ts";
+import {
+  prepareWorkbenchHtmlRoots,
+  openBusinessPage,
+  htmlFrameElement,
+  preparePageStartup,
+} from "./fixtures/business-page.mjs";
+import { currentHtmlResource } from "./fixtures/html-resource.mjs";
+import { profileFor } from "../src/host/prompt-policy.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
@@ -35,7 +41,11 @@ test(
           html: "index.html",
           skills: ["skills/page/SKILL.md"],
           mcp: "mcp.json",
-          gea: { consumerCode: profileFor(`gea-html-${id}`).consumerCode, readonly: true, contract: "gea-html-v2" },
+          gea: {
+            consumerCode: profileFor(`gea-html-${id}`).consumerCode,
+            readonly: true,
+            contract: "gea-html-v2",
+          },
         }),
       );
       await writeFile(
@@ -44,7 +54,10 @@ test(
           provider: "gea",
           transport: "host-provided",
           contract: "gea-html-v2",
-          consumer: { consumerType: "AGENT", consumerCode: profileFor(`gea-html-${id}`).consumerCode },
+          consumer: {
+            consumerType: "AGENT",
+            consumerCode: profileFor(`gea-html-${id}`).consumerCode,
+          },
           capabilities: ["governed-sql-read"],
         }),
       );
@@ -59,7 +72,7 @@ test(
       await currentHtmlResource(root);
     }
     const app = await profile(t, {
-      env: { GEA_HTML_PLUGIN_ROOTS: JSON.stringify(roots) },
+      beforeStart: prepareWorkbenchHtmlRoots(roots),
     });
     app.route((req, _res, reply) => {
       if (!req.url.pathname.endsWith("/ai/gateway/session")) return false;
@@ -98,18 +111,16 @@ test(
     );
     const page = await context.newPage();
     await page.goto(app.origin);
-    await page
-      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-      .getByRole("button", { name: "继续", exact: true })
-      .click();
-    for (const [panel, title] of [
+    await preparePageStartup(page);
+    for (const [panel] of [
       ["gea-regional-plan", "区域计划工作台"],
       ["plan-region-category", "品类计划工作台"],
       ["plan-category-production", "主生产计划（MPS）工作台"],
     ]) {
-      await page.locator(`[data-gea-business-entry="${panel}"]`).click();
-      const iframe = page.locator("iframe.gea-workbench-frame");
-      await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
+      await openBusinessPage(page, panel);
+      await page.getByRole("button", { name: "新建对话", exact: true }).click();
+      const iframe = htmlFrameElement(page, panel);
+      await expect(iframe).toHaveAttribute("sandbox", "allow-scripts allow-downloads");
       const selector = page.locator("[data-page-selection-trigger]");
       await expect(selector).toBeEnabled();
       await expect(
@@ -129,32 +140,17 @@ test(
       await target.click();
       const editor = page.locator('[contenteditable="true"]').first();
       await expect(editor).not.toHaveText("");
-      assert.equal(
-        await page.locator("[data-page-selection-trigger]").count(),
-        1,
-      );
+      assert.equal(await page.locator("[data-page-selection-trigger]").count(), 1);
       await editor.press("ControlOrMeta+a");
       await editor.press("Backspace");
       await expect(editor).toHaveText("");
     }
     for (const [id, name] of htmlPages) {
-      const menu = page.locator(`[data-gea-business-entry="${id}"]`);
-      if (!(await menu.isVisible()))
-        await page
-          .getByRole("button", {
-            name: id === "inventory-apsplan" ? "产销协同" : "库存管理",
-            exact: true,
-          })
-          .click();
-      await menu.click();
+      await openBusinessPage(page, id);
       const selector = page.locator("[data-page-selection-trigger]");
       await expect(selector).toBeEnabled();
-      const frame = page.frameLocator(
-        `iframe[src*="/api/gea-html/${id}/html"]`,
-      );
-      await expect(
-        frame.getByRole("heading", { name, exact: true }),
-      ).toBeVisible();
+      const frame = htmlFrameElement(page, id).contentFrame();
+      await expect(frame.getByRole("heading", { name, exact: true })).toBeVisible();
       await selector.click();
       await frame.getByRole("cell", { name: "客户甲", exact: true }).click();
       const editor = page.locator('[contenteditable="true"]').first();

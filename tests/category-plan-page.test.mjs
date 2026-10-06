@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openBusinessPage, htmlFrameElement } from "./fixtures/business-page.mjs";
 
 test(
   "品类计划工作台 is its own menu page and reuses the category plan assistant",
@@ -39,17 +40,25 @@ test(
 
     // 目录里的「区域及品类计划工作台」不再是禁用占位，而是挂了原型的可点页面。
     const entry = page.locator('[data-gea-business-entry="plan-region-category"]');
+    await openBusinessPage(page, "plan-region-category");
     await expect(entry).toBeEnabled();
-    await entry.click();
-    const prototype = page.frameLocator("iframe[title='品类计划工作台']");
-    await expect(prototype.getByText("品类计划管理工作台").first()).toBeHidden();
+    await page
+      .locator(".agent-workbench-document")
+      .getByRole("button", { name: "新建对话", exact: true })
+      .click();
+    const prototype = htmlFrameElement(page, "plan-region-category").contentFrame();
+    // The author keeps this business heading visible beside the scope picker.
+    const businessHeading = prototype.locator(".work > .work-head > .work-head-row > div > h2");
+    await expect(businessHeading).toHaveCount(1);
+    await expect(businessHeading).toHaveText("品类计划管理工作台");
+    await expect(businessHeading).toBeVisible();
     await expect(prototype.getByText("品类计划指标监控").first()).toBeVisible();
     // 原型自带的那一列会话区要关掉，会话只留外壳右侧这一个。
     await expect(prototype.locator("aside.chat")).toBeHidden();
     // 右侧会话区跟着这一页换成品类计划助手。
     await expect(page.getByText("品类计划Agent").first()).toBeVisible();
     // 已登录时工作台必须落在中间列里，不能铺成整屏登录遮罩。
-    const frame = page.locator("iframe[title='品类计划工作台']");
+    const frame = htmlFrameElement(page, "plan-region-category");
     await expect(frame).not.toHaveClass(/gea-login-frame/);
     const box = await frame.boundingBox();
     const viewport = page.viewportSize();
