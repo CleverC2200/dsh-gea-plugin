@@ -1,6 +1,6 @@
 # GEA 销售计划只读插件
 
-独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；通用工作台插件负责页面目录与 HTML 呈现。本隔离项目只支持 repositories.json 登记的未修改官方源码 4878cdab 与同组插件候选，不使用旧 npm 核心或旧包运行回退。
+独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；通用工作台插件负责页面目录与 HTML 呈现。本隔离项目只支持 repositories.json 登记的未修改官方源码 5badb15009ae1756c3afe0ae0cef1faafc290ccc、0.2.1-alpha.1 与同组插件候选，不使用旧 npm 核心或旧包运行回退。
 
 本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。发行准备通过 `scripts/prepare-package.mjs` 在独立生产目录生成运行清单与 npm shrinkwrap，再用 `scripts/package.mjs --input` 输出带 SHA-256 的普通插件包。SDK peers 由当前官方 profile 提供，完整命令与设备验收边界见安装说明。
 
@@ -74,7 +74,7 @@ GEA token 仅保存在当前 Host 内存中；重启后需要重新登录。GEA 
 
 ## 当前验证状态
 
-当前三栏使用隔离项目登记的未修改官方源码 4878cdab 与同组插件候选与独立工作台插件，浏览器回归启动真实 Web profile，仅将外部 GEA/模型响应替换为固定测试服务。覆盖原工作台登录/查询/选择、独立文档与原生会话同时显示、持久化回执、窄屏排列。Host 测试覆盖精确金额、接口限制、数据身份和登录/预览失效。原工作台模型测试覆盖导出、权限和 SAVE 回读语义；这些测试不执行真实业务写回。
+当前三栏使用隔离项目登记的未修改官方源码 5badb15009ae1756c3afe0ae0cef1faafc290ccc、0.2.1-alpha.1 与同组插件候选与独立工作台插件，浏览器回归启动真实 Web profile，仅将外部 GEA/模型响应替换为固定测试服务。覆盖原工作台登录/查询/选择、独立文档与原生会话同时显示、持久化回执、窄屏排列。Host 测试覆盖精确金额、接口限制、数据身份和登录/预览失效。原工作台模型测试覆盖导出、权限和 SAVE 回读语义；这些测试不执行真实业务写回。
 
 本次三栏重构的检查、真实查询证据和未完成项见 [2026-09-11 验收记录](docs/acceptance-2026-09-11.md)。此前的真实 GEA/模型验证记录见 [早期验收记录](docs/acceptance-2026-09-10.md)，它不能替代当前发布版 DSH + 工作台插件的真实环境验收；独立安装包、写操作和生产验收也仍未完成。
 
