@@ -17,3 +17,5 @@ corepack pnpm start --config /absolute/deployment.json --sources /absolute/fixed
 旧Hub/example、source-presets及旧reader的装配路径不在当前组合。历史公司桌面壳源码及仍被其使用的preset helper/测试不属此次官方客户端目标；保持原件，不重做其兼容，不把当前源码门禁说成旧壳发布/验收。
 
 current source-profile直接调用businessDeploymentPatch，仅给GEA真实业务/模型配置；旧公司desktop仍调用deploymentPatch中的历史UI/preset装配，业务声明共享现有module同一规则，不把旧helper带进最新source启动。
+
+生成的源码检查保留各项目声明的补充类型路径，并按该项目目录与 baseUrl 解析。固定 Core 与已登记跨仓类型映射始终优先，项目路径不能替换这些映射。原发布资产仍只校验和复用，不重新编译。

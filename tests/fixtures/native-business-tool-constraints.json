@@ -1,0 +1,975 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "forecast_compute",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer"
+          },
+          "data_mode": {
+            "type": "string",
+            "enum": ["provided", "mock", "live"]
+          },
+          "base_month": {
+            "type": "string"
+          },
+          "target_month": {
+            "type": "string"
+          },
+          "prior_base_month": {
+            "type": "string"
+          },
+          "prior_target_month": {
+            "type": "string"
+          },
+          "snapshot_at": {
+            "type": "string"
+          },
+          "period_mapping_confirmation": {
+            "type": "string"
+          },
+          "candidate_policy_confirmation": {
+            "type": "string"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "customer_id": {
+                  "type": "string"
+                },
+                "sku_id": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "source_ref": {
+                  "type": "string"
+                },
+                "eligible": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "exclusion_reason": {
+                  "type": "string"
+                },
+                "product_kind": {
+                  "type": "string",
+                  "enum": ["regular", "new", "short_shelf"]
+                },
+                "seasonal": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "quality_issues": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "base_plan_qty": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "base_actual_to_cutoff_qty": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "prior_base_actual_qty": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "prior_target_actual_qty": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "target_yoy_growth": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "target_mom_growth": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "weights": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "yoy": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mom": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "schema_version",
+          "data_mode",
+          "base_month",
+          "target_month",
+          "prior_base_month",
+          "prior_target_month",
+          "snapshot_at",
+          "period_mapping_confirmation",
+          "candidate_policy_confirmation",
+          "records"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "gea_capabilities",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "complex": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "gea_cube_query",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "consumerCode": {
+            "type": "string",
+            "enum": ["sales_forecast", "base-safety-stock", "branch-inventory"]
+          },
+          "queries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "dimensions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "measures": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "segments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "filters": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "member": {
+                                "type": "string"
+                              },
+                              "operator": {
+                                "type": "string",
+                                "enum": [
+                                  "equals",
+                                  "notEquals",
+                                  "contains",
+                                  "notContains",
+                                  "startsWith",
+                                  "notStartsWith",
+                                  "endsWith",
+                                  "notEndsWith",
+                                  "gt",
+                                  "gte",
+                                  "lt",
+                                  "lte",
+                                  "set",
+                                  "notSet",
+                                  "inDateRange",
+                                  "notInDateRange",
+                                  "beforeDate",
+                                  "beforeOrOnDate",
+                                  "afterDate",
+                                  "afterOrOnDate",
+                                  "onTheDate",
+                                  "measureFilter"
+                                ]
+                              },
+                              "values": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "required": ["member", "operator"]
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "and": {
+                                "type": "array",
+                                "items": {
+                                  "oneOf": [
+                                    {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "member": {
+                                          "type": "string"
+                                        },
+                                        "operator": {
+                                          "type": "string",
+                                          "enum": [
+                                            "equals",
+                                            "notEquals",
+                                            "contains",
+                                            "notContains",
+                                            "startsWith",
+                                            "notStartsWith",
+                                            "endsWith",
+                                            "notEndsWith",
+                                            "gt",
+                                            "gte",
+                                            "lt",
+                                            "lte",
+                                            "set",
+                                            "notSet",
+                                            "inDateRange",
+                                            "notInDateRange",
+                                            "beforeDate",
+                                            "beforeOrOnDate",
+                                            "afterDate",
+                                            "afterOrOnDate",
+                                            "onTheDate",
+                                            "measureFilter"
+                                          ]
+                                        },
+                                        "values": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      "required": ["member", "operator"]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "and": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "member": {
+                                                "type": "string"
+                                              },
+                                              "operator": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "equals",
+                                                  "notEquals",
+                                                  "contains",
+                                                  "notContains",
+                                                  "startsWith",
+                                                  "notStartsWith",
+                                                  "endsWith",
+                                                  "notEndsWith",
+                                                  "gt",
+                                                  "gte",
+                                                  "lt",
+                                                  "lte",
+                                                  "set",
+                                                  "notSet",
+                                                  "inDateRange",
+                                                  "notInDateRange",
+                                                  "beforeDate",
+                                                  "beforeOrOnDate",
+                                                  "afterDate",
+                                                  "afterOrOnDate",
+                                                  "onTheDate",
+                                                  "measureFilter"
+                                                ]
+                                              },
+                                              "values": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string"
+                                                }
+                                              }
+                                            },
+                                            "required": ["member", "operator"]
+                                          }
+                                        }
+                                      },
+                                      "required": ["and"]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "or": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "member": {
+                                                "type": "string"
+                                              },
+                                              "operator": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "equals",
+                                                  "notEquals",
+                                                  "contains",
+                                                  "notContains",
+                                                  "startsWith",
+                                                  "notStartsWith",
+                                                  "endsWith",
+                                                  "notEndsWith",
+                                                  "gt",
+                                                  "gte",
+                                                  "lt",
+                                                  "lte",
+                                                  "set",
+                                                  "notSet",
+                                                  "inDateRange",
+                                                  "notInDateRange",
+                                                  "beforeDate",
+                                                  "beforeOrOnDate",
+                                                  "afterDate",
+                                                  "afterOrOnDate",
+                                                  "onTheDate",
+                                                  "measureFilter"
+                                                ]
+                                              },
+                                              "values": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string"
+                                                }
+                                              }
+                                            },
+                                            "required": ["member", "operator"]
+                                          }
+                                        }
+                                      },
+                                      "required": ["or"]
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "required": ["and"]
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "or": {
+                                "type": "array",
+                                "items": {
+                                  "oneOf": [
+                                    {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "member": {
+                                          "type": "string"
+                                        },
+                                        "operator": {
+                                          "type": "string",
+                                          "enum": [
+                                            "equals",
+                                            "notEquals",
+                                            "contains",
+                                            "notContains",
+                                            "startsWith",
+                                            "notStartsWith",
+                                            "endsWith",
+                                            "notEndsWith",
+                                            "gt",
+                                            "gte",
+                                            "lt",
+                                            "lte",
+                                            "set",
+                                            "notSet",
+                                            "inDateRange",
+                                            "notInDateRange",
+                                            "beforeDate",
+                                            "beforeOrOnDate",
+                                            "afterDate",
+                                            "afterOrOnDate",
+                                            "onTheDate",
+                                            "measureFilter"
+                                          ]
+                                        },
+                                        "values": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      "required": ["member", "operator"]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "and": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "member": {
+                                                "type": "string"
+                                              },
+                                              "operator": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "equals",
+                                                  "notEquals",
+                                                  "contains",
+                                                  "notContains",
+                                                  "startsWith",
+                                                  "notStartsWith",
+                                                  "endsWith",
+                                                  "notEndsWith",
+                                                  "gt",
+                                                  "gte",
+                                                  "lt",
+                                                  "lte",
+                                                  "set",
+                                                  "notSet",
+                                                  "inDateRange",
+                                                  "notInDateRange",
+                                                  "beforeDate",
+                                                  "beforeOrOnDate",
+                                                  "afterDate",
+                                                  "afterOrOnDate",
+                                                  "onTheDate",
+                                                  "measureFilter"
+                                                ]
+                                              },
+                                              "values": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string"
+                                                }
+                                              }
+                                            },
+                                            "required": ["member", "operator"]
+                                          }
+                                        }
+                                      },
+                                      "required": ["and"]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "or": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "member": {
+                                                "type": "string"
+                                              },
+                                              "operator": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "equals",
+                                                  "notEquals",
+                                                  "contains",
+                                                  "notContains",
+                                                  "startsWith",
+                                                  "notStartsWith",
+                                                  "endsWith",
+                                                  "notEndsWith",
+                                                  "gt",
+                                                  "gte",
+                                                  "lt",
+                                                  "lte",
+                                                  "set",
+                                                  "notSet",
+                                                  "inDateRange",
+                                                  "notInDateRange",
+                                                  "beforeDate",
+                                                  "beforeOrOnDate",
+                                                  "afterDate",
+                                                  "afterOrOnDate",
+                                                  "onTheDate",
+                                                  "measureFilter"
+                                                ]
+                                              },
+                                              "values": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string"
+                                                }
+                                              }
+                                            },
+                                            "required": ["member", "operator"]
+                                          }
+                                        }
+                                      },
+                                      "required": ["or"]
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "required": ["or"]
+                          }
+                        ]
+                      }
+                    },
+                    "order": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "member": {
+                            "type": "string"
+                          },
+                          "direction": {
+                            "type": "string",
+                            "enum": ["asc", "desc"]
+                          }
+                        },
+                        "required": ["member", "direction"]
+                      }
+                    },
+                    "timeDimensions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "dimension": {
+                            "type": "string"
+                          },
+                          "granularity": {
+                            "type": "string"
+                          },
+                          "dateRange": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": ["dimension"]
+                      }
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    },
+                    "timezone": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "type": "boolean"
+                    },
+                    "ungrouped": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              },
+              "required": ["name", "query"]
+            }
+          },
+          "response_mode": {
+            "type": "string",
+            "enum": ["resource", "inline_complete"]
+          }
+        },
+        "required": ["queries"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "gea_evidence_read",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": ["structured", "raw"]
+          },
+          "reload": {
+            "type": "boolean"
+          },
+          "dataset": {
+            "type": "string"
+          },
+          "datasetId": {
+            "type": "string"
+          },
+          "rowOffset": {
+            "type": "integer"
+          },
+          "rowLimit": {
+            "type": "integer"
+          },
+          "evidenceId": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": ["evidenceId"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "gea_gateway_catalog",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "consumerCode": {
+            "type": "string",
+            "enum": ["sales_forecast", "base-safety-stock", "branch-inventory"]
+          },
+          "refresh": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "values": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "gea_module_mcp",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "consumerCode": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "arguments": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "schema": {
+            "type": "boolean"
+          },
+          "artifact": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "length": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "gea_sales_plan_read",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "periods",
+              "list",
+              "detail",
+              "versions",
+              "logs",
+              "versionSkus",
+              "compare",
+              "aggregate"
+            ]
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "planId": {
+                "type": "string"
+              },
+              "versionId": {
+                "type": "string"
+              },
+              "fromVersionId": {
+                "type": "string"
+              },
+              "toVersionId": {
+                "type": "string"
+              },
+              "periodId": {
+                "type": "string"
+              },
+              "periodMonth": {
+                "type": "string"
+              },
+              "planType": {
+                "type": "string"
+              },
+              "planTypeCode": {
+                "type": "string"
+              },
+              "orderType": {
+                "type": "string",
+                "enum": ["M", "Z"]
+              },
+              "dealerCode": {
+                "type": "string"
+              },
+              "areaCode": {
+                "type": "string"
+              },
+              "provinceCode": {
+                "type": "string"
+              },
+              "orgCode": {
+                "type": "string"
+              },
+              "baseName": {
+                "type": "string"
+              },
+              "status": {
+                "type": "integer"
+              },
+              "pageNo": {
+                "type": "integer"
+              },
+              "pageSize": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "required": ["kind"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "render_ui",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "spec": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "gap": {
+                "type": "number"
+              },
+              "panel": {
+                "type": "boolean"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "required": ["spec"],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "skill",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": ["name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "skill_reference_read",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "skill": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": ["skill", "path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "validate_dsh_ui",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "spec": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": ["spec"],
+        "additionalProperties": false
+      }
+    }
+  }
+]

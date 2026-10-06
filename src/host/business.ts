@@ -1,13 +1,26 @@
 import {
-  salesPlanDraftMatches, salesPlanDraftSnapshot, type SalesPlanLocalDraft,
-  correctionAccess, correctionAdjustments, correctionDecimal,
-  salesPlanAccessForRow, salesPlanStagesForRoles, salesPlanVersionEvidenceStale, type SalesPlanApprovalRole,
-  salesPlanWorkflow, type ApprovalStageId, validateSalesPlanActionInput, type GeaSalesPlanActionRequest,
-  prepareSalesPlanResubmit, type GeaSalesPlanDetail, type GeaSalesPlanPeriod, type GeaSalesPlanSku,
+  salesPlanDraftMatches,
+  salesPlanDraftSnapshot,
+  type SalesPlanLocalDraft,
+  correctionAccess,
+  correctionAdjustments,
+  correctionDecimal,
+  salesPlanAccessForRow,
+  salesPlanStagesForRoles,
+  salesPlanVersionEvidenceStale,
+  type SalesPlanApprovalRole,
+  salesPlanWorkflow,
+  type ApprovalStageId,
+  validateSalesPlanActionInput,
+  type GeaSalesPlanActionRequest,
+  prepareSalesPlanResubmit,
+  type GeaSalesPlanDetail,
+  type GeaSalesPlanPeriod,
+  type GeaSalesPlanSku,
 } from "@cleverc2200/dsh-agent-workbench/sales-plan";
 import { avatarUrl } from "./avatar.ts";
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+import { resolve } from "node:path";
 /**
  * Host 侧业务门面：集中维护 GEA 身份、查询选择、权限校验和只读快照。
  * 浏览器只能提交资源标识与用户意图，凭证、来源数据和最终写入校验都留在这里。
@@ -18,20 +31,9 @@ import { prepareGatewayMcp } from "./gateway-mcp.ts";
 import { readHtmlQuery } from "../html-query.ts";
 import { probeTables, withDefaultPaging } from "./plugin-query.ts";
 import { openModuleMcp } from "./mcp-client.ts";
-import { readableMessage } from "./error-envelope.ts";
-import {
-  currentPageEnvelope,
-  pageIdentityFresh,
-  type PageIdentity,
-} from "./page-identity.ts";
-import {
-  workbenchPresence,
-  type WorkbenchPresence,
-} from "./workbench-presence.ts";
-import {
-  normalizeSurface,
-  type WorkbenchSurface,
-} from "./workbench-surface.ts";
+import { currentPageEnvelope, pageIdentityFresh, type PageIdentity } from "./page-identity.ts";
+import { workbenchPresence, type WorkbenchPresence } from "./workbench-presence.ts";
+import { normalizeSurface, type WorkbenchSurface } from "./workbench-surface.ts";
 import { compressForModel } from "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget";
 import { createCubeGapLedger, type CubeGapLedger } from "./cube-gap-ledger.ts";
 import { createRepeatGuard, type RepeatGuard } from "./repeat-guard.ts";
@@ -71,8 +73,13 @@ const DEFAULT_PLUGIN_CONSUMERS = new Set([
   // main 上产销协同工作台的旧编码：契约缺席时按它兜底，避免历史调用被白名单挡掉。
   "aps",
 ]);
-import { isDeepStrictEqual } from 'node:util';
-import { validateServiceAccounts, serviceAccountReady, submitWithServiceAccount, type ServiceAccounts } from './service-account.ts';
+import { isDeepStrictEqual } from "node:util";
+import {
+  validateServiceAccounts,
+  serviceAccountReady,
+  submitWithServiceAccount,
+  type ServiceAccounts,
+} from "./service-account.ts";
 import { readSalesPlanWorkflowConfig } from "./workflow-config.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { brandString, type Branded } from "@deepseek-ai/dsh-brand";
@@ -80,8 +87,11 @@ import QRCode from "qrcode";
 import { resolveEnvironments } from "../shared/environments.js";
 import { Decimal } from "decimal.js";
 import { transportSignal } from "../shared/transport-signal.ts";
-import { notificationPage, notificationDetail } from "@cleverc2200/dsh-agent-workbench/notifications";
-import { resolveNavigationTarget, type NavigationInput } from './navigation-target.ts';
+import {
+  notificationPage,
+  notificationDetail,
+} from "@cleverc2200/dsh-agent-workbench/notifications";
+import { resolveNavigationTarget, type NavigationInput } from "./navigation-target.ts";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
 import {
@@ -224,14 +234,7 @@ const planFields = [
 const versionFields = [
   "id",
   ...planFields.filter(
-    (key) =>
-      ![
-        "planId",
-        "versionId",
-        "currentQty",
-        "currentAmount",
-        "skuCount",
-      ].includes(key),
+    (key) => !["planId", "versionId", "currentQty", "currentAmount", "skuCount"].includes(key),
   ),
   "planId",
   "effective",
@@ -280,15 +283,9 @@ class MaterialNameIndex {
       const code = record.skuCode == null ? undefined : String(record.skuCode);
       const provided = materialNameFields
         .map((key) => record[key])
-        .find(
-          (value): value is string =>
-            typeof value === "string" && value.trim() !== "",
-        );
-      if (provided !== undefined && code !== undefined)
-        this.remember(code, provided.trim());
-      const name =
-        provided?.trim() ??
-        (code === undefined ? undefined : this.names.get(code));
+        .find((value): value is string => typeof value === "string" && value.trim() !== "");
+      if (provided !== undefined && code !== undefined) this.remember(code, provided.trim());
+      const name = provided?.trim() ?? (code === undefined ? undefined : this.names.get(code));
       if (name !== undefined && record.materialDescription !== name)
         record.materialDescription = name;
     }
@@ -300,21 +297,17 @@ class MaterialNameIndex {
     this.names.set(code, name);
   }
 }
-const exactNumber =
-  /Id$|Code$|Qty$|Amount$|^(id|qty|price|amt|amtBase|qtyDelta|amountDelta)$/;
+const exactNumber = /Id$|Code$|Qty$|Amount$|^(id|qty|price|amt|amtBase|qtyDelta|amountDelta)$/;
 
 /** 在 JavaScript 进行舍入前保留小数词法形式和不透明标识。 */
 function parseJson(text: string): unknown {
-  return JSON.parse(
-    text,
-    (key: string, value: unknown, context?: { source?: string }) => {
-      if (typeof value === "number" && exactNumber.test(key)) {
-        if (!context?.source) throw new Error("EXACT_JSON_RUNTIME_REQUIRED");
-        return context.source;
-      }
-      return value;
-    },
-  );
+  return JSON.parse(text, (key: string, value: unknown, context?: { source?: string }) => {
+    if (typeof value === "number" && exactNumber.test(key)) {
+      if (!context?.source) throw new Error("EXACT_JSON_RUNTIME_REQUIRED");
+      return context.source;
+    }
+    return value;
+  });
 }
 
 /** 在外部 JSON 输入边界接纳一个对象。 */
@@ -336,9 +329,7 @@ function plainObject(value: unknown): Record<string, unknown> {
 }
 
 function businessValue(value: unknown): string | undefined {
-  return typeof value === "string" || typeof value === "number"
-    ? String(value)
-    : undefined;
+  return typeof value === "string" || typeof value === "number" ? String(value) : undefined;
 }
 
 /** 将内部只读快照投影成会话中可见的业务资料，避免暴露接口和字段实现。 */
@@ -353,9 +344,7 @@ function businessBrief(snapshot: object): string {
     const entry = plainObject(candidate);
     const detail = plainObject(entry.detail);
     const current = plainObject(detail.currentVersion);
-    const row = Object.keys(current).length
-      ? current
-      : plainObject(entry.record);
+    const row = Object.keys(current).length ? current : plainObject(entry.record);
     const field = (...names: string[]) => {
       for (const name of names) {
         const value = businessValue(row[name] ?? entry[name]);
@@ -386,23 +375,24 @@ function businessBrief(snapshot: object): string {
     ...(lines.length ? lines : ["未取得可供说明的计划资料。"]),
   ].join("\n");
 }
-function integer(
-  value: unknown,
-  min: number,
-  max = Number.MAX_SAFE_INTEGER,
-): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isSafeInteger(value) ||
-    value < min ||
-    value > max
-  )
+function integer(value: unknown, min: number, max = Number.MAX_SAFE_INTEGER): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < min || value > max)
     throw new Error("INVALID_QUERY");
   return value;
 }
 /** 销售计划各 kind 允许的查询字段。 */
 const PLAN_QUERY_FIELDS: Record<string, string[]> = {
-  aggregate: ["periodId", "orderType", "planTypeCode", "dealerCode", "areaCode", "provinceCode", "orgCode", "baseName", "status"],
+  aggregate: [
+    "periodId",
+    "orderType",
+    "planTypeCode",
+    "dealerCode",
+    "areaCode",
+    "provinceCode",
+    "orgCode",
+    "baseName",
+    "status",
+  ],
   periods: ["periodMonth", "planType", "pageNo", "pageSize"],
   list: [
     "orderType",
@@ -443,8 +433,7 @@ export function normalizePlanQuery(
   const allowed = PLAN_QUERY_FIELDS;
   if (!Object.hasOwn(allowed, kind)) throw new Error("INVALID_QUERY");
   const ignoredPaging = Object.keys(query).filter(
-    (key) =>
-      (key === "pageNo" || key === "pageSize") && !allowed[kind].includes(key),
+    (key) => (key === "pageNo" || key === "pageSize") && !allowed[kind].includes(key),
   );
   // 只在"必需的那个 id 已经在了"时才忽略多余字段，避免把"拿 planId 当版本号"这种真错误吞掉。
   const benignExtras: Record<string, string[]> = { versionSkus: ["planId"] };
@@ -456,12 +445,8 @@ export function normalizePlanQuery(
   const effective =
     ignoredKeys.length === 0
       ? query
-      : Object.fromEntries(
-          Object.entries(query).filter(([key]) => !ignoredKeys.includes(key)),
-        );
-  const unsupported = Object.keys(effective).filter(
-    (key) => !allowed[kind].includes(key),
-  );
+      : Object.fromEntries(Object.entries(query).filter(([key]) => !ignoredKeys.includes(key)));
+  const unsupported = Object.keys(effective).filter((key) => !allowed[kind].includes(key));
   if (unsupported.length) {
     // 这些提示直接决定模型下一轮能不能纠正，不要只说"参数不支持"。
     const guidance =
@@ -543,22 +528,19 @@ const UPSTREAM_ACTION_FIELDS = [
   "adjustments",
   "notification",
 ] as const;
-function upstreamActionBody(
-  request: Record<string, unknown>,
-): Record<string, unknown> {
+function upstreamActionBody(request: Record<string, unknown>): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   for (const field of UPSTREAM_ACTION_FIELDS)
     if (request[field] !== undefined) body[field] = request[field];
-  if (request.approvalPolicy === 'role-visible-v1') {
-    for (const field of ['approvalRole', 'approvalPolicy', 'expectedSnapshot'])
+  if (request.approvalPolicy === "role-visible-v1") {
+    for (const field of ["approvalRole", "approvalPolicy", "expectedSnapshot"])
       if (request[field] !== undefined) body[field] = request[field];
   }
   return body;
 }
 
 function visibleWorkbenchText(value: unknown): string {
-  if (typeof value !== "string" || value.length > 512)
-    throw new Error("INVALID_WORKBENCH_CONTEXT");
+  if (typeof value !== "string" || value.length > 512) throw new Error("INVALID_WORKBENCH_CONTEXT");
   return value;
 }
 
@@ -598,8 +580,7 @@ function validateVisibleWorkbenchContext(
     if (Object.keys(row).length > 20) throw new Error("INVALID_WORKBENCH_CONTEXT");
     return Object.fromEntries(
       Object.entries(row).map(([key, value]) => {
-        if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(key))
-          throw new Error("INVALID_WORKBENCH_CONTEXT");
+        if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(key)) throw new Error("INVALID_WORKBENCH_CONTEXT");
         if (value !== null && typeof value !== "string" && typeof value !== "number")
           throw new Error("INVALID_WORKBENCH_CONTEXT");
         if (typeof value === "string" && value.length > 512)
@@ -630,8 +611,7 @@ function validateVisibleWorkbenchContext(
   const normalizedFields = expandedFields.map((candidate) => {
     const field = object(candidate);
     keys(field, ["id", "label", "value", "editable"]);
-    if (typeof field.editable !== "boolean")
-      throw new Error("INVALID_WORKBENCH_CONTEXT");
+    if (typeof field.editable !== "boolean") throw new Error("INVALID_WORKBENCH_CONTEXT");
     return {
       id: visibleWorkbenchText(field.id),
       label: visibleWorkbenchText(field.label),
@@ -669,9 +649,7 @@ function validateVisibleWorkbenchContext(
 /** 运算前校验来源小数；任何无效记录都不能被静默跳过。 */
 function decimalSources(
   values: unknown[],
-):
-  | { values: Decimal[] }
-  | { missing: "decimal-source-unavailable" | "decimal-range-exceeded" } {
+): { values: Decimal[] } | { missing: "decimal-source-unavailable" | "decimal-range-exceeded" } {
   if (
     values.some(
       (value) =>
@@ -689,8 +667,7 @@ function decimalSources(
 }
 function difference(row: Row, target: string, current: string) {
   const decimals = decimalSources([row[target], row[current]]);
-  if ("missing" in decimals)
-    return { basis: [target, current], missing: decimals.missing };
+  if ("missing" in decimals) return { basis: [target, current], missing: decimals.missing };
   return {
     basis: [target, current],
     operation: "target-minus-current",
@@ -737,7 +714,16 @@ export class Business {
     }
   }
 
-  private auth?: { token: string; tenantId: string; name: string; id: string; username: string; avatar?: string; permissionCodes?: string[]; roles?: SalesPlanApprovalRole[] };
+  private auth?: {
+    token: string;
+    tenantId: string;
+    name: string;
+    id: string;
+    username: string;
+    avatar?: string;
+    permissionCodes?: string[];
+    roles?: SalesPlanApprovalRole[];
+  };
   private qr?: { id: string; loginId: string; createdAt: number };
   private epoch = new AbortController();
   private pageIdentityGeneration = randomUUID();
@@ -766,7 +752,10 @@ export class Business {
   private requests = new Map<string, AbortController>();
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
-  private readonly pluginDelegations = new Map<string, { authToken: string; delegationToken: string }>();
+  private readonly pluginDelegations = new Map<
+    string,
+    { authToken: string; delegationToken: string }
+  >();
   /** 同一模块连续失败计数：用来在"换着表一直重试"时及时熔断。 */
   private readonly pluginFailures = new Map<string, { count: number; at: number }>();
   /** 受管表列清单的短缓存：同一张表不重复探查。 */
@@ -797,8 +786,7 @@ export class Business {
   selectEnvironment(payload: Record<string, unknown>) {
     keys(payload, ["environment"]);
     const environment = text(payload.environment);
-    if (!Object.hasOwn(this.environments, environment))
-      throw new Error("INVALID_GEA_ENVIRONMENT");
+    if (!Object.hasOwn(this.environments, environment)) throw new Error("INVALID_GEA_ENVIRONMENT");
     this.clearLogin();
     this.environment = environment as "production" | "test";
     this.selectedBase = this.environments[environment];
@@ -812,9 +800,7 @@ export class Business {
     return this.status();
   }
 
-  constructor(
-    readonly config: Deployment,
-  ) {
+  constructor(readonly config: Deployment) {
     validateServiceAccounts(config.serviceAccounts);
     const resolved = resolveEnvironments(config);
     this.selectedBase = resolved.baseUrl;
@@ -825,19 +811,44 @@ export class Business {
 
   /** 仅桌面拥有者可用：凭证通过私有回环通道传递，绝不经浏览器 RPC。 */
   desktopLoginSnapshot(): unknown {
-    return this.auth ? {schema:1,environment:this.environment,base:this.base,auth:{...this.auth}} : null;
+    return this.auth
+      ? { schema: 1, environment: this.environment, base: this.base, auth: { ...this.auth } }
+      : null;
   }
-  persistentLoginSnapshot(): unknown { return this.desktopLoginSnapshot(); }
-  restorePersistentLogin(value: unknown): void { this.restoreDesktopLogin(value); }
+  persistentLoginSnapshot(): unknown {
+    return this.desktopLoginSnapshot();
+  }
+  restorePersistentLogin(value: unknown): void {
+    this.restoreDesktopLogin(value);
+  }
   restoreDesktopLogin(value: unknown): void {
-    const saved=object(value);
-    if(saved.schema!==1||typeof saved.environment!=="string"||this.environments[saved.environment]!==saved.base)throw Error("DESKTOP_LOGIN_SCOPE_MISMATCH");
-    const auth=object(saved.auth);
-    if(typeof auth.token!=="string"||!auth.token||auth.token.length>16384||typeof auth.tenantId!=="string"||!/^\d+$/.test(auth.tenantId))throw Error("DESKTOP_LOGIN_INVALID");
+    const saved = object(value);
+    if (
+      saved.schema !== 1 ||
+      typeof saved.environment !== "string" ||
+      this.environments[saved.environment] !== saved.base
+    )
+      throw Error("DESKTOP_LOGIN_SCOPE_MISMATCH");
+    const auth = object(saved.auth);
+    if (
+      typeof auth.token !== "string" ||
+      !auth.token ||
+      auth.token.length > 16384 ||
+      typeof auth.tenantId !== "string" ||
+      !/^\d+$/.test(auth.tenantId)
+    )
+      throw Error("DESKTOP_LOGIN_INVALID");
     this.clearLogin();
-    this.environment=saved.environment as "production"|"test";
-    this.selectedBase=this.environments[saved.environment];
-    this.auth={token:auth.token,tenantId:auth.tenantId,name:text(auth.name),id:text(auth.id),username:text(auth.username),avatar:avatarUrl(auth.avatar,this.base)};
+    this.environment = saved.environment as "production" | "test";
+    this.selectedBase = this.environments[saved.environment];
+    this.auth = {
+      token: auth.token,
+      tenantId: auth.tenantId,
+      name: text(auth.name),
+      id: text(auth.id),
+      username: text(auth.username),
+      avatar: avatarUrl(auth.avatar, this.base),
+    };
     this.notifyIdentity();
   }
 
@@ -904,8 +915,7 @@ export class Business {
    */
   updateVisibleWorkbenchContext(sessionId: string, payload: Record<string, unknown>): void {
     this.authenticated();
-    if (!/^session-[0-9a-f-]{36}$/.test(sessionId))
-      throw new Error("INVALID_WORKBENCH_SESSION");
+    if (!/^session-[0-9a-f-]{36}$/.test(sessionId)) throw new Error("INVALID_WORKBENCH_SESSION");
     const context = validateVisibleWorkbenchContext(payload);
     const previous = this.visibleWorkbenchContexts.get(sessionId);
     if (previous && context.sequence < previous.sequence) return;
@@ -917,11 +927,9 @@ export class Business {
   }
 
   clearVisibleWorkbenchContext(sessionId: string): void {
-    if (!/^session-[0-9a-f-]{36}$/.test(sessionId))
-      throw new Error("INVALID_WORKBENCH_SESSION");
+    if (!/^session-[0-9a-f-]{36}$/.test(sessionId)) throw new Error("INVALID_WORKBENCH_SESSION");
     this.visibleWorkbenchContexts.delete(sessionId);
     // 离开工作台后，之前发起但还没被执行的前端工具调用一律作废。
-
   }
 
   /** 当前会话的页面状态与序列号；页面桥用它判断"改动后的状态是否已报回"。 */
@@ -938,10 +946,7 @@ export class Business {
    * 页面的每一次活动（打开、轮询、调用）都会刷新时间戳：这样切页之后身份会自然跟到
    * 新页面，不会被上一个页面残留的绑定一直占着。
    */
-  touchPageIdentity(
-    sessionId: string,
-    identity: Omit<PageIdentity, "at">,
-  ): void {
+  touchPageIdentity(sessionId: string, identity: Omit<PageIdentity, "at">): void {
     if (!sessionId) return;
     this.pageIdentities.set(sessionId, { ...identity, at: Date.now() });
   }
@@ -960,12 +965,8 @@ export class Business {
    * 换菜单（或从主对话切进来）等于换上下文：上一页留下的可见行快照、页面身份、
    * 以及"同一屏不重复发送"的记忆一律作废，由新页面重新上报，避免跨菜单串证据。
    */
-  setSurface(
-    sessionId: string,
-    input: { menu?: unknown; title?: unknown },
-  ): WorkbenchSurface {
-    if (!/^session-[0-9a-f-]{36}$/.test(sessionId))
-      throw new Error("INVALID_WORKBENCH_SESSION");
+  setSurface(sessionId: string, input: { menu?: unknown; title?: unknown }): WorkbenchSurface {
+    if (!/^session-[0-9a-f-]{36}$/.test(sessionId)) throw new Error("INVALID_WORKBENCH_SESSION");
     const next = normalizeSurface(input);
     const previous = this.surfaces.get(sessionId);
     this.surfaces.set(sessionId, next);
@@ -981,7 +982,6 @@ export class Business {
       this.visibleWorkbenchContexts.delete(sessionId);
       this.pageIdentities.delete(sessionId);
       this.lastContextReplies.delete(sessionId);
-
     }
     return next;
   }
@@ -1060,13 +1060,10 @@ export class Business {
         menuTitle: presence.menuTitle,
         availability: "in-workbench-no-snapshot",
         code: "PAGE_HAS_NO_SNAPSHOT",
-        reason:
-          `这个对话在业务菜单「${presence.menuTitle}」里，但这一屏还没有上报可见行快照：先用 gea_page 读这一屏，或直接按范围用只读数据工具查询。`,
+        reason: `这个对话在业务菜单「${presence.menuTitle}」里，但这一屏还没有上报可见行快照：先用 gea_page 读这一屏，或直接按范围用只读数据工具查询。`,
       });
     }
-    const compressed = compressForModel(value.context, {
-      ...(focus === undefined ? {} : { focus }),
-    });
+    const compressed = compressForModel(value.context, focus === undefined ? {} : { focus });
     let context: unknown = value.context;
     try {
       context = JSON.parse(compressed.json);
@@ -1130,11 +1127,20 @@ export class Business {
     if (pending) return pending;
     const refresh = (async () => {
       try {
-        const identity = object(await this.get("/sys/user/getUserInfo", auth, AbortSignal.any([signal, this.epoch.signal])));
+        const identity = object(
+          await this.get(
+            "/sys/user/getUserInfo",
+            auth,
+            AbortSignal.any([signal, this.epoch.signal]),
+          ),
+        );
         const user = object(identity.userInfo);
         if (this.auth !== auth || String(user.id) !== auth.id) return;
         const avatar = avatarUrl(user.avatar, this.base);
-        if (avatar) { auth.avatar = avatar; this.notifyIdentity(); }
+        if (avatar) {
+          auth.avatar = avatar;
+          this.notifyIdentity();
+        }
       } catch {
         this.avatarRefreshes.delete(auth);
         // 资料或头像读取失败不能阻塞账户控件。
@@ -1154,10 +1160,18 @@ export class Business {
     if (pending) return pending;
     const refresh = (async () => {
       try {
-        const result = object(await this.get('/sys/permission/getPermCode', auth,
-          AbortSignal.any([signal, this.epoch.signal])));
-        if (!Array.isArray(result.codeList) || result.codeList.some(code => typeof code !== 'string'))
-          throw new Error('GEA_INVALID_PERMISSION_CODES');
+        const result = object(
+          await this.get(
+            "/sys/permission/getPermCode",
+            auth,
+            AbortSignal.any([signal, this.epoch.signal]),
+          ),
+        );
+        if (
+          !Array.isArray(result.codeList) ||
+          result.codeList.some((code) => typeof code !== "string")
+        )
+          throw new Error("GEA_INVALID_PERMISSION_CODES");
         if (this.auth === auth) auth.permissionCodes = [...new Set(result.codeList as string[])];
       } catch (error) {
         this.permissionRefreshes.delete(auth);
@@ -1170,7 +1184,12 @@ export class Business {
   }
 
   private readonly roleRefreshes = new WeakMap<object, Promise<void>>();
-  private gatewaySession?: { authToken: string; conversationId: string; sessionId: string; delegationToken: string };
+  private gatewaySession?: {
+    authToken: string;
+    conversationId: string;
+    sessionId: string;
+    delegationToken: string;
+  };
 
   /**
    * 审批身份只认账号角色：经网关会话解析当前用户，拿角色编码/名称映射到审批节点。
@@ -1178,7 +1197,10 @@ export class Business {
    * 默认沿用登录时解析的结果（避免每次查状态都往网关跑）；`force` 由界面刷新触发，
    * 让管理员刚改完角色的人不用重新登录。
    */
-  async refreshApprovalRoles(signal: AbortSignal, options: { force?: boolean } = {}): Promise<void> {
+  async refreshApprovalRoles(
+    signal: AbortSignal,
+    options: { force?: boolean } = {},
+  ): Promise<void> {
     const auth = this.auth;
     if (!auth || (!options.force && auth.roles !== undefined)) return;
     const pending = this.roleRefreshes.get(auth);
@@ -1187,13 +1209,24 @@ export class Business {
       try {
         const combined = AbortSignal.any([signal, this.epoch.signal]);
         const agentCode = this.config.analysisAgentCode;
-        let session = this.gatewaySession && this.gatewaySession.authToken === auth.token
-          ? this.gatewaySession : undefined;
+        let session =
+          this.gatewaySession && this.gatewaySession.authToken === auth.token
+            ? this.gatewaySession
+            : undefined;
         if (!session) {
-          const requestId = randomUUID(), conversationId = randomUUID();
+          const requestId = randomUUID(),
+            conversationId = randomUUID();
           const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
-            method: "POST", redirect: "error", signal: combined,
-            headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": requestId },
+            method: "POST",
+            redirect: "error",
+            signal: combined,
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+              "X-Access-Token": auth.token,
+              "X-Tenant-Id": auth.tenantId,
+              "X-Request-Id": requestId,
+            },
             body: JSON.stringify({ agentCode, channel: "AI_PORTAL", requestId, conversationId }),
           });
           if (!response.ok) throw await geaResponseError(response, [auth.token]);
@@ -1202,21 +1235,31 @@ export class Business {
           const context = object(result.gatewayContext);
           const sessionId = text(context.sessionId);
           const delegationToken = text(result.delegationToken);
-          if (body.success !== true || object(result.accessDecision).allowed !== true || !sessionId || !delegationToken)
+          if (
+            body.success !== true ||
+            object(result.accessDecision).allowed !== true ||
+            !sessionId ||
+            !delegationToken
+          )
             throw new Error("GEA_APPROVAL_SESSION_REJECTED");
           session = { authToken: auth.token, conversationId, sessionId, delegationToken };
           this.gatewaySession = session;
         }
-        const resolved = object(await this.postJson("/ai/gateway/agent/session/current-user/resolve", auth, combined, {
-          agentCode,
-          sessionId: session.sessionId,
-          conversationId: session.conversationId,
-          delegationToken: session.delegationToken,
-        }));
+        const resolved = object(
+          await this.postJson("/ai/gateway/agent/session/current-user/resolve", auth, combined, {
+            agentCode,
+            sessionId: session.sessionId,
+            conversationId: session.conversationId,
+            delegationToken: session.delegationToken,
+          }),
+        );
         if (resolved.success !== true) throw new Error("GEA_APPROVAL_ROLES_UNAVAILABLE");
         const roles = Array.isArray(resolved.roles) ? resolved.roles : [];
         const mapped: SalesPlanApprovalRole[] = roles
-          .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry))
+          .filter(
+            (entry): entry is Record<string, unknown> =>
+              Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
+          )
           .map((entry) => ({ code: text(entry.code), name: text(entry.name) }));
         if (this.auth === auth) auth.roles = mapped;
       } catch (error) {
@@ -1228,9 +1271,11 @@ export class Business {
     this.roleRefreshes.set(auth, refresh);
     // 这张表只用來合并"正在飞"的请求；落地后必须清掉，否则强制刷新会直接拿到
     // 登录时那条已经完成的结果，等于没重新解析。
-    void refresh.catch(() => {}).finally(() => {
-      if (this.roleRefreshes.get(auth) === refresh) this.roleRefreshes.delete(auth);
-    });
+    void refresh
+      .catch(() => {})
+      .finally(() => {
+        if (this.roleRefreshes.get(auth) === refresh) this.roleRefreshes.delete(auth);
+      });
     return refresh;
   }
 
@@ -1242,20 +1287,24 @@ export class Business {
       environments: Object.keys(this.environments),
       authenticated: Boolean(this.auth),
       pageScope: this.pageSessionScope() ?? null,
-      resubmitConnected: serviceAccountReady(this.config.serviceAccounts?.[this.environment], this.auth),
-      loginState: this.auth
-        ? "authenticated"
-        : this.loginExpired
-          ? "expired"
-          : "signed-out",
+      resubmitConnected: serviceAccountReady(
+        this.config.serviceAccounts?.[this.environment],
+        this.auth,
+      ),
+      loginState: this.auth ? "authenticated" : this.loginExpired ? "expired" : "signed-out",
       permissionCodes: this.auth?.permissionCodes,
       roles: this.auth?.roles,
       user: this.auth
-        ? { name: this.auth.name, tenantId: this.auth.tenantId, id: this.auth.id, username: this.auth.username, avatar: this.auth.avatar }
+        ? {
+            name: this.auth.name,
+            tenantId: this.auth.tenantId,
+            id: this.auth.id,
+            username: this.auth.username,
+            avatar: this.auth.avatar,
+          }
         : null,
       source: this.base,
-      provider:
-        this.config.analysisMode === "model" ? "gea-analysis" : "gea-proof",
+      provider: this.config.analysisMode === "model" ? "gea-analysis" : "gea-proof",
       model:
         models?.length && !models.includes(this.config.analysisModel)
           ? models[0]
@@ -1276,9 +1325,7 @@ export class Business {
     if (identity)
       Object.assign(headers, {
         "X-Access-Token": identity.token,
-        ...(includeTenant && identity.tenantId
-          ? { "X-Tenant-Id": identity.tenantId }
-          : {}),
+        ...(includeTenant && identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
         "X-Request-Id": randomUUID(),
       });
     let response: Response;
@@ -1298,8 +1345,7 @@ export class Business {
     if (signal.aborted) throw new Error("STALE_SELECTION");
     if (!response.ok) {
       const error = await geaResponseError(response, [identity?.token]);
-      if (response.status === 401 && this.auth?.token === identity?.token)
-        this.clearLogin(true);
+      if (response.status === 401 && this.auth?.token === identity?.token) this.clearLogin(true);
       throw error;
     }
     let data: Record<string, unknown>;
@@ -1312,10 +1358,7 @@ export class Business {
     }
     if (signal.aborted) throw new Error("STALE_SELECTION");
     if (data.success !== true) {
-      if (
-        typeof data.errorCode === "string" &&
-        /^NOTIFICATION_[A-Z_]+$/.test(data.errorCode)
-      ) {
+      if (typeof data.errorCode === "string" && /^NOTIFICATION_[A-Z_]+$/.test(data.errorCode)) {
         if (
           data.errorCode === "NOTIFICATION_UNAUTHENTICATED" &&
           this.auth?.token === identity?.token
@@ -1340,42 +1383,62 @@ export class Business {
    * 不再要求审批能力——否则会出现“界面能改、一存就失败”。
    */
   async salesPlanDraft(payload: Record<string, unknown>, caller: AbortSignal) {
-    keys(payload, ['planId', 'versionId', 'approvalRole', 'draft']);
+    keys(payload, ["planId", "versionId", "approvalRole", "draft"]);
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
-    const planId = text(payload.planId), versionId = text(payload.versionId);
-    const approvalRole = payload.approvalRole === undefined ? undefined : text(payload.approvalRole);
-    if (approvalRole !== undefined && !['region', 'province', 'area', 'category'].includes(approvalRole))
-      throw new Error('INVALID_PAYLOAD');
+    const planId = text(payload.planId),
+      versionId = text(payload.versionId);
+    const approvalRole =
+      payload.approvalRole === undefined ? undefined : text(payload.approvalRole);
+    if (
+      approvalRole !== undefined &&
+      !["region", "province", "area", "category"].includes(approvalRole)
+    )
+      throw new Error("INVALID_PAYLOAD");
     const draftRole = approvalRole as ApprovalStageId | undefined;
-    const owner = createHash('sha256').update(JSON.stringify([this.base, auth.tenantId, auth.id, planId, versionId])).digest('hex');
-    const dir = resolve(this.config.runtimeDir, 'approval-drafts');
-    const file = resolve(dir, owner + '.json');
-    const detail = await this.workbenchQuery({kind: 'detail', query: {planId}}, signal) as GeaSalesPlanDetail;
-    const row = {planId, versionId, status: detail.currentVersion.status, planTypeCode: detail.currentVersion.planTypeCode};
+    const owner = createHash("sha256")
+      .update(JSON.stringify([this.base, auth.tenantId, auth.id, planId, versionId]))
+      .digest("hex");
+    const dir = resolve(this.config.runtimeDir, "approval-drafts");
+    const file = resolve(dir, owner + ".json");
+    const detail = (await this.workbenchQuery(
+      { kind: "detail", query: { planId } },
+      signal,
+    )) as GeaSalesPlanDetail;
+    const row = {
+      planId,
+      versionId,
+      status: detail.currentVersion.status,
+      planTypeCode: detail.currentVersion.planTypeCode,
+    };
     const sourceSnapshot = salesPlanDraftSnapshot(row, detail);
-    if (!sourceSnapshot) throw new Error('STALE_DRAFT_VERSION');
+    if (!sourceSnapshot) throw new Error("STALE_DRAFT_VERSION");
     if (payload.draft !== undefined) {
       const draft = payload.draft as SalesPlanLocalDraft;
-      if (!salesPlanDraftMatches(draft, row, detail, draftRole)) throw new Error('STALE_DRAFT');
+      if (!salesPlanDraftMatches(draft, row, detail, draftRole)) throw new Error("STALE_DRAFT");
       // 固定记录本次校验用的节点口径，读回时才能用同一套基线还原这些调整量。
-      const value = {draft: draftRole ? {...draft, role: draftRole} : draft, savedAt: new Date().toISOString(), storage: 'host'};
+      const value = {
+        draft: draftRole ? { ...draft, role: draftRole } : draft,
+        savedAt: new Date().toISOString(),
+        storage: "host",
+      };
       signal.throwIfAborted();
-      await mkdir(dir, {recursive: true, mode: 0o700});
-      const temp = resolve(dir, owner + '.' + randomUUID() + '.tmp');
-      await writeFile(temp, JSON.stringify(value), {mode: 0o600});
+      await mkdir(dir, { recursive: true, mode: 0o700 });
+      const temp = resolve(dir, owner + "." + randomUUID() + ".tmp");
+      await writeFile(temp, JSON.stringify(value), { mode: 0o600 });
       signal.throwIfAborted();
       await rename(temp, file);
       return value;
     }
     try {
-      const stored = JSON.parse(await readFile(file, 'utf8'));
+      const stored = JSON.parse(await readFile(file, "utf8"));
       signal.throwIfAborted();
-      if (!salesPlanDraftMatches(stored.draft, row, detail)) return {draft: null, stale: true, sourceSnapshot};
-      return {...stored, sourceSnapshot};
+      if (!salesPlanDraftMatches(stored.draft, row, detail))
+        return { draft: null, stale: true, sourceSnapshot };
+      return { ...stored, sourceSnapshot };
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      return {draft: null, sourceSnapshot};
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return { draft: null, sourceSnapshot };
     }
   }
 
@@ -1383,160 +1446,355 @@ export class Business {
   async workflowConfig(payload: Record<string, unknown>, caller: AbortSignal) {
     keys(payload, []);
     const auth = this.authenticated();
-    const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(this.config.requestTimeoutMs)]);
+    const signal = AbortSignal.any([
+      caller,
+      this.epoch.signal,
+      AbortSignal.timeout(this.config.requestTimeoutMs),
+    ]);
     return readSalesPlanWorkflowConfig(this.base, auth.token, this.apiLog.fetch, signal);
   }
 
   /** 在本次登录生命周期内，将一个幂等键绑定到一份已校验请求。 */
-  private resubmissions = new Map<string, { fingerprint: string; body?: string; flight?: Promise<unknown>; receipt?: unknown }>();
+  private resubmissions = new Map<
+    string,
+    { fingerprint: string; body?: string; flight?: Promise<unknown>; receipt?: unknown }
+  >();
 
   /** 重提前重新读取 GEA 当前版本和 SKU；浏览器只允许改变数量，身份、价格与路由由服务端来源决定。 */
   async salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
-    keys(payload, ['source', 'request', 'requestId', 'idempotencyKey']);
+    keys(payload, ["source", "request", "requestId", "idempotencyKey"]);
     const auth = this.authenticated();
     const config = this.config.serviceAccounts?.[this.environment];
-    if (!config || !serviceAccountReady(config, auth)) throw new GeaResponseError(403, { message: '当前环境尚未配置当前用户可用的重提服务账号' });
-    const source = object(payload.source); keys(source, ['planId', 'versionId']);
-    const planId = text(source.planId), versionId = text(source.versionId);
+    if (!config || !serviceAccountReady(config, auth))
+      throw new GeaResponseError(403, { message: "当前环境尚未配置当前用户可用的重提服务账号" });
+    const source = object(payload.source);
+    keys(source, ["planId", "versionId"]);
+    const planId = text(source.planId),
+      versionId = text(source.versionId);
     const request = object(payload.request);
-    const requestId = text(payload.requestId), idempotencyKey = text(payload.idempotencyKey);
-    if (!/^[A-Za-z0-9:_-]{1,64}$/.test(requestId) || !/^[A-Za-z0-9:_-]{1,128}$/.test(idempotencyKey)) throw new Error('INVALID_PAYLOAD');
+    const requestId = text(payload.requestId),
+      idempotencyKey = text(payload.idempotencyKey);
+    if (
+      !/^[A-Za-z0-9:_-]{1,64}$/.test(requestId) ||
+      !/^[A-Za-z0-9:_-]{1,128}$/.test(idempotencyKey)
+    )
+      throw new Error("INVALID_PAYLOAD");
     const fingerprint = JSON.stringify(payload);
     let entry = this.resubmissions.get(idempotencyKey);
-    if (entry && entry.fingerprint !== fingerprint) throw new GeaResponseError(409, { message: '幂等键已绑定其他重提请求' });
+    if (entry && entry.fingerprint !== fingerprint)
+      throw new GeaResponseError(409, { message: "幂等键已绑定其他重提请求" });
     if (entry?.receipt) return entry.receipt;
     if (entry?.flight) return entry.flight;
-    if (!entry) { entry = { fingerprint }; this.resubmissions.set(idempotencyKey, entry); }
+    if (!entry) {
+      entry = { fingerprint };
+      this.resubmissions.set(idempotencyKey, entry);
+    }
     const attempt = entry;
-    const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(this.config.requestTimeoutMs)]);
+    const signal = AbortSignal.any([
+      caller,
+      this.epoch.signal,
+      AbortSignal.timeout(this.config.requestTimeoutMs),
+    ]);
     const run = async () => {
       if (!attempt.body) {
-        const detail = await this.workbenchQuery({ kind: 'detail', query: { planId } }, signal) as GeaSalesPlanDetail;
+        const detail = (await this.workbenchQuery(
+          { kind: "detail", query: { planId } },
+          signal,
+        )) as GeaSalesPlanDetail;
         const version = detail.currentVersion;
-        if (version.id !== versionId || !version.effective || ![6, 7, 8, 9].includes(version.status))
-          throw new GeaResponseError(409, { message: '计划已变化，请刷新后核对重提版本' });
-        const periods = object(await this.workbenchQuery({ kind: 'periods', query: { periodMonth: request.periodMonth, pageSize: this.config.periodPageSize } }, signal));
-        const period = (periods.records as GeaSalesPlanPeriod[]).find(row => row.periodId === version.periodId && row.planTypeCode === version.planTypeCode);
-        if (!period) throw new GeaResponseError(409, { message: '未找到当前计划对应的周期，请刷新后核对' });
-        const skus = await this.workbenchQuery({ kind: 'versionSkus', query: { versionId } }, signal) as GeaSalesPlanSku[];
-        if (!Array.isArray(request.items) || request.items.length !== skus.length) throw new Error('INVALID_PAYLOAD');
+        if (
+          version.id !== versionId ||
+          !version.effective ||
+          ![6, 7, 8, 9].includes(version.status)
+        )
+          throw new GeaResponseError(409, { message: "计划已变化，请刷新后核对重提版本" });
+        const periods = object(
+          await this.workbenchQuery(
+            {
+              kind: "periods",
+              query: { periodMonth: request.periodMonth, pageSize: this.config.periodPageSize },
+            },
+            signal,
+          ),
+        );
+        const period = (periods.records as GeaSalesPlanPeriod[]).find(
+          (row) => row.periodId === version.periodId && row.planTypeCode === version.planTypeCode,
+        );
+        if (!period)
+          throw new GeaResponseError(409, { message: "未找到当前计划对应的周期，请刷新后核对" });
+        const skus = (await this.workbenchQuery(
+          { kind: "versionSkus", query: { versionId } },
+          signal,
+        )) as GeaSalesPlanSku[];
+        if (!Array.isArray(request.items) || request.items.length !== skus.length)
+          throw new Error("INVALID_PAYLOAD");
         const items = request.items.map(object);
-        if (new Set(items.map(row => row.skuCode)).size !== skus.length) throw new Error('INVALID_PAYLOAD');
-        const edited = skus.map(sku => {
-          const item = items.find(row => row.skuCode === sku.skuCode);
-          if (!item || typeof item.qty !== 'string') throw new Error('INVALID_PAYLOAD');
-          if(version.orderType === 'Z') {
-            if(!correctionDecimal(item.qty).eq(correctionDecimal(sku.qty)) || typeof item.adjAddQty !== 'string' || typeof item.adjCutQty !== 'string') throw new Error('INVALID_PAYLOAD');
-            return {...sku,adjAddQty:item.adjAddQty,adjCutQty:item.adjCutQty};
+        if (new Set(items.map((row) => row.skuCode)).size !== skus.length)
+          throw new Error("INVALID_PAYLOAD");
+        const edited = skus.map((sku) => {
+          const item = items.find((row) => row.skuCode === sku.skuCode);
+          if (!item || typeof item.qty !== "string") throw new Error("INVALID_PAYLOAD");
+          if (version.orderType === "Z") {
+            if (
+              !correctionDecimal(item.qty).eq(correctionDecimal(sku.qty)) ||
+              typeof item.adjAddQty !== "string" ||
+              typeof item.adjCutQty !== "string"
+            )
+              throw new Error("INVALID_PAYLOAD");
+            return { ...sku, adjAddQty: item.adjAddQty, adjCutQty: item.adjCutQty };
           }
           return { ...sku, qty: item.qty };
         });
         const rows = await this.workflowConfig({}, signal);
-        const prepared = prepareSalesPlanResubmit({ planId, versionId, detail, period, skus: edited, currentUser: auth }, rows);
+        const prepared = prepareSalesPlanResubmit(
+          { planId, versionId, detail, period, skus: edited, currentUser: auth },
+          rows,
+        );
         // 浏览器只能改变数量；身份、价格和路由必须来自 GEA。
-        if (!isDeepStrictEqual(JSON.parse(JSON.stringify(prepared.request)), request)) throw new GeaResponseError(409, { message: '提交数据与当前 GEA 来源不一致，请重新核对' });
-        if (this.auth !== auth) throw new Error('STALE_LOGIN');
+        if (!isDeepStrictEqual(JSON.parse(JSON.stringify(prepared.request)), request))
+          throw new GeaResponseError(409, { message: "提交数据与当前 GEA 来源不一致，请重新核对" });
+        if (this.auth !== auth) throw new Error("STALE_LOGIN");
         signal.throwIfAborted();
         attempt.body = JSON.stringify(prepared.request);
       }
-      const receipt = await submitWithServiceAccount(config, this.base, attempt.body, requestId, idempotencyKey, signal, this.apiLog.fetch);
+      const receipt = await submitWithServiceAccount(
+        config,
+        this.base,
+        attempt.body,
+        requestId,
+        idempotencyKey,
+        signal,
+        this.apiLog.fetch,
+      );
       attempt.receipt = receipt;
       return receipt;
     };
-    attempt.flight = run().finally(() => { attempt.flight = undefined; });
+    attempt.flight = run().finally(() => {
+      attempt.flight = undefined;
+    });
     return attempt.flight;
   }
 
-  private correctionRequests = new Map<string, { fingerprint:string; validated:boolean; flight?:Promise<unknown>; receipt?:unknown }>();
+  private correctionRequests = new Map<
+    string,
+    { fingerprint: string; validated: boolean; flight?: Promise<unknown>; receipt?: unknown }
+  >();
 
   /** 审批动作按幂等键缓存；即使首次响应丢失，重试也只能重放同一已授权意图。 */
   async salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     this.authenticated();
-    if(object(payload.request).adjustmentMode == null && object(payload.request).approvalRole == null)return this.executeSalesPlanAction(payload,caller);
-    const key=text(payload.idempotencyKey), fingerprint=JSON.stringify(payload);
-    let entry=this.correctionRequests.get(key);
-    if(entry && entry.fingerprint !== fingerprint)throw new GeaResponseError(409,{message:'幂等键已绑定另一审批请求'});
-    if(entry?.receipt)return entry.receipt;
-    if(entry?.flight)return entry.flight;
-    if(!entry){entry={fingerprint,validated:false};this.correctionRequests.set(key,entry);}
-    const intent=entry;
-    intent.flight=this.executeSalesPlanAction(payload,caller,intent.validated,()=>{intent.validated=true;})
-      .then(receipt=>{intent.receipt=receipt;return receipt;}).finally(()=>{intent.flight=undefined;});
+    if (
+      object(payload.request).adjustmentMode == null &&
+      object(payload.request).approvalRole == null
+    )
+      return this.executeSalesPlanAction(payload, caller);
+    const key = text(payload.idempotencyKey),
+      fingerprint = JSON.stringify(payload);
+    let entry = this.correctionRequests.get(key);
+    if (entry && entry.fingerprint !== fingerprint)
+      throw new GeaResponseError(409, { message: "幂等键已绑定另一审批请求" });
+    if (entry?.receipt) return entry.receipt;
+    if (entry?.flight) return entry.flight;
+    if (!entry) {
+      entry = { fingerprint, validated: false };
+      this.correctionRequests.set(key, entry);
+    }
+    const intent = entry;
+    intent.flight = this.executeSalesPlanAction(payload, caller, intent.validated, () => {
+      intent.validated = true;
+    })
+      .then((receipt) => {
+        intent.receipt = receipt;
+        return receipt;
+      })
+      .finally(() => {
+        intent.flight = undefined;
+      });
     return intent.flight;
   }
 
   /** 执行一次已完成来源、角色和快照校验的 GEA 动作；DMS 写回有意不在此方法内。 */
-  private async executeSalesPlanAction(payload: Record<string, unknown>, caller: AbortSignal, validatedCorrection=false, onValidated=()=>{}): Promise<unknown> {
+  private async executeSalesPlanAction(
+    payload: Record<string, unknown>,
+    caller: AbortSignal,
+    validatedCorrection = false,
+    onValidated = () => {},
+  ): Promise<unknown> {
     keys(payload, ["planId", "versionId", "request", "idempotencyKey", "requestId"]);
     const versionId = text(payload.versionId);
     const request = object(payload.request);
-    keys(request, ["expectedSnapshot", "action", "expectedStatus", "remark", "adjustments", "adjustmentMode", "approvalRole", "approvalPolicy"]);
-    if (!["SAVE", "APPROVE", "REJECT"].includes(text(request.action))) throw new Error("INVALID_ACTION");
+    keys(request, [
+      "expectedSnapshot",
+      "action",
+      "expectedStatus",
+      "remark",
+      "adjustments",
+      "adjustmentMode",
+      "approvalRole",
+      "approvalPolicy",
+    ]);
+    if (!["SAVE", "APPROVE", "REJECT"].includes(text(request.action)))
+      throw new Error("INVALID_ACTION");
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
-    if (![1,2,3,4,6,7,8,9].includes(request.expectedStatus as number))
-      throw new GeaResponseError(400, {message:'未提交、已完成或无效状态不允许写入'});
-    if (request.approvalRole == null && request.adjustmentMode == null && request.action !== 'SAVE')
-      throw new GeaResponseError(400,{message:'请明确本次审批角色'});
-    if (request.approvalPolicy != null && (request.approvalPolicy !== 'role-visible-v1' || !request.approvalRole)) throw new Error('INVALID_PAYLOAD');
+    if (![1, 2, 3, 4, 6, 7, 8, 9].includes(request.expectedStatus as number))
+      throw new GeaResponseError(400, { message: "未提交、已完成或无效状态不允许写入" });
+    if (request.approvalRole == null && request.adjustmentMode == null && request.action !== "SAVE")
+      throw new GeaResponseError(400, { message: "请明确本次审批角色" });
+    if (
+      request.approvalPolicy != null &&
+      (request.approvalPolicy !== "role-visible-v1" || !request.approvalRole)
+    )
+      throw new Error("INVALID_PAYLOAD");
     if (request.approvalRole != null && !validatedCorrection) {
-      if (!['region','province','area','category'].includes(text(request.approvalRole))) throw new Error('INVALID_PAYLOAD');
+      if (!["region", "province", "area", "category"].includes(text(request.approvalRole)))
+        throw new Error("INVALID_PAYLOAD");
       const planId = text(payload.planId);
-      const detail = await this.workbenchQuery({kind:'detail',query:{planId}},signal) as GeaSalesPlanDetail;
+      const detail = (await this.workbenchQuery(
+        { kind: "detail", query: { planId } },
+        signal,
+      )) as GeaSalesPlanDetail;
       await this.refreshPermissions(signal);
-      const row = {planId,versionId,status:request.expectedStatus as number,planTypeCode:detail.currentVersion.planTypeCode};
-      const role = request.approvalRole as NonNullable<GeaSalesPlanActionRequest['approvalRole']>;
+      const row = {
+        planId,
+        versionId,
+        status: request.expectedStatus as number,
+        planTypeCode: detail.currentVersion.planTypeCode,
+      };
+      const role = request.approvalRole as NonNullable<GeaSalesPlanActionRequest["approvalRole"]>;
       const workflowRows = await this.workflowConfig({}, signal);
       // 版本或状态已经变化属于并发冲突：提示刷新，而不是笼统地报成无权限并禁用本轮操作。
-      if (salesPlanVersionEvidenceStale(detail, {planId, versionId, status: request.expectedStatus as number}))
-        throw new GeaResponseError(409,{message:'该计划版本或审批状态已变化，请刷新权威队列后重试'});
+      if (
+        salesPlanVersionEvidenceStale(detail, {
+          planId,
+          versionId,
+          status: request.expectedStatus as number,
+        })
+      )
+        throw new GeaResponseError(409, {
+          message: "该计划版本或审批状态已变化，请刷新权威队列后重试",
+        });
       // 退回版本按本次账号角色重审；退回目标不授予或撤销审批权限。
-      const access = salesPlanAccessForRow(row, detail, salesPlanStagesForRoles(auth.roles), role, workflowRows);
-      if (!access?.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']))
-        throw new GeaResponseError(403,{message:'当前角色不具备该版本的操作权限'});
+      const access = salesPlanAccessForRow(
+        row,
+        detail,
+        salesPlanStagesForRoles(auth.roles),
+        role,
+        workflowRows,
+      );
+      if (!access?.allowedActions.includes(request.action as GeaSalesPlanActionRequest["action"]))
+        throw new GeaResponseError(403, { message: "当前角色不具备该版本的操作权限" });
       if (request.expectedSnapshot !== access.snapshotHash)
-        throw new GeaResponseError(409,{message:'审批依据已变化，请刷新后重试'});
-      if (request.approvalPolicy === 'role-visible-v1' ? !access.roleContractSupported :
-          access.roleContractSupported || salesPlanWorkflow(row.planTypeCode, workflowRows).actor(row.status) !== role)
-        throw new GeaResponseError(409,{message:'GEA 尚未支持本次角色审批契约，请升级服务端后重试'});
-      validateSalesPlanActionInput({planId,versionId,planTypeCode:row.planTypeCode,request:request as GeaSalesPlanActionRequest}, workflowRows);
-      if (this.auth !== auth) throw new Error('STALE_LOGIN');
+        throw new GeaResponseError(409, { message: "审批依据已变化，请刷新后重试" });
+      if (
+        request.approvalPolicy === "role-visible-v1"
+          ? !access.roleContractSupported
+          : access.roleContractSupported ||
+            salesPlanWorkflow(row.planTypeCode, workflowRows).actor(row.status) !== role
+      )
+        throw new GeaResponseError(409, {
+          message: "GEA 尚未支持本次角色审批契约，请升级服务端后重试",
+        });
+      validateSalesPlanActionInput(
+        {
+          planId,
+          versionId,
+          planTypeCode: row.planTypeCode,
+          request: request as GeaSalesPlanActionRequest,
+        },
+        workflowRows,
+      );
+      if (this.auth !== auth) throw new Error("STALE_LOGIN");
     }
     if (request.adjustmentMode != null && !validatedCorrection) {
-      if (request.adjustmentMode !== 'ABSOLUTE_NET') throw new Error('INVALID_PAYLOAD');
-      const planId=text(payload.planId);
-      const detail=await this.workbenchQuery({kind:'detail',query:{planId}},signal) as GeaSalesPlanDetail;
-      const workflowRows=await this.workflowConfig({},signal);
-      await this.refreshPermissions(signal);
-      if (salesPlanVersionEvidenceStale(detail, {planId, versionId, status: request.expectedStatus as number}))
-        throw new GeaResponseError(409,{message:'该计划版本或审批状态已变化，请刷新权威队列后重试'});
-      const access=correctionAccess(detail,workflowRows,request.approvalRole as GeaSalesPlanActionRequest['approvalRole'],salesPlanStagesForRoles(auth.roles));
-      if (!access || !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest['action']) || !detail.currentVersion.submitter || detail.currentVersion.submitter === auth.id)
-        throw new GeaResponseError(403,{message:'纠偏契约、月初终审或角色权限未获确认'});
-      if (detail.currentVersion.id !== versionId || access.status !== request.expectedStatus || access.snapshotHash !== request.expectedSnapshot)
-        throw new GeaResponseError(409,{message:'纠偏版本或快照已变化，请刷新'});
-      const typed=request as GeaSalesPlanActionRequest;
-      validateSalesPlanActionInput({planId,versionId,planTypeCode:detail.currentVersion.planTypeCode,request:typed},workflowRows);
-      if (typed.action !== 'REJECT') {
-        const edits=Object.fromEntries((typed.adjustments??[]).map(x=>[x.skuCode,x.adjustQty]));
-        if (Object.keys(edits).some(code=>!detail.skus.some(sku=>sku.skuCode===code))) throw new Error('INVALID_PAYLOAD');
-        const expected=correctionAdjustments(detail,edits,workflowRows,request.approvalRole as GeaSalesPlanActionRequest['approvalRole']);
-        if (!isDeepStrictEqual(expected,typed.adjustments)) throw new GeaResponseError(400,{message:'纠偏必须提交完整的本节点绝对调整决定'});
-      }
-      if (this.auth !== auth) throw new Error('STALE_LOGIN');
-      signal.throwIfAborted();
-    } else if (request.adjustmentMode == null && request.action === "SAVE" && request.approvalRole == null) {
-      if (request.expectedStatus === 5) throw new GeaResponseError(400, { message: "状态 5 不允许保存调整" });
+      if (request.adjustmentMode !== "ABSOLUTE_NET") throw new Error("INVALID_PAYLOAD");
       const planId = text(payload.planId);
-      const detail = object(await this.workbenchQuery({ kind: "detail", query: { planId } }, signal));
+      const detail = (await this.workbenchQuery(
+        { kind: "detail", query: { planId } },
+        signal,
+      )) as GeaSalesPlanDetail;
+      const workflowRows = await this.workflowConfig({}, signal);
+      await this.refreshPermissions(signal);
+      if (
+        salesPlanVersionEvidenceStale(detail, {
+          planId,
+          versionId,
+          status: request.expectedStatus as number,
+        })
+      )
+        throw new GeaResponseError(409, {
+          message: "该计划版本或审批状态已变化，请刷新权威队列后重试",
+        });
+      const access = correctionAccess(
+        detail,
+        workflowRows,
+        request.approvalRole as GeaSalesPlanActionRequest["approvalRole"],
+        salesPlanStagesForRoles(auth.roles),
+      );
+      if (
+        !access ||
+        !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest["action"]) ||
+        !detail.currentVersion.submitter ||
+        detail.currentVersion.submitter === auth.id
+      )
+        throw new GeaResponseError(403, { message: "纠偏契约、月初终审或角色权限未获确认" });
+      if (
+        detail.currentVersion.id !== versionId ||
+        access.status !== request.expectedStatus ||
+        access.snapshotHash !== request.expectedSnapshot
+      )
+        throw new GeaResponseError(409, { message: "纠偏版本或快照已变化，请刷新" });
+      const typed = request as GeaSalesPlanActionRequest;
+      validateSalesPlanActionInput(
+        { planId, versionId, planTypeCode: detail.currentVersion.planTypeCode, request: typed },
+        workflowRows,
+      );
+      if (typed.action !== "REJECT") {
+        const edits = Object.fromEntries(
+          (typed.adjustments ?? []).map((x) => [x.skuCode, x.adjustQty]),
+        );
+        if (Object.keys(edits).some((code) => !detail.skus.some((sku) => sku.skuCode === code)))
+          throw new Error("INVALID_PAYLOAD");
+        const expected = correctionAdjustments(
+          detail,
+          edits,
+          workflowRows,
+          request.approvalRole as GeaSalesPlanActionRequest["approvalRole"],
+        );
+        if (!isDeepStrictEqual(expected, typed.adjustments))
+          throw new GeaResponseError(400, { message: "纠偏必须提交完整的本节点绝对调整决定" });
+      }
+      if (this.auth !== auth) throw new Error("STALE_LOGIN");
+      signal.throwIfAborted();
+    } else if (
+      request.adjustmentMode == null &&
+      request.action === "SAVE" &&
+      request.approvalRole == null
+    ) {
+      if (request.expectedStatus === 5)
+        throw new GeaResponseError(400, { message: "状态 5 不允许保存调整" });
+      const planId = text(payload.planId);
+      const detail = object(
+        await this.workbenchQuery({ kind: "detail", query: { planId } }, signal),
+      );
       const version = object(detail.currentVersion);
       const capability = detail.actionContext == null ? undefined : object(detail.actionContext);
-      if (!capability || !Array.isArray(capability.allowedActions) || !capability.allowedActions.includes("SAVE"))
+      if (
+        !capability ||
+        !Array.isArray(capability.allowedActions) ||
+        !capability.allowedActions.includes("SAVE")
+      )
         throw new GeaResponseError(403, { message: "服务端未授予当前版本 SAVE 能力" });
-      if (version.id !== versionId || version.planId !== planId || version.effective !== true ||
-          version.status !== request.expectedStatus || capability.versionId !== versionId ||
-          capability.status !== request.expectedStatus || !/^[a-f0-9]{64}$/.test(String(capability.snapshotHash)) ||
-          capability.snapshotHash !== request.expectedSnapshot)
+      if (
+        version.id !== versionId ||
+        version.planId !== planId ||
+        version.effective !== true ||
+        version.status !== request.expectedStatus ||
+        capability.versionId !== versionId ||
+        capability.status !== request.expectedStatus ||
+        !/^[a-f0-9]{64}$/.test(String(capability.snapshotHash)) ||
+        capability.snapshotHash !== request.expectedSnapshot
+      )
         throw new GeaResponseError(409, { message: "版本或快照已变化，请回读后核对保存结果" });
       if (this.auth !== auth) throw new Error("STALE_LOGIN");
       signal.throwIfAborted();
@@ -1544,13 +1802,30 @@ export class Business {
     signal.throwIfAborted();
     onValidated();
     const body = JSON.stringify(upstreamActionBody(request));
-    const response = await this.apiLog.fetch(this.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions", {
-      method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": text(payload.requestId), "Idempotency-Key": text(payload.idempotencyKey) }, body, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)])
-    });
-    if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw await geaResponseError(response, [auth.token]); }
+    const response = await this.apiLog.fetch(
+      this.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions",
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Access-Token": auth.token,
+          "X-Tenant-Id": auth.tenantId,
+          "X-Request-Id": text(payload.requestId),
+          "Idempotency-Key": text(payload.idempotencyKey),
+        },
+        body,
+        redirect: "error",
+        signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)]),
+      },
+    );
+    if (!response.ok) {
+      if (response.status === 401) this.clearLogin(true);
+      throw await geaResponseError(response, [auth.token]);
+    }
     const data = object(parseJson(await response.text()));
     if (data.success !== true || !data.result) throw new Error("GEA_WRITE_REJECTED");
-    if(this.auth !== auth)throw new Error('STALE_LOGIN');
+    if (this.auth !== auth) throw new Error("STALE_LOGIN");
     signal.throwIfAborted();
     return data.result;
   }
@@ -1559,43 +1834,85 @@ export class Business {
   async resolveClientNavigation(input: NavigationInput, caller: AbortSignal) {
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(30000)]);
-    const target = await resolveNavigationTarget((path, body) => this.navigationRequest(path, body, auth, signal), input, this.config.analysisAgentCode);
+    const target = await resolveNavigationTarget(
+      (path, body) => this.navigationRequest(path, body, auth, signal),
+      input,
+      this.config.analysisAgentCode,
+    );
     signal.throwIfAborted();
-    if (this.auth !== auth) throw Error('STALE_LOGIN');
+    if (this.auth !== auth) throw Error("STALE_LOGIN");
     return target;
   }
 
   /** 只确认已在当前身份下展示的目标；固定 ACK 契约且复用重试幂等键。 */
   async acknowledgeClientNavigation(intentId: string, idempotencyKey: string, caller: AbortSignal) {
-    if (!/^[A-Za-z0-9._:-]{1,36}$/.test(intentId) || !/^[A-Za-z0-9-]{1,128}$/.test(idempotencyKey)) throw Error('NAVIGATION_REQUEST_INVALID');
+    if (!/^[A-Za-z0-9._:-]{1,36}$/.test(intentId) || !/^[A-Za-z0-9-]{1,128}$/.test(idempotencyKey))
+      throw Error("NAVIGATION_REQUEST_INVALID");
     const auth = this.authenticated();
-    await this.navigationRequest(`/ai/gateway/client-navigation-intents/${encodeURIComponent(intentId)}/ack`,
-      {stage: 'TARGET_VISIBLE', result: 'SUCCESS', idempotencyKey}, auth,
-      AbortSignal.any([caller, this.epoch.signal]));
+    await this.navigationRequest(
+      `/ai/gateway/client-navigation-intents/${encodeURIComponent(intentId)}/ack`,
+      { stage: "TARGET_VISIBLE", result: "SUCCESS", idempotencyKey },
+      auth,
+      AbortSignal.any([caller, this.epoch.signal]),
+    );
   }
 
   /** 导航专用固定路径传输：不保存或回显请求与响应正文，只抛受控错误。 */
-  private async navigationRequest(path: string, body: unknown, auth: NonNullable<Business['auth']>, signal: AbortSignal): Promise<unknown> {
-    if (!/^\/ai\/gateway\/client-navigation-intents\/(resolve|[A-Za-z0-9._:%-]+\/ack)$/.test(path) &&
-        !/^\/api\/v1\/notifications(?:\?pageNo=\d+&pageSize=100|\/[A-Za-z0-9._:%-]+)$/.test(path)) throw Error('NAVIGATION_REQUEST_INVALID');
+  private async navigationRequest(
+    path: string,
+    body: unknown,
+    auth: NonNullable<Business["auth"]>,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    if (
+      !/^\/ai\/gateway\/client-navigation-intents\/(resolve|[A-Za-z0-9._:%-]+\/ack)$/.test(path) &&
+      !/^\/api\/v1\/notifications(?:\?pageNo=\d+&pageSize=100|\/[A-Za-z0-9._:%-]+)$/.test(path)
+    )
+      throw Error("NAVIGATION_REQUEST_INVALID");
     const active = AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)]);
     active.throwIfAborted();
     let response: Response;
     try {
-      response = await fetch(this.base + path, {method: body === undefined ? 'GET' : 'POST', redirect: 'error', signal: active,
-        headers: {'Content-Type':'application/json',Accept:'application/json','X-Access-Token':auth.token,'X-Tenant-Id':auth.tenantId,'X-Trace-Id':randomUUID()},
-        body: body === undefined ? undefined : JSON.stringify(body)});
-    } catch { throw Error(active.aborted ? 'NAVIGATION_REQUEST_CANCELLED' : 'NAVIGATION_NETWORK_ERROR'); }
+      response = await fetch(this.base + path, {
+        method: body === undefined ? "GET" : "POST",
+        redirect: "error",
+        signal: active,
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-Access-Token": auth.token,
+          "X-Tenant-Id": auth.tenantId,
+          "X-Trace-Id": randomUUID(),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch {
+      throw Error(active.aborted ? "NAVIGATION_REQUEST_CANCELLED" : "NAVIGATION_NETWORK_ERROR");
+    }
     active.throwIfAborted();
-    if (this.auth !== auth) throw Error('STALE_LOGIN');
-    if (response.status === 401) { this.clearLogin(true); throw Error('LOGIN_REQUIRED'); }
+    if (this.auth !== auth) throw Error("STALE_LOGIN");
+    if (response.status === 401) {
+      this.clearLogin(true);
+      throw Error("LOGIN_REQUIRED");
+    }
     let data: Record<string, unknown>;
-    try { data = object(await response.json()); } catch { throw Error('NAVIGATION_INVALID_RESPONSE'); }
+    try {
+      data = object(await response.json());
+    } catch {
+      throw Error("NAVIGATION_INVALID_RESPONSE");
+    }
     active.throwIfAborted();
-    if (this.auth !== auth) throw Error('STALE_LOGIN');
+    if (this.auth !== auth) throw Error("STALE_LOGIN");
     if (data.success !== true || !response.ok) {
-      const code = typeof data.errorCode === 'string' && /^(NAVIGATION|NOTIFICATION)_[A-Z_]{1,64}$/.test(data.errorCode) ? data.errorCode : 'NAVIGATION_REQUEST_REJECTED';
-      if (code === 'NOTIFICATION_UNAUTHENTICATED') {this.clearLogin(true); throw Error('LOGIN_REQUIRED');}
+      const code =
+        typeof data.errorCode === "string" &&
+        /^(NAVIGATION|NOTIFICATION)_[A-Z_]{1,64}$/.test(data.errorCode)
+          ? data.errorCode
+          : "NAVIGATION_REQUEST_REJECTED";
+      if (code === "NOTIFICATION_UNAUTHENTICATED") {
+        this.clearLogin(true);
+        throw Error("LOGIN_REQUIRED");
+      }
       throw Error(code);
     }
     return data.result;
@@ -1603,13 +1920,35 @@ export class Business {
 
   /** 使用当前 Host 身份读取固定通知端点，不改变计划选择。 */
   async notifications(payload: Record<string, unknown>, caller: AbortSignal) {
-    keys(payload, ["pageNo", "pageSize", "state", "states", "eventType", "id", "operation", "expectedVersion", "idempotencyKey", "items", "action", "targetUserId", "comment"]);
+    keys(payload, [
+      "pageNo",
+      "pageSize",
+      "state",
+      "states",
+      "eventType",
+      "id",
+      "operation",
+      "expectedVersion",
+      "idempotencyKey",
+      "items",
+      "action",
+      "targetUserId",
+      "comment",
+    ]);
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     const operation = payload.operation === undefined ? undefined : text(payload.operation);
-    if (operation !== undefined && !["unread-count", "read", "dismiss", "batch-read", "approval-action"].includes(operation)) throw new Error("INVALID_PAYLOAD");
+    if (
+      operation !== undefined &&
+      !["unread-count", "read", "dismiss", "batch-read", "approval-action"].includes(operation)
+    )
+      throw new Error("INVALID_PAYLOAD");
     if (operation === "unread-count") {
-      return { environment: this.environment, fetchedAt: new Date().toISOString(), count: object(await this.get("/api/v1/notifications/unread-count", auth, signal)).count };
+      return {
+        environment: this.environment,
+        fetchedAt: new Date().toISOString(),
+        count: object(await this.get("/api/v1/notifications/unread-count", auth, signal)).count,
+      };
     }
     if (operation === "read" || operation === "dismiss") {
       keys(payload, ["operation", "id", "expectedVersion", "idempotencyKey"]);
@@ -1617,39 +1956,79 @@ export class Business {
       const expectedVersion = versionNumber(payload.expectedVersion);
       const idempotencyKey = text(payload.idempotencyKey);
       if (operation === "dismiss") {
-        const detail = notificationDetail(await this.get(`/api/v1/notifications/${encodeURIComponent(id)}`, auth, signal), id);
+        const detail = notificationDetail(
+          await this.get(`/api/v1/notifications/${encodeURIComponent(id)}`, auth, signal),
+          id,
+        );
         if (detail.dismissible !== true) throw new Error("NOTIFICATION_NOT_DISMISSIBLE");
       }
-      return await this.postJson(`/api/v1/notifications/${encodeURIComponent(id)}/${operation}`, auth, signal, { expectedVersion: String(expectedVersion), idempotencyKey });
+      return await this.postJson(
+        `/api/v1/notifications/${encodeURIComponent(id)}/${operation}`,
+        auth,
+        signal,
+        { expectedVersion: String(expectedVersion), idempotencyKey },
+      );
     }
     if (operation === "batch-read") {
       keys(payload, ["operation", "items", "idempotencyKey"]);
-      if (!Array.isArray(payload.items) || payload.items.length < 1 || payload.items.length > 100) throw new Error("INVALID_PAYLOAD");
+      if (!Array.isArray(payload.items) || payload.items.length < 1 || payload.items.length > 100)
+        throw new Error("INVALID_PAYLOAD");
       const items = payload.items.map((item) => {
         const row = object(item);
         keys(row, ["notificationId", "expectedVersion"]);
-        return { notification_id: text(row.notificationId), expected_version: String(versionNumber(row.expectedVersion)) };
+        return {
+          notification_id: text(row.notificationId),
+          expected_version: String(versionNumber(row.expectedVersion)),
+        };
       });
-      if (new Set(items.map(item => item.notification_id)).size !== items.length) throw new Error("INVALID_PAYLOAD");
-      return await this.postJson("/api/v1/notifications/batch-read", auth, signal, { idempotency_key: text(payload.idempotencyKey), items });
+      if (new Set(items.map((item) => item.notification_id)).size !== items.length)
+        throw new Error("INVALID_PAYLOAD");
+      return await this.postJson("/api/v1/notifications/batch-read", auth, signal, {
+        idempotency_key: text(payload.idempotencyKey),
+        items,
+      });
     }
     if (operation === "approval-action") {
-      keys(payload, ["operation", "id", "action", "targetUserId", "comment", "expectedVersion", "idempotencyKey"]);
+      keys(payload, [
+        "operation",
+        "id",
+        "action",
+        "targetUserId",
+        "comment",
+        "expectedVersion",
+        "idempotencyKey",
+      ]);
       const id = text(payload.id);
       const action = text(payload.action);
       if (!["APPROVE", "REJECT", "TRANSFER"].includes(action)) throw new Error("INVALID_PAYLOAD");
       if (action === "TRANSFER") text(payload.targetUserId);
-      if (payload.comment != null && (typeof payload.comment !== "string" || payload.comment.length > 500)) throw new Error("INVALID_PAYLOAD");
-      return await this.postJson(`/api/v1/notifications/${encodeURIComponent(id)}/approval-action`, auth, signal, {
-        action, target_user_id: payload.targetUserId == null ? null : text(payload.targetUserId),
-        comment: payload.comment ?? null,
-        expected_version: versionNumber(payload.expectedVersion), idempotency_key: text(payload.idempotencyKey),
-      });
+      if (
+        payload.comment != null &&
+        (typeof payload.comment !== "string" || payload.comment.length > 500)
+      )
+        throw new Error("INVALID_PAYLOAD");
+      return await this.postJson(
+        `/api/v1/notifications/${encodeURIComponent(id)}/approval-action`,
+        auth,
+        signal,
+        {
+          action,
+          target_user_id: payload.targetUserId == null ? null : text(payload.targetUserId),
+          comment: payload.comment ?? null,
+          expected_version: versionNumber(payload.expectedVersion),
+          idempotency_key: text(payload.idempotencyKey),
+        },
+      );
     }
     let path = "/api/v1/notifications";
     keys(payload, ["pageNo", "pageSize", "state", "states", "eventType", "id"]);
     if (payload.id !== undefined) {
-      if (payload.pageNo !== undefined || payload.state !== undefined || payload.states !== undefined || payload.eventType !== undefined)
+      if (
+        payload.pageNo !== undefined ||
+        payload.state !== undefined ||
+        payload.states !== undefined ||
+        payload.eventType !== undefined
+      )
         throw new Error("INVALID_PAYLOAD");
       path += "/" + encodeURIComponent(text(payload.id));
     } else {
@@ -1659,8 +2038,10 @@ export class Business {
       });
       if (payload.state !== undefined && payload.state !== "")
         query.set("state", text(payload.state));
-      if (payload.states !== undefined && payload.states !== "") query.set("states", text(payload.states));
-      if (payload.eventType !== undefined && payload.eventType !== "") query.set("eventType", text(payload.eventType));
+      if (payload.states !== undefined && payload.states !== "")
+        query.set("states", text(payload.states));
+      if (payload.eventType !== undefined && payload.eventType !== "")
+        query.set("eventType", text(payload.eventType));
       path += "?" + query;
     }
     const value = await this.get(path, auth, signal);
@@ -1674,12 +2055,29 @@ export class Business {
     };
   }
 
-  private async postJson(path: string, identity: { token: string; tenantId?: string }, signal: AbortSignal, body: unknown): Promise<unknown> {
+  private async postJson(
+    path: string,
+    identity: { token: string; tenantId?: string },
+    signal: AbortSignal,
+    body: unknown,
+  ): Promise<unknown> {
     let response: Response;
     const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
     signal.throwIfAborted();
     try {
-      response = await this.apiLog.fetch(this.base + path, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": identity.token, ...(identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}), "X-Request-Id": randomUUID() }, body: JSON.stringify(body), redirect: "error", signal: AbortSignal.any([signal, timeout]) });
+      response = await this.apiLog.fetch(this.base + path, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Access-Token": identity.token,
+          ...(identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
+          "X-Request-Id": randomUUID(),
+        },
+        body: JSON.stringify(body),
+        redirect: "error",
+        signal: AbortSignal.any([signal, timeout]),
+      });
     } catch {
       if (signal.aborted) throw new Error("STALE_SELECTION");
       if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
@@ -1687,11 +2085,17 @@ export class Business {
     }
     signal.throwIfAborted();
     if (this.auth !== identity) throw new Error("STALE_LOGIN");
-    if (!response.ok) { if (response.status === 401) this.clearLogin(true); throw await geaResponseError(response, [identity.token]); }
+    if (!response.ok) {
+      if (response.status === 401) this.clearLogin(true);
+      throw await geaResponseError(response, [identity.token]);
+    }
     const data = object(parseJson(await response.text()));
     signal.throwIfAborted();
     if (data.success !== true) {
-      if (typeof data.errorCode === "string" && /^(NOTIFICATION|APPROVAL)_[A-Z_]+$/.test(data.errorCode)) {
+      if (
+        typeof data.errorCode === "string" &&
+        /^(NOTIFICATION|APPROVAL)_[A-Z_]+$/.test(data.errorCode)
+      ) {
         if (data.errorCode === "NOTIFICATION_UNAUTHENTICATED") this.clearLogin(true);
         throw new Error(data.errorCode);
       }
@@ -1701,14 +2105,10 @@ export class Business {
   }
 
   /** 解析当前登录用户的 GEA 个人模型路由，但不向浏览器暴露密钥。 */
-  async modelRoute(
-    signal: AbortSignal,
-    agentCode = "sales_forecast",
-  ): Promise<GeaModelRoute> {
+  async modelRoute(signal: AbortSignal, agentCode = "sales_forecast"): Promise<GeaModelRoute> {
     const auth = this.authenticated();
     const epoch = this.epoch.signal;
-    if (!/^[A-Za-z0-9._:-]{1,100}$/.test(agentCode))
-      throw new Error("GEA_MODEL_AGENT_INVALID");
+    if (!/^[A-Za-z0-9._:-]{1,100}$/.test(agentCode)) throw new Error("GEA_MODEL_AGENT_INVALID");
     const cached = this.modelRoutes.get(agentCode);
     if (cached) return cached;
     const credentialResult = object(
@@ -1719,9 +2119,7 @@ export class Business {
         false,
       ),
     );
-    const records = Array.isArray(credentialResult.records)
-      ? credentialResult.records
-      : [];
+    const records = Array.isArray(credentialResult.records) ? credentialResult.records : [];
     if (records.length > 1) throw new Error("GEA_MODEL_CREDENTIAL_AMBIGUOUS");
     const credential = records[0] ? object(records[0]) : undefined;
     if (!credential) throw new Error("GEA_MODEL_CREDENTIAL_MISSING");
@@ -1730,8 +2128,7 @@ export class Business {
       throw new Error("GEA_MODEL_CREDENTIAL_DISABLED");
     const credentialId = text(credential.credentialId ?? credential.id);
     const claim = await this.post(
-      "/aidata/user-agent-credential/my/claim?id=" +
-        encodeURIComponent(credentialId),
+      "/aidata/user-agent-credential/my/claim?id=" + encodeURIComponent(credentialId),
       auth,
       AbortSignal.any([signal, epoch]),
       false,
@@ -1742,13 +2139,7 @@ export class Business {
     if (!["ACTIVE", "ENABLED"].includes(String(claimed.status)))
       throw new Error("GEA_MODEL_CREDENTIAL_UNAVAILABLE");
     const base = new URL(text(claimed.baseUrl));
-    if (
-      base.protocol !== "https:" ||
-      base.username ||
-      base.password ||
-      base.search ||
-      base.hash
-    )
+    if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash)
       throw new Error("GEA_MODEL_BASE_URL_INVALID");
     const baseUrl = base.href.replace(/\/$/, "");
     const secret = text(claimed.secret);
@@ -1761,11 +2152,7 @@ export class Business {
           "X-GEA-Agent-Code": agentCode,
         },
         redirect: "error",
-        signal: AbortSignal.any([
-          signal,
-          epoch,
-          AbortSignal.timeout(this.config.requestTimeoutMs),
-        ]),
+        signal: AbortSignal.any([signal, epoch, AbortSignal.timeout(this.config.requestTimeoutMs)]),
       });
     } catch {
       throw new Error("GEA_MODEL_NETWORK_ERROR");
@@ -1775,25 +2162,24 @@ export class Business {
       throw new Error("GEA_MODEL_HTTP_" + response.status);
     }
     const modelsPayload = object(await response.json());
-    if (!Array.isArray(modelsPayload.data))
-      throw new Error("GEA_MODEL_INVALID_RESPONSE");
+    if (!Array.isArray(modelsPayload.data)) throw new Error("GEA_MODEL_INVALID_RESPONSE");
     const models = modelsPayload.data.map((entry) =>
       typeof entry === "string" ? entry : text(object(entry).id),
     );
     if (!models.length) throw new Error("GEA_MODEL_EMPTY");
     const names: Record<string, string> = {};
     const contextWindows: Record<string, number> = {};
-    for (const id of [...new Set(models)]) {
+    for (const id of new Set(models)) {
       const item = modelsPayload.data.find(
-        (entry: unknown) =>
-          typeof entry === "object" &&
-          entry !== null &&
-          object(entry).id === id,
+        (entry: unknown) => typeof entry === "object" && entry !== null && object(entry).id === id,
       );
-      const capacity = item && typeof item === 'object' ? object(item).contextWindow ?? object(item).context_window : undefined;
-      if (typeof capacity === 'number' && Number.isSafeInteger(capacity) && capacity > 0) contextWindows[id] = capacity;
-      let label =
-        item && typeof item === "object" ? object(item).name : undefined;
+      const capacity =
+        item && typeof item === "object"
+          ? (object(item).contextWindow ?? object(item).context_window)
+          : undefined;
+      if (typeof capacity === "number" && Number.isSafeInteger(capacity) && capacity > 0)
+        contextWindows[id] = capacity;
+      let label = item && typeof item === "object" ? object(item).name : undefined;
       if (typeof label !== "string" || !label.trim()) {
         try {
           const metadata = object(
@@ -1841,16 +2227,11 @@ export class Business {
         headers: {
           Accept: "application/json",
           "X-Access-Token": identity.token,
-          ...(includeTenant && identity.tenantId
-            ? { "X-Tenant-Id": identity.tenantId }
-            : {}),
+          ...(includeTenant && identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
           "X-Request-Id": randomUUID(),
         },
         redirect: "error",
-        signal: AbortSignal.any([
-          signal,
-          AbortSignal.timeout(this.config.requestTimeoutMs),
-        ]),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)]),
       });
     } catch {
       throw new Error("GEA_NETWORK_ERROR");
@@ -1872,11 +2253,7 @@ export class Business {
     this.clearLogin();
     const epoch = this.epoch.signal;
     const result = object(
-      await this.get(
-        "/sys/getLoginQrcode",
-        undefined,
-        AbortSignal.any([epoch, signal]),
-      ),
+      await this.get("/sys/getLoginQrcode", undefined, AbortSignal.any([epoch, signal])),
     );
     const id = text(result.qrcodeId);
     const loginId = randomUUID();
@@ -1894,8 +2271,7 @@ export class Business {
 
   /** 只有二维码登录仍是当前登录时，才接纳两次请求共同返回的身份。 */
   async loginPoll(payload: Record<string, unknown>, signal: AbortSignal) {
-    if (!this.qr || payload.loginId !== this.qr.loginId)
-      throw new Error("STALE_LOGIN");
+    if (!this.qr || payload.loginId !== this.qr.loginId) throw new Error("STALE_LOGIN");
     const qr = this.qr;
     if (Date.now() - qr.createdAt >= 120000) return { status: "expired" };
     const epoch = this.epoch.signal;
@@ -1910,23 +2286,23 @@ export class Business {
     if (result.token === "-1") return { status: "pending" };
     if (result.token === "-2") return { status: "expired" };
     if (result.success !== true) throw new Error("GEA_INVALID_LOGIN");
-    if (
-      typeof result.token !== "string" ||
-      !result.token.trim() ||
-      result.token.length > 16384
-    )
+    if (typeof result.token !== "string" || !result.token.trim() || result.token.length > 16384)
       throw new Error("GEA_INVALID_LOGIN");
     const token = result.token;
-    const identity = object(
-      await this.get("/sys/user/getUserInfo", { token }, combined),
-    );
+    const identity = object(await this.get("/sys/user/getUserInfo", { token }, combined));
     const user = object(identity.userInfo);
     const tenantId = String(user.loginTenantId ?? user.tenantId ?? "");
-    if (!user.id || !/^\d+$/.test(tenantId))
-      throw new Error("GEA_IDENTITY_INCOMPLETE");
+    if (!user.id || !/^\d+$/.test(tenantId)) throw new Error("GEA_IDENTITY_INCOMPLETE");
     const name = text(user.realname || user.username);
     if (epoch.aborted || this.qr !== qr) throw new Error("STALE_LOGIN");
-    this.auth = { token, tenantId, name, id: text(user.id), username: text(user.username || user.realname), avatar: avatarUrl(user.avatar, this.base) };
+    this.auth = {
+      token,
+      tenantId,
+      name,
+      id: text(user.id),
+      username: text(user.username || user.realname),
+      avatar: avatarUrl(user.avatar, this.base),
+    };
     this.qr = undefined;
     await this.refreshPermissions(combined);
     await this.refreshApprovalRoles(combined);
@@ -1938,21 +2314,51 @@ export class Business {
   /** 只使用当前进程登录准备 Gateway 传输能力。 */
   async htmlLaunch(agentCode: string, signal: AbortSignal, conversationId?: string) {
     const auth = this.authenticated();
-    const identity=AbortSignal.any([signal,this.epoch.signal]);
-    const credentials=await prepareGatewayLaunch(this.base, auth, {consumerType:"AGENT",consumerCode:agentCode}, identity, this.config.requestTimeoutMs, this.fetchExternal.bind(this), conversationId);
-    if(agentCode!=="inventory-personal-workbench")return credentials;
-    try{
-      const roleProfile=await resolveInventoryRoles(this.base,credentials,auth.id,identity,this.config.mcpRequestTimeoutMs??60000,this.fetchExternal.bind(this));
+    const identity = AbortSignal.any([signal, this.epoch.signal]);
+    const credentials = await prepareGatewayLaunch(
+      this.base,
+      auth,
+      { consumerType: "AGENT", consumerCode: agentCode },
+      identity,
+      this.config.requestTimeoutMs,
+      this.fetchExternal.bind(this),
+      conversationId,
+    );
+    if (agentCode !== "inventory-personal-workbench") return credentials;
+    try {
+      const roleProfile = await resolveInventoryRoles(
+        this.base,
+        credentials,
+        auth.id,
+        identity,
+        this.config.mcpRequestTimeoutMs ?? 60000,
+        this.fetchExternal.bind(this),
+      );
       identity.throwIfAborted();
-      return {...credentials,roleProfile};
-    }catch(error){identity.throwIfAborted();return {...credentials,roleProfile:{roleCodes:[],roleNames:[],roles:[],roleLookupFailed:true}};}
-
+      return { ...credentials, roleProfile };
+    } catch {
+      identity.throwIfAborted();
+      return {
+        ...credentials,
+        roleProfile: { roleCodes: [], roleNames: [], roles: [], roleLookupFailed: true },
+      };
+    }
   }
 
-  async openMcpConnection(consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) {
+  async openMcpConnection(
+    consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string },
+    signal: AbortSignal,
+  ) {
     const auth = this.authenticated();
     const identity = this.epoch.signal;
-    return prepareGatewayMcp(this.base, auth, consumer, AbortSignal.any([signal, identity]), this.config.mcpRequestTimeoutMs ?? 60000, this.apiLog.fetch);
+    return prepareGatewayMcp(
+      this.base,
+      auth,
+      consumer,
+      AbortSignal.any([signal, identity]),
+      this.config.mcpRequestTimeoutMs ?? 60000,
+      this.apiLog.fetch,
+    );
   }
 
   private readonly moduleMcpCache = new Map<
@@ -1968,10 +2374,7 @@ export class Business {
    * 网关明确拒绝过 MCP 会话的模块：短窗口内不再重试。
    * 线上实测：网关回 rejected 后模型会换模块反复试（一轮三次），每次都白等一次往返。
    */
-  private readonly moduleMcpRejections = new Map<
-    string,
-    { at: number; permission: boolean }
-  >();
+  private readonly moduleMcpRejections = new Map<string, { at: number; permission: boolean }>();
 
   /**
    * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
@@ -1992,9 +2395,7 @@ export class Business {
               ? `AGENT_ACCESS_DENIED：当前账号没有「${consumerCode}」这个模块的 MCP 权限（刚才网关已明确拒绝，10 分钟内不再重试）。需要管理员开通该 Agent/模块权限。`
               : `GEA_MCP_HTTP_REJECTED：网关刚才已拒绝过「${consumerCode}」的 MCP 调用，10 分钟内不要再试它。换一个已开通的模块，或读页面证据。`,
           ),
-          rejected.permission
-            ? { code: "AGENT_ACCESS_DENIED", retryable: false }
-            : {},
+          rejected.permission ? { code: "AGENT_ACCESS_DENIED", retryable: false } : {},
         );
       this.moduleMcpRejections.delete(consumerCode);
     }
@@ -2091,9 +2492,11 @@ export class Business {
   private readonly turnReplays = new Map<string, { text: string; at: number }>();
   private readonly planReadCounts = new Map<string, { detail: number; aggregate: number }>();
   private readonly turnReadRevisions = new Map<string, number>();
-  readTurnRevision(scope: string): number { return this.turnReadRevisions.get(scope) ?? 0; }
+  readTurnRevision(scope: string): number {
+    return this.turnReadRevisions.get(scope) ?? 0;
+  }
   allowPlanRead(scope: string, aggregate: boolean): boolean {
-    const counts = this.planReadCounts.get(scope) ?? {detail: 0, aggregate: 0};
+    const counts = this.planReadCounts.get(scope) ?? { detail: 0, aggregate: 0 };
     this.planReadCounts.set(scope, counts);
     return aggregate ? ++counts.aggregate <= 8 : ++counts.detail <= 20;
   }
@@ -2115,17 +2518,32 @@ export class Business {
 
   private readonly mcpReadLedger = createMcpReadLedger();
 
-  mcpReadEpoch(scope: string): object { return this.mcpReadLedger.epoch(scope); }
+  mcpReadEpoch(scope: string): object {
+    return this.mcpReadLedger.epoch(scope);
+  }
 
-  rememberPendingMcpQueries(scope: string, consumer: string, parameters: Record<string, unknown>, epoch?: object): void {
+  rememberPendingMcpQueries(
+    scope: string,
+    consumer: string,
+    parameters: Record<string, unknown>,
+    epoch?: object,
+  ): void {
     this.mcpReadLedger.rememberPending(scope, consumer, parameters, epoch);
   }
 
-  rememberMcpRead(scope: string, consumer: string, parameters: Record<string, unknown>, output: string, epoch?: object): void {
+  rememberMcpRead(
+    scope: string,
+    consumer: string,
+    parameters: Record<string, unknown>,
+    output: string,
+    epoch?: object,
+  ): void {
     this.mcpReadLedger.success(scope, consumer, parameters, output, epoch);
   }
 
-  pendingMcpQueries(scope: string) { return this.mcpReadLedger.pending(scope); }
+  pendingMcpQueries(scope: string) {
+    return this.mcpReadLedger.pending(scope);
+  }
 
   successfulReadEvidence(scope: string): Record<string, unknown>[] {
     return [...this.successfulPlanEvidence(scope), ...this.mcpReadLedger.evidence(scope)];
@@ -2143,38 +2561,65 @@ export class Business {
         const result = object(JSON.parse(entry.text));
         const query = object(result.query);
         const value = object(result.value);
-        if (result.source !== 'GEA_LIVE_READONLY' || result.coverage !== 'complete' || query.kind !== 'aggregate' || !Array.isArray(value.totals)) continue;
+        if (
+          result.source !== "GEA_LIVE_READONLY" ||
+          result.coverage !== "complete" ||
+          query.kind !== "aggregate" ||
+          !Array.isArray(value.totals)
+        )
+          continue;
         const fingerprint = JSON.stringify(value);
         if (seen.has(fingerprint)) continue;
         seen.add(fingerprint);
         const receipt: Record<string, unknown> = {
-          source: result.source, environment: result.environment, fetchedAt: result.fetchedAt,
-          query, coverage: 'complete', evidenceProjection: 'summary',
-          geography: 'baseName 是基地，不代表组织大区',
+          source: result.source,
+          environment: result.environment,
+          fetchedAt: result.fetchedAt,
+          query,
+          coverage: "complete",
+          evidenceProjection: "summary",
+          geography: "baseName 是基地，不代表组织大区",
           statusBasis: object(value.basis ?? {}).status,
           scopeBasis: object(value.basis ?? {}).scope,
           deliveryBasis: object(value.basis ?? {}).delivery,
-          planCount: value.planCount, skuRowCount: value.skuRowCount, distinctSkuCount: value.distinctSkuCount,
-          totals: value.totals, bases: value.bases,
+          planCount: value.planCount,
+          skuRowCount: value.skuRowCount,
+          distinctSkuCount: value.distinctSkuCount,
+          totals: value.totals,
+          bases: value.bases,
           categoryTotals: value.categoryTotals,
           categoryGroupCount: Array.isArray(value.groups) ? value.groups.length : 0,
-          groups: Array.isArray(value.groups) ? value.groups.map(row => {
-            const group = object(row);
-            return Object.fromEntries(['orderType','planTypeCode','baseName','productCategName','amt','qty','amountShareWithinBase'].map(field => [field,group[field]]));
-          }) : [],
-          note: '这是成功结果的摘要，不是新的查询。若标有 categoryRowsOmitted/baseRowsOmitted，仅表示此摘要省略；完整表已在对应 aggregate 成功结果中，不能说未取到。',
+          groups: Array.isArray(value.groups)
+            ? value.groups.map((row) => {
+                const group = object(row);
+                return Object.fromEntries(
+                  [
+                    "orderType",
+                    "planTypeCode",
+                    "baseName",
+                    "productCategName",
+                    "amt",
+                    "qty",
+                    "amountShareWithinBase",
+                  ].map((field) => [field, group[field]]),
+                );
+              })
+            : [],
+          note: "这是成功结果的摘要，不是新的查询。若标有 categoryRowsOmitted/baseRowsOmitted，仅表示此摘要省略；完整表已在对应 aggregate 成功结果中，不能说未取到。",
         };
-        if (Buffer.byteLength(JSON.stringify([...receipts,receipt]), 'utf8') > 24_000) {
+        if (Buffer.byteLength(JSON.stringify([...receipts, receipt]), "utf8") > 24_000) {
           delete receipt.groups;
           receipt.categoryRowsOmitted = true;
         }
-        if (Buffer.byteLength(JSON.stringify([...receipts,receipt]), 'utf8') > 24_000) {
+        if (Buffer.byteLength(JSON.stringify([...receipts, receipt]), "utf8") > 24_000) {
           delete receipt.bases;
           receipt.baseRowsOmitted = true;
         }
-        if (Buffer.byteLength(JSON.stringify([...receipts,receipt]), 'utf8') > 24_000) break;
+        if (Buffer.byteLength(JSON.stringify([...receipts, receipt]), "utf8") > 24_000) break;
         receipts.push(receipt);
-      } catch { /* 非聚合正文或无效回执不能成为成功证据。 */ }
+      } catch {
+        /* 非聚合正文或无效回执不能成为成功证据。 */
+      }
     }
     return receipts;
   }
@@ -2182,7 +2627,8 @@ export class Business {
   clearTurnReplays(scope?: string): void {
     this.mcpReadLedger.clear(scope);
     if (scope !== undefined) {
-      for (const key of this.turnReplays.keys()) if (key.startsWith(`${scope || "global"}\u0000`)) this.turnReplays.delete(key);
+      for (const key of this.turnReplays.keys())
+        if (key.startsWith(`${scope || "global"}\u0000`)) this.turnReplays.delete(key);
       this.planReadCounts.delete(scope);
       this.turnReadRevisions.set(scope, this.readTurnRevision(scope) + 1);
     } else {
@@ -2199,7 +2645,10 @@ export class Business {
    * 但模型换个工具（gea_sales_plan_read）接着试，又跑了 15 步才被白跑总账拦住。
    * 停手必须是整轮的：一旦置位，本轮所有取数工具都只回一句"已停手"，逼它用已拿到的证据作答。
    */
-  private readonly turnStops = new Map<string, { at: number; reason: string; kind: "query" | "session-expired" }>();
+  private readonly turnStops = new Map<
+    string,
+    { at: number; reason: string; kind: "query" | "session-expired" }
+  >();
 
   /**
    * 这一轮用户的原话（每个会话一条）。页面快照工具用它判"用户有没有页面意图"——
@@ -2221,7 +2670,9 @@ export class Business {
     this.turnStops.set(scope || "global", { at: Date.now(), reason, kind });
   }
 
-  turnStopKind(scope: string): "query" | "session-expired" | undefined { return this.turnStops.get(scope || "global")?.kind; }
+  turnStopKind(scope: string): "query" | "session-expired" | undefined {
+    return this.turnStops.get(scope || "global")?.kind;
+  }
 
   turnStopped(scope: string): string | undefined {
     return this.turnStops.get(scope || "global")?.reason;
@@ -2266,21 +2717,14 @@ export class Business {
     }> = [];
     const capture: typeof fetch = async (input, init) => {
       const url = input instanceof Request ? input.url : String(input);
-      const method =
-        init?.method ?? (input instanceof Request ? input.method : "GET");
-      const requestBody =
-        typeof init?.body === "string" ? init.body.slice(0, 4000) : undefined;
+      const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+      const requestBody = typeof init?.body === "string" ? init.body.slice(0, 4000) : undefined;
       const response = await this.apiLog.fetch(input, init);
       const sessionHeader = response.headers.get("mcp-session-id") ?? undefined;
       // 诊断要看清"同一个 body 为什么这次 400、重放 200"：把非敏感请求头一起留下。
       const headerBag = new Headers(init?.headers);
       const requestHeaders: Record<string, string> = {};
-      for (const key of [
-        "accept",
-        "content-type",
-        "mcp-protocol-version",
-        "mcp-session-id",
-      ]) {
+      for (const key of ["accept", "content-type", "mcp-protocol-version", "mcp-session-id"]) {
         const value = headerBag.get(key);
         if (value) requestHeaders[key] = value;
       }
@@ -2302,9 +2746,7 @@ export class Business {
       raw.push({
         method,
         url,
-        ...(Object.keys(requestHeaders).length
-          ? { requestHeaders }
-          : {}),
+        ...(Object.keys(requestHeaders).length ? { requestHeaders } : {}),
         ...(requestBody === undefined ? {} : { requestBody }),
         status: response.status,
         ...(sessionHeader === undefined ? {} : { mcpSessionId: sessionHeader }),
@@ -2369,8 +2811,7 @@ export class Business {
         if (session) headers["mcp-session-id"] = session;
         // 失败的那条 tools/list 原文（含 SDK 用的 id/params），用于区分"body 问题"与"header 问题"。
         const failedList = raw.find(
-          (entry) =>
-            entry.status === 400 && entry.requestBody?.includes('"tools/list"'),
+          (entry) => entry.status === 400 && entry.requestBody?.includes('"tools/list"'),
         );
         const variants: Array<[string, string]> = [
           [
@@ -2392,21 +2833,18 @@ export class Business {
             }),
           ],
           ...(failedList?.requestBody
-            ? ([
-                ["原样重放失败的那条 tools/list", failedList.requestBody],
-              ] as Array<[string, string]>)
+            ? ([["原样重放失败的那条 tools/list", failedList.requestBody]] as Array<
+                [string, string]
+              >)
             : []),
         ];
         for (const [label, body] of variants) {
           try {
-            const response = await capture(
-              this.base + "/ai/gateway/mcp/proxy/mcp",
-              {
-                method: "POST",
-                headers,
-                body,
-              },
-            );
+            const response = await capture(this.base + "/ai/gateway/mcp/proxy/mcp", {
+              method: "POST",
+              headers,
+              body,
+            });
             experiments.push({
               label,
               status: response.status,
@@ -2435,10 +2873,22 @@ export class Business {
 
   /** 为受信任的 HTML 插件提供带用户权限的只读 SQL 查询。SQL 仍由 GEA 网关按 consumerCode 审核。 */
   async pluginSql(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
-    const query = payload.query && typeof payload.query === "object" && !Array.isArray(payload.query)
-      ? object(payload.query)
-      : payload;
-    keys(payload, ["consumerCode", "sql", "parameters", "values", "pageNo", "pageSize", "maxRows", "packing", "resultShape", "query"]);
+    const query =
+      payload.query && typeof payload.query === "object" && !Array.isArray(payload.query)
+        ? object(payload.query)
+        : payload;
+    keys(payload, [
+      "consumerCode",
+      "sql",
+      "parameters",
+      "values",
+      "pageNo",
+      "pageSize",
+      "maxRows",
+      "packing",
+      "resultShape",
+      "query",
+    ]);
     const auth = this.authenticated();
     const consumerCode = text(payload.consumerCode ?? query.consumerCode);
     // 白名单来自能力契约（由宿主在启动时注入）；一个契约都没有时（例如单元测试或
@@ -2458,24 +2908,46 @@ export class Business {
     if (typeof sqlValue !== "string" || !sqlValue.trim() || sqlValue.length > 200_000)
       throw new Error("GEA_PLUGIN_SQL_INVALID");
     const signal = AbortSignal.any([caller, this.epoch.signal]);
+    let rejectedCurrentLogin: { error: GeaResponseError; epoch: AbortController } | undefined;
     const getDelegation = async () => {
       let delegation = this.pluginDelegations.get(consumerCode);
       if (delegation?.authToken === auth.token) return delegation;
       const requestId = randomUUID();
       const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
-        method: "POST", redirect: "error", signal,
-        headers: { Accept: "application/json", "Content-Type": "application/json", "X-Access-Token": auth.token, "X-Tenant-Id": auth.tenantId, "X-Request-Id": requestId },
-        body: JSON.stringify({ agentCode: consumerCode, channel: "AI_PORTAL", requestId, conversationId: randomUUID() }),
+        method: "POST",
+        redirect: "error",
+        signal,
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Access-Token": auth.token,
+          "X-Tenant-Id": auth.tenantId,
+          "X-Request-Id": requestId,
+        },
+        body: JSON.stringify({
+          agentCode: consumerCode,
+          channel: "AI_PORTAL",
+          requestId,
+          conversationId: randomUUID(),
+        }),
       });
       if (!response.ok) {
         const error = await geaResponseError(response, [auth.token]);
-        if (response.status === 401 && this.auth?.token === auth.token)
+        signal.throwIfAborted();
+        if (response.status === 401 && this.auth?.token === auth.token) {
           this.clearLogin(true);
+          rejectedCurrentLogin = { error, epoch: this.epoch };
+        }
         throw error;
       }
       const body = object(await response.json());
       const result = object(body.result);
-      if (body.success !== true || object(result.accessDecision).allowed !== true || typeof result.delegationToken !== "string" || !result.delegationToken)
+      if (
+        body.success !== true ||
+        object(result.accessDecision).allowed !== true ||
+        typeof result.delegationToken !== "string" ||
+        !result.delegationToken
+      )
         throw new Error("GEA_PLUGIN_SESSION_REJECTED");
       delegation = { authToken: auth.token, delegationToken: result.delegationToken };
       this.pluginDelegations.set(consumerCode, delegation);
@@ -2505,6 +2977,16 @@ export class Business {
       }
       throw new Error("GEA_PLUGIN_SESSION_REJECTED");
     } catch (error) {
+      // Caller cancellation wins; only this live request's authentication rejection may explain its identity abort.
+      caller.throwIfAborted();
+      if (
+        rejectedCurrentLogin !== undefined &&
+        rejectedCurrentLogin.error === error &&
+        rejectedCurrentLogin.epoch === this.epoch &&
+        !this.auth &&
+        this.loginExpired
+      )
+        throw error;
       // Page refresh, range changes and identity cancellation are not failed reads.
       signal.throwIfAborted();
       // A failed delegated credential must not poison the next page refresh.
@@ -2554,17 +3036,13 @@ export class Business {
    * 会话里"不用猜表名字段名"靠这一步：表名来自模块契约（宿主静态提取），列名由受管
    * 只读通道探一次得到（同样按权限过滤），结果按表缓存，避免每问一次都重探。
    */
-  async pluginSchema(
-    payload: Record<string, unknown>,
-    caller: AbortSignal,
-  ): Promise<unknown> {
+  async pluginSchema(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     keys(payload, ["consumerCode", "tables"]);
     const consumerCode = text(payload.consumerCode);
     const requested = Array.isArray(payload.tables) ? payload.tables : [];
     const tables = requested
       .filter(
-        (table): table is string =>
-          typeof table === "string" && /^agents?_[a-z0-9_]+$/.test(table),
+        (table): table is string => typeof table === "string" && /^agents?_[a-z0-9_]+$/.test(table),
       )
       .slice(0, 20);
     const result: Array<{ table: string; columns: string[]; error?: string }> = [];
@@ -2617,9 +3095,7 @@ export class Business {
     const byTable = new Map(result.map((row) => [row.table, row]));
     const ordered = tables
       .map((table) => byTable.get(table))
-      .filter((row): row is { table: string; columns: string[]; error?: string } =>
-        Boolean(row),
-      );
+      .filter((row): row is { table: string; columns: string[]; error?: string } => Boolean(row));
     return {
       consumerCode,
       tables: ordered,
@@ -2666,19 +3142,12 @@ export class Business {
   }
 
   /** 开启新分页查询时立即失效旧选择，后续 detail/version/SKU 只能引用本次页面。 */
-  async plans(
-    payload: Record<string, unknown>,
-    signal: AbortSignal,
-  ): Promise<Page> {
+  async plans(payload: Record<string, unknown>, signal: AbortSignal): Promise<Page> {
     this.clearQuery();
     const auth = this.authenticated();
     keys(payload, ["pageNo", "pageSize", "periodId", "planTypeCode", "status"]);
     const current = integer(payload.pageNo ?? 1, 1),
-      size = integer(
-        payload.pageSize ?? this.config.pageSize,
-        1,
-        this.config.pageSize,
-      );
+      size = integer(payload.pageSize ?? this.config.pageSize, 1, this.config.pageSize);
     const query = new URLSearchParams({
       pageNo: String(current),
       pageSize: String(size),
@@ -2686,8 +3155,7 @@ export class Business {
     for (const key of ["periodId", "planTypeCode", "status"]) {
       if (payload[key] === undefined || payload[key] === "") continue;
       const value = text(payload[key]);
-      if (key === "status" && !/^\d+$/.test(value))
-        throw new Error("INVALID_QUERY");
+      if (key === "status" && !/^\d+$/.test(value)) throw new Error("INVALID_QUERY");
       query.set(key, value);
     }
     const epoch = this.queryEpoch.signal;
@@ -2722,8 +3190,7 @@ export class Business {
 
   private selected(payload: Record<string, unknown>) {
     this.authenticated();
-    if (!this.page || payload.queryId !== this.page.queryId)
-      throw new Error("STALE_SELECTION");
+    if (!this.page || payload.queryId !== this.page.queryId) throw new Error("STALE_SELECTION");
     const row = this.page.records.find((row) => row.planId === payload.planId);
     if (!row) throw new Error("INVALID_SELECTION");
     return { page: this.page, row };
@@ -2738,7 +3205,9 @@ export class Business {
     signal: AbortSignal,
   ): Promise<{ records: Row[]; total: number; size: number; current: number; pages: number }> {
     if (query.status != null && query.status !== "")
-      throw new Error("INVALID_QUERY: period status was removed; filter visible plans by plan status instead.");
+      throw new Error(
+        "INVALID_QUERY: period status was removed; filter visible plans by plan status instead.",
+      );
     const auth = this.authenticated();
     const upstreamPageSize = 200;
     const rows: Record<string, unknown>[] = [];
@@ -2747,11 +3216,7 @@ export class Business {
     let upstreamTotal = 0;
     do {
       const path = `/sales-plan/plans?pageNo=${pageNo}&pageSize=${upstreamPageSize}`;
-      const page = object(await this.get(
-        path,
-        auth,
-        AbortSignal.any([signal, this.epoch.signal]),
-      ));
+      const page = object(await this.get(path, auth, AbortSignal.any([signal, this.epoch.signal])));
       if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_PAGE");
       rows.push(...page.records.map(object));
       upstreamTotal = integer(page.total, rows.length);
@@ -2778,15 +3243,18 @@ export class Business {
         status: "UNKNOWN",
       });
     }
-    const periodMonth = query.periodMonth == null || query.periodMonth === "" ? undefined : text(query.periodMonth);
-    const planType = query.planType == null || query.planType === "" ? undefined : text(query.planType);
+    const periodMonth =
+      query.periodMonth == null || query.periodMonth === "" ? undefined : text(query.periodMonth);
+    const planType =
+      query.planType == null || query.planType === "" ? undefined : text(query.planType);
     const records = [...discovered.values()]
       .filter((row) => periodMonth == null || row.periodMonth === periodMonth)
       .filter((row) => planType == null || row.planType === planType)
-      .toSorted((left, right) =>
-        String(right.periodMonth).localeCompare(String(left.periodMonth)) ||
-        String(left.periodId).localeCompare(String(right.periodId)) ||
-        String(left.planTypeCode).localeCompare(String(right.planTypeCode)),
+      .toSorted(
+        (left, right) =>
+          String(right.periodMonth).localeCompare(String(left.periodMonth)) ||
+          String(left.periodId).localeCompare(String(right.periodId)) ||
+          String(left.planTypeCode).localeCompare(String(right.planTypeCode)),
       );
     const current = integer(query.pageNo ?? 1, 1);
     const size = integer(query.pageSize ?? this.config.periodPageSize, 1, 1000);
@@ -2830,33 +3298,22 @@ export class Business {
     path: string,
     idKey = "id",
   ): Collection {
-    const page = Array.isArray(result)
-      ? { records: result, total: result.length }
-      : object(result);
+    const page = Array.isArray(result) ? { records: result, total: result.length } : object(result);
     if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_PAGE");
     const records = page.records.map((row) => project(row, fields));
     records.forEach((row) => text(row[idKey]));
     if (new Set(records.map((row) => row[idKey])).size !== records.length)
       throw new Error("GEA_DUPLICATE_RECORD");
-    const total =
-      page.total == null ? null : integer(page.total, records.length);
+    const total = page.total == null ? null : integer(page.total, records.length);
     return {
       records,
       total,
       returned: records.length,
-      coverage:
-        total === null
-          ? "unknown"
-          : total === records.length
-            ? "complete"
-            : "partial",
+      coverage: total === null ? "unknown" : total === records.length ? "complete" : "partial",
       fetchedAt: new Date().toISOString(),
       sourceUrl: this.base + path,
       missingFields: Object.fromEntries(
-        records.map((row) => [
-          row[idKey],
-          expected.filter((key) => row[key] == null),
-        ]),
+        records.map((row) => [row[idKey], expected.filter((key) => row[key] == null)]),
       ),
     };
   }
@@ -2866,19 +3323,11 @@ export class Business {
     const request = new AbortController();
     this.requests.set(key, request);
     this.preview = undefined;
-    return AbortSignal.any([
-      request.signal,
-      this.queryEpoch.signal,
-      this.epoch.signal,
-      signal,
-    ]);
+    return AbortSignal.any([request.signal, this.queryEpoch.signal, this.epoch.signal, signal]);
   }
 
   /** 当前计划详情与历史版本选择分开标记。 */
-  async detail(
-    payload: Record<string, unknown>,
-    signal: AbortSignal,
-  ): Promise<Detail> {
+  async detail(payload: Record<string, unknown>, signal: AbortSignal): Promise<Detail> {
     const { row } = this.selected(payload);
     const id = text(row.planId),
       path = "/sales-plan/plans/" + encodeURIComponent(id);
@@ -2886,9 +3335,7 @@ export class Business {
     this.details.delete(id);
     const result = object(await this.get(path, this.authenticated(), active));
     const currentVersion =
-      result.currentVersion == null
-        ? null
-        : project(result.currentVersion, versionFields);
+      result.currentVersion == null ? null : project(result.currentVersion, versionFields);
     if (currentVersion && (currentVersion.planId !== id || !currentVersion.id))
       throw new Error("GEA_IDENTITY_MISMATCH");
     const detail: Detail = {
@@ -2907,10 +3354,7 @@ export class Business {
   }
 
   /** 只列出上游计划身份与所选计划一致的版本。 */
-  async versions(
-    payload: Record<string, unknown>,
-    signal: AbortSignal,
-  ): Promise<Collection> {
+  async versions(payload: Record<string, unknown>, signal: AbortSignal): Promise<Collection> {
     const { row } = this.selected(payload);
     const id = text(row.planId),
       path = "/sales-plan/plans/" + encodeURIComponent(id) + "/versions";
@@ -2942,10 +3386,7 @@ export class Business {
   }
 
   /** 只读取已证明属于当前查询计划的版本。 */
-  async skus(
-    payload: Record<string, unknown>,
-    signal: AbortSignal,
-  ): Promise<Collection> {
+  async skus(payload: Record<string, unknown>, signal: AbortSignal): Promise<Collection> {
     const { row } = this.selected(payload);
     const version = this.selectedVersion(text(row.planId), payload.versionId);
     const id = text(version.record.id),
@@ -2969,23 +3410,12 @@ export class Business {
   /** 仅从 Host 已持有且已校验的数据冻结快照，生成带哈希和大小上限的模型输入。 */
   prepare(payload: Record<string, unknown>): Preview {
     this.preview = undefined;
-    keys(payload, [
-      "queryId",
-      "planId",
-      "includeDetail",
-      "versionId",
-      "skuIds",
-    ]);
+    keys(payload, ["queryId", "planId", "includeDetail", "versionId", "skuIds"]);
     const { page, row } = this.selected(payload);
-    if (
-      payload.includeDetail !== undefined &&
-      typeof payload.includeDetail !== "boolean"
-    )
+    if (payload.includeDetail !== undefined && typeof payload.includeDetail !== "boolean")
       throw new Error("INVALID_PAYLOAD");
     const missing: string[] = [];
-    const detail = payload.includeDetail
-      ? this.details.get(text(row.planId))
-      : undefined;
+    const detail = payload.includeDetail ? this.details.get(text(row.planId)) : undefined;
     if (payload.includeDetail && !detail) throw new Error("DETAIL_NOT_FETCHED");
     if (!detail) missing.push("plan-detail-not-requested");
     const version =
@@ -3016,8 +3446,7 @@ export class Business {
         ...loaded,
         records: chosen,
         selected: chosen.length,
-        selection:
-          chosen.length === loaded.records.length ? "all-returned" : "subset",
+        selection: chosen.length === loaded.records.length ? "all-returned" : "subset",
         missingFields: Object.fromEntries(
           chosen.map((row) => [row.id, loaded.missingFields[String(row.id)]]),
         ),
@@ -3046,10 +3475,7 @@ export class Business {
   }
 
   /** 使用当前由服务端管理的身份读取原工作台固定 GEA 端点。 */
-  async workbenchQuery(
-    payload: Record<string, unknown>,
-    signal: AbortSignal,
-  ): Promise<unknown> {
+  async workbenchQuery(payload: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
     this.clearQuery();
     return this.readWorkbenchQuery(payload, signal);
   }
@@ -3059,10 +3485,7 @@ export class Business {
    * @param signal 所属工具执行的取消信号。
    * @returns 带来源、时间和集合覆盖信息的精确 JSON，供 Session 日志记录。
    */
-  async agentQuery(
-    payload: Record<string, unknown>,
-    signal: AbortSignal,
-  ): Promise<string> {
+  async agentQuery(payload: Record<string, unknown>, signal: AbortSignal): Promise<string> {
     const identity = this.epoch.signal;
     const transport = transportSignal(AbortSignal.any([signal, identity]));
     let value: unknown;
@@ -3098,11 +3521,8 @@ export class Business {
     // versionSkus：模型侧只给必要字段 + 有界分页，绝不因为"整份 SKU 太大"失败。
     // 页面自身的工作台读取仍走 readWorkbenchQuery（完整数据），不受这里影响。
     if (text(payload.kind) === "versionSkus") {
-      const rows = (Array.isArray(value)
-        ? value
-        : Array.isArray(page?.records)
-          ? page.records
-          : []
+      const rows = (
+        Array.isArray(value) ? value : Array.isArray(page?.records) ? page.records : []
       ).map(object);
       const skuView = (row: Record<string, unknown>) => ({
         skuCode: row.skuCode,
@@ -3140,10 +3560,7 @@ export class Business {
                   views.length - offset - size
                 } 条：用同一 versionId、pageNo=${nextPageNo} 继续取。`,
         });
-        if (
-          Buffer.byteLength(result, "utf8") <= this.config.inputByteBudget ||
-          size <= 1
-        )
+        if (Buffer.byteLength(result, "utf8") <= this.config.inputByteBudget || size <= 1)
           return result;
         size = Math.max(1, Math.floor(size / 2));
       }
@@ -3164,8 +3581,7 @@ export class Business {
         omitted:
           "已省略 SKU 明细与审批日志：需要时用 kind=versionSkus（pageNo/pageSize 分页）或 kind=logs 单独读取。",
       });
-      if (Buffer.byteLength(trimmed, "utf8") <= this.config.inputByteBudget)
-        return trimmed;
+      if (Buffer.byteLength(trimmed, "utf8") <= this.config.inputByteBudget) return trimmed;
     }
     const result = envelope(coverage, value);
     const resultBytes = Buffer.byteLength(result, "utf8");
@@ -3195,17 +3611,22 @@ export class Business {
       throw new Error(
         "INVALID_QUERY: periodMonth must be YYYY-MM, for example 2026-09 (Chinese month names are not accepted).",
       );
-    if (query.orderType != null && !["M", "Z"].includes(String(query.orderType))) throw new Error("INVALID_QUERY");
+    if (query.orderType != null && !["M", "Z"].includes(String(query.orderType)))
+      throw new Error("INVALID_QUERY");
     if (kind === "periods") return this.salesPlanPeriodPage(query, signal);
-    if (kind === "aggregate") return aggregateSalesPlans((input, active) => this.readWorkbenchQuery(input, active), query, signal);
+    if (kind === "aggregate")
+      return aggregateSalesPlans(
+        (input, active) => this.readWorkbenchQuery(input, active),
+        query,
+        signal,
+      );
     const id = (key: string) => encodeURIComponent(text(query[key]));
     const paths: Record<string, () => string> = {
       list: () => "/sales-plan/plans",
       detail: () => "/sales-plan/plans/" + id("planId"),
       versions: () => "/sales-plan/plans/" + id("planId") + "/versions",
       logs: () => "/sales-plan/plans/" + id("planId") + "/logs",
-      versionSkus: () =>
-        "/sales-plan/plans/versions/" + id("versionId") + "/skus",
+      versionSkus: () => "/sales-plan/plans/versions/" + id("versionId") + "/skus",
       compare: () => "/sales-plan/plans/" + id("planId") + "/compare",
     };
     if (kind === "compare") {
@@ -3220,9 +3641,7 @@ export class Business {
     const size = paged
       ? integer(
           query.pageSize ??
-            (kind === "periods"
-              ? this.config.periodPageSize
-              : this.config.pageSize),
+            (kind === "periods" ? this.config.periodPageSize : this.config.pageSize),
           1,
           1000,
         )
@@ -3233,26 +3652,13 @@ export class Business {
       params.set("pageSize", String(size));
     }
     for (const [key, value] of Object.entries(query)) {
-      if (
-        value == null ||
-        value === "" ||
-        key === "planId" ||
-        key === "versionId"
-      )
-        continue;
+      if (value == null || value === "" || key === "planId" || key === "versionId") continue;
       if (key === "pageNo" || key === "pageSize")
         params.set(
           key,
-          String(
-            integer(
-              value,
-              1,
-              key === "pageSize" ? 1000 : Number.MAX_SAFE_INTEGER,
-            ),
-          ),
+          String(integer(value, 1, key === "pageSize" ? 1000 : Number.MAX_SAFE_INTEGER)),
         );
-      else if (key === "status" && kind !== "periods")
-        params.set(key, String(integer(value, 0)));
+      else if (key === "status" && kind !== "periods") params.set(key, String(integer(value, 0)));
       else params.set(key, text(value));
     }
     const result = await this.get(
@@ -3264,11 +3670,9 @@ export class Business {
     const records = (value: unknown): Record<string, unknown>[] => {
       if (Array.isArray(value)) return value.map(object);
       const page = object(value);
-      if (!Array.isArray(page.records))
-        throw new Error("GEA_INVALID_COLLECTION");
+      if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_COLLECTION");
       if (
-        (page.total != null &&
-          integer(page.total, page.records.length) > page.records.length) ||
+        (page.total != null && integer(page.total, page.records.length) > page.records.length) ||
         (page.pages != null && integer(page.pages, 0) > 1) ||
         (page.current != null && integer(page.current, 1) > 1)
       )
@@ -3277,16 +3681,13 @@ export class Business {
     };
     const listRecord = (value: unknown) => {
       const { dealer_name, province_name, ...row } = object(value);
-      if (row.dealerName == null && dealer_name != null)
-        row.dealerName = dealer_name;
-      if (row.provinceName == null && province_name != null)
-        row.provinceName = province_name;
+      if (row.dealerName == null && dealer_name != null) row.dealerName = dealer_name;
+      if (row.provinceName == null && province_name != null) row.provinceName = province_name;
       return row;
     };
     if (paged) {
       const page = object(result);
-      if (!Array.isArray(page.records))
-        throw new Error("GEA_INVALID_COLLECTION");
+      if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_COLLECTION");
       const total = integer(page.total, page.records.length);
       const pageSize = integer(page.size ?? size, 1);
       return {
@@ -3306,18 +3707,12 @@ export class Business {
         logs = records(detail.logs);
       this.materialNames.apply(skus);
       const versionId = text(currentVersion.id);
-      const versionIds = new Set([
-        versionId,
-        ...versions.map((version) => text(version.id)),
-      ]);
+      const versionIds = new Set([versionId, ...versions.map((version) => text(version.id))]);
       if (
         currentVersion.planId !== query.planId ||
         versions.some((version) => version.planId !== query.planId) ||
         skus.some((sku) => sku.versionId !== versionId) ||
-        logs.some(
-          (log) =>
-            log.planId !== query.planId || !versionIds.has(text(log.versionId)),
-        )
+        logs.some((log) => log.planId !== query.planId || !versionIds.has(text(log.versionId)))
       )
         throw new Error("GEA_IDENTITY_MISMATCH");
       if (options.forModel) {
@@ -3346,13 +3741,9 @@ export class Business {
                   "其余明细用 kind=versionSkus（传 currentVersion.id 作为 versionId）分页读取",
               }),
           versions: cappedVersions.rows,
-          ...(cappedVersions.omitted === 0
-            ? {}
-            : { versionsOmitted: cappedVersions.omitted }),
+          ...(cappedVersions.omitted === 0 ? {} : { versionsOmitted: cappedVersions.omitted }),
           logs: cappedLogs.rows,
-          ...(cappedLogs.omitted === 0
-            ? {}
-            : { logsOmitted: cappedLogs.omitted }),
+          ...(cappedLogs.omitted === 0 ? {} : { logsOmitted: cappedLogs.omitted }),
         };
       }
       // 通知不参与审批身份：上游万一塞回 workflowApproval 也不再透传，
@@ -3369,10 +3760,7 @@ export class Business {
       values.some((row) => row.planId !== query.planId)
     )
       throw new Error("GEA_IDENTITY_MISMATCH");
-    if (
-      kind === "versionSkus" &&
-      values.some((row) => row.versionId !== query.versionId)
-    )
+    if (kind === "versionSkus" && values.some((row) => row.versionId !== query.versionId))
       throw new Error("GEA_IDENTITY_MISMATCH");
     if (
       kind === "compare" &&
@@ -3381,11 +3769,8 @@ export class Business {
         const after = row.after == null ? undefined : object(row.after);
         return (
           (before &&
-            (before.versionId !== query.fromVersionId ||
-              before.skuCode !== row.skuCode)) ||
-          (after &&
-            (after.versionId !== query.toVersionId ||
-              after.skuCode !== row.skuCode))
+            (before.versionId !== query.fromVersionId || before.skuCode !== row.skuCode)) ||
+          (after && (after.versionId !== query.toVersionId || after.skuCode !== row.skuCode))
         );
       })
     )
@@ -3394,15 +3779,11 @@ export class Business {
   }
 
   /** 工作台提交给原生会话前重新读取所有计划，避免把浏览器旧页面当成事实。 */
-  async prepareWorkbench(
-    payload: Record<string, unknown>,
-    signal: AbortSignal,
-  ): Promise<Preview> {
+  async prepareWorkbench(payload: Record<string, unknown>, signal: AbortSignal): Promise<Preview> {
     this.clearQuery();
     keys(payload, ["planIds", "scope"]);
     const scope = payload.scope === undefined ? "details" : payload.scope;
-    if (scope !== "summary" && scope !== "details")
-      throw new Error("INVALID_SELECTION");
+    if (scope !== "summary" && scope !== "details") throw new Error("INVALID_SELECTION");
     if (
       !Array.isArray(payload.planIds) ||
       payload.planIds.length < 1 ||
@@ -3411,20 +3792,13 @@ export class Business {
       throw new Error("INVALID_SELECTION");
     const ids = payload.planIds.map(text);
     if (new Set(ids).size !== ids.length) throw new Error("INVALID_SELECTION");
-    const active = AbortSignal.any([
-      signal,
-      this.epoch.signal,
-      this.queryEpoch.signal,
-    ]);
+    const active = AbortSignal.any([signal, this.epoch.signal, this.queryEpoch.signal]);
     const records: unknown[] = [];
     const summaryFields = ["id", ...planFields, "effective", "createdAt"];
     // 两种范围都会重新读取并校验全部资源身份，然后才选择模型可见字段。
     for (const planId of ids) {
       const detail = object(
-        await this.readWorkbenchQuery(
-          { kind: "detail", query: { planId } },
-          active,
-        ),
+        await this.readWorkbenchQuery({ kind: "detail", query: { planId } }, active),
       );
       if (scope === "summary") {
         const currentVersion = project(detail.currentVersion, summaryFields);
@@ -3436,9 +3810,7 @@ export class Business {
             quantity: skuTotal(skus, "qty"),
             amount: skuTotal(skus, "amt"),
           },
-          missingFields: summaryFields.filter(
-            (key) => currentVersion[key] == null,
-          ),
+          missingFields: summaryFields.filter((key) => currentVersion[key] == null),
         });
       } else records.push({ planId, detail });
     }
@@ -3451,9 +3823,7 @@ export class Business {
       sourceUrl: this.base + "/sales-plan/plans",
       scope,
       coverage:
-        scope === "summary"
-          ? "selected-plans-current-summary"
-          : "selected-plans-current-detail",
+        scope === "summary" ? "selected-plans-current-summary" : "selected-plans-current-detail",
       records,
       missing:
         scope === "summary"
@@ -3478,10 +3848,7 @@ export class Business {
     const prompt = businessBrief(snapshot);
     // 输入改为业务投影后，仍以原始快照的大小作为安全上限，不能借此绕过保护。
     const bytes = Buffer.byteLength(json);
-    const limitBytes = Math.min(
-      this.config.maxSnapshotBytes,
-      this.config.inputByteBudget,
-    );
+    const limitBytes = Math.min(this.config.maxSnapshotBytes, this.config.inputByteBudget);
     if (bytes > limitBytes) throw new Error("SNAPSHOT_TOO_LARGE");
     this.preview = {
       previewId: brandString<PreviewId>(randomUUID()),
@@ -3496,8 +3863,7 @@ export class Business {
 
   /** 原始快照不进入会话展示，按会话标识保存为本机受限审计依据。 */
   async archivePreview(sessionId: string, preview: Preview): Promise<void> {
-    if (!/^session-[a-zA-Z0-9-]+$/.test(sessionId))
-      throw new Error("INVALID_SESSION");
+    if (!/^session-[a-zA-Z0-9-]+$/.test(sessionId)) throw new Error("INVALID_SESSION");
     const dir = resolve(this.config.runtimeDir, "analysis-snapshots");
     const file = resolve(dir, sessionId + ".json");
     const temp = resolve(dir, sessionId + "." + randomUUID() + ".tmp");
@@ -3527,8 +3893,7 @@ export class Business {
   /** 仅向标准 Session 提交仍然当前的预览。 */
   prepared(id: unknown): Preview {
     this.authenticated();
-    if (!this.preview || this.preview.previewId !== id)
-      throw new Error("STALE_PREVIEW");
+    if (!this.preview || this.preview.previewId !== id) throw new Error("STALE_PREVIEW");
     return this.preview;
   }
 }

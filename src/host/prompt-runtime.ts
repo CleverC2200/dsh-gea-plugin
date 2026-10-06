@@ -1,10 +1,14 @@
+import {
+  forecastSourceProof,
+  forecastBaselineHash,
+  hasUserForecastInput,
+  FORECAST_VERSION,
+} from "dsh-agent-manage/forecast-source";
 import { hasPageReferences } from "@cleverc2200/dsh-agent-workbench/page-interaction/reference";
 import { sessionConsumer } from "./business-identity.ts";
+import { businessToolDisplay } from "./business-tool-display.ts";
 import { catalogFactSummary } from "./gateway-catalog.ts";
-import {
-  salesSourceIssueForTurns,
-  requestedOutputScope,
-} from "./sales-result-contract.ts";
+import { salesSourceIssueForTurns, requestedOutputScope } from "./sales-result-contract.ts";
 import { prefersBusinessCards } from "./business-presentation.ts";
 import {
   resultView,
@@ -82,14 +86,10 @@ export function mountBusinessPrompts(
 ): () => void {
   const states = new Map<Agent, State>();
   const executionEpochs = new Map<symbol, number>();
-  const catalogExecutions = new Map<
-    symbol,
-    { state: State; generation: number }
-  >();
+  const catalogExecutions = new Map<symbol, { state: State; generation: number }>();
   const executionGrants = new Map<symbol, EvidenceGrant>();
   const runtimeId = randomUUID();
-  const hash = (value: unknown) =>
-    createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
   const owner = () => {
     const status = business.status();
     return hash([
@@ -112,11 +112,8 @@ export function mountBusinessPrompts(
     try {
       const module = await business.moduleMcp(consumer, signal);
       const snapshot = await module.authorizedResources(tool, signal);
-      if (!snapshot.resources.length)
-        throw Error("GEA_EVIDENCE_AUTHORIZATION_CHANGED");
-      return hash(
-        snapshot.resources.map((resource) => JSON.stringify(resource)).sort(),
-      );
+      if (!snapshot.resources.length) throw Error("GEA_EVIDENCE_AUTHORIZATION_CHANGED");
+      return hash(snapshot.resources.map((resource) => JSON.stringify(resource)).sort());
     } catch (error) {
       throw stopExpiredGateway(business, consumer, scope, error) ?? error;
     }
@@ -126,11 +123,8 @@ export function mountBusinessPrompts(
     return hash(result.value ?? result);
   };
 
-  const store = new PromptEvidenceStore(
-    resolve(business.config.runtimeDir, "prompt-evidence"),
-  );
-  const presetOf = (agent: Agent) =>
-    ctx.sessionProjections.stateOf(agent.session, "agentPreset");
+  const store = new PromptEvidenceStore(resolve(business.config.runtimeDir, "prompt-evidence"));
+  const presetOf = (agent: Agent) => ctx.sessionProjections.stateOf(agent.session, "agentPreset");
   const profileOf = (agent: Agent | undefined) =>
     agent ? profileFor(presetOf(agent) ?? undefined) : undefined;
   const stateOf = (agent: Agent) => {
@@ -170,14 +164,8 @@ export function mountBusinessPrompts(
     return state;
   };
   const namesFor = (agent: Agent, state = stateOf(agent)) => {
-    const names = allowedTools(
-      profileOf(agent)!,
-      !isMainSurface(business.surfaceFor(agent.id)),
-    );
-    if (
-      state.pageReferences ||
-      hasPageReferences(agent.session.snapshotEvents())
-    )
+    const names = allowedTools(profileOf(agent)!, !isMainSurface(business.surfaceFor(agent.id)));
+    if (state.pageReferences || hasPageReferences(agent.session.snapshotEvents()))
       names.add("page_reference_read");
     if (business.config.agentSqlRead === true) names.add("gea_plugin_read");
     return names;
@@ -195,14 +183,10 @@ export function mountBusinessPrompts(
       .map((tool) => tool.name)
       .filter((name) => name !== "run_code");
     // These selected preset capabilities live on ancestors, not in the global registry projection.
-    const selected = [
-      "skill",
-      "skill_reference_read",
-      "forecast_compute",
-    ].filter((name) => ctx.tools.get(name, agent) !== undefined);
-    const allow = [
-      ...new Set([...known.filter((name) => names.has(name)), ...selected]),
-    ];
+    const selected = ["skill", "skill_reference_read", "forecast_compute"].filter(
+      (name) => ctx.tools.get(name, agent) !== undefined,
+    );
+    const allow = [...new Set([...known.filter((name) => names.has(name)), ...selected])];
     const signature = allow.sort().join("|");
     if (signature === state.mask) return;
     // Install the replacement before disposing the previous restriction: never a permissive gap.
@@ -281,11 +265,7 @@ export function mountBusinessPrompts(
       if (exec.name === "gea_sales_plan_read") {
         const questions = agent.session
           .snapshotEvents()
-          .filter(
-            (event) =>
-              event.type === "user/message" &&
-              event.data.source.kind === "user",
-          )
+          .filter((event) => event.type === "user/message" && event.data.source.kind === "user")
           .map((event) =>
             event.type === "user/message"
               ? event.data.content
@@ -304,8 +284,7 @@ export function mountBusinessPrompts(
         callArgs.consumerCode.trim() !== currentConsumer &&
         (exec.name === "gea_cube_query" ||
           exec.name === "gea_gateway_catalog" ||
-          (exec.name === "gea_module_mcp" &&
-            callArgs.tool === "query_business_data"))
+          (exec.name === "gea_module_mcp" && callArgs.tool === "query_business_data"))
       )
         return "GEA_CONSUMER_FALLBACK_DENIED: 当前业务身份的资源缺口不能通过轮换其它consumer试探；交付已有证据与缺口。";
       if (
@@ -355,9 +334,9 @@ export function mountBusinessPrompts(
           owner: owner(),
           ephemeral: ephemeral(exec.agent),
         };
+        if (exec.name === "forecast_compute") grant.kind = "local";
         if (exec.name === "gea_sales_plan_read") grant.query = args;
-        if (exec.name === "gea_cube_query" || exec.name === "gea_module_mcp")
-          grant.kind = "mcp";
+        if (exec.name === "gea_cube_query" || exec.name === "gea_module_mcp") grant.kind = "mcp";
         executionGrants.set(exec.token, grant);
       }
       return next();
@@ -378,9 +357,7 @@ export function mountBusinessPrompts(
         grant.consumer = authorization.consumer;
         grant.resourceTool = "query_business_data";
         grant.resources = hash(
-          authorization.resources.resources
-            .map((resource) => JSON.stringify(resource))
-            .sort(),
+          authorization.resources.resources.map((resource) => JSON.stringify(resource)).sort(),
         );
       }
       executionGrants.delete(exec.token);
@@ -403,17 +380,13 @@ export function mountBusinessPrompts(
           const fingerprint = hash(texts);
           const reused = texts.includes('"source":"GEA_CATALOG_REUSED"');
           state.catalogStalls =
-            reused || state.catalogOutputs.has(fingerprint)
-              ? state.catalogStalls + 1
-              : 0;
+            reused || state.catalogOutputs.has(fingerprint) ? state.catalogStalls + 1 : 0;
           if (!reused) state.catalogOutputs.add(fingerprint);
           const facts = catalogFactSummary(texts);
           if (facts) {
             state.catalogFacts.set(String(args.model ?? "catalog"), facts);
             while (state.catalogFacts.size > 2)
-              state.catalogFacts.delete(
-                state.catalogFacts.keys().next().value!,
-              );
+              state.catalogFacts.delete(state.catalogFacts.keys().next().value!);
           }
         }
         if (result.isError || resultOutcome(texts) === "blocked") {
@@ -422,9 +395,7 @@ export function mountBusinessPrompts(
             JSON.stringify({
               tool: exec.name,
               status: "blocked",
-              code:
-                texts.match(/GEA_[A-Z_]+|AI_GATEWAY_[A-Z_]+/)?.[0] ??
-                "TOOL_FAILED",
+              code: texts.match(/GEA_[A-Z_]+|AI_GATEWAY_[A-Z_]+/)?.[0] ?? "TOOL_FAILED",
               note: "本次未取得有效结果；不撤销其它成功证据",
             }),
           );
@@ -450,9 +421,7 @@ export function mountBusinessPrompts(
           } catch {}
         }
         if (
-          ["gea_gateway_catalog", "gea_cube_query", "gea_module_mcp"].includes(
-            exec.name,
-          ) &&
+          ["gea_gateway_catalog", "gea_cube_query", "gea_module_mcp"].includes(exec.name) &&
           permissionDenied(texts)
         )
           stateOf(agent).deniedConsumers.add(
@@ -468,24 +437,23 @@ export function mountBusinessPrompts(
         result.isError ||
         decision.kind !== "accept" ||
         "value" in decision ||
-        !/^gea_(?:sales_plan_read|cube_query|module_mcp|page|visible_workbench_context)$/.test(
-          exec.name,
+        !(
+          exec.name === "forecast_compute" ||
+          /^gea_(?:sales_plan_read|cube_query|module_mcp|page|visible_workbench_context)$/.test(
+            exec.name,
+          )
         )
       )
         return decision;
       const content = decision.content ?? result.content;
       if (content.some((block) => block.type !== "text")) return decision;
-      const rawText = content
-        .map((block) => (block.type === "text" ? block.text : ""))
-        .join("\n");
+      const rawText = content.map((block) => (block.type === "text" ? block.text : "")).join("\n");
       const text = withoutHistoricalEvidence(rawText);
       if (!text) return decision;
       if (resultOutcome(text) === "blocked")
         return {
           ...decision,
-          content: [
-            { type: "text", text: transientResult(text, PROMPT_BUDGET.result) },
-          ],
+          content: [{ type: "text", text: transientResult(text, PROMPT_BUDGET.result) }],
         };
       // Without the exact query's authorization receipt, preserve the original one-time result.
       // Never invent a reusable permission from an empty snapshot or page/turn identity.
@@ -498,15 +466,52 @@ export function mountBusinessPrompts(
               text: transientResult(
                 text,
                 PROMPT_BUDGET.result,
-                /^lightrag_/.test(
-                  String(
-                    (exec.arguments as Record<string, unknown>).tool ?? "",
-                  ),
+                String((exec.arguments as Record<string, unknown>).tool ?? "").startsWith(
+                  "lightrag_",
                 ),
               ),
             },
           ],
         };
+      if (exec.name === "forecast_compute" && grant) {
+        const baseline = await ctx.skills.get("sinian-demand-baseline", {
+          scope: agent,
+          cwd: agent.session.header.cwd,
+          signal: exec.signal,
+        });
+        exec.signal.throwIfAborted();
+        const proof = forecastSourceProof(
+          exec.arguments,
+          agent.session
+            .snapshotEvents()
+            .filter((event) => event.type === "user/message")
+            .map((event) => event.data),
+          baseline,
+        );
+        const original = exactResult(text) as { source?: Record<string, unknown> };
+        if (
+          original.source?.inputHash !== proof.inputHash ||
+          original.source?.calculatorVersion !== proof.calculatorVersion ||
+          original.source?.baselineHash !== proof.baselineHash ||
+          original.source?.userInputVerified !== proof.userInputVerified ||
+          original.source?.businessAuthorization !== false
+        )
+          return {
+            kind: "block",
+            feedback: [
+              {
+                type: "text",
+                text: "GEA_CALCULATION_SOURCE_CHANGED: 当前计算输入、原生规则或用户来源已改变，旧结果不可复用。",
+              },
+            ],
+          };
+        grant.baselineHash = proof.baselineHash;
+        grant.calculatorVersion = proof.calculatorVersion;
+        if (proof.userInputVerified) {
+          grant.inputHash = proof.inputHash;
+          delete grant.ephemeral;
+        }
+      }
       const revision = executionEpoch ?? store.epoch();
       if (revision !== store.epoch())
         return {
@@ -548,12 +553,7 @@ export function mountBusinessPrompts(
             grant?.kind === "mcp" ? resultView(text) : undefined,
           ));
       if (grant?.kind === "mcp" && compact === undefined)
-        projected = indexProjection(
-          projected,
-          id,
-          datasetIndex(text, id),
-          PROMPT_BUDGET.result,
-        );
+        projected = indexProjection(projected, id, datasetIndex(text, id), PROMPT_BUDGET.result);
       let display = "complete";
       if (projected !== text) {
         try {
@@ -564,13 +564,7 @@ export function mountBusinessPrompts(
       }
       state.receipts.set(
         receiptKey,
-        resultReceipt(
-          exec.name,
-          exec.arguments as Record<string, unknown>,
-          id,
-          text,
-          display,
-        ),
+        resultReceipt(exec.name, exec.arguments as Record<string, unknown>, id, text, display),
       );
       state.returned += projected.length;
       return {
@@ -582,9 +576,7 @@ export function mountBusinessPrompts(
 
   const output = {
     schema: { type: "string" } as const,
-    render: (_args: unknown, value: string) => [
-      { type: "text" as const, text: value },
-    ],
+    render: (_args: unknown, value: string) => [{ type: "text" as const, text: value }],
   };
   offs.push(
     ctx.tools.register(
@@ -596,8 +588,7 @@ export function mountBusinessPrompts(
         output,
         isConcurrencySafe: () => false,
         async execute(args, exec) {
-          if (!exec.agent || !profileOf(exec.agent))
-            throw Error("GEA_BUSINESS_SESSION_REQUIRED");
+          if (!exec.agent || !profileOf(exec.agent)) throw Error("GEA_BUSINESS_SESSION_REQUIRED");
           exec.signal.throwIfAborted();
           const state = stateOf(exec.agent);
           if (args.complex) state.limit = PROMPT_BUDGET.complexCalls;
@@ -627,8 +618,7 @@ export function mountBusinessPrompts(
           format: {
             type: "string",
             enum: ["structured", "raw"],
-            description:
-              "默认structured；raw仅审计原始包，不能用它替代已展示的业务行。",
+            description: "默认structured；raw仅审计原始包，不能用它替代已展示的业务行。",
           },
           reload: {
             type: "boolean",
@@ -641,13 +631,11 @@ export function mountBusinessPrompts(
           },
           datasetId: {
             type: "string",
-            description:
-              "dataset的兼容别名，取evidenceDatasets.key；优先直接照nextRead调用。",
+            description: "dataset的兼容别名，取evidenceDatasets.key；优先直接照nextRead调用。",
           },
           rowOffset: {
             type: "integer",
-            description:
-              "dataset模式的0起点行偏移，默认0；不与字符offset混用。",
+            description: "dataset模式的0起点行偏移，默认0；不与字符offset混用。",
           },
           rowLimit: {
             type: "integer",
@@ -657,8 +645,7 @@ export function mountBusinessPrompts(
           offset: { type: "integer", description: "字符偏移，0起点；默认0。" },
           limit: {
             type: "integer",
-            description:
-              "字符数1–6000；默认4000，不可传更大值。优先使用返回的nextRead。",
+            description: "字符数1–6000；默认4000，不可传更大值。优先使用返回的nextRead。",
           },
         },
         output,
@@ -688,22 +675,15 @@ export function mountBusinessPrompts(
             );
           if (args.dataset && args.datasetId && args.dataset !== args.datasetId)
             throw Error("GEA_EVIDENCE_ARGUMENT: dataset与datasetId不能不同。");
-          if (args.datasetId && !args.dataset)
-            args = { ...args, dataset: args.datasetId };
+          if (args.datasetId && !args.dataset) args = { ...args, dataset: args.datasetId };
           if (args.dataset && args.format === "raw")
             throw Error("GEA_EVIDENCE_READ_MODE: dataset和raw不能混用。");
 
-          if (
-            !args.dataset &&
-            (args.rowOffset !== undefined || args.rowLimit !== undefined)
-          )
+          if (!args.dataset && (args.rowOffset !== undefined || args.rowLimit !== undefined))
             throw Error(
               "GEA_EVIDENCE_READ_MODE: rowOffset/rowLimit必须指定dataset；不会忽略行参数退回原文模式。",
             );
-          if (
-            args.dataset &&
-            (args.offset !== undefined || args.limit !== undefined)
-          )
+          if (args.dataset && (args.offset !== undefined || args.limit !== undefined))
             throw Error(
               "GEA_EVIDENCE_READ_MODE: dataset模式使用rowOffset/rowLimit，原文模式使用offset/limit，按nextRead调用。",
             );
@@ -718,9 +698,33 @@ export function mountBusinessPrompts(
                 (!grant.consumer || !grant.resources)
               )
                 throw Error("GEA_EVIDENCE_AUTHORIZATION_REQUIRED");
-              if (grant.owner !== owner())
-                throw Error("GEA_EVIDENCE_IDENTITY_CHANGED");
-              if (grant.consumer && grant.resourceTool && grant.resources) {
+              if (grant.owner !== owner()) throw Error("GEA_EVIDENCE_IDENTITY_CHANGED");
+              if (grant.kind === "local" && tool === "forecast_compute") {
+                const baseline = await ctx.skills.get("sinian-demand-baseline", {
+                  scope: agent,
+                  cwd: agent.session.header.cwd,
+                  signal: exec.signal,
+                });
+                exec.signal.throwIfAborted();
+                if (
+                  grant.calculatorVersion !== FORECAST_VERSION ||
+                  grant.baselineHash !== forecastBaselineHash(baseline)
+                )
+                  throw Error("GEA_CALCULATION_SOURCE_CHANGED: 计算版本或当前原生规则已变化。");
+                if (grant.inputHash) {
+                  if (
+                    !hasUserForecastInput(
+                      agent.session
+                        .snapshotEvents()
+                        .filter((event) => event.type === "user/message")
+                        .map((event) => event.data),
+                      grant.inputHash,
+                    )
+                  )
+                    throw Error("GEA_EVIDENCE_STALE: 当前Session缺少原用户结构化输入。");
+                } else if (grant.ephemeral !== ephemeral(agent))
+                  throw Error("GEA_EVIDENCE_STALE: 模型生成输入只能在当前轮次使用。");
+              } else if (grant.consumer && grant.resourceTool && grant.resources) {
                 if (
                   (await resourceProof(
                     grant.consumer,
@@ -730,23 +734,16 @@ export function mountBusinessPrompts(
                   )) !== grant.resources
                 )
                   throw Error("GEA_EVIDENCE_AUTHORIZATION_CHANGED");
-              } else if (grant.kind === "mcp")
-                throw Error("GEA_EVIDENCE_AUTHORIZATION_REQUIRED");
+              } else if (grant.kind === "mcp") throw Error("GEA_EVIDENCE_AUTHORIZATION_REQUIRED");
               else if (grant.query && grant.valueHash) {
                 // Direct sales reads have no resource-version endpoint. Revalidate the exact query under current row permissions.
-                const current = await business.agentQuery(
-                  grant.query,
-                  exec.signal,
-                );
+                const current = await business.agentQuery(grant.query, exec.signal);
                 if (valueHash(current) !== grant.valueHash)
-                  throw Error(
-                    "GEA_EVIDENCE_STALE: 数据或权限范围已改变，请取得新的结果。",
-                  );
+                  throw Error("GEA_EVIDENCE_STALE: 数据或权限范围已改变，请取得新的结果。");
               } else if (grant.ephemeral !== ephemeral(agent))
                 throw Error("GEA_EVIDENCE_STALE: 页面或临时结果需要重新读取。");
             },
-            args.format === "raw" ||
-              (args.format === undefined && Number(args.offset) > 0)
+            args.format === "raw" || (args.format === undefined && Number(args.offset) > 0)
               ? undefined
               : (raw) => {
                   const index = datasetIndex(raw, args.evidenceId);
@@ -758,13 +755,9 @@ export function mountBusinessPrompts(
                   ) {
                     const offset = args.offset ?? 0,
                       limit = args.limit ?? 4000,
-                      nextOffset =
-                        offset + limit < raw.length ? offset + limit : null;
+                      nextOffset = offset + limit < raw.length ? offset + limit : null;
                     return {
-                      projection:
-                        offset === 0 && raw.length <= limit
-                          ? "complete"
-                          : "partial",
+                      projection: offset === 0 && raw.length <= limit ? "complete" : "partial",
                       offset,
                       totalChars: raw.length,
                       nextOffset,
@@ -784,13 +777,7 @@ export function mountBusinessPrompts(
                     };
                   }
                   const view = args.dataset
-                    ? readDataset(
-                        raw,
-                        args.evidenceId,
-                        args.dataset,
-                        args.rowOffset,
-                        args.rowLimit,
-                      )
+                    ? readDataset(raw, args.evidenceId, args.dataset, args.rowOffset, args.rowLimit)
                     : (exactResult(
                         compactDatasetProjection(raw, args.evidenceId) ??
                           (index.length
@@ -806,10 +793,7 @@ export function mountBusinessPrompts(
                     key = `${args.evidenceId}:${viewId}`;
                   const prior = state.evidenceViews.get(key);
                   const visible =
-                    prior &&
-                    JSON.stringify(agent.session.deriveMessages()).includes(
-                      viewId,
-                    );
+                    prior && JSON.stringify(agent.session.deriveMessages()).includes(viewId);
                   if (visible && !args.reload)
                     return {
                       evidenceId: args.evidenceId,
@@ -821,14 +805,11 @@ export function mountBusinessPrompts(
                           datasets?: Array<{ businessFacts?: unknown }>;
                         }
                       ).datasets?.map((d) => d.businessFacts),
-                      nextRead:
-                        (view as { nextRead?: unknown }).nextRead ?? null,
+                      nextRead: (view as { nextRead?: unknown }).nextRead ?? null,
                     };
                   state.evidenceViews.set(key, viewId);
                   while (state.evidenceViews.size > 32)
-                    state.evidenceViews.delete(
-                      state.evidenceViews.keys().next().value!,
-                    );
+                    state.evidenceViews.delete(state.evidenceViews.keys().next().value!);
                   return { ...view, viewId };
                 },
           );
@@ -854,10 +835,7 @@ export function mountBusinessPrompts(
       const consumer = sessionConsumer(ctx, business, agent.id);
       const user = agent.session
         .snapshotEvents()
-        .findLast(
-          (event) =>
-            event.type === "user/message" && event.data.source.kind === "user",
-        );
+        .findLast((event) => event.type === "user/message" && event.data.source.kind === "user");
       const outputScope = requestedOutputScope(
         user?.type === "user/message"
           ? user.data.content
@@ -868,12 +846,20 @@ export function mountBusinessPrompts(
       );
       const facts = `日期：${date}；时区：Asia/Shanghai。Agent：${profile.label}；业务编码：${consumer}。\n${surfacePromptLine(business.surfaceFor(agent.id))}`;
       const sections = [
-        ...assembled.sections,
+        // Current Core's development surface guidance belongs to coding sessions, not a selected business resource.
+        ...assembled.sections
+          .filter((section) => section.name !== "app:web-surface")
+          .map((section) =>
+            section.name === "genui:fence"
+              ? {
+                  ...section,
+                  text: "GenUI 的当前协议使用 dsh-ui 围栏展示内联 UI；render_ui 是工具行卡片通道，仅在本步实际工具清单提供时调用。展示方式遵循 GEA 业务输出规则和用户指定格式，简单事实或明确纯文字请求使用文字，不因出现数字、步骤或并列项强制 UI。需要 UI 时先用当前原生 skill 加载 genui 的协议与组件参考，遵循当前工具 schema，不猜组件或参数；Skill、工具或界面能力缺失时如实说明呈现缺口，已取得证据仍可用文字交付。展示和页面动作不授予业务权限，也不证明业务保存、提交或审批成功。",
+                }
+              : section,
+          ),
         { name: "gea:common", text: COMMON_PROMPT },
         { name: "gea:facts", text: facts },
-        ...(outputScope
-          ? [{ name: "gea:output-scope", text: outputScope }]
-          : []),
+        ...(outputScope ? [{ name: "gea:output-scope", text: outputScope }] : []),
         ...(state.catalogFacts.size
           ? [
               {
@@ -909,8 +895,7 @@ export function mountBusinessPrompts(
                     .concat([...state.receipts.values()].slice(4).slice(-4))
                     .join("\n") +
                   (state.receipts.size > 8
-                    ? "\n另有已取得引用：" +
-                      [...state.receipts.keys()].slice(4, -4).join("、")
+                    ? "\n另有已取得引用：" + [...state.receipts.keys()].slice(4, -4).join("、")
                     : ""),
               },
             ]
@@ -929,9 +914,7 @@ export function mountBusinessPrompts(
           ? [
               {
                 name: "gea:read-gaps",
-                text:
-                  "本轮失败/缺口（不覆盖成功回执）：" +
-                  [...state.failures.values()].join("\n"),
+                text: "本轮失败/缺口（不覆盖成功回执）：" + [...state.failures.values()].join("\n"),
               },
             ]
           : []),
@@ -960,9 +943,7 @@ export function mountBusinessPrompts(
           : []),
       ];
       refreshMask(agent);
-      const visible = new Set(
-        ctx.tools.schemas(agent).map((tool) => tool.name),
-      );
+      const visible = new Set(ctx.tools.schemas(agent).map((tool) => tool.name));
       const tools =
         state.steps > state.limit + PROMPT_BUDGET.evidenceCalls ||
         state.readCalls >= PROMPT_BUDGET.evidenceCalls
@@ -971,13 +952,14 @@ export function mountBusinessPrompts(
               .filter(
                 (tool) =>
                   visible.has(tool.name) &&
-                  (state.calls < state.limit ||
-                    tool.name === "gea_evidence_read"),
+                  (state.calls < state.limit || tool.name === "gea_evidence_read"),
               )
-              .map((tool) => ({
-                ...tool,
-                description: TOOL_DESCRIPTIONS[tool.name] ?? tool.description,
-              }));
+              .map((tool) =>
+                businessToolDisplay({
+                  ...tool,
+                  description: TOOL_DESCRIPTIONS[tool.name] ?? tool.description,
+                }),
+              );
       const measurement = promptMeasurement(
         sections.map((section) => section.text).join("\n\n"),
         tools,

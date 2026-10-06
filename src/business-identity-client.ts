@@ -1,7 +1,15 @@
 import type { Business } from "./host/business.ts";
 
-type IdentityStatus = Readonly<Pick<ReturnType<Business["status"]>, "environment" | "authenticated" | "loginState" | "user">>;
-export type IdentitySnapshot = Readonly<{ state: "unknown" | "confirmed" | "error"; scope: string | null; status: IdentityStatus | null; error?: string }>;
+type IdentityStatus = Readonly<
+  Pick<ReturnType<Business["status"]>, "environment" | "authenticated" | "loginState" | "user">
+>;
+export type IdentitySnapshot = Readonly<{
+  state: "unknown" | "confirmed" | "error";
+  scope: string | null;
+  subject: string | null;
+  status: IdentityStatus | null;
+  error?: string;
+}>;
 export interface BusinessIdentityProjection {
   getSnapshot(): IdentitySnapshot;
   subscribe(listener: () => void): () => void;
@@ -9,16 +17,25 @@ export interface BusinessIdentityProjection {
 }
 
 /** Read the Host-owned authority; clients never derive a scope from user labels. */
-async function requestBusinessIdentityScope(signal?: AbortSignal): Promise<{ scope: string | null; status: IdentityStatus | null }> {
+async function requestBusinessIdentityScope(
+  signal?: AbortSignal,
+): Promise<{ scope: string | null; subject: string | null; status: IdentityStatus | null }> {
   signal?.throwIfAborted();
   const timeout = AbortSignal.timeout(5000);
   try {
     const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
-    const response = await fetch("/api/gea-html/identity", { cache: "no-store", signal: requestSignal });
+    const response = await fetch("/api/gea-html/identity", {
+      cache: "no-store",
+      signal: requestSignal,
+    });
     const value = await response.json();
     requestSignal.throwIfAborted();
     if (!response.ok) throw Error(value.error ?? "登录状态读取失败，请重试。");
-    return { scope: typeof value.scope === "string" ? value.scope : null, status: value.status ?? null };
+    return {
+      scope: typeof value.scope === "string" ? value.scope : null,
+      subject: typeof value.subject === "string" ? value.subject : null,
+      status: value.status ?? null,
+    };
   } catch (error) {
     if (timeout.aborted && !signal?.aborted) throw Error("登录状态读取超时，请重试。");
     throw error;
@@ -27,8 +44,9 @@ async function requestBusinessIdentityScope(signal?: AbortSignal): Promise<{ sco
 
 /** One read-only projection per GEA client. The Host remains the authority. */
 export function createBusinessIdentityReader() {
-  let snapshot: IdentitySnapshot = { state: "unknown", scope: null, status: null };
-  let issued = 0, accepted = 0;
+  let snapshot: IdentitySnapshot = { state: "unknown", scope: null, subject: null, status: null };
+  let issued = 0,
+    accepted = 0;
   let initial: Promise<string | null> | undefined;
   let initialController: AbortController | undefined;
   const listeners = new Set<() => void>();
@@ -42,19 +60,37 @@ export function createBusinessIdentityReader() {
       const previous = snapshot;
       accepted = request;
       snapshot = { state: "confirmed", ...next };
-      if (previous.state !== "confirmed" || previous.error || previous.scope !== next.scope || previous.status?.loginState !== next.status?.loginState ||
-          previous.status?.environment !== next.status?.environment || previous.status?.user?.name !== next.status?.user?.name ||
-          previous.status?.user?.avatar !== next.status?.user?.avatar) {
+      if (
+        previous.state !== "confirmed" ||
+        previous.error ||
+        previous.scope !== next.scope ||
+        previous.subject !== next.subject ||
+        previous.status?.loginState !== next.status?.loginState ||
+        previous.status?.environment !== next.status?.environment ||
+        previous.status?.user?.name !== next.status?.user?.name ||
+        previous.status?.user?.avatar !== next.status?.user?.avatar
+      ) {
         for (const listener of listeners) listener();
-        if (previous.state !== "unknown" && previous.scope !== next.scope)
-          window.dispatchEvent(new CustomEvent("gea-business-identity-changed", { detail: { scope: next.scope } }));
+        if (
+          previous.state !== "unknown" &&
+          (previous.scope !== next.scope || previous.subject !== next.subject)
+        )
+          window.dispatchEvent(
+            new CustomEvent("gea-business-identity-changed", {
+              detail: { scope: next.scope, subject: next.subject },
+            }),
+          );
       }
       return next.scope;
     } catch (error) {
       if (!signal?.aborted && request >= accepted) {
         const message = error instanceof Error ? error.message : String(error);
         if (snapshot.error !== message || snapshot.state === "unknown") {
-          snapshot = { ...snapshot, state: snapshot.state === "confirmed" ? "confirmed" : "error", error: message };
+          snapshot = {
+            ...snapshot,
+            state: snapshot.state === "confirmed" ? "confirmed" : "error",
+            error: message,
+          };
           for (const listener of listeners) listener();
         }
       }
@@ -66,7 +102,10 @@ export function createBusinessIdentityReader() {
     if (snapshot.state !== "unknown") return read(signal);
     if (!initial) {
       initialController = new AbortController();
-      initial = read(initialController.signal).finally(() => { initial = undefined; initialController = undefined; });
+      initial = read(initialController.signal).finally(() => {
+        initial = undefined;
+        initialController = undefined;
+      });
     }
     if (!signal) return initial;
     return new Promise<string | null>((resolve, reject) => {
@@ -74,13 +113,17 @@ export function createBusinessIdentityReader() {
       signal.addEventListener("abort", abort, { once: true });
       void initial!.then(resolve, reject).then(() => signal.removeEventListener("abort", abort));
     });
-  }) as typeof read & BusinessIdentityProjection & {
-    start(): () => void;
-    refresh(signal?: AbortSignal): Promise<string | null>;
-  };
+  }) as typeof read &
+    BusinessIdentityProjection & {
+      start(): () => void;
+      refresh(signal?: AbortSignal): Promise<string | null>;
+    };
   reader.getSnapshot = () => snapshot;
-  reader.subscribe = listener => { listeners.add(listener); return () => listeners.delete(listener); };
-  reader.readScope = async signal => {
+  reader.subscribe = (listener) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  };
+  reader.readScope = async (signal) => {
     signal?.throwIfAborted();
     return snapshot.state === "confirmed" ? snapshot.scope : reader(signal);
   };
@@ -89,11 +132,19 @@ export function createBusinessIdentityReader() {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      try { await reader(controller.signal); } catch { /* Keep the last Host confirmation. */ }
+      try {
+        await reader(controller.signal);
+      } catch {
+        /* Keep the last Host confirmation. */
+      }
       if (!controller.signal.aborted) timer = setTimeout(poll, 1000);
     };
     void poll();
-    return () => { controller.abort(); initialController?.abort(); clearTimeout(timer); };
+    return () => {
+      controller.abort();
+      initialController?.abort();
+      clearTimeout(timer);
+    };
   };
   return reader;
 }

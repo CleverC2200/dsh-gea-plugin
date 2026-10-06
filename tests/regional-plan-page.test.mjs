@@ -2,6 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import {
+  openBusinessPage,
+  salesPlanFrameElement,
+  salesPlanFrame,
+  htmlFrameElement,
+} from "./fixtures/business-page.mjs";
 
 test(
   "区域计划工作台 is its own menu page and the approval page drops the evaluation switch",
@@ -39,30 +45,24 @@ test(
 
     // 独立的菜单页：内嵌业务原型，不依赖 GEA 登录或业务接口。
     // 侧栏用的是原型目录里的名字（保留「开发中」标记），页面标题才是「区域计划工作台」。
-    await page.locator('[data-gea-business-entry="gea-regional-plan"]').click();
-    const prototype = page.frameLocator("iframe[title='区域计划工作台']");
-    await expect(
-      prototype.locator(".topbar > .brand"),
-    ).toBeHidden();
+    await openBusinessPage(page, "gea-regional-plan");
+    const prototype = htmlFrameElement(page, "gea-regional-plan").contentFrame();
+    await expect(prototype.locator(".topbar > .brand")).toBeHidden();
     await expect(prototype.getByText("计划事件线").first()).toBeVisible();
-    await expect(
-      prototype.getByRole("button", { name: "总览", exact: true }),
-    ).toBeVisible();
+    await expect(prototype.getByRole("button", { name: "总览", exact: true })).toBeVisible();
 
     // 月初/纠偏切换入口恢复；
     // 不能出现「区域计划评估」这排工作台页签。
-    await page.getByRole("button", { name: "销售计划", exact: true }).click();
-    const workbench = page.frameLocator("iframe[data-gea-workbench]");
+    await openBusinessPage(page, "gea-proof");
+    const workbench = salesPlanFrame(page);
     const header = workbench.locator("header").first();
     await expect(
       workbench.getByRole("heading", { name: "销售计划审批", exact: true }),
     ).toBeVisible();
     await expect(header.getByRole("tab", { name: "月初", exact: true })).toBeVisible();
-    await expect(
-      workbench.getByRole("tab", { name: "区域计划评估", exact: true }),
-    ).toHaveCount(0);
+    await expect(workbench.getByRole("tab", { name: "区域计划评估", exact: true })).toHaveCount(0);
     // 已登录时工作台必须落在中间列里；一旦铺上整屏登录遮罩，切面板就会整屏闪一下。
-    const workbenchFrame = page.locator("iframe[data-gea-workbench]");
+    const workbenchFrame = salesPlanFrameElement(page);
     await expect(workbenchFrame).not.toHaveClass(/gea-login-frame/);
     const box = await workbenchFrame.boundingBox();
     const viewport = page.viewportSize();

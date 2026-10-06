@@ -1,10 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  toolConsumer,
-  sessionConsumer,
-} from "../src/host/business-identity.ts";
+import { createRequire } from "node:module";
+import { toolConsumer, sessionConsumer } from "../src/host/business-identity.ts";
 import { createPageBridge } from "../../dsh-agent-workbench/src/page-bridge/host.ts";
+
+async function bundled(entryPoint) {
+  const { build } = await import("esbuild");
+  const { outputFiles } = await build({
+    entryPoints: [entryPoint],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "cjs",
+    packages: "external",
+  });
+  const module = { exports: {} };
+  new Function("require", "module", "exports", outputFiles[0].text)(
+    createRequire(import.meta.url),
+    module,
+    module.exports,
+  );
+  return module.exports;
+}
 test("a generic Skill session can use ordinary model routing but cannot claim a business Consumer", () => {
   const ctx = {
     agents: { get: () => ({ session: {} }) },
@@ -31,33 +48,18 @@ test("page bridge cancellation ends the wait and rejects late, unknown and previ
   const pending = bridge.wait("session", id, 30, 1, signal.signal);
   signal.abort(new Error("Caller stopped"));
   await assert.rejects(pending, /Caller stopped/);
-  bridge.pull("session", [
-    { id: "late", role: "tool", toolCallId: id, content: "late" },
-  ]);
+  bridge.pull("session", [{ id: "late", role: "tool", toolCallId: id, content: "late" }]);
   assert.equal(bridge.take("session", id), undefined);
   const older = bridge.enqueue("session", { toolCallName: "view", args: {} });
   bridge.reset("session");
-  bridge.pull("session", [
-    { id: "old", role: "tool", toolCallId: older, content: "old owner" },
-  ]);
+  bridge.pull("session", [{ id: "old", role: "tool", toolCallId: older, content: "old owner" }]);
   assert.equal(bridge.take("session", older), undefined);
 });
 
 test("releasing a page tool owner cancels queued commands and the waiting public execution", async () => {
-  const { build } = await import("esbuild");
-  const { outputFiles } = await build({
-    entryPoints: ["../dsh-agent-workbench/src/page-bridge/registry.ts"],
-    bundle: true,
-    write: false,
-    platform: "node",
-    format: "esm",
-  });
-  const { mkdir, writeFile } = await import("node:fs/promises");
-  const { pathToFileURL } = await import("node:url");
-  await mkdir(".scratch", { recursive: true });
-  const file = process.cwd() + "/.scratch/ticket03-controlled-registry.mjs";
-  await writeFile(file, outputFiles[0].text);
-  const { createPageToolRegistry } = await import(pathToFileURL(file).href);
+  const { createPageToolRegistry } = await bundled(
+    "../dsh-agent-workbench/src/page-bridge/registry.ts",
+  );
   const bridge = createPageBridge();
   let tool;
   const agent = {
@@ -71,11 +73,9 @@ test("releasing a page tool owner cancels queued commands and the waiting public
       },
     },
   };
-  const registry = createPageToolRegistry(
-    { agents: { get: () => agent } },
-    bridge,
-    { waitMs: 10000 },
-  );
+  const registry = createPageToolRegistry({ agents: { get: () => agent } }, bridge, {
+    waitMs: 10000,
+  });
   registry.declare(agent.id, {
     surface: "owned",
     tool: "owned_view",
@@ -83,6 +83,14 @@ test("releasing a page tool owner cancels queued commands and the waiting public
     elements: [{ id: "row:1", role: "row", label: "Row", actions: ["expand"] }],
   });
   const signal = new AbortController();
+  await assert.rejects(
+    tool.execute(
+      { kind: "invoke", target: "row:1", action: "expand" },
+      { agent: { id: "other-session" }, signal: signal.signal },
+    ),
+    /PAGE_TOOL_SESSION_MISMATCH/,
+  );
+  assert.deepEqual(bridge.pull(agent.id, []), [], "another Session cannot queue commands");
   const pending = tool.execute(
     { kind: "invoke", target: "row:1", action: "expand" },
     { agent, signal: signal.signal },
@@ -95,20 +103,7 @@ test("releasing a page tool owner cancels queued commands and the waiting public
   registry.shutdown();
 });
 test("business prompt masks keep the selected native ancestor loader and refuse generic business execution", async () => {
-  const { build } = await import("esbuild");
-  const { mkdir, writeFile } = await import("node:fs/promises");
-  const { pathToFileURL } = await import("node:url");
-  const { outputFiles } = await build({
-    entryPoints: ["src/host/prompt-runtime.ts"],
-    bundle: true,
-    write: false,
-    platform: "node",
-    format: "esm",
-  });
-  await mkdir(".scratch", { recursive: true });
-  const file = process.cwd() + "/.scratch/ticket03-controlled-prompts.mjs";
-  await writeFile(file, outputFiles[0].text);
-  const { mountBusinessPrompts } = await import(pathToFileURL(file).href);
+  const { mountBusinessPrompts } = await bundled("src/host/prompt-runtime.ts");
   const handlers = new Map();
   let guard;
   let mask;
@@ -121,10 +116,11 @@ test("business prompt masks keep the selected native ancestor loader and refuse 
       return () => {};
     },
     schemas: () =>
-      ["gea_capabilities", "skill", "gea_cube_query", "run_code"].map(
-        (name) => ({ name }),
-      ),
-    get: (name) => (native.has(name) ? { name } : undefined),
+      ["gea_capabilities", "skill", "gea_cube_query", "run_code"].map((name) => ({ name })),
+    get: (name, selectedAgent) => {
+      assert.equal(selectedAgent, agent, "native loader lookup uses the selected Agent ancestry");
+      return native.has(name) ? { name } : undefined;
+    },
   };
   const agent = {
     id: "owned",
@@ -159,12 +155,7 @@ test("business prompt masks keep the selected native ancestor loader and refuse 
     readTurnRevision: () => 1,
     surfaceFor: () => undefined,
   };
-  const dispose = mountBusinessPrompts(
-    ctx,
-    business,
-    { readModules: () => [] },
-    new Map(),
-  );
+  const dispose = mountBusinessPrompts(ctx, business, { readModules: () => [] }, new Map());
   await handlers.get("agent/pre-step")({ agent, messages: [] }, async () => ({
     kind: "enter",
     messages: [],
@@ -177,10 +168,7 @@ test("business prompt masks keep the selected native ancestor loader and refuse 
     guard({ name: "gea_cube_query", agent, arguments: {} }),
     /GEA_BUSINESS_PROFILE_REQUIRED/,
   );
-  assert.match(
-    guard({ name: "gea_cube_query", arguments: {} }),
-    /GEA_BUSINESS_PROFILE_REQUIRED/,
-  );
+  assert.match(guard({ name: "gea_cube_query", arguments: {} }), /GEA_BUSINESS_PROFILE_REQUIRED/);
   assert.equal(guard({ name: "skill", agent, arguments: {} }), undefined);
   dispose();
 });
