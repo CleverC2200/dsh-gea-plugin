@@ -1,15 +1,20 @@
-# 独立安装与回退
+# 当前官方核心的插件安装与回切
 
-当前发行物是 GEA Web 插件 tarball，包含独立工作台插件并依赖固定的 npm DSH `0.1.5-rc.2`。它不包含 DSH 本体，不是桌面安装器，也不读取 AionUi 进程、目录或凭证库。
+本项目的发行物是普通插件包。当前登记基线为官方 Core 5bad、0.2.1-alpha.1，目标设备为本机 macOS arm64。包不携带另一套 DSH CLI、SDK、Node 或用户数据，不通过旧 standalone 启动器另起 Host。
 
-维护者在源码目录执行 npm run build、npm run typecheck、npm test、npm run package。产物位于 .runtime/packages，旁边 JSON 保存 SHA-256 和逐文件清单。npm-shrinkwrap.json 固定安装依赖，避免预发布 peer 依赖漂移。打包采用白名单，排除部署配置、会话、启动日志、机器路径和依赖目录。npm run test:package 将产物解压到临时空目录，安装生产依赖，通过真实 dsh profile 验证模拟登录、GEA 模型发现与 SSE、浏览器查询/分析和 Session 落盘，并重启验证会话保留及登录失效。
+开发依赖仍由本仓库固定 pnpm 管理。发行入口使用独立生产目录，移除开发 link、开发脚本和旧独立启动文件；Workbench、Manage、GenUI 和 Sidebar 作为同组明确 peer，由官方 profile 提供。MCP SDK 是 GEA 宿主入口的运行依赖。
 
-用户将 tarball 解压到新的版本目录，执行 npm ci --omit=dev --ignore-scripts，再用 npm start -- --config 配置绝对路径 --runtime 数据绝对路径 --port 3199 启动。配置应放在版本目录外；首次使用复制 gea.direct.example.json 并设置正式/测试地址。布局通过 profile 禁用 `ui-layout` 并插入独立工作台插件；不用修改 DSH 包或准备源码目录。
+准备输入时，versions.json 明确给出当前五包的 name 到版本映射。先按各 owner 的固定工具链构建；Manage 正常 prepare/prepack 的构建记录与最终输出摘要必须保留。GEA 的生产依赖使用官方 profile 的 hoisted、autoInstallPeers:false 协议安装，随后由 npm shrinkwrap 正常生成 npm-shrinkwrap.json，不手改锁节点或从旧 SDK 锁搬记录。
 
-升级前保留旧版本目录，停止旧进程后备份独立 runtime，再在新目录使用同一 config/runtime 启动。禁止两个进程同时占用同一个 home。GEA 凭证仅在内存中，切换进程后需要重新扫码。应用没有自动升级、数据库迁移或失败自动切换；当前流程为人工受控更换版本。
+```sh
+node scripts/prepare-package.mjs --versions /absolute/versions.json --destination /absolute/new-production-directory --pnpm /absolute/current-official-pnpm/bin/pnpm.mjs
+node scripts/package.mjs --input /absolute/new-production-directory --destination /absolute/artifact-directory
+```
 
-回退时停止新版本；如果 DSH 版本和 Session 格式保持兼容，使用旧版本目录和同一 runtime 启动。若更换过 DSH 或数据格式，不能让旧版本读取较新的数据；保留新 runtime，改用升级前备份并明确其时间点。不可覆盖或丢弃升级后产生的会话。真实用户数据上的升级/回退、全新机器真实 GEA 登录仍待验收，空目录模拟测试不能替代这些证据。
+生产目录须是新目录，不对源码 node_modules 安装。第二条命令核版本、运行依赖和 peer 声明与 shrinkwrap 一致，再按白名单检查文件、禁止机器路径与凭据、生成 tarball 和 SHA-256 收据。源码根中旧 npm-shrinkwrap 不是这一入口的输入。
 
-2026-09-11 已从 0.0.2 tarball 在独立目录完成上述自动验收，另在 3200 端口启动独立真实环境验收进程，该进程已扫码登录并完成真实 GEA 只读工具回路验收。原 3199 服务保留原登录与历史。该测试使用同一台机器上的兼容 DSH fork，不等同于一台全新机器，也不代表真实业务写入验收。
+在官方客户端的插件管理页或官方 dsh plugin 命令中安装当前五个明确本地 tarball，按包的真实结果启用、重启并核实际加载路径和摘要。官方 SDK peers 使用安装提供的唯一实例；npm --strict-peer-deps 的独立解析不等于官方 Plugin Manager 的协议。peer 警告、依赖获取成功、导出解析与真实设备功能分别记录，不使用 force、legacy-peer-deps 或版本豁免制造通过。
 
-测试启动器只从本次启动新追加的完整日志行获取启动地址，避免重启时读取追加日志中上一进程的端口。安装包验收使用同一启动器验证停止后的新进程恢复。
+升级或回切前，由唯一 owner 沿正常入口退出客户端，保存当前包与 profile 输入摘要，保留原 Home、userData、workspace、documents、会话及未发送草稿。不能在运行中修改指向 immutable 源组合的 node_modules 链接或让两个 Host 共用用户目录。普通安装应在实际可写 profile 中执行，旧源组合只作为已核恢复材料；回切须核对应源、锁、包及外部依赖摘要，不删除新数据或失败记录。
+
+空目录普通安装和 SDK 解析只是离线安装层。当前设备的启用、停启、资源与会话恢复仍须真实 Native 验收；它不代表 Windows、发布、生产或全部业务票通过。本项目不向正式 GitLab、npm、OSS 或频道写入。

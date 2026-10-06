@@ -2,7 +2,7 @@
 
 独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；通用工作台插件负责页面目录与 HTML 呈现。本隔离项目只支持 repositories.json 登记的未修改官方源码 4878cdab 与同组插件候选，不使用旧 npm 核心或旧包运行回退。
 
-本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。`pnpm run package` 输出可核对 SHA-256 的 tarball，尚不是桌面安装器。
+本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。发行准备通过 `scripts/prepare-package.mjs` 在独立生产目录生成运行清单与 npm shrinkwrap，再用 `scripts/package.mjs --input` 输出带 SHA-256 的普通插件包。SDK peers 由当前官方 profile 提供，完整命令与设备验收边界见安装说明。
 
 ## 源码安装与启动
 
