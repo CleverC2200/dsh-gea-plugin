@@ -10,6 +10,10 @@ const { values } = parseArgs({ options: { profile: { type: 'string' }, core: { t
 if (!values.profile || !values.core || !values.lock || !values.receipt) throw Error('PROFILE_LOCK_INPUTS_REQUIRED');
 const profile = resolve(values.profile), core = resolve(values.core), input = await readFile(resolve(values.lock));
 try {
+  await lstat(join(profile, 'package-lock.json'));
+  throw Error('PROFILE_OTHER_NPM_LOCK_PRESENT: preserve package-lock.json and choose one explicit lock before import');
+} catch (error) { if (error.code !== 'ENOENT') throw error; }
+try {
   if ((await lstat(join(profile, 'node_modules'))).isSymbolicLink()) throw Error('IMMUTABLE_SOURCE_PROFILE_INSTALL_FORBIDDEN');
 } catch (error) { if (error.code !== 'ENOENT') throw error; }
 const manifest = JSON.parse(await readFile(join(profile, 'package.json'), 'utf8')), lock = JSON.parse(input);
