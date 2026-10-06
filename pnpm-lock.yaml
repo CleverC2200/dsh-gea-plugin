@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@changfenhuang/dsh-genui':
-        specifier: link:../dsh-genui
-        version: link:../dsh-genui
+        specifier: link:../../../current-mainline-closeout-44/upstream-assets/genui-0.11.3
+        version: link:../../../current-mainline-closeout-44/upstream-assets/genui-0.11.3
       '@cleverc2200/dsh-agent-workbench':
         specifier: link:../dsh-agent-workbench
         version: link:../dsh-agent-workbench
@@ -18,8 +18,8 @@ importers:
         specifier: 10.6.0
         version: 10.6.0
       dsh-better-sidebar:
-        specifier: link:../dsh-better-sidebar
-        version: link:../dsh-better-sidebar
+        specifier: link:../../../current-mainline-closeout-44/upstream-reference/dsh-better-sidebar
+        version: link:../../../current-mainline-closeout-44/upstream-reference/dsh-better-sidebar
       esbuild:
         specifier: 0.25.9
         version: 0.25.9

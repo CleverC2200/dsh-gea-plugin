@@ -20,7 +20,7 @@ const { agentEvents } = await import(
 );
 const { outputFiles } = await build({
   stdin: {
-    contents: `export{mountBusinessPrompts}from'./src/host/prompt-runtime.ts';export{mountSessionToolRestraint}from'./src/host/session-tool-restraint.ts';export{AgentOpenRegistry,registerOpenTool}from'../dsh-better-sidebar/src/agent-opens.ts';export{SIDEBAR_PREFS_DEFAULTS}from'../dsh-better-sidebar/src/prefs-shared.ts';`,
+    contents: `export{mountBusinessPrompts}from'./src/host/prompt-runtime.ts';export{mountSessionToolRestraint}from'./src/host/session-tool-restraint.ts';export{AgentOpenRegistry,registerOpenTool}from'dsh-better-sidebar/src/agent-opens.ts';export{SIDEBAR_PREFS_DEFAULTS}from'dsh-better-sidebar/src/prefs-shared.ts';`,
     resolveDir: process.cwd(),
   },
   bundle: true,
