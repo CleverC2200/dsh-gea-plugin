@@ -9,7 +9,9 @@ import YAML from 'yaml';
 const { values } = parseArgs({ options: { profile: { type: 'string' }, core: { type: 'string' }, lock: { type: 'string' }, receipt: { type: 'string' } } });
 if (!values.profile || !values.core || !values.lock || !values.receipt) throw Error('PROFILE_LOCK_INPUTS_REQUIRED');
 const profile = resolve(values.profile), core = resolve(values.core), input = await readFile(resolve(values.lock));
-if ((await lstat(join(profile, 'node_modules'))).isSymbolicLink()) throw Error('IMMUTABLE_SOURCE_PROFILE_INSTALL_FORBIDDEN');
+try {
+  if ((await lstat(join(profile, 'node_modules'))).isSymbolicLink()) throw Error('IMMUTABLE_SOURCE_PROFILE_INSTALL_FORBIDDEN');
+} catch (error) { if (error.code !== 'ENOENT') throw error; }
 const manifest = JSON.parse(await readFile(join(profile, 'package.json'), 'utf8')), lock = JSON.parse(input);
 if (lock.lockfileVersion !== 3 || JSON.stringify(Object.entries(manifest.dependencies ?? {}).sort()) !== JSON.stringify(Object.entries(lock.packages?.['']?.dependencies ?? {}).sort())) throw Error('PROFILE_NPM_LOCK_MISMATCH');
 const workspace = await readFile(join(profile, 'pnpm-workspace.yaml'), 'utf8');
