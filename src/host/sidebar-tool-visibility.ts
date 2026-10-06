@@ -14,6 +14,7 @@ export function mountSidebarToolVisibility(
   return ctx.connection.fetch.register({
     path: "/api/gea-proof/sidebar-tool-visibility",
     methods: ["GET"],
+    requestBody: "buffered",
     fetch: async (request) => {
       if (!business.status().authenticated)
         return reply({ error: "LOGIN_REQUIRED" }, 401);
