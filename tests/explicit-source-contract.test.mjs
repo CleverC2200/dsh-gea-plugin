@@ -22,7 +22,7 @@ import { checkSourcePlugins } from "../scripts/check-source-plugins.mjs";
 import { sourcePlugins } from "../scripts/source-composition.mjs";
 import { runSourceProfile } from "../scripts/start-isolated-validation.mjs";
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
-async function fixture(t) {
+async function fixture(t, firstProjectPaths) {
   const dir = await mkdtemp(resolve(".scratch/explicit-inputs-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const records = [];
@@ -68,7 +68,14 @@ async function fixture(t) {
       join(source, "scripts/build.mjs"),
       "import{appendFileSync}from'node:fs';appendFileSync('builder-ran.txt',process.env.DSH_TYPECHECK_PROJECT+'\\n');",
     );
-    await writeFile(join(source, "tsconfig.json"), "{}\n");
+    await writeFile(
+      join(source, "tsconfig.json"),
+      JSON.stringify(
+        index === 0 && firstProjectPaths
+          ? { compilerOptions: { paths: firstProjectPaths } }
+          : {},
+      ) + "\n",
+    );
     await writeFile(join(source, "tsconfig.client.json"), "{}\n");
     await writeFile(
       join(source, "node_modules/typescript/bin/tsc"),
@@ -184,6 +191,27 @@ test("ordinary declared source still runs its original TypeScript checks while f
     await assert.rejects(access(join(record.source, "compiler-ran.txt")), {
       code: "ENOENT",
     });
+});
+
+test("generated source checks retain project aliases without replacing the fixed Core mappings", async (t) => {
+  const { dir, records } = await fixture(t, {
+    "declared-project-alias": ["./types/public.d.ts"],
+    "@deepseek-ai/cordis": ["./wrong-core.d.ts"],
+  });
+  delete records[0].assets;
+  delete records[0].files;
+  const core = resolve("../../official-latest-standard");
+  const output = join(dir, "alias-output");
+  await checkSourcePlugins({ sources: records, core, output });
+  const generated = JSON.parse(
+    await readFile(join(output, "dsh-agent-workbench-tsconfig.json"), "utf8"),
+  );
+  assert.deepEqual(generated.compilerOptions.paths["declared-project-alias"], [
+    join(records[0].source, "types/public.d.ts"),
+  ]);
+  assert.deepEqual(generated.compilerOptions.paths["@deepseek-ai/cordis"], [
+    join(core, "vendor/cordis/lib/types/index.d.ts"),
+  ]);
 });
 test("new start and generic check/build reject missing records before SDK lookup or runtime mutation", async (t) => {
   const dir = await mkdtemp(resolve(".scratch/explicit-missing-"));

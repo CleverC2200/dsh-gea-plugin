@@ -45,6 +45,15 @@ export async function checkSourcePlugins({
     const cwd = sourceFor(name);
     const projects = [];
     for (const config of plugin.configs) {
+      const declared = JSON.parse(await readFile(join(cwd, config), "utf8"));
+      const projectPaths = {};
+      for (const [specifier, targets] of Object.entries(
+        declared.compilerOptions?.paths ?? {},
+      ))
+        if (!(specifier in paths))
+          projectPaths[specifier] = targets.map((file) =>
+            resolve(cwd, declared.compilerOptions?.baseUrl ?? ".", file),
+          );
       const target = join(output, `${name}-${config}`);
       await writeFile(
         target,
@@ -52,7 +61,7 @@ export async function checkSourcePlugins({
           {
             extends: join(cwd, config),
             compilerOptions: {
-              paths,
+              paths: { ...projectPaths, ...paths },
               typeRoots: [join(dependencyFor(name), "@types")],
               noEmit: true,
               emitDeclarationOnly: false,
