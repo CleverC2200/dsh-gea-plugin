@@ -23,3 +23,5 @@ current source-profile直接调用businessDeploymentPatch，仅给GEA真实业�
 本项目 GEA 的开发安装将 GenUI 指向固定原 npm 0.11.3 发布资产，将 Better Sidebar 指向原样 e35120f1d9b3773062b68decb4f53a526d6c8baa checkout，退出同级产品 fork 的依赖声明。Sidebar 策略测试通过上游已公开的 `dsh-better-sidebar/src/*` 导出读取注册逻辑，不再拼接同级源码路径。冻结资产不重建；上游源码与发布文件摘要仍由明确五源记录校验，开发依赖路径不成为新的装配默认。
 
 当前官方源码启动只走 `businessDeploymentPatch` 和明确的五源输入。历史 `deploymentPatch` 的依赖解析用途仍单独保留，本片不改旧桌面发行协议。`npm-shrinkwrap.json` 属于普通包交付范围，待原同组验收前置满足后处理。原运行组合和恢复材料不删除，真实 Agent 推送验收未通过时不提前关闭来源退场。
+
+`GET /api/gea-proof/sidebar-tool-visibility?sessionId=<existing Session id>` 提供当前 Host 的最小只读工具投影。GEA 必须已登录，Session 对应的 Agent 必须已存在；未就绪返回明确错误，不创建或恢复 Agent。返回 `sidebar_open` 的注册与该 Agent 当前 scoped Tools 可见性，不提供执行入口，不调整工具策略、不发模型请求或外部业务查询。结果只描述读取时刻，不能代替随后真实工具返回、推送、队列及释放验收。读取无缓存，不返回身份、凭据或工具参数内容。

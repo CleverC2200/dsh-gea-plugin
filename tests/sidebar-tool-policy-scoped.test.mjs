@@ -20,7 +20,7 @@ const { agentEvents } = await import(
 );
 const { outputFiles } = await build({
   stdin: {
-    contents: `export{mountBusinessPrompts}from'./src/host/prompt-runtime.ts';export{mountSessionToolRestraint}from'./src/host/session-tool-restraint.ts';export{AgentOpenRegistry,registerOpenTool}from'dsh-better-sidebar/src/agent-opens.ts';export{SIDEBAR_PREFS_DEFAULTS}from'dsh-better-sidebar/src/prefs-shared.ts';`,
+    contents: `export{mountBusinessPrompts}from'./src/host/prompt-runtime.ts';export{mountSessionToolRestraint}from'./src/host/session-tool-restraint.ts';export{mountSidebarToolVisibility}from'./src/host/sidebar-tool-visibility.ts';export{AgentOpenRegistry,registerOpenTool}from'dsh-better-sidebar/src/agent-opens.ts';export{SIDEBAR_PREFS_DEFAULTS}from'dsh-better-sidebar/src/prefs-shared.ts';`,
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -57,7 +57,7 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
   const directory = resolve(".scratch/sidebar-policy-evidence");
   await mkdir(directory, { recursive: true });
   const agent = {
-    id: "sidebar-policy-fixture",
+    id: "session-sidebar-policy-fixture",
     session: { header: { cwd: directory }, snapshotEvents: () => [] },
   };
   let scope;
@@ -90,6 +90,28 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     readTurnRevision: () => 1,
     surfaceFor: () => undefined,
   };
+  let authenticated = true;
+  let visibilityRoute;
+  ctx.provide("connection", {
+    fetch: { register: (route) => { visibilityRoute = route; return () => { visibilityRoute = undefined; }; } },
+  });
+  const offVisibility = m.mountSidebarToolVisibility(ctx, {
+    status: () => ({ authenticated }),
+  });
+  const visibility = async (id = agent.id) => {
+    const response = await visibilityRoute.fetch(new Request(
+      "http://localhost/api/gea-proof/sidebar-tool-visibility?sessionId=" + encodeURIComponent(id),
+    ));
+    return { status: response.status, value: await response.json() };
+  };
+  assert.deepEqual((await visibility()).value, {
+    tool: "sidebar_open", registered: false, visible: false,
+  });
+  authenticated = false;
+  assert.equal((await visibility()).status, 401);
+  authenticated = true;
+  assert.equal((await visibility("invalid")).status, 400);
+  assert.equal((await visibility("session-unknown")).status, 404);
   const offBusiness = m.mountBusinessPrompts(
     ctx,
     business,
@@ -109,6 +131,7 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
   const names = () => ctx.tools.schemas(agent).map((tool) => tool.name);
   t.after(async () => {
     offSidebar?.();
+    offVisibility();
     offBusiness();
     offRestraint();
     registry.dispose();
@@ -145,6 +168,9 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     names().includes("sidebar_open"),
     "business Agent scoped view must include the registered UI-only tool",
   );
+  assert.deepEqual((await visibility()).value, {
+    tool: "sidebar_open", registered: true, visible: true,
+  });
   assert.ok(names().includes("gea_cube_query"));
   for (const denied of [
     "mcp__browser__browser_click",
@@ -159,6 +185,9 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     false,
     "another actual scope restriction still intersects the GEA allow",
   );
+  assert.deepEqual((await visibility()).value, {
+    tool: "sidebar_open", registered: true, visible: false,
+  });
   intersect();
   assert.ok(names().includes("sidebar_open"));
   offSidebar();
