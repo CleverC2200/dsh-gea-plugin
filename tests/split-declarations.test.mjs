@@ -35,7 +35,10 @@ async function fixture(t) {
 test("分离声明进入现有目录，页面关联与只读权限和旧声明相同", async (t) => {
   const f = await fixture(t);
   const split = await readPluginContract(f.root, f.declarations, f.legacy);
-  await assert.rejects(readPluginContract(f.root, undefined, f.legacy), /UNSUPPORTED_HTML_RESOURCE_PROTOCOL/);
+  await assert.rejects(
+    readPluginContract(f.root, undefined, f.legacy),
+    /UNSUPPORTED_HTML_RESOURCE_PROTOCOL/,
+  );
   const legacy = f.legacy;
   const registry = createCapabilityRegistry([split]);
   assert.deepEqual(
@@ -169,7 +172,7 @@ test("重复安装声明在发布 Skill、预设和路由之前被拒绝", async
       skills: ["SKILL.md"],
       mcp: "mcp.json",
       declarations: f.declarations,
-      agentResources: {provider:"dsh-agent-manage",prompt:"prompt.json"},
+      agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
       gea: {
         consumerCode: "probe-consumer",
         readonly: true,
@@ -195,7 +198,14 @@ test("重复安装声明在发布 Skill、预设和路由之前被拒绝", async
     join(f.root, "SKILL.md"),
     "---\nname: inventory-probe\ndescription: probe\n---\n",
   );
-  await writeFile(join(f.root,"prompt.json"),JSON.stringify({consumerCode:"probe-consumer",persona:"只读探针",skills:["inventory-probe"]}));
+  await writeFile(
+    join(f.root, "prompt.json"),
+    JSON.stringify({
+      consumerCode: "probe-consumer",
+      persona: "只读探针",
+      skills: ["inventory-probe"],
+    }),
+  );
   const runtimeDir = join(f.root, "runtime");
   await mkdir(runtimeDir);
   await assert.rejects(
@@ -206,9 +216,31 @@ test("重复安装声明在发布 Skill、预设和路由之前被拒绝", async
         },
       },
       { config: { runtimeDir } },
-      await Promise.all([1, 2].map(async () => ({ directory: f.root, htmlPath: join(f.root, "index.html"), manifest: JSON.parse(await readFile(join(f.root, "plugin.json"), "utf8")) }))),
+      await Promise.all(
+        [1, 2].map(async () => ({
+          directory: f.root,
+          htmlPath: join(f.root, "index.html"),
+          manifest: JSON.parse(
+            await readFile(join(f.root, "plugin.json"), "utf8"),
+          ),
+        })),
+      ),
     ),
     /DUPLICATE_HTML_PLUGIN.*source:/,
   );
   assert.deepEqual(await readdir(runtimeDir), []);
+});
+
+test("disabled capability retains page metadata but rejects execution and direct data routing", async (t) => {
+  const f = await fixture(t);
+  f.capability.enabled = false;
+  await f.save();
+  const split = await readPluginContract(f.root, f.declarations, f.legacy);
+  const registry = createCapabilityRegistry([split]);
+  assert.equal(split.enabled, false);
+  assert.equal(registry.get("inventory-probe").id, "inventory-probe");
+  assert.equal(registry.modules()[0].pageIds[0], "inventory-probe");
+  assert.equal(registry.allows("gea-html-inventory-probe", "view"), false);
+  assert.equal(registry.byConsumer("probe-consumer"), undefined);
+  assert.deepEqual(registry.route("声明探针"), []);
 });
