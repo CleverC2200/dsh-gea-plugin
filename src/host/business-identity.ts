@@ -2,6 +2,40 @@ import type { Context } from "@deepseek-ai/cordis";
 import type { Business } from "./business.ts";
 import { profileFor } from "./prompt-policy.ts";
 
+/** HTML resource availability comes from Manage's current validated registration, not the retained preset profile. */
+export async function assertBusinessResourceAvailable(
+  ctx: Context,
+  preset: string | undefined,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!preset?.startsWith("gea-html-")) return;
+  signal?.throwIfAborted();
+  const resource = (await ctx.agentResources.list({ signal })).find(
+    (item) => item.id === preset && item.kind === "prompt" && item.installed,
+  );
+  signal?.throwIfAborted();
+  let code: string | undefined;
+  if (!resource) code = "GEA_AGENT_RESOURCE_MISSING";
+  else if (resource.error) code = "GEA_AGENT_RESOURCE_UNAVAILABLE";
+  else if (!resource.enabled) code = "GEA_AGENT_RESOURCE_DISABLED";
+  if (code) throw Object.assign(Error(code), { code });
+}
+
+/** Persistent Session presets must be checked again before model or tool execution. */
+export async function assertSessionResourceAvailable(
+  ctx: Context,
+  sessionId?: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const agent = sessionId
+    ? ctx.agents?.get(sessionId as Parameters<typeof ctx.agents.get>[0])
+    : undefined;
+  const preset = agent
+    ? ctx.sessionProjections.stateOf(agent.session, "agentPreset")
+    : undefined;
+  await assertBusinessResourceAvailable(ctx, preset ?? undefined, signal);
+}
+
 /** The GEA environment, tenant and user jointly own page Sessions and saved references. */
 export function businessIdentityKey(business: Business): string | undefined {
   const status = business.status();

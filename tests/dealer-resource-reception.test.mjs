@@ -14,26 +14,27 @@ import { resolve, join } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
 import { build } from "esbuild";
 import { pathToFileURL } from "node:url";
-await mkdir(".runtime", { recursive: true });
-const compiled = await build({
-  entryPoints: ["../dsh-agent-manage/src/runtime/business-resources.ts"],
-  bundle: true,
-  write: false,
-  platform: "node",
-  format: "esm",
-  packages: "external",
-});
-await writeFile(
-  ".runtime/dealer-manage-fixture.mjs",
-  compiled.outputFiles[0].text,
-);
-const { BusinessResources } = await import(
-  pathToFileURL(resolve(".runtime/dealer-manage-fixture.mjs"))
-);
+async function managedResources(t) {
+  await mkdir(".runtime", { recursive: true });
+  const root = await mkdtemp(resolve(".runtime/dealer-manage-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const compiled = await build({
+    entryPoints: ["../dsh-agent-manage/src/runtime/business-resources.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+    packages: "external",
+  });
+  const output = join(root, "fixture.mjs");
+  await writeFile(output, compiled.outputFiles[0].text);
+  return (await import(pathToFileURL(output))).BusinessResources;
+}
 const session = "session-11111111-1111-4111-8111-111111111111";
 
 for (const enabled of [true, false])
   test(`actual built dealer resource ${enabled ? "selects" : "refuses selection"} while its static page remains registered`, async (t) => {
+    const BusinessResources = await managedResources(t);
     const root = await realpath(
       await mkdtemp(join(tmpdir(), "dealer-reception-")),
     );

@@ -2,6 +2,7 @@ import { profileFor, installPromptProfile } from "./host/prompt-policy.ts";
 import {
   businessIdentityKey,
   sessionConsumer,
+  assertSessionResourceAvailable,
 } from "./host/business-identity.ts";
 import type { HtmlPackage } from "@cleverc2200/dsh-agent-workbench";
 import { readFile, realpath } from "node:fs/promises";
@@ -476,8 +477,10 @@ export async function registerHtmlPlugins(
   }
 
   return {
-    consumerForSession: (session?: string) =>
-      sessionConsumer(ctx, business, session),
+    consumerForSession: async (session?: string, signal?: AbortSignal) => {
+      await assertSessionResourceAvailable(ctx, session, signal);
+      return sessionConsumer(ctx, business, session);
+    },
     capabilityContracts,
   };
 }
