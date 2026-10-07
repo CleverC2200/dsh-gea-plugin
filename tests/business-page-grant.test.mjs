@@ -1,21 +1,56 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, realpath, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, realpath, rm, cp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 const session = "session-11111111-1111-4111-8111-111111111111";
+test("registered regional, category and MPS mock resources authorize only their current page and no business query", async (t) => {
+  for (const [id, pageId, consumer] of [
+    ["plan-regional", "gea-regional-plan", "regional-plan-prototype"],
+    ["category-plan", "plan-region-category", "category-plan-prototype"],
+    ["inventory-mps", "plan-category-production", "mps-prototype"],
+  ]) {
+    const h = await fixture(t, {
+      id,
+      pageId,
+      consumer,
+      mock: true,
+      ...(id === "plan-regional"
+        ? { resourceRoot: "../dsh-agent-workbench/static/regional" }
+        : {}),
+    });
+    assert.ok(h.resources.has(`gea-html-${id}`));
+    assert.ok(h.adapters.has(pageId));
+    const grant = await h.authorize();
+    assert.equal(grant.allowsEffect("view"), true);
+    assert.equal(grant.allowsEffect("approve"), false);
+    assert.deepEqual(h.launches, []);
+    await assert.rejects(
+      grant.readSql({ sql: "select 1" }, new AbortController().signal),
+      /MOCK_DATA_ONLY/,
+    );
+    assert.deepEqual(h.queries, []);
+    grant.release();
+    assert.equal(h.identities.size, 0);
+    h.dispose();
+    assert.equal(h.resources.size, 0);
+    assert.equal(h.adapters.size, 0);
+    assert.equal(h.surfaces.size, 0);
+  }
+});
 async function fixture(t, options = {}) {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "gea-business-grant-")));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const id = "inventory-grant",
+  const id = options.id ?? "inventory-grant",
     preset = "gea-html-" + id,
-    consumer = id + "-consumer";
+    consumer = options.consumer ?? id + "-consumer";
+  const pageId = options.pageId ?? id;
   await writeFile(join(directory, "index.html"), "<html><body>Unchanged original</body></html>");
   await writeFile(
     join(directory, "SKILL.md"),
-    "---\nname: inventory-grant\ndescription: original\n---\nOriginal business rule.\n",
+    `---\nname: ${id}\ndescription: original\n---\nOriginal business rule.\n`,
   );
   await writeFile(
     join(directory, "plugin.json"),
@@ -24,6 +59,7 @@ async function fixture(t, options = {}) {
       id,
       name: "Original page",
       html: "index.html",
+      pages: [{id: pageId, name: "Original page", view: ""}],
       skills: ["SKILL.md"],
       mcp: "mcp.json",
       ...(options.mock ? { mode: "mock" } : {}),
@@ -41,6 +77,7 @@ async function fixture(t, options = {}) {
     }),
   );
   await currentHtmlResource(directory);
+  if (options.resourceRoot) await cp(options.resourceRoot, directory, {recursive: true});
   const manifest = JSON.parse(await readFile(join(directory, "plugin.json"), "utf8"));
   const packages = [{ directory, htmlPath: join(directory, "index.html"), manifest }];
   if (options.second) {
@@ -51,6 +88,7 @@ async function fixture(t, options = {}) {
     const m = {
       ...manifest,
       id: "inventory-other",
+      pages: [{id: "inventory-other", name: "Other interpreter", view: ""}],
       name: "Other interpreter",
       gea: { ...manifest.gea, consumerCode: "other-consumer" },
     };
@@ -161,7 +199,7 @@ async function fixture(t, options = {}) {
     identities,
     routes,
     dispose,
-    authorize: (signal = new AbortController().signal) => adapters.get(id)(session, preset, signal),
+    authorize: (signal = new AbortController().signal) => adapters.get(pageId)(session, preset, signal),
     changeIdentity() {
       identity.abort();
       identity = new AbortController();
