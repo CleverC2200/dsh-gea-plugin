@@ -69,7 +69,7 @@ export async function registerHtmlPlugins(
     const pages = manifest.pages ?? [{ id: manifest.id, name: manifest.name, view: "" }];
     if (
       manifest.schemaVersion !== 1 ||
-      !/^inventory-[a-z]+$/.test(manifest.id) ||
+      !/^[a-z][a-z0-9-]{0,119}$/.test(manifest.id) ||
       (manifest.mode !== undefined && !mock) ||
       manifest.gea?.contract !== "gea-html-v2" ||
       manifest.gea?.readonly !== true ||
@@ -85,7 +85,7 @@ export async function registerHtmlPlugins(
       pages.some(
         (page: any) =>
           !page ||
-          !/^inventory-[a-z]+$/.test(page.id) ||
+          !/^[a-z][a-z0-9-]{0,119}$/.test(page.id) ||
           typeof page.name !== "string" ||
           !page.name.trim() ||
           typeof page.view !== "string" ||
