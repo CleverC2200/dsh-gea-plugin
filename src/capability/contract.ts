@@ -64,6 +64,8 @@ export type CapabilityRouting = {
 };
 
 export type CapabilityContract = {
+  /** Installed capability availability, independent of page menu visibility. */
+  enabled?: boolean;
   /** Installed declaration files for load diagnostics; never used as authority. */
   source?: string;
   id: string;
@@ -137,7 +139,11 @@ export function tablesFromSource(...sources: readonly string[]): string[] {
  */
 export function rulesFromSkill(
   skill: string,
-  options: { maxSections?: number; maxCharsPerSection?: number; maxTotal?: number } = {},
+  options: {
+    maxSections?: number;
+    maxCharsPerSection?: number;
+    maxTotal?: number;
+  } = {},
 ): string[] {
   const maxSections = options.maxSections ?? 3;
   const maxCharsPerSection = options.maxCharsPerSection ?? 600;
@@ -198,7 +204,9 @@ export type PluginContractInput = {
 };
 
 /** Derive the installed identity and permission bounds checked against required declarations. */
-export function contractFromPlugin(input: PluginContractInput): CapabilityContract {
+export function contractFromPlugin(
+  input: PluginContractInput,
+): CapabilityContract {
   const tables = tablesFromSource(...(input.sources ?? []));
   const rules = rulesFromSkill(input.skill ?? "");
   const description = input.description;
@@ -255,7 +263,8 @@ export function workbenchContract(input: {
     skills: [],
     routing: {
       keywords: [...(input.keywords ?? [])],
-      summary: "区域计划工作台：审批阶段、筛选、翻页、确认计划量草稿，以及通过/退回。",
+      summary:
+        "区域计划工作台：审批阶段、筛选、翻页、确认计划量草稿，以及通过/退回。",
     },
   };
 }
@@ -267,14 +276,15 @@ export function normalizeContract(value: unknown): CapabilityContract {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new Error("INVALID_CAPABILITY_CONTRACT");
   const raw = value as Record<string, unknown>;
+  if (raw.enabled !== undefined && typeof raw.enabled !== "boolean")
+    throw Error("INVALID_CAPABILITY_ENABLED");
   const id = raw.id;
   const label = raw.label;
   if (typeof id !== "string" || !NAME_PATTERN.test(id) || id.length > 64)
     throw new Error("INVALID_CAPABILITY_CONTRACT");
   if (typeof label !== "string" || !label.trim() || label.length > 120)
     throw new Error("INVALID_CAPABILITY_CONTRACT");
-  const maxEffect =
-    raw.maxEffect === undefined ? "draft" : raw.maxEffect;
+  const maxEffect = raw.maxEffect === undefined ? "draft" : raw.maxEffect;
   if (
     typeof maxEffect !== "string" ||
     !(CAPABILITY_EFFECTS as readonly string[]).includes(maxEffect)
@@ -311,7 +321,10 @@ export function normalizeContract(value: unknown): CapabilityContract {
       throw new Error("INVALID_CAPABILITY_CONTRACT");
     const candidate = data as Record<string, unknown>;
     const consumerCode = candidate.consumerCode;
-    if (typeof consumerCode !== "string" || !/^[a-z][a-z0-9-]+$/.test(consumerCode))
+    if (
+      typeof consumerCode !== "string" ||
+      !/^[a-z][a-z0-9-]+$/.test(consumerCode)
+    )
       throw new Error("INVALID_CAPABILITY_CONTRACT");
     const tables = Array.isArray(candidate.tables)
       ? (candidate.tables as unknown[]).filter(
@@ -358,6 +371,7 @@ export function normalizeContract(value: unknown): CapabilityContract {
   return {
     id,
     label,
+    ...(raw.enabled === undefined ? {} : { enabled: raw.enabled as boolean }),
     ...(normalizedView === undefined ? {} : { view: normalizedView }),
     ...(normalizedData === undefined ? {} : { data: normalizedData }),
     maxEffect: maxEffect as CapabilityEffect,

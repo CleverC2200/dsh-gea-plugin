@@ -293,3 +293,5 @@ GEA Host 向现有 `workbenchPages.registerBusinessPage` 登记实际业务 gran
 Business pages authorize the Interpreter projected by the actual Core Session. Their read-only identity responses include the current subject for Workbench recovery and revocation checks. GEA retains Consumer authorization and checks a login rejection against the current execution before forwarding it. Calculation evidence uses Manage's shared input and baseline checks and remains bound to its original Session and subject.
 
 当前 HTML 包与页面 ID 沿 Workbench `HtmlPages` 的声明合同校验。原 `plan-regional`、`category-plan`、`inventory-mps` 包和 `gea-regional-plan`、`plan-region-category`、`plan-category-production` 页面保留原身份；已登记的三份原型仅发布模拟上下文和引用，MCP为空、maxEffect=view，不发起Consumer、SQL或真实业务写入。
+
+经销商本批接收保留原固定规则并采用本地mock输入。页面可见由Workbench读取page.json.visible，能力启用由现有capability.json.enabled决定；禁用能力会拒绝资源选用和页面操作，页面包继续保留。见[能力声明](docs/capability-contract.md)。

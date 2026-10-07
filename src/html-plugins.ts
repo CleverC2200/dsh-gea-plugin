@@ -1,5 +1,8 @@
 import { profileFor, installPromptProfile } from "./host/prompt-policy.ts";
-import { businessIdentityKey, sessionConsumer } from "./host/business-identity.ts";
+import {
+  businessIdentityKey,
+  sessionConsumer,
+} from "./host/business-identity.ts";
 import type { HtmlPackage } from "@cleverc2200/dsh-agent-workbench";
 import { readFile, realpath } from "node:fs/promises";
 import { resolve, sep } from "node:path";
@@ -7,7 +10,10 @@ import { pathToFileURL } from "node:url";
 import { isHtmlPluginRetired } from "./html-plugin-selection.ts";
 import { readHtmlBatch } from "./html-query-batch.ts";
 import type { Business } from "./host/business.ts";
-import { contractFromPlugin, type CapabilityContract } from "./capability/contract.ts";
+import {
+  contractFromPlugin,
+  type CapabilityContract,
+} from "./capability/contract.ts";
 import { readPluginContract } from "./capability/declarations.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { PAGE_TOOL } from "./host/page-identity.ts";
@@ -48,7 +54,10 @@ export async function registerHtmlPlugins(
   } = await (async () => {
     try {
       const value = JSON.parse(
-        await readFile(new URL("../presets/agent-presets.json", import.meta.url), "utf8"),
+        await readFile(
+          new URL("../presets/agent-presets.json", import.meta.url),
+          "utf8",
+        ),
       );
       return {
         hidden: Array.isArray(value?.hidden)
@@ -57,7 +66,8 @@ export async function registerHtmlPlugins(
         order: Array.isArray(value?.order)
           ? value.order.filter((id: unknown) => typeof id === "string")
           : [],
-        labels: value?.labels && typeof value.labels === "object" ? value.labels : {},
+        labels:
+          value?.labels && typeof value.labels === "object" ? value.labels : {},
       };
     } catch {
       return { hidden: [], order: [], labels: {} };
@@ -66,7 +76,9 @@ export async function registerHtmlPlugins(
   for (const resource of packages) {
     const { directory, htmlPath: path, manifest } = resource;
     const mock = manifest.mode === "mock";
-    const pages = manifest.pages ?? [{ id: manifest.id, name: manifest.name, view: "" }];
+    const pages = manifest.pages ?? [
+      { id: manifest.id, name: manifest.name, view: "" },
+    ];
     if (
       manifest.schemaVersion !== 1 ||
       !/^[a-z][a-z0-9-]{0,119}$/.test(manifest.id) ||
@@ -93,7 +105,9 @@ export async function registerHtmlPlugins(
       ) ||
       new Set(pages.map((page: any) => page.id)).size !== pages.length
     )
-      throw Error(`INVALID_HTML_PLUGIN_PAGES [source: ${directory}/plugin.json]`);
+      throw Error(
+        `INVALID_HTML_PLUGIN_PAGES [source: ${directory}/plugin.json]`,
+      );
     const mcpPath = await realpath(resolve(directory, manifest.mcp ?? ""));
     if (!mcpPath.startsWith(directory + sep)) throw Error("INVALID_MCP_PATH");
     const mcp = JSON.parse(await readFile(mcpPath, "utf8"));
@@ -103,11 +117,17 @@ export async function registerHtmlPlugins(
       mcp.contract !== "gea-html-v2" ||
       mcp.consumer?.consumerCode !== manifest.gea.consumerCode ||
       mcp.consumer?.consumerType !== "AGENT" ||
-      JSON.stringify(mcp.capabilities) !== JSON.stringify(mock ? [] : ["governed-sql-read"])
+      JSON.stringify(mcp.capabilities) !==
+        JSON.stringify(mock ? [] : ["governed-sql-read"])
     )
       throw Error(`INVALID_GEA_CAPABILITY [source: ${mcpPath}]`);
-    if (!manifest.declarations || manifest.agentResources?.provider !== "dsh-agent-manage")
-      throw Error(`UNSUPPORTED_HTML_RESOURCE_PROTOCOL [source: ${directory}/plugin.json]`);
+    if (
+      !manifest.declarations ||
+      manifest.agentResources?.provider !== "dsh-agent-manage"
+    )
+      throw Error(
+        `UNSUPPORTED_HTML_RESOURCE_PROTOCOL [source: ${directory}/plugin.json]`,
+      );
     const preset = "gea-html-" + manifest.id;
     const profile = profileFor(preset) ?? {
       label: manifest.name,
@@ -116,6 +136,20 @@ export async function registerHtmlPlugins(
     };
     if (profile.consumerCode !== manifest.gea.consumerCode)
       throw Error("INVALID_AGENT_RESOURCE_IDENTITY");
+    const capabilityContract = await readPluginContract(
+      directory,
+      manifest.declarations,
+      contractFromPlugin({
+        id: manifest.id,
+        label: manifest.name,
+        consumerCode: manifest.gea.consumerCode,
+        pageIds: pages.map((page: { id: string }) => page.id),
+        description: manifest.name,
+        mock,
+        maxEffect: "view",
+        sources: [],
+      }),
+    );
     ctx.effect(() => installPromptProfile(preset, profile));
     const releaseResources = await ctx.agentResources.register([
       {
@@ -124,7 +158,9 @@ export async function registerHtmlPlugins(
         root: directory,
         prompt: manifest.agentResources.prompt,
         profile,
-        enabled: !isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden),
+        enabled:
+          capabilityContract.enabled !== false &&
+          !isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden),
         skillFiles: { [manifest.id]: manifest.skills?.[0] },
       },
     ]);
@@ -135,20 +171,7 @@ export async function registerHtmlPlugins(
       ...manifest,
 
       pageAgents: [preset],
-      capabilityContract: await readPluginContract(
-        directory,
-        manifest.declarations,
-        contractFromPlugin({
-          id: manifest.id,
-          label: manifest.name,
-          consumerCode: manifest.gea.consumerCode,
-          pageIds: pages.map((page: { id: string }) => page.id),
-          description: manifest.name,
-          mock,
-          maxEffect: "view",
-          sources: [],
-        }),
-      ),
+      capabilityContract,
       pages,
       mock,
       retired,
@@ -159,7 +182,9 @@ export async function registerHtmlPlugins(
       htmlDirectory: directory,
     });
   }
-  const capabilityContracts: CapabilityContract[] = items.map((item) => item.capabilityContract);
+  const capabilityContracts: CapabilityContract[] = items.map(
+    (item) => item.capabilityContract,
+  );
   const capability = createCapabilityRegistry(capabilityContracts);
   const presetRegistry = ctx.get?.("agentPresets");
   ctx.effect(() => () => lifetime.abort());
@@ -179,7 +204,10 @@ export async function registerHtmlPlugins(
       throw Error("PAGE_AGENT_PRESET_NOT_ALLOWED");
     const target = items.find(
       (candidate) =>
-        `gea-html-${candidate.id}` === preset && !candidate.presetHidden && !candidate.mock,
+        `gea-html-${candidate.id}` === preset &&
+        candidate.capabilityContract.enabled !== false &&
+        !candidate.presetHidden &&
+        !candidate.mock,
     );
     const profile = profileFor(preset);
     if (!target || !profile || profile.consumerCode !== target.gea.consumerCode)
@@ -189,9 +217,18 @@ export async function registerHtmlPlugins(
       (await presetRegistry.resolve(preset)).id !== preset
     )
       throw Error("PAGE_AGENT_MISSING");
-    const credentials = await business.htmlLaunch(profile.consumerCode, signal, conversationId);
+    const credentials = await business.htmlLaunch(
+      profile.consumerCode,
+      signal,
+      conversationId,
+    );
     signal.throwIfAborted();
-    return { preset, label: profile.label, consumerCode: profile.consumerCode, credentials };
+    return {
+      preset,
+      label: profile.label,
+      consumerCode: profile.consumerCode,
+      credentials,
+    };
   };
   const register = (
     path: string,
@@ -215,8 +252,12 @@ export async function registerHtmlPlugins(
           } catch (error) {
             return json(
               {
-                error: error instanceof Error ? error.message : "GEA_HTML_FAILED",
-                code: typeof (error as any)?.code === "string" ? (error as any).code : undefined,
+                error:
+                  error instanceof Error ? error.message : "GEA_HTML_FAILED",
+                code:
+                  typeof (error as any)?.code === "string"
+                    ? (error as any).code
+                    : undefined,
                 retryable: (error as any)?.retryable === true,
               },
               400,
@@ -229,7 +270,8 @@ export async function registerHtmlPlugins(
     "/api/gea-html/identity",
     ["GET"],
     () => {
-      const { environment, authenticated, loginState, user } = business.status();
+      const { environment, authenticated, loginState, user } =
+        business.status();
       return json({
         scope: business.pageSessionScope() ?? null,
         subject: businessIdentityKey(business) ?? null,
@@ -257,14 +299,21 @@ export async function registerHtmlPlugins(
             lifetime.signal.throwIfAborted();
             if (!item.mock && !business.status().authenticated)
               throw Error("PAGE_REFERENCE_LOGIN_REQUIRED");
-            const started = item.mock ? lifetime.signal : business.identitySignal();
+            const started = item.mock
+              ? lifetime.signal
+              : business.identitySignal();
             const scope = business.pageSessionScope();
             const request = { signal };
-            if (typeof session !== "string" || !/^session-[a-z0-9-]{20,80}$/.test(session))
+            if (
+              typeof session !== "string" ||
+              !/^session-[a-z0-9-]{20,80}$/.test(session)
+            )
               throw Error("INVALID_CONVERSATION");
             const principal = businessIdentityKey(business);
-            const principalKey = principal && `${principal}:${business.pageSessionScope()}`;
-            if (!item.mock && !principalKey) throw Error("GEA_IDENTITY_INCOMPLETE");
+            const principalKey =
+              principal && `${principal}:${business.pageSessionScope()}`;
+            if (!item.mock && !principalKey)
+              throw Error("GEA_IDENTITY_INCOMPLETE");
             if (
               !item.mock &&
               sessionPrincipals.has(session) &&
@@ -273,16 +322,26 @@ export async function registerHtmlPlugins(
               throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
             if (!item.mock && scope !== business.pageSessionScope())
               throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
-            let authorizedAgent: Awaited<ReturnType<typeof pageAgent>> | undefined;
+            let authorizedAgent:
+              | Awaited<ReturnType<typeof pageAgent>>
+              | undefined;
             if (!item.mock) {
               const agent = ctx.agents?.get(session);
               if (!agent) throw Error("PAGE_AGENT_MISSING");
-              const preset = ctx.sessionProjections.stateOf(agent.session, "agentPreset");
-              if (typeof preset !== "string" || !preset) throw Error("PAGE_AGENT_SESSION_MISMATCH");
+              const preset = ctx.sessionProjections.stateOf(
+                agent.session,
+                "agentPreset",
+              );
+              if (typeof preset !== "string" || !preset)
+                throw Error("PAGE_AGENT_SESSION_MISMATCH");
               authorizedAgent = await pageAgent(
                 item,
                 preset,
-                AbortSignal.any([request.signal, business.identitySignal(), lifetime.signal]),
+                AbortSignal.any([
+                  request.signal,
+                  business.identitySignal(),
+                  lifetime.signal,
+                ]),
                 session.slice(8),
               );
             }
@@ -291,7 +350,11 @@ export async function registerHtmlPlugins(
             if (item.mock) {
               // Static demo pages deliberately have no GEA identity, gateway or data source.
               credentials = { sessionId: "mock-" + session.slice(8) };
-              access = { principalId: "mock-browser", trusted: false, mode: "mock" };
+              access = {
+                principalId: "mock-browser",
+                trusted: false,
+                mode: "mock",
+              };
             } else if (local?.pluginId === item.id) {
               const user = business.status().user;
               if (!user?.id) throw Error("GEA_IDENTITY_INCOMPLETE");
@@ -305,11 +368,16 @@ export async function registerHtmlPlugins(
             } else {
               const identity = business.identitySignal();
               credentials =
-                authorizedAgent && authorizedAgent.consumerCode === item.gea.consumerCode
+                authorizedAgent &&
+                authorizedAgent.consumerCode === item.gea.consumerCode
                   ? authorizedAgent.credentials
                   : await business.htmlLaunch(
                       item.gea.consumerCode,
-                      AbortSignal.any([identity, request.signal, lifetime.signal]),
+                      AbortSignal.any([
+                        identity,
+                        request.signal,
+                        lifetime.signal,
+                      ]),
                       session.slice(8),
                     );
               identity.throwIfAborted();
@@ -327,7 +395,10 @@ export async function registerHtmlPlugins(
             if (!item.mock && scope !== business.pageSessionScope())
               throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
             signal.throwIfAborted();
-            const surface = business.setSurface(session, { menu: page.id, title: page.name });
+            const surface = business.setSurface(session, {
+              menu: page.id,
+              title: page.name,
+            });
             const pageIdentity = {
               pluginId: item.id,
               consumerCode: item.gea.consumerCode,
@@ -337,14 +408,16 @@ export async function registerHtmlPlugins(
             };
             business.touchPageIdentity(session, pageIdentity);
             let projection = business.currentPageIdentity(session);
-            if (!item.mock && principalKey) sessionPrincipals.set(session, principalKey);
+            if (!item.mock && principalKey)
+              sessionPrincipals.set(session, principalKey);
             const grantSignal = AbortSignal.any([started!, lifetime.signal]);
             return {
               signal: grantSignal,
               access,
               observe: () => {
                 grantSignal.throwIfAborted();
-                if (business.surfaceFor(session) !== surface) throw Error("PAGE_OWNER_RELEASED");
+                if (business.surfaceFor(session) !== surface)
+                  throw Error("PAGE_OWNER_RELEASED");
                 business.touchPageIdentity(session, pageIdentity);
                 projection = business.currentPageIdentity(session);
               },
@@ -357,7 +430,10 @@ export async function registerHtmlPlugins(
               ) => capability.allows("gea-html-" + item.id, effect),
               readSql: async (parameters: any, requestSignal: AbortSignal) => {
                 if (item.mock) throw Error("MOCK_DATA_ONLY");
-                const activeSignal = AbortSignal.any([requestSignal, grantSignal]);
+                const activeSignal = AbortSignal.any([
+                  requestSignal,
+                  grantSignal,
+                ]);
                 if (parameters?.queries !== undefined)
                   return readHtmlBatch(
                     parameters.queries,
@@ -400,7 +476,8 @@ export async function registerHtmlPlugins(
   }
 
   return {
-    consumerForSession: (session?: string) => sessionConsumer(ctx, business, session),
+    consumerForSession: (session?: string) =>
+      sessionConsumer(ctx, business, session),
     capabilityContracts,
   };
 }
