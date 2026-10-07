@@ -28,6 +28,7 @@ import { Business, object, type Deployment } from "./host/business.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
 import { lastUserQuestion, mountTurnAnchor } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
+import { assertBusinessResourceAvailable } from "./host/business-identity.ts";
 import { mountBusinessPrompts } from "./host/prompt-runtime.ts";
 import { mountSessionToolRestraint } from "./host/session-tool-restraint.ts";
 import { mountSidebarToolVisibility } from "./host/sidebar-tool-visibility.ts";
@@ -175,7 +176,7 @@ function geaKeptReasoningEffort(current: {
 
 /** 直接调用当前登录用户的 GEA 个人模型路由，不经过 AionUi 代理。 */
 class GeaModelAdapter extends LlmAdapter {
-  constructor(private readonly business: Business, private readonly htmlConsumer: (session?: string) => string | undefined = () => undefined) {
+  constructor(private readonly business: Business, private readonly htmlConsumer: (session?: string, signal?: AbortSignal) => Promise<string | undefined> = async () => undefined) {
     super();
   }
   override providerInfo(id: string) {
@@ -222,9 +223,10 @@ class GeaModelAdapter extends LlmAdapter {
     let stage = "连接";
     const modelHost = "GEA 模型网关";
     try {
+      const consumer = await this.htmlConsumer(options.sessionId, signal);
       const route = await this.business.modelRoute(
         signal,
-        this.htmlConsumer(options.sessionId) ?? this.business.config.analysisAgentCode,
+        consumer ?? this.business.config.analysisAgentCode,
       );
       if (!route.models.includes(options.model))
         throw new LlmError("GEA_MODEL_NOT_FOUND: 当前Agent不支持所选模型，请按当前Agent重新发现并选择模型；不能借用其它Agent的模型身份。", "MODEL_NOT_FOUND");
@@ -680,6 +682,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 if (!business.status().authenticated) throw new Error('LOGIN_REQUIRED');
                 const requestedPreset=payload.agentPreset;
                 if(requestedPreset !== undefined && (typeof requestedPreset !== "string" || !profileFor(requestedPreset)))throw Error("GEA_AGENT_PRESET_UNSUPPORTED");
+                await assertBusinessResourceAvailable(ctx, typeof requestedPreset === "string" ? requestedPreset : undefined, request.signal);
                 const discoveryConsumer=typeof requestedPreset === "string" && requestedPreset !== "gea-readonly"?profileFor(requestedPreset)!.consumerCode:config.analysisAgentCode;
                 const route = config.analysisSource === 'direct' ? {models:[config.analysisModel],names:{[config.analysisModel]:config.analysisModel}} : await business.modelRoute(
                   request.signal,

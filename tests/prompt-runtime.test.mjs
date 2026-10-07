@@ -254,6 +254,7 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
     tools: toolService,
     agents: { get: () => agent },
     sessionProjections: { stateOf: () => preset },
+    agentResources: { list: async () => [{ id: preset, kind: "prompt", installed: true, enabled: true }] },
     skills: { list: async () => [] },
     on: (event, fn) => {
       handlers.set(event, fn);

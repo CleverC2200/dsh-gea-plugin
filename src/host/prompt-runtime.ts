@@ -5,7 +5,7 @@ import {
   FORECAST_VERSION,
 } from "dsh-agent-manage/forecast-source";
 import { hasPageReferences } from "@cleverc2200/dsh-agent-workbench/page-interaction/reference";
-import { sessionConsumer } from "./business-identity.ts";
+import { sessionConsumer, assertSessionResourceAvailable } from "./business-identity.ts";
 import { businessToolDisplay } from "./business-tool-display.ts";
 import { catalogFactSummary } from "./gateway-catalog.ts";
 import { salesSourceIssueForTurns, requestedOutputScope } from "./sales-result-contract.ts";
@@ -315,6 +315,7 @@ export function mountBusinessPrompts(
   );
   offs.push(
     ctx.on("tools/execute", async (exec, next) => {
+      await assertSessionResourceAvailable(ctx, exec.agent?.id, exec.signal);
       if (exec.agent && profileOf(exec.agent)) {
         // An actual query attempt, including a member error, permits targeted rediscovery.
         if (exec.name === "gea_cube_query") {
