@@ -15,6 +15,6 @@ export function selectHtmlPlugins<T extends { id: string; replaces?: string[] }>
 
 /** Requested development pages retain their panels and conversation bindings. */
 export function isHtmlPluginRetired(id: string, mock: boolean, hidden: readonly string[]): boolean {
-  const retainedPreview = ["inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment", "plan-regional", "category-plan", "inventory-mps"].includes(id);
+  const retainedPreview = ["inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment", "plan-regional", "category-plan", "inventory-mps", "inventory-qll", "inventory-dealer", "inventory-personal"].includes(id);
   return (mock && !retainedPreview) || hidden.includes(id);
 }
