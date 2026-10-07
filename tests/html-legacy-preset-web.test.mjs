@@ -1,7 +1,7 @@
 /** Unsupported packages fail before registering any runtime effects. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, writeFile, rm} from 'node:fs/promises';
+import {mkdtemp, writeFile, readFile, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {registerHtmlPlugins} from '../src/html-plugins.ts';
@@ -13,6 +13,6 @@ for (const resources of [undefined, {provider: 'dsh-agent-manage', prompt: 'prom
     await writeFile(join(root, 'plugin.json'), JSON.stringify({schemaVersion: 1, id: 'inventory-probe', name: 'Probe', html: 'index.html', gea: {contract: 'gea-html-v1', readonly: true, consumerCode: 'probe'}, ...(resources ? {agentResources: resources} : {})}));
     let effects = 0;
     const business = {watchIdentity: () => () => {}, pageSessionScope: () => '', config: {runtimeDir: root}};
-    await assert.rejects(registerHtmlPlugins({effect: () => effects++}, business, [root]), /INVALID_HTML_PLUGIN/);
+    await assert.rejects(registerHtmlPlugins({effect: () => effects++}, business, [{directory:root,htmlPath:join(root,"index.html"),manifest:JSON.parse(await readFile(join(root,"plugin.json"),"utf8"))}]), /INVALID_HTML_PLUGIN/);
     assert.equal(effects, 0);
   });

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { contractFromPlugin } from "../src/capability/contract.ts";
@@ -206,7 +206,7 @@ test("重复安装声明在发布 Skill、预设和路由之前被拒绝", async
         },
       },
       { config: { runtimeDir } },
-      [f.root, f.root],
+      await Promise.all([1, 2].map(async () => ({ directory: f.root, htmlPath: join(f.root, "index.html"), manifest: JSON.parse(await readFile(join(f.root, "plugin.json"), "utf8")) }))),
     ),
     /DUPLICATE_HTML_PLUGIN.*source:/,
   );

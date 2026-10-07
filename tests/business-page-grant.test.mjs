@@ -37,7 +37,7 @@ async function fixture(t, options = {}) {
       transport: "host-provided",
       contract: "gea-html-v2",
       consumer: { consumerType: "AGENT", consumerCode: consumer },
-      capabilities: ["governed-sql-read"],
+      capabilities: options.mock ? [] : ["governed-sql-read"],
     }),
   );
   await currentHtmlResource(directory);

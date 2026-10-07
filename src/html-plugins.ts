@@ -103,7 +103,7 @@ export async function registerHtmlPlugins(
       mcp.contract !== "gea-html-v2" ||
       mcp.consumer?.consumerCode !== manifest.gea.consumerCode ||
       mcp.consumer?.consumerType !== "AGENT" ||
-      JSON.stringify(mcp.capabilities) !== JSON.stringify(["governed-sql-read"])
+      JSON.stringify(mcp.capabilities) !== JSON.stringify(mock ? [] : ["governed-sql-read"])
     )
       throw Error(`INVALID_GEA_CAPABILITY [source: ${mcpPath}]`);
     if (!manifest.declarations || manifest.agentResources?.provider !== "dsh-agent-manage")
@@ -124,7 +124,7 @@ export async function registerHtmlPlugins(
         root: directory,
         prompt: manifest.agentResources.prompt,
         profile,
-        enabled: !mock && !isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden),
+        enabled: !isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden),
         skillFiles: { [manifest.id]: manifest.skills?.[0] },
       },
     ]);
