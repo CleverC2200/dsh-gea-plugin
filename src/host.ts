@@ -28,7 +28,7 @@ import { Business, object, type Deployment } from "./host/business.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
 import { lastUserQuestion, mountTurnAnchor } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
-import { assertBusinessResourceAvailable, assertSessionResourceAvailable, sessionConsumer } from "./host/business-identity.ts";
+import { assertBusinessResourceAvailable, assertSessionResourceAvailable, businessIdentityKey, sessionConsumer } from "./host/business-identity.ts";
 import { mountBusinessPrompts } from "./host/prompt-runtime.ts";
 import { mountSessionToolRestraint } from "./host/session-tool-restraint.ts";
 import { mountSidebarToolVisibility } from "./host/sidebar-tool-visibility.ts";
@@ -364,12 +364,15 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   ctx.effect(()=>ctx.workbenchPages.registerBusinessPage({id:'gea-proof',kind:'native',label:'销售计划',resourceId:'gea-readonly',catalog:{surface:WORKBENCH_SURFACE,tool:'gea_workbench_apply'}},async(sessionId,resourceId,signal)=>{
     business.assertExecutionAllowed(config.analysisAgentCode);
     if(!business.status().authenticated||!business.pageSessionScope())throw Error('PAGE_REFERENCE_LOGIN_REQUIRED');
+    const referenceScope=businessIdentityKey(business);
+    if(!referenceScope)throw Error('GEA_IDENTITY_INCOMPLETE');
     const agent=ctx.agents.get(sessionId as SessionId);
     if(!agent||ctx.sessionProjections.stateOf(agent.session,'agentPreset')!==resourceId)throw Error('PAGE_AGENT_SESSION_MISMATCH');
     signal.throwIfAborted();
     const projection=business.setSurface(sessionId,{menu:'gea-proof',title:'销售计划'});
     return {
       signal:business.identitySignal(),access:{authenticated:true},
+      referenceScope,
       allowsEffect:effect=>capability.allows(WORKBENCH_SURFACE,effect),
       snapshot:()=>business.workbenchStateSnapshot(sessionId),
       observe:context=>business.updateVisibleWorkbenchContext(sessionId,context),

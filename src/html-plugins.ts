@@ -415,6 +415,7 @@ export async function registerHtmlPlugins(
             const grantSignal = AbortSignal.any([started!, lifetime.signal]);
             return {
               signal: grantSignal,
+              referenceScope: item.mock ? 'mock-browser' : principal!,
               access,
               observe: () => {
                 grantSignal.throwIfAborted();
