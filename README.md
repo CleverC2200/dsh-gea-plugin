@@ -145,7 +145,7 @@ New conversations default to the company standard preset (display name from `DEF
 
 ## DMS 模拟回写
 
-Issue #23 的独立演示支持终审停在 5、成功后进入 10、失败原键重试、未知结果对账，以及 Z 单追加/追减两笔确认。运行 `node scripts/build-dms-demo.mjs`，再用 `python3 -m http.server 3202 --bind 127.0.0.1 --directory .runtime/dms-demo` 打开模拟页。该页只使用合成样本与内存接收方，不连接真实 GEA/DMS，不影响 3201 的真实业务。复现步骤、回归证据与正式协议边界见 [DMS mock 验收](docs/dms-mock-acceptance.md)。
+原DMS模拟演示已迁入Workbench `prototypes/dms`，统一页面为 `inventory-dms`。原GEA独立demo、模型与构建入口退出；纠偏离线夹具消费Workbench公共 `./dms-mock` 模型。Manage提供唯一解释资源与报文纯计算。GEA只授予mock/view，不提供真实DMS凭据、SQL或写MCP。复现与历史边界见 [DMS mock 验收](docs/dms-mock-acceptance.md)。
 
 ## 纠偏审批
 

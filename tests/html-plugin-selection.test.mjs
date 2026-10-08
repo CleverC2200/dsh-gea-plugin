@@ -49,7 +49,7 @@ test("business menu labels rename inventory pages without republishing plugin bu
 const menuOf = (ids) => resolveBusinessMenu(BUSINESS_MENU_PRESET, new Map(ids.map(id => [id, `${id} 名称`])));
 test("left menu follows the fixed prototype directory and disables unavailable pages", () => {
   const groups = menuOf(['gea-proof', 'gea-regional-plan', 'inventory-apsplan', 'inventory-qll', 'inventory-aqkc', 'inventory-fc', 'inventory-dealer', 'inventory-customer', 'inventory-personal']);
-  assert.deepEqual(groups.map(group => [group.key, group.title]), [['supply', '产销协同'], ['plan', '计划管理'], ['inventory', '库存管理'], ['orders', '订单管理']]);
+  assert.deepEqual(groups.map(group => [group.key, group.title]), [['supply', '产销协同'], ['plan', '计划管理'], ['inventory', '库存管理'], ['orders', '订单管理'], ['prototypes', '原型演示']]);
   assert.equal(groups[0].flat, false);
   assert.deepEqual(groups[0].entries.map(entry => entry.id), ['inventory-apsplan']);
   assert.deepEqual(groups[1].entries.map(entry => entry.id), ['plan-region-category', 'gea-proof', 'gea-regional-plan', 'plan-category-production', 'plan-capacity-assessment']);
@@ -72,7 +72,7 @@ test("requested preview pages remain visible while retired modules stay hidden",
 test("development pages remain registered with shipped preset configuration", async () => {
   const { readFile } = await import("node:fs/promises");
   const config = JSON.parse(await readFile(new URL("../presets/agent-presets.json", import.meta.url), "utf8"));
-  for (const id of ["inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment", "plan-regional", "category-plan", "inventory-mps", "inventory-qll", "inventory-dealer"]) {
+  for (const id of ["inventory-dms", "inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment", "plan-regional", "category-plan", "inventory-mps", "inventory-qll", "inventory-dealer"]) {
     assert.equal(isHtmlPluginRetired(id, true, config.hidden), false);
     assert.equal(isHtmlPluginRetired(id, true, [id]), true);
   }

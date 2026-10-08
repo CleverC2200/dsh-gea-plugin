@@ -66,7 +66,7 @@ export function businessMenuTitle(
  * 产销协同 → 计划管理 → 库存管理 → 订单管理。
  * 原型中尚未接入的页面也保留为禁用占位，避免不同账号看到的目录结构跳动。
  */
-export type BusinessMenuSection = "supply" | "plan" | "inventory" | "orders";
+export type BusinessMenuSection = "supply" | "plan" | "inventory" | "orders" | "prototypes";
 export type BusinessMenuItem = { id: string; title: string };
 export type BusinessMenuGroup = {
   key: BusinessMenuSection;
@@ -123,6 +123,10 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
       { id: "inventory-orderworkbench", title: "订单管理工作台(开发中)" },
       { id: "inventory-orderfulfillment", title: "订单履约(开发中)" },
     ],
+  },
+  {
+    key: "prototypes", title: "原型演示", icon: "orders",
+    items: [{ id: "inventory-dms", title: "DMS 回写演示（模拟）" }],
   },
 ];
 

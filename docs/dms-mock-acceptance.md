@@ -1,23 +1,14 @@
 # DMS 模拟回写验收（Issue #23）
 
-本页记录独立 GEA 插件的 DMS mock 验收。依据用户提供的《销售计划_审批状态码统一口径_V1.2》§6：只回写状态 5；成功后同步设置状态 10、SYNCED、finished_at；失败保持 5；Z 单拆分追加/追减；PLANE_NUM 使用源 plan_id。用户明确要求 DMS 只做模拟效果，其他业务继续使用真实 GEA。
+本页保留原DMS mock规则与历史，当前统一接收入口见下文。依据用户提供的《销售计划_审批状态码统一口径_V1.2》§6：只回写状态 5；成功后同步设置状态 10、SYNCED、finished_at；失败保持 5；Z 单拆分追加/追减；PLANE_NUM 使用源 plan_id。用户明确要求 DMS 只做模拟效果，其他业务继续使用真实 GEA。
 
-## 实现范围
+## 当前实现与复现
 
-`src/mocks/mock-dms.ts` 提供内存模拟接收方、回执和状态回读。`demos/dms` 为独立演示页，使用合成的 MOCK 计划，不接入真实审批工作台，不加载登录配置、Token 或服务账号，不调用 GEA/DMS 接口。页面设置 `connect-src 'none'`。刷新或重置会清空模拟状态；本实现不声称具有跨进程恢复或真实持久化能力。
+2026-10-08的47接收沿固定36候选源码ZIP恢复，不把原dirty来源改写为提交。Workbench `prototypes/dms` 拥有原PC视图与内存模拟器，Manage `src/inventory-compute/dms-mock-packets.ts` 维护数量和分笔纯计算，`business-resources/inventory-dms` 是唯一解释资源。GEA的旧独立demo、模型、构建入口已退出；纠偏fixture导入Workbench公共 `./dms-mock`。
 
-旧 `MockSalesPlanAdapter.acknowledgeDms` 的直接改状态入口已删除，DMS 验收统一由新模型负责；原审批/SAVE mock 仍保留原职责。
+在当前隔离Workbench执行 `node scripts/build-dms-prototype.mjs`，由当前统一页面装配加载 `lib/prototypes/dms`，通过原型演示菜单打开 `inventory-dms`。页面仅使用合成样本，上下文标记 `DMS_MOCK`、`simulated=true`、`realWriteback=false`，MCP能力为空。刷新或重置清空模拟事实；按官方Session范围只恢复计划/单据/场景选择。实际装载、引用与PC视觉由47同组owner验收，离线检查不代Native。
 
-## 复现
-
-在插件仓库执行：
-
-```sh
-node scripts/build-dms-demo.mjs
-python3 -m http.server 3202 --bind 127.0.0.1 --directory .runtime/dms-demo
-```
-
-Chrome 打开 `http://127.0.0.1:3202/`。计划类型支持 Y/XN/DC/FC/JD/TM；单据类型支持 M/Z。点击“模拟品类终审”后进入 5，再选择回写场景。切换类型会重置数据。
+计划类型支持Y/XN/DC/FC/JD/TM，单据类型M/Z。点击原“模拟品类终审”按钮后进入5，再选择回写场景。
 
 | 场景 | 预期状态与证据 |
 | --- | --- |
@@ -37,7 +28,9 @@ M 单生成一笔 MONTHLY 模拟报文。Z 单生成 ADD、CUT 两笔独立报�
 
 **已核对的外部字段名只有 `PLANE_NUM = plan_id`。** sourceVersionId、operation、items、key 和回执字段均是模拟结构，不能当作正式 DMS JSON 协议。正式 M/Z 全字段映射、认证、HTTP 端点、零值处理、事务持久化与真实接收回执均未接入，也不是本次 mock 验收的完成声明。
 
-## 验证记录
+## 历史验证记录
+
+下列2026-09-12记录仅为原独立demo历史，其命令已退出，不作47当前运行证明。
 
 2026-09-12：
 

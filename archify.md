@@ -52,7 +52,7 @@ flowchart LR
     end
 
     subgraph TestOnly[仅测试或演示]
-        Mock["mock-dms.ts\nmock-sales-plan.ts"]
+        Mock["mock-sales-plan.ts"]
     end
 
     User --> Client
@@ -96,7 +96,7 @@ flowchart LR
 | 业务核心 | `host/business.ts` | 维护环境、身份和认证状态；编排销售计划查询、动作、草稿、提交、通知和分析会话 | GEA 传输、工作流配置、模型能力 |
 | 集成适配 | `host/gateway-mcp.ts`, `shared/gea-stream.ts`, `host/service-account.ts`, `host/workflow-config.ts` | 连接 GEA Gateway/API、处理流式响应、服务身份与工作流配置读取 | 外部 GEA 服务 |
 | Agent 能力 | `host/agent-tools.ts`, `skill-reference.ts` | 注册受约束的只读工具与参考资料读取能力 | DSH 工具运行时、`Business` |
-| 测试/演示 | `mocks/mock-dms.ts`, `mocks/mock-sales-plan.ts` | 为本地测试或演示提供数据 | 不代表真实 DMS/生产链路 |
+| 测试/演示 | `mocks/mock-sales-plan.ts`、Workbench `./dms-mock` | 为本地测试或演示提供数据 | 不代表真实 DMS/生产链路 |
 
 ### 主要调用链
 
@@ -114,7 +114,7 @@ flowchart LR
 - `workbench/original/bridge.ts` 是工作台和宿主之间的显式边界，覆盖 periods、list、detail、versions、logs、versionSkus、compare、action、submit 和 modelInference。
 - `workbench/original/README.md` 说明该工作台来自 AionUi 的区域审批工作台，经本地桥接、会话、存储前缀和导入路径适配后嵌入插件。
 - Archify 对 `src` 抽取了 63 个代码文件；数据库证据中没有表或 migration，只有 10 个“数据库导向代码路径”候选，不能据此认定插件直接持有数据库。
-- `mocks/mock-dms.ts` 和 `mocks/mock-sales-plan.ts` 属于测试/演示路径；当前证据不支持把 DMS 描述为真实集成。
+- DMS模拟器位于Workbench原型区，纠偏fixture使用其公共模型；`mocks/mock-sales-plan.ts` 仍属于测试路径；当前证据不支持把 DMS 描述为真实集成。
 
 主要证据：`.archify/architecture-context.json`、`.archify/facts.json`、`.archify/modules.json`、`.archify/services.json`、`.archify/dependencies.json`、`.archify/routes.json`、`.archify/database.json`、`.archify/docs-summary.json`、`scripts/build.mjs`、`src/workbench/original/README.md`。
 

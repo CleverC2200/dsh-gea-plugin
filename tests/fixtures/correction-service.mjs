@@ -1,16 +1,6 @@
 /** External GEA contract fixture. These proposed correction fields are not a claim of deployment. */
-import { build } from 'esbuild';
 import assert from 'node:assert/strict';
-const { outputFiles } = await build({
-  entryPoints: ['src/mocks/mock-dms.ts'],
-  bundle: true,
-  write: false,
-  platform: 'node',
-  format: 'esm',
-});
-const { MockDmsWriteback } = await import(
-  'data:text/javascript;base64,' + Buffer.from(outputFiles[0].contents).toString('base64')
-);
+import { MockDmsWriteback } from '@cleverc2200/dsh-agent-workbench/dms-mock';
 export function correctionService() {
   let revision = 0,
     status = 1;
