@@ -8,7 +8,7 @@ export async function assertBusinessResourceAvailable(
   preset: string | undefined,
   signal?: AbortSignal,
 ): Promise<void> {
-  if (!preset?.startsWith("gea-html-")) return;
+  if (preset !== "gea-readonly" && !preset?.startsWith("gea-html-")) return;
   signal?.throwIfAborted();
   const resource = (await ctx.agentResources.list({ signal })).find(
     (item) => item.id === preset && item.kind === "prompt" && item.installed,

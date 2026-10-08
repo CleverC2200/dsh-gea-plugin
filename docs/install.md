@@ -39,3 +39,22 @@ dsh plugin --profile <name> add link:/absolute/registered-core/vendor/schemaster
 ```
 
 这是普通 profile 的包引用，不复制 SDK，不更改 Core、vendor、peer 范围或 pnpm override。实际记录须确认 Manage/GEA 的解析路径为该 installation 的同一模块、版本符合其 exact peer；Sidebar 自身普通依赖可能仍在它的私有依赖目录，不能将其称为 Core SDK 单例。随后重新捕获包含该 SDK 引用的完整 profile npm 图、import 与冻结。当前源码安装路径是本票目标，不能据此推出另一台机器或不同安装形态的路径。
+
+## 仅模拟验收配置
+
+唯一运行 owner 先保存普通 profile 的现有部署和每份安装声明，保留 Session、草稿、用户设置与历史失败记录。临时部署叠加以下字段，其它身份和路径字段仍用已登记输入。
+
+```json
+{
+  "analysis": { "mode": "receipt" },
+  "agentSqlRead": false,
+  "visibleContextSubagent": false,
+  "workbenchCapability": { "enabled": false }
+}
+```
+
+真实 HTML 包在本批安装目录的 `capability.json` 明确声明 `enabled: false`。固定模拟包保持 `enabled: true`，声明 `mode: "mock"`、`data.mock: true`、`maxEffect: "view"`，`mcp.json.capabilities` 为空。不要改成 mock 来伪装真实远端输入。清空 `GEA_HTML_LOCAL_QUERY_CONFIG`，本阶段不启用本地数据库 provider。页面可见状态只管菜单，可单独恢复；执行能力核当前同一注册表。
+
+开窗前运行 `tests/mock-validation-execution.test.mjs` 和 `tests/disabled-model-resource.test.mjs` 的本地公开合同检查。测试用外部传输捕获，停用路径业务请求为零，不用真实请求试守卫。Host 状态仍可刷新身份资料，停用销售时不自动准备角色解析的业务 Gateway Session。目录、身份元数据与 SQL、模型及业务写请求分开计数。
+
+结束后由同一 owner 正常停启并恢复已保存部署与安装声明，核默认个人页面隐藏策略和实际包字节。恢复不得清除 Session、草稿、凭据或历史失败；模拟检查不替代真实只读、真实模型与受控写入验收。

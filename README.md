@@ -295,3 +295,11 @@ Business pages authorize the Interpreter projected by the actual Core Session. T
 当前 HTML 包与页面 ID 沿 Workbench `HtmlPages` 的声明合同校验。原 `plan-regional`、`category-plan`、`inventory-mps` 包和 `gea-regional-plan`、`plan-region-category`、`plan-category-production` 页面保留原身份；已登记的三份原型仅发布模拟上下文和引用，MCP为空、maxEffect=view，不发起Consumer、SQL或真实业务写入。
 
 经销商本批接收保留原固定规则并采用本地mock输入。页面可见由Workbench读取page.json.visible，能力启用由现有capability.json.enabled决定；禁用能力会拒绝资源选用和页面操作，页面包继续保留。见[能力声明](docs/capability-contract.md)。
+
+## 仅模拟验收的执行配置
+
+模拟验收可在部署配置声明 `workbenchCapability: { "enabled": false }`，停用原生销售能力。缺省仍启用。HTML 能力沿各安装包的 `capability.json.enabled` 管理；固定模拟包同时声明 `mode: "mock"`、`data.mock: true`、`maxEffect: "view"` 和空 MCP 能力。单独隐藏页面不阻止执行。
+
+Host 的唯一能力注册表拒绝停用、未登记或模拟 Consumer 的真实 SQL、schema、MCP、启动授权及模型调用。原生销售读取、草稿、提交、审批、通知、工作流和日志重发也核同一声明。旧 Session 在模型步骤和官方 `llm/stream` 接口重新核当前资源，不能用保存的 provider 绕过。模拟 view、上下文与未发送引用仍使用原合同。GEA 登录及服务端授权保持原归属。
+
+验收配置使用 `analysis.mode: "receipt"`、`agentSqlRead: false` 和 `visibleContextSubagent: false`。启动前按当前安装包核每一份声明，并清空本地数据库 provider 的验收环境变量；源码默认配置不随验收永久停用。配置与恢复步骤见 [安装说明](docs/install.md#仅模拟验收配置)。

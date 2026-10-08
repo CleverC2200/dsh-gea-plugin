@@ -52,7 +52,7 @@
 | 草稿白名单         | `maxEffect`                          | 只声明"改视图"的页面，`setValue` 一律不下发                |
 | 影响等级校验       | `maxEffect` + 元素 `effect`          | 契约没到 `submit`/`approve` 的页面，提交/审批类元素不下发  |
 | 只读数据工具说明   | `data`                               | 工具说明里直接列出"装了哪些模块、各能读哪些表、口径是什么" |
-| 受管只读白名单     | `data.consumerCode`                  | `Business.setPluginConsumers`：装了什么模块才允许读什么    |
+| 受管只读白名单     | `data.consumerCode`                  | `Business.setCapabilities`：当前启用的真实合同才允许执行    |
 | 状态接口的模块索引 | `view.pageIds` + `data.consumerCode` | 前端用它把页面映射到 `consumerCode`，前端不写死名单        |
 
 ## 5. 加一个模块要做什么
@@ -132,3 +132,11 @@ GEA从同一`capability.json.enabled`读取能力启用状态，缺省为true，
 ### 已退出的旧协议
 
 当前`readPluginContract`要求每个安装包提供分离声明。缺省声明、旧协议、DOM扫描与旧Host回退不属于当前受支持运行路径。历史数据和未接收候选仍保留，后续原票的真实验收条件不因本地接收改变。
+
+### 直接执行与原生销售声明
+
+原生销售复用 `workbenchContract` 的 `enabled` 字段，部署通过 `workbenchCapability.enabled` 提供同一事实，缺省为启用。Host 将该合同和 HTML 合同放入唯一注册表，再传给 Business；Manage 的原生资源投影读取同一声明。`analysisAgentCode` 映射到原生销售合同，不再自动成为 SQL/MCP 例外。空注册表和未登记 Consumer 都拒绝，不恢复历史消费者名单。
+
+每个真实执行入口在认证、委托凭据或传输之前核当前合同。`enabled=false` 返回 `GEA_CAPABILITY_DISABLED`，模拟数据合同返回 `GEA_CAPABILITY_MOCK_ONLY`，未登记 Consumer 返回 `GEA_PLUGIN_CONSUMER_NOT_ALLOWED`；作用等级或层不符返回 `GEA_CAPABILITY_EFFECT_NOT_ALLOWED`。这些错误不代替 GEA 的服务端业务授权。
+
+当前 Manage 资源仍在模型步骤与工具派发前重新检查；官方 `llm/stream` waterfall 同时保护保存的 GEA direct provider。模拟页面的原 view/context/reference 合同保持，禁真实 SQL、MCP 和模型。测试见 `tests/mock-validation-execution.test.mjs` 与 `tests/disabled-model-resource.test.mjs`，本地捕获不代表 Native 或真实服务验收。

@@ -238,7 +238,11 @@ export function mountBusinessPrompts(
     }),
   );
   offs.push(
-    ctx.on("agent/pre-step", async ({ agent, messages = [] }, next) => {
+    ctx.on("agent/pre-step", async ({ agent, messages = [], signal }, next) => {
+      if (profileOf(agent)) {
+        await assertSessionResourceAvailable(ctx, agent.id, signal);
+        business.assertExecutionAllowed(sessionConsumer(ctx, business, agent.id));
+      }
       if (
         hasPageReferences(
           messages

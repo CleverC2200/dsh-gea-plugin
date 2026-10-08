@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 const built = await build({
-  stdin: { contents: "export {Business} from './src/host/business.ts'", resolveDir: process.cwd() },
+  stdin: { contents: "export {Business} from './src/host/business.ts'; export {createCapabilityRegistry} from './src/capability/registry.ts'", resolveDir: process.cwd() },
   bundle: true,
   packages: "external",
   write: false,
@@ -38,6 +38,7 @@ function fixture(t) {
       username: "test",
     },
   });
+  business.setCapabilities(module.exports.createCapabilityRegistry([{id:"stock",label:"Stock",maxEffect:"view",skills:[],routing:{keywords:[],summary:"Stock"},data:{consumerCode:"base-safety-stock",tables:[],rules:[]}}]));
   t.after(() => business.dispose());
   return business;
 }
@@ -100,7 +101,7 @@ test("real repeated read failures still stop at three and cancellation does not 
 
 test("a current login rejected by SQL delegation preserves its original 401 while invalidating identity", async (t) => {
   const business = fixture(t);
-  business.setPluginConsumers(["base-safety-stock"]);
+
   t.mock.method(globalThis, "fetch", async () =>
     Response.json({ message: "login expired" }, { status: 401 }),
   );
@@ -114,7 +115,7 @@ test("a current login rejected by SQL delegation preserves its original 401 whil
 for (const transition of ["caller", "logout", "user", "environment"])
   test("late delegation 401 cannot override " + transition + " cancellation", async (t) => {
     const business = fixture(t);
-    business.setPluginConsumers(["base-safety-stock"]);
+
     const controller = new AbortController();
     t.mock.method(globalThis, "fetch", async () => {
       if (transition === "caller") controller.abort();
@@ -148,7 +149,7 @@ for (const transition of ["caller", "logout", "user", "environment"])
 
 test("a user switch during login rejection still cancels the old delegated request", async (t) => {
   const business = fixture(t);
-  business.setPluginConsumers(["base-safety-stock"]);
+
   let changed = false;
   const unwatch = business.watchIdentity(() => {
     if (changed || business.status().authenticated) return;

@@ -53,26 +53,6 @@ const PLUGIN_FAILURE_WINDOW_MS = 10 * 60 * 1000;
 /** 网关拒绝过 MCP 会话的模块在这个窗口内不再重试（见 moduleMcp）。 */
 const MCP_REJECTION_TTL_MS = 10 * 60 * 1000;
 
-/**
- * 内置的受管只读模块清单，只在宿主还没接入能力契约时兜底（例如单元测试里直接
- * 构造 Business）。正常启动时由主机的契约注册表覆盖：装了什么模块，就允许读什么。
- */
-const DEFAULT_PLUGIN_CONSUMERS = new Set([
-  "base-safety-stock",
-  "dealer-inventory-replenishment",
-  "branch-inventory",
-  "full-chain-inventory",
-  "inventory-personal-workbench",
-  "aps-board-collaboration",
-  "aps-demand-collaboration",
-  "aps-delivery-collaboration",
-  // 新迁移进来的模块：没有能力契约时（例如单元测试）也要能读。
-  "customer-inventory-preview",
-  "orderworkbench-preview",
-  "orderfulfillment-preview",
-  // main 上产销协同工作台的旧编码：契约缺席时按它兜底，避免历史调用被白名单挡掉。
-  "aps",
-]);
 import { isDeepStrictEqual } from "node:util";
 import {
   validateServiceAccounts,
@@ -102,10 +82,16 @@ import {
 } from "./mcp-failure-guard.ts";
 import { createCallDedup, type CallDedup } from "./call-dedup.ts";
 
+import { createCapabilityRegistry, type CapabilityRegistry } from "../capability/registry.ts";
+import { workbenchContract, effectRank, type CapabilityEffect } from "../capability/contract.ts";
+
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
 export type Row = Record<string, string | number | boolean>;
+
 export interface Deployment {
+  /** The native sales capability uses the same enabled declaration as installed HTML capabilities. */
+  workbenchCapability?: { enabled?: boolean };
   serviceAccounts?: ServiceAccounts;
   geaBaseUrl: string;
   environment?: "production" | "test";
@@ -760,8 +746,7 @@ export class Business {
   private readonly pluginFailures = new Map<string, { count: number; at: number }>();
   /** 受管表列清单的短缓存：同一张表不重复探查。 */
   private readonly pluginSchemaCache = new Map<string, { at: number; columns: string[] }>();
-  /** 允许走受管只读查询的模块（由能力契约注入；不注入时用内置清单兜底）。 */
-  private pluginConsumers?: Set<string>;
+  private capabilities: CapabilityRegistry;
   private loginExpired = false;
   readonly runId = randomUUID();
   private selectedBase: string;
@@ -801,6 +786,9 @@ export class Business {
   }
 
   constructor(readonly config: Deployment) {
+    this.capabilities = createCapabilityRegistry([workbenchContract({
+      surface: "gea-workbench", pageIds: ["gea-workbench"], ...config.workbenchCapability,
+    })]);
     validateServiceAccounts(config.serviceAccounts);
     const resolved = resolveEnvironments(config);
     this.selectedBase = resolved.baseUrl;
@@ -1201,6 +1189,9 @@ export class Business {
     signal: AbortSignal,
     options: { force?: boolean } = {},
   ): Promise<void> {
+    // Disabled sales keeps startup identity metadata without opening a business Session.
+    const native = this.capabilities.get("gea-workbench");
+    if (!native || native.enabled === false || native.data?.mock) return;
     const auth = this.auth;
     if (!auth || (!options.force && auth.roles !== undefined)) return;
     const pending = this.roleRefreshes.get(auth);
@@ -1383,6 +1374,7 @@ export class Business {
    * 不再要求审批能力——否则会出现“界面能改、一存就失败”。
    */
   async salesPlanDraft(payload: Record<string, unknown>, caller: AbortSignal) {
+    this.assertExecutionAllowed(this.config.analysisAgentCode, "draft");
     keys(payload, ["planId", "versionId", "approvalRole", "draft"]);
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
@@ -1444,6 +1436,7 @@ export class Business {
 
   /** 使用当前 Host 身份读取完整工作流配置。 */
   async workflowConfig(payload: Record<string, unknown>, caller: AbortSignal) {
+    this.assertExecutionAllowed(this.config.analysisAgentCode);
     keys(payload, []);
     const auth = this.authenticated();
     const signal = AbortSignal.any([
@@ -1462,6 +1455,7 @@ export class Business {
 
   /** 重提前重新读取 GEA 当前版本和 SKU；浏览器只允许改变数量，身份、价格与路由由服务端来源决定。 */
   async salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+    this.assertExecutionAllowed(this.config.analysisAgentCode, "submit");
     keys(payload, ["source", "request", "requestId", "idempotencyKey"]);
     const auth = this.authenticated();
     const config = this.config.serviceAccounts?.[this.environment];
@@ -1582,6 +1576,7 @@ export class Business {
 
   /** 审批动作按幂等键缓存；即使首次响应丢失，重试也只能重放同一已授权意图。 */
   async salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+    this.assertExecutionAllowed(this.config.analysisAgentCode, "approve");
     this.authenticated();
     if (
       object(payload.request).adjustmentMode == null &&
@@ -1832,6 +1827,7 @@ export class Business {
 
   /** 导航使用当前用户与身份取消信号，原始 Reference 不进入 API 正文日志中心。 */
   async resolveClientNavigation(input: NavigationInput, caller: AbortSignal) {
+    this.assertExecutionAllowed(this.config.analysisAgentCode);
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(30000)]);
     const target = await resolveNavigationTarget(
@@ -1846,6 +1842,7 @@ export class Business {
 
   /** 只确认已在当前身份下展示的目标；固定 ACK 契约且复用重试幂等键。 */
   async acknowledgeClientNavigation(intentId: string, idempotencyKey: string, caller: AbortSignal) {
+    this.assertExecutionAllowed(this.config.analysisAgentCode, "submit");
     if (!/^[A-Za-z0-9._:-]{1,36}$/.test(intentId) || !/^[A-Za-z0-9-]{1,128}$/.test(idempotencyKey))
       throw Error("NAVIGATION_REQUEST_INVALID");
     const auth = this.authenticated();
@@ -1920,6 +1917,7 @@ export class Business {
 
   /** 使用当前 Host 身份读取固定通知端点，不改变计划选择。 */
   async notifications(payload: Record<string, unknown>, caller: AbortSignal) {
+    this.assertExecutionAllowed(this.config.analysisAgentCode);
     keys(payload, [
       "pageNo",
       "pageSize",
@@ -2106,6 +2104,7 @@ export class Business {
 
   /** 解析当前登录用户的 GEA 个人模型路由，但不向浏览器暴露密钥。 */
   async modelRoute(signal: AbortSignal, agentCode = "sales_forecast"): Promise<GeaModelRoute> {
+    this.assertExecutionAllowed(agentCode);
     const auth = this.authenticated();
     const epoch = this.epoch.signal;
     if (!/^[A-Za-z0-9._:-]{1,100}$/.test(agentCode)) throw new Error("GEA_MODEL_AGENT_INVALID");
@@ -2313,6 +2312,7 @@ export class Business {
 
   /** 只使用当前进程登录准备 Gateway 传输能力。 */
   async htmlLaunch(agentCode: string, signal: AbortSignal, conversationId?: string) {
+    this.assertExecutionAllowed(agentCode);
     const auth = this.authenticated();
     const identity = AbortSignal.any([signal, this.epoch.signal]);
     const credentials = await prepareGatewayLaunch(
@@ -2349,6 +2349,7 @@ export class Business {
     consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string },
     signal: AbortSignal,
   ) {
+    this.assertExecutionAllowed(consumer.consumerCode);
     const auth = this.authenticated();
     const identity = this.epoch.signal;
     return prepareGatewayMcp(
@@ -2384,7 +2385,7 @@ export class Business {
     consumerCode: string,
     signal: AbortSignal,
   ): Promise<import("./mcp-client.ts").McpModule> {
-    if (!this.consumerAllowed(consumerCode)) throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
+    this.assertExecutionAllowed(consumerCode);
     const auth = this.authenticated();
     const rejected = this.moduleMcpRejections.get(consumerCode);
     if (rejected !== undefined) {
@@ -2706,6 +2707,7 @@ export class Business {
     }>;
     experiments?: Array<{ label: string; status?: number; responseBody?: string }>;
   }> {
+    this.assertExecutionAllowed(consumerCode);
     const raw: Array<{
       method: string;
       url: string;
@@ -2889,11 +2891,9 @@ export class Business {
       "resultShape",
       "query",
     ]);
-    const auth = this.authenticated();
     const consumerCode = text(payload.consumerCode ?? query.consumerCode);
-    // 白名单来自能力契约（由宿主在启动时注入）；一个契约都没有时（例如单元测试或
-    // 没装任何 HTML 插件）用内置兜底清单，避免把历史编码一起挡掉。
-    if (!this.consumerAllowed(consumerCode)) throw new Error("GEA_PLUGIN_CONSUMER_NOT_ALLOWED");
+    this.assertExecutionAllowed(consumerCode);
+    const auth = this.authenticated();
     // 同一个模块连续失败就到此为止：线上实测模型会换着表/换着 SQL 一直重试
     // （38 步、4 分钟不输出）。熔断后强制它用手上的证据作答，或说明缺什么。
     const failures = this.pluginFailures.get(consumerCode);
@@ -3005,29 +3005,22 @@ export class Business {
     return this.apiLog.fetch(input, init);
   }
 
-  /** 用能力契约里的模块清单替换内置白名单：装了什么模块，就允许读什么。 */
-  setPluginConsumers(consumerCodes: readonly string[]): void {
-    this.pluginConsumers = new Set(consumerCodes);
+  /** The Host installs its sole capability registry, including the native sales declaration. */
+  setCapabilities(capabilities: CapabilityRegistry): void {
+    this.capabilities = capabilities;
   }
 
-  /**
-   * 这个模块编码能不能走受管通道。
-   *
-   * 白名单来自能力契约（装了什么模块就允许读什么），**外加宿主自己的分析身份**：
-   * 网关目录（gea_gateway_catalog 的 inspect）就是用 `analysisAgentCode` 建的会话，
-   * 同一个身份看得见的模型，同一个身份当然能查——这不是"换身份探测"，而是把目录
-   * 通道与查询通道对齐到同一份身份上。
-   *
-   * 线上问题：目录里明明列着 `agents_sales_plan_detail_mi`，但查它要用 `sales_forecast`，
-   * 而它不在契约白名单里，模型只能去撞别的模块（被挡或撞到演示模块），最后放弃 Cube，
-   * 把工作台那 30 条计划单当成答案。数据本身是否可见仍由网关按用户与资源授权判定。
-   */
-  private consumerAllowed(consumerCode: string): boolean {
-    if (consumerCode === this.config.analysisAgentCode) return true;
-    const allowedConsumers = this.pluginConsumers?.size
-      ? this.pluginConsumers
-      : DEFAULT_PLUGIN_CONSUMERS;
-    return allowedConsumers.has(consumerCode);
+  /** Reject unavailable or simulated execution before authentication, delegation or transport. */
+  assertExecutionAllowed(consumerCode: string, effect: CapabilityEffect = "view"): void {
+    const contract = consumerCode === this.config.analysisAgentCode
+      ? this.capabilities.get("gea-workbench")
+      : this.capabilities.list().find(item => item.data?.consumerCode === consumerCode);
+    let code: string | undefined;
+    if (!contract) code = "GEA_PLUGIN_CONSUMER_NOT_ALLOWED";
+    else if (contract.enabled === false) code = "GEA_CAPABILITY_DISABLED";
+    else if (contract.data?.mock) code = "GEA_CAPABILITY_MOCK_ONLY";
+    else if (effectRank(effect) > effectRank(contract.maxEffect) || (contract.view && !this.capabilities.allows(contract.view.surface, effect))) code = "GEA_CAPABILITY_EFFECT_NOT_ALLOWED";
+    if (code) throw Object.assign(Error(code), {code});
   }
 
   /**
@@ -3037,6 +3030,7 @@ export class Business {
    * 只读通道探一次得到（同样按权限过滤），结果按表缓存，避免每问一次都重探。
    */
   async pluginSchema(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+    this.assertExecutionAllowed(text(payload.consumerCode));
     keys(payload, ["consumerCode", "tables"]);
     const consumerCode = text(payload.consumerCode);
     const requested = Array.isArray(payload.tables) ? payload.tables : [];
@@ -3134,6 +3128,7 @@ export class Business {
 
   /** 在当前身份内执行日志中心已校验的安全重发。 */
   apiLogReplay(payload: Record<string, unknown>, signal: AbortSignal) {
+    this.assertExecutionAllowed(this.config.analysisAgentCode);
     keys(payload, ["id", "confirmed"]);
     this.authenticated();
     if (payload.confirmed !== true && payload.confirmed !== false)
@@ -3143,6 +3138,7 @@ export class Business {
 
   /** 开启新分页查询时立即失效旧选择，后续 detail/version/SKU 只能引用本次页面。 */
   async plans(payload: Record<string, unknown>, signal: AbortSignal): Promise<Page> {
+    this.assertExecutionAllowed(this.config.analysisAgentCode);
     this.clearQuery();
     const auth = this.authenticated();
     keys(payload, ["pageNo", "pageSize", "periodId", "planTypeCode", "status"]);
@@ -3270,6 +3266,7 @@ export class Business {
 
   /** 返回从当前可见计划重建的周期索引，并保留分页覆盖范围。 */
   async periods(signal: AbortSignal): Promise<Collection> {
+    this.assertExecutionAllowed(this.config.analysisAgentCode);
     const path = "/sales-plan/plans";
     const result = await this.salesPlanPeriodPage({}, signal);
     return this.collection(
@@ -3328,6 +3325,7 @@ export class Business {
 
   /** 当前计划详情与历史版本选择分开标记。 */
   async detail(payload: Record<string, unknown>, signal: AbortSignal): Promise<Detail> {
+    this.assertExecutionAllowed(this.config.analysisAgentCode);
     const { row } = this.selected(payload);
     const id = text(row.planId),
       path = "/sales-plan/plans/" + encodeURIComponent(id);
@@ -3355,6 +3353,7 @@ export class Business {
 
   /** 只列出上游计划身份与所选计划一致的版本。 */
   async versions(payload: Record<string, unknown>, signal: AbortSignal): Promise<Collection> {
+    this.assertExecutionAllowed(this.config.analysisAgentCode);
     const { row } = this.selected(payload);
     const id = text(row.planId),
       path = "/sales-plan/plans/" + encodeURIComponent(id) + "/versions";
@@ -3387,6 +3386,7 @@ export class Business {
 
   /** 只读取已证明属于当前查询计划的版本。 */
   async skus(payload: Record<string, unknown>, signal: AbortSignal): Promise<Collection> {
+    this.assertExecutionAllowed(this.config.analysisAgentCode);
     const { row } = this.selected(payload);
     const version = this.selectedVersion(text(row.planId), payload.versionId);
     const id = text(version.record.id),
@@ -3476,6 +3476,7 @@ export class Business {
 
   /** 使用当前由服务端管理的身份读取原工作台固定 GEA 端点。 */
   async workbenchQuery(payload: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
+    this.assertExecutionAllowed(this.config.analysisAgentCode);
     this.clearQuery();
     return this.readWorkbenchQuery(payload, signal);
   }
@@ -3486,6 +3487,7 @@ export class Business {
    * @returns 带来源、时间和集合覆盖信息的精确 JSON，供 Session 日志记录。
    */
   async agentQuery(payload: Record<string, unknown>, signal: AbortSignal): Promise<string> {
+    this.assertExecutionAllowed(this.config.analysisAgentCode);
     const identity = this.epoch.signal;
     const transport = transportSignal(AbortSignal.any([signal, identity]));
     let value: unknown;
@@ -3780,6 +3782,7 @@ export class Business {
 
   /** 工作台提交给原生会话前重新读取所有计划，避免把浏览器旧页面当成事实。 */
   async prepareWorkbench(payload: Record<string, unknown>, signal: AbortSignal): Promise<Preview> {
+    this.assertExecutionAllowed(this.config.analysisAgentCode);
     this.clearQuery();
     keys(payload, ["planIds", "scope"]);
     const scope = payload.scope === undefined ? "details" : payload.scope;

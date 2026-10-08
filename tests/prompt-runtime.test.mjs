@@ -264,6 +264,7 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
   };
   const business = {
     config: { runtimeDir: dir, analysisAgentCode: "sales_forecast" },
+    assertExecutionAllowed: () => {},
     status: () => ({ source: "fixture", user: { id: "one" } }),
     turnStopKind: () => undefined,
     watchIdentity: (fn) => {
