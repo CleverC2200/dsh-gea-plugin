@@ -79,7 +79,7 @@ export const Config = z.object({
   agentSqlRead: z.boolean().default(false),
   workbenchCapability: z.object({
     enabled: z.boolean(),
-    readonlyValidation: z.object({
+    readonlyValidation: z.union([z.object({
       maxRequests: z.natural().required(),
       periods: z.natural().required(),
       list: z.natural().required(),
@@ -88,14 +88,14 @@ export const Config = z.object({
       workflowSql: z.natural().required(),
       maxWorkflowRows: z.natural().min(1).required(),
       metadata: z.natural().required(),
-    }),
+    })]),
   }).default({}),
-  sqlReadLimit: z.object({
+  sqlReadLimit: z.union([z.object({
     consumerCode: z.string().required(),
     maxRequests: z.natural().required(),
     maxPagesPerQuery: z.natural().min(1).required(),
     maxRowsPerQuery: z.natural().min(1).required(),
-  }),
+  })]),
 });
 
 /** 执行标准模型调用，但不发起外部推理请求。 */
