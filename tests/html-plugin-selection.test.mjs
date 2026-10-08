@@ -72,7 +72,7 @@ test("requested preview pages remain visible while retired modules stay hidden",
 test("development pages remain registered with shipped preset configuration", async () => {
   const { readFile } = await import("node:fs/promises");
   const config = JSON.parse(await readFile(new URL("../presets/agent-presets.json", import.meta.url), "utf8"));
-  for (const id of ["inventory-dms", "inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment", "plan-regional", "category-plan", "inventory-mps", "inventory-qll", "inventory-dealer"]) {
+  for (const id of ["inventory-apsplan", "inventory-dms", "inventory-customer", "inventory-orderworkbench", "inventory-orderfulfillment", "plan-regional", "category-plan", "inventory-mps", "inventory-qll", "inventory-dealer"]) {
     assert.equal(isHtmlPluginRetired(id, true, config.hidden), false);
     assert.equal(isHtmlPluginRetired(id, true, [id]), true);
   }
