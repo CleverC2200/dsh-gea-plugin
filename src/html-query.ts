@@ -145,6 +145,7 @@ export async function readHtmlQuery(
     signal: AbortSignal;
     token: string;
     fetch?: typeof fetch;
+    limit?: import("./html-sql.ts").SqlReadLimit;
   },
 ) {
   const query = prepareHtmlQuery(input);

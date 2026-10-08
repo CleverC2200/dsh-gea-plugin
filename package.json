@@ -129,6 +129,7 @@
     "scripts/verify.mjs",
     "scripts/session-log.mjs",
     "src/shared/environments.js",
+    "src/shared/sql-read-limit.js",
     "gea.direct.example.json",
     "gea.config.example.json",
     "README.md",

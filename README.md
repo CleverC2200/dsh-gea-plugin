@@ -1,5 +1,9 @@
 # GEA 销售计划只读插件
 
+有界只读接收可在部署或 Host 配置中设置 `sqlReadLimit`，包含 `consumerCode`、`maxRequests`、`maxPagesPerQuery`、`maxRowsPerQuery`。这是同一 Host 生命周期的固定物理 SQL 请求额度，分页、401 续期后的再次 SQL 请求、失败及发出后的取消均计数。`maxRequests: 0` 在登录或委托前拒绝；其它 Consumer 不共享额度。首个计数响应超过页数或行数上限时停止，不截断成完整结果。预算不授予数据、模型或写权限，未设置时沿现有受控查询合同。
+
+For bounded read acceptance, `sqlReadLimit` fixes one Consumer's physical SQL allowance for the Host lifetime. It counts pages, renewed-delegation retries, failures, and cancellations after dispatch. Zero blocks before login or delegation; other Consumers cannot share the allowance. Page and row limits reject incomplete acceptance, and the limit grants no data, model, or write permission.
+
 独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；通用工作台插件负责页面目录与 HTML 呈现。本隔离项目只支持 repositories.json 登记的未修改官方源码 5badb15009ae1756c3afe0ae0cef1faafc290ccc、0.2.1-alpha.1 与同组插件候选，不使用旧 npm 核心或旧包运行回退。
 
 本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。发行准备通过 `scripts/prepare-package.mjs` 在独立生产目录生成运行清单与 npm shrinkwrap，再用 `scripts/package.mjs --input` 输出带 SHA-256 的普通插件包。SDK peers 由当前官方 profile 提供，完整命令与设备验收边界见安装说明。

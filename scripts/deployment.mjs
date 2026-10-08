@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { resolveEnvironments } from "../src/shared/environments.js";
+import { validateSqlReadLimit } from "../src/shared/sql-read-limit.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
 import {
   readFile,
@@ -63,6 +64,7 @@ export async function readDeployment(path, {
   }
   if (!config || Array.isArray(config) || typeof config !== "object")
     throw new Error("GEA_CONFIG_INVALID");
+  validateSqlReadLimit(config.sqlReadLimit);
   if (config.workbenchCapability !== undefined && (!config.workbenchCapability || Array.isArray(config.workbenchCapability) || typeof config.workbenchCapability !== "object" || Object.keys(config.workbenchCapability).some(key => key !== "enabled") || (config.workbenchCapability.enabled !== undefined && typeof config.workbenchCapability.enabled !== "boolean")))
     throw new Error("INVALID_WORKBENCH_CAPABILITY");
   if (config.mcpRequestTimeoutMs === undefined) config.mcpRequestTimeoutMs = 60000;
@@ -244,6 +246,7 @@ export function businessDeploymentPatch(config, root, runtime, { bundle = false 
             // 需要临时打开时在部署配置里写 agentSqlRead: true。
             agentSqlRead: config.agentSqlRead === true,
             workbenchCapability: config.workbenchCapability,
+            sqlReadLimit: config.sqlReadLimit,
             visibleContextSubagent: config.visibleContextSubagent ?? true,
           },
         },

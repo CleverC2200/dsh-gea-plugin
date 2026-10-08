@@ -78,6 +78,12 @@ export const Config = z.object({
    */
   agentSqlRead: z.boolean().default(false),
   workbenchCapability: z.object({enabled: z.boolean()}).default({}),
+  sqlReadLimit: z.object({
+    consumerCode: z.string().required(),
+    maxRequests: z.natural().required(),
+    maxPagesPerQuery: z.natural().min(1).required(),
+    maxRowsPerQuery: z.natural().min(1).required(),
+  }),
 });
 
 /** 执行标准模型调用，但不发起外部推理请求。 */

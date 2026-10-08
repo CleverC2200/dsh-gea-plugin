@@ -7,6 +7,8 @@ type Row = Record<string, unknown>;
 type ColumnMetadata = { returnedColumns?: unknown[]; rejectedColumns?: unknown[] };
 type SqlRows = ColumnMetadata & {rows: Row[]; total?: number | null};
 type QueryOptions = { pageSize: number; pageNo?: number };
+/** One Host-owned allowance is reused by all queries and renewed delegations. */
+export type SqlReadLimit = { maxRows: number; maxPages: number; beforeRequest(): void };
 export type RowPacking = {
   keys: string[];
   order: string[];
@@ -283,7 +285,7 @@ function failureFrom(payload: unknown): Row | undefined {
 // 凭据只由 Web 服务端提供。每页重新取凭据，失效或拒绝后不回退直连 PG。
 export function createGeaSqlDatabase(
   delegationToken: () => string,
-  transport: { endpoint: string; signal: AbortSignal; fetch?: typeof fetch },
+  transport: { endpoint: string; signal: AbortSignal; fetch?: typeof fetch; limit?: SqlReadLimit },
 ): BusinessDatabase {
   async function execute(
     sql: string,
@@ -301,6 +303,8 @@ export function createGeaSqlDatabase(
     }
     const fetchPage = async (pageNo: number, includeTotal: boolean) => {
       transport.signal.throwIfAborted();
+      if (transport.limit && pageNo > transport.limit.maxPages)
+        throw new GeaSqlError("GEA_SQL_PAGE_LIMIT", "业务查询页数超过本次读取上限", 400);
       const token = delegationToken();
       if (!token)
         throw new GeaSqlError(
@@ -308,6 +312,7 @@ export function createGeaSqlDatabase(
           "GEA 会话已失效，请重新进入应用",
           401,
         );
+      transport.limit?.beforeRequest();
       const target = transport.endpoint;
       const configured = Number(
         process.env.GEA_SQL_QUERY_TIMEOUT_SECONDS ??
@@ -427,6 +432,10 @@ export function createGeaSqlDatabase(
           true,
         );
       const total = totalFrom(payload);
+      if (transport.limit && (pageRows.length > transport.limit.maxRows || (total !== null && total > transport.limit.maxRows)))
+        throw new GeaSqlError("GEA_SQL_RESULT_LIMIT", "业务查询结果超过本次读取上限", 400);
+      if (transport.limit && total !== null && Math.ceil(total / pageSize) > transport.limit.maxPages)
+        throw new GeaSqlError("GEA_SQL_PAGE_LIMIT", "业务查询页数超过本次读取上限", 400);
       if (includeTotal && total === null)
         throw new GeaSqlError(
           "GEA_SQL_RESPONSE_INVALID",

@@ -29,6 +29,7 @@ import { resolveInventoryRoles } from "./inventory-role.ts";
 import { prepareGatewayLaunch } from "./html-gateway.ts";
 import { prepareGatewayMcp } from "./gateway-mcp.ts";
 import { readHtmlQuery } from "../html-query.ts";
+import { createSqlReadLimit } from "../shared/sql-read-limit.js";
 import { probeTables, withDefaultPaging } from "./plugin-query.ts";
 import { openModuleMcp } from "./mcp-client.ts";
 import { currentPageEnvelope, pageIdentityFresh, type PageIdentity } from "./page-identity.ts";
@@ -90,6 +91,8 @@ export type PreviewId = Branded<"gea-preview">;
 export type Row = Record<string, string | number | boolean>;
 
 export interface Deployment {
+  /** Optional fixed-run SQL allowance; zero refuses before credentials and transport. */
+  sqlReadLimit?: { consumerCode: string; maxRequests: number; maxPagesPerQuery: number; maxRowsPerQuery: number };
   /** The native sales capability uses the same enabled declaration as installed HTML capabilities. */
   workbenchCapability?: { enabled?: boolean };
   serviceAccounts?: ServiceAccounts;
@@ -785,7 +788,10 @@ export class Business {
     return this.status();
   }
 
+  private readonly sqlReadLimit: ReturnType<typeof createSqlReadLimit>;
+
   constructor(readonly config: Deployment) {
+    this.sqlReadLimit = createSqlReadLimit(config.sqlReadLimit);
     this.capabilities = createCapabilityRegistry([workbenchContract({
       surface: "gea-workbench", pageIds: ["gea-workbench"], ...config.workbenchCapability,
     })]);
@@ -2893,6 +2899,7 @@ export class Business {
     ]);
     const consumerCode = text(payload.consumerCode ?? query.consumerCode);
     this.assertExecutionAllowed(consumerCode);
+    this.sqlReadLimit?.assertAvailable(consumerCode);
     const auth = this.authenticated();
     // 同一个模块连续失败就到此为止：线上实测模型会换着表/换着 SQL 一直重试
     // （38 步、4 分钟不输出）。熔断后强制它用手上的证据作答，或说明缺什么。
@@ -2955,6 +2962,7 @@ export class Business {
     };
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
+        this.sqlReadLimit?.assertAvailable(consumerCode);
         const delegation = await getDelegation();
         try {
           // 统一走分页路径：同一条 SQL 不分页时会报底层错误，模型也不该被要求记住页码。
@@ -2963,6 +2971,7 @@ export class Business {
             token: delegation.delegationToken,
             fetch: this.apiLog.fetch,
             signal,
+            limit: this.sqlReadLimit,
           });
           this.pluginFailures.delete(consumerCode);
           return result;
