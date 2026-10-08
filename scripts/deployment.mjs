@@ -63,6 +63,8 @@ export async function readDeployment(path, {
   }
   if (!config || Array.isArray(config) || typeof config !== "object")
     throw new Error("GEA_CONFIG_INVALID");
+  if (config.workbenchCapability !== undefined && (!config.workbenchCapability || Array.isArray(config.workbenchCapability) || typeof config.workbenchCapability !== "object" || Object.keys(config.workbenchCapability).some(key => key !== "enabled") || (config.workbenchCapability.enabled !== undefined && typeof config.workbenchCapability.enabled !== "boolean")))
+    throw new Error("INVALID_WORKBENCH_CAPABILITY");
   if (config.mcpRequestTimeoutMs === undefined) config.mcpRequestTimeoutMs = 60000;
   const selected = resolveEnvironments(config);
   config.environment = selected.environment;
@@ -241,6 +243,7 @@ export function businessDeploymentPatch(config, root, runtime, { bundle = false 
             // 问答侧默认关掉"模型自己写 SQL"：取数只走模块 MCP + 页面证据。
             // 需要临时打开时在部署配置里写 agentSqlRead: true。
             agentSqlRead: config.agentSqlRead === true,
+            workbenchCapability: config.workbenchCapability,
             visibleContextSubagent: config.visibleContextSubagent ?? true,
           },
         },

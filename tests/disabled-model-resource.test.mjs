@@ -7,18 +7,22 @@ import { pathToFileURL } from "node:url";
 import { BusinessResources } from "dsh-agent-manage/business-resources";
 import { Context } from "@deepseek-ai/cordis";
 import { ToolRuntime } from "@deepseek-ai/dsh-tools";
+import { LlmRuntime, LlmAdapter } from "@deepseek-ai/dsh-llm";
 import { fixtureEnvironment } from "./fixtures/business-session.mjs";
 
 // Exercise Host's registered public routes and adapter. No profile, Task or HTTP server starts.
-async function fixture(t, enabled) {
+async function fixture(t, enabled, { mock = false, workbenchEnabled = true, actualBusiness = false } = {}) {
   fixtureEnvironment(t, {
     GEA_DESKTOP_CONTROL_URL: "",
     GEA_WEB_LOGIN_PERSIST: "0",
     GEA_HTML_LOCAL_QUERY_CONFIG: "",
   });
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
+  const external = [];
+  globalThis.fetch = async input => {
+    external.push(String(input));
     assert.fail("offline resource fixture forbids network");
+  };
   t.after(() => {
     globalThis.fetch = originalFetch;
   });
@@ -54,6 +58,7 @@ async function fixture(t, enabled) {
   const contractPath = join(directory, "capability.json");
   const contract = JSON.parse(await readFile(contractPath, "utf8"));
   contract.enabled = enabled;
+  if (!mock) delete contract.data.mock;
   await writeFile(contractPath, JSON.stringify(contract));
   const pagePath = join(directory, "page.json");
   const page = JSON.parse(await readFile(pagePath, "utf8"));
@@ -62,6 +67,15 @@ async function fixture(t, enabled) {
   const manifest = JSON.parse(
     await readFile(join(directory, "plugin.json"), "utf8"),
   );
+  if (!mock) {
+    delete manifest.mode;
+    await writeFile(join(directory,"plugin.json"),JSON.stringify(manifest));
+    const mcpPath = join(directory,"mcp.json");
+    const mcp = JSON.parse(await readFile(mcpPath,"utf8"));
+    mcp.capabilities = ["governed-sql-read"];
+    await writeFile(mcpPath,JSON.stringify(mcp));
+  }
+  const pages = new Map();
   const routes = new Map(),
     adapters = new Map(),
     handlers = new Map(),
@@ -70,7 +84,7 @@ async function fixture(t, enabled) {
   const preset = "gea-html-inventory-dealer";
   // A pre-existing Session's persisted preset projection survives resource changes.
   const agent = {
-    id: "session-persisted",
+    id: "session-11111111-1111-4111-8111-111111111111",
     session: { preset, header: { cwd: root }, snapshotEvents: () => [] },
   };
   const ctx = {
@@ -109,7 +123,7 @@ async function fixture(t, enabled) {
       packages: () => [
         { directory, manifest, htmlPath: join(directory, "index.html") },
       ],
-      registerBusinessPage: () => () => {},
+      registerBusinessPage: (page, authorize) => {pages.set(page.id,authorize);return () => {};},
     },
     connection: {
       fetch: {
@@ -155,6 +169,7 @@ async function fixture(t, enabled) {
     return release;
   };
   const calls = { route: [], transport: [] };
+  if (!actualBusiness) {
   Business.prototype.status = () => ({
     authenticated: true,
     environment: "test",
@@ -177,11 +192,13 @@ async function fixture(t, enabled) {
       { headers: { "content-type": "text/event-stream" } },
     );
   };
+  }
   t.after(async () => {
     for (const off of cleanups.reverse()) await off();
     await ctx.agentResources.dispose();
   });
   await apply(ctx, {
+    workbenchCapability: {enabled:workbenchEnabled},
     geaBaseUrl: "https://fixture.invalid",
     runtimeDir: root,
     analysisMode: "model",
@@ -199,6 +216,17 @@ async function fixture(t, enabled) {
   return {
     ctx,
     agent,
+    external,
+    pages,
+    async route(endpoint,payload = {}) {
+      const response = await routes.get("/api/gea-proof/"+endpoint)(new Request("https://fixture.invalid/api/gea-proof/"+endpoint,{method:"POST",body:JSON.stringify(payload),headers:{"content-type":"application/json"}}));
+      return response.json();
+    },
+    async preStep() {
+      const payload = {agent,messages:[],signal:new AbortController().signal};
+      const run = (handlers.get("agent/pre-step") ?? []).reduceRight((next,handler) => () => handler(payload,next),async () => assert.fail("disabled business Task must stop before Core model processing"));
+      await run();
+    },
     preset,
     calls,
     handlers,
@@ -207,6 +235,19 @@ async function fixture(t, enabled) {
       await releaseDealer();
       if (enabled !== undefined)
         cleanups.push(await register([{ ...definition, enabled }]));
+    },
+    async streamThroughCore(preset) {
+      agent.session.preset = preset;
+      const core = new Context();
+      const runtime = new LlmRuntime(core);
+      class CapturedDirectProvider extends LlmAdapter {
+        async *stream() { external.push("direct-model-wire"); yield {type:"finish",reason:{kind:"stop"}}; }
+      }
+      const off = runtime.registerAdapter(["gea-analysis"],new CapturedDirectProvider());
+      const detaches = (handlers.get("llm/stream") ?? []).map(handler => core.on("llm/stream",handler));
+      try {
+        for await (const _chunk of runtime.stream({provider:"gea-analysis",sessionId:agent.id,model:"fixture-model",messages:[],signal:new AbortController().signal})) {}
+      } finally { detaches.forEach(detach => detach()); off(); }
     },
     async executeTool(name) {
       const core = new Context();
@@ -350,4 +391,51 @@ test("a persistent disabled preset refuses business tool dispatch before query e
   assert.equal(tool.isError, true);
   assert.equal(tool.error.message, "GEA_AGENT_RESOURCE_DISABLED");
   assert.deepEqual(app.calls, { route: [], transport: [] });
+});
+
+test("actual Host rejects a restored disabled native Task before any selected provider can run", async t => {
+  const app = await fixture(t,false,{workbenchEnabled:false,actualBusiness:true});
+  app.agent.session.preset = "gea-readonly";
+  await assert.rejects(app.preStep(), /GEA_AGENT_RESOURCE_DISABLED/);
+  const result = await app.executeTool("gea_cube_query");
+  assert.equal(result.isError,true);
+  assert.match(result.error.message,/GEA_AGENT_RESOURCE_DISABLED/);
+  assert.deepEqual(app.external,[]);
+});
+
+test("actual registered Host business routes reject disabled execution with zero captured external requests", async t => {
+  const app = await fixture(t,false,{workbenchEnabled:false,actualBusiness:true});
+  for (const endpoint of ["workbench/query","workbench/prepare","sales-plan/draft","sales-plan/submit","sales-plan/action","workflow/config","approval/roles","notifications","plans","periods","detail","versions","skus","model/advice","api-log/replay"]) {
+    const result = await app.route(endpoint);
+    assert.equal(result.ok,false,endpoint+JSON.stringify(result));
+    assert.equal(result.error.code,"GEA_CAPABILITY_DISABLED",endpoint+JSON.stringify(result));
+  }
+  const sql = await app.route("plugin/sql",{consumerCode:"dealer-inventory-replenishment",sql:"SELECT 1"});
+  assert.equal(sql.error.code,"GEA_CAPABILITY_DISABLED");
+  assert.deepEqual(app.external,[]);
+});
+
+test("actual mock Host preserves its view and observation while model execution and SQL stay forbidden", async t => {
+  const app = await fixture(t,true,{mock:true,workbenchEnabled:false,actualBusiness:true});
+  await assert.rejects(app.preStep(),/GEA_CAPABILITY_MOCK_ONLY/);
+  await assert.rejects(async () => {
+    for await (const _chunk of app.adapter.stream({sessionId:app.agent.id,model:"fixture-model",messages:[]})) {}
+  },error => error.code === "GEA_CAPABILITY_MOCK_ONLY");
+  const grant = await app.pages.get("inventory-dealer")(app.agent.id,app.preset,new AbortController().signal);
+  assert.equal(grant.access.mode,"mock");
+  assert.equal(grant.allowsEffect("view"),true);
+  for (const effect of ["draft","submit","approve"]) assert.equal(grant.allowsEffect(effect),false);
+  grant.observe({});
+  await assert.rejects(grant.readSql({sql:"SELECT 1"},new AbortController().signal),/MOCK_DATA_ONLY/);
+  assert.equal(grant.workspace,undefined);
+  grant.release();
+  assert.deepEqual(app.external,[]);
+});
+
+test("the official LLM stream seam denies a retained direct GEA provider before its wire runs", async t => {
+  const app = await fixture(t,true,{mock:true,workbenchEnabled:false,actualBusiness:true});
+  await assert.rejects(app.streamThroughCore(app.preset),/GEA_CAPABILITY_MOCK_ONLY/);
+  await assert.rejects(app.streamThroughCore("gea-readonly"),/GEA_AGENT_RESOURCE_DISABLED/);
+  await assert.rejects(app.streamThroughCore("standard"),/GEA_CAPABILITY_DISABLED/);
+  assert.deepEqual(app.external,[]);
 });

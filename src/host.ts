@@ -28,7 +28,7 @@ import { Business, object, type Deployment } from "./host/business.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
 import { lastUserQuestion, mountTurnAnchor } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
-import { assertBusinessResourceAvailable } from "./host/business-identity.ts";
+import { assertBusinessResourceAvailable, assertSessionResourceAvailable, sessionConsumer } from "./host/business-identity.ts";
 import { mountBusinessPrompts } from "./host/prompt-runtime.ts";
 import { mountSessionToolRestraint } from "./host/session-tool-restraint.ts";
 import { mountSidebarToolVisibility } from "./host/sidebar-tool-visibility.ts";
@@ -77,6 +77,7 @@ export const Config = z.object({
    * 默认关闭：问答取数只走模块 MCP + 页面证据，模型不再自己写 SQL。
    */
   agentSqlRead: z.boolean().default(false),
+  workbenchCapability: z.object({enabled: z.boolean()}).default({}),
 });
 
 /** 执行标准模型调用，但不发起外部推理请求。 */
@@ -224,6 +225,7 @@ class GeaModelAdapter extends LlmAdapter {
     const modelHost = "GEA 模型网关";
     try {
       const consumer = await this.htmlConsumer(options.sessionId, signal);
+      this.business.assertExecutionAllowed(consumer ?? this.business.config.analysisAgentCode);
       const route = await this.business.modelRoute(
         signal,
         consumer ?? this.business.config.analysisAgentCode,
@@ -325,7 +327,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   // 迁移页面的页面桥入口：注册表建好后再接上（页面第一次轮询是 500ms 之后）。
   const htmlPackages = ctx.workbenchPages.packages().filter(item=>item.manifest.gea?.contract === "gea-html-v2");
   const releaseOriginalResources = await ctx.agentResources.register([{
-    id:"gea-readonly",label:profileFor("gea-readonly")!.label,
+    id:"gea-readonly",enabled:config.workbenchCapability?.enabled !== false,label:profileFor("gea-readonly")!.label,
     root:fileURLToPath(new URL("../",import.meta.url)),prompt:"presets/prompt-policy.json",profileKey:"gea-readonly",
     profile:profileFor("gea-readonly")!
   }]);
@@ -341,18 +343,26 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   const capability = createCapabilityRegistry([
     ...htmlPlugins.capabilityContracts,
     workbenchContract({
+      ...config.workbenchCapability,
       surface: WORKBENCH_SURFACE,
       pageIds: [WORKBENCH_SURFACE],
       keywords: ["区域计划", "审批", "销售计划", "计划量"],
     }),
   ]);
   // 受管只读的模块白名单也来自契约：不再在业务代码里维护一份模块清单。
-  business.setPluginConsumers(
-    capability
-      .readModules()
-      .map((contract) => contract.data!.consumerCode),
-  );
+  business.setCapabilities(capability);
+  // The official stream seam also covers retained direct-provider selections.
+  ctx.effect(() => ctx.on("llm/stream", async function* (options, next) {
+    const agent = options.sessionId ? ctx.agents.get(options.sessionId as SessionId) : undefined;
+    const preset = agent ? ctx.sessionProjections.stateOf(agent.session, "agentPreset") : undefined;
+    if (options.provider !== "gea-proof" && (options.provider === "gea-analysis" || profileFor(preset ?? undefined))) {
+      await assertSessionResourceAvailable(ctx, options.sessionId, options.signal);
+      business.assertExecutionAllowed(sessionConsumer(ctx, business, options.sessionId));
+    }
+    yield* next();
+  }));
   ctx.effect(()=>ctx.workbenchPages.registerBusinessPage({id:'gea-proof',kind:'native',label:'销售计划',resourceId:'gea-readonly',catalog:{surface:WORKBENCH_SURFACE,tool:'gea_workbench_apply'}},async(sessionId,resourceId,signal)=>{
+    business.assertExecutionAllowed(config.analysisAgentCode);
     if(!business.status().authenticated||!business.pageSessionScope())throw Error('PAGE_REFERENCE_LOGIN_REQUIRED');
     const agent=ctx.agents.get(sessionId as SessionId);
     if(!agent||ctx.sessionProjections.stateOf(agent.session,'agentPreset')!==resourceId)throw Error('PAGE_AGENT_SESSION_MISMATCH');
@@ -453,6 +463,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       }
     | undefined;
   function submit(payload: Record<string, unknown>, requestSignal: AbortSignal) {
+    business.assertExecutionAllowed(config.analysisAgentCode);
     if (
       Object.keys(payload).some(
         (key) => key !== "previewId" && key !== "workbenchContext",
@@ -633,6 +644,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
               // 界面上的「刷新」会走这里：重新解析当前账号角色，管理员刚改完权限的人也
               // 不用重新登录就能看到新的可审批节点。
               case "approval/roles":
+                business.assertExecutionAllowed(config.analysisAgentCode);
                 await business.refreshApprovalRoles(request.signal, { force: true });
                 value = { roles: business.status().roles ?? [] };
                 break;
@@ -653,6 +665,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 };
                 break;
               case "model/advice": {
+                business.assertExecutionAllowed(config.analysisAgentCode);
                 if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
                 if (config.analysisMode !== "model") throw new Error("GEA_ADVICE_MODEL_REQUIRED");
                 if (typeof payload.question !== "string" || !payload.question.trim() || Buffer.byteLength(payload.question) > config.inputByteBudget)

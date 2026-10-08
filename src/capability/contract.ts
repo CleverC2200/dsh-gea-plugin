@@ -238,6 +238,7 @@ export function contractFromPlugin(
 
 /** 宿主自带的原生工作台（页面自述元素）。 */
 export function workbenchContract(input: {
+  enabled?: boolean;
   surface: string;
   pageIds: readonly string[];
   data?: CapabilityData;
@@ -247,6 +248,7 @@ export function workbenchContract(input: {
   const maxEffect = input.maxEffect ?? "approve";
   return {
     id: "gea-workbench",
+    ...(input.enabled === undefined ? {} : {enabled: input.enabled}),
     label: "区域计划审批工作台",
     view: {
       surface: input.surface,
