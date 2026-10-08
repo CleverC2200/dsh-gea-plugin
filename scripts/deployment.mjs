@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { resolveEnvironments } from "../src/shared/environments.js";
 import { validateSqlReadLimit } from "../src/shared/sql-read-limit.js";
+import { validateSalesReadonly } from "../src/shared/sales-readonly.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
 import {
   readFile,
@@ -65,8 +66,9 @@ export async function readDeployment(path, {
   if (!config || Array.isArray(config) || typeof config !== "object")
     throw new Error("GEA_CONFIG_INVALID");
   validateSqlReadLimit(config.sqlReadLimit);
-  if (config.workbenchCapability !== undefined && (!config.workbenchCapability || Array.isArray(config.workbenchCapability) || typeof config.workbenchCapability !== "object" || Object.keys(config.workbenchCapability).some(key => key !== "enabled") || (config.workbenchCapability.enabled !== undefined && typeof config.workbenchCapability.enabled !== "boolean")))
+  if (config.workbenchCapability !== undefined && (!config.workbenchCapability || Array.isArray(config.workbenchCapability) || typeof config.workbenchCapability !== "object" || Object.keys(config.workbenchCapability).some(key => !["enabled", "readonlyValidation"].includes(key)) || (config.workbenchCapability.enabled !== undefined && typeof config.workbenchCapability.enabled !== "boolean")))
     throw new Error("INVALID_WORKBENCH_CAPABILITY");
+  validateSalesReadonly(config.workbenchCapability?.readonlyValidation);
   if (config.mcpRequestTimeoutMs === undefined) config.mcpRequestTimeoutMs = 60000;
   const selected = resolveEnvironments(config);
   config.environment = selected.environment;

@@ -30,6 +30,7 @@ import { prepareGatewayLaunch } from "./html-gateway.ts";
 import { prepareGatewayMcp } from "./gateway-mcp.ts";
 import { readHtmlQuery } from "../html-query.ts";
 import { createSqlReadLimit } from "../shared/sql-read-limit.js";
+import { createSalesReadonly, SalesReadonlyError } from "../shared/sales-readonly.js";
 import { probeTables, withDefaultPaging } from "./plugin-query.ts";
 import { openModuleMcp } from "./mcp-client.ts";
 import { currentPageEnvelope, pageIdentityFresh, type PageIdentity } from "./page-identity.ts";
@@ -94,7 +95,7 @@ export interface Deployment {
   /** Optional fixed-run SQL allowance; zero refuses before credentials and transport. */
   sqlReadLimit?: { consumerCode: string; maxRequests: number; maxPagesPerQuery: number; maxRowsPerQuery: number };
   /** The native sales capability uses the same enabled declaration as installed HTML capabilities. */
-  workbenchCapability?: { enabled?: boolean };
+  workbenchCapability?: { enabled?: boolean; readonlyValidation?: { maxRequests: number; periods: number; list: number; detail: number; versionSkus: number; workflowSql: number; maxWorkflowRows: number; metadata: number } };
   serviceAccounts?: ServiceAccounts;
   geaBaseUrl: string;
   environment?: "production" | "test";
@@ -789,9 +790,11 @@ export class Business {
   }
 
   private readonly sqlReadLimit: ReturnType<typeof createSqlReadLimit>;
+  private readonly salesReadonly: ReturnType<typeof createSalesReadonly>;
 
   constructor(readonly config: Deployment) {
     this.sqlReadLimit = createSqlReadLimit(config.sqlReadLimit);
+    this.salesReadonly = createSalesReadonly(config.workbenchCapability?.readonlyValidation, config.analysisAgentCode, () => this.base);
     this.capabilities = createCapabilityRegistry([workbenchContract({
       surface: "gea-workbench", pageIds: ["gea-workbench"], ...config.workbenchCapability,
     })]);
@@ -800,7 +803,7 @@ export class Business {
     this.selectedBase = resolved.baseUrl;
     this.environment = resolved.environment as "production" | "test";
     this.environments = resolved.environments;
-    this.apiLog = new GeaApiLogCenter(() => this.environment);
+    this.apiLog = new GeaApiLogCenter(() => this.environment, undefined, undefined, this.salesReadonly?.beforeRequest);
   }
 
   /** 仅桌面拥有者可用：凭证通过私有回环通道传递，绝不经浏览器 RPC。 */
@@ -1260,6 +1263,7 @@ export class Business {
           .map((entry) => ({ code: text(entry.code), name: text(entry.name) }));
         if (this.auth === auth) auth.roles = mapped;
       } catch (error) {
+        if (error instanceof SalesReadonlyError) throw error;
         if (signal.aborted || !this.auth) throw error;
         // 角色读不到就不是审批人：保留只读浏览，不放开审批入口。
         // 强制刷新失败时保留上一次解析到的角色——一次查询失败不等于角色被收回。
@@ -1278,6 +1282,7 @@ export class Business {
 
   /** 对外状态永远不包含 GEA 凭证。 */
   status() {
+    const readonlyValidation = this.salesReadonly?.snapshot();
     const models = this.modelRoutes.get(this.config.analysisAgentCode)?.models;
     return {
       environment: this.environment,
@@ -1309,6 +1314,7 @@ export class Business {
       discoveredModels: models ?? [],
       mode: this.config.analysisMode,
       runId: this.runId,
+      ...(readonlyValidation ? { readonlyValidation } : {}),
     };
   }
 
@@ -1317,6 +1323,7 @@ export class Business {
     identity: { token: string; tenantId?: string } | undefined,
     signal: AbortSignal,
     includeTenant = true,
+    purpose?: string,
   ): Promise<unknown> {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (identity)
@@ -1333,8 +1340,9 @@ export class Business {
         headers,
         redirect: "error",
         signal: AbortSignal.any([signal, timeout]),
-      });
-    } catch {
+      }, purpose);
+    } catch (error) {
+      if (error instanceof SalesReadonlyError) throw error;
       if (signal.aborted) throw new Error("STALE_SELECTION");
       if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
       throw new Error("GEA_NETWORK_ERROR");
@@ -1442,6 +1450,7 @@ export class Business {
 
   /** 使用当前 Host 身份读取完整工作流配置。 */
   async workflowConfig(payload: Record<string, unknown>, caller: AbortSignal) {
+    this.salesReadonly?.assertWorkflow();
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     keys(payload, []);
     const auth = this.authenticated();
@@ -2110,6 +2119,7 @@ export class Business {
 
   /** 解析当前登录用户的 GEA 个人模型路由，但不向浏览器暴露密钥。 */
   async modelRoute(signal: AbortSignal, agentCode = "sales_forecast"): Promise<GeaModelRoute> {
+    this.assertModelAllowed();
     this.assertExecutionAllowed(agentCode);
     const auth = this.authenticated();
     const epoch = this.epoch.signal;
@@ -2355,6 +2365,7 @@ export class Business {
     consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string },
     signal: AbortSignal,
   ) {
+    this.salesReadonly?.assertOperation("mcp");
     this.assertExecutionAllowed(consumer.consumerCode);
     const auth = this.authenticated();
     const identity = this.epoch.signal;
@@ -3020,7 +3031,16 @@ export class Business {
   }
 
   /** Reject unavailable or simulated execution before authentication, delegation or transport. */
+  assertOperation(operation: string): void {
+    this.salesReadonly?.assertOperation(operation);
+  }
+
+  assertModelAllowed(): void {
+    this.salesReadonly?.assertModel();
+  }
+
   assertExecutionAllowed(consumerCode: string, effect: CapabilityEffect = "view"): void {
+    this.salesReadonly?.assertConsumer(consumerCode, effect);
     const contract = consumerCode === this.config.analysisAgentCode
       ? this.capabilities.get("gea-workbench")
       : this.capabilities.list().find(item => item.data?.consumerCode === consumerCode);
@@ -3221,7 +3241,7 @@ export class Business {
     let upstreamTotal = 0;
     do {
       const path = `/sales-plan/plans?pageNo=${pageNo}&pageSize=${upstreamPageSize}`;
-      const page = object(await this.get(path, auth, AbortSignal.any([signal, this.epoch.signal])));
+      const page = object(await this.get(path, auth, AbortSignal.any([signal, this.epoch.signal]), true, "periods"));
       if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_PAGE");
       rows.push(...page.records.map(object));
       upstreamTotal = integer(page.total, rows.length);
@@ -3418,6 +3438,7 @@ export class Business {
 
   /** 仅从 Host 已持有且已校验的数据冻结快照，生成带哈希和大小上限的模型输入。 */
   prepare(payload: Record<string, unknown>): Preview {
+    this.assertModelAllowed();
     this.preview = undefined;
     keys(payload, ["queryId", "planId", "includeDetail", "versionId", "skuIds"]);
     const { page, row } = this.selected(payload);
@@ -3496,6 +3517,7 @@ export class Business {
    * @returns 带来源、时间和集合覆盖信息的精确 JSON，供 Session 日志记录。
    */
   async agentQuery(payload: Record<string, unknown>, signal: AbortSignal): Promise<string> {
+    this.assertModelAllowed();
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     const identity = this.epoch.signal;
     const transport = transportSignal(AbortSignal.any([signal, identity]));
@@ -3613,6 +3635,7 @@ export class Business {
     keys(payload, ["kind", "query"]);
     let query = object(payload.query ?? {});
     const kind = text(payload.kind);
+    this.salesReadonly?.assertQuery(kind);
     query = normalizePlanQuery(kind, query);
     if (
       kind === "periods" &&
@@ -3676,6 +3699,8 @@ export class Business {
       paths[kind]() + (params.size ? "?" + params : ""),
       this.authenticated(),
       AbortSignal.any([signal, this.epoch.signal]),
+      true,
+      kind,
     );
     // AionUi 工作台消费完整数组；分页得到的 SKU 子集不能声称数据完整。
     const records = (value: unknown): Record<string, unknown>[] => {
@@ -3791,6 +3816,7 @@ export class Business {
 
   /** 工作台提交给原生会话前重新读取所有计划，避免把浏览器旧页面当成事实。 */
   async prepareWorkbench(payload: Record<string, unknown>, signal: AbortSignal): Promise<Preview> {
+    this.assertModelAllowed();
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     this.clearQuery();
     keys(payload, ["planIds", "scope"]);

@@ -558,17 +558,20 @@ export class GeaApiLogCenter {
     private readonly environment: () => string,
     private readonly limit = DEFAULT_LIMIT,
     private readonly fetchImpl?: typeof fetch,
+    private readonly beforeRequest?: (input: RequestInfo | URL, init?: RequestInit, purpose?: string) => Promise<() => void>,
   ) {}
 
-  readonly fetch: typeof fetch = (input, init) =>
-    this.fetchRequest(input, init);
+  readonly fetch = (input: RequestInfo | URL, init?: RequestInit, purpose?: string) =>
+    this.fetchRequest(input, init, undefined, undefined, purpose);
 
   private async fetchRequest(
     input: RequestInfo | URL,
     init?: RequestInit,
     replayedFrom?: string,
     onRecord?: (id: string) => void,
+    purpose?: string,
   ): Promise<Response> {
+    const acceptRequest = this.beforeRequest ? await this.beforeRequest(input, init, purpose) : undefined;
     const rawUrl = input instanceof Request ? input.url : String(input);
     const method = (
       init?.method ?? (input instanceof Request ? input.method : "GET")
@@ -628,6 +631,7 @@ export class GeaApiLogCenter {
           record.id,
         );
     }
+    acceptRequest?.();
     this.prepend(record);
     onRecord?.(record.id);
     try {

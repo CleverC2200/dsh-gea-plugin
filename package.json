@@ -130,6 +130,8 @@
     "scripts/session-log.mjs",
     "src/shared/environments.js",
     "src/shared/sql-read-limit.js",
+    "src/shared/sales-readonly.js",
+    "src/shared/workflow-query.js",
     "gea.direct.example.json",
     "gea.config.example.json",
     "README.md",

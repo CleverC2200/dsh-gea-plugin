@@ -2,9 +2,8 @@ import { GeaResponseError } from '../shared/gea-error.js';
 import { randomUUID } from 'node:crypto';
 import { salesPlanWorkflow, type SalesPlanWorkflowRow } from "@cleverc2200/dsh-agent-workbench/sales-plan";
 
-const SQL =
-  'SELECT id, type_code, examine_level, node_num FROM agents_scm_plan_workflow_config WHERE status = :active AND delete_status = :notDeleted ORDER BY type_code, examine_level, id';
-const PAGE_SIZE = 100;
+import { WORKFLOW_CONFIG_SQL as SQL, WORKFLOW_PAGE_SIZE as PAGE_SIZE } from '../shared/workflow-query.js';
+import { SalesReadonlyError } from '../shared/sales-readonly.js';
 
 /** 通过固定 SQL 分页读取工作流；调用方不能提供 SQL、身份或凭证，重复 ID、分页不完整或配置非法时拒绝默默降级。 */
 export async function readSalesPlanWorkflowConfig(
@@ -35,7 +34,8 @@ export async function readSalesPlanWorkflowConfig(
         headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...headers, 'X-Request-Id': requestId },
         body: JSON.stringify(body),
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof SalesReadonlyError) throw error;
       signal.throwIfAborted();
       throw failure(0, undefined, 'transport');
     }

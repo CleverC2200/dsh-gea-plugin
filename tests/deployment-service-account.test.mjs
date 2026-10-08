@@ -23,6 +23,21 @@ const deployment = {
   serviceAccounts: { production: account },
 };
 
+test('readonly validation is explicit and validates all limits before reading credentials',async t=>{
+ const limits={maxRequests:24,periods:8,list:12,detail:2,versionSkus:2,workflowSql:2,maxWorkflowRows:200,metadata:8};
+ for(const readonlyValidation of [null,{}, {...limits,list:-1},{...limits,metadata:0.5},{...limits,maxWorkflowRows:0},{...limits,extra:1}]) {
+  let reads=0;
+  const path=await configFile(t,{...deployment,workbenchCapability:{readonlyValidation}});
+  await assert.rejects(readDeployment(path,{credentialEnv:{},readKeychain:()=>{reads++;return {clientId:'fixture',secret:'fixture'};}}),/INVALID_SALES_READONLY_VALIDATION/);
+  assert.equal(reads,0);
+ }
+ const path=await configFile(t,{...deployment,serviceAccounts:undefined,workbenchCapability:{enabled:true,readonlyValidation:limits}});
+ const config=await readDeployment(path,{credentialEnv:{}});
+ assert.deepEqual(config.workbenchCapability,{enabled:true,readonlyValidation:limits});
+ const ordinary=await readDeployment(await configFile(t,{...deployment,serviceAccounts:undefined}),{credentialEnv:{}});
+ assert.equal(ordinary.workbenchCapability?.readonlyValidation,undefined);
+});
+
 async function configFile(t, value = deployment) {
   const directory = await mkdtemp(resolve(tmpdir(), 'gea-credential-deployment-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

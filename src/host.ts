@@ -77,7 +77,19 @@ export const Config = z.object({
    * 默认关闭：问答取数只走模块 MCP + 页面证据，模型不再自己写 SQL。
    */
   agentSqlRead: z.boolean().default(false),
-  workbenchCapability: z.object({enabled: z.boolean()}).default({}),
+  workbenchCapability: z.object({
+    enabled: z.boolean(),
+    readonlyValidation: z.object({
+      maxRequests: z.natural().required(),
+      periods: z.natural().required(),
+      list: z.natural().required(),
+      detail: z.natural().required(),
+      versionSkus: z.natural().required(),
+      workflowSql: z.natural().required(),
+      maxWorkflowRows: z.natural().min(1).required(),
+      metadata: z.natural().required(),
+    }),
+  }).default({}),
   sqlReadLimit: z.object({
     consumerCode: z.string().required(),
     maxRequests: z.natural().required(),
@@ -91,6 +103,7 @@ class ReceiptAdapter extends LlmAdapter {
   constructor(
     private readonly config: Deployment,
     private readonly runId: string,
+    private readonly business: Business,
   ) {
     super();
   }
@@ -101,6 +114,7 @@ class ReceiptAdapter extends LlmAdapter {
     return [{ provider, id: "receipt", name: "Local receipt / 本地验证回执" }];
   }
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    this.business.assertModelAllowed();
     options.signal?.throwIfAborted();
     const request = JSON.stringify(options.messages);
     const text =
@@ -353,6 +367,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   business.setCapabilities(capability);
   // The official stream seam also covers retained direct-provider selections.
   ctx.effect(() => ctx.on("llm/stream", async function* (options, next) {
+    business.assertModelAllowed();
     const agent = options.sessionId ? ctx.agents.get(options.sessionId as SessionId) : undefined;
     const preset = agent ? ctx.sessionProjections.stateOf(agent.session, "agentPreset") : undefined;
     if (options.provider !== "gea-proof" && (options.provider === "gea-analysis" || profileFor(preset ?? undefined))) {
@@ -431,7 +446,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     ctx.effect(() =>
       ctx.llm.registerAdapter(
         ["gea-proof"],
-        new ReceiptAdapter(config, business.runId),
+        new ReceiptAdapter(config, business.runId, business),
       ),
     );
   if (config.analysisMode === "model" && config.analysisSource === "gea")
@@ -594,6 +609,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
         requestBody: "buffered",
         fetch: async (request: Request) => {
           try {
+            business.assertOperation(endpoint);
             const payload = object(await request.json());
             let value: unknown;
             switch (endpoint) {
@@ -655,11 +671,13 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
                 value = await business.notifications(payload, request.signal);
                 break;
               case "status":
-                await Promise.all([
-                  business.refreshMissingAvatar(request.signal),
-                  business.refreshPermissions(request.signal),
-                  business.refreshApprovalRoles(request.signal),
-                ]);
+                if (!business.status().readonlyValidation) {
+                  await Promise.all([
+                    business.refreshMissingAvatar(request.signal),
+                    business.refreshPermissions(request.signal),
+                    business.refreshApprovalRoles(request.signal),
+                  ]);
+                }
                 // 前端不写死"哪个页面属于哪个模块"：模块索引由能力契约产出。
                 value = {
                   ...business.status(),
