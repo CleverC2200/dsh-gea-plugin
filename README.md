@@ -303,3 +303,5 @@ Business pages authorize the Interpreter projected by the actual Core Session. T
 Host 的唯一能力注册表拒绝停用、未登记或模拟 Consumer 的真实 SQL、schema、MCP、启动授权及模型调用。原生销售读取、草稿、提交、审批、通知、工作流和日志重发也核同一声明。旧 Session 在模型步骤和官方 `llm/stream` 接口重新核当前资源，不能用保存的 provider 绕过。模拟 view、上下文与未发送引用仍使用原合同。GEA 登录及服务端授权保持原归属。
 
 验收配置使用 `analysis.mode: "receipt"`、`agentSqlRead: false` 和 `visibleContextSubagent: false`。启动前按当前安装包核每一份声明，并清空本地数据库 provider 的验收环境变量；源码默认配置不随验收永久停用。配置与恢复步骤见 [安装说明](docs/install.md#仅模拟验收配置)。
+
+47 APS reception uses Manage as the only source of APS calculation and analysis Skills. GEA keeps identity and governed execution; mock packages declare no SQL capability and do not issue business reads, model Tasks or writes. The old GEA APS Skill copies are removed after the Manage provider is connected.

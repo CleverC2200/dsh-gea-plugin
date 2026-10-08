@@ -332,12 +332,6 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
     profile:profileFor("gea-readonly")!
   }]);
   ctx.effect(() => releaseOriginalResources);
-  const releaseBundledSkills = await ctx.agentResources.register([{
-    id:"gea-bundled-skills",label:"GEA Skill",root:fileURLToPath(new URL("../",import.meta.url)),
-    profile:{label:"GEA Skill",consumerCode:"aps",skills:["sales-forecast-result-analysis","sales-ops-problem-analysis"]},
-    skillFiles:{"sales-forecast-result-analysis":"business-skills/aps/sales-forecast-result-analysis.skill.md","sales-ops-problem-analysis":"business-skills/aps/sales-ops-problem-analysis.skill.md"}
-  }]);
-  ctx.effect(() => releaseBundledSkills);
   const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlPackages);
   // 能力契约注册表：页面白名单、草稿白名单、只读模块清单全部由它产出，宿主不再按模块写分支。
   const capability = createCapabilityRegistry([
