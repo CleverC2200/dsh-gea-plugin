@@ -140,7 +140,7 @@ export async function registerHtmlPlugins(
     const capabilityContract = await readPluginContract(
       directory,
       manifest.declarations,
-      contractFromPlugin({
+      { ...contractFromPlugin({
         id: manifest.id,
         label: manifest.name,
         consumerCode: manifest.gea.consumerCode,
@@ -149,7 +149,7 @@ export async function registerHtmlPlugins(
         mock,
         maxEffect: "view",
         sources: [],
-      }),
+      }), skills: [...profile.skills] },
     );
     ctx.effect(() => installPromptProfile(preset, profile));
     const releaseResources = await ctx.agentResources.register([
@@ -158,6 +158,7 @@ export async function registerHtmlPlugins(
         label: manifest.name,
         root: directory,
         prompt: manifest.agentResources.prompt,
+        capability: manifest.declarations.capability,
         profile,
         enabled:
           capabilityContract.enabled !== false &&
