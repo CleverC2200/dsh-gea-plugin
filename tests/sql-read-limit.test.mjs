@@ -101,6 +101,36 @@ test('a counted result requiring too many pages stops before subsequent pages', 
   assert.equal(calls, 1);
 });
 
+test('a single requested page does not charge unrequested pages of its counted result', async () => {
+  let calls = 0;
+  const limit = createSqlReadLimit({consumerCode: 'dealer-inventory-replenishment', maxRequests: 1, maxPagesPerQuery: 60, maxRowsPerQuery: 12000});
+  const rows = Array.from({length: 10}, (_, index) => ({sku: `S${index}`}));
+  const input = {sql: 'SELECT sku FROM inventory ORDER BY sku', pageNo: 1, pageSize: 10};
+  const transport = {
+    endpoint: 'https://fixture.invalid', token: 'fixture-only', signal: new AbortController().signal, limit,
+    fetch: async () => {
+      calls++;
+      return Response.json({success: true, result: {rows, total: 2730, pageNo: 1, pageSize: 10, offset: 0}});
+    },
+  };
+  const result = await readHtmlQuery(input, transport);
+  assert.deepEqual(result.rows, rows);
+  assert.equal(result.total, 2730);
+  assert.equal(calls, 1);
+  await assert.rejects(readHtmlQuery(input, transport), error => error.code === 'GEA_SQL_REQUEST_LIMIT');
+  assert.equal(calls, 1);
+});
+
+test('a requested page beyond the configured range is rejected before transport', async () => {
+  let calls = 0;
+  const limit = createSqlReadLimit({consumerCode: 'dealer-inventory-replenishment', maxRequests: 1, maxPagesPerQuery: 60, maxRowsPerQuery: 12000});
+  await assert.rejects(readHtmlQuery({sql: 'SELECT sku FROM inventory ORDER BY sku', pageNo: 61, pageSize: 10}, {
+    endpoint: 'https://fixture.invalid', token: 'fixture-only', signal: new AbortController().signal, limit,
+    fetch: async () => {calls++; throw Error('TRANSPORT_FORBIDDEN');},
+  }), error => error.code === 'GEA_SQL_PAGE_LIMIT');
+  assert.equal(calls, 0);
+});
+
 test('a delegation 401 consumes an allowance and cannot renew after it is exhausted', async t => {
   const business = fixture(t, 1);
   let sqlRequests = 0, delegations = 0;

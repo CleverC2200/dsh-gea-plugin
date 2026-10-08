@@ -434,7 +434,8 @@ export function createGeaSqlDatabase(
       const total = totalFrom(payload);
       if (transport.limit && (pageRows.length > transport.limit.maxRows || (total !== null && total > transport.limit.maxRows)))
         throw new GeaSqlError("GEA_SQL_RESULT_LIMIT", "业务查询结果超过本次读取上限", 400);
-      if (transport.limit && total !== null && Math.ceil(total / pageSize) > transport.limit.maxPages)
+      // A single-page query never fetches the remaining counted pages.
+      if (transport.limit && options.pageNo === undefined && total !== null && Math.ceil(total / pageSize) > transport.limit.maxPages)
         throw new GeaSqlError("GEA_SQL_PAGE_LIMIT", "业务查询页数超过本次读取上限", 400);
       if (includeTotal && total === null)
         throw new GeaSqlError(
