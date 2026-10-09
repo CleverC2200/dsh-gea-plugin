@@ -25,7 +25,7 @@ corepack pnpm run test:build
 
 源码启动、检查和组合使用 [源码组合说明](docs/plugin-split-validation.md) 中的明确五源输入，由 [source-profile](scripts/source-profile.mjs) 统一核 source、commit、integration、依赖和完整产物摘要。缺来源、损坏资产或选择摘要不一致时拒绝，不下载旧包、不重建冻结资产、不改用户默认模型。完整选择可按原摘要读回；失败和 unknown 不自动重写、重试或回切。
 
-源码 Host 沿 [start](scripts/start.mjs) 与公开 [runSourceProfile](scripts/start-isolated-validation.mjs) 使用固定官方 Core，仅按有效窗口授权运行。普通插件 tgz、npm shrinkwrap、实际 profile 锁与恢复见 [安装说明](docs/install.md)。离线安装检查不能替代 Native、Windows、真实业务或生产验收；旧公司壳不属于当前官方客户端目标。
+源码 Host 沿 [start](scripts/start.mjs) 与公开 [runSourceProfile](scripts/start-isolated-validation.mjs) 使用固定官方 Core，仅按有效窗口授权运行，先完成 [窗口准入与离线冻结](docs/window-launch-admission.md)；省略窗口也拒绝。普通插件 tgz、npm shrinkwrap、实际 profile 锁与恢复见 [安装说明](docs/install.md)。离线安装检查不能替代 Native、Windows、真实业务或生产验收；旧公司壳不属于当前官方客户端目标。
 
 ## 身份、额度与取消
 
