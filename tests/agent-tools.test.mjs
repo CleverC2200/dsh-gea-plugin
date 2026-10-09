@@ -113,10 +113,7 @@ test(
       pluginRoot: process.env.GEA_TEST_PLUGIN_ROOT,
       bundle: Boolean(process.env.GEA_TEST_PLUGIN_ROOT),
       env: { DSH_AGENTS_HOME: agentsHome },
-      beforeStart: prepareWorkbenchHtmlRoots({
-        "inventory-probe": probeRoot,
-        "inventory-real": realRoot,
-      }),
+      beforeStart: prepareWorkbenchHtmlRoots([probeRoot, realRoot]),
       config: () => ({
         requestTimeoutMs: 1000,
         visibleContextSubagent: false,
