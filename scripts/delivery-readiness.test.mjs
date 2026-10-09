@@ -935,3 +935,28 @@ test("a conflicting prerequisite ticket cannot satisfy dependencies while one ma
     "blocked",
   );
 });
+
+test("an impossible calendar date cannot become current readiness evidence", async (t) => {
+  const f = await fixture(t, "27", "None");
+  const candidate = (await f.report()).candidate.sha256;
+  f.readiness.observations = [
+    {
+      fact: "query",
+      state: "zero",
+      runId: "fixture-run",
+      combinationId: "fixture-combination",
+      ownerId: "original-owner",
+      candidateSha256: candidate,
+      observedAt: "2026-02-28T00:00:00.000Z",
+    },
+  ];
+  await f.put("readiness", f.readiness);
+  let fact = (await f.report()).facts.find((entry) => entry.fact === "query");
+  assert.equal(fact.state, "zero");
+  assert.equal(fact.relation, "current");
+  f.readiness.observations[0].observedAt = "2026-02-30T00:00:00.000Z";
+  await f.put("readiness", f.readiness);
+  fact = (await f.report()).facts.find((entry) => entry.fact === "query");
+  assert.equal(fact.state, "unknown");
+  assert.notEqual(fact.relation, "current");
+});

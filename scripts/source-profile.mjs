@@ -20,16 +20,12 @@ import { execFileSync } from "node:child_process";
 import { corePackages, sourcePlugins } from "./source-composition.mjs";
 import {
   fileDigest,
+  clientEntry,
+  componentArtifactEntries,
   dependencyDigests,
   readSourceCombination,
 } from "./source-combination-integrity.mjs";
 export { readSourceCombination } from "./source-combination-integrity.mjs";
-function clientEntry(manifest) {
-  const entry = manifest.exports?.["./client"];
-  return typeof entry === "string"
-    ? entry
-    : (entry?.default ?? "client/client.js");
-}
 
 /** A new composition/check/build always names the same explicit five owners. No directory fallback. */
 export function requireSourceInputs(sources) {
@@ -235,12 +231,7 @@ export async function prepareSourcePlugins(
     const manifest = JSON.parse(
       await readFile(join(target, "package.json"), "utf8"),
     );
-    const files = [
-      "package.json",
-      manifest.main ?? manifest.exports?.["."]?.default ?? "lib/host.js",
-      clientEntry(manifest),
-      ...plugin.digests,
-    ];
+    const files = [...componentArtifactEntries(manifest), ...plugin.digests];
     const digests = {};
     for (const file of files)
       digests[file] = createHash("sha256")

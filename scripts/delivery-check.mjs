@@ -1,3 +1,4 @@
+import { isObservationTime as time } from "./delivery-time.mjs";
 /** Read-only, bounded delivery observations. Never prepares or verifies a runtime. */
 import { readFile, realpath, stat } from "node:fs/promises";
 import { resolve, relative, isAbsolute } from "node:path";
@@ -34,11 +35,6 @@ const identifier = (value) =>
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const sha256 = (value) =>
   typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
-const time = (value) =>
-  typeof value === "string" &&
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
-  Number.isFinite(Date.parse(value)) &&
-  new Date(Date.parse(value)).toISOString() === value;
 
 async function readInput(scope, ref, observedAt) {
   if (!ref || !identifier(ref.id) || typeof ref.path !== "string")
