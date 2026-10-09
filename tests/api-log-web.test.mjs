@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { profile } from "./profile.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { openSalesPlan, openWorkbenchPage } from "./fixtures/business-page.mjs";
 
 test(
   "API log center lists real Host calls, redacts credentials and replays safe reads",
@@ -33,15 +33,11 @@ test(
     await page.goto(app.origin);
     const frame = await openSalesPlan(page);
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
-    await page.locator('button[aria-label="账户菜单"]').evaluate((element) => element.click());
-    await page.getByRole("menuitem", { name: "设置", exact: true }).click({ force: true });
-    const settings = page.getByRole("dialog", { name: "设置", exact: true });
-    await settings.getByRole("button", { name: "接口日志", exact: true }).dispatchEvent("click");
+    await openWorkbenchPage(page, "接口日志");
     await page.getByRole("heading", { name: "接口日志中心", exact: true }).waitFor();
-    await expect(settings).toHaveCount(0);
     assert.deepEqual(
       await page
-        .locator(".AppFrame_sidebarCol, .AppFrame_rightbarCol")
+        .locator("[data-sidebar-col], [data-rightbar-col]")
         .evaluateAll((elements) =>
           elements.map((element) => Math.round(element.getBoundingClientRect().width)),
         ),
