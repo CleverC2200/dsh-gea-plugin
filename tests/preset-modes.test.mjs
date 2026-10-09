@@ -1,10 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
-import { mkdtemp, mkdir, writeFile, readFile, readdir, realpath, rm, symlink, lstat } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  symlink,
+  lstat,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+import { prepareSourcePlugins, readSourceCombination } from "../scripts/source-profile.mjs";
 import {
   DEFAULT_PRESET_ID,
   DEFAULT_PRESET_NAME,
@@ -13,21 +24,29 @@ import {
 } from "../scripts/deployment.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const require = createRequire(import.meta.url);
-const shippedStandard = resolve(
-  dirname(require.resolve("@deepseek-ai/dsh-agent-presets/package.json")),
-  "presets/standard",
-);
-
-test("默认预设随插件包分发：用 DEFAULT_PRESET_NAME 显示名，组合与 DSH 标准预设逐字节一致", async () => {
-  const directory = join(root, "default-presets", DEFAULT_PRESET_ID);
-  assert.match(
-    await readFile(join(directory, "preset.yml"), "utf8"),
-    new RegExp(`^name: ${DEFAULT_PRESET_NAME}$`, "m"),
+test("the current source reader binds the official standard patch and selects the standard registry default", async (t) => {
+  if (!process.env.GEA_TEST_SOURCE_INPUTS) throw Error("EXPLICIT_SOURCE_INPUTS_REQUIRED");
+  const runtime = await mkdtemp(join(tmpdir(), "gea-current-preset-"));
+  t.after(() => rm(runtime, { recursive: true, force: true }));
+  const core = resolve(root, "../../official-latest-standard");
+  const sources = JSON.parse(await readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"));
+  const prepared = await prepareSourcePlugins(core, runtime, undefined, { sources });
+  const current = await readSourceCombination(runtime, prepared.id, core);
+  const record = JSON.parse(
+    await readFile(join(runtime, "source-combinations", current.id, "combination.json"), "utf8"),
   );
+  const standard = await realpath(join(core, "packages/bundle/web-app/presets/standard.patch.yml"));
   assert.equal(
-    await readFile(join(directory, "agent.cordis.yml"), "utf8"),
-    await readFile(join(shippedStandard, "agent.cordis.yml"), "utf8"),
+    record.externalFiles[standard],
+    createHash("sha256")
+      .update(await readFile(standard))
+      .digest("hex"),
+  );
+  const patch = JSON.parse(await readFile(current.patches[0], "utf8"));
+  assert.equal(patch.find((row) => row.id === "agent-preset-registry").config.default, "standard");
+  assert.equal(
+    patch.some((row) => row.id === "agent-presets"),
+    false,
   );
 });
 
@@ -51,6 +70,10 @@ test("切换组合时替换上一版的 preset 软链，并且可以重复执行
     const link = join(runtime, "native-presets", DEFAULT_PRESET_ID, "agent.cordis.yml");
     assert.equal(await realpath(link), await realpath(join(next, "agent.cordis.yml")));
     assert.equal(await readFile(link, "utf8"), "composition version-b\n");
+    assert.equal(
+      await readFile(join(runtime, "native-presets", DEFAULT_PRESET_ID, "preset.yml"), "utf8"),
+      `name: ${DEFAULT_PRESET_NAME}\n`,
+    );
     await prepareNativePreset(runtime, next);
   } finally {
     await rm(dir, { recursive: true, force: true });
