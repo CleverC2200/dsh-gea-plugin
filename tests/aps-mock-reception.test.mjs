@@ -42,8 +42,10 @@ test("actual APS mock registration and Manage route select its original resource
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(resolve(".runtime/aps-reception-r1-"));
   const manage = resolve("../dsh-agent-manage");
-  await mkdir(join(manage, ".runtime"), { recursive: true });
-  const manageOutput = await mkdtemp(join(manage, ".runtime/aps-reception-r1-"));
+  await mkdir(join(manage, "node_modules/.cache/gea-test-fixtures"), { recursive: true });
+  const manageOutput = await mkdtemp(
+    join(manage, "node_modules/.cache/gea-test-fixtures/aps-reception-r1-"),
+  );
   const cwd = join(root, "workspace");
   await mkdir(cwd);
   fixtureEnvironment(t, {

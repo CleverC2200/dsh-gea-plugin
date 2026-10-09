@@ -373,7 +373,7 @@ export async function prepareSourcePlugins(
 }
 
 /** Hash shipped resources, excluding dependency links and their writable stores. */
-async function resourceDigests(directory, prefix = "", excludeDependencies = false) {
+export async function resourceDigests(directory, prefix = "", excludeDependencies = false) {
   const files = {};
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (excludeDependencies && entry.name === "node_modules") continue;

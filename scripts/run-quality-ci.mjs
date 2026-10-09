@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, realpathSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { prepareQualityUpstreams, verifyQualityUpstreams } from "./quality-upstreams.mjs";
+import { readPreparedWorkbench, verifyPreparedWorkbench } from "./quality-workbench.mjs";
 import { resolveSourceInputs } from "./source-profile.mjs";
 const peers = {
   "dsh-agent-workbench": "9b4863692cb29a3edc8a2358e98feb7846526d1b",
@@ -61,7 +62,11 @@ try {
             },
             ...Object.entries(peers).map(([repo, head]) => ({
               repo,
-              path: resolve(values.root, "candidate", repo),
+              path: resolve(
+                values.root,
+                repo === "dsh-agent-workbench" ? "source" : "candidate",
+                repo,
+              ),
               head,
             })),
           ],
@@ -108,6 +113,8 @@ try {
     }
     const workbench = candidate.repositories.find((entry) => entry.repo === "dsh-agent-workbench"),
       manage = candidate.repositories.find((entry) => entry.repo === "dsh-agent-manage");
+    const preparedWorkbench = resolve(dirname(process.cwd()), "dsh-agent-workbench");
+    const workbenchReceipt = resolve(dirname(dirname(process.cwd())), "prepared-workbench.json");
     const core = resolve(dirname(dirname(process.cwd())), "official-latest-standard"),
       upstream = resolve("../../../current-mainline-closeout-44");
     run(process.execPath, [
@@ -143,22 +150,36 @@ try {
     )
       refuse("QUALITY_TOOLCHAIN_REQUIRED", "Node 24 / pnpm 11.27.0");
     if (values["prepare-inputs"]) {
+      if (existsSync(preparedWorkbench))
+        refuse(
+          "QUALITY_PREPARED_ALREADY_EXISTS",
+          "use a fresh owned job directory or verify the existing frozen assets",
+        );
+      run("git", [
+        "-C",
+        workbench.path,
+        "worktree",
+        "add",
+        "--detach",
+        preparedWorkbench,
+        workbench.head,
+      ]);
       run(
         "npm",
         ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
-        workbench.path,
+        preparedWorkbench,
       );
       run(
         "npm",
         ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
-        resolve(workbench.path, "business/inventory-apsplan/source"),
+        resolve(preparedWorkbench, "business/inventory-apsplan/source"),
       );
       run(
         "corepack",
         ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts", "--prefer-offline"],
         manage.path,
       );
-      run("npm", ["run", "build:core"], workbench.path, {
+      run("npm", ["run", "build:core"], preparedWorkbench, {
         DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
       });
       run("corepack", ["pnpm", "build"], manage.path);
@@ -170,6 +191,12 @@ try {
         "--prefer-offline",
       ]);
       run("corepack", ["pnpm", "build:plugin"]);
+      const prepared = await readPreparedWorkbench({
+        source: workbench.path,
+        prepared: preparedWorkbench,
+        head: workbench.head,
+      });
+      writeFileSync(workbenchReceipt, JSON.stringify(prepared, null, 2) + "\n");
     }
     for (const entry of candidate.repositories) {
       const source = spawnSync("git", ["-C", entry.path, "remote", "get-url", "source"], {
@@ -187,6 +214,12 @@ try {
           "https://github.com/CleverC2200/" + entry.repo + ".git",
         ]);
     }
+    const workbenchAssets = await verifyPreparedWorkbench({
+      source: workbench.path,
+      prepared: preparedWorkbench,
+      head: workbench.head,
+      receipt: workbenchReceipt,
+    });
     const upstreamRecord = await verifyQualityUpstreams(upstream);
     const sourcesFile = resolve(dirname(dirname(process.cwd())), "profile-source-inputs.json");
     const records = candidate.repositories.map((entry) => ({
@@ -195,6 +228,14 @@ try {
       commit: entry.head,
       dependencies: resolve(entry.path, "node_modules"),
     }));
+    Object.assign(
+      records.find((entry) => entry.repo === "dsh-agent-workbench"),
+      {
+        assets: preparedWorkbench,
+        files: workbenchAssets.files,
+        dependencies: resolve(preparedWorkbench, "node_modules"),
+      },
+    );
     records.push(
       {
         repo: "dsh-genui",

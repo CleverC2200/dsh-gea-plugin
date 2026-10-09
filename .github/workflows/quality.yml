@@ -67,7 +67,7 @@ jobs:
           repository: CleverC2200/dsh-agent-workbench
           ref: 9b4863692cb29a3edc8a2358e98feb7846526d1b
           fetch-depth: 0
-          path: candidate/dsh-agent-workbench
+          path: source/dsh-agent-workbench
           token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
       - name: Enable declared package managers

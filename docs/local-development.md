@@ -52,7 +52,7 @@ corepack pnpm test:observe
 
 `corepack pnpm quality:ci --input /absolute/path/candidate-input.json` 要求干净且固定的三仓输入，先核实际 Git SHA、完整历史与原锁，再只读核 Manage 的公开 SDK 工具、原上游依赖和 Workbench 的共享候选检查。它运行同一 `quality:fast`、`test:contracts` 与完整 `test`。CI 自身绑定事件实际 SHA，peer 使用命令内冻结的兼容提交；本地最终整合组合另有自己的回执，不能把两个 tuple 视为同一组合。
 
-首次准备使用独立目录，三仓源码放在 `<job-root>/candidate/<repo>`，官方 Core 放在 `<job-root>/official-latest-standard`，原 link 依赖放在 `<job-root 的父目录>/current-mainline-closeout-44`。先按公开输入阶段生成声明，再显式准备：
+首次准备使用独立目录，GEA 与 Manage 源码放在 `<job-root>/candidate/<repo>`，Workbench 干净源码放在 `<job-root>/source/dsh-agent-workbench`，官方 Core 放在 `<job-root>/official-latest-standard`，原 link 依赖放在 `<job-root 的父目录>/current-mainline-closeout-44`。先按公开输入阶段生成声明，再显式准备：
 
 ```sh
 node scripts/run-quality-ci.mjs --phase input --root /absolute/job-root --sha ACTUAL_GEA_COMMIT
@@ -62,3 +62,5 @@ corepack pnpm quality:ci --input /absolute/job-root/candidate-input.json --prepa
 准备阶段仅在独立 checkout 内按原工具链与冻结锁安装、编译库及 Core 静态网页。原 GenUI npm 资产与 Sidebar Git 源及摘要由 `scripts/quality-upstreams.json` 固定，`corepack pnpm quality:upstreams --root /absolute/upstream-root` 默认只读验证，增加 `--prepare` 才下载和构建。现有共享或借用目录拒绝准备写入。它不启动 Native、业务或模型请求，也不修改用户运行目录。首次 CI 需要明确的 peer contents-read 凭据，未配置时失败；最终 always 聚合拒绝失败、跳过、取消与缺结果。
 
 完整 CI 显式开启源码窗口 fixture，Chromium 准备在本组 `.quality-browser` 中，所有服务和模拟模型端点只接受 loopback。完整 `test` 使用公开 reporter 拒绝必需测试的 skip，不能只按 Node 退出码把未执行的源码窗口称为全绿。该范围是源码 Host/profile 与本地 Web 集成，不能称为真实业务、模型服务或 Native 验收。
+
+Workbench 的原构建输出 lib 受 Git 跟踪。首次准备在 `<job-root>/candidate/dsh-agent-workbench` 建立同提交的独立 build worktree，沿公开 `build:core` 真实编译，保留派生 lib 差异。候选声明登记干净 source 根；GEA 现有 sibling 类型路径和源码 profile 消费明确 prepared 根。`scripts/quality-workbench.mjs` 逐 Git blob 核全部非 lib 原源码、锁与同 source origin，再核冻结资产摘要。它不把 build tree 宣称 clean，也不放宽共享候选 checker。
