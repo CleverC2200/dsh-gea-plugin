@@ -63,6 +63,7 @@ export async function profile(t, options = {}) {
     throw new Error(
       "SOURCE_TEST_REQUIRES_CURRENT_CHECKOUT: packaged artifacts use the installed-runtime test lane",
     );
+  t.signal?.throwIfAborted();
   const dir = await mkdtemp(resolve(options.runtimeParent ?? tmpdir(), "gea-profile-"));
   const key = resolve(dir, "key.pem"),
     cert = resolve(dir, "cert.pem");
