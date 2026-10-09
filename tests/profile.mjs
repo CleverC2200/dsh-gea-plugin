@@ -308,9 +308,12 @@ export async function profile(t, options = {}) {
         : new AggregateError(errors, "PROFILE_CLEANUP_FAILED", { cause: errors[0] });
   });
   async function start() {
+    const fixture = JSON.parse(await readFile(config, "utf8"));
+    if (Object.values(fixture.serviceAccounts ?? {}).some((account) => account.keychainService))
+      throw new Error("SOURCE_TEST_REQUIRES_FIXTURE_CREDENTIALS");
     const deployment = await readDeployment(config, {
       resolveCredentials: false,
-      credentialEnv: {},
+      credentialEnv: options.env ?? {},
     });
     for (const endpoint of [
       deployment.geaBaseUrl,
