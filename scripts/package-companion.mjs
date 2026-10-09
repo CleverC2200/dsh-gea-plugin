@@ -14,6 +14,12 @@ const work = await mkdtemp(join(tmpdir(), 'dsh-companion-publication-'));
 try {
   execFileSync('tar', ['-xzf', input, '-C', work]);
   const root = join(work, 'package'), path = join(root, 'package.json');
+  const excludedProvenanceFiles = [];
+  for (const file of files.filter(file => /^package\/lib\/business\/.+\/build-inputs\.json$/.test(file))) {
+    const location = join(work, file);
+    excludedProvenanceFiles.push({ path: file.slice('package/'.length), sha256: createHash('sha256').update(await readFile(location)).digest('hex') });
+    await rm(location);
+  }
   const manifest = JSON.parse(await readFile(path, 'utf8'));
   if (!['dsh-agent-manage', '@cleverc2200/dsh-agent-workbench'].includes(manifest.name)) throw Error('UNEXPECTED_COMPANION_IDENTITY');
   const versions = JSON.parse(await readFile(resolve(values.versions), 'utf8'));
@@ -25,7 +31,7 @@ try {
   await mkdir(destination, { recursive: true });
   const [packed] = JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', destination], { cwd: root, encoding: 'utf8' }));
   const artifact = join(destination, packed.filename);
-  const receipt = { name: manifest.name, version: manifest.version, artifact, sourceArchive: input, sourceArchiveSha256: createHash('sha256').update(await readFile(input)).digest('hex'), sha256: createHash('sha256').update(await readFile(artifact)).digest('hex'), changedFields: ['publication version', 'development-only metadata'], originalLifecycleAlreadyCompleted: true };
+  const receipt = { name: manifest.name, version: manifest.version, artifact, sourceArchive: input, sourceArchiveSha256: createHash('sha256').update(await readFile(input)).digest('hex'), sha256: createHash('sha256').update(await readFile(artifact)).digest('hex'), changedFields: ['publication version', 'development-only metadata'], excludedProvenanceFiles, originalLifecycleAlreadyCompleted: true };
   await writeFile(artifact + '.json', JSON.stringify(receipt, null, 2) + '\n');
   console.log(JSON.stringify(receipt));
 } finally { await rm(work, { recursive: true, force: true }); }

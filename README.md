@@ -52,3 +52,7 @@ HTML launch 与 MCP 共用 [网关握手](src/host/gateway-session.ts)。拒权�
 [清理前 README](docs/history/README-pre-agent-environment-04.md)、[清理前开发说明](docs/history/local-development-pre-agent-environment-04.md)、[清理前 AGENTS](docs/history/AGENTS-pre-agent-environment-04.md) 按基线 `1e8dd6caee3cce298b9c015506b32c8d6d1c1f5d` 原字节留存，包含历史验收、旧 Core 与公司桌面说明；它们不作为当前命令或支持接口。历史失败、许可证和用户数据保留。
 
 本目录只用于隔离开发，不向正式 GitLab、OSS、npm 或频道写入，不修改正式客户端运行目录。真实开窗、正式查询、模型与业务写继续按原有效授权处理。
+
+## Local three-plugin artifacts
+
+Use [the explicit three-package delivery entry](docs/package-delivery.md) for the registered official 0.2.1-alpha.1 client. It packages already built owner inputs and writes checksums and GUI installation instructions. Installation and runtime acceptance remain separate.
