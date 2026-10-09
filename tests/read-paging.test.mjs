@@ -8,7 +8,7 @@
  *   - 单页仍然超预算时自动缩页，而不是报 SNAPSHOT_TOO_LARGE。
  * 页面自身的工作台读取不受影响，这里只看模型读到的内容。
  */
-import {readFile} from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { profile, readSession, until } from "./profile.mjs";
@@ -32,9 +32,7 @@ function skuRows(count, descriptionLength) {
     materialDescription:
       descriptionLength === undefined
         ? `分页测试物料 ${index} 号`
-        : `分页测试物料 ${index} 号`.repeat(
-            Math.ceil(descriptionLength / 9),
-          ),
+        : `分页测试物料 ${index} 号`.repeat(Math.ceil(descriptionLength / 9)),
     qty: "12.5",
     amt: "12345.67",
     price: "987.65",
@@ -46,7 +44,7 @@ test(
   { timeout: 180000 },
   async (t) => {
     const app = await profile(t, {
-      startupTimeoutMs:120000,
+      startupTimeoutMs: 120000,
       config: () => ({
         maxSnapshotBytes: MAX_SNAPSHOT_BYTES,
         analysis: {
@@ -61,7 +59,9 @@ test(
     });
     const event = (delta, finish = null) =>
       "data: " +
-      JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] }) +
+      JSON.stringify({
+        choices: [{ index: 0, delta, finish_reason: finish }],
+      }) +
       "\n\n";
     const modelRequests = [];
     const skus = skuRows(400);
@@ -75,7 +75,10 @@ test(
       if (path.endsWith("/user-agent-credential/my/list")) {
         reply({
           success: true,
-          result: { records: [{ id: "credential", status: "ACTIVE" }], total: 1 },
+          result: {
+            records: [{ id: "credential", status: "ACTIVE" }],
+            total: 1,
+          },
         });
         return true;
       }
@@ -205,8 +208,11 @@ test(
     assert.equal(first.total, 400, "总数应当是上游完整 SKU 数");
     assert.equal(first.offset, 0);
     assert.equal(first.records.length, 5);
-    assert.deepEqual(first.nextQuery, {versionId, offset:5, pageSize:5});
-    assert.ok(first.note.includes("nextQuery"), "提示没有指向下一页: " + first.note);
+    assert.deepEqual(first.nextQuery, { versionId, offset: 5, pageSize: 5 });
+    assert.ok(
+      first.note.includes("nextQuery"),
+      "提示没有指向下一页: " + first.note,
+    );
     assert.equal(JSON.parse(toolPayloads[0]).coverage, "partial");
     // 投影只留模型需要的字段，不带版本内内部标识。
     assert.deepEqual(Object.keys(first.records[0]).sort(), [
@@ -237,7 +243,7 @@ test(
   { timeout: 180000 },
   async (t) => {
     const app = await profile(t, {
-      startupTimeoutMs:120000,
+      startupTimeoutMs: 120000,
       config: () => ({
         maxSnapshotBytes: 4300,
         analysis: {
@@ -252,17 +258,26 @@ test(
     });
     const event = (delta, finish = null) =>
       "data: " +
-      JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] }) +
+      JSON.stringify({
+        choices: [{ index: 0, delta, finish_reason: finish }],
+      }) +
       "\n\n";
     const modelRequests = [];
-    const skus = skuRows(9, 900).map((row,index) => ({...row,materialDescription: index % 2 === 0 ? row.materialDescription : "短物料",qty:index === 4 ? null : row.qty}));
-    const delivered=[];
+    const skus = skuRows(9, 900).map((row, index) => ({
+      ...row,
+      materialDescription: index % 2 === 0 ? row.materialDescription : "短物料",
+      qty: index === 4 ? null : row.qty,
+    }));
+    const delivered = [];
     app.route((req, res, reply) => {
       const path = req.url.pathname;
       if (path.endsWith("/user-agent-credential/my/list")) {
         reply({
           success: true,
-          result: { records: [{ id: "credential", status: "ACTIVE" }], total: 1 },
+          result: {
+            records: [{ id: "credential", status: "ACTIVE" }],
+            total: 1,
+          },
         });
         return true;
       }
@@ -314,13 +329,23 @@ test(
       const body = JSON.parse(req.body);
       modelRequests.push(body);
       res.setHeader("Content-Type", "text/event-stream");
-      const toolResults = body.messages.filter(message => message.role === "tool");
-      const latest = toolResults.length ? JSON.parse(String(toolResults.at(-1).content)) : undefined;
+      const toolResults = body.messages.filter(
+        (message) => message.role === "tool",
+      );
+      const latest = toolResults.length
+        ? JSON.parse(String(toolResults.at(-1).content))
+        : undefined;
       if (latest) {
-        assert.notEqual(latest.projection,"partial","model must receive the actual bounded page, not a shorter evidence preview");
+        assert.notEqual(
+          latest.projection,
+          "partial",
+          "model must receive the actual bounded page, not a shorter evidence preview",
+        );
         delivered.push(...latest.value.records);
       }
-      const nextQuery = latest ? latest.value.nextQuery : { versionId, pageNo:1, pageSize:50 };
+      const nextQuery = latest
+        ? latest.value.nextQuery
+        : { versionId, pageNo: 1, pageSize: 50 };
       if (nextQuery)
         res.end(
           event(
@@ -374,16 +399,51 @@ test(
     assert.ok(value.pageSize < 50, "超预算时没有缩页: " + value.pageSize);
     assert.ok(value.records.length <= value.pageSize);
     if (value.records.length < value.pageSize) {
-      const projected=JSON.parse(payload);assert.equal(projected.projection,'partial');assert.match(projected.evidenceId,/^ev-/);
-      const original=JSON.parse(await readFile(`${app.runtime}/prompt-evidence/${projected.evidenceId}.txt`,'utf8'));
-      assert.equal(original.value.records.length,original.value.pageSize,'host paging remains intact behind the bounded model projection');
+      const projected = JSON.parse(payload);
+      assert.equal(projected.projection, "partial");
+      assert.match(projected.evidenceId, /^ev-/);
+      const original = JSON.parse(
+        await readFile(
+          `${app.runtime}/prompt-evidence/${projected.evidenceId}.txt`,
+          "utf8",
+        ),
+      );
+      assert.equal(
+        original.value.records.length,
+        original.value.pageSize,
+        "host paging remains intact behind the bounded model projection",
+      );
     }
-    assert.deepEqual(value.nextQuery, {versionId,offset:value.records.length,pageSize:50});
-    assert.deepEqual(delivered.map(row=>row.skuCode),["100000","100001","100002","100003","100004","100005","100006","100007","100008"]);
-    assert.equal(delivered[4].qty,null);
-    const last = JSON.parse(String(modelRequests.at(-1).messages.filter(message=>message.role === "tool").at(-1).content));
-    assert.equal(last.value.nextQuery,null);
-    assert.equal(last.coverage,"complete");
+    assert.deepEqual(value.nextQuery, {
+      versionId,
+      offset: value.records.length,
+      pageSize: 50,
+    });
+    assert.deepEqual(
+      delivered.map((row) => row.skuCode),
+      [
+        "100000",
+        "100001",
+        "100002",
+        "100003",
+        "100004",
+        "100005",
+        "100006",
+        "100007",
+        "100008",
+      ],
+    );
+    assert.equal(delivered[4].qty, null);
+    const last = JSON.parse(
+      String(
+        modelRequests
+          .at(-1)
+          .messages.filter((message) => message.role === "tool")
+          .at(-1).content,
+      ),
+    );
+    assert.equal(last.value.nextQuery, null);
+    assert.equal(last.coverage, "complete");
     assert.equal(JSON.parse(payload).coverage, "partial");
   },
 );

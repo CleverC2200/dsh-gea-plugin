@@ -1,5 +1,5 @@
 /** 绑定登录身份的 GEA Gateway 能力；密钥不会离开 Fetch 闭包。 */
-import { randomUUID } from "node:crypto";
+import { prepareGatewaySession } from "./gateway-session.ts";
 import { createParser } from "eventsource-parser";
 import { readableError, throwIfAborted } from "../shared/abort.ts";
 import { parseAuthorizedResources, type ResourceReader } from './authorized-resources.ts';
@@ -28,71 +28,7 @@ export async function prepareGatewayMcp(
   timeoutMs: number,
   fetchImpl: typeof fetch = fetch,
 ): Promise<GatewayMcpTransport> {
-  if (
-    !["AGENT", "CLIENT_APP"].includes(consumer.consumerType) ||
-    !consumer.consumerCode.trim()
-  )
-    throw new Error("GEA_MCP_CONSUMER_REQUIRED");
-  throwIfAborted(identity);
-  const response = await fetchImpl(base + "/ai/gateway/session", {
-    method: "POST",
-    redirect: "error",
-    signal: AbortSignal.any([identity, AbortSignal.timeout(timeoutMs)]),
-    headers: {
-      "Content-Type": "application/json",
-      "X-Access-Token": auth.token,
-      "X-Tenant-Id": auth.tenantId,
-    },
-    body: JSON.stringify({
-      ...consumer,
-      conversationId: randomUUID(),
-      requestId: randomUUID(),
-      channel: "MCP_CLIENT",
-    }),
-  });
-  if (!response.ok) throw new Error("GEA_MCP_SESSION_HTTP_" + response.status);
-  const payload = await response.json();
-  throwIfAborted(identity);
-  const result = payload?.result;
-  const context = result?.gatewayContext;
-
-  // 权限没开通和"请求/会话本身有问题"要分开：前者是正常业务状态，不该显示成调用失败。
-  if (result?.accessDecision?.allowed === false)
-    throw Object.assign(
-      new Error(
-        "AGENT_ACCESS_DENIED: " +
-          (typeof result.accessDecision.message === "string" &&
-          result.accessDecision.message.trim()
-            ? result.accessDecision.message
-            : "当前用户无权访问该Agent"),
-      ),
-      {
-        code: "AGENT_ACCESS_DENIED",
-        accessDecisionCode:
-          typeof result.accessDecision.code === "string"
-            ? result.accessDecision.code
-            : "AGENT_ACCESS_DENIED",
-        retryable: false,
-      },
-    );
-  if (
-    payload?.success !== true ||
-    result?.accessDecision?.allowed !== true ||
-    !nonempty(context?.sessionId) ||
-    !nonempty(context?.conversationId) ||
-    !nonempty(result?.delegationToken) ||
-    context?.consumerType !== consumer.consumerType ||
-    context?.consumerCode !== consumer.consumerCode
-  )
-    throw new Error("GEA_MCP_SESSION_REJECTED");
-  const meta = {
-    sessionId: context.sessionId,
-    conversationId: context.conversationId,
-    delegationToken: result.delegationToken,
-    ...(consumer.consumerType === "AGENT"
-      ? { agentCode: consumer.consumerCode }
-      : {}),
-  };
+  const meta = await prepareGatewaySession(base, auth, consumer, identity, timeoutMs, fetchImpl);
   return gatewayMcpTransport(base, meta, identity, timeoutMs, fetchImpl);
 }
 export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversationId:string;delegationToken:string;agentCode?:string}, identity:AbortSignal, timeoutMs:number, fetchImpl:typeof fetch=fetch):GatewayMcpTransport {
