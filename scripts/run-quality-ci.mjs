@@ -6,7 +6,7 @@ import { resolve, dirname, relative, isAbsolute, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { prepareQualityUpstreams, verifyQualityUpstreams } from "./quality-upstreams.mjs";
 import { readPreparedWorkbench, verifyPreparedWorkbench } from "./quality-workbench.mjs";
-import { resolveSourceInputs } from "./source-profile.mjs";
+import { resolveSourceInputs, resourceDigests } from "./source-profile.mjs";
 const peers = {
   "dsh-agent-workbench": "9b4863692cb29a3edc8a2358e98feb7846526d1b",
   "dsh-agent-manage": "9e9aba86d12a2d743604e63a6000e7abb7da1ddd",
@@ -273,19 +273,38 @@ try {
       ]);
     const { chromium } = await import("@playwright/test");
     const browserRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
-    const browserFiles = ["chromium", "chromium-headless-shell"].map((channel) => {
-      const file = chromium.executablePath({ channel });
-      if (!existsSync(file)) refuse("QUALITY_BROWSER_REQUIRED", file);
-      const location = relative(realpathSync(browserRoot), realpathSync(file));
+    const executable = chromium.executablePath();
+    if (!existsSync(executable)) refuse("QUALITY_BROWSER_REQUIRED", executable);
+    const dryRun = execFileSync(
+      "corepack",
+      ["pnpm", "exec", "playwright", "install", "--dry-run", "chromium"],
+      {
+        encoding: "utf8",
+      },
+    );
+    const browserDirectories = [
+      ...new Set([...dryRun.matchAll(/Install location:\s+(.+)/g)].map((match) => match[1].trim())),
+    ];
+    if (browserDirectories.length !== 3)
+      refuse("QUALITY_BROWSER_REQUIRED", "Chromium, headless shell and FFmpeg");
+    const browserFiles = {};
+    for (const directory of browserDirectories) {
+      if (!existsSync(directory)) refuse("QUALITY_BROWSER_REQUIRED", directory);
+      const location = relative(realpathSync(browserRoot), realpathSync(directory));
       if (location.startsWith(".." + sep) || isAbsolute(location))
-        refuse("QUALITY_BROWSER_REQUIRED", file);
-      return { file, sha256: createHash("sha256").update(readFileSync(file)).digest("hex") };
-    });
+        refuse("QUALITY_BROWSER_REQUIRED", directory);
+      const files = await resourceDigests(directory);
+      if (Object.keys(files).length === 0) refuse("QUALITY_BROWSER_REQUIRED", directory);
+      for (const [file, digest] of Object.entries(files))
+        browserFiles[resolve(directory, file)] = digest;
+    }
     writeFileSync(
       resolve(dirname(dirname(process.cwd())), "browser-preparation.json"),
       JSON.stringify(
         {
           root: browserRoot,
+          executable,
+          directories: browserDirectories,
           playwright: JSON.parse(
             readFileSync(resolve("node_modules/@playwright/test/package.json")),
           ).version,
