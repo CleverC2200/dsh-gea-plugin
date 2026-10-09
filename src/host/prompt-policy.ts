@@ -14,6 +14,9 @@ export const PROMPT_BUDGET = {
 } as const;
 export type PromptProfile = {
   label: string;
+  /** Trusted Agent catalog metadata, independent of the business page title. */
+  presetName?: string;
+  description?: string;
   consumerCode: string;
   skills: string[];
   crossConsumers?: string[];

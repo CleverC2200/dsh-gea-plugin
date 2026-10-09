@@ -1,10 +1,10 @@
-/** Persist the local development web login without exposing credentials to the browser. */
+/** GEA Host persists its login inside the current profile without exposing credentials to the browser. */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Business } from "./business.ts";
 
 export async function attachWebLogin(business: Business): Promise<{ flush(): Promise<void>; dispose(): Promise<void> }> {
-  if (process.env.GEA_WEB_LOGIN_PERSIST !== "1" || process.env.GEA_DESKTOP_CONTROL_URL)
+  if (process.env.GEA_WEB_LOGIN_PERSIST === "0" || process.env.GEA_DESKTOP_CONTROL_URL)
     return { flush: async () => {}, dispose: async () => {} };
   const file = resolve(business.config.runtimeDir, "web-login.json");
   try {

@@ -18,6 +18,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
 import { corePackages, sourcePlugins } from "./source-composition.mjs";
+import {
+  fileDigest,
+  dependencyDigests,
+  readSourceCombination,
+} from "./source-combination-integrity.mjs";
+export { readSourceCombination } from "./source-combination-integrity.mjs";
 function clientEntry(manifest) {
   const entry = manifest.exports?.["./client"];
   return typeof entry === "string"
@@ -328,7 +334,8 @@ export async function prepareSourcePlugins(
   );
   patch.push({
     id: "agent-preset-registry",
-    config: { default: "standard" },
+    // Manage registers this standard composition; preserve the user's selectedDefault.
+    config: { default: "auto-negotiation" },
   });
   patch.push({ id: "dsh-agent-manage", config: { sources: [] } });
   await writeFile(
@@ -411,11 +418,6 @@ export async function prepareSourcePlugins(
   return composition;
 }
 
-const fileDigest = async (file) =>
-  createHash("sha256")
-    .update(await readFile(file))
-    .digest("hex");
-
 /** Hash shipped resources, excluding dependency links and their writable stores. */
 async function resourceDigests(
   directory,
@@ -441,76 +443,6 @@ async function resourceDigests(
       files[relative] = await fileDigest(file);
   }
   return files;
-}
-
-/** Reject incomplete snapshots before changing the selected combination. */
-export async function readSourceCombination(runtime, id, core) {
-  if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
-  const directory = join(runtime, "source-combinations", id);
-  const record = JSON.parse(
-    await readFile(join(directory, "combination.json"), "utf8"),
-  );
-  if (record.composition.id !== id)
-    throw Error("SOURCE_COMBINATION_ID_MISMATCH");
-  if (
-    core &&
-    record.core !==
-      execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
-        cwd: core,
-        encoding: "utf8",
-      }).trim()
-  )
-    throw Error("SOURCE_COMBINATION_CORE_MISMATCH");
-  if (
-    !record.composition.dependencies ||
-    typeof record.composition.dependencies !== "object" ||
-    Array.isArray(record.composition.dependencies)
-  )
-    throw Error("INVALID_SOURCE_DEPENDENCIES");
-  if (Object.keys(record.composition.dependencies).length) {
-    const plugins = JSON.parse(
-      await readFile(join(directory, "company-plugins.json"), "utf8"),
-    );
-    for (const [name, version] of Object.entries(
-      record.composition.dependencies,
-    )) {
-      if (
-        !/^(?:@[a-zA-Z0-9][a-zA-Z0-9._-]*\/)?[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(
-          name,
-        ) ||
-        typeof version !== "string" ||
-        !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(version)
-      )
-        throw Error("INVALID_SOURCE_COMPONENT");
-      const manifest = JSON.parse(
-        await readFile(
-          join(directory, "node_modules", name, "package.json"),
-          "utf8",
-        ),
-      );
-      if (
-        manifest.name !== name ||
-        manifest.version !== version ||
-        plugins[name]?.version !== version
-      )
-        throw Error("SOURCE_COMPONENT_VERSION_MISMATCH");
-    }
-  }
-  const actual = await resourceDigests(directory);
-  if (
-    JSON.stringify(Object.entries(actual).sort()) !==
-    JSON.stringify(Object.entries(record.files).sort())
-  )
-    throw Error("SOURCE_COMBINATION_DIGEST_MISMATCH");
-  const external = await dependencyDigests(record.externalRoots);
-  for (const file of record.externalLockFiles)
-    external[file] = await fileDigest(file);
-  if (
-    JSON.stringify(Object.entries(external).sort()) !==
-    JSON.stringify(Object.entries(record.externalFiles).sort())
-  )
-    throw Error("SOURCE_DEPENDENCY_DIGEST_MISMATCH");
-  return record.composition;
 }
 
 /** Select a verified local combination only while its Host is stopped. */
@@ -566,30 +498,6 @@ export async function selectSourceCombination(
     await lock.close();
     await unlink(join(runtime, "source-profile.lock"));
   }
-}
-
-/** Fix the resolved dependency graph, including built core files and transitive links. */
-async function dependencyDigests(directories) {
-  const files = {},
-    visited = new Set();
-  async function visit(directory) {
-    const physical = await realpath(directory);
-    if (visited.has(physical)) return;
-    visited.add(physical);
-    for (const entry of await readdir(physical, { withFileTypes: true })) {
-      if (entry.name.startsWith(".")) continue;
-      const file = join(physical, entry.name);
-      if (entry.isFile()) files[file] = await fileDigest(file);
-      else if (entry.isDirectory() || entry.isSymbolicLink()) {
-        const resolved = await realpath(file);
-        if (entry.isSymbolicLink()) files[file] = "link:" + resolved;
-        if ((await lstat(resolved)).isDirectory()) await visit(resolved);
-        else files[resolved] = await fileDigest(resolved);
-      }
-    }
-  }
-  for (const directory of directories) await visit(directory);
-  return files;
 }
 
 /** One-time offline upgrade of the ticket08 code directory; never moves user state. */

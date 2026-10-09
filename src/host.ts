@@ -5,7 +5,9 @@ import { createDesktopNavigation } from './host/desktop-navigation.ts';
 import { attachWebLogin } from "./host/web-login.ts";
 /** GEA 外部 Fetch 能力和显式本地回执提供者的 DSH 插件入口。 */
 import { appendFile, mkdir, readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
+import companyDefaults from "../desktop/company.config.json" with { type: "json" };
+import type {} from "@deepseek-ai/dsh-app-boot";
 import { createHash, randomUUID } from "node:crypto";
 import { brandString } from "@deepseek-ai/dsh-brand";
 import type { SessionId } from "@deepseek-ai/dsh-session";
@@ -30,7 +32,6 @@ import { lastUserQuestion, mountTurnAnchor } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
 import { assertBusinessResourceAvailable, assertSessionResourceAvailable, businessIdentityKey, sessionConsumer } from "./host/business-identity.ts";
 import { mountBusinessPrompts } from "./host/prompt-runtime.ts";
-import { mountSessionToolRestraint } from "./host/session-tool-restraint.ts";
 import { mountSidebarToolVisibility } from "./host/sidebar-tool-visibility.ts";
 import { networkError } from "./shared/net-error.ts";
 import { registerHtmlPlugins } from "./html-plugins.ts";
@@ -48,6 +49,7 @@ import type {} from "@deepseek-ai/dsh-client-connection";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
 
 export const inject = [
+  "profileContext",
   "workbenchPages",
   "agentResources",
   "agents",
@@ -61,17 +63,22 @@ export const inject = [
   "agentPresets",
 ];
 export const Config = z.object({
-  geaBaseUrl: z.string().required(),
-  pageSize: z.natural().min(1).max(100).required(),
-  periodPageSize: z.natural().min(1).max(1000).required(),
-  requestTimeoutMs: z.natural().min(1000).max(120000).required(),
+  geaBaseUrl: z.string().default(companyDefaults.geaBaseUrl),
+  pageSize: z.natural().min(1).max(100).default(companyDefaults.pageSize),
+  periodPageSize: z.natural().min(1).max(1000).default(companyDefaults.periodPageSize),
+  requestTimeoutMs: z.natural().min(1000).max(120000).default(companyDefaults.requestTimeoutMs),
   mcpRequestTimeoutMs: z.natural().min(1000).max(120000).default(60000),
   modelRequestTimeoutMs: z.natural().min(1000).max(600000).default(120000),
-  maxSnapshotBytes: z.natural().min(1000).max(5000000).required(),
-  runtimeDir: z.string().required(),
-  analysisMode: z.union(["receipt", "model"]).required(),
-  analysisModel: z.string().required(),
-  inputByteBudget: z.natural().min(1).required(),
+  maxSnapshotBytes: z.natural().min(1000).max(5000000).default(companyDefaults.maxSnapshotBytes),
+  runtimeDir: z.string(),
+  analysisMode: z.union(["receipt", "model"]).default("model"),
+  analysisModel: z.string().default(companyDefaults.analysis.model),
+  analysisSource: z.union(["gea", "direct", "receipt"]).default("gea"),
+  analysisAgentCode: z.string().default(companyDefaults.analysis.agentCode),
+  inputByteBudget: z.natural().min(1).default(Math.min(
+    companyDefaults.maxSnapshotBytes,
+    companyDefaults.analysis.contextWindow - companyDefaults.analysis.maxTokens - 1000,
+  )),
   /**
    * 问答侧是否允许调用受管只读 SQL（`/ai/gateway/sql/execute`）。
    * 默认关闭：问答取数只走模块 MCP + 页面证据，模型不再自己写 SQL。
@@ -340,7 +347,11 @@ function toGeaRequest(options: GenerateOptions) {
 }
 
 /** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
-export async function apply(ctx: Context, config: Deployment): Promise<void> {
+export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> & { runtimeDir?: string }): Promise<void> {
+  const runtimeDir = input.runtimeDir ?? resolve(ctx.profileContext.dir, "gea");
+  if (!isAbsolute(runtimeDir)) throw Error("INVALID_GEA_RUNTIME_DIR: absolute directory required");
+  await mkdir(runtimeDir, { recursive: true, mode: 0o700 });
+  const config: Deployment = { ...input, runtimeDir };
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);
@@ -348,6 +359,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   const htmlPackages = ctx.workbenchPages.packages().filter(item=>item.manifest.gea?.contract === "gea-html-v2");
   const releaseOriginalResources = await ctx.agentResources.register([{
     id:"gea-readonly",enabled:config.workbenchCapability?.enabled !== false,label:profileFor("gea-readonly")!.label,
+    presetName:profileFor("gea-readonly")!.presetName,description:profileFor("gea-readonly")!.description,
     root:fileURLToPath(new URL("../",import.meta.url)),prompt:"presets/prompt-policy.json",profileKey:"gea-readonly",
     profile:profileFor("gea-readonly")!
   }]);
@@ -401,10 +413,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       forgetMemberIndex();
     }),
   );
-  // 业务会话里把"浏览器自动化 + 终端/侧栏"这类全局工具从模型可见清单里摘掉：
-  // 它们与业务问答无关，却每次请求都占上下文（实测浏览器 25 个工具 = 18.5k 字符）。
-  // 必须在第一步之前装好，所以挂在 agent/pre-step 上、每个 agent 只装一次。
-  ctx.effect(() => mountSessionToolRestraint(ctx));
+  // Sidebar 工具遵循其公开 Document 条件；业务 profile 不再整体屏蔽官方通用能力。
   ctx.effect(() => mountSidebarToolVisibility(ctx, business));
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());

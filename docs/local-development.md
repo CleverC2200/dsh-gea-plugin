@@ -1,62 +1,38 @@
-# 本地依赖与按需构建
+# 本地依赖与按需检查
 
-开发源码使用 package.json 中的精确 pnpm 版本。当前验证工具链为 Node 24.14.1、Corepack 0.34.6、pnpm 11.27.0；Node 24 兼容范围不等于所有补丁版本都已验证。
-
-## 准备
+工具链与精确版本从 `package.json` 的 engines、packageManager 和 devDependencies 读取，固定依赖由 `pnpm-lock.yaml` 提供。Core 与 peer 来自本任务冻结输入；Node 兼容范围不代表每个补丁版已验。
 
 ```sh
 corepack pnpm --version
 corepack pnpm install --frozen-lockfile --prefer-offline
 ```
 
-Corepack 需提前可用，不在项目 setup 中安装全局工具。上述命令可避开 PATH 中其他 pnpm 入口。已有依赖且相关输入没有变化，不必每次检查前重装；只读或文档任务不需要依赖时不安装。
+每工作树保留自己的 node_modules、lib 和临时目录，仅复用 package store。不要混用 npm 安装开发依赖，不复制其他工作树可写输出。`verifyDepsBeforeRun: error` 拒绝过期依赖，不自动安装；只读知识检查无需产品依赖。
 
-本项目设置 `verifyDepsBeforeRun: error`：pnpm run/exec 发现依赖过期时直接报错，不自动安装。此时明确运行上面的冻结安装，再执行原命令。这样保留一致性检查，又避免多个检查命令各自触发隐式安装；不是全局关闭依赖校验。
+| 目的                   | 当前入口                            |
+| ---------------------- | ----------------------------------- |
+| 工程导航与源码声明     | `corepack pnpm run check:knowledge` |
+| 监听 Host 与 client    | `corepack pnpm dev`                 |
+| 只构建 Host            | `corepack pnpm build:host`          |
+| 只构建 client          | `corepack pnpm build:client`        |
+| 构建 GEA 插件          | `corepack pnpm build:plugin`        |
+| 类型检查               | `corepack pnpm typecheck`           |
+| 固定官方 Core 类型检查 | `corepack pnpm typecheck:official`  |
+| 构建目标与 watch 合同  | `corepack pnpm test:build`          |
 
-每工作树保留独立 node_modules 和 lib，复用 pnpm store，不链接其他工作树可写目录。workspace 中的构建许可和固定工作台 Git override 仅用于本项目，不复制成全局设置。
+完整 build 也仅构建 GEA host/client；页面在同组 Workbench 按自己的工具链构建。watch 只编译，不启动应用，勿并发写同一输出。官方类型检查需要明确准备的只读 SDK 与 peer 声明，不能以旧 SDK 或历史产物代替当前输入。
 
-## 构建入口
+只读交付核对使用 `pnpm run delivery:check --input request.json`；短接续增加 `--continuation`。预算、阶段、原依赖与授权从同次固定回执读取派生，详见 [交付核对 interface](delivery-check.md)。`pnpm run test:delivery` 只运行本地 fixture 回归。CLI 退出0仅表示报告生成，消费者需读取报告状态；此入口不启动应用或恢复自动化。
 
-| 需要做什么 | 命令 |
-|---|---|
-| 开发时监听插件源码 | `corepack pnpm dev` |
-| 用当前源码启动客户端 | `corepack pnpm start --dev --config gea.config.json --runtime .runtime/workbench-development --port 3198` |
-| 用当前源码启动桌面客户端 | `corepack pnpm desktop:dev` |
-| 只改 Host | `corepack pnpm build:host` |
-| 只改外层客户端 | `corepack pnpm build:client` |
-| 只改业务工作台 | `corepack pnpm build:workbench` |
-| 构建插件，不带示例 | `corepack pnpm build:plugin` |
-| 完整构建，含示例 | `corepack pnpm build` |
-| 类型检查 | `corepack pnpm typecheck` |
-| 验证目标隔离及 watch | `corepack pnpm test:build` |
+按授权启动与切换时复用 [源码组合说明](plugin-split-validation.md) 的明确五源和自有 runtime。可构建不等于窗口已获授权。旧 desktop:dev 使用已安装公司壳，属于历史入口，不作为当前官方客户端协议。
 
-watch 只编译，不启动应用；运行应用使用 README 的 `start --dev` 命令。`--dev` 会把当前源码包挂进 profile，避免把改动安装成插件后才能在客户端看到；页面仍需刷新才能加载刚生成的客户端 bundle。不要并发运行写同一输出的构建/watch。一次性 build 仍会编译，没有新增持久化缓存；日常增量编译交给 esbuild watch/context。
+## Codex Local environments
 
-桌面调试使用 `pnpm desktop:dev`。它复用已安装桌面运行时，只替换 GEA 插件为当前项目的 `lib/`，不会改动正式插件版本目录；改动后重新编译并在桌面菜单点击“重新加载”即可。
+仓内 `.codex/environments/environment.toml` 是实际配置。默认 setup 只核工具，安装由明确选择的 Action 执行，不自动构建。Actions 的命令、cwd 与是否持续 watch 按该文件核对，需要不同范围时运行公开命令，不新增任务识别或编排器。
 
-打包前执行完整 build。`corepack pnpm package` 不代表已构建或已发布；`corepack pnpm test:package` 验证最终包的空目录 npm 安装。开发 pnpm 锁不替代 npm-shrinkwrap 或桌面安装器自身的锁及归档协议。
+配置存在与命令行通过不证明应用内 setup/Action 已验。实际新任务需核 cwd、工具、冻结锁和结果；安装与完整构建不和 watch 并发。本次清理不改变用户配置或清理脚本。
 
-## Codex 原生 Local environments
-
-优先用原生工作树、setup scripts 和 Actions，不添加第二套注册或编排工具。[OpenAI 官方文档](https://learn.chatgpt.com/docs/environments/local-environment)说明：通过应用设置生成项目根目录 .codex 下的环境配置，setup 在新工作树创建时执行，Actions 在集成终端执行。
-
-在该项目 Local environments 设置中填写：
-
-- 默认 Setup：`node --version` 和 `corepack --version`，仅检查工具。
-- 开发环境可另选安装型 Setup：`corepack pnpm install --frozen-lockfile --prefer-offline`，只安装，不自动 build。由使用者明确选择，不自动猜任务意图。
-- Action「准备依赖」：`corepack pnpm install --frozen-lockfile --prefer-offline`。
-- Action「开发编译」：`corepack pnpm dev`。
-- Action「类型检查」：`corepack pnpm typecheck`。
-- Action「完整构建」：`corepack pnpm build`。
-- Action「构建测试」：`corepack pnpm test:build`。
-
-2026-09-17 用户已通过界面保存默认 setup 和「工具检查」Action，确认实际生成的字段为 `[[actions]]`、`name`、`icon`、`command`。本分支沿用该格式补齐上述 Actions；主目录中的用户配置仍保留原样，待 pnpm 改造与配置一起集成。清理脚本为空，不自动删除依赖或缓存。
-
-命令行验证不等于应用内验收：仍须从实际新任务确认默认 setup 未安装和构建；点击「准备依赖」时核对当前工作目录、pnpm 版本和冻结锁成功且没有全量 build，再触发一个检查 Action。该配置没有声明安装型 setup，安装只在明确点击「准备依赖」时执行。开发编译为持续 watch，不要同时触发写相同输出的完整构建；先停止 watch。
-
-## 可选的本地运行采样
-
-GEA 试点提供两个额外 Action：「采样 Host 构建（macOS/Linux）」与「本地采样报告」。普通命令和上述普通 Actions 不采样，不增加后台服务。也可主动运行：
+## 可选本地采样
 
 ```sh
 corepack pnpm observe --task build --source terminal --condition existing-layout
@@ -64,10 +40,18 @@ corepack pnpm observe:report
 corepack pnpm test:observe
 ```
 
-采样 CLI 只在 GEA、POSIX 环境使用；Windows 继续使用普通项目命令。来源/缓存条件是人工标签，默认 unknown，不自动推断。
+采样仅主动调用时启用，普通命令不增加后台服务。来源和缓存条件是人工标签，默认 unknown；记录白名单任务、时间、退出/取消、版本、锁和 Git 摘要，不记录源码、业务内容、环境值或完整参数。原终端输出未由它存档或脱敏，依赖 reused 不等于构建缓存命中。
 
-JSONL 位于用户目录下 `.local/state/dev-environment-governance`，每次独立私有文件。记录白名单任务、时间/退出/取消、工具版本、锁摘要、Git HEAD/状态摘要和工作树路径摘要；不记录源码、业务内容、环境值、完整参数和日志。原终端输出不被存档，也不被这个工具脱敏。pnpm reused 仅表示依赖复用，不是构建缓存命中；未明确输出的指标为 null/unknown。
+仅显式采样空间时扫描本仓相应目录，不扫描共享 store。APFS 目录占用与文件系统剩余空间分别报告。记录不能作为完整输入或跳过验证依据；轮转仅限自身合法完成记录，不删除依赖、未知或在途记录。Windows 保持普通命令，POSIX 采样不是跨平台验收。
 
-仅 `--sample-space` 会在开始/结束扫描本项目 node_modules、lib、.runtime/packages；不会扫描共享 store。APFS 的目录占用和文件系统剩余空间分别报告，不能直接当节省量。HEAD/状态摘要不是完整输入标识，报告的重复/重试只是候选，不能据此复用产物或跳过工作。
+开发 pnpm 锁、普通包 npm shrinkwrap 与实际 profile 锁有不同归属，沿 [安装说明](install.md) 的协议，不将开发检查当发布授权。原过程记录见 [历史开发说明](history/local-development-pre-agent-environment-04.md)。
 
-只轮转自身合法且已完成的记录（30 天/50 MiB），不删除未完成/未知/链接文件，因此不是目录硬配额。写入失败不中断原命令；SIGINT/SIGTERM 会转发给命令进程组，保留退出/取消语义。Node 启动及最后写入/轮转不含在单条记录的内部开销字段中；总开销需外部成对测量。没有自动上传、清理依赖或自动更新治理规则。
+三核心普通包的明确输入、构建来源核对与用户安装步骤见 [三包交付入口](package-delivery.md)。`delivery:packages` 只做本地打包，`test:delivery:packages` 覆盖前置失败传播、保密诊断与归档来源，普通 profile 安装及公开 Loader/设置接收另行验证。
+
+## 普通 bundle 启动
+
+GEA 的公开 Config schema 为空配置提供已有公司产品定义中的端点、分页、超时、模型与 Consumer 默认。模型模式为 `model`，来源为 `gea`；启动不登录、不请求外部业务，也不替换官方 standard 或 Core 的默认模型选择。显式配置继续优先。
+
+未设置 `runtimeDir` 时，Host 从官方 `profileContext.dir` 派生 `gea/` 专用持久目录。显式目录必须是可创建的绝对目录。普通插件登录由 GEA Host 在此目录写入权限为 0600 的 `web-login.json`，默认不依赖旧启动器变量；`GEA_WEB_LOGIN_PERSIST=0` 仍可明确关闭，旧公司桌面的私有凭据通道保留其原归属。
+
+发行 manifest 要求同批 Workbench/Manage exact peers。GenUI/Sidebar 维持 exact optional peers，不随三主插件自动启用。未安装或停用辅助插件时，只报告其真实缺席状态；官方 standard 和已配置业务授权保护保持原接口。

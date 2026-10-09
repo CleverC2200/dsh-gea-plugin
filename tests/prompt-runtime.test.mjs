@@ -225,9 +225,8 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
       guard = fn;
       return () => {};
     },
-    restrict({ allow }) {
-      if (!allow) throw Error("known global tools: " + names.join(","));
-      const mask = new Set(allow);
+    restrict({ deny }) {
+      const mask = new Set(names.filter((name) => !deny.includes(name)));
       masks.add(mask);
       return () => masks.delete(mask);
     },
@@ -254,7 +253,11 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
     tools: toolService,
     agents: { get: () => agent },
     sessionProjections: { stateOf: () => preset },
-    agentResources: { list: async () => [{ id: preset, kind: "prompt", installed: true, enabled: true }] },
+    agentResources: {
+      list: async () => [
+        { id: preset, kind: "prompt", installed: true, enabled: true },
+      ],
+    },
     skills: { list: async () => [] },
     on: (event, fn) => {
       handlers.set(event, fn);
