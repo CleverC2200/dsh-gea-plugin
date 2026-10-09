@@ -2,8 +2,34 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { expect } from "@playwright/test";
+import {
+  htmlFrameElement,
+  openBusinessPage,
+  openWorkbenchPage,
+} from "./fixtures/business-page.mjs";
 import { stockReferencePage } from "./fixtures/stock-reference-page.mjs";
 
+const pageRequest = (page, input) =>
+  page.evaluate(async (input) => {
+    const response = await fetch("/api/agent-workbench/page", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    return { status: response.status, value: await response.json() };
+  }, input);
+const assertOwnerReleased = async (page, owner) => {
+  let reply;
+  await expect
+    .poll(async () => {
+      reply = await pageRequest(page, { operation: "access", owner });
+      return reply.status;
+    })
+    .toBe(400);
+  assert.equal(reply.value.error, "PAGE_OWNER_RELEASED");
+};
+const presentation = (page) =>
+  page.evaluate(() => JSON.parse(localStorage.getItem("agent-workbench.presentation.v2")));
 const evidence = ".runtime/branch-stock-lifecycle-evidence";
 const identity = (page) =>
   page.evaluate(async () => {
@@ -18,61 +44,74 @@ test(
     timeout: 180000,
   },
   async (t) => {
-    const { app, page, frame, session } = await stockReferencePage(t);
-    const stored = await page.evaluate(() => ({
-      panel: sessionStorage.getItem("agent-workbench:active-panel"),
-      rows: JSON.parse(sessionStorage.getItem("agent-workbench:v1")),
-    }));
-    assert.equal(stored.panel, "inventory-fc");
-    const branch = stored.rows.find((row) => row[0] === "inventory-fc");
-    assert.equal(branch[2].find((pair) => pair[0] === "gea-html-inventory-fc")[1], session);
-    const unscoped = await page.evaluate(async (oldSession) => {
+    const { app, page, frame, session, openRequest } = await stockReferencePage(t);
+    const stored = await presentation(page);
+    assert.equal(stored.version, 2);
+    assert.equal(stored.page, "inventory-fc");
+    const branch = stored.selections.find((row) => row.page === "inventory-fc" && row.active);
+    assert.equal(branch.preset, "gea-html-inventory-fc");
+    assert.equal(branch.sessionId, session);
+    // Client scope is only presentation. The retired route must stay absent; current open resolves Core and GEA.
+    const retiredOpen = await page.evaluate(async (oldSession) => {
       const response = await fetch("/api/gea-html/inventory-fc/open", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ session: oldSession, agentPreset: "gea-html-inventory-fc" }),
       });
-      return { status: response.status, value: await response.json() };
+      return { status: response.status, text: await response.text() };
     }, session);
-    assert.equal(unscoped.status, 400);
-    assert.equal(unscoped.value.error, "PAGE_SESSION_IDENTITY_MISMATCH");
+    assert.equal(retiredOpen.status, 404);
+    const missing = "session-00000000-0000-0000-0000-000000000001";
+    const missingOpen = await pageRequest(page, { ...openRequest, sessionId: missing });
+    assert.equal(missingOpen.status, 400);
+    assert.equal(missingOpen.value.error, `session "${missing}" not found`);
+    const wrongResource = await pageRequest(page, {
+      ...openRequest,
+      resourceId: "gea-html-inventory-qll",
+    });
+    assert.equal(wrongResource.status, 400);
+    assert.equal(wrongResource.value.error, "PAGE_RESOURCE_NOT_ALLOWED");
+    const authorizedOpen = await pageRequest(page, openRequest);
+    assert.equal(authorizedOpen.status, 200);
+    assert.match(authorizedOpen.value.owner, /^[0-9a-f-]{36}$/);
+    const access = await pageRequest(page, {
+      operation: "access",
+      owner: authorizedOpen.value.owner,
+    });
+    assert.equal(access.status, 200);
+    assert.equal(access.value.principalId, "9007199254740993");
     const opens = [];
     page.on("request", (request) => {
-      if (request.url().endsWith("/api/gea-html/inventory-fc/open"))
-        opens.push(request.postDataJSON());
+      if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData()) return;
+      const input = request.postDataJSON();
+      if (input.operation === "open" && input.pageId === "inventory-fc") opens.push(input);
     });
     await page.reload();
     await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
-    await expect.poll(() => opens.at(-1)?.session).toBe(session);
-    assert.equal(
-      await page.evaluate(() => sessionStorage.getItem("agent-workbench:active-panel")),
-      "inventory-fc",
-    );
-    const missing = "session-00000000-0000-0000-0000-000000000001";
+    await expect.poll(() => opens.at(-1)?.sessionId).toBe(session);
+    assert.equal((await presentation(page)).page, "inventory-fc");
     // A fresh tab has no mounted controller that could rewrite the stored association.
     const missingPage = await page.context().newPage();
     t.after(() => missingPage.close());
     missingPage.setDefaultTimeout(20000);
     await missingPage.addInitScript(
-      ({ missing, scope }) => {
+      ({ missing, stored }) => {
         if (window.top !== window) return;
-        sessionStorage.setItem("agent-workbench:active-panel", "inventory-fc");
-        sessionStorage.setItem(
-          "agent-workbench:v1",
-          JSON.stringify([
-            ["inventory-fc", "gea-html-inventory-fc", [["gea-html-inventory-fc", missing]], scope],
-          ]),
-        );
+        // A browser hint may nominate a missing UUID, but must never create or replace the Core Session.
+        const selected = stored.selections.find((row) => row.page === "inventory-fc" && row.active);
+        selected.sessionId = missing;
+        localStorage.setItem("agent-workbench.presentation.v2", JSON.stringify(stored));
       },
-      { missing, scope: (await identity(page)).scope },
+      { missing, stored: await presentation(page) },
     );
     const network = [];
     const pageErrors = [];
     const missingOpens = [];
     missingPage.on("pageerror", (error) => pageErrors.push(error.message));
     missingPage.on("request", (request) => {
-      if (request.url().endsWith("/api/gea-html/inventory-fc/open"))
-        missingOpens.push(request.postDataJSON());
+      if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData()) return;
+      const input = request.postDataJSON();
+      if (input.operation === "open" && input.pageId === "inventory-fc") missingOpens.push(input);
     });
     missingPage.on("response", (response) => {
       const path = new URL(response.url()).pathname;
@@ -85,8 +124,8 @@ test(
     });
     await missingPage.goto(app.origin);
     const diagnostic = await missingPage.evaluate(() => ({
-      panel: sessionStorage.getItem("agent-workbench:active-panel"),
-      rows: sessionStorage.getItem("agent-workbench:v1"),
+      panel: JSON.parse(localStorage.getItem("agent-workbench.presentation.v2"))?.page,
+      presentation: localStorage.getItem("agent-workbench.presentation.v2"),
       visible: document.body.innerText.slice(0, 2000),
     }));
     await mkdir(evidence, { recursive: true });
@@ -101,12 +140,12 @@ test(
       );
     } catch (error) {
       const final = await missingPage.evaluate(() => ({
-        panel: sessionStorage.getItem("agent-workbench:active-panel"),
+        panel: JSON.parse(localStorage.getItem("agent-workbench.presentation.v2"))?.page,
         selectedMenu: [
           ...document.querySelectorAll("[data-gea-business-entry][aria-current='page']"),
         ].map((item) => item.getAttribute("data-gea-business-entry")),
         visible: document.body.innerText.slice(0, 2500),
-        rows: sessionStorage.getItem("agent-workbench:v1"),
+        presentation: localStorage.getItem("agent-workbench.presentation.v2"),
       }));
       await writeFile(
         `${evidence}/missing-session-failure.json`,
@@ -121,13 +160,16 @@ test(
       JSON.stringify(
         {
           session,
-          panel: stored.panel,
-          instance: branch[1],
-          recovered: opens.at(-1)?.session,
+          panel: stored.page,
+          instance: branch.preset,
+          recovered: opens.at(-1)?.sessionId,
           missing,
           missingErrorVisible: true,
           unexpectedOpens: missingOpens.length,
-          unscopedOpen: unscoped,
+          retiredOpen,
+          authorizedOpen,
+          missingOpen,
+          wrongResource,
         },
         null,
         2,
@@ -137,39 +179,35 @@ test(
 );
 
 test(
-  "rapid page switches keep the branch Session and do not mount the old page",
+  "rapid page switches keep the branch Session and hide the inactive page while releasing its owner",
   {
     skip: process.env.GEA_TEST_SOURCE_CORE !== "1",
     timeout: 180000,
   },
   async (t) => {
-    const { page, frame, session } = await stockReferencePage(t);
+    const { page, frame, session, owner } = await stockReferencePage(t);
     const opens = [];
     page.on("request", (request) => {
-      if (request.url().endsWith("/api/gea-html/inventory-fc/open"))
-        opens.push(request.postDataJSON());
+      if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData()) return;
+      const input = request.postDataJSON();
+      if (input.operation === "open" && input.pageId === "inventory-fc") opens.push(input);
     });
-    await page.locator('[data-gea-business-entry="gea-proof"]').click();
-    await expect(page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]')).toHaveCount(0);
-    const retained = await page.evaluate(
-      () =>
-        JSON.parse(sessionStorage.getItem("agent-workbench:v1")).find(
-          (row) => row[0] === "inventory-fc",
-        )[2],
+    await openBusinessPage(page, "gea-proof");
+    await expect(htmlFrameElement(page, "inventory-fc")).toBeHidden();
+    await assertOwnerReleased(page, owner);
+    const retained = (await presentation(page)).selections.filter(
+      (row) => row.page === "inventory-fc",
     );
     assert.ok(
-      retained.some((pair) => pair[1] === session),
+      retained.some((row) => row.sessionId === session),
       "leaving the page must keep its Session association",
     );
-    await page.locator('[data-gea-business-entry="inventory-fc"]').click();
-    await page.locator('[data-gea-business-entry="gea-proof"]').click();
-    await page.locator('[data-gea-business-entry="inventory-fc"]').click();
+    await openWorkbenchPage(page, "分仓库存");
+    await openBusinessPage(page, "gea-proof");
+    await openWorkbenchPage(page, "分仓库存");
     await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
-    await expect.poll(() => opens.at(-1)?.session).toBe(session);
-    assert.equal(
-      await page.evaluate(() => sessionStorage.getItem("agent-workbench:active-panel")),
-      "inventory-fc",
-    );
+    await expect.poll(() => opens.at(-1)?.sessionId).toBe(session);
+    assert.equal((await presentation(page)).page, "inventory-fc");
     await mkdir(evidence, { recursive: true });
     await writeFile(
       `${evidence}/rapid-switch.json`,
@@ -178,7 +216,7 @@ test(
           session,
           retainedAssociation: true,
           finalPage: "inventory-fc",
-          finalOpenSession: opens.at(-1)?.session,
+          finalOpenSession: opens.at(-1)?.sessionId,
         },
         null,
         2,
@@ -194,7 +232,8 @@ test(
     timeout: 180000,
   },
   async (t) => {
-    const { app, page, quote, readReference, session } = await stockReferencePage(t);
+    const { app, page, quote, readReference, session, owner, openRequest } =
+      await stockReferencePage(t);
     const before = (await identity(page)).scope;
     assert.equal(typeof before, "string");
     let release;
@@ -219,7 +258,8 @@ test(
     assert.match(host.id, /^R[a-f0-9]{12}$/);
     await app.rpc("logout");
     await expect.poll(async () => (await identity(page)).scope).toBe(null);
-    await expect(page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]')).toHaveCount(0);
+    await expect(htmlFrameElement(page, "inventory-fc")).toBeHidden();
+    await assertOwnerReleased(page, owner);
     release();
     await page.waitForTimeout(300);
     const composerField = page.locator('[contenteditable="true"]').first();
@@ -235,21 +275,7 @@ test(
       before,
       "a new login must have a new page authority even for the same user",
     );
-    const reused = await page.evaluate(
-      async ({ oldSession, scope }) => {
-        const response = await fetch("/api/gea-html/inventory-fc/open", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            session: oldSession,
-            agentPreset: "gea-html-inventory-fc",
-            scope,
-          }),
-        });
-        return { status: response.status, value: await response.json() };
-      },
-      { oldSession: session, scope: after },
-    );
+    const reused = await pageRequest(page, openRequest);
     assert.equal(reused.status, 400);
     assert.equal(reused.value.error, "PAGE_SESSION_IDENTITY_MISMATCH");
     await mkdir(evidence, { recursive: true });
@@ -286,55 +312,59 @@ test(
     const release = Promise.withResolvers();
     t.after(() => release.resolve());
     let heldAgents = false;
-    await page.route("**/api/gea-html/inventory-fc/agents", async (route) => {
+    await page.route("**/api/agent-manage/resources?*", async (route) => {
       if (heldAgents) return route.continue();
       heldAgents = true;
       const response = await route.fetch();
-      agentsHeld.resolve(response.status());
+      agentsHeld.resolve({ status: response.status(), rows: await response.json() });
       await release.promise;
-      await route
-        .fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([
-            { preset: "gea-html-inventory-fc", label: "分仓" },
-            { preset: "gea-html-inventory-qll", label: "全链" },
-          ]),
-        })
-        .catch(() => {});
+      await route.fulfill({ response }).catch(() => {});
     });
     let heldOpen = false;
-    await page.route("**/api/gea-html/inventory-fc/open", async (route) => {
+    await page.route("**/api/agent-workbench/page", async (route) => {
+      const input = route.request().postDataJSON();
+      if (input.operation !== "open" || input.pageId !== "inventory-fc") return route.continue();
       if (heldOpen) return route.continue();
       heldOpen = true;
       const response = await route.fetch();
-      openHeld.resolve(response.status());
+      openHeld.resolve({ status: response.status(), value: await response.json() });
       await release.promise;
       await route.fulfill({ response }).catch(() => {});
     });
     await page.reload();
-    assert.equal(await agentsHeld.promise, 200);
-    assert.equal(await openHeld.promise, 200);
+    const heldResources = await agentsHeld.promise;
+    assert.equal(heldResources.status, 200);
+    assert.ok(
+      heldResources.rows.some(
+        (row) => row.id === "gea-html-inventory-fc" && row.installed && row.enabled,
+      ),
+    );
+    const heldOpenReply = await openHeld.promise;
+    assert.equal(heldOpenReply.status, 200);
+    const owner = heldOpenReply.value.owner;
+    assert.match(owner, /^[0-9a-f-]{36}$/);
     await app.rpc("logout");
     await expect
       .poll(async () =>
         page.evaluate(() =>
-          JSON.parse(sessionStorage.getItem("agent-workbench:v1") ?? "[]").some(
-            (row) => row[0] === "inventory-fc",
-          ),
+          (
+            JSON.parse(localStorage.getItem("agent-workbench.presentation.v2"))?.selections ?? []
+          ).some((row) => row.page === "inventory-fc"),
         ),
       )
       .toBe(false);
     release.resolve();
     await page.waitForTimeout(300);
-    await expect(page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]')).toHaveCount(0);
+    await expect(htmlFrameElement(page, "inventory-fc")).toBeHidden();
+    await assertOwnerReleased(page, owner);
     await expect(page.getByRole("combobox", { name: "选择解读能力" })).toHaveCount(0);
     await mkdir(evidence, { recursive: true });
     await writeFile(
       `${evidence}/late-agents-open.json`,
       JSON.stringify(
         {
-          agentsHostStatus: 200,
+          agentsHostStatus: heldResources.status,
+          heldResourceIds: heldResources.rows.map((row) => row.id),
           openHostStatus: 200,
           associationCleared: true,
           staleChoicesVisible: false,
@@ -348,13 +378,13 @@ test(
 );
 
 test(
-  "a late page tool response cannot repopulate an unmounted identity",
+  "a late page tool response cannot repopulate a revoked identity",
   {
     skip: process.env.GEA_TEST_SOURCE_CORE !== "1",
     timeout: 180000,
   },
   async (t) => {
-    const { app, page, frame } = await stockReferencePage(t);
+    const { app, page, frame, owner } = await stockReferencePage(t);
     await page.evaluate(() => {
       window.__ticket08LateTool = [];
       window.addEventListener("message", (event) => {
@@ -365,9 +395,10 @@ test(
     const release = Promise.withResolvers();
     t.after(() => release.resolve());
     let intercepted = false;
-    await page.route("**/api/gea-html/inventory-fc/call", async (route) => {
+    await page.route("**/api/agent-workbench/page", async (route) => {
       const body = route.request().postDataJSON();
-      if (intercepted || body.method !== "access") return route.continue();
+      if (intercepted || body.operation !== "access" || body.owner !== owner)
+        return route.continue();
       intercepted = true;
       const response = await route.fetch();
       held.resolve(response.status());
@@ -386,7 +417,8 @@ test(
     });
     assert.equal(await held.promise, 200);
     await app.rpc("logout");
-    await expect(page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]')).toHaveCount(0);
+    await expect(htmlFrameElement(page, "inventory-fc")).toBeHidden();
+    await assertOwnerReleased(page, owner);
     release.resolve();
     await page.waitForTimeout(300);
     const late = await page.evaluate(() => window.__ticket08LateTool);
@@ -398,7 +430,11 @@ test(
     await mkdir(evidence, { recursive: true });
     await writeFile(
       `${evidence}/late-page-tool.json`,
-      JSON.stringify({ hostStatus: 200, oldFrameUnmounted: true, lateMessages: late }, null, 2),
+      JSON.stringify(
+        { hostStatus: 200, oldFrameHidden: true, oldOwnerReleased: true, lateMessages: late },
+        null,
+        2,
+      ),
     );
   },
 );
@@ -410,29 +446,22 @@ test(
     timeout: 180000,
   },
   async (t) => {
-    const { app, page, session } = await stockReferencePage(t, { environments: true });
+    const { app, page, session, owner, openRequest } = await stockReferencePage(t, {
+      environments: true,
+    });
     const before = (await identity(page)).scope;
     const switched = await app.rpc("environment/select", { environment: "production" });
     assert.equal(switched.ok, true);
     assert.equal(switched.value.environment, "production");
     assert.equal(switched.value.authenticated, false);
     await expect.poll(async () => (await identity(page)).scope).toBe(null);
-    await expect(page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]')).toHaveCount(0);
+    await expect(htmlFrameElement(page, "inventory-fc")).toBeHidden();
+    await assertOwnerReleased(page, owner);
     await app.login();
     const after = (await identity(page)).scope;
     assert.equal(typeof after, "string");
     assert.notEqual(after, before);
-    const denied = await page.evaluate(
-      async ({ session, scope }) => {
-        const response = await fetch("/api/gea-html/inventory-fc/open", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ session, agentPreset: "gea-html-inventory-fc", scope }),
-        });
-        return { status: response.status, value: await response.json() };
-      },
-      { session, scope: after },
-    );
+    const denied = await pageRequest(page, openRequest);
     assert.equal(denied.status, 400);
     assert.equal(denied.value.error, "PAGE_SESSION_IDENTITY_MISMATCH");
     await mkdir(evidence, { recursive: true });

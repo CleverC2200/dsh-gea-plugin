@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { fixtureEnvironment } from "./business-session.mjs";
-import { openBusinessPage } from "./business-page.mjs";
+import { htmlFrameElement, openWorkbenchPage } from "./business-page.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -155,7 +155,7 @@ export async function stockReferencePage(
   page.on("request", (request) => {
     if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData()) return;
     const body = request.postDataJSON();
-    if (body.operation === "open") opens.push(body);
+    if (body.operation === "open" && body.pageId === "inventory-fc") opens.push(body);
     if (body.operation === "context") contexts.push(body.parameters);
   });
   page.on("response", async (response) => {
@@ -163,6 +163,7 @@ export async function stockReferencePage(
       !response.url().endsWith("/api/agent-workbench/page") ||
       !response.request().postData() ||
       response.request().postDataJSON().operation !== "open" ||
+      response.request().postDataJSON().pageId !== "inventory-fc" ||
       !response.ok()
     )
       return;
@@ -170,14 +171,8 @@ export async function stockReferencePage(
   });
   await preparePage?.(page);
   await page.goto(app.origin);
-  await page
-    .getByRole("dialog", { name: /内测声明|预览版说明/ })
-    .getByRole("button", { name: "继续", exact: true })
-    .click();
-  await openBusinessPage(page, "inventory-fc");
-  const frame = page
-    .locator('iframe[src^="/api/agent-workbench/html?id=inventory-fc&"]')
-    .contentFrame();
+  await openWorkbenchPage(page, "分仓库存");
+  const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
   await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
   await expect.poll(() => contexts.at(-1)?.parts?.queryState?.state).toBe("ready");
   await expect.poll(() => owners.at(-1)?.owner).toEqual(expect.any(String));
@@ -228,5 +223,6 @@ export async function stockReferencePage(
     quote,
     readReference,
     owner: owners.at(-1).owner,
+    openRequest: opens.at(-1),
   };
 }

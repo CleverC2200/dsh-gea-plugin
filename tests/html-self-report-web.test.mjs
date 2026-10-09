@@ -22,10 +22,9 @@ test(
           };
         });
         page.on("request", (request) => {
-          if (!request.url().endsWith("/api/gea-html/inventory-fc/call") || !request.postData())
-            return;
+          if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData()) return;
           const data = request.postDataJSON();
-          if (data.method === "page-bridge") catalogs.push(data.parameters);
+          if (data.operation === "catalog") catalogs.push(data.parameters);
         });
       },
     });
@@ -44,7 +43,7 @@ test(
     );
     const child = page
       .frames()
-      .find((frame) => frame.url().includes("/api/gea-html/inventory-fc/html"));
+      .find((frame) => frame.url().includes("/api/agent-workbench/html?id=inventory-fc&"));
     assert.equal(await child.evaluate(() => typeof window.__geaPageScan), "undefined");
     await frame.getByRole("button", { name: "刷新", exact: true }).click();
     await expect

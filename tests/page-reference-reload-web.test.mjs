@@ -1,6 +1,7 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
+import { htmlFrameElement, openWorkbenchPage } from "./fixtures/business-page.mjs";
 import { stockReferencePage } from "./fixtures/stock-reference-page.mjs";
 
 test(
@@ -23,7 +24,7 @@ test(
     await quote();
     const outcome = await saved.promise;
     assert.equal(outcome.status, 200);
-    const frameElement = page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]');
+    const frameElement = htmlFrameElement(page, "inventory-fc");
     await frameElement.evaluate(
       (iframe) =>
         new Promise((resolve) => {
@@ -37,10 +38,7 @@ test(
     assert.equal((await page.locator('[contenteditable="true"]').first().innerText()).trim(), "");
     await page.unroute("**/api/page-interaction/reference");
     await page.getByText("AI工作台", { exact: true }).click();
-    await page.getByRole("button", { name: "业务工作台", exact: true }).click();
-    if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-      await page.getByText("库存管理", { exact: true }).click();
-    await page.getByText("分仓库存", { exact: true }).click();
+    await openWorkbenchPage(page, "分仓库存");
     await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible({ timeout: 15000 });
     const fresh = page.waitForResponse(
       (response) =>
