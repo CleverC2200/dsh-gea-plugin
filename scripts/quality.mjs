@@ -68,9 +68,17 @@ function git(args) {
   if (result.status !== 0) throw new Error(result.stderr);
   return result.stdout;
 }
+// Preserve the original generated/third-party exclusions. New Git ignore rules
+// must not hide authored files that a tracked consumer can load locally.
+const exclusions = selected.length
+  ? []
+  : git(["show", anchor + ":.gitignore"])
+      .split("\n")
+      .filter((line) => line && !line.startsWith("#"))
+      .map((line) => "--exclude=" + line);
 const files = selected.length
   ? selected.map((file) => relative(root, resolve(file)).split(sep).join("/"))
-  : git(["ls-files", "--cached", "--others", "--exclude-standard", "-z"])
+  : git(["ls-files", "--cached", "--others", ...exclusions, "-z"])
       .split("\0")
       .filter(
         (file) =>

@@ -4,6 +4,8 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
+  appendFileSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   renameSync,
@@ -135,4 +137,69 @@ test("public quality binds the original policy and tools while accepting complet
   }
   for (const [file, bytes] of Object.entries(original))
     assert.deepEqual(readFileSync(join(directory, file)), bytes);
+  for (const file of ["src/policy-valid.mjs", "src/policy-new-debugger.mjs"])
+    rmSync(join(directory, file));
+  // Original generated/third-party exclusions remain outside authored-source discovery.
+  mkdirSync(join(directory, "src/lib"));
+  writeFileSync(join(directory, "src/lib/policy-generated.mjs"), "debugger;\n");
+  writeFileSync(join(directory, "desktop/core-asar-reader.cjs"), "debugger;\n");
+  const discover = (name) => {
+    const startedAt = new Date().toISOString();
+    const result = spawnSync(process.execPath, ["scripts/quality.mjs", "lint"], {
+      cwd: directory,
+      encoding: "utf8",
+    });
+    t.diagnostic(
+      JSON.stringify({
+        name,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        exit: result.status,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      }),
+    );
+    return result;
+  };
+  const generated = discover("original-generated-and-third-party-exclusions");
+  assert.equal(generated.status, 0, generated.stdout + generated.stderr);
+  const probe = "src/shared/policy-ignored.mjs";
+  writeFileSync(join(directory, probe), "debugger;\n");
+  const consumer = "src/shared/environments.js";
+  writeFileSync(
+    join(directory, consumer),
+    'import "./policy-ignored.mjs";\n' + readFileSync(join(directory, consumer), "utf8"),
+  );
+  reject(discover("tracked-consumer-new-source"), /policy-ignored\.mjs: eslint\(no-debugger\)/);
+  appendFileSync(join(directory, ".gitignore"), "\n/" + probe + "\n");
+  command(directory, "git", ["add", consumer, ".gitignore", "scripts/quality.mjs"]);
+  command(directory, "git", [
+    "-c",
+    "user.name=Quality Fixture",
+    "-c",
+    "user.email=quality@example.invalid",
+    "commit",
+    "--quiet",
+    "-m",
+    "reference ignored authored source",
+  ]);
+  assert.equal(command(directory, "git", ["status", "--porcelain", "--untracked-files=all"]), "");
+  const runtime = command(directory, process.execPath, [
+    "--input-type=module",
+    "-e",
+    "import { resolveEnvironments } from './src/shared/environments.js'; console.log(JSON.stringify(resolveEnvironments({ geaBaseUrl: 'https://example.invalid' })))",
+  ]);
+  t.diagnostic(
+    JSON.stringify({
+      name: "actual-tracked-consumer",
+      head: command(directory, "git", ["rev-parse", "HEAD"]),
+      status: "clean",
+      runtime,
+    }),
+  );
+  assert.equal(JSON.parse(runtime).baseUrl, "https://example.invalid");
+  reject(
+    discover("ignored-authored-source-with-clean-tracked-consumer"),
+    /policy-ignored\.mjs: eslint\(no-debugger\)/,
+  );
 });
