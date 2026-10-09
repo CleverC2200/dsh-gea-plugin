@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { openSalesPlan, preparePageStartup } from "./fixtures/business-page.mjs";
 
 /**
  * 固定Core5bad通过公开conversation.composer.dock将统计胶囊放在输入卡下方。
@@ -38,10 +38,7 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
   const page = await context.newPage();
   page.setDefaultTimeout(20000);
   await page.goto(app.origin);
-  await page
-    .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-    .getByRole("button", { name: "继续", exact: true })
-    .click();
+  await preparePageStartup(page);
 
   const newSession = page
     .getByRole("complementary", { name: "业务导航", exact: true })
