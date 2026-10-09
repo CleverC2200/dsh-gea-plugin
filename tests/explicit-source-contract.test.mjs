@@ -25,6 +25,20 @@ const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 async function fixture(t, firstProjectPaths) {
   const dir = await mkdtemp(resolve(".scratch/explicit-inputs-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
+  // The mapping contract needs a declared Core type, not a sibling SDK checkout.
+  const core = join(dir, "core");
+  await mkdir(join(core, "vendor/cordis/lib/types"), { recursive: true });
+  await writeFile(
+    join(core, "vendor/cordis/package.json"),
+    JSON.stringify({
+      name: "@deepseek-ai/cordis",
+      types: "lib/types/index.d.ts",
+    }),
+  );
+  await writeFile(
+    join(core, "vendor/cordis/lib/types/index.d.ts"),
+    "export {};\n",
+  );
   const records = [];
   const packageNames = [
     "@cleverc2200/dsh-agent-workbench",
@@ -126,11 +140,10 @@ async function fixture(t, firstProjectPaths) {
       files,
     });
   }
-  return { dir, records };
+  return { dir, records, core };
 }
 test("frozen five-source assets are verified and reused for both check and build; corrupted bytes fail before output/compiler writes", async (t) => {
-  const { dir, records } = await fixture(t);
-  const core = resolve("../../official-latest-standard");
+  const { dir, records, core } = await fixture(t);
   await checkSourcePlugins({
     sources: records,
     core,
@@ -165,12 +178,12 @@ test("frozen five-source assets are verified and reused for both check and build
     });
 });
 test("ordinary declared source still runs its original TypeScript checks while frozen siblings stay untouched", async (t) => {
-  const { dir, records } = await fixture(t);
+  const { dir, records, core } = await fixture(t);
   delete records[0].assets;
   delete records[0].files;
   await checkSourcePlugins({
     sources: records,
-    core: resolve("../../official-latest-standard"),
+    core,
     output: join(dir, "normal-output"),
   });
   assert.match(
@@ -179,7 +192,7 @@ test("ordinary declared source still runs its original TypeScript checks while f
   );
   await checkSourcePlugins({
     sources: records,
-    core: resolve("../../official-latest-standard"),
+    core,
     build: true,
     output: join(dir, "normal-build-output"),
   });
@@ -194,13 +207,12 @@ test("ordinary declared source still runs its original TypeScript checks while f
 });
 
 test("generated source checks retain project aliases without replacing the fixed Core mappings", async (t) => {
-  const { dir, records } = await fixture(t, {
+  const { dir, records, core } = await fixture(t, {
     "declared-project-alias": ["./types/public.d.ts"],
     "@deepseek-ai/cordis": ["./wrong-core.d.ts"],
   });
   delete records[0].assets;
   delete records[0].files;
-  const core = resolve("../../official-latest-standard");
   const output = join(dir, "alias-output");
   await checkSourcePlugins({ sources: records, core, output });
   const generated = JSON.parse(
