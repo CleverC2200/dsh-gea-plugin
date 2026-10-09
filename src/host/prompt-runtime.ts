@@ -67,6 +67,7 @@ type State = {
   catalogOutputs: Set<string>;
   catalogStalls: number;
   catalogGeneration: number;
+  turnGeneration: number;
   evidenceViews: Map<string, string>;
 };
 
@@ -84,7 +85,10 @@ export function mountBusinessPrompts(
   >,
 ): () => void {
   const states = new Map<Agent, State>();
-  const executionEpochs = new Map<symbol, number>();
+  const executions = new Map<
+    symbol,
+    { state: State; turnGeneration: number; epoch: number }
+  >();
   const catalogExecutions = new Map<symbol, { state: State; generation: number }>();
   const executionGrants = new Map<symbol, EvidenceGrant>();
   const runtimeId = randomUUID();
@@ -151,6 +155,7 @@ export function mountBusinessPrompts(
         catalogOutputs: new Set(),
         catalogStalls: 0,
         catalogGeneration: 0,
+        turnGeneration: 0,
         evidenceViews: new Map(),
       };
       states.set(agent, state);
@@ -202,6 +207,7 @@ export function mountBusinessPrompts(
       state.catalogOutputs.clear();
       state.catalogStalls = 0;
       state.catalogGeneration++;
+      state.turnGeneration++;
     }
   };
   const offs: Array<() => void> = [business.watchIdentity(clean)];
@@ -223,6 +229,7 @@ export function mountBusinessPrompts(
       state.catalogOutputs.clear();
       state.catalogStalls = 0;
       state.catalogGeneration++;
+      state.turnGeneration++;
       state.evidence = [];
       state.limit = PROMPT_BUDGET.calls;
     }),
@@ -323,7 +330,12 @@ export function mountBusinessPrompts(
             generation: state.catalogGeneration,
           });
         }
-        executionEpochs.set(exec.token, store.epoch());
+        const state = stateOf(exec.agent);
+        executions.set(exec.token, {
+          state,
+          turnGeneration: state.turnGeneration,
+          epoch: store.epoch(),
+        });
         const args = exec.arguments as Record<string, unknown>;
         const grant: EvidenceGrant = {
           owner: owner(),
@@ -341,10 +353,11 @@ export function mountBusinessPrompts(
     ctx.on("tools/post-execute", async (exec, result, next) => {
       const decision = await next();
       const agent = exec.agent;
-      const executionEpoch = executionEpochs.get(exec.token);
+      const execution = executions.get(exec.token);
+      const executionEpoch = execution?.epoch;
       const catalogExecution = catalogExecutions.get(exec.token);
       catalogExecutions.delete(exec.token);
-      executionEpochs.delete(exec.token);
+      executions.delete(exec.token);
       const grant = executionGrants.get(exec.token);
       const authorization = authorizations.get(exec.token);
       authorizations.delete(exec.token);
@@ -363,6 +376,10 @@ export function mountBusinessPrompts(
           .map((b) => (b.type === "text" ? b.text : ""))
           .join("\n");
         const state = stateOf(agent);
+        const currentExecution =
+          execution?.state === state &&
+          execution.turnGeneration === state.turnGeneration &&
+          executionEpoch === store.epoch();
         if (
           exec.name === "gea_gateway_catalog" &&
           catalogExecution?.state === state &&
@@ -384,7 +401,7 @@ export function mountBusinessPrompts(
               state.catalogFacts.delete(state.catalogFacts.keys().next().value!);
           }
         }
-        if (result.isError || resultOutcome(texts) === "blocked") {
+        if (currentExecution && (result.isError || resultOutcome(texts) === "blocked")) {
           state.failures.set(
             hash([exec.name, exec.arguments]),
             JSON.stringify({
@@ -397,7 +414,7 @@ export function mountBusinessPrompts(
           while (state.failures.size > 4)
             state.failures.delete(state.failures.keys().next().value!);
         }
-        if (!result.isError && exec.name === "gea_evidence_read") {
+        if (currentExecution && !result.isError && exec.name === "gea_evidence_read") {
           try {
             const part = JSON.parse(texts);
             state.reads.set(
@@ -416,10 +433,11 @@ export function mountBusinessPrompts(
           } catch {}
         }
         if (
+          currentExecution &&
           ["gea_gateway_catalog", "gea_cube_query", "gea_module_mcp"].includes(exec.name) &&
           permissionDenied(texts)
         )
-          stateOf(agent).deniedConsumers.add(
+          state.deniedConsumers.add(
             typeof args.consumerCode === "string" && args.consumerCode.trim()
               ? args.consumerCode.trim()
               : sessionConsumer(ctx, business, agent.id),
@@ -967,7 +985,7 @@ export function mountBusinessPrompts(
     for (const off of offs.reverse()) off();
     for (const state of states.values()) state.dispose?.();
     states.clear();
-    executionEpochs.clear();
+    executions.clear();
     catalogExecutions.clear();
     executionGrants.clear();
     authorizations.clear();

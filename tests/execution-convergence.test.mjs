@@ -12,6 +12,9 @@ async function fixture(t) {
     registered = new Map();
   let guard,
     assemble,
+    identityChanged,
+    identity = "one",
+    revision = 1,
     preset = "gea-readonly";
   const names = [
     "skill",
@@ -46,6 +49,11 @@ async function fixture(t) {
     tools,
     agents: { get: () => agent },
     sessionProjections: { stateOf: () => preset },
+    agentResources: {
+      list: async () => [
+        { id: preset, kind: "prompt", installed: true, enabled: true },
+      ],
+    },
     skills: {
       list: async () => {
         throw Error("GEA must not load catalog");
@@ -67,9 +75,12 @@ async function fixture(t) {
   };
   const business = {
     config: { runtimeDir: root, analysisAgentCode: "sales" },
-    status: () => ({ source: "test", user: { id: "one" } }),
-    watchIdentity: () => () => {},
-    readTurnRevision: () => 1,
+    status: () => ({ source: "test", user: { id: identity } }),
+    watchIdentity: (fn) => {
+      identityChanged = fn;
+      return () => {};
+    },
+    readTurnRevision: () => revision,
     surfaceFor: () => undefined,
     turnStopKind: () => undefined,
   };
@@ -84,6 +95,14 @@ async function fixture(t) {
     assemble: (assembled) => assemble({}, { agent }, async () => assembled),
     setPreset: (value) => {
       preset = value;
+    },
+    nextTurn: () => {
+      revision++;
+      handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
+    },
+    changeIdentity: () => {
+      identity = "two";
+      identityChanged();
     },
   };
 }
@@ -135,4 +154,88 @@ test("business admission and concurrent budget reservations survive resource orc
   current.setPreset("agent-resource-skill");
   assert.match(current.guard(exec), /GEA_BUSINESS_PROFILE_REQUIRED/);
   assert.equal(current.guard({ ...exec, name: "skill" }), undefined);
+});
+
+for (const transition of ["turn", "identity", "preset"]) {
+  test(`late permission failure remains the original result after ${transition} without blocking current reads`, async (t) => {
+    const current = await fixture(t);
+    const exec = {
+      name: "gea_cube_query",
+      token: Symbol(),
+      agent: current.agent,
+      arguments: {},
+      signal: new AbortController().signal,
+    };
+    await current.handlers.get("tools/execute")(exec, async () => {});
+    if (transition === "turn") current.nextTurn();
+    if (transition === "identity") current.changeIdentity();
+    if (transition === "preset") current.setPreset("gea-html-inventory-aqkc");
+    const result = {
+      isError: true,
+      content: [
+        { type: "text", text: '{"availability":"permission-required"}' },
+      ],
+    };
+    const decision = { kind: "accept" };
+    assert.equal(
+      await current.handlers.get("tools/post-execute")(
+        exec,
+        result,
+        async () => decision,
+      ),
+      decision,
+    );
+    const assembled = await current.assemble({ sections: [], tools: [] });
+    assert.equal(
+      assembled.sections.some((s) => s.name === "gea:read-gaps"),
+      false,
+    );
+    assert.equal(
+      current.guard({
+        ...exec,
+        token: Symbol(),
+        arguments: { consumerCode: "another-registered-consumer" },
+      }),
+      undefined,
+    );
+  });
+}
+
+test("current permission failure remains visible across concurrent queries and prevents Consumer fallback", async (t) => {
+  const current = await fixture(t);
+  const exec = {
+    name: "gea_cube_query",
+    token: Symbol(),
+    agent: current.agent,
+    arguments: {},
+    signal: new AbortController().signal,
+  };
+  await current.handlers.get("tools/execute")(exec, async () => {});
+  await current.handlers.get("tools/execute")(
+    { ...exec, token: Symbol() },
+    async () => {},
+  );
+  await current.handlers.get("tools/post-execute")(
+    exec,
+    {
+      isError: true,
+      content: [
+        { type: "text", text: '{"availability":"permission-required"}' },
+      ],
+    },
+    async () => ({ kind: "accept" }),
+  );
+  const assembled = await current.assemble({ sections: [], tools: [] });
+  assert.equal(
+    assembled.sections.some((s) => s.name === "gea:read-gaps"),
+    true,
+  );
+  assert.match(
+    current.guard({
+      ...exec,
+      token: Symbol(),
+      arguments: { consumerCode: "another-registered-consumer" },
+    }),
+    /GEA_CONSUMER_FALLBACK_DENIED/,
+  );
 });
