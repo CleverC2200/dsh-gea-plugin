@@ -68,6 +68,8 @@ pnpm run test:delivery
 
 `continuation` 包含声明目标、固定候选与输入摘要、已验范围、剩余阶段、在途工具观察、独立下一动作与停止条件。状态分为 actionable、external-conditions、user-paused、dependency-unmet、completed、unknown。预算或来源冲突阻止同票 can-continue；一个原票依赖或外部停点不阻断另一个独立、已授权且就绪的任务。only external 只有所有剩余均有明确外部条件时成立；缺来源不猜成外部等待。所有输出 `performsActions:false`。
 
+`inTransit` 保留运行中和终态未确认的工具及其原始状态、来源。只有 command 明确为 `exited` 或 `failed`，且 turn 明确为 `completed` 或 `failed`，才确认该工具结束；`exited` 还须有有效 exitCode。unknown、缺字段或只有一侧结束均不能完成目标。声明阶段全部通过但工具终态未确认时，接续保持 unknown，`delivery:verify-goal` 底层 CLI 退出4。工具结束与阶段通过分别核对，明确失败的工具不自动使阶段通过。
+
 `--continuation` 返回同一报告的接续视图，不重新读取或另建权威。当前运行所有者、有效授权、运行窗口及原自动化是否暂停仍由原回执负责；输出仅供维护者选择下一步。
 
 测试通过公开 checkDelivery / CLI，用可抛弃 fixture 验证真实字节保护、来源、时间、预算、目标与接续。原始 r7 副本和既有公共回归保留；这些本地检查不证明 Native、模型、业务读取或远端 CI。
