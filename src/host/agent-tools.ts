@@ -375,6 +375,7 @@ export function registerGeaTools(
               orgCode: { type: "string" },
               baseName: { type: "string" },
               status: { type: "integer", description: "list/aggregate: plan workflow status. Period status was removed." },
+              offset: { type: "integer", description: "versionSkus only: use returned nextQuery unchanged to continue after byte-bounded paging; do not combine with pageNo." },
               pageNo: { type: "integer" },
               pageSize: { type: "integer" },
             },

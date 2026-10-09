@@ -389,7 +389,7 @@ export async function profile(t, options = {}) {
         if (process.env.GEA_TEST_SOURCE_CORE === "1" && !options.desktopGraph)
           appendFileSync(resolve(runtime, "server.log"), data, { mode: 0o600 });
       });
-    const deadline = Date.now() + 45000;
+    const deadline = Date.now() + (options.startupTimeoutMs ?? 45000);
     let launch;
     while (Date.now() < deadline) {
       let freshLog = "";

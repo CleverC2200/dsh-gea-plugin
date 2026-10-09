@@ -13,7 +13,7 @@ test("explicit Agent denial retains an actionable permission error without grant
   await assert.rejects(launch({
     accessDecision: { allowed: false, code: "AGENT_ACCESS_DENIED" },
     gatewayContext: { consumerCode: "inventory-personal-workbench" },
-  }), { code: "AGENT_ACCESS_DENIED", message: "当前账号无权访问此工作台，请联系管理员开通对应 Agent 权限。" });
+  }), { code: "AGENT_ACCESS_DENIED", accessDecisionCode: "AGENT_ACCESS_DENIED", message: "AGENT_ACCESS_DENIED: 当前用户无权访问该Agent" });
 });
 
 test("an allowed decision with incomplete credentials still rejects the session", async () => {
