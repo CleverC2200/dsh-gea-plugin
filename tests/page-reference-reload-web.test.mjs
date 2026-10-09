@@ -28,7 +28,8 @@ test(
       (iframe) =>
         new Promise((resolve) => {
           iframe.addEventListener("load", resolve, { once: true });
-          iframe.src = iframe.src;
+          const source = iframe.src;
+          iframe.src = source;
         }),
     );
     release.resolve();

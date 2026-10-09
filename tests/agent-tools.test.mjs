@@ -5,6 +5,9 @@ import { randomUUID } from "node:crypto";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { openBusinessPageSession } from "./fixtures/business-session.mjs";
+import { prepareWorkbenchHtmlRoots } from "./fixtures/business-page.mjs";
+import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 
 test(
   "GEA tools use the native model-tool-model loop and persist success, permission errors and cancellation",
@@ -104,16 +107,16 @@ test(
         capabilities: ["governed-sql-read"],
       }),
     );
+    await currentHtmlResource(probeRoot);
+    await currentHtmlResource(realRoot);
     const app = await profile(t, {
       pluginRoot: process.env.GEA_TEST_PLUGIN_ROOT,
       bundle: Boolean(process.env.GEA_TEST_PLUGIN_ROOT),
-      env: {
-        GEA_HTML_PLUGIN_ROOTS: JSON.stringify({
-          "inventory-probe": probeRoot,
-          "inventory-real": realRoot,
-        }),
-        DSH_AGENTS_HOME: agentsHome,
-      },
+      env: { DSH_AGENTS_HOME: agentsHome },
+      beforeStart: prepareWorkbenchHtmlRoots({
+        "inventory-probe": probeRoot,
+        "inventory-real": realRoot,
+      }),
       config: () => ({
         requestTimeoutMs: 1000,
         visibleContextSubagent: false,
@@ -640,6 +643,7 @@ test(
     });
     await app.login();
     const page = (await app.rpc("plans")).value;
+    const pages = new Map();
     async function submit(workbenchContext) {
       const preview = await app.rpc("prepare", {
         queryId: page.queryId,
@@ -651,13 +655,7 @@ test(
         ...(workbenchContext ? { workbenchContext } : {}),
       });
       assert.equal(result.ok, true, JSON.stringify(result));
-      // 菜单状态字段：这条链路里用户是从业务菜单点进来的（默认是主对话）。
-      const surface = await app.rpc("surface", {
-        sessionId: result.value.sessionId,
-        menu: "gea-proof",
-        title: "销售计划",
-      });
-      assert.equal(surface.ok, true, JSON.stringify(surface));
+      pages.set(result.value.sessionId, await openBusinessPageSession(app, result.value.sessionId));
       return result.value.sessionId;
     }
     const ended = (id) =>
@@ -920,7 +918,7 @@ test(
       });
       await ended(id);
       // 用户从业务菜单切回主对话：快照还在服务端，但不再是"你眼前这一屏"。
-      const surface = await app.rpc("surface", { sessionId: id, menu: "main" });
+      const surface = await pages.get(id).close();
       assert.equal(surface.ok, true, JSON.stringify(surface));
       modelRequests = [];
       const prompted = await app.remote("session/prompt", {
@@ -1003,47 +1001,40 @@ test(
         const id = await submit();
         await ended(id);
         // 菜单状态字段：只有点了业务菜单才算"在工作台"（默认是主对话）。
-        await app.rpc("surface", {
-          sessionId: id,
-          menu: "gea-workbench",
-          title: "销售计划",
-        });
-        const synced = await app.rpc("workbench/context", {
-          sessionId: id,
-          context: {
-            format: "gea-workbench-visible-v1",
-            sequence: 1,
-            view: "regional-approval",
-            scope: {
-              month: "2026-10",
-              planType: "Y",
-              approvalStage: "province",
-              dimension: "customer",
+        assert.ok(pages.get(id).owner, "the current registered page owns this Session");
+        const synced = await pages.get(id).context({
+          format: "gea-workbench-visible-v1",
+          sequence: 1,
+          view: "regional-approval",
+          scope: {
+            month: "2026-10",
+            planType: "Y",
+            approvalStage: "province",
+            dimension: "customer",
+          },
+          visibleRows: [
+            {
+              planId: "9007199254740993",
+              organization: "当前客户",
+              planTypeCode: "Y",
+              status: 3,
             },
-            visibleRows: [
-              {
-                planId: "9007199254740993",
-                organization: "当前客户",
-                planTypeCode: "Y",
-                status: 3,
-              },
-            ],
-            selectedPlanIds: [],
-            expandedFields: [
-              {
-                id: "field:plan-hebei-1:1004273:qty",
-                label: "BP思念150g黑芝麻肉松饭团 确认计划量",
-                value: "200",
-                editable: true,
-              },
-            ],
-            pagination: { page: 1, pageSize: 20, total: 1 },
-            evidence: {
-              source: "gea-user-session",
-              completeness: "paged-queue",
-              queryState: "success",
-              dataVersion: "sales-plan-v1.11",
+          ],
+          selectedPlanIds: [],
+          expandedFields: [
+            {
+              id: "field:plan-hebei-1:1004273:qty",
+              label: "BP思念150g黑芝麻肉松饭团 确认计划量",
+              value: "200",
+              editable: true,
             },
+          ],
+          pagination: { page: 1, pageSize: 20, total: 1 },
+          evidence: {
+            source: "gea-user-session",
+            completeness: "paged-queue",
+            queryState: "success",
+            dataVersion: "sales-plan-v1.11",
           },
         });
         assert.deepEqual(synced, { ok: true, value: { synced: true } });
@@ -1112,11 +1103,7 @@ test(
         const id = await submit();
         await ended(id);
         // 菜单状态字段：这一屏的上下文只在"点了业务菜单"的对话里才算证据。
-        await app.rpc("surface", {
-          sessionId: id,
-          menu: "gea-workbench",
-          title: "销售计划",
-        });
+        assert.ok(pages.get(id).owner, "the current registered page owns this Session");
         // 页面自述能力：工具由通用桥按这份目录为该会话生成。
         const catalog = {
           surface: "gea-workbench",
@@ -1154,16 +1141,14 @@ test(
             },
           ],
         };
-        const declared = await app.rpc("agui/workbench", {
-          sessionId: id,
+        const declared = await pages.get(id).catalog({
           toolMessages: [],
           catalog,
         });
         assert.equal(declared.ok, true, JSON.stringify(declared));
-        await app.rpc("workbench/context", {
-          sessionId: id,
-          context: page(1, [{ planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" }]),
-        });
+        await pages
+          .get(id)
+          .context(page(1, [{ planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" }]));
         outcome = "workbench-command";
         modelRequests = [];
         const prompted = await app.remote("session/prompt", {
@@ -1209,7 +1194,7 @@ test(
           "kind 不再必填：只要元素目录时可以只传 directory=true",
         );
         const events = await until(
-          async () => (await app.rpc("agui/workbench", { sessionId: id })).value.events,
+          async () => (await pages.get(id).catalog({})).value.events,
           (value) => value.length > 0,
         );
         assert.deepEqual(
@@ -1226,8 +1211,7 @@ test(
           reason: "展开这一行",
         });
         // 页面执行完把结果按 AG-UI 的 tool 消息回填，并上报新的页面快照。
-        const settled = await app.rpc("agui/workbench", {
-          sessionId: id,
+        const settled = await pages.get(id).catalog({
           toolMessages: [
             {
               id: "tool-result-1",
@@ -1238,13 +1222,12 @@ test(
           ],
         });
         assert.deepEqual(settled.value.events, []);
-        await app.rpc("workbench/context", {
-          sessionId: id,
-          context: page(2, [
+        await pages.get(id).context(
+          page(2, [
             { planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" },
             { planId: "plan-hebei-2", organization: "河北", planTypeCode: "Y" },
           ]),
-        });
+        );
         const rows = await until(
           () => readSession(app.runtime, id),
           (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
@@ -1291,8 +1274,7 @@ test(
       // 1) 不在白名单里的页面：声明了也不给工具。
       const foreign = await submit();
       await ended(foreign);
-      await app.rpc("agui/workbench", {
-        sessionId: foreign,
+      const foreignDeclaration = await pages.get(foreign).catalog({
         toolMessages: [],
         catalog: {
           surface: "inventory-dealer",
@@ -1301,6 +1283,8 @@ test(
           actions: [{ name: "openRow", description: "打开某一行" }],
         },
       });
+      assert.equal(foreignDeclaration.ok, false);
+      assert.equal(foreignDeclaration.value.error, "PAGE_CATALOG_OWNER_MISMATCH");
       modelRequests = [];
       await app.remote("session/prompt", {
         requestId: randomUUID(),
@@ -1318,8 +1302,7 @@ test(
       // 2) 白名单页面：改视图的动作和"填草稿"的动作都要暴露（它们都是页面开放的）。
       const allowed = await submit();
       await ended(allowed);
-      await app.rpc("agui/workbench", {
-        sessionId: allowed,
+      await pages.get(allowed).catalog({
         toolMessages: [],
         catalog: {
           surface: "gea-workbench",
@@ -1367,8 +1350,7 @@ test(
       outcome = "success";
       const id = await submit();
       await ended(id);
-      const declared = await app.rpc("agui/workbench", {
-        sessionId: id,
+      const declared = await pages.get(id).catalog({
         toolMessages: [],
         catalog: {
           surface: "gea-workbench",
@@ -1404,8 +1386,7 @@ test(
       );
 
       // 页面切走了：桥关闭 / 这一屏不再是工作台时报 null。
-      const released = await app.rpc("agui/workbench", {
-        sessionId: id,
+      const released = await pages.get(id).catalog({
         toolMessages: [],
         catalog: null,
       });
@@ -1428,8 +1409,7 @@ test(
       outcome = "success";
       const id = await submit();
       await ended(id);
-      await app.rpc("agui/workbench", {
-        sessionId: id,
+      await pages.get(id).catalog({
         toolMessages: [],
         catalog: {
           surface: "gea-workbench",
@@ -1484,7 +1464,7 @@ test(
           JSON.stringify(modelRequests[0].tools.map((candidate) => candidate.function.name)),
       );
       const events = await until(
-        async () => (await app.rpc("agui/workbench", { sessionId: id })).value.events,
+        async () => (await pages.get(id).catalog({})).value.events,
         (value) => value.length > 0,
       );
       const tool = modelRequests[0].tools.find(
@@ -1513,8 +1493,7 @@ test(
         target: "field:p-1:sku:1001:qty",
         value: "200",
       });
-      await app.rpc("agui/workbench", {
-        sessionId: id,
+      await pages.get(id).catalog({
         toolMessages: [
           {
             id: "verb-result-1",
@@ -1589,8 +1568,7 @@ test(
         { id: "filters", role: "control", label: "筛选", actions: ["reset"] },
         { id: "pager", role: "control", label: "分页", value: "1", editable: true },
       ];
-      const declared = await app.rpc("agui/workbench", {
-        sessionId: id,
+      const declared = await pages.get(id).catalog({
         toolMessages: [],
         catalog: {
           surface: "gea-workbench",
@@ -1747,11 +1725,7 @@ test(
         outcome = "success";
         const id = await submit();
         await ended(id);
-        await app.rpc("surface", {
-          sessionId: id,
-          menu: "gea-workbench",
-          title: "销售计划",
-        });
+        assert.ok(pages.get(id).owner, "the current registered page owns this Session");
         const synced = {
           format: "gea-workbench-visible-v1",
           sequence: 1,
@@ -1778,15 +1752,7 @@ test(
             dataVersion: "sales-plan-v1.11",
           },
         };
-        assert.deepEqual(
-          (
-            await app.rpc("workbench/context", {
-              sessionId: id,
-              context: synced,
-            })
-          ).value,
-          { synced: true },
-        );
+        assert.deepEqual((await pages.get(id).context(synced)).value, { synced: true });
         // 工作台页面自己的实时查询走的就是这条：它曾经把刚同步的可见页快照清掉。
         const live = await app.rpc("workbench/query", {
           kind: "periods",
