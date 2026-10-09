@@ -60,3 +60,5 @@ corepack pnpm quality:ci --input /absolute/job-root/candidate-input.json --prepa
 ```
 
 准备阶段仅在独立 checkout 内按原工具链与冻结锁安装、编译库及 Core 静态网页。原 GenUI npm 资产与 Sidebar Git 源及摘要由 `scripts/quality-upstreams.json` 固定，`corepack pnpm quality:upstreams --root /absolute/upstream-root` 默认只读验证，增加 `--prepare` 才下载和构建。现有共享或借用目录拒绝准备写入。它不启动 Native、业务或模型请求，也不修改用户运行目录。首次 CI 需要明确的 peer contents-read 凭据，未配置时失败；最终 always 聚合拒绝失败、跳过、取消与缺结果。
+
+完整 CI 显式开启源码窗口 fixture，Chromium 准备在本组 `.quality-browser` 中，所有服务和模拟模型端点只接受 loopback。完整 `test` 使用公开 reporter 拒绝必需测试的 skip，不能只按 Node 退出码把未执行的源码窗口称为全绿。该范围是源码 Host/profile 与本地 Web 集成，不能称为真实业务、模型服务或 Native 验收。

@@ -168,6 +168,22 @@ try {
       ]);
       run("corepack", ["pnpm", "build:plugin"]);
     }
+    for (const entry of candidate.repositories) {
+      const source = spawnSync("git", ["-C", entry.path, "remote", "get-url", "source"], {
+        encoding: "utf8",
+      });
+      if (source.status !== 0 && !values["prepare-inputs"])
+        refuse("QUALITY_SOURCE_REMOTE_REQUIRED", entry.repo);
+      if (source.status !== 0)
+        run("git", [
+          "-C",
+          entry.path,
+          "remote",
+          "add",
+          "source",
+          "https://github.com/CleverC2200/" + entry.repo + ".git",
+        ]);
+    }
     const upstreamRecord = await verifyQualityUpstreams(upstream);
     const sourcesFile = resolve(dirname(dirname(process.cwd())), "profile-source-inputs.json");
     const records = candidate.repositories.map((entry) => ({
@@ -195,6 +211,20 @@ try {
     writeFileSync(sourcesFile, JSON.stringify(records, null, 2) + "\n");
     process.env.GEA_TEST_SOURCE_INPUTS = sourcesFile;
     process.env.GEA_TEST_CANDIDATE = resolve(input);
+    process.env.GEA_TEST_SOURCE_CORE = "1";
+    process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(
+      dirname(dirname(process.cwd())),
+      ".quality-browser",
+    );
+    if (values["prepare-inputs"])
+      run("corepack", [
+        "pnpm",
+        "exec",
+        "playwright",
+        "install",
+        ...(process.platform === "linux" ? ["--with-deps"] : []),
+        "chromium",
+      ]);
     run("corepack", ["pnpm", "quality:fast"]);
     run("corepack", ["pnpm", "test:contracts"]);
     run("corepack", ["pnpm", "test"]);

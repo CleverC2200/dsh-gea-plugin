@@ -139,6 +139,9 @@ test("business prompt masks keep the selected native ancestor loader and refuse 
     tools,
     agents: { get: () => agent },
     sessionProjections: { stateOf: () => preset },
+    agentResources: {
+      list: async () => [{ id: "gea-readonly", kind: "prompt", installed: true, enabled: true }],
+    },
     on: (name, fn) => {
       handlers.set(name, fn);
       return () => {};
