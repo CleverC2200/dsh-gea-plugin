@@ -355,6 +355,13 @@ export function mountBusinessPrompts(
       const agent = exec.agent;
       const execution = executions.get(exec.token);
       const executionEpoch = execution?.epoch;
+      const isCurrentExecution = () =>
+        !!agent &&
+        !!profileOf(agent) &&
+        !!execution &&
+        execution.state === stateOf(agent) &&
+        execution.turnGeneration === execution.state.turnGeneration &&
+        execution.epoch === store.epoch();
       const catalogExecution = catalogExecutions.get(exec.token);
       catalogExecutions.delete(exec.token);
       executions.delete(exec.token);
@@ -376,10 +383,7 @@ export function mountBusinessPrompts(
           .map((b) => (b.type === "text" ? b.text : ""))
           .join("\n");
         const state = stateOf(agent);
-        const currentExecution =
-          execution?.state === state &&
-          execution.turnGeneration === state.turnGeneration &&
-          executionEpoch === store.epoch();
+        const currentExecution = isCurrentExecution();
         if (
           exec.name === "gea_gateway_catalog" &&
           catalogExecution?.state === state &&
@@ -536,6 +540,7 @@ export function mountBusinessPrompts(
             },
           ],
         };
+      if (!isCurrentExecution()) return decision;
       if (grant?.query) {
         try {
           grant.valueHash = valueHash(text);
@@ -544,6 +549,7 @@ export function mountBusinessPrompts(
         }
       }
       const id = await store.put(agent.id, exec.name, text, revision, grant);
+      if (!isCurrentExecution()) return decision;
       const state = stateOf(agent);
       const alreadyDelivered = state.evidence.includes(id);
       const receiptKey = id;
