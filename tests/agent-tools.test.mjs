@@ -1240,7 +1240,7 @@ test(
         );
         const value = JSON.parse(toolResult.content);
         assert.equal(value.protocol, "ag-ui-frontend-tool");
-        assert.equal(value.applied, true);
+        assert.equal(value.applied, true, JSON.stringify(value));
         assert.equal(value.kind, "invoke");
         // 改动后必须拿到"改动后"的快照，否则模型会拿旧页面下结论。
         assert.equal(value.snapshotAfterApply, true);
@@ -1518,7 +1518,7 @@ test(
         (message) => message.role === "tool" && message.tool_call_id === "page-verb-2",
       );
       const value = JSON.parse(delivered.content);
-      assert.equal(value.applied, true);
+      assert.equal(value.applied, true, JSON.stringify(value));
       assert.equal(value.kind, "setValue");
       // 这一屏的目录是页面自述的；这次改动在"改草稿"这一层留下了回执。
       assert.equal(value.pageSource, "self-report", JSON.stringify(value));
