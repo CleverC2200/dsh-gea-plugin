@@ -1,12 +1,17 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { stock, installStockRoutes, stockState } from "./fixtures/branch-stock.mjs";
 import { changeThemeSetting } from "./theme-settings.mjs";
+import {
+  htmlFrameElement,
+  openWorkbenchPage,
+  prepareWorkbenchHtmlRoots,
+} from "./fixtures/business-page.mjs";
 
 const out = resolve(".runtime/branch-stock-evidence");
 const migrated = resolve("../dsh-agent-workbench/lib/business/inventory-fc");
@@ -54,11 +59,16 @@ test(
       headless: true,
     });
     t.after(() => browser.close());
-    const results = [];
-    for (const [label, root] of [
-      ["legacy", resolve("../dsh-agent-fc-plugin")],
-      ["migrated", migrated],
-    ]) {
+    // Private historical output is compared byte-for-byte as text; the retired runtime is never loaded.
+    // Its producer commit is unknown; the original artifact and data Git provenance live in the receipt.
+    const original = JSON.parse(
+      await readFile(new URL("./fixtures/branch-stock-original.json.raw", import.meta.url), "utf8"),
+    );
+    assert.deepEqual(original.fixture, stock);
+    const legacy = original.results.find((result) => result.label === "legacy");
+    assert.equal(typeof legacy?.text, "string");
+    const results = [legacy];
+    for (const [label, root] of [["migrated", migrated]]) {
       const state = stockState();
       let step = 0;
       const app = await profile(t, {
@@ -73,10 +83,8 @@ test(
             maxTokens: 2048,
           },
         }),
-        env: {
-          GEA_TEST_MODEL_KEY: "fixture-key",
-          GEA_HTML_PLUGIN_ROOTS: JSON.stringify([root]),
-        },
+        beforeStart: prepareWorkbenchHtmlRoots([root]),
+        env: { GEA_TEST_MODEL_KEY: "fixture-key" },
       });
       installStockRoutes(app, state, (body) => {
         step++;
@@ -112,14 +120,8 @@ test(
       page.on("pageerror", (e) => errors.push(e.message));
       try {
         await page.goto(app.origin);
-        await page
-          .getByRole("dialog", { name: /内测声明|预览版说明/ })
-          .getByRole("button", { name: "继续", exact: true })
-          .click();
-        if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-          await page.getByText("库存管理", { exact: true }).click();
-        await page.getByText("分仓库存", { exact: true }).click();
-        const iframe = page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]');
+        await openWorkbenchPage(page, "分仓库存");
+        const iframe = htmlFrameElement(page, "inventory-fc");
         const frame = iframe.contentFrame();
         await expect(frame.getByText("当前库存", { exact: true })).toBeVisible();
         await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
@@ -300,7 +302,7 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
       const state = stockState();
       state.mode = mode === "empty-error" ? "empty" : mode;
       const app = await profile(t, {
-        env: { GEA_HTML_PLUGIN_ROOTS: JSON.stringify([migrated]) },
+        beforeStart: prepareWorkbenchHtmlRoots([migrated]),
       });
       let stockRoute;
       installStockRoutes(
@@ -348,22 +350,40 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
         })),
       );
       const page = await context.newPage();
-      const publishedContexts = [];
+      const publishedContexts = [],
+        contextRequests = [];
+      let owner;
       page.on("request", (request) => {
-        if (!request.url().endsWith("/api/gea-html/inventory-fc/call") || !request.postData())
-          return;
+        if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData()) return;
         const payload = request.postDataJSON();
-        if (payload.method === "context") publishedContexts.push(payload.parameters);
+        if (payload.operation === "context") {
+          contextRequests.push(payload);
+          if (payload.owner === owner) publishedContexts.push(payload.parameters);
+        }
       });
       await page.goto(app.origin);
-      await page
-        .getByRole("dialog", { name: /内测声明|预览版说明/ })
-        .getByRole("button", { name: "继续", exact: true })
-        .click();
-      if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-        await page.getByText("库存管理", { exact: true }).click();
-      await page.getByText("分仓库存", { exact: true }).click();
-      const frame = page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]').contentFrame();
+      const opened = page.waitForResponse((response) => {
+        const request = response.request();
+        if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData())
+          return false;
+        const input = request.postDataJSON();
+        return input.operation === "open" && input.pageId === "inventory-fc";
+      });
+      await openWorkbenchPage(page, "分仓库存");
+      const reply = await opened;
+      if (mode === "denied") {
+        assert.equal(reply.status(), 400);
+      } else {
+        assert.equal(reply.status(), 200);
+        owner = (await reply.json()).owner;
+        assert.match(owner, /^[0-9a-f-]{36}$/);
+        publishedContexts.push(
+          ...contextRequests
+            .filter((request) => request.owner === owner)
+            .map((request) => request.parameters),
+        );
+      }
+      const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
       try {
         if (mode === "denied") {
           await expect(page.getByRole("alert").filter({ hasText: "重新连接" })).toBeVisible({
