@@ -109,6 +109,6 @@ test(
     // 当前 split 边界由公开「AI对话」列持有，Core inspector 不是这条线的所有者。
     // 原 1px 分隔线必须存在，原生输入 seat 的内边距不能使它侵入这条线。
     assert.equal(railBoundary.borderLeftWidth, "1px", JSON.stringify(railBoundary));
-    assert.ok(railBoundary.seatLeft >= railBoundary.railLeft + 1, JSON.stringify(railBoundary));
+    assert.equal(railBoundary.seatLeft, railBoundary.railLeft + 1, JSON.stringify(railBoundary));
   },
 );
