@@ -96,7 +96,7 @@ export async function stockReferencePage(
   });
   assert.equal(binding.status, 200, "reference binding must be served by the real Host");
   assert.equal(typeof (await binding.json()).generation, "string");
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const browser = await chromium.launch({ headless: true });
   t.after(() => browser.close());
   const context = await browser.newContext({
     locale: "zh-CN",

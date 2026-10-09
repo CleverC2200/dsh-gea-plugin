@@ -8,7 +8,7 @@ test(
   { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 60000 },
   async (t) => {
     const app = await profile(t, { coreOnly: true });
-    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    const browser = await chromium.launch({ headless: true });
     t.after(() => browser.close());
     const context = await browser.newContext({ locale: "zh-CN" });
     await context.addCookies(

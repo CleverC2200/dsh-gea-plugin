@@ -106,9 +106,7 @@ test(
         assert.equal(body.action, "SAVE");
         assert.equal(body.expectedStatus, 4);
         assert.equal(body.expectedSnapshot, undefined);
-        assert.deepEqual(body.adjustments, [
-          { skuCode: "789", adjustQty: "1.000" },
-        ]);
+        assert.deepEqual(body.adjustments, [{ skuCode: "789", adjustQty: "1.000" }]);
         writes++;
         saved = true;
         log = {
@@ -139,7 +137,6 @@ test(
     });
     await app.login();
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());
@@ -148,13 +145,11 @@ test(
       viewport: { width: 1536, height: 920 },
     });
     await context.addCookies(
-      app.cookie
-        .split("; ")
-        .map((pair) => ({
-          name: pair.slice(0, pair.indexOf("=")),
-          value: pair.slice(pair.indexOf("=") + 1),
-          url: app.origin,
-        })),
+      app.cookie.split("; ").map((pair) => ({
+        name: pair.slice(0, pair.indexOf("=")),
+        value: pair.slice(pair.indexOf("=") + 1),
+        url: app.origin,
+      })),
     );
     const page = await context.newPage();
     await page.goto(app.origin);
@@ -167,11 +162,19 @@ test(
     await expect(frame.getByRole("button", { name: "保存调整", exact: true })).toHaveCount(0);
     assert.equal(writes, 0);
     const result = await app.rpc("sales-plan/action", {
-      planId: "p", versionId: "v", requestId: "save-readback", idempotencyKey: "save-readback",
-      request: { action: "SAVE", expectedStatus: 4, expectedSnapshot: "a".repeat(64), adjustments: [{skuCode:"789",adjustQty:"1.000"}] },
+      planId: "p",
+      versionId: "v",
+      requestId: "save-readback",
+      idempotencyKey: "save-readback",
+      request: {
+        action: "SAVE",
+        expectedStatus: 4,
+        expectedSnapshot: "a".repeat(64),
+        adjustments: [{ skuCode: "789", adjustQty: "1.000" }],
+      },
     });
     assert.equal(result.ok, true, JSON.stringify(result));
-    const readback = await app.rpc("workbench/query", {kind:"detail",query:{planId:"p"}});
+    const readback = await app.rpc("workbench/query", { kind: "detail", query: { planId: "p" } });
     assert.equal(readback.ok, true);
     assert.equal(readback.value.currentVersion.id, "v");
     assert.equal(readback.value.currentVersion.status, 4);

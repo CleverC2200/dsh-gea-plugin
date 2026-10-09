@@ -14,7 +14,7 @@ test(
   },
   async (t) => {
     const app = await profile(t, { coreOnly: true });
-    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    const browser = await chromium.launch({ headless: true });
     t.after(() => browser.close());
     const page = await browser.newPage({ locale: "zh-CN", viewport: { width: 1280, height: 900 } });
     const errors = [];

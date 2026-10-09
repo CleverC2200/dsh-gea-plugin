@@ -505,7 +505,7 @@ export async function profile(t, options = {}) {
       return api.rpc("login/poll", { loginId: qr.value.loginId });
     },
   };
-  await options.beforeStart?.({ runtime, config });
+  await options.beforeStart?.({ runtime, config, credentialEnv: options.env ?? {} });
   await start();
   return api;
 }

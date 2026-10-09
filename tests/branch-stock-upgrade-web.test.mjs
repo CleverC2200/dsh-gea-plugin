@@ -40,11 +40,11 @@ test(
         },
       }),
       env: { GEA_TEST_MODEL_KEY: "fixture-key" },
-      beforeStart: async ({ runtime, config }) => {
+      beforeStart: async ({ runtime, config, credentialEnv }) => {
         await mkdir(join(runtime, "home/profiles/plugin-split-validation"), {
           recursive: true,
         });
-        const deployment = await readDeployment(config);
+        const deployment = await readDeployment(config, { credentialEnv });
         const sources = JSON.parse(await readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"));
         await prepareSourcePlugins(core, runtime, deployment, { sources });
         await mkdir(join(runtime, "workspace"), { recursive: true });
@@ -115,7 +115,6 @@ test(
       };
     });
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());

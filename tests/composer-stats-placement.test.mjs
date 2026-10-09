@@ -22,7 +22,7 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
     }),
   });
   await app.login();
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const browser = await chromium.launch({ headless: true });
   t.after(() => browser.close());
   const context = await browser.newContext({
     locale: "zh-CN",

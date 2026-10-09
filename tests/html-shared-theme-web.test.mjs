@@ -56,7 +56,7 @@ test(
       await writeFile(new URL("../.runtime/unified-sample-start.log", import.meta.url), app.output);
       throw error;
     }
-    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    const browser = await chromium.launch({ headless: true });
     t.after(() => browser.close());
     const context = await browser.newContext({
       locale: "zh-CN",

@@ -30,8 +30,7 @@ test(
         join(directory, "SKILL.md"),
         `---\nname: ${id}\ndescription: 隔离验收能力\n---\n只读查询。\n`,
       );
-      const consumerCode =
-        id === "inventory-aqkc" ? "probe-consumer" : "legacy-consumer";
+      const consumerCode = id === "inventory-aqkc" ? "probe-consumer" : "legacy-consumer";
       await writeFile(
         join(directory, "plugin.json"),
         JSON.stringify({
@@ -149,10 +148,7 @@ test(
         });
         return true;
       }
-      if (
-        path.endsWith("/ai/gateway/sql/execute") &&
-        /agents_scm_probe/.test(req.body)
-      ) {
+      if (path.endsWith("/ai/gateway/sql/execute") && /agents_scm_probe/.test(req.body)) {
         sqlRequests.push(req);
         reply({
           success: true,
@@ -195,9 +191,7 @@ test(
       if (path === "/v1/chat/completions") {
         const body = JSON.parse(req.body);
         modelTools.push(body.tools.map((tool) => tool.function.name));
-        const loaded = body.tools.some(
-          (tool) => tool.function.name === "gea_module_mcp",
-        );
+        const loaded = body.tools.some((tool) => tool.function.name === "gea_module_mcp");
         const delta = toolSent
           ? { content: "验收读取完成。" }
           : {
@@ -252,7 +246,6 @@ test(
       ],
     );
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());
@@ -288,8 +281,14 @@ test(
     const checkSharedTheme = async (background) => {
       await expect(page.locator("body")).toHaveCSS("background-color", background);
       await expect(page.locator(".AppFrame_frame")).toHaveCSS("font-size", "15px");
-      assert.equal(await page.locator("body").evaluate(element =>
-        getComputedStyle(element).getPropertyValue("--workbench-theme-version").trim()), '"1.0.0"');
+      assert.equal(
+        await page
+          .locator("body")
+          .evaluate((element) =>
+            getComputedStyle(element).getPropertyValue("--workbench-theme-version").trim(),
+          ),
+        '"1.0.0"',
+      );
       await expect(page.locator('style[data-plugin-css$="/workbench-theme.css"]')).toHaveCount(1);
       await expect(page.locator('meta[name="theme-color"]')).toHaveCount(1);
     };
@@ -300,9 +299,7 @@ test(
       if (!(await page.getByText(name, { exact: true }).isVisible()))
         await page.getByText("库存管理", { exact: true }).click();
       await page.getByText(name, { exact: true }).click();
-      const frame = page.frameLocator(
-        `iframe[src*="/api/gea-html/${id}/html"]`,
-      );
+      const frame = page.frameLocator(`iframe[src*="/api/gea-html/${id}/html"]`);
       await expect(frame.getByRole("heading", { name })).toBeVisible();
       await checkSharedTheme("rgb(27, 29, 33)");
       await frame.getByRole("button", { name: "读取样例" }).click();
@@ -310,11 +307,7 @@ test(
       const count = sqlRequests.length;
       await frame.getByRole("button", { name: "尝试写入" }).click();
       await expect(frame.locator("output")).toContainText("READ_ONLY");
-      assert.equal(
-        sqlRequests.length,
-        count,
-        "write rejected before external service",
-      );
+      assert.equal(sqlRequests.length, count, "write rejected before external service");
     }
     await page.reload();
     await checkSharedTheme("rgb(27, 29, 33)");
@@ -387,7 +380,12 @@ test(
           mcpCalls: mcpCalls.length,
           tools: modelTools,
           pageErrors: errors,
-          sharedTheme: { version: "1.0.0", fontSize: 15, schemes: ["dark", "light"], survivesReload: true },
+          sharedTheme: {
+            version: "1.0.0",
+            fontSize: 15,
+            schemes: ["dark", "light"],
+            survivesReload: true,
+          },
         },
         null,
         2,

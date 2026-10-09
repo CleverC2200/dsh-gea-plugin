@@ -47,13 +47,18 @@ test(
         },
       }),
       env: { GEA_TEST_MODEL_KEY: "fixture-key" },
-      beforeStart: async ({ runtime, config }) => {
+      beforeStart: async ({ runtime, config, credentialEnv }) => {
         await fs.mkdir(join(runtime, "home/profiles/plugin-split-validation"), {
           recursive: true,
         });
-        base = await prepareSourcePlugins(core, runtime, await readDeployment(config), {
-          sources: JSON.parse(await fs.readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8")),
-        });
+        base = await prepareSourcePlugins(
+          core,
+          runtime,
+          await readDeployment(config, { credentialEnv }),
+          {
+            sources: JSON.parse(await fs.readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8")),
+          },
+        );
         const baseRecordFile = join(runtime, "source-combinations", base.id, "combination.json"),
           baseRecord = await json(baseRecordFile);
         const workbenchVersion = baseRecord.composition.dependencies[workbench]
@@ -174,7 +179,6 @@ test(
       return { content: "本地分仓样本100件和30件，合计130件。" };
     });
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());

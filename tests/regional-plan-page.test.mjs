@@ -22,7 +22,7 @@ test(
         },
       }),
     });
-    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    const browser = await chromium.launch({ headless: true });
     t.after(() => browser.close());
     const context = await browser.newContext({
       locale: "zh-CN",

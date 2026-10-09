@@ -5,7 +5,6 @@ import { profile } from "./profile.mjs";
 test("published DSH loads the replacement workbench", { timeout: 90000 }, async (t) => {
   const app = await profile(t);
   const browser = await chromium.launch({
-    channel: "chrome",
     headless: true,
   });
   t.after(() => browser.close());

@@ -41,10 +41,17 @@ test(
     app.route((request, res, reply) => {
       const path = request.url.pathname;
       if (path.endsWith("/getUserInfo")) {
-        reply({ success: true, result: { userInfo: {
-          id: "9007199254740993", realname: "测试用户", loginTenantId: "0",
-          avatar: "https://avatar.example.test/lark.png",
-        } } });
+        reply({
+          success: true,
+          result: {
+            userInfo: {
+              id: "9007199254740993",
+              realname: "测试用户",
+              loginTenantId: "0",
+              avatar: "https://avatar.example.test/lark.png",
+            },
+          },
+        });
         return true;
       }
       const task = {
@@ -97,7 +104,6 @@ test(
       return false;
     });
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());
@@ -113,10 +119,15 @@ test(
       })),
     );
     const page = await context.newPage();
-    await page.route("https://avatar.example.test/lark.png", route => route.fulfill({
-      contentType: "image/png",
-      body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=", "base64"),
-    }));
+    await page.route("https://avatar.example.test/lark.png", (route) =>
+      route.fulfill({
+        contentType: "image/png",
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=",
+          "base64",
+        ),
+      }),
+    );
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.setDefaultTimeout(15000);
@@ -133,25 +144,13 @@ test(
       .click();
     const frame = page.frameLocator("iframe[data-gea-workbench]");
     try {
-      await frame
-        .getByRole("button", { name: "刷新二维码", exact: true })
-        .waitFor();
+      await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
       await frame.locator(".gea-login-qr img").waitFor();
       await frame.getByRole("radio", { name: "测试", exact: true }).waitFor();
-      assert.equal(
-        await frame
-          .getByRole("radio", { name: "测试", exact: true })
-          .isChecked(),
-        true,
-      );
-      assert.equal(
-        await frame.locator('input[type="url"], input[type="text"]').count(),
-        0,
-      );
+      assert.equal(await frame.getByRole("radio", { name: "测试", exact: true }).isChecked(), true);
+      assert.equal(await frame.locator('input[type="url"], input[type="text"]').count(), 0);
       assert.equal(await page.locator('[contenteditable="true"]').count(), 0);
-      const loginBounds = await page
-        .locator("iframe[data-gea-workbench]")
-        .boundingBox();
+      const loginBounds = await page.locator("iframe[data-gea-workbench]").boundingBox();
       assert.deepEqual(loginBounds, { x: 0, y: 0, width: 1536, height: 920 });
       await mkdir(".runtime/web-evidence", { recursive: true });
       await page.screenshot({
@@ -161,19 +160,13 @@ test(
       await page.screenshot({ path: ".runtime/web-evidence/login-mobile.png" });
       await page.setViewportSize({ width: 1536, height: 920 });
       await frame.getByRole("radio", { name: "正式", exact: true }).check();
-      await frame
-        .getByRole("button", { name: "刷新二维码", exact: true })
-        .waitFor();
+      await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
       await frame.getByRole("radio", { name: "测试", exact: true }).check();
       await frame.locator(".gea-login-qr img").waitFor();
       allowLogin = true;
-      await frame
-        .getByRole("heading", { name: "销售计划审批", exact: true })
-        .waitFor();
+      await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
       await frame.getByText("华东", { exact: true }).first().waitFor();
-      await page
-        .getByRole("navigation", { name: "业务导航", exact: true })
-        .waitFor();
+      await page.getByRole("navigation", { name: "业务导航", exact: true }).waitFor();
       // 侧栏二级条目要和一级标题左对齐：文字同一竖线，命中区同一左边缘，二级只少一个图标。
       const navRows = await page
         .locator(".gea-shell-nav-heading, .gea-shell-nav-child")
@@ -200,20 +193,19 @@ test(
       // 业务条目与其导航容器左边缘一致；主线原生侧栏保留外层留白。
       const navigationBox = await page.locator(".gea-shell-navigation").boundingBox();
       assert.ok(
-        Math.abs(headings[0].hit - navigationBox.x) <= 2 && children.every((row) => Math.abs(row.hit - navigationBox.x) <= 2),
+        Math.abs(headings[0].hit - navigationBox.x) <= 2 &&
+          children.every((row) => Math.abs(row.hit - navigationBox.x) <= 2),
         JSON.stringify(navRows),
       );
       // 「AI 工作台」入口（原生新建会话）也走同一条左线：整块贴左、内容左对齐。
-      const newSession = await page
-        .locator('button[class*="_newSession"]')
-        .evaluate((button) => {
-          const icon = button.querySelector("svg, img");
-          return {
-            justify: getComputedStyle(button).justifyContent,
-            hit: Math.round(button.getBoundingClientRect().x),
-            icon: icon ? Math.round(icon.getBoundingClientRect().x) : null,
-          };
-        });
+      const newSession = await page.locator('button[class*="_newSession"]').evaluate((button) => {
+        const icon = button.querySelector("svg, img");
+        return {
+          justify: getComputedStyle(button).justifyContent,
+          hit: Math.round(button.getBoundingClientRect().x),
+          icon: icon ? Math.round(icon.getBoundingClientRect().x) : null,
+        };
+      });
       assert.equal(newSession.justify, "flex-start", JSON.stringify(newSession));
       assert.ok(
         newSession.hit <= 2 && newSession.icon !== null && newSession.icon <= 12,
@@ -221,9 +213,7 @@ test(
       );
       assert.equal(await page.locator(".gea-agent-panel").count(), 0);
       assert.equal(await frame.locator("textarea").count(), 0);
-      const bounds = await page
-        .locator("iframe[data-gea-workbench]")
-        .boundingBox();
+      const bounds = await page.locator("iframe[data-gea-workbench]").boundingBox();
       assert.ok(bounds.x > 200 && bounds.width < 1100, JSON.stringify(bounds));
       // The embedded workbench must resize its columns independently of the outer window.
       const workbenchFrame = page.locator("iframe[data-gea-workbench]");
@@ -238,20 +228,26 @@ test(
           element.style.setProperty("max-width", `${width}px`, "important");
         }, width);
         const table = frame.locator(".arco-table-content-inner").first();
-        await expect.poll(() => table.evaluate((element) => ({
-          viewport: element.clientWidth,
-          table: Math.round(element.querySelector("table").getBoundingClientRect().width),
-        }))).toMatchObject({ viewport: width - 1, table: Math.max(660, width - 1) });
+        await expect
+          .poll(() =>
+            table.evaluate((element) => ({
+              viewport: element.clientWidth,
+              table: Math.round(element.querySelector("table").getBoundingClientRect().width),
+            })),
+          )
+          .toMatchObject({ viewport: width - 1, table: Math.max(660, width - 1) });
         const headers = await table.locator("thead th").evaluateAll((cells) =>
           cells.map((cell) => ({
             left: cell.getBoundingClientRect().left,
             right: cell.getBoundingClientRect().right,
-          }))
+          })),
         );
         for (let index = 1; index < headers.length; index++) {
           assert.ok(headers[index].left >= headers[index - 1].right - 1, JSON.stringify(headers));
         }
-        await workbenchFrame.screenshot({ path: `.runtime/web-evidence/approval-columns-${width}.png` });
+        await workbenchFrame.screenshot({
+          path: `.runtime/web-evidence/approval-columns-${width}.png`,
+        });
       }
       await workbenchFrame.evaluate((element, style) => {
         if (style === null) element.removeAttribute("style");
@@ -266,56 +262,43 @@ test(
       // Approval now submits directly; exercise the cancellable rejection form without writing.
       await reject.click();
       const approvalDialog = frame.getByRole("dialog", { name: "退回", exact: true });
-      await expect(approvalDialog.getByRole("textbox", { name: "退回原因（必填）", exact: true })).toBeVisible();
-      await expect(approvalDialog.getByRole("button", { name: "确认退回", exact: true })).toBeDisabled();
-      await approvalDialog
-        .getByRole("button", { name: "取消", exact: true })
-        .click();
-      if (!(await frame.getByTestId('regional-approval-flow-lane').isVisible()))
-        await frame.getByTestId('regional-approval-flow-toggle').click();
-      await expect(frame.getByTestId('regional-approval-stage-province')).toBeDisabled();
-      const currentStage = frame.getByTestId('regional-approval-stage-region');
+      await expect(
+        approvalDialog.getByRole("textbox", { name: "退回原因（必填）", exact: true }),
+      ).toBeVisible();
+      await expect(
+        approvalDialog.getByRole("button", { name: "确认退回", exact: true }),
+      ).toBeDisabled();
+      await approvalDialog.getByRole("button", { name: "取消", exact: true }).click();
+      if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
+        await frame.getByTestId("regional-approval-flow-toggle").click();
+      await expect(frame.getByTestId("regional-approval-stage-province")).toBeDisabled();
+      const currentStage = frame.getByTestId("regional-approval-stage-region");
       await currentStage.click();
-      await expect(currentStage).toHaveAttribute('aria-pressed', 'false');
+      await expect(currentStage).toHaveAttribute("aria-pressed", "false");
       await expect(approve).toBeDisabled();
       await currentStage.click();
-      await expect(currentStage).toHaveAttribute('aria-pressed', 'true');
+      await expect(currentStage).toHaveAttribute("aria-pressed", "true");
       assert.equal(
-        app.requests.some(
-          (r) => r.method === "POST" && r.url.pathname.endsWith("/actions"),
-        ),
+        app.requests.some((r) => r.method === "POST" && r.url.pathname.endsWith("/actions")),
         false,
       );
 
+      assert.equal(await frame.getByRole("combobox", { name: "分析范围", exact: true }).count(), 0);
       assert.equal(
-        await frame
-          .getByRole("combobox", { name: "分析范围", exact: true })
-          .count(),
-        0,
-      );
-      assert.equal(
-        await frame
-          .getByRole("button", { name: "预览发送范围", exact: true })
-          .count(),
+        await frame.getByRole("button", { name: "预览发送范围", exact: true }).count(),
         0,
       );
       const brand = page.locator(".gea-brand-switch");
       const avatarImage = page.locator(".gea-user-avatar img");
       await expect(avatarImage).toHaveAttribute("src", "https://avatar.example.test/lark.png");
-      await expect.poll(() => avatarImage.evaluate(img => img.naturalWidth)).toBe(1);
+      await expect.poll(() => avatarImage.evaluate((img) => img.naturalWidth)).toBe(1);
       await avatarImage.dispatchEvent("error");
       await expect(page.locator(".gea-user-avatar")).toHaveText("测");
       const brandLogo = page.locator(".gea-shell-logo");
       assert.equal(await brandLogo.evaluate((el) => el.tagName), "IMG");
-      assert.match(
-        await brandLogo.getAttribute("src"),
-        /^data:image\/png;base64,/,
-      );
+      assert.match(await brandLogo.getAttribute("src"), /^data:image\/png;base64,/);
       // 客户端名：左上角品牌文字与窗口标题都用「Synear GEA」。
-      assert.equal(
-        await page.locator(".gea-brand-title").textContent(),
-        "Synear GEA",
-      );
+      assert.equal(await page.locator(".gea-brand-title").textContent(), "Synear GEA");
       assert.equal(await page.title(), "Synear GEA");
       assert.equal(
         await page
@@ -324,9 +307,7 @@ test(
         process.env.GEA_TEST_SOURCE_CORE === "1" ? "rgb(223, 23, 50)" : "rgb(215, 10, 28)",
       );
       assert.equal(
-        await page
-          .locator(".gea-user-avatar")
-          .evaluate((el) => getComputedStyle(el).borderRadius),
+        await page.locator(".gea-user-avatar").evaluate((el) => getComputedStyle(el).borderRadius),
         "50%",
       );
       // The brand mark is a label now: clicking it must not swap the page.
@@ -339,24 +320,15 @@ test(
         }
         await page.getByRole("button", { name: "账户菜单", exact: true }).click();
         await page.getByRole("menuitem", { name: "设置", exact: true }).click();
-        await page
-          .getByRole("button", { name: "通用设置", exact: true })
-          .waitFor();
+        await page.getByRole("button", { name: "通用设置", exact: true }).waitFor();
         await page.getByRole("button", { name: "关闭", exact: true }).click();
       }
       // Back to the business page so the reload below still restores the workbench.
       await page.locator('[data-gea-business-entry="gea-proof"]').click();
       await expect(page.locator("iframe[data-gea-workbench]")).toBeVisible();
-      assert.equal(
-        await page
-          .getByRole("button", { name: "DSH 对话", exact: true })
-          .count(),
-        0,
-      );
+      assert.equal(await page.getByRole("button", { name: "DSH 对话", exact: true }).count(), 0);
       await page.reload();
-      await frame
-        .getByRole("heading", { name: "销售计划审批", exact: true })
-        .waitFor();
+      await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
       await page.setViewportSize({ width: 700, height: 1000 });
       await page.locator('[data-conversation-stacked="true"]').waitFor();
       assert.equal(
@@ -365,13 +337,9 @@ test(
           .evaluate((element) => getComputedStyle(element).transitionDuration),
         "0s",
       );
-      await frame
-        .getByRole("heading", { name: "销售计划审批", exact: true })
-        .waitFor();
+      await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
       await page.locator('[contenteditable="true"]').waitFor();
-      const narrowFrame = await page
-        .locator("iframe[data-gea-workbench]")
-        .boundingBox();
+      const narrowFrame = await page.locator("iframe[data-gea-workbench]").boundingBox();
       assert.ok(
         narrowFrame && narrowFrame.height > 150 && narrowFrame.width > 250,
         JSON.stringify(narrowFrame),

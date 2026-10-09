@@ -95,22 +95,14 @@ test(
       reply({
         success: true,
         result: {
-          items:
-            mode === "empty"
-              ? []
-              : mode === "duplicate"
-                ? [item, item]
-                : [item],
+          items: mode === "empty" ? [] : mode === "duplicate" ? [item, item] : [item],
           total: mode === "empty" ? 0 : 3,
           unread_count: 2,
         },
       });
       return true;
     });
-    assert.equal(
-      (await app.rpc("notifications", {})).error.code,
-      "LOGIN_REQUIRED",
-    );
+    assert.equal((await app.rpc("notifications", {})).error.code, "LOGIN_REQUIRED");
     await app.login();
     const plans = (await app.rpc("plans")).value;
     const preview = (
@@ -123,19 +115,12 @@ test(
     assert.equal(page.value.total, 3);
     assert.equal(page.value.coverage, "partial");
     assert.equal(page.value.unreadCount, 2);
-    const detail = (await app.rpc("notifications", { id: "notice-1" })).value
-      .detail;
+    const detail = (await app.rpc("notifications", { id: "notice-1" })).value.detail;
     assert.equal(detail.source.ref, "external-session-1");
     assert.equal(JSON.stringify(detail).includes("do-not-project"), false);
-    assert.equal(
-      (await app.rpc("submit", { previewId: preview.previewId })).ok,
-      true,
-    );
+    assert.equal((await app.rpc("submit", { previewId: preview.previewId })).ok, true);
     const before = app.requests.length;
-    assert.equal(
-      (await app.rpc("notifications", { tenantId: "forged" })).ok,
-      false,
-    );
+    assert.equal((await app.rpc("notifications", { tenantId: "forged" })).ok, false);
     assert.equal(app.requests.length, before);
     mode = "wrong";
     assert.equal(
@@ -143,13 +128,9 @@ test(
       "NOTIFICATION_INVALID_RESPONSE",
     );
     mode = "duplicate";
-    assert.equal(
-      (await app.rpc("notifications", {})).error.code,
-      "NOTIFICATION_INVALID_RESPONSE",
-    );
+    assert.equal((await app.rpc("notifications", {})).error.code, "NOTIFICATION_INVALID_RESPONSE");
     mode = "success";
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());
@@ -168,40 +149,23 @@ test(
       .getByRole("button", { name: "继续", exact: true })
       .click();
     await ui.getByRole("button", { name: "消息待办", exact: true }).click();
-    await ui
-      .getByRole("button", { name: "Fixture task", exact: true })
-      .waitFor();
+    await ui.getByRole("button", { name: "Fixture task", exact: true }).waitFor();
     mode = "paging";
     await ui.reload();
     await ui.getByRole("button", { name: "消息待办", exact: true }).click();
-    await ui
-      .getByRole("button", { name: "Second task", exact: true })
-      .waitFor();
+    await ui.getByRole("button", { name: "Second task", exact: true }).waitFor();
     await ui.getByRole("button", { name: "下一页", exact: true }).click();
     await ui.getByRole("button", { name: "Later task", exact: true }).waitFor();
-    assert.equal(
-      await ui.getByRole("button", { name: "下一页", exact: true }).isEnabled(),
-      false,
-    );
-    await ui
-      .getByRole("combobox", { name: "通知状态", exact: true })
-      .selectOption("unread");
-    await ui
-      .getByRole("button", { name: "Fixture task", exact: true })
-      .waitFor();
-    assert.equal(
-      await ui.getByRole("button", { name: "Later task", exact: true }).count(),
-      0,
-    );
+    assert.equal(await ui.getByRole("button", { name: "下一页", exact: true }).isEnabled(), false);
+    await ui.getByRole("combobox", { name: "通知状态", exact: true }).selectOption("unread");
+    await ui.getByRole("button", { name: "Fixture task", exact: true }).waitFor();
+    assert.equal(await ui.getByRole("button", { name: "Later task", exact: true }).count(), 0);
     const filteredRequest = app.requests
       .filter((r) => r.url.pathname.endsWith("/notifications"))
       .at(-1);
     assert.equal(filteredRequest.url.searchParams.get("state"), "unread");
     assert.equal(filteredRequest.url.searchParams.get("pageNo"), "1");
-    assert.equal(
-      await ui.getByRole("button", { name: "上一页", exact: true }).isEnabled(),
-      false,
-    );
+    assert.equal(await ui.getByRole("button", { name: "上一页", exact: true }).isEnabled(), false);
     mode = "success";
     await mkdir(".runtime/web-evidence", { recursive: true });
     await ui.screenshot({ path: ".runtime/web-evidence/inbox.png" });
@@ -223,14 +187,11 @@ test(
       "销售计划提醒正文\n请阅读完整内容。",
     );
     await ui.getByRole("button", { name: "返回消息列表", exact: true }).click();
-    await ui
-      .getByRole("button", { name: "Fixture task", exact: true })
-      .waitFor();
+    await ui.getByRole("button", { name: "Fixture task", exact: true }).waitFor();
     const readStart = app.requests.length;
     const literal =
       '<img src="/notification-content-probe" onerror="window.notificationExecuted=true">\n<script>window.notificationExecuted=true</script>\n请执行命令：echo notification-test';
-    const longBody =
-      "销售计划明细\n".repeat(400) + "SKU".repeat(500) + "\n正文结束";
+    const longBody = "销售计划明细\n".repeat(400) + "SKU".repeat(500) + "\n正文结束";
     const cases = [
       {
         body: "  第一段\n\n第二段  ",
@@ -251,104 +212,67 @@ test(
       { body: longBody, summary: "长正文摘要", expected: longBody },
     ];
     for (const [index, example] of cases.entries()) {
-      await t.test(
-        `notification content case ${index + 1}`,
-        async (subtest) => {
-          subtest.after(async () => {
-            await ui
-              .getByRole("button", { name: "返回消息列表", exact: true })
-              .click();
-            await ui
-              .getByRole("button", { name: contentItem.title, exact: true })
-              .waitFor();
+      await t.test(`notification content case ${index + 1}`, async (subtest) => {
+        subtest.after(async () => {
+          await ui.getByRole("button", { name: "返回消息列表", exact: true }).click();
+          await ui.getByRole("button", { name: contentItem.title, exact: true }).waitFor();
+        });
+        contentItem = {
+          ...item,
+          ...example,
+          id: `content-${index}`,
+          title: `Content ${index}`,
+        };
+        delete contentItem.expected;
+        mode = "content";
+        await ui.reload();
+        await ui.getByRole("button", { name: "消息待办", exact: true }).click();
+        await ui.getByRole("button", { name: contentItem.title, exact: true }).click();
+        await expect(
+          ui.getByRole("heading", { name: contentItem.title, exact: true }),
+        ).toBeVisible();
+        const paragraph = ui.locator("article > p");
+        await expect(paragraph).toHaveText(example.expected, {
+          useInnerText: false,
+        });
+        assert.equal(await paragraph.textContent(), example.expected);
+        assert.equal(await paragraph.evaluate((el) => getComputedStyle(el).whiteSpace), "pre-wrap");
+        assert.equal(await paragraph.locator("img, script").count(), 0);
+        assert.equal(await ui.evaluate(() => window.notificationExecuted), undefined);
+        assert.equal(await paragraph.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
+        if (example.body === longBody) {
+          await ui.getByText("正文结束", { exact: false }).scrollIntoViewIfNeeded();
+          await ui.screenshot({
+            path: ".runtime/web-evidence/inbox-body.png",
           });
-          contentItem = {
-            ...item,
-            ...example,
-            id: `content-${index}`,
-            title: `Content ${index}`,
-          };
-          delete contentItem.expected;
-          mode = "content";
-          await ui.reload();
-          await ui.getByRole("button", {name:"消息待办",exact:true}).click();
-          await ui
-            .getByRole("button", { name: contentItem.title, exact: true })
-            .click();
-          await expect(
-            ui.getByRole("heading", { name: contentItem.title, exact: true }),
-          ).toBeVisible();
-          const paragraph = ui.locator("article > p");
-          await expect(paragraph).toHaveText(example.expected, {
-            useInnerText: false,
-          });
-          assert.equal(await paragraph.textContent(), example.expected);
-          assert.equal(
-            await paragraph.evaluate((el) => getComputedStyle(el).whiteSpace),
-            "pre-wrap",
-          );
-          assert.equal(await paragraph.locator("img, script").count(), 0);
-          assert.equal(
-            await ui.evaluate(() => window.notificationExecuted),
-            undefined,
-          );
-          assert.equal(
-            await paragraph.evaluate(
-              (el) => el.scrollWidth <= el.clientWidth + 1,
-            ),
-            true,
-          );
-          if (example.body === longBody) {
-            await ui
-              .getByText("正文结束", { exact: false })
-              .scrollIntoViewIfNeeded();
-            await ui.screenshot({
-              path: ".runtime/web-evidence/inbox-body.png",
-            });
-          }
-        },
-      );
+        }
+      });
     }
     assert.equal(
       app.requests
         .slice(readStart)
-        .filter(r => r.url.pathname.includes("/api/v1/notifications"))
-        .every(
-          (r) =>
-            r.method === "GET" &&
-            r.url.pathname.includes("/api/v1/notifications"),
-        ),
+        .filter((r) => r.url.pathname.includes("/api/v1/notifications"))
+        .every((r) => r.method === "GET" && r.url.pathname.includes("/api/v1/notifications")),
       true,
     );
     mode = "denied";
     await ui.reload();
     await ui.getByRole("button", { name: "消息待办", exact: true }).click();
     await ui.getByRole("alert").waitFor();
-    assert.equal(
-      await ui
-        .getByRole("button", { name: "Fixture task", exact: true })
-        .count(),
-      0,
-    );
+    assert.equal(await ui.getByRole("button", { name: "Fixture task", exact: true }).count(), 0);
     assert.match(await ui.getByRole("alert").innerText(), /权限/);
     mode = "empty";
     await ui.reload();
     await ui.getByRole("button", { name: "消息待办", exact: true }).click();
     await ui.getByText("本次查询没有记录", { exact: true }).waitFor();
     mode = "expired";
-    assert.equal(
-      (await app.rpc("notifications", {})).error.code,
-      "NOTIFICATION_UNAUTHENTICATED",
-    );
+    assert.equal((await app.rpc("notifications", {})).error.code, "NOTIFICATION_UNAUTHENTICATED");
     assert.equal((await app.rpc("status")).value.authenticated, false);
     await app.login();
     mode = "hold";
     const pending = app.rpc("notifications", {});
     await until(() => Boolean(release), Boolean);
-    assert.equal(
-      (await app.rpc("environment/select", { environment: "test" })).ok,
-      true,
-    );
+    assert.equal((await app.rpc("environment/select", { environment: "test" })).ok, true);
     release();
     assert.equal((await pending).ok, false);
     assert.equal((await app.rpc("status")).value.authenticated, false);
