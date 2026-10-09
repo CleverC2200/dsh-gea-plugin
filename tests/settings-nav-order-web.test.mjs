@@ -1,15 +1,91 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
-/**
- * 设置弹窗左栏顺序由各插件注册的 order 决定，第三方「侧边卡片」会落到系统项后面。
- * 复用已经装载的插件导航，仅在旧夹具缺项时补行，再把两行摆成待排序的顺序，
- * 验证外壳的排序逻辑（卡片要排在系统项前面，并且不会反复上移）。
- */
+// This private package uses Core's published client loader and settings.section ledger.
+const settingsClient = `window.__ModuleLoader__.load({
+  id: '@fixture/settings-order',
+  factory(require) {
+    const React = require('react');
+    return {
+      inject: ['slots'],
+      apply(ctx) {
+        let removeTemporary;
+        const Temporary = () => React.createElement('p', null, '临时测试导航内容');
+        const SoftwareUpdate = () => React.createElement('section', { 'aria-label': '软件更新夹具' },
+          React.createElement('button', { type: 'button', onClick() {
+            if (!removeTemporary) removeTemporary = ctx.slots.register({
+              name: 'settings.section', id: 'fixture-temporary', order: 150,
+              label: () => '临时测试导航',
+            }, Temporary);
+          } }, '注册测试导航'),
+          React.createElement('button', { type: 'button', onClick() {
+            removeTemporary?.(); removeTemporary = undefined;
+          } }, '移除测试导航'));
+        ctx.slots.inject('settings.section', () => ctx.slots.register({
+          name: 'settings.section', id: 'fixture-software-update', order: 200,
+          label: () => '软件更新',
+        }, SoftwareUpdate));
+        ctx.effect(() => () => removeTemporary?.());
+      },
+    };
+  },
+});`;
+const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+/** Native General/Models and Sidebar retain their real order while a public registrant changes. */
 test("设置左栏把「侧边卡片」排在「软件更新」前面", { timeout: 90000 }, async (t) => {
+  let fixtureFiles;
   const app = await profile(t, {
+    async beforeStart({ runtime }) {
+      const directory = resolve(runtime, "fixtures/settings-order");
+      await mkdir(directory, { recursive: true });
+      const files = {
+        "package.json": JSON.stringify({
+          name: "@fixture/settings-order",
+          version: "0.0.1",
+          private: true,
+          type: "module",
+          main: "index.js",
+          exports: { ".": "./index.js", "./client": "./client.js" },
+          dsh: { bundle: { patch: "./cordis.patch.yml" }, client: { platform: "web" } },
+        }),
+        "index.js": "export function apply() {}\n",
+        "client.js": settingsClient,
+        "cordis.patch.yml": JSON.stringify([
+          { insert: [{ id: "fixture-settings-order", name: "@fixture/settings-order" }] },
+        ]),
+      };
+      fixtureFiles = Object.entries(files).map(([name, bytes]) => ({
+        path: resolve(directory, name),
+        sha256: digest(bytes),
+      }));
+      for (const [name, bytes] of Object.entries(files))
+        await writeFile(resolve(directory, name), bytes);
+      const profileDirectory = resolve(runtime, "home/profiles/plugin-split-validation");
+      await mkdir(profileDirectory, { recursive: true });
+      const patch = resolve(profileDirectory, "cordis.patch.yml");
+      // Keep any actual profile entries instead of replacing a prepared user patch.
+      let entries = [];
+      try {
+        entries = JSON.parse(await readFile(patch, "utf8"));
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      entries.push({
+        insert: [{ id: "fixture-settings-order", name: resolve(directory, "index.js") }],
+      });
+      await writeFile(patch, JSON.stringify(entries));
+      fixtureFiles.push({ path: patch, sha256: digest(await readFile(patch)) });
+      const evidence = resolve(".runtime/settings-order-evidence");
+      await mkdir(evidence, { recursive: true });
+      await writeFile(resolve(evidence, "input.json"), JSON.stringify(fixtureFiles, null, 2));
+    },
     config: (base) => ({
       environment: "test",
       geaEnvironments: { production: base + "/production", test: base + "/test" },
@@ -41,54 +117,38 @@ test("设置左栏把「侧边卡片」排在「软件更新」前面", { timeou
     .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
     .getByRole("button", { name: "继续", exact: true })
     .click();
-  const frame = page.frameLocator("iframe[data-gea-workbench]");
+  const frame = await openSalesPlan(page);
   await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
   allowLogin = true;
   await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
   await page.getByRole("button", { name: "账户菜单", exact: true }).click();
   await page.getByRole("menuitem", { name: "设置", exact: true }).click();
-  const navList = page.locator('[role="dialog"] [class*="navList"]');
-  await navList.waitFor();
-
-  // 同时支持已装载插件中心的源码组合和缺少该插件的旧运行环境。
-  await page.evaluate(() => {
-    const list = document.querySelector('[role="dialog"] [class*="navList"]');
-    const add = (label) => {
-      const cell =
-        [...list.children].find((node) => node.textContent?.trim() === label) ??
-        document.createElement("button");
-      cell.type = "button";
-      cell.textContent = label;
-      list.append(cell);
-      return cell;
-    };
-    add("软件更新");
-    add("侧边卡片");
-  });
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const list = document.querySelector('[role="dialog"] [class*="navList"]');
-        return [...list.children].map((cell) => (cell.textContent ?? "").trim()).slice(-2);
-      }),
-    )
-    .toEqual(["侧边卡片", "软件更新"]);
-
-  // 再触发一次变更：已经就位的卡片不能再往上跑。
-  await page.evaluate(() => {
-    const list = document.querySelector('[role="dialog"] [class*="navList"]');
-    const cell = document.createElement("button");
-    cell.type = "button";
-    cell.textContent = "模型";
-    list.prepend(cell);
-  });
-  await page.waitForTimeout(300);
-  assert.deepEqual(
-    await page.evaluate(() => {
-      const list = document.querySelector('[role="dialog"] [class*="navList"]');
-      return [...list.children].map((cell) => (cell.textContent ?? "").trim()).slice(0, 2);
-    }),
-    ["模型", "通用设置"],
-    "卡片不能继续上移",
-  );
+  const dialog = page.getByRole("dialog", { name: "设置", exact: true });
+  const navigation = dialog.getByRole("navigation");
+  const labels = () => navigation.getByRole("button").allTextContents();
+  const relevant = new Set(["通用设置", "模型", "侧边卡片", "临时测试导航", "软件更新"]);
+  const order = async () =>
+    (await labels()).map((label) => label.trim()).filter((label) => relevant.has(label));
+  const unchanged = ["通用设置", "模型", "侧边卡片", "软件更新"];
+  await expect.poll(order).toEqual(unchanged);
+  assert.deepEqual((await labels()).map((label) => label.trim()).slice(-2), [
+    "侧边卡片",
+    "软件更新",
+  ]);
+  await navigation.getByRole("button", { name: "软件更新", exact: true }).click();
+  const fixture = dialog.getByRole("region", { name: "软件更新夹具", exact: true });
+  await expect(fixture).toBeVisible();
+  for (let iteration = 0; iteration < 2; iteration++) {
+    await fixture.getByRole("button", { name: "注册测试导航", exact: true }).click();
+    await expect.poll(order).toEqual(["通用设置", "模型", "侧边卡片", "临时测试导航", "软件更新"]);
+    await fixture.getByRole("button", { name: "移除测试导航", exact: true }).click();
+    await expect.poll(order).toEqual(unchanged);
+    assert.deepEqual(
+      (await labels()).map((label) => label.trim()).slice(-2),
+      ["侧边卡片", "软件更新"],
+      "卡片不能继续上移",
+    );
+  }
+  for (const file of fixtureFiles)
+    assert.equal(digest(await readFile(file.path)), file.sha256, file.path);
 });

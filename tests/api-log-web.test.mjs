@@ -33,6 +33,14 @@ test(
     await page.goto(app.origin);
     const frame = await openSalesPlan(page);
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
+    const before = await page.locator("[data-shell-bottom]").evaluate((bottom) => {
+      const frame = bottom.parentElement;
+      return {
+        sidebar: Number.parseFloat(getComputedStyle(frame).gridTemplateColumns),
+        sidebarCollapsed: frame.getAttribute("data-sidebar-collapsed"),
+      };
+    });
+    assert.deepEqual(before, { sidebar: 280, sidebarCollapsed: null });
     await openWorkbenchPage(page, "接口日志");
     await page.getByRole("heading", { name: "接口日志中心", exact: true }).waitFor();
     const layout = await page.locator(".gea-api-log-center").evaluate((center) => {
@@ -52,10 +60,17 @@ test(
       };
     });
     assert.equal(layout.columns.length, 3, JSON.stringify(layout));
-    assert.deepEqual([layout.columns[0], layout.columns[2]], [0, 0], JSON.stringify(layout));
-    assert.equal(layout.sidebarCollapsed, "true", JSON.stringify(layout));
+    // Core's ordinary Web main retains navigation; the retired fullscreen assertion is frozen at a429.
+    assert.deepEqual(
+      [layout.columns[0], layout.columns[2]],
+      [before.sidebar, 0],
+      JSON.stringify(layout),
+    );
+    assert.equal(layout.sidebarCollapsed, before.sidebarCollapsed, JSON.stringify(layout));
     assert.equal(layout.rightbarCollapsed, "true", JSON.stringify(layout));
-    assert.equal(layout.center.left, layout.frame.left, JSON.stringify(layout));
+    assert.equal(layout.center.left, layout.frame.left + before.sidebar, JSON.stringify(layout));
+    assert.equal(layout.center.width, layout.frame.width - before.sidebar, JSON.stringify(layout));
+    assert.equal(layout.columns[1], layout.center.width, JSON.stringify(layout));
     assert.equal(layout.center.right, layout.frame.right, JSON.stringify(layout));
 
     await expect
