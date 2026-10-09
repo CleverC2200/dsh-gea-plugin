@@ -15,3 +15,4 @@ GEA Host 管唯一业务身份、凭据、Consumer 授权与受控执行；clien
 | 交付规则 | 执行机制 |
 | --- | --- |
 | 可安装三包的资源、完整官方预设和 SDK 实例须在新普通 profile 接收 | `delivery:reception` 串行官方安装与 Loader 观察；`plugin-reception/contract.mjs` 统一接受投影与回执绑定；`test:delivery:packages` 重放真实 APS/Sales 失败 |
+| 打包与接收确定性检查须在独立 G checkout 执行，不能依赖邻仓或现成 Core | `test:delivery:packages` 自建 fixture Core 与发布输入；`.github/workflows/delivery-fixtures.yml` 自动执行同一命令 |

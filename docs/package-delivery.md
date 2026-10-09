@@ -82,6 +82,12 @@ corepack pnpm run delivery:reception -- --manifest /absolute/delivery/manifest.j
 
 本地回归为 `test:delivery:packages`。历史 observe-02 投影有两项真实失败：默认 APS 入口缺失，销售资源缺四份 Skill。fixtures 保存原文件摘要，用相同语义检查分别证明失败；observe-03 仅用于绿色语义重放，其历史回执没有新的集合绑定，不能据此生成新的接收证明。
 
+## 检查执行环境
+
+`npm run test:delivery:packages` 是本地与 `.github/workflows/delivery-fixtures.yml` 的同一条 Node fixture 检查命令，不安装工程依赖、不需要 Core 或兄弟仓库、不调用服务。原九项打包检查在临时目录运行生产 CLI 副本，临时 descriptor 对应 fixture Core 的真实 Git HEAD；生产 `current-core.json` 不变。Manage repository 使用保留来源提交的固定 fixture，继续验证真实历史 Git 元数据与运行依赖的区别。
+
+这些 fixture 证明确定性失败传播、保密输出、归档及回执合同，不能代替 `delivery:reception` 的实际安装和 Host 观察，也不能证明远端 CI 已经运行。正式接收只认可明确 packaged 或 installed-and-host-observed 输入状态，任一已有状态都重新执行本次完整接收。失败或缺省 process/scope、包集合绑定不符均拒绝生成接受结论。
+
 可选官方 CLI 语法为 `dsh plugin --profile <name> add <tgz绝对路径>`，已核固定 Core apps/cli/src/args.ts 的实际命令帮助。默认交付 INSTALL.md 以 GUI 操作为主。
 
 Workbench 的 `lib/business/**/build-inputs.json` 是含源码构建路径的开发来源记录，companion curation 会从新包移除这些文件。原 raw tar 与 source 文件保持不变，收据记录每个 excludedProvenanceFiles 的路径/摘要及 raw archive SHA；页面 HTML、代码与公共 exports 仍逐项核验。来源 metadata 不作为运行资产随用户包交付。

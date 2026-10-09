@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { mkdtemp, readdir, rm, writeFile, mkdir, readFile, copyFile, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 
 const entry = join(import.meta.dirname, 'deliver-packages.mjs');
@@ -12,8 +12,21 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 async function requestFixture(t, { missingClient = false, manageRepository = false, runtimeDependency, successfulPackageManager = false } = {}) {
   const work = await mkdtemp(join(tmpdir(), 'delivery-owner-inputs-'));
   t.after(() => rm(work, { recursive: true, force: true }));
-  const core = resolve(process.env.GEA_DELIVERY_CORE ?? join(import.meta.dirname, '../../..', 'official-latest-standard'));
+  // Standalone fixtures run a copy of the production CLI with a test-only Core descriptor.
+  // The actual scripts/current-core.json and fixed production preflight are never changed.
+  const core = join(work, 'fixture-core');
+  await mkdir(core);
+  await writeFile(join(core, 'package.json'), JSON.stringify({ version: '0.2.1-alpha.1' }));
+  execFileSync('git', ['init', '-q', core]);
+  execFileSync('git', ['-C', core, 'add', '.']);
+  execFileSync('git', ['-C', core, '-c', 'user.name=Delivery fixture', '-c', 'user.email=delivery@example.invalid', 'commit', '-qm', 'fixture Core']);
   const coreHead = execFileSync('git', ['-C', core, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const copiedScripts = join(work, 'cli');
+  await mkdir(copiedScripts);
+  const fixtureEntry = join(copiedScripts, 'deliver-packages.mjs');
+  await copyFile(entry, fixtureEntry);
+  const supported = JSON.parse(await readFile(new URL('./current-core.json', import.meta.url), 'utf8'));
+  await writeFile(join(copiedScripts, 'current-core.json'), JSON.stringify({ ...supported, upstream: coreHead, adaptation: coreHead }));
   const repositories = [];
   const versions = {};
   for (const [repo, name] of [['dsh-agent-workbench', '@cleverc2200/dsh-agent-workbench'], ['dsh-agent-manage', 'dsh-agent-manage'], ['dsh-gea-plugin', '@cleverc2200/gea-dsh-prototype']]) {
@@ -21,7 +34,7 @@ async function requestFixture(t, { missingClient = false, manageRepository = fal
     await mkdir(join(path, 'lib'), { recursive: true });
     const manifest = { name, version: '1.0.0', files: ['lib', 'cordis.patch.yml'], exports: { '.': './lib/host.js', './client': './lib/client.js' }, dsh: { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web' } }, peerDependencies: { '@deepseek-ai/dsh-tools': '0.2.1-alpha.1' }, dependencies: {}, devDependencies: { '@modelcontextprotocol/sdk': '1.30.0' } };
     if (repo === 'dsh-gea-plugin') manifest.files.push('npm-shrinkwrap.json');
-    if (repo === 'dsh-agent-manage' && manageRepository) manifest.repository = JSON.parse(await readFile(join(import.meta.dirname, '../../dsh-agent-manage/package.json'), 'utf8')).repository;
+    if (repo === 'dsh-agent-manage' && manageRepository) manifest.repository = JSON.parse(await readFile(new URL('./fixtures/plugin-reception/manage-repository.json', import.meta.url), 'utf8')).repository;
     if (repo === 'dsh-agent-manage' && runtimeDependency) manifest.dependencies['runtime-helper'] = runtimeDependency;
     await writeFile(join(path, 'package.json'), JSON.stringify(manifest));
     await writeFile(join(path, 'LICENSE'), 'Fixture license\n');
@@ -59,7 +72,7 @@ async function requestFixture(t, { missingClient = false, manageRepository = fal
   versions['@changfenhuang/dsh-genui'] = '0.11.3';
   versions['dsh-better-sidebar'] = '0.24.1';
   await writeFile(input, JSON.stringify({ core: { path: core, head: coreHead, version: '0.2.1-alpha.1' }, pnpm, versions, repositories }));
-  return { work, input, destination };
+  return { work, input, destination, entry: fixtureEntry };
 }
 
 test('delivery rejects a cwd-relative request before creating output', async t => {
@@ -73,7 +86,7 @@ test('delivery rejects a cwd-relative request before creating output', async t =
 
 test('the real Manage git repository metadata survives ordinary three-package delivery', async t => {
   const fixture = await requestFixture(t, { manageRepository: true, successfulPackageManager: true });
-  const result = spawnSync(process.execPath, [entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [fixture.entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
   const diagnostics = result.status === 0 ? [] : await Promise.all((await readdir(join(fixture.destination, 'evidence'))).filter(name => /^command-/.test(name)).map(name => readFile(join(fixture.destination, 'evidence', name), 'utf8')));
   assert.equal(result.status, 0, result.stderr + diagnostics.filter(text => !text.startsWith('exit=0\n')).join('\n'));
   const receipt = JSON.parse(await readFile(join(fixture.destination, 'manifest.json'), 'utf8'));
@@ -87,7 +100,7 @@ test('the real Manage git repository metadata survives ordinary three-package de
 test('git and workspace runtime dependency inputs cannot publish a delivery manifest', async t => {
   for (const runtimeDependency of ['git+https://github.com/example/runtime-helper.git', 'workspace:*']) {
     const fixture = await requestFixture(t, { manageRepository: true, runtimeDependency, successfulPackageManager: true });
-    const result = spawnSync(process.execPath, [entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
+    const result = spawnSync(process.execPath, [fixture.entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /DELIVERY_SOURCE_DEPENDENCY_IN_PACKAGE/);
     await assert.rejects(access(join(fixture.destination, 'manifest.json')));
@@ -101,7 +114,7 @@ test('the real production formatter rejects missing optional version metadata be
     const request = JSON.parse(await readFile(fixture.input, 'utf8'));
     delete request.versions[name];
     await writeFile(fixture.input, JSON.stringify(request));
-    const result = spawnSync(process.execPath, [entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
+    const result = spawnSync(process.execPath, [fixture.entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /DELIVERY_COMPANION_VERSION_REQUIRED/);
     await assert.rejects(access(fixture.destination));
@@ -110,7 +123,7 @@ test('the real production formatter rejects missing optional version metadata be
 
 test('a missing public client export stops before any production dependency command', async t => {
   const fixture = await requestFixture(t, { missingClient: true });
-  const result = spawnSync(process.execPath, [entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [fixture.entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_PUBLIC_EXPORT_MISSING/);
   await assert.rejects(access(fixture.destination));
@@ -118,7 +131,7 @@ test('a missing public client export stops before any production dependency comm
 
 test('a failing production dependency command cannot publish success or expose its secrets', async t => {
   const fixture = await requestFixture(t);
-  const result = spawnSync(process.execPath, [entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [fixture.entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_COMMAND_FAILED/);
   assert.ok(!result.stderr.includes('private-command-token'));
@@ -141,7 +154,7 @@ test('current owner build output cannot legitimize a stale raw archive', async t
   const build = JSON.parse(await readFile(owner.buildReceipt, 'utf8'));
   build.outputs.find(row => row.path === 'lib/host.js').sha256 = hash(bytes);
   await writeFile(owner.buildReceipt, JSON.stringify(build));
-  const result = spawnSync(process.execPath, [entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [fixture.entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_STALE_BUILD_ARCHIVE/);
   await assert.rejects(access(fixture.destination));
