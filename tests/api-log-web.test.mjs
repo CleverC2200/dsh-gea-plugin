@@ -35,14 +35,28 @@ test(
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
     await openWorkbenchPage(page, "接口日志");
     await page.getByRole("heading", { name: "接口日志中心", exact: true }).waitFor();
-    assert.deepEqual(
-      await page
-        .locator("[data-sidebar-col], [data-rightbar-col]")
-        .evaluateAll((elements) =>
-          elements.map((element) => Math.round(element.getBoundingClientRect().width)),
-        ),
-      [0, 0],
-    );
+    const layout = await page.locator(".gea-api-log-center").evaluate((center) => {
+      const frame = center.closest("[data-rightbar-collapsed]");
+      if (!frame) throw Error("Current Core frame must expose its rightbar state");
+      const columns = getComputedStyle(frame)
+        .gridTemplateColumns.split(/\s+/)
+        .map(Number.parseFloat);
+      const frameBox = frame.getBoundingClientRect(),
+        centerBox = center.getBoundingClientRect();
+      return {
+        columns,
+        sidebarCollapsed: frame.getAttribute("data-sidebar-collapsed"),
+        rightbarCollapsed: frame.getAttribute("data-rightbar-collapsed"),
+        frame: { left: frameBox.left, right: frameBox.right, width: frameBox.width },
+        center: { left: centerBox.left, right: centerBox.right, width: centerBox.width },
+      };
+    });
+    assert.equal(layout.columns.length, 3, JSON.stringify(layout));
+    assert.deepEqual([layout.columns[0], layout.columns[2]], [0, 0], JSON.stringify(layout));
+    assert.equal(layout.sidebarCollapsed, "true", JSON.stringify(layout));
+    assert.equal(layout.rightbarCollapsed, "true", JSON.stringify(layout));
+    assert.equal(layout.center.left, layout.frame.left, JSON.stringify(layout));
+    assert.equal(layout.center.right, layout.frame.right, JSON.stringify(layout));
 
     await expect
       .poll(() => page.locator(".gea-api-catalog-item").count())
