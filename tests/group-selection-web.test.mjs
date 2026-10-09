@@ -2,6 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 /**
  * V1.8 反馈：分组行的勾选是「组内成员全部选中」的派生状态。
@@ -166,11 +167,7 @@ const openWorkbench = async (t) => {
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  await page
-    .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-    .getByRole("button", { name: "继续", exact: true })
-    .click();
-  const frame = page.frameLocator("iframe[data-gea-workbench]");
+  const frame = await openSalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   const groupBox = frame.locator('tbody label.arco-checkbox:has(input[value*="group:"])').first();
   await expect(groupBox).toBeVisible();
@@ -305,11 +302,7 @@ test("批量里一笔冲突不影响其它笔，结果逐笔说明原因", { tim
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  await page
-    .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-    .getByRole("button", { name: "继续", exact: true })
-    .click();
-  const frame = page.frameLocator("iframe[data-gea-workbench]");
+  const frame = await openSalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   const groupBox = frame.locator('tbody label.arco-checkbox:has(input[value*="group:"])').first();
   await expect(groupBox).toBeVisible();

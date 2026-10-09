@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 test(
   "V1.6 Web: compact header, stable progress, inline SKU and approval editing",
@@ -183,11 +184,7 @@ test(
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(app.origin);
-    await page
-      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-      .getByRole("button", { name: "继续", exact: true })
-      .click();
-    const frame = page.frameLocator("iframe[data-gea-workbench]");
+    const frame = await openSalesPlan(page);
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     await expect(frame.getByRole("button", { name: "保存调整", exact: true })).toHaveCount(0);
     await expect(frame.getByRole("button", { name: "重提", exact: true })).toHaveCount(0);

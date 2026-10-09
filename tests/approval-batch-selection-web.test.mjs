@@ -2,6 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 /**
  * 勾选口径必须和「勾上以后按钮能不能用」一致：分组行只要组里还有一条能提交或退回就允许勾选，
@@ -136,11 +137,7 @@ test(
     const page = await context.newPage();
     page.setDefaultTimeout(15000);
     await page.goto(app.origin);
-    await page
-      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-      .getByRole("button", { name: "继续", exact: true })
-      .click();
-    const frame = page.frameLocator("iframe[data-gea-workbench]");
+    const frame = await openSalesPlan(page);
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
     if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
       await frame.getByTestId("regional-approval-flow-toggle").click();

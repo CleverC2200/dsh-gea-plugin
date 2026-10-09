@@ -2,6 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 for (const scenario of ["delayed", "stale", "unavailable"]) {
   test(
@@ -109,11 +110,7 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
         })),
       );
       await page.goto(app.origin);
-      await page
-        .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-        .getByRole("button", { name: "继续", exact: true })
-        .click();
-      const frame = page.frameLocator("iframe[data-gea-workbench]");
+      const frame = await openSalesPlan(page);
       await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
       const approve = frame.getByRole("button", { name: "通过", exact: true });
       await expect(approve).toBeEnabled();

@@ -2,6 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 const fixture = async (t) => {
   const app = await profile(t);
@@ -87,11 +88,7 @@ const fixture = async (t) => {
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
   await page.goto(app.origin);
-  await page
-    .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-    .getByRole("button", { name: "继续", exact: true })
-    .click();
-  const frame = page.frameLocator("iframe[data-gea-workbench]");
+  const frame = await openSalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   return { frame, page };
 };
@@ -269,11 +266,7 @@ test("default node follows the account role, not every node", { timeout: 90000 }
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  await page
-    .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-    .getByRole("button", { name: "继续", exact: true })
-    .click();
-  const frame = page.frameLocator("iframe[data-gea-workbench]");
+  const frame = await openSalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
 
   // 默认节点 = 账号角色对应的省区审批，不是「全部节点」。

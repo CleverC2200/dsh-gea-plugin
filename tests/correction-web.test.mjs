@@ -3,6 +3,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 test(
   "correction tab uses an explicit Z query and blocks customers without an approved monthly baseline",
@@ -71,11 +72,7 @@ test(
       }),
     );
     await page.goto(app.origin);
-    await page
-      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-      .getByRole("button", { name: "继续", exact: true })
-      .click();
-    const frame = page.frameLocator("iframe[data-gea-workbench]");
+    const frame = await openSalesPlan(page);
     await expect(frame.getByRole("columnheader", { name: "月度目标", exact: true })).toBeVisible();
     await frame
       .getByRole("tab", { name: "纠偏", exact: true })
@@ -124,11 +121,7 @@ test(
       })),
     );
     await page.goto(app.origin);
-    await page
-      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-      .getByRole("button", { name: "继续", exact: true })
-      .click();
-    const f = page.frameLocator("iframe[data-gea-workbench]");
+    const f = await openSalesPlan(page);
     await f.getByRole("tab", { name: "纠偏", exact: true }).click();
     await expect(f.getByText("金额 50.00%", { exact: true })).toBeVisible();
     const open = async () => {

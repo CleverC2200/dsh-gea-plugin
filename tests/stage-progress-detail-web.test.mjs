@@ -1,6 +1,7 @@
 import test from "./fixtures/source-test.mjs";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 /**
  * 节点百分比一直只能看个结果，核数要人肉反推。现在悬停百分比直接给分子/分母：
@@ -91,11 +92,7 @@ test("节点百分比悬停显示分子/分母", { timeout: 90000 }, async (t) =
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  await page
-    .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-    .getByRole("button", { name: "继续", exact: true })
-    .click();
-  const frame = page.frameLocator("iframe[data-gea-workbench]");
+  const frame = await openSalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
     await frame.getByTestId("regional-approval-flow-toggle").click();

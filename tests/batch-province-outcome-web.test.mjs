@@ -2,6 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 /**
  * 线上现象：同一个批量通过动作，省区 0013 的两笔成功，省区 0055 / 0034 / 0041 的三笔
@@ -159,11 +160,7 @@ const openWorkbench = async (t) => {
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  await page
-    .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-    .getByRole("button", { name: "继续", exact: true })
-    .click();
-  const frame = page.frameLocator("iframe[data-gea-workbench]");
+  const frame = await openSalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   const rowBox = (planId) =>
     frame.locator(`tbody label.arco-checkbox:has(input[value="${planId}"])`).first();

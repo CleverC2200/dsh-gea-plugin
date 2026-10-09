@@ -2,6 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 test(
   "returned Z plan resubmits fixed baseline with edited correction and verifies successor node fields are empty",
@@ -193,11 +194,7 @@ test(
       })),
     );
     await page.goto(app.origin);
-    await page
-      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-      .getByRole("button", { name: "继续", exact: true })
-      .click();
-    const f = page.frameLocator("iframe[data-gea-workbench]");
+    const f = await openSalesPlan(page);
     await f.getByRole("tab", { name: "纠偏", exact: true }).click();
     await f.getByRole("button", { name: "退回重提", exact: true }).click();
     const d = f.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });

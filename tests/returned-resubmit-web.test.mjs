@@ -2,6 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 /** 审批人员重审当前退回版本：不依赖客户重提凭据，不生成新版本。 */
 const PLAN_A = "p-jxs-2026-10-00001";
@@ -192,11 +193,7 @@ const fixture = async (t, { role = "region", returnedStatus = 7, denyApproval = 
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  await page
-    .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-    .getByRole("button", { name: "继续", exact: true })
-    .click();
-  const frame = page.frameLocator("iframe[data-gea-workbench]");
+  const frame = await openSalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   await expect(frame.getByTestId("regional-approval-flow-toggle")).toBeVisible();
   return { frame, submitted, approved, rejected, attempts };

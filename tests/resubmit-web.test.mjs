@@ -2,6 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 test("月初与纠偏入口恢复，客户重提仍受服务授权控制", { timeout: 60000 }, async (t) => {
   const app = await profile(t);
@@ -118,11 +119,7 @@ test("月初与纠偏入口恢复，客户重提仍受服务授权控制", { tim
   );
   const page = await context.newPage();
   await page.goto(app.origin);
-  await page
-    .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-    .getByRole("button", { name: "继续", exact: true })
-    .click();
-  const frame = page.frameLocator("iframe[data-gea-workbench]");
+  const frame = await openSalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   await expect(frame.getByRole("tab", { name: "月初", exact: true })).toHaveAttribute(
     "aria-selected",
