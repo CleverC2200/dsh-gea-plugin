@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { checkDelivery } from "./delivery-check.mjs";
+import { prepareRuntimeFixture } from "./delivery-runtime-fixture.mjs";
 
 const when = { observedAt: "2026-10-09T12:00:00.000Z" };
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -401,6 +402,71 @@ function goalCLI(f) {
     { cwd: join(import.meta.dirname, ".."), encoding: "utf8" },
   );
 }
+
+test("goal verification requires terminal command and turn evidence from the same tool fixture", async (t) => {
+  const f = await fixture(t);
+  f.delivery.goal.stages = ["source-candidate", "offline-checks"];
+  const runtime = await prepareRuntimeFixture(f.request, when);
+  const candidate = (await runtime.run()).candidate;
+  f.delivery.checks[0].candidateSha256 = candidate.sha256;
+  f.delivery.checks[0].candidateContentSha256 = candidate.contentSha256;
+  runtime.runtime.tools = ["tool"];
+  await runtime.put("runtime", runtime.runtime);
+  await writeFile(join(f.root, "delivery.json"), JSON.stringify(f.delivery));
+  for (const [toolState, expectedExit] of [
+    [{ command: "exited", turn: "completed", exitCode: 0 }, 0],
+    [{ command: "unknown", turn: "unknown" }, 4],
+    [{ command: "unknown", turn: "completed" }, 4],
+    [{ command: "exited", turn: "unknown", exitCode: 0 }, 4],
+    [{ command: "running", turn: "completed" }, 4],
+    [{ command: "exited", turn: "running", exitCode: 0 }, 4],
+    [{ turn: "completed" }, 4],
+    [{ command: "exited", exitCode: 0 }, 4],
+    [{ command: "exited", turn: "completed" }, 4],
+    [{ command: "failed", turn: "failed" }, 0],
+  ]) {
+    await runtime.put("tool", {
+      ...runtime.envelope,
+      kind: "execution-tool-state",
+      actionId: "work",
+      roundId: "round",
+      ...toolState,
+      uiTimer: "stopped",
+    });
+    await writeFile(join(f.root, "request.json"), JSON.stringify(f.request));
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(import.meta.dirname, "delivery-check.mjs"),
+        "--verify-goal",
+        "--input",
+        join(f.root, "request.json"),
+        "--continuation",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, expectedExit, result.stdout + result.stderr);
+    const report = JSON.parse(result.stdout);
+    const task = report.tasks[0];
+    assert.equal(
+      report.verification.reason,
+      expectedExit === 0 ? "DECLARED_GOAL_VERIFIED" : "DECLARED_GOAL_INCOMPLETE",
+    );
+    assert.equal(task.state, expectedExit === 0 ? "completed" : "unknown");
+    assert.equal(task.inTransit.length, expectedExit === 0 ? 0 : 1);
+    if (expectedExit !== 0) {
+      assert.equal(
+        task.inTransit[0].command.state,
+        toolState.command === "exited" && toolState.exitCode === undefined
+          ? "unknown"
+          : (toolState.command ?? "unknown"),
+      );
+      assert.equal(task.inTransit[0].turn, toolState.turn ?? "unknown");
+      assert.equal(task.inTransit[0].sourceId, "tool");
+      assert.equal(task.inTransit[0].evidence[0].sourceId, "tool");
+    }
+  }
+});
 
 // Replays the stage-closeout pattern documented in
 // .scratch/real-readonly-48/evidence/retro-20261009-closeout/report.md.
