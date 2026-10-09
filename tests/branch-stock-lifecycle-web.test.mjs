@@ -326,6 +326,10 @@ test(
   },
   async (t) => {
     const { app, page } = await stockReferencePage(t);
+    const oldFrame = await htmlFrameElement(page, "inventory-fc").elementHandle();
+    assert.ok(oldFrame);
+    const oldBrowsingFrame = await oldFrame.contentFrame();
+    assert.ok(oldBrowsingFrame, "Capture the real authorized browsing context before reload");
     const agentsHeld = Promise.withResolvers();
     const openHeld = Promise.withResolvers();
     const release = Promise.withResolvers();
@@ -362,7 +366,6 @@ test(
     assert.equal(heldOpenReply.status, 200);
     const owner = heldOpenReply.value.owner;
     assert.match(owner, /^[0-9a-f-]{36}$/);
-    const oldFrame = await htmlFrameElement(page, "inventory-fc").elementHandle();
     await app.rpc("logout");
     await expect
       .poll(async () =>
@@ -375,7 +378,7 @@ test(
       .toBe(false);
     release.resolve();
     await page.waitForTimeout(300);
-    await assertOldFrameHidden(oldFrame);
+    await expect.poll(() => oldBrowsingFrame.isDetached()).toBe(true);
     await assertOwnerReleased(page, owner);
     await expect(htmlFrameElement(page, "inventory-fc")).toHaveAttribute("src", /[?&]page=(?:&|$)/);
     await expect(page.getByRole("combobox", { name: "选择解读能力" })).toHaveCount(0);
