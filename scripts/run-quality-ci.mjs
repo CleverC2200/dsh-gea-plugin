@@ -2,7 +2,8 @@
 import { parseArgs } from "node:util";
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, realpathSync, existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, relative, isAbsolute, sep } from "node:path";
+import { createHash } from "node:crypto";
 import { prepareQualityUpstreams, verifyQualityUpstreams } from "./quality-upstreams.mjs";
 import { readPreparedWorkbench, verifyPreparedWorkbench } from "./quality-workbench.mjs";
 import { resolveSourceInputs } from "./source-profile.mjs";
@@ -270,6 +271,31 @@ try {
         ...(process.platform === "linux" ? ["--with-deps"] : []),
         "chromium",
       ]);
+    const { chromium } = await import("@playwright/test");
+    const browserRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    const browserFiles = ["chromium", "chromium-headless-shell"].map((channel) => {
+      const file = chromium.executablePath({ channel });
+      if (!existsSync(file)) refuse("QUALITY_BROWSER_REQUIRED", file);
+      const location = relative(realpathSync(browserRoot), realpathSync(file));
+      if (location.startsWith(".." + sep) || isAbsolute(location))
+        refuse("QUALITY_BROWSER_REQUIRED", file);
+      return { file, sha256: createHash("sha256").update(readFileSync(file)).digest("hex") };
+    });
+    writeFileSync(
+      resolve(dirname(dirname(process.cwd())), "browser-preparation.json"),
+      JSON.stringify(
+        {
+          root: browserRoot,
+          playwright: JSON.parse(
+            readFileSync(resolve("node_modules/@playwright/test/package.json")),
+          ).version,
+          lockSha256: createHash("sha256").update(readFileSync("pnpm-lock.yaml")).digest("hex"),
+          files: browserFiles,
+        },
+        null,
+        2,
+      ) + "\n",
+    );
     if (values.phase === "quality") {
       run("corepack", ["pnpm", "quality:fast"]);
       run("corepack", ["pnpm", "test:contracts"]);
