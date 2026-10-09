@@ -1,7 +1,8 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 /**
  * V1.8 #12：动作失败时弹窗只给业务语言，不出现 GEA_HTTP_409、payload.plan_month 这类
@@ -111,11 +112,7 @@ test(
       if (message.type() === "warning" || message.type() === "warn") warned.push(message.text());
     });
     await page.goto(app.origin);
-    await page
-      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-      .getByRole("button", { name: "继续", exact: true })
-      .click();
-    const frame = page.frameLocator("iframe[data-gea-workbench]");
+    const frame = await openSalesPlan(page);
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
     // 退回弹窗不会在失败时自动关闭，正好用来核对失败提示文案。

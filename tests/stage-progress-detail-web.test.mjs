@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 

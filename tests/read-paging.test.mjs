@@ -9,7 +9,7 @@
  * 页面自身的工作台读取不受影响，这里只看模型读到的内容。
  */
 import { readFile } from "node:fs/promises";
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile, readSession, until } from "./profile.mjs";
 

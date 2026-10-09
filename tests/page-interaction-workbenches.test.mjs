@@ -6,7 +6,7 @@ import {
 } from "./fixtures/business-page.mjs";
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 import { profileFor } from "../src/host/prompt-policy.ts";
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";

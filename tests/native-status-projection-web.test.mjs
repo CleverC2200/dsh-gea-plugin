@@ -1,7 +1,7 @@
 import { nativeAssociation } from "./fixtures/native-page.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 import { mkdir, writeFile } from "node:fs/promises";
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";

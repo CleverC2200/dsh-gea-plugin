@@ -13,6 +13,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
 import { freezeProfileWindow } from "./fixtures/profile-window.mjs";
+import { withSourceSetup } from "./fixtures/source-test.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
 /** Decode persisted tool receipts at the test boundary; never omit a malformed result. */
@@ -55,6 +56,9 @@ export async function until(read, predicate, timeout = 10000) {
   throw new Error("Condition not reached: " + JSON.stringify(value).slice(-2500));
 }
 export async function profile(t, options = {}) {
+  return withSourceSetup(t, () => createProfile(t, options));
+}
+async function createProfile(t, options) {
   t.signal?.throwIfAborted();
   const root = options.pluginRoot ?? defaultRoot;
   const sourcesFile = options.sourcesFile ?? process.env.GEA_TEST_SOURCE_INPUTS;
@@ -503,7 +507,7 @@ export async function profile(t, options = {}) {
     route(fn) {
       route = fn;
     },
-    start,
+    start: () => withSourceSetup(t, start),
     stop,
     async rpc(endpoint, payload = {}) {
       const response = await fetch(origin + "/api/gea-proof/" + endpoint, {

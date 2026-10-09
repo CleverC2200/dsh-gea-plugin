@@ -1,5 +1,5 @@
 /** Switch real source profiles between pinned local combinations; external services are fixtures. */
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile, realpath } from "node:fs/promises";
 import { resolve, join } from "node:path";

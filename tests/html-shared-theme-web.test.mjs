@@ -5,7 +5,7 @@ import {
   openWorkbenchPage,
 } from "./fixtures/business-page.mjs";
 /** Real profile/iframe acceptance; the table itself is a workbench-owned local sample. */
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

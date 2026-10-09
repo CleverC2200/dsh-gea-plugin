@@ -63,4 +63,8 @@ corepack pnpm quality:ci --input /absolute/job-root/candidate-input.json --prepa
 
 完整 CI 显式开启源码窗口 fixture，Chromium 准备在本组 `.quality-browser` 中，所有服务和模拟模型端点只接受 loopback。完整 `test` 使用公开 reporter 拒绝必需测试的 skip，不能只按 Node 退出码把未执行的源码窗口称为全绿。该范围是源码 Host/profile 与本地 Web 集成，不能称为真实业务、模型服务或 Native 验收。
 
+Source 用例沿现有 Node test 与 profile fixture 分段计时。每次准备最多 90 秒，实际就绪后清除准备计时，再按用例原 timeout 计动作；整例 Node 上限仍为原 timeout 加 90 秒。超时和父取消通过 Node 公开 signal 中止，清理等待已开始的准备收敛后停止自有进程。请求、模型、启动 45 秒和退出 15 秒期限保持原值。此额外准备预算仅在 `GEA_TEST_SOURCE_CORE=1` 启用，普通测试保持原期限。
+
+依赖完整性 reader 的无 scope 路径最多并行读取 4 个文件，完整读取每个当前字节；发现顺序、有序摘要与最早错误保持。带 delivery readScope 的 guard 和读取继续串行。启动准入与锁内复核仍各自执行，不使用 mtime 或跨次缓存跳过哈希。
+
 Workbench 的原构建输出 lib 受 Git 跟踪。首次准备在 `<job-root>/candidate/dsh-agent-workbench` 建立同提交的独立 build worktree，沿公开 `build:core` 真实编译，保留派生 lib 差异。候选声明登记干净 source 根；GEA 现有 sibling 类型路径和源码 profile 消费明确 prepared 根。`scripts/quality-workbench.mjs` 逐 Git blob 核全部非 lib 原源码、锁与同 source origin，再核冻结资产摘要。它不把 build tree 宣称 clean，也不放宽共享候选 checker。

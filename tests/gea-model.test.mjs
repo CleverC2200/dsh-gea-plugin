@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { profile, readSession, until } from "./profile.mjs";
@@ -107,9 +107,7 @@ test(
       names: { "fixture-gea-model": "GEA 测试模型" },
       selectedName: "GEA 测试模型",
     });
-    assert.ok(
-      !JSON.stringify(discovered).includes("fixture-personal-model-secret"),
-    );
+    assert.ok(!JSON.stringify(discovered).includes("fixture-personal-model-secret"));
     const page = (await app.rpc("plans")).value;
     const select = { queryId: page.queryId, planId: page.records[0].planId };
     const submit = async () => {
@@ -132,34 +130,25 @@ test(
         const rows = await ended(await submit());
         const message = rows.find((row) => row.type === "assistant/message");
         assert.ok(message, JSON.stringify(rows));
-        assert.ok(
-          JSON.stringify(message).includes(parts.join("")),
-          JSON.stringify(message),
-        );
-        assert.equal(
-          rows.find((row) => row.type === "turn/end").data.reason.kind,
-          "completed",
-        );
+        assert.ok(JSON.stringify(message).includes(parts.join("")), JSON.stringify(message));
+        assert.equal(rows.find((row) => row.type === "turn/end").data.reason.kind, "completed");
         assert.equal(modelRequests.length, 1);
         assert.equal(
           modelRequests[0].headers.authorization,
           "Bearer fixture-personal-model-secret",
         );
-        assert.equal(
-          modelRequests[0].headers["x-gea-agent-code"],
-          "sales_forecast",
-        );
-        assert.equal(
-          JSON.parse(modelRequests[0].body).model,
-          "fixture-gea-model",
-        );
+        assert.equal(modelRequests[0].headers["x-gea-agent-code"], "sales_forecast");
+        assert.equal(JSON.parse(modelRequests[0].body).model, "fixture-gea-model");
         const request = JSON.parse(modelRequests[0].body);
-        assert.match(JSON.stringify(request.messages), /你负责销售计划的提报情况、版本明细、需求预测和审批依据分析/);
-        assert.ok(request.tools.some(tool => tool.function.name === "skill"), "the managed preset must mount the official Skill tool");
-        assert.equal(
-          JSON.stringify(rows).includes("fixture-personal-model-secret"),
-          false,
+        assert.match(
+          JSON.stringify(request.messages),
+          /你负责销售计划的提报情况、版本明细、需求预测和审批依据分析/,
         );
+        assert.ok(
+          request.tools.some((tool) => tool.function.name === "skill"),
+          "the managed preset must mount the official Skill tool",
+        );
+        assert.equal(JSON.stringify(rows).includes("fixture-personal-model-secret"), false);
       },
     );
     await t.test(
@@ -169,10 +158,7 @@ test(
           mode = failure;
           const rows = await ended(await submit());
           assert.equal(
-            rows.filter(
-              (row) =>
-                row.type === "assistant/message" && !row.data.interrupted,
-            ).length,
+            rows.filter((row) => row.type === "assistant/message" && !row.data.interrupted).length,
             0,
             failure,
           );
@@ -193,30 +179,24 @@ test(
       async () => {
         mode = "dsml";
         const rows = await ended(await submit());
-        assert.notEqual(
-          rows.find((row) => row.type === "turn/end").data.reason.kind,
-          "completed",
-        );
+        assert.notEqual(rows.find((row) => row.type === "turn/end").data.reason.kind, "completed");
         assert.equal(rows.filter((row) => row.type === "tool/call").length, 0);
         assert.match(JSON.stringify(rows), /GEA_MODEL_TOOL_TEXT/);
         assert.match(JSON.stringify(rows), /PROVIDER_PROTOCOL/);
       },
     );
-    await t.test(
-      "scoped discovery reports its consumer and rejects unknown presets",
-      async () => {
-        const found = await app.rpc("model/discover", {
-          agentPreset: "gea-html-inventory-apsplan",
-        });
-        assert.equal(found.ok, true, JSON.stringify(found));
-        assert.equal(found.value.consumerCode, "aps");
-        const unknown = await app.rpc("model/discover", {
-          agentPreset: "made-up",
-        });
-        assert.equal(unknown.ok, false);
-        assert.match(JSON.stringify(unknown), /GEA_AGENT_PRESET_UNSUPPORTED/);
-      },
-    );
+    await t.test("scoped discovery reports its consumer and rejects unknown presets", async () => {
+      const found = await app.rpc("model/discover", {
+        agentPreset: "gea-html-inventory-apsplan",
+      });
+      assert.equal(found.ok, true, JSON.stringify(found));
+      assert.equal(found.value.consumerCode, "aps");
+      const unknown = await app.rpc("model/discover", {
+        agentPreset: "made-up",
+      });
+      assert.equal(unknown.ok, false);
+      assert.match(JSON.stringify(unknown), /GEA_AGENT_PRESET_UNSUPPORTED/);
+    });
     await t.test(
       "unsupported model fails with a specific code before a completion request",
       async () => {
@@ -246,43 +226,28 @@ test(
         const rows = await ended(sessionId);
         assert.equal(modelRequests.length, count);
         assert.match(JSON.stringify(rows), /MODEL_NOT_FOUND/);
-        assert.notEqual(
-          rows.find((row) => row.type === "turn/end").data.reason.kind,
-          "completed",
-        );
+        assert.notEqual(rows.find((row) => row.type === "turn/end").data.reason.kind, "completed");
       },
     );
-    await t.test(
-      "length is persisted as max-tokens and retains the partial answer",
-      async () => {
-        mode = "length";
-        const rows = await ended(await submit());
-        assert.equal(
-          rows.find((row) => row.type === "turn/end").data.reason.kind,
-          "max-tokens",
-        );
-        assert.ok(
-          JSON.stringify(
-            rows.find((row) => row.type === "assistant/message"),
-          ).includes(parts.join("")),
-        );
-      },
-    );
+    await t.test("length is persisted as max-tokens and retains the partial answer", async () => {
+      mode = "length";
+      const rows = await ended(await submit());
+      assert.equal(rows.find((row) => row.type === "turn/end").data.reason.kind, "max-tokens");
+      assert.ok(
+        JSON.stringify(rows.find((row) => row.type === "assistant/message")).includes(
+          parts.join(""),
+        ),
+      );
+    });
     await t.test(
       "cancelling closes the upstream response and records an aborted turn",
       async () => {
         mode = "hold";
         const id = await submit();
         await until(async () => Boolean(held), Boolean);
-        assert.equal(
-          (await app.remote("session/cancel", { sessionId: id })).ok,
-          true,
-        );
+        assert.equal((await app.remote("session/cancel", { sessionId: id })).ok, true);
         const rows = await ended(id);
-        assert.equal(
-          rows.find((row) => row.type === "turn/end").data.reason.kind,
-          "aborted",
-        );
+        assert.equal(rows.find((row) => row.type === "turn/end").data.reason.kind, "aborted");
         await until(async () => heldClosed, Boolean);
         assert.ok(
           rows
@@ -291,33 +256,46 @@ test(
         );
       },
     );
-    await t.test('stream total timeout preserves partial output and writes bounded diagnostics', async () => {
-      mode = 'hold';
-      held = undefined;
-      heldClosed = false;
-      const id = await submit();
-      const rows = await ended(id);
-      assert.notEqual(rows.find(row => row.type === 'turn/end').data.reason.kind, 'completed');
-      assert.match(JSON.stringify(rows), /GEA_NETWORK_TIMEOUT/);
-      assert.match(JSON.stringify(rows), /总时限/);
-      assert.match(JSON.stringify(rows), /已收到响应/);
-      assert.doesNotMatch(JSON.stringify(rows), /这不是参数问题/);
-      await until(async () => heldClosed, Boolean);
-      const log = await readFile(app.runtime + '/server.log', 'utf8');
-      const failure = log.split('\n').filter(line => line.includes('GEA_MODEL_FAILURE')).map(line => {
-        try { return JSON.parse(line.slice(line.indexOf('{'))); } catch { return null; }
-      }).find(row => row?.sessionId === id);
-      assert.ok(failure, log.slice(-3000));
-      assert.equal(failure.code, 'GEA_NETWORK_TIMEOUT');
-      assert.equal(failure.stage, '流式读取');
-      assert.ok(failure.responseReceivedMs >= 0);
-      assert.ok(failure.elapsedMs >= 900);
-      assert.equal(failure.textChars, parts.join('').length);
-      assert.equal(failure.timeoutMs, 1000);
-      assert.doesNotMatch(JSON.stringify(failure), /fixture-personal-model-secret|源数据/);
-      const request = log.split('\n').find(line => line.includes('GEA_MODEL_REQUEST') && line.includes(failure.requestId));
-      assert.ok(request, 'failure must correlate with its request');
-    });
+    await t.test(
+      "stream total timeout preserves partial output and writes bounded diagnostics",
+      async () => {
+        mode = "hold";
+        held = undefined;
+        heldClosed = false;
+        const id = await submit();
+        const rows = await ended(id);
+        assert.notEqual(rows.find((row) => row.type === "turn/end").data.reason.kind, "completed");
+        assert.match(JSON.stringify(rows), /GEA_NETWORK_TIMEOUT/);
+        assert.match(JSON.stringify(rows), /总时限/);
+        assert.match(JSON.stringify(rows), /已收到响应/);
+        assert.doesNotMatch(JSON.stringify(rows), /这不是参数问题/);
+        await until(async () => heldClosed, Boolean);
+        const log = await readFile(app.runtime + "/server.log", "utf8");
+        const failure = log
+          .split("\n")
+          .filter((line) => line.includes("GEA_MODEL_FAILURE"))
+          .map((line) => {
+            try {
+              return JSON.parse(line.slice(line.indexOf("{")));
+            } catch {
+              return null;
+            }
+          })
+          .find((row) => row?.sessionId === id);
+        assert.ok(failure, log.slice(-3000));
+        assert.equal(failure.code, "GEA_NETWORK_TIMEOUT");
+        assert.equal(failure.stage, "流式读取");
+        assert.ok(failure.responseReceivedMs >= 0);
+        assert.ok(failure.elapsedMs >= 900);
+        assert.equal(failure.textChars, parts.join("").length);
+        assert.equal(failure.timeoutMs, 1000);
+        assert.doesNotMatch(JSON.stringify(failure), /fixture-personal-model-secret|源数据/);
+        const request = log
+          .split("\n")
+          .find((line) => line.includes("GEA_MODEL_REQUEST") && line.includes(failure.requestId));
+        assert.ok(request, "failure must correlate with its request");
+      },
+    );
     await t.test(
       "changing environment closes an active model stream and clears authentication",
       async () => {
@@ -332,10 +310,7 @@ test(
         assert.equal(changed.value.authenticated, false);
         await until(async () => heldClosed, Boolean);
         const rows = await ended(id);
-        assert.notEqual(
-          rows.find((row) => row.type === "turn/end").data.reason.kind,
-          "completed",
-        );
+        assert.notEqual(rows.find((row) => row.type === "turn/end").data.reason.kind, "completed");
         assert.ok(
           rows
             .filter((row) => row.type === "assistant/message")

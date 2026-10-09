@@ -1,5 +1,5 @@
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

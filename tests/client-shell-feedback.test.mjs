@@ -3,7 +3,7 @@
  * 会话区命名、左侧菜单选中态、收起后品牌居中、AI 工作台文字对齐、
  * 宿主兜底品牌文案、销售计划筛选默认收起。
  */
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium } from "@playwright/test";
