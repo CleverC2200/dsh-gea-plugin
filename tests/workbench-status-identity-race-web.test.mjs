@@ -2,6 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 // Hold the iframe's status request until the Host moves from A to B, while its
 // parent still carries A's last confirmed projection.
@@ -58,7 +59,7 @@ test(
       holdIdentity ? route.abort() : route.continue(),
     );
     await page.route("**/api/gea-proof/status", async (route) => {
-      if (!route.request().frame().url().includes("/api/gea-proof/workbench") || statusResponse)
+      if (!route.request().frame().url().includes("/api/agent-workbench/native?") || statusResponse)
         return route.continue();
       const requestScope = await route
         .request()
@@ -73,8 +74,8 @@ test(
       await route.fulfill({ response }).catch(() => {});
     });
     await page.goto(app.origin);
+    const frame = await openSalesPlan(page);
     await statusStarted.promise;
-    const frame = page.frameLocator("iframe[data-gea-workbench]");
     const projected = () => frame.locator("body").evaluate(() => window.identitySnapshots?.at(-1));
     await expect.poll(async () => (await projected())?.scope).toBe(authorityA.scope);
     holdIdentity = true;

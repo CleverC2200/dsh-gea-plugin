@@ -45,16 +45,6 @@ test(
     await mkdir(join(agentsHome, "skills", "inventory-probe"), { recursive: true });
     await writeFile(join(agentsHome, "skills", "inventory-probe", "SKILL.md"), probeSkill);
     await mkdir(join(agentsHome, "skills", "tdd"), { recursive: true });
-    await mkdir(join(agentsHome, "skills", "reference-scope"), { recursive: true });
-    await mkdir(join(agentsHome, "references"), { recursive: true });
-    await writeFile(
-      join(agentsHome, "skills", "reference-scope", "SKILL.md"),
-      "---\nname: reference-scope\ndescription: 需求预测规则测试\n---\n先读 [规则](../../references/rules.md)\n",
-    );
-    await writeFile(
-      join(agentsHome, "references", "rules.md"),
-      "按实际期间查询；缺失数据不能编造。\n",
-    );
     await writeFile(
       join(agentsHome, "skills", "tdd", "SKILL.md"),
       "---\nname: tdd\ndescription: DEVELOPER_SKILL_MUST_NOT_LEAK\n---\nDeveloper-only rules.\n",
@@ -92,7 +82,7 @@ test(
     );
     await writeFile(
       join(realRoot, "skills", "probe", "SKILL.md"),
-      "---\nname: inventory-real\ndescription: 真模块探针。\n---\n\n规则。\n",
+      "---\nname: inventory-real\ndescription: 真模块探针。\n---\n\n先读 [规则](../../references/rules.md)\n",
     );
     await writeFile(
       join(realRoot, "plugin.json"),
@@ -116,6 +106,11 @@ test(
         consumer: { consumerType: "AGENT", consumerCode: "branch-inventory" },
         capabilities: ["governed-sql-read"],
       }),
+    );
+    await mkdir(join(realRoot, "references"), { recursive: true });
+    await writeFile(
+      join(realRoot, "references", "rules.md"),
+      "按实际期间查询；缺失数据不能编造。\n",
     );
     await currentHtmlResource(probeRoot);
     await currentHtmlResource(realRoot);
@@ -298,8 +293,8 @@ test(
         const name = results.length === 0 ? "skill" : "skill_reference_read";
         const args =
           results.length === 0
-            ? { name: "reference-scope" }
-            : { skill: "reference-scope", path: "../../references/rules.md" };
+            ? { name: "inventory-real" }
+            : { skill: "inventory-real", path: "../../references/rules.md" };
         res.end(
           results.length < 2
             ? event(
@@ -1635,7 +1630,7 @@ test(
           .join("\n");
         assert.match(initialSystem, /沿用用户语言及指定格式/);
         const results = modelRequests[2].messages.filter((x) => x.role === "tool");
-        assert.match(results[0].content, /reference-scope/);
+        assert.match(results[0].content, /inventory-real/);
         assert.match(results[1].content, /按实际期间查询；缺失数据不能编造/);
         assert.ok(!rows.some((x) => x.type === "tool/call" && x.data.name.includes("mcp")));
         assert.equal(rows.find((x) => x.type === "turn/end").data.reason.kind, "completed");
