@@ -49,7 +49,8 @@
     "test:delivery": "node --test scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs",
     "check:knowledge": "node ../dsh-agent-workbench/scripts/check-agent-knowledge.mjs --root . --config docs/agent-knowledge.json",
     "delivery:packages": "node scripts/deliver-packages.mjs",
-    "test:delivery:packages": "node --test scripts/deliver-packages.test.mjs"
+    "test:delivery:packages": "node --test scripts/deliver-packages.test.mjs scripts/plugin-reception.test.mjs",
+    "delivery:reception": "node scripts/plugin-reception.mjs"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "link:../../../current-mainline-closeout-44/upstream-assets/genui-0.11.3",

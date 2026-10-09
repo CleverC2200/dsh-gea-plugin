@@ -1,0 +1,5 @@
+{
+  "source": ".scratch/agent-preset-installable-delivery-20261009/evidence/reception/observe-03.json",
+  "sha256": "24d2ff11ce8e66180b189bfd9748fb3b87f66165524c983186dcab2df6598477",
+  "projection": "observation; at and SDK machine paths removed; semantic fields retained"
+}

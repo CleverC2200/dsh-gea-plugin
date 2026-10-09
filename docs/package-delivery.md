@@ -66,7 +66,21 @@ corepack pnpm run test:delivery:packages
 
 成功目录含 packages 下的三个 tgz、SHA256SUMS、INSTALL.md、manifest.json 和 evidence 元数据/锁/安全诊断。成功后移除本次新建生产 stage 及其 node_modules，保留生成图的锁。manifest 的 source/build 绝对路径只用于私有来源核对，不是用户安装前提；包内不能含开发 link、机器路径、强制辅助插件或另一份 SDK。
 
-`manifest.status=packaged` 只证明本次打包与静态合同。官方 PluginManager 安装、Loader 装载、配置/预设公开结果和 Native 由接收者另行验证。沿 [现有安装说明](install.md) 的官方 runProfilePnpm 与 freeze-package-profile 协议验证新普通 profile 的完整实际图。包自身 shrinkwrap 不能代替 profile 锁，不能将本机 SDK source link 写进用户安装步骤。
+`manifest.status=packaged` 只证明本次打包与静态合同。普通三包的官方 PluginManager 安装、Loader、资源及预设接收统一进入 `delivery:reception`，不再手工生成接受结论。Native、真实模型和业务仍分别验证。包自身 shrinkwrap 不能代替 profile 锁，不能将本机 SDK source link 写进用户安装步骤。
+
+## 普通安装与 Host 接收
+
+```sh
+corepack pnpm run delivery:reception -- --manifest /absolute/delivery/manifest.json --core /absolute/registered-core --pnpm /absolute/registered-core/apps/desktop/node_modules/pnpm/bin/pnpm.mjs --home /absolute/new-home --evidence /absolute/new-evidence
+```
+
+五个参数都是绝对路径，Home 和 evidence 的父目录已存在，而这两个目标目录必须不存在并互不包含。入口先核固定 Core、三份 tar 的名称、版本及摘要，再独占新 Home 和独立 evidence。它复用已验证的普通 profile harness，顺序执行官方安装及实际 Loader/公共服务观察，不复用旧用户 patch、辅助包、SDK source link 或凭据。不启动 Native，不调用模型或业务，对观察过程的出网尝试直接拒绝。
+
+安装成功后还必须确认三 Host、三个 client graph 入口、所有已声明 SDK peer 的实际宿主路由、六个业务资源、九文档完整 standard 和智能编排默认。任何一步失败返回非零，保留失败 Home、阶段及私有诊断，不执行下一步，不生成 ACCEPTANCE.json。终端只输出稳定错误码或成功阶段，不输出原日志。
+
+仅成功接收在新 evidence 中生成 ACCEPTANCE.json，绑定交付 manifest、实际三 tar 集合、安装及观察回执 SHA，以及同一个 Core/Profile。`result.json` 为本次入口结果。接收入口不改原 tgz、manifest 或已有交付文件，打包仍只称 packaged。浏览器执行、Native、业务和真实模型不在这个接收结论内。
+
+本地回归为 `test:delivery:packages`。历史 observe-02 投影有两项真实失败：默认 APS 入口缺失，销售资源缺四份 Skill。fixtures 保存原文件摘要，用相同语义检查分别证明失败；observe-03 仅用于绿色语义重放，其历史回执没有新的集合绑定，不能据此生成新的接收证明。
 
 可选官方 CLI 语法为 `dsh plugin --profile <name> add <tgz绝对路径>`，已核固定 Core apps/cli/src/args.ts 的实际命令帮助。默认交付 INSTALL.md 以 GUI 操作为主。
 
