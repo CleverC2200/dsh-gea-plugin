@@ -29,7 +29,7 @@ const assertOwnerReleased = async (page, owner) => {
   assert.equal(reply.value.error, "PAGE_OWNER_RELEASED");
 };
 const assertOldFrameHidden = async (frame) => {
-  assert.ok(frame, "Capture the actual authorized iframe before identity revocation");
+  assert.ok(frame, "Capture the actual iframe instance before identity revocation");
   await expect
     .poll(() =>
       frame.evaluate((element) => {
@@ -326,7 +326,6 @@ test(
   },
   async (t) => {
     const { app, page } = await stockReferencePage(t);
-    const oldFrame = await htmlFrameElement(page, "inventory-fc").elementHandle();
     const agentsHeld = Promise.withResolvers();
     const openHeld = Promise.withResolvers();
     const release = Promise.withResolvers();
@@ -363,6 +362,7 @@ test(
     assert.equal(heldOpenReply.status, 200);
     const owner = heldOpenReply.value.owner;
     assert.match(owner, /^[0-9a-f-]{36}$/);
+    const oldFrame = await htmlFrameElement(page, "inventory-fc").elementHandle();
     await app.rpc("logout");
     await expect
       .poll(async () =>
