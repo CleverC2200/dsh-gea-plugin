@@ -82,5 +82,10 @@ export async function freezeProfileWindow({
   const request = resolve(directory, "fixture-window-request.json");
   signal?.throwIfAborted();
   await save(request, window);
-  return { window, request };
+  return {
+    window,
+    request,
+    combination: combination.id ?? null,
+    core: JSON.parse(await readFile(candidateFile, "utf8")).core,
+  };
 }

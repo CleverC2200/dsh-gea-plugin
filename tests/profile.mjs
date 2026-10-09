@@ -14,6 +14,7 @@ import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
 import { freezeProfileWindow } from "./fixtures/profile-window.mjs";
 import { withSourceSetup } from "./fixtures/source-test.mjs";
+import { waitProfileReady } from "./fixtures/profile-ready.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
 /** Decode persisted tool receipts at the test boundary; never omit a malformed result. */
@@ -365,6 +366,12 @@ async function createProfile(t, options) {
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
+    let previousHost;
+    try {
+      previousHost = await readFile(resolve(runtime, "source-host.json"), "utf8");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
     t.signal?.throwIfAborted();
     child = spawn(
       options.executablePath ?? process.execPath,
@@ -444,46 +451,32 @@ async function createProfile(t, options) {
         if (process.env.GEA_TEST_SOURCE_CORE === "1" && !options.desktopGraph)
           appendFileSync(resolve(runtime, "server.log"), data, { mode: 0o600 });
       });
-    const deadline = Date.now() + (options.startupTimeoutMs ?? 45000);
-    let launch;
-    const observedStages = new Set();
-    while (Date.now() < deadline) {
-      t.signal?.throwIfAborted();
-      if (process.env.GEA_TEST_LIFECYCLE_RECEIPT && !options.desktopGraph) {
-        for (const [file, event] of [
-          ["core-source.json", "admission-passed-observed"],
-          ["source-host.json", "host-spawn-observed"],
-        ]) {
-          if (observedStages.has(event)) continue;
-          try {
-            await readFile(resolve(runtime, file));
-            observedStages.add(event);
-            recordLifecycle({ event });
-          } catch (error) {
-            if (error.code !== "ENOENT") throw error;
-          }
+    const source =
+      process.env.GEA_TEST_SOURCE_CORE === "1" && !options.desktopGraph
+        ? { combination: admitted.combination, core: admitted.core, previous: previousHost }
+        : undefined;
+    const launch = await waitProfileReady({
+      child,
+      runtime,
+      signal: t.signal,
+      timeoutMs: options.startupTimeoutMs ?? 45000,
+      source,
+      readOutput: () => output,
+      readLaunchLog: async () => {
+        if (options.desktopGraph || process.env.GEA_TEST_SOURCE_CORE === "1") return output;
+        try {
+          return (await readFile(resolve(runtime, "server.log"), "utf8")).slice(logOffset);
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+          return "";
         }
-      }
-      let freshLog = "";
-      try {
-        freshLog = (await readFile(resolve(runtime, "server.log"), "utf8")).slice(logOffset);
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
-      launch = [
-        ...(options.desktopGraph || process.env.GEA_TEST_SOURCE_CORE === "1"
-          ? output
-          : freshLog
-        ).matchAll(/dsh web: (http[^\s]+)(?=\r?\n)/g),
-      ].at(-1)?.[1];
-      if (launch) break;
-      if (child.exitCode !== null) throw new Error("Profile exited: " + output);
-      await delay(50);
-    }
-    if (!launch) throw new Error("Profile not ready: " + output);
+      },
+      recordLifecycle,
+    });
     origin = new URL(launch).origin;
     recordLifecycle({ event: "host-ready", origin });
-    const exchange = await fetch(launch, { redirect: "manual" });
+    t.signal?.throwIfAborted();
+    const exchange = await fetch(launch, { redirect: "manual", signal: t.signal });
     cookie = exchange.headers
       .getSetCookie()
       .map((value) => value.split(";")[0])
