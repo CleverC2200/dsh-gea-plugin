@@ -3,6 +3,11 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { profile } from "./profile.mjs";
+import {
+  openSalesPlan,
+  openWorkbenchPage,
+  salesPlanFrameElement,
+} from "./fixtures/business-page.mjs";
 
 const plan = {
   planId: "9007199254740993",
@@ -137,12 +142,18 @@ test(
         ? route.continue()
         : route.fulfill({ json: { ok: true, value: { status: "pending" } } }),
     );
+    let owner;
+    page.on("response", async (response) => {
+      if (!response.url().endsWith("/api/agent-workbench/page") || !response.ok()) return;
+      if (response.request().postDataJSON()?.operation === "open")
+        owner = (await response.json()).owner;
+    });
     await page.goto(app.origin);
     await page
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    const frame = page.frameLocator("iframe[data-gea-workbench]");
+    const frame = await openSalesPlan(page);
     try {
       await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
       await frame.locator(".gea-login-qr img").waitFor();
@@ -150,7 +161,7 @@ test(
       assert.equal(await frame.getByRole("radio", { name: "测试", exact: true }).isChecked(), true);
       assert.equal(await frame.locator('input[type="url"], input[type="text"]').count(), 0);
       assert.equal(await page.locator('[contenteditable="true"]').count(), 0);
-      const loginBounds = await page.locator("iframe[data-gea-workbench]").boundingBox();
+      const loginBounds = await salesPlanFrameElement(page).boundingBox();
       assert.deepEqual(loginBounds, { x: 0, y: 0, width: 1536, height: 920 });
       await mkdir(".runtime/web-evidence", { recursive: true });
       await page.screenshot({
@@ -213,10 +224,10 @@ test(
       );
       assert.equal(await page.locator(".gea-agent-panel").count(), 0);
       assert.equal(await frame.locator("textarea").count(), 0);
-      const bounds = await page.locator("iframe[data-gea-workbench]").boundingBox();
+      const bounds = await salesPlanFrameElement(page).boundingBox();
       assert.ok(bounds.x > 200 && bounds.width < 1100, JSON.stringify(bounds));
       // The embedded workbench must resize its columns independently of the outer window.
-      const workbenchFrame = page.locator("iframe[data-gea-workbench]");
+      const workbenchFrame = salesPlanFrameElement(page);
       const originalStyle = await workbenchFrame.getAttribute("style");
       for (const width of [860, 1200, 580]) {
         await workbenchFrame.evaluate((element, width) => {
@@ -312,11 +323,27 @@ test(
       );
       // The brand mark is a label now: clicking it must not swap the page.
       await brand.click();
-      await expect(page.locator("iframe[data-gea-workbench]")).toBeVisible();
+      await expect(salesPlanFrameElement(page)).toBeVisible();
       for (const view of ["business", "conversation"]) {
         if (view === "conversation") {
-          await page.getByRole("button", { name: "AI工作台", exact: true }).click();
-          await expect(page.locator("iframe[data-gea-workbench]")).toHaveCount(0);
+          await expect.poll(() => typeof owner).toBe("string");
+          const releasedOwner = owner;
+          await openWorkbenchPage(page, "原生对话");
+          await expect(salesPlanFrameElement(page)).toBeHidden();
+          await expect
+            .poll(async () => {
+              const response = await fetch(app.origin + "/api/agent-workbench/page", {
+                method: "POST",
+                headers: {
+                  Cookie: app.cookie,
+                  "Content-Type": "application/json",
+                  Origin: app.origin,
+                },
+                body: JSON.stringify({ operation: "context", owner: releasedOwner }),
+              });
+              return { status: response.status, ...(await response.json()) };
+            })
+            .toMatchObject({ status: 400, error: "PAGE_OWNER_RELEASED" });
         }
         await page.getByRole("button", { name: "账户菜单", exact: true }).click();
         await page.getByRole("menuitem", { name: "设置", exact: true }).click();
@@ -324,8 +351,8 @@ test(
         await page.getByRole("button", { name: "关闭", exact: true }).click();
       }
       // Back to the business page so the reload below still restores the workbench.
-      await page.locator('[data-gea-business-entry="gea-proof"]').click();
-      await expect(page.locator("iframe[data-gea-workbench]")).toBeVisible();
+      await openSalesPlan(page);
+      await expect(salesPlanFrameElement(page)).toBeVisible();
       assert.equal(await page.getByRole("button", { name: "DSH 对话", exact: true }).count(), 0);
       await page.reload();
       await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
@@ -339,7 +366,7 @@ test(
       );
       await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
       await page.locator('[contenteditable="true"]').waitFor();
-      const narrowFrame = await page.locator("iframe[data-gea-workbench]").boundingBox();
+      const narrowFrame = await salesPlanFrameElement(page).boundingBox();
       assert.ok(
         narrowFrame && narrowFrame.height > 150 && narrowFrame.width > 250,
         JSON.stringify(narrowFrame),
