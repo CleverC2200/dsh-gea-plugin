@@ -23,3 +23,7 @@ GEA Host 管唯一业务身份、凭据、Consumer 授权与受控执行；clien
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 自动检查核对原回执一致性，业务验收另据对应证据判断         | `delivery:check` 对 failed/unknown 返回非零（底层CLI3）；`test:delivery` 重放r31真实预算矛盾。报告浏览使用 `delivery:report`，详见[交付核对](docs/delivery-check.md)。 |
 | 收尾前按原规格确认完整目标范围；用户暂停和票据依赖分别保留 | `delivery:verify-goal` 只接受声明目标全部验证且无在途工作，未完成底层CLI返回4；`test:delivery`覆盖阶段done但有独立下一步、暂停和缺目标。工具不授予授权或自动接续。     |
+
+| 执行归属规则 | 执行机制 |
+| --- | --- |
+| 迟到的失败、成功与回读视图只归原执行，持久化期间失去归属不能发布当前证据 | `PromptExecutionState` 私有持有输出 State、执行 lease 与 store；`test:prompt-execution` 在 Node 24 无 SDK/deps 下核单一归属并运行真实文件 IO 行为，接入 `delivery-fixtures`；公开 Host hooks 的 `tests/execution-convergence.test.mjs` 在已准备官方依赖的 checkout 覆盖旧错误与资源准入/回读。预算及 UI mask 仍由原 admission 状态管理。 |

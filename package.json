@@ -52,7 +52,9 @@
     "test:delivery:packages": "node --test scripts/deliver-packages.test.mjs scripts/plugin-reception.test.mjs",
     "delivery:reception": "node scripts/plugin-reception.mjs",
     "delivery:report": "node scripts/delivery-check.mjs",
-    "delivery:verify-goal": "node scripts/delivery-check.mjs --verify-goal"
+    "delivery:verify-goal": "node scripts/delivery-check.mjs --verify-goal",
+    "check:prompt-execution": "node scripts/prompt-execution-check.mjs",
+    "test:prompt-execution": "node scripts/prompt-execution-check.mjs && node --test tests/prompt-execution-state.test.mjs"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "link:../../../current-mainline-closeout-44/upstream-assets/genui-0.11.3",
