@@ -27,6 +27,8 @@
     },
     "gea-html-inventory-qll": {
       "label": "全链库存",
+      "presetName": "全链库存管理Agent",
+      "description": "全链库存分布、趋势与缺口的只读查询和解释，支持上下文压缩、文件操作、规划、任务和协作；业务执行遵循当前身份与资源授权。",
       "consumerCode": "full-chain-inventory",
       "skills": [
         "inventory-qll"
@@ -46,6 +48,8 @@
     },
     "gea-html-inventory-fc": {
       "label": "分仓库存",
+      "presetName": "分仓库存Agent",
+      "description": "分仓库存、订单缺口与补货建议的只读查询和解释，支持上下文压缩、文件操作、规划、任务和协作；业务执行遵循当前身份与资源授权。",
       "consumerCode": "branch-inventory",
       "skills": [
         "inventory-fc"
@@ -53,6 +57,8 @@
     },
     "gea-html-inventory-dealer": {
       "label": "经销商库存",
+      "presetName": "经销商库存Agent",
+      "description": "授权客户库存健康、覆盖与补货分析的只读查询和解释，支持上下文压缩、文件操作、规划、任务和协作；客户范围及业务执行遵循当前身份与资源授权。",
       "consumerCode": "dealer-inventory-replenishment",
       "skills": [
         "inventory-dealer"
