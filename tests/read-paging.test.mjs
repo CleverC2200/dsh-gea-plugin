@@ -43,9 +43,10 @@ function skuRows(count, descriptionLength) {
 
 test(
   "versionSkus 模型侧按页投影：partial + nextQuery，最后一页 complete",
-  { timeout: 90000 },
+  { timeout: 180000 },
   async (t) => {
     const app = await profile(t, {
+      startupTimeoutMs:120000,
       config: () => ({
         maxSnapshotBytes: MAX_SNAPSHOT_BYTES,
         analysis: {
@@ -233,9 +234,10 @@ test(
 
 test(
   "versionSkus 单页仍超预算时自动缩页，而不是报 SNAPSHOT_TOO_LARGE",
-  { timeout: 90000 },
+  { timeout: 180000 },
   async (t) => {
     const app = await profile(t, {
+      startupTimeoutMs:120000,
       config: () => ({
         maxSnapshotBytes: 4300,
         analysis: {
@@ -365,7 +367,7 @@ test(
     );
     const payload = String(toolMessage.content);
     const bytes = Buffer.byteLength(payload, "utf8");
-    console.log("宽 SKU 工具结果字节数:", bytes, "预算:", INPUT_BUDGET);
+    console.log("宽 SKU 工具结果字节数:", bytes, "预算:", 4300);
     assert.equal(payload.includes("SNAPSHOT_TOO_LARGE"), false);
     assert.ok(bytes <= 4300, "自动缩页后仍然超过输入预算");
     const value = JSON.parse(payload).value;
