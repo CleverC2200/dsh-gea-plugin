@@ -205,6 +205,7 @@ test(
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toContainText("计划");
     const draftLabel = (await editor.innerText()).trim();
+    await expect(editor.getByTitle(draftLabel, { exact: true })).toBeVisible();
     await editor.click();
     await page.keyboard.press("End");
     await page.keyboard.insertText("解释引用的这个金额");
@@ -228,13 +229,6 @@ test(
       /dsh-page:R[a-f0-9]{12}/,
     );
     assert.equal(/R[a-f0-9]{12}/.test(await message.innerText()), false);
-    assert.ok(
-      await page.evaluate(
-        (label) =>
-          [...CSS.highlights.get("dsh-page-reference")].some((range) => range.toString() === label),
-        draftLabel,
-      ),
-    );
     assert.match(
       JSON.stringify(prompts.flatMap((p) => p.messages.filter((m) => m.role === "tool"))),
       /row:p/,
@@ -410,12 +404,27 @@ test(
     page.on("console", (m) => {
       if (/violates.*Content Security Policy/i.test(m.text())) errors.push(m.text());
     });
+    const openedSessions = [];
+    page.on("response", async (response) => {
+      if (!response.url().endsWith("/api/agent-workbench/page") || !response.ok()) return;
+      const request = response.request().postDataJSON();
+      if (request?.operation !== "open" || request.pageId !== "inventory-fc") return;
+      const opened = await response.json();
+      openedSessions.push({ sessionId: request.sessionId, owner: opened.owner });
+    });
     await page.goto(app.origin);
     await page
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
     await openWorkbenchPage(page, "分仓库存");
+    await expect.poll(() => openedSessions.at(-1)?.owner).toEqual(expect.any(String));
+    const selected = await app.remote("session/selectModel", {
+      sessionId: openedSessions.at(-1).sessionId,
+      provider: "gea-analysis",
+      model: "fixture-model",
+    });
+    assert.equal(selected.ok, true, JSON.stringify(selected));
     const iframe = htmlFrameElement(page, "inventory-fc");
     await expect(iframe)
       .toHaveAttribute("sandbox", "allow-scripts allow-downloads")

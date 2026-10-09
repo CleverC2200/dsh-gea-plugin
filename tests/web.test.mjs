@@ -162,7 +162,26 @@ test(
       assert.equal(await frame.locator('input[type="url"], input[type="text"]').count(), 0);
       assert.equal(await page.locator('[contenteditable="true"]').count(), 0);
       const loginBounds = await salesPlanFrameElement(page).boundingBox();
-      assert.deepEqual(loginBounds, { x: 0, y: 0, width: 1536, height: 920 });
+      // The native page fills its Workbench business column inside Core's standard main.
+      const businessColumn = salesPlanFrameElement(page).locator("..");
+      await expect
+        .poll(() =>
+          salesPlanFrameElement(page).evaluate((iframe) => {
+            const column = iframe.closest(".agent-workbench-business");
+            if (!column) throw Error("Current Workbench must own the native business column");
+            const a = iframe.getBoundingClientRect(),
+              b = column.getBoundingClientRect();
+            return [a.x - b.x, a.y - b.y, a.width - b.width, a.height - b.height];
+          }),
+        )
+        .toEqual([0, 0, 0, 0]);
+      const navigationLayout = await page.locator("[data-shell-bottom]").evaluate((bottom) => ({
+        sidebar: Number.parseFloat(getComputedStyle(bottom.parentElement).gridTemplateColumns),
+        collapsed: bottom.parentElement.getAttribute("data-sidebar-collapsed"),
+      }));
+      assert.deepEqual(navigationLayout, { sidebar: 280, collapsed: null });
+      assert.equal(loginBounds.height, 920);
+      assert.ok(await businessColumn.isVisible());
       await mkdir(".runtime/web-evidence", { recursive: true });
       await page.screenshot({
         path: ".runtime/web-evidence/login-desktop.png",
@@ -224,6 +243,14 @@ test(
       );
       assert.equal(await page.locator(".gea-agent-panel").count(), 0);
       assert.equal(await frame.locator("textarea").count(), 0);
+      await expect
+        .poll(() =>
+          page.locator("[data-shell-bottom]").evaluate((bottom) => ({
+            sidebar: Number.parseFloat(getComputedStyle(bottom.parentElement).gridTemplateColumns),
+            collapsed: bottom.parentElement.getAttribute("data-sidebar-collapsed"),
+          })),
+        )
+        .toEqual(navigationLayout);
       const bounds = await salesPlanFrameElement(page).boundingBox();
       assert.ok(bounds.x > 200 && bounds.width < 1100, JSON.stringify(bounds));
       // The embedded workbench must resize its columns independently of the outer window.
