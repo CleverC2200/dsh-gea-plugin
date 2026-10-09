@@ -99,21 +99,21 @@ test(
       app.requests.filter((request) => request.url.pathname.endsWith("/getUserInfo")).length >= 2,
     );
 
-    await mkdir(".impeccable/review", { recursive: true });
+    await mkdir(".runtime/api-log-evidence", { recursive: true });
     await page.screenshot({
-      path: ".impeccable/review/desktop.png",
+      path: ".runtime/api-log-evidence/desktop.png",
       fullPage: true,
     });
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator(".gea-api-log-center")).toBeVisible();
     await page.screenshot({
-      path: ".impeccable/review/mobile.png",
+      path: ".runtime/api-log-evidence/mobile.png",
       fullPage: true,
     });
     await page.locator(".gea-api-call-row").nth(1).click();
     await expect(page.locator(".gea-api-detail")).toBeInViewport();
     await page.screenshot({
-      path: ".impeccable/review/mobile-detail.png",
+      path: ".runtime/api-log-evidence/mobile-detail.png",
     });
     assert.deepEqual(errors, []);
   },
