@@ -347,6 +347,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
   const htmlPackages = ctx.workbenchPages.packages().filter(item=>item.manifest.gea?.contract === "gea-html-v2");
   const releaseOriginalResources = await ctx.agentResources.register([{
     id:"gea-readonly",enabled:config.workbenchCapability?.enabled !== false,label:profileFor("gea-readonly")!.label,
+    presetName:profileFor("gea-readonly")!.presetName,description:profileFor("gea-readonly")!.description,
     root:fileURLToPath(new URL("../",import.meta.url)),prompt:"presets/prompt-policy.json",profileKey:"gea-readonly",
     profile:profileFor("gea-readonly")!
   }]);

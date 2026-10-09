@@ -11,7 +11,9 @@
         "sinian-forecast-scope",
         "sinian-demand-baseline",
         "sinian-forecast-review"
-      ]
+      ],
+      "presetName": "销售计划Agent",
+      "description": "销售计划与需求预测只读查询，保留在线审批证据入口，支持上下文压缩、文件操作、规划、任务和协作；业务写入仍需当前身份、权限与明确授权。"
     },
     "gea-html-inventory-apsplan": {
       "label": "产销协同",
@@ -23,7 +25,9 @@
       ],
       "crossConsumers": [
         "sales_forecast"
-      ]
+      ],
+      "presetName": "产销协同Agent",
+      "description": "产销协同的预测、计划、生产、库存与履约分析，支持上下文压缩、文件操作、规划、任务和协作；沿用 APS 与已声明的销售预测查询范围。"
     },
     "gea-html-inventory-qll": {
       "label": "全链库存",
