@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import YAML from "yaml";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
@@ -40,7 +41,7 @@ const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 /** Native General/Models and Sidebar retain their real order while a public registrant changes. */
 test("设置左栏把「侧边卡片」排在「软件更新」前面", { timeout: 90000 }, async (t) => {
-  let fixtureFiles;
+  let fixtureFiles, profilePatch;
   const app = await profile(t, {
     async beforeStart({ runtime }) {
       const directory = resolve(runtime, "fixtures/settings-order");
@@ -73,7 +74,7 @@ test("设置左栏把「侧边卡片」排在「软件更新」前面", { timeou
       // Keep any actual profile entries instead of replacing a prepared user patch.
       let entries = [];
       try {
-        entries = JSON.parse(await readFile(patch, "utf8"));
+        entries = YAML.parse(await readFile(patch, "utf8"));
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
@@ -81,10 +82,17 @@ test("设置左栏把「侧边卡片」排在「软件更新」前面", { timeou
         insert: [{ id: "fixture-settings-order", name: resolve(directory, "index.js") }],
       });
       await writeFile(patch, JSON.stringify(entries));
-      fixtureFiles.push({ path: patch, sha256: digest(await readFile(patch)) });
+      profilePatch = {
+        path: patch,
+        sha256: digest(await readFile(patch)),
+        entry: { id: "fixture-settings-order", name: resolve(directory, "index.js") },
+      };
       const evidence = resolve(".runtime/settings-order-evidence");
       await mkdir(evidence, { recursive: true });
-      await writeFile(resolve(evidence, "input.json"), JSON.stringify(fixtureFiles, null, 2));
+      await writeFile(
+        resolve(evidence, "input.json"),
+        JSON.stringify({ fixtureFiles, profilePatch }, null, 2),
+      );
     },
     config: (base) => ({
       environment: "test",
@@ -151,4 +159,31 @@ test("设置左栏把「侧边卡片」排在「软件更新」前面", { timeou
   }
   for (const file of fixtureFiles)
     assert.equal(digest(await readFile(file.path)), file.sha256, file.path);
+  // Core may persist/normalize this user configuration; executable fixture inputs remain immutable.
+  const savedPatch = await readFile(profilePatch.path, "utf8");
+  await writeFile(resolve(".runtime/settings-order-evidence/saved-patch.yml"), savedPatch);
+  await writeFile(
+    resolve(".runtime/settings-order-evidence/saved-patch.json"),
+    JSON.stringify(
+      {
+        beforeSha256: profilePatch.sha256,
+        afterSha256: digest(savedPatch),
+        entry: profilePatch.entry,
+      },
+      null,
+      2,
+    ),
+  );
+  const includesEntry = (value) =>
+    Array.isArray(value)
+      ? value.some(includesEntry)
+      : value !== null &&
+        typeof value === "object" &&
+        ((value.id === profilePatch.entry.id && value.name === profilePatch.entry.name) ||
+          Object.values(value).some(includesEntry));
+  assert.equal(
+    includesEntry(YAML.parse(savedPatch)),
+    true,
+    "saved public configuration retains the real fixture registration",
+  );
 });
