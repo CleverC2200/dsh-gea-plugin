@@ -17,7 +17,10 @@ export async function freezeProfileWindow({
   sources,
   caseName,
   coreOnly,
+  signal,
+  recordLifecycle = () => {},
 }) {
+  signal?.throwIfAborted();
   const core = resolve(import.meta.dirname, "../../../../official-latest-standard");
   const candidateFile = process.env.GEA_TEST_CANDIDATE;
   if (!candidateFile) throw Error("PROFILE_CANDIDATE_REQUIRED");
@@ -27,9 +30,13 @@ export async function freezeProfileWindow({
     let selected = await readSourceSelection(runtime);
     if (!selected) {
       const composition = await prepareSourcePlugins(core, runtime, deployment, { sources });
+      signal?.throwIfAborted();
+      recordLifecycle({ event: "source-prepared" });
       await selectSourceCombination(runtime, composition.id, core);
+      recordLifecycle({ event: "source-selected" });
       selected = await readSourceSelection(runtime);
     }
+    signal?.throwIfAborted();
     combination = { kind: "selection", ...selected };
   }
   const budget = {
@@ -54,8 +61,10 @@ export async function freezeProfileWindow({
         }
       : {}),
   };
+  signal?.throwIfAborted();
   await save(freeze, frozen);
   const file = resolve(directory, "fixture-window.json");
+  signal?.throwIfAborted();
   await save(file, {
     status: "open",
     paused: false,
@@ -71,6 +80,7 @@ export async function freezeProfileWindow({
     freezeSha256: digest(await readFile(freeze)),
   };
   const request = resolve(directory, "fixture-window-request.json");
+  signal?.throwIfAborted();
   await save(request, window);
   return { window, request };
 }

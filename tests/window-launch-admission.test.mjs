@@ -196,9 +196,14 @@ test("the correctly frozen source-host enters only the loopback process fixture 
   assert.deepEqual(effects.network, []);
 });
 
-test("the isolated core CLI admits a valid declaration before delegating only to the loopback fixture", async (t) => {
+test("the isolated core CLI preserves its platform sandbox contract after valid admission", async (t) => {
   const fixture = await sourceWindow(t, "isolated-core-host");
+  const before = await snapshot(fixture.runtime);
   const result = fixture.run("start-isolated-validation.mjs");
+  if (process.platform !== "darwin") {
+    await assertNoEffects(fixture, result, /ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX/, before);
+    return;
+  }
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
@@ -236,9 +241,14 @@ test("a self-consistent artifact manifest cannot replace the frozen candidate so
   assert.deepEqual(effects.after, effects.before);
 });
 
-test("the isolated source CLI verifies its five-source snapshot before delegating only to the loopback fixture", async (t) => {
+test("the isolated source CLI verifies its snapshot and preserves its platform sandbox contract", async (t) => {
   const fixture = await sourceWindow(t, "isolated-source-host");
+  const before = await snapshot(fixture.runtime);
   const result = fixture.run("start-isolated-validation.mjs");
+  if (process.platform !== "darwin") {
+    await assertNoEffects(fixture, result, /ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX/, before);
+    return;
+  }
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
@@ -246,6 +256,22 @@ test("the isolated source CLI verifies its five-source snapshot before delegatin
   assert.equal(effects.processes[0].command, "/usr/bin/sandbox-exec");
   assert.deepEqual(effects.network, []);
 });
+
+for (const mode of ["isolated-core-host", "isolated-source-host"])
+  test(`${mode}: public runSourceProfile admits the process fixture independently of CLI sandbox support`, async (t) => {
+    const fixture = await sourceWindow(t, mode);
+    const sources =
+      mode === "isolated-source-host"
+        ? JSON.parse(await readFile(fixture.sourcesFile, "utf8"))
+        : undefined;
+    const result = fixture.run("runSourceProfile", { sources });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
+    const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
+    assert.equal(effects.processes.length, 1);
+    assert.deepEqual(effects.credentialReads, []);
+    assert.deepEqual(effects.network, []);
+  });
 
 async function assertNoEffects(fixture, result, expected, before) {
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));

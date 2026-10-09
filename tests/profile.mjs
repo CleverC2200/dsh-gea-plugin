@@ -55,6 +55,7 @@ export async function until(read, predicate, timeout = 10000) {
   throw new Error("Condition not reached: " + JSON.stringify(value).slice(-2500));
 }
 export async function profile(t, options = {}) {
+  t.signal?.throwIfAborted();
   const root = options.pluginRoot ?? defaultRoot;
   const sourcesFile = options.sourcesFile ?? process.env.GEA_TEST_SOURCE_INPUTS;
   if (!options.desktopGraph && !options.coreOnly) await readProfileSources(sourcesFile);
@@ -86,15 +87,24 @@ export async function profile(t, options = {}) {
     ],
     { stdio: "ignore" },
   );
+  const lifecycleStarted = performance.now();
   const recordLifecycle = (value) => {
     if (process.env.GEA_TEST_LIFECYCLE_RECEIPT)
       appendFileSync(
         process.env.GEA_TEST_LIFECYCLE_RECEIPT,
-        JSON.stringify({ testName: t.name, directory: dir, ...value }) + "\n",
+        JSON.stringify({
+          timestamp: new Date().toISOString(),
+          elapsedMs: performance.now() - lifecycleStarted,
+          testName: t.name,
+          directory: dir,
+          ...value,
+        }) + "\n",
         { mode: 0o600 },
       );
   };
   recordLifecycle({ event: "temporary-directory-created" });
+  const recordAbort = () => recordLifecycle({ event: "fixture-aborted" });
+  t.signal?.addEventListener("abort", recordAbort, { once: true });
   const requests = [];
   let route;
   const server = createServer(
@@ -232,6 +242,7 @@ export async function profile(t, options = {}) {
       ...(typeof options.config === "function" ? options.config(base) : options.config),
     }),
   );
+  let preparation;
   let child,
     childClosed,
     childIsClosed = true,
@@ -271,9 +282,11 @@ export async function profile(t, options = {}) {
     }
   }
   t.after(async () => {
+    t.signal?.removeEventListener("abort", recordAbort);
     let stopped = false;
     const errors = [];
     try {
+      await preparation?.catch(() => {});
       await stop();
       stopped = true;
     } catch (error) {
@@ -308,6 +321,8 @@ export async function profile(t, options = {}) {
         : new AggregateError(errors, "PROFILE_CLEANUP_FAILED", { cause: errors[0] });
   });
   async function start() {
+    t.signal?.throwIfAborted();
+    recordLifecycle({ event: "preparation-started" });
     const fixture = JSON.parse(await readFile(config, "utf8"));
     if (Object.values(fixture.serviceAccounts ?? {}).some((account) => account.keychainService))
       throw new Error("SOURCE_TEST_REQUIRES_FIXTURE_CREDENTIALS");
@@ -324,7 +339,7 @@ export async function profile(t, options = {}) {
         throw new Error("SOURCE_TEST_REQUIRES_LOOPBACK_SERVICES");
     const admitted = options.desktopGraph
       ? undefined
-      : await freezeProfileWindow({
+      : await (preparation = freezeProfileWindow({
           directory: dir,
           runtime,
           config,
@@ -332,7 +347,11 @@ export async function profile(t, options = {}) {
           sources: options.coreOnly ? undefined : await readProfileSources(sourcesFile),
           caseName: t.name,
           coreOnly: options.coreOnly,
-        });
+          signal: t.signal,
+          recordLifecycle,
+        }));
+    t.signal?.throwIfAborted();
+    recordLifecycle({ event: "preparation-frozen" });
     output = "";
     let logOffset = 0;
     await mkdir(runtime, { recursive: true, mode: 0o700 });
@@ -341,6 +360,7 @@ export async function profile(t, options = {}) {
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
+    t.signal?.throwIfAborted();
     child = spawn(
       options.executablePath ?? process.execPath,
       [
@@ -421,7 +441,24 @@ export async function profile(t, options = {}) {
       });
     const deadline = Date.now() + (options.startupTimeoutMs ?? 45000);
     let launch;
+    const observedStages = new Set();
     while (Date.now() < deadline) {
+      t.signal?.throwIfAborted();
+      if (process.env.GEA_TEST_LIFECYCLE_RECEIPT && !options.desktopGraph) {
+        for (const [file, event] of [
+          ["core-source.json", "admission-passed-observed"],
+          ["source-host.json", "host-spawn-observed"],
+        ]) {
+          if (observedStages.has(event)) continue;
+          try {
+            await readFile(resolve(runtime, file));
+            observedStages.add(event);
+            recordLifecycle({ event });
+          } catch (error) {
+            if (error.code !== "ENOENT") throw error;
+          }
+        }
+      }
       let freshLog = "";
       try {
         freshLog = (await readFile(resolve(runtime, "server.log"), "utf8")).slice(logOffset);
@@ -507,5 +544,6 @@ export async function profile(t, options = {}) {
   };
   await options.beforeStart?.({ runtime, config, credentialEnv: options.env ?? {} });
   await start();
+  recordLifecycle({ event: "fixture-actions-available" });
   return api;
 }

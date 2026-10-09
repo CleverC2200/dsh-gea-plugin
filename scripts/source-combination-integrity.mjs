@@ -101,7 +101,34 @@ export async function readSourceCombination(runtime, id, core, { readScope } = {
 /** Fix the resolved dependency graph, including built core files and transitive links. */
 export async function dependencyDigests(directories, readScope) {
   const files = {},
-    visited = new Set();
+    visited = new Set(),
+    pending = [];
+  let digestError;
+  async function completeFirst() {
+    const { file, result } = pending.shift();
+    const outcome = await result;
+    if (outcome.error) {
+      digestError = outcome.error;
+      throw outcome.error;
+    }
+    files[file] = outcome.value;
+  }
+  async function hash(file) {
+    if (readScope) {
+      files[file] = await fileDigest(file, readScope);
+      return;
+    }
+    // Keep discovery and insertion order. Every scheduled read settles before return.
+    files[file] = undefined;
+    pending.push({
+      file,
+      result: fileDigest(file).then(
+        (value) => ({ value }),
+        (error) => ({ error }),
+      ),
+    });
+    if (pending.length === 4) await completeFirst();
+  }
   async function visit(directory) {
     const physical = readScope
       ? await readScope.resolve(directory, { traverse: true })
@@ -111,18 +138,25 @@ export async function dependencyDigests(directories, readScope) {
     for (const entry of await readdir(physical, { withFileTypes: true })) {
       if (entry.name.startsWith(".")) continue;
       const file = join(physical, entry.name);
-      if (entry.isFile()) files[file] = await fileDigest(file, readScope);
+      if (entry.isFile()) await hash(file);
       else if (entry.isDirectory() || entry.isSymbolicLink()) {
         const resolved = readScope
           ? await readScope.resolve(file, { traverse: true })
           : await realpath(file);
         if (entry.isSymbolicLink()) files[file] = "link:" + resolved;
         if ((await lstat(resolved)).isDirectory()) await visit(resolved);
-        else files[resolved] = await fileDigest(resolved, readScope);
+        else await hash(resolved);
       }
     }
   }
-  for (const directory of directories) await visit(directory);
+  try {
+    for (const directory of directories) await visit(directory);
+    while (pending.length) await completeFirst();
+  } catch (error) {
+    const outcomes = await Promise.all(pending.map((entry) => entry.result));
+    // Earlier file failures retain precedence over a later discovery failure.
+    throw digestError ?? outcomes.find((outcome) => outcome.error)?.error ?? error;
+  }
   return files;
 }
 
