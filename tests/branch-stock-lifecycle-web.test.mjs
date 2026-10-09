@@ -28,6 +28,24 @@ const assertOwnerReleased = async (page, owner) => {
     .toBe(400);
   assert.equal(reply.value.error, "PAGE_OWNER_RELEASED");
 };
+const assertOldFrameHidden = async (frame) => {
+  assert.ok(frame, "Capture the actual authorized iframe before identity revocation");
+  await expect
+    .poll(() =>
+      frame.evaluate((element) => {
+        if (!element.isConnected) return true;
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return (
+          rect.width === 0 ||
+          rect.height === 0 ||
+          style.visibility === "hidden" ||
+          style.visibility === "collapse"
+        );
+      }),
+    )
+    .toBe(true);
+};
 const presentation = (page) =>
   page.evaluate(() => JSON.parse(localStorage.getItem("agent-workbench.presentation.v2")));
 const evidence = ".runtime/branch-stock-lifecycle-evidence";
@@ -236,6 +254,7 @@ test(
       await stockReferencePage(t);
     const before = (await identity(page)).scope;
     assert.equal(typeof before, "string");
+    const oldFrame = await htmlFrameElement(page, "inventory-fc").elementHandle();
     let release;
     const gate = new Promise((resolve) => {
       release = resolve;
@@ -258,7 +277,7 @@ test(
     assert.match(host.id, /^R[a-f0-9]{12}$/);
     await app.rpc("logout");
     await expect.poll(async () => (await identity(page)).scope).toBe(null);
-    await expect(htmlFrameElement(page, "inventory-fc")).toBeHidden();
+    await assertOldFrameHidden(oldFrame);
     await assertOwnerReleased(page, owner);
     release();
     await page.waitForTimeout(300);
@@ -307,6 +326,7 @@ test(
   },
   async (t) => {
     const { app, page } = await stockReferencePage(t);
+    const oldFrame = await htmlFrameElement(page, "inventory-fc").elementHandle();
     const agentsHeld = Promise.withResolvers();
     const openHeld = Promise.withResolvers();
     const release = Promise.withResolvers();
@@ -355,8 +375,9 @@ test(
       .toBe(false);
     release.resolve();
     await page.waitForTimeout(300);
-    await expect(htmlFrameElement(page, "inventory-fc")).toBeHidden();
+    await assertOldFrameHidden(oldFrame);
     await assertOwnerReleased(page, owner);
+    await expect(htmlFrameElement(page, "inventory-fc")).toHaveAttribute("src", /[?&]page=(?:&|$)/);
     await expect(page.getByRole("combobox", { name: "选择解读能力" })).toHaveCount(0);
     await mkdir(evidence, { recursive: true });
     await writeFile(
@@ -385,6 +406,7 @@ test(
   },
   async (t) => {
     const { app, page, frame, owner } = await stockReferencePage(t);
+    const oldFrame = await htmlFrameElement(page, "inventory-fc").elementHandle();
     await page.evaluate(() => {
       window.__ticket08LateTool = [];
       window.addEventListener("message", (event) => {
@@ -417,7 +439,7 @@ test(
     });
     assert.equal(await held.promise, 200);
     await app.rpc("logout");
-    await expect(htmlFrameElement(page, "inventory-fc")).toBeHidden();
+    await assertOldFrameHidden(oldFrame);
     await assertOwnerReleased(page, owner);
     release.resolve();
     await page.waitForTimeout(300);
@@ -449,13 +471,14 @@ test(
     const { app, page, session, owner, openRequest } = await stockReferencePage(t, {
       environments: true,
     });
+    const oldFrame = await htmlFrameElement(page, "inventory-fc").elementHandle();
     const before = (await identity(page)).scope;
     const switched = await app.rpc("environment/select", { environment: "production" });
     assert.equal(switched.ok, true);
     assert.equal(switched.value.environment, "production");
     assert.equal(switched.value.authenticated, false);
     await expect.poll(async () => (await identity(page)).scope).toBe(null);
-    await expect(htmlFrameElement(page, "inventory-fc")).toBeHidden();
+    await assertOldFrameHidden(oldFrame);
     await assertOwnerReleased(page, owner);
     await app.login();
     const after = (await identity(page)).scope;

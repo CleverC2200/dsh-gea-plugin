@@ -234,14 +234,17 @@ test(
         JSON.stringify(navRows),
       );
       // 「AI 工作台」入口（原生新建会话）也走同一条左线：整块贴左、内容左对齐。
-      const newSession = await page.locator('button[class*="_newSession"]').evaluate((button) => {
-        const icon = button.querySelector("svg, img");
-        return {
-          justify: getComputedStyle(button).justifyContent,
-          hit: Math.round(button.getBoundingClientRect().x),
-          icon: icon ? Math.round(icon.getBoundingClientRect().x) : null,
-        };
-      });
+      const newSession = await page
+        .getByRole("button")
+        .filter({ hasText: "AI工作台" })
+        .evaluate((button) => {
+          const icon = button.querySelector("svg, img");
+          return {
+            justify: getComputedStyle(button).justifyContent,
+            hit: Math.round(button.getBoundingClientRect().x),
+            icon: icon ? Math.round(icon.getBoundingClientRect().x) : null,
+          };
+        });
       assert.equal(newSession.justify, "flex-start", JSON.stringify(newSession));
       assert.ok(
         newSession.hit <= 2 && newSession.icon !== null && newSession.icon <= 12,
