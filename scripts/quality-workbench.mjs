@@ -29,7 +29,7 @@ export async function readPreparedWorkbench({ source, prepared, head }) {
     status
       .split("\n")
       .filter(Boolean)
-      .some((line) => !/^ M lib\//.test(line))
+      .some((line) => !line.startsWith(" M lib/"))
   )
     throw Error("QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED");
   const sourceFiles = git(source, "ls-tree", "-r", "-z", head)
