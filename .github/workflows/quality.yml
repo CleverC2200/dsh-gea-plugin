@@ -57,7 +57,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: CleverC2200/dsh-agent-manage
-          ref: 384ca29c99165db94bd1c17a518fc63befdd6bb7
+          ref: 9e9aba86d12a2d743604e63a6000e7abb7da1ddd
           fetch-depth: 0
           path: candidate/dsh-agent-manage
           token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}

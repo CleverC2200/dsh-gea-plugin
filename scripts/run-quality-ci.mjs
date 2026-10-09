@@ -8,7 +8,7 @@ import { readPreparedWorkbench, verifyPreparedWorkbench } from "./quality-workbe
 import { resolveSourceInputs } from "./source-profile.mjs";
 const peers = {
   "dsh-agent-workbench": "9b4863692cb29a3edc8a2358e98feb7846526d1b",
-  "dsh-agent-manage": "384ca29c99165db94bd1c17a518fc63befdd6bb7",
+  "dsh-agent-manage": "9e9aba86d12a2d743604e63a6000e7abb7da1ddd",
 };
 const coreCommit = "5badb15009ae1756c3afe0ae0cef1faafc290ccc";
 function refuse(code, detail = "") {
