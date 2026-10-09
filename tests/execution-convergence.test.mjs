@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mountBusinessPrompts } from "../src/host/prompt-runtime.ts";
@@ -88,6 +90,7 @@ async function fixture(t) {
     mountBusinessPrompts(ctx, business, { readModules: () => [] }, new Map()),
   );
   return {
+    root,
     agent,
     handlers,
     registered,
@@ -238,4 +241,269 @@ test("current permission failure remains visible across concurrent queries and p
     }),
     /GEA_CONSUMER_FALLBACK_DENIED/,
   );
+});
+
+test("late successful read after a new turn preserves its original result without entering current evidence", async (t) => {
+  const current = await fixture(t);
+  const exec = {
+    name: "gea_sales_plan_read",
+    token: Symbol(),
+    agent: current.agent,
+    arguments: { period: "old-turn" },
+    signal: new AbortController().signal,
+  };
+  await current.handlers.get("tools/execute")(exec, async () => {});
+  current.nextTurn();
+  const result = {
+    content: [
+      {
+        type: "text",
+        text: '{"status":"completed","value":{"period":"old-turn"}}',
+      },
+    ],
+  };
+  const decision = { kind: "accept" };
+  const received = await current.handlers.get("tools/post-execute")(
+    exec,
+    result,
+    async () => decision,
+  );
+  const { assembled, resultChars } = await promptState(t, current);
+  assert.equal(
+    assembled.sections.some(
+      (s) =>
+        ["gea:evidence-index", "gea:result-status"].includes(s.name) && s.text,
+    ),
+    false,
+  );
+  assert.equal(resultChars, 0);
+  assert.equal(received, decision);
+});
+
+function pauseEvidenceWrite(t, root) {
+  const entered = Promise.withResolvers();
+  const resumed = Promise.withResolvers();
+  const writeFile = fs.promises.writeFile;
+  const intercepted = t.mock.method(
+    fs.promises,
+    "writeFile",
+    async (...args) => {
+      if (
+        String(args[0]).startsWith(join(root, "prompt-evidence")) &&
+        String(args[0]).endsWith(".txt")
+      ) {
+        entered.resolve();
+        await resumed.promise;
+      }
+      return writeFile(...args);
+    },
+  );
+  syncBuiltinESMExports();
+  t.after(() => {
+    resumed.resolve();
+    intercepted.mock.restore();
+    syncBuiltinESMExports();
+  });
+  return { entered: entered.promise, resume: resumed.resolve };
+}
+
+test("a successful read crossing a turn during evidence persistence keeps its original file without entering current evidence", async (t) => {
+  const current = await fixture(t);
+  const exec = {
+    name: "gea_sales_plan_read",
+    token: Symbol(),
+    agent: current.agent,
+    arguments: { period: "old-write" },
+    signal: new AbortController().signal,
+  };
+  await current.handlers.get("tools/execute")(exec, async () => {});
+  const writing = pauseEvidenceWrite(t, current.root);
+  const text = '{"status":"completed","value":{"period":"old-write"}}';
+  const result = { content: [{ type: "text", text }] };
+  const decision = { kind: "accept" };
+  const pending = current.handlers.get("tools/post-execute")(
+    exec,
+    result,
+    async () => decision,
+  );
+  await writing.entered;
+  current.nextTurn();
+  writing.resume();
+  const received = await pending;
+  const { assembled, resultChars } = await promptState(t, current);
+  assert.equal(
+    assembled.sections.some(
+      (s) =>
+        ["gea:evidence-index", "gea:result-status"].includes(s.name) && s.text,
+    ),
+    false,
+  );
+  assert.equal(resultChars, 0);
+  assert.equal(received, decision);
+  const files = await readdir(join(current.root, "prompt-evidence"));
+  const original = files.find((file) => file.endsWith(".txt"));
+  assert.ok(original);
+  assert.equal(
+    await readFile(join(current.root, "prompt-evidence", original), "utf8"),
+    text,
+  );
+});
+
+async function promptState(t, current) {
+  let measurement;
+  const info = t.mock.method(console, "info", (entry) => {
+    measurement = JSON.parse(entry);
+  });
+  const assembled = await current.assemble({ sections: [], tools: [] });
+  info.mock.restore();
+  assert.equal(measurement.event, "GEA_PROMPT_BUDGET");
+  return { assembled, resultChars: measurement.resultChars };
+}
+
+for (const transition of ["preset", "identity"]) {
+  test(`late successful read after ${transition} keeps the current evidence empty`, async (t) => {
+    const current = await fixture(t);
+    const exec = {
+      name: "gea_sales_plan_read",
+      token: Symbol(),
+      agent: current.agent,
+      arguments: { period: "old-" + transition },
+      signal: new AbortController().signal,
+    };
+    await current.handlers.get("tools/execute")(exec, async () => {});
+    if (transition === "preset") current.setPreset("gea-html-inventory-aqkc");
+    else current.changeIdentity();
+    const result = {
+      content: [
+        { type: "text", text: '{"status":"completed","value":{"old":true}}' },
+      ],
+    };
+    const decision = { kind: "accept" };
+    const received = await current.handlers.get("tools/post-execute")(
+      exec,
+      result,
+      async () => decision,
+    );
+    if (transition === "preset") assert.equal(received, decision);
+    else {
+      assert.equal(received.kind, "block");
+      assert.match(received.feedback[0].text, /GEA_EVIDENCE_IDENTITY_CHANGED/);
+    }
+    const { assembled, resultChars } = await promptState(t, current);
+    assert.equal(
+      assembled.sections.some(
+        (s) =>
+          ["gea:evidence-index", "gea:result-status"].includes(s.name) &&
+          s.text,
+      ),
+      false,
+    );
+    assert.equal(resultChars, 0);
+  });
+}
+
+for (const transition of ["preset", "identity", "current"]) {
+  test(`successful evidence persistence during ${transition} preserves the file and respects current context`, async (t) => {
+    const current = await fixture(t);
+    const exec = {
+      name: "gea_sales_plan_read",
+      token: Symbol(),
+      agent: current.agent,
+      arguments: { period: transition },
+      signal: new AbortController().signal,
+    };
+    await current.handlers.get("tools/execute")(exec, async () => {});
+    const writing = pauseEvidenceWrite(t, current.root);
+    const text = JSON.stringify({
+      status: "completed",
+      value: { period: transition },
+    });
+    const result = { content: [{ type: "text", text }] };
+    const decision = { kind: "accept" };
+    const pending = current.handlers.get("tools/post-execute")(
+      exec,
+      result,
+      async () => decision,
+    );
+    // Attach the expected identity rejection before releasing the real file write.
+    const received =
+      transition === "identity"
+        ? assert.rejects(pending, /GEA_EVIDENCE_IDENTITY_CHANGED/)
+        : pending;
+    await writing.entered;
+    if (transition === "preset") current.setPreset("gea-html-inventory-aqkc");
+    if (transition === "identity") current.changeIdentity();
+    writing.resume();
+    const accepted = await received;
+    const { assembled, resultChars } = await promptState(t, current);
+    const index = assembled.sections.find(
+      (s) => s.name === "gea:evidence-index",
+    ).text;
+    if (transition === "current") {
+      assert.equal(accepted.kind, "accept");
+      assert.equal(accepted.content[0].text, text);
+      assert.match(index, /ev-[a-f0-9]{24}/);
+      assert.match(
+        assembled.sections.find((s) => s.name === "gea:result-status").text,
+        /gea_sales_plan_read/,
+      );
+      assert.equal(resultChars, text.length);
+    } else {
+      if (transition === "preset") assert.equal(accepted, decision);
+      assert.equal(index, "");
+      assert.equal(
+        assembled.sections.some((s) => s.name === "gea:result-status"),
+        false,
+      );
+      assert.equal(resultChars, 0);
+    }
+    const files = await readdir(join(current.root, "prompt-evidence"));
+    const original = files.find((file) => file.endsWith(".txt"));
+    assert.ok(original);
+    assert.equal(
+      await readFile(join(current.root, "prompt-evidence", original), "utf8"),
+      text,
+    );
+  });
+}
+
+test("two successful reads in the same turn both retain their receipts and result budget", async (t) => {
+  const current = await fixture(t);
+  const first = {
+    name: "gea_sales_plan_read",
+    token: Symbol(),
+    agent: current.agent,
+    arguments: { period: "first" },
+    signal: new AbortController().signal,
+  };
+  const second = { ...first, token: Symbol(), arguments: { period: "second" } };
+  await current.handlers.get("tools/execute")(first, async () => {});
+  await current.handlers.get("tools/execute")(second, async () => {});
+  const firstText = '{"status":"completed","value":{"period":"first"}}';
+  const secondText = '{"status":"completed","value":{"period":"second"}}';
+  const finish = (exec, text) =>
+    current.handlers.get("tools/post-execute")(
+      exec,
+      { content: [{ type: "text", text }] },
+      async () => ({ kind: "accept" }),
+    );
+  const returned = await Promise.all([
+    finish(first, firstText),
+    finish(second, secondText),
+  ]);
+  assert.deepEqual(
+    returned.map((result) => result.content[0].text),
+    [firstText, secondText],
+  );
+  const { assembled, resultChars } = await promptState(t, current);
+  const index = assembled.sections.find(
+    (s) => s.name === "gea:evidence-index",
+  ).text;
+  const ids = index.match(/ev-[a-f0-9]{24}/g);
+  assert.equal(new Set(ids).size, 2);
+  const receipts = assembled.sections.find(
+    (s) => s.name === "gea:result-status",
+  ).text;
+  for (const id of ids) assert.ok(receipts.includes(id));
+  assert.equal(resultChars, firstText.length + secondText.length);
 });
