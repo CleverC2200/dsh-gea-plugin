@@ -4,11 +4,13 @@
 
 ```sh
 pnpm run delivery:check --input request.json
-pnpm run delivery:check --input request.json --continuation
+pnpm run delivery:report --input request.json --continuation
 pnpm run test:delivery
 ```
 
-CLI 成功生成报告退出0，请求无效或不可读退出2。**退出0只表示报告已生成**：机器输出 `consistency.generated:true`、`exitZeroMeans:"report-generated-only"`、`acceptance:"not-evaluated"`。消费者必须读取 `consistency.status`、所需 `stages` 和 `continuation`，不能把退出0、observed或阶段完成当作质量通过、原票 done 或业务验收。预算超额、来源漂移和旧状态副本矛盾可在退出0的报告中明确 failed；缺证保持 unknown。
+`delivery:report`（或直接使用报告CLI）成功生成报告退出0，请求无效或不可读退出2。**退出0只表示报告已生成**：机器输出 `consistency.generated:true`、`exitZeroMeans:"report-generated-only"`、`acceptance:"not-evaluated"`。消费者必须读取 `consistency.status`、所需 `stages` 和 `continuation`，不能把退出0、observed或阶段完成当作质量通过、原票 done 或业务验收。预算超额、来源漂移和旧状态副本矛盾可在退出0的报告中明确 failed；缺证保持 unknown。
+
+自动检查使用 `delivery:check`：非空请求的一致性为 observed 才退出0，failed/unknown 或空任务的底层CLI退出3，请求无效退出2。包脚本执行器可能将非零码归一成1；消费者按非零退出及结构化原因判断拒绝。输出保留全部诊断，`verification.minimumGap` 指向原回执对账。这个命令只核一致性，`acceptance`仍为not-evaluated，不证明目标完成或业务通过。`delivery:report`保留报告生成合同，供人工查看；两者调用同一个 `checkDelivery`，不另读或改写材料。
 
 ## 原有回执与输入范围
 

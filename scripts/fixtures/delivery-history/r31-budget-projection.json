@@ -1,0 +1,21 @@
+{
+  "at": "2026-10-09T00:51:31.109015+00:00",
+  "stage": "48",
+  "actualCounts": {
+    "physicalSQLRequests": 100
+  },
+  "currentSQLResult": "90 cumulative confirmed SQL; r6 failed-limit6 and r7 successful9 retained; no counters reset",
+  "currentWindowActive": false,
+  "proposedCompanySingleSnapshot": {
+    "activated": true
+  },
+  "temporaryLimitsRestored": false,
+  "referenceRecovery": {
+    "currentRuntime": "running locked; normal stop pending"
+  },
+  "_source": {
+    "path": ".scratch/real-readonly-48/evidence/reconcile-r31-before/call-budget.json",
+    "sha256": "e8622b93b2f8580990e5aa65b6857e180164b8116fe35e8b5167cb4e584af1c5",
+    "description": "Unchanged selected fields from the frozen r31-before budget, not a new business receipt."
+  }
+}

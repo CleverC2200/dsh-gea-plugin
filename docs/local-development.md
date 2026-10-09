@@ -71,3 +71,7 @@ JSONL 位于用户目录下 `.local/state/dev-environment-governance`，每次�
 仅 `--sample-space` 会在开始/结束扫描本项目 node_modules、lib、.runtime/packages；不会扫描共享 store。APFS 的目录占用和文件系统剩余空间分别报告，不能直接当节省量。HEAD/状态摘要不是完整输入标识，报告的重复/重试只是候选，不能据此复用产物或跳过工作。
 
 只轮转自身合法且已完成的记录（30 天/50 MiB），不删除未完成/未知/链接文件，因此不是目录硬配额。写入失败不中断原命令；SIGINT/SIGTERM 会转发给命令进程组，保留退出/取消语义。Node 启动及最后写入/轮转不含在单条记录的内部开销字段中；总开销需外部成对测量。没有自动上传、清理依赖或自动更新治理规则。
+
+## 只读交付核对
+
+只读交付一致性检查使用 `pnpm run delivery:check --input request.json`，failed/unknown 返回非零；人工浏览报告使用 `pnpm run delivery:report --input request.json`，短接续增加 `--continuation`。预算、阶段、原依赖与授权从同次固定回执读取派生，详见 [交付核对 interface](delivery-check.md)。`pnpm run test:delivery` 只运行本地 fixture 回归。报告命令退出0只表示生成成功，检查命令退出0只证明一致性；两者都不授予业务验收、不启动应用或恢复自动化。

@@ -379,6 +379,102 @@ test("a missing scoped budget rejects continuation while a generated CLI report 
   assert.equal(report.consistency.acceptance, "not-evaluated");
 });
 
+function verificationCLI(f) {
+  return spawnSync(
+    process.execPath,
+    ["--run", "delivery:check", "--", "--input", join(f.root, "request.json")],
+    { cwd: join(import.meta.dirname, ".."), encoding: "utf8" },
+  );
+}
+
+test("verification refuses the real r31 counters and closed-window contradictions instead of treating report generation as a pass", async (t) => {
+  const f = await fixture(t);
+  const historical = await readFile(
+    new URL(
+      "./fixtures/delivery-history/r31-budget-projection.json",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  await f.put("old-budget", JSON.parse(historical));
+  f.delivery.reconciliation = [
+    { sourceId: "old-budget", profile: "call-budget" },
+  ];
+  const task = await f.report();
+  assert.equal(task.consistency.status, "failed");
+  assert.ok(
+    task.reconciliation.conflicts.some(
+      (item) => item.reason === "BUDGET_PROJECTION_CONFLICT",
+    ),
+  );
+  assert.ok(
+    task.reconciliation.conflicts.some(
+      (item) => item.reason === "WINDOW_ACTIVATION_CONFLICT",
+    ),
+  );
+  await writeFile(join(f.root, "request.json"), JSON.stringify(f.request));
+  const before = await readFile(join(f.root, "old-budget.json"));
+  const generated = spawnSync(
+    process.execPath,
+    ["--run", "delivery:report", "--", "--input", join(f.root, "request.json")],
+    { cwd: join(import.meta.dirname, ".."), encoding: "utf8" },
+  );
+  assert.equal(generated.status, 0);
+  assert.equal(JSON.parse(generated.stdout).consistency.status, "failed");
+  const result = verificationCLI(f);
+  assert.notEqual(result.status, 0, result.stdout);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.consistency.status, "failed");
+  assert.equal(report.verification.status, "failed");
+  assert.equal(report.verification.reason, "DELIVERY_CONSISTENCY_REQUIRED");
+  assert.deepEqual(await readFile(join(f.root, "old-budget.json")), before);
+});
+
+test("verification refuses unknown inputs and admits only observed consistency without evaluating business acceptance", async (t) => {
+  const f = await fixture(t);
+  await f.report();
+  await writeFile(join(f.root, "request.json"), JSON.stringify(f.request));
+  let result = verificationCLI(f);
+  assert.equal(result.status, 0, result.stdout);
+  let report = JSON.parse(result.stdout);
+  assert.equal(report.verification.status, "passed");
+  assert.equal(report.consistency.acceptance, "not-evaluated");
+  assert.equal(report.consistency.exitZeroMeans, "consistency-observed-only");
+  f.delivery.budget = {
+    receipts: [{ sourceId: "missing", caseId: "read-one" }],
+  };
+  await f.report();
+  result = verificationCLI(f);
+  assert.notEqual(result.status, 0, result.stdout);
+  report = JSON.parse(result.stdout);
+  assert.equal(report.consistency.status, "unknown");
+  assert.equal(report.verification.status, "failed");
+  const direct = spawnSync(
+    process.execPath,
+    [
+      join(import.meta.dirname, "delivery-check.mjs"),
+      "--verify",
+      "--input",
+      join(f.root, "request.json"),
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(direct.status, 3, direct.stdout);
+});
+
+test("an empty report cannot satisfy strict consistency verification", async (t) => {
+  const f = await fixture(t);
+  await writeFile(
+    join(f.root, "request.json"),
+    JSON.stringify({ ...f.request, tasks: [] }),
+  );
+  const result = verificationCLI(f);
+  assert.notEqual(result.status, 0, result.stdout);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.tasks.length, 0);
+  assert.equal(report.verification.status, "failed");
+});
+
 test("an unmet original ticket does not stop a separately scoped authorized task", async (t) => {
   const f = await fixture(t);
   await permission(f);

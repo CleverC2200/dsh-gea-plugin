@@ -857,11 +857,13 @@ if (
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
   try {
-    const short =
-      process.argv.length === 5 && process.argv[4] === "--continuation";
-    if ((!short && process.argv.length !== 4) || process.argv[2] !== "--input")
+    const args = process.argv.slice(2);
+    const verify = args[0] === "--verify";
+    if (verify) args.shift();
+    const short = args.length === 3 && args[2] === "--continuation";
+    if ((!short && args.length !== 2) || args[0] !== "--input")
       throw Error("CLI_INPUT_REQUIRED");
-    const file = process.argv[3];
+    const file = args[1];
     const info = await stat(file);
     if (!info.isFile() || info.size > 1024 * 1024)
       throw Error("CLI_INPUT_INVALID");
@@ -874,6 +876,21 @@ if (
       throw error;
     }
     const report = await checkDelivery(request);
+    if (verify) {
+      const passed =
+        report.tasks.length > 0 && report.consistency.status === "observed";
+      report.verification = {
+        status: passed ? "passed" : "failed",
+        reason: passed
+          ? "DELIVERY_CONSISTENCY_OBSERVED"
+          : "DELIVERY_CONSISTENCY_REQUIRED",
+        minimumGap: passed
+          ? null
+          : "RECONCILE_FIXED_RECEIPTS_USING_DELIVERY_REPORT",
+      };
+      report.consistency.exitZeroMeans = "consistency-observed-only";
+      if (!passed) process.exitCode = 3;
+    }
     console.log(
       JSON.stringify(
         short
