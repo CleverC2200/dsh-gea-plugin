@@ -276,7 +276,13 @@ try {
       run("corepack", ["pnpm", "test"]);
     }
   }
-  console.log(JSON.stringify({ status: "passed", phase: values.phase, runtime: "not-observed" }));
+  console.log(
+    JSON.stringify({
+      status: "passed",
+      phase: values.phase,
+      runtime: values.phase === "quality" ? "loopback-source-profile-tests" : "not-observed",
+    }),
+  );
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;
