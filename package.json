@@ -52,7 +52,7 @@
     "lint:audit": "node scripts/quality.mjs lint:audit",
     "format:check": "node scripts/quality.mjs format:check",
     "format:audit": "node scripts/quality.mjs format:audit",
-    "test:quality": "node --test scripts/quality.test.mjs scripts/run-quality-ci.test.mjs scripts/quality-upstreams.test.mjs scripts/quality-test-reporter.test.mjs scripts/quality-workbench.test.mjs",
+    "test:quality": "node --test scripts/quality.test.mjs scripts/quality-policy.test.mjs scripts/run-quality-ci.test.mjs scripts/quality-upstreams.test.mjs scripts/quality-test-reporter.test.mjs scripts/quality-workbench.test.mjs",
     "quality:fast": "pnpm lint && pnpm format:check && pnpm typecheck:official && pnpm check:knowledge && pnpm test:quality",
     "quality:ci": "node scripts/run-quality-ci.mjs",
     "quality:upstreams": "node scripts/quality-upstreams.mjs",

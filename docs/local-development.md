@@ -50,6 +50,8 @@ corepack pnpm test:observe
 
 自己的源码与依赖准备后，`corepack pnpm quality:fast` 检查增量 lint、格式、官方类型、活跃工程引用与质量 CLI 反例。它允许未提交修改。固定基线为 `041ef35e16effcf98ffe3b252b64512c704dc29a`，只有基线后未变化的旧债务可保留；缺目标、工具失败、摘要变化和 ignore 绕过都拒绝。`corepack pnpm lint:audit` 与 `corepack pnpm format:audit` 检查全量债务，不能把增量通过写成全量 audit 通过。
 
+质量政策来自首次加入门禁的 `7e7a464a27e0e7e8e969aade44db11f81a40f2d9`。CLI 在运行工具前独立核完整 `quality-baseline.json`、两份 Ox 配置的固定字节，以及声明和本树实际安装的 oxlint 1.87.0/oxfmt 0.72.0。同步改规则或版本与 baseline 不能形成新通过；政策变更须另行审查，不能更新 baseline 吸收新增问题。换行仅接受原 LF 或完整 CRLF 渲染，不接受混合换行、重新序列化或改字段，不改写原件和证据。该换行合同的本地 fixture 通过不等于 hosted Windows 验收。
+
 `corepack pnpm quality:ci --input /absolute/path/candidate-input.json` 要求干净且固定的三仓输入，先核实际 Git SHA、完整历史与原锁，再只读核 Manage 的公开 SDK 工具、原上游依赖和 Workbench 的共享候选检查。它运行同一 `quality:fast`、`test:contracts` 与完整 `test`。CI 自身绑定事件实际 SHA，peer 使用命令内冻结的兼容提交；本地最终整合组合另有自己的回执，不能把两个 tuple 视为同一组合。
 
 首次准备使用独立目录，GEA 与 Manage 源码放在 `<job-root>/candidate/<repo>`，Workbench 干净源码放在 `<job-root>/source/dsh-agent-workbench`，官方 Core 放在 `<job-root>/official-latest-standard`，原 link 依赖放在 `<job-root 的父目录>/current-mainline-closeout-44`。先按公开输入阶段生成声明，再显式准备：

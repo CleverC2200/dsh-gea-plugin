@@ -6,9 +6,45 @@ import { resolve, relative, sep } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const anchor = "041ef35e16effcf98ffe3b252b64512c704dc29a";
+const hash = (data) => createHash("sha256").update(data).digest("hex");
+// Original 7e7a464 policy blobs, accepting only LF or their complete CRLF rendering.
+// Compare bytes without rewriting the policy, baseline, source or evidence.
+const policy = {
+  "quality-baseline.json": [
+    "7a0b2da1102c657493e1a341ff7097edf2fec3a9953cbc8684aa5ebdee904b35",
+    "097a805f888a0ed0ad17e8c14e4ecb9c049a4908a472fc07967728559c79718c",
+  ],
+  ".oxlintrc.json": [
+    "a376bdb153dec5b819ecf3e922089929437dd6160471bf77e5823d8a32c0c02b",
+    "d720824e83f95c907e2ab4c54c3360b95c19a79bd50772db42e4ddfd9958f3e8",
+  ],
+  ".oxfmtrc.json": [
+    "54b9ec697dd9703c493da6a554600505cb6e060d87ff66be307815e40e84e30b",
+    "afd5c3d8c04b5403974ef12bb816763e070bbe33b3796722b6865fba5fce741c",
+  ],
+};
 const [mode, ...selected] = process.argv.slice(2);
 if (!["lint", "lint:audit", "format:check", "format:audit"].includes(mode)) {
   throw new Error("QUALITY_MODE_INVALID: " + mode);
+}
+for (const [file, hashes] of Object.entries(policy)) {
+  if (!existsSync(resolve(root, file)) || !hashes.includes(hash(readFileSync(resolve(root, file)))))
+    throw new Error(
+      (file === "quality-baseline.json"
+        ? "QUALITY_BASELINE_REQUIRED: "
+        : "QUALITY_POLICY_REQUIRED: ") + file,
+    );
+}
+const baseline = JSON.parse(readFileSync(resolve(root, "quality-baseline.json")));
+const manifest = JSON.parse(readFileSync(resolve(root, "package.json")));
+for (const [tool, version] of Object.entries({ oxlint: "1.87.0", oxfmt: "0.72.0" })) {
+  const installed = resolve(root, "node_modules", tool, "package.json");
+  if (
+    manifest.devDependencies[tool] !== version ||
+    !existsSync(installed) ||
+    JSON.parse(readFileSync(installed)).version !== version
+  )
+    throw new Error("QUALITY_BASELINE_TOOL_CHANGED: " + tool);
 }
 const lint = mode.startsWith("lint");
 const audit = mode.endsWith(":audit");
@@ -84,8 +120,6 @@ if (result.status !== 0 && result.status !== 1) {
   process.stderr.write(result.stderr);
   throw new Error("QUALITY_RUNNER_EXIT: " + result.status);
 }
-const baseline = JSON.parse(readFileSync(resolve(root, "quality-baseline.json")));
-if (baseline.sourceHead !== anchor) throw new Error("QUALITY_BASELINE_ANCHOR_INVALID");
 const baseTree = new Map(
   git(["ls-tree", "-r", "--full-tree", anchor])
     .trim()
@@ -95,14 +129,6 @@ const baseTree = new Map(
       return [file, metadata.split(" ")[2]];
     }),
 );
-const hash = (data) => createHash("sha256").update(data).digest("hex");
-if (baseline.configs[config] !== hash(readFileSync(resolve(root, config)))) {
-  throw new Error("QUALITY_BASELINE_CONFIG_CHANGED: audit and review rule changes first");
-}
-const manifest = JSON.parse(readFileSync(resolve(root, "package.json")));
-if (manifest.devDependencies[binary] !== baseline.versions[binary]) {
-  throw new Error("QUALITY_BASELINE_TOOL_CHANGED: audit and review tool changes first");
-}
 function unchangedDebt(file) {
   const entry = baseline[lint ? "lint" : "format"][file];
   if (!entry) return false;

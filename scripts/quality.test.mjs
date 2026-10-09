@@ -8,11 +8,11 @@ import {
   mkdirSync,
   copyFileSync,
   existsSync,
-  symlinkSync,
   appendFileSync,
   readFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
@@ -93,8 +93,8 @@ test("missing selected file cannot hide behind a valid selected file", (t) => {
 });
 
 function baselineFixture(t) {
-  mkdirSync(new URL(".runtime/", root), { recursive: true });
-  const directory = mkdtempSync(join(fileURLToPath(root), ".runtime/quality-baseline-"));
+  // Keep installations outside the parent pnpm workspace so they cannot resolve to its root.
+  const directory = mkdtempSync(join(tmpdir(), "gea-quality-baseline-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const result = spawnSync(
     "git",
@@ -102,8 +102,7 @@ function baselineFixture(t) {
     { encoding: "utf8" },
   );
   assert.equal(result.status, 0, result.stderr);
-  for (const part of ["scripts", "src", "node_modules/.bin"])
-    mkdirSync(join(directory, part), { recursive: true });
+  for (const part of ["scripts", "src"]) mkdirSync(join(directory, part), { recursive: true });
   for (const file of [
     "scripts/quality.mjs",
     ".oxlintrc.json",
@@ -114,11 +113,40 @@ function baselineFixture(t) {
   ]) {
     copyFileSync(new URL(file, root), join(directory, file));
   }
-  for (const binary of ["oxlint", "oxfmt"])
-    symlinkSync(
-      new URL("node_modules/.bin/" + binary, root),
-      join(directory, "node_modules/.bin", binary),
-    );
+  // Each fixture installs its own tools with the original registry lock metadata.
+  const manifest = JSON.parse(readFileSync(new URL("package.json", root)));
+  const tools = { oxfmt: manifest.devDependencies.oxfmt, oxlint: manifest.devDependencies.oxlint };
+  writeFileSync(
+    join(directory, "package.json"),
+    JSON.stringify({
+      name: "gea-quality-fixture",
+      type: "module",
+      packageManager: manifest.packageManager,
+      devDependencies: tools,
+    }),
+  );
+  const lock = readFileSync(new URL("pnpm-lock.yaml", root), "utf8");
+  const importer =
+    "importers:\n\n  .:\n    devDependencies:\n" +
+    Object.entries(tools)
+      .map(
+        ([tool, version]) =>
+          `      ${tool}:\n        specifier: ${version}\n        version: ${version}\n`,
+      )
+      .join("");
+  writeFileSync(
+    join(directory, "pnpm-lock.yaml"),
+    lock.slice(0, lock.indexOf("importers:\n")) +
+      importer +
+      "\n" +
+      lock.slice(lock.indexOf("packages:\n")),
+  );
+  const installed = spawnSync(
+    process.platform === "win32" ? "corepack.cmd" : "corepack",
+    ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts", "--prefer-offline"],
+    { cwd: directory, encoding: "utf8", shell: process.platform === "win32" },
+  );
+  assert.equal(installed.status, 0, installed.stdout + installed.stderr);
   const original = spawnSync(
     "git",
     ["show", "041ef35e16effcf98ffe3b252b64512c704dc29a:src/host.ts"],
@@ -169,7 +197,7 @@ test("rebasing a baseline anchor cannot absorb changed files", (t) => {
   writeFileSync(join(directory, "quality-baseline.json"), JSON.stringify(baseline));
   const result = checkFixture(directory, "lint");
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /QUALITY_BASELINE_ANCHOR_INVALID/);
+  assert.match(result.stderr, /QUALITY_BASELINE_REQUIRED/);
 });
 
 test("the retained official typecheck command refuses a different official HEAD before tsc", (t) => {
@@ -268,4 +296,28 @@ test("parse or config errors without a lint rule cannot be swallowed as old debt
   const result = checkFixture(directory, "lint");
   assert.equal(result.status, 1);
   assert.match(result.stderr, /parse fixture/);
+});
+
+test("a signalled runner fails after valid frozen policy and installed tool metadata", (t) => {
+  const directory = baselineFixture(t);
+  const binary = join(directory, "node_modules/.bin/oxlint");
+  rmSync(binary);
+  writeFileSync(binary, "#!/usr/bin/env node\nprocess.kill(process.pid, 'SIGTERM');\n", {
+    mode: 0o755,
+  });
+  const result = checkFixture(directory, "lint");
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /QUALITY_RUNNER_SIGNAL/);
+});
+
+test("invalid runner JSON fails after valid frozen policy and installed tool metadata", (t) => {
+  const directory = baselineFixture(t);
+  const binary = join(directory, "node_modules/.bin/oxlint");
+  rmSync(binary);
+  writeFileSync(binary, "#!/usr/bin/env node\nprocess.stdout.write('not JSON');\n", {
+    mode: 0o755,
+  });
+  const result = checkFixture(directory, "lint");
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /SyntaxError/);
 });
