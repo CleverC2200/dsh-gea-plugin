@@ -5,6 +5,11 @@ import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
+import {
+  htmlFrameElement,
+  openWorkbenchPage,
+  prepareWorkbenchHtmlRoots,
+} from "./fixtures/business-page.mjs";
 
 test(
   "same-warehouse loading and failure do not publish retained KPI text as current facts",
@@ -14,11 +19,9 @@ test(
   },
   async (t) => {
     const app = await profile(t, {
-      env: {
-        GEA_HTML_PLUGIN_ROOTS: JSON.stringify([
-          resolve("../dsh-agent-workbench/lib/business/inventory-fc"),
-        ]),
-      },
+      beforeStart: prepareWorkbenchHtmlRoots([
+        resolve("../dsh-agent-workbench/lib/business/inventory-fc"),
+      ]),
     });
     const state = stockState();
     let stockRoute;
@@ -62,23 +65,38 @@ test(
       })),
     );
     const page = await context.newPage();
-    const contexts = [];
+    const contexts = [],
+      contextRequests = [];
+    let owner;
     page.on("request", (request) => {
-      if (request.url().endsWith("/api/gea-html/inventory-fc/call") && request.postData()) {
+      if (request.url().endsWith("/api/agent-workbench/page") && request.postData()) {
         const body = request.postDataJSON();
-        if (body.method === "context") contexts.push(body.parameters);
+        if (body.operation === "context") {
+          contextRequests.push(body);
+          if (body.owner === owner) contexts.push(body.parameters);
+        }
       }
     });
     try {
       await page.goto(app.origin);
-      await page
-        .getByRole("dialog", { name: /内测声明|预览版说明/ })
-        .getByRole("button", { name: "继续", exact: true })
-        .click();
-      if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-        await page.getByText("库存管理", { exact: true }).click();
-      await page.getByText("分仓库存", { exact: true }).click();
-      const frame = page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]').contentFrame();
+      const opened = page.waitForResponse((response) => {
+        const request = response.request();
+        if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData())
+          return false;
+        const input = request.postDataJSON();
+        return input.operation === "open" && input.pageId === "inventory-fc";
+      });
+      await openWorkbenchPage(page, "分仓库存");
+      const reply = await opened;
+      assert.equal(reply.status(), 200);
+      owner = (await reply.json()).owner;
+      assert.match(owner, /^[0-9a-f-]{36}$/);
+      contexts.push(
+        ...contextRequests
+          .filter((request) => request.owner === owner)
+          .map((request) => request.parameters),
+      );
+      const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
       await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
       await expect.poll(() => contexts.at(-1)?.parts?.queryState?.state).toBe("ready");
       assert.match(contexts.at(-1).visibleText, /当前库存[\d,]+件/);
