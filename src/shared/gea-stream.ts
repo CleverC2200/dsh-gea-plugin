@@ -54,9 +54,7 @@ function argumentTail(argumentsText: string, max = 160): string {
 }
 
 /**
- * 出问题时的那一段原文（截断、去控制字符）。
- * 线上实测（session-c391a75f，27 步 / 44 次调用）：流里回了错误对象，
- * 我们只报"格式无法解析"，把网关给的真因吞了——所以每处失败都要带上这个片段。
+ * 保留失败片段的有界原文并去控制字符，使解析错误仍能说明网关返回的原因。
  */
 function snippet(text: string, max = 160): string {
   const flat = text.replace(/[\u0000-\u001f]+/g, " ").trim();

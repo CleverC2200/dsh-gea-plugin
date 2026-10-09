@@ -43,7 +43,8 @@
     "package:desktop:mac": "node scripts/package-desktop.mjs --target mac",
     "package:desktop:win": "node scripts/package-desktop.mjs --target win",
     "test:package:desktop": "node --test scripts/package-desktop.test.mjs",
-    "typecheck:official": "node ../dsh-agent-workbench/scripts/verify-official-input.mjs && tsc -p tsconfig.official.json"
+    "typecheck:official": "node ../dsh-agent-workbench/scripts/verify-official-input.mjs && tsc -p tsconfig.official.json",
+    "check:knowledge": "node ../dsh-agent-workbench/scripts/check-agent-knowledge.mjs --root . --config docs/agent-knowledge.json"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "link:../../../current-mainline-closeout-44/upstream-assets/genui-0.11.3",
