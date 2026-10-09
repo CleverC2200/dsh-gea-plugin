@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, realpathSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { prepareQualityUpstreams, verifyQualityUpstreams } from "./quality-upstreams.mjs";
+import { resolveSourceInputs } from "./source-profile.mjs";
 const peers = {
   "dsh-agent-workbench": "9b4863692cb29a3edc8a2358e98feb7846526d1b",
   "dsh-agent-manage": "384ca29c99165db94bd1c17a518fc63befdd6bb7",
@@ -70,7 +71,8 @@ try {
       ) + "\n",
     );
   } else {
-    if (values.phase !== "quality") refuse("QUALITY_PHASE_REQUIRED", values.phase);
+    if (!["quality", "prepare"].includes(values.phase))
+      refuse("QUALITY_PHASE_REQUIRED", values.phase);
     const input = values.input ?? process.env.QUALITY_CANDIDATE;
     if (!input) refuse("CANDIDATE_INPUT_REQUIRED", "--input <frozen group JSON>");
     const candidate = JSON.parse(readFileSync(resolve(input), "utf8"));
@@ -115,6 +117,7 @@ try {
       "--consumer",
       process.cwd(),
       "--with-web",
+      ...(process.platform === "win32" ? [] : ["--with-flock"]),
       ...(values["prepare-sdk"]
         ? [
             "--prepare",
@@ -208,6 +211,7 @@ try {
         dependencies: resolve(upstream, "upstream-reference/dsh-better-sidebar/node_modules"),
       },
     );
+    await resolveSourceInputs(records, { requireEntries: true });
     writeFileSync(sourcesFile, JSON.stringify(records, null, 2) + "\n");
     process.env.GEA_TEST_SOURCE_INPUTS = sourcesFile;
     process.env.GEA_TEST_CANDIDATE = resolve(input);
@@ -225,9 +229,11 @@ try {
         ...(process.platform === "linux" ? ["--with-deps"] : []),
         "chromium",
       ]);
-    run("corepack", ["pnpm", "quality:fast"]);
-    run("corepack", ["pnpm", "test:contracts"]);
-    run("corepack", ["pnpm", "test"]);
+    if (values.phase === "quality") {
+      run("corepack", ["pnpm", "quality:fast"]);
+      run("corepack", ["pnpm", "test:contracts"]);
+      run("corepack", ["pnpm", "test"]);
+    }
   }
   console.log(JSON.stringify({ status: "passed", phase: values.phase, runtime: "not-observed" }));
 } catch (error) {
