@@ -12,6 +12,7 @@
     "src/host/mcp-read-evidence.ts",
     "scripts/source-profile.mjs",
     "scripts/start.mjs",
+    "scripts/window-admission.mjs",
     "scripts/start-isolated-validation.mjs",
     "scripts/delivery-check.mjs",
     "scripts/source-combination-integrity.mjs"
@@ -24,6 +25,7 @@
     "build:host",
     "build:client",
     "test:build",
+    "test:window",
     "typecheck",
     "typecheck:official",
     "source:check",

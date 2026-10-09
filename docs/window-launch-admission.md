@@ -2,11 +2,11 @@
 
 这里覆盖现有官方 Core 的 Host/client 源码路径及其 sandbox 委托：
 
-| mode | 公开入口 | 冻结组合 |
-|---|---|---|
-| source-host | `scripts/start.mjs`、`runSourceProfile(..., true, ...)` | 当前完整 selection，或冻结五源及其已准备 snapshot |
-| isolated-source-host | `scripts/start-isolated-validation.mjs --plugins --sources ...` | 冻结五源及其已准备 snapshot，启动后使用新的隔离 runtime |
-| isolated-core-host | 上述隔离 CLI 不加 plugins，或 `runSourceProfile(..., false, ...)` | 固定官方 Core，不装载公司插件 |
+| mode                 | 公开入口                                                          | 冻结组合                                                |
+| -------------------- | ----------------------------------------------------------------- | ------------------------------------------------------- |
+| source-host          | `scripts/start.mjs`、`runSourceProfile(..., true, ...)`           | 当前完整 selection，或冻结五源及其已准备 snapshot       |
+| isolated-source-host | `scripts/start-isolated-validation.mjs --plugins --sources ...`   | 冻结五源及其已准备 snapshot，启动后使用新的隔离 runtime |
+| isolated-core-host   | 上述隔离 CLI 不加 plugins，或 `runSourceProfile(..., false, ...)` | 固定官方 Core，不装载公司插件                           |
 
 这不是另一个 Native 启动器，也不覆盖旧 `desktop:dev`。有效预检只说明已有声明与本次请求相符，不产生用户开窗、登录、模型或业务授权。
 
@@ -46,12 +46,24 @@ JS
 
 ```json
 {
-  "case": "existing-authorized-case", "owner": "existing-owner",
-  "status": "open", "paused": false,
-  "freeze": {"file": "/absolute/new-frozen-window.json"},
+  "case": "existing-authorized-case",
+  "owner": "existing-owner",
+  "status": "open",
+  "paused": false,
+  "freeze": { "file": "/absolute/new-frozen-window.json" },
   "budget": {
-    "limits": {"hostStarts": 1, "businessRequests": 0, "modelTasks": 0, "businessWrites": 0},
-    "remaining": {"hostStarts": 1, "businessRequests": 0, "modelTasks": 0, "businessWrites": 0}
+    "limits": {
+      "hostStarts": 1,
+      "businessRequests": 0,
+      "modelTasks": 0,
+      "businessWrites": 0
+    },
+    "remaining": {
+      "hostStarts": 1,
+      "businessRequests": 0,
+      "modelTasks": 0,
+      "businessWrites": 0
+    }
   }
 }
 ```

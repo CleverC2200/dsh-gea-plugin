@@ -133,6 +133,7 @@
     "scripts/window-admission.mjs",
     "scripts/source-profile.mjs",
     "scripts/source-composition.mjs",
+    "scripts/source-combination-integrity.mjs",
     "scripts/current-core.json",
     "scripts/deployment.mjs",
     "scripts/verify.mjs",

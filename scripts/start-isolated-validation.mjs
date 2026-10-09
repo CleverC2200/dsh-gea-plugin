@@ -32,10 +32,7 @@ const digest = async (path) =>
     .digest("hex");
 
 /** Boot the official profile from artifacts built in the pinned source checkout. */
-import {
-  resolveSourceInputs,
-  readSourceSelection,
-} from "./source-profile.mjs";
+import { resolveSourceInputs, readSourceSelection } from "./source-profile.mjs";
 
 export async function runSourceProfile(
   core,
@@ -43,10 +40,25 @@ export async function runSourceProfile(
   plugins = false,
   deployment,
   port = 0,
-  { sources, window, config, dev = false, mode = plugins ? "source-host" : "isolated-core-host" } = {},
+  {
+    sources,
+    window,
+    config,
+    dev = false,
+    mode = plugins ? "source-host" : "isolated-core-host",
+  } = {},
 ) {
-  if (plugins !== (mode !== "isolated-core-host")) throw Error("WINDOW_MODE_MISMATCH");
-  await admitSourceWindow({ window, mode, core, runtime, config, deployment, sources });
+  if (plugins !== (mode !== "isolated-core-host"))
+    throw Error("WINDOW_MODE_MISMATCH");
+  await admitSourceWindow({
+    window,
+    mode,
+    core,
+    runtime,
+    config,
+    deployment,
+    sources,
+  });
   let selected;
   if (plugins) {
     selected = await readSourceSelection(runtime);
@@ -234,8 +246,19 @@ async function launch() {
     return;
   }
   const mode = values.plugins ? "isolated-source-host" : "isolated-core-host";
-  const window = { file: values.window, case: values.case, owner: values.owner, freezeSha256: values["freeze-sha256"] };
-  await admitSourceWindow({ window, mode, core: values.core ?? resolve(root, "../../official-latest-standard"), runtime: join(root, ".runtime/plugin-split-validation"), sourcesFile: values.sources });
+  const window = {
+    file: values.window,
+    case: values.case,
+    owner: values.owner,
+    freezeSha256: values["freeze-sha256"],
+  };
+  await admitSourceWindow({
+    window,
+    mode,
+    core: values.core ?? resolve(root, "../../official-latest-standard"),
+    runtime: join(root, ".runtime/plugin-split-validation"),
+    sourcesFile: values.sources,
+  });
   if (process.platform !== "darwin")
     throw Error("ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX");
   const fixedSources = values.sources

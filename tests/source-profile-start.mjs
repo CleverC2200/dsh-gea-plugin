@@ -7,7 +7,13 @@ const [configPath, runtime, mode, windowRequestPath] = process.argv.slice(2);
 const { readFile } = await import("node:fs/promises");
 if (!windowRequestPath) throw Error("WINDOW_DECLARATION_REQUIRED");
 const window = JSON.parse(await readFile(windowRequestPath, "utf8"));
-const deployment = mode === "native-only" ? undefined : await readDeployment(configPath, { resolveCredentials: false, credentialEnv: {} });
+const deployment =
+  mode === "native-only"
+    ? undefined
+    : await readDeployment(configPath, {
+        resolveCredentials: false,
+        credentialEnv: {},
+      });
 for (const endpoint of [
   deployment?.geaBaseUrl,
   ...Object.values(deployment?.geaEnvironments ?? {}),

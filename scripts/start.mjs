@@ -28,8 +28,20 @@ try {
   else {
     const runtime = resolve(values.runtime ?? ".runtime/workbench-development");
     const core = resolve(root, "../../official-latest-standard");
-    const window = { file: values.window, case: values.case, owner: values.owner, freezeSha256: values["freeze-sha256"] };
-    await admitSourceWindow({ window, mode: "source-host", core, runtime, config: resolve(values.config ?? "gea.config.json"), sourcesFile: values.sources });
+    const window = {
+      file: values.window,
+      case: values.case,
+      owner: values.owner,
+      freezeSha256: values["freeze-sha256"],
+    };
+    await admitSourceWindow({
+      window,
+      mode: "source-host",
+      core,
+      runtime,
+      config: resolve(values.config ?? "gea.config.json"),
+      sourcesFile: values.sources,
+    });
     const sources = values.sources
       ? JSON.parse(
           await (
@@ -46,19 +58,12 @@ try {
     const port = Number(values.port);
     if (!Number.isInteger(port) || port < 0 || port > 65535)
       throw Error("GEA_PORT_INVALID");
-    await runSourceProfile(
-      core,
-      runtime,
-      true,
-      deployment,
-      port,
-      {
-        sources,
-        window,
-        config: resolve(values.config ?? "gea.config.json"),
-        dev: values.dev,
-      },
-    );
+    await runSourceProfile(core, runtime, true, deployment, port, {
+      sources,
+      window,
+      config: resolve(values.config ?? "gea.config.json"),
+      dev: values.dev,
+    });
   }
 } catch (error) {
   console.error(error.message);
