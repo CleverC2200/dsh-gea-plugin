@@ -55,7 +55,6 @@ type State = {
   calls: number;
   readCalls: number;
   catalogFacts: Map<string, string>;
-  steps: number;
   limit: number;
   dispose?: () => void;
   mask: string;
@@ -141,7 +140,6 @@ export function mountBusinessPrompts(
         calls: 0,
         readCalls: 0,
         catalogFacts: new Map(),
-        steps: 0,
         limit: PROMPT_BUDGET.calls,
         mask: "",
         evidence: [],
@@ -178,19 +176,12 @@ export function mountBusinessPrompts(
     }
     const state = stateOf(agent);
     const names = namesFor(agent, state);
-    const known = ctx.tools
-      .schemas()
-      .map((tool) => tool.name)
-      .filter((name) => name !== "run_code");
-    // These selected preset capabilities live on ancestors, not in the global registry projection.
-    const selected = ["skill", "skill_reference_read", "forecast_compute"].filter(
-      (name) => ctx.tools.get(name, agent) !== undefined,
-    );
-    const allow = [...new Set([...known.filter((name) => names.has(name)), ...selected])];
-    const signature = allow.sort().join("|");
+    const deny = ctx.tools.schemas().map(tool => tool.name)
+      .filter(name => name.startsWith("gea_") && !names.has(name));
+    const signature = deny.sort().join("|");
     if (signature === state.mask) return;
-    // Install the replacement before disposing the previous restriction: never a permissive gap.
-    const next = agent.ctx.tools.restrict({ allow });
+    // Business masks do not choose official or optional plugin capabilities.
+    const next = deny.length ? agent.ctx.tools.restrict({ deny }) : undefined;
     state.dispose?.();
     state.dispose = next;
     state.mask = signature;
@@ -223,7 +214,6 @@ export function mountBusinessPrompts(
       state.calls = 0;
       state.readCalls = 0;
       state.catalogFacts.clear();
-      state.steps = 0;
       state.returned = 0;
       state.receipts.clear();
       state.deniedConsumers.clear();
@@ -252,7 +242,6 @@ export function mountBusinessPrompts(
       )
         stateOf(agent).pageReferences = true;
       refreshMask(agent);
-      if (profileOf(agent)) stateOf(agent).steps++;
       return next();
     }),
   );
@@ -264,7 +253,14 @@ export function mountBusinessPrompts(
           return "GEA_BUSINESS_PROFILE_REQUIRED: Skill和页面可见不授予Consumer业务权限，请选用已安装启用的业务资源。";
         return;
       }
+      if (["render_ui", "validate_dsh_ui"].includes(exec.name)) {
+        const issue = businessUiIssue(exec.arguments);
+        if (issue) return issue;
+      }
+      if (!exec.name.startsWith("gea_")) return;
       const state = stateOf(agent);
+      if (!namesFor(agent, state).has(exec.name))
+        return "GEA_BUSINESS_TOOL_NOT_ALLOWED: 当前业务角色未声明此工具能力。";
       const callArgs = exec.arguments as Record<string, unknown>;
       if (exec.name === "gea_sales_plan_read") {
         const questions = agent.session
@@ -296,31 +292,25 @@ export function mountBusinessPrompts(
         business.turnStopKind(agent.id) === "session-expired"
       )
         return "GEA_GATEWAY_SESSION_EXPIRED: 本轮网关会话已过期，不能通过证据回读重建会话；下一轮重新验证。";
-      // A spent read allowance ends this turn's tool phase; new queries would create evidence we cannot read.
+      // A spent business read allowance stops new business queries whose evidence cannot be read.
       if (state.readCalls >= PROMPT_BUDGET.evidenceCalls)
         return "GEA_EVIDENCE_BUDGET: 本轮证据读取额度已用完，请交付已读范围并说明未读部分。";
-      if (state.steps > state.limit + PROMPT_BUDGET.evidenceCalls)
-        return "GEA_CALL_BUDGET: 本轮调用/步骤额度已用完，请交付已有结果并明确未完成项。";
       // Reserve before dispatch: parallel calls must not all pass against the same stale counter.
       if (exec.name === "gea_evidence_read") {
         state.readCalls++;
       } else {
         if (state.calls >= state.limit)
-          return "GEA_CALL_BUDGET: 查询/能力调用额度已用完；仍可沿nextRead读取已取得证据，然后交付已有结果。";
+          return "GEA_CALL_BUDGET: 业务查询/业务能力调用额度已用完；仍可沿nextRead读取已取得证据，然后交付已有结果。";
         state.calls++;
       }
       if (exec.name === "gea_gateway_catalog" && state.catalogStalls >= 2)
         return "GEA_CATALOG_NO_PROGRESS: 目录连续未提供新信息；使用已返回成员执行最小gea_cube_query或说明具体缺口，查询后可按错误修正目录。本轮其它工具仍可用。";
-      if (["render_ui", "validate_dsh_ui"].includes(exec.name)) {
-        const issue = businessUiIssue(exec.arguments);
-        if (issue) return issue;
-      }
     }),
   );
   offs.push(
     ctx.on("tools/execute", async (exec, next) => {
       await assertSessionResourceAvailable(ctx, exec.agent?.id, exec.signal);
-      if (exec.agent && profileOf(exec.agent)) {
+      if (exec.agent && profileOf(exec.agent) && (exec.name.startsWith("gea_") || exec.name === "forecast_compute")) {
         // An actual query attempt, including a member error, permits targeted rediscovery.
         if (exec.name === "gea_cube_query") {
           stateOf(exec.agent).catalogStalls = 0;
@@ -366,7 +356,7 @@ export function mountBusinessPrompts(
         );
       }
       executionGrants.delete(exec.token);
-      if (agent && profileOf(agent)) {
+      if (agent && profileOf(agent) && (exec.name.startsWith("gea_") || exec.name === "forecast_compute")) {
         const args = exec.arguments as Record<string, unknown>;
         const texts = result.content
           .filter((b) => b.type === "text")
@@ -934,37 +924,31 @@ export function mountBusinessPrompts(
           ? [{ name: "gea:ui", text: UI_RULES }]
           : []),
         ...(state.readCalls >= PROMPT_BUDGET.evidenceCalls ||
-        state.calls >= state.limit ||
-        state.steps > state.limit + PROMPT_BUDGET.evidenceCalls
+        state.calls >= state.limit
           ? [
               {
                 name: "gea:budget",
                 text:
                   state.readCalls >= PROMPT_BUDGET.evidenceCalls
-                    ? "本轮证据读取额度已用完，工具阶段结束。停止新查询、能力加载和证据回读；直接用已展示数据交付结论、实际覆盖范围和未完成项。未读结果保持未知，不重建查询或等待工具；不输出工具协议文本。"
-                    : "本轮查询额度已用完，不再新查。必要时在读取额度内沿nextRead读已取得证据，然后交付业务答复及未完成项；不输出工具协议文本。",
+                    ? "本轮业务证据读取额度已用完。停止新业务查询、业务能力加载和证据回读；直接用已展示数据交付结论、实际覆盖范围和未完成项。未读结果保持未知，不重建业务查询；通用文件、规划、任务和协作能力仍按官方规则可用。"
+                    : "本轮业务查询额度已用完，不再发起业务查询。必要时在读取额度内沿nextRead读已取得证据，然后交付业务答复及未完成项；通用文件、规划、任务和协作能力仍按官方规则可用。",
               },
             ]
           : []),
       ];
       refreshMask(agent);
       const visible = new Set(ctx.tools.schemas(agent).map((tool) => tool.name));
-      const tools =
-        state.steps > state.limit + PROMPT_BUDGET.evidenceCalls ||
-        state.readCalls >= PROMPT_BUDGET.evidenceCalls
-          ? []
-          : assembled.tools
-              .filter(
-                (tool) =>
-                  visible.has(tool.name) &&
-                  (state.calls < state.limit || tool.name === "gea_evidence_read"),
-              )
-              .map((tool) =>
-                businessToolDisplay({
-                  ...tool,
-                  description: TOOL_DESCRIPTIONS[tool.name] ?? tool.description,
-                }),
-              );
+      const tools = assembled.tools
+        .filter(tool => {
+          if (!visible.has(tool.name)) return false;
+          if (!tool.name.startsWith("gea_")) return true;
+          if (state.readCalls >= PROMPT_BUDGET.evidenceCalls) return false;
+          return state.calls < state.limit || tool.name === "gea_evidence_read";
+        })
+        .map(tool => businessToolDisplay({
+          ...tool,
+          description: TOOL_DESCRIPTIONS[tool.name] ?? tool.description,
+        }));
       const measurement = promptMeasurement(
         sections.map((section) => section.text).join("\n\n"),
         tools,
@@ -975,7 +959,6 @@ export function mountBusinessPrompts(
           preset: presetOf(agent),
           ...measurement,
           calls: state.calls,
-          steps: state.steps,
           resultChars: state.returned,
         }),
       );

@@ -1,4 +1,4 @@
-import { profileFor, installPromptProfile } from "./host/prompt-policy.ts";
+import { profileFor, installPromptProfile, type PromptProfile } from "./host/prompt-policy.ts";
 import {
   businessIdentityKey,
   sessionConsumer,
@@ -130,7 +130,7 @@ export async function registerHtmlPlugins(
         `UNSUPPORTED_HTML_RESOURCE_PROTOCOL [source: ${directory}/plugin.json]`,
       );
     const preset = "gea-html-" + manifest.id;
-    const profile = profileFor(preset) ?? {
+    const profile: PromptProfile = profileFor(preset) ?? {
       label: manifest.name,
       consumerCode: manifest.gea.consumerCode,
       skills: [manifest.id],
@@ -156,6 +156,8 @@ export async function registerHtmlPlugins(
       {
         id: preset,
         label: manifest.name,
+        presetName: profile.presetName,
+        description: profile.description,
         root: directory,
         prompt: manifest.agentResources.prompt,
         capability: manifest.declarations.capability,
