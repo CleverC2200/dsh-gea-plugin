@@ -205,10 +205,10 @@ test(
       await page.getByRole("navigation", { name: "业务导航", exact: true }).waitFor();
       // 侧栏二级条目要和一级标题左对齐：文字同一竖线，命中区同一左边缘，二级只少一个图标。
       const navRows = await page
-        .locator(".gea-shell-nav-heading, .gea-shell-nav-child")
+        .locator(".gea-shell-nav-heading, [data-gea-business-entry]")
         .evaluateAll((buttons) =>
           buttons.map((button) => ({
-            child: button.classList.contains("gea-shell-nav-child"),
+            child: button.hasAttribute("data-gea-business-entry"),
             hit: Math.round(button.getBoundingClientRect().x),
             label: Math.round(button.querySelector("span").getBoundingClientRect().x),
           })),
