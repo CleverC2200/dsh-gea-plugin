@@ -460,15 +460,12 @@ test("an isolated source window rejects frozen five-source tampering before dele
   );
 });
 test("r7 old filename preparation failure is replayed only in a disposable copy and remains unknown in its original", async (t) => {
-  const original = resolve(
-    import.meta.dirname,
-    "../../../../../../.scratch/real-readonly-48/evidence/navigation-r7-setup-failure.json",
-  );
+  const fixture = await sourceWindow(t, "source-host");
+  const original = fixture.historicalFailure;
   const originalBytes = await readFile(original),
     oldFailure = JSON.parse(originalBytes);
   assert.match(oldFailure.businessRequests, /unknown/);
   assert.match(oldFailure.modelsAndWrites, /unknown/);
-  const fixture = await sourceWindow(t, "source-host");
   const copied = join(fixture.temporary, "r7-failure-copy.json");
   await writeFile(copied, originalBytes);
   fixture.frozen.file = "sales27-window-budget-export-r6.json";

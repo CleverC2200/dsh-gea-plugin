@@ -16,14 +16,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { readDeployment } from "../../scripts/deployment.mjs";
 import { sourcePlugins } from "../../scripts/source-composition.mjs";
+import { readSourceWindowInputs } from "./source-window-inputs.mjs";
 export const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 export const objectHash = (value) => hash(JSON.stringify(value));
 const sourceRoot = resolve(import.meta.dirname, "../..");
-const fixedCore = resolve(sourceRoot, "../../official-latest-standard");
-const sharedWB = resolve(
-  sourceRoot,
-  "../../../integration/dsh-agent-workbench",
-);
 const save = (file, value) => writeFile(file, JSON.stringify(value));
 const git = (root, ...args) =>
   execFileSync("git", ["-C", root, ...args], {
@@ -31,7 +27,9 @@ const git = (root, ...args) =>
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
 
-export async function sourceWindow(t, mode) {
+export async function sourceWindow(t, mode, { inputFile } = {}) {
+  const { core: fixedCore, workbench: sharedWB, candidateOwners, historicalFailure } =
+    await readSourceWindowInputs(inputFile);
   const temporary = await mkdtemp(join(tmpdir(), "source-window-"));
   t.after(() => rm(temporary, { recursive: true, force: true }));
   const group = join(temporary, "implement"),
@@ -120,7 +118,10 @@ export async function sourceWindow(t, mode) {
   const gea = repositories.find((p) => p.repo === "dsh-gea-plugin").path;
   const candidateFile = join(temporary, "candidate.json");
   const coreSha = git(fixedCore, "rev-parse", "HEAD");
-  await save(candidateFile, { core: coreSha, repositories });
+  await save(candidateFile, {
+    core: coreSha,
+    repositories: repositories.filter(({ repo }) => candidateOwners.includes(repo)),
+  });
   const configFile = join(temporary, "deployment.json");
   await save(configFile, {
     geaBaseUrl: "https://127.0.0.1:1/gea-boot",
@@ -345,6 +346,7 @@ export async function sourceWindow(t, mode) {
   };
   return {
     temporary,
+    historicalFailure,
     gea,
     fixedCore,
     candidateFile,

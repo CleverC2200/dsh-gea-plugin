@@ -23,3 +23,4 @@ GEA Host 管唯一业务身份、凭据、Consumer 授权与受控执行；clien
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 自动检查核对原回执一致性，业务验收另据对应证据判断         | `delivery:check` 对 failed/unknown 返回非零（底层CLI3）；`test:delivery` 重放r31真实预算矛盾。报告浏览使用 `delivery:report`，详见[交付核对](docs/delivery-check.md)。 |
 | 收尾前按原规格确认完整目标范围；用户暂停和票据依赖分别保留 | `delivery:verify-goal` 只接受声明目标全部验证且无在途工作，未完成底层CLI返回4；`test:delivery`覆盖阶段done但有独立下一步、暂停和缺目标。工具不授予授权或自动接续。     |
+| Window fixture 的 Core、三仓和历史证据从显式冻结输入读取，准备前完成核验 | `tests/fixtures/source-window-inputs.mjs` 复用候选检查；`test:fixture-inputs` 观察文件与进程副作用，现有 delivery fixture CI 执行同一命令；`test:window` 保留完整原行为门禁 |

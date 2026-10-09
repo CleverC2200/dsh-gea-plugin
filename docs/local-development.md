@@ -26,6 +26,19 @@ corepack pnpm install --frozen-lockfile --prefer-offline
 
 按授权启动与切换时复用 [源码组合说明](plugin-split-validation.md) 的明确五源和自有 runtime。可构建不等于窗口已获授权。旧 desktop:dev 使用已安装公司壳，属于历史入口，不作为当前官方客户端协议。
 
+## Window fixture 的固定输入
+
+`tests/fixtures/source-window.mjs` 在创建临时目录前读取 `GEA_TEST_CANDIDATE_INPUTS`，也接受显式 `inputFile` 参数。输入文件使用三仓候选检查已有的 `core` 提交与 `repositories` 记录，并声明绝对 `corePath` 和 `historicalFailure: { file, sha256 }`。每个仓的 `path` 为绝对路径，`head` 为已冻结的提交；历史失败文件保持原字节，摘要不匹配即拒绝。
+
+fixture 调用声明的 Workbench `verify-candidate-input.mjs`，检查干净三仓、包身份、锁和固定 Core。Core 包从声明路径内的真实 package manifest 定位，Cordis 的公开 types 导出必须与 Workbench 官方 SDK 输入相同。当前 G fixture 仅复制本 checkout 的启动脚本用于离线行为回归，不从目录层数寻找邻仓或重新选择源组合。
+
+```sh
+node --test tests/source-window-input.test.mjs
+GEA_TEST_CANDIDATE_INPUTS=/absolute/candidate-input.json node --test tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs
+```
+
+第一条是 Node-only 的前置拒绝检查，不需要 Core、依赖安装或服务。第二条要求实际固定 Core、三仓和历史证据，沿原 Window admission 及预算保护验证本地 fixture 行为。两者都不代替源码全量 profile、Native、业务或模型验收；完整 `test` 的失败状态继续按原回执记录。
+
 ## Codex Local environments
 
 仓内 `.codex/environments/environment.toml` 是实际配置。默认 setup 只核工具，安装由明确选择的 Action 执行，不自动构建。Actions 的命令、cwd 与是否持续 watch 按该文件核对，需要不同范围时运行公开命令，不新增任务识别或编排器。
@@ -55,3 +68,5 @@ GEA 的公开 Config schema 为空配置提供已有公司产品定义中的端�
 未设置 `runtimeDir` 时，Host 从官方 `profileContext.dir` 派生 `gea/` 专用持久目录。显式目录必须是可创建的绝对目录。普通插件登录由 GEA Host 在此目录写入权限为 0600 的 `web-login.json`，默认不依赖旧启动器变量；`GEA_WEB_LOGIN_PERSIST=0` 仍可明确关闭，旧公司桌面的私有凭据通道保留其原归属。
 
 发行 manifest 要求同批 Workbench/Manage exact peers。GenUI/Sidebar 维持 exact optional peers，不随三主插件自动启用。未安装或停用辅助插件时，只报告其真实缺席状态；官方 standard 和已配置业务授权保护保持原接口。
+
+`node --run test:fixture-inputs` 是无 SDK 的输入拒绝回归，也由现有 delivery fixture CI 执行。它不代替需要固定官方输入的 `test:window`；远端 workflow 的配置与实际执行结果分别记录。
