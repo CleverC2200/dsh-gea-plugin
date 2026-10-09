@@ -70,7 +70,7 @@ test(
         transport: "host-provided",
         contract: "gea-html-v1",
         consumer: { consumerType: "AGENT", consumerCode: "probe-consumer" },
-        capabilities: ["governed-sql-read"],
+        capabilities: [],
       }),
     );
     // 第二个模块：非演示（真实）模块，用来验证"权限没开通"这类网关侧状态。
@@ -127,6 +127,12 @@ test(
         },
       }),
     });
+    if (process.env.GEA_TEST_LIFECYCLE_RECEIPT)
+      t.after(() =>
+        writeFile(process.env.GEA_TEST_LIFECYCLE_RECEIPT + ".host.log", app.output, {
+          mode: 0o600,
+        }),
+      );
     let outcome = "success";
     let toolReply;
     let closed = false;
