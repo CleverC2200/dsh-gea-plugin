@@ -19,6 +19,9 @@ import { parseArgs } from "node:util";
 
 import { corePackages } from "./source-composition.mjs";
 
+import { admitSourceWindow } from "./window-admission.mjs";
+import { readDeployment } from "./deployment.mjs";
+
 const root = resolve(import.meta.dirname, "..");
 const json = async (path) => JSON.parse(await readFile(path, "utf8"));
 const save = (path, value) =>
@@ -29,10 +32,7 @@ const digest = async (path) =>
     .digest("hex");
 
 /** Boot the official profile from artifacts built in the pinned source checkout. */
-import {
-  resolveSourceInputs,
-  readSourceSelection,
-} from "./source-profile.mjs";
+import { resolveSourceInputs, readSourceSelection } from "./source-profile.mjs";
 
 export async function runSourceProfile(
   core,
@@ -40,8 +40,25 @@ export async function runSourceProfile(
   plugins = false,
   deployment,
   port = 0,
-  { sources } = {},
+  {
+    sources,
+    window,
+    config,
+    dev = false,
+    mode = plugins ? "source-host" : "isolated-core-host",
+  } = {},
 ) {
+  if (plugins !== (mode !== "isolated-core-host"))
+    throw Error("WINDOW_MODE_MISMATCH");
+  await admitSourceWindow({
+    window,
+    mode,
+    core,
+    runtime,
+    config,
+    deployment,
+    sources,
+  });
   let selected;
   if (plugins) {
     selected = await readSourceSelection(runtime);
@@ -62,6 +79,11 @@ export async function runSourceProfile(
     throw Error(
       "UNSUPPORTED_CORE_BASELINE: use the registered isolated checkout",
     );
+  if (config) deployment = await readDeployment(config);
+  await mkdir(join(runtime, "home"), { recursive: true, mode: 0o700 });
+  process.env.DSH_HOME = join(runtime, "home");
+  process.env.DSH_TELEMETRY_DISABLED = "1";
+  if (dev) process.env.GEA_WEB_LOGIN_PERSIST = "1";
   await mkdir(runtime, { recursive: true, mode: 0o700 });
   await save(join(runtime, "core-source.json"), {
     upstream: supported.upstream,
@@ -207,6 +229,10 @@ export async function runSourceProfile(
 async function launch() {
   const { values } = parseArgs({
     options: {
+      window: { type: "string" },
+      case: { type: "string" },
+      owner: { type: "string" },
+      "freeze-sha256": { type: "string" },
       core: { type: "string" },
       plugins: { type: "boolean" },
       sources: { type: "string" },
@@ -215,10 +241,24 @@ async function launch() {
   });
   if (values.help) {
     console.log(
-      "node scripts/start-isolated-validation.mjs [--core <built current source checkout>]\nDefaults to the registered official-latest-standard checkout; --sources accepts the fixed source records. macOS only; fresh offline profile; Ctrl-C stops this instance.",
+      "node scripts/start-isolated-validation.mjs --window <open-window.json> --case <case> --owner <owner> --freeze-sha256 <frozen SHA-256> [--core <built current source checkout>] [--plugins --sources <frozen source records>]\nSupported Host modes: isolated-core-host / isolated-source-host. Defaults to the registered official-latest-standard checkout; --sources accepts the fixed source records. macOS only; fresh offline profile; Ctrl-C stops this instance.",
     );
     return;
   }
+  const mode = values.plugins ? "isolated-source-host" : "isolated-core-host";
+  const window = {
+    file: values.window,
+    case: values.case,
+    owner: values.owner,
+    freezeSha256: values["freeze-sha256"],
+  };
+  await admitSourceWindow({
+    window,
+    mode,
+    core: values.core ?? resolve(root, "../../official-latest-standard"),
+    runtime: join(root, ".runtime/plugin-split-validation"),
+    sourcesFile: values.sources,
+  });
   if (process.platform !== "darwin")
     throw Error("ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX");
   const fixedSources = values.sources
@@ -295,7 +335,7 @@ async function launch() {
     LANG: "en_US.UTF-8",
     DSH_TELEMETRY_DISABLED: "1",
   };
-  const code = `import(${JSON.stringify(import.meta.url)}).then(m => m.runSourceProfile(${JSON.stringify(core)}, ${JSON.stringify(runtime)}, ${values.plugins === true}, undefined, 0, ${JSON.stringify({ sources: fixedSources })}))`;
+  const code = `import(${JSON.stringify(import.meta.url)}).then(m => m.runSourceProfile(${JSON.stringify(core)}, ${JSON.stringify(runtime)}, ${values.plugins === true}, undefined, 0, ${JSON.stringify({ sources: fixedSources, window, mode })}))`;
   const log = await open(join(runtime, "server.log"), "a", 0o600);
   const child = spawn(
     "/usr/bin/sandbox-exec",
@@ -371,7 +411,7 @@ async function launch() {
 
 if (
   process.argv[1] &&
-  pathToFileURL(resolve(process.argv[1])).href === import.meta.url
+  pathToFileURL(await realpath(process.argv[1])).href === import.meta.url
 ) {
   launch().catch((error) => {
     console.error(error.message);

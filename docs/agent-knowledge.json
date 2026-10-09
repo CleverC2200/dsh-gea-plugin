@@ -1,0 +1,42 @@
+{
+  "entries": ["AGENTS.md", "README.md", "docs/local-development.md"],
+  "history": ["docs/history"],
+  "paths": [
+    "src/host.ts",
+    "src/client.tsx",
+    "src/business-identity-client.ts",
+    "src/host/business-identity.ts",
+    "src/host/gateway-session.ts",
+    "src/shared/sql-read-limit.js",
+    "src/shared/transport-signal.ts",
+    "src/host/mcp-read-evidence.ts",
+    "scripts/source-profile.mjs",
+    "scripts/start.mjs",
+    "scripts/window-admission.mjs",
+    "scripts/start-isolated-validation.mjs",
+    "scripts/delivery-check.mjs",
+    "scripts/source-combination-integrity.mjs"
+  ],
+  "scripts": [
+    "check:knowledge",
+    "dev",
+    "build",
+    "build:plugin",
+    "build:host",
+    "build:client",
+    "test:build",
+    "test:window",
+    "typecheck",
+    "typecheck:official",
+    "source:check",
+    "source:build",
+    "start",
+    "delivery:check",
+    "test:delivery"
+  ],
+  "exports": false,
+  "peers": ["../dsh-agent-workbench", "../../official-latest-standard"],
+  "commandRoots": {
+    "docs/plugin-split-validation.md": ["../../official-latest-standard"]
+  }
+}

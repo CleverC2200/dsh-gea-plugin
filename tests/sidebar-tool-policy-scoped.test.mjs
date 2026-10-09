@@ -20,7 +20,7 @@ const { agentEvents } = await import(
 );
 const { outputFiles } = await build({
   stdin: {
-    contents: `export{mountBusinessPrompts}from'./src/host/prompt-runtime.ts';export{mountSessionToolRestraint}from'./src/host/session-tool-restraint.ts';export{mountSidebarToolVisibility}from'./src/host/sidebar-tool-visibility.ts';export{AgentOpenRegistry,registerOpenTool}from'dsh-better-sidebar/src/agent-opens.ts';export{SIDEBAR_PREFS_DEFAULTS}from'dsh-better-sidebar/src/prefs-shared.ts';`,
+    contents: `export{mountBusinessPrompts}from'./src/host/prompt-runtime.ts';export{mountSidebarToolVisibility}from'./src/host/sidebar-tool-visibility.ts';export{AgentOpenRegistry,registerOpenTool}from'dsh-better-sidebar/src/agent-opens.ts';export{SIDEBAR_PREFS_DEFAULTS}from'dsh-better-sidebar/src/prefs-shared.ts';`,
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -87,25 +87,43 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     config: { runtimeDir: directory, analysisAgentCode: "sales_forecast" },
     status: () => ({ user: { id: "offline" } }),
     watchIdentity: () => () => {},
+    assertExecutionAllowed: () => {},
     readTurnRevision: () => 1,
     surfaceFor: () => undefined,
   };
+  ctx.provide("agentResources", {
+    list: async () => [
+      { id: "gea-readonly", kind: "prompt", installed: true, enabled: true },
+    ],
+  });
   let authenticated = true;
   let visibilityRoute;
   ctx.provide("connection", {
-    fetch: { register: (route) => { visibilityRoute = route; return () => { visibilityRoute = undefined; }; } },
+    fetch: {
+      register: (route) => {
+        visibilityRoute = route;
+        return () => {
+          visibilityRoute = undefined;
+        };
+      },
+    },
   });
   const offVisibility = m.mountSidebarToolVisibility(ctx, {
     status: () => ({ authenticated }),
   });
   const visibility = async (id = agent.id) => {
-    const response = await visibilityRoute.fetch(new Request(
-      "http://localhost/api/gea-proof/sidebar-tool-visibility?sessionId=" + encodeURIComponent(id),
-    ));
+    const response = await visibilityRoute.fetch(
+      new Request(
+        "http://localhost/api/gea-proof/sidebar-tool-visibility?sessionId=" +
+          encodeURIComponent(id),
+      ),
+    );
     return { status: response.status, value: await response.json() };
   };
   assert.deepEqual((await visibility()).value, {
-    tool: "sidebar_open", registered: false, visible: false,
+    tool: "sidebar_open",
+    registered: false,
+    visible: false,
   });
   authenticated = false;
   assert.equal((await visibility()).status, 401);
@@ -118,7 +136,6 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     { readModules: () => [] },
     new Map(),
   );
-  const offRestraint = m.mountSessionToolRestraint(ctx);
   const registry = new m.AgentOpenRegistry();
   let prefs = { ...m.SIDEBAR_PREFS_DEFAULTS };
   let offSidebar;
@@ -133,7 +150,6 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     offSidebar?.();
     offVisibility();
     offBusiness();
-    offRestraint();
     registry.dispose();
     await scope.dispose();
     await tools.dispose();
@@ -169,15 +185,18 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     "business Agent scoped view must include the registered UI-only tool",
   );
   assert.deepEqual((await visibility()).value, {
-    tool: "sidebar_open", registered: true, visible: true,
+    tool: "sidebar_open",
+    registered: true,
+    visible: true,
   });
   assert.ok(names().includes("gea_cube_query"));
-  for (const denied of [
-    "mcp__browser__browser_click",
-    "terminal_create",
-    "gea_sales_plan_write",
-    "run_code",
-  ])
+  for (const permitted of ["mcp__browser__browser_click", "terminal_create"])
+    assert.equal(
+      names().includes(permitted),
+      true,
+      permitted + " follows its owner registration",
+    );
+  for (const denied of ["gea_sales_plan_write", "run_code"])
     assert.equal(names().includes(denied), false, denied + " must stay absent");
   const intersect = agent.ctx.tools.restrict({ deny: ["sidebar_open"] });
   assert.equal(
@@ -186,7 +205,9 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     "another actual scope restriction still intersects the GEA allow",
   );
   assert.deepEqual((await visibility()).value, {
-    tool: "sidebar_open", registered: true, visible: false,
+    tool: "sidebar_open",
+    registered: true,
+    visible: false,
   });
   intersect();
   assert.ok(names().includes("sidebar_open"));

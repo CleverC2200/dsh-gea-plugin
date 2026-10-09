@@ -5,14 +5,9 @@ import {
 } from "./layers.ts";
 
 /**
- * 能力契约：每个业务模块（原生工作台页面或迁移过来的 HTML 页面）用同一份形状
- * 声明自己"有什么页面、能读什么数据、能改到什么程度、带哪些提示词、负责回答哪类问题"。
- *
- * 宿主只认这份契约，不再按模块写分支：加一个模块 = 多一份契约。
- *
- * 契约默认由宿主从模块已经有的事实派生（plugin.json / mcp.json / SKILL.md /
- * 页面里的受管 SQL），模块不必手工多交文件；模块将来想自己声明时，同一份形状
- * 直接读模块自带的声明即可（`normalizeContract` 负责校验与兜底）。
+ * 原生销售与 HTML 模块使用同一能力形状，声明页面、数据、最大影响等级和路由。
+ * 当前 HTML 装载要求分离的 page/capability 声明，不扫描页面 SQL 或 Skill 正文。
+ * contractFromPlugin 提供已校验安装元数据的基础形状，不能代替缺失的声明文件。
  */
 
 /** 能力的影响等级：页面看得见 < 页面草稿 < 会提交 < 会审批。 */
@@ -48,9 +43,9 @@ export type CapabilityView = {
 
 export type CapabilityData = {
   consumerCode: string;
-  /** 受管只读能力覆盖的业务表（从模块自述的 SQL 静态提取，不含 CTE）。 */
+  /** 安装能力声明提供的受管业务表；不授予服务端数据权限。 */
   tables: string[];
-  /** 从模块 SKILL.md 摘出来的口径要点，进只读工具说明。 */
+  /** 安装能力声明提供的业务口径，进入只读工具说明。 */
   rules: string[];
   /** 演示（mock）模块：页面里的数字是原型数据，也没有真实数据通道。 */
   mock?: boolean;
@@ -76,7 +71,7 @@ export type CapabilityContract = {
   maxEffect: CapabilityEffect;
   /**
    * 这个模块实际上有哪几层能力（读 / 改草稿 / 提交 / 审批 / 导出）。
-   * 默认由上面的页面、数据与最大等级派生（layers.ts）；模块将来自己声明时直接生效。
+   * 未显式提供时从页面、数据与最大等级派生；声明仍受安装模块允许等级约束。
    */
   layers?: CapabilityLayer[];
   skills: string[];

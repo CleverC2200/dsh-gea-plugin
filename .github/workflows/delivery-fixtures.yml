@@ -1,0 +1,22 @@
+name: Delivery fixture checks
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  delivery-fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # Node/npm/tar/git only. No dependency install, Core checkout, service or secrets.
+      - run: npm run test:delivery:packages
+      - run: node --run test:delivery
+      - run: node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs

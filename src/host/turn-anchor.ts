@@ -1,23 +1,13 @@
 import type {} from "../shared/message-source.ts";
 /**
- * 每步把"用户这一轮问的是什么"钉进消息列表。
- *
- * 线上实测（2026-09-23，分仓库存 Agent「郑州基地的大日期库存有哪些？分别有多少？」）：
- * 用户那条消息明明在会话里（会话记录可查），模型前几步也在按它取数，但跑到第 10 步
- * 左右开始跑偏——去查在途/待发订单，`gea_page` 的 focus 甚至写成"长沙分仓"（问的是
- * 郑州），最后直接总结成"我这一轮没有收到你的提问内容…正文是空的"。同一轮 17 次
- * 工具调用、几次权限拒绝，外加宿主注入的目录与位置提示，模型把用户那句话丢了。
- *
- * 系统提示里的位置段只能"劝阻"（而且位置太靠前，轮次一长就被冲淡）。这里改成每步把
- * 用户原话作为一条宿主事实追加到消息列表末尾——和 agent-manage 注入子代理目录用的是
- * 同一个位置、同一套机制（`agent/pre-step`），并且整段对话只保留一条：内容没变就不动，
- * 用户换了问题就地替换，不随轮次膨胀。
+ * 在 agent/pre-step 保留当前用户提问，避免工具、目录和位置消息覆盖任务事实。
+ * 整段对话只保留一条锚点：内容相同不重复，问题变化时就地替换，不随步骤膨胀。
  */
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-agent";
 
-/** 锚点用 plugin 来源（不用自造的 kind），会话记录里一眼能看出是宿主加的。 */
+/** 消息列表中 plugin 来源锚点的标识，用于识别该来源记录。 */
 export const TURN_ANCHOR_PLUGIN = "gea-plugin";
 const TURN_ANCHOR_SUMMARY = "宿主：本轮用户提问（长轮次防丢）";
 /** 用户问题只留开头这么多字：锚点要短，别把上下文再撑大。 */
@@ -58,12 +48,8 @@ export function lastUserQuestion(messages: readonly unknown[]): string | undefin
 }
 
 /**
- * 这一轮是第几条"用户自己发的"消息——用它当"新一轮"的判据。
- *
- * 原来我用"提问文本变没变"判断新一轮，线上立刻踩坑（session-c1f22d8b）：
- * 用户**重复问同一句话**时文本没变 → 上一轮的重读闸门/停手闸门全被继承，
- * 这一轮第一次调用就被判成"本轮已读过"，模型于是直接放弃取数。
- * 改成数"用户消息条数"：每问一次就 +1（文本相同也一样）。
+ * 按用户来源的消息条数区分轮次；重复问同一句话也开始新一轮。
+ * 不按提问文本判断，否则上一轮的重读和停止计数会错误继承。
  */
 export function userTurnCount(messages: readonly unknown[]): number {
   let count = 0;
@@ -134,9 +120,7 @@ export function mountTurnAnchor(
       (decision as { agent?: { id?: string } }).agent?.id ??
       "global";
     if (question) {
-      // 作用域必须和工具层一致：工具里用的是 `exec.agent.id`（真实 session id）。
-      // 之前我误从 decision 上取 agent（那里没有），永远退化成 "global"——
-      // 于是"新一轮清零"清的是 global、计数却存在 session 下，永远清不掉。
+      // 重置作用域必须与工具层 exec.agent.id 一致，不能只清理 global 计数。
       const turnCount = userTurnCount(current);
       if (lastTurnCount.get(scope) !== turnCount) {
         lastTurnCount.set(scope, turnCount);

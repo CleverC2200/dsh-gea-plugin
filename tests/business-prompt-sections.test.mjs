@@ -68,7 +68,7 @@ test("business section policy preserves native UI protocol and leaves ordinary c
   );
   t.after(dispose);
   const sections = [
-    { name: "app:web-surface", text: "coding-only HMR guidance" },
+    { name: "app:web-surface", text: "Host GUI orientation and no replacement servers" },
     { name: "genui:fence", text: "vendor coding presentation policy" },
     { name: "kept-native-section", text: "native section survives" },
   ];
@@ -78,7 +78,7 @@ test("business section policy preserves native UI protocol and leaves ordinary c
   const businessView = await assemble();
   assert.equal(
     businessView.sections.some((section) => section.name === "app:web-surface"),
-    false,
+    true,
   );
   const ui = businessView.sections.find((section) => section.name === "genui:fence").text;
   assert.match(ui, /dsh-ui/);

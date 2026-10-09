@@ -1,12 +1,6 @@
 /**
- * 模块 MCP 通道的失败熔断。
- *
- * 线上实测的两类空转：① 同一个模块连续被拒（例如库龄缺资源 ALLOW），模型换写法、
- * 换成员、换模型继续试；② 一轮打了 17 次工具调用还没结论，中间开始跑偏。只读 SQL
- * 通道早就有这套（business 里的 `GEA_PLUGIN_RETRY_STOPPED`），MCP 通道一直缺。
- *
- * 口径与 SQL 通道一致：按 consumerCode 记连续失败，**成功即清零**；到上限后在窗口内
- * 直接停手，逼模型用手上的证据作答，或说清缺哪一项，而不是继续换着试。
+ * 按 Consumer 和会话作用域记录 MCP 连续失败，成功清零。
+ * 达到上限后在窗口内拒绝新调用，避免换参数、成员或模型重试同一授权缺口。
  */
 
 export type McpFailureGuard = {
@@ -34,9 +28,7 @@ export type McpWasteGuard = {
 };
 
 /**
- * 本轮整体熔断：单个模块的熔断挡不住"换着模块试"。
- * 线上实测一轮 119 步、168 次调用，其中样例值取空 27 次、演示模块 24 次、授权拒绝若干——
- * 单个 consumer 的熔断对它们无效，所以这里按"会话 + 时间窗"记总账。
+ * 按会话和时间窗累计跨模块的无新证据调用；单个 Consumer 的连续失败计数不能覆盖它。
  */
 export function createMcpWasteGuard(
   options: { limit?: number; windowMs?: number; now?: () => number } = {},

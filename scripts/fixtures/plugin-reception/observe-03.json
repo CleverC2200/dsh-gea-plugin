@@ -1,0 +1,622 @@
+{
+  "checkpoint": "complete",
+  "success": true,
+  "nativeRun": false,
+  "outgoingAttempts": {
+    "fetch": 0,
+    "http": 0,
+    "https": 0,
+    "socket": 0
+  },
+  "modelTasks": 0,
+  "businessQueries": 0,
+  "credentialsReadOrCopied": false,
+  "plugins": [
+    {
+      "name": "@cleverc2200/dsh-agent-workbench",
+      "mounts": 1,
+      "entryId": "agent-workbench",
+      "fiberState": 2,
+      "active": true
+    },
+    {
+      "name": "dsh-agent-manage",
+      "mounts": 1,
+      "entryId": "dsh-agent-manage",
+      "fiberState": 2,
+      "active": true
+    },
+    {
+      "name": "@cleverc2200/gea-dsh-prototype",
+      "mounts": 1,
+      "entryId": "gea-proof",
+      "fiberState": 2,
+      "active": true
+    }
+  ],
+  "services": [
+    {
+      "name": "pluginPackages",
+      "available": true
+    },
+    {
+      "name": "pluginManager",
+      "available": true
+    },
+    {
+      "name": "clientModules",
+      "available": true
+    },
+    {
+      "name": "agentPresets",
+      "available": true
+    },
+    {
+      "name": "agentResources",
+      "available": true
+    },
+    {
+      "name": "workbenchPages",
+      "available": true
+    },
+    {
+      "name": "settings",
+      "available": true
+    },
+    {
+      "name": "connection",
+      "available": true
+    },
+    {
+      "name": "tools",
+      "available": true
+    },
+    {
+      "name": "skills",
+      "available": true
+    },
+    {
+      "name": "sessionController",
+      "available": true
+    },
+    {
+      "name": "storageDomain",
+      "available": true
+    }
+  ],
+  "clients": [
+    {
+      "id": "@cleverc2200/dsh-agent-workbench",
+      "graphRegistered": true,
+      "scriptPath": "plugins/??@cleverc2200/dsh-agent-workbench/client.js&rev=e93b5d55b48f",
+      "revision": "e93b5d55b48f",
+      "batchPath": "plugins/??@deepseek-ai/dsh-client-ui-deliverables/client.js,@deepseek-ai/dsh-typert-registry/client.js,@deepseek-ai/dsh-client-connection/client.js,@cleverc2200/dsh-agent-workbench/client.js,@deepseek-ai/dsh-api-workspace-controller/client.js,@deepseek-ai/dsh-api-session-controller/client.js,@cleverc2200/gea-dsh-prototype/client.js,dsh-agent-manage/client.js,@deepseek-ai/dsh-client-ui-directory-picker-native/client.js&rev=ebf4ad4451ba",
+      "batchPhase": "application",
+      "browserExecuted": false
+    },
+    {
+      "id": "dsh-agent-manage",
+      "graphRegistered": true,
+      "scriptPath": "plugins/??dsh-agent-manage/client.js&rev=d52452f6c3e1",
+      "revision": "d52452f6c3e1",
+      "batchPath": "plugins/??@deepseek-ai/dsh-client-ui-deliverables/client.js,@deepseek-ai/dsh-typert-registry/client.js,@deepseek-ai/dsh-client-connection/client.js,@cleverc2200/dsh-agent-workbench/client.js,@deepseek-ai/dsh-api-workspace-controller/client.js,@deepseek-ai/dsh-api-session-controller/client.js,@cleverc2200/gea-dsh-prototype/client.js,dsh-agent-manage/client.js,@deepseek-ai/dsh-client-ui-directory-picker-native/client.js&rev=ebf4ad4451ba",
+      "batchPhase": "application",
+      "browserExecuted": false
+    },
+    {
+      "id": "@cleverc2200/gea-dsh-prototype",
+      "graphRegistered": true,
+      "scriptPath": "plugins/??@cleverc2200/gea-dsh-prototype/client.js&rev=4058a0e4391d",
+      "revision": "4058a0e4391d",
+      "batchPath": "plugins/??@deepseek-ai/dsh-client-ui-deliverables/client.js,@deepseek-ai/dsh-typert-registry/client.js,@deepseek-ai/dsh-client-connection/client.js,@cleverc2200/dsh-agent-workbench/client.js,@deepseek-ai/dsh-api-workspace-controller/client.js,@deepseek-ai/dsh-api-session-controller/client.js,@cleverc2200/gea-dsh-prototype/client.js,dsh-agent-manage/client.js,@deepseek-ai/dsh-client-ui-directory-picker-native/client.js&rev=ebf4ad4451ba",
+      "batchPhase": "application",
+      "browserExecuted": false
+    }
+  ],
+  "sdk": [
+    {
+      "plugin": "@cleverc2200/dsh-agent-workbench",
+      "name": "@deepseek-ai/cordis",
+      "version": "4.0.5-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "@cleverc2200/dsh-agent-workbench",
+      "name": "@deepseek-ai/dsh-storage-domain",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "@cleverc2200/dsh-agent-workbench",
+      "name": "@deepseek-ai/dsh-tools",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "dsh-agent-manage",
+      "name": "@deepseek-ai/cordis",
+      "version": "4.0.5-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "dsh-agent-manage",
+      "name": "@deepseek-ai/dsh-hooks-claude-code",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "dsh-agent-manage",
+      "name": "@deepseek-ai/dsh-llm",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "dsh-agent-manage",
+      "name": "@deepseek-ai/dsh-mcp-client",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "dsh-agent-manage",
+      "name": "@deepseek-ai/dsh-skill",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "dsh-agent-manage",
+      "name": "@deepseek-ai/dsh-tools",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "dsh-agent-manage",
+      "name": "@deepseek-ai/schemastery",
+      "version": "3.18.5-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "dsh-agent-manage",
+      "name": "@deepseek-ai/cordis-plugin-include",
+      "version": "1.0.10-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "dsh-agent-manage",
+      "name": "@deepseek-ai/dsh-agent-preset-registry",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "@cleverc2200/gea-dsh-prototype",
+      "name": "@deepseek-ai/cordis",
+      "version": "4.0.5-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "@cleverc2200/gea-dsh-prototype",
+      "name": "@deepseek-ai/dsh-api-session-controller",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "@cleverc2200/gea-dsh-prototype",
+      "name": "@deepseek-ai/dsh-brand",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "@cleverc2200/gea-dsh-prototype",
+      "name": "@deepseek-ai/dsh-llm",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "@cleverc2200/gea-dsh-prototype",
+      "name": "@deepseek-ai/dsh-llm-pi-ai",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "@cleverc2200/gea-dsh-prototype",
+      "name": "@deepseek-ai/dsh-persona",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "@cleverc2200/gea-dsh-prototype",
+      "name": "@deepseek-ai/dsh-tools",
+      "version": "0.2.1-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    },
+    {
+      "plugin": "@cleverc2200/gea-dsh-prototype",
+      "name": "@deepseek-ai/schemastery",
+      "version": "3.18.5-alpha.1",
+      "sameInstallationInstance": true,
+      "peerSatisfied": true
+    }
+  ],
+  "resources": [
+    {
+      "id": "gea-readonly",
+      "kind": "prompt",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "gea-html-plan-regional",
+      "kind": "prompt",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "gea-html-category-plan",
+      "kind": "prompt",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "gea-html-inventory-mps",
+      "kind": "prompt",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "gea-html-inventory-fc",
+      "kind": "prompt",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "gea-html-inventory-aqkc",
+      "kind": "prompt",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "gea-html-inventory-dealer",
+      "kind": "prompt",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "gea-html-inventory-qll",
+      "kind": "prompt",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "gea-html-inventory-customer",
+      "kind": "prompt",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "gea-html-inventory-orderworkbench",
+      "kind": "prompt",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "gea-html-inventory-orderfulfillment",
+      "kind": "prompt",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "gea-html-inventory-apsplan",
+      "kind": "prompt",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:category-plan",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:inventory-apsplan",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:inventory-aqkc",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:inventory-customer",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:inventory-dealer",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:inventory-fc",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:inventory-mps",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:inventory-orderfulfillment",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:inventory-orderworkbench",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:inventory-qll",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:plan-regional",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:sales-forecast-result-analysis",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:sales-ops-problem-analysis",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:sinian-demand-baseline",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:sinian-demand-dialogue",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:sinian-forecast-review",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    },
+    {
+      "id": "skill:sinian-forecast-scope",
+      "kind": "skill",
+      "enabled": true,
+      "error": false,
+      "missingSkills": []
+    }
+  ],
+  "documents": [
+    {
+      "id": "standard",
+      "sha256": "c047a67f7e13937a501a0f8cbb0bb7efdb899d521e0e4ff99670e4e660609be6",
+      "standardEntries": 34,
+      "declaredEntries": 34,
+      "fullStandardRetained": true,
+      "byteEqualStandard": true,
+      "allowedPersonaPrefixExtension": []
+    },
+    {
+      "id": "auto-negotiation",
+      "sha256": "c047a67f7e13937a501a0f8cbb0bb7efdb899d521e0e4ff99670e4e660609be6",
+      "standardEntries": 34,
+      "declaredEntries": 34,
+      "fullStandardRetained": true,
+      "byteEqualStandard": true,
+      "allowedPersonaPrefixExtension": []
+    },
+    {
+      "id": "agent-resource-skill",
+      "sha256": "c047a67f7e13937a501a0f8cbb0bb7efdb899d521e0e4ff99670e4e660609be6",
+      "standardEntries": 34,
+      "declaredEntries": 34,
+      "fullStandardRetained": true,
+      "byteEqualStandard": true,
+      "allowedPersonaPrefixExtension": []
+    },
+    {
+      "id": "gea-html-inventory-aqkc",
+      "sha256": "d13aa2391ec83178a905b0d4214b6dd5342bd4a6c3f1714819534828247fa9ef",
+      "standardEntries": 34,
+      "declaredEntries": 34,
+      "fullStandardRetained": true,
+      "byteEqualStandard": false,
+      "allowedPersonaPrefixExtension": [
+        "/persona"
+      ]
+    },
+    {
+      "id": "gea-html-inventory-qll",
+      "sha256": "00ae8d90ae6db3970e7b9ec428af4ea83b367c4347e18a87fde7de80306e9484",
+      "standardEntries": 34,
+      "declaredEntries": 34,
+      "fullStandardRetained": true,
+      "byteEqualStandard": false,
+      "allowedPersonaPrefixExtension": [
+        "/persona"
+      ]
+    },
+    {
+      "id": "gea-html-inventory-fc",
+      "sha256": "473401d42b48e6e9b035619a3e82e66ede5d879d3a50938455fa91ddb9f58637",
+      "standardEntries": 34,
+      "declaredEntries": 34,
+      "fullStandardRetained": true,
+      "byteEqualStandard": false,
+      "allowedPersonaPrefixExtension": [
+        "/persona"
+      ]
+    },
+    {
+      "id": "gea-html-inventory-dealer",
+      "sha256": "57161f02de3eb994c4f42e263b19f4b852bcc00998a9050930bbe820c35fe6ec",
+      "standardEntries": 34,
+      "declaredEntries": 34,
+      "fullStandardRetained": true,
+      "byteEqualStandard": false,
+      "allowedPersonaPrefixExtension": [
+        "/persona"
+      ]
+    },
+    {
+      "id": "gea-html-inventory-apsplan",
+      "sha256": "33d8a2e679aa73db4bea32d79d4161af153f9accd777ca371f8ec531351c1b31",
+      "standardEntries": 34,
+      "declaredEntries": 34,
+      "fullStandardRetained": true,
+      "byteEqualStandard": false,
+      "allowedPersonaPrefixExtension": [
+        "/persona"
+      ]
+    },
+    {
+      "id": "gea-readonly",
+      "sha256": "3a91919adc0b9d1bb282c59eb593d40d5e83bb672450912d3e66ad827408aa4d",
+      "standardEntries": 34,
+      "declaredEntries": 34,
+      "fullStandardRetained": true,
+      "byteEqualStandard": false,
+      "allowedPersonaPrefixExtension": [
+        "/persona"
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "id": "auto-negotiation",
+      "isDefault": true,
+      "broken": false
+    },
+    {
+      "id": "standard",
+      "isDefault": false,
+      "broken": false
+    },
+    {
+      "id": "ptc",
+      "isDefault": false,
+      "broken": false
+    },
+    {
+      "id": "minimal",
+      "isDefault": false,
+      "broken": false
+    },
+    {
+      "id": "cordis",
+      "isDefault": false,
+      "broken": false
+    },
+    {
+      "id": "agent-resource-skill",
+      "isDefault": false,
+      "broken": false
+    },
+    {
+      "id": "gea-html-inventory-apsplan",
+      "isDefault": false,
+      "broken": false
+    },
+    {
+      "id": "gea-html-inventory-aqkc",
+      "isDefault": false,
+      "broken": false
+    },
+    {
+      "id": "gea-html-inventory-dealer",
+      "isDefault": false,
+      "broken": false
+    },
+    {
+      "id": "gea-html-inventory-fc",
+      "isDefault": false,
+      "broken": false
+    },
+    {
+      "id": "gea-html-inventory-qll",
+      "isDefault": false,
+      "broken": false
+    },
+    {
+      "id": "gea-readonly",
+      "isDefault": false,
+      "broken": false
+    }
+  ],
+  "actualDefault": "auto-negotiation",
+  "workbenchPageCount": 12
+}

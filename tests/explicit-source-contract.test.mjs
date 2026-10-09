@@ -225,7 +225,7 @@ test("generated source checks retain project aliases without replacing the fixed
     join(core, "vendor/cordis/lib/types/index.d.ts"),
   ]);
 });
-test("new start and generic check/build reject missing records before SDK lookup or runtime mutation", async (t) => {
+test("new start requires a window first and generic check/build requires explicit records before SDK lookup or runtime mutation", async (t) => {
   const dir = await mkdtemp(resolve(".scratch/explicit-missing-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   await assert.rejects(
@@ -237,7 +237,7 @@ test("new start and generic check/build reject missing records before SDK lookup
   );
   await assert.rejects(
     runSourceProfile(join(dir, "SDK-poison"), join(dir, "runtime"), true),
-    /EXPLICIT_SOURCE_INPUTS_REQUIRED/,
+    /WINDOW_DECLARATION_REQUIRED/,
   );
   await assert.rejects(access(join(dir, "output")), { code: "ENOENT" });
   await assert.rejects(access(join(dir, "runtime")), { code: "ENOENT" });

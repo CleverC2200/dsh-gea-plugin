@@ -54,6 +54,7 @@ export async function readDeployment(path, {
   credentialEnv = process.env,
   platform = process.platform,
   readKeychain = readServiceAccountKeychain,
+  resolveCredentials = true,
 } = {}) {
   let config;
   try {
@@ -137,7 +138,7 @@ export async function readDeployment(path, {
         !account.allowedUserIds.length || account.allowedUserIds.some((id) => typeof id !== "string" || !id.trim()) ||
         (account.keychainService !== undefined && (typeof account.keychainService !== "string" ||
           !/^[a-zA-Z0-9._-]+$/.test(account.keychainService)))) throw new Error("INVALID_SERVICE_ACCOUNTS");
-    if (!account.keychainService) continue;
+    if (!account.keychainService || !resolveCredentials) continue;
     if (platform !== "darwin") throw new Error("GEA_KEYCHAIN_UNAVAILABLE");
     let loaded;
     try { loaded = await readKeychain(account.keychainService); }
