@@ -1,9 +1,10 @@
 {
   "name": "dsh-gea-desktop",
-  "version": "0.0.8",
+  "version": "0.0.25",
   "private": true,
   "description": "GEA Agent desktop workbench with bundled DSH and plugins",
   "author": "CleverC2200",
   "license": "Apache-2.0",
-  "main": "main.cjs"
+  "main": "main.cjs",
+  "desktopDataSchema": 2
 }

@@ -1,0 +1,103 @@
+{
+  "scope": "captured-session checks and real preflight source replay; no new business queries",
+  "probes": [
+    {
+      "name": "invalid-equals-operator-rejected-before-upstream",
+      "pass": false,
+      "evidence": {
+        "operator": "=",
+        "actual": "accepted"
+      }
+    },
+    {
+      "name": "stockout-has-business-final-not-DSML",
+      "pass": false,
+      "evidence": {
+        "turnEnded": "turn/end",
+        "finalType": "raw-protocol"
+      }
+    },
+    {
+      "name": "protocol-guard-detects-captured-DSML",
+      "pass": false,
+      "evidence": {
+        "capturedPrefix": "<｜｜DSML｜｜ calls>\n<｜｜DSML",
+        "guard": "/^\\s*<[|｜]{2}DSML[|｜]{2}(?:tool_calls|invoke)/"
+      }
+    },
+    {
+      "name": "known-material-member-not-denied",
+      "pass": false,
+      "evidence": {
+        "catalogMaterialCode": true,
+        "finalDeniesSku": true
+      }
+    },
+    {
+      "name": "quantity-target-rule-not-replaced-by-budget",
+      "pass": false,
+      "evidence": {
+        "targetFormulaReturned": true,
+        "finalClaimsOnlyMoneyTarget": true
+      }
+    },
+    {
+      "name": "confirmed-piece-unit-retained",
+      "pass": false,
+      "evidence": {
+        "unitReturned": true,
+        "finalSaysUnknown": true
+      }
+    }
+  ],
+  "sessions": [
+    {
+      "id": "4d3f15bc-5caa-48db-8d81-af81e7baa97a",
+      "question": "长沙分仓当前哪些SKU高于目标库存",
+      "seconds": 75.322,
+      "calls": 19,
+      "tools": {
+        "gea_gateway_catalog": 9,
+        "gea_capabilities": 1,
+        "gea_cube_query": 4,
+        "gea_skill": 1,
+        "gea_evidence_read": 4
+      },
+      "systemEvents": 11,
+      "model": "2075867101766672385",
+      "finalContainsDSML": false
+    },
+    {
+      "id": "2fd26a6a-9114-439d-8ccc-0b8ef75c90b8",
+      "question": "长沙分仓哪些SKU货龄超90天",
+      "seconds": 71.303,
+      "calls": 17,
+      "tools": {
+        "gea_gateway_catalog": 4,
+        "gea_capabilities": 1,
+        "gea_skill": 1,
+        "gea_cube_query": 5,
+        "gea_evidence_read": 6
+      },
+      "systemEvents": 11,
+      "model": "2075867101766672385",
+      "finalContainsDSML": false
+    },
+    {
+      "id": "502a7ed6-668c-413d-b768-75a0f84978c3",
+      "question": "长沙分仓哪些SKU当前缺货",
+      "seconds": 78.392,
+      "calls": 21,
+      "tools": {
+        "gea_gateway_catalog": 7,
+        "gea_capabilities": 2,
+        "gea_skill": 3,
+        "gea_cube_query": 6,
+        "gea_evidence_read": 3
+      },
+      "systemEvents": 9,
+      "model": "2075867101766672385",
+      "finalContainsDSML": true
+    }
+  ]
+}

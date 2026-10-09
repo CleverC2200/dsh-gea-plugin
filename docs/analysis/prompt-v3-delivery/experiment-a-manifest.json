@@ -1,0 +1,25 @@
+{
+  "base": "96b9715",
+  "sourceHashes": {
+    ".impeccable/review/desktop.png": "36f281a450c19583dd70b983dfda631e09ccfb3e5c8cd3a12ec07100699bf44c",
+    ".impeccable/review/mobile-detail.png": "256c97c2d158c26c55db6d827e33e0065b252f92eb6399c4f23f964a123fcc5b",
+    ".impeccable/review/mobile.png": "4a46b690ac28296aaeb90de7687482f13440ecede3624e7d8bc7a83c2efdb652",
+    "presets/inventory-aqkc.skill.md": "772c59cc11d27d9c8b6839a96d8f5041befa5ed59b1e6e6b395e30936e163ec6",
+    "presets/inventory-fc.skill.md": "95423b212eb00712c31be058a0cac38dafe605c587885b69567b5e173268fb59",
+    "presets/inventory-qll.skill.md": "493e07c4c353e86f4528e820cfcbc938fe91d5d011f8d13d18ef449f27e62c16",
+    "presets/prompt-policy.json": "27ed940e8da10a49d3c518307613a871c8491b73c436ba8422ce87f5aca61b54",
+    "src/host/prompt-result.ts": "c9f4390fc365a6e987870c775f67a8c9e1a0269e3276936b99a2ba9cf671ce9a",
+    "src/host/prompt-runtime.ts": "00da3513b1a757a7cdb364f5a1454d29118d6f9d8486dee466da46018ae70f14",
+    "tests/prompt-runtime.test.mjs": "8df92c843f0e8fe7608fcd27eb534e3ad2214331dbf7ea058231e468dbc08156",
+    "tests/prompt-v2.test.mjs": "8b3011fcb2e3b274068e0226d1da29dac9c1d80ae149ee16ccba3481ec543bb8"
+  },
+  "primaryModel": "deepseek-v4-pro / 2085162185715609601",
+  "apsRuleModel": "deepseek-v4-flash / 2075867101766672385 (same as prior supplemental cases)",
+  "permissionDeferred": [
+    "chain-summary",
+    "aps-summary",
+    "aps-rules"
+  ],
+  "expectedLiveCases": 24,
+  "note": "All live cases use the final candidate source. Baseline chain-compare follows a prior denied data question; this round is a fresh rule turn because that permission case is deferred. Do not overclaim strict latency comparability."
+}

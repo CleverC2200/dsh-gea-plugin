@@ -1,0 +1,58 @@
+--- a/cubes/agents_sales_forecast_detail_mi.yml
++++ b/cubes/agents_sales_forecast_detail_mi.yml
+@@ -11,6 +11,15 @@
+       evidence:
+         - "docs/SOURCES.md#agents_sales_forecast_detail_mi"
+       business_grain_status: "DDL主键不是业务粒度证明；详见来源卡"
++    segments:
++      - name: "month_start_m"
++        sql: "{CUBE}.\"order_type\" = 'M'"
++        public: true
++        description: "仅 M 月初预测；还须指定计划月，不能与 Z 纠偏结果相加。"
++      - name: "correction_z"
++        sql: "{CUBE}.\"order_type\" = 'Z'"
++        public: true
++        description: "仅 Z 月中纠偏；还须指定计划月，不能与 M 月初结果相加。"
+     dimensions:
+       - name: "id"
+         title: "主键ID"
+--- a/cubes/agents_scm_branch_plan.yml
++++ b/cubes/agents_scm_branch_plan.yml
+@@ -11,6 +11,15 @@
+       evidence:
+         - "docs/SOURCES.md#agents_scm_branch_plan"
+       business_grain_status: "DDL主键不是业务粒度证明；详见来源卡"
++    segments:
++      - name: "month_start_version"
++        sql: "{CUBE}.\"plan_version\" = 'MONTH_START'"
++        public: true
++        description: "仅月初计划版本；还须指定目标月和计划快照，BI/MANUAL 来源覆盖规则未由此分段处理。"
++      - name: "rolling_version"
++        sql: "{CUBE}.\"plan_version\" = 'ROLLING'"
++        public: true
++        description: "仅滚动计划版本；还须指定目标月和计划快照，BI/MANUAL 来源覆盖规则未由此分段处理。"
+     dimensions:
+       - name: "id"
+         title: "主键ID"
+--- a/cubes/agents_scm_safety_stock.yml
++++ b/cubes/agents_scm_safety_stock.yml
+@@ -11,6 +11,19 @@
+       evidence:
+         - "docs/SOURCES.md#agents_scm_safety_stock"
+       business_grain_status: "DDL主键不是业务粒度证明；详见来源卡"
++    segments:
++      - name: "month_start_version"
++        sql: "{CUBE}.\"inventory_version\" = '月初'"
++        public: true
++        description: "仅月初库存版本；还须指定目标月及库存快照，不能把不同快照相加。"
++      - name: "rolling_version"
++        sql: "{CUBE}.\"inventory_version\" = '滚动'"
++        public: true
++        description: "仅滚动库存版本；还须指定目标月及库存快照，不能把不同快照相加。"
++      - name: "correction_version"
++        sql: "{CUBE}.\"inventory_version\" = '纠偏'"
++        public: true
++        description: "仅纠偏库存版本；还须指定目标月及库存快照，不能把不同快照相加。"
+     dimensions:
+       - name: "id"
+         title: "主键ID"

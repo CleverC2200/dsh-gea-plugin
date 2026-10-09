@@ -1,0 +1,17 @@
+{
+  "measures": [
+    "agents_sales_forecast_effective_revision.effective_predicted_sales_amount",
+    "agents_sales_forecast_effective_revision.effective_actual_sales_amount",
+    "agents_sales_forecast_effective_revision.effective_attainment_rate"
+  ],
+  "dimensions": [
+    "agents_sales_forecast_effective_revision.region_code"
+  ],
+  "filters": [
+    {
+      "member": "agents_sales_forecast_effective_revision.plan_month",
+      "operator": "equals",
+      "values": ["202608"]
+    }
+  ]
+}

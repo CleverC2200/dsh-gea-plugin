@@ -1,0 +1,188 @@
+[
+  {
+    "id": "fc-summary",
+    "preset": "gea-html-inventory-fc",
+    "question": "查一下我有权限看的全部分仓，分别有多少可用库存和调拨在途，按分仓汇总，注明快照日期和单位。",
+    "elapsedSeconds": 161.9,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 20,
+    "businessQueries": 2,
+    "answerChars": 1112
+  },
+  {
+    "id": "fc-aging",
+    "preset": "gea-html-inventory-fc",
+    "question": "郑州分仓的大日期库存有哪些？分别有多少？只列前10个SKU，说明大日期口径、快照日期和单位。",
+    "elapsedSeconds": 117.8,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 20,
+    "businessQueries": 1,
+    "answerChars": 412
+  },
+  {
+    "id": "base-summary",
+    "preset": "gea-html-inventory-aqkc",
+    "question": "查一下当前各基地的库存情况，哪些基地缺货最严重？给出数量依据和快照日期，缺失数据不要当成零。",
+    "elapsedSeconds": 174.4,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 13,
+    "businessQueries": 4,
+    "answerChars": 919
+  },
+  {
+    "id": "fc-overlap",
+    "preset": "gea-html-inventory-fc",
+    "question": "大日期库存和滞库数量可以直接相加吗？只解释口径，不重新查数。",
+    "elapsedSeconds": 57.6,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 6,
+    "businessQueries": 0,
+    "answerChars": 806
+  },
+  {
+    "id": "base-duplicate",
+    "preset": "gea-html-inventory-aqkc",
+    "question": "同一SKU在两个不同基地各一行，能认定重复吗？对于安全库存目标，纠偏、月初和滚动数据应怎么回退？只核对规则，不重新查业务数。",
+    "elapsedSeconds": 86.0,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 14,
+    "businessQueries": 0,
+    "answerChars": 1114
+  },
+  {
+    "id": "fc-missing",
+    "preset": "gea-html-inventory-fc",
+    "question": "另一个独立示例：某SKU可用库存100箱、备单中30箱、已占用10箱、调拨中20箱、缺货0箱，周期7天，但本月计划缺失。能否给补货建议量？调拨中量应扣几次？只核对规则，不查真实业务数据。",
+    "elapsedSeconds": 120.0,
+    "termination": {
+      "kind": "error",
+      "error": {
+        "message": "Request aborted",
+        "code": "UNKNOWN"
+      }
+    },
+    "qaTimeout": false,
+    "toolCalls": 0,
+    "businessQueries": 0,
+    "answerChars": 0
+  },
+  {
+    "id": "chain-summary",
+    "preset": "gea-html-inventory-qll",
+    "question": "现在基地、分仓、客户三层分别有多少库存？哪些可以合并，哪些不能？请按最新可比快照说明范围和单位。",
+    "elapsedSeconds": 75.2,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 20,
+    "businessQueries": 0,
+    "answerChars": 1191
+  },
+  {
+    "id": "dealer-summary",
+    "preset": "gea-html-inventory-dealer",
+    "question": "我有权限看的经销商一共有多少家？其中哪些经销商库存风险需要优先关注，先列前五家及依据。",
+    "elapsedSeconds": 60.8,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 21,
+    "businessQueries": 0,
+    "answerChars": 847
+  },
+  {
+    "id": "dealer-boundary",
+    "preset": "gea-html-inventory-dealer",
+    "question": "你刚才统计的是全部授权客户，还是库存中出现的客户？如果缺少销量，仅库存高是否足以判滞销？请核对刚才结论和范围。",
+    "elapsedSeconds": 17.1,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 0,
+    "businessQueries": 0,
+    "answerChars": 873
+  },
+  {
+    "id": "aps-summary",
+    "preset": "gea-html-inventory-apsplan",
+    "question": "查一下2026年9月产销协同的整体情况，生产、出货和订单满足方面最主要的问题是什么？请给出实际依据。",
+    "elapsedSeconds": 18.9,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 2,
+    "businessQueries": 0,
+    "answerChars": 509
+  },
+  {
+    "id": "aps-rules",
+    "preset": "gea-html-inventory-apsplan",
+    "question": "独立规则例子：需求1000、缺货5，库存100但没有目标，只有产量没有生产计划。哪些指标可以判达标，哪些不能？只核对规则，不查真实业务数据。",
+    "elapsedSeconds": 60.0,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 8,
+    "businessQueries": 0,
+    "answerChars": 594
+  },
+  {
+    "id": "chain-compare",
+    "preset": "gea-html-inventory-qll",
+    "question": "基地计划周转和分仓近30日实际周转能直接平均成公司周转吗？客户库存是否计入公司库存？只解释口径，不查新数据。",
+    "elapsedSeconds": 125.0,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 21,
+    "businessQueries": 0,
+    "answerChars": 1108
+  },
+  {
+    "id": "sales-control",
+    "preset": "gea-readonly",
+    "question": "查一下2026年9月销售计划提报的总体情况，按省区汇总，不要逐单拉明细。",
+    "elapsedSeconds": 177.6,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 21,
+    "businessQueries": 13,
+    "answerChars": 1120
+  },
+  {
+    "id": "fc-missing-fresh",
+    "preset": "gea-html-inventory-fc",
+    "question": "另一个独立示例：某SKU可用库存100箱、备单中30箱、已占用10箱、调拨中20箱、缺货0箱，周期7天，但本月计划缺失。能否给补货建议量？调拨中量应扣几次？只核对规则，不查真实业务数据。",
+    "elapsedSeconds": 44.4,
+    "termination": {
+      "kind": "completed"
+    },
+    "qaTimeout": false,
+    "toolCalls": 3,
+    "businessQueries": 0,
+    "answerChars": 838
+  }
+]

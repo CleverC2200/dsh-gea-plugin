@@ -23,7 +23,7 @@ test(
             currentVersion: {
               id: mode === "old" ? "other" : "v",
               planId: "p",
-              status: 10,
+              status: 4,
               effective: mode !== "ineffective",
             },
             actionContext:
@@ -31,7 +31,7 @@ test(
                 ? undefined
                 : {
                     versionId: "v",
-                    status: 10,
+                    status: 4,
                     allowedActions: mode === "denied" ? [] : ["SAVE"],
                     snapshotHash:
                       mode === "changed" ? "b".repeat(64) : snapshot,
@@ -48,7 +48,7 @@ test(
         assert.equal(req.headers["x-tenant-id"], "0");
         assert.ok(req.headers["x-access-token"]);
         const body = JSON.parse(req.body);
-        assert.equal(body.expectedSnapshot, snapshot);
+        assert.equal(body.expectedSnapshot, undefined);
         assert.equal(body.action, "SAVE");
         if (mode === "conflict") {
           reply({ message: "changed concurrently" }, 409);
@@ -69,8 +69,8 @@ test(
           result: {
             planId: "p",
             versionId: "v",
-            fromStatus: 10,
-            toStatus: 10,
+            fromStatus: 4,
+            toStatus: 4,
             requestId: "r",
             traceId: "t",
             auditId: "sales-plan-log:1",
@@ -88,7 +88,7 @@ test(
         idempotencyKey: "save-intent",
         request: {
           action: "SAVE",
-          expectedStatus: 10,
+          expectedStatus: 4,
           expectedSnapshot: snapshot,
           adjustments: [{ skuCode: "1", adjustQty: "1.000" }],
           ...patch,
@@ -111,7 +111,7 @@ test(
       "GEA_HTTP_400",
     );
     assert.equal(writes, 0);
-    assert.equal((await save()).ok, true);
+        assert.equal((await save()).ok, true);
     assert.equal(writes, 1);
     mode = "conflict";
     assert.equal((await save()).error.code, "GEA_HTTP_409");

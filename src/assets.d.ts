@@ -11,3 +11,10 @@ declare module "*.png" {
   const url: string;
   export default url;
 }
+
+declare module "*.html" {
+  const content: string;
+  export default content;
+}
+
+declare module "*.txt" { const content: string; export default content; }

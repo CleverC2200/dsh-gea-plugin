@@ -1,0 +1,280 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GEA 非权限项第三轮修复与复测</title><style>
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#eef2f5;color:#192c3b;font:16px/1.75 system-ui,-apple-system,sans-serif}main{max-width:1200px;margin:28px auto;background:#fff;padding:34px;border:1px solid #d8e1e7;border-radius:12px}h1{font-size:30px;line-height:1.35;margin:12px 0 20px}h2{font-size:23px;border-top:1px solid #dde5ec;padding-top:26px;margin-top:36px;scroll-margin-top:20px}h3{font-size:19px}p,li{overflow-wrap:anywhere}a{color:#205e89;overflow-wrap:anywhere}a:focus-visible,button:focus-visible,.table-scroll:focus-visible{outline:3px solid #b98019;outline-offset:3px}.meta{color:#526c7b;font-size:14px}.banner{background:#fff3dc;border-left:4px solid #9c6d12;padding:16px 20px;margin:18px 0}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}.card{padding:17px;border:1px solid #d8e1e7;border-radius:8px}.card strong{display:block;font-size:32px;line-height:1.25}.card small{color:#526c7b}.toc{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}.toc a{padding:7px 10px;background:#eef4f7;border-radius:5px;text-decoration:none;font-size:14px}.table-scroll{max-width:100%;overflow:auto;margin:18px 0}table{border-collapse:collapse;width:100%;min-width:710px;font-size:14px;line-height:1.7}th,td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid #d8e1e7}th{background:#eff4f7}tr:nth-child(even){background:#f8fafb}td:first-child{min-width:92px}code{font-size:.91em;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f6f8;padding:16px}.badge{display:inline-block;white-space:nowrap;font-weight:600}.pass{color:#20634b}.gap{color:#885816}footer{border-top:1px solid #d8e1e7;margin-top:28px;padding-top:18px;color:#526c7b;font-size:14px}@media(max-width:700px){main{margin:0;padding:20px;border:0;border-radius:0}h1{font-size:25px}h2{font-size:21px}.cards{gap:8px}.card{padding:11px}.card strong{font-size:25px}.card small{font-size:12px}.toc a{font-size:13px}}@media print{body{background:#fff}main{border:0;margin:0;max-width:none;padding:0}.toc{display:none}.table-scroll{overflow:visible}table{min-width:0;font-size:10px}h2{break-after:avoid}tr{break-inside:avoid}}
+</style></head><body><main><p class="meta">2026-09-26 · 本地候选 · 基线 96b9715 · 未发布 / 未改生产授权</p><div class="banner"><strong>关键规则已修正，复杂取数仍未过关。</strong><br>权限只记录，待用户与同事确认；本轮继续修业务规则、对象范围与重复调用，保留未解决问题。</div><div class="cards"><div class="card"><strong>634 项</strong><small>630通过 / 3跳过 / 1 UI超时，单独复测6项通过</small></div><div class="card"><strong>24 题</strong><small>最终真实复测：20旧题 + 4新边界题</small></div><div class="card"><strong>权限未改</strong><small>独立清单已记录，3道已知受阻题不重跑</small></div></div><nav class="toc" aria-label="报告目录"><a href="#section-1">1. 本轮实际修改</a><a href="#section-2">2. 权限单独记，数据能力不冒充权限</a><a href="#section-3">3. 验证结果与中间失败</a><a href="#section-4">4. 与上一轮逐题对比</a><a href="#section-5">5. 没有解决的非权限问题</a><a href="#section-6">6. 上下文与成本</a><a href="#section-7">7. 证据与交付状态</a></nav><article><h1>非权限项第三轮：修复与复测结果</h1>
+<p><strong>权限保持不动，已完成一轮非权限修复和最终复测。业务规则与对象范围有改善，复杂取数仍未稳定完成；不建议直接发布。</strong></p>
+<p>基线：<code>96b9715</code>，日期：2026-09-26。原有权限问题已整理为<a href="prompt-v3-delivery/permission-followup.md">待同事确认清单</a>。这份清单依据上一轮证据记录，未声称重新核验当前授权状态；本轮没有申请或修改权限、部署Cube、切换已安装客户端、推送或发布。</p>
+<h2 id="section-1">1. 本轮实际修改</h2>
+<div class="table-scroll" tabindex="0"><table>
+<thead>
+<tr>
+<th>问题</th>
+<th>处理</th>
+<th>实施边界</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>基地版本只剩名称、遗漏日期条件</td>
+<td>在原inventory-aqkc Skill补回两条日期链、跨年、显式上下文优先、降级说明与完整业务键</td>
+<td>依据上一轮知识工具返回正文§4.2.1、§4.4.1–4.4.2核对，不以模型旧回答当权威；只用于默认选择，SKU字段回退仍需相关规则</td>
+</tr>
+<tr>
+<td>未设目标被说成未低于目标</td>
+<td>公共规则和基地角色明确先判断能否评价；0、缺失和未触发分别处理</td>
+<td>不因没有目标就判健康，也不因零库存就判缺货</td>
+</tr>
+<tr>
+<td>客户库存混入公司范围</td>
+<td>公司/渠道边界放到常驻全链角色中；时间一致不能改变统计范围</td>
+<td>跨日合计仍有不严谨解释，见剩余问题</td>
+</tr>
+<tr>
+<td>郑州单仓被换成郑州基地多仓合计</td>
+<td>分仓角色和Skill明确仓库实体、名称/ID、粒度及映射不确定时的回答方式</td>
+<td>本次已按单仓领答；未补造单位或全量覆盖</td>
+</tr>
+<tr>
+<td>滞库被自创为库龄/距最后动销日</td>
+<td>原分仓Skill保留集合交集逻辑，明确本包尚未给出通用滞库起算日/阈值</td>
+<td>未定义的部分保持未知；不是新增一个统一滞库公式</td>
+</tr>
+<tr>
+<td>重复目录探索</td>
+<td>对当前轮已返回的相同目录内容计数，连续两次无新增信息后在执行前拒绝重复目录；实际Cube查询开始后恢复</td>
+<td>工具Schema始终保留，避免沿用历史工具名时触发非法调用；查询、证据回读和规则工具不被一起停用。不是保证模型不再空转</td>
+</tr>
+<tr>
+<td>并发迟到与事实提示</td>
+<td>按state、查询恢复代次、身份epoch隔离目录回执；新增display提示已展示正文是否完整</td>
+<td>四类迟到场景已回归。display=complete不是业务全量、当前授权或任务完成证明</td>
+</tr>
+</tbody></table></div>
+<p>复用原工具、Skill与证据库，没有新增一套通用编排平台。公共常驻规则由863增至984字符（+121）；细节仍按需加载。基地/分仓/全链Skill约2.1k/2.9k/1.3k字符，默认一次读取可覆盖完整正文。</p>
+<h2 id="section-2">2. 权限单独记，数据能力不冒充权限</h2>
+<p>本轮跳过此前明确受阻的<code>chain-summary</code>、<code>aps-summary</code>、固定pro的<code>aps-rules</code>三题。APS规则测试继续用上一轮已可用的flash模型，不改授权、不借用销售身份。</p>
+<p><a href="prompt-v3-delivery/permission-followup.md">权限清单</a>列明consumer、所需业务范围及权限具备后的验收方式，便于你和同事确认。账号、租户、组织范围及有效期由你们确定，不要求“开全部权限”。</p>
+<p>数量只有dimension而没有sum measure、单位与完整快照缺失、销售没有确定性省区聚合等，属于数据/接口能力问题；仅开权限无法解决。上轮Cube候选仍保留为本地待审文件，本轮没有宣称这些线上能力已补齐。</p>
+<h2 id="section-3">3. 验证结果与中间失败</h2>
+<ul>
+<li><code>build:host</code>、<code>typecheck</code>通过；实现与需求两方面源码审查最终无必须修复项。</li>
+<li>最终全量634项：630通过、3项原有跳过、1项原有审批页面点击超时。该页面模块单独重跑6项全部通过；本轮没有修改该UI，也不将单独复测覆盖掉全量失败记录。核心Prompt回归、真实Harness的目录拦截/恢复与全文回读通过。</li>
+<li>并发回归覆盖：实际查询恢复、新轮次、切换preset、切换身份之后，旧目录回执不得重新阻断当前目录。</li>
+<li>两个候选各跑24道真实题，共48次；最终24题包含20道前轮可比较题与4道新边界题，覆盖6个Agent。3道已知权限阻断题未重跑。主要使用同一个pro模型；APS两题固定使用已可用flash，单列解释。</li>
+<li>首个候选采用动态隐藏目录工具，出现非法工具调用；同时有网关流式故障。最终改为稳定Schema+执行层拦截，保留这轮失败记录。初次新变形题还把滞库定义为距最后动销日，补明知识边界后才完成最终复测。</li>
+</ul>
+<p>计数是工具“尝试”，包括被拒绝的调用；框架completed或测试脚本退出0不等于业务正确。耗时只是单次观测，受服务负载、缓存、历史上下文等影响；全链规则题因跳过前置权限题改为新会话，不能当严格性能对照。</p>
+<h2 id="section-4">4. 与上一轮逐题对比</h2>
+<div class="table-scroll" tabindex="0"><table>
+<thead>
+<tr>
+<th>题目</th>
+<th align="right">上一轮</th>
+<th align="right">最终候选</th>
+<th>实际结果</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>分仓大日期Top10</td>
+<td align="right">79.6秒 / 20次</td>
+<td align="right">110.8秒 / 21次</td>
+<td><span class="badge gap">未完成</span>：21次尝试、0次目标Cube查询；成员已返回却被说成未返回。</td>
+</tr>
+<tr>
+<td>大日期/滞库重叠</td>
+<td align="right">13.1秒 / 0次</td>
+<td align="right">42.6秒 / 3次</td>
+<td>改善：不直接相加，交集未知不报确定并集；不再自定滞库起算日。</td>
+</tr>
+<tr>
+<td>缺计划补货规则</td>
+<td align="right">19.4秒 / 2次</td>
+<td align="right">6.4秒 / 0次</td>
+<td>保持正确：缺计划保持未知，调拨只扣一次。</td>
+</tr>
+<tr>
+<td>全分仓库存/在途</td>
+<td align="right">128.3秒 / 20次</td>
+<td align="right">180.1秒 / 20次</td>
+<td><span class="badge gap">未完成</span>：180秒被QA观察窗口取消，无最终答案；这不是权限失败。</td>
+</tr>
+<tr>
+<td>全链周转/公司边界</td>
+<td align="right">13.4秒 / 2次</td>
+<td align="right">23.4秒 / 2次</td>
+<td>保持正确：计划与实际周转不直接平均，客户库存不并入公司库存。</td>
+</tr>
+<tr>
+<td>基地库存/缺货排名</td>
+<td align="right">129.6秒 / 21次</td>
+<td align="right">138.9秒 / 20次</td>
+<td><span class="badge gap">未完成</span>：末尾出现DSML工具文本，已拦截，未作为业务完成。</td>
+</tr>
+<tr>
+<td>基地主键/版本回退</td>
+<td align="right">17.5秒 / 1次</td>
+<td align="right">14.2秒 / 1次</td>
+<td>已修正：补齐两条日期回退链、显式上下文优先及同键去重条件。</td>
+</tr>
+<tr>
+<td>销售按省区汇总</td>
+<td align="right">47.2秒 / 3次</td>
+<td align="right">51.9秒 / 5次</td>
+<td>部分进展：用7条计划级列表生成省区表，没有逐单读取SKU；但已返回status字典仍被说成没有，数量单位及确定性汇总路径仍需核对。</td>
+</tr>
+<tr>
+<td>新会话缺计划规则</td>
+<td align="right">16.1秒 / 2次</td>
+<td align="right">14.6秒 / 2次</td>
+<td>保持正确：新会话重新加载规则，缺失不补零。</td>
+</tr>
+<tr>
+<td>零计划/空计划</td>
+<td align="right">31.9秒 / 1次</td>
+<td align="right">26.6秒 / 1次</td>
+<td>保持正确：明确0与缺失分开，缺缺货量不强给最终补货数。</td>
+</tr>
+<tr>
+<td>经销商数量/Top5</td>
+<td align="right">50.5秒 / 20次</td>
+<td align="right">207.0秒 / 21次</td>
+<td><span class="badge gap">未完成</span>：从上一轮0次目标Cube查询到本轮3次，但数量/Top5均未交付，仍耗尽额度。</td>
+</tr>
+<tr>
+<td>零库存/缺目标</td>
+<td align="right">14.5秒 / 0次</td>
+<td align="right">15.8秒 / 1次</td>
+<td>已修正：缺目标时是否低于目标未知，不再解释为未低于。</td>
+</tr>
+<tr>
+<td>异日快照/公司边界</td>
+<td align="right">13.5秒 / 0次</td>
+<td align="right">9.0秒 / 0次</td>
+<td>部分修正：客户不计公司库存已正确；仍建议异日库存可作近似合计，未满足不混加的完整边界。</td>
+</tr>
+<tr>
+<td>经销商范围复核</td>
+<td align="right">10.8秒 / 0次</td>
+<td align="right">36.6秒 / 2次</td>
+<td>保持边界：区分当前取数范围与授权客户母集，未伪造客户总数或风险排名。</td>
+</tr>
+<tr>
+<td>空销量/零销量</td>
+<td align="right">47.0秒 / 1次</td>
+<td align="right">19.9秒 / 1次</td>
+<td>保持正确：未知分母与零分母分开，不给相同有限周转天数。</td>
+</tr>
+<tr>
+<td>郑州单分仓</td>
+<td align="right">53.5秒 / 4次</td>
+<td align="right">44.7秒 / 4次</td>
+<td>范围已修正：主结论锁定单仓名与ID，未再用基地所辖11仓领答；单位和完整快照仍未知。</td>
+</tr>
+<tr>
+<td>销售Y/M/Z字典</td>
+<td align="right">18.2秒 / 0次</td>
+<td align="right">120.1秒 / 0次</td>
+<td>运行失败：约120秒模型请求失败，没有可评答案；不计为规则通过。</td>
+</tr>
+<tr>
+<td>APS规则/已有flash</td>
+<td align="right">9.2秒 / 2次</td>
+<td align="right">7.2秒 / 2次</td>
+<td>保持正确：用既有可用模型，按已加载阈值解释，缺目标/分母不评价。</td>
+</tr>
+<tr>
+<td>APS阈值等号边界</td>
+<td align="right">3.5秒 / 0次</td>
+<td align="right">7.1秒 / 0次</td>
+<td>保持正确：严格大于与大于等于分开，生产缺分母不判达成。</td>
+</tr>
+<tr>
+<td>单基地可用库存</td>
+<td align="right">105.7秒 / 8次</td>
+<td align="right">95.8秒 / 7次</td>
+<td><span class="badge gap">未完成</span>：取得日期与记录行数；qtylive仍无受管求和度量，单位缺失。</td>
+</tr>
+<tr>
+<td>9/20、9/21、12/31边界</td>
+<td align="right">新增</td>
+<td align="right">12.5秒 / 1次</td>
+<td>主结论正确：当月纠偏→月初；次月月初→滚动；正确跨年且拒绝三级连续链。</td>
+</tr>
+<tr>
+<td>公司/全渠道示例</td>
+<td align="right">新增</td>
+<td align="right">4.3秒 / 0次</td>
+<td>主结论正确：公司120箱、全渠道150箱，客户不进入公司口径；但资产归属解释仍超出统计定义本身。</td>
+</tr>
+<tr>
+<td>未设目标与目标0</td>
+<td align="right">新增</td>
+<td align="right">12.6秒 / 1次</td>
+<td>主结论正确：未设目标未知；库存0/目标0未低于；两者缺订单均不判实际缺货。</td>
+</tr>
+<tr>
+<td>交集已知/未知示例</td>
+<td align="right">新增</td>
+<td align="right">5.8秒 / 0次</td>
+<td>主结论正确：10+7−3=14；交集未知不把上限17当确定值；不自创滞库公式。</td>
+</tr>
+</tbody></table></div>
+<p>新增4道边界题的关键判断均符合预期；不能据此宣称所有解释语句或实际取数都通过。尤其公司/全渠道示例里的“客户库存不属于公司资产”是从统计口径向资产权属外推，应该删去或限定为本业务口径。</p>
+<p>单分仓任务解决了“用基地多仓结果领答”，但还缺单位和完整快照证明；因此记范围改善，不记完整业务交付。经销商题开始执行了3次目标查询，相比上轮只探索目录有进展，但仍未交付客户数和Top5，也不算完成。</p>
+<h2 id="section-5">5. 没有解决的非权限问题</h2>
+<div class="table-scroll" tabindex="0"><table>
+<thead>
+<tr>
+<th>问题</th>
+<th>本轮证据</th>
+<th>根因判断与下一步</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>仍否认已返回事实</td>
+<td>分仓大日期目录已经给出warehouse_name等成员，最终却说没有成员；销售aggregate.basis已给status字典，最终却说未提供标签</td>
+<td>已确认工具输出与最终答复不一致；尚未完全定位是模型未采用、历史压缩还是网关处理。下一步应核对最终模型请求的消息结构/必要事实可见性，不能继续只叠禁止句</td>
+</tr>
+<tr>
+<td>重复请求被拦，模型仍空转</td>
+<td>分仓大日期仍21次尝试、0次目标Cube查询；规则重载、换关键词与换读法仍消耗额度</td>
+<td>本轮守住执行边界，没有证明总调用减少。需让已有合法成员和本题最小查询更直接衔接，并核对成功事实回放，而非普遍加额度</td>
+</tr>
+<tr>
+<td>异日快照仍被说成可作近似合计</td>
+<td>客户已从公司范围排除，但回答又建议基地/分仓不同日可给“近似值”</td>
+<td>归属修正不等于时间口径修正；没有库存变动/估算依据时仍不应给混合时点合计建议</td>
+</tr>
+<tr>
+<td>协议收尾与服务不稳定</td>
+<td>基地题末尾DSML文本已拦截；全分仓题180秒被QA窗口取消；销售枚举题约120秒模型请求失败</td>
+<td>分别是协议输出、QA观察取消和模型请求故障，不能混成权限问题。不能把工具文本执行掉，也不能把拦截本身算业务完成</td>
+</tr>
+<tr>
+<td>销售省区答案仍不可靠</td>
+<td>本次出现省区表，但来自模型自行汇总计划级列表，且忽略已有status字典；所写数量单位仍需来源核对</td>
+<td>不作为确定性省区聚合能力验收。需要受管汇总与字段/字典完整传递，不能因表格看起来完整就判通过</td>
+</tr>
+<tr>
+<td>数据语义缺口仍在</td>
+<td>基地qtylive没有求和measure、单位缺；客户母集、风险度量与快照证明不足</td>
+<td>属数据模型/契约事项，和权限清单分开处理。现有记录行数仍不能替代库存数量或客户数</td>
+</tr>
+<tr>
+<td>解释仍会多说</td>
+<td>纯规则题追加查询建议；统计范围被解释成资产权属；可能发生的变动写成已发生</td>
+<td>主结论正确也要检查附加语句，削减无依据解释，不只检查公式结果</td>
+</tr>
+</tbody></table></div>
+<p><strong>因此，本轮的主要收益是规则与范围纠错，以及执行层防重复和并发修复；尚未证明复杂取数完成率或总体效率提高。</strong></p>
+<h2 id="section-6">6. 上下文与成本</h2>
+<p>最终首轮system+tools约7.7k～9.5k字符，较上一轮增加121～235字符。110次模型请求中，消息（含历史）+工具Schema的单次峰值99,749字符；这些都是字符，不是token。提供方仍没有返回可用usage，不能给出可信token/缓存/费用下降比例。</p>
+<p>最终实测中有2次<code>GEA_CATALOG_NO_PROGRESS</code>执行拦截；它们仍属于模型发起的调用尝试，不等于省掉了两次模型推理。长历史和重复原文回读仍是瓶颈，不能拿首轮短或某题回答快当作全链路降耗。</p>
+<h2 id="section-7">7. 证据与交付状态</h2>
+<ul>
+<li><a href="prompt-v3-delivery/permission-followup.md">权限待办清单</a>：仅记录，待你与同事确认。</li>
+<li><a href="prompt-v3-delivery/comparison.json">逐题对比与统计</a>：保留初始候选和最终候选，不只挑好结果。</li>
+<li><a href="prompt-v3-delivery/verification.json">验证与审查记录</a>、<a href="prompt-v3-delivery/run-manifest.json">源码指纹与范围</a>。</li>
+<li><a href="prompt-v3-delivery/rule-provenance.json">业务规则来源记录</a>、<a href="prompt-v3-delivery/fact-use-counterexamples.json">已给事实却被否认的反例</a>。</li>
+<li><a href="prompt-v2-delivery-2026-09-26.md">上轮报告</a>保留，未覆盖。</li>
+</ul>
+<p>原始事件、回答和日志留在本地忽略目录<code>.runtime/prompt-v3-effect/</code>，不提交业务明细或登录凭据。当前交付为本地源码、测试、分析与权限待办，未发布、未部署、未改变生产授权。</p>
+</article><footer>全部正文、样式已内嵌，可离线阅读。证据链接为本地补充材料。本报告不含凭据或真实业务明细导出。</footer></main></body></html>

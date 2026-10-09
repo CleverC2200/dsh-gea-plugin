@@ -1,0 +1,9 @@
+{
+  "expected": "branch-inventory",
+  "requests": [
+    {
+      "agentCode": "sales_forecast",
+      "warehousePersona": true
+    }
+  ]
+}

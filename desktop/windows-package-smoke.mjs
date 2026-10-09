@@ -9,10 +9,17 @@ const executablePath=process.env.GEA_SMOKE_EXECUTABLE,kind=process.env.GEA_SMOKE
 assert.equal(process.platform,'win32');assert.ok(executablePath&&kind&&report&&repo);
 const data=join(report,kind+'-user');await mkdir(data,{recursive:true});
 const sources=JSON.parse(await readFile(join(repo,'desktop/release-sources.json'),'utf8'));
-let gitlabReachable=false;
-try {const response=await fetch(sources.stable,{signal:AbortSignal.timeout(8000)});gitlabReachable=response.ok&&(await response.json()).schema===1;}
-catch(error){await writeFile(join(report,'gitlab-network-error.txt'),error.name+': '+error.message);}
-await writeFile(join(report,'gitlab-network.json'),JSON.stringify({url:sources.stable,reachable:gitlabReachable}));
+/** 频道按优先级尝试多个来源；任一来源可达就按在线更新流程验收。 */
+const channelSources=Array.isArray(sources.stable)?sources.stable:[sources.stable];
+const probes=[];
+for(const url of channelSources){
+ let reachable=false,error=null;
+ try {const response=await fetch(url,{signal:AbortSignal.timeout(8000)});reachable=response.ok&&(await response.json()).schema===1;}
+ catch(failure){error=failure.name+': '+failure.message;await writeFile(join(report,'gitlab-network-error.txt'),url+' '+error);}
+ probes.push({url,reachable,error});
+}
+const gitlabReachable=probes.some(probe=>probe.reachable);
+await writeFile(join(report,'gitlab-network.json'),JSON.stringify({url:channelSources[channelSources.length-1],reachable:probes[probes.length-1]?.reachable??false,candidates:probes}));
 if(!gitlabReachable){await mkdir(join(data,'plugins'),{recursive:true});await writeFile(join(data,'plugins/update-state.json'),JSON.stringify({settings:{automatic:false,intervalHours:24,channel:'stable'}}));}
 /** Connect to this test-owned Electron main process to drive its existing native menu. */
 async function inspector(endpoint){

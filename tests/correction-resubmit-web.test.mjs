@@ -25,7 +25,7 @@ test(
       id: 'v1',
       planId,
       seq: 1,
-      periodId: '123',
+      periodId: '20261001',
       planTypeCode: 'Y',
       orderType: 'Z',
       dealerCode: '456',
@@ -63,11 +63,15 @@ test(
     let received;
     app.route((req, res, reply) => {
       const path = req.url.pathname;
+      if (path.endsWith('/getPermCode')) {
+        reply({ success: true, result: { codeList: ['sales-plan:plan:region-approve'] } });
+        return true;
+      }
       if (path.endsWith('/periods')) {
         reply({
           success: true,
           result: {
-            records: [{ periodId: '123', periodMonth: '2026-10', planTypeCode: 'Y', status: 'OPEN' }],
+            records: [{ periodId: '20261001', periodMonth: '2026-10', planTypeCode: 'Y', status: 'OPEN' }],
             total: 1,
             size: 100,
             current: 1,
@@ -77,6 +81,11 @@ test(
         return true;
       }
       if (path.endsWith('/plans')) {
+        const requestedStatus = req.url.searchParams.get('status');
+        if (requestedStatus !== null && Number(requestedStatus) !== current.status) {
+          reply({success:true,result:{records:[],total:0,size:20,current:1,pages:1}});
+          return true;
+        }
         reply({
           success: true,
           result: {
@@ -86,7 +95,7 @@ test(
                 versionId: current.id,
                 monthlyApproved: true,
                 hasCorrection: true,
-                orderType: req.url.searchParams.get('orderType') ?? 'M',
+                orderType: req.url.searchParams.get('orderType') ?? 'Z',
               },
             ],
             total: 1,
@@ -165,7 +174,7 @@ test(
       );
     await page.goto(app.origin);
     await page
-      .getByRole('dialog', { name: '内测声明', exact: true })
+      .getByRole('dialog', { name: /内测声明|预览版说明/, exact: true })
       .getByRole('button', { name: '继续', exact: true })
       .click();
     const f = page.frameLocator('iframe[data-gea-workbench]');

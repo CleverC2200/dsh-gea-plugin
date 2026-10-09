@@ -11,6 +11,10 @@ test(
     let writes = 0;
     let eligible = true;
     app.route((req, res, reply) => {
+      if (req.url.pathname.endsWith("/getPermCode")) {
+        reply({ success: true, result: { codeList: ["sales-plan:plan:region-approve"] } });
+        return true;
+      }
       if (req.url.pathname.endsWith("/plans/z")) {
         reply({
           success: true,
@@ -108,6 +112,10 @@ test(
       reads = 0;
     const bodies = [];
     app.route((req, res, reply) => {
+      if (req.url.pathname.endsWith("/getPermCode")) {
+        reply({ success: true, result: { codeList: ["sales-plan:plan:region-approve"] } });
+        return true;
+      }
       if (req.url.pathname.endsWith("/plans/z")) {
         reads++;
         reply({
@@ -188,6 +196,10 @@ test(
     await app.login();
     let writes = 0;
     app.route((req, res, reply) => {
+      if (req.url.pathname.endsWith("/getPermCode")) {
+        reply({ success: true, result: { codeList: ["sales-plan:plan:region-approve"] } });
+        return true;
+      }
       if (req.url.pathname.endsWith("/ai/gateway/sql/execute")) {
         const body = JSON.parse(req.body);
         const rows = ["0", "1", "4", "Y"].map((n, i) => ({

@@ -7,6 +7,7 @@ import {join,resolve} from 'node:path';
 
 test('restarting with a prepared company plugin changes the rendered version and preserves user settings', {timeout:90000}, async t=>{
   assert.ok(process.env.GEA_DESKTOP_BASELINE && process.env.GEA_DESKTOP_NEXT);
+  assert.ok(process.env.GEA_EXPECTED_BASELINE_VERSION && process.env.GEA_EXPECTED_NEXT_VERSION);
   const options={desktopGraph:resolve(process.env.GEA_DESKTOP_BASELINE)};
   const app=await profile(t,options);
   const browser=await chromium.launch({channel:'chrome',headless:true});t.after(()=>browser.close());
@@ -20,12 +21,12 @@ test('restarting with a prepared company plugin changes the rendered version and
     await page.getByRole('button',{name:'插件市场',exact:true}).click().catch(async error=>{console.error(await page.locator('body').innerText());throw error;});
     await expect(page.getByText('v'+version,{exact:true})).toBeVisible();
   }
-  await openVersion('1.4.3-company.1');
+  await openVersion(process.env.GEA_EXPECTED_BASELINE_VERSION);
   await writeFile(join(app.runtime,'workspace','keep.txt'),'user workspace');
   const settingsPath=join(app.runtime,'home/settings.yaml');
   const before=await readFile(settingsPath,'utf8');
   await app.stop();options.desktopGraph=resolve(process.env.GEA_DESKTOP_NEXT);await app.start();
-  await openVersion('1.4.3-company.2');
+  await openVersion(process.env.GEA_EXPECTED_NEXT_VERSION);
   assert.equal(await readFile(join(app.runtime,'workspace','keep.txt'),'utf8'),'user workspace');
   assert.equal(await readFile(settingsPath,'utf8'),before);
 });

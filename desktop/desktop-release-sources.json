@@ -1,0 +1,10 @@
+{
+  "stable": [
+    "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/channels/desktop-stable.json",
+    "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/desktop-stable.json"
+  ],
+  "test": [
+    "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/channels/desktop-test.json",
+    "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/desktop-test.json"
+  ]
+}

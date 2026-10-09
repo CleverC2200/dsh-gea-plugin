@@ -1,15 +1,6 @@
 /** External GEA contract fixture. These proposed correction fields are not a claim of deployment. */
-import { build } from 'esbuild';
-const { outputFiles } = await build({
-  entryPoints: ['src/mock-dms.ts'],
-  bundle: true,
-  write: false,
-  platform: 'node',
-  format: 'esm',
-});
-const { MockDmsWriteback } = await import(
-  'data:text/javascript;base64,' + Buffer.from(outputFiles[0].contents).toString('base64')
-);
+import assert from 'node:assert/strict';
+import { MockDmsWriteback } from '@cleverc2200/dsh-agent-workbench/dms-mock';
 export function correctionService() {
   let revision = 0,
     status = 1;
@@ -33,7 +24,7 @@ export function correctionService() {
     id: 'v',
     planId: 'z',
     seq: 1,
-    periodId: 'period-1',
+    periodId: '20260901',
     planTypeCode: 'Y',
     orderType: 'Z',
     dealerCode: '123',
@@ -77,8 +68,17 @@ export function correctionService() {
     },
     route(req, res, reply) {
       const path = req.url.pathname;
+      if (path.endsWith('/getPermCode')) {
+        reply({success:true,result:{codeList:['region','province','area','category'].map(role=>`sales-plan:plan:${role}-approve`)}});
+        return true;
+      }
       if (path.endsWith('/plans')) {
-        const orderType = req.url.searchParams.get('orderType') ?? 'M';
+        const requestedStatus=req.url.searchParams.get('status');
+        if (requestedStatus !== null && Number(requestedStatus) !== status) {
+          reply({success:true,result:{records:[],total:0,size:20,current:1,pages:1}});
+          return true;
+        }
+        const orderType = req.url.searchParams.get('orderType') ?? 'Z';
         reply({
           success: true,
           result: {
@@ -114,14 +114,12 @@ export function correctionService() {
       }
       if (path.endsWith('/versions/v/actions')) {
         const body = JSON.parse(req.body);
-        if (body.expectedSnapshot !== revision.toString(16).padStart(64, '0')) {
-          reply({ message: 'stale' }, 409);
-          return true;
-        }
-        if (body.adjustmentMode !== 'ABSOLUTE_NET') {
-          reply({ message: 'wrong contract' }, 400);
-          return true;
-        }
+        // 此夹具模拟旧版动作接口，只接收基础字段。快照与绝对净量契约由 Host
+        // 在出站前校验，拒绝过期快照的场景由 correction-host 覆盖。
+        assert.equal(body.expectedSnapshot, undefined);
+        assert.equal(body.adjustmentMode, undefined);
+        assert.ok(Object.keys(body).every(key => ['action','expectedStatus','remark','adjustments','notification'].includes(key)));
+        assert.equal(body.expectedStatus, status);
         const node = ['', 'region', 'province', 'area', 'category'][status >= 6 ? status - 6 : status];
         const from = status;
         if (body.action === 'REJECT') {

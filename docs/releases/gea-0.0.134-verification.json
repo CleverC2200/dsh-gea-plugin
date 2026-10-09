@@ -1,0 +1,230 @@
+{
+  "version": "0.0.134",
+  "recordedAt": "2026-09-28T01:43:35.529Z",
+  "scope": {
+    "includedMergeRequests": [
+      200,
+      201
+    ],
+    "releaseMergeRequest": 202,
+    "excludedOpenMergeRequests": [
+      117,
+      124,
+      125,
+      144,
+      160,
+      161,
+      165,
+      182,
+      194,
+      197
+    ],
+    "desktopReleased": false,
+    "desktopVersionRetained": "0.0.25"
+  },
+  "initialBaseSha": "b7eddccd0bb72bcdf1b103d635c6254dc6ea81f7",
+  "candidateSha": "f69d21d4dc16cbea4f1ef70ca00578c026794f19",
+  "mergedMainSha": "f69d21d4dc16cbea4f1ef70ca00578c026794f19",
+  "releaseSourceSha": "f69d21d4dc16cbea4f1ef70ca00578c026794f19",
+  "sourceTag": "gea-v0.0.134",
+  "sourceTagObjectSha": "41e055b6721d3e2e777c71c501dd3484f0fc3879",
+  "artifact": {
+    "version": "0.0.134",
+    "filename": "cleverc2200-gea-dsh-prototype-0.0.134.tgz",
+    "sha256": "16926e6b3d273d74dac2d4ff51a424491e0e1d561756d47f41b865015d4341c7",
+    "files": [
+      "LICENSE",
+      "README.md",
+      "business-skills/aps/references/data-mapping.md",
+      "business-skills/aps/references/metric-definitions.md",
+      "business-skills/aps/sales-forecast-result-analysis.skill.md",
+      "business-skills/aps/sales-ops-problem-analysis.skill.md",
+      "cordis.patch.yml",
+      "default-presets/auto-negotiation/agent.cordis.yml",
+      "default-presets/auto-negotiation/preset.yml",
+      "docs/install.md",
+      "gea.config.example.json",
+      "gea.direct.example.json",
+      "lib/client.js",
+      "lib/host.js",
+      "lib/page-interaction.js",
+      "lib/skill-reference.js",
+      "lib/workbench.css",
+      "lib/workbench.js",
+      "npm-shrinkwrap.json",
+      "package.json",
+      "packages/page-interaction/cordis.patch.yml",
+      "packages/page-interaction/lib/bridge.js",
+      "packages/page-interaction/lib/client.js",
+      "packages/page-interaction/lib/host.js",
+      "packages/page-interaction/lib/page.js",
+      "packages/page-interaction/lib/picker.js",
+      "packages/page-interaction/LICENSE",
+      "packages/page-interaction/package.json",
+      "packages/page-interaction/README.md",
+      "packages/page-interaction/THIRD_PARTY_NOTICES.md",
+      "packages/workbench-example/lib/client.js",
+      "packages/workbench-example/lib/host.js",
+      "packages/workbench-example/package.json",
+      "packages/workbench-example/README.md",
+      "presets/agent-capabilities.json",
+      "presets/agent-presets.json",
+      "presets/gea-readonly/agent.cordis.yml",
+      "presets/gea-readonly/preset.yml",
+      "presets/inventory-apsplan.skill.md",
+      "presets/inventory-aqkc.skill.md",
+      "presets/inventory-dealer.skill.md",
+      "presets/inventory-fc.skill.md",
+      "presets/inventory-qll.skill.md",
+      "presets/prompt-policy.json",
+      "scripts/deployment.mjs",
+      "scripts/start.mjs",
+      "scripts/verify.mjs",
+      "src/shared/environments.js",
+      "src/workbench/original/LICENSE",
+      "src/workbench/original/README.md",
+      "src/workbench/original/source-manifest.json",
+      "src/workbench/original/SOURCE.md"
+    ],
+    "bytes": 2819596,
+    "packageCommit": "6b65bcc4e0e72a56bff54c9cde938fcfa19aa353"
+  },
+  "channelsCommit": "4db0c2a7b62072fa6b667a85d840893811f95c5d",
+  "verification": {
+    "checks": [
+      {
+        "source": "gitlab",
+        "channel": "test",
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/dsh-0.1.6-test.json",
+        "httpStatus": 200,
+        "version": "0.0.134"
+      },
+      {
+        "source": "gitlab",
+        "channel": "stable",
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/dsh-0.1.6-stable.json",
+        "httpStatus": 200,
+        "version": "0.0.134"
+      },
+      {
+        "source": "oss",
+        "channel": "test",
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/dsh-0.1.6-test.json",
+        "httpStatus": 200,
+        "version": "0.0.134"
+      },
+      {
+        "source": "oss",
+        "channel": "stable",
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/dsh-0.1.6-stable.json",
+        "httpStatus": 200,
+        "version": "0.0.134"
+      }
+    ],
+    "downloads": [
+      {
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/58546621e5e6c321715884f0d1cab66c387e6681/packages/cleverc2200-dsh-agent-workbench-0.1.1.tgz",
+        "package": "@cleverc2200/dsh-agent-workbench",
+        "version": "0.1.1",
+        "httpStatus": 200,
+        "sha256": "91a8981321950b4ad56697e6e1e02b696b3873615ce4f2d096e21169689bbe25",
+        "bytes": 17497
+      },
+      {
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/77db92013c41a69bff8b28fab4a7135945268d2c/packages/dsh-agent-manage-0.6.3-company.6.tgz",
+        "package": "dsh-agent-manage",
+        "version": "0.6.3-company.6",
+        "httpStatus": 200,
+        "sha256": "57a5d1d53113165c475ef69bde5599342985b2dc0b7b3bcaf3eb97329d5ab9ed",
+        "bytes": 654562
+      },
+      {
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/2a9f46ee3b7f3375a241e994c764b6791bc7bb11/packages/dsh-plugin-1.4.3-company.35.tgz",
+        "package": "dsh-plugin",
+        "version": "1.4.3-company.35",
+        "httpStatus": 200,
+        "sha256": "0505deb9491f75444ef5f5a7c5c0c1588ad0eb1c9021e466efe23879f451ec8d",
+        "bytes": 587254
+      },
+      {
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/6b65bcc4e0e72a56bff54c9cde938fcfa19aa353/packages/cleverc2200-gea-dsh-prototype-0.0.134.tgz",
+        "package": "@cleverc2200/gea-dsh-prototype",
+        "version": "0.0.134",
+        "httpStatus": 200,
+        "sha256": "16926e6b3d273d74dac2d4ff51a424491e0e1d561756d47f41b865015d4341c7",
+        "bytes": 2819596
+      },
+      {
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/91a8981321950b4ad56697e6e1e02b696b3873615ce4f2d096e21169689bbe25/cleverc2200-dsh-agent-workbench-0.1.1.tgz",
+        "package": "@cleverc2200/dsh-agent-workbench",
+        "version": "0.1.1",
+        "httpStatus": 200,
+        "sha256": "91a8981321950b4ad56697e6e1e02b696b3873615ce4f2d096e21169689bbe25",
+        "bytes": 17497
+      },
+      {
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/57a5d1d53113165c475ef69bde5599342985b2dc0b7b3bcaf3eb97329d5ab9ed/dsh-agent-manage-0.6.3-company.6.tgz",
+        "package": "dsh-agent-manage",
+        "version": "0.6.3-company.6",
+        "httpStatus": 200,
+        "sha256": "57a5d1d53113165c475ef69bde5599342985b2dc0b7b3bcaf3eb97329d5ab9ed",
+        "bytes": 654562
+      },
+      {
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/0505deb9491f75444ef5f5a7c5c0c1588ad0eb1c9021e466efe23879f451ec8d/dsh-plugin-1.4.3-company.35.tgz",
+        "package": "dsh-plugin",
+        "version": "1.4.3-company.35",
+        "httpStatus": 200,
+        "sha256": "0505deb9491f75444ef5f5a7c5c0c1588ad0eb1c9021e466efe23879f451ec8d",
+        "bytes": 587254
+      },
+      {
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/16926e6b3d273d74dac2d4ff51a424491e0e1d561756d47f41b865015d4341c7/cleverc2200-gea-dsh-prototype-0.0.134.tgz",
+        "package": "@cleverc2200/gea-dsh-prototype",
+        "version": "0.0.134",
+        "httpStatus": 200,
+        "sha256": "16926e6b3d273d74dac2d4ff51a424491e0e1d561756d47f41b865015d4341c7",
+        "bytes": 2819596
+      }
+    ],
+    "bucketListStatus": 403
+  },
+  "checks": {
+    "targetedTests": 119,
+    "passed": 119,
+    "failed": 0,
+    "build": "passed",
+    "typecheck": "passed",
+    "preflight": "passed",
+    "packageSmoke": {
+      "emptyInstall": "passed",
+      "nativeModel": "passed",
+      "browserComposer": "passed on unchanged-artifact diagnostic rerun",
+      "restartAndSessionPreservation": "passed",
+      "firstAttempt": "UI receipt visibility timeout; no code, timeout threshold or artifact changed for rerun"
+    },
+    "packageFiles": 52,
+    "dependenciesAndEntriesUnchanged": true
+  },
+  "collaboration": {
+    "skillFreshness": "current_with_local_notes",
+    "skillTeamSha": "07b53ac2ad42f67259154d3612be1e10d8310464",
+    "managedSkillFiles": 17,
+    "oldMrsUnchanged": true
+  },
+  "localSync": {
+    "source": "blocked_dirty",
+    "sourceLocalMain": "a6ad4f24162f6f6b475266837f565002a26793ac",
+    "distribution": "blocked_intentionally_rewritten_history_preserved",
+    "distributionLocalMain": "11125bf77cfe64ee29935da523b6fd361b1ce19f"
+  },
+  "limitations": [
+    "No colleague account or Windows-device business acceptance performed.",
+    "Permissions, data synchronization and APS model timeout are unchanged.",
+    "Only the two DSH 0.1.6 plugin channels were updated; legacy and desktop channels unchanged."
+  ],
+  "transportNotes": [
+    "GitLab update-file APIs returned EOF with no state change, confirmed by readback.",
+    "Final channel write used a normal fast-forward Git push from a hash-verified metadata-only view; parent and all existing tree IDs were verified, no original distribution checkout changes."
+  ]
+}

@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
+import {createRequire} from 'node:module';
 import {createControlServer} from './control-server.mjs';
-const {outputFiles}=await build({stdin:{contents:"export {Business} from './src/business.ts'; export {attachDesktopLogin} from './src/desktop-login.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm',banner:{js:`import {createRequire} from 'node:module'; const require=createRequire(${JSON.stringify(process.cwd()+'/package.json')});`}});
-const {Business,attachDesktopLogin}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].contents).toString('base64'));
+const {outputFiles}=await build({stdin:{contents:"export {Business} from './src/host/business.ts'; export {attachDesktopLogin} from './src/host/desktop-login.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'cjs',packages:'external'});
+const compiled={exports:{}};
+new Function('require','module','exports',outputFiles[0].text)(createRequire(import.meta.url),compiled,compiled.exports);
+const {Business,attachDesktopLogin}=compiled.exports;
 const config={geaBaseUrl:'https://gea.example.test/gea-boot'};
 const saved={schema:1,environment:'production',base:config.geaBaseUrl,auth:{token:'fixture-secret',tenantId:'0',name:'Tester',id:'1',username:'tester'}};
 test('desktop login survives backend disposal, logout persists, and the private transport rejects browser access',async t=>{

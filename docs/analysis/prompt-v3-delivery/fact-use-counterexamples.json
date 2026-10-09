@@ -1,0 +1,64 @@
+[
+  {
+    "id": "fc-aging",
+    "returnedToolFacts": [
+      {
+        "tool": "gea_gateway_catalog",
+        "arguments": {
+          "model": "agents_scm_inventory_age"
+        },
+        "needlePresent": true
+      },
+      {
+        "tool": "gea_gateway_catalog",
+        "arguments": {
+          "model": "agents_scm_branch_inventory_snapshot"
+        },
+        "needlePresent": true
+      },
+      {
+        "tool": "gea_gateway_catalog",
+        "arguments": {
+          "model": "agents_scm_branch_inventory_snapshot"
+        },
+        "needlePresent": true
+      },
+      {
+        "tool": "gea_gateway_catalog",
+        "arguments": {
+          "model": "agents_scm_inventory_age"
+        },
+        "needlePresent": true
+      }
+    ],
+    "answerDenialObserved": true,
+    "scope": "Confirmed tool outputs, not a full capture of what the remote model ultimately saw"
+  },
+  {
+    "id": "sales-control",
+    "returnedToolFacts": [
+      {
+        "tool": "gea_sales_plan_read",
+        "arguments": {
+          "kind": "aggregate",
+          "query": {
+            "periodId": "20260901"
+          }
+        },
+        "needlePresent": true
+      },
+      {
+        "tool": "gea_sales_plan_read",
+        "arguments": {
+          "kind": "aggregate",
+          "query": {
+            "periodId": "20260907"
+          }
+        },
+        "needlePresent": true
+      }
+    ],
+    "answerDenialObserved": true,
+    "scope": "Confirmed tool outputs, not a full capture of what the remote model ultimately saw"
+  }
+]

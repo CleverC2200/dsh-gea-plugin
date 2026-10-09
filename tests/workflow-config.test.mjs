@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-const { outputFiles } = await build({stdin:{contents: "export * from './src/workflow-config.ts'; export * from './src/workflow-loader.ts'; export * from './src/workbench-original/salesPlanWorkflow.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm'});
+const { outputFiles } = await build({stdin:{contents: "export * from './src/host/workflow-config.ts'; export * from '../dsh-agent-workbench/src/workbench/workflow-loader.ts'; export * from '../dsh-agent-workbench/src/workbench/original/salesPlanWorkflow.ts';",resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm'});
 const { readSalesPlanWorkflowConfig, salesPlanWorkflow, createWorkflowLoader } = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].contents).toString('base64'));
 const rows = ['0','4','Y'].map((node,i)=>({id:i+1,type_code:'JD',examine_level:String([0,2,3][i]),node_num:node}));
 function mock(change = x=>x) {
@@ -42,7 +42,7 @@ test('cancelled and superseded loads cannot reinstall old configuration; failure
 
 test('DSH Host authenticates fixed config reads and rejects caller SQL', {timeout:60000}, async t=>{
  const {profile}=await import('./profile.mjs');
- const app=await profile(t);
+ const app=await profile(t,{normalStartup:process.env.GEA_TEST_SOURCE_CORE === "1"});
  assert.equal((await app.rpc('workflow/config')).ok,false);
  await app.login();
  assert.equal((await app.rpc('workflow/config',{sql:'SELECT * FROM secret'})).ok,false);

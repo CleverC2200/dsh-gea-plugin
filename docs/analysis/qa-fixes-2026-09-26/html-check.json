@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "viewport": "desktop",
+      "width": 1280,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": "mobile",
+      "width": 390,
+      "horizontalOverflow": false
+    }
+  ],
+  "externalRequests": [],
+  "errors": []
+}

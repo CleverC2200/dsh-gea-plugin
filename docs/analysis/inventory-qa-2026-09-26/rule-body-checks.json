@@ -1,0 +1,90 @@
+{
+  "aps-summary": [
+    {
+      "tool": "gea_skill",
+      "alreadyLoaded": null,
+      "contentChars": 2193,
+      "has95Threshold": true,
+      "complete": true,
+      "nextOffset": null
+    }
+  ],
+  "fc-aging": [
+    {
+      "tool": "gea_skill",
+      "alreadyLoaded": null,
+      "contentChars": 2536,
+      "has95Threshold": false,
+      "complete": true,
+      "nextOffset": null
+    },
+    {
+      "tool": "gea_skill",
+      "alreadyLoaded": true,
+      "contentChars": 0,
+      "has95Threshold": false,
+      "complete": null,
+      "nextOffset": null
+    },
+    {
+      "tool": "gea_evidence_read",
+      "error": "Error: GEA_EVIDENCE_RANGE: offset >= 0；limit 为 1–6000。"
+    },
+    {
+      "tool": "gea_evidence_read",
+      "alreadyLoaded": null,
+      "contentChars": 6000,
+      "has95Threshold": false,
+      "complete": null,
+      "nextOffset": 6000
+    },
+    {
+      "tool": "gea_skill",
+      "alreadyLoaded": true,
+      "contentChars": 0,
+      "has95Threshold": false,
+      "complete": null,
+      "nextOffset": null
+    }
+  ],
+  "base-duplicate": [
+    {
+      "tool": "gea_skill",
+      "alreadyLoaded": true,
+      "contentChars": 0,
+      "has95Threshold": false,
+      "complete": null,
+      "nextOffset": null
+    },
+    {
+      "tool": "gea_skill",
+      "error": "Error: GEA_SKILL_RANGE"
+    },
+    {
+      "tool": "gea_skill",
+      "alreadyLoaded": true,
+      "contentChars": 0,
+      "has95Threshold": false,
+      "complete": null,
+      "nextOffset": null
+    },
+    {
+      "tool": "gea_skill",
+      "error": "Error: GEA_SKILL_RANGE"
+    }
+  ],
+  "fc-missing-fresh": [
+    {
+      "tool": "gea_skill",
+      "error": "Error: GEA_SKILL_NOT_LOADED: 先 gea_capabilities 选择该业务规则。"
+    },
+    {
+      "tool": "gea_skill",
+      "alreadyLoaded": null,
+      "contentChars": 2536,
+      "has95Threshold": false,
+      "complete": true,
+      "nextOffset": null
+    }
+  ]
+}

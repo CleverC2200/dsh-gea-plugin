@@ -1,0 +1,124 @@
+cubes:
+  - name: agents_sales_forecast_effective_revision
+    title: 销售预测纠偏后整月版本（草案）
+    description: >-
+      按计划月、经销商、SKU，优先使用Z整月纠偏行；没有Z时沿用M行。同一版本内业务键唯一性尚待真实数据验收；SQL不会自动消除同版本重复行。
+      包括M中is_split=0的未纠偏行，以保留完整可售范围；须区分普通M预测仅用is_split=1、普通M实际包含全部M行的不同口径。
+      源字段中M或Z的order_type表示选中的来源行，不表示最终版本标记；本Cube整体才是纠偏后整月版本。
+      当前月实际发货金额和数量是截至查询时的部分数据，过往月按整月口径；没有可查询的完成标志。
+      材料约定预测及实际数量为件，生产历史单位与回填尚未验收，不能据此宣称真实数据已统一。
+    data_source: gea_agent
+    sql: >-
+      SELECT selected.*, 'Z_EFFECTIVE' AS analysis_version
+      FROM "data_service"."agents_sales_forecast_detail_mi" AS selected
+      WHERE selected.order_type = 'Z'
+      UNION ALL
+      SELECT initial.*, 'Z_EFFECTIVE' AS analysis_version
+      FROM "data_service"."agents_sales_forecast_detail_mi" AS initial
+      WHERE initial.order_type = 'M'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "data_service"."agents_sales_forecast_detail_mi" AS correction
+          WHERE correction.plan_month = initial.plan_month
+            AND correction.dealer_code = initial.dealer_code
+            AND correction.sku_code = initial.sku_code
+            AND correction.order_type = 'Z'
+        )
+    meta:
+      semantic_status: draft_needs_cube_compilation_and_data_reconciliation
+      source_table: data_service.agents_sales_forecast_detail_mi
+      evidence: [SRC-DDL-001, SRC-USER-001, SRC-USER-003, SRC-USER-004]
+    measures:
+      - name: effective_predicted_sales_amount
+        title: 纠偏后整月预测金额
+        sql: "{CUBE}.\"predicted_sales_amount\""
+        type: sum
+        description: 每个计划月/经销商/SKU选Z或M一行后汇总，单位元；不直接SUM原表M+Z。
+        meta:
+          unit: 元
+          semantic_status: draft
+      - name: effective_actual_sales_amount
+        title: 纠偏后版本对应的实际发货金额
+        sql: "{CUBE}.\"actual_sales_amount\""
+        type: sum
+        description: 与预测采用同一选中行；当前月只表示截至查询时的实际发货，单位元。
+        meta:
+          unit: 元
+          semantic_status: draft
+      - name: effective_predicted_quantity
+        title: 纠偏后整月预测数量
+        sql: "{CUBE}.\"predicted_quantity\""
+        type: sum
+        description: 每个业务键取Z或M一行后汇总，单位件。
+        meta:
+          unit: 件
+          semantic_status: draft
+          evidence: [SRC-USER-005]
+      - name: effective_actual_sales_quantity
+        title: 纠偏后版本对应的实际发货数量
+        sql: "{CUBE}.\"actual_sales_quantity\""
+        type: sum
+        description: 与预测采用相同选行结果，包含未纠偏M中is_split=0的实际数量；当前月仅为截至查询时，单位件。
+        meta:
+          unit: 件
+          semantic_status: draft
+          evidence: [SRC-USER-005]
+      - name: effective_attainment_rate
+        title: 纠偏后版本实际达成比率
+        sql: "1.0 * {effective_actual_sales_amount} / NULLIF({effective_predicted_sales_amount}, 0)"
+        type: number
+        format: percent
+        description: 同范围实际发货合计除以预测合计；零或缺失分母为NULL，回答中显示无定义。当前月须说明非整月。
+        meta:
+          semantic_status: draft
+          evidence: [SRC-USER-002, SRC-USER-004]
+    dimensions:
+      - name: id
+        sql: "{CUBE}.\"id\""
+        type: number
+        primary_key: true
+        description: 选中原表行的技术主键。
+      - name: analysis_version
+        sql: "{CUBE}.\"analysis_version\""
+        type: string
+        description: 固定为Z_EFFECTIVE，表示纠偏后整月版本。
+      - name: source_order_type
+        sql: "{CUBE}.\"order_type\""
+        type: string
+        description: 该业务键实际取自M或Z的哪一行；不可把该值当成本Cube的版本。
+      - name: plan_month
+        sql: "{CUBE}.\"plan_month\""
+        type: string
+        description: YYYYMM计划月，查询前校验年月有效性。
+      - name: dealer_code
+        sql: "{CUBE}.\"dealer_code\""
+        type: string
+        description: 经销商编码。
+      - name: dealer_name
+        sql: "{CUBE}.\"dealer_name\""
+        type: string
+        description: 选中行的经销商名称。
+      - name: sku_code
+        sql: "{CUBE}.\"sku_code\""
+        type: number
+        description: SKU编码，作标识使用。
+      - name: sku_name
+        sql: "{CUBE}.\"sku_name\""
+        type: string
+        description: 选中行的SKU名称。
+      - name: material_group_name
+        sql: "{CUBE}.\"material_group_name\""
+        type: string
+        description: 选中行的物料组名称；同名或归属变化需核对。
+      - name: region_code
+        sql: "{CUBE}.\"region_code\""
+        type: string
+        description: 选中行的销售大区编码；NULL为未归属大区，授权允许时单列并计入总盘。
+      - name: region_name
+        sql: "{CUBE}.\"region_name\""
+        type: string
+        description: 选中行的销售大区名称。
+      - name: is_split
+        sql: "{CUBE}.\"is_split\""
+        type: number
+        description: 选中源行的AI拆分标记；此Cube不以它过滤M回退行。

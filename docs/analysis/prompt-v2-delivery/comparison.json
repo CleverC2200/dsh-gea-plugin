@@ -1,0 +1,965 @@
+{
+  "baseline": "ee8a0264379109973e972b79dd7c9f713a10f0ed",
+  "scope": "local candidate plus read-only GEA queries; no deployment or authorization writes",
+  "primaryModel": "2085162185715609601 / deepseek-v4-pro",
+  "supplementalModel": "2075867101766672385 / deepseek-v4-flash for APS only",
+  "primaryCases": [
+    {
+      "id": "fc-summary",
+      "label": "分仓库存/在途",
+      "preset": "gea-html-inventory-fc",
+      "before": {
+        "seconds": 161.896,
+        "calls": 20,
+        "toolTextChars": 63279,
+        "maxToolTextChars": 7154,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 122.279,
+        "calls": 21,
+        "toolTextChars": 83543,
+        "maxToolTextChars": 8166,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 128.319,
+        "calls": 20,
+        "toolTextChars": 52644,
+        "maxToolTextChars": 5743,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "GEA_MODEL_TOOL_TEXT: 模型把工具调用写成了文本，未执行这些调用，也未完成业务答复。",
+            "code": "PROVIDER_PROTOCOL"
+          }
+        },
+        "qaTimeout": false
+      },
+      "verdict": "未完成",
+      "note": "协议错误，未交付业务答案；25行库存与31/33行在途探查可按行读取，但随后反复读旧原文耗尽额度"
+    },
+    {
+      "id": "fc-aging",
+      "label": "分仓大日期Top10",
+      "preset": "gea-html-inventory-fc",
+      "before": {
+        "seconds": 117.833,
+        "calls": 20,
+        "toolTextChars": 38110,
+        "maxToolTextChars": 6795,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 109.692,
+        "calls": 21,
+        "toolTextChars": 49314,
+        "maxToolTextChars": 5293,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 79.617,
+        "calls": 20,
+        "toolTextChars": 38036,
+        "maxToolTextChars": 5294,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "未完成",
+      "note": "20次探索未执行业务查询；大日期阈值未取得，模型还猜测未登记模型名"
+    },
+    {
+      "id": "base-summary",
+      "label": "基地库存/缺货排名",
+      "preset": "gea-html-inventory-aqkc",
+      "before": {
+        "seconds": 174.399,
+        "calls": 13,
+        "toolTextChars": 38793,
+        "maxToolTextChars": 6958,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 132.167,
+        "calls": 20,
+        "toolTextChars": 65640,
+        "maxToolTextChars": 5905,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 129.571,
+        "calls": 21,
+        "toolTextChars": 75549,
+        "maxToolTextChars": 5914,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "未完成",
+      "note": "不再把零库存行数直接称缺货率；仍未完成库存量和缺货排名"
+    },
+    {
+      "id": "fc-overlap",
+      "label": "大日期/滞库重叠",
+      "preset": "gea-html-inventory-fc",
+      "before": {
+        "seconds": 57.587,
+        "calls": 6,
+        "toolTextChars": 65009,
+        "maxToolTextChars": 35610,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 24.336,
+        "calls": 2,
+        "toolTextChars": 3864,
+        "maxToolTextChars": 2778,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 13.142,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "部分/有误",
+      "note": "不能直接相加方向正确，但将滞库直接解释为入库库龄，未取得业务定义"
+    },
+    {
+      "id": "base-duplicate",
+      "label": "基地重复/版本回退",
+      "preset": "gea-html-inventory-aqkc",
+      "before": {
+        "seconds": 86.033,
+        "calls": 14,
+        "toolTextChars": 151731,
+        "maxToolTextChars": 34296,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 72.093,
+        "calls": 12,
+        "toolTextChars": 21470,
+        "maxToolTextChars": 3964,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 17.532,
+        "calls": 1,
+        "toolTextChars": 1728,
+        "maxToolTextChars": 1728,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "部分",
+      "note": "跨基地同SKU不等于重复；只给短规则，遗漏上次已取得的日期分段和两条回退链"
+    },
+    {
+      "id": "fc-missing",
+      "label": "计划缺失补货规则",
+      "preset": "gea-html-inventory-fc",
+      "before": {
+        "seconds": 120.03,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "Request aborted",
+            "code": "UNKNOWN"
+          }
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 6.097,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 19.403,
+        "calls": 2,
+        "toolTextChars": 3864,
+        "maxToolTextChars": 2778,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "通过",
+      "note": "缺计划保持未知，调拨只扣一次，中间量可算"
+    },
+    {
+      "id": "chain-summary",
+      "label": "全链三层库存",
+      "preset": "gea-html-inventory-qll",
+      "before": {
+        "seconds": 75.202,
+        "calls": 20,
+        "toolTextChars": 32987,
+        "maxToolTextChars": 3827,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 33.605,
+        "calls": 3,
+        "toolTextChars": 2638,
+        "maxToolTextChars": 1361,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 90.988,
+        "calls": 20,
+        "toolTextChars": 18114,
+        "maxToolTextChars": 2675,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "阻断",
+      "note": "当前身份无可用数据资源，未越权，但仍20次探索，未完成业务目标"
+    },
+    {
+      "id": "dealer-summary",
+      "label": "经销商数量/Top5",
+      "preset": "gea-html-inventory-dealer",
+      "before": {
+        "seconds": 60.781,
+        "calls": 21,
+        "toolTextChars": 62635,
+        "maxToolTextChars": 5419,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 131.435,
+        "calls": 20,
+        "toolTextChars": 63185,
+        "maxToolTextChars": 6167,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 50.552,
+        "calls": 20,
+        "toolTextChars": 54053,
+        "maxToolTextChars": 6167,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "未完成",
+      "note": "20次探索仍未实际查询；授权客户母集与风险排名未回答"
+    },
+    {
+      "id": "dealer-boundary",
+      "label": "经销商统计范围复核",
+      "preset": "gea-html-inventory-dealer",
+      "before": {
+        "seconds": 17.084,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 14.926,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 10.794,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "通过",
+      "note": "说明上一问未取得结果；没有销量不把库存高直接判滞销"
+    },
+    {
+      "id": "aps-summary",
+      "label": "产销实际数据",
+      "preset": "gea-html-inventory-apsplan",
+      "before": {
+        "seconds": 18.853,
+        "calls": 2,
+        "toolTextChars": 2597,
+        "maxToolTextChars": 2396,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 0.259,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "GEA_NETWORK_FAILED: 连不上 模型网关 GEA 模型网关（连接阶段失败：GEA_MODEL_NOT_FOUND）。这通常是网络/链路抖动，重问一次即可；若持续出现，检查到该地址的网络或代理。",
+            "code": "UNKNOWN"
+          }
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 0.383,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "GEA_MODEL_NOT_FOUND: 当前Agent不支持所选模型，请按当前Agent重新发现并选择模型；不能借用其它Agent的模型身份。",
+            "code": "MODEL_NOT_FOUND"
+          }
+        },
+        "qaTimeout": false
+      },
+      "verdict": "阻断",
+      "note": "正确APS身份不支持固定对照用pro模型，MODEL_NOT_FOUND"
+    },
+    {
+      "id": "aps-rules",
+      "label": "产销规则题/固定pro",
+      "preset": "gea-html-inventory-apsplan",
+      "before": {
+        "seconds": 60.034,
+        "calls": 8,
+        "toolTextChars": 4743,
+        "maxToolTextChars": 1112,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 0.04,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "GEA_NETWORK_FAILED: 连不上 模型网关 GEA 模型网关（连接阶段失败：GEA_MODEL_NOT_FOUND）。这通常是网络/链路抖动，重问一次即可；若持续出现，检查到该地址的网络或代理。",
+            "code": "UNKNOWN"
+          }
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 0.053,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "error",
+          "error": {
+            "message": "GEA_MODEL_NOT_FOUND: 当前Agent不支持所选模型，请按当前Agent重新发现并选择模型；不能借用其它Agent的模型身份。",
+            "code": "MODEL_NOT_FOUND"
+          }
+        },
+        "qaTimeout": false
+      },
+      "verdict": "阻断",
+      "note": "同上，不能把拒绝速度算作效果提升"
+    },
+    {
+      "id": "chain-compare",
+      "label": "全链周转/公司边界",
+      "preset": "gea-html-inventory-qll",
+      "before": {
+        "seconds": 125.035,
+        "calls": 21,
+        "toolTextChars": 45132,
+        "maxToolTextChars": 31517,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 7.995,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 13.385,
+        "calls": 2,
+        "toolTextChars": 2498,
+        "maxToolTextChars": 1361,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "通过",
+      "note": "计划与实际周转不平均，客户库存不计公司库存"
+    },
+    {
+      "id": "sales-control",
+      "label": "销售计划按省区汇总",
+      "preset": "gea-readonly",
+      "before": {
+        "seconds": 177.649,
+        "calls": 21,
+        "toolTextChars": 50168,
+        "maxToolTextChars": 7241,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 78.089,
+        "calls": 10,
+        "toolTextChars": 31571,
+        "maxToolTextChars": 4914,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 47.201,
+        "calls": 3,
+        "toolTextChars": 8353,
+        "maxToolTextChars": 4034,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "未完成",
+      "note": "3次取得两个周期的聚合；识别baseName是基地，不冒充省区；仍未按用户指定维度完成"
+    },
+    {
+      "id": "fc-missing-fresh",
+      "label": "新会话缺计划规则",
+      "preset": "gea-html-inventory-fc",
+      "before": {
+        "seconds": 44.352,
+        "calls": 3,
+        "toolTextChars": 3876,
+        "maxToolTextChars": 2762,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "r1": {
+        "seconds": 18.369,
+        "calls": 2,
+        "toolTextChars": 3836,
+        "maxToolTextChars": 2778,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "after": {
+        "seconds": 16.148,
+        "calls": 2,
+        "toolTextChars": 3836,
+        "maxToolTextChars": 2778,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "通过",
+      "note": "新会话可正确加载规则，缺失不补零"
+    }
+  ],
+  "additionalCases": [
+    {
+      "id": "holdout-fc-zero",
+      "label": "零计划与缺失计划",
+      "preset": "gea-html-inventory-fc",
+      "metrics": {
+        "seconds": 31.886,
+        "calls": 1,
+        "toolTextChars": 2778,
+        "maxToolTextChars": 2778,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "通过",
+      "note": "区分0与空；补货最终还缺缺货量，不强给结果",
+      "model": "2085162185715609601"
+    },
+    {
+      "id": "holdout-base-zero",
+      "label": "零库存与缺目标",
+      "preset": "gea-html-inventory-aqkc",
+      "metrics": {
+        "seconds": 14.469,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "有误",
+      "note": "开头拒绝缺货率正确，但把未设安全目标说成未低于目标；必要条件缺失被误判为不触发",
+      "model": "2085162185715609601"
+    },
+    {
+      "id": "holdout-chain-date",
+      "label": "异日快照与公司边界",
+      "preset": "gea-html-inventory-qll",
+      "metrics": {
+        "seconds": 13.456,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "有误",
+      "note": "正确拒绝今天合计，但随后允许三层改称混合时点公司库存，漏掉客户库存所有权边界",
+      "model": "2085162185715609601"
+    },
+    {
+      "id": "holdout-dealer-threshold",
+      "label": "空销量与0销量",
+      "preset": "gea-html-inventory-dealer",
+      "metrics": {
+        "seconds": 46.984,
+        "calls": 1,
+        "toolTextChars": 2482,
+        "maxToolTextChars": 2482,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "通过",
+      "note": "未知分母与零分母分开；不强给相同周转天数或滞销结论",
+      "model": "2085162185715609601"
+    },
+    {
+      "id": "holdout-sales-enum",
+      "label": "Y/M/Z字典解释",
+      "preset": "gea-readonly",
+      "metrics": {
+        "seconds": 18.21,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "通过",
+      "note": "不从字母猜中文名称，不跨接口套枚举",
+      "model": "2085162185715609601"
+    },
+    {
+      "id": "holdout-fc-focused",
+      "label": "单分仓可用库存",
+      "preset": "gea-html-inventory-fc",
+      "metrics": {
+        "seconds": 53.552,
+        "calls": 4,
+        "toolTextChars": 10336,
+        "maxToolTextChars": 5551,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "部分",
+      "note": "仅4次取得相关数值，但主结论先用了郑州基地11仓范围，再补单仓说明；单位仍缺",
+      "model": "2085162185715609601"
+    },
+    {
+      "id": "holdout-base-focused",
+      "label": "单基地可用库存",
+      "preset": "gea-html-inventory-aqkc",
+      "metrics": {
+        "seconds": 105.677,
+        "calls": 8,
+        "toolTextChars": 30573,
+        "maxToolTextChars": 6794,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "未完成",
+      "note": "只得日期/行数；qtylive为数值维度、无聚合measure，单位未知",
+      "model": "2085162185715609601"
+    },
+    {
+      "id": "aps-supported-rules",
+      "label": "产销规则/本身份flash",
+      "preset": "gea-html-inventory-apsplan",
+      "metrics": {
+        "seconds": 9.223,
+        "calls": 2,
+        "toolTextChars": 3475,
+        "maxToolTextChars": 2412,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "通过",
+      "note": "改用APS实际支持的flash模型后能解释已加载阈值、缺分母和缺目标；不可与pro混比",
+      "model": "2075867101766672385"
+    },
+    {
+      "id": "holdout-aps-995",
+      "label": "99.5%边界/本身份flash",
+      "preset": "gea-html-inventory-apsplan",
+      "metrics": {
+        "seconds": 3.524,
+        "calls": 0,
+        "toolTextChars": 0,
+        "maxToolTextChars": 0,
+        "termination": {
+          "kind": "completed"
+        },
+        "qaTimeout": false
+      },
+      "verdict": "通过",
+      "note": "严格大于与大于等于分开，缺生产计划不判达成",
+      "model": "2075867101766672385"
+    }
+  ],
+  "initialBudgets": {
+    "gea-html-inventory-fc": {
+      "before": 6769,
+      "after": 7588,
+      "units": "system+tool schema characters, not tokens"
+    },
+    "gea-html-inventory-aqkc": {
+      "before": 6743,
+      "after": 7594,
+      "units": "system+tool schema characters, not tokens"
+    },
+    "gea-html-inventory-qll": {
+      "before": 6743,
+      "after": 7541,
+      "units": "system+tool schema characters, not tokens"
+    },
+    "gea-html-inventory-dealer": {
+      "before": 6748,
+      "after": 7546,
+      "units": "system+tool schema characters, not tokens"
+    },
+    "gea-html-inventory-apsplan": {
+      "before": 6744,
+      "after": 7542,
+      "units": "system+tool schema characters, not tokens"
+    },
+    "gea-readonly": {
+      "before": 8502,
+      "after": 9390,
+      "units": "system+tool schema characters, not tokens"
+    }
+  },
+  "sessionMetrics": [
+    {
+      "cases": [
+        "fc-aging",
+        "fc-overlap",
+        "fc-missing"
+      ],
+      "requests": 22,
+      "maxInputChars": 60125,
+      "summedInputChars": 816634,
+      "usageReports": 22,
+      "usagePresent": 0,
+      "consumers": [
+        "branch-inventory"
+      ]
+    },
+    {
+      "cases": [
+        "fc-summary"
+      ],
+      "requests": 13,
+      "maxInputChars": 77139,
+      "summedInputChars": 511547,
+      "usageReports": 12,
+      "usagePresent": 0,
+      "consumers": [
+        "branch-inventory"
+      ]
+    },
+    {
+      "cases": [
+        "chain-summary",
+        "chain-compare"
+      ],
+      "requests": 22,
+      "maxInputChars": 38962,
+      "summedInputChars": 514355,
+      "usageReports": 22,
+      "usagePresent": 0,
+      "consumers": [
+        "full-chain-inventory"
+      ]
+    },
+    {
+      "cases": [
+        "base-summary",
+        "base-duplicate"
+      ],
+      "requests": 15,
+      "maxInputChars": 111795,
+      "summedInputChars": 868985,
+      "usageReports": 15,
+      "usagePresent": 0,
+      "consumers": [
+        "base-safety-stock"
+      ]
+    },
+    {
+      "cases": [
+        "aps-summary",
+        "aps-rules"
+      ],
+      "requests": 0,
+      "maxInputChars": 0,
+      "summedInputChars": 0,
+      "usageReports": 0,
+      "usagePresent": 0,
+      "consumers": []
+    },
+    {
+      "cases": [
+        "dealer-summary",
+        "dealer-boundary"
+      ],
+      "requests": 12,
+      "maxInputChars": 68817,
+      "summedInputChars": 590094,
+      "usageReports": 12,
+      "usagePresent": 0,
+      "consumers": [
+        "dealer-inventory-replenishment"
+      ]
+    },
+    {
+      "cases": [
+        "sales-control"
+      ],
+      "requests": 3,
+      "maxInputChars": 21077,
+      "summedInputChars": 41899,
+      "usageReports": 3,
+      "usagePresent": 0,
+      "consumers": [
+        "sales_forecast"
+      ]
+    },
+    {
+      "cases": [
+        "fc-missing-fresh"
+      ],
+      "requests": 3,
+      "maxInputChars": 12625,
+      "summedInputChars": 30217,
+      "usageReports": 3,
+      "usagePresent": 0,
+      "consumers": [
+        "branch-inventory"
+      ]
+    },
+    {
+      "cases": [
+        "holdout-base-zero"
+      ],
+      "requests": 1,
+      "maxInputChars": 8016,
+      "summedInputChars": 8016,
+      "usageReports": 1,
+      "usagePresent": 0,
+      "consumers": [
+        "base-safety-stock"
+      ]
+    },
+    {
+      "cases": [
+        "holdout-chain-date"
+      ],
+      "requests": 1,
+      "maxInputChars": 7963,
+      "summedInputChars": 7963,
+      "usageReports": 1,
+      "usagePresent": 0,
+      "consumers": [
+        "full-chain-inventory"
+      ]
+    },
+    {
+      "cases": [
+        "holdout-fc-zero"
+      ],
+      "requests": 2,
+      "maxInputChars": 11171,
+      "summedInputChars": 19231,
+      "usageReports": 2,
+      "usagePresent": 0,
+      "consumers": [
+        "branch-inventory"
+      ]
+    },
+    {
+      "cases": [
+        "holdout-sales-enum"
+      ],
+      "requests": 1,
+      "maxInputChars": 9880,
+      "summedInputChars": 9880,
+      "usageReports": 1,
+      "usagePresent": 0,
+      "consumers": [
+        "sales_forecast"
+      ]
+    },
+    {
+      "cases": [
+        "holdout-dealer-threshold"
+      ],
+      "requests": 2,
+      "maxInputChars": 10806,
+      "summedInputChars": 18782,
+      "usageReports": 2,
+      "usagePresent": 0,
+      "consumers": [
+        "dealer-inventory-replenishment"
+      ]
+    },
+    {
+      "cases": [
+        "holdout-fc-focused"
+      ],
+      "requests": 5,
+      "maxInputChars": 21871,
+      "summedInputChars": 67151,
+      "usageReports": 5,
+      "usagePresent": 0,
+      "consumers": [
+        "branch-inventory"
+      ]
+    },
+    {
+      "cases": [
+        "aps-supported-rules",
+        "holdout-aps-995"
+      ],
+      "requests": 3,
+      "maxInputChars": 13221,
+      "summedInputChars": 33321,
+      "usageReports": 3,
+      "usagePresent": 0,
+      "consumers": [
+        "aps"
+      ]
+    },
+    {
+      "cases": [
+        "holdout-base-focused"
+      ],
+      "requests": 7,
+      "maxInputChars": 42691,
+      "summedInputChars": 182138,
+      "usageReports": 7,
+      "usagePresent": 0,
+      "consumers": [
+        "base-safety-stock"
+      ]
+    }
+  ],
+  "requests": 112,
+  "usageReports": 111,
+  "usagePresent": 0,
+  "sourceTimingNote": "R2 began before the final missing-dataset/row-argument rejection. All R2 evidence-read calls were checked for that pattern; no match. Final strict guard has registered-tool tests and the final full suite. R2 is not claimed to be an exact-binary full-suite replay."
+}

@@ -1,0 +1,24 @@
+{
+  "candidate": "ee8a0264379109973e972b79dd7c9f713a10f0ed",
+  "model": "deepseek-v4-pro",
+  "reasoningEffort": "high",
+  "environment": "production",
+  "businessAccess": "authenticated read-only queries and knowledge retrieval",
+  "agents": 6,
+  "realQuestions": 14,
+  "inventoryQuestions": 11,
+  "productionBusinessWrites": false,
+  "runtimeSwitched": false,
+  "rawRecords": "ignored .runtime/inventory-qa-20260926 (not committed)",
+  "sourceSha256": {
+    "src/host.ts": "5bce6547992e385ac56881c1b7e750c3d09de5bb36cfc3df1fe5769d64fe4208",
+    "src/html-plugins.ts": "4628ebc7e58d7751a89eefb1adecd0f66dd8a8517f916f207b7011816c26e6a3",
+    "src/host/agent-tools.ts": "b98995fa04ff05df4b599f19ad11c17b412f59a0784bf24bc6cfc067e272a04e",
+    "src/host/prompt-runtime.ts": "41e7e2176ade5e47267c98c2f5e0dec52f7b894fcbf4fa22528d9bfb46c2db13",
+    "src/host/prompt-evidence.ts": "5c66bd7e961756558ab78c170249bc50c9e81bd6ea9d8c8aff5e57db9baab9bf",
+    "src/shared/transport-signal.ts": "7a0d0a9d7a4a5ea82ee92714742c24518fba2faf7edb2d6ce6539d82c6e12ad4",
+    "src/shared/net-error.ts": "2081de992bba391a6434e5aeb0e8627d9f3f235ee60a5f6653fd99cab4829d38",
+    "presets/prompt-policy.json": "564692210645064ebc9796abf3fa68bcf6b948233016d0277b0196e3060a277e"
+  },
+  "interpretation": "Harness test completion is not business-answer acceptance. No provider usage was available in saved events; character counts are not token counts."
+}

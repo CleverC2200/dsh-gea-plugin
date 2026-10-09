@@ -1,0 +1,45 @@
+{
+  "service": "cube-core",
+  "authorizationScope": "server administrative validation, not GEA consumer acceptance",
+  "tests": [
+    {
+      "name": "readyz",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "name": "agents_sales_plan_detail_mi-new-members-visible",
+      "pass": true,
+      "added": 12
+    },
+    {
+      "name": "agents_scm_inventory_age-new-members-visible",
+      "pass": true,
+      "added": 7
+    },
+    {
+      "name": "agents_scm_cust_inventory_daily-new-members-visible",
+      "pass": true,
+      "added": 10
+    },
+    {
+      "name": "confirmed-units-and-preserved-dealer-unit",
+      "pass": true
+    },
+    {
+      "name": "agents_sales_plan_detail_mi-live-load",
+      "pass": true,
+      "rows": 1
+    },
+    {
+      "name": "agents_scm_inventory_age-live-load",
+      "pass": true,
+      "rows": 1
+    },
+    {
+      "name": "agents_scm_cust_inventory_daily-live-load",
+      "pass": true,
+      "rows": 1
+    }
+  ]
+}

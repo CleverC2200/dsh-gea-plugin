@@ -1,43 +1,66 @@
 # GEA 销售计划只读插件
 
-独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；通用工作台插件负责布局与会话关联，运行使用未修改的 npm DSH `0.1.5-rc.2`。
+有界只读接收可在部署或 Host 配置中设置 `sqlReadLimit`，包含 `consumerCode`、`maxRequests`、`maxPagesPerQuery`、`maxRowsPerQuery`。这是同一 Host 生命周期的固定物理 SQL 请求额度，分页、401 续期后的再次 SQL 请求、失败及发出后的取消均计数。`maxRequests: 0` 在登录或委托前拒绝；其它 Consumer 不共享额度。首个计数响应超过页数或行数上限时停止，不截断成完整结果。预算不授予数据、模型或写权限，未设置时沿现有受控查询合同。
 
-本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。`npm run package` 输出可核对 SHA-256 的 tarball，尚不是桌面安装器。
+For bounded read acceptance, `sqlReadLimit` fixes one Consumer's physical SQL allowance for the Host lifetime. It counts pages, renewed-delegation retries, failures, and cancellations after dispatch. Zero blocks before login or delegation; other Consumers cannot share the allowance. Page and row limits reject incomplete acceptance, and the limit grants no data, model, or write permission.
+
+独立安装的 DeepSeek Harness Web 插件，使用 `dsh` profile、认证 Fetch、现有 LLM provider 和标准 Session。业务代码位于本工程；通用工作台插件负责页面目录与 HTML 呈现。本隔离项目只支持 repositories.json 登记的未修改官方源码 5badb15009ae1756c3afe0ae0cef1faafc290ccc、0.2.1-alpha.1 与同组插件候选，不使用旧 npm 核心或旧包运行回退。
+
+本地发行包、空目录安装、兼容检查及受控升级/回退流程见[独立安装说明](docs/install.md)。发行准备通过 `scripts/prepare-package.mjs` 在独立生产目录生成运行清单与 npm shrinkwrap，再用 `scripts/package.mjs --input` 输出带 SHA-256 的普通插件包。SDK peers 由当前官方 profile 提供，完整命令与设备验收边界见安装说明。
 
 ## 源码安装与启动
 
-使用 Node 24，在本目录执行：
+按需构建、watch 和 Codex 原生环境配置见[本地开发说明](docs/local-development.md)。
+
+使用 Node 24 和 package.json 固定的 pnpm 版本，在本目录执行（发行包的 npm shrinkwrap 安装协议保持不变）：
 
 ```sh
-npm ci
-npm run build
+corepack enable pnpm
+pnpm install --frozen-lockfile
+pnpm run build
 cp gea.direct.example.json gea.config.json
 # 登录 GEA 后，插件通过 GEA 个人模型接口发现模型并直接调用。
-npm start -- --config gea.config.json --runtime .runtime/workbench-development --port 3198
+pnpm start --dev --config gea.config.json --runtime .runtime/workbench-development --port 3198
 ```
 
-启动通过安装依赖中的 `dsh --profile gea-workbench`，拥有独立 Harness home。profile 禁用内置 `ui-layout`，启用 `@cleverc2200/dsh-agent-workbench`；其他 DSH 包使用 npm 发布物。构建和启动不读取 DSH checkout，也不会链接或修改其源码。原生聊天、输入框及 Session 继续由 DSH 提供。
+需要持续编译时，另开一个终端运行 `pnpm dev`，再刷新客户端页面即可加载最新 bundle。
+
+桌面端调试运行 `pnpm desktop:dev`。它复用本机已安装的 Electron 运行时，只将当前项目的 GEA 插件源码挂入桌面进程；不会写入正式插件版本目录，也不会改变正式插件版本号。改动 UI 后重新编译，在桌面菜单选择“视图 → 重新加载”即可查看。
+
+开发启动通过安装依赖中的 `dsh --profile gea-workbench`，并把当前源码目录挂进独立 Harness home；改完源码后重新构建并刷新客户端即可看到，不需要先安装插件。`pnpm dev` 持续编译 Host、Client 和 Workbench，`--dev` 同时启用 profile 的实时 patch 重载。发行包仍使用不带 `--dev` 的安装启动方式。profile 保留官方 `ui-layout`，启用 `@cleverc2200/dsh-agent-workbench`；本轮官方装配必须解析同组官方 SDK 产物。原生聊天、输入框及 Session 继续由 DSH 提供。
 
 使用启动日志中的带认证参数链接进入全屏登录页，默认自动加载正式环境的二维码，可切换「正式」或「测试」后直接飞书扫码登录；切换环境会自动换码，「刷新二维码」用于重试或更新过期二维码。页面不显示或要求输入服务器地址。登录后进入 GEA 导航、原销售计划审批工作台、原生 DSH 会话的三栏界面。选择组织行与分析范围，点击「预览发送范围」，核对 Host 重新获取的当前计划数据，再确认送入右侧原生 DSH 会话。左栏「DSH 对话」切换到原生对话与工作区侧栏；原生侧栏「GEA 业务版」返回工作台，往返保留当前 Session。空会话欢迎图标居于右栏内容区中央，输入框位于底部。选中 Session 不会关闭业务页面，后续输入、流式回答、取消和历史记录仍由 DSH 负责。
 
-部署配置的 `geaEnvironments.production` 和 `geaEnvironments.test` 分别保存正式、测试 HTTPS 地址，`environment` 指定初始选项（默认 `production`）。旧单地址配置只提供对应的一个环境。工作台「切换环境 / 重新登录」返回登录页；切换会作废旧凭证、二维码、预览和进行中的模型请求，并清空当前会话选择。登录页 GEA 图标来自 AionUi 的 `packages/desktop/src/renderer/assets/logos/brand/app.png`，沿用[原工作台来源与许可证](src/workbench-original/SOURCE.md)。
+部署配置的 `geaEnvironments.production` 和 `geaEnvironments.test` 分别保存正式、测试 HTTPS 地址，`environment` 指定初始选项（默认 `production`）。旧单地址配置只提供对应的一个环境。工作台「切换环境 / 重新登录」返回登录页；切换会作废旧凭证、二维码、预览和进行中的模型请求，并清空当前会话选择。登录页 GEA 图标来自 AionUi 的 `packages/desktop/src/renderer/assets/logos/brand/app.png`，沿用[原工作台来源与许可证](src/workbench/original/SOURCE.md)。
 
 `gea.config.example.json` 使用本地回执模式，只验证数据传递；真实模型使用 `gea.direct.example.json` 中 `source: "gea"`。插件通过当前 GEA 登录获取个人模型凭证、发现模型并直接调用，不依赖 AionUi 进程。`source: "aionui"` 已移除，旧配置会在启动前报 `AIONUI_RUNTIME_REMOVED`；改用 `source: "gea"`、`agentCode` 和当前 GEA 登录，无需读取 AionUi 的 provider、代理地址或凭证。
 
 ### 页面组成
 
-| 层            | 代码                             | 职责                                                                            |
-| ------------- | -------------------------------- | ------------------------------------------------------------------------------- |
-| 外层 DSH 插件 | `src/client.tsx`                 | GEA 导航、独立页面 iframe、Session 选择与语言同步                               |
-| 通用工作台 | [独立工作台仓库](https://github.com/CleverC2200/dsh-agent-workbench) | 页面注册、业务实例与会话关联、原生对话布局和窄屏排列 |
-| 示例 Agent | `packages/workbench-example/` | 独立插件验证多页面接入，仅在 `workbenchExample: true` 时加载 |
-| 独立业务文档  | `src/workbench-page.tsx`         | 登录、GEA 适配、预览与发送；不实现聊天输入框                                    |
-| 原审批组件    | `src/workbench-original/`        | 从 AionUi 原源码复制的工作台、CSS、组织维度、筛选、版本、详情和导出             |
-| GEA Host      | `src/business.ts`、`src/host.ts` | 持有登录凭证、固定只读查询、精确数据和持久化 Session 输入                       |
+| 层            | 代码                                                                         | 职责                                                                |
+| ------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 外层 DSH 插件 | `src/client.tsx`                                                             | GEA 导航、独立页面 iframe、Session 选择与语言同步                   |
+| 通用工作台    | [独立工作台仓库](http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench) | 页面目录、HTML呈现、插件公共规范；原生布局与会话归官方宿主          |
+| 示例 Agent    | `packages/workbench-example/`                                                | 独立插件验证多页面接入，仅在 `workbenchExample: true` 时加载        |
+| 独立业务文档  | `src/workbench/page.tsx`                                                     | 登录、GEA 适配、预览与发送；不实现聊天输入框                        |
+| 原审批组件    | `src/workbench/original/`                                                    | 从 AionUi 原源码复制的工作台、CSS、组织维度、筛选、版本、详情和导出 |
+| GEA Host      | `src/host/business.ts`、`src/host.ts`                                        | 持有登录凭证、固定只读查询、精确数据和持久化 Session 输入           |
 
-原件来源、许可证及改动范围见 [SOURCE.md](src/workbench-original/SOURCE.md)。旧的三栏仿写组件及占位对话栏已经删除。完整迁移尚未验收：审批保存/通过/退回、消息处理和独立 SKU 推理适配尚未接入；原件中的相应写操作保持禁用。当前 AionUi 源码没有单独的需求提报页面，不能把审批页或未挂载的提报模型当作已迁移页面。
+### 源码目录
 
-GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`requestTimeoutMs` 用于 GEA 查询和模型发现；`modelRequestTimeoutMs` 单独限制模型流，总时限默认 120 秒，可配置为 1–600 秒。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
+| 目录                       | 职责                                                                |
+| -------------------------- | ------------------------------------------------------------------- |
+| `src/client.tsx`           | 唯一业务身份与账户动作的只读客户端投影                              |
+| `src/host/`                | GEA Host 业务编排、身份和权限边界、MCP、服务账号与工作流配置        |
+| `src/shared/`              | Host 与构建脚本共用的环境解析、错误脱敏、流解析、取消信号和通知投影 |
+| Workbench `src/workbench/` | 原独立业务文档、工作流加载器及审批页面；GEA只提供实际业务adapter    |
+| `src/mocks/`               | 仅供测试和演示使用的 DMS、销售计划模拟实现                          |
+
+GEA构建入口只有 `src/host.ts`、`src/client.tsx`，产物为 `lib/host.js`、`lib/client.js`；Native页面与通用桥从GEA构建退出。
+
+原件来源、许可证及改动范围见 [Workbench SOURCE.md](../dsh-agent-workbench/src/workbench/original/SOURCE.md)。职责迁移保留原SQL、审批角色、金额、草稿与结果校验口径；源码候选仍需主任务完成同组正式UI对照和真实授权运行，不能将源码与离线通过当作实际提交/审批结果。
+
+GEA 地址、请求超时、分页上限、快照大小和模型预算来自部署配置。`requestTimeoutMs` 用于普通 GEA 查询和模型发现；`mcpRequestTimeoutMs` 单独限制 MCP 网关请求，默认 60 秒，可配置为 1–120 秒，旧配置不填时自动使用默认值；`modelRequestTimeoutMs` 单独限制模型流，总时限默认 120 秒，可配置为 1–600 秒。`--runtime` 控制独立 Harness home 和工作区；`--port 0` 为自动回归分配独立端口。移动目录不需要编辑插件源码或硬编码插件路径。配置缺失或无效时启动失败。
 
 ## 数据与会话
 
@@ -51,22 +74,24 @@ Host 为预览生成 ID，并重新读取用户选择的当前计划详情；浏
 
 GEA token 仅保存在当前 Host 内存中；重启后需要重新登录。GEA 模式下模型凭证通过当前登录获取，不进入业务快照或 profile patch。本地 `.runtime/` 包含会话、启动认证链接及验证证据，不应发布。
 
+扫码登录页会显示二维码准备、等待扫码与过期状态，并提示在手机飞书中确认登录。二维码过期后可刷新；支持系统“减少动态效果”设置，中文和英文提示保持一致。
+
 ## 当前验证状态
 
-当前三栏基线使用 npm DSH `0.1.5-rc.2` 与独立工作台插件，浏览器回归启动真实 Web profile，仅将外部 GEA/模型响应替换为固定测试服务。覆盖原工作台登录/查询/选择、独立文档与原生会话同时显示、持久化回执、窄屏排列。Host 测试覆盖精确金额、接口限制、数据身份和登录/预览失效。原工作台模型测试覆盖导出、权限和 SAVE 回读语义；这些测试不执行真实业务写回。
+当前三栏使用隔离项目登记的未修改官方源码 5badb15009ae1756c3afe0ae0cef1faafc290ccc、0.2.1-alpha.1 与同组插件候选与独立工作台插件，浏览器回归启动真实 Web profile，仅将外部 GEA/模型响应替换为固定测试服务。覆盖原工作台登录/查询/选择、独立文档与原生会话同时显示、持久化回执、窄屏排列。Host 测试覆盖精确金额、接口限制、数据身份和登录/预览失效。原工作台模型测试覆盖导出、权限和 SAVE 回读语义；这些测试不执行真实业务写回。
 
 本次三栏重构的检查、真实查询证据和未完成项见 [2026-09-11 验收记录](docs/acceptance-2026-09-11.md)。此前的真实 GEA/模型验证记录见 [早期验收记录](docs/acceptance-2026-09-10.md)，它不能替代当前发布版 DSH + 工作台插件的真实环境验收；独立安装包、写操作和生产验收也仍未完成。
 
 ```sh
-npm run typecheck
-npm test
+pnpm run typecheck
+pnpm test
 ```
 
 `tests/fixtures/gea-approval-workspace.snapshot.json` 是脱敏、无密钥的页面/Session 事件回放夹具；它锁定查询、选择、预览、提交和回执的顺序，不代表真实 GEA 或真实模型验收。真实环境证据仍以 `docs/acceptance-2026-09-10.md` 和运行目录中的本地回执为准。
 
 浏览器测试使用本机 Chrome，测试进程、端口和目录均由测试拥有。定向测试可运行 `node --test tests/<name>.test.mjs`。
 
-验收指定会话使用 `npm run verify -- --runtime <runtime目录> --session <session-id>`，独立核对磁盘快照与首轮完整回答。添加 `--require-live` 还要求当前进程已登录、快照属于当前进程和环境、来源不是本机模拟服务且处于真实模型模式。它不会自动选择旧会话，不将本地回执计为真实模型验收。此入口验证落盘结果，不能替代外部模型请求比对或完整业务范围验收。`scripts/probe-gea.mjs` 仍属于旧原型诊断入口，尚未适配新版部署，不应用它宣告新版验收。
+验收指定会话使用 `pnpm run verify --runtime <runtime目录> --session <session-id>`，独立核对磁盘快照与首轮完整回答。添加 `--require-live` 还要求当前进程已登录、快照属于当前进程和环境、来源不是本机模拟服务且处于真实模型模式。它不会自动选择旧会话，不将本地回执计为真实模型验收。此入口验证落盘结果，不能替代外部模型请求比对或完整业务范围验收。`scripts/probe-gea.mjs` 仍属于旧原型诊断入口，尚未适配新版部署，不应用它宣告新版验收。
 
 登录后的真实模型发现、正式最小推理验收与审批范围限制见[模型与审批核对](docs/model-and-approval-audit-2026-09-11.md)。
 
@@ -112,19 +137,19 @@ The in-process `geaMcp` v1 service lets the market discover authorized MCP tools
 }
 ```
 
-macOS 启动器从钥匙串中 `service=keychainService`、`account=service-account` 的项目读取包含 `clientId` 与 `secret` 的 JSON，只传入 Host 进程环境。其他平台省略 `keychainService`，由密钥管理系统注入对应的 `GEA_` 环境变量。允许的用户和租户由部署配置明确指定，只有读取权限并不会自动获得服务账号重提权限。缺少凭据或用户未获授权时，重提确认按钮保持禁用。
+macOS 的 GEA 插件部署入口从钥匙串中 `service=keychainService`、`account=service-account` 的项目读取包含 `clientId` 与 `secret` 的 JSON，只传入 Host 进程环境；Web 和桌面启动都调用这个入口。其他平台省略 `keychainService`，由密钥管理系统注入对应的 `GEA_` 环境变量。桌面端须在自己的 `userData/gea.config.json` 中配置同一段不含密钥的 `serviceAccounts` 引用；插件更新不会覆盖已有的用户配置。允许的用户和租户由部署配置明确指定，只有读取权限并不会自动获得服务账号重提权限。缺少凭据或用户未获授权时，重提确认按钮保持禁用。
 
 Host 每次发送前使用表单 `client_credentials` 获取短期 Token，不向浏览器返回凭据。相同幂等键绑定同一请求，当前登录期间的失败重试复用已核验的请求正文；结果未知时只提供原键重试。退出或重启后需重新回读计划，不能把新操作当成旧操作的重试。成功回执仍需核对新有效版本、旧版本失效和重提日志，才能视为工作台验收完成。
 
 ### 会话模式 / Session modes
 
-新会话默认使用原版 DSH `standard`（标准）预设，不注入 GEA 业务 Persona，也不可调用 GEA MCP。另一个预设显示为「需求预测」（`gea-readonly`），包含业务 Persona、Skill 发现及加载，以及限于此预设的 GEA MCP。输入框的 Agent 预设选择器用于切换；已有消息的会话保持原预设，请新建会话后选择。左侧需求预测入口仍明确选择 `gea-readonly`。启动器在 runtime 的 `native-presets/standard` 创建真实目录，其中的配置文件链接到已安装 DSH 发布包中的原版标准预设；不复制或改写 DSH 的标准配置，只展示标准与需求预测两种模式。
+新会话默认使用公司标准预设（显示名在 `scripts/deployment.mjs` 的 `DEFAULT_PRESET_NAME`，组合逐字节沿用 DSH 原版，不注入 GEA 业务 Persona，也不可调用 GEA MCP）。业务侧预设显示为「销售计划Agent」（`gea-readonly`），包含业务 Persona、Skill 发现及加载，以及限于此预设的 GEA MCP。每个随客户端安装的 HTML 业务插件还会生成一个自己的预设，显示名与简介分别取自仓库 `presets/agent-presets.json` 与 `presets/agent-capabilities.json`（改文案不必重发插件包）；`presets/agent-presets.json` 的 `hidden` 列表用于下架不想再出现的模块，宿主每次启动还会清掉这些模块和演示模块在老版本里留下的预设目录。客户库存、订单工作台和订单履约的mock模块保留原Prompt与Skill，可从工作台选用，公开页面grant仅用于模拟上下文与引用，不启动GEA Consumer或读取SQL。其它已退场mock模块仍不可选用。输入框的 Agent 预设选择器用于切换；已有消息的会话保持原预设，请新建会话后选择。左侧销售计划入口仍明确选择 `gea-readonly`。
 
-New conversations default to DSH's unmodified `standard` preset, without the GEA business persona or GEA MCP access. The `gea-readonly` preset is displayed as Demand Forecast (需求预测), with its business persona, skill discovery/loading and scoped GEA MCP. Select the preset in a new conversation; non-empty conversations retain their composition. The launcher links the original standard preset files under runtime `native-presets/standard`, keeping the roster to standard and demand forecast.
+New conversations default to the company standard preset (display name from `DEFAULT_PRESET_NAME` in `scripts/deployment.mjs`; the composition byte-for-byte matches DSH's original, without the GEA business persona or GEA MCP access). The business preset is displayed as 销售计划Agent (`gea-readonly`), with its business persona, skill discovery/loading and scoped GEA MCP. Every installed HTML business plugin also gets its own preset whose name and summary come from `presets/agent-presets.json` and `presets/agent-capabilities.json` in this repo (renaming never requires republishing a plugin); the `hidden` list in `presets/agent-presets.json` retires modules from the roster, and every start also removes the preset directories those modules and the mock demos left behind in older builds. The customer stock, order report, order fulfillment, regional plan, category plan and MPS mocks retain selectable original personas and Skills. Their page grants expose only simulated context and references, without launching a GEA Consumer or reading SQL. Other retired mock modules remain unavailable. Select the preset in a new conversation; non-empty conversations retain their composition.
 
 ## DMS 模拟回写
 
-Issue #23 的独立演示支持终审停在 5、成功后进入 10、失败原键重试、未知结果对账，以及 Z 单追加/追减两笔确认。运行 `node scripts/build-dms-demo.mjs`，再用 `python3 -m http.server 3202 --bind 127.0.0.1 --directory .runtime/dms-demo` 打开模拟页。该页只使用合成样本与内存接收方，不连接真实 GEA/DMS，不影响 3201 的真实业务。复现步骤、回归证据与正式协议边界见 [DMS mock 验收](docs/dms-mock-acceptance.md)。
+原DMS模拟演示已迁入Workbench `prototypes/dms`，统一页面为 `inventory-dms`。原GEA独立demo、模型与构建入口退出；纠偏离线夹具消费Workbench公共 `./dms-mock` 模型。Manage提供唯一解释资源与报文纯计算。GEA只授予mock/view，不提供真实DMS凭据、SQL或写MCP。复现与历史边界见 [DMS mock 验收](docs/dms-mock-acceptance.md)。
 
 ## 纠偏审批
 
@@ -134,17 +159,19 @@ DMS 继续使用 mock。受控 GEA 终审流程可连接既有模拟接收方验
 
 ## 多 Agent 页面
 
-通用工作台接口及职责见 [工作台说明](https://github.com/CleverC2200/dsh-agent-workbench/blob/main/README.md)。GEA 作为其中一个业务插件注册页面；其他 Agent 通过同一接口加入。按“页面＋业务实例”关联 Session，切换与刷新恢复各自会话；只展示页面不会自动向模型发送业务数据。工作台在独立仓库维护，通过固定 Git 提交依赖，且不依赖 GEA 业务代码。
+通用工作台接口及职责见 [工作台说明](http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench/-/blob/main/README.md)。GEA 作为其中一个业务插件注册页面；其他 Agent 通过同一接口加入。按“页面＋业务实例”关联 Session，切换与刷新恢复各自会话；只展示页面不会自动向模型发送业务数据。工作台在独立仓库维护，通过固定 Git 提交依赖，且不依赖 GEA 业务代码。
 
 定向验收：`node --test tests/published-runtime.test.mjs tests/workbench-pages.test.mjs`。此次只使用本地测试服务，未对真实审批业务执行写入。
 
 ## 公共工作台依赖
 
-公共工作台已迁至独立私有仓库 https://github.com/CleverC2200/dsh-agent-workbench 。本仓库通过固定 Git 提交依赖其构建产物，不再维护或编译工作台源码。安装开发依赖需要该仓库的读取权限；桌面分发仍携带已安装产物，最终用户不需要 Git 凭据。工作台的控制器测试在独立仓库维护，GEA 保留业务和集成测试。
+公共工作台已迁至独立私有仓库 http://100.100.6.191:20656/chenyonghao/dsh-agent-workbench 。本仓库通过固定 Git 提交依赖其构建产物，不再维护或编译工作台源码。安装开发依赖需要该仓库的读取权限；桌面分发仍携带已安装产物，最终用户不需要 Git 凭据。工作台的控制器测试在独立仓库维护，GEA 保留业务和集成测试。
 
 ## 标准 bundle
 
-GEA 发行包声明 `dsh.bundle.patch`，在官方 base/web 后挂载 GEA 和固定版本的独立工作台。连接配置通过 profile overlay 提供，不放入 bundle。`npm start -- --bundle --config <本地配置> --runtime <独立数据目录> --port 0` 验证标准 bundle 加载；省略 `--bundle` 兼容既有启动方式。`npm run test:package` 从空目录安装发行包并验证登录、业务页面、原生对话及重启后的历史。
+本隔离项目的 `pnpm start` 只启动当前源码组合，以 `scripts/current-core.json` 登记核心版本、官方来源与本地适配提交。`--bundle` 和 installed payload 旧启动方式不再支持。连接配置通过独立 profile overlay 提供；正常开发默认加载工作台构建的 FC v2 资源，缺少产物时明确失败，不下载旧包或修补旧 HTML。发行、上传和生产客户端仍不在本项目授权范围。
+
+官方来源为 `4878cdabd87d4041bdaff61d04c966883b9fd07a`（0.2.0-rc.1）；当前本地适配为 `8a719b445e3bee8d79daa3c83fc3b4b1a7b64def`。本轮适配前的 `d640266aeadf5ab4a2c6f80cfd7fb9e59861651f` 也是本地提交，不能作为纯官方来源。启动回执分别记录 `upstream` 与 `adaptation`。
 
 缺失工作台时报 `WORKBENCH_MISSING`；非 0.1.x 公共接口版本时报 `WORKBENCH_INCOMPATIBLE`。工作台控制器测试已迁至独立仓库，GEA 保留跨插件浏览器集成测试。发行包由明确文件清单校验，拒绝本机路径和凭据。
 
@@ -153,3 +180,132 @@ GEA 发行包声明 `dsh.bundle.patch`，在官方 base/web 后挂载 GEA 和固
 ## 审批查询诊断
 
 流程配置加载失败时，审批页明确显示流程配置错误，并保留脱敏的请求阶段、HTTP 状态、请求编号和跟踪编号，供技术支持定位。访问令牌、委托令牌和未定义的上游响应字段不会返回浏览器。
+
+需求预测预设的进度说明和最终回答跟随用户语言；中文问题使用中文。Skill 的本地参考文件通过 Manage 的 `skill_reference_read` 按技能名及正文链接的相对路径只读加载，支持 `offset`/`limit` 分段读取。MCP 资源读取只接收服务返回的 URI，本地 `file://` 链接会被拦截并提示正确工具。
+
+Demand Forecast follows the user's language for both progress and final answers. Its Manage-owned `skill_reference_read` tool reads local references linked by a visible skill, with `offset`/`limit` pagination. MCP resource reads use server-returned URIs; local `file://` links are rejected with guidance to the correct reader.
+
+### 历史隔离共享主题适配（不用于规格41）
+
+本项目受控源码组合的导航、会话工具栏与原生输入框边框消费工作台共享语义变量；未安装共享资源时保留原有边框后备值。资源由同级工作台 `theme/` 维护并编入宿主，GEA 不保存第二套主题状态。业务页面主题迁移不在此适配中。
+
+### 页面与能力分离声明
+
+页面与能力可以使用独立声明文件，并经现有契约入口装载；旧业务包继续兼容。格式、权限约束与兼容入口删除条件见 [能力契约](docs/capability-contract.md#页面与能力分离声明隔离开发任务-02)。本项属于隔离源码迁移，不是发行变更。
+分仓页的“解读能力”来自 Agent Manage 的 `pageAgents`，仅显示已安装且当前 GEA 登录授权的预设。切换时工作台按预设选择独立 Session，GEA 的 `/agents` 与 `/open` 分别校验名单、实际 Session 预设及 Consumer；页面 SQL 仍用分仓页面自己的受管身份。环境、租户、用户共同限定 Session 与引用身份；登录变化会清空旧能力列表。页面引用只接受当前 ready 筛选范围和快照版本；切页、重新查询或会话切换后需重新引用。既有页面请求在会话切换时取消，新会话重新读取当前筛选页。
+
+## 源码组合维护
+
+本轮只适配固定官方 `dsh-v0.2.1-alpha.1` / `5badb15009ae1756c3afe0ae0cef1faafc290ccc`，读取其标准构建与公开 SDK；不修改 Core，不再装配 Hub、示例或改写官方 preset。`scripts/source-profile.mjs` 是唯一源码组合 helper，登记 Workbench、Manage、GEA、GenUI、Better Sidebar 五个现有 owner；root 的固定组合夹具复用该 helper。新组合的 `source:check -- --sources <固定源JSON>` / `source:build -- --sources <固定源JSON>` 与 `start --sources <固定源JSON>` 必须消费同一明确五源记录（repo/source、可选commit/integration/dependencies及assets/files），不按同级repo目录兜底。已选完整组合可无新sources正常读回；冻结assets由source-profile统一验来源、完整摘要及入口后复用，不运行其源码tsc/build，损坏拒绝而不重建。普通source仍走原固定工具链检查/构建。保来源/产物摘要、运行锁、CAS及失败读回保护。原提示词/Skill由Manage按选用发布，GEA只给窄源贡献及真实Consumer/执行配置。
+
+### 历史 HTML 样板主题同步（不用于规格41）
+
+公共工作台的 `lib/samples/html-table.html` 仅用于验证；`GEA_TEST_SOURCE_CORE=1 node --test tests/html-shared-theme-web.test.mjs` 通过临时 mock 描述加载，不新增发行插件或真实库存页面。页面内嵌同版 1.0.0 资源，保留现有 sandbox/CSP。
+
+首次 `ready` 只登记当前 iframe 的来源，等当前租约完成后才发送带会话身份的 `connect` 并转移端口；等待期间再次切换会话，由新租约就绪接续握手。重复 `ready` 只连接一次，卸载后不补发，页面无需定时重试。
+
+主题承载器通过 `getTheme()` 与 `theme/change` 发布公开 `{colorScheme, fontSize, tokens}` 快照；页面使用本地共享样式与 `--dsw-*` overrides 呈现。Session、租约、来源和卸载边界不变，父页面 CSS 不构成主题通知。样板自身资源损坏仍报错。
+
+业务页右侧 Agent 欢迎区、简介、建议按钮与输入区底座同样消费 `--workbench-*` 语义颜色，随宿主明暗切换；不保留固定的浅色渐变。HTML主题浏览器用例同时断言这一原生会话区域、往返切换、建议按钮填入和键盘焦点，避免只验证中央iframe。
+
+### 分仓试点资源组合
+
+任务06的页面由同级工作台构建到 `lib/business/inventory-fc`，能力资源源文件归 Agent Manage。`agentResources.provider=dsh-agent-manage` 的显式分离包调用其资源装载器并替换既有 preset 提示词；Consumer、surface、pageIds、maxEffect 由当前声明校验器验证。GEA 保留登录、只读执行和接口日志，资源声明不增加业务权限。`GEA_HTML_PLUGIN_ROOTS` 只接受当前 v2 资源；不含声明的旧包拒绝装载，移除选择不会恢复旧资源。
+
+`/api/gea-html/plugins` 保留 `agentResources` 的公开 provider/prompt 声明和页面需要的 skillName/skillDescription，不返回 skillText；已装载的 Skill、profile 和内部来源路径仅供宿主使用，不进入浏览器目录。资源装载、提示词安装和生命周期继续由原 loader 执行。
+
+页面引用保存会核对实际 Session；HTML 页还需提供当前页面租约，匹配页面与 Session，受业务身份约束。注销清空引用同时取消在途写入。对声明了引用范围的页面，待提交的行快照在范围、就绪状态或已显示内容改变时取消，已保存快照保持原来的不可变语义。旧页面不接入受管预设名单，显式 Agent Manage 页面仍执行07的本地预设及服务端权限校验。
+
+### 08 原生页面身份与目录发现
+
+原生销售计划、区域计划、品类计划、MPS和业务待办，与HTML业务页使用同一Host身份scope；身份变化清理页面关联并为仍显示的原生页恢复当前身份关联，不删除宿主持久Session。原生未登录页面使用独立匿名关联，保留登录/页面入口；已登录关联不能在该状态下恢复。挂载页只在仍为当前页面时重试一次被导航取消的open，不把取消结果当成功。
+
+原生业务页订阅公共 `panelInfo`：切到后台释放页面绑定和会话呈现登记，再次成为当前页时恢复合法关联；保留的页面 DOM 与持久 Session 不删除。待办入口作为 `sidebar.footer.action` 的普通布局内容，不使用外壳绝对定位或旧宿主结构选择器。
+
+`business-identity-client` 在同一GEA客户端内共享轮询和页面打开得到的Host scope；旧请求迟到不能倒退身份，已取消读取不发布身份事件。读取有5秒超时并接受调用方取消。目录发现独立启动；身份观察失败不能阻止元数据注册，真正打开HTML页仍由Host核scope和权限。卸载取消身份观察及目录请求，不再安排下一次轮询。本次接口配套同级源码工作台08候选验证，类型门禁使用`source:check`；普通独立依赖的旧声明不代表该源码组合。
+
+### 唯一 HTML 资源与页面协议
+
+本隔离项目只支持 `gea-html-v2` 与独立 page/capability、Agent Manage prompt/Skill 声明。旧 manifest 直接拒绝，不自动生成资源、不复用旧 Session。页面通过唯一 MessageChannel 主动发布 `{type: "catalog", session, elements}`，所有调用和动作回执携带当前 Session，宿主不再注入扫描器或默认扫描来源。FC 筛选、刷新与草稿字段复用原有 React 回调；目录来自当前分页与已确认状态，加载时撤回读数。mock 不获取 GEA 凭据，能力上限和正式业务写权限保持原声明。审批文档只承载审批功能，HTML 页由统一承载器打开，不再嵌套第二条 HTML 通道。
+
+页面关闭、租约过期、身份失效或资源停用统一撤回该租约拥有的当前页身份、能力目录与上下文缓存；迟到调用拒绝旧租约。清理旧页面不清除同一 Session 上另一页面的当前身份，不删除持久 Session 或改写已选 Agent。
+
+同页重开先撤旧租约，再登记新租约的身份；资源停用同时取消仍在进行的打开请求，迟到完成不能重新登记页面。
+
+### 当前源码支持范围
+
+唯一 HTML 发布方是工作台内已迁移 FC 源码；本地样板/mock 以同一 v2 与显式资源声明验证。审批、区域计划、品类计划、MPS 原型、业务待办、设置、接口日志与原生对话仍由现有源码入口承载。旧启动器声明的 APS/base/dealer/chain 等九个下载包未属于本次源码 profile 的载入组合，已删除下载、旧包修补和支持声明；没有将这些包或后续业务迁移票算作已迁移。本地源码支持清单以实际组合、资源文件与定向验收为证据。
+
+外壳导航、欢迎、等待文案、工具栏和全屏占位通过当前正式座位/布局命令实现。标题、列尺寸、三种会话呈现和占位生命周期由布局拥有者管理；提示词通过原生 InputActions 写入。GEA 不观察或修改其他组件的内部 DOM。账号菜单只操作自己的 DOM refs 和浮层。
+
+### 本地组合切换与恢复
+
+当前源码profile将插件、页面、Skill、主题及覆盖配置保存为独立 `source-combinations/<id>` 快照，记录完整资源SHA-256、源码提交、锁文件摘要和核心提交。启动前校验实际资源；缺失、残留或被改写的文件拒绝载入。准备新组合不会覆盖已选组合，`selectSourceCombination(runtime, id, core)` 仅在Host停止时选用完整本地快照。启动锁与选择共用同一排他文件；异常退出留下锁时先核对记录PID及进程是否已停止，再移除该锁，不能强制抢占运行中的Host。
+
+更新和恢复保持同一 `home`、工作目录与可编辑profile配置，只替换源码profile的模块链接和只读覆盖配置。Host重启产生新业务身份scope；旧页面lease不能恢复，保留Session日志也不授予旧scope权限。这里不运行旧安装payload或旧资源适配，也不写远端频道。09的本地模拟频道与浏览器恢复记录由 `tests/branch-stock-upgrade-web.test.mjs` 生成，外部GEA/模型仅用loopback fixture。
+
+已有08源码profile的实体 `node_modules` 在停机后先显式执行一次 `upgradeSourceProfileLayout(runtime)`；该步骤把原代码目录移到同运行目录的备份，Session、home存储和用户配置不移动。然后选择已校验的当前接口快照。后续启动只使用组合模块链接，不保留旧格式运行时适配。依赖图的实际链接、传递依赖文件、核心构建产物和锁摘要一并校验；固定HEAD下重建造成字节变化也拒绝恢复，需保留或重新准备原依赖产物。普通 `pnpm start` 的默认页面也由所选快照提供。
+
+### 本地更新比较与失败状态
+
+`readSourceUpdateBaseline(runtime, core)` 从实际已选快照读取版本、组件资源摘要、Git source来源/提交和核心基线，并返回用于恢复的组合id及manifest摘要。`applySourceUpdate(runtime, proposal, { core })` 在现有source-update模块维护同版摘要不可替换的`verifyReleaseHistory`规则，并复用原版本比较；仅处理`current-source-update-v1`本地file频道引用，不访问正式发行地址。每个组件声明`version/sha256/source`、本地引用文件的`downloadSha256/url`及`compatible.core/interface/workbench`；引用文件只指定已校验的当前接口快照及包名，实际组件字节仍由完整快照校验负责。
+
+准备在独立快照完成；锁内重读最新组合，只核对本次目标组件的完整基线并保留其他组件的后续更新。同版不同摘要、来源改变、过期基线、降级、坏下载、实际package版本不符及兼容范围不符均拒绝。合并重新接好插件间依赖与当前覆盖配置/预设，校验新组合后才原子选择。`succeeded`仅表示本地选择写入并读回验证完成，不代替Host启动验收。
+
+每次操作保存`source-update-<id>.json`：部分准备失败为`prepare-failed`，写入失败为`write-failed`，读回失败为`readback-failed`，记录成功准备项、失败项和实际选择观察。无法观察时为`unknown`，不能自动回滚或报完整成功；重新调用读取API取得当前id与manifest摘要后，使用`selectSourceCombination(runtime, recoveryId, core, { expected: current })`在锁内再次验证当前状态，旧恢复请求拒绝。明确恢复保留发行摘要历史、原Session和用户数据。
+
+入口先固定请求数据，不在异步准备后继续使用调用者可变对象。组件来源在准备时写入受快照摘要保护的元数据，Git remote后续变化不会改写历史来源；09未记录该信息的快照需按固定登记来源重新准备，不能在更新时追溯补猜来源。本地引用还绑定完整manifest摘要，选择记录绑定同一摘要。新发布的兼容范围与快照声明取交集，已装和新增组件的完整清单都需兼容；有效范围保存在组合快照，重启及明确恢复不会丢失约束或发行摘要历史。
+
+准备阶段保存引用绑定的manifest摘要；锁内合并再次核对该摘要，并用读取时固定的资源/依赖期望验证复制结果。等待锁时同步改写候选清单及依赖，也不能借重新扫描清单把变动后的字节授信。
+
+合并覆盖配置、核心/业务预设和锁文件时，校验本次实际读取的字节再用于转换；不能先验一份文件、后来读取变动后的配置并重新生成摘要授信。资源被改写的失败不会触发旧清单整体覆盖或自动恢复。
+
+在公共 `workbench-conversation` 矮面板内，GEA自有欢迎内容限制高度并独立滚动，头像和间距收紧；输入与工具栏保留可见，介绍和推荐问题不删。适配跟随面板高度，不按整个窗口高度猜测半屏会话，也不修改核心DOM或重建会话。
+
+账户入口通过当前 `settings.launcher` 接口和 `openSettings` 动作提供自有按钮；页面引用通过 `conversation.user.text` 只读显示投影进入原生消息与队列，不扫描或修改宿主 DOM。页面发现的网络/HTTP 失败保留可见错误和手动重试入口；不后台循环重试，不把失败当作未安装。Skill 名称和说明直接使用 Agent Manage 的 YAML 解析结果。
+
+## 规格41的官方入口适配候选
+
+当前客户端贡献 `gea-proof` 的原文档位置与必要受控连接，以及 `gea-inbox`、`gea-api-log` 原生页面；区域／品类／MPS HTML 原文与目录移入 Workbench 的独立静态资源，按选页 HTTP 装载。GEA 不再注册定制侧栏导航、Conversation 壳槽或读取 `uiSession.mainSessionId`。HTML 安装根交给 Workbench Host 登记、读取 manifest 与安全呈现，GEA 只接收原声明并检查业务能力。`cordis.patch.yml` 和 `deploymentPatch` 不再禁用官方布局。
+
+`tsconfig.official.json` 检查本插件运行入口及传递依赖，精确消费官方标准声明；未装配的示例独立包不属于本轮三插件类型门禁。旧六插件装配、主题同步和定制 Core 测试保持历史用途，其通过不能证明本次官方组合。现有审批、计划和库存业务桥的显式会话／引用／受控操作接续清单由规格41票04维护，静态呈现通过不等于这部分已验收。原业务源码、持久 Session、认证和历史材料均保留。
+
+## 当前消费者与同组源码依赖
+
+本隔离候选的 Workbench、GenUI、BetterSidebar 开发依赖明确 link 到本票同级固定源码；退出旧 npm GenUI/Sidebar 和旧 Git Workbench 作为新组合输入。正式发布不在授权范围。官方 SDK 在类型/运行装配中仍使用同组4878标准产物，开发工具锁不作为官方运行证明。
+
+Page interaction 的 browser 实现与 wire/reference 公共资源归 Workbench。GEA src/page-interaction 只持有受控引用 Host，src/page-bridge/capability持有实际执行与规则，退出旧兼容 re-export 与独立 page-interaction/example 插件装载。原审批源及其业务规则保留；共同受控 frame 与显式 Session 生命周期由 Workbench承载。HTML startup只读声明/执行 metadata，不读 HTML/Skill/prompt正文，不进行源码 DOM/SQL扫描。
+
+行为验证与真实授权分开：明确管理端未授权项可按本轮分类跳过或用显式mock验收输入，普通500/超时/空结果不推断权限；不在生产请求中自动mock降级。
+
+### 规格42页面与业务 seam
+
+Native/HTML 页面源码、样式、静态 Fetch、bundle 构建、通用 queue/catalog/动作/引用及 owner 释放由 Workbench 持有。GEA `build:plugin` 只构建 `host,client`；不再提供 `/api/gea-proof/workbench(.js/.css)`、`surface`、`agui/workbench` 或 `workbench/context` 页面编排接口。
+
+GEA Host 向现有 `workbenchPages.registerBusinessPage` 登记实际业务 grant，集中保持官方选用资源/Session、Consumer、身份代际、受管 SQL、审批业务规则、validated visible context 和取消。GEA client 只提供唯一业务身份与账户动作的只读投影。两种 HTML 页面动作及内容引用由 Workbench 使用自己的 authenticated Fetch 和 exact owner 处理；GEA不保存第二份通用页面owner/队列。`/api/gea-html/identity` 是当前身份投影，不授予业务能力。
+
+纯 §5.5 预测计算由 Manage 的 `forecast_compute` 提供，沿当前会话工作区核对已安装启用的 `sinian-demand-baseline`；GEA 不注册纯计算、Skill 正文或参考读取工具。原公式与十进制版本保持，计算来源 hash/完整用户 JSON 核对不授予 Consumer 权限。官方 Skill catalog/loader 保持原文，GEA 仅追加身份、实际业务事实、证据和执行限制。
+
+### 最新官方客户端与源码调试
+
+官方输入为同级登记的 `official-latest-standard`。SDK 开发依赖真实链接其构建包，必要 peer 声明对应这个固定 release；不以旧 npm SDK 或旧客户端资源作为最新版证明。正常客户端反馈使用官方的 `pnpm dev:desktop` / `pnpm start:desktop`，插件安装/启用仍由官方管理入口负责。本隔离项目不发行或验收旧公司桌面壳，不修改正式运行目录。
+
+定向源码 Host 调试可使用 `pnpm start --config <deployment.json> --sources <固定源JSON> --runtime <自有目录> --port 0`。固定源包含每个当前repo的 `source`；可给 `commit`/`integration`核一致性，复用已核产物时给 `assets`及完整 `files`摘要，依赖来自自己的 `dependencies`只读目录。准备阶段只写新不可变快照；用户默认模型的seed由实际launcher以flagwx采用，不覆盖已有选择。
+
+`desktop/runtime-start.mjs`及其仍消费的 `prepareNativePreset`、default-presets/sync helper、旧桌面测试属于历史公司壳输入，本轮新 source/start/check/build不调用它们。当前源码配置直接消费同一deployment module的businessDeploymentPatch；历史deploymentPatch只作为旧壳的UI/preset包装消费这份业务规则，未恢复到新launcher。没有为保旧壳恢复运行兼容，也不宣称整个源码历史不存在旧代码。
+
+Business pages authorize the Interpreter projected by the actual Core Session. Their read-only identity responses include the current subject for Workbench recovery and revocation checks. GEA retains Consumer authorization and checks a login rejection against the current execution before forwarding it. Calculation evidence uses Manage's shared input and baseline checks and remains bound to its original Session and subject.
+
+当前 HTML 包与页面 ID 沿 Workbench `HtmlPages` 的声明合同校验。原 `plan-regional`、`category-plan`、`inventory-mps` 包和 `gea-regional-plan`、`plan-region-category`、`plan-category-production` 页面保留原身份；已登记的三份原型仅发布模拟上下文和引用，MCP为空、maxEffect=view，不发起Consumer、SQL或真实业务写入。
+
+经销商本批接收保留原固定规则并采用本地mock输入。页面可见由Workbench读取page.json.visible，能力启用由现有capability.json.enabled决定；禁用能力会拒绝资源选用和页面操作，页面包继续保留。见[能力声明](docs/capability-contract.md)。
+
+## 仅模拟验收的执行配置
+
+模拟验收可在部署配置声明 `workbenchCapability: { "enabled": false }`，停用原生销售能力。缺省仍启用。HTML 能力沿各安装包的 `capability.json.enabled` 管理；固定模拟包同时声明 `mode: "mock"`、`data.mock: true`、`maxEffect: "view"` 和空 MCP 能力。单独隐藏页面不阻止执行。
+
+Host 的唯一能力注册表拒绝停用、未登记或模拟 Consumer 的真实 SQL、schema、MCP、启动授权及模型调用。原生销售读取、草稿、提交、审批、通知、工作流和日志重发也核同一声明。旧 Session 在模型步骤和官方 `llm/stream` 接口重新核当前资源，不能用保存的 provider 绕过。模拟 view、上下文与未发送引用仍使用原合同。GEA 登录及服务端授权保持原归属。
+
+验收配置使用 `analysis.mode: "receipt"`、`agentSqlRead: false` 和 `visibleContextSubagent: false`。启动前按当前安装包核每一份声明，并清空本地数据库 provider 的验收环境变量；源码默认配置不随验收永久停用。配置与恢复步骤见 [安装说明](docs/install.md#仅模拟验收配置)。
+
+47 APS reception uses Manage as the only source of APS calculation and analysis Skills. GEA keeps identity and governed execution; mock packages declare no SQL capability and do not issue business reads, model Tasks or writes. The old GEA APS Skill copies are removed after the Manage provider is connected.

@@ -1,0 +1,17 @@
+[
+  {
+    "name": "leading whitespace",
+    "isError": false,
+    "text": "已渲染 UI「未命名」（1 个组件）。用户现在可以看到这张卡片；组件带 action 时，用户交互会以 [genui-action] 消息发回给你，届时请重新渲染更新后的界面。"
+  },
+  {
+    "name": "Unicode minus",
+    "isError": false,
+    "text": "已渲染 UI「未命名」（1 个组件）。用户现在可以看到这张卡片；组件带 action 时，用户交互会以 [genui-action] 消息发回给你，届时请重新渲染更新后的界面。"
+  },
+  {
+    "name": "hero delta",
+    "isError": false,
+    "text": "已渲染 UI「未命名」（1 个组件）。用户现在可以看到这张卡片；组件带 action 时，用户交互会以 [genui-action] 消息发回给你，届时请重新渲染更新后的界面。"
+  }
+]

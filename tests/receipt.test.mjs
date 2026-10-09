@@ -30,25 +30,36 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
     const messages = rows.filter((row) => row.type === "user/message");
-    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 1);
+    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 0);
     assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
-    assert.ok(
-      JSON.stringify(rows.find((row) => row.type === "user/message")).includes(
-        "1.2300",
-      ),
+    const snapshot = messages.find(
+      (row) => row.data.source.kind === "gea-proof" || row.data.source.plugin === "gea-proof",
     );
-    assert.ok(
-      JSON.stringify(
-        rows.find((row) => row.type === "assistant/message"),
-      ).includes(preview.snapshotHash),
+    assert.equal(snapshot.data.source.form, "notice");
+    assert.equal(
+      snapshot.data.source.summary,
+      "已提交只读快照，正在验证数据传递",
     );
+    assert.equal(messages.some((row) => row.data.source.kind === "user"), false);
+    const archivePath = `${app.runtime}/analysis-snapshots/${id}.json`;
+    const archive = JSON.parse(await readFile(archivePath, "utf8"));
+    assert.equal(archive.sessionId, id);
+    assert.equal(archive.snapshotHash, preview.snapshotHash);
+    assert.deepEqual(archive.snapshot, preview.snapshot);
+    assert.ok(JSON.stringify(archive.snapshot).includes("1.2300"));
+    assert.equal(JSON.stringify(snapshot).includes(preview.snapshotHash), false);
+    const answer = rows.find(row => row.type === "assistant/message");
+    assert.ok(answer);
+    assert.equal(JSON.stringify(answer).includes(preview.snapshotHash), false);
     assert.equal(JSON.stringify(rows).includes("fixture-gea-token"), false);
     const receipts = (await readFile(app.runtime + "/receipts.jsonl", "utf8"))
       .trim()
       .split("\n")
       .map(JSON.parse);
     assert.equal(receipts.length, 1);
-    assert.equal(receipts[0].snapshotHash, preview.snapshotHash);
+    assert.match(receipts[0].requestHash, /^[a-f0-9]{64}$/);
+    assert.equal(receipts[0].model, "receipt");
+    assert.equal(receipts[0].runId, (await app.rpc("status")).value.runId);
     const verify = await promisify(execFile)(process.execPath, [
       "scripts/verify.mjs",
       "--runtime",
@@ -62,6 +73,7 @@ test(
     assert.equal((await app.rpc("status")).value.authenticated, false);
     const restored = await readSession(app.runtime, id);
     assert.deepEqual(restored, rows);
+    assert.deepEqual(JSON.parse(await readFile(archivePath, "utf8")), archive);
     await assert.rejects(
       promisify(execFile)(process.execPath, [
         "scripts/verify.mjs",
@@ -104,7 +116,7 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
     const messages = rows.filter((row) => row.type === "user/message");
-    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 1);
+    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 0);
     assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
   },
 );

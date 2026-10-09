@@ -1,0 +1,17 @@
+{
+  "checks": [
+    {
+      "name": "desktop",
+      "width": 1280,
+      "overflow": false,
+      "emptyCause": 0
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "overflow": false,
+      "emptyCause": 0
+    }
+  ],
+  "externalRequests": []
+}

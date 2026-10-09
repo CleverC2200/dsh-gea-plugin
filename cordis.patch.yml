@@ -1,10 +1,4 @@
-# Install after the official base and web bundles. Deployment values belong in the profile overlay.
-- id: ui-layout
-  disabled: true
+# GEA owns only its business identity, model and controlled execution.
 - insert:
-    - id: agent-workbench
-      name: "@cleverc2200/dsh-agent-workbench"
-      config:
-        cwd: !!js process.cwd()
     - id: gea-proof
       name: "@cleverc2200/gea-dsh-prototype"

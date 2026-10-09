@@ -1,0 +1,1262 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GEA 业务材料评估与提示词修订方案</title><style>:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#f4f6f8;color:#1c2938;font:16px/1.7 system-ui,sans-serif}main{max-width:1180px;margin:32px auto;background:white;border:1px solid #dce3e9;border-radius:14px;padding:32px}h1{font-size:29px;line-height:1.35;margin:6px 0 18px}h2{font-size:23px;margin-top:30px}h3{font-size:19px}p{margin:12px 0}.muted{color:#536473}.note{background:#edf4f8;border-left:4px solid #386587;padding:14px 18px}.warn{background:#fff5e4;border-left:4px solid #b47c20;padding:14px 18px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0}.cards div{padding:16px;border:1px solid #dce3e9;border-radius:9px}.cards strong{display:block;font-size:25px}.tabs{display:flex;gap:7px;overflow:auto;padding:13px 0;border-bottom:1px solid #dce3e9;margin:20px 0}.tabs button,.layers button{font:inherit;cursor:pointer;border:1px solid #cbd6df;background:#fff;color:#263f52;border-radius:7px;padding:9px 14px;white-space:nowrap}.tabs button[aria-selected=true],.layers button[aria-pressed=true]{background:#244d69;border-color:#244d69;color:white}button:focus-visible,a:focus-visible{outline:3px solid #e6a544;outline-offset:3px}.layers{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.layer-detail{padding:16px 20px;background:#f1f5f8;border-radius:9px;min-height:125px}.flow{padding:17px;background:#eff4f1;border-radius:9px;line-height:2}.scroll{max-width:100%;overflow:auto;margin:16px 0}table{border-collapse:collapse;width:100%;font-size:14px;min-width:650px}td,th{padding:10px 12px;border-bottom:1px solid #dce3e9;text-align:left;vertical-align:top}th{font-weight:650}a{color:#245f89;overflow-wrap:anywhere}pre{max-width:100%;overflow:auto;padding:16px;background:#f3f5f7;border-radius:8px;font:13px/1.6 ui-monospace,monospace}code{font-size:.92em;overflow-wrap:anywhere}li{margin:6px 0}article{overflow-wrap:anywhere}article>h1{font-size:26px}[hidden]{display:none!important}.footer{margin-top:28px;padding-top:16px;border-top:1px solid #dce3e9;font-size:14px;color:#536473}@media(max-width:650px){main{margin:0;border:0;border-radius:0;padding:18px}h1{font-size:24px}.cards{grid-template-columns:1fr}.cards div{padding:12px}.cards strong{font-size:22px}.tabs button{font-size:14px;padding:8px 10px}h2{font-size:21px}}</style></head><body><main><p class="warn" data-v2-notice>本页为上一版。用户已明确材料仅供参考：<a href="prompt-remediation-plan-v2-2026-09-26.html">请优先阅读新版方案V2</a>。旧材料评估仍有效，旧结构与实施顺序已调整。</p><p class="muted">2026-09-26 · 方案评审 · 基线 ee8a026 · 未实施</p><h1>材料可用，但需要同时修业务契约与执行链路</h1><p class="note">采用你提出的Agent十项结构与Skill结构。完整材料用于业务编写和维护；运行时按任务加载必要内容，避免再次把所有规则、Schema和知识全文叠进首轮。</p><div class="cards"><div><strong>4 组材料</strong>业务Prompt / Skill / Cube流程 / 预测模型</div><div><strong>9 类问题</strong>对应前轮真实问答发现，逐项给出方案</div><div><strong>2 + 2 份草稿</strong>产销、基地Agent与对应任务Skill</div></div><nav class="tabs" role="tablist" aria-label="方案内容"><button type="button" role="tab" id="tab-0" aria-controls="panel-0" aria-selected="true" data-tab="0">材料评估</button><button type="button" role="tab" id="tab-1" aria-controls="panel-1" aria-selected="false" data-tab="1">组成与加载</button><button type="button" role="tab" id="tab-2" aria-controls="panel-2" aria-selected="false" data-tab="2">九类修复</button><button type="button" role="tab" id="tab-3" aria-controls="panel-3" aria-selected="false" data-tab="3">实施与验收</button><button type="button" role="tab" id="tab-4" aria-controls="panel-4" aria-selected="false" data-tab="4">Agent与Skill草稿</button><button type="button" role="tab" id="tab-5" aria-controls="panel-5" aria-selected="false" data-tab="5">完整方案</button></nav>
+<section role="tabpanel" id="panel-0" aria-labelledby="tab-0"><p class="warn">预测材料有一处会直接影响数值的旧描述：整体加 is_split=1，会把虚拟样例中的M实际金额从370漏算成350。离线检查通过，不代表自然语言说明已经没有冲突。</p><article><h2>2. 四组材料是否合适、如何采用</h2>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>材料</th>
+<th>判断</th>
+<th>有用之处</th>
+<th>需要处理后再用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>产销协同Agent.md</td>
+<td>编写结构可用，职责与工具需适配</td>
+<td>事实/推断/建议分离；未来预测与历史复盘分开；比率按分子分母汇总；不给模型内部原因编故事</td>
+<td>当前正文实际偏销售预测解读，不能替代整个产销协同角色；旧工具名、新Skill名、XXX占位需处理；确定性计算与文件生成尚需实际能力</td>
+</tr>
+<tr>
+<td>基地库存Agent.md</td>
+<td>很适合作为业务边界及健康分析Skill来源</td>
+<td>安全库存不等于上限；低于安全库存不等于已缺货；实物占用与可供不同；不能重复冲销需求/供应；风险关闭要实际复核</td>
+<td>库容峰值、未来供需匹配、质量升级、风险台账和通知属于新增或条件能力，不能全部标成当前可做；需要数据、规则和计算器</td>
+</tr>
+<tr>
+<td>cube-agent-lifecycle</td>
+<td>适合研发与数据维护流程，不进入日常业务会话</td>
+<td>来源—口径—模型—查询—分层验收的完整链；虚拟案例不冒充生产；稳定成员名、版本与回退管理</td>
+<td>不全局安装；不让业务Agent执行发布。逐文件八节README是维护约定，不能把所有README注入Prompt，也不机械套给本仓库每个文件</td>
+</tr>
+<tr>
+<td>销售预测模型建设</td>
+<td>能补“只有字段没有可用指标”的缺口，但仍是模型草案</td>
+<td>M预测/实际的不同过滤范围、Z子集与纠偏后整月版、两种大区占比、零分母与未归属；现有9+5个候选measure</td>
+<td>有旧描述残留、原始来源断链、未编译、未授权、缺历史事前版本与数据完整性证据；不能直接覆盖线上同名Cube</td>
+</tr>
+</tbody></table></div>
+<p>原文件：<a href="/Users/synear/Downloads/%E4%BA%A7%E9%94%80%E5%8D%8F%E5%90%8CAgent.md">产销协同</a>、<a href="/Users/synear/Downloads/%E5%9F%BA%E5%9C%B0%E5%BA%93%E5%AD%98Agent.md">基地库存</a>、<a href="/Users/synear/Downloads/cube-agent-lifecycle/SKILL.md">生命周期入口</a>、<a href="/Users/synear/Downloads/%E9%94%80%E5%94%AE%E9%A2%84%E6%B5%8B%E6%A8%A1%E5%9E%8B%E5%BB%BA%E8%AE%BE/docs/METRIC_CONTRACT.md">预测指标契约</a>。</p>
+<h3>2.1 可以直接保留的业务规则</h3>
+<ol>
+<li>安全库存、库存上限、已发生缺货、未来供需缺口必须分开；零库存只能证明相应记录为零，不能自动升级为“缺货最严重”。</li>
+<li>实物库存与可履约库存分开。冻结、过期库存可能占库容，却不能用于履约。</li>
+<li>预测与订单需要按明确规则冲销；同一需求不重复分配给多个批次，调拨在途不重复扣减。</li>
+<li>缺数据、无权限、工具失败、无记录和明确零值分别表达；未能评估不等于健康。</li>
+<li>未来预测没有事后实际，不评价“已实现准确率”；缺货或限供下实际发货也不能直接当真实需求。</li>
+<li>风险和原因须有来源；相关性不等于因果。计划、预测、目标、实际、出货、终端动销不能混称。</li>
+<li>建议不是已执行，导出不是已提交，通知不是风险已解决。监控需要真实调度，不能口头宣称开启。</li>
+<li>复用仍有效的证据，局部失败不抹掉其他成功结果。完成状态按用户问题逐项判定。</li>
+</ol>
+<p>这些关键边界进入短常驻规则或对应任务规则卡；公式、细则和工作步骤放到选中Skill和受管计算中。</p>
+<h3>2.2 材料中的具体冲突、缺口与兼容问题</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>编号</th>
+<th>发现</th>
+<th>处理方案</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M-01</td>
+<td>产销文档列 <code>skill</code>、<code>gea_skill_reference_read</code>；候选业务入口是 <code>gea_skill</code>，其path只读正文明确链接的参考文件</td>
+<td>保留业务意图，工具名与参数由运行时注册表生成；旧业务加载方式不重新放开，编码入口原生skill不受影响</td>
+</tr>
+<tr>
+<td>M-02</td>
+<td><code>sales-forecast-result-analysis</code>、<code>base-inventory-health-analysis</code> 在当前候选预设/套件中未注册；两份文档仍有XXX任务</td>
+<td>将名称保留为拟新增任务Skill；落地前注册、路由、发现、加载、版本、测试一起完成。删除占位能力声明，不宣称已可调用</td>
+</tr>
+<tr>
+<td>M-03</td>
+<td>产销文档只列预测解读主任务，当前产销Agent还承担生产/出货/订单满足/库存经营解释</td>
+<td>保留 <code>aps</code> 的产销职责；预测解读作为可选子任务。销售、产销可共享分析Skill，但不能因此共享或更换后台身份</td>
+</tr>
+<tr>
+<td>M-04</td>
+<td>基地健康Skill涵盖当前库存、未来供应、效期、库容、方案及复查</td>
+<td>一个健康分析入口按子任务加载参考规则；当前库存可做的先做，未来供需/库容/台账等能力按证据标为条件可用或未接入</td>
+</tr>
+<tr>
+<td>M-05</td>
+<td>预测模型顶层及is_split旧描述仍泛称“普通月初分析限定is_split=1”，而新measure要求M实绩包含全部M行</td>
+<td>删除过宽旧句或限定到“M预测指标”。禁止在同时查M预测+M实际时施加全局is_split=1，过滤由各measure分别承担</td>
+</tr>
+<tr>
+<td>M-06</td>
+<td>原表order_type说明“禁止用缺失M/Z相互补齐”，新effective模型又按Z覆盖M</td>
+<td>分清任务：原表Z子集不补齐；只有明确请求纠偏后整月版才使用独立effective模型。有Z取整行Z，没Z取M；不能偷偷对Z行NULL字段逐字段回填M</td>
+</tr>
+<tr>
+<td>M-07</td>
+<td>新金额measure单位元，部分沿用dimension元数据仍写单位未统一；同一事实散在description/meta/SOURCES中</td>
+<td>同一指标使用一份版本化口径卡生成说明，保留来源与适用范围。数量“件”只适用于本预测模型的材料约定，不能推广为全公司库存单位</td>
+</tr>
+<tr>
+<td>M-08</td>
+<td>预测包有4处本地断链，涉及他人机器的原DDL附件和未随包提供的旧Cube文件；元数据另含不可定位的database-schema引用</td>
+<td>补齐可访问原始来源或可信归档及摘要。保留“材料记录已确认”与“本环境验证通过”的不同状态，不把转录记录提升为当前业务审批</td>
+</tr>
+<tr>
+<td>M-09</td>
+<td>当前预测表声明唯一键不含预测运行批次/提前期；有model_version不代表保留每次事前预测快照</td>
+<td>新增历史复盘前，确认是否有不可变预测版本及实际as-of数据。缺失时只做当前版本对比，不计算或宣传无泄漏WAPE/Bias</td>
+</tr>
+<tr>
+<td>M-10</td>
+<td>sum可忽略NULL；离线预测夹具仅6行、没有金额NULL行；零分母检查仅核对预期文案，并未完整走目标Cube零分母查询</td>
+<td>增加缺失计数/覆盖字段、真实零分母/全NULL/部分NULL用例；已知小计与完整总量分开。大整数及金额精度另用Decimal/精确串验证</td>
+</tr>
+<tr>
+<td>M-11</td>
+<td>分仓示例仅2个sum measure；前轮实际目录已有row_count与这2个sum。原预测草案也未保留当前目录的row_count</td>
+<td>以当前部署模型和依赖清单做增量合并，不覆盖、重复加载同名Cube或删除在用成员；新增effective模型单独注册授权</td>
+</tr>
+<tr>
+<td>M-12</td>
+<td>生产单位、最新完整批次、历史回填没有可执行确认凭据；“过往月按整月口径”不等于实绩不会回填</td>
+<td>返回观测时点、as-of、完整性状态；历史结果可按业务整月口径分析，但不得声称最终关账完整，直到有对应证明</td>
+</tr>
+</tbody></table></div>
+<p>M-05已做独立样例核算：随附虚拟数据中全部M实际金额为370，若整体套is_split=1则变350；这说明自然语言说明与measure过滤不一致会直接漏算。这里是虚拟样例，不是线上金额。</p>
+</article><p>已重跑：销售预测9组离线检查通过；分仓14例通过，其中7例只检查异常输入构造。Cube编译、线上查询和本轮新的GEA回放均未执行。</p></section>
+<section role="tabpanel" id="panel-1" aria-labelledby="tab-1" hidden><h2>四层职责，减少重复而不丢规则</h2><div class="layers"><button type="button" aria-pressed="true" data-layer="0">1. 共用规则</button><button type="button" aria-pressed="false" data-layer="1">2. Agent</button><button type="button" aria-pressed="false" data-layer="2">3. Skill</button><button type="button" aria-pressed="false" data-layer="3">4. 数据与执行</button></div><div class="layer-detail" aria-live="polite"><strong id="layer-title">共用规则</strong><p id="layer-body">权限、证据真实性、缺失与零值、完成状态，维护一份。</p><span id="layer-loading">常驻一份，不在每个Agent和Skill里反复复制。</span></div><div class="flow">问题 → 可信身份与范围 → 任务完成标准 → 必要Skill与规则卡 → 授权查询/计算 → 完整来源与有界结果 → 证据核对 → 答案</div><article><h2>3. 用户给出的结构怎么落地</h2>
+<h3>3.1 采用十项Prompt结构，但区分编写视图与运行时视图</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>用户结构</th>
+<th>内容边界</th>
+<th>运行时位置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>角色</td>
+<td>是谁、负责哪些业务，不负责哪些邻近业务</td>
+<td>Agent短常驻身份；agentId/consumer来自宿主</td>
+</tr>
+<tr>
+<td>背景</td>
+<td>流程与使用者，解释任务所需的最少信息</td>
+<td>Agent常驻；长流程图放参考资料</td>
+</tr>
+<tr>
+<td>目标</td>
+<td>本Agent解决什么，完成/部分完成/受阻怎么判</td>
+<td>常驻定义，当前任务生成完成清单</td>
+</tr>
+<tr>
+<td>核心能力</td>
+<td>已接通能力与分析能力，区分可用/条件可用/未接入</td>
+<td>由能力注册表生成短摘要</td>
+</tr>
+<tr>
+<td>任务</td>
+<td>面向用户的任务名称、触发条件、对应Skill</td>
+<td>短任务索引；复杂步骤不常驻</td>
+</tr>
+<tr>
+<td>约束</td>
+<td>共用硬边界与本Agent特有口径</td>
+<td>全局一份共用约束 + Agent差异，不重复复制</td>
+</tr>
+<tr>
+<td>工具清单</td>
+<td>实际工具名称、用途与调用规则</td>
+<td>名称摘要由注册表生成；参数只用真实Schema，不手抄第二份</td>
+</tr>
+<tr>
+<td>知识</td>
+<td>词义、缩写、口径、知识范围与规则版本</td>
+<td>少量必需定义常驻；相关术语/指标卡随任务加载；长文检索</td>
+</tr>
+<tr>
+<td>异常处理</td>
+<td>澄清、缺数、无权限、参数错、超时、冲突的可观察动作</td>
+<td>全局错误分类 + Agent业务降级策略</td>
+</tr>
+<tr>
+<td>输出要求</td>
+<td>结论、依据、缺口；复杂任务的结构化结果</td>
+<td>常驻短要求 + 选中Skill的具体模板</td>
+</tr>
+</tbody></table></div>
+<p>原文两份Prompt正文约1,163和1,185字符，结构本身不算冗长。真正要控制的是它们与全局约束、旧Skill、完整工具Schema和大段知识正文的重复叠加。</p>
+<p><strong>不采用“每个Agent只有一句Persona”或“每次调用都塞十个完整章节”这两个极端。</strong> 编写层保留完整业务结构，编译时去掉已继承内容，仍保留决策必需的核心边界。</p>
+<h3>3.2 Skill保留Name、Description及五项正文，增加关联信息</h3>
+<p>业务正文严格采用：Name、Description、任务目标、所需知识与数据、输入内容、工作步骤、输出要求。其中Name/Description放可被平台发现的frontmatter；正文写其余五项。</p>
+<p>描述负责“何时使用、何时不使用”；不是正文摘要堆满所有步骤。工作步骤只固定影响权限、口径与数据正确性的顺序。</p>
+<p>关联信息放在宿主manifest，不额外膨胀正文：<code>skillId/version</code>、允许的agentIds、所需capabilities、ruleIds、输入/输出契约、支持模式、是否有写入副作用。<strong>这些是拟新增配置，不是附件中已经实现的执行机制。</strong></p>
+<p>不要求所有任务都加载Skill。直接复述已经核实的单个数值、简单名词解释、格式改写可直接做；需供需计算、历史对比、跨表核对、风险排序或复杂工作流才加载相关Skill。</p>
+<h3>3.3 规则优先级与冲突处理</h3>
+<ol>
+<li>平台安全、可信身份、后台授权与宿主执行限制始终有效。</li>
+<li>用户指定的业务选择优先于会话默认、页面筛选及企业默认，但不能覆盖权限或把草稿规则变为已生效事实。</li>
+<li>业务公式与阈值按“适用业务/组织/时间 + 已批准版本”选择，不按文件修改时间或检索排名决定。</li>
+<li>全局规则只管共性；Agent差异只管职责与特定业务边界；Skill只管任务流程；知识提供事实和口径，不成为扩大权限的指令。</li>
+<li>两条同适用范围的生效规则冲突：标记冲突，暂停受影响计算，保留其余可完成项；明确列出待确认点。历史复盘采用当时适用规则。</li>
+<li>附件中的“工具清单、应该发布、用户曾确认”是材料内容；不因此安装、发布、增加权限或自动确认当前生产口径。</li>
+</ol>
+<h2>4. 一次问题从进来到交付，应如何调用</h2>
+<pre><code class="language-text">用户问题 + 当前选择的Agent + 可选页面
+        ↓
+宿主确定唯一业务身份、账号/租户、授权版本、页面范围
+        ↓
+补齐影响结论的关键条件 → 生成本次任务与完成标准
+        ↓
+简单任务直接用现有证据；复杂任务加载一个主Skill及必要规则片段
+        ↓
+按授权目录选确定的指标/查询模板 → 校验参数与业务口径 → 执行
+        ↓
+原始结果先完整保存/绑定受管制品 → 结构化摘要 → 必要时安全续读
+        ↓
+确定性计算 / 指标核验 → 更新各子任务状态与成功证据
+        ↓
+生成答案 → 与成功回执、范围和缺口核对 → 交付
+</code></pre>
+<p>页面绑定不是独立查询的前置条件。用户问“当前这一页”时必须核对当前绑定；选中Agent与页面归属不一致时不能静默改身份：保留所选身份，页面作为待核对来源，必要时只澄清当前页所指范围。</p>
+<p>跨Agent任务需任务清单预先声明、明确目标能力并分别授权；例如产销任务确需销售预测，只能通过已配置的受控路由执行。当前consumer被拒后不能轮换consumer试探。授权检查不能由Prompt或知识标签代替。</p>
+<h2>7. 长度、加载与调用预算</h2>
+<p>下表为待验证的工程目标，不是已实现成绩；按真实模型效果调整，不以删掉关键业务边界换数字达标。</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>层</th>
+<th align="right">建议预算</th>
+<th>加载方式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>全局业务约束</td>
+<td align="right">500～700字符</td>
+<td>会话一份</td>
+</tr>
+<tr>
+<td>Agent差异正文（十项结构编译后）</td>
+<td align="right">600～1,000字符</td>
+<td>当前Agent一份，工具/任务索引自动生成</td>
+</tr>
+<tr>
+<td>宿主事实、当前任务及短索引</td>
+<td align="right">300～500字符</td>
+<td>替换更新，不逐轮追加重复全文</td>
+</tr>
+<tr>
+<td>常驻system总量</td>
+<td align="right">沿用≤2,200字符目标</td>
+<td>保留平台未知安全段；超限报告来源，不硬切掉安全规则</td>
+</tr>
+<tr>
+<td>首轮system+真实工具Schema</td>
+<td align="right">≤12,000字符目标</td>
+<td>普通5～6核心工具，专项包按需加载</td>
+</tr>
+<tr>
+<td>单个任务Skill正文</td>
+<td align="right">建议1,200～2,500字符，单次返回≤6,000</td>
+<td>选中后加载；附件两份Skill约1,394/1,419字符，可作为基线</td>
+</tr>
+<tr>
+<td>当次规则/指标卡</td>
+<td align="right">约300～800字符/张</td>
+<td>只加载相关版本和必要字段</td>
+</tr>
+<tr>
+<td>目录/业务/知识结果</td>
+<td align="right">单次有界投影≤6,000字符</td>
+<td>行/片段边界；真实完整来源独立保留</td>
+</tr>
+<tr>
+<td>有效输入上下文</td>
+<td align="right">依据目标模型窗口按token管理</td>
+<td>初始建议输入≤窗口60%，其余给输出和工具续接；provider usage缺失时标估算，不将字符直接冒充token</td>
+</tr>
+</tbody></table></div>
+<p>“全文读取过”不代表下一步一定用得上。压缩后保留任务状态、关键事实、当前规则版本和可回读引用；若正文已经不在最终发给模型的上下文中，允许重载。最终可见性以组装后的模型请求为准，并保留前轮Skill可见性正向对照，避免为未经证实的缺陷误改实现。</p>
+<p>预算需要记录首步固定成本、每步工具正文、累计新增内容、去重命中、有效查询数、provider实际输入/输出/缓存用量及耗时。不要只打印一个system+tools数就称整个对话轻量。</p>
+</article></section>
+<section role="tabpanel" id="panel-2" aria-labelledby="tab-2" hidden><h2>九类问题的修复方向</h2><div class="scroll"><table><thead><tr><th>问题</th><th>范围</th><th>改法</th></tr></thead><tbody><tr><th>IQ-01</th><td>身份路由</td><td>让模型、工具、知识、证据使用同一个Agent身份；无页面时仍按所选Agent。</td></tr><tr><th>IQ-02</th><td>完整结果</td><td>先保存完整来源，后投影；只保留一种主回读契约，业务完整性与展示完整性分开。</td></tr><tr><th>IQ-03</th><td>知识体积</td><td>按相关片段返回知识；知识授权与Cube授权分开，不能靠取消权限检查做缓存。</td></tr><tr><th>IQ-04</th><td>交付核对</td><td>按任务记录成功、部分成功、受阻；交付前核对数值和证据，不否认已有结果。</td></tr><tr><th>IQ-05</th><td>探索循环</td><td>目录与参数规范化去重，按任务进展控制额度，为实际取数和交付保留空间。</td></tr><tr><th>IQ-06</th><td>参数契约</td><td>Schema、默认值、边界、错误及nextRead同源；明确Skill与consumer映射。</td></tr><tr><th>IQ-07</th><td>业务指标</td><td>缺货不是零库存；口径卡、正式measure、质量信息和确定性计算共同落实。</td></tr><tr><th>IQ-08</th><td>能力与授权</td><td>注册、授权、可计算分别展示；授权缺口不轮换身份；平台筛选问题单独核验。</td></tr><tr><th>IQ-09</th><td>超时诊断</td><td>保留用户取消、身份变化和超时的安全分类，记录阶段与耗时。</td></tr></tbody></table></div><article><h2>5. 九类问题的具体修复设计</h2>
+<h3>5.1 IQ-01：一个身份解析入口</h3>
+<p>在现有宿主中统一解析选中preset、显式受控委派及绑定页面；产出不可由模型修改的 <code>agentId/consumerCode/identityScope/presetVersion</code>。模型list/resolve/stream、工具发现、执行、知识范围、证据与审计共同消费此结果。没有所选业务Agent时才使用明确配置的默认入口。</p>
+<ul>
+<li>不让GeaModelAdapter继续仅依赖currentPageIdentity；独立会话按所选preset确定Agent。</li>
+<li>模型路由、模型缓存、能力目录、工具参数使用同一consumer；至少按身份/环境/consumer/相关授权版本隔离，切换时失效旧请求与结果。</li>
+<li>跨域委派作为单独可观察请求，不能让一次工具调用随意覆盖会话身份。</li>
+<li>回归覆盖六个Agent的无页面、同Agent页面、错配页面、切换Agent、身份变化；逐项检查请求header、授权上下文和实际工具consumer一致。</li>
+</ul>
+<p>触点：<code>src/host.ts</code>、<code>src/html-plugins.ts</code>、<code>src/host/prompt-runtime.ts</code>及模型/权限相关测试。</p>
+<h3>5.2 IQ-02：先保留完整来源，再做一次投影</h3>
+<p>复用PromptEvidenceStore，替换旧批次按字节截断链。每个子查询保存完整原始结果或实际可读的上游artifact，再形成批次索引；不把截断预览作为唯一正文入库。</p>
+<p>统一结果契约至少含：<code>resultId</code>、<code>sourceKind</code>、<code>consumer</code>、<code>queryFingerprint</code>、来源/规则版本、数据范围、单位、完整性、缺失计数、各子查询状态、<code>rawAvailable</code>、合法<code>nextRead</code>。外部返回字段与内部授权凭据分离，令牌不进模型。</p>
+<ul>
+<li>解析已知GEA/Cube包装，在行/字段边界投影；不从任意字符串递归抽取指令，也不机械切开嵌套JSON。</li>
+<li>分开 <code>dataCoverage</code>（业务数据是否完整）、<code>projectionCoverage</code>（本次是否只是摘要）、<code>readComplete</code>（制品是否读完）；不能靠读完一个文件宣称数据全量。</li>
+<li>一种主回读入口；兼容旧artifact时由宿主路由到真实来源，并明确来源是否已失效。不给不存在完整来源的结果发“可以完整回读”的承诺。</li>
+<li>回读保持身份、Session、consumer、资源/知识授权、版本、有效期检查；正常续读不为拼正文重复查询，也不把重读当刷新。销售直读目前需要精确重执行原查询来重验权限和结果，先保留并记录为revalidation，不能宣称它没有网络取数；只有后台提供独立可信的权限/数据版本证明后才评估替代。</li>
+<li>保留上一轮已经修好的纯用户JSON计算跨轮复用、来源摘要和规则版本检查，不让live计算绕过授权链。</li>
+</ul>
+<p>验收：跨模型大结果、中文多字节、精确金额/ID、局部失败、分页、重启、撤权、过期、跨consumer；原文逐段重构一致，内层业务数据可解析，已知不完整状态始终保留。</p>
+<h3>5.3 IQ-03：知识结果也有预算，但不借Cube授权冒充知识授权</h3>
+<p>为知识检索建立独立来源类别。当前接口能给出的授权证明是什么就使用什么；不能为lightrag结果编造Cube资源回执。</p>
+<ul>
+<li>返回相关片段、文档ID、版本/时点、引用位置、完整性与合法后续读取方式，不默认返回整段长文。</li>
+<li>没有可靠ACL/版本重验机制时，不创建可跨会话或长期复用的知识缓存。需要续读时用已授权的原生检索/文档读取能力重新核验；没有合法读取接口时标明覆盖限制，不发虚假全文引用。</li>
+<li>检索先固定Agent知识范围、任务、规则版本，首轮优先3～5段；top_k等参数以真实Schema为准。每段建议800～1,200字符，一次结果建议≤6,000字符。</li>
+<li>规则优先读本地已发布的相关规则卡，知识检索补充业务事件、定义出处或长说明。相同适用规则不为追求“有引用”反复全文检索。</li>
+<li>对已出现但模型仍请求的规则，提供有界的“当前相关规则摘要＋原版本引用”；不是永久只回alreadyLoaded，也不是无条件重发所有正文。</li>
+</ul>
+<p>检索和压缩不改变知识的可信层级。来源中的命令、权限声明及自称权威不覆盖宿主约束。</p>
+<h3>5.4 IQ-04：交付前按任务清单核对证据</h3>
+<p>由宿主记录每个子任务的 <code>not_started/running/succeeded/partial/blocked</code>、成功结果ID、指标/范围、未完成原因。模型只能在这些事实基础上组织解释，不负责自行回忆“是否曾成功取数”。一次失败不清空其它成功记录。</p>
+<p>最终交付分两步：先形成结构化完成清单和关键数值引用，再渲染面向业务的文字/表格。机械检查结果引用存在、数值与确定性计算匹配、失败项未冒充成功；对因果解释与业务充分性仍做模型评估及抽样人工复核。不要声称靠正则就能证明整份自由文本没有幻觉。</p>
+<p>例：早期aggregate成功但不能回答省区任务，应写“已取得总体聚合，省区分组未取得”，不能写“任何聚合都没有”；库存行数可用不代表缺货数量已算出。</p>
+<p>上下文压缩时保留小型任务/证据/规则状态，而非全文历史；来源失效后同步标记不可再用。重新加载规则不改变其版本或审批状态。</p>
+<h3>5.5 IQ-05：按进展控制探索，不机械堆调用次数</h3>
+<p>以身份、consumer、目录/资源版本和规范化参数识别重复；有效的新过滤、翻页、续读、授权变更和用户刷新不算重复探索。无变化的元数据重复两次后，返回同一有界目录引用、当前缺口与可执行下一步，不继续堆叠全文。</p>
+<p>已有明确模型/成员时直接查询；目录只加载一次索引、按需读所选模型或所选指标卡。没有目标指标时立即说明能力缺口，禁止用row_count替代数量。</p>
+<p>建议简单任务元数据探索≤3次、首次业务取数目标≤5次工具调用；多模型复杂任务单独设置合理预算。保留20/40调用安全上限的兼容性，但扩额需有新增任务范围或进展依据，不能给同条件失败循环续额度。预留必要续读与交付核对空间，耗尽时必须交付已有事实。</p>
+<h3>5.6 IQ-06：工具契约是唯一来源</h3>
+<p>继续用当前gea_capabilities、gea_skill、gea_gateway_catalog、gea_cube_query、gea_evidence_read及专用计划读取工具，不重新叠加通用skill加载器。</p>
+<ul>
+<li>gea_skill：明确按行、1起点、默认80、上限200；gea_evidence_read：明确按字符、0起点、默认4000、上限6000。此次先保留兼容参数，不静默改变旧offset语义。</li>
+<li>结果返回可直接使用的 <code>nextRead={tool,args}</code>；错误包含合法范围和安全的修正示例。</li>
+<li>工具Schema、参数说明、错误说明及示例同源生成；SDK支持什么约束就用什么，不向当前严格Schema子集硬塞不支持的minimum/maximum字段。</li>
+<li>Cube官方REST支持order对象或数组对；当前GEA typed工具采用 <code>{member,direction}</code> 对象数组，由适配器转换。材料纯Cube例子不能直接当GEA工具参数；必须补consumer、queries封装及接口转换测试。</li>
+<li>gea_capabilities生成明确的任务→Skill→工具包映射；兼容别名只接受登记映射，不能把任意consumer串当Skill名。</li>
+<li>仅改格式的参数修复可以重试一次；授权/语义错误不能伪装成参数重试。不得把模型猜到的模型或字段名自动改成别的授权对象。</li>
+</ul>
+<h3>5.7 IQ-07：指标定义、受管计算、质量信息一起交付</h3>
+<p>采用附件“口径卡→Cube度量→查询案例”的方式补齐能力，优先计算服务端已授权、可加的指标；复杂供需/效期/库容使用确定性领域计算。现有gea_forecast_compute是特定§5.5基线计算器，不能直接承担历史WAPE或库存供需推演。</p>
+<p>确需宿主计算时，新增或扩展受限计算能力的前提是明确输入/输出契约、操作枚举、Decimal精度、来源和版本；不提供自由Python、任意SQL或模型表达式执行。新增工具名须注册后再写入运行时清单。</p>
+<p>每张指标卡记录：<code>metricId/版本/适用Agent/粒度/单位/时点/过滤/公式/分子分母范围/缺失策略/可加性/规则来源/生效区间/审批状态/执行能力/完成标准</code>。维护一份事实，生成业务短卡、Cube描述与Agent可见元数据，避免三处各写一遍。</p>
+<p>当前目录投影要透出所选成员的短语义、unit、关键过滤和指标适用边界，不只给name/type；先验证上游是否真的返回这些字段。项目meta字段要登记实际读取方及强制执行位置。</p>
+<h3>5.8 IQ-08：公开能力状态，不冒充授权或数据齐全</h3>
+<p>区分“已注册、当前可发现、已授权、源数据可用、已验证可计算”五件事。任务入口只承诺当前能做的部分；条件能力列明依赖，未接入能力不引导模型猜工具。</p>
+<p>前轮aps/full-chain资源为空需平台核对资源映射与当前账号/租户/角色；不能为通过测试自动补权限。销售M/Z筛选未生效需验证上游接口实际支持及回执，保留宿主拒绝不可信聚合的检查；若只支持部分筛选，应在调用前明确不可用。</p>
+<p>对同一业务任务，授权拒绝后停止该范围；保留独立已成功结果。合法跨业务分析走预先声明的分别授权，不允许consumer枚举循环。行级权限必须在可信服务端执行，元数据、warehouse筛选或public=true都不是授权证明。</p>
+<h3>5.9 IQ-09：保留安全的取消原因与阶段</h3>
+<p>transportSignal把原因归一为受控类型：用户取消、身份变化、超时、连接失败、流中断；只清除可能泄露内部会话对象的原始详情，不将TimeoutError一律转换成普通AbortError。</p>
+<p>记录模型/工具请求阶段、耗时、结束原因与可定位trace；不记录密钥。慢会话另比对输入规模、服务端耗时和并发条件，不用一次新会话变快就认定因果，也不直接用加大120秒超时掩盖循环。</p>
+<h2>6. 把业务材料变成可执行能力</h2>
+<h3>6.1 六个Agent的职责与Task/Skill规划</h3>
+<p>以下是建议任务索引，不是已注册能力清单。现有inventory-*基础Skill和sinian-*销售Skill保留兼容，先对齐职责与内容，不批量删除或改名。</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Agent / consumer</th>
+<th>保持的职责</th>
+<th>本次材料如何接入</th>
+<th>复杂任务Skill</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>销售计划 / sales_forecast</td>
+<td>提报情况、版本、预测与计划差异、审核依据</td>
+<td>采用预测指标契约及预测解读材料</td>
+<td>拟新增 sales-forecast-result-analysis；现有sinian范围/基线/复核按各自任务保留</td>
+</tr>
+<tr>
+<td>产销协同 / aps</td>
+<td>生产、出货、履约、库存与计划的协同解释</td>
+<td>十项Prompt骨架；预测解读为可选跨业务任务</td>
+<td>现有inventory-apsplan；复杂跨指标分析引用规则；共享预测Skill仅在依赖能力授权后使用</td>
+</tr>
+<tr>
+<td>基地库存 / base-safety-stock</td>
+<td>基地库存健康、目标、货龄、待发和缺口</td>
+<td>采用健康分析材料的四类风险与边界</td>
+<td>拟新增base-inventory-health-analysis；现有inventory-aqkc作为基础规则/页面适配保留</td>
+</tr>
+<tr>
+<td>分仓库存 / branch-inventory</td>
+<td>分仓库存、在途、待发、补货和货龄</td>
+<td>采用分仓案例、快照/单位/编码前置检查</td>
+<td>现有inventory-fc；V3补货、货龄查询按条件引用，未核定“大日期”定义不猜90/60天</td>
+</tr>
+<tr>
+<td>全链库存 / full-chain-inventory</td>
+<td>基地/分仓/客户边界、公司与全渠道范围</td>
+<td>接入口径卡、各层可加性与来源时点</td>
+<td>现有inventory-qll；跨层汇总须有授权、互斥范围和对齐口径</td>
+</tr>
+<tr>
+<td>经销商库存 / dealer-inventory-replenishment</td>
+<td>授权客户、库存、动销、补货风险</td>
+<td>客户主数据/有效范围与库存客户集合分开</td>
+<td>现有inventory-dealer；风险排序须有动销/货龄/阈值，价格与正式下单仍受现有能力限制</td>
+</tr>
+</tbody></table></div>
+<h3>6.2 基地健康分析按任务取最小数据</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>子任务</th>
+<th>最小证据</th>
+<th>可交付</th>
+<th>缺失时</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>库存水位</td>
+<td>同快照可供库存、同月同版本目标及业务键、单位</td>
+<td>当前水位和偏离</td>
+<td>有库存无目标只报规模，不判健康/积压</td>
+</tr>
+<tr>
+<td>已发生履约缺口</td>
+<td>未履约订单、需求时间/地点、可履约供给及占用关系</td>
+<td>未满足量、受影响订单</td>
+<td>仅零库存数据则改称零库存分布，不称业务缺货</td>
+</tr>
+<tr>
+<td>未来结构性缺口</td>
+<td>明确观察窗口、需求与订单冲销、确认供给及可用时间</td>
+<td>首次缺口时间和情景下数量</td>
+<td>无确定性推演能力时不量化未来缺口</td>
+</tr>
+<tr>
+<td>大日期/临期</td>
+<td>批次生产/到期日、快照、客户收货要求、适用阈值</td>
+<td>批次风险、销售窗口</td>
+<td>仅生产日期则可给经核定口径的货龄，不能冒充剩余保质期</td>
+</tr>
+<tr>
+<td>库容风险</td>
+<td>分仓区有效容量、实物占用、入出库计划、统一体积/托盘单位</td>
+<td>可观察粒度下占用峰值</td>
+<td>缺容量不能判爆仓；日级数据不能排除日内峰值</td>
+</tr>
+<tr>
+<td>处置方案</td>
+<td>收发双方供需、效期、运输/放行时间、容量和约束</td>
+<td>可行性及情景比较</td>
+<td>缺成本不称最优；没有动作工具只给建议，不下单</td>
+</tr>
+</tbody></table></div>
+<p>不能仅凭“核心能力”写了推演就认定程序已有计算器。上述后四类应分阶段接入，而非本轮一次伪装成可用。</p>
+<h3>6.3 预测口径和模型落地</h3>
+<ul>
+<li>明确三种范围：M月初版、原表Z覆盖子集、Z覆盖M的纠偏后整月版。未指定且确实影响结果时，一次性澄清；已经确认过的同任务版本不重复问。</li>
+<li>区分字段层级：预测的 <code>order_type=M/Z</code> 不能替代计划头的 <code>planTypeCode</code>（既有月初样例为Y）；具体接口只用它声明的字段和枚举，不按名称相近互换。</li>
+<li>M预测只合计is_split=1；M实际包含所有M行。禁止给两种measure共同加全局is_split=1。</li>
+<li>effective按计划月/客户/SKU选Z否则M；保留来源行类型，但不让用户按source_order_type=Z过滤后仍称整月全范围。唯一约束必须在实际数据源核验；NULL键或多行不能静默选一个。</li>
+<li>金额达成率是实际/预测，不是预测准确率。材料WAPE/Bias只在企业口径缺失、配对样本/实际非负/分母有效且事前版本明确时使用，写清是分析口径；不默认1−WAPE为准确率。</li>
+<li>比率使用匹配范围的分子分母。月初达成率“分子全M、分母拆分M”是材料明确的业务例外；WAPE则要按所声明评估总体逐键配对，不能直接复用这一达成率分母。</li>
+<li>大区份额分母保留同月、同版本、同授权总盘；不能让分子大区过滤缩小分母，更不能为算全公司比例绕过权限。未归属单列并计入已授权分母。</li>
+<li>纯Cube SQL模型在服务端受管部署；不要把附件中的UNION ALL/NOT EXISTS/SELECT *送到前台受控SQL工具，也不因此放宽前台SQL限制。实际数据库方言与Cube版本分别验收。</li>
+<li>原模型成员增量兼容，新的effective Cube进入元数据、GEA工具和资源授权后才可调用；部署YAML不等于账号已可查询。</li>
+</ul>
+<h3>6.4 知识范围可配置，但标签不是ACL</h3>
+<p>建议每个Agent配置受控知识集合、共享词典、可用规则版本及时间范围。<code>&lt;knowledge_scope&gt;</code>可作为可读分隔，不是权限实现。词典短卡记录术语、缩写/黑话、标准含义、适用范围、易混词、证据版本；同名术语在不同Agent下允许有明确不同定义。</p>
+<p>少量高风险区别常驻：缺货≠零库存、达成≠准确率、现存≠可用、公司≠全渠道。完整词表、全部DDL、历史制度与维护README只按需读取。</p>
+<p>Cube官方当前说明：description可供AI解释；meta.ai_context供内置AI时放在View或成员，Cube顶层不会被其消费，单项超过2,000字符会截断。GEA自定义读取不是同一实现，须验证真正的metadata→目录→模型输入链路。<a href="https://docs.cube.dev/docs/data-modeling/ai-context">官方AI context</a></p>
+<p>measure级过滤适合固化各指标自己的M/is_split条件；外层维度过滤会先限制输入行，不能指望measure再找回被外层过滤删掉的实绩。<a href="https://docs.cube.dev/reference/data-modeling/measures">官方Measures</a>、<a href="https://docs.cube.dev/reference/core-data-apis/rest-api/query-format">官方Query format</a></p>
+</article></section>
+<section role="tabpanel" id="panel-3" aria-labelledby="tab-3" hidden><article><h2>8. 实施分期与明确交付</h2>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>范围</th>
+<th>交付</th>
+<th>进入下一阶段的条件</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>P0：冻结口径与材料来源</td>
+<td>解决M-01～M-12中的明确矛盾，登记未决依赖；保持附件原件</td>
+<td>规则/指标卡、能力矩阵、旧新接口兼容清单、修订版Agent/Skill草案</td>
+<td>无占位工具；当前/计划能力分开；会影响计算的规则冲突明确处置</td>
+</tr>
+<tr>
+<td>P1：先修宿主基础链路</td>
+<td>IQ-01/02/03/06/09；统一身份、完整来源、知识预算、参数说明、错误分类</td>
+<td>宿主改动、确定性回归、六Agent的绑定/未绑定验证</td>
+<td>身份不回落错位；原始结果可恢复；授权无放宽；知识输出有界</td>
+</tr>
+<tr>
+<td>P2：接入任务与指标</td>
+<td>十项结构生成、Skill注册、任务状态、元数据语义投影、去重/交付核对</td>
+<td>可用任务索引、两份新任务Skill、相关指标卡；保持原Skill迁移兼容</td>
+<td>能力缺口不冒充可用；同一事实只维护一份；最终答案与回执一致</td>
+</tr>
+<tr>
+<td>P3：Cube与平台联调</td>
+<td>新measure/effective模型、正式缺货口径及各Agent授权；修销售筛选契约</td>
+<td>候选模型及测试环境编译/查询、资源映射、业务样本对账</td>
+<td>指定环境、身份、版本验收通过；保留既有成员和授权边界</td>
+</tr>
+<tr>
+<td>P4：真实问答验收与发布准备</td>
+<td>固定题集、多轮/长会话、页面模式、回滚演练</td>
+<td>验收记录、差异清单、冻结版本和发布计划</td>
+<td>达到以下业务门槛；上线仍需另行授权</td>
+</tr>
+</tbody></table></div>
+<p>P1可在数据平台未准备好时先做；P2中复杂业务计算和P3依赖项不得用临时猜测补齐。发布应冻结插件、业务套件、规则版本、Cube模型及授权配置的兼容组合；普通插件改动不默认重打桌面客户端。灰度/正式部署和本机切换不包含在本次方案授权中。</p>
+<p>建议改动位置：</p>
+<ul>
+<li>GEA：现有 <code>presets/prompt-policy.json</code>、各inventory基础规则、<code>prompt-runtime.ts</code>、<code>prompt-evidence.ts</code>、<code>agent-tools.ts</code>、<code>gateway-catalog.ts</code>、<code>cube-query-schema.ts</code>、模型/页面身份解析及transport错误处理。必要的新共享模块在仓库内部，不另建全局Agent编排平台。</li>
+<li>业务套件：<code>company-agent-suites</code>的任务Skill、规则参考和清单，需确认供应给当前GEA的发现/版本机制。附件Name进入这里后才视为可加载。</li>
+<li>Cube：真正承载当前服务的源码仓库、目标版本、测试部署和资源管理入口；现在未知的路径与权限配置不编造。</li>
+</ul>
+<h2>9. 验收必须比上一轮更贴近业务</h2>
+<h3>9.1 分层验收</h3>
+<ol>
+<li>静态：来源可打开、无占位/旧工具名、Skill可发现、Schema/说明/nextRead一致、长度统计。</li>
+<li>确定性宿主：身份、完整产物、权限撤销、跨会话/consumer、取消/超时、缺失与精度、重复探索、不完整结果。</li>
+<li>Cube：目标版本编译；以独立预期验证查询、M与Z选行、外层过滤、分母权限、NULL/零/缺月/重复/历史单位。</li>
+<li>GEA集成：实际工具调用与返回、数据投影和模型请求可见性；脚本预设调用只能验管道，不验模型是否会正确选工具。</li>
+<li>真实模型：同一模型/档位、固定数据快照和规则版本运行自然语言问题；记录首次答复、追问、长会话与新会话，不能只择优展示。</li>
+<li>业务验收：定义及效果由业务对照已批准口径复核。生产数据、权限和安装生效与源码测试分开报告。</li>
+</ol>
+<h3>9.2 基线题集与新增用例</h3>
+<p>保留前轮14条真实问答，吸收分仓Q01～Q14及预测F01～F13，形成41条基线场景（相似问题可保留不同前置条件，不能把目录记录数直接当已实现自动测试数）。再补：</p>
+<ul>
+<li>六Agent未绑定/绑定正确/页面错配/会话切换，模型header与工具consumer一致；默认销售只用于默认销售入口。</li>
+<li>原17,718字符批次及更大多模型返回，逐段恢复到真正业务正文；知识单次&gt;30k来源仍只发合规有界片段。</li>
+<li>同一规则跨轮/压缩后重载；材料明示阈值已可见时，最终不得声称“未加载”。</li>
+<li>有库存仍发生时间性缺货；零库存但无需求不标成已发生履约缺货；同SKU不同基地不去重。</li>
+<li>M实绩包含is_split=0；Z缺键回退M、Z存在但字段NULL不能随意逐字段回填；source_order_type筛选不能改变报告口径名称。</li>
+<li>分母随大区筛选错误缩小、未知大区、授权总盘、部分NULL、全NULL、真实零分母、超大ID和精确金额。</li>
+<li>WAPE的事前版本/提前期、实际非负/全零、缺货限供、未结束期间、历史回填；无合格历史版本则只交付限制说明。</li>
+<li>forecast维度月初默认过滤不能漏实绩；日期范围月末边界不能多含下月1日。Cube dateRange右端包含当日，不能机械用下月1日代替月末。</li>
+<li>授权为空时停止对应范围，不轮换consumer；其它独立成功结果仍交付。模型试图误用旧工具名或别名时给明确修正。</li>
+</ul>
+<h3>9.3 建议上线门槛</h3>
+<ul>
+<li>硬门槛：越权、身份错位、虚构完成、未知补零、错误单位/版本混算、原文丢失、超时分类丢失为0；任一出现不放行。</li>
+<li>正向任务：在数据/工具齐备的可执行场景中按独立标准核对关键数值、范围和任务完成度；无授权正确停止算边界通过，不算业务查询已完成。</li>
+<li>核心高风险题每题至少3次真实模型回放，三次都要满足硬边界；普通任务建议正确完成率≥95%，作为候选门槛，不能把单次成功当稳定。</li>
+<li>元数据循环：没有有效进展的同条件重复受到限制；经销商/全链不再20次全花在目录。复杂任务阈值按案例单列，不能以总调用变少掩盖未完成。</li>
+<li>性能：与同模型、相近负载和同数据范围对比输入规模、有效调用、首答/总耗时；没有provider usage时不声称token精确降低多少。</li>
+<li>旧修复保留：上一轮4项修复及撤权、过期、精确小数、受控审批、编码入口和页面已有行为全部回归，不为新结构删掉保护性测试。</li>
+</ul>
+<h2>10. 需要补齐的事实与建议默认值</h2>
+<p>本轮方案可以完整交付；下面依赖阻断对应能力上线，不阻断宿主修复设计：</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>需补齐事实</th>
+<th>不补会影响什么</th>
+<th>建议默认处理</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>产销是否包含跨域预测解读、谁维护共享Skill</td>
+<td>职责/任务路由及授权归属</td>
+<td>产销保留现有经营职责，预测作为条件子任务</td>
+</tr>
+<tr>
+<td>大日期、缺货、库容、版本回退的现行有效规则与Owner</td>
+<td>风险结论和计算</td>
+<td>仅用已核实适用规则；冲突部分不量化</td>
+</tr>
+<tr>
+<td>预测“全部件”、历史回填、原始DDL及旧模型来源</td>
+<td>数量汇总、历史完整性与可追溯性</td>
+<td>材料约定与实数验证分开，不推广到库存单位</td>
+</tr>
+<tr>
+<td>历史事前预测版本及提前期、对应实际快照</td>
+<td>无泄漏的历史准确性复盘</td>
+<td>先不开放历史WAPE自动结论</td>
+</tr>
+<tr>
+<td>Cube真实仓库/版本/测试环境、GEA资源映射</td>
+<td>新measure、effective与缺货聚合上线</td>
+<td>只做候选与本地验证，不猜部署路径，不自动补权限</td>
+</tr>
+<tr>
+<td>哪些台账/通知/文件/持续监控能力实际已接入</td>
+<td>业务能力承诺与副作用</td>
+<td>未接入只生成说明或草稿，不声称执行</td>
+</tr>
+</tbody></table></div>
+<p>推荐接受这批材料作为业务契约与验收基础，先治理明确矛盾，再按P1→P2/P3→P4推进。验收目标是“正确调用、正确取数、正确交付且成本受控”，不是把Prompt压到某个字数后就宣布完成。</p>
+</article></section>
+<section role="tabpanel" id="panel-4" aria-labelledby="tab-4" hidden><p class="warn">这些是评审草稿。新Skill尚未注册，台账、通知、库容推演和历史复盘等能力不得因写入草稿就宣称已经接通。</p><article><h1>Agent / Skill 编写样例（待实施，不是已生效配置）</h1>
+<p>这些草稿按用户给出的结构组织。共用约束在宿主只维护一份；下面展示业务人员可完整阅读的内容，实际编译时不重复注入。两个任务Skill名称来自业务材料，当前尚未注册；落地需要同时完成能力依赖、注册与真实调用验证。</p>
+<h2>A. 产销协同 Agent：保留原职责，按需增加预测解读</h2>
+<p>**角色：**你是产销协同业务助手，负责解释生产、出货、履约、库存及计划偏差，帮助业务确定需要复核和协调的事项。业务身份由宿主确定，不能因为其他通道有数据就更换身份。</p>
+<p>**背景：**服务于销售、计划、仓储和管理人员。当前页分析只使用已加载且有效的页面证据；独立范围查询使用本Agent实际授权的数据能力，不要求先打开页面。</p>
+<p>**目标：**回答用户本次问题，交付可复核事实、适用口径、必要解释和未完成项。各子任务分别标为完成、部分完成或受阻；建议与已执行动作分开。</p>
+<p>**核心能力：**理解业务问题、对齐指标范围、调用授权查询和规则、比较已验证结果、形成复核建议。数据查询、确定性计算、文件或其他执行能力以宿主实际提供为准。</p>
+<p><strong>任务：</strong></p>
+<ul>
+<li>当前经营概况或单个指标解释：复用有效页面/查询证据；涉及阈值时加载对应产销规则。</li>
+<li>跨生产、出货、库存、履约的比较：先确定任务与口径，按相关规则完成，不混加不同期间和版本。</li>
+<li>已有预测解读、计划差异或历史效果复盘：注册与依赖齐备后使用 <code>sales-forecast-result-analysis</code>。缺少合法跨域数据能力时说明该部分受阻。</li>
+<li>简单查询和局部解释不必展开完整报告。没有正式操作工具时只交付建议或草稿。</li>
+</ul>
+<p>**约束：**继承共用权限、真实性、缺失与完整性约束。预算达成、生产达成、订单满足、预测误差各用自己的定义；数量快照不跨期累计。未取得目标/阈值不判达标。期中实绩不冒充整月最终值，不凭相关性编造具体原因。已成功证据不能因另一步失败而被说成不存在。</p>
+<p>**工具清单：**由宿主生成当前可见工具。基础入口为 <code>gea_capabilities</code>、<code>gea_skill</code>、<code>gea_gateway_catalog</code>、<code>gea_cube_query</code>、<code>gea_evidence_read</code>；页面、知识、计算等只在对应工具包实际启用后使用。工具参数以当前Schema及nextRead为准，不使用旧 <code>skill</code> / <code>gea_skill_reference_read</code> 调用方式。</p>
+<p>**知识：**范围为产销指标、业务日历、计划/预测/实际术语、适用阈值和本次任务涉及的共享主数据。采用已发布且适用的规则版本；必要片段按需读取。销售预测的M/Z口径不能当作全部产销指标的默认规则。</p>
+<p>**异常处理：**优先补齐已有上下文能解决的条件，只对会改变结论的歧义集中澄清。区分无授权、无记录、零、NULL、部分结果、参数错误和超时；同条件不重复试探。局部失败保留其它有效结论；缺权限停止对应范围，不轮换consumer。</p>
+<p>**输出要求：**中文、结论先行。简单问题直接答；比较使用“指标/范围—值与单位—口径—依据”。复杂分析给核心结论、可核实证据、需协调事项及限制。需要行动建议时说明对象、责任角色、前提和复核方法；不强行给每个问答附建议。</p>
+<h2>B. 基地库存 Agent：核心业务区别常驻，深度计算按条件开放</h2>
+<p>**角色：**你是基地库存业务助手，负责库存水位、履约缺口、批次货龄和库存健康解释；复杂风险分析依赖已接通数据及确定性能力。</p>
+<p>**背景：**服务总部计划、基地计划、仓储和销售人员。按基地、仓区、SKU、批次和时间理解问题；当前页与独立查询的范围分别由可信上下文确定。</p>
+<p>**目标：**说明哪里存在什么现象、证据支持到什么范围，以及哪些风险尚不能评估。完成标准是对象、时点、单位、版本和依据明确，计算可复核；未能评估不标为健康。</p>
+<p>**核心能力：**授权库存查询、同口径比较、货龄与缺失识别、规则核验和建议解释。未来供需、库容峰值、通知与风险关闭仅在对应能力就绪时执行，不根据角色描述假定工具存在。</p>
+<p><strong>任务：</strong></p>
+<ul>
+<li>单基地或多基地库存、当前目标偏离：用正式聚合/页面计算直接回答。</li>
+<li>综合健康、结构性缺口、大日期或方案比较：注册和依赖齐备后使用 <code>base-inventory-health-analysis</code>，只加载相关子任务规则。</li>
+<li>基地日报/导出：按当前工具实际支持的范围执行，相关数据失败时不拿旧日报替代。</li>
+<li>对未接入任务交付所缺数据/能力及可支持部分，不编造结果。</li>
+</ul>
+<p>**约束：**安全库存不是库存上限，低于安全库存不是已发生缺货；零库存记录不等于履约缺口。区分实物占用与可供，冻结/过期可能占库但不可履约。不同快照/版本不混加，同SKU不同基地不自动去重。预测/订单及在途/供给不得重复计算；单位未知不跨SKU硬合计。不能通过无需求调拨或渠道压货转移风险。</p>
+<p>**工具清单：**宿主提供基础 <code>gea_capabilities</code>、<code>gea_skill</code>、<code>gea_gateway_catalog</code>、<code>gea_cube_query</code>、<code>gea_evidence_read</code>。页面操作先加载并读取实际动作目录；知识和计算按需加载。文件、台账、通知、持续监控若未提供则不可执行。</p>
+<p>**知识：**基地库存状态、目标版本、货龄/库龄/剩余保质期区别、需求冲销与交付条件、有效规则来源及职责。大日期阈值、库容和单位换算只用适用版本。调拨不重置产品效期。</p>
+<p>**异常处理：**关键歧义用已有上下文补齐，仍影响结论时集中询问。数据缺失/冲突只阻断受影响指标；授权失败停止该范围；参数修正有界重试。质量异常按现有业务流程提出升级事项；未提供通知工具时不声称已经通知。</p>
+<p>**输出要求：**简单问题给结论、数据和范围；复杂健康分析按Skill模板输出风险及依据。数量未知写未知并说明原因。没有实际证据，不称风险已解除、方案最优或任务已执行。</p>
+<h2>C. 拟新增 Skill：sales-forecast-result-analysis</h2>
+<pre><code class="language-yaml">---
+name: sales-forecast-result-analysis
+description: 解读已有预测、比较预测与计划，或在事前版本和实际数据齐备时复盘预测误差；不用于训练模型、生成新预测或修改正式计划。
+---
+</code></pre>
+<p>**任务目标：**说明已有预测/计划的差异、适用范围和重点复核对象；区分预测合理性、实际达成与历史误差，不以预测自动裁决业务计划。</p>
+<p>**所需知识与数据：**本任务的版本化指标卡、主数据映射、预测及比较值、适用时间和单位；历史复盘还需事前预测起点、提前期、不可变版本与同截止实际。事件、库存、供应仅在对应解释或风险任务需要时获取。来源不全只限制相关结论。</p>
+<p>**输入内容：**任务类型、组织/客户/SKU范围、期间、数量或金额、预测/计划版本、比较对象、截止时间及输出要求。用户业务选择优先于已确认会话、页面和合法默认；身份、权限、数据真实性及有效规则不受此顺序覆盖。版本已明确不重复问；M、Z子集、纠偏后整月版存在实质歧义时一次澄清。</p>
+<p><strong>工作步骤：</strong></p>
+<ol>
+<li>建立本次问题与完成清单，区分未来解读、计划差异、历史复盘。没有事后实际时不评价已实现准确率。</li>
+<li>读取相关指标卡并检查数据能力。M预测限拆分行，M实绩含全部M；Z子集与Z覆盖M新版分开。直接使用正式measure，不能给不同分母范围的指标追加相同外层过滤。</li>
+<li>对齐粒度、范围、时点、版本和单位；验证覆盖、NULL、重复和分页。历史版本或事前快照不足时停止误差评价，交付可做的版本比较及缺口。</li>
+<li>用受管聚合或已注册的受限计算能力算差额与比率。实际达成按其独立业务定义；历史WAPE/Bias按配对评估总体和企业口径。无企业定义时可明确采用材料给出的分析公式：WAPE=Σ|F−A|/ΣA、Bias=Σ(F−A)/ΣA，仅限实际非负且合计大于零。无有效分母则给无定义/适用的绝对误差，不把缺失当零、不默认1−WAPE为准确率。</li>
+<li>用规模、绝对差异、相对差异和可比持续性定位重点；规则阈值未确定时只列可观察差异。事件支持、相关性和已证实原因分开；缺供应证据不量化缺货，缺模型证据不解释模型内部机制。</li>
+<li>对照完成清单、来源和计算核对交付。建议说明对象、责任角色、前提和复核方式；任何后续写入另走真实能力与授权流程。</li>
+</ol>
+<p>**输出要求：**默认“范围与版本—核心结论—关键指标—重点复核对象—原因证据与建议—限制及来源”；局部问题删掉无关段。明细为 <code>对象｜预测｜比较值及类型｜差异｜证据状态｜建议及前提</code>。结果引用完整性和数据覆盖分别说明，成功的部分不被后续错误抹掉。</p>
+<h2>D. 拟新增 Skill：base-inventory-health-analysis</h2>
+<pre><code class="language-yaml">---
+name: base-inventory-health-analysis
+description: 分析基地库存水位、履约缺口、批次效期或库容风险，比较有证据的处置方案与复查结果；按所问维度取数，不直接生产、调拨、报废或修改参数。
+---
+</code></pre>
+<p>**任务目标：**识别已有问题及有数据支持的情景风险，说明影响对象、数量、时间窗口和可行复核事项；缺数据的维度不标健康，不把综合巡检强加给单指标问题。</p>
+<p>**所需知识与数据：**按子任务取得：库存状态和批次、同月同版本目标、需求/订单及占用对应关系、确认供应与可用时间、客户效期条件、有效库容、必要历史风险记录。明确每类数据的来源、单位、快照、版本、覆盖和质量。固定规则从对应版本的口径卡读取。</p>
+<p>**输入内容：**分析维度、基地/仓区/产品范围、基准时点、观察窗口、需求/供给版本、用户目标与输出要求。缺关键阈值先查已生效配置，仍不存在则只暂停依赖它的判断；不把任意默认天数套给所有业务。</p>
+<p><strong>工作步骤：</strong></p>
+<ol>
+<li>明确本次评估的子任务和完成标准，校验身份、数据及规则。库存已有数值但没有目标，仅能观察规模。</li>
+<li>分开实物占用与需求可供；预留和对应订单配对，需求与预测按已确认规则冲销。具备领域计算能力时，按需求/到货/放行时间做推演；没有该能力时不由模型心算替代。</li>
+<li>只执行所需检查：水位对同口径目标；履约缺口对SKU/地点/需求时间/交付条件；批次对适用货龄或客户可接受效期；库容对有效容量和实物入出库。不得以零库存行数代替缺货、以生产日期直接代替到期日、以日级数据排除日内爆仓。</li>
+<li>核对需要的集合交集和资源分配。大日期与滞库可能重叠，无交集证据不能相加；同一需求不重复消化多个批次，同一供给不重复支撑多项建议。</li>
+<li>基于实际记录标明已证实原因、支持性线索和待验证假设。按适用规则与干预时间排序；建议检查收发双方履约、效期、运输、质量与库容，缺成本不称最优。</li>
+<li>核对完成清单及证据后交付。风险是否解除依赖实际复查；没有台账、通知、监控或业务操作工具时仅给草稿/建议，不宣称已执行或持续监控。</li>
+</ol>
+<p>**输出要求：**先给范围、时点和结论。风险清单：<code>对象｜风险类型｜当前/未来｜数量及单位｜发生时间/干预窗口｜依据</code>；建议清单：<code>对象｜动作及数量｜责任角色｜前提与审批｜预期影响｜复核方式</code>。无法评估的项明确标出；“未发现风险”仅限本次已检查范围。</p>
+<h2>E. 示例规则卡：写清执行责任，不只写一段话</h2>
+<p>以下字段是设计示例，不是已注册Schema或已确认生产指标。</p>
+<pre><code class="language-yaml">metricId: forecast.monthly_initial_attainment
+version: proposal-1
+status: draft_pending_environment_validation
+ownerAgent: sales_forecast
+businessPeriod: plan_month
+versionScope: M
+numerator:
+  member: agents_sales_forecast_detail_mi.monthly_initial_actual_sales_amount
+  rowScope: all_M_rows
+denominator:
+  member: agents_sales_forecast_detail_mi.monthly_initial_predicted_sales_amount
+  rowScope: M_and_is_split_1
+resultType: ratio
+amountUnit: yuan
+currencyAndTaxBasis: must_be_confirmed_and_equal
+undefinedWhen: denominator_zero_or_missing
+partialWhen: actual_coverage_incomplete
+forbiddenOuterFilter: is_split_1_when_reading_both_measures
+sourceReferences: [SRC-USER-004, SRC-USER-005]
+</code></pre>
+<p>正式口径应表明：分母为 <code>monthly_initial_predicted_sales_amount</code>、仅 <code>M AND is_split=1</code>；分子为全部M实际；同月/同授权/同组织范围；分母0或缺失为无定义；实际覆盖不足时结果标部分；资料依据SRC-USER-004/005需迁移为可定位来源。不能把示意字段复制成生产配置。</p>
+<p>为避免模板自己形成第二套规范，实施时应以一份受类型校验的指标注册结构生成业务短卡、工具元数据与测试用例。这个文件只用于评审内容和边界。</p>
+</article></section>
+<section role="tabpanel" id="panel-5" aria-labelledby="tab-5" hidden><article><h1>GEA Agent / Skill 修订方案：业务材料评估与九类问题治理</h1>
+<p>2026-09-26 · 分析与方案，未实施 · 源码基线 <code>ee8a026</code></p>
+<p><strong>结论：建议采用用户给出的 Prompt 十项结构和 Skill 结构，作为业务编写与维护规范；运行时按任务编排加载，不把整份材料、所有任务流程和全部工具定义一开始塞给模型。</strong> 本批材料能补齐不少业务口径，但不能单靠替换提示词修复前轮的身份错位、产物截断和知识结果膨胀。</p>
+<p>本文针对前轮 IQ-01～IQ-09，给出材料取舍、目标结构、调用链、具体改动、分阶段实施及验收标准。<a href="prompt-inventory-qa-2026-09-26.md">前轮真实问答报告</a>是行为基线；<a href="prompt-design-drafts-2026-09-26.md">Agent与Skill草稿</a>是本方案的可评审样例，均未注册或生效。</p>
+<h2>1. 本轮核对了什么</h2>
+<ul>
+<li>读取两份业务 Agent 文档、Cube 生命周期入口与操作参考、分仓示例模型/案例/检查器、销售预测两份模型/指标契约/来源/查询案例/检查器。</li>
+<li>清点材料：生命周期包35个内容文件，预测包19个，另有2份Agent文档。不是56个运行时技能；其中大量是维护说明与示例。</li>
+<li>在现有 Python / PyYAML 6.0.3 环境调用原检查器的纯检查函数：销售预测9组检查通过；分仓14例通过，其中7例实际做了离线参考计算、7例仅验证异常输入构造。原附件及原报告未修改；没有安装依赖、连接数据库、编译/部署Cube或执行新的生产问答。</li>
+<li>重新核对了Cube官方的AI上下文、measure过滤和REST查询说明。目标Cube部署版本仍未取得；文档核对不能替代目标环境编译。</li>
+<li>当前仓库目录投影代码主要保留成员名与类型，未将材料中的成员级单位、规则、AI上下文完整提供给Agent。这是“写了语义材料却没有被使用”的实际接入缺口。</li>
+<li>文内前轮账号权限和真实模型表现均为前轮快照，本轮没有重新连接生产验证是否发生变化。</li>
+</ul>
+<p>证据：<a href="business-material-review-2026-09-26/inventory.json">文件与断链清单</a>、<a href="business-material-review-2026-09-26/offline.json">本轮离线检查</a>。</p>
+<h2>2. 四组材料是否合适、如何采用</h2>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>材料</th>
+<th>判断</th>
+<th>有用之处</th>
+<th>需要处理后再用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>产销协同Agent.md</td>
+<td>编写结构可用，职责与工具需适配</td>
+<td>事实/推断/建议分离；未来预测与历史复盘分开；比率按分子分母汇总；不给模型内部原因编故事</td>
+<td>当前正文实际偏销售预测解读，不能替代整个产销协同角色；旧工具名、新Skill名、XXX占位需处理；确定性计算与文件生成尚需实际能力</td>
+</tr>
+<tr>
+<td>基地库存Agent.md</td>
+<td>很适合作为业务边界及健康分析Skill来源</td>
+<td>安全库存不等于上限；低于安全库存不等于已缺货；实物占用与可供不同；不能重复冲销需求/供应；风险关闭要实际复核</td>
+<td>库容峰值、未来供需匹配、质量升级、风险台账和通知属于新增或条件能力，不能全部标成当前可做；需要数据、规则和计算器</td>
+</tr>
+<tr>
+<td>cube-agent-lifecycle</td>
+<td>适合研发与数据维护流程，不进入日常业务会话</td>
+<td>来源—口径—模型—查询—分层验收的完整链；虚拟案例不冒充生产；稳定成员名、版本与回退管理</td>
+<td>不全局安装；不让业务Agent执行发布。逐文件八节README是维护约定，不能把所有README注入Prompt，也不机械套给本仓库每个文件</td>
+</tr>
+<tr>
+<td>销售预测模型建设</td>
+<td>能补“只有字段没有可用指标”的缺口，但仍是模型草案</td>
+<td>M预测/实际的不同过滤范围、Z子集与纠偏后整月版、两种大区占比、零分母与未归属；现有9+5个候选measure</td>
+<td>有旧描述残留、原始来源断链、未编译、未授权、缺历史事前版本与数据完整性证据；不能直接覆盖线上同名Cube</td>
+</tr>
+</tbody></table></div>
+<p>原文件：<a href="/Users/synear/Downloads/%E4%BA%A7%E9%94%80%E5%8D%8F%E5%90%8CAgent.md">产销协同</a>、<a href="/Users/synear/Downloads/%E5%9F%BA%E5%9C%B0%E5%BA%93%E5%AD%98Agent.md">基地库存</a>、<a href="/Users/synear/Downloads/cube-agent-lifecycle/SKILL.md">生命周期入口</a>、<a href="/Users/synear/Downloads/%E9%94%80%E5%94%AE%E9%A2%84%E6%B5%8B%E6%A8%A1%E5%9E%8B%E5%BB%BA%E8%AE%BE/docs/METRIC_CONTRACT.md">预测指标契约</a>。</p>
+<h3>2.1 可以直接保留的业务规则</h3>
+<ol>
+<li>安全库存、库存上限、已发生缺货、未来供需缺口必须分开；零库存只能证明相应记录为零，不能自动升级为“缺货最严重”。</li>
+<li>实物库存与可履约库存分开。冻结、过期库存可能占库容，却不能用于履约。</li>
+<li>预测与订单需要按明确规则冲销；同一需求不重复分配给多个批次，调拨在途不重复扣减。</li>
+<li>缺数据、无权限、工具失败、无记录和明确零值分别表达；未能评估不等于健康。</li>
+<li>未来预测没有事后实际，不评价“已实现准确率”；缺货或限供下实际发货也不能直接当真实需求。</li>
+<li>风险和原因须有来源；相关性不等于因果。计划、预测、目标、实际、出货、终端动销不能混称。</li>
+<li>建议不是已执行，导出不是已提交，通知不是风险已解决。监控需要真实调度，不能口头宣称开启。</li>
+<li>复用仍有效的证据，局部失败不抹掉其他成功结果。完成状态按用户问题逐项判定。</li>
+</ol>
+<p>这些关键边界进入短常驻规则或对应任务规则卡；公式、细则和工作步骤放到选中Skill和受管计算中。</p>
+<h3>2.2 材料中的具体冲突、缺口与兼容问题</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>编号</th>
+<th>发现</th>
+<th>处理方案</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M-01</td>
+<td>产销文档列 <code>skill</code>、<code>gea_skill_reference_read</code>；候选业务入口是 <code>gea_skill</code>，其path只读正文明确链接的参考文件</td>
+<td>保留业务意图，工具名与参数由运行时注册表生成；旧业务加载方式不重新放开，编码入口原生skill不受影响</td>
+</tr>
+<tr>
+<td>M-02</td>
+<td><code>sales-forecast-result-analysis</code>、<code>base-inventory-health-analysis</code> 在当前候选预设/套件中未注册；两份文档仍有XXX任务</td>
+<td>将名称保留为拟新增任务Skill；落地前注册、路由、发现、加载、版本、测试一起完成。删除占位能力声明，不宣称已可调用</td>
+</tr>
+<tr>
+<td>M-03</td>
+<td>产销文档只列预测解读主任务，当前产销Agent还承担生产/出货/订单满足/库存经营解释</td>
+<td>保留 <code>aps</code> 的产销职责；预测解读作为可选子任务。销售、产销可共享分析Skill，但不能因此共享或更换后台身份</td>
+</tr>
+<tr>
+<td>M-04</td>
+<td>基地健康Skill涵盖当前库存、未来供应、效期、库容、方案及复查</td>
+<td>一个健康分析入口按子任务加载参考规则；当前库存可做的先做，未来供需/库容/台账等能力按证据标为条件可用或未接入</td>
+</tr>
+<tr>
+<td>M-05</td>
+<td>预测模型顶层及is_split旧描述仍泛称“普通月初分析限定is_split=1”，而新measure要求M实绩包含全部M行</td>
+<td>删除过宽旧句或限定到“M预测指标”。禁止在同时查M预测+M实际时施加全局is_split=1，过滤由各measure分别承担</td>
+</tr>
+<tr>
+<td>M-06</td>
+<td>原表order_type说明“禁止用缺失M/Z相互补齐”，新effective模型又按Z覆盖M</td>
+<td>分清任务：原表Z子集不补齐；只有明确请求纠偏后整月版才使用独立effective模型。有Z取整行Z，没Z取M；不能偷偷对Z行NULL字段逐字段回填M</td>
+</tr>
+<tr>
+<td>M-07</td>
+<td>新金额measure单位元，部分沿用dimension元数据仍写单位未统一；同一事实散在description/meta/SOURCES中</td>
+<td>同一指标使用一份版本化口径卡生成说明，保留来源与适用范围。数量“件”只适用于本预测模型的材料约定，不能推广为全公司库存单位</td>
+</tr>
+<tr>
+<td>M-08</td>
+<td>预测包有4处本地断链，涉及他人机器的原DDL附件和未随包提供的旧Cube文件；元数据另含不可定位的database-schema引用</td>
+<td>补齐可访问原始来源或可信归档及摘要。保留“材料记录已确认”与“本环境验证通过”的不同状态，不把转录记录提升为当前业务审批</td>
+</tr>
+<tr>
+<td>M-09</td>
+<td>当前预测表声明唯一键不含预测运行批次/提前期；有model_version不代表保留每次事前预测快照</td>
+<td>新增历史复盘前，确认是否有不可变预测版本及实际as-of数据。缺失时只做当前版本对比，不计算或宣传无泄漏WAPE/Bias</td>
+</tr>
+<tr>
+<td>M-10</td>
+<td>sum可忽略NULL；离线预测夹具仅6行、没有金额NULL行；零分母检查仅核对预期文案，并未完整走目标Cube零分母查询</td>
+<td>增加缺失计数/覆盖字段、真实零分母/全NULL/部分NULL用例；已知小计与完整总量分开。大整数及金额精度另用Decimal/精确串验证</td>
+</tr>
+<tr>
+<td>M-11</td>
+<td>分仓示例仅2个sum measure；前轮实际目录已有row_count与这2个sum。原预测草案也未保留当前目录的row_count</td>
+<td>以当前部署模型和依赖清单做增量合并，不覆盖、重复加载同名Cube或删除在用成员；新增effective模型单独注册授权</td>
+</tr>
+<tr>
+<td>M-12</td>
+<td>生产单位、最新完整批次、历史回填没有可执行确认凭据；“过往月按整月口径”不等于实绩不会回填</td>
+<td>返回观测时点、as-of、完整性状态；历史结果可按业务整月口径分析，但不得声称最终关账完整，直到有对应证明</td>
+</tr>
+</tbody></table></div>
+<p>M-05已做独立样例核算：随附虚拟数据中全部M实际金额为370，若整体套is_split=1则变350；这说明自然语言说明与measure过滤不一致会直接漏算。这里是虚拟样例，不是线上金额。</p>
+<h2>3. 用户给出的结构怎么落地</h2>
+<h3>3.1 采用十项Prompt结构，但区分编写视图与运行时视图</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>用户结构</th>
+<th>内容边界</th>
+<th>运行时位置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>角色</td>
+<td>是谁、负责哪些业务，不负责哪些邻近业务</td>
+<td>Agent短常驻身份；agentId/consumer来自宿主</td>
+</tr>
+<tr>
+<td>背景</td>
+<td>流程与使用者，解释任务所需的最少信息</td>
+<td>Agent常驻；长流程图放参考资料</td>
+</tr>
+<tr>
+<td>目标</td>
+<td>本Agent解决什么，完成/部分完成/受阻怎么判</td>
+<td>常驻定义，当前任务生成完成清单</td>
+</tr>
+<tr>
+<td>核心能力</td>
+<td>已接通能力与分析能力，区分可用/条件可用/未接入</td>
+<td>由能力注册表生成短摘要</td>
+</tr>
+<tr>
+<td>任务</td>
+<td>面向用户的任务名称、触发条件、对应Skill</td>
+<td>短任务索引；复杂步骤不常驻</td>
+</tr>
+<tr>
+<td>约束</td>
+<td>共用硬边界与本Agent特有口径</td>
+<td>全局一份共用约束 + Agent差异，不重复复制</td>
+</tr>
+<tr>
+<td>工具清单</td>
+<td>实际工具名称、用途与调用规则</td>
+<td>名称摘要由注册表生成；参数只用真实Schema，不手抄第二份</td>
+</tr>
+<tr>
+<td>知识</td>
+<td>词义、缩写、口径、知识范围与规则版本</td>
+<td>少量必需定义常驻；相关术语/指标卡随任务加载；长文检索</td>
+</tr>
+<tr>
+<td>异常处理</td>
+<td>澄清、缺数、无权限、参数错、超时、冲突的可观察动作</td>
+<td>全局错误分类 + Agent业务降级策略</td>
+</tr>
+<tr>
+<td>输出要求</td>
+<td>结论、依据、缺口；复杂任务的结构化结果</td>
+<td>常驻短要求 + 选中Skill的具体模板</td>
+</tr>
+</tbody></table></div>
+<p>原文两份Prompt正文约1,163和1,185字符，结构本身不算冗长。真正要控制的是它们与全局约束、旧Skill、完整工具Schema和大段知识正文的重复叠加。</p>
+<p><strong>不采用“每个Agent只有一句Persona”或“每次调用都塞十个完整章节”这两个极端。</strong> 编写层保留完整业务结构，编译时去掉已继承内容，仍保留决策必需的核心边界。</p>
+<h3>3.2 Skill保留Name、Description及五项正文，增加关联信息</h3>
+<p>业务正文严格采用：Name、Description、任务目标、所需知识与数据、输入内容、工作步骤、输出要求。其中Name/Description放可被平台发现的frontmatter；正文写其余五项。</p>
+<p>描述负责“何时使用、何时不使用”；不是正文摘要堆满所有步骤。工作步骤只固定影响权限、口径与数据正确性的顺序。</p>
+<p>关联信息放在宿主manifest，不额外膨胀正文：<code>skillId/version</code>、允许的agentIds、所需capabilities、ruleIds、输入/输出契约、支持模式、是否有写入副作用。<strong>这些是拟新增配置，不是附件中已经实现的执行机制。</strong></p>
+<p>不要求所有任务都加载Skill。直接复述已经核实的单个数值、简单名词解释、格式改写可直接做；需供需计算、历史对比、跨表核对、风险排序或复杂工作流才加载相关Skill。</p>
+<h3>3.3 规则优先级与冲突处理</h3>
+<ol>
+<li>平台安全、可信身份、后台授权与宿主执行限制始终有效。</li>
+<li>用户指定的业务选择优先于会话默认、页面筛选及企业默认，但不能覆盖权限或把草稿规则变为已生效事实。</li>
+<li>业务公式与阈值按“适用业务/组织/时间 + 已批准版本”选择，不按文件修改时间或检索排名决定。</li>
+<li>全局规则只管共性；Agent差异只管职责与特定业务边界；Skill只管任务流程；知识提供事实和口径，不成为扩大权限的指令。</li>
+<li>两条同适用范围的生效规则冲突：标记冲突，暂停受影响计算，保留其余可完成项；明确列出待确认点。历史复盘采用当时适用规则。</li>
+<li>附件中的“工具清单、应该发布、用户曾确认”是材料内容；不因此安装、发布、增加权限或自动确认当前生产口径。</li>
+</ol>
+<h2>4. 一次问题从进来到交付，应如何调用</h2>
+<pre><code class="language-text">用户问题 + 当前选择的Agent + 可选页面
+        ↓
+宿主确定唯一业务身份、账号/租户、授权版本、页面范围
+        ↓
+补齐影响结论的关键条件 → 生成本次任务与完成标准
+        ↓
+简单任务直接用现有证据；复杂任务加载一个主Skill及必要规则片段
+        ↓
+按授权目录选确定的指标/查询模板 → 校验参数与业务口径 → 执行
+        ↓
+原始结果先完整保存/绑定受管制品 → 结构化摘要 → 必要时安全续读
+        ↓
+确定性计算 / 指标核验 → 更新各子任务状态与成功证据
+        ↓
+生成答案 → 与成功回执、范围和缺口核对 → 交付
+</code></pre>
+<p>页面绑定不是独立查询的前置条件。用户问“当前这一页”时必须核对当前绑定；选中Agent与页面归属不一致时不能静默改身份：保留所选身份，页面作为待核对来源，必要时只澄清当前页所指范围。</p>
+<p>跨Agent任务需任务清单预先声明、明确目标能力并分别授权；例如产销任务确需销售预测，只能通过已配置的受控路由执行。当前consumer被拒后不能轮换consumer试探。授权检查不能由Prompt或知识标签代替。</p>
+<h2>5. 九类问题的具体修复设计</h2>
+<h3>5.1 IQ-01：一个身份解析入口</h3>
+<p>在现有宿主中统一解析选中preset、显式受控委派及绑定页面；产出不可由模型修改的 <code>agentId/consumerCode/identityScope/presetVersion</code>。模型list/resolve/stream、工具发现、执行、知识范围、证据与审计共同消费此结果。没有所选业务Agent时才使用明确配置的默认入口。</p>
+<ul>
+<li>不让GeaModelAdapter继续仅依赖currentPageIdentity；独立会话按所选preset确定Agent。</li>
+<li>模型路由、模型缓存、能力目录、工具参数使用同一consumer；至少按身份/环境/consumer/相关授权版本隔离，切换时失效旧请求与结果。</li>
+<li>跨域委派作为单独可观察请求，不能让一次工具调用随意覆盖会话身份。</li>
+<li>回归覆盖六个Agent的无页面、同Agent页面、错配页面、切换Agent、身份变化；逐项检查请求header、授权上下文和实际工具consumer一致。</li>
+</ul>
+<p>触点：<code>src/host.ts</code>、<code>src/html-plugins.ts</code>、<code>src/host/prompt-runtime.ts</code>及模型/权限相关测试。</p>
+<h3>5.2 IQ-02：先保留完整来源，再做一次投影</h3>
+<p>复用PromptEvidenceStore，替换旧批次按字节截断链。每个子查询保存完整原始结果或实际可读的上游artifact，再形成批次索引；不把截断预览作为唯一正文入库。</p>
+<p>统一结果契约至少含：<code>resultId</code>、<code>sourceKind</code>、<code>consumer</code>、<code>queryFingerprint</code>、来源/规则版本、数据范围、单位、完整性、缺失计数、各子查询状态、<code>rawAvailable</code>、合法<code>nextRead</code>。外部返回字段与内部授权凭据分离，令牌不进模型。</p>
+<ul>
+<li>解析已知GEA/Cube包装，在行/字段边界投影；不从任意字符串递归抽取指令，也不机械切开嵌套JSON。</li>
+<li>分开 <code>dataCoverage</code>（业务数据是否完整）、<code>projectionCoverage</code>（本次是否只是摘要）、<code>readComplete</code>（制品是否读完）；不能靠读完一个文件宣称数据全量。</li>
+<li>一种主回读入口；兼容旧artifact时由宿主路由到真实来源，并明确来源是否已失效。不给不存在完整来源的结果发“可以完整回读”的承诺。</li>
+<li>回读保持身份、Session、consumer、资源/知识授权、版本、有效期检查；正常续读不为拼正文重复查询，也不把重读当刷新。销售直读目前需要精确重执行原查询来重验权限和结果，先保留并记录为revalidation，不能宣称它没有网络取数；只有后台提供独立可信的权限/数据版本证明后才评估替代。</li>
+<li>保留上一轮已经修好的纯用户JSON计算跨轮复用、来源摘要和规则版本检查，不让live计算绕过授权链。</li>
+</ul>
+<p>验收：跨模型大结果、中文多字节、精确金额/ID、局部失败、分页、重启、撤权、过期、跨consumer；原文逐段重构一致，内层业务数据可解析，已知不完整状态始终保留。</p>
+<h3>5.3 IQ-03：知识结果也有预算，但不借Cube授权冒充知识授权</h3>
+<p>为知识检索建立独立来源类别。当前接口能给出的授权证明是什么就使用什么；不能为lightrag结果编造Cube资源回执。</p>
+<ul>
+<li>返回相关片段、文档ID、版本/时点、引用位置、完整性与合法后续读取方式，不默认返回整段长文。</li>
+<li>没有可靠ACL/版本重验机制时，不创建可跨会话或长期复用的知识缓存。需要续读时用已授权的原生检索/文档读取能力重新核验；没有合法读取接口时标明覆盖限制，不发虚假全文引用。</li>
+<li>检索先固定Agent知识范围、任务、规则版本，首轮优先3～5段；top_k等参数以真实Schema为准。每段建议800～1,200字符，一次结果建议≤6,000字符。</li>
+<li>规则优先读本地已发布的相关规则卡，知识检索补充业务事件、定义出处或长说明。相同适用规则不为追求“有引用”反复全文检索。</li>
+<li>对已出现但模型仍请求的规则，提供有界的“当前相关规则摘要＋原版本引用”；不是永久只回alreadyLoaded，也不是无条件重发所有正文。</li>
+</ul>
+<p>检索和压缩不改变知识的可信层级。来源中的命令、权限声明及自称权威不覆盖宿主约束。</p>
+<h3>5.4 IQ-04：交付前按任务清单核对证据</h3>
+<p>由宿主记录每个子任务的 <code>not_started/running/succeeded/partial/blocked</code>、成功结果ID、指标/范围、未完成原因。模型只能在这些事实基础上组织解释，不负责自行回忆“是否曾成功取数”。一次失败不清空其它成功记录。</p>
+<p>最终交付分两步：先形成结构化完成清单和关键数值引用，再渲染面向业务的文字/表格。机械检查结果引用存在、数值与确定性计算匹配、失败项未冒充成功；对因果解释与业务充分性仍做模型评估及抽样人工复核。不要声称靠正则就能证明整份自由文本没有幻觉。</p>
+<p>例：早期aggregate成功但不能回答省区任务，应写“已取得总体聚合，省区分组未取得”，不能写“任何聚合都没有”；库存行数可用不代表缺货数量已算出。</p>
+<p>上下文压缩时保留小型任务/证据/规则状态，而非全文历史；来源失效后同步标记不可再用。重新加载规则不改变其版本或审批状态。</p>
+<h3>5.5 IQ-05：按进展控制探索，不机械堆调用次数</h3>
+<p>以身份、consumer、目录/资源版本和规范化参数识别重复；有效的新过滤、翻页、续读、授权变更和用户刷新不算重复探索。无变化的元数据重复两次后，返回同一有界目录引用、当前缺口与可执行下一步，不继续堆叠全文。</p>
+<p>已有明确模型/成员时直接查询；目录只加载一次索引、按需读所选模型或所选指标卡。没有目标指标时立即说明能力缺口，禁止用row_count替代数量。</p>
+<p>建议简单任务元数据探索≤3次、首次业务取数目标≤5次工具调用；多模型复杂任务单独设置合理预算。保留20/40调用安全上限的兼容性，但扩额需有新增任务范围或进展依据，不能给同条件失败循环续额度。预留必要续读与交付核对空间，耗尽时必须交付已有事实。</p>
+<h3>5.6 IQ-06：工具契约是唯一来源</h3>
+<p>继续用当前gea_capabilities、gea_skill、gea_gateway_catalog、gea_cube_query、gea_evidence_read及专用计划读取工具，不重新叠加通用skill加载器。</p>
+<ul>
+<li>gea_skill：明确按行、1起点、默认80、上限200；gea_evidence_read：明确按字符、0起点、默认4000、上限6000。此次先保留兼容参数，不静默改变旧offset语义。</li>
+<li>结果返回可直接使用的 <code>nextRead={tool,args}</code>；错误包含合法范围和安全的修正示例。</li>
+<li>工具Schema、参数说明、错误说明及示例同源生成；SDK支持什么约束就用什么，不向当前严格Schema子集硬塞不支持的minimum/maximum字段。</li>
+<li>Cube官方REST支持order对象或数组对；当前GEA typed工具采用 <code>{member,direction}</code> 对象数组，由适配器转换。材料纯Cube例子不能直接当GEA工具参数；必须补consumer、queries封装及接口转换测试。</li>
+<li>gea_capabilities生成明确的任务→Skill→工具包映射；兼容别名只接受登记映射，不能把任意consumer串当Skill名。</li>
+<li>仅改格式的参数修复可以重试一次；授权/语义错误不能伪装成参数重试。不得把模型猜到的模型或字段名自动改成别的授权对象。</li>
+</ul>
+<h3>5.7 IQ-07：指标定义、受管计算、质量信息一起交付</h3>
+<p>采用附件“口径卡→Cube度量→查询案例”的方式补齐能力，优先计算服务端已授权、可加的指标；复杂供需/效期/库容使用确定性领域计算。现有gea_forecast_compute是特定§5.5基线计算器，不能直接承担历史WAPE或库存供需推演。</p>
+<p>确需宿主计算时，新增或扩展受限计算能力的前提是明确输入/输出契约、操作枚举、Decimal精度、来源和版本；不提供自由Python、任意SQL或模型表达式执行。新增工具名须注册后再写入运行时清单。</p>
+<p>每张指标卡记录：<code>metricId/版本/适用Agent/粒度/单位/时点/过滤/公式/分子分母范围/缺失策略/可加性/规则来源/生效区间/审批状态/执行能力/完成标准</code>。维护一份事实，生成业务短卡、Cube描述与Agent可见元数据，避免三处各写一遍。</p>
+<p>当前目录投影要透出所选成员的短语义、unit、关键过滤和指标适用边界，不只给name/type；先验证上游是否真的返回这些字段。项目meta字段要登记实际读取方及强制执行位置。</p>
+<h3>5.8 IQ-08：公开能力状态，不冒充授权或数据齐全</h3>
+<p>区分“已注册、当前可发现、已授权、源数据可用、已验证可计算”五件事。任务入口只承诺当前能做的部分；条件能力列明依赖，未接入能力不引导模型猜工具。</p>
+<p>前轮aps/full-chain资源为空需平台核对资源映射与当前账号/租户/角色；不能为通过测试自动补权限。销售M/Z筛选未生效需验证上游接口实际支持及回执，保留宿主拒绝不可信聚合的检查；若只支持部分筛选，应在调用前明确不可用。</p>
+<p>对同一业务任务，授权拒绝后停止该范围；保留独立已成功结果。合法跨业务分析走预先声明的分别授权，不允许consumer枚举循环。行级权限必须在可信服务端执行，元数据、warehouse筛选或public=true都不是授权证明。</p>
+<h3>5.9 IQ-09：保留安全的取消原因与阶段</h3>
+<p>transportSignal把原因归一为受控类型：用户取消、身份变化、超时、连接失败、流中断；只清除可能泄露内部会话对象的原始详情，不将TimeoutError一律转换成普通AbortError。</p>
+<p>记录模型/工具请求阶段、耗时、结束原因与可定位trace；不记录密钥。慢会话另比对输入规模、服务端耗时和并发条件，不用一次新会话变快就认定因果，也不直接用加大120秒超时掩盖循环。</p>
+<h2>6. 把业务材料变成可执行能力</h2>
+<h3>6.1 六个Agent的职责与Task/Skill规划</h3>
+<p>以下是建议任务索引，不是已注册能力清单。现有inventory-*基础Skill和sinian-*销售Skill保留兼容，先对齐职责与内容，不批量删除或改名。</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Agent / consumer</th>
+<th>保持的职责</th>
+<th>本次材料如何接入</th>
+<th>复杂任务Skill</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>销售计划 / sales_forecast</td>
+<td>提报情况、版本、预测与计划差异、审核依据</td>
+<td>采用预测指标契约及预测解读材料</td>
+<td>拟新增 sales-forecast-result-analysis；现有sinian范围/基线/复核按各自任务保留</td>
+</tr>
+<tr>
+<td>产销协同 / aps</td>
+<td>生产、出货、履约、库存与计划的协同解释</td>
+<td>十项Prompt骨架；预测解读为可选跨业务任务</td>
+<td>现有inventory-apsplan；复杂跨指标分析引用规则；共享预测Skill仅在依赖能力授权后使用</td>
+</tr>
+<tr>
+<td>基地库存 / base-safety-stock</td>
+<td>基地库存健康、目标、货龄、待发和缺口</td>
+<td>采用健康分析材料的四类风险与边界</td>
+<td>拟新增base-inventory-health-analysis；现有inventory-aqkc作为基础规则/页面适配保留</td>
+</tr>
+<tr>
+<td>分仓库存 / branch-inventory</td>
+<td>分仓库存、在途、待发、补货和货龄</td>
+<td>采用分仓案例、快照/单位/编码前置检查</td>
+<td>现有inventory-fc；V3补货、货龄查询按条件引用，未核定“大日期”定义不猜90/60天</td>
+</tr>
+<tr>
+<td>全链库存 / full-chain-inventory</td>
+<td>基地/分仓/客户边界、公司与全渠道范围</td>
+<td>接入口径卡、各层可加性与来源时点</td>
+<td>现有inventory-qll；跨层汇总须有授权、互斥范围和对齐口径</td>
+</tr>
+<tr>
+<td>经销商库存 / dealer-inventory-replenishment</td>
+<td>授权客户、库存、动销、补货风险</td>
+<td>客户主数据/有效范围与库存客户集合分开</td>
+<td>现有inventory-dealer；风险排序须有动销/货龄/阈值，价格与正式下单仍受现有能力限制</td>
+</tr>
+</tbody></table></div>
+<h3>6.2 基地健康分析按任务取最小数据</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>子任务</th>
+<th>最小证据</th>
+<th>可交付</th>
+<th>缺失时</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>库存水位</td>
+<td>同快照可供库存、同月同版本目标及业务键、单位</td>
+<td>当前水位和偏离</td>
+<td>有库存无目标只报规模，不判健康/积压</td>
+</tr>
+<tr>
+<td>已发生履约缺口</td>
+<td>未履约订单、需求时间/地点、可履约供给及占用关系</td>
+<td>未满足量、受影响订单</td>
+<td>仅零库存数据则改称零库存分布，不称业务缺货</td>
+</tr>
+<tr>
+<td>未来结构性缺口</td>
+<td>明确观察窗口、需求与订单冲销、确认供给及可用时间</td>
+<td>首次缺口时间和情景下数量</td>
+<td>无确定性推演能力时不量化未来缺口</td>
+</tr>
+<tr>
+<td>大日期/临期</td>
+<td>批次生产/到期日、快照、客户收货要求、适用阈值</td>
+<td>批次风险、销售窗口</td>
+<td>仅生产日期则可给经核定口径的货龄，不能冒充剩余保质期</td>
+</tr>
+<tr>
+<td>库容风险</td>
+<td>分仓区有效容量、实物占用、入出库计划、统一体积/托盘单位</td>
+<td>可观察粒度下占用峰值</td>
+<td>缺容量不能判爆仓；日级数据不能排除日内峰值</td>
+</tr>
+<tr>
+<td>处置方案</td>
+<td>收发双方供需、效期、运输/放行时间、容量和约束</td>
+<td>可行性及情景比较</td>
+<td>缺成本不称最优；没有动作工具只给建议，不下单</td>
+</tr>
+</tbody></table></div>
+<p>不能仅凭“核心能力”写了推演就认定程序已有计算器。上述后四类应分阶段接入，而非本轮一次伪装成可用。</p>
+<h3>6.3 预测口径和模型落地</h3>
+<ul>
+<li>明确三种范围：M月初版、原表Z覆盖子集、Z覆盖M的纠偏后整月版。未指定且确实影响结果时，一次性澄清；已经确认过的同任务版本不重复问。</li>
+<li>区分字段层级：预测的 <code>order_type=M/Z</code> 不能替代计划头的 <code>planTypeCode</code>（既有月初样例为Y）；具体接口只用它声明的字段和枚举，不按名称相近互换。</li>
+<li>M预测只合计is_split=1；M实际包含所有M行。禁止给两种measure共同加全局is_split=1。</li>
+<li>effective按计划月/客户/SKU选Z否则M；保留来源行类型，但不让用户按source_order_type=Z过滤后仍称整月全范围。唯一约束必须在实际数据源核验；NULL键或多行不能静默选一个。</li>
+<li>金额达成率是实际/预测，不是预测准确率。材料WAPE/Bias只在企业口径缺失、配对样本/实际非负/分母有效且事前版本明确时使用，写清是分析口径；不默认1−WAPE为准确率。</li>
+<li>比率使用匹配范围的分子分母。月初达成率“分子全M、分母拆分M”是材料明确的业务例外；WAPE则要按所声明评估总体逐键配对，不能直接复用这一达成率分母。</li>
+<li>大区份额分母保留同月、同版本、同授权总盘；不能让分子大区过滤缩小分母，更不能为算全公司比例绕过权限。未归属单列并计入已授权分母。</li>
+<li>纯Cube SQL模型在服务端受管部署；不要把附件中的UNION ALL/NOT EXISTS/SELECT *送到前台受控SQL工具，也不因此放宽前台SQL限制。实际数据库方言与Cube版本分别验收。</li>
+<li>原模型成员增量兼容，新的effective Cube进入元数据、GEA工具和资源授权后才可调用；部署YAML不等于账号已可查询。</li>
+</ul>
+<h3>6.4 知识范围可配置，但标签不是ACL</h3>
+<p>建议每个Agent配置受控知识集合、共享词典、可用规则版本及时间范围。<code>&lt;knowledge_scope&gt;</code>可作为可读分隔，不是权限实现。词典短卡记录术语、缩写/黑话、标准含义、适用范围、易混词、证据版本；同名术语在不同Agent下允许有明确不同定义。</p>
+<p>少量高风险区别常驻：缺货≠零库存、达成≠准确率、现存≠可用、公司≠全渠道。完整词表、全部DDL、历史制度与维护README只按需读取。</p>
+<p>Cube官方当前说明：description可供AI解释；meta.ai_context供内置AI时放在View或成员，Cube顶层不会被其消费，单项超过2,000字符会截断。GEA自定义读取不是同一实现，须验证真正的metadata→目录→模型输入链路。<a href="https://docs.cube.dev/docs/data-modeling/ai-context">官方AI context</a></p>
+<p>measure级过滤适合固化各指标自己的M/is_split条件；外层维度过滤会先限制输入行，不能指望measure再找回被外层过滤删掉的实绩。<a href="https://docs.cube.dev/reference/data-modeling/measures">官方Measures</a>、<a href="https://docs.cube.dev/reference/core-data-apis/rest-api/query-format">官方Query format</a></p>
+<h2>7. 长度、加载与调用预算</h2>
+<p>下表为待验证的工程目标，不是已实现成绩；按真实模型效果调整，不以删掉关键业务边界换数字达标。</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>层</th>
+<th align="right">建议预算</th>
+<th>加载方式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>全局业务约束</td>
+<td align="right">500～700字符</td>
+<td>会话一份</td>
+</tr>
+<tr>
+<td>Agent差异正文（十项结构编译后）</td>
+<td align="right">600～1,000字符</td>
+<td>当前Agent一份，工具/任务索引自动生成</td>
+</tr>
+<tr>
+<td>宿主事实、当前任务及短索引</td>
+<td align="right">300～500字符</td>
+<td>替换更新，不逐轮追加重复全文</td>
+</tr>
+<tr>
+<td>常驻system总量</td>
+<td align="right">沿用≤2,200字符目标</td>
+<td>保留平台未知安全段；超限报告来源，不硬切掉安全规则</td>
+</tr>
+<tr>
+<td>首轮system+真实工具Schema</td>
+<td align="right">≤12,000字符目标</td>
+<td>普通5～6核心工具，专项包按需加载</td>
+</tr>
+<tr>
+<td>单个任务Skill正文</td>
+<td align="right">建议1,200～2,500字符，单次返回≤6,000</td>
+<td>选中后加载；附件两份Skill约1,394/1,419字符，可作为基线</td>
+</tr>
+<tr>
+<td>当次规则/指标卡</td>
+<td align="right">约300～800字符/张</td>
+<td>只加载相关版本和必要字段</td>
+</tr>
+<tr>
+<td>目录/业务/知识结果</td>
+<td align="right">单次有界投影≤6,000字符</td>
+<td>行/片段边界；真实完整来源独立保留</td>
+</tr>
+<tr>
+<td>有效输入上下文</td>
+<td align="right">依据目标模型窗口按token管理</td>
+<td>初始建议输入≤窗口60%，其余给输出和工具续接；provider usage缺失时标估算，不将字符直接冒充token</td>
+</tr>
+</tbody></table></div>
+<p>“全文读取过”不代表下一步一定用得上。压缩后保留任务状态、关键事实、当前规则版本和可回读引用；若正文已经不在最终发给模型的上下文中，允许重载。最终可见性以组装后的模型请求为准，并保留前轮Skill可见性正向对照，避免为未经证实的缺陷误改实现。</p>
+<p>预算需要记录首步固定成本、每步工具正文、累计新增内容、去重命中、有效查询数、provider实际输入/输出/缓存用量及耗时。不要只打印一个system+tools数就称整个对话轻量。</p>
+<h2>8. 实施分期与明确交付</h2>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>范围</th>
+<th>交付</th>
+<th>进入下一阶段的条件</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>P0：冻结口径与材料来源</td>
+<td>解决M-01～M-12中的明确矛盾，登记未决依赖；保持附件原件</td>
+<td>规则/指标卡、能力矩阵、旧新接口兼容清单、修订版Agent/Skill草案</td>
+<td>无占位工具；当前/计划能力分开；会影响计算的规则冲突明确处置</td>
+</tr>
+<tr>
+<td>P1：先修宿主基础链路</td>
+<td>IQ-01/02/03/06/09；统一身份、完整来源、知识预算、参数说明、错误分类</td>
+<td>宿主改动、确定性回归、六Agent的绑定/未绑定验证</td>
+<td>身份不回落错位；原始结果可恢复；授权无放宽；知识输出有界</td>
+</tr>
+<tr>
+<td>P2：接入任务与指标</td>
+<td>十项结构生成、Skill注册、任务状态、元数据语义投影、去重/交付核对</td>
+<td>可用任务索引、两份新任务Skill、相关指标卡；保持原Skill迁移兼容</td>
+<td>能力缺口不冒充可用；同一事实只维护一份；最终答案与回执一致</td>
+</tr>
+<tr>
+<td>P3：Cube与平台联调</td>
+<td>新measure/effective模型、正式缺货口径及各Agent授权；修销售筛选契约</td>
+<td>候选模型及测试环境编译/查询、资源映射、业务样本对账</td>
+<td>指定环境、身份、版本验收通过；保留既有成员和授权边界</td>
+</tr>
+<tr>
+<td>P4：真实问答验收与发布准备</td>
+<td>固定题集、多轮/长会话、页面模式、回滚演练</td>
+<td>验收记录、差异清单、冻结版本和发布计划</td>
+<td>达到以下业务门槛；上线仍需另行授权</td>
+</tr>
+</tbody></table></div>
+<p>P1可在数据平台未准备好时先做；P2中复杂业务计算和P3依赖项不得用临时猜测补齐。发布应冻结插件、业务套件、规则版本、Cube模型及授权配置的兼容组合；普通插件改动不默认重打桌面客户端。灰度/正式部署和本机切换不包含在本次方案授权中。</p>
+<p>建议改动位置：</p>
+<ul>
+<li>GEA：现有 <code>presets/prompt-policy.json</code>、各inventory基础规则、<code>prompt-runtime.ts</code>、<code>prompt-evidence.ts</code>、<code>agent-tools.ts</code>、<code>gateway-catalog.ts</code>、<code>cube-query-schema.ts</code>、模型/页面身份解析及transport错误处理。必要的新共享模块在仓库内部，不另建全局Agent编排平台。</li>
+<li>业务套件：<code>company-agent-suites</code>的任务Skill、规则参考和清单，需确认供应给当前GEA的发现/版本机制。附件Name进入这里后才视为可加载。</li>
+<li>Cube：真正承载当前服务的源码仓库、目标版本、测试部署和资源管理入口；现在未知的路径与权限配置不编造。</li>
+</ul>
+<h2>9. 验收必须比上一轮更贴近业务</h2>
+<h3>9.1 分层验收</h3>
+<ol>
+<li>静态：来源可打开、无占位/旧工具名、Skill可发现、Schema/说明/nextRead一致、长度统计。</li>
+<li>确定性宿主：身份、完整产物、权限撤销、跨会话/consumer、取消/超时、缺失与精度、重复探索、不完整结果。</li>
+<li>Cube：目标版本编译；以独立预期验证查询、M与Z选行、外层过滤、分母权限、NULL/零/缺月/重复/历史单位。</li>
+<li>GEA集成：实际工具调用与返回、数据投影和模型请求可见性；脚本预设调用只能验管道，不验模型是否会正确选工具。</li>
+<li>真实模型：同一模型/档位、固定数据快照和规则版本运行自然语言问题；记录首次答复、追问、长会话与新会话，不能只择优展示。</li>
+<li>业务验收：定义及效果由业务对照已批准口径复核。生产数据、权限和安装生效与源码测试分开报告。</li>
+</ol>
+<h3>9.2 基线题集与新增用例</h3>
+<p>保留前轮14条真实问答，吸收分仓Q01～Q14及预测F01～F13，形成41条基线场景（相似问题可保留不同前置条件，不能把目录记录数直接当已实现自动测试数）。再补：</p>
+<ul>
+<li>六Agent未绑定/绑定正确/页面错配/会话切换，模型header与工具consumer一致；默认销售只用于默认销售入口。</li>
+<li>原17,718字符批次及更大多模型返回，逐段恢复到真正业务正文；知识单次&gt;30k来源仍只发合规有界片段。</li>
+<li>同一规则跨轮/压缩后重载；材料明示阈值已可见时，最终不得声称“未加载”。</li>
+<li>有库存仍发生时间性缺货；零库存但无需求不标成已发生履约缺货；同SKU不同基地不去重。</li>
+<li>M实绩包含is_split=0；Z缺键回退M、Z存在但字段NULL不能随意逐字段回填；source_order_type筛选不能改变报告口径名称。</li>
+<li>分母随大区筛选错误缩小、未知大区、授权总盘、部分NULL、全NULL、真实零分母、超大ID和精确金额。</li>
+<li>WAPE的事前版本/提前期、实际非负/全零、缺货限供、未结束期间、历史回填；无合格历史版本则只交付限制说明。</li>
+<li>forecast维度月初默认过滤不能漏实绩；日期范围月末边界不能多含下月1日。Cube dateRange右端包含当日，不能机械用下月1日代替月末。</li>
+<li>授权为空时停止对应范围，不轮换consumer；其它独立成功结果仍交付。模型试图误用旧工具名或别名时给明确修正。</li>
+</ul>
+<h3>9.3 建议上线门槛</h3>
+<ul>
+<li>硬门槛：越权、身份错位、虚构完成、未知补零、错误单位/版本混算、原文丢失、超时分类丢失为0；任一出现不放行。</li>
+<li>正向任务：在数据/工具齐备的可执行场景中按独立标准核对关键数值、范围和任务完成度；无授权正确停止算边界通过，不算业务查询已完成。</li>
+<li>核心高风险题每题至少3次真实模型回放，三次都要满足硬边界；普通任务建议正确完成率≥95%，作为候选门槛，不能把单次成功当稳定。</li>
+<li>元数据循环：没有有效进展的同条件重复受到限制；经销商/全链不再20次全花在目录。复杂任务阈值按案例单列，不能以总调用变少掩盖未完成。</li>
+<li>性能：与同模型、相近负载和同数据范围对比输入规模、有效调用、首答/总耗时；没有provider usage时不声称token精确降低多少。</li>
+<li>旧修复保留：上一轮4项修复及撤权、过期、精确小数、受控审批、编码入口和页面已有行为全部回归，不为新结构删掉保护性测试。</li>
+</ul>
+<h2>10. 需要补齐的事实与建议默认值</h2>
+<p>本轮方案可以完整交付；下面依赖阻断对应能力上线，不阻断宿主修复设计：</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>需补齐事实</th>
+<th>不补会影响什么</th>
+<th>建议默认处理</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>产销是否包含跨域预测解读、谁维护共享Skill</td>
+<td>职责/任务路由及授权归属</td>
+<td>产销保留现有经营职责，预测作为条件子任务</td>
+</tr>
+<tr>
+<td>大日期、缺货、库容、版本回退的现行有效规则与Owner</td>
+<td>风险结论和计算</td>
+<td>仅用已核实适用规则；冲突部分不量化</td>
+</tr>
+<tr>
+<td>预测“全部件”、历史回填、原始DDL及旧模型来源</td>
+<td>数量汇总、历史完整性与可追溯性</td>
+<td>材料约定与实数验证分开，不推广到库存单位</td>
+</tr>
+<tr>
+<td>历史事前预测版本及提前期、对应实际快照</td>
+<td>无泄漏的历史准确性复盘</td>
+<td>先不开放历史WAPE自动结论</td>
+</tr>
+<tr>
+<td>Cube真实仓库/版本/测试环境、GEA资源映射</td>
+<td>新measure、effective与缺货聚合上线</td>
+<td>只做候选与本地验证，不猜部署路径，不自动补权限</td>
+</tr>
+<tr>
+<td>哪些台账/通知/文件/持续监控能力实际已接入</td>
+<td>业务能力承诺与副作用</td>
+<td>未接入只生成说明或草稿，不声称执行</td>
+</tr>
+</tbody></table></div>
+<p>推荐接受这批材料作为业务契约与验收基础，先治理明确矛盾，再按P1→P2/P3→P4推进。验收目标是“正确调用、正确取数、正确交付且成本受控”，不是把Prompt压到某个字数后就宣布完成。</p>
+</article></section>
+<p class="footer">主方案和草稿完整内嵌，可离线阅读。外部依据及原附件链接仅在手动点击时访问。未修改业务源码、附件、权限或客户端选择；未安装、部署或发布。</p></main><script>const layers=[["共用规则","权限、证据真实性、缺失与零值、完成状态，维护一份。","常驻一份，不在每个Agent和Skill里反复复制。"],["Agent","保留角色、背景、目标等十项编写结构；明确职责与任务。","运行时编译为短差异正文，工具与任务清单来自真实注册表。"],["Skill","Name、Description，加任务目标、知识数据、输入、步骤和输出。","复杂任务选中后加载；长公式与参考资料按条件引用。"],["数据与执行","指标卡、Cube度量、确定性计算、来源与版本。","规则真正进入执行与验证；不是仅写入meta或提示词。"]];document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{const id=b.dataset.tab;document.querySelectorAll('[data-tab]').forEach(x=>x.setAttribute('aria-selected',String(x===b)));document.querySelectorAll('[role=tabpanel]').forEach(p=>p.hidden=p.id!=='panel-'+id);}));document.querySelectorAll('[data-layer]').forEach(b=>b.addEventListener('click',()=>{const i=Number(b.dataset.layer);document.querySelectorAll('[data-layer]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));document.getElementById('layer-title').textContent=layers[i][0];document.getElementById('layer-body').textContent=layers[i][1];document.getElementById('layer-loading').textContent=layers[i][2];}));</script></body></html>

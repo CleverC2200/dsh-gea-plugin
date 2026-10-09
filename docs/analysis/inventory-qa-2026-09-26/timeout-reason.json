@@ -1,0 +1,9 @@
+{
+  "source": "TimeoutError",
+  "transport": "AbortError",
+  "error": {
+    "name": "AbortError",
+    "message": "Request aborted",
+    "code": 20
+  }
+}

@@ -1,10 +1,10 @@
 /** Verify one explicit durable Session; fresh live acceptance additionally requires the current Host run. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { zstdDecompressSync, constants } from "node:zlib";
+import { readSessionRows } from "./session-log.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -19,34 +19,9 @@ assert.ok(
 );
 assert.match(values.session, /^session-[a-zA-Z0-9-]+$/);
 const runtime = resolve(values.runtime);
-const home = resolve(runtime, "home/sessions");
-let rows;
-for (const workspace of await readdir(home)) {
-  let compressed;
-  try {
-    compressed = await readFile(
-      resolve(home, workspace, values.session, "session.v3.jsonl.zstd"),
-    );
-  } catch (error) {
-    if (error.code === "ENOENT") continue;
-    throw error;
-  }
-  let offset = 0,
-    content = "";
-  while (offset < compressed.length) {
-    const frame = zstdDecompressSync(compressed.subarray(offset), {
-      info: true,
-      finishFlush: constants.ZSTD_e_flush,
-    });
-    assert.ok(frame.engine.bytesWritten > 0);
-    offset += frame.engine.bytesWritten;
-    content += frame.buffer.toString();
-  }
-  rows = content.trim().split("\n").map(JSON.parse);
-  break;
-}
+const rows = await readSessionRows(runtime, values.session);
 assert.ok(rows, "SESSION_NOT_FOUND");
-const user = rows.find(
+const legacyUser = rows.find(
   (row) =>
     row.type === "user/message" &&
     row.data.content?.some(
@@ -54,14 +29,40 @@ const user = rows.find(
         part.type === "text" && part.text.includes("GEA_SNAPSHOT_SHA256="),
     ),
 );
-assert.ok(user, "SNAPSHOT_NOT_FOUND");
-const prompt = user.data.content.find(
-  (part) => part.type === "text" && part.text.includes("GEA_SNAPSHOT_SHA256="),
-).text;
-const expected = prompt.match(/GEA_SNAPSHOT_SHA256=([a-f0-9]{64})/)?.[1];
-const json = prompt.slice(prompt.indexOf("\n\n") + 2);
-assert.equal(createHash("sha256").update(json).digest("hex"), expected);
-const snapshot = JSON.parse(json);
+let expected, snapshot, snapshotRow = legacyUser;
+if (legacyUser) {
+  const prompt = legacyUser.data.content.find(
+    (part) => part.type === "text" && part.text.includes("GEA_SNAPSHOT_SHA256="),
+  ).text;
+  expected = prompt.match(/GEA_SNAPSHOT_SHA256=([a-f0-9]{64})/)?.[1];
+  const json = prompt.slice(prompt.indexOf("\n\n") + 2);
+  assert.equal(createHash("sha256").update(json).digest("hex"), expected);
+  snapshot = JSON.parse(json);
+} else {
+  const archived = JSON.parse(
+    await readFile(
+      resolve(runtime, "analysis-snapshots", values.session + ".json"),
+      "utf8",
+    ),
+  );
+  assert.equal(archived.schema, 1, "UNSUPPORTED_SNAPSHOT_ARCHIVE");
+  assert.equal(archived.sessionId, values.session, "SNAPSHOT_SESSION_MISMATCH");
+  expected = archived.snapshotHash;
+  snapshot = archived.snapshot;
+  assert.equal(
+    createHash("sha256").update(JSON.stringify(snapshot, null, 2)).digest("hex"),
+    expected,
+    "SNAPSHOT_HASH_MISMATCH",
+  );
+  snapshotRow = rows.find(
+    (row) =>
+      row.type === "user/message" &&
+      row.data.content?.some(
+        (part) => part.type === "text" && part.text.includes("业务资料（共"),
+      ),
+  );
+}
+assert.ok(snapshotRow, "SNAPSHOT_NOT_FOUND");
 assert.ok(
   ["gea-readonly-v1", "gea-workbench-readonly-v1"].includes(snapshot.format),
   "UNSUPPORTED_SNAPSHOT_FORMAT",
@@ -73,7 +74,7 @@ assert.equal(
   "FIRST_ANALYSIS_NOT_COMPLETED",
 );
 assert.ok(
-  rows.indexOf(user) < rows.indexOf(firstTurn),
+  rows.indexOf(snapshotRow) < rows.indexOf(firstTurn),
   "SNAPSHOT_NOT_IN_FIRST_ANALYSIS",
 );
 const answers = rows.filter(

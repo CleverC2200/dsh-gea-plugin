@@ -1,0 +1,167 @@
+{
+  "schema_version": "sales-forecast-fixture-2",
+  "synthetic": true,
+  "as_of_date": "2026-09-23",
+  "notes": "所有编码、金额、组织均为虚拟数据；金额单位元，预测与实际数量单位统一件。202608为过往月，202609为当前月。",
+  "rows": [
+    {
+      "id": 1,
+      "plan_month": "202608",
+      "order_type": "M",
+      "dealer_code": "D-A",
+      "dealer_name": "甲客户",
+      "sku_code": 101,
+      "sku_name": "SKU甲",
+      "material_group_name": "物料组甲",
+      "region_code": "R1",
+      "region_name": "一区",
+      "is_split": 1,
+      "predicted_sales_amount": 100,
+      "actual_sales_amount": 80,
+      "predicted_quantity": 10,
+      "actual_sales_quantity": 8
+    },
+    {
+      "id": 2,
+      "plan_month": "202608",
+      "order_type": "M",
+      "dealer_code": "D-A",
+      "dealer_name": "甲客户",
+      "sku_code": 102,
+      "sku_name": "SKU乙",
+      "material_group_name": "物料组乙",
+      "region_code": "R1",
+      "region_name": "一区",
+      "is_split": 0,
+      "predicted_sales_amount": 0,
+      "actual_sales_amount": 20,
+      "predicted_quantity": 0,
+      "actual_sales_quantity": 2
+    },
+    {
+      "id": 3,
+      "plan_month": "202608",
+      "order_type": "M",
+      "dealer_code": "D-B",
+      "dealer_name": "乙客户",
+      "sku_code": 201,
+      "sku_name": "SKU丙",
+      "material_group_name": "物料组甲",
+      "region_code": "R2",
+      "region_name": "二区",
+      "is_split": 1,
+      "predicted_sales_amount": 200,
+      "actual_sales_amount": 220,
+      "predicted_quantity": 20,
+      "actual_sales_quantity": 22
+    },
+    {
+      "id": 4,
+      "plan_month": "202608",
+      "order_type": "M",
+      "dealer_code": "D-C",
+      "dealer_name": "丙客户",
+      "sku_code": 301,
+      "sku_name": "SKU丁",
+      "material_group_name": "物料组乙",
+      "region_code": null,
+      "region_name": null,
+      "is_split": 1,
+      "predicted_sales_amount": 50,
+      "actual_sales_amount": 50,
+      "predicted_quantity": 5,
+      "actual_sales_quantity": 5
+    },
+    {
+      "id": 5,
+      "plan_month": "202608",
+      "order_type": "Z",
+      "dealer_code": "D-A",
+      "dealer_name": "甲客户",
+      "sku_code": 101,
+      "sku_name": "SKU甲",
+      "material_group_name": "物料组甲",
+      "region_code": "R1",
+      "region_name": "一区",
+      "is_split": 1,
+      "predicted_sales_amount": 120,
+      "actual_sales_amount": 80,
+      "predicted_quantity": 12,
+      "actual_sales_quantity": 8
+    },
+    {
+      "id": 6,
+      "plan_month": "202609",
+      "order_type": "M",
+      "dealer_code": "D-A",
+      "dealer_name": "甲客户",
+      "sku_code": 101,
+      "sku_name": "SKU甲",
+      "material_group_name": "物料组甲",
+      "region_code": "R1",
+      "region_name": "一区",
+      "is_split": 1,
+      "predicted_sales_amount": 100,
+      "actual_sales_amount": 40,
+      "predicted_quantity": 10,
+      "actual_sales_quantity": 4
+    }
+  ],
+  "expected": {
+    "august_monthly_initial_split_scope": {
+      "predicted": 350,
+      "actual_all_m": 370,
+      "attainment": 1.0571428571428572,
+      "predicted_quantity": 35,
+      "actual_quantity_all_m": 37
+    },
+    "august_z_rows_only": {
+      "predicted": 120,
+      "actual": 80,
+      "predicted_quantity": 12,
+      "actual_quantity": 8
+    },
+    "august_correction_effective": {
+      "selected_ids": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "predicted": 370,
+      "actual": 370,
+      "attainment": 1.0,
+      "predicted_quantity": 37,
+      "actual_quantity": 37
+    },
+    "august_correction_region": {
+      "R1": {
+        "predicted": 120,
+        "actual": 100,
+        "predicted_share": 0.32432432432432434,
+        "actual_share": 0.2702702702702703
+      },
+      "R2": {
+        "predicted": 200,
+        "actual": 220,
+        "predicted_share": 0.5405405405405406,
+        "actual_share": 0.5945945945945946
+      },
+      "unassigned": {
+        "predicted": 50,
+        "actual": 50,
+        "predicted_share": 0.13513513513513514,
+        "actual_share": 0.13513513513513514
+      }
+    },
+    "september_current_month": {
+      "predicted": 100,
+      "actual_to_date": 40,
+      "attainment_to_date": 0.4,
+      "predicted_quantity": 10,
+      "actual_quantity_to_date": 4,
+      "must_label_partial_month": true
+    },
+    "zero_denominator_response": "无定义"
+  }
+}

@@ -4,7 +4,11 @@ lib/
 .env
 gea.config.json
 .idea/
+.DS_Store
 
 # Local CodeGraph database and issue publishing drafts
 .codegraph/
 .scratch/
+desktop/download-differential.cjs
+desktop/download-differential.LICENSE.txt
+desktop/core-asar-reader.cjs

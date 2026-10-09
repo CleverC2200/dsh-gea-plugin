@@ -29,8 +29,9 @@ test(
           },
         });
       } else if (path.endsWith("/plans")) {
+        const discovery = req.url.searchParams.get("pageSize") === "200";
         res.end(
-          '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version/a","dealerCode":9007199254740997,"dealer_name":"经销商A","province_name":"浙江","targetQty":0.1000,"currentAmount":9007199254740993.0100}],"total":11}}',
+          '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version/a","periodId":20260901,"planTypeCode":"Y","orderType":"M","dealerCode":9007199254740997,"dealer_name":"经销商A","province_name":"浙江","mPlanQty":37556.000,"mPlanAmount":2796344.64,"targetQty":0.1000,"currentAmount":9007199254740993.0100}],"total":' + (discovery ? '1' : '11') + ',"current":1,"size":' + (discovery ? '200' : '10') + ',"pages":' + (discovery ? '1' : '2') + '}}',
         );
       } else if (path.endsWith("/versions")) {
         reply({
@@ -42,8 +43,13 @@ test(
           '{"success":true,"result":{"records":[{"id":9007199254740999,"planId":"9007199254740993","versionId":"version/a","actionCode":"SAVE"}],"total":1}}',
         );
       } else if (path.endsWith("/skus")) {
+        const versionId = decodeURIComponent(path.split("/").slice(-2)[0]);
         res.end(
-          '{"success":true,"result":{"records":[{"id":9007199254740995,"versionId":"version/a","skuCode":"sku-a","qty":1.2000,"price":2.5000,"amt":3.0000,"amtBase":0.10}],"total":' +
+          '{"success":true,"result":{"records":[' +
+            (versionId === "version/c"
+              ? '{"id":"sku-c-id","versionId":"version/c","skuCode":"sku-a","skuName":null,"qty":0.5000,"price":2.5000,"amt":1.2500,"amtBase":0.1000}'
+              : '{"id":9007199254740995,"versionId":"version/a","skuCode":"sku-a","skuname":"黑芝麻汤圆","qty":1.2000,"price":2.5000,"amt":3.0000,"amtBase":0.10}') +
+            '],"total":' +
             (incomplete ? 2 : 1) +
             "}}",
         );
@@ -80,9 +86,7 @@ test(
       async () => {
         const periods = await query("periods", {
           periodMonth: "2026-09",
-          planType: "Y",
-          status: "OPEN",
-          pageNo: 2,
+          pageNo: 1,
           pageSize: 2,
         });
         assert.equal(periods.ok, true, JSON.stringify(periods));
@@ -93,7 +97,7 @@ test(
             current: periods.value.current,
             pages: periods.value.pages,
           },
-          { total: 3, size: 2, current: 2, pages: 2 },
+          { total: 1, size: 2, current: 1, pages: 1 },
         );
         const page = await query("list", { periodId: "period-1", status: 5 });
         assert.equal(page.ok, true, JSON.stringify(page));
@@ -109,6 +113,8 @@ test(
         assert.equal(page.value.records[0].planId, planId);
         assert.equal(page.value.records[0].dealerCode, "9007199254740997");
         assert.equal(page.value.records[0].targetQty, "0.1000");
+        assert.equal(page.value.records[0].mPlanQty, "37556.000");
+        assert.equal(page.value.records[0].mPlanAmount, "2796344.64");
         assert.equal(
           page.value.records[0].currentAmount,
           "9007199254740993.0100",
@@ -140,6 +146,7 @@ test(
         assert.equal(skus.value[0].qty, "1.2000");
         assert.equal(skus.value[0].amt, "3.0000");
         assert.equal(skus.value[0].amtBase, "0.10");
+        assert.equal(skus.value[0].materialDescription, "黑芝麻汤圆");
         const compare = await query("compare", {
           planId,
           fromVersionId: "version/a",
@@ -154,7 +161,7 @@ test(
         assert.deepEqual(
           reads.map((req) => req.url.pathname),
           [
-            "/gea/sales-plan/periods",
+            "/gea/sales-plan/plans",
             "/gea/sales-plan/plans",
             `/gea/sales-plan/plans/${planId}`,
             `/gea/sales-plan/plans/${planId}/versions`,
@@ -169,6 +176,7 @@ test(
           assert.equal(req.headers["x-access-token"], "fixture-gea-token");
           assert.equal(req.headers["x-tenant-id"], "0");
         }
+        assert.equal(reads[0].url.searchParams.get("pageSize"), "200");
         assert.equal(reads[1].url.searchParams.get("pageNo"), "1");
         assert.equal(reads[1].url.searchParams.get("pageSize"), "10");
         assert.equal(
@@ -209,6 +217,17 @@ test(
           "GEA_INCOMPLETE_COLLECTION",
         );
         incomplete = false;
+      },
+    );
+
+    await t.test(
+      "同编码 SKU 在别处回填过的物料名称用于缺失该字段的版本",
+      async () => {
+        const named = await query("versionSkus", { versionId: "version/a" });
+        assert.equal(named.value[0].materialDescription, "黑芝麻汤圆");
+        const unnamed = await query("versionSkus", { versionId: "version/c" });
+        assert.equal(unnamed.value[0].skuName, null);
+        assert.equal(unnamed.value[0].materialDescription, "黑芝麻汤圆");
       },
     );
 
@@ -494,6 +513,11 @@ test(
     assert.equal(snapshot.format, "gea-workbench-readonly-v1");
     assert.equal(snapshot.scope, "summary");
     assert.equal(snapshot.coverage, "selected-plans-current-summary");
+    assert.ok(summary.value.prompt.includes("业务资料（共 1 条计划）"));
+    assert.equal(summary.value.prompt.includes("GEA_SNAPSHOT_SHA256"), false);
+    assert.equal(summary.value.prompt.includes("gea-workbench-readonly-v1"), false);
+    assert.equal(summary.value.prompt.includes("sourceUrl"), false);
+    assert.equal(summary.value.prompt.includes("detail.currentVersion"), false);
     assert.equal(snapshot.records.length, 1);
     const record = snapshot.records[0];
     assert.equal(record.planId, planId);

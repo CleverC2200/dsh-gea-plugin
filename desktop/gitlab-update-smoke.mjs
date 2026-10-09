@@ -14,6 +14,7 @@ assert.ok(process.env.GEA_GITLAB_RELEASE_MODULE,'Set GEA_GITLAB_RELEASE_MODULE t
 const baseline=resolve(process.env.GEA_GITLAB_BASELINE);
 const releases=await import(pathToFileURL(resolve(process.env.GEA_GITLAB_RELEASE_MODULE)).href);
 const sources=JSON.parse(await readFile(new URL('./release-sources.json',import.meta.url),'utf8'));
+const channelCandidates=channel=>{const value=sources[channel];return (Array.isArray(value)?value:[value]).filter(item=>typeof item==='string'&&item.length>0);};
 const data=await mkdtemp(join(tmpdir(),'gea-gitlab-update-'));
 const store=new PluginStore({data,baseline});
 await mkdir(join(data,'data/workspace'),{recursive:true});
@@ -23,7 +24,13 @@ const installed=async name=>JSON.parse(await readFile(require.resolve(name+'/pac
 const host={dsh:await installed('@deepseek-ai/dsh'),workbench:await installed('@cleverc2200/dsh-agent-workbench'),desktop:'0.0.5'};
 const downloads=[];
 for(const channel of ['stable','test']) {
- const result=await releases.fetchCompanyChannel(sources[channel],channel,host);
+ // 与运行时一致：按优先级尝试频道来源，前一个读不到才用下一个。
+ let result,failure;
+ for(const source of channelCandidates(channel)){
+  try {result=await releases.fetchCompanyChannel(source,channel,host);console.log('CHANNEL_SOURCE',channel,source);break;}
+  catch(error){failure=error;console.log('CHANNEL_SOURCE_UNAVAILABLE',channel,source,error?.message??error);}
+ }
+ if(!result)throw failure;
  for(const entry of result.releases){const bytes=await releases.fetchReleasePackage(entry);downloads.push({channel,package:entry.package,version:entry.version,bytes:bytes.length,sha256:entry.sha256});console.log('DOWNLOAD_VERIFIED',channel,entry.package,entry.version);}
 }
 let installs=0;

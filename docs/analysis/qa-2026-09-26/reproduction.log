@@ -1,0 +1,101 @@
+▶ independent acceptance, no production writes
+  ✔ first prompt with the actual four forecast Skills stays below the declared 12k limit (138.589625ms)
+  ✖ a failed capability load must not enable its package or enlarge this turn budget (118.043125ms)
+  ✔ complex allowance resets on a fresh user turn (147.837917ms)
+  ✔ identical Skill bodies reuse the visible instruction instead of loading again (115.353375ms)
+  ✖ explicit null growth should block only that row, not the valid row in the same forecast batch (111.257167ms)
+  ✔ omitted growth control preserves the independent valid row (111.254292ms)
+  ✖ a same-user follow-up can read the rest of an already computed large provided draft without recalculation (181.720541ms)
+  ✔ same-turn control can read the complete computed draft (116.4615ms)
+  ✔ ASCII signed table cells are rejected by the business UI guard (82.157792ms)
+  ✖ equivalent signed text and hero delta cannot bypass the business UI guard (333.743542ms)
+  ✔ successful packages really restore after stopping and starting the Harness process (5715.715708ms)
+✖ independent acceptance, no production writes (13261.192833ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 7
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13340.761958
+
+✖ failing tests:
+
+test at docs/analysis/qa-2026-09-26/reproduce.mjs:31:40
+✖ a failed capability load must not enable its package or enlarge this turn budget (118.043125ms)
+  AssertionError [ERR_ASSERTION]: failed call left loaded=["ui"], callLimit=40
+      at file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:42:10
+      at async TestContext.<anonymous> (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:31:77)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async check (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:31:32)
+      at async TestContext.<anonymous> (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:38:2)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at docs/analysis/qa-2026-09-26/reproduce.mjs:31:40
+✖ explicit null growth should block only that row, not the valid row in the same forecast batch (111.257167ms)
+  AssertionError [ERR_ASSERTION]: Error: invalid arguments: "records[0].target_mom_growth" must be a string
+  
+  true !== false
+  
+      at file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:56:10
+      at async TestContext.<anonymous> (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:31:77)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async check (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:31:32)
+      at async TestContext.<anonymous> (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:52:2)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at docs/analysis/qa-2026-09-26/reproduce.mjs:31:40
+✖ a same-user follow-up can read the rest of an already computed large provided draft without recalculation (181.720541ms)
+  AssertionError [ERR_ASSERTION]: Error: GEA_EVIDENCE_STALE: 页面或临时结果需要重新读取。
+  
+  true !== false
+  
+      at file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:66:10
+      at async TestContext.<anonymous> (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:31:77)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async check (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:31:32)
+      at async TestContext.<anonymous> (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:62:2)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at docs/analysis/qa-2026-09-26/reproduce.mjs:31:40
+✖ equivalent signed text and hero delta cannot bypass the business UI guard (333.743542ms)
+  AssertionError [ERR_ASSERTION]: [{"name":"leading whitespace","isError":false},{"name":"Unicode minus","isError":false},{"name":"hero delta","isError":false}]
+      at file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:80:10
+      at async TestContext.<anonymous> (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:31:77)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async check (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:31:32)
+      at async TestContext.<anonymous> (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/docs/analysis/qa-2026-09-26/reproduce.mjs:76:2)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

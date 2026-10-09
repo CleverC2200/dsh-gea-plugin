@@ -1,0 +1,77 @@
+[
+  {
+    "root": "/Users/synear/Downloads/cube-agent-lifecycle",
+    "fileCount": 35,
+    "totalBytes": 223375,
+    "readmeCount": 14,
+    "brokenLinks": [],
+    "models": [
+      {
+        "path": "assets/branch-inventory/model/cubes/agents_scm_branch_inventory_snapshot.yml",
+        "name": "agents_scm_branch_inventory_snapshot",
+        "dimensions": 17,
+        "measures": [
+          "total_live_qty",
+          "total_available_qty"
+        ],
+        "chars": 10543
+      }
+    ]
+  },
+  {
+    "root": "/Users/synear/Downloads/销售预测模型建设",
+    "fileCount": 19,
+    "totalBytes": 114578,
+    "readmeCount": 10,
+    "brokenLinks": [
+      {
+        "file": "README.md",
+        "target": "../cubes/agents_sales_forecast_detail_mi.yml"
+      },
+      {
+        "file": "docs/SOURCES.md",
+        "target": "/Users/songxw/.codex/attachments/f7be06e4-9efd-47e2-a1cb-4717fa212d9e/已粘贴的文本.txt"
+      },
+      {
+        "file": "docs/SOURCES.md",
+        "target": "../../cubes/agents_sales_forecast_detail_mi.yml"
+      },
+      {
+        "file": "model/cubes/agents_sales_forecast_detail_mi.yml.README.md",
+        "target": "../../../cubes/agents_sales_forecast_detail_mi.yml"
+      }
+    ],
+    "models": [
+      {
+        "path": "model/cubes/agents_sales_forecast_effective_revision.yml",
+        "name": "agents_sales_forecast_effective_revision",
+        "dimensions": 12,
+        "measures": [
+          "effective_predicted_sales_amount",
+          "effective_actual_sales_amount",
+          "effective_predicted_quantity",
+          "effective_actual_sales_quantity",
+          "effective_attainment_rate"
+        ],
+        "chars": 4385
+      },
+      {
+        "path": "model/cubes/agents_sales_forecast_detail_mi.yml",
+        "name": "agents_sales_forecast_detail_mi",
+        "dimensions": 51,
+        "measures": [
+          "monthly_initial_predicted_sales_amount",
+          "monthly_initial_actual_sales_amount",
+          "monthly_initial_attainment_rate",
+          "correction_rows_predicted_sales_amount",
+          "correction_rows_actual_sales_amount",
+          "monthly_initial_predicted_quantity",
+          "monthly_initial_actual_sales_quantity",
+          "correction_rows_predicted_quantity",
+          "correction_rows_actual_sales_quantity"
+        ],
+        "chars": 34652
+      }
+    ]
+  }
+]

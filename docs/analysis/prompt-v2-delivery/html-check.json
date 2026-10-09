@@ -1,0 +1,23 @@
+{
+  "status": "pass",
+  "checks": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "pageScrollWidth": 1440,
+      "sections": 10,
+      "pageErrors": 0,
+      "externalRequests": 0,
+      "localLinksChecked": 8
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "pageScrollWidth": 390,
+      "sections": 10,
+      "pageErrors": 0,
+      "externalRequests": 0,
+      "localLinksChecked": 8
+    }
+  ]
+}

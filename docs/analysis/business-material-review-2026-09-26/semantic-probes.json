@@ -1,0 +1,6 @@
+{
+  "dataMode": "synthetic_only",
+  "allMActualAmount": 370,
+  "blanketSplitFilterActualAmount": 350,
+  "purpose": "show conflict between retained blanket filtering prose and new measure semantics"
+}

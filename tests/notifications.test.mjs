@@ -164,7 +164,7 @@ test(
     const ui = await context.newPage();
     await ui.goto(app.origin);
     await ui
-      .getByRole("dialog", { name: "内测声明", exact: true })
+      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
     await ui.getByRole("button", { name: "消息待办", exact: true }).click();
@@ -172,7 +172,8 @@ test(
       .getByRole("button", { name: "Fixture task", exact: true })
       .waitFor();
     mode = "paging";
-    await ui.getByRole("button", { name: "刷新消息", exact: true }).click();
+    await ui.reload();
+    await ui.getByRole("button", { name: "消息待办", exact: true }).click();
     await ui
       .getByRole("button", { name: "Second task", exact: true })
       .waitFor();
@@ -205,8 +206,18 @@ test(
     await mkdir(".runtime/web-evidence", { recursive: true });
     await ui.screenshot({ path: ".runtime/web-evidence/inbox.png" });
     await ui.getByRole("button", { name: "Fixture task", exact: true }).click();
-    await ui.getByRole("dialog").getByText("更多信息", { exact: true }).click();
-    await ui.getByText("external-session-1", { exact: true }).waitFor();
+    // 上游标识不露给业务：详情里不再出现来源引用和聚合标识。
+    const drawer = ui.getByRole("dialog");
+    assert.equal(
+      await drawer.getByText("external-session-1", { exact: true }).count(),
+      0,
+      "内部标识默认不能露给业务",
+    );
+    assert.equal(
+      await drawer.getByText("plan-1", { exact: true }).count(),
+      0,
+      "聚合标识默认不能露给业务",
+    );
     assert.equal(
       await ui.locator("article > p").textContent(),
       "销售计划提醒正文\n请阅读完整内容。",
@@ -259,9 +270,8 @@ test(
           };
           delete contentItem.expected;
           mode = "content";
-          await ui
-            .getByRole("button", { name: "刷新消息", exact: true })
-            .click();
+          await ui.reload();
+          await ui.getByRole("button", {name:"消息待办",exact:true}).click();
           await ui
             .getByRole("button", { name: contentItem.title, exact: true })
             .click();
@@ -302,6 +312,7 @@ test(
     assert.equal(
       app.requests
         .slice(readStart)
+        .filter(r => r.url.pathname.includes("/api/v1/notifications"))
         .every(
           (r) =>
             r.method === "GET" &&
@@ -310,7 +321,8 @@ test(
       true,
     );
     mode = "denied";
-    await ui.getByRole("button", { name: "刷新消息", exact: true }).click();
+    await ui.reload();
+    await ui.getByRole("button", { name: "消息待办", exact: true }).click();
     await ui.getByRole("alert").waitFor();
     assert.equal(
       await ui
@@ -320,7 +332,8 @@ test(
     );
     assert.match(await ui.getByRole("alert").innerText(), /权限/);
     mode = "empty";
-    await ui.getByRole("button", { name: "刷新消息", exact: true }).click();
+    await ui.reload();
+    await ui.getByRole("button", { name: "消息待办", exact: true }).click();
     await ui.getByText("本次查询没有记录", { exact: true }).waitFor();
     mode = "expired";
     assert.equal(

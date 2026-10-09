@@ -1,0 +1,31 @@
+[{"agentCode":"sales_forecast","warehousePersona":true}]
+✖ unbound warehouse preset uses its own model agent identity (5760.524333ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5839.454291
+
+✖ failing tests:
+
+test at .runtime/inventory-qa-20260926/model-attribution.mjs:3:1
+✖ unbound warehouse preset uses its own model agent identity (5760.524333ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'sales_forecast'
+  - 'branch-inventory'
+
+      at TestContext.<anonymous> (file:///Users/synear/.codex/worktrees/gea-prompt-optimization/dsh-gea-plugin/.runtime/inventory-qa-20260926/model-attribution.mjs:25:9)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'sales_forecast',
+    expected: 'branch-inventory',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

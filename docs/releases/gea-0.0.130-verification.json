@@ -1,0 +1,177 @@
+{
+  "version": "0.0.130",
+  "recordedAt": "2026-09-27T06:29:17.748843+00:00",
+  "initialBaseSha": "688991d3e0b20efa035acbc14ee3c9337bfdb1a5",
+  "latestMainAtValidationSha": "72c6ea10a89c017ea03ae30ada57ffd70ebdadff",
+  "candidateSha": "3d0e2b409c04ccb9bd77ae99b792bae351b7abfb",
+  "mr": {
+    "iid": 190,
+    "url": "http://100.100.6.191:20656/chenyonghao/dsh-gea-plugin/merge_requests/190",
+    "state": "merged",
+    "mergeCommitSha": "3d0e2b409c04ccb9bd77ae99b792bae351b7abfb"
+  },
+  "mergedMainSha": "3d0e2b409c04ccb9bd77ae99b792bae351b7abfb",
+  "releaseSourceSha": "3d0e2b409c04ccb9bd77ae99b792bae351b7abfb",
+  "sourceTag": "gea-v0.0.130",
+  "sourceTagSha": "3d0e2b409c04ccb9bd77ae99b792bae351b7abfb",
+  "sourceTagObjectSha": "500a4dda85124ab600632b1b0a3c3c8de060519d",
+  "artifact": {
+    "version": "0.0.130",
+    "package": "@cleverc2200/gea-dsh-prototype",
+    "sha256": "c190d375891098b5384c662218a965fdd44de4bbb9271982ec30e67b8f2fcae9",
+    "bytes": 2813276,
+    "files": 52,
+    "sameFileListAs": "0.0.129",
+    "dependencyAndEntryUnchanged": true,
+    "packageCommit": "698dd05aee8a960be5f71cb836cb5a8f434b6d46",
+    "gitlabUrl": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/698dd05aee8a960be5f71cb836cb5a8f434b6d46/packages/cleverc2200-gea-dsh-prototype-0.0.130.tgz",
+    "ossUrl": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/c190d375891098b5384c662218a965fdd44de4bbb9271982ec30e67b8f2fcae9/cleverc2200-gea-dsh-prototype-0.0.130.tgz"
+  },
+  "channelsCommit": "37a38fe2d3819b2d40363ee671cae7342f6663ee",
+  "verification": {
+    "channels": [
+      {
+        "source": "gitlab",
+        "channel": "dsh-0.1.6-test.json",
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/dsh-0.1.6-test.json",
+        "httpStatus": 200,
+        "version": "0.0.130",
+        "sha256": "c190d375891098b5384c662218a965fdd44de4bbb9271982ec30e67b8f2fcae9"
+      },
+      {
+        "source": "gitlab",
+        "channel": "dsh-0.1.6-stable.json",
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/main/channels/dsh-0.1.6-stable.json",
+        "httpStatus": 200,
+        "version": "0.0.130",
+        "sha256": "c190d375891098b5384c662218a965fdd44de4bbb9271982ec30e67b8f2fcae9"
+      },
+      {
+        "source": "oss",
+        "channel": "dsh-0.1.6-test.json",
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/dsh-0.1.6-test.json",
+        "httpStatus": 200,
+        "version": "0.0.130",
+        "sha256": "c190d375891098b5384c662218a965fdd44de4bbb9271982ec30e67b8f2fcae9"
+      },
+      {
+        "source": "oss",
+        "channel": "dsh-0.1.6-stable.json",
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/dsh-0.1.6-stable.json",
+        "httpStatus": 200,
+        "version": "0.0.130",
+        "sha256": "c190d375891098b5384c662218a965fdd44de4bbb9271982ec30e67b8f2fcae9"
+      }
+    ],
+    "downloads": [
+      {
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/58546621e5e6c321715884f0d1cab66c387e6681/packages/cleverc2200-dsh-agent-workbench-0.1.1.tgz",
+        "httpStatus": 200,
+        "package": "@cleverc2200/dsh-agent-workbench",
+        "version": "0.1.1",
+        "sha256": "91a8981321950b4ad56697e6e1e02b696b3873615ce4f2d096e21169689bbe25",
+        "bytes": 17497
+      },
+      {
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/77db92013c41a69bff8b28fab4a7135945268d2c/packages/dsh-agent-manage-0.6.3-company.6.tgz",
+        "httpStatus": 200,
+        "package": "dsh-agent-manage",
+        "version": "0.6.3-company.6",
+        "sha256": "57a5d1d53113165c475ef69bde5599342985b2dc0b7b3bcaf3eb97329d5ab9ed",
+        "bytes": 654562
+      },
+      {
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/2a9f46ee3b7f3375a241e994c764b6791bc7bb11/packages/dsh-plugin-1.4.3-company.35.tgz",
+        "httpStatus": 200,
+        "package": "dsh-plugin",
+        "version": "1.4.3-company.35",
+        "sha256": "0505deb9491f75444ef5f5a7c5c0c1588ad0eb1c9021e466efe23879f451ec8d",
+        "bytes": 587254
+      },
+      {
+        "url": "http://100.100.6.191:20656/chenyonghao/dsh-plugin-releases/raw/698dd05aee8a960be5f71cb836cb5a8f434b6d46/packages/cleverc2200-gea-dsh-prototype-0.0.130.tgz",
+        "httpStatus": 200,
+        "package": "@cleverc2200/gea-dsh-prototype",
+        "version": "0.0.130",
+        "sha256": "c190d375891098b5384c662218a965fdd44de4bbb9271982ec30e67b8f2fcae9",
+        "bytes": 2813276
+      },
+      {
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/91a8981321950b4ad56697e6e1e02b696b3873615ce4f2d096e21169689bbe25/cleverc2200-dsh-agent-workbench-0.1.1.tgz",
+        "httpStatus": 200,
+        "package": "@cleverc2200/dsh-agent-workbench",
+        "version": "0.1.1",
+        "sha256": "91a8981321950b4ad56697e6e1e02b696b3873615ce4f2d096e21169689bbe25",
+        "bytes": 17497
+      },
+      {
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/57a5d1d53113165c475ef69bde5599342985b2dc0b7b3bcaf3eb97329d5ab9ed/dsh-agent-manage-0.6.3-company.6.tgz",
+        "httpStatus": 200,
+        "package": "dsh-agent-manage",
+        "version": "0.6.3-company.6",
+        "sha256": "57a5d1d53113165c475ef69bde5599342985b2dc0b7b3bcaf3eb97329d5ab9ed",
+        "bytes": 654562
+      },
+      {
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/0505deb9491f75444ef5f5a7c5c0c1588ad0eb1c9021e466efe23879f451ec8d/dsh-plugin-1.4.3-company.35.tgz",
+        "httpStatus": 200,
+        "package": "dsh-plugin",
+        "version": "1.4.3-company.35",
+        "sha256": "0505deb9491f75444ef5f5a7c5c0c1588ad0eb1c9021e466efe23879f451ec8d",
+        "bytes": 587254
+      },
+      {
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/c190d375891098b5384c662218a965fdd44de4bbb9271982ec30e67b8f2fcae9/cleverc2200-gea-dsh-prototype-0.0.130.tgz",
+        "httpStatus": 200,
+        "package": "@cleverc2200/gea-dsh-prototype",
+        "version": "0.0.130",
+        "sha256": "c190d375891098b5384c662218a965fdd44de4bbb9271982ec30e67b8f2fcae9",
+        "bytes": 2813276
+      }
+    ],
+    "frozenChannels": [
+      {
+        "channel": "test.json",
+        "unchanged": true
+      },
+      {
+        "channel": "stable.json",
+        "unchanged": true
+      }
+    ],
+    "anonymousBucketListStatus": 403
+  },
+  "checks": {
+    "targetedTests": 67,
+    "passed": 67,
+    "failed": 0,
+    "typecheck": "passed",
+    "fullBuild": "passed",
+    "postMergePreflight": "passed",
+    "packageAllowlist": "passed",
+    "packageFileListComparedTo": "0.0.129",
+    "reusedInstallationEvidence": "GEA 0.0.129: dependency resolution, entries and packaging unchanged",
+    "realColleagueModelAcceptance": "pending",
+    "originalTimeoutRootCause": "pending logs"
+  },
+  "collaboration": {
+    "sourceSync": "release and records merged",
+    "colleagueRecordsSync": "0.0.128 and 0.0.129 records reviewed",
+    "ownRecordsUpload": "MR !190 and !191 merged",
+    "skillFreshness": "current_with_local_notes",
+    "skillTeamSha": "02fda54ededa65e53942e0b1bbf9220db48954dc",
+    "riskConfirmation": "no deletion or historical regression found"
+  },
+  "finalRemoteMainSha": "ddb1b46eefcb43ee2377e99e2fddc3bd5f931b81",
+  "finalLocalMainSha": "a6ad4f24162f6f6b475266837f565002a26793ac",
+  "distributionRemoteMainShaBeforeReceipt": "37a38fe2d3819b2d40363ee671cae7342f6663ee",
+  "distributionLocalMainSha": "11125bf77cfe64ee29935da523b6fd361b1ce19f",
+  "mainAdvancedAfterRelease": true,
+  "localSyncResult": "local_sync_blocked",
+  "localSyncReasons": [
+    "source main checkout has unrelated uncommitted changes",
+    "distribution local rewritten history intentionally preserved; remote changes applied via API"
+  ],
+  "verificationRecordStorage": "source repository; distribution verification write returned HTTP 502 and is not confirmed",
+  "distributionRemoteMainSha": "37a38fe2d3819b2d40363ee671cae7342f6663ee"
+}

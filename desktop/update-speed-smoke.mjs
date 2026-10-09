@@ -1,0 +1,60 @@
+/** Opt-in single or batch channel update and restart using isolated data and synthetic login. */
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,readFile,writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {_electron as electron,expect} from '@playwright/test';
+import {profile} from '../tests/profile.mjs';
+const baseline=process.env.GEA_DESKTOP_PAYLOAD;assert.ok(baseline);
+const executable=process.env.GEA_ELECTRON_EXECUTABLE;assert.ok(executable);
+const data=await mkdtemp(join(tmpdir(),'gea-avatar-release-'));
+const fromVersion=process.env.GEA_UPDATE_FROM,toVersion=process.env.GEA_UPDATE_TO;assert.ok(fromVersion&&toVersion);
+const updateScope=process.env.GEA_UPDATE_SCOPE??'single';assert.ok(['single','all'].includes(updateScope));
+const batch=updateScope==='all';
+const cleanup=[];let app;
+console.log('EVIDENCE',data);
+try {
+ const fixture=await profile({after:fn=>cleanup.push(fn)},{});await fixture.stop();
+ fixture.route((req,res,reply)=>{if(!req.url.pathname.endsWith('/getUserInfo'))return false;reply({success:true,result:{userInfo:{id:'avatar-test',realname:'头像验收',tenantId:'0',avatar:'https://avatar.example.test/lark.png'}}});return true;});
+ await mkdir(join(data,'plugins'),{recursive:true});
+ await mkdir(join(data,'data/workspace'),{recursive:true});
+ await writeFile(join(data,'data/workspace/keep.txt'),'avatar release workspace');
+ await writeFile(join(data,'gea.config.json'),await readFile(join(fixture.dir,'gea.json')));
+ await writeFile(join(data,'plugins/update-state.json'),JSON.stringify({settings:{automatic:false,intervalHours:24,channel:'test'}}));
+ const env={...process.env,DSH_GEA_DESKTOP_DATA:data,GEA_DESKTOP_PAYLOAD:baseline,NODE_EXTRA_CA_CERTS:join(fixture.dir,'cert.pem')};delete env.GEA_RELEASE_TOKEN;
+ app=await electron.launch({executablePath:executable,args:[fileURLToPath(new URL('.',import.meta.url))],env,timeout:45000});
+ const page=await app.firstWindow();page.setDefaultTimeout(20000);
+ await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().forEach(w=>w.hide()));
+ app.process().once('exit',code=>console.log('ELECTRON_EXIT',code));
+ await page.context().route('https://avatar.example.test/lark.png',route=>route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=','base64')}));
+ const status=()=>page.evaluate(()=>fetch('/dsh-plugin-hub/desktop-updates').then(r=>r.json())).catch(()=>null);
+ const action=(action,value={})=>page.evaluate(({action,value})=>fetch('/dsh-plugin-hub/desktop-updates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,value})}).then(r=>r.json()),{action,value});
+ await expect.poll(status,{timeout:90000}).toMatchObject({desktop:true,current:{'@cleverc2200/gea-dsh-prototype':fromVersion}});
+ const rpc=(endpoint,payload={})=>page.evaluate(({endpoint,payload})=>fetch('/api/gea-proof/'+endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json()),{endpoint,payload});
+ await expect.poll(async()=>JSON.parse(await readFile(join(data,'plugins/selection.json'),'utf8'))).toMatchObject({booting:null,verified:'baseline'});
+ const qr=await rpc('login/start');assert.equal(qr.ok,true);assert.equal((await rpc('login/poll',{loginId:qr.value.loginId})).ok,true);
+ await page.reload();
+ await expect(page.locator('.gea-user-avatar img')).toHaveAttribute('src','https://avatar.example.test/lark.png');
+ const savedConfig=await readFile(join(data,'gea.config.json'));
+ console.log('BASELINE_READY');
+ const checked=await action('check');assert.equal(checked.checkError,null);
+ assert.ok(checked.releases.some(x=>x.package==='@cleverc2200/gea-dsh-prototype'&&x.version===(toVersion)));
+ if(batch){assert.equal(checked.capabilities.batchPrepare,true);assert.ok(checked.releases.filter(x=>checked.current[x.package]!==x.version).length>=2);}
+ assert.deepEqual(await action('prepare',batch?{all:true}:{package:'@cleverc2200/gea-dsh-prototype'}),{accepted:true});
+ await expect.poll(status,{timeout:300000,intervals:[1000,2000]}).toMatchObject({phase:'pending',current:{'@cleverc2200/gea-dsh-prototype':fromVersion}});
+ if(batch)assert.ok((await status()).targets.length>=2);
+ console.log(batch?'BATCH_DOWNLOAD_INSTALL_PASS':'DOWNLOAD_INSTALL_PASS');
+ assert.equal((await action('restart')).ok,true);
+ await expect.poll(status,{timeout:90000,intervals:[1000,2000]}).toMatchObject({phase:'succeeded',current:{'@cleverc2200/gea-dsh-prototype':toVersion}});
+ await expect(page.locator('.gea-user-avatar img')).toHaveAttribute('src','https://avatar.example.test/lark.png');
+ await expect.poll(()=>page.locator('.gea-user-avatar img').evaluate(img=>img.naturalWidth)).toBe(1);
+ assert.equal((await rpc('status')).value.authenticated,true);
+ assert.deepEqual(await readFile(join(data,'gea.config.json')),savedConfig);
+ assert.equal(await readFile(join(data,'data/workspace/keep.txt'),'utf8'),'avatar release workspace');
+ console.log("UPDATE_TIMINGS",JSON.stringify((await status()).timings));
+ const final=await action('check');assert.equal(final.checkError,null);assert.ok(final.releases.every(x=>final.current[x.package]===x.version));
+
+ await writeFile(join(data,'result.json'),JSON.stringify({from:fromVersion,to:toVersion,scope:updateScope,desktop:JSON.parse(await readFile(new URL('./package.json',import.meta.url),'utf8')).version,platform:process.platform,phase:final.phase,timings:final.timings,anonymousDownload:true,realElectronRestart:true,avatarRendered:true,syntheticLoginPreserved:true,workspacePreserved:true,noFurtherUpdates:true},null,2));
+ console.log(batch?'BATCH_RELEASE_PASS':'AVATAR_RELEASE_PASS',data);
+}finally{await app?.close();for(const close of cleanup.reverse())await close();}

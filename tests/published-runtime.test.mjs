@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { parse } from "yaml";
 import { deploymentPatch } from "../scripts/deployment.mjs";
 const require = createRequire(import.meta.url);
 test("the runtime resolves pinned published packages and replaces layout by ordinary patch rows", async () => {

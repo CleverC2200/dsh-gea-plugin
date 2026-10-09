@@ -1,0 +1,103 @@
+{
+  "commit": "66c1ff5",
+  "findings": [
+    {
+      "name": "a failed capability load must not enable its package or enlarge this turn budget",
+      "status": "fail",
+      "message": "failed call left loaded=[\"ui\"], callLimit=40"
+    },
+    {
+      "name": "explicit null growth should block only that row, not the valid row in the same forecast batch",
+      "status": "fail",
+      "message": "Error: invalid arguments: \"records[0].target_mom_growth\" must be a string\n\ntrue !== false\n"
+    },
+    {
+      "name": "a same-user follow-up can read the rest of an already computed large provided draft without recalculation",
+      "status": "fail",
+      "message": "Error: GEA_EVIDENCE_STALE: 页面或临时结果需要重新读取。\n\ntrue !== false\n"
+    },
+    {
+      "name": "equivalent signed text and hero delta cannot bypass the business UI guard",
+      "status": "fail",
+      "message": "[{\"name\":\"leading whitespace\",\"isError\":false},{\"name\":\"Unicode minus\",\"isError\":false},{\"name\":\"hero delta\",\"isError\":false}]"
+    }
+  ],
+  "observations": [
+    {
+      "name": "first prompt with the actual four forecast Skills stays below the declared 12k limit",
+      "status": "pass",
+      "detail": {
+        "system": 1564,
+        "tools": 7008,
+        "total": 8572,
+        "names": [
+          "gea_capabilities",
+          "gea_cube_query",
+          "gea_evidence_read",
+          "gea_gateway_catalog",
+          "gea_sales_plan_read",
+          "gea_skill"
+        ]
+      }
+    },
+    {
+      "name": "complex allowance resets on a fresh user turn",
+      "status": "pass",
+      "detail": {
+        "first": 40,
+        "next": 20
+      }
+    },
+    {
+      "name": "identical Skill bodies reuse the visible instruction instead of loading again",
+      "status": "pass",
+      "detail": {
+        "firstChars": 1121,
+        "reusedChars": 155
+      }
+    },
+    {
+      "name": "omitted growth control preserves the independent valid row",
+      "status": "pass",
+      "detail": {
+        "input_rows": 2,
+        "calculated": 1,
+        "partial": 1,
+        "blocked": 0,
+        "excluded": 0,
+        "full_candidate_pool_coverage": "unknown"
+      }
+    },
+    {
+      "name": "same-turn control can read the complete computed draft",
+      "status": "pass",
+      "detail": {
+        "sameTurn": true,
+        "readChars": 1000
+      }
+    },
+    {
+      "name": "ASCII signed table cells are rejected by the business UI guard",
+      "status": "pass",
+      "detail": {
+        "blocked": true
+      }
+    },
+    {
+      "name": "successful packages really restore after stopping and starting the Harness process",
+      "status": "pass",
+      "detail": {
+        "restored": [
+          "gea_capabilities",
+          "gea_cube_query",
+          "gea_evidence_read",
+          "gea_gateway_catalog",
+          "gea_sales_plan_read",
+          "gea_skill",
+          "render_ui",
+          "validate_dsh_ui"
+        ]
+      }
+    }
+  ]
+}

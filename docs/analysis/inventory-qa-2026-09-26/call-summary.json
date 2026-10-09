@@ -1,0 +1,238 @@
+[
+  {
+    "case": "aps-rules",
+    "totalCalls": 8,
+    "calls": {
+      "gea_capabilities": 4,
+      "gea_skill": 4
+    },
+    "toolTextChars": 4743,
+    "toolResultChars": 5525,
+    "answerChars": 594,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 2,
+    "repeatedArgumentKinds": 3
+  },
+  {
+    "case": "aps-summary",
+    "totalCalls": 2,
+    "calls": {
+      "gea_gateway_catalog": 1,
+      "gea_skill": 1
+    },
+    "toolTextChars": 2597,
+    "toolResultChars": 2718,
+    "answerChars": 509,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 0,
+    "repeatedArgumentKinds": 0
+  },
+  {
+    "case": "base-duplicate",
+    "totalCalls": 14,
+    "calls": {
+      "gea_capabilities": 3,
+      "gea_skill": 4,
+      "gea_module_mcp": 7
+    },
+    "toolTextChars": 151731,
+    "toolResultChars": 168726,
+    "answerChars": 1114,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 2,
+    "repeatedArgumentKinds": 2
+  },
+  {
+    "case": "base-summary",
+    "totalCalls": 13,
+    "calls": {
+      "gea_gateway_catalog": 5,
+      "gea_skill": 1,
+      "gea_cube_query": 4,
+      "gea_evidence_read": 3
+    },
+    "toolTextChars": 38793,
+    "toolResultChars": 44281,
+    "answerChars": 919,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 2,
+    "repeatedArgumentKinds": 1
+  },
+  {
+    "case": "chain-compare",
+    "totalCalls": 21,
+    "calls": {
+      "gea_capabilities": 4,
+      "gea_skill": 7,
+      "gea_gateway_catalog": 1,
+      "gea_module_mcp": 9
+    },
+    "toolTextChars": 45132,
+    "toolResultChars": 50572,
+    "answerChars": 1108,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 5,
+    "repeatedArgumentKinds": 4
+  },
+  {
+    "case": "chain-summary",
+    "totalCalls": 20,
+    "calls": {
+      "gea_gateway_catalog": 15,
+      "gea_capabilities": 3,
+      "gea_skill": 2
+    },
+    "toolTextChars": 32987,
+    "toolResultChars": 35085,
+    "answerChars": 1191,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 0,
+    "repeatedArgumentKinds": 6
+  },
+  {
+    "case": "dealer-boundary",
+    "totalCalls": 0,
+    "calls": {},
+    "toolTextChars": 0,
+    "toolResultChars": 0,
+    "answerChars": 873,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 0,
+    "repeatedArgumentKinds": 0
+  },
+  {
+    "case": "dealer-summary",
+    "totalCalls": 21,
+    "calls": {
+      "gea_gateway_catalog": 17,
+      "gea_skill": 4
+    },
+    "toolTextChars": 62635,
+    "toolResultChars": 64215,
+    "answerChars": 847,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 2,
+    "repeatedArgumentKinds": 5
+  },
+  {
+    "case": "fc-aging",
+    "totalCalls": 20,
+    "calls": {
+      "gea_gateway_catalog": 11,
+      "gea_skill": 3,
+      "gea_capabilities": 3,
+      "gea_cube_query": 1,
+      "gea_evidence_read": 2
+    },
+    "toolTextChars": 38110,
+    "toolResultChars": 41690,
+    "answerChars": 412,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 1,
+    "repeatedArgumentKinds": 5
+  },
+  {
+    "case": "fc-missing-fresh",
+    "totalCalls": 3,
+    "calls": {
+      "gea_capabilities": 1,
+      "gea_skill": 2
+    },
+    "toolTextChars": 3876,
+    "toolResultChars": 4162,
+    "answerChars": 838,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 1,
+    "repeatedArgumentKinds": 0
+  },
+  {
+    "case": "fc-missing",
+    "totalCalls": 0,
+    "calls": {},
+    "toolTextChars": 0,
+    "toolResultChars": 0,
+    "answerChars": 0,
+    "termination": {
+      "kind": "error",
+      "error": {
+        "message": "Request aborted",
+        "code": "UNKNOWN"
+      }
+    },
+    "errorCount": 0,
+    "repeatedArgumentKinds": 0
+  },
+  {
+    "case": "fc-overlap",
+    "totalCalls": 6,
+    "calls": {
+      "gea_capabilities": 1,
+      "gea_gateway_catalog": 1,
+      "gea_skill": 1,
+      "gea_module_mcp": 3
+    },
+    "toolTextChars": 65009,
+    "toolResultChars": 72491,
+    "answerChars": 806,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 0,
+    "repeatedArgumentKinds": 0
+  },
+  {
+    "case": "fc-summary",
+    "totalCalls": 20,
+    "calls": {
+      "gea_gateway_catalog": 9,
+      "gea_cube_query": 2,
+      "gea_evidence_read": 9
+    },
+    "toolTextChars": 63279,
+    "toolResultChars": 77286,
+    "answerChars": 1112,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 3,
+    "repeatedArgumentKinds": 1
+  },
+  {
+    "case": "sales-control",
+    "totalCalls": 21,
+    "calls": {
+      "gea_sales_plan_read": 11,
+      "gea_gateway_catalog": 3,
+      "gea_cube_query": 2,
+      "gea_evidence_read": 5
+    },
+    "toolTextChars": 50168,
+    "toolResultChars": 58148,
+    "answerChars": 1120,
+    "termination": {
+      "kind": "completed"
+    },
+    "errorCount": 4,
+    "repeatedArgumentKinds": 1
+  }
+]

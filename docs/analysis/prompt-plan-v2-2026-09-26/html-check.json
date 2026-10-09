@@ -1,0 +1,47 @@
+{
+  "checks": [
+    {
+      "viewport": "desktop",
+      "tab": 0,
+      "overflow": false
+    },
+    {
+      "viewport": "desktop",
+      "tab": 1,
+      "overflow": false
+    },
+    {
+      "viewport": "desktop",
+      "tab": 2,
+      "overflow": false
+    },
+    {
+      "viewport": "desktop",
+      "tab": 3,
+      "overflow": false
+    },
+    {
+      "viewport": "mobile",
+      "tab": 0,
+      "overflow": false
+    },
+    {
+      "viewport": "mobile",
+      "tab": 1,
+      "overflow": false
+    },
+    {
+      "viewport": "mobile",
+      "tab": 2,
+      "overflow": false
+    },
+    {
+      "viewport": "mobile",
+      "tab": 3,
+      "overflow": false
+    }
+  ],
+  "evidenceControls": 3,
+  "errors": [],
+  "external": []
+}

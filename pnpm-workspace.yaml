@@ -1,0 +1,11 @@
+packages: []
+# Keep installs explicit; stale dependencies fail before scripts execute.
+verifyDepsBeforeRun: error
+# Existing native/runtime dependencies that need their installation scripts.
+allowBuilds:
+  '@deepseek-ai/dsh-subprocess-local': true
+  '@google/genai': true
+  esbuild: true
+  koffi: true
+  node-pty: true
+  protobufjs: true

@@ -1,19 +1,19 @@
-/** Release-owned suite source; archives work without Git or maintainer credentials. */
+/** Company-managed suite source: use the internal GitLab main branch. */
 import {cp,lstat,mkdir,rename,rm,readFile,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 
-export const companySources=[{id:'company-agent-suites',kind:'archive',url:'https://api.github.com/repos/CleverC2200/company-agent-suites/zipball/main'}];
+export const companySources=[{id:'company-agent-suites',kind:'git',url:'http://100.100.6.191:20656/chenyonghao/company-agent-suites.git',branch:'main'}];
 
-/** Move only the earlier company-managed main-branch source to credential-free archives. */
+/** Migrate legacy company-managed GitHub sources to GitLab; preserve user-owned sources. */
 async function migrateCompanySource(home) {
   const path=join(home,'agent-plugins/state.json');let state;
   try {state=JSON.parse(await readFile(path,'utf8'));}catch(error){if(error.code==='ENOENT')return;throw error;}
   if(state.version!==1||!Array.isArray(state.sources))return;
   let changed=false;
   const sources=state.sources.map(source=>{
-    if(source?.id!=='company-agent-suites'||source.local||source.adopted||source.kind==='local'||(source.branch&&source.branch!=='main')||!['https://github.com/CleverC2200/company-agent-suites','https://github.com/CleverC2200/company-agent-suites.git'].includes(source.url))return source;
-    changed=true;return {...source,...companySources[0]};
+    if(source?.id!=='company-agent-suites'||source.local||source.adopted||source.kind==='local'||(source.branch&&source.branch!=='main')||!['https://github.com/CleverC2200/company-agent-suites','https://github.com/CleverC2200/company-agent-suites.git','https://api.github.com/repos/CleverC2200/company-agent-suites/zipball/main'].includes(source.url))return source;
+    changed=true;const {sha256,...rest}=source;return {...rest,...companySources[0]};
   });
   if(!changed)return;
   const temporary=path+'.'+randomUUID()+'.tmp';
