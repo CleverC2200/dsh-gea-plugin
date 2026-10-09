@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 const entry = join(import.meta.dirname, 'deliver-packages.mjs');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
-async function requestFixture(t, { missingClient = false } = {}) {
+async function requestFixture(t, { missingClient = false, manageRepository = false, runtimeDependency, successfulPackageManager = false } = {}) {
   const work = await mkdtemp(join(tmpdir(), 'delivery-owner-inputs-'));
   t.after(() => rm(work, { recursive: true, force: true }));
   const core = resolve(process.env.GEA_DELIVERY_CORE ?? join(import.meta.dirname, '../../..', 'official-latest-standard'));
@@ -20,6 +20,9 @@ async function requestFixture(t, { missingClient = false } = {}) {
     const path = join(work, repo);
     await mkdir(join(path, 'lib'), { recursive: true });
     const manifest = { name, version: '1.0.0', files: ['lib', 'cordis.patch.yml'], exports: { '.': './lib/host.js', './client': './lib/client.js' }, dsh: { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web' } }, peerDependencies: { '@deepseek-ai/dsh-tools': '0.2.1-alpha.1' }, dependencies: {}, devDependencies: { '@modelcontextprotocol/sdk': '1.30.0' } };
+    if (repo === 'dsh-gea-plugin') manifest.files.push('npm-shrinkwrap.json');
+    if (repo === 'dsh-agent-manage' && manageRepository) manifest.repository = JSON.parse(await readFile(join(import.meta.dirname, '../../dsh-agent-manage/package.json'), 'utf8')).repository;
+    if (repo === 'dsh-agent-manage' && runtimeDependency) manifest.dependencies['runtime-helper'] = runtimeDependency;
     await writeFile(join(path, 'package.json'), JSON.stringify(manifest));
     await writeFile(join(path, 'LICENSE'), 'Fixture license\n');
     await writeFile(join(path, 'cordis.patch.yml'), '[]\n');
@@ -29,7 +32,7 @@ async function requestFixture(t, { missingClient = false } = {}) {
     await writeFile(join(path, lock), 'fixture lock\n');
     if (repo === 'dsh-gea-plugin') {
       await mkdir(join(path, 'scripts'));
-      for (const file of ['production-manifest.mjs', 'prepare-package.mjs', 'package.mjs']) await copyFile(join(import.meta.dirname, file), join(path, 'scripts', file));
+      for (const file of ['production-manifest.mjs', 'prepare-package.mjs', 'package.mjs', 'package-companion.mjs']) await copyFile(join(import.meta.dirname, file), join(path, 'scripts', file));
     }
     execFileSync('git', ['init', '-q', path]);
     execFileSync('git', ['-C', path, 'add', '.']);
@@ -48,7 +51,9 @@ async function requestFixture(t, { missingClient = false } = {}) {
     versions[name] = '1.0.0-candidate.installable.1';
   }
   const pnpm = join(work, 'pnpm.mjs');
-  await writeFile(pnpm, "console.error('http://localhost:1234/?token=private-command-token Authorization: Bearer private-bearer-token'); process.exit(7);\n");
+  await writeFile(pnpm, successfulPackageManager
+    ? "import {readFileSync,writeFileSync} from 'node:fs'; const m=JSON.parse(readFileSync('package.json','utf8')); writeFileSync('package-lock.json',JSON.stringify({name:m.name,version:m.version,lockfileVersion:3,packages:{'':{name:m.name,version:m.version,dependencies:m.dependencies,peerDependencies:m.peerDependencies}}})); writeFileSync('pnpm-lock.yaml','fixture package-manager lock\\n');\n"
+    : "console.error('http://localhost:1234/?token=private-command-token Authorization: Bearer private-bearer-token'); process.exit(7);\n");
   const input = join(work, 'request.json'), destination = join(work, 'delivery');
   // Optional peers still need exact publication metadata, not installed tgz inputs.
   versions['@changfenhuang/dsh-genui'] = '0.11.3';
@@ -64,6 +69,30 @@ test('delivery rejects a cwd-relative request before creating output', async t =
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_ABSOLUTE_PATH_REQUIRED/);
   assert.deepEqual(await readdir(cwd), []);
+});
+
+test('the real Manage git repository metadata survives ordinary three-package delivery', async t => {
+  const fixture = await requestFixture(t, { manageRepository: true, successfulPackageManager: true });
+  const result = spawnSync(process.execPath, [entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
+  const diagnostics = result.status === 0 ? [] : await Promise.all((await readdir(join(fixture.destination, 'evidence'))).filter(name => /^command-/.test(name)).map(name => readFile(join(fixture.destination, 'evidence', name), 'utf8')));
+  assert.equal(result.status, 0, result.stderr + diagnostics.filter(text => !text.startsWith('exit=0\n')).join('\n'));
+  const receipt = JSON.parse(await readFile(join(fixture.destination, 'manifest.json'), 'utf8'));
+  assert.equal(receipt.status, 'packaged');
+  const manage = receipt.packages.find(row => row.repo === 'dsh-agent-manage');
+  const manifest = JSON.parse(execFileSync('tar', ['-xOf', join(fixture.destination, 'packages', manage.filename), 'package/package.json'], { encoding: 'utf8' }));
+  assert.equal(manifest.repository.url, 'git+https://github.com/CleverC2200/dsh-agent-manage.git');
+  await assert.rejects(access(join(fixture.destination, 'evidence/gea-production')));
+});
+
+test('git and workspace runtime dependency inputs cannot publish a delivery manifest', async t => {
+  for (const runtimeDependency of ['git+https://github.com/example/runtime-helper.git', 'workspace:*']) {
+    const fixture = await requestFixture(t, { manageRepository: true, runtimeDependency, successfulPackageManager: true });
+    const result = spawnSync(process.execPath, [entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /DELIVERY_SOURCE_DEPENDENCY_IN_PACKAGE/);
+    await assert.rejects(access(join(fixture.destination, 'manifest.json')));
+    await assert.rejects(access(join(fixture.destination, 'packages')));
+  }
 });
 
 test('the real production formatter rejects missing optional version metadata before creating delivery output', async t => {

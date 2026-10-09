@@ -168,7 +168,8 @@ async function deliver(input, destination) {
       : JSON.parse(command(process.execPath, [join(gea.path, 'scripts/package-companion.mjs'), '--input', owner.archive, '--versions', versionsPath, '--destination', pending], gea.path));
     const manifest = archive(receipt.artifact, owner.manifest.name);
     builtArchive(receipt.artifact, manifest, owner.outputs);
-    if (manifest.version !== input.versions[manifest.name] || manifest.devDependencies || manifest.scripts || /(?:link:|file:|\/Users\/|git\+)/.test(JSON.stringify(manifest))) fail('DELIVERY_SOURCE_DEPENDENCY_IN_PACKAGE');
+    const installGraph = { dependencies: manifest.dependencies, optionalDependencies: manifest.optionalDependencies, peerDependencies: manifest.peerDependencies, overrides: manifest.overrides, resolutions: manifest.resolutions, pnpm: manifest.pnpm };
+    if (manifest.version !== input.versions[manifest.name] || manifest.devDependencies || manifest.scripts || /\/Users\//.test(JSON.stringify(manifest)) || /(?:link:|file:|workspace:|git\+|git:\/\/|github:|gitlab:|bitbucket:|https?:\/\/[^"\s]+\.git(?:#|"))/.test(JSON.stringify(installGraph))) fail('DELIVERY_SOURCE_DEPENDENCY_IN_PACKAGE');
     for (const name of auxiliary) {
       if (manifest.dependencies?.[name] || (manifest.peerDependencies?.[name] && manifest.peerDependenciesMeta?.[name]?.optional !== true)) fail('DELIVERY_AUXILIARY_REQUIRED');
     }
