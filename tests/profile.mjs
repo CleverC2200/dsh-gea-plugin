@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
+import { freezeProfileWindow } from "./fixtures/profile-window.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
 /** Decode persisted tool receipts at the test boundary; never omit a malformed result. */
@@ -215,7 +216,9 @@ export async function profile(t, options = {}) {
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const base = `https://127.0.0.1:${server.address().port}`;
-  const runtime = resolve(dir, "runtime");
+  const runtime = options.coreOnly
+    ? resolve(root, ".runtime/test-core", randomUUID())
+    : resolve(dir, "runtime");
   const config = resolve(dir, "gea.json");
   await writeFile(
     config,
@@ -293,6 +296,7 @@ export async function profile(t, options = {}) {
       });
       if (stopped && !options.preserveRuntime) {
         await rm(dir, { recursive: true, force: true });
+        if (options.coreOnly) await rm(runtime, { recursive: true, force: true });
         recordLifecycle({ event: "temporary-directory-removed" });
       }
     } catch (error) {
@@ -304,7 +308,10 @@ export async function profile(t, options = {}) {
         : new AggregateError(errors, "PROFILE_CLEANUP_FAILED", { cause: errors[0] });
   });
   async function start() {
-    const deployment = await readDeployment(config);
+    const deployment = await readDeployment(config, {
+      resolveCredentials: false,
+      credentialEnv: {},
+    });
     for (const endpoint of [
       deployment.geaBaseUrl,
       ...Object.values(deployment.geaEnvironments ?? {}),
@@ -312,6 +319,17 @@ export async function profile(t, options = {}) {
     ].filter(Boolean))
       if (!["127.0.0.1", "localhost", "[::1]"].includes(new URL(endpoint).hostname))
         throw new Error("SOURCE_TEST_REQUIRES_LOOPBACK_SERVICES");
+    const admitted = options.desktopGraph
+      ? undefined
+      : await freezeProfileWindow({
+          directory: dir,
+          runtime,
+          config,
+          deployment,
+          sources: options.coreOnly ? undefined : await readProfileSources(sourcesFile),
+          caseName: t.name,
+          coreOnly: options.coreOnly,
+        });
     output = "";
     let logOffset = 0;
     await mkdir(runtime, { recursive: true, mode: 0o700 });
@@ -332,17 +350,26 @@ export async function profile(t, options = {}) {
               resolve(defaultRoot, "tests/source-profile-start.mjs"),
               config,
               runtime,
-              ...(options.coreOnly ? ["native-only"] : []),
+              options.coreOnly ? "native-only" : "source-host",
+              admitted.request,
             ]
           : options.desktopGraph
             ? [resolve(defaultRoot, "desktop/runtime-start.mjs")]
             : [
                 "scripts/start.mjs",
+                "--window",
+                admitted.window.file,
+                "--case",
+                admitted.window.case,
+                "--owner",
+                admitted.window.owner,
+                "--freeze-sha256",
+                admitted.window.freezeSha256,
                 "--config",
                 config,
                 "--runtime",
                 runtime,
-                ...(sourcesFile ? ["--sources", sourcesFile] : []),
+
                 "--port",
                 options.reusePort && origin ? new URL(origin).port : "0",
               ]),

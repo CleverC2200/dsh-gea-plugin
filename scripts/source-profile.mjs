@@ -26,9 +26,7 @@ import {
 export { readSourceCombination } from "./source-combination-integrity.mjs";
 function clientEntry(manifest) {
   const entry = manifest.exports?.["./client"];
-  return typeof entry === "string"
-    ? entry
-    : (entry?.default ?? "client/client.js");
+  return typeof entry === "string" ? entry : (entry?.default ?? "client/client.js");
 }
 
 /** A new composition/check/build always names the same explicit five owners. No directory fallback. */
@@ -54,9 +52,7 @@ export function requireSourceInputs(sources) {
 export async function readSourceSelection(runtime) {
   let selected;
   try {
-    selected = JSON.parse(
-      await readFile(join(runtime, "source-selection.json"), "utf8"),
-    );
+    selected = JSON.parse(await readFile(join(runtime, "source-selection.json"), "utf8"));
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
@@ -66,10 +62,7 @@ export async function readSourceSelection(runtime) {
 }
 
 /** Resolve clean declared sources and verify frozen assets in one place for all callers. */
-export async function resolveSourceInputs(
-  sources,
-  { requireEntries = false } = {},
-) {
+export async function resolveSourceInputs(sources, { requireEntries = false } = {}) {
   const entries = requireSourceInputs(sources);
   const resolved = [];
   for (const plugin of sourcePlugins) {
@@ -112,15 +105,11 @@ export async function resolveSourceInputs(
           `SOURCE_PLUGIN_COMMIT_MISMATCH: ${repo} expected ${expectedCommit}, got ${commit}`,
         );
     }
-    const manifest = JSON.parse(
-      await readFile(join(source, "package.json"), "utf8"),
-    );
-    if (manifest.name !== plugin.name)
-      throw Error("SOURCE_PLUGIN_IDENTITY_MISMATCH: " + repo);
+    const manifest = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
+    if (manifest.name !== plugin.name) throw Error("SOURCE_PLUGIN_IDENTITY_MISMATCH: " + repo);
     const assetRoot = input.assets ? await realpath(input.assets) : source;
     if (input.assets) {
-      if (!input.files)
-        throw Error("SOURCE_ASSET_PROVENANCE_REQUIRED: " + repo);
+      if (!input.files) throw Error("SOURCE_ASSET_PROVENANCE_REQUIRED: " + repo);
       const actual = await resourceDigests(assetRoot, "", true);
       if (
         JSON.stringify(Object.entries(actual).sort()) !==
@@ -131,10 +120,7 @@ export async function resolveSourceInputs(
     const assetManifest = input.assets
       ? JSON.parse(await readFile(join(assetRoot, "package.json"), "utf8"))
       : manifest;
-    if (
-      assetManifest.name !== manifest.name ||
-      assetManifest.version !== manifest.version
-    )
+    if (assetManifest.name !== manifest.name || assetManifest.version !== manifest.version)
       throw Error("SOURCE_ASSET_IDENTITY_MISMATCH: " + repo);
     if (input.assets || requireEntries)
       for (const file of [
@@ -189,10 +175,7 @@ export async function prepareSourcePlugins(
   await mkdir(snapshot, { recursive: false });
   await mkdir(modules, { recursive: true });
   const packages = new Map(
-    (await corePackages(core)).map(({ manifest, directory }) => [
-      manifest.name,
-      directory,
-    ]),
+    (await corePackages(core)).map(({ manifest, directory }) => [manifest.name, directory]),
   );
   const plugins = new Map();
   for (const plugin of sourcePlugins) {
@@ -205,26 +188,20 @@ export async function prepareSourcePlugins(
       try {
         await cp(join(assetRoot, file), join(target, file), {
           recursive: true,
-          filter: (path) =>
-            !relative(assetRoot, path).split(/[\\/]/).includes("node_modules"),
+          filter: (path) => !relative(assetRoot, path).split(/[\\/]/).includes("node_modules"),
         });
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
     }
     await readFile(
-      join(
-        target,
-        manifest.main ?? manifest.exports?.["."]?.default ?? "lib/host.js",
-      ),
+      join(target, manifest.main ?? manifest.exports?.["."]?.default ?? "lib/host.js"),
     );
     await readFile(join(target, clientEntry(manifest)));
     plugins.set(manifest.name, {
       source,
       assetRoot,
-      dependencyRoot: await realpath(
-        input.dependencies ?? join(source, "node_modules"),
-      ),
+      dependencyRoot: await realpath(input.dependencies ?? join(source, "node_modules")),
       target,
       version: manifest.version,
       plugin,
@@ -232,9 +209,7 @@ export async function prepareSourcePlugins(
   }
   const snapshots = {};
   for (const [name, { source, target, version, plugin }] of plugins) {
-    const manifest = JSON.parse(
-      await readFile(join(target, "package.json"), "utf8"),
-    );
+    const manifest = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
     const files = [
       "package.json",
       manifest.main ?? manifest.exports?.["."]?.default ?? "lib/host.js",
@@ -264,19 +239,14 @@ export async function prepareSourcePlugins(
       digests,
     };
   }
-  await writeFile(
-    join(snapshot, "company-plugins.json"),
-    JSON.stringify(snapshots, null, 2),
-  );
+  await writeFile(join(snapshot, "company-plugins.json"), JSON.stringify(snapshots, null, 2));
   const externalDirectories = new Set();
   for (const { dependencyRoot, target } of plugins.values()) {
     const dependencies = new Map(packages);
     for (const entry of await readdir(dependencyRoot)) {
       if (entry.startsWith(".")) continue;
       const names = entry.startsWith("@")
-        ? (await readdir(join(dependencyRoot, entry))).map(
-            (name) => `${entry}/${name}`,
-          )
+        ? (await readdir(join(dependencyRoot, entry))).map((name) => `${entry}/${name}`)
         : [entry];
       for (const name of names) {
         if (!dependencies.has(name) && !plugins.has(name))
@@ -285,17 +255,13 @@ export async function prepareSourcePlugins(
     }
     for (const [name, plugin] of plugins) dependencies.set(name, plugin.target);
     for (const [name, path] of dependencies) {
-      if (!path.startsWith(snapshot + "/"))
-        externalDirectories.add(await realpath(path));
+      if (!path.startsWith(snapshot + "/")) externalDirectories.add(await realpath(path));
       const link = join(target, "node_modules", name);
       await mkdir(resolve(link, ".."), { recursive: true });
       try {
         await symlink(path, link);
       } catch (error) {
-        if (
-          error.code !== "EEXIST" ||
-          (await realpath(link)) !== (await realpath(path))
-        )
+        if (error.code !== "EEXIST" || (await realpath(link)) !== (await realpath(path)))
           throw error;
       }
     }
@@ -337,15 +303,10 @@ export async function prepareSourcePlugins(
     config: { default: "standard" },
   });
   patch.push({ id: "dsh-agent-manage", config: { sources: [] } });
-  await writeFile(
-    join(snapshot, "deployment.patch.json"),
-    JSON.stringify(patch, null, 2),
-  );
+  await writeFile(join(snapshot, "deployment.patch.json"), JSON.stringify(patch, null, 2));
   const composition = {
     id,
-    dependencies: Object.fromEntries(
-      [...plugins].map(([name, data]) => [name, data.version]),
-    ),
+    dependencies: Object.fromEntries([...plugins].map(([name, data]) => [name, data.version])),
     bundles: [...plugins]
       .filter(([, data]) => data.plugin.bundleOrder !== undefined)
       .sort((a, b) => a[1].plugin.bundleOrder - b[1].plugin.bundleOrder)
@@ -363,11 +324,7 @@ export async function prepareSourcePlugins(
     ...[...plugins].map(([name, data]) => [name, data.source]),
   ]) {
     locks[name] = {};
-    for (const file of [
-      "pnpm-lock.yaml",
-      "package-lock.json",
-      "npm-shrinkwrap.json",
-    ]) {
+    for (const file of ["pnpm-lock.yaml", "package-lock.json", "npm-shrinkwrap.json"]) {
       try {
         locks[name][file] = await fileDigest(join(directory, file));
         externalFiles[join(directory, file)] = locks[name][file];
@@ -393,9 +350,7 @@ export async function prepareSourcePlugins(
                 }).trim(),
               ],
               interface: "current-unified-v2",
-              workbench: [
-                composition.dependencies["@cleverc2200/dsh-agent-workbench"],
-              ],
+              workbench: [composition.dependencies["@cleverc2200/dsh-agent-workbench"]],
             },
           ]),
         ),
@@ -418,62 +373,40 @@ export async function prepareSourcePlugins(
 }
 
 /** Hash shipped resources, excluding dependency links and their writable stores. */
-async function resourceDigests(
-  directory,
-  prefix = "",
-  excludeDependencies = false,
-) {
+async function resourceDigests(directory, prefix = "", excludeDependencies = false) {
   const files = {};
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (excludeDependencies && entry.name === "node_modules") continue;
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
     const file = join(directory, entry.name);
     if (entry.isDirectory())
-      Object.assign(
-        files,
-        await resourceDigests(file, relative, excludeDependencies),
-      );
-    else if (entry.isSymbolicLink())
-      files[relative] = "link:" + (await realpath(file));
-    else if (
-      entry.isFile() &&
-      (excludeDependencies || relative !== "combination.json")
-    )
+      Object.assign(files, await resourceDigests(file, relative, excludeDependencies));
+    else if (entry.isSymbolicLink()) files[relative] = "link:" + (await realpath(file));
+    else if (entry.isFile() && (excludeDependencies || relative !== "combination.json"))
       files[relative] = await fileDigest(file);
   }
   return files;
 }
 
 /** Select a verified local combination only while its Host is stopped. */
-export async function selectSourceCombination(
-  runtime,
-  id,
-  core,
-  { expected } = {},
-) {
+export async function selectSourceCombination(runtime, id, core, { expected } = {}) {
   expected = expected && structuredClone(expected);
   const lock = await open(join(runtime, "source-profile.lock"), "wx", 0o600);
   try {
     let current;
     try {
-      current = JSON.parse(
-        await readFile(join(runtime, "source-selection.json"), "utf8"),
-      );
+      current = JSON.parse(await readFile(join(runtime, "source-selection.json"), "utf8"));
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
     if (expected) {
       // Bind the previous choice, even when its dependencies are the reason for rebuilding.
       // The target below must independently pass the complete artifact/dependency gate.
-      if (
-        current?.id !== expected.id ||
-        current?.manifestSha256 !== expected.manifestSha256
-      )
+      if (current?.id !== expected.id || current?.manifestSha256 !== expected.manifestSha256)
         throw Error("STALE_SOURCE_RECOVERY");
       if (
-        (await fileDigest(
-          join(runtime, "source-combinations", current.id, "combination.json"),
-        )) !== expected.manifestSha256
+        (await fileDigest(join(runtime, "source-combinations", current.id, "combination.json"))) !==
+        expected.manifestSha256
       )
         throw Error("STALE_SOURCE_RECOVERY");
     }
@@ -486,9 +419,7 @@ export async function selectSourceCombination(
         manifestSha256: await fileDigest(
           join(runtime, "source-combinations", id, "combination.json"),
         ),
-        ...(current?.releaseHistory
-          ? { releaseHistory: current.releaseHistory }
-          : {}),
+        ...(current?.releaseHistory ? { releaseHistory: current.releaseHistory } : {}),
       }) + "\n",
       { mode: 0o600 },
     );
@@ -503,10 +434,7 @@ export async function selectSourceCombination(
 export async function upgradeSourceProfileLayout(runtime) {
   const lock = await open(join(runtime, "source-profile.lock"), "wx", 0o600);
   try {
-    const modules = join(
-      runtime,
-      "home/profiles/plugin-split-validation/node_modules",
-    );
+    const modules = join(runtime, "home/profiles/plugin-split-validation/node_modules");
     const info = await lstat(modules);
     if (info.isSymbolicLink()) return;
     if (!info.isDirectory()) throw Error("INVALID_SOURCE_PROFILE_LAYOUT");
@@ -528,16 +456,13 @@ export function sourceComponent(record, plugins, name) {
   const prefix = `node_modules/${name}/`;
   const files = Object.entries(record.files)
     .filter(
-      ([file]) =>
-        file.startsWith(prefix) &&
-        !file.slice(prefix.length).startsWith("node_modules/"),
+      ([file]) => file.startsWith(prefix) && !file.slice(prefix.length).startsWith("node_modules/"),
     )
     .map(([file, hash]) => [file.slice(prefix.length), hash])
     .sort();
   const source = plugins[name];
   if (!source || !files.length) throw Error("SOURCE_COMPONENT_MISSING");
-  if (typeof source.origin !== "string" || !source.origin)
-    throw Error("SOURCE_ORIGIN_REQUIRED");
+  if (typeof source.origin !== "string" || !source.origin) throw Error("SOURCE_ORIGIN_REQUIRED");
   const origin = source.origin;
   return {
     version: record.composition.dependencies[name],
@@ -579,10 +504,7 @@ export async function mergeSourceComponents(
   const expectedExternal = {};
   for (const record of records.values()) {
     for (const [file, expected] of Object.entries(record.externalFiles)) {
-      if (
-        expectedExternal[file] !== undefined &&
-        expectedExternal[file] !== expected
-      )
+      if (expectedExternal[file] !== undefined && expectedExternal[file] !== expected)
         throw Error("SOURCE_DEPENDENCY_BASELINE_CONFLICT");
       expectedExternal[file] = expected;
     }
@@ -601,25 +523,17 @@ export async function mergeSourceComponents(
   for (const name of names) {
     const selected = updates[name] ?? latest;
     const record = records.get(selected);
-    const source = join(
-        runtime,
-        "source-combinations",
-        selected,
-        "node_modules",
-        name,
-      ),
+    const source = join(runtime, "source-combinations", selected, "node_modules", name),
       target = join(modules, name);
     await cp(source, target, {
       recursive: true,
-      filter: (file) =>
-        !file.slice(source.length).split(/[\\/]/).includes("node_modules"),
+      filter: (file) => !file.slice(source.length).split(/[\\/]/).includes("node_modules"),
     });
     dependencies[name] = record.composition.dependencies[name];
     plugins[name] = metadata.get(selected)[name];
     locks[name] = record.locks[name];
     for (const file of record.externalLockFiles)
-      if (file.startsWith(plugins[name].source + "/"))
-        externalLockFiles.add(file);
+      if (file.startsWith(plugins[name].source + "/")) externalLockFiles.add(file);
     const nodeModules = join(source, "node_modules");
     const packages = [];
     for (const entry of await readdir(nodeModules)) {
@@ -634,10 +548,7 @@ export async function mergeSourceComponents(
         ? join(modules, dependency)
         : await realpath(join(nodeModules, dependency));
       if (!names.includes(dependency)) {
-        if (
-          record.files[`node_modules/${name}/node_modules/${dependency}`] !==
-          "link:" + location
-        )
+        if (record.files[`node_modules/${name}/node_modules/${dependency}`] !== "link:" + location)
           throw Error("SOURCE_DEPENDENCY_LINK_CHANGED");
         externalRoots.add(location);
       }
@@ -650,45 +561,21 @@ export async function mergeSourceComponents(
   externalRoots.add(join(core, "packages/bundle/web-app/presets"));
   for (const file of original.externalLockFiles)
     if (file.startsWith(core + "/")) externalLockFiles.add(file);
-  await writeFile(
-    join(directory, "company-plugins.json"),
-    JSON.stringify(plugins, null, 2),
-  );
-  const oldModules = join(
-    runtime,
-    "source-combinations",
-    latest,
-    "node_modules",
-  );
-  const overlayFile = join(
-    runtime,
-    "source-combinations",
-    latest,
-    "deployment.patch.json",
-  );
-  if (original.composition.patches[0] !== overlayFile)
-    throw Error("INVALID_SOURCE_OVERLAY_PATH");
+  await writeFile(join(directory, "company-plugins.json"), JSON.stringify(plugins, null, 2));
+  const oldModules = join(runtime, "source-combinations", latest, "node_modules");
+  const overlayFile = join(runtime, "source-combinations", latest, "deployment.patch.json");
+  if (original.composition.patches[0] !== overlayFile) throw Error("INVALID_SOURCE_OVERLAY_PATH");
   const patch = JSON.parse(
     await readPinnedInput(overlayFile, original.files["deployment.patch.json"]),
   );
-  const rewritten = JSON.stringify(patch, null, 2)
-    .split(oldModules)
-    .join(modules);
+  const rewritten = JSON.stringify(patch, null, 2).split(oldModules).join(modules);
   await writeFile(join(directory, "deployment.patch.json"), rewritten);
   let profileDefaults;
   if (original.composition.profileDefaults) {
-    const defaultsPath = join(
-      runtime,
-      "source-combinations",
-      latest,
-      "profile-defaults.json",
-    );
+    const defaultsPath = join(runtime, "source-combinations", latest, "profile-defaults.json");
     if (original.composition.profileDefaults !== defaultsPath)
       throw Error("INVALID_SOURCE_DEFAULTS_PATH");
-    const defaults = await readPinnedInput(
-      defaultsPath,
-      original.files["profile-defaults.json"],
-    );
+    const defaults = await readPinnedInput(defaultsPath, original.files["profile-defaults.json"]);
     await writeFile(join(directory, "profile-defaults.json"), defaults);
     profileDefaults = join(directory, "profile-defaults.json");
   }
@@ -701,8 +588,7 @@ export async function mergeSourceComponents(
   };
   const externalFiles = await dependencyDigests(externalRoots);
   for (const [file, hash] of Object.entries(externalFiles))
-    if (expectedExternal[file] !== hash)
-      throw Error("SOURCE_DEPENDENCY_DIGEST_MISMATCH");
+    if (expectedExternal[file] !== hash) throw Error("SOURCE_DEPENDENCY_DIGEST_MISMATCH");
   for (const file of externalLockFiles)
     externalFiles[file] = createHash("sha256")
       .update(await readPinnedInput(file, expectedExternal[file]))

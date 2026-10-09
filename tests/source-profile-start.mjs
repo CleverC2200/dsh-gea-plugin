@@ -31,12 +31,5 @@ await runSourceProfile(
   {
     window,
     ...(mode !== "native-only" ? { config: configPath } : {}),
-    sources: process.env.GEA_TEST_SOURCE_INPUTS
-      ? JSON.parse(
-          await (
-            await import("node:fs/promises")
-          ).readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"),
-        )
-      : undefined,
   },
 );

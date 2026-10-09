@@ -5,10 +5,7 @@ import { createRequire } from "node:module";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  readDeployment,
-  businessDeploymentPatch,
-} from "../scripts/deployment.mjs";
+import { readDeployment, businessDeploymentPatch } from "../scripts/deployment.mjs";
 
 const built = await build({
   stdin: {
@@ -28,8 +25,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   module,
   module.exports,
 );
-const { Business, createCapabilityRegistry, workbenchContract } =
-  module.exports;
+const { Business, createCapabilityRegistry, workbenchContract } = module.exports;
 function fixture(t, config = {}) {
   const requests = [];
   t.mock.method(globalThis, "fetch", async (input) => {
@@ -75,10 +71,7 @@ test("disabled native capability refuses sales reads before credentials or exter
   const { business, requests } = fixture(t, {
     workbenchCapability: { enabled: false },
   });
-  await assert.rejects(
-    business.plans({}, new AbortController().signal),
-    /GEA_CAPABILITY_DISABLED/,
-  );
+  await assert.rejects(business.plans({}, new AbortController().signal), /GEA_CAPABILITY_DISABLED/);
   assert.deepEqual(requests, []);
 });
 
@@ -105,15 +98,8 @@ test("disabled native contracts refuse direct sales, workflow, notification, mod
     () => business.prepareWorkbench({}, signal),
     () => business.modelRoute(signal, "sales_forecast"),
     () =>
-      business.openMcpConnection(
-        { consumerType: "AGENT", consumerCode: "sales_forecast" },
-        signal,
-      ),
-    () =>
-      business.pluginSql(
-        { consumerCode: "sales_forecast", sql: "SELECT 1" },
-        signal,
-      ),
+      business.openMcpConnection({ consumerType: "AGENT", consumerCode: "sales_forecast" }, signal),
+    () => business.pluginSql({ consumerCode: "sales_forecast", sql: "SELECT 1" }, signal),
     () => business.apiLogReplay({ id: "old", confirmed: true }, signal),
   ];
   for (const attempt of attempts)
@@ -165,17 +151,9 @@ test("mock and disabled installed capabilities cannot resolve delegated SQL, sch
   ]) {
     for (const attempt of [
       () => business.pluginSql({ consumerCode, sql: "SELECT 1" }, signal),
-      () =>
-        business.pluginSchema(
-          { consumerCode, tables: ["agents_example"] },
-          signal,
-        ),
+      () => business.pluginSchema({ consumerCode, tables: ["agents_example"] }, signal),
       () => business.moduleMcp(consumerCode, signal),
-      () =>
-        business.openMcpConnection(
-          { consumerType: "AGENT", consumerCode },
-          signal,
-        ),
+      () => business.openMcpConnection({ consumerType: "AGENT", consumerCode }, signal),
       () => business.htmlLaunch(consumerCode, signal),
       () => business.modelRoute(signal, consumerCode),
     ])
@@ -190,10 +168,7 @@ test("disabled native startup does not resolve a business gateway role Session a
   });
   await business.refreshApprovalRoles(new AbortController().signal);
   await assert.rejects(
-    business.debugProbeModuleMcp(
-      "sales_forecast",
-      new AbortController().signal,
-    ),
+    business.debugProbeModuleMcp("sales_forecast", new AbortController().signal),
     /GEA_CAPABILITY_DISABLED/,
   );
   assert.deepEqual(requests, []);
@@ -258,15 +233,10 @@ test("temporary native disablement reaches the ordinary deployment patch and rej
   };
   await writeFile(file, JSON.stringify(config));
   const deployment = await readDeployment(file);
-  const patch = businessDeploymentPatch(
-    deployment,
-    directory,
-    join(directory, "runtime"),
-  );
+  const patch = businessDeploymentPatch(deployment, directory, join(directory, "runtime"));
   assert.deepEqual(
-    patch
-      .flatMap((row) => row.insert ?? [])
-      .find((item) => item.id === "gea-proof").config.workbenchCapability,
+    patch.flatMap((row) => row.insert ?? []).find((item) => item.id === "gea-proof").config
+      .workbenchCapability,
     { enabled: false },
   );
   for (const workbenchCapability of [

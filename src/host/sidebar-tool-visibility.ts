@@ -16,8 +16,7 @@ export function mountSidebarToolVisibility(
     methods: ["GET"],
     requestBody: "buffered",
     fetch: async (request) => {
-      if (!business.status().authenticated)
-        return reply({ error: "LOGIN_REQUIRED" }, 401);
+      if (!business.status().authenticated) return reply({ error: "LOGIN_REQUIRED" }, 401);
       const sessionId = new URL(request.url).searchParams.get("sessionId");
       if (!sessionId || !/^session-[a-zA-Z0-9-]{1,80}$/.test(sessionId))
         return reply({ error: "SESSION_ID_REQUIRED" }, 400);

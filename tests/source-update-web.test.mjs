@@ -15,12 +15,9 @@ import {
   sourceComponent,
   selectSourceCombination,
 } from "../scripts/source-profile.mjs";
-import {
-  applySourceUpdate,
-  readSourceUpdateBaseline,
-} from "../scripts/source-update.mjs";
+import { applySourceUpdate, readSourceUpdateBaseline } from "../scripts/source-update.mjs";
 
-const project = resolve(import.meta.dirname, "../../../.."),
+const _project = resolve(import.meta.dirname, "../../../.."),
   core = resolve("../../official-latest-standard");
 const parent = resolve(".runtime/ticket-10"),
   gea = "@cleverc2200/gea-dsh-prototype",
@@ -54,22 +51,10 @@ test(
         await fs.mkdir(join(runtime, "home/profiles/plugin-split-validation"), {
           recursive: true,
         });
-        base = await prepareSourcePlugins(
-          core,
-          runtime,
-          await readDeployment(config),
-          {
-            sources: JSON.parse(
-              await fs.readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"),
-            ),
-          },
-        );
-        const baseRecordFile = join(
-            runtime,
-            "source-combinations",
-            base.id,
-            "combination.json",
-          ),
+        base = await prepareSourcePlugins(core, runtime, await readDeployment(config), {
+          sources: JSON.parse(await fs.readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8")),
+        });
+        const baseRecordFile = join(runtime, "source-combinations", base.id, "combination.json"),
           baseRecord = await json(baseRecordFile);
         const workbenchVersion = baseRecord.composition.dependencies[workbench]
           .split("-")[0]
@@ -87,12 +72,7 @@ test(
         await fs.mkdir(channel);
         const proposals = [];
         for (const name of [gea, workbench]) {
-          const candidate = await mergeSourceComponents(
-            runtime,
-            base.id,
-            {},
-            core,
-          );
+          const candidate = await mergeSourceComponents(runtime, base.id, {}, core);
           const directory = join(runtime, "source-combinations", candidate.id),
             record = await json(join(directory, "combination.json")),
             plugins = await json(join(directory, "company-plugins.json"));
@@ -100,34 +80,22 @@ test(
             pkg = await json(pkgFile),
             version = pkg.version.split("-")[0].split(".").map(Number);
           version[2]++;
-          pkg.version =
-            version.join(".") + (name === workbench ? "" : "-local.10");
+          pkg.version = version.join(".") + (name === workbench ? "" : "-local.10");
           record.composition.dependencies[name] = pkg.version;
           plugins[name].version = pkg.version;
           const pkgBytes = JSON.stringify(pkg, null, 2) + "\n",
             metadataBytes = JSON.stringify(plugins, null, 2);
           await fs.writeFile(pkgFile, pkgBytes);
-          await fs.writeFile(
-            join(directory, "company-plugins.json"),
-            metadataBytes,
-          );
+          await fs.writeFile(join(directory, "company-plugins.json"), metadataBytes);
           record.files[`node_modules/${name}/package.json`] = digest(pkgBytes);
           record.files["company-plugins.json"] = digest(metadataBytes);
-          await fs.writeFile(
-            join(directory, "combination.json"),
-            JSON.stringify(record, null, 2),
-          );
+          await fs.writeFile(join(directory, "combination.json"), JSON.stringify(record, null, 2));
           const actual = sourceComponent(record, plugins, name),
-            artifact = join(
-              channel,
-              name === gea ? "gea.json" : "workbench.json",
-            ),
+            artifact = join(channel, name === gea ? "gea.json" : "workbench.json"),
             bytes = JSON.stringify({
               combination: candidate.id,
               package: name,
-              manifestSha256: digest(
-                await fs.readFile(join(directory, "combination.json")),
-              ),
+              manifestSha256: digest(await fs.readFile(join(directory, "combination.json"))),
             });
           await fs.writeFile(artifact, bytes);
           proposals.push({
@@ -174,12 +142,8 @@ test(
     });
     const state = stockState();
     installStockRoutes(app, state, (body) => {
-      const index = body.messages.findLastIndex(
-          (message) => message.role === "user",
-        ),
-        tools = body.messages
-          .slice(index + 1)
-          .filter((message) => message.role === "tool");
+      const index = body.messages.findLastIndex((message) => message.role === "user"),
+        tools = body.messages.slice(index + 1).filter((message) => message.role === "tool");
       if (!tools.length)
         return {
           tool_calls: [
@@ -219,12 +183,7 @@ test(
     const rows = [],
       updates = [];
     let session, priorRows, history;
-    for (const phase of [
-      "baseline",
-      "gea-updated",
-      "both-updated",
-      "restored",
-    ]) {
+    for (const phase of ["baseline", "gea-updated", "both-updated", "restored"]) {
       if (phase !== "baseline") {
         await app.stop();
         if (phase === "gea-updated" || phase === "both-updated") {
@@ -232,11 +191,7 @@ test(
           const result = await applySourceUpdate(app.runtime, proposal, {
             core,
           });
-          assert.equal(
-            result.phase,
-            "succeeded",
-            JSON.stringify(result.failed),
-          );
+          assert.equal(result.phase, "succeeded", JSON.stringify(result.failed));
           updates.push(result);
           if (phase === "gea-updated") {
             const late = await applySourceUpdate(app.runtime, proposalA, {
@@ -290,12 +245,8 @@ test(
       if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
         await page.getByText("库存管理", { exact: true }).click();
       await page.getByText("分仓库存", { exact: true }).click();
-      const frame = page
-        .locator('iframe[src*="/api/gea-html/inventory-fc/html"]')
-        .contentFrame();
-      await expect(
-        frame.getByText("FC001", { exact: true }).first(),
-      ).toBeVisible();
+      const frame = page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]').contentFrame();
+      await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
       if (!session) {
         const created = await app.remote("session/create", {
           cwd: join(app.runtime, "workspace"),
@@ -350,17 +301,11 @@ test(
           ? proposalB.releases[0].version
           : baseline.components[workbench].version,
       );
-      assert.equal(
-        await fs.readFile(userFile, "utf8"),
-        "ticket10 retained data",
-      );
+      assert.equal(await fs.readFile(userFile, "utf8"), "ticket10 retained data");
       const modules = await fs.realpath(
         join(app.runtime, "home/profiles/plugin-split-validation/node_modules"),
       );
-      assert.equal(
-        modules,
-        join(app.runtime, "source-combinations", actual.id, "node_modules"),
-      );
+      assert.equal(modules, join(app.runtime, "source-combinations", actual.id, "node_modules"));
       const pageSource = await fs.readFile(
           join(modules, workbench, "lib/business/inventory-fc/index.html"),
           "utf8",

@@ -45,3 +45,18 @@ corepack pnpm test:observe
 仅显式采样空间时扫描本仓相应目录，不扫描共享 store。APFS 目录占用与文件系统剩余空间分别报告。记录不能作为完整输入或跳过验证依据；轮转仅限自身合法完成记录，不删除依赖、未知或在途记录。Windows 保持普通命令，POSIX 采样不是跨平台验收。
 
 开发 pnpm 锁、普通包 npm shrinkwrap 与实际 profile 锁有不同归属，沿 [安装说明](install.md) 的协议，不将开发检查当发布授权。原过程记录见 [历史开发说明](history/local-development-pre-agent-environment-04.md)。
+
+## 当前候选的质量检查
+
+自己的源码与依赖准备后，`corepack pnpm quality:fast` 检查增量 lint、格式、官方类型、活跃工程引用与质量 CLI 反例。它允许未提交修改。固定基线为 `041ef35e16effcf98ffe3b252b64512c704dc29a`，只有基线后未变化的旧债务可保留；缺目标、工具失败、摘要变化和 ignore 绕过都拒绝。`corepack pnpm lint:audit` 与 `corepack pnpm format:audit` 检查全量债务，不能把增量通过写成全量 audit 通过。
+
+`corepack pnpm quality:ci --input /absolute/path/candidate-input.json` 要求干净且固定的三仓输入，先核实际 Git SHA、完整历史与原锁，再只读核 Manage 的公开 SDK 工具、原上游依赖和 Workbench 的共享候选检查。它运行同一 `quality:fast`、`test:contracts` 与完整 `test`。CI 自身绑定事件实际 SHA，peer 使用命令内冻结的兼容提交；本地最终整合组合另有自己的回执，不能把两个 tuple 视为同一组合。
+
+首次准备使用独立目录，三仓源码放在 `<job-root>/candidate/<repo>`，官方 Core 放在 `<job-root>/official-latest-standard`，原 link 依赖放在 `<job-root 的父目录>/current-mainline-closeout-44`。先按公开输入阶段生成声明，再显式准备：
+
+```sh
+node scripts/run-quality-ci.mjs --phase input --root /absolute/job-root --sha ACTUAL_GEA_COMMIT
+corepack pnpm quality:ci --input /absolute/job-root/candidate-input.json --prepare-sdk --core-source https://github.com/deepseek-ai/deepseek-harness.git --prepare-inputs
+```
+
+准备阶段仅在独立 checkout 内按原工具链与冻结锁安装、编译库及 Core 静态网页。原 GenUI npm 资产与 Sidebar Git 源及摘要由 `scripts/quality-upstreams.json` 固定，`corepack pnpm quality:upstreams --root /absolute/upstream-root` 默认只读验证，增加 `--prepare` 才下载和构建。现有共享或借用目录拒绝准备写入。它不启动 Native、业务或模型请求，也不修改用户运行目录。首次 CI 需要明确的 peer contents-read 凭据，未配置时失败；最终 always 聚合拒绝失败、跳过、取消与缺结果。

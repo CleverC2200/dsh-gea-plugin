@@ -94,10 +94,7 @@ export function recipesFor(consumerCode: string): readonly CapabilityRecipe[] {
   return CAPABILITY_RECIPES[consumerCode] ?? [];
 }
 
-export function findRecipe(
-  consumerCode: string,
-  id: string,
-): CapabilityRecipe | undefined {
+export function findRecipe(consumerCode: string, id: string): CapabilityRecipe | undefined {
   return recipesFor(consumerCode).find((recipe) => recipe.id === id);
 }
 

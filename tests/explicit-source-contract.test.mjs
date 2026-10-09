@@ -50,10 +50,7 @@ async function fixture(t, firstProjectPaths) {
       }),
     );
     await writeFile(join(source, "lib/host.js"), "export function apply(){}\n");
-    await writeFile(
-      join(source, "lib/client.js"),
-      "export function apply(){}\n",
-    );
+    await writeFile(join(source, "lib/client.js"), "export function apply(){}\n");
     await writeFile(join(source, "cordis.patch.yml"), "- insert: []\n");
     for (const file of plugin.digests) {
       await mkdir(resolve(source, file, ".."), { recursive: true });
@@ -71,9 +68,7 @@ async function fixture(t, firstProjectPaths) {
     await writeFile(
       join(source, "tsconfig.json"),
       JSON.stringify(
-        index === 0 && firstProjectPaths
-          ? { compilerOptions: { paths: firstProjectPaths } }
-          : {},
+        index === 0 && firstProjectPaths ? { compilerOptions: { paths: firstProjectPaths } } : {},
       ) + "\n",
     );
     await writeFile(join(source, "tsconfig.client.json"), "{}\n");
@@ -97,12 +92,7 @@ async function fixture(t, firstProjectPaths) {
       { cwd: source },
     );
     await mkdir(assets, { recursive: true });
-    for (const file of [
-      "package.json",
-      "lib",
-      "cordis.patch.yml",
-      ...plugin.digests,
-    ]) {
+    for (const file of ["package.json", "lib", "cordis.patch.yml", ...plugin.digests]) {
       await mkdir(resolve(assets, file, ".."), { recursive: true });
       await cp(join(source, file), join(assets, file), { recursive: true });
     }

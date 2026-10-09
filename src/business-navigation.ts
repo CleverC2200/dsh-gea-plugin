@@ -6,20 +6,34 @@ type Entry = { options: { key?: string; label?: (() => string) | string; order?:
  * 只影响侧边栏菜单名，插件内部页面自己的标题仍由插件包决定。
  */
 const BUSINESS_MENU_LABELS: Readonly<Record<string, string>> = {
-  'inventory-aqkc': '基地库存',
-  'inventory-qll': '全链库存',
+  "inventory-aqkc": "基地库存",
+  "inventory-qll": "全链库存",
 };
 
 export const businessMenuLabel = (pageId: string, fallback: string): string =>
   BUSINESS_MENU_LABELS[pageId] ?? fallback;
 
 export function registeredBusinessPanels(entries: readonly Entry[]) {
- return entries.filter(entry => entry.options.key?.startsWith('inventory-') && entry.options.label)
- .map(({options}) => ({id: options.key!, title: (typeof options.label === 'function' ? options.label() : options.label!).replace(/\s+Agent$/i, ""), order: options.order ?? 0}))
-  .sort((a,b) => a.order-b.order || a.id.localeCompare(b.id));
+  return entries
+    .filter((entry) => entry.options.key?.startsWith("inventory-") && entry.options.label)
+    .map(({ options }) => ({
+      id: options.key!,
+      title: (typeof options.label === "function" ? options.label() : options.label!).replace(
+        /\s+Agent$/i,
+        "",
+      ),
+      order: options.order ?? 0,
+    }))
+    .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
-export function isGeaBusinessPanel(panel: string | null | undefined, entries: readonly Entry[]): boolean {
- return GEA_SHELL_PANELS.includes(panel ?? "") || registeredBusinessPanels(entries).some(item=>item.id===panel);
+export function isGeaBusinessPanel(
+  panel: string | null | undefined,
+  entries: readonly Entry[],
+): boolean {
+  return (
+    GEA_SHELL_PANELS.includes(panel ?? "") ||
+    registeredBusinessPanels(entries).some((item) => item.id === panel)
+  );
 }
 
 /**
@@ -56,8 +70,7 @@ export function businessMenuTitle(
   if (override[id]) return override[id]!;
   for (const group of BUSINESS_MENU_PRESET)
     for (const item of group.items)
-      if (item.id === id)
-        return item.title.replace(/\((开发中|待设计)\)$/, "");
+      if (item.id === id) return item.title.replace(/\((开发中|待设计)\)$/, "");
   return id;
 }
 
@@ -125,7 +138,9 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
     ],
   },
   {
-    key: "prototypes", title: "原型演示", icon: "orders",
+    key: "prototypes",
+    title: "原型演示",
+    icon: "orders",
     items: [{ id: "inventory-dms", title: "DMS 回写演示（模拟）" }],
   },
 ];
@@ -141,12 +156,11 @@ export function resolveBusinessMenu(
       title: group.title,
       icon: group.icon,
       flat: group.flat === true,
-      entries: group.items
-        .map((item) => ({
-          id: item.id,
-          title: item.title,
-          disabled: !available.has(item.id),
-        })),
+      entries: group.items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        disabled: !available.has(item.id),
+      })),
     }))
     .filter((group) => group.entries.length > 0);
 }

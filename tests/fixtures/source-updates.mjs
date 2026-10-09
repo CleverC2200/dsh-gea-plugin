@@ -8,23 +8,15 @@ import { randomUUID, createHash } from "node:crypto";
 import { readSourceUpdateBaseline } from "../../scripts/source-update.mjs";
 import { selectSourceCombination } from "../../scripts/source-profile.mjs";
 
-const project = resolve(import.meta.dirname, "../../../../..");
-export const core = await fs.realpath(resolve(
-  import.meta.dirname,
-  "../../../../official-latest-standard",
-));
+const _project = resolve(import.meta.dirname, "../../../../..");
+export const core = await fs.realpath(
+  resolve(import.meta.dirname, "../../../../official-latest-standard"),
+);
 export const gea = "@cleverc2200/gea-dsh-prototype",
   workbench = "@cleverc2200/dsh-agent-workbench",
   manage = "dsh-agent-manage";
-export const names = [
-  gea,
-  workbench,
-  manage,
-  "@changfenhuang/dsh-genui",
-  "dsh-better-sidebar",
-];
-export const digest = (bytes) =>
-  createHash("sha256").update(bytes).digest("hex");
+export const names = [gea, workbench, manage, "@changfenhuang/dsh-genui", "dsh-better-sidebar"];
+export const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 async function hashes(directory, prefix = "") {
   const result = {};
@@ -32,18 +24,14 @@ async function hashes(directory, prefix = "") {
     const key = prefix ? prefix + "/" + entry.name : entry.name,
       file = join(directory, entry.name);
     if (entry.isDirectory()) Object.assign(result, await hashes(file, key));
-    else if (entry.isSymbolicLink())
-      result[key] = "link:" + (await fs.realpath(file));
-    else if (entry.name !== "combination.json")
-      result[key] = digest(await fs.readFile(file));
+    else if (entry.isSymbolicLink()) result[key] = "link:" + (await fs.realpath(file));
+    else if (entry.name !== "combination.json") result[key] = digest(await fs.readFile(file));
   }
   return result;
 }
 
 export async function sourceUpdateFixture(t) {
-  const runtime = await fs.realpath(
-    await fs.mkdtemp(join(tmpdir(), "current-source-updates-")),
-  );
+  const runtime = await fs.realpath(await fs.mkdtemp(join(tmpdir(), "current-source-updates-")));
   t.after(() => fs.rm(runtime, { recursive: true, force: true }));
   const channel = join(runtime, "channel");
   await fs.mkdir(channel);
@@ -88,18 +76,13 @@ export async function sourceUpdateFixture(t) {
         join(target, "lib/host.js"),
         "export default " + JSON.stringify({ name, version, label }) + ";\n",
       );
-      await fs.writeFile(
-        join(target, "lib/client.js"),
-        "// fixture client " + label,
-      );
+      await fs.writeFile(join(target, "lib/client.js"), "// fixture client " + label);
       dependencies[name] = version;
       plugins[name] = {
         source: originDirectory,
-        origin: execFileSync(
-          "git",
-          ["-C", originDirectory, "remote", "get-url", "source"],
-          { encoding: "utf8" },
-        ).trim(),
+        origin: execFileSync("git", ["-C", originDirectory, "remote", "get-url", "source"], {
+          encoding: "utf8",
+        }).trim(),
         version,
         commit: "a".repeat(40),
         dirty: "",
@@ -109,13 +92,7 @@ export async function sourceUpdateFixture(t) {
     const geaRoot = join(dir, "node_modules", gea);
     for (const name of names)
       for (const dependency of names) {
-        const link = join(
-          dir,
-          "node_modules",
-          name,
-          "node_modules",
-          dependency,
-        );
+        const link = join(dir, "node_modules", name, "node_modules", dependency);
         await fs.mkdir(resolve(link, ".."), { recursive: true });
         await fs.symlink(join(dir, "node_modules", dependency), link);
       }
@@ -124,23 +101,14 @@ export async function sourceUpdateFixture(t) {
       patches[0],
       JSON.stringify([{ id: "gea-proof", name: join(geaRoot, "lib/host.js") }]),
     );
-    await fs.writeFile(
-      join(dir, "company-plugins.json"),
-      JSON.stringify(plugins),
-    );
+    await fs.writeFile(join(dir, "company-plugins.json"), JSON.stringify(plugins));
     await fs.writeFile(
       join(dir, "combination.json"),
       JSON.stringify({
         composition: {
           id,
           dependencies,
-          bundles: [
-            workbench,
-            manage,
-            "@changfenhuang/dsh-genui",
-            "dsh-better-sidebar",
-            gea,
-          ],
+          bundles: [workbench, manage, "@changfenhuang/dsh-genui", "dsh-better-sidebar", gea],
           patches,
         },
         core: coreSha,
@@ -158,22 +126,17 @@ export async function sourceUpdateFixture(t) {
         externalFiles: Object.fromEntries(
           (
             await Promise.all(
-              [
-                join(core, "apps/web/dist"),
-                join(core, "packages/bundle/web-app/presets"),
-              ].map(async (root) =>
-                Object.entries(await hashes(root)).map(([file, hash]) => [
-                  join(root, file),
-                  hash,
-                ]),
+              [join(core, "apps/web/dist"), join(core, "packages/bundle/web-app/presets")].map(
+                async (root) =>
+                  Object.entries(await hashes(root)).map(([file, hash]) => [
+                    join(root, file),
+                    hash,
+                  ]),
               ),
             )
           ).flat(),
         ),
-        externalRoots: [
-          join(core, "apps/web/dist"),
-          join(core, "packages/bundle/web-app/presets"),
-        ],
+        externalRoots: [join(core, "apps/web/dist"), join(core, "packages/bundle/web-app/presets")],
         externalLockFiles: [],
         locks: { core: {} },
       }),
@@ -196,18 +159,11 @@ export async function sourceUpdateFixture(t) {
     );
     const plugins = JSON.parse(
       await fs.readFile(
-        join(
-          runtime,
-          "source-combinations",
-          combination,
-          "company-plugins.json",
-        ),
+        join(runtime, "source-combinations", combination, "company-plugins.json"),
         "utf8",
       ),
     );
-    const { sourceComponent } = await import(
-      "../../scripts/source-profile.mjs"
-    );
+    const { sourceComponent } = await import("../../scripts/source-profile.mjs");
     for (const name of components) {
       const actual = sourceComponent(record, plugins, name),
         artifact = join(channel, randomUUID() + ".json");
@@ -217,12 +173,7 @@ export async function sourceUpdateFixture(t) {
           package: name,
           manifestSha256: digest(
             await fs.readFile(
-              join(
-                runtime,
-                "source-combinations",
-                combination,
-                "combination.json",
-              ),
+              join(runtime, "source-combinations", combination, "combination.json"),
             ),
           ),
         }),

@@ -10,9 +10,7 @@ export async function prepareRuntimeFixture(request, when) {
   const root = await realpath(request.root),
     task = request.tasks[0],
     taskId = task.id;
-  const candidate = JSON.parse(
-    await readFile(join(root, task.candidate.path), "utf8"),
-  );
+  const candidate = JSON.parse(await readFile(join(root, task.candidate.path), "utf8"));
   if (!candidate.checkout) {
     const source = join(root, "source");
     await mkdir(source);
@@ -41,10 +39,7 @@ export async function prepareRuntimeFixture(request, when) {
   if (!task.session) {
     task.session = { id: "session", path: "retained-state" };
     await mkdir(join(root, "retained-state"));
-    await writeFile(
-      join(root, "retained-state/entity.json"),
-      "persistent fixture data",
-    );
+    await writeFile(join(root, "retained-state/entity.json"), "persistent fixture data");
   }
   task.inputs ??= [];
   async function put(id, value) {
@@ -73,9 +68,7 @@ export async function prepareRuntimeFixture(request, when) {
     threadId: "executor",
     actualProjectId: request.projectId,
     checkout: candidate.checkout.path,
-    writers: [
-      { taskId, threadId: "executor", roundId: "round", state: "idle" },
-    ],
+    writers: [{ taskId, threadId: "executor", roundId: "round", state: "idle" }],
   };
   const runtime = {
     kind: "runtime-evidence",
@@ -176,9 +169,7 @@ export async function prepareRuntimeFixture(request, when) {
     candidateContentSha256: current.candidate.contentSha256,
     core: { path: "source", commit: f.candidate.commit },
     component,
-    buildInputs: [
-      { id: "build", path: "build.mjs", sha256: hash("build input") },
-    ],
+    buildInputs: [{ id: "build", path: "build.mjs", sha256: hash("build input") }],
     artifacts,
   };
   await writeFile(join(f.root, "assembly.json"), JSON.stringify(assembly));

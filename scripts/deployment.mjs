@@ -5,18 +5,9 @@ import { resolveEnvironments } from "../src/shared/environments.js";
 import { validateSqlReadLimit } from "../src/shared/sql-read-limit.js";
 import { validateSalesReadonly } from "../src/shared/sales-readonly.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
-import {
-  readFile,
-  mkdir,
-  rm,
-  symlink,
-  realpath,
-  lstat,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { readFile, mkdir, rm, symlink, realpath, lstat, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import "node:url";
 
 /** Parse an HTTPS endpoint and reject credentials or URL routing metadata. */
 function httpsEndpoint(value, code) {
@@ -26,56 +17,62 @@ function httpsEndpoint(value, code) {
   } catch {
     throw new Error(code);
   }
-  if (
-    url.protocol !== "https:" ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash
-  )
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash)
     throw new Error(code);
   return url;
 }
 
 function readServiceAccountKeychain(service) {
   try {
-    return JSON.parse(execFileSync(
-      "/usr/bin/security",
-      ["find-generic-password", "-a", "service-account", "-s", service, "-w"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 30000 },
-    ));
+    return JSON.parse(
+      execFileSync(
+        "/usr/bin/security",
+        ["find-generic-password", "-a", "service-account", "-s", service, "-w"],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 30000 },
+      ),
+    );
   } catch {
     throw new Error("GEA_KEYCHAIN_CREDENTIAL_MISSING");
   }
 }
 
 /** The desktop launcher imports this function from the installed GEA plugin before spawning its Host. */
-export async function readDeployment(path, {
-  credentialEnv = process.env,
-  platform = process.platform,
-  readKeychain = readServiceAccountKeychain,
-  resolveCredentials = true,
-} = {}) {
+export async function readDeployment(
+  path,
+  {
+    credentialEnv = process.env,
+    platform = process.platform,
+    readKeychain = readServiceAccountKeychain,
+    resolveCredentials = true,
+  } = {},
+) {
   let config;
   try {
     config = JSON.parse(await readFile(path, "utf8"));
   } catch {
-    throw new Error(
-      "GEA_CONFIG_FILE: provide a readable JSON deployment with --config",
-    );
+    throw new Error("GEA_CONFIG_FILE: provide a readable JSON deployment with --config");
   }
   if (!config || Array.isArray(config) || typeof config !== "object")
     throw new Error("GEA_CONFIG_INVALID");
   validateSqlReadLimit(config.sqlReadLimit);
-  if (config.workbenchCapability !== undefined && (!config.workbenchCapability || Array.isArray(config.workbenchCapability) || typeof config.workbenchCapability !== "object" || Object.keys(config.workbenchCapability).some(key => !["enabled", "readonlyValidation"].includes(key)) || (config.workbenchCapability.enabled !== undefined && typeof config.workbenchCapability.enabled !== "boolean")))
+  if (
+    config.workbenchCapability !== undefined &&
+    (!config.workbenchCapability ||
+      Array.isArray(config.workbenchCapability) ||
+      typeof config.workbenchCapability !== "object" ||
+      Object.keys(config.workbenchCapability).some(
+        (key) => !["enabled", "readonlyValidation"].includes(key),
+      ) ||
+      (config.workbenchCapability.enabled !== undefined &&
+        typeof config.workbenchCapability.enabled !== "boolean"))
+  )
     throw new Error("INVALID_WORKBENCH_CAPABILITY");
   validateSalesReadonly(config.workbenchCapability?.readonlyValidation);
   if (config.mcpRequestTimeoutMs === undefined) config.mcpRequestTimeoutMs = 60000;
   const selected = resolveEnvironments(config);
   config.environment = selected.environment;
   const url = httpsEndpoint(selected.baseUrl, "INVALID_GEA_BASE_URL");
-  if (config.modelRequestTimeoutMs === undefined)
-    config.modelRequestTimeoutMs = 120000;
+  if (config.modelRequestTimeoutMs === undefined) config.modelRequestTimeoutMs = 120000;
   for (const [name, low, high] of [
     ["pageSize", 1, 100],
     ["periodPageSize", 1, 1000],
@@ -84,11 +81,7 @@ export async function readDeployment(path, {
     ["modelRequestTimeoutMs", 1000, 600000],
     ["maxSnapshotBytes", 1000, 5000000],
   ]) {
-    if (
-      !Number.isSafeInteger(config[name]) ||
-      config[name] < low ||
-      config[name] > high
-    )
+    if (!Number.isSafeInteger(config[name]) || config[name] < low || config[name] > high)
       throw new Error("INVALID_" + name);
   }
   if (!config.analysis || !["receipt", "model"].includes(config.analysis.mode))
@@ -105,14 +98,9 @@ export async function readDeployment(path, {
     )
       throw new Error("ANALYSIS_TOKEN_BUDGET_INVALID");
     if (a.source === "aionui")
-      throw new Error(
-        "AIONUI_RUNTIME_REMOVED: use analysis.source=gea with the GEA login",
-      );
+      throw new Error("AIONUI_RUNTIME_REMOVED: use analysis.source=gea with the GEA login");
     if (a.source === "gea") {
-      if (
-        typeof a.agentCode !== "string" ||
-        !/^[A-Za-z0-9._:-]{1,100}$/.test(a.agentCode)
-      )
+      if (typeof a.agentCode !== "string" || !/^[A-Za-z0-9._:-]{1,100}$/.test(a.agentCode))
         throw new Error("ANALYSIS_AGENT_CODE_INVALID");
     } else {
       if (a.source !== undefined && a.source !== "direct")
@@ -120,31 +108,62 @@ export async function readDeployment(path, {
       httpsEndpoint(a.baseUrl, "INVALID_ANALYSIS_BASE_URL");
       if (!/^[A-Z][A-Z0-9_]*$/.test(a.apiKeyEnv ?? ""))
         throw new Error("ANALYSIS_CONFIG_INCOMPLETE");
-      if (!process.env[a.apiKeyEnv]?.trim())
-        throw new Error("ANALYSIS_CREDENTIAL_MISSING");
+      if (!process.env[a.apiKeyEnv]?.trim()) throw new Error("ANALYSIS_CREDENTIAL_MISSING");
     }
     config.analysis = a;
   }
   const serviceAccounts = config.serviceAccounts;
-  if (serviceAccounts !== undefined && (!serviceAccounts || typeof serviceAccounts !== "object" || Array.isArray(serviceAccounts)))
+  if (
+    serviceAccounts !== undefined &&
+    (!serviceAccounts || typeof serviceAccounts !== "object" || Array.isArray(serviceAccounts))
+  )
     throw new Error("INVALID_SERVICE_ACCOUNTS");
   const credentials = {};
   for (const [environment, account] of Object.entries(serviceAccounts ?? {})) {
-    if (!["production", "test"].includes(environment) || !account || typeof account !== "object" || Array.isArray(account) ||
-        Object.keys(account).some((key) => !["clientIdEnv", "clientSecretEnv", "keychainService", "tenantId", "allowedUserIds"].includes(key)) ||
-        ![account.clientIdEnv, account.clientSecretEnv].every((name) => /^GEA_[A-Z0-9_]+$/.test(name ?? "")) ||
-        account.clientIdEnv === account.clientSecretEnv || typeof account.tenantId !== "string" ||
-        !/^\d+$/.test(account.tenantId) || !Array.isArray(account.allowedUserIds) ||
-        !account.allowedUserIds.length || account.allowedUserIds.some((id) => typeof id !== "string" || !id.trim()) ||
-        (account.keychainService !== undefined && (typeof account.keychainService !== "string" ||
-          !/^[a-zA-Z0-9._-]+$/.test(account.keychainService)))) throw new Error("INVALID_SERVICE_ACCOUNTS");
+    if (
+      !["production", "test"].includes(environment) ||
+      !account ||
+      typeof account !== "object" ||
+      Array.isArray(account) ||
+      Object.keys(account).some(
+        (key) =>
+          ![
+            "clientIdEnv",
+            "clientSecretEnv",
+            "keychainService",
+            "tenantId",
+            "allowedUserIds",
+          ].includes(key),
+      ) ||
+      ![account.clientIdEnv, account.clientSecretEnv].every((name) =>
+        /^GEA_[A-Z0-9_]+$/.test(name ?? ""),
+      ) ||
+      account.clientIdEnv === account.clientSecretEnv ||
+      typeof account.tenantId !== "string" ||
+      !/^\d+$/.test(account.tenantId) ||
+      !Array.isArray(account.allowedUserIds) ||
+      !account.allowedUserIds.length ||
+      account.allowedUserIds.some((id) => typeof id !== "string" || !id.trim()) ||
+      (account.keychainService !== undefined &&
+        (typeof account.keychainService !== "string" ||
+          !/^[a-zA-Z0-9._-]+$/.test(account.keychainService)))
+    )
+      throw new Error("INVALID_SERVICE_ACCOUNTS");
     if (!account.keychainService || !resolveCredentials) continue;
     if (platform !== "darwin") throw new Error("GEA_KEYCHAIN_UNAVAILABLE");
     let loaded;
-    try { loaded = await readKeychain(account.keychainService); }
-    catch { throw new Error("GEA_KEYCHAIN_CREDENTIAL_MISSING"); }
-    if (typeof loaded?.clientId !== "string" || !loaded.clientId.trim() ||
-        typeof loaded?.secret !== "string" || !loaded.secret.trim()) throw new Error("GEA_KEYCHAIN_CREDENTIAL_INVALID");
+    try {
+      loaded = await readKeychain(account.keychainService);
+    } catch {
+      throw new Error("GEA_KEYCHAIN_CREDENTIAL_MISSING");
+    }
+    if (
+      typeof loaded?.clientId !== "string" ||
+      !loaded.clientId.trim() ||
+      typeof loaded?.secret !== "string" ||
+      !loaded.secret.trim()
+    )
+      throw new Error("GEA_KEYCHAIN_CREDENTIAL_INVALID");
     credentials[account.clientIdEnv] = loaded.clientId;
     credentials[account.clientSecretEnv] = loaded.secret;
   }
@@ -156,8 +175,11 @@ export async function readDeployment(path, {
 export function resolveWorkbench(anchor = import.meta.url) {
   try {
     const dependency = createRequire(anchor);
-    const manifest = JSON.parse(readFileSync(dependency.resolve("@cleverc2200/dsh-agent-workbench/package.json"), "utf8"));
-    if (!/^0\.1\.\d+$/.test(manifest.version)) throw new Error("WORKBENCH_INCOMPATIBLE: expected 0.1.x");
+    const manifest = JSON.parse(
+      readFileSync(dependency.resolve("@cleverc2200/dsh-agent-workbench/package.json"), "utf8"),
+    );
+    if (!/^0\.1\.\d+$/.test(manifest.version))
+      throw new Error("WORKBENCH_INCOMPATIBLE: expected 0.1.x");
     return dependency.resolve("@cleverc2200/dsh-agent-workbench");
   } catch (error) {
     if (error.message.startsWith("WORKBENCH_INCOMPATIBLE")) throw error;
@@ -235,9 +257,7 @@ export function businessDeploymentPatch(config, root, runtime, { bundle = false 
             runtimeDir: runtime,
             analysisMode: analysis.mode,
             analysisModel: model ? analysis.model : "receipt",
-            analysisAgentCode: model
-              ? (analysis.agentCode ?? "sales_forecast")
-              : "sales_forecast",
+            analysisAgentCode: model ? (analysis.agentCode ?? "sales_forecast") : "sales_forecast",
             analysisSource: model ? (analysis.source ?? "direct") : "receipt",
             inputByteBudget: model
               ? Math.min(
@@ -280,11 +300,13 @@ export function businessDeploymentPatch(config, root, runtime, { bundle = false 
         },
       },
     });
-  if (bundle) return rows.flatMap(row => {
-    if (row.id === "ui-layout") return [];
-    if (row.insert?.some(entry => entry.id === "gea-proof")) return row.insert.map(({ name, ...entry }) => entry);
-    return [row];
-  });
+  if (bundle)
+    return rows.flatMap((row) => {
+      if (row.id === "ui-layout") return [];
+      if (row.insert?.some((entry) => entry.id === "gea-proof"))
+        return row.insert.map(({ name: _name, ...entry }) => entry);
+      return [row];
+    });
   return rows;
 }
 
@@ -292,13 +314,30 @@ export function businessDeploymentPatch(config, root, runtime, { bundle = false 
 export function deploymentPatch(config, root, runtime, { bundle = false } = {}) {
   const [title, model, ...business] = businessDeploymentPatch(config, root, runtime);
   const rows = [
-    { insert: [{ id: "agent-workbench", name: resolveWorkbench(), config: { cwd: resolve(runtime, "workspace") } }] },
+    {
+      insert: [
+        {
+          id: "agent-workbench",
+          name: resolveWorkbench(),
+          config: { cwd: resolve(runtime, "workspace") },
+        },
+      ],
+    },
     { insert: resolveBuiltinPlugins() },
-    title, model,
-    { id: "agent-presets", config: {
-      default: DEFAULT_PRESET_ID, includeShippedRoot: false, includeUserRoot: false,
-      roots: [{path:resolve(runtime,"native-presets"),trust:"system"},...presetRoots(root)],
-    } },
+    title,
+    model,
+    {
+      id: "agent-presets",
+      config: {
+        default: DEFAULT_PRESET_ID,
+        includeShippedRoot: false,
+        includeUserRoot: false,
+        roots: [
+          { path: resolve(runtime, "native-presets"), trust: "system" },
+          ...presetRoots(root),
+        ],
+      },
+    },
     // 浏览器 MCP（Playwright）**默认不挂**：它一次注入 25 个 mcp__browser__* 工具，实测
     // 合计 18,498 字符，占工具清单 2/3（整块从 12.2k 推到 27.7k）——业务问答用不到它，
     // 却每次请求都付这份上下文；每次启动还会拉起一个 npx 进程 + 浏览器。
@@ -323,10 +362,16 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
       : []),
     ...business,
   ];
-  if (bundle) return rows.flatMap(row => {
-    if (row.insert?.some(entry => ["agent-workbench", "genui", "better-sidebar", "gea-proof"].includes(entry.id))) return row.insert.map(({name,...entry})=>entry);
-    return [row];
-  });
+  if (bundle)
+    return rows.flatMap((row) => {
+      if (
+        row.insert?.some((entry) =>
+          ["agent-workbench", "genui", "better-sidebar", "gea-proof"].includes(entry.id),
+        )
+      )
+        return row.insert.map(({ name: _name, ...entry }) => entry);
+      return [row];
+    });
   return rows;
 }
 
@@ -437,5 +482,4 @@ export async function prepareNativePreset(runtime, target, { createLink = symlin
   await writeFile(presetPath, renamed, { mode: 0o600 });
 
   // Business resources are published on selection by Agent Manage; never copy their compositions.
-
 }
