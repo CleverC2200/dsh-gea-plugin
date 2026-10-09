@@ -401,9 +401,7 @@ export async function apply(ctx: Context, config: Deployment): Promise<void> {
       forgetMemberIndex();
     }),
   );
-  // 业务会话里把"浏览器自动化 + 终端/侧栏"这类全局工具从模型可见清单里摘掉：
-  // 它们与业务问答无关，却每次请求都占上下文（实测浏览器 25 个工具 = 18.5k 字符）。
-  // 必须在第一步之前装好，所以挂在 agent/pre-step 上、每个 agent 只装一次。
+  // Sidebar 工具遵循其公开 Document 条件；业务 profile 不再整体屏蔽官方通用能力。
   ctx.effect(() => mountSidebarToolVisibility(ctx, business));
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());

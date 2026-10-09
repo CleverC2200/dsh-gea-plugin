@@ -841,10 +841,8 @@ export function mountBusinessPrompts(
       );
       const facts = `日期：${date}；时区：Asia/Shanghai。Agent：${profile.label}；业务编码：${consumer}。\n${surfacePromptLine(business.surfaceFor(agent.id))}`;
       const sections = [
-        // Current Core's development surface guidance belongs to coding sessions, not a selected business resource.
-        ...assembled.sections
-          .filter((section) => section.name !== "app:web-surface")
-          .map((section) =>
+        // Host GUI orientation remains authoritative; business presentation only refines GenUI output.
+        ...assembled.sections.map((section) =>
             section.name === "genui:fence"
               ? {
                   ...section,
