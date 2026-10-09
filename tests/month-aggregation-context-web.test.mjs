@@ -2,6 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 test(
   "one month merges Y and DC plans and synchronises the combined page with the conversation",
@@ -171,8 +172,10 @@ test(
     const contextPayloads = [];
     const listResponses = [];
     page.on("request", (request) => {
-      if (request.url().endsWith("/api/gea-proof/workbench/context"))
-        contextPayloads.push(request.postDataJSON().context);
+      if (request.url().endsWith("/api/agent-workbench/page")) {
+        const body = request.postDataJSON();
+        if (body.operation === "context") contextPayloads.push(body.parameters);
+      }
     });
     page.on("response", async (response) => {
       if (!response.url().endsWith("/api/gea-proof/workbench/query")) return;
@@ -190,7 +193,7 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    const frame = page.frameLocator("iframe[data-gea-workbench]");
+    const frame = await openSalesPlan(page);
     const month = frame.getByRole("combobox", { name: "销售计划周期" });
     await expect(month).toHaveText("2026-10");
     await month.click();
@@ -222,13 +225,6 @@ test(
       app.requests.some((req) => req.url.pathname.endsWith("/periods")),
       false,
     );
-    const sessionId = "session-11111111-1111-4111-8111-111111111111";
-    await page.locator("iframe[data-gea-workbench]").evaluate((iframe, id) => {
-      iframe.contentWindow.postMessage(
-        { type: "gea:session", sessionId: id },
-        window.location.origin,
-      );
-    }, sessionId);
     const readContexts = () => contextPayloads.filter(Boolean);
     await expect.poll(() => readContexts().length).toBeGreaterThan(0);
     const combined = readContexts().at(-1);

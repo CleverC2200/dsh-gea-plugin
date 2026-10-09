@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { profile } from "./profile.mjs";
+import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 test(
   "API log center lists real Host calls, redacts credentials and replays safe reads",
@@ -30,16 +31,8 @@ test(
     page.on("pageerror", (error) => errors.push(error.message));
     page.setDefaultTimeout(15000);
     await page.goto(app.origin);
-    const notice = page.getByRole("dialog", { name: /内测声明|预览版说明/, exact: true });
-    try {
-      await notice.waitFor({ state: "visible", timeout: 5000 });
-      await notice.getByRole("button", { name: "继续", exact: true }).click();
-    } catch {}
-    await page
-      .locator("iframe[data-gea-workbench]")
-      .contentFrame()
-      .getByRole("heading", { name: "销售计划审批", exact: true })
-      .waitFor();
+    const frame = await openSalesPlan(page);
+    await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
     await page.locator('button[aria-label="账户菜单"]').evaluate((element) => element.click());
     await page.getByRole("menuitem", { name: "设置", exact: true }).click({ force: true });
     const settings = page.getByRole("dialog", { name: "设置", exact: true });

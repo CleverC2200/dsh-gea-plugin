@@ -45,6 +45,16 @@ test(
     await mkdir(join(agentsHome, "skills", "inventory-probe"), { recursive: true });
     await writeFile(join(agentsHome, "skills", "inventory-probe", "SKILL.md"), probeSkill);
     await mkdir(join(agentsHome, "skills", "tdd"), { recursive: true });
+    await mkdir(join(agentsHome, "skills", "reference-scope"), { recursive: true });
+    await mkdir(join(agentsHome, "references"), { recursive: true });
+    await writeFile(
+      join(agentsHome, "skills", "reference-scope", "SKILL.md"),
+      "---\nname: reference-scope\ndescription: 需求预测规则测试\n---\n先读 [规则](../../references/rules.md)\n",
+    );
+    await writeFile(
+      join(agentsHome, "references", "rules.md"),
+      "按实际期间查询；缺失数据不能编造。\n",
+    );
     await writeFile(
       join(agentsHome, "skills", "tdd", "SKILL.md"),
       "---\nname: tdd\ndescription: DEVELOPER_SKILL_MUST_NOT_LEAK\n---\nDeveloper-only rules.\n",
@@ -134,6 +144,7 @@ test(
         }),
       );
     let outcome = "success";
+    let pageGuardClosed = false;
     let toolReply;
     let closed = false;
     let modelRequests = [];
@@ -244,30 +255,29 @@ test(
         /visible-context/.test(outcome) ||
         outcome === "page-evidence-guard" ||
         outcome === "page-tool";
-      const pack = outcome.startsWith("module-mcp") ? "knowledge" : wantsPage ? "page" : undefined;
+      const pack = outcome.startsWith("module-mcp")
+        ? "knowledge"
+        : wantsPage && !(outcome === "page-evidence-guard" && pageGuardClosed)
+          ? "page"
+          : undefined;
       const ready =
         pack === "knowledge"
           ? names.includes("gea_module_mcp")
           : pack === "page"
             ? names.includes("gea_visible_workbench_context")
             : true;
-      const skillReady =
-        outcome !== "skill-reference" ||
-        body.messages.some((message) => message.tool_call_id === "bootstrap-skill");
-      if (!ready || !skillReady) {
+      if (!ready) {
         res.end(
           event(
             {
               tool_calls: [
                 {
                   index: 0,
-                  id: !skillReady ? "bootstrap-skill" : "bootstrap-pack",
+                  id: "bootstrap-pack",
                   type: "function",
                   function: {
                     name: "gea_capabilities",
-                    arguments: JSON.stringify(
-                      !skillReady ? { skill: "reference-scope" } : { pack },
-                    ),
+                    arguments: "{}",
                   },
                 },
               ],
@@ -285,11 +295,11 @@ test(
       modelRequests.push(body);
       if (outcome === "skill-reference") {
         const results = body.messages.filter((x) => x.role === "tool");
-        const name = "skill";
+        const name = results.length === 0 ? "skill" : "skill_reference_read";
         const args =
           results.length === 0
             ? { name: "reference-scope" }
-            : { name: "reference-scope", path: "../../references/rules.md" };
+            : { skill: "reference-scope", path: "../../references/rules.md" };
         res.end(
           results.length < 2
             ? event(
@@ -455,6 +465,10 @@ test(
       // 每一轮都要先读一次"这一屏"，读到结果才收尾：用来验证"同一份快照，
       // 换菜单后还算不算本轮证据"。按"最后一条用户消息之后有没有工具结果"判断本轮。
       if (outcome === "page-evidence-guard") {
+        if (!names.includes("gea_visible_workbench_context")) {
+          res.end(event({ content: "当前主对话没有页面工具，未使用旧页面证据回答。" }, "stop"));
+          return true;
+        }
         const roles = body.messages.map((message) => message.role);
         const answered = body.messages
           .slice(roles.lastIndexOf("user") + 1)
@@ -679,13 +693,13 @@ test(
           "mock skills do not enter the business startup catalog",
         );
         assert.doesNotMatch(promptMessages, /DEVELOPER_SKILL_MUST_NOT_LEAK/);
-        // 只要求核心工具在列；部署补丁还会挂其他工具（例如浏览器 MCP），不在这里锁死全集。
+        // 初始提交尚未绑定页面；当前菜单提供业务读取工具，页面绑定由后续公共 open 完成。
         const toolNames = modelRequests[0].tools.map((x) => x.function.name);
         for (const expected of [
           "gea_sales_plan_read",
           "skill",
-          "gea_visible_workbench_context",
-          "gea_page",
+          "gea_module_mcp",
+          "gea_cube_query",
           "gea_capabilities",
         ])
           assert.ok(toolNames.includes(expected), `${expected} 在工具列表里`);
@@ -919,10 +933,14 @@ test(
           dataVersion: "sales-plan-v1.11",
         },
       });
-      await ended(id);
+      const firstTurn = await ended(id);
+      assert.ok(
+        readToolResults(firstTurn).some((result) => result.text.includes("GEA_RENDERED_WORKBENCH")),
+      );
       // 用户从业务菜单切回主对话：快照还在服务端，但不再是"你眼前这一屏"。
       const surface = await pages.get(id).close();
       assert.equal(surface.ok, true, JSON.stringify(surface));
+      pageGuardClosed = true;
       modelRequests = [];
       const prompted = await app.remote("session/prompt", {
         requestId: randomUUID(),
@@ -936,18 +954,24 @@ test(
         (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
       );
       // 模型每次请求都带全量历史，只能看"最后一条用户消息之后"的那条工具结果。
-      const messages = modelRequests[1].messages;
-      const lastUser = messages.map((message) => message.role).lastIndexOf("user");
-      const result = messages
-        .slice(lastUser + 1)
-        .find(
-          (message) => message.role === "tool" && String(message.tool_call_id).startsWith("guard-"),
+      assert.equal(modelRequests.length, 1, "撤回页面菜单后模型直接答复，不调用已撤回工具");
+      const request = modelRequests[0];
+      for (const name of ["gea_visible_workbench_context", "gea_page", "gea_workbench_apply"])
+        assert.equal(
+          request.tools.some((tool) => tool.function.name === name),
+          false,
+          name,
         );
-      assert.match(result.content, /PAGE_NOT_IN_WORKBENCH/);
-      assert.match(result.content, /not-in-workbench/);
-      assert.match(result.content, /主对话/);
-      // 旧快照的行内容一个字都不能带出去。
-      assert.equal(result.content.includes("河北"), false);
+      const lastUser = request.messages.map((message) => message.role).lastIndexOf("user");
+      assert.equal(
+        request.messages.slice(lastUser + 1).some((message) => message.role === "tool"),
+        false,
+      );
+      const currentResults = rows
+        .slice(rows.findLastIndex((entry) => entry.type === "turn/start"))
+        .filter((entry) => entry.type === "tool/result");
+      assert.equal(currentResults.length, 0, "旧快照不得生成当前工具证据");
+      assert.equal(rows.at(-1).data.reason.kind, "completed");
       assert.equal(
         rows.some((entry) => entry.type === "tool/result" && entry.data.message.content[0].isError),
         false,
@@ -967,7 +991,7 @@ test(
         );
         assert.equal(
           modelRequests[0].tools.some((tool) => tool.function.name === "gea_module_mcp"),
-          false,
+          true,
         );
         assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_capabilities"));
         assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_cube_query"));
@@ -987,7 +1011,7 @@ test(
           (message) => message.role === "tool" && message.tool_call_id === "page-1",
         );
         assert.match(result.content, /not-in-workbench/);
-        assert.match(result.content, /不在业务工作台/);
+        assert.equal(JSON.parse(result.content).code, "PAGE_NOT_IN_WORKBENCH");
         assert.equal(
           rows.some(
             (entry) => entry.type === "tool/result" && entry.data.message.content[0].isError,
@@ -1214,23 +1238,23 @@ test(
           reason: "展开这一行",
         });
         // 页面执行完把结果按 AG-UI 的 tool 消息回填，并上报新的页面快照。
-        const settled = await pages.get(id).catalog({
-          toolMessages: [
-            {
-              id: "tool-result-1",
-              role: "tool",
-              toolCallId: start.toolCallId,
-              content: JSON.stringify({ applied: true }),
-            },
-          ],
-        });
-        assert.deepEqual(settled.value.events, []);
         await pages.get(id).context(
           page(2, [
             { planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" },
             { planId: "plan-hebei-2", organization: "河北", planTypeCode: "Y" },
           ]),
         );
+        const settled = await pages.get(id).catalog({
+          toolMessages: [
+            {
+              id: "tool-result-1",
+              role: "tool",
+              toolCallId: start.toolCallId,
+              content: JSON.stringify({ toolCallId: start.toolCallId, applied: true }),
+            },
+          ],
+        });
+        assert.deepEqual(settled.value.events, []);
         const rows = await until(
           () => readSession(app.runtime, id),
           (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
@@ -1502,7 +1526,7 @@ test(
             id: "verb-result-1",
             role: "tool",
             toolCallId: start.toolCallId,
-            content: JSON.stringify({ applied: true }),
+            content: JSON.stringify({ toolCallId: start.toolCallId, applied: true }),
           },
         ],
       });
@@ -1601,20 +1625,6 @@ test(
     await t.test(
       "Skill references use the local reader in the actual model-tool-model loop",
       async () => {
-        await mkdir(`${app.runtime}/home/business-skills/reference-scope`, {
-          recursive: true,
-        });
-        await mkdir(`${app.runtime}/home/references`, {
-          recursive: true,
-        });
-        await writeFile(
-          `${app.runtime}/home/business-skills/reference-scope/SKILL.md`,
-          "---\nname: reference-scope\ndescription: 需求预测规则测试\n---\n先读 [规则](../../references/rules.md)\n",
-        );
-        await writeFile(
-          `${app.runtime}/home/references/rules.md`,
-          "按实际期间查询；缺失数据不能编造。\n",
-        );
         outcome = "skill-reference";
         modelRequests = [];
         const rows = await ended(await submit());
