@@ -400,7 +400,7 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
   detail: ["planId"],
   versions: ["planId"],
   logs: ["planId", "pageNo", "pageSize"],
-  versionSkus: ["versionId", "pageNo", "pageSize"],
+  versionSkus: ["versionId", "pageNo", "pageSize", "offset"],
   compare: ["planId", "fromVersionId", "toVersionId"],
 };
 
@@ -445,7 +445,7 @@ export function normalizePlanQuery(
         : kind === "detail"
           ? " kind=detail takes only planId, taken from kind=list or kind=versions output; never pass versionId here and never invent an id."
           : kind === "versionSkus"
-            ? " kind=versionSkus takes only versionId (detail 的 currentVersion.id，或 list 的 versionId) plus pageNo/pageSize; planId is not needed."
+            ? " kind=versionSkus takes only versionId (detail 的 currentVersion.id，或 list 的 versionId) plus initial pageNo/pageSize or the returned nextQuery; planId is not needed."
             : kind === "periods"
               ? " periodMonth must be YYYY-MM, for example 2026-09."
               : "";
@@ -3551,7 +3551,7 @@ export class Business {
         coverage: coverageValue,
         value: valueOut,
       });
-    // versionSkus：模型侧只给必要字段 + 有界分页，绝不因为"整份 SKU 太大"失败。
+    // versionSkus 的模型投影按实际返回行数续读，字节裁剪不改变下一次位置。
     // 页面自身的工作台读取仍走 readWorkbenchQuery（完整数据），不受这里影响。
     if (text(payload.kind) === "versionSkus") {
       const rows = (
@@ -3573,28 +3573,34 @@ export class Business {
       });
       const views = rows.map(skuView);
       const query = object(payload.query ?? {});
-      const pageNo = Math.max(1, Number(query.pageNo ?? 1) || 1);
-      const requested = Math.max(1, Math.min(50, Number(query.pageSize ?? 5) || 5));
-      const offset = (pageNo - 1) * requested;
+      const requested = Math.min(50, integer(query.pageSize ?? 5, 1, 1000));
+      const offset = query.offset === undefined
+        ? (integer(query.pageNo ?? 1, 1) - 1) * requested
+        : integer(query.offset, 0);
       let size = Math.max(1, Math.min(requested, views.length - offset || 1));
       for (;;) {
         const recordsPage = views.slice(offset, offset + size);
-        const nextPageNo = offset + size < views.length ? pageNo + 1 : null;
-        const result = envelope(nextPageNo === null ? "complete" : "partial", {
+        const nextOffset = offset + recordsPage.length;
+        const nextQuery = nextOffset < views.length
+          ? { versionId: query.versionId, offset: nextOffset, pageSize: requested }
+          : null;
+        const result = envelope(nextQuery === null ? "complete" : "partial", {
           records: recordsPage,
           total: views.length,
-          pageNo,
-          pageSize: size,
-          nextPageNo,
+          offset,
+          pageSize: recordsPage.length,
+          nextQuery,
           note:
-            nextPageNo === null
+            nextQuery === null
               ? "本页为最后一页。"
               : `还有 ${
-                  views.length - offset - size
-                } 条：用同一 versionId、pageNo=${nextPageNo} 继续取。`,
+                  views.length - nextOffset
+                } 条：将 nextQuery 原样作为 query 继续取。`,
         });
-        if (Buffer.byteLength(result, "utf8") <= this.config.inputByteBudget || size <= 1)
-          return result;
+        const resultBytes = Buffer.byteLength(result, "utf8");
+        if (resultBytes <= this.config.inputByteBudget) return result;
+        if (size <= 1)
+          throw new Error(`SNAPSHOT_TOO_LARGE: 单条 SKU 投影 ${resultBytes} 字节，超过单次读取上限 ${this.config.inputByteBudget} 字节。`);
         size = Math.max(1, Math.floor(size / 2));
       }
     }
@@ -3612,7 +3618,7 @@ export class Business {
           amt: row.amt ?? null,
         })),
         omitted:
-          "已省略 SKU 明细与审批日志：需要时用 kind=versionSkus（pageNo/pageSize 分页）或 kind=logs 单独读取。",
+          "已省略 SKU 明细与审批日志：需要时用 kind=versionSkus（按返回的 nextQuery 续读）或 kind=logs 单独读取。",
       });
       if (Buffer.byteLength(trimmed, "utf8") <= this.config.inputByteBudget) return trimmed;
     }
@@ -3637,6 +3643,13 @@ export class Business {
     const kind = text(payload.kind);
     this.salesReadonly?.assertQuery(kind);
     query = normalizePlanQuery(kind, query);
+    if (kind === "versionSkus") {
+      if (query.offset !== undefined && query.pageNo !== undefined)
+        throw new Error("INVALID_QUERY: versionSkus uses either pageNo or offset from nextQuery.");
+      if (query.offset !== undefined) integer(query.offset, 0);
+      if (query.pageNo !== undefined) integer(query.pageNo, 1);
+      if (query.pageSize !== undefined) integer(query.pageSize, 1, 1000);
+    }
     if (
       kind === "periods" &&
       query.periodMonth != null &&
@@ -3687,6 +3700,7 @@ export class Business {
     }
     for (const [key, value] of Object.entries(query)) {
       if (value == null || value === "" || key === "planId" || key === "versionId") continue;
+      if (kind === "versionSkus" && ["pageNo", "pageSize", "offset"].includes(key)) continue;
       if (key === "pageNo" || key === "pageSize")
         params.set(
           key,

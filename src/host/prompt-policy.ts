@@ -153,7 +153,7 @@ export function promptMeasurement(
 
 export const TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = {
   gea_sales_plan_read:
-    "在线销售计划只读：实时审批、日志、操作前版本或用户指定的在线数据。提报/计划结果走授权Hive Cube，不作替代。周期先periods取periodId；在线汇总用aggregate；baseName是基地。金额/ID保持精确，注明覆盖。",
+    "在线销售计划只读：实时审批、日志、操作前版本或用户指定的在线数据。提报/计划结果走授权Hive Cube，不作替代。周期先periods取periodId；在线汇总用aggregate；baseName是基地。金额/ID保持精确，注明覆盖。versionSkus首次用versionId及pageSize；未读完时将返回的nextQuery原样作为query续读，直到nextQuery=null。",
   gea_gateway_catalog:
     "查看所选Agent授权模型：model精确匹配优先；members定向读成员定义、单位和格式，values=true才抽样取值。已有成员直接gea_cube_query，重复目录不会补出隐藏知识。目录不替代字段/行权限。",
   gea_module_mcp:
