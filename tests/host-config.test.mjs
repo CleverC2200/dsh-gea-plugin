@@ -20,3 +20,14 @@ test('actual exported Host schema preserves explicit zero limits and rejects inc
   for (const invalid of [{},{...limits,list:undefined},{...limits,list:-1},{...limits,list:0.5}]) assert.throws(()=>Config({...input,workbenchCapability:{readonlyValidation:invalid}}));
   assert.throws(()=>Config({...input,sqlReadLimit:{}}));
 });
+
+ test('ordinary GEA bundle accepts empty public settings without downgrading to receipt mode', () => {
+  const value = Config({});
+  assert.equal(value.geaBaseUrl, 'https://gea.synear.cn/gea-boot');
+  assert.equal(value.analysisMode, 'model');
+  assert.equal(value.analysisSource, 'gea');
+  assert.equal(value.analysisAgentCode, 'sales_forecast');
+  assert.equal(value.runtimeDir, undefined);
+  assert.equal(value.agentSqlRead, false);
+  assert.equal(value.sqlReadLimit, undefined);
+ });
