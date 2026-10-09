@@ -869,3 +869,15 @@ test("conflicting selected runs stop runtime suggestions with the exact gap whil
       "can-continue",
     );
 });
+
+test("an impossible calendar date cannot advance a selected runtime stage", async (t) => {
+  const f = await selectedFixture(t);
+  let report = await f.run();
+  assert.equal(report.runtime.runs[0].relation, "selected");
+  assert.equal(stage(report, "service-structure").status, "passed");
+  f.runRecord.observedAt = "2026-02-30T00:00:00.000Z";
+  await f.put("run", f.runRecord);
+  report = await f.run();
+  assert.notEqual(report.runtime.runs[0].relation, "selected");
+  assert.notEqual(stage(report, "service-structure").status, "passed");
+});

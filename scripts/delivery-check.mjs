@@ -1,3 +1,4 @@
+import { isObservationTime as time } from "./delivery-time.mjs";
 /** Read-only, bounded delivery observations. Never prepares or verifies a runtime. */
 import { readFile, realpath, stat } from "node:fs/promises";
 import { resolve, relative, isAbsolute } from "node:path";
@@ -34,11 +35,6 @@ const identifier = (value) =>
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const sha256 = (value) =>
   typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
-const time = (value) =>
-  typeof value === "string" &&
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
-  Number.isFinite(Date.parse(value)) &&
-  new Date(Date.parse(value)).toISOString() === value;
 
 async function readInput(scope, ref, observedAt) {
   if (!ref || !identifier(ref.id) || typeof ref.path !== "string")
@@ -857,11 +853,14 @@ if (
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
   try {
-    const short =
-      process.argv.length === 5 && process.argv[4] === "--continuation";
-    if ((!short && process.argv.length !== 4) || process.argv[2] !== "--input")
+    const args = process.argv.slice(2);
+    const verifyGoal = args[0] === "--verify-goal";
+    const verify = verifyGoal || args[0] === "--verify";
+    if (verify) args.shift();
+    const short = args.length === 3 && args[2] === "--continuation";
+    if ((!short && args.length !== 2) || args[0] !== "--input")
       throw Error("CLI_INPUT_REQUIRED");
-    const file = process.argv[3];
+    const file = args[1];
     const info = await stat(file);
     if (!info.isFile() || info.size > 1024 * 1024)
       throw Error("CLI_INPUT_INVALID");
@@ -874,6 +873,41 @@ if (
       throw error;
     }
     const report = await checkDelivery(request);
+    if (verify) {
+      const passed =
+        report.tasks.length > 0 && report.consistency.status === "observed";
+      report.verification = {
+        status: passed ? "passed" : "failed",
+        reason: passed
+          ? "DELIVERY_CONSISTENCY_OBSERVED"
+          : "DELIVERY_CONSISTENCY_REQUIRED",
+        minimumGap: passed
+          ? null
+          : "RECONCILE_FIXED_RECEIPTS_USING_DELIVERY_REPORT",
+      };
+      report.consistency.exitZeroMeans = "consistency-observed-only";
+      if (!passed) process.exitCode = 3;
+      if (verifyGoal) {
+        report.consistency.exitZeroMeans = "declared-goal-verified-only";
+        if (passed) {
+          const complete =
+            report.continuation.state === "completed" &&
+            report.tasks.every(
+              (task) => task.continuation.inTransit.length === 0,
+            );
+          report.verification = {
+            status: complete ? "passed" : "failed",
+            reason: complete
+              ? "DECLARED_GOAL_VERIFIED"
+              : "DECLARED_GOAL_INCOMPLETE",
+            minimumGap: complete
+              ? null
+              : "READ_CONTINUATION_REMAINING_AND_STOP_CONDITIONS",
+          };
+          if (!complete) process.exitCode = 4;
+        }
+      }
+    }
     console.log(
       JSON.stringify(
         short

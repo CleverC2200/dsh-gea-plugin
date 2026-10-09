@@ -1,3 +1,4 @@
+import { normalizeReceiptTime as timestamp } from "./delivery-time.mjs";
 /** Derived accounting and continuation only; consumes the same bounded bytes as checkDelivery. */
 const id = (value) =>
   typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(value);
@@ -9,20 +10,7 @@ const parse = (input) => {
     return null;
   }
 };
-function timestamp(value) {
-  const parts =
-    typeof value === "string" &&
-    value.match(
-      /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/,
-    );
-  if (!parts || !Number.isFinite(Date.parse(value))) return null;
-  const calendar = new Date(
-    Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])),
-  );
-  return calendar.toISOString().slice(0, 10) === value.slice(0, 10)
-    ? new Date(value).toISOString()
-    : null;
-}
+
 const evidence = (input) =>
   input?.sha256
     ? [

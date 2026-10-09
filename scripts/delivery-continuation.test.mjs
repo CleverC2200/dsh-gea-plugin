@@ -379,6 +379,184 @@ test("a missing scoped budget rejects continuation while a generated CLI report 
   assert.equal(report.consistency.acceptance, "not-evaluated");
 });
 
+function verificationCLI(f) {
+  return spawnSync(
+    process.execPath,
+    ["--run", "delivery:check", "--", "--input", join(f.root, "request.json")],
+    { cwd: join(import.meta.dirname, ".."), encoding: "utf8" },
+  );
+}
+
+function goalCLI(f) {
+  return spawnSync(
+    process.execPath,
+    [
+      "--run",
+      "delivery:verify-goal",
+      "--",
+      "--input",
+      join(f.root, "request.json"),
+      "--continuation",
+    ],
+    { cwd: join(import.meta.dirname, ".."), encoding: "utf8" },
+  );
+}
+
+// Replays the stage-closeout pattern documented in
+// .scratch/real-readonly-48/evidence/retro-20261009-closeout/report.md.
+// The permission and inputs below are test fixtures, not new business receipts.
+test("goal verification rejects a done stage with independently authorized work remaining", async (t) => {
+  const f = await fixture(t);
+  await permission(f);
+  await writeFile(
+    join(f.root, "ticket.md"),
+    "# 06: stage closed\n\n**Blocked by:** None\n\n**Status:** done\n",
+  );
+  const task = await f.report();
+  assert.equal(task.executionStatus, "done");
+  assert.equal(task.continuation.state, "actionable");
+  await writeFile(join(f.root, "request.json"), JSON.stringify(f.request));
+  assert.equal(verificationCLI(f).status, 0);
+  const result = goalCLI(f);
+  assert.notEqual(result.status, 0, result.stdout);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.verification.reason, "DECLARED_GOAL_INCOMPLETE");
+  assert.equal(report.continuation.state, "actionable");
+  assert.equal(report.continuation.independentNextActions.length, 1);
+  assert.equal(report.continuation.performsActions, false);
+  const direct = spawnSync(
+    process.execPath,
+    [
+      join(import.meta.dirname, "delivery-check.mjs"),
+      "--verify-goal",
+      "--input",
+      join(f.root, "request.json"),
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(direct.status, 4, direct.stdout);
+});
+
+test("goal verification preserves a human pause and missing goal instead of treating either as completion", async (t) => {
+  const f = await fixture(t);
+  await permission(f, "pause");
+  await f.report();
+  await writeFile(join(f.root, "request.json"), JSON.stringify(f.request));
+  let result = goalCLI(f);
+  assert.notEqual(result.status, 0, result.stdout);
+  assert.equal(JSON.parse(result.stdout).continuation.state, "user-paused");
+  delete f.delivery.goal;
+  await f.report();
+  result = goalCLI(f);
+  assert.notEqual(result.status, 0, result.stdout);
+  assert.equal(JSON.parse(result.stdout).continuation.state, "unknown");
+});
+
+test("goal verification admits the verified declared scope without granting business acceptance or editing the ticket", async (t) => {
+  const f = await fixture(t);
+  f.delivery.goal.stages = ["offline-checks"];
+  await f.report();
+  await writeFile(join(f.root, "request.json"), JSON.stringify(f.request));
+  const before = await readFile(join(f.root, "ticket.md"));
+  const result = goalCLI(f);
+  assert.equal(result.status, 0, result.stdout);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.verification.reason, "DECLARED_GOAL_VERIFIED");
+  assert.equal(report.consistency.exitZeroMeans, "declared-goal-verified-only");
+  assert.equal(report.consistency.acceptance, "not-evaluated");
+  assert.equal(report.continuation.state, "completed");
+  assert.equal(report.tasks[0].executionStatus, "in-progress");
+  assert.deepEqual(await readFile(join(f.root, "ticket.md")), before);
+});
+
+test("verification refuses the real r31 counters and closed-window contradictions instead of treating report generation as a pass", async (t) => {
+  const f = await fixture(t);
+  const historical = await readFile(
+    new URL(
+      "./fixtures/delivery-history/r31-budget-projection.json",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  await f.put("old-budget", JSON.parse(historical));
+  f.delivery.reconciliation = [
+    { sourceId: "old-budget", profile: "call-budget" },
+  ];
+  const task = await f.report();
+  assert.equal(task.consistency.status, "failed");
+  assert.ok(
+    task.reconciliation.conflicts.some(
+      (item) => item.reason === "BUDGET_PROJECTION_CONFLICT",
+    ),
+  );
+  assert.ok(
+    task.reconciliation.conflicts.some(
+      (item) => item.reason === "WINDOW_ACTIVATION_CONFLICT",
+    ),
+  );
+  await writeFile(join(f.root, "request.json"), JSON.stringify(f.request));
+  const before = await readFile(join(f.root, "old-budget.json"));
+  const generated = spawnSync(
+    process.execPath,
+    ["--run", "delivery:report", "--", "--input", join(f.root, "request.json")],
+    { cwd: join(import.meta.dirname, ".."), encoding: "utf8" },
+  );
+  assert.equal(generated.status, 0);
+  assert.equal(JSON.parse(generated.stdout).consistency.status, "failed");
+  const result = verificationCLI(f);
+  assert.notEqual(result.status, 0, result.stdout);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.consistency.status, "failed");
+  assert.equal(report.verification.status, "failed");
+  assert.equal(report.verification.reason, "DELIVERY_CONSISTENCY_REQUIRED");
+  assert.deepEqual(await readFile(join(f.root, "old-budget.json")), before);
+});
+
+test("verification refuses unknown inputs and admits only observed consistency without evaluating business acceptance", async (t) => {
+  const f = await fixture(t);
+  await f.report();
+  await writeFile(join(f.root, "request.json"), JSON.stringify(f.request));
+  let result = verificationCLI(f);
+  assert.equal(result.status, 0, result.stdout);
+  let report = JSON.parse(result.stdout);
+  assert.equal(report.verification.status, "passed");
+  assert.equal(report.consistency.acceptance, "not-evaluated");
+  assert.equal(report.consistency.exitZeroMeans, "consistency-observed-only");
+  f.delivery.budget = {
+    receipts: [{ sourceId: "missing", caseId: "read-one" }],
+  };
+  await f.report();
+  result = verificationCLI(f);
+  assert.notEqual(result.status, 0, result.stdout);
+  report = JSON.parse(result.stdout);
+  assert.equal(report.consistency.status, "unknown");
+  assert.equal(report.verification.status, "failed");
+  const direct = spawnSync(
+    process.execPath,
+    [
+      join(import.meta.dirname, "delivery-check.mjs"),
+      "--verify",
+      "--input",
+      join(f.root, "request.json"),
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(direct.status, 3, direct.stdout);
+});
+
+test("an empty report cannot satisfy strict consistency verification", async (t) => {
+  const f = await fixture(t);
+  await writeFile(
+    join(f.root, "request.json"),
+    JSON.stringify({ ...f.request, tasks: [] }),
+  );
+  const result = verificationCLI(f);
+  assert.notEqual(result.status, 0, result.stdout);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.tasks.length, 0);
+  assert.equal(report.verification.status, "failed");
+});
+
 test("an unmet original ticket does not stop a separately scoped authorized task", async (t) => {
   const f = await fixture(t);
   await permission(f);

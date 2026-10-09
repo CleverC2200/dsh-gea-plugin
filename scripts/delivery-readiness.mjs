@@ -1,3 +1,4 @@
+import { isObservationTime as timestamp } from "./delivery-time.mjs";
 // Pure interpretation of already-read, controlled metadata. No IO or execution.
 import { observeTaskTicket } from "./delivery-ticket.mjs";
 const id = (value) =>
@@ -72,10 +73,7 @@ const negativeFacts = {
   ],
   "real-model:failed": ["model", "failed", "REAL_MODEL_FAILED"],
 };
-const timestamp = (value) =>
-  typeof value === "string" &&
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
-  Number.isFinite(Date.parse(value));
+
 function hasSupersessionCycle(entries, roots) {
   const visiting = new Set(),
     visited = new Set();
