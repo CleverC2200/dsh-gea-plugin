@@ -334,7 +334,8 @@ export async function prepareSourcePlugins(
   );
   patch.push({
     id: "agent-preset-registry",
-    config: { default: "standard" },
+    // Manage registers this standard composition; preserve the user's selectedDefault.
+    config: { default: "auto-negotiation" },
   });
   patch.push({ id: "dsh-agent-manage", config: { sources: [] } });
   await writeFile(

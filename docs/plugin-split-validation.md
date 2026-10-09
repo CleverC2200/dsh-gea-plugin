@@ -18,6 +18,8 @@ corepack pnpm start --window /absolute/open-window.json --case <existing-case> -
 
 current source-profile直接调用businessDeploymentPatch，仅给GEA真实业务/模型配置；旧公司desktop仍调用deploymentPatch中的历史UI/preset装配，业务声明共享现有module同一规则，不把旧helper带进最新source启动。
 
+新生成的 source 组合将官方 `agent-preset-registry.default` 设为 `auto-negotiation`，由 Manage 以固定官方 standard 组合提供“智能编排”。生成补丁不写 `selectedDefault`，官方仍优先采用用户保存的选择。因此已有 `selectedDefault: minimal` 的 profile 不会仅因准备新组合而切换默认；获准的运行采用阶段须经官方设置保存指定选择并核对 effective default。源码组合准备不修改用户 profile、已有 Session 或草稿，也不证明候选已经装载。
+
 生成的源码检查保留各项目声明的补充类型路径，并按该项目目录与 baseUrl 解析。固定 Core 与已登记跨仓类型映射始终优先，项目路径不能替换这些映射。原发布资产仍只校验和复用，不重新编译。
 
 本项目 GEA 的开发安装将 GenUI 指向固定原 npm 0.11.3 发布资产，将 Better Sidebar 指向原样 e35120f1d9b3773062b68decb4f53a526d6c8baa checkout，退出同级产品 fork 的依赖声明。Sidebar 策略测试通过上游已公开的 `dsh-better-sidebar/src/*` 导出读取注册逻辑，不再拼接同级源码路径。冻结资产不重建；上游源码与发布文件摘要仍由明确五源记录校验，开发依赖路径不成为新的装配默认。
