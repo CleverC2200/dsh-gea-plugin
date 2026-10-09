@@ -345,9 +345,9 @@ test(
       const brandLogo = page.locator(".gea-shell-logo");
       assert.equal(await brandLogo.evaluate((el) => el.tagName), "IMG");
       assert.match(await brandLogo.getAttribute("src"), /^data:image\/png;base64,/);
-      // 客户端名：左上角品牌文字与窗口标题都用「Synear GEA」。
+      // GEA business identity and the official Core document title have separate owners.
       assert.equal(await page.locator(".gea-brand-title").textContent(), "Synear GEA");
-      assert.equal(await page.title(), "Synear GEA");
+      assert.equal(await page.title(), "DSH 本地构建");
       assert.equal(
         await page
           .locator('[data-slot="sidebar.brand.name"] span')

@@ -158,7 +158,7 @@ export async function stockReferencePage(
     if (body.operation === "open" && body.pageId === "inventory-fc") opens.push(body);
     if (body.operation === "context") contexts.push(body.parameters);
   });
-  page.on("response", async (response) => {
+  const captureInitialOwner = async (response) => {
     if (
       !response.url().endsWith("/api/agent-workbench/page") ||
       !response.request().postData() ||
@@ -168,7 +168,8 @@ export async function stockReferencePage(
     )
       return;
     owners.push(await response.json());
-  });
+  };
+  page.on("response", captureInitialOwner);
   await preparePage?.(page);
   await page.goto(app.origin);
   await openWorkbenchPage(page, "分仓库存");
@@ -176,6 +177,7 @@ export async function stockReferencePage(
   await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
   await expect.poll(() => contexts.at(-1)?.parts?.queryState?.state).toBe("ready");
   await expect.poll(() => owners.at(-1)?.owner).toEqual(expect.any(String));
+  page.off("response", captureInitialOwner);
   const session = opens.at(-1).sessionId;
   assert.match(session, /^session-[0-9a-f-]{36}$/);
   const quote = async () => {

@@ -106,7 +106,7 @@ test(
       );
       await writeFile(
         join(directory, "index.html"),
-        `<!doctype html><html lang="zh-CN"><body><h1>${name}</h1><button id="read" disabled>读取样例</button><button id="write" disabled>尝试写入</button><output id="result"></output><script>
+        `<!doctype html><html lang="zh-CN"><head><style>body{background:var(--workbench-page)}</style></head><body><h1>${name}</h1><button id="read" disabled>读取样例</button><button id="write" disabled>尝试写入</button><output id="result"></output><script>
       const ready = () => parent.postMessage({protocol:'gea-html-v2',type:'ready'},'*');
       addEventListener('message', event => {
         if (event.source !== parent || event.data?.protocol !== 'gea-html-v2') return;
@@ -298,7 +298,10 @@ test(
     await page.getByRole("button", { name: "关闭", exact: true }).click();
     let themePageId;
     const checkSharedTheme = async (background) => {
-      await expect(page.locator("body")).toHaveCSS("background-color", background);
+      await expect(htmlFrameElement(page, themePageId).contentFrame().locator("body")).toHaveCSS(
+        "background-color",
+        background,
+      );
       await expect(htmlFrameElement(page, themePageId)).toHaveCSS("font-size", "15px");
       assert.equal(
         await page

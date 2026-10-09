@@ -1,5 +1,7 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
@@ -196,7 +198,32 @@ test(
     await page.goto(app.origin);
     const f = await openSalesPlan(page);
     await f.getByRole("tab", { name: "纠偏", exact: true }).click();
-    await f.getByRole("button", { name: "退回重提", exact: true }).click();
+    try {
+      await f.getByRole("button", { name: "退回重提", exact: true }).click();
+    } catch (error) {
+      const evidence = resolve(".runtime/correction-resubmit-evidence");
+      await mkdir(evidence, { recursive: true });
+      await writeFile(
+        resolve(evidence, "action-failure.html"),
+        await f.locator("body").innerHTML(),
+      );
+      await writeFile(
+        resolve(evidence, "action-failure.json"),
+        JSON.stringify(
+          {
+            plan: current,
+            requests: app.requests.map((request) => ({
+              method: request.method,
+              path: request.url.pathname,
+              query: request.url.search,
+            })),
+          },
+          null,
+          2,
+        ),
+      );
+      throw error;
+    }
     const d = f.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
     const input = d.getByRole("textbox", { name: "纠偏调整量 789" });
     await expect(input).toHaveValue("2");
