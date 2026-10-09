@@ -170,14 +170,25 @@ test(
     );
     const page = await context.newPage();
     const contextPayloads = [];
+    const contextOwners = [];
+    const openedPages = [];
     const listResponses = [];
     page.on("request", (request) => {
       if (request.url().endsWith("/api/agent-workbench/page")) {
         const body = request.postDataJSON();
-        if (body.operation === "context") contextPayloads.push(body.parameters);
+        if (body.operation === "context") {
+          contextPayloads.push(body.parameters);
+          contextOwners.push(body.owner);
+        }
       }
     });
     page.on("response", async (response) => {
+      if (response.url().endsWith("/api/agent-workbench/page")) {
+        const request = response.request().postDataJSON();
+        if (request.operation === "open" && response.ok())
+          openedPages.push({ ...request, owner: (await response.json()).owner });
+        return;
+      }
       if (!response.url().endsWith("/api/gea-proof/workbench/query")) return;
       const request = response.request().postDataJSON();
       if (request.kind !== "list") return;
@@ -227,6 +238,13 @@ test(
     );
     const readContexts = () => contextPayloads.filter(Boolean);
     await expect.poll(() => readContexts().length).toBeGreaterThan(0);
+    await expect.poll(() => openedPages.length).toBeGreaterThan(0);
+    const opened = openedPages.at(-1);
+    assert.equal(opened.pageId, "gea-proof");
+    assert.equal(opened.resourceId, "gea-readonly");
+    assert.equal(typeof opened.sessionId, "string");
+    assert.equal(typeof opened.owner, "string");
+    assert.ok(contextOwners.every((owner) => openedPages.some((page) => page.owner === owner)));
     const combined = readContexts().at(-1);
     assert.ok(
       Number.isInteger(combined.sequence) && combined.sequence >= 1,

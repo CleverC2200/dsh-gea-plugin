@@ -6,6 +6,12 @@ import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { profile } from "./profile.mjs";
+import {
+  openSalesPlan,
+  openWorkbenchPage,
+  htmlFrameElement,
+  prepareWorkbenchHtmlRoots,
+} from "./fixtures/business-page.mjs";
 
 async function enableSelection(page) {
   const button = page.locator("[data-page-selection-trigger]");
@@ -181,7 +187,7 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    const frame = page.frameLocator("iframe[data-gea-workbench]");
+    const frame = await openSalesPlan(page);
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     const target = frame.getByTestId("regional-approval-month-plan-p");
     await expect(target).toBeVisible();
@@ -307,6 +313,7 @@ test(
     );
     await currentHtmlResource(root);
     const app = await profile(t, {
+      beforeStart: prepareWorkbenchHtmlRoots([root]),
       config: (base) => ({
         analysis: {
           mode: "model",
@@ -320,7 +327,6 @@ test(
       }),
       env: {
         GEA_PICKER_TEST_KEY: "fixture-key",
-        GEA_HTML_PLUGIN_ROOTS: JSON.stringify([root]),
       },
     });
     const prompts = [];
@@ -409,10 +415,8 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-      await page.getByText("库存管理", { exact: true }).click();
-    await page.getByText("分仓库存", { exact: true }).click();
-    const iframe = page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]');
+    await openWorkbenchPage(page, "分仓库存");
+    const iframe = htmlFrameElement(page, "inventory-fc");
     await expect(iframe)
       .toHaveAttribute("sandbox", "allow-scripts allow-downloads")
       .catch(async (e) => {

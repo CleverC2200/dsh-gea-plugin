@@ -4,6 +4,7 @@ import { mkdir, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { openSalesPlan, salesPlanFrameElement } from "./fixtures/business-page.mjs";
 
 test(
   "source GenUI renders a persisted model reply and restores local input after refresh",
@@ -61,7 +62,7 @@ test(
     );
     assert.equal(
       provenance["@changfenhuang/dsh-genui"].commit,
-      "382db5575ad3068efeff0322eec9cc499f79ae01",
+      "0cc64c97b426ff5afe54154e74ead31dd8739265",
     );
     const modules = join(app.runtime, "home/profiles/plugin-split-validation/node_modules");
     assert.equal(
@@ -104,9 +105,10 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/ })
       .getByRole("button", { name: "继续", exact: true })
       .click();
+    await openSalesPlan(page);
     const composer = page.locator('[contenteditable="true"], textarea').first();
     await opening.promise;
-    await expect(page.locator("iframe[data-gea-workbench]")).toBeVisible();
+    await expect(salesPlanFrameElement(page)).toBeVisible();
     await expect(composer).toBeHidden();
     releaseOpening.resolve();
     await expect(composer).toBeVisible();
