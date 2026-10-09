@@ -163,25 +163,31 @@ test(
       assert.equal(await page.locator('[contenteditable="true"]').count(), 0);
       const loginBounds = await salesPlanFrameElement(page).boundingBox();
       // The native page fills its Workbench business column inside Core's standard main.
-      const businessColumn = salesPlanFrameElement(page).locator("..");
+      const businessInsets = () =>
+        salesPlanFrameElement(page).evaluate((iframe) => {
+          const column = iframe.closest(".agent-workbench-business");
+          if (!column) throw Error("Current Workbench must own the native business column");
+          const a = iframe.getBoundingClientRect(),
+            b = column.getBoundingClientRect();
+          return [a.x - b.x, a.y - b.y, a.width - b.width, a.height - b.height];
+        });
+      await expect.poll(businessInsets).toEqual([0, 0, 0, 0]);
       await expect
         .poll(() =>
-          salesPlanFrameElement(page).evaluate((iframe) => {
-            const column = iframe.closest(".agent-workbench-business");
-            if (!column) throw Error("Current Workbench must own the native business column");
-            const a = iframe.getBoundingClientRect(),
-              b = column.getBoundingClientRect();
-            return [a.x - b.x, a.y - b.y, a.width - b.width, a.height - b.height];
-          }),
+          page
+            .locator("[data-shell-bottom]")
+            .evaluate((bottom) =>
+              Number.parseFloat(getComputedStyle(bottom.parentElement).gridTemplateColumns),
+            ),
         )
-        .toEqual([0, 0, 0, 0]);
+        .toBe(280);
       const navigationLayout = await page.locator("[data-shell-bottom]").evaluate((bottom) => ({
         sidebar: Number.parseFloat(getComputedStyle(bottom.parentElement).gridTemplateColumns),
         collapsed: bottom.parentElement.getAttribute("data-sidebar-collapsed"),
       }));
       assert.deepEqual(navigationLayout, { sidebar: 280, collapsed: null });
       assert.equal(loginBounds.height, 920);
-      assert.ok(await businessColumn.isVisible());
+
       await mkdir(".runtime/web-evidence", { recursive: true });
       await page.screenshot({
         path: ".runtime/web-evidence/login-desktop.png",
@@ -251,6 +257,7 @@ test(
           })),
         )
         .toEqual(navigationLayout);
+      await expect.poll(businessInsets).toEqual([0, 0, 0, 0]);
       const bounds = await salesPlanFrameElement(page).boundingBox();
       assert.ok(bounds.x > 200 && bounds.width < 1100, JSON.stringify(bounds));
       // The embedded workbench must resize its columns independently of the outer window.
