@@ -5,6 +5,7 @@ import { access, lstat, mkdir, readFile, realpath, rename, writeFile, rm, copyFi
 import { writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { pathToFileURL } from 'node:url';
 
 const names = {
   'dsh-agent-workbench': '@cleverc2200/dsh-agent-workbench',
@@ -124,6 +125,13 @@ async function preflight(input, destination) {
       builtArchive(row.archive, rawManifest, build.outputs);
     }
     else {
+      // Prepare uses this same owner formatter. Validate publication metadata
+      // here so a missing optional peer version cannot create a failed stage.
+      const { productionManifest } = await import(pathToFileURL(join(path, 'scripts/production-manifest.mjs')));
+      try { productionManifest(manifest, input.versions); }
+      catch (error) {
+        fail(error.message.startsWith('COMPANION_VERSION_REQUIRED:') ? 'DELIVERY_COMPANION_VERSION_REQUIRED' : 'DELIVERY_PRODUCTION_MANIFEST_INVALID');
+      }
       for (const key of ['.', './client']) {
         const target = runtimeExport(manifest.exports?.[key]);
         if (typeof target !== 'string' || !target.startsWith('./')) fail('DELIVERY_PUBLIC_EXPORT_MISSING');

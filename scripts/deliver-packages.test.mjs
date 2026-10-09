@@ -50,8 +50,7 @@ async function requestFixture(t, { missingClient = false } = {}) {
   const pnpm = join(work, 'pnpm.mjs');
   await writeFile(pnpm, "console.error('http://localhost:1234/?token=private-command-token Authorization: Bearer private-bearer-token'); process.exit(7);\n");
   const input = join(work, 'request.json'), destination = join(work, 'delivery');
-  // The old owner formatter can still request these versions; a successful
-  // delivery must reject mandatory auxiliary peers in its final artifacts.
+  // Optional peers still need exact publication metadata, not installed tgz inputs.
   versions['@changfenhuang/dsh-genui'] = '0.11.3';
   versions['dsh-better-sidebar'] = '0.24.1';
   await writeFile(input, JSON.stringify({ core: { path: core, head: coreHead, version: '0.2.1-alpha.1' }, pnpm, versions, repositories }));
@@ -65,6 +64,19 @@ test('delivery rejects a cwd-relative request before creating output', async t =
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_ABSOLUTE_PATH_REQUIRED/);
   assert.deepEqual(await readdir(cwd), []);
+});
+
+test('the real production formatter rejects missing optional version metadata before creating delivery output', async t => {
+  for (const name of ['@changfenhuang/dsh-genui', 'dsh-better-sidebar']) {
+    const fixture = await requestFixture(t);
+    const request = JSON.parse(await readFile(fixture.input, 'utf8'));
+    delete request.versions[name];
+    await writeFile(fixture.input, JSON.stringify(request));
+    const result = spawnSync(process.execPath, [entry, '--input', fixture.input, '--destination', fixture.destination], { cwd: '/', encoding: 'utf8' });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /DELIVERY_COMPANION_VERSION_REQUIRED/);
+    await assert.rejects(access(fixture.destination));
+  }
 });
 
 test('a missing public client export stops before any production dependency command', async t => {

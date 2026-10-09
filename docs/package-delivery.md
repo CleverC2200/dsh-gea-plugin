@@ -21,7 +21,9 @@ request.json 的所有输入路径须为绝对路径，destination 必须是不�
   "versions": {
     "@cleverc2200/dsh-agent-workbench": "0.1.1-candidate.installable.20261009.1",
     "dsh-agent-manage": "0.6.3-company.6.candidate.installable.20261009.1",
-    "@cleverc2200/gea-dsh-prototype": "0.0.135-candidate.installable.20261009.1"
+    "@cleverc2200/gea-dsh-prototype": "0.0.135-candidate.installable.20261009.1",
+    "@changfenhuang/dsh-genui": "0.11.3",
+    "dsh-better-sidebar": "0.24.1"
   },
   "repositories": [
     {"repo": "dsh-agent-workbench", "path": "/absolute/workbench", "head": "FULL_SOURCE_SHA", "archive": "/absolute/workbench-raw.tgz", "buildReceipt": "/absolute/workbench-build.json"},
@@ -30,6 +32,8 @@ request.json 的所有输入路径须为绝对路径，destination 必须是不�
   ]
 }
 ```
+
+versions 的两个辅助版本是 optional peer 的 exact 发布元数据，复用 productionManifest 时仍须明确填写；它们不增加交付 tgz、不自动安装辅助插件，也不把辅助能力变成三核心启动前提。入口在创建 destination 前调用同一 productionManifest 校验，缺少版本会失败且不运行 prepare。
 
 构建回执必须包含实际执行命令、退出码、源码提交和锁摘要，并列出本次编译输出的路径/摘要。最少覆盖 manifest 的 Host 和 client 公共导出；需要交付的其它构建输出也应登记。output.path 相对对应 source checkout，sha256 核当前文件与 raw/final tar 同名文件，拒绝把旧 tgz 归到新构建下。command.cwd 要与源码实际目录一致。例：
 
