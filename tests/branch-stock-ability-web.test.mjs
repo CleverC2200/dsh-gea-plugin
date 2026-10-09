@@ -1,15 +1,40 @@
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { installStockRoutes, stockState } from "./fixtures/branch-stock.mjs";
 
-const branchPage = resolve("../dsh-agent-workbench/lib/business/inventory-fc");
+import { readProfileSources } from "./fixtures/profile-inputs.mjs";
+import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
+import { fixtureRequest, selectBusinessResource } from "./fixtures/business-session.mjs";
+import { openWorkbenchPage, htmlFrameElement } from "./fixtures/business-page.mjs";
+
+async function branchPageRoot() {
+  const sources = await readProfileSources(process.env.GEA_TEST_SOURCE_INPUTS);
+  const workbench = sources.find((source) => source.repo === "dsh-agent-workbench");
+  assert.ok(workbench, "the fixed Source inputs must name the Workbench asset owner");
+  const root = join(workbench.assetRoot, "lib/business/inventory-fc");
+  const prompt = JSON.parse(await readFile(join(root, "prompt.json"), "utf8"));
+  assert.equal(prompt.consumerCode, "branch-inventory");
+  assert.deepEqual(prompt.pageAgents, ["gea-html-inventory-fc", "gea-html-inventory-qll"]);
+  return root;
+}
+
+async function sessionPreset(app, sessionId) {
+  const rows = await readSession(app.runtime, sessionId);
+  let preset = rows[0]?.agentPreset;
+  for (const row of rows) {
+    if (row.type !== "agent-preset/selected") continue;
+    assert.equal(typeof row.data.agentPreset, "string");
+    preset = row.data.agentPreset;
+  }
+  return preset;
+}
 const tool = (name, args) => ({
   tool_calls: [
     {
@@ -28,6 +53,7 @@ test(
     timeout: 240000,
   },
   async (t) => {
+    const branchPage = await branchPageRoot();
     const qll = await mkdtemp(join(tmpdir(), "stock-ability-qll-"));
     t.after(() => rm(qll, { recursive: true, force: true }));
     await mkdir(join(qll, "skills"));
@@ -97,10 +123,8 @@ test(
           maxTokens: 2048,
         },
       }),
-      env: {
-        GEA_TEST_MODEL_KEY: "fixture-key",
-        GEA_HTML_PLUGIN_ROOTS: JSON.stringify([branchPage, qll]),
-      },
+      beforeStart: fixtureWorkbench([branchPage, qll]),
+      env: { GEA_TEST_MODEL_KEY: "fixture-key" },
     });
     app.route(async (request, response, reply) => {
       if (request.url.pathname.endsWith("/getUserInfo")) {
@@ -154,30 +178,25 @@ test(
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("request", (request) => {
       if (request.url().endsWith("/api/page-interaction/reference")) referencePosts++;
-      if (
-        !request.url().endsWith("/api/gea-html/inventory-fc/open") &&
-        !request.url().endsWith("/api/gea-html/inventory-fc/call")
-      )
-        return;
-      const body = request.postDataJSON();
-      if (request.url().endsWith("/open")) opens.push(body);
-      if (body.method === "context") contexts.push(body.parameters);
+    });
+    page.on("response", async (response) => {
+      if (!response.url().endsWith("/api/agent-workbench/page") || !response.ok()) return;
+      const request = response.request().postDataJSON();
+      if (request?.operation === "open") opens.push({ ...request, ...(await response.json()) });
+      if (request?.operation === "context") contexts.push(request.parameters);
     });
     await page.goto(app.origin);
-    await page
-      .getByRole("dialog", { name: /内测声明|预览版说明/ })
-      .getByRole("button", { name: "继续", exact: true })
-      .click();
-    if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-      await page.getByText("库存管理", { exact: true }).click();
-    await page.getByText("分仓库存", { exact: true }).click();
-    const frame = page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]').contentFrame();
+    await openWorkbenchPage(page, "分仓库存");
+    const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
     await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
     const chooser = page.getByRole("combobox", { name: "选择解读能力" });
     await expect(chooser).toBeVisible();
     await expect(chooser.locator("option")).toHaveCount(2);
-    await expect.poll(() => opens.at(-1)?.agentPreset).toBe("gea-html-inventory-fc");
-    const branchSession = opens.at(-1).session;
+    await expect.poll(() => typeof opens.at(-1)?.owner).toBe("string");
+    const branchSession = opens.at(-1).sessionId;
+    const branchOwner = opens.at(-1).owner;
+    assert.equal(opens.at(-1).resourceId, "gea-html-inventory-fc");
+    assert.equal(await sessionPreset(app, branchSession), "gea-html-inventory-fc");
     const search = frame.getByPlaceholder("搜索 SKU / 产品名称");
     await search.fill("FC001");
     await expect(frame.locator(".replenishment-table tbody")).toContainText("FC001");
@@ -290,8 +309,17 @@ test(
     );
     const contextsBeforeSwitch = contexts.length;
     await chooser.selectOption("gea-html-inventory-qll");
-    await expect.poll(() => opens.at(-1)?.agentPreset).toBe("gea-html-inventory-qll");
-    const qllSession = opens.at(-1).session;
+    await expect.poll(() => opens.at(-1)?.sessionId).not.toBe(branchSession);
+    const qllSession = opens.at(-1).sessionId;
+    assert.equal(opens.at(-1).resourceId, "gea-html-inventory-fc");
+    assert.equal(await sessionPreset(app, qllSession), "gea-html-inventory-qll");
+    const releasedOwner = await fixtureRequest(app, "/api/agent-workbench/page", {
+      operation: "context",
+      owner: branchOwner,
+      parameters: {},
+    });
+    assert.equal(releasedOwner.ok, false);
+    assert.equal(releasedOwner.value.error, "PAGE_OWNER_RELEASED");
     assert.notEqual(qllSession, branchSession);
     await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
     await expect.poll(() => contexts.length).toBeGreaterThan(contextsBeforeSwitch);
@@ -319,25 +347,7 @@ test(
     );
     const mismatch = await page.evaluate(
       async (body) => {
-        const response = await fetch("/api/gea-html/inventory-fc/open", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        return { status: response.status, value: await response.json() };
-      },
-      { session: branchSession, agentPreset: "gea-html-inventory-qll", scope: currentAuthority },
-    );
-    assert.equal(mismatch.status, 400);
-    assert.equal(mismatch.value.error, "PAGE_AGENT_SESSION_MISMATCH");
-    const unsupportedSession = await app.remote("session/create", {
-      cwd: app.runtime + "/workspace",
-      agentPreset: "gea-readonly",
-    });
-    assert.equal(unsupportedSession.ok, true, JSON.stringify(unsupportedSession));
-    const unsupported = await page.evaluate(
-      async (body) => {
-        const response = await fetch("/api/gea-html/inventory-fc/open", {
+        const response = await fetch("/api/agent-workbench/page", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
@@ -345,9 +355,36 @@ test(
         return { status: response.status, value: await response.json() };
       },
       {
-        session: unsupportedSession.value.sessionId,
-        agentPreset: "gea-readonly",
-        scope: currentAuthority,
+        operation: "open",
+        pageId: "inventory-fc",
+        sessionId: branchSession,
+        resourceId: "gea-html-inventory-qll",
+      },
+    );
+    assert.equal(mismatch.status, 400);
+    // The old caller-supplied agentPreset field is retired; a forged page resource must be rejected.
+    assert.equal(mismatch.value.error, "PAGE_RESOURCE_NOT_ALLOWED");
+    const selectedReadonly = await selectBusinessResource(app, "gea-readonly");
+    assert.equal(selectedReadonly.preset, "gea-readonly");
+    const unsupportedSession = await app.remote("session/create", {
+      cwd: app.runtime + "/workspace",
+      agentPreset: "gea-readonly",
+    });
+    assert.equal(unsupportedSession.ok, true, JSON.stringify(unsupportedSession));
+    const unsupported = await page.evaluate(
+      async (body) => {
+        const response = await fetch("/api/agent-workbench/page", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        return { status: response.status, value: await response.json() };
+      },
+      {
+        operation: "open",
+        pageId: "inventory-fc",
+        sessionId: unsupportedSession.value.sessionId,
+        resourceId: "gea-html-inventory-fc",
       },
     );
     assert.equal(unsupported.status, 400);
@@ -355,14 +392,19 @@ test(
     denyQll = true;
     const denied = await page.evaluate(
       async (body) => {
-        const response = await fetch("/api/gea-html/inventory-fc/open", {
+        const response = await fetch("/api/agent-workbench/page", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         });
         return { status: response.status, value: await response.json() };
       },
-      { session: qllSession, agentPreset: "gea-html-inventory-qll", scope: currentAuthority },
+      {
+        operation: "open",
+        pageId: "inventory-fc",
+        sessionId: qllSession,
+        resourceId: "gea-html-inventory-fc",
+      },
     );
     assert.equal(denied.status, 400);
     await app.rpc("logout");
@@ -374,16 +416,22 @@ test(
         .then((response) => response.json())
         .then((value) => value.scope),
     );
+    assert.notEqual(tenantScope, currentAuthority);
     const crossIdentity = await page.evaluate(
       async (body) => {
-        const response = await fetch("/api/gea-html/inventory-fc/open", {
+        const response = await fetch("/api/agent-workbench/page", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         });
         return { status: response.status, value: await response.json() };
       },
-      { session: branchSession, agentPreset: "gea-html-inventory-fc", scope: tenantScope },
+      {
+        operation: "open",
+        pageId: "inventory-fc",
+        sessionId: branchSession,
+        resourceId: "gea-html-inventory-fc",
+      },
     );
     assert.equal(crossIdentity.status, 400);
     assert.equal(crossIdentity.value.error, "PAGE_SESSION_IDENTITY_MISMATCH");
@@ -401,16 +449,29 @@ test(
         .then((response) => response.json())
         .then((value) => value.scope),
     );
+    assert.notEqual(userScope, tenantScope);
+    const revokedOwner = await fixtureRequest(app, "/api/agent-workbench/page", {
+      operation: "context",
+      owner: opens.find((row) => row.sessionId === qllSession).owner,
+      parameters: {},
+    });
+    assert.equal(revokedOwner.ok, false);
+    assert.equal(revokedOwner.value.error, "PAGE_OWNER_RELEASED");
     const crossUser = await page.evaluate(
       async (body) => {
-        const response = await fetch("/api/gea-html/inventory-fc/open", {
+        const response = await fetch("/api/agent-workbench/page", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         });
         return { status: response.status, value: await response.json() };
       },
-      { session: branchSession, agentPreset: "gea-html-inventory-fc", scope: userScope },
+      {
+        operation: "open",
+        pageId: "inventory-fc",
+        sessionId: branchSession,
+        resourceId: "gea-html-inventory-fc",
+      },
     );
     assert.equal(crossUser.status, 400);
     assert.equal(crossUser.value.error, "PAGE_SESSION_IDENTITY_MISMATCH");
@@ -455,18 +516,32 @@ test(
     timeout: 90000,
   },
   async (t) => {
-    const app = await profile(t, { env: { GEA_HTML_PLUGIN_ROOTS: JSON.stringify([branchPage]) } });
+    const branchPage = await branchPageRoot();
+    const app = await profile(t, { beforeStart: fixtureWorkbench([branchPage]) });
     const state = stockState();
     installStockRoutes(app, state, () => ({ content: "fixture" }));
     await app.login();
-    const response = await fetch(app.origin + "/api/gea-html/inventory-fc/agents", {
-      headers: { Cookie: app.cookie, Origin: app.origin },
-    });
+    const selected = await selectBusinessResource(app, "gea-html-inventory-fc");
+    assert.equal(selected.preset, "gea-html-inventory-fc");
+    const response = await fetch(
+      app.origin +
+        "/api/agent-manage/resources?" +
+        new URLSearchParams({ cwd: app.runtime + "/workspace" }),
+      {
+        headers: { Cookie: app.cookie, Origin: app.origin },
+      },
+    );
     assert.equal(response.status, 200);
     assert.deepEqual(
-      (await response.json()).map((agent) => agent.preset),
+      (await response.json()).find((resource) => resource.id === "gea-html-inventory-fc")
+        .interpreters,
       ["gea-html-inventory-fc"],
     );
+    const unavailable = await fixtureRequest(app, "/api/agent-manage/resources/select", {
+      id: "gea-html-inventory-qll",
+      cwd: app.runtime + "/workspace",
+    });
+    assert.equal(unavailable.ok, false);
     const missing = await app.remote("session/create", {
       cwd: app.runtime + "/workspace",
       agentPreset: "gea-html-inventory-qll",
