@@ -292,9 +292,7 @@ function membersOf(model: Model, key: "dimensions" | "measures" | "segments"): s
 }
 
 /**
- * 成员名 + 类型。inspect 产物里每个成员都带 `type`（string/time/number/boolean），
- * 我们以前只留名字，导致模型不知道哪个是日期（于是把 `2026-10` 当日期传）、
- * 哪个是 number 类型的维度（于是塞进 measures 被拒）。这里把类型带出来。
+ * 保留 inspect 成员名和服务端 type，区分日期、数值维度与 measure 的输入约定。
  */
 function memberEntriesOf(
   model: Model,

@@ -1,14 +1,6 @@
 /**
- * 把 "fetch failed" 翻成人能看懂的错。
- *
- * 线上现象（2026-09-23 21:12，session-764c86e2）：模型流式请求中断，界面只显示
- * `本轮运行失败 fetch failed  UNKNOWN`。原因是 Node/undici 的 `fetch` 失败时抛的是一个
- * 只有 "fetch failed" 的 `TypeError`，真实原因（ECONNRESET / ENOTFOUND / 连接超时…）
- * 藏在 `error.cause` 里，宿主没读出来，框架也不知道该给什么 code，就标成 UNKNOWN。
- *
- * 这里统一做两件事：
- * 1. 把 `cause` 里的 code / hostname / syscall 挖出来，拼成可读原因；
- * 2. 给错误挂上 `code`，界面与日志不再显示 UNKNOWN。
+ * Node/undici 的 fetch 失败可能只提供 TypeError("fetch failed")，具体原因位于 cause。
+ * 读取 cause 的 code、hostname 和 syscall 生成可读错误，并保留网络失败或超时分类。
  */
 import { isAbortError, readableError } from "./abort.ts";
 
