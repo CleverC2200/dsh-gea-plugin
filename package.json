@@ -46,6 +46,7 @@
     "typecheck:official": "node ../dsh-agent-workbench/scripts/verify-official-input.mjs && tsc -p tsconfig.official.json",
     "delivery:report": "node scripts/delivery-check.mjs",
     "delivery:check": "node scripts/delivery-check.mjs --verify",
+    "delivery:verify-goal": "node scripts/delivery-check.mjs --verify-goal",
     "test:delivery": "node --test scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs"
   },
   "dependencies": {

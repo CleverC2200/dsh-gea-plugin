@@ -858,7 +858,8 @@ if (
 ) {
   try {
     const args = process.argv.slice(2);
-    const verify = args[0] === "--verify";
+    const verifyGoal = args[0] === "--verify-goal";
+    const verify = verifyGoal || args[0] === "--verify";
     if (verify) args.shift();
     const short = args.length === 3 && args[2] === "--continuation";
     if ((!short && args.length !== 2) || args[0] !== "--input")
@@ -890,6 +891,26 @@ if (
       };
       report.consistency.exitZeroMeans = "consistency-observed-only";
       if (!passed) process.exitCode = 3;
+      if (verifyGoal) {
+        report.consistency.exitZeroMeans = "declared-goal-verified-only";
+        if (passed) {
+          const complete =
+            report.continuation.state === "completed" &&
+            report.tasks.every(
+              (task) => task.continuation.inTransit.length === 0,
+            );
+          report.verification = {
+            status: complete ? "passed" : "failed",
+            reason: complete
+              ? "DECLARED_GOAL_VERIFIED"
+              : "DECLARED_GOAL_INCOMPLETE",
+            minimumGap: complete
+              ? null
+              : "READ_CONTINUATION_REMAINING_AND_STOP_CONDITIONS",
+          };
+          if (!complete) process.exitCode = 4;
+        }
+      }
     }
     console.log(
       JSON.stringify(
