@@ -1,0 +1,19 @@
+{
+  "at": "2026-10-09T03:04:41.879486+00:00",
+  "case": "48-navigation-r7-interrupted-setup",
+  "freezeFailure": "old sales27-window-budget-export-r6 filename assertion before mutations",
+  "controller": 71629,
+  "launcher": 15132,
+  "exitCode": 130,
+  "method": "original controller interrupted during startup",
+  "ElectronHostObserved": false,
+  "portsAbsent": [
+    49825,
+    49826,
+    49827
+  ],
+  "businessRequests": "unknown; not assumed zero",
+  "modelsAndWrites": "unknown; no UI action performed",
+  "accepted": false,
+  "profileConfigMutated": false
+}

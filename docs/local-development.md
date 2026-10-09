@@ -9,18 +9,20 @@ corepack pnpm install --frozen-lockfile --prefer-offline
 
 每工作树保留自己的 node_modules、lib 和临时目录，仅复用 package store。不要混用 npm 安装开发依赖，不复制其他工作树可写输出。`verifyDepsBeforeRun: error` 拒绝过期依赖，不自动安装；只读知识检查无需产品依赖。
 
-| 目的 | 当前入口 |
-|---|---|
-| 工程导航与源码声明 | `corepack pnpm run check:knowledge` |
-| 监听 Host 与 client | `corepack pnpm dev` |
-| 只构建 Host | `corepack pnpm build:host` |
-| 只构建 client | `corepack pnpm build:client` |
-| 构建 GEA 插件 | `corepack pnpm build:plugin` |
-| 类型检查 | `corepack pnpm typecheck` |
-| 固定官方 Core 类型检查 | `corepack pnpm typecheck:official` |
-| 构建目标与 watch 合同 | `corepack pnpm test:build` |
+| 目的                   | 当前入口                            |
+| ---------------------- | ----------------------------------- |
+| 工程导航与源码声明     | `corepack pnpm run check:knowledge` |
+| 监听 Host 与 client    | `corepack pnpm dev`                 |
+| 只构建 Host            | `corepack pnpm build:host`          |
+| 只构建 client          | `corepack pnpm build:client`        |
+| 构建 GEA 插件          | `corepack pnpm build:plugin`        |
+| 类型检查               | `corepack pnpm typecheck`           |
+| 固定官方 Core 类型检查 | `corepack pnpm typecheck:official`  |
+| 构建目标与 watch 合同  | `corepack pnpm test:build`          |
 
 完整 build 也仅构建 GEA host/client；页面在同组 Workbench 按自己的工具链构建。watch 只编译，不启动应用，勿并发写同一输出。官方类型检查需要明确准备的只读 SDK 与 peer 声明，不能以旧 SDK 或历史产物代替当前输入。
+
+只读交付核对使用 `pnpm run delivery:check --input request.json`；短接续增加 `--continuation`。预算、阶段、原依赖与授权从同次固定回执读取派生，详见 [交付核对 interface](delivery-check.md)。`pnpm run test:delivery` 只运行本地 fixture 回归。CLI 退出0仅表示报告生成，消费者需读取报告状态；此入口不启动应用或恢复自动化。
 
 按授权启动与切换时复用 [源码组合说明](plugin-split-validation.md) 的明确五源和自有 runtime。可构建不等于窗口已获授权。旧 desktop:dev 使用已安装公司壳，属于历史入口，不作为当前官方客户端协议。
 

@@ -12,7 +12,9 @@
     "src/host/mcp-read-evidence.ts",
     "scripts/source-profile.mjs",
     "scripts/start.mjs",
-    "scripts/start-isolated-validation.mjs"
+    "scripts/start-isolated-validation.mjs",
+    "scripts/delivery-check.mjs",
+    "scripts/source-combination-integrity.mjs"
   ],
   "scripts": [
     "check:knowledge",
@@ -26,7 +28,9 @@
     "typecheck:official",
     "source:check",
     "source:build",
-    "start"
+    "start",
+    "delivery:check",
+    "test:delivery"
   ],
   "exports": false,
   "peers": ["../dsh-agent-workbench", "../../official-latest-standard"],

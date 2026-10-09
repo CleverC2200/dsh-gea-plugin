@@ -45,6 +45,8 @@
     "package:desktop:win": "node scripts/package-desktop.mjs --target win",
     "test:package:desktop": "node --test scripts/package-desktop.test.mjs",
     "typecheck:official": "node ../dsh-agent-workbench/scripts/verify-official-input.mjs && tsc -p tsconfig.official.json",
+    "delivery:check": "node scripts/delivery-check.mjs",
+    "test:delivery": "node --test scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs",
     "check:knowledge": "node ../dsh-agent-workbench/scripts/check-agent-knowledge.mjs --root . --config docs/agent-knowledge.json"
   },
   "dependencies": {
