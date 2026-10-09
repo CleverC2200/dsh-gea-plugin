@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, realpathSync, existsSync } from "node:fs";
 import { resolve, dirname, relative, isAbsolute, sep } from "node:path";
 import { createHash } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { prepareQualityUpstreams, verifyQualityUpstreams } from "./quality-upstreams.mjs";
 import { readPreparedWorkbench, verifyPreparedWorkbench } from "./quality-workbench.mjs";
 import { resolveSourceInputs, resourceDigests } from "./source-profile.mjs";
@@ -12,10 +13,12 @@ const peers = {
   "dsh-agent-manage": "9e9aba86d12a2d743604e63a6000e7abb7da1ddd",
 };
 const coreCommit = "5badb15009ae1756c3afe0ae0cef1faafc290ccc";
+let finalGroup;
 function refuse(code, detail = "") {
   throw Error(code + (detail ? ": " + detail : ""));
 }
 function run(command, args, cwd = process.cwd(), environment = {}) {
+  finalGroup?.verifyUnchanged();
   const windows = process.platform === "win32" && ["npm", "corepack"].includes(command);
   const result = spawnSync(windows ? command + ".cmd" : command, args, {
     cwd,
@@ -39,8 +42,23 @@ try {
       "prepare-sdk": { type: "boolean" },
       "core-source": { type: "string" },
       "prepare-inputs": { type: "boolean" },
+      "final-group-sha256": { type: "string" },
+      "final-group-workbench": { type: "string" },
     },
   });
+  if (values["final-group-sha256"] !== undefined || values["final-group-workbench"] !== undefined) {
+    if (
+      !values.input ||
+      !/^[a-f0-9]{64}$/.test(values["final-group-sha256"] ?? "") ||
+      !isAbsolute(values["final-group-workbench"] ?? "")
+    )
+      refuse(
+        "CANDIDATE_FINAL_GROUP_REQUIRED",
+        "--input, original bytes --final-group-sha256 and absolute clean source --final-group-workbench required",
+      );
+    if (!["quality", "prepare", "verify-input"].includes(values.phase))
+      refuse("CANDIDATE_FINAL_GROUP_PHASE", values.phase);
+  }
   if (values.phase === "scope") {
     if (process.env.QUALITY_SCOPE_ALLOWED !== "true") throw Error("CANDIDATE_SCOPE_REQUIRED");
   } else if (values.phase === "final") {
@@ -77,11 +95,33 @@ try {
       ) + "\n",
     );
   } else {
-    if (!["quality", "prepare"].includes(values.phase))
+    if (!["quality", "prepare", "verify-input"].includes(values.phase))
       refuse("QUALITY_PHASE_REQUIRED", values.phase);
+    if (values.phase === "verify-input" && !values["final-group-sha256"])
+      refuse("CANDIDATE_FINAL_GROUP_REQUIRED", "verify-input requires the explicit final group");
     const input = values.input ?? process.env.QUALITY_CANDIDATE;
     if (!input) refuse("CANDIDATE_INPUT_REQUIRED", "--input <frozen group JSON>");
-    const candidate = JSON.parse(readFileSync(resolve(input), "utf8"));
+    if (values["final-group-sha256"]) {
+      // The default source/prepared layout and fixed peers predate this optional interface.
+      // Load only the explicitly supplied clean source; the reader validates its manifest root.
+      const { readFinalGroup } = await import(
+        pathToFileURL(resolve(values["final-group-workbench"], "scripts/candidate-input.mjs"))
+      );
+      finalGroup = await readFinalGroup({
+        input,
+        sha256: values["final-group-sha256"],
+        checkout: process.cwd(),
+        repo: "dsh-gea-plugin",
+        coreSource: values["core-source"],
+        expectedSha: process.env.QUALITY_EXPECTED_SHA,
+        ci: process.env.CI,
+      });
+      if (values.phase === "verify-input") {
+        console.log(JSON.stringify(finalGroup.receipt));
+        process.exit(0);
+      }
+    }
+    const candidate = finalGroup?.manifest ?? JSON.parse(readFileSync(resolve(input), "utf8"));
     if (candidate.core !== coreCommit || candidate.repositories?.length !== 3)
       refuse("CANDIDATE_PEER_REQUIRED", "fixed Core and exactly three sources");
     const own = candidate.repositories.find((entry) => entry.repo === "dsh-gea-plugin");
@@ -97,7 +137,10 @@ try {
       const entry = entries[0],
         git = (...args) =>
           execFileSync("git", ["-C", entry.path, ...args], { encoding: "utf8" }).trim();
-      if (git("rev-parse", "HEAD") !== entry.head || (peers[repo] && entry.head !== peers[repo]))
+      if (
+        git("rev-parse", "HEAD") !== entry.head ||
+        (!finalGroup && peers[repo] && entry.head !== peers[repo])
+      )
         refuse("CANDIDATE_HEAD", repo);
       if (git("rev-parse", "--is-shallow-repository") !== "false")
         refuse("CANDIDATE_HISTORY_REQUIRED", repo);
@@ -135,6 +178,7 @@ try {
         : []),
     ]);
     if (!existsSync(resolve(core, "apps/web/dist/index.html"))) refuse("QUALITY_CORE_WEB_REQUIRED");
+    finalGroup?.verifyUnchanged();
     if (values["prepare-inputs"])
       await prepareQualityUpstreams(existsSync(upstream) ? realpathSync(upstream) : upstream);
     else await verifyQualityUpstreams(upstream);
@@ -144,6 +188,7 @@ try {
       resolve(input),
       "--checkout",
       process.cwd(),
+      ...(finalGroup ? ["--final-group-sha256", values["final-group-sha256"]] : []),
     ]);
     if (
       Number(process.versions.node.split(".")[0]) !== 24 ||
@@ -197,6 +242,7 @@ try {
         prepared: preparedWorkbench,
         head: workbench.head,
       });
+      finalGroup?.verifyUnchanged();
       writeFileSync(workbenchReceipt, JSON.stringify(prepared, null, 2) + "\n");
     }
     for (const entry of candidate.repositories) {
@@ -254,6 +300,7 @@ try {
       },
     );
     await resolveSourceInputs(records, { requireEntries: true });
+    finalGroup?.verifyUnchanged();
     writeFileSync(sourcesFile, JSON.stringify(records, null, 2) + "\n");
     process.env.GEA_TEST_SOURCE_INPUTS = sourcesFile;
     process.env.GEA_TEST_CANDIDATE = resolve(input);
@@ -298,6 +345,7 @@ try {
       for (const [file, digest] of Object.entries(files))
         browserFiles[resolve(directory, file)] = digest;
     }
+    finalGroup?.verifyUnchanged();
     writeFileSync(
       resolve(dirname(dirname(process.cwd())), "browser-preparation.json"),
       JSON.stringify(
@@ -316,6 +364,12 @@ try {
       ) + "\n",
     );
     if (values.phase === "quality") {
+      if (finalGroup)
+        run("corepack", ["pnpm", "test:final-group"], process.cwd(), {
+          GEA_FINAL_GROUP_WORKBENCH_SOURCE: workbench.path,
+          GEA_FINAL_GROUP_MANAGE_SOURCE: manage.path,
+          GEA_FINAL_GROUP_CORE_SOURCE: core,
+        });
       run("corepack", ["pnpm", "quality:fast"]);
       run("corepack", ["pnpm", "test:contracts"]);
       run("corepack", ["pnpm", "test"]);

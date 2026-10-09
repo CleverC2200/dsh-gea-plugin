@@ -54,6 +54,18 @@ corepack pnpm test:observe
 
 `corepack pnpm quality:ci --input /absolute/path/candidate-input.json` 要求干净且固定的三仓输入，先核实际 Git SHA、完整历史与原锁，再只读核 Manage 的公开 SDK 工具、原上游依赖和 Workbench 的共享候选检查。它运行同一 `quality:fast`、`test:contracts` 与完整 `test`。CI 自身绑定事件实际 SHA，peer 使用命令内冻结的兼容提交；本地最终整合组合另有自己的回执，不能把两个 tuple 视为同一组合。
 
+显式最终组保留默认固定兼容组和 workflow 指针，另用原文件字节 SHA-256 声明实际源码。GEA 的相邻 Workbench 可以是 prepared dirty tree，故必须显式定位冻结输入中的干净 Workbench source。只在此模式加载该 source 的共享 reader；它核真实路径、package 身份、三仓 HEAD/full history/clean/提交内锁、Core Git/原锁/工具链和 CI 实际事件 SHA，不由 GEA 再解析一套 admission。
+
+```sh
+corepack pnpm quality:ci --phase verify-input --input /absolute/frozen-group.json \
+  --final-group-sha256 ORIGINAL_FILE_SHA256 \
+  --final-group-workbench /absolute/clean-workbench-source
+```
+
+`verify-input` 只读输出 candidate-source-only，SDK、质量、兼容、runtime 未验，不授予业务或发布权限。该定位路径必须与原文件中的 Workbench source realpath 一致，不能以 prepared 产物树替代。缺参数、未知参数、错 hash/事件/source/head/Core、dirty、重复仓或路径冲突都在准备前失败。冷 Core 若尚无 SDK 输出，可用 `--core-source /absolute/fixed-core-git` 核已有固定源码；仅 URL 不构成实际 Core proof。
+
+真正完整 quality 或 prepare phase 保留这三个显式输入参数，效果前复核原文件未改；准备后完整 candidate 检查仍核实际 SDK 和 Workbench exports，不把 source-only 通过当成完整通过。默认模式不加载新 reader，不接受单独定位参数暗改选组。`corepack pnpm test:final-group` 独立检查此可选合同；它使用本树和相邻当前 peer 的完整 Git 冷克隆，必要时用 GEA_FINAL_GROUP_WORKBENCH_SOURCE、GEA_FINAL_GROUP_MANAGE_SOURCE、GEA_FINAL_GROUP_CORE_SOURCE 显式指定只读源码。此合同不进入默认 test/test:quality 通配，显式完整质量模式会执行它。
+
 首次准备使用独立目录，GEA 与 Manage 源码放在 `<job-root>/candidate/<repo>`，Workbench 干净源码放在 `<job-root>/source/dsh-agent-workbench`，官方 Core 放在 `<job-root>/official-latest-standard`，原 link 依赖放在 `<job-root 的父目录>/current-mainline-closeout-44`。先按公开输入阶段生成声明，再显式准备：
 
 ```sh

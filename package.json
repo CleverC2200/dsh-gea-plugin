@@ -55,6 +55,7 @@
     "test:quality": "node --test scripts/quality.test.mjs scripts/quality-policy.test.mjs scripts/run-quality-ci.test.mjs scripts/quality-upstreams.test.mjs scripts/quality-test-reporter.test.mjs scripts/quality-workbench.test.mjs",
     "quality:fast": "pnpm lint && pnpm format:check && pnpm typecheck:official && pnpm check:knowledge && pnpm test:quality",
     "quality:ci": "node scripts/run-quality-ci.mjs",
+    "test:final-group": "node --test scripts/final-group-input.contract.mjs",
     "quality:upstreams": "node scripts/quality-upstreams.mjs",
     "test:contracts": "node --test --test-concurrency=1 tests/controlled-execution.test.mjs tests/plugin-sql-cancel.test.mjs tests/read-paging.test.mjs tests/business-page-grant.test.mjs tests/gateway-handshake.test.mjs && pnpm test:window && pnpm test:delivery"
   },
