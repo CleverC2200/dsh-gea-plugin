@@ -238,12 +238,18 @@ test(
         { headers: { Cookie: app.cookie } },
       );
       assert.equal(resourcesResponse.status, 200);
-      const agents = (await resourcesResponse.json()).filter(
+      const resources = (await resourcesResponse.json()).filter(
         (value) => value.installed && value.kind === "prompt",
       );
       assert.deepEqual(
-        agents.map((value) => value.id),
+        resources.map((value) => value.id),
+        ["gea-readonly", "gea-html-inventory-fc"],
+      );
+      const agents = selectedResource.interpreters;
+      assert.deepEqual(
+        agents,
         ["gea-html-inventory-fc"],
+        "only the installed FC interpreter is offered for this page",
       );
       const pagesResponse = await fetch(app.origin + "/api/agent-workbench/pages", {
         headers: { Cookie: app.cookie },

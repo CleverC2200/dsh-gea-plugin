@@ -352,7 +352,7 @@ test(
         await page
           .locator('[data-slot="sidebar.brand.name"] span')
           .evaluate((el) => getComputedStyle(el).color),
-        process.env.GEA_TEST_SOURCE_CORE === "1" ? "rgb(223, 23, 50)" : "rgb(215, 10, 28)",
+        "rgb(215, 10, 28)",
       );
       assert.equal(
         await page.locator(".gea-user-avatar").evaluate((el) => getComputedStyle(el).borderRadius),

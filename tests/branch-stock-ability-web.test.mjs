@@ -91,6 +91,7 @@ test(
     await currentHtmlResource(qll);
     const state = stockState();
     let stockRoute;
+    const modelRequests = [];
     installStockRoutes(
       {
         route: (handler) => {
@@ -99,9 +100,12 @@ test(
       },
       state,
       (body) => {
+        modelRequests.push(body);
         const latestUser = body.messages.findLastIndex((message) => message.role === "user");
         const latestText = JSON.stringify(body.messages[latestUser] ?? {});
         const referenceId = latestText.match(/dsh-page:(R[a-f0-9]{12})/)?.[1];
+        if (!referenceId && !body.tools.some((entry) => entry.function.name === "gea_page"))
+          return { content: "fixture closed-page turn completed" };
         return body.messages.slice(latestUser + 1).some((message) => message.role === "tool")
           ? { content: "已按当前页面解释。" }
           : referenceId
@@ -280,9 +284,9 @@ test(
         model: "fixture",
       });
       assert.equal(selected.ok, true, JSON.stringify(selected));
-      const before = (await readSession(app.runtime, sessionId)).filter(
-        (row) => row.type === "turn/end",
-      ).length;
+      const priorRows = await readSession(app.runtime, sessionId);
+      const before = priorRows.filter((row) => row.type === "turn/end").length;
+      const modelRequestStart = modelRequests.length;
       const sent = await app.remote("session/prompt", {
         requestId: randomUUID(),
         sessionId,
@@ -296,10 +300,32 @@ test(
         60000,
       );
       const receipts = readToolResults(rows);
-      assert.ok(
-        receipts.some((receipt) => !receipt.isError && receipt.text.includes(expected)),
-        JSON.stringify(receipts),
-      );
+      if (expected === "MENU_WITHDRAWN") {
+        const currentRequests = modelRequests.slice(modelRequestStart);
+        assert.equal(currentRequests.length, 1);
+        assert.ok(
+          currentRequests.every(
+            (request) => !request.tools.some((entry) => entry.function.name === "gea_page"),
+          ),
+        );
+        const currentRows = rows.slice(priorRows.length);
+        assert.equal(currentRows.filter((row) => row.type === "tool/call").length, 0);
+        assert.ok(currentRows.some((row) => row.type === "turn/end"));
+        assert.match(JSON.stringify(currentRows), /fixture closed-page turn completed/);
+        assert.doesNotMatch(
+          JSON.stringify(currentRows),
+          /USER_PAGE_REFERENCE|FC001|gea-html-inventory-fc/,
+        );
+      } else {
+        assert.ok(
+          receipts.every((receipt) => !receipt.isError),
+          JSON.stringify(receipts),
+        );
+        assert.ok(
+          receipts.some((receipt) => receipt.text.includes(expected)),
+          JSON.stringify(receipts),
+        );
+      }
     };
     await promptPage(branchSession, "evidenceId");
     await promptPage(
@@ -339,7 +365,7 @@ test(
       "REFERENCE_UNAVAILABLE",
       `请解释 @[FC001](dsh-page:${referenceId})`,
     );
-    await promptPage(branchSession, "PAGE_NOT_IN_WORKBENCH");
+    await promptPage(branchSession, "MENU_WITHDRAWN");
     const currentAuthority = await page.evaluate(() =>
       fetch("/api/gea-html/identity")
         .then((response) => response.json())

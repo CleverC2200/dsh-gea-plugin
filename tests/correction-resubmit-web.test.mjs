@@ -196,8 +196,20 @@ test(
       })),
     );
     await page.goto(app.origin);
+    const initialOpen = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/agent-workbench/page") &&
+        response.ok() &&
+        response.request().postDataJSON()?.operation === "open" &&
+        response.request().postDataJSON()?.pageId === "gea-proof",
+    );
     const f = await openSalesPlan(page);
-    await f.getByRole("tab", { name: "纠偏", exact: true }).click();
+    const ownerResponse = await initialOpen;
+    const initialOwner = await ownerResponse.json();
+    assert.equal(typeof initialOwner.owner, "string");
+    const correctionTab = f.getByRole("tab", { name: "纠偏", exact: true });
+    await correctionTab.click();
+    await expect(correctionTab).toHaveAttribute("aria-selected", "true");
     try {
       await f.getByRole("button", { name: "退回重提", exact: true }).click();
     } catch (error) {

@@ -249,6 +249,14 @@ test(
       return false;
     });
     await app.login();
+    const agentSessions = () =>
+      app.requests.filter((req) => req.url.pathname.endsWith("/ai/gateway/agent/session"));
+    const initialAgentSessions = agentSessions().length;
+    assert.equal(initialAgentSessions, 1, "login performs one real analysis-agent handshake");
+    assert.deepEqual(
+      agentSessions().map((req) => JSON.parse(req.body).agentCode),
+      ["probe-consumer"],
+    );
     const status = await app.rpc("status");
     assert.deepEqual(
       status.value.modules
@@ -342,11 +350,16 @@ test(
         .every((req) => !req.body.includes("forged-consumer")),
     );
     assert.deepEqual(
-      app.requests
-        .filter((req) => req.url.pathname.endsWith("/ai/gateway/agent/session"))
+      agentSessions()
+        .slice(initialAgentSessions)
         .map((req) => JSON.parse(req.body).agentCode),
       ["legacy-consumer", "probe-consumer"],
       "the two SQL reads use their Host-owned Consumers, never the forged input",
+    );
+    assert.deepEqual(
+      agentSessions().map((req) => JSON.parse(req.body).agentCode),
+      ["probe-consumer", "legacy-consumer", "probe-consumer"],
+      "all three physical handshakes, including login, remain counted",
     );
     await until(
       () => app.requests,
