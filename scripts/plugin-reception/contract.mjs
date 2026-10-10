@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
-import supportedCore from '../current-core.json' with { type: 'json' };
+import { findSupportedCore, supportsRegisteredCores, sdkVersion, sdkPeerRange } from '../supported-cores.mjs';
 import { isAbsolute } from 'node:path';
 
 export const pluginNames = ['@cleverc2200/dsh-agent-workbench', 'dsh-agent-manage', '@cleverc2200/gea-dsh-prototype'];
@@ -14,7 +14,7 @@ export function artifactSetSha256(artifacts) {
 }
 
 /** Validate runtime semantics separately from receipt provenance, so past failures can be replayed. */
-export function validateRuntimeObservation(runtime, packageManifests) {
+export function validateRuntimeObservation(runtime, packageManifests, core) {
   for (const id of businessIds) {
     const rows = runtime?.resources?.filter(row => row.id === id) ?? [];
     assert(rows.length === 1 && rows[0].enabled === true && rows[0].error === false && Array.isArray(rows[0].missingSkills) && rows[0].missingSkills.length === 0, `RECEPTION_RESOURCE_NOT_READY:${id}`);
@@ -39,7 +39,12 @@ export function validateRuntimeObservation(runtime, packageManifests) {
     const declared = packageManifests.flatMap(manifest => Object.keys(manifest.peerDependencies ?? {}).filter(name => name.startsWith('@deepseek-ai/')).map(name => ({ plugin: manifest.name, name })));
     assert(runtime.sdk.length === declared.length && declared.every(peer => runtime.sdk.filter(row => row.plugin === peer.plugin && row.name === peer.name).length === 1), 'RECEPTION_SDK_INCOMPLETE');
     for (const manifest of packageManifests) for (const [name, range] of Object.entries(manifest.peerDependencies ?? {})) {
-      if (name.startsWith('@deepseek-ai/')) assert(runtime.sdk.find(row => row.plugin === manifest.name && row.name === name)?.version === range, 'RECEPTION_SDK_VERSION_MISMATCH');
+      if (name.startsWith('@deepseek-ai/')) {
+        const observed = runtime.sdk.find(row => row.plugin === manifest.name && row.name === name);
+        // The worker runs the installation's real semver.satisfies and package router.
+        // Bind its checked range and the selected Core's exact SDK identity to this manifest.
+        assert(range === sdkPeerRange(name) && observed.peerRange === range && observed.peerSatisfied === true && core && observed.version === sdkVersion(core, name), 'RECEPTION_SDK_VERSION_MISMATCH');
+      }
     }
   }
   assert(['fetch', 'http', 'https', 'socket'].every(key => runtime.outgoingAttempts?.[key] === 0), 'RECEPTION_OUTGOING_ATTEMPTED');
@@ -49,7 +54,10 @@ export function validateRuntimeObservation(runtime, packageManifests) {
 /** The sole acceptance projection: observed behavior must belong to the packaged artifact set. */
 export function bindReception(manifest, install, observe, bindings = {}) {
   assert(deliveryStates.includes(manifest.status) && manifest.packages?.length === 3 && pluginNames.every(name => manifest.packages.filter(row => row.name === name).length === 1), 'RECEPTION_BINDING_INVALID');
-  assert(manifest.core?.head === supportedCore.adaptation && manifest.core?.version === supportedCore.version, 'RECEPTION_CORE_INVALID');
+  assert(supportsRegisteredCores(manifest), 'RECEPTION_CORE_INVALID');
+  const core = findSupportedCore({ head: install.coreHead, version: install.coreVersion });
+  assert(core, 'RECEPTION_CORE_INVALID');
+  assert(bindings.expectedCoreIdentity?.head === core.head && bindings.expectedCoreIdentity?.version === core.version, 'RECEPTION_PROFILE_CORE_MISMATCH');
   assert(bindings.packageManifests?.length === 3 && pluginNames.every(name => bindings.packageManifests.filter(row => row.name === name).length === 1), 'RECEPTION_DECLARED_SDK_REQUIRED');
   const absolute = value => typeof value === 'string' && value.length > 0 && isAbsolute(value);
   assert([install.profile, observe.profile, install.core, observe.core, bindings.expectedProfile, bindings.expectedCore].every(absolute), 'RECEPTION_ABSOLUTE_BINDING_REQUIRED');
@@ -60,10 +68,10 @@ export function bindReception(manifest, install, observe, bindings = {}) {
     assert(process?.code === 0 && process.signal === null && process.timedOut === false && process.killSent === false && process.cleanupTimedOut === false && process.rawOutputPrivateOnly === true, 'RECEPTION_PROCESS_UNSAFE');
     assert(receipt.nativeRun === false && receipt.credentialsReadOrCopied === false && receipt.modelTasks === 0 && receipt.businessQueries === 0, 'RECEPTION_SCOPE_CHANGED');
   }
-  assert(install.profile === observe.profile && install.profile === bindings.expectedProfile && install.core === observe.core && install.core === bindings.expectedCore && install.coreHead === manifest.core?.head && observe.coreHead === manifest.core?.head, 'RECEPTION_PROFILE_CORE_MISMATCH');
+  assert(install.profile === observe.profile && install.profile === bindings.expectedProfile && install.core === observe.core && install.core === bindings.expectedCore && install.coreHead === observe.coreHead && install.coreVersion === observe.coreVersion, 'RECEPTION_PROFILE_CORE_MISMATCH');
   assert(install.artifacts?.length === 3 && install.artifacts.every(row => row.byteEqual === true && row.files > 0) && artifactSetSha256(install.artifacts) === artifactSha, 'RECEPTION_ARTIFACT_MISMATCH');
   assert(install.artifactSetSha256 === artifactSha && observe.observation?.artifactSetSha256 === artifactSha, 'RECEPTION_ARTIFACT_BINDING_MISSING');
   assert(['manifestSha256', 'installSha256', 'observeSha256'].every(key => /^[a-f0-9]{64}$/.test(bindings[key])), 'RECEPTION_RECEIPT_DIGEST_REQUIRED');
-  validateRuntimeObservation(observe.observation, bindings.packageManifests);
-  return { status: 'installed-and-host-observed', core: manifest.core, artifactSetSha256: artifactSha, artifacts: install.artifacts.map(({ name, version, sha256, files, byteEqual }) => ({ name, version, sha256, files, byteEqual })), binding: { manifestSha256: bindings.manifestSha256, installSha256: bindings.installSha256, observeSha256: bindings.observeSha256 }, observation: observe.observation, nativeRun: false, modelTasks: 0, businessQueries: 0 };
+  validateRuntimeObservation(observe.observation, bindings.packageManifests, core);
+  return { status: 'installed-and-host-observed', core: { head: core.head, version: core.version }, buildCore: manifest.core, supportedCores: manifest.supportedCores, artifactSetSha256: artifactSha, artifacts: install.artifacts.map(({ name, version, sha256, files, byteEqual }) => ({ name, version, sha256, files, byteEqual })), binding: { manifestSha256: bindings.manifestSha256, installSha256: bindings.installSha256, observeSha256: bindings.observeSha256 }, observation: observe.observation, nativeRun: false, modelTasks: 0, businessQueries: 0 };
 }

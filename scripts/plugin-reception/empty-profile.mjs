@@ -1,4 +1,5 @@
 import { artifactSetSha256 } from './contract.mjs';
+import { findSupportedCore } from '../supported-cores.mjs';
 /** Install only three ordinary artifacts in a new explicit profile, then observe in a clean child. */
 import assert from 'node:assert/strict';
 import { parseArgs } from 'node:util';
@@ -27,9 +28,9 @@ const base = { at: new Date().toISOString(), mode: v.mode, core: v.core, profile
 await writeFile(v.receipt, JSON.stringify({ ...base, pending: true }) + '\n', { mode: 0o600, flag: 'wx' });
 try {
   const coreManifest = await readJson(anchor);
-  assert.equal(coreManifest.version, '0.2.1-alpha.1', 'UNSUPPORTED_CORE_VERSION');
+  base.coreVersion = coreManifest.version;
   base.coreHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: v.core, encoding: 'utf8' }).trim();
-  assert.equal(base.coreHead, '5badb15009ae1756c3afe0ae0cef1faafc290ccc', 'UNSUPPORTED_CORE_HEAD');
+  assert(findSupportedCore({ head: base.coreHead, version: base.coreVersion }), 'UNSUPPORTED_CORE');
   if (v.mode === 'install') {
     for (const key of ['pnpm', 'workbench', 'manage', 'gea']) assert(isAbsolute(v[key] ?? ''), `${key.toUpperCase()}_ABSOLUTE_REQUIRED`);
     // Exclusive home acquisition prevents using real Home, historical profiles or an earlier failed run.

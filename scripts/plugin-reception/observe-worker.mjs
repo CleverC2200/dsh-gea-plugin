@@ -38,7 +38,7 @@ try {
   const { createLaunchEnvironmentSnapshot } = await official('@deepseek-ai/dsh-launch-environment');
   const { load } = await official('js-yaml');
   const { entryListSchema } = await official('@deepseek-ai/cordis-plugin-include');
-  const semver = coreRequire('semver');
+  const semver = createRequire(coreRequire.resolve('@deepseek-ai/dsh-app-boot'))('semver');
   const profile = boot.loadProfileDirectory('reception', v.profile, anchor);
   assert.equal(profile.skippedBundles.length, 0, 'PROFILE_BUNDLE_SKIPPED');
   assert.deepEqual(load(await readFile(join(v.profile, 'cordis.patch.yml'), 'utf8'), { schema: entryListSchema }), [], 'EMPTY_PROFILE_PATCH_REQUIRED');
@@ -107,7 +107,7 @@ try {
       assert(supplied, `SDK_NOT_INSTALLATION_OWNED:${name}`);
       assert.equal(await realpath(actual.dir), await realpath(supplied.packageDir), `SDK_SHADOWED:${name}`);
       assert(semver.satisfies(actual.version, range, { includePrerelease: true }), `SDK_VERSION_MISMATCH:${name}`);
-      projected.sdk.push({ plugin: artifact.name, name, version: actual.version, path: await realpath(actual.dir), sameInstallationInstance: true, peerSatisfied: true });
+      projected.sdk.push({ plugin: artifact.name, name, version: actual.version, peerRange: range, path: await realpath(actual.dir), sameInstallationInstance: true, peerSatisfied: true });
     }
   }
   checkpoint('resources');

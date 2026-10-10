@@ -1,7 +1,7 @@
 import type { Business } from "./host/business.ts";
 
 type IdentityStatus = Readonly<
-  Pick<ReturnType<Business["status"]>, "environment" | "authenticated" | "loginState" | "user">
+  Pick<ReturnType<Business["status"]>, "environment" | "environments" | "authenticated" | "loginState" | "user">
 >;
 export type IdentitySnapshot = Readonly<{
   state: "unknown" | "confirmed" | "error";
@@ -67,6 +67,7 @@ export function createBusinessIdentityReader() {
         previous.subject !== next.subject ||
         previous.status?.loginState !== next.status?.loginState ||
         previous.status?.environment !== next.status?.environment ||
+        JSON.stringify(previous.status?.environments) !== JSON.stringify(next.status?.environments) ||
         previous.status?.user?.name !== next.status?.user?.name ||
         previous.status?.user?.avatar !== next.status?.user?.avatar
       ) {

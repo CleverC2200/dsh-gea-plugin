@@ -52,7 +52,10 @@
     "test:delivery:packages": "node --test scripts/deliver-packages.test.mjs scripts/plugin-reception.test.mjs",
     "delivery:reception": "node scripts/plugin-reception.mjs",
     "delivery:report": "node scripts/delivery-check.mjs",
-    "delivery:verify-goal": "node scripts/delivery-check.mjs --verify-goal"
+    "delivery:verify-goal": "node scripts/delivery-check.mjs --verify-goal",
+    "test:fixture-inputs": "node --test tests/source-window-input.test.mjs",
+    "check:prompt-execution": "node scripts/prompt-execution-check.mjs",
+    "test:prompt-execution": "node scripts/prompt-execution-check.mjs && node --test tests/prompt-execution-state.test.mjs"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "link:../../../current-mainline-closeout-44/upstream-assets/genui-0.11.3",
@@ -163,14 +166,14 @@
     "packages/*"
   ],
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.5-alpha.1",
-    "@deepseek-ai/dsh-api-session-controller": "0.2.1-alpha.1",
-    "@deepseek-ai/dsh-brand": "0.2.1-alpha.1",
-    "@deepseek-ai/dsh-llm": "0.2.1-alpha.1",
-    "@deepseek-ai/dsh-llm-pi-ai": "0.2.1-alpha.1",
-    "@deepseek-ai/dsh-persona": "0.2.1-alpha.1",
-    "@deepseek-ai/dsh-tools": "0.2.1-alpha.1",
-    "@deepseek-ai/schemastery": "3.18.5-alpha.1",
+    "@deepseek-ai/cordis": "4.0.4 || 4.0.5-alpha.1",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-brand": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-persona": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/schemastery": "3.18.4 || 3.18.5-alpha.1",
     "dsh-agent-manage": "0.6.3-company.6"
   }
 }

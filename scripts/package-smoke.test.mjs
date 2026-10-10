@@ -21,7 +21,7 @@ test("ordinary GEA artifact locks only runtime dependencies and preserves Host-p
   const lock = JSON.parse(execFileSync("tar", ["-xOf", packed.artifact, "package/npm-shrinkwrap.json"], { encoding: "utf8" }));
   const files = execFileSync("tar", ["-tzf", packed.artifact], { encoding: "utf8" }).split("\n");
   assert.equal(manifest.dependencies["@modelcontextprotocol/sdk"], "1.30.0", "the actual Host import is a shipped runtime dependency");
-  assert.equal(manifest.peerDependencies["@deepseek-ai/cordis"], "4.0.5-alpha.1");
+  assert.equal(manifest.peerDependencies["@deepseek-ai/cordis"], "4.0.4 || 4.0.5-alpha.1");
   assert.equal(manifest.peerDependencies["@cleverc2200/dsh-agent-workbench"], versions["@cleverc2200/dsh-agent-workbench"]);
   assert.equal(manifest.devDependencies, undefined);
   assert.ok(!files.some(file => file.includes("node_modules/") || file.includes("scripts/start.mjs")), "the plugin carries neither another SDK tree nor the retired standalone launcher");

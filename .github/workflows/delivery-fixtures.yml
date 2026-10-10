@@ -19,4 +19,6 @@ jobs:
       # Node/npm/tar/git only. No dependency install, Core checkout, service or secrets.
       - run: npm run test:delivery:packages
       - run: node --run test:delivery
+      - run: node --run test:fixture-inputs
+      - run: node --run test:prompt-execution
       - run: node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs

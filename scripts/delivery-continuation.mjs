@@ -265,12 +265,25 @@ export function deriveContinuation({
         ]
       : [];
   });
+  const inTransit =
+    task.runtime?.tools.filter(
+      (tool) =>
+        !["exited", "failed"].includes(tool.command.state) ||
+        !["completed", "failed"].includes(tool.turn),
+    ) ?? [];
+  const terminalEvidenceMissing =
+    valid &&
+    task.consistency.status === "observed" &&
+    !remaining.length &&
+    inTransit.length > 0;
   const state = !valid
     ? "unknown"
     : task.consistency.status !== "observed"
       ? "unknown"
       : !remaining.length
-        ? "completed"
+        ? terminalEvidenceMissing
+          ? "unknown"
+          : "completed"
         : independentNextActions.length
           ? "actionable"
           : remaining.some((result) => result.cause === "user-paused")
@@ -301,11 +314,16 @@ export function deriveContinuation({
   return {
     goal: valid ? { id: goal.id, stages: goal.stages } : null,
     state,
-    reason: reasons[state],
+    reason:
+      state === "unknown" && terminalEvidenceMissing
+        ? "TOOL_TERMINAL_STATES_REQUIRED"
+        : reasons[state],
     minimumGap:
       state === "unknown"
         ? (task.consistency.minimumGap ??
-          "EXPLICIT_GOAL_SCOPE_AND_SCOPED_READINESS_REQUIRED")
+          (terminalEvidenceMissing
+            ? "CONFIRMED_COMMAND_AND_TURN_TERMINAL_STATES_REQUIRED"
+            : "EXPLICIT_GOAL_SCOPE_AND_SCOPED_READINESS_REQUIRED"))
         : null,
     executionStatus: task.executionStatus,
     candidate,
@@ -318,10 +336,7 @@ export function deriveContinuation({
       })),
     verified,
     remaining,
-    inTransit:
-      task.runtime?.tools.filter(
-        (tool) => tool.command.state === "running" || tool.turn === "running",
-      ) ?? [],
+    inTransit,
     independentNextActions,
     stopConditions: remaining.map((result) => ({
       stage: result.stage,

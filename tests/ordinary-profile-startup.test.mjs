@@ -47,6 +47,11 @@ test('ordinary Loader mounts GEA with empty settings and a profile-owned runtime
   const status=await f.routes.get('/api/gea-proof/status').fetch(new Request('http://localhost/api/gea-proof/status',{method:'POST',body:'{}',headers:{'Content-Type':'application/json'}}));
   const value=await status.json();
   assert.equal(value.value.authenticated,false);
+  assert.equal(value.value.environment,'production');
+  assert.deepEqual(value.value.environments,['production','test']);
+  const identity=await (await f.routes.get('/api/gea-html/identity').fetch(new Request('http://localhost/api/gea-html/identity'))).json();
+  assert.equal(identity.status.environment,'production');
+  assert.deepEqual(identity.status.environments,['production','test']);
   assert.equal(requests,0);
   assert.match(f.guards[0]({name:'gea_evidence_read'}),/GEA_BUSINESS_PROFILE_REQUIRED/);
   await f.ctx.fiber.dispose();
@@ -63,6 +68,8 @@ test('ordinary Loader preserves explicit runtime directory and rejects invalid a
   assert.equal((await stat(runtimeDir)).isDirectory(),true);
   const status=await (await f.routes.get('/api/gea-proof/status').fetch(new Request('http://localhost/api/gea-proof/status',{method:'POST',body:'{}',headers:{'Content-Type':'application/json'}}))).json();
   assert.equal(status.value.environment,'production');
+  assert.deepEqual(status.value.environments,['production']);
+  assert.equal(status.value.source,'https://explicit.example.test/gea');
   await f.ctx.fiber.dispose();
   const invalid=join(home,'file');await writeFile(invalid,'fixture');
   for (const path of [invalid,'relative']) {
@@ -71,4 +78,11 @@ test('ordinary Loader preserves explicit runtime directory and rejects invalid a
     assert.equal(rejected.routes.size,0);
     await rejected.ctx.fiber.dispose();
   }
+});
+
+test('ordinary Loader preserves the configured environment map and selected test environment',async t=>{
+  const home=await mkdtemp(join(tmpdir(),'gea-ordinary-environments-'));t.after(()=>rm(home,{recursive:true,force:true}));
+  const f=await start(home,{environment:'test',geaEnvironments:{production:'https://production.example/gea',test:'https://test.example/gea'}});t.after(()=>f.ctx.fiber.dispose());
+  const status=await (await f.routes.get('/api/gea-proof/status').fetch(new Request('http://localhost/api/gea-proof/status',{method:'POST',body:'{}',headers:{'Content-Type':'application/json'}}))).json();
+  assert.equal(status.value.environment,'test');assert.deepEqual(status.value.environments,['production','test']);assert.equal(status.value.source,'https://test.example/gea');
 });

@@ -6,6 +6,7 @@ import { writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
+import { supportedCores, coreIdentity, findSupportedCore, validSdkPeers } from './supported-cores.mjs';
 
 const names = {
   'dsh-agent-workbench': '@cleverc2200/dsh-agent-workbench',
@@ -39,13 +40,7 @@ const json = async path => JSON.parse(await readFile(path, 'utf8'));
 const git = (path, args) => command('git', ['-C', path, ...args], path).trim();
 const runtimeExport = value => typeof value === 'string' ? value : value?.default ?? value?.import ?? value?.require;
 function sdkPeers(manifest) {
-  for (const [name, range] of Object.entries(manifest.peerDependencies ?? {})) {
-    const expected = name === '@deepseek-ai/cordis' ? '4.0.5-alpha.1'
-      : name === '@deepseek-ai/schemastery' ? '3.18.5-alpha.1'
-      : name === '@deepseek-ai/cordis-plugin-include' ? '1.0.10-alpha.1'
-      : /^@deepseek-ai\/dsh(?:-|$)/.test(name) ? '0.2.1-alpha.1' : undefined;
-    if (expected && range !== expected) fail('DELIVERY_SDK_PEER_INCOMPATIBLE');
-  }
+  if (!validSdkPeers(manifest)) fail('DELIVERY_SDK_PEER_INCOMPATIBLE');
 }
 function publicFiles(manifest, files) {
   for (const key of ['.', './client']) {
@@ -92,8 +87,8 @@ function builtArchive(path, manifest, outputs) {
 }
 
 async function preflight(input, destination) {
-  const supported = await json(join(import.meta.dirname, 'current-core.json'));
-  if (input.core?.version !== supported.version || input.core?.head !== supported.adaptation) fail('DELIVERY_CORE_INCOMPATIBLE');
+  const supported = findSupportedCore(input.core);
+  if (!supported) fail('DELIVERY_CORE_INCOMPATIBLE');
   const core = await realpath(absolute(input.core.path));
   if (git(core, ['rev-parse', 'HEAD']) !== input.core.head || (await json(join(core, 'package.json'))).version !== supported.version) fail('DELIVERY_CORE_INCOMPATIBLE');
   absolute(input.pnpm);
@@ -110,6 +105,7 @@ async function preflight(input, destination) {
     if (changes.some(line => !/^(?:lib\/|client\/)/.test(line.slice(3)))) fail('DELIVERY_SOURCE_DIRTY');
     const manifest = await json(join(path, 'package.json'));
     if (manifest.name !== names[repo]) fail('DELIVERY_PACKAGE_IDENTITY_MISMATCH');
+    sdkPeers(manifest);
     const version = input.versions?.[manifest.name];
     if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(version)) fail('DELIVERY_VERSION_REQUIRED');
     const lock = repo === 'dsh-agent-workbench' ? 'package-lock.json' : 'pnpm-lock.yaml';
@@ -188,12 +184,12 @@ async function deliver(input, destination) {
   await rename(pending, join(destination, 'packages'));
   await writeFile(join(destination, 'SHA256SUMS'), packages.map(row => `${row.sha256}  packages/${row.filename}`).join('\n') + '\n');
   await writeFile(join(destination, 'INSTALL.md'), installInstructions(packages));
-  const manifest = { stage: 'ordinary-three-package-delivery', status: 'packaged', observedAt: new Date().toISOString(), core: { version: input.core.version, head: input.core.head }, packages, installation: 'not-observed', native: 'not-observed', businessRequests: 0, modelTasks: 0, auxiliary: 'optional; only installed and enabled auxiliary capabilities are available' };
+  const manifest = { stage: 'ordinary-three-package-delivery', status: 'packaged', observedAt: new Date().toISOString(), core: coreIdentity(input.core), supportedCores: supportedCores.map(coreIdentity), packages, installation: 'not-observed', native: 'not-observed', businessRequests: 0, modelTasks: 0, auxiliary: 'optional; only installed and enabled auxiliary capabilities are available' };
   await writeFile(join(destination, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   console.log(JSON.stringify({ status: 'packaged', files: packages.map(row => `packages/${row.filename}`), installation: 'not-observed', native: 'not-observed' }));
 }
 function installInstructions(packages) {
-  return `# 三插件安装\n\n兼容官方 DSH 0.2.1-alpha.1、Core 5badb15009ae1756c3afe0ae0cef1faafc290ccc。0.2.0-rc.2 不兼容。宿主提供 exact SDK；插件不携带另一套 SDK。\n\n安装需要联网获取普通 npm 运行依赖。先核 SHA256SUMS，再打开客户端侧栏“插件”，选择“添加插件”，在包名输入框填写下面 tgz 的本地绝对路径。逐个安装，每次安装完成后选择“立即启用”。\n\n${packages.map((row, index) => `${index + 1}. packages/${row.filename}`).join('\n')}\n\n已安装同名包时沿官方升级提示操作，保留 Session、草稿与用户数据。三个主插件不强制安装 GenUI/Sidebar；未安装或未启用辅助插件时，不具备其专用工具。安装不自动登录，不发起业务或模型任务。\n\n本清单只证明打包与静态合同通过。官方 PluginManager 安装、Loader 装载、设置/预设公开结果和 Native 验收由接收回执另行记录。不要将 manifest 的 source/build 来源当成用户安装依赖。\n\n可选命令行入口为官方 dsh plugin --profile <profile> add <tgz绝对路径>，仍按上述顺序逐包操作。实际可写普通 profile 安装后捕获完整 npm 图，再沿现有 freeze-package-profile 的官方 import/frozen-install 协议验证；包自身 shrinkwrap 不代替实际 profile 锁。该开发核对不要求用户引用源码 SDK link，也不修改当前测试 profile。\n`;
+  return `# 三插件安装\n\n同一组三包支持以下固定官方 DSH：${supportedCores.map(core => `${core.version} / Core ${core.head}`).join('；')}。SDK peer 仅接受这两版的精确版本 OR，由当前宿主提供同一安装实例。\n\n安装需要联网获取普通 npm 运行依赖。先核 SHA256SUMS，再打开客户端侧栏“插件”，选择“添加插件”，在包名输入框填写下面 tgz 的本地绝对路径。逐个安装，每次安装完成后选择“立即启用”。\n\n${packages.map((row, index) => `${index + 1}. packages/${row.filename}`).join('\n')}\n\n已安装同名包时沿官方升级提示操作，保留 Session、草稿与用户数据。三个主插件不强制安装 GenUI/Sidebar；未安装或未启用辅助插件时，不具备其专用工具。安装不自动登录，不发起业务或模型任务。\n\n本清单只证明打包与静态合同通过。官方 PluginManager 安装、Loader 装载、设置/预设公开结果和 Native 验收由接收回执另行记录。不要将 manifest 的 source/build 来源当成用户安装依赖。\n\n可选命令行入口为官方 dsh plugin --profile <profile> add <tgz绝对路径>，仍按上述顺序逐包操作。实际可写普通 profile 安装后捕获完整 npm 图，再沿现有 freeze-package-profile 的官方 import/frozen-install 协议验证；包自身 shrinkwrap 不代替实际 profile 锁。该开发核对不要求用户引用源码 SDK link，也不修改当前测试 profile。\n`;
 }
 
 try {

@@ -1,6 +1,6 @@
 # 三包本地交付入口
 
-`delivery:packages` 为登记的官方 0.2.1-alpha.1 / Core 5bad 生成三个普通插件包、SHA256SUMS、manifest.json 和面向用户的 INSTALL.md。用户在客户端侧栏“插件”中“添加插件”，输入本地 tgz 的绝对路径，逐个安装后“立即启用”。顺序是 Workbench、Manage、GEA。已安装同名包时使用官方升级提示，保留用户数据。0.2.0-rc.2 不兼容。
+`delivery:packages` 为登记的官方 0.2.0-rc.2 / Core 639ed 与 0.2.1-alpha.1 / Core 5bad 生成同一组三个普通插件包、SHA256SUMS、manifest.json 和面向用户的 INSTALL.md。用户在客户端侧栏“插件”中“添加插件”，输入本地 tgz 的绝对路径，逐个安装后“立即启用”。顺序是 Workbench、Manage、GEA。已安装同名包时使用官方升级提示，保留用户数据。两版固定 Core 与 SDK 版本由 `scripts/supported-cores.json` 统一登记。
 
 此入口只做当前明确的三包交付。它不构建 owner 源码，不安装 profile、不启动客户端、不登录、不访问模型或业务，也不发布到远端。GenUI/Sidebar 是可选增强，三核心正常安装不得强制要求它们。未安装或未启用辅助插件时不具备其专用工具。三个 tgz 仍需要联网获取普通 npm 运行依赖，不能称为离线自包含。
 
@@ -56,7 +56,7 @@ versions 的两个辅助版本是 optional peer 的 exact 发布元数据，复�
 
 ```sh
 # 在本 GEA checkout 中调用；CLI 的两个路径始终绝对
-corepack pnpm run delivery:packages -- --input /absolute/request.json --destination /absolute/new-delivery
+corepack pnpm run delivery:packages --input /absolute/request.json --destination /absolute/new-delivery
 corepack pnpm run test:delivery:packages
 ```
 
@@ -71,10 +71,10 @@ corepack pnpm run test:delivery:packages
 ## 普通安装与 Host 接收
 
 ```sh
-corepack pnpm run delivery:reception -- --manifest /absolute/delivery/manifest.json --core /absolute/registered-core --pnpm /absolute/registered-core/apps/desktop/node_modules/pnpm/bin/pnpm.mjs --home /absolute/new-home --evidence /absolute/new-evidence
+corepack pnpm run delivery:reception --manifest /absolute/delivery/manifest.json --core /absolute/registered-core --pnpm /absolute/registered-core/apps/desktop/node_modules/pnpm/bin/pnpm.mjs --home /absolute/new-home --evidence /absolute/new-evidence
 ```
 
-五个参数都是绝对路径，Home 和 evidence 的父目录已存在，而这两个目标目录必须不存在并互不包含。入口先核固定 Core、三份 tar 的名称、版本及摘要，再独占新 Home 和独立 evidence。它复用已验证的普通 profile harness，顺序执行官方安装及实际 Loader/公共服务观察，不复用旧用户 patch、辅助包、SDK source link 或凭据。不启动 Native，不调用模型或业务，对观察过程的出网尝试直接拒绝。
+五个参数都是绝对路径，Home 和 evidence 的父目录已存在，而这两个目标目录必须不存在并互不包含。入口先核所选固定 Core、manifest.supportedCores 和三份 tar 的名称、版本及摘要，再独占新 Home 和独立 evidence。同一 manifest.core 保留构建来源，两次接收的 ACCEPTANCE.core 分别记录实际宿主，两次 artifactSetSha256 必须一致。它复用已验证的普通 profile harness，顺序执行官方安装及实际 Loader/公共服务观察，不复用旧用户 patch、辅助包、SDK source link 或凭据。不启动 Native，不调用模型或业务，对观察过程的出网尝试直接拒绝。
 
 安装成功后还必须确认三 Host、三个 client graph 入口、所有已声明 SDK peer 的实际宿主路由、六个业务资源、九文档完整 standard 和智能编排默认。任何一步失败返回非零，保留失败 Home、阶段及私有诊断，不执行下一步，不生成 ACCEPTANCE.json。终端只输出稳定错误码或成功阶段，不输出原日志。
 
