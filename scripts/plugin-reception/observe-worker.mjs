@@ -38,7 +38,7 @@ try {
   const { createLaunchEnvironmentSnapshot } = await official('@deepseek-ai/dsh-launch-environment');
   const { load } = await official('js-yaml');
   const { entryListSchema } = await official('@deepseek-ai/cordis-plugin-include');
-  const semver = coreRequire('semver');
+  const semver = createRequire(coreRequire.resolve('@deepseek-ai/dsh-app-boot'))('semver');
   const profile = boot.loadProfileDirectory('reception', v.profile, anchor);
   assert.equal(profile.skippedBundles.length, 0, 'PROFILE_BUNDLE_SKIPPED');
   assert.deepEqual(load(await readFile(join(v.profile, 'cordis.patch.yml'), 'utf8'), { schema: entryListSchema }), [], 'EMPTY_PROFILE_PATCH_REQUIRED');
