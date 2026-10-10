@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { corePackages } from "./source-composition.mjs";
+import { readSupportedCore } from "./supported-cores.mjs";
 
 import { admitSourceWindow } from "./window-admission.mjs";
 import { readDeployment } from "./deployment.mjs";
@@ -65,20 +66,8 @@ export async function runSourceProfile(
     if (selected === undefined)
       await resolveSourceInputs(sources, { requireEntries: true });
   }
-  const supported = await json(new URL("./current-core.json", import.meta.url));
-  const cli = await json(join(core, "apps/cli/package.json"));
-  if (cli.version !== supported.version)
-    throw Error(
-      "UNSUPPORTED_CORE_VERSION: build the registered current source",
-    );
-  const coreSha = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
-    cwd: core,
-    encoding: "utf8",
-  }).trim();
-  if (plugins && coreSha !== supported.adaptation)
-    throw Error(
-      "UNSUPPORTED_CORE_BASELINE: use the registered isolated checkout",
-    );
+  const supported = await readSupportedCore(core);
+  const coreSha = supported.head;
   if (config) deployment = await readDeployment(config);
   await mkdir(join(runtime, "home"), { recursive: true, mode: 0o700 });
   process.env.DSH_HOME = join(runtime, "home");
@@ -86,7 +75,7 @@ export async function runSourceProfile(
   if (dev) process.env.GEA_WEB_LOGIN_PERSIST = "1";
   await mkdir(runtime, { recursive: true, mode: 0o700 });
   await save(join(runtime, "core-source.json"), {
-    upstream: supported.upstream,
+    upstream: supported.head,
     adaptation: coreSha,
     dirty: execFileSync("/usr/bin/git", ["status", "--porcelain"], {
       cwd: core,

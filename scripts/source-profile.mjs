@@ -18,6 +18,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
 import { corePackages, sourcePlugins } from "./source-composition.mjs";
+import { readSupportedCore } from "./supported-cores.mjs";
 import {
   fileDigest,
   clientEntry,
@@ -166,21 +167,8 @@ export async function prepareSourcePlugins(
   if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
   const snapshot = join(runtime, "source-combinations", id);
   const modules = join(snapshot, "node_modules");
-  const supported = JSON.parse(
-    await readFile(new URL("./current-core.json", import.meta.url), "utf8"),
-  );
-  const coreCommit = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: core,
-    encoding: "utf8",
-  }).trim();
-  if (
-    coreCommit !== supported.adaptation ||
-    execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
-      cwd: core,
-      encoding: "utf8",
-    }).trim()
-  )
-    throw Error("FIXED_OFFICIAL_INPUT_REQUIRED");
+  const supported = await readSupportedCore(core);
+  const coreCommit = supported.head;
   await mkdir(join(runtime, "source-combinations"), { recursive: true });
   await mkdir(snapshot, { recursive: false });
   await mkdir(modules, { recursive: true });

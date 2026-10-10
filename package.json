@@ -156,6 +156,8 @@
     "scripts/source-composition.mjs",
     "scripts/source-combination-integrity.mjs",
     "scripts/current-core.json",
+    "scripts/supported-cores.mjs",
+    "scripts/supported-cores.json",
     "scripts/deployment.mjs",
     "scripts/verify.mjs",
     "scripts/session-log.mjs",
