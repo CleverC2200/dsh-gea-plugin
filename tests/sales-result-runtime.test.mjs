@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { createBusinessSession } from "./fixtures/business-session.mjs";
 test(
   "native result route, atomic skill load and structured evidence reuse retain authorization",
   { timeout: 90000 },
@@ -180,12 +181,7 @@ test(
       return true;
     });
     await app.login();
-    const made = await app.remote("session/create", {
-      cwd: app.runtime + "/workspace",
-      agentPreset: "gea-readonly",
-    });
-    assert.equal(made.ok, true, JSON.stringify(made));
-    const id = made.value.sessionId;
+    const id = await createBusinessSession(app);
     await app.remote("session/selectModel", {
       sessionId: id,
       provider: "gea-analysis",
