@@ -56,7 +56,7 @@ versions 的两个辅助版本是 optional peer 的 exact 发布元数据，复�
 
 ```sh
 # 在本 GEA checkout 中调用；CLI 的两个路径始终绝对
-corepack pnpm run delivery:packages -- --input /absolute/request.json --destination /absolute/new-delivery
+corepack pnpm run delivery:packages --input /absolute/request.json --destination /absolute/new-delivery
 corepack pnpm run test:delivery:packages
 ```
 
@@ -71,7 +71,7 @@ corepack pnpm run test:delivery:packages
 ## 普通安装与 Host 接收
 
 ```sh
-corepack pnpm run delivery:reception -- --manifest /absolute/delivery/manifest.json --core /absolute/registered-core --pnpm /absolute/registered-core/apps/desktop/node_modules/pnpm/bin/pnpm.mjs --home /absolute/new-home --evidence /absolute/new-evidence
+corepack pnpm run delivery:reception --manifest /absolute/delivery/manifest.json --core /absolute/registered-core --pnpm /absolute/registered-core/apps/desktop/node_modules/pnpm/bin/pnpm.mjs --home /absolute/new-home --evidence /absolute/new-evidence
 ```
 
 五个参数都是绝对路径，Home 和 evidence 的父目录已存在，而这两个目标目录必须不存在并互不包含。入口先核所选固定 Core、manifest.supportedCores 和三份 tar 的名称、版本及摘要，再独占新 Home 和独立 evidence。同一 manifest.core 保留构建来源，两次接收的 ACCEPTANCE.core 分别记录实际宿主，两次 artifactSetSha256 必须一致。它复用已验证的普通 profile harness，顺序执行官方安装及实际 Loader/公共服务观察，不复用旧用户 patch、辅助包、SDK source link 或凭据。不启动 Native，不调用模型或业务，对观察过程的出网尝试直接拒绝。
