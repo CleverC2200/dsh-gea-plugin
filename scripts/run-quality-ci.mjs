@@ -11,6 +11,7 @@ import {
   readPreparedWorkbench,
   verifyPreparedWorkbench,
   prepareWorkbenchGeaAuthority,
+  prepareWorkbenchAssets,
 } from "./quality-workbench.mjs";
 import { resolveSourceInputs } from "./source-profile.mjs";
 import { resourceDigests } from "./source-combination-integrity.mjs";
@@ -177,6 +178,10 @@ try {
       await prepareWorkbenchGeaAuthority({ workbench: workbench.path, gea: own.path });
     const preparedWorkbench = resolve(dirname(process.cwd()), "dsh-agent-workbench");
     const workbenchReceipt = resolve(dirname(dirname(process.cwd())), "prepared-workbench.json");
+    const workbenchAssetRoot = resolve(
+      dirname(dirname(process.cwd())),
+      "prepared-workbench-assets",
+    );
     const core = resolve(dirname(dirname(process.cwd())), "official-latest-standard"),
       upstream = resolve("../../../current-mainline-closeout-44");
     run(process.execPath, [
@@ -288,6 +293,13 @@ try {
       });
       finalGroup?.verifyUnchanged();
       writeFileSync(workbenchReceipt, JSON.stringify(prepared, null, 2) + "\n");
+      await prepareWorkbenchAssets({
+        source: workbench.path,
+        prepared: preparedWorkbench,
+        head: workbench.head,
+        receipt: workbenchReceipt,
+        assets: workbenchAssetRoot,
+      });
     }
     const workbenchAssets = await verifyPreparedWorkbench({
       source: workbench.path,
@@ -306,7 +318,7 @@ try {
     Object.assign(
       records.find((entry) => entry.repo === "dsh-agent-workbench"),
       {
-        assets: preparedWorkbench,
+        assets: workbenchAssetRoot,
         files: workbenchAssets.files,
         dependencies: resolve(preparedWorkbench, "node_modules"),
       },

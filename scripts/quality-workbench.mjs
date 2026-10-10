@@ -1,8 +1,8 @@
 /** Verify the existing clean-source/frozen-assets contract for the owned Workbench build. */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFile, readdir, realpath, readlink, lstat, symlink } from "node:fs/promises";
-import { resolve, join, dirname } from "node:path";
+import { readFile, readdir, realpath, readlink, lstat, symlink, mkdir, cp } from "node:fs/promises";
+import { resolve, join, dirname, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { fileDigest } from "./source-combination-integrity.mjs";
@@ -117,6 +117,26 @@ export async function verifyPreparedWorkbench({ source, prepared, head, receipt 
   if (JSON.stringify(record) !== JSON.stringify(current))
     throw Error("QUALITY_WORKBENCH_ASSET_MISMATCH");
   return current;
+}
+/** Keep publishable assets separate from the prepared worktree's Git metadata and dependency store. */
+export async function prepareWorkbenchAssets({ source, prepared, head, receipt, assets }) {
+  const record = await verifyPreparedWorkbench({ source, prepared, head, receipt });
+  await mkdir(assets);
+  await cp(record.prepared, assets, {
+    recursive: true,
+    verbatimSymlinks: true,
+    filter: (file) =>
+      !relative(record.prepared, file)
+        .split(/[\\/]/)
+        .some((part) => [".git", "node_modules"].includes(part)),
+  });
+  const files = await preparedResourceDigests(assets);
+  if (
+    JSON.stringify(Object.entries(files).sort()) !==
+    JSON.stringify(Object.entries(record.files).sort())
+  )
+    throw Error("QUALITY_WORKBENCH_ASSET_MISMATCH");
+  return { assets: await realpath(assets), files };
 }
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   try {
