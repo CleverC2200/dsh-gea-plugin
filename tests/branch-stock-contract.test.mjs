@@ -10,9 +10,7 @@ test(
   { skip: process.env.GEA_TEST_SOURCE_CORE !== "1" },
   async () => {
     const root = resolve("../dsh-agent-workbench/lib/business/inventory-fc");
-    const manifest = JSON.parse(
-      await readFile(resolve(root, "plugin.json"), "utf8"),
-    );
+    const manifest = JSON.parse(await readFile(resolve(root, "plugin.json"), "utf8"));
     const legacy = contractFromPlugin({
       id: "inventory-fc",
       label: "分仓库存",
@@ -22,11 +20,7 @@ test(
       skill: await readFile(resolve(root, "skills/fc/SKILL.md"), "utf8"),
       sources: [await readFile(resolve(root, "index.html"), "utf8")],
     });
-    const { source, ...joined } = await readPluginContract(
-      root,
-      manifest.declarations,
-      legacy,
-    );
+    const joined = await readPluginContract(root, manifest.declarations, legacy);
     assert.equal(joined.id, legacy.id);
     assert.deepEqual(joined.view, legacy.view);
     assert.deepEqual(joined.data, legacy.data);
