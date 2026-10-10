@@ -1,0 +1,106 @@
+name: candidate-quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: candidate-quality-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  candidate-scope:
+    runs-on: ubuntu-latest
+    outputs:
+      cores: ${{ steps.cores.outputs.cores }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Require supported same-repository event
+        env:
+          QUALITY_SCOPE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: node scripts/run-quality-ci.mjs --phase scope
+      - name: Read the registered official baselines
+        id: cores
+        run: node --input-type=module -e 'import fs from "node:fs"; import {supportedCores} from "./scripts/supported-cores.mjs"; fs.appendFileSync(process.env.GITHUB_OUTPUT, "cores=" + JSON.stringify(supportedCores.map(core => core.head)) + "\n")'
+
+  gates:
+    needs: candidate-scope
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        core: ${{ fromJSON(needs.candidate-scope.outputs.cores) }}
+    env:
+      QUALITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      QUALITY_CANDIDATE: ${{ github.workspace }}/candidate-input.json
+    defaults:
+      run:
+        working-directory: candidate/dsh-gea-plugin
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          path: candidate/dsh-gea-plugin
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Require explicit peer contents-read credential
+        env:
+          PEER_READ_TOKEN: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+        run: |
+          node -e "if (!process.env.PEER_READ_TOKEN) throw Error('CANDIDATE_PEER_REQUIRED: configure peer contents-read token')"
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: 848d08605f865ded2ba30bd75c4af3314feae5ba
+          fetch-depth: 0
+          path: candidate/dsh-agent-manage
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: 7b746ff9ceeabe81b2d86f94040d663f37c5e2ee
+          fetch-depth: 0
+          path: source/dsh-agent-workbench
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - name: Enable declared package managers
+        run: corepack enable
+      - name: Bind actual event and frozen peers
+        run: node scripts/run-quality-ci.mjs --phase input --root "${{ github.workspace }}" --sha "${{ env.QUALITY_EXPECTED_SHA }}" --core-head "${{ matrix.core }}"
+      - name: Prepare independent SDK and run public quality gates
+        run: corepack pnpm quality:ci --prepare-sdk --core-source https://github.com/deepseek-ai/deepseek-harness.git --prepare-inputs --core-head "${{ matrix.core }}"
+
+  candidate-quality:
+    if: always()
+    needs: [candidate-scope, gates]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Reject failed, skipped, cancelled or absent gates
+        env:
+          QUALITY_SCOPE_RESULT: ${{ needs.candidate-scope.result }}
+          QUALITY_GATE_RESULT: ${{ needs.gates.result }}
+        run: node scripts/run-quality-ci.mjs --phase final

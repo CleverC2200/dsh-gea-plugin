@@ -6,7 +6,10 @@
       "@deepseek-ai/cordis": "4.0.4",
       "@deepseek-ai/schemastery": "3.18.4",
       "@deepseek-ai/cordis-plugin-include": "1.0.9"
-    }
+    },
+    "lockSha256": "80fe05eae33582ae26839afd05f1965f9b0e4be11034ddf9797af6085d5ba9b1",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24
   },
   {
     "head": "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
@@ -15,6 +18,9 @@
       "@deepseek-ai/cordis": "4.0.5-alpha.1",
       "@deepseek-ai/schemastery": "3.18.5-alpha.1",
       "@deepseek-ai/cordis-plugin-include": "1.0.10-alpha.1"
-    }
+    },
+    "lockSha256": "2893d71a9ef07d2d72d47b2199e581b9e8d90638a15ee151908eebf69dfc637c",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24
   }
 ]

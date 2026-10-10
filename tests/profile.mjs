@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
+import { freezeProfileWindow } from "./fixtures/profile-window.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
 /** Decode persisted tool receipts at the test boundary; never omit a malformed result. */
@@ -304,7 +305,15 @@ export async function profile(t, options = {}) {
         : new AggregateError(errors, "PROFILE_CLEANUP_FAILED", { cause: errors[0] });
   });
   async function start() {
-    const deployment = await readDeployment(config);
+    const fixtureConfig = JSON.parse(await readFile(config, "utf8"));
+    if (
+      Object.values(fixtureConfig.serviceAccounts ?? {}).some((account) => account.keychainService)
+    )
+      throw new Error("SOURCE_TEST_REQUIRES_FIXTURE_CREDENTIALS");
+    const deployment = await readDeployment(config, {
+      resolveCredentials: false,
+      credentialEnv: options.env ?? {},
+    });
     for (const endpoint of [
       deployment.geaBaseUrl,
       ...Object.values(deployment.geaEnvironments ?? {}),
@@ -312,6 +321,19 @@ export async function profile(t, options = {}) {
     ].filter(Boolean))
       if (!["127.0.0.1", "localhost", "[::1]"].includes(new URL(endpoint).hostname))
         throw new Error("SOURCE_TEST_REQUIRES_LOOPBACK_SERVICES");
+    const admitted = options.desktopGraph
+      ? undefined
+      : await freezeProfileWindow({
+          directory: dir,
+          runtime,
+          config,
+          deployment,
+          sources: options.coreOnly ? undefined : await readProfileSources(sourcesFile),
+          caseName: t.name,
+          coreOnly: options.coreOnly,
+          signal: t.signal,
+          recordLifecycle,
+        });
     output = "";
     let logOffset = 0;
     await mkdir(runtime, { recursive: true, mode: 0o700 });
@@ -332,17 +354,25 @@ export async function profile(t, options = {}) {
               resolve(defaultRoot, "tests/source-profile-start.mjs"),
               config,
               runtime,
-              ...(options.coreOnly ? ["native-only"] : []),
+              options.coreOnly ? "native-only" : "source-host",
+              admitted.request,
             ]
           : options.desktopGraph
             ? [resolve(defaultRoot, "desktop/runtime-start.mjs")]
             : [
                 "scripts/start.mjs",
+                "--window",
+                admitted.window.file,
+                "--case",
+                admitted.window.case,
+                "--owner",
+                admitted.window.owner,
+                "--freeze-sha256",
+                admitted.window.freezeSha256,
                 "--config",
                 config,
                 "--runtime",
                 runtime,
-                ...(sourcesFile ? ["--sources", sourcesFile] : []),
                 "--port",
                 options.reusePort && origin ? new URL(origin).port : "0",
               ]),
