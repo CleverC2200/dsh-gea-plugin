@@ -142,20 +142,12 @@ test(
         ? route.continue()
         : route.fulfill({ json: { ok: true, value: { status: "pending" } } }),
     );
-    const initialOpen = page.waitForRequest((request) => {
-      if (!request.url().endsWith("/api/agent-workbench/page") || request.method() !== "POST")
-        return false;
-      const input = request.postDataJSON();
-      return input?.operation === "open" && input.pageId === "gea-proof";
-    });
     await page.goto(app.origin);
     await page
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
     const frame = await openSalesPlan(page);
-    const sessionId = (await initialOpen).postDataJSON().sessionId;
-    assert.match(sessionId, /^session-[0-9a-f-]{36}$/);
     try {
       await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
       await frame.locator(".gea-login-qr img").waitFor();
@@ -201,25 +193,32 @@ test(
       await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
       await frame.getByRole("radio", { name: "测试", exact: true }).check();
       await frame.locator(".gea-login-qr img").waitFor();
-      const opened = page.waitForResponse((response) => {
+      const opening = page.waitForRequest((request) => {
+        if (!request.url().endsWith("/api/agent-workbench/page") || request.method() !== "POST")
+          return false;
+        const input = request.postDataJSON();
+        return (
+          input?.operation === "open" &&
+          input.pageId === "gea-proof" &&
+          input.resourceId === "gea-readonly"
+        );
+      });
+      const opened = page.waitForResponse(async (response) => {
         if (
           !response.url().endsWith("/api/agent-workbench/page") ||
           response.request().method() !== "POST" ||
           response.status() !== 200
         )
           return false;
-        const input = response.request().postDataJSON();
-        return (
-          input?.operation === "open" &&
-          input.pageId === "gea-proof" &&
-          input.sessionId === sessionId
-        );
+        return response.request() === (await opening);
       });
       allowLogin = true;
-      const [pageReply] = await Promise.all([
+      const [request, pageReply] = await Promise.all([
+        opening,
         opened.then((response) => response.json()),
         frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor(),
       ]);
+      assert.match(request.postDataJSON().sessionId, /^session-[0-9a-f-]{36}$/);
       const owner = pageReply.owner;
       assert.match(owner, /^[0-9a-f-]{36}$/);
       await frame.getByText("华东", { exact: true }).first().waitFor();
