@@ -1,6 +1,7 @@
 # 三包本地交付入口
 
-`delivery:packages` 为登记的官方 0.2.0-rc.2 / Core 639ed 与 0.2.1-alpha.1 / Core 5bad 生成同一组三个普通插件包、SHA256SUMS、manifest.json 和面向用户的 INSTALL.md。用户在客户端侧栏“插件”中“添加插件”，输入本地 tgz 的绝对路径，逐个安装后“立即启用”。顺序是 Workbench、Manage、GEA。已安装同名包时使用官方升级提示，保留用户数据。两版固定 Core 与 SDK 版本由 `scripts/supported-cores.json` 统一登记。
+`delivery:packages` 为 [支持的官方 Core](../scripts/supported-cores.json) 生成同一组三个普通插件包、SHA256SUMS、manifest.json 和面向用户的 INSTALL.md。两版固定 Core 与各自 exact SDK peers 由该声明统一登记，不能据旧单版说明排除其中一版。用户安装与升级步骤见 [安装说明](install.md)；同次生成的 INSTALL.md 绑定具体包集合。
+
 
 此入口只做当前明确的三包交付。它不构建 owner 源码，不安装 profile、不启动客户端、不登录、不访问模型或业务，也不发布到远端。GenUI/Sidebar 是可选增强，三核心正常安装不得强制要求它们。未安装或未启用辅助插件时不具备其专用工具。三个 tgz 仍需要联网获取普通 npm 运行依赖，不能称为离线自包含。
 
