@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
-import { startWelcomeObserver } from "./fixtures/welcome-settings-observer.proposal.mjs";
 
 /** 审批人员重审当前退回版本：不依赖客户重提凭据，不生成新版本。 */
 const PLAN_A = "p-jxs-2026-10-00001";
@@ -193,20 +192,11 @@ const fixture = async (t, { role = "region", returnedStatus = 7, denyApproval = 
   );
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
-  const observer = t.name === "a returned plan approves its current version without service credentials"
-    && process.env.GEA_WELCOME_OBSERVER_DIR
-    ? startWelcomeObserver(page, app.origin, process.env.GEA_WELCOME_OBSERVER_DIR)
-    : null;
-  try {
-    await page.goto(app.origin);
-    const frame = await openSalesPlan(page);
-    await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
-    await expect(frame.getByTestId("regional-approval-flow-toggle")).toBeVisible();
-    return { frame, submitted, approved, rejected, attempts };
-  } finally {
-    const capture = await observer?.stop();
-    if (observer && capture?.captureStatus !== "saved") t.diagnostic("WELCOME_OBSERVER_CAPTURE_UNKNOWN");
-  }
+  await page.goto(app.origin);
+  const frame = await openSalesPlan(page);
+  await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
+  await expect(frame.getByTestId("regional-approval-flow-toggle")).toBeVisible();
+  return { frame, submitted, approved, rejected, attempts };
 };
 
 test(

@@ -1,7 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { expect } from "@playwright/test";
-import { welcomeObserver } from "./welcome-settings-observer.proposal.mjs";
 
 import { randomUUID } from "node:crypto";
 import {
@@ -12,22 +11,17 @@ import {
 
 /** Read only Core's public, redacted settings view; acknowledgement still happens through Continue. */
 async function welcomeNoticeAcknowledged(page) {
-  const observer = welcomeObserver(page);
-  const rpcId = randomUUID();
-  observer?.request(rpcId);
   const response = await page.request.post(new URL("/api/settings/describe", page.url()).href, {
     headers: { Origin: new URL(page.url()).origin },
     data: {
       type: "client-request",
-      rpcId,
+      rpcId: randomUUID(),
       method: "settings/describe",
       payload: { args: {} },
     },
   });
-  observer?.response(rpcId, response.status());
   if (!response.ok()) throw Error("WELCOME_SETTINGS_READ_FAILED: " + response.status());
   const reply = await response.json();
-  observer?.read(reply);
   if (!reply.result?.ok) throw Error("WELCOME_SETTINGS_READ_FAILED");
   const welcome = reply.result.value.namespaces.find(
     (entry) => entry.ns === WELCOME_NOTICE_SETTINGS_NAMESPACE,
@@ -68,21 +62,10 @@ export async function preparePageStartup(page) {
     )
     .not.toBe("pending");
   if (action === "continue") {
-    welcomeObserver(page)?.mark("continue-click-start");
     await proceed.click();
-    welcomeObserver(page)?.mark("continue-click-returned");
-    welcomeObserver(page)?.mark("original-postclick-ack-poll-start");
-    try {
-      await expect.poll(() => welcomeNoticeAcknowledged(page)).toBe(true);
-      welcomeObserver(page)?.mark("original-postclick-ack-poll-passed");
-    } catch (error) {
-      welcomeObserver(page)?.mark("original-postclick-ack-poll-failed");
-      throw error;
-    }
+    await expect.poll(() => welcomeNoticeAcknowledged(page)).toBe(true);
   }
-  welcomeObserver(page)?.mark("original-notice-hidden-wait-start");
   await notice.waitFor({ state: "hidden" });
-  welcomeObserver(page)?.mark("original-notice-hidden-wait-passed");
 }
 
 /** Follow the same public company menu as a user; the Document owns its real frame. */

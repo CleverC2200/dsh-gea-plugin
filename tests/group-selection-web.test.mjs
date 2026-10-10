@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
-import { startBatchCheckboxObserver } from "./fixtures/batch-checkbox-observer.proposal.mjs";
 
 /**
  * V1.8 反馈：分组行的勾选是「组内成员全部选中」的派生状态。
@@ -308,35 +307,22 @@ test("批量里一笔冲突不影响其它笔，结果逐笔说明原因", { tim
   const groupBox = frame.locator('tbody label.arco-checkbox:has(input[value*="group:"])').first();
   await expect(groupBox).toBeVisible();
   await groupBox.click();
-  const observer = await startBatchCheckboxObserver({
-    page,
-    artifactDirectory: process.env.GEA_BATCH_CHECKBOX_OBSERVER_DIR,
-    sampleId: process.env.GEA_BATCH_CHECKBOX_OBSERVER_SAMPLE,
-  });
-  try {
-    await frame.getByRole("button", { name: "通过", exact: true }).click();
+  await frame.getByRole("button", { name: "通过", exact: true }).click();
 
-    const dialog = frame.getByTestId("regional-approval-batch-action-dialog");
-    await expect(dialog).toBeVisible();
-    await observer.originalClick(
-      () => dialog.locator("label.arco-checkbox").click(),
-      dialog.locator("label.arco-checkbox"),
-    );
-    await frame.getByRole("button", { name: "确认批量通过", exact: true }).click();
+  const dialog = frame.getByTestId("regional-approval-batch-action-dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.locator("label.arco-checkbox").click();
+  await frame.getByRole("button", { name: "确认批量通过", exact: true }).click();
 
-    const result = frame.getByTestId("regional-approval-batch-result");
-    await expect(result).toContainText("成功 1 笔");
-    await expect(result).toContainText("失败 1 笔");
-    // 失败的那笔要能看出是哪一个，并且不能只给技术错误码。
-    await expect(result).toContainText("宝阳销售组");
-    const text = await result.innerText();
-    for (const leak of ["GEA_HTTP", "payload", "SALES_PLAN_CONFLICT"])
-      assert.equal(text.includes(leak), false, leak);
-    assert.equal(writes.length, 2);
-  } finally {
-    const capture = await observer.stop();
-    if (capture?.captureStatus !== "saved") t.diagnostic("BATCH_OBSERVER_CAPTURE_UNKNOWN");
-  }
+  const result = frame.getByTestId("regional-approval-batch-result");
+  await expect(result).toContainText("成功 1 笔");
+  await expect(result).toContainText("失败 1 笔");
+  // 失败的那笔要能看出是哪一个，并且不能只给技术错误码。
+  await expect(result).toContainText("宝阳销售组");
+  const text = await result.innerText();
+  for (const leak of ["GEA_HTTP", "payload", "SALES_PLAN_CONFLICT"])
+    assert.equal(text.includes(leak), false, leak);
+  assert.equal(writes.length, 2);
 });
 
 test("多选批量退回：共用一个退回原因，逐笔带上", { timeout: 90000 }, async (t) => {
