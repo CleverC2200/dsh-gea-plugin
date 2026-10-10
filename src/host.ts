@@ -62,8 +62,14 @@ export const inject = [
   "agentDefaultModel",
   "agentPresets",
 ];
+const environmentSchema = z.union(["production", "test"]);
 export const Config = z.object({
   geaBaseUrl: z.string().default(companyDefaults.geaBaseUrl),
+  environment: environmentSchema.default(z.resolve(companyDefaults.environment, environmentSchema, {})[0]),
+  geaEnvironments: z.union([z.object({
+    production: z.string().required(),
+    test: z.string().required(),
+  })]),
   pageSize: z.natural().min(1).max(100).default(companyDefaults.pageSize),
   periodPageSize: z.natural().min(1).max(1000).default(companyDefaults.periodPageSize),
   requestTimeoutMs: z.natural().min(1000).max(120000).default(companyDefaults.requestTimeoutMs),
@@ -351,7 +357,13 @@ export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> 
   const runtimeDir = input.runtimeDir ?? resolve(ctx.profileContext.dir, "gea");
   if (!isAbsolute(runtimeDir)) throw Error("INVALID_GEA_RUNTIME_DIR: absolute directory required");
   await mkdir(runtimeDir, { recursive: true, mode: 0o700 });
-  const config: Deployment = { ...input, runtimeDir };
+  const config: Deployment = {
+    ...input,
+    runtimeDir,
+    geaEnvironments: input.geaEnvironments ?? (
+      input.geaBaseUrl === companyDefaults.geaBaseUrl ? companyDefaults.geaEnvironments : undefined
+    ),
+  };
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);

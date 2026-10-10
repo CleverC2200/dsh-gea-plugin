@@ -1,6 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createBusinessIdentityReader } from "../src/business-identity-client.ts";
+import { registerHtmlPlugins } from "../src/html-plugins.ts";
+
+test("the read-only identity route exposes configured environment choices without endpoint or credential state", async t => {
+  const routes = new Map(), cleanups = [];
+  const ctx = {effect(fn) {const dispose = fn();if (typeof dispose === "function") cleanups.push(dispose);}, connection: {fetch: {register(route) {routes.set(route.path, route);return () => routes.delete(route.path);}}}};
+  t.after(() => {for (const dispose of cleanups.reverse()) dispose();});
+  const status = {environment: "test", environments: ["production", "test"], authenticated: false, loginState: "signed-out", user: null, source: "must-not-be-exposed", token: "must-not-be-exposed"};
+  await registerHtmlPlugins(ctx, {status: () => status, pageSessionScope: () => undefined}, []);
+  const route = routes.get("/api/gea-html/identity");assert.deepEqual(route.methods, ["GET"]);
+  const response = await route.fetch(new Request("https://fixture.invalid/api/gea-html/identity"));
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await response.json(), {scope: null, subject: null, status: {environment: "test", environments: ["production", "test"], authenticated: false, loginState: "signed-out", user: null}});
+});
 
 test("page and observer reads share one identity, ignore older replies and stop after cancellation", async (t) => {
   const originalFetch = globalThis.fetch,
@@ -146,7 +159,7 @@ test("a confirmed refresh wins over a late initial response", async (t) => {
   pending[1].resolve(
     Response.json({
       scope: null,
-      status: { authenticated: false, loginState: "signed-out", user: null, environment: "test" },
+      status: { authenticated: false, loginState: "signed-out", user: null, environment: "test", environments: ["production", "test"] },
     }),
   );
   assert.equal(await refresh, null);
@@ -157,12 +170,35 @@ test("a confirmed refresh wins over a late initial response", async (t) => {
         authenticated: true,
         loginState: "authenticated",
         user: { name: "Old" },
-        environment: "test",
+        environment: "production",
+        environments: ["production"],
       },
     }),
   );
   assert.equal(await initial, null);
   assert.equal(read.getSnapshot().status.authenticated, false);
+  assert.equal(read.getSnapshot().status.environment, "test");
+  assert.deepEqual(read.getSnapshot().status.environments, ["production", "test"]);
+});
+
+test("the Host environment choices notify subscribers without changing the identity scope", async (t) => {
+  const originalFetch = globalThis.fetch, originalWindow = globalThis.window;
+  t.after(() => { globalThis.fetch = originalFetch; globalThis.window = originalWindow; });
+  globalThis.window = new EventTarget();
+  let environments = ["production"], notices = 0, identityChanges = 0;
+  window.addEventListener("gea-business-identity-changed", () => identityChanges++);
+  globalThis.fetch = async () => Response.json({scope: null, subject: null, status: {environment: "production", environments, authenticated: false, loginState: "signed-out", user: null}});
+  const reader = createBusinessIdentityReader();reader.subscribe(() => notices++);
+  await reader.refresh();await reader.refresh();assert.equal(notices, 1);
+  environments = ["production", "test"];await reader.refresh();assert.equal(notices, 2);
+  assert.deepEqual(reader.getSnapshot().status.environments, environments);
+  assert.equal(identityChanges, 0, "a changed choice list does not invent a new Host identity");
+  const controller = new AbortController();const pending = Promise.withResolvers();
+  globalThis.fetch = () => pending.promise;
+  const cancelled = reader.refresh(controller.signal);controller.abort();
+  pending.resolve(Response.json({scope: null, status: {environment: "test", environments: ["test"], authenticated: false, user: null}}));
+  await assert.rejects(cancelled, {name: "AbortError"});
+  assert.equal(notices, 2);assert.equal(reader.getSnapshot().status.environment, "production");
 });
 
 test("the reader preserves the Host subject verbatim and notifies a subject change without deriving identity or writing credentials", async (t) => {

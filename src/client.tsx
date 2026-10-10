@@ -15,7 +15,11 @@ export function apply(ctx: Context): void {
   ctx.provide('businessAccount',{
     getSnapshot:identity.getSnapshot,
     subscribe:identity.subscribe,
-    startLogin:signal=>request('login/start',{},AbortSignal.any([signal,AbortSignal.timeout(10000)])),
+    startLogin:async(signal,environment)=>{
+      const challenge=await request<Awaited<ReturnType<Context['businessAccount']['startLogin']>>>('login/start',{environment},AbortSignal.any([signal,AbortSignal.timeout(10000)]));
+      await identity.refresh(signal);
+      return challenge;
+    },
     pollLogin:async(loginId,signal)=>{const value=await request<{status:string}>('login/poll',{loginId},AbortSignal.any([signal,AbortSignal.timeout(10000)]));if(value.status==='expired')throw Error('二维码已过期，请重新登录。');if(value.status==='authenticated')await identity.refresh(signal);return value.status==='authenticated';},
     logout:async signal=>{const value=await request<{authenticated:boolean}>('logout',{},AbortSignal.any([signal,AbortSignal.timeout(10000)]));if(value.authenticated!==false)throw Error('LOGOUT_FAILED');await identity.refresh(signal);},
   });

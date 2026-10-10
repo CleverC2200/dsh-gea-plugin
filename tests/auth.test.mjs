@@ -2,6 +2,32 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { profile } from "./profile.mjs";
+import { build } from "esbuild";
+import { createRequire } from "node:module";
+
+test("cancelled login requests cannot publish a late QR challenge or identity", async t => {
+  const {outputFiles} = await build({entryPoints: ["src/host/business.ts"], bundle: true, packages: "external", write: false, platform: "node", format: "cjs"});
+  const module = {exports: {}};
+  new Function("require", "module", "exports", outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
+  const business = new module.exports.Business({geaEnvironments: {production: "https://production.example/gea", test: "https://test.example/gea"}, requestTimeoutMs: 1000});
+  t.after(() => business.dispose());
+  let held = Promise.withResolvers(), entered = Promise.withResolvers();
+  t.mock.method(globalThis, "fetch", async () => {entered.resolve();return held.promise;});
+  const controller = new AbortController();const cancelled = business.loginStart(controller.signal, {environment: "test"});
+  await entered.promise;controller.abort();held.resolve(Response.json({success: true, result: {qrcodeId: "late"}}));
+  await assert.rejects(cancelled, /STALE_SELECTION/);assert.equal(business.status().authenticated, false);
+  await assert.rejects(business.loginPoll({loginId: "late"}, new AbortController().signal), /STALE_LOGIN/);
+  held = Promise.withResolvers();entered = Promise.withResolvers();
+  t.mock.method(globalThis, "fetch", async url => {
+    if (url.includes("getLoginQrcode")) return Response.json({success: true, result: {qrcodeId: "current"}});
+    if (url.includes("getQrcodeToken")) return Response.json({success: true, result: {success: true, token: "synthetic"}});
+    entered.resolve();return held.promise;
+  });
+  const qr = await business.loginStart(new AbortController().signal, {environment: "production"});
+  const polling = new AbortController();const late = business.loginPoll({loginId: qr.loginId}, polling.signal);
+  await entered.promise;polling.abort();held.resolve(Response.json({success: true, result: {userInfo: {id: "late", realname: "Late", tenantId: "0"}}}));
+  await assert.rejects(late, /STALE_SELECTION/);assert.equal(business.status().authenticated, false);assert.equal(business.status().user, null);
+});
 
 test("Lark avatar is exposed without credentials and cleared on logout", { timeout: 60000 }, async (t) => {
   const app = await profile(t);

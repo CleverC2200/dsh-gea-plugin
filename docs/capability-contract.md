@@ -25,6 +25,10 @@ HTML 的 `gea-html-v2` 当前只接收只读模块，不能通过声明升级成
 
 ## 可见、启用与身份
 
+GEA Client 的 `businessAccount` 与 `geaIdentity` 共用一份 Host 只读投影。`status.environment` 是当前环境，`status.environments` 是部署已配置的可选环境，不含地址或凭据。工作台把用户选择传给 `startLogin(signal, environment)`；GEA Client 只调用现有 `login/start { environment }` 并刷新 Host 投影。环境切换、清除旧身份/二维码和取消旧代际由 Host `loginStart` 统一执行，客户端不另建环境切换或登录权威。`/api/gea-html/identity` 的环境列表变化会通知投影订阅者，取消或被新读取取代的响应不能覆盖当前投影。
+
+普通插件的空设置采用 `desktop/company.config.json` 已登记的正式/测试地址，默认正式。Host Config 保留显式 `environment` 和 `geaEnvironments`；自定义单地址且没有环境映射时仍只提供该环境，不将用户配置改到公司默认端点。
+
 Workbench 读取 `page.json.visible`，只控制目录和菜单。隐藏页面保留安装、声明与原 Session 归属，不等于停用能力。
 
 `capability.json.enabled=false` 仍保留静态页面，将禁用状态传给 Manage，并拒绝资源选择、受管读取、页面动作和引用捕获。重新启用沿原 owner，不新增登录状态、Session 格式或第二配置平台。
