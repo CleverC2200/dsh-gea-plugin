@@ -28,8 +28,13 @@ const git = (root, ...args) =>
   }).trim();
 
 export async function sourceWindow(t, mode, { inputFile } = {}) {
-  const { core: fixedCore, workbench: sharedWB, candidateOwners, historicalFailure } =
-    await readSourceWindowInputs(inputFile);
+  const {
+    core: fixedCore,
+    workbench: sharedWB,
+    manage: sharedManage,
+    candidateOwners,
+    historicalFailure,
+  } = await readSourceWindowInputs(inputFile);
   const temporary = await mkdtemp(join(tmpdir(), "source-window-"));
   t.after(() => rm(temporary, { recursive: true, force: true }));
   const group = join(temporary, "implement"),
@@ -74,6 +79,11 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
         compilerOptions: { paths: { "@deepseek-ai/cordis": [cordis] } },
       });
     }
+    if (repo === "dsh-agent-manage")
+      await cp(
+        join(sharedManage, "scripts/prepare-official-sdk.mjs"),
+        join(root, "scripts/prepare-official-sdk.mjs"),
+      );
     if (repo === "dsh-gea-plugin") {
       for (const name of [
         "start.mjs",
@@ -84,6 +94,8 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
         "source-combination-integrity.mjs",
         "deployment.mjs",
         "current-core.json",
+        "supported-cores.mjs",
+        "supported-cores.json",
       ])
         await cp(
           join(sourceRoot, "scripts", name),
@@ -120,7 +132,9 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
   const coreSha = git(fixedCore, "rev-parse", "HEAD");
   await save(candidateFile, {
     core: coreSha,
-    repositories: repositories.filter(({ repo }) => candidateOwners.includes(repo)),
+    repositories: repositories.filter(({ repo }) =>
+      candidateOwners.includes(repo),
+    ),
   });
   const configFile = join(temporary, "deployment.json");
   await save(configFile, {

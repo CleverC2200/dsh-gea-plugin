@@ -81,7 +81,7 @@ export async function runSourceProfile(
       cwd: core,
       encoding: "utf8",
     }).trim(),
-    version: cli.version,
+    version: supported.version,
   });
   const profile = join(runtime, "home/profiles/plugin-split-validation");
   await mkdir(profile, { recursive: true, mode: 0o700 });

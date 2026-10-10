@@ -510,3 +510,30 @@ for (const mode of [
       await snapshot(fixture.runtime),
     );
   });
+
+// The existing public function must record the admitted Core before attempting a Host.
+test("isolated Core admission records the registered version before a held profile lock", async (t) => {
+  const fixture = await sourceWindow(t, "isolated-core-host");
+  await mkdir(fixture.runtime, { recursive: true });
+  await writeFile(
+    join(fixture.runtime, "source-profile.lock"),
+    "fixture-owned-lock",
+  );
+  const result = fixture.run("runSourceProfile");
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /EEXIST/);
+  const cli = JSON.parse(
+    await readFile(join(fixture.fixedCore, "apps/cli/package.json"), "utf8"),
+  );
+  const receipt = JSON.parse(
+    await readFile(join(fixture.runtime, "core-source.json"), "utf8"),
+  );
+  assert.equal(receipt.version, cli.version);
+  assert.equal(
+    receipt.adaptation,
+    JSON.parse(await readFile(fixture.candidateFile, "utf8")).core,
+  );
+  const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
+  assert.deepEqual(effects.processes, []);
+  assert.deepEqual(effects.network, []);
+});

@@ -26,7 +26,7 @@ export async function readSourceWindowInputs(
     return entries[0];
   };
   const workbench = owner("dsh-agent-workbench");
-  owner("dsh-agent-manage");
+  const manage = owner("dsh-agent-manage");
   const gea = owner("dsh-gea-plugin");
   const failure = input.historicalFailure;
   if (!declaredPath(failure?.file) || !/^[a-f0-9]{64}$/.test(failure?.sha256 ?? ""))
@@ -63,6 +63,7 @@ export async function readSourceWindowInputs(
   return {
     core,
     workbench: workbench.path,
+    manage: manage.path,
     candidateOwners: receipt.repositories.map(({ repo }) => repo),
     historicalFailure: failure.file,
   };
