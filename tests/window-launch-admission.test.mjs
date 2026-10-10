@@ -149,9 +149,14 @@ test("the correctly frozen source-host enters only the loopback process fixture 
   assert.deepEqual(effects.network, []);
 });
 
-test("the isolated core CLI admits a valid declaration before delegating only to the loopback fixture", async (t) => {
+test("the isolated core CLI preserves its platform sandbox boundary after Window admission", async (t) => {
   const fixture = await sourceWindow(t, "isolated-core-host");
+  const before = await snapshot(fixture.runtime);
   const result = fixture.run("start-isolated-validation.mjs");
+  if (process.platform !== "darwin") {
+    await assertNoEffects(fixture, result, /ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX/, before);
+    return;
+  }
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
@@ -189,9 +194,14 @@ test("a self-consistent artifact manifest cannot replace the frozen candidate so
   assert.deepEqual(effects.after, effects.before);
 });
 
-test("the isolated source CLI verifies its five-source snapshot before delegating only to the loopback fixture", async (t) => {
+test("the isolated source CLI preserves its platform sandbox boundary after Window admission", async (t) => {
   const fixture = await sourceWindow(t, "isolated-source-host");
+  const before = await snapshot(fixture.runtime);
   const result = fixture.run("start-isolated-validation.mjs");
+  if (process.platform !== "darwin") {
+    await assertNoEffects(fixture, result, /ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX/, before);
+    return;
+  }
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));

@@ -5,7 +5,8 @@ import { mkdir, readFile, writeFile, realpath } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { chromium, expect } from "@playwright/test";
-import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { readSession, readToolResults, until } from "./profile.mjs";
+import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 import { installStockRoutes, stockState } from "./fixtures/branch-stock.mjs";
 import {
   prepareSourcePlugins,
@@ -45,15 +46,10 @@ test(
           recursive: true,
         });
         const deployment = await readDeployment(config);
-        const sources = JSON.parse(
-          await readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"),
-        );
+        const sources = JSON.parse(await readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"));
         await prepareSourcePlugins(core, runtime, deployment, { sources });
         await mkdir(join(runtime, "workspace"), { recursive: true });
-        await writeFile(
-          join(runtime, "workspace/preexisting-user.txt"),
-          "ticket08 user state",
-        );
+        await writeFile(join(runtime, "workspace/preexisting-user.txt"), "ticket08 user state");
         await upgradeSourceProfileLayout(runtime);
         // The recovery artifacts are read from the clean, registered ticket08 checkout.
         previous = await prepareSourcePlugins(core, runtime, deployment, {
@@ -79,12 +75,8 @@ test(
     });
     const state = stockState();
     installStockRoutes(app, state, (body) => {
-      const index = body.messages.findLastIndex(
-        (message) => message.role === "user",
-      );
-      const tools = body.messages
-        .slice(index + 1)
-        .filter((message) => message.role === "tool");
+      const index = body.messages.findLastIndex((message) => message.role === "user");
+      const tools = body.messages.slice(index + 1).filter((message) => message.role === "tool");
       const name = tools.length === 0 ? "skill" : "gea_cube_query";
       if (tools.length < 2)
         return {
@@ -120,8 +112,7 @@ test(
       assert.match(receipts, /100/);
       assert.match(receipts, /30/);
       return {
-        content:
-          "本地样本FC001=100件、FC002=30件，合计130件；依据本轮Skill及Cube回执。",
+        content: "本地样本FC001=100件、FC002=30件，合计130件；依据本轮Skill及Cube回执。",
       };
     });
     const browser = await chromium.launch({
@@ -130,10 +121,7 @@ test(
     });
     t.after(() => browser.close());
     const userFile = join(app.runtime, "workspace/user-data.txt");
-    await writeFile(
-      userFile,
-      "user-owned data kept across update and restore\n",
-    );
+    await writeFile(userFile, "user-owned data kept across update and restore\n");
     const settingsFile = join(
       app.runtime,
       "home/profiles/plugin-split-validation/cordis.patch.yml",
@@ -157,36 +145,27 @@ test(
           "Host restart preserves every prior Session row before fresh activity",
         );
       }
-      await assert.rejects(
-        selectSourceCombination(app.runtime, combination.id, core),
-        { code: "EEXIST" },
-      );
+      await assert.rejects(selectSourceCombination(app.runtime, combination.id, core), {
+        code: "EEXIST",
+      });
       assert.equal((await app.login()).ok, true);
-      const identityResponse = await fetch(
-        app.origin + "/api/gea-html/identity",
-        { headers: { Cookie: app.cookie } },
-      );
+      const identityResponse = await fetch(app.origin + "/api/gea-html/identity", {
+        headers: { Cookie: app.cookie },
+      });
       const scope = (await identityResponse.json()).scope;
       assert.ok(scope);
       if (oldScope)
-        assert.notEqual(
-          scope,
-          oldScope,
-          "new Host invalidates the prior identity generation",
-        );
+        assert.notEqual(scope, oldScope, "new Host invalidates the prior identity generation");
       const request = async (endpoint, body) => {
-        const response = await fetch(
-          app.origin + "/api/gea-html/inventory-fc/" + endpoint,
-          {
-            method: "POST",
-            headers: {
-              Cookie: app.cookie,
-              Origin: app.origin,
-              "content-type": "application/json",
-            },
-            body: JSON.stringify(body),
+        const response = await fetch(app.origin + "/api/gea-html/inventory-fc/" + endpoint, {
+          method: "POST",
+          headers: {
+            Cookie: app.cookie,
+            Origin: app.origin,
+            "content-type": "application/json",
           },
-        );
+          body: JSON.stringify(body),
+        });
         return { status: response.status, body: await response.json() };
       };
       let rejectedScope, rejectedLease;
@@ -197,10 +176,7 @@ test(
           scope: oldScope,
         });
         assert.equal(rejectedScope.status, 400);
-        assert.equal(
-          rejectedScope.body.error,
-          "PAGE_SESSION_IDENTITY_MISMATCH",
-        );
+        assert.equal(rejectedScope.body.error, "PAGE_SESSION_IDENTITY_MISMATCH");
         rejectedLease = await request("call", {
           session: durableSession,
           lease: oldLease,
@@ -225,10 +201,7 @@ test(
       page.setDefaultTimeout(20000);
       let opened;
       page.on("response", async (response) => {
-        if (
-          response.url().endsWith("/api/gea-html/inventory-fc/open") &&
-          response.ok()
-        )
+        if (response.url().endsWith("/api/gea-html/inventory-fc/open") && response.ok())
           opened = await response.json();
       });
       await page.goto(app.origin);
@@ -238,29 +211,21 @@ test(
       if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
         await page.getByText("库存管理", { exact: true }).click();
       await page.getByText("分仓库存", { exact: true }).click();
-      const frame = page
-        .locator('iframe[src*="/api/gea-html/inventory-fc/html"]')
-        .contentFrame();
-      await expect(
-        frame.getByText("FC001", { exact: true }).first(),
-      ).toBeVisible();
-      await expect(
-        frame.getByText("FC002", { exact: true }).first(),
-      ).toBeVisible();
+      const frame = page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]').contentFrame();
+      await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
+      await expect(frame.getByText("FC002", { exact: true }).first()).toBeVisible();
       await expect.poll(() => typeof opened?.lease).toBe("string");
-      const agentsResponse = await fetch(
-        app.origin + "/api/gea-html/inventory-fc/agents",
-        { headers: { Cookie: app.cookie } },
-      );
+      const agentsResponse = await fetch(app.origin + "/api/gea-html/inventory-fc/agents", {
+        headers: { Cookie: app.cookie },
+      });
       const agents = await agentsResponse.json();
       assert.deepEqual(
         agents.map((value) => value.preset),
         ["gea-html-inventory-fc"],
       );
-      const pluginsResponse = await fetch(
-        app.origin + "/api/gea-html/plugins",
-        { headers: { Cookie: app.cookie } },
-      );
+      const pluginsResponse = await fetch(app.origin + "/api/gea-html/plugins", {
+        headers: { Cookie: app.cookie },
+      });
       const plugins = await pluginsResponse.json();
       assert.equal(
         plugins.filter((value) => value.id === "inventory-fc").length,
@@ -316,8 +281,7 @@ test(
       );
       const rows = await until(
         () => readSession(app.runtime, durableSession),
-        (rows) =>
-          rows.filter((value) => value.type === "turn/end").length > turns,
+        (rows) => rows.filter((value) => value.type === "turn/end").length > turns,
         60000,
       );
       const receipts = readToolResults(rows).slice(-2);
@@ -327,10 +291,7 @@ test(
       assert.match(receipts[1].text, /30/);
       assert.match(JSON.stringify(rows), /合计130件/);
       assert.equal(
-        await readFile(
-          join(app.runtime, "workspace/preexisting-user.txt"),
-          "utf8",
-        ),
+        await readFile(join(app.runtime, "workspace/preexisting-user.txt"), "utf8"),
         "ticket08 user state",
       );
       const modules = await realpath(
@@ -338,18 +299,10 @@ test(
       );
       assert.equal(
         modules,
-        join(
-          app.runtime,
-          "source-combinations",
-          combination.id,
-          "node_modules",
-        ),
+        join(app.runtime, "source-combinations", combination.id, "node_modules"),
       );
       const pageSource = await readFile(
-        join(
-          modules,
-          "@cleverc2200/dsh-agent-workbench/lib/business/inventory-fc/index.html",
-        ),
+        join(modules, "@cleverc2200/dsh-agent-workbench/lib/business/inventory-fc/index.html"),
         "utf8",
       );
       const pageScript = pageSource.match(/<script>([\s\S]*)<\/script>/)[1];
@@ -372,12 +325,7 @@ test(
       });
       const manifest = JSON.parse(
         await readFile(
-          join(
-            app.runtime,
-            "source-combinations",
-            combination.id,
-            "combination.json",
-          ),
+          join(app.runtime, "source-combinations", combination.id, "combination.json"),
           "utf8",
         ),
       );
@@ -385,17 +333,14 @@ test(
         phase,
         combination: combination.id,
         modules,
-        source: JSON.parse(
-          await readFile(join(app.runtime, "company-plugins.json"), "utf8"),
-        ),
+        source: JSON.parse(await readFile(join(app.runtime, "company-plugins.json"), "utf8")),
         manifestSha256: hash(JSON.stringify(manifest)),
         pageScriptSha256: hash(pageScript),
         scope,
         session: durableSession,
         opened,
         agents,
-        registrations: plugins.filter((value) => value.id === "inventory-fc")
-          .length,
+        registrations: plugins.filter((value) => value.id === "inventory-fc").length,
         sql: state.rest.map((value) => value.sql),
         receipts,
         rows,

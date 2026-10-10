@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { readSession, readToolResults, until } from "./profile.mjs";
+import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
 
 test(
@@ -101,21 +102,13 @@ test(
       if (mode === "denied") {
         assert.equal(state.cube.length, before);
         assert.match(result.text, /NOT_AUTHORIZED|REJECTED/);
-      } else if (mode === "error")
-        assert.match(result.text, /失败|failed|MCP_TOOL_ERROR/i);
+      } else if (mode === "error") assert.match(result.text, /失败|failed|MCP_TOOL_ERROR/i);
       else if (mode === "missing") assert.match(result.text, /null/);
-      else
-        assert.doesNotMatch(
-          result.text,
-          /"branch_stock.available_qty":(?:100|30)/,
-        );
+      else assert.doesNotMatch(result.text, /"branch_stock.available_qty":(?:100|30)/);
       results.push({ mode, result });
     }
     const output = resolve(".runtime/branch-stock-evidence");
     await mkdir(output, { recursive: true });
-    await writeFile(
-      resolve(output, "agent-states.json"),
-      JSON.stringify(results, null, 2),
-    );
+    await writeFile(resolve(output, "agent-states.json"), JSON.stringify(results, null, 2));
   },
 );

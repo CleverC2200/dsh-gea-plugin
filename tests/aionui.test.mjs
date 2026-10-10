@@ -2,12 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdtemp, writeFile, rm, access } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { readDeployment } from "../scripts/deployment.mjs";
+import { sourceWindow, snapshot, hash } from "./fixtures/source-window.mjs";
 
 test("removed AionUi configurations fail before backend discovery, credential reads or profile creation", async (t) => {
   let requests = 0;
@@ -44,17 +43,20 @@ test("removed AionUi configurations fail before backend discovery, credential re
     }),
   );
   await assert.rejects(readDeployment(path), /AIONUI_RUNTIME_REMOVED/);
-  const runtime = resolve(dir, "runtime");
-  await assert.rejects(
-    promisify(execFile)(process.execPath, [
-      "scripts/start.mjs",
-      "--config",
-      path,
-      "--runtime",
-      runtime,
-    ]),
-    (e) => e.code === 1 && /AIONUI_RUNTIME_REMOVED/.test(e.stderr),
-  );
+  const fixture = await sourceWindow(t, "source-host");
+  await writeFile(fixture.configFile, await readFile(path));
+  fixture.frozen.config.sha256 = hash(await readFile(fixture.configFile));
+  await fixture.refresh();
+  const before = await snapshot(fixture.runtime);
+  const result = fixture.run();
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /AIONUI_RUNTIME_REMOVED/);
+  const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
+  assert.deepEqual(effects.writes, []);
+  assert.deepEqual(effects.processes, []);
+  assert.deepEqual(effects.network, []);
+  assert.deepEqual(effects.credentialReads, []);
+  assert.deepEqual(effects.after, effects.before);
+  assert.deepEqual(await snapshot(fixture.runtime), before);
   assert.equal(requests, 0);
-  await assert.rejects(access(runtime), { code: "ENOENT" });
 });
