@@ -1,6 +1,6 @@
 # 当前官方客户端与源码组合验证
 
-本轮固定输入：官方 `dsh-v0.2.1-alpha.1` / `5badb15009ae1756c3afe0ae0cef1faafc290ccc`，通过标准官方构建提供 SDK/客户端产物。Core源码和产物不做本地补修；官方客户端使用其标准 `pnpm dev:desktop` / `pnpm start:desktop`。Web/离线测试只提供开发反馈，不替代最终正式UI同源与实际客户端验收。
+源码组合的 Core 输入由 [当前源码 Core 声明](../scripts/current-core.json) 和本票冻结记录共同确定，通过标准官方构建提供 SDK/客户端产物。Core源码和产物不做本地补修；官方客户端使用其标准 `pnpm dev:desktop` / `pnpm start:desktop`。Web/离线测试只提供开发反馈，不替代最终正式UI同源与实际客户端验收。普通三包的双版宿主与SDK支持另由 [supported-cores.json](../scripts/supported-cores.json) 登记，并通过 [安装/Host接收](package-delivery.md) 核各自唯一SDK实例；源码组合的选择不缩小或替代普通包支持。
 
 源码组合只有既有 Workbench、Manage、GEA、GenUI、Better Sidebar；它们由自己的官方bundle/profile入口装配，GEA patch只登记业务接入本身。官方插件生命周期与Manage Suite/Skill/MCP资源状态分开。原资源窄source贡献、业务算法/权限/取消保持，官方standard preset不重写。
 
@@ -24,6 +24,6 @@ current source-profile直接调用businessDeploymentPatch，仅给GEA真实业�
 
 本项目 GEA 的开发安装将 GenUI 指向固定原 npm 0.11.3 发布资产，将 Better Sidebar 指向原样 e35120f1d9b3773062b68decb4f53a526d6c8baa checkout，退出同级产品 fork 的依赖声明。Sidebar 策略测试通过上游已公开的 `dsh-better-sidebar/src/*` 导出读取注册逻辑，不再拼接同级源码路径。冻结资产不重建；上游源码与发布文件摘要仍由明确五源记录校验，开发依赖路径不成为新的装配默认。
 
-当前官方源码启动只走 `businessDeploymentPatch` 和明确的五源输入。历史 `deploymentPatch` 的依赖解析用途仍单独保留，本片不改旧桌面发行协议。`npm-shrinkwrap.json` 属于普通包交付范围，待原同组验收前置满足后处理。原运行组合和恢复材料不删除，真实 Agent 推送验收未通过时不提前关闭来源退场。
+当前官方源码启动只走 `businessDeploymentPatch` 和明确的五源输入。历史 `deploymentPatch` 的依赖解析用途仍单独保留，本片不改旧桌面发行协议。普通包的 shrinkwrap 与实际 profile 锁沿 [安装协议](install.md) 和 [三包打包与接收](package-delivery.md) 执行；源码组合不替代普通包接收。原运行组合和恢复材料不删除，真实 Agent 推送验收未通过时不提前关闭来源退场。
 
 `GET /api/gea-proof/sidebar-tool-visibility?sessionId=<existing Session id>` 提供当前 Host 的最小只读工具投影。GEA 必须已登录，Session 对应的 Agent 必须已存在；未就绪返回明确错误，不创建或恢复 Agent。返回 `sidebar_open` 的注册与该 Agent 当前 scoped Tools 可见性，不提供执行入口，不调整工具策略、不发模型请求或外部业务查询。结果只描述读取时刻，不能代替随后真实工具返回、推送、队列及释放验收。读取无缓存，不返回身份、凭据或工具参数内容。

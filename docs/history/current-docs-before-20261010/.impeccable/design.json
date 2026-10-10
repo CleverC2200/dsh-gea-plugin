@@ -1,0 +1,386 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-17T12:49:41Z",
+  "title": "Design System: GEA Workbench",
+  "extensions": {
+    "colorMeta": {
+      "arco-operation-red": {
+        "role": "primary",
+        "displayName": "Arco 操作红",
+        "canonical": "rgb(245, 63, 63)",
+        "tonalRamp": [
+          "#4d000a",
+          "#770813",
+          "#a1151e",
+          "#cb272d",
+          "#f53f3f",
+          "#f98981",
+          "#fdcdc5",
+          "#ffece8"
+        ]
+      },
+      "api-log-red": {
+        "role": "primary",
+        "displayName": "日志强调红",
+        "canonical": "#d92d34",
+        "tonalRamp": [
+          "#4a090d",
+          "#741116",
+          "#9d1f25",
+          "#b9252b",
+          "#d92d34",
+          "#ed8c91",
+          "#f2c6c8",
+          "#fff1f1"
+        ]
+      },
+      "api-log-red-soft": {
+        "role": "primary",
+        "displayName": "日志浅红底",
+        "canonical": "#fff1f1",
+        "tonalRamp": [
+          "#4a090d",
+          "#741116",
+          "#9d1f25",
+          "#b9252b",
+          "#d92d34",
+          "#ed8c91",
+          "#f2c6c8",
+          "#fff1f1"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "纸白画布",
+        "canonical": "#f9fafb",
+        "tonalRamp": [
+          "#202531",
+          "#454d5f",
+          "#667085",
+          "#86909c",
+          "#c9cdd4",
+          "#e5e6eb",
+          "#f2f3f5",
+          "#f9fafb"
+        ]
+      },
+      "surface-muted": {
+        "role": "neutral",
+        "displayName": "浅灰工作面",
+        "canonical": "#f2f3f5",
+        "tonalRamp": [
+          "#202531",
+          "#454d5f",
+          "#667085",
+          "#86909c",
+          "#c9cdd4",
+          "#e5e6eb",
+          "#f2f3f5",
+          "#f9fafb"
+        ]
+      },
+      "divider": {
+        "role": "neutral",
+        "displayName": "分隔灰",
+        "canonical": "#e5e6eb",
+        "tonalRamp": [
+          "#202531",
+          "#454d5f",
+          "#667085",
+          "#86909c",
+          "#c9cdd4",
+          "#e5e6eb",
+          "#f2f3f5",
+          "#f9fafb"
+        ]
+      },
+      "divider-strong": {
+        "role": "neutral",
+        "displayName": "强分隔灰",
+        "canonical": "#c9cdd4",
+        "tonalRamp": [
+          "#202531",
+          "#454d5f",
+          "#667085",
+          "#86909c",
+          "#c9cdd4",
+          "#e5e6eb",
+          "#f2f3f5",
+          "#f9fafb"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "冷灰墨色",
+        "canonical": "#202531",
+        "tonalRamp": [
+          "#202531",
+          "#454d5f",
+          "#667085",
+          "#86909c",
+          "#c9cdd4",
+          "#e5e6eb",
+          "#f2f3f5",
+          "#f9fafb"
+        ]
+      },
+      "ink-secondary": {
+        "role": "neutral",
+        "displayName": "次要墨色",
+        "canonical": "#454d5f",
+        "tonalRamp": [
+          "#202531",
+          "#454d5f",
+          "#667085",
+          "#86909c",
+          "#c9cdd4",
+          "#e5e6eb",
+          "#f2f3f5",
+          "#f9fafb"
+        ]
+      },
+      "ink-disabled": {
+        "role": "neutral",
+        "displayName": "禁用墨色",
+        "canonical": "#86909c",
+        "tonalRamp": [
+          "#202531",
+          "#454d5f",
+          "#667085",
+          "#86909c",
+          "#c9cdd4",
+          "#e5e6eb",
+          "#f2f3f5",
+          "#f9fafb"
+        ]
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "成功绿",
+        "canonical": "#166534",
+        "tonalRamp": [
+          "#06361a",
+          "#0c4c27",
+          "#166534",
+          "#278647",
+          "#4aa76a",
+          "#80c997",
+          "#bce6c8",
+          "#edf9f1"
+        ]
+      },
+      "success-soft": {
+        "role": "secondary",
+        "displayName": "成功浅绿底",
+        "canonical": "#edf9f1",
+        "tonalRamp": [
+          "#06361a",
+          "#0c4c27",
+          "#166534",
+          "#278647",
+          "#4aa76a",
+          "#80c997",
+          "#bce6c8",
+          "#edf9f1"
+        ]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "警示金",
+        "canonical": "#815b0b",
+        "tonalRamp": [
+          "#3b2803",
+          "#5c4006",
+          "#815b0b",
+          "#a97b19",
+          "#cf9f36",
+          "#e5c878",
+          "#f3e3b6",
+          "#fffaf0"
+        ]
+      },
+      "warning-soft": {
+        "role": "tertiary",
+        "displayName": "警示浅金底",
+        "canonical": "#fffaf0",
+        "tonalRamp": [
+          "#3b2803",
+          "#5c4006",
+          "#815b0b",
+          "#a97b19",
+          "#cf9f36",
+          "#e5c878",
+          "#f3e3b6",
+          "#fffaf0"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "工作区标题",
+        "purpose": "用于工作区和详情主标题，紧凑但清楚。"
+      },
+      "body": {
+        "displayName": "业务正文",
+        "purpose": "用于业务说明、正文和常规输入内容。"
+      },
+      "label": {
+        "displayName": "扫描标签",
+        "purpose": "用于状态、计数、字段名和工具栏信息。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "floating-entry",
+        "value": "0 5px 14px rgba(24, 32, 48, 0.12)",
+        "purpose": "固定在宿主工作台之上的入口按钮。"
+      },
+      {
+        "name": "authentication-card",
+        "value": "0 16px 64px #2935522e",
+        "purpose": "独立登录场景中的认证卡片。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-change",
+        "value": "150ms ease",
+        "purpose": "按钮颜色等短促状态变化；减少动态偏好下移除。"
+      },
+      {
+        "name": "qr-fade",
+        "value": "180ms ease",
+        "purpose": "登录二维码失效状态的透明度变化；减少动态偏好下移除。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "evidence-stack",
+        "value": "1100px"
+      },
+      {
+        "name": "single-column",
+        "value": "680px"
+      },
+      {
+        "name": "compact-login",
+        "value": "480px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "工作区内最重要的返回、确认或提交动作。",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">返回工作台</button>",
+      "css": ".ds-btn-primary { height: 34px; padding: 0 10px; border: 1px solid #d92d34; border-radius: 8px; background: #d92d34; color: #fff; font: 600 12px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; cursor: pointer; transition: background-color 150ms ease, border-color 150ms ease; } .ds-btn-primary:hover { border-color: #b9252b; background: #b9252b; } .ds-btn-primary:focus-visible { outline: 2px solid #ed4348; outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "刷新、清空和其他工具栏次级动作。",
+      "html": "<button class=\"ds-btn-outline\" type=\"button\">刷新</button>",
+      "css": ".ds-btn-outline { height: 34px; padding: 0 10px; border: 1px solid #d9dce3; border-radius: 8px; background: #fff; color: #3b4351; font: 600 12px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; cursor: pointer; transition: color 150ms ease, border-color 150ms ease; } .ds-btn-outline:hover { border-color: #ed8c91; color: #d92d34; } .ds-btn-outline:focus-visible { outline: 2px solid #ed4348; outline-offset: 2px; } .ds-btn-outline:active { background: #f8f9fb; }"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "search-field",
+      "description": "工具栏内搜索接口、地址和状态的紧凑输入框。",
+      "html": "<label class=\"ds-search\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\"><circle cx=\"11\" cy=\"11\" r=\"7\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"/><path d=\"m16 16 5 5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"/></svg><input type=\"search\" placeholder=\"搜索接口、地址、状态\" /></label>",
+      "css": ".ds-search { width: 260px; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid #d9dce3; border-radius: 8px; background: #f8f9fb; color: #596273; transition: border-color 150ms ease, background-color 150ms ease; } .ds-search:focus-within { border-color: #ed8c91; background: #fff; } .ds-search svg { width: 16px; height: 16px; flex: 0 0 auto; } .ds-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: #202531; font: 400 14px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; } .ds-search input::placeholder { color: #626b7b; }"
+    },
+    {
+      "name": "Filter Tabs",
+      "kind": "nav",
+      "refersTo": "filter-tabs",
+      "description": "在同一记录集合中切换全部与失败状态。",
+      "html": "<div class=\"ds-filter-tabs\" role=\"group\" aria-label=\"状态筛选\"><button class=\"ds-filter-tab is-active\" type=\"button\">全部</button><button class=\"ds-filter-tab\" type=\"button\">失败</button></div>",
+      "css": ".ds-filter-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; background: #eceef2; } .ds-filter-tab { min-width: 40px; height: 25px; border: 0; border-radius: 5px; background: transparent; color: #667085; font: 600 12px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; cursor: pointer; } .ds-filter-tab:hover { color: #29303d; } .ds-filter-tab.is-active { background: #fff; color: #29303d; } .ds-filter-tab:focus-visible { outline: 2px solid #ed4348; outline-offset: 1px; }"
+    },
+    {
+      "name": "Selected Catalog Item",
+      "kind": "nav",
+      "refersTo": "catalog-selected",
+      "description": "接口目录中当前能力的选中状态。",
+      "html": "<button class=\"ds-catalog-item\" type=\"button\"><span class=\"ds-method\">POST</span><span class=\"ds-name\">销售计划重提</span><strong>3</strong></button>",
+      "css": ".ds-catalog-item { width: 244px; min-height: 36px; display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 6px 8px; border: 0; border-radius: 8px; background: #fff1f1; color: #9d1f25; text-align: left; cursor: pointer; } .ds-catalog-item:hover { background: #ffe7e7; } .ds-catalog-item:focus-visible { outline: 2px solid #ed4348; outline-offset: 2px; } .ds-method { font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; } .ds-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; } .ds-catalog-item strong { color: #5f6877; font: 700 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }"
+    },
+    {
+      "name": "Selected Call Row",
+      "kind": "custom",
+      "refersTo": "call-row-selected",
+      "description": "时间序列中当前调用的扫描行。",
+      "html": "<button class=\"ds-call-row\" type=\"button\"><time>14:32:08</time><span class=\"ds-call-method\">GET</span><span class=\"ds-call-main\"><strong>审批任务列表</strong><small>/api/v1/tasks</small></span><span class=\"ds-call-status\">成功</span></button>",
+      "css": ".ds-call-row { width: 100%; min-height: 58px; display: grid; grid-template-columns: 66px 44px minmax(130px, 1fr) 54px; align-items: center; gap: 7px; padding: 8px 12px; border: 0; border-bottom: 1px solid #eef0f3; box-shadow: inset 3px 0 0 #d92d34; background: #fff4f4; color: #3d4552; text-align: left; cursor: pointer; } .ds-call-row:hover { background: #fff1f1; } .ds-call-row:focus-visible { outline: 2px solid #ed4348; outline-offset: -2px; } .ds-call-row time { color: #596273; font: 400 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; } .ds-call-method { color: #146c43; font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; } .ds-call-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; } .ds-call-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 13px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; } .ds-call-main small { overflow: hidden; color: #596273; font: 400 10px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; } .ds-call-status { justify-self: end; padding: 3px 6px; border-radius: 5px; background: #edf9f1; color: #166534; font: 600 11px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; }"
+    },
+    {
+      "name": "Success Status",
+      "kind": "chip",
+      "refersTo": "status-success",
+      "description": "文字与低饱和背景共同表达的成功状态。",
+      "html": "<span class=\"ds-status-success\"><svg aria-hidden=\"true\" viewBox=\"0 0 16 16\"><path d=\"m3 8 3 3 7-7\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>成功</span>",
+      "css": ".ds-status-success { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 3px 6px; border-radius: 5px; background: #edf9f1; color: #166534; font: 600 11px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; } .ds-status-success svg { width: 12px; height: 12px; }"
+    },
+    {
+      "name": "Evidence Block",
+      "kind": "custom",
+      "refersTo": "code-evidence",
+      "description": "保留脱敏请求或响应结构的可滚动代码证据块。",
+      "html": "<pre class=\"ds-evidence\" tabindex=\"0\">{\n  &quot;status&quot;: 200,\n  &quot;requestId&quot;: &quot;req_••••&quot;\n}</pre>",
+      "css": ".ds-evidence { max-height: 260px; margin: 0; padding: 11px 12px; overflow: auto; border: 1px solid #e3e6eb; border-radius: 10px; background: #f8f9fb; color: #28303d; font: 400 11px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; } .ds-evidence:hover { border-color: #c9cdd4; } .ds-evidence:focus-visible { outline: 2px solid #ed4348; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "证据工作台",
+    "overview": "GEA 的视觉系统服务于判断、核对和受控操作。它继承 Arco 的浅色企业工作台语言：白色与冷灰形成连续工作面，业务红只标记当前、关键或需要确认的操作，信息优先通过结构、文字和可扫描的密度被理解。\n\n界面应当清晰、审慎、工具化。复杂任务被组织为连续的工作路径，例如目录、记录与详情相互联动；品牌感来自精准的间距、状态和交互反馈，而不是营销式构图、装饰性动效或大面积高饱和色。",
+    "keyCharacteristics": [
+      "浅色、紧凑、以连续工作面承载高密度业务信息。",
+      "红色稀疏地表达当前项、关键动作和风险确认。",
+      "文字、图标与低饱和底色共同表达状态，不依赖颜色单独传意。",
+      "保留来源、环境、时间和关联标识，让证据链连续可读。"
+    ],
+    "rules": [
+      {
+        "name": "The Sparse Red Rule",
+        "body": "红色只服务于当前、关键和风险，不把整屏变成品牌色展示面。",
+        "section": "colors"
+      },
+      {
+        "name": "The Redundant Status Rule",
+        "body": "状态颜色必须与文字、图标或形状至少一种共同出现。",
+        "section": "colors"
+      },
+      {
+        "name": "The Scan Before Read Rule",
+        "body": "先用标题、方法、状态与数值形成扫描路径，再用正文解释细节。",
+        "section": "typography"
+      },
+      {
+        "name": "The Continuous Evidence Rule",
+        "body": "有来源关系的内容保持在一个连续工作区内，让选择、记录与详情能同时被理解。",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat-by-Default Rule",
+        "body": "工作面静止时保持平面；阴影只用于真正浮在宿主之上的入口或独立场景。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 用连续分栏、列表和详情维持业务或证据链的上下文。",
+      "Do 用文字、图标与低饱和底色共同表达成功、失败、进行中和警示。",
+      "Do 保持 34–36px 控件、11–14px 信息字号和 8–16px 常用间距形成的紧凑密度。",
+      "Do 在 1100px 和 680px 附近按实现过的顺序折叠复杂工作区，并保留页内详情。"
+    ],
+    "donts": [
+      "Don't 把证据型或联调型扩展改造成指标卡片拼接的运维大屏。",
+      "Don't 引入独立品牌语言、营销式大标题、大面积高饱和色或纯装饰动效。",
+      "Don't 只用颜色表达状态，或让红色同时承担普通信息、成功和警示。",
+      "Don't 在页内确认足够清楚时使用抢占焦点的模态框。"
+    ]
+  }
+}
