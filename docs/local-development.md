@@ -70,3 +70,5 @@ GEA 的公开 Config schema 为空配置提供已有公司产品定义中的端�
 发行 manifest 要求同批 Workbench/Manage exact peers。GenUI/Sidebar 维持 exact optional peers，不随三主插件自动启用。未安装或停用辅助插件时，只报告其真实缺席状态；官方 standard 和已配置业务授权保护保持原接口。
 
 `node --run test:fixture-inputs` 是无 SDK 的输入拒绝回归，也由现有 delivery fixture CI 执行。它不代替需要固定官方输入的 `test:window`；远端 workflow 的配置与实际执行结果分别记录。
+
+冷 runner 直接调用 `node scripts/run-quality-ci.mjs --prepare-sdk --prepare-inputs --core-source <固定来源>`，避免依赖安装前的 pnpm run 检查。普通本地 `pnpm quality:ci` 运行同一入口。质量阶段分别保存 fast、contracts、full 状态到 `quality-checks.json`，fast 各检查保存 `.runtime/quality-fast.json`；前项红不挡后项，整体仍非零。输入或准备失败立即拒绝。

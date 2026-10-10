@@ -68,11 +68,12 @@ test("the workflow binds full source history and the same public quality command
   );
   assert.equal((workflow.match(/fetch-depth: 0/g) ?? []).length, 5);
   assert.equal((workflow.match(/persist-credentials: false/g) ?? []).length, 5);
-  assert.match(workflow, /corepack pnpm quality:ci --prepare-sdk.*--prepare-inputs/);
+  assert.match(workflow, /node scripts\/run-quality-ci.mjs --prepare-sdk.*--prepare-inputs/);
   assert.match(workflow, /if: always\(\)/);
   assert.match(workflow, /needs: \[candidate-scope, gates\]/);
   assert.match(workflow, /run: node scripts\/run-quality-ci.mjs --phase final/);
   assert.match(workflow, /PLUGIN_SPLIT_READ_TOKEN/);
+  assert.match(workflow, /npm install --global npm@11\.11\.0/);
   assert.match(workflow, /supportedCores\.map\(core => core\.head\)/);
   assert.match(workflow, /fromJSON\(needs\.candidate-scope\.outputs\.cores\)/);
   assert.match(workflow, /--core-head "\$\{\{ matrix\.core \}\}"/);

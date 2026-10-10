@@ -1,3 +1,4 @@
+import { runQualityChecks } from "./run-quality-checks.mjs";
 /** Public source-event admission and fail-closed workflow aggregation. */
 import { parseArgs } from "node:util";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -11,7 +12,7 @@ import { resolveSourceInputs } from "./source-profile.mjs";
 import { resourceDigests } from "./source-combination-integrity.mjs";
 const peers = {
   "dsh-agent-workbench": "0d98253df33128632d2b927e5c3c6db512647384",
-  "dsh-agent-manage": "399bf00728e7408519286e8cd7ad359367eda323",
+  "dsh-agent-manage": "622ab1913ef8d96efee6359d63e5f9a85e60a43f",
 };
 import { supportedCores } from "./supported-cores.mjs";
 import currentCore from "./current-core.json" with { type: "json" };
@@ -230,6 +231,14 @@ try {
           "QUALITY_PREPARED_ALREADY_EXISTS",
           "use a fresh owned job directory or verify the existing frozen assets",
         );
+      const npmManager = JSON.parse(
+        readFileSync(resolve(workbench.path, "package.json")),
+      ).packageManager;
+      if (
+        npmManager !== "npm@11.11.0" ||
+        execFileSync("npm", ["--version"], { encoding: "utf8" }).trim() !== npmManager.slice(4)
+      )
+        refuse("QUALITY_TOOLCHAIN_REQUIRED", "Workbench npm@11.11.0");
       run("git", [
         "-C",
         workbench.path,
@@ -395,15 +404,30 @@ try {
       ) + "\n",
     );
     if (values.phase === "quality") {
-      if (finalGroup)
-        run("corepack", ["pnpm", "test:final-group"], process.cwd(), {
-          GEA_FINAL_GROUP_WORKBENCH_SOURCE: workbench.path,
-          GEA_FINAL_GROUP_MANAGE_SOURCE: manage.path,
-          GEA_FINAL_GROUP_CORE_SOURCE: core,
-        });
-      run("corepack", ["pnpm", "quality:fast"]);
-      run("corepack", ["pnpm", "test:contracts"]);
-      run("corepack", ["pnpm", "test"]);
+      const checks = runQualityChecks([
+        ...(finalGroup
+          ? [
+              {
+                name: "final-group",
+                execute: () =>
+                  run("corepack", ["pnpm", "test:final-group"], process.cwd(), {
+                    GEA_FINAL_GROUP_WORKBENCH_SOURCE: workbench.path,
+                    GEA_FINAL_GROUP_MANAGE_SOURCE: manage.path,
+                    GEA_FINAL_GROUP_CORE_SOURCE: core,
+                  }),
+              },
+            ]
+          : []),
+        { name: "fast", execute: () => run("corepack", ["pnpm", "quality:fast"]) },
+        { name: "contracts", execute: () => run("corepack", ["pnpm", "test:contracts"]) },
+        { name: "full", execute: () => run("corepack", ["pnpm", "test"]) },
+      ]);
+      writeFileSync(
+        resolve(dirname(dirname(process.cwd())), "quality-checks.json"),
+        JSON.stringify(checks, null, 2) + "\n",
+      );
+      if (checks.some((check) => check.status !== "passed"))
+        refuse("QUALITY_CHECKS_FAILED", JSON.stringify(checks));
     }
   }
   console.log(

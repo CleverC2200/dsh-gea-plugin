@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: CleverC2200/dsh-agent-manage
-          ref: 399bf00728e7408519286e8cd7ad359367eda323
+          ref: 622ab1913ef8d96efee6359d63e5f9a85e60a43f
           fetch-depth: 0
           path: candidate/dsh-agent-manage
           token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
@@ -80,11 +80,24 @@ jobs:
           token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
       - name: Enable declared package managers
-        run: corepack enable
+        run: |
+          npm install --global npm@11.11.0
+          corepack enable
       - name: Bind actual event and frozen peers
         run: node scripts/run-quality-ci.mjs --phase input --root "${{ github.workspace }}" --sha "${{ env.QUALITY_EXPECTED_SHA }}" --core-head "${{ matrix.core }}"
       - name: Prepare independent SDK and run public quality gates
-        run: corepack pnpm quality:ci --prepare-sdk --core-source https://github.com/deepseek-ai/deepseek-harness.git --prepare-inputs --core-head "${{ matrix.core }}"
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source https://github.com/deepseek-ai/deepseek-harness.git --prepare-inputs --core-head "${{ matrix.core }}"
+
+      - name: Keep independent quality results including failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: quality-results-${{ matrix.core }}
+          path: |
+            candidate-input.json
+            quality-checks.json
+            candidate/dsh-gea-plugin/.runtime/quality-fast.json
+          if-no-files-found: warn
 
   candidate-quality:
     if: always()
