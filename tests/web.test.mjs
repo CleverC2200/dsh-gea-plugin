@@ -142,18 +142,25 @@ test(
         ? route.continue()
         : route.fulfill({ json: { ok: true, value: { status: "pending" } } }),
     );
-    let owner;
-    page.on("response", async (response) => {
-      if (!response.url().endsWith("/api/agent-workbench/page") || !response.ok()) return;
-      if (response.request().postDataJSON()?.operation === "open")
-        owner = (await response.json()).owner;
-    });
     await page.goto(app.origin);
     await page
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    const frame = await openSalesPlan(page);
+    const opened = page.waitForResponse((response) => {
+      if (!response.url().endsWith("/api/agent-workbench/page")) return false;
+      const input = response.request().postDataJSON();
+      return input?.operation === "open" && input.pageId === "gea-workbench";
+    });
+    const [frame, pageReply] = await Promise.all([
+      openSalesPlan(page),
+      opened.then(async (response) => {
+        assert.equal(response.status(), 200);
+        return response.json();
+      }),
+    ]);
+    const owner = pageReply.owner;
+    assert.match(owner, /^[0-9a-f-]{36}$/);
     try {
       await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
       await frame.locator(".gea-login-qr img").waitFor();
@@ -363,7 +370,6 @@ test(
       await expect(salesPlanFrameElement(page)).toBeVisible();
       for (const view of ["business", "conversation"]) {
         if (view === "conversation") {
-          await expect.poll(() => typeof owner).toBe("string");
           const releasedOwner = owner;
           await openWorkbenchPage(page, "原生对话");
           await expect(salesPlanFrameElement(page)).toBeHidden();
