@@ -8,11 +8,18 @@ import {
   utimesSync,
   rmSync,
   existsSync,
+  symlinkSync,
+  realpathSync,
+  lstatSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readPreparedWorkbench, verifyPreparedWorkbench } from "./quality-workbench.mjs";
+import {
+  readPreparedWorkbench,
+  verifyPreparedWorkbench,
+  prepareWorkbenchGeaAuthority,
+} from "./quality-workbench.mjs";
 
 function preparedFixture(t) {
   const root = mkdtempSync(join(tmpdir(), "gea-prepared-metadata-"));
@@ -151,4 +158,66 @@ test("prepared outputs cannot conceal a dirty source checkout or a changed non-o
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+function authorityFixture(t) {
+  const root = mkdtempSync(join(tmpdir(), "gea-workbench-authority-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const workbench = join(root, "source/dsh-agent-workbench"),
+    gea = join(root, "candidate/dsh-gea-plugin"),
+    authority = join(root, "source/dsh-gea-plugin"),
+    registry = "scripts/supported-cores.json";
+  mkdirSync(workbench, { recursive: true });
+  mkdirSync(join(gea, "scripts"), { recursive: true });
+  writeFileSync(join(gea, registry), '{"source":"registered GEA candidate"}');
+  return { workbench, gea, authority, registry };
+}
+
+test("cold Workbench source layout resolves its registry to the actual admitted GEA candidate file", async (t) => {
+  const fixture = authorityFixture(t);
+  await prepareWorkbenchGeaAuthority(fixture);
+  assert.equal(lstatSync(fixture.authority).isSymbolicLink(), true);
+  assert.equal(
+    realpathSync(join(fixture.authority, fixture.registry)),
+    realpathSync(join(fixture.gea, fixture.registry)),
+  );
+  writeFileSync(join(fixture.gea, fixture.registry), '{"updated":"same authority"}');
+  assert.equal(
+    readFileSync(join(fixture.authority, fixture.registry), "utf8"),
+    '{"updated":"same authority"}',
+  );
+});
+
+test("a correct existing GEA sibling link or actual registered directory is preserved", async (t) => {
+  const fixture = authorityFixture(t);
+  symlinkSync(fixture.gea, fixture.authority, "dir");
+  const before = lstatSync(fixture.authority).ino;
+  await prepareWorkbenchGeaAuthority(fixture);
+  assert.equal(lstatSync(fixture.authority).ino, before);
+  rmSync(fixture.authority);
+  mkdirSync(join(fixture.authority, "scripts"), { recursive: true });
+  writeFileSync(join(fixture.authority, fixture.registry), "{}");
+  const directoryBefore = lstatSync(fixture.authority).ino;
+  await prepareWorkbenchGeaAuthority({ ...fixture, gea: fixture.authority });
+  assert.equal(lstatSync(fixture.authority).isDirectory(), true);
+  assert.equal(lstatSync(fixture.authority).ino, directoryBefore);
+});
+
+test("a wrong existing GEA sibling directory or link is rejected without replacement", async (t) => {
+  const fixture = authorityFixture(t);
+  mkdirSync(fixture.authority);
+  const before = lstatSync(fixture.authority).ino;
+  await assert.rejects(
+    prepareWorkbenchGeaAuthority(fixture),
+    /QUALITY_WORKBENCH_GEA_AUTHORITY_MISMATCH/,
+  );
+  assert.equal(lstatSync(fixture.authority).isDirectory(), true);
+  assert.equal(lstatSync(fixture.authority).ino, before);
+  rmSync(fixture.authority, { recursive: true });
+  symlinkSync(fixture.workbench, fixture.authority, "dir");
+  await assert.rejects(
+    prepareWorkbenchGeaAuthority(fixture),
+    /QUALITY_WORKBENCH_GEA_AUTHORITY_MISMATCH/,
+  );
+  assert.equal(realpathSync(fixture.authority), realpathSync(fixture.workbench));
 });

@@ -7,7 +7,11 @@ import { resolve, dirname, relative, isAbsolute, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { prepareQualityUpstreams, verifyQualityUpstreams } from "./quality-upstreams.mjs";
-import { readPreparedWorkbench, verifyPreparedWorkbench } from "./quality-workbench.mjs";
+import {
+  readPreparedWorkbench,
+  verifyPreparedWorkbench,
+  prepareWorkbenchGeaAuthority,
+} from "./quality-workbench.mjs";
 import { resolveSourceInputs } from "./source-profile.mjs";
 import { resourceDigests } from "./source-combination-integrity.mjs";
 const peers = {
@@ -169,6 +173,8 @@ try {
     }
     const workbench = candidate.repositories.find((entry) => entry.repo === "dsh-agent-workbench"),
       manage = candidate.repositories.find((entry) => entry.repo === "dsh-agent-manage");
+    if (values["prepare-inputs"])
+      await prepareWorkbenchGeaAuthority({ workbench: workbench.path, gea: own.path });
     const preparedWorkbench = resolve(dirname(process.cwd()), "dsh-agent-workbench");
     const workbenchReceipt = resolve(dirname(dirname(process.cwd())), "prepared-workbench.json");
     const core = resolve(dirname(dirname(process.cwd())), "official-latest-standard"),

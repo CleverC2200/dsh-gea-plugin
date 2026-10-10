@@ -1,8 +1,8 @@
 /** Verify the existing clean-source/frozen-assets contract for the owned Workbench build. */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFile, readdir, realpath, readlink } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { readFile, readdir, realpath, readlink, lstat, symlink } from "node:fs/promises";
+import { resolve, join, dirname } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { fileDigest } from "./source-combination-integrity.mjs";
@@ -24,6 +24,28 @@ const git = (root, ...args) =>
     encoding: "utf8",
     env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
   }).trim();
+/** Bind the fixed Workbench reader to the already admitted GEA authority without copying it. */
+export async function prepareWorkbenchGeaAuthority({ workbench, gea }) {
+  const target = await realpath(gea),
+    sibling = resolve(dirname(workbench), "dsh-gea-plugin");
+  let existing;
+  try {
+    existing = await lstat(sibling);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (existing) {
+    let actual;
+    try {
+      actual = await realpath(sibling);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    if (actual !== target) throw Error("QUALITY_WORKBENCH_GEA_AUTHORITY_MISMATCH: " + sibling);
+    return;
+  }
+  await symlink(target, sibling, "dir");
+}
 export async function readPreparedWorkbench({ source, prepared, head }) {
   if (!source || !prepared || !head) throw Error("QUALITY_WORKBENCH_INPUT_REQUIRED");
   source = await realpath(source);
