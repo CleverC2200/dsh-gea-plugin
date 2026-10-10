@@ -6,6 +6,10 @@ import { chromium, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { stock, installStockRoutes, stockState } from "./fixtures/branch-stock.mjs";
+import {
+  branchStockAcceptance,
+  branchStockExpectedText,
+} from "./fixtures/branch-stock-acceptance.mjs";
 import { changeThemeSetting } from "./theme-settings.mjs";
 import {
   htmlFrameElement,
@@ -59,7 +63,9 @@ test(
       headless: true,
     });
     t.after(() => browser.close());
-    // Private historical output is compared byte-for-byte as text; the retired runtime is never loaded.
+    // The immutable historical body supplies every business-text byte. Only
+    // W 3202a531's refresh button is added to the current full-text expectation.
+    // Separate monthly test plans support the unchanged numerical example.
     // Its producer commit is unknown; the original artifact and data Git provenance live in the receipt.
     const original = JSON.parse(
       await readFile(new URL("./fixtures/branch-stock-original.json.raw", import.meta.url), "utf8"),
@@ -69,7 +75,7 @@ test(
     assert.equal(typeof legacy?.text, "string");
     const results = [legacy];
     for (const [label, root] of [["migrated", migrated]]) {
-      const state = stockState();
+      const state = stockState(branchStockAcceptance);
       let step = 0;
       const app = await profile(t, {
         config: (base) => ({
@@ -115,6 +121,7 @@ test(
         })),
       );
       const page = await context.newPage();
+      await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
       page.setDefaultTimeout(25000);
       const errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
@@ -125,6 +132,11 @@ test(
         const frame = iframe.contentFrame();
         await expect(frame.getByText("当前库存", { exact: true })).toBeVisible();
         await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
+        await expect(frame.getByRole("button", { name: "刷新", exact: true })).toBeVisible();
+        assert.equal(
+          await frame.locator("body").evaluate(() => new Date().toISOString()),
+          "2026-09-29T04:00:00.000Z",
+        );
         const text = await frame.locator("body").innerText();
         assert.ok(state.rest.length > 5);
         assert.ok(state.restConsumers.includes("branch-inventory"));
@@ -285,11 +297,11 @@ test(
         await app.stop();
       }
     }
-    // Same external rows must retain names, units, totals and calculations.
-    assert.equal(results[1].text, results[0].text);
+    // Preserve the complete names, units, columns, rows and calculations.
+    assert.equal(results[1].text, branchStockExpectedText(results[0].text));
     await writeFile(
       resolve(out, "comparison.json"),
-      JSON.stringify({ results, fixture: stock }, null, 2),
+      JSON.stringify({ results, fixture: stock, acceptance: branchStockAcceptance }, null, 2),
     );
   },
 );
