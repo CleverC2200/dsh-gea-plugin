@@ -210,7 +210,12 @@
     "scripts/start-isolated-validation.mjs",
     "scripts/delivery-check.mjs",
     "scripts/source-combination-integrity.mjs",
-    ".impeccable/design.json"
+    ".impeccable/design.json",
+    "src/host/prompt-execution-state.ts",
+    "src/host/prompt-runtime.ts",
+    "src/shared/environments.js",
+    "scripts/supported-cores.json",
+    "scripts/production-manifest.mjs"
   ],
   "scripts": [
     "build",
@@ -232,7 +237,9 @@
     "test:delivery:packages",
     "test:window",
     "typecheck",
-    "typecheck:official"
+    "typecheck:official",
+    "test:fixture-inputs",
+    "test:prompt-execution"
   ],
   "exports": false,
   "peers": [

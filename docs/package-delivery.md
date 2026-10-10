@@ -9,20 +9,20 @@
 
 在各自隔离 checkout 先按 owner 固定工具链完成构建。Workbench 完整构建还需 APS 子目录独立 package-lock 的冻结安装。Manage 正常 prepare/prepack 的构建应有实际记录，普通 raw pack 可在已完成生命周期后使用 `npm pack --ignore-scripts`，本入口只整理发布元数据。各仓自有依赖和输出不能共享。
 
-request.json 的所有输入路径须为绝对路径，destination 必须是不存在的新目录，且不能落在源码 checkout 或 Core 内。命令不依赖调用者 cwd。以下占位路径由调用者替换，用户安装说明不包含这些源码路径。
+request.json 的所有输入路径须为绝对路径，destination 必须是不存在的新目录，且不能落在源码 checkout 或 Core 内。命令不依赖调用者 cwd。以下路径、提交与版本都是占位输入，须以同次冻结记录和 [支持声明](../scripts/supported-cores.json) 替换；用户安装说明不包含这些源码路径。
 
 ```json
 {
   "core": {
     "path": "/absolute/registered-core",
-    "head": "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
-    "version": "0.2.1-alpha.1"
+    "head": "REGISTERED_CORE_HEAD",
+    "version": "REGISTERED_CORE_VERSION"
   },
   "pnpm": "/absolute/registered-core/apps/desktop/node_modules/pnpm/bin/pnpm.mjs",
   "versions": {
-    "@cleverc2200/dsh-agent-workbench": "0.1.1-candidate.installable.20261009.1",
-    "dsh-agent-manage": "0.6.3-company.6.candidate.installable.20261009.1",
-    "@cleverc2200/gea-dsh-prototype": "0.0.135-candidate.installable.20261009.1",
+    "@cleverc2200/dsh-agent-workbench": "REQUESTED_WORKBENCH_VERSION",
+    "dsh-agent-manage": "REQUESTED_MANAGE_VERSION",
+    "@cleverc2200/gea-dsh-prototype": "REQUESTED_GEA_VERSION",
     "@changfenhuang/dsh-genui": "0.11.3",
     "dsh-better-sidebar": "0.24.1"
   },
@@ -33,6 +33,8 @@ request.json 的所有输入路径须为绝对路径，destination 必须是不�
   ]
 }
 ```
+
+[productionManifest](../scripts/production-manifest.mjs) 从源码 manifest 生成发行图：移除开发脚本/工作区及源码入口，SDK 按双版支持声明核 exact OR；Workbench/Manage 使用同批 exact必需peers，GenUI/Sidebar 使用 exact optional peers，MCP SDK保留实际运行依赖。它不复制另一套宿主SDK。
 
 versions 的两个辅助版本是 optional peer 的 exact 发布元数据，复用 productionManifest 时仍须明确填写；它们不增加交付 tgz、不自动安装辅助插件，也不把辅助能力变成三核心启动前提。入口在创建 destination 前调用同一 productionManifest 校验，缺少版本会失败且不运行 prepare。
 

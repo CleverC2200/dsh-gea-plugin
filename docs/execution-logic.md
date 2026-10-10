@@ -8,6 +8,8 @@
 
 [业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。`sessionConsumer` 在无 profile 时仍读取已绑定非 mock 页面的 Consumer，继而回退 `analysisAgentCode`；Host 模型执行和 Prompt runtime 实际消费这条路径。该接线须与目标资源身份规则继续核迁移边界，不能把页面回退写为已删除。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
 
+登录环境只接受 [Host 配置](../src/shared/environments.js) 已登记的名称；client 通过 `businessAccount.startLogin` 将所选名称交给 Host，切环境会清旧二维码、凭据、预览并取消旧身份任务。只读投影同时提供当前环境与可选环境清单，端点/默认值从 [Host Config](../src/host.ts) 和公司产品配置读取，不从浏览器标签推断。
+
 [能力声明](capability-contract.md) 定义模块可用、影响等级与 mock 边界。GEA 使用 Workbench 包登记与 Manage 资源入口，不扫描 HTML SQL、DOM 或 Skill 正文来派生权限。
 
 ## 页面与独立查询
@@ -25,6 +27,14 @@
 `sqlReadLimit` 限定同一 Host 生命周期内对应 Consumer 的物理请求。分页、续期后的再次请求、失败和发出后的取消计数；发出前取消不计数。零额度在登录或委托前拒绝，只开放声明的一个 Consumer，其他 Consumer 直接拒绝；不能换 Consumer 继续使用额度。页数或行数超限拒绝，不截断成完整结果。销售只读自动请求另沿 Business 的 `readonlyValidation` 合同计数；历史剩余额度不授权新窗口。
 
 查询、能力与证据读取额度只约束 GEA 调用，不剥夺官方 standard 的文件、规划、任务或委托工具。声明值、窗口额度、记录用量与当前可用授权分别核对，见 [交付核对](delivery-check.md)。
+
+## 异步执行与证据归属
+
+[`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出、失败/拒权事实、回读视图、执行 lease 与证据 store。[Prompt runtime](../src/host/prompt-runtime.ts) 在实际工具派发前登记执行，派发结束的唯一 post-execute 消费 token；around-dispatch 失败也撤销元数据。原 admission 状态继续管理预算与 UI mask。
+
+轮次、实际preset、Agent状态与store身份epoch决定执行是否仍有效。迟到失败、成功和目录事实只记到原执行；新轮或资源切换后的旧结果不能更新当前状态。原始证据写入之后再次核归属，失去归属时不向当前轮发布回执或投影；文件仍保留。回读重新核原 grant/owner/资源，视图去重也只属于当前有效执行，不由同一个Session地址直接授予。
+
+现有确定性与Host集成检查入口见 [本地检查](local-development.md)。这些实现与fixture不证明当前窗口、真实模型或业务结果已经验收。
 
 ## 分析发起与业务提单
 

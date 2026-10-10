@@ -26,3 +26,9 @@
 | `docs/local-development.md` | [原件](docs/local-development.md) | `cae8ddbbfa45ff3cbaa0250a92fa3918c5b2a1670f77f68151fa2526563755d9` |
 | `docs/install.md` | [原件](docs/install.md) | `8fcbf39296de9b4d1d85c4d3040235392f215b72bbb1cf035f49a56e1e9cb025` |
 | `docs/plugin-split-validation.md` | [原件](docs/plugin-split-validation.md) | `7d74fee6e33a052c37de83c039681ad4a4cd1a0e076cdd83a29a3ffcc1e7072a` |
+
+## PR移植时的来源范围
+
+本目录19份原件快照来自原文档整理组的 GEA 基线 `2e5995b49d73d050f3febf5bd1abf23e70297a7e`，与当时 before 备份和逐项 SHA-256 对应；它们不是此次文档 PR 基准 `88e027ede8accd31ecaa32ac246a8fd1c147bdc7` 的整份当前说明。快照字节保持原样，索引采用 INDEX.md，原README快照保留在README.md。
+
+PR基准新增的双版Core、productionManifest、接收合同、pnpm参数、登录环境与异步执行归属保留在现行合同及源码指针。需要追溯这些新增原文时，读取Git提交 `88e027ede8accd31ecaa32ac246a8fd1c147bdc7` 的对应文档，不把旧快照更新成新主线正文。

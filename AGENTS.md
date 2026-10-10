@@ -10,19 +10,4 @@
 
 只在本任务隔离 checkout 与自有输出工作。正式 GitLab、OSS、npm、频道、原同名仓和正式客户端保持保护；旧文档中的发行步骤不覆盖此边界。业务 Prompt/Skill、运行时字符串、schema、法律来源、用户 Session、草稿及原失败证据保持原归属。
 
-普通三包交付从 [打包与接收入口](docs/package-delivery.md) 进入。以下约束由实际入口执行，阶段结论仍分别记录。
-
-| 交付规则                                                              | 执行机制                                                                                                                                                  |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 可安装三包的资源、完整官方预设和 SDK 实例须在新普通 profile 接收      | `delivery:reception` 串行官方安装与 Loader 观察；`plugin-reception/contract.mjs` 统一接受投影与回执绑定；`test:delivery:packages` 重放真实 APS/Sales 失败 |
-| 打包与接收确定性检查须在独立 G checkout 执行，不能依赖邻仓或现成 Core | `test:delivery:packages` 自建 fixture Core 与发布输入；`.github/workflows/delivery-fixtures.yml` 自动执行同一命令                                         |
-
-## 纠正规则与执行机制
-
-| 仍需判断的规则                                             | 执行机制                                                                                                                                                               |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 自动检查核对原回执一致性，业务验收另据对应证据判断         | `delivery:check` 对 failed/unknown 返回非零（底层CLI3）；`test:delivery` 重放r31真实预算矛盾。报告浏览使用 `delivery:report`，详见[交付核对](docs/delivery-check.md)。 |
-| 收尾前按原规格确认完整目标范围；用户暂停和票据依赖分别保留 | `delivery:verify-goal` 只接受声明目标全部验证且无在途工作，未完成底层CLI返回4；`test:delivery`覆盖阶段done但有独立下一步、暂停和缺目标。工具不授予授权或自动接续。     |
-| Window fixture 的 Core、三仓和历史证据从显式冻结输入读取，准备前完成核验 | `tests/fixtures/source-window-inputs.mjs` 复用候选检查；`test:fixture-inputs` 观察文件与进程副作用，现有 delivery fixture CI 执行同一命令；`test:window` 保留完整原行为门禁 |
-| 迟到的失败、成功与回读视图只归原执行，持久化期间失去归属不能发布当前证据 | `PromptExecutionState` 私有持有输出 State、执行 lease 与 store；`test:prompt-execution` 在 Node 24 无 SDK/deps 下核单一归属并运行真实文件 IO 行为，接入 `delivery-fixtures`；公开 Host hooks 的 `tests/execution-convergence.test.mjs` 在已准备官方依赖的 checkout 覆盖旧错误与资源准入/回读。预算及 UI mask 仍由原 admission 状态管理。 |
-
+修改异步工具结果、证据持久化或回读时，读 [执行链](docs/execution-logic.md) 的执行归属合同与 [本地检查](docs/local-development.md)。迟到结果只归原执行；身份、轮次或资源变化后，保持原数据与失败证据，按当前归属决定能否发布。
