@@ -10,8 +10,8 @@ import { readPreparedWorkbench, verifyPreparedWorkbench } from "./quality-workbe
 import { resolveSourceInputs } from "./source-profile.mjs";
 import { resourceDigests } from "./source-combination-integrity.mjs";
 const peers = {
-  "dsh-agent-workbench": "7b746ff9ceeabe81b2d86f94040d663f37c5e2ee",
-  "dsh-agent-manage": "848d08605f865ded2ba30bd75c4af3314feae5ba",
+  "dsh-agent-workbench": "0d98253df33128632d2b927e5c3c6db512647384",
+  "dsh-agent-manage": "399bf00728e7408519286e8cd7ad359367eda323",
 };
 import { supportedCores } from "./supported-cores.mjs";
 import currentCore from "./current-core.json" with { type: "json" };
