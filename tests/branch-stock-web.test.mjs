@@ -371,11 +371,13 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
       });
       await openWorkbenchPage(page, "分仓库存");
       const reply = await opened;
+      const pageReply = await reply.json();
       if (mode === "denied") {
         assert.equal(reply.status(), 400);
+        assert.match(pageReply.error, /^AGENT_ACCESS_DENIED:/);
       } else {
         assert.equal(reply.status(), 200);
-        owner = (await reply.json()).owner;
+        owner = pageReply.owner;
         assert.match(owner, /^[0-9a-f-]{36}$/);
         publishedContexts.push(
           ...contextRequests
@@ -386,17 +388,33 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
       const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
       try {
         if (mode === "denied") {
-          await expect(page.getByRole("alert").filter({ hasText: "重新连接" })).toBeVisible({
+          const failure = page.getByRole("alert").filter({ hasText: "对话操作失败" });
+          await expect(failure).toBeVisible({
             timeout: 15000,
           });
+          await expect(failure).toHaveAttribute("title", pageReply.error);
           assert.equal(state.rest.length, 0);
+          await expect(frame.getByText("FC001", { exact: true })).toHaveCount(0);
         } else if (mode === "error") {
-          await expect(frame.getByText("无法进入分仓库存", { exact: true })).toBeVisible({
+          const failure = frame.getByRole("alert").filter({ hasText: "当前分仓数据尚未就绪" });
+          await expect(failure).toBeVisible({
             timeout: 20000,
           });
+          await expect(failure).toContainText(
+            "数据读取失败，请刷新重试；若仍失败，请查看接口错误详情",
+          );
+          assert.ok(state.rest.length > 0, "the visible failure follows this profile's SQL read");
           await expect(frame.getByText("FC001", { exact: true })).toHaveCount(0);
-          if (mode === "denied")
-            assert.equal(state.rest.length, 0, "rejected delegation cannot reach SQL");
+          assert.equal(
+            publishedContexts.some(
+              (context) =>
+                context?.parts?.data ||
+                context?.parts?.inventoryInsight ||
+                context?.parts?.branchDraft,
+            ),
+            false,
+            "failed initial catalog read must not publish inventory facts",
+          );
         } else if (mode === "empty" || mode === "empty-error") {
           await expect(frame.getByText("当前授权范围暂无库存与计划数据")).toBeVisible({
             timeout: 20000,
@@ -415,7 +433,6 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
           assert.equal(loadingParts.branchDraft, undefined);
           heldRead.resolve();
           if (mode === "empty-error") {
-            await expect(frame.getByText("无法进入分仓库存", { exact: true })).toBeVisible();
             await expect
               .poll(() => publishedContexts.at(-1)?.parts?.queryState?.state)
               .toBe("error");
@@ -425,6 +442,10 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
             assert.equal(errorParts.branchDraft, undefined);
             assert.equal(errorParts.queryState.warehouseId, "zhengzhou");
             assert.ok(errorParts.queryState.message);
+            const failure = frame.getByRole("alert").filter({ hasText: "当前分仓数据尚未就绪" });
+            await expect(failure).toBeVisible();
+            await expect(failure).toContainText(errorParts.queryState.message);
+            await expect(frame.getByText("FC001", { exact: true })).toHaveCount(0);
             await mkdir(out, { recursive: true });
             await writeFile(
               resolve(out, "loading-error-context.json"),

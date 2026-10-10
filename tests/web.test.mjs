@@ -394,11 +394,17 @@ test(
       await page.reload();
       await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
       await page.setViewportSize({ width: 700, height: 1000 });
-      await page.locator('[data-conversation-stacked="true"]').waitFor();
+      const conversation = page.getByRole("complementary", { name: "AI对话", exact: true });
+      await expect(conversation).toBeVisible();
+      await expect.poll(async () => (await conversation.boundingBox())?.width).toBe(300);
+      await expect(
+        page.getByRole("separator", { name: "调整业务与AI栏宽", exact: true }),
+      ).toBeHidden();
+      await expect(
+        page.getByRole("button", { name: "同时显示中间区域和会话区", exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
       assert.equal(
-        await page
-          .locator('[data-conversation-stacked="true"]')
-          .evaluate((element) => getComputedStyle(element).transitionDuration),
+        await conversation.evaluate((element) => getComputedStyle(element).transitionDuration),
         "0s",
       );
       await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
@@ -407,6 +413,11 @@ test(
       assert.ok(
         narrowFrame && narrowFrame.height > 150 && narrowFrame.width > 250,
         JSON.stringify(narrowFrame),
+      );
+      const narrowConversation = await conversation.boundingBox();
+      assert.ok(
+        narrowConversation && narrowFrame.x + narrowFrame.width <= narrowConversation.x,
+        JSON.stringify({ narrowFrame, narrowConversation }),
       );
       await page.screenshot({ path: ".runtime/web-evidence/narrow.png" });
       assert.deepEqual(errors, []);
