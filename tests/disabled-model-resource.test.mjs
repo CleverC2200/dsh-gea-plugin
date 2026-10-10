@@ -58,21 +58,21 @@ async function fixture(
   const contractPath = join(directory, "capability.json");
   const contract = JSON.parse(await readFile(contractPath, "utf8"));
   contract.enabled = enabled;
-  if (!mock) delete contract.data.mock;
+  if (mock) contract.data.mock = true;
+  else delete contract.data.mock;
   await writeFile(contractPath, JSON.stringify(contract));
   const pagePath = join(directory, "page.json");
   const page = JSON.parse(await readFile(pagePath, "utf8"));
   page.visible = false;
   await writeFile(pagePath, JSON.stringify(page));
   const manifest = JSON.parse(await readFile(join(directory, "plugin.json"), "utf8"));
-  if (!mock) {
-    delete manifest.mode;
-    await writeFile(join(directory, "plugin.json"), JSON.stringify(manifest));
-    const mcpPath = join(directory, "mcp.json");
-    const mcp = JSON.parse(await readFile(mcpPath, "utf8"));
-    mcp.capabilities = ["governed-sql-read"];
-    await writeFile(mcpPath, JSON.stringify(mcp));
-  }
+  if (mock) manifest.mode = "mock";
+  else delete manifest.mode;
+  await writeFile(join(directory, "plugin.json"), JSON.stringify(manifest));
+  const mcpPath = join(directory, "mcp.json");
+  const mcp = JSON.parse(await readFile(mcpPath, "utf8"));
+  mcp.capabilities = mock ? [] : ["governed-sql-read"];
+  await writeFile(mcpPath, JSON.stringify(mcp));
   const pages = new Map();
   const routes = new Map(),
     adapters = new Map(),

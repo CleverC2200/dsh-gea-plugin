@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, cp, readFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fixtureEnvironment } from "./fixtures/business-session.mjs";
@@ -31,21 +31,35 @@ async function compiled(contents, repo, directory, url) {
     write: false,
     platform: "node",
     format: "esm",
-    packages: "external",
+    plugins: [
+      {
+        name: "source-owned-external-packages",
+        setup(build) {
+          build.onResolve({ filter: /^[^./]/ }, async (args) => {
+            if (args.pluginData === "source-package-resolution") return;
+            const resolved = await build.resolve(args.path, {
+              resolveDir: repo,
+              kind: args.kind,
+              pluginData: "source-package-resolution",
+            });
+            if (resolved.errors.length) return { errors: resolved.errors };
+            return { path: resolved.path, external: true };
+          });
+        },
+      },
+    ],
     define: { "import.meta.url": JSON.stringify(pathToFileURL(url).href) },
   });
   const output = join(directory, "source.mjs");
   await writeFile(output, result.outputFiles[0].text);
   return import(pathToFileURL(output).href);
 }
-test("actual APS mock registration and Manage route select its original resource, then official Core Session opens view while SQL/model stay before wire", async (t) => {
+test("isolated APS mock fixture retains original resources through Manage selection and official Core Session while SQL/model stay before wire", async (t) => {
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(resolve(".runtime/aps-reception-r1-"));
   const manage = resolve("../dsh-agent-manage");
-  await mkdir(join(manage, "node_modules/.cache/gea-test-fixtures"), { recursive: true });
-  const manageOutput = await mkdtemp(
-    join(manage, "node_modules/.cache/gea-test-fixtures/aps-reception-r1-"),
-  );
+  const manageOutput = join(root, "manage");
+  await mkdir(manageOutput);
   const cwd = join(root, "workspace");
   await mkdir(cwd);
   fixtureEnvironment(t, {
@@ -167,8 +181,22 @@ test("actual APS mock registration and Manage route select its original resource
   real.provide("agentPresets", ctx.agentPresets);
   const controller = new SessionController(real, { nativeOpen: false });
   const pages = new HtmlPages(real, "", async () => "<picker-fixture>");
-  const packages = await pages.registerHtml([join(workbench, "lib/business/inventory-apsplan")]);
-  assert.equal(packages[0].manifest.mode, "mock", "use actual Root generated APS mock package");
+  const apsDirectory = join(root, "aps");
+  await cp(join(workbench, "lib/business/inventory-apsplan"), apsDirectory, { recursive: true });
+  const manifestPath = join(apsDirectory, "plugin.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.mode = "mock";
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  const capabilityPath = join(apsDirectory, "capability.json");
+  const capability = JSON.parse(await readFile(capabilityPath, "utf8"));
+  capability.data.mock = true;
+  await writeFile(capabilityPath, JSON.stringify(capability));
+  const mcpPath = join(apsDirectory, "mcp.json");
+  const mcp = JSON.parse(await readFile(mcpPath, "utf8"));
+  mcp.capabilities = [];
+  await writeFile(mcpPath, JSON.stringify(mcp));
+  const packages = await pages.registerHtml([apsDirectory]);
+  assert.equal(packages[0].manifest.mode, "mock", "only the owned APS fixture is simulated");
   ctx.workbenchPages = pages;
   ctx.agents = real.agents;
   ctx.sessionProjections = real.sessionProjections;

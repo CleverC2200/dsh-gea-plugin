@@ -5,6 +5,7 @@ import { mkdir, writeFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Context } from "@deepseek-ai/cordis";
+import { BusinessResources } from "dsh-agent-manage/business-resources";
 const sdk = resolve("../../official-latest-standard/packages/core");
 const { default: SystemPrompt } = await import(pathToFileURL(sdk + "/system-prompt/lib/index.js"));
 const { default: ToolRuntime } = await import(pathToFileURL(sdk + "/tools/lib/index.js"));
@@ -12,7 +13,7 @@ const { createScope } = await import(pathToFileURL(sdk + "/scope/lib/index.js"))
 const { agentEvents } = await import(pathToFileURL(sdk + "/agent/lib/index.js"));
 const { outputFiles } = await build({
   stdin: {
-    contents: `export{mountBusinessPrompts}from'./src/host/prompt-runtime.ts';export{mountSessionToolRestraint}from'./src/host/session-tool-restraint.ts';export{mountSidebarToolVisibility}from'./src/host/sidebar-tool-visibility.ts';export{AgentOpenRegistry,registerOpenTool}from'dsh-better-sidebar/src/agent-opens.ts';export{SIDEBAR_PREFS_DEFAULTS}from'dsh-better-sidebar/src/prefs-shared.ts';`,
+    contents: `export{Business}from'./src/host/business.ts';export{profileFor}from'./src/host/prompt-policy.ts';export{mountBusinessPrompts}from'./src/host/prompt-runtime.ts';export{mountSessionToolRestraint}from'./src/host/session-tool-restraint.ts';export{mountSidebarToolVisibility}from'./src/host/sidebar-tool-visibility.ts';export{AgentOpenRegistry,registerOpenTool}from'dsh-better-sidebar/src/agent-opens.ts';export{SIDEBAR_PREFS_DEFAULTS}from'dsh-better-sidebar/src/prefs-shared.ts';`,
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -39,6 +40,11 @@ const tool = (name) => ({
 });
 
 test("official Agent-scoped Tools view admits the actual BSP registered UI tool without bypassing its registration gate or scope intersection", async (t) => {
+  const external = [];
+  t.mock.method(globalThis, "fetch", async (input) => {
+    external.push(String(input));
+    assert.fail("offline scoped tool policy must not reach external wire");
+  });
   const ctx = new Context();
   const system = ctx.plugin(SystemPrompt, {});
   await system;
@@ -73,13 +79,34 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     "gea_sales_plan_write",
   ])
     ctx.tools.register(tool(name));
-  const business = {
-    config: { runtimeDir: directory, analysisAgentCode: "sales_forecast" },
-    status: () => ({ user: { id: "offline" } }),
-    watchIdentity: () => () => {},
-    readTurnRevision: () => 1,
-    surfaceFor: () => undefined,
-  };
+  const resources = new BusinessResources(
+    {
+      skills: { registerProvider: () => () => {}, list: async () => [] },
+      agentPresets: { register: async () => async () => {}, resolve: async (id) => ({ id }) },
+    },
+    resolve(directory, "selected.json"),
+  );
+  const releaseResources = await resources.register([
+    {
+      id: "gea-readonly",
+      label: m.profileFor("gea-readonly").label,
+      root: process.cwd(),
+      prompt: "presets/prompt-policy.json",
+      profileKey: "gea-readonly",
+      profile: m.profileFor("gea-readonly"),
+      enabled: true,
+    },
+  ]);
+  ctx.provide("agentResources", resources);
+  const business = new m.Business({
+    runtimeDir: directory,
+    analysisAgentCode: "sales_forecast",
+    geaEnvironments: {
+      production: "https://offline.gea.test",
+      test: "https://test.offline.gea.test",
+    },
+  });
+  business.auth = { token: "offline-fixture", id: "offline", tenantId: "offline" };
   let authenticated = true;
   let visibilityRoute;
   ctx.provide("connection", {
@@ -131,6 +158,9 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     offBusiness();
     offRestraint();
     registry.dispose();
+    await releaseResources();
+    await resources.dispose();
+    business.dispose();
     await scope.dispose();
     await tools.dispose();
     await system.dispose();
@@ -199,4 +229,5 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     false,
     "disabled registration leaves no manufactured schema",
   );
+  assert.deepEqual(external, []);
 });
