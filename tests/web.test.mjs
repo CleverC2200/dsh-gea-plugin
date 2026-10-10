@@ -142,12 +142,20 @@ test(
         ? route.continue()
         : route.fulfill({ json: { ok: true, value: { status: "pending" } } }),
     );
+    const initialOpen = page.waitForRequest((request) => {
+      if (!request.url().endsWith("/api/agent-workbench/page") || request.method() !== "POST")
+        return false;
+      const input = request.postDataJSON();
+      return input?.operation === "open" && input.pageId === "gea-proof";
+    });
     await page.goto(app.origin);
     await page
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
     const frame = await openSalesPlan(page);
+    const sessionId = (await initialOpen).postDataJSON().sessionId;
+    assert.match(sessionId, /^session-[0-9a-f-]{36}$/);
     try {
       await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
       await frame.locator(".gea-login-qr img").waitFor();
@@ -194,9 +202,18 @@ test(
       await frame.getByRole("radio", { name: "测试", exact: true }).check();
       await frame.locator(".gea-login-qr img").waitFor();
       const opened = page.waitForResponse((response) => {
-        if (!response.url().endsWith("/api/agent-workbench/page") || !response.ok()) return false;
+        if (
+          !response.url().endsWith("/api/agent-workbench/page") ||
+          response.request().method() !== "POST" ||
+          response.status() !== 200
+        )
+          return false;
         const input = response.request().postDataJSON();
-        return input?.operation === "open" && input.pageId === "gea-proof";
+        return (
+          input?.operation === "open" &&
+          input.pageId === "gea-proof" &&
+          input.sessionId === sessionId
+        );
       });
       allowLogin = true;
       const [pageReply] = await Promise.all([
