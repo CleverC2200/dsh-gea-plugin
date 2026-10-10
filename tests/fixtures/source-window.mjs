@@ -79,6 +79,11 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
         "supported-cores.json",
       ])
         await cp(join(sourceRoot, "scripts", name), join(root, "scripts", name));
+      await mkdir(join(root, "tests"));
+      await cp(
+        join(sourceRoot, "tests/source-profile-start.mjs"),
+        join(root, "tests/source-profile-start.mjs"),
+      );
       await mkdir(join(root, "src"));
       await cp(join(sourceRoot, "src/shared"), join(root, "src/shared"), {
         recursive: true,
