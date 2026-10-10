@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import { chromium, expect } from "@playwright/test";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { openWorkbenchPage, htmlFrameElement } from "./fixtures/business-page.mjs";
 import { installStockRoutes, stockState } from "./fixtures/branch-stock.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
 import {
@@ -249,13 +250,8 @@ test(
       const page = await context.newPage();
       page.setDefaultTimeout(20000);
       await page.goto(app.origin);
-      const notice = page.getByRole("dialog", { name: /内测声明|预览版说明/ });
-      if (await notice.isVisible())
-        await notice.getByRole("button", { name: "继续", exact: true }).click();
-      if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-        await page.getByText("库存管理", { exact: true }).click();
-      await page.getByText("分仓库存", { exact: true }).click();
-      const frame = page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]').contentFrame();
+      await openWorkbenchPage(page, "分仓库存");
+      const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
       await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
       if (!session) {
         const created = await app.remote("session/create", {
