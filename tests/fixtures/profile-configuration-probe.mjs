@@ -16,9 +16,21 @@ const cases = [];
 const receipt = { browserStarts: 0, hostStarts: 0, browserClosed: 0 };
 const completed = new Error("PROBE_ADMISSION_COMPLETE");
 const earlyFailure = new Error("PROBE_BEFORE_UI_TRY");
-delete process.env.GEA_TEST_MODEL_KEY;
+const fakeKeys = [
+  "GEA_TEST_MODEL_KEY",
+  "GEA_BUDGET_TEST_KEY",
+  "GEA_QA_MODEL_KEY",
+  "V2_TEST_MODEL_KEY",
+  "GEA_V16_MODEL_KEY",
+  "GEA_GENUI_TEST_KEY",
+  "GEA_PICKER_TEST_KEY",
+  "GEA_THEME_TEST_KEY",
+  "GEA_SPLIT_TEST_KEY",
+];
+for (const key of fakeKeys) delete process.env[key];
 const previousKey = mode === "existing-parent" ? "previous-fixture-key" : undefined;
 if (previousKey) process.env.GEA_TEST_MODEL_KEY = previousKey;
+const parentBefore = Object.fromEntries(fakeKeys.map((key) => [key, process.env[key]]));
 globalThis.fixtureCase = (title, options, fn) => cases.push({ title, fn: fn ?? options });
 globalThis.fixtureBrowser = {
   async launch() {
@@ -64,7 +76,10 @@ globalThis.fixtureProfile = async (_t, options = {}) => {
       ...options.config("https://127.0.0.1:1"),
     }),
   );
-  receipt.declaredFakeKey = options.env.GEA_TEST_MODEL_KEY === "fixture-key";
+  const keyName = JSON.parse(await readFile(config, "utf8")).analysis.apiKeyEnv;
+  const keyValue = options.env[keyName];
+  receipt.declaredFakeKey =
+    fakeKeys.includes(keyName) && typeof keyValue === "string" && keyValue.length > 0;
   if (mode === "missing-parent") {
     delete process.env.GEA_TEST_MODEL_KEY;
     await assert.rejects(
@@ -75,7 +90,7 @@ globalThis.fixtureProfile = async (_t, options = {}) => {
     throw completed;
   }
   await readDeployment(config, { resolveCredentials: false, credentialEnv: options.env });
-  receipt.parentAdmitted = process.env.GEA_TEST_MODEL_KEY === "fixture-key";
+  receipt.parentAdmitted = process.env[keyName] === keyValue;
   const child = await run(
     process.execPath,
     [
@@ -84,7 +99,7 @@ globalThis.fixtureProfile = async (_t, options = {}) => {
       `
     import { readDeployment } from ${JSON.stringify(deploymentModule)};
     await readDeployment(process.argv[1], { resolveCredentials: false, credentialEnv: {} });
-    console.log(JSON.stringify({ admitted: process.env.GEA_TEST_MODEL_KEY === "fixture-key" }));
+    console.log(JSON.stringify({ admitted: process.env[${JSON.stringify(keyName)}] === ${JSON.stringify(keyValue)} }));
   `,
       config,
     ],
@@ -129,7 +144,7 @@ try {
 } finally {
   for (const hook of hooks) await hook();
 }
-receipt.parentRestored = process.env.GEA_TEST_MODEL_KEY === previousKey;
+receipt.parentRestored = fakeKeys.every((key) => process.env[key] === parentBefore[key]);
 receipt.config =
   mode !== "early-ui-failure"
     ? JSON.parse(await readFile(resolve(directory, "deployment.json"), "utf8"))

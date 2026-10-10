@@ -10,6 +10,11 @@ export async function modelProfile(t, options = {}) {
         "GEA_BUDGET_TEST_KEY",
         "GEA_QA_MODEL_KEY",
         "V2_TEST_MODEL_KEY",
+        "GEA_V16_MODEL_KEY",
+        "GEA_GENUI_TEST_KEY",
+        "GEA_PICKER_TEST_KEY",
+        "GEA_THEME_TEST_KEY",
+        "GEA_SPLIT_TEST_KEY",
       ].includes(name),
     ),
   );

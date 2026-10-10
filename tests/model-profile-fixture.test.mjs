@@ -29,6 +29,63 @@ const cases = [
     "source-update-web.test.mjs",
     "real profiles load merged component updates and keep history through restart and guarded recovery",
   ],
+  [
+    "authorized-cube-loop.test.mjs",
+    "native typed query exposes its schema, splits requests and refuses a revoked resource next turn",
+  ],
+  [
+    "dealer-prompt.test.mjs",
+    "dealer inventory uses the maintained skill in the real assembled prompt, without altering the sales-plan context",
+  ],
+  [
+    "detail-summary-web.test.mjs",
+    "Dashboard shows current SKU totals while monthly baseline and categories retain their own basis",
+  ],
+  [
+    "genui-source-web.test.mjs",
+    "source GenUI renders a persisted model reply and restores local input after refresh",
+  ],
+  [
+    "lifecycle.test.mjs",
+    "model authentication, rate limit, truncated stream, cancellation and explicit retry retain separate attempts",
+  ],
+  [
+    "mcp-evidence-loop.test.mjs",
+    "native model loop retains ordinary MCP evidence after later failure and resets next turn",
+  ],
+  [
+    "model.test.mjs",
+    "configured model receives the exact logged snapshot with the GEA read and skill tools and no duplicate title calls",
+  ],
+  ["model.test.mjs", "显式打开 agentSqlRead 时，受管只读 SQL 工具才回到工具清单"],
+  [
+    "page-interaction-web.test.mjs",
+    "React table selection enters the native composer and can drive the existing page action",
+  ],
+  [
+    "page-interaction-web.test.mjs",
+    "opaque HTML frame quotes local content under the existing CSP without triggering its button",
+  ],
+  [
+    "safety-stock-prompt.test.mjs",
+    "safety stock uses the maintained skill in the real assembled prompt, without altering the sales-plan context",
+  ],
+  [
+    "sales-result-runtime.test.mjs",
+    "native result route, atomic skill load and structured evidence reuse retain authorization",
+  ],
+  [
+    "shared-theme-source-web.test.mjs",
+    "shared theme follows settings and survives stylesheet reorder and refresh",
+  ],
+  [
+    "split-declarations-web.test.mjs",
+    "旧与分离声明在真实工作台显示，Agent 管理装载能力，调用保持受控",
+  ],
+  [
+    "v16-web.test.mjs",
+    "V1.6 Web: compact header, stable progress, inline SKU and approval editing",
+  ],
 ];
 async function probe(t, file, name, mode) {
   const directory = await mkdtemp(join(tmpdir(), "gea-config-probe-"));
