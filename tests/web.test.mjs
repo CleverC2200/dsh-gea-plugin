@@ -1,7 +1,7 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { profile } from "./profile.mjs";
 import {
   openSalesPlan,
@@ -213,14 +213,25 @@ test(
         return response.request() === (await opening);
       });
       allowLogin = true;
-      const [request, pageReply] = await Promise.all([
+      const [request, reply] = await Promise.all([
         opening,
-        opened.then((response) => response.json()),
+        opened.then(async (response) => ({
+          status: response.status(),
+          body: await response.json(),
+        })),
         frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor(),
       ]);
       assert.match(request.postDataJSON().sessionId, /^session-[0-9a-f-]{36}$/);
-      const owner = pageReply.owner;
+      const owner = reply.body.owner;
       assert.match(owner, /^[0-9a-f-]{36}$/);
+      await writeFile(
+        ".runtime/web-evidence/page-open-receipt.json",
+        JSON.stringify(
+          { method: request.method(), request: request.postDataJSON(), reply },
+          null,
+          2,
+        ),
+      );
       await frame.getByText("华东", { exact: true }).first().waitFor();
       await page.getByRole("navigation", { name: "业务导航", exact: true }).waitFor();
       // 侧栏二级条目要和一级标题左对齐：文字同一竖线，命中区同一左边缘，二级只少一个图标。

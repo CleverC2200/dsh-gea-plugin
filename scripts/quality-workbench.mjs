@@ -7,7 +7,10 @@ import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { resourceDigests } from "./source-profile.mjs";
 const git = (root, ...args) =>
-  execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+  execFileSync("git", ["-C", root, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+  }).trim();
 export async function readPreparedWorkbench({ source, prepared, head }) {
   if (!source || !prepared || !head) throw Error("QUALITY_WORKBENCH_INPUT_REQUIRED");
   source = await realpath(source);
@@ -23,7 +26,7 @@ export async function readPreparedWorkbench({ source, prepared, head }) {
   const status = execFileSync(
     "git",
     ["-C", prepared, "status", "--porcelain", "--untracked-files=all"],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" } },
   ).trimEnd();
   if (
     status
