@@ -47,10 +47,7 @@ const project = (id, alreadyDelivered) => ({
 });
 
 test("the host has no second mutable prompt output owner or direct evidence store", async () => {
-  assert.deepEqual(
-    await checkPromptExecution(fileURLToPath(new URL("..", import.meta.url))),
-    [],
-  );
+  assert.deepEqual(await checkPromptExecution(fileURLToPath(new URL("..", import.meta.url))), []);
 });
 for (const transition of ["turn", "preset", "identity", "dispose"]) {
   test(`a ${transition} invalidates failure, denial, read and catalog effects together`, async (t) => {
@@ -68,12 +65,7 @@ for (const transition of ["turn", "preset", "identity", "dispose"]) {
       catalog: { fingerprint: "old", reused: true, model: "old", facts: "old" },
     });
     const snapshot = owner.snapshot(agent);
-    for (const field of [
-      "failures",
-      "deniedConsumers",
-      "reads",
-      "catalogFacts",
-    ])
+    for (const field of ["failures", "deniedConsumers", "reads", "catalogFacts"])
       assert.equal(snapshot[field].size, 0);
     assert.equal(snapshot.catalogStalls, 0);
   });
@@ -93,10 +85,7 @@ test("snapshots cannot mutate owned state and another same-turn query does not e
   assert.equal(owner.snapshot(agent).failures.get("one"), "blocked");
   assert.ok(owner.snapshot(agent).deniedConsumers.has("consumer"));
   assert.deepEqual(owner.snapshot(agent).evidence, []);
-  assert.equal(
-    owner.recordOutcome({}, { failure: { key: "forged", text: "bad" } }),
-    undefined,
-  );
+  assert.equal(owner.recordOutcome({}, { failure: { key: "forged", text: "bad" } }), undefined);
   assert.equal(owner.snapshot(agent).failures.has("forged"), false);
 });
 for (const transition of ["turn", "preset", "identity", "current"]) {
@@ -107,34 +96,22 @@ for (const transition of ["turn", "preset", "identity", "current"]) {
     const entered = Promise.withResolvers(),
       resumed = Promise.withResolvers();
     const writeFile = fs.promises.writeFile;
-    const intercepted = t.mock.method(
-      fs.promises,
-      "writeFile",
-      async (...args) => {
-        if (String(args[0]).endsWith(".txt")) {
-          entered.resolve();
-          await resumed.promise;
-        }
-        return writeFile(...args);
-      },
-    );
+    const intercepted = t.mock.method(fs.promises, "writeFile", async (...args) => {
+      if (String(args[0]).endsWith(".txt")) {
+        entered.resolve();
+        await resumed.promise;
+      }
+      return writeFile(...args);
+    });
     syncBuiltinESMExports();
     t.after(() => {
       resumed.resolve();
       intercepted.mock.restore();
       syncBuiltinESMExports();
     });
-    const pending = owner.publishEvidence(
-      execution,
-      "gea_page",
-      "original",
-      undefined,
-      project,
-    );
+    const pending = owner.publishEvidence(execution, "gea_page", "original", undefined, project);
     const received =
-      transition === "identity"
-        ? assert.rejects(pending, /IDENTITY_CHANGED/)
-        : pending;
+      transition === "identity" ? assert.rejects(pending, /IDENTITY_CHANGED/) : pending;
     await entered.promise;
     if (transition === "turn") owner.startTurn(agent);
     if (transition === "preset") current.setPreset("business-two");
@@ -144,18 +121,10 @@ for (const transition of ["turn", "preset", "identity", "current"]) {
     const snapshot = owner.snapshot(agent);
     assert.equal(snapshot.evidence.length, transition === "current" ? 1 : 0);
     assert.equal(snapshot.receipts.size, transition === "current" ? 1 : 0);
-    assert.equal(
-      snapshot.returned,
-      transition === "current" ? result.text.length : 0,
-    );
+    assert.equal(snapshot.returned, transition === "current" ? result.text.length : 0);
     if (transition !== "identity")
-      assert.equal(
-        result.kind,
-        transition === "current" ? "published" : "stale-context",
-      );
-    const original = (await readdir(directory)).find((file) =>
-      file.endsWith(".txt"),
-    );
+      assert.equal(result.kind, transition === "current" ? "published" : "stale-context");
+    const original = (await readdir(directory)).find((file) => file.endsWith(".txt"));
     assert.equal(await readFile(join(directory, original), "utf8"), "original");
   });
 }
@@ -163,13 +132,7 @@ test("both concurrent current successes retain receipts and budget", async (t) =
   const { owner, agent } = await fixture(t);
   const results = await Promise.all(
     ["first", "second"].map((text) =>
-      owner.publishEvidence(
-        owner.begin(agent, Symbol()),
-        "gea_page",
-        text,
-        undefined,
-        project,
-      ),
+      owner.publishEvidence(owner.begin(agent, Symbol()), "gea_page", text, undefined, project),
     ),
   );
   const snapshot = owner.snapshot(agent);
@@ -189,17 +152,8 @@ for (const transition of ["turn", "preset", "identity"]) {
     if (transition === "turn") owner.startTurn(agent);
     if (transition === "preset") current.setPreset("business-two");
     if (transition === "identity") owner.clear();
-    const result = await owner.publishEvidence(
-      execution,
-      "gea_page",
-      "old",
-      undefined,
-      project,
-    );
-    assert.equal(
-      result.kind,
-      transition === "identity" ? "identity-changed" : "stale-context",
-    );
+    const result = await owner.publishEvidence(execution, "gea_page", "old", undefined, project);
+    assert.equal(result.kind, transition === "identity" ? "identity-changed" : "stale-context");
     assert.deepEqual(await readdir(directory), []);
   });
 }
@@ -272,10 +226,7 @@ test("the supplementary source check accepts historical names inside comments an
     'const note = "new PromptEvidenceStore(); state.returned += 2";',
     "const history = `PromptEvidenceStore; state.deniedConsumers.add('old')`;",
   ].join("\n");
-  assert.deepEqual(
-    checkPromptExecutionSource(source, "src/host/prompt-runtime.ts"),
-    [],
-  );
+  assert.deepEqual(checkPromptExecutionSource(source, "src/host/prompt-runtime.ts"), []);
   assert.ok(
     checkPromptExecutionSource(
       'import { PromptEvidenceStore as Store } from "./prompt-evidence.ts"',
@@ -295,15 +246,7 @@ test("forget retires only the destroyed Agent's pending tokens", async (t) => {
   assert.equal(owner.execution(destroyedToken), undefined);
   assert.equal(owner.execution(otherToken), other);
   assert.equal(
-    (
-      await owner.publishEvidence(
-        destroyed,
-        "gea_page",
-        "old",
-        undefined,
-        project,
-      )
-    ).kind,
+    (await owner.publishEvidence(destroyed, "gea_page", "old", undefined, project)).kind,
     "stale-context",
   );
 });
@@ -316,17 +259,13 @@ for (const transition of ["forget", "clear"]) {
     const entered = Promise.withResolvers(),
       resumed = Promise.withResolvers();
     const writeFile = fs.promises.writeFile;
-    const intercepted = t.mock.method(
-      fs.promises,
-      "writeFile",
-      async (...args) => {
-        if (String(args[0]).endsWith(".txt")) {
-          entered.resolve();
-          await resumed.promise;
-        }
-        return writeFile(...args);
-      },
-    );
+    const intercepted = t.mock.method(fs.promises, "writeFile", async (...args) => {
+      if (String(args[0]).endsWith(".txt")) {
+        entered.resolve();
+        await resumed.promise;
+      }
+      return writeFile(...args);
+    });
     syncBuiltinESMExports();
     t.after(() => {
       resumed.resolve();
@@ -334,13 +273,7 @@ for (const transition of ["forget", "clear"]) {
       syncBuiltinESMExports();
     });
     const completion = owner
-      .publishEvidence(
-        execution,
-        "gea_page",
-        "original-retired",
-        undefined,
-        project,
-      )
+      .publishEvidence(execution, "gea_page", "original-retired", undefined, project)
       .catch((error) => error);
     await entered.promise;
     if (transition === "forget") owner.forget(agent);
@@ -353,8 +286,7 @@ for (const transition of ["forget", "clear"]) {
     );
     resumed.resolve();
     const received = await completion;
-    if (transition === "clear")
-      assert.match(received.message, /IDENTITY_CHANGED/);
+    if (transition === "clear") assert.match(received.message, /IDENTITY_CHANGED/);
     else assert.equal(received.kind, "stale-context");
     const publication = await owner.publishEvidence(
       execution,
@@ -363,16 +295,8 @@ for (const transition of ["forget", "clear"]) {
       undefined,
       project,
     );
-    assert.equal(
-      publication.kind,
-      transition === "clear" ? "identity-changed" : "stale-context",
-    );
-    const original = (await readdir(current.directory)).find((file) =>
-      file.endsWith(".txt"),
-    );
-    assert.equal(
-      await readFile(join(current.directory, original), "utf8"),
-      "original-retired",
-    );
+    assert.equal(publication.kind, transition === "clear" ? "identity-changed" : "stale-context");
+    const original = (await readdir(current.directory)).find((file) => file.endsWith(".txt"));
+    assert.equal(await readFile(join(current.directory, original), "utf8"), "original-retired");
   });
 }

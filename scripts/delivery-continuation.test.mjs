@@ -23,12 +23,8 @@ async function fixture(t) {
   const request = { root, projectId: "split", tasks: [task] };
   async function put(id, value) {
     const path = `${id}.${typeof value === "string" ? "md" : "json"}`;
-    await writeFile(
-      join(root, path),
-      typeof value === "string" ? value : JSON.stringify(value),
-    );
-    if (!task.inputs.some((ref) => ref.id === id))
-      task.inputs.push({ id, path });
+    await writeFile(join(root, path), typeof value === "string" ? value : JSON.stringify(value));
+    if (!task.inputs.some((ref) => ref.id === id)) task.inputs.push({ id, path });
   }
   await writeFile(
     join(root, "ticket.md"),
@@ -94,10 +90,7 @@ test("budget derives physical confirmed calls from one receipt and never extends
   assert.equal(task.budget.counts.models.confirmed, 0);
   assert.equal(task.budget.effectsAfterCutoff, "unknown");
   assert.equal(task.budget.evidence[0].sourceId, "read");
-  assert.equal(
-    task.budget.evidence[0].sha256,
-    hash(await readFile(join(f.root, "read.json"))),
-  );
+  assert.equal(task.budget.evidence[0].sha256, hash(await readFile(join(f.root, "read.json"))));
 });
 
 async function permission(f, effect = "allow", blockedBy = "None") {
@@ -124,8 +117,7 @@ async function permission(f, effect = "allow", blockedBy = "None") {
     taskId: "06",
     projectId: "split",
     instructions: ["instruction"],
-    predecessors:
-      blockedBy === "None" ? [] : [{ taskId: "01", sourceId: "prior" }],
+    predecessors: blockedBy === "None" ? [] : [{ taskId: "01", sourceId: "prior" }],
   });
   f.delivery.goal = {
     id: "full-route",
@@ -152,8 +144,7 @@ test("offline stage completion retains independently authorized assembly as the 
   );
   assert.equal(task.continuation.goal.id, "full-route");
   assert.equal(
-    task.continuation.inputs.find((input) => input.sourceId === "candidate")
-      .sha256,
+    task.continuation.inputs.find((input) => input.sourceId === "candidate").sha256,
     task.candidate.sha256,
   );
   assert.equal(task.continuation.performsActions, false);
@@ -166,10 +157,7 @@ test("an explicit human pause remains a pause rather than an external blocker", 
   assert.equal(task.continuation.state, "user-paused");
   assert.equal(task.continuation.independentNextActions.length, 0);
   assert.equal(task.continuation.remaining[0].cause, "user-paused");
-  assert.equal(
-    task.continuation.remaining[0].minimumGap,
-    "HUMAN_RESUME_FOR_SAME_SCOPE_REQUIRED",
-  );
+  assert.equal(task.continuation.remaining[0].minimumGap, "HUMAN_RESUME_FOR_SAME_SCOPE_REQUIRED");
 });
 
 test("unfinished original prerequisites block the dependent action without becoming a user pause", async (t) => {
@@ -180,18 +168,13 @@ test("unfinished original prerequisites block the dependent action without becom
   assert.equal(task.continuation.state, "dependency-unmet");
   assert.equal(task.continuation.remaining[0].cause, "dependency-unmet");
   assert.equal(task.continuation.independentNextActions.length, 0);
-  assert.equal(
-    task.dependencies.predecessors[0].executionStatus,
-    "in-progress",
-  );
+  assert.equal(task.dependencies.predecessors[0].executionStatus, "in-progress");
 });
 
 test("a scoped external final review is an external condition when no independent action remains", async (t) => {
   const f = await fixture(t);
   await permission(f);
-  const instruction = JSON.parse(
-    await readFile(join(f.root, "instruction.json")),
-  );
+  const instruction = JSON.parse(await readFile(join(f.root, "instruction.json")));
   instruction.stages = ["offline-checks"];
   await f.put("instruction", instruction);
   await f.put("review-rule", {
@@ -212,10 +195,7 @@ test("a scoped external final review is an external condition when no independen
   const task = await f.report();
   assert.equal(task.continuation.state, "external-conditions");
   assert.equal(task.continuation.remaining[0].cause, "external-condition");
-  assert.equal(
-    task.continuation.remaining[0].minimumGap,
-    "EXTERNAL_REVIEW_EVIDENCE_REQUIRED",
-  );
+  assert.equal(task.continuation.remaining[0].minimumGap, "EXTERNAL_REVIEW_EVIDENCE_REQUIRED");
   assert.equal(task.continuation.independentNextActions.length, 0);
 });
 
@@ -233,36 +213,22 @@ test("old budget projections cannot disagree on confirmed SQL or closed window a
       currentRuntime: "running locked; normal stop pending",
     },
   });
-  f.delivery.reconciliation = [
-    { sourceId: "old-budget", profile: "call-budget" },
-  ];
+  f.delivery.reconciliation = [{ sourceId: "old-budget", profile: "call-budget" }];
   const task = await f.report();
   assert.equal(task.reconciliation.status, "failed");
-  assert.deepEqual(
-    task.reconciliation.conflicts.map((conflict) => conflict.reason).sort(),
-    [
-      "BUDGET_PROJECTION_CONFLICT",
-      "RESTORATION_PROJECTION_CONFLICT",
-      "WINDOW_ACTIVATION_CONFLICT",
-    ],
-  );
-  assert.equal(
-    task.reconciliation.records[0].observedAt,
-    "2026-10-09T00:51:31.109Z",
-  );
-  assert.equal(
-    task.reconciliation.conflicts[0].evidence[0].sourceId,
-    "old-budget",
-  );
+  assert.deepEqual(task.reconciliation.conflicts.map((conflict) => conflict.reason).sort(), [
+    "BUDGET_PROJECTION_CONFLICT",
+    "RESTORATION_PROJECTION_CONFLICT",
+    "WINDOW_ACTIVATION_CONFLICT",
+  ]);
+  assert.equal(task.reconciliation.records[0].observedAt, "2026-10-09T00:51:31.109Z");
+  assert.equal(task.reconciliation.conflicts[0].evidence[0].sourceId, "old-budget");
 });
 
 test("the original interrupted navigation r7 receipt stays unknown even beside a normal exit", async (t) => {
   const f = await fixture(t);
   const original = await readFile(
-    new URL(
-      "./fixtures/delivery-history/navigation-r7-setup-failure.json",
-      import.meta.url,
-    ),
+    new URL("./fixtures/delivery-history/navigation-r7-setup-failure.json", import.meta.url),
   );
   await writeFile(join(f.root, "r7.json"), original);
   f.task.inputs.push({ id: "r7", path: "r7.json" });
@@ -312,10 +278,7 @@ test("the public continuation CLI emits the same scoped next action without disp
   assert.equal(result.status, 0, result.stdout + result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.tasks[0].state, "actionable");
-  assert.equal(
-    report.tasks[0].independentNextActions[0].stage,
-    "frozen-assembly",
-  );
+  assert.equal(report.tasks[0].independentNextActions[0].stage, "frozen-assembly");
   assert.equal(report.tasks[0].performsActions, false);
   assert.equal(report.continuation.state, "actionable");
   assert.deepEqual(await readFile(join(f.root, "delivery.json")), before);
@@ -359,18 +322,11 @@ test("a missing scoped budget rejects continuation while a generated CLI report 
   assert.equal(task.consistency.status, "unknown");
   assert.equal(task.continuation.state, "unknown");
   assert.equal(task.continuation.independentNextActions.length, 0);
-  assert.equal(
-    task.suggestions.find((item) => item.stage === "frozen-assembly").status,
-    "unknown",
-  );
+  assert.equal(task.suggestions.find((item) => item.stage === "frozen-assembly").status, "unknown");
   await writeFile(join(f.root, "request.json"), JSON.stringify(f.request));
   const result = spawnSync(
     process.execPath,
-    [
-      join(import.meta.dirname, "delivery-check.mjs"),
-      "--input",
-      join(f.root, "request.json"),
-    ],
+    [join(import.meta.dirname, "delivery-check.mjs"), "--input", join(f.root, "request.json")],
     { encoding: "utf8" },
   );
   assert.equal(result.status, 0);
@@ -538,27 +494,18 @@ test("goal verification admits the verified declared scope without granting busi
 test("verification refuses the real r31 counters and closed-window contradictions instead of treating report generation as a pass", async (t) => {
   const f = await fixture(t);
   const historical = await readFile(
-    new URL(
-      "./fixtures/delivery-history/r31-budget-projection.json",
-      import.meta.url,
-    ),
+    new URL("./fixtures/delivery-history/r31-budget-projection.json", import.meta.url),
     "utf8",
   );
   await f.put("old-budget", JSON.parse(historical));
-  f.delivery.reconciliation = [
-    { sourceId: "old-budget", profile: "call-budget" },
-  ];
+  f.delivery.reconciliation = [{ sourceId: "old-budget", profile: "call-budget" }];
   const task = await f.report();
   assert.equal(task.consistency.status, "failed");
   assert.ok(
-    task.reconciliation.conflicts.some(
-      (item) => item.reason === "BUDGET_PROJECTION_CONFLICT",
-    ),
+    task.reconciliation.conflicts.some((item) => item.reason === "BUDGET_PROJECTION_CONFLICT"),
   );
   assert.ok(
-    task.reconciliation.conflicts.some(
-      (item) => item.reason === "WINDOW_ACTIVATION_CONFLICT",
-    ),
+    task.reconciliation.conflicts.some((item) => item.reason === "WINDOW_ACTIVATION_CONFLICT"),
   );
   await writeFile(join(f.root, "request.json"), JSON.stringify(f.request));
   const before = await readFile(join(f.root, "old-budget.json"));
@@ -612,10 +559,7 @@ test("verification refuses unknown inputs and admits only observed consistency w
 
 test("an empty report cannot satisfy strict consistency verification", async (t) => {
   const f = await fixture(t);
-  await writeFile(
-    join(f.root, "request.json"),
-    JSON.stringify({ ...f.request, tasks: [] }),
-  );
+  await writeFile(join(f.root, "request.json"), JSON.stringify({ ...f.request, tasks: [] }));
   const result = verificationCLI(f);
   assert.notEqual(result.status, 0, result.stdout);
   const report = JSON.parse(result.stdout);

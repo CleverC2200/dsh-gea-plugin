@@ -5,47 +5,96 @@ import { profile } from "./profile.mjs";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 
-test("cancelled login requests cannot publish a late QR challenge or identity", async t => {
-  const {outputFiles} = await build({entryPoints: ["src/host/business.ts"], bundle: true, packages: "external", write: false, platform: "node", format: "cjs"});
-  const module = {exports: {}};
-  new Function("require", "module", "exports", outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
-  const business = new module.exports.Business({geaEnvironments: {production: "https://production.example/gea", test: "https://test.example/gea"}, requestTimeoutMs: 1000});
-  t.after(() => business.dispose());
-  let held = Promise.withResolvers(), entered = Promise.withResolvers();
-  t.mock.method(globalThis, "fetch", async () => {entered.resolve();return held.promise;});
-  const controller = new AbortController();const cancelled = business.loginStart(controller.signal, {environment: "test"});
-  await entered.promise;controller.abort();held.resolve(Response.json({success: true, result: {qrcodeId: "late"}}));
-  await assert.rejects(cancelled, /STALE_SELECTION/);assert.equal(business.status().authenticated, false);
-  await assert.rejects(business.loginPoll({loginId: "late"}, new AbortController().signal), /STALE_LOGIN/);
-  held = Promise.withResolvers();entered = Promise.withResolvers();
-  t.mock.method(globalThis, "fetch", async url => {
-    if (url.includes("getLoginQrcode")) return Response.json({success: true, result: {qrcodeId: "current"}});
-    if (url.includes("getQrcodeToken")) return Response.json({success: true, result: {success: true, token: "synthetic"}});
-    entered.resolve();return held.promise;
+test("cancelled login requests cannot publish a late QR challenge or identity", async (t) => {
+  const { outputFiles } = await build({
+    entryPoints: ["src/host/business.ts"],
+    bundle: true,
+    packages: "external",
+    write: false,
+    platform: "node",
+    format: "cjs",
   });
-  const qr = await business.loginStart(new AbortController().signal, {environment: "production"});
-  const polling = new AbortController();const late = business.loginPoll({loginId: qr.loginId}, polling.signal);
-  await entered.promise;polling.abort();held.resolve(Response.json({success: true, result: {userInfo: {id: "late", realname: "Late", tenantId: "0"}}}));
-  await assert.rejects(late, /STALE_SELECTION/);assert.equal(business.status().authenticated, false);assert.equal(business.status().user, null);
+  const module = { exports: {} };
+  new Function("require", "module", "exports", outputFiles[0].text)(
+    createRequire(import.meta.url),
+    module,
+    module.exports,
+  );
+  const business = new module.exports.Business({
+    geaEnvironments: {
+      production: "https://production.example/gea",
+      test: "https://test.example/gea",
+    },
+    requestTimeoutMs: 1000,
+  });
+  t.after(() => business.dispose());
+  let held = Promise.withResolvers(),
+    entered = Promise.withResolvers();
+  t.mock.method(globalThis, "fetch", async () => {
+    entered.resolve();
+    return held.promise;
+  });
+  const controller = new AbortController();
+  const cancelled = business.loginStart(controller.signal, { environment: "test" });
+  await entered.promise;
+  controller.abort();
+  held.resolve(Response.json({ success: true, result: { qrcodeId: "late" } }));
+  await assert.rejects(cancelled, /STALE_SELECTION/);
+  assert.equal(business.status().authenticated, false);
+  await assert.rejects(
+    business.loginPoll({ loginId: "late" }, new AbortController().signal),
+    /STALE_LOGIN/,
+  );
+  held = Promise.withResolvers();
+  entered = Promise.withResolvers();
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url.includes("getLoginQrcode"))
+      return Response.json({ success: true, result: { qrcodeId: "current" } });
+    if (url.includes("getQrcodeToken"))
+      return Response.json({ success: true, result: { success: true, token: "synthetic" } });
+    entered.resolve();
+    return held.promise;
+  });
+  const qr = await business.loginStart(new AbortController().signal, { environment: "production" });
+  const polling = new AbortController();
+  const late = business.loginPoll({ loginId: qr.loginId }, polling.signal);
+  await entered.promise;
+  polling.abort();
+  held.resolve(
+    Response.json({
+      success: true,
+      result: { userInfo: { id: "late", realname: "Late", tenantId: "0" } },
+    }),
+  );
+  await assert.rejects(late, /STALE_SELECTION/);
+  assert.equal(business.status().authenticated, false);
+  assert.equal(business.status().user, null);
 });
 
-test("Lark avatar is exposed without credentials and cleared on logout", { timeout: 60000 }, async (t) => {
-  const app = await profile(t);
-  for (const avatar of ["https://example.com/lark-avatar.png", "", null, "javascript:alert(1)"]) {
-    app.route((req, res, reply) => {
-      if (!req.url.pathname.endsWith("/getUserInfo")) return false;
-      reply({ success: true, result: { userInfo: { id: "user", realname: "测试用户", tenantId: "0", avatar } } });
-      return true;
-    });
-    await app.login();
-    const status = (await app.rpc("status")).value;
-    assert.equal(status.user.avatar, avatar?.startsWith("https:") ? avatar : undefined);
-    assert.equal(status.user.name, "测试用户");
-    assert.equal("token" in status.user, false);
-    await app.rpc("logout");
-    assert.equal((await app.rpc("status")).value.user, null);
-  }
-});
+test(
+  "Lark avatar is exposed without credentials and cleared on logout",
+  { timeout: 60000 },
+  async (t) => {
+    const app = await profile(t);
+    for (const avatar of ["https://example.com/lark-avatar.png", "", null, "javascript:alert(1)"]) {
+      app.route((req, res, reply) => {
+        if (!req.url.pathname.endsWith("/getUserInfo")) return false;
+        reply({
+          success: true,
+          result: { userInfo: { id: "user", realname: "测试用户", tenantId: "0", avatar } },
+        });
+        return true;
+      });
+      await app.login();
+      const status = (await app.rpc("status")).value;
+      assert.equal(status.user.avatar, avatar?.startsWith("https:") ? avatar : undefined);
+      assert.equal(status.user.name, "测试用户");
+      assert.equal("token" in status.user, false);
+      await app.rpc("logout");
+      assert.equal((await app.rpc("status")).value.user, null);
+    }
+  },
+);
 
 test(
   "expired QR, late identity, 401 and business 403 preserve distinct states",
@@ -79,10 +128,7 @@ test(
       }
     });
     const qr = (await app.rpc("login/start")).value;
-    assert.equal(
-      (await app.rpc("login/poll", { loginId: qr.loginId })).value.status,
-      "expired",
-    );
+    assert.equal((await app.rpc("login/poll", { loginId: qr.loginId })).value.status, "expired");
     let release, started;
     const held = new Promise((resolve) => {
       release = resolve;
@@ -123,10 +169,7 @@ test(
     });
     assert.equal((await app.rpc("plans")).error.code, "GEA_HTTP_401");
     assert.equal((await app.rpc("status")).value.loginState, "expired");
-    assert.equal(
-      (await app.rpc("prepare", selected)).error.code,
-      "LOGIN_REQUIRED",
-    );
+    assert.equal((await app.rpc("prepare", selected)).error.code, "LOGIN_REQUIRED");
     assert.equal(
       (await app.rpc("submit", { previewId: prepared.previewId })).error.code,
       "LOGIN_REQUIRED",
@@ -164,44 +207,85 @@ test(
           request.method === "GET" ||
           identityLookups.some((path) => request.url.pathname.endsWith(path)),
       ),
-      JSON.stringify(app.requests.filter(request => request.method !== "GET" && !identityLookups.some(path => request.url.pathname.endsWith(path))).map(request => ({ method: request.method, path: request.url.pathname }))),
+      JSON.stringify(
+        app.requests
+          .filter(
+            (request) =>
+              request.method !== "GET" &&
+              !identityLookups.some((path) => request.url.pathname.endsWith(path)),
+          )
+          .map((request) => ({ method: request.method, path: request.url.pathname })),
+      ),
     );
   },
 );
 
-
-test("restored desktop login fetches its missing avatar on status", { timeout: 60000 }, async t => {
-  let saved;
-  const control = createServer((req, res) => {
-    // The desktop fixture owns login only; other mounted plugins may probe updates.
-    if (req.url !== '/login') {
-      res.statusCode = 404;
-      res.end(JSON.stringify({ error: 'DESKTOP_ACTION_UNSUPPORTED' }));
-      return;
-    }
-    if (req.method === 'GET') { res.end(JSON.stringify(saved)); return; }
-    let body = ''; req.on('data', chunk => body += chunk);
-    req.on('end', () => { saved = JSON.parse(body); res.end('null'); });
-  });
-  await new Promise(resolve => control.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => { control.closeAllConnections(); control.close(resolve); }));
-  const app = await profile(t, {
-    env: { GEA_DESKTOP_CONTROL_URL: `http://127.0.0.1:${control.address().port}`, GEA_DESKTOP_CONTROL_TOKEN: 'fixture' },
-    config: base => {
-      saved = { schema: 1, environment: 'production', base: base + '/gea', auth: { token: 'fixture-token', tenantId: '0', id: 'user', name: '旧登录', username: 'user' } };
-      return {};
-    },
-  });
-  let reads = 0;
-  app.route((req, res, reply) => {
-    if (!req.url.pathname.endsWith('/getUserInfo')) return false;
-    reads++;
-    reply({ success: true, result: { userInfo: { id: 'user', avatar: 'https://example.com/restored.png' } } });
-    return true;
-  });
-  const result = await app.rpc('status');
-  assert.equal(result.value.user.avatar, 'https://example.com/restored.png');
-  assert.equal(saved.auth.avatar, 'https://example.com/restored.png');
-  await app.rpc('status');
-  assert.equal(reads, 1);
-});
+test(
+  "restored desktop login fetches its missing avatar on status",
+  { timeout: 60000 },
+  async (t) => {
+    let saved;
+    const control = createServer((req, res) => {
+      // The desktop fixture owns login only; other mounted plugins may probe updates.
+      if (req.url !== "/login") {
+        res.statusCode = 404;
+        res.end(JSON.stringify({ error: "DESKTOP_ACTION_UNSUPPORTED" }));
+        return;
+      }
+      if (req.method === "GET") {
+        res.end(JSON.stringify(saved));
+        return;
+      }
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        saved = JSON.parse(body);
+        res.end("null");
+      });
+    });
+    await new Promise((resolve) => control.listen(0, "127.0.0.1", resolve));
+    t.after(
+      () =>
+        new Promise((resolve) => {
+          control.closeAllConnections();
+          control.close(resolve);
+        }),
+    );
+    const app = await profile(t, {
+      env: {
+        GEA_DESKTOP_CONTROL_URL: `http://127.0.0.1:${control.address().port}`,
+        GEA_DESKTOP_CONTROL_TOKEN: "fixture",
+      },
+      config: (base) => {
+        saved = {
+          schema: 1,
+          environment: "production",
+          base: base + "/gea",
+          auth: {
+            token: "fixture-token",
+            tenantId: "0",
+            id: "user",
+            name: "旧登录",
+            username: "user",
+          },
+        };
+        return {};
+      },
+    });
+    let reads = 0;
+    app.route((req, res, reply) => {
+      if (!req.url.pathname.endsWith("/getUserInfo")) return false;
+      reads++;
+      reply({
+        success: true,
+        result: { userInfo: { id: "user", avatar: "https://example.com/restored.png" } },
+      });
+      return true;
+    });
+    const result = await app.rpc("status");
+    assert.equal(result.value.user.avatar, "https://example.com/restored.png");
+    assert.equal(saved.auth.avatar, "https://example.com/restored.png");
+    await app.rpc("status");
+    assert.equal(reads, 1);
+  },
+);

@@ -6,18 +6,10 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Context } from "@deepseek-ai/cordis";
 const sdk = resolve("../../official-latest-standard/packages/core");
-const { default: SystemPrompt } = await import(
-  pathToFileURL(sdk + "/system-prompt/lib/index.js")
-);
-const { default: ToolRuntime } = await import(
-  pathToFileURL(sdk + "/tools/lib/index.js")
-);
-const { createScope } = await import(
-  pathToFileURL(sdk + "/scope/lib/index.js")
-);
-const { agentEvents } = await import(
-  pathToFileURL(sdk + "/agent/lib/index.js")
-);
+const { default: SystemPrompt } = await import(pathToFileURL(sdk + "/system-prompt/lib/index.js"));
+const { default: ToolRuntime } = await import(pathToFileURL(sdk + "/tools/lib/index.js"));
+const { createScope } = await import(pathToFileURL(sdk + "/scope/lib/index.js"));
+const { agentEvents } = await import(pathToFileURL(sdk + "/agent/lib/index.js"));
 const { outputFiles } = await build({
   stdin: {
     contents: `export{mountBusinessPrompts}from'./src/host/prompt-runtime.ts';export{mountSidebarToolVisibility}from'./src/host/sidebar-tool-visibility.ts';export{AgentOpenRegistry,registerOpenTool}from'dsh-better-sidebar/src/agent-opens.ts';export{SIDEBAR_PREFS_DEFAULTS}from'dsh-better-sidebar/src/prefs-shared.ts';`,
@@ -42,9 +34,7 @@ const tool = (name) => ({
     render: (_args, value) => [{ type: "text", text: value }],
   },
   execute: async () => {
-    throw Error(
-      "No tool execution/model/UI is permitted in this offline visibility test",
-    );
+    throw Error("No tool execution/model/UI is permitted in this offline visibility test");
   },
 });
 
@@ -92,9 +82,7 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     surfaceFor: () => undefined,
   };
   ctx.provide("agentResources", {
-    list: async () => [
-      { id: "gea-readonly", kind: "prompt", installed: true, enabled: true },
-    ],
+    list: async () => [{ id: "gea-readonly", kind: "prompt", installed: true, enabled: true }],
   });
   let authenticated = true;
   let visibilityRoute;
@@ -130,21 +118,15 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
   authenticated = true;
   assert.equal((await visibility("invalid")).status, 400);
   assert.equal((await visibility("session-unknown")).status, 404);
-  const offBusiness = m.mountBusinessPrompts(
-    ctx,
-    business,
-    { readModules: () => [] },
-    new Map(),
-  );
+  const offBusiness = m.mountBusinessPrompts(ctx, business, { readModules: () => [] }, new Map());
   const registry = new m.AgentOpenRegistry();
   let prefs = { ...m.SIDEBAR_PREFS_DEFAULTS };
   let offSidebar;
   const preStep = () =>
-    agentEvents(ctx, agent).waterfall(
-      "agent/pre-step",
-      { messages: [] },
-      async () => ({ kind: "enter", messages: [] }),
-    );
+    agentEvents(ctx, agent).waterfall("agent/pre-step", { messages: [] }, async () => ({
+      kind: "enter",
+      messages: [],
+    }));
   const names = () => ctx.tools.schemas(agent).map((tool) => tool.name);
   t.after(async () => {
     offSidebar?.();
@@ -191,11 +173,7 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
   });
   assert.ok(names().includes("gea_cube_query"));
   for (const permitted of ["mcp__browser__browser_click", "terminal_create"])
-    assert.equal(
-      names().includes(permitted),
-      true,
-      permitted + " follows its owner registration",
-    );
+    assert.equal(names().includes(permitted), true, permitted + " follows its owner registration");
   for (const denied of ["gea_sales_plan_write", "run_code"])
     assert.equal(names().includes(denied), false, denied + " must stay absent");
   const intersect = agent.ctx.tools.restrict({ deny: ["sidebar_open"] });

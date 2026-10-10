@@ -17,7 +17,12 @@ async function probe(t, input) {
   }
   const environment = { ...process.env };
   delete environment.GEA_TEST_CANDIDATE_INPUTS;
-  const run = spawnSync(process.execPath, ["--input-type=module", "-e", `
+  const run = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
 import fs from 'node:fs';
 import child from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
@@ -47,7 +52,10 @@ catch(value){error={code:value.code,message:value.message};}
 const report={error,effects:structuredClone(effects)};
 for(const dispose of cleanup)await dispose();
 console.log(JSON.stringify(report));
-`], { encoding: "utf8", env: environment, timeout: 20000 });
+`,
+    ],
+    { encoding: "utf8", env: environment, timeout: 20000 },
+  );
   assert.equal(run.status, 0, run.stderr);
   const report = JSON.parse(run.stdout);
   assert.deepEqual(report.effects, [], JSON.stringify(report));
@@ -68,14 +76,22 @@ test("the owner set is explicit before looking for SDK or peer checkouts", async
 });
 
 const owners = ["dsh-agent-workbench", "dsh-agent-manage", "dsh-gea-plugin"].map((repo) => ({
-  repo, path: join(tmpdir(), repo), head: "b".repeat(40),
+  repo,
+  path: join(tmpdir(), repo),
+  head: "b".repeat(40),
 }));
 test("duplicate owners refuse instead of selecting the nearest checkout", async (t) => {
-  assert.match(await probe(t, { ...pinned, repositories: [...owners, owners[0]] }), /SOURCE_WINDOW_OWNER_REQUIRED/);
+  assert.match(
+    await probe(t, { ...pinned, repositories: [...owners, owners[0]] }),
+    /SOURCE_WINDOW_OWNER_REQUIRED/,
+  );
 });
 
 test("historical failure bytes need an explicit path and digest before preparation", async (t) => {
-  assert.match(await probe(t, { ...pinned, repositories: owners }), /SOURCE_WINDOW_HISTORY_REQUIRED/);
+  assert.match(
+    await probe(t, { ...pinned, repositories: owners }),
+    /SOURCE_WINDOW_HISTORY_REQUIRED/,
+  );
 });
 
 test("a stale historical digest refuses before candidate checks or preparation", async (t) => {
@@ -83,7 +99,14 @@ test("a stale historical digest refuses before candidate checks or preparation",
   t.after(() => rm(directory, { recursive: true, force: true }));
   const file = join(directory, "failure.json");
   await writeFile(file, '{"businessRequests":"unknown"}');
-  assert.match(await probe(t, { ...pinned, repositories: owners, historicalFailure: { file, sha256: "0".repeat(64) } }), /SOURCE_WINDOW_HISTORY_DIGEST_MISMATCH/);
+  assert.match(
+    await probe(t, {
+      ...pinned,
+      repositories: owners,
+      historicalFailure: { file, sha256: "0".repeat(64) },
+    }),
+    /SOURCE_WINDOW_HISTORY_DIGEST_MISMATCH/,
+  );
 });
 
 test("a different declared GEA checkout refuses before candidate processes or filesystem mutation", async (t) => {
@@ -92,11 +115,15 @@ test("a different declared GEA checkout refuses before candidate processes or fi
   const file = join(directory, "failure.json");
   const bytes = '{"businessRequests":"unknown"}';
   await writeFile(file, bytes);
-  const repositories = owners.map((owner) => owner.repo === "dsh-gea-plugin"
-    ? { ...owner, path: directory }
-    : owner);
-  assert.match(await probe(t, {
-    ...pinned, repositories,
-    historicalFailure: { file, sha256: createHash("sha256").update(bytes).digest("hex") },
-  }), /SOURCE_WINDOW_CHECKOUT_MISMATCH/);
+  const repositories = owners.map((owner) =>
+    owner.repo === "dsh-gea-plugin" ? { ...owner, path: directory } : owner,
+  );
+  assert.match(
+    await probe(t, {
+      ...pinned,
+      repositories,
+      historicalFailure: { file, sha256: createHash("sha256").update(bytes).digest("hex") },
+    }),
+    /SOURCE_WINDOW_CHECKOUT_MISMATCH/,
+  );
 });

@@ -32,8 +32,7 @@ export async function checkSourcePlugins({
         ];
       }
     }
-    if (manifest.types)
-      paths[manifest.name] ??= [resolve(directory, manifest.types)];
+    if (manifest.types) paths[manifest.name] ??= [resolve(directory, manifest.types)];
   }
   for (const plugin of sourcePlugins) {
     for (const [name, file] of Object.entries(plugin.typeEntries ?? {}))
@@ -47,9 +46,7 @@ export async function checkSourcePlugins({
     for (const config of plugin.configs) {
       const declared = JSON.parse(await readFile(join(cwd, config), "utf8"));
       const projectPaths = {};
-      for (const [specifier, targets] of Object.entries(
-        declared.compilerOptions?.paths ?? {},
-      ))
+      for (const [specifier, targets] of Object.entries(declared.compilerOptions?.paths ?? {}))
         if (!(specifier in paths))
           projectPaths[specifier] = targets.map((file) =>
             resolve(cwd, declared.compilerOptions?.baseUrl ?? ".", file),
@@ -88,13 +85,7 @@ export async function checkSourcePlugins({
     } else if (plugin.build === "manage") {
       execFileSync(
         process.execPath,
-        [
-          "node_modules/typescript/bin/tsc",
-          "-p",
-          projects[0],
-          "--noEmit",
-          "false",
-        ],
+        ["node_modules/typescript/bin/tsc", "-p", projects[0], "--noEmit", "false"],
         { cwd, stdio: "inherit" },
       );
       execFileSync("corepack", ["pnpm", "run", "build:client"], {
@@ -109,10 +100,7 @@ export async function checkSourcePlugins({
     }
   }
 }
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const { values } = parseArgs({
     options: { build: { type: "boolean" }, sources: { type: "string" } },
   });

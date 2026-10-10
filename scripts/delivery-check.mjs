@@ -33,8 +33,7 @@ const stages = [
 const identifier = (value) =>
   typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(value);
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
-const sha256 = (value) =>
-  typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+const sha256 = (value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 
 async function readInput(scope, ref, observedAt) {
   if (!ref || !identifier(ref.id) || typeof ref.path !== "string")
@@ -92,9 +91,7 @@ async function observeDirectory(root, ref, observedAt) {
       sourceId: ref.id,
       state: error.code === "ENOENT" ? "missing" : "unknown",
       reason:
-        error.code === "ENOENT"
-          ? "SESSION_DIRECTORY_MISSING"
-          : "SESSION_DIRECTORY_UNREADABLE",
+        error.code === "ENOENT" ? "SESSION_DIRECTORY_MISSING" : "SESSION_DIRECTORY_UNREADABLE",
       observedAt,
     };
   }
@@ -139,10 +136,7 @@ function stageResult(
 }
 
 /** Input references are root-relative controlled files. Output contains no raw source text or paths. */
-export async function checkDelivery(
-  input,
-  { observedAt = new Date().toISOString() } = {},
-) {
+export async function checkDelivery(input, { observedAt = new Date().toISOString() } = {}) {
   if (
     !identifier(input?.projectId) ||
     !Array.isArray(input.tasks) ||
@@ -172,11 +166,7 @@ export async function checkDelivery(
     if (!identifier(task.id)) throw Error("INVALID_TASK_ID");
 
     const ticket = await readInput(readScope, task.ticket, observedAt);
-    const candidateInput = await readInput(
-      readScope,
-      task.candidate,
-      observedAt,
-    );
+    const candidateInput = await readInput(readScope, task.candidate, observedAt);
     const deliveryInput = await readInput(readScope, task.delivery, observedAt);
     const extraInputs = [];
     for (const ref of task.inputs ?? [])
@@ -207,9 +197,7 @@ export async function checkDelivery(
               identifier(ref?.id) &&
               typeof ref.path === "string" &&
               (sha256(ref.sha256) ||
-                (candidate.checkout &&
-                  ref.deleted === true &&
-                  ref.sha256 === undefined)),
+                (candidate.checkout && ref.deleted === true && ref.sha256 === undefined)),
           ));
     if (validFiles && candidate.kind === "dirty") {
       for (const ref of candidate.files)
@@ -227,17 +215,11 @@ export async function checkDelivery(
       ? integrity.status !== "passed"
       : validFiles &&
         candidate.kind === "dirty" &&
-        candidate.files.some(
-          (ref, index) => fileInputs[index].sha256 !== ref.sha256,
-        );
+        candidate.files.some((ref, index) => fileInputs[index].sha256 !== ref.sha256);
     const validCandidate = identifiedCandidate && validFiles && !drift;
     let assembly;
     if (task.assembly) {
-      const assemblyInput = await readInput(
-        readScope,
-        task.assembly,
-        observedAt,
-      );
+      const assemblyInput = await readInput(readScope, task.assembly, observedAt);
       inputs.push(assemblyInput);
       assembly = await observeAssembly(root, metadata(assemblyInput), {
         readScope,
@@ -252,8 +234,7 @@ export async function checkDelivery(
       assembly.evidence = [...evidence(assemblyInput), ...assembly.evidence];
     }
     const conflictingInputs = inputs.filter(
-      (ref, index) =>
-        ref.id && inputs.findIndex((other) => other.id === ref.id) !== index,
+      (ref, index) => ref.id && inputs.findIndex((other) => other.id === ref.id) !== index,
     );
     const contentSha256 = integrity
       ? integrity.contentSha256
@@ -269,17 +250,14 @@ export async function checkDelivery(
             }),
           )
         : null;
-    const scopedDelivery =
-      delivery?.taskId === task.id && delivery?.projectId === input.projectId;
-    const checks =
-      scopedDelivery && Array.isArray(delivery.checks) ? delivery.checks : [];
+    const scopedDelivery = delivery?.taskId === task.id && delivery?.projectId === input.projectId;
+    const checks = scopedDelivery && Array.isArray(delivery.checks) ? delivery.checks : [];
     const records = checks.map((check) => {
       const validCounts =
         check?.counts === undefined ||
         (check.counts &&
           ["passed", "failed", "skipped"].every(
-            (key) =>
-              Number.isSafeInteger(check.counts[key]) && check.counts[key] >= 0,
+            (key) => Number.isSafeInteger(check.counts[key]) && check.counts[key] >= 0,
           ));
       const valid =
         identifier(check?.id) &&
@@ -288,29 +266,16 @@ export async function checkDelivery(
         !(
           check.status === "passed" &&
           check.counts &&
-          (check.counts.failed > 0 ||
-            check.counts.skipped > 0 ||
-            check.counts.passed === 0)
+          (check.counts.failed > 0 || check.counts.skipped > 0 || check.counts.passed === 0)
         ) &&
         time(check.observedAt) &&
         sha256(check.candidateSha256) &&
-        (check.candidateContentSha256 === undefined ||
-          sha256(check.candidateContentSha256)) &&
-        [
-          "passed",
-          "failed",
-          "blocked",
-          "not-run",
-          "unknown",
-          "skipped",
-        ].includes(check.status) &&
+        (check.candidateContentSha256 === undefined || sha256(check.candidateContentSha256)) &&
+        ["passed", "failed", "blocked", "not-run", "unknown", "skipped"].includes(check.status) &&
         Array.isArray(check.inputs) &&
         (check.candidateBinding === undefined ||
-          (check.candidateBinding === "inputs-only" &&
-            check.inputs.length > 0)) &&
-        check.inputs.every(
-          (ref) => identifier(ref?.id) && sha256(ref.sha256),
-        ) &&
+          (check.candidateBinding === "inputs-only" && check.inputs.length > 0)) &&
+        check.inputs.every((ref) => identifier(ref?.id) && sha256(ref.sha256)) &&
         new Set(check.inputs.map((ref) => ref.id)).size === check.inputs.length;
       const observationGap = !time(check?.observedAt)
         ? "CHECK_OBSERVATION_TIME_INVALID"
@@ -324,22 +289,16 @@ export async function checkDelivery(
           : check.candidateBinding !== "inputs-only" &&
               check.candidateSha256 !== candidateInput.sha256
             ? "historical"
-            : integrity &&
-                check.candidateBinding !== "inputs-only" &&
-                !check.candidateContentSha256
+            : integrity && check.candidateBinding !== "inputs-only" && !check.candidateContentSha256
               ? "candidate-content-binding-required"
-              : (drift ||
-                    (integrity &&
-                      check.candidateContentSha256 !== contentSha256)) &&
+              : (drift || (integrity && check.candidateContentSha256 !== contentSha256)) &&
                   check.candidateBinding !== "inputs-only"
                 ? "candidate-content-mismatch"
                 : conflictingInputs.length ||
                     check.inputs.some(
                       (ref) =>
                         !inputs.some(
-                          (actual) =>
-                            actual.id === ref.id &&
-                            actual.sha256 === ref.sha256,
+                          (actual) => actual.id === ref.id && actual.sha256 === ref.sha256,
                         ),
                     )
                   ? "input-mismatch"
@@ -347,43 +306,30 @@ export async function checkDelivery(
       const counts =
         check?.counts &&
         ["passed", "failed", "skipped"].every(
-          (key) =>
-            Number.isSafeInteger(check.counts[key]) && check.counts[key] >= 0,
+          (key) => Number.isSafeInteger(check.counts[key]) && check.counts[key] >= 0,
         )
           ? Object.fromEntries(
-              ["passed", "failed", "skipped"].map((key) => [
-                key,
-                check.counts[key],
-              ]),
+              ["passed", "failed", "skipped"].map((key) => [key, check.counts[key]]),
             )
           : null;
       return {
         id: identifier(check?.id) ? check.id : "invalid-check",
         scope: "offline",
         status: valid && !observationGap ? check.status : "unknown",
-        statedStatus: [
-          "passed",
-          "failed",
-          "blocked",
-          "not-run",
-          "unknown",
-          "skipped",
-        ].includes(check?.status)
+        statedStatus: ["passed", "failed", "blocked", "not-run", "unknown", "skipped"].includes(
+          check?.status,
+        )
           ? check.status
           : null,
         observationGap,
         relation,
-        candidateSha256: sha256(check?.candidateSha256)
-          ? check.candidateSha256
-          : null,
+        candidateSha256: sha256(check?.candidateSha256) ? check.candidateSha256 : null,
         candidateContentSha256: sha256(check?.candidateContentSha256)
           ? check.candidateContentSha256
           : null,
         observedAt: time(check?.observedAt) ? check.observedAt : null,
         owner: "check-owner",
-        inputs: valid
-          ? check.inputs.map(({ id, sha256 }) => ({ sourceId: id, sha256 }))
-          : [],
+        inputs: valid ? check.inputs.map(({ id, sha256 }) => ({ sourceId: id, sha256 })) : [],
         counts,
         evidence: evidence(deliveryInput),
       };
@@ -396,13 +342,9 @@ export async function checkDelivery(
         : [];
     const checkGaps = required.flatMap((id) => {
       const matching = records.filter((record) => record.id === id);
-      const current = matching.filter(
-        (record) => record.relation === "current",
-      );
+      const current = matching.filter((record) => record.relation === "current");
       if (current.length === 1 && current[0].status === "passed") return [];
-      const observationGap = matching.find(
-        (record) => record.observationGap,
-      )?.observationGap;
+      const observationGap = matching.find((record) => record.observationGap)?.observationGap;
       const reason =
         current.length > 1
           ? "CHECK_RECORD_CONFLICT"
@@ -430,22 +372,11 @@ export async function checkDelivery(
     });
     let offlineStatus = "unknown",
       offlineReason = "SCOPED_CHECKS_REQUIRED";
-    if (
-      scopedTicket &&
-      validCandidate &&
-      !conflictingInputs.length &&
-      required.length
-    ) {
+    if (scopedTicket && validCandidate && !conflictingInputs.length && required.length) {
       const selected = required.map((id) =>
-        records.filter(
-          (check) => check.id === id && check.relation === "current",
-        ),
+        records.filter((check) => check.id === id && check.relation === "current"),
       );
-      if (
-        selected.some((checks) =>
-          checks.some((check) => check.status === "failed"),
-        )
-      ) {
+      if (selected.some((checks) => checks.some((check) => check.status === "failed"))) {
         offlineStatus = "failed";
         offlineReason = "SCOPED_CHECK_FAILED";
       } else if (selected.some((checks) => checks.length > 1))
@@ -460,30 +391,21 @@ export async function checkDelivery(
       ) {
         offlineStatus = "passed";
         offlineReason = "SCOPED_CHECKS_REUSED";
-      } else if (
-        selected.some((checks) =>
-          checks.some((check) => check.status === "blocked"),
-        )
-      ) {
+      } else if (selected.some((checks) => checks.some((check) => check.status === "blocked"))) {
         offlineStatus = "blocked";
         offlineReason = "SCOPED_CHECK_BLOCKED";
       } else if (
         selected.every(
-          (checks) =>
-            checks.length === 1 &&
-            ["skipped", "not-run"].includes(checks[0].status),
+          (checks) => checks.length === 1 && ["skipped", "not-run"].includes(checks[0].status),
         )
       ) {
         offlineStatus = "not-run";
         offlineReason = "SCOPED_CHECK_NOT_RUN";
       }
     }
-    if (offlineStatus === "unknown" && deliveryInput.error)
-      offlineReason = deliveryInput.error;
+    if (offlineStatus === "unknown" && deliveryInput.error) offlineReason = deliveryInput.error;
     if (offlineStatus === "unknown") {
-      const observationGap = checkGaps.find((gap) =>
-        gap.reason.startsWith("CHECK_OBSERVATION"),
-      );
+      const observationGap = checkGaps.find((gap) => gap.reason.startsWith("CHECK_OBSERVATION"));
       if (observationGap) offlineReason = observationGap.reason;
     }
     const results = stages.map((stage) =>
@@ -515,8 +437,7 @@ export async function checkDelivery(
       integrity?.proof ?? "recorded-snapshot",
     );
     const ticketGap =
-      ticketRecord.reason ??
-      (conflictingInputs.length ? "INPUT_ID_CONFLICT" : null);
+      ticketRecord.reason ?? (conflictingInputs.length ? "INPUT_ID_CONFLICT" : null);
     if (ticketGap)
       Object.assign(results[0], {
         status: "unknown",
@@ -535,8 +456,7 @@ export async function checkDelivery(
       offlineStatus === "passed" ? "recorded-reused" : "recorded-observation",
     );
     if (offlineReason.startsWith("CHECK_OBSERVATION"))
-      results[1].minimumGap =
-        "VALID_CHECK_OBSERVATION_AT_OR_BEFORE_REPORT_REQUIRED";
+      results[1].minimumGap = "VALID_CHECK_OBSERVATION_AT_OR_BEFORE_REPORT_REQUIRED";
     if (assembly) {
       if (!scopedTicket || conflictingInputs.length)
         assembly = {
@@ -568,9 +488,7 @@ export async function checkDelivery(
           : session.state === "present"
             ? "not-run"
             : "unknown",
-        session.state === "present"
-          ? "SESSION_RECOVERY_NOT_RUN"
-          : session.reason,
+        session.state === "present" ? "SESSION_RECOVERY_NOT_RUN" : session.reason,
         session.sourceId ? [{ sourceId: session.sourceId, observedAt }] : [],
         observedAt,
         "session-owner",
@@ -593,15 +511,10 @@ export async function checkDelivery(
         continue;
       }
       const sources = inputs.filter((ref) => ref.id === entry.sourceId);
-      const source =
-        sources.length === 1 && sources[0].sha256 ? sources[0] : undefined;
-      const sameStage = delivery.notApplicable.filter(
-        (ref) => ref?.stage === entry.stage,
-      );
+      const source = sources.length === 1 && sources[0].sha256 ? sources[0] : undefined;
+      const sameStage = delivery.notApplicable.filter((ref) => ref?.stage === entry.stage);
       results[index] =
-        source &&
-        entry.reasonCode === "outside-task-scope" &&
-        sameStage.length === 1
+        source && entry.reasonCode === "outside-task-scope" && sameStage.length === 1
           ? stageResult(
               entry.stage,
               "not-applicable",
@@ -628,18 +541,12 @@ export async function checkDelivery(
       observedAt,
       candidateSha256: candidateInput.sha256,
       candidateContentSha256: contentSha256,
-      candidateValid:
-        scopedTicket && validCandidate && !conflictingInputs.length,
+      candidateValid: scopedTicket && validCandidate && !conflictingInputs.length,
     });
     if (readiness) {
       for (const suggestion of readiness.suggestions) {
-        const result = results.find(
-          (result) => result.stage === suggestion.stage,
-        );
-        if (
-          suggestion.status === "blocked" &&
-          ["not-run", "unknown"].includes(result.status)
-        )
+        const result = results.find((result) => result.stage === suggestion.stage);
+        if (suggestion.status === "blocked" && ["not-run", "unknown"].includes(result.status))
           Object.assign(
             result,
             stageResult(
@@ -652,11 +559,7 @@ export async function checkDelivery(
             ),
           );
       }
-      for (const gap of [
-        ...readiness.configGaps,
-        ...readiness.policyGaps,
-        ...readiness.factGaps,
-      ]) {
+      for (const gap of [...readiness.configGaps, ...readiness.policyGaps, ...readiness.factGaps]) {
         const result = results.find((result) => result.stage === gap.stage);
         if (["not-run", "unknown", "blocked"].includes(result.status))
           Object.assign(
@@ -712,7 +615,7 @@ export async function checkDelivery(
             ...(integrity ? { integrity } : {}),
           }
         : null,
-      inputs: inputs.map(({ bytes, ...safe }) => safe),
+      inputs: inputs.map(({ bytes: _bytes, ...safe }) => safe),
       checks: records,
       requiredChecks: required,
       checkGaps,
@@ -724,8 +627,8 @@ export async function checkDelivery(
             ),
           }
         : {}),
-      ...(readiness ?? {}),
-      ...(runtime ?? {}),
+      ...readiness,
+      ...runtime,
       ...(budget ? { budget } : {}),
       ...(reconciliation ? { reconciliation } : {}),
       stages: results,
@@ -755,11 +658,7 @@ export async function checkDelivery(
                 owner: "delivery-owner",
                 minimumGap: "UNIQUE_SOURCE_IDS_REQUIRED",
                 evidence: inputs
-                  .filter((ref) =>
-                    conflictingInputs.some(
-                      (conflict) => conflict.id === ref.id,
-                    ),
-                  )
+                  .filter((ref) => conflictingInputs.some((conflict) => conflict.id === ref.id))
                   .flatMap(evidence),
               },
             ]
@@ -812,8 +711,7 @@ export async function checkDelivery(
         suggestion.status === "can-continue"
           ? {
               ...suggestion,
-              status:
-                consistencyGap.status === "failed" ? "blocked" : "unknown",
+              status: consistencyGap.status === "failed" ? "blocked" : "unknown",
               reason: consistencyGap.reason,
               minimumGap: consistencyGap.minimumGap,
             }
@@ -848,42 +746,31 @@ export async function checkDelivery(
   };
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const args = process.argv.slice(2);
     const verifyGoal = args[0] === "--verify-goal";
     const verify = verifyGoal || args[0] === "--verify";
     if (verify) args.shift();
     const short = args.length === 3 && args[2] === "--continuation";
-    if ((!short && args.length !== 2) || args[0] !== "--input")
-      throw Error("CLI_INPUT_REQUIRED");
+    if ((!short && args.length !== 2) || args[0] !== "--input") throw Error("CLI_INPUT_REQUIRED");
     const file = args[1];
     const info = await stat(file);
-    if (!info.isFile() || info.size > 1024 * 1024)
-      throw Error("CLI_INPUT_INVALID");
+    if (!info.isFile() || info.size > 1024 * 1024) throw Error("CLI_INPUT_INVALID");
     let request;
     try {
       request = JSON.parse(await readFile(file, "utf8"));
     } catch (error) {
-      if (error instanceof SyntaxError)
-        throw Error("DELIVERY_REQUEST_INVALID_JSON");
+      if (error instanceof SyntaxError) throw Error("DELIVERY_REQUEST_INVALID_JSON");
       throw error;
     }
     const report = await checkDelivery(request);
     if (verify) {
-      const passed =
-        report.tasks.length > 0 && report.consistency.status === "observed";
+      const passed = report.tasks.length > 0 && report.consistency.status === "observed";
       report.verification = {
         status: passed ? "passed" : "failed",
-        reason: passed
-          ? "DELIVERY_CONSISTENCY_OBSERVED"
-          : "DELIVERY_CONSISTENCY_REQUIRED",
-        minimumGap: passed
-          ? null
-          : "RECONCILE_FIXED_RECEIPTS_USING_DELIVERY_REPORT",
+        reason: passed ? "DELIVERY_CONSISTENCY_OBSERVED" : "DELIVERY_CONSISTENCY_REQUIRED",
+        minimumGap: passed ? null : "RECONCILE_FIXED_RECEIPTS_USING_DELIVERY_REPORT",
       };
       report.consistency.exitZeroMeans = "consistency-observed-only";
       if (!passed) process.exitCode = 3;
@@ -892,17 +779,11 @@ if (
         if (passed) {
           const complete =
             report.continuation.state === "completed" &&
-            report.tasks.every(
-              (task) => task.continuation.inTransit.length === 0,
-            );
+            report.tasks.every((task) => task.continuation.inTransit.length === 0);
           report.verification = {
             status: complete ? "passed" : "failed",
-            reason: complete
-              ? "DECLARED_GOAL_VERIFIED"
-              : "DECLARED_GOAL_INCOMPLETE",
-            minimumGap: complete
-              ? null
-              : "READ_CONTINUATION_REMAINING_AND_STOP_CONDITIONS",
+            reason: complete ? "DECLARED_GOAL_VERIFIED" : "DECLARED_GOAL_INCOMPLETE",
+            minimumGap: complete ? null : "READ_CONTINUATION_REMAINING_AND_STOP_CONDITIONS",
           };
           if (!complete) process.exitCode = 4;
         }
@@ -917,9 +798,7 @@ if (
                 taskId: task.taskId,
                 ...task.continuation,
                 ...(task.budget ? { budget: task.budget } : {}),
-                ...(task.reconciliation
-                  ? { reconciliation: task.reconciliation }
-                  : {}),
+                ...(task.reconciliation ? { reconciliation: task.reconciliation } : {}),
               })),
             }
           : report,

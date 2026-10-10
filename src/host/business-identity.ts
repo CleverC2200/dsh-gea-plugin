@@ -30,9 +30,7 @@ export async function assertSessionResourceAvailable(
   const agent = sessionId
     ? ctx.agents?.get(sessionId as Parameters<typeof ctx.agents.get>[0])
     : undefined;
-  const preset = agent
-    ? ctx.sessionProjections.stateOf(agent.session, "agentPreset")
-    : undefined;
+  const preset = agent ? ctx.sessionProjections.stateOf(agent.session, "agentPreset") : undefined;
   await assertBusinessResourceAvailable(ctx, preset ?? undefined, signal);
 }
 
@@ -45,28 +43,16 @@ export function businessIdentityKey(business: Business): string | undefined {
 }
 
 /** The selected business preset owns model and tool identity, including unbound sessions. */
-export function sessionConsumer(
-  ctx: Context,
-  business: Business,
-  sessionId?: string,
-): string {
+export function sessionConsumer(ctx: Context, business: Business, sessionId?: string): string {
   const agent = sessionId
     ? ctx.agents?.get(sessionId as Parameters<typeof ctx.agents.get>[0])
     : undefined;
-  const preset = agent
-    ? ctx.sessionProjections.stateOf(agent.session, "agentPreset")
-    : undefined;
+  const preset = agent ? ctx.sessionProjections.stateOf(agent.session, "agentPreset") : undefined;
   const profile = profileFor(preset ?? undefined);
   if (profile)
-    return preset === "gea-readonly"
-      ? business.config.analysisAgentCode
-      : profile.consumerCode;
-  const page = sessionId
-    ? business.currentPageIdentity?.(sessionId)
-    : undefined;
-  return page && !page.mock
-    ? page.consumerCode
-    : business.config.analysisAgentCode;
+    return preset === "gea-readonly" ? business.config.analysisAgentCode : profile.consumerCode;
+  const page = sessionId ? business.currentPageIdentity?.(sessionId) : undefined;
+  return page && !page.mock ? page.consumerCode : business.config.analysisAgentCode;
 }
 
 /** Explicit cross-domain paths come from the trusted profile, never model-supplied registration claims. */
@@ -79,14 +65,15 @@ export function toolConsumer(
   const agent = sessionId
     ? ctx.agents?.get(sessionId as Parameters<typeof ctx.agents.get>[0])
     : undefined;
-  const preset = agent
-    ? ctx.sessionProjections.stateOf(agent.session, "agentPreset")
-    : undefined;
+  const preset = agent ? ctx.sessionProjections.stateOf(agent.session, "agentPreset") : undefined;
   const profile = profileFor(preset ?? undefined);
-  if(!profile)throw Error("GEA_BUSINESS_PROFILE_REQUIRED: 请先选用已安装启用的业务资源；Skill或页面可见不授予Consumer业务权限。");
-  const current=sessionConsumer(ctx,business,sessionId);
-  if(typeof requested!=="string" || !requested.trim())return current;
-  const target=requested.trim();
+  if (!profile)
+    throw Error(
+      "GEA_BUSINESS_PROFILE_REQUIRED: 请先选用已安装启用的业务资源；Skill或页面可见不授予Consumer业务权限。",
+    );
+  const current = sessionConsumer(ctx, business, sessionId);
+  if (typeof requested !== "string" || !requested.trim()) return current;
+  const target = requested.trim();
   const routes =
     profile?.crossConsumers?.map((code) =>
       code === "sales_forecast" ? business.config.analysisAgentCode : code,

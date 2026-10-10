@@ -17,9 +17,7 @@ test("evidence projection preserves exact numbers and scope; original reads cann
   const store = new PromptEvidenceStore(dir);
   const text =
     '{"coverage":"complete","amount":12.3400,"id":9007199254740993,"rows":' +
-    JSON.stringify(
-      Array.from({ length: 200 }, (_, i) => ({ i, name: "商品".repeat(30) })),
-    ) +
+    JSON.stringify(Array.from({ length: 200 }, (_, i) => ({ i, name: "商品".repeat(30) }))) +
     "}";
   const id = await store.put("a", "gea_cube_query", text);
   const result = JSON.parse(projectEvidence(text, id));
@@ -42,36 +40,6 @@ test("evidence projection preserves exact numbers and scope; original reads cann
   assert.deepEqual(exactResult('{"n":0,"q":0.00001}'), { n: 0, q: "0.00001" });
 });
 
-const forecastInput = () => ({
-  schema_version: 1,
-  data_mode: "mock",
-  base_month: "2026-09",
-  target_month: "2026-10",
-  prior_base_month: "2025-09",
-  prior_target_month: "2025-10",
-  snapshot_at: "2026-09-12T12:00:00+08:00",
-  period_mapping_confirmation: "fixture",
-  candidate_policy_confirmation: "fixture",
-  records: [
-    {
-      customer_id: "c",
-      sku_id: "s",
-      unit: "件",
-      source_ref: "fixture",
-      eligible: true,
-      product_kind: "regular",
-      seasonal: false,
-      quality_issues: [],
-      base_plan_qty: "1000",
-      base_actual_to_cutoff_qty: "800",
-      prior_base_actual_qty: "800",
-      prior_target_actual_qty: "1200",
-      target_yoy_growth: "0.1",
-      target_mom_growth: "0.2",
-    },
-  ],
-});
-
 test("protected evidence restores after restart only with current authorization", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "gea-evidence-restart-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -82,33 +50,20 @@ test("protected evidence restores after restart only with current authorization"
     resourceTool: "query_business_data",
     resources: "v1",
   };
-  const id = await first.put(
-    "s",
-    "gea_cube_query",
-    "original business data",
-    first.epoch(),
-    grant,
-  );
+  const id = await first.put("s", "gea_cube_query", "original business data", first.epoch(), grant);
   const restored = new PromptEvidenceStore(dir);
   let resourceVersion = "v1";
   const authorize = async (saved) => {
     assert.equal(saved.owner, "user-a");
-    if (saved.resources !== resourceVersion)
-      throw Error("AUTHORIZATION_CHANGED");
+    if (saved.resources !== resourceVersion) throw Error("AUTHORIZATION_CHANGED");
   };
   assert.equal(
     (await restored.read("s", id, 0, 4000, authorize)).content,
     "original business data",
   );
-  await assert.rejects(
-    restored.read("another-session", id, 0, 4000, authorize),
-    /UNAVAILABLE/,
-  );
+  await assert.rejects(restored.read("another-session", id, 0, 4000, authorize), /UNAVAILABLE/);
   resourceVersion = "revoked";
-  await assert.rejects(
-    restored.read("s", id, 0, 4000, authorize),
-    /AUTHORIZATION_CHANGED/,
-  );
+  await assert.rejects(restored.read("s", id, 0, 4000, authorize), /AUTHORIZATION_CHANGED/);
 });
 
 test("business UI rejects sign-based colours and unverified automatic totals", () => {
@@ -120,16 +75,11 @@ test("business UI rejects sign-based colours and unverified automatic totals", (
       /SEMANTICS/,
     );
   for (const type of ["hero", "stat"])
-    assert.match(
-      businessUiIssue({ spec: { items: [{ type, delta: "−10" }] } }),
-      /SEMANTICS/,
-    );
+    assert.match(businessUiIssue({ spec: { items: [{ type, delta: "−10" }] } }), /SEMANTICS/);
   assert.equal(
     businessUiIssue({
       spec: {
-        items: [
-          { type: "table", columns: ["差额"], rows: [[-10], ["少于计划 10"]] },
-        ],
+        items: [{ type: "table", columns: ["差额"], rows: [[-10], ["少于计划 10"]] }],
       },
     }),
     undefined,
@@ -193,9 +143,7 @@ test("large top-level data and reserved metadata fields remain represented in th
     ],
     meta: "x".repeat(9000),
   };
-  const projected = JSON.parse(
-    projectEvidence(JSON.stringify(original), "ev-id"),
-  );
+  const projected = JSON.parse(projectEvidence(JSON.stringify(original), "ev-id"));
   assert.equal(projected.projection, "partial");
   assert.deepEqual(projected.data.data, original.data);
   assert.ok(projected.omittedPaths.includes("$.meta"));
@@ -235,8 +183,7 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
         .filter((n) => scope === undefined || [...masks].every((m) => m.has(n)))
         .map((name) => ({ name })),
     get: (name, scope) =>
-      (scope === undefined || [...masks].every((m) => m.has(name))) &&
-      names.includes(name)
+      (scope === undefined || [...masks].every((m) => m.has(name))) && names.includes(name)
         ? { name }
         : undefined,
   };
@@ -254,9 +201,7 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
     agents: { get: () => agent },
     sessionProjections: { stateOf: () => preset },
     agentResources: {
-      list: async () => [
-        { id: preset, kind: "prompt", installed: true, enabled: true },
-      ],
+      list: async () => [{ id: preset, kind: "prompt", installed: true, enabled: true }],
     },
     skills: { list: async () => [] },
     on: (event, fn) => {
@@ -277,9 +222,7 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
     readTurnRevision: () => revision,
     surfaceFor: () => undefined,
   };
-  t.after(
-    mountBusinessPrompts(ctx, business, { readModules: () => [] }, new Map()),
-  );
+  t.after(mountBusinessPrompts(ctx, business, { readModules: () => [] }, new Map()));
   const start = async (name = "gea_gateway_catalog") => {
     const exec = {
       name,
@@ -330,50 +273,28 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
       /GEA_CATALOG_NO_PROGRESS/,
       transition + " current duplicate replies should pause",
     );
-    assert.ok(
-      paused.includes("gea_cube_query"),
-      "actual query remains callable",
-    );
+    assert.ok(paused.includes("gea_cube_query"), "actual query remains callable");
     await start("gea_cube_query");
     assert.ok((await visible()).includes("gea_gateway_catalog"));
-    assert.equal(
-      guard({ name: "gea_gateway_catalog", agent, arguments: {} }),
-      undefined,
-    );
+    assert.equal(guard({ name: "gea_gateway_catalog", agent, arguments: {} }), undefined);
   }
   handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
   for (let i = 0; i < 20; i++)
-    assert.equal(
-      guard({ name: "gea_cube_query", agent, arguments: {} }),
-      undefined,
-    );
-  assert.match(
-    guard({ name: "gea_cube_query", agent, arguments: {} }),
-    /GEA_CALL_BUDGET/,
-  );
+    assert.equal(guard({ name: "gea_cube_query", agent, arguments: {} }), undefined);
+  assert.match(guard({ name: "gea_cube_query", agent, arguments: {} }), /GEA_CALL_BUDGET/);
   for (let i = 0; i < 12; i++)
     assert.equal(
       guard({ name: "gea_evidence_read", agent, arguments: {} }),
       undefined,
       "already acquired evidence retains a bounded read allowance",
     );
-  assert.match(
-    guard({ name: "gea_evidence_read", agent, arguments: {} }),
-    /GEA_EVIDENCE_BUDGET/,
-  );
-  for (const name of [
-    "gea_cube_query",
-    "gea_capabilities",
-    "gea_gateway_catalog",
-  ])
+  assert.match(guard({ name: "gea_evidence_read", agent, arguments: {} }), /GEA_EVIDENCE_BUDGET/);
+  for (const name of ["gea_cube_query", "gea_capabilities", "gea_gateway_catalog"])
     assert.match(
       guard({ name, agent, arguments: {} }),
       /GEA_EVIDENCE_BUDGET/,
       "read exhaustion cannot be bypassed via " + name,
     );
   handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
-  assert.equal(
-    guard({ name: "gea_evidence_read", agent, arguments: {} }),
-    undefined,
-  );
+  assert.equal(guard({ name: "gea_evidence_read", agent, arguments: {} }), undefined);
 });

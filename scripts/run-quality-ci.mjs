@@ -276,6 +276,7 @@ try {
       );
       run("npm", ["run", "build:core"], preparedWorkbench, {
         DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
+        APS_BUILD_MODE: "mock",
       });
       run("corepack", ["pnpm", "build"], manage.path);
       run("corepack", [

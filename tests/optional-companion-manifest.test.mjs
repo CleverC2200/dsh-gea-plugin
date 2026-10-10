@@ -1,19 +1,24 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { productionManifest } from '../scripts/production-manifest.mjs';
-const source = JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));
-const versions = {'@cleverc2200/dsh-agent-workbench':'0.1.1','dsh-agent-manage':'0.6.3-company.6','@changfenhuang/dsh-genui':'0.11.3','dsh-better-sidebar':'0.24.1'};
-test('ordinary three-package manifest keeps required companions and exact optional enhancement peers', () => {
-  const manifest = productionManifest(source,versions);
-  for (const name of ['@cleverc2200/dsh-agent-workbench','dsh-agent-manage']) {
-    assert.equal(manifest.peerDependencies[name],versions[name]);
-    assert.notEqual(manifest.peerDependenciesMeta?.[name]?.optional,true);
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { productionManifest } from "../scripts/production-manifest.mjs";
+const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+const versions = {
+  "@cleverc2200/dsh-agent-workbench": "0.1.1",
+  "dsh-agent-manage": "0.6.3-company.6",
+  "@changfenhuang/dsh-genui": "0.11.3",
+  "dsh-better-sidebar": "0.24.1",
+};
+test("ordinary three-package manifest keeps required companions and exact optional enhancement peers", () => {
+  const manifest = productionManifest(source, versions);
+  for (const name of ["@cleverc2200/dsh-agent-workbench", "dsh-agent-manage"]) {
+    assert.equal(manifest.peerDependencies[name], versions[name]);
+    assert.notEqual(manifest.peerDependenciesMeta?.[name]?.optional, true);
   }
-  for (const name of ['@changfenhuang/dsh-genui','dsh-better-sidebar']) {
-    assert.equal(manifest.peerDependencies[name],versions[name]);
-    assert.equal(manifest.peerDependenciesMeta?.[name]?.optional,true);
-    assert.equal(manifest.dependencies[name],undefined);
+  for (const name of ["@changfenhuang/dsh-genui", "dsh-better-sidebar"]) {
+    assert.equal(manifest.peerDependencies[name], versions[name]);
+    assert.equal(manifest.peerDependenciesMeta?.[name]?.optional, true);
+    assert.equal(manifest.dependencies[name], undefined);
   }
-  assert.equal(manifest.peerDependencies['@deepseek-ai/cordis'],'4.0.4 || 4.0.5-alpha.1');
+  assert.equal(manifest.peerDependencies["@deepseek-ai/cordis"], "4.0.4 || 4.0.5-alpha.1");
 });

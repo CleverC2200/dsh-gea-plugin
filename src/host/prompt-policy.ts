@@ -21,23 +21,16 @@ export type PromptProfile = {
   skills: string[];
   crossConsumers?: string[];
 };
-export const PROFILES: Readonly<Record<string, PromptProfile>> =
-  policy.profiles;
-export function profileFor(
-  preset: string | undefined,
-): PromptProfile | undefined {
+export const PROFILES: Readonly<Record<string, PromptProfile>> = policy.profiles;
+export function profileFor(preset: string | undefined): PromptProfile | undefined {
   return preset ? PROFILES[preset] : undefined;
 }
 
 const mountedProfiles = new Set<string>();
 
 /** Mount a validated Agent Manage resource; an existing identity cannot be overwritten. */
-export function installPromptProfile(
-  preset: string,
-  profile: PromptProfile,
-): () => void {
-  if (mountedProfiles.has(preset))
-    throw Error("PROMPT_PROFILE_ALREADY_MOUNTED");
+export function installPromptProfile(preset: string, profile: PromptProfile): () => void {
+  if (mountedProfiles.has(preset)) throw Error("PROMPT_PROFILE_ALREADY_MOUNTED");
   const previous = policy.profiles[preset as keyof typeof policy.profiles];
   if (previous && previous.consumerCode !== profile.consumerCode)
     throw Error("PROMPT_PROFILE_IDENTITY_MISMATCH");
@@ -63,10 +56,7 @@ export const CORE_TOOLS = [
   "gea_gateway_catalog",
   "gea_cube_query",
 ];
-export function allowedTools(
-  profile: PromptProfile,
-  boundPage = false,
-): Set<string> {
+export function allowedTools(profile: PromptProfile, boundPage = false): Set<string> {
   const names = new Set(CORE_TOOLS);
   for (const name of [
     "skill",
@@ -109,11 +99,7 @@ export function businessUiIssue(input: unknown): string | undefined {
     if (Array.isArray(node)) return node.some(visit);
     if (!node || typeof node !== "object") return false;
     const record = node as Record<string, unknown>;
-    if (
-      ["stat", "hero"].includes(String(record.type)) &&
-      record.delta !== undefined
-    )
-      return true;
+    if (["stat", "hero"].includes(String(record.type)) && record.delta !== undefined) return true;
     if (
       record.type === "table" &&
       (record.total === true ||
@@ -122,11 +108,7 @@ export function businessUiIssue(input: unknown): string | undefined {
           record.rows.some(
             (row) =>
               Array.isArray(row) &&
-              row.some(
-                (cell) =>
-                  typeof cell === "string" &&
-                  /^[+−-]\s*[\d.]/.test(cell.trim()),
-              ),
+              row.some((cell) => typeof cell === "string" && /^[+−-]\s*[\d.]/.test(cell.trim())),
           )))
     )
       return true;
@@ -137,11 +119,7 @@ export function businessUiIssue(input: unknown): string | undefined {
     : undefined;
 }
 
-export function promptMeasurement(
-  system: string,
-  tools: readonly unknown[],
-  extras = "",
-) {
+export function promptMeasurement(system: string, tools: readonly unknown[], extras = "") {
   const definitions = JSON.stringify(tools);
   return {
     version: PROMPT_VERSION,

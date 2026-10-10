@@ -1,13 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  mkdtemp,
-  writeFile,
-  readFile,
-  rm,
-  readdir,
-  mkdir,
-} from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm, readdir, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkDelivery } from "./delivery-check.mjs";
@@ -28,12 +21,8 @@ async function fixture(t, taskId = "15", blockedBy = "14：predecessor") {
   const input = { root, projectId: "split", tasks: [task] };
   async function put(id, value) {
     const path = `${id}.${typeof value === "string" ? "md" : "json"}`;
-    await writeFile(
-      join(root, path),
-      typeof value === "string" ? value : JSON.stringify(value),
-    );
-    if (!task.inputs.some((ref) => ref.id === id))
-      task.inputs.push({ id, path });
+    await writeFile(join(root, path), typeof value === "string" ? value : JSON.stringify(value));
+    if (!task.inputs.some((ref) => ref.id === id)) task.inputs.push({ id, path });
   }
   await writeFile(
     join(root, "ticket.md"),
@@ -89,8 +78,7 @@ async function fixture(t, taskId = "15", blockedBy = "14：predecessor") {
     readiness,
     allow,
     report: async () =>
-      (await checkDelivery(input, { observedAt: "2026-10-03T00:00:00.000Z" }))
-        .tasks[0],
+      (await checkDelivery(input, { observedAt: "2026-10-03T00:00:00.000Z" })).tasks[0],
   };
 }
 
@@ -98,10 +86,7 @@ test("14 stage permission allows only 15 offline while the original predecessor 
   const f = await fixture(t);
   const task = await f.report();
   assert.equal(task.executionStatus, "ready-for-agent");
-  assert.equal(
-    task.dependencies.predecessors[0].executionStatus,
-    "in-progress",
-  );
+  assert.equal(task.dependencies.predecessors[0].executionStatus, "in-progress");
   assert.equal(
     task.authorization.find((entry) => entry.stage === "offline-checks").status,
     "allowed",
@@ -110,14 +95,8 @@ test("14 stage permission allows only 15 offline while the original predecessor 
     task.suggestions.find((entry) => entry.stage === "offline-checks").status,
     "can-continue",
   );
-  assert.equal(
-    task.suggestions.find((entry) => entry.stage === "real-data").status,
-    "blocked",
-  );
-  assert.equal(
-    task.stages.find((entry) => entry.stage === "real-data").status,
-    "blocked",
-  );
+  assert.equal(task.suggestions.find((entry) => entry.stage === "real-data").status, "blocked");
+  assert.equal(task.stages.find((entry) => entry.stage === "real-data").status, "blocked");
 });
 
 test("only explicit human supersession replaces old scope and conflicting or unverifiable sources stay unknown", async (t) => {
@@ -132,9 +111,7 @@ test("only explicit human supersession replaces old scope and conflicting or unv
   f.readiness.instructions.push("old");
   await f.put("readiness", f.readiness);
   assert.equal(
-    (await f.report()).authorization.find(
-      (entry) => entry.stage === "offline-checks",
-    ).status,
+    (await f.report()).authorization.find((entry) => entry.stage === "offline-checks").status,
     "unknown",
   );
   f.allow.supersedes = ["old"];
@@ -144,25 +121,18 @@ test("only explicit human supersession replaces old scope and conflicting or unv
     report.suggestions.find((entry) => entry.stage === "offline-checks").status,
     "can-continue",
   );
-  assert.equal(
-    report.authorization.find((entry) => entry.stage === "real-data").status,
-    "blocked",
-  );
+  assert.equal(report.authorization.find((entry) => entry.stage === "real-data").status, "blocked");
   f.allow.provenance.author = "agent";
   await f.put("allow", f.allow);
   assert.equal(
-    (await f.report()).authorization.find(
-      (entry) => entry.stage === "offline-checks",
-    ).status,
+    (await f.report()).authorization.find((entry) => entry.stage === "offline-checks").status,
     "unknown",
   );
   f.allow.provenance.author = "human";
   delete f.allow.provenance.itemId;
   await f.put("allow", f.allow);
   assert.equal(
-    (await f.report()).authorization.find(
-      (entry) => entry.stage === "offline-checks",
-    ).reason,
+    (await f.report()).authorization.find((entry) => entry.stage === "offline-checks").reason,
     "HUMAN_SOURCE_AND_SCOPE_REQUIRED",
   );
 });
@@ -174,14 +144,10 @@ test("ready labels and another ticket's exception cannot replace actual Markdown
     await f.put("allow", f.allow);
     let report = await f.report();
     assert.equal(
-      report.suggestions.find((entry) => entry.stage === "offline-checks")
-        .status,
+      report.suggestions.find((entry) => entry.stage === "offline-checks").status,
       "blocked",
     );
-    await f.put(
-      "predecessor",
-      "# 14: previous\n\n**Status:** ready-for-agent\n",
-    );
+    await f.put("predecessor", "# 14: previous\n\n**Status:** ready-for-agent\n");
     assert.equal((await f.report()).dependencies.status, "blocked");
     await f.put("predecessor", "# 14: previous\n\n**Status:** done\n");
     f.allow.taskIds = [taskId];
@@ -190,8 +156,7 @@ test("ready labels and another ticket's exception cannot replace actual Markdown
     report = await f.report();
     assert.equal(report.dependencies.status, "satisfied");
     assert.equal(
-      report.suggestions.find((entry) => entry.stage === "offline-checks")
-        .status,
+      report.suggestions.find((entry) => entry.stage === "offline-checks").status,
       "can-continue",
     );
     await writeFile(
@@ -220,29 +185,22 @@ test("27 model configuration gap blocks only its requested stages and leaves ind
   prototype.allow.stages = ["frozen-assembly"];
   await prototype.put("allow", prototype.allow);
   const blocked = await sales.report();
-  assert.equal(
-    blocked.configuration.find((entry) => entry.category === "model").status,
-    "missing",
-  );
+  assert.equal(blocked.configuration.find((entry) => entry.category === "model").status, "missing");
   assert.equal(
     blocked.stages.find((entry) => entry.stage === "model").reason,
     "MODEL_REFERENCE_NOT_DELIVERED",
   );
   assert.equal(
-    blocked.suggestions.find((entry) => entry.stage === "offline-checks")
+    blocked.suggestions.find((entry) => entry.stage === "offline-checks").status,
+    "can-continue",
+  );
+  assert.equal(
+    (await prototype.report()).suggestions.find((entry) => entry.stage === "frozen-assembly")
       .status,
     "can-continue",
   );
   assert.equal(
-    (await prototype.report()).suggestions.find(
-      (entry) => entry.stage === "frozen-assembly",
-    ).status,
-    "can-continue",
-  );
-  assert.equal(
-    (await prototype.report()).stages.find(
-      (entry) => entry.stage === "frozen-assembly",
-    ).status,
+    (await prototype.report()).stages.find((entry) => entry.stage === "frozen-assembly").status,
     "not-run",
   );
 });
@@ -276,30 +234,18 @@ test("configuration modes and identity data observations remain separate without
     scope: ["sales.read"],
   }));
   await f.put("allow", f.allow);
-  for (const mode of [
-    "mock",
-    "receipt",
-    "placeholder",
-    "real-write",
-    "real-readonly",
-  ]) {
+  for (const mode of ["mock", "receipt", "placeholder", "real-write", "real-readonly"]) {
     f.readiness.configuration.forEach((entry) => {
       entry.mode = mode;
     });
     await f.put("readiness", f.readiness);
     const report = await f.report();
-    assert.equal(
-      report.configuration.find((entry) => entry.category === "model").mode,
-      mode,
-    );
+    assert.equal(report.configuration.find((entry) => entry.category === "model").mode, mode);
     assert.equal(
       report.suggestions.find((entry) => entry.stage === "model").status,
       mode === "real-readonly" ? "can-continue" : "blocked",
     );
-    assert.notEqual(
-      report.stages.find((entry) => entry.stage === "model").status,
-      "passed",
-    );
+    assert.notEqual(report.stages.find((entry) => entry.stage === "model").status, "passed");
   }
   const candidate = (await f.report()).candidate.sha256;
   const observed = (fact, state) => ({
@@ -325,10 +271,7 @@ test("configuration modes and identity data observations remain separate without
     report.facts.find((entry) => entry.fact === "local-authentication").state,
     "authenticated",
   );
-  assert.equal(
-    report.facts.find((entry) => entry.fact === "gea-identity").state,
-    "not-run",
-  );
+  assert.equal(report.facts.find((entry) => entry.fact === "gea-identity").state, "not-run");
   assert.notEqual(
     report.stages.find((entry) => entry.stage === "gea-authorization").status,
     "passed",
@@ -337,10 +280,7 @@ test("configuration modes and identity data observations remain separate without
     f.readiness.observations = [observed("query", state)];
     await f.put("readiness", f.readiness);
     report = await f.report();
-    assert.equal(
-      report.facts.find((entry) => entry.fact === "query").state,
-      state,
-    );
+    assert.equal(report.facts.find((entry) => entry.fact === "query").state, state);
     assert.equal(
       report.stages.find((entry) => entry.stage === "real-data").status,
       state === "failed" ? "failed" : "not-run",
@@ -394,8 +334,7 @@ test("final internal review replaces an explicitly superseded external gate only
     inputs: [
       {
         sourceId: "review-scope",
-        sha256: initial.inputs.find((entry) => entry.id === "review-scope")
-          .sha256,
+        sha256: initial.inputs.find((entry) => entry.id === "review-scope").sha256,
       },
     ],
   };
@@ -444,9 +383,7 @@ test("paused followup and browser scopes survive manual checks and only the matc
   let report = await f.report();
   assert.equal(
     report.arrangements.find(
-      (entry) =>
-        entry.action === "automatic-followup" &&
-        entry.stage === "offline-checks",
+      (entry) => entry.action === "automatic-followup" && entry.stage === "offline-checks",
     ).status,
     "blocked",
   );
@@ -455,8 +392,7 @@ test("paused followup and browser scopes survive manual checks and only the matc
     "can-continue",
   );
   assert.equal(
-    report.suggestions.find((entry) => entry.stage === "native-reference")
-      .reason,
+    report.suggestions.find((entry) => entry.stage === "native-reference").reason,
     "BROWSER_WINDOW_PAUSED",
   );
   await f.put("resume-browser", {
@@ -470,15 +406,12 @@ test("paused followup and browser scopes survive manual checks and only the matc
   await f.put("readiness", f.readiness);
   report = await f.report();
   assert.equal(
-    report.suggestions.find((entry) => entry.stage === "native-reference")
-      .status,
+    report.suggestions.find((entry) => entry.stage === "native-reference").status,
     "can-continue",
   );
   assert.equal(
     report.arrangements.find(
-      (entry) =>
-        entry.action === "automatic-followup" &&
-        entry.stage === "offline-checks",
+      (entry) => entry.action === "automatic-followup" && entry.stage === "offline-checks",
     ).status,
     "blocked",
   );
@@ -491,9 +424,7 @@ test("current policy never inherits an old round restriction and capacity or app
   f.readiness.executionPolicy = {
     currentRoundId: "round-2",
     current: { roundId: "round-2", access: "full", approval: "never" },
-    history: [
-      { roundId: "round-1", access: "restricted", approval: "on-request" },
-    ],
+    history: [{ roundId: "round-1", access: "restricted", approval: "on-request" }],
     pendingAction: { visibility: "unavailable", stage: "model" },
     stops: [
       {
@@ -547,10 +478,7 @@ test("current policy never inherits an old round restriction and capacity or app
     report.suggestions.find((entry) => entry.stage === "model").reason,
     "AUTOMATIC_APPROVAL_REJECTED",
   );
-  assert.equal(
-    report.executionPolicy.stops[1].reasonCode,
-    "automatic-approval-rejected",
-  );
+  assert.equal(report.executionPolicy.stops[1].reasonCode, "automatic-approval-rejected");
 });
 
 test("supersession cycles browser conflicts and ambiguous source IDs never allow work while valid non-applicability survives", async (t) => {
@@ -562,9 +490,7 @@ test("supersession cycles browser conflicts and ambiguous source IDs never allow
   f.readiness.instructions.push("cycle-a", "cycle-b");
   await f.put("readiness", f.readiness);
   assert.equal(
-    (await f.report()).authorization.find(
-      (entry) => entry.stage === "native-reference",
-    ).status,
+    (await f.report()).authorization.find((entry) => entry.stage === "native-reference").status,
     "unknown",
   );
   f.readiness.instructions = ["allow", "browser-allow", "browser-pause"];
@@ -576,9 +502,7 @@ test("supersession cycles browser conflicts and ambiguous source IDs never allow
   });
   await f.put("readiness", f.readiness);
   assert.equal(
-    (await f.report()).suggestions.find(
-      (entry) => entry.stage === "native-reference",
-    ).status,
+    (await f.report()).suggestions.find((entry) => entry.stage === "native-reference").status,
     "unknown",
   );
   f.readiness.configuration = [
@@ -595,9 +519,7 @@ test("supersession cycles browser conflicts and ambiguous source IDs never allow
   await f.put("allow", f.allow);
   await f.put("readiness", f.readiness);
   assert.equal(
-    (await f.report()).suggestions.find(
-      (entry) => entry.stage === "offline-checks",
-    ).status,
+    (await f.report()).suggestions.find((entry) => entry.stage === "offline-checks").status,
     "can-continue",
   );
   const delivery = {
@@ -613,27 +535,20 @@ test("supersession cycles browser conflicts and ambiguous source IDs never allow
       },
     ],
   };
-  await writeFile(
-    join(f.input.root, "delivery.json"),
-    JSON.stringify(delivery),
-  );
+  await writeFile(join(f.input.root, "delivery.json"), JSON.stringify(delivery));
   f.readiness.requirements.push({ stage: "formal-release", needs: ["tenant"] });
   await f.put("readiness", f.readiness);
   assert.equal(
-    (await f.report()).stages.find((entry) => entry.stage === "formal-release")
-      .status,
+    (await f.report()).stages.find((entry) => entry.stage === "formal-release").status,
     "not-applicable",
   );
   f.task.inputs.push({ id: "allow", path: "allow.json" });
   const conflict = await f.report();
   assert.equal(
-    conflict.authorization.find((entry) => entry.stage === "offline-checks")
-      .status,
+    conflict.authorization.find((entry) => entry.stage === "offline-checks").status,
     "unknown",
   );
-  assert.ok(
-    conflict.diagnostics.some((entry) => entry.reason === "INPUT_ID_CONFLICT"),
-  );
+  assert.ok(conflict.diagnostics.some((entry) => entry.reason === "INPUT_ID_CONFLICT"));
 });
 
 async function tree(path) {
@@ -671,10 +586,7 @@ test("main Interface and stdout CLI preserve all inputs and populated fixture Se
   const before = await tree(f.input.root);
   const report = await f.report();
   assert.deepEqual(await f.report(), report);
-  assert.doesNotMatch(
-    JSON.stringify(report),
-    /DO_NOT_PRINT|secret\.invalid|Cookie|password/,
-  );
+  assert.doesNotMatch(JSON.stringify(report), /DO_NOT_PRINT|secret\.invalid|Cookie|password/);
   const cli = spawnSync(
     process.execPath,
     [
@@ -686,14 +598,10 @@ test("main Interface and stdout CLI preserve all inputs and populated fixture Se
   );
   assert.equal(cli.status, 0);
   assert.equal(cli.stderr, "");
-  assert.doesNotMatch(
-    cli.stdout,
-    /DO_NOT_PRINT|secret\.invalid|Cookie|password/,
-  );
+  assert.doesNotMatch(cli.stdout, /DO_NOT_PRINT|secret\.invalid|Cookie|password/);
   assert.equal(
-    JSON.parse(cli.stdout).tasks[0].suggestions.find(
-      (entry) => entry.stage === "offline-checks",
-    ).status,
+    JSON.parse(cli.stdout).tasks[0].suggestions.find((entry) => entry.stage === "offline-checks")
+      .status,
     "can-continue",
   );
   assert.deepEqual(await tree(f.input.root), before);
@@ -731,10 +639,7 @@ test("an old round pending approval stays historical and future or changed candi
     },
   ];
   await f.put("readiness", f.readiness);
-  assert.equal(
-    (await f.report()).facts.find((entry) => entry.fact === "query").state,
-    "unknown",
-  );
+  assert.equal((await f.report()).facts.find((entry) => entry.fact === "query").state, "unknown");
   f.readiness.observations[0].observedAt = "2026-10-02T00:00:00.000Z";
   f.readiness.observations[0].candidateSha256 = "b".repeat(64);
   await f.put("readiness", f.readiness);
@@ -759,18 +664,11 @@ test("a wider new human grant supersedes only the old overlap and keeps its newl
   await f.put("readiness", f.readiness);
   const report = await f.report();
   assert.equal(
-    report.authorization.find((entry) => entry.stage === "offline-checks")
-      .status,
+    report.authorization.find((entry) => entry.stage === "offline-checks").status,
     "allowed",
   );
-  assert.equal(
-    report.authorization.find((entry) => entry.stage === "model").status,
-    "allowed",
-  );
-  assert.equal(
-    report.suggestions.find((entry) => entry.stage === "model").status,
-    "can-continue",
-  );
+  assert.equal(report.authorization.find((entry) => entry.stage === "model").status, "allowed");
+  assert.equal(report.suggestions.find((entry) => entry.stage === "model").status, "can-continue");
 });
 
 test("an incomplete current stop keeps known model scope and requires the missing action before it can continue", async (t) => {
@@ -794,10 +692,7 @@ test("an incomplete current stop keeps known model scope and requires the missin
   assert.equal(report.executionPolicy.stops[0].stage, "model");
   assert.equal(report.executionPolicy.stops[0].roundId, "round-2");
   assert.equal(report.executionPolicy.stops[0].actionId, null);
-  assert.equal(
-    report.suggestions.find((entry) => entry.stage === "model").status,
-    "unknown",
-  );
+  assert.equal(report.suggestions.find((entry) => entry.stage === "model").status, "unknown");
   assert.equal(
     report.suggestions.find((entry) => entry.stage === "model").minimumGap,
     "STOP_ACTION_SCOPE_ROUND_AND_REASON_REQUIRED",
@@ -835,13 +730,9 @@ test("an available action without a visible effective current policy stays unkno
       report.suggestions.find((entry) => entry.stage === "model").minimumGap,
       "EFFECTIVE_CURRENT_POLICY_REQUIRED",
     );
+    assert.equal(report.suggestions.find((entry) => entry.stage === "model").status, "unknown");
     assert.equal(
-      report.suggestions.find((entry) => entry.stage === "model").status,
-      "unknown",
-    );
-    assert.equal(
-      report.suggestions.find((entry) => entry.stage === "offline-checks")
-        .status,
+      report.suggestions.find((entry) => entry.stage === "offline-checks").status,
       "can-continue",
     );
   }
@@ -864,17 +755,12 @@ test("a cross-stage supersession cycle stays unknown for both affected grants wh
   await f.put("readiness", f.readiness);
   const report = await f.report();
   assert.equal(
-    report.authorization.find((entry) => entry.stage === "offline-checks")
-      .status,
+    report.authorization.find((entry) => entry.stage === "offline-checks").status,
     "unknown",
   );
+  assert.equal(report.authorization.find((entry) => entry.stage === "model").status, "unknown");
   assert.equal(
-    report.authorization.find((entry) => entry.stage === "model").status,
-    "unknown",
-  );
-  assert.equal(
-    report.suggestions.find((entry) => entry.stage === "source-candidate")
-      .status,
+    report.suggestions.find((entry) => entry.stage === "source-candidate").status,
     "can-continue",
   );
 });
@@ -907,20 +793,13 @@ test("a conflicting prerequisite ticket cannot satisfy dependencies while one ma
   assert.equal(valid.dependencies.status, "satisfied");
   assert.equal(valid.dependencies.predecessors[0].executionStatus, "done");
   for (const stage of ["offline-checks", "frozen-assembly"])
-    assert.equal(
-      valid.suggestions.find((v) => v.stage === stage).status,
-      "can-continue",
-    );
+    assert.equal(valid.suggestions.find((v) => v.stage === stage).status, "can-continue");
   f.allow.dependencyExceptions = ["14"];
   f.allow.stages = ["offline-checks"];
   await f.put("allow", f.allow);
-  await f.put(
-    "predecessor",
-    "# 14: previous\n# 99: conflict\n\n**Status:** in-progress\n",
-  );
+  await f.put("predecessor", "# 14: previous\n# 99: conflict\n\n**Status:** in-progress\n");
   assert.equal(
-    (await f.report()).suggestions.find((v) => v.stage === "offline-checks")
-      .status,
+    (await f.report()).suggestions.find((v) => v.stage === "offline-checks").status,
     "unknown",
   );
   await f.put("predecessor", "# 14: previous\n\n**Status:** in-progress\n");
@@ -930,10 +809,7 @@ test("a conflicting prerequisite ticket cannot satisfy dependencies while one ma
     exception.suggestions.find((v) => v.stage === "offline-checks").status,
     "can-continue",
   );
-  assert.equal(
-    exception.suggestions.find((v) => v.stage === "frozen-assembly").status,
-    "blocked",
-  );
+  assert.equal(exception.suggestions.find((v) => v.stage === "frozen-assembly").status, "blocked");
 });
 
 test("an impossible calendar date cannot become current readiness evidence", async (t) => {

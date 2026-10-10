@@ -1,14 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  mkdtemp,
-  mkdir,
-  writeFile,
-  readFile,
-  readdir,
-  rm,
-  realpath,
-} from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -19,9 +11,7 @@ const when = { observedAt: "2026-10-03T00:00:00.000Z" };
 const hash = (v) => createHash("sha256").update(v).digest("hex");
 const stage = (r, name) => r.stages.find((v) => v.stage === name);
 async function fixture(t, taskId = "22") {
-  const root = await realpath(
-    await mkdtemp(join(tmpdir(), "delivery-runtime-")),
-  );
+  const root = await realpath(await mkdtemp(join(tmpdir(), "delivery-runtime-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "source"));
   const git = (...args) =>
@@ -59,10 +49,7 @@ async function fixture(t, taskId = "22") {
   };
   const request = { root, projectId: "split", tasks: [task] };
   await mkdir(join(root, "retained-state"));
-  await writeFile(
-    join(root, "retained-state/entity.json"),
-    "persistent fixture data",
-  );
+  await writeFile(join(root, "retained-state/entity.json"), "persistent fixture data");
   await writeFile(
     join(root, "ticket.md"),
     `# ${taskId}: fixture\n\n**Blocked by:** 无\n\n**Status:** in-progress\n`,
@@ -79,8 +66,7 @@ async function fixture(t, taskId = "22") {
   );
   async function put(id, value) {
     await writeFile(join(root, `${id}.json`), JSON.stringify(value));
-    if (!task.inputs.some((v) => v.id === id))
-      task.inputs.push({ id, path: `${id}.json` });
+    if (!task.inputs.some((v) => v.id === id)) task.inputs.push({ id, path: `${id}.json` });
   }
   const envelope = {
     taskId,
@@ -100,9 +86,7 @@ async function fixture(t, taskId = "22") {
     threadId: "executor",
     actualProjectId: "split",
     checkout: "source",
-    writers: [
-      { taskId, threadId: "executor", roundId: "round", state: "idle" },
-    ],
+    writers: [{ taskId, threadId: "executor", roundId: "round", state: "idle" }],
   };
   const runtime = {
     kind: "runtime-evidence",
@@ -203,18 +187,10 @@ test("sent, received, delivered, failed and unknown are distinct formal handoff 
   assert.equal(r.runtime.tools[0].process.state, "unknown");
   assert.equal(r.runtime.tools[0].pendingAction.state, "unknown");
   assert.equal(r.runtime.tools[0].stopInterface, "unknown");
-  assert.equal(
-    r.runtime.handoffs[4].minimumGap,
-    "FORMAL_DELIVERY_RESULT_REQUIRED",
-  );
-  assert.ok(
-    r.runtimeGaps.some((v) => v.reason === "FORMAL_DELIVERY_RESULT_REQUIRED"),
-  );
+  assert.equal(r.runtime.handoffs[4].minimumGap, "FORMAL_DELIVERY_RESULT_REQUIRED");
+  assert.ok(r.runtimeGaps.some((v) => v.reason === "FORMAL_DELIVERY_RESULT_REQUIRED"));
   assert.equal(stage(r, "service-structure").status, "unknown");
-  assert.doesNotMatch(
-    JSON.stringify(r),
-    /12345|secret|https:|rawLog|resend|restart|kill/,
-  );
+  assert.doesNotMatch(JSON.stringify(r), /12345|secret|https:|rawLog|resend|restart|kill/);
   await f.put("handoff-delivered", {
     ...f.envelope,
     kind: "delivery-handoff",
@@ -223,25 +199,16 @@ test("sent, received, delivered, failed and unknown are distinct formal handoff 
     state: "delivered",
   });
   assert.equal(
-    (await f.run()).runtime.handoffs.find(
-      (v) => v.sourceId === "handoff-delivered",
-    ).state,
+    (await f.run()).runtime.handoffs.find((v) => v.sourceId === "handoff-delivered").state,
     "unknown",
   );
 });
 test("run evidence binds selected candidate, owners and persistent references without claiming current listening from a formal snapshot", async (t) => {
   const f = await selectedFixture(t);
   let r = await f.run();
-  assert.equal(
-    stage(r, "frozen-assembly").status,
-    "passed",
-    stage(r, "frozen-assembly").reason,
-  );
+  assert.equal(stage(r, "frozen-assembly").status, "passed", stage(r, "frozen-assembly").reason);
   assert.equal(stage(r, "service-structure").status, "passed");
-  assert.equal(
-    stage(r, "service-structure").proof,
-    "recorded-scoped-runtime-evidence",
-  );
+  assert.equal(stage(r, "service-structure").proof, "recorded-scoped-runtime-evidence");
   assert.equal(r.runtime.runs[0].relation, "selected");
   assert.equal(r.runtime.current.listener, "unknown");
   f.runRecord.combinationId = "22222222-2222-2222-2222-222222222222";
@@ -249,10 +216,7 @@ test("run evidence binds selected candidate, owners and persistent references wi
   r = await f.run();
   assert.equal(r.runtime.runs[0].relation, "selection-mismatch");
   assert.equal(stage(r, "service-structure").status, "blocked");
-  assert.equal(
-    stage(r, "service-structure").reason,
-    "RUN_SELECTED_COMBINATION_MISMATCH",
-  );
+  assert.equal(stage(r, "service-structure").reason, "RUN_SELECTED_COMBINATION_MISMATCH");
   f.runRecord.combinationId = f.assembly.combinationId;
   delete f.runRecord.lifecycleOwnerId;
   await f.put("run", f.runRecord);
@@ -267,10 +231,7 @@ test("native 401 and local HTTP authentication do not close GEA, Consumer, datas
   await f.put("run", f.runRecord);
   let r = await f.run();
   assert.equal(stage(r, "local-authentication").status, "passed");
-  assert.equal(
-    r.runtime.runs[0].facts.find((v) => v.fact === "native-gate").state,
-    "http-401",
-  );
+  assert.equal(r.runtime.runs[0].facts.find((v) => v.fact === "native-gate").state, "http-401");
   for (const name of [
     "gea-authorization",
     "real-data",
@@ -287,10 +248,7 @@ test("native 401 and local HTTP authentication do not close GEA, Consumer, datas
   );
   await f.put("run", f.runRecord);
   r = await f.run();
-  assert.equal(
-    stage(r, "gea-authorization").reason,
-    "CONSUMER_PERMISSION_DENIED",
-  );
+  assert.equal(stage(r, "gea-authorization").reason, "CONSUMER_PERMISSION_DENIED");
   assert.equal(stage(r, "real-data").reason, "DATASET_UNAVAILABLE");
   assert.equal(r.runtime.current.localAuthentication, "unknown");
   assert.equal(stage(r, "session-recovery").reason, "SESSION_RECOVERY_NOT_RUN");
@@ -307,21 +265,12 @@ test("scoped real Page, Agent, model references and cancel evidence pass separat
     "session-entity-recovery",
     "combination-recovery",
   ];
-  f.runRecord.facts.push(
-    ...complete.map((fact) => ({ fact, state: "passed" })),
-  );
+  f.runRecord.facts.push(...complete.map((fact) => ({ fact, state: "passed" })));
   await f.put("run", f.runRecord);
   let r = await f.run();
-  for (const name of [
-    "model",
-    "native-reference",
-    "session-recovery",
-    "combination-recovery",
-  ])
+  for (const name of ["model", "native-reference", "session-recovery", "combination-recovery"])
     assert.equal(stage(r, name).status, "passed", name);
-  f.runRecord.facts = f.runRecord.facts.filter(
-    (v) => v.fact !== "session-entity-recovery",
-  );
+  f.runRecord.facts = f.runRecord.facts.filter((v) => v.fact !== "session-entity-recovery");
   await f.put("run", f.runRecord);
   r = await f.run();
   assert.notEqual(stage(r, "session-recovery").status, "passed");
@@ -329,12 +278,7 @@ test("scoped real Page, Agent, model references and cancel evidence pass separat
   f.runRecord.mode = "fixture";
   await f.put("run", f.runRecord);
   r = await f.run();
-  for (const name of [
-    "model",
-    "native-reference",
-    "session-recovery",
-    "combination-recovery",
-  ])
+  for (const name of ["model", "native-reference", "session-recovery", "combination-recovery"])
     assert.notEqual(stage(r, name).status, "passed");
 });
 test("historical observations and stale live records cannot claim current listener, login or process exit", async (t) => {
@@ -377,13 +321,7 @@ test("available authorization remains separate from final integrity and writer r
       itemId: "permission",
     },
     taskIds: ["22"],
-    stages: [
-      "offline-checks",
-      "frozen-assembly",
-      "service-structure",
-      "native-reference",
-      "model",
-    ],
+    stages: ["offline-checks", "frozen-assembly", "service-structure", "native-reference", "model"],
     action: "manual-work",
     effect: "allow",
   });
@@ -412,10 +350,7 @@ test("available authorization remains separate from final integrity and writer r
   await f.put("run", f.runRecord);
   let r = await f.run();
   const suggestion = (name) => r.suggestions.find((v) => v.stage === name);
-  assert.equal(
-    r.authorization.find((v) => v.stage === "native-reference").status,
-    "allowed",
-  );
+  assert.equal(r.authorization.find((v) => v.stage === "native-reference").status, "allowed");
   assert.equal(suggestion("native-reference").status, "blocked");
   assert.equal(suggestion("native-reference").allowedScope, "allowed");
   assert.equal(suggestion("offline-checks").status, "can-continue");
@@ -460,10 +395,7 @@ test("runtime authorization cannot turn an observed native failure into a contin
   await f.put("run", f.runRecord);
   const r = await f.run();
   assert.equal(stage(r, "native-reference").status, "failed");
-  assert.equal(
-    r.suggestions.find((v) => v.stage === "native-reference").status,
-    "blocked",
-  );
+  assert.equal(r.suggestions.find((v) => v.stage === "native-reference").status, "blocked");
 });
 test("16 pagination, 26 ageing and 27 receipt/cancel repair histories bind their fixed candidate without closing real acceptance", async (t) => {
   for (const taskId of ["16", "26", "27"]) {
@@ -489,12 +421,7 @@ test("16 pagination, 26 ageing and 27 receipt/cancel repair histories bind their
     let r = await f.run();
     assert.equal(r.runtime.repairs[0].status, "fixed");
     assert.equal(r.runtime.repairs[0].history[0].status, "failed");
-    for (const name of [
-      "real-data",
-      "native-reference",
-      "model",
-      "session-recovery",
-    ])
+    for (const name of ["real-data", "native-reference", "model", "session-recovery"])
       assert.notEqual(stage(r, name).status, "passed");
     await writeFile(join(f.root, "source/source.js"), "new candidate bytes");
     r = await f.run();
@@ -539,10 +466,7 @@ test("malformed writer entries retain an unknown ownership report instead of thr
   await f.put("ownership", f.ownership);
   const r = await f.run();
   assert.equal(r.runtime.ownership.status, "unknown");
-  assert.equal(
-    r.runtime.ownership.reason,
-    "ACTUAL_TASK_PROJECT_CHECKOUT_AND_WRITERS_REQUIRED",
-  );
+  assert.equal(r.runtime.ownership.reason, "ACTUAL_TASK_PROJECT_CHECKOUT_AND_WRITERS_REQUIRED");
 });
 test("run conflicts add diagnostics without replacing an existing precise capacity or approval stop", async (t) => {
   const f = await selectedFixture(t);
@@ -592,9 +516,7 @@ test("run conflicts add diagnostics without replacing an existing precise capaci
   await f.put("run", f.runRecord);
   r = await f.run();
   assert.equal(stage(r, "service-structure").reason, "MODEL_CAPACITY_STOP");
-  assert.ok(
-    r.diagnostics.some((v) => v.reason === "RUN_SELECTED_COMBINATION_MISMATCH"),
-  );
+  assert.ok(r.diagnostics.some((v) => v.reason === "RUN_SELECTED_COMBINATION_MISMATCH"));
 });
 test("positive model records preserve unknown configuration and incomplete capacity stop gaps", async (t) => {
   for (const gapKind of ["configuration", "capacity"]) {
@@ -622,9 +544,7 @@ test("positive model records preserve unknown configuration and incomplete capac
     };
     if (gapKind === "configuration") {
       readiness.requirements = [{ stage: "model", needs: ["model"] }];
-      readiness.configuration = [
-        { category: "model", status: "unknown", mode: "real-readonly" },
-      ];
+      readiness.configuration = [{ category: "model", status: "unknown", mode: "real-readonly" }];
     } else
       readiness.executionPolicy = {
         currentRoundId: "round",
@@ -644,10 +564,7 @@ test("positive model records preserve unknown configuration and incomplete capac
     const r = await f.run();
     assert.equal(stage(r, "model").status, "unknown", gapKind);
     assert.notEqual(stage(r, "model").minimumGap, null);
-    assert.equal(
-      r.runtime.runs[0].facts.find((v) => v.fact === "real-model").state,
-      "passed",
-    );
+    assert.equal(r.runtime.runs[0].facts.find((v) => v.fact === "real-model").state, "passed");
   }
 });
 test("missing the whole runtime index retains authorization but requires actual service ownership while independent offline work remains visible", async (t) => {
@@ -673,19 +590,14 @@ test("missing the whole runtime index retains authorization but requires actual 
     instructions: ["allow"],
     predecessors: [],
   });
-  f.task.inputs = f.task.inputs.filter(
-    (v) => !["runtime", "ownership", "run"].includes(v.id),
-  );
+  f.task.inputs = f.task.inputs.filter((v) => !["runtime", "ownership", "run"].includes(v.id));
   const r = await f.run(),
     suggestion = r.suggestions.find((v) => v.stage === "service-structure");
   assert.equal(suggestion.allowedScope, "allowed");
   assert.equal(suggestion.status, "unknown");
   assert.equal(r.runtime.ownership.status, "unknown");
   assert.ok(r.runtimeGaps.some((v) => v.stage === "execution-ownership"));
-  assert.equal(
-    r.suggestions.find((v) => v.stage === "offline-checks").status,
-    "can-continue",
-  );
+  assert.equal(r.suggestions.find((v) => v.stage === "offline-checks").status, "can-continue");
 });
 test("bare recorded-snapshot readiness keeps model/native authorization without claiming actual continuation readiness", async (t) => {
   const f = await fixture(t, "27");
@@ -778,10 +690,7 @@ test("same Interface and permission-limited stdout CLI preserve the complete fix
   assert.equal(cli.stderr, "");
   const report = JSON.parse(cli.stdout);
   assert.equal(stage(report.tasks[0], "service-structure").status, "passed");
-  assert.deepEqual(
-    report,
-    await checkDelivery(f.request, { observedAt: report.observedAt }),
-  );
+  assert.deepEqual(report, await checkDelivery(f.request, { observedAt: report.observedAt }));
   assert.doesNotMatch(
     cli.stdout,
     /https?:|password|Cookie|rawLog|\/private\/|retained-state\/entity/,
@@ -792,10 +701,7 @@ test("runtime records pointing into declared persistent data are refused before 
   const f = await selectedFixture(t);
   f.task.inputs.find((v) => v.id === "run").path = "retained-state/entity.json";
   let r = await f.run();
-  assert.equal(
-    r.inputs.find((v) => v.id === "run").error,
-    "INPUT_PERSISTENT_OVERLAP",
-  );
+  assert.equal(r.inputs.find((v) => v.id === "run").error, "INPUT_PERSISTENT_OVERLAP");
   assert.equal(r.runtime.runs[0].relation, "unavailable");
   f.task.session.path = "missing-state";
   f.task.inputs.find((v) => v.id === "run").path = "run.json";
@@ -827,12 +733,7 @@ test("conflicting selected runs stop runtime suggestions with the exact gap whil
       itemId: "allow-service",
     },
     taskIds: ["22"],
-    stages: [
-      "offline-checks",
-      "frozen-assembly",
-      "service-structure",
-      "native-reference",
-    ],
+    stages: ["offline-checks", "frozen-assembly", "service-structure", "native-reference"],
     action: "manual-work",
     effect: "allow",
   });
@@ -848,8 +749,7 @@ test("conflicting selected runs stop runtime suggestions with the exact gap whil
     },
   });
   assert.equal(
-    (await f.run()).suggestions.find((v) => v.stage === "service-structure")
-      .status,
+    (await f.run()).suggestions.find((v) => v.stage === "service-structure").status,
     "can-continue",
   );
   f.runtime.runs.push("second-run");
@@ -864,10 +764,7 @@ test("conflicting selected runs stop runtime suggestions with the exact gap whil
     assert.ok(suggestion.evidence.some((v) => v.sourceId === "second-run"));
   }
   for (const name of ["offline-checks", "frozen-assembly"])
-    assert.equal(
-      r.suggestions.find((v) => v.stage === name).status,
-      "can-continue",
-    );
+    assert.equal(r.suggestions.find((v) => v.stage === name).status, "can-continue");
 });
 
 test("an impossible calendar date cannot advance a selected runtime stage", async (t) => {

@@ -1,10 +1,10 @@
 import { toGeaMessages } from "./host/gea-messages.ts";
 import type {} from "./shared/message-source.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
-import { createDesktopNavigation } from './host/desktop-navigation.ts';
+import { createDesktopNavigation } from "./host/desktop-navigation.ts";
 import { attachWebLogin } from "./host/web-login.ts";
 /** GEA 外部 Fetch 能力和显式本地回执提供者的 DSH 插件入口。 */
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import companyDefaults from "../desktop/company.config.json" with { type: "json" };
 import type {} from "@deepseek-ai/dsh-app-boot";
@@ -23,14 +23,18 @@ import {
   type LlmReasoningEffortInfo,
   type StreamChunk,
   attributionHeaders,
-  type ContentBlock,
 } from "@deepseek-ai/dsh-llm";
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
 import { lastUserQuestion, mountTurnAnchor } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
-import { assertBusinessResourceAvailable, assertSessionResourceAvailable, businessIdentityKey, sessionConsumer } from "./host/business-identity.ts";
+import {
+  assertBusinessResourceAvailable,
+  assertSessionResourceAvailable,
+  businessIdentityKey,
+  sessionConsumer,
+} from "./host/business-identity.ts";
 import { mountBusinessPrompts } from "./host/prompt-runtime.ts";
 import { mountSidebarToolVisibility } from "./host/sidebar-tool-visibility.ts";
 import { networkError } from "./shared/net-error.ts";
@@ -39,7 +43,7 @@ import { registerGeaTools } from "./host/agent-tools.ts";
 import { forgetMemberIndex } from "./host/member-index.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { workbenchContract } from "./capability/contract.ts";
-const WORKBENCH_SURFACE="gea-workbench";
+const WORKBENCH_SURFACE = "gea-workbench";
 import { transportSignal } from "./shared/transport-signal.ts";
 import { geaTextStream } from "./shared/gea-stream.ts";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
@@ -65,11 +69,15 @@ export const inject = [
 const environmentSchema = z.union(["production", "test"]);
 export const Config = z.object({
   geaBaseUrl: z.string().default(companyDefaults.geaBaseUrl),
-  environment: environmentSchema.default(z.resolve(companyDefaults.environment, environmentSchema, {})[0]),
-  geaEnvironments: z.union([z.object({
-    production: z.string().required(),
-    test: z.string().required(),
-  })]),
+  environment: environmentSchema.default(
+    z.resolve(companyDefaults.environment, environmentSchema, {})[0],
+  ),
+  geaEnvironments: z.union([
+    z.object({
+      production: z.string().required(),
+      test: z.string().required(),
+    }),
+  ]),
   pageSize: z.natural().min(1).max(100).default(companyDefaults.pageSize),
   periodPageSize: z.natural().min(1).max(1000).default(companyDefaults.periodPageSize),
   requestTimeoutMs: z.natural().min(1000).max(120000).default(companyDefaults.requestTimeoutMs),
@@ -81,34 +89,45 @@ export const Config = z.object({
   analysisModel: z.string().default(companyDefaults.analysis.model),
   analysisSource: z.union(["gea", "direct", "receipt"]).default("gea"),
   analysisAgentCode: z.string().default(companyDefaults.analysis.agentCode),
-  inputByteBudget: z.natural().min(1).default(Math.min(
-    companyDefaults.maxSnapshotBytes,
-    companyDefaults.analysis.contextWindow - companyDefaults.analysis.maxTokens - 1000,
-  )),
+  inputByteBudget: z
+    .natural()
+    .min(1)
+    .default(
+      Math.min(
+        companyDefaults.maxSnapshotBytes,
+        companyDefaults.analysis.contextWindow - companyDefaults.analysis.maxTokens - 1000,
+      ),
+    ),
   /**
    * 问答侧是否允许调用受管只读 SQL（`/ai/gateway/sql/execute`）。
    * 默认关闭：问答取数只走模块 MCP + 页面证据，模型不再自己写 SQL。
    */
   agentSqlRead: z.boolean().default(false),
-  workbenchCapability: z.object({
-    enabled: z.boolean(),
-    readonlyValidation: z.union([z.object({
+  workbenchCapability: z
+    .object({
+      enabled: z.boolean(),
+      readonlyValidation: z.union([
+        z.object({
+          maxRequests: z.natural().required(),
+          periods: z.natural().required(),
+          list: z.natural().required(),
+          detail: z.natural().required(),
+          versionSkus: z.natural().required(),
+          workflowSql: z.natural().required(),
+          maxWorkflowRows: z.natural().min(1).required(),
+          metadata: z.natural().required(),
+        }),
+      ]),
+    })
+    .default({}),
+  sqlReadLimit: z.union([
+    z.object({
+      consumerCode: z.string().required(),
       maxRequests: z.natural().required(),
-      periods: z.natural().required(),
-      list: z.natural().required(),
-      detail: z.natural().required(),
-      versionSkus: z.natural().required(),
-      workflowSql: z.natural().required(),
-      maxWorkflowRows: z.natural().min(1).required(),
-      metadata: z.natural().required(),
-    })]),
-  }).default({}),
-  sqlReadLimit: z.union([z.object({
-    consumerCode: z.string().required(),
-    maxRequests: z.natural().required(),
-    maxPagesPerQuery: z.natural().min(1).required(),
-    maxRowsPerQuery: z.natural().min(1).required(),
-  })]),
+      maxPagesPerQuery: z.natural().min(1).required(),
+      maxRowsPerQuery: z.natural().min(1).required(),
+    }),
+  ]),
 });
 
 /** 执行标准模型调用，但不发起外部推理请求。 */
@@ -182,9 +201,7 @@ const GEA_EFFORT_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
  * 请求体不带该字段，服务端保持模型配置默认参数。未显式选择时，DSH 会先按模型声明的
  * `defaultEffort` 补上默认档位再调用，所以正常路径下这里总能拿到一个档位。
  */
-function geaExtraParams(
-  options: GenerateOptions,
-): Record<string, string> | undefined {
+function geaExtraParams(options: GenerateOptions): Record<string, string> | undefined {
   const effort = options.reasoningEffort;
   if (effort === undefined) return undefined;
   const value = String(effort);
@@ -201,8 +218,7 @@ function geaKeptReasoningEffort(current: {
   reasoningEffort?: ReasoningEffortId;
 }): ReasoningEffortId | undefined {
   const effort = current.reasoningEffort;
-  if (current.provider !== "gea-analysis" || effort === undefined)
-    return undefined;
+  if (current.provider !== "gea-analysis" || effort === undefined) return undefined;
   return GEA_REASONING_EFFORTS.some((item) => String(item.id) === String(effort))
     ? effort
     : undefined;
@@ -210,7 +226,13 @@ function geaKeptReasoningEffort(current: {
 
 /** 直接调用当前登录用户的 GEA 个人模型路由，不经过 AionUi 代理。 */
 class GeaModelAdapter extends LlmAdapter {
-  constructor(private readonly business: Business, private readonly htmlConsumer: (session?: string, signal?: AbortSignal) => Promise<string | undefined> = async () => undefined) {
+  constructor(
+    private readonly business: Business,
+    private readonly htmlConsumer: (
+      session?: string,
+      signal?: AbortSignal,
+    ) => Promise<string | undefined> = async () => undefined,
+  ) {
     super();
   }
   override providerInfo(id: string) {
@@ -231,7 +253,7 @@ class GeaModelAdapter extends LlmAdapter {
     return {
       provider,
       id: model,
-      ...(route.contextWindows?.[model] ? {contextWindow: route.contextWindows[model]} : {}),
+      ...(route.contextWindows?.[model] ? { contextWindow: route.contextWindows[model] } : {}),
       name: route.names[model] ?? "GEA 模型（名称未提供）",
       // 声明默认档位：用户没显式选档位时，DSH 会补上它并按 extra_params 发给网关。
       reasoning: {
@@ -264,11 +286,27 @@ class GeaModelAdapter extends LlmAdapter {
         consumer ?? this.business.config.analysisAgentCode,
       );
       if (!route.models.includes(options.model))
-        throw new LlmError("GEA_MODEL_NOT_FOUND: 当前Agent不支持所选模型，请按当前Agent重新发现并选择模型；不能借用其它Agent的模型身份。", "MODEL_NOT_FOUND");
+        throw new LlmError(
+          "GEA_MODEL_NOT_FOUND: 当前Agent不支持所选模型，请按当前Agent重新发现并选择模型；不能借用其它Agent的模型身份。",
+          "MODEL_NOT_FOUND",
+        );
       const requestBody = toGeaRequest(options);
-      console.info(JSON.stringify({event:"GEA_MODEL_REQUEST",requestId,sessionId:options.sessionId,consumerCode:route.agentCode,model:options.model,
-        messageChars:JSON.stringify(requestBody.messages).length,toolSchemaChars:JSON.stringify(requestBody.tools??[]).length,
-        messageBreakdown: ['system','user','assistant','tool'].map(role=>({role,count:requestBody.messages.filter(m=>m.role===role).length,chars:JSON.stringify(requestBody.messages.filter(m=>m.role===role)).length}))}));
+      console.info(
+        JSON.stringify({
+          event: "GEA_MODEL_REQUEST",
+          requestId,
+          sessionId: options.sessionId,
+          consumerCode: route.agentCode,
+          model: options.model,
+          messageChars: JSON.stringify(requestBody.messages).length,
+          toolSchemaChars: JSON.stringify(requestBody.tools ?? []).length,
+          messageBreakdown: ["system", "user", "assistant", "tool"].map((role) => ({
+            role,
+            count: requestBody.messages.filter((m) => m.role === role).length,
+            chars: JSON.stringify(requestBody.messages.filter((m) => m.role === role)).length,
+          })),
+        }),
+      );
       const response = await this.business.fetchExternal(route.baseUrl + "/chat/completions", {
         method: "POST",
         headers: {
@@ -289,42 +327,70 @@ class GeaModelAdapter extends LlmAdapter {
       }
       if (!response.body) throw new Error("GEA_MODEL_HTTP_NO_BODY");
       stage = "流式读取";
-      if (
-        !response.headers
-          .get("content-type")
-          ?.toLowerCase()
-          .startsWith("text/event-stream")
-      )
+      if (!response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream"))
         throw new Error("GEA_MODEL_NOT_SSE");
-      let reportedUsage=false;
+      let reportedUsage = false;
       for await (const chunk of geaTextStream(response.body, signal, {
         names: options.tools?.map((tool) => tool.name) ?? [],
         maxBytes: this.business.config.maxSnapshotBytes,
       })) {
         if (chunk.type === "text-delta") textChars += chunk.text.length;
-        if (chunk.type === "usage") { reportedUsage=true; console.info(JSON.stringify({event:"GEA_MODEL_USAGE",requestId,sessionId:options.sessionId,usage:chunk.usage})); }
+        if (chunk.type === "usage") {
+          reportedUsage = true;
+          console.info(
+            JSON.stringify({
+              event: "GEA_MODEL_USAGE",
+              requestId,
+              sessionId: options.sessionId,
+              usage: chunk.usage,
+            }),
+          );
+        }
         yield chunk;
       }
-      if(!reportedUsage) console.info(JSON.stringify({event:"GEA_MODEL_USAGE",requestId,sessionId:options.sessionId,usage:null}));
+      if (!reportedUsage)
+        console.info(
+          JSON.stringify({
+            event: "GEA_MODEL_USAGE",
+            requestId,
+            sessionId: options.sessionId,
+            usage: null,
+          }),
+        );
     } catch (error) {
       // 线上实测：模型请求断线时界面只有 `fetch failed` + UNKNOWN（undici 的真实原因在 cause 里）。
       // 统一翻成可读、带 code 的错误：连哪个 host、断在连接还是流式阶段、原因码是什么。
-      if(error instanceof LlmError)throw error;
-      if ((error as {code?:string})?.code === 'GEA_MODEL_TOOL_TEXT')
-        throw new LlmError((error as Error).message, 'PROVIDER_PROTOCOL');
-      const converted=networkError(error, {what:modelHost,stage,timeoutMs:this.business.config.modelRequestTimeoutMs,timeoutScope:"model-total"});
-      if(converted.name === "AbortError")throw converted;
-      const code=(converted as Error & {code?:unknown}).code;
-      console.info(JSON.stringify({event:"GEA_MODEL_FAILURE",requestId,sessionId:options.sessionId,model:options.model,
-        code:typeof code === "string" ? code : "NETWORK",stage,elapsedMs:Date.now()-startedAt,
-        responseReceivedMs,textChars,timeoutMs:this.business.config.modelRequestTimeoutMs}));
-      throw new LlmError(converted.message,typeof code === "string"?code:"NETWORK");
+      if (error instanceof LlmError) throw error;
+      if ((error as { code?: string })?.code === "GEA_MODEL_TOOL_TEXT")
+        throw new LlmError((error as Error).message, "PROVIDER_PROTOCOL");
+      const converted = networkError(error, {
+        what: modelHost,
+        stage,
+        timeoutMs: this.business.config.modelRequestTimeoutMs,
+        timeoutScope: "model-total",
+      });
+      if (converted.name === "AbortError") throw converted;
+      const code = (converted as Error & { code?: unknown }).code;
+      console.info(
+        JSON.stringify({
+          event: "GEA_MODEL_FAILURE",
+          requestId,
+          sessionId: options.sessionId,
+          model: options.model,
+          code: typeof code === "string" ? code : "NETWORK",
+          stage,
+          elapsedMs: Date.now() - startedAt,
+          responseReceivedMs,
+          textChars,
+          timeoutMs: this.business.config.modelRequestTimeoutMs,
+        }),
+      );
+      throw new LlmError(converted.message, typeof code === "string" ? code : "NETWORK");
     } finally {
       transport.dispose();
     }
   }
 }
-
 
 function toGeaRequest(options: GenerateOptions) {
   const extraParams = geaExtraParams(options);
@@ -342,41 +408,51 @@ function toGeaRequest(options: GenerateOptions) {
           })),
         }
       : {}),
-    ...(options.temperature === undefined
-      ? {}
-      : { temperature: options.temperature }),
-    ...(options.maxTokens === undefined
-      ? {}
-      : { max_tokens: options.maxTokens }),
+    ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
+    ...(options.maxTokens === undefined ? {} : { max_tokens: options.maxTokens }),
     ...(options.stop === undefined ? {} : { stop: options.stop }),
   };
 }
 
 /** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
-export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> & { runtimeDir?: string }): Promise<void> {
+export async function apply(
+  ctx: Context,
+  input: Omit<Deployment, "runtimeDir"> & { runtimeDir?: string },
+): Promise<void> {
   const runtimeDir = input.runtimeDir ?? resolve(ctx.profileContext.dir, "gea");
   if (!isAbsolute(runtimeDir)) throw Error("INVALID_GEA_RUNTIME_DIR: absolute directory required");
   await mkdir(runtimeDir, { recursive: true, mode: 0o700 });
   const config: Deployment = {
     ...input,
     runtimeDir,
-    geaEnvironments: input.geaEnvironments ?? (
-      input.geaBaseUrl === companyDefaults.geaBaseUrl ? companyDefaults.geaEnvironments : undefined
-    ),
+    geaEnvironments:
+      input.geaEnvironments ??
+      (input.geaBaseUrl === companyDefaults.geaBaseUrl
+        ? companyDefaults.geaEnvironments
+        : undefined),
   };
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);
   // 迁移页面的页面桥入口：注册表建好后再接上（页面第一次轮询是 500ms 之后）。
-  const htmlPackages = ctx.workbenchPages.packages().filter(item=>item.manifest.gea?.contract === "gea-html-v2");
-  const releaseOriginalResources = await ctx.agentResources.register([{
-    id:"gea-readonly",enabled:config.workbenchCapability?.enabled !== false,label:profileFor("gea-readonly")!.label,
-    presetName:profileFor("gea-readonly")!.presetName,description:profileFor("gea-readonly")!.description,
-    root:fileURLToPath(new URL("../",import.meta.url)),prompt:"presets/prompt-policy.json",profileKey:"gea-readonly",
-    profile:profileFor("gea-readonly")!
-  }]);
+  const htmlPackages = ctx.workbenchPages
+    .packages()
+    .filter((item) => item.manifest.gea?.contract === "gea-html-v2");
+  const releaseOriginalResources = await ctx.agentResources.register([
+    {
+      id: "gea-readonly",
+      enabled: config.workbenchCapability?.enabled !== false,
+      label: profileFor("gea-readonly")!.label,
+      presetName: profileFor("gea-readonly")!.presetName,
+      description: profileFor("gea-readonly")!.description,
+      root: fileURLToPath(new URL("../", import.meta.url)),
+      prompt: "presets/prompt-policy.json",
+      profileKey: "gea-readonly",
+      profile: profileFor("gea-readonly")!,
+    },
+  ]);
   ctx.effect(() => releaseOriginalResources);
-  const htmlPlugins=await registerHtmlPlugins(ctx,business,htmlPackages);
+  const htmlPlugins = await registerHtmlPlugins(ctx, business, htmlPackages);
   // 能力契约注册表：页面白名单、草稿白名单、只读模块清单全部由它产出，宿主不再按模块写分支。
   const capability = createCapabilityRegistry([
     ...htmlPlugins.capabilityContracts,
@@ -390,34 +466,59 @@ export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> 
   // 受管只读的模块白名单也来自契约：不再在业务代码里维护一份模块清单。
   business.setCapabilities(capability);
   // The official stream seam also covers retained direct-provider selections.
-  ctx.effect(() => ctx.on("llm/stream", async function* (options, next) {
-    business.assertModelAllowed();
-    const agent = options.sessionId ? ctx.agents.get(options.sessionId as SessionId) : undefined;
-    const preset = agent ? ctx.sessionProjections.stateOf(agent.session, "agentPreset") : undefined;
-    if (options.provider !== "gea-proof" && (options.provider === "gea-analysis" || profileFor(preset ?? undefined))) {
-      await assertSessionResourceAvailable(ctx, options.sessionId, options.signal);
-      business.assertExecutionAllowed(sessionConsumer(ctx, business, options.sessionId));
-    }
-    yield* next();
-  }));
-  ctx.effect(()=>ctx.workbenchPages.registerBusinessPage({id:'gea-proof',kind:'native',label:'销售计划',resourceId:'gea-readonly',catalog:{surface:WORKBENCH_SURFACE,tool:'gea_workbench_apply'}},async(sessionId,resourceId,signal)=>{
-    business.assertExecutionAllowed(config.analysisAgentCode);
-    if(!business.status().authenticated||!business.pageSessionScope())throw Error('PAGE_REFERENCE_LOGIN_REQUIRED');
-    const referenceScope=businessIdentityKey(business);
-    if(!referenceScope)throw Error('GEA_IDENTITY_INCOMPLETE');
-    const agent=ctx.agents.get(sessionId as SessionId);
-    if(!agent||ctx.sessionProjections.stateOf(agent.session,'agentPreset')!==resourceId)throw Error('PAGE_AGENT_SESSION_MISMATCH');
-    signal.throwIfAborted();
-    const projection=business.setSurface(sessionId,{menu:'gea-proof',title:'销售计划'});
-    return {
-      signal:business.identitySignal(),access:{authenticated:true},
-      referenceScope,
-      allowsEffect:effect=>capability.allows(WORKBENCH_SURFACE,effect),
-      snapshot:()=>business.workbenchStateSnapshot(sessionId),
-      observe:context=>business.updateVisibleWorkbenchContext(sessionId,context),
-      release:()=>{if(business.surfaceFor(sessionId)!==projection)return;business.clearVisibleWorkbenchContext(sessionId);business.clearSurface(sessionId,'gea-proof');},
-    };
-  }));
+  ctx.effect(() =>
+    ctx.on("llm/stream", async function* (options, next) {
+      business.assertModelAllowed();
+      const agent = options.sessionId ? ctx.agents.get(options.sessionId as SessionId) : undefined;
+      const preset = agent
+        ? ctx.sessionProjections.stateOf(agent.session, "agentPreset")
+        : undefined;
+      if (
+        options.provider !== "gea-proof" &&
+        (options.provider === "gea-analysis" || profileFor(preset ?? undefined))
+      ) {
+        await assertSessionResourceAvailable(ctx, options.sessionId, options.signal);
+        business.assertExecutionAllowed(sessionConsumer(ctx, business, options.sessionId));
+      }
+      yield* next();
+    }),
+  );
+  ctx.effect(() =>
+    ctx.workbenchPages.registerBusinessPage(
+      {
+        id: "gea-proof",
+        kind: "native",
+        label: "销售计划",
+        resourceId: "gea-readonly",
+        catalog: { surface: WORKBENCH_SURFACE, tool: "gea_workbench_apply" },
+      },
+      async (sessionId, resourceId, signal) => {
+        business.assertExecutionAllowed(config.analysisAgentCode);
+        if (!business.status().authenticated || !business.pageSessionScope())
+          throw Error("PAGE_REFERENCE_LOGIN_REQUIRED");
+        const referenceScope = businessIdentityKey(business);
+        if (!referenceScope) throw Error("GEA_IDENTITY_INCOMPLETE");
+        const agent = ctx.agents.get(sessionId as SessionId);
+        if (!agent || ctx.sessionProjections.stateOf(agent.session, "agentPreset") !== resourceId)
+          throw Error("PAGE_AGENT_SESSION_MISMATCH");
+        signal.throwIfAborted();
+        const projection = business.setSurface(sessionId, { menu: "gea-proof", title: "销售计划" });
+        return {
+          signal: business.identitySignal(),
+          access: { authenticated: true },
+          referenceScope,
+          allowsEffect: (effect) => capability.allows(WORKBENCH_SURFACE, effect),
+          snapshot: () => business.workbenchStateSnapshot(sessionId),
+          observe: (context) => business.updateVisibleWorkbenchContext(sessionId, context),
+          release: () => {
+            if (business.surfaceFor(sessionId) !== projection) return;
+            business.clearVisibleWorkbenchContext(sessionId);
+            business.clearSurface(sessionId, "gea-proof");
+          },
+        };
+      },
+    ),
+  );
   // 目录缓存（成员清单 + 模型 → consumerCode）也跟着身份走：换了账号或环境，上一份
   // inspect 里的成员和可见模型都不能再用——规约 G5 要的是"当前模型版本的 inspect"。
   ctx.effect(() =>
@@ -434,10 +535,18 @@ export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> 
     defaultConsumer: { consumerType: "AGENT" as const, consumerCode: config.analysisAgentCode },
     authenticated: () => business.status().authenticated,
     watch: (listener: () => void) => business.watchIdentity(listener),
-    open: (consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string }, signal: AbortSignal) => business.openMcpConnection(consumer, signal),
+    open: (
+      consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string },
+      signal: AbortSignal,
+    ) => business.openMcpConnection(consumer, signal),
   });
-  const queryAuthorizations = new Map<symbol, {consumer: string; resources: import("./host/authorized-resources.ts").AuthorizedResources}>();
-  registerGeaTools(ctx, business, capability, (exec, consumer, resources) => { queryAuthorizations.set(exec.token, {consumer, resources}); });
+  const queryAuthorizations = new Map<
+    symbol,
+    { consumer: string; resources: import("./host/authorized-resources.ts").AuthorizedResources }
+  >();
+  registerGeaTools(ctx, business, capability, (exec, consumer, resources) => {
+    queryAuthorizations.set(exec.token, { consumer, resources });
+  });
   ctx.effect(() => mountBusinessPrompts(ctx, business, capability, queryAuthorizations));
   // 每步把"用户这一轮问的是什么"钉在消息末尾：系统提示里的位置段只能劝阻，
   // 长轮次（一轮 17 次工具调用）里模型会把用户那条消息丢掉，最后说自己"没收到提问"。
@@ -452,23 +561,26 @@ export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> 
   };
   // native pre-step.messages 是本步新领取的消息，不是全历史。领取新问题时（提示组装前）清理，
   // 不能只按消息数组里的用户条数判断换轮；同一句重问也有新的领取事件。
-  ctx.effect(() => ctx.on('agent/inbox/claimed', ({agent, message}) => {
-    if (message.source.kind !== 'user') return;
-    const question = lastUserQuestion([message]);
-    if (question) resetReadQuestion(question, agent.id);
-  }));
+  ctx.effect(() =>
+    ctx.on("agent/inbox/claimed", ({ agent, message }) => {
+      if (message.source.kind !== "user") return;
+      const question = lastUserQuestion([message]);
+      if (question) resetReadQuestion(question, agent.id);
+    }),
+  );
   ctx.effect(() =>
     mountTurnAnchor(ctx, {
       onNewQuestion: resetReadQuestion,
     }),
   );
-  ctx.effect(() => async () => { await desktopLogin.dispose(); await webLogin.dispose(); business.dispose(); });
+  ctx.effect(() => async () => {
+    await desktopLogin.dispose();
+    await webLogin.dispose();
+    business.dispose();
+  });
   if (config.analysisMode === "receipt")
     ctx.effect(() =>
-      ctx.llm.registerAdapter(
-        ["gea-proof"],
-        new ReceiptAdapter(config, business.runId, business),
-      ),
+      ctx.llm.registerAdapter(["gea-proof"], new ReceiptAdapter(config, business.runId, business)),
     );
   if (config.analysisMode === "model" && config.analysisSource === "gea")
     ctx.effect(() => {
@@ -503,17 +615,11 @@ export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> 
     | undefined;
   function submit(payload: Record<string, unknown>, requestSignal: AbortSignal) {
     business.assertExecutionAllowed(config.analysisAgentCode);
-    if (
-      Object.keys(payload).some(
-        (key) => key !== "previewId" && key !== "workbenchContext",
-      )
-    )
+    if (Object.keys(payload).some((key) => key !== "previewId" && key !== "workbenchContext"))
       throw new Error("INVALID_PAYLOAD");
     const preview = business.prepared(payload.previewId);
     const workbenchContext =
-      payload.workbenchContext === undefined
-        ? undefined
-        : object(payload.workbenchContext);
+      payload.workbenchContext === undefined ? undefined : object(payload.workbenchContext);
     requestSignal.throwIfAborted();
     if (submission?.id !== preview.previewId)
       submission = {
@@ -529,10 +635,7 @@ export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> 
       signal.throwIfAborted();
       let selectedModel = config.analysisModel;
       if (config.analysisMode === "model" && config.analysisSource === "gea") {
-        const route = await business.modelRoute(
-          signal,
-          config.analysisAgentCode,
-        );
+        const route = await business.modelRoute(signal, config.analysisAgentCode);
         selectedModel = route.models.includes(config.analysisModel)
           ? config.analysisModel
           : route.models[0]!;
@@ -554,8 +657,7 @@ export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> 
           : undefined;
       await ctx.sessionController.selectModel({
         sessionId: session.sessionId,
-        provider:
-          config.analysisMode === "model" ? "gea-analysis" : "gea-proof",
+        provider: config.analysisMode === "model" ? "gea-analysis" : "gea-proof",
         model: selectedModel,
         ...(keptEffort === undefined ? {} : { reasoningEffort: keptEffort }),
       });
@@ -636,8 +738,11 @@ export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> 
             switch (endpoint) {
               case "navigation/poll":
               case "navigation/retry":
-                if (Object.keys(payload).length) throw Error('NAVIGATION_REQUEST_INVALID');
-                value = endpoint === 'navigation/poll' ? await desktopNavigation.poll() : await desktopNavigation.retry();
+                if (Object.keys(payload).length) throw Error("NAVIGATION_REQUEST_INVALID");
+                value =
+                  endpoint === "navigation/poll"
+                    ? await desktopNavigation.poll()
+                    : await desktopNavigation.retry();
                 break;
               case "navigation/finish":
                 value = await desktopNavigation.finish(payload);
@@ -664,10 +769,7 @@ export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> 
                 value = await business.pluginSql(payload, request.signal);
                 break;
               case "workbench/prepare":
-                value = await business.prepareWorkbench(
-                  payload,
-                  request.signal,
-                );
+                value = await business.prepareWorkbench(payload, request.signal);
                 break;
               case "sales-plan/submit":
                 value = await business.salesPlanSubmit(payload, request.signal);
@@ -710,9 +812,17 @@ export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> 
                 business.assertExecutionAllowed(config.analysisAgentCode);
                 if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
                 if (config.analysisMode !== "model") throw new Error("GEA_ADVICE_MODEL_REQUIRED");
-                if (typeof payload.question !== "string" || !payload.question.trim() || Buffer.byteLength(payload.question) > config.inputByteBudget)
+                if (
+                  typeof payload.question !== "string" ||
+                  !payload.question.trim() ||
+                  Buffer.byteLength(payload.question) > config.inputByteBudget
+                )
                   throw new Error("INVALID_ADVICE_INPUT");
-                const signal = AbortSignal.any([request.signal, business.identitySignal(), AbortSignal.timeout(config.modelRequestTimeoutMs)]);
+                const signal = AbortSignal.any([
+                  request.signal,
+                  business.identitySignal(),
+                  AbortSignal.timeout(config.modelRequestTimeoutMs),
+                ]);
                 let model = config.analysisModel;
                 if (config.analysisSource === "gea") {
                   const route = await business.modelRoute(signal, config.analysisAgentCode);
@@ -720,44 +830,72 @@ export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> 
                 }
                 let answer = "";
                 let finished = false;
-                for await (const chunk of ctx.llm.stream({ provider: "gea-analysis", model,
-                  messages: [createUserMessage({ source: {kind: "user"}, content: [{ type: "text", text: payload.question }] })],
-                  maxTokens: 4096, signal })) {
+                for await (const chunk of ctx.llm.stream({
+                  provider: "gea-analysis",
+                  model,
+                  messages: [
+                    createUserMessage({
+                      source: { kind: "user" },
+                      content: [{ type: "text", text: payload.question }],
+                    }),
+                  ],
+                  maxTokens: 4096,
+                  signal,
+                })) {
                   signal.throwIfAborted();
                   if (chunk.type === "text-delta") answer += chunk.text;
-                  if (Buffer.byteLength(answer) > config.maxSnapshotBytes) throw new Error("GEA_ADVICE_TOO_LARGE");
+                  if (Buffer.byteLength(answer) > config.maxSnapshotBytes)
+                    throw new Error("GEA_ADVICE_TOO_LARGE");
                   if (chunk.type === "finish") finished = chunk.reason.kind === "stop";
                 }
                 signal.throwIfAborted();
                 if (!finished) throw new Error("GEA_ADVICE_INCOMPLETE");
-                value = {status: answer.trim() ? "ok" : "noAnswer", provider_id: "gea-analysis", model, answer};
+                value = {
+                  status: answer.trim() ? "ok" : "noAnswer",
+                  provider_id: "gea-analysis",
+                  model,
+                  answer,
+                };
                 break;
               }
               case "model/discover": {
-                if (!business.status().authenticated) throw new Error('LOGIN_REQUIRED');
-                const requestedPreset=payload.agentPreset;
-                if(requestedPreset !== undefined && (typeof requestedPreset !== "string" || !profileFor(requestedPreset)))throw Error("GEA_AGENT_PRESET_UNSUPPORTED");
-                await assertBusinessResourceAvailable(ctx, typeof requestedPreset === "string" ? requestedPreset : undefined, request.signal);
-                const discoveryConsumer=typeof requestedPreset === "string" && requestedPreset !== "gea-readonly"?profileFor(requestedPreset)!.consumerCode:config.analysisAgentCode;
-                const route = config.analysisSource === 'direct' ? {models:[config.analysisModel],names:{[config.analysisModel]:config.analysisModel}} : await business.modelRoute(
+                if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
+                const requestedPreset = payload.agentPreset;
+                if (
+                  requestedPreset !== undefined &&
+                  (typeof requestedPreset !== "string" || !profileFor(requestedPreset))
+                )
+                  throw Error("GEA_AGENT_PRESET_UNSUPPORTED");
+                await assertBusinessResourceAvailable(
+                  ctx,
+                  typeof requestedPreset === "string" ? requestedPreset : undefined,
                   request.signal,
-                  discoveryConsumer,
                 );
+                const discoveryConsumer =
+                  typeof requestedPreset === "string" && requestedPreset !== "gea-readonly"
+                    ? profileFor(requestedPreset)!.consumerCode
+                    : config.analysisAgentCode;
+                const route =
+                  config.analysisSource === "direct"
+                    ? {
+                        models: [config.analysisModel],
+                        names: { [config.analysisModel]: config.analysisModel },
+                      }
+                    : await business.modelRoute(request.signal, discoveryConsumer);
                 const selected = route.models.includes(config.analysisModel)
                   ? config.analysisModel
                   : route.models[0]!;
                 request.signal.throwIfAborted();
                 // saveSelection 是整体覆盖：不带上已选档位就会把用户的档位选择清掉。
-                const kept = geaKeptReasoningEffort(
-                  ctx.agentDefaultModel.currentSelection(),
-                );
-                if(requestedPreset === undefined)await ctx.agentDefaultModel.saveSelection({
-                  provider: "gea-analysis",
-                  model: selected,
-                  ...(kept === undefined ? {} : { reasoningEffort: kept }),
-                });
+                const kept = geaKeptReasoningEffort(ctx.agentDefaultModel.currentSelection());
+                if (requestedPreset === undefined)
+                  await ctx.agentDefaultModel.saveSelection({
+                    provider: "gea-analysis",
+                    model: selected,
+                    ...(kept === undefined ? {} : { reasoningEffort: kept }),
+                  });
                 value = {
-                  ...(requestedPreset===undefined?{}:{consumerCode:discoveryConsumer}),
+                  ...(requestedPreset === undefined ? {} : { consumerCode: discoveryConsumer }),
                   models: route.models,
                   selected,
                   names: route.names,
@@ -801,14 +939,18 @@ export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> 
               default:
                 throw new Error("UNKNOWN_ENDPOINT");
             }
-            await desktopLogin.flush(); await webLogin.flush();
-            return Response.json(
-              { ok: true, value },
-              { headers: { "Cache-Control": "no-store" } },
-            );
-          } catch (error) {
+            await desktopLogin.flush();
+            await webLogin.flush();
+            return Response.json({ ok: true, value }, { headers: { "Cache-Control": "no-store" } });
+          } catch (caughtError) {
+            let error = caughtError;
             // 业务操作失败时也可能同时发现登录过期并清除身份。
-            try { await desktopLogin.flush(); await webLogin.flush(); } catch (storageError) { error = storageError; }
+            try {
+              await desktopLogin.flush();
+              await webLogin.flush();
+            } catch (storageError) {
+              error = storageError;
+            }
             return Response.json(
               { ok: false, error: errorEnvelope(error) },
               { headers: { "Cache-Control": "no-store" } },

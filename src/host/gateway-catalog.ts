@@ -1,5 +1,5 @@
 /** GEA 网关语义模型的紧凑目录：把 inspect 产物压到模型能一次读完的大小。 */
-import { monthEncoding, salesQueryGuide } from './sales-result-contract.ts';
+import { monthEncoding, salesQueryGuide } from "./sales-result-contract.ts";
 
 import {
   rankByName,
@@ -10,7 +10,8 @@ import {
 
 /** 从 MCP 工具结果里取出文本。 */
 export function contentText(message: unknown): string {
-  const content = (message as { content?: Array<{ type?: string; text?: string }> } | undefined)?.content;
+  const content = (message as { content?: Array<{ type?: string; text?: string }> } | undefined)
+    ?.content;
   if (!Array.isArray(content)) return "";
   return content
     .filter((part) => part?.type === "text" && typeof part.text === "string")
@@ -68,7 +69,9 @@ export function rowsFromPayload(payload: unknown): Array<Record<string, unknown>
       : null;
   if (payload === null || typeof payload !== "object") return null;
   const record = payload as Record<string, unknown>;
-  const direct = rowsFromPayload(record.rows ?? record.records ?? record.data ?? record.result ?? []);
+  const direct = rowsFromPayload(
+    record.rows ?? record.records ?? record.data ?? record.result ?? [],
+  );
   return direct;
 }
 
@@ -115,24 +118,48 @@ export function rowsFromText(text: string): Array<Record<string, unknown>> | nul
 }
 
 /** 样本观察只描述本次返回，不从少量空值推断整张表不可用。 */
-export function noteMemberSamples(notes: Map<string, string>, rows: readonly Record<string, unknown>[], dimensions: readonly string[]): void {
+export function noteMemberSamples(
+  notes: Map<string, string>,
+  rows: readonly Record<string, unknown>[],
+  dimensions: readonly string[],
+): void {
   for (const member of dimensions) {
-    if (!member.includes('.')) continue;
-    const values = rows.map(row => row[member]).filter(value => value !== undefined);
+    if (!member.includes(".")) continue;
+    const values = rows.map((row) => row[member]).filter((value) => value !== undefined);
     if (!values.length) continue;
-    const unique = [...new Set(values.filter(value => value !== null && String(value).trim() !== '').map(String))];
+    const unique = [
+      ...new Set(
+        values.filter((value) => value !== null && String(value).trim() !== "").map(String),
+      ),
+    ];
     notes.delete(member);
-    if (!unique.length) notes.set(member, `本次 ${values.length} 行样本均为空；不能据此断定全量为空`);
-    else if (unique.length === 1) notes.set(member, `本次 ${values.length} 行样本只见「${unique[0].slice(0, 20)}」；不代表全量分布`);
+    if (!unique.length)
+      notes.set(member, `本次 ${values.length} 行样本均为空；不能据此断定全量为空`);
+    else if (unique.length === 1)
+      notes.set(
+        member,
+        `本次 ${values.length} 行样本只见「${unique[0].slice(0, 20)}」；不代表全量分布`,
+      );
     while (notes.size > 200) notes.delete(notes.keys().next().value!);
   }
 }
 
 /** 对无观察标注的缓存正文补上最新观察；成员名已在目录中不代表已有观察。 */
-export function appendMemberSamples(text: string, notes: ReadonlyMap<string, string>, model?: string): string {
+export function appendMemberSamples(
+  text: string,
+  notes: ReadonlyMap<string, string>,
+  model?: string,
+): string {
   const selected = [...notes].filter(([member]) => !model || member.startsWith(`${model}.`));
   if (!selected.length) return text;
-  return text + '\n取值观察（仅本轮样本）：' + selected.slice(0, 6).map(([member,note]) => `${member} — ${note}`).join('；');
+  return (
+    text +
+    "\n取值观察（仅本轮样本）：" +
+    selected
+      .slice(0, 6)
+      .map(([member, note]) => `${member} — ${note}`)
+      .join("；")
+  );
 }
 
 /**
@@ -197,8 +224,7 @@ export function sampleRowsByDataset(
   const rowsOf = (value: unknown): Array<Record<string, unknown>> =>
     Array.isArray(value)
       ? value.filter(
-          (row): row is Record<string, unknown> =>
-            row !== null && typeof row === "object",
+          (row): row is Record<string, unknown> => row !== null && typeof row === "object",
         )
       : [];
   const out = new Map<string, Array<Record<string, unknown>>>();
@@ -237,7 +263,10 @@ export function sampleRowsByDataset(
 }
 
 /** 解析第一段完整 JSON 对象：工具结果常常是 JSON + 尾部提示文本。 */
-export function parseFirstJsonObject(text: string, parse: (text: string) => unknown = JSON.parse): unknown {
+export function parseFirstJsonObject(
+  text: string,
+  parse: (text: string) => unknown = JSON.parse,
+): unknown {
   const start = text.indexOf("{");
   if (start < 0) throw new Error("GEA_CATALOG_NOT_JSON");
   let depth = 0;
@@ -269,14 +298,28 @@ export function parseFirstJsonObject(text: string, parse: (text: string) => unkn
 
 /** Small factual reminder drawn only from a successful catalog, not from model guesses. */
 export function catalogFactSummary(text: string): string {
-  if (!text.startsWith('GEA 网关语义模型成员')) return '';
-  const skuMembers = [...new Set(text.match(/[A-Za-z_][\w]*\.(?:material_code|material_name|sku_code|sku_name)\b/g) ?? [])].slice(0, 8);
-  const units = text.split('\n').filter(line => /语义：/.test(line) && /单位/.test(line))
-    .sort((a,b)=>Number(/_count\b/.test(a))-Number(/_count\b/.test(b)))
-    .slice(0, 4).map(line => line.trim().slice(0, 230));
-  return skuMembers.length || units.length ? JSON.stringify({returnedSkuMembers:skuMembers,returnedMeasureSemantics:units}) : '';
+  if (!text.startsWith("GEA 网关语义模型成员")) return "";
+  const skuMembers = [
+    ...new Set(
+      text.match(/[A-Za-z_][\w]*\.(?:material_code|material_name|sku_code|sku_name)\b/g) ?? [],
+    ),
+  ].slice(0, 8);
+  const units = text
+    .split("\n")
+    .filter((line) => /语义：/.test(line) && /单位/.test(line))
+    .sort((a, b) => Number(/_count\b/.test(a)) - Number(/_count\b/.test(b)))
+    .slice(0, 4)
+    .map((line) => line.trim().slice(0, 230));
+  return skuMembers.length || units.length
+    ? JSON.stringify({ returnedSkuMembers: skuMembers, returnedMeasureSemantics: units })
+    : "";
 }
-type Member = { name?: string; type?: string; description?: string; meta?: {unit?: string; ai_context?: string} };
+type Member = {
+  name?: string;
+  type?: string;
+  description?: string;
+  meta?: { unit?: string; ai_context?: string };
+};
 type Model = {
   name?: string;
   title?: string;
@@ -324,10 +367,7 @@ const typeTag = (entry: { name: string; type?: string }): string => {
 };
 
 /** 标好类型的成员名清单，供明细与索引共用。 */
-function taggedMembers(
-  model: Model,
-  key: "dimensions" | "measures" | "segments",
-): string[] {
+function taggedMembers(model: Model, key: "dimensions" | "measures" | "segments"): string[] {
   return memberEntriesOf(model, key).map(typeTag);
 }
 
@@ -378,7 +418,8 @@ export function projectCatalog(
   const maxChars = options.maxChars ?? 12_000;
   const consumers = options.consumers;
   const filter = options.model?.trim();
-  if (!filter && !options.members?.length) return modelIndex(models, maxChars, consumers, options.memberNotes);
+  if (!filter && !options.members?.length)
+    return modelIndex(models, maxChars, consumers, options.memberNotes);
   const detailBudget = {
     maxMembers: options.maxMembersPerModel ?? 120,
     maxChars,
@@ -386,7 +427,11 @@ export function projectCatalog(
     ...(consumers ? { consumers } : {}),
     ...(options.memberNotes?.size ? { memberNotes: options.memberNotes } : {}),
   };
-  const exact = models.filter(model => model.name === filter || (!filter && options.members?.some(member => member.startsWith(model.name + '.'))));
+  const exact = models.filter(
+    (model) =>
+      model.name === filter ||
+      (!filter && options.members?.some((member) => member.startsWith(model.name + "."))),
+  );
   if (exact.length) return modelDetails(exact, detailBudget);
   if (!filter) return modelIndex(models, maxChars, consumers, options.memberNotes);
   const ranked = rankByName(filter, models.map(catalogCandidate), { limit: MATCH_LIMIT + 8 });
@@ -460,7 +505,9 @@ function weakMatch(
   return [
     `「${filter}」不是任何一个模型名：model 只填模型名（英文标识）或它的子串；业务词先不带 model 调一次看完整索引。`,
     "下面这些是按内容最像的（像的程度从高到低），先按第一个给你明细：",
-    ...shown.map((match) => `- ${match.id}：${match.field.label}命中「${match.field.text.slice(0, 60)}」`),
+    ...shown.map(
+      (match) => `- ${match.id}：${match.field.label}命中「${match.field.text.slice(0, 60)}」`,
+    ),
     modelDetails(picked(models, shown), budget),
     `其它候选：${rest.map((match) => match.id).join("、") || "（没有更像的了）"}`,
     "（想看全部模型：不带 model 再调一次。）",
@@ -499,12 +546,10 @@ function measureHint(model: Model): string {
     const at = name.lastIndexOf(".");
     return at > 0 ? name.slice(at + 1) : name;
   });
-  const countOnly = short.length === 1 && short[0] === 'row_count';
+  const countOnly = short.length === 1 && short[0] === "row_count";
   return (
     `（度量：${short.join("、")}` +
-    (countOnly
-      ? "；只有行数度量，不能用于金额或数量合计"
-      : "") +
+    (countOnly ? "；只有行数度量，不能用于金额或数量合计" : "") +
     "）"
   );
 }
@@ -517,8 +562,7 @@ function modelIndex(
   /** 成员取值可用性（实测）：带 model 的明细用，索引里只摘该模型的已知缺口。 */
   memberNotes?: ReadonlyMap<string, string>,
 ): string {
-  const header =
-    "GEA 网关语义模型索引（成员名可直接用于 Cube 查询，形如 模型.字段）：";
+  const header = "GEA 网关语义模型索引（成员名可直接用于 Cube 查询，形如 模型.字段）：";
   /**
    * 该模型的已知缺口（最多两条）：把"某列实测全为空串/只有一个取值"这类结论提前写在索引里，
    * 模型第一次读索引就能排除，不用一个模型一个模型去试。
@@ -597,12 +641,25 @@ function modelDetails(
   for (const model of models) {
     const name = model.name ?? "";
     const selected = options.members?.length ? new Set(options.members) : undefined;
-    const selectedModel = selected ? {...model, ...Object.fromEntries(MEMBER_KEYS.map(key => [key, (model[key] ?? []).filter(member => selected.has(member.name ?? ''))]))} : model;
+    const selectedModel = selected
+      ? {
+          ...model,
+          ...Object.fromEntries(
+            MEMBER_KEYS.map((key) => [
+              key,
+              (model[key] ?? []).filter((member) => selected.has(member.name ?? "")),
+            ]),
+          ),
+        }
+      : model;
     const dimensions = taggedMembers(selectedModel, "dimensions");
     const measures = taggedMembers(selectedModel, "measures");
     const segments = taggedMembers(selectedModel, "segments");
     const parts = [`- ${name}${model.title && model.title !== name ? `（${model.title}）` : ""}`];
-    if (selected) parts.push(`  定向成员视图：仅展示本次请求的成员，未列出不代表不存在或无权限。该模型共${(model.dimensions??[]).length}个维度、${(model.measures??[]).length}个度量；要完整目录请带model不带members。`);
+    if (selected)
+      parts.push(
+        `  定向成员视图：仅展示本次请求的成员，未列出不代表不存在或无权限。该模型共${(model.dimensions ?? []).length}个维度、${(model.measures ?? []).length}个度量；要完整目录请带model不带members。`,
+      );
     const description = (model.description ?? "").replace(/\s+/g, " ").trim();
     if (description) parts.push(`  说明：${description.slice(0, 160)}`);
     const consumerCode = options.consumers?.get(name);
@@ -611,32 +668,61 @@ function modelDetails(
         `  查询通道：consumerCode=${consumerCode}（调 gea_cube_query 时带它；当前快照有资源级授权，字段与业务行范围仍需执行校验）`,
       );
     if (dimensions.length)
-      parts.push(`  维度(${dimensions.length})：${dimensions.slice(0, options.maxMembers).join(", ")}`);
+      parts.push(
+        `  维度(${dimensions.length})：${dimensions.slice(0, options.maxMembers).join(", ")}`,
+      );
     if (measures.length)
       parts.push(`  度量(${measures.length})：${measures.slice(0, options.maxMembers).join(", ")}`);
-    else if (selected && (model.measures?.length ?? 0)>0)
-      parts.push(`  本次未选择度量；模型已有${model.measures!.length}个度量，不能据此判模型无度量。`);
+    else if (selected && (model.measures?.length ?? 0) > 0)
+      parts.push(
+        `  本次未选择度量；模型已有${model.measures!.length}个度量，不能据此判模型无度量。`,
+      );
     else
       // 一个 measure 都没有的 cube：数值字段也是维度，写进 measures 会被上游拒掉整批查询。
-      parts.push("  度量：无（这个模型没有定义 measure：所有成员一律放 dimensions，数值字段也不要写进 measures）");
+      parts.push(
+        "  度量：无（这个模型没有定义 measure：所有成员一律放 dimensions，数值字段也不要写进 measures）",
+      );
     if (segments.length)
       parts.push(`  分段(${segments.length})：${segments.slice(0, options.maxMembers).join(", ")}`);
-    const semanticMembers = selected ? MEMBER_KEYS.flatMap(key => selectedModel[key] ?? []) : model.measures ?? [];
+    const semanticMembers = selected
+      ? MEMBER_KEYS.flatMap((key) => selectedModel[key] ?? [])
+      : (model.measures ?? []);
     const omitted: string[] = [];
     let semanticChars = 0;
-    const semantics = semanticMembers.filter(member=>typeof member?.name === "string")
-      .sort((a,b)=>Number(/_count$/.test(a.name!))-Number(/_count$/.test(b.name!))).map(member=>{
-        const notes=[member.description,member.meta?.unit?`单位：${member.meta.unit}`:undefined,member.meta?.ai_context]
-          .filter((text): text is string=>typeof text === "string" && !!text.trim());
+    const semantics = semanticMembers
+      .filter((member) => typeof member?.name === "string")
+      .sort((a, b) => Number(a.name!.endsWith("_count")) - Number(b.name!.endsWith("_count")))
+      .map((member) => {
+        const notes = [
+          member.description,
+          member.meta?.unit ? `单位：${member.meta.unit}` : undefined,
+          member.meta?.ai_context,
+        ].filter((text): text is string => typeof text === "string" && !!text.trim());
         const month = monthEncoding(member.name!);
-        if (month) notes.push(`月份文本格式：${month.includes('-')?'YYYY-MM（7字符）':'YYYYMM（6字符）'}，示例${month}`);
-        const line = notes.length ? `  ${member.name} 语义：${[...new Set(notes)].join('；').replace(/\s+/g,' ')}` : '';
-        if (!selected && semanticChars + line.length > Math.max(1500, options.maxChars - parts.join('\n').length - 1500)) { omitted.push(member.name!); return ''; }
+        if (month)
+          notes.push(
+            `月份文本格式：${month.includes("-") ? "YYYY-MM（7字符）" : "YYYYMM（6字符）"}，示例${month}`,
+          );
+        const line = notes.length
+          ? `  ${member.name} 语义：${[...new Set(notes)].join("；").replace(/\s+/g, " ")}`
+          : "";
+        if (
+          !selected &&
+          semanticChars + line.length >
+            Math.max(1500, options.maxChars - parts.join("\n").length - 1500)
+        ) {
+          omitted.push(member.name!);
+          return "";
+        }
         semanticChars += line.length;
         return line;
-      }).filter(Boolean);
+      })
+      .filter(Boolean);
     parts.push(...semantics);
-    if (omitted.length) parts.push(`  另有${omitted.length}项说明未展开：${omitted.join('、')}。用gea_gateway_catalog(model="${name}", members=[所需完整成员名])定向读取。`);
+    if (omitted.length)
+      parts.push(
+        `  另有${omitted.length}项说明未展开：${omitted.join("、")}。用gea_gateway_catalog(model="${name}", members=[所需完整成员名])定向读取。`,
+      );
     const guide = salesQueryGuide(name);
     if (guide) parts.push(`  查询规则：${guide}`);
     // 实测过的"这列取不到可用值"直接写在成员清单里：省掉模型"一个模型一个模型试"的过程

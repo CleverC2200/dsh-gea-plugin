@@ -17,9 +17,7 @@ test("registered regional, category and MPS mock resources authorize only their 
       pageId,
       consumer,
       mock: true,
-      ...(id === "plan-regional"
-        ? { resourceRoot: "../dsh-agent-workbench/static/regional" }
-        : {}),
+      ...(id === "plan-regional" ? { resourceRoot: "../dsh-agent-workbench/static/regional" } : {}),
     });
     assert.ok(h.resources.has(`gea-html-${id}`));
     assert.ok(h.adapters.has(pageId));
@@ -59,7 +57,7 @@ async function fixture(t, options = {}) {
       id,
       name: "Original page",
       html: "index.html",
-      pages: [{id: pageId, name: "Original page", view: ""}],
+      pages: [{ id: pageId, name: "Original page", view: "" }],
       skills: ["SKILL.md"],
       mcp: "mcp.json",
       ...(options.mock ? { mode: "mock" } : {}),
@@ -77,7 +75,7 @@ async function fixture(t, options = {}) {
     }),
   );
   await currentHtmlResource(directory);
-  if (options.resourceRoot) await cp(options.resourceRoot, directory, {recursive: true});
+  if (options.resourceRoot) await cp(options.resourceRoot, directory, { recursive: true });
   const manifest = JSON.parse(await readFile(join(directory, "plugin.json"), "utf8"));
   const packages = [{ directory, htmlPath: join(directory, "index.html"), manifest }];
   if (options.second) {
@@ -88,7 +86,7 @@ async function fixture(t, options = {}) {
     const m = {
       ...manifest,
       id: "inventory-other",
-      pages: [{id: "inventory-other", name: "Other interpreter", view: ""}],
+      pages: [{ id: "inventory-other", name: "Other interpreter", view: "" }],
       name: "Other interpreter",
       gea: { ...manifest.gea, consumerCode: "other-consumer" },
     };
@@ -199,7 +197,8 @@ async function fixture(t, options = {}) {
     identities,
     routes,
     dispose,
-    authorize: (signal = new AbortController().signal) => adapters.get(pageId)(session, preset, signal),
+    authorize: (signal = new AbortController().signal) =>
+      adapters.get(pageId)(session, preset, signal),
     changeIdentity() {
       identity.abort();
       identity = new AbortController();

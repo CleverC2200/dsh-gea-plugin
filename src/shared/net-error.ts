@@ -32,7 +32,9 @@ function causeOf(error: unknown): string | undefined {
   const syscall = text(cause.syscall);
   const host = text(cause.hostname) ?? text(cause.address);
   if (syscall || host)
-    parts.push(`(${[syscall, host].filter(Boolean).join(" ")}${text(cause.port) ? ":" + text(cause.port) : ""})`);
+    parts.push(
+      `(${[syscall, host].filter(Boolean).join(" ")}${text(cause.port) ? ":" + text(cause.port) : ""})`,
+    );
   if (!code) {
     const message = text(cause.message);
     if (message) parts.push(message);
@@ -74,7 +76,7 @@ export function networkError(
       : undefined;
   if (abortish !== undefined && !isTimeout(abortish)) return readableError(abortish);
   const coded = (error as { code?: unknown })?.code;
-  if (typeof coded === "string" && coded.trim() && !/^ERR_/.test(coded))
+  if (typeof coded === "string" && coded.trim() && !coded.startsWith("ERR_"))
     return readableError(error);
 
   const stage = context.stage ? `${context.stage}阶段` : "";
@@ -83,8 +85,10 @@ export function networkError(
     return Object.assign(
       new Error(
         `${NETWORK_TIMEOUT_CODE}: ${context.what}请求达到总时限${context.timeoutMs ? `（${Math.round(context.timeoutMs / 1000)} 秒）` : ""}，本轮未完成。` +
-        (context.stage === "流式读取" ? "已收到响应，但未在总时限内生成完毕；这不代表连续无输出。" : "等待模型响应时超时。") +
-        "仅凭超时不能确定是模型生成、网关还是网络耗时；请结合请求日志核对。",
+          (context.stage === "流式读取"
+            ? "已收到响应，但未在总时限内生成完毕；这不代表连续无输出。"
+            : "等待模型响应时超时。") +
+          "仅凭超时不能确定是模型生成、网关还是网络耗时；请结合请求日志核对。",
       ),
       { code: NETWORK_TIMEOUT_CODE, cause: error },
     );

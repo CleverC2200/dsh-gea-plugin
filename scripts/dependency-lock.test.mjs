@@ -1,11 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,9 +14,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 
 test("GEA and the pinned workbench resolve the same Cordis instance", () => {
   const fromRoot = createRequire(join(root, "package.json"));
-  const fromWorkbench = createRequire(
-    fromRoot.resolve("@cleverc2200/dsh-agent-workbench"),
-  );
+  const fromWorkbench = createRequire(fromRoot.resolve("@cleverc2200/dsh-agent-workbench"));
   assert.equal(
     fromRoot.resolve("@deepseek-ai/cordis"),
     fromWorkbench.resolve("@deepseek-ai/cordis"),
@@ -34,9 +27,7 @@ test(
   async (t) => {
     const fixture = await mkdtemp(join(tmpdir(), "gea-explicit-install-"));
     t.after(() => rm(fixture, { recursive: true, force: true }));
-    const manifest = JSON.parse(
-      await readFile(join(root, "package.json"), "utf8"),
-    );
+    const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
     await writeFile(
       join(fixture, "package.json"),
       JSON.stringify({
@@ -47,9 +38,7 @@ test(
         scripts: { probe: "node -e \"console.log('UNEXPECTED_SCRIPT_RUN')\"" },
       }),
     );
-    const workspace = YAML.parse(
-      await readFile(join(root, "pnpm-workspace.yaml"), "utf8"),
-    );
+    const workspace = YAML.parse(await readFile(join(root, "pnpm-workspace.yaml"), "utf8"));
     await writeFile(
       join(fixture, "pnpm-workspace.yaml"),
       YAML.stringify({ verifyDepsBeforeRun: workspace.verifyDepsBeforeRun }),

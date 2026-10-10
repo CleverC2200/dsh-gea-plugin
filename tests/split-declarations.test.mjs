@@ -22,7 +22,7 @@ async function fixture(t) {
     consumerCode: "probe-consumer",
     maxEffect: "view",
   };
-  const { view, ...capability } = legacy;
+  const { view: _view, ...capability } = legacy;
   const declarations = { page: "page.json", capability: "capability.json" };
   const save = async () => {
     await writeFile(join(root, "page.json"), JSON.stringify(page));
@@ -41,10 +41,7 @@ test("分离声明进入现有目录，页面关联与只读权限和旧声明�
   );
   const legacy = f.legacy;
   const registry = createCapabilityRegistry([split]);
-  assert.deepEqual(
-    registry.modules(),
-    createCapabilityRegistry([legacy]).modules(),
-  );
+  assert.deepEqual(registry.modules(), createCapabilityRegistry([legacy]).modules());
   assert.equal(registry.byConsumer("probe-consumer").id, "inventory-probe");
   assert.equal(registry.allows("gea-html-inventory-probe", "view"), true);
   assert.equal(registry.allows("gea-html-inventory-probe", "draft"), false);
@@ -127,21 +124,14 @@ for (const [name, change, code] of [
     const f = await fixture(t);
     change(f);
     await f.save();
-    await assert.rejects(
-      readPluginContract(f.root, f.declarations, f.legacy),
-      code,
-    );
+    await assert.rejects(readPluginContract(f.root, f.declarations, f.legacy), code);
   });
 
 test("旧契约和新契约冲突时带双方来源拒绝，非法等级不进入白名单", async (t) => {
   const f = await fixture(t);
   const one = await readPluginContract(f.root, f.declarations, f.legacy);
   assert.throws(
-    () =>
-      createCapabilityRegistry([
-        one,
-        { ...f.legacy, source: "old/plugin.json" },
-      ]),
+    () => createCapabilityRegistry([one, { ...f.legacy, source: "old/plugin.json" }]),
     /DUPLICATE_CAPABILITY_CONTRACT.*page.json.*old\/plugin.json/,
   );
   assert.throws(
@@ -190,10 +180,7 @@ test("重复安装声明在发布 Skill、预设和路由之前被拒绝", async
       capabilities: ["governed-sql-read"],
     }),
   );
-  await writeFile(
-    join(f.root, "index.html"),
-    "<html><body>probe</body></html>",
-  );
+  await writeFile(join(f.root, "index.html"), "<html><body>probe</body></html>");
   await writeFile(
     join(f.root, "SKILL.md"),
     "---\nname: inventory-probe\ndescription: probe\n---\n",
@@ -220,9 +207,7 @@ test("重复安装声明在发布 Skill、预设和路由之前被拒绝", async
         [1, 2].map(async () => ({
           directory: f.root,
           htmlPath: join(f.root, "index.html"),
-          manifest: JSON.parse(
-            await readFile(join(f.root, "plugin.json"), "utf8"),
-          ),
+          manifest: JSON.parse(await readFile(join(f.root, "plugin.json"), "utf8")),
         })),
       ),
     ),

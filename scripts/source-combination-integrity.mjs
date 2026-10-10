@@ -18,8 +18,7 @@ export async function resourceDigests(directory, prefix = "", readScope) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
     const file = join(directory, entry.name);
-    if (entry.isDirectory())
-      Object.assign(files, await resourceDigests(file, relative, readScope));
+    if (entry.isDirectory()) Object.assign(files, await resourceDigests(file, relative, readScope));
     else if (entry.isSymbolicLink()) {
       if (readScope) await readScope.resolve(file, { traverse: true });
       files[relative] = "link:" + (await realpath(file));
@@ -30,21 +29,13 @@ export async function resourceDigests(directory, prefix = "", readScope) {
 }
 
 /** Reject incomplete snapshots before changing the selected combination. */
-export async function readSourceCombination(
-  runtime,
-  id,
-  core,
-  { readScope } = {},
-) {
+export async function readSourceCombination(runtime, id, core, { readScope } = {}) {
   if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
   const directory = join(runtime, "source-combinations", id);
   const record = JSON.parse(
-    (await readBytes(join(directory, "combination.json"), readScope)).toString(
-      "utf8",
-    ),
+    (await readBytes(join(directory, "combination.json"), readScope)).toString("utf8"),
   );
-  if (record.composition.id !== id)
-    throw Error("SOURCE_COMBINATION_ID_MISMATCH");
+  if (record.composition.id !== id) throw Error("SOURCE_COMBINATION_ID_MISMATCH");
   if (
     core &&
     record.core !==
@@ -62,27 +53,18 @@ export async function readSourceCombination(
     throw Error("INVALID_SOURCE_DEPENDENCIES");
   if (Object.keys(record.composition.dependencies).length) {
     const plugins = JSON.parse(
-      (
-        await readBytes(join(directory, "company-plugins.json"), readScope)
-      ).toString("utf8"),
+      (await readBytes(join(directory, "company-plugins.json"), readScope)).toString("utf8"),
     );
-    for (const [name, version] of Object.entries(
-      record.composition.dependencies,
-    )) {
+    for (const [name, version] of Object.entries(record.composition.dependencies)) {
       if (
-        !/^(?:@[a-zA-Z0-9][a-zA-Z0-9._-]*\/)?[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(
-          name,
-        ) ||
+        !/^(?:@[a-zA-Z0-9][a-zA-Z0-9._-]*\/)?[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(name) ||
         typeof version !== "string" ||
         !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(version)
       )
         throw Error("INVALID_SOURCE_COMPONENT");
       const manifest = JSON.parse(
         (
-          await readBytes(
-            join(directory, "node_modules", name, "package.json"),
-            readScope,
-          )
+          await readBytes(join(directory, "node_modules", name, "package.json"), readScope)
         ).toString("utf8"),
       );
       if (
@@ -102,21 +84,16 @@ export async function readSourceCombination(
       mismatches: changedInputs(actual, record.files),
     });
   const external = await dependencyDigests(record.externalRoots, readScope);
-  for (const file of record.externalLockFiles)
-    external[file] = await fileDigest(file, readScope);
+  for (const file of record.externalLockFiles) external[file] = await fileDigest(file, readScope);
   if (
     JSON.stringify(Object.entries(external).sort()) !==
     JSON.stringify(Object.entries(record.externalFiles).sort())
   )
     throw Object.assign(Error("SOURCE_DEPENDENCY_DIGEST_MISMATCH"), {
-      mismatches: changedInputs(external, record.externalFiles).map(
-        (entry) => ({
-          ...entry,
-          kind: record.externalLockFiles.includes(entry.path)
-            ? "lock"
-            : "external-dependency",
-        }),
-      ),
+      mismatches: changedInputs(external, record.externalFiles).map((entry) => ({
+        ...entry,
+        kind: record.externalLockFiles.includes(entry.path) ? "lock" : "external-dependency",
+      })),
     });
   return record.composition;
 }
@@ -162,9 +139,7 @@ function changedInputs(actual, expected) {
 
 export function clientEntry(manifest) {
   const entry = manifest.exports?.["./client"];
-  return typeof entry === "string"
-    ? entry
-    : (entry?.default ?? "client/client.js");
+  return typeof entry === "string" ? entry : (entry?.default ?? "client/client.js");
 }
 
 export function componentArtifactEntries(manifest) {

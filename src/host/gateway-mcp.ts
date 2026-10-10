@@ -2,10 +2,15 @@
 import { prepareGatewaySession } from "./gateway-session.ts";
 import { createParser } from "eventsource-parser";
 import { readableError, throwIfAborted } from "../shared/abort.ts";
-import { parseAuthorizedResources, type ResourceReader } from './authorized-resources.ts';
-export type GatewayMcpTransport = {url: string; fetch: typeof fetch; authorizedResources: ResourceReader};
+import { parseAuthorizedResources, type ResourceReader } from "./authorized-resources.ts";
+export type GatewayMcpTransport = {
+  url: string;
+  fetch: typeof fetch;
+  authorizedResources: ResourceReader;
+};
 
-const nonempty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+const nonempty = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
 
 /**
  * `Retry-After` 的两种形态都认：秒数（`2`）和 HTTP 日期。
@@ -31,7 +36,13 @@ export async function prepareGatewayMcp(
   const meta = await prepareGatewaySession(base, auth, consumer, identity, timeoutMs, fetchImpl);
   return gatewayMcpTransport(base, meta, identity, timeoutMs, fetchImpl);
 }
-export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversationId:string;delegationToken:string;agentCode?:string}, identity:AbortSignal, timeoutMs:number, fetchImpl:typeof fetch=fetch):GatewayMcpTransport {
+export function gatewayMcpTransport(
+  base: string,
+  meta: { sessionId: string; conversationId: string; delegationToken: string; agentCode?: string },
+  identity: AbortSignal,
+  timeoutMs: number,
+  fetchImpl: typeof fetch = fetch,
+): GatewayMcpTransport {
   const url = base + "/ai/gateway/mcp/proxy/mcp";
   const routes = new Map<string, string>();
   let initializeBody: string | undefined;
@@ -68,10 +79,16 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
     }
     const session = response.headers.get("MCP-Session-Id");
     const result = await response.json();
-    if (!session || result.error || result.result?.protocolVersion !== headers.get("MCP-Protocol-Version"))
+    if (
+      !session ||
+      result.error ||
+      result.result?.protocolVersion !== headers.get("MCP-Protocol-Version")
+    )
       throw new Error("GEA_MCP_RECONNECT_REJECTED: 网关协议已变化，请重新登录建立连接。");
     headers.set("MCP-Session-Id", session);
-    const ready = await send({ method: "POST", headers,
+    const ready = await send({
+      method: "POST",
+      headers,
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
     });
     await ready.body?.cancel();
@@ -104,12 +121,7 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
           "GEA_MCP_LOCAL_RESOURCE: 本地 Skill 参考文件请使用 skill_reference_read，传入技能名和正文链接的相对路径；MCP 只读取该服务返回的资源 URI。",
         );
       if (
-        [
-          "tools/list",
-          "tools/call",
-          "resources/list",
-          "resources/read",
-        ].includes(message.method)
+        ["tools/list", "tools/call", "resources/list", "resources/read"].includes(message.method)
       ) {
         // 完全替换调用方提供的身份；绝不把它写入业务参数。
         message.params = { ...message.params, _meta: meta };
@@ -122,7 +134,8 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
       body = JSON.stringify(message);
     }
     const headers = new Headers(init?.headers);
-    if (transportSession && method !== "initialize") headers.set("MCP-Session-Id", transportSession);
+    if (transportSession && method !== "initialize")
+      headers.set("MCP-Session-Id", transportSession);
     const sentSession = headers.get("MCP-Session-Id");
     let res = await send({ ...init, headers, body });
     if (method === "initialize" && res.ok) {
@@ -130,10 +143,18 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
       transportSession = res.headers.get("MCP-Session-Id") ?? undefined;
     }
     // 传输层 404 会在业务执行前拒绝请求；只对这一种情况恢复一次，绝不重试有歧义的网络失败或业务错误。
-    if (res.status === 404 && init?.method === "POST" && method !== "initialize" && sentSession && initializeBody) {
+    if (
+      res.status === 404 &&
+      init?.method === "POST" &&
+      method !== "initialize" &&
+      sentSession &&
+      initializeBody
+    ) {
       await res.body?.cancel();
       if (sentSession === transportSession) {
-        reconnect ??= restore(new Headers(headers)).finally(() => { reconnect = undefined; });
+        reconnect ??= restore(new Headers(headers)).finally(() => {
+          reconnect = undefined;
+        });
         await reconnect;
       }
       throwIfAborted(identity);
@@ -162,7 +183,9 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
           },
         );
       }
-      throw new Error(`GEA_MCP_HTTP_${res.status}: 网关请求被拒绝，请检查连接或重新登录；不要原样重复调用。`);
+      throw new Error(
+        `GEA_MCP_HTTP_${res.status}: 网关请求被拒绝，请检查连接或重新登录；不要原样重复调用。`,
+      );
     }
     if (discovery && res.ok) {
       const text = await res.clone().text();
@@ -178,11 +201,8 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
       for (const value of messages) {
         if (!value || typeof value !== "object") continue;
         const reply = value as { id?: unknown; result?: { tools?: unknown } };
-        if (reply.id !== discovery.id || !Array.isArray(reply.result?.tools))
-          continue;
-        const next = discovery.firstPage
-          ? new Map<string, string>()
-          : new Map(routes);
+        if (reply.id !== discovery.id || !Array.isArray(reply.result?.tools)) continue;
+        const next = discovery.firstPage ? new Map<string, string>() : new Map(routes);
         for (const tool of reply.result.tools) {
           const code = tool?._meta?.sourceCode;
           if (!nonempty(tool?.name) || !nonempty(code))
@@ -198,25 +218,41 @@ export function gatewayMcpTransport(base:string, meta:{sessionId:string;conversa
     return res;
   };
   const authorizedResources: ResourceReader = async (toolName, signal) => {
-    throwIfAborted(identity); throwIfAborted(signal);
+    throwIfAborted(identity);
+    throwIfAborted(signal);
     const mcpCode = routes.get(toolName);
-    if (!mcpCode) throw Error('GEA_MCP_TOOL_ROUTE_REQUIRED');
-    const response = await fetchImpl(base + '/ai/gateway/mcp/proxy/resources', {
-      method: 'POST', redirect: 'error',
-      headers: {'Content-Type': 'application/json', Accept: 'application/json'},
-      body: JSON.stringify({...meta, mcpCode, toolName}),
+    if (!mcpCode) throw Error("GEA_MCP_TOOL_ROUTE_REQUIRED");
+    const response = await fetchImpl(base + "/ai/gateway/mcp/proxy/resources", {
+      method: "POST",
+      redirect: "error",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ ...meta, mcpCode, toolName }),
       signal: AbortSignal.any([identity, signal, AbortSignal.timeout(timeoutMs)]),
     });
-    throwIfAborted(identity); throwIfAborted(signal);
+    throwIfAborted(identity);
+    throwIfAborted(signal);
     if (response.status === 429) {
       const retryAfter = retryAfterMs(response.headers);
       await response.body?.cancel();
-      throw Object.assign(Error(`GEA_RESOURCE_DISCOVERY_RATE_LIMITED: ${retryAfter === undefined ? '遵循 Retry-After' : '至少等待 '+Math.ceil(retryAfter/1000)+' 秒'}，停止本次资源发现，不立即重试。`), {retryAfterMs: retryAfter});
+      throw Object.assign(
+        Error(
+          `GEA_RESOURCE_DISCOVERY_RATE_LIMITED: ${retryAfter === undefined ? "遵循 Retry-After" : "至少等待 " + Math.ceil(retryAfter / 1000) + " 秒"}，停止本次资源发现，不立即重试。`,
+        ),
+        { retryAfterMs: retryAfter },
+      );
     }
-    if (!response.ok) { await response.body?.cancel(); throw Error('GEA_RESOURCE_DISCOVERY_HTTP_' + response.status); }
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw Error("GEA_RESOURCE_DISCOVERY_HTTP_" + response.status);
+    }
     let payload: unknown;
-    try { payload = await response.json(); } catch { throw Error('GEA_RESOURCE_DISCOVERY_INVALID_JSON'); }
-    throwIfAborted(identity); throwIfAborted(signal);
+    try {
+      payload = await response.json();
+    } catch {
+      throw Error("GEA_RESOURCE_DISCOVERY_INVALID_JSON");
+    }
+    throwIfAborted(identity);
+    throwIfAborted(signal);
     return parseAuthorizedResources(payload, `MCP_TOOL:${mcpCode}:${toolName}`);
   };
   return { url, fetch: gatewayFetch, authorizedResources };

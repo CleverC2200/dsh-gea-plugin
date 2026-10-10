@@ -495,9 +495,7 @@
       "declaredEntries": 34,
       "fullStandardRetained": true,
       "byteEqualStandard": false,
-      "allowedPersonaPrefixExtension": [
-        "/persona"
-      ]
+      "allowedPersonaPrefixExtension": ["/persona"]
     },
     {
       "id": "gea-html-inventory-qll",
@@ -506,9 +504,7 @@
       "declaredEntries": 34,
       "fullStandardRetained": true,
       "byteEqualStandard": false,
-      "allowedPersonaPrefixExtension": [
-        "/persona"
-      ]
+      "allowedPersonaPrefixExtension": ["/persona"]
     },
     {
       "id": "gea-html-inventory-fc",
@@ -517,9 +513,7 @@
       "declaredEntries": 34,
       "fullStandardRetained": true,
       "byteEqualStandard": false,
-      "allowedPersonaPrefixExtension": [
-        "/persona"
-      ]
+      "allowedPersonaPrefixExtension": ["/persona"]
     },
     {
       "id": "gea-html-inventory-dealer",
@@ -528,9 +522,7 @@
       "declaredEntries": 34,
       "fullStandardRetained": true,
       "byteEqualStandard": false,
-      "allowedPersonaPrefixExtension": [
-        "/persona"
-      ]
+      "allowedPersonaPrefixExtension": ["/persona"]
     },
     {
       "id": "gea-html-inventory-apsplan",
@@ -539,9 +531,7 @@
       "declaredEntries": 34,
       "fullStandardRetained": true,
       "byteEqualStandard": false,
-      "allowedPersonaPrefixExtension": [
-        "/persona"
-      ]
+      "allowedPersonaPrefixExtension": ["/persona"]
     },
     {
       "id": "gea-readonly",
@@ -550,9 +540,7 @@
       "declaredEntries": 34,
       "fullStandardRetained": true,
       "byteEqualStandard": false,
-      "allowedPersonaPrefixExtension": [
-        "/persona"
-      ]
+      "allowedPersonaPrefixExtension": ["/persona"]
     }
   ],
   "presets": [

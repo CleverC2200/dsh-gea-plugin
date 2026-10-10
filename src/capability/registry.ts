@@ -10,11 +10,7 @@ import {
   type CapabilityContract,
   type CapabilityEffect,
 } from "./contract.ts";
-import {
-  layerForEffect,
-  layersForContract,
-  type CapabilityLayer,
-} from "./layers.ts";
+import { layerForEffect, layersForContract, type CapabilityLayer } from "./layers.ts";
 import { truncateText } from "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget";
 
 export type CapabilityRegistry = {
@@ -82,29 +78,18 @@ export function createCapabilityRegistry(
   for (const contract of contracts) {
     const source = contract.source ?? contract.id;
     if (!CAPABILITY_EFFECTS.includes(contract.maxEffect))
-      throw Error(
-        `INVALID_CAPABILITY_EFFECT: ${contract.maxEffect} [source: ${source}]`,
-      );
+      throw Error(`INVALID_CAPABILITY_EFFECT: ${contract.maxEffect} [source: ${source}]`);
     if (contract.data && !CONSUMER_PATTERN.test(contract.data.consumerCode))
-      throw Error(
-        `INVALID_CONSUMER_CODE: ${contract.data.consumerCode} [source: ${source}]`,
-      );
+      throw Error(`INVALID_CONSUMER_CODE: ${contract.data.consumerCode} [source: ${source}]`);
     claim(byId, contract.id, contract, "DUPLICATE_CAPABILITY_CONTRACT");
     if (contract.view) {
-      claim(
-        surfaces,
-        contract.view.surface,
-        contract,
-        "DUPLICATE_CAPABILITY_SURFACE",
-      );
+      claim(surfaces, contract.view.surface, contract, "DUPLICATE_CAPABILITY_SURFACE");
       for (const page of contract.view.pageIds)
         claim(pages, page, contract, "DUPLICATE_CAPABILITY_PAGE");
     }
   }
-  const ordered = () =>
-    [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
-  const enabled = () =>
-    ordered().filter((contract) => contract.enabled !== false);
+  const ordered = () => [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+  const enabled = () => ordered().filter((contract) => contract.enabled !== false);
   const surfaceOf = (contract: CapabilityContract) => contract.view?.surface;
 
   return {
@@ -116,42 +101,29 @@ export function createCapabilityRegistry(
         .filter((surface): surface is string => typeof surface === "string"),
     draftSurfaces: () =>
       enabled()
-        .filter(
-          (contract) => effectRank(contract.maxEffect) >= effectRank("draft"),
-        )
+        .filter((contract) => effectRank(contract.maxEffect) >= effectRank("draft"))
         .map(surfaceOf)
         .filter((surface): surface is string => typeof surface === "string"),
-    readModules: () =>
-      enabled().filter((contract) => contract.data !== undefined),
+    readModules: () => enabled().filter((contract) => contract.data !== undefined),
     byConsumer: (consumerCode) =>
-      enabled().find(
-        (contract) => contract.data?.consumerCode === consumerCode,
-      ),
+      enabled().find((contract) => contract.data?.consumerCode === consumerCode),
     route: (text) => {
       const haystack = text.toLowerCase();
       const hits: Array<{ contract: CapabilityContract; score: number }> = [];
       for (const contract of enabled()) {
-        const keywords = [
-          ...(contract.routing.keywords ?? []),
-          contract.label,
-          contract.id,
-        ].filter((keyword) => keyword.length >= 2);
+        const keywords = [...(contract.routing.keywords ?? []), contract.label, contract.id].filter(
+          (keyword) => keyword.length >= 2,
+        );
         let score = 0;
-        for (const keyword of keywords)
-          if (haystack.includes(keyword.toLowerCase())) score += 1;
+        for (const keyword of keywords) if (haystack.includes(keyword.toLowerCase())) score += 1;
         if (score > 0) hits.push({ contract, score });
       }
       return hits
-        .sort(
-          (a, b) =>
-            b.score - a.score || a.contract.id.localeCompare(b.contract.id),
-        )
+        .sort((a, b) => b.score - a.score || a.contract.id.localeCompare(b.contract.id))
         .map((hit) => hit.contract);
     },
     readToolIndex: () => {
-      const modules = enabled().filter(
-        (contract) => contract.data !== undefined,
-      );
+      const modules = enabled().filter((contract) => contract.data !== undefined);
       if (modules.length === 0) return "（当前没有可直读的业务模块）";
       // 渐进式暴露：只给"模块名 + 编码 + 一句话 + 表名关键词"，列、配方、口径仍用
       // describe=true 按需取。表名关键词是选模块的关键信号：线上实测模型为了找
@@ -161,8 +133,7 @@ export function createCapabilityRegistry(
         .map((contract) => {
           const data = contract.data!;
           const tables = data.tables.slice(0, 3).map(shortTableName).join("、");
-          const more =
-            data.tables.length > 3 ? ` 等 ${data.tables.length} 张` : "";
+          const more = data.tables.length > 3 ? ` 等 ${data.tables.length} 张` : "";
           // 演示模块要标出来：它的数字是原型数据、没有真实通道，调它只会拿到
           // mock-module 提示并被计进"白跑总账"（线上实测 6 次就到上限停手）。
           const mock =
@@ -192,12 +163,8 @@ export function createCapabilityRegistry(
       ordered().map((contract) => ({
         id: contract.id,
         label: contract.label,
-        ...(contract.view === undefined
-          ? {}
-          : { surface: contract.view.surface }),
-        ...(contract.data === undefined
-          ? {}
-          : { consumerCode: contract.data.consumerCode }),
+        ...(contract.view === undefined ? {} : { surface: contract.view.surface }),
+        ...(contract.data === undefined ? {} : { consumerCode: contract.data.consumerCode }),
         pageIds: contract.view?.pageIds ?? [],
       })),
   };

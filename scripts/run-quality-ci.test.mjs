@@ -69,6 +69,7 @@ test("the workflow binds full source history and the same public quality command
   assert.equal((workflow.match(/fetch-depth: 0/g) ?? []).length, 5);
   assert.equal((workflow.match(/persist-credentials: false/g) ?? []).length, 5);
   assert.match(workflow, /node scripts\/run-quality-ci.mjs --prepare-sdk.*--prepare-inputs/);
+  assert.match(readFileSync("scripts/run-quality-ci.mjs", "utf8"), /APS_BUILD_MODE: ["']mock["']/);
   assert.match(workflow, /if: always\(\)/);
   assert.match(workflow, /needs: \[candidate-scope, gates\]/);
   assert.match(workflow, /run: node scripts\/run-quality-ci.mjs --phase final/);

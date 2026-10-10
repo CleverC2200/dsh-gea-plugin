@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 const built = await build({
-  stdin: { contents: "export {Business} from './src/host/business.ts'; export {createCapabilityRegistry} from './src/capability/registry.ts'", resolveDir: process.cwd() },
+  stdin: {
+    contents:
+      "export {Business} from './src/host/business.ts'; export {createCapabilityRegistry} from './src/capability/registry.ts'",
+    resolveDir: process.cwd(),
+  },
   bundle: true,
   packages: "external",
   write: false,
@@ -38,7 +42,18 @@ function fixture(t) {
       username: "test",
     },
   });
-  business.setCapabilities(module.exports.createCapabilityRegistry([{id:"stock",label:"Stock",maxEffect:"view",skills:[],routing:{keywords:[],summary:"Stock"},data:{consumerCode:"base-safety-stock",tables:[],rules:[]}}]));
+  business.setCapabilities(
+    module.exports.createCapabilityRegistry([
+      {
+        id: "stock",
+        label: "Stock",
+        maxEffect: "view",
+        skills: [],
+        routing: { keywords: [], summary: "Stock" },
+        data: { consumerCode: "base-safety-stock", tables: [], rules: [] },
+      },
+    ]),
+  );
   t.after(() => business.dispose());
   return business;
 }

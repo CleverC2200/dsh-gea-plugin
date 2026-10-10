@@ -75,10 +75,7 @@ test("both entries accept the same Consumer and keep login credentials in the Ho
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
       });
       assert.ok(!JSON.stringify(calls[1]).includes("login-secret"));
-      assert.equal(
-        JSON.parse(calls[1].init.body).params._meta.sessionId,
-        "session",
-      );
+      assert.equal(JSON.parse(calls[1].init.body).params._meta.sessionId, "session");
     }
   }
 });
@@ -114,17 +111,10 @@ test("both entries discard an allowed late response after identity revocation", 
   for (const entry of entries) {
     const identity = new AbortController();
     await assert.rejects(
-      entry(
-        "https://gateway.invalid",
-        auth,
-        consumer,
-        identity.signal,
-        1000,
-        async () => {
-          identity.abort(new Error("identity revoked"));
-          return Response.json(payload());
-        },
-      ),
+      entry("https://gateway.invalid", auth, consumer, identity.signal, 1000, async () => {
+        identity.abort(new Error("identity revoked"));
+        return Response.json(payload());
+      }),
       /identity revoked/,
     );
   }

@@ -74,11 +74,7 @@ export const sourcePlugins = [
 export async function corePackages(core) {
   const packages = [];
   for await (const file of glob(
-    [
-      "packages/*/*/package.json",
-      "apps/*/package.json",
-      "vendor/*/package.json",
-    ],
+    ["packages/*/*/package.json", "apps/*/package.json", "vendor/*/package.json"],
     { cwd: core },
   )) {
     packages.push({

@@ -1,13 +1,6 @@
 /** One read scope for delivery metadata, Git objects, source and canonical artifact validation. */
 import { realpath, lstat, readFile } from "node:fs/promises";
-import {
-  resolve,
-  relative,
-  isAbsolute,
-  dirname,
-  basename,
-  join,
-} from "node:path";
+import { resolve, relative, isAbsolute, dirname, basename, join } from "node:path";
 const fail = (code) => {
   throw Error(code);
 };
@@ -58,15 +51,12 @@ export async function createReadScope(root, persistentRefs = []) {
     if (unresolved) fail("INTEGRITY_PERSISTENT_SCOPE_UNRESOLVED");
     if (
       protectedPaths.some(
-        (protectedPath) =>
-          within(protectedPath, path) ||
-          (traverse && within(path, protectedPath)),
+        (protectedPath) => within(protectedPath, path) || (traverse && within(path, protectedPath)),
       )
     )
       fail("INTEGRITY_PERSISTENT_OVERLAP");
     if (!within(root, path)) fail("INTEGRITY_INPUT_OUTSIDE_ROOT");
-    if (sensitive(relative(root, path)))
-      fail("INTEGRITY_SOURCE_SCOPE_UNSUPPORTED");
+    if (sensitive(relative(root, path))) fail("INTEGRITY_SOURCE_SCOPE_UNSUPPORTED");
   }
   async function location(path, { traverse = false } = {}) {
     if (typeof path !== "string") fail("INTEGRITY_SOURCE_SCOPE_UNSUPPORTED");
@@ -77,17 +67,14 @@ export async function createReadScope(root, persistentRefs = []) {
     // realpath cannot expose other hardlink names. Do not read or traverse a
     // file whose independent scope cannot be proved without scanning Session.
     const info = await lstat(physical);
-    if (info.isFile() && info.nlink !== 1)
-      fail("INTEGRITY_MULTILINK_UNVERIFIABLE");
+    if (info.isFile() && info.nlink !== 1) fail("INTEGRITY_MULTILINK_UNVERIFIABLE");
     return physical;
   }
   async function read(path, limit = 16 * 1024 * 1024) {
     const file = await location(path, { traverse: true }),
       info = await lstat(file);
-    if (info.isFile() && info.nlink !== 1)
-      fail("INTEGRITY_MULTILINK_UNVERIFIABLE");
-    if (!info.isFile() || info.size > limit)
-      fail("INTEGRITY_INPUT_UNSUPPORTED");
+    if (info.isFile() && info.nlink !== 1) fail("INTEGRITY_MULTILINK_UNVERIFIABLE");
+    if (!info.isFile() || info.size > limit) fail("INTEGRITY_INPUT_UNSUPPORTED");
     const bytes = await readFile(file);
     if (bytes.length > limit) fail("INTEGRITY_INPUT_UNSUPPORTED");
     return bytes;

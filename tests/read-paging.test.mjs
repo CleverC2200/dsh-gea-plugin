@@ -16,10 +16,7 @@ import { profile, readSession, until } from "./profile.mjs";
 const CONTEXT_WINDOW = 32768;
 const MAX_TOKENS = 2048;
 const MAX_SNAPSHOT_BYTES = 100000;
-const INPUT_BUDGET = Math.min(
-  MAX_SNAPSHOT_BYTES,
-  CONTEXT_WINDOW - MAX_TOKENS - 1000,
-);
+const INPUT_BUDGET = Math.min(MAX_SNAPSHOT_BYTES, CONTEXT_WINDOW - MAX_TOKENS - 1000);
 
 const planId = "p-paging-0001";
 const versionId = planId + "-1";
@@ -130,9 +127,7 @@ test(
       const body = JSON.parse(req.body);
       modelRequests.push(body);
       res.setHeader("Content-Type", "text/event-stream");
-      const toolResults = body.messages.filter(
-        (message) => message.role === "tool",
-      ).length;
+      const toolResults = body.messages.filter((message) => message.role === "tool").length;
       if (toolResults === 0) {
         const next = scripted.shift();
         assert.ok(next, "脚本耗尽：多跑了一轮对话");
@@ -187,21 +182,12 @@ test(
     await ask();
 
     const toolPayloads = modelRequests
-      .filter((body) =>
-        body.messages.some((message) => message.role === "tool"),
-      )
-      .map((body) =>
-        String(
-          body.messages.find((message) => message.role === "tool").content,
-        ),
-      );
+      .filter((body) => body.messages.some((message) => message.role === "tool"))
+      .map((body) => String(body.messages.find((message) => message.role === "tool").content));
     assert.equal(toolPayloads.length, 2, "应当有两轮工具结果");
     for (const payload of toolPayloads) {
       assert.equal(payload.includes("SNAPSHOT_TOO_LARGE"), false);
-      assert.ok(
-        Buffer.byteLength(payload, "utf8") <= INPUT_BUDGET,
-        "工具结果超过输入预算",
-      );
+      assert.ok(Buffer.byteLength(payload, "utf8") <= INPUT_BUDGET, "工具结果超过输入预算");
     }
 
     const first = JSON.parse(toolPayloads[0]).value;
@@ -209,10 +195,7 @@ test(
     assert.equal(first.offset, 0);
     assert.equal(first.records.length, 5);
     assert.deepEqual(first.nextQuery, { versionId, offset: 5, pageSize: 5 });
-    assert.ok(
-      first.note.includes("nextQuery"),
-      "提示没有指向下一页: " + first.note,
-    );
+    assert.ok(first.note.includes("nextQuery"), "提示没有指向下一页: " + first.note);
     assert.equal(JSON.parse(toolPayloads[0]).coverage, "partial");
     // 投影只留模型需要的字段，不带版本内内部标识。
     assert.deepEqual(Object.keys(first.records[0]).sort(), [
@@ -329,9 +312,7 @@ test(
       const body = JSON.parse(req.body);
       modelRequests.push(body);
       res.setHeader("Content-Type", "text/event-stream");
-      const toolResults = body.messages.filter(
-        (message) => message.role === "tool",
-      );
+      const toolResults = body.messages.filter((message) => message.role === "tool");
       const latest = toolResults.length
         ? JSON.parse(String(toolResults.at(-1).content))
         : undefined;
@@ -343,9 +324,7 @@ test(
         );
         delivered.push(...latest.value.records);
       }
-      const nextQuery = latest
-        ? latest.value.nextQuery
-        : { versionId, pageNo: 1, pageSize: 50 };
+      const nextQuery = latest ? latest.value.nextQuery : { versionId, pageNo: 1, pageSize: 50 };
       if (nextQuery)
         res.end(
           event(
@@ -387,9 +366,7 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
 
-    const toolMessage = modelRequests[1].messages.find(
-      (message) => message.role === "tool",
-    );
+    const toolMessage = modelRequests[1].messages.find((message) => message.role === "tool");
     const payload = String(toolMessage.content);
     const bytes = Buffer.byteLength(payload, "utf8");
     console.log("宽 SKU 工具结果字节数:", bytes, "预算:", 4300);
@@ -403,10 +380,7 @@ test(
       assert.equal(projected.projection, "partial");
       assert.match(projected.evidenceId, /^ev-/);
       const original = JSON.parse(
-        await readFile(
-          `${app.runtime}/prompt-evidence/${projected.evidenceId}.txt`,
-          "utf8",
-        ),
+        await readFile(`${app.runtime}/prompt-evidence/${projected.evidenceId}.txt`, "utf8"),
       );
       assert.equal(
         original.value.records.length,
@@ -421,17 +395,7 @@ test(
     });
     assert.deepEqual(
       delivered.map((row) => row.skuCode),
-      [
-        "100000",
-        "100001",
-        "100002",
-        "100003",
-        "100004",
-        "100005",
-        "100006",
-        "100007",
-        "100008",
-      ],
+      ["100000", "100001", "100002", "100003", "100004", "100005", "100006", "100007", "100008"],
     );
     assert.equal(delivered[4].qty, null);
     const last = JSON.parse(

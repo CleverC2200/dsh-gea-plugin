@@ -1,81 +1,297 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { supportedCores, coreIdentity, sdkPeerRange, sdkVersion } from './supported-cores.mjs';
-import { artifactSetSha256, validateRuntimeObservation, bindReception } from './plugin-reception/contract.mjs';
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { supportedCores, coreIdentity, sdkPeerRange, sdkVersion } from "./supported-cores.mjs";
+import {
+  artifactSetSha256,
+  validateRuntimeObservation,
+  bindReception,
+} from "./plugin-reception/contract.mjs";
 
-const fixture = async name => JSON.parse(await readFile(new URL(`./fixtures/plugin-reception/${name}.json`, import.meta.url), 'utf8'));
-test('actual first package candidate cannot pass with its missing APS resource', async () => {
-  const runtime = await fixture('observe-02');
-  assert.throws(() => validateRuntimeObservation(runtime), /RECEPTION_RESOURCE_NOT_READY:gea-html-inventory-apsplan/);
+const fixture = async (name) =>
+  JSON.parse(
+    await readFile(new URL(`./fixtures/plugin-reception/${name}.json`, import.meta.url), "utf8"),
+  );
+test("actual first package candidate cannot pass with its missing APS resource", async () => {
+  const runtime = await fixture("observe-02");
+  assert.throws(
+    () => validateRuntimeObservation(runtime),
+    /RECEPTION_RESOURCE_NOT_READY:gea-html-inventory-apsplan/,
+  );
 });
-test('actual first candidate sales resource cannot pass even after APS is supplied', async () => {
-  const runtime = await fixture('observe-02');
-  runtime.resources.push({ id: 'gea-html-inventory-apsplan', kind: 'prompt', enabled: true, error: false, missingSkills: [] });
-  assert.throws(() => validateRuntimeObservation(runtime), /RECEPTION_RESOURCE_NOT_READY:gea-readonly/);
+test("actual first candidate sales resource cannot pass even after APS is supplied", async () => {
+  const runtime = await fixture("observe-02");
+  runtime.resources.push({
+    id: "gea-html-inventory-apsplan",
+    kind: "prompt",
+    enabled: true,
+    error: false,
+    missingSkills: [],
+  });
+  assert.throws(
+    () => validateRuntimeObservation(runtime),
+    /RECEPTION_RESOURCE_NOT_READY:gea-readonly/,
+  );
 });
-test('actual final candidate passes semantic checks, without inventing historical binding', async () => {
-  const runtime = await fixture('observe-03');
+test("actual final candidate passes semantic checks, without inventing historical binding", async () => {
+  const runtime = await fixture("observe-03");
   validateRuntimeObservation(runtime);
   assert.equal(runtime.artifactSetSha256, undefined);
   assert.throws(() => bindReception({}, {}, { observation: runtime }), /RECEPTION_BINDING_INVALID/);
 });
-test('artifact binding ignores paths but includes identities, versions and digests', () => {
-  const set = [{ name: 'x', version: '1', sha256: 'a'.repeat(64), file: '/private/one' }];
-  assert.equal(artifactSetSha256(set), artifactSetSha256([{ ...set[0], file: '/private/two' }]));
-  assert.notEqual(artifactSetSha256(set), artifactSetSha256([{ ...set[0], sha256: 'b'.repeat(64) }]));
+test("artifact binding ignores paths but includes identities, versions and digests", () => {
+  const set = [{ name: "x", version: "1", sha256: "a".repeat(64), file: "/private/one" }];
+  assert.equal(artifactSetSha256(set), artifactSetSha256([{ ...set[0], file: "/private/two" }]));
+  assert.notEqual(
+    artifactSetSha256(set),
+    artifactSetSha256([{ ...set[0], sha256: "b".repeat(64) }]),
+  );
 });
-test('one bound receipt set passes; a different package, profile, or SDK closure fails', async () => {
-  const runtime = await fixture('observe-03');
-  const packages = runtime.plugins.map((row, i) => ({ name: row.name, version: '1.0.0', sha256: String(i + 1).repeat(64) }));
+test("one bound receipt set passes; a different package, profile, or SDK closure fails", async () => {
+  const runtime = await fixture("observe-03");
+  const packages = runtime.plugins.map((row, i) => ({
+    name: row.name,
+    version: "1.0.0",
+    sha256: String(i + 1).repeat(64),
+  }));
   const setHash = artifactSetSha256(packages);
-  const core = { head: '5badb15009ae1756c3afe0ae0cef1faafc290ccc', version: '0.2.1-alpha.1' };
-  const manifest = { status: 'packaged', core, supportedCores: supportedCores.map(coreIdentity), packages };
-  runtime.sdk.forEach(row => { row.peerRange = sdkPeerRange(row.name); });
-  const process = { code: 0, signal: null, timedOut: false, killSent: false, cleanupTimedOut: false, rawOutputPrivateOnly: true };
-  const scope = { nativeRun: false, credentialsReadOrCopied: false, modelTasks: 0, businessQueries: 0 };
-  const install = { ...scope, success: true, mode: 'install', installProcess: process, profile: '/owned/profile', core: '/fixed/core', coreHead: core.head, coreVersion: core.version, artifactSetSha256: setHash, artifacts: packages.map(row => ({ ...row, byteEqual: true, files: 1 })) };
-  const observe = { ...scope, success: true, mode: 'observe', observationProcess: process, profile: install.profile, core: install.core, coreHead: core.head, coreVersion: core.version, observation: { ...runtime, artifactSetSha256: setHash } };
-  const bindings = { expectedCore: install.core, expectedCoreIdentity: core, expectedProfile: install.profile, manifestSha256: 'a'.repeat(64), installSha256: 'b'.repeat(64), observeSha256: 'c'.repeat(64), packageManifests: packages.map(row => ({ name: row.name, peerDependencies: Object.fromEntries(runtime.sdk.filter(sdk => sdk.plugin === row.name).map(sdk => [sdk.name, sdkPeerRange(sdk.name)])) })) };
-  assert.equal(bindReception(manifest, install, observe, bindings).status, 'installed-and-host-observed');
-  const rc2 = supportedCores.find(core => core.version === '0.2.0-rc.2');
-  const rcRuntime = { ...observe.observation, sdk: runtime.sdk.map(row => ({ ...row, version: sdkVersion(rc2, row.name) })) };
+  const core = { head: "5badb15009ae1756c3afe0ae0cef1faafc290ccc", version: "0.2.1-alpha.1" };
+  const manifest = {
+    status: "packaged",
+    core,
+    supportedCores: supportedCores.map(coreIdentity),
+    packages,
+  };
+  runtime.sdk.forEach((row) => {
+    row.peerRange = sdkPeerRange(row.name);
+  });
+  const process = {
+    code: 0,
+    signal: null,
+    timedOut: false,
+    killSent: false,
+    cleanupTimedOut: false,
+    rawOutputPrivateOnly: true,
+  };
+  const scope = {
+    nativeRun: false,
+    credentialsReadOrCopied: false,
+    modelTasks: 0,
+    businessQueries: 0,
+  };
+  const install = {
+    ...scope,
+    success: true,
+    mode: "install",
+    installProcess: process,
+    profile: "/owned/profile",
+    core: "/fixed/core",
+    coreHead: core.head,
+    coreVersion: core.version,
+    artifactSetSha256: setHash,
+    artifacts: packages.map((row) => ({ ...row, byteEqual: true, files: 1 })),
+  };
+  const observe = {
+    ...scope,
+    success: true,
+    mode: "observe",
+    observationProcess: process,
+    profile: install.profile,
+    core: install.core,
+    coreHead: core.head,
+    coreVersion: core.version,
+    observation: { ...runtime, artifactSetSha256: setHash },
+  };
+  const bindings = {
+    expectedCore: install.core,
+    expectedCoreIdentity: core,
+    expectedProfile: install.profile,
+    manifestSha256: "a".repeat(64),
+    installSha256: "b".repeat(64),
+    observeSha256: "c".repeat(64),
+    packageManifests: packages.map((row) => ({
+      name: row.name,
+      peerDependencies: Object.fromEntries(
+        runtime.sdk
+          .filter((sdk) => sdk.plugin === row.name)
+          .map((sdk) => [sdk.name, sdkPeerRange(sdk.name)]),
+      ),
+    })),
+  };
+  assert.equal(
+    bindReception(manifest, install, observe, bindings).status,
+    "installed-and-host-observed",
+  );
+  const rc2 = supportedCores.find((core) => core.version === "0.2.0-rc.2");
+  const rcRuntime = {
+    ...observe.observation,
+    sdk: runtime.sdk.map((row) => ({ ...row, version: sdkVersion(rc2, row.name) })),
+  };
   const rcInstall = { ...install, coreHead: rc2.head, coreVersion: rc2.version };
-  const rcObserve = { ...observe, coreHead: rc2.head, coreVersion: rc2.version, observation: rcRuntime };
-  const rcAcceptance = bindReception(manifest, rcInstall, rcObserve, { ...bindings, expectedCoreIdentity: coreIdentity(rc2) });
+  const rcObserve = {
+    ...observe,
+    coreHead: rc2.head,
+    coreVersion: rc2.version,
+    observation: rcRuntime,
+  };
+  const rcAcceptance = bindReception(manifest, rcInstall, rcObserve, {
+    ...bindings,
+    expectedCoreIdentity: coreIdentity(rc2),
+  });
   assert.deepEqual(rcAcceptance.core, coreIdentity(rc2));
   assert.deepEqual(rcAcceptance.buildCore, core);
-  assert.equal(rcAcceptance.artifactSetSha256, bindReception(manifest, install, observe, bindings).artifactSetSha256);
-  assert.throws(() => bindReception(manifest, { ...rcInstall, coreVersion: core.version }, rcObserve, bindings), /RECEPTION_CORE_INVALID/);
-  assert.throws(() => bindReception(manifest, rcInstall, observe, bindings), /RECEPTION_PROFILE_CORE_MISMATCH/);
-  assert.throws(() => bindReception({ ...manifest, supportedCores: [core] }, install, observe, bindings), /RECEPTION_CORE_INVALID/);
-  for (const change of [{ peerRange: '0.2.1-alpha.1' }, { version: '0.2.1-alpha.2' }, { peerSatisfied: false }, { sameInstallationInstance: false }]) {
-    const badSdk = runtime.sdk.map((row, index) => index === 0 ? { ...row, ...change } : row);
-    assert.throws(() => bindReception(manifest, install, { ...observe, observation: { ...observe.observation, sdk: badSdk } }, bindings), /RECEPTION_SDK_/);
+  assert.equal(
+    rcAcceptance.artifactSetSha256,
+    bindReception(manifest, install, observe, bindings).artifactSetSha256,
+  );
+  assert.throws(
+    () => bindReception(manifest, { ...rcInstall, coreVersion: core.version }, rcObserve, bindings),
+    /RECEPTION_CORE_INVALID/,
+  );
+  assert.throws(
+    () => bindReception(manifest, rcInstall, observe, bindings),
+    /RECEPTION_PROFILE_CORE_MISMATCH/,
+  );
+  assert.throws(
+    () => bindReception({ ...manifest, supportedCores: [core] }, install, observe, bindings),
+    /RECEPTION_CORE_INVALID/,
+  );
+  for (const change of [
+    { peerRange: "0.2.1-alpha.1" },
+    { version: "0.2.1-alpha.2" },
+    { peerSatisfied: false },
+    { sameInstallationInstance: false },
+  ]) {
+    const badSdk = runtime.sdk.map((row, index) => (index === 0 ? { ...row, ...change } : row));
+    assert.throws(
+      () =>
+        bindReception(
+          manifest,
+          install,
+          { ...observe, observation: { ...observe.observation, sdk: badSdk } },
+          bindings,
+        ),
+      /RECEPTION_SDK_/,
+    );
   }
-  assert.equal(bindReception({ ...manifest, status: 'installed-and-host-observed' }, install, observe, bindings).status, 'installed-and-host-observed');
-  assert.throws(() => bindReception({ ...manifest, status: 'ready' }, install, observe, bindings), /RECEPTION_BINDING_INVALID/);
-  assert.throws(() => bindReception(manifest, install, observe, { ...bindings, packageManifests: undefined }), /RECEPTION_DECLARED_SDK_REQUIRED/);
-  assert.throws(() => bindReception({ ...manifest, core: { ...core, version: '0.2.0-rc.2' } }, install, observe, bindings), /RECEPTION_CORE_INVALID/);
-  assert.throws(() => bindReception(manifest, install, { ...observe, profile: '/another/profile' }, bindings), /RECEPTION_PROFILE_CORE_MISMATCH/);
-  for (const value of [undefined, '', 'relative/path']) {
-    assert.throws(() => bindReception(manifest, { ...install, core: value, profile: value }, { ...observe, core: value, profile: value }, bindings), /RECEPTION_ABSOLUTE_BINDING_REQUIRED/);
-    assert.throws(() => bindReception(manifest, install, observe, { ...bindings, expectedCore: value, expectedProfile: value }), /RECEPTION_ABSOLUTE_BINDING_REQUIRED/);
+  assert.equal(
+    bindReception(
+      { ...manifest, status: "installed-and-host-observed" },
+      install,
+      observe,
+      bindings,
+    ).status,
+    "installed-and-host-observed",
+  );
+  assert.throws(
+    () => bindReception({ ...manifest, status: "ready" }, install, observe, bindings),
+    /RECEPTION_BINDING_INVALID/,
+  );
+  assert.throws(
+    () => bindReception(manifest, install, observe, { ...bindings, packageManifests: undefined }),
+    /RECEPTION_DECLARED_SDK_REQUIRED/,
+  );
+  assert.throws(
+    () =>
+      bindReception(
+        { ...manifest, core: { ...core, version: "0.2.0-rc.2" } },
+        install,
+        observe,
+        bindings,
+      ),
+    /RECEPTION_CORE_INVALID/,
+  );
+  assert.throws(
+    () => bindReception(manifest, install, { ...observe, profile: "/another/profile" }, bindings),
+    /RECEPTION_PROFILE_CORE_MISMATCH/,
+  );
+  for (const value of [undefined, "", "relative/path"]) {
+    assert.throws(
+      () =>
+        bindReception(
+          manifest,
+          { ...install, core: value, profile: value },
+          { ...observe, core: value, profile: value },
+          bindings,
+        ),
+      /RECEPTION_ABSOLUTE_BINDING_REQUIRED/,
+    );
+    assert.throws(
+      () =>
+        bindReception(manifest, install, observe, {
+          ...bindings,
+          expectedCore: value,
+          expectedProfile: value,
+        }),
+      /RECEPTION_ABSOLUTE_BINDING_REQUIRED/,
+    );
   }
-  assert.throws(() => bindReception(manifest, install, observe, { ...bindings, expectedProfile: '/another/profile' }), /RECEPTION_PROFILE_CORE_MISMATCH/);
-  assert.throws(() => bindReception(manifest, install, { ...observe, observation: { ...observe.observation, artifactSetSha256: 'f'.repeat(64) } }, bindings), /RECEPTION_ARTIFACT_BINDING_MISSING/);
-  assert.throws(() => bindReception(manifest, install, { ...observe, observation: { ...observe.observation, sdk: runtime.sdk.slice(1) } }, bindings), /RECEPTION_SDK_INCOMPLETE/);
-  assert.throws(() => bindReception(manifest, { ...install, success: false }, observe, bindings), /RECEPTION_RECEIPT_FAILED/);
-  for (const field of ['timedOut', 'killSent', 'cleanupTimedOut']) assert.throws(() => bindReception(manifest, install, { ...observe, observationProcess: { ...process, [field]: true } }, bindings), /RECEPTION_PROCESS_UNSAFE/);
-  assert.throws(() => bindReception(manifest, { ...install, installProcess: undefined }, observe, bindings), /RECEPTION_PROCESS_UNSAFE/);
-  assert.throws(() => bindReception(manifest, install, { ...observe, credentialsReadOrCopied: true }, bindings), /RECEPTION_SCOPE_CHANGED/);
+  assert.throws(
+    () =>
+      bindReception(manifest, install, observe, {
+        ...bindings,
+        expectedProfile: "/another/profile",
+      }),
+    /RECEPTION_PROFILE_CORE_MISMATCH/,
+  );
+  assert.throws(
+    () =>
+      bindReception(
+        manifest,
+        install,
+        { ...observe, observation: { ...observe.observation, artifactSetSha256: "f".repeat(64) } },
+        bindings,
+      ),
+    /RECEPTION_ARTIFACT_BINDING_MISSING/,
+  );
+  assert.throws(
+    () =>
+      bindReception(
+        manifest,
+        install,
+        { ...observe, observation: { ...observe.observation, sdk: runtime.sdk.slice(1) } },
+        bindings,
+      ),
+    /RECEPTION_SDK_INCOMPLETE/,
+  );
+  assert.throws(
+    () => bindReception(manifest, { ...install, success: false }, observe, bindings),
+    /RECEPTION_RECEIPT_FAILED/,
+  );
+  for (const field of ["timedOut", "killSent", "cleanupTimedOut"])
+    assert.throws(
+      () =>
+        bindReception(
+          manifest,
+          install,
+          { ...observe, observationProcess: { ...process, [field]: true } },
+          bindings,
+        ),
+      /RECEPTION_PROCESS_UNSAFE/,
+    );
+  assert.throws(
+    () => bindReception(manifest, { ...install, installProcess: undefined }, observe, bindings),
+    /RECEPTION_PROCESS_UNSAFE/,
+  );
+  assert.throws(
+    () => bindReception(manifest, install, { ...observe, credentialsReadOrCopied: true }, bindings),
+    /RECEPTION_SCOPE_CHANGED/,
+  );
 });
-test('public CLI rejects relative inputs without echoing token text or starting installation', () => {
-  const result = spawnSync(process.execPath, [fileURLToPath(new URL('./plugin-reception.mjs', import.meta.url)), '--manifest', 'relative?token=do-not-echo'], { encoding: 'utf8' });
+test("public CLI rejects relative inputs without echoing token text or starting installation", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL("./plugin-reception.mjs", import.meta.url)),
+      "--manifest",
+      "relative?token=do-not-echo",
+    ],
+    { encoding: "utf8" },
+  );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /^RECEPTION_ABSOLUTE_INPUT_REQUIRED\s*$/);
-  assert.equal(result.stdout, '');
-  assert(!result.stderr.includes('do-not-echo'));
+  assert.equal(result.stdout, "");
+  assert(!result.stderr.includes("do-not-echo"));
 });

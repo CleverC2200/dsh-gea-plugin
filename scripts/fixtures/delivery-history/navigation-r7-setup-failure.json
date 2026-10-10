@@ -7,11 +7,7 @@
   "exitCode": 130,
   "method": "original controller interrupted during startup",
   "ElectronHostObserved": false,
-  "portsAbsent": [
-    49825,
-    49826,
-    49827
-  ],
+  "portsAbsent": [49825, 49826, 49827],
   "businessRequests": "unknown; not assumed zero",
   "modelsAndWrites": "unknown; no UI action performed",
   "accepted": false,
