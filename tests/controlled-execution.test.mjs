@@ -116,7 +116,14 @@ test("business prompt masks keep the selected native ancestor loader and refuse 
       return () => {};
     },
     schemas: () =>
-      ["gea_capabilities", "skill", "gea_cube_query", "run_code"].map((name) => ({ name })),
+      [
+        "gea_capabilities",
+        "skill",
+        "skill_reference_read",
+        "gea_cube_query",
+        "run_code",
+        "gea_unselected_fixture",
+      ].map((name) => ({ name })),
     get: (name, selectedAgent) => {
       assert.equal(selectedAgent, agent, "native loader lookup uses the selected Agent ancestry");
       return native.has(name) ? { name } : undefined;
@@ -139,7 +146,9 @@ test("business prompt masks keep the selected native ancestor loader and refuse 
     tools,
     agents: { get: () => agent },
     sessionProjections: { stateOf: () => preset },
-    agentResources: {list: async () => [{id:"gea-readonly",kind:"prompt",installed:true,enabled:true}]},
+    agentResources: {
+      list: async () => [{ id: "gea-readonly", kind: "prompt", installed: true, enabled: true }],
+    },
     on: (name, fn) => {
       handlers.set(name, fn);
       return () => {};
@@ -162,9 +171,12 @@ test("business prompt masks keep the selected native ancestor loader and refuse 
     kind: "enter",
     messages: [],
   }));
-  assert.ok(mask.allow.includes("skill"));
-  assert.ok(mask.allow.includes("skill_reference_read"));
-  assert.equal(mask.allow.includes("run_code"), false);
+  assert.deepEqual(mask.deny, ["gea_unselected_fixture"]);
+  for (const nativeName of ["skill", "skill_reference_read", "run_code"]) {
+    assert.equal(mask.deny.includes(nativeName), false);
+    assert.equal(guard({ name: nativeName, agent, arguments: {} }), undefined);
+  }
+  assert.equal(mask.deny.includes("gea_cube_query"), false);
   preset = "agent-resource-skill";
   assert.match(
     guard({ name: "gea_cube_query", agent, arguments: {} }),

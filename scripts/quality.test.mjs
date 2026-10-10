@@ -204,8 +204,17 @@ test("the retained official typecheck command refuses a different official HEAD 
   mkdirSync(new URL(".runtime/", root), { recursive: true });
   const directory = mkdtempSync(join(fileURLToPath(root), ".runtime/quality-official-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
-  for (const part of ["gea", "dsh-agent-workbench/scripts", "official/vendor/cordis/lib/types"])
+  for (const part of [
+    "gea",
+    "dsh-agent-workbench/scripts",
+    "dsh-gea-plugin/scripts",
+    "official/vendor/cordis/lib/types",
+  ])
     mkdirSync(join(directory, part), { recursive: true });
+  copyFileSync(
+    new URL("scripts/supported-cores.json", root),
+    join(directory, "dsh-gea-plugin/scripts/supported-cores.json"),
+  );
   const cordis = join(directory, "official/vendor/cordis/lib/types/index.d.ts");
   writeFileSync(cordis, "export {};\n");
   writeFileSync(
