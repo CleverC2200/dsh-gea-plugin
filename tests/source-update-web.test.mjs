@@ -28,7 +28,7 @@ const json = async (path) => JSON.parse(await fs.readFile(path, "utf8"));
 
 test(
   "real profiles load merged component updates and keep history through restart and guarded recovery",
-  { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 600000 },
+  { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 600000, sourceSetupCount: 4 },
   async (t) => {
     await fs.mkdir(parent, { recursive: true });
     let base, baseline, proposalA, proposalB;

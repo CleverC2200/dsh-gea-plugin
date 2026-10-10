@@ -7,7 +7,7 @@ export default function sourceTest(name, options, run) {
     run = options;
     options = {};
   }
-  const { sourceSetupTimeoutMs = setupLimit, ...nodeOptions } = options ?? {};
+  const { sourceSetupTimeoutMs = setupLimit, sourceSetupCount, ...nodeOptions } = options ?? {};
   if (process.env.GEA_TEST_SOURCE_CORE !== "1" || !Number.isFinite(nodeOptions.timeout))
     return nodeTest(name, nodeOptions, run);
   if (
@@ -16,12 +16,17 @@ export default function sourceTest(name, options, run) {
     sourceSetupTimeoutMs > setupLimit
   )
     throw Error("SOURCE_SETUP_LIMIT_INVALID");
+  if (
+    sourceSetupCount !== undefined &&
+    (!Number.isSafeInteger(sourceSetupCount) || sourceSetupCount <= 0)
+  )
+    throw Error("SOURCE_SETUP_COUNT_INVALID");
   const controller = new AbortController();
   return nodeTest(
     name,
     {
       ...nodeOptions,
-      timeout: nodeOptions.timeout + sourceSetupTimeoutMs,
+      timeout: nodeOptions.timeout + (sourceSetupCount ?? 1) * sourceSetupTimeoutMs,
       signal: nodeOptions.signal
         ? AbortSignal.any([nodeOptions.signal, controller.signal])
         : controller.signal,
@@ -30,6 +35,7 @@ export default function sourceTest(name, options, run) {
       let timer, phaseStarted;
       const state = {
         actionRemaining: nodeOptions.timeout,
+        setupRemaining: sourceSetupCount,
         depth: 0,
         phase: "action",
         switchTo(phase) {
@@ -62,6 +68,10 @@ export default function sourceTest(name, options, run) {
 export async function withSourceSetup(t, prepare) {
   t.signal?.throwIfAborted();
   const state = contexts.get(t);
+  if (state?.depth === 0 && state.setupRemaining !== undefined) {
+    if (state.setupRemaining === 0) throw Error("SOURCE_SETUP_COUNT_EXCEEDED");
+    state.setupRemaining--;
+  }
   if (state && state.depth++ === 0) state.switchTo("setup");
   try {
     const result = await prepare();
