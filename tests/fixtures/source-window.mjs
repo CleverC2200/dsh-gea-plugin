@@ -65,6 +65,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
     if (repo === "dsh-agent-workbench") {
       for (const name of [
         "verify-candidate-input.mjs",
+        "candidate-input.mjs",
         "verify-official-input.mjs",
       ])
         await cp(join(sharedWB, "scripts", name), join(root, "scripts", name));
