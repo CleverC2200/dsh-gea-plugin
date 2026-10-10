@@ -540,7 +540,9 @@ async function createProfile(t, options) {
       return api.rpc("login/poll", { loginId: qr.value.loginId });
     },
   };
-  await options.beforeStart?.({ runtime, config, credentialEnv: options.env ?? {} });
+  await (preparation = Promise.resolve(
+    options.beforeStart?.({ runtime, config, credentialEnv: options.env ?? {} }),
+  ));
   await start();
   recordLifecycle({ event: "fixture-actions-available" });
   return api;
