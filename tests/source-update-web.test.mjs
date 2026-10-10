@@ -73,78 +73,80 @@ test(
         await fs.writeFile(baseRecordFile, JSON.stringify(baseRecord, null, 2));
         await selectSourceCombination(runtime, base.id, core);
         baseline = await readSourceUpdateBaseline(runtime, core);
-        const channel = join(runtime, "simulated-channel");
-        await fs.mkdir(channel);
-        const proposals = [];
-        for (const name of [gea, workbench]) {
-          const candidate = await mergeSourceComponents(runtime, base.id, {}, core);
-          const directory = join(runtime, "source-combinations", candidate.id),
-            record = await json(join(directory, "combination.json")),
-            plugins = await json(join(directory, "company-plugins.json"));
-          const pkgFile = join(directory, "node_modules", name, "package.json"),
-            pkg = await json(pkgFile),
-            version = pkg.version.split("-")[0].split(".").map(Number);
-          version[2]++;
-          pkg.version = version.join(".") + (name === workbench ? "" : "-local.10");
-          record.composition.dependencies[name] = pkg.version;
-          plugins[name].version = pkg.version;
-          const pkgBytes = JSON.stringify(pkg, null, 2) + "\n",
-            metadataBytes = JSON.stringify(plugins, null, 2);
-          await fs.writeFile(pkgFile, pkgBytes);
-          await fs.writeFile(join(directory, "company-plugins.json"), metadataBytes);
-          record.files[`node_modules/${name}/package.json`] = digest(pkgBytes);
-          record.files["company-plugins.json"] = digest(metadataBytes);
-          await fs.writeFile(join(directory, "combination.json"), JSON.stringify(record, null, 2));
-          const actual = sourceComponent(record, plugins, name),
-            artifact = join(channel, name === gea ? "gea.json" : "workbench.json"),
-            bytes = JSON.stringify({
-              combination: candidate.id,
-              package: name,
-              manifestSha256: digest(await fs.readFile(join(directory, "combination.json"))),
-            });
-          await fs.writeFile(artifact, bytes);
-          proposals.push({
-            kind: "current-source-update-v1",
-            source: pathToFileURL(join(channel, "catalog.json")).href,
-            baseline,
-            releases: [
-              {
-                package: name,
-                version: actual.version,
-                sha256: actual.sha256,
-                source: actual.source,
-                downloadSha256: digest(bytes),
-                url: pathToFileURL(artifact).href,
-                compatible: {
-                  core: [baseline.core],
-                  interface: "current-unified-v2",
-                  workbench: [],
-                },
-              },
-            ],
-          });
-        }
-        const workbenchVersions = [
-          baseline.components[workbench].version,
-          proposals[1].releases[0].version,
-        ];
-        for (const proposal of proposals)
-          proposal.releases[0].compatible.workbench = workbenchVersions;
-        [proposalA, proposalB] = proposals;
-        await fs.writeFile(
-          join(channel, "catalog.json"),
-          JSON.stringify(
-            {
-              kind: "local-current-source-fixture",
-              proposals,
-              note: "Only package manifest versions change; shipped behavior stays the accepted current interface.",
-            },
-            null,
-            2,
-          ),
-        );
       },
     });
+    async function prepareChannel(runtime) {
+      const channel = join(runtime, "simulated-channel");
+      await fs.mkdir(channel);
+      const proposals = [];
+      for (const name of [gea, workbench]) {
+        const candidate = await mergeSourceComponents(runtime, base.id, {}, core);
+        const directory = join(runtime, "source-combinations", candidate.id),
+          record = await json(join(directory, "combination.json")),
+          plugins = await json(join(directory, "company-plugins.json"));
+        const pkgFile = join(directory, "node_modules", name, "package.json"),
+          pkg = await json(pkgFile),
+          version = pkg.version.split("-")[0].split(".").map(Number);
+        version[2]++;
+        pkg.version = version.join(".") + (name === workbench ? "" : "-local.10");
+        record.composition.dependencies[name] = pkg.version;
+        plugins[name].version = pkg.version;
+        const pkgBytes = JSON.stringify(pkg, null, 2) + "\n",
+          metadataBytes = JSON.stringify(plugins, null, 2);
+        await fs.writeFile(pkgFile, pkgBytes);
+        await fs.writeFile(join(directory, "company-plugins.json"), metadataBytes);
+        record.files[`node_modules/${name}/package.json`] = digest(pkgBytes);
+        record.files["company-plugins.json"] = digest(metadataBytes);
+        await fs.writeFile(join(directory, "combination.json"), JSON.stringify(record, null, 2));
+        const actual = sourceComponent(record, plugins, name),
+          artifact = join(channel, name === gea ? "gea.json" : "workbench.json"),
+          bytes = JSON.stringify({
+            combination: candidate.id,
+            package: name,
+            manifestSha256: digest(await fs.readFile(join(directory, "combination.json"))),
+          });
+        await fs.writeFile(artifact, bytes);
+        proposals.push({
+          kind: "current-source-update-v1",
+          source: pathToFileURL(join(channel, "catalog.json")).href,
+          baseline,
+          releases: [
+            {
+              package: name,
+              version: actual.version,
+              sha256: actual.sha256,
+              source: actual.source,
+              downloadSha256: digest(bytes),
+              url: pathToFileURL(artifact).href,
+              compatible: {
+                core: [baseline.core],
+                interface: "current-unified-v2",
+                workbench: [],
+              },
+            },
+          ],
+        });
+      }
+      const workbenchVersions = [
+        baseline.components[workbench].version,
+        proposals[1].releases[0].version,
+      ];
+      for (const proposal of proposals)
+        proposal.releases[0].compatible.workbench = workbenchVersions;
+      [proposalA, proposalB] = proposals;
+      await fs.writeFile(
+        join(channel, "catalog.json"),
+        JSON.stringify(
+          {
+            kind: "local-current-source-fixture",
+            proposals,
+            note: "Only package manifest versions change; shipped behavior stays the accepted current interface.",
+          },
+          null,
+          2,
+        ),
+      );
+    }
     const state = stockState();
     installStockRoutes(app, state, (body) => {
       const index = body.messages.findLastIndex((message) => message.role === "user"),
@@ -191,6 +193,10 @@ test(
       if (phase !== "baseline") {
         await app.stop();
         if (phase === "gea-updated" || phase === "both-updated") {
+          if (phase === "gea-updated") {
+            await prepareChannel(app.runtime);
+            t.signal.throwIfAborted();
+          }
           const proposal = phase === "gea-updated" ? proposalA : proposalB;
           const result = await applySourceUpdate(app.runtime, proposal, {
             core,
