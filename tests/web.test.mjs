@@ -147,20 +147,7 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    const opened = page.waitForResponse((response) => {
-      if (!response.url().endsWith("/api/agent-workbench/page")) return false;
-      const input = response.request().postDataJSON();
-      return input?.operation === "open" && input.pageId === "gea-workbench";
-    });
-    const [frame, pageReply] = await Promise.all([
-      openSalesPlan(page),
-      opened.then(async (response) => {
-        assert.equal(response.status(), 200);
-        return response.json();
-      }),
-    ]);
-    const owner = pageReply.owner;
-    assert.match(owner, /^[0-9a-f-]{36}$/);
+    const frame = await openSalesPlan(page);
     try {
       await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
       await frame.locator(".gea-login-qr img").waitFor();
@@ -206,8 +193,18 @@ test(
       await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
       await frame.getByRole("radio", { name: "测试", exact: true }).check();
       await frame.locator(".gea-login-qr img").waitFor();
+      const opened = page.waitForResponse((response) => {
+        if (!response.url().endsWith("/api/agent-workbench/page") || !response.ok()) return false;
+        const input = response.request().postDataJSON();
+        return input?.operation === "open" && input.pageId === "gea-proof";
+      });
       allowLogin = true;
-      await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
+      const [pageReply] = await Promise.all([
+        opened.then((response) => response.json()),
+        frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor(),
+      ]);
+      const owner = pageReply.owner;
+      assert.match(owner, /^[0-9a-f-]{36}$/);
       await frame.getByText("华东", { exact: true }).first().waitFor();
       await page.getByRole("navigation", { name: "业务导航", exact: true }).waitFor();
       // 侧栏二级条目要和一级标题左对齐：文字同一竖线，命中区同一左边缘，二级只少一个图标。
