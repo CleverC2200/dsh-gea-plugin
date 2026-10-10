@@ -1,11 +1,18 @@
 /** Official read-only source-combination validation, shared with preparation. */
 import { readFile, readdir, realpath, lstat } from "node:fs/promises";
+import { readFile as readFileCallback } from "node:fs";
+import { promisify } from "node:util";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
+const callbackReadFile = promisify(readFileCallback);
 const readBytes = (file, readScope) =>
-  readScope ? readScope.read(file, 64 * 1024 * 1024) : readFile(file);
+  readScope
+    ? readScope.read(file, 64 * 1024 * 1024)
+    : typeof file === "string" || Buffer.isBuffer(file) || file instanceof URL
+      ? callbackReadFile(file)
+      : readFile(file);
 export const fileDigest = async (file, readScope) =>
   createHash("sha256")
     .update(await readBytes(file, readScope))
