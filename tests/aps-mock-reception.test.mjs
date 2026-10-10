@@ -59,8 +59,8 @@ test("actual APS mock registration and Manage route select its original resource
     external.push(String(input));
     assert.fail("offline public contract must stop before external wire");
   });
-  const { apply: applyManage } = await compiledSource(t, {
-    contents: "export {apply} from './src/index.ts';",
+  const { apply: applyManage, Config } = await compiledSource(t, {
+    contents: "export {apply, Config} from './src/index.ts';",
     source: manage,
     dependencies: manageInput.dependencies,
     parent: root,
@@ -125,12 +125,15 @@ test("actual APS mock registration and Manage route select its original resource
       ctx[name] = value;
     },
     logger: { warn() {} },
+    on(...args) {
+      return real.on(...args);
+    },
     inject(names, callback) {
       if (names.includes("connection")) pending.push(Promise.resolve(callback(ctx)));
     },
   };
   real = new Context();
-  await applyManage(ctx, { geaMcp: false });
+  await applyManage(ctx, Config({ geaMcp: false }));
   await Promise.all(pending);
   real.provide("connection", ctx.connection);
   await real.plugin(Typert);
