@@ -42,7 +42,11 @@ export async function sourceWindow(t, mode) {
     await writeFile(join(root, ".gitignore"), ".runtime/\nnode_modules/\nlib/\n");
     await mkdir(join(root, "scripts"));
     if (repo === "dsh-agent-workbench") {
-      for (const name of ["verify-candidate-input.mjs", "verify-official-input.mjs"])
+      for (const name of [
+        "verify-candidate-input.mjs",
+        "candidate-input.mjs",
+        "verify-official-input.mjs",
+      ])
         await cp(join(sharedWB, "scripts", name), join(root, "scripts", name));
       const original = JSON.parse(await readFile(join(sharedWB, "tsconfig.official.json"), "utf8"));
       const cordis = resolve(sharedWB, original.compilerOptions.paths["@deepseek-ai/cordis"][0]);
@@ -91,7 +95,13 @@ export async function sourceWindow(t, mode) {
   const gea = repositories.find((p) => p.repo === "dsh-gea-plugin").path;
   const candidateFile = join(temporary, "candidate.json");
   const coreSha = git(fixedCore, "rev-parse", "HEAD");
-  await save(candidateFile, { core: coreSha, repositories });
+  const { candidatePackageNames } = await import(
+    pathToFileURL(join(own, "dsh-agent-workbench/scripts/candidate-input.mjs"))
+  );
+  await save(candidateFile, {
+    core: coreSha,
+    repositories: repositories.filter(({ repo }) => Object.hasOwn(candidatePackageNames, repo)),
+  });
   const configFile = join(temporary, "deployment.json");
   await save(configFile, {
     geaBaseUrl: "https://127.0.0.1:1/gea-boot",
