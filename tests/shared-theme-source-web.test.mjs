@@ -129,7 +129,7 @@ test(
       const value = await sample();
       samples.push({ label, ...value });
       if (!baseline) {
-        assert.equal(value.version, '"1.0.0"');
+        assert.equal(value.version, '"1.1.1"');
         assert.equal(value.composer.fontSize, `${size}px`);
         assert.equal(value.shell.fontSize, `${size}px`);
         assert.equal(

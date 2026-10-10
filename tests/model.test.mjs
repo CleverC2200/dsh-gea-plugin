@@ -93,13 +93,20 @@ test(
     // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在
     // 回答里渲染界面；这里显式记录该行为，避免它变成无声的提示词漂移。
     assert.equal(instructions.includes("默认就该出 UI"), false);
+    // 当前受管预设包含 Manage 的参考读取与纯计算、GenUI 的呈现工具。
+    // 工具可见不授予业务权限；完整集合继续拒绝未登记工具。
     assert.deepEqual(body.tools.map((tool) => tool.function.name).sort(), [
+      "forecast_compute",
       "gea_capabilities",
       "gea_cube_query",
       "gea_evidence_read",
       "gea_gateway_catalog",
+      "gea_module_mcp",
       "gea_sales_plan_read",
+      "render_ui",
       "skill",
+      "skill_reference_read",
+      "validate_dsh_ui",
     ]);
     // 默认不允许模型自己写 SQL：受管只读工具不能出现在工具清单里。
     assert.equal(

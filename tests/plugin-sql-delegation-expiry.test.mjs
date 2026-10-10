@@ -1,12 +1,21 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
+import { resolve } from "node:path";
 import { profile } from "./profile.mjs";
+import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
 
 test(
   "expired cached SQL delegation is renewed once without failing the page",
   { timeout: 60000 },
   async (t) => {
-    const app = await profile(t, { bundle: true });
+    const app = await profile(t, {
+      bundle: true,
+      beforeStart: fixtureWorkbench(
+        ["fc", "aqkc", "dealer", "qll", "apsplan", "customer", "orderfulfillment"].map((id) =>
+          resolve(`../dsh-agent-workbench/lib/business/inventory-${id}`),
+        ),
+      ),
+    });
     await app.login();
     let sessions = 0;
     const sqlTokens = [];
@@ -96,7 +105,7 @@ test(
     assert.equal(denied.error?.code, "AI_GATEWAY_DATA_PERMISSION_DENIED");
     assert.equal(sessions, 3);
     assert.equal(sqlTokens.at(-1), "delegation-3");
-    // Each installed SQL consumer uses the same host renewal path. A fresh
+    // Installed real SQL consumers share the host renewal path. A fresh
     // delegation can expire on its first query as well as after being cached.
     failureMode = "first-token-expiry";
     sessionBase = sessions;
@@ -108,16 +117,26 @@ test(
       "customer-inventory-preview",
       "orderfulfillment-preview",
     ]) {
+      const sessionsBefore = sessions,
+        queriesBefore = sqlTokens.length;
       const current = await app.rpc("plugin/sql", {
         consumerCode,
         sql: "SELECT COUNT(*) AS records FROM agents_scm_safety_stock",
         parameters: {},
         resultShape: "rows",
       });
+      if (["customer-inventory-preview", "orderfulfillment-preview"].includes(consumerCode)) {
+        assert.equal(current.error?.code, "GEA_CAPABILITY_MOCK_ONLY");
+        assert.equal(sessions, sessionsBefore);
+        assert.equal(sqlTokens.length, queriesBefore);
+        continue;
+      }
       assert.equal(current.error, undefined, `${consumerCode}: ${JSON.stringify(current.error)}`);
       assert.deepEqual(current.value.rows, [{ records: 1 }]);
+      assert.equal(sessions, sessionsBefore + 2);
+      assert.equal(sqlTokens.length, queriesBefore + 2);
     }
-    assert.equal(sessions, sessionBase + 12);
+    assert.equal(sessions, sessionBase + 8);
     failureMode = "login-expired";
     assert.equal((await query()).error?.code, "GEA_HTTP_401");
     assert.equal((await app.rpc("status")).value.authenticated, false);

@@ -17,6 +17,10 @@ test(
         },
       }),
     });
+    assert.equal((await app.login()).ok, true);
+    const status = await app.rpc("status");
+    assert.equal(status.ok, true);
+    assert.equal(status.value.authenticated, true);
     const browser = await chromium.launch({ headless: true });
     t.after(() => browser.close());
     const context = await browser.newContext({
@@ -53,6 +57,18 @@ test(
     await expect(prototype.locator("aside.ap-dock")).toBeHidden();
     // 右侧会话区跟着这一页换成「主计划参谋」。
     await expect(page.getByText("主生产计划Agent").first()).toBeVisible();
+    const sessionContent = page
+      .locator(".agent-workbench-document:visible")
+      .locator('[data-conversation-content=""]');
+    await expect(sessionContent).toHaveAttribute(
+      "data-conversation-session",
+      /^session-[0-9a-f-]{36}$/,
+    );
+    const sessionId = await sessionContent.getAttribute("data-conversation-session");
+    const selected = await app.remote("session/projections", { sessionId });
+    assert.equal(selected.ok, true);
+    assert.ok(selected.value, "the MPS page must use a real Core Session");
+    assert.equal(selected.value.values.agentPreset, "gea-html-inventory-mps");
     // 已登录时工作台必须落在中间列里，不能铺成整屏登录遮罩。
     const frame = htmlFrameElement(page, "plan-category-production");
     await expect(frame).not.toHaveClass(/gea-login-frame/);
@@ -73,5 +89,17 @@ test(
     await expect(page.locator(".agent-workbench-native-conversation .gea-agent-head")).toHaveCount(
       0,
     );
+    await openBusinessPage(page, "gea-regional-plan");
+    const regionalFrame = htmlFrameElement(page, "gea-regional-plan");
+    await expect(regionalFrame).toBeVisible();
+    await expect(frame).toBeHidden();
+    await openBusinessPage(page, "plan-category-production");
+    await expect(frame).toBeVisible();
+    await expect(regionalFrame).toBeHidden();
+    await expect(sessionContent).toHaveAttribute("data-conversation-session", sessionId);
+    const restored = await app.remote("session/projections", { sessionId });
+    assert.equal(restored.ok, true);
+    assert.ok(restored.value, "returning to the MPS page must retain its Core Session");
+    assert.equal(restored.value.values.agentPreset, "gea-html-inventory-mps");
   },
 );

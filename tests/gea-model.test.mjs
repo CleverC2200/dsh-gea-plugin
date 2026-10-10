@@ -1,13 +1,18 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { profile, readSession, until } from "./profile.mjs";
+import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
 
 test(
   "GEA personal model preserves text and terminal states through the real profile",
   { timeout: 90000 },
   async (t) => {
     const app = await profile(t, {
+      beforeStart: fixtureWorkbench([
+        resolve("../dsh-agent-workbench/lib/business/inventory-apsplan"),
+      ]),
       config: () => ({
         modelRequestTimeoutMs: 1000,
         analysis: {

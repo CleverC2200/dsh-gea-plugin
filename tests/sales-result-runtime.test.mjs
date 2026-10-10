@@ -184,6 +184,7 @@ test(
       cwd: app.runtime + "/workspace",
       agentPreset: "gea-readonly",
     });
+    assert.equal(made.ok, true, JSON.stringify(made));
     const id = made.value.sessionId;
     await app.remote("session/selectModel", {
       sessionId: id,

@@ -76,7 +76,16 @@ test(
     await page.goto(app.origin);
     const frame = await openSalesPlan(page);
     await statusStarted.promise;
-    const projected = () => frame.locator("body").evaluate(() => window.identitySnapshots?.at(-1));
+    let samplingStage = "initial-A-projection";
+    const projected = async () => {
+      try {
+        return await frame.locator("body").evaluate(() => window.identitySnapshots?.at(-1));
+      } catch (error) {
+        throw new Error("NATIVE_IDENTITY_PROJECTION_SAMPLE_FAILED: " + samplingStage, {
+          cause: error,
+        });
+      }
+    };
     await expect.poll(async () => (await projected())?.scope).toBe(authorityA.scope);
     holdIdentity = true;
     await app.rpc("logout");
@@ -86,6 +95,7 @@ test(
     await app.login();
     releaseStatus.resolve();
     await expect.poll(() => statusResponse?.value?.user?.id).toBe(person.id);
+    samplingStage = "after-B-status-before-projection-checks";
     assert.equal(
       (await projected()).scope,
       authorityA.scope,
@@ -114,6 +124,7 @@ test(
       "roles and scope must come from the same Host status",
     );
     holdIdentity = false;
+    samplingStage = "recover-B-projection";
     await expect.poll(async () => (await projected())?.scope).toBe(authorityB.scope);
     await expect(
       page.getByRole("alert").and(page.getByTitle(warning, { exact: true })),

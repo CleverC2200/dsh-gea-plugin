@@ -105,6 +105,7 @@ test(
     const second = await context.newPage();
     await second.goto(app.origin);
     await preparePageStartup(second);
+    await openSalesPlan(second);
     await expect(salesPlanFrameElement(second)).toBeVisible();
     await second.getByRole("button", { name: "账户菜单", exact: true }).click();
     await expect(second.getByRole("menuitem", { name: "退出登录", exact: true })).toBeVisible();
@@ -113,7 +114,6 @@ test(
     await expect(page.getByRole("menu")).toHaveCount(0);
     // The brand no longer switches pages; open a fresh conversation for the second shell.
     await page
-      .getByRole("complementary", { name: "业务导航", exact: true })
       .getByRole("button", { name: "新会话", exact: true })
       .filter({ hasText: "AI工作台" })
       .click();

@@ -5,11 +5,12 @@ import {
   preparePageStartup,
 } from "./fixtures/business-page.mjs";
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
+import { requireSourceInputs } from "../scripts/source-profile.mjs";
 import { profileFor } from "../src/host/prompt-policy.ts";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { profile } from "./profile.mjs";
@@ -26,7 +27,13 @@ test(
       ["inventory-aqkc", "基地库存"],
       ["inventory-fc", "分仓库存"],
     ];
-    const roots = [];
+    const sources = requireSourceInputs(
+      JSON.parse(await readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8")),
+    );
+    const workbench = sources.find((source) => source.repo === "dsh-agent-workbench");
+    const roots = ["regional", "category", "mps"].map((name) =>
+      join(workbench.assets ?? workbench.source, "lib/static", name),
+    );
     for (const [id, name] of htmlPages) {
       const root = join(directory, id);
       roots.push(root);
