@@ -15,5 +15,5 @@ test('ordinary three-package manifest keeps required companions and exact option
     assert.equal(manifest.peerDependenciesMeta?.[name]?.optional,true);
     assert.equal(manifest.dependencies[name],undefined);
   }
-  assert.equal(manifest.peerDependencies['@deepseek-ai/cordis'],'4.0.5-alpha.1');
+  assert.equal(manifest.peerDependencies['@deepseek-ai/cordis'],'4.0.4 || 4.0.5-alpha.1');
 });

@@ -9,14 +9,14 @@ import { createHash } from 'node:crypto';
 const entry = join(import.meta.dirname, 'deliver-packages.mjs');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
-async function requestFixture(t, { missingClient = false, manageRepository = false, runtimeDependency, successfulPackageManager = false } = {}) {
+async function requestFixture(t, { missingClient = false, manageRepository = false, runtimeDependency, successfulPackageManager = false, coreVersion = '0.2.1-alpha.1' } = {}) {
   const work = await mkdtemp(join(tmpdir(), 'delivery-owner-inputs-'));
   t.after(() => rm(work, { recursive: true, force: true }));
-  // Standalone fixtures run a copy of the production CLI with a test-only Core descriptor.
-  // The actual scripts/current-core.json and fixed production preflight are never changed.
+  // Standalone fixtures run a copy of the production CLI with a test-only Core registry.
+  // The actual scripts/supported-cores.json and fixed production preflight are never changed.
   const core = join(work, 'fixture-core');
   await mkdir(core);
-  await writeFile(join(core, 'package.json'), JSON.stringify({ version: '0.2.1-alpha.1' }));
+  await writeFile(join(core, 'package.json'), JSON.stringify({ version: coreVersion }));
   execFileSync('git', ['init', '-q', core]);
   execFileSync('git', ['-C', core, 'add', '.']);
   execFileSync('git', ['-C', core, '-c', 'user.name=Delivery fixture', '-c', 'user.email=delivery@example.invalid', 'commit', '-qm', 'fixture Core']);
@@ -25,14 +25,16 @@ async function requestFixture(t, { missingClient = false, manageRepository = fal
   await mkdir(copiedScripts);
   const fixtureEntry = join(copiedScripts, 'deliver-packages.mjs');
   await copyFile(entry, fixtureEntry);
-  const supported = JSON.parse(await readFile(new URL('./current-core.json', import.meta.url), 'utf8'));
-  await writeFile(join(copiedScripts, 'current-core.json'), JSON.stringify({ ...supported, upstream: coreHead, adaptation: coreHead }));
+  const supported = JSON.parse(await readFile(new URL('./supported-cores.json', import.meta.url), 'utf8'));
+  supported.find(core => core.version === coreVersion).head = coreHead;
+  await copyFile(join(import.meta.dirname, 'supported-cores.mjs'), join(copiedScripts, 'supported-cores.mjs'));
+  await writeFile(join(copiedScripts, 'supported-cores.json'), JSON.stringify(supported));
   const repositories = [];
   const versions = {};
   for (const [repo, name] of [['dsh-agent-workbench', '@cleverc2200/dsh-agent-workbench'], ['dsh-agent-manage', 'dsh-agent-manage'], ['dsh-gea-plugin', '@cleverc2200/gea-dsh-prototype']]) {
     const path = join(work, repo);
     await mkdir(join(path, 'lib'), { recursive: true });
-    const manifest = { name, version: '1.0.0', files: ['lib', 'cordis.patch.yml'], exports: { '.': './lib/host.js', './client': './lib/client.js' }, dsh: { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web' } }, peerDependencies: { '@deepseek-ai/dsh-tools': '0.2.1-alpha.1' }, dependencies: {}, devDependencies: { '@modelcontextprotocol/sdk': '1.30.0' } };
+    const manifest = { name, version: '1.0.0', files: ['lib', 'cordis.patch.yml'], exports: { '.': './lib/host.js', './client': './lib/client.js' }, dsh: { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web' } }, peerDependencies: { '@deepseek-ai/dsh-tools': '0.2.0-rc.2 || 0.2.1-alpha.1' }, dependencies: {}, devDependencies: { '@modelcontextprotocol/sdk': '1.30.0' } };
     if (repo === 'dsh-gea-plugin') manifest.files.push('npm-shrinkwrap.json');
     if (repo === 'dsh-agent-manage' && manageRepository) manifest.repository = JSON.parse(await readFile(new URL('./fixtures/plugin-reception/manage-repository.json', import.meta.url), 'utf8')).repository;
     if (repo === 'dsh-agent-manage' && runtimeDependency) manifest.dependencies['runtime-helper'] = runtimeDependency;
@@ -45,7 +47,8 @@ async function requestFixture(t, { missingClient = false, manageRepository = fal
     await writeFile(join(path, lock), 'fixture lock\n');
     if (repo === 'dsh-gea-plugin') {
       await mkdir(join(path, 'scripts'));
-      for (const file of ['production-manifest.mjs', 'prepare-package.mjs', 'package.mjs', 'package-companion.mjs']) await copyFile(join(import.meta.dirname, file), join(path, 'scripts', file));
+      await writeFile(join(path, 'scripts/supported-cores.json'), JSON.stringify(supported));
+      for (const file of ['production-manifest.mjs', 'prepare-package.mjs', 'package.mjs', 'package-companion.mjs', 'supported-cores.mjs']) await copyFile(join(import.meta.dirname, file), join(path, 'scripts', file));
     }
     execFileSync('git', ['init', '-q', path]);
     execFileSync('git', ['-C', path, 'add', '.']);
@@ -71,7 +74,7 @@ async function requestFixture(t, { missingClient = false, manageRepository = fal
   // Optional peers still need exact publication metadata, not installed tgz inputs.
   versions['@changfenhuang/dsh-genui'] = '0.11.3';
   versions['dsh-better-sidebar'] = '0.24.1';
-  await writeFile(input, JSON.stringify({ core: { path: core, head: coreHead, version: '0.2.1-alpha.1' }, pnpm, versions, repositories }));
+  await writeFile(input, JSON.stringify({ core: { path: core, head: coreHead, version: coreVersion }, pnpm, versions, repositories }));
   return { work, input, destination, entry: fixtureEntry };
 }
 
@@ -192,4 +195,24 @@ test('an incompatible Core stops delivery without echoing request secrets', asyn
   assert.match(result.stderr, /DELIVERY_CORE_INCOMPATIBLE/);
   assert.ok(!result.stderr.includes('private-test-token'));
   assert.deepEqual(await readdir(cwd), ['request.json']);
+});
+
+test('RC2 fixed input builds the same dual-Core package contract', async t => {
+  const fixture = await requestFixture(t, { coreVersion: '0.2.0-rc.2', successfulPackageManager: true });
+  const result = spawnSync(process.execPath, [fixture.entry, '--input', fixture.input, '--destination', fixture.destination], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const manifest = JSON.parse(await readFile(join(fixture.destination, 'manifest.json'), 'utf8'));
+  assert.equal(manifest.core.version, '0.2.0-rc.2');
+  assert.deepEqual(manifest.supportedCores.map(core => core.version), ['0.2.0-rc.2', '0.2.1-alpha.1']);
+  assert.match(await readFile(join(fixture.destination, 'INSTALL.md'), 'utf8'), /0\.2\.0-rc\.2.*0\.2\.1-alpha\.1/);
+});
+test('version and fixed SHA must select the same Core before output is created', async t => {
+  const fixture = await requestFixture(t);
+  const request = JSON.parse(await readFile(fixture.input, 'utf8'));
+  request.core.version = '0.2.0-rc.2';
+  await writeFile(fixture.input, JSON.stringify(request));
+  const result = spawnSync(process.execPath, [fixture.entry, '--input', fixture.input, '--destination', fixture.destination], { encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /DELIVERY_CORE_INCOMPATIBLE/);
+  await assert.rejects(access(fixture.destination));
 });

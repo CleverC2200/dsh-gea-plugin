@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import YAML from 'yaml';
+import { findSupportedCore } from './supported-cores.mjs';
 const { values } = parseArgs({ options: { profile: { type: 'string' }, core: { type: 'string' }, lock: { type: 'string' }, receipt: { type: 'string' } } });
 if (!values.profile || !values.core || !values.lock || !values.receipt) throw Error('PROFILE_LOCK_INPUTS_REQUIRED');
 const profile = resolve(values.profile), core = resolve(values.core), input = await readFile(resolve(values.lock));
@@ -21,9 +22,8 @@ if (lock.lockfileVersion !== 3 || JSON.stringify(Object.entries(manifest.depende
 const workspace = await readFile(join(profile, 'pnpm-workspace.yaml'), 'utf8');
 const configuration = YAML.parse(workspace);
 if (configuration.nodeLinker !== 'hoisted' || configuration.autoInstallPeers !== false) throw Error('OFFICIAL_PROFILE_PACKAGE_PROTOCOL_REQUIRED');
-const supported = JSON.parse(await readFile(new URL('./current-core.json', import.meta.url), 'utf8'));
 const coreManifest = JSON.parse(await readFile(join(core, 'apps/cli/package.json'), 'utf8'));
-if (coreManifest.version !== supported.version || execFileSync('git', ['rev-parse', 'HEAD'], { cwd: core, encoding: 'utf8' }).trim() !== supported.adaptation) throw Error('UNSUPPORTED_PACKAGE_CORE');
+if (!findSupportedCore({ version: coreManifest.version, head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: core, encoding: 'utf8' }).trim() })) throw Error('UNSUPPORTED_PACKAGE_CORE');
 await writeFile(join(profile, 'npm-shrinkwrap.json'), input);
 const { runProfilePnpm } = await import(pathToFileURL(join(core, 'packages/boot/plugin-manager/lib/types/operations.js')));
 const command = process.execPath, args = [join(core, 'apps/desktop/node_modules/pnpm/bin/pnpm.mjs')];

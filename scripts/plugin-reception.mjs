@@ -5,6 +5,7 @@ import { join, dirname, basename, isAbsolute, relative } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
+import { findSupportedCore, coreIdentity, supportsRegisteredCores, validSdkPeers } from './supported-cores.mjs';
 import { artifactSetSha256, digest, pluginNames, deliveryStates, bindReception } from './plugin-reception/contract.mjs';
 
 const json = async file => JSON.parse(await readFile(file, 'utf8'));
@@ -21,11 +22,11 @@ export async function receiveDelivery(input) {
   }
   assert(!within(home, evidence) && !within(evidence, home), 'RECEPTION_HOME_EVIDENCE_OVERLAP');
   await absent(home); await absent(evidence);
-  const supported = await json(new URL('./current-core.json', import.meta.url));
   const manifestBytes = await readFile(manifestPath), manifest = JSON.parse(manifestBytes);
-  assert(deliveryStates.includes(manifest.status) && manifest.core?.head === supported.adaptation && manifest.core?.version === supported.version, 'RECEPTION_DELIVERY_CORE_INVALID');
+  assert(deliveryStates.includes(manifest.status) && supportsRegisteredCores(manifest), 'RECEPTION_DELIVERY_CORE_INVALID');
   const actualHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: core, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  assert(actualHead === supported.adaptation && (await json(join(core, 'apps/cli/package.json'))).version === supported.version, 'RECEPTION_CORE_INVALID');
+  const actualCore = findSupportedCore({ head: actualHead, version: (await json(join(core, 'apps/cli/package.json'))).version });
+  assert(actualCore, 'RECEPTION_CORE_INVALID');
   assert(manifest.packages?.length === 3 && pluginNames.every(name => manifest.packages.filter(row => row.name === name).length === 1), 'RECEPTION_THREE_PACKAGES_REQUIRED');
   const artifacts = [], packageManifests = [];
   for (const name of pluginNames) {
@@ -36,6 +37,7 @@ export async function receiveDelivery(input) {
     assert(digest(await readFile(file)) === row.sha256, 'RECEPTION_ARCHIVE_DIGEST_MISMATCH');
     const pkg = JSON.parse(execFileSync('tar', ['-xOf', file, 'package/package.json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
     assert(pkg.name === row.name && pkg.version === row.version, 'RECEPTION_ARCHIVE_IDENTITY_MISMATCH');
+    assert(validSdkPeers(pkg), 'RECEPTION_SDK_PEER_INCOMPATIBLE');
     artifacts.push({ ...row, file }); packageManifests.push(pkg);
   }
   await mkdir(evidence, { recursive: false, mode: 0o700 });
@@ -55,7 +57,7 @@ export async function receiveDelivery(input) {
       assert(!child.error && child.status === 0, `RECEPTION_${mode.toUpperCase()}_FAILED`);
     }
     const installBytes = await readFile(installPath), observeBytes = await readFile(observePath);
-    const acceptance = bindReception(manifest, JSON.parse(installBytes), JSON.parse(observeBytes), { manifestSha256: digest(manifestBytes), installSha256: digest(installBytes), observeSha256: digest(observeBytes), packageManifests, expectedCore: core, expectedProfile: profile });
+    const acceptance = bindReception(manifest, JSON.parse(installBytes), JSON.parse(observeBytes), { manifestSha256: digest(manifestBytes), installSha256: digest(installBytes), observeSha256: digest(observeBytes), packageManifests, expectedCore: core, expectedCoreIdentity: coreIdentity(actualCore), expectedProfile: profile });
     assert(digest(await readFile(manifestPath)) === digest(manifestBytes), 'RECEPTION_MANIFEST_CHANGED');
     for (const row of artifacts) assert(digest(await readFile(row.file)) === row.sha256, 'RECEPTION_ARCHIVE_CHANGED');
     await writeFile(join(evidence, 'ACCEPTANCE.json'), JSON.stringify(acceptance, null, 2) + '\n', { mode: 0o600, flag: 'wx' });

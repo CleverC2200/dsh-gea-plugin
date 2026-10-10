@@ -1,6 +1,6 @@
 # 当前三核心插件安装
 
-目标客户端为官方 DSH 0.2.1-alpha.1 / Core 5bad。本轮三个普通插件为 Workbench、Manage、GEA，具体包版本、SHA256SUMS 和安装说明由 [三包交付入口](package-delivery.md) 同次生成。0.2.0-rc.2 不兼容，exact SDK peer 不放宽。
+同一组三包支持官方 DSH 0.2.0-rc.2 / Core 639ed 与 0.2.1-alpha.1 / Core 5bad。本轮三个普通插件为 Workbench、Manage、GEA，具体包版本、SHA256SUMS 和安装说明由 [三包交付入口](package-delivery.md) 同次生成。SDK peer 仅声明两版固定 SDK 的精确版本 OR；实际接收必须使用对应宿主提供的唯一实例。
 
 在客户端侧栏“插件”选择“添加插件”，在包名输入框填写 tgz 的本地绝对路径。按 Workbench、Manage、GEA 顺序逐个安装，每次完成后“立即启用”。已安装同名包时按官方升级提示操作，保留 Session、草稿、用户配置与历史。需要联网获取普通 npm 运行依赖。
 

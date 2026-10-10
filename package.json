@@ -166,14 +166,14 @@
     "packages/*"
   ],
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.5-alpha.1",
-    "@deepseek-ai/dsh-api-session-controller": "0.2.1-alpha.1",
-    "@deepseek-ai/dsh-brand": "0.2.1-alpha.1",
-    "@deepseek-ai/dsh-llm": "0.2.1-alpha.1",
-    "@deepseek-ai/dsh-llm-pi-ai": "0.2.1-alpha.1",
-    "@deepseek-ai/dsh-persona": "0.2.1-alpha.1",
-    "@deepseek-ai/dsh-tools": "0.2.1-alpha.1",
-    "@deepseek-ai/schemastery": "3.18.5-alpha.1",
+    "@deepseek-ai/cordis": "4.0.4 || 4.0.5-alpha.1",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-brand": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-persona": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/schemastery": "3.18.4 || 3.18.5-alpha.1",
     "dsh-agent-manage": "0.6.3-company.6"
   }
 }
