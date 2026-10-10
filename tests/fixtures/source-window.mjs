@@ -1,14 +1,5 @@
 /** Disposable source checkouts and a process observer; the fixed Core is read-only. */
-import {
-  readFile,
-  writeFile,
-  mkdir,
-  cp,
-  symlink,
-  mkdtemp,
-  rm,
-  readdir,
-} from "node:fs/promises";
+import { readFile, writeFile, mkdir, cp, symlink, mkdtemp, rm, readdir } from "node:fs/promises";
 import { resolve, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -51,16 +42,10 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
       type: "module",
     });
     await writeFile(
-      join(
-        root,
-        repo === "dsh-agent-workbench" ? "package-lock.json" : "pnpm-lock.yaml",
-      ),
+      join(root, repo === "dsh-agent-workbench" ? "package-lock.json" : "pnpm-lock.yaml"),
       "fixture-lock",
     );
-    await writeFile(
-      join(root, ".gitignore"),
-      ".runtime/\nnode_modules/\nlib/\n",
-    );
+    await writeFile(join(root, ".gitignore"), ".runtime/\nnode_modules/\nlib/\n");
     await mkdir(join(root, "scripts"));
     if (repo === "dsh-agent-workbench") {
       for (const name of [
@@ -69,13 +54,8 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
         "verify-official-input.mjs",
       ])
         await cp(join(sharedWB, "scripts", name), join(root, "scripts", name));
-      const original = JSON.parse(
-        await readFile(join(sharedWB, "tsconfig.official.json"), "utf8"),
-      );
-      const cordis = resolve(
-        sharedWB,
-        original.compilerOptions.paths["@deepseek-ai/cordis"][0],
-      );
+      const original = JSON.parse(await readFile(join(sharedWB, "tsconfig.official.json"), "utf8"));
+      const cordis = resolve(sharedWB, original.compilerOptions.paths["@deepseek-ai/cordis"][0]);
       await save(join(root, "tsconfig.official.json"), {
         compilerOptions: { paths: { "@deepseek-ai/cordis": [cordis] } },
       });
@@ -98,10 +78,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
         "supported-cores.mjs",
         "supported-cores.json",
       ])
-        await cp(
-          join(sourceRoot, "scripts", name),
-          join(root, "scripts", name),
-        );
+        await cp(join(sourceRoot, "scripts", name), join(root, "scripts", name));
       await mkdir(join(root, "src"));
       await cp(join(sourceRoot, "src/shared"), join(root, "src/shared"), {
         recursive: true,
@@ -133,9 +110,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
   const coreSha = git(fixedCore, "rev-parse", "HEAD");
   await save(candidateFile, {
     core: coreSha,
-    repositories: repositories.filter(({ repo }) =>
-      candidateOwners.includes(repo),
-    ),
+    repositories: repositories.filter(({ repo }) => candidateOwners.includes(repo)),
   });
   const configFile = join(temporary, "deployment.json");
   await save(configFile, {
@@ -161,8 +136,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
     sourcesFile;
   if (mode !== "isolated-core-host") {
     const id = randomUUID(),
-      preparedRuntime =
-        mode === "isolated-source-host" ? join(temporary, "prepared") : runtime,
+      preparedRuntime = mode === "isolated-source-host" ? join(temporary, "prepared") : runtime,
       directory = join(preparedRuntime, "source-combinations", id);
     await mkdir(directory, { recursive: true });
     const dependencies = {},
@@ -207,9 +181,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
       }
     }
     await save(join(directory, "company-plugins.json"), plugins);
-    files["company-plugins.json"] = hash(
-      await readFile(join(directory, "company-plugins.json")),
-    );
+    files["company-plugins.json"] = hash(await readFile(join(directory, "company-plugins.json")));
     Object.assign(files, await assetFiles(directory));
     await save(join(directory, "combination.json"), {
       core: coreSha,
@@ -219,9 +191,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
       externalRoots: [],
       externalLockFiles: [],
     });
-    const manifestSha256 = hash(
-      await readFile(join(directory, "combination.json")),
-    );
+    const manifestSha256 = hash(await readFile(join(directory, "combination.json")));
     if (mode === "isolated-source-host") {
       const inputs = [];
       for (const plugin of sourcePlugins) {
@@ -348,8 +318,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
         args.push("--config", configFile, "--runtime", runtime, "--port", "0");
       else {
         args.push("--core", fixedCore);
-        if (mode === "isolated-source-host")
-          args.push("--plugins", "--sources", sourcesFile);
+        if (mode === "isolated-source-host") args.push("--plugins", "--sources", sourcesFile);
       }
       args.push(...extra);
     }

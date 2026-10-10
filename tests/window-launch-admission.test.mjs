@@ -13,10 +13,7 @@ test("omitting a window cannot enter the public source Host implementation", asy
     DSH_HOME: process.env.DSH_HOME,
     DSH_TELEMETRY_DISABLED: process.env.DSH_TELEMETRY_DISABLED,
   };
-  await assert.rejects(
-    runSourceProfile("/absent-core", runtime),
-    /WINDOW_DECLARATION_REQUIRED/,
-  );
+  await assert.rejects(runSourceProfile("/absent-core", runtime), /WINDOW_DECLARATION_REQUIRED/);
   await assert.rejects(access(runtime), { code: "ENOENT" });
   assert.deepEqual(
     {
@@ -30,29 +27,18 @@ test("omitting a window cannot enter the public source Host implementation", asy
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 for (const [entry, arguments_] of [
-  [
-    "start.mjs",
-    ["--config", "/absent-deployment", "--runtime", "/absent-runtime"],
-  ],
+  ["start.mjs", ["--config", "/absent-deployment", "--runtime", "/absent-runtime"]],
   ["start-isolated-validation.mjs", ["--core", "/absent-core"]],
 ])
   test(`${entry} refuses an omitted declaration before reading configuration or creating a profile`, () => {
-    const result = spawnSync(
-      process.execPath,
-      [resolve("scripts", entry), ...arguments_],
-      { encoding: "utf8" },
-    );
+    const result = spawnSync(process.execPath, [resolve("scripts", entry), ...arguments_], {
+      encoding: "utf8",
+    });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /WINDOW_DECLARATION_REQUIRED/);
   });
 
-import {
-  writeFile,
-  readFile,
-  realpath,
-  mkdir,
-  symlink,
-} from "node:fs/promises";
+import { writeFile, readFile, realpath, mkdir, symlink } from "node:fs/promises";
 import { createHash } from "node:crypto";
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 async function declaration(t, changes = {}) {
@@ -140,11 +126,7 @@ test("a frozen wrong candidate head is rejected through the default CLI with zer
   const before = await snapshot(fixture.runtime);
   const result = fixture.run();
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
-  assert.equal(
-    result.status,
-    1,
-    JSON.stringify({ stderr: result.stderr, effects }),
-  );
+  assert.equal(result.status, 1, JSON.stringify({ stderr: result.stderr, effects }));
   assert.match(result.stderr, /CANDIDATE_HEAD/);
   assert.deepEqual(effects.writes, []);
   assert.deepEqual(effects.processes, []);
@@ -180,11 +162,7 @@ test("the isolated core CLI admits a valid declaration before delegating only to
 
 test("a self-consistent artifact manifest cannot replace the frozen candidate source binding", async (t) => {
   const fixture = await sourceWindow(t, "source-host");
-  const directory = join(
-    fixture.runtime,
-    "source-combinations",
-    fixture.frozen.combination.id,
-  );
+  const directory = join(fixture.runtime, "source-combinations", fixture.frozen.combination.id);
   const file = join(directory, "company-plugins.json");
   const plugins = JSON.parse(await readFile(file, "utf8"));
   plugins["@cleverc2200/gea-dsh-prototype"].commit = "0".repeat(40);
@@ -193,9 +171,7 @@ test("a self-consistent artifact manifest cannot replace the frozen candidate so
   const manifest = JSON.parse(await readFile(manifestFile, "utf8"));
   manifest.files["company-plugins.json"] = hash(await readFile(file));
   await writeFile(manifestFile, JSON.stringify(manifest));
-  fixture.frozen.combination.manifestSha256 = hash(
-    await readFile(manifestFile),
-  );
+  fixture.frozen.combination.manifestSha256 = hash(await readFile(manifestFile));
   await writeFile(
     join(fixture.runtime, "source-selection.json"),
     JSON.stringify({
@@ -226,11 +202,7 @@ test("the isolated source CLI verifies its five-source snapshot before delegatin
 
 async function assertNoEffects(fixture, result, expected, before) {
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
-  assert.equal(
-    result.status,
-    1,
-    JSON.stringify({ stderr: result.stderr, effects }),
-  );
+  assert.equal(result.status, 1, JSON.stringify({ stderr: result.stderr, effects }));
   assert.match(result.stderr, expected, JSON.stringify(effects));
   assert.deepEqual(effects.writes, []);
   assert.deepEqual(effects.processes, []);
@@ -312,11 +284,7 @@ const invalidDeclarations = [
     /WINDOW_RUNTIME_MISMATCH/,
   ],
 ];
-for (const mode of [
-  "source-host",
-  "isolated-source-host",
-  "isolated-core-host",
-]) {
+for (const mode of ["source-host", "isolated-source-host", "isolated-core-host"]) {
   for (const [name, invalidate, expected] of invalidDeclarations)
     test(`${mode}: ${name} fails before configuration, credentials, environment, process and network effects`, async (t) => {
       const fixture = await sourceWindow(t, mode);
@@ -326,11 +294,7 @@ for (const mode of [
         windowBytes = await readFile(fixture.request.file);
       await assertNoEffects(
         fixture,
-        fixture.run(
-          mode === "source-host"
-            ? "start.mjs"
-            : "start-isolated-validation.mjs",
-        ),
+        fixture.run(mode === "source-host" ? "start.mjs" : "start-isolated-validation.mjs"),
         expected,
         before,
       );
@@ -493,19 +457,13 @@ test("omitting remaining automatic metadata cannot turn that unknown allowance i
     await snapshot(fixture.runtime),
   );
 });
-for (const mode of [
-  "source-host",
-  "isolated-source-host",
-  "isolated-core-host",
-])
+for (const mode of ["source-host", "isolated-source-host", "isolated-core-host"])
   test(`${mode}: omitting the window flag observes zero protected effects at the real CLI`, async (t) => {
     const fixture = await sourceWindow(t, mode);
     fixture.request.file = "";
     await assertNoEffects(
       fixture,
-      fixture.run(
-        mode === "source-host" ? "start.mjs" : "start-isolated-validation.mjs",
-      ),
+      fixture.run(mode === "source-host" ? "start.mjs" : "start-isolated-validation.mjs"),
       /WINDOW_DECLARATION_REQUIRED/,
       await snapshot(fixture.runtime),
     );
@@ -515,24 +473,14 @@ for (const mode of [
 test("isolated Core admission records the registered version before a held profile lock", async (t) => {
   const fixture = await sourceWindow(t, "isolated-core-host");
   await mkdir(fixture.runtime, { recursive: true });
-  await writeFile(
-    join(fixture.runtime, "source-profile.lock"),
-    "fixture-owned-lock",
-  );
+  await writeFile(join(fixture.runtime, "source-profile.lock"), "fixture-owned-lock");
   const result = fixture.run("runSourceProfile");
   assert.equal(result.status, 1);
   assert.match(result.stderr, /EEXIST/);
-  const cli = JSON.parse(
-    await readFile(join(fixture.fixedCore, "apps/cli/package.json"), "utf8"),
-  );
-  const receipt = JSON.parse(
-    await readFile(join(fixture.runtime, "core-source.json"), "utf8"),
-  );
+  const cli = JSON.parse(await readFile(join(fixture.fixedCore, "apps/cli/package.json"), "utf8"));
+  const receipt = JSON.parse(await readFile(join(fixture.runtime, "core-source.json"), "utf8"));
   assert.equal(receipt.version, cli.version);
-  assert.equal(
-    receipt.adaptation,
-    JSON.parse(await readFile(fixture.candidateFile, "utf8")).core,
-  );
+  assert.equal(receipt.adaptation, JSON.parse(await readFile(fixture.candidateFile, "utf8")).core);
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
   assert.deepEqual(effects.processes, []);
   assert.deepEqual(effects.network, []);

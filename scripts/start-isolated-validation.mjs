@@ -4,7 +4,6 @@ import {
   mkdtemp,
   open,
   readFile,
-  readdir,
   realpath,
   symlink,
   writeFile,
@@ -49,8 +48,7 @@ export async function runSourceProfile(
     mode = plugins ? "source-host" : "isolated-core-host",
   } = {},
 ) {
-  if (plugins !== (mode !== "isolated-core-host"))
-    throw Error("WINDOW_MODE_MISMATCH");
+  if (plugins !== (mode !== "isolated-core-host")) throw Error("WINDOW_MODE_MISMATCH");
   await admitSourceWindow({
     window,
     mode,
@@ -63,8 +61,7 @@ export async function runSourceProfile(
   let selected;
   if (plugins) {
     selected = await readSourceSelection(runtime);
-    if (selected === undefined)
-      await resolveSourceInputs(sources, { requireEntries: true });
+    if (selected === undefined) await resolveSourceInputs(sources, { requireEntries: true });
   }
   const supported = await readSupportedCore(core);
   const coreSha = supported.head;
@@ -91,21 +88,14 @@ export async function runSourceProfile(
     await lock.writeFile(JSON.stringify({ pid: process.pid }));
     let composition = { dependencies: {}, bundles: [], patches: [] };
     if (plugins) {
-      const { prepareSourcePlugins, readSourceCombination } = await import(
-        "./source-profile.mjs"
-      );
+      const { prepareSourcePlugins, readSourceCombination } = await import("./source-profile.mjs");
       composition = selected
         ? await readSourceCombination(runtime, selected.id, core)
         : await prepareSourcePlugins(core, runtime, deployment, {
             sources,
           });
       const manifestSha256 = await digest(
-        join(
-          runtime,
-          "source-combinations",
-          composition.id,
-          "combination.json",
-        ),
+        join(runtime, "source-combinations", composition.id, "combination.json"),
       );
       if (selected && selected.manifestSha256 !== manifestSha256)
         throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
@@ -147,14 +137,7 @@ export async function runSourceProfile(
       await rename(temporary, join(profile, "node_modules"));
       await save(
         join(runtime, "company-plugins.json"),
-        await json(
-          join(
-            runtime,
-            "source-combinations",
-            composition.id,
-            "company-plugins.json",
-          ),
-        ),
+        await json(join(runtime, "source-combinations", composition.id, "company-plugins.json")),
       );
     }
     await save(join(profile, "package.json"), {
@@ -163,11 +146,7 @@ export async function runSourceProfile(
       dependencies: composition.dependencies,
       dsh: {
         profile: {
-          bundles: [
-            "@deepseek-ai/dsh-base",
-            "@deepseek-ai/dsh-web-app",
-            ...composition.bundles,
-          ],
+          bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", ...composition.bundles],
         },
       },
     });
@@ -248,20 +227,13 @@ async function launch() {
     runtime: join(root, ".runtime/plugin-split-validation"),
     sourcesFile: values.sources,
   });
-  if (process.platform !== "darwin")
-    throw Error("ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX");
-  const fixedSources = values.sources
-    ? await json(resolve(values.sources))
-    : undefined;
-  if (values.plugins === true)
-    await resolveSourceInputs(fixedSources, { requireEntries: true });
-  const core = await realpath(
-    values.core ?? resolve(root, "../../official-latest-standard"),
-  );
+  if (process.platform !== "darwin") throw Error("ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX");
+  const fixedSources = values.sources ? await json(resolve(values.sources)) : undefined;
+  if (values.plugins === true) await resolveSourceInputs(fixedSources, { requireEntries: true });
+  const core = await realpath(values.core ?? resolve(root, "../../official-latest-standard"));
   const manifest = await json(join(core, "package.json"));
   const packages = {};
-  for (const { manifest: pkg } of await corePackages(core))
-    packages[pkg.name] = pkg.version;
+  for (const { manifest: pkg } of await corePackages(core)) packages[pkg.name] = pkg.version;
   await readFile(join(core, "apps/cli/lib/bin.js"));
   await readFile(join(core, "apps/web/dist/index.html"));
   const base = join(root, ".runtime/plugin-split-validation");
@@ -270,8 +242,7 @@ async function launch() {
   if (!physicalBase.startsWith((await realpath(root)) + "/"))
     throw Error("RUNTIME_OUTSIDE_CHECKOUT");
   const runtime = await mkdtemp(join(physicalBase, "run-"));
-  for (const dir of ["home", "tmp", "workspace"])
-    await mkdir(join(runtime, dir), { mode: 0o700 });
+  for (const dir of ["home", "tmp", "workspace"]) await mkdir(join(runtime, dir), { mode: 0o700 });
   const sandbox = `(version 1)
 (allow default)
 (deny file-write*)
@@ -384,9 +355,7 @@ async function launch() {
       stoppedAt: new Date().toISOString(),
     });
     process.exitCode =
-      !logError && (exit.code === 0 || (stoppedBy && exit.signal !== "SIGKILL"))
-        ? 0
-        : 1;
+      !logError && (exit.code === 0 || (stoppedBy && exit.signal !== "SIGKILL")) ? 0 : 1;
   } finally {
     if (child.exitCode === null && child.signalCode === null && child.pid) {
       stop("SIGTERM");
@@ -398,10 +367,7 @@ async function launch() {
   }
 }
 
-if (
-  process.argv[1] &&
-  pathToFileURL(await realpath(process.argv[1])).href === import.meta.url
-) {
+if (process.argv[1] && pathToFileURL(await realpath(process.argv[1])).href === import.meta.url) {
   launch().catch((error) => {
     console.error(error.message);
     process.exitCode = 1;
