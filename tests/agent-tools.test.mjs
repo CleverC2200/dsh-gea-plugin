@@ -240,7 +240,6 @@ test(
       res.setHeader("Content-Type", "text/event-stream");
       const names = body.tools.map((tool) => tool.function.name);
       const wantsPage =
-        outcome === "success" ||
         /visible-context/.test(outcome) ||
         outcome === "page-evidence-guard" ||
         outcome === "page-tool";
@@ -249,11 +248,7 @@ test(
         pack === "knowledge"
           ? names.includes("gea_module_mcp")
           : pack === "page"
-            ? names.includes(
-                outcome === "success" || outcome === "page-tool"
-                  ? "gea_page"
-                  : "gea_visible_workbench_context",
-              )
+            ? names.includes(outcome === "page-tool" ? "gea_page" : "gea_visible_workbench_context")
             : true;
       const skillReady =
         outcome !== "skill-reference" ||
@@ -678,7 +673,7 @@ test(
       return result;
     }
 
-    async function submit(workbenchContext) {
+    async function submit(workbenchContext, bindPage = true) {
       const preview = await app.rpc("prepare", {
         queryId: page.queryId,
         planId: page.records[0].planId,
@@ -689,9 +684,11 @@ test(
         ...(workbenchContext ? { workbenchContext } : {}),
       });
       assert.equal(result.ok, true, JSON.stringify(result));
-      // 菜单状态字段：这条链路里用户是从业务菜单点进来的（默认是主对话）。
-      const surface = await openNativePage(result.value.sessionId);
-      assert.equal(surface.ok, true, JSON.stringify(surface));
+      // submit starts the turn before returning its Session; only page cases bind it afterwards.
+      if (bindPage) {
+        const surface = await openNativePage(result.value.sessionId);
+        assert.equal(surface.ok, true, JSON.stringify(surface));
+      }
       return result.value.sessionId;
     }
     const ended = (id) =>
@@ -702,7 +699,7 @@ test(
     await t.test(
       "successful query is logged before the next model request and preserves paging coverage",
       async () => {
-        const rows = await ended(await submit());
+        const rows = await ended(await submit(undefined, false));
         assert.equal(rows.find((x) => x.type === "turn/end").data.reason.kind, "completed");
         assert.equal(modelRequests.length, 2);
         const promptMessages = JSON.stringify(modelRequests[0].messages);
@@ -728,10 +725,11 @@ test(
           "gea_sales_plan_read",
           "skill",
           "gea_visible_workbench_context",
-          "gea_page",
           "gea_capabilities",
         ])
           assert.ok(toolNames.includes(expected), `${expected} 在工具列表里`);
+        for (const name of ["gea_page", "gea_workbench_apply", "gea_plugin_page_apply"])
+          assert.equal(toolNames.includes(name), false, `${name} requires a bound page`);
         assert.match(
           modelRequests[0].messages
             .filter((message) => message.role === "system")
