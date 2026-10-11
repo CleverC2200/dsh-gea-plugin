@@ -150,7 +150,7 @@ test("large top-level data and reserved metadata fields remain represented in th
   assert.ok(!projected.omittedPaths.includes("$.data"));
 });
 
-test("late catalog replies cannot undo query recovery or leak into a new turn or preset", async (t) => {
+test("catalog recovery and terminal evidence budgets preserve turn ownership", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "gea-catalog-generation-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const handlers = new Map(),
@@ -162,6 +162,9 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
     "gea_gateway_catalog",
     "gea_cube_query",
     "gea_sales_plan_read",
+    "read_file",
+    "run_code",
+    "run_agent",
   ];
   let preset = "gea-readonly",
     revision = 1,
@@ -208,7 +211,7 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
       handlers.set(event, fn);
       return () => {};
     },
-    inject: () => {},
+    inject: (_services, mount) => mount(ctx),
   };
   const business = {
     config: { runtimeDir: dir, analysisAgentCode: "sales_forecast" },
@@ -247,6 +250,12 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
     }));
     return toolService.schemas(agent).map((x) => x.name);
   };
+  const assembly = {
+    sections: [{ name: "native", text: "native policy survives" }],
+    tools: names.map((name) => ({ name, description: name, parameters: {} })),
+  };
+  const assemble = (currentAgent = agent) =>
+    handlers.get("system-prompt/assemble")(assembly, { agent: currentAgent }, async () => assembly);
   for (const transition of ["query", "turn", "preset", "identity"]) {
     const old1 = await start(),
       old2 = await start();
@@ -279,22 +288,80 @@ test("late catalog replies cannot undo query recovery or leak into a new turn or
     assert.equal(guard({ name: "gea_gateway_catalog", agent, arguments: {} }), undefined);
   }
   handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
+  const acquired = await start("gea_page");
+  await handlers.get("tools/post-execute")(
+    acquired,
+    { content: [{ type: "text", text: '{"amount":"12.3400","coverage":"partial"}' }] },
+    async () => ({ kind: "accept" }),
+  );
   for (let i = 0; i < 20; i++)
     assert.equal(guard({ name: "gea_cube_query", agent, arguments: {} }), undefined);
   assert.match(guard({ name: "gea_cube_query", agent, arguments: {} }), /GEA_CALL_BUDGET/);
+  const queryLimited = await assemble();
+  assert.ok(queryLimited.tools.some((tool) => tool.name === "gea_evidence_read"));
+  for (const name of ["read_file", "run_code", "run_agent"]) {
+    assert.ok(
+      queryLimited.tools.some((tool) => tool.name === name),
+      name,
+    );
+    assert.equal(guard({ name, agent, arguments: {} }), undefined);
+  }
+  const retainedReceipt = queryLimited.sections.find(
+    (section) => section.name === "gea:result-status",
+  );
+  assert.ok(retainedReceipt, "acquired evidence receipts exist before stopping");
   for (let i = 0; i < 12; i++)
     assert.equal(
       guard({ name: "gea_evidence_read", agent, arguments: {} }),
       undefined,
       "already acquired evidence retains a bounded read allowance",
     );
+  const stopped = await assemble();
+  assert.deepEqual(stopped.tools, [], "the final model assembly stops every tool after 12 reads");
+  assert.deepEqual(
+    stopped.sections.find((section) => section.name === "gea:result-status"),
+    retainedReceipt,
+    "stopping preserves acquired evidence receipts",
+  );
+  assert.equal(
+    stopped.sections.find((section) => section.name === "native").text,
+    "native policy survives",
+  );
+  assert.match(
+    stopped.sections.find((section) => section.name === "gea:budget").text,
+    /本轮全部工具/,
+  );
   assert.match(guard({ name: "gea_evidence_read", agent, arguments: {} }), /GEA_EVIDENCE_BUDGET/);
-  for (const name of ["gea_cube_query", "gea_capabilities", "gea_gateway_catalog"])
+  for (const name of [
+    "gea_cube_query",
+    "gea_capabilities",
+    "gea_gateway_catalog",
+    "read_file",
+    "run_code",
+    "run_agent",
+  ])
     assert.match(
       guard({ name, agent, arguments: {} }),
       /GEA_EVIDENCE_BUDGET/,
       "read exhaustion cannot be bypassed via " + name,
     );
+  const otherAgent = { ...agent, id: "other" };
+  assert.equal(guard({ name: "read_file", agent: otherAgent, arguments: {} }), undefined);
+  assert.ok((await assemble(otherAgent)).tools.some((tool) => tool.name === "read_file"));
   handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
   assert.equal(guard({ name: "gea_evidence_read", agent, arguments: {} }), undefined);
+  assert.equal(guard({ name: "gea_cube_query", agent, arguments: {} }), undefined);
+  for (const name of [
+    "gea_evidence_read",
+    "gea_cube_query",
+    "read_file",
+    "run_code",
+    "run_agent",
+  ]) {
+    assert.ok(
+      (await assemble()).tools.some((tool) => tool.name === name),
+      name + " restores next turn",
+    );
+  }
+  assert.equal(guard({ name: "run_code", agent, arguments: {} }), undefined);
 });

@@ -14,19 +14,19 @@
 
 ## 页面与独立查询
 
-| 行为 | 责任与一手入口 |
-|---|---|
+| 行为                             | 责任与一手入口                                                                                                                                                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 页面打开、目录、动作、引用与恢复 | 同组 [Workbench 合同](../../dsh-agent-workbench/docs/workbench-contracts.md) 和 [呈现恢复](../../dsh-agent-workbench/docs/presentation-recovery.md)；GEA [HTML adapter](../src/html-plugins.ts) 提供当前业务 grant |
-| GEA 模型与业务工具 | [Host 注册](../src/host.ts)、[业务工具](../src/host/agent-tools.ts)；[标准能力边界](business-standard-capabilities.md) 保留官方 general tools 的原策略 |
-| Gateway 会话与 MCP | [统一会话握手](../src/host/gateway-session.ts)、[MCP 传输](../src/host/gateway-mcp.ts)、[MCP client](../src/host/mcp-client.ts)；保留原拒权码、HTTP/JSON 失败、路由与 Consumer 校验 |
-| 受管 SQL | [查询入口](../src/host/plugin-query.ts)、[物理额度](../src/shared/sql-read-limit.js)；实际端点和分页计数由源码定义 |
-| 证据与取消 | [MCP 证据](../src/host/mcp-read-evidence.ts)、[隔离取消信号](../src/shared/transport-signal.ts)；保留部分、失败、unknown 与来源范围 |
+| GEA 模型与业务工具               | [Host 注册](../src/host.ts)、[业务工具](../src/host/agent-tools.ts)；[标准能力边界](business-standard-capabilities.md) 保留官方 general tools 的原策略                                                             |
+| Gateway 会话与 MCP               | [统一会话握手](../src/host/gateway-session.ts)、[MCP 传输](../src/host/gateway-mcp.ts)、[MCP client](../src/host/mcp-client.ts)；保留原拒权码、HTTP/JSON 失败、路由与 Consumer 校验                                |
+| 受管 SQL                         | [查询入口](../src/host/plugin-query.ts)、[物理额度](../src/shared/sql-read-limit.js)；实际端点和分页计数由源码定义                                                                                                 |
+| 证据与取消                       | [MCP 证据](../src/host/mcp-read-evidence.ts)、[隔离取消信号](../src/shared/transport-signal.ts)；保留部分、失败、unknown 与来源范围                                                                                |
 
 独立业务查询不要求先打开页面。页面动作仍只消费当前页面声明；Native 审批与 HTML 只读能力分别按原合同执行。页面的 view 或 draft 回执不等于真实业务保存/审批成功。
 
 `sqlReadLimit` 限定同一 Host 生命周期内对应 Consumer 的物理请求。分页、续期后的再次请求、失败和发出后的取消计数；发出前取消不计数。零额度在登录或委托前拒绝，只开放声明的一个 Consumer，其他 Consumer 直接拒绝；不能换 Consumer 继续使用额度。页数或行数超限拒绝，不截断成完整结果。销售只读自动请求另沿 Business 的 `readonlyValidation` 合同计数；历史剩余额度不授权新窗口。
 
-查询、能力与证据读取额度只约束 GEA 调用，不剥夺官方 standard 的文件、规划、任务或委托工具。声明值、窗口额度、记录用量与当前可用授权分别核对，见 [交付核对](delivery-check.md)。
+业务查询/能力额度耗尽后，仍可在独立的12次读取额度内读取已取得证据，官方 standard 工具仍按原授权可用。证据读取额度耗尽则终止当前业务轮的全部工具：最终模型请求不再提供工具，迟到派发也拒绝；保留已展示证据、未读范围和缺口，直接交付结论与未完成项。下一轮重置额度并重新核对当前授权。声明值、窗口额度、记录用量与当前可用授权分别核对，见 [交付核对](delivery-check.md)。
 
 ## 异步执行与证据归属
 
@@ -38,12 +38,12 @@
 
 ## 分析发起与业务提单
 
-| 路径 | 当前实现与条件 |
-|---|---|
-| 分析发起 | [Host](../src/host.ts) 的 `submit` 接受已核对 preview 与 workbenchContext，沿 Manage 资源和 Core Session 提交分析。它不调用业务提单接口 |
-| 退回重提 | [Business.salesPlanSubmit](../src/host/business.ts) 校验当前有效退回版本、周期、SKU、价格、身份、流程和原正文。当前环境须有租户/用户白名单与可用服务凭据；[service-account](../src/host/service-account.ts) 交换委托后向 `/api/v1/internal/sales-plans` 发送原幂等请求 |
-| 首次提单 | 上述退回重提方法要求来源计划与状态 6–9，不提供独立首次提单流程。业务原型或规格中的首次提单合同不等于本方法已接线 |
-| 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 仍核当前身份、角色、版本、快照、服务端显式契约和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md) |
+| 路径           | 当前实现与条件                                                                                                                                                                                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 分析发起       | [Host](../src/host.ts) 的 `submit` 接受已核对 preview 与 workbenchContext，沿 Manage 资源和 Core Session 提交分析。它不调用业务提单接口                                                                                                                                |
+| 退回重提       | [Business.salesPlanSubmit](../src/host/business.ts) 校验当前有效退回版本、周期、SKU、价格、身份、流程和原正文。当前环境须有租户/用户白名单与可用服务凭据；[service-account](../src/host/service-account.ts) 交换委托后向 `/api/v1/internal/sales-plans` 发送原幂等请求 |
+| 首次提单       | 上述退回重提方法要求来源计划与状态 6–9，不提供独立首次提单流程。业务原型或规格中的首次提单合同不等于本方法已接线                                                                                                                                                       |
+| 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 仍核当前身份、角色、版本、快照、服务端显式契约和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md)                                 |
 
 当前 `salesPlanAction` 还保留未携带 `approvalRole`/`adjustmentMode` 的兼容 SAVE 分支：它拒绝状态 5，其他状态需服务端明确 SAVE 能力、有效版本和快照；它没有单独拒绝状态 10。V1.3 的状态 10 只读目标与该分支的差距仍需原票核实现和部署，不因文档更新视为已退出。
 

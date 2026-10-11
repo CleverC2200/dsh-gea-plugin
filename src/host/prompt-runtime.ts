@@ -216,12 +216,15 @@ export function mountBusinessPrompts(
           return "GEA_BUSINESS_PROFILE_REQUIRED: Skill和页面可见不授予Consumer业务权限，请选用已安装启用的业务资源。";
         return;
       }
+      const state = stateOf(agent);
+      // The final evidence read ends all tool dispatch for this turn, including stale model calls.
+      if (state.readCalls >= PROMPT_BUDGET.evidenceCalls)
+        return "GEA_EVIDENCE_BUDGET: 本轮证据读取额度已用完，请交付已读范围并说明未读部分。";
       if (["render_ui", "validate_dsh_ui"].includes(exec.name)) {
         const issue = businessUiIssue(exec.arguments);
         if (issue) return issue;
       }
       if (!exec.name.startsWith("gea_")) return;
-      const state = stateOf(agent);
       if (!namesFor(agent, state).has(exec.name))
         return "GEA_BUSINESS_TOOL_NOT_ALLOWED: 当前业务角色未声明此工具能力。";
       const callArgs = exec.arguments as Record<string, unknown>;
@@ -255,9 +258,6 @@ export function mountBusinessPrompts(
         business.turnStopKind(agent.id) === "session-expired"
       )
         return "GEA_GATEWAY_SESSION_EXPIRED: 本轮网关会话已过期，不能通过证据回读重建会话；下一轮重新验证。";
-      // A spent business read allowance stops new business queries whose evidence cannot be read.
-      if (state.readCalls >= PROMPT_BUDGET.evidenceCalls)
-        return "GEA_EVIDENCE_BUDGET: 本轮证据读取额度已用完，请交付已读范围并说明未读部分。";
       // Reserve before dispatch: parallel calls must not all pass against the same stale counter.
       if (exec.name === "gea_evidence_read") {
         state.readCalls++;
@@ -895,7 +895,7 @@ export function mountBusinessPrompts(
                 name: "gea:budget",
                 text:
                   state.readCalls >= PROMPT_BUDGET.evidenceCalls
-                    ? "本轮业务证据读取额度已用完。停止新业务查询、业务能力加载和证据回读；直接用已展示数据交付结论、实际覆盖范围和未完成项。未读结果保持未知，不重建业务查询；通用文件、规划、任务和协作能力仍按官方规则可用。"
+                    ? "本轮业务证据读取额度已用完，本轮全部工具已停止。直接用已展示数据交付结论、实际覆盖范围和未完成项；保留已有证据，未读结果保持未知，不重建查询或继续执行。下一轮重新核对身份、授权与额度。"
                     : "本轮业务查询额度已用完，不再发起业务查询。必要时在读取额度内沿nextRead读已取得证据，然后交付业务答复及未完成项；通用文件、规划、任务和协作能力仍按官方规则可用。",
               },
             ]
@@ -906,8 +906,8 @@ export function mountBusinessPrompts(
       const tools = assembled.tools
         .filter((tool) => {
           if (!visible.has(tool.name)) return false;
-          if (!tool.name.startsWith("gea_")) return true;
           if (state.readCalls >= PROMPT_BUDGET.evidenceCalls) return false;
+          if (!tool.name.startsWith("gea_")) return true;
           return state.calls < state.limit || tool.name === "gea_evidence_read";
         })
         .map((tool) =>
