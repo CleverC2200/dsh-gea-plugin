@@ -140,6 +140,10 @@
       "requiredService": "attachments",
       "serviceMountedBy": "packages/bundle/base/cordis.patch.yml:138 attachment-local, inherited by standard scope",
       "routeImageCapability": "execution only; registration remains for text routes"
+    },
+    "qaMetadataSourceCorrection": {
+      "receipt": "catalog-scene-qa-metadata-source-correction-r39-01.json",
+      "sha256": "65a6d3470789fa7af814468be33643053ca4a030685014748e1f6158fbfdadd0"
     }
   },
   "coreHeads": {
@@ -384,19 +388,19 @@
       },
       {
         "name": "sinian-demand-baseline",
-        "description": "[用户技能] local regression fixture"
+        "description": "[用户技能] {description}"
       },
       {
         "name": "sinian-demand-dialogue",
-        "description": "[用户技能] local regression fixture"
+        "description": "[用户技能] {description}"
       },
       {
         "name": "sinian-forecast-review",
-        "description": "[用户技能] local regression fixture"
+        "description": "[用户技能] {description}"
       },
       {
         "name": "sinian-forecast-scope",
-        "description": "[用户技能] local regression fixture"
+        "description": "[用户技能] {description}"
       }
     ]
   },
