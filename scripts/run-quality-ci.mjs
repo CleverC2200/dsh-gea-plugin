@@ -17,7 +17,7 @@ import { resolveSourceInputs } from "./source-profile.mjs";
 import { resourceDigests } from "./source-combination-integrity.mjs";
 const peers = {
   "dsh-agent-workbench": "c5a5bc64fade154bf5b468f0d848974ac308823a",
-  "dsh-agent-manage": "9ee47d426e35b5a2386c85f57e09ef1514130a1f",
+  "dsh-agent-manage": "2c944978fbf8b1ddcf4436036da848824c5077fe",
 };
 import { supportedCores } from "./supported-cores.mjs";
 import currentCore from "./current-core.json" with { type: "json" };
