@@ -2,7 +2,8 @@ import { openSalesPlan, openWorkbenchPage } from "./fixtures/business-page.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { profile } from "./profile.mjs";
 
 test(
@@ -77,21 +78,23 @@ test(
       app.requests.filter((request) => request.url.pathname.endsWith("/getUserInfo")).length >= 2,
     );
 
-    await mkdir(".impeccable/review", { recursive: true });
+    await mkdir(".scratch", { recursive: true });
+    const screenshots = await mkdtemp(resolve(".scratch/api-log-review-"));
+    t.diagnostic(`API log screenshots: ${screenshots}`);
     await page.screenshot({
-      path: ".impeccable/review/desktop.png",
+      path: join(screenshots, "desktop.png"),
       fullPage: true,
     });
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator(".gea-api-log-center")).toBeVisible();
     await page.screenshot({
-      path: ".impeccable/review/mobile.png",
+      path: join(screenshots, "mobile.png"),
       fullPage: true,
     });
     await page.locator(".gea-api-call-row").nth(1).click();
     await expect(page.locator(".gea-api-detail")).toBeInViewport();
     await page.screenshot({
-      path: ".impeccable/review/mobile-detail.png",
+      path: join(screenshots, "mobile-detail.png"),
     });
     assert.deepEqual(errors, []);
   },
