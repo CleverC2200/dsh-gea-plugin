@@ -102,7 +102,7 @@ test("releasing a page tool owner cancels queued commands and the waiting public
   assert.equal(registry.receipts()[0].outcome, "failed");
   registry.shutdown();
 });
-test("business prompt masks keep the selected native ancestor loader and refuse generic business execution", async () => {
+test("business masks deny unavailable GEA tools while preserving official preset capabilities", async () => {
   const { mountBusinessPrompts } = await bundled("src/host/prompt-runtime.ts");
   const handlers = new Map();
   let guard;
@@ -118,7 +118,7 @@ test("business prompt masks keep the selected native ancestor loader and refuse 
       return () => {};
     },
     schemas: () =>
-      ["gea_capabilities", "skill", "gea_cube_query", "run_code"].map((name) => ({ name })),
+      ["gea_capabilities", "skill", "gea_cube_query", "gea_sales_plan_write", "run_code"].map((name) => ({ name })),
     get: (name, selectedAgent) => {
       assert.equal(selectedAgent, agent, "native loader lookup uses the selected Agent ancestry");
       return native.has(name) ? { name } : undefined;
@@ -170,9 +170,10 @@ test("business prompt masks keep the selected native ancestor loader and refuse 
     kind: "enter",
     messages: [],
   }));
-  assert.ok(mask.allow.includes("skill"));
-  assert.ok(mask.allow.includes("skill_reference_read"));
-  assert.equal(mask.allow.includes("run_code"), false);
+  assert.equal(mask.allow, undefined);
+  assert.deepEqual(mask.deny, ["gea_sales_plan_write"]);
+  assert.equal(mask.deny.includes("skill"), false);
+  assert.equal(mask.deny.includes("run_code"), false);
   assert.equal(executionChecks, 1);
   denied = true;
   await assert.rejects(

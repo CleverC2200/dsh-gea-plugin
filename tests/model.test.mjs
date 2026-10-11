@@ -94,20 +94,18 @@ test(
     // 回答里渲染界面；这里显式记录该行为，避免它变成无声的提示词漂移。
     assert.equal(instructions.includes("默认就该出 UI"), false);
     // 当前受管预设包含 Manage 的参考读取与纯计算、GenUI 的呈现工具。
-    // 工具可见不授予业务权限；完整集合继续拒绝未登记工具。
-    assert.deepEqual(body.tools.map((tool) => tool.function.name).sort(), [
-      "forecast_compute",
+    // GEA 仅限制自己的业务工具；官方标准预设保留其原生能力。
+    const tools = body.tools.map((tool) => tool.function.name);
+    assert.deepEqual(tools.filter((name) => name.startsWith("gea_")).sort(), [
       "gea_capabilities",
       "gea_cube_query",
       "gea_evidence_read",
       "gea_gateway_catalog",
       "gea_module_mcp",
       "gea_sales_plan_read",
-      "render_ui",
-      "skill",
-      "skill_reference_read",
-      "validate_dsh_ui",
     ]);
+    for (const name of ["forecast_compute", "render_ui", "validate_dsh_ui", "skill", "skill_reference_read", "read", "write"])
+      assert.ok(tools.includes(name), `selected official preset capability missing: ${name}`);
     // 默认不允许模型自己写 SQL：受管只读工具不能出现在工具清单里。
     assert.equal(
       body.tools.some((tool) => tool.function.name === "gea_plugin_read"),
