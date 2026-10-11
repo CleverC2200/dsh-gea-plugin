@@ -7,7 +7,8 @@ import { resolve, join } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const pnpm = process.env.GEA_PACKAGE_PNPM;
-if (!pnpm) throw Error("GEA_PACKAGE_PNPM_REQUIRED: current official pnpm entry");
+if (!pnpm)
+  throw Error("GEA_PACKAGE_PNPM_REQUIRED: current official pnpm entry");
 
 test(
   "ordinary GEA artifact locks only runtime dependencies and preserves Host-provided peer contracts",
@@ -47,27 +48,41 @@ test(
       ),
     );
     const manifest = JSON.parse(
-      execFileSync("tar", ["-xOf", packed.artifact, "package/package.json"], { encoding: "utf8" }),
-    );
-    const lock = JSON.parse(
-      execFileSync("tar", ["-xOf", packed.artifact, "package/npm-shrinkwrap.json"], {
+      execFileSync("tar", ["-xOf", packed.artifact, "package/package.json"], {
         encoding: "utf8",
       }),
     );
-    const files = execFileSync("tar", ["-tzf", packed.artifact], { encoding: "utf8" }).split("\n");
+    const lock = JSON.parse(
+      execFileSync(
+        "tar",
+        ["-xOf", packed.artifact, "package/npm-shrinkwrap.json"],
+        {
+          encoding: "utf8",
+        },
+      ),
+    );
+    const files = execFileSync("tar", ["-tzf", packed.artifact], {
+      encoding: "utf8",
+    }).split("\n");
     assert.equal(
       manifest.dependencies["@modelcontextprotocol/sdk"],
-      "1.30.0",
+      "1.31.0",
       "the actual Host import is a shipped runtime dependency",
     );
-    assert.equal(manifest.peerDependencies["@deepseek-ai/cordis"], "4.0.5-alpha.1");
+    assert.equal(
+      manifest.peerDependencies["@deepseek-ai/cordis"],
+      "4.0.5-alpha.1",
+    );
     assert.equal(
       manifest.peerDependencies["@cleverc2200/dsh-agent-workbench"],
       versions["@cleverc2200/dsh-agent-workbench"],
     );
     assert.equal(manifest.devDependencies, undefined);
     assert.ok(
-      !files.some((file) => file.includes("node_modules/") || file.includes("scripts/start.mjs")),
+      !files.some(
+        (file) =>
+          file.includes("node_modules/") || file.includes("scripts/start.mjs"),
+      ),
       "the plugin carries neither another SDK tree nor the retired standalone launcher",
     );
     assert.ok(
@@ -79,6 +94,20 @@ test(
       "the official installation provides the SDK singleton",
     );
     assert.deepEqual(lock.packages[""].dependencies, manifest.dependencies);
+    assert.equal(
+      lock.packages["node_modules/@modelcontextprotocol/sdk"].version,
+      "1.31.0",
+    );
+    const proxy = lock.packages["node_modules/proxy-addr"];
+    assert.ok(
+      proxy,
+      "the emitted runtime lock contains the SDK's proxy-addr dependency",
+    );
+    const [major, minor, patch] = proxy.version.split(".").map(Number);
+    assert.ok(
+      major === 2 && (minor > 0 || patch >= 8),
+      "the runtime graph excludes proxy-addr below 2.0.8",
+    );
     lock.packages[""].dependencies["@modelcontextprotocol/sdk"] = "0.0.0";
     await writeFile(join(input, "npm-shrinkwrap.json"), JSON.stringify(lock));
     assert.throws(
@@ -88,7 +117,8 @@ test(
           ["scripts/package.mjs", "--input", input, "--destination", output],
           { cwd: root, stdio: "pipe" },
         ),
-      (error) => error.stderr.toString().includes("PRODUCTION_PACKAGE_LOCK_MISMATCH"),
+      (error) =>
+        error.stderr.toString().includes("PRODUCTION_PACKAGE_LOCK_MISMATCH"),
     );
   },
 );
