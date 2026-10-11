@@ -21,6 +21,13 @@ test("dependency hashing keeps file and cyclic-link coverage with four bounded r
     await writeFile(file, contents);
     expected[file] = createHash("sha256").update(contents).digest("hex");
   }
+  const nested = join(root, "nested");
+  await mkdir(nested);
+  const nestedFile = join(nested, "dependency.js");
+  await writeFile(nestedFile, "nested dependency");
+  expected[nestedFile] = createHash("sha256").update("nested dependency").digest("hex");
+  await symlink(nested, join(root, "nested-link"));
+  expected[join(root, "nested-link")] = "link:" + nested;
   await symlink(root, join(root, "cycle"));
   await symlink(join(root, "0.js"), join(root, "file-link"));
   expected[join(root, "cycle")] = "link:" + root;

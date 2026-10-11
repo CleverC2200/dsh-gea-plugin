@@ -117,11 +117,12 @@ export async function dependencyDigests(directories, readScope) {
       if (entry.name.startsWith(".")) continue;
       const file = join(physical, entry.name);
       if (entry.isFile()) enqueue(file);
-      else if (entry.isDirectory() || entry.isSymbolicLink()) {
+      else if (entry.isDirectory()) await visit(file);
+      else if (entry.isSymbolicLink()) {
         const resolved = readScope
           ? await readScope.resolve(file, { traverse: true })
           : await realpath(file);
-        if (entry.isSymbolicLink()) files[file] = "link:" + resolved;
+        files[file] = "link:" + resolved;
         if ((await lstat(resolved)).isDirectory()) await visit(resolved);
         else enqueue(resolved);
       }
