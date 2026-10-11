@@ -53,13 +53,11 @@ test(
       viewport: { width: 1440, height: 1000 },
     });
     await context.addCookies(
-      app.cookie
-        .split("; ")
-        .map((pair) => ({
-          name: pair.slice(0, pair.indexOf("=")),
-          value: pair.slice(pair.indexOf("=") + 1),
-          url: app.origin,
-        })),
+      app.cookie.split("; ").map((pair) => ({
+        name: pair.slice(0, pair.indexOf("=")),
+        value: pair.slice(pair.indexOf("=") + 1),
+        url: app.origin,
+      })),
     );
     const page = await context.newPage();
     const contexts = [];
