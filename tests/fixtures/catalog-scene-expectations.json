@@ -1,0 +1,404 @@
+{
+  "provenance": {
+    "declarations": "catalog-scene-manifest-r39-01; independent Git registrations, never model actual",
+    "manifestSha256": "4ba97ef2d61545694d7b623d1f08f01a254befe0e0445698279f742c2ae38712",
+    "geaRegistrationBase": "3f23c0d7a65d42afb685a859a07201bf6ccf00d5",
+    "metadataSources": [
+      {
+        "owner": "workbench",
+        "head": "634e744700e3001267c74311584d4f16649cc75e",
+        "file": "lib/static/category/skills/category-plan/SKILL.md",
+        "sha256": "cac867c63919d9f4e05d2f3e73a0e3de32b1b385668fc4af19b6c97be5d910a3",
+        "name": "category-plan"
+      },
+      {
+        "owner": "workbench",
+        "head": "634e744700e3001267c74311584d4f16649cc75e",
+        "file": "lib/static/mps/skills/inventory-mps/SKILL.md",
+        "sha256": "c9a55539603b8bfd4a22f9b3eca3bb21c65398dfec16959c5500b6c7826e78af",
+        "name": "inventory-mps"
+      },
+      {
+        "owner": "workbench",
+        "head": "634e744700e3001267c74311584d4f16649cc75e",
+        "file": "lib/static/regional/skills/regional/SKILL.md",
+        "sha256": "c34de63c45f10a823fd7af2f7a10b49668366c2650e49c08328674d724a276b7",
+        "name": "plan-regional"
+      },
+      {
+        "owner": "workbench",
+        "head": "634e744700e3001267c74311584d4f16649cc75e",
+        "file": "lib/business/inventory-apsplan/skills/aps/SKILL.md",
+        "sha256": "555d6e3698cbdff78f795500ae1ce28ecd1218c33960dff82abb9ac1ccd9f6dc",
+        "name": "inventory-apsplan"
+      },
+      {
+        "owner": "workbench",
+        "head": "634e744700e3001267c74311584d4f16649cc75e",
+        "file": "lib/business/inventory-aqkc/skills/aqkc/SKILL.md",
+        "sha256": "0835006111622fd2c3289ab5d3910a05da50af77393cf76b24c481fd76a796ba",
+        "name": "inventory-aqkc"
+      },
+      {
+        "owner": "workbench",
+        "head": "634e744700e3001267c74311584d4f16649cc75e",
+        "file": "lib/business/inventory-customer/skills/customer/SKILL.md",
+        "sha256": "525676727d0203390e7eac1d82019de274c322b00d5f746bc643df2c72227a50",
+        "name": "inventory-customer"
+      },
+      {
+        "owner": "workbench",
+        "head": "634e744700e3001267c74311584d4f16649cc75e",
+        "file": "lib/business/inventory-dealer/skills/dealer/SKILL.md",
+        "sha256": "e4bc4ded2a7f6b60f7147e2c48b9fc9826944e55c94d0e5c8709a7e12e7cfb74",
+        "name": "inventory-dealer"
+      },
+      {
+        "owner": "workbench",
+        "head": "634e744700e3001267c74311584d4f16649cc75e",
+        "file": "lib/business/inventory-fc/skills/fc/SKILL.md",
+        "sha256": "b217f1d93dd12fbce94f3af5981f806fd1de62c204d234b5976a82aa905085f6",
+        "name": "inventory-fc"
+      },
+      {
+        "owner": "workbench",
+        "head": "634e744700e3001267c74311584d4f16649cc75e",
+        "file": "lib/business/inventory-orderfulfillment/skills/orderfulfillment/SKILL.md",
+        "sha256": "54ae2cd859178d9ba30d58e788eb531aaed2df481507eff9f8634363126e83f7",
+        "name": "inventory-orderfulfillment"
+      },
+      {
+        "owner": "workbench",
+        "head": "634e744700e3001267c74311584d4f16649cc75e",
+        "file": "lib/business/inventory-orderworkbench/skills/orderworkbench/SKILL.md",
+        "sha256": "f4900459de51821c4c580631e5ce92d0431e8a74624a6bb736accd3d0ebc638e",
+        "name": "inventory-orderworkbench"
+      },
+      {
+        "owner": "workbench",
+        "head": "634e744700e3001267c74311584d4f16649cc75e",
+        "file": "lib/business/inventory-qll/skills/qll/SKILL.md",
+        "sha256": "6b929538f1936d93fa3f063e7180ec20b560c685775b766ecc1eb3046cac3736",
+        "name": "inventory-qll"
+      },
+      {
+        "owner": "manage",
+        "head": "6f08567a6e032b867464b0cfc55c967942ce2b93",
+        "file": "business-resources/aps-analysis/sales-forecast-result-analysis.skill.md",
+        "sha256": "70a681990736be14f4c74054d43b53c7a431001bc2a897324eb7188c19bbc1de",
+        "name": "sales-forecast-result-analysis"
+      },
+      {
+        "owner": "manage",
+        "head": "6f08567a6e032b867464b0cfc55c967942ce2b93",
+        "file": "business-resources/aps-analysis/sales-ops-problem-analysis.skill.md",
+        "sha256": "63e0a13e519d579ee01f51d7056625f34eba17ed2c89202c4a67b90c27498c54",
+        "name": "sales-ops-problem-analysis"
+      },
+      {
+        "owner": "manage",
+        "head": "6f08567a6e032b867464b0cfc55c967942ce2b93",
+        "file": "business-resources/sinian-demand-forecast/skills/sinian-demand-baseline/SKILL.md",
+        "sha256": "9b18565da7dd147edcf29391af29aca237604133eb6a6d428f233767189e247e",
+        "name": "sinian-demand-baseline"
+      },
+      {
+        "owner": "manage",
+        "head": "6f08567a6e032b867464b0cfc55c967942ce2b93",
+        "file": "business-resources/sinian-demand-forecast/skills/sinian-demand-dialogue/SKILL.md",
+        "sha256": "4c43c8b4d8f457b77c51155df6af233e11b77ff24980ef911303a48e08e5c7c2",
+        "name": "sinian-demand-dialogue"
+      },
+      {
+        "owner": "manage",
+        "head": "6f08567a6e032b867464b0cfc55c967942ce2b93",
+        "file": "business-resources/sinian-demand-forecast/skills/sinian-forecast-review/SKILL.md",
+        "sha256": "c2707a6a611f099329c887d57e385123e2f73b613c40fcdb77c9c0acae612a0a",
+        "name": "sinian-forecast-review"
+      },
+      {
+        "owner": "manage",
+        "head": "6f08567a6e032b867464b0cfc55c967942ce2b93",
+        "file": "business-resources/sinian-demand-forecast/skills/sinian-forecast-scope/SKILL.md",
+        "sha256": "ec85b3f4305ee49b2a8cb63f861a6f047fdece61b8471e8e4fd5f97161f8948a",
+        "name": "sinian-forecast-scope"
+      },
+      {
+        "owner": "genui",
+        "head": "0cc64c97b426ff5afe54154e74ead31dd8739265",
+        "file": "published@0.11.3/src/plugin/index.ts",
+        "sha256": "a099dd4700ac18b259334ac981d5e4be346ad530a0d1f88b4b8bf76ec6e31810",
+        "name": "genui"
+      }
+    ],
+    "deduplication": "Core skill/src/index.ts collectFresh nearest layer overlays; collectLayer lower rank, providerOrder, localOrder. Manage UserPanel global rank600 registers synchronously before awaited BusinessResources global rank600; QA four duplicates win with zh prefix. Fixture own name distinct; canary scoped filesystem is retained."
+  },
+  "coreHeads": {
+    "rc2": "639ed015397290b3745d163aafe02ffee4aa3f84",
+    "alpha": "5badb15009ae1756c3afe0ae0cef1faafc290ccc"
+  },
+  "requiredPeers": {
+    "dsh-agent-workbench": "634e744700e3001267c74311584d4f16649cc75e",
+    "dsh-agent-manage": "6f08567a6e032b867464b0cfc55c967942ce2b93",
+    "dsh-genui": "0cc64c97b426ff5afe54154e74ead31dd8739265",
+    "dsh-better-sidebar": "e35120f1d9b3773062b68decb4f53a526d6c8baa"
+  },
+  "completeNativeTools": {
+    "639ed015397290b3745d163aafe02ffee4aa3f84": [
+      "ask_user_question",
+      "bash",
+      "create_goal",
+      "edit",
+      "exit_plan_mode",
+      "forecast_compute",
+      "gea_capabilities",
+      "gea_cube_query",
+      "gea_evidence_read",
+      "gea_gateway_catalog",
+      "gea_module_mcp",
+      "gea_sales_plan_read",
+      "gea_visible_workbench_context",
+      "get_goal",
+      "glob",
+      "grep",
+      "interrupt_agent",
+      "job_kill",
+      "job_list",
+      "job_output",
+      "list_agents",
+      "page_reference_read",
+      "present",
+      "read",
+      "render_ui",
+      "report_market_issue",
+      "send_message",
+      "skill",
+      "skill_reference_read",
+      "subagent",
+      "subagent_fork",
+      "subagents_run",
+      "todo_write",
+      "update_goal",
+      "validate_dsh_ui",
+      "web_fetch",
+      "web_search",
+      "workflow",
+      "write"
+    ],
+    "5badb15009ae1756c3afe0ae0cef1faafc290ccc": [
+      "ask_user_question",
+      "bash",
+      "create_goal",
+      "edit",
+      "exit_plan_mode",
+      "forecast_compute",
+      "gea_capabilities",
+      "gea_cube_query",
+      "gea_evidence_read",
+      "gea_gateway_catalog",
+      "gea_module_mcp",
+      "gea_sales_plan_read",
+      "gea_visible_workbench_context",
+      "get_goal",
+      "glob",
+      "grep",
+      "interrupt_agent",
+      "job_kill",
+      "job_list",
+      "job_output",
+      "list_agents",
+      "page_reference_read",
+      "present",
+      "read",
+      "render_ui",
+      "report_market_issue",
+      "schedule_create",
+      "schedule_delete",
+      "schedule_list",
+      "schedule_update",
+      "send_message",
+      "skill",
+      "skill_reference_read",
+      "subagent",
+      "subagent_fork",
+      "subagents_run",
+      "todo_write",
+      "update_goal",
+      "validate_dsh_ui",
+      "web_fetch",
+      "web_search",
+      "workflow",
+      "write"
+    ]
+  },
+  "completeSkillEntries": {
+    "model": [
+      {
+        "name": "catalog-scene-canary",
+        "description": "Catalog scene metadata fixture; load its body only by explicit skill invocation."
+      },
+      {
+        "name": "category-plan",
+        "description": "本地模拟品类计划快照与交互，不代表真实业务结果。"
+      },
+      {
+        "name": "genui",
+        "description": "GenUI dsh-ui component/schema reference. Preserve conversation language for all user-visible text."
+      },
+      {
+        "name": "inventory-apsplan",
+        "description": "解释产销协同当前经营页面的 GEA 只读指标、来源、范围和缺失项。"
+      },
+      {
+        "name": "inventory-aqkc",
+        "description": "基地库存页面的只读查询与风险分析：解释目标偏差、当前待发订单缺口、货龄和经营洞察，复用当前页面确定性结果。"
+      },
+      {
+        "name": "inventory-customer",
+        "description": "客户库存演示页面的业务范围与数据边界。"
+      },
+      {
+        "name": "inventory-dealer",
+        "description": "在 DSH 经销商库存业务页读取当前授权证据、调整筛选、解释指标，并在右侧 DSH 会话中整理分析方案。"
+      },
+      {
+        "name": "inventory-fc",
+        "description": "在 DSH 分仓库存业务页读取当前 GEA 证据、调整筛选、解释指标，并在右侧 DSH 会话中整理分析方案。"
+      },
+      {
+        "name": "inventory-mps",
+        "description": "解释MPS模拟原型当前页面的需求、滚动计划、产能与缺口"
+      },
+      {
+        "name": "inventory-orderfulfillment",
+        "description": "订单履约原型的模拟数据、筛选和引用范围。"
+      },
+      {
+        "name": "inventory-orderworkbench",
+        "description": "订单工作台页面的演示范围与数据边界。"
+      },
+      {
+        "name": "inventory-qll",
+        "description": "解读当前公司全链库存、趋势与缺口，核当前范围、缺失或拒权，并引用当前页面证据。"
+      },
+      {
+        "name": "plan-regional",
+        "description": "在区域计划原型当前页面解释模拟提报跟进、品类达成、复盘和异常，或按要求切换模块、维度及模拟日期。"
+      },
+      {
+        "name": "sales-forecast-result-analysis",
+        "description": "解读已有预测、比较计划版本或复盘历史偏差；不生成新预测或修改正式计划。"
+      },
+      {
+        "name": "sales-ops-problem-analysis",
+        "description": "已有产销指标异常，需要定位贡献对象、核查订单库存生产事件及改善措施时使用。"
+      },
+      {
+        "name": "sinian-demand-baseline",
+        "description": "要算数量基线或生成预测草案时加载：按字典 V2 的④⑤⑥公式计算客户 SKU 次月拉货数量基线，处理新品与节令口径缺口；只出草案，不做 DMS 回写。"
+      },
+      {
+        "name": "sinian-demand-dialogue",
+        "description": "需求预测对话的默认入口技能：用户在 GEA 会话里查/问需求预测、销售计划、提报或审批口径（例如“查一下 9 月需求预测的数据”）时先加载本技能，再按 V1.15 规则用只读数据作答、维护本地草稿并引导固定入口；不写回、不替用户点击最终提交。"
+      },
+      {
+        "name": "sinian-forecast-review",
+        "description": "要复核或要报告时加载：用户要求核对数据覆盖、公式证据、业务风险、可解释报告或离线回测口径时，用本技能逐项复核并整理交付；不执行审批、排产或写回。"
+      },
+      {
+        "name": "sinian-forecast-scope",
+        "description": "确认预测范围与口径时加载：用户问“这个月/这些客户/哪些 SKU 算在内、口径怎么定、实体怎么消歧”时，用本技能核对客户可售 SKU 范围与候选收缩；只做范围与数据准备，不执行预测或业务写入。"
+      }
+    ],
+    "promptQa": [
+      {
+        "name": "catalog-scene-canary",
+        "description": "Catalog scene metadata fixture; load its body only by explicit skill invocation."
+      },
+      {
+        "name": "category-plan",
+        "description": "本地模拟品类计划快照与交互，不代表真实业务结果。"
+      },
+      {
+        "name": "genui",
+        "description": "GenUI dsh-ui component/schema reference. Preserve conversation language for all user-visible text."
+      },
+      {
+        "name": "inventory-apsplan",
+        "description": "解释产销协同当前经营页面的 GEA 只读指标、来源、范围和缺失项。"
+      },
+      {
+        "name": "inventory-aqkc",
+        "description": "基地库存页面的只读查询与风险分析：解释目标偏差、当前待发订单缺口、货龄和经营洞察，复用当前页面确定性结果。"
+      },
+      {
+        "name": "inventory-customer",
+        "description": "客户库存演示页面的业务范围与数据边界。"
+      },
+      {
+        "name": "inventory-dealer",
+        "description": "在 DSH 经销商库存业务页读取当前授权证据、调整筛选、解释指标，并在右侧 DSH 会话中整理分析方案。"
+      },
+      {
+        "name": "inventory-fc",
+        "description": "在 DSH 分仓库存业务页读取当前 GEA 证据、调整筛选、解释指标，并在右侧 DSH 会话中整理分析方案。"
+      },
+      {
+        "name": "inventory-mps",
+        "description": "解释MPS模拟原型当前页面的需求、滚动计划、产能与缺口"
+      },
+      {
+        "name": "inventory-orderfulfillment",
+        "description": "订单履约原型的模拟数据、筛选和引用范围。"
+      },
+      {
+        "name": "inventory-orderworkbench",
+        "description": "订单工作台页面的演示范围与数据边界。"
+      },
+      {
+        "name": "inventory-qll",
+        "description": "解读当前公司全链库存、趋势与缺口，核当前范围、缺失或拒权，并引用当前页面证据。"
+      },
+      {
+        "name": "plan-regional",
+        "description": "在区域计划原型当前页面解释模拟提报跟进、品类达成、复盘和异常，或按要求切换模块、维度及模拟日期。"
+      },
+      {
+        "name": "sales-forecast-result-analysis",
+        "description": "解读已有预测、比较计划版本或复盘历史偏差；不生成新预测或修改正式计划。"
+      },
+      {
+        "name": "sales-ops-problem-analysis",
+        "description": "已有产销指标异常，需要定位贡献对象、核查订单库存生产事件及改善措施时使用。"
+      },
+      {
+        "name": "sinian-demand-baseline",
+        "description": "[用户技能] local regression fixture"
+      },
+      {
+        "name": "sinian-demand-dialogue",
+        "description": "[用户技能] local regression fixture"
+      },
+      {
+        "name": "sinian-forecast-review",
+        "description": "[用户技能] local regression fixture"
+      },
+      {
+        "name": "sinian-forecast-scope",
+        "description": "[用户技能] local regression fixture"
+      }
+    ]
+  },
+  "qaFixtureSkillNames": [
+    "sinian-demand-dialogue",
+    "sinian-demand-baseline",
+    "sinian-forecast-scope",
+    "sinian-forecast-review"
+  ],
+  "canary": {
+    "name": "catalog-scene-canary",
+    "description": "Catalog scene metadata fixture; load its body only by explicit skill invocation.",
+    "body": "CATALOG_SCENE_SKILL_BODY_MUST_NOT_AUTOLOAD_R39_46b8fd29"
+  },
+  "qaFixtureSkillBody": "Explicit domain rule fixture."
+}
