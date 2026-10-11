@@ -74,7 +74,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: CleverC2200/dsh-agent-workbench
-          ref: 48a232c6bede7ed64f0c439d18b29ffdaa0df03f
+          ref: 8f58ed601ab048d57f44794658009105407b6ae6
           fetch-depth: 0
           path: source/dsh-agent-workbench
           token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}

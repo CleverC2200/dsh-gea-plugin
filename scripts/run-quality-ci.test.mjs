@@ -140,7 +140,7 @@ test("hosted checkout refs and public admission use the reviewed immutable peer 
     assert.equal(created.status, 0, created.stderr);
     const input = JSON.parse(readFileSync(join(directory, "candidate-input.json"), "utf8"));
     const expected = {
-      "dsh-agent-workbench": "48a232c6bede7ed64f0c439d18b29ffdaa0df03f",
+      "dsh-agent-workbench": "8f58ed601ab048d57f44794658009105407b6ae6",
       "dsh-agent-manage": "6f08567a6e032b867464b0cfc55c967942ce2b93",
     };
     const workflow = readFileSync(".github/workflows/quality.yml", "utf8");
