@@ -378,10 +378,14 @@ export async function observeAssembly(root, record, context) {
       return result("unknown", "ASSEMBLY_BINDING_REQUIRED");
     const runtime = await scope.resolve(record.runtime),
       directory = join(runtime, "source-combinations", record.combinationId);
-    const manifestInput = await observe({
-      id: "assembly-manifest",
-      path: join(directory, "combination.json"),
-    });
+    // Match the canonical combination reader's bound; ordinary inputs retain 16 MiB.
+    const manifestInput = await observe(
+      {
+        id: "assembly-manifest",
+        path: join(directory, "combination.json"),
+      },
+      64 * 1024 * 1024,
+    );
     if (manifestInput.sha256 !== record.manifestSha256)
       return result("failed", "ASSEMBLY_MANIFEST_MISMATCH", "MATCHING_FROZEN_MANIFEST_REQUIRED");
     const manifest = JSON.parse(manifestInput.bytes);
