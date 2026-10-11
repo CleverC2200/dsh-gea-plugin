@@ -1253,7 +1253,7 @@ test(
               id: "tool-result-1",
               role: "tool",
               toolCallId: start.toolCallId,
-              content: JSON.stringify({ applied: true }),
+              content: JSON.stringify({ toolCallId: start.toolCallId, applied: true }),
             },
           ],
         });
@@ -1542,7 +1542,7 @@ test(
             id: "verb-result-1",
             role: "tool",
             toolCallId: start.toolCallId,
-            content: JSON.stringify({ applied: true }),
+            content: JSON.stringify({ toolCallId: start.toolCallId, applied: true }),
           },
         ],
       });
