@@ -101,7 +101,12 @@ export async function readSourceCombination(runtime, id, core, { readScope } = {
 /** Fix the resolved dependency graph, including built core files and transitive links. */
 export async function dependencyDigests(directories, readScope) {
   const files = {},
-    visited = new Set();
+    visited = new Set(),
+    pending = [];
+  function enqueue(file) {
+    files[file] = null;
+    pending.push(file);
+  }
   async function visit(directory) {
     const physical = readScope
       ? await readScope.resolve(directory, { traverse: true })
@@ -111,18 +116,36 @@ export async function dependencyDigests(directories, readScope) {
     for (const entry of await readdir(physical, { withFileTypes: true })) {
       if (entry.name.startsWith(".")) continue;
       const file = join(physical, entry.name);
-      if (entry.isFile()) files[file] = await fileDigest(file, readScope);
+      if (entry.isFile()) enqueue(file);
       else if (entry.isDirectory() || entry.isSymbolicLink()) {
         const resolved = readScope
           ? await readScope.resolve(file, { traverse: true })
           : await realpath(file);
         if (entry.isSymbolicLink()) files[file] = "link:" + resolved;
         if ((await lstat(resolved)).isDirectory()) await visit(resolved);
-        else files[resolved] = await fileDigest(resolved, readScope);
+        else enqueue(resolved);
       }
     }
   }
   for (const directory of directories) await visit(directory);
+  // Keep the complete traversal and its key order; only independent byte reads overlap.
+  const digests = [];
+  let next = 0,
+    failure;
+  await Promise.all(
+    Array.from({ length: Math.min(4, pending.length) }, async () => {
+      while (!failure && next < pending.length) {
+        const index = next++;
+        try {
+          digests[index] = await fileDigest(pending[index], readScope);
+        } catch (error) {
+          failure ??= error;
+        }
+      }
+    }),
+  );
+  if (failure) throw failure;
+  for (const [index, file] of pending.entries()) files[file] = digests[index];
   return files;
 }
 

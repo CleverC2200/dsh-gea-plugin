@@ -90,7 +90,12 @@ export async function profile(t, options = {}) {
     if (process.env.GEA_TEST_LIFECYCLE_RECEIPT)
       appendFileSync(
         process.env.GEA_TEST_LIFECYCLE_RECEIPT,
-        JSON.stringify({ testName: t.name, directory: dir, ...value }) + "\n",
+        JSON.stringify({
+          observedAt: new Date().toISOString(),
+          testName: t.name,
+          directory: dir,
+          ...value,
+        }) + "\n",
         { mode: 0o600 },
       );
   };

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fixtureEnvironment } from "./fixtures/business-session.mjs";
@@ -25,6 +26,8 @@ const { default: SessionController } = await official("packages/api/session-cont
 const { agentPresetProjectionDefinition } = await official("packages/preset/agent-preset-registry");
 const { default: Persistence } = await official("packages/session/session-persistence-jsonl");
 const { default: Loop } = await official("packages/core/agent-loop");
+const { entryListSchema } = await official("vendor/include");
+const { load, dump } = createRequire(resolve(core, "vendor/include/package.json"))("js-yaml");
 test("actual APS mock registration and Manage route select its original resource, then official Core Session opens view while SQL/model stay before wire", async (t) => {
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(resolve(".runtime/aps-reception-r1-"));
@@ -85,6 +88,11 @@ test("actual APS mock registration and Manage route select its original resource
     providers = [],
     pending = [],
     presets = new Map();
+  const standard = load(
+    await readFile(resolve(core, "packages/bundle/web-app/presets/standard.patch.yml"), "utf8"),
+    { schema: entryListSchema },
+  )[0].insert[0].config;
+  assert.equal(standard.id, "standard");
   const ctx = {
     skills: {
       registerProvider(create) {
@@ -97,6 +105,13 @@ test("actual APS mock registration and Manage route select its original resource
       },
     },
     agentPresets: {
+      async readDocument(id) {
+        assert.equal(id, standard.id, "compose from the fixed official standard declaration");
+        return {
+          agentPreset: id,
+          content: dump(standard.plugins, { schema: entryListSchema, noRefs: true, lineWidth: -1 }),
+        };
+      },
       async register(definition) {
         presets.set(definition.id, definition);
         return async () => presets.delete(definition.id);
