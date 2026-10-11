@@ -86,3 +86,5 @@ Source 用例沿现有 Node test 与 profile fixture 分段计时。每次准备
 Workbench 的原构建输出 lib 受 Git 跟踪。首次准备在 `<job-root>/candidate/dsh-agent-workbench` 建立同提交的独立 build worktree，沿公开 `build:core` 真实编译，保留派生 lib 与 `static/category/index.html`、`static/mps/index.html`、`static/regional/index.html` 差异。候选声明登记干净 source 根；GEA 现有 sibling 类型路径和源码 profile 消费明确 prepared 根。`scripts/quality-workbench.mjs` 逐 Git blob 核除上述精确派生产物外的全部原源码、锁与同 source origin，再核冻结资产摘要。它不把 build tree 宣称 clean，也不放宽共享候选 checker。
 
 本轮隔离 Core 登记在 `scripts/supported-cores.json`，提交、锁、Node 与包管理器均固定；SDK 相对目录名保留原布局，但只指向本任务私有候选。登记不证明 Native、账户、业务或模型验收。
+
+`current-core.json` 保留官方上游提交供追溯，`adaptation` 固定到本轮私有 Core；源码装配和隔离 Host 启动都核对该私有提交。
