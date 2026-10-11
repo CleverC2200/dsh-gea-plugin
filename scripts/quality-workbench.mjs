@@ -11,6 +11,12 @@ const git = (root, ...args) =>
     encoding: "utf8",
     env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
   }).trim();
+const generatedHtml = new Set([
+  "static/category/index.html",
+  "static/mps/index.html",
+  "static/regional/index.html",
+]);
+const derived = (file) => file.startsWith("lib/") || generatedHtml.has(file);
 export async function readPreparedWorkbench({ source, prepared, head }) {
   if (!source || !prepared || !head) throw Error("QUALITY_WORKBENCH_INPUT_REQUIRED");
   source = await realpath(source);
@@ -32,7 +38,7 @@ export async function readPreparedWorkbench({ source, prepared, head }) {
     status
       .split("\n")
       .filter(Boolean)
-      .some((line) => !line.startsWith(" M lib/"))
+      .some((line) => !line.startsWith(" M ") || !derived(line.slice(3)))
   )
     throw Error("QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED");
   const sourceFiles = git(source, "ls-tree", "-r", "-z", head)
@@ -43,7 +49,7 @@ export async function readPreparedWorkbench({ source, prepared, head }) {
       const [mode, , expected] = entry.slice(0, at).split(" ");
       return { file: entry.slice(at + 1), mode, expected };
     })
-    .filter((entry) => !entry.file.startsWith("lib/"));
+    .filter((entry) => !derived(entry.file));
   for (const { file, mode, expected } of sourceFiles) {
     const bytes =
       mode === "120000"

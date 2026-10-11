@@ -31,6 +31,7 @@ function run(command, args, cwd = process.cwd(), environment = {}) {
       "QUALITY_COMMAND_FAILED",
       command + ": " + (result.error?.message ?? result.signal ?? result.status),
     );
+  finalGroup?.verifyUnchanged();
 }
 try {
   const { values } = parseArgs({
@@ -195,6 +196,22 @@ try {
       execFileSync("corepack", ["pnpm", "--version"], { encoding: "utf8" }).trim() !== "11.27.0"
     )
       refuse("QUALITY_TOOLCHAIN_REQUIRED", "Node 24 / pnpm 11.27.0");
+    for (const entry of candidate.repositories) {
+      const source = spawnSync("git", ["-C", entry.path, "remote", "get-url", "source"], {
+        encoding: "utf8",
+      });
+      if (source.status !== 0 && !values["prepare-inputs"])
+        refuse("QUALITY_SOURCE_REMOTE_REQUIRED", entry.repo);
+      if (source.status !== 0)
+        run("git", [
+          "-C",
+          entry.path,
+          "remote",
+          "add",
+          "source",
+          "https://github.com/CleverC2200/" + entry.repo + ".git",
+        ]);
+    }
     if (values["prepare-inputs"]) {
       if (existsSync(preparedWorkbench))
         refuse(
@@ -244,22 +261,6 @@ try {
       });
       finalGroup?.verifyUnchanged();
       writeFileSync(workbenchReceipt, JSON.stringify(prepared, null, 2) + "\n");
-    }
-    for (const entry of candidate.repositories) {
-      const source = spawnSync("git", ["-C", entry.path, "remote", "get-url", "source"], {
-        encoding: "utf8",
-      });
-      if (source.status !== 0 && !values["prepare-inputs"])
-        refuse("QUALITY_SOURCE_REMOTE_REQUIRED", entry.repo);
-      if (source.status !== 0)
-        run("git", [
-          "-C",
-          entry.path,
-          "remote",
-          "add",
-          "source",
-          "https://github.com/CleverC2200/" + entry.repo + ".git",
-        ]);
     }
     const workbenchAssets = await verifyPreparedWorkbench({
       source: workbench.path,
@@ -375,6 +376,7 @@ try {
       run("corepack", ["pnpm", "test"]);
     }
   }
+  finalGroup?.verifyUnchanged();
   console.log(
     JSON.stringify({
       status: "passed",

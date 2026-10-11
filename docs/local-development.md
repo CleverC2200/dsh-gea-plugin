@@ -66,7 +66,7 @@ node scripts/run-quality-ci.mjs --phase verify-input --input /absolute/frozen-gr
 
 这个只读 phase 只需 Node、Git 和固定源码，可直接调用 quality:ci 所声明的同一脚本。包管理器自身的依赖/store 准入另行核验；若 pnpm 在启动脚本前拒绝，就没有执行 admission，直接 Node 的通过不能记为该 pnpm 命令通过。实际 CI 仍需其自身环境的冻结安装及执行回执。
 
-真正完整 quality 或 prepare phase 保留这三个显式输入参数，效果前复核原文件未改；准备后完整 candidate 检查仍核实际 SDK 和 Workbench exports，不把 source-only 通过当成完整通过。默认模式不加载新 reader，不接受单独定位参数暗改选组。`corepack pnpm test:final-group` 独立检查此可选合同；它使用本树和相邻当前 peer 的完整 Git 冷克隆，必要时用 GEA_FINAL_GROUP_WORKBENCH_SOURCE、GEA_FINAL_GROUP_MANAGE_SOURCE、GEA_FINAL_GROUP_CORE_SOURCE 显式指定只读源码。此合同不进入默认 test/test:quality 通配，显式完整质量模式会执行它。
+真正完整 quality 或 prepare phase 保留这三个显式输入参数，每条命令执行前后及成功回执输出前复核原文件未改；准备后完整 candidate 检查仍核实际 SDK 和 Workbench exports，不把 source-only 通过当成完整通过。默认模式不加载新 reader，不接受单独定位参数暗改选组。`corepack pnpm test:final-group` 独立检查此可选合同；它使用本树和相邻当前 peer 的完整 Git 冷克隆，必要时用 GEA_FINAL_GROUP_WORKBENCH_SOURCE、GEA_FINAL_GROUP_MANAGE_SOURCE、GEA_FINAL_GROUP_CORE_SOURCE 显式指定只读源码。此合同不进入默认 test/test:quality 通配，显式完整质量模式会执行它。
 
 首次准备使用独立目录，GEA 与 Manage 源码放在 `<job-root>/candidate/<repo>`，Workbench 干净源码放在 `<job-root>/source/dsh-agent-workbench`，官方 Core 放在 `<job-root>/official-latest-standard`，原 link 依赖放在 `<job-root 的父目录>/current-mainline-closeout-44`。先按公开输入阶段生成声明，再显式准备：
 
@@ -83,4 +83,4 @@ Source 用例沿现有 Node test 与 profile fixture 分段计时。每次准备
 
 依赖完整性 reader 的无 scope 路径最多并行读取 4 个文件，完整读取每个当前字节；发现顺序、有序摘要与最早错误保持。带 delivery readScope 的 guard 和读取继续串行。启动准入与锁内复核仍各自执行，不使用 mtime 或跨次缓存跳过哈希。
 
-Workbench 的原构建输出 lib 受 Git 跟踪。首次准备在 `<job-root>/candidate/dsh-agent-workbench` 建立同提交的独立 build worktree，沿公开 `build:core` 真实编译，保留派生 lib 差异。候选声明登记干净 source 根；GEA 现有 sibling 类型路径和源码 profile 消费明确 prepared 根。`scripts/quality-workbench.mjs` 逐 Git blob 核全部非 lib 原源码、锁与同 source origin，再核冻结资产摘要。它不把 build tree 宣称 clean，也不放宽共享候选 checker。
+Workbench 的原构建输出 lib 受 Git 跟踪。首次准备在 `<job-root>/candidate/dsh-agent-workbench` 建立同提交的独立 build worktree，沿公开 `build:core` 真实编译，保留派生 lib 与 `static/category/index.html`、`static/mps/index.html`、`static/regional/index.html` 差异。候选声明登记干净 source 根；GEA 现有 sibling 类型路径和源码 profile 消费明确 prepared 根。`scripts/quality-workbench.mjs` 逐 Git blob 核除上述精确派生产物外的全部原源码、锁与同 source origin，再核冻结资产摘要。它不把 build tree 宣称 clean，也不放宽共享候选 checker。

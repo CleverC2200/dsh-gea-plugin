@@ -25,6 +25,11 @@ function preparedFixture(t) {
   writeFileSync(join(source, "package.json"), '{"name":"@cleverc2200/dsh-agent-workbench"}');
   writeFileSync(join(source, "package-lock.json"), "{}");
   writeFileSync(join(source, "src/input.ts"), "export const input = true;\n");
+  for (const id of ["category", "mps", "regional"]) {
+    mkdirSync(join(source, "static", id), { recursive: true });
+    writeFileSync(join(source, "static", id, "index.html"), "original HTML\n");
+    writeFileSync(join(source, "static", id, "page.json"), "{}\n");
+  }
   for (const file of ["host.js", "client.js", "types/host.d.ts", "types/client.d.ts"])
     writeFileSync(join(source, "lib", file), "original output\n");
   const git = (...args) =>
@@ -53,6 +58,27 @@ function preparedFixture(t) {
   writeFileSync(join(prepared, "lib/host.js"), "built output\n");
   return { source, prepared, head, receipt, git };
 }
+
+test("the three built static HTML outputs are frozen while authored static source remains immutable", async (t) => {
+  const fixture = preparedFixture(t);
+  for (const id of ["category", "mps", "regional"])
+    writeFileSync(join(fixture.prepared, "static", id, "index.html"), "built HTML\n");
+  const record = await readPreparedWorkbench(fixture);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  writeFileSync(join(fixture.prepared, "static/category/index.html"), "changed HTML\n");
+  await assert.rejects(verifyPreparedWorkbench(fixture), /QUALITY_WORKBENCH_ASSET_MISMATCH/);
+  writeFileSync(join(fixture.prepared, "static/category/index.html"), "built HTML\n");
+  fixture.git(
+    "-C",
+    fixture.prepared,
+    "update-index",
+    "--skip-worktree",
+    "static/category/page.json",
+  );
+  writeFileSync(join(fixture.prepared, "static/category/page.json"), '{"changed":true}\n');
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_SOURCE_BLOB_MISMATCH/);
+});
 
 test("prepared Git metadata changes preserve resource admission while real output changes are refused", async (t) => {
   const fixture = preparedFixture(t);

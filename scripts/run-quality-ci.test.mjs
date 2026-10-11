@@ -77,3 +77,30 @@ test("the workflow binds full source history and the same public quality command
   assert.doesNotMatch(scripts["quality:fast"], /candidate:verify|run-quality-ci/);
   assert.equal(scripts["quality:ci"], "node scripts/run-quality-ci.mjs");
 });
+
+// Execute the runner's actual command boundary with a real successful child that changes the input.
+test("a successful final child cannot change frozen input unnoticed", async (t) => {
+  const fs = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { runInNewContext } = await import("node:vm");
+  const root = fs.mkdtempSync(join(tmpdir(), "quality-final-child-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const input = join(root, "group.json");
+  const bytes = Buffer.from('{"frozen":true}\n');
+  fs.writeFileSync(input, bytes);
+  const source = fs.readFileSync("scripts/run-quality-ci.mjs", "utf8");
+  const commands = source.slice(source.indexOf("function refuse("), source.indexOf("\ntry {"));
+  const finalGroup = {
+    verifyUnchanged() {
+      if (!bytes.equals(fs.readFileSync(input))) throw Error("CANDIDATE_INPUT_CHANGED");
+    },
+  };
+  const invoke =
+    "run(process.execPath, ['-e', \"require('node:fs').appendFileSync(process.argv[1], 'changed')\", input]);";
+  assert.throws(
+    () => runInNewContext(commands + "\n" + invoke, { process, spawnSync, finalGroup, input }),
+    /CANDIDATE_INPUT_CHANGED/,
+  );
+  assert.notDeepEqual(fs.readFileSync(input), bytes, "the real child must have changed the bytes");
+});
