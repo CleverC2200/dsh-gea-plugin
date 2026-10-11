@@ -43,7 +43,7 @@ GEA_TEST_CANDIDATE_INPUTS=/absolute/candidate-input.json node --test tests/windo
 
 仓内 `.codex/environments/environment.toml` 是实际配置。默认 setup 只核工具，安装由明确选择的 Action 执行，不自动构建。Actions 的命令、cwd 与是否持续 watch 按该文件核对，需要不同范围时运行公开命令，不新增任务识别或编排器。
 
-配置存在与命令行通过不证明应用内 setup/Action 已验。实际新任务需核 cwd、工具、冻结锁和结果；安装与完整构建不和 watch 并发。本次清理不改变用户配置或清理脚本。
+配置存在与命令行通过不证明应用内 setup/Action 已验。实际新任务需核 cwd、工具、冻结锁和结果；安装与完整构建不和 watch 并发。
 
 ## 可选本地采样
 
@@ -59,11 +59,13 @@ corepack pnpm test:observe
 
 开发 pnpm 锁、普通包 npm shrinkwrap 与实际 profile 锁有不同归属，沿 [安装说明](install.md) 的协议，不将开发检查当发布授权。原过程记录见 [历史开发说明](history/local-development-pre-agent-environment-04.md)。
 
-三核心普通包的明确输入、构建来源核对与用户安装步骤见 [三包交付入口](package-delivery.md)。`delivery:packages` 只做本地打包，`test:delivery:packages` 覆盖前置失败传播、保密诊断与归档来源，普通 profile 安装及公开 Loader/设置接收另行验证。
+三核心普通包的明确输入、构建来源核对与用户安装步骤见 [三包交付入口](package-delivery.md)。`delivery:packages` 只做本地打包，`test:delivery:packages` 覆盖前置失败传播、保密诊断与归档来源，普通 profile 安装及公开 Loader/设置接收须使用同次明确输入独立留证；脚本存在或历史夹具通过不证明本 checkout 已接收。
 
 ## 普通 bundle 启动
 
-GEA 的公开 Config schema 为空配置提供已有公司产品定义中的端点、分页、超时、模型与 Consumer 默认。模型模式为 `model`，来源为 `gea`；启动不登录、不请求外部业务，也不替换官方 standard 或 Core 的默认模型选择。显式配置继续优先。
+GEA 的 [公开 Config schema](../src/host.ts) 为空配置提供 [公司产品定义](../desktop/company.config.json) 中的端点、分页、超时、模型与 Consumer 默认。模型模式为 `model`，来源为 `gea`；启动不登录、不请求外部业务，也不替换官方 standard 或 Core 的默认模型选择。显式配置继续优先。
+
+环境地址从 Host 部署配置解析，见 [环境合同](../src/shared/environments.js)。没有显式环境 map 且基址为公司默认时，Host 使用产品定义中的正式/测试双环境；显式自定义单一基址仅开放当前环境。client 的 `businessAccount.startLogin` 只传环境名称，Host 先切换已配置环境并清旧二维码、凭据和预览，再准备新二维码。只读投影发布当前 environment 与可选 environments，不另建浏览器登录权威。
 
 未设置 `runtimeDir` 时，Host 从官方 `profileContext.dir` 派生 `gea/` 专用持久目录。显式目录必须是可创建的绝对目录。普通插件登录由 GEA Host 在此目录写入权限为 0600 的 `web-login.json`，默认不依赖旧启动器变量；`GEA_WEB_LOGIN_PERSIST=0` 仍可明确关闭，旧公司桌面的私有凭据通道保留其原归属。
 
@@ -72,3 +74,15 @@ GEA 的公开 Config schema 为空配置提供已有公司产品定义中的端�
 `node --run test:fixture-inputs` 是无 SDK 的输入拒绝回归，也由现有 delivery fixture CI 执行。它不代替需要固定官方输入的 `test:window`；远端 workflow 的配置与实际执行结果分别记录。
 
 冷 runner 直接调用 `node scripts/run-quality-ci.mjs --prepare-sdk --prepare-inputs --core-source <固定来源>`，避免依赖安装前的 pnpm run 检查。普通本地 `pnpm quality:ci` 运行同一入口。质量阶段分别保存 fast、contracts、full 状态到 `quality-checks.json`，fast 各检查保存 `.runtime/quality-fast.json`；前项红不挡后项，整体仍非零。输入或准备失败立即拒绝。
+
+## 异步执行与确定性检查
+
+[`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出状态、执行 lease 与证据 store；[`prompt-runtime`](../src/host/prompt-runtime.ts) 接入真实 Host hooks。迟到的失败、成功和回读视图不进入新轮次或新资源的状态，持久化期间失去归属也不发布当前证据。预算与 UI mask 继续由原 admission 状态管理；详细执行条件见 [执行链](execution-logic.md)。
+
+| 检查范围 | 现有入口与边界 |
+|---|---|
+| 执行状态、lease与真实文件 IO 的确定性回归 | `test:prompt-execution` 不要求 SDK 或工程依赖，运行要求从 package.json 的 engines 读取；Host 集成另由 [execution-convergence.test.mjs](../tests/execution-convergence.test.mjs) 在已准备官方依赖的 checkout 覆盖旧错误和资源准入/回读 |
+| 三包打包与安装/Loader接收的确定性失败 | `test:delivery:packages` 自建 fixture Core与发布输入，重放历史 APS入口/销售Skill缺失，运行不依赖兄弟仓或现成Core；正式普通profile接收另见 [打包与接收](package-delivery.md) |
+| Window输入拒绝与原行为 | `test:fixture-inputs` 只核输入；`test:window` 使用明确冻结Core、三仓和历史证据，保留原准入和预算门禁 |
+
+上述 Node-only 检查由 [delivery fixture CI](../.github/workflows/delivery-fixtures.yml) 登记。workflow配置、局部检查通过、真实Host集成、当前窗口装载和业务验收分别留证；脚本存在不证明已经运行。
