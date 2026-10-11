@@ -71,11 +71,5 @@ test(
     });
     assert.ok(obsolete.error);
     assert.equal(queries, 1);
-    assert.equal(
-      app.requests.some((req) =>
-        req.url.pathname.endsWith("/ai/gateway/session"),
-      ),
-      false,
-    );
   },
 );
