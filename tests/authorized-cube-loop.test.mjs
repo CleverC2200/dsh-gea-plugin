@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readSession, until } from "./profile.mjs";
 import { modelProfile as profile } from "./fixtures/model-profile.mjs";
+import { selectBusinessResource } from "./fixtures/business-session.mjs";
 test(
   "native typed query exposes its schema, splits requests and refuses a revoked resource next turn",
   { timeout: 45000 },
@@ -202,6 +203,7 @@ test(
       return false;
     });
     await app.login();
+    await selectBusinessResource(app);
     const created = await app.remote("session/create", {
       cwd: app.runtime + "/workspace",
       agentPreset: "gea-readonly",

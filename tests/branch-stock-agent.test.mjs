@@ -6,6 +6,8 @@ import { randomUUID } from "node:crypto";
 import { readSession, readToolResults, until } from "./profile.mjs";
 import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
+import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
+import { selectBusinessResource } from "./fixtures/business-session.mjs";
 
 test(
   "branch Agent preserves empty, missing, failed and revoked result meanings",
@@ -25,10 +27,8 @@ test(
       }),
       env: {
         GEA_TEST_MODEL_KEY: "fixture-key",
-        GEA_HTML_PLUGIN_ROOTS: JSON.stringify([
-          resolve("../dsh-agent-workbench/lib/business/inventory-fc"),
-        ]),
       },
+      beforeStart: fixtureWorkbench([resolve("../dsh-agent-workbench/lib/business/inventory-fc")]),
     });
     const state = stockState();
     let step = 0;
@@ -69,6 +69,7 @@ test(
       };
     });
     await app.login();
+    await selectBusinessResource(app, "gea-html-inventory-fc");
     const created = await app.remote("session/create", {
       cwd: app.runtime + "/workspace",
       agentPreset: "gea-html-inventory-fc",
