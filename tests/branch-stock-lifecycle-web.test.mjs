@@ -297,7 +297,7 @@ test(
     timeout: 180000,
   },
   async (t) => {
-    const { app, page } = await stockReferencePage(t);
+    const { app, page, session } = await stockReferencePage(t);
     const evidence = await evidenceDirectory(t);
     const agentsHeld = Promise.withResolvers();
     const openHeld = Promise.withResolvers();
@@ -319,13 +319,15 @@ test(
         return route.continue();
       heldOpen = true;
       const response = await route.fetch();
-      openHeld.resolve(response.status());
+      openHeld.resolve({ status: response.status(), receipt: await response.json() });
       await release.promise;
       await route.fulfill({ response }).catch(() => {});
     });
     await page.reload();
     assert.equal(await agentsHeld.promise, 200);
-    assert.equal(await openHeld.promise, 200);
+    const heldOpenReceipt = await openHeld.promise;
+    assert.equal(heldOpenReceipt.status, 200);
+    assert.equal(typeof heldOpenReceipt.receipt.owner, "string");
     const previousFrame = await htmlFrameElement(page, "inventory-fc").elementHandle();
     assert.ok(previousFrame, "the active frame must exist before authority changes");
     await app.rpc("logout");
@@ -336,6 +338,19 @@ test(
       .toBe(false);
     release.resolve();
     await page.waitForTimeout(300);
+    assert.equal(
+      (await presentation(page)).selections.some(
+        (row) => row.page === "inventory-fc" && row.sessionId === session,
+      ),
+      false,
+      "a released receipt must not restore the old Session association",
+    );
+    const deniedOwner = await pageOperation(page, {
+      operation: "access",
+      owner: heldOpenReceipt.receipt.owner,
+    });
+    assert.equal(deniedOwner.status, 400);
+    assert.equal(deniedOwner.value.error, "PAGE_OWNER_RELEASED");
     await expect.poll(() => previousFrame.evaluate((node) => node.isConnected)).toBe(false);
     await expect(page.getByRole("combobox", { name: "选择解读能力" })).toHaveCount(0);
     await mkdir(evidence, { recursive: true });
