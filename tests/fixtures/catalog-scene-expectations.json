@@ -1,7 +1,7 @@
 {
   "provenance": {
-    "declarations": "catalog-scene-manifest-r40-04; independent Git registrations and corrected Manage parameter forwarding, never model actual",
-    "manifestSha256": "e95bba76c5c990244b76b9d38d296ccb7ad70e54f2e5efafc493a4b49a377d3c",
+    "declarations": "catalog-scene-manifest-r40-05; independent Git registrations and corrected Manage parameter forwarding, never model actual",
+    "manifestSha256": "f9d90f112f2b5a707abf9370e212b8e8d42471e30b193adb3d3dae34c3ebd01c",
     "geaRegistrationBase": "3f23c0d7a65d42afb685a859a07201bf6ccf00d5",
     "metadataSources": [
       {
