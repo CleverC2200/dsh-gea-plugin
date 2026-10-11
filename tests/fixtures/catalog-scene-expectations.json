@@ -131,7 +131,16 @@
         "name": "genui"
       }
     ],
-    "deduplication": "Core skill/src/index.ts collectFresh nearest layer overlays; collectLayer lower rank, providerOrder, localOrder. Manage UserPanel global rank600 registers synchronously before awaited BusinessResources global rank600; QA four duplicates win with zh prefix. Fixture own name distinct; canary scoped filesystem is retained."
+    "deduplication": "Core skill/src/index.ts collectFresh nearest layer overlays; collectLayer lower rank, providerOrder, localOrder. Manage UserPanel global rank600 registers synchronously before awaited BusinessResources global rank600; QA four duplicates win with zh prefix. Fixture own name distinct; canary scoped filesystem is retained.",
+    "conditionalRegistrationAudit": {
+      "file": "catalog-scene-conditional-registration-r39-01.json",
+      "sha256": "e5ca0c3cf0995c8ab1ffb082b6f521f07a006078d2ca37517df084cd02f7c23a",
+      "readImageSource": "packages/fs/tool-fs/src/read-image.ts:210",
+      "gateSource": "packages/fs/tool-fs/src/index.ts:70",
+      "requiredService": "attachments",
+      "serviceMountedBy": "packages/bundle/base/cordis.patch.yml:138 attachment-local, inherited by standard scope",
+      "routeImageCapability": "execution only; registration remains for text routes"
+    }
   },
   "coreHeads": {
     "rc2": "639ed015397290b3745d163aafe02ffee4aa3f84",
@@ -169,6 +178,7 @@
       "page_reference_read",
       "present",
       "read",
+      "read_image",
       "render_ui",
       "report_market_issue",
       "send_message",
@@ -210,6 +220,7 @@
       "page_reference_read",
       "present",
       "read",
+      "read_image",
       "render_ui",
       "report_market_issue",
       "schedule_create",
