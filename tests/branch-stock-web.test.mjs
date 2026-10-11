@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
@@ -8,8 +8,19 @@ import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { modelProfile } from "./fixtures/model-profile.mjs";
 import { stock, installStockRoutes, stockState } from "./fixtures/branch-stock.mjs";
 import { changeThemeSetting } from "./theme-settings.mjs";
+import {
+  htmlFrameElement,
+  openBusinessPage,
+  prepareWorkbenchHtmlRoots,
+} from "./fixtures/business-page.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 
-const out = resolve(".runtime/branch-stock-evidence");
+const evidenceDirectory = async (t) => {
+  await mkdir(".runtime", { recursive: true });
+  const path = await mkdtemp(".runtime/branch-stock-evidence-");
+  t.diagnostic("branch stock evidence: " + path);
+  return path;
+};
 const migrated = resolve("../dsh-agent-workbench/lib/business/inventory-fc");
 const tool = (name, args, id) => ({
   tool_calls: [
@@ -50,12 +61,14 @@ test(
   "branch stock migration preserves rows and runs authorized page and Agent reads",
   { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 240000 },
   async (t) => {
+    const out = await evidenceDirectory(t);
     await mkdir(out, { recursive: true });
-    const browser = await chromium.launch({
-      channel: "chrome",
-      headless: true,
-    });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({
+        channel: "chrome",
+        headless: true,
+      }),
+    );
     const results = [];
     for (const [label, root] of [
       ["legacy", resolve("../dsh-agent-fc-plugin")],
@@ -299,10 +312,11 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
     "branch page distinguishes " + mode + " data",
     { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 90000 },
     async (t) => {
+      const out = await evidenceDirectory(t);
       const state = stockState();
       state.mode = mode === "empty-error" ? "empty" : mode;
       const app = await profile(t, {
-        env: { GEA_HTML_PLUGIN_ROOTS: JSON.stringify([migrated]) },
+        beforeStart: prepareWorkbenchHtmlRoots([migrated]),
       });
       let stockRoute;
       installStockRoutes(
@@ -335,11 +349,12 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
       });
       t.after(() => heldRead.resolve());
       await app.login();
-      const browser = await chromium.launch({
-        channel: "chrome",
-        headless: true,
-      });
-      t.after(() => browser.close());
+      const browser = await testBrowser(t, () =>
+        chromium.launch({
+          channel: "chrome",
+          headless: true,
+        }),
+      );
       const context = await browser.newContext({
         locale: "zh-CN",
         viewport: { width: 1440, height: 1000 },
@@ -354,28 +369,25 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
       const page = await context.newPage();
       const publishedContexts = [];
       page.on("request", (request) => {
-        if (!request.url().endsWith("/api/gea-html/inventory-fc/call") || !request.postData())
-          return;
+        if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData()) return;
         const payload = request.postDataJSON();
-        if (payload.method === "context") publishedContexts.push(payload.parameters);
+        if (payload.operation === "context") publishedContexts.push(payload.parameters);
       });
       await page.goto(app.origin);
       await page
         .getByRole("dialog", { name: /内测声明|预览版说明/ })
         .getByRole("button", { name: "继续", exact: true })
         .click();
-      if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-        await page.getByText("库存管理", { exact: true }).click();
-      await page.getByText("分仓库存", { exact: true }).click();
-      const frame = page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]').contentFrame();
+      await openBusinessPage(page, "inventory-fc");
+      const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
       try {
         if (mode === "denied") {
-          await expect(page.getByRole("alert").filter({ hasText: "重新连接" })).toBeVisible({
+          await expect(frame.getByText("等待分仓数据连接", { exact: true })).toBeVisible({
             timeout: 15000,
           });
           assert.equal(state.rest.length, 0);
         } else if (mode === "error") {
-          await expect(frame.getByText("无法进入分仓库存", { exact: true })).toBeVisible({
+          await expect(frame.getByText("当前分仓数据尚未就绪", { exact: true })).toBeVisible({
             timeout: 20000,
           });
           await expect(frame.getByText("FC001", { exact: true })).toHaveCount(0);
@@ -399,7 +411,7 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
           assert.equal(loadingParts.branchDraft, undefined);
           heldRead.resolve();
           if (mode === "empty-error") {
-            await expect(frame.getByText("无法进入分仓库存", { exact: true })).toBeVisible();
+            await expect(frame.getByText("当前分仓数据尚未就绪", { exact: true })).toBeVisible();
             await expect
               .poll(() => publishedContexts.at(-1)?.parts?.queryState?.state)
               .toBe("error");
@@ -489,6 +501,10 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
               .locator("body")
               .innerText({ timeout: 1000 })
               .catch(() => "")),
+        );
+        await writeFile(
+          resolve(out, mode + "-debug.json"),
+          JSON.stringify({ mode, restCount: state.rest.length, publishedContexts }, null, 2),
         );
         await page
           .screenshot({
