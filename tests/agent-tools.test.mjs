@@ -284,11 +284,11 @@ test(
       modelRequests.push(body);
       if (outcome === "skill-reference") {
         const results = body.messages.filter((x) => x.role === "tool");
-        const name = "skill";
+        const name = results.length === 0 ? "skill" : "skill_reference_read";
         const args =
           results.length === 0
             ? { name: "reference-scope" }
-            : { name: "reference-scope", path: "../../references/rules.md" };
+            : { skill: "reference-scope", path: "../../references/rules.md" };
         res.end(
           results.length < 2
             ? event(
@@ -1642,18 +1642,18 @@ test(
     await t.test(
       "Skill references use the local reader in the actual model-tool-model loop",
       async () => {
-        await mkdir(`${app.runtime}/home/business-skills/reference-scope`, {
+        await mkdir(`${agentsHome}/skills/reference-scope`, {
           recursive: true,
         });
-        await mkdir(`${app.runtime}/home/references`, {
+        await mkdir(`${agentsHome}/references`, {
           recursive: true,
         });
         await writeFile(
-          `${app.runtime}/home/business-skills/reference-scope/SKILL.md`,
+          `${agentsHome}/skills/reference-scope/SKILL.md`,
           "---\nname: reference-scope\ndescription: 需求预测规则测试\n---\n先读 [规则](../../references/rules.md)\n",
         );
         await writeFile(
-          `${app.runtime}/home/references/rules.md`,
+          `${agentsHome}/references/rules.md`,
           "按实际期间查询；缺失数据不能编造。\n",
         );
         outcome = "skill-reference";
