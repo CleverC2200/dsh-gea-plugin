@@ -60,10 +60,10 @@
     "test:contracts": "node --test --test-concurrency=1 tests/controlled-execution.test.mjs tests/plugin-sql-cancel.test.mjs tests/read-paging.test.mjs tests/business-page-grant.test.mjs tests/gateway-handshake.test.mjs && pnpm test:window && pnpm test:delivery"
   },
   "dependencies": {
-    "@changfenhuang/dsh-genui": "link:../../../current-mainline-closeout-44/upstream-assets/genui-0.11.3",
+    "@changfenhuang/dsh-genui": "link:../../upstream-inputs/genui",
     "@cleverc2200/dsh-agent-workbench": "link:../dsh-agent-workbench",
     "decimal.js": "10.6.0",
-    "dsh-better-sidebar": "link:../../../current-mainline-closeout-44/upstream-reference/dsh-better-sidebar",
+    "dsh-better-sidebar": "link:../../upstream-inputs/sidebar",
     "esbuild": "0.25.9",
     "eventsource-parser": "3.1.1",
     "qrcode": "1.5.4",
