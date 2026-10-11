@@ -102,17 +102,13 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
       });
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
-      await page
-        .context()
-        .addCookies(
-          app.cookie
-            .split("; ")
-            .map((pair) => ({
-              name: pair.slice(0, pair.indexOf("=")),
-              value: pair.slice(pair.indexOf("=") + 1),
-              url: app.origin,
-            })),
-        );
+      await page.context().addCookies(
+        app.cookie.split("; ").map((pair) => ({
+          name: pair.slice(0, pair.indexOf("=")),
+          value: pair.slice(pair.indexOf("=") + 1),
+          url: app.origin,
+        })),
+      );
       await page.goto(app.origin);
       const frame = await openSalesPlan(page);
       await frame.locator('label.arco-checkbox:has(input[value="p"])').click();

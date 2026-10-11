@@ -53,7 +53,6 @@ const skuFor = (versionId) => ({
   amtBase: "100",
   price: "10",
 });
-const planIdForVersion = (versionId) => "p" + versionId.slice(1);
 
 /** 上游真实响应：通知 payload 里缺 plan_month，被服务端的通知 schema 拦下。 */
 const UPSTREAM_NOTIFICATION_PAYLOAD_INVALID = {
@@ -151,13 +150,11 @@ const openWorkbench = async (t) => {
     viewport: { width: 1536, height: 920 },
   });
   await context.addCookies(
-    app.cookie
-      .split("; ")
-      .map((pair) => ({
-        name: pair.slice(0, pair.indexOf("=")),
-        value: pair.slice(pair.indexOf("=") + 1),
-        url: app.origin,
-      })),
+    app.cookie.split("; ").map((pair) => ({
+      name: pair.slice(0, pair.indexOf("=")),
+      value: pair.slice(pair.indexOf("=") + 1),
+      url: app.origin,
+    })),
   );
   const page = await context.newPage();
   page.setDefaultTimeout(15000);

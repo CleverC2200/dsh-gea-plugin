@@ -44,11 +44,7 @@ test(
       parameters: {},
       resultShape: "rows",
     });
-    assert.equal(
-      aps.error?.code,
-      "GEA_CAPABILITY_MOCK_ONLY",
-      JSON.stringify(aps),
-    );
+    assert.equal(aps.error?.code, "GEA_CAPABILITY_MOCK_ONLY", JSON.stringify(aps));
     assert.equal(delegated, undefined);
     assert.equal(queries, 0);
     // Keep the authenticated Agent/SQL-success assertions on an actual readable package.
