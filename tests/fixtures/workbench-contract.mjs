@@ -13,13 +13,16 @@ export async function runWorkbenchContracts(files) {
     owner.commit,
   );
   execFileSync("git", ["diff", "--exit-code", "HEAD", "--", ...files], { cwd });
+  const env = { ...process.env };
+  // This child starts its own test runner rather than continuing the parent's test context.
+  delete env.NODE_TEST_CONTEXT;
   const result = spawnSync(
     process.execPath,
     ["--test", "--test-concurrency=1", "--test-reporter=tap", ...files],
     {
       cwd,
       encoding: "utf8",
-      env: process.env,
+      env,
     },
   );
   const report = result.stdout + result.stderr;
