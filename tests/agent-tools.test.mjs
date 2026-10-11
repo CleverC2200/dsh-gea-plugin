@@ -2,9 +2,12 @@ import { readFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { openBusinessPageSession } from "./fixtures/business-session.mjs";
+import { prepareWorkbenchHtmlRoots } from "./fixtures/business-page.mjs";
+import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 
 test(
   "GEA tools use the native model-tool-model loop and persist success, permission errors and cancellation",
@@ -32,7 +35,7 @@ test(
       [
         "<!doctype html><html><body>probe",
         "<script>",
-        "const rows = await sql(\"SELECT sku_code, shortage FROM data_service.agents_scm_probe_thing WHERE base = :base\");",
+        'const rows = await sql("SELECT sku_code, shortage FROM data_service.agents_scm_probe_thing WHERE base = :base");',
         "</script></body></html>",
       ].join("\n"),
     );
@@ -41,8 +44,11 @@ test(
     const agentsHome = await mkdtemp(join(tmpdir(), "gea-agents-home-"));
     await mkdir(join(agentsHome, "skills", "inventory-probe"), { recursive: true });
     await writeFile(join(agentsHome, "skills", "inventory-probe", "SKILL.md"), probeSkill);
-    await mkdir(join(agentsHome, "skills", "tdd"), {recursive: true});
-    await writeFile(join(agentsHome, "skills", "tdd", "SKILL.md"), "---\nname: tdd\ndescription: DEVELOPER_SKILL_MUST_NOT_LEAK\n---\nDeveloper-only rules.\n");
+    await mkdir(join(agentsHome, "skills", "tdd"), { recursive: true });
+    await writeFile(
+      join(agentsHome, "skills", "tdd", "SKILL.md"),
+      "---\nname: tdd\ndescription: DEVELOPER_SKILL_MUST_NOT_LEAK\n---\nDeveloper-only rules.\n",
+    );
     await writeFile(
       join(probeRoot, "plugin.json"),
       JSON.stringify({
@@ -64,7 +70,7 @@ test(
         transport: "host-provided",
         contract: "gea-html-v1",
         consumer: { consumerType: "AGENT", consumerCode: "probe-consumer" },
-        capabilities: ["governed-sql-read"],
+        capabilities: [],
       }),
     );
     // 第二个模块：非演示（真实）模块，用来验证"权限没开通"这类网关侧状态。
@@ -76,7 +82,7 @@ test(
     );
     await writeFile(
       join(realRoot, "skills", "probe", "SKILL.md"),
-      "---\nname: inventory-real\ndescription: 真模块探针。\n---\n\n规则。\n",
+      "---\nname: inventory-real\ndescription: 真模块探针。\n---\n\n先读 [规则](../../references/rules.md)\n",
     );
     await writeFile(
       join(realRoot, "plugin.json"),
@@ -101,16 +107,18 @@ test(
         capabilities: ["governed-sql-read"],
       }),
     );
+    await mkdir(join(realRoot, "references"), { recursive: true });
+    await writeFile(
+      join(realRoot, "references", "rules.md"),
+      "按实际期间查询；缺失数据不能编造。\n",
+    );
+    await currentHtmlResource(probeRoot);
+    await currentHtmlResource(realRoot);
     const app = await profile(t, {
       pluginRoot: process.env.GEA_TEST_PLUGIN_ROOT,
       bundle: Boolean(process.env.GEA_TEST_PLUGIN_ROOT),
-      env: {
-        GEA_HTML_PLUGIN_ROOTS: JSON.stringify({
-          "inventory-probe": probeRoot,
-          "inventory-real": realRoot,
-        }),
-        DSH_AGENTS_HOME: agentsHome,
-      },
+      env: { DSH_AGENTS_HOME: agentsHome },
+      beforeStart: prepareWorkbenchHtmlRoots([probeRoot, realRoot]),
       config: () => ({
         requestTimeoutMs: 1000,
         visibleContextSubagent: false,
@@ -124,7 +132,14 @@ test(
         },
       }),
     });
+    if (process.env.GEA_TEST_LIFECYCLE_RECEIPT)
+      t.after(() =>
+        writeFile(process.env.GEA_TEST_LIFECYCLE_RECEIPT + ".host.log", app.output, {
+          mode: 0o600,
+        }),
+      );
     let outcome = "success";
+    let pageGuardClosed = false;
     let toolReply;
     let closed = false;
     let modelRequests = [];
@@ -206,8 +221,18 @@ test(
             success: true,
             result: {
               records: [
-                { planId: "period-plan-1", periodId: "20261001", planTypeCode: "Y", orderType: "M" },
-                { planId: "period-plan-2", periodId: "20260901", planTypeCode: "Y", orderType: "M" },
+                {
+                  planId: "period-plan-1",
+                  periodId: "20261001",
+                  planTypeCode: "Y",
+                  orderType: "M",
+                },
+                {
+                  planId: "period-plan-2",
+                  periodId: "20260901",
+                  planTypeCode: "Y",
+                  orderType: "M",
+                },
               ],
               total: 2,
               size: 200,
@@ -220,24 +245,56 @@ test(
       if (path !== "/personal/chat/completions") return false;
       const body = JSON.parse(req.body);
       res.setHeader("Content-Type", "text/event-stream");
-      const names=body.tools.map(tool=>tool.function.name);
-      const wantsPage=/visible-context/.test(outcome)||outcome==='page-evidence-guard'||outcome==='page-tool';
-      const pack=outcome.startsWith('module-mcp')?'knowledge':wantsPage?'page':undefined;
-      const ready=pack==='knowledge'?names.includes('gea_module_mcp'):pack==='page'?names.includes('gea_visible_workbench_context'):true;
-      const skillReady=outcome!=='skill-reference'||body.messages.some(message=>message.tool_call_id==='bootstrap-skill');
-      if(!ready||!skillReady){
-        res.end(event({tool_calls:[{index:0,id:!skillReady?'bootstrap-skill':'bootstrap-pack',type:'function',function:{name:'gea_capabilities',arguments:JSON.stringify(!skillReady?{skill:'reference-scope'}:{pack})}}]},'tool_calls'));return true;
+      const names = body.tools.map((tool) => tool.function.name);
+      const wantsPage =
+        /visible-context/.test(outcome) ||
+        outcome === "page-evidence-guard" ||
+        outcome === "page-tool";
+      const pack = outcome.startsWith("module-mcp")
+        ? "knowledge"
+        : wantsPage && !(outcome === "page-evidence-guard" && pageGuardClosed)
+          ? "page"
+          : undefined;
+      const ready =
+        pack === "knowledge"
+          ? names.includes("gea_module_mcp")
+          : pack === "page"
+            ? names.includes("gea_visible_workbench_context")
+            : true;
+      if (!ready) {
+        res.end(
+          event(
+            {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "bootstrap-pack",
+                  type: "function",
+                  function: {
+                    name: "gea_capabilities",
+                    arguments: "{}",
+                  },
+                },
+              ],
+            },
+            "tool_calls",
+          ),
+        );
+        return true;
       }
-      body.messages=body.messages.filter(message=>!message.tool_call_id?.startsWith('bootstrap-')&&!message.tool_calls?.some(call=>call.id.startsWith('bootstrap-')));
+      body.messages = body.messages.filter(
+        (message) =>
+          !message.tool_call_id?.startsWith("bootstrap-") &&
+          !message.tool_calls?.some((call) => call.id.startsWith("bootstrap-")),
+      );
       modelRequests.push(body);
       if (outcome === "skill-reference") {
         const results = body.messages.filter((x) => x.role === "tool");
-        const name =
-          "skill";
+        const name = results.length === 0 ? "skill" : "skill_reference_read";
         const args =
           results.length === 0
-            ? { name: "reference-scope" }
-            : { name: "reference-scope", path: "../../references/rules.md" };
+            ? { name: "inventory-real" }
+            : { skill: "inventory-real", path: "../../references/rules.md" };
         res.end(
           results.length < 2
             ? event(
@@ -403,6 +460,10 @@ test(
       // 每一轮都要先读一次"这一屏"，读到结果才收尾：用来验证"同一份快照，
       // 换菜单后还算不算本轮证据"。按"最后一条用户消息之后有没有工具结果"判断本轮。
       if (outcome === "page-evidence-guard") {
+        if (!names.includes("gea_visible_workbench_context")) {
+          res.end(event({ content: "当前主对话没有页面工具，未使用旧页面证据回答。" }, "stop"));
+          return true;
+        }
         const roles = body.messages.map((message) => message.role);
         const answered = body.messages
           .slice(roles.lastIndexOf("user") + 1)
@@ -455,14 +516,10 @@ test(
       }
       if (outcome === "workbench-command") {
         const appliedResult = body.messages.find(
-          (message) =>
-            message.role === "tool" &&
-            message.tool_call_id === "workbench-command-1",
+          (message) => message.role === "tool" && message.tool_call_id === "workbench-command-1",
         );
         const rejectedResult = body.messages.find(
-          (message) =>
-            message.role === "tool" &&
-            message.tool_call_id === "workbench-command-2",
+          (message) => message.role === "tool" && message.tool_call_id === "workbench-command-2",
         );
         res.end(
           !appliedResult
@@ -514,12 +571,10 @@ test(
       }
       if (outcome === "page-verb") {
         const rejected = body.messages.find(
-          (message) =>
-            message.role === "tool" && message.tool_call_id === "page-verb-1",
+          (message) => message.role === "tool" && message.tool_call_id === "page-verb-1",
         );
         const delivered = body.messages.find(
-          (message) =>
-            message.role === "tool" && message.tool_call_id === "page-verb-2",
+          (message) => message.role === "tool" && message.tool_call_id === "page-verb-2",
         );
         res.end(
           !rejected
@@ -595,14 +650,12 @@ test(
             "tool_calls",
           ),
         );
-      } else
-        res.end(
-          event({ content: "已根据工具返回的覆盖范围完成只读分析。" }, "stop"),
-        );
+      } else res.end(event({ content: "已根据工具返回的覆盖范围完成只读分析。" }, "stop"));
       return true;
     });
     await app.login();
     const page = (await app.rpc("plans")).value;
+    const pages = new Map();
     async function submit(workbenchContext) {
       const preview = await app.rpc("prepare", {
         queryId: page.queryId,
@@ -614,13 +667,7 @@ test(
         ...(workbenchContext ? { workbenchContext } : {}),
       });
       assert.equal(result.ok, true, JSON.stringify(result));
-      // 菜单状态字段：这条链路里用户是从业务菜单点进来的（默认是主对话）。
-      const surface = await app.rpc("surface", {
-        sessionId: result.value.sessionId,
-        menu: "gea-proof",
-        title: "销售计划",
-      });
-      assert.equal(surface.ok, true, JSON.stringify(surface));
+      pages.set(result.value.sessionId, await openBusinessPageSession(app, result.value.sessionId));
       return result.value.sessionId;
     }
     const ended = (id) =>
@@ -632,21 +679,22 @@ test(
       "successful query is logged before the next model request and preserves paging coverage",
       async () => {
         const rows = await ended(await submit());
-        assert.equal(
-          rows.find((x) => x.type === "turn/end").data.reason.kind,
-          "completed",
-        );
+        assert.equal(rows.find((x) => x.type === "turn/end").data.reason.kind, "completed");
         assert.equal(modelRequests.length, 2);
         const promptMessages = JSON.stringify(modelRequests[0].messages);
-        assert.doesNotMatch(promptMessages, /inventory-probe/, "mock skills do not enter the business startup catalog");
+        assert.doesNotMatch(
+          promptMessages,
+          /inventory-probe/,
+          "mock skills do not enter the business startup catalog",
+        );
         assert.doesNotMatch(promptMessages, /DEVELOPER_SKILL_MUST_NOT_LEAK/);
-        // 只要求核心工具在列；部署补丁还会挂其他工具（例如浏览器 MCP），不在这里锁死全集。
+        // 初始提交尚未绑定页面；当前菜单提供业务读取工具，页面绑定由后续公共 open 完成。
         const toolNames = modelRequests[0].tools.map((x) => x.function.name);
         for (const expected of [
           "gea_sales_plan_read",
           "skill",
-          "gea_visible_workbench_context",
-          "gea_page",
+          "gea_module_mcp",
+          "gea_cube_query",
           "gea_capabilities",
         ])
           assert.ok(toolNames.includes(expected), `${expected} 在工具列表里`);
@@ -664,19 +712,14 @@ test(
         assert.equal(value.value.total, 2);
         const snapshot = JSON.parse(
           await readFile(
-            new URL(
-              "./fixtures/gea-agent-tools.snapshot.json",
-              import.meta.url,
-            ),
+            new URL("./fixtures/gea-agent-tools.snapshot.json", import.meta.url),
             "utf8",
           ),
         );
         const call = rows.find((x) => x.type === "tool/call");
         assert.deepEqual(
           {
-            events: rows
-              .filter((x) => snapshot.events.includes(x.type))
-              .map((x) => x.type),
+            events: rows.filter((x) => snapshot.events.includes(x.type)).map((x) => x.type),
             tool: call.data.name,
             arguments: JSON.parse(call.data.arguments),
             coverage: value.coverage,
@@ -689,13 +732,10 @@ test(
           rows.findIndex((x) => x.type === "tool/call") <
             rows.findIndex((x) => x.type === "tool/result"),
         );
-        assert.equal(
-          JSON.stringify(rows).includes("fixture-only-model-secret"),
-          false,
-        );
+        assert.equal(JSON.stringify(rows).includes("fixture-only-model-secret"), false);
         assert.equal(JSON.stringify(rows).includes("fixture-gea-token"), false);
-        const read = app.requests.find((x) =>
-          x.url.pathname.endsWith("/plans") && x.url.searchParams.get("pageSize") === "200",
+        const read = app.requests.find(
+          (x) => x.url.pathname.endsWith("/plans") && x.url.searchParams.get("pageSize") === "200",
         );
         assert.equal(read.method, "GET");
         assert.equal(read.headers["x-tenant-id"], "0");
@@ -744,9 +784,7 @@ test(
           }),
         );
         const result = modelRequests[1].messages.find(
-          (message) =>
-            message.role === "tool" &&
-            message.tool_call_id === "visible-context-1",
+          (message) => message.role === "tool" && message.tool_call_id === "visible-context-1",
         );
         assert.match(result.content, /current-visible-page/);
         assert.match(result.content, /当前客户/);
@@ -757,143 +795,47 @@ test(
         assert.equal(result.content.includes("gea_plugin_read"), false);
         assert.equal(
           rows.some(
-            (entry) =>
-              entry.type === "tool/result" &&
-              entry.data.message.content[0].isError,
+            (entry) => entry.type === "tool/result" && entry.data.message.content[0].isError,
           ),
           false,
         );
       },
     );
-    await t.test(
-      "没权限时给的是「权限未开通」的正常提示，不是红色调用失败",
-      async () => {
-        outcome = "module-mcp-denied";
-        modelRequests = [];
-        const rows = await ended(await submit());
-        const result = modelRequests[1].messages.find(
-          (message) =>
-            message.role === "tool" &&
-            message.tool_call_id === "module-mcp-denied-1",
-        );
-        assert.match(result.content, /permission-required/);
-        assert.match(result.content, /AGENT_ACCESS_DENIED/);
-        assert.match(result.content, /不是调用失败/);
-        // 关键：这一条不能是可见的工具错误（红色 Error）。
-        assert.equal(
-          rows.some(
-            (entry) =>
-              entry.type === "tool/result" &&
-              entry.data.message.content.some?.((block) => block.isError) === true,
-          ),
-          false,
-        );
-      },
-    );
-    await t.test(
-      "演示模块不再去撞 MCP：直接说明没有数据通道",
-      async () => {
-        outcome = "module-mcp-mock";
-        modelRequests = [];
-        await ended(await submit());
-        const result = modelRequests[1].messages.find(
-          (message) =>
-            message.role === "tool" && message.tool_call_id === "module-mcp-1",
-        );
-        assert.match(result.content, /mock-module/);
-        assert.match(result.content, /演示模块/);
-      },
-    );
-    await t.test(
-      "同一轮第二次读这一屏被挡回，避免工具调用堆成一组把正文挤进折叠区",
-      async () => {
-        outcome = "visible-context-twice";
-        modelRequests = [];
-        await ended(
-          await submit({
-            format: "gea-workbench-visible-v1",
-            sequence: 1,
-            view: "regional-approval",
-            scope: {
-              month: "2026-10",
-              planType: "Y",
-              approvalStage: "province",
-              dimension: "customer",
-            },
-            visibleRows: [
-              {
-                planId: "9007199254740993",
-                organization: "当前客户",
-                planTypeCode: "Y",
-                status: 3,
-              },
-            ],
-            selectedPlanIds: [],
-            expandedFields: [
-              {
-                id: "field:plan-hebei-1:1004273:qty",
-                label: "BP思念150g黑芝麻肉松饭团 确认计划量",
-                value: "200",
-                editable: true,
-              },
-            ],
-            pagination: { page: 1, pageSize: 20, total: 1 },
-            evidence: {
-              source: "gea-user-session",
-              completeness: "paged-queue",
-              queryState: "success",
-              dataVersion: "sales-plan-v1.11",
-            },
-          }),
-        );
-        const first = modelRequests[1].messages.find(
-          (message) =>
-            message.role === "tool" &&
-            message.tool_call_id === "visible-context-1",
-        );
-        const second = modelRequests[1].messages.find(
-          (message) =>
-            message.role === "tool" &&
-            message.tool_call_id === "visible-context-2",
-        );
-        assert.match(first.content, /current-visible-page/);
-        assert.match(second.content, /PAGE_CONTEXT_ALREADY_READ/);
-        assert.match(second.content, /本轮已经读过/);
-      },
-    );
-    await t.test(
-      "an unsynchronised page context is a safe tool result rather than a visible tool error",
-      async () => {
-        outcome = "visible-context-unavailable";
-        modelRequests = [];
-        const rows = await ended(await submit());
-        const result = modelRequests[1].messages.find(
-          (message) =>
-            message.role === "tool" &&
-            message.tool_call_id === "visible-context-unavailable-1",
-        );
-        // 在业务菜单里但这一屏还没上报快照：如实说"没有快照"，而不是假装不在工作台。
-        assert.match(result.content, /PAGE_HAS_NO_SNAPSHOT/);
-        assert.match(result.content, /in-workbench-no-snapshot/);
-        assert.match(result.content, /销售计划/);
-        // 没有页面时也要给出兜底通道（受管只读），而不是让模型空转。
-        assert.match(result.content, /"channels"/);
-        assert.equal(
-          rows.some(
-            (entry) =>
-              entry.type === "tool/result" &&
-              entry.data.message.content[0].isError,
-          ),
-          false,
-        );
-      },
-    );
-    await t.test(
-      "回到主对话后，同一份页面快照不再当本轮证据（菜单状态字段说了算）",
-      async () => {
-        outcome = "page-evidence-guard";
-        modelRequests = [];
-        const id = await submit({
+    await t.test("没权限时给的是「权限未开通」的正常提示，不是红色调用失败", async () => {
+      outcome = "module-mcp-denied";
+      modelRequests = [];
+      const rows = await ended(await submit());
+      const result = modelRequests[1].messages.find(
+        (message) => message.role === "tool" && message.tool_call_id === "module-mcp-denied-1",
+      );
+      assert.match(result.content, /permission-required/);
+      assert.match(result.content, /AGENT_ACCESS_DENIED/);
+      assert.match(result.content, /不是调用失败/);
+      // 关键：这一条不能是可见的工具错误（红色 Error）。
+      assert.equal(
+        rows.some(
+          (entry) =>
+            entry.type === "tool/result" &&
+            entry.data.message.content.some?.((block) => block.isError) === true,
+        ),
+        false,
+      );
+    });
+    await t.test("演示模块不再去撞 MCP：直接说明没有数据通道", async () => {
+      outcome = "module-mcp-mock";
+      modelRequests = [];
+      await ended(await submit());
+      const result = modelRequests[1].messages.find(
+        (message) => message.role === "tool" && message.tool_call_id === "module-mcp-1",
+      );
+      assert.match(result.content, /mock-module/);
+      assert.match(result.content, /演示模块/);
+    });
+    await t.test("同一轮第二次读这一屏被挡回，避免工具调用堆成一组把正文挤进折叠区", async () => {
+      outcome = "visible-context-twice";
+      modelRequests = [];
+      await ended(
+        await submit({
           format: "gea-workbench-visible-v1",
           sequence: 1,
           view: "regional-approval",
@@ -904,9 +846,22 @@ test(
             dimension: "customer",
           },
           visibleRows: [
-            { planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" },
+            {
+              planId: "9007199254740993",
+              organization: "当前客户",
+              planTypeCode: "Y",
+              status: 3,
+            },
           ],
           selectedPlanIds: [],
+          expandedFields: [
+            {
+              id: "field:plan-hebei-1:1004273:qty",
+              label: "BP思念150g黑芝麻肉松饭团 确认计划量",
+              value: "200",
+              editable: true,
+            },
+          ],
           pagination: { page: 1, pageSize: 20, total: 1 },
           evidence: {
             source: "gea-user-session",
@@ -914,49 +869,109 @@ test(
             queryState: "success",
             dataVersion: "sales-plan-v1.11",
           },
-        });
-        await ended(id);
-        // 用户从业务菜单切回主对话：快照还在服务端，但不再是"你眼前这一屏"。
-        const surface = await app.rpc("surface", { sessionId: id, menu: "main" });
-        assert.equal(surface.ok, true, JSON.stringify(surface));
+        }),
+      );
+      const first = modelRequests[1].messages.find(
+        (message) => message.role === "tool" && message.tool_call_id === "visible-context-1",
+      );
+      const second = modelRequests[1].messages.find(
+        (message) => message.role === "tool" && message.tool_call_id === "visible-context-2",
+      );
+      assert.match(first.content, /current-visible-page/);
+      assert.match(second.content, /PAGE_CONTEXT_ALREADY_READ/);
+      assert.match(second.content, /本轮已经读过/);
+    });
+    await t.test(
+      "an unsynchronised page context is a safe tool result rather than a visible tool error",
+      async () => {
+        outcome = "visible-context-unavailable";
         modelRequests = [];
-        const prompted = await app.remote("session/prompt", {
-          requestId: randomUUID(),
-          sessionId: id,
-          mode: "queue",
-          content: [{ type: "text", text: "河北这些行是什么计划类型？" }],
-        });
-        assert.equal(prompted.ok, true, JSON.stringify(prompted));
-        const rows = await until(
-          () => readSession(app.runtime, id),
-          (entries) =>
-            entries.filter((entry) => entry.type === "turn/end").length === 2,
+        const rows = await ended(await submit());
+        const result = modelRequests[1].messages.find(
+          (message) =>
+            message.role === "tool" && message.tool_call_id === "visible-context-unavailable-1",
         );
-        // 模型每次请求都带全量历史，只能看"最后一条用户消息之后"的那条工具结果。
-        const messages = modelRequests[1].messages;
-        const lastUser = messages.map((message) => message.role).lastIndexOf("user");
-        const result = messages
-          .slice(lastUser + 1)
-          .find(
-            (message) =>
-              message.role === "tool" &&
-              String(message.tool_call_id).startsWith("guard-"),
-          );
-        assert.match(result.content, /PAGE_NOT_IN_WORKBENCH/);
-        assert.match(result.content, /not-in-workbench/);
-        assert.match(result.content, /主对话/);
-        // 旧快照的行内容一个字都不能带出去。
-        assert.equal(result.content.includes("河北"), false);
+        // 在业务菜单里但这一屏还没上报快照：如实说"没有快照"，而不是假装不在工作台。
+        assert.match(result.content, /PAGE_HAS_NO_SNAPSHOT/);
+        assert.match(result.content, /in-workbench-no-snapshot/);
+        assert.match(result.content, /销售计划/);
+        // 没有页面时也要给出兜底通道（受管只读），而不是让模型空转。
+        assert.match(result.content, /"channels"/);
         assert.equal(
           rows.some(
-            (entry) =>
-              entry.type === "tool/result" &&
-              entry.data.message.content[0].isError,
+            (entry) => entry.type === "tool/result" && entry.data.message.content[0].isError,
           ),
           false,
         );
       },
     );
+    await t.test("回到主对话后，同一份页面快照不再当本轮证据（菜单状态字段说了算）", async () => {
+      outcome = "page-evidence-guard";
+      modelRequests = [];
+      const id = await submit({
+        format: "gea-workbench-visible-v1",
+        sequence: 1,
+        view: "regional-approval",
+        scope: {
+          month: "2026-10",
+          planType: "Y",
+          approvalStage: "province",
+          dimension: "customer",
+        },
+        visibleRows: [{ planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" }],
+        selectedPlanIds: [],
+        pagination: { page: 1, pageSize: 20, total: 1 },
+        evidence: {
+          source: "gea-user-session",
+          completeness: "paged-queue",
+          queryState: "success",
+          dataVersion: "sales-plan-v1.11",
+        },
+      });
+      const firstTurn = await ended(id);
+      assert.ok(
+        readToolResults(firstTurn).some((result) => result.text.includes("GEA_RENDERED_WORKBENCH")),
+      );
+      // 用户从业务菜单切回主对话：快照还在服务端，但不再是"你眼前这一屏"。
+      const surface = await pages.get(id).close();
+      assert.equal(surface.ok, true, JSON.stringify(surface));
+      pageGuardClosed = true;
+      modelRequests = [];
+      const prompted = await app.remote("session/prompt", {
+        requestId: randomUUID(),
+        sessionId: id,
+        mode: "queue",
+        content: [{ type: "text", text: "河北这些行是什么计划类型？" }],
+      });
+      assert.equal(prompted.ok, true, JSON.stringify(prompted));
+      const rows = await until(
+        () => readSession(app.runtime, id),
+        (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
+      );
+      // 模型每次请求都带全量历史，只能看"最后一条用户消息之后"的那条工具结果。
+      assert.equal(modelRequests.length, 1, "撤回页面菜单后模型直接答复，不调用已撤回工具");
+      const request = modelRequests[0];
+      for (const name of ["gea_visible_workbench_context", "gea_page", "gea_workbench_apply"])
+        assert.equal(
+          request.tools.some((tool) => tool.function.name === name),
+          false,
+          name,
+        );
+      const lastUser = request.messages.map((message) => message.role).lastIndexOf("user");
+      assert.equal(
+        request.messages.slice(lastUser + 1).some((message) => message.role === "tool"),
+        false,
+      );
+      const currentResults = rows
+        .slice(rows.findLastIndex((entry) => entry.type === "turn/start"))
+        .filter((entry) => entry.type === "tool/result");
+      assert.equal(currentResults.length, 0, "旧快照不得生成当前工具证据");
+      assert.equal(rows.at(-1).data.reason.kind, "completed");
+      assert.equal(
+        rows.some((entry) => entry.type === "tool/result" && entry.data.message.content[0].isError),
+        false,
+      );
+    });
     await t.test(
       "问答只给 MCP 取数：模块清单挂在 gea_module_mcp 上，受管 SQL 工具默认不注册",
       async () => {
@@ -965,16 +980,16 @@ test(
         await ended(await submit());
         // 默认（部署配置没打开 agentSqlRead）不给模型写 SQL 的机会。
         assert.equal(
-          modelRequests[0].tools.some(
-            (candidate) => candidate.function.name === "gea_plugin_read",
-          ),
+          modelRequests[0].tools.some((candidate) => candidate.function.name === "gea_plugin_read"),
           false,
           "默认不应注册 gea_plugin_read",
         );
-        assert.equal(modelRequests[0].tools.some(tool=>tool.function.name==='gea_module_mcp'),false);
-        assert.ok(modelRequests[0].tools.some(tool=>tool.function.name==='gea_capabilities'));
-        assert.ok(modelRequests[0].tools.some(tool=>tool.function.name==='gea_cube_query'));
-
+        assert.equal(
+          modelRequests[0].tools.some((tool) => tool.function.name === "gea_module_mcp"),
+          true,
+        );
+        assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_capabilities"));
+        assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_cube_query"));
       },
     );
     await t.test(
@@ -991,12 +1006,10 @@ test(
           (message) => message.role === "tool" && message.tool_call_id === "page-1",
         );
         assert.match(result.content, /not-in-workbench/);
-        assert.match(result.content, /不在业务工作台/);
+        assert.equal(JSON.parse(result.content).code, "PAGE_NOT_IN_WORKBENCH");
         assert.equal(
           rows.some(
-            (entry) =>
-              entry.type === "tool/result" &&
-              entry.data.message.content[0].isError,
+            (entry) => entry.type === "tool/result" && entry.data.message.content[0].isError,
           ),
           false,
           "普通对话里的页面工具结果不是错误",
@@ -1010,47 +1023,40 @@ test(
         const id = await submit();
         await ended(id);
         // 菜单状态字段：只有点了业务菜单才算"在工作台"（默认是主对话）。
-        await app.rpc("surface", {
-          sessionId: id,
-          menu: "gea-workbench",
-          title: "销售计划",
-        });
-        const synced = await app.rpc("workbench/context", {
-          sessionId: id,
-          context: {
-            format: "gea-workbench-visible-v1",
-            sequence: 1,
-            view: "regional-approval",
-            scope: {
-              month: "2026-10",
-              planType: "Y",
-              approvalStage: "province",
-              dimension: "customer",
+        assert.ok(pages.get(id).owner, "the current registered page owns this Session");
+        const synced = await pages.get(id).context({
+          format: "gea-workbench-visible-v1",
+          sequence: 1,
+          view: "regional-approval",
+          scope: {
+            month: "2026-10",
+            planType: "Y",
+            approvalStage: "province",
+            dimension: "customer",
+          },
+          visibleRows: [
+            {
+              planId: "9007199254740993",
+              organization: "当前客户",
+              planTypeCode: "Y",
+              status: 3,
             },
-            visibleRows: [
-              {
-                planId: "9007199254740993",
-                organization: "当前客户",
-                planTypeCode: "Y",
-                status: 3,
-              },
-            ],
-            selectedPlanIds: [],
-            expandedFields: [
-              {
-                id: "field:plan-hebei-1:1004273:qty",
-                label: "BP思念150g黑芝麻肉松饭团 确认计划量",
-                value: "200",
-                editable: true,
-              },
-            ],
-            pagination: { page: 1, pageSize: 20, total: 1 },
-            evidence: {
-              source: "gea-user-session",
-              completeness: "paged-queue",
-              queryState: "success",
-              dataVersion: "sales-plan-v1.11",
+          ],
+          selectedPlanIds: [],
+          expandedFields: [
+            {
+              id: "field:plan-hebei-1:1004273:qty",
+              label: "BP思念150g黑芝麻肉松饭团 确认计划量",
+              value: "200",
+              editable: true,
             },
+          ],
+          pagination: { page: 1, pageSize: 20, total: 1 },
+          evidence: {
+            source: "gea-user-session",
+            completeness: "paged-queue",
+            queryState: "success",
+            dataVersion: "sales-plan-v1.11",
           },
         });
         assert.deepEqual(synced, { ok: true, value: { synced: true } });
@@ -1075,9 +1081,7 @@ test(
           true,
         );
         const result = modelRequests[1].messages.find(
-          (message) =>
-            message.role === "tool" &&
-            message.tool_call_id === "visible-context-1",
+          (message) => message.role === "tool" && message.tool_call_id === "visible-context-1",
         );
         const value = JSON.parse(result.content);
         assert.equal(value.source, "GEA_RENDERED_WORKBENCH");
@@ -1088,8 +1092,7 @@ test(
         assert.equal(
           rows.some(
             (entry) =>
-              entry.type === "tool/call" &&
-              entry.data.name === "gea_visible_workbench_context",
+              entry.type === "tool/call" && entry.data.name === "gea_visible_workbench_context",
           ),
           true,
         );
@@ -1122,11 +1125,7 @@ test(
         const id = await submit();
         await ended(id);
         // 菜单状态字段：这一屏的上下文只在"点了业务菜单"的对话里才算证据。
-        await app.rpc("surface", {
-          sessionId: id,
-          menu: "gea-workbench",
-          title: "销售计划",
-        });
+        assert.ok(pages.get(id).owner, "the current registered page owns this Session");
         // 页面自述能力：工具由通用桥按这份目录为该会话生成。
         const catalog = {
           surface: "gea-workbench",
@@ -1164,18 +1163,14 @@ test(
             },
           ],
         };
-        const declared = await app.rpc("agui/workbench", {
-          sessionId: id,
+        const declared = await pages.get(id).catalog({
           toolMessages: [],
           catalog,
         });
         assert.equal(declared.ok, true, JSON.stringify(declared));
-        await app.rpc("workbench/context", {
-          sessionId: id,
-          context: page(1, [
-            { planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" },
-          ]),
-        });
+        await pages
+          .get(id)
+          .context(page(1, [{ planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" }]));
         outcome = "workbench-command";
         modelRequests = [];
         const prompted = await app.remote("session/prompt", {
@@ -1188,23 +1183,22 @@ test(
         // 工作台页面这一侧：按 AG-UI 取工具调用事件。
         await until(() => modelRequests.length > 0, Boolean);
         assert.ok(
-          modelRequests[0].tools.some(
-            (tool) => tool.function.name === "gea_workbench_apply",
-          ),
+          modelRequests[0].tools.some((tool) => tool.function.name === "gea_workbench_apply"),
           "页面声明后该会话应能看到生成的工具：" +
-            JSON.stringify(
-              modelRequests[0].tools.map((tool) => tool.function.name),
-            ),
+            JSON.stringify(modelRequests[0].tools.map((tool) => tool.function.name)),
         );
         // 工具由桥按元素目录生成：模型只会 4 个通用动词；说明里只给数量，
         // 目录按需取（directory=true），不再随每次请求把标签全塞进上下文。
         const applyTool = modelRequests[0].tools.find(
           (tool) => tool.function.name === "gea_workbench_apply",
         );
-        assert.deepEqual(
-          applyTool.function.parameters.properties.kind.enum,
-          ["invoke", "setValue", "select", "clear", "directory"],
-        );
+        assert.deepEqual(applyTool.function.parameters.properties.kind.enum, [
+          "invoke",
+          "setValue",
+          "select",
+          "clear",
+          "directory",
+        ]);
         assert.match(applyTool.function.description, /可操作元素 4 个/);
         assert.match(applyTool.function.description, /只读元素/);
         assert.equal(
@@ -1222,8 +1216,7 @@ test(
           "kind 不再必填：只要元素目录时可以只传 directory=true",
         );
         const events = await until(
-          async () =>
-            (await app.rpc("agui/workbench", { sessionId: id })).value.events,
+          async () => (await pages.get(id).catalog({})).value.events,
           (value) => value.length > 0,
         );
         assert.deepEqual(
@@ -1240,38 +1233,33 @@ test(
           reason: "展开这一行",
         });
         // 页面执行完把结果按 AG-UI 的 tool 消息回填，并上报新的页面快照。
-        const settled = await app.rpc("agui/workbench", {
-          sessionId: id,
+        await pages.get(id).context(
+          page(2, [
+            { planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" },
+            { planId: "plan-hebei-2", organization: "河北", planTypeCode: "Y" },
+          ]),
+        );
+        const settled = await pages.get(id).catalog({
           toolMessages: [
             {
               id: "tool-result-1",
               role: "tool",
               toolCallId: start.toolCallId,
-              content: JSON.stringify({ applied: true }),
+              content: JSON.stringify({ toolCallId: start.toolCallId, applied: true }),
             },
           ],
         });
         assert.deepEqual(settled.value.events, []);
-        await app.rpc("workbench/context", {
-          sessionId: id,
-          context: page(2, [
-            { planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" },
-            { planId: "plan-hebei-2", organization: "河北", planTypeCode: "Y" },
-          ]),
-        });
         const rows = await until(
           () => readSession(app.runtime, id),
-          (entries) =>
-            entries.filter((entry) => entry.type === "turn/end").length === 2,
+          (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
         );
         const toolResult = modelRequests[1].messages.find(
-          (message) =>
-            message.role === "tool" &&
-            message.tool_call_id === "workbench-command-1",
+          (message) => message.role === "tool" && message.tool_call_id === "workbench-command-1",
         );
         const value = JSON.parse(toolResult.content);
         assert.equal(value.protocol, "ag-ui-frontend-tool");
-        assert.equal(value.applied, true);
+        assert.equal(value.applied, true, JSON.stringify(value));
         assert.equal(value.kind, "invoke");
         // 改动后必须拿到"改动后"的快照，否则模型会拿旧页面下结论。
         assert.equal(value.snapshotAfterApply, true);
@@ -1281,18 +1269,14 @@ test(
         // 只改视图：整轮下来不能碰任何 GEA 写接口。
         assert.equal(
           app.requests.some((request) =>
-            /\/actions$|\/submit$|\/sales-plan\/action$/.test(
-              request.url.pathname,
-            ),
+            /\/actions$|\/submit$|\/sales-plan\/action$/.test(request.url.pathname),
           ),
           false,
           "改这一屏不应该触发任何 GEA 写接口",
         );
         assert.equal(
           rows.some(
-            (entry) =>
-              entry.type === "tool/call" &&
-              entry.data.name === "gea_workbench_apply",
+            (entry) => entry.type === "tool/call" && entry.data.name === "gea_workbench_apply",
           ),
           true,
         );
@@ -1300,392 +1284,342 @@ test(
         // （命令没有下发到页面，所以这里是一个带错误码的成功结果，而不是工具异常。）
         assert.match(
           modelRequests[2].messages.find(
-            (message) =>
-              message.role === "tool" &&
-              message.tool_call_id === "workbench-command-2",
+            (message) => message.role === "tool" && message.tool_call_id === "workbench-command-2",
           ).content,
           /ELEMENT_NOT_EDITABLE/,
         );
-        assert.equal(
-          rows.filter((entry) => entry.type === "turn/end").length,
-          2,
-        );
+        assert.equal(rows.filter((entry) => entry.type === "turn/end").length, 2);
       },
     );
-    await t.test(
-      "页面声明受策略收口：非白名单页面不注册，改数据的动作不暴露",
-      async () => {
-        outcome = "success";
-        // 1) 不在白名单里的页面：声明了也不给工具。
-        const foreign = await submit();
-        await ended(foreign);
-        await app.rpc("agui/workbench", {
-          sessionId: foreign,
-          toolMessages: [],
-          catalog: {
-            surface: "inventory-dealer",
-            tool: "dealer_page_apply",
-            description: "改经销商页面",
-            actions: [{ name: "openRow", description: "打开某一行" }],
-          },
-        });
-        modelRequests = [];
-        await app.remote("session/prompt", {
-          requestId: randomUUID(),
-          sessionId: foreign,
-          mode: "queue",
-          content: [{ type: "text", text: "随便问一句" }],
-        });
-        await until(() => modelRequests.length > 0, Boolean);
-        assert.equal(
-          modelRequests[0].tools.some(
-            (tool) => tool.function.name === "dealer_page_apply",
-          ),
-          false,
-          "非白名单页面不应注册工具",
-        );
+    await t.test("页面声明受策略收口：非白名单页面不注册，改数据的动作不暴露", async () => {
+      outcome = "success";
+      // 1) 不在白名单里的页面：声明了也不给工具。
+      const foreign = await submit();
+      await ended(foreign);
+      const foreignDeclaration = await pages.get(foreign).catalog({
+        toolMessages: [],
+        catalog: {
+          surface: "inventory-dealer",
+          tool: "dealer_page_apply",
+          description: "改经销商页面",
+          actions: [{ name: "openRow", description: "打开某一行" }],
+        },
+      });
+      assert.equal(foreignDeclaration.ok, false);
+      assert.equal(foreignDeclaration.value.error, "PAGE_CATALOG_OWNER_MISMATCH");
+      modelRequests = [];
+      await app.remote("session/prompt", {
+        requestId: randomUUID(),
+        sessionId: foreign,
+        mode: "queue",
+        content: [{ type: "text", text: "随便问一句" }],
+      });
+      await until(() => modelRequests.length > 0, Boolean);
+      assert.equal(
+        modelRequests[0].tools.some((tool) => tool.function.name === "dealer_page_apply"),
+        false,
+        "非白名单页面不应注册工具",
+      );
 
-        // 2) 白名单页面：改视图的动作和"填草稿"的动作都要暴露（它们都是页面开放的）。
-        const allowed = await submit();
-        await ended(allowed);
-        await app.rpc("agui/workbench", {
-          sessionId: allowed,
-          toolMessages: [],
-          catalog: {
-            surface: "gea-workbench",
-            tool: "gea_workbench_apply",
-            description: "改工作台这一屏",
-            actions: [
-              { name: "expandRow", description: "展开某一行" },
-              {
-                name: "setConfirmedQuantity",
-                description: "填确认计划量草稿",
-                scope: "data",
-                params: {
-                  planId: { type: "string", required: true },
-                  quantity: { type: "string", required: true },
-                },
-              },
-            ],
-          },
-        });
-        modelRequests = [];
-        await app.remote("session/prompt", {
-          requestId: randomUUID(),
-          sessionId: allowed,
-          mode: "queue",
-          content: [{ type: "text", text: "随便问一句" }],
-        });
-        await until(() => modelRequests.length > 0, Boolean);
-        const tool = modelRequests[0].tools.find(
-          (candidate) => candidate.function.name === "gea_workbench_apply",
-        );
-        assert.ok(tool, "白名单页面应注册工具");
-        assert.deepEqual(tool.function.parameters.properties.kind.enum, [
-          "expandRow",
-          "setConfirmedQuantity",
-        ]);
-        // 动作里不存在"提交/审批"这类会落库的动作：页面没声明就永远调不到。
-        assert.equal(
-          tool.function.parameters.properties.kind.enum.some((kind) =>
-            /submit|approve|save/i.test(kind),
-          ),
-          false,
-        );
-      },
-    );
-    await t.test(
-      "切页即撤：页面声明为 null 后，上一屏的元素当场从会话里消失",
-      async () => {
-        outcome = "success";
-        const id = await submit();
-        await ended(id);
-        const declared = await app.rpc("agui/workbench", {
-          sessionId: id,
-          toolMessages: [],
-          catalog: {
-            surface: "gea-workbench",
-            tool: "gea_workbench_apply",
-            description: "改工作台这一屏。",
-            elements: [
-              {
-                id: "row:p-1",
-                role: "row",
-                label: "上一屏的行",
-                actions: ["expand"],
-              },
-            ],
-          },
-        });
-        assert.equal(declared.ok, true, JSON.stringify(declared).slice(0, 300));
-        modelRequests = [];
-        await app.remote("session/prompt", {
-          requestId: randomUUID(),
-          sessionId: id,
-          mode: "queue",
-          content: [{ type: "text", text: "这一屏有什么" }],
-        });
-        await until(() => modelRequests.length > 0, Boolean);
-        assert.equal(
-          modelRequests[0].tools.some(
-            (tool) => tool.function.name === "gea_workbench_apply",
-          ),
-          true,
-          "页面声明后模型能看到页面工具",
-        );
-        await until(
-          () => readSession(app.runtime, id),
-          (entries) =>
-            entries.filter((entry) => entry.type === "turn/end").length === 2,
-        );
-
-        // 页面切走了：桥关闭 / 这一屏不再是工作台时报 null。
-        const released = await app.rpc("agui/workbench", {
-          sessionId: id,
-          toolMessages: [],
-          catalog: null,
-        });
-        assert.equal(released.ok, true);
-        modelRequests = [];
-        await app.remote("session/prompt", {
-          requestId: randomUUID(),
-          sessionId: id,
-          mode: "queue",
-          content: [{ type: "text", text: "现在这一屏有什么" }],
-        });
-        await until(() => modelRequests.length > 0, Boolean);
-        assert.equal(
-          modelRequests[0].tools.some(
-            (tool) => tool.function.name === "gea_workbench_apply",
-          ),
-          false,
-          "页面撤走后不能再把上一屏的元素留给模型",
-        );
-      },
-    );
-    await t.test(
-      "元素目录：只读元素改不动，只有可编辑字段才下发到页面",
-      async () => {
-        outcome = "success";
-        const id = await submit();
-        await ended(id);
-        await app.rpc("agui/workbench", {
-          sessionId: id,
-          toolMessages: [],
-          catalog: {
-            surface: "gea-workbench",
-            tool: "gea_workbench_apply",
-            description: "通用页面操作：按元素调用四个通用动词。",
-            elements: [
-              {
-                id: "row:p-1",
-                role: "row",
-                label: "经销渠道虚拟二",
-                value: "¥3,888,792.00",
-                actions: ["expand", "openDetail", "select"],
-              },
-              {
-                id: "field:p-1:sku:1001:qty",
-                role: "field",
-                label: "BP思念150g黑芝麻肉松饭团 确认计划量",
-                value: "939",
-                editable: true,
-              },
-              {
-                id: "collection:p-1:qty",
-                role: "collection",
-                label: "该行全部 SKU 的确认计划量",
-                members: ["field:p-1:sku:1001:qty"],
-              },
-              {
-                id: "stage",
-                role: "control",
-                label: "审批阶段",
-                value: "area",
-                options: ["all", "area", "province"],
-                actions: ["setStage"],
-              },
-            ],
-          },
-        });
-        outcome = "page-verb";
-        modelRequests = [];
-        await app.remote("session/prompt", {
-          requestId: randomUUID(),
-          sessionId: id,
-          mode: "queue",
-          content: [{ type: "text", text: "把这行改成 200" }],
-        });
-        await until(() => modelRequests.length > 0, Boolean);
-        assert.ok(
-          modelRequests[0].tools.some(
-            (candidate) => candidate.function.name === "gea_workbench_apply",
-          ),
-          "元素目录也要注册工具：" +
-            JSON.stringify(
-              modelRequests[0].tools.map((candidate) => candidate.function.name),
-            ),
-        );
-        const events = await until(
-          async () =>
-            (await app.rpc("agui/workbench", { sessionId: id })).value.events,
-          (value) => value.length > 0,
-        );
-        const tool = modelRequests[0].tools.find(
-          (candidate) => candidate.function.name === "gea_workbench_apply",
-        );
-        // 元素目录：模型只会四个通用动词。
-        assert.deepEqual(
-          tool.function.parameters.properties.kind.enum,
-          ["invoke", "setValue", "select", "clear", "directory"],
-        );
-        // 说明里区分了"可操作"和"只读"，并给出数量；元素 label 用 directory=true 按需取。
-        assert.match(tool.function.description, /只读元素/);
-        assert.match(tool.function.description, /可编辑/);
-        assert.equal(
-          tool.function.description.includes("经销渠道虚拟二"),
-          false,
-          "元素标签不再写进工具说明，改用 directory=true 按需取",
-        );
-        // 只读行上的 setValue 不会下发；事件来自第二个（可编辑字段）调用。
-        const [start, args] = events;
-        assert.deepEqual(JSON.parse(args.delta), {
-          kind: "setValue",
-          target: "field:p-1:sku:1001:qty",
-          value: "200",
-        });
-        await app.rpc("agui/workbench", {
-          sessionId: id,
-          toolMessages: [
+      // 2) 白名单页面：改视图的动作和"填草稿"的动作都要暴露（它们都是页面开放的）。
+      const allowed = await submit();
+      await ended(allowed);
+      await pages.get(allowed).catalog({
+        toolMessages: [],
+        catalog: {
+          surface: "gea-workbench",
+          tool: "gea_workbench_apply",
+          description: "改工作台这一屏",
+          actions: [
+            { name: "expandRow", description: "展开某一行" },
             {
-              id: "verb-result-1",
-              role: "tool",
-              toolCallId: start.toolCallId,
-              content: JSON.stringify({ applied: true }),
+              name: "setConfirmedQuantity",
+              description: "填确认计划量草稿",
+              scope: "data",
+              params: {
+                planId: { type: "string", required: true },
+                quantity: { type: "string", required: true },
+              },
             },
           ],
-        });
-        await until(
-          () => readSession(app.runtime, id),
-          (entries) =>
-            entries.filter((entry) => entry.type === "turn/end").length === 2,
-        );
-        const rejected = modelRequests[1].messages.find(
-          (message) =>
-            message.role === "tool" &&
-            message.tool_call_id === "page-verb-1",
-        );
-        assert.match(rejected.content, /ELEMENT_NOT_EDITABLE/);
-        const delivered = modelRequests[2].messages.find(
-          (message) =>
-            message.role === "tool" &&
-            message.tool_call_id === "page-verb-2",
-        );
-        const value = JSON.parse(delivered.content);
-        assert.equal(value.applied, true);
-        assert.equal(value.kind, "setValue");
-        // 这一屏的目录是页面自述的；这次改动在"改草稿"这一层留下了回执。
-        assert.equal(value.pageSource, "self-report", JSON.stringify(value));
-        assert.equal(value.draft.outcome, "applied");
-        assert.match(value.draft.id, /^draft-/);
-      },
-    );
-    await t.test(
-      "元素很多（20 行 + 字段）时工具仍要注册，说明不能因为超长把工具弄没",
-      async () => {
-        outcome = "success";
-        const id = await submit();
-        await ended(id);
-        const elements = [
-          ...Array.from({ length: 20 }, (_, index) => ({
-            id: `row:p-jxs-2026-10-${String(index).padStart(5, "0")}`,
-            role: "row",
-            label: `经销渠道虚拟${index % 3}（河北逐平）`,
-            value: "3,888,792.00",
-            actions: ["expand", "collapse", "openDetail", "select"],
-          })),
-          ...Array.from({ length: 12 }, (_, index) => ({
-            id: `field:p-jxs-2026-10-00000:1004273${index}:qty`,
-            role: "field",
-            label: `BP思念150g黑芝麻肉松饭团 ${index} 确认计划量`,
-            value: "939",
-            editable: true,
-          })),
-          {
-            id: "collection:p-jxs-2026-10-00000:qty",
-            role: "collection",
-            label: "该行全部 SKU 的确认计划量",
-            members: Array.from(
-              { length: 12 },
-              (_, index) => `field:p-jxs-2026-10-00000:1004273${index}:qty`,
-            ),
-          },
-          ...["areaCode", "provinceCode", "orgCode", "dealerCode", "status"].map(
-            (field) => ({
-              id: `filter:${field}`,
-              role: "control",
-              label: `${field} 筛选`,
-              value: "all",
+        },
+      });
+      modelRequests = [];
+      await app.remote("session/prompt", {
+        requestId: randomUUID(),
+        sessionId: allowed,
+        mode: "queue",
+        content: [{ type: "text", text: "随便问一句" }],
+      });
+      await until(() => modelRequests.length > 0, Boolean);
+      const tool = modelRequests[0].tools.find(
+        (candidate) => candidate.function.name === "gea_workbench_apply",
+      );
+      assert.ok(tool, "白名单页面应注册工具");
+      assert.deepEqual(tool.function.parameters.properties.kind.enum, [
+        "expandRow",
+        "setConfirmedQuantity",
+      ]);
+      // 动作里不存在"提交/审批"这类会落库的动作：页面没声明就永远调不到。
+      assert.equal(
+        tool.function.parameters.properties.kind.enum.some((kind) =>
+          /submit|approve|save/i.test(kind),
+        ),
+        false,
+      );
+    });
+    await t.test("切页即撤：页面声明为 null 后，上一屏的元素当场从会话里消失", async () => {
+      outcome = "success";
+      const id = await submit();
+      await ended(id);
+      const declared = await pages.get(id).catalog({
+        toolMessages: [],
+        catalog: {
+          surface: "gea-workbench",
+          tool: "gea_workbench_apply",
+          description: "改工作台这一屏。",
+          elements: [
+            {
+              id: "row:p-1",
+              role: "row",
+              label: "上一屏的行",
+              actions: ["expand"],
+            },
+          ],
+        },
+      });
+      assert.equal(declared.ok, true, JSON.stringify(declared).slice(0, 300));
+      modelRequests = [];
+      await app.remote("session/prompt", {
+        requestId: randomUUID(),
+        sessionId: id,
+        mode: "queue",
+        content: [{ type: "text", text: "这一屏有什么" }],
+      });
+      await until(() => modelRequests.length > 0, Boolean);
+      assert.equal(
+        modelRequests[0].tools.some((tool) => tool.function.name === "gea_workbench_apply"),
+        true,
+        "页面声明后模型能看到页面工具",
+      );
+      await until(
+        () => readSession(app.runtime, id),
+        (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
+      );
+
+      // 页面切走了：桥关闭 / 这一屏不再是工作台时报 null。
+      const released = await pages.get(id).catalog({
+        toolMessages: [],
+        catalog: null,
+      });
+      assert.equal(released.ok, true);
+      modelRequests = [];
+      await app.remote("session/prompt", {
+        requestId: randomUUID(),
+        sessionId: id,
+        mode: "queue",
+        content: [{ type: "text", text: "现在这一屏有什么" }],
+      });
+      await until(() => modelRequests.length > 0, Boolean);
+      assert.equal(
+        modelRequests[0].tools.some((tool) => tool.function.name === "gea_workbench_apply"),
+        false,
+        "页面撤走后不能再把上一屏的元素留给模型",
+      );
+    });
+    await t.test("元素目录：只读元素改不动，只有可编辑字段才下发到页面", async () => {
+      outcome = "success";
+      const id = await submit();
+      await ended(id);
+      await pages.get(id).catalog({
+        toolMessages: [],
+        catalog: {
+          surface: "gea-workbench",
+          tool: "gea_workbench_apply",
+          description: "通用页面操作：按元素调用四个通用动词。",
+          elements: [
+            {
+              id: "row:p-1",
+              role: "row",
+              label: "经销渠道虚拟二",
+              value: "¥3,888,792.00",
+              actions: ["expand", "openDetail", "select"],
+            },
+            {
+              id: "field:p-1:sku:1001:qty",
+              role: "field",
+              label: "BP思念150g黑芝麻肉松饭团 确认计划量",
+              value: "939",
               editable: true,
-            }),
-          ),
-          {
-            id: "stage",
-            role: "control",
-            label: "审批阶段",
-            value: "area",
-            options: ["all", "area", "province"],
-            editable: true,
-          },
-          { id: "filters", role: "control", label: "筛选", actions: ["reset"] },
-          { id: "pager", role: "control", label: "分页", value: "1", editable: true },
-        ];
-        const declared = await app.rpc("agui/workbench", {
-          sessionId: id,
-          toolMessages: [],
-          catalog: {
-            surface: "gea-workbench",
-            tool: "gea_workbench_apply",
-            description: "改工作台这一屏。",
-            elements,
-          },
-        });
-        assert.equal(declared.ok, true, JSON.stringify(declared).slice(0, 300));
-        modelRequests = [];
-        await app.remote("session/prompt", {
-          requestId: randomUUID(),
-          sessionId: id,
-          mode: "queue",
-          content: [{ type: "text", text: "随便问一句" }],
-        });
-        await until(() => modelRequests.length > 0, Boolean);
-        const tool = modelRequests[0].tools.find(
+            },
+            {
+              id: "collection:p-1:qty",
+              role: "collection",
+              label: "该行全部 SKU 的确认计划量",
+              members: ["field:p-1:sku:1001:qty"],
+            },
+            {
+              id: "stage",
+              role: "control",
+              label: "审批阶段",
+              value: "area",
+              options: ["all", "area", "province"],
+              actions: ["setStage"],
+            },
+          ],
+        },
+      });
+      outcome = "page-verb";
+      modelRequests = [];
+      await app.remote("session/prompt", {
+        requestId: randomUUID(),
+        sessionId: id,
+        mode: "queue",
+        content: [{ type: "text", text: "把这行改成 200" }],
+      });
+      await until(() => modelRequests.length > 0, Boolean);
+      assert.ok(
+        modelRequests[0].tools.some(
           (candidate) => candidate.function.name === "gea_workbench_apply",
-        );
-        assert.ok(tool, "元素数量大时工具也必须注册");
-        assert.ok(
-          tool.function.description.length <= 20_200,
-          `说明长度 ${tool.function.description.length} 应在上限内`,
-        );
-      },
-    );
+        ),
+        "元素目录也要注册工具：" +
+          JSON.stringify(modelRequests[0].tools.map((candidate) => candidate.function.name)),
+      );
+      const events = await until(
+        async () => (await pages.get(id).catalog({})).value.events,
+        (value) => value.length > 0,
+      );
+      const tool = modelRequests[0].tools.find(
+        (candidate) => candidate.function.name === "gea_workbench_apply",
+      );
+      // 元素目录：模型只会四个通用动词。
+      assert.deepEqual(tool.function.parameters.properties.kind.enum, [
+        "invoke",
+        "setValue",
+        "select",
+        "clear",
+        "directory",
+      ]);
+      // 说明里区分了"可操作"和"只读"，并给出数量；元素 label 用 directory=true 按需取。
+      assert.match(tool.function.description, /只读元素/);
+      assert.match(tool.function.description, /可编辑/);
+      assert.equal(
+        tool.function.description.includes("经销渠道虚拟二"),
+        false,
+        "元素标签不再写进工具说明，改用 directory=true 按需取",
+      );
+      // 只读行上的 setValue 不会下发；事件来自第二个（可编辑字段）调用。
+      const [start, args] = events;
+      assert.deepEqual(JSON.parse(args.delta), {
+        kind: "setValue",
+        target: "field:p-1:sku:1001:qty",
+        value: "200",
+      });
+      await pages.get(id).catalog({
+        toolMessages: [
+          {
+            id: "verb-result-1",
+            role: "tool",
+            toolCallId: start.toolCallId,
+            content: JSON.stringify({ toolCallId: start.toolCallId, applied: true }),
+          },
+        ],
+      });
+      await until(
+        () => readSession(app.runtime, id),
+        (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
+      );
+      const rejected = modelRequests[1].messages.find(
+        (message) => message.role === "tool" && message.tool_call_id === "page-verb-1",
+      );
+      assert.match(rejected.content, /ELEMENT_NOT_EDITABLE/);
+      const delivered = modelRequests[2].messages.find(
+        (message) => message.role === "tool" && message.tool_call_id === "page-verb-2",
+      );
+      const value = JSON.parse(delivered.content);
+      assert.equal(value.applied, true, JSON.stringify(value));
+      assert.equal(value.kind, "setValue");
+      // 这一屏的目录是页面自述的；这次改动在"改草稿"这一层留下了回执。
+      assert.equal(value.pageSource, "self-report", JSON.stringify(value));
+      assert.equal(value.draft.outcome, "applied");
+      assert.match(value.draft.id, /^draft-/);
+    });
+    await t.test("元素很多（20 行 + 字段）时工具仍要注册，说明不能因为超长把工具弄没", async () => {
+      outcome = "success";
+      const id = await submit();
+      await ended(id);
+      const elements = [
+        ...Array.from({ length: 20 }, (_, index) => ({
+          id: `row:p-jxs-2026-10-${String(index).padStart(5, "0")}`,
+          role: "row",
+          label: `经销渠道虚拟${index % 3}（河北逐平）`,
+          value: "3,888,792.00",
+          actions: ["expand", "collapse", "openDetail", "select"],
+        })),
+        ...Array.from({ length: 12 }, (_, index) => ({
+          id: `field:p-jxs-2026-10-00000:1004273${index}:qty`,
+          role: "field",
+          label: `BP思念150g黑芝麻肉松饭团 ${index} 确认计划量`,
+          value: "939",
+          editable: true,
+        })),
+        {
+          id: "collection:p-jxs-2026-10-00000:qty",
+          role: "collection",
+          label: "该行全部 SKU 的确认计划量",
+          members: Array.from(
+            { length: 12 },
+            (_, index) => `field:p-jxs-2026-10-00000:1004273${index}:qty`,
+          ),
+        },
+        ...["areaCode", "provinceCode", "orgCode", "dealerCode", "status"].map((field) => ({
+          id: `filter:${field}`,
+          role: "control",
+          label: `${field} 筛选`,
+          value: "all",
+          editable: true,
+        })),
+        {
+          id: "stage",
+          role: "control",
+          label: "审批阶段",
+          value: "area",
+          options: ["all", "area", "province"],
+          editable: true,
+        },
+        { id: "filters", role: "control", label: "筛选", actions: ["reset"] },
+        { id: "pager", role: "control", label: "分页", value: "1", editable: true },
+      ];
+      const declared = await pages.get(id).catalog({
+        toolMessages: [],
+        catalog: {
+          surface: "gea-workbench",
+          tool: "gea_workbench_apply",
+          description: "改工作台这一屏。",
+          elements,
+        },
+      });
+      assert.equal(declared.ok, true, JSON.stringify(declared).slice(0, 300));
+      modelRequests = [];
+      await app.remote("session/prompt", {
+        requestId: randomUUID(),
+        sessionId: id,
+        mode: "queue",
+        content: [{ type: "text", text: "随便问一句" }],
+      });
+      await until(() => modelRequests.length > 0, Boolean);
+      const tool = modelRequests[0].tools.find(
+        (candidate) => candidate.function.name === "gea_workbench_apply",
+      );
+      assert.ok(tool, "元素数量大时工具也必须注册");
+      assert.ok(
+        tool.function.description.length <= 20_200,
+        `说明长度 ${tool.function.description.length} 应在上限内`,
+      );
+    });
     await t.test(
       "Skill references use the local reader in the actual model-tool-model loop",
       async () => {
-        await mkdir(`${app.runtime}/home/business-skills/reference-scope`, {
-          recursive: true,
-        });
-        await mkdir(`${app.runtime}/home/references`, {
-          recursive: true,
-        });
-        await writeFile(
-          `${app.runtime}/home/business-skills/reference-scope/SKILL.md`,
-          "---\nname: reference-scope\ndescription: 需求预测规则测试\n---\n先读 [规则](../../references/rules.md)\n",
-        );
-        await writeFile(
-          `${app.runtime}/home/references/rules.md`,
-          "按实际期间查询；缺失数据不能编造。\n",
-        );
         outcome = "skill-reference";
         modelRequests = [];
         const rows = await ended(await submit());
@@ -1695,43 +1629,28 @@ test(
           .map((x) => x.content)
           .join("\n");
         assert.match(initialSystem, /沿用用户语言及指定格式/);
-        const results = modelRequests[2].messages.filter(
-          (x) => x.role === "tool",
-        );
-        assert.match(results[0].content, /reference-scope/);
+        const results = modelRequests[2].messages.filter((x) => x.role === "tool");
+        assert.match(results[0].content, /inventory-real/);
         assert.match(results[1].content, /按实际期间查询；缺失数据不能编造/);
-        assert.ok(
-          !rows.some(
-            (x) => x.type === "tool/call" && x.data.name.includes("mcp"),
-          ),
-        );
-        assert.equal(
-          rows.find((x) => x.type === "turn/end").data.reason.kind,
-          "completed",
-        );
+        assert.ok(!rows.some((x) => x.type === "tool/call" && x.data.name.includes("mcp")));
+        assert.equal(rows.find((x) => x.type === "turn/end").data.reason.kind, "completed");
       },
     );
-    await t.test(
-      "integer plan status reaches GEA through the advertised tool schema",
-      async () => {
-        outcome = "status-filter";
-        modelRequests = [];
-        const rows = await ended(await submit());
-        const result = modelRequests[1].messages.find((x) => x.role === "tool");
-        assert.equal(JSON.parse(result.content).source, "GEA_LIVE_READONLY");
-        assert.equal(
-          app.requests
-            .filter((x) => x.url.pathname.endsWith("/plans"))
-            .at(-1)
-            .url.searchParams.get("status"),
-          "5",
-        );
-        assert.equal(
-          rows.find((x) => x.type === "turn/end").data.reason.kind,
-          "completed",
-        );
-      },
-    );
+    await t.test("integer plan status reaches GEA through the advertised tool schema", async () => {
+      outcome = "status-filter";
+      modelRequests = [];
+      const rows = await ended(await submit());
+      const result = modelRequests[1].messages.find((x) => x.role === "tool");
+      assert.equal(JSON.parse(result.content).source, "GEA_LIVE_READONLY");
+      assert.equal(
+        app.requests
+          .filter((x) => x.url.pathname.endsWith("/plans"))
+          .at(-1)
+          .url.searchParams.get("status"),
+        "5",
+      );
+      assert.equal(rows.find((x) => x.type === "turn/end").data.reason.kind, "completed");
+    });
     await t.test(
       "403 is a persisted tool failure, never an empty successful collection",
       async () => {
@@ -1756,21 +1675,22 @@ test(
         ]) {
           outcome = mode;
           modelRequests = [];
-          const before = app.requests.filter((x) =>
-            x.url.pathname.endsWith("/plans") && x.url.searchParams.get("pageSize") === "200",
+          const before = app.requests.filter(
+            (x) =>
+              x.url.pathname.endsWith("/plans") && x.url.searchParams.get("pageSize") === "200",
           ).length;
           const rows = await ended(await submit());
           assert.match(
             modelRequests[1].messages.find((x) => x.role === "tool").content,
             new RegExp(code),
           );
-          assert.ok(
-            readToolResults(rows)[0].isError,
-          );
+          assert.ok(readToolResults(rows)[0].isError);
           if (mode === "invalid")
             assert.equal(
-              app.requests.filter((x) => x.url.pathname.endsWith("/plans") && x.url.searchParams.get("pageSize") === "200")
-                .length,
+              app.requests.filter(
+                (x) =>
+                  x.url.pathname.endsWith("/plans") && x.url.searchParams.get("pageSize") === "200",
+              ).length,
               before,
             );
         }
@@ -1786,47 +1706,34 @@ test(
           modelRequests[1].messages.find((x) => x.role === "tool").content,
           /GEA_REQUEST_TIMEOUT|tool call timed out/,
         );
-        assert.equal(
-          rows.find((x) => x.type === "turn/end").data.reason.kind,
-          "completed",
-        );
+        assert.equal(rows.find((x) => x.type === "turn/end").data.reason.kind, "completed");
         await until(async () => closed, Boolean);
         toolReply = undefined;
         closed = false;
       },
     );
-    await t.test(
-      "cancel closes a pending business read and persists an aborted turn",
-      async () => {
-        outcome = "hold";
-        toolReply = undefined;
-        closed = false;
-        modelRequests = [];
-        const id = await submit();
-        await until(async () => Boolean(toolReply), Boolean);
-        await app.remote("session/cancel", { sessionId: id });
-        const rows = await ended(id);
-        assert.equal(
-          rows.find((x) => x.type === "turn/end").data.reason.kind,
-          "aborted",
-        );
-        await until(async () => closed, Boolean);
-        assert.ok(rows.some((x) => x.type === "tool/call"));
-        assert.ok(rows.some((x) => x.type === "tool/result"));
-        assert.equal(modelRequests.length, 1);
-      },
-    );
+    await t.test("cancel closes a pending business read and persists an aborted turn", async () => {
+      outcome = "hold";
+      toolReply = undefined;
+      closed = false;
+      modelRequests = [];
+      const id = await submit();
+      await until(async () => Boolean(toolReply), Boolean);
+      await app.remote("session/cancel", { sessionId: id });
+      const rows = await ended(id);
+      assert.equal(rows.find((x) => x.type === "turn/end").data.reason.kind, "aborted");
+      await until(async () => closed, Boolean);
+      assert.ok(rows.some((x) => x.type === "tool/call"));
+      assert.ok(rows.some((x) => x.type === "tool/result"));
+      assert.equal(modelRequests.length, 1);
+    });
     await t.test(
       "a live workbench read never wipes the visible page context it just synced",
       async () => {
         outcome = "success";
         const id = await submit();
         await ended(id);
-        await app.rpc("surface", {
-          sessionId: id,
-          menu: "gea-workbench",
-          title: "销售计划",
-        });
+        assert.ok(pages.get(id).owner, "the current registered page owns this Session");
         const synced = {
           format: "gea-workbench-visible-v1",
           sequence: 1,
@@ -1853,15 +1760,7 @@ test(
             dataVersion: "sales-plan-v1.11",
           },
         };
-        assert.deepEqual(
-          (
-            await app.rpc("workbench/context", {
-              sessionId: id,
-              context: synced,
-            })
-          ).value,
-          { synced: true },
-        );
+        assert.deepEqual((await pages.get(id).context(synced)).value, { synced: true });
         // 工作台页面自己的实时查询走的就是这条：它曾经把刚同步的可见页快照清掉。
         const live = await app.rpc("workbench/query", {
           kind: "periods",
@@ -1879,13 +1778,10 @@ test(
         assert.equal(prompted.ok, true, JSON.stringify(prompted));
         await until(
           () => readSession(app.runtime, id),
-          (entries) =>
-            entries.filter((entry) => entry.type === "turn/end").length === 2,
+          (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
         );
         const result = modelRequests[1].messages.find(
-          (message) =>
-            message.role === "tool" &&
-            message.tool_call_id === "visible-context-1",
+          (message) => message.role === "tool" && message.tool_call_id === "visible-context-1",
         );
         const value = JSON.parse(result.content);
         assert.equal(value.coverage, "current-visible-page");

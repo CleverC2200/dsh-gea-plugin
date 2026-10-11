@@ -6,7 +6,7 @@
  * 这里用一个带 400 条 SKU 的计划验证：模型侧拿到的是投影+截断后的结果，
  * 明确标注 partial，并且整体仍在预算内。
  */
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile, readSession, until } from "./profile.mjs";
 
@@ -14,10 +14,7 @@ const CONTEXT_WINDOW = 32768;
 const MAX_TOKENS = 2048;
 const MAX_SNAPSHOT_BYTES = 100000;
 // 与 deployment.mjs 一致：输入预算 = min(maxSnapshotBytes, context − maxTokens − 1000)
-const INPUT_BUDGET = Math.min(
-  MAX_SNAPSHOT_BYTES,
-  CONTEXT_WINDOW - MAX_TOKENS - 1000,
-);
+const INPUT_BUDGET = Math.min(MAX_SNAPSHOT_BYTES, CONTEXT_WINDOW - MAX_TOKENS - 1000);
 
 test("detail 结果被投影并截断，不再 SNAPSHOT_TOO_LARGE", { timeout: 90000 }, async (t) => {
   const app = await profile(t, {
@@ -34,9 +31,7 @@ test("detail 结果被投影并截断，不再 SNAPSHOT_TOO_LARGE", { timeout: 9
     }),
   });
   const event = (delta, finish = null) =>
-    "data: " +
-    JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] }) +
-    "\n\n";
+    "data: " + JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] }) + "\n\n";
   const modelRequests = [];
   const planId = "p-budget-0001";
   const versionId = planId + "-1";
@@ -52,13 +47,21 @@ test("detail 结果被投影并截断，不再 SNAPSHOT_TOO_LARGE", { timeout: 9
   app.route((req, res, reply) => {
     const path = req.url.pathname;
     if (path.endsWith("/user-agent-credential/my/list")) {
-      reply({ success: true, result: { records: [{ id: "credential", status: "ACTIVE" }], total: 1 } });
+      reply({
+        success: true,
+        result: { records: [{ id: "credential", status: "ACTIVE" }], total: 1 },
+      });
       return true;
     }
     if (path.endsWith("/user-agent-credential/my/claim")) {
       reply({
         success: true,
-        result: { credentialId: "credential", status: "ACTIVE", baseUrl: app.base + "/personal", secret: "fixture-secret" },
+        result: {
+          credentialId: "credential",
+          status: "ACTIVE",
+          baseUrl: app.base + "/personal",
+          secret: "fixture-secret",
+        },
       });
       return true;
     }

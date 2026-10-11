@@ -1,7 +1,6 @@
 import { normalizeReceiptTime as timestamp } from "./delivery-time.mjs";
 /** Derived accounting and continuation only; consumes the same bounded bytes as checkDelivery. */
-const id = (value) =>
-  typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(value);
+const id = (value) => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(value);
 const count = (value) => Number.isSafeInteger(value) && value >= 0;
 const parse = (input) => {
   try {
@@ -10,7 +9,6 @@ const parse = (input) => {
     return null;
   }
 };
-
 const evidence = (input) =>
   input?.sha256
     ? [
@@ -30,12 +28,8 @@ const metrics = {
   starts: ["NativeStarts"],
 };
 function metric(data, aliases) {
-  const values = aliases
-    .filter((key) => data?.[key] !== undefined)
-    .map((key) => data[key]);
-  return values.length && values.every(count) && new Set(values).size === 1
-    ? values[0]
-    : null;
+  const values = aliases.filter((key) => data?.[key] !== undefined).map((key) => data[key]);
+  return values.length && values.every(count) && new Set(values).size === 1 ? values[0] : null;
 }
 
 export function deriveBudget({ delivery, inputs, observedAt, scoped }) {
@@ -47,10 +41,8 @@ export function deriveBudget({ delivery, inputs, observedAt, scoped }) {
     declaration.receipts.length > 0 &&
     declaration.receipts.length <= 100 &&
     declaration.receipts.every((ref) => id(ref?.sourceId) && id(ref.caseId)) &&
-    new Set(declaration.receipts.map((ref) => ref.caseId)).size ===
-      declaration.receipts.length &&
-    new Set(declaration.receipts.map((ref) => ref.sourceId)).size ===
-      declaration.receipts.length;
+    new Set(declaration.receipts.map((ref) => ref.caseId)).size === declaration.receipts.length &&
+    new Set(declaration.receipts.map((ref) => ref.sourceId)).size === declaration.receipts.length;
   const records = (valid ? declaration.receipts : []).map((ref) => {
     const matches = inputs.filter((input) => input.id === ref.sourceId),
       input = matches[0],
@@ -64,15 +56,7 @@ export function deriveBudget({ delivery, inputs, observedAt, scoped }) {
       Date.parse(through) <= Date.parse(sourceAt) &&
       Date.parse(sourceAt) <= Date.parse(observedAt);
     const quota = matched
-      ? [
-          "maxRequests",
-          "periods",
-          "list",
-          "detail",
-          "versionSkus",
-          "workflowSql",
-          "metadata",
-        ]
+      ? ["maxRequests", "periods", "list", "detail", "versionSkus", "workflowSql", "metadata"]
           .filter((key) => data.readonlyValidation?.limits?.[key] !== undefined)
           .map((key) => {
             const limit = data.readonlyValidation.limits[key],
@@ -82,9 +66,7 @@ export function deriveBudget({ delivery, inputs, observedAt, scoped }) {
               limit: count(limit) ? limit : null,
               spent: count(spent) ? spent : null,
               unspentRecorded:
-                count(limit) && count(spent) && spent <= limit
-                  ? limit - spent
-                  : null,
+                count(limit) && count(spent) && spent <= limit ? limit - spent : null,
               usableNow: "unknown",
             };
           })
@@ -108,18 +90,14 @@ export function deriveBudget({ delivery, inputs, observedAt, scoped }) {
   });
   const counts = Object.fromEntries(
     Object.keys(metrics).map((name) => {
-      const known = records
-        .map((record) => record.counts[name])
-        .filter((value) => value !== null);
+      const known = records.map((record) => record.counts[name]).filter((value) => value !== null);
       const total = known.reduce((sum, value) => sum + value, 0);
       return [
         name,
         {
           confirmed: Number.isSafeInteger(total) && known.length ? total : null,
           completeness:
-            valid &&
-            known.length === records.length &&
-            Number.isSafeInteger(total)
+            valid && known.length === records.length && Number.isSafeInteger(total)
               ? "recorded"
               : "unknown",
         },
@@ -129,25 +107,16 @@ export function deriveBudget({ delivery, inputs, observedAt, scoped }) {
   const available =
     valid &&
     records.every((record) => record.relation === "recorded") &&
-    ["SQL", "models", "writes"].every(
-      (name) => counts[name].completeness === "recorded",
-    );
+    ["SQL", "models", "writes"].every((name) => counts[name].completeness === "recorded");
   const exceeded = records.some((record) =>
     record.quota.some(
-      (quota) =>
-        quota.limit !== null &&
-        quota.spent !== null &&
-        quota.spent > quota.limit,
+      (quota) => quota.limit !== null && quota.spent !== null && quota.spent > quota.limit,
     ),
   );
   const quotaKnown = records.every((record) =>
     record.quota.every((quota) => quota.unspentRecorded !== null),
   );
-  const status = exceeded
-    ? "failed"
-    : available && quotaKnown
-      ? "observed"
-      : "unknown";
+  const status = exceeded ? "failed" : available && quotaKnown ? "observed" : "unknown";
   return {
     status,
     reason: exceeded
@@ -177,13 +146,7 @@ export function deriveBudget({ delivery, inputs, observedAt, scoped }) {
   };
 }
 
-export function deriveContinuation({
-  delivery,
-  task,
-  inputs,
-  observedAt,
-  scoped,
-}) {
+export function deriveContinuation({ delivery, task, inputs, observedAt, scoped }) {
   const goal = delivery?.goal;
   const valid =
     scoped &&
@@ -191,24 +154,16 @@ export function deriveContinuation({
     Array.isArray(goal.stages) &&
     goal.stages.length > 0 &&
     new Set(goal.stages).size === goal.stages.length &&
-    goal.stages.every((stage) =>
-      task.stages.some((result) => result.stage === stage),
-    );
-  const requested = valid
-    ? task.stages.filter((result) => goal.stages.includes(result.stage))
-    : [];
+    goal.stages.every((stage) => task.stages.some((result) => result.stage === stage));
+  const requested = valid ? task.stages.filter((result) => goal.stages.includes(result.stage)) : [];
   const verified = requested.filter((result) =>
     ["passed", "not-applicable"].includes(result.status),
   );
   const remaining = requested
     .filter((result) => !verified.includes(result))
     .map((result) => {
-      const permission = task.authorization?.find(
-        (item) => item.stage === result.stage,
-      );
-      const suggestion = task.suggestions?.find(
-        (item) => item.stage === result.stage,
-      );
+      const permission = task.authorization?.find((item) => item.stage === result.stage);
+      const suggestion = task.suggestions?.find((item) => item.stage === result.stage);
       if (permission?.stopEffects?.includes("pause"))
         return {
           ...result,
@@ -222,10 +177,7 @@ export function deriveContinuation({
           reason: task.consistency.reason,
           minimumGap: task.consistency.minimumGap,
         };
-      if (
-        task.dependencies?.status === "blocked" &&
-        suggestion?.status !== "can-continue"
-      )
+      if (task.dependencies?.status === "blocked" && suggestion?.status !== "can-continue")
         return {
           ...result,
           cause: "dependency-unmet",
@@ -233,12 +185,9 @@ export function deriveContinuation({
         };
       if (
         suggestion?.status === "blocked" &&
-        [
-          "review-owner",
-          "configuration-owner",
-          "approval-owner",
-          "browser-owner",
-        ].includes(suggestion.owner)
+        ["review-owner", "configuration-owner", "approval-owner", "browser-owner"].includes(
+          suggestion.owner,
+        )
       )
         return {
           ...result,
@@ -290,9 +239,7 @@ export function deriveContinuation({
             ? "user-paused"
             : remaining.some((result) => result.cause === "dependency-unmet")
               ? "dependency-unmet"
-              : remaining.every(
-                    (result) => result.cause === "external-condition",
-                  )
+              : remaining.every((result) => result.cause === "external-condition")
                 ? "external-conditions"
                 : "unknown";
   const reasons = {
@@ -360,9 +307,7 @@ export function summarizeContinuation(tasks, observedAt) {
       "unknown",
     ].map((state) => [
       state,
-      tasks
-        .filter((task) => task.continuation.state === state)
-        .map((task) => task.taskId),
+      tasks.filter((task) => task.continuation.state === state).map((task) => task.taskId),
     ]),
   );
   const state = groups.actionable.length
@@ -410,8 +355,7 @@ export function reconcileProjections({ delivery, inputs, observedAt, scoped }) {
       data = matches.length === 1 ? parse(source) : null;
     const sourceAt = timestamp(data?.at),
       sources = evidence(source);
-    const available =
-      data && sourceAt && Date.parse(sourceAt) <= Date.parse(observedAt);
+    const available = data && sourceAt && Date.parse(sourceAt) <= Date.parse(observedAt);
     const record = {
       sourceId: ref.sourceId,
       profile: ref.profile,
@@ -439,19 +383,13 @@ export function reconcileProjections({ delivery, inputs, observedAt, scoped }) {
         count(data.actualCounts?.physicalSQLRequests) &&
         Number(summary[1]) !== data.actualCounts.physicalSQLRequests
       )
-        conflict(
-          "BUDGET_PROJECTION_CONFLICT",
-          "MATCHING_RECEIPT_COUNTS_AND_PROJECTION_REQUIRED",
-        );
+        conflict("BUDGET_PROJECTION_CONFLICT", "MATCHING_RECEIPT_COUNTS_AND_PROJECTION_REQUIRED");
       if (
         data.currentWindowActive === false &&
         data.proposedCompanySingleSnapshot?.activated === true &&
         !data.historicalScopeFields?.proposedCompanySingleSnapshot
       )
-        conflict(
-          "WINDOW_ACTIVATION_CONFLICT",
-          "CLOSED_OR_HISTORIC_WINDOW_CLASSIFICATION_REQUIRED",
-        );
+        conflict("WINDOW_ACTIVATION_CONFLICT", "CLOSED_OR_HISTORIC_WINDOW_CLASSIFICATION_REQUIRED");
       if (
         data.currentWindowActive === false &&
         /^running\b/.test(data.referenceRecovery?.currentRuntime ?? "")
@@ -477,14 +415,8 @@ export function reconcileProjections({ delivery, inputs, observedAt, scoped }) {
         Array.isArray(data.unknownRequests) && data.unknownRequests.length > 0;
       record.afterCutoff = "unknown";
     } else if (ref.profile === "current-status") {
-      if (
-        data.currentNativeStopped === true &&
-        data.sales27Preparation?.activated === true
-      )
-        conflict(
-          "WINDOW_ACTIVATION_CONFLICT",
-          "CLOSED_OR_HISTORIC_WINDOW_CLASSIFICATION_REQUIRED",
-        );
+      if (data.currentNativeStopped === true && data.sales27Preparation?.activated === true)
+        conflict("WINDOW_ACTIVATION_CONFLICT", "CLOSED_OR_HISTORIC_WINDOW_CLASSIFICATION_REQUIRED");
       if (
         data.currentNativeStopped === true &&
         data.installed?.temporaryDeclarationsActive === true
@@ -496,8 +428,7 @@ export function reconcileProjections({ delivery, inputs, observedAt, scoped }) {
       record.runtime = "recorded-projection-only";
     } else {
       record.relation = "historical-source-snapshot";
-      record.installedAtCapture =
-        typeof data.installed === "boolean" ? data.installed : "unknown";
+      record.installedAtCapture = typeof data.installed === "boolean" ? data.installed : "unknown";
       record.currentInstalled = "unknown";
     }
   }
@@ -513,10 +444,7 @@ export function reconcileProjections({ delivery, inputs, observedAt, scoped }) {
       : status === "unknown"
         ? "SCOPED_PROJECTION_INPUT_REQUIRED"
         : "RECORDED_PROJECTION_REPLAY_ONLY",
-    minimumGap:
-      status === "observed"
-        ? null
-        : "MATCHING_RECEIPTS_SCOPE_AND_TIME_REQUIRED",
+    minimumGap: status === "observed" ? null : "MATCHING_RECEIPTS_SCOPE_AND_TIME_REQUIRED",
     records,
     conflicts,
     observedAt,

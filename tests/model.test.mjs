@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -35,8 +35,7 @@ test(
                 {
                   index: 0,
                   delta: {
-                    content:
-                      "基于源数据：数量差额 1.11。未提供 SKU，无法判断结构。",
+                    content: "基于源数据：数量差额 1.11。未提供 SKU，无法判断结构。",
                   },
                   finish_reason: null,
                 },
@@ -67,23 +66,15 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
     assert.equal(modelRequests.length, 1);
-    assert.equal(
-      modelRequests[0].headers.authorization,
-      "Bearer fixture-model-key",
-    );
+    assert.equal(modelRequests[0].headers.authorization, "Bearer fixture-model-key");
     const body = JSON.parse(modelRequests[0].body);
     assert.equal(body.model, "fixture-model");
-    const instructions = JSON.stringify(
-      body.messages.filter((message) => message.role !== "user"),
-    );
+    const instructions = JSON.stringify(body.messages.filter((message) => message.role !== "user"));
     assert.ok(instructions.includes("写入须有本轮明确意图、工具支持和业务权限"));
     assert.ok(instructions.includes("目录可见不等于业务授权"));
     // 位置事实由宿主每轮注入：没有业务菜单的会话直接告诉模型"别读页面"，
     // 免得它先调页面工具去问一次（那一次必然白跑）。
-    assert.ok(
-      JSON.stringify(body.messages).includes("页面："),
-      "系统提示里要带当前业务位置",
-    );
+    assert.ok(JSON.stringify(body.messages).includes("页面："), "系统提示里要带当前业务位置");
     // 这两类错法（成员名 → not found for path；年月值）现在由宿主代码兜：协议里不再复述，
     // 所以改为检查代码里确实有对应机制（提示词只留"会被拦下"这一句）。
     assert.match(
@@ -97,15 +88,26 @@ test(
       "年月值要由宿主按类型拦下",
     );
     // 形状类（order/跨模型/成员名/年月）都在发送前拦下：协议里只需要说明"会被拦下"。
-    assert.ok(
-      instructions.includes("gea_cube_query"),
-      "协议与实际注册的类型化 Cube 查询入口一致",
-    );
+    assert.ok(instructions.includes("gea_cube_query"), "协议与实际注册的类型化 Cube 查询入口一致");
     assert.ok(instructions.includes("不暴露凭据"));
     // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在
     // 回答里渲染界面；这里显式记录该行为，避免它变成无声的提示词漂移。
     assert.equal(instructions.includes("默认就该出 UI"), false);
-    assert.deepEqual(body.tools.map(tool=>tool.function.name).sort(),['gea_capabilities','gea_cube_query','gea_evidence_read','gea_gateway_catalog','gea_sales_plan_read','skill']);
+    // 当前受管预设包含 Manage 的参考读取与纯计算、GenUI 的呈现工具。
+    // 工具可见不授予业务权限；完整集合继续拒绝未登记工具。
+    assert.deepEqual(body.tools.map((tool) => tool.function.name).sort(), [
+      "forecast_compute",
+      "gea_capabilities",
+      "gea_cube_query",
+      "gea_evidence_read",
+      "gea_gateway_catalog",
+      "gea_module_mcp",
+      "gea_sales_plan_read",
+      "render_ui",
+      "skill",
+      "skill_reference_read",
+      "validate_dsh_ui",
+    ]);
     // 默认不允许模型自己写 SQL：受管只读工具不能出现在工具清单里。
     assert.equal(
       body.tools.some((tool) => tool.function.name === "gea_plugin_read"),
@@ -114,17 +116,13 @@ test(
     );
     const submitted = rows.find(
       (row) =>
-        row.type === "user/message" && (row.data.source.kind === "gea-proof" || row.data.source.plugin === "gea-proof"),
+        row.type === "user/message" &&
+        (row.data.source.kind === "gea-proof" || row.data.source.plugin === "gea-proof"),
     );
     assert.equal(submitted.data.source.form, "notice");
+    assert.equal(submitted.data.source.summary, "已提交只读分析：对比所选计划的数量和金额差异");
     assert.equal(
-      submitted.data.source.summary,
-      "已提交只读分析：对比所选计划的数量和金额差异",
-    );
-    assert.equal(
-      rows.some(
-        (row) => row.type === "user/message" && row.data.source.kind === "user",
-      ),
+      rows.some((row) => row.type === "user/message" && row.data.source.kind === "user"),
       false,
     );
     const user = body.messages.find((message) => message.role === "user");
@@ -137,11 +135,7 @@ test(
     assert.equal(prompt.includes("fetchedAt"), false);
     const archive = JSON.parse(
       await readFile(
-        resolve(
-          app.runtime,
-          "analysis-snapshots",
-          sent.value.sessionId + ".json",
-        ),
+        resolve(app.runtime, "analysis-snapshots", sent.value.sessionId + ".json"),
         "utf8",
       ),
     );
@@ -151,81 +145,71 @@ test(
     assert.equal(prepared.snapshot.calculations.quantityGap.value, "1.11");
     assert.equal(prepared.snapshot.calculations.amountGap.value, "2.2");
     assert.ok(
-      JSON.stringify(
-        rows.find((row) => row.type === "assistant/message"),
-      ).includes("未提供 SKU"),
+      JSON.stringify(rows.find((row) => row.type === "assistant/message")).includes("未提供 SKU"),
     );
     assert.equal(JSON.stringify(rows).includes("fixture-model-key"), false);
   },
 );
 
-test(
-  "显式打开 agentSqlRead 时，受管只读 SQL 工具才回到工具清单",
-  { timeout: 60000 },
-  async (t) => {
-    const app = await profile(t, {
-      config: (base) => ({
-        agentSqlRead: true,
-        analysis: {
-          mode: "model",
-          baseUrl: base + "/v1",
-          model: "fixture-model",
-          apiKeyEnv: "GEA_TEST_MODEL_KEY",
-          contextWindow: 32768,
-          maxTokens: 2048,
-        },
-      }),
-      env: { GEA_TEST_MODEL_KEY: "fixture-model-key" },
-    });
-    const modelRequests = [];
-    app.route((req, res) => {
-      if (req.url.pathname !== "/v1/chat/completions") return;
-      modelRequests.push(req);
-      res.setHeader("Content-Type", "text/event-stream");
-      res.end(
-        "data: " +
-          JSON.stringify({
-            id: "fixture-completion",
-            object: "chat.completion.chunk",
-            choices: [
-              { index: 0, delta: { content: "已按只读通道作答。" }, finish_reason: null },
-            ],
-          }) +
-          "\n\ndata: " +
-          JSON.stringify({
-            id: "fixture-completion",
-            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-          }) +
-          "\n\ndata: [DONE]\n\n",
-      );
-      return true;
-    });
-    await app.login();
-    const page = (await app.rpc("plans")).value;
-    const prepared = (
-      await app.rpc("prepare", {
-        queryId: page.queryId,
-        planId: page.records[0].planId,
-      })
-    ).value;
-    const sent = await app.rpc("submit", { previewId: prepared.previewId });
-    assert.equal(sent.ok, true, JSON.stringify(sent));
-    await until(
-      () => readSession(app.runtime, sent.value.sessionId),
-      (rows) => rows.some((row) => row.type === "turn/end"),
+test("显式打开 agentSqlRead 时，受管只读 SQL 工具才回到工具清单", { timeout: 60000 }, async (t) => {
+  const app = await profile(t, {
+    config: (base) => ({
+      agentSqlRead: true,
+      analysis: {
+        mode: "model",
+        baseUrl: base + "/v1",
+        model: "fixture-model",
+        apiKeyEnv: "GEA_TEST_MODEL_KEY",
+        contextWindow: 32768,
+        maxTokens: 2048,
+      },
+    }),
+    env: { GEA_TEST_MODEL_KEY: "fixture-model-key" },
+  });
+  const modelRequests = [];
+  app.route((req, res) => {
+    if (req.url.pathname !== "/v1/chat/completions") return;
+    modelRequests.push(req);
+    res.setHeader("Content-Type", "text/event-stream");
+    res.end(
+      "data: " +
+        JSON.stringify({
+          id: "fixture-completion",
+          object: "chat.completion.chunk",
+          choices: [{ index: 0, delta: { content: "已按只读通道作答。" }, finish_reason: null }],
+        }) +
+        "\n\ndata: " +
+        JSON.stringify({
+          id: "fixture-completion",
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        }) +
+        "\n\ndata: [DONE]\n\n",
     );
-    const names = JSON.parse(modelRequests[0].body).tools.map(
-      (tool) => tool.function.name,
-    );
-    assert.ok(names.includes("gea_plugin_read"), "显式打开后 SQL 工具应存在");
-    // 索引只挂一份：SQL 通道开着时挂在 gea_plugin_read，不再重复挂在 MCP 说明里。
-    const mcp = JSON.parse(modelRequests[0].body).tools.find(
-      (tool) => tool.function.name === "gea_module_mcp",
-    );
-    assert.equal(
-      (mcp?.function.description ?? "").includes("模块清单（只有名称与编码，细节按需取）："),
-      false,
-      "索引只挂一份：SQL 通道开着时不再重复挂到 MCP 说明里",
-    );
-  },
-);
+    return true;
+  });
+  await app.login();
+  const page = (await app.rpc("plans")).value;
+  const prepared = (
+    await app.rpc("prepare", {
+      queryId: page.queryId,
+      planId: page.records[0].planId,
+    })
+  ).value;
+  const sent = await app.rpc("submit", { previewId: prepared.previewId });
+  assert.equal(sent.ok, true, JSON.stringify(sent));
+  await until(
+    () => readSession(app.runtime, sent.value.sessionId),
+    (rows) => rows.some((row) => row.type === "turn/end"),
+  );
+  const names = JSON.parse(modelRequests[0].body).tools.map((tool) => tool.function.name);
+  assert.ok(names.includes("gea_plugin_read"), "显式打开后 SQL 工具应存在");
+  // 索引只挂一份：SQL 通道开着时挂在 gea_plugin_read，不再重复挂在 MCP 说明里。
+  const mcp = JSON.parse(modelRequests[0].body).tools.find(
+    (tool) => tool.function.name === "gea_module_mcp",
+  );
+  assert.equal(
+    (mcp?.function.description ?? "").includes("模块清单（只有名称与编码，细节按需取）："),
+    false,
+    "索引只挂一份：SQL 通道开着时不再重复挂到 MCP 说明里",
+  );
+});

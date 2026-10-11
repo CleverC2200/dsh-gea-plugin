@@ -17,8 +17,7 @@ const { outputFiles } = await build({
   format: "esm",
 });
 const m = await import(
-  "data:text/javascript;base64," +
-    Buffer.from(outputFiles[0].contents).toString("base64")
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 
 const payload = {
@@ -91,24 +90,53 @@ test("正向：同模型的一项与两项查询都放行", () => {
 test("G3 结构：空 queries、超过 8 项、name 重复或空白、缺 query 外壳、外层乱放字段", () => {
   assert.match(String(shapeOnly({ action: "query", queries: [] })), /GEA_CUBE_PREFLIGHT_BLOCKED/);
   assert.match(
-    String(shapeOnly({ action: "query", queries: Array.from({ length: 9 }, (_, i) => ({ name: `q${i}`, query: { dimensions: [`${STOCK}.id`] } })) })),
+    String(
+      shapeOnly({
+        action: "query",
+        queries: Array.from({ length: 9 }, (_, i) => ({
+          name: `q${i}`,
+          query: { dimensions: [`${STOCK}.id`] },
+        })),
+      }),
+    ),
     /最多 8 项/,
   );
   assert.match(
-    String(shapeOnly({ action: "query", queries: [{ name: "x", query: { dimensions: [`${STOCK}.id`] } }, { name: "x", query: { dimensions: [`${STOCK}.id`] } }] })),
+    String(
+      shapeOnly({
+        action: "query",
+        queries: [
+          { name: "x", query: { dimensions: [`${STOCK}.id`] } },
+          { name: "x", query: { dimensions: [`${STOCK}.id`] } },
+        ],
+      }),
+    ),
     /重复/,
   );
   assert.match(
-    String(shapeOnly({ action: "query", queries: [{ name: "   ", query: { dimensions: [`${STOCK}.id`] } }] })),
+    String(
+      shapeOnly({
+        action: "query",
+        queries: [{ name: "   ", query: { dimensions: [`${STOCK}.id`] } }],
+      }),
+    ),
     /name 不能为空/,
   );
   // 规约 §15 的原始形状错误：dimensions 直接放在 queries 元素里，没有 query 外壳。
-  const flat = shapeOnly({ action: "query", queries: [{ name: "x", dimensions: [`${STOCK}.id`] }] });
+  const flat = shapeOnly({
+    action: "query",
+    queries: [{ name: "x", dimensions: [`${STOCK}.id`] }],
+  });
   assert.match(String(flat), /query 必须是非空对象/);
   assert.match(String(flat), /形如|写成/);
   // 具名查询不允许额外字段；未知查询字段、显式 null 也不行。
   assert.match(
-    String(shapeOnly({ action: "query", queries: [{ name: "x", query: { dimensions: [`${STOCK}.id`] }, limit: 5 }] })),
+    String(
+      shapeOnly({
+        action: "query",
+        queries: [{ name: "x", query: { dimensions: [`${STOCK}.id`] }, limit: 5 }],
+      }),
+    ),
     /不允许额外字段 limit/,
   );
   assert.match(
@@ -125,10 +153,18 @@ test("G3 结构：空 queries、超过 8 项、name 重复或空白、缺 query 
 
 test("G3 inspect：带 queries 的 inspect 直接拦（inspect 必须 queries=[]）", () => {
   assert.match(
-    String(shapeOnly({ action: "inspect", queries: [{ name: "x", query: { dimensions: [`${STOCK}.id`] } }] })),
+    String(
+      shapeOnly({
+        action: "inspect",
+        queries: [{ name: "x", query: { dimensions: [`${STOCK}.id`] } }],
+      }),
+    ),
     /inspect 时 queries 必须是空数组/,
   );
-  assert.match(String(shapeOnly({ action: "cube_query", queries: [] })), /action=cube_query 不合法/);
+  assert.match(
+    String(shapeOnly({ action: "cube_query", queries: [] })),
+    /action=cube_query 不合法/,
+  );
 });
 
 test("G4 单模型：跨模型拦下并给出拆分方案，加 queries 项也绕不过去", () => {
@@ -169,12 +205,20 @@ test("接线：闸门在发送前调用，且清单不在手时先补读一次 i
   // 这两个行为是"规约由调用层确定性执行"的落点，改别处很容易把它们丢掉，
   // 所以在源码层面钉一条。
   const source = await readFile("src/host/agent-tools.ts", "utf8");
-  assert.match(source, /await moduleIndexFor\(module,exec\.signal\)/);
-  assert.match(source, /await loadMemberIndex\(module,signal\)/);
+  assert.match(source, /await moduleIndexFor\(module,\s*exec\.signal\)/);
+  assert.match(source, /await loadMemberIndex\(module,\s*signal\)/);
   assert.match(source, /preflightCubeArguments\(parameters, activeIndex\)/);
+  const sends = [
+    ...source.matchAll(/await module\.call\(\s*toolName,\s*parameters,\s*exec\.signal,/g),
+  ];
+  assert.equal(sends.length, 2, "inspect 和 query 必须使用同一模块与取消信号发送");
+  assert.match(source, /preflightCubeArguments\(parameters\)/);
   assert.ok(
-    source.indexOf("preflightCubeArguments(parameters, activeIndex)") <
-      source.indexOf("await module.call(toolName, parameters, exec.signal"),
+    source.indexOf("preflightCubeArguments(parameters)") < sends[0].index,
+    "inspect 形状校验必须在 inspect 发送之前",
+  );
+  assert.ok(
+    source.indexOf("preflightCubeArguments(parameters, activeIndex)") < sends[1].index,
     "闸门必须在真正发送之前",
   );
   // 结构性缺口：已知取不到的组合要在发送前短路，且和被拒那次一样计入本轮总账。
@@ -182,8 +226,7 @@ test("接线：闸门在发送前调用，且清单不在手时先补读一次 i
   assert.match(source, /availability: "known-gap"/);
   assert.match(source, /business\.cubeGaps\(\)\.note\(consumerCode, queriedModel/);
   assert.ok(
-    source.indexOf('business.cubeGaps().find(consumerCode, queriedModel)') <
-      source.indexOf("await module.call(toolName, parameters, exec.signal"),
+    source.indexOf("business.cubeGaps().find(consumerCode, queriedModel)") < sends[1].index,
     "已知缺口必须在真正发送之前短路",
   );
 });
@@ -196,7 +239,9 @@ test("G5 成员：不存在的成员拦下并给真名；维度不能进 measure
   assert.match(String(measure), /GEA_CUBE_MEASURE_MISMATCH/);
   assert.match(String(measure), /dimensions/);
   // 反向：度量名写进 dimensions。
-  const reverse = withIndex(query("dim", { dimensions: ["agents_sales_shipment.shipment_quantity"], limit: 20 }));
+  const reverse = withIndex(
+    query("dim", { dimensions: ["agents_sales_shipment.shipment_quantity"], limit: 20 }),
+  );
   assert.match(String(reverse), /是\*\*度量\*\*，不能放进 dimensions/);
   // 分段写进 dimensions 也不行。
   const segment = withIndex(query("seg", { dimensions: [`${STOCK}.latest_snapshot`], limit: 20 }));
@@ -208,9 +253,13 @@ test("G6 order：对象数组、大写方向、字符串方向都拦（一次列
     query("x", { dimensions: [`${STOCK}.id`], order: [{ [`${STOCK}.id`]: "asc" }] }),
   );
   assert.match(String(objectArray), /二元数组/);
-  const upper = shapeOnly(query("x", { dimensions: [`${STOCK}.id`], order: { [`${STOCK}.id`]: "ASC" } }));
+  const upper = shapeOnly(
+    query("x", { dimensions: [`${STOCK}.id`], order: { [`${STOCK}.id`]: "ASC" } }),
+  );
   assert.match(String(upper), /方向 ASC 不合法/);
-  const numeric = shapeOnly(query("x", { dimensions: [`${STOCK}.id`], order: [[`${STOCK}.id`, 1]] }));
+  const numeric = shapeOnly(
+    query("x", { dimensions: [`${STOCK}.id`], order: [[`${STOCK}.id`, 1]] }),
+  );
   assert.match(String(numeric), /方向 1 不合法/);
   // 同类问题一次列全：两项查询的 order 都错时，两个 path 都要出现。
   const both = shapeOnly({
@@ -224,41 +273,75 @@ test("G6 order：对象数组、大写方向、字符串方向都拦（一次列
   assert.match(String(both), /queries\[1\]\.query\.order/);
   // 正确写法放行
   assert.equal(
-    shapeOnly(query("x", { dimensions: [`${STOCK}.id`], order: [[`${STOCK}.id`, "asc"], [`${STOCK}.id`, "desc"]] })),
+    shapeOnly(
+      query("x", {
+        dimensions: [`${STOCK}.id`],
+        order: [
+          [`${STOCK}.id`, "asc"],
+          [`${STOCK}.id`, "desc"],
+        ],
+      }),
+    ),
     undefined,
   );
 });
 
 test("G6 limit/offset：字符串、0、超宿主保护上限都拦", () => {
-  assert.match(String(shapeOnly(query("x", { dimensions: [`${STOCK}.id`], limit: "10" }))), /limit 必须是正整数/);
-  assert.match(String(shapeOnly(query("x", { dimensions: [`${STOCK}.id`], limit: 0 }))), /limit 必须是正整数/);
+  assert.match(
+    String(shapeOnly(query("x", { dimensions: [`${STOCK}.id`], limit: "10" }))),
+    /limit 必须是正整数/,
+  );
+  assert.match(
+    String(shapeOnly(query("x", { dimensions: [`${STOCK}.id`], limit: 0 }))),
+    /limit 必须是正整数/,
+  );
   const tooBig = shapeOnly(query("x", { dimensions: [`${STOCK}.id`], limit: 5000 }));
   assert.match(String(tooBig), /宿主保护上限/);
   assert.match(String(tooBig), /分页/);
-  assert.match(String(shapeOnly(query("x", { dimensions: [`${STOCK}.id`], offset: -1 }))), /offset/);
+  assert.match(
+    String(shapeOnly(query("x", { dimensions: [`${STOCK}.id`], offset: -1 }))),
+    /offset/,
+  );
 });
 
 test("G6 filters：缺 values、缺 operator、and 与 member 混用、非数组都拦", () => {
   const noValues = shapeOnly(
-    query("x", { dimensions: [`${STOCK}.id`], filters: [{ member: `${STOCK}.warehouseid`, operator: "equals" }] }),
+    query("x", {
+      dimensions: [`${STOCK}.id`],
+      filters: [{ member: `${STOCK}.warehouseid`, operator: "equals" }],
+    }),
   );
   assert.match(String(noValues), /缺 values/);
   const noOperator = shapeOnly(
-    query("x", { dimensions: [`${STOCK}.id`], filters: [{ member: `${STOCK}.warehouseid`, values: ["W1"] }] }),
+    query("x", {
+      dimensions: [`${STOCK}.id`],
+      filters: [{ member: `${STOCK}.warehouseid`, values: ["W1"] }],
+    }),
   );
   assert.match(String(noOperator), /没有 operator/);
   const mixed = shapeOnly(
     query("x", {
       dimensions: [`${STOCK}.id`],
-      filters: [{ member: `${STOCK}.warehouseid`, and: [{ member: `${STOCK}.id`, operator: "equals", values: ["1"] }] }],
+      filters: [
+        {
+          member: `${STOCK}.warehouseid`,
+          and: [{ member: `${STOCK}.id`, operator: "equals", values: ["1"] }],
+        },
+      ],
     }),
   );
   assert.match(String(mixed), /不能既带 member 又带 and\/or/);
-  assert.match(String(shapeOnly(query("x", { dimensions: [`${STOCK}.id`], filters: "warehouse=W1" }))), /filters 必须是数组/);
+  assert.match(
+    String(shapeOnly(query("x", { dimensions: [`${STOCK}.id`], filters: "warehouse=W1" }))),
+    /filters 必须是数组/,
+  );
   // set / notSet 本来就不带值，不能误伤
   assert.equal(
     shapeOnly(
-      query("x", { dimensions: [`${STOCK}.id`], filters: [{ member: `${STOCK}.warehouseid`, operator: "notSet" }] }),
+      query("x", {
+        dimensions: [`${STOCK}.id`],
+        filters: [{ member: `${STOCK}.warehouseid`, operator: "notSet" }],
+      }),
     ),
     undefined,
   );
@@ -285,18 +368,34 @@ test("G6 filters：缺 values、缺 operator、and 与 member 混用、非数组
 
 test("G5 时间维度：字符串日期不能当 timeDimensions，非时间成员一律拦", () => {
   const bad = withIndex(
-    query("age", { timeDimensions: [{ dimension: `${AGE}.productdate`, dateRange: ["2026-09-01", "2026-09-23"] }] }),
+    query("age", {
+      timeDimensions: [
+        { dimension: `${AGE}.productdate`, dateRange: ["2026-09-01", "2026-09-23"] },
+      ],
+    }),
   );
   assert.match(String(bad), /不是时间成员/);
   assert.match(String(bad), /没有时间成员|文本格式/);
   // 真时间成员放行
   assert.equal(
-    withIndex(query("snap", { timeDimensions: [{ dimension: `${STOCK}.snapshot_date`, dateRange: ["2026-09-01", "2026-09-23"] }] })),
+    withIndex(
+      query("snap", {
+        timeDimensions: [
+          { dimension: `${STOCK}.snapshot_date`, dateRange: ["2026-09-01", "2026-09-23"] },
+        ],
+      }),
+    ),
     undefined,
   );
   // dateRange 形状错
   assert.match(
-    String(withIndex(query("snap", { timeDimensions: [{ dimension: `${STOCK}.snapshot_date`, dateRange: ["2026-09-23"] }] }))),
+    String(
+      withIndex(
+        query("snap", {
+          timeDimensions: [{ dimension: `${STOCK}.snapshot_date`, dateRange: ["2026-09-23"] }],
+        }),
+      ),
+    ),
     /dateRange/,
   );
 });
@@ -343,7 +442,10 @@ test("年月值：时间成员拦下并给正确写法，文本年月列放行",
 test("清单不在手时只做形状校验，不编造成员结论", () => {
   // 没有清单：成员名对错判不了，但结构错误照样拦。
   assert.equal(shapeOnly(query("x", { dimensions: ["whatever.field"], limit: 10 })), undefined);
-  assert.match(String(shapeOnly(query("x", { dimensions: [`${STOCK}.id`], limit: 0 }))), /limit 必须是正整数/);
+  assert.match(
+    String(shapeOnly(query("x", { dimensions: [`${STOCK}.id`], limit: 0 }))),
+    /limit 必须是正整数/,
+  );
 });
 
 test("§17.8 请求体字节：把整表列全的写法拦下，正常查询放行", () => {
@@ -374,20 +476,70 @@ test("§17.8 请求体字节：把整表列全的写法拦下，正常查询放�
   );
 });
 
-test('unknown measure errors offer actual measures, never numeric dimensions as replacements',()=>{
- const models=m.memberIndexFrom({semanticModel:[{name:'inv',dimensions:[{name:'inv.stock_qty',type:'number'}],measures:[{name:'inv.total_stock_qty',type:'number'}]}]});
- const error=m.preflightCubeArguments(query('stock',{measures:['inv.stock_qty_sum']}),models);
- assert.match(error,/inv.total_stock_qty/);assert.doesNotMatch(error,/最像的是 inv.stock_qty/);
- assert.match(error,/数值维度不能代替度量/);
+test("unknown measure errors offer actual measures, never numeric dimensions as replacements", () => {
+  const models = m.memberIndexFrom({
+    semanticModel: [
+      {
+        name: "inv",
+        dimensions: [{ name: "inv.stock_qty", type: "number" }],
+        measures: [{ name: "inv.total_stock_qty", type: "number" }],
+      },
+    ],
+  });
+  const error = m.preflightCubeArguments(
+    query("stock", { measures: ["inv.stock_qty_sum"] }),
+    models,
+  );
+  assert.match(error, /inv.total_stock_qty/);
+  assert.doesNotMatch(error, /最像的是 inv.stock_qty/);
+  assert.match(error, /数值维度不能代替度量/);
 });
 
-test('filter operators reject SQL aliases and retain supported Cube predicates', () => {
-  for (const operator of ['=', 'IN', 'between', 'is null']) {
-    const issue = m.preflightCubeArguments({action:'query',queries:[{name:'stock',query:{dimensions:['stock.sku'],filters:[{member:'stock.qty',operator,values:['0']}]}}]});
-    assert.match(issue ?? '', /operator/);
+test("filter operators reject SQL aliases and retain supported Cube predicates", () => {
+  for (const operator of ["=", "IN", "between", "is null"]) {
+    const issue = m.preflightCubeArguments({
+      action: "query",
+      queries: [
+        {
+          name: "stock",
+          query: {
+            dimensions: ["stock.sku"],
+            filters: [{ member: "stock.qty", operator, values: ["0"] }],
+          },
+        },
+      ],
+    });
+    assert.match(issue ?? "", /operator/);
   }
-  for (const operator of ['equals','gt','gte','notContains','notStartsWith','inDateRange','beforeOrOnDate','set','notSet']) {
-    const issue=m.preflightCubeArguments({action:'query',queries:[{name:'stock',query:{dimensions:['stock.sku'],filters:[{member:'stock.qty',operator,...(['set','notSet'].includes(operator)?{}:{values:['0']})}]}}]});
-    assert.equal(issue,undefined,operator);
+  for (const operator of [
+    "equals",
+    "gt",
+    "gte",
+    "notContains",
+    "notStartsWith",
+    "inDateRange",
+    "beforeOrOnDate",
+    "set",
+    "notSet",
+  ]) {
+    const issue = m.preflightCubeArguments({
+      action: "query",
+      queries: [
+        {
+          name: "stock",
+          query: {
+            dimensions: ["stock.sku"],
+            filters: [
+              {
+                member: "stock.qty",
+                operator,
+                ...(["set", "notSet"].includes(operator) ? {} : { values: ["0"] }),
+              },
+            ],
+          },
+        },
+      ],
+    });
+    assert.equal(issue, undefined, operator);
   }
 });

@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const pnpm = process.env.GEA_PACKAGE_PNPM;
-if (!pnpm) throw Error("GEA_PACKAGE_PNPM_REQUIRED: current official pnpm entry");
+if (!pnpm)
+  throw Error("GEA_PACKAGE_PNPM_REQUIRED: current official pnpm entry");
 
 test("ordinary GEA artifact locks only runtime dependencies and preserves Host-provided peer contracts", { timeout: 120000 }, async t => {
   const work = await mkdtemp(join(tmpdir(), "gea-production-package-"));
@@ -20,7 +21,7 @@ test("ordinary GEA artifact locks only runtime dependencies and preserves Host-p
   const manifest = JSON.parse(execFileSync("tar", ["-xOf", packed.artifact, "package/package.json"], { encoding: "utf8" }));
   const lock = JSON.parse(execFileSync("tar", ["-xOf", packed.artifact, "package/npm-shrinkwrap.json"], { encoding: "utf8" }));
   const files = execFileSync("tar", ["-tzf", packed.artifact], { encoding: "utf8" }).split("\n");
-  assert.equal(manifest.dependencies["@modelcontextprotocol/sdk"], "1.30.0", "the actual Host import is a shipped runtime dependency");
+  assert.equal(manifest.dependencies["@modelcontextprotocol/sdk"], "1.31.0", "the actual Host import is a shipped runtime dependency");
   assert.equal(manifest.peerDependencies["@deepseek-ai/cordis"], "4.0.4 || 4.0.5-alpha.1");
   assert.equal(manifest.peerDependencies["@cleverc2200/dsh-agent-workbench"], versions["@cleverc2200/dsh-agent-workbench"]);
   assert.equal(manifest.devDependencies, undefined);

@@ -1,9 +1,26 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { readFile, rename, writeFile, unlink, mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { profile, readSession, until } from "./profile.mjs";
+
+function assertInitialSkillCatalog(messages) {
+  const catalogs = messages.filter((row) => row.data.source.kind === "skill-catalog");
+  assert.equal(catalogs.length, 1);
+  const source = catalogs[0].data.source;
+  assert.equal(source.form, "catalog");
+  assert.equal(source.update, undefined);
+  assert.ok(Array.isArray(source.entries));
+  assert.ok(source.entries.length > 0);
+  for (const entry of source.entries) {
+    assert.ok(entry && typeof entry === "object");
+    assert.equal(typeof entry.name, "string");
+    assert.ok(entry.name.length > 0);
+    assert.equal(typeof entry.description, "string");
+  }
+  assert.equal(new Set(source.entries.map((entry) => entry.name)).size, source.entries.length);
+}
 
 test(
   "one preview submits once through the standard Session and survives a fresh process",
@@ -30,17 +47,17 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
     const messages = rows.filter((row) => row.type === "user/message");
-    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 0);
+    assertInitialSkillCatalog(messages);
     assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
     const snapshot = messages.find(
       (row) => row.data.source.kind === "gea-proof" || row.data.source.plugin === "gea-proof",
     );
     assert.equal(snapshot.data.source.form, "notice");
+    assert.equal(snapshot.data.source.summary, "已提交只读快照，正在验证数据传递");
     assert.equal(
-      snapshot.data.source.summary,
-      "已提交只读快照，正在验证数据传递",
+      messages.some((row) => row.data.source.kind === "user"),
+      false,
     );
-    assert.equal(messages.some((row) => row.data.source.kind === "user"), false);
     const archivePath = `${app.runtime}/analysis-snapshots/${id}.json`;
     const archive = JSON.parse(await readFile(archivePath, "utf8"));
     assert.equal(archive.sessionId, id);
@@ -48,7 +65,7 @@ test(
     assert.deepEqual(archive.snapshot, preview.snapshot);
     assert.ok(JSON.stringify(archive.snapshot).includes("1.2300"));
     assert.equal(JSON.stringify(snapshot).includes(preview.snapshotHash), false);
-    const answer = rows.find(row => row.type === "assistant/message");
+    const answer = rows.find((row) => row.type === "assistant/message");
     assert.ok(answer);
     assert.equal(JSON.stringify(answer).includes(preview.snapshotHash), false);
     assert.equal(JSON.stringify(rows).includes("fixture-gea-token"), false);
@@ -116,7 +133,7 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
     const messages = rows.filter((row) => row.type === "user/message");
-    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 0);
+    assertInitialSkillCatalog(messages);
     assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
   },
 );

@@ -43,21 +43,15 @@ try {
       sourcesFile: values.sources,
     });
     const sources = values.sources
-      ? JSON.parse(
-          await (
-            await import("node:fs/promises")
-          ).readFile(values.sources, "utf8"),
-        )
+      ? JSON.parse(await (await import("node:fs/promises")).readFile(values.sources, "utf8"))
       : undefined;
-    if ((await readSourceSelection(runtime)) === undefined)
-      requireSourceInputs(sources);
-    const deployment = await readDeployment(
-      resolve(values.config ?? "gea.config.json"),
-      { resolveCredentials: false, credentialEnv: {} },
-    );
+    if ((await readSourceSelection(runtime)) === undefined) requireSourceInputs(sources);
+    const deployment = await readDeployment(resolve(values.config ?? "gea.config.json"), {
+      resolveCredentials: false,
+      credentialEnv: process.env,
+    });
     const port = Number(values.port);
-    if (!Number.isInteger(port) || port < 0 || port > 65535)
-      throw Error("GEA_PORT_INVALID");
+    if (!Number.isInteger(port) || port < 0 || port > 65535) throw Error("GEA_PORT_INVALID");
     await runSourceProfile(core, runtime, true, deployment, port, {
       sources,
       window,

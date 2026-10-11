@@ -1,7 +1,7 @@
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
 import { selectBusinessResource } from "./fixtures/business-session.mjs";
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";

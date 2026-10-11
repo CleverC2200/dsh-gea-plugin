@@ -1,14 +1,5 @@
 /** Disposable source checkouts and a process observer; the fixed Core is read-only. */
-import {
-  readFile,
-  writeFile,
-  mkdir,
-  cp,
-  symlink,
-  mkdtemp,
-  rm,
-  readdir,
-} from "node:fs/promises";
+import { readFile, writeFile, mkdir, cp, symlink, mkdtemp, rm, readdir } from "node:fs/promises";
 import { resolve, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -46,30 +37,20 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
       type: "module",
     });
     await writeFile(
-      join(
-        root,
-        repo === "dsh-agent-workbench" ? "package-lock.json" : "pnpm-lock.yaml",
-      ),
+      join(root, repo === "dsh-agent-workbench" ? "package-lock.json" : "pnpm-lock.yaml"),
       "fixture-lock",
     );
-    await writeFile(
-      join(root, ".gitignore"),
-      ".runtime/\nnode_modules/\nlib/\n",
-    );
+    await writeFile(join(root, ".gitignore"), ".runtime/\nnode_modules/\nlib/\n");
     await mkdir(join(root, "scripts"));
     if (repo === "dsh-agent-workbench") {
       for (const name of [
         "verify-candidate-input.mjs",
+        "candidate-input.mjs",
         "verify-official-input.mjs",
       ])
         await cp(join(sharedWB, "scripts", name), join(root, "scripts", name));
-      const original = JSON.parse(
-        await readFile(join(sharedWB, "tsconfig.official.json"), "utf8"),
-      );
-      const cordis = resolve(
-        sharedWB,
-        original.compilerOptions.paths["@deepseek-ai/cordis"][0],
-      );
+      const original = JSON.parse(await readFile(join(sharedWB, "tsconfig.official.json"), "utf8"));
+      const cordis = resolve(sharedWB, original.compilerOptions.paths["@deepseek-ai/cordis"][0]);
       await save(join(root, "tsconfig.official.json"), {
         compilerOptions: { paths: { "@deepseek-ai/cordis": [cordis] } },
       });
@@ -85,10 +66,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
         "deployment.mjs",
         "current-core.json",
       ])
-        await cp(
-          join(sourceRoot, "scripts", name),
-          join(root, "scripts", name),
-        );
+        await cp(join(sourceRoot, "scripts", name), join(root, "scripts", name));
       await mkdir(join(root, "src"));
       await cp(join(sourceRoot, "src/shared"), join(root, "src/shared"), {
         recursive: true,
@@ -146,8 +124,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
     sourcesFile;
   if (mode !== "isolated-core-host") {
     const id = randomUUID(),
-      preparedRuntime =
-        mode === "isolated-source-host" ? join(temporary, "prepared") : runtime,
+      preparedRuntime = mode === "isolated-source-host" ? join(temporary, "prepared") : runtime,
       directory = join(preparedRuntime, "source-combinations", id);
     await mkdir(directory, { recursive: true });
     const dependencies = {},
@@ -192,9 +169,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
       }
     }
     await save(join(directory, "company-plugins.json"), plugins);
-    files["company-plugins.json"] = hash(
-      await readFile(join(directory, "company-plugins.json")),
-    );
+    files["company-plugins.json"] = hash(await readFile(join(directory, "company-plugins.json")));
     Object.assign(files, await assetFiles(directory));
     await save(join(directory, "combination.json"), {
       core: coreSha,
@@ -204,9 +179,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
       externalRoots: [],
       externalLockFiles: [],
     });
-    const manifestSha256 = hash(
-      await readFile(join(directory, "combination.json")),
-    );
+    const manifestSha256 = hash(await readFile(join(directory, "combination.json")));
     if (mode === "isolated-source-host") {
       const inputs = [];
       for (const plugin of sourcePlugins) {
@@ -305,9 +278,9 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
     observation = join(temporary, "effects.json");
   await writeFile(
     probe,
-    `import fs from 'node:fs'; import child from 'node:child_process'; import {syncBuiltinESMExports} from 'node:module'; const original=child.spawn; const save=fs.writeFileSync; const writes=[]; const processes=[]; const network=[]; const credentialReads=[]; const execute=child.execFileSync; child.execFileSync=function(command,args,...rest){if(String(command).includes("security")){credentialReads.push({command,args});throw Error("UNEXPECTED_KEYCHAIN_READ");}return execute.call(this,command,args,...rest);}; const keys=['DSH_HOME','DSH_TELEMETRY_DISABLED','GEA_WEB_LOGIN_PERSIST','GEA_HTML_PLUGIN_ROOTS','GEA_FIXTURE_ID','GEA_FIXTURE_SECRET']; const before=Object.fromEntries(keys.map(k=>[k,process.env[k]??null])); for(const key of ['mkdir','mkdtemp','writeFile','rename','symlink','unlink','open']){const fn=fs.promises[key]; fs.promises[key]=function(...args){if(key!=='open'||/[wax+]/.test(args[1]))writes.push({operation:key,path:String(args[0])});return fn.apply(this,args);};} child.spawn=function(command,args,options){processes.push({command,args,cwd:options.cwd});return original(process.execPath,[${JSON.stringify(fixture)}],{...options,detached:false});}; globalThis.fetch=(...args)=>{network.push(String(args[0]));throw Error('UNEXPECTED_NETWORK');}; syncBuiltinESMExports(); process.on('exit',()=>save(${JSON.stringify(observation)},JSON.stringify({writes,processes,network,credentialReads,before,after:Object.fromEntries(keys.map(k=>[k,process.env[k]??null]))})));`,
+    `import fs from 'node:fs'; import child from 'node:child_process'; import {syncBuiltinESMExports} from 'node:module'; const original=child.spawn; const save=fs.writeFileSync; const writes=[]; const processes=[]; const network=[]; const credentialReads=[]; const credentialEnvReads=[]; const env=process.env; process.env=new Proxy(env,{get(target,key){if(key==="GEA_FIXTURE_DIRECT_KEY")credentialEnvReads.push(key);return Reflect.get(target,key);}}); const execute=child.execFileSync; child.execFileSync=function(command,args,...rest){if(String(command).includes("security")){credentialReads.push({command,args});throw Error("UNEXPECTED_KEYCHAIN_READ");}return execute.call(this,command,args,...rest);}; const keys=['DSH_HOME','DSH_TELEMETRY_DISABLED','GEA_WEB_LOGIN_PERSIST','GEA_HTML_PLUGIN_ROOTS','GEA_FIXTURE_ID','GEA_FIXTURE_SECRET']; const before=Object.fromEntries(keys.map(k=>[k,process.env[k]??null])); for(const key of ['mkdir','mkdtemp','writeFile','rename','symlink','unlink','open']){const fn=fs.promises[key]; fs.promises[key]=function(...args){if(key!=='open'||/[wax+]/.test(args[1]))writes.push({operation:key,path:String(args[0])});return fn.apply(this,args);};} child.spawn=function(command,args,options){processes.push({command,args,cwd:options.cwd});return original(process.execPath,[${JSON.stringify(fixture)}],{...options,detached:false});}; globalThis.fetch=(...args)=>{network.push(String(args[0]));throw Error('UNEXPECTED_NETWORK');}; syncBuiltinESMExports(); process.on('exit',()=>save(${JSON.stringify(observation)},JSON.stringify({writes,processes,network,credentialReads,credentialEnvReads,before,after:Object.fromEntries(keys.map(k=>[k,process.env[k]??null]))})));`,
   );
-  const run = (entry = "start.mjs", extra = []) => {
+  const run = (entry = "start.mjs", extra = [], environment = {}) => {
     let args;
     if (entry === "runSourceProfile") {
       const runner = join(temporary, "call-profile.mjs");
@@ -333,15 +306,14 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
         args.push("--config", configFile, "--runtime", runtime, "--port", "0");
       else {
         args.push("--core", fixedCore);
-        if (mode === "isolated-source-host")
-          args.push("--plugins", "--sources", sourcesFile);
+        if (mode === "isolated-source-host") args.push("--plugins", "--sources", sourcesFile);
       }
       args.push(...extra);
     }
     return spawnSync(process.execPath, ["--import", probe, ...args], {
       encoding: "utf8",
       timeout: 20000,
-      env: { PATH: process.env.PATH, HOME: temporary },
+      env: { PATH: process.env.PATH, HOME: temporary, ...environment },
     });
   };
   return {

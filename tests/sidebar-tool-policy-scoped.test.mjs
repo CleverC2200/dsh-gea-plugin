@@ -5,19 +5,12 @@ import { mkdir, writeFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Context } from "@deepseek-ai/cordis";
+import { BusinessResources } from "dsh-agent-manage/business-resources";
 const sdk = resolve("../../official-latest-standard/packages/core");
-const { default: SystemPrompt } = await import(
-  pathToFileURL(sdk + "/system-prompt/lib/index.js")
-);
-const { default: ToolRuntime } = await import(
-  pathToFileURL(sdk + "/tools/lib/index.js")
-);
-const { createScope } = await import(
-  pathToFileURL(sdk + "/scope/lib/index.js")
-);
-const { agentEvents } = await import(
-  pathToFileURL(sdk + "/agent/lib/index.js")
-);
+const { default: SystemPrompt } = await import(pathToFileURL(sdk + "/system-prompt/lib/index.js"));
+const { default: ToolRuntime } = await import(pathToFileURL(sdk + "/tools/lib/index.js"));
+const { createScope } = await import(pathToFileURL(sdk + "/scope/lib/index.js"));
+const { agentEvents } = await import(pathToFileURL(sdk + "/agent/lib/index.js"));
 const { outputFiles } = await build({
   stdin: {
     contents: `export{mountBusinessPrompts}from'./src/host/prompt-runtime.ts';export{mountSidebarToolVisibility}from'./src/host/sidebar-tool-visibility.ts';export{AgentOpenRegistry,registerOpenTool}from'dsh-better-sidebar/src/agent-opens.ts';export{SIDEBAR_PREFS_DEFAULTS}from'dsh-better-sidebar/src/prefs-shared.ts';`,
@@ -42,13 +35,16 @@ const tool = (name) => ({
     render: (_args, value) => [{ type: "text", text: value }],
   },
   execute: async () => {
-    throw Error(
-      "No tool execution/model/UI is permitted in this offline visibility test",
-    );
+    throw Error("No tool execution/model/UI is permitted in this offline visibility test");
   },
 });
 
 test("official Agent-scoped Tools view admits the actual BSP registered UI tool without bypassing its registration gate or scope intersection", async (t) => {
+  const external = [];
+  t.mock.method(globalThis, "fetch", async (input) => {
+    external.push(String(input));
+    assert.fail("offline scoped tool policy must not reach external wire");
+  });
   const ctx = new Context();
   const system = ctx.plugin(SystemPrompt, {});
   await system;
@@ -140,11 +136,10 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
   let prefs = { ...m.SIDEBAR_PREFS_DEFAULTS };
   let offSidebar;
   const preStep = () =>
-    agentEvents(ctx, agent).waterfall(
-      "agent/pre-step",
-      { messages: [] },
-      async () => ({ kind: "enter", messages: [] }),
-    );
+    agentEvents(ctx, agent).waterfall("agent/pre-step", { messages: [] }, async () => ({
+      kind: "enter",
+      messages: [],
+    }));
   const names = () => ctx.tools.schemas(agent).map((tool) => tool.name);
   t.after(async () => {
     offSidebar?.();
@@ -220,4 +215,5 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     false,
     "disabled registration leaves no manufactured schema",
   );
+  assert.deepEqual(external, []);
 });

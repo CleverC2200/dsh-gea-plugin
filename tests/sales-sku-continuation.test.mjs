@@ -47,19 +47,14 @@ function fixture(t, values = rows, intercept) {
   });
   t.after(() => business.dispose());
   t.mock.method(globalThis, "fetch", async (url, init) => {
-    assert.equal(
-      new URL(url).pathname,
-      `/sales-plan/plans/versions/${versionId}/skus`,
-    );
+    assert.equal(new URL(url).pathname, `/sales-plan/plans/versions/${versionId}/skus`);
     await intercept?.(business, init);
     return Response.json({ success: true, result: values });
   });
   return {
     business,
     read: (query, signal = new AbortController().signal) =>
-      business
-        .agentQuery({ kind: "versionSkus", query }, signal)
-        .then(JSON.parse),
+      business.agentQuery({ kind: "versionSkus", query }, signal).then(JSON.parse),
   };
 }
 
@@ -117,10 +112,7 @@ test("one SKU exceeding the byte budget rejects without claiming a complete page
       amt: null,
     },
   ]);
-  await assert.rejects(
-    f.read({ versionId, pageSize: 50 }),
-    /SNAPSHOT_TOO_LARGE/,
-  );
+  await assert.rejects(f.read({ versionId, pageSize: 50 }), /SNAPSHOT_TOO_LARGE/);
 });
 
 test("cancellation and identity revocation discard late SKU pages", async (t) => {
@@ -130,9 +122,7 @@ test("cancellation and identity revocation discard late SKU pages", async (t) =>
       if (revoke === "cancel") controller.abort(new Error("cancelled paging"));
       else business.logout();
     });
-    await assert.rejects(
-      f.read({ versionId, pageSize: 50 }, controller.signal),
-    );
+    await assert.rejects(f.read({ versionId, pageSize: 50 }, controller.signal));
   }
 });
 

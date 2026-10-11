@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
@@ -17,7 +17,11 @@ test(
         },
       }),
     });
-    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    assert.equal((await app.login()).ok, true);
+    const status = await app.rpc("status");
+    assert.equal(status.ok, true);
+    assert.equal(status.value.authenticated, true);
+    const browser = await chromium.launch({ headless: true });
     t.after(() => browser.close());
     const context = await browser.newContext({
       locale: "zh-CN",
@@ -57,6 +61,18 @@ test(
     await expect(prototype.locator("aside.chat")).toBeHidden();
     // 右侧会话区跟着这一页换成品类计划助手。
     await expect(page.getByText("品类计划Agent").first()).toBeVisible();
+    const conversation = page
+      .locator(".agent-workbench-document:visible")
+      .locator('[data-conversation-content=""]');
+    await expect(conversation).toHaveAttribute(
+      "data-conversation-session",
+      /^session-[0-9a-f-]{36}$/,
+    );
+    const sessionId = await conversation.getAttribute("data-conversation-session");
+    const selected = await app.remote("session/projections", { sessionId });
+    assert.equal(selected.ok, true);
+    assert.ok(selected.value, "the category page must use a real Core Session");
+    assert.equal(selected.value.values.agentPreset, "gea-html-category-plan");
     // 已登录时工作台必须落在中间列里，不能铺成整屏登录遮罩。
     const frame = htmlFrameElement(page, "plan-region-category");
     await expect(frame).not.toHaveClass(/gea-login-frame/);
@@ -66,5 +82,17 @@ test(
       box.width < viewport.width * 0.9,
       `workbench frame must stay inside the center column, got ${box.width} of ${viewport.width}`,
     );
+    await openBusinessPage(page, "gea-regional-plan");
+    const regionalFrame = htmlFrameElement(page, "gea-regional-plan");
+    await expect(regionalFrame).toBeVisible();
+    await expect(frame).toBeHidden();
+    await openBusinessPage(page, "plan-region-category");
+    await expect(frame).toBeVisible();
+    await expect(regionalFrame).toBeHidden();
+    await expect(conversation).toHaveAttribute("data-conversation-session", sessionId);
+    const restored = await app.remote("session/projections", { sessionId });
+    assert.equal(restored.ok, true);
+    assert.ok(restored.value, "returning to the category page must retain its Core Session");
+    assert.equal(restored.value.values.agentPreset, "gea-html-category-plan");
   },
 );

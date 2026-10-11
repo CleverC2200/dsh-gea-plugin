@@ -16,14 +16,11 @@ const PLACEHOLDER =
 function placeholderShape(sql: string) {
   const names: string[] = [];
   let positional = 0;
-  sql.replace(
-    PLACEHOLDER,
-    (token: string, name?: string, question?: string) => {
-      if (name) names.push(name);
-      else if (question) positional += 1;
-      return token;
-    },
-  );
+  sql.replace(PLACEHOLDER, (token: string, name?: string, question?: string) => {
+    if (name) names.push(name);
+    else if (question) positional += 1;
+    return token;
+  });
   return { names, positional };
 }
 
@@ -37,9 +34,7 @@ function positionalValues(parameters: any, count: number): unknown[] {
     : (() => {
         const keys = Object.keys(parameters);
         return (
-          keys.every((key) => /^\d+$/.test(key))
-            ? keys.sort((a, b) => Number(a) - Number(b))
-            : keys
+          keys.every((key) => /^\d+$/.test(key)) ? keys.sort((a, b) => Number(a) - Number(b)) : keys
         ).map((key) => parameters[key]);
       })();
   if (values.length !== count)
@@ -52,10 +47,7 @@ function positionalValues(parameters: any, count: number): unknown[] {
 export function prepareHtmlQuery(input: any) {
   if (!input || typeof input.sql !== "string" || input.sql.length > 200000)
     throw Error("INVALID_QUERY");
-  const bare = input.sql.replace(
-    /'(?:''|[^'])*'|"(?:""|[^"])*"|--[^\r\n]*|\/\*[\s\S]*?\*\//g,
-    " ",
-  );
+  const bare = input.sql.replace(/'(?:''|[^'])*'|"(?:""|[^"])*"|--[^\r\n]*|\/\*[\s\S]*?\*\//g, " ");
   if (
     /\b(INTO|DO|EXECUTE|SET|RESET|VACUUM|ANALYZE|LOCK|pg_\w+|dblink\w*|lo_\w*|set_config)\b/i.test(
       bare,
@@ -82,10 +74,8 @@ export function prepareHtmlQuery(input: any) {
       // 值本身是安全的（值不拼进 SQL），这里直接接受，不再让它改写法重来一轮。
       values = positionalValues(parameters, positional);
       let index = 0;
-      sql = sql.replace(
-        PLACEHOLDER,
-        (token: string, _name?: string, question?: string) =>
-          question ? "$" + ++index : token,
+      sql = sql.replace(PLACEHOLDER, (token: string, _name?: string, question?: string) =>
+        question ? "$" + ++index : token,
       );
     } else {
       if (used.length === 0) {
@@ -102,27 +92,20 @@ export function prepareHtmlQuery(input: any) {
       }
       if (used.length > 0) {
         const names: string[] = [];
-        sql = sql.replace(
-          PLACEHOLDER,
-          (token: string, name?: string) => {
-            if (!name) return token;
-            if (name.startsWith("__gea_"))
-              throw Error("RESERVED_QUERY_PARAMETER：__gea_ 前缀是宿主保留名");
-            if (!Object.hasOwn(parameters, name))
-              throw Error(
-                `MISSING_QUERY_PARAMETER：SQL 用到 :${name}，parameters 里没有这个键`,
-              );
-            let i = names.indexOf(name);
-            if (i < 0) {
-              i = names.length;
-              names.push(name);
-            }
-            return "$" + (i + 1);
-          },
-        );
-        const extra = Object.keys(parameters).filter(
-          (name) => !names.includes(name),
-        );
+        sql = sql.replace(PLACEHOLDER, (token: string, name?: string) => {
+          if (!name) return token;
+          if (name.startsWith("__gea_"))
+            throw Error("RESERVED_QUERY_PARAMETER：__gea_ 前缀是宿主保留名");
+          if (!Object.hasOwn(parameters, name))
+            throw Error(`MISSING_QUERY_PARAMETER：SQL 用到 :${name}，parameters 里没有这个键`);
+          let i = names.indexOf(name);
+          if (i < 0) {
+            i = names.length;
+            names.push(name);
+          }
+          return "$" + (i + 1);
+        });
+        const extra = Object.keys(parameters).filter((name) => !names.includes(name));
         if (extra.length)
           throw Error(
             `UNUSED_QUERY_PARAMETER：parameters 里的 ${extra
@@ -133,8 +116,7 @@ export function prepareHtmlQuery(input: any) {
       }
     }
   }
-  if (!Array.isArray(values) || values.length > 10000)
-    throw Error("INVALID_QUERY_PARAMETERS");
+  if (!Array.isArray(values) || values.length > 10000) throw Error("INVALID_QUERY_PARAMETERS");
   prepareGeaSql(sql, values);
   return { sql, values };
 }
@@ -151,7 +133,7 @@ export async function readHtmlQuery(
   const query = prepareHtmlQuery(input);
   // Opt-in compact wire format; preserve metadata and legacy records consumers.
   const finish = (value: any) => {
-    if (input.resultShape === 'rows') delete value.records;
+    if (input.resultShape === "rows") delete value.records;
     return value;
   };
   const db = createGeaSqlDatabase(() => transport.token, transport);
@@ -159,10 +141,9 @@ export async function readHtmlQuery(
     pageSize = input.pageSize ?? 200;
   if (
     (pageNo !== undefined && (!Number.isSafeInteger(pageNo) || pageNo < 1)) ||
-    (
-      !Number.isSafeInteger(pageSize) ||
-      pageSize < 1 ||
-      pageSize > 200)
+    !Number.isSafeInteger(pageSize) ||
+    pageSize < 1 ||
+    pageSize > 200
   )
     // 报错也要能读：宿主会先钳制，这里是兜底；真漏进来时至少知道上限是多少。
     throw Error("INVALID_PAGE：页码从 1 起，每页最多 200 行");
@@ -176,12 +157,11 @@ export async function readHtmlQuery(
   let result = await db.queryWithOptions!(
     input.packing ? packedRowsSql(query.sql, input.packing) : query.sql,
     query.values,
-    {pageSize},
+    { pageSize },
   );
   if (input.packing) result = unpackBusinessRows(result.rows);
   const total = result.rows.length;
-  if (input.maxRows && total > input.maxRows)
-    throw Error("QUERY_RESULT_EXCEEDS_LIMIT");
+  if (input.maxRows && total > input.maxRows) throw Error("QUERY_RESULT_EXCEEDS_LIMIT");
   const rows =
     pageNo === undefined
       ? result.rows

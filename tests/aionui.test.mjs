@@ -53,7 +53,7 @@ test("removed AionUi configurations fail before backend discovery, credential re
       "--runtime",
       runtime,
     ]),
-    (e) => e.code === 1 && /AIONUI_RUNTIME_REMOVED/.test(e.stderr),
+    (e) => e.code === 1 && /WINDOW_DECLARATION_REQUIRED/.test(e.stderr),
   );
   assert.equal(requests, 0);
   await assert.rejects(access(runtime), { code: "ENOENT" });

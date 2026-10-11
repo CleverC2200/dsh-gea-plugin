@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { sourcePlugins } from "../scripts/source-composition.mjs";
 
-test("the registered source composition contains the five current owners and only the fixed latest official release", async () => {
+test("the registered source composition contains the five current owners and the fixed private security candidate", async () => {
   assert.deepEqual(
     sourcePlugins.map((plugin) => plugin.repo),
     [
@@ -25,7 +25,7 @@ test("the registered source composition contains the five current owners and onl
   assert.deepEqual(input, {
     version: "0.2.1-alpha.1",
     upstream: "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
-    adaptation: "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
+    adaptation: "8ff14441ac932b55cf1f14b1715128eaa162b1ec",
   });
 });
 

@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { resolveEnvironments } from "../src/shared/environments.js";
 import { profile } from "./profile.mjs";
@@ -66,10 +66,7 @@ test("environment selection only resolves deployment-owned endpoints", () => {
       },
     },
   ])
-    assert.throws(
-      () => resolveEnvironments({ ...config, ...change }),
-      /INVALID_GEA/,
-    );
+    assert.throws(() => resolveEnvironments({ ...config, ...change }), /INVALID_GEA/);
 });
 
 test(
@@ -92,14 +89,10 @@ test(
     });
     const qr = (await app.rpc("login/start")).value;
     assert.equal(
-      (await app.rpc("environment/select", { environment: "production" })).value
-        .authenticated,
+      (await app.rpc("environment/select", { environment: "production" })).value.authenticated,
       false,
     );
-    assert.equal(
-      (await app.rpc("login/poll", { loginId: qr.loginId })).error.code,
-      "STALE_LOGIN",
-    );
+    assert.equal((await app.rpc("login/poll", { loginId: qr.loginId })).error.code, "STALE_LOGIN");
     await app.login();
     assert.ok(paths.some((path) => path === "/production/sys/getLoginQrcode"));
     const page = (await app.rpc("plans")).value;
@@ -110,8 +103,7 @@ test(
       })
     ).value;
     assert.equal(
-      (await app.rpc("environment/select", { environment: "test" })).value
-        .environment,
+      (await app.rpc("environment/select", { environment: "test" })).value.environment,
       "test",
     );
     assert.equal(

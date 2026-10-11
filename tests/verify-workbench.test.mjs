@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
@@ -32,10 +32,7 @@ async function fixture(t) {
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify({ ok: true, value: status }));
     } else {
-      response.setHeader(
-        "Set-Cookie",
-        "fixture-auth=fixture; HttpOnly; SameSite=Strict",
-      );
+      response.setHeader("Set-Cookie", "fixture-auth=fixture; HttpOnly; SameSite=Strict");
       response.end("Synthetic verification status fixture");
     }
   });
@@ -132,9 +129,7 @@ async function fixture(t) {
       ];
       await writeFile(
         resolve(path, "session.v3.jsonl.zstd"),
-        zstdCompressSync(
-          Buffer.from(rows.map(JSON.stringify).join("\n") + "\n"),
-        ),
+        zstdCompressSync(Buffer.from(rows.map(JSON.stringify).join("\n") + "\n")),
       );
       return hash;
     },
@@ -174,28 +169,17 @@ test("verification accepts both durable snapshot formats and keeps receipts dist
     assert.equal(report.analysisProvider, "gea-proof");
     assert.equal(report.analysisModel, "receipt");
     assert.deepEqual(
-      JSON.parse(
-        await readFile(resolve(app.runtime, "verification.json"), "utf8"),
-      ),
+      JSON.parse(await readFile(resolve(app.runtime, "verification.json"), "utf8")),
       report,
     );
-    await assert.rejects(
-      app.verify(true),
-      rejectsCode("ANALYSIS_PROVIDER_MISMATCH"),
-    );
+    await assert.rejects(app.verify(true), rejectsCode("ANALYSIS_PROVIDER_MISMATCH"));
   }
   await app.session({ format: "gea-unrecognized-v2" });
-  await assert.rejects(
-    app.verify(),
-    rejectsCode("UNSUPPORTED_SNAPSHOT_FORMAT"),
-  );
+  await assert.rejects(app.verify(), rejectsCode("UNSUPPORTED_SNAPSHOT_FORMAT"));
   await app.session({ corrupt: true });
   await assert.rejects(app.verify());
   await app.session({ reason: "aborted", interrupted: true });
-  await assert.rejects(
-    app.verify(),
-    rejectsCode("FIRST_ANALYSIS_NOT_COMPLETED"),
-  );
+  await assert.rejects(app.verify(), rejectsCode("FIRST_ANALYSIS_NOT_COMPLETED"));
 });
 
 test("live verification binds the completed analysis to the current exact environment, run and model", async (t) => {
@@ -205,10 +189,7 @@ test("live verification binds the completed analysis to the current exact enviro
     assert.equal((await app.verify(true)).freshLiveVerified, true);
   }
   for (const [snapshot, code] of [
-    [
-      { runId: "fixture-previous-run" },
-      "PREVIOUS_PROCESS_NOT_FRESH_ACCEPTANCE",
-    ],
+    [{ runId: "fixture-previous-run" }, "PREVIOUS_PROCESS_NOT_FRESH_ACCEPTANCE"],
     [{ runId: null }, "SNAPSHOT_RUN_REQUIRED"],
     [
       {
@@ -218,8 +199,7 @@ test("live verification binds the completed analysis to the current exact enviro
     ],
     [
       {
-        sourceUrl:
-          "https://gea.example.invalid/gea-boot/sales-plan/plans?different=1",
+        sourceUrl: "https://gea.example.invalid/gea-boot/sales-plan/plans?different=1",
       },
       "SOURCE_URL_MISMATCH",
     ],
@@ -237,24 +217,15 @@ test("live verification binds the completed analysis to the current exact enviro
       },
     ],
   });
-  await assert.rejects(
-    app.verify(true),
-    rejectsCode("ANALYSIS_MODEL_MISMATCH"),
-  );
+  await assert.rejects(app.verify(true), rejectsCode("ANALYSIS_MODEL_MISMATCH"));
   await app.session({ source: null });
   await assert.rejects(app.verify(true), rejectsCode("MODEL_ANSWER_REQUIRED"));
   await app.session();
   app.status.authenticated = false;
-  await assert.rejects(
-    app.verify(true),
-    rejectsCode("FRESH_GEA_LOGIN_REQUIRED"),
-  );
+  await assert.rejects(app.verify(true), rejectsCode("FRESH_GEA_LOGIN_REQUIRED"));
   app.status.authenticated = true;
   app.status.mode = "receipt";
-  await assert.rejects(
-    app.verify(true),
-    rejectsCode("LOCAL_RECEIPT_NOT_MODEL_ACCEPTANCE"),
-  );
+  await assert.rejects(app.verify(true), rejectsCode("LOCAL_RECEIPT_NOT_MODEL_ACCEPTANCE"));
   app.status.mode = "model";
   for (const base of [
     "https://localhost/gea",
@@ -264,19 +235,13 @@ test("live verification binds the completed analysis to the current exact enviro
   ]) {
     app.status.source = base;
     await app.session({ snapshot: { sourceUrl: base + "/sales-plan/plans" } });
-    await assert.rejects(
-      app.verify(true),
-      rejectsCode("LOCAL_FIXTURE_NOT_LIVE_ACCEPTANCE"),
-    );
+    await assert.rejects(app.verify(true), rejectsCode("LOCAL_FIXTURE_NOT_LIVE_ACCEPTANCE"));
   }
   app.status.source = "http://gea.example.invalid/gea";
   await app.session({
     snapshot: { sourceUrl: app.status.source + "/sales-plan/plans" },
   });
-  await assert.rejects(
-    app.verify(true),
-    rejectsCode("INVALID_LIVE_SOURCE_URL"),
-  );
+  await assert.rejects(app.verify(true), rejectsCode("INVALID_LIVE_SOURCE_URL"));
 });
 
 test("an earlier completed turn cannot validate a later unfinished snapshot analysis", async (t) => {
@@ -303,10 +268,7 @@ test("an earlier completed turn cannot validate a later unfinished snapshot anal
     reason: "aborted",
     interrupted: true,
   });
-  await assert.rejects(
-    app.verify(),
-    rejectsCode("SNAPSHOT_NOT_IN_FIRST_ANALYSIS"),
-  );
+  await assert.rejects(app.verify(), rejectsCode("SNAPSHOT_NOT_IN_FIRST_ANALYSIS"));
 });
 
 test(
@@ -316,8 +278,7 @@ test(
     const app = await profile(t);
     const planId = "9007199254740993";
     app.route((request, response, reply) => {
-      if (request.url.pathname !== "/gea/sales-plan/plans/" + planId)
-        return false;
+      if (request.url.pathname !== "/gea/sales-plan/plans/" + planId) return false;
       reply({
         success: true,
         result: {
@@ -346,13 +307,7 @@ test(
     );
     const { stdout } = await exec(
       process.execPath,
-      [
-        "scripts/verify.mjs",
-        "--runtime",
-        app.runtime,
-        "--session",
-        submitted.value.sessionId,
-      ],
+      ["scripts/verify.mjs", "--runtime", app.runtime, "--session", submitted.value.sessionId],
       { cwd: root },
     );
     const report = JSON.parse(stdout);

@@ -31,6 +31,36 @@ export async function createBusinessSession(app, resourceId = "gea-readonly") {
   return created.value.sessionId;
 }
 
+/** Bind this existing official Session to a registered page; only Host returns the owner. */
+export async function openBusinessPageSession(
+  app,
+  sessionId,
+  pageId = "gea-proof",
+  resourceId = "gea-readonly",
+) {
+  const opened = await fixtureRequest(app, "/api/agent-workbench/page", {
+    operation: "open",
+    pageId,
+    sessionId,
+    resourceId,
+  });
+  assert.equal(opened.ok, true, JSON.stringify(opened));
+  assert.equal(typeof opened.value.owner, "string");
+  const owner = opened.value.owner;
+  return {
+    owner,
+    context: (parameters) =>
+      fixtureRequest(app, "/api/agent-workbench/page", { operation: "context", owner, parameters }),
+    catalog: (parameters) =>
+      fixtureRequest(app, "/api/agent-workbench/page", {
+        operation: "catalog",
+        owner,
+        parameters: { ...parameters, pageSource: "self-report" },
+      }),
+    close: () => fixtureRequest(app, "/api/agent-workbench/page", { operation: "close", owner }),
+  };
+}
+
 const environments = new WeakMap();
 /** Keep fake process credentials in one test lifetime; repeated profiles retain the first snapshot. */
 export function fixtureEnvironment(t, values) {

@@ -78,7 +78,7 @@ export function createMcpFailureGuard(
   const failures = new Map<string, { count: number; at: number; scope: string; reason?: string }>();
   const keyOf = (consumerCode: string, scope: string) => JSON.stringify([scope, consumerCode]);
   return {
-    check(consumerCode, scope = 'global') {
+    check(consumerCode, scope = "global") {
       const key = keyOf(consumerCode, scope);
       const entry = failures.get(key);
       if (!entry || entry.count < limit) return;
@@ -88,10 +88,10 @@ export function createMcpFailureGuard(
       }
       throw new Error(
         `GEA_MCP_RETRY_STOPPED: ${consumerCode} 已经连续失败 ${entry.count} 次，本轮此通道不要再换模型、换成员或换写法重试。` +
-        `最近失败：${entry.reason ?? '原因未确定'}。其它已成功取得的数据仍有效；按原始错误说明缺口，不能一概归为缺授权。`,
+          `最近失败：${entry.reason ?? "原因未确定"}。其它已成功取得的数据仍有效；按原始错误说明缺口，不能一概归为缺授权。`,
       );
     },
-    note(consumerCode, ok, scope = 'global', reason) {
+    note(consumerCode, ok, scope = "global", reason) {
       const key = keyOf(consumerCode, scope);
       if (ok) {
         failures.delete(key);

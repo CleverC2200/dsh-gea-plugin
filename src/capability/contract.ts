@@ -1,8 +1,4 @@
-import {
-  CAPABILITY_LAYERS,
-  layersForContract,
-  type CapabilityLayer,
-} from "./layers.ts";
+import { CAPABILITY_LAYERS, layersForContract, type CapabilityLayer } from "./layers.ts";
 
 /**
  * 原生销售与 HTML 模块使用同一能力形状，声明页面、数据、最大影响等级和路由。
@@ -11,12 +7,7 @@ import {
  */
 
 /** 能力的影响等级：页面看得见 < 页面草稿 < 会提交 < 会审批。 */
-export const CAPABILITY_EFFECTS = [
-  "view",
-  "draft",
-  "submit",
-  "approve",
-] as const;
+export const CAPABILITY_EFFECTS = ["view", "draft", "submit", "approve"] as const;
 export type CapabilityEffect = (typeof CAPABILITY_EFFECTS)[number];
 
 const EFFECT_RANK: Record<CapabilityEffect, number> = {
@@ -199,9 +190,7 @@ export type PluginContractInput = {
 };
 
 /** Derive the installed identity and permission bounds checked against required declarations. */
-export function contractFromPlugin(
-  input: PluginContractInput,
-): CapabilityContract {
+export function contractFromPlugin(input: PluginContractInput): CapabilityContract {
   const tables = tablesFromSource(...(input.sources ?? []));
   const rules = rulesFromSkill(input.skill ?? "");
   const description = input.description;
@@ -243,7 +232,7 @@ export function workbenchContract(input: {
   const maxEffect = input.maxEffect ?? "approve";
   return {
     id: "gea-workbench",
-    ...(input.enabled === undefined ? {} : {enabled: input.enabled}),
+    ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
     label: "区域计划审批工作台",
     view: {
       surface: input.surface,
@@ -260,8 +249,7 @@ export function workbenchContract(input: {
     skills: [],
     routing: {
       keywords: [...(input.keywords ?? [])],
-      summary:
-        "区域计划工作台：审批阶段、筛选、翻页、确认计划量草稿，以及通过/退回。",
+      summary: "区域计划工作台：审批阶段、筛选、翻页、确认计划量草稿，以及通过/退回。",
     },
   };
 }
@@ -298,12 +286,8 @@ export function normalizeContract(value: unknown): CapabilityContract {
     const pageIds = candidate.pageIds;
     if (typeof surface !== "string" || !NAME_PATTERN.test(surface))
       throw new Error("INVALID_CAPABILITY_CONTRACT");
-    if (protocol !== "self-report")
-      throw new Error("INVALID_CAPABILITY_CONTRACT");
-    if (
-      !Array.isArray(pageIds) ||
-      pageIds.some((page) => typeof page !== "string")
-    )
+    if (protocol !== "self-report") throw new Error("INVALID_CAPABILITY_CONTRACT");
+    if (!Array.isArray(pageIds) || pageIds.some((page) => typeof page !== "string"))
       throw new Error("INVALID_CAPABILITY_CONTRACT");
     normalizedView = {
       surface,
@@ -318,15 +302,11 @@ export function normalizeContract(value: unknown): CapabilityContract {
       throw new Error("INVALID_CAPABILITY_CONTRACT");
     const candidate = data as Record<string, unknown>;
     const consumerCode = candidate.consumerCode;
-    if (
-      typeof consumerCode !== "string" ||
-      !/^[a-z][a-z0-9-]+$/.test(consumerCode)
-    )
+    if (typeof consumerCode !== "string" || !/^[a-z][a-z0-9-]+$/.test(consumerCode))
       throw new Error("INVALID_CAPABILITY_CONTRACT");
     const tables = Array.isArray(candidate.tables)
       ? (candidate.tables as unknown[]).filter(
-          (table): table is string =>
-            typeof table === "string" && /^agents?_/.test(table),
+          (table): table is string => typeof table === "string" && /^agents?_/.test(table),
         )
       : [];
     const rules = Array.isArray(candidate.rules)
@@ -355,8 +335,7 @@ export function normalizeContract(value: unknown): CapabilityContract {
   const declaredLayers = Array.isArray(raw.layers)
     ? (raw.layers as unknown[]).filter(
         (layer): layer is CapabilityLayer =>
-          typeof layer === "string" &&
-          (CAPABILITY_LAYERS as readonly string[]).includes(layer),
+          typeof layer === "string" && (CAPABILITY_LAYERS as readonly string[]).includes(layer),
       )
     : [];
   const keywords = Array.isArray(routingRaw.keywords)
@@ -381,10 +360,7 @@ export function normalizeContract(value: unknown): CapabilityContract {
     skills,
     routing: {
       keywords,
-      summary:
-        typeof routingRaw.summary === "string"
-          ? routingRaw.summary.slice(0, 300)
-          : label,
+      summary: typeof routingRaw.summary === "string" ? routingRaw.summary.slice(0, 300) : label,
     },
   };
 }

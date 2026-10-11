@@ -1,10 +1,11 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
+import { selectBusinessResource } from "./fixtures/business-session.mjs";
 
 test(
   "branch Agent preserves empty, missing, failed and revoked result meanings",
@@ -24,9 +25,6 @@ test(
       }),
       env: {
         GEA_TEST_MODEL_KEY: "fixture-key",
-        GEA_HTML_PLUGIN_ROOTS: JSON.stringify([
-          resolve("../dsh-agent-workbench/lib/business/inventory-fc"),
-        ]),
       },
     });
     const state = stockState();
@@ -68,9 +66,11 @@ test(
       };
     });
     await app.login();
+    const selected = await selectBusinessResource(app, "gea-html-inventory-fc");
+    assert.equal(selected.preset, "gea-html-inventory-fc");
     const created = await app.remote("session/create", {
       cwd: app.runtime + "/workspace",
-      agentPreset: "gea-html-inventory-fc",
+      agentPreset: selected.preset,
     });
     assert.equal(created.ok, true);
     const id = created.value.sessionId;
@@ -101,21 +101,13 @@ test(
       if (mode === "denied") {
         assert.equal(state.cube.length, before);
         assert.match(result.text, /NOT_AUTHORIZED|REJECTED/);
-      } else if (mode === "error")
-        assert.match(result.text, /失败|failed|MCP_TOOL_ERROR/i);
+      } else if (mode === "error") assert.match(result.text, /失败|failed|MCP_TOOL_ERROR/i);
       else if (mode === "missing") assert.match(result.text, /null/);
-      else
-        assert.doesNotMatch(
-          result.text,
-          /"branch_stock.available_qty":(?:100|30)/,
-        );
+      else assert.doesNotMatch(result.text, /"branch_stock.available_qty":(?:100|30)/);
       results.push({ mode, result });
     }
     const output = resolve(".runtime/branch-stock-evidence");
     await mkdir(output, { recursive: true });
-    await writeFile(
-      resolve(output, "agent-states.json"),
-      JSON.stringify(results, null, 2),
-    );
+    await writeFile(resolve(output, "agent-states.json"), JSON.stringify(results, null, 2));
   },
 );

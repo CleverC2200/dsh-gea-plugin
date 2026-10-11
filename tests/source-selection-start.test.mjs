@@ -26,10 +26,7 @@ test("startup rejects incomplete selection digests and manifest-only changes bef
       const before = await snapshot(fixture.runtime),
         result = fixture.run("runSourceProfile");
       assert.equal(result.status, 1);
-      assert.match(
-        result.stderr,
-        /SOURCE_SELECTION_DIGEST_MISMATCH|WINDOW_COMBINATION_MISMATCH/,
-      );
+      assert.match(result.stderr, /SOURCE_SELECTION_DIGEST_MISMATCH|WINDOW_COMBINATION_MISMATCH/);
       assert.deepEqual(await snapshot(fixture.runtime), before);
       const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
       assert.deepEqual(effects.writes, []);

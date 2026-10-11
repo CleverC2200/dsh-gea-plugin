@@ -13,10 +13,7 @@ test("omitting a window cannot enter the public source Host implementation", asy
     DSH_HOME: process.env.DSH_HOME,
     DSH_TELEMETRY_DISABLED: process.env.DSH_TELEMETRY_DISABLED,
   };
-  await assert.rejects(
-    runSourceProfile("/absent-core", runtime),
-    /WINDOW_DECLARATION_REQUIRED/,
-  );
+  await assert.rejects(runSourceProfile("/absent-core", runtime), /WINDOW_DECLARATION_REQUIRED/);
   await assert.rejects(access(runtime), { code: "ENOENT" });
   assert.deepEqual(
     {
@@ -30,29 +27,18 @@ test("omitting a window cannot enter the public source Host implementation", asy
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 for (const [entry, arguments_] of [
-  [
-    "start.mjs",
-    ["--config", "/absent-deployment", "--runtime", "/absent-runtime"],
-  ],
+  ["start.mjs", ["--config", "/absent-deployment", "--runtime", "/absent-runtime"]],
   ["start-isolated-validation.mjs", ["--core", "/absent-core"]],
 ])
   test(`${entry} refuses an omitted declaration before reading configuration or creating a profile`, () => {
-    const result = spawnSync(
-      process.execPath,
-      [resolve("scripts", entry), ...arguments_],
-      { encoding: "utf8" },
-    );
+    const result = spawnSync(process.execPath, [resolve("scripts", entry), ...arguments_], {
+      encoding: "utf8",
+    });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /WINDOW_DECLARATION_REQUIRED/);
   });
 
-import {
-  writeFile,
-  readFile,
-  realpath,
-  mkdir,
-  symlink,
-} from "node:fs/promises";
+import { writeFile, readFile, realpath, mkdir, symlink } from "node:fs/promises";
 import { createHash } from "node:crypto";
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 async function declaration(t, changes = {}) {
@@ -130,6 +116,53 @@ test("unknown remaining calls remain unknown and block the public Host before ef
 });
 
 import { sourceWindow, snapshot, hash } from "./fixtures/source-window.mjs";
+import { readDeployment } from "../scripts/deployment.mjs";
+test("the default source CLI validates direct fixture credentials after window admission", async (t) => {
+  const fixture = await sourceWindow(t, "source-host");
+  const config = JSON.parse(await readFile(fixture.configFile, "utf8"));
+  config.analysis = {
+    mode: "model",
+    source: "direct",
+    baseUrl: "https://127.0.0.1:1/v1",
+    apiKeyEnv: "GEA_FIXTURE_DIRECT_KEY",
+    model: "fixture",
+    contextWindow: 32768,
+    maxTokens: 2048,
+  };
+  const environment = { GEA_FIXTURE_DIRECT_KEY: "fixture-key" };
+  await writeFile(fixture.configFile, JSON.stringify(config));
+  fixture.frozen.config.sha256 = hash(await readFile(fixture.configFile));
+  fixture.frozen.deploymentSha256 = hash(
+    JSON.stringify(
+      await readDeployment(fixture.configFile, {
+        resolveCredentials: false,
+        credentialEnv: environment,
+      }),
+    ),
+  );
+  await fixture.refresh();
+  const before = await snapshot(fixture.runtime);
+  fixture.current.status = "closed";
+  await fixture.refresh();
+  await assertNoEffects(
+    fixture,
+    fixture.run("start.mjs", [], environment),
+    /WINDOW_NOT_OPEN/,
+    before,
+  );
+  assert.deepEqual(JSON.parse(await readFile(fixture.observation, "utf8")).credentialEnvReads, []);
+  fixture.current.status = "open";
+  await fixture.refresh();
+  await assertNoEffects(fixture, fixture.run(), /ANALYSIS_CREDENTIAL_MISSING/, before);
+  const accepted = fixture.run("start.mjs", [], environment);
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.match(accepted.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
+  const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
+  assert.equal(effects.processes.length, 1);
+  assert.deepEqual(effects.credentialReads, []);
+  assert.ok(effects.credentialEnvReads.length > 0);
+  assert.deepEqual(effects.network, []);
+});
 test("a frozen wrong candidate head is rejected through the default CLI with zero protected effects", async (t) => {
   const fixture = await sourceWindow(t, "source-host");
   const input = JSON.parse(await readFile(fixture.candidateFile, "utf8"));
@@ -140,11 +173,7 @@ test("a frozen wrong candidate head is rejected through the default CLI with zer
   const before = await snapshot(fixture.runtime);
   const result = fixture.run();
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
-  assert.equal(
-    result.status,
-    1,
-    JSON.stringify({ stderr: result.stderr, effects }),
-  );
+  assert.equal(result.status, 1, JSON.stringify({ stderr: result.stderr, effects }));
   assert.match(result.stderr, /CANDIDATE_HEAD/);
   assert.deepEqual(effects.writes, []);
   assert.deepEqual(effects.processes, []);
@@ -167,9 +196,14 @@ test("the correctly frozen source-host enters only the loopback process fixture 
   assert.deepEqual(effects.network, []);
 });
 
-test("the isolated core CLI admits a valid declaration before delegating only to the loopback fixture", async (t) => {
+test("the isolated core CLI preserves its platform sandbox contract after valid admission", async (t) => {
   const fixture = await sourceWindow(t, "isolated-core-host");
+  const before = await snapshot(fixture.runtime);
   const result = fixture.run("start-isolated-validation.mjs");
+  if (process.platform !== "darwin") {
+    await assertNoEffects(fixture, result, /ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX/, before);
+    return;
+  }
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
@@ -180,11 +214,7 @@ test("the isolated core CLI admits a valid declaration before delegating only to
 
 test("a self-consistent artifact manifest cannot replace the frozen candidate source binding", async (t) => {
   const fixture = await sourceWindow(t, "source-host");
-  const directory = join(
-    fixture.runtime,
-    "source-combinations",
-    fixture.frozen.combination.id,
-  );
+  const directory = join(fixture.runtime, "source-combinations", fixture.frozen.combination.id);
   const file = join(directory, "company-plugins.json");
   const plugins = JSON.parse(await readFile(file, "utf8"));
   plugins["@cleverc2200/gea-dsh-prototype"].commit = "0".repeat(40);
@@ -193,9 +223,7 @@ test("a self-consistent artifact manifest cannot replace the frozen candidate so
   const manifest = JSON.parse(await readFile(manifestFile, "utf8"));
   manifest.files["company-plugins.json"] = hash(await readFile(file));
   await writeFile(manifestFile, JSON.stringify(manifest));
-  fixture.frozen.combination.manifestSha256 = hash(
-    await readFile(manifestFile),
-  );
+  fixture.frozen.combination.manifestSha256 = hash(await readFile(manifestFile));
   await writeFile(
     join(fixture.runtime, "source-selection.json"),
     JSON.stringify({
@@ -213,9 +241,14 @@ test("a self-consistent artifact manifest cannot replace the frozen candidate so
   assert.deepEqual(effects.after, effects.before);
 });
 
-test("the isolated source CLI verifies its five-source snapshot before delegating only to the loopback fixture", async (t) => {
+test("the isolated source CLI verifies its snapshot and preserves its platform sandbox contract", async (t) => {
   const fixture = await sourceWindow(t, "isolated-source-host");
+  const before = await snapshot(fixture.runtime);
   const result = fixture.run("start-isolated-validation.mjs");
+  if (process.platform !== "darwin") {
+    await assertNoEffects(fixture, result, /ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX/, before);
+    return;
+  }
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
@@ -224,13 +257,25 @@ test("the isolated source CLI verifies its five-source snapshot before delegatin
   assert.deepEqual(effects.network, []);
 });
 
+for (const mode of ["isolated-core-host", "isolated-source-host"])
+  test(`${mode}: public runSourceProfile admits the process fixture independently of CLI sandbox support`, async (t) => {
+    const fixture = await sourceWindow(t, mode);
+    const sources =
+      mode === "isolated-source-host"
+        ? JSON.parse(await readFile(fixture.sourcesFile, "utf8"))
+        : undefined;
+    const result = fixture.run("runSourceProfile", { sources });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
+    const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
+    assert.equal(effects.processes.length, 1);
+    assert.deepEqual(effects.credentialReads, []);
+    assert.deepEqual(effects.network, []);
+  });
+
 async function assertNoEffects(fixture, result, expected, before) {
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
-  assert.equal(
-    result.status,
-    1,
-    JSON.stringify({ stderr: result.stderr, effects }),
-  );
+  assert.equal(result.status, 1, JSON.stringify({ stderr: result.stderr, effects }));
   assert.match(result.stderr, expected, JSON.stringify(effects));
   assert.deepEqual(effects.writes, []);
   assert.deepEqual(effects.processes, []);
@@ -312,11 +357,7 @@ const invalidDeclarations = [
     /WINDOW_RUNTIME_MISMATCH/,
   ],
 ];
-for (const mode of [
-  "source-host",
-  "isolated-source-host",
-  "isolated-core-host",
-]) {
+for (const mode of ["source-host", "isolated-source-host", "isolated-core-host"]) {
   for (const [name, invalidate, expected] of invalidDeclarations)
     test(`${mode}: ${name} fails before configuration, credentials, environment, process and network effects`, async (t) => {
       const fixture = await sourceWindow(t, mode);
@@ -326,11 +367,7 @@ for (const mode of [
         windowBytes = await readFile(fixture.request.file);
       await assertNoEffects(
         fixture,
-        fixture.run(
-          mode === "source-host"
-            ? "start.mjs"
-            : "start-isolated-validation.mjs",
-        ),
+        fixture.run(mode === "source-host" ? "start.mjs" : "start-isolated-validation.mjs"),
         expected,
         before,
       );
@@ -493,19 +530,13 @@ test("omitting remaining automatic metadata cannot turn that unknown allowance i
     await snapshot(fixture.runtime),
   );
 });
-for (const mode of [
-  "source-host",
-  "isolated-source-host",
-  "isolated-core-host",
-])
+for (const mode of ["source-host", "isolated-source-host", "isolated-core-host"])
   test(`${mode}: omitting the window flag observes zero protected effects at the real CLI`, async (t) => {
     const fixture = await sourceWindow(t, mode);
     fixture.request.file = "";
     await assertNoEffects(
       fixture,
-      fixture.run(
-        mode === "source-host" ? "start.mjs" : "start-isolated-validation.mjs",
-      ),
+      fixture.run(mode === "source-host" ? "start.mjs" : "start-isolated-validation.mjs"),
       /WINDOW_DECLARATION_REQUIRED/,
       await snapshot(fixture.runtime),
     );
