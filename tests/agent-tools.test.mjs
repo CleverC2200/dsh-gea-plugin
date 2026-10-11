@@ -240,6 +240,7 @@ test(
       res.setHeader("Content-Type", "text/event-stream");
       const names = body.tools.map((tool) => tool.function.name);
       const wantsPage =
+        outcome === "success" ||
         /visible-context/.test(outcome) ||
         outcome === "page-evidence-guard" ||
         outcome === "page-tool";
@@ -248,7 +249,11 @@ test(
         pack === "knowledge"
           ? names.includes("gea_module_mcp")
           : pack === "page"
-            ? names.includes(outcome === "page-tool" ? "gea_page" : "gea_visible_workbench_context")
+            ? names.includes(
+                outcome === "success" || outcome === "page-tool"
+                  ? "gea_page"
+                  : "gea_visible_workbench_context",
+              )
             : true;
       const skillReady =
         outcome !== "skill-reference" ||
