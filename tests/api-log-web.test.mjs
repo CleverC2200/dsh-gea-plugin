@@ -43,7 +43,7 @@ test(
     await expect(settings).toHaveCount(0);
     assert.deepEqual(
       await page
-        .locator(".AppFrame_sidebarCol, .AppFrame_rightbarCol")
+        .locator('[class*="sidebarCol"], [data-rightbar-col]')
         .evaluateAll((elements) =>
           elements.map((element) => Math.round(element.getBoundingClientRect().width)),
         ),

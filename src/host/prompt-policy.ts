@@ -55,6 +55,7 @@ export const CORE_TOOLS = [
   "gea_evidence_read",
   "gea_gateway_catalog",
   "gea_cube_query",
+  "gea_visible_workbench_context",
 ];
 export function allowedTools(profile: PromptProfile, boundPage = false): Set<string> {
   const names = new Set(CORE_TOOLS);
@@ -70,12 +71,7 @@ export function allowedTools(profile: PromptProfile, boundPage = false): Set<str
   ])
     names.add(name);
   if (boundPage)
-    for (const name of [
-      "gea_page",
-      "gea_visible_workbench_context",
-      "gea_workbench_apply",
-      "gea_plugin_page_apply",
-    ])
+    for (const name of ["gea_page", "gea_workbench_apply", "gea_plugin_page_apply"])
       names.add(name);
   if (profile === PROFILES["gea-readonly"]) names.add("gea_sales_plan_read");
   return names;

@@ -981,26 +981,23 @@ test(
         false,
       );
     });
-    await t.test(
-      "问答只给 MCP 取数：模块清单挂在 gea_module_mcp 上，受管 SQL 工具默认不注册",
-      async () => {
-        outcome = "success";
-        modelRequests = [];
-        await ended(await submit());
-        // 默认（部署配置没打开 agentSqlRead）不给模型写 SQL 的机会。
-        assert.equal(
-          modelRequests[0].tools.some((candidate) => candidate.function.name === "gea_plugin_read"),
-          false,
-          "默认不应注册 gea_plugin_read",
-        );
-        assert.equal(
-          modelRequests[0].tools.some((tool) => tool.function.name === "gea_module_mcp"),
-          false,
-        );
-        assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_capabilities"));
-        assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_cube_query"));
-      },
-    );
+    await t.test("MCP 目录可见不授予执行权限，受管 SQL 工具默认不注册", async () => {
+      outcome = "success";
+      modelRequests = [];
+      await ended(await submit());
+      // 默认（部署配置没打开 agentSqlRead）不给模型写 SQL 的机会。
+      assert.equal(
+        modelRequests[0].tools.some((candidate) => candidate.function.name === "gea_plugin_read"),
+        false,
+        "默认不应注册 gea_plugin_read",
+      );
+      assert.equal(
+        modelRequests[0].tools.some((tool) => tool.function.name === "gea_module_mcp"),
+        true,
+      );
+      assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_capabilities"));
+      assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_cube_query"));
+    });
     await t.test(
       "a page tool in a plain conversation explains the rule instead of failing",
       async () => {
