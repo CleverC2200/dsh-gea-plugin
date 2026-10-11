@@ -42,7 +42,13 @@ test("cancelled profile cleanup joins beforeStart before disposing its runtime",
     () => ({ returned: true }),
     (error) => ({ error }),
   );
-  const owned = await entered.promise;
+  const owned = await Promise.race([
+    entered.promise,
+    completion.then((result) => {
+      if (result.error) throw result.error;
+      throw new Error("profile returned before entering beforeStart");
+    }),
+  ]);
   controller.abort(reason);
   const disposing = cleanup();
   try {
