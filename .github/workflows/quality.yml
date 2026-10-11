@@ -2,7 +2,7 @@ name: candidate-quality
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/quality-ci-maintenance-20261010]
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -74,7 +74,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: CleverC2200/dsh-agent-workbench
-          ref: 8f58ed601ab048d57f44794658009105407b6ae6
+          ref: 634e744700e3001267c74311584d4f16649cc75e
           fetch-depth: 0
           path: source/dsh-agent-workbench
           token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}

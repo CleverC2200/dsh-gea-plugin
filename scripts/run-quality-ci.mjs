@@ -16,7 +16,7 @@ import {
 import { resolveSourceInputs } from "./source-profile.mjs";
 import { resourceDigests } from "./source-combination-integrity.mjs";
 const peers = {
-  "dsh-agent-workbench": "8f58ed601ab048d57f44794658009105407b6ae6",
+  "dsh-agent-workbench": "634e744700e3001267c74311584d4f16649cc75e",
   "dsh-agent-manage": "6f08567a6e032b867464b0cfc55c967942ce2b93",
 };
 import { supportedCores } from "./supported-cores.mjs";
