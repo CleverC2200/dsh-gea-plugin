@@ -701,12 +701,22 @@ test(
         assert.equal(rows.find((x) => x.type === "turn/end").data.reason.kind, "completed");
         assert.equal(modelRequests.length, 2);
         const promptMessages = JSON.stringify(modelRequests[0].messages);
-        assert.doesNotMatch(
-          promptMessages,
-          /inventory-probe/,
-          "mock skills do not enter the business startup catalog",
+        const businessSystemMessages = JSON.stringify(
+          modelRequests[0].messages.filter((message) => message.role === "system"),
         );
-        assert.doesNotMatch(promptMessages, /DEVELOPER_SKILL_MUST_NOT_LEAK/);
+        assert.doesNotMatch(
+          businessSystemMessages,
+          /inventory-probe/,
+          "local Skill summaries do not enter the business system prompt",
+        );
+        assert.doesNotMatch(businessSystemMessages, /DEVELOPER_SKILL_MUST_NOT_LEAK/);
+        const localSkillCatalog = JSON.stringify(
+          modelRequests[0].messages.filter((message) => message.role === "user"),
+        );
+        assert.match(localSkillCatalog, /<available_skills>/);
+        assert.match(localSkillCatalog, /inventory-probe/);
+        assert.match(localSkillCatalog, /DEVELOPER_SKILL_MUST_NOT_LEAK/);
+        assert.doesNotMatch(promptMessages, /PROBE-RULE-42/);
         // 只要求核心工具在列；部署补丁还会挂其他工具（例如浏览器 MCP），不在这里锁死全集。
         const toolNames = modelRequests[0].tools.map((x) => x.function.name);
         for (const expected of [

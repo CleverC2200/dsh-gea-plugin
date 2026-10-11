@@ -41,13 +41,14 @@ test(
     await openWorkbenchPage(page, "接口日志");
     await page.getByRole("heading", { name: "接口日志中心", exact: true }).waitFor();
     await expect(settings).toHaveCount(0);
+    // 公共 main 面板保留 Core 默认导航栏，不隐藏宿主框架。
     assert.deepEqual(
       await page
         .locator('[class*="sidebarCol"], [data-rightbar-col]')
         .evaluateAll((elements) =>
           elements.map((element) => Math.round(element.getBoundingClientRect().width)),
         ),
-      [0, 0],
+      [280, 0],
     );
 
     await expect
