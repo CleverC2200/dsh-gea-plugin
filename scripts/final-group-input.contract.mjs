@@ -207,7 +207,7 @@ test("GEA public final-group mode admits actual cold Git sources and keeps defau
   rmSync(join(gea, "uncommitted-source.txt"));
   reject(dirty, /CANDIDATE_DIRTY/);
   reject(run("quality-still-requires-sdk", ["--phase", "quality"]), /SDK_SOURCE_REQUIRED/);
-  // Real old peers have no shared-reader export. The default path reaches its unchanged missing-SDK guard.
+  // Retired peers have no shared reader, but are no longer the default fixed peer input.
   git(workbench, "checkout", "--quiet", "--detach", "9b4863692cb29a3edc8a2358e98feb7846526d1b");
   git(
     roots["dsh-agent-manage"],
@@ -236,8 +236,38 @@ test("GEA public final-group mode admits actual cold Git sources and keeps defau
       stderr: defaults.stderr,
     }),
   );
-  reject(defaults, /SDK_SOURCE_REQUIRED/);
+  reject(defaults, /CANDIDATE_HEAD/);
   assert.doesNotMatch(defaults.stderr, /ERR_MODULE_NOT_FOUND|CANDIDATE_INTERFACE/);
+  // The actual fixed default peers reach SDK admission without importing the final-group reader.
+  git(workbench, "checkout", "--quiet", "--detach", "0d98253df33128632d2b927e5c3c6db512647384");
+  git(
+    roots["dsh-agent-manage"],
+    "checkout",
+    "--quiet",
+    "--detach",
+    "622ab1913ef8d96efee6359d63e5f9a85e60a43f",
+  );
+  for (const entry of legacy.repositories) entry.head = git(entry.path, "rev-parse", "HEAD");
+  writeFileSync(file, JSON.stringify(legacy));
+  const fixedDefaults = spawnSync(
+    process.execPath,
+    ["scripts/run-quality-ci.mjs", "--input", file],
+    {
+      cwd: gea,
+      encoding: "utf8",
+      env: { ...process.env, CI: "", QUALITY_EXPECTED_SHA: "", GIT_OPTIONAL_LOCKS: "0" },
+    },
+  );
+  t.diagnostic(
+    JSON.stringify({
+      name: "default-current-fixed-peers",
+      exit: fixedDefaults.status,
+      stdout: fixedDefaults.stdout,
+      stderr: fixedDefaults.stderr,
+    }),
+  );
+  reject(fixedDefaults, /SDK_SOURCE_REQUIRED/);
+  assert.doesNotMatch(fixedDefaults.stderr, /ERR_MODULE_NOT_FOUND|CANDIDATE_INTERFACE/);
   const packageScripts = JSON.parse(readFileSync(join(root, "package.json"))).scripts;
   assert.doesNotMatch(packageScripts["test:quality"], /final-group-input/);
   assert.equal(
