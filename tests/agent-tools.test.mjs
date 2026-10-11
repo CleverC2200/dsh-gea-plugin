@@ -248,7 +248,7 @@ test(
         pack === "knowledge"
           ? names.includes("gea_module_mcp")
           : pack === "page"
-            ? names.includes("gea_visible_workbench_context")
+            ? names.includes(outcome === "page-tool" ? "gea_page" : "gea_visible_workbench_context")
             : true;
       const skillReady =
         outcome !== "skill-reference" ||
