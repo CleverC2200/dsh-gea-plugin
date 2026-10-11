@@ -117,3 +117,44 @@ for (const head of [
     );
   });
 }
+
+test("hosted checkout refs and public admission use the reviewed immutable peer commits", () => {
+  const directory = mkdtempSync(join(tmpdir(), "hosted-peer-pins-"));
+  try {
+    const core = "639ed015397290b3745d163aafe02ffee4aa3f84";
+    const created = spawnSync(
+      process.execPath,
+      [
+        "scripts/run-quality-ci.mjs",
+        "--phase",
+        "input",
+        "--root",
+        directory,
+        "--sha",
+        "a".repeat(40),
+        "--core-head",
+        core,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(created.status, 0, created.stderr);
+    const input = JSON.parse(readFileSync(join(directory, "candidate-input.json"), "utf8"));
+    const expected = {
+      "dsh-agent-workbench": "48a232c6bede7ed64f0c439d18b29ffdaa0df03f",
+      "dsh-agent-manage": "6f08567a6e032b867464b0cfc55c967942ce2b93",
+    };
+    const workflow = readFileSync(".github/workflows/quality.yml", "utf8");
+    for (const [repo, head] of Object.entries(expected)) {
+      assert.equal(input.repositories.find((entry) => entry.repo === repo)?.head, head);
+      const checkoutRefs = [
+        ...workflow.matchAll(
+          new RegExp("repository: CleverC2200/" + repo + "\\s+ref: ([a-f0-9]{40})", "g"),
+        ),
+      ].map((match) => match[1]);
+      assert.ok(checkoutRefs.length > 0, repo + " must be checked out");
+      assert.deepEqual([...new Set(checkoutRefs)], [head], repo + " checkout and input must agree");
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
