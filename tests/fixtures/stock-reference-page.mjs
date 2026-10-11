@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { fixtureEnvironment } from "./business-session.mjs";
 import { openBusinessPage } from "./business-page.mjs";
+import { testBrowser } from "./test-browser.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -96,8 +97,9 @@ export async function stockReferencePage(
   });
   assert.equal(binding.status, 200, "reference binding must be served by the real Host");
   assert.equal(typeof (await binding.json()).generation, "string");
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
-  t.after(() => browser.close());
+  const browser = await testBrowser(t, () =>
+    chromium.launch({ channel: "chrome", headless: true }),
+  );
   const context = await browser.newContext({
     locale: "zh-CN",
     viewport: { width: 1440, height: 1000 },
