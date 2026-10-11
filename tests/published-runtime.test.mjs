@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve, sep } from "node:path";
-import { parse } from "yaml";
 import { deploymentPatch } from "../scripts/deployment.mjs";
 import { readSupportedCore } from "../scripts/supported-cores.mjs";
 const require = createRequire(import.meta.url);

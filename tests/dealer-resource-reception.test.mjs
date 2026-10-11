@@ -59,7 +59,7 @@ for (const enabled of [true, false])
           const { entryListSchema } = await import(
             pathToFileURL(managed.resolve("@deepseek-ai/cordis-plugin-include"))
           );
-            const { load, dump } = await import(pathToFileURL(managed.resolve("js-yaml")));
+          const { load, dump } = await import(pathToFileURL(managed.resolve("js-yaml")));
           const core = resolve(
             dirname(await realpath(require.resolve("@deepseek-ai/dsh/package.json"))),
             "../..",
