@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
 
@@ -53,7 +53,9 @@ test("the received mock packages publish selectable original resources and only 
   };
   const packages = await Promise.all(
     ["customer", "orderworkbench", "orderfulfillment"].map(async (suffix) => {
-      const directory = resolve("../dsh-agent-workbench/lib/business/inventory-" + suffix);
+      const directory = await realpath(
+        resolve("../dsh-agent-workbench/lib/business/inventory-" + suffix),
+      );
       return {
         directory,
         htmlPath: resolve(directory, "index.html"),

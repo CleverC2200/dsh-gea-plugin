@@ -71,6 +71,7 @@ test("business section policy preserves native UI protocol and leaves ordinary c
     { name: "app:web-surface", text: "coding-only HMR guidance" },
     { name: "genui:fence", text: "vendor coding presentation policy" },
     { name: "kept-native-section", text: "native section survives" },
+    { name: "ui:deliverable-file-references", text: "vendor file-reference policy" },
   ];
   const assembly = { sections, contexts: [], tools: [], variables: {} };
   const assemble = () =>
@@ -95,6 +96,16 @@ test("business section policy preserves native UI protocol and leaves ordinary c
     "vendor coding presentation policy",
     "the source assembly was not rewritten",
   );
+  const files = businessView.sections.find(
+    (section) => section.name === "ui:deliverable-file-references",
+  ).text;
+  assert.match(files, /!\[说明\]\(<路径>\).*\[名称\]\(<路径>\)/);
+  assert.match(files, /每次提及已有文件.*重复和表格.*相对当前工作目录.*绝对路径/);
+  assert.match(files, /#L24.*#L24-L30/);
+  assert.match(files, /图片有助解释或比较时/);
+  assert.match(files, /工具清单提供 present.*独立文件卡片.*完整交付物/);
+  assert.match(files, /不为列出修改源码调用 present.*不运行命令探查 diff/);
+  assert.equal(assembly.sections[3].text, "vendor file-reference policy");
   preset = "standard";
   assert.equal(await assemble(), assembly, "ordinary coding keeps the original native sections");
 });

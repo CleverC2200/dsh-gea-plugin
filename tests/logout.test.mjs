@@ -105,7 +105,7 @@ test(
     const second = await context.newPage();
     await second.goto(app.origin);
     await preparePageStartup(second);
-    await openSalesPlan(second);
+    // The second tab restores the already-open sales Document.
     await expect(salesPlanFrameElement(second)).toBeVisible();
     await second.getByRole("button", { name: "账户菜单", exact: true }).click();
     await expect(second.getByRole("menuitem", { name: "退出登录", exact: true })).toBeVisible();
