@@ -220,7 +220,7 @@ test("接线：闸门在发送前调用，且清单不在手时先补读一次 i
     "闸门必须在真正发送之前",
   );
   // 结构性缺口：已知取不到的组合要在发送前短路，且和被拒那次一样计入本轮总账。
-  assert.match(source, /business\.cubeGaps\(\)\.find\(consumerCode, queriedModel\)/);
+  assert.match(querySource, /business\.cubeGaps\(\)\.find\(consumerCode, queriedModel\)/);
   assert.match(source, /availability: "known-gap"/);
   assert.match(source, /business\.cubeGaps\(\)\.note\(consumerCode, queriedModel/);
   assert.ok(
