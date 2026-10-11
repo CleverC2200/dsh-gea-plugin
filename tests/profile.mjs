@@ -137,7 +137,23 @@ export async function profile(t, options = {}) {
               },
             },
           });
-        else if (path.endsWith("/ai/gateway/agent/session"))
+        else if (path.endsWith("/ai/gateway/session")) {
+          const { consumerType, consumerCode, conversationId } = JSON.parse(request.body);
+          reply({
+            success: true,
+            code: 200,
+            result: {
+              accessDecision: { allowed: true },
+              delegationToken: "fixture-delegation",
+              gatewayContext: {
+                sessionId: "SES-fixture",
+                consumerType,
+                consumerCode,
+                conversationId,
+              },
+            },
+          });
+        } else if (path.endsWith("/ai/gateway/agent/session"))
           reply({
             success: true,
             code: 200,
