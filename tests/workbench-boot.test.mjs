@@ -1,11 +1,10 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium } from "@playwright/test";
 import { profile } from "./profile.mjs";
 test("published DSH loads the replacement workbench", { timeout: 90000 }, async (t) => {
   const app = await profile(t);
   const browser = await chromium.launch({
-    channel: "chrome",
     headless: true,
   });
   t.after(() => browser.close());

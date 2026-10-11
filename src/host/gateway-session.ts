@@ -18,10 +18,7 @@ export async function prepareGatewaySession(
   fetchImpl: typeof fetch = fetch,
   conversationId: string = randomUUID(),
 ) {
-  if (
-    !["AGENT", "CLIENT_APP"].includes(consumer.consumerType) ||
-    !consumer.consumerCode.trim()
-  )
+  if (!["AGENT", "CLIENT_APP"].includes(consumer.consumerType) || !consumer.consumerCode.trim())
     throw new Error("GEA_MCP_CONSUMER_REQUIRED");
   throwIfAborted(identity);
   const response = await fetchImpl(base + "/ai/gateway/session", {
@@ -59,9 +56,7 @@ export async function prepareGatewaySession(
       {
         code: "AGENT_ACCESS_DENIED",
         accessDecisionCode:
-          typeof decision.code === "string"
-            ? decision.code
-            : "AGENT_ACCESS_DENIED",
+          typeof decision.code === "string" ? decision.code : "AGENT_ACCESS_DENIED",
         retryable: false,
       },
     );
@@ -79,8 +74,6 @@ export async function prepareGatewaySession(
     sessionId: context.sessionId,
     conversationId: context.conversationId,
     delegationToken: result.delegationToken,
-    ...(consumer.consumerType === "AGENT"
-      ? { agentCode: consumer.consumerCode }
-      : {}),
+    ...(consumer.consumerType === "AGENT" ? { agentCode: consumer.consumerCode } : {}),
   };
 }

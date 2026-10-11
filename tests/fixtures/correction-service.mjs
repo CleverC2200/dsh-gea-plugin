@@ -1,6 +1,6 @@
 /** External GEA contract fixture. These proposed correction fields are not a claim of deployment. */
-import assert from 'node:assert/strict';
-import { MockDmsWriteback } from '@cleverc2200/dsh-agent-workbench/dms-mock';
+import assert from "node:assert/strict";
+import { MockDmsWriteback } from "@cleverc2200/dsh-agent-workbench/dms-mock";
 export function correctionService() {
   let revision = 0,
     status = 1;
@@ -8,50 +8,50 @@ export function correctionService() {
   const writes = [];
   let mock;
   const sku = {
-    id: '1',
-    versionId: 'v',
-    skuCode: '123',
-    productCategName: '测试SKU',
-    qty: '30',
-    baseQty: '30',
-    price: '2',
-    amt: '60',
-    amtBase: '60',
-    adjAddQty: '2',
-    adjCutQty: '0',
+    id: "1",
+    versionId: "v",
+    skuCode: "123",
+    productCategName: "测试SKU",
+    qty: "30",
+    baseQty: "30",
+    price: "2",
+    amt: "60",
+    amtBase: "60",
+    adjAddQty: "2",
+    adjCutQty: "0",
   };
   const version = () => ({
-    id: 'v',
-    planId: 'z',
+    id: "v",
+    planId: "z",
     seq: 1,
-    periodId: '20260901',
-    planTypeCode: 'Y',
-    orderType: 'Z',
-    dealerCode: '123',
-    dealerName: '纠偏客户',
+    periodId: "20260901",
+    planTypeCode: "Y",
+    orderType: "Z",
+    dealerCode: "123",
+    dealerName: "纠偏客户",
     status,
     effective: true,
-    targetAmount: '100',
-    targetQty: '30',
-    currentQty: '30',
-    currentAmount: '60',
+    targetAmount: "100",
+    targetQty: "30",
+    currentQty: "30",
+    currentAmount: "60",
     skuCount: 1,
-    submitter: 'another',
+    submitter: "another",
   });
   const detail = () => ({
     currentVersion: version(),
     actionContext: {
-      versionId: 'v',
+      versionId: "v",
       status,
       nodeOrder: status >= 6 ? status - 5 : status + 1,
-      allowedActions: [1, 2, 3, 4, 7, 8, 9].includes(status) ? ['SAVE', 'APPROVE', 'REJECT'] : [],
-      snapshotHash: revision.toString(16).padStart(64, '0'),
+      allowedActions: [1, 2, 3, 4, 7, 8, 9].includes(status) ? ["SAVE", "APPROVE", "REJECT"] : [],
+      snapshotHash: revision.toString(16).padStart(64, "0"),
     },
-    correctionContext: { contract: 'absolute-net-v1', monthlyApproved: true, approvalOpen: true },
+    correctionContext: { contract: "absolute-net-v1", monthlyApproved: true, approvalOpen: true },
     skus: [{ ...sku }],
     versions: [],
     logs: [...logs],
-    ...(mock ? { dmsMock: { source: 'DMS_MOCK', ...mock.read() } } : {}),
+    ...(mock ? { dmsMock: { source: "DMS_MOCK", ...mock.read() } } : {}),
   });
   const receiver = {
     detail,
@@ -68,32 +68,42 @@ export function correctionService() {
     },
     route(req, res, reply) {
       const path = req.url.pathname;
-      if (path.endsWith('/getPermCode')) {
-        reply({success:true,result:{codeList:['region','province','area','category'].map(role=>`sales-plan:plan:${role}-approve`)}});
+      if (path.endsWith("/getPermCode")) {
+        reply({
+          success: true,
+          result: {
+            codeList: ["region", "province", "area", "category"].map(
+              (role) => `sales-plan:plan:${role}-approve`,
+            ),
+          },
+        });
         return true;
       }
-      if (path.endsWith('/plans')) {
-        const requestedStatus=req.url.searchParams.get('status');
+      if (path.endsWith("/plans")) {
+        const requestedStatus = req.url.searchParams.get("status");
         if (requestedStatus !== null && Number(requestedStatus) !== status) {
-          reply({success:true,result:{records:[],total:0,size:20,current:1,pages:1}});
+          reply({
+            success: true,
+            result: { records: [], total: 0, size: 20, current: 1, pages: 1 },
+          });
           return true;
         }
-        const orderType = req.url.searchParams.get('orderType') ?? 'Z';
+        const orderType = req.url.searchParams.get("orderType") ?? "Z";
         reply({
           success: true,
           result: {
             records: [
               {
                 ...version(),
-                versionId: 'v',
+                versionId: "v",
                 orderType,
                 monthlyApproved: true,
                 hasCorrection: true,
-                mPlanAmount: '60',
-                mPlanQty: '30',
-                shipAmount: '30',
-                shipQty: '10',
-                corrPlanAmount: '64',
+                mPlanAmount: "60",
+                mPlanQty: "30",
+                shipAmount: "30",
+                shipQty: "10",
+                corrPlanAmount: "64",
               },
             ],
             total: 1,
@@ -104,39 +114,46 @@ export function correctionService() {
         });
         return true;
       }
-      if (path.endsWith('/plans/z')) {
+      if (path.endsWith("/plans/z")) {
         reply({ success: true, result: detail() });
         return true;
       }
-      if (path.endsWith('/versions/v/skus')) {
+      if (path.endsWith("/versions/v/skus")) {
         reply({ success: true, result: [sku] });
         return true;
       }
-      if (path.endsWith('/versions/v/actions')) {
+      if (path.endsWith("/versions/v/actions")) {
         const body = JSON.parse(req.body);
         // 此夹具模拟旧版动作接口，只接收基础字段。快照与绝对净量契约由 Host
         // 在出站前校验，拒绝过期快照的场景由 correction-host 覆盖。
         assert.equal(body.expectedSnapshot, undefined);
         assert.equal(body.adjustmentMode, undefined);
-        assert.ok(Object.keys(body).every(key => ['action','expectedStatus','remark','adjustments','notification'].includes(key)));
+        assert.ok(
+          Object.keys(body).every((key) =>
+            ["action", "expectedStatus", "remark", "adjustments", "notification"].includes(key),
+          ),
+        );
         assert.equal(body.expectedStatus, status);
-        const node = ['', 'region', 'province', 'area', 'category'][status >= 6 ? status - 6 : status];
+        const node = ["", "region", "province", "area", "category"][
+          status >= 6 ? status - 6 : status
+        ];
         const from = status;
-        if (body.action === 'REJECT') {
-          for (const suffix of ['AdjAddQty', 'AdjCutQty', 'ConfirmedQty', 'ConfirmedAmount']) sku[node + suffix] = null;
+        if (body.action === "REJECT") {
+          for (const suffix of ["AdjAddQty", "AdjCutQty", "ConfirmedQty", "ConfirmedAmount"])
+            sku[node + suffix] = null;
           status = (status >= 6 ? status - 6 : status) + 5;
         } else {
           // Worked fixture uses integer quantities and price 2; expectations remain literal in tests.
           const delta = Number(body.adjustments[0].adjustQty);
           if (30 + delta < 0) {
-            reply({ message: 'negative' }, 400);
+            reply({ message: "negative" }, 400);
             return true;
           }
-          sku[node + 'AdjAddQty'] = String(Math.max(0, delta));
-          sku[node + 'AdjCutQty'] = String(Math.max(0, -delta));
-          if (body.action === 'APPROVE') {
-            sku[node + 'ConfirmedQty'] = String(30 + delta);
-            sku[node + 'ConfirmedAmount'] = String((30 + delta) * 2);
+          sku[node + "AdjAddQty"] = String(Math.max(0, delta));
+          sku[node + "AdjCutQty"] = String(Math.max(0, -delta));
+          if (body.action === "APPROVE") {
+            sku[node + "ConfirmedQty"] = String(30 + delta);
+            sku[node + "ConfirmedAmount"] = String((30 + delta) * 2);
             status = (status >= 6 ? status - 6 : status) + 1;
           }
         }
@@ -144,37 +161,44 @@ export function correctionService() {
         writes.push(body);
         const log = {
           id: String(revision),
-          planId: 'z',
-          versionId: 'v',
+          planId: "z",
+          versionId: "v",
           fromStatus: from,
           toStatus: status,
           actionCode: body.action,
-          requestId: req.headers['x-request-id'],
-          traceId: 'trace',
-          operatorCode: 'reviewer',
+          requestId: req.headers["x-request-id"],
+          traceId: "trace",
+          operatorCode: "reviewer",
           remark: body.remark,
           actionAt: new Date().toISOString(),
         };
         logs.push(log);
         if (status === 5)
           mock = new MockDmsWriteback({
-            planId: 'z',
-            versionId: 'v',
-            typeCode: 'Y',
-            orderType: 'Z',
+            planId: "z",
+            versionId: "v",
+            typeCode: "Y",
+            orderType: "Z",
             status,
-            skus: [{ skuCode: '123', qty: '30', addQty: sku.categoryAdjAddQty, cutQty: sku.categoryAdjCutQty }],
+            skus: [
+              {
+                skuCode: "123",
+                qty: "30",
+                addQty: sku.categoryAdjAddQty,
+                cutQty: sku.categoryAdjCutQty,
+              },
+            ],
           });
         reply({
           success: true,
           result: {
-            planId: 'z',
-            versionId: 'v',
+            planId: "z",
+            versionId: "v",
             fromStatus: from,
             toStatus: status,
             requestId: log.requestId,
-            traceId: 'trace',
-            auditId: 'sales-plan-log:' + revision,
+            traceId: "trace",
+            auditId: "sales-plan-log:" + revision,
             replayed: false,
           },
         });

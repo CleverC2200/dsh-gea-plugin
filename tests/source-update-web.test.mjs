@@ -1,5 +1,5 @@
 /** Real current profile activation uses local metadata-only candidate versions and loopback services. */
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import { chromium, expect } from "@playwright/test";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { openWorkbenchPage, htmlFrameElement } from "./fixtures/business-page.mjs";
 import { installStockRoutes, stockState } from "./fixtures/branch-stock.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
 import {
@@ -15,12 +16,9 @@ import {
   sourceComponent,
   selectSourceCombination,
 } from "../scripts/source-profile.mjs";
-import {
-  applySourceUpdate,
-  readSourceUpdateBaseline,
-} from "../scripts/source-update.mjs";
+import { applySourceUpdate, readSourceUpdateBaseline } from "../scripts/source-update.mjs";
 
-const project = resolve(import.meta.dirname, "../../../.."),
+const _project = resolve(import.meta.dirname, "../../../.."),
   core = resolve("../../official-latest-standard");
 const parent = resolve(".runtime/ticket-10"),
   gea = "@cleverc2200/gea-dsh-prototype",
@@ -30,7 +28,7 @@ const json = async (path) => JSON.parse(await fs.readFile(path, "utf8"));
 
 test(
   "real profiles load merged component updates and keep history through restart and guarded recovery",
-  { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 600000 },
+  { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 600000, sourceSetupCount: 4 },
   async (t) => {
     await fs.mkdir(parent, { recursive: true });
     let base, baseline, proposalA, proposalB;
@@ -50,26 +48,19 @@ test(
         },
       }),
       env: { GEA_TEST_MODEL_KEY: "fixture-key" },
-      beforeStart: async ({ runtime, config }) => {
+      beforeStart: async ({ runtime, config, credentialEnv }) => {
         await fs.mkdir(join(runtime, "home/profiles/plugin-split-validation"), {
           recursive: true,
         });
         base = await prepareSourcePlugins(
           core,
           runtime,
-          await readDeployment(config),
+          await readDeployment(config, { credentialEnv }),
           {
-            sources: JSON.parse(
-              await fs.readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"),
-            ),
+            sources: JSON.parse(await fs.readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8")),
           },
         );
-        const baseRecordFile = join(
-            runtime,
-            "source-combinations",
-            base.id,
-            "combination.json",
-          ),
+        const baseRecordFile = join(runtime, "source-combinations", base.id, "combination.json"),
           baseRecord = await json(baseRecordFile);
         const workbenchVersion = baseRecord.composition.dependencies[workbench]
           .split("-")[0]
@@ -83,103 +74,84 @@ test(
         await fs.writeFile(baseRecordFile, JSON.stringify(baseRecord, null, 2));
         await selectSourceCombination(runtime, base.id, core);
         baseline = await readSourceUpdateBaseline(runtime, core);
-        const channel = join(runtime, "simulated-channel");
-        await fs.mkdir(channel);
-        const proposals = [];
-        for (const name of [gea, workbench]) {
-          const candidate = await mergeSourceComponents(
-            runtime,
-            base.id,
-            {},
-            core,
-          );
-          const directory = join(runtime, "source-combinations", candidate.id),
-            record = await json(join(directory, "combination.json")),
-            plugins = await json(join(directory, "company-plugins.json"));
-          const pkgFile = join(directory, "node_modules", name, "package.json"),
-            pkg = await json(pkgFile),
-            version = pkg.version.split("-")[0].split(".").map(Number);
-          version[2]++;
-          pkg.version =
-            version.join(".") + (name === workbench ? "" : "-local.10");
-          record.composition.dependencies[name] = pkg.version;
-          plugins[name].version = pkg.version;
-          const pkgBytes = JSON.stringify(pkg, null, 2) + "\n",
-            metadataBytes = JSON.stringify(plugins, null, 2);
-          await fs.writeFile(pkgFile, pkgBytes);
-          await fs.writeFile(
-            join(directory, "company-plugins.json"),
-            metadataBytes,
-          );
-          record.files[`node_modules/${name}/package.json`] = digest(pkgBytes);
-          record.files["company-plugins.json"] = digest(metadataBytes);
-          await fs.writeFile(
-            join(directory, "combination.json"),
-            JSON.stringify(record, null, 2),
-          );
-          const actual = sourceComponent(record, plugins, name),
-            artifact = join(
-              channel,
-              name === gea ? "gea.json" : "workbench.json",
-            ),
-            bytes = JSON.stringify({
-              combination: candidate.id,
-              package: name,
-              manifestSha256: digest(
-                await fs.readFile(join(directory, "combination.json")),
-              ),
-            });
-          await fs.writeFile(artifact, bytes);
-          proposals.push({
-            kind: "current-source-update-v1",
-            source: pathToFileURL(join(channel, "catalog.json")).href,
-            baseline,
-            releases: [
-              {
-                package: name,
-                version: actual.version,
-                sha256: actual.sha256,
-                source: actual.source,
-                downloadSha256: digest(bytes),
-                url: pathToFileURL(artifact).href,
-                compatible: {
-                  core: [baseline.core],
-                  interface: "current-unified-v2",
-                  workbench: [],
-                },
-              },
-            ],
-          });
-        }
-        const workbenchVersions = [
-          baseline.components[workbench].version,
-          proposals[1].releases[0].version,
-        ];
-        for (const proposal of proposals)
-          proposal.releases[0].compatible.workbench = workbenchVersions;
-        [proposalA, proposalB] = proposals;
-        await fs.writeFile(
-          join(channel, "catalog.json"),
-          JSON.stringify(
-            {
-              kind: "local-current-source-fixture",
-              proposals,
-              note: "Only package manifest versions change; shipped behavior stays the accepted current interface.",
-            },
-            null,
-            2,
-          ),
-        );
       },
     });
+    async function prepareChannel(runtime) {
+      const channel = join(runtime, "simulated-channel");
+      await fs.mkdir(channel);
+      const proposals = [];
+      for (const name of [gea, workbench]) {
+        const candidate = await mergeSourceComponents(runtime, base.id, {}, core);
+        const directory = join(runtime, "source-combinations", candidate.id),
+          record = await json(join(directory, "combination.json")),
+          plugins = await json(join(directory, "company-plugins.json"));
+        const pkgFile = join(directory, "node_modules", name, "package.json"),
+          pkg = await json(pkgFile),
+          version = pkg.version.split("-")[0].split(".").map(Number);
+        version[2]++;
+        pkg.version = version.join(".") + (name === workbench ? "" : "-local.10");
+        record.composition.dependencies[name] = pkg.version;
+        plugins[name].version = pkg.version;
+        const pkgBytes = JSON.stringify(pkg, null, 2) + "\n",
+          metadataBytes = JSON.stringify(plugins, null, 2);
+        await fs.writeFile(pkgFile, pkgBytes);
+        await fs.writeFile(join(directory, "company-plugins.json"), metadataBytes);
+        record.files[`node_modules/${name}/package.json`] = digest(pkgBytes);
+        record.files["company-plugins.json"] = digest(metadataBytes);
+        await fs.writeFile(join(directory, "combination.json"), JSON.stringify(record, null, 2));
+        const actual = sourceComponent(record, plugins, name),
+          artifact = join(channel, name === gea ? "gea.json" : "workbench.json"),
+          bytes = JSON.stringify({
+            combination: candidate.id,
+            package: name,
+            manifestSha256: digest(await fs.readFile(join(directory, "combination.json"))),
+          });
+        await fs.writeFile(artifact, bytes);
+        proposals.push({
+          kind: "current-source-update-v1",
+          source: pathToFileURL(join(channel, "catalog.json")).href,
+          baseline,
+          releases: [
+            {
+              package: name,
+              version: actual.version,
+              sha256: actual.sha256,
+              source: actual.source,
+              downloadSha256: digest(bytes),
+              url: pathToFileURL(artifact).href,
+              compatible: {
+                core: [baseline.core],
+                interface: "current-unified-v2",
+                workbench: [],
+              },
+            },
+          ],
+        });
+      }
+      const workbenchVersions = [
+        baseline.components[workbench].version,
+        proposals[1].releases[0].version,
+      ];
+      for (const proposal of proposals)
+        proposal.releases[0].compatible.workbench = workbenchVersions;
+      [proposalA, proposalB] = proposals;
+      await fs.writeFile(
+        join(channel, "catalog.json"),
+        JSON.stringify(
+          {
+            kind: "local-current-source-fixture",
+            proposals,
+            note: "Only package manifest versions change; shipped behavior stays the accepted current interface.",
+          },
+          null,
+          2,
+        ),
+      );
+    }
     const state = stockState();
     installStockRoutes(app, state, (body) => {
-      const index = body.messages.findLastIndex(
-          (message) => message.role === "user",
-        ),
-        tools = body.messages
-          .slice(index + 1)
-          .filter((message) => message.role === "tool");
+      const index = body.messages.findLastIndex((message) => message.role === "user"),
+        tools = body.messages.slice(index + 1).filter((message) => message.role === "tool");
       if (!tools.length)
         return {
           tool_calls: [
@@ -210,7 +182,6 @@ test(
       return { content: "本地分仓样本100件和30件，合计130件。" };
     });
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());
@@ -219,24 +190,19 @@ test(
     const rows = [],
       updates = [];
     let session, priorRows, history;
-    for (const phase of [
-      "baseline",
-      "gea-updated",
-      "both-updated",
-      "restored",
-    ]) {
+    for (const phase of ["baseline", "gea-updated", "both-updated", "restored"]) {
       if (phase !== "baseline") {
         await app.stop();
         if (phase === "gea-updated" || phase === "both-updated") {
+          if (phase === "gea-updated") {
+            await prepareChannel(app.runtime);
+            t.signal.throwIfAborted();
+          }
           const proposal = phase === "gea-updated" ? proposalA : proposalB;
           const result = await applySourceUpdate(app.runtime, proposal, {
             core,
           });
-          assert.equal(
-            result.phase,
-            "succeeded",
-            JSON.stringify(result.failed),
-          );
+          assert.equal(result.phase, "succeeded", JSON.stringify(result.failed));
           updates.push(result);
           if (phase === "gea-updated") {
             const late = await applySourceUpdate(app.runtime, proposalA, {
@@ -284,18 +250,9 @@ test(
       const page = await context.newPage();
       page.setDefaultTimeout(20000);
       await page.goto(app.origin);
-      const notice = page.getByRole("dialog", { name: /内测声明|预览版说明/ });
-      if (await notice.isVisible())
-        await notice.getByRole("button", { name: "继续", exact: true }).click();
-      if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-        await page.getByText("库存管理", { exact: true }).click();
-      await page.getByText("分仓库存", { exact: true }).click();
-      const frame = page
-        .locator('iframe[src*="/api/gea-html/inventory-fc/html"]')
-        .contentFrame();
-      await expect(
-        frame.getByText("FC001", { exact: true }).first(),
-      ).toBeVisible();
+      await openWorkbenchPage(page, "分仓库存");
+      const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
+      await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
       if (!session) {
         const created = await app.remote("session/create", {
           cwd: join(app.runtime, "workspace"),
@@ -350,17 +307,11 @@ test(
           ? proposalB.releases[0].version
           : baseline.components[workbench].version,
       );
-      assert.equal(
-        await fs.readFile(userFile, "utf8"),
-        "ticket10 retained data",
-      );
+      assert.equal(await fs.readFile(userFile, "utf8"), "ticket10 retained data");
       const modules = await fs.realpath(
         join(app.runtime, "home/profiles/plugin-split-validation/node_modules"),
       );
-      assert.equal(
-        modules,
-        join(app.runtime, "source-combinations", actual.id, "node_modules"),
-      );
+      assert.equal(modules, join(app.runtime, "source-combinations", actual.id, "node_modules"));
       const pageSource = await fs.readFile(
           join(modules, workbench, "lib/business/inventory-fc/index.html"),
           "utf8",

@@ -1,6 +1,6 @@
 # 当前官方客户端与源码组合验证
 
-源码组合的 Core 输入由 [当前源码 Core 声明](../scripts/current-core.json) 和本票冻结记录共同确定，通过标准官方构建提供 SDK/客户端产物。Core源码和产物不做本地补修；官方客户端使用其标准 `pnpm dev:desktop` / `pnpm start:desktop`。Web/离线测试只提供开发反馈，不替代最终正式UI同源与实际客户端验收。普通三包的双版宿主与SDK支持另由 [supported-cores.json](../scripts/supported-cores.json) 登记，并通过 [安装/Host接收](package-delivery.md) 核各自唯一SDK实例；源码组合的选择不缩小或替代普通包支持。
+源码组合的 Core 输入由 [当前源码 Core 声明](../scripts/current-core.json) 和本票冻结记录共同确定，通过标准官方构建提供 SDK/客户端产物。官方 Core 和正式客户端目录保持保护。当前 adaptation 指向本任务私有安全候选 `8ff14441`，通过本票登记的本地 Core 源码及 SDK 核验后使用；该候选尚未发布，不能从官方远端取得此提交。私有窗口仍使用标准 `pnpm dev:desktop` / `pnpm start:desktop`。Web/离线测试只提供开发反馈，不替代最终正式UI同源与实际客户端验收。普通三包的双版宿主与SDK支持另由 [supported-cores.json](../scripts/supported-cores.json) 登记，并通过 [安装/Host接收](package-delivery.md) 核各自唯一SDK实例；源码组合的选择不缩小或替代普通包支持。
 
 源码组合只有既有 Workbench、Manage、GEA、GenUI、Better Sidebar；它们由自己的官方bundle/profile入口装配，GEA patch只登记业务接入本身。官方插件生命周期与Manage Suite/Skill/MCP资源状态分开。原资源窄source贡献、业务算法/权限/取消保持，官方standard preset不重写。
 

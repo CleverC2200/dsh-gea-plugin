@@ -102,12 +102,14 @@ test("releasing a page tool owner cancels queued commands and the waiting public
   assert.equal(registry.receipts()[0].outcome, "failed");
   registry.shutdown();
 });
-test("business prompt masks keep the selected native ancestor loader and refuse generic business execution", async () => {
+test("business masks deny unavailable GEA tools while preserving official preset capabilities", async () => {
   const { mountBusinessPrompts } = await bundled("src/host/prompt-runtime.ts");
   const handlers = new Map();
   let guard;
   let mask;
   let preset = "gea-readonly";
+  let denied = false;
+  let executionChecks = 0;
   const native = new Set(["skill", "skill_reference_read"]);
   const tools = {
     register: () => () => {},
@@ -116,7 +118,7 @@ test("business prompt masks keep the selected native ancestor loader and refuse 
       return () => {};
     },
     schemas: () =>
-      ["gea_capabilities", "skill", "gea_cube_query", "run_code"].map((name) => ({ name })),
+      ["gea_capabilities", "skill", "gea_cube_query", "gea_sales_plan_write", "run_code"].map((name) => ({ name })),
     get: (name, selectedAgent) => {
       assert.equal(selectedAgent, agent, "native loader lookup uses the selected Agent ancestry");
       return native.has(name) ? { name } : undefined;
@@ -139,7 +141,9 @@ test("business prompt masks keep the selected native ancestor loader and refuse 
     tools,
     agents: { get: () => agent },
     sessionProjections: { stateOf: () => preset },
-    agentResources: {list: async () => [{id:"gea-readonly",kind:"prompt",installed:true,enabled:true}]},
+    agentResources: {
+      list: async () => [{ id: "gea-readonly", kind: "prompt", installed: true, enabled: true }],
+    },
     on: (name, fn) => {
       handlers.set(name, fn);
       return () => {};
@@ -154,17 +158,32 @@ test("business prompt masks keep the selected native ancestor loader and refuse 
     status: () => ({ user: { id: "one" } }),
     watchIdentity: () => () => {},
     readTurnRevision: () => 1,
-    assertExecutionAllowed: () => {},
     surfaceFor: () => undefined,
+    assertExecutionAllowed: (consumer) => {
+      executionChecks++;
+      assert.equal(consumer, "sales");
+      if (denied) throw Error("fixture permission revoked");
+    },
   };
   const dispose = mountBusinessPrompts(ctx, business, { readModules: () => [] }, new Map());
   await handlers.get("agent/pre-step")({ agent, messages: [] }, async () => ({
     kind: "enter",
     messages: [],
   }));
-  assert.ok(mask.allow.includes("skill"));
-  assert.ok(mask.allow.includes("skill_reference_read"));
-  assert.equal(mask.allow.includes("run_code"), false);
+  assert.equal(mask.allow, undefined);
+  assert.deepEqual(mask.deny, ["gea_sales_plan_write"]);
+  assert.equal(mask.deny.includes("skill"), false);
+  assert.equal(mask.deny.includes("run_code"), false);
+  assert.equal(executionChecks, 1);
+  denied = true;
+  await assert.rejects(
+    handlers.get("agent/pre-step")({ agent, messages: [] }, async () => ({
+      kind: "enter",
+      messages: [],
+    })),
+    /fixture permission revoked/,
+  );
+  assert.equal(executionChecks, 2);
   preset = "agent-resource-skill";
   assert.match(
     guard({ name: "gea_cube_query", agent, arguments: {} }),

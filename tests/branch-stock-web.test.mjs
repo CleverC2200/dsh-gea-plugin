@@ -1,16 +1,21 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { stock, installStockRoutes, stockState } from "./fixtures/branch-stock.mjs";
 import {
-  stock,
-  installStockRoutes,
-  stockState,
-} from "./fixtures/branch-stock.mjs";
+  branchStockAcceptance,
+  branchStockExpectedText,
+} from "./fixtures/branch-stock-acceptance.mjs";
 import { changeThemeSetting } from "./theme-settings.mjs";
+import {
+  htmlFrameElement,
+  openWorkbenchPage,
+  prepareWorkbenchHtmlRoots,
+} from "./fixtures/business-page.mjs";
 
 const out = resolve(".runtime/branch-stock-evidence");
 const migrated = resolve("../dsh-agent-workbench/lib/business/inventory-fc");
@@ -55,16 +60,22 @@ test(
   async (t) => {
     await mkdir(out, { recursive: true });
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());
-    const results = [];
-    for (const [label, root] of [
-      ["legacy", resolve("../dsh-agent-fc-plugin")],
-      ["migrated", migrated],
-    ]) {
-      const state = stockState();
+    // The immutable historical body supplies every business-text byte. Only
+    // W 3202a531's refresh button is added to the current full-text expectation.
+    // Separate monthly test plans support the unchanged numerical example.
+    // Its producer commit is unknown; the original artifact and data Git provenance live in the receipt.
+    const original = JSON.parse(
+      await readFile(new URL("./fixtures/branch-stock-original.json.raw", import.meta.url), "utf8"),
+    );
+    assert.deepEqual(original.fixture, stock);
+    const legacy = original.results.find((result) => result.label === "legacy");
+    assert.equal(typeof legacy?.text, "string");
+    const results = [legacy];
+    for (const [label, root] of [["migrated", migrated]]) {
+      const state = stockState(branchStockAcceptance);
       let step = 0;
       const app = await profile(t, {
         config: (base) => ({
@@ -78,19 +89,13 @@ test(
             maxTokens: 2048,
           },
         }),
-        env: {
-          GEA_TEST_MODEL_KEY: "fixture-key",
-          GEA_HTML_PLUGIN_ROOTS: JSON.stringify([root]),
-        },
+        beforeStart: prepareWorkbenchHtmlRoots([root]),
+        env: { GEA_TEST_MODEL_KEY: "fixture-key" },
       });
       installStockRoutes(app, state, (body) => {
         step++;
         if (step === 1)
-          return tool(
-            "skill",
-            { name: "inventory-fc", offset: 1, limit: 80 },
-            "stock-skill",
-          );
+          return tool("skill", { name: "inventory-fc", offset: 1, limit: 80 }, "stock-skill");
         if (step === 2) return tool("gea_cube_query", query, "stock-query");
         const receipt = body.messages
           .filter((x) => x.role === "tool")
@@ -116,28 +121,22 @@ test(
         })),
       );
       const page = await context.newPage();
+      await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
       page.setDefaultTimeout(25000);
       const errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
       try {
         await page.goto(app.origin);
-        await page
-          .getByRole("dialog", { name: /内测声明|预览版说明/ })
-          .getByRole("button", { name: "继续", exact: true })
-          .click();
-        if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-          await page.getByText("库存管理", { exact: true }).click();
-        await page.getByText("分仓库存", { exact: true }).click();
-        const iframe = page.locator(
-          'iframe[src*="/api/gea-html/inventory-fc/html"]',
-        );
+        await openWorkbenchPage(page, "分仓库存");
+        const iframe = htmlFrameElement(page, "inventory-fc");
         const frame = iframe.contentFrame();
-        await expect(
-          frame.getByText("当前库存", { exact: true }),
-        ).toBeVisible();
-        await expect(
-          frame.getByText("FC001", { exact: true }).first(),
-        ).toBeVisible();
+        await expect(frame.getByText("当前库存", { exact: true })).toBeVisible();
+        await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
+        await expect(frame.getByRole("button", { name: "刷新", exact: true })).toBeVisible();
+        assert.equal(
+          await frame.locator("body").evaluate(() => new Date().toISOString()),
+          "2026-09-29T04:00:00.000Z",
+        );
         const text = await frame.locator("body").innerText();
         assert.ok(state.rest.length > 5);
         assert.ok(state.restConsumers.includes("branch-inventory"));
@@ -147,24 +146,13 @@ test(
           fullPage: true,
         });
         if (label === "migrated") {
-          await expect(iframe).toHaveAttribute(
-            "sandbox",
-            "allow-scripts allow-downloads",
-          );
+          await expect(iframe).toHaveAttribute("sandbox", "allow-scripts allow-downloads");
           const settings = async (label) => {
-            await page
-              .getByRole("button", { name: "账户菜单", exact: true })
-              .click();
-            await page
-              .getByRole("menuitem", { name: "设置", exact: true })
-              .click();
-            await page
-              .getByRole("button", { name: "通用设置", exact: true })
-              .click();
+            await page.getByRole("button", { name: "账户菜单", exact: true }).click();
+            await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+            await page.getByRole("button", { name: "通用设置", exact: true }).click();
             await changeThemeSetting(page, label, "preference");
-            await page
-              .getByRole("button", { name: "关闭", exact: true })
-              .click();
+            await page.getByRole("button", { name: "关闭", exact: true }).click();
           };
           for (const [label, color] of [
             ["深色", "rgb(27, 29, 33)"],
@@ -172,40 +160,30 @@ test(
             ["深色", "rgb(27, 29, 33)"],
           ]) {
             await settings(label);
-            await expect(frame.locator("body")).toHaveCSS(
-              "background-color",
-              color,
-            );
+            await expect(frame.locator("body")).toHaveCSS("background-color", color);
             await expect(page.locator(".gea-agent-welcome")).toHaveCSS(
               "background-color",
               label === "深色" ? "rgb(36, 38, 43)" : "rgb(255, 255, 255)",
             );
           }
-          const contrast = await frame
-            .locator(".panel-primary")
-            .evaluate((button) => {
-              const luminance = (value) => {
-                const c = value
-                  .match(/[\d.]+/g)
-                  .slice(0, 3)
-                  .map(Number)
-                  .map((v) => {
-                    v /= 255;
-                    return v <= 0.04045
-                      ? v / 12.92
-                      : ((v + 0.055) / 1.055) ** 2.4;
-                  });
-                return c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
-              };
-              const css = getComputedStyle(button);
-              const a = luminance(css.color),
-                b = luminance(css.backgroundColor);
-              return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-            });
-          assert.ok(
-            contrast >= 4.5,
-            "enabled filled button must use paired foreground",
-          );
+          const contrast = await frame.locator(".panel-primary").evaluate((button) => {
+            const luminance = (value) => {
+              const c = value
+                .match(/[\d.]+/g)
+                .slice(0, 3)
+                .map(Number)
+                .map((v) => {
+                  v /= 255;
+                  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+                });
+              return c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
+            };
+            const css = getComputedStyle(button);
+            const a = luminance(css.color),
+              b = luminance(css.backgroundColor);
+            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+          });
+          assert.ok(contrast >= 4.5, "enabled filled button must use paired foreground");
           await page.screenshot({
             path: resolve(out, "migrated-dark.png"),
             fullPage: true,
@@ -214,27 +192,18 @@ test(
           const search = frame.getByPlaceholder("搜索 SKU / 产品名称");
           await search.scrollIntoViewIfNeeded();
           await search.fill("FC001");
-          await expect(
-            frame.locator(".replenishment-table tbody"),
-          ).toContainText("FC001");
-          await expect(
-            frame.locator(".replenishment-table tbody"),
-          ).not.toContainText("FC002");
+          await expect(frame.locator(".replenishment-table tbody")).toContainText("FC001");
+          await expect(frame.locator(".replenishment-table tbody")).not.toContainText("FC002");
           await search.fill("不存在的SKU");
-          await expect(
-            frame.getByText("没有符合当前筛选条件的 SKU"),
-          ).toBeVisible();
+          await expect(frame.getByText("没有符合当前筛选条件的 SKU")).toBeVisible();
           await search.fill("");
           const suggestion = page.locator(".gea-agent-prompts button").last();
           await suggestion.scrollIntoViewIfNeeded();
           await suggestion.click();
-          await expect(
-            page.locator('[contenteditable="true"],textarea').first(),
-          ).toHaveText(await suggestion.innerText());
-          await page
-            .locator('[contenteditable="true"],textarea')
-            .first()
-            .fill("");
+          await expect(page.locator('[contenteditable="true"],textarea').first()).toHaveText(
+            await suggestion.innerText(),
+          );
+          await page.locator('[contenteditable="true"],textarea').first().fill("");
           await page.screenshot({
             path: resolve(out, "migrated-narrow.png"),
             fullPage: true,
@@ -277,9 +246,7 @@ test(
           assert.match(receipts[0].text, /order-net-gap-v3/);
           assert.match(receipts[1].text, /100/);
           assert.equal(state.cube.length, 1);
-          assert.ok(
-            state.discovery.some((r) => r.agentCode === "branch-inventory"),
-          );
+          assert.ok(state.discovery.some((r) => r.agentCode === "branch-inventory"));
           assert.doesNotMatch(
             JSON.stringify(state.models),
             /fixture-cube-token|fixture-delegation/,
@@ -330,11 +297,11 @@ test(
         await app.stop();
       }
     }
-    // Same external rows must retain names, units, totals and calculations.
-    assert.equal(results[1].text, results[0].text);
+    // Preserve the complete names, units, columns, rows and calculations.
+    assert.equal(results[1].text, branchStockExpectedText(results[0].text));
     await writeFile(
       resolve(out, "comparison.json"),
-      JSON.stringify({ results, fixture: stock }, null, 2),
+      JSON.stringify({ results, fixture: stock, acceptance: branchStockAcceptance }, null, 2),
     );
   },
 );
@@ -347,14 +314,25 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
       const state = stockState();
       state.mode = mode === "empty-error" ? "empty" : mode;
       const app = await profile(t, {
-        env: { GEA_HTML_PLUGIN_ROOTS: JSON.stringify([migrated]) },
+        beforeStart: prepareWorkbenchHtmlRoots([migrated]),
       });
       let stockRoute;
-      installStockRoutes({ route: handler => { stockRoute = handler; } }, state, () => ({ content: "未连接外部模型" }));
+      installStockRoutes(
+        {
+          route: (handler) => {
+            stockRoute = handler;
+          },
+        },
+        state,
+        () => ({ content: "未连接外部模型" }),
+      );
       const heldRead = Promise.withResolvers();
       let waitingForWarehouse = false;
       app.route(async (request, response, reply) => {
-        if (["empty", "empty-error"].includes(mode) && request.url.pathname.endsWith("/ai/gateway/sql/execute")) {
+        if (
+          ["empty", "empty-error"].includes(mode) &&
+          request.url.pathname.endsWith("/ai/gateway/sql/execute")
+        ) {
           const body = JSON.parse(request.body);
           if (Object.values(body.parameters ?? {}).includes("34")) {
             waitingForWarehouse = true;
@@ -370,7 +348,6 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
       t.after(() => heldRead.resolve());
       await app.login();
       const browser = await chromium.launch({
-        channel: "chrome",
         headless: true,
       });
       const context = await browser.newContext({
@@ -385,59 +362,81 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
         })),
       );
       const page = await context.newPage();
-      const publishedContexts = [];
+      const publishedContexts = [],
+        contextRequests = [];
+      let owner;
       page.on("request", (request) => {
-        if (
-          !request.url().endsWith("/api/gea-html/inventory-fc/call") ||
-          !request.postData()
-        )
-          return;
+        if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData()) return;
         const payload = request.postDataJSON();
-        if (payload.method === "context")
-          publishedContexts.push(payload.parameters);
+        if (payload.operation === "context") {
+          contextRequests.push(payload);
+          if (payload.owner === owner) publishedContexts.push(payload.parameters);
+        }
       });
       await page.goto(app.origin);
-      await page
-        .getByRole("dialog", { name: /内测声明|预览版说明/ })
-        .getByRole("button", { name: "继续", exact: true })
-        .click();
-      if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-        await page.getByText("库存管理", { exact: true }).click();
-      await page.getByText("分仓库存", { exact: true }).click();
-      const frame = page
-        .locator('iframe[src*="/api/gea-html/inventory-fc/html"]')
-        .contentFrame();
+      const opened = page.waitForResponse((response) => {
+        const request = response.request();
+        if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData())
+          return false;
+        const input = request.postDataJSON();
+        return input.operation === "open" && input.pageId === "inventory-fc";
+      });
+      await openWorkbenchPage(page, "分仓库存");
+      const reply = await opened;
+      const pageReply = await reply.json();
+      if (mode === "denied") {
+        assert.equal(reply.status(), 400);
+        assert.match(pageReply.error, /^AGENT_ACCESS_DENIED:/);
+      } else {
+        assert.equal(reply.status(), 200);
+        owner = pageReply.owner;
+        assert.match(owner, /^[0-9a-f-]{36}$/);
+        publishedContexts.push(
+          ...contextRequests
+            .filter((request) => request.owner === owner)
+            .map((request) => request.parameters),
+        );
+      }
+      const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
       try {
         if (mode === "denied") {
-          await expect(
-            page.getByRole("alert").filter({ hasText: "重新连接" }),
-          ).toBeVisible({ timeout: 15000 });
+          const failure = page.getByRole("alert").filter({ hasText: "对话操作失败" });
+          await expect(failure).toBeVisible({
+            timeout: 15000,
+          });
+          await expect(failure).toHaveAttribute("title", pageReply.error);
           assert.equal(state.rest.length, 0);
+          await expect(frame.getByText("FC001", { exact: true })).toHaveCount(0);
         } else if (mode === "error") {
-          await expect(
-            frame.getByText("无法进入分仓库存", { exact: true }),
-          ).toBeVisible({ timeout: 20000 });
-          await expect(frame.getByText("FC001", { exact: true })).toHaveCount(
-            0,
+          const failure = frame.getByRole("alert").filter({ hasText: "当前分仓数据尚未就绪" });
+          await expect(failure).toBeVisible({
+            timeout: 20000,
+          });
+          await expect(failure).toContainText(
+            "数据读取失败，请刷新重试；若仍失败，请查看接口错误详情",
           );
-          if (mode === "denied")
-            assert.equal(
-              state.rest.length,
-              0,
-              "rejected delegation cannot reach SQL",
-            );
+          assert.ok(state.rest.length > 0, "the visible failure follows this profile's SQL read");
+          await expect(frame.getByText("FC001", { exact: true })).toHaveCount(0);
+          assert.equal(
+            publishedContexts.some(
+              (context) =>
+                context?.parts?.data ||
+                context?.parts?.inventoryInsight ||
+                context?.parts?.branchDraft,
+            ),
+            false,
+            "failed initial catalog read must not publish inventory facts",
+          );
         } else if (mode === "empty" || mode === "empty-error") {
-          await expect(
-            frame.getByText("当前授权范围暂无库存与计划数据"),
-          ).toBeVisible({ timeout: 20000 });
-          await frame
-            .getByRole("button", { name: "选择分仓", exact: true })
-            .click();
-          await frame
-            .getByRole("option", { name: "郑州分仓", exact: true })
-            .click();
+          await expect(frame.getByText("当前授权范围暂无库存与计划数据")).toBeVisible({
+            timeout: 20000,
+          });
+          await frame.getByRole("button", { name: "选择分仓", exact: true }).click();
+          await frame.getByRole("option", { name: "郑州分仓", exact: true }).click();
           await expect.poll(() => waitingForWarehouse).toBe(true);
-          await expect.poll(() => publishedContexts.at(-1)?.parts?.queryState?.state).toBe("loading");
+          await expect
+            .poll(() => publishedContexts.at(-1)?.parts?.queryState?.state)
+            .toBe("loading");
           const loadingParts = publishedContexts.at(-1).parts;
           assert.equal(loadingParts.queryState.warehouseId, "zhengzhou");
           assert.equal(loadingParts.pageFilters.warehouseId, "zhengzhou");
@@ -446,43 +445,47 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
           assert.equal(loadingParts.branchDraft, undefined);
           heldRead.resolve();
           if (mode === "empty-error") {
-            await expect(frame.getByText("无法进入分仓库存", { exact: true })).toBeVisible();
-            await expect.poll(() => publishedContexts.at(-1)?.parts?.queryState?.state).toBe("error");
+            await expect
+              .poll(() => publishedContexts.at(-1)?.parts?.queryState?.state)
+              .toBe("error");
             const errorParts = publishedContexts.at(-1).parts;
             assert.equal(errorParts.data, undefined);
             assert.equal(errorParts.inventoryInsight, undefined);
             assert.equal(errorParts.branchDraft, undefined);
             assert.equal(errorParts.queryState.warehouseId, "zhengzhou");
             assert.ok(errorParts.queryState.message);
+            const failure = frame.getByRole("alert").filter({ hasText: "当前分仓数据尚未就绪" });
+            await expect(failure).toBeVisible();
+            await expect(failure).toContainText(errorParts.queryState.message);
+            await expect(frame.getByText("FC001", { exact: true })).toHaveCount(0);
             await mkdir(out, { recursive: true });
-            await writeFile(resolve(out, "loading-error-context.json"), JSON.stringify({ loadingParts, errorParts }, null, 2));
+            await writeFile(
+              resolve(out, "loading-error-context.json"),
+              JSON.stringify({ loadingParts, errorParts }, null, 2),
+            );
             return;
           }
-          await expect(
-            frame.getByText("FC001", { exact: true }).first(),
-          ).toBeVisible({ timeout: 20000 });
-          await expect(
-            frame.getByRole("button", { name: "选择分仓", exact: true }),
-          ).toContainText("郑州分仓");
+          await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible({
+            timeout: 20000,
+          });
+          await expect(frame.getByRole("button", { name: "选择分仓", exact: true })).toContainText(
+            "郑州分仓",
+          );
           await expect
             .poll(() => publishedContexts.at(-1)?.parts?.queryState)
             .toEqual({ state: "ready", warehouseId: "zhengzhou" });
-          assert.equal(
-            publishedContexts.at(-1).parts.pageFilters.warehouseId,
-            "zhengzhou",
-          );
-          assert.ok(
-            state.rest.some((request) =>
-              Object.values(request.parameters).includes("34"),
-            ),
-          );
+          assert.equal(publishedContexts.at(-1).parts.pageFilters.warehouseId, "zhengzhou");
+          assert.ok(state.rest.some((request) => Object.values(request.parameters).includes("34")));
           await frame.getByRole("button", { name: "选择分仓", exact: true }).click();
           await frame.getByRole("option", { name: "长沙分仓", exact: true }).click();
           await expect(frame.getByText("当前授权范围暂无库存与计划数据")).toBeVisible();
           await expect.poll(() => publishedContexts.at(-1)?.parts?.queryState?.state).toBe("empty");
           const emptyParts = publishedContexts.at(-1).parts;
           await mkdir(out, { recursive: true });
-          await writeFile(resolve(out, "empty-return-context.json"), JSON.stringify(emptyParts, null, 2));
+          await writeFile(
+            resolve(out, "empty-return-context.json"),
+            JSON.stringify(emptyParts, null, 2),
+          );
           assert.equal(emptyParts.queryState.warehouseId, "changsha");
           assert.equal(emptyParts.pageFilters.warehouseId, "changsha");
           assert.equal(emptyParts.data, undefined);
@@ -490,16 +493,18 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
           assert.equal(emptyParts.branchDraft, undefined);
           await frame.getByRole("button", { name: "选择分仓", exact: true }).click();
           await frame.getByRole("option", { name: "郑州分仓", exact: true }).click();
-          await expect.poll(() => publishedContexts.at(-1)?.parts?.queryState).toEqual({ state: "ready", warehouseId: "zhengzhou" });
-          await expect.poll(() => publishedContexts.at(-1)?.parts?.inventoryInsight?.summary).toMatch(/当前库存/);
+          await expect
+            .poll(() => publishedContexts.at(-1)?.parts?.queryState)
+            .toEqual({ state: "ready", warehouseId: "zhengzhou" });
+          await expect
+            .poll(() => publishedContexts.at(-1)?.parts?.inventoryInsight?.summary)
+            .toMatch(/当前库存/);
           assert.equal(publishedContexts.at(-1).parts.branchDraft.warehouseId, "zhengzhou");
         } else {
-          await expect(
-            frame.getByText("FC001", { exact: true }).first(),
-          ).toBeVisible({ timeout: 20000 });
-          const row = frame
-            .locator(".replenishment-table tbody tr")
-            .filter({ hasText: "FC001" });
+          await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible({
+            timeout: 20000,
+          });
+          const row = frame.locator(".replenishment-table tbody tr").filter({ hasText: "FC001" });
           await expect(row.locator("td").nth(3)).toContainText(/待核实|—|-/);
         }
         await mkdir(out, { recursive: true });

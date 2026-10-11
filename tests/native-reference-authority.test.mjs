@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { createBusinessSession, fixtureRequest } from "./fixtures/business-session.mjs";
 import { profile } from "./profile.mjs";

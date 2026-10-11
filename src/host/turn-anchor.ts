@@ -66,14 +66,15 @@ export function userTurnCount(messages: readonly unknown[]): number {
 export function turnAnchorText(question: string): string {
   const text = question.replace(/\s+/g, " ").trim().slice(0, MAX_QUESTION_CHARS);
   return `【本轮用户问题】${text}\n宿主位置、目录和工具结果不是新问题；先交付已核实结果并说明缺口。`;
-
 }
 
 /** 这条消息是不是我们上一轮/上一步注入的锚点。 */
 export function isTurnAnchor(message: unknown): boolean {
   const source = (message as AnyMessage | undefined)?.source;
-  return source?.kind === "gea-turn-anchor" ||
-    (source?.kind === "plugin" && source.plugin === TURN_ANCHOR_PLUGIN);
+  return (
+    source?.kind === "gea-turn-anchor" ||
+    (source?.kind === "plugin" && source.plugin === TURN_ANCHOR_PLUGIN)
+  );
 }
 
 /**
@@ -127,18 +128,15 @@ export function mountTurnAnchor(
         hooks.onNewQuestion?.(question, scope);
       }
     }
-    const nextMessages = anchorMessages(
-      current,
-      question,
-      (text) =>
-        createUserMessage({
-          source: {
-            kind: "gea-turn-anchor",
-            form: "notice",
-            summary: TURN_ANCHOR_SUMMARY,
-          },
-          content: [{ type: "text", text }],
-        }),
+    const nextMessages = anchorMessages(current, question, (text) =>
+      createUserMessage({
+        source: {
+          kind: "gea-turn-anchor",
+          form: "notice",
+          summary: TURN_ANCHOR_SUMMARY,
+        },
+        content: [{ type: "text", text }],
+      }),
     );
     if (nextMessages === current) return decision;
     // 运行日志（桌面端落进 desktop.log）：确认锚点真的注入了，也便于回看是哪一轮。

@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 type Scalar = string | number | boolean | null;
 type Row = Record<string, unknown>;
 type ColumnMetadata = { returnedColumns?: unknown[]; rejectedColumns?: unknown[] };
-type SqlRows = ColumnMetadata & {rows: Row[]; total?: number | null};
+type SqlRows = ColumnMetadata & { rows: Row[]; total?: number | null };
 type QueryOptions = { pageSize: number; pageNo?: number };
 /** One Host-owned allowance is reused by all queries and renewed delegations. */
 export type SqlReadLimit = { maxRows: number; maxPages: number; beforeRequest(): void };
@@ -16,17 +16,8 @@ export type RowPacking = {
 };
 export type BusinessDatabase = {
   query(sql: string, values?: unknown[]): Promise<SqlRows>;
-  queryPage(
-    sql: string,
-    values: unknown[],
-    pageNo: number,
-    pageSize: number,
-  ): Promise<SqlRows>;
-  queryPackedRows?(
-    sql: string,
-    values: unknown[],
-    packing: RowPacking,
-  ): Promise<{ rows: Row[] }>;
+  queryPage(sql: string, values: unknown[], pageNo: number, pageSize: number): Promise<SqlRows>;
+  queryPackedRows?(sql: string, values: unknown[], packing: RowPacking): Promise<{ rows: Row[] }>;
   queryWithOptions?(
     sql: string,
     values: unknown[],
@@ -85,19 +76,11 @@ export function unpackBusinessRows(groups: Row[]) {
     let packed = group.dsh_rows;
     if (typeof packed === "string") {
       if (packed.length > 20_000_000)
-        throw new GeaSqlError(
-          "GEA_SQL_RESULT_TOO_LARGE",
-          "业务明细超过读取上限",
-          502,
-        );
+        throw new GeaSqlError("GEA_SQL_RESULT_TOO_LARGE", "业务明细超过读取上限", 502);
       try {
         packed = JSON.parse(packed);
       } catch {
-        throw new GeaSqlError(
-          "GEA_SQL_RESPONSE_INVALID",
-          "业务明细分组格式无效",
-          502,
-        );
+        throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "业务明细分组格式无效", 502);
       }
     }
     if (
@@ -105,18 +88,9 @@ export function unpackBusinessRows(groups: Row[]) {
       !packed.every(record) ||
       packed.length !== Number(group.dsh_row_count)
     )
-      throw new GeaSqlError(
-        "GEA_SQL_RESULT_INCOMPLETE",
-        "业务明细分组不完整",
-        502,
-        true,
-      );
+      throw new GeaSqlError("GEA_SQL_RESULT_INCOMPLETE", "业务明细分组不完整", 502, true);
     if (rows.length + packed.length > 100000)
-      throw new GeaSqlError(
-        "GEA_SQL_RESULT_TOO_LARGE",
-        "业务明细超过读取上限",
-        502,
-      );
+      throw new GeaSqlError("GEA_SQL_RESULT_TOO_LARGE", "业务明细超过读取上限", 502);
     rows.push(...packed);
   }
   return { rows };
@@ -158,11 +132,7 @@ export function prepareGeaSql(sql: string, values: unknown[] = []) {
         (typeof value === "number" && Number.isFinite(value))
       )
     ) {
-      throw new GeaSqlError(
-        "GEA_SQL_PARAMETER_INVALID",
-        "业务查询参数无效",
-        400,
-      );
+      throw new GeaSqlError("GEA_SQL_PARAMETER_INVALID", "业务查询参数无效", 400);
     }
     parameters[name] = value;
     return `:${name}`;
@@ -173,8 +143,7 @@ export function prepareGeaSql(sql: string, values: unknown[] = []) {
     /'(?:''|[^'])*'|--[^\r\n]*|\/\*[\s\S]*?\*\/|(?<![\w$".])(?:data_service|"data_service")\s*\.\s*|"(?:""|[^"])*"|\$([1-9]\d*)/gi;
   const prepared = sql.replace(token, (match, position: string | undefined) => {
     if (/^(?:data_service|"data_service")\s*\./i.test(match)) return "";
-    if (!position)
-      return match.startsWith("--") || match.startsWith("/*") ? " " : match;
+    if (!position) return match.startsWith("--") || match.startsWith("/*") ? " " : match;
     const value = values[Number(position) - 1];
     const name = `gea_p${position}`;
     return Array.isArray(value)
@@ -189,11 +158,7 @@ export function prepareGeaSql(sql: string, values: unknown[] = []) {
     ) ||
     /;\s*\S/.test(code)
   ) {
-    throw new GeaSqlError(
-      "GEA_SQL_READ_ONLY_REQUIRED",
-      "业务数据接口只允许单条只读查询",
-      400,
-    );
+    throw new GeaSqlError("GEA_SQL_READ_ONLY_REQUIRED", "业务数据接口只允许单条只读查询", 400);
   }
   return { sql: prepared.replace(/;\s*$/, ""), parameters };
 }
@@ -213,11 +178,7 @@ export function geaSqlPageRequest(
     pageSize > 200 ||
     !Number.isSafeInteger((pageNo - 1) * pageSize)
   )
-    throw new GeaSqlError(
-      "GEA_SQL_PARAMETER_INVALID",
-      "业务查询分页大小无效",
-      400,
-    );
+    throw new GeaSqlError("GEA_SQL_PARAMETER_INVALID", "业务查询分页大小无效", 400);
   let name = "fc_page";
   while (
     Object.hasOwn(prepared.parameters, name + "_limit") ||
@@ -254,9 +215,7 @@ function rowsFrom(payload: unknown): Row[] | null {
 function totalFrom(payload: unknown): number | null {
   if (!record(payload)) return null;
   const total =
-    payload.total === null ||
-    payload.total === undefined ||
-    payload.total === ""
+    payload.total === null || payload.total === undefined || payload.total === ""
       ? NaN
       : Number(payload.total);
   if (Number.isSafeInteger(total) && total >= 0) return total;
@@ -295,11 +254,7 @@ export function createGeaSqlDatabase(
     const prepared = prepareGeaSql(sql, values);
     const { pageSize } = options;
     if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 200) {
-      throw new GeaSqlError(
-        "GEA_SQL_PARAMETER_INVALID",
-        "业务查询分页大小无效",
-        400,
-      );
+      throw new GeaSqlError("GEA_SQL_PARAMETER_INVALID", "业务查询分页大小无效", 400);
     }
     const fetchPage = async (pageNo: number, includeTotal: boolean) => {
       transport.signal.throwIfAborted();
@@ -319,10 +274,7 @@ export function createGeaSqlDatabase(
           process.env.GEA_SQL_REQUEST_TIMEOUT_SECONDS ??
           "30",
       );
-      const timeoutMs =
-        Number.isFinite(configured) && configured > 0
-          ? configured * 1000
-          : 30_000;
+      const timeoutMs = Number.isFinite(configured) && configured > 0 ? configured * 1000 : 30_000;
       let payload: unknown;
       try {
         const response = await (transport.fetch ?? fetch)(target, {
@@ -333,22 +285,15 @@ export function createGeaSqlDatabase(
             "X-Delegation-Token": token,
             "X-Request-Id": randomUUID(),
           },
-          body: JSON.stringify(
-            geaSqlPageRequest(prepared, pageNo, pageSize, includeTotal),
-          ),
+          body: JSON.stringify(geaSqlPageRequest(prepared, pageNo, pageSize, includeTotal)),
           redirect: "error",
           cache: "no-store",
-          signal: AbortSignal.any([
-            transport.signal,
-            AbortSignal.timeout(timeoutMs),
-          ]),
+          signal: AbortSignal.any([transport.signal, AbortSignal.timeout(timeoutMs)]),
         });
         const body: unknown = await response.json().catch(() => null);
         transport.signal.throwIfAborted();
         const responseCode =
-          record(body) && typeof body.code === "number"
-            ? body.code
-            : response.status;
+          record(body) && typeof body.code === "number" ? body.code : response.status;
         if (
           !response.ok ||
           !record(body) ||
@@ -357,20 +302,21 @@ export function createGeaSqlDatabase(
           responseCode < 200 ||
           responseCode >= 300
         ) {
-          const safeDiagnostic = new GeaResponseError(response.status, body, [
-            token,
-          ]);
+          const safeDiagnostic = new GeaResponseError(response.status, body, [token]);
           const upstreamCode = record(body)
-            ? [failureFrom(body)?.reasonCode, body.errorCode, body.code, body.message, body.msg].find(
-                (value) =>
-                  typeof value === "string" &&
-                  /^[A-Z][A-Z0-9_]{2,127}$/.test(value),
-              )
+            ? [
+                failureFrom(body)?.reasonCode,
+                body.errorCode,
+                body.code,
+                body.message,
+                body.msg,
+              ].find((value) => typeof value === "string" && /^[A-Z][A-Z0-9_]{2,127}$/.test(value))
             : null;
           // This endpoint authenticates with a delegated token. A bare 401
           // therefore means the delegation can be renewed; a 403 remains a
           // genuine access decision and must not trigger a retry.
-          const rejected = response.status === 401 ||
+          const rejected =
+            response.status === 401 ||
             (typeof upstreamCode === "string" &&
               /^(AI_GATEWAY_SESSION_(MAX_LIFETIME_EXCEEDED|EXPIRED|REVOKED|NOT_FOUND)|GEA_GATEWAY_SESSION_REJECTED)$/.test(
                 upstreamCode,
@@ -389,33 +335,31 @@ export function createGeaSqlDatabase(
               : denied
                 ? "当前用户没有该业务数据的 GEA 读取权限"
                 : "GEA SQL 查询失败（" +
-                  (upstreamCode ?? (response.ok
-                    ? responseCode >= 400 ? `业务码 ${responseCode}` : "GEA_SQL_QUERY_FAILED"
-                    : safeDiagnostic.code)) +
+                  (upstreamCode ??
+                    (response.ok
+                      ? responseCode >= 400
+                        ? `业务码 ${responseCode}`
+                        : "GEA_SQL_QUERY_FAILED"
+                      : safeDiagnostic.code)) +
                   "）" +
                   (safeDiagnostic.message === safeDiagnostic.code
                     ? ""
-                    : "：" +
-                      safeDiagnostic.message.slice(
-                        safeDiagnostic.code.length + 1,
-                      )),
+                    : "：" + safeDiagnostic.message.slice(safeDiagnostic.code.length + 1)),
             rejected ? 401 : response.ok ? 503 : response.status,
-            !rejected && !/^(RESOURCE_NOT_PUBLISHED|FIELD_NOT_PUBLISHED|NO_RETURN_COLUMN_ALLOWED|RETURN_PERMISSION_DENIED)$/.test(String(upstreamCode)) && (response.status === 429 || response.status >= 500),
+            !rejected &&
+              !/^(RESOURCE_NOT_PUBLISHED|FIELD_NOT_PUBLISHED|NO_RETURN_COLUMN_ALLOWED|RETURN_PERMISSION_DENIED)$/.test(
+                String(upstreamCode),
+              ) &&
+              (response.status === 429 || response.status >= 500),
           );
         }
         if (!("result" in body))
-          throw new GeaSqlError(
-            "GEA_SQL_RESPONSE_INVALID",
-            "GEA SQL 查询返回格式无效",
-            502,
-            true,
-          );
+          throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "GEA SQL 查询返回格式无效", 502, true);
         payload = body.result;
       } catch (error) {
         if (error instanceof GeaSqlError) throw error;
         const timeout =
-          error instanceof Error &&
-          (error.name === "TimeoutError" || error.name === "AbortError");
+          error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
         throw new GeaSqlError(
           timeout ? "GEA_SQL_QUERY_TIMEOUT" : "GEA_SQL_UNAVAILABLE",
           timeout ? "GEA SQL 查询超时" : "GEA SQL 查询服务暂时不可用",
@@ -425,25 +369,24 @@ export function createGeaSqlDatabase(
       }
       const pageRows = rowsFrom(payload);
       if (!pageRows)
-        throw new GeaSqlError(
-          "GEA_SQL_RESPONSE_INVALID",
-          "GEA SQL 查询返回格式无效",
-          502,
-          true,
-        );
+        throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "GEA SQL 查询返回格式无效", 502, true);
       const total = totalFrom(payload);
-      if (transport.limit && (pageRows.length > transport.limit.maxRows || (total !== null && total > transport.limit.maxRows)))
+      if (
+        transport.limit &&
+        (pageRows.length > transport.limit.maxRows ||
+          (total !== null && total > transport.limit.maxRows))
+      )
         throw new GeaSqlError("GEA_SQL_RESULT_LIMIT", "业务查询结果超过本次读取上限", 400);
       // A single-page query never fetches the remaining counted pages.
-      if (transport.limit && options.pageNo === undefined && total !== null && Math.ceil(total / pageSize) > transport.limit.maxPages)
+      if (
+        transport.limit &&
+        options.pageNo === undefined &&
+        total !== null &&
+        Math.ceil(total / pageSize) > transport.limit.maxPages
+      )
         throw new GeaSqlError("GEA_SQL_PAGE_LIMIT", "业务查询页数超过本次读取上限", 400);
       if (includeTotal && total === null)
-        throw new GeaSqlError(
-          "GEA_SQL_RESPONSE_INVALID",
-          "GEA SQL 计数页缺少总数",
-          502,
-          true,
-        );
+        throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "GEA SQL 计数页缺少总数", 502, true);
       // Validate metadata whenever supplied; older compatible envelopes may nest only rows/total.
       if (record(payload))
         for (const [key, expected] of Object.entries({
@@ -451,16 +394,8 @@ export function createGeaSqlDatabase(
           pageSize,
           offset: (pageNo - 1) * pageSize,
         })) {
-          if (
-            key in payload &&
-            (payload[key] === null || Number(payload[key]) !== expected)
-          )
-            throw new GeaSqlError(
-              "GEA_SQL_RESPONSE_INVALID",
-              "GEA SQL 分页位置不匹配",
-              502,
-              true,
-            );
+          if (key in payload && (payload[key] === null || Number(payload[key]) !== expected))
+            throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "GEA SQL 分页位置不匹配", 502, true);
         }
       return { rows: pageRows, total, ...columnMetadata(payload) };
     };
@@ -469,23 +404,18 @@ export function createGeaSqlDatabase(
       total = first.total;
     if (total === null) {
       if (first.rows.length < pageSize) return { ...first, rows: first.rows };
-      throw new GeaSqlError(
-        "GEA_SQL_RESULT_INCOMPLETE",
-        "GEA SQL 分页结果不完整",
-        502,
-        true,
-      );
+      throw new GeaSqlError("GEA_SQL_RESULT_INCOMPLETE", "GEA SQL 分页结果不完整", 502, true);
     }
     const pageCount = Math.ceil(total / pageSize);
     if (total > 200000)
-      throw new GeaSqlError(
-        "GEA_SQL_RESULT_TOO_LARGE",
-        "GEA SQL 查询结果超过读取上限",
-        502,
-      );
+      throw new GeaSqlError("GEA_SQL_RESULT_TOO_LARGE", "GEA SQL 查询结果超过读取上限", 502);
     const validate = (page: typeof first, pageNo: number) => {
       if (JSON.stringify(columnMetadata(page)) !== JSON.stringify(columnMetadata(first)))
-        throw new GeaSqlError("GEA_SQL_COLUMN_PERMISSION_CHANGED", "查询期间字段权限发生变化，请重新查询", 403);
+        throw new GeaSqlError(
+          "GEA_SQL_COLUMN_PERMISSION_CHANGED",
+          "查询期间字段权限发生变化，请重新查询",
+          403,
+        );
       if (page.total !== null && page.total !== total)
         throw new GeaSqlError(
           "GEA_SQL_PAGINATION_CHANGED",
@@ -493,16 +423,8 @@ export function createGeaSqlDatabase(
           503,
           true,
         );
-      if (
-        page.rows.length !==
-        Math.min(pageSize, Math.max(0, total - (pageNo - 1) * pageSize))
-      )
-        throw new GeaSqlError(
-          "GEA_SQL_RESULT_INCOMPLETE",
-          "GEA SQL 分页结果不完整",
-          502,
-          true,
-        );
+      if (page.rows.length !== Math.min(pageSize, Math.max(0, total - (pageNo - 1) * pageSize)))
+        throw new GeaSqlError("GEA_SQL_RESULT_INCOMPLETE", "GEA SQL 分页结果不完整", 502, true);
       return page.rows;
     };
     const rows = validate(first, 1);
@@ -513,14 +435,11 @@ export function createGeaSqlDatabase(
         (_, index) => start + index,
       );
       const pages = await Promise.all(
-        numbers.map(async (number) =>
-          validate(await fetchPage(number, false), number),
-        ),
+        numbers.map(async (number) => validate(await fetchPage(number, false), number)),
       );
       rows.push(...pages.flat());
     }
-    if (pageCount > 1)
-      rows.push(...validate(await fetchPage(pageCount, true), pageCount));
+    if (pageCount > 1) rows.push(...validate(await fetchPage(pageCount, true), pageCount));
     return { rows, ...columnMetadata(first) };
   }
   async function query(
@@ -539,30 +458,22 @@ export function createGeaSqlDatabase(
         console.info(
           "dsh-query-timing",
           JSON.stringify({
-            stage:
-              sql.match(/\/\*\s*(branch:[a-z0-9-]+)\s*\*\//)?.[1] ?? "gea-sql",
+            stage: sql.match(/\/\*\s*(branch:[a-z0-9-]+)\s*\*\//)?.[1] ?? "gea-sql",
             ms: Math.round(performance.now() - started),
             rows,
           }),
         );
     }
   }
-  async function queryPackedRows(
-    sql: string,
-    values: unknown[],
-    packing: RowPacking,
-  ) {
+  async function queryPackedRows(sql: string, values: unknown[], packing: RowPacking) {
     // Validate the original fixed SQL before composing the trusted grouping query.
     prepareGeaSql(sql, values);
-    return unpackBusinessRows(
-      (await query(packedRowsSql(sql, packing), values)).rows,
-    );
+    return unpackBusinessRows((await query(packedRowsSql(sql, packing), values)).rows);
   }
   return {
     query,
     queryWithOptions: query,
     queryPackedRows,
-    queryPage: (sql, values, pageNo, pageSize) =>
-      execute(sql, values, { pageNo, pageSize }),
+    queryPage: (sql, values, pageNo, pageSize) => execute(sql, values, { pageNo, pageSize }),
   };
 }

@@ -16,5 +16,19 @@
       "@deepseek-ai/schemastery": "3.18.5-alpha.1",
       "@deepseek-ai/cordis-plugin-include": "1.0.10-alpha.1"
     }
+  },
+  {
+    "id": "private-core-high-20261011",
+    "head": "8ff14441ac932b55cf1f14b1715128eaa162b1ec",
+    "lockSha256": "10da992dcf0e2a50cdf94c3335adf18c63beca7fdaa0d4adf649f0a5428dd266",
+    "packageManager": "pnpm@11.11.0",
+    "nodeMajor": 24,
+    "scope": "task-owned private security candidate; original official Core protected",
+    "version": "0.2.1-alpha.1",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.5-alpha.1",
+      "@deepseek-ai/schemastery": "3.18.5-alpha.1",
+      "@deepseek-ai/cordis-plugin-include": "1.0.10-alpha.1"
+    }
   }
 ]

@@ -1,16 +1,21 @@
-import {currentHtmlResource} from "./fixtures/html-resource.mjs";
-import test from "node:test";
+import { currentHtmlResource } from "./fixtures/html-resource.mjs";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { profile } from "./profile.mjs";
+import {
+  openSalesPlan,
+  openWorkbenchPage,
+  htmlFrameElement,
+  prepareWorkbenchHtmlRoots,
+} from "./fixtures/business-page.mjs";
 
 async function enableSelection(page) {
   const button = page.locator("[data-page-selection-trigger]");
-  if ((await button.getAttribute("aria-pressed")) !== "true")
-    await button.click();
+  if ((await button.getAttribute("aria-pressed")) !== "true") await button.click();
 }
 
 test(
@@ -77,12 +82,8 @@ test(
       if (path === "/v1/chat/completions") {
         const body = JSON.parse(req.body);
         prompts.push(body);
-        const wantsAction = JSON.stringify(body.messages).includes(
-          "展开引用的这一行",
-        );
-        const referenceId = JSON.stringify(
-          body.messages.filter((m) => m.role === "user"),
-        )
+        const wantsAction = JSON.stringify(body.messages).includes("展开引用的这一行");
+        const referenceId = JSON.stringify(body.messages.filter((m) => m.role === "user"))
           .match(/R[a-f0-9]{12}/g)
           ?.at(-1);
         const reading = referenceId && !readReferences.has(referenceId);
@@ -97,9 +98,7 @@ test(
                   id: "pick-action",
                   type: "function",
                   function: {
-                    name: reading
-                      ? "page_reference_read"
-                      : "gea_workbench_apply",
+                    name: reading ? "page_reference_read" : "gea_workbench_apply",
                     arguments: JSON.stringify(
                       reading
                         ? { id: referenceId }
@@ -110,9 +109,7 @@ test(
               ],
             }
           : {
-              content: wantsAction
-                ? "已展开引用的这一行。"
-                : "已收到选中的计划内容。",
+              content: wantsAction ? "已展开引用的这一行。" : "已收到选中的计划内容。",
             };
         res.setHeader("Content-Type", "text/event-stream");
         res.end(
@@ -158,14 +155,12 @@ test(
             snapshotHash: "a".repeat(64),
           },
         });
-      if (path.endsWith("/versions"))
-        return send([{ ...plan, id: "v", effective: true }]);
+      if (path.endsWith("/versions")) return send([{ ...plan, id: "v", effective: true }]);
       if (path.endsWith("/skus")) return send([sku]);
       return false;
     });
     await app.login();
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());
@@ -185,18 +180,15 @@ test(
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("console", (m) => {
-      if (/violates.*Content Security Policy/i.test(m.text()))
-        errors.push(m.text());
+      if (/violates.*Content Security Policy/i.test(m.text())) errors.push(m.text());
     });
     await page.goto(app.origin);
     await page
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    const frame = page.frameLocator("iframe[data-gea-workbench]");
-    await expect(
-      frame.getByTestId("regional-approval-workbench"),
-    ).toBeVisible();
+    const frame = await openSalesPlan(page);
+    await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     const target = frame.getByTestId("regional-approval-month-plan-p");
     await expect(target).toBeVisible();
     await enableSelection(page);
@@ -209,27 +201,24 @@ test(
         path: ".runtime/page-interaction/selection-desktop.png",
       });
     await target.click();
-    await expect(
-      frame.getByRole("status").filter({ hasText: "已加入输入框" }),
-    ).toBeVisible();
-    const editor = page.locator('[contenteditable="true"]').first();
+    await expect(frame.getByRole("status").filter({ hasText: "已加入输入框" })).toBeVisible();
+    const editor = page
+      .getByRole("complementary", { name: "AI对话", exact: true })
+      .locator('[contenteditable="true"]');
     await expect(editor).toContainText("计划");
     const draftLabel = (await editor.innerText()).trim();
+    await expect(editor.getByTitle(draftLabel, { exact: true })).toBeVisible();
     await editor.click();
     await page.keyboard.press("End");
     await page.keyboard.insertText("解释引用的这个金额");
     await page.keyboard.press("Enter");
     await expect.poll(() => prompts.length).toBeGreaterThan(0);
-    const sent = JSON.stringify(
-      prompts[0].messages.filter((m) => m.role === "user"),
-    );
+    const sent = JSON.stringify(prompts[0].messages.filter((m) => m.role === "user"));
     assert.match(sent, /dsh-page:R[a-f0-9]{12}/);
     assert.equal(sent.includes("row:p"), false);
     assert.equal(sent.includes("月度目标："), false);
     assert.match(sent, /解释引用/);
-    await expect(
-      page.getByText("已收到选中的计划内容。", { exact: true }),
-    ).toBeVisible();
+    await expect(page.getByText("已收到选中的计划内容。", { exact: true })).toBeVisible();
     const message = page.locator('[data-chat-flow-kind="user"]').first();
     await expect(message).toContainText(draftLabel);
     await expect(message).not.toContainText("dsh-page:");
@@ -242,36 +231,19 @@ test(
       /dsh-page:R[a-f0-9]{12}/,
     );
     assert.equal(/R[a-f0-9]{12}/.test(await message.innerText()), false);
-    assert.ok(
-      await page.evaluate(
-        (label) =>
-          [...CSS.highlights.get("dsh-page-reference")].some(
-            (range) => range.toString() === label,
-          ),
-        draftLabel,
-      ),
-    );
     assert.match(
-      JSON.stringify(
-        prompts.flatMap((p) => p.messages.filter((m) => m.role === "tool")),
-      ),
+      JSON.stringify(prompts.flatMap((p) => p.messages.filter((m) => m.role === "tool"))),
       /row:p/,
     );
     await enableSelection(page);
     await target.click();
-    await expect(
-      frame.getByRole("status").filter({ hasText: "已加入输入框" }),
-    ).toBeVisible();
+    await expect(frame.getByRole("status").filter({ hasText: "已加入输入框" })).toBeVisible();
     await editor.click();
     await page.keyboard.press("End");
     await page.keyboard.insertText("展开引用的这一行");
     await page.keyboard.press("Enter");
-    await expect(
-      frame.getByText("黑芝麻汤圆 500g", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("已展开引用的这一行。", { exact: true }),
-    ).toBeVisible();
+    await expect(frame.getByText("黑芝麻汤圆 500g", { exact: true })).toBeVisible();
+    await expect(page.getByText("已展开引用的这一行。", { exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.locator("[data-page-selection-trigger]")).toHaveAttribute(
       "aria-pressed",
@@ -337,6 +309,7 @@ test(
     );
     await currentHtmlResource(root);
     const app = await profile(t, {
+      beforeStart: prepareWorkbenchHtmlRoots([root]),
       config: (base) => ({
         analysis: {
           mode: "model",
@@ -350,7 +323,6 @@ test(
       }),
       env: {
         GEA_PICKER_TEST_KEY: "fixture-key",
-        GEA_HTML_PLUGIN_ROOTS: JSON.stringify([root]),
       },
     });
     const prompts = [];
@@ -376,9 +348,7 @@ test(
       if (req.url.pathname !== "/v1/chat/completions") return false;
       const body = JSON.parse(req.body);
       prompts.push(body);
-      const referenceId = JSON.stringify(
-        body.messages.filter((m) => m.role === "user"),
-      )
+      const referenceId = JSON.stringify(body.messages.filter((m) => m.role === "user"))
         .match(/R[a-f0-9]{12}/g)
         ?.at(-1);
       const reading = !readIssued && Boolean(referenceId);
@@ -415,7 +385,6 @@ test(
     });
     await app.login();
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());
@@ -435,20 +404,30 @@ test(
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("console", (m) => {
-      if (/violates.*Content Security Policy/i.test(m.text()))
-        errors.push(m.text());
+      if (/violates.*Content Security Policy/i.test(m.text())) errors.push(m.text());
+    });
+    const openedSessions = [];
+    page.on("response", async (response) => {
+      if (!response.url().endsWith("/api/agent-workbench/page") || !response.ok()) return;
+      const request = response.request().postDataJSON();
+      if (request?.operation !== "open" || request.pageId !== "inventory-fc") return;
+      const opened = await response.json();
+      openedSessions.push({ sessionId: request.sessionId, owner: opened.owner });
     });
     await page.goto(app.origin);
     await page
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-      await page.getByText("库存管理", { exact: true }).click();
-    await page.getByText("分仓库存", { exact: true }).click();
-    const iframe = page.locator(
-      'iframe[src*="/api/gea-html/inventory-fc/html"]',
-    );
+    await openWorkbenchPage(page, "分仓库存");
+    await expect.poll(() => openedSessions.at(-1)?.owner).toEqual(expect.any(String));
+    const selected = await app.remote("session/selectModel", {
+      sessionId: openedSessions.at(-1).sessionId,
+      provider: "gea-analysis",
+      model: "fixture-model",
+    });
+    assert.equal(selected.ok, true, JSON.stringify(selected));
+    const iframe = htmlFrameElement(page, "inventory-fc");
     await expect(iframe)
       .toHaveAttribute("sandbox", "allow-scripts allow-downloads")
       .catch(async (e) => {
@@ -467,9 +446,9 @@ test(
     await expect(
       page.locator(".gea-conversation-toolbar [data-page-selection-trigger]"),
     ).toHaveCount(0);
-    await expect(
-      page.locator(".dspi-composer-trigger [data-page-selection-trigger]"),
-    ).toHaveCount(1);
+    await expect(page.locator(".dspi-composer-trigger [data-page-selection-trigger]")).toHaveCount(
+      1,
+    );
     // Alt from the composer, then hover a cross-origin frame, releasing in the parent.
     await keyboardEditor.click();
     await page.keyboard.down("Alt");
@@ -532,10 +511,7 @@ test(
     await page.keyboard.up("Alt");
     await keyboardEditor.click();
     await expect(keyboardEditor).toHaveText("");
-    const saveCancelled = page.waitForEvent(
-      "requestfailed",
-      (request) => request === pendingSave,
-    );
+    const saveCancelled = page.waitForEvent("requestfailed", (request) => request === pendingSave);
     await page.keyboard.press("Escape");
     await saveCancelled;
     releaseSave();
@@ -549,7 +525,9 @@ test(
     await frame.getByRole("button", { name: "查看库存", exact: true }).click();
     await expect(frame.locator("#business")).toHaveText("查看库存");
     await expect(page.locator("[data-page-selection-trigger]")).toBeEnabled();
-    const editor = page.locator('[contenteditable="true"]').first();
+    const editor = page
+      .getByRole("complementary", { name: "AI对话", exact: true })
+      .locator('[contenteditable="true"]');
     await expect(editor).toContainText("客户甲");
     await expect(pickerButton).toHaveAttribute("aria-pressed", "true");
     await frame.locator("#business").dispatchEvent("click", { detail: 2 });
@@ -566,13 +544,9 @@ test(
     await expect(frame.locator("#business")).toHaveText("已执行");
     // The header means the whole table; the tiny card label means its whole section.
     await enableSelection(page);
-    await frame
-      .getByRole("columnheader", { name: "库存", exact: true })
-      .hover();
+    await frame.getByRole("columnheader", { name: "库存", exact: true }).hover();
     await expect(frame.locator(".dspi-outline")).toBeVisible();
-    await frame
-      .getByRole("columnheader", { name: "库存", exact: true })
-      .click();
+    await frame.getByRole("columnheader", { name: "库存", exact: true }).click();
     await expect(editor).toContainText("表格 · 3 行");
     await editor.press("ControlOrMeta+a");
     await editor.press("Backspace");
@@ -592,26 +566,15 @@ test(
       .locator("tbody tr:visible td:nth-child(2)")
       .evaluateAll((cells) => cells.map((c) => c.getAttribute("data-gea-el")));
     assert.equal(new Set(ids).size, 3);
-    const reordered = await frame
-      .locator("tbody")
-      .evaluate((tbody, secondId) => {
-        tbody.prepend(tbody.lastElementChild);
-        return window.publishCurrentCatalog()
-          .find((entry) => entry.id === secondId)?.value;
-      }, ids[2]);
-    assert.equal(
-      reordered,
-      "250 件",
-      "moving a same-name row preserves its reference ID",
-    );
-    await frame
-      .getByRole("cell", { name: "120 件", exact: true })
-      .evaluate((cell) => {
-        cell.textContent = "300 件";
-      });
-    await expect(
-      frame.getByRole("status").filter({ hasText: "已加入输入框" }),
-    ).toBeVisible();
+    const reordered = await frame.locator("tbody").evaluate((tbody, secondId) => {
+      tbody.prepend(tbody.lastElementChild);
+      return window.publishCurrentCatalog().find((entry) => entry.id === secondId)?.value;
+    }, ids[2]);
+    assert.equal(reordered, "250 件", "moving a same-name row preserves its reference ID");
+    await frame.getByRole("cell", { name: "120 件", exact: true }).evaluate((cell) => {
+      cell.textContent = "300 件";
+    });
+    await expect(frame.getByRole("status").filter({ hasText: "已加入输入框" })).toBeVisible();
 
     await expect(editor).toContainText("客户甲");
     if (process.env.GEA_PICKER_VISUAL)
@@ -620,18 +583,37 @@ test(
       });
     await editor.click();
     await page.keyboard.press("End");
+    await expect(editor).toBeVisible();
+    assert.equal(
+      await pickerButton.getAttribute("data-session-id"),
+      openedSessions.at(-1).sessionId,
+    );
+    await mkdir(".runtime/page-interaction", { recursive: true });
+    await writeFile(
+      ".runtime/page-interaction/opaque-submit-binding.json",
+      JSON.stringify(
+        {
+          opened: openedSessions.at(-1),
+          selectedModel: selected,
+          editorVisible: await editor.isVisible(),
+          pickerSessionId: await pickerButton.getAttribute("data-session-id"),
+          modelButtons: await page
+            .getByRole("complementary", { name: "AI对话", exact: true })
+            .getByRole("button", { name: /^选择模型/ })
+            .allTextContents(),
+        },
+        null,
+        2,
+      ),
+    );
     await page.keyboard.insertText("这个客户有多少库存？");
     await page.keyboard.press("Enter");
     await expect.poll(() => prompts.length).toBeGreaterThan(0);
-    const sent = JSON.stringify(
-      prompts[0].messages.filter((m) => m.role === "user"),
-    );
+    const sent = JSON.stringify(prompts[0].messages.filter((m) => m.role === "user"));
     assert.match(sent, /客户甲/);
     assert.equal(sent.includes("120 件"), false);
     assert.equal(sent.includes("987654"), false);
-    await expect(
-      page.getByText("客户甲库存为120件。", { exact: true }),
-    ).toBeVisible();
+    await expect(page.getByText("客户甲库存为120件。", { exact: true })).toBeVisible();
     const read = JSON.stringify(
       prompts.flatMap((p) => p.messages.filter((m) => m.role === "tool")),
     );

@@ -93,9 +93,26 @@ export type Row = Record<string, string | number | boolean>;
 
 export interface Deployment {
   /** Optional fixed-run SQL allowance; zero refuses before credentials and transport. */
-  sqlReadLimit?: { consumerCode: string; maxRequests: number; maxPagesPerQuery: number; maxRowsPerQuery: number };
+  sqlReadLimit?: {
+    consumerCode: string;
+    maxRequests: number;
+    maxPagesPerQuery: number;
+    maxRowsPerQuery: number;
+  };
   /** The native sales capability uses the same enabled declaration as installed HTML capabilities. */
-  workbenchCapability?: { enabled?: boolean; readonlyValidation?: { maxRequests: number; periods: number; list: number; detail: number; versionSkus: number; workflowSql: number; maxWorkflowRows: number; metadata: number } };
+  workbenchCapability?: {
+    enabled?: boolean;
+    readonlyValidation?: {
+      maxRequests: number;
+      periods: number;
+      list: number;
+      detail: number;
+      versionSkus: number;
+      workflowSql: number;
+      maxWorkflowRows: number;
+      metadata: number;
+    };
+  };
   serviceAccounts?: ServiceAccounts;
   geaBaseUrl: string;
   environment?: "production" | "test";
@@ -794,16 +811,29 @@ export class Business {
 
   constructor(readonly config: Deployment) {
     this.sqlReadLimit = createSqlReadLimit(config.sqlReadLimit);
-    this.salesReadonly = createSalesReadonly(config.workbenchCapability?.readonlyValidation, config.analysisAgentCode, () => this.base);
-    this.capabilities = createCapabilityRegistry([workbenchContract({
-      surface: "gea-workbench", pageIds: ["gea-workbench"], ...config.workbenchCapability,
-    })]);
+    this.salesReadonly = createSalesReadonly(
+      config.workbenchCapability?.readonlyValidation,
+      config.analysisAgentCode,
+      () => this.base,
+    );
+    this.capabilities = createCapabilityRegistry([
+      workbenchContract({
+        surface: "gea-workbench",
+        pageIds: ["gea-workbench"],
+        ...config.workbenchCapability,
+      }),
+    ]);
     validateServiceAccounts(config.serviceAccounts);
     const resolved = resolveEnvironments(config);
     this.selectedBase = resolved.baseUrl;
     this.environment = resolved.environment as "production" | "test";
     this.environments = resolved.environments;
-    this.apiLog = new GeaApiLogCenter(() => this.environment, undefined, undefined, this.salesReadonly?.beforeRequest);
+    this.apiLog = new GeaApiLogCenter(
+      () => this.environment,
+      undefined,
+      undefined,
+      this.salesReadonly?.beforeRequest,
+    );
   }
 
   /** 仅桌面拥有者可用：凭证通过私有回环通道传递，绝不经浏览器 RPC。 */
@@ -1335,12 +1365,16 @@ export class Business {
     let response: Response;
     const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
     try {
-      response = await this.apiLog.fetch(this.base + path, {
-        method: "GET",
-        headers,
-        redirect: "error",
-        signal: AbortSignal.any([signal, timeout]),
-      }, purpose);
+      response = await this.apiLog.fetch(
+        this.base + path,
+        {
+          method: "GET",
+          headers,
+          redirect: "error",
+          signal: AbortSignal.any([signal, timeout]),
+        },
+        purpose,
+      );
     } catch (error) {
       if (error instanceof SalesReadonlyError) throw error;
       if (signal.aborted) throw new Error("STALE_SELECTION");
@@ -3041,15 +3075,20 @@ export class Business {
 
   assertExecutionAllowed(consumerCode: string, effect: CapabilityEffect = "view"): void {
     this.salesReadonly?.assertConsumer(consumerCode, effect);
-    const contract = consumerCode === this.config.analysisAgentCode
-      ? this.capabilities.get("gea-workbench")
-      : this.capabilities.list().find(item => item.data?.consumerCode === consumerCode);
+    const contract =
+      consumerCode === this.config.analysisAgentCode
+        ? this.capabilities.get("gea-workbench")
+        : this.capabilities.list().find((item) => item.data?.consumerCode === consumerCode);
     let code: string | undefined;
     if (!contract) code = "GEA_PLUGIN_CONSUMER_NOT_ALLOWED";
     else if (contract.enabled === false) code = "GEA_CAPABILITY_DISABLED";
     else if (contract.data?.mock) code = "GEA_CAPABILITY_MOCK_ONLY";
-    else if (effectRank(effect) > effectRank(contract.maxEffect) || (contract.view && !this.capabilities.allows(contract.view.surface, effect))) code = "GEA_CAPABILITY_EFFECT_NOT_ALLOWED";
-    if (code) throw Object.assign(Error(code), {code});
+    else if (
+      effectRank(effect) > effectRank(contract.maxEffect) ||
+      (contract.view && !this.capabilities.allows(contract.view.surface, effect))
+    )
+      code = "GEA_CAPABILITY_EFFECT_NOT_ALLOWED";
+    if (code) throw Object.assign(Error(code), { code });
   }
 
   /**
@@ -3241,7 +3280,9 @@ export class Business {
     let upstreamTotal = 0;
     do {
       const path = `/sales-plan/plans?pageNo=${pageNo}&pageSize=${upstreamPageSize}`;
-      const page = object(await this.get(path, auth, AbortSignal.any([signal, this.epoch.signal]), true, "periods"));
+      const page = object(
+        await this.get(path, auth, AbortSignal.any([signal, this.epoch.signal]), true, "periods"),
+      );
       if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_PAGE");
       rows.push(...page.records.map(object));
       upstreamTotal = integer(page.total, rows.length);
@@ -3574,16 +3615,18 @@ export class Business {
       const views = rows.map(skuView);
       const query = object(payload.query ?? {});
       const requested = Math.min(50, integer(query.pageSize ?? 5, 1, 1000));
-      const offset = query.offset === undefined
-        ? (integer(query.pageNo ?? 1, 1) - 1) * requested
-        : integer(query.offset, 0);
+      const offset =
+        query.offset === undefined
+          ? (integer(query.pageNo ?? 1, 1) - 1) * requested
+          : integer(query.offset, 0);
       let size = Math.max(1, Math.min(requested, views.length - offset || 1));
       for (;;) {
         const recordsPage = views.slice(offset, offset + size);
         const nextOffset = offset + recordsPage.length;
-        const nextQuery = nextOffset < views.length
-          ? { versionId: query.versionId, offset: nextOffset, pageSize: requested }
-          : null;
+        const nextQuery =
+          nextOffset < views.length
+            ? { versionId: query.versionId, offset: nextOffset, pageSize: requested }
+            : null;
         const result = envelope(nextQuery === null ? "complete" : "partial", {
           records: recordsPage,
           total: views.length,
@@ -3593,14 +3636,14 @@ export class Business {
           note:
             nextQuery === null
               ? "本页为最后一页。"
-              : `还有 ${
-                  views.length - nextOffset
-                } 条：将 nextQuery 原样作为 query 继续取。`,
+              : `还有 ${views.length - nextOffset} 条：将 nextQuery 原样作为 query 继续取。`,
         });
         const resultBytes = Buffer.byteLength(result, "utf8");
         if (resultBytes <= this.config.inputByteBudget) return result;
         if (size <= 1)
-          throw new Error(`SNAPSHOT_TOO_LARGE: 单条 SKU 投影 ${resultBytes} 字节，超过单次读取上限 ${this.config.inputByteBudget} 字节。`);
+          throw new Error(
+            `SNAPSHOT_TOO_LARGE: 单条 SKU 投影 ${resultBytes} 字节，超过单次读取上限 ${this.config.inputByteBudget} 字节。`,
+          );
         size = Math.max(1, Math.floor(size / 2));
       }
     }

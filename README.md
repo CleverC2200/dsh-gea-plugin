@@ -1,8 +1,8 @@
 # GEA 身份与受控执行插件
 
-先从项目 [项目开发导航](../../../../docs/agents/current-development.md) 与本票 `integration-set.json` 核同组三仓 checkout、提交和未提交改动。源码候选、选中组合和当前窗口实际装载分别留证；原同名根仓仅供追溯。
+先从项目 `docs/agents/current-development.md` 与本票 `integration-set.json` 核同组三仓 checkout、提交和未提交改动。源码候选、选中组合和当前窗口实际装载分别留证；原同名根仓仅供追溯。
 
-GEA Host 管唯一业务身份、凭据、Consumer 授权、执行额度与受控接入。client 只提供身份投影与账户动作。Workbench 管页面、Native/HTML 呈现、公共布局、页面动作、引用及页面与 Session 的关联；Manage 管 Agent/Prompt/Skill/MCP/LSP 资源和纯计算；Core 管 Session、草稿、预设、历史和持久生命周期。领域词汇见项目 [共享词汇](../../../../docs/agents/GLOSSARY.md)。
+GEA Host 管唯一业务身份、凭据、Consumer 授权、执行额度与受控接入。client 只提供身份投影与账户动作。Workbench 管页面、Native/HTML 呈现、公共布局、页面动作、引用及页面与 Session 的关联；Manage 管 Agent/Prompt/Skill/MCP/LSP 资源和纯计算；Core 管 Session、草稿、预设、历史和持久生命周期。领域词汇见项目 `docs/agents/GLOSSARY.md`。
 
 ## 按任务阅读
 

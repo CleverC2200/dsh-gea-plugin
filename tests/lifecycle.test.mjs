@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { profile, readSession, until } from "./profile.mjs";
@@ -27,10 +27,7 @@ test(
       if (req.url.pathname !== "/v1/chat/completions") return;
       calls += 1;
       if (mode === "401" || mode === "429") {
-        reply(
-          { error: { message: "fixture rejection", type: "fixture" } },
-          Number(mode),
-        );
+        reply({ error: { message: "fixture rejection", type: "fixture" } }, Number(mode));
         return true;
       }
       res.setHeader("Content-Type", "text/event-stream");
@@ -81,9 +78,7 @@ test(
         failure +
           ": " +
           JSON.stringify(
-            rows.filter((row) =>
-              ["turn/end", "assistant/attempt"].includes(row.type),
-            ),
+            rows.filter((row) => ["turn/end", "assistant/attempt"].includes(row.type)),
           ),
       );
       assert.ok(
@@ -94,13 +89,9 @@ test(
     assert.equal(calls, 3);
     mode = "hold";
     const preview = (await app.rpc("prepare", select)).value;
-    const id = (await app.rpc("submit", { previewId: preview.previewId })).value
-      .sessionId;
+    const id = (await app.rpc("submit", { previewId: preview.previewId })).value.sessionId;
     await until(async () => Boolean(held), Boolean);
-    assert.equal(
-      (await app.remote("session/cancel", { sessionId: id })).ok,
-      true,
-    );
+    assert.equal((await app.remote("session/cancel", { sessionId: id })).ok, true);
     const cancelled = await until(
       () => readSession(app.runtime, id),
       (rows) => rows.some((row) => row.type === "turn/end"),
@@ -110,18 +101,13 @@ test(
         .filter((row) => row.type === "assistant/message")
         .every((row) => row.data.interrupted === true),
     );
-    assert.equal(
-      cancelled.find((row) => row.type === "turn/end").data.reason.kind,
-      "aborted",
-    );
+    assert.equal(cancelled.find((row) => row.type === "turn/end").data.reason.kind, "aborted");
     mode = "success";
     const retried = await app.remote("session/prompt", {
       requestId: randomUUID(),
       sessionId: id,
       mode: "queue",
-      content: [
-        { type: "text", text: "请基于同一个历史快照重试，不要重新查询。" },
-      ],
+      content: [{ type: "text", text: "请基于同一个历史快照重试，不要重新查询。" }],
     });
     assert.equal(retried.ok, true, JSON.stringify(retried));
     const rows = await until(
@@ -129,15 +115,10 @@ test(
       (rows) => rows.filter((row) => row.type === "turn/end").length === 2,
     );
     assert.equal(
-      rows.filter(
-        (row) => row.type === "assistant/message" && !row.data.interrupted,
-      ).length,
+      rows.filter((row) => row.type === "assistant/message" && !row.data.interrupted).length,
       1,
     );
     assert.equal(calls, 5);
-    assert.equal(
-      app.requests.filter((req) => req.url.pathname.endsWith("/plans")).length,
-      1,
-    );
+    assert.equal(app.requests.filter((req) => req.url.pathname.endsWith("/plans")).length, 1);
   },
 );

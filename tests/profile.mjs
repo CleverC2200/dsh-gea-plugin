@@ -12,6 +12,9 @@ import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
+import { freezeProfileWindow } from "./fixtures/profile-window.mjs";
+import { withSourceSetup } from "./fixtures/source-test.mjs";
+import { waitProfileReady } from "./fixtures/profile-ready.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
 /** Decode persisted tool receipts at the test boundary; never omit a malformed result. */
@@ -54,6 +57,10 @@ export async function until(read, predicate, timeout = 10000) {
   throw new Error("Condition not reached: " + JSON.stringify(value).slice(-2500));
 }
 export async function profile(t, options = {}) {
+  return withSourceSetup(t, () => createProfile(t, options));
+}
+async function createProfile(t, options) {
+  t.signal?.throwIfAborted();
   const root = options.pluginRoot ?? defaultRoot;
   const sourcesFile = options.sourcesFile ?? process.env.GEA_TEST_SOURCE_INPUTS;
   if (!options.desktopGraph && !options.coreOnly) await readProfileSources(sourcesFile);
@@ -61,6 +68,7 @@ export async function profile(t, options = {}) {
     throw new Error(
       "SOURCE_TEST_REQUIRES_CURRENT_CHECKOUT: packaged artifacts use the installed-runtime test lane",
     );
+  t.signal?.throwIfAborted();
   const dir = await mkdtemp(resolve(options.runtimeParent ?? tmpdir(), "gea-profile-"));
   const key = resolve(dir, "key.pem"),
     cert = resolve(dir, "cert.pem");
@@ -85,15 +93,24 @@ export async function profile(t, options = {}) {
     ],
     { stdio: "ignore" },
   );
+  const lifecycleStarted = performance.now();
   const recordLifecycle = (value) => {
     if (process.env.GEA_TEST_LIFECYCLE_RECEIPT)
       appendFileSync(
         process.env.GEA_TEST_LIFECYCLE_RECEIPT,
-        JSON.stringify({ testName: t.name, directory: dir, ...value }) + "\n",
+        JSON.stringify({
+          timestamp: new Date().toISOString(),
+          elapsedMs: performance.now() - lifecycleStarted,
+          testName: t.name,
+          directory: dir,
+          ...value,
+        }) + "\n",
         { mode: 0o600 },
       );
   };
   recordLifecycle({ event: "temporary-directory-created" });
+  const recordAbort = () => recordLifecycle({ event: "fixture-aborted" });
+  t.signal?.addEventListener("abort", recordAbort, { once: true });
   const requests = [];
   let route;
   const server = createServer(
@@ -215,7 +232,9 @@ export async function profile(t, options = {}) {
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const base = `https://127.0.0.1:${server.address().port}`;
-  const runtime = resolve(dir, "runtime");
+  const runtime = options.coreOnly
+    ? resolve(root, ".runtime/test-core", randomUUID())
+    : resolve(dir, "runtime");
   const config = resolve(dir, "gea.json");
   await writeFile(
     config,
@@ -229,6 +248,7 @@ export async function profile(t, options = {}) {
       ...(typeof options.config === "function" ? options.config(base) : options.config),
     }),
   );
+  let preparation;
   let child,
     childClosed,
     childIsClosed = true,
@@ -268,9 +288,11 @@ export async function profile(t, options = {}) {
     }
   }
   t.after(async () => {
+    t.signal?.removeEventListener("abort", recordAbort);
     let stopped = false;
     const errors = [];
     try {
+      await preparation?.catch(() => {});
       await stop();
       stopped = true;
     } catch (error) {
@@ -293,6 +315,7 @@ export async function profile(t, options = {}) {
       });
       if (stopped && !options.preserveRuntime) {
         await rm(dir, { recursive: true, force: true });
+        if (options.coreOnly) await rm(runtime, { recursive: true, force: true });
         recordLifecycle({ event: "temporary-directory-removed" });
       }
     } catch (error) {
@@ -304,7 +327,15 @@ export async function profile(t, options = {}) {
         : new AggregateError(errors, "PROFILE_CLEANUP_FAILED", { cause: errors[0] });
   });
   async function start() {
-    const deployment = await readDeployment(config);
+    t.signal?.throwIfAborted();
+    recordLifecycle({ event: "preparation-started" });
+    const fixture = JSON.parse(await readFile(config, "utf8"));
+    if (Object.values(fixture.serviceAccounts ?? {}).some((account) => account.keychainService))
+      throw new Error("SOURCE_TEST_REQUIRES_FIXTURE_CREDENTIALS");
+    const deployment = await readDeployment(config, {
+      resolveCredentials: false,
+      credentialEnv: options.env ?? {},
+    });
     for (const endpoint of [
       deployment.geaBaseUrl,
       ...Object.values(deployment.geaEnvironments ?? {}),
@@ -312,6 +343,21 @@ export async function profile(t, options = {}) {
     ].filter(Boolean))
       if (!["127.0.0.1", "localhost", "[::1]"].includes(new URL(endpoint).hostname))
         throw new Error("SOURCE_TEST_REQUIRES_LOOPBACK_SERVICES");
+    const admitted = options.desktopGraph
+      ? undefined
+      : await (preparation = freezeProfileWindow({
+          directory: dir,
+          runtime,
+          config,
+          deployment,
+          sources: options.coreOnly ? undefined : await readProfileSources(sourcesFile),
+          caseName: t.name,
+          coreOnly: options.coreOnly,
+          signal: t.signal,
+          recordLifecycle,
+        }));
+    t.signal?.throwIfAborted();
+    recordLifecycle({ event: "preparation-frozen" });
     output = "";
     let logOffset = 0;
     await mkdir(runtime, { recursive: true, mode: 0o700 });
@@ -320,6 +366,13 @@ export async function profile(t, options = {}) {
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
+    let previousHost;
+    try {
+      previousHost = await readFile(resolve(runtime, "source-host.json"), "utf8");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    t.signal?.throwIfAborted();
     child = spawn(
       options.executablePath ?? process.execPath,
       [
@@ -332,17 +385,26 @@ export async function profile(t, options = {}) {
               resolve(defaultRoot, "tests/source-profile-start.mjs"),
               config,
               runtime,
-              ...(options.coreOnly ? ["native-only"] : []),
+              options.coreOnly ? "native-only" : "source-host",
+              admitted.request,
             ]
           : options.desktopGraph
             ? [resolve(defaultRoot, "desktop/runtime-start.mjs")]
             : [
                 "scripts/start.mjs",
+                "--window",
+                admitted.window.file,
+                "--case",
+                admitted.window.case,
+                "--owner",
+                admitted.window.owner,
+                "--freeze-sha256",
+                admitted.window.freezeSha256,
                 "--config",
                 config,
                 "--runtime",
                 runtime,
-                ...(sourcesFile ? ["--sources", sourcesFile] : []),
+
                 "--port",
                 options.reusePort && origin ? new URL(origin).port : "0",
               ]),
@@ -389,29 +451,32 @@ export async function profile(t, options = {}) {
         if (process.env.GEA_TEST_SOURCE_CORE === "1" && !options.desktopGraph)
           appendFileSync(resolve(runtime, "server.log"), data, { mode: 0o600 });
       });
-    const deadline = Date.now() + (options.startupTimeoutMs ?? 45000);
-    let launch;
-    while (Date.now() < deadline) {
-      let freshLog = "";
-      try {
-        freshLog = (await readFile(resolve(runtime, "server.log"), "utf8")).slice(logOffset);
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
-      launch = [
-        ...(options.desktopGraph || process.env.GEA_TEST_SOURCE_CORE === "1"
-          ? output
-          : freshLog
-        ).matchAll(/dsh web: (http[^\s]+)(?=\r?\n)/g),
-      ].at(-1)?.[1];
-      if (launch) break;
-      if (child.exitCode !== null) throw new Error("Profile exited: " + output);
-      await delay(50);
-    }
-    if (!launch) throw new Error("Profile not ready: " + output);
+    const source =
+      process.env.GEA_TEST_SOURCE_CORE === "1" && !options.desktopGraph
+        ? { combination: admitted.combination, core: admitted.core, previous: previousHost }
+        : undefined;
+    const launch = await waitProfileReady({
+      child,
+      runtime,
+      signal: t.signal,
+      timeoutMs: options.startupTimeoutMs ?? 45000,
+      source,
+      readOutput: () => output,
+      readLaunchLog: async () => {
+        if (options.desktopGraph || process.env.GEA_TEST_SOURCE_CORE === "1") return output;
+        try {
+          return (await readFile(resolve(runtime, "server.log"), "utf8")).slice(logOffset);
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+          return "";
+        }
+      },
+      recordLifecycle,
+    });
     origin = new URL(launch).origin;
     recordLifecycle({ event: "host-ready", origin });
-    const exchange = await fetch(launch, { redirect: "manual" });
+    t.signal?.throwIfAborted();
+    const exchange = await fetch(launch, { redirect: "manual", signal: t.signal });
     cookie = exchange.headers
       .getSetCookie()
       .map((value) => value.split(";")[0])
@@ -435,7 +500,7 @@ export async function profile(t, options = {}) {
     route(fn) {
       route = fn;
     },
-    start,
+    start: () => withSourceSetup(t, start),
     stop,
     async rpc(endpoint, payload = {}) {
       const response = await fetch(origin + "/api/gea-proof/" + endpoint, {
@@ -475,7 +540,10 @@ export async function profile(t, options = {}) {
       return api.rpc("login/poll", { loginId: qr.value.loginId });
     },
   };
-  await options.beforeStart?.({ runtime, config });
+  await (preparation = Promise.resolve(
+    options.beforeStart?.({ runtime, config, credentialEnv: options.env ?? {} }),
+  ));
   await start();
+  recordLifecycle({ event: "fixture-actions-available" });
   return api;
 }

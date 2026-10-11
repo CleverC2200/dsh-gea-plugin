@@ -1,5 +1,5 @@
 /** Switch real source profiles between pinned local combinations; external services are fixtures. */
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile, realpath } from "node:fs/promises";
 import { resolve, join } from "node:path";
@@ -14,6 +14,13 @@ import {
   upgradeSourceProfileLayout,
 } from "../scripts/source-profile.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
+import {
+  preparePageStartup,
+  openWorkbenchPage,
+  htmlFrameElement,
+  prepareWorkbenchHtmlRoots,
+} from "./fixtures/business-page.mjs";
+import { selectBusinessResource } from "./fixtures/business-session.mjs";
 
 const core = resolve("../../official-latest-standard"),
   parent = resolve(".runtime/ticket-09");
@@ -40,22 +47,30 @@ test(
         },
       }),
       env: { GEA_TEST_MODEL_KEY: "fixture-key" },
-      beforeStart: async ({ runtime, config }) => {
+      beforeStart: async ({ runtime, config, credentialEnv }) => {
         await mkdir(join(runtime, "home/profiles/plugin-split-validation"), {
           recursive: true,
         });
-        const deployment = await readDeployment(config);
-        const sources = JSON.parse(
-          await readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"),
-        );
-        await prepareSourcePlugins(core, runtime, deployment, { sources });
+        const deployment = await readDeployment(config, { credentialEnv });
+        const sources = JSON.parse(await readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"));
         await mkdir(join(runtime, "workspace"), { recursive: true });
-        await writeFile(
-          join(runtime, "workspace/preexisting-user.txt"),
-          "ticket08 user state",
-        );
+        await writeFile(join(runtime, "workspace/preexisting-user.txt"), "ticket08 user state");
+        // The explicit synthetic old layout is the existing source-combination test input,
+        // not evidence of a historic ticket08 installation or a different product version.
+        const modules = join(runtime, "home/profiles/plugin-split-validation/node_modules");
+        await mkdir(modules, { recursive: true });
+        await writeFile(join(modules, "old-module.js"), "old code");
+        await writeFile(join(runtime, "session.json"), "persistent data");
         await upgradeSourceProfileLayout(runtime);
-        // The recovery artifacts are read from the clean, registered ticket08 checkout.
+        const upgrade = JSON.parse(
+          await readFile(join(runtime, "source-layout-upgrade.json"), "utf8"),
+        );
+        assert.equal(await readFile(join(upgrade.backup, "old-module.js"), "utf8"), "old code");
+        assert.equal(await readFile(join(runtime, "session.json"), "utf8"), "persistent data");
+        await prepareWorkbenchHtmlRoots([
+          join(modules, "@cleverc2200/dsh-agent-workbench/lib/business/inventory-fc"),
+        ])({ runtime });
+        // Independent snapshots of the same admitted source support durable update/restore.
         previous = await prepareSourcePlugins(core, runtime, deployment, {
           sources,
         });
@@ -79,12 +94,8 @@ test(
     });
     const state = stockState();
     installStockRoutes(app, state, (body) => {
-      const index = body.messages.findLastIndex(
-        (message) => message.role === "user",
-      );
-      const tools = body.messages
-        .slice(index + 1)
-        .filter((message) => message.role === "tool");
+      const index = body.messages.findLastIndex((message) => message.role === "user");
+      const tools = body.messages.slice(index + 1).filter((message) => message.role === "tool");
       const name = tools.length === 0 ? "skill" : "gea_cube_query";
       if (tools.length < 2)
         return {
@@ -120,27 +131,22 @@ test(
       assert.match(receipts, /100/);
       assert.match(receipts, /30/);
       return {
-        content:
-          "本地样本FC001=100件、FC002=30件，合计130件；依据本轮Skill及Cube回执。",
+        content: "本地样本FC001=100件、FC002=30件，合计130件；依据本轮Skill及Cube回执。",
       };
     });
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());
     const userFile = join(app.runtime, "workspace/user-data.txt");
-    await writeFile(
-      userFile,
-      "user-owned data kept across update and restore\n",
-    );
+    await writeFile(userFile, "user-owned data kept across update and restore\n");
     const settingsFile = join(
       app.runtime,
       "home/profiles/plugin-split-validation/cordis.patch.yml",
     );
     let settingsBefore;
     const records = [];
-    let durableSession, oldScope, oldLease, oldRows;
+    let durableSession, oldScope, oldOwner, oldRows;
     for (const [phase, combination] of [
       ["previous", previous],
       ["candidate", candidate],
@@ -157,59 +163,43 @@ test(
           "Host restart preserves every prior Session row before fresh activity",
         );
       }
-      await assert.rejects(
-        selectSourceCombination(app.runtime, combination.id, core),
-        { code: "EEXIST" },
-      );
+      await assert.rejects(selectSourceCombination(app.runtime, combination.id, core), {
+        code: "EEXIST",
+      });
       assert.equal((await app.login()).ok, true);
-      const identityResponse = await fetch(
-        app.origin + "/api/gea-html/identity",
-        { headers: { Cookie: app.cookie } },
-      );
+      const identityResponse = await fetch(app.origin + "/api/gea-html/identity", {
+        headers: { Cookie: app.cookie },
+      });
       const scope = (await identityResponse.json()).scope;
       assert.ok(scope);
       if (oldScope)
-        assert.notEqual(
-          scope,
-          oldScope,
-          "new Host invalidates the prior identity generation",
-        );
-      const request = async (endpoint, body) => {
-        const response = await fetch(
-          app.origin + "/api/gea-html/inventory-fc/" + endpoint,
-          {
-            method: "POST",
-            headers: {
-              Cookie: app.cookie,
-              Origin: app.origin,
-              "content-type": "application/json",
-            },
-            body: JSON.stringify(body),
-          },
-        );
+        assert.notEqual(scope, oldScope, "new Host invalidates the prior identity generation");
+      const request = async (body) => {
+        const response = await fetch(app.origin + "/api/agent-workbench/page", {
+          method: "POST",
+          headers: { Cookie: app.cookie, Origin: app.origin, "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
         return { status: response.status, body: await response.json() };
       };
-      let rejectedScope, rejectedLease;
-      if (oldScope) {
-        rejectedScope = await request("open", {
+      const retired = await fetch(app.origin + "/api/gea-html/inventory-fc/open", {
+        method: "POST",
+        headers: { Cookie: app.cookie, Origin: app.origin, "content-type": "application/json" },
+        body: JSON.stringify({
           session: durableSession,
           agentPreset: "gea-html-inventory-fc",
           scope: oldScope,
-        });
-        assert.equal(rejectedScope.status, 400);
-        assert.equal(
-          rejectedScope.body.error,
-          "PAGE_SESSION_IDENTITY_MISMATCH",
-        );
-        rejectedLease = await request("call", {
-          session: durableSession,
-          lease: oldLease,
-          method: "context",
-          parameters: {},
-        });
-        assert.equal(rejectedLease.status, 400);
-        assert.match(rejectedLease.body.error, /LEASE/);
+        }),
+      });
+      assert.equal(retired.status, 404);
+      let rejectedOwner;
+      if (oldOwner) {
+        rejectedOwner = await request({ operation: "context", owner: oldOwner, parameters: {} });
+        assert.equal(rejectedOwner.status, 400);
+        assert.equal(rejectedOwner.body.error, "PAGE_OWNER_RELEASED");
       }
+      const selectedResource = await selectBusinessResource(app, "gea-html-inventory-fc");
+      assert.equal(selectedResource.preset, "gea-html-inventory-fc");
       const context = await browser.newContext({
         locale: "zh-CN",
         viewport: { width: 1440, height: 1000 },
@@ -224,44 +214,48 @@ test(
       const page = await context.newPage();
       page.setDefaultTimeout(20000);
       let opened;
-      page.on("response", async (response) => {
+      const captureOpen = async (response) => {
         if (
-          response.url().endsWith("/api/gea-html/inventory-fc/open") &&
-          response.ok()
+          response.url().endsWith("/api/agent-workbench/page") &&
+          response.ok() &&
+          response.request().postDataJSON()?.operation === "open"
         )
           opened = await response.json();
-      });
+      };
+      page.on("response", captureOpen);
       await page.goto(app.origin);
-      const notice = page.getByRole("dialog", { name: /内测声明|预览版说明/ });
-      if (await notice.isVisible())
-        await notice.getByRole("button", { name: "继续", exact: true }).click();
-      if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-        await page.getByText("库存管理", { exact: true }).click();
-      await page.getByText("分仓库存", { exact: true }).click();
-      const frame = page
-        .locator('iframe[src*="/api/gea-html/inventory-fc/html"]')
-        .contentFrame();
-      await expect(
-        frame.getByText("FC001", { exact: true }).first(),
-      ).toBeVisible();
-      await expect(
-        frame.getByText("FC002", { exact: true }).first(),
-      ).toBeVisible();
-      await expect.poll(() => typeof opened?.lease).toBe("string");
-      const agentsResponse = await fetch(
-        app.origin + "/api/gea-html/inventory-fc/agents",
+      await preparePageStartup(page);
+      await openWorkbenchPage(page, "分仓库存");
+      const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
+      await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
+      await expect(frame.getByText("FC002", { exact: true }).first()).toBeVisible();
+      await expect.poll(() => typeof opened?.owner).toBe("string");
+      page.off("response", captureOpen);
+      const resourcesResponse = await fetch(
+        app.origin +
+          "/api/agent-manage/resources?" +
+          new URLSearchParams({ cwd: app.runtime + "/workspace" }),
         { headers: { Cookie: app.cookie } },
       );
-      const agents = await agentsResponse.json();
+      assert.equal(resourcesResponse.status, 200);
+      const resources = (await resourcesResponse.json()).filter(
+        (value) => value.installed && value.kind === "prompt",
+      );
       assert.deepEqual(
-        agents.map((value) => value.preset),
+        resources.map((value) => value.id),
+        ["gea-readonly", "gea-html-inventory-fc"],
+      );
+      const agents = selectedResource.interpreters;
+      assert.deepEqual(
+        agents,
         ["gea-html-inventory-fc"],
+        "only the installed FC interpreter is offered for this page",
       );
-      const pluginsResponse = await fetch(
-        app.origin + "/api/gea-html/plugins",
-        { headers: { Cookie: app.cookie } },
-      );
-      const plugins = await pluginsResponse.json();
+      const pagesResponse = await fetch(app.origin + "/api/agent-workbench/pages", {
+        headers: { Cookie: app.cookie },
+      });
+      assert.equal(pagesResponse.status, 200);
+      const plugins = await pagesResponse.json();
       assert.equal(
         plugins.filter((value) => value.id === "inventory-fc").length,
         1,
@@ -270,7 +264,7 @@ test(
       if (!durableSession) {
         const created = await app.remote("session/create", {
           cwd: app.runtime + "/workspace",
-          agentPreset: "gea-html-inventory-fc",
+          agentPreset: selectedResource.preset,
         });
         assert.equal(created.ok, true);
         durableSession = created.value.sessionId;
@@ -287,10 +281,11 @@ test(
       );
       assert.equal(
         (
-          await request("open", {
-            session: durableSession,
-            agentPreset: "gea-html-inventory-fc",
-            scope,
+          await request({
+            operation: "open",
+            pageId: "inventory-fc",
+            sessionId: durableSession,
+            resourceId: "gea-html-inventory-fc",
           })
         ).status,
         200,
@@ -316,8 +311,7 @@ test(
       );
       const rows = await until(
         () => readSession(app.runtime, durableSession),
-        (rows) =>
-          rows.filter((value) => value.type === "turn/end").length > turns,
+        (rows) => rows.filter((value) => value.type === "turn/end").length > turns,
         60000,
       );
       const receipts = readToolResults(rows).slice(-2);
@@ -327,10 +321,7 @@ test(
       assert.match(receipts[1].text, /30/);
       assert.match(JSON.stringify(rows), /合计130件/);
       assert.equal(
-        await readFile(
-          join(app.runtime, "workspace/preexisting-user.txt"),
-          "utf8",
-        ),
+        await readFile(join(app.runtime, "workspace/preexisting-user.txt"), "utf8"),
         "ticket08 user state",
       );
       const modules = await realpath(
@@ -338,18 +329,10 @@ test(
       );
       assert.equal(
         modules,
-        join(
-          app.runtime,
-          "source-combinations",
-          combination.id,
-          "node_modules",
-        ),
+        join(app.runtime, "source-combinations", combination.id, "node_modules"),
       );
       const pageSource = await readFile(
-        join(
-          modules,
-          "@cleverc2200/dsh-agent-workbench/lib/business/inventory-fc/index.html",
-        ),
+        join(modules, "@cleverc2200/dsh-agent-workbench/lib/business/inventory-fc/index.html"),
         "utf8",
       );
       const pageScript = pageSource.match(/<script>([\s\S]*)<\/script>/)[1];
@@ -372,12 +355,7 @@ test(
       });
       const manifest = JSON.parse(
         await readFile(
-          join(
-            app.runtime,
-            "source-combinations",
-            combination.id,
-            "combination.json",
-          ),
+          join(app.runtime, "source-combinations", combination.id, "combination.json"),
           "utf8",
         ),
       );
@@ -385,27 +363,24 @@ test(
         phase,
         combination: combination.id,
         modules,
-        source: JSON.parse(
-          await readFile(join(app.runtime, "company-plugins.json"), "utf8"),
-        ),
+        source: JSON.parse(await readFile(join(app.runtime, "company-plugins.json"), "utf8")),
         manifestSha256: hash(JSON.stringify(manifest)),
         pageScriptSha256: hash(pageScript),
         scope,
         session: durableSession,
         opened,
         agents,
-        registrations: plugins.filter((value) => value.id === "inventory-fc")
-          .length,
+        registrations: plugins.filter((value) => value.id === "inventory-fc").length,
         sql: state.rest.map((value) => value.sql),
         receipts,
         rows,
-        rejectedScope,
-        rejectedLease,
+        rejectedOwner,
+        retiredStatus: retired.status,
         settingsSha256: settingsBefore,
         userDataSha256: hash(await readFile(userFile)),
       });
       oldScope = scope;
-      oldLease = opened.lease;
+      oldOwner = opened.owner;
       oldRows = rows;
       await context.close();
     }

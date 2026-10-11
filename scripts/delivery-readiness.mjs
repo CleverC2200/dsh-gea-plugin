@@ -1,8 +1,7 @@
 import { isObservationTime as timestamp } from "./delivery-time.mjs";
 // Pure interpretation of already-read, controlled metadata. No IO or execution.
 import { observeTaskTicket } from "./delivery-ticket.mjs";
-const id = (value) =>
-  typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(value);
+const id = (value) => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(value);
 const parse = (input) => {
   try {
     return input?.bytes ? JSON.parse(input.bytes.toString("utf8")) : undefined;
@@ -20,13 +19,7 @@ const sources = (input) =>
         },
       ]
     : [];
-const categories = [
-  "test-deployment",
-  "tenant",
-  "read-scope",
-  "login-method",
-  "model",
-];
+const categories = ["test-deployment", "tenant", "read-scope", "login-method", "model"];
 const missingReasons = {
   "test-deployment": "TEST_DEPLOYMENT_NOT_DELIVERED",
   tenant: "TENANT_NOT_DELIVERED",
@@ -35,12 +28,7 @@ const missingReasons = {
   model: "MODEL_REFERENCE_NOT_DELIVERED",
 };
 const factStates = {
-  "local-authentication": [
-    "unknown",
-    "not-run",
-    "authenticated",
-    "unauthenticated",
-  ],
+  "local-authentication": ["unknown", "not-run", "authenticated", "unauthenticated"],
   "gea-identity": ["unknown", "not-run", "authenticated", "missing", "denied"],
   "consumer-permission": ["unknown", "not-run", "allowed", "denied"],
   dataset: ["unknown", "not-run", "available", "unavailable"],
@@ -49,28 +37,12 @@ const factStates = {
   "real-model": ["unknown", "not-run", "passed", "failed"],
 };
 const negativeFacts = {
-  "gea-identity:missing": [
-    "gea-authorization",
-    "blocked",
-    "GEA_IDENTITY_MISSING",
-  ],
-  "gea-identity:denied": [
-    "gea-authorization",
-    "blocked",
-    "GEA_IDENTITY_DENIED",
-  ],
-  "consumer-permission:denied": [
-    "gea-authorization",
-    "blocked",
-    "CONSUMER_PERMISSION_DENIED",
-  ],
+  "gea-identity:missing": ["gea-authorization", "blocked", "GEA_IDENTITY_MISSING"],
+  "gea-identity:denied": ["gea-authorization", "blocked", "GEA_IDENTITY_DENIED"],
+  "consumer-permission:denied": ["gea-authorization", "blocked", "CONSUMER_PERMISSION_DENIED"],
   "dataset:unavailable": ["real-data", "blocked", "DATASET_UNAVAILABLE"],
   "query:failed": ["real-data", "failed", "QUERY_FAILED"],
-  "fixed-data-comparison:mismatched": [
-    "real-data",
-    "failed",
-    "FIXED_DATA_COMPARISON_FAILED",
-  ],
+  "fixed-data-comparison:mismatched": ["real-data", "failed", "FIXED_DATA_COMPARISON_FAILED"],
   "real-model:failed": ["model", "failed", "REAL_MODEL_FAILED"],
 };
 
@@ -102,8 +74,7 @@ function observePolicy(value, stages, evidence) {
         }
       : null;
   const round = cleanRound(value?.current);
-  const current =
-    round && round.roundId === value.currentRoundId ? round : null;
+  const current = round && round.roundId === value.currentRoundId ? round : null;
   const history = (Array.isArray(value?.history) ? value.history : [])
     .map(cleanRound)
     .filter(Boolean);
@@ -113,19 +84,14 @@ function observePolicy(value, stages, evidence) {
       id(stop.actionId) &&
       id(stop.roundId) &&
       stages.includes(stop.stage) &&
-      ((stop.kind === "model-capacity" &&
-        stop.reasonCode === "capacity-limit") ||
+      ((stop.kind === "model-capacity" && stop.reasonCode === "capacity-limit") ||
         (stop.kind === "approval-rejected" &&
-          ["automatic-approval-rejected", "manual-approval-rejected"].includes(
-            stop.reasonCode,
-          )));
+          ["automatic-approval-rejected", "manual-approval-rejected"].includes(stop.reasonCode)));
     return {
       actionId: id(stop?.actionId) ? stop.actionId : null,
       stage: stages.includes(stop?.stage) ? stop.stage : null,
       roundId: id(stop?.roundId) ? stop.roundId : null,
-      kind: ["model-capacity", "approval-rejected"].includes(stop?.kind)
-        ? stop.kind
-        : "unknown",
+      kind: ["model-capacity", "approval-rejected"].includes(stop?.kind) ? stop.kind : "unknown",
       status: valid ? "blocked" : "unknown",
       reasonCode: valid ? stop.reasonCode : "STOP_ACTION_AND_REASON_REQUIRED",
       relation:
@@ -153,8 +119,7 @@ function observePolicy(value, stages, evidence) {
         : "historical";
   const effectivePolicyKnown =
     current && current.access !== "unknown" && current.approval !== "unknown";
-  const available =
-    actionLocated && pendingRelation === "current" && effectivePolicyKnown;
+  const available = actionLocated && pendingRelation === "current" && effectivePolicyKnown;
   const pendingAction = {
     status: available ? pending.approvalState : "unknown",
     relation: pendingRelation,
@@ -188,17 +153,13 @@ export function assessReadiness({
   candidateContentSha256,
   candidateValid,
 }) {
-  const envelopes = inputs.filter(
-    (input) => parse(input)?.kind === "authorization-readiness",
-  );
+  const envelopes = inputs.filter((input) => parse(input)?.kind === "authorization-readiness");
   if (!envelopes.length) return null;
   const input = envelopes[0];
   const data = parse(input);
   const unique = (sourceId) => {
     const matching = inputs.filter((input) => input.id === sourceId);
-    return matching.length === 1 && matching[0].sha256
-      ? matching[0]
-      : undefined;
+    return matching.length === 1 && matching[0].sha256 ? matching[0] : undefined;
   };
   const valid =
     envelopes.length === 1 &&
@@ -210,48 +171,42 @@ export function assessReadiness({
     data.instructions.every(id) &&
     new Set(data.instructions).size === data.instructions.length &&
     inputs.every(
-      (input) =>
-        !input.id ||
-        inputs.filter((other) => other.id === input.id).length === 1,
+      (input) => !input.id || inputs.filter((other) => other.id === input.id).length === 1,
     );
-  const instructions = (
-    valid && Array.isArray(data.instructions) ? data.instructions : []
-  ).map((sourceId) => {
-    const input = unique(sourceId),
-      value = parse(input);
-    const human =
-      value?.kind === "human-instruction" &&
-      value.projectId === projectId &&
-      value.provenance?.author === "human" &&
-      value.provenance?.interface === "official-user-message" &&
-      id(value.provenance.threadId) &&
-      id(value.provenance.itemId) &&
-      Array.isArray(value.taskIds) &&
-      value.taskIds.length > 0 &&
-      value.taskIds.length <= 100 &&
-      value.taskIds.every(id) &&
-      Array.isArray(value.stages) &&
-      value.stages.length > 0 &&
-      value.stages.length <= stages.length &&
-      value.stages.every((stage) => stages.includes(stage)) &&
-      ["allow", "deny", "pause"].includes(value.effect) &&
-      ["manual-work", "automatic-followup", "browser", "review-rule"].includes(
-        value.action,
-      ) &&
-      (value.supersedes === undefined ||
-        (Array.isArray(value.supersedes) &&
-          value.supersedes.length <= 100 &&
-          value.supersedes.every(id))) &&
-      (value.dependencyExceptions === undefined ||
-        (Array.isArray(value.dependencyExceptions) &&
-          value.dependencyExceptions.length <= 100 &&
-          value.dependencyExceptions.every(id)));
-    return { sourceId, input, value, human };
-  });
+  const instructions = (valid && Array.isArray(data.instructions) ? data.instructions : []).map(
+    (sourceId) => {
+      const input = unique(sourceId),
+        value = parse(input);
+      const human =
+        value?.kind === "human-instruction" &&
+        value.projectId === projectId &&
+        value.provenance?.author === "human" &&
+        value.provenance?.interface === "official-user-message" &&
+        id(value.provenance.threadId) &&
+        id(value.provenance.itemId) &&
+        Array.isArray(value.taskIds) &&
+        value.taskIds.length > 0 &&
+        value.taskIds.length <= 100 &&
+        value.taskIds.every(id) &&
+        Array.isArray(value.stages) &&
+        value.stages.length > 0 &&
+        value.stages.length <= stages.length &&
+        value.stages.every((stage) => stages.includes(stage)) &&
+        ["allow", "deny", "pause"].includes(value.effect) &&
+        ["manual-work", "automatic-followup", "browser", "review-rule"].includes(value.action) &&
+        (value.supersedes === undefined ||
+          (Array.isArray(value.supersedes) &&
+            value.supersedes.length <= 100 &&
+            value.supersedes.every(id))) &&
+        (value.dependencyExceptions === undefined ||
+          (Array.isArray(value.dependencyExceptions) &&
+            value.dependencyExceptions.length <= 100 &&
+            value.dependencyExceptions.every(id)));
+      return { sourceId, input, value, human };
+    },
+  );
   const lines = [
-    ...(ticket.bytes?.toString("utf8") ?? "").matchAll(
-      /^\*\*Blocked by:\*\*\s*(.+)$/gm,
-    ),
+    ...(ticket.bytes?.toString("utf8") ?? "").matchAll(/^\*\*Blocked by:\*\*\s*(.+)$/gm),
   ];
   const body = lines.length === 1 ? lines[0][1] : "";
   const predecessorIds = /^(?:None\b|无(?:[。.\s]|$))/.test(body)
@@ -265,11 +220,10 @@ export function assessReadiness({
     (/^(?:None\b|无(?:[。.\s]|$))/.test(body) ||
       predecessorIds.length === body.split(/[；;]/).length);
   const predecessors = [...new Set(predecessorIds)].map((predecessorId) => {
-    const references = (
-      valid && Array.isArray(data.predecessors) ? data.predecessors : []
-    ).filter((entry) => entry?.taskId === predecessorId);
-    const source =
-      references.length === 1 ? unique(references[0].sourceId) : undefined;
+    const references = (valid && Array.isArray(data.predecessors) ? data.predecessors : []).filter(
+      (entry) => entry?.taskId === predecessorId,
+    );
+    const source = references.length === 1 ? unique(references[0].sourceId) : undefined;
     const executionStatus = observeTaskTicket(source, predecessorId).status;
     return {
       taskId: predecessorId,
@@ -316,21 +270,14 @@ export function assessReadiness({
         ),
       );
     const active = relevant.filter(
-      (entry) =>
-        !relevant.some((newer) =>
-          newer.value.supersedes?.includes(entry.sourceId),
-        ),
+      (entry) => !relevant.some((newer) => newer.value.supersedes?.includes(entry.sourceId)),
     );
     const conflict =
       new Set(active.map((entry) => entry.value.effect)).size > 1 ||
       (relevant.length > 0 && !active.length);
     const stopped = active.some((entry) => entry.value.effect !== "allow");
     const status =
-      !valid ||
-      invalidSource ||
-      invalidSupersession ||
-      conflict ||
-      !active.length
+      !valid || invalidSource || invalidSupersession || conflict || !active.length
         ? "unknown"
         : stopped
           ? "blocked"
@@ -352,13 +299,7 @@ export function assessReadiness({
       active,
       dependencyExceptions:
         status === "allowed"
-          ? [
-              ...new Set(
-                active.flatMap(
-                  (entry) => entry.value.dependencyExceptions ?? [],
-                ),
-              ),
-            ]
+          ? [...new Set(active.flatMap((entry) => entry.value.dependencyExceptions ?? []))]
           : [],
       stopEffects:
         status === "blocked"
@@ -371,21 +312,19 @@ export function assessReadiness({
     };
   };
   const authorization = stages.map((stage) => {
-    const { active, ...permission } = permissionFor(stage, "manual-work");
+    const { active: _active, ...permission } = permissionFor(stage, "manual-work");
     return permission;
   });
   const arrangements = ["automatic-followup", "browser"].flatMap((action) =>
     stages.map((stage) => {
-      const { active, ...permission } = permissionFor(stage, action);
+      const { active: _active, ...permission } = permissionFor(stage, action);
       return permission;
     }),
   );
   let review = null;
   if (data.review !== undefined) {
     const permission = permissionFor("offline-checks", "review-rule");
-    const modes = [
-      ...new Set(permission.active.map((entry) => entry.value.reviewMode)),
-    ];
+    const modes = [...new Set(permission.active.map((entry) => entry.value.reviewMode))];
     const mode =
       permission.status === "allowed" &&
       modes.length === 1 &&
@@ -401,30 +340,20 @@ export function assessReadiness({
       record.taskId === taskId &&
       record.projectId === projectId &&
       record.scope === "final-candidate" &&
-      ["standards", "spec", "taste"].every(
-        (axis) => record[axis] === "passed",
-      ) &&
+      ["standards", "spec", "taste"].every((axis) => record[axis] === "passed") &&
       record.candidateSha256 === candidateSha256 &&
       record.candidateContentSha256 === candidateContentSha256 &&
       Array.isArray(record.inputs) &&
       record.inputs.every(
-        (ref) =>
-          id(ref?.sourceId) && unique(ref.sourceId)?.sha256 === ref.sha256,
+        (ref) => id(ref?.sourceId) && unique(ref.sourceId)?.sha256 === ref.sha256,
       ) &&
-      new Set(record.inputs.map((ref) => ref.sourceId)).size ===
-        record.inputs.length &&
+      new Set(record.inputs.map((ref) => ref.sourceId)).size === record.inputs.length &&
       Array.isArray(data.review.requiredInputs) &&
       data.review.requiredInputs.every(
-        (sourceId) =>
-          id(sourceId) &&
-          record.inputs.some((ref) => ref.sourceId === sourceId),
+        (sourceId) => id(sourceId) && record.inputs.some((ref) => ref.sourceId === sourceId),
       );
     review = {
-      status: current
-        ? "satisfied"
-        : mode === "external-final"
-          ? "blocked"
-          : "unknown",
+      status: current ? "satisfied" : mode === "external-final" ? "blocked" : "unknown",
       rule: mode,
       reason: current
         ? "FINAL_INTERNAL_REVIEW_REUSED"
@@ -436,33 +365,24 @@ export function assessReadiness({
     };
   }
   const configuration = categories.map((category) => {
-    const entries = (
-      valid && Array.isArray(data.configuration) ? data.configuration : []
-    ).filter((entry) => entry?.category === category);
+    const entries = (valid && Array.isArray(data.configuration) ? data.configuration : []).filter(
+      (entry) => entry?.category === category,
+    );
     const entry = entries[0];
     const validEntry =
       entries.length === 1 &&
       ["ready", "missing", "unknown", "denied"].includes(entry.status) &&
-      [
-        "mock",
-        "receipt",
-        "placeholder",
-        "real-readonly",
-        "real-write",
-      ].includes(entry.mode) &&
+      ["mock", "receipt", "placeholder", "real-readonly", "real-write"].includes(entry.mode) &&
       (entry.status !== "ready" || id(entry.referenceId)) &&
       (category !== "read-scope" ||
         entry.status !== "ready" ||
-        (Array.isArray(entry.scope) &&
-          entry.scope.length > 0 &&
-          entry.scope.every(id)));
+        (Array.isArray(entry.scope) && entry.scope.length > 0 && entry.scope.every(id)));
     const status = validEntry ? entry.status : "unknown";
     return {
       category,
       status,
       mode: validEntry ? entry.mode : "unknown",
-      referenceId:
-        validEntry && id(entry.referenceId) ? entry.referenceId : null,
+      referenceId: validEntry && id(entry.referenceId) ? entry.referenceId : null,
       scope:
         validEntry && category === "read-scope" && Array.isArray(entry.scope)
           ? entry.scope.filter(id)
@@ -480,8 +400,7 @@ export function assessReadiness({
       proof: "readiness-metadata-only",
     };
   });
-  const requirements =
-    valid && Array.isArray(data.requirements) ? data.requirements : [];
+  const requirements = valid && Array.isArray(data.requirements) ? data.requirements : [];
   const configGaps = stages.flatMap((stage) => {
     const entries = requirements.filter((entry) => entry?.stage === stage);
     if (!entries.length) return [];
@@ -529,9 +448,9 @@ export function assessReadiness({
     });
   });
   const facts = Object.entries(factStates).map(([fact, states]) => {
-    const entries = (
-      valid && Array.isArray(data.observations) ? data.observations : []
-    ).filter((entry) => entry?.fact === fact);
+    const entries = (valid && Array.isArray(data.observations) ? data.observations : []).filter(
+      (entry) => entry?.fact === fact,
+    );
     const entry = entries[0];
     const recordValid =
       entries.length === 1 &&
@@ -541,10 +460,7 @@ export function assessReadiness({
       id(entry.runId) &&
       id(entry.combinationId) &&
       id(entry.ownerId);
-    const current =
-      recordValid &&
-      candidateValid &&
-      entry.candidateSha256 === candidateSha256;
+    const current = recordValid && candidateValid && entry.candidateSha256 === candidateSha256;
     return {
       fact,
       state: current ? entry.state : "unknown",
@@ -596,29 +512,20 @@ export function assessReadiness({
               ? "AUTOMATIC_APPROVAL_REJECTED"
               : "MANUAL_APPROVAL_REJECTED",
       actionId: stop.actionId,
-      owner:
-        stop.kind === "model-capacity"
-          ? "model-platform-owner"
-          : "approval-owner",
+      owner: stop.kind === "model-capacity" ? "model-platform-owner" : "approval-owner",
       evidence: stop.evidence,
     }));
   if (
     executionPolicy.pendingAction.relation !== "historical" &&
     executionPolicy.pendingAction.stage &&
-    ["pending", "rejected", "unknown"].includes(
-      executionPolicy.pendingAction.status,
-    )
+    ["pending", "rejected", "unknown"].includes(executionPolicy.pendingAction.status)
   )
     policyGaps.push({
       stage: executionPolicy.pendingAction.stage,
-      status:
-        executionPolicy.pendingAction.status === "unknown"
-          ? "unknown"
-          : "blocked",
+      status: executionPolicy.pendingAction.status === "unknown" ? "unknown" : "blocked",
       reason:
         executionPolicy.pendingAction.status === "unknown"
-          ? executionPolicy.pendingAction.reason ===
-            "EFFECTIVE_CURRENT_POLICY_REQUIRED"
+          ? executionPolicy.pendingAction.reason === "EFFECTIVE_CURRENT_POLICY_REQUIRED"
             ? "EFFECTIVE_CURRENT_POLICY_REQUIRED"
             : "PENDING_ACTION_UNAVAILABLE"
           : executionPolicy.pendingAction.status === "pending"
@@ -634,14 +541,10 @@ export function assessReadiness({
       dependencyStatus === "blocked" &&
       predecessors
         .filter((entry) => entry.status !== "satisfied")
-        .every((entry) =>
-          permission.dependencyExceptions.includes(entry.taskId),
-        );
+        .every((entry) => permission.dependencyExceptions.includes(entry.taskId));
     const dependencyReady = dependencyStatus === "satisfied" || exception;
     const reviewGap =
-      review &&
-      review.status !== "satisfied" &&
-      permission.stage === "offline-checks"
+      review && review.status !== "satisfied" && permission.stage === "offline-checks"
         ? { ...review, status: review.status, owner: "review-owner" }
         : undefined;
     const browser = arrangements.find(
@@ -665,9 +568,7 @@ export function assessReadiness({
       [...policyGaps].find((entry) => entry.stage === permission.stage) ??
       browserGap ??
       reviewGap ??
-      [...factGaps, ...configGaps].find(
-        (entry) => entry.stage === permission.stage,
-      );
+      [...factGaps, ...configGaps].find((entry) => entry.stage === permission.stage);
     const status =
       permission.status === "blocked" ||
       (dependencyStatus === "blocked" && !exception) ||

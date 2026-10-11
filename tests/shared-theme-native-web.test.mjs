@@ -1,7 +1,7 @@
 /** Native DSH profile proves theme resources do not depend on company plugins. */
 import { profile } from "./profile.mjs";
 import { changeThemeSetting } from "./theme-settings.mjs";
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
@@ -14,7 +14,7 @@ test(
   },
   async (t) => {
     const app = await profile(t, { coreOnly: true });
-    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    const browser = await chromium.launch({ headless: true });
     t.after(() => browser.close());
     const page = await browser.newPage({ locale: "zh-CN", viewport: { width: 1280, height: 900 } });
     const errors = [];

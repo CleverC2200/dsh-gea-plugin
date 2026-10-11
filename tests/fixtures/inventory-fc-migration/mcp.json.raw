@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "provider": "gea",
+  "consumer": {
+    "consumerType": "AGENT",
+    "consumerCode": "branch-inventory"
+  },
+  "capabilities": [
+    "governed-sql-read"
+  ],
+  "transport": "host-provided",
+  "contract": "gea-html-v1"
+}

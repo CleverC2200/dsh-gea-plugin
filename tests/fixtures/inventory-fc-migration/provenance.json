@@ -1,0 +1,20 @@
+{
+  "repository": "dsh-agent-fc-plugin",
+  "commit": "906b3b08947b71cecf627073c0b0e9a389b692bf",
+  "sourceRecord": "repositories.json: repositories dsh-agent-fc-plugin, same entry in integration-02-03/before-repositories.json",
+  "purpose": "fixed pre-migration capability and MCP contract; not the unknown branch-stock rendered golden producer",
+  "files": {
+    "index.html": {
+      "sha256": "abb0947ab89397d05b4e806270c771d8daa023e186a06c6d2eeda90702496e15",
+      "bytes": 872558,
+      "gitBlob": "298d55490c1920895033a78b46b37babd983ea49",
+      "fixtureFile": "index.html.raw"
+    },
+    "mcp.json": {
+      "sha256": "56fee7836b133f8d3e0c3bc97b2b2e140b071b345c452682894f6dd47c684e5d",
+      "bytes": 245,
+      "gitBlob": "80ec24ef18810e43dea3ea33ae57b528b02a0b02",
+      "fixtureFile": "mcp.json.raw"
+    }
+  }
+}

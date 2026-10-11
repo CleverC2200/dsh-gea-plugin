@@ -1,6 +1,6 @@
 /** Internal read-only integrity observations behind checkDelivery. Unsupported Git layouts stay unknown. */
 import { readdir, lstat } from "node:fs/promises";
-import { resolve, relative, join, isAbsolute, posix } from "node:path";
+import { resolve, relative, join, posix } from "node:path";
 import { createHash } from "node:crypto";
 import { createReadScope } from "./delivery-input-scope.mjs";
 import { inflateSync } from "node:zlib";
@@ -10,15 +10,13 @@ import {
 } from "./source-combination-integrity.mjs";
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const oid = (bytes) => createHash("sha1").update(bytes).digest("hex");
-const sha = (value) =>
-  typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
-const commitId = (value) =>
-  typeof value === "string" && /^[a-f0-9]{40}$/.test(value);
+const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+const commitId = (value) => typeof value === "string" && /^[a-f0-9]{40}$/.test(value);
 const fail = (code) => {
   throw Error(code);
 };
 async function gitState(scope, source, objectRoot) {
-  const root = scope.root;
+  const _root = scope.root;
   let git = join(source, ".git");
   const marker = await lstat(git);
   if (marker.isFile()) {
@@ -30,25 +28,18 @@ async function gitState(scope, source, objectRoot) {
   const common = commonMarker
     ? await scope.resolve(resolve(git, commonMarker.toString().trim()))
     : git;
-  const config =
-    (await scope.optional(join(common, "config")))?.toString() ?? "";
-  if (
-    /excludesfile|sparsecheckout\s*=\s*true|objectformat\s*=\s*(?!sha1)/i.test(
-      config,
-    )
-  )
+  const config = (await scope.optional(join(common, "config")))?.toString() ?? "";
+  if (/excludesfile|sparsecheckout\s*=\s*true|objectformat\s*=\s*(?!sha1)/i.test(config))
     fail("GIT_CONFIG_UNSUPPORTED");
   const headBytes = await scope.read(join(git, "HEAD"));
   let head = headBytes.toString().trim();
   if (head.startsWith("ref: ")) {
     const ref = head.slice(5);
-    if (!/^refs\/[a-zA-Z0-9._/-]+$/.test(ref) || ref.includes(".."))
-      fail("GIT_HEAD_UNSUPPORTED");
+    if (!/^refs\/[a-zA-Z0-9._/-]+$/.test(ref) || ref.includes("..")) fail("GIT_HEAD_UNSUPPORTED");
     const loose = await scope.optional(join(common, ref));
     if (loose) head = loose.toString().trim();
     else {
-      const packed =
-        (await scope.optional(join(common, "packed-refs")))?.toString() ?? "";
+      const packed = (await scope.optional(join(common, "packed-refs")))?.toString() ?? "";
       head = packed
         .split("\n")
         .find((line) => line.endsWith(" " + ref))
@@ -90,15 +81,11 @@ async function gitState(scope, source, objectRoot) {
   async function object(id, type) {
     let compressed;
     try {
-      compressed = await scope.read(
-        join(common, "objects", id.slice(0, 2), id.slice(2)),
-      );
+      compressed = await scope.read(join(common, "objects", id.slice(0, 2), id.slice(2)));
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
       if (!objectRoot) fail("GIT_PACKED_OBJECT_UNSUPPORTED");
-      const exported = await scope.resolve(
-        join(objectRoot, id.slice(0, 2), id.slice(2)),
-      );
+      const exported = await scope.resolve(join(objectRoot, id.slice(0, 2), id.slice(2)));
       compressed = await scope.read(exported);
     }
     const bytes = inflateSync(compressed, {
@@ -124,17 +111,14 @@ async function gitState(scope, source, objectRoot) {
     while (pos < bytes.length) {
       const space = bytes.indexOf(32, pos),
         zero = bytes.indexOf(0, space);
-      if (space < pos || zero < space || zero + 21 > bytes.length)
-        fail("GIT_OBJECT_MISMATCH");
+      if (space < pos || zero < space || zero + 21 > bytes.length) fail("GIT_OBJECT_MISMATCH");
       const mode = bytes.toString("ascii", pos, space),
         name = bytes.toString("utf8", space + 1, zero),
         objectId = bytes.subarray(zero + 1, zero + 21).toString("hex"),
         path = prefix + name;
-      if (!name || name.includes("/") || name === "..")
-        fail("GIT_OBJECT_MISMATCH");
+      if (!name || name.includes("/") || name === "..") fail("GIT_OBJECT_MISMATCH");
       if (mode === "40000") await walkTree(objectId, path + "/");
-      else if (["100644", "100755"].includes(mode))
-        committed.push({ path, objectId, mode });
+      else if (["100644", "100755"].includes(mode)) committed.push({ path, objectId, mode });
       else fail("GIT_TREE_UNSUPPORTED");
       pos = zero + 21;
     }
@@ -166,9 +150,7 @@ export async function observeCandidate(root, candidate, { readScope } = {}) {
         : null,
     );
     const tracked = new Map(state.entries.map((entry) => [entry.path, entry]));
-    const committed = new Map(
-      state.committed.map((entry) => [entry.path, entry]),
-    );
+    const committed = new Map(state.committed.map((entry) => [entry.path, entry]));
     const actual = new Map(),
       changes = [];
     let count = 0;
@@ -181,14 +163,12 @@ export async function observeCandidate(root, candidate, { readScope } = {}) {
         // Registered checkout grammar: literals and Workbench's tarball suffix.
         // Negation and other globs still require unsupported Git semantics.
         const tarball = line === "*.tgz";
-        if (!tarball && /[!*?\[\]\\ ]/.test(line))
-          fail("GIT_IGNORE_SYNTAX_UNSUPPORTED");
+        if (!tarball && /[!*?[\]\\ ]/.test(line)) fail("GIT_IGNORE_SYNTAX_UNSUPPORTED");
         rules.push({
           tarball,
           prefix,
           value: line.replace(/^\//, ""),
-          anchored:
-            line.startsWith("/") || line.replace(/\/$/, "").includes("/"),
+          anchored: line.startsWith("/") || line.replace(/\/$/, "").includes("/"),
         });
       }
     }
@@ -198,12 +178,9 @@ export async function observeCandidate(root, candidate, { readScope } = {}) {
         if (!path.startsWith(prefix)) return false;
         const within = path.slice(prefix.length),
           target = value.replace(/\/$/, "");
-        if (tarball)
-          return within.split("/").some((part) => part.endsWith(".tgz"));
+        if (tarball) return within.split("/").some((part) => part.endsWith(".tgz"));
         if (value.endsWith("/") && !directory) return false;
-        return anchored
-          ? within === target
-          : within.split("/").includes(target);
+        return anchored ? within === target : within.split("/").includes(target);
       });
     }
     async function scan(directory, prefix = "") {
@@ -220,31 +197,22 @@ export async function observeCandidate(root, candidate, { readScope } = {}) {
         )
           continue;
         if (++count > 20000) fail("INTEGRITY_INPUT_UNSUPPORTED");
-        if (entry.isDirectory())
-          await scan(join(directory, entry.name), path + "/");
+        if (entry.isDirectory()) await scan(join(directory, entry.name), path + "/");
         else if (entry.isFile()) {
           const bytes = await scope.read(join(directory, entry.name));
           const mode =
-            (await lstat(join(directory, entry.name))).mode & 0o111
-              ? "100755"
-              : "100644";
+            (await lstat(join(directory, entry.name))).mode & 0o111 ? "100755" : "100644";
           actual.set(path, {
             path,
             sha256: hash(bytes),
-            objectId: oid(
-              Buffer.concat([Buffer.from(`blob ${bytes.length}\0`), bytes]),
-            ),
+            objectId: oid(Buffer.concat([Buffer.from(`blob ${bytes.length}\0`), bytes])),
             mode,
           });
         } else fail("INTEGRITY_SOURCE_SCOPE_UNSUPPORTED");
       }
     }
     await scan(source);
-    for (const path of new Set([
-      ...actual.keys(),
-      ...committed.keys(),
-      ...tracked.keys(),
-    ])) {
+    for (const path of new Set([...actual.keys(), ...committed.keys(), ...tracked.keys()])) {
       const file = actual.get(path),
         baseline = committed.get(path),
         indexed = tracked.get(path);
@@ -266,9 +234,7 @@ export async function observeCandidate(root, candidate, { readScope } = {}) {
       }
     }
     changes.sort((a, b) => a.path.localeCompare(b.path));
-    const files = [...actual.values()].sort((a, b) =>
-      a.path.localeCompare(b.path),
-    );
+    const files = [...actual.values()].sort((a, b) => a.path.localeCompare(b.path));
     const contentSha256 = hash(
       JSON.stringify({
         head: state.head,
@@ -284,8 +250,7 @@ export async function observeCandidate(root, candidate, { readScope } = {}) {
       const declared = candidate.files ?? [];
       matches &&=
         declared.length === changes.length &&
-        new Set(declared.map((ref) => resolve(root, ref.path))).size ===
-          declared.length &&
+        new Set(declared.map((ref) => resolve(root, ref.path))).size === declared.length &&
         changes.every((change) =>
           declared.some(
             (ref) =>
@@ -296,12 +261,10 @@ export async function observeCandidate(root, candidate, { readScope } = {}) {
                   ref.sha256 === change.sha256 &&
                   (ref.mode === change.mode ||
                     (ref.mode === undefined &&
-                      committed.get(relative(source, resolve(root, ref.path)))
-                        ?.mode === change.mode) ||
+                      committed.get(relative(source, resolve(root, ref.path)))?.mode ===
+                        change.mode) ||
                     (ref.mode === undefined &&
-                      !committed.has(
-                        relative(source, resolve(root, ref.path)),
-                      )))),
+                      !committed.has(relative(source, resolve(root, ref.path)))))),
           ),
         );
     }
@@ -373,17 +336,12 @@ export async function observeAssembly(root, record, context) {
     status,
     reason,
     minimumGap: status === "passed" ? null : minimumGap,
-    proof:
-      status === "passed" ? "official-combination-and-inputs" : "not-verified",
+    proof: status === "passed" ? "official-combination-and-inputs" : "not-verified",
     evidence,
     inputs,
   });
   async function observe(ref, limit = 16 * 1024 * 1024) {
-    if (
-      !ref ||
-      typeof ref.id !== "string" ||
-      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(ref.id)
-    )
+    if (!ref || typeof ref.id !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(ref.id))
       fail("ASSEMBLY_INPUT_REFERENCE_INVALID");
     activeInputId = ref.id;
     const file = await scope.resolve(ref.path),
@@ -403,27 +361,15 @@ export async function observeAssembly(root, record, context) {
     return { bytes, sha256: actual };
   }
   try {
-    if (
-      !record ||
-      record.taskId !== context.taskId ||
-      record.projectId !== context.projectId
-    )
+    if (!record || record.taskId !== context.taskId || record.projectId !== context.projectId)
       return result("unknown", "ASSEMBLY_RECORD_REQUIRED");
     if (!context.candidate?.checkout || context.integrity?.status !== "passed")
-      return result(
-        "unknown",
-        "COMPLETE_CANDIDATE_REQUIRED",
-        "VERIFY_COMPLETE_CANDIDATE",
-      );
+      return result("unknown", "COMPLETE_CANDIDATE_REQUIRED", "VERIFY_COMPLETE_CANDIDATE");
     if (
       record.candidateSha256 !== context.candidateSha256 ||
       record.candidateContentSha256 !== context.integrity.contentSha256
     )
-      return result(
-        "blocked",
-        "ASSEMBLY_PENDING",
-        "ASSEMBLE_CURRENT_CANDIDATE_AND_ARTIFACTS",
-      );
+      return result("blocked", "ASSEMBLY_PENDING", "ASSEMBLE_CURRENT_CANDIDATE_AND_ARTIFACTS");
     if (
       typeof record.runtime !== "string" ||
       !/^[a-f0-9-]{36}$/.test(record.combinationId) ||
@@ -438,11 +384,7 @@ export async function observeAssembly(root, record, context) {
       path: join(directory, "combination.json"),
     });
     if (manifestInput.sha256 !== record.manifestSha256)
-      return result(
-        "failed",
-        "ASSEMBLY_MANIFEST_MISMATCH",
-        "MATCHING_FROZEN_MANIFEST_REQUIRED",
-      );
+      return result("failed", "ASSEMBLY_MANIFEST_MISMATCH", "MATCHING_FROZEN_MANIFEST_REQUIRED");
     const manifest = JSON.parse(manifestInput.bytes);
     const selectionInput = await observe({
       id: "assembly-selection",
@@ -454,11 +396,7 @@ export async function observeAssembly(root, record, context) {
       selection.id !== record.combinationId ||
       selection.manifestSha256 !== manifestInput.sha256
     )
-      return result(
-        "failed",
-        "ASSEMBLY_SELECTION_MISMATCH",
-        "MATCHING_CURRENT_SELECTION_REQUIRED",
-      );
+      return result("failed", "ASSEMBLY_SELECTION_MISMATCH", "MATCHING_CURRENT_SELECTION_REQUIRED");
     if (!record.core || !commitId(record.core.commit))
       return result("unknown", "ASSEMBLY_CORE_REFERENCE_REQUIRED");
     const core = await observeCandidate(
@@ -471,17 +409,9 @@ export async function observeAssembly(root, record, context) {
       { readScope: scope },
     );
     if (core.status !== "passed")
-      return result(
-        core.status,
-        "ASSEMBLY_CORE_" + core.reason,
-        "VERIFY_ACTUAL_CLEAN_CORE",
-      );
+      return result(core.status, "ASSEMBLY_CORE_" + core.reason, "VERIFY_ACTUAL_CLEAN_CORE");
     if (manifest.core !== core.head)
-      return result(
-        "failed",
-        "SOURCE_COMBINATION_CORE_MISMATCH",
-        "ASSEMBLE_MATCHING_CORE",
-      );
+      return result("failed", "SOURCE_COMBINATION_CORE_MISMATCH", "ASSEMBLE_MATCHING_CORE");
     evidence.push({
       sourceId: "assembly-core",
       sha256: core.contentSha256,
@@ -494,29 +424,20 @@ export async function observeAssembly(root, record, context) {
       !record.artifacts.length
     )
       return result("unknown", "ASSEMBLY_BUILD_AND_ARTIFACT_INPUTS_REQUIRED");
-    const ids = [...record.buildInputs, ...record.artifacts].map(
-      (ref) => ref?.id,
-    );
+    const ids = [...record.buildInputs, ...record.artifacts].map((ref) => ref?.id);
     if (
       new Set(ids).size !== ids.length ||
       ids.some((id) =>
-        [
-          "assembly-manifest",
-          "assembly-selection",
-          "assembly-core",
-          "assembly-plugins",
-        ].includes(id),
+        ["assembly-manifest", "assembly-selection", "assembly-core", "assembly-plugins"].includes(
+          id,
+        ),
       )
     )
       return result("unknown", "ASSEMBLY_INPUT_ID_CONFLICT");
     for (const ref of record.buildInputs) {
       const actual = await observe(ref);
       if (!sha(ref.sha256) || actual.sha256 !== ref.sha256)
-        return result(
-          "failed",
-          "ASSEMBLY_BUILD_INPUT_MISMATCH",
-          "REBUILD_CHANGED_INPUTS",
-        );
+        return result("failed", "ASSEMBLY_BUILD_INPUT_MISMATCH", "REBUILD_CHANGED_INPUTS");
     }
     // Guard the complete dependency traversal before entering the official validator. Do not reimplement its digest rules.
     const visited = new Set();
@@ -528,20 +449,13 @@ export async function observeAssembly(root, record, context) {
       if (++count > 100000) fail("INTEGRITY_INPUT_UNSUPPORTED");
       const info = await lstat(physical);
       if (info.isDirectory())
-        for (const entry of await readdir(physical))
-          await guardTree(join(physical, entry));
+        for (const entry of await readdir(physical)) await guardTree(join(physical, entry));
       else if (!info.isFile()) fail("INTEGRITY_INPUT_UNSUPPORTED");
     }
-    if (
-      !Array.isArray(manifest.externalRoots) ||
-      !Array.isArray(manifest.externalLockFiles)
-    )
+    if (!Array.isArray(manifest.externalRoots) || !Array.isArray(manifest.externalLockFiles))
       return result("unknown", "ASSEMBLY_DEPENDENCY_REFERENCES_REQUIRED");
     await guardTree(directory);
-    for (const external of [
-      ...manifest.externalRoots,
-      ...manifest.externalLockFiles,
-    ])
+    for (const external of [...manifest.externalRoots, ...manifest.externalLockFiles])
       await guardTree(external);
     // Deliberately omit core argument: the canonical validator otherwise spawns Git.
     activeInputId = "assembly-combination";
@@ -561,11 +475,7 @@ export async function observeAssembly(root, record, context) {
         ? plugin.dirty !== ""
         : typeof plugin.dirty !== "string" || !plugin.dirty)
     )
-      return result(
-        "blocked",
-        "ASSEMBLY_PENDING",
-        "ASSEMBLE_CURRENT_CANDIDATE_AND_ARTIFACTS",
-      );
+      return result("blocked", "ASSEMBLY_PENDING", "ASSEMBLE_CURRENT_CANDIDATE_AND_ARTIFACTS");
     if (
       (await scope.resolve(plugin.source)) !==
       (await scope.resolve(context.candidate.checkout.path))
@@ -575,11 +485,7 @@ export async function observeAssembly(root, record, context) {
         "ASSEMBLY_COMPONENT_SOURCE_MISMATCH",
         "MATCHING_COMPONENT_SOURCE_REQUIRED",
       );
-    if (
-      !plugin.digests ||
-      typeof plugin.digests !== "object" ||
-      Array.isArray(plugin.digests)
-    )
+    if (!plugin.digests || typeof plugin.digests !== "object" || Array.isArray(plugin.digests))
       return result("unknown", "ASSEMBLY_COMPONENT_ARTIFACTS_REQUIRED");
     const moduleNames = Object.keys(manifest.composition.dependencies);
     const otherNames = moduleNames.filter((name) => name !== record.component);
@@ -588,9 +494,7 @@ export async function observeAssembly(root, record, context) {
       !Array.isArray(modules) ||
       modules.length !== otherNames.length ||
       new Set(modules.map((module) => module?.name)).size !== modules.length ||
-      otherNames.some(
-        (name) => !modules.some((module) => module?.name === name),
-      )
+      otherNames.some((name) => !modules.some((module) => module?.name === name))
     )
       return result(
         "unknown",
@@ -619,17 +523,10 @@ export async function observeAssembly(root, record, context) {
       if (
         actual.contentSha256 !== module.contentSha256 ||
         snapshot.commit !== candidate.commit ||
-        (candidate.kind === "clean"
-          ? snapshot.dirty !== ""
-          : !snapshot.dirty) ||
-        (await scope.resolve(snapshot.source)) !==
-          (await scope.resolve(candidate.checkout.path))
+        (candidate.kind === "clean" ? snapshot.dirty !== "" : !snapshot.dirty) ||
+        (await scope.resolve(snapshot.source)) !== (await scope.resolve(candidate.checkout.path))
       )
-        return result(
-          "blocked",
-          "ASSEMBLY_PENDING",
-          "ASSEMBLE_CURRENT_CANDIDATE_AND_ARTIFACTS",
-        );
+        return result("blocked", "ASSEMBLY_PENDING", "ASSEMBLE_CURRENT_CANDIDATE_AND_ARTIFACTS");
       evidence.push({
         sourceId: `assembly-module-${index + 1}`,
         sha256: actual.contentSha256,
@@ -648,38 +545,29 @@ export async function observeAssembly(root, record, context) {
         return result("unknown", "ASSEMBLY_COMPONENT_ARTIFACTS_REQUIRED");
       const componentManifest = JSON.parse(
         await scope.read(
-          await scope.resolve(
-            join(directory, "node_modules", name, "package.json"),
-          ),
+          await scope.resolve(join(directory, "node_modules", name, "package.json")),
         ),
       );
-      if (
-        componentArtifactEntries(componentManifest).some(
-          (file) => !sha(digests[file]),
-        )
-      )
+      if (componentArtifactEntries(componentManifest).some((file) => !sha(digests[file])))
         return result("unknown", "ASSEMBLY_COMPONENT_ARTIFACTS_REQUIRED");
       for (const [file, sha256] of Object.entries(digests))
         expectedArtifacts.push({ component: name, file, sha256 });
     }
     if (
       record.artifacts.length !== expectedArtifacts.length ||
-      new Set(record.artifacts.map((ref) => `${ref.component}/${ref.file}`))
-        .size !== record.artifacts.length ||
+      new Set(record.artifacts.map((ref) => `${ref.component}/${ref.file}`)).size !==
+        record.artifacts.length ||
       expectedArtifacts.some(
         (expected) =>
           !record.artifacts.some(
-            (ref) =>
-              ref.component === expected.component &&
-              ref.file === expected.file,
+            (ref) => ref.component === expected.component && ref.file === expected.file,
           ),
       )
     )
       return result("unknown", "ASSEMBLY_COMPONENT_ARTIFACTS_REQUIRED");
     for (const ref of record.artifacts) {
       const expected = expectedArtifacts.find(
-        (expected) =>
-          expected.component === ref.component && expected.file === ref.file,
+        (expected) => expected.component === ref.component && expected.file === ref.file,
       );
       if (
         !expected ||
@@ -709,15 +597,10 @@ export async function observeAssembly(root, record, context) {
         };
       if (
         actual.sha256 !== expected.sha256 ||
-        manifest.files[
-          `node_modules/${ref.component}/${posix.normalize(ref.file)}`
-        ] !== actual.sha256
+        manifest.files[`node_modules/${ref.component}/${posix.normalize(ref.file)}`] !==
+          actual.sha256
       )
-        return result(
-          "blocked",
-          "ASSEMBLY_PENDING",
-          "ASSEMBLE_CURRENT_CANDIDATE_AND_ARTIFACTS",
-        );
+        return result("blocked", "ASSEMBLY_PENDING", "ASSEMBLE_CURRENT_CANDIDATE_AND_ARTIFACTS");
     }
     return {
       ...result("passed", "ASSEMBLY_INPUTS_AND_SELECTION_MATCH"),
@@ -770,9 +653,7 @@ export async function observeAssembly(root, record, context) {
             expectedSha256: sha(entry.expected) ? entry.expected : null,
           }))
         : [],
-      mismatchCount: Array.isArray(error.mismatches)
-        ? error.mismatches.length
-        : 0,
+      mismatchCount: Array.isArray(error.mismatches) ? error.mismatches.length : 0,
     };
   }
 }

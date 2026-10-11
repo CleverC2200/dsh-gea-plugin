@@ -1,11 +1,18 @@
 /** Official read-only source-combination validation, shared with preparation. */
 import { readFile, readdir, realpath, lstat } from "node:fs/promises";
+import { readFile as readFileCallback } from "node:fs";
+import { promisify } from "node:util";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
+const callbackReadFile = promisify(readFileCallback);
 const readBytes = (file, readScope) =>
-  readScope ? readScope.read(file, 64 * 1024 * 1024) : readFile(file);
+  readScope
+    ? readScope.read(file, 64 * 1024 * 1024)
+    : typeof file === "string" || Buffer.isBuffer(file) || file instanceof URL
+      ? callbackReadFile(file)
+      : readFile(file);
 export const fileDigest = async (file, readScope) =>
   createHash("sha256")
     .update(await readBytes(file, readScope))
@@ -18,8 +25,7 @@ export async function resourceDigests(directory, prefix = "", readScope) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
     const file = join(directory, entry.name);
-    if (entry.isDirectory())
-      Object.assign(files, await resourceDigests(file, relative, readScope));
+    if (entry.isDirectory()) Object.assign(files, await resourceDigests(file, relative, readScope));
     else if (entry.isSymbolicLink()) {
       if (readScope) await readScope.resolve(file, { traverse: true });
       files[relative] = "link:" + (await realpath(file));
@@ -30,21 +36,13 @@ export async function resourceDigests(directory, prefix = "", readScope) {
 }
 
 /** Reject incomplete snapshots before changing the selected combination. */
-export async function readSourceCombination(
-  runtime,
-  id,
-  core,
-  { readScope } = {},
-) {
+export async function readSourceCombination(runtime, id, core, { readScope } = {}) {
   if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
   const directory = join(runtime, "source-combinations", id);
   const record = JSON.parse(
-    (await readBytes(join(directory, "combination.json"), readScope)).toString(
-      "utf8",
-    ),
+    (await readBytes(join(directory, "combination.json"), readScope)).toString("utf8"),
   );
-  if (record.composition.id !== id)
-    throw Error("SOURCE_COMBINATION_ID_MISMATCH");
+  if (record.composition.id !== id) throw Error("SOURCE_COMBINATION_ID_MISMATCH");
   if (
     core &&
     record.core !==
@@ -62,27 +60,18 @@ export async function readSourceCombination(
     throw Error("INVALID_SOURCE_DEPENDENCIES");
   if (Object.keys(record.composition.dependencies).length) {
     const plugins = JSON.parse(
-      (
-        await readBytes(join(directory, "company-plugins.json"), readScope)
-      ).toString("utf8"),
+      (await readBytes(join(directory, "company-plugins.json"), readScope)).toString("utf8"),
     );
-    for (const [name, version] of Object.entries(
-      record.composition.dependencies,
-    )) {
+    for (const [name, version] of Object.entries(record.composition.dependencies)) {
       if (
-        !/^(?:@[a-zA-Z0-9][a-zA-Z0-9._-]*\/)?[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(
-          name,
-        ) ||
+        !/^(?:@[a-zA-Z0-9][a-zA-Z0-9._-]*\/)?[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(name) ||
         typeof version !== "string" ||
         !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(version)
       )
         throw Error("INVALID_SOURCE_COMPONENT");
       const manifest = JSON.parse(
         (
-          await readBytes(
-            join(directory, "node_modules", name, "package.json"),
-            readScope,
-          )
+          await readBytes(join(directory, "node_modules", name, "package.json"), readScope)
         ).toString("utf8"),
       );
       if (
@@ -102,21 +91,16 @@ export async function readSourceCombination(
       mismatches: changedInputs(actual, record.files),
     });
   const external = await dependencyDigests(record.externalRoots, readScope);
-  for (const file of record.externalLockFiles)
-    external[file] = await fileDigest(file, readScope);
+  for (const file of record.externalLockFiles) external[file] = await fileDigest(file, readScope);
   if (
     JSON.stringify(Object.entries(external).sort()) !==
     JSON.stringify(Object.entries(record.externalFiles).sort())
   )
     throw Object.assign(Error("SOURCE_DEPENDENCY_DIGEST_MISMATCH"), {
-      mismatches: changedInputs(external, record.externalFiles).map(
-        (entry) => ({
-          ...entry,
-          kind: record.externalLockFiles.includes(entry.path)
-            ? "lock"
-            : "external-dependency",
-        }),
-      ),
+      mismatches: changedInputs(external, record.externalFiles).map((entry) => ({
+        ...entry,
+        kind: record.externalLockFiles.includes(entry.path) ? "lock" : "external-dependency",
+      })),
     });
   return record.composition;
 }
@@ -124,7 +108,34 @@ export async function readSourceCombination(
 /** Fix the resolved dependency graph, including built core files and transitive links. */
 export async function dependencyDigests(directories, readScope) {
   const files = {},
-    visited = new Set();
+    visited = new Set(),
+    pending = [];
+  let digestError;
+  async function completeFirst() {
+    const { file, result } = pending.shift();
+    const outcome = await result;
+    if (outcome.error) {
+      digestError = outcome.error;
+      throw outcome.error;
+    }
+    files[file] = outcome.value;
+  }
+  async function hash(file) {
+    if (readScope) {
+      files[file] = await fileDigest(file, readScope);
+      return;
+    }
+    // Keep discovery and insertion order. Every scheduled read settles before return.
+    files[file] = undefined;
+    pending.push({
+      file,
+      result: fileDigest(file).then(
+        (value) => ({ value }),
+        (error) => ({ error }),
+      ),
+    });
+    if (pending.length === 4) await completeFirst();
+  }
   async function visit(directory) {
     const physical = readScope
       ? await readScope.resolve(directory, { traverse: true })
@@ -134,18 +145,25 @@ export async function dependencyDigests(directories, readScope) {
     for (const entry of await readdir(physical, { withFileTypes: true })) {
       if (entry.name.startsWith(".")) continue;
       const file = join(physical, entry.name);
-      if (entry.isFile()) files[file] = await fileDigest(file, readScope);
+      if (entry.isFile()) await hash(file);
       else if (entry.isDirectory() || entry.isSymbolicLink()) {
         const resolved = readScope
           ? await readScope.resolve(file, { traverse: true })
           : await realpath(file);
         if (entry.isSymbolicLink()) files[file] = "link:" + resolved;
         if ((await lstat(resolved)).isDirectory()) await visit(resolved);
-        else files[resolved] = await fileDigest(resolved, readScope);
+        else await hash(resolved);
       }
     }
   }
-  for (const directory of directories) await visit(directory);
+  try {
+    for (const directory of directories) await visit(directory);
+    while (pending.length) await completeFirst();
+  } catch (error) {
+    const outcomes = await Promise.all(pending.map((entry) => entry.result));
+    // Earlier file failures retain precedence over a later discovery failure.
+    throw digestError ?? outcomes.find((outcome) => outcome.error)?.error ?? error;
+  }
   return files;
 }
 
@@ -162,9 +180,7 @@ function changedInputs(actual, expected) {
 
 export function clientEntry(manifest) {
   const entry = manifest.exports?.["./client"];
-  return typeof entry === "string"
-    ? entry
-    : (entry?.default ?? "client/client.js");
+  return typeof entry === "string" ? entry : (entry?.default ?? "client/client.js");
 }
 
 export function componentArtifactEntries(manifest) {

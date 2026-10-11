@@ -245,8 +245,7 @@
   "peers": [
     "../dsh-agent-workbench",
     "../dsh-agent-manage",
-    "../../official-latest-standard",
-    "../../../../docs/agents"
+    "../../official-latest-standard"
   ],
   "commandRoots": {
     "docs/plugin-split-validation.md": [
