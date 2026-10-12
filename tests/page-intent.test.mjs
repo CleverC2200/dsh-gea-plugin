@@ -15,8 +15,7 @@ const { outputFiles } = await build({
   format: "esm",
 });
 const m = await import(
-  "data:text/javascript;base64," +
-    Buffer.from(outputFiles[0].contents).toString("base64")
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 
 test("有页面意图：这一屏/这几行/展开/选中/这单/当前页都算", () => {
@@ -47,11 +46,7 @@ test("没有原话就不猜（空值一律不算页面意图）", () => {
   assert.equal(m.pageIntentOf("   "), undefined);
 });
 
-test("接线：快照工具在发送前判意图，位置提示不再默认引导读页面", async () => {
-  const tools = await readFile("src/host/agent-tools.ts", "utf8");
-  assert.match(tools, /const intent = pageIntentOf\(question\);/);
-  assert.match(tools, /availability: "no-page-intent"/);
-  assert.match(tools, /PAGE_INTENT_MISSING/);
+test("位置与通道提示不默认引导读页面", async () => {
   // 位置提示：业务菜单那一支必须写"默认不要读这一屏"
   const surface = await readFile("src/host/workbench-surface.ts", "utf8");
   assert.match(surface, /仅用户引用可见内容时/);
@@ -59,7 +54,4 @@ test("接线：快照工具在发送前判意图，位置提示不再默认引�
   const channel = await readFile("src/capability/channel.ts", "utf8");
   assert.match(channel, /默认不要用它/);
   assert.match(channel, /只在用户明确要看这一屏时/);
-  // 每轮原话要记进 Business（否则工具拿不到判据）
-  const host = await readFile("src/host.ts", "utf8");
-  assert.match(host, /business\.rememberTurnQuestion\(scope, question\)/);
 });

@@ -6,7 +6,9 @@ test(
   "SAVE requires a freshly read server capability for the same effective version and snapshot",
   { timeout: 60000 },
   async (t) => {
-    const app = await profile(t);
+    const app = await profile(t, {
+      roles: [{ code: "sales_plan_category_approver", name: "Category" }],
+    });
     await app.login();
     let mode = "allowed";
     let writes = 0;
@@ -32,6 +34,11 @@ test(
                 : {
                     versionId: "v",
                     status: 4,
+                    nodeOrder: 5,
+                    policy: "role-visible-v1",
+                    roleActions: [
+                      { role: "category", allowedActions: mode === "denied" ? [] : ["SAVE"] },
+                    ],
                     allowedActions: mode === "denied" ? [] : ["SAVE"],
                     snapshotHash: mode === "changed" ? "b".repeat(64) : snapshot,
                   },
@@ -47,7 +54,9 @@ test(
         assert.equal(req.headers["x-tenant-id"], "0");
         assert.ok(req.headers["x-access-token"]);
         const body = JSON.parse(req.body);
-        assert.equal(body.expectedSnapshot, undefined);
+        assert.equal(body.expectedSnapshot, snapshot);
+        assert.equal(body.approvalRole, "category");
+        assert.equal(body.approvalPolicy, "role-visible-v1");
         assert.equal(body.action, "SAVE");
         if (mode === "conflict") {
           reply({ message: "changed concurrently" }, 409);
@@ -70,7 +79,7 @@ test(
             versionId: "v",
             fromStatus: 4,
             toStatus: 4,
-            requestId: "r",
+            requestId: req.headers["x-request-id"],
             traceId: "t",
             auditId: "sales-plan-log:1",
             replayed: false,
@@ -79,14 +88,17 @@ test(
         return true;
       }
     });
+    let attempt = 0;
     const save = (patch) =>
       app.rpc("sales-plan/action", {
         planId: "p",
         versionId: "v",
-        requestId: "r",
-        idempotencyKey: "save-intent",
+        requestId: `r${++attempt}`,
+        idempotencyKey: `save-intent:${attempt}`,
         request: {
           action: "SAVE",
+          approvalRole: "category",
+          approvalPolicy: "role-visible-v1",
           expectedStatus: 4,
           expectedSnapshot: snapshot,
           adjustments: [{ skuCode: "1", adjustQty: "1.000" }],

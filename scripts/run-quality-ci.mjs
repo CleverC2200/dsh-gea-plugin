@@ -124,7 +124,10 @@ try {
     const workbench = candidate.repositories.find((entry) => entry.repo === "dsh-agent-workbench"),
       manage = candidate.repositories.find((entry) => entry.repo === "dsh-agent-manage");
     if (values["prepare-inputs"])
-      await prepareWorkbenchGeaAuthority({ workbench: workbench.path, gea: own.path });
+      await prepareWorkbenchGeaAuthority({
+        workbench: workbench.path,
+        gea: own.path,
+      });
     const preparedWorkbench = resolve(dirname(process.cwd()), "dsh-agent-workbench");
     const workbenchReceipt = resolve(dirname(dirname(process.cwd())), "prepared-workbench.json");
     const workbenchAssetRoot = resolve(
@@ -167,7 +170,9 @@ try {
     ]);
     if (
       Number(process.versions.node.split(".")[0]) !== 24 ||
-      execFileSync("corepack", ["pnpm", "--version"], { encoding: "utf8" }).trim() !== "11.27.0"
+      execFileSync("corepack", ["pnpm", "--version"], {
+        encoding: "utf8",
+      }).trim() !== "11.27.0"
     )
       refuse("QUALITY_TOOLCHAIN_REQUIRED", "Node 24 / pnpm 11.27.0");
     for (const entry of candidate.repositories) {
@@ -386,9 +391,18 @@ try {
               GEA_FINAL_GROUP_CORE_SOURCE: core,
             }),
         },
-        { name: "fast", execute: () => run("corepack", ["pnpm", "quality:fast"]) },
-        { name: "contracts", execute: () => run("corepack", ["pnpm", "test:contracts"]) },
-        { name: "full", execute: () => run("corepack", ["pnpm", "test"]) },
+        {
+          name: "fast",
+          execute: () => run("corepack", ["pnpm", "quality:fast"]),
+        },
+        {
+          name: "contracts",
+          execute: () => run("corepack", ["pnpm", "test:contracts"]),
+        },
+        {
+          name: "full",
+          execute: () => run("corepack", ["pnpm", "test:ci-full"]),
+        },
       ]);
       writeFileSync(
         resolve(dirname(dirname(process.cwd())), "quality-checks.json"),
