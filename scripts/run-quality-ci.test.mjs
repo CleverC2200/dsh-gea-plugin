@@ -223,6 +223,10 @@ test("dispatch scope rejects partial, mutable, malformed and wrong-event groups 
 
 test("dispatch freezes the group without cancelling runs or replacing the original gates", () => {
   const workflow = readFileSync(".github/workflows/quality.yml", "utf8");
+  assert.match(
+    workflow,
+    /github\.ref \}\}-\$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/,
+  );
   for (const input of ["gea_sha", "workbench_sha", "manage_sha"]) {
     assert.match(
       workflow,
