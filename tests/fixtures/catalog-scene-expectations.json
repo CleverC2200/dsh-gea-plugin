@@ -147,8 +147,8 @@
     "alpha": "5badb15009ae1756c3afe0ae0cef1faafc290ccc"
   },
   "requiredPeers": {
-    "dsh-agent-workbench": "634e744700e3001267c74311584d4f16649cc75e",
-    "dsh-agent-manage": "9ee47d426e35b5a2386c85f57e09ef1514130a1f",
+    "dsh-agent-workbench": "c5a5bc64fade154bf5b468f0d848974ac308823a",
+    "dsh-agent-manage": "cdd2d6520a7790ca1a1c658d1fa71e07c651cd3f",
     "dsh-genui": "0cc64c97b426ff5afe54154e74ead31dd8739265",
     "dsh-better-sidebar": "e35120f1d9b3773062b68decb4f53a526d6c8baa"
   },
