@@ -83,7 +83,7 @@ test(
     const sample = () =>
       page.evaluate(() => {
         const read = (selector) => {
-          const el = document.querySelector(selector);
+          const el = typeof selector === "string" ? document.querySelector(selector) : selector;
           if (!el) return null;
           const s = getComputedStyle(el);
           return {
@@ -98,7 +98,7 @@ test(
         return {
           body: read("body"),
           main: read(".gea-company-main"),
-          shell: read('[data-slot="root"] > :has(> [data-shell-bottom])'),
+          shell: read(document.querySelector("[data-rightbar-col]")?.parentElement),
           composer: read('[contenteditable="true"], textarea'),
           card: read('[data-slot="conversation.composer.bar"]'),
           dark: document.body.hasAttribute("data-ds-dark-theme"),

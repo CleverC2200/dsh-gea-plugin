@@ -4,13 +4,15 @@ import { mkdir } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan, preparePageStartup } from "./fixtures/business-page.mjs";
+import { composerStatsContract } from "./fixtures/composer-stats.mjs";
 
 /**
- * 固定Core5bad通过公开conversation.composer.dock将统计胶囊放在输入卡下方。
+ * 两个官方Core轴通过公开conversation.composer.dock将统计胶囊放在输入卡下方。
  * 保留统计、居中和完整seat贴底目的，不再要求退场壳层将统计移到上方。
  * 主对话和工作台右侧会话列共用同一个输入条组件，所以这一条同时覆盖两个界面。
  */
 test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底部", { timeout: 90000 }, async (t) => {
+  const contract = await composerStatsContract();
   const app = await profile(t, {
     config: (base) => ({
       environment: "test",
@@ -48,7 +50,7 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
   await expect(newSession).toContainText("AI工作台");
   await expect(newSession.locator("svg")).toHaveCount(1);
   await openSalesPlan(page);
-  await expect(page.locator("[data-composer-dock]").first()).toBeAttached();
+  await expect(page.locator("[data-composer-seat]").first()).toBeAttached();
 
   /** 发一条消息（receipt 模式是本地回执，不调模型），让宿主渲染出统计行。 */
   const ask = async (root) => {
@@ -59,43 +61,45 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
     await input.click();
     await input.type("1");
     await page.keyboard.press("Enter");
-    await expect(page.locator(`${root} [data-composer-stat=activity]`).first()).toBeVisible();
+    await expect(page.locator(`${root} ${contract.stats}`).first()).toBeVisible();
   };
 
   /** 统计行必须在当前Core输入卡下方，输入卡必须贴着对话列底部。 */
   const placement = async (root) =>
-    page.evaluate((scope) => {
-      const seat = document.querySelector(`${scope} [data-composer-seat]`);
-      const stats = document.querySelector(`${scope} [data-composer-stat=activity]`);
-      const editable = document.querySelector(`${scope} [contenteditable="true"]`);
-      if (!seat || !stats || !editable) return null;
-      const dock = stats.closest("[data-composer-dock]") ?? stats;
-      const card = editable.closest("[data-composer-card]");
-      const box = (element) => {
-        const rect = element.getBoundingClientRect();
-        return {
-          top: Math.round(rect.top),
-          bottom: Math.round(rect.bottom),
-          height: Math.round(rect.height),
-          left: Math.round(rect.left),
-          right: Math.round(rect.right),
+    page.evaluate(
+      ({ scope, contract }) => {
+        const seat = document.querySelector(`${scope} [data-composer-seat]`);
+        const stats = document.querySelector(`${scope} ${contract.stats}`);
+        const editable = document.querySelector(`${scope} [contenteditable="true"]`);
+        if (!seat || !stats || !editable) return null;
+        const dock = stats.closest(contract.dock);
+        if (!dock) return null;
+        const card = editable.closest("[data-composer-card]");
+        const box = (element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            top: Math.round(rect.top),
+            bottom: Math.round(rect.bottom),
+            height: Math.round(rect.height),
+            left: Math.round(rect.left),
+            right: Math.round(rect.right),
+          };
         };
-      };
-      return {
-        seat: box(seat),
-        stats: box(stats),
-        input: box(editable),
-        card: card && card !== seat ? box(card) : null,
-        order: getComputedStyle(dock).order,
-      };
-    }, root);
+        return {
+          seat: box(seat),
+          stats: box(stats),
+          input: box(editable),
+          card: card && card !== seat ? box(card) : null,
+          order: getComputedStyle(dock).order,
+        };
+      },
+      { scope: root, contract },
+    );
 
   const assertPlacement = async (surface, root) => {
     const geometry = await placement(root);
     assert.ok(geometry, `${surface}：composer geometry must be measurable`);
-    await expect(page.locator(`${root} [data-composer-stat=activity]`)).toContainText(
-      /1\s*轮.*1\s*步/,
-    );
+    await expect(page.locator(`${root} ${contract.stats}`)).toContainText(/1\s*轮.*1\s*步/);
     assert.ok(
       Math.abs(
         geometry.stats.left + geometry.stats.right - (geometry.card.left + geometry.card.right),

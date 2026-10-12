@@ -10,6 +10,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { openWorkbenchPage, htmlFrameElement } from "./fixtures/business-page.mjs";
 import { installStockRoutes, stockState } from "./fixtures/branch-stock.mjs";
+import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
 import {
   prepareSourcePlugins,
@@ -252,6 +253,7 @@ test(
         })),
       );
       const page = await context.newPage();
+      await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
       page.setDefaultTimeout(20000);
       await page.goto(app.origin);
       await openWorkbenchPage(page, "分仓库存");

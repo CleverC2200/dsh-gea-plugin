@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { composerStatsContract } from "./fixtures/composer-stats.mjs";
 
 test(
   "会话统计胶囊位于输入卡下方，完整seat贴底且工作台分隔线不侵入输入区",
   { timeout: 90000 },
   async (t) => {
+    const contract = await composerStatsContract();
     const app = await profile(t, {
       config: (base) => ({
         environment: "test",
@@ -54,11 +56,11 @@ test(
     await composer.click();
     await composer.fill("你好");
     await page.keyboard.press("Enter");
-    const stats = conversation.locator("[data-composer-stat=activity]");
+    const stats = conversation.locator(contract.stats);
     await expect(stats).toBeVisible();
     await expect(stats).toContainText(/1\s*轮.*1\s*步/);
 
-    const boxes = await conversation.evaluate((root) => {
+    const boxes = await conversation.evaluate((root, statsSelector) => {
       const rect = (selector) => {
         const element = root.querySelector(selector);
         if (!element) return null;
@@ -71,11 +73,11 @@ test(
         };
       };
       return {
-        stats: rect("[data-composer-stat=activity]"),
+        stats: rect(statsSelector),
         card: rect("[data-composer-card]"),
         seat: rect("[data-composer-seat]"),
       };
-    });
+    }, contract.stats);
     assert.ok(boxes.stats && boxes.card && boxes.seat, JSON.stringify(boxes));
     // 当前 Core dock 在输入卡下方；保留同一对话列内的精确中心线约束。
     assert.ok(
