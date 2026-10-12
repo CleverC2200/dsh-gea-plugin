@@ -213,7 +213,14 @@
         "properties": {
           "consumerCode": {
             "type": "string",
-            "enum": ["sales_forecast", "base-safety-stock", "branch-inventory"]
+            "enum": [
+              "sales_forecast",
+              "aps",
+              "base-safety-stock",
+              "dealer-inventory-replenishment",
+              "branch-inventory",
+              "full-chain-inventory"
+            ]
           },
           "queries": {
             "type": "array",
@@ -740,7 +747,14 @@
         "properties": {
           "consumerCode": {
             "type": "string",
-            "enum": ["sales_forecast", "base-safety-stock", "branch-inventory"]
+            "enum": [
+              "sales_forecast",
+              "aps",
+              "base-safety-stock",
+              "dealer-inventory-replenishment",
+              "branch-inventory",
+              "full-chain-inventory"
+            ]
           },
           "refresh": {
             "type": "boolean"
@@ -864,6 +878,9 @@
               "status": {
                 "type": "integer"
               },
+                "offset": {
+                  "type": "integer"
+                },
               "pageNo": {
                 "type": "integer"
               },
