@@ -396,7 +396,7 @@ test("an incompatible Core stops delivery without echoing request secrets", asyn
   assert.deepEqual(await readdir(cwd), ["request.json"]);
 });
 
-test("RC2 fixed input builds the same dual-Core package contract", async (t) => {
+test("RC2 delivery retains both official Core identities and the same-version private Core", async (t) => {
   const fixture = await requestFixture(t, {
     coreVersion: "0.2.0-rc.2",
     successfulPackageManager: true,
@@ -408,11 +408,13 @@ test("RC2 fixed input builds the same dual-Core package contract", async (t) => 
   );
   assert.equal(result.status, 0, result.stderr);
   const manifest = JSON.parse(await readFile(join(fixture.destination, "manifest.json"), "utf8"));
+  const request = JSON.parse(await readFile(fixture.input, "utf8"));
   assert.equal(manifest.core.version, "0.2.0-rc.2");
-  assert.deepEqual(
-    manifest.supportedCores.map((core) => core.version),
-    ["0.2.0-rc.2", "0.2.1-alpha.1"],
-  );
+  assert.deepEqual(manifest.supportedCores, [
+    { head: request.core.head, version: "0.2.0-rc.2" },
+    { head: "5badb15009ae1756c3afe0ae0cef1faafc290ccc", version: "0.2.1-alpha.1" },
+    { head: "8ff14441ac932b55cf1f14b1715128eaa162b1ec", version: "0.2.1-alpha.1" },
+  ]);
   assert.match(
     await readFile(join(fixture.destination, "INSTALL.md"), "utf8"),
     /0\.2\.0-rc\.2.*0\.2\.1-alpha\.1/,

@@ -228,7 +228,7 @@ test("old budget projections cannot disagree on confirmed SQL or closed window a
 test("the original interrupted navigation r7 receipt stays unknown even beside a normal exit", async (t) => {
   const f = await fixture(t);
   const original = await readFile(
-    new URL("./fixtures/delivery-history/navigation-r7-setup-failure.json", import.meta.url),
+    new URL("./fixtures/delivery-history/navigation-r7-setup-failure.json.raw", import.meta.url),
   );
   await writeFile(join(f.root, "r7.json"), original);
   f.task.inputs.push({ id: "r7", path: "r7.json" });
