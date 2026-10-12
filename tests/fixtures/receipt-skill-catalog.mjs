@@ -99,7 +99,7 @@ const bodyCanary = "RECEIPT_SKILL_BODY_MUST_NOT_AUTOLOAD_R39_6d341cbf";
 export async function receiptProfile(t) {
   const { core } = JSON.parse(await readFile(process.env.GEA_TEST_CANDIDATE, "utf8"));
   assert.ok([rc2, alpha].includes(core), "Unsupported receipt Core input");
-  const env = {};
+  const env = { GEA_WEB_LOGIN_PERSIST: "0" };
   const app = await profile(t, {
     env,
     async beforeStart({ runtime }) {
