@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { prepareCoreDocuments } from "./fixtures/core-documents.mjs";
 
 const baseline = process.env.THEME_BASELINE === "1";
 const output = new URL("../.runtime/theme-evidence/", import.meta.url);
@@ -18,6 +19,7 @@ test(
   },
   async (t) => {
     const app = await profile(t, {
+      beforeStart: prepareCoreDocuments(),
       config: (base) => ({
         analysis: {
           mode: "model",

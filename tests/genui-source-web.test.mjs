@@ -10,6 +10,7 @@ import {
   preparePageStartup,
 } from "./fixtures/business-page.mjs";
 import { nativeAssociation } from "./fixtures/native-page.mjs";
+import { prepareCoreDocuments } from "./fixtures/core-documents.mjs";
 
 const upstreams = JSON.parse(
   await readFile(new URL("../scripts/quality-upstreams.json", import.meta.url), "utf8"),
@@ -23,6 +24,7 @@ test(
   },
   async (t) => {
     const app = await profile(t, {
+      beforeStart: prepareCoreDocuments(),
       config: (base) => ({
         analysis: {
           mode: "model",

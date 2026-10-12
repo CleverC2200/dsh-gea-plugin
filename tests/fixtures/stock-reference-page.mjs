@@ -26,8 +26,15 @@ export async function stockReferencePage(
     },
     state,
     (body) => {
-      const index = body.messages.findLastIndex((message) => message.role === "user");
-      const id = JSON.stringify(body.messages[index]).match(/dsh-page:(R[a-f0-9]{12})/)?.[1];
+      const reference = /dsh-page:(R[a-f0-9]{12})/;
+      const index = body.messages.findLastIndex(
+        (message) =>
+          message.role === "user" &&
+          typeof message.content === "string" &&
+          reference.test(message.content),
+      );
+      assert.notEqual(index, -1, "the fixture must receive a referenced user question");
+      const id = reference.exec(body.messages[index].content)[1];
       return body.messages.slice(index + 1).some((message) => message.role === "tool")
         ? { content: "引用读取结束" }
         : {

@@ -71,13 +71,22 @@ test(
     await page.keyboard.press("ControlOrMeta+Shift+B");
     const pane = page.locator("[data-sidebar-right-panel]");
     await expect(pane).toBeVisible();
+    const showGuide = async () => {
+      const guide = page.locator("[data-sidebar-right-guide]");
+      if (!(await guide.isVisible())) {
+        const start = pane.getByRole("tab", { name: /^(开始|Start)$/ });
+        if (await start.isVisible()) await start.click();
+        else await pane.locator("[data-dockkit-add-tab]").first().click();
+      }
+      await expect(guide).toBeVisible();
+    };
+    await showGuide();
     const kinds = ["files", "git", "subagent", "sidechat", "terminal"];
     for (const kind of kinds)
       await expect(page.locator(`[data-sidebar-right-guide-entry="${kind}"]`)).toHaveCount(1);
     await expect(page.locator('[data-sidebar-right-guide-entry="browser"]')).toHaveCount(0);
     const open = async (kind) => {
-      if (!(await page.locator("[data-sidebar-right-guide]").count()))
-        await pane.locator("[data-dockkit-add-tab]").first().click();
+      await showGuide();
       await page.locator(`[data-sidebar-right-guide-entry="${kind}"]`).click();
     };
     await open("files");

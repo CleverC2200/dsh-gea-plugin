@@ -431,6 +431,9 @@ test(
       await page.keyboard.press("ControlOrMeta+Shift+B");
       const nativeRightbar = page.locator("[data-sidebar-right-panel]");
       await expect(nativeRightbar).toBeVisible();
+      const exitFullscreen = nativeRightbar.locator('[data-sidebar-right-mode="push"]');
+      if (await exitFullscreen.isVisible()) await exitFullscreen.click();
+      await expect(nativeRightbar).toBeVisible();
       const nativeSessionId = await nativeRightbar.getAttribute("data-sidebar-right-session");
       assert.match(nativeSessionId, /^session-/);
       const nativeRightbarWidth = await nativeRightbar.evaluate((el) =>
