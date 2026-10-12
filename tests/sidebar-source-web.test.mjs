@@ -68,9 +68,15 @@ test(
     });
     await expect(receipt).toBeVisible();
     // GEA intentionally hides auxiliary launch buttons; retain that policy and use the native shortcut.
-    await page.keyboard.press("ControlOrMeta+Shift+B");
     const pane = page.locator("[data-sidebar-right-panel]");
-    await expect(pane).toBeVisible();
+    const expandSidebar = async () => {
+      await expect(pane).toBeAttached();
+      if ((await pane.getAttribute("data-sidebar-right-open")) !== "true")
+        await page.keyboard.press("ControlOrMeta+Shift+B");
+      await expect(pane).toHaveAttribute("data-sidebar-right-open", "true");
+      await expect(pane).toBeVisible();
+    };
+    await expandSidebar();
     const showGuide = async () => {
       const guide = page.locator("[data-sidebar-right-guide]");
       if (!(await guide.isVisible())) {
@@ -109,7 +115,7 @@ test(
       .getByText("侧栏隔离验收", { exact: true })
       .click();
     await expect(receipt).toBeVisible({ timeout: 15000 });
-    if (!(await pane.isVisible())) await page.keyboard.press("ControlOrMeta+Shift+B");
+    await expandSidebar();
     await expect(pane.locator(".cm-content:visible").first()).toContainText(
       "saved from isolated sidebar",
     );

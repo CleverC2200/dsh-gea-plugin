@@ -428,8 +428,11 @@ test(
       await expect(
         page.getByText("本地验证回执（非 AI 分析）：业务资料已进入会话。", { exact: true }),
       ).toBeVisible();
-      await page.keyboard.press("ControlOrMeta+Shift+B");
       const nativeRightbar = page.locator("[data-sidebar-right-panel]");
+      await expect(nativeRightbar).toBeAttached();
+      if ((await nativeRightbar.getAttribute("data-sidebar-right-open")) !== "true")
+        await page.keyboard.press("ControlOrMeta+Shift+B");
+      await expect(nativeRightbar).toHaveAttribute("data-sidebar-right-open", "true");
       await expect(nativeRightbar).toBeVisible();
       const exitFullscreen = nativeRightbar.locator('[data-sidebar-right-mode="push"]');
       if (await exitFullscreen.isVisible()) await exitFullscreen.click();
@@ -465,6 +468,7 @@ test(
         .click();
       await expect(nativeRightbar).toBeVisible();
       await expect(nativeRightbar).toHaveAttribute("data-sidebar-right-session", nativeSessionId);
+      await expect(nativeRightbar).toHaveAttribute("data-sidebar-right-open", "true");
       await expect
         .poll(() => nativeRightbar.evaluate((el) => Math.round(el.getBoundingClientRect().width)))
         .toBe(nativeRightbarWidth);

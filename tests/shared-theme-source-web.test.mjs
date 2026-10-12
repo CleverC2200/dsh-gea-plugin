@@ -72,6 +72,7 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/ })
       .getByRole("button", { name: "继续", exact: true })
       .click();
+    await expect(page.getByRole("dialog", { name: /内测声明|预览版说明/ })).toHaveCount(0);
     const composer = page.locator('[contenteditable="true"], textarea').first();
     await composer.fill("检查主题，不查询业务数据");
     await composer.press("Enter");
