@@ -1,3 +1,4 @@
+import { branchStockAcceptance } from "./branch-stock-acceptance.mjs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fixtureEnvironment } from "./business-session.mjs";
 import { openWorkbenchPage, htmlFrameElement } from "./business-page.mjs";
@@ -112,6 +113,7 @@ export async function stockReferencePage(
     })),
   );
   const page = await context.newPage();
+  await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
   page.setDefaultTimeout(20000);
   if (holdMessage)
     await page.addInitScript((messageType) => {

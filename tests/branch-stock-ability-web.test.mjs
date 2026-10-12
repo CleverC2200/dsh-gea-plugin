@@ -1,3 +1,4 @@
+import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 import test from "./fixtures/source-test.mjs";
@@ -177,6 +178,7 @@ test(
       })),
     );
     const page = await context.newPage();
+    await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
     page.setDefaultTimeout(25000);
     const opens = [],
       contexts = [],

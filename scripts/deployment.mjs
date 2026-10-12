@@ -231,7 +231,12 @@ export function resolveBuiltinPlugins(anchor = import.meta.url) {
 }
 
 /** Build ordinary patch rows for the supported dsh profile launcher. */
-export function businessDeploymentPatch(config, root, runtime, { bundle = false, workspace } = {}) {
+export function businessDeploymentPatch(
+  config,
+  root,
+  runtime,
+  { bundle = false, workspace, workbenchConfig = {} } = {},
+) {
   if (workspace !== undefined && (typeof workspace !== "string" || !isAbsolute(workspace)))
     throw new Error("WORKBENCH_WORKSPACE_ABSOLUTE_REQUIRED");
   const model = config.analysis.mode === "model";
@@ -307,7 +312,8 @@ export function businessDeploymentPatch(config, root, runtime, { bundle = false,
         },
       },
     });
-  if (workspace !== undefined) rows.push({ id: "agent-workbench", config: { cwd: workspace } });
+  if (workspace !== undefined)
+    rows.push({ id: "agent-workbench", config: { ...workbenchConfig, cwd: workspace } });
   if (bundle)
     return rows.flatMap((row) => {
       if (row.id === "ui-layout") return [];

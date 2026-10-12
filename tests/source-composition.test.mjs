@@ -86,6 +86,22 @@ test("an explicit Workspace rejects relative or invalid paths instead of borrowi
     );
 });
 
+test("the isolated Workspace preserves the configured public HTML roots", async () => {
+  const { businessDeploymentPatch } = await import("../scripts/deployment.mjs");
+  const workbenchConfig = { cwd: "/old/workspace", htmlRoots: ["/fixture/only-fc"] };
+  const rows = businessDeploymentPatch(
+    { analysis: { mode: "receipt" } },
+    "/fixture/gea",
+    "/fixture/runtime",
+    { bundle: true, workspace: "/fixture/runtime/workspace", workbenchConfig },
+  );
+  assert.deepEqual(rows.find((row) => row.id === "agent-workbench").config, {
+    cwd: "/fixture/runtime/workspace",
+    htmlRoots: ["/fixture/only-fc"],
+  });
+  assert.equal(workbenchConfig.cwd, "/old/workspace");
+});
+
 test("current source configuration uses actual business declarations without resolving historical UI or preset paths", async () => {
   const { businessDeploymentPatch } = await import("../scripts/deployment.mjs");
   const rows = businessDeploymentPatch(

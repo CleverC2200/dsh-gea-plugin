@@ -369,6 +369,7 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
         })),
       );
       const page = await context.newPage();
+      await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
       const publishedContexts = [],
         contextRequests = [];
       let owner;

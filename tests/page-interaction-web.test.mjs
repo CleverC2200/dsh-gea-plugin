@@ -230,12 +230,14 @@ test(
       /dsh-page:R[a-f0-9]{12}/,
     );
     assert.equal(/R[a-f0-9]{12}/.test(await message.innerText()), false);
-    assert.ok(
-      await page.evaluate(
-        (label) =>
-          [...CSS.highlights.get("dsh-page-reference")].some((range) => range.toString() === label),
-        draftLabel,
-      ),
+    const highlightedReference = message
+      .locator("[data-page-reference-label]")
+      .filter({ hasText: draftLabel });
+    await expect(highlightedReference).toHaveText(draftLabel);
+    assert.notEqual(
+      await highlightedReference.evaluate((label) => getComputedStyle(label).backgroundColor),
+      "rgba(0, 0, 0, 0)",
+      "the projected page label keeps its visible reference highlight",
     );
     assert.match(
       JSON.stringify(prompts.flatMap((p) => p.messages.filter((m) => m.role === "tool"))),

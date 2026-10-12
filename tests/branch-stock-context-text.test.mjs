@@ -1,3 +1,4 @@
+import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
@@ -68,6 +69,7 @@ test(
       })),
     );
     const page = await context.newPage();
+    await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
     const contexts = [],
       contextRequests = [];
     let owner;
