@@ -84,8 +84,16 @@ export function salesPlanFrame(page) {
 }
 
 export async function openSalesPlan(page) {
+  await openBusinessPage(page, "gea-proof");
+  await expect(salesPlanFrameElement(page)).toBeVisible();
+  return salesPlanFrame(page);
+}
+
+/** Authenticated business reads wait for the Session association and its current page owner. */
+export async function openReadySalesPlan(page) {
+  await showBusinessMenu(page);
   const ownerReady = waitForNativeOwner(page, "gea-proof", "gea-readonly");
-  await Promise.all([openBusinessPage(page, "gea-proof"), ownerReady]);
+  await Promise.all([page.locator('[data-gea-business-entry="gea-proof"]').click(), ownerReady]);
   await expect(salesPlanFrameElement(page)).toBeVisible();
   return salesPlanFrame(page);
 }

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { openReadySalesPlan as openSalesPlan } from "./fixtures/business-page.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 import { mkdir } from "node:fs/promises";
 import { modelProfile as profile } from "./fixtures/model-profile.mjs";
