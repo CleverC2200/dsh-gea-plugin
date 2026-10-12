@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import { readFile, rename, writeFile, unlink, mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { profile, readSession, until } from "./profile.mjs";
+import { readSession, until } from "./profile.mjs";
+import { receiptProfile, assertReceiptMessages } from "./fixtures/receipt-skill-catalog.mjs";
 
 test(
   "one preview submits once through the standard Session and survives a fresh process",
   { timeout: 60000 },
   async (t) => {
-    const app = await profile(t);
+    const app = await receiptProfile(t);
     await app.login();
     const page = (await app.rpc("plans")).value;
     const preview = (
@@ -30,17 +31,17 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
     const messages = rows.filter((row) => row.type === "user/message");
-    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 0);
-    assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
+    assertReceiptMessages(rows, app.receiptCore);
+    assert.equal(messages.filter((row) => row.data.source.kind === "gea-proof").length, 1);
     const snapshot = messages.find(
       (row) => row.data.source.kind === "gea-proof" || row.data.source.plugin === "gea-proof",
     );
     assert.equal(snapshot.data.source.form, "notice");
+    assert.equal(snapshot.data.source.summary, "已提交只读快照，正在验证数据传递");
     assert.equal(
-      snapshot.data.source.summary,
-      "已提交只读快照，正在验证数据传递",
+      messages.some((row) => row.data.source.kind === "user"),
+      false,
     );
-    assert.equal(messages.some((row) => row.data.source.kind === "user"), false);
     const archivePath = `${app.runtime}/analysis-snapshots/${id}.json`;
     const archive = JSON.parse(await readFile(archivePath, "utf8"));
     assert.equal(archive.sessionId, id);
@@ -48,7 +49,7 @@ test(
     assert.deepEqual(archive.snapshot, preview.snapshot);
     assert.ok(JSON.stringify(archive.snapshot).includes("1.2300"));
     assert.equal(JSON.stringify(snapshot).includes(preview.snapshotHash), false);
-    const answer = rows.find(row => row.type === "assistant/message");
+    const answer = rows.find((row) => row.type === "assistant/message");
     assert.ok(answer);
     assert.equal(JSON.stringify(answer).includes(preview.snapshotHash), false);
     assert.equal(JSON.stringify(rows).includes("fixture-gea-token"), false);
@@ -92,7 +93,7 @@ test(
   "a failed submission can retry the same preview after storage recovers",
   { timeout: 60000 },
   async (t) => {
-    const app = await profile(t);
+    const app = await receiptProfile(t);
     await app.login();
     const page = (await app.rpc("plans")).value;
     const preview = (
@@ -116,7 +117,7 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
     const messages = rows.filter((row) => row.type === "user/message");
-    assert.equal(messages.filter((row) => row.data.source.kind === "skill-catalog").length, 0);
-    assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
+    assertReceiptMessages(rows, app.receiptCore);
+    assert.equal(messages.filter((row) => row.data.source.kind === "gea-proof").length, 1);
   },
 );
