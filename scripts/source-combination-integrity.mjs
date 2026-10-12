@@ -134,7 +134,7 @@ export async function dependencyDigests(directories, readScope) {
   let next = 0,
     failure;
   await Promise.all(
-    Array.from({ length: Math.min(4, pending.length) }, async () => {
+    Array.from({ length: Math.min(16, pending.length) }, async () => {
       while (!failure && next < pending.length) {
         const index = next++;
         try {
