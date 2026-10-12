@@ -21,19 +21,15 @@ export const stock = [
     updated_time: "2026-09-29 08:00:00",
   },
 ];
-export function stockRows(sql, mode = "ok", parameters = {}) {
+export function stockRows(sql, mode = "ok", parameters = {}, sample) {
   const empty = mode === "empty" && !Object.values(parameters).includes("34");
   let rows;
   if (sql.includes("SELECT DISTINCT branch_pickup_point, branch_name"))
     rows = [
       { branch_pickup_point: "06", branch_name: "长沙分仓" },
-      ...(mode === "empty"
-        ? [{ branch_pickup_point: "34", branch_name: "郑州分仓" }]
-        : []),
+      ...(mode === "empty" ? [{ branch_pickup_point: "34", branch_name: "郑州分仓" }] : []),
     ];
-  else if (
-    sql.includes("SELECT DISTINCT pickup_code, warehouseid, warehouse_name")
-  )
+  else if (sql.includes("SELECT DISTINCT pickup_code, warehouseid, warehouse_name"))
     rows = [
       { pickup_code: "06", warehouseid: "FC06", warehouse_name: "长沙分仓" },
       ...(mode === "empty"
@@ -49,32 +45,31 @@ export function stockRows(sql, mode = "ok", parameters = {}) {
   else if (sql.includes("p.plan_snapshot_date::text AS plan_snapshot_date"))
     rows = empty
       ? []
-      : stock.map((r) => ({
-          ...r,
-          plan_snapshot_date: "2026-09-29",
-          target_month: "2026-09-01",
-          plan_version: "MONTH_START",
-          plan_source: "fixture",
-          plan_status: "READY",
-          bi_target_status: "READY",
-          current_inventory_qty: r.live_qty,
-          replenishment_cycle_days: 7,
-          cycle_rule_source: "fixture",
-          shipment_plan_qty: 300,
-          transfer_plan_qty: 0,
-          expected_month_end_inventory_qty: 100,
-          bi_target_amount: 10000,
-        }));
+      : (sample?.plans ?? [{ month: "2026-09-01", shipmentQty: 300, transferQty: 0 }]).flatMap(
+          (plan) =>
+            stock.map((r) => ({
+              ...r,
+              plan_snapshot_date: "2026-09-29",
+              target_month: plan.month,
+              plan_version: "MONTH_START",
+              plan_source: "fixture",
+              plan_status: "READY",
+              bi_target_status: "READY",
+              current_inventory_qty: r.live_qty,
+              replenishment_cycle_days: 7,
+              cycle_rule_source: "fixture",
+              shipment_plan_qty: plan.shipmentQty,
+              transfer_plan_qty: plan.transferQty,
+              expected_month_end_inventory_qty: 100,
+              bi_target_amount: 10000,
+            })),
+        );
   else if (sql.includes("i.prod_date::text AS prod_date"))
     rows = empty
       ? []
-      : stock.map((r) =>
-          mode === "missing" ? { ...r, available_qty: null } : { ...r },
-        );
+      : stock.map((r) => (mode === "missing" ? { ...r, available_qty: null } : { ...r }));
   else if (sql.includes("SUM(f.metric_value) FILTER"))
-    rows = [
-      { order_qty: 100, shipped_qty: 80, updated_time: "2026-09-29 08:00:00" },
-    ];
+    rows = [{ order_qty: 100, shipped_qty: 80, updated_time: "2026-09-29 08:00:00" }];
   else if (sql.includes("AS outbound_qty"))
     rows = stock.map((r) => ({
       material_code: r.material_code,
@@ -87,14 +82,18 @@ export function stockRows(sql, mode = "ok", parameters = {}) {
       category: r.product_categ_name,
       material_group: "测试产品",
     }));
-  else if (
-    sql.includes("AS shipped_qty") &&
-    sql.includes("material_code AS sku")
-  )
-    rows = stock.map((r) => ({ sku: r.material_code, shipped_qty: 20 }));
+  else if (sql.includes("AS shipped_qty") && sql.includes("material_code AS sku"))
+    rows =
+      sample && parameters.gea_p2 !== sample.shippedMonth
+        ? []
+        : stock.map((r) => ({ sku: r.material_code, shipped_qty: 20 }));
   else if (sql.includes("o.metric_group"))
     rows = stock.flatMap((r) =>
-      ["actual_shipped_qty", "in_transit_qty", ...(mode === "editable" ? ["open_pending_qty", "open_shipped_qty"] : [])].map((metric_name) => ({
+      [
+        "actual_shipped_qty",
+        "in_transit_qty",
+        ...(mode === "editable" ? ["open_pending_qty", "open_shipped_qty"] : []),
+      ].map((metric_name) => ({
         snapshot_date: "2026-09-29",
         period_month: "2026-09-01",
         business_date: "2026-09-29",
@@ -129,9 +128,7 @@ export function stockRows(sql, mode = "ok", parameters = {}) {
     ];
   }
   if (sql.includes("WITH dsh_source_rows AS"))
-    return rows.length
-      ? [{ dsh_row_count: rows.length, dsh_rows: JSON.stringify(rows) }]
-      : [];
+    return rows.length ? [{ dsh_row_count: rows.length, dsh_rows: JSON.stringify(rows) }] : [];
   return rows;
 }
 export function installStockRoutes(app, state, model) {
@@ -156,7 +153,7 @@ export function installStockRoutes(app, state, model) {
       if (state.mode === "error")
         reply({ success: false, code: 500, message: "固定样本查询失败" }, 503);
       else {
-        const rows = stockRows(body.sql, state.mode, body.parameters);
+        const rows = stockRows(body.sql, state.mode, body.parameters, state.sample);
         reply({
           success: true,
           code: 200,
@@ -216,8 +213,7 @@ export function installStockRoutes(app, state, model) {
     if (path.endsWith("/ai/gateway/mcp/proxy/mcp")) {
       const body = JSON.parse(req.body);
       let result = {};
-      if (body.method === "initialize")
-        result = { protocolVersion: body.params.protocolVersion };
+      if (body.method === "initialize") result = { protocolVersion: body.params.protocolVersion };
       else if (body.method === "notifications/initialized") {
         res.statusCode = 202;
         res.end();
@@ -288,15 +284,11 @@ export function installStockRoutes(app, state, model) {
                               state.mode === "empty"
                                 ? []
                                 : stock.map((r) => ({
-                                    "branch_stock.material_code":
-                                      r.material_code,
+                                    "branch_stock.material_code": r.material_code,
                                     "branch_stock.warehouse_name": "长沙分仓",
-                                    "branch_stock.snapshot_date":
-                                      r.snapshot_date,
+                                    "branch_stock.snapshot_date": r.snapshot_date,
                                     "branch_stock.available_qty":
-                                      state.mode === "missing"
-                                        ? null
-                                        : r.available_qty,
+                                      state.mode === "missing" ? null : r.available_qty,
                                   })),
                           },
                         ],
@@ -332,7 +324,8 @@ export function installStockRoutes(app, state, model) {
     return false;
   });
 }
-export const stockState = () => ({
+export const stockState = (sample) => ({
+  sample,
   mode: "ok",
   rest: [],
   restConsumers: [],

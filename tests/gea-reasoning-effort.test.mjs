@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -69,9 +69,7 @@ test(
       response.write(
         "data: " +
           JSON.stringify({
-            choices: [
-              { index: 0, delta: { content: "基于当前计划。" }, finish_reason: null },
-            ],
+            choices: [{ index: 0, delta: { content: "基于当前计划。" }, finish_reason: null }],
           }) +
           "\r\n\r\n",
       );
@@ -86,7 +84,12 @@ test(
     });
     await app.login();
     const sourceProfile = process.env.GEA_TEST_SOURCE_CORE === "1";
-    const settingsPath = resolve(app.runtime, sourceProfile ? "home/profiles/plugin-split-validation/cordis.patch.yml" : "home/settings.yaml");
+    const settingsPath = resolve(
+      app.runtime,
+      sourceProfile
+        ? "home/profiles/plugin-split-validation/cordis.patch.yml"
+        : "home/settings.yaml",
+    );
     const settings = async () => {
       try {
         return await readFile(settingsPath, "utf8");
@@ -153,8 +156,7 @@ test(
     await t.test("未显式选档位时按默认档位发送 extra_params", async () => {
       await submit();
       assert.equal(bodies.length >= 1, true);
-      for (const body of bodies)
-        assert.deepEqual(body.extra_params, { reasoning_effort: "high" });
+      for (const body of bodies) assert.deepEqual(body.extra_params, { reasoning_effort: "high" });
     });
 
     await t.test("选中的档位只以 extra_params 覆盖，且模型发现不冲掉档位", async () => {
@@ -163,27 +165,36 @@ test(
       await app.stop();
       await writeFile(
         settingsPath,
-        sourceProfile ? stringify([
-          ...parse(stored).filter(row => row.id !== "agent-default-model"),
-          { id: "agent-default-model", config: { provider: "gea-analysis", model: "fixture-gea-model", reasoningEffort: "max" } },
-        ]) : stored.replace(
-          /agent-default-model:\n( {2}.*\n)*/,
-          "",
-        ) +
-          [
-            "agent-default-model:",
-            "  provider: gea-analysis",
-            '  model: "fixture-gea-model"',
-            "  reasoningEffort: max",
-            "",
-          ].join("\n"),
+        sourceProfile
+          ? stringify([
+              ...parse(stored).filter((row) => row.id !== "agent-default-model"),
+              {
+                id: "agent-default-model",
+                config: {
+                  provider: "gea-analysis",
+                  model: "fixture-gea-model",
+                  reasoningEffort: "max",
+                },
+              },
+            ])
+          : stored.replace(/agent-default-model:\n( {2}.*\n)*/, "") +
+              [
+                "agent-default-model:",
+                "  provider: gea-analysis",
+                '  model: "fixture-gea-model"',
+                "  reasoningEffort: max",
+                "",
+              ].join("\n"),
       );
       await app.start();
       await app.login();
       await app.rpc("model/discover");
       const saved = parse(await settings());
       assert.equal(
-        (sourceProfile ? saved.find(row => row.id === "agent-default-model")?.config : saved["agent-default-model"])?.reasoningEffort,
+        (sourceProfile
+          ? saved.find((row) => row.id === "agent-default-model")?.config
+          : saved["agent-default-model"]
+        )?.reasoningEffort,
         "max",
         "模型发现重写默认选择时必须保留已选档位",
       );

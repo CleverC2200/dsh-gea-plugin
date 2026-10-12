@@ -196,13 +196,46 @@ test(
       })),
     );
     await page.goto(app.origin);
-    await page
-      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-      .getByRole("button", { name: "继续", exact: true })
-      .click();
+    const initialOpen = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/agent-workbench/page") &&
+        response.ok() &&
+        response.request().postDataJSON()?.operation === "open" &&
+        response.request().postDataJSON()?.pageId === "gea-proof",
+    );
     const f = await openSalesPlan(page);
-    await f.getByRole("tab", { name: "纠偏", exact: true }).click();
-    await f.getByRole("button", { name: "退回重提", exact: true }).click();
+    const ownerResponse = await initialOpen;
+    const initialOwner = await ownerResponse.json();
+    assert.equal(typeof initialOwner.owner, "string");
+    const correctionTab = f.getByRole("tab", { name: "纠偏", exact: true });
+    await correctionTab.click();
+    await expect(correctionTab).toHaveAttribute("aria-selected", "true");
+    try {
+      await f.getByRole("button", { name: "退回重提", exact: true }).click();
+    } catch (error) {
+      const evidence = resolve(".runtime/correction-resubmit-evidence");
+      await mkdir(evidence, { recursive: true });
+      await writeFile(
+        resolve(evidence, "action-failure.html"),
+        await f.locator("body").innerHTML(),
+      );
+      await writeFile(
+        resolve(evidence, "action-failure.json"),
+        JSON.stringify(
+          {
+            plan: current,
+            requests: app.requests.map((request) => ({
+              method: request.method,
+              path: request.url.pathname,
+              query: request.url.search,
+            })),
+          },
+          null,
+          2,
+        ),
+      );
+      throw error;
+    }
     const d = f.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
     const input = d.getByRole("textbox", { name: "纠偏调整量 789" });
     await expect(input).toHaveValue("2");

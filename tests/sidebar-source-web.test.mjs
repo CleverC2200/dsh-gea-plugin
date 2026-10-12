@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -29,7 +29,7 @@ test(
       "the sidebar fixture must register its isolated workspace before native startup chooses a default",
     );
     await app.login();
-    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    const browser = await chromium.launch({ headless: true });
     t.after(() => browser.close());
     const context = await browser.newContext({
       locale: "zh-CN",

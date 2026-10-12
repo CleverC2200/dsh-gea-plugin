@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { profile } from "./profile.mjs";
@@ -221,6 +221,15 @@ test(
               request.method !== "GET" &&
               !identityLookups.some((path) => request.url.pathname.endsWith(path)) &&
               !isMcpDiscovery(request),
+          )
+          .map((request) => ({ method: request.method, path: request.url.pathname })),
+      ),
+      JSON.stringify(
+        app.requests
+          .filter(
+            (request) =>
+              request.method !== "GET" &&
+              !identityLookups.some((path) => request.url.pathname.endsWith(path)),
           )
           .map((request) => ({ method: request.method, path: request.url.pathname })),
       ),

@@ -55,7 +55,8 @@ function fixture(
   business.auth = { token: "fixture", tenantId: "0", id: "fixture" };
   return { business, requests };
 }
-const denied = (error) => (error.code ?? "").startsWith("GEA_SALES_READONLY_");
+const deniedPrefix = /^GEA_SALES_READONLY_/;
+const denied = (error) => deniedPrefix.test(error.code ?? "");
 
 test("validation refuses extra query kinds, other Consumers, local drafts, model reads and prepare before any transport", async (t) => {
   const { business, requests } = fixture(t);

@@ -18,10 +18,7 @@ import { parseArgs } from "node:util";
 
 export const VERSION = "0.1.0";
 export const KIND = "dev-environment-governance";
-export const defaultLogDir = join(
-  homedir(),
-  ".local/state/dev-environment-governance",
-);
+export const defaultLogDir = join(homedir(), ".local/state/dev-environment-governance");
 export const tasks = {
   install: ["install", "--frozen-lockfile", "--prefer-offline"],
   build: ["run", "build"],
@@ -34,12 +31,7 @@ export const tasks = {
   "test:dependencies": ["run", "test:dependencies"],
 };
 const sources = ["terminal", "codex-action", "benchmark", "unknown"];
-const conditions = [
-  "unknown",
-  "warm-store-empty-layout",
-  "existing-layout",
-  "cold-cache-isolated",
-];
+const conditions = ["unknown", "warm-store-empty-layout", "existing-layout", "cold-cache-isolated"];
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ownedName = /^run-([0-9a-f-]{36})\.jsonl$/;
 const digest = (value) => createHash("sha256").update(value).digest("hex");
@@ -88,19 +80,14 @@ export async function readRuns(logDir) {
 
 export async function rotate(
   logDir,
-  {
-    maxAgeMs = 30 * 86400000,
-    maxBytes = 50 * 1024 * 1024,
-    now = Date.now(),
-  } = {},
+  { maxAgeMs = 30 * 86400000, maxBytes = 50 * 1024 * 1024, now = Date.now() } = {},
 ) {
   const runs = await readRuns(logDir);
   let total = runs.reduce((n, r) => n + r.info.size, 0);
   let removed = 0;
   for (const run of runs.sort((a, b) => a.info.mtimeMs - b.info.mtimeMs)) {
     // Incomplete/active files are never removed by retention.
-    if (!run.end || (now - run.info.mtimeMs <= maxAgeMs && total <= maxBytes))
-      continue;
+    if (!run.end || (now - run.info.mtimeMs <= maxAgeMs && total <= maxBytes)) continue;
     const deleted = await safe(async () => {
       await unlink(run.path);
       return true;
@@ -138,9 +125,7 @@ async function snapshot(cwd) {
   const manifest = await safe(async () =>
     JSON.parse(await readFile(join(cwd, "package.json"), "utf8")),
   );
-  const declaration = /^pnpm@\d+\.\d+\.\d+$/.test(
-    manifest?.packageManager ?? "",
-  )
+  const declaration = /^pnpm@\d+\.\d+\.\d+$/.test(manifest?.packageManager ?? "")
     ? manifest.packageManager
     : null;
   return {
@@ -151,8 +136,7 @@ async function snapshot(cwd) {
     packageManagerActual: null,
     head: head?.toString().trim() ?? null,
     sourceStatusDigest: status === null ? null : digest(status),
-    sourceIdentityCoverage:
-      "HEAD-and-tracked-status-only; not content identity",
+    sourceIdentityCoverage: "HEAD-and-tracked-status-only; not content identity",
     locks,
   };
 }
@@ -176,8 +160,7 @@ async function space(cwd, enabled) {
   return {
     availableBytes: disk ? disk.bavail * disk.bsize : null,
     directoryAllocatedBytes: directories,
-    attribution:
-      "filesystem snapshot; APFS sharing and concurrent writes unknown",
+    attribution: "filesystem snapshot; APFS sharing and concurrent writes unknown",
   };
 }
 
@@ -215,14 +198,11 @@ export async function runObserved({
     if (!writable) return;
     try {
       const data = JSON.stringify({ ...base, ...event }) + "\n";
-      if (first)
-        await storage.writeFile(file, data, { flag: "wx", mode: 0o600 });
+      if (first) await storage.writeFile(file, data, { flag: "wx", mode: 0o600 });
       else await storage.appendFile(file, data);
     } catch {
       writable = false;
-      process.stderr.write(
-        "[dev-observe] measurement unavailable; command continues\n",
-      );
+      process.stderr.write("[dev-observe] measurement unavailable; command continues\n");
     }
   };
   await safe(async () => {
@@ -230,10 +210,7 @@ export async function runObserved({
     await rotate(logDir);
   });
   const startSpace = await space(cwd, sampleSpace);
-  await emit(
-    { event: "start", at: new Date().toISOString(), space: startSpace },
-    true,
-  );
+  await emit({ event: "start", at: new Date().toISOString(), space: startSpace }, true);
   const preparationMs = performance.now() - preparation;
   const start = performance.now();
   const reported = {
@@ -260,9 +237,7 @@ export async function runObserved({
     child.stdout.on("data", (chunk) => {
       tail = (tail + chunk.toString()).slice(-4096);
       const matches = [
-        ...tail.matchAll(
-          /Progress: resolved (\d+), reused (\d+), downloaded (\d+), added (\d+)/g,
-        ),
+        ...tail.matchAll(/Progress: resolved (\d+), reused (\d+), downloaded (\d+), added (\d+)/g),
       ];
       const m = matches.at(-1);
       if (m)
@@ -283,9 +258,8 @@ export async function runObserved({
       () => {
         requestedSignal ??= signal;
         try {
-          process.platform === "win32"
-            ? child.kill(signal)
-            : process.kill(-child.pid, signal);
+          if (process.platform === "win32") child.kill(signal);
+          else process.kill(-child.pid, signal);
         } catch {
           /* already exited */
         }
@@ -294,12 +268,8 @@ export async function runObserved({
   );
   for (const [signal, handler] of handlers) process.on(signal, handler);
   const result = await new Promise((resolveResult) => {
-    child.once("error", () =>
-      resolveResult({ code: 127, signal: null, spawnFailed: true }),
-    );
-    child.once("close", (code, signal) =>
-      resolveResult({ code, signal, spawnFailed: false }),
-    );
+    child.once("error", () => resolveResult({ code: 127, signal: null, spawnFailed: true }));
+    child.once("close", (code, signal) => resolveResult({ code, signal, spawnFailed: false }));
   });
   for (const [signal, handler] of handlers) process.off(signal, handler);
   const durationMs = performance.now() - start;
@@ -324,10 +294,7 @@ export async function runObserved({
   return { ...result, runId };
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values } = parseArgs({
     options: {
       task: { type: "string" },
@@ -347,8 +314,7 @@ if (
     process.exitCode = 2;
   } else {
     const manifest = JSON.parse(await readFile("package.json", "utf8"));
-    if (manifest.name !== "@cleverc2200/gea-dsh-prototype")
-      throw new Error("GEA pilot only");
+    if (manifest.name !== "@cleverc2200/gea-dsh-prototype") throw new Error("GEA pilot only");
     if (process.platform === "win32")
       throw new Error(
         "GEA observation pilot supports POSIX only; use the normal project commands on Windows",
@@ -362,8 +328,7 @@ if (
       sampleSpace: values["sample-space"],
       parentRunId: process.env.DEV_GOV_PARENT_RUN_ID,
     });
-    if (result.signal && process.platform !== "win32")
-      process.kill(process.pid, result.signal);
+    if (result.signal && process.platform !== "win32") process.kill(process.pid, result.signal);
     else process.exitCode = result.code ?? 1;
   }
 }

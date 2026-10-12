@@ -66,14 +66,9 @@ async function fixture(
   page.visible = false;
   await writeFile(pagePath, JSON.stringify(page));
   const manifest = JSON.parse(await readFile(join(directory, "plugin.json"), "utf8"));
-  if (mock) {
-    manifest.mode = "mock";
-    await writeFile(join(directory, "plugin.json"), JSON.stringify(manifest));
-  }
-  if (!mock) {
-    delete manifest.mode;
-    await writeFile(join(directory, "plugin.json"), JSON.stringify(manifest));
-  }
+  if (mock) manifest.mode = "mock";
+  else delete manifest.mode;
+  await writeFile(join(directory, "plugin.json"), JSON.stringify(manifest));
   const mcpPath = join(directory, "mcp.json");
   const mcp = JSON.parse(await readFile(mcpPath, "utf8"));
   mcp.capabilities = mock ? [] : ["governed-sql-read"];

@@ -2,18 +2,58 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, resolve, sep } from "node:path";
-import { deploymentPatch } from "../scripts/deployment.mjs";
-import { readSupportedCore } from "../scripts/supported-cores.mjs";
+import { execFileSync } from "node:child_process";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
+import { businessDeploymentPatch, deploymentPatch } from "../scripts/deployment.mjs";
 const require = createRequire(import.meta.url);
-test("the runtime resolves its frozen SDK and retains Core layout with ordinary patch rows", async () => {
-  const path = require.resolve("@deepseek-ai/dsh/package.json");
-  const coreRoot = resolve(dirname(await realpath(path)), "../..");
-  const core = await readSupportedCore(coreRoot);
-  const candidate = JSON.parse(await readFile(process.env.GEA_TEST_CANDIDATE, "utf8"));
-  assert.equal(core.head, candidate.core);
-  assert.equal(JSON.parse(await readFile(path, "utf8")).version, core.version);
-  assert.equal(await realpath(path), resolve(coreRoot, "apps/cli/package.json"));
+test("fixed Core and workbench resolve while ordinary patches preserve the official layout", async () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const coreRoot = resolve(root, "../../official-latest-standard");
+  const manifest = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
+  const lock = parse(await readFile(resolve(root, "pnpm-lock.yaml"), "utf8"));
+  const core = JSON.parse(await readFile(resolve(root, "scripts/current-core.json"), "utf8"));
+  assert.equal(core.version, "0.2.1-alpha.1");
+  assert.equal(core.upstream, "5badb15009ae1756c3afe0ae0cef1faafc290ccc");
+  assert.equal(core.adaptation, core.upstream);
+  assert.equal(
+    execFileSync("git", ["-C", coreRoot, "rev-parse", "HEAD"], {
+      encoding: "utf8",
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+    }).trim(),
+    core.upstream,
+  );
+  assert.deepEqual(
+    await readFile(resolve(coreRoot, "pnpm-lock.yaml")),
+    execFileSync("git", ["-C", coreRoot, "show", core.upstream + ":pnpm-lock.yaml"]),
+  );
+  for (const [section, name, link, version] of [
+    [
+      "devDependencies",
+      "@deepseek-ai/dsh",
+      "link:../../official-latest-standard/apps/cli",
+      core.version,
+    ],
+    [
+      "devDependencies",
+      "@deepseek-ai/dsh-client-ui-layout",
+      "link:../../official-latest-standard/packages/client/ui-layout",
+      core.version,
+    ],
+    ["dependencies", "@cleverc2200/dsh-agent-workbench", "link:../dsh-agent-workbench", "0.1.1"],
+  ]) {
+    assert.equal(manifest[section][name], link);
+    assert.deepEqual(lock.importers["."][section][name], { specifier: link, version: link });
+    const path = require.resolve(name + "/package.json");
+    const installed = JSON.parse(await readFile(path, "utf8"));
+    assert.equal(installed.name, name);
+    assert.equal(installed.version, version);
+    assert.equal(
+      await realpath(path),
+      await realpath(resolve(root, link.slice(5), "package.json")),
+    );
+  }
   const layout = await readFile(
     require.resolve("@deepseek-ai/dsh-client-ui-layout/client"),
     "utf8",
@@ -21,16 +61,26 @@ test("the runtime resolves its frozen SDK and retains Core layout with ordinary 
   assert.equal(layout.includes("registerConversationPanel"), false);
   const patch = deploymentPatch({ analysis: { mode: "receipt" } }, "/plugin", "/runtime");
   assert.equal(
-    patch.some((row) => row.id === "ui-layout" && row.disabled),
+    patch.some((row) => row.id === "ui-layout"),
+    false,
+  );
+  assert.equal(
+    businessDeploymentPatch({ analysis: { mode: "receipt" } }, "/plugin", "/runtime").some(
+      (row) => row.id === "ui-layout",
+    ),
     false,
   );
   const workbench = patch
     .flatMap((row) => row.insert ?? [])
     .find((entry) => entry.id === "agent-workbench");
   assert.equal(workbench.name, require.resolve("@cleverc2200/dsh-agent-workbench"));
-  assert.ok(
-    (await realpath(workbench.name)).startsWith(
-      (await realpath(resolve("../dsh-agent-workbench"))) + sep,
+  assert.equal(
+    await realpath(workbench.name),
+    await realpath(
+      resolve(
+        dirname(require.resolve("@cleverc2200/dsh-agent-workbench/package.json")),
+        "lib/host.js",
+      ),
     ),
   );
   assert.ok(patch.some((row) => row.insert?.some((entry) => entry.id === "agent-workbench")));

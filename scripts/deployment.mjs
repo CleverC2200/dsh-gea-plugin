@@ -35,7 +35,11 @@ function readServiceAccountKeychain(service) {
   }
 }
 
-/** The desktop launcher imports this function from the installed GEA plugin before spawning its Host. */
+/**
+ * Read and normalize deployment before Host launch. resolveCredentials:false skips keychain
+ * resolution; checkDirectCredential:false permits admission's structural comparison without
+ * reading a secret. Launch callers retain direct-key checks against credentialEnv.
+ */
 export async function readDeployment(
   path,
   {
@@ -43,6 +47,7 @@ export async function readDeployment(
     platform = process.platform,
     readKeychain = readServiceAccountKeychain,
     resolveCredentials = true,
+    checkDirectCredential = true,
   } = {},
 ) {
   let config;
@@ -107,7 +112,8 @@ export async function readDeployment(
       httpsEndpoint(a.baseUrl, "INVALID_ANALYSIS_BASE_URL");
       if (!/^[A-Z][A-Z0-9_]*$/.test(a.apiKeyEnv ?? ""))
         throw new Error("ANALYSIS_CONFIG_INCOMPLETE");
-      if (!process.env[a.apiKeyEnv]?.trim()) throw new Error("ANALYSIS_CREDENTIAL_MISSING");
+      if (checkDirectCredential && !credentialEnv[a.apiKeyEnv]?.trim())
+        throw new Error("ANALYSIS_CREDENTIAL_MISSING");
     }
     config.analysis = a;
   }

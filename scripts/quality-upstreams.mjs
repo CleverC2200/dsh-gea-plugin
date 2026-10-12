@@ -35,6 +35,23 @@ function run(command, args, cwd, capture = false) {
     );
   return capture ? result.stdout.trim() : undefined;
 }
+function sourceRemote(directory, repository, prepare = false) {
+  const result = spawnSync("git", ["remote", "get-url", "source"], {
+    cwd: directory,
+    encoding: "utf8",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    if (!result.stderr.includes("No such remote 'source'"))
+      throw Error(
+        "QUALITY_UPSTREAM_COMMAND_FAILED: " + (result.stderr || result.signal || result.status),
+      );
+    if (!prepare) throw Error("QUALITY_UPSTREAM_SOURCE_REMOTE_REQUIRED: " + directory);
+    run("git", ["remote", "add", "source", repository], directory);
+  } else if (result.stdout.trim() !== repository) {
+    throw Error("QUALITY_UPSTREAM_SOURCE_REMOTE_MISMATCH: " + directory);
+  }
+}
 async function sidebarSource(directory) {
   if (run("git", ["rev-parse", "HEAD"], directory, true) !== fixed.sidebar.head)
     throw Error("QUALITY_UPSTREAM_HEAD");
@@ -67,6 +84,8 @@ export async function verifyQualityUpstreams(root) {
     run("git", ["status", "--porcelain"], genuiSource, true)
   )
     throw Error("QUALITY_UPSTREAM_GENUI_SOURCE_REQUIRED");
+  sourceRemote(genuiSource, fixed.genui.repository);
+  sourceRemote(sidebar, fixed.sidebar.repository);
   const manifest = await json(join(sidebar, "package.json"));
   const required = new Set([
     manifest.main,
@@ -172,6 +191,14 @@ export async function prepareQualityUpstreams(root) {
   )
     throw Error("QUALITY_UPSTREAM_PRIVATE_ROOT_REQUIRED");
   await sidebarSource(sidebar);
+  if (
+    (await realpath(genuiSource)) !== genuiSource ||
+    run("git", ["rev-parse", "HEAD"], genuiSource, true) !== fixed.genui.head ||
+    run("git", ["status", "--porcelain"], genuiSource, true)
+  )
+    throw Error("QUALITY_UPSTREAM_GENUI_SOURCE_REQUIRED");
+  sourceRemote(genuiSource, fixed.genui.repository, true);
+  sourceRemote(sidebar, fixed.sidebar.repository, true);
   if (run("corepack", ["pnpm", "--version"], sidebar, true) !== "11.8.0")
     throw Error("QUALITY_UPSTREAM_TOOLCHAIN");
   run(

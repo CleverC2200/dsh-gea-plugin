@@ -12,7 +12,7 @@ const deployment =
     ? undefined
     : await readDeployment(configPath, {
         resolveCredentials: false,
-        credentialEnv: {},
+        credentialEnv: process.env,
       });
 for (const endpoint of [
   deployment?.geaBaseUrl,

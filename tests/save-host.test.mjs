@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile } from "./profile.mjs";
 
@@ -33,8 +33,7 @@ test(
                     versionId: "v",
                     status: 4,
                     allowedActions: mode === "denied" ? [] : ["SAVE"],
-                    snapshotHash:
-                      mode === "changed" ? "b".repeat(64) : snapshot,
+                    snapshotHash: mode === "changed" ? "b".repeat(64) : snapshot,
                   },
             skus: [],
             versions: [],
@@ -106,12 +105,9 @@ test(
     }
     assert.equal(writes, 0);
     mode = "allowed";
-    assert.equal(
-      (await save({ expectedStatus: 5 })).error.code,
-      "GEA_HTTP_400",
-    );
+    assert.equal((await save({ expectedStatus: 5 })).error.code, "GEA_HTTP_400");
     assert.equal(writes, 0);
-        assert.equal((await save()).ok, true);
+    assert.equal((await save()).ok, true);
     assert.equal(writes, 1);
     mode = "conflict";
     assert.equal((await save()).error.code, "GEA_HTTP_409");

@@ -1,11 +1,13 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
-import { readSession, until } from "./profile.mjs";
-import { modelProfile as profile } from "./fixtures/model-profile.mjs";
+import { randomUUID, createHash } from "node:crypto";
+import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
+import { selectBusinessResource } from "./fixtures/business-session.mjs";
+import { requireSourceInputs } from "../scripts/source-profile.mjs";
 
 test(
   "dealer inventory uses the maintained skill in the real assembled prompt, without altering the sales-plan context",
@@ -13,10 +15,39 @@ test(
   async (t) => {
     const root = await mkdtemp(join(tmpdir(), "gea-stock-prompt-"));
     t.after(() => rm(root, { recursive: true, force: true }));
-    await mkdir(join(root, "skills", "aqkc"), { recursive: true });
+    await mkdir(join(root, "history", "skills", "aqkc"), { recursive: true });
+    await mkdir(join(root, "skills", "dealer"), { recursive: true });
+    const sources = requireSourceInputs(
+      JSON.parse(await readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8")),
+    );
+    const maintainedRoot = join(
+      sources.find((source) => source.repo === "dsh-agent-manage").source,
+      "business-resources",
+      "inventory-dealer",
+    );
+    const maintained = {};
+    for (const [file, sha256] of Object.entries({
+      "prompt.json": "b42862eeace4af14a875e25e7b454070088d50d68b18bef4549337ade4fc96bf",
+      "capability.json": "17645e9a1803587d34ff42ff2ead47ca20a39f07627bc6a7a5c51dd2e764baa4",
+      "skills/dealer/SKILL.md": "e4bc4ded2a7f6b60f7147e2c48b9fc9826944e55c94d0e5c8709a7e12e7cfb74",
+    })) {
+      const bytes = await readFile(join(maintainedRoot, file));
+      assert.equal(createHash("sha256").update(bytes).digest("hex"), sha256, file);
+      maintained[file] = bytes.toString("utf8");
+      await writeFile(join(root, file), bytes);
+    }
+    assert.equal(
+      JSON.parse(maintained["prompt.json"]).consumerCode,
+      "dealer-inventory-replenishment",
+    );
+    assert.equal(
+      JSON.parse(maintained["capability.json"]).data.consumerCode,
+      "dealer-inventory-replenishment",
+    );
     const oldSkill =
       "---\nname: inventory-dealer\ndescription: 经销商库存\n---\n先调用 inventory_dealer_page，name=context；必须保持页面打开。\n";
-    await writeFile(join(root, "skills", "aqkc", "SKILL.md"), oldSkill);
+    // Preserve the original input separately; no current resource registers this historical Skill.
+    await writeFile(join(root, "history", "skills", "aqkc", "SKILL.md"), oldSkill);
     await writeFile(join(root, "index.html"), "<!doctype html><body>经销商库存</body>");
     await writeFile(
       join(root, "plugin.json"),
@@ -26,12 +57,14 @@ test(
         name: "经销商库存",
         version: "0.0.0",
         html: "index.html",
-        skills: ["skills/aqkc/SKILL.md"],
+        skills: ["skills/dealer/SKILL.md"],
+        declarations: { page: "page.json", capability: "capability.json" },
+        agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
         mcp: "mcp.json",
         gea: {
           consumerCode: "dealer-inventory-replenishment",
           readonly: true,
-          contract: "gea-html-v1",
+          contract: "gea-html-v2",
         },
       }),
     );
@@ -40,12 +73,23 @@ test(
       JSON.stringify({
         provider: "gea",
         transport: "host-provided",
-        contract: "gea-html-v1",
+        contract: "gea-html-v2",
         consumer: { consumerType: "AGENT", consumerCode: "dealer-inventory-replenishment" },
         capabilities: ["governed-sql-read"],
       }),
     );
+    await writeFile(
+      join(root, "page.json"),
+      JSON.stringify({
+        surface: "gea-html-inventory-dealer",
+        protocol: "self-report",
+        pageIds: ["inventory-dealer"],
+        consumerCode: "dealer-inventory-replenishment",
+        maxEffect: "view",
+      }),
+    );
     const app = await profile(t, {
+      beforeStart: fixtureWorkbench([root]),
       config: (base) => ({
         analysis: {
           mode: "model",
@@ -58,7 +102,6 @@ test(
       }),
       env: {
         GEA_TEST_MODEL_KEY: "fixture-only",
-        GEA_HTML_PLUGIN_ROOTS: JSON.stringify({ "inventory-dealer": root }),
       },
     });
     const requests = [];
@@ -157,42 +200,6 @@ test(
       if (req.url.pathname !== "/v1/chat/completions") return false;
       const body = JSON.parse(req.body);
       res.setHeader("Content-Type", "text/event-stream");
-      if (
-        loadSkill &&
-        !body.messages.some((message) => message.tool_call_id === "load-extra-skill")
-      ) {
-        res.end(
-          "data: " +
-            JSON.stringify({
-              choices: [
-                {
-                  index: 0,
-                  delta: {
-                    tool_calls: [
-                      {
-                        index: 0,
-                        id: "load-extra-skill",
-                        type: "function",
-                        function: {
-                          name: "gea_capabilities",
-                          arguments: JSON.stringify({ skill: "inventory-dealer" }),
-                        },
-                      },
-                    ],
-                  },
-                  finish_reason: "tool_calls",
-                },
-              ],
-            }) +
-            "\n\ndata: [DONE]\n\n",
-        );
-        return true;
-      }
-      body.messages = body.messages.filter(
-        (message) =>
-          message.tool_call_id !== "load-extra-skill" &&
-          !message.tool_calls?.some((call) => call.id === "load-extra-skill"),
-      );
       requests.push(body);
       const callTool = !body.messages.some((x) => x.role === "tool");
       const delta = callTool
@@ -232,9 +239,12 @@ test(
       catalogConsumers.length = 0;
     }
     async function ask(preset) {
+      const selected = await selectBusinessResource(app, preset);
+      assert.equal(selected.preset, preset);
+      const requestStart = requests.length;
       const created = await app.remote("session/create", {
         cwd: app.runtime + "/workspace",
-        agentPreset: preset,
+        agentPreset: selected.preset,
       });
       assert.equal(created.ok, true, JSON.stringify(created));
       const id = created.value.sessionId;
@@ -268,6 +278,31 @@ test(
         "completed",
         JSON.stringify(records.find((x) => x.type === "turn/end").data.reason),
       );
+      assert.equal(requests.length - requestStart, 2, "one tool call and its model follow-up");
+      if (loadSkill) {
+        const calls = records.filter((record) => record.type === "tool/call");
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0].data.name, "skill");
+        assert.deepEqual(JSON.parse(calls[0].data.arguments), { name: "inventory-dealer" });
+        const results = readToolResults(records);
+        assert.equal(results.length, 1);
+        assert.equal(results[0].callId, calls[0].data.callId);
+        assert.equal(results[0].isError, false);
+        const text = results[0].text;
+        assert.ok(text.startsWith('<skill_content name="inventory-dealer">'));
+        assert.ok(
+          text.includes(
+            "Base directory for this skill: " + (await realpath(join(root, "skills", "dealer"))),
+          ),
+        );
+        const instructions = /<skill_instructions>\n([\s\S]*)\n<\/skill_instructions>/.exec(text);
+        assert.ok(instructions, "the public skill result contains instruction content");
+        assert.equal(
+          instructions[1],
+          maintained["skills/dealer/SKILL.md"].replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, ""),
+          "Manage projects only frontmatter; the maintained instruction bytes are unchanged",
+        );
+      }
       return requests.at(-1);
     }
     const stock = await ask("gea-html-inventory-dealer");
@@ -288,16 +323,13 @@ test(
     const stockCatalog = JSON.stringify(stock.messages.filter((x) => x.role === "tool"));
     assert.match(stockCatalog, /consumerCode=dealer-inventory-replenishment/);
     assert.doesNotMatch(stockCatalog, /consumerCode=sales_forecast/);
-    const managed = await readFile(
-      join(app.runtime, "home", "gea-business-skills", "inventory-dealer", "SKILL.md"),
-      "utf8",
-    );
+    const managed = maintained["skills/dealer/SKILL.md"];
     assert.match(managed, /action=context/);
     assert.doesNotMatch(managed, /inventory_dealer_page/);
     assert.equal(
-      await readFile(join(root, "skills", "aqkc", "SKILL.md"), "utf8"),
+      await readFile(join(root, "history", "skills", "aqkc", "SKILL.md"), "utf8"),
       oldSkill,
-      "the installed page artifact is unchanged",
+      "the historical page artifact is unchanged and is not a registered Skill",
     );
     const sales = await ask("gea-readonly");
     const salesSystem = sales.messages
@@ -324,12 +356,16 @@ test(
     loadSkill = true;
     const loaded = await ask("gea-readonly");
     const skillReply = JSON.stringify(loaded.messages.filter((x) => x.role === "tool"));
-    assert.match(skillReply, /dealer-inventory-replenishment/);
+    // Consumer identity is verified by the stock gateway receipt above, not invented in Skill prose.
+    assert.deepEqual(catalogConsumers, ["dealer-inventory-replenishment", "sales_forecast"]);
     assert.match(skillReply, /action=context/);
     assert.doesNotMatch(
       skillReply,
       /inventory_dealer_page/,
       "explicit skill loading must use the same maintained content as the stock persona",
     );
+    for (const [file, bytes] of Object.entries(maintained)) {
+      assert.equal(await readFile(join(root, file), "utf8"), bytes, file);
+    }
   },
 );

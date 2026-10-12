@@ -71,11 +71,13 @@ export async function resolveSourceInputs(sources, { requireEntries = false } = 
     const commit = execFileSync("git", ["rev-parse", "HEAD"], {
       cwd: source,
       encoding: "utf8",
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
     }).trim();
     if (
       execFileSync("git", ["status", "--porcelain"], {
         cwd: source,
         encoding: "utf8",
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
       }).trim()
     )
       throw Error("SOURCE_PLUGIN_DIRTY: " + repo);
@@ -85,10 +87,12 @@ export async function resolveSourceInputs(sources, { requireEntries = false } = 
         execFileSync("git", ["rev-parse", "HEAD"], {
           cwd: integration,
           encoding: "utf8",
+          env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
         }).trim() !== commit ||
         execFileSync("git", ["status", "--porcelain"], {
           cwd: integration,
           encoding: "utf8",
+          env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
         }).trim()
       )
         throw Error("SOURCE_PLUGIN_UNMERGED: " + repo);
@@ -98,6 +102,7 @@ export async function resolveSourceInputs(sources, { requireEntries = false } = 
       const commit = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
         cwd: source,
         encoding: "utf8",
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
       }).trim();
       if (commit !== expectedCommit)
         throw Error(
@@ -207,14 +212,17 @@ export async function prepareSourcePlugins(
       origin: execFileSync("/usr/bin/git", ["remote", "get-url", "source"], {
         cwd: source,
         encoding: "utf8",
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
       }).trim(),
       commit: execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
         cwd: source,
         encoding: "utf8",
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
       }).trim(),
       dirty: execFileSync("/usr/bin/git", ["status", "--porcelain"], {
         cwd: source,
         encoding: "utf8",
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
       }).trim(),
       digests,
     };
@@ -328,6 +336,7 @@ export async function prepareSourcePlugins(
                 execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
                   cwd: core,
                   encoding: "utf8",
+                  env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
                 }).trim(),
               ],
               interface: "current-unified-v2",
@@ -343,6 +352,7 @@ export async function prepareSourcePlugins(
         core: execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
           cwd: core,
           encoding: "utf8",
+          env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
         }).trim(),
         assembler: await fileDigest(new URL(import.meta.url)),
       },
@@ -353,11 +363,11 @@ export async function prepareSourcePlugins(
   return composition;
 }
 
-/** Hash shipped resources, excluding dependency links and their writable stores. */
-async function resourceDigests(directory, prefix = "", excludeDependencies = false) {
+/** Hash shipped resources; prepared assets exclude dependencies and local Git metadata. */
+export async function resourceDigests(directory, prefix = "", excludeDependencies = false) {
   const files = {};
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (excludeDependencies && entry.name === "node_modules") continue;
+    if (excludeDependencies && ["node_modules", ".git"].includes(entry.name)) continue;
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
     const file = join(directory, entry.name);
     if (entry.isDirectory())

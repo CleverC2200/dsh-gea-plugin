@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -43,17 +43,12 @@ test(
     await app.login();
     const periods = await app.rpc("periods");
     assert.equal(periods.value.records[0].periodMonth, "2026-09");
-    const page = (
-      await app.rpc("plans", { periodId: "20260901", status: "5", pageNo: 1 })
-    ).value;
+    const page = (await app.rpc("plans", { periodId: "20260901", status: "5", pageNo: 1 })).value;
     const selection = { queryId: page.queryId, planId };
     const detail = await app.rpc("detail", selection);
     assert.equal(detail.ok, true, JSON.stringify(detail));
     assert.equal(detail.value.currentVersion.id, "version-1");
-    assert.equal(
-      (await app.rpc("versions", selection)).value.records[1].id,
-      "version-0",
-    );
+    assert.equal((await app.rpc("versions", selection)).value.records[1].id, "version-0");
     const sku = await app.rpc("skus", { ...selection, versionId: "version-0" });
     assert.equal(sku.value.records[0].qty, "1.2000");
     assert.equal(sku.value.records[0].amt, "3.0000");
@@ -73,9 +68,7 @@ test(
     assert.equal(snapshot.skus.total, 5);
     assert.equal(snapshot.skus.returned, 2);
     assert.equal(snapshot.skus.records[0].amtBase, "0.10");
-    assert.ok(
-      snapshot.skus.missingFields["9007199254740995"].includes("baseQty"),
-    );
+    assert.ok(snapshot.skus.missingFields["9007199254740995"].includes("baseQty"));
     const submit = await app.rpc("submit", {
       previewId: prepared.value.previewId,
     });
@@ -90,14 +83,22 @@ test(
     assert.deepEqual(archive.snapshot, snapshot);
     assert.equal(archive.snapshot.skus.records[0].amt, "3.0000");
     assert.equal(archive.snapshotHash, prepared.value.snapshotHash);
-    assert.equal(createHash("sha256").update(JSON.stringify(archive.snapshot, null, 2)).digest("hex"), archive.snapshotHash);
+    assert.equal(
+      createHash("sha256")
+        .update(JSON.stringify(archive.snapshot, null, 2))
+        .digest("hex"),
+      archive.snapshotHash,
+    );
     assert.equal((await stat(archivePath)).mode & 0o777, 0o600);
-    const notice = rows.find(row => row.type === "user/message" && (row.data.source.kind === "gea-proof" || row.data.source.plugin === "gea-proof"));
+    const notice = rows.find(
+      (row) =>
+        row.type === "user/message" &&
+        (row.data.source.kind === "gea-proof" || row.data.source.plugin === "gea-proof"),
+    );
     assert.ok(notice);
     assert.equal(JSON.stringify(notice).includes(archive.snapshotHash), false);
     assert.equal(
-      (await app.rpc("skus", { ...selection, versionId: "foreign-version" }))
-        .error.code,
+      (await app.rpc("skus", { ...selection, versionId: "foreign-version" })).error.code,
       "INVALID_VERSION",
     );
     assert.equal(

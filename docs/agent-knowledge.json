@@ -1,9 +1,5 @@
 {
-  "entries": [
-    "AGENTS.md",
-    "README.md",
-    "docs/index.md"
-  ],
+  "entries": ["AGENTS.md", "README.md", "docs/index.md"],
   "history": [
     "docs/history",
     ".agents/notes/implemented/feature/2026-09-11-approval-workspace-ui.md",
@@ -242,15 +238,8 @@
     "test:prompt-execution"
   ],
   "exports": false,
-  "peers": [
-    "../dsh-agent-workbench",
-    "../dsh-agent-manage",
-    "../../official-latest-standard",
-    "../../../../docs/agents"
-  ],
+  "peers": ["../dsh-agent-workbench", "../dsh-agent-manage", "../../official-latest-standard"],
   "commandRoots": {
-    "docs/plugin-split-validation.md": [
-      "../../official-latest-standard"
-    ]
+    "docs/plugin-split-validation.md": ["../../official-latest-standard"]
   }
 }

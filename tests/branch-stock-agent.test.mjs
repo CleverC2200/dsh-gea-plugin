@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -72,7 +72,7 @@ test(
     await selectBusinessResource(app, "gea-html-inventory-fc");
     const created = await app.remote("session/create", {
       cwd: app.runtime + "/workspace",
-      agentPreset: "gea-html-inventory-fc",
+      agentPreset: selected.preset,
     });
     assert.equal(created.ok, true);
     const id = created.value.sessionId;

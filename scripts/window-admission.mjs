@@ -132,6 +132,7 @@ export async function admitSourceWindow({
       throw Error("WINDOW_CONFIG_DIGEST_MISMATCH");
     const normalized = await readDeployment(frozen.config.file, {
       resolveCredentials: false,
+      checkDirectCredential: false,
       credentialEnv: {},
     });
     if (

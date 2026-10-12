@@ -240,6 +240,7 @@ function fixture(t, capability) {
   return {
     business,
     tools,
+    select: (preset) => profiles.set("one", preset),
     call: (name, args, signal = new AbortController().signal, agentId = "one") =>
       tools.get(name).execute(args, { agent: { id: agentId }, signal }),
   };
@@ -615,4 +616,29 @@ test("catalog samples reject measures and segments before dispatch and keep vali
   assert.match(result, /该成员是未发布成员/);
   assert.equal(sent.length, 1);
   assert.deepEqual(sent[0].queries[0].query.dimensions, ["inv.month"]);
+});
+
+test("generic Skill and unregistered Consumer cannot enter governed reads", async (t) => {
+  const f = fixture(t, {
+    readModules: () => [{ data: { consumerCode: "other" } }],
+    readToolIndex: () => "",
+    byConsumer: () => undefined,
+  });
+  let opened = 0;
+  t.mock.method(f.business, "moduleMcp", async () => {
+    opened++;
+    throw Error("must not open transport");
+  });
+  f.select("agent-resource-skill");
+  await assert.rejects(
+    f.call("gea_cube_query", { consumerCode: "sales_forecast", queries: [query("inv")] }),
+    /GEA_BUSINESS_PROFILE_REQUIRED/,
+  );
+  await assert.rejects(f.call("gea_gateway_catalog", {}), /GEA_BUSINESS_PROFILE_REQUIRED/);
+  f.select("gea-readonly");
+  await assert.rejects(
+    f.call("gea_cube_query", { consumerCode: "other", queries: [query("inv")] }),
+    /GEA_CONSUMER_ROUTE_NOT_REGISTERED/,
+  );
+  assert.equal(opened, 0);
 });

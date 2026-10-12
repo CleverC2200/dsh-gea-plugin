@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
@@ -53,7 +53,7 @@ test(
       });
       return true;
     });
-    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    const browser = await chromium.launch({ headless: true });
     t.after(() => browser.close());
     const context = await browser.newContext({
       locale: "zh-CN",
@@ -105,6 +105,7 @@ test(
     const second = await context.newPage();
     await second.goto(app.origin);
     await preparePageStartup(second);
+    // The second tab restores the already-open sales Document.
     await expect(salesPlanFrameElement(second)).toBeVisible();
     await second.getByRole("button", { name: "账户菜单", exact: true }).click();
     await expect(second.getByRole("menuitem", { name: "退出登录", exact: true })).toBeVisible();
@@ -113,7 +114,6 @@ test(
     await expect(page.getByRole("menu")).toHaveCount(0);
     // The brand no longer switches pages; open a fresh conversation for the second shell.
     await page
-      .getByRole("complementary", { name: "业务导航", exact: true })
       .getByRole("button", { name: "新会话", exact: true })
       .filter({ hasText: "AI工作台" })
       .click();

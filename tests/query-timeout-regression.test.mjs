@@ -98,7 +98,9 @@ test("screenshot list input explains how to resolve a period; corrected input re
 
 test("MCP outlives the REST timeout, respects its own limit and caller cancellation", async () => {
   const original = globalThis.fetch;
+  let wireCalls = 0;
   globalThis.fetch = async (url, init) => {
+    wireCalls += 1;
     if (url.endsWith("/session")) return session();
     await delay(40, undefined, { signal: init.signal });
     return Response.json({ result: {} });
@@ -106,7 +108,37 @@ test("MCP outlives the REST timeout, respects its own limit and caller cancellat
   try {
     for (const config of [{}, { mcpRequestTimeoutMs: 200 }, { mcpRequestTimeoutMs: 10 }]) {
       const b = makeBusiness(config);
+      b.setCapabilities(
+        createCapabilityRegistry([
+          {
+            id: "test-mcp-timeout",
+            label: "MCP timeout fixture",
+            view: {
+              surface: "test-mcp-timeout",
+              protocol: "self-report",
+              pageIds: ["test-mcp-timeout"],
+            },
+            data: { consumerCode: consumer.consumerCode, tables: [], rules: [] },
+            maxEffect: "view",
+            layers: ["read"],
+            routing: {
+              keywords: ["test-mcp-timeout"],
+              summary: "Isolated transport timeout fixture",
+            },
+          },
+        ]),
+      );
       try {
+        const beforeUnknown = wireCalls;
+        await assert.rejects(
+          () =>
+            b.openMcpConnection(
+              { consumerType: "AGENT", consumerCode: "unknown-test-agent" },
+              new AbortController().signal,
+            ),
+          /GEA_PLUGIN_CONSUMER_NOT_ALLOWED/,
+        );
+        assert.equal(wireCalls, beforeUnknown);
         const c = await b.openMcpConnection(consumer, new AbortController().signal);
         const request = () =>
           c.fetch(c.url, {

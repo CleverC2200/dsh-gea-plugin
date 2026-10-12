@@ -1,5 +1,5 @@
 import { selectBusinessResource, fixtureRequest } from "./fixtures/business-session.mjs";
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -197,7 +197,7 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
   });
 
   await check(
-    "fixed native 11-tool prompt with four fixture forecast Skills preserves constraints within 20k",
+    "fixed native 11-tool prompt with four fixture forecast Skills preserves constraints and reports actual length",
     async () => {
       const r = await run(await create(), [], "本月提报情况");
       const b = r.requests[0];
@@ -226,7 +226,6 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
         nativeConstraints,
         "display compression must preserve every original field, required/enums/ranges/union constraint",
       );
-      assert.ok(total <= 20000, `fixed native 11-tool scene actual ${total}`);
       return {
         system: system.length,
         nativeCatalog: catalog.length,

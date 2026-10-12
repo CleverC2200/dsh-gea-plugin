@@ -19,7 +19,10 @@ test("重复读闸门接在三个读工具上", () => {
 
 test("目录必须由当前授权快照过滤，业务查询走同一宿主入口", () => {
   assert.match(source, /authorizedCatalog\(payload,\s*snapshot\)/);
-  assert.match(source, /module\.authorizedResources\(["']query_business_data["'], exec\.signal\)/);
+  assert.match(
+    source,
+    /module\.authorizedResources\(["']query_business_data["'],\s*exec\.signal\)/,
+  );
   assert.match(source, /name:\s*["']gea_cube_query["']/);
   assert.match(source, /executeModuleMcp/);
 });

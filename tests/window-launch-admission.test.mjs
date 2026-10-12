@@ -116,6 +116,53 @@ test("unknown remaining calls remain unknown and block the public Host before ef
 });
 
 import { sourceWindow, snapshot, hash } from "./fixtures/source-window.mjs";
+import { readDeployment } from "../scripts/deployment.mjs";
+test("the default source CLI validates direct fixture credentials after window admission", async (t) => {
+  const fixture = await sourceWindow(t, "source-host");
+  const config = JSON.parse(await readFile(fixture.configFile, "utf8"));
+  config.analysis = {
+    mode: "model",
+    source: "direct",
+    baseUrl: "https://127.0.0.1:1/v1",
+    apiKeyEnv: "GEA_FIXTURE_DIRECT_KEY",
+    model: "fixture",
+    contextWindow: 32768,
+    maxTokens: 2048,
+  };
+  const environment = { GEA_FIXTURE_DIRECT_KEY: "fixture-key" };
+  await writeFile(fixture.configFile, JSON.stringify(config));
+  fixture.frozen.config.sha256 = hash(await readFile(fixture.configFile));
+  fixture.frozen.deploymentSha256 = hash(
+    JSON.stringify(
+      await readDeployment(fixture.configFile, {
+        resolveCredentials: false,
+        credentialEnv: environment,
+      }),
+    ),
+  );
+  await fixture.refresh();
+  const before = await snapshot(fixture.runtime);
+  fixture.current.status = "closed";
+  await fixture.refresh();
+  await assertNoEffects(
+    fixture,
+    fixture.run("start.mjs", [], environment),
+    /WINDOW_NOT_OPEN/,
+    before,
+  );
+  assert.deepEqual(JSON.parse(await readFile(fixture.observation, "utf8")).credentialEnvReads, []);
+  fixture.current.status = "open";
+  await fixture.refresh();
+  await assertNoEffects(fixture, fixture.run(), /ANALYSIS_CREDENTIAL_MISSING/, before);
+  const accepted = fixture.run("start.mjs", [], environment);
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.match(accepted.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
+  const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
+  assert.equal(effects.processes.length, 1);
+  assert.deepEqual(effects.credentialReads, []);
+  assert.ok(effects.credentialEnvReads.length > 0);
+  assert.deepEqual(effects.network, []);
+});
 test("a frozen wrong candidate head is rejected through the default CLI with zero protected effects", async (t) => {
   const fixture = await sourceWindow(t, "source-host");
   const input = JSON.parse(await readFile(fixture.candidateFile, "utf8"));
@@ -209,6 +256,22 @@ test("the isolated source CLI preserves its platform sandbox boundary after Wind
   assert.equal(effects.processes[0].command, "/usr/bin/sandbox-exec");
   assert.deepEqual(effects.network, []);
 });
+
+for (const mode of ["isolated-core-host", "isolated-source-host"])
+  test(`${mode}: public runSourceProfile admits the process fixture independently of CLI sandbox support`, async (t) => {
+    const fixture = await sourceWindow(t, mode);
+    const sources =
+      mode === "isolated-source-host"
+        ? JSON.parse(await readFile(fixture.sourcesFile, "utf8"))
+        : undefined;
+    const result = fixture.run("runSourceProfile", { sources });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
+    const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
+    assert.equal(effects.processes.length, 1);
+    assert.deepEqual(effects.credentialReads, []);
+    assert.deepEqual(effects.network, []);
+  });
 
 async function assertNoEffects(fixture, result, expected, before) {
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));

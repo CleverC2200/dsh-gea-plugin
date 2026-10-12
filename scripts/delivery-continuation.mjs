@@ -9,7 +9,6 @@ const parse = (input) => {
     return null;
   }
 };
-
 const evidence = (input) =>
   input?.sha256
     ? [

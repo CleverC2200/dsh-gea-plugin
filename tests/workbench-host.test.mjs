@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile } from "./profile.mjs";
 
@@ -22,16 +22,20 @@ test(
         reply({
           success: true,
           result: {
-            records: [
-              { periodId: "period-1", tenantId: "0", periodMonth: "2026-09" },
-            ],
+            records: [{ periodId: "period-1", tenantId: "0", periodMonth: "2026-09" }],
             total: 3,
           },
         });
       } else if (path.endsWith("/plans")) {
         const discovery = req.url.searchParams.get("pageSize") === "200";
         res.end(
-          '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version/a","periodId":20260901,"planTypeCode":"Y","orderType":"M","dealerCode":9007199254740997,"dealer_name":"经销商A","province_name":"浙江","mPlanQty":37556.000,"mPlanAmount":2796344.64,"targetQty":0.1000,"currentAmount":9007199254740993.0100}],"total":' + (discovery ? '1' : '11') + ',"current":1,"size":' + (discovery ? '200' : '10') + ',"pages":' + (discovery ? '1' : '2') + '}}',
+          '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version/a","periodId":20260901,"planTypeCode":"Y","orderType":"M","dealerCode":9007199254740997,"dealer_name":"经销商A","province_name":"浙江","mPlanQty":37556.000,"mPlanAmount":2796344.64,"targetQty":0.1000,"currentAmount":9007199254740993.0100}],"total":' +
+            (discovery ? "1" : "11") +
+            ',"current":1,"size":' +
+            (discovery ? "200" : "10") +
+            ',"pages":' +
+            (discovery ? "1" : "2") +
+            "}}",
         );
       } else if (path.endsWith("/versions")) {
         reply({
@@ -76,8 +80,7 @@ test(
       } else return false;
       return true;
     });
-    const query = (kind, query = {}) =>
-      app.rpc("workbench/query", { kind, query });
+    const query = (kind, query = {}) => app.rpc("workbench/query", { kind, query });
     assert.equal((await query("list")).error.code, "LOGIN_REQUIRED");
     await app.login();
 
@@ -115,32 +118,17 @@ test(
         assert.equal(page.value.records[0].targetQty, "0.1000");
         assert.equal(page.value.records[0].mPlanQty, "37556.000");
         assert.equal(page.value.records[0].mPlanAmount, "2796344.64");
-        assert.equal(
-          page.value.records[0].currentAmount,
-          "9007199254740993.0100",
-        );
+        assert.equal(page.value.records[0].currentAmount, "9007199254740993.0100");
         assert.equal(page.value.records[0].dealerName, "经销商A");
         assert.equal(page.value.records[0].provinceName, "浙江");
-        assert.equal(
-          Object.hasOwn(page.value.records[0], "dealer_name"),
-          false,
-        );
+        assert.equal(Object.hasOwn(page.value.records[0], "dealer_name"), false);
         const detail = await query("detail", { planId });
         assert.equal(detail.value.currentVersion.targetAmount, "12.3000");
         assert.deepEqual(detail.value.skus, []);
         assert.equal(detail.value.versions[0].id, "version/a");
-        assert.equal(
-          detail.value.actionContext.snapshotHash,
-          "current-server-hash",
-        );
-        assert.equal(
-          (await query("versions", { planId })).value[0].id,
-          "version/a",
-        );
-        assert.equal(
-          (await query("logs", { planId })).value[0].id,
-          "9007199254740999",
-        );
+        assert.equal(detail.value.actionContext.snapshotHash, "current-server-hash");
+        assert.equal((await query("versions", { planId })).value[0].id, "version/a");
+        assert.equal((await query("logs", { planId })).value[0].id, "9007199254740999");
         const skus = await query("versionSkus", { versionId: "version/a" });
         assert.equal(skus.value[0].id, "9007199254740995");
         assert.equal(skus.value[0].qty, "1.2000");
@@ -155,9 +143,7 @@ test(
         assert.equal(compare.value[0].qtyDelta, "0.1000");
         assert.equal(compare.value[0].amountDelta, "9007199254740993.0100");
         assert.equal(compare.value[0].after.amt, "9007199254740993.1100");
-        const reads = app.requests.filter((req) =>
-          req.url.pathname.startsWith("/gea/sales-plan/"),
-        );
+        const reads = app.requests.filter((req) => req.url.pathname.startsWith("/gea/sales-plan/"));
         assert.deepEqual(
           reads.map((req) => req.url.pathname),
           [
@@ -179,14 +165,8 @@ test(
         assert.equal(reads[0].url.searchParams.get("pageSize"), "200");
         assert.equal(reads[1].url.searchParams.get("pageNo"), "1");
         assert.equal(reads[1].url.searchParams.get("pageSize"), "10");
-        assert.equal(
-          reads.at(-1).url.searchParams.get("fromVersionId"),
-          "version/a",
-        );
-        assert.equal(
-          reads.at(-1).url.searchParams.get("toVersionId"),
-          "version/b",
-        );
+        assert.equal(reads.at(-1).url.searchParams.get("fromVersionId"), "version/a");
+        assert.equal(reads.at(-1).url.searchParams.get("toVersionId"), "version/b");
       },
     );
 
@@ -220,16 +200,13 @@ test(
       },
     );
 
-    await t.test(
-      "同编码 SKU 在别处回填过的物料名称用于缺失该字段的版本",
-      async () => {
-        const named = await query("versionSkus", { versionId: "version/a" });
-        assert.equal(named.value[0].materialDescription, "黑芝麻汤圆");
-        const unnamed = await query("versionSkus", { versionId: "version/c" });
-        assert.equal(unnamed.value[0].skuName, null);
-        assert.equal(unnamed.value[0].materialDescription, "黑芝麻汤圆");
-      },
-    );
+    await t.test("同编码 SKU 在别处回填过的物料名称用于缺失该字段的版本", async () => {
+      const named = await query("versionSkus", { versionId: "version/a" });
+      assert.equal(named.value[0].materialDescription, "黑芝麻汤圆");
+      const unnamed = await query("versionSkus", { versionId: "version/c" });
+      assert.equal(unnamed.value[0].skuName, null);
+      assert.equal(unnamed.value[0].materialDescription, "黑芝麻汤圆");
+    });
 
     await t.test(
       "preview re-reads current GEA details and a 401 invalidates both login and preview",
@@ -245,10 +222,7 @@ test(
           "99.9900",
         );
         assert.equal(app.requests.length, before + 1);
-        assert.equal(
-          app.requests.at(-1).url.pathname,
-          `/gea/sales-plan/plans/${planId}`,
-        );
+        assert.equal(app.requests.at(-1).url.pathname, `/gea/sales-plan/plans/${planId}`);
         assert.equal(app.requests.at(-1).method, "GET");
         assert.equal(
           (
@@ -260,15 +234,11 @@ test(
           false,
         );
         expired = true;
-        assert.equal(
-          (await query("detail", { planId })).error.code,
-          "GEA_HTTP_401",
-        );
+        assert.equal((await query("detail", { planId })).error.code, "GEA_HTTP_401");
         const expiredCount = app.requests.length;
         assert.equal((await query("list")).error.code, "LOGIN_REQUIRED");
         assert.equal(
-          (await app.rpc("submit", { previewId: prepared.value.previewId }))
-            .error.code,
+          (await app.rpc("submit", { previewId: prepared.value.previewId })).error.code,
           "LOGIN_REQUIRED",
         );
         assert.equal(app.requests.length, expiredCount);
@@ -286,9 +256,7 @@ test(
     const detail = {
       currentVersion: { id: "version-1", planId, targetAmount: "12.3000" },
       versions: [{ id: "version-1", planId }],
-      skus: [
-        { id: "sku-1", versionId: "version-1", skuCode: "sku-a", qty: "1.000" },
-      ],
+      skus: [{ id: "sku-1", versionId: "version-1", skuCode: "sku-a", qty: "1.000" }],
       logs: [{ id: "log-1", planId, versionId: "version-1" }],
     };
     let response = detail;
@@ -313,36 +281,30 @@ test(
         "STALE_PREVIEW",
       );
 
-    await t.test(
-      "query and prepare failures cannot retain the preceding preview",
-      async () => {
-        const first = await prepare();
-        assert.equal(first.ok, true, JSON.stringify(first));
-        const invalidQuery = await app.rpc("workbench/query", {
-          kind: "unsupported",
-          query: {},
-        });
-        assert.equal(invalidQuery.ok, false);
-        await assertStale(first.value);
+    await t.test("query and prepare failures cannot retain the preceding preview", async () => {
+      const first = await prepare();
+      assert.equal(first.ok, true, JSON.stringify(first));
+      const invalidQuery = await app.rpc("workbench/query", {
+        kind: "unsupported",
+        query: {},
+      });
+      assert.equal(invalidQuery.ok, false);
+      await assertStale(first.value);
 
-        const second = await prepare();
-        failed = true;
-        assert.equal((await prepare()).error?.code, "GEA_HTTP_503");
-        await assertStale(second.value);
-        failed = false;
+      const second = await prepare();
+      failed = true;
+      assert.equal((await prepare()).error?.code, "GEA_HTTP_503");
+      await assertStale(second.value);
+      failed = false;
 
-        const third = await prepare();
-        assert.equal(
-          (await app.rpc("workbench/prepare", { planIds: [] })).ok,
-          false,
-        );
-        await assertStale(third.value);
+      const third = await prepare();
+      assert.equal((await app.rpc("workbench/prepare", { planIds: [] })).ok, false);
+      await assertStale(third.value);
 
-        const fourth = await prepare();
-        await app.rpc("workbench/query", { kind: "list", query: {} });
-        await assertStale(fourth.value);
-      },
-    );
+      const fourth = await prepare();
+      await app.rpc("workbench/query", { kind: "list", query: {} });
+      await assertStale(fourth.value);
+    });
 
     await t.test(
       "every included resource retains its selected plan and version ownership",
@@ -443,9 +405,7 @@ test(
           ...(missingCurrent
             ? {}
             : { currentQty: "2.3400", currentAmount: "9007199254740999.0200" }),
-          additionalPayload: huge
-            ? "UNSELECTED_ADDITIONAL_DATA".repeat(1000)
-            : "small extra field",
+          additionalPayload: huge ? "UNSELECTED_ADDITIONAL_DATA".repeat(1000) : "small extra field",
         },
         skus: [
           {
@@ -454,9 +414,7 @@ test(
             skuCode: "sku-a",
             qty: "1.2300",
             amt: "9007199254740993.0100",
-            materialDescription: huge
-              ? "UNSELECTED_SKU_DATA".repeat(1000)
-              : "short description",
+            materialDescription: huge ? "UNSELECTED_SKU_DATA".repeat(1000) : "short description",
           },
           {
             id: "sku-2",
@@ -493,10 +451,7 @@ test(
       return true;
     });
     await app.login();
-    for (const payload of [
-      { planIds: [planId] },
-      { planIds: [planId], scope: "details" },
-    ]) {
+    for (const payload of [{ planIds: [planId] }, { planIds: [planId], scope: "details" }]) {
       const details = await app.rpc("workbench/prepare", payload);
       assert.equal(details.error?.code, "SNAPSHOT_TOO_LARGE");
     }
@@ -537,27 +492,15 @@ test(
       value: "9007199254740994",
     });
     assert.equal(record.detail.currentVersion.targetQty, "1.2300");
-    assert.equal(
-      record.detail.currentVersion.targetAmount,
-      "9007199254740993.0100",
-    );
+    assert.equal(record.detail.currentVersion.targetAmount, "9007199254740993.0100");
     assert.equal(record.detail.currentVersion.currentQty, "2.3400");
-    assert.equal(
-      record.detail.currentVersion.currentAmount,
-      "9007199254740999.0200",
-    );
-    assert.equal(
-      Object.hasOwn(record.detail.currentVersion, "provinceName"),
-      false,
-    );
+    assert.equal(record.detail.currentVersion.currentAmount, "9007199254740999.0200");
+    assert.equal(Object.hasOwn(record.detail.currentVersion, "provinceName"), false);
     assert.ok(record.missingFields.includes("provinceName"));
     assert.ok(record.missingFields.includes("orgCode"));
     assert.equal(record.missingFields.includes("currentAmount"), false);
     assert.deepEqual(Object.keys(record.detail), ["currentVersion"]);
-    assert.equal(
-      Object.hasOwn(record.detail.currentVersion, "additionalPayload"),
-      false,
-    );
+    assert.equal(Object.hasOwn(record.detail.currentVersion, "additionalPayload"), false);
     assert.ok(snapshot.missing.includes("sku-details-not-in-summary"));
     assert.ok(snapshot.missing.includes("historical-versions-not-in-summary"));
     assert.ok(snapshot.missing.includes("approval-logs-not-in-summary"));
@@ -569,16 +512,8 @@ test(
       scope: "summary",
     });
     assert.equal(withoutCurrent.ok, true, JSON.stringify(withoutCurrent));
-    assert.ok(
-      withoutCurrent.value.snapshot.records[0].missingFields.includes(
-        "currentQty",
-      ),
-    );
-    assert.ok(
-      withoutCurrent.value.snapshot.records[0].missingFields.includes(
-        "currentAmount",
-      ),
-    );
+    assert.ok(withoutCurrent.value.snapshot.records[0].missingFields.includes("currentQty"));
+    assert.ok(withoutCurrent.value.snapshot.records[0].missingFields.includes("currentAmount"));
     assert.equal(
       Object.hasOwn(
         withoutCurrent.value.snapshot.records[0].detail.currentVersion,
@@ -599,17 +534,14 @@ test(
       assert.equal(Object.hasOwn(totals.amount, "value"), false);
       assert.equal(
         totals.amount.missing,
-        amount === "1e1025"
-          ? "decimal-range-exceeded"
-          : "decimal-source-unavailable",
+        amount === "1e1025" ? "decimal-range-exceeded" : "decimal-source-unavailable",
       );
     }
     invalidSkuAmount = undefined;
     const beforeInvalid = reads;
     for (const scope of ["auto", "all", "", null, 0]) {
       assert.equal(
-        (await app.rpc("workbench/prepare", { planIds: [planId], scope })).error
-          ?.code,
+        (await app.rpc("workbench/prepare", { planIds: [planId], scope })).error?.code,
         "INVALID_SELECTION",
       );
     }
@@ -632,13 +564,9 @@ test(
     });
     assert.equal(complete.ok, true, JSON.stringify(complete));
     assert.equal(complete.value.snapshot.scope, "details");
+    assert.equal(complete.value.snapshot.coverage, "selected-plans-current-detail");
     assert.equal(
-      complete.value.snapshot.coverage,
-      "selected-plans-current-detail",
-    );
-    assert.equal(
-      complete.value.snapshot.records[0].detail.currentVersion
-        .additionalPayload,
+      complete.value.snapshot.records[0].detail.currentVersion.additionalPayload,
       "small extra field",
     );
     assert.equal(complete.value.snapshot.records[0].detail.skus.length, 2);

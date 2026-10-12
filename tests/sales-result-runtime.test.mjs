@@ -1,9 +1,8 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { readSession, readToolResults, until } from "./profile.mjs";
-import { modelProfile as profile } from "./fixtures/model-profile.mjs";
+import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { createBusinessSession, fixtureRequest } from "./fixtures/business-session.mjs";
 test(
   "native result route, atomic skill load and structured evidence reuse retain authorization",
   { timeout: 90000 },
@@ -22,12 +21,6 @@ test(
       }),
       env: { GEA_TEST_MODEL_KEY: "fixture" },
     });
-    const skillDir = app.runtime + "/home/business-skills/sales-result-fixture";
-    await mkdir(skillDir, { recursive: true });
-    await writeFile(
-      skillDir + "/SKILL.md",
-      "---\nname: sales-result-fixture\ndescription: result fixture\n---\nScoped rule body.",
-    );
     let script = [],
       captured = [],
       online = 0,
@@ -181,11 +174,13 @@ test(
       return true;
     });
     await app.login();
-    const made = await app.remote("session/create", {
-      cwd: app.runtime + "/workspace",
-      agentPreset: "gea-readonly",
+    const installed = await fixtureRequest(app, "/api/agent-plugins/user-panel/skills/create", {
+      name: "sales-result-fixture",
+      text: "---\nname: sales-result-fixture\ndescription: result fixture\n---\nScoped rule body.",
     });
-    const id = made.value.sessionId;
+    assert.equal(installed.ok, true, JSON.stringify(installed));
+    assert.equal(installed.value.ok, true, JSON.stringify(installed));
+    const id = await createBusinessSession(app);
     await app.remote("session/selectModel", {
       sessionId: id,
       provider: "gea-analysis",
@@ -226,11 +221,37 @@ test(
     ]);
     assert.equal(replies[0].isError, false, replies[0].text);
     assert.match(replies[0].text, /Scoped rule body/);
-    const chosen = JSON.parse(replies[1].text).skills.find(
-      (x) => x.name === "sales-result-fixture",
+    const resources = await fetch(
+      app.origin +
+        "/api/agent-manage/resources?cwd=" +
+        encodeURIComponent(app.runtime + "/workspace"),
+      { headers: { Cookie: app.cookie, Origin: app.origin } },
     );
-    assert.equal(chosen.enabled, true);
-    assert.equal(chosen.bodyLoaded, true);
+    assert.equal(resources.ok, true);
+    const chosen = (await resources.json()).filter((x) => x.id === "skill:sales-result-fixture");
+    assert.equal(chosen.length, 1);
+    assert.equal(chosen[0].installed, true);
+    assert.equal(chosen[0].enabled, true);
+    assert.equal(chosen[0].provider, "user-panel");
+    const catalogs = (await readSession(app.runtime, id)).filter(
+      (row) => row.type === "user/message" && row.data.source.kind === "skill-catalog",
+    );
+    assert.equal(catalogs.length, 1);
+    assert.equal(catalogs[0].data.source.form, "catalog");
+    assert.equal(
+      catalogs[0].data.source.entries.filter((x) => x.name === "sales-result-fixture").length,
+      1,
+    );
+    assert.doesNotMatch(JSON.stringify(captured[0].messages), /Scoped rule body/);
+    assert.match(replies[0].text, /<skill_content name="sales-result-fixture">/);
+    const loaded = captured[1].messages.find(
+      (message) => message.role === "tool" && message.content.includes("Scoped rule body"),
+    );
+    assert.ok(loaded);
+    assert.match(loaded.content, /<skill_content name="sales-result-fixture">/);
+    const capabilities = JSON.parse(replies[1].text);
+    assert.equal(capabilities.preset, "gea-readonly");
+    assert.equal(capabilities.modulesAreConfiguredNotAuthorized, true);
     const readArgs = (body) => {
       evidenceId ??= JSON.parse(
         body.messages.filter((m) => m.role === "tool").at(-1).content,

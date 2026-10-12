@@ -1,12 +1,12 @@
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
-import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
 import { readFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { prepareWorkbenchHtmlRoots } from "./fixtures/business-page.mjs";
 
 test(
   "GEA tools use the native model-tool-model loop and persist success, permission errors and cancellation",
@@ -81,7 +81,7 @@ test(
     );
     await writeFile(
       join(realRoot, "skills", "probe", "SKILL.md"),
-      "---\nname: inventory-real\ndescription: 真模块探针。\n---\n\n规则。\n",
+      "---\nname: inventory-real\ndescription: 真模块探针。\n---\n\n先读 [规则](../../references/rules.md)\n",
     );
     await writeFile(
       join(realRoot, "plugin.json"),
@@ -106,19 +106,18 @@ test(
         capabilities: ["governed-sql-read"],
       }),
     );
+    await mkdir(join(realRoot, "references"), { recursive: true });
+    await writeFile(
+      join(realRoot, "references", "rules.md"),
+      "按实际期间查询；缺失数据不能编造。\n",
+    );
     await currentHtmlResource(probeRoot);
     await currentHtmlResource(realRoot);
     const app = await profile(t, {
-      beforeStart: fixtureWorkbench([probeRoot, realRoot]),
       pluginRoot: process.env.GEA_TEST_PLUGIN_ROOT,
       bundle: Boolean(process.env.GEA_TEST_PLUGIN_ROOT),
-      env: {
-        GEA_HTML_PLUGIN_ROOTS: JSON.stringify({
-          "inventory-probe": probeRoot,
-          "inventory-real": realRoot,
-        }),
-        DSH_AGENTS_HOME: agentsHome,
-      },
+      env: { DSH_AGENTS_HOME: agentsHome },
+      beforeStart: prepareWorkbenchHtmlRoots([probeRoot, realRoot]),
       config: () => ({
         requestTimeoutMs: 1000,
         visibleContextSubagent: false,
@@ -132,7 +131,14 @@ test(
         },
       }),
     });
+    if (process.env.GEA_TEST_LIFECYCLE_RECEIPT)
+      t.after(() =>
+        writeFile(process.env.GEA_TEST_LIFECYCLE_RECEIPT + ".host.log", app.output, {
+          mode: 0o600,
+        }),
+      );
     let outcome = "success";
+    let pageGuardClosed = false;
     let toolReply;
     let closed = false;
     let modelRequests = [];
@@ -243,7 +249,11 @@ test(
         /visible-context/.test(outcome) ||
         outcome === "page-evidence-guard" ||
         outcome === "page-tool";
-      const pack = outcome.startsWith("module-mcp") ? "knowledge" : wantsPage ? "page" : undefined;
+      const pack = outcome.startsWith("module-mcp")
+        ? "knowledge"
+        : wantsPage && !(outcome === "page-evidence-guard" && pageGuardClosed)
+          ? "page"
+          : undefined;
       const ready =
         pack === "knowledge"
           ? names.includes("gea_module_mcp")
@@ -454,6 +464,10 @@ test(
       // 每一轮都要先读一次"这一屏"，读到结果才收尾：用来验证"同一份快照，
       // 换菜单后还算不算本轮证据"。按"最后一条用户消息之后有没有工具结果"判断本轮。
       if (outcome === "page-evidence-guard") {
+        if (!names.includes("gea_visible_workbench_context")) {
+          res.end(event({ content: "当前主对话没有页面工具，未使用旧页面证据回答。" }, "stop"));
+          return true;
+        }
         const roles = body.messages.map((message) => message.role);
         const answered = body.messages
           .slice(roles.lastIndexOf("user") + 1)
@@ -1025,7 +1039,7 @@ test(
           (message) => message.role === "tool" && message.tool_call_id === "page-1",
         );
         assert.match(result.content, /not-in-workbench/);
-        assert.match(result.content, /不在业务工作台/);
+        assert.equal(JSON.parse(result.content).code, "PAGE_NOT_IN_WORKBENCH");
         assert.equal(
           rows.some(
             (entry) => entry.type === "tool/result" && entry.data.message.content[0].isError,
@@ -1285,7 +1299,7 @@ test(
         );
         const value = JSON.parse(toolResult.content);
         assert.equal(value.protocol, "ag-ui-frontend-tool");
-        assert.equal(value.applied, true);
+        assert.equal(value.applied, true, JSON.stringify(value));
         assert.equal(value.kind, "invoke");
         // 改动后必须拿到"改动后"的快照，否则模型会拿旧页面下结论。
         assert.equal(value.snapshotAfterApply, true);
@@ -1322,7 +1336,7 @@ test(
       // 1) 不在白名单里的页面：声明了也不给工具。
       const foreign = await submit();
       await ended(foreign);
-      await pageOperation(foreign, "catalog", {
+      const foreignDeclaration = await pageOperation(foreign, "catalog", {
         pageSource: "self-report",
         toolMessages: [],
         catalog: {
@@ -1332,6 +1346,8 @@ test(
           actions: [{ name: "openRow", description: "打开某一行" }],
         },
       });
+      assert.equal(foreignDeclaration.ok, false);
+      assert.equal(foreignDeclaration.value.error, "PAGE_CATALOG_OWNER_MISMATCH");
       modelRequests = [];
       await app.remote("session/prompt", {
         requestId: randomUUID(),
@@ -1568,7 +1584,7 @@ test(
         (message) => message.role === "tool" && message.tool_call_id === "page-verb-2",
       );
       const value = JSON.parse(delivered.content);
-      assert.equal(value.applied, true);
+      assert.equal(value.applied, true, JSON.stringify(value));
       assert.equal(value.kind, "setValue");
       // 这一屏的目录是页面自述的；这次改动在"改草稿"这一层留下了回执。
       assert.equal(value.pageSource, "self-report", JSON.stringify(value));

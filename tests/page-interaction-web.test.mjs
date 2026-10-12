@@ -1,5 +1,5 @@
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
@@ -155,7 +155,6 @@ test(
     });
     await app.login();
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());
@@ -200,6 +199,7 @@ test(
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toContainText("计划");
     const draftLabel = (await editor.innerText()).trim();
+    await expect(editor.getByTitle(draftLabel, { exact: true })).toBeVisible();
     await editor.click();
     await page.keyboard.press("End");
     await page.keyboard.insertText("解释引用的这个金额");
@@ -308,6 +308,7 @@ test(
     );
     await currentHtmlResource(root);
     const app = await profile(t, {
+      beforeStart: prepareWorkbenchHtmlRoots([root]),
       config: (base) => ({
         analysis: {
           mode: "model",
@@ -321,7 +322,6 @@ test(
       }),
       env: {
         GEA_PICKER_TEST_KEY: "fixture-key",
-        GEA_HTML_PLUGIN_ROOTS: JSON.stringify([root]),
       },
     });
     const prompts = [];
@@ -384,7 +384,6 @@ test(
     });
     await app.login();
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());
@@ -512,7 +511,9 @@ test(
     await frame.getByRole("button", { name: "查看库存", exact: true }).click();
     await expect(frame.locator("#business")).toHaveText("查看库存");
     await expect(page.locator("[data-page-selection-trigger]")).toBeEnabled();
-    const editor = page.locator('[contenteditable="true"]').first();
+    const editor = page
+      .getByRole("complementary", { name: "AI对话", exact: true })
+      .locator('[contenteditable="true"]');
     await expect(editor).toContainText("客户甲");
     await expect(pickerButton).toHaveAttribute("aria-pressed", "true");
     await frame.locator("#business").dispatchEvent("click", { detail: 2 });
@@ -568,6 +569,29 @@ test(
       });
     await editor.click();
     await page.keyboard.press("End");
+    await expect(editor).toBeVisible();
+    assert.equal(
+      await pickerButton.getAttribute("data-session-id"),
+      openedSessions.at(-1).sessionId,
+    );
+    await mkdir(".runtime/page-interaction", { recursive: true });
+    await writeFile(
+      ".runtime/page-interaction/opaque-submit-binding.json",
+      JSON.stringify(
+        {
+          opened: openedSessions.at(-1),
+          selectedModel: selected,
+          editorVisible: await editor.isVisible(),
+          pickerSessionId: await pickerButton.getAttribute("data-session-id"),
+          modelButtons: await page
+            .getByRole("complementary", { name: "AI对话", exact: true })
+            .getByRole("button", { name: /^选择模型/ })
+            .allTextContents(),
+        },
+        null,
+        2,
+      ),
+    );
     await page.keyboard.insertText("这个客户有多少库存？");
     await page.keyboard.press("Enter");
     await expect.poll(() => prompts.length).toBeGreaterThan(0);

@@ -1,11 +1,12 @@
+import { testBrowser } from "./fixtures/test-browser.mjs";
 /** Real source composition: settings, native conversation and shared shell. */
 import { fileURLToPath } from "node:url";
 import { changeThemeSetting } from "./theme-settings.mjs";
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
-import { modelProfile as profile } from "./fixtures/model-profile.mjs";
+import { profile } from "./profile.mjs";
 
 const baseline = process.env.THEME_BASELINE === "1";
 const output = new URL("../.runtime/theme-evidence/", import.meta.url);
@@ -45,8 +46,10 @@ test(
       return true;
     });
     await app.login();
-    const browser = await chromium.launch({ channel: "chrome", headless: true });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({ channel: "chrome", headless: true }),
+    );
+
     const context = await browser.newContext({
       locale: "zh-CN",
       viewport: { width: 1280, height: 900 },
@@ -94,7 +97,8 @@ test(
         };
         return {
           body: read("body"),
-          shell: read(".AppFrame_frame"),
+          main: read(".gea-company-main"),
+          shell: read('[data-slot="root"] > :has(> [data-shell-bottom])'),
           composer: read('[contenteditable="true"], textarea'),
           card: read('[data-slot="conversation.composer.bar"]'),
           dark: document.body.hasAttribute("data-ds-dark-theme"),
@@ -107,7 +111,13 @@ test(
             const s = getComputedStyle(document.activeElement);
             return { color: s.outlineColor, style: s.outlineStyle, width: s.outlineWidth };
           })(),
-          menu: read(".gea-shell-nav-heading"),
+          menu: read('.gea-sidebar-tab[aria-controls="gea-panel-function"]'),
+          workbenchPage: getComputedStyle(document.body)
+            .getPropertyValue("--workbench-page")
+            .trim(),
+          workbenchText: getComputedStyle(document.body)
+            .getPropertyValue("--workbench-text")
+            .trim(),
           metas: document.querySelectorAll('meta[name="theme-color"]').length,
         };
       });
@@ -129,12 +139,20 @@ test(
       const value = await sample();
       samples.push({ label, ...value });
       if (!baseline) {
-        assert.equal(value.version, '"1.0.0"');
+        assert.equal(value.version, '"1.1.1"');
         assert.equal(value.composer.fontSize, `${size}px`);
-        assert.equal(value.shell.fontSize, `${size}px`);
+        assert.equal(value.shell.fontSize, value.body.fontSize, "Core owns the shell base font");
+        assert.equal(value.shell.background, value.body.background);
+        assert.equal(
+          value.main.background,
+          value.body.background,
+          "Native content consumes the Core palette",
+        );
+        assert.equal(value.workbenchPage, label === "深色" ? "#1b1d21" : "#f7f8fa");
+        assert.equal(value.workbenchText, label === "深色" ? "#edf0f5" : "#20232a");
         assert.equal(
           value.body.background,
-          label === "深色" ? "rgb(27, 29, 33)" : "rgb(247, 248, 250)",
+          label === "深色" ? "rgb(21, 21, 23)" : "rgb(255, 255, 255)",
         );
         assert.equal(value.source, label === "深色" ? "dark" : "light");
         assert.equal(value.metas, 1);
@@ -142,7 +160,7 @@ test(
         assert.equal(value.focus.width, "2px");
         assert.equal(
           value.focus.color,
-          label === "深色" ? "rgb(255, 128, 146)" : "rgb(223, 23, 50)",
+          label === "深色" ? "rgb(122, 170, 255)" : "rgb(65, 118, 230)",
         );
         assert.equal(value.menu.color, label === "深色" ? "rgb(237, 240, 245)" : "rgb(32, 35, 42)");
       }
@@ -152,10 +170,12 @@ test(
       });
       // Reinsert the shared sheet first and the upstream base sheet last.
       await page.evaluate(() => {
-        const shared = document.querySelector('style[data-plugin-css$="/workbench-theme.css"]');
-        if (shared) document.head.prepend(shared);
+        const shared = document.querySelector('style[data-agent-workbench-theme="1.1.1"]');
+        if (!shared) throw Error("Shared theme stylesheet is missing");
+        document.head.prepend(shared);
         const base = document.querySelector('style[data-plugin-css$="/design-platform.css"]');
-        if (base) document.head.append(base);
+        if (!base) throw Error("Core base stylesheet is missing");
+        document.head.append(base);
       });
       assert.deepEqual(
         await sample(),
@@ -169,8 +189,12 @@ test(
     assert.equal((await sample()).dark, true);
     // GEA may land on its default page; reopen the persisted conversation through history.
     if (!(await page.getByText("主题验收回复", { exact: true }).isVisible())) {
-      await page.getByRole("button", { name: "历史会话", exact: true }).click();
-      await page.getByText("检查主题，不查询业务数据", { exact: true }).first().click();
+      const history = page.getByRole("button", { name: "历史会话", exact: true });
+      if ((await history.getAttribute("aria-expanded")) !== "true") await history.click();
+      await page
+        .getByRole("complementary", { name: "业务导航", exact: true })
+        .getByText("检查主题，不查询业务数据", { exact: true })
+        .click();
     }
     await expect(page.getByText("主题验收回复", { exact: true })).toBeVisible();
     await page.setViewportSize({ width: 720, height: 900 });

@@ -11,7 +11,7 @@ import {
 } from "../scripts/source-profile.mjs";
 import { dependencyDigests } from "../scripts/source-combination-integrity.mjs";
 
-test("dependency hashing keeps file and cyclic-link coverage with four bounded reads", async (t) => {
+test("dependency hashing keeps file and cyclic-link coverage with serial protected reads", async (t) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "dependency-workers-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const expected = {};
@@ -48,7 +48,8 @@ test("dependency hashing keeps file and cyclic-link coverage with four bounded r
     },
   };
   assert.deepEqual(await dependencyDigests([root, root], scope), expected);
-  assert.equal(peak, 4);
+  assert.equal(peak, 1);
+  assert.deepEqual(await dependencyDigests([root, root]), expected);
   assert.equal(active, 0);
 });
 
@@ -74,7 +75,7 @@ test("dependency read failure stops new dispatch and awaits active readers befor
     },
   };
   await assert.rejects(dependencyDigests([root], scope), (error) => error === failure);
-  assert.equal(started, 4);
+  assert.equal(started, 1);
   assert.equal(active, 0);
 });
 

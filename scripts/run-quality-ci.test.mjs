@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { spawnSync, execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -77,9 +76,10 @@ test("the workflow binds full source history and the same public quality command
   assert.match(workflow, /run: node scripts\/run-quality-ci.mjs --phase final/);
   assert.match(workflow, /PLUGIN_SPLIT_READ_TOKEN/);
   assert.match(workflow, /npm install --global npm@11\.11\.0/);
-  assert.match(workflow, /supportedCores\.map\(core => core\.head\)/);
+  assert.match(workflow, /supportedCores\.filter\(core => !core\.id\)\.map\(core => core\.head\)/);
   assert.match(workflow, /fromJSON\(needs\.candidate-scope\.outputs\.cores\)/);
-  assert.match(workflow, /--core-head "\$\{\{ matrix\.core \}\}"/);
+  assert.match(workflow, /CORE_HEAD: \$\{\{ matrix\.core \}\}/);
+  assert.match(workflow, /--core-head "\$CORE_HEAD"/);
   const scripts = JSON.parse(readFileSync("package.json")).scripts;
   assert.doesNotMatch(scripts["quality:fast"], /candidate:verify|run-quality-ci/);
   assert.equal(scripts["quality:ci"], "node scripts/run-quality-ci.mjs");
@@ -120,7 +120,7 @@ for (const head of [
   });
 }
 
-test("hosted checkout refs and public admission use the reviewed immutable peer commits", () => {
+test("local default admission keeps historical fixed peers and hosted refs consume public reader outputs", () => {
   const directory = mkdtempSync(join(tmpdir(), "hosted-peer-pins-"));
   try {
     const core = "639ed015397290b3745d163aafe02ffee4aa3f84";
@@ -148,74 +148,77 @@ test("hosted checkout refs and public admission use the reviewed immutable peer 
     const workflow = readFileSync(".github/workflows/quality.yml", "utf8");
     for (const [repo, head] of Object.entries(expected)) {
       assert.equal(input.repositories.find((entry) => entry.repo === repo)?.head, head);
-      const checkoutRefs = [
-        ...workflow.matchAll(
-          new RegExp(
-            "repository: CleverC2200/" +
-              repo +
-              "\\s+ref: \\$\\{\\{ needs\\.candidate-scope\\.outputs\\.[a-z-]+ \\|\\| '([a-f0-9]{40})' \\}\\}",
-            "g",
-          ),
-        ),
-      ].map((match) => match[1]);
-      assert.ok(checkoutRefs.length > 0, repo + " must be checked out");
-      assert.deepEqual([...new Set(checkoutRefs)], [head], repo + " checkout and input must agree");
+      const key = repo === "dsh-agent-workbench" ? "workbench-sha" : "manage-sha";
+      assert.ok(
+        workflow.includes("ref: ${{ needs.candidate-scope.outputs." + key + " }}"),
+        repo + " consumes the admitted public reader output",
+      );
+      assert.ok(
+        !workflow.includes("|| '" + head + "'"),
+        "hosted source event must not silently use historical peers",
+      );
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
-test("dispatch scope rejects partial, mutable, malformed and wrong-event groups before checkout", () => {
+test("reader bootstrap binds the actual event and refuses mutable, malformed or absent Workbench input", () => {
   const workflow = readFileSync(".github/workflows/quality.yml", "utf8");
   const inline = workflow.match(/node --input-type=module <<'NODE'\n([\s\S]*?)\n          NODE/);
-  assert.ok(inline, "dispatch validation must be executable before peer checkout");
+  assert.ok(inline, "bootstrap must execute before fixed repository checkout");
   const code = inline[1].replace(/^          /gm, "");
-  const directory = mkdtempSync(join(tmpdir(), "gea-dispatch-group-"));
+  const directory = mkdtempSync(join(tmpdir(), "gea-reader-bootstrap-"));
   try {
+    execFileSync("git", ["init", "-q"], { cwd: directory });
+    writeFileSync(join(directory, "fixture"), "own event\n");
+    execFileSync("git", ["add", "."], { cwd: directory });
+    execFileSync(
+      "git",
+      ["-c", "user.name=fixture", "-c", "user.email=fixture@invalid", "commit", "-qm", "event"],
+      { cwd: directory },
+    );
+    const own = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: directory,
+      encoding: "utf8",
+    }).trim();
     const valid = {
-      GEA_SHA: "a".repeat(40),
-      WORKBENCH_SHA: "b".repeat(40),
-      MANAGE_SHA: "c".repeat(40),
-      EXPECTED_SHA: "a".repeat(40),
+      QUALITY_OWN_REPO: "dsh-gea-plugin",
+      GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
+      QUALITY_SCOPE_ALLOWED: "true",
+      GITHUB_EVENT_NAME: "workflow_dispatch",
+      QUALITY_EXPECTED_SHA: own,
+      QUALITY_GROUP_WORKBENCH: "b".repeat(40),
     };
     const output = join(directory, "output");
     const execute = (env) =>
       spawnSync(process.execPath, ["--input-type=module", "-e", code], {
+        cwd: directory,
         encoding: "utf8",
         env: { ...process.env, ...env, GITHUB_OUTPUT: output },
       });
-    for (const key of ["GEA_SHA", "WORKBENCH_SHA", "MANAGE_SHA"]) {
-      for (const value of [
-        "",
-        "main",
-        "A".repeat(40),
-        "a".repeat(39),
-        "$(touch injected)",
-        "a".repeat(40) + "\n",
-      ]) {
-        const result = execute({ ...valid, [key]: value });
-        assert.equal(result.status, 1, `${key} ${JSON.stringify(value)}`);
-        assert.match(result.stderr, /CANDIDATE_GROUP_INVALID/);
-      }
+    for (const value of [
+      "",
+      "main",
+      "A".repeat(40),
+      "a".repeat(39),
+      "$(touch injected)",
+      "a".repeat(40) + "\n",
+    ]) {
+      const result = execute({ ...valid, QUALITY_GROUP_WORKBENCH: value });
+      assert.equal(result.status, 1, JSON.stringify(value));
+      assert.match(result.stderr, /CANDIDATE_BASELINE_REQUIRED/);
     }
-    const mismatch = execute({ ...valid, EXPECTED_SHA: "d".repeat(40) });
+    const mismatch = execute({ ...valid, QUALITY_EXPECTED_SHA: "d".repeat(40) });
     assert.equal(mismatch.status, 1);
     assert.match(mismatch.stderr, /CANDIDATE_EVENT_MISMATCH/);
+    const absent = execute({ ...valid, GITHUB_EVENT_NAME: "push" });
+    assert.equal(absent.status, 1, "source events require committed baseline");
     assert.equal(execute(valid).status, 0);
-    const id = createHash("sha256")
-      .update(
-        JSON.stringify([
-          ["dsh-agent-manage", valid.MANAGE_SHA],
-          ["dsh-agent-workbench", valid.WORKBENCH_SHA],
-          ["dsh-gea-plugin", valid.GEA_SHA],
-        ]),
-      )
-      .digest("hex");
-    assert.equal(
-      readFileSync(output, "utf8"),
-      `gea-sha=${valid.GEA_SHA}\nworkbench-sha=${valid.WORKBENCH_SHA}\nmanage-sha=${valid.MANAGE_SHA}\ngroup-id=${id}\n`,
-    );
+    assert.equal(readFileSync(output, "utf8"), `workbench-sha=${valid.QUALITY_GROUP_WORKBENCH}\n`);
+    assert.match(workflow, /scope-peer\/dsh-agent-workbench\/scripts\/read-hosted-peer-input\.mjs/);
+    for (const name of ["source-kind", "baseline-id"])
+      assert.ok(workflow.includes("steps.group.outputs." + name));
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -255,12 +258,9 @@ test("dispatch freezes the group without cancelling runs or replacing the origin
   assert.match(workflow, /candidate-group\.json/);
   assert.match(
     workflow,
-    /Bind actual event and frozen peers\n        if: github.event_name != 'workflow_dispatch'/,
+    /QUALITY_SOURCE_KIND: \$\{\{ needs\.candidate-scope\.outputs\.source-kind \}\}/,
   );
-  assert.match(
-    workflow,
-    /Prepare independent SDK and run public quality gates\n        if: github.event_name != 'workflow_dispatch'/,
-  );
+  assert.doesNotMatch(workflow, /needs\.candidate-scope\.outputs\.[a-z-]+ \|\|/);
   for (const run of workflow.split(/\n      - /).filter((step) => step.includes("run:"))) {
     const shell = run.slice(run.indexOf("run:"));
     assert.doesNotMatch(

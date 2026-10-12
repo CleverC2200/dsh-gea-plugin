@@ -48,7 +48,7 @@ try {
     if ((await readSourceSelection(runtime)) === undefined) requireSourceInputs(sources);
     const deployment = await readDeployment(resolve(values.config ?? "gea.config.json"), {
       resolveCredentials: false,
-      credentialEnv: {},
+      credentialEnv: process.env,
     });
     const port = Number(values.port);
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw Error("GEA_PORT_INVALID");

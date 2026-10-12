@@ -1,12 +1,16 @@
-import test from "node:test";
+import { testBrowser } from "./fixtures/test-browser.mjs";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
-import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
-import { openBusinessPage, htmlFrameElement } from "./fixtures/business-page.mjs";
+import {
+  htmlFrameElement,
+  openWorkbenchPage,
+  prepareWorkbenchHtmlRoots,
+} from "./fixtures/business-page.mjs";
 
 for (const pendingState of ["loading", "error", "ready"])
   test(
@@ -17,7 +21,7 @@ for (const pendingState of ["loading", "error", "ready"])
     },
     async (t) => {
       const app = await profile(t, {
-        beforeStart: fixtureWorkbench([
+        beforeStart: prepareWorkbenchHtmlRoots([
           resolve("../dsh-agent-workbench/lib/business/inventory-fc"),
         ]),
       });
@@ -92,8 +96,10 @@ for (const pendingState of ["loading", "error", "ready"])
         return stockRoute(request, response, reply);
       });
       await app.login();
-      const browser = await chromium.launch({ channel: "chrome", headless: true });
-      t.after(() => browser.close());
+      const browser = await testBrowser(t, () =>
+        chromium.launch({ channel: "chrome", headless: true }),
+      );
+
       const context = await browser.newContext({
         locale: "zh-CN",
         viewport: { width: 1440, height: 1000 },
@@ -107,16 +113,37 @@ for (const pendingState of ["loading", "error", "ready"])
         })),
       );
       const page = await context.newPage();
-      const contexts = [];
+      const contexts = [],
+        contextRequests = [];
+      let owner;
       page.on("request", (request) => {
         if (request.url().endsWith("/api/agent-workbench/page") && request.postData()) {
           const body = request.postDataJSON();
-          if (body.operation === "context") contexts.push(body.parameters);
+          if (body.operation === "context") {
+            contextRequests.push(body);
+            if (body.owner === owner) contexts.push(body.parameters);
+          }
         }
       });
       try {
         await page.goto(app.origin);
-        await openBusinessPage(page, "inventory-fc");
+        const opened = page.waitForResponse((response) => {
+          const request = response.request();
+          if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData())
+            return false;
+          const input = request.postDataJSON();
+          return input.operation === "open" && input.pageId === "inventory-fc";
+        });
+        await openWorkbenchPage(page, "分仓库存");
+        const reply = await opened;
+        assert.equal(reply.status(), 200);
+        owner = (await reply.json()).owner;
+        assert.match(owner, /^[0-9a-f-]{36}$/);
+        contexts.push(
+          ...contextRequests
+            .filter((request) => request.owner === owner)
+            .map((request) => request.parameters),
+        );
         const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
         await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
         phase = "base";

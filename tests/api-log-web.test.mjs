@@ -13,7 +13,6 @@ test(
     const app = await profile(t);
     await app.login();
     const browser = await chromium.launch({
-      channel: "chrome",
       headless: true,
     });
     t.after(() => browser.close());
@@ -51,6 +50,12 @@ test(
         ),
       [280, 0],
     );
+    assert.equal(layout.sidebarCollapsed, before.sidebarCollapsed, JSON.stringify(layout));
+    assert.equal(layout.rightbarCollapsed, "true", JSON.stringify(layout));
+    assert.equal(layout.center.left, layout.frame.left + before.sidebar, JSON.stringify(layout));
+    assert.equal(layout.center.width, layout.frame.width - before.sidebar, JSON.stringify(layout));
+    assert.equal(layout.columns[1], layout.center.width, JSON.stringify(layout));
+    assert.equal(layout.center.right, layout.frame.right, JSON.stringify(layout));
 
     await expect
       .poll(() => page.locator(".gea-api-catalog-item").count())

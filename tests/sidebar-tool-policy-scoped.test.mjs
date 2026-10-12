@@ -39,6 +39,11 @@ const tool = (name) => ({
 });
 
 test("official Agent-scoped Tools view admits the actual BSP registered UI tool without bypassing its registration gate or scope intersection", async (t) => {
+  const external = [];
+  t.mock.method(globalThis, "fetch", async (input) => {
+    external.push(String(input));
+    assert.fail("offline scoped tool policy must not reach external wire");
+  });
   const ctx = new Context();
   const system = ctx.plugin(SystemPrompt, {});
   await system;
@@ -198,4 +203,5 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     false,
     "disabled registration leaves no manufactured schema",
   );
+  assert.deepEqual(external, []);
 });
