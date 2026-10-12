@@ -101,14 +101,14 @@ try {
       expectedSha: process.env.QUALITY_EXPECTED_SHA,
       ci: process.env.CI,
     });
+    if (values["core-head"] !== undefined && values["core-head"] !== finalGroup.manifest.core)
+      refuse("CANDIDATE_CORE_MISMATCH");
     if (values.phase === "verify-input") {
       console.log(JSON.stringify(finalGroup.receipt));
       process.exit(0);
     }
     const candidate = finalGroup.manifest;
     const coreBaseline = admittedCore(candidate.core);
-    if (values["core-head"] && values["core-head"] !== candidate.core)
-      refuse("CANDIDATE_CORE_MISMATCH");
     if (candidate.repositories?.length !== 3)
       refuse("CANDIDATE_PEER_REQUIRED", "fixed Core and exactly three sources");
     const own = candidate.repositories.find((entry) => entry.repo === "dsh-gea-plugin");

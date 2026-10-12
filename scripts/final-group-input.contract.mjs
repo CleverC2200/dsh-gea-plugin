@@ -136,11 +136,15 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
     for (const path of Object.values(roots))
       assert.equal(existsSync(join(path, "node_modules")), false);
   };
-  const good = run("source-only", ["--prepare-sdk", "--prepare-inputs"], {
-    CI: "true",
-    QUALITY_EXPECTED_SHA: manifest.repositories.find((entry) => entry.repo === "dsh-gea-plugin")
-      .head,
-  });
+  const good = run(
+    "source-only",
+    ["--prepare-sdk", "--prepare-inputs", "--core-head", manifest.core],
+    {
+      CI: "true",
+      QUALITY_EXPECTED_SHA: manifest.repositories.find((entry) => entry.repo === "dsh-gea-plugin")
+        .head,
+    },
+  );
   assert.equal(good.status, 0, good.stdout + good.stderr);
   const receipt = JSON.parse(good.stdout);
   assert.equal(receipt.stage, "candidate-source-only");
@@ -154,6 +158,11 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
     assert.match(result.stdout + result.stderr, pattern);
     unchangedEffects();
   };
+  reject(
+    run("explicit-core-disagrees", ["--core-head", "639ed015397290b3745d163aafe02ffee4aa3f84"]),
+    /CANDIDATE_CORE_MISMATCH/,
+  );
+  reject(run("explicit-empty-core", ["--core-head", ""]), /CANDIDATE_CORE_MISMATCH/);
   reject(
     run("wrong-reader-root", ["--final-group-workbench", sources["dsh-agent-workbench"]]),
     /CANDIDATE_INTERFACE_CHECKOUT/,
@@ -239,7 +248,7 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
   const rc = JSON.parse(original);
   rc.core = "639ed015397290b3745d163aafe02ffee4aa3f84";
   writeFileSync(file, JSON.stringify(rc));
-  const rcGood = run("registered-rc2-cold-source");
+  const rcGood = run("registered-rc2-cold-source", ["--core-head", rc.core]);
   assert.equal(rcGood.status, 0, rcGood.stdout + rcGood.stderr);
   assert.equal(JSON.parse(rcGood.stdout).official.commit, rc.core);
   unchangedEffects();

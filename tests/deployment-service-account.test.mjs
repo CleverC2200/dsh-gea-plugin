@@ -23,6 +23,73 @@ const deployment = {
   serviceAccounts: { production: account },
 };
 
+test("pure direct-model preflight reads only the supplied credential environment", async (t) => {
+  const key = "GEA_ISOLATED_PREFLIGHT_KEY";
+  const path = await configFile(t, {
+    ...deployment,
+    serviceAccounts: { production: account },
+    analysis: {
+      mode: "model",
+      source: "direct",
+      baseUrl: "https://127.0.0.1/v1",
+      apiKeyEnv: key,
+      model: "fixture",
+      contextWindow: 32768,
+      maxTokens: 2048,
+    },
+  });
+  const environment = { [key]: "fixture-key" };
+  const before = process.env[key];
+  let keychainReads = 0;
+  const config = await readDeployment(path, {
+    resolveCredentials: false,
+    credentialEnv: environment,
+    readKeychain: () => {
+      keychainReads++;
+      throw Error("unexpected keychain read");
+    },
+  });
+  assert.equal(config.analysis.apiKeyEnv, key);
+  assert.deepEqual(environment, { [key]: "fixture-key" });
+  assert.equal(process.env[key], before);
+  assert.equal(keychainReads, 0);
+  const pure = await readDeployment(path, {
+    resolveCredentials: false,
+    checkDirectCredential: false,
+    credentialEnv: new Proxy(
+      {},
+      {
+        get() {
+          throw Error("unexpected credential access");
+        },
+      },
+    ),
+    readKeychain: () => {
+      throw Error("unexpected keychain read");
+    },
+  });
+  assert.deepEqual(pure, config);
+  process.env[key] = "global-fixture-key";
+  try {
+    for (const isolated of [{}, { GEA_DIFFERENT_PREFLIGHT_KEY: "other-fixture-key" }])
+      await assert.rejects(
+        readDeployment(path, { resolveCredentials: false, credentialEnv: isolated }),
+        /ANALYSIS_CREDENTIAL_MISSING/,
+      );
+    assert.equal(
+      (
+        await readDeployment(path, {
+          resolveCredentials: false,
+        })
+      ).analysis.apiKeyEnv,
+      key,
+    );
+  } finally {
+    if (before === undefined) delete process.env[key];
+    else process.env[key] = before;
+  }
+});
+
 test("readonly validation is explicit and validates all limits before reading credentials", async (t) => {
   const limits = {
     maxRequests: 24,
