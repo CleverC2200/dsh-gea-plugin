@@ -32,6 +32,58 @@ async function hasPath(path) {
   }
 }
 
+/** Match assembled owners to the explicitly admitted candidate, retaining fixed fallback inputs. */
+export async function assertCatalogSceneOwners(
+  owners,
+  { input, sha256 } = {
+    input: process.env.GEA_TEST_CANDIDATE,
+    sha256: process.env.GEA_TEST_CANDIDATE_SHA256,
+  },
+) {
+  const peers = { ...fixture.requiredPeers };
+  if (input !== undefined || sha256 !== undefined) {
+    assert.ok(
+      input && sha256?.length === 64 && /^[a-f0-9]{64}$/.test(sha256),
+      "catalog candidate original hash required",
+    );
+    const bytes = await readFile(input);
+    assert.equal(
+      createHash("sha256").update(bytes).digest("hex"),
+      sha256,
+      "catalog candidate original bytes",
+    );
+    const manifest = JSON.parse(bytes);
+    const names = ["dsh-agent-workbench", "dsh-agent-manage", "dsh-gea-plugin"];
+    assert.ok(
+      manifest.repositories?.length === 3 &&
+        manifest.repositories.every(
+          (entry) =>
+            names.includes(entry?.repo) &&
+            entry.head?.length === 40 &&
+            /^[a-f0-9]{40}$/.test(entry.head),
+        ) &&
+        new Set(manifest.repositories.map((entry) => entry.repo)).size === 3,
+      "catalog candidate registered tuple",
+    );
+    for (const entry of manifest.repositories) peers[entry.repo] = entry.head;
+  }
+  for (const [owner, name] of Object.entries(packages))
+    assert.equal(owners[name].commit, peers[repos[owner]], `${owner} scene input`);
+}
+
+/** Check full installed Skill bytes against independently frozen author sources. */
+export async function assertCatalogSceneSources(readSource) {
+  // Full source bytes bind the unchanged rules as well as independently frozen metadata.
+  for (const source of fixture.provenance.metadataSources) {
+    const bytes = await readSource(source);
+    assert.equal(
+      createHash("sha256").update(bytes).digest("hex"),
+      source.sha256,
+      `${source.owner} Skill source ${source.file}`,
+    );
+  }
+}
+
 /** Keep all owner providers; only this scene's filesystem roots and native mode are fixed. */
 export async function catalogSceneProfile(t, options, scene = "model") {
   assert.ok(["linux", "darwin"].includes(process.platform), "catalog scene requires bash platform");
@@ -80,18 +132,17 @@ export async function catalogSceneProfile(t, options, scene = "model") {
   const selected = JSON.parse(await readFile(join(app.runtime, "source-selection.json"), "utf8"));
   const combination = join(app.runtime, "source-combinations", selected.id);
   const owners = JSON.parse(await readFile(join(combination, "company-plugins.json"), "utf8"));
-  for (const [owner, name] of Object.entries(packages))
-    assert.equal(owners[name].commit, fixture.requiredPeers[repos[owner]], `${owner} scene input`);
-  // Full source bytes bind the unchanged rules as well as independently frozen metadata.
-  for (const source of fixture.provenance.metadataSources) {
-    const file = source.file.replace(/^published@0\.11\.3\//, "");
-    const bytes = await readFile(join(combination, "node_modules", packages[source.owner], file));
-    assert.equal(
-      createHash("sha256").update(bytes).digest("hex"),
-      source.sha256,
-      `${source.owner} Skill source ${file}`,
-    );
-  }
+  await assertCatalogSceneOwners(owners);
+  await assertCatalogSceneSources((source) =>
+    readFile(
+      join(
+        combination,
+        "node_modules",
+        packages[source.owner],
+        source.file.replace(/^published@0\.11\.3\//, ""),
+      ),
+    ),
+  );
   // With no inherited override, the existing launcher derives precisely these roots
   // from this selected combination, retaining Workbench's other built-in providers.
   const htmlRoots = ["inventory-fc", "inventory-aqkc"].map((id) =>

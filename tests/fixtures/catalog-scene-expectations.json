@@ -6,122 +6,156 @@
     "metadataSources": [
       {
         "owner": "workbench",
-        "head": "634e744700e3001267c74311584d4f16649cc75e",
         "file": "lib/static/category/skills/category-plan/SKILL.md",
         "sha256": "cac867c63919d9f4e05d2f3e73a0e3de32b1b385668fc4af19b6c97be5d910a3",
-        "name": "category-plan"
+        "name": "category-plan",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/category-plan/skills/category-plan/SKILL.md"
       },
       {
         "owner": "workbench",
-        "head": "634e744700e3001267c74311584d4f16649cc75e",
         "file": "lib/static/mps/skills/inventory-mps/SKILL.md",
         "sha256": "c9a55539603b8bfd4a22f9b3eca3bb21c65398dfec16959c5500b6c7826e78af",
-        "name": "inventory-mps"
+        "name": "inventory-mps",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/inventory-mps/skills/inventory-mps/SKILL.md"
       },
       {
         "owner": "workbench",
-        "head": "634e744700e3001267c74311584d4f16649cc75e",
         "file": "lib/static/regional/skills/regional/SKILL.md",
         "sha256": "c34de63c45f10a823fd7af2f7a10b49668366c2650e49c08328674d724a276b7",
-        "name": "plan-regional"
+        "name": "plan-regional",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/plan-regional/skills/regional/SKILL.md"
       },
       {
         "owner": "workbench",
-        "head": "634e744700e3001267c74311584d4f16649cc75e",
         "file": "lib/business/inventory-apsplan/skills/aps/SKILL.md",
         "sha256": "555d6e3698cbdff78f795500ae1ce28ecd1218c33960dff82abb9ac1ccd9f6dc",
-        "name": "inventory-apsplan"
+        "name": "inventory-apsplan",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/inventory-apsplan/skills/aps/SKILL.md"
       },
       {
         "owner": "workbench",
-        "head": "634e744700e3001267c74311584d4f16649cc75e",
         "file": "lib/business/inventory-aqkc/skills/aqkc/SKILL.md",
         "sha256": "0835006111622fd2c3289ab5d3910a05da50af77393cf76b24c481fd76a796ba",
-        "name": "inventory-aqkc"
+        "name": "inventory-aqkc",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/inventory-aqkc/skills/aqkc/SKILL.md"
       },
       {
         "owner": "workbench",
-        "head": "634e744700e3001267c74311584d4f16649cc75e",
         "file": "lib/business/inventory-customer/skills/customer/SKILL.md",
         "sha256": "525676727d0203390e7eac1d82019de274c322b00d5f746bc643df2c72227a50",
-        "name": "inventory-customer"
+        "name": "inventory-customer",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/inventory-customer/skills/customer/SKILL.md"
       },
       {
         "owner": "workbench",
-        "head": "634e744700e3001267c74311584d4f16649cc75e",
         "file": "lib/business/inventory-dealer/skills/dealer/SKILL.md",
         "sha256": "e4bc4ded2a7f6b60f7147e2c48b9fc9826944e55c94d0e5c8709a7e12e7cfb74",
-        "name": "inventory-dealer"
+        "name": "inventory-dealer",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/inventory-dealer/skills/dealer/SKILL.md"
       },
       {
         "owner": "workbench",
-        "head": "634e744700e3001267c74311584d4f16649cc75e",
         "file": "lib/business/inventory-fc/skills/fc/SKILL.md",
         "sha256": "b217f1d93dd12fbce94f3af5981f806fd1de62c204d234b5976a82aa905085f6",
-        "name": "inventory-fc"
+        "name": "inventory-fc",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/inventory-fc/skills/fc/SKILL.md"
       },
       {
         "owner": "workbench",
-        "head": "634e744700e3001267c74311584d4f16649cc75e",
         "file": "lib/business/inventory-orderfulfillment/skills/orderfulfillment/SKILL.md",
         "sha256": "54ae2cd859178d9ba30d58e788eb531aaed2df481507eff9f8634363126e83f7",
-        "name": "inventory-orderfulfillment"
+        "name": "inventory-orderfulfillment",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/inventory-orderfulfillment/skills/orderfulfillment/SKILL.md"
       },
       {
         "owner": "workbench",
-        "head": "634e744700e3001267c74311584d4f16649cc75e",
         "file": "lib/business/inventory-orderworkbench/skills/orderworkbench/SKILL.md",
         "sha256": "f4900459de51821c4c580631e5ce92d0431e8a74624a6bb736accd3d0ebc638e",
-        "name": "inventory-orderworkbench"
+        "name": "inventory-orderworkbench",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/inventory-orderworkbench/skills/orderworkbench/SKILL.md"
       },
       {
         "owner": "workbench",
-        "head": "634e744700e3001267c74311584d4f16649cc75e",
         "file": "lib/business/inventory-qll/skills/qll/SKILL.md",
         "sha256": "6b929538f1936d93fa3f063e7180ec20b560c685775b766ecc1eb3046cac3736",
-        "name": "inventory-qll"
+        "name": "inventory-qll",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/inventory-qll/skills/qll/SKILL.md"
       },
       {
         "owner": "manage",
-        "head": "9ee47d426e35b5a2386c85f57e09ef1514130a1f",
         "file": "business-resources/aps-analysis/sales-forecast-result-analysis.skill.md",
         "sha256": "70a681990736be14f4c74054d43b53c7a431001bc2a897324eb7188c19bbc1de",
-        "name": "sales-forecast-result-analysis"
+        "name": "sales-forecast-result-analysis",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/aps-analysis/sales-forecast-result-analysis.skill.md"
       },
       {
         "owner": "manage",
-        "head": "9ee47d426e35b5a2386c85f57e09ef1514130a1f",
         "file": "business-resources/aps-analysis/sales-ops-problem-analysis.skill.md",
         "sha256": "63e0a13e519d579ee01f51d7056625f34eba17ed2c89202c4a67b90c27498c54",
-        "name": "sales-ops-problem-analysis"
+        "name": "sales-ops-problem-analysis",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/aps-analysis/sales-ops-problem-analysis.skill.md"
       },
       {
         "owner": "manage",
-        "head": "9ee47d426e35b5a2386c85f57e09ef1514130a1f",
         "file": "business-resources/sinian-demand-forecast/skills/sinian-demand-baseline/SKILL.md",
         "sha256": "9b18565da7dd147edcf29391af29aca237604133eb6a6d428f233767189e247e",
-        "name": "sinian-demand-baseline"
+        "name": "sinian-demand-baseline",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/sinian-demand-forecast/skills/sinian-demand-baseline/SKILL.md"
       },
       {
         "owner": "manage",
-        "head": "9ee47d426e35b5a2386c85f57e09ef1514130a1f",
         "file": "business-resources/sinian-demand-forecast/skills/sinian-demand-dialogue/SKILL.md",
         "sha256": "4c43c8b4d8f457b77c51155df6af233e11b77ff24980ef911303a48e08e5c7c2",
-        "name": "sinian-demand-dialogue"
+        "name": "sinian-demand-dialogue",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/sinian-demand-forecast/skills/sinian-demand-dialogue/SKILL.md"
       },
       {
         "owner": "manage",
-        "head": "9ee47d426e35b5a2386c85f57e09ef1514130a1f",
         "file": "business-resources/sinian-demand-forecast/skills/sinian-forecast-review/SKILL.md",
         "sha256": "c2707a6a611f099329c887d57e385123e2f73b613c40fcdb77c9c0acae612a0a",
-        "name": "sinian-forecast-review"
+        "name": "sinian-forecast-review",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/sinian-demand-forecast/skills/sinian-forecast-review/SKILL.md"
       },
       {
         "owner": "manage",
-        "head": "9ee47d426e35b5a2386c85f57e09ef1514130a1f",
         "file": "business-resources/sinian-demand-forecast/skills/sinian-forecast-scope/SKILL.md",
         "sha256": "ec85b3f4305ee49b2a8cb63f861a6f047fdece61b8471e8e4fd5f97161f8948a",
-        "name": "sinian-forecast-scope"
+        "name": "sinian-forecast-scope",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceFile": "business-resources/sinian-demand-forecast/skills/sinian-forecast-scope/SKILL.md"
       },
       {
         "owner": "genui",
@@ -140,7 +174,8 @@
       "requiredService": "attachments",
       "serviceMountedBy": "packages/bundle/base/cordis.patch.yml:138 attachment-local, inherited by standard scope",
       "routeImageCapability": "execution only; registration remains for text routes"
-    }
+    },
+    "sourceBinding": "Installed Workbench and Manage heads follow the admitted original-byte candidate; authored Skill bytes and headers are independently frozen from Manage Git, never model output."
   },
   "coreHeads": {
     "rc2": "639ed015397290b3745d163aafe02ffee4aa3f84",

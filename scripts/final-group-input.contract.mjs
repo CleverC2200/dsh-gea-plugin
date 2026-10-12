@@ -26,7 +26,7 @@ function git(cwd, ...args) {
   return result.stdout.trim();
 }
 
-test("GEA public final-group mode admits actual cold Git sources and keeps default fixed peers independent", (t) => {
+test("GEA unique hashed admission admits actual cold Git sources and refuses bad original source inputs", (t) => {
   const job = mkdtempSync(join(tmpdir(), "gea-final-group-"));
   t.after(() => rmSync(job, { recursive: true, force: true }));
   const sources = {
@@ -207,67 +207,44 @@ test("GEA public final-group mode admits actual cold Git sources and keeps defau
   rmSync(join(gea, "uncommitted-source.txt"));
   reject(dirty, /CANDIDATE_DIRTY/);
   reject(run("quality-still-requires-sdk", ["--phase", "quality"]), /SDK_SOURCE_REQUIRED/);
-  // Retired peers have no shared reader, but are no longer the default fixed peer input.
-  git(workbench, "checkout", "--quiet", "--detach", "9b4863692cb29a3edc8a2358e98feb7846526d1b");
-  git(
-    roots["dsh-agent-manage"],
-    "checkout",
-    "--quiet",
-    "--detach",
-    "9e9aba86d12a2d743604e63a6000e7abb7da1ddd",
-  );
-  assert.equal(existsSync(join(workbench, "scripts/candidate-input.mjs")), false);
-  const legacy = JSON.parse(original);
-  for (const entry of legacy.repositories) entry.head = git(entry.path, "rev-parse", "HEAD");
-  writeFileSync(file, JSON.stringify(legacy));
-  const startedAt = new Date().toISOString();
-  const defaults = spawnSync(process.execPath, ["scripts/run-quality-ci.mjs", "--input", file], {
-    cwd: gea,
-    encoding: "utf8",
-    env: { ...process.env, CI: "", QUALITY_EXPECTED_SHA: "", GIT_OPTIONAL_LOCKS: "0" },
-  });
-  t.diagnostic(
-    JSON.stringify({
-      name: "default-real-old-peers",
-      startedAt,
-      finishedAt: new Date().toISOString(),
-      exit: defaults.status,
-      stdout: defaults.stdout,
-      stderr: defaults.stderr,
-    }),
-  );
-  reject(defaults, /CANDIDATE_HEAD/);
-  assert.doesNotMatch(defaults.stderr, /ERR_MODULE_NOT_FOUND|CANDIDATE_INTERFACE/);
-  // The actual fixed default peers reach SDK admission without importing the final-group reader.
-  git(workbench, "checkout", "--quiet", "--detach", "0d98253df33128632d2b927e5c3c6db512647384");
-  git(
-    roots["dsh-agent-manage"],
-    "checkout",
-    "--quiet",
-    "--detach",
-    "622ab1913ef8d96efee6359d63e5f9a85e60a43f",
-  );
-  for (const entry of legacy.repositories) entry.head = git(entry.path, "rev-parse", "HEAD");
-  writeFileSync(file, JSON.stringify(legacy));
-  const fixedDefaults = spawnSync(
-    process.execPath,
-    ["scripts/run-quality-ci.mjs", "--input", file],
-    {
-      cwd: gea,
-      encoding: "utf8",
-      env: { ...process.env, CI: "", QUALITY_EXPECTED_SHA: "", GIT_OPTIONAL_LOCKS: "0" },
-    },
-  );
-  t.diagnostic(
-    JSON.stringify({
-      name: "default-current-fixed-peers",
-      exit: fixedDefaults.status,
-      stdout: fixedDefaults.stdout,
-      stderr: fixedDefaults.stderr,
-    }),
-  );
-  reject(fixedDefaults, /SDK_SOURCE_REQUIRED/);
-  assert.doesNotMatch(fixedDefaults.stderr, /ERR_MODULE_NOT_FOUND|CANDIDATE_INTERFACE/);
+  for (const [repo, badHead] of [
+    ["dsh-agent-workbench", "9b4863692cb29a3edc8a2358e98feb7846526d1b"],
+    ["dsh-agent-manage", "9e9aba86d12a2d743604e63a6000e7abb7da1ddd"],
+  ]) {
+    const bad = JSON.parse(original);
+    bad.repositories.find((entry) => entry.repo === repo).head = badHead;
+    writeFileSync(file, JSON.stringify(bad));
+    reject(run("actual-old-head-" + repo), /CANDIDATE_HEAD/);
+  }
+  const badCore = JSON.parse(original);
+  badCore.core = "0".repeat(40);
+  writeFileSync(file, JSON.stringify(badCore));
+  reject(run("unregistered-core"), /CANDIDATE_CORE/);
+  writeFileSync(file, original);
+  const packagePath = join(roots["dsh-agent-manage"], "package.json");
+  const packageBytes = readFileSync(packagePath);
+  const packageManifest = JSON.parse(packageBytes);
+  packageManifest.name = "foreign-manage";
+  writeFileSync(packagePath, JSON.stringify(packageManifest));
+  const wrongIdentity = run("actual-package-identity");
+  writeFileSync(packagePath, packageBytes);
+  reject(wrongIdentity, /CANDIDATE_PACKAGE_IDENTITY/);
+  const lockPath = join(roots["dsh-agent-manage"], "pnpm-lock.yaml");
+  const lockBytes = readFileSync(lockPath);
+  writeFileSync(lockPath, Buffer.concat([lockBytes, Buffer.from("\n# altered original lock\n")]));
+  const wrongLock = run("actual-original-lock");
+  writeFileSync(lockPath, lockBytes);
+  reject(wrongLock, /CANDIDATE_LOCK/);
+  git(core, "checkout", "--quiet", "639ed015397290b3745d163aafe02ffee4aa3f84");
+  const rc = JSON.parse(original);
+  rc.core = "639ed015397290b3745d163aafe02ffee4aa3f84";
+  writeFileSync(file, JSON.stringify(rc));
+  const rcGood = run("registered-rc2-cold-source");
+  assert.equal(rcGood.status, 0, rcGood.stdout + rcGood.stderr);
+  assert.equal(JSON.parse(rcGood.stdout).official.commit, rc.core);
+  unchangedEffects();
+  writeFileSync(file, original);
+  git(core, "checkout", "--quiet", "5badb15009ae1756c3afe0ae0cef1faafc290ccc");
   const packageScripts = JSON.parse(readFileSync(join(root, "package.json"))).scripts;
   assert.doesNotMatch(packageScripts["test:quality"], /final-group-input/);
   assert.equal(
@@ -281,10 +258,6 @@ test("GEA public final-group mode admits actual cold Git sources and keeps defau
       manifest,
       coreSource,
       corePrepared: false,
-      defaults: {
-        workbench: legacy.repositories.find((entry) => entry.repo === "dsh-agent-workbench").head,
-        manage: legacy.repositories.find((entry) => entry.repo === "dsh-agent-manage").head,
-      },
       effects: "no installation, SDK/assets preparation or source profile",
     }),
   );

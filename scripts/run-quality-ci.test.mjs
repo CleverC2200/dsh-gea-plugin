@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -31,28 +31,15 @@ test("the public CI scope/final entry rejects missing, failed, skipped and cance
     for (const result of ["", "skipped", "cancelled", "failure"])
       assert.equal(run(["--phase", "final"], { ...good, [key]: result }).status, 1);
 });
-test("the public input phase binds the actual event and quality refuses missing or mismatched admission", () => {
-  assert.match(run([]).stderr, /CANDIDATE_INPUT_REQUIRED/);
+test("candidate execution requires the one explicit hashed public admission and input phase cannot write legacy peers", () => {
+  for (const phase of ["quality", "prepare", "verify-input"])
+    assert.match(run(["--phase", phase]).stderr, /CANDIDATE_FINAL_GROUP_REQUIRED/);
   const directory = mkdtempSync(join(tmpdir(), "gea-quality-input-"));
   try {
     const created = run(["--phase", "input", "--root", directory, "--sha", "a".repeat(40)]);
-    assert.equal(created.status, 0, created.stderr);
-    const file = join(directory, "candidate-input.json"),
-      candidate = JSON.parse(readFileSync(file));
-    assert.equal(candidate.repositories.length, 3);
-    const gea = candidate.repositories.find((entry) => entry.repo === "dsh-gea-plugin");
-    assert.equal(gea.head, "a".repeat(40));
-    gea.path = process.cwd();
-    writeFileSync(file, JSON.stringify(candidate));
-    assert.match(run(["--input", file], { CI: "true" }).stderr, /CANDIDATE_EVENT_REQUIRED/);
-    assert.match(
-      run(["--input", file], { CI: "true", QUALITY_EXPECTED_SHA: "b".repeat(40) }).stderr,
-      /CANDIDATE_EVENT_MISMATCH/,
-    );
-    assert.match(
-      run(["--phase", "input", "--root", directory, "--sha", "main"]).stderr,
-      /CANDIDATE_EVENT_REQUIRED/,
-    );
+    assert.equal(created.status, 1);
+    assert.match(created.stderr, /CANDIDATE_INPUT_REQUIRED/);
+    assert.equal(existsSync(join(directory, "candidate-input.json")), false);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -85,82 +72,46 @@ test("the workflow binds full source history and the same public quality command
   assert.equal(scripts["quality:ci"], "node scripts/run-quality-ci.mjs");
 });
 
-for (const head of [
-  "639ed015397290b3745d163aafe02ffee4aa3f84",
-  "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
-]) {
-  test(`public input selects registered Core ${head} and rejects an unregistered Core`, (t) => {
-    const directory = mkdtempSync(join(tmpdir(), "gea-dual-quality-input-"));
-    t.after(() => rmSync(directory, { recursive: true, force: true }));
-    const created = run([
-      "--phase",
-      "input",
-      "--root",
-      directory,
-      "--sha",
-      "a".repeat(40),
-      "--core-head",
-      head,
-    ]);
-    assert.equal(created.status, 0, created.stderr);
-    assert.equal(JSON.parse(readFileSync(join(directory, "candidate-input.json"))).core, head);
-    assert.match(
-      run([
-        "--phase",
-        "input",
-        "--root",
-        directory,
-        "--sha",
-        "a".repeat(40),
-        "--core-head",
-        "0".repeat(40),
-      ]).stderr,
-      /CANDIDATE_CORE_UNSUPPORTED/,
-    );
-  });
-}
+test("all candidate entry modes reject absent or forged hash admission before source effects", () => {
+  for (const phase of ["quality", "prepare", "verify-input"])
+    for (const hash of [undefined, "", "main", "A".repeat(64), "a".repeat(64) + "\n"])
+      assert.match(
+        run([
+          "--phase",
+          phase,
+          "--input",
+          "/declared/input",
+          "--final-group-workbench",
+          "/declared/workbench",
+          ...(hash === undefined ? [] : ["--final-group-sha256", hash]),
+        ]).stderr,
+        /CANDIDATE_FINAL_GROUP_REQUIRED/,
+      );
+  const source = readFileSync("scripts/run-quality-ci.mjs", "utf8");
+  assert.doesNotMatch(
+    source,
+    /c5a5bc64fade154bf5b468f0d848974ac308823a|cdd2d6520a7790ca1a1c658d1fa71e07c651cd3f|finalGroup\?\.manifest/,
+  );
+  assert.match(source, /GEA_TEST_CANDIDATE_SHA256 = finalGroup.receipt.inputSha256/);
+});
 
-test("local default admission keeps historical fixed peers and hosted refs consume public reader outputs", () => {
-  const directory = mkdtempSync(join(tmpdir(), "hosted-peer-pins-"));
-  try {
-    const core = "639ed015397290b3745d163aafe02ffee4aa3f84";
-    const created = spawnSync(
-      process.execPath,
-      [
-        "scripts/run-quality-ci.mjs",
-        "--phase",
-        "input",
-        "--root",
-        directory,
-        "--sha",
-        "a".repeat(40),
-        "--core-head",
-        core,
-      ],
-      { encoding: "utf8" },
-    );
-    assert.equal(created.status, 0, created.stderr);
-    const input = JSON.parse(readFileSync(join(directory, "candidate-input.json"), "utf8"));
-    const expected = {
-      "dsh-agent-workbench": "c5a5bc64fade154bf5b468f0d848974ac308823a",
-      "dsh-agent-manage": "cdd2d6520a7790ca1a1c658d1fa71e07c651cd3f",
-    };
-    const workflow = readFileSync(".github/workflows/quality.yml", "utf8");
-    for (const [repo, head] of Object.entries(expected)) {
-      assert.equal(input.repositories.find((entry) => entry.repo === repo)?.head, head);
-      const key = repo === "dsh-agent-workbench" ? "workbench-sha" : "manage-sha";
-      assert.ok(
-        workflow.includes("ref: ${{ needs.candidate-scope.outputs." + key + " }}"),
-        repo + " consumes the admitted public reader output",
-      );
-      assert.ok(
-        !workflow.includes("|| '" + head + "'"),
-        "hosted source event must not silently use historical peers",
-      );
-    }
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
+test("hosted refs consume the public reader outputs and raw history remains readable", () => {
+  const workflow = readFileSync(".github/workflows/quality.yml", "utf8");
+  for (const key of ["workbench-sha", "manage-sha"])
+    assert.ok(workflow.includes("ref: ${{ needs.candidate-scope.outputs." + key + " }}"));
+  const source = readFileSync("scripts/run-quality-ci.mjs", "utf8");
+  const history = source.match(/const history = resolve\(\s*"([^"\n]+)",?\s*\)/)?.[1];
+  assert.ok(history?.endsWith("navigation-r7-setup-failure.json.raw"));
+  const bytes = readFileSync(history);
+  const original = execFileSync("git", [
+    "show",
+    "87e53cbff32aba61318a666f41d0272b4f55c008:" + history.replace(/\.raw$/, ""),
+  ]);
+  assert.deepEqual(
+    bytes,
+    original,
+    "raw historical evidence retains exact original accepted bytes",
+  );
 });
 
 test("reader bootstrap binds the actual event and refuses mutable, malformed or absent Workbench input", () => {
