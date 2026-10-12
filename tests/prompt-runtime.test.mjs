@@ -169,7 +169,8 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
   let preset = "gea-readonly",
     revision = 1,
     identityChanged,
-    guard;
+    guard,
+    resourceEnabled = true;
   const toolService = {
     register: () => () => {},
     guard: (fn) => {
@@ -192,6 +193,7 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
   };
   const agent = {
     id: "fixture",
+    status: "running",
     ctx: { tools: toolService, effect: (fn) => fn() },
     session: {
       header: { cwd: dir },
@@ -204,7 +206,7 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     agents: { get: () => agent },
     sessionProjections: { stateOf: () => preset },
     agentResources: {
-      list: async () => [{ id: preset, kind: "prompt", installed: true, enabled: true }],
+      list: async () => [{ id: preset, kind: "prompt", installed: true, enabled: resourceEnabled }],
     },
     skills: { list: async () => [] },
     on: (event, fn) => {
@@ -345,6 +347,33 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
       /GEA_EVIDENCE_BUDGET/,
       "read exhaustion cannot be bypassed via " + name,
     );
+  agent.status = "idle";
+  const idle = await assemble();
+  for (const name of ["read_file", "run_code", "run_agent"]) {
+    assert.ok(
+      idle.tools.some((tool) => tool.name === name),
+      "idle retains standard " + name,
+    );
+    assert.equal(guard({ name, agent, arguments: {} }), undefined);
+  }
+  assert.ok(!idle.tools.some((tool) => tool.name.startsWith("gea_")));
+  assert.match(
+    idle.sections.find((section) => section.name === "gea:budget").text,
+    /通用文件、规划、任务和协作能力仍按官方规则可用/,
+  );
+  assert.deepEqual(
+    idle.sections.find((section) => section.name === "gea:result-status"),
+    retainedReceipt,
+    "idle retains acquired evidence receipts",
+  );
+  for (const name of ["gea_evidence_read", "gea_cube_query", "gea_capabilities"])
+    assert.match(guard({ name, agent, arguments: {} }), /GEA_EVIDENCE_BUDGET/);
+  resourceEnabled = false;
+  await assert.rejects(start("read_file"), /GEA_AGENT_RESOURCE_DISABLED/);
+  resourceEnabled = true;
+  agent.status = "running";
+  assert.deepEqual((await assemble()).tools, [], "idle must not reopen the exhausted model driver");
+  assert.match(guard({ name: "run_code", agent, arguments: {} }), /GEA_EVIDENCE_BUDGET/);
   const otherAgent = { ...agent, id: "other" };
   assert.equal(guard({ name: "read_file", agent: otherAgent, arguments: {} }), undefined);
   assert.ok((await assemble(otherAgent)).tools.some((tool) => tool.name === "read_file"));

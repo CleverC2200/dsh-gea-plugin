@@ -217,8 +217,11 @@ export function mountBusinessPrompts(
         return;
       }
       const state = stateOf(agent);
-      // The final evidence read ends all tool dispatch for this turn, including stale model calls.
-      if (state.readCalls >= PROMPT_BUDGET.evidenceCalls)
+      // Evidence exhaustion closes GEA calls, and all tools of the active Core driver.
+      if (
+        state.readCalls >= PROMPT_BUDGET.evidenceCalls &&
+        (exec.name.startsWith("gea_") || agent.status === "running")
+      )
         return "GEA_EVIDENCE_BUDGET: 本轮证据读取额度已用完，请交付已读范围并说明未读部分。";
       if (["render_ui", "validate_dsh_ui"].includes(exec.name)) {
         const issue = businessUiIssue(exec.arguments);
@@ -895,7 +898,9 @@ export function mountBusinessPrompts(
                 name: "gea:budget",
                 text:
                   state.readCalls >= PROMPT_BUDGET.evidenceCalls
-                    ? "本轮业务证据读取额度已用完，本轮全部工具已停止。直接用已展示数据交付结论、实际覆盖范围和未完成项；保留已有证据，未读结果保持未知，不重建查询或继续执行。下一轮重新核对身份、授权与额度。"
+                    ? agent.status === "running"
+                      ? "本轮业务证据读取额度已用完，本轮全部工具已停止。直接用已展示数据交付结论、实际覆盖范围和未完成项；保留已有证据，未读结果保持未知，不重建查询或继续执行。下一轮重新核对身份、授权与额度。"
+                      : "本轮业务证据读取额度已用完。停止新业务查询、业务能力加载和证据回读；直接用已展示数据交付结论、实际覆盖范围和未完成项。未读结果保持未知，不重建业务查询；通用文件、规划、任务和协作能力仍按官方规则可用。"
                     : "本轮业务查询额度已用完，不再发起业务查询。必要时在读取额度内沿nextRead读已取得证据，然后交付业务答复及未完成项；通用文件、规划、任务和协作能力仍按官方规则可用。",
               },
             ]
@@ -906,7 +911,11 @@ export function mountBusinessPrompts(
       const tools = assembled.tools
         .filter((tool) => {
           if (!visible.has(tool.name)) return false;
-          if (state.readCalls >= PROMPT_BUDGET.evidenceCalls) return false;
+          if (
+            state.readCalls >= PROMPT_BUDGET.evidenceCalls &&
+            (tool.name.startsWith("gea_") || agent.status === "running")
+          )
+            return false;
           if (!tool.name.startsWith("gea_")) return true;
           return state.calls < state.limit || tool.name === "gea_evidence_read";
         })
