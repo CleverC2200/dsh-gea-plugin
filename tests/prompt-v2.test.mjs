@@ -225,34 +225,85 @@ test(
       );
       return true;
     });
+    const probe = (value) => console.log("[CI-CONSUMER-PROBE] " + JSON.stringify(value));
     await app.login();
     assert.equal((await app.rpc("model/discover")).ok, true);
     for (const [preset, consumer] of [
       ["gea-readonly", "sales_forecast"],
       ...configs.map(([s, c]) => ["gea-html-inventory-" + s, c]),
     ]) {
-      await selectBusinessResource(app, preset);
+      const seenBefore = seen.length;
+      const selected = await selectBusinessResource(app, preset);
+      probe({
+        operation: "resource/select",
+        preset,
+        selectedPreset: typeof selected.preset === "string" ? selected.preset : null,
+      });
       const made = await app.remote("session/create", {
         cwd: app.runtime + "/workspace",
         agentPreset: preset,
       });
+      probe({
+        operation: "session/create",
+        preset,
+        ok: made.ok,
+        sessionId: made.value?.sessionId ?? null,
+      });
       assert.equal(made.ok, true);
       const sessionId = made.value.sessionId;
-      await app.remote("session/selectModel", {
+      const modelSelection = await app.remote("session/selectModel", {
         sessionId,
         provider: "gea-analysis",
         model: "fixture-model",
       });
-      await app.remote("session/prompt", {
+      probe({
+        operation: "session/selectModel",
+        preset,
+        sessionId,
+        ok: modelSelection.ok,
+        errorCode: modelSelection.error?.code ?? null,
+      });
+      const prompted = await app.remote("session/prompt", {
         requestId: randomUUID(),
         sessionId,
         mode: "queue",
         content: [{ type: "text", text: "查询当前业务范围" }],
       });
-      await until(
-        () => readSession(app.runtime, sessionId),
-        (r) => r.some((e) => e.type === "turn/end"),
-      );
+      probe({
+        operation: "session/prompt",
+        preset,
+        sessionId,
+        ok: prompted.ok,
+        errorCode: prompted.error?.code ?? null,
+      });
+      let rows = [];
+      try {
+        await until(
+          async () => (rows = await readSession(app.runtime, sessionId)),
+          (r) => r.some((e) => e.type === "turn/end"),
+        );
+      } finally {
+        probe({
+          operation: "turn/end",
+          preset,
+          sessionId,
+          expectedConsumer: consumer,
+          seenBefore,
+          seenAfter: seen.length,
+          newModelRequests: seen.length - seenBefore,
+          consumers: seen.slice(seenBefore),
+          lastConsumer: seen.at(-1) ?? null,
+          turns: rows
+            .filter((e) => e.type === "turn/end")
+            .map((e) => ({
+              kind: e.data?.reason?.kind ?? null,
+              code: e.data?.reason?.error?.code ?? null,
+              codes: [...new Set(
+                JSON.stringify(e.data?.reason ?? {}).match(/\b(?:GEA|MODEL|AGENT|SOURCE)_[A-Z0-9_]+\b/g) ?? [],
+              )],
+            })),
+        });
+      }
       assert.equal(seen.at(-1), consumer);
     }
   },
