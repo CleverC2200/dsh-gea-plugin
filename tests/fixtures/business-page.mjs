@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { expect } from "@playwright/test";
+import { waitForNativeOwner } from "./native-page.mjs";
 
 import { randomUUID } from "node:crypto";
 import {
@@ -83,7 +84,8 @@ export function salesPlanFrame(page) {
 }
 
 export async function openSalesPlan(page) {
-  await openBusinessPage(page, "gea-proof");
+  const ownerReady = waitForNativeOwner(page, "gea-proof", "gea-readonly");
+  await Promise.all([openBusinessPage(page, "gea-proof"), ownerReady]);
   await expect(salesPlanFrameElement(page)).toBeVisible();
   return salesPlanFrame(page);
 }
