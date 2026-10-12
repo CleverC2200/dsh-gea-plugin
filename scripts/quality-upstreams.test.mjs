@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 test("the public upstream verifier refuses an omitted input root", () => {
   const result = spawnSync(process.execPath, ["scripts/quality-upstreams.mjs"], {
     encoding: "utf8",
@@ -57,7 +58,7 @@ test("explicit preparation refuses a borrowed root before download or install", 
   }
 });
 
-test("the public verifier rejects missing or substituted source remotes in independent local clones", () => {
+test("the public verifier rejects substituted sources and binds only fixed upstream inputs", async () => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "gea-upstream-source-")));
   const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
   const git = (cwd, ...args) => {
@@ -127,6 +128,67 @@ test("the public verifier rejects missing or substituted source remotes in indep
       encoding: "utf8",
     });
     assert.equal(source.stdout.trim(), "https://example.invalid/substituted.git");
+    git(genui, "remote", "set-url", "source", fixed.genui.repository);
+    const sidebar = join(reference, "dsh-better-sidebar");
+    git(sidebar, "remote", "add", "source", fixed.sidebar.repository);
+    for (const file of [
+      "lib/host.js",
+      "lib/types/host.d.ts",
+      "lib/client.js",
+      "lib/invariant.js",
+      "lib/client-registry.js",
+      "lib/client-editor.js",
+      "lib/client-locale.js",
+      "lib/client-mermaid.js",
+      "lib/types/client/service.d.ts",
+    ]) {
+      mkdirSync(dirname(join(sidebar, file)), { recursive: true });
+      writeFileSync(join(sidebar, file), "fixed built fixture\n");
+    }
+    writeFileSync(join(sidebar, ".gitignore"), "lib/\n");
+    git(sidebar, "add", ".gitignore");
+    git(
+      sidebar,
+      "-c",
+      "user.name=fixture",
+      "-c",
+      "user.email=fixture@invalid",
+      "commit",
+      "-qm",
+      "ignore prepared fixture output",
+    );
+    fixed.sidebar.head = git(sidebar, "rev-parse", "HEAD");
+    writeFileSync(join(scripts, "quality-upstreams.json"), JSON.stringify(fixed));
+    const { bindQualityUpstreamInputs } = await import(
+      pathToFileURL(join(scripts, "quality-upstreams.mjs"))
+    );
+    const inputs = join(directory, "job/upstream-inputs");
+    await assert.rejects(
+      bindQualityUpstreamInputs(directory, inputs),
+      /QUALITY_UPSTREAM_INPUT_REQUIRED/,
+    );
+    await bindQualityUpstreamInputs(directory, inputs, { prepare: true });
+    assert.equal(realpathSync(join(inputs, "genui")), realpathSync(dirname(asset)));
+    assert.equal(realpathSync(join(inputs, "sidebar")), realpathSync(sidebar));
+    await bindQualityUpstreamInputs(directory, inputs);
+    const borrowed = join(directory, "borrowed-inputs");
+    symlinkSync(inputs, borrowed, "dir");
+    await assert.rejects(
+      bindQualityUpstreamInputs(directory, borrowed, { prepare: true }),
+      /QUALITY_UPSTREAM_INPUT_PRIVATE_ROOT_REQUIRED/,
+    );
+    rmSync(join(inputs, "sidebar"));
+    symlinkSync(genui, join(inputs, "sidebar"), "dir");
+    await assert.rejects(
+      bindQualityUpstreamInputs(directory, inputs, { prepare: true }),
+      /QUALITY_UPSTREAM_INPUT_MISMATCH/,
+    );
+    assert.equal(realpathSync(join(inputs, "sidebar")), genui);
+    writeFileSync(asset, "changed original asset\n");
+    await assert.rejects(
+      bindQualityUpstreamInputs(directory, inputs, { prepare: true }),
+      /QUALITY_UPSTREAM_HASH/,
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

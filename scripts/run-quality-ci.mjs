@@ -6,7 +6,11 @@ import { readFileSync, writeFileSync, realpathSync, existsSync } from "node:fs";
 import { resolve, dirname, relative, isAbsolute, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { prepareQualityUpstreams, verifyQualityUpstreams } from "./quality-upstreams.mjs";
+import {
+  prepareQualityUpstreams,
+  verifyQualityUpstreams,
+  bindQualityUpstreamInputs,
+} from "./quality-upstreams.mjs";
 import {
   readPreparedWorkbench,
   verifyPreparedWorkbench,
@@ -155,7 +159,9 @@ try {
     finalGroup?.verifyUnchanged();
     if (values["prepare-inputs"])
       await prepareQualityUpstreams(existsSync(upstream) ? realpathSync(upstream) : upstream);
-    else await verifyQualityUpstreams(upstream);
+    await bindQualityUpstreamInputs(upstream, resolve("../../upstream-inputs"), {
+      prepare: values["prepare-inputs"] === true,
+    });
     run(process.execPath, [
       resolve(workbench.path, "scripts/verify-candidate-input.mjs"),
       "--input",

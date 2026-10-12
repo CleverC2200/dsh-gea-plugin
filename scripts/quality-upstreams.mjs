@@ -1,5 +1,5 @@
 /** Prepare the two original public dependencies required by the unchanged link locks. */
-import { readFile, mkdir, realpath, rename, writeFile, lstat } from "node:fs/promises";
+import { readFile, mkdir, realpath, rename, writeFile, lstat, symlink } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { resolve, join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -208,6 +208,32 @@ export async function prepareQualityUpstreams(root) {
   );
   run("corepack", ["pnpm", "build"], sidebar);
   return verifyQualityUpstreams(root);
+}
+
+/** Bind the unchanged development link locks to already verified fixed upstream material. */
+export async function bindQualityUpstreamInputs(root, inputs, { prepare = false } = {}) {
+  const upstream = await verifyQualityUpstreams(root);
+  inputs = resolve(inputs);
+  if (!(await exists(inputs))) {
+    if (!prepare) throw Error("QUALITY_UPSTREAM_INPUT_REQUIRED: " + inputs);
+    await mkdir(inputs, { recursive: true });
+  }
+  if ((await realpath(inputs)) !== inputs || !(await lstat(inputs)).isDirectory())
+    throw Error("QUALITY_UPSTREAM_INPUT_PRIVATE_ROOT_REQUIRED: " + inputs);
+  for (const [name, material] of [
+    ["genui", "upstream-assets/genui-0.11.3"],
+    ["sidebar", "upstream-reference/dsh-better-sidebar"],
+  ]) {
+    const input = join(inputs, name),
+      target = await realpath(join(upstream.root, material));
+    if (!(await exists(input))) {
+      if (!prepare) throw Error("QUALITY_UPSTREAM_INPUT_REQUIRED: " + input);
+      await symlink(target, input, process.platform === "win32" ? "junction" : "dir");
+    }
+    if (!(await lstat(input)).isSymbolicLink() || (await realpath(input)) !== target)
+      throw Error("QUALITY_UPSTREAM_INPUT_MISMATCH: " + input);
+  }
+  return upstream;
 }
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   try {
