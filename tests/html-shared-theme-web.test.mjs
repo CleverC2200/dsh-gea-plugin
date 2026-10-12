@@ -428,10 +428,23 @@ test(
       await expect(
         page.getByText("本地验证回执（非 AI 分析）：业务资料已进入会话。", { exact: true }),
       ).toBeVisible();
+      // Linux Web has no default sidebar binding; configure an allowed one through the public editor.
+      await expect(page.getByRole("dialog", { name: /内测声明|预览版说明/ })).toHaveCount(0);
+      await page.keyboard.press("ControlOrMeta+/");
+      const shortcuts = page.getByRole("dialog", { name: "快捷键", exact: true });
+      await shortcuts
+        .getByRole("button", { name: "修改展开／收起右侧栏快捷键", exact: true })
+        .click();
+      const recorder = shortcuts.getByRole("group", { name: "展开／收起右侧栏", exact: true });
+      await expect(recorder).toBeVisible();
+      await page.keyboard.press("ControlOrMeta+Shift+,");
+      await expect(recorder).toBeHidden();
+      await page.keyboard.press("Escape");
+      await expect(shortcuts).toHaveCount(0);
       const nativeRightbar = page.locator("[data-sidebar-right-panel]");
       await expect(nativeRightbar).toBeAttached();
       if ((await nativeRightbar.getAttribute("data-sidebar-right-open")) !== "true")
-        await page.keyboard.press("ControlOrMeta+Shift+B");
+        await page.keyboard.press("ControlOrMeta+Shift+,");
       await expect(nativeRightbar).toHaveAttribute("data-sidebar-right-open", "true");
       await expect(nativeRightbar).toBeVisible();
       const exitFullscreen = nativeRightbar.locator('[data-sidebar-right-mode="push"]');

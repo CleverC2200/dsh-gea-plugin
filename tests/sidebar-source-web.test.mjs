@@ -67,12 +67,24 @@ test(
       exact: true,
     });
     await expect(receipt).toBeVisible();
-    // GEA intentionally hides auxiliary launch buttons; retain that policy and use the native shortcut.
+    // GEA hides auxiliary launch buttons; configure a public shortcut supported by Linux Web too.
+    await expect(page.getByRole("dialog", { name: /内测声明|预览版说明/ })).toHaveCount(0);
+    await page.keyboard.press("ControlOrMeta+/");
+    const shortcuts = page.getByRole("dialog", { name: "快捷键", exact: true });
+    await shortcuts
+      .getByRole("button", { name: "修改展开／收起右侧栏快捷键", exact: true })
+      .click();
+    const recorder = shortcuts.getByRole("group", { name: "展开／收起右侧栏", exact: true });
+    await expect(recorder).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+Shift+,");
+    await expect(recorder).toBeHidden();
+    await page.keyboard.press("Escape");
+    await expect(shortcuts).toHaveCount(0);
     const pane = page.locator("[data-sidebar-right-panel]");
     const expandSidebar = async () => {
       await expect(pane).toBeAttached();
       if ((await pane.getAttribute("data-sidebar-right-open")) !== "true")
-        await page.keyboard.press("ControlOrMeta+Shift+B");
+        await page.keyboard.press("ControlOrMeta+Shift+,");
       await expect(pane).toHaveAttribute("data-sidebar-right-open", "true");
       await expect(pane).toBeVisible();
     };
