@@ -205,7 +205,7 @@ test(
     const branchSession = opens.at(-1).sessionId;
     const branchOwner = opens.at(-1).owner;
     assert.equal(opens.at(-1).resourceId, "gea-html-inventory-fc");
-    assert.equal(await sessionPreset(app, branchSession), "gea-html-inventory-fc");
+    await expect.poll(() => sessionPreset(app, branchSession)).toBe("gea-html-inventory-fc");
     const search = frame.getByPlaceholder("搜索 SKU / 产品名称");
     await search.fill("FC001");
     await expect(frame.locator(".replenishment-table tbody")).toContainText("FC001");
@@ -343,7 +343,7 @@ test(
     await expect.poll(() => opens.at(-1)?.sessionId).not.toBe(branchSession);
     const qllSession = opens.at(-1).sessionId;
     assert.equal(opens.at(-1).resourceId, "gea-html-inventory-fc");
-    assert.equal(await sessionPreset(app, qllSession), "gea-html-inventory-qll");
+    await expect.poll(() => sessionPreset(app, qllSession)).toBe("gea-html-inventory-qll");
     const releasedOwner = await fixtureRequest(app, "/api/agent-workbench/page", {
       operation: "context",
       owner: branchOwner,

@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { readFile, rename, writeFile, unlink, mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
@@ -8,7 +8,7 @@ import { receiptProfile, assertReceiptMessages } from "./fixtures/receipt-skill-
 
 test(
   "one preview submits once through the standard Session and survives a fresh process",
-  { timeout: 60000 },
+  { timeout: 60000, sourceSetupCount: 2 },
   async (t) => {
     const app = await receiptProfile(t);
     await app.login();
@@ -91,7 +91,7 @@ test(
 
 test(
   "a failed submission can retry the same preview after storage recovers",
-  { timeout: 60000 },
+  { timeout: 60000, sourceSetupCount: 1 },
   async (t) => {
     const app = await receiptProfile(t);
     await app.login();
