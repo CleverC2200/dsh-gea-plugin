@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { modelProfile as profile } from "./fixtures/model-profile.mjs";
+import { prepareWorkbenchHtmlRoots } from "./fixtures/business-page.mjs";
 
 async function enableSelection(page) {
   const button = page.locator("[data-page-selection-trigger]");

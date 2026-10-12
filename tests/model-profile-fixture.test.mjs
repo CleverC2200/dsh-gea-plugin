@@ -80,14 +80,14 @@ const cases = [
   ],
   [
     "split-declarations-web.test.mjs",
-    "旧与分离声明在真实工作台显示，Agent 管理装载能力，调用保持受控",
+    "两份临时分离声明在真实工作台显示，Agent 管理装载能力，调用保持受控",
   ],
   [
     "v16-web.test.mjs",
     "V1.6 Web: compact header, stable progress, inline SKU and approval editing",
   ],
 ];
-async function probe(t, file, name, mode) {
+async function probe(t, file, name, mode, env = {}) {
   const directory = await mkdtemp(join(tmpdir(), "gea-config-probe-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const { stdout } = await run(
@@ -99,7 +99,7 @@ async function probe(t, file, name, mode) {
       directory,
       ...(mode ? [mode] : []),
     ],
-    { timeout: 15000 },
+    { timeout: 15000, env: { ...process.env, ...env } },
   );
   return JSON.parse(stdout);
 }
@@ -135,7 +135,32 @@ test("model fixture restores an existing parent value after admitting its own fa
   assert.equal(result.childAdmitted, true);
   assert.equal(result.parentRestored, true);
 });
-test("deployment still refuses a missing parent key despite child-only fixture options", async (t) => {
+test("private profile credentials admit without replacing a different parent process key", async (t) => {
+  const result = await probe(
+    t,
+    "sales-result-runtime.test.mjs",
+    "native result route, atomic skill load and structured evidence reuse retain authorization",
+    "existing-parent",
+  );
+  assert.equal(result.expectedBoundary, true, result.error);
+  assert.equal(result.declaredFakeKey, true);
+  assert.equal(result.parentAdmitted, true);
+  assert.equal(result.childAdmitted, true);
+  assert.equal(result.parentRestored, true);
+  assert.equal(result.hostStarts, 0);
+  assert.equal(result.browserStarts, 0);
+});
+test("configuration probe honors the Source fixture signal before deployment admission", async (t) => {
+  const [file, name] = cases[0];
+  const result = await probe(t, file, name, "credentials", { GEA_TEST_SOURCE_CORE: "1" });
+  assert.equal(result.expectedBoundary, true, result.error);
+  assert.equal(result.parentAdmitted, true);
+  assert.equal(result.childAdmitted, true);
+  assert.equal(result.parentRestored, true);
+  assert.equal(result.hostStarts, 0);
+  assert.equal(result.browserStarts, 0);
+});
+test("deployment refuses a missing effective parent key despite child-only fixture options", async (t) => {
   const [file, name] = cases[0];
   const result = await probe(t, file, name, "missing-parent");
   assert.equal(result.expectedBoundary, true, result.error);

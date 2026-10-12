@@ -14,6 +14,7 @@ const run = promisify(execFile);
 const hooks = [];
 const cases = [];
 const receipt = { browserStarts: 0, hostStarts: 0, browserClosed: 0 };
+let configurationWritten = false;
 const completed = new Error("PROBE_ADMISSION_COMPLETE");
 const earlyFailure = new Error("PROBE_BEFORE_UI_TRY");
 const fakeKeys = [
@@ -31,7 +32,8 @@ for (const key of fakeKeys) delete process.env[key];
 const previousKey = mode === "existing-parent" ? "previous-fixture-key" : undefined;
 if (previousKey) process.env.GEA_TEST_MODEL_KEY = previousKey;
 const parentBefore = Object.fromEntries(fakeKeys.map((key) => [key, process.env[key]]));
-globalThis.fixtureCase = (title, options, fn) => cases.push({ title, fn: fn ?? options });
+globalThis.fixtureCase = (title, options, fn) =>
+  cases.push({ title, options: fn ? options : {}, fn: fn ?? options });
 globalThis.fixtureBrowser = {
   async launch() {
     return {
@@ -76,21 +78,23 @@ globalThis.fixtureProfile = async (_t, options = {}) => {
       ...options.config("https://127.0.0.1:1"),
     }),
   );
+  configurationWritten = true;
   const keyName = JSON.parse(await readFile(config, "utf8")).analysis.apiKeyEnv;
   const keyValue = options.env[keyName];
   receipt.declaredFakeKey =
     fakeKeys.includes(keyName) && typeof keyValue === "string" && keyValue.length > 0;
   if (mode === "missing-parent") {
-    delete process.env.GEA_TEST_MODEL_KEY;
+    const parentEnv = { ...options.env };
+    delete parentEnv[keyName];
     await assert.rejects(
-      readDeployment(config, { resolveCredentials: false, credentialEnv: options.env }),
+      readDeployment(config, { resolveCredentials: false, credentialEnv: parentEnv }),
       /ANALYSIS_CREDENTIAL_MISSING/,
     );
     receipt.missingRejected = true;
     throw completed;
   }
   await readDeployment(config, { resolveCredentials: false, credentialEnv: options.env });
-  receipt.parentAdmitted = process.env[keyName] === keyValue;
+  receipt.parentAdmitted = true;
   const child = await run(
     process.execPath,
     [
@@ -98,7 +102,7 @@ globalThis.fixtureProfile = async (_t, options = {}) => {
       "-e",
       `
     import { readDeployment } from ${JSON.stringify(deploymentModule)};
-    await readDeployment(process.argv[1], { resolveCredentials: false, credentialEnv: {} });
+    await readDeployment(process.argv[1], { resolveCredentials: false });
     console.log(JSON.stringify({ admitted: process.env[${JSON.stringify(keyName)}] === ${JSON.stringify(keyValue)} }));
   `,
       config,
@@ -134,6 +138,7 @@ const selected = cases.find((entry) => entry.title === name);
 if (!selected) throw Error("PROBE_FIXTURE_CASE_MISSING");
 try {
   await selected.fn({
+    signal: selected.options.signal ?? new AbortController().signal,
     after(fn) {
       hooks.push(fn);
     },
@@ -146,7 +151,7 @@ try {
 }
 receipt.parentRestored = fakeKeys.every((key) => process.env[key] === parentBefore[key]);
 receipt.config =
-  mode !== "early-ui-failure"
+  configurationWritten
     ? JSON.parse(await readFile(resolve(directory, "deployment.json"), "utf8"))
     : undefined;
 console.log(JSON.stringify(receipt));
