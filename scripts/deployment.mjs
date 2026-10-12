@@ -6,7 +6,7 @@ import { validateSqlReadLimit } from "../src/shared/sql-read-limit.js";
 import { validateSalesReadonly } from "../src/shared/sales-readonly.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
 import { readFile, mkdir, rm, symlink, realpath, lstat, unlink, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, isAbsolute } from "node:path";
 
 /** Parse an HTTPS endpoint and reject credentials or URL routing metadata. */
 function httpsEndpoint(value, code) {
@@ -225,7 +225,9 @@ export function resolveBuiltinPlugins(anchor = import.meta.url) {
 }
 
 /** Build ordinary patch rows for the supported dsh profile launcher. */
-export function businessDeploymentPatch(config, root, runtime, { bundle = false } = {}) {
+export function businessDeploymentPatch(config, root, runtime, { bundle = false, workspace } = {}) {
+  if (workspace !== undefined && (typeof workspace !== "string" || !isAbsolute(workspace)))
+    throw new Error("WORKBENCH_WORKSPACE_ABSOLUTE_REQUIRED");
   const model = config.analysis.mode === "model";
   const analysis = config.analysis;
   const rows = [
@@ -299,6 +301,7 @@ export function businessDeploymentPatch(config, root, runtime, { bundle = false 
         },
       },
     });
+  if (workspace !== undefined) rows.push({ id: "agent-workbench", config: { cwd: workspace } });
   if (bundle)
     return rows.flatMap((row) => {
       if (row.id === "ui-layout") return [];

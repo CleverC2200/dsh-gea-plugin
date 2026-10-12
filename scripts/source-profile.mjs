@@ -266,7 +266,7 @@ export async function prepareSourcePlugins(
     },
     gea,
     runtime,
-    { bundle: true },
+    { bundle: true, workspace: resolve(runtime, "workspace") },
   );
   const modelIndex = patch.findIndex((row) => row.id === "agent-default-model");
   if (modelIndex < 0) throw Error("SOURCE_MODEL_DEFAULT_MISSING");
