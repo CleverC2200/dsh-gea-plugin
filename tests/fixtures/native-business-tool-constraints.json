@@ -215,7 +215,6 @@
             "type": "string",
             "enum": [
               "sales_forecast",
-              "aps",
               "base-safety-stock",
               "dealer-inventory-replenishment",
               "branch-inventory",
@@ -749,7 +748,6 @@
             "type": "string",
             "enum": [
               "sales_forecast",
-              "aps",
               "base-safety-stock",
               "dealer-inventory-replenishment",
               "branch-inventory",
