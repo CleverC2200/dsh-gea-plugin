@@ -141,3 +141,68 @@ test(
     assert.equal((await app.rpc("status")).value.authenticated, false);
   },
 );
+
+test(
+  "sales-plan/action RPC refuses terminal and historical SAVE despite matching server capabilities",
+  { timeout: 60000 },
+  async (t) => {
+    const app = await profile(t, {
+      roles: [{ code: "sales_plan_category_approver", name: "Category" }],
+    });
+    let status = 4,
+      effective = true,
+      writes = 0,
+      attempt = 0;
+    const snapshot = "a".repeat(64);
+    app.route((req, _res, reply) => {
+      if (req.url.pathname.endsWith("/plans/p")) {
+        reply({
+          success: true,
+          result: {
+            currentVersion: { id: "v", planId: "p", status, effective, planTypeCode: "Y" },
+            skus: [],
+            versions: [],
+            logs: [],
+            actionContext: {
+              versionId: "v",
+              status,
+              nodeOrder: 5,
+              allowedActions: ["SAVE"],
+              snapshotHash: snapshot,
+              policy: "role-visible-v1",
+              roleActions: [{ role: "category", allowedActions: ["SAVE"] }],
+            },
+          },
+        });
+        return true;
+      }
+      if (req.url.pathname.endsWith("/versions/v/actions")) {
+        writes++;
+        reply({ success: true, result: { saved: true } });
+        return true;
+      }
+    });
+    await app.login();
+    const save = (role) =>
+      app.rpc("sales-plan/action", {
+        planId: "p",
+        versionId: "v",
+        requestId: `terminal-${++attempt}`,
+        idempotencyKey: `terminal-${attempt}`,
+        request: {
+          action: "SAVE",
+          expectedStatus: status,
+          expectedSnapshot: snapshot,
+          adjustments: [{ skuCode: "1", adjustQty: "1.000" }],
+          ...(role ? { approvalRole: role, approvalPolicy: "role-visible-v1" } : {}),
+        },
+      });
+    for (status of [0, 5, 10])
+      for (const role of [undefined, "category"])
+        assert.equal((await save(role)).ok, false, `terminal ${status}, role ${role}`);
+    status = 4;
+    effective = false;
+    assert.equal((await save("category")).error.code, "GEA_HTTP_409");
+    assert.equal(writes, 0);
+  },
+);
