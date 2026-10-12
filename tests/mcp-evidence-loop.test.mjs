@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readSession, until } from "./profile.mjs";
 import { modelProfile as profile } from "./fixtures/model-profile.mjs";
+import { createBusinessSession } from "./fixtures/business-session.mjs";
 
 test(
   "native model loop retains ordinary MCP evidence after later failure and resets next turn",
@@ -259,12 +260,7 @@ test(
       return false;
     });
     await app.login();
-    const created = await app.remote("session/create", {
-      cwd: app.runtime + "/workspace",
-      agentPreset: "gea-readonly",
-    });
-    assert.equal(created.ok, true, JSON.stringify(created));
-    const id = created.value.sessionId;
+    const id = await createBusinessSession(app);
     const selected = await app.remote("session/selectModel", {
       sessionId: id,
       provider: "gea-analysis",

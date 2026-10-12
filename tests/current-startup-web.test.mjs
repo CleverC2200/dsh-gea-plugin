@@ -1,8 +1,9 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { profile } from "./profile.mjs";
+import { findSupportedCore, readSupportedCore } from "../scripts/supported-cores.mjs";
 
 test(
   "normal startup loads only built current-source HTML resources and records core provenance",
@@ -30,9 +31,16 @@ test(
     for (const directory of [
       "samples",
       ...["regional", "category", "mps"].map((id) => "static/" + id),
-      ...["fc", "aqkc", "dealer", "qll", "customer", "orderworkbench", "orderfulfillment"].map(
-        (id) => "business/inventory-" + id,
-      ),
+      ...[
+        "fc",
+        "aqkc",
+        "dealer",
+        "qll",
+        "customer",
+        "orderworkbench",
+        "orderfulfillment",
+        "apsplan",
+      ].map((id) => "business/inventory-" + id),
     ]) {
       const root = join(installed, directory);
       const manifest = JSON.parse(await readFile(join(root, "plugin.json"), "utf8"));
@@ -94,9 +102,12 @@ test(
       await readFile(new URL("../scripts/current-core.json", import.meta.url), "utf8"),
     );
     assert.equal(supported.upstream, "5badb15009ae1756c3afe0ae0cef1faafc290ccc");
-    assert.equal(core.version, supported.version);
-    assert.equal(core.adaptation, supported.adaptation);
-    assert.equal(core.upstream, supported.upstream);
+    assert.ok(findSupportedCore({ head: supported.adaptation, version: supported.version }));
+    const actual = await readSupportedCore(resolve("../../official-latest-standard"));
+    assert.equal(actual.id, undefined, "the runtime must use an official CI axis");
+    assert.equal(core.version, actual.version);
+    assert.equal(core.adaptation, actual.head);
+    assert.equal(core.upstream, actual.head);
     assert.equal(core.dirty, "");
   },
 );

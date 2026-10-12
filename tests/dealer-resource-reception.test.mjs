@@ -4,30 +4,45 @@ import { mkdtemp, cp, readFile, writeFile, rm, mkdir, realpath } from "node:fs/p
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
-import { build } from "esbuild";
+import { compiledSource } from "./fixtures/compiled-source.mjs";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+import { readSupportedCore } from "../scripts/supported-cores.mjs";
 async function managedResources(t) {
   await mkdir(".runtime", { recursive: true });
-  const root = await mkdtemp(resolve(".runtime/dealer-manage-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const compiled = await build({
-    entryPoints: ["../dsh-agent-manage/src/runtime/business-resources.ts"],
-    bundle: true,
-    write: false,
-    platform: "node",
-    format: "esm",
-    packages: "external",
+  const source = resolve("../dsh-agent-manage");
+  const module = await compiledSource(t, {
+    contents: "export { BusinessResources } from './src/runtime/business-resources.ts'",
+    source,
+    dependencies: join(source, "node_modules"),
+    url: join(source, "src/runtime/business-resources.ts"),
+    parent: resolve(".runtime"),
   });
-  const output = join(root, "fixture.mjs");
-  await writeFile(output, compiled.outputFiles[0].text);
-  return (await import(pathToFileURL(output))).BusinessResources;
+  const core = resolve("../../official-latest-standard");
+  await readSupportedCore(core);
+  const { entryListSchema } = await import(
+    pathToFileURL(join(core, "vendor/include/lib/index.js"))
+  );
+  const { load, dump } = createRequire(join(core, "vendor/include/package.json"))("js-yaml");
+  const standard = load(
+    await readFile(join(core, "packages/bundle/web-app/presets/standard.patch.yml"), "utf8"),
+    { schema: entryListSchema },
+  )[0].insert[0].config;
+  assert.equal(standard.id, "standard");
+  return {
+    BusinessResources: module.BusinessResources,
+    standardDocument: {
+      agentPreset: standard.id,
+      content: dump(standard.plugins, { schema: entryListSchema, noRefs: true, lineWidth: -1 }),
+    },
+  };
 }
 const session = "session-11111111-1111-4111-8111-111111111111";
 
 for (const mock of [false, true])
   for (const enabled of [true, false])
     test(`${mock ? "isolated mock dealer fixture" : "actual built dealer resource"} ${enabled ? "selects" : "refuses selection"} while its static page remains registered`, async (t) => {
-      const BusinessResources = await managedResources(t);
+      const { BusinessResources, standardDocument } = await managedResources(t);
       const root = await realpath(await mkdtemp(join(tmpdir(), "dealer-reception-")));
       t.after(() => rm(root, { recursive: true, force: true }));
       await cp(resolve("../dsh-agent-workbench/lib/business/inventory-dealer"), root, {
@@ -74,6 +89,10 @@ for (const mock of [false, true])
           list: (options) => provider.list(options),
         },
         agentPresets: {
+          async readDocument(id) {
+            assert.equal(id, standardDocument.agentPreset);
+            return standardDocument;
+          },
           async register(definition) {
             presets.set(definition.id, definition);
             return async () => presets.delete(definition.id);

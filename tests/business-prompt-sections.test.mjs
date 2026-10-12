@@ -4,7 +4,9 @@ import { build } from "esbuild";
 import { createRequire } from "node:module";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { readSupportedCore } from "../scripts/supported-cores.mjs";
 const built = await build({
   stdin: {
     contents:
@@ -67,11 +69,33 @@ test("business section policy preserves native UI protocol and leaves ordinary c
     new Map(),
   );
   t.after(dispose);
+  const core = resolve("../../official-latest-standard");
+  await readSupportedCore(core);
+  const nativeSections = [];
+  const nativeLifetimes = [];
+  const { apply } = await import(
+    pathToFileURL(join(core, "packages/client/ui-deliverables/lib/index.js"))
+  );
+  apply({
+    connection: { fetch: { register: () => () => {} } },
+    effect: (fn) => nativeLifetimes.push(fn()),
+    systemPrompt: {
+      getSectionOrder: () => 0,
+      section: (section) => nativeSections.push(section),
+    },
+  });
+  t.after(async () => {
+    for (const dispose of nativeLifetimes.reverse()) await dispose?.();
+  });
+  const nativeFiles = nativeSections.find(
+    (section) => section.name === "ui:deliverable-file-references",
+  );
+  assert.ok(nativeFiles, "the admitted Core must register its native file protocol");
   const sections = [
     { name: "app:web-surface", text: "Host GUI orientation and no replacement servers" },
     { name: "genui:fence", text: "vendor coding presentation policy" },
     { name: "kept-native-section", text: "native section survives" },
-    { name: "ui:deliverable-file-references", text: "vendor file-reference policy" },
+    nativeFiles,
   ];
   const assembly = { sections, contexts: [], tools: [], variables: {} };
   const assemble = () =>
@@ -99,13 +123,23 @@ test("business section policy preserves native UI protocol and leaves ordinary c
   const files = businessView.sections.find(
     (section) => section.name === "ui:deliverable-file-references",
   ).text;
-  assert.match(files, /!\[说明\]\(<路径>\).*\[名称\]\(<路径>\)/);
-  assert.match(files, /每次提及已有文件.*重复和表格.*相对当前工作目录.*绝对路径/);
+  assert.equal(files, nativeFiles.text, "GEA must preserve Core's file-reference protocol");
+  assert.match(
+    files,
+    /!\[Description\]\(<path\/to\/image.png>\).*\[Description\]\(<path\/to\/image.png>\)/,
+  );
+  assert.match(
+    files,
+    /every mention of an existing file.*repeats and tables.*relative to the working directory or absolute/,
+  );
   assert.match(files, /#L24.*#L24-L30/);
-  assert.match(files, /图片有助解释或比较时/);
-  assert.match(files, /工具清单提供 present.*独立文件卡片.*完整交付物/);
-  assert.match(files, /不为列出修改源码调用 present.*不运行命令探查 diff/);
-  assert.equal(assembly.sections[3].text, "vendor file-reference policy");
+  assert.match(files, /image supports an explanation or comparison/);
+  assert.match(files, /present when a separate file card.*complete deliverable/);
+  assert.match(
+    files,
+    /Do not call present just to list edited source files.*run commands to check whether a diff view/,
+  );
+  assert.equal(assembly.sections[3].text, nativeFiles.text);
   preset = "standard";
   assert.equal(await assemble(), assembly, "ordinary coding keeps the original native sections");
 });

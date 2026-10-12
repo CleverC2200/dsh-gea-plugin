@@ -8,6 +8,7 @@ import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
 import { selectBusinessResource } from "./fixtures/business-session.mjs";
 import { requireSourceInputs } from "../scripts/source-profile.mjs";
+import { nativeWebPrompt, withoutNativeWebPrompt } from "./fixtures/native-web-prompt.mjs";
 
 test(
   "safety stock uses the maintained skill in the real assembled prompt, without altering the sales-plan context",
@@ -295,6 +296,7 @@ test(
       }
       return requests.at(-1);
     }
+    const nativeWeb = await nativeWebPrompt(app.origin);
     const stock = await ask("gea-html-inventory-aqkc");
     const system = stock.messages
       .filter((x) => x.role === "system")
@@ -305,7 +307,7 @@ test(
     assert.match(system, /截断明细注明覆盖范围，不能冒充全量/);
     assert.match(system, /业务键/);
     assert.doesNotMatch(
-      system,
+      withoutNativeWebPrompt(system, nativeWeb),
       /inventory_aqkc_page|name=context|明细既不做交付物|没有任何模型同时具备|HMR receiver|pnpm run dev:web|销售计划汇总例外/,
     );
     assert.ok(stock.tools.some((x) => x.function.name === "gea_cube_query"));
@@ -330,9 +332,9 @@ test(
     assert.match(salesSystem, /实时审批状态/);
     assert.match(salesSystem, /gea_cube_query/);
     assert.doesNotMatch(
-      salesSystem,
+      withoutNativeWebPrompt(salesSystem, nativeWeb),
       /HMR receiver/,
-      "business presets share the scoped non-development policy",
+      "GEA business instructions cannot introduce development-only guidance",
     );
     assert.match(
       JSON.stringify(sales.messages.filter((x) => x.role === "tool")),

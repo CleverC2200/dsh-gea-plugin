@@ -1,6 +1,7 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
 import { profile } from "./profile.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
 
@@ -109,6 +110,13 @@ test(
     // delegation can expire on its first query as well as after being cached.
     failureMode = "first-token-expiry";
     sessionBase = sessions;
+    const aps = JSON.parse(
+      await readFile(
+        resolve("../dsh-agent-workbench/lib/business/inventory-apsplan/capability.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(aps.data.mock, true, "the CI APS build is explicitly mock-only");
     for (const consumerCode of [
       "base-safety-stock",
       "dealer-inventory-replenishment",
@@ -125,7 +133,9 @@ test(
         parameters: {},
         resultShape: "rows",
       });
-      if (["customer-inventory-preview", "orderfulfillment-preview"].includes(consumerCode)) {
+      if (
+        ["aps", "customer-inventory-preview", "orderfulfillment-preview"].includes(consumerCode)
+      ) {
         assert.equal(current.error?.code, "GEA_CAPABILITY_MOCK_ONLY");
         assert.equal(sessions, sessionsBefore);
         assert.equal(sqlTokens.length, queriesBefore);
@@ -136,7 +146,7 @@ test(
       assert.equal(sessions, sessionsBefore + 2);
       assert.equal(sqlTokens.length, queriesBefore + 2);
     }
-    assert.equal(sessions, sessionBase + 8);
+    assert.equal(sessions, sessionBase + 6);
     failureMode = "login-expired";
     assert.equal((await query()).error?.code, "GEA_HTTP_401");
     assert.equal((await app.rpc("status")).value.authenticated, false);
