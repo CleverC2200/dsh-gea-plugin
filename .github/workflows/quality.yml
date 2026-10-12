@@ -1,6 +1,21 @@
 name: candidate-quality
+run-name: "${{ github.event_name == 'workflow_dispatch' && 'Joint frozen three-repository quality' || 'Source event quality' }} — ${{ github.sha }}"
 
 on:
+  workflow_dispatch:
+    inputs:
+      gea_sha:
+        description: Frozen GEA commit
+        required: true
+        type: string
+      workbench_sha:
+        description: Frozen Workbench commit
+        required: true
+        type: string
+      manage_sha:
+        description: Frozen Manage commit
+        required: true
+        type: string
   push:
     branches: [main, codex/quality-ci-maintenance-20261010]
   pull_request:
@@ -10,14 +25,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: candidate-quality-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: candidate-quality-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   candidate-scope:
     runs-on: ubuntu-latest
     outputs:
       cores: ${{ steps.cores.outputs.cores }}
+      gea-sha: ${{ steps.group.outputs.gea-sha }}
+      workbench-sha: ${{ steps.group.outputs.workbench-sha }}
+      manage-sha: ${{ steps.group.outputs.manage-sha }}
+      group-id: ${{ steps.group.outputs.group-id }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -31,6 +50,27 @@ jobs:
         env:
           QUALITY_SCOPE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: node scripts/run-quality-ci.mjs --phase scope
+      - name: Validate the frozen dispatch group
+        if: github.event_name == 'workflow_dispatch'
+        id: group
+        env:
+          GEA_SHA: ${{ inputs.gea_sha }}
+          WORKBENCH_SHA: ${{ inputs.workbench_sha }}
+          MANAGE_SHA: ${{ inputs.manage_sha }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          const { GEA_SHA, WORKBENCH_SHA, MANAGE_SHA, EXPECTED_SHA } = process.env;
+          if (![GEA_SHA, WORKBENCH_SHA, MANAGE_SHA].every(sha => sha?.length === 40 && /^[a-f0-9]{40}$/.test(sha)))
+            throw Error('CANDIDATE_GROUP_INVALID: require three full lowercase commit SHAs');
+          if (GEA_SHA !== EXPECTED_SHA)
+            throw Error('CANDIDATE_EVENT_MISMATCH: dispatch GEA commit must match the event');
+          const group = [['dsh-agent-manage', MANAGE_SHA], ['dsh-agent-workbench', WORKBENCH_SHA], ['dsh-gea-plugin', GEA_SHA]];
+          const groupId = createHash('sha256').update(JSON.stringify(group)).digest('hex');
+          appendFileSync(process.env.GITHUB_OUTPUT, `gea-sha=${GEA_SHA}\nworkbench-sha=${WORKBENCH_SHA}\nmanage-sha=${MANAGE_SHA}\ngroup-id=${groupId}\n`);
+          NODE
       - name: Read the registered official baselines
         id: cores
         run: node --input-type=module -e 'import fs from "node:fs"; import {supportedCores} from "./scripts/supported-cores.mjs"; fs.appendFileSync(process.env.GITHUB_OUTPUT, "cores=" + JSON.stringify(supportedCores.map(core => core.head)) + "\n")'
@@ -66,7 +106,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: CleverC2200/dsh-agent-manage
-          ref: cdd2d6520a7790ca1a1c658d1fa71e07c651cd3f
+          ref: ${{ needs.candidate-scope.outputs.manage-sha || 'cdd2d6520a7790ca1a1c658d1fa71e07c651cd3f' }}
           fetch-depth: 0
           path: candidate/dsh-agent-manage
           token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
@@ -74,19 +114,46 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: CleverC2200/dsh-agent-workbench
-          ref: c5a5bc64fade154bf5b468f0d848974ac308823a
+          ref: ${{ needs.candidate-scope.outputs.workbench-sha || 'c5a5bc64fade154bf5b468f0d848974ac308823a' }}
           fetch-depth: 0
           path: source/dsh-agent-workbench
           token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: ${{ matrix.core }}
+          fetch-depth: 0
+          path: source/official-core
           persist-credentials: false
       - name: Enable declared package managers
         run: |
           npm install --global npm@11.11.0
           corepack enable
       - name: Bind actual event and frozen peers
+        if: github.event_name != 'workflow_dispatch'
         run: node scripts/run-quality-ci.mjs --phase input --root "${{ github.workspace }}" --sha "${{ env.QUALITY_EXPECTED_SHA }}" --core-head "${{ matrix.core }}"
       - name: Prepare independent SDK and run public quality gates
+        if: github.event_name != 'workflow_dispatch'
         run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source https://github.com/deepseek-ai/deepseek-harness.git --prepare-inputs --core-head "${{ matrix.core }}"
+
+      - name: Bind the frozen dispatch group
+        if: github.event_name == 'workflow_dispatch'
+        id: group
+        env:
+          QUALITY_GROUP_GEA: ${{ needs.candidate-scope.outputs.gea-sha }}
+          QUALITY_GROUP_WORKBENCH: ${{ needs.candidate-scope.outputs.workbench-sha }}
+          QUALITY_GROUP_MANAGE: ${{ needs.candidate-scope.outputs.manage-sha }}
+          QUALITY_GROUP_ID: ${{ needs.candidate-scope.outputs.group-id }}
+          CORE_HEAD: ${{ matrix.core }}
+        run: node "$GITHUB_WORKSPACE/source/dsh-agent-workbench/scripts/write-hosted-group.mjs" --repo dsh-gea-plugin --root "$GITHUB_WORKSPACE" --core-head "$CORE_HEAD" --workbench-source
+      - name: Prepare independent SDK and run frozen group quality gates
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CORE_HEAD: ${{ matrix.core }}
+          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench"
 
       - name: Keep independent quality results including failure
         if: always()
@@ -95,6 +162,7 @@ jobs:
           name: quality-results-${{ matrix.core }}
           path: |
             candidate-input.json
+            candidate-group.json
             quality-checks.json
             candidate/dsh-gea-plugin/.runtime/quality-fast.json
           if-no-files-found: warn
