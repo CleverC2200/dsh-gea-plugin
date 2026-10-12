@@ -46,6 +46,7 @@ globalThis.fixtureBrowser = {
           async newPage() {
             return {
               on() {},
+              clock: { async setFixedTime() {} },
               async goto() {
                 throw earlyFailure;
               },
@@ -150,8 +151,7 @@ try {
   for (const hook of hooks) await hook();
 }
 receipt.parentRestored = fakeKeys.every((key) => process.env[key] === parentBefore[key]);
-receipt.config =
-  configurationWritten
-    ? JSON.parse(await readFile(resolve(directory, "deployment.json"), "utf8"))
-    : undefined;
+receipt.config = configurationWritten
+  ? JSON.parse(await readFile(resolve(directory, "deployment.json"), "utf8"))
+  : undefined;
 console.log(JSON.stringify(receipt));
