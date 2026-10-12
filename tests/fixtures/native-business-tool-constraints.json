@@ -876,9 +876,9 @@
               "status": {
                 "type": "integer"
               },
-                "offset": {
-                  "type": "integer"
-                },
+              "offset": {
+                "type": "integer"
+              },
               "pageNo": {
                 "type": "integer"
               },
