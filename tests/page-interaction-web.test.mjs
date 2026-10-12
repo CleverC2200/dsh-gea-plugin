@@ -6,7 +6,13 @@ import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { modelProfile as profile } from "./fixtures/model-profile.mjs";
-import { prepareWorkbenchHtmlRoots } from "./fixtures/business-page.mjs";
+import {
+  openReadySalesPlan,
+  openWorkbenchPage,
+  htmlFrameElement,
+  prepareWorkbenchHtmlRoots,
+} from "./fixtures/business-page.mjs";
+import { waitForNativeOwner } from "./fixtures/native-page.mjs";
 
 async function enableSelection(page) {
   const button = page.locator("[data-page-selection-trigger]");
@@ -182,7 +188,7 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    const frame = page.frameLocator("iframe[data-gea-workbench]");
+    const frame = await openReadySalesPlan(page);
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     const target = frame.getByTestId("regional-approval-month-plan-p");
     await expect(target).toBeVisible();
@@ -406,15 +412,30 @@ test(
     page.on("console", (m) => {
       if (/violates.*Content Security Policy/i.test(m.text())) errors.push(m.text());
     });
+    const openedSessions = [];
+    page.on("response", async (response) => {
+      if (!response.url().endsWith("/api/agent-workbench/page") || !response.ok()) return;
+      const request = response.request().postDataJSON();
+      if (request?.operation !== "open" || request.pageId !== "inventory-fc") return;
+      const opened = await response.json();
+      openedSessions.push({ sessionId: request.sessionId, owner: opened.owner });
+    });
     await page.goto(app.origin);
     await page
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    if (!(await page.getByText("分仓库存", { exact: true }).isVisible()))
-      await page.getByText("库存管理", { exact: true }).click();
-    await page.getByText("分仓库存", { exact: true }).click();
-    const iframe = page.locator('iframe[src*="/api/gea-html/inventory-fc/html"]');
+    const ownerReady = waitForNativeOwner(page, "inventory-fc", "gea-html-inventory-fc");
+    await openWorkbenchPage(page, "分仓库存");
+    await ownerReady;
+    await expect.poll(() => openedSessions.at(-1)?.owner).toEqual(expect.any(String));
+    const selected = await app.remote("session/selectModel", {
+      sessionId: openedSessions.at(-1).sessionId,
+      provider: "gea-analysis",
+      model: "fixture-model",
+    });
+    assert.equal(selected.ok, true, JSON.stringify(selected));
+    const iframe = htmlFrameElement(page, "inventory-fc");
     await expect(iframe)
       .toHaveAttribute("sandbox", "allow-scripts allow-downloads")
       .catch(async (e) => {

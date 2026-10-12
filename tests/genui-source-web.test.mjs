@@ -4,6 +4,11 @@ import { mkdir, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { modelProfile as profile } from "./fixtures/model-profile.mjs";
+import { salesPlanFrameElement } from "./fixtures/business-page.mjs";
+
+const upstreams = JSON.parse(
+  await readFile(new URL("../scripts/quality-upstreams.json", import.meta.url), "utf8"),
+);
 
 test(
   "source GenUI renders a persisted model reply and restores local input after refresh",
@@ -59,10 +64,7 @@ test(
     const provenance = JSON.parse(
       await readFile(join(app.runtime, "company-plugins.json"), "utf8"),
     );
-    assert.equal(
-      provenance["@changfenhuang/dsh-genui"].commit,
-      "382db5575ad3068efeff0322eec9cc499f79ae01",
-    );
+    assert.equal(provenance["@changfenhuang/dsh-genui"].commit, upstreams.genui.head);
     const modules = join(app.runtime, "home/profiles/plugin-split-validation/node_modules");
     assert.equal(
       await realpath(join(modules, "@changfenhuang/dsh-genui/node_modules/@deepseek-ai/cordis")),
@@ -106,7 +108,7 @@ test(
       .click();
     const composer = page.locator('[contenteditable="true"], textarea').first();
     await opening.promise;
-    await expect(page.locator("iframe[data-gea-workbench]")).toBeVisible();
+    await expect(salesPlanFrameElement(page)).toBeVisible();
     await expect(composer).toBeHidden();
     releaseOpening.resolve();
     await expect(composer).toBeVisible();

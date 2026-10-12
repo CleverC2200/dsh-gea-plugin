@@ -69,7 +69,7 @@ test(
       };
     });
     await app.login();
-    await selectBusinessResource(app, "gea-html-inventory-fc");
+    const selected = await selectBusinessResource(app, "gea-html-inventory-fc");
     const created = await app.remote("session/create", {
       cwd: app.runtime + "/workspace",
       agentPreset: selected.preset,

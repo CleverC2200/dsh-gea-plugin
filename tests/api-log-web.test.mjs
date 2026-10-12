@@ -34,6 +34,14 @@ test(
     await page.goto(app.origin);
     const frame = await openSalesPlan(page);
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
+    const before = await page.locator("[data-rightbar-col]").evaluate((column) => {
+      const frame = column.parentElement;
+      return {
+        sidebar: Number.parseFloat(getComputedStyle(frame).gridTemplateColumns),
+        sidebarCollapsed: frame.getAttribute("data-sidebar-collapsed"),
+      };
+    });
+    assert.deepEqual(before, { sidebar: 280, sidebarCollapsed: null });
     await page.locator('button[aria-label="账户菜单"]').evaluate((element) => element.click());
     await page.getByRole("menuitem", { name: "设置", exact: true }).click({ force: true });
     const settings = page.getByRole("dialog", { name: "设置", exact: true });
@@ -41,6 +49,23 @@ test(
     await openWorkbenchPage(page, "接口日志");
     await page.getByRole("heading", { name: "接口日志中心", exact: true }).waitFor();
     await expect(settings).toHaveCount(0);
+    const layout = await page.locator(".gea-api-log-center").evaluate((center) => {
+      const frame = center.closest("[data-rightbar-collapsed]");
+      if (!frame) throw Error("Current Core frame must expose its rightbar state");
+      const columns = getComputedStyle(frame)
+        .gridTemplateColumns.split(/\s+/)
+        .map(Number.parseFloat);
+      const frameBox = frame.getBoundingClientRect(),
+        centerBox = center.getBoundingClientRect();
+      return {
+        columns,
+        sidebarCollapsed: frame.getAttribute("data-sidebar-collapsed"),
+        rightbarCollapsed: frame.getAttribute("data-rightbar-collapsed"),
+        frame: { left: frameBox.left, right: frameBox.right, width: frameBox.width },
+        center: { left: centerBox.left, right: centerBox.right, width: centerBox.width },
+      };
+    });
+    assert.equal(layout.columns.length, 3, JSON.stringify(layout));
     // 公共 main 面板保留 Core 默认导航栏，不隐藏宿主框架。
     assert.deepEqual(
       await page
