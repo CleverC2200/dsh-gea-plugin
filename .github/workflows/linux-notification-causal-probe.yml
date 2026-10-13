@@ -1,0 +1,248 @@
+name: linux-notification-causal-probe
+run-name: "Notification real Session timing intervention / ${{ github.ref_name }} / ${{ github.sha }}"
+
+on:
+  push:
+    branches:
+      - codex/test-quality-linux-probe-before-20261013
+      - codex/test-quality-linux-probe-current-20261013
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-notification-causal-probe-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  candidate-scope:
+    runs-on: ubuntu-latest
+    outputs:
+      gea-sha: ${{ steps.group.outputs.gea-sha }}
+      workbench-sha: ${{ steps.group.outputs.workbench-sha }}
+      manage-sha: ${{ steps.group.outputs.manage-sha }}
+      group-id: ${{ steps.group.outputs.group-id }}
+      source-kind: ${{ steps.group.outputs.source-kind }}
+      baseline-id: ${{ steps.group.outputs.baseline-id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Require supported same-repository event
+        env:
+          QUALITY_SCOPE_ALLOWED: ${{ github.event_name == 'push' }}
+        run: node scripts/run-quality-ci.mjs --phase scope
+      - name: Resolve immutable Workbench reader source
+        id: reader
+        env:
+          QUALITY_OWN_REPO: dsh-gea-plugin
+          QUALITY_SCOPE_ALLOWED: ${{ github.event_name == 'push' }}
+          QUALITY_EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const own = process.env.QUALITY_OWN_REPO;
+          const fullSha = value => typeof value === 'string' && value.length === 40 && /^[a-f0-9]{40}$/.test(value);
+          if (!['dsh-agent-manage', 'dsh-gea-plugin'].includes(own) || process.env.GITHUB_REPOSITORY !== `CleverC2200/${own}` || process.env.QUALITY_SCOPE_ALLOWED !== 'true')
+            throw Error('CANDIDATE_SCOPE_REQUIRED: registered own event');
+          const actual = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+          if (!fullSha(process.env.QUALITY_EXPECTED_SHA) || actual !== process.env.QUALITY_EXPECTED_SHA)
+            throw Error('CANDIDATE_EVENT_MISMATCH: actual own event');
+          let head;
+          if (process.env.GITHUB_EVENT_NAME === 'push') {
+            const file = 'scripts/quality-peer-baseline.json';
+            const bytes = readFileSync(file);
+            if (!bytes.equals(execFileSync('git', ['show', `HEAD:${file}`])))
+              throw Error('CANDIDATE_BASELINE_REQUIRED: committed original bytes');
+            const baseline = JSON.parse(bytes);
+            const entries = baseline.repositories?.filter(entry => entry.repo === 'dsh-agent-workbench');
+            if (baseline.schemaVersion !== 1 || entries?.length !== 1)
+              throw Error('CANDIDATE_BASELINE_REQUIRED: unique frozen Workbench source');
+            head = entries[0].head;
+          } else throw Error('CANDIDATE_SCOPE_REQUIRED: supported source event');
+          if (!fullSha(head)) throw Error('CANDIDATE_BASELINE_REQUIRED: immutable Workbench full commit');
+          appendFileSync(process.env.GITHUB_OUTPUT, `workbench-sha=${head}\n`);
+          NODE
+      - name: Require explicit peer contents-read credential
+        env:
+          PEER_READ_TOKEN: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+        run: |
+          node -e "if (!process.env.PEER_READ_TOKEN) throw Error('CANDIDATE_PEER_REQUIRED: configure peer contents-read token')"
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: ${{ steps.reader.outputs.workbench-sha }}
+          path: scope-peer/dsh-agent-workbench
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - name: Bind frozen peer source and actual own event through the public reader
+        id: group
+        env:
+          QUALITY_SCOPE_ALLOWED: ${{ github.event_name == 'push' }}
+          QUALITY_EXPECTED_SHA: ${{ github.sha }}
+        run: node "$GITHUB_WORKSPACE/scope-peer/dsh-agent-workbench/scripts/read-hosted-peer-input.mjs" --repo dsh-gea-plugin
+
+  probe:
+    needs: candidate-scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CORE_HEAD: 5badb15009ae1756c3afe0ae0cef1faafc290ccc
+      QUALITY_EXPECTED_SHA: ${{ github.sha }}
+      QUALITY_CANDIDATE: ${{ github.workspace }}/candidate-input.json
+    defaults:
+      run:
+        working-directory: candidate/dsh-gea-plugin
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          path: candidate/dsh-gea-plugin
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Require explicit peer contents-read credential
+        env:
+          PEER_READ_TOKEN: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+        run: |
+          node -e "if (!process.env.PEER_READ_TOKEN) throw Error('CANDIDATE_PEER_REQUIRED: configure peer contents-read token')"
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: ${{ needs.candidate-scope.outputs.manage-sha }}
+          fetch-depth: 0
+          path: candidate/dsh-agent-manage
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: ${{ needs.candidate-scope.outputs.workbench-sha }}
+          fetch-depth: 0
+          path: source/dsh-agent-workbench
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: ${{ env.CORE_HEAD }}
+          fetch-depth: 0
+          path: source/official-core
+          persist-credentials: false
+      - name: Enable declared package managers
+        run: |
+          npm install --global npm@11.11.0
+          corepack enable
+      - name: Bind frozen peer source and actual own event
+        id: group
+        env:
+          QUALITY_GROUP_GEA: ${{ needs.candidate-scope.outputs.gea-sha }}
+          QUALITY_GROUP_WORKBENCH: ${{ needs.candidate-scope.outputs.workbench-sha }}
+          QUALITY_GROUP_MANAGE: ${{ needs.candidate-scope.outputs.manage-sha }}
+          QUALITY_GROUP_ID: ${{ needs.candidate-scope.outputs.group-id }}
+          QUALITY_SOURCE_KIND: ${{ needs.candidate-scope.outputs.source-kind }}
+          QUALITY_BASELINE_ID: ${{ needs.candidate-scope.outputs.baseline-id }}
+          CORE_HEAD: ${{ env.CORE_HEAD }}
+        run: node "$GITHUB_WORKSPACE/source/dsh-agent-workbench/scripts/write-hosted-group.mjs" --repo dsh-gea-plugin --root "$GITHUB_WORKSPACE" --core-head "$CORE_HEAD" --workbench-source
+      - name: Record actual diagnostic and original source revisions
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim();
+          const baselineHead = {
+            'codex/test-quality-linux-probe-before-20261013': 'c01e39501cc5224fe60dc20e94f663e8805f26ca',
+            'codex/test-quality-linux-probe-current-20261013': '7a4100c39a32488debff78c22ef481919ae8d2aa',
+          }[process.env.GITHUB_REF_NAME];
+          if (!baselineHead) throw Error('PROBE_BRANCH_REQUIRED');
+          const originalNotification = execFileSync('git', ['show', `${baselineHead}:tests/notifications.test.mjs`], { encoding: 'utf8' });
+          const diagnosticNotification = readFileSync('tests/notifications.test.mjs', 'utf8');
+          if (diagnosticNotification.replace(/\/\/ \[CI-NOTIFICATION-ORDER\] begin\n[\s\S]*?\/\/ \[CI-NOTIFICATION-ORDER\] end\n/g, '') !== originalNotification)
+            throw Error('NOTIFICATION_ORIGINAL_ASSERTIONS_CHANGED');
+          const ownHead = git(process.cwd(), 'rev-parse', 'HEAD');
+          const sourceTree = git(process.cwd(), 'rev-parse', 'HEAD:src');
+          const originalSourceTree = git(process.cwd(), 'rev-parse', `${baselineHead}:src`);
+          if (ownHead !== process.env.GITHUB_SHA || sourceTree !== originalSourceTree)
+            throw Error('PROBE_SOURCE_CHANGED');
+          writeFileSync(`${process.env.GITHUB_WORKSPACE}/probe-metadata.json`, JSON.stringify({
+            diagnosticHead: ownHead,
+            baselineHead,
+            sourceTree,
+            originalSourceTree,
+            sourceMatchesBase: true,
+            originalAssertionsUnchanged: true,
+            originalNotificationSha256: "bfbdff9b2969b56b3a13d4506f78184676b8e6933287a099a5f4beaf6eb1c408",
+            branch: process.env.GITHUB_REF_NAME,
+            event: process.env.GITHUB_EVENT_NAME,
+            runId: process.env.GITHUB_RUN_ID,
+            runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            platform: process.platform,
+            architecture: process.arch,
+            node: process.versions.node,
+            workbenchHead: git(`${process.env.GITHUB_WORKSPACE}/source/dsh-agent-workbench`, 'rev-parse', 'HEAD'),
+            manageHead: git(`${process.env.GITHUB_WORKSPACE}/candidate/dsh-agent-manage`, 'rev-parse', 'HEAD'),
+            coreHead: git(`${process.env.GITHUB_WORKSPACE}/source/official-core`, 'rev-parse', 'HEAD'),
+            testName: 'notifications original file, four controlled resource timing rounds',
+            runtimeBeforeProbe: 'not-observed',
+            sampleClockOverride: false,
+          }, null, 2) + '\n');
+          NODE
+      - name: Prepare independent SDK and frozen source inputs
+        env:
+          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
+        run: |
+          set -o pipefail
+          node scripts/run-quality-ci.mjs --phase prepare --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" 2>&1 | tee "$GITHUB_WORKSPACE/probe-prepare.log"
+      - name: Run original alpha delta files serially
+        env:
+          GEA_NOTIFICATION_ORDER_RECEIPT: ${{ github.workspace }}/notification-order.jsonl
+          GEA_TEST_SOURCE_CORE: '1'
+          GEA_TEST_SOURCE_INPUTS: ${{ github.workspace }}/profile-source-inputs.json
+          GEA_TEST_CANDIDATE: ${{ github.workspace }}/candidate-input.json
+          GEA_TEST_CANDIDATE_SHA256: ${{ steps.group.outputs.input-sha256 }}
+          GEA_TEST_CANDIDATE_INPUTS: ${{ github.workspace }}/source-window-inputs.json
+          GEA_TEST_LIFECYCLE_RECEIPT: ${{ github.workspace }}/probe-lifecycle.jsonl
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.quality-browser
+        run: |
+          set -o pipefail
+          result=0
+          for round in 1 2 3 4; do
+            echo "[CI-NOTIFICATION-PROBE] original round $round"
+            set +e
+            delay=$(( round == 1 ? 50 : round == 2 ? 100 : round == 3 ? 200 : 300 ))
+            GEA_NOTIFICATION_CLEANUP_DELAY_MS="$delay" node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/notifications.test.mjs 2>&1 | tee "$GITHUB_WORKSPACE/probe-case-$round.log"
+            code=${PIPESTATUS[0]}
+            set -e
+            echo "[CI-NOTIFICATION-PROBE] round $round exit $code"
+            if [ "$code" -ne 0 ]; then result=1; fi
+          done
+          cat $(for round in 1 2 3 4; do echo "$GITHUB_WORKSPACE/probe-case-$round.log"; done) > "$GITHUB_WORKSPACE/probe-case.log"
+          exit "$result"
+      - name: Keep probe receipts including failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-notification-causal-probe-${{ github.sha }}
+          path: |
+            candidate-input.json
+            candidate-group.json
+            profile-source-inputs.json
+            source-window-inputs.json
+            prepared-workbench.json
+            browser-preparation.json
+            probe-metadata.json
+            probe-prepare.log
+            probe-case.log
+            probe-case-*.log
+            notification-order.jsonl
+            probe-lifecycle.jsonl
+          if-no-files-found: warn

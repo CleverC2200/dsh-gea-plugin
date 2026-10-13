@@ -7,6 +7,10 @@ export function notificationOrderProbe() {
   const output = process.env.GEA_NOTIFICATION_ORDER_RECEIPT;
   if (!output) throw Error("NOTIFICATION_ORDER_RECEIPT_REQUIRED");
   const start = performance.now();
+  let releaseHeld;
+  const held = new Promise((resolve) => { releaseHeld = resolve; });
+  const cleanupDelayMs = Number(process.env.GEA_NOTIFICATION_CLEANUP_DELAY_MS);
+  if (![50, 100, 200, 300].includes(cleanupDelayMs)) throw Error("CAUSAL_TIMING_REQUIRED");
   const mark = (stage, extra = {}) => {
     const record = { timestamp: new Date().toISOString(), elapsedMs: performance.now() - start, stage, ...extra };
     appendFileSync(output, JSON.stringify(record) + "\n", { mode: 0o600 });
@@ -14,12 +18,32 @@ export function notificationOrderProbe() {
   };
   return {
     mark,
+    async releasePreparation(index) {
+      if (index !== 1) return;
+      mark("real-resource-release-start", { cleanupDelayMs });
+      releaseHeld();
+      await new Promise((resolve) => setTimeout(resolve, cleanupDelayMs));
+      mark("controlled-cleanup-delay-finished", { cleanupDelayMs });
+    },
     server(req, res, mode) {
       const endpoint = req.url.pathname.endsWith("/notifications") ? "list" : "detail";
       mark("notification-request", { endpoint, method: req.method, mode });
       res.once("finish", () => mark("notification-response", { endpoint, status: res.statusCode, mode }));
     },
     async watch(context, ui) {
+      await context.route("**/api/agent-manage/resources/select", async (route) => {
+        const response = await route.fetch();
+        mark("real-resource-selection-held", { status: response.status() });
+        await held;
+        try {
+          await route.fulfill({ response });
+          mark("real-resource-selection-delivered", { status: response.status() });
+        } catch (reason) {
+          // Requests from prior documents are canceled by the original reloads.
+          mark("held-selection-delivery-canceled", { errorName: reason?.name ?? "unknown" });
+        }
+      });
+
       ui.on("console", (message) => {
         const text = message.text();
         if (!text.startsWith(prefix + " ")) return;
