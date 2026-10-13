@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
+import { observeFcProbe, captureFcFailure } from "./fixtures/ci-fc-probe.mjs";
 import {
   htmlFrameElement,
   openWorkbenchPage,
@@ -68,6 +69,8 @@ test(
       })),
     );
     const page = await context.newPage();
+    const fcProbeEvents = process.env.CI_FC_PROBE === "1" ? observeFcProbe(page) : [];
+    let initialOpenReply;
     const contexts = [],
       contextRequests = [];
     let owner;
@@ -92,7 +95,7 @@ test(
       await openWorkbenchPage(page, "分仓库存");
       const reply = await opened;
       assert.equal(reply.status(), 200);
-      owner = (await reply.json()).owner;
+      owner = (initialOpenReply = await reply.json()).owner;
       assert.match(owner, /^[0-9a-f-]{36}$/);
       contexts.push(
         ...contextRequests
@@ -126,6 +129,13 @@ test(
         assert.doesNotMatch(value.visibleText, /当前库存[\d,]+件/);
       }
     } catch (error) {
+      if (process.env.CI_FC_PROBE === "1") {
+        try {
+          await captureFcFailure({ app, page, state, events: fcProbeEvents, initialOpenReply, contexts, failure: error });
+        } catch (probeError) {
+          console.log("[CI-FC-PROBE] observation unavailable: " + probeError.name);
+        }
+      }
       await mkdir(".runtime/branch-stock-evidence", { recursive: true });
       await writeFile(
         ".runtime/branch-stock-evidence/retained-text-debug.json",
