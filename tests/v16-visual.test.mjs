@@ -4,7 +4,7 @@ import { chromium, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { profile } from "./profile.mjs";
 import { fixtureEnvironment } from "./fixtures/business-session.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { openReadySalesPlan } from "./fixtures/business-page.mjs";
 
 test(
   "V1.6 visual: compact header, stable progress, inline SKU, drawer and persistent private drafts",
@@ -209,7 +209,7 @@ test(
         animations: "disabled",
       });
     };
-    const frame = await openSalesPlan(page);
+    const frame = await openReadySalesPlan(page);
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     await expect(frame.getByText("待我审批 1 条", { exact: true })).toHaveCount(0);
     await expect(frame.getByText("审批核对队列", { exact: true })).toHaveCount(0);
