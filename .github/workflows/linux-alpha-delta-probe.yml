@@ -185,7 +185,7 @@ jobs:
             workbenchHead: git(`${process.env.GITHUB_WORKSPACE}/source/dsh-agent-workbench`, 'rev-parse', 'HEAD'),
             manageHead: git(`${process.env.GITHUB_WORKSPACE}/candidate/dsh-agent-manage`, 'rev-parse', 'HEAD'),
             coreHead: git(`${process.env.GITHUB_WORKSPACE}/source/official-core`, 'rev-parse', 'HEAD'),
-            testName: 'authorized-cube-loop + notifications + receipt originals',
+            testName: 'notifications original file, three bounded rounds',
             runtimeBeforeProbe: 'not-observed',
             sampleClockOverride: false,
           }, null, 2) + '\n');
@@ -207,7 +207,18 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.quality-browser
         run: |
           set -o pipefail
-          node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/authorized-cube-loop.test.mjs tests/notifications.test.mjs tests/receipt.test.mjs 2>&1 | tee "$GITHUB_WORKSPACE/probe-case.log"
+          result=0
+          for round in 1 2 3; do
+            echo "[CI-NOTIFICATION-PROBE] original round $round"
+            set +e
+            node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/notifications.test.mjs 2>&1 | tee "$GITHUB_WORKSPACE/probe-case-$round.log"
+            code=${PIPESTATUS[0]}
+            set -e
+            echo "[CI-NOTIFICATION-PROBE] round $round exit $code"
+            if [ "$code" -ne 0 ]; then result=1; fi
+          done
+          cat "$GITHUB_WORKSPACE"/probe-case-{1,2,3}.log > "$GITHUB_WORKSPACE/probe-case.log"
+          exit "$result"
       - name: Keep probe receipts including failure
         if: always()
         uses: actions/upload-artifact@v7
@@ -223,5 +234,8 @@ jobs:
             probe-metadata.json
             probe-prepare.log
             probe-case.log
+            probe-case-1.log
+            probe-case-2.log
+            probe-case-3.log
             probe-lifecycle.jsonl
           if-no-files-found: warn
