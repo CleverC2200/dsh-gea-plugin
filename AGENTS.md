@@ -11,3 +11,5 @@
 只在本任务隔离 checkout 与自有输出工作。正式 GitLab、OSS、npm、频道、原同名仓和正式客户端保持保护；旧文档中的发行步骤不覆盖此边界。业务 Prompt/Skill、运行时字符串、schema、法律来源、用户 Session、草稿及原失败证据保持原归属。
 
 修改异步工具结果、证据持久化或回读时，读 [执行链](docs/execution-logic.md) 的执行归属合同与 [本地检查](docs/local-development.md)。迟到结果只归原执行；身份、轮次或资源变化后，保持原数据与失败证据，按当前归属决定能否发布。
+
+CI Core 的阻断与兼容范围由 `scripts/ci-core-policy.json` 维护；调整门禁或核验合并条件时读 [CI Core 策略](docs/ci-core-policy.md)。

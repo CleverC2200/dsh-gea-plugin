@@ -110,7 +110,7 @@ jobs:
         run: node "$GITHUB_WORKSPACE/scope-peer/dsh-agent-workbench/scripts/read-hosted-peer-input.mjs" --repo dsh-gea-plugin
       - name: Read the registered official baselines
         id: cores
-        run: node --input-type=module -e 'import fs from "node:fs"; import {supportedCores} from "./scripts/supported-cores.mjs"; fs.appendFileSync(process.env.GITHUB_OUTPUT, "cores=" + JSON.stringify(supportedCores.filter(core => !core.id).map(core => core.head)) + "\n")'
+        run: node --input-type=module -e 'import fs from "node:fs"; import {ciCores} from "./scripts/ci-core-policy.mjs"; fs.appendFileSync(process.env.GITHUB_OUTPUT, "cores=" + JSON.stringify(ciCores("required").map(core => core.head)) + "\n")'
 
   gates:
     needs: candidate-scope

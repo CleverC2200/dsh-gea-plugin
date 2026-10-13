@@ -63,7 +63,12 @@ test("the workflow binds full source history and the same public quality command
   assert.match(workflow, /run: node scripts\/run-quality-ci.mjs --phase final/);
   assert.match(workflow, /PLUGIN_SPLIT_READ_TOKEN/);
   assert.match(workflow, /npm install --global npm@11\.11\.0/);
-  assert.match(workflow, /supportedCores\.filter\(core => !core\.id\)\.map\(core => core\.head\)/);
+  assert.match(workflow, /ciCores\(["']required["']\)\.map\(core => core\.head\)/);
+  assert.doesNotMatch(workflow, /ciCores\(["']compatibility["']\)/);
+  const compatibility = readFileSync(".github/workflows/compatibility.yml", "utf8");
+  assert.match(compatibility, /^name: candidate-compatibility$/m);
+  assert.match(compatibility, /ciCores\(["']compatibility["']\)\.map\(core => core\.head\)/);
+  assert.doesNotMatch(compatibility, /^ {2}(push|pull_request):/m);
   assert.match(workflow, /fromJSON\(needs\.candidate-scope\.outputs\.cores\)/);
   assert.match(workflow, /CORE_HEAD: \$\{\{ matrix\.core \}\}/);
   assert.match(workflow, /--core-head "\$CORE_HEAD"/);
