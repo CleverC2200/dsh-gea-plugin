@@ -325,6 +325,30 @@ test("catalog shows only the current authorization snapshot and never revives ol
   assert.equal(inspect, 1);
 });
 
+test("Cube-New catalog calls the separate inspection tool and filters metadata by the current resource grant", async (t) => {
+  const f = fixture(t);
+  const calls = [];
+  const module = {
+    tools: () => [{ name: "inspect_cube_model" }, { name: "query_business_data" }],
+    authorizedResources: async () => snapshot(["inv"]),
+    call: async (name, args) => {
+      calls.push({ name, args });
+      return JSON.stringify({
+        action: "inspect",
+        semanticModel: [
+          { name: "inv", measures: [{ name: "inv.row_count" }] },
+          { name: "hidden", measures: [{ name: "hidden.row_count" }] },
+        ],
+      });
+    },
+  };
+  t.mock.method(f.business, "moduleMcp", async () => module);
+  const catalog = await f.call("gea_gateway_catalog", {});
+  assert.match(catalog, /inv/);
+  assert.doesNotMatch(catalog, /hidden/);
+  assert.deepEqual(calls, [{ name: "inspect_cube_model", args: { limit: 50 } }]);
+});
+
 test("cancellation stops subsequent model groups", async (t) => {
   const f = fixture(t),
     controller = new AbortController();

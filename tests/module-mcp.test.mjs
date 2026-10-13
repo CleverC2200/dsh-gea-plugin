@@ -14,8 +14,7 @@ const { outputFiles } = await build({
   format: "esm",
 });
 const m = await import(
-  "data:text/javascript;base64," +
-    Buffer.from(outputFiles[0].contents).toString("base64")
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 
 const json = (value, headers = {}) =>
@@ -62,7 +61,11 @@ test("会话按 initialize → tools/list 建立，工具清单可读", async ()
         },
       });
     if (body.method === "tools/call")
-      return json({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: "郑州: 852" }] } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { content: [{ type: "text", text: "郑州: 852" }] },
+      });
     throw new Error("unexpected method " + body.method);
   });
   const module = await m.openModuleMcp(transport, new AbortController().signal);
@@ -81,16 +84,17 @@ test("会话按 initialize → tools/list 建立，工具清单可读", async ()
   // 每个请求都要带协议版本头：线上实测网关只在缺它的时候把 tools/list 判 400
   // （initialize 带了、tools/list 没带 → 会话建得起来、工具列不出来）。
   for (const item of seen)
-    assert.ok(
-      item.headers["MCP-Protocol-Version"],
-      `${item.method} 缺少 MCP-Protocol-Version 头`,
-    );
+    assert.ok(item.headers["MCP-Protocol-Version"], `${item.method} 缺少 MCP-Protocol-Version 头`);
 });
 
 test("明确标记为写入或破坏性的 MCP 工具不会进入只读清单", async () => {
   const { transport } = fakeTransport((body) => {
     if (body.method === "initialize")
-      return json({ jsonrpc: "2.0", id: body.id, result: {} });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
     if (body.method === "notifications/initialized") return new Response("", { status: 202 });
     if (body.method === "tools/list")
       return json({
@@ -98,22 +102,41 @@ test("明确标记为写入或破坏性的 MCP 工具不会进入只读清单", 
         id: body.id,
         result: {
           tools: [
-            { name: "safe_read", inputSchema: { properties: {} }, annotations: { readOnlyHint: true } },
-            { name: "write_plan", inputSchema: { properties: {} }, annotations: { readOnlyHint: false } },
-            { name: "delete_plan", inputSchema: { properties: {} }, annotations: { destructiveHint: true } },
+            {
+              name: "safe_read",
+              inputSchema: { properties: {} },
+              annotations: { readOnlyHint: true },
+            },
+            {
+              name: "write_plan",
+              inputSchema: { properties: {} },
+              annotations: { readOnlyHint: false },
+            },
+            {
+              name: "delete_plan",
+              inputSchema: { properties: {} },
+              annotations: { destructiveHint: true },
+            },
           ],
         },
       });
     throw new Error("unexpected method " + body.method);
   });
   const module = await m.openModuleMcp(transport, new AbortController().signal);
-  assert.deepEqual(module.tools().map((tool) => tool.name), ["safe_read"]);
+  assert.deepEqual(
+    module.tools().map((tool) => tool.name),
+    ["safe_read"],
+  );
 });
 
 test("SSE 响应与业务错误都能读出来", async () => {
   const { transport } = fakeTransport((body) => {
     if (body.method === "initialize")
-      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
     if (body.method === "notifications/initialized") return new Response("", { status: 202 });
     if (body.method === "tools/list")
       return new Response(
@@ -143,13 +166,19 @@ test("协议版本协商失败时给出可读错误，不静默成功", async ()
 test("resource_link 结果由宿主读回内联，模型不必自己读资源", async () => {
   const { seen, transport } = fakeTransport((body) => {
     if (body.method === "initialize")
-      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
     if (body.method === "notifications/initialized") return new Response("", { status: 202 });
     if (body.method === "tools/list")
       return json({
         jsonrpc: "2.0",
         id: body.id,
-        result: { tools: [{ name: "query_business_data", inputSchema: { properties: { action: {} } } }] },
+        result: {
+          tools: [{ name: "query_business_data", inputSchema: { properties: { action: {} } } }],
+        },
       });
     if (body.method === "tools/call")
       return json({
@@ -163,7 +192,10 @@ test("resource_link 结果由宿主读回内联，模型不必自己读资源", 
               name: "query_business_data-result",
               mimeType: "application/json",
               uri: "data-artifact://gateway/de861c7a",
-              _meta: { oss_url: "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/gea/data-artifacts/x.json" },
+              _meta: {
+                oss_url:
+                  "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/gea/data-artifacts/x.json",
+              },
             },
           ],
         },
@@ -172,12 +204,24 @@ test("resource_link 结果由宿主读回内联，模型不必自己读资源", 
       return json({
         jsonrpc: "2.0",
         id: body.id,
-        result: { contents: [{ uri: body.params.uri, mimeType: "application/json", text: '{"rows":[{"d":"2026-09-23"}]}' }] },
+        result: {
+          contents: [
+            {
+              uri: body.params.uri,
+              mimeType: "application/json",
+              text: '{"rows":[{"d":"2026-09-23"}]}',
+            },
+          ],
+        },
       });
     throw new Error("unexpected method " + body.method);
   });
   const module = await m.openModuleMcp(transport, new AbortController().signal);
-  const value = await module.call("query_business_data", { action: "query" }, new AbortController().signal);
+  const value = await module.call(
+    "query_business_data",
+    { action: "query" },
+    new AbortController().signal,
+  );
   // 正文直接内联，模型不用再调平台的读资源工具（它会猜错 server）。
   assert.match(value, /结果内容 data-artifact:\/\/gateway\/de861c7a/);
   assert.match(value, /2026-09-23/);
@@ -202,15 +246,26 @@ test("大结果只内联一段，并说清还有多少、下一段怎么读（�
   const uri = "data-artifact://gateway/big-result";
   const { seen, transport } = fakeTransport((body) => {
     if (body.method === "initialize")
-      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
     if (body.method === "notifications/initialized") return new Response("", { status: 202 });
     if (body.method === "tools/list")
-      return json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] },
+      });
     if (body.method === "tools/call")
       return json({
         jsonrpc: "2.0",
         id: body.id,
-        result: { isError: false, content: [{ type: "resource_link", uri, mimeType: "application/json" }] },
+        result: {
+          isError: false,
+          content: [{ type: "resource_link", uri, mimeType: "application/json" }],
+        },
       });
     if (body.method === "resources/read")
       return json({
@@ -221,7 +276,11 @@ test("大结果只内联一段，并说清还有多少、下一段怎么读（�
     throw new Error("unexpected method " + body.method);
   });
   const module = await m.openModuleMcp(transport, new AbortController().signal);
-  const value = await module.call("query_business_data", { action: "query" }, new AbortController().signal);
+  const value = await module.call(
+    "query_business_data",
+    { action: "query" },
+    new AbortController().signal,
+  );
   assert.ok(value.length <= 20_000, "单次结果不能超上限：" + value.length);
   assert.match(value, /只内联了前 \d+ 字符/);
   assert.match(value, new RegExp(`全文 ${big.length} 字符`));
@@ -246,29 +305,47 @@ test("一次返回多个制品时，没内联的那些要把 URI 报出来（别
   const links = ["a", "b", "c"].map((id) => `data-artifact://gateway/${id}`);
   const { transport } = fakeTransport((body) => {
     if (body.method === "initialize")
-      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
     if (body.method === "notifications/initialized") return new Response("", { status: 202 });
     if (body.method === "tools/list")
-      return json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] },
+      });
     if (body.method === "tools/call")
       return json({
         jsonrpc: "2.0",
         id: body.id,
         result: {
           isError: false,
-          content: links.map((uri) => ({ type: "resource_link", uri, mimeType: "application/json" })),
+          content: links.map((uri) => ({
+            type: "resource_link",
+            uri,
+            mimeType: "application/json",
+          })),
         },
       });
     if (body.method === "resources/read")
       return json({
         jsonrpc: "2.0",
         id: body.id,
-        result: { contents: [{ uri: body.params.uri, mimeType: "application/json", text: '{"rows":[]}' }] },
+        result: {
+          contents: [{ uri: body.params.uri, mimeType: "application/json", text: '{"rows":[]}' }],
+        },
       });
     throw new Error("unexpected method " + body.method);
   });
   const module = await m.openModuleMcp(transport, new AbortController().signal);
-  const value = await module.call("query_business_data", { action: "query" }, new AbortController().signal);
+  const value = await module.call(
+    "query_business_data",
+    { action: "query" },
+    new AbortController().signal,
+  );
   assert.match(value, /还返回了 1 个制品没有内联/);
   assert.match(value, /data-artifact:\/\/gateway\/c/);
   assert.match(value, /artifact=<URI>/);
@@ -277,20 +354,36 @@ test("一次返回多个制品时，没内联的那些要把 URI 报出来（别
 test("资源读不回来时给可读说明，不让模型拿着链接乱试", async () => {
   const { transport } = fakeTransport((body) => {
     if (body.method === "initialize")
-      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
     if (body.method === "notifications/initialized") return new Response("", { status: 202 });
     if (body.method === "tools/list")
-      return json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] },
+      });
     if (body.method === "tools/call")
       return json({
         jsonrpc: "2.0",
         id: body.id,
         result: { content: [{ type: "resource_link", uri: "data-artifact://gateway/abc" }] },
       });
-    return json({ jsonrpc: "2.0", id: body.id, error: { code: -32601, message: "method not found: resources/read" } });
+    return json({
+      jsonrpc: "2.0",
+      id: body.id,
+      error: { code: -32601, message: "method not found: resources/read" },
+    });
   });
   const module = await m.openModuleMcp(transport, new AbortController().signal);
-  const value = await module.call("query_business_data", { action: "query" }, new AbortController().signal);
+  const value = await module.call(
+    "query_business_data",
+    { action: "query" },
+    new AbortController().signal,
+  );
   assert.match(value, /结果内容读不回来/);
   assert.match(value, /response_mode=inline_complete/);
   // 不能把"去读浏览器 MCP"这类错误留给模型自己撞。
@@ -302,23 +395,43 @@ test("资源读不回来时给可读说明，不让模型拿着链接乱试", as
 function envelopeTransport(payload) {
   return fakeTransport((body) => {
     if (body.method === "initialize")
-      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
     if (body.method === "notifications/initialized") return new Response("", { status: 202 });
     if (body.method === "tools/list")
-      return json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "t", inputSchema: { properties: {} } }] } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { tools: [{ name: "t", inputSchema: { properties: {} } }] },
+      });
     if (body.method === "tools/call")
-      return json({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: JSON.stringify(payload) }] } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { content: [{ type: "text", text: JSON.stringify(payload) }] },
+      });
     throw new Error("unexpected method " + body.method);
   });
 }
 
-test('business Session expiry does not suggest changing Cube members or retrying the old request',async()=>{
-  const {transport}=envelopeTransport({success:false,businessCode:'AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED',code:'AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED',category:'SESSION',retryable:false,requestId:'fixture-request',message:'网关会话已超过最大生命周期'});
-  const module=await m.openModuleMcp(transport,new AbortController().signal);
-  await assert.rejects(module.call('t',{},new AbortController().signal),error=>{
-    assert.match(error.message,/GEA_GATEWAY_SESSION_EXPIRED/);
-    assert.match(error.message,/requestId=fixture-request/);
-    assert.doesNotMatch(error.message,/成员名|measures|改参数/);
+test("business Session expiry does not suggest changing Cube members or retrying the old request", async () => {
+  const { transport } = envelopeTransport({
+    success: false,
+    businessCode: "AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED",
+    code: "AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED",
+    category: "SESSION",
+    retryable: false,
+    requestId: "fixture-request",
+    message: "网关会话已超过最大生命周期",
+  });
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  await assert.rejects(module.call("t", {}, new AbortController().signal), (error) => {
+    assert.match(error.message, /GEA_GATEWAY_SESSION_EXPIRED/);
+    assert.match(error.message, /requestId=fixture-request/);
+    assert.doesNotMatch(error.message, /成员名|measures|改参数/);
     return true;
   });
 });
@@ -373,10 +486,18 @@ test("structuredContent + 对象 text 的校验失败：给字段路径并允许
   };
   const { transport } = fakeTransport((body) => {
     if (body.method === "initialize")
-      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
     if (body.method === "notifications/initialized") return new Response("", { status: 202 });
     if (body.method === "tools/list")
-      return json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] },
+      });
     if (body.method === "tools/call")
       return json({
         jsonrpc: "2.0",
@@ -411,10 +532,18 @@ test("structuredContent + 对象 text 的校验失败：给字段路径并允许
 test("text 是对象但不是失败时：内容不能丢", async () => {
   const { transport } = fakeTransport((body) => {
     if (body.method === "initialize")
-      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
     if (body.method === "notifications/initialized") return new Response("", { status: 202 });
     if (body.method === "tools/list")
-      return json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "t", inputSchema: { properties: {} } }] } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { tools: [{ name: "t", inputSchema: { properties: {} } }] },
+      });
     if (body.method === "tools/call")
       return json({
         jsonrpc: "2.0",
@@ -439,7 +568,8 @@ test("资源未唯一匹配时保留映射诊断，不武断归为参数或授�
     code: "AI_GATEWAY_DATA_PERMISSION_DENIED",
     success: false,
     requestId: "be732058-e66e-4b63-b252-09cf230f8125",
-    message: "Cube 查询成员未唯一匹配数据目录资源；模型须与 dataAssetCode 一致，跨模型查询请分别调用",
+    message:
+      "Cube 查询成员未唯一匹配数据目录资源；模型须与 dataAssetCode 一致，跨模型查询请分别调用",
     category: "AUTHORIZATION",
   });
   const module = await m.openModuleMcp(transport, new AbortController().signal);
@@ -518,7 +648,11 @@ const SCHEMA_TOOLS = [
 function schemaTransport(tools) {
   return fakeTransport((body) => {
     if (body.method === "initialize")
-      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
     if (body.method === "notifications/initialized") return new Response("", { status: 202 });
     if (body.method === "tools/list")
       return json({ jsonrpc: "2.0", id: body.id, result: { tools } });
@@ -585,7 +719,11 @@ function pageArtifact({ datasetName, totalRows, rows, pad = 0 }) {
 function artifactTransport(uri, artifact) {
   return fakeTransport((body) => {
     if (body.method === "initialize")
-      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
     if (body.method === "notifications/initialized") return new Response("", { status: 202 });
     if (body.method === "tools/list")
       return json({
@@ -597,13 +735,18 @@ function artifactTransport(uri, artifact) {
       return json({
         jsonrpc: "2.0",
         id: body.id,
-        result: { isError: false, content: [{ type: "resource_link", uri, mimeType: "application/json" }] },
+        result: {
+          isError: false,
+          content: [{ type: "resource_link", uri, mimeType: "application/json" }],
+        },
       });
     if (body.method === "resources/read")
       return json({
         jsonrpc: "2.0",
         id: body.id,
-        result: { contents: [{ uri: body.params.uri, mimeType: "application/json", text: artifact }] },
+        result: {
+          contents: [{ uri: body.params.uri, mimeType: "application/json", text: artifact }],
+        },
       });
     throw new Error("unexpected method " + body.method);
   });
@@ -699,10 +842,18 @@ test("限流：HTTP 200 + 业务信封也认，给等待建议而不是让人改
   };
   const { transport } = fakeTransport((body) => {
     if (body.method === "initialize")
-      return json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
     if (body.method === "notifications/initialized") return new Response("", { status: 202 });
     if (body.method === "tools/list")
-      return json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] } });
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { tools: [{ name: "query_business_data", inputSchema: { properties: {} } }] },
+      });
     if (body.method === "tools/call")
       return json({
         jsonrpc: "2.0",
@@ -756,27 +907,109 @@ test("权限失败要保留 details 里的诊断项，说清缺的是哪一项",
   assert.match(value, /配置位置=策略 v7/);
 });
 
-test('host evidence callback receives hydrated content before the model preview is truncated',async()=>{
- const uri='data-artifact://gateway/evidence-large';
- const artifact=pageArtifact({datasetName:'customers',totalRows:1,rows:[{code:'customer-001',detail:'x'.repeat(24000)}]});
- const {seen,transport}=artifactTransport(uri,artifact);
- const module=await m.openModuleMcp(transport,new AbortController().signal);let captured;
- const output=await module.call('query_business_data',{action:'query',queries:[{name:'customers',query:{dimensions:['inv.code'],limit:1}}]},new AbortController().signal,text=>{captured=text;});
- assert.equal(captured,artifact);assert.ok(output.length<artifact.length);assert.match(output,/只内联/);
- assert.equal(seen.filter(x=>x.method==='resources/read').length,1,'evidence does not issue an extra query or page read');
+test("host evidence callback receives hydrated content before the model preview is truncated", async () => {
+  const uri = "data-artifact://gateway/evidence-large";
+  const artifact = pageArtifact({
+    datasetName: "customers",
+    totalRows: 1,
+    rows: [{ code: "customer-001", detail: "x".repeat(24000) }],
+  });
+  const { seen, transport } = artifactTransport(uri, artifact);
+  const module = await m.openModuleMcp(transport, new AbortController().signal);
+  let captured;
+  const output = await module.call(
+    "query_business_data",
+    {
+      action: "query",
+      queries: [{ name: "customers", query: { dimensions: ["inv.code"], limit: 1 } }],
+    },
+    new AbortController().signal,
+    (text) => {
+      captured = text;
+    },
+  );
+  assert.equal(captured, artifact);
+  assert.ok(output.length < artifact.length);
+  assert.match(output, /只内联/);
+  assert.equal(
+    seen.filter((x) => x.method === "resources/read").length,
+    1,
+    "evidence does not issue an extra query or page read",
+  );
 });
 
-test('delivery metadata preserves failed and unhydrated resources beside one successful body', async () => {
-  const links=['data-artifact://gateway/ok','data-artifact://gateway/failed','data-artifact://gateway/skipped'];
-  const {transport}=fakeTransport(body=>{
-    if(body.method==='initialize')return json({jsonrpc:'2.0',id:body.id,result:{}});
-    if(body.method==='notifications/initialized')return new Response('',{status:202});
-    if(body.method==='tools/list')return json({jsonrpc:'2.0',id:body.id,result:{tools:[{name:'read_inventory',inputSchema:{type:'object',properties:{}}}]}});
-    if(body.method==='tools/call')return json({jsonrpc:'2.0',id:body.id,result:{content:links.map(uri=>({type:'resource_link',uri,mimeType:'application/json'}))}});
-    if(body.method==='resources/read')return body.params.uri===links[0]?json({jsonrpc:'2.0',id:body.id,result:{contents:[{uri:links[0],mimeType:'application/json',text:'{"rows":[{"qty":"12.3400"}]}'}]}}):json({jsonrpc:'2.0',id:body.id,error:{code:-32000,message:'fixture resource unavailable'}});
-    throw Error('unexpected '+body.method);
+test("delivery metadata preserves failed and unhydrated resources beside one successful body", async () => {
+  const links = [
+    "data-artifact://gateway/ok",
+    "data-artifact://gateway/failed",
+    "data-artifact://gateway/skipped",
+  ];
+  const { transport } = fakeTransport((body) => {
+    if (body.method === "initialize")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { protocolVersion: body.params.protocolVersion },
+      });
+    if (body.method === "notifications/initialized") return new Response("", { status: 202 });
+    if (body.method === "tools/list")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          tools: [{ name: "read_inventory", inputSchema: { type: "object", properties: {} } }],
+        },
+      });
+    if (body.method === "tools/call")
+      return json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          content: links.map((uri) => ({
+            type: "resource_link",
+            uri,
+            mimeType: "application/json",
+          })),
+        },
+      });
+    if (body.method === "resources/read")
+      return body.params.uri === links[0]
+        ? json({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              contents: [
+                {
+                  uri: links[0],
+                  mimeType: "application/json",
+                  text: '{"rows":[{"qty":"12.3400"}]}',
+                },
+              ],
+            },
+          })
+        : json({
+            jsonrpc: "2.0",
+            id: body.id,
+            error: { code: -32000, message: "fixture resource unavailable" },
+          });
+    throw Error("unexpected " + body.method);
   });
-  const module=await m.openModuleMcp(transport,new AbortController().signal),bodies=[];let delivery;
-  const text=await module.call('read_inventory',{},new AbortController().signal,body=>bodies.push(body),value=>delivery=value);
-  assert.equal(bodies.length,1);assert.equal(delivery.sourceReadComplete,false);assert.deepEqual(delivery.unreadArtifacts.map(x=>x.reason).sort(),['not-inlined','read-failed']);assert.match(text,/读不回来/);assert.match(text,/没有内联/);
+  const module = await m.openModuleMcp(transport, new AbortController().signal),
+    bodies = [];
+  let delivery;
+  const text = await module.call(
+    "read_inventory",
+    {},
+    new AbortController().signal,
+    (body) => bodies.push(body),
+    (value) => (delivery = value),
+  );
+  assert.equal(bodies.length, 1);
+  assert.equal(delivery.sourceReadComplete, false);
+  assert.deepEqual(delivery.unreadArtifacts.map((x) => x.reason).sort(), [
+    "not-inlined",
+    "read-failed",
+  ]);
+  assert.match(text, /读不回来/);
+  assert.match(text, /没有内联/);
 });

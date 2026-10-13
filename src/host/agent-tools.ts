@@ -5,6 +5,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import { defineTool, type ToolRunContext } from "@deepseek-ai/dsh-tools";
 import type { Business } from "./business.ts";
 import { PERMISSION_NOTICE_PREFIX } from "./mcp-client.ts";
+import { cubeInspection } from "./cube-new.ts";
 import {
   noteMemberSamples,
   appendMemberSamples,
@@ -100,14 +101,10 @@ async function loadMemberIndex(
 ): Promise<MemberIndex | undefined> {
   try {
     let full = "";
-    const result = await module.call(
-      "query_business_data",
-      { action: "inspect", queries: [] },
-      signal,
-      (text) => {
-        full = text;
-      },
-    );
+    const inspection = cubeInspection(module.tools());
+    const result = await module.call(inspection.name, inspection.arguments, signal, (text) => {
+      full = text;
+    });
     if (!full) {
       const uri = extractArtifactUri(result);
       full = uri ? await module.artifact(uri, signal) : result;
@@ -883,8 +880,12 @@ export function registerGeaTools(
       toolName === "query_business_data"
         ? normalizeCubeOrderArguments(incomingParameters)
         : incomingParameters;
-    if (toolName === "query_business_data" && parameters.action === "inspect") {
-      const invalid = preflightCubeArguments(parameters);
+    if (
+      toolName === "inspect_cube_model" ||
+      (toolName === "query_business_data" && parameters.action === "inspect")
+    ) {
+      const invalid =
+        toolName === "inspect_cube_model" ? undefined : preflightCubeArguments(parameters);
       if (invalid) throw Error(invalid);
       const snapshot = await module.authorizedResources("query_business_data", exec.signal);
       noteResourceSnapshot(module, snapshot);
@@ -1518,9 +1519,13 @@ export function registerGeaTools(
             if (cached && !args.refresh)
               return delivered(appendMemberSamples(cached, notesFor(scope), args.model));
             let full = "";
+            const inspection = cubeInspection(
+              module.tools(),
+              typeof args.model === "string" ? args.model : undefined,
+            );
             const result = await module.call(
-              "query_business_data",
-              { action: "inspect", queries: [] },
+              inspection.name,
+              inspection.arguments,
               exec.signal,
               (text) => {
                 full = text;

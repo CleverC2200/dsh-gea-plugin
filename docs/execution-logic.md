@@ -24,6 +24,10 @@
 
 独立业务查询不要求先打开页面。页面动作仍只消费当前页面声明；Native 审批与 HTML 只读能力分别按原合同执行。页面的 view 或 draft 回执不等于真实业务保存/审批成功。
 
+Cube-New 的来源由 Host `cubeMcpCodes` 按环境指定。公司默认仅登记测试环境编码 `2109581866385289217`，正式环境沿用原配置。工具发现只接受当前业务 Session 授权列表中该来源的 `inspect_cube_model` 和 `query_business_data`；来源缺席时不借用旧 Cube 的同名工具。说明查询使用独立的 `inspect_cube_model`，查询使用 `action=query` 和 `response_mode=inline_complete`。网关返回的制品由原业务 Session 通过 `resources/read` 读取，并带实际工具来源编码。
+
+Cube-New 制品在发布证据前核对原始 UTF-8 正文摘要、URI、内容类型、具名数据集、行数和分页状态。`complete=true` 仅表示当前页完整；`hasMorePages=true` 仍保留未读范围，`partial`、`no_data`、null、真实零及编码字符串保持原值。MCP 传输 Session 与 GEA 业务 Session 分别管理，不从业务参数或模型提供的元数据读取凭据与路由。接入依据为用户提供的 `Cube-New-MCP-外部调用指南-20261013.md`，该指南的 dev 配置与示例不证明目标服务部署或真实数据验收。
+
 `sqlReadLimit` 限定同一 Host 生命周期内对应 Consumer 的物理请求。分页、续期后的再次请求、失败和发出后的取消计数；发出前取消不计数。零额度在登录或委托前拒绝，只开放声明的一个 Consumer，其他 Consumer 直接拒绝；不能换 Consumer 继续使用额度。页数或行数超限拒绝，不截断成完整结果。销售只读自动请求另沿 Business 的 `readonlyValidation` 合同计数；历史剩余额度不授权新窗口。
 
 业务查询/能力额度耗尽后，仍可在独立的12次读取额度内读取已取得证据，官方 standard 工具仍按原授权可用。证据读取额度耗尽则终止当前业务轮的全部工具：最终模型请求不再提供工具，迟到派发也拒绝；保留已展示证据、未读范围和缺口，直接交付结论与未完成项。下一轮重置额度并重新核对当前授权。声明值、窗口额度、记录用量与当前可用授权分别核对，见 [交付核对](delivery-check.md)。

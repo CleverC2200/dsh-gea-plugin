@@ -8,7 +8,8 @@
 import { randomUUID } from "node:crypto";
 import { readableError, throwIfAborted } from "../shared/abort.ts";
 import { createParser } from "eventsource-parser";
-import type { ResourceReader } from './authorized-resources.ts';
+import type { ResourceReader } from "./authorized-resources.ts";
+import { cubeNewArtifact } from "./cube-new.ts";
 
 export type McpTool = {
   name: string;
@@ -20,7 +21,11 @@ export type McpTool = {
   inputSchema?: unknown;
 };
 
-export type McpDelivery = {sourceReadComplete: boolean; unreadArtifacts: Array<{uri: string; reason: "read-failed" | "not-inlined"}>; notes: string[]};
+export type McpDelivery = {
+  sourceReadComplete: boolean;
+  unreadArtifacts: Array<{ uri: string; reason: "read-failed" | "not-inlined" }>;
+  notes: string[];
+};
 
 export type McpModule = {
   authorizedResources: ResourceReader;
@@ -28,17 +33,18 @@ export type McpModule = {
   /** 某个工具的完整入参定义（含类型、枚举、嵌套字段）；名字不存在返回 undefined。 */
   schema(name: string): string | undefined;
   /** onResult sees successful content before presentation truncation; it never fetches extra pages. */
-  call(name: string, args: Record<string, unknown>, signal: AbortSignal, onResult?: (text: string) => void, onDelivery?: (delivery: McpDelivery) => void): Promise<string>;
+  call(
+    name: string,
+    args: Record<string, unknown>,
+    signal: AbortSignal,
+    onResult?: (text: string) => void,
+    onDelivery?: (delivery: McpDelivery) => void,
+  ): Promise<string>;
   /**
    * 读大结果制品的某一段。完整正文由宿主按制品 URI 缓存，模型按需一段段取，
    * 不用把几十万字符一次塞进上下文。
    */
-  chunk(
-    uri: string,
-    offset: number,
-    length: number,
-    signal: AbortSignal,
-  ): Promise<string>;
+  chunk(uri: string, offset: number, length: number, signal: AbortSignal): Promise<string>;
   /**
    * 一个制品的**完整**正文（读一次即缓存）。给宿主自己用——例如从 inspect 产物里
    * 建成员清单索引；给模型的仍然是 chunk() 那种一段段的小片。
@@ -50,7 +56,7 @@ export type McpModule = {
  * 协议版本按新到旧试一次：网关支持哪版由它决定，客户端不必写死一个版本号，
  * 否则服务端升级协议时我们会整体不可用。
  */
-const PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
+const PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"] as const;
 
 const MAX_TOOLS = 40;
 const MAX_RESULT_CHARS = 20_000;
@@ -130,17 +136,14 @@ function toolList(result: unknown): McpTool[] {
       // MCP annotations are advisory, but a module that explicitly marks a tool
       // destructive or non-read-only must never pass through this read-only client.
       if (
-        (tool.annotations?.readOnlyHint !== undefined &&
-          tool.annotations.readOnlyHint !== true) ||
+        (tool.annotations?.readOnlyHint !== undefined && tool.annotations.readOnlyHint !== true) ||
         tool.annotations?.destructiveHint === true
       )
         return null;
       const schema = asRecord(tool.inputSchema) ?? {};
       const properties = asRecord(schema.properties);
       const required = Array.isArray(schema.required)
-        ? schema.required.filter(
-            (item): item is string => typeof item === "string",
-          )
+        ? schema.required.filter((item): item is string => typeof item === "string")
         : [];
       return {
         name: typeof tool.name === "string" ? tool.name : "",
@@ -156,6 +159,8 @@ function toolList(result: unknown): McpTool[] {
 }
 
 function resultText(result: unknown): string {
+  const structured = asRecord(result)?.structuredContent;
+  if (structured !== undefined) return JSON.stringify(structured);
   const content = (result as { content?: unknown })?.content;
   if (Array.isArray(content)) {
     const text = content
@@ -174,7 +179,7 @@ function resultText(result: unknown): string {
 }
 
 /** 结果里的资源链接（大结果以 `resource_link` 返回，正文要另读一次）。 */
-type ResourceLink = { uri: string; ossUrl?: string };
+type ResourceLink = { uri: string; ossUrl?: string; sha256?: string; mimeType?: string };
 
 /**
  * 把一个字段的 schema 压成一行：类型、枚举、嵌套字段名。
@@ -185,7 +190,9 @@ function fieldLine(name: string, schema: unknown, required: boolean): string {
   const value = asRecord(schema) ?? {};
   const types = [
     ...(typeof value.type === "string" ? [value.type] : []),
-    ...(Array.isArray(value.type) ? value.type.filter((t): t is string => typeof t === "string") : []),
+    ...(Array.isArray(value.type)
+      ? value.type.filter((t): t is string => typeof t === "string")
+      : []),
   ];
   const enumValues = Array.isArray(value.enum)
     ? value.enum.filter((item) => typeof item === "string" || typeof item === "number")
@@ -207,7 +214,9 @@ function fieldLine(name: string, schema: unknown, required: boolean): string {
         : "　[数组，元素结构服务端未声明]",
     );
   } else if (value.properties && Object.keys(asRecord(value.properties) ?? {}).length) {
-    parts.push(`　[对象，字段：${Object.keys(asRecord(value.properties)!).slice(0, 12).join("、")}]`);
+    parts.push(
+      `　[对象，字段：${Object.keys(asRecord(value.properties)!).slice(0, 12).join("、")}]`,
+    );
   }
   return parts.join("");
 }
@@ -223,9 +232,7 @@ export function describeToolSchema(tool: McpTool): string {
   ];
   const names = Object.keys(properties);
   if (names.length === 0) lines.push("入参：服务端没有声明 inputSchema（按工具说明调用）。");
-  else
-    for (const name of names)
-      lines.push(fieldLine(name, properties[name], required.has(name)));
+  else for (const name of names) lines.push(fieldLine(name, properties[name], required.has(name)));
   const text = lines.join("\n");
   return text.length > MAX_TOOL_SCHEMA_CHARS
     ? `${text.slice(0, MAX_TOOL_SCHEMA_CHARS)}…（定义过长已截断；按上面列出的字段与枚举调用）`
@@ -242,7 +249,13 @@ export function describeToolSchema(tool: McpTool): string {
  *
  * 只认顶层的代价就是：失败被原样当数据回给模型，界面上"报错都不展示了"。
  */
-type ToolFailureKind = "session" | "validation" | "permission" | "rate-limit" | "resource-mapping" | "upstream";
+type ToolFailureKind =
+  | "session"
+  | "validation"
+  | "permission"
+  | "rate-limit"
+  | "resource-mapping"
+  | "upstream";
 
 /**
  * 权限类失败以可读文本返回（不当红色调用失败），所以调用方只能按这个前缀认出它。
@@ -299,8 +312,7 @@ const RATE_LIMIT_FAILURE = /RATE_LIMIT|RATE_LIMITED|TOO_MANY|THROTTLED|QUOTA|限
  *   "message":"Cube 查询成员未唯一匹配数据目录资源；模型须与 dataAssetCode 一致，跨模型查询请分别调用"}`
  * 同一句也出现在已通过单模型预检的请求中；资源匹配错误不能直接当成跨模型或缺授权。
  */
-const QUERY_SHAPE_FAILURE =
-  /未唯一匹配数据目录资源|dataAssetCode|跨模型|成员必须属于|分别调用/;
+const QUERY_SHAPE_FAILURE = /未唯一匹配数据目录资源|dataAssetCode|跨模型|成员必须属于|分别调用/;
 
 const str = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim() ? value : undefined;
@@ -337,14 +349,15 @@ function failureOf(record: Record<string, unknown> | undefined): ToolFailure | u
   const failed = record.isError === true || record.success === false || nested?.success === false;
   // success:false / isError:true 是明确的失败；没有它们时只看"失败形态的码"。
   if (!failed && !code) return undefined;
-  const message =
-    str(record.message) ?? str(nested?.message) ?? str(record.error) ?? "";
+  const message = str(record.message) ?? str(nested?.message) ?? str(record.error) ?? "";
   if (!code && !message) return undefined;
   const details = asRecord(record.details) ?? asRecord(nested?.details);
   const category = str(record.category) ?? str(nested?.category);
   const suggestedAction = str(record.suggestedAction) ?? str(nested?.suggestedAction);
   const resolved = code ?? "GEA_MCP_TOOL_ERROR";
-  const session = category === 'SESSION' || /^AI_GATEWAY_SESSION_(?:MAX_LIFETIME_EXCEEDED|EXPIRED|REVOKED)$/.test(resolved);
+  const session =
+    category === "SESSION" ||
+    /^AI_GATEWAY_SESSION_(?:MAX_LIFETIME_EXCEEDED|EXPIRED|REVOKED)$/.test(resolved);
   const resourceMapping = /未唯一匹配数据目录资源/.test(message);
   // 其它有明确字段路径/参数说明的错误仍按校验失败处理。
   const queryShape = QUERY_SHAPE_FAILURE.test(`${message} ${details?.path ?? ""}`);
@@ -368,7 +381,9 @@ function failureOf(record: Record<string, unknown> | undefined): ToolFailure | u
       suggestedAction === "FIX_ARGUMENTS" ||
       /参数|字段|格式|必须/.test(message));
   const retryAfterMs =
-    asNumber(record.retryAfterMs) ?? asNumber(nested?.retryAfterMs) ?? asNumber(details?.retryAfterMs);
+    asNumber(record.retryAfterMs) ??
+    asNumber(nested?.retryAfterMs) ??
+    asNumber(details?.retryAfterMs);
   const reasonCode = str(details?.reasonCode) ?? str(record.reasonCode);
   const resourceCode = str(details?.resourceCode) ?? str(record.resourceCode);
   const configurationPath = str(details?.configurationPath) ?? str(record.configurationPath);
@@ -379,27 +394,27 @@ function failureOf(record: Record<string, unknown> | undefined): ToolFailure | u
     kind: session
       ? "session"
       : resourceMapping
-      ? "resource-mapping"
-      : rateLimit
-      ? "rate-limit"
-      : permission
-        ? "permission"
-        : validation
-          ? "validation"
-          : "upstream",
+        ? "resource-mapping"
+        : rateLimit
+          ? "rate-limit"
+          : permission
+            ? "permission"
+            : validation
+              ? "validation"
+              : "upstream",
     ...(typeof record.retryable === "boolean"
       ? { retryable: record.retryable }
       : typeof nested?.retryable === "boolean"
         ? { retryable: nested.retryable as boolean }
         : {}),
     ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
-    ...(str(record.requestId) ?? str(nested?.requestId)
+    ...((str(record.requestId) ?? str(nested?.requestId))
       ? { requestId: (str(record.requestId) ?? str(nested?.requestId))! }
       : {}),
-    ...(str(record.traceId) ?? str(nested?.traceId)
+    ...((str(record.traceId) ?? str(nested?.traceId))
       ? { traceId: (str(record.traceId) ?? str(nested?.traceId))! }
       : {}),
-    ...(str(record.auditId) ?? str(nested?.auditId)
+    ...((str(record.auditId) ?? str(nested?.auditId))
       ? { auditId: (str(record.auditId) ?? str(nested?.auditId))! }
       : {}),
     ...(suggestedAction ? { suggestedAction } : {}),
@@ -452,14 +467,25 @@ function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error
   ]
     .filter(Boolean)
     .join("，");
-  if (failure.kind === 'session')
-    return {error: Object.assign(new Error(`GEA_GATEWAY_SESSION_EXPIRED：网关会话已失效（${detail}）。本轮停止取数；下次提问会按当前登录身份建立新会话并重新核对授权。不要修改查询字段或用旧请求重试。`),{code:'GEA_GATEWAY_SESSION_EXPIRED'})};
-  const queriesHint = /queries/i.test(failure.path ?? "") || /queries/i.test(failure.message)
-    ? "（提示：Cube 查询要放在 arguments.queries 里，不要提到工具顶层。）"
-    : "";
+  if (failure.kind === "session")
+    return {
+      error: Object.assign(
+        new Error(
+          `GEA_GATEWAY_SESSION_EXPIRED：网关会话已失效（${detail}）。本轮停止取数；下次提问会按当前登录身份建立新会话并重新核对授权。不要修改查询字段或用旧请求重试。`,
+        ),
+        { code: "GEA_GATEWAY_SESSION_EXPIRED" },
+      ),
+    };
+  const queriesHint =
+    /queries/i.test(failure.path ?? "") || /queries/i.test(failure.message)
+      ? "（提示：Cube 查询要放在 arguments.queries 里，不要提到工具顶层。）"
+      : "";
   // 规约 §17：修正要覆盖整份请求——query 0 的 order 错了，query 1–7 的同类问题要一起改，
   // 不要一次只改一处、来回撞。网关一次只报一个位置，所以这句话由我们补。
-  const sweepHint = failure.kind === "validation" ? "（同类问题一次全改：同一个字段形状在其它 query 里可能有一样的错——order/filters/limit 都照着一起核对，别一次只改一处。）" : "";
+  const sweepHint =
+    failure.kind === "validation"
+      ? "（同类问题一次全改：同一个字段形状在其它 query 里可能有一样的错——order/filters/limit 都照着一起核对，别一次只改一处。）"
+      : "";
   const crossModelHint = QUERY_SHAPE_FAILURE.test(failure.message)
     ? "（提示：一次调用里的成员必须属于同一个模型/dataAssetCode——把不同模型的成员拆成两次调用再来一次。）"
     : "";
@@ -488,11 +514,13 @@ function formatToolFailure(failure: ToolFailure): { text?: string; error?: Error
         (failure.reasonCode || failure.resourceCode ? "。" : ""),
     };
   if (failure.kind === "resource-mapping")
-    return {error: new Error(
-      `GEA_MCP_RESOURCE_MAPPING_FAILED：网关未能唯一匹配数据资源（${detail}）：${failure.message}。` +
-      '先核对是否单模型、成员是否来自目录；若这两项已满足，需要核对 GEA 的模型与 dataAssetCode 资源映射。' +
-      '当前不能据此断言缺少区域授权，也不要继续换成员重试；其它已成功的取数结果仍然有效。',
-    )};
+    return {
+      error: new Error(
+        `GEA_MCP_RESOURCE_MAPPING_FAILED：网关未能唯一匹配数据资源（${detail}）：${failure.message}。` +
+          "先核对是否单模型、成员是否来自目录；若这两项已满足，需要核对 GEA 的模型与 dataAssetCode 资源映射。" +
+          "当前不能据此断言缺少区域授权，也不要继续换成员重试；其它已成功的取数结果仍然有效。",
+      ),
+    };
   if (failure.kind === "validation")
     return {
       error: new Error(
@@ -521,8 +549,7 @@ function readableTexts(result: unknown): string {
     .map((item) => {
       const text = (item as { text?: unknown })?.text;
       if (typeof text === "string") return text;
-      if (text !== null && typeof text === "object")
-        return JSON.stringify(text);
+      if (text !== null && typeof text === "object") return JSON.stringify(text);
       return "";
     })
     .filter(Boolean)
@@ -552,12 +579,15 @@ function resourceLinks(result: unknown): ResourceLink[] {
     const entry = item as {
       type?: unknown;
       uri?: unknown;
-      _meta?: { oss_url?: unknown };
+      mimeType?: unknown;
+      _meta?: { oss_url?: unknown; sha256?: unknown };
     };
     if (entry?.type !== "resource_link" || typeof entry.uri !== "string") continue;
     const ossUrl = entry._meta?.oss_url;
     links.push({
       uri: entry.uri,
+      ...(typeof entry.mimeType === "string" ? { mimeType: entry.mimeType } : {}),
+      ...(typeof entry._meta?.sha256 === "string" ? { sha256: entry._meta.sha256 } : {}),
       ...(typeof ossUrl === "string" ? { ossUrl } : {}),
     });
   }
@@ -630,8 +660,7 @@ function rowPageHints(text: string, args: unknown): string[] {
     const query =
       queries.find((item) => item.name === page.name) ??
       (queries.length === 1 ? queries[0] : undefined);
-    if (!query?.limit || page.totalRows === undefined || page.totalRows < query.limit)
-      continue;
+    if (!query?.limit || page.totalRows === undefined || page.totalRows < query.limit) continue;
     hints.push(
       `\n（注意：这个结果 totalRows=${page.totalRows}，正好等于你给的 limit=${query.limit}。` +
         "totalRows / complete / hasMore 都不可信——它们会把 limit 原样回显；实测用 offset 翻页还能翻到全新的一页。" +
@@ -728,14 +757,17 @@ export async function openModuleMcp(
         },
         { version },
       );
-      await readReply(response, id, signal);
+      const initializedResult = asRecord(await readReply(response, id, signal));
+      const actualVersion = initializedResult?.protocolVersion;
+      if (typeof actualVersion !== "string" || !PROTOCOL_VERSIONS.some((v) => v === actualVersion))
+        throw Error("GEA_MCP_INIT_VERSION_REJECTED");
       const ready = await post(
         { jsonrpc: "2.0", method: "notifications/initialized" },
-        { version },
+        { version: actualVersion },
       );
       await ready.body?.cancel();
       initialized = true;
-      negotiated = version;
+      negotiated = actualVersion;
       break;
     } catch (error) {
       lastError = error;
@@ -750,6 +782,11 @@ export async function openModuleMcp(
 
   // 先取工具清单：传输层靠 tools/list 把工具名映射成服务端路由码，tools/call 才认得。
   const tools = await listModuleTools(transport, signal, negotiated);
+  const cubeNew = tools.some((tool) => tool.name === "inspect_cube_model");
+  const queryArtifacts = new Map<
+    string,
+    { link: ResourceLink; arguments: Record<string, unknown> }
+  >();
   /** 读一个制品的完整正文（缓存优先）；读不回来就按原样抛，由调用方翻成人话。 */
   const readArtifact = async (uri: string, readSignal: AbortSignal): Promise<string> => {
     const cached = artifacts.get(uri);
@@ -757,19 +794,22 @@ export async function openModuleMcp(
     const readId = randomUUID();
     const readResponse = await post(
       { jsonrpc: "2.0", id: readId, method: "resources/read", params: { uri } },
-      { ...(negotiated ? { version: negotiated } : {}) },
+      negotiated ? { version: negotiated } : {},
     );
-    const text = resourceContentsText(
-      await readReply(readResponse, readId, readSignal),
-    );
+    const result = await readReply(readResponse, readId, readSignal);
+    const query = queryArtifacts.get(uri);
+    const text = query
+      ? cubeNewArtifact(result, query.link, query.arguments)
+      : resourceContentsText(result);
     if (!text) throw new Error("GEA_MCP_RESOURCE_EMPTY");
+    if (query && text.length > MAX_ARTIFACT_CHARS) throw Error("GEA_CUBE_NEW_RESOURCE_LIMIT");
     rememberArtifact(uri, text);
     return text;
   };
   return {
     tools: () => tools,
     authorizedResources: (name, active) => {
-      if (!transport.authorizedResources) throw Error('GEA_RESOURCE_DISCOVERY_UNAVAILABLE');
+      if (!transport.authorizedResources) throw Error("GEA_RESOURCE_DISCOVERY_UNAVAILABLE");
       return transport.authorizedResources(name, active);
     },
     schema: (name) => {
@@ -795,15 +835,23 @@ export async function openModuleMcp(
           ? ""
           : `\n（字符 ${Math.max(repeat.start, start)}–${Math.min(repeat.end, end)} 你刚读过；` +
             `同一段不用重复读，往后看就直接 offset=${end}。）`;
-      return (
-        `【制品片段 ${uri}｜字符 ${start}–${end} / 共 ${text.length}】\n${body}${tail}${alreadyRead}`.slice(
-          0,
-          MAX_RESULT_CHARS,
-        )
+      return `【制品片段 ${uri}｜字符 ${start}–${end} / 共 ${text.length}】\n${body}${tail}${alreadyRead}`.slice(
+        0,
+        MAX_RESULT_CHARS,
       );
     },
     artifact: (uri, artifactSignal) => readArtifact(uri, artifactSignal),
     call: async (name, args, callSignal, onResult, onDelivery) => {
+      if (cubeNew && name === "query_business_data") {
+        if (
+          args.action !== "query" ||
+          (args.response_mode !== undefined && args.response_mode !== "inline_complete")
+        )
+          throw Error(
+            "GEA_CUBE_NEW_QUERY_ARGUMENTS: 模型说明使用 inspect_cube_model；查询使用 action=query、response_mode=inline_complete。",
+          );
+        args = { ...args, response_mode: "inline_complete" };
+      }
       const id = randomUUID();
       const response = await post(
         {
@@ -816,10 +864,30 @@ export async function openModuleMcp(
       );
       const result = await readReply(response, id, callSignal);
       const links = resourceLinks(result);
+      if (cubeNew && name === "query_business_data" && asRecord(result)?.isError !== true) {
+        if (
+          links.length !== 1 ||
+          links[0].mimeType !== "application/json" ||
+          !links[0].uri.startsWith("data-artifact://gateway/")
+        )
+          throw Error("GEA_CUBE_NEW_QUERY_RESOURCE_LINK");
+        const previous = queryArtifacts.get(links[0].uri);
+        if (
+          previous &&
+          (previous.link.sha256 !== links[0].sha256 ||
+            JSON.stringify(previous.arguments) !== JSON.stringify(args))
+        )
+          throw Error("GEA_CUBE_NEW_RESOURCE_REUSED");
+        queryArtifacts.set(links[0].uri, { link: links[0], arguments: structuredClone(args) });
+      }
       if (links.length === 0) {
         const text = readableToolOutcome(result, readableTexts(result) || resultText(result));
         if (!text.startsWith(PERMISSION_NOTICE_PREFIX)) onResult?.(text);
-        onDelivery?.({sourceReadComplete:true,unreadArtifacts:[],notes:rowPageHints(text,args)});
+        onDelivery?.({
+          sourceReadComplete: true,
+          unreadArtifacts: [],
+          notes: rowPageHints(text, args),
+        });
         return text;
       }
       // 线上实测：这类结果以 `data-artifact://gateway/…` 链接返回，模型得再调一次
@@ -831,7 +899,11 @@ export async function openModuleMcp(
       const parts: string[] = [];
       const shown = links.slice(0, MAX_RESOURCE_LINKS);
       const skipped = links.slice(MAX_RESOURCE_LINKS);
-      const delivery: McpDelivery = {sourceReadComplete:skipped.length===0,unreadArtifacts:skipped.map(link=>({uri:link.uri,reason:"not-inlined"})),notes:[]};
+      const delivery: McpDelivery = {
+        sourceReadComplete: skipped.length === 0,
+        unreadArtifacts: skipped.map((link) => ({ uri: link.uri, reason: "not-inlined" })),
+        notes: [],
+      };
       // 每段预留提示文字，保证整体不超过单次结果上限。
       const chunkChars = Math.max(
         2_000,
@@ -844,7 +916,7 @@ export async function openModuleMcp(
         try {
           const text = await readArtifact(link.uri, callSignal);
           onResult?.(text);
-          delivery.notes.push(...rowPageHints(text,args));
+          delivery.notes.push(...rowPageHints(text, args));
           const head = text.slice(0, chunkChars);
           markRead(link.uri, 0, head.length);
           const more =
@@ -864,13 +936,15 @@ export async function openModuleMcp(
             `【结果内容 ${link.uri}】\n${head}${more}${sizeHint}${rowPageHints(text, args).join("")}`,
           );
         } catch (error) {
-          delivery.sourceReadComplete=false;
-          delivery.unreadArtifacts.push({uri:link.uri,reason:"read-failed"});
+          delivery.sourceReadComplete = false;
+          delivery.unreadArtifacts.push({ uri: link.uri, reason: "read-failed" });
           parts.push(
             `【结果内容读不回来：${link.uri}（${
               error instanceof Error ? error.message : String(error)
             }）】不要再换别的工具去读这个链接：说明这次数据没取到，` +
-              "需要行数据时改用 response_mode=inline_complete 再查一次。",
+              (cubeNew
+                ? "未使用本次制品；按错误核对会话、权限和制品，不原样重跑查询。"
+                : "需要行数据时改用 response_mode=inline_complete 再查一次。"),
           );
         }
       }

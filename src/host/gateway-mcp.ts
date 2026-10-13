@@ -32,9 +32,10 @@ export async function prepareGatewayMcp(
   identity: AbortSignal,
   timeoutMs: number,
   fetchImpl: typeof fetch = fetch,
+  routing: { cubeMcpCode?: string } = {},
 ): Promise<GatewayMcpTransport> {
   const meta = await prepareGatewaySession(base, auth, consumer, identity, timeoutMs, fetchImpl);
-  return gatewayMcpTransport(base, meta, identity, timeoutMs, fetchImpl);
+  return gatewayMcpTransport(base, meta, identity, timeoutMs, fetchImpl, routing);
 }
 export function gatewayMcpTransport(
   base: string,
@@ -42,9 +43,13 @@ export function gatewayMcpTransport(
   identity: AbortSignal,
   timeoutMs: number,
   fetchImpl: typeof fetch = fetch,
+  routing: { cubeMcpCode?: string } = {},
 ): GatewayMcpTransport {
+  if (routing.cubeMcpCode !== undefined && !nonempty(routing.cubeMcpCode))
+    throw Error("GEA_MCP_CUBE_SOURCE_INVALID");
   const url = base + "/ai/gateway/mcp/proxy/mcp";
   const routes = new Map<string, string>();
+  const artifactRoutes = new Map<string, string>();
   let initializeBody: string | undefined;
   let transportSession: string | undefined;
   let reconnect: Promise<void> | undefined;
@@ -104,6 +109,7 @@ export function gatewayMcpTransport(
     let body = init?.body;
     let method: string | undefined;
     let discovery: { id: unknown; firstPage: boolean } | undefined;
+    let invocation: { id: unknown; code: string } | undefined;
     if (body !== undefined && body !== null) {
       if (typeof body !== "string") throw new Error("GEA_MCP_BODY_INVALID");
       const message = JSON.parse(body);
@@ -129,6 +135,15 @@ export function gatewayMcpTransport(
           const mcpCode = routes.get(message.params.name);
           if (!mcpCode) throw new Error("GEA_MCP_TOOL_ROUTE_REQUIRED");
           message.params._meta = { ...meta, mcpCode };
+          invocation = { id: message.id, code: mcpCode };
+        } else if (message.method === "resources/read") {
+          const code = artifactRoutes.get(message.params.uri);
+          if (code) message.params._meta = { ...meta, mcpCode: code };
+          else if (
+            routing.cubeMcpCode &&
+            String(message.params.uri).startsWith("data-artifact://gateway/")
+          )
+            throw Error("GEA_MCP_RESOURCE_ROUTE_REQUIRED");
         }
       }
       body = JSON.stringify(message);
@@ -187,7 +202,7 @@ export function gatewayMcpTransport(
         `GEA_MCP_HTTP_${res.status}: 网关请求被拒绝，请检查连接或重新登录；不要原样重复调用。`,
       );
     }
-    if (discovery && res.ok) {
+    if ((discovery || invocation) && res.ok) {
       const text = await res.clone().text();
       throwIfAborted(identity);
       const messages: unknown[] = [];
@@ -201,9 +216,32 @@ export function gatewayMcpTransport(
       for (const value of messages) {
         if (!value || typeof value !== "object") continue;
         const reply = value as { id?: unknown; result?: { tools?: unknown } };
-        if (reply.id !== discovery.id || !Array.isArray(reply.result?.tools)) continue;
+        if (invocation && reply.id === invocation.id) {
+          const result = value as {
+            result?: { isError?: boolean; content?: Array<{ type?: string; uri?: string }> };
+          };
+          if (result.result?.isError !== true && Array.isArray(result.result?.content))
+            for (const item of result.result.content)
+              if (item.type === "resource_link" && nonempty(item.uri)) {
+                const existing = artifactRoutes.get(item.uri);
+                if (existing && existing !== invocation.code)
+                  throw Error("GEA_MCP_RESOURCE_ROUTE_AMBIGUOUS");
+                artifactRoutes.set(item.uri, invocation.code);
+              }
+        }
+        if (!discovery || reply.id !== discovery.id || !Array.isArray(reply.result?.tools))
+          continue;
+        const selectedTools = routing.cubeMcpCode
+          ? reply.result.tools.filter(
+              (tool) =>
+                !["query_business_data", "inspect_cube_model"].includes(tool?.name) ||
+                (tool?._meta?.sourceType === "MCP" &&
+                  tool?._meta?.sourceCode === routing.cubeMcpCode),
+            )
+          : reply.result.tools;
+        reply.result.tools = selectedTools;
         const next = discovery.firstPage ? new Map<string, string>() : new Map(routes);
-        for (const tool of reply.result.tools) {
+        for (const tool of selectedTools) {
           const code = tool?._meta?.sourceCode;
           if (!nonempty(tool?.name) || !nonempty(code))
             throw new Error("GEA_MCP_TOOL_ROUTE_INVALID");
@@ -213,6 +251,18 @@ export function gatewayMcpTransport(
         }
         routes.clear();
         for (const [name, code] of next) routes.set(name, code);
+      }
+      if (discovery && routing.cubeMcpCode) {
+        const headers = new Headers(res.headers);
+        headers.delete("content-length");
+        return new Response(
+          headers.get("content-type")?.includes("text/event-stream")
+            ? messages
+                .map((message) => "event: message\ndata: " + JSON.stringify(message) + "\n\n")
+                .join("")
+            : JSON.stringify(messages[0]),
+          { status: res.status, headers },
+        );
       }
     }
     return res;
