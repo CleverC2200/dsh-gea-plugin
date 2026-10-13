@@ -19,3 +19,5 @@
 准备和静态校验不证明实际 Linux runtime。必须核本次 artifact metadata、固定 tuple、原断言 verdict 与 lifecycle 后再比较 before/current。
 
 后续同病例诊断增加实际 fixture SQL response 的键名、packet 列名、行数及首行值类型，记录默认业务筛选和当前页签。只读原 reply 并原样转发，JSON 数据值和 SQL 原文不输出；原断言失败仍失败。配置 patch 按既有 YAML 协议解析。
+
+日期因果对照复用现有 branchStockAcceptance.fixedTime 与 page.clock.setFixedTime。只把同一原病例的浏览器日期与固定9月数据对齐，原计时器、断言、超时及生产月份规则不改。原FC001断言通过后记录明确milestone，后续完整病例如再失败仍保留原错误；不能把milestone当完整验收。

@@ -87,7 +87,7 @@ export async function captureFcFailure({ app, page, state, events, replies, init
       if (url.pathname !== "/api/agent-workbench/html" || url.searchParams.get("id") !== "inventory-fc") continue;
       // Playwright enters the frame directly; the product sandbox deliberately denies parent DOM access.
       const value = await frame.evaluate(() => ({
-        title: document.title, readyState: document.readyState,
+        title: document.title, readyState: document.readyState, browserClock: new Date().toISOString(),
         isSecureContext, cssHighlightsType: typeof CSS?.highlights,
         fc001Present: document.body?.innerText.includes("FC001") ?? false,
         fc002Present: document.body?.innerText.includes("FC002") ?? false,

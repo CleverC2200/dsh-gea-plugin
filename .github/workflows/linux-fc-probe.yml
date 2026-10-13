@@ -187,6 +187,7 @@ jobs:
             coreHead: git(`${process.env.GITHUB_WORKSPACE}/source/official-core`, 'rev-parse', 'HEAD'),
             testName: 'same-warehouse loading and failure do not publish retained KPI text as current facts',
             runtimeBeforeProbe: 'not-observed',
+            sampleClockOverride: true,
           }, null, 2) + '\n');
           NODE
       - name: Prepare independent SDK and frozen source inputs
@@ -198,6 +199,7 @@ jobs:
       - name: Run the original FC retained-context case
         env:
           CI_FC_PROBE: '1'
+          CI_FC_PROBE_SAMPLE_CLOCK: '1'
           GEA_TEST_SOURCE_CORE: '1'
           GEA_TEST_SOURCE_INPUTS: ${{ github.workspace }}/profile-source-inputs.json
           GEA_TEST_CANDIDATE: ${{ github.workspace }}/candidate-input.json
