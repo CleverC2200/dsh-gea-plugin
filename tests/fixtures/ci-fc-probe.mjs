@@ -1,6 +1,7 @@
 /** Temporary diagnostic branch only. Never print credentials, prompts, Sessions or business rows. */
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { parse as parseYaml } from "yaml";
 
 const codes = (text) => [...new Set(String(text ?? "").match(/\b(?:GEA|PAGE|HTML|MOCK|INVALID|UNEXPECTED_FIXTURE|WORKBENCH|SOURCE)_[A-Z0-9_]+\b/g) ?? [])];
 const safeText = (value) => {
@@ -47,7 +48,7 @@ export function observeFcProbe(page) {
   return events;
 }
 
-export async function captureFcFailure({ app, page, state, events, initialOpenReply, contexts, failure }) {
+export async function captureFcFailure({ app, page, state, events, replies, initialOpenReply, contexts, failure }) {
   const report = {
     tag: "[CI-FC-PROBE]",
     failure: safeText(failure?.message),
@@ -64,6 +65,7 @@ export async function captureFcFailure({ app, page, state, events, initialOpenRe
     fixture: { mode: state.mode, sqlRequests: state.rest.length, restConsumers: [...new Set(state.restConsumers)].map(id), cubeRequests: state.cube.length, modelRequests: state.models.length, errorCodes: codes(app.output) },
     context: { count: contexts.length, state: id(contexts.at(-1)?.parts?.queryState?.state), errorCodes: codes(contexts.at(-1)?.parts?.queryState?.message) },
     browserEvents: events,
+    fixtureResponses: replies,
   };
   const observe = async (name, fn) => {
     try { report[name] = await fn(); }
@@ -88,6 +90,10 @@ export async function captureFcFailure({ app, page, state, events, initialOpenRe
         title: document.title, readyState: document.readyState,
         isSecureContext, cssHighlightsType: typeof CSS?.highlights,
         fc001Present: document.body?.innerText.includes("FC001") ?? false,
+        fc002Present: document.body?.innerText.includes("FC002") ?? false,
+        activeTab: document.querySelector('nav.tabs button[aria-current="page"]')?.textContent?.trim() ?? null,
+        businessOnly: [...document.querySelectorAll("label.filter-chip")].find(label => label.textContent?.trim() === "有业务")?.querySelector("input")?.checked ?? null,
+        tableBodyRows: document.querySelectorAll("table tbody tr").length,
         errors: (document.body?.innerText ?? "").split("\n").filter((line) => /错误|失败|拒绝|不可用|GEA_|MOCK_|Page unavailable|Error|Failed/i.test(line)).slice(0, 5).map((line) => line.slice(0, 400)),
       }));
       documents.push({ ...value, src: safeUrl(frame.url()), title: safeText(value.title), errors: value.errors.map(safeText) });
@@ -124,7 +130,7 @@ export async function captureFcFailure({ app, page, state, events, initialOpenRe
     return { status: response.status(), ok: boolean(reply.ok), authenticated: boolean(value.authenticated), htmlPlugins: boolean(value.htmlPlugins), readonlyValidationPresent: value.readonlyValidation !== undefined, modules: Array.isArray(value.modules) ? value.modules.filter((item) => item.id === "inventory-fc").map((item) => ({ id: id(item.id), consumerCode: id(item.consumerCode), surface: id(item.surface), pageIds: Array.isArray(item.pageIds) ? item.pageIds.map(id) : null })) : null, errorCodes: codes(JSON.stringify(reply.error ?? null)) };
   });
   await observe("configuredRoots", async () => {
-    const patch = JSON.parse(await readFile(resolve(app.runtime, "home/profiles/plugin-split-validation/cordis.patch.yml"), "utf8"));
+    const patch = parseYaml(await readFile(resolve(app.runtime, "home/profiles/plugin-split-validation/cordis.patch.yml"), "utf8"));
     const roots = patch.find((item) => item.id === "agent-workbench")?.config?.htmlRoots ?? [];
     return Promise.all(roots.map(async (root) => {
       const files = {};
@@ -141,4 +147,24 @@ export async function captureFcFailure({ app, page, state, events, initialOpenRe
   await mkdir(".runtime/branch-stock-evidence", { recursive: true });
   await writeFile(".runtime/branch-stock-evidence/ci-fc-probe.json", JSON.stringify(report, null, 2) + "\n");
   console.log("[CI-FC-PROBE] " + JSON.stringify(report));
+}
+
+/** Record actual fixture response shape only; never values or SQL. */
+export function recordFcReply(replies, request, value, status) {
+  if (!request.url.pathname.endsWith("/ai/gateway/sql/execute") || replies.length >= 20) return;
+  const rows = value?.result?.rows;
+  const identifier = key => typeof key === "string" && /^[a-zA-Z_][a-zA-Z0-9_]{0,80}$/.test(key) ? key : "<REDACTED>";
+  const entry = { status: status ?? 200, rowCount: Array.isArray(rows) ? rows.length : null, firstRowKeys: rows?.[0] && typeof rows[0] === "object" ? Object.keys(rows[0]).map(identifier) : [] };
+  const first = rows?.[0];
+  if (typeof first?.dsh_columns === "string" && typeof first?.dsh_rows === "string") {
+    try {
+      const columns = JSON.parse(first.dsh_columns), matrix = JSON.parse(first.dsh_rows);
+      if (Array.isArray(columns) && Array.isArray(matrix)) {
+        entry.packetColumns = columns.map(identifier);
+        entry.packetRowCount = matrix.length;
+        entry.packetFirstRowTypes = Array.isArray(matrix[0]) ? matrix[0].map(item => item === null ? "null" : typeof item) : [];
+      }
+    } catch { entry.packetShapeInvalid = true; }
+  }
+  replies.push(entry);
 }

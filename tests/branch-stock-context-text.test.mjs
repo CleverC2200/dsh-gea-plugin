@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
-import { observeFcProbe, captureFcFailure } from "./fixtures/ci-fc-probe.mjs";
+import { observeFcProbe, captureFcFailure, recordFcReply } from "./fixtures/ci-fc-probe.mjs";
 import {
   htmlFrameElement,
   openWorkbenchPage,
@@ -26,6 +26,7 @@ test(
       ]),
     });
     const state = stockState();
+    const fcProbeReplies = [];
     let stockRoute;
     installStockRoutes(
       {
@@ -50,7 +51,10 @@ test(
         reply({ success: false, code: 500, message: "固定基地查询失败" }, 503);
         return true;
       }
-      return stockRoute(request, response, reply);
+      return stockRoute(request, response, process.env.CI_FC_PROBE === "1" ? (...args) => {
+        try { recordFcReply(fcProbeReplies, request, ...args); } catch { /* Observation cannot alter the fixture response. */ }
+        return reply(...args);
+      } : reply);
     });
     await app.login();
     const browser = await testBrowser(t, () =>
@@ -131,7 +135,7 @@ test(
     } catch (error) {
       if (process.env.CI_FC_PROBE === "1") {
         try {
-          await captureFcFailure({ app, page, state, events: fcProbeEvents, initialOpenReply, contexts, failure: error });
+          await captureFcFailure({ app, page, state, events: fcProbeEvents, replies: fcProbeReplies, initialOpenReply, contexts, failure: error });
         } catch (probeError) {
           console.log("[CI-FC-PROBE] observation unavailable: " + probeError.name);
         }
