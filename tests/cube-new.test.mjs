@@ -6,7 +6,7 @@ import { build } from "esbuild";
 const { outputFiles } = await build({
   stdin: {
     contents:
-      "export {gatewayMcpTransport} from './src/host/gateway-mcp.ts'; export {openModuleMcp} from './src/host/mcp-client.ts';",
+      "export {gatewayMcpTransport} from './src/host/gateway-mcp.ts'; export {openModuleMcp} from './src/host/mcp-client.ts'; export {cubeInspection} from './src/host/cube-new.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -14,7 +14,7 @@ const { outputFiles } = await build({
   platform: "node",
   format: "esm",
 });
-const { gatewayMcpTransport, openModuleMcp } = await import(
+const { gatewayMcpTransport, openModuleMcp, cubeInspection } = await import(
   "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 const code = "2109581866385289217";
@@ -81,17 +81,27 @@ async function fixture(options = {}) {
                   _meta: { sourceType: "MCP", sourceCode: code },
                   inputSchema: { type: "object", properties: {} },
                 },
-                {
-                  name: "inspect_cube_model",
-                  _meta: { sourceType: "MCP", sourceCode: code },
-                  inputSchema: { type: "object", properties: {} },
-                },
+                ...(!options.queryOnly
+                  ? [
+                      {
+                        name: "inspect_cube_model",
+                        _meta: { sourceType: "MCP", sourceCode: code },
+                        inputSchema: { type: "object", properties: {} },
+                      },
+                    ]
+                  : []),
               ]
             : []),
         ],
       });
     if (wire.method === "tools/call" && wire.params.name === "inspect_cube_model")
       return reply({ structuredContent: { action: "inspect", semanticModel: [] }, content: [] });
+    if (wire.method === "tools/call" && options.failure)
+      return reply(
+        options.structuredFailure
+          ? { structuredContent: options.failure }
+          : { content: [{ type: "text", text: JSON.stringify(options.failure) }] },
+      );
     if (wire.method === "tools/call")
       return reply({
         content: [
@@ -190,5 +200,68 @@ test("Cube-New cannot publish forged hashes, incomplete pages or mismatched data
     });
     assert.equal(published, false);
     assert.match(result, /GEA_CUBE_NEW_/);
+  }
+});
+
+test("a query-only Cube-New source still validates its query protocol and artifact", async () => {
+  for (const options of [
+    { badHash: true },
+    { payload: { ...payload(), datasets: [{ ...payload().datasets[0], complete: false }] } },
+  ]) {
+    const f = await fixture({ ...options, queryOnly: true });
+    let published = false;
+    const result = await f.module.call("query_business_data", query, f.signal, () => {
+      published = true;
+    });
+    assert.equal(published, false);
+    assert.match(result, /GEA_CUBE_NEW_/);
+    const sent = f.sent.length;
+    await assert.rejects(
+      f.module.call("query_business_data", { action: "inspect", queries: [] }, f.signal),
+      /GEA_CUBE_NEW_QUERY_ARGUMENTS/,
+    );
+    assert.equal(f.sent.length, sent);
+  }
+});
+
+test("a configured Cube-New source without inspect never selects the old inspect action", async () => {
+  const f = await fixture({ queryOnly: true });
+  const sent = f.sent.length;
+  assert.throws(
+    () => cubeInspection(f.module.tools(), undefined, code),
+    (error) => {
+      assert.equal(error.code, "GEA_MCP_TOOL_UNAVAILABLE");
+      assert.equal(error.toolName, "inspect_cube_model");
+      assert.equal(error.sourceCode, code);
+      return true;
+    },
+  );
+  assert.equal(f.sent.length, sent);
+});
+
+test("Cube-New preserves Session expiry and permission envelopes before validating successful links", async () => {
+  for (const structuredFailure of [false, true]) {
+    for (const expired of [false, true]) {
+      const failure = {
+        success: false,
+        code: expired ? "AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED" : "DATA_PERMISSION_DENIED",
+        category: expired ? "SESSION" : "PERMISSION",
+        requestId: "cube-new-failure",
+        message: expired ? "会话已过期" : "数据未授权",
+      };
+      const f = await fixture({ failure, structuredFailure });
+      let published = false;
+      const call = f.module.call("query_business_data", query, f.signal, () => {
+        published = true;
+      });
+      if (expired)
+        await assert.rejects(call, /GEA_GATEWAY_SESSION_EXPIRED.*requestId=cube-new-failure/);
+      else assert.match(await call, /^模块数据未授权：.*DATA_PERMISSION_DENIED/);
+      assert.equal(published, false);
+      assert.equal(
+        f.sent.some(({ wire }) => wire.method === "resources/read"),
+        false,
+      );
+    }
   }
 });

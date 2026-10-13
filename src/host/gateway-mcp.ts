@@ -7,6 +7,8 @@ export type GatewayMcpTransport = {
   url: string;
   fetch: typeof fetch;
   authorizedResources: ResourceReader;
+  /** Host-selected Cube-New source; tool discovery must not downgrade this protocol. */
+  readonly cubeMcpCode?: string;
 };
 
 const nonempty = (value: unknown): value is string =>
@@ -329,5 +331,5 @@ export function gatewayMcpTransport(
     throwIfAborted(signal);
     return parseAuthorizedResources(payload, `MCP_TOOL:${mcpCode}:${toolName}`);
   };
-  return { url, fetch: gatewayFetch, authorizedResources };
+  return { url, fetch: gatewayFetch, authorizedResources, ...routing };
 }

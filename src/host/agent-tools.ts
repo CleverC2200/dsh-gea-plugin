@@ -102,7 +102,7 @@ async function loadMemberIndex(
 ): Promise<MemberIndex | undefined> {
   try {
     let full = "";
-    const inspection = cubeInspection(module.tools());
+    const inspection = cubeInspection(module.tools(), undefined, module.cubeMcpCode);
     const result = await module.call(inspection.name, inspection.arguments, signal, (text) => {
       full = text;
     });
@@ -1528,6 +1528,7 @@ export function registerGeaTools(
             const inspection = cubeInspection(
               module.tools(),
               typeof args.model === "string" ? args.model : undefined,
+              module.cubeMcpCode,
             );
             const result = await module.call(
               inspection.name,
