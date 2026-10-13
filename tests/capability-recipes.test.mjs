@@ -5,12 +5,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
-import { readFile } from "node:fs/promises";
 
 const { outputFiles } = await build({
   stdin: {
-    contents:
-      "export * from './src/capability/recipes.ts'; export * from './src/html-query.ts';",
+    contents: "export * from './src/capability/recipes.ts'; export * from './src/html-query.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -19,8 +17,7 @@ const { outputFiles } = await build({
   format: "esm",
 });
 const m = await import(
-  "data:text/javascript;base64," +
-    Buffer.from(outputFiles[0].contents).toString("base64")
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 
 test("库存类模块都有配方，且配方是参数化的只读语句", () => {
@@ -56,21 +53,6 @@ test("配方 SQL 能通过宿主的只读校验（参数齐全）", () => {
 test("缺参数时报可读错误，不拼出半截 SQL", () => {
   const recipe = m.findRecipe("branch-inventory", "shortage-by-base-and-group");
   assert.deepEqual(m.missingRecipeParams(recipe, { base: "%郑州%" }), ["group"]);
-  assert.deepEqual(
-    m.missingRecipeParams(recipe, { base: "%郑州%", group: "%水饺%" }),
-    [],
-  );
+  assert.deepEqual(m.missingRecipeParams(recipe, { base: "%郑州%", group: "%水饺%" }), []);
   assert.equal(m.findRecipe("branch-inventory", "not-a-recipe"), undefined);
-});
-
-test("配方调用不能把 recipe 透传给受管查询（否则 INVALID_PAYLOAD）", async () => {
-  const source = await readFile(
-    new URL("../src/host/agent-tools.ts", import.meta.url),
-    "utf8",
-  );
-  // 线上实测：整包透传 args 会把 recipe/describe 带进 pluginSql，被 keys() 判成
-  // INVALID_PAYLOAD —— 任何走 recipe 的调用都会失败。
-  assert.equal(source.includes("{ pageSize: 50, ...args, sql: statement }"), false);
-  assert.match(source, /consumerCode: args\.consumerCode,/);
-  assert.match(source, /recipe \? recipe\.sql : args\.sql/);
 });

@@ -1,44 +1,213 @@
-// 接线检查：三个读工具都要走重复读闸门；目录要能吃内联 inspect 并把真因带出来；
-// 中止要走可读错误。这些行为改别处时很容易丢，所以钉在源码层面。
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { build } from "esbuild";
+import { createRequire } from "node:module";
 
-const source = await readFile("src/host/agent-tools.ts", "utf8");
+const built = await build({
+  stdin: {
+    contents:
+      "export {Business} from './src/host/business.ts'; export {registerGeaTools} from './src/host/agent-tools.ts'; export {createCapabilityRegistry} from './src/capability/registry.ts';",
+    resolveDir: process.cwd(),
+  },
+  bundle: true,
+  packages: "external",
+  write: false,
+  platform: "node",
+  format: "cjs",
+  logLevel: "silent",
+});
+const module = { exports: {} };
+new Function("require", "module", "exports", built.outputFiles[0].text)(
+  createRequire(import.meta.url),
+  module,
+  module.exports,
+);
+const { Business, registerGeaTools, createCapabilityRegistry } = module.exports;
 
-test("重复读闸门接在三个读工具上", () => {
-  // gea_sales_plan_read：同一条只读查询重复发要收敛
-  assert.match(source, /销售计划 \$\{String\(args\.kind\)\}/);
-  // gea_gateway_catalog：同一份目录/同一个模型明细重复读要收敛
-  assert.match(source, /模型 \$\{args\.model\} 的成员/);
-  // gea_module_mcp：同一份工具清单重复列要收敛
-  assert.match(source, /模块 \$\{consumerCode\} 的工具清单/);
-  // 超过一轮上限要有停手文案
-  assert.match(source, /GEA_TURN_REPEAT_STOPPED/);
+function fixture(t) {
+  const business = new Business({
+    geaBaseUrl: "https://localhost",
+    analysisAgentCode: "sales_forecast",
+    requestTimeoutMs: 1000,
+    agentSqlRead: true,
+  });
+  t.after(() => business.dispose());
+  t.mock.method(globalThis, "fetch", async () => {
+    throw Error("OFFLINE_FIXTURE_FORBIDS_NETWORK");
+  });
+  const registered = new Map();
+  const ctx = {
+    agents: { get: () => ({ session: {} }) },
+    sessionProjections: { stateOf: () => "gea-readonly" },
+    effect: (fn) => {
+      const off = fn();
+      if (typeof off === "function") t.after(off);
+    },
+    tools: {
+      register: (tool) => {
+        registered.set(tool.name, tool);
+        return () => registered.delete(tool.name);
+      },
+    },
+  };
+  registerGeaTools(ctx, business, createCapabilityRegistry([]));
+  const execute = (name, args = {}, scope = "s1", signal = new AbortController().signal) =>
+    registered.get(name).execute(args, { agent: { id: scope, session: {} }, signal });
+  return { business, execute };
+}
+const catalog = {
+  semanticModel: [
+    {
+      name: "Allowed",
+      measures: [{ name: "Allowed.qty" }],
+      dimensions: [{ name: "Allowed.sku" }],
+    },
+    { name: "Forbidden", measures: [{ name: "Forbidden.qty" }] },
+  ],
+};
+const resource = {
+  capabilityCode: "query_business_data",
+  resourceCode: "allowed",
+  resourceName: "Allowed",
+  resourceType: "EXTERNAL_MCP",
+  queryTarget: "Allowed",
+  version: "1",
+  maxRows: 100,
+  maxBytes: 10000,
+};
+function moduleFixture(t, f) {
+  let reads = 0,
+    calls = 0,
+    allowed = true;
+  const adapter = {
+    tools: () => [{ name: "query_business_data" }],
+    authorizedResources: async () => {
+      reads++;
+      return { resources: allowed ? [resource] : [], fetchedAt: "2026-10-12" };
+    },
+    call: async () => {
+      calls++;
+      return JSON.stringify(catalog);
+    },
+  };
+  t.mock.method(f.business, "moduleMcp", async () => adapter);
+  return {
+    reads: () => reads,
+    calls: () => calls,
+    revoke: () => {
+      allowed = false;
+    },
+  };
+}
+
+test("registered sales reads replay after two reads, isolate scopes and permit a fresh round", async (t) => {
+  const f = fixture(t);
+  let reads = 0;
+  t.mock.method(f.business, "agentQuery", async () => {
+    reads++;
+    return '{"rows":[{"qty":3}]}';
+  });
+  const args = { kind: "periods", query: {} };
+  await f.execute("gea_sales_plan_read", args);
+  await f.execute("gea_sales_plan_read", args);
+  assert.match(await f.execute("gea_sales_plan_read", args), /"qty":3/);
+  assert.equal(reads, 2);
+  await f.execute("gea_sales_plan_read", args, "s2");
+  assert.equal(reads, 3);
+  f.business.repeatReads().clear("s1");
+  f.business.clearTurnReplays("s1");
+  f.business.moduleMcpWaste().progress("s1");
+  await f.execute("gea_sales_plan_read", args);
+  assert.equal(reads, 4);
 });
 
-test("目录必须由当前授权快照过滤，业务查询走同一宿主入口", () => {
-  assert.match(source, /authorizedCatalog\(payload,\s*snapshot\)/);
-  assert.match(
-    source,
-    /module\.authorizedResources\(["']query_business_data["'],\s*exec\.signal\)/,
+test("registered catalog and MCP inspect filter authorization and recheck revoked resources", async (t) => {
+  const f = fixture(t),
+    m = moduleFixture(t, f);
+  const first = await f.execute("gea_gateway_catalog");
+  assert.match(first, /Allowed/);
+  assert.doesNotMatch(first, /Forbidden/);
+  assert.doesNotMatch(
+    await f.execute("gea_module_mcp", {
+      tool: "query_business_data",
+      arguments: { action: "inspect", queries: [] },
+    }),
+    /Forbidden/,
   );
-  assert.match(source, /name:\s*["']gea_cube_query["']/);
-  assert.match(source, /executeModuleMcp/);
+  await f.execute("gea_gateway_catalog");
+  assert.match(await f.execute("gea_gateway_catalog"), /already-read/);
+  m.revoke();
+  assert.match(await f.execute("gea_gateway_catalog"), /no-authorized-resources/);
+  assert.equal(m.reads(), 5);
+  assert.equal(m.calls(), 2);
 });
 
-test("中止与非 Error 抛出都走可读化，不算失败", () => {
-  // 中止：既不记熔断也不记白跑，只回可读说明
-  assert.match(source, /if \(isAbortError\(error\)\) throw readableError\(error\);/);
-  // 其余重抛统一可读化
-  assert.match(source, /const failure = readableError\(repaired \?\? error\);/);
-  assert.match(source, /throw failure;/);
-  assert.match(source, /throw readableError\(error\);/);
+test("registered module tool listing converges independently of another scope and resets next round", async (t) => {
+  const f = fixture(t);
+  moduleFixture(t, f);
+  await f.execute("gea_module_mcp");
+  await f.execute("gea_module_mcp");
+  assert.match(await f.execute("gea_module_mcp"), /已经读过/);
+  await f.execute("gea_module_mcp", {}, "s2");
+  for (let i = 0; i < 10; i++) await f.execute("gea_module_mcp");
+  assert.match(await f.execute("gea_module_mcp"), /metadata-stopped/);
+  assert.equal(f.business.turnStopped("s2"), undefined);
+  f.business.repeatReads().clear("s1");
+  f.business.clearTurnReplays("s1");
+  assert.doesNotMatch(await f.execute("gea_module_mcp"), /metadata-stopped/);
 });
 
-test("新一轮开始时清掉『本轮』计数（重复读 + 白跑）", async () => {
-  const host = await readFile("src/host.ts", "utf8");
-  assert.match(host, /mountTurnAnchor\(ctx, \{/);
-  assert.match(host, /business\.repeatReads\(\)\.clear\(scope\)/);
-  assert.match(host, /business\.moduleMcpWaste\(\)\.progress\(scope\)/);
+test("registered cancellation and non-Error failures are readable and cancellation spends no waste budget", async (t) => {
+  const f = fixture(t);
+  t.mock.method(f.business, "moduleMcp", async () => {
+    throw { kind: "aborted", reason: { kind: "user" } };
+  });
+  for (let i = 0; i < 6; i++) await assert.rejects(f.execute("gea_module_mcp"), /GEA_TURN_ABORTED/);
+  assert.doesNotThrow(() => f.business.moduleMcpWaste().check("s1"));
+  t.mock.method(f.business, "agentQuery", async () => {
+    throw { message: "fixture read failed" };
+  });
+  await assert.rejects(
+    f.execute("gea_sales_plan_read", { kind: "periods" }),
+    (error) => error instanceof Error && !error.message.includes("[object Object]"),
+  );
+});
+
+test("registered page context reads require the current user's page intent", async (t) => {
+  const f = fixture(t);
+  let reads = 0;
+  t.mock.method(f.business, "waitVisibleWorkbenchContext", async () => {
+    reads++;
+    return '{"coverage":"current-visible-page"}';
+  });
+  f.business.rememberTurnQuestion("s1", "全国库存按品类汇总");
+  assert.match(await f.execute("gea_visible_workbench_context"), /PAGE_INTENT_MISSING/);
+  assert.equal(reads, 0);
+  f.business.rememberTurnQuestion("s1", "看一下这一屏");
+  assert.match(await f.execute("gea_visible_workbench_context"), /current-visible-page/);
+  assert.equal(reads, 1);
+  assert.match(await f.execute("gea_visible_workbench_context"), /PAGE_CONTEXT_ALREADY_READ/);
+  f.business.rememberTurnQuestion("s2", "全国库存按品类汇总");
+  assert.match(await f.execute("gea_visible_workbench_context", {}, "s2"), /PAGE_INTENT_MISSING/);
+  assert.equal(reads, 1);
+});
+
+test("registered recipe executes parameterized SQL with only accepted query keys", async (t) => {
+  const f = fixture(t);
+  let input;
+  t.mock.method(f.business, "pluginSql", async (payload) => {
+    input = payload;
+    return { rows: [{ shortage: 3 }] };
+  });
+  const result = await f.execute("gea_plugin_read", {
+    consumerCode: "branch-inventory",
+    recipe: "shortage-by-base-and-group",
+    parameters: { base: "%郑州%", group: "%水饺%" },
+  });
+  assert.equal(JSON.parse(result).rows[0].shortage, 3);
+  assert.deepEqual(Object.keys(input).sort(), ["consumerCode", "pageSize", "parameters", "sql"]);
+  assert.equal(input.pageSize, 50);
+  assert.deepEqual(input.parameters, { base: "%郑州%", group: "%水饺%" });
+  assert.match(input.sql, /:base/);
+  assert.match(input.sql, /:group/);
 });

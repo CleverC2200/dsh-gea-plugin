@@ -43,7 +43,7 @@ test("timeout keeps its category while arbitrary caller reasons stay private", (
   assert.doesNotMatch(String(safe.signal.reason), /private-token/);
   safe.dispose();
 });
-test("business identity wins over a mismatched page, coding still follows the page", () => {
+test("trusted business identity wins over a mismatched page; generic model routing uses its default", () => {
   let preset = "gea-html-inventory-fc";
   const ctx = {
     agents: { get: () => ({ session: {} }) },
@@ -60,7 +60,7 @@ test("business identity wins over a mismatched page, coding still follows the pa
   preset = "gea-readonly";
   assert.equal(sessionConsumer(ctx, business, "id"), "sales");
   preset = "auto-negotiation";
-  assert.equal(sessionConsumer(ctx, business, "id"), "base-safety-stock");
+  assert.equal(sessionConsumer(ctx, business, "id"), "sales");
 });
 test("artifact presentation decodes rows without modifying JSON business columns or completeness", () => {
   const rows = Array.from({ length: 25 }, (_, i) => ({
@@ -423,7 +423,11 @@ test(
           assert.ok(evidenceId);
           call = {
             name: "gea_evidence_read",
-            arguments: JSON.stringify({ evidenceId, format: "raw", limit: 6000 }),
+            arguments: JSON.stringify({
+              evidenceId,
+              format: "raw",
+              limit: 6000,
+            }),
           };
         } else if (!rawDone) {
           pages.push(value.content);
@@ -727,7 +731,10 @@ test("small nested artifacts expose exact business rows with coverage, not escap
 
 test("compact dataset paging never presents its row slice as the full returned dataset", () => {
   const raw = JSON.stringify({
-    rows: Array.from({ length: 150 }, (_, i) => ({ sku: "SKU" + i, qty: i === 1 ? null : i })),
+    rows: Array.from({ length: 150 }, (_, i) => ({
+      sku: "SKU" + i,
+      qty: i === 1 ? null : i,
+    })),
     hasMore: true,
     totalRows: 999,
   });

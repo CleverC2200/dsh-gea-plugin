@@ -9,9 +9,7 @@ const checks = runQualityChecks(
     "typecheck:official",
     "check:knowledge",
     "test:quality",
-    "test:fixture-inputs",
-    "test:prompt-execution",
-    "test:profile-window",
+    "check:prompt-execution",
   ].map((name) => ({
     name,
     execute() {

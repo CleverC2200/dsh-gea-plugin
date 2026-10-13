@@ -2,7 +2,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
-import { readFile } from "node:fs/promises";
 
 const { outputFiles } = await build({
   stdin: {
@@ -15,8 +14,7 @@ const { outputFiles } = await build({
   format: "esm",
 });
 const m = await import(
-  "data:text/javascript;base64," +
-    Buffer.from(outputFiles[0].contents).toString("base64")
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 
 /** 造一个 undici 形状的失败：TypeError('fetch failed') + cause 带 code/hostname/syscall。 */
@@ -26,10 +24,13 @@ const undiciFailure = (code, extra = {}) =>
   });
 
 test("连接被重置：翻成可读原因 + 带 code，不再是 UNKNOWN", () => {
-  const error = m.networkError(undiciFailure("ECONNRESET", { syscall: "read", hostname: "gea.synear.cn" }), {
-    what: "模型网关 GEA 模型网关",
-    stage: "流式读取",
-  });
+  const error = m.networkError(
+    undiciFailure("ECONNRESET", { syscall: "read", hostname: "gea.synear.cn" }),
+    {
+      what: "模型网关 GEA 模型网关",
+      stage: "流式读取",
+    },
+  );
   assert.equal(error.code, "GEA_NETWORK_FAILED");
   assert.match(error.message, /GEA_NETWORK_FAILED/);
   assert.match(error.message, /ECONNRESET/);
@@ -61,13 +62,18 @@ test("超时单独成类，并写清上限", () => {
   const timeout = Object.assign(new Error("The operation was aborted due to timeout"), {
     name: "TimeoutError",
   });
-  const error = m.networkError(timeout, { what: "模型网关", timeoutMs: 300_000 });
+  const error = m.networkError(timeout, {
+    what: "模型网关",
+    timeoutMs: 300_000,
+  });
   assert.equal(error.code, "GEA_NETWORK_TIMEOUT");
   assert.match(error.message, /300 秒/);
 });
 
 test("已有 code 的错误与用户中止保持原样（不重复包装）", () => {
-  const http = Object.assign(new Error("GEA_MODEL_HTTP_500"), { code: "GEA_MODEL_HTTP_500" });
+  const http = Object.assign(new Error("GEA_MODEL_HTTP_500"), {
+    code: "GEA_MODEL_HTTP_500",
+  });
   assert.equal(m.networkError(http, { what: "x" }), http);
   const aborted = Object.assign(new TypeError("fetch failed"), {
     cause: { kind: "aborted", reason: { kind: "user" } },
@@ -79,20 +85,41 @@ test("已有 code 的错误与用户中止保持原样（不重复包装）", ()
   assert.match(rawReason.message, /GEA_TURN_ABORTED/);
 });
 
-test("接线：模型流式请求与 GEA 请求出口都走这套翻译", async () => {
-  const host = await readFile("src/host.ts", "utf8");
-  assert.match(host, /(?:throw |const converted\s*=\s*)networkError\(error,\s*\{/);
-  assert.match(host, /stage = "流式读取"/);
-  const log = await readFile("src/host/api-log.ts", "utf8");
-  assert.match(log, /throw networkError\(error, \{/);
-});
-
-test('model total timeout names the budget without diagnosing a network failure', () => {
-  const error = m.networkError(new DOMException('timeout', 'TimeoutError'), {
-    what: 'GEA 模型网关', stage: '流式读取', timeoutMs: 120000, timeoutScope: 'model-total',
+test("model total timeout names the budget without diagnosing a network failure", () => {
+  const error = m.networkError(new DOMException("timeout", "TimeoutError"), {
+    what: "GEA 模型网关",
+    stage: "流式读取",
+    timeoutMs: 120000,
+    timeoutScope: "model-total",
   });
-  assert.equal(error.code, 'GEA_NETWORK_TIMEOUT');
+  assert.equal(error.code, "GEA_NETWORK_TIMEOUT");
   assert.match(error.message, /总时限.*120 秒/);
   assert.match(error.message, /已收到响应/);
   assert.doesNotMatch(error.message, /这不是参数问题|检查到该地址的网络或代理|连接 GEA/);
+});
+
+test("the actual GEA fetch outlet preserves the readable connection failure", async () => {
+  const { outputFiles } = await build({
+    entryPoints: ["src/host/api-log.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { GeaApiLogCenter } = await import(
+    "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
+  );
+  const center = new GeaApiLogCenter(
+    () => "fixture",
+    500,
+    async () => {
+      throw undiciFailure("ECONNRESET", { hostname: "localhost" });
+    },
+  );
+  await assert.rejects(center.fetch("https://localhost/sys/user/getUserInfo"), (error) => {
+    assert.equal(error.code, "GEA_NETWORK_FAILED");
+    assert.match(error.message, /ECONNRESET/);
+    assert.match(error.message, /localhost/);
+    return true;
+  });
 });

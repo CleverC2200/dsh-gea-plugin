@@ -60,12 +60,13 @@
     "lint:audit": "node scripts/quality.mjs lint:audit",
     "format:check": "node scripts/quality.mjs format:check",
     "format:audit": "node scripts/quality.mjs format:audit",
-    "test:quality": "node --test scripts/run-quality-checks.test.mjs scripts/quality.test.mjs scripts/quality-policy.test.mjs scripts/run-quality-ci.test.mjs scripts/quality-upstreams.test.mjs scripts/quality-test-reporter.test.mjs scripts/quality-workbench.test.mjs",
+    "test:quality": "node --test scripts/run-quality-checks.test.mjs scripts/quality.test.mjs scripts/quality-policy.test.mjs scripts/run-quality-ci.test.mjs scripts/quality-upstreams.test.mjs scripts/quality-test-reporter.test.mjs scripts/quality-workbench.test.mjs scripts/run-quality-full.test.mjs",
     "quality:fast": "node scripts/run-quality-fast.mjs",
     "quality:ci": "node scripts/run-quality-ci.mjs",
     "test:final-group": "node --test scripts/final-group-input.contract.mjs",
     "quality:upstreams": "node scripts/quality-upstreams.mjs",
-    "test:contracts": "node --test --test-concurrency=1 tests/controlled-execution.test.mjs tests/plugin-sql-cancel.test.mjs tests/read-paging.test.mjs tests/business-page-grant.test.mjs tests/gateway-handshake.test.mjs && pnpm test:window && pnpm test:delivery",
+    "test:ci-full": "node scripts/run-quality-full.mjs",
+    "test:contracts": "node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/controlled-execution.test.mjs tests/plugin-sql-cancel.test.mjs tests/read-paging.test.mjs tests/business-page-grant.test.mjs tests/gateway-handshake.test.mjs tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs",
     "test:profile-window": "node --test tests/profile-window.test.mjs"
   },
   "dependencies": {

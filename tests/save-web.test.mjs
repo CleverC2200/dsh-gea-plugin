@@ -6,10 +6,12 @@ import { testBrowser } from "./fixtures/test-browser.mjs";
 import { profile } from "./profile.mjs";
 
 test(
-  "monthly UI omits legacy SAVE while the retained Host capability verifies same-version persistence",
+  "monthly UI omits legacy SAVE while explicit category SAVE verifies same-version persistence",
   { timeout: 60000 },
   async (t) => {
-    const app = await profile(t);
+    const app = await profile(t, {
+      roles: [{ code: "sales_plan_category_approver", name: "品类审批" }],
+    });
     let saved = false;
     let writes = 0;
     let log;
@@ -83,6 +85,8 @@ test(
               status: 4,
               nodeOrder: 5,
               allowedActions: ["SAVE"],
+              policy: "role-visible-v1",
+              roleActions: [{ role: "category", allowedActions: ["SAVE"] }],
               snapshotHash: (saved ? "b" : "a").repeat(64),
             },
             skus: [item()],
@@ -107,7 +111,9 @@ test(
         const body = JSON.parse(req.body);
         assert.equal(body.action, "SAVE");
         assert.equal(body.expectedStatus, 4);
-        assert.equal(body.expectedSnapshot, undefined);
+        assert.equal(body.expectedSnapshot, "a".repeat(64));
+        assert.equal(body.approvalRole, "category");
+        assert.equal(body.approvalPolicy, "role-visible-v1");
         assert.deepEqual(body.adjustments, [{ skuCode: "789", adjustQty: "1.000" }]);
         writes++;
         saved = true;
@@ -168,13 +174,18 @@ test(
       idempotencyKey: "save-readback",
       request: {
         action: "SAVE",
+        approvalRole: "category",
+        approvalPolicy: "role-visible-v1",
         expectedStatus: 4,
         expectedSnapshot: "a".repeat(64),
         adjustments: [{ skuCode: "789", adjustQty: "1.000" }],
       },
     });
     assert.equal(result.ok, true, JSON.stringify(result));
-    const readback = await app.rpc("workbench/query", { kind: "detail", query: { planId: "p" } });
+    const readback = await app.rpc("workbench/query", {
+      kind: "detail",
+      query: { planId: "p" },
+    });
     assert.equal(readback.ok, true);
     assert.equal(readback.value.currentVersion.id, "v");
     assert.equal(readback.value.currentVersion.status, 4);

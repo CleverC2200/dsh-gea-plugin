@@ -189,7 +189,12 @@ export interface VisibleWorkbenchContext {
   visibleRows: Array<Record<string, string | number | null>>;
   selectedPlanIds: string[];
   expandedPlanIds: string[];
-  expandedFields: Array<{ id: string; label: string; value: string; editable: boolean }>;
+  expandedFields: Array<{
+    id: string;
+    label: string;
+    value: string;
+    editable: boolean;
+  }>;
   pagination: { page: number; pageSize: number; total: number };
   evidence: {
     source: "gea-user-session";
@@ -839,7 +844,12 @@ export class Business {
   /** 仅桌面拥有者可用：凭证通过私有回环通道传递，绝不经浏览器 RPC。 */
   desktopLoginSnapshot(): unknown {
     return this.auth
-      ? { schema: 1, environment: this.environment, base: this.base, auth: { ...this.auth } }
+      ? {
+          schema: 1,
+          environment: this.environment,
+          base: this.base,
+          auth: { ...this.auth },
+        }
       : null;
   }
   persistentLoginSnapshot(): unknown {
@@ -1257,7 +1267,12 @@ export class Business {
               "X-Tenant-Id": auth.tenantId,
               "X-Request-Id": requestId,
             },
-            body: JSON.stringify({ agentCode, channel: "AI_PORTAL", requestId, conversationId }),
+            body: JSON.stringify({
+              agentCode,
+              channel: "AI_PORTAL",
+              requestId,
+              conversationId,
+            }),
           });
           if (!response.ok) throw await geaResponseError(response, [auth.token]);
           const body = object(parseJson(await response.text()));
@@ -1272,7 +1287,12 @@ export class Business {
             !delegationToken
           )
             throw new Error("GEA_APPROVAL_SESSION_REJECTED");
-          session = { authToken: auth.token, conversationId, sessionId, delegationToken };
+          session = {
+            authToken: auth.token,
+            conversationId,
+            sessionId,
+            delegationToken,
+          };
           this.gatewaySession = session;
         }
         const resolved = object(
@@ -1499,7 +1519,12 @@ export class Business {
   /** 在本次登录生命周期内，将一个幂等键绑定到一份已校验请求。 */
   private resubmissions = new Map<
     string,
-    { fingerprint: string; body?: string; flight?: Promise<unknown>; receipt?: unknown }
+    {
+      fingerprint: string;
+      body?: string;
+      flight?: Promise<unknown>;
+      receipt?: unknown;
+    }
   >();
 
   /** 重提前重新读取 GEA 当前版本和 SKU；浏览器只允许改变数量，身份、价格与路由由服务端来源决定。 */
@@ -1509,7 +1534,9 @@ export class Business {
     const auth = this.authenticated();
     const config = this.config.serviceAccounts?.[this.environment];
     if (!config || !serviceAccountReady(config, auth))
-      throw new GeaResponseError(403, { message: "当前环境尚未配置当前用户可用的重提服务账号" });
+      throw new GeaResponseError(403, {
+        message: "当前环境尚未配置当前用户可用的重提服务账号",
+      });
     const source = object(payload.source);
     keys(source, ["planId", "versionId"]);
     const planId = text(source.planId),
@@ -1550,12 +1577,17 @@ export class Business {
           !version.effective ||
           ![6, 7, 8, 9].includes(version.status)
         )
-          throw new GeaResponseError(409, { message: "计划已变化，请刷新后核对重提版本" });
+          throw new GeaResponseError(409, {
+            message: "计划已变化，请刷新后核对重提版本",
+          });
         const periods = object(
           await this.workbenchQuery(
             {
               kind: "periods",
-              query: { periodMonth: request.periodMonth, pageSize: this.config.periodPageSize },
+              query: {
+                periodMonth: request.periodMonth,
+                pageSize: this.config.periodPageSize,
+              },
             },
             signal,
           ),
@@ -1564,7 +1596,9 @@ export class Business {
           (row) => row.periodId === version.periodId && row.planTypeCode === version.planTypeCode,
         );
         if (!period)
-          throw new GeaResponseError(409, { message: "未找到当前计划对应的周期，请刷新后核对" });
+          throw new GeaResponseError(409, {
+            message: "未找到当前计划对应的周期，请刷新后核对",
+          });
         const skus = (await this.workbenchQuery(
           { kind: "versionSkus", query: { versionId } },
           signal,
@@ -1584,18 +1618,31 @@ export class Business {
               typeof item.adjCutQty !== "string"
             )
               throw new Error("INVALID_PAYLOAD");
-            return { ...sku, adjAddQty: item.adjAddQty, adjCutQty: item.adjCutQty };
+            return {
+              ...sku,
+              adjAddQty: item.adjAddQty,
+              adjCutQty: item.adjCutQty,
+            };
           }
           return { ...sku, qty: item.qty };
         });
         const rows = await this.workflowConfig({}, signal);
         const prepared = prepareSalesPlanResubmit(
-          { planId, versionId, detail, period, skus: edited, currentUser: auth },
+          {
+            planId,
+            versionId,
+            detail,
+            period,
+            skus: edited,
+            currentUser: auth,
+          },
           rows,
         );
         // 浏览器只能改变数量；身份、价格和路由必须来自 GEA。
         if (!isDeepStrictEqual(JSON.parse(JSON.stringify(prepared.request)), request))
-          throw new GeaResponseError(409, { message: "提交数据与当前 GEA 来源不一致，请重新核对" });
+          throw new GeaResponseError(409, {
+            message: "提交数据与当前 GEA 来源不一致，请重新核对",
+          });
         if (this.auth !== auth) throw new Error("STALE_LOGIN");
         signal.throwIfAborted();
         attempt.body = JSON.stringify(prepared.request);
@@ -1620,18 +1667,18 @@ export class Business {
 
   private correctionRequests = new Map<
     string,
-    { fingerprint: string; validated: boolean; flight?: Promise<unknown>; receipt?: unknown }
+    {
+      fingerprint: string;
+      validated: boolean;
+      flight?: Promise<unknown>;
+      receipt?: unknown;
+    }
   >();
 
   /** 审批动作按幂等键缓存；即使首次响应丢失，重试也只能重放同一已授权意图。 */
   async salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     this.assertExecutionAllowed(this.config.analysisAgentCode, "approve");
     this.authenticated();
-    if (
-      object(payload.request).adjustmentMode == null &&
-      object(payload.request).approvalRole == null
-    )
-      return this.executeSalesPlanAction(payload, caller);
     const key = text(payload.idempotencyKey),
       fingerprint = JSON.stringify(payload);
     let entry = this.correctionRequests.get(key);
@@ -1682,8 +1729,10 @@ export class Business {
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     if (![1, 2, 3, 4, 6, 7, 8, 9].includes(request.expectedStatus as number))
-      throw new GeaResponseError(400, { message: "未提交、已完成或无效状态不允许写入" });
-    if (request.approvalRole == null && request.adjustmentMode == null && request.action !== "SAVE")
+      throw new GeaResponseError(400, {
+        message: "未提交、已完成或无效状态不允许写入",
+      });
+    if (request.approvalRole == null && request.adjustmentMode == null)
       throw new GeaResponseError(400, { message: "请明确本次审批角色" });
     if (
       request.approvalPolicy != null &&
@@ -1727,9 +1776,13 @@ export class Business {
         workflowRows,
       );
       if (!access?.allowedActions.includes(request.action as GeaSalesPlanActionRequest["action"]))
-        throw new GeaResponseError(403, { message: "当前角色不具备该版本的操作权限" });
+        throw new GeaResponseError(403, {
+          message: "当前角色不具备该版本的操作权限",
+        });
       if (request.expectedSnapshot !== access.snapshotHash)
-        throw new GeaResponseError(409, { message: "审批依据已变化，请刷新后重试" });
+        throw new GeaResponseError(409, {
+          message: "审批依据已变化，请刷新后重试",
+        });
       if (
         request.approvalPolicy === "role-visible-v1"
           ? !access.roleContractSupported
@@ -1781,16 +1834,25 @@ export class Business {
         !detail.currentVersion.submitter ||
         detail.currentVersion.submitter === auth.id
       )
-        throw new GeaResponseError(403, { message: "纠偏契约、月初终审或角色权限未获确认" });
+        throw new GeaResponseError(403, {
+          message: "纠偏契约、月初终审或角色权限未获确认",
+        });
       if (
         detail.currentVersion.id !== versionId ||
         access.status !== request.expectedStatus ||
         access.snapshotHash !== request.expectedSnapshot
       )
-        throw new GeaResponseError(409, { message: "纠偏版本或快照已变化，请刷新" });
+        throw new GeaResponseError(409, {
+          message: "纠偏版本或快照已变化，请刷新",
+        });
       const typed = request as GeaSalesPlanActionRequest;
       validateSalesPlanActionInput(
-        { planId, versionId, planTypeCode: detail.currentVersion.planTypeCode, request: typed },
+        {
+          planId,
+          versionId,
+          planTypeCode: detail.currentVersion.planTypeCode,
+          request: typed,
+        },
         workflowRows,
       );
       if (typed.action !== "REJECT") {
@@ -1806,40 +1868,10 @@ export class Business {
           request.approvalRole as GeaSalesPlanActionRequest["approvalRole"],
         );
         if (!isDeepStrictEqual(expected, typed.adjustments))
-          throw new GeaResponseError(400, { message: "纠偏必须提交完整的本节点绝对调整决定" });
+          throw new GeaResponseError(400, {
+            message: "纠偏必须提交完整的本节点绝对调整决定",
+          });
       }
-      if (this.auth !== auth) throw new Error("STALE_LOGIN");
-      signal.throwIfAborted();
-    } else if (
-      request.adjustmentMode == null &&
-      request.action === "SAVE" &&
-      request.approvalRole == null
-    ) {
-      if (request.expectedStatus === 5)
-        throw new GeaResponseError(400, { message: "状态 5 不允许保存调整" });
-      const planId = text(payload.planId);
-      const detail = object(
-        await this.workbenchQuery({ kind: "detail", query: { planId } }, signal),
-      );
-      const version = object(detail.currentVersion);
-      const capability = detail.actionContext == null ? undefined : object(detail.actionContext);
-      if (
-        !capability ||
-        !Array.isArray(capability.allowedActions) ||
-        !capability.allowedActions.includes("SAVE")
-      )
-        throw new GeaResponseError(403, { message: "服务端未授予当前版本 SAVE 能力" });
-      if (
-        version.id !== versionId ||
-        version.planId !== planId ||
-        version.effective !== true ||
-        version.status !== request.expectedStatus ||
-        capability.versionId !== versionId ||
-        capability.status !== request.expectedStatus ||
-        !/^[a-f0-9]{64}$/.test(String(capability.snapshotHash)) ||
-        capability.snapshotHash !== request.expectedSnapshot
-      )
-        throw new GeaResponseError(409, { message: "版本或快照已变化，请回读后核对保存结果" });
       if (this.auth !== auth) throw new Error("STALE_LOGIN");
       signal.throwIfAborted();
     }
@@ -2390,7 +2422,12 @@ export class Business {
       identity.throwIfAborted();
       return {
         ...credentials,
-        roleProfile: { roleCodes: [], roleNames: [], roles: [], roleLookupFailed: true },
+        roleProfile: {
+          roleCodes: [],
+          roleNames: [],
+          roles: [],
+          roleLookupFailed: true,
+        },
       };
     }
   }
@@ -2548,7 +2585,10 @@ export class Business {
     return this.turnReadRevisions.get(scope) ?? 0;
   }
   allowPlanRead(scope: string, aggregate: boolean): boolean {
-    const counts = this.planReadCounts.get(scope) ?? { detail: 0, aggregate: 0 };
+    const counts = this.planReadCounts.get(scope) ?? {
+      detail: 0,
+      aggregate: 0,
+    };
     this.planReadCounts.set(scope, counts);
     return aggregate ? ++counts.aggregate <= 8 : ++counts.detail <= 20;
   }
@@ -2756,7 +2796,11 @@ export class Business {
       requestHeaders?: Record<string, string>;
       responseBody?: string;
     }>;
-    experiments?: Array<{ label: string; status?: number; responseBody?: string }>;
+    experiments?: Array<{
+      label: string;
+      status?: number;
+      responseBody?: string;
+    }>;
   }> {
     this.assertExecutionAllowed(consumerCode);
     const raw: Array<{
@@ -2810,7 +2854,11 @@ export class Business {
     // 会话阶段拿到的身份，用来做"带 _meta / 不带 _meta"的对照实验。
     let meta: Record<string, unknown> | undefined;
     let transportSession: string | undefined;
-    const experiments: Array<{ label: string; status?: number; responseBody?: string }> = [];
+    const experiments: Array<{
+      label: string;
+      status?: number;
+      responseBody?: string;
+    }> = [];
     try {
       const auth = this.authenticated();
       const transport = await prepareGatewayMcp(
@@ -3001,7 +3049,10 @@ export class Business {
         !result.delegationToken
       )
         throw new Error("GEA_PLUGIN_SESSION_REJECTED");
-      delegation = { authToken: auth.token, delegationToken: result.delegationToken };
+      delegation = {
+        authToken: auth.token,
+        delegationToken: result.delegationToken,
+      };
       this.pluginDelegations.set(consumerCode, delegation);
       return delegation;
     };
@@ -3124,7 +3175,12 @@ export class Business {
       async (table, signal) => {
         const page = object(
           await this.pluginSql(
-            { consumerCode, sql: `SELECT * FROM ${table}`, pageNo: 1, pageSize: 1 },
+            {
+              consumerCode,
+              sql: `SELECT * FROM ${table}`,
+              pageNo: 1,
+              pageSize: 1,
+            },
             signal,
           ),
         );
@@ -3151,7 +3207,10 @@ export class Business {
       const bounded = outcome.value ?? [];
       const cacheKey = consumerCode + ":" + table;
       if (bounded.length > 0)
-        this.pluginSchemaCache.set(cacheKey, { at: Date.now(), columns: bounded });
+        this.pluginSchemaCache.set(cacheKey, {
+          at: Date.now(),
+          columns: bounded,
+        });
       result.push({ table, columns: bounded });
     }
     const byTable = new Map(result.map((row) => [row.table, row]));
@@ -3267,7 +3326,13 @@ export class Business {
   private async salesPlanPeriodPage(
     query: Record<string, unknown>,
     signal: AbortSignal,
-  ): Promise<{ records: Row[]; total: number; size: number; current: number; pages: number }> {
+  ): Promise<{
+    records: Row[];
+    total: number;
+    size: number;
+    current: number;
+    pages: number;
+  }> {
     if (query.status != null && query.status !== "")
       throw new Error(
         "INVALID_QUERY: period status was removed; filter visible plans by plan status instead.",
@@ -3625,7 +3690,11 @@ export class Business {
         const nextOffset = offset + recordsPage.length;
         const nextQuery =
           nextOffset < views.length
-            ? { versionId: query.versionId, offset: nextOffset, pageSize: requested }
+            ? {
+                versionId: query.versionId,
+                offset: nextOffset,
+                pageSize: requested,
+              }
             : null;
         const result = envelope(nextQuery === null ? "complete" : "partial", {
           records: recordsPage,

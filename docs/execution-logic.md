@@ -6,7 +6,7 @@
 
 [Business](../src/host/business.ts) 持有唯一 GEA 身份、环境、凭据和登录代际。[client](../src/client.tsx) 发布一个 [只读身份 reader](../src/business-identity-client.ts) 与账户动作；Native、HTML 和账户呈现消费这个投影。读取故障保留最后确认身份，不把未知或读取失败当作主动退出。
 
-[业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。`sessionConsumer` 在无 profile 时仍读取已绑定非 mock 页面的 Consumer，继而回退 `analysisAgentCode`；Host 模型执行和 Prompt runtime 实际消费这条路径。该接线须与目标资源身份规则继续核迁移边界，不能把页面回退写为已删除。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
+[业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。`sessionConsumer` 在无可信 profile 时使用 `analysisAgentCode` 作为普通模型默认路由；页面 Consumer 不改变模型身份。Host 模型执行和 Prompt runtime 消费同一选择，普通 Session 的业务工具仍由 `toolConsumer` 拒绝。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
 
 登录环境只接受 [Host 配置](../src/shared/environments.js) 已登记的名称；client 通过 `businessAccount.startLogin` 将所选名称交给 Host，切环境会清旧二维码、凭据、预览并取消旧身份任务。只读投影同时提供当前环境与可选环境清单，端点/默认值从 [Host Config](../src/host.ts) 和公司产品配置读取，不从浏览器标签推断。
 
@@ -45,7 +45,7 @@
 | 首次提单       | 上述退回重提方法要求来源计划与状态 6–9，不提供独立首次提单流程。业务原型或规格中的首次提单合同不等于本方法已接线                                                                                                                                                       |
 | 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 仍核当前身份、角色、版本、快照、服务端显式契约和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md)                                 |
 
-当前 `salesPlanAction` 还保留未携带 `approvalRole`/`adjustmentMode` 的兼容 SAVE 分支：它拒绝状态 5，其他状态需服务端明确 SAVE 能力、有效版本和快照；它没有单独拒绝状态 10。V1.3 的状态 10 只读目标与该分支的差距仍需原票核实现和部署，不因文档更新视为已退出。
+`salesPlanAction` 的 SAVE 与审批共用当前状态、有效版本和来源校验，只接受明确 `approvalRole` 或 `adjustmentMode` 的请求。0、5、10 和历史版本均拒绝写入；无角色、无调整模式的兼容 SAVE 已删除。合法角色 SAVE 仍核当前角色、服务端契约和快照，并保留原幂等意图。源码规则不证明服务端 V1.3 已部署或真实业务验收通过。
 
 服务凭据留在 Host，配置只存引用。未知重提结果保持原键与原正文，退出或重启后重新回读计划。HTTP 成功还须核有效版本、旧版本失效、节点字段和日志，不等于真实业务验收。角色审批不借用客户重提来生成新版本；通知位置不授予审批角色。
 
