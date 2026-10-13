@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 
 /**
  * V1.8 #14：顶部指标卡「差额（计划 − 目标）」正数红、负数绿；
@@ -72,8 +73,9 @@ const both = async (t, planAmount, targetAmount) => {
     return false;
   });
   await app.login();
-  const browser = await chromium.launch({ headless: true });
-  t.after(() => browser.close());
+  const browser = await testBrowser(t, () =>
+    chromium.launch({ channel: "chrome", headless: true }),
+  );
   const context = await browser.newContext({
     locale: "zh-CN",
     viewport: { width: 1536, height: 920 },

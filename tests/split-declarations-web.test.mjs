@@ -1,3 +1,4 @@
+import { testBrowser } from "./fixtures/test-browser.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -267,10 +268,13 @@ test(
         ["inventory-split-fc-probe", "legacy-consumer", ["inventory-split-fc-probe"]],
       ],
     );
-    const browser = await chromium.launch({
-      headless: true,
-    });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({
+        channel: "chrome",
+        headless: true,
+      }),
+    );
+
     const context = await browser.newContext({
       locale: "zh-CN",
       viewport: { width: 1536, height: 920 },

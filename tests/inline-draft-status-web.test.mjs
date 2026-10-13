@@ -2,7 +2,8 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { openReadySalesPlan } from "./fixtures/business-page.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 
 /** 暂存失败提示必须贴着改过的数字，重试成功后原地消失，不再占用表格顶部通栏。 */
 test(
@@ -77,8 +78,9 @@ test(
       return false;
     });
     await app.login();
-    const browser = await chromium.launch({ headless: true });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({ channel: "chrome", headless: true }),
+    );
     const context = await browser.newContext({
       locale: "zh-CN",
       viewport: { width: 1536, height: 920 },
@@ -95,7 +97,7 @@ test(
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(app.origin);
-    const frame = await openSalesPlan(page);
+    const frame = await openReadySalesPlan(page);
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     await frame
       .getByRole("button", { name: /宝阳销售组/ })

@@ -1,7 +1,7 @@
 /** Public plugin/page grant fixture only. No listener, profile or external transport. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, realpath } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
 import { BUSINESS_MENU_PRESET, resolveBusinessMenu } from "../src/business-navigation.ts";
@@ -46,7 +46,7 @@ test("DMS is one mock prototype entry and the correction consumer uses the Workb
 });
 
 test("current DMS package registers one Manage resource and mock view grant rejects SQL before transport", async (t) => {
-  const directory = await realpath(resolve("../dsh-agent-workbench/lib/prototypes/dms"));
+  const directory = resolve("../dsh-agent-workbench/lib/prototypes/dms");
   const manifest = JSON.parse(await readFile(resolve(directory, "plugin.json"), "utf8"));
   const effects = [],
     pages = [],

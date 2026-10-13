@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createHash } from "node:crypto";
 import { contractFromPlugin } from "../src/capability/contract.ts";
 import { readPluginContract } from "../src/capability/declarations.ts";
 
@@ -30,20 +30,39 @@ test(
       pageIds: ["inventory-fc"],
       maxEffect: "view",
       skill: await readFile(resolve(root, "skills/fc/SKILL.md"), "utf8"),
-      sources: [await readFile(resolve(old, "index.html.raw"), "utf8")],
+      sources: [await readFile(resolve(root, "index.html"), "utf8")],
     });
-    const { source: _source, ...joined } = await readPluginContract(
-      root,
-      manifest.declarations,
-      legacy,
+    const joined = await readPluginContract(root, manifest.declarations, legacy);
+    assert.equal(joined.id, legacy.id);
+    assert.deepEqual(joined.view, legacy.view);
+    assert.deepEqual(joined.data, legacy.data);
+    assert.equal(joined.maxEffect, legacy.maxEffect);
+    assert.deepEqual(joined.layers, legacy.layers);
+    assert.deepEqual(joined.skills, legacy.skills);
+    assert.deepEqual(joined.routing.keywords, legacy.routing.keywords);
+    assert.ok(joined.routing.summary, "the current declaration must retain a route summary");
+    assert.equal(manifest.gea.readonly, true);
+    // FC 906b3b... blob 80ec24ef...: only the declared v1→v2 protocol migration is allowed.
+    const originalMcp = await readFile(
+      new URL("./fixtures/branch-stock-original-mcp.txt", import.meta.url),
     );
-    const { routing: installedRouting, ...installedIdentity } = joined;
-    const { routing: historicalRouting, ...historicalIdentity } = legacy;
-    assert.deepEqual(installedIdentity, historicalIdentity);
-    assert.deepEqual(installedRouting.keywords, historicalRouting.keywords);
     assert.equal(
-      installedRouting.summary,
-      "在 DSH 分仓库存业务页读取当前 GEA 证据、调整筛选、解释指标，并在右侧 DSH 会话中整理分析方案。",
+      createHash("sha256").update(originalMcp).digest("hex"),
+      "56fee7836b133f8d3e0c3bc97b2b2e140b071b345c452682894f6dd47c684e5d",
+    );
+    assert.deepEqual(JSON.parse(await readFile(resolve(root, "mcp.json"), "utf8")), {
+      ...JSON.parse(originalMcp),
+      contract: "gea-html-v2",
+    });
+    assert.deepEqual(
+      JSON.parse(await readFile(resolve(root, "mcp.json"), "utf8")),
+      JSON.parse(
+        await readFile(
+          resolve("../dsh-agent-manage/business-resources/inventory-fc/mcp.json"),
+          "utf8",
+        ),
+      ),
+      "assembled MCP must match its independently frozen Manage owner",
     );
     assert.equal(manifest.gea.readonly, true);
     const { contract: historicalProtocol, ...historicalMcp } = JSON.parse(

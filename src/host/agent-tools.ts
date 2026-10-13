@@ -532,7 +532,6 @@ export function registerGeaTools(
    * SQL 通道开着时挂在 gea_plugin_read 的说明里，关掉时挂到 gea_module_mcp。
    */
   const moduleIndex = capability?.readToolIndex() ?? "（当前没有可直读的业务模块）";
-  const _sqlReadEnabled = business.config.agentSqlRead === true;
   /**
    * 受管只读 SQL（`/ai/gateway/sql/execute`）：问答侧默认**关闭**。
    *

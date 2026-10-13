@@ -3,7 +3,9 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Business } from "./business.ts";
 
-export async function attachWebLogin(business: Business): Promise<{ flush(): Promise<void>; dispose(): Promise<void> }> {
+export async function attachWebLogin(
+  business: Business,
+): Promise<{ flush(): Promise<void>; dispose(): Promise<void> }> {
   if (process.env.GEA_WEB_LOGIN_PERSIST === "0" || process.env.GEA_DESKTOP_CONTROL_URL)
     return { flush: async () => {}, dispose: async () => {} };
   const file = resolve(business.config.runtimeDir, "web-login.json");
@@ -17,13 +19,21 @@ export async function attachWebLogin(business: Business): Promise<{ flush(): Pro
   let pending = Promise.resolve();
   const stop = business.watchIdentity(() => {
     const snapshot = business.persistentLoginSnapshot();
-    pending = pending.catch(() => {}).then(async () => {
-      await mkdir(resolve(business.config.runtimeDir), { recursive: true, mode: 0o700 });
-      const temporary = `${file}.${process.pid}.tmp`;
-      await writeFile(temporary, JSON.stringify(snapshot), { mode: 0o600 });
-      await rename(temporary, file);
-    });
+    pending = pending
+      .catch(() => {})
+      .then(async () => {
+        await mkdir(resolve(business.config.runtimeDir), { recursive: true, mode: 0o700 });
+        const temporary = `${file}.${process.pid}.tmp`;
+        await writeFile(temporary, JSON.stringify(snapshot), { mode: 0o600 });
+        await rename(temporary, file);
+      });
     void pending.catch(() => {});
   });
-  return { flush: () => pending, dispose: async () => { stop(); await pending; } };
+  return {
+    flush: () => pending,
+    dispose: async () => {
+      stop();
+      await pending;
+    },
+  };
 }

@@ -39,8 +39,19 @@ function invalid(code: string, detail?: string): never {
 }
 
 /** 出问题时把参数尾部（截断、去控制字符）留在运行日志里，方便下次定位。 */
+function printableLogText(text: string): string {
+  let flat = "",
+    previousControl = false;
+  for (const character of text) {
+    const control = character.charCodeAt(0) < 32;
+    if (!control || !previousControl) flat += control ? " " : character;
+    previousControl = control;
+  }
+  return flat.trim();
+}
+
 function argumentTail(argumentsText: string, max = 160): string {
-  const flat = argumentsText.replace(/(?:(?=\p{Cc})(?!\x7f)\p{ASCII})+/gu, " ").trim();
+  const flat = printableLogText(argumentsText);
   return flat.length > max ? "…" + flat.slice(-max) : flat;
 }
 
@@ -48,7 +59,7 @@ function argumentTail(argumentsText: string, max = 160): string {
  * 保留失败片段的有界原文并去控制字符，使解析错误仍能说明网关返回的原因。
  */
 function snippet(text: string, max = 160): string {
-  const flat = text.replace(/(?:(?=\p{Cc})(?!\x7f)\p{ASCII})+/gu, " ").trim();
+  const flat = printableLogText(text);
   return flat.length > max ? flat.slice(0, max) + "…" : flat;
 }
 

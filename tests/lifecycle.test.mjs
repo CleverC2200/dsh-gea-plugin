@@ -1,7 +1,8 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { profile, readSession, until } from "./profile.mjs";
+import { readSession, until } from "./profile.mjs";
+import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 
 test(
   "model authentication, rate limit, truncated stream, cancellation and explicit retry retain separate attempts",

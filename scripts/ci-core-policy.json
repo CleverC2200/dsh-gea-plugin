@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "required": [
+    {
+      "head": "639ed015397290b3745d163aafe02ffee4aa3f84",
+      "version": "0.2.0-rc.2"
+    }
+  ],
+  "compatibility": [
+    {
+      "head": "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
+      "version": "0.2.1-alpha.1"
+    }
+  ]
+}

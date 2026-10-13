@@ -20,14 +20,8 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   mod,
   mod.exports,
 );
-const {
-  prepareGatewayMcp,
-  planCubeQuery,
-  Business,
-  registerGeaTools,
-  resourceConsumers,
-  installPromptProfile,
-} = mod.exports;
+const { prepareGatewayMcp, planCubeQuery, Business, registerGeaTools, resourceConsumers } =
+  mod.exports;
 const resource = (model, extra = {}) => ({
   capabilityCode: "MCP_TOOL:cube:query_business_data",
   resourceCode: model + "-cube",
@@ -200,30 +194,58 @@ function fixture(t, capability) {
     requestTimeoutMs: 1000,
   });
   t.after(() => business.dispose());
-  const tools = new Map(),
-    agent = { id: "one", session: { preset: "gea-readonly" } };
-  const ctx = {
-    agents: { get: () => agent },
-    sessionProjections: { stateOf: (session) => session.preset },
-    effect: (f) => f(),
-    tools: {
-      register: (x) => {
-        tools.set(x.name, x);
-        return () => {};
+  const tools = new Map();
+  const profiles = new Map([["one", "gea-readonly"]]);
+  if (capability) {
+    for (const {
+      data: { consumerCode },
+    } of capability.readModules()) {
+      const preset = "cube-fixture-" + consumerCode;
+      const dispose = mod.exports.installPromptProfile(preset, {
+        label: consumerCode,
+        consumerCode,
+        skills: [],
+      });
+      t.after(dispose);
+      profiles.set("agent-" + consumerCode, preset);
+    }
+  }
+  registerGeaTools(
+    {
+      effect: (f) => f(),
+      tools: {
+        register: (x) => {
+          tools.set(x.name, x);
+          return () => {};
+        },
+      },
+      agents: { get: (id) => (profiles.has(id) ? { session: { fixtureId: id } } : undefined) },
+      sessionProjections: {
+        stateOf: (session, key) =>
+          key === "agentPreset" ? profiles.get(session.fixtureId) : undefined,
+      },
+      agentResources: {
+        list: async () =>
+          [...profiles.values()].map((id) => ({
+            id,
+            kind: "prompt",
+            installed: true,
+            enabled: true,
+          })),
       },
     },
-  };
-  registerGeaTools(ctx, business, capability);
+    business,
+    capability,
+  );
   return {
     business,
     tools,
-    select: (preset) => {
-      agent.session.preset = preset;
-    },
-    call: (name, args, signal = new AbortController().signal) =>
-      tools.get(name).execute(args, { agent, signal }),
+    select: (preset) => profiles.set("one", preset),
+    call: (name, args, signal = new AbortController().signal, agentId = "one") =>
+      tools.get(name).execute(args, { agent: { id: agentId }, signal }),
   };
 }
+
 test("typed and legacy entry share splitting, receipts and authorization refresh; failed group does not erase success", async (t) => {
   const f = fixture(t);
   let authorized = ["inv", "ship"];
@@ -374,12 +396,8 @@ test("two Agent catalogs in one host do not share authorization or metadata", as
         ],
       }),
   }));
-  t.after(installPromptProfile("fixture-one", { label: "One", consumerCode: "one", skills: [] }));
-  t.after(installPromptProfile("fixture-two", { label: "Two", consumerCode: "two", skills: [] }));
-  f.select("fixture-one");
-  const a = await f.call("gea_gateway_catalog", { consumerCode: "one" });
-  f.select("fixture-two");
-  const b = await f.call("gea_gateway_catalog", { consumerCode: "two" });
+  const a = await f.call("gea_gateway_catalog", { consumerCode: "one" }, undefined, "agent-one"),
+    b = await f.call("gea_gateway_catalog", { consumerCode: "two" }, undefined, "agent-two");
   assert.match(a, /inv/);
   assert.doesNotMatch(a, /ship/);
   assert.match(b, /ship/);

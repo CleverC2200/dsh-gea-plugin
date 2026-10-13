@@ -1,3 +1,5 @@
+import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -95,8 +97,10 @@ for (const pendingState of ["loading", "error", "ready"])
         return stockRoute(request, response, reply);
       });
       await app.login();
-      const browser = await chromium.launch({ headless: true });
-      t.after(() => browser.close());
+      const browser = await testBrowser(t, () =>
+        chromium.launch({ channel: "chrome", headless: true }),
+      );
+
       const context = await browser.newContext({
         locale: "zh-CN",
         viewport: { width: 1440, height: 1000 },
@@ -110,6 +114,7 @@ for (const pendingState of ["loading", "error", "ready"])
         })),
       );
       const page = await context.newPage();
+      await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
       const contexts = [],
         contextRequests = [];
       let owner;

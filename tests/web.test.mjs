@@ -169,15 +169,15 @@ test(
       await expect
         .poll(() =>
           page
-            .locator("[data-shell-bottom]")
-            .evaluate((bottom) =>
-              Number.parseFloat(getComputedStyle(bottom.parentElement).gridTemplateColumns),
+            .locator("[data-rightbar-col]")
+            .evaluate((column) =>
+              Number.parseFloat(getComputedStyle(column.parentElement).gridTemplateColumns),
             ),
         )
         .toBe(280);
-      const navigationLayout = await page.locator("[data-shell-bottom]").evaluate((bottom) => ({
-        sidebar: Number.parseFloat(getComputedStyle(bottom.parentElement).gridTemplateColumns),
-        collapsed: bottom.parentElement.getAttribute("data-sidebar-collapsed"),
+      const navigationLayout = await page.locator("[data-rightbar-col]").evaluate((column) => ({
+        sidebar: Number.parseFloat(getComputedStyle(column.parentElement).gridTemplateColumns),
+        collapsed: column.parentElement.getAttribute("data-sidebar-collapsed"),
       }));
       assert.deepEqual(navigationLayout, { sidebar: 280, collapsed: null });
       assert.equal(loginBounds.height, 920);
@@ -285,9 +285,9 @@ test(
       assert.equal(await frame.locator("textarea").count(), 0);
       await expect
         .poll(() =>
-          page.locator("[data-shell-bottom]").evaluate((bottom) => ({
-            sidebar: Number.parseFloat(getComputedStyle(bottom.parentElement).gridTemplateColumns),
-            collapsed: bottom.parentElement.getAttribute("data-sidebar-collapsed"),
+          page.locator("[data-rightbar-col]").evaluate((column) => ({
+            sidebar: Number.parseFloat(getComputedStyle(column.parentElement).gridTemplateColumns),
+            collapsed: column.parentElement.getAttribute("data-sidebar-collapsed"),
           })),
         )
         .toEqual(navigationLayout);

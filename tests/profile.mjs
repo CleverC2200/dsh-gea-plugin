@@ -68,8 +68,10 @@ async function createProfile(t, options) {
     throw new Error(
       "SOURCE_TEST_REQUIRES_CURRENT_CHECKOUT: packaged artifacts use the installed-runtime test lane",
     );
-  t.signal?.throwIfAborted();
-  const dir = await mkdtemp(resolve(options.runtimeParent ?? tmpdir(), "gea-profile-"));
+  const runtimeParent =
+    options.runtimeParent ?? (options.coreOnly ? resolve(root, ".runtime/core-tests") : tmpdir());
+  await mkdir(runtimeParent, { recursive: true });
+  const dir = await mkdtemp(resolve(runtimeParent, "gea-profile-"));
   const key = resolve(dir, "key.pem"),
     cert = resolve(dir, "cert.pem");
   execFileSync(
@@ -153,7 +155,23 @@ async function createProfile(t, options) {
               },
             },
           });
-        else if (path.endsWith("/ai/gateway/agent/session"))
+        else if (path.endsWith("/ai/gateway/session")) {
+          const { consumerType, consumerCode, conversationId } = JSON.parse(request.body);
+          reply({
+            success: true,
+            code: 200,
+            result: {
+              accessDecision: { allowed: true },
+              delegationToken: "fixture-delegation",
+              gatewayContext: {
+                sessionId: "SES-fixture",
+                consumerType,
+                consumerCode,
+                conversationId,
+              },
+            },
+          });
+        } else if (path.endsWith("/ai/gateway/agent/session"))
           reply({
             success: true,
             code: 200,

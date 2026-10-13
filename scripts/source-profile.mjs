@@ -18,6 +18,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
 import { corePackages, sourcePlugins } from "./source-composition.mjs";
+import { readSupportedCore } from "./supported-cores.mjs";
 import {
   fileDigest,
   clientEntry,
@@ -159,23 +160,7 @@ export async function prepareSourcePlugins(
   if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
   const snapshot = join(runtime, "source-combinations", id);
   const modules = join(snapshot, "node_modules");
-  const supported = JSON.parse(
-    await readFile(new URL("./current-core.json", import.meta.url), "utf8"),
-  );
-  const coreCommit = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: core,
-    encoding: "utf8",
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-  }).trim();
-  if (
-    coreCommit !== supported.adaptation ||
-    execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
-      cwd: core,
-      encoding: "utf8",
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-    }).trim()
-  )
-    throw Error("FIXED_OFFICIAL_INPUT_REQUIRED");
+  await readSupportedCore(core);
   await mkdir(join(runtime, "source-combinations"), { recursive: true });
   await mkdir(snapshot, { recursive: false });
   await mkdir(modules, { recursive: true });
@@ -214,9 +199,7 @@ export async function prepareSourcePlugins(
   }
   const snapshots = {};
   for (const [name, { source, target, version, plugin }] of plugins) {
-    const manifest = JSON.parse(
-      await readFile(join(target, "package.json"), "utf8"),
-    );
+    const manifest = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
     const files = [...componentArtifactEntries(manifest), ...plugin.digests];
     const digests = {};
     for (const file of files)
@@ -275,6 +258,40 @@ export async function prepareSourcePlugins(
   const { businessDeploymentPatch } = await import(
     pathToFileURL(join(gea, "scripts/deployment.mjs"))
   );
+  // Core owns patch parsing and ordering. Capture configured public roots in this
+  // new frozen composition before its final isolated Workspace override.
+  const { loadOptionalPatches, loadOverlayPatches, readProfilePatches, composeEntries } =
+    await import(pathToFileURL(join(core, "packages/boot/app-boot/lib/index.js")));
+  const home = join(runtime, "home"),
+    patchPath = join(home, "profiles/plugin-split-validation/cordis.patch.yml");
+  const layers = [...plugins.values()]
+    .filter((entry) => entry.plugin.bundleOrder !== undefined)
+    .sort((a, b) => a.plugin.bundleOrder - b.plugin.bundleOrder)
+    .map((entry) => ({
+      patches: loadOverlayPatches("source-profile", join(entry.target, "cordis.patch.yml")),
+    }));
+  const configured =
+    composeEntries([
+      readProfilePatches(
+        "source-profile",
+        {
+          home,
+          patchPath,
+          overlays: [],
+        },
+        {
+          layers,
+          patches: loadOptionalPatches("source-profile", patchPath) ?? [],
+        },
+      ),
+    ]).find((row) => row.id === "agent-workbench")?.config ?? {};
+  if (
+    !configured ||
+    typeof configured !== "object" ||
+    Array.isArray(configured) ||
+    "__jsExpr" in configured
+  )
+    throw Error("SOURCE_WORKBENCH_CONFIG_LITERAL_REQUIRED");
   const endpoint = "https://127.0.0.1:1";
   const patch = businessDeploymentPatch(
     deployment ?? {
@@ -291,7 +308,7 @@ export async function prepareSourcePlugins(
     },
     gea,
     runtime,
-    { bundle: true },
+    { bundle: true, workspace: resolve(runtime, "workspace"), workbenchConfig: configured },
   );
   const modelIndex = patch.findIndex((row) => row.id === "agent-default-model");
   if (modelIndex < 0) throw Error("SOURCE_MODEL_DEFAULT_MISSING");

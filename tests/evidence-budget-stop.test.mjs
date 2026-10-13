@@ -1,5 +1,5 @@
 import { selectBusinessResource } from "./fixtures/business-session.mjs";
-import test from "./fixtures/source-test.mjs";
+import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readSession, readToolResults, until } from "./profile.mjs";

@@ -1,7 +1,8 @@
-import test from "./fixtures/source-test.mjs";
+import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { profile, readSession, until } from "./profile.mjs";
+import { readSession, until } from "./profile.mjs";
+import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 import { createBusinessSession } from "./fixtures/business-session.mjs";
 
 test(
@@ -25,7 +26,6 @@ test(
     const requests = [];
     let upstreamQueries = 0;
     let secondTurn = false;
-    const _planArgs = { kind: "aggregate", query: { periodId: "20261001" } };
     const mcpArgs = {
       consumerCode: "sales_forecast",
       tool: "query_business_data",

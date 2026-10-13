@@ -35,10 +35,7 @@ async function fixture(t, firstProjectPaths) {
       types: "lib/types/index.d.ts",
     }),
   );
-  await writeFile(
-    join(core, "vendor/cordis/lib/types/index.d.ts"),
-    "export {};\n",
-  );
+  await writeFile(join(core, "vendor/cordis/lib/types/index.d.ts"), "export {};\n");
   const records = [];
   const packageNames = [
     "@cleverc2200/dsh-agent-workbench",

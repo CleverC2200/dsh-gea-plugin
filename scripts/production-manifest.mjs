@@ -1,11 +1,12 @@
-import { validSdkPeers } from './supported-cores.mjs';
+import { validSdkPeers } from "./supported-cores.mjs";
 /** Publish the plugin's runtime graph; the official profile provides SDK and companion peers. */
 export function productionManifest(source, versions) {
-  if (!validSdkPeers(source)) throw Error('SDK_PEER_INCOMPATIBLE');
+  if (!validSdkPeers(source)) throw Error("SDK_PEER_INCOMPATIBLE");
   const manifest = structuredClone(source);
-  for (const field of ['devDependencies', 'scripts', 'workspaces', 'packageManager', 'pnpm']) delete manifest[field];
-  const requiredCompanions = ['@cleverc2200/dsh-agent-workbench', 'dsh-agent-manage'];
-  const optionalCompanions = ['@changfenhuang/dsh-genui', 'dsh-better-sidebar'];
+  for (const field of ["devDependencies", "scripts", "workspaces", "packageManager", "pnpm"])
+    delete manifest[field];
+  const requiredCompanions = ["@cleverc2200/dsh-agent-workbench", "dsh-agent-manage"];
+  const optionalCompanions = ["@changfenhuang/dsh-genui", "dsh-better-sidebar"];
   const companionNames = [...requiredCompanions, ...optionalCompanions];
   manifest.peerDependencies = { ...source.peerDependencies };
   for (const name of companionNames) {

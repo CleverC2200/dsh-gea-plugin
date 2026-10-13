@@ -221,10 +221,7 @@ export function deriveContinuation({ delivery, task, inputs, observedAt, scoped 
         !["completed", "failed"].includes(tool.turn),
     ) ?? [];
   const terminalEvidenceMissing =
-    valid &&
-    task.consistency.status === "observed" &&
-    !remaining.length &&
-    inTransit.length > 0;
+    valid && task.consistency.status === "observed" && !remaining.length && inTransit.length > 0;
   const state = !valid
     ? "unknown"
     : task.consistency.status !== "observed"

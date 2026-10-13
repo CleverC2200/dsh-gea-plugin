@@ -1,7 +1,15 @@
 /** Isolated published-source fixtures for the public source assembler. */
 import assert from "node:assert/strict";
 import {
-  mkdtemp, mkdir, writeFile, readFile, realpath, rm, access, cp, readdir,
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  realpath,
+  rm,
+  access,
+  cp,
+  readdir,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -16,9 +24,7 @@ export const names = [
   "dsh-better-sidebar",
 ];
 export async function sourceAssemblyFixture(t) {
-  const root = await realpath(
-    await mkdtemp(join(tmpdir(), "source-assembly-")),
-  );
+  const root = await realpath(await mkdtemp(join(tmpdir(), "source-assembly-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const sources = [];
   for (const [index, plugin] of sourcePlugins.entries()) {
@@ -39,23 +45,14 @@ export async function sourceAssemblyFixture(t) {
         },
       }),
     );
-    await writeFile(
-      join(source, "lib/host.js"),
-      "export function apply() {}\n",
-    );
-    await writeFile(
-      join(source, "lib/client.js"),
-      "export function apply() {}\n",
-    );
+    await writeFile(join(source, "lib/host.js"), "export function apply() {}\n");
+    await writeFile(join(source, "lib/client.js"), "export function apply() {}\n");
     await writeFile(join(source, "cordis.patch.yml"), "- insert: []\n");
     for (const file of plugin.digests) {
       await mkdir(resolve(source, file, ".."), { recursive: true });
       await writeFile(join(source, file), "original fixture input\n");
     }
-    await writeFile(
-      join(source, "pnpm-lock.yaml"),
-      "source-only locked dependency input\n",
-    );
+    await writeFile(join(source, "pnpm-lock.yaml"), "source-only locked dependency input\n");
     if (index === 2) {
       await mkdir(join(source, "scripts"));
       await writeFile(
@@ -64,11 +61,9 @@ export async function sourceAssemblyFixture(t) {
       );
     }
     execFileSync("git", ["init", "-q"], { cwd: source });
-    execFileSync(
-      "git",
-      ["remote", "add", "source", "https://example.invalid/" + plugin.repo],
-      { cwd: source },
-    );
+    execFileSync("git", ["remote", "add", "source", "https://example.invalid/" + plugin.repo], {
+      cwd: source,
+    });
     execFileSync("git", ["add", "."], { cwd: source });
     execFileSync(
       "git",
@@ -85,9 +80,7 @@ export async function sourceAssemblyFixture(t) {
     );
     const assets = join(root, "published-assets", plugin.repo);
     await mkdir(assets, { recursive: true });
-    for (const file of plugin.resources.filter(
-      (file) => file !== "pnpm-lock.yaml",
-    )) {
+    for (const file of plugin.resources.filter((file) => file !== "pnpm-lock.yaml")) {
       try {
         await cp(join(source, file), join(assets, file), { recursive: true });
       } catch (error) {

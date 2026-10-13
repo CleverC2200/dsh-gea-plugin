@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
-import { mkdtemp, mkdir, writeFile, rm, cp, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fixtureEnvironment } from "./fixtures/business-session.mjs";
+import { compiledSource } from "./fixtures/compiled-source.mjs";
+import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 const core = resolve("../../official-latest-standard");
 const official = (path) => import(pathToFileURL(resolve(core, path, "lib/index.js")).href);
 const { Context } = await official("vendor/cordis");
@@ -24,42 +26,29 @@ const { default: SessionController } = await official("packages/api/session-cont
 const { agentPresetProjectionDefinition } = await official("packages/preset/agent-preset-registry");
 const { default: Persistence } = await official("packages/session/session-persistence-jsonl");
 const { default: Loop } = await official("packages/core/agent-loop");
-async function compiled(contents, repo, directory, url) {
-  const result = await build({
-    stdin: { contents, resolveDir: repo },
-    bundle: true,
-    write: false,
-    platform: "node",
-    format: "esm",
-    plugins: [
-      {
-        name: "source-owned-external-packages",
-        setup(build) {
-          build.onResolve({ filter: /^[^./]/ }, async (args) => {
-            if (args.pluginData === "source-package-resolution") return;
-            const resolved = await build.resolve(args.path, {
-              resolveDir: repo,
-              kind: args.kind,
-              pluginData: "source-package-resolution",
-            });
-            if (resolved.errors.length) return { errors: resolved.errors };
-            return { path: resolved.path, external: true };
-          });
-        },
-      },
-    ],
-    define: { "import.meta.url": JSON.stringify(pathToFileURL(url).href) },
-  });
-  const output = join(directory, "source.mjs");
-  await writeFile(output, result.outputFiles[0].text);
-  return import(pathToFileURL(output).href);
-}
-test("isolated APS mock fixture retains original resources through Manage selection and official Core Session while SQL/model stay before wire", async (t) => {
+const { entryListSchema } = await official("vendor/include");
+const { load, dump } = createRequire(resolve(core, "vendor/include/package.json"))("js-yaml");
+test("actual APS mock registration and Manage route select its original resource, then official Core Session opens view while SQL/model stay before wire", async (t) => {
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(resolve(".runtime/aps-reception-r1-"));
-  const manage = resolve("../dsh-agent-manage");
-  const manageOutput = join(root, "manage");
-  await mkdir(manageOutput);
+  const cleanups = [];
+  let real, business;
+  t.after(async () => {
+    try {
+      for (const off of cleanups.reverse()) await off();
+      await real?.fiber.dispose();
+      business?.dispose();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  const records = await readProfileSources(process.env.GEA_TEST_SOURCE_INPUTS);
+  const owner = (repo) => records.find((entry) => entry.repo === repo);
+  const manageInput = owner("dsh-agent-manage"),
+    geaInput = owner("dsh-gea-plugin"),
+    workbenchInput = owner("dsh-agent-workbench");
+  const manage = manageInput.source,
+    workbench = workbenchInput.source;
   const cwd = join(root, "workspace");
   await mkdir(cwd);
   fixtureEnvironment(t, {
@@ -73,34 +62,37 @@ test("isolated APS mock fixture retains original resources through Manage select
     external.push(String(input));
     assert.fail("offline public contract must stop before external wire");
   });
-  const { apply: applyManage } = await compiled(
-    "export {apply} from './src/index.ts';",
-    manage,
-    manageOutput,
-    join(manage, "src/index.ts"),
-  );
-  const compiledGea = join(root, "gea");
-  await mkdir(compiledGea);
-  const { registerHtmlPlugins, Business } = await compiled(
-    "export {registerHtmlPlugins} from './src/html-plugins.ts';export {Business} from './src/host/business.ts';",
-    process.cwd(),
-    compiledGea,
-    resolve("src/host.ts"),
-  );
-  const compiledWorkbench = join(root, "workbench");
-  await mkdir(compiledWorkbench);
-  const workbench = resolve("../dsh-agent-workbench");
-  const { HtmlPages } = await compiled(
-    "export {HtmlPages} from './src/html-pages.ts';",
-    workbench,
-    compiledWorkbench,
-    join(workbench, "src/host.ts"),
-  );
+  const { apply: applyManage, Config } = await compiledSource(t, {
+    contents: "export {apply, Config} from './src/index.ts';",
+    source: manage,
+    dependencies: manageInput.dependencies,
+    parent: root,
+    url: join(manage, "src/index.ts"),
+  });
+  const { registerHtmlPlugins, Business } = await compiledSource(t, {
+    contents:
+      "export {registerHtmlPlugins} from './src/html-plugins.ts';export {Business} from './src/host/business.ts';",
+    source: geaInput.source,
+    dependencies: geaInput.dependencies,
+    parent: root,
+    url: join(geaInput.source, "src/host.ts"),
+  });
+  const { HtmlPages } = await compiledSource(t, {
+    contents: "export {HtmlPages} from './src/html-pages.ts';",
+    source: workbench,
+    dependencies: workbenchInput.dependencies,
+    parent: root,
+    url: join(workbench, "src/host.ts"),
+  });
   const routes = new Map(),
     providers = [],
-    cleanups = [],
     pending = [],
     presets = new Map();
+  const standard = load(
+    await readFile(resolve(core, "packages/bundle/web-app/presets/standard.patch.yml"), "utf8"),
+    { schema: entryListSchema },
+  )[0].insert[0].config;
+  assert.equal(standard.id, "standard");
   const ctx = {
     skills: {
       registerProvider(create) {
@@ -113,6 +105,13 @@ test("isolated APS mock fixture retains original resources through Manage select
       },
     },
     agentPresets: {
+      async readDocument(id) {
+        assert.equal(id, standard.id, "compose from the fixed official standard declaration");
+        return {
+          agentPreset: id,
+          content: dump(standard.plugins, { schema: entryListSchema, noRefs: true, lineWidth: -1 }),
+        };
+      },
       async register(definition) {
         presets.set(definition.id, definition);
         return async () => presets.delete(definition.id);
@@ -141,20 +140,15 @@ test("isolated APS mock fixture retains original resources through Manage select
       ctx[name] = value;
     },
     logger: { warn() {} },
+    on(...args) {
+      return real.on(...args);
+    },
     inject(names, callback) {
       if (names.includes("connection")) pending.push(Promise.resolve(callback(ctx)));
     },
   };
-  const real = new Context();
-  let business;
-  t.after(async () => {
-    for (const off of cleanups.reverse()) await off();
-    await real.fiber.dispose();
-    business?.dispose();
-    await rm(root, { recursive: true, force: true });
-    await rm(manageOutput, { recursive: true, force: true });
-  });
-  await applyManage(ctx, { geaMcp: false });
+  real = new Context();
+  await applyManage(ctx, Config({ geaMcp: false }));
   await Promise.all(pending);
   real.provide("connection", ctx.connection);
   await real.plugin(Typert);
@@ -181,22 +175,10 @@ test("isolated APS mock fixture retains original resources through Manage select
   real.provide("agentPresets", ctx.agentPresets);
   const controller = new SessionController(real, { nativeOpen: false });
   const pages = new HtmlPages(real, "", async () => "<picker-fixture>");
-  const apsDirectory = join(root, "aps");
-  await cp(join(workbench, "lib/business/inventory-apsplan"), apsDirectory, { recursive: true });
-  const manifestPath = join(apsDirectory, "plugin.json");
-  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  manifest.mode = "mock";
-  await writeFile(manifestPath, JSON.stringify(manifest));
-  const capabilityPath = join(apsDirectory, "capability.json");
-  const capability = JSON.parse(await readFile(capabilityPath, "utf8"));
-  capability.data.mock = true;
-  await writeFile(capabilityPath, JSON.stringify(capability));
-  const mcpPath = join(apsDirectory, "mcp.json");
-  const mcp = JSON.parse(await readFile(mcpPath, "utf8"));
-  mcp.capabilities = [];
-  await writeFile(mcpPath, JSON.stringify(mcp));
-  const packages = await pages.registerHtml([apsDirectory]);
-  assert.equal(packages[0].manifest.mode, "mock", "only the owned APS fixture is simulated");
+  const packages = await pages.registerHtml([
+    join(workbenchInput.assetRoot, "lib/business/inventory-apsplan"),
+  ]);
+  assert.equal(packages[0].manifest.mode, "mock", "use actual Root generated APS mock package");
   ctx.workbenchPages = pages;
   ctx.agents = real.agents;
   ctx.sessionProjections = real.sessionProjections;

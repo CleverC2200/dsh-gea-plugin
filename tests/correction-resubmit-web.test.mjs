@@ -1,9 +1,8 @@
-import test from "./fixtures/source-test.mjs";
+import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 test(
@@ -185,8 +184,9 @@ test(
       }
     });
     await app.login();
-    const browser = await chromium.launch({ headless: true });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({ channel: "chrome", headless: true }),
+    );
     const page = await browser.newPage({ locale: "zh-CN" });
     await page.context().addCookies(
       app.cookie.split("; ").map((p) => ({

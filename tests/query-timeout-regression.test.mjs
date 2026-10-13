@@ -6,7 +6,7 @@ import { build } from "esbuild";
 const compiled = await build({
   stdin: {
     contents:
-      "export {Business} from './src/host/business.ts'; export {createCapabilityRegistry} from './src/capability/registry.ts';",
+      "export {Business} from './src/host/business.ts';export {createCapabilityRegistry} from './src/capability/registry.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -33,6 +33,27 @@ const makeBusiness = (config = {}) => {
     ...config,
   });
   b.auth = { token: "fixture", tenantId: "0", id: "fixture" };
+  b.setCapabilities(
+    createCapabilityRegistry([
+      {
+        id: "timeout-read",
+        label: "Timeout read",
+        enabled: true,
+        maxEffect: "view",
+        skills: [],
+        routing: { keywords: [], summary: "Timeout read" },
+        data: { consumerCode: consumer.consumerCode, tables: [], rules: [] },
+      },
+      {
+        id: "gea-workbench",
+        label: "Sales read",
+        maxEffect: "view",
+        skills: [],
+        routing: { keywords: [], summary: "Sales read" },
+        data: { consumerCode: b.config.analysisAgentCode, tables: [], rules: [] },
+      },
+    ]),
+  );
   return b;
 };
 const session = () =>

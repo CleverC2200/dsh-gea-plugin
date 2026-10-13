@@ -1,11 +1,24 @@
 /** Verify the existing clean-source/frozen-assets contract for the owned Workbench build. */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFile, realpath, readlink } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { readFile, readdir, realpath, readlink, lstat, symlink, mkdir, cp } from "node:fs/promises";
+import { resolve, join, dirname, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
-import { resourceDigests } from "./source-profile.mjs";
+import { fileDigest } from "./source-combination-integrity.mjs";
+
+async function preparedResourceDigests(directory, prefix = "") {
+  const files = {};
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (["node_modules", ".git"].includes(entry.name)) continue;
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const file = join(directory, entry.name);
+    if (entry.isDirectory()) Object.assign(files, await preparedResourceDigests(file, relative));
+    else if (entry.isSymbolicLink()) files[relative] = "link:" + (await realpath(file));
+    else if (entry.isFile()) files[relative] = await fileDigest(file);
+  }
+  return files;
+}
 const git = (root, ...args) =>
   execFileSync("git", ["-C", root, ...args], {
     encoding: "utf8",
@@ -17,6 +30,29 @@ const generatedHtml = new Set([
   "static/regional/index.html",
 ]);
 const derived = (file) => file.startsWith("lib/") || generatedHtml.has(file);
+
+/** Bind the fixed Workbench reader to the already admitted GEA authority without copying it. */
+export async function prepareWorkbenchGeaAuthority({ workbench, gea }) {
+  const target = await realpath(gea),
+    sibling = resolve(dirname(workbench), "dsh-gea-plugin");
+  let existing;
+  try {
+    existing = await lstat(sibling);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (existing) {
+    let actual;
+    try {
+      actual = await realpath(sibling);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    if (actual !== target) throw Error("QUALITY_WORKBENCH_GEA_AUTHORITY_MISMATCH: " + sibling);
+    return;
+  }
+  await symlink(target, sibling, "dir");
+}
 export async function readPreparedWorkbench({ source, prepared, head }) {
   if (!source || !prepared || !head) throw Error("QUALITY_WORKBENCH_INPUT_REQUIRED");
   source = await realpath(source);
@@ -70,7 +106,7 @@ export async function readPreparedWorkbench({ source, prepared, head }) {
     "lib/types/client.d.ts",
   ])
     await readFile(join(prepared, file));
-  const files = await resourceDigests(prepared, "", true);
+  const files = await preparedResourceDigests(prepared);
   return {
     source,
     prepared,
@@ -88,6 +124,26 @@ export async function verifyPreparedWorkbench({ source, prepared, head, receipt 
   if (JSON.stringify(record) !== JSON.stringify(current))
     throw Error("QUALITY_WORKBENCH_ASSET_MISMATCH");
   return current;
+}
+/** Keep publishable assets separate from the prepared worktree's Git metadata and dependency store. */
+export async function prepareWorkbenchAssets({ source, prepared, head, receipt, assets }) {
+  const record = await verifyPreparedWorkbench({ source, prepared, head, receipt });
+  await mkdir(assets);
+  await cp(record.prepared, assets, {
+    recursive: true,
+    verbatimSymlinks: true,
+    filter: (file) =>
+      !relative(record.prepared, file)
+        .split(/[\\/]/)
+        .some((part) => [".git", "node_modules"].includes(part)),
+  });
+  const files = await preparedResourceDigests(assets);
+  if (
+    JSON.stringify(Object.entries(files).sort()) !==
+    JSON.stringify(Object.entries(record.files).sort())
+  )
+    throw Error("QUALITY_WORKBENCH_ASSET_MISMATCH");
+  return { assets: await realpath(assets), files };
 }
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   try {

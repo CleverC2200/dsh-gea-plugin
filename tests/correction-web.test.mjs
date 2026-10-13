@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 
 test(
   "correction tab uses an explicit Z query and blocks customers without an approved monthly baseline",
@@ -61,8 +62,9 @@ test(
       }
     });
     await app.login();
-    const browser = await chromium.launch({ headless: true });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({ channel: "chrome", headless: true }),
+    );
     const page = await browser.newPage({ locale: "zh-CN" });
     page.on("pageerror", (e) => console.error("PAGE ERROR", e.message));
     await page.context().addCookies(
@@ -110,8 +112,9 @@ test(
     const service = correctionService();
     app.route(service.route);
     await app.login();
-    const browser = await chromium.launch({ headless: true });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({ channel: "chrome", headless: true }),
+    );
     const page = await browser.newPage({ locale: "zh-CN" });
     await page.context().addCookies(
       app.cookie.split("; ").map((p) => ({

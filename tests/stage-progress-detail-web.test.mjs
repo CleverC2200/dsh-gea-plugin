@@ -1,7 +1,8 @@
-import test from "./fixtures/source-test.mjs";
+import test from "node:test";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 
 /**
  * 节点百分比一直只能看个结果，核数要人肉反推。现在悬停百分比直接给分子/分母：
@@ -76,8 +77,9 @@ test("节点百分比悬停显示分子/分母", { timeout: 90000 }, async (t) =
     return false;
   });
   await app.login();
-  const browser = await chromium.launch({ headless: true });
-  t.after(() => browser.close());
+  const browser = await testBrowser(t, () =>
+    chromium.launch({ channel: "chrome", headless: true }),
+  );
   const context = await browser.newContext({
     locale: "zh-CN",
     viewport: { width: 1536, height: 920 },

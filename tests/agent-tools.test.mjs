@@ -1,3 +1,4 @@
+import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 import { readFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -5,9 +6,7 @@ import { randomUUID } from "node:crypto";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
-import { openBusinessPageSession } from "./fixtures/business-session.mjs";
 import { prepareWorkbenchHtmlRoots } from "./fixtures/business-page.mjs";
-import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 
 test(
   "GEA tools use the native model-tool-model loop and persist success, permission errors and cancellation",
@@ -259,20 +258,25 @@ test(
         pack === "knowledge"
           ? names.includes("gea_module_mcp")
           : pack === "page"
-            ? names.includes("gea_visible_workbench_context")
+            ? names.includes(outcome === "page-tool" ? "gea_page" : "gea_visible_workbench_context")
             : true;
-      if (!ready) {
+      const skillReady =
+        outcome !== "skill-reference" ||
+        body.messages.some((message) => message.tool_call_id === "bootstrap-skill");
+      if (!ready || !skillReady) {
         res.end(
           event(
             {
               tool_calls: [
                 {
                   index: 0,
-                  id: "bootstrap-pack",
+                  id: !skillReady ? "bootstrap-skill" : "bootstrap-pack",
                   type: "function",
                   function: {
                     name: "gea_capabilities",
-                    arguments: "{}",
+                    arguments: JSON.stringify(
+                      !skillReady ? { skill: "reference-scope" } : { pack },
+                    ),
                   },
                 },
               ],
@@ -293,8 +297,8 @@ test(
         const name = results.length === 0 ? "skill" : "skill_reference_read";
         const args =
           results.length === 0
-            ? { name: "inventory-real" }
-            : { skill: "inventory-real", path: "../../references/rules.md" };
+            ? { name: "reference-scope" }
+            : { skill: "reference-scope", path: "../../references/rules.md" };
         res.end(
           results.length < 2
             ? event(
@@ -655,8 +659,35 @@ test(
     });
     await app.login();
     const page = (await app.rpc("plans")).value;
-    const pages = new Map();
-    async function submit(workbenchContext) {
+    // Page operations use Workbench's actual owner token and the submit result's Core Session.
+    const owners = new Map();
+    async function pageOperation(sessionId, operation, parameters) {
+      const response = await fetch(app.origin + "/api/agent-workbench/page", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: app.cookie, Origin: app.origin },
+        body: JSON.stringify(
+          operation === "open"
+            ? { operation, pageId: "gea-proof", sessionId, resourceId: "gea-readonly" }
+            : { operation, owner: owners.get(sessionId), parameters },
+        ),
+      });
+      const value = await response.json();
+      return { ok: response.ok, value };
+    }
+    async function openNativePage(sessionId) {
+      const result = await pageOperation(sessionId, "open");
+      assert.equal(result.ok, true, JSON.stringify(result));
+      assert.equal(typeof result.value.owner, "string");
+      owners.set(sessionId, result.value.owner);
+      return result;
+    }
+    async function closeNativePage(sessionId) {
+      const result = await pageOperation(sessionId, "close");
+      owners.delete(sessionId);
+      return result;
+    }
+
+    async function submit(workbenchContext, bindPage = true) {
       const preview = await app.rpc("prepare", {
         queryId: page.queryId,
         planId: page.records[0].planId,
@@ -667,7 +698,11 @@ test(
         ...(workbenchContext ? { workbenchContext } : {}),
       });
       assert.equal(result.ok, true, JSON.stringify(result));
-      pages.set(result.value.sessionId, await openBusinessPageSession(app, result.value.sessionId));
+      // submit starts the turn before returning its Session; only page cases bind it afterwards.
+      if (bindPage) {
+        const surface = await openNativePage(result.value.sessionId);
+        assert.equal(surface.ok, true, JSON.stringify(surface));
+      }
       return result.value.sessionId;
     }
     const ended = (id) =>
@@ -678,26 +713,37 @@ test(
     await t.test(
       "successful query is logged before the next model request and preserves paging coverage",
       async () => {
-        const rows = await ended(await submit());
+        const rows = await ended(await submit(undefined, false));
         assert.equal(rows.find((x) => x.type === "turn/end").data.reason.kind, "completed");
         assert.equal(modelRequests.length, 2);
         const promptMessages = JSON.stringify(modelRequests[0].messages);
-        assert.doesNotMatch(
-          promptMessages,
-          /inventory-probe/,
-          "mock skills do not enter the business startup catalog",
+        const businessSystemMessages = JSON.stringify(
+          modelRequests[0].messages.filter((message) => message.role === "system"),
         );
-        assert.doesNotMatch(promptMessages, /DEVELOPER_SKILL_MUST_NOT_LEAK/);
-        // 初始提交尚未绑定页面；当前菜单提供业务读取工具，页面绑定由后续公共 open 完成。
+        assert.doesNotMatch(
+          businessSystemMessages,
+          /inventory-probe/,
+          "local Skill summaries do not enter the business system prompt",
+        );
+        assert.doesNotMatch(businessSystemMessages, /DEVELOPER_SKILL_MUST_NOT_LEAK/);
+        const localSkillCatalog = JSON.stringify(
+          modelRequests[0].messages.filter((message) => message.role === "user"),
+        );
+        assert.match(localSkillCatalog, /<available_skills>/);
+        assert.match(localSkillCatalog, /inventory-probe/);
+        assert.match(localSkillCatalog, /DEVELOPER_SKILL_MUST_NOT_LEAK/);
+        assert.doesNotMatch(promptMessages, /PROBE-RULE-42/);
+        // 只要求核心工具在列；部署补丁还会挂其他工具（例如浏览器 MCP），不在这里锁死全集。
         const toolNames = modelRequests[0].tools.map((x) => x.function.name);
         for (const expected of [
           "gea_sales_plan_read",
           "skill",
-          "gea_module_mcp",
-          "gea_cube_query",
+          "gea_visible_workbench_context",
           "gea_capabilities",
         ])
           assert.ok(toolNames.includes(expected), `${expected} 在工具列表里`);
+        for (const name of ["gea_page", "gea_workbench_apply", "gea_plugin_page_apply"])
+          assert.equal(toolNames.includes(name), false, `${name} requires a bound page`);
         assert.match(
           modelRequests[0].messages
             .filter((message) => message.role === "system")
@@ -928,14 +974,10 @@ test(
           dataVersion: "sales-plan-v1.11",
         },
       });
-      const firstTurn = await ended(id);
-      assert.ok(
-        readToolResults(firstTurn).some((result) => result.text.includes("GEA_RENDERED_WORKBENCH")),
-      );
+      await ended(id);
       // 用户从业务菜单切回主对话：快照还在服务端，但不再是"你眼前这一屏"。
-      const surface = await pages.get(id).close();
+      const surface = await closeNativePage(id);
       assert.equal(surface.ok, true, JSON.stringify(surface));
-      pageGuardClosed = true;
       modelRequests = [];
       const prompted = await app.remote("session/prompt", {
         requestId: randomUUID(),
@@ -949,49 +991,40 @@ test(
         (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
       );
       // 模型每次请求都带全量历史，只能看"最后一条用户消息之后"的那条工具结果。
-      assert.equal(modelRequests.length, 1, "撤回页面菜单后模型直接答复，不调用已撤回工具");
-      const request = modelRequests[0];
-      for (const name of ["gea_visible_workbench_context", "gea_page", "gea_workbench_apply"])
-        assert.equal(
-          request.tools.some((tool) => tool.function.name === name),
-          false,
-          name,
+      const messages = modelRequests[1].messages;
+      const lastUser = messages.map((message) => message.role).lastIndexOf("user");
+      const result = messages
+        .slice(lastUser + 1)
+        .find(
+          (message) => message.role === "tool" && String(message.tool_call_id).startsWith("guard-"),
         );
-      const lastUser = request.messages.map((message) => message.role).lastIndexOf("user");
-      assert.equal(
-        request.messages.slice(lastUser + 1).some((message) => message.role === "tool"),
-        false,
-      );
-      const currentResults = rows
-        .slice(rows.findLastIndex((entry) => entry.type === "turn/start"))
-        .filter((entry) => entry.type === "tool/result");
-      assert.equal(currentResults.length, 0, "旧快照不得生成当前工具证据");
-      assert.equal(rows.at(-1).data.reason.kind, "completed");
+      assert.match(result.content, /PAGE_NOT_IN_WORKBENCH/);
+      assert.match(result.content, /not-in-workbench/);
+      assert.match(result.content, /主对话/);
+      // 旧快照的行内容一个字都不能带出去。
+      assert.equal(result.content.includes("河北"), false);
       assert.equal(
         rows.some((entry) => entry.type === "tool/result" && entry.data.message.content[0].isError),
         false,
       );
     });
-    await t.test(
-      "问答只给 MCP 取数：模块清单挂在 gea_module_mcp 上，受管 SQL 工具默认不注册",
-      async () => {
-        outcome = "success";
-        modelRequests = [];
-        await ended(await submit());
-        // 默认（部署配置没打开 agentSqlRead）不给模型写 SQL 的机会。
-        assert.equal(
-          modelRequests[0].tools.some((candidate) => candidate.function.name === "gea_plugin_read"),
-          false,
-          "默认不应注册 gea_plugin_read",
-        );
-        assert.equal(
-          modelRequests[0].tools.some((tool) => tool.function.name === "gea_module_mcp"),
-          true,
-        );
-        assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_capabilities"));
-        assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_cube_query"));
-      },
-    );
+    await t.test("MCP 目录可见不授予执行权限，受管 SQL 工具默认不注册", async () => {
+      outcome = "success";
+      modelRequests = [];
+      await ended(await submit());
+      // 默认（部署配置没打开 agentSqlRead）不给模型写 SQL 的机会。
+      assert.equal(
+        modelRequests[0].tools.some((candidate) => candidate.function.name === "gea_plugin_read"),
+        false,
+        "默认不应注册 gea_plugin_read",
+      );
+      assert.equal(
+        modelRequests[0].tools.some((tool) => tool.function.name === "gea_module_mcp"),
+        true,
+      );
+      assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_capabilities"));
+      assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_cube_query"));
+    });
     await t.test(
       "a page tool in a plain conversation explains the rule instead of failing",
       async () => {
@@ -1023,8 +1056,8 @@ test(
         const id = await submit();
         await ended(id);
         // 菜单状态字段：只有点了业务菜单才算"在工作台"（默认是主对话）。
-        assert.ok(pages.get(id).owner, "the current registered page owns this Session");
-        const synced = await pages.get(id).context({
+        await openNativePage(id);
+        const synced = await pageOperation(id, "context", {
           format: "gea-workbench-visible-v1",
           sequence: 1,
           view: "regional-approval",
@@ -1125,7 +1158,7 @@ test(
         const id = await submit();
         await ended(id);
         // 菜单状态字段：这一屏的上下文只在"点了业务菜单"的对话里才算证据。
-        assert.ok(pages.get(id).owner, "the current registered page owns this Session");
+        await openNativePage(id);
         // 页面自述能力：工具由通用桥按这份目录为该会话生成。
         const catalog = {
           surface: "gea-workbench",
@@ -1163,14 +1196,17 @@ test(
             },
           ],
         };
-        const declared = await pages.get(id).catalog({
+        const declared = await pageOperation(id, "catalog", {
+          pageSource: "self-report",
           toolMessages: [],
-          catalog,
+          catalog: catalog,
         });
         assert.equal(declared.ok, true, JSON.stringify(declared));
-        await pages
-          .get(id)
-          .context(page(1, [{ planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" }]));
+        await pageOperation(
+          id,
+          "context",
+          page(1, [{ planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" }]),
+        );
         outcome = "workbench-command";
         modelRequests = [];
         const prompted = await app.remote("session/prompt", {
@@ -1216,7 +1252,8 @@ test(
           "kind 不再必填：只要元素目录时可以只传 directory=true",
         );
         const events = await until(
-          async () => (await pages.get(id).catalog({})).value.events,
+          async () =>
+            (await pageOperation(id, "catalog", { pageSource: "self-report" })).value.events,
           (value) => value.length > 0,
         );
         assert.deepEqual(
@@ -1233,13 +1270,8 @@ test(
           reason: "展开这一行",
         });
         // 页面执行完把结果按 AG-UI 的 tool 消息回填，并上报新的页面快照。
-        await pages.get(id).context(
-          page(2, [
-            { planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" },
-            { planId: "plan-hebei-2", organization: "河北", planTypeCode: "Y" },
-          ]),
-        );
-        const settled = await pages.get(id).catalog({
+        const settled = await pageOperation(id, "catalog", {
+          pageSource: "self-report",
           toolMessages: [
             {
               id: "tool-result-1",
@@ -1250,6 +1282,14 @@ test(
           ],
         });
         assert.deepEqual(settled.value.events, []);
+        await pageOperation(
+          id,
+          "context",
+          page(2, [
+            { planId: "plan-hebei-1", organization: "河北", planTypeCode: "Y" },
+            { planId: "plan-hebei-2", organization: "河北", planTypeCode: "Y" },
+          ]),
+        );
         const rows = await until(
           () => readSession(app.runtime, id),
           (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
@@ -1296,7 +1336,8 @@ test(
       // 1) 不在白名单里的页面：声明了也不给工具。
       const foreign = await submit();
       await ended(foreign);
-      const foreignDeclaration = await pages.get(foreign).catalog({
+      const foreignDeclaration = await pageOperation(foreign, "catalog", {
+        pageSource: "self-report",
         toolMessages: [],
         catalog: {
           surface: "inventory-dealer",
@@ -1324,7 +1365,8 @@ test(
       // 2) 白名单页面：改视图的动作和"填草稿"的动作都要暴露（它们都是页面开放的）。
       const allowed = await submit();
       await ended(allowed);
-      await pages.get(allowed).catalog({
+      await pageOperation(allowed, "catalog", {
+        pageSource: "self-report",
         toolMessages: [],
         catalog: {
           surface: "gea-workbench",
@@ -1372,7 +1414,8 @@ test(
       outcome = "success";
       const id = await submit();
       await ended(id);
-      const declared = await pages.get(id).catalog({
+      const declared = await pageOperation(id, "catalog", {
+        pageSource: "self-report",
         toolMessages: [],
         catalog: {
           surface: "gea-workbench",
@@ -1408,7 +1451,8 @@ test(
       );
 
       // 页面切走了：桥关闭 / 这一屏不再是工作台时报 null。
-      const released = await pages.get(id).catalog({
+      const released = await pageOperation(id, "catalog", {
+        pageSource: "self-report",
         toolMessages: [],
         catalog: null,
       });
@@ -1431,7 +1475,8 @@ test(
       outcome = "success";
       const id = await submit();
       await ended(id);
-      await pages.get(id).catalog({
+      await pageOperation(id, "catalog", {
+        pageSource: "self-report",
         toolMessages: [],
         catalog: {
           surface: "gea-workbench",
@@ -1486,7 +1531,8 @@ test(
           JSON.stringify(modelRequests[0].tools.map((candidate) => candidate.function.name)),
       );
       const events = await until(
-        async () => (await pages.get(id).catalog({})).value.events,
+        async () =>
+          (await pageOperation(id, "catalog", { pageSource: "self-report" })).value.events,
         (value) => value.length > 0,
       );
       const tool = modelRequests[0].tools.find(
@@ -1515,7 +1561,8 @@ test(
         target: "field:p-1:sku:1001:qty",
         value: "200",
       });
-      await pages.get(id).catalog({
+      await pageOperation(id, "catalog", {
+        pageSource: "self-report",
         toolMessages: [
           {
             id: "verb-result-1",
@@ -1590,7 +1637,8 @@ test(
         { id: "filters", role: "control", label: "筛选", actions: ["reset"] },
         { id: "pager", role: "control", label: "分页", value: "1", editable: true },
       ];
-      const declared = await pages.get(id).catalog({
+      const declared = await pageOperation(id, "catalog", {
+        pageSource: "self-report",
         toolMessages: [],
         catalog: {
           surface: "gea-workbench",
@@ -1620,6 +1668,20 @@ test(
     await t.test(
       "Skill references use the local reader in the actual model-tool-model loop",
       async () => {
+        await mkdir(`${agentsHome}/skills/reference-scope`, {
+          recursive: true,
+        });
+        await mkdir(`${agentsHome}/references`, {
+          recursive: true,
+        });
+        await writeFile(
+          `${agentsHome}/skills/reference-scope/SKILL.md`,
+          "---\nname: reference-scope\ndescription: 需求预测规则测试\n---\n先读 [规则](../../references/rules.md)\n",
+        );
+        await writeFile(
+          `${agentsHome}/references/rules.md`,
+          "按实际期间查询；缺失数据不能编造。\n",
+        );
         outcome = "skill-reference";
         modelRequests = [];
         const rows = await ended(await submit());
@@ -1630,7 +1692,7 @@ test(
           .join("\n");
         assert.match(initialSystem, /沿用用户语言及指定格式/);
         const results = modelRequests[2].messages.filter((x) => x.role === "tool");
-        assert.match(results[0].content, /inventory-real/);
+        assert.match(results[0].content, /reference-scope/);
         assert.match(results[1].content, /按实际期间查询；缺失数据不能编造/);
         assert.ok(!rows.some((x) => x.type === "tool/call" && x.data.name.includes("mcp")));
         assert.equal(rows.find((x) => x.type === "turn/end").data.reason.kind, "completed");
@@ -1733,7 +1795,7 @@ test(
         outcome = "success";
         const id = await submit();
         await ended(id);
-        assert.ok(pages.get(id).owner, "the current registered page owns this Session");
+        await openNativePage(id);
         const synced = {
           format: "gea-workbench-visible-v1",
           sequence: 1,
@@ -1760,7 +1822,7 @@ test(
             dataVersion: "sales-plan-v1.11",
           },
         };
-        assert.deepEqual((await pages.get(id).context(synced)).value, { synced: true });
+        assert.deepEqual((await pageOperation(id, "context", synced)).value, { synced: true });
         // 工作台页面自己的实时查询走的就是这条：它曾经把刚同步的可见页快照清掉。
         const live = await app.rpc("workbench/query", {
           kind: "periods",

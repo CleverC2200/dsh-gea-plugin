@@ -276,6 +276,43 @@ test("official artifact, dependency and lock drift identify exact safe input cla
   assert.ok(task.assembly.mismatches.some((ref) => ref.kind === "lock"));
   assert.deepEqual(await readFile(join(f.root, "runtime/source-selection.json")), selected);
 });
+async function resizeAssemblyManifest(f, size) {
+  // Whitespace changes byte size while keeping the complete valid manifest semantics.
+  const json = JSON.stringify(f.manifest);
+  const bytes = json + " ".repeat(size - Buffer.byteLength(json));
+  await writeFile(join(f.directory, "combination.json"), bytes);
+  const selection = JSON.stringify({
+    id: f.assembly.combinationId,
+    manifestSha256: hash(bytes),
+  });
+  await writeFile(join(f.root, "runtime/source-selection.json"), selection);
+  f.assembly.manifestSha256 = hash(bytes);
+  f.assembly.selectionSha256 = hash(selection);
+  await writeFile(join(f.root, "assembly.json"), JSON.stringify(f.assembly));
+}
+test("assembly accepts a 24 MiB manifest within the canonical combination byte limit", async (t) => {
+  const f = await assemblyFixture(t);
+  await resizeAssemblyManifest(f, 24 * 1024 * 1024);
+  const result = stage(await f.run(), "frozen-assembly");
+  assert.equal(result.status, "passed", result.reason);
+});
+test("assembly still rejects a manifest above the canonical 64 MiB byte limit", async (t) => {
+  const f = await assemblyFixture(t);
+  await resizeAssemblyManifest(f, 64 * 1024 * 1024 + 1);
+  const report = await f.run();
+  assert.equal(stage(report, "frozen-assembly").reason, "INTEGRITY_INPUT_UNSUPPORTED");
+  assert.equal(report.assembly.inputId, "assembly-manifest");
+});
+test("large assembly manifests do not raise the ordinary build-input 16 MiB limit", async (t) => {
+  const f = await assemblyFixture(t);
+  const bytes = "x".repeat(16 * 1024 * 1024 + 1);
+  await writeFile(join(f.root, "build.mjs"), bytes);
+  f.assembly.buildInputs[0].sha256 = hash(bytes);
+  await writeFile(join(f.root, "assembly.json"), JSON.stringify(f.assembly));
+  const report = await f.run();
+  assert.equal(stage(report, "frozen-assembly").reason, "INTEGRITY_INPUT_UNSUPPORTED");
+  assert.equal(report.assembly.inputId, "build");
+});
 test("missing manifest, build drift, selection drift and wrong candidate retain minimum gaps", async (t) => {
   const f = await assemblyFixture(t);
   await writeFile(join(f.root, "build.mjs"), "changed build input");

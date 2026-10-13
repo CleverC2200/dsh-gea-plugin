@@ -246,8 +246,7 @@ export async function registerHtmlPlugins(
     "/api/gea-html/identity",
     ["GET"],
     () => {
-      const { environment, environments, authenticated, loginState, user } =
-        business.status();
+      const { environment, environments, authenticated, loginState, user } = business.status();
       return json({
         scope: business.pageSessionScope() ?? null,
         subject: businessIdentityKey(business) ?? null,

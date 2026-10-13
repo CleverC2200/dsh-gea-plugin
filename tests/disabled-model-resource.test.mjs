@@ -14,7 +14,7 @@ import { fixtureEnvironment } from "./fixtures/business-session.mjs";
 async function fixture(
   t,
   enabled,
-  { mock = false, workbenchEnabled = true, actualBusiness = false } = {},
+  { mock = false, workbenchEnabled = true, actualBusiness = false, modelFailure, planRead } = {},
 ) {
   fixtureEnvironment(t, {
     GEA_DESKTOP_CONTROL_URL: "",
@@ -168,6 +168,7 @@ async function fixture(
     return release;
   };
   const calls = { route: [], transport: [] };
+  if (planRead) Business.prototype.agentQuery = planRead;
   if (!actualBusiness) {
     Business.prototype.status = () => ({
       authenticated: true,
@@ -186,6 +187,7 @@ async function fixture(
     };
     Business.prototype.fetchExternal = async (url) => {
       calls.transport.push(url);
+      if (modelFailure) return modelFailure();
       return new Response(
         'data: {"choices":[{"index":0,"delta":{"content":"fixture answer"},"finish_reason":null}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
         { headers: { "content-type": "text/event-stream" } },
@@ -228,7 +230,11 @@ async function fixture(
       return response.json();
     },
     async preStep() {
-      const payload = { agent, messages: [], signal: new AbortController().signal };
+      const payload = {
+        agent,
+        messages: [],
+        signal: new AbortController().signal,
+      };
       const run = (handlers.get("agent/pre-step") ?? []).reduceRight(
         (next, handler) => () => handler(payload, next),
         async () => assert.fail("disabled business Task must stop before Core model processing"),
@@ -238,6 +244,22 @@ async function fixture(
     preset,
     calls,
     handlers,
+    executeRegistered: (name, args, scope = agent.id) =>
+      tools.get(name).execute(args, {
+        agent: { id: scope, session: agent.session },
+        signal: new AbortController().signal,
+      }),
+    claimQuestion: async (scope, text) => {
+      for (const handler of handlers.get("agent/inbox/claimed") ?? [])
+        await handler({
+          agent: { id: scope },
+          message: {
+            role: "user",
+            source: { kind: "user" },
+            content: [{ type: "text", text }],
+          },
+        });
+    },
     adapter: adapters.get("gea-analysis"),
     async changeResource(enabled) {
       await releaseDealer();
@@ -406,7 +428,10 @@ test("a persistent disabled preset refuses business tool dispatch before query e
 });
 
 test("actual Host rejects a restored disabled native Task before any selected provider can run", async (t) => {
-  const app = await fixture(t, false, { workbenchEnabled: false, actualBusiness: true });
+  const app = await fixture(t, false, {
+    workbenchEnabled: false,
+    actualBusiness: true,
+  });
   app.agent.session.preset = "gea-readonly";
   await assert.rejects(app.preStep(), /GEA_AGENT_RESOURCE_DISABLED/);
   const result = await app.executeTool("gea_cube_query");
@@ -416,7 +441,10 @@ test("actual Host rejects a restored disabled native Task before any selected pr
 });
 
 test("actual registered Host business routes reject disabled execution with zero captured external requests", async (t) => {
-  const app = await fixture(t, false, { workbenchEnabled: false, actualBusiness: true });
+  const app = await fixture(t, false, {
+    workbenchEnabled: false,
+    actualBusiness: true,
+  });
   for (const endpoint of [
     "workbench/query",
     "workbench/prepare",
@@ -447,7 +475,11 @@ test("actual registered Host business routes reject disabled execution with zero
 });
 
 test("actual mock Host preserves its view and observation while model execution and SQL stay forbidden", async (t) => {
-  const app = await fixture(t, true, { mock: true, workbenchEnabled: false, actualBusiness: true });
+  const app = await fixture(t, true, {
+    mock: true,
+    workbenchEnabled: false,
+    actualBusiness: true,
+  });
   await assert.rejects(app.preStep(), /GEA_CAPABILITY_MOCK_ONLY/);
   await assert.rejects(
     async () => {
@@ -480,9 +512,83 @@ test("actual mock Host preserves its view and observation while model execution 
 });
 
 test("the official LLM stream seam denies a retained direct GEA provider before its wire runs", async (t) => {
-  const app = await fixture(t, true, { mock: true, workbenchEnabled: false, actualBusiness: true });
+  const app = await fixture(t, true, {
+    mock: true,
+    workbenchEnabled: false,
+    actualBusiness: true,
+  });
   await assert.rejects(app.streamThroughCore(app.preset), /GEA_CAPABILITY_MOCK_ONLY/);
   await assert.rejects(app.streamThroughCore("gea-readonly"), /GEA_AGENT_RESOURCE_DISABLED/);
   await assert.rejects(app.streamThroughCore("standard"), /GEA_CAPABILITY_DISABLED/);
   assert.deepEqual(app.external, []);
+});
+
+test("the registered GEA model adapter translates connection and stream failures at its actual outlet", async (t) => {
+  for (const stage of ["connection", "stream"])
+    await t.test(stage, async (t) => {
+      const failure = Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("reset"), {
+          code: "ECONNRESET",
+          hostname: "localhost",
+        }),
+      });
+      const app = await fixture(t, true, {
+        modelFailure: () => {
+          if (stage === "connection") throw failure;
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.error(failure);
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        },
+      });
+      await assert.rejects(
+        async () => {
+          for await (const _chunk of app.adapter.stream({
+            sessionId: app.agent.id,
+            model: "fixture-model",
+            messages: [],
+          })) {
+          }
+        },
+        (error) => {
+          assert.equal(error.code, "GEA_NETWORK_FAILED");
+          assert.match(error.message, /ECONNRESET/);
+          if (stage === "stream") assert.match(error.message, /流式读取/);
+          return true;
+        },
+      );
+      assert.equal(app.calls.transport.length, 1);
+    });
+});
+
+test("the actual Host inbox resets read guards and records the question only for its own Session", async (t) => {
+  let reads = 0;
+  const app = await fixture(t, true, {
+    planRead: async () => {
+      reads++;
+      return '{"rows":[{"qty":3}]}';
+    },
+  });
+  const args = { kind: "periods", query: {} };
+  await app.claimQuestion("s1", "全国库存按品类汇总");
+  await app.claimQuestion("s2", "全国库存按品类汇总");
+  for (const scope of ["s1", "s2"]) {
+    await app.executeRegistered("gea_sales_plan_read", args, scope);
+    await app.executeRegistered("gea_sales_plan_read", args, scope);
+    await app.executeRegistered("gea_sales_plan_read", args, scope);
+  }
+  assert.equal(reads, 4);
+  await app.claimQuestion("s1", "全国库存按品类汇总");
+  await app.executeRegistered("gea_sales_plan_read", args, "s1");
+  await app.executeRegistered("gea_sales_plan_read", args, "s2");
+  assert.equal(reads, 5, "same question claimed again resets only its Session");
+  assert.match(
+    await app.executeRegistered("gea_visible_workbench_context", {}, "s1"),
+    /PAGE_INTENT_MISSING/,
+  );
+  assert.equal(app.external.length, 0);
 });

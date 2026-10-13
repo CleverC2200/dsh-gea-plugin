@@ -1,3 +1,4 @@
+import { testBrowser } from "./fixtures/test-browser.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -59,10 +60,13 @@ test(
   { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 240000 },
   async (t) => {
     await mkdir(out, { recursive: true });
-    const browser = await chromium.launch({
-      headless: true,
-    });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({
+        channel: "chrome",
+        headless: true,
+      }),
+    );
+
     // The immutable historical body supplies every business-text byte. Only
     // W 3202a531's refresh button is added to the current full-text expectation.
     // Separate monthly test plans support the unchanged numerical example.
@@ -347,9 +351,12 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
       });
       t.after(() => heldRead.resolve());
       await app.login();
-      const browser = await chromium.launch({
-        headless: true,
-      });
+      const browser = await testBrowser(t, () =>
+        chromium.launch({
+          channel: "chrome",
+          headless: true,
+        }),
+      );
       const context = await browser.newContext({
         locale: "zh-CN",
         viewport: { width: 1440, height: 1000 },
@@ -362,6 +369,7 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
         })),
       );
       const page = await context.newPage();
+      await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
       const publishedContexts = [],
         contextRequests = [];
       let owner;

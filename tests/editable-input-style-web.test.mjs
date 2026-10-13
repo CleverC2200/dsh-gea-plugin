@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 
 /** 建一条可编辑的计划并打开工作台，供本文件的样式断言复用。 */
 const openWorkbench = async (t) => {
@@ -73,8 +74,9 @@ const openWorkbench = async (t) => {
     return false;
   });
   await app.login();
-  const browser = await chromium.launch({ headless: true });
-  t.after(() => browser.close());
+  const browser = await testBrowser(t, () =>
+    chromium.launch({ channel: "chrome", headless: true }),
+  );
   const context = await browser.newContext({
     locale: "zh-CN",
     viewport: { width: 1536, height: 920 },

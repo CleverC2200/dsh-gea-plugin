@@ -51,8 +51,7 @@ export function sessionConsumer(ctx: Context, business: Business, sessionId?: st
   const profile = profileFor(preset ?? undefined);
   if (profile)
     return preset === "gea-readonly" ? business.config.analysisAgentCode : profile.consumerCode;
-  const page = sessionId ? business.currentPageIdentity?.(sessionId) : undefined;
-  return page && !page.mock ? page.consumerCode : business.config.analysisAgentCode;
+  return business.config.analysisAgentCode;
 }
 
 /** Explicit cross-domain paths come from the trusted profile, never model-supplied registration claims. */

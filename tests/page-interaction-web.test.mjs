@@ -5,13 +5,14 @@ import { chromium, expect } from "@playwright/test";
 import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { profile } from "./profile.mjs";
+import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 import {
-  openSalesPlan,
+  openReadySalesPlan,
   openWorkbenchPage,
   htmlFrameElement,
   prepareWorkbenchHtmlRoots,
 } from "./fixtures/business-page.mjs";
+import { waitForNativeOwner } from "./fixtures/native-page.mjs";
 
 async function enableSelection(page) {
   const button = page.locator("[data-page-selection-trigger]");
@@ -187,7 +188,7 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    const frame = await openSalesPlan(page);
+    const frame = await openReadySalesPlan(page);
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     const target = frame.getByTestId("regional-approval-month-plan-p");
     await expect(target).toBeVisible();
@@ -202,9 +203,7 @@ test(
       });
     await target.click();
     await expect(frame.getByRole("status").filter({ hasText: "已加入输入框" })).toBeVisible();
-    const editor = page
-      .getByRole("complementary", { name: "AI对话", exact: true })
-      .locator('[contenteditable="true"]');
+    const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toContainText("计划");
     const draftLabel = (await editor.innerText()).trim();
     await expect(editor.getByTitle(draftLabel, { exact: true })).toBeVisible();
@@ -231,6 +230,15 @@ test(
       /dsh-page:R[a-f0-9]{12}/,
     );
     assert.equal(/R[a-f0-9]{12}/.test(await message.innerText()), false);
+    const highlightedReference = message
+      .locator("[data-page-reference-label]")
+      .filter({ hasText: draftLabel });
+    await expect(highlightedReference).toHaveText(draftLabel);
+    assert.notEqual(
+      await highlightedReference.evaluate((label) => getComputedStyle(label).backgroundColor),
+      "rgba(0, 0, 0, 0)",
+      "the projected page label keeps its visible reference highlight",
+    );
     assert.match(
       JSON.stringify(prompts.flatMap((p) => p.messages.filter((m) => m.role === "tool"))),
       /row:p/,
@@ -419,7 +427,9 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
+    const ownerReady = waitForNativeOwner(page, "inventory-fc", "gea-html-inventory-fc");
     await openWorkbenchPage(page, "分仓库存");
+    await ownerReady;
     await expect.poll(() => openedSessions.at(-1)?.owner).toEqual(expect.any(String));
     const selected = await app.remote("session/selectModel", {
       sessionId: openedSessions.at(-1).sessionId,

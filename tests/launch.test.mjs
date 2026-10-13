@@ -10,9 +10,21 @@ test("a missing window is rejected before reading a deployment or starting a ser
     ["scripts/start.mjs", "--config", "/nonexistent/gea-deployment.json"],
     { encoding: "utf8", timeout: 10000 },
   );
-  assert.equal(result.status, 1);
+  assert.notEqual(result.status, 0);
   assert.match(result.stderr, /WINDOW_DECLARATION_REQUIRED/);
   assert.doesNotMatch(result.stdout, /dsh web:/);
+  const validation = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      "import {readDeployment} from './scripts/deployment.mjs'; try { await readDeployment('/nonexistent/gea-deployment.json', {resolveCredentials:false,credentialEnv:{}}); } catch(error) { console.error(error.message); process.exitCode=1; }",
+    ],
+    { encoding: "utf8", timeout: 10000 },
+  );
+  assert.notEqual(validation.status, 0);
+  assert.match(validation.stderr, /GEA_CONFIG_FILE/);
+  assert.doesNotMatch(validation.stdout, /dsh web:/);
 });
 
 test("an admitted declaration whose deployment disappears fails before profile effects", async (t) => {

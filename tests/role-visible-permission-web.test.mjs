@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 
 test(
   "granted visible region role directly approves tracking rows when current-node capabilities are empty",
@@ -87,8 +88,9 @@ test(
     });
 
     await app.login();
-    const browser = await chromium.launch({ headless: true });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({ channel: "chrome", headless: true }),
+    );
     const context = await browser.newContext({
       locale: "zh-CN",
       viewport: { width: 1280, height: 800 },

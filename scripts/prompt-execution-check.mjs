@@ -53,19 +53,12 @@ export async function checkPromptExecution(root) {
   for (const file of await sources(join(root, "src/host"))) {
     const name = relative(root, file).replaceAll("\\", "/");
     if (name === owner || name === "src/host/prompt-evidence.ts") continue;
-    issues.push(
-      ...checkPromptExecutionSource(await readFile(file, "utf8"), name),
-    );
+    issues.push(...checkPromptExecutionSource(await readFile(file, "utf8"), name));
   }
   return issues;
 }
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
-  const issues = await checkPromptExecution(
-    resolve(fileURLToPath(new URL("..", import.meta.url))),
-  );
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const issues = await checkPromptExecution(resolve(fileURLToPath(new URL("..", import.meta.url))));
   if (issues.length) {
     console.error(issues.join("\n"));
     process.exitCode = 1;

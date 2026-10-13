@@ -1,6 +1,8 @@
+import { branchStockAcceptance } from "./branch-stock-acceptance.mjs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fixtureEnvironment } from "./business-session.mjs";
-import { htmlFrameElement, openWorkbenchPage } from "./business-page.mjs";
+import { openWorkbenchPage, htmlFrameElement } from "./business-page.mjs";
+import { testBrowser } from "./test-browser.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -24,8 +26,15 @@ export async function stockReferencePage(
     },
     state,
     (body) => {
-      const index = body.messages.findLastIndex((message) => message.role === "user");
-      const id = JSON.stringify(body.messages[index]).match(/dsh-page:(R[a-f0-9]{12})/)?.[1];
+      const reference = /dsh-page:(R[a-f0-9]{12})/;
+      const index = body.messages.findLastIndex(
+        (message) =>
+          message.role === "user" &&
+          typeof message.content === "string" &&
+          reference.test(message.content),
+      );
+      assert.notEqual(index, -1, "the fixture must receive a referenced user question");
+      const id = reference.exec(body.messages[index].content)[1];
       return body.messages.slice(index + 1).some((message) => message.role === "tool")
         ? { content: "引用读取结束" }
         : {
@@ -96,8 +105,9 @@ export async function stockReferencePage(
   });
   assert.equal(binding.status, 200, "reference binding must be served by the real Host");
   assert.equal(typeof (await binding.json()).generation, "string");
-  const browser = await chromium.launch({ headless: true });
-  t.after(() => browser.close());
+  const browser = await testBrowser(t, () =>
+    chromium.launch({ channel: "chrome", headless: true }),
+  );
   const context = await browser.newContext({
     locale: "zh-CN",
     viewport: { width: 1440, height: 1000 },
@@ -110,6 +120,7 @@ export async function stockReferencePage(
     })),
   );
   const page = await context.newPage();
+  await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
   page.setDefaultTimeout(20000);
   if (holdMessage)
     await page.addInitScript((messageType) => {

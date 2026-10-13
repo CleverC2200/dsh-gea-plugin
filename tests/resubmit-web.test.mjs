@@ -1,8 +1,9 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
-import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
+import { profile } from "./profile.mjs";
 
 test("月初与纠偏入口恢复，客户重提仍受服务授权控制", { timeout: 60000 }, async (t) => {
   const app = await profile(t);
@@ -102,10 +103,12 @@ test("月初与纠偏入口恢复，客户重提仍受服务授权控制", { tim
     }
   });
   await app.login();
-  const browser = await chromium.launch({
-    headless: true,
-  });
-  t.after(() => browser.close());
+  const browser = await testBrowser(t, () =>
+    chromium.launch({
+      channel: "chrome",
+      headless: true,
+    }),
+  );
   const context = await browser.newContext({
     locale: "zh-CN",
     viewport: { width: 1536, height: 920 },

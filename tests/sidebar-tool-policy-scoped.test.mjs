@@ -5,7 +5,6 @@ import { mkdir, writeFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Context } from "@deepseek-ai/cordis";
-import { BusinessResources } from "dsh-agent-manage/business-resources";
 const sdk = resolve("../../official-latest-standard/packages/core");
 const { default: SystemPrompt } = await import(pathToFileURL(sdk + "/system-prompt/lib/index.js"));
 const { default: ToolRuntime } = await import(pathToFileURL(sdk + "/tools/lib/index.js"));
@@ -88,9 +87,7 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     surfaceFor: () => undefined,
   };
   ctx.provide("agentResources", {
-    list: async () => [
-      { id: "gea-readonly", kind: "prompt", installed: true, enabled: true },
-    ],
+    list: async () => [{ id: "gea-readonly", kind: "prompt", installed: true, enabled: true }],
   });
   let authenticated = true;
   let visibilityRoute;
@@ -126,12 +123,7 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
   authenticated = true;
   assert.equal((await visibility("invalid")).status, 400);
   assert.equal((await visibility("session-unknown")).status, 404);
-  const offBusiness = m.mountBusinessPrompts(
-    ctx,
-    business,
-    { readModules: () => [] },
-    new Map(),
-  );
+  const offBusiness = m.mountBusinessPrompts(ctx, business, { readModules: () => [] }, new Map());
   const registry = new m.AgentOpenRegistry();
   let prefs = { ...m.SIDEBAR_PREFS_DEFAULTS };
   let offSidebar;
@@ -186,11 +178,7 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
   });
   assert.ok(names().includes("gea_cube_query"));
   for (const permitted of ["mcp__browser__browser_click", "terminal_create"])
-    assert.equal(
-      names().includes(permitted),
-      true,
-      permitted + " follows its owner registration",
-    );
+    assert.equal(names().includes(permitted), true, permitted + " follows its owner registration");
   for (const denied of ["gea_sales_plan_write", "run_code"])
     assert.equal(names().includes(denied), false, denied + " must stay absent");
   const intersect = agent.ctx.tools.restrict({ deny: ["sidebar_open"] });

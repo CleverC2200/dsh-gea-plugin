@@ -1,9 +1,10 @@
-import test from "./fixtures/source-test.mjs";
+import { openSalesPlan, openWorkbenchPage } from "./fixtures/business-page.mjs";
+import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { profile } from "./profile.mjs";
-import { openSalesPlan, openWorkbenchPage } from "./fixtures/business-page.mjs";
 
 test(
   "API log center lists real Host calls, redacts credentials and replays safe reads",
@@ -33,16 +34,21 @@ test(
     await page.goto(app.origin);
     const frame = await openSalesPlan(page);
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
-    const before = await page.locator("[data-shell-bottom]").evaluate((bottom) => {
-      const frame = bottom.parentElement;
+    const before = await page.locator("[data-rightbar-col]").evaluate((column) => {
+      const frame = column.parentElement;
       return {
         sidebar: Number.parseFloat(getComputedStyle(frame).gridTemplateColumns),
         sidebarCollapsed: frame.getAttribute("data-sidebar-collapsed"),
       };
     });
     assert.deepEqual(before, { sidebar: 280, sidebarCollapsed: null });
+    await page.locator('button[aria-label="账户菜单"]').evaluate((element) => element.click());
+    await page.getByRole("menuitem", { name: "设置", exact: true }).click({ force: true });
+    const settings = page.getByRole("dialog", { name: "设置", exact: true });
+    await settings.getByRole("button", { name: "关闭", exact: true }).click();
     await openWorkbenchPage(page, "接口日志");
     await page.getByRole("heading", { name: "接口日志中心", exact: true }).waitFor();
+    await expect(settings).toHaveCount(0);
     const layout = await page.locator(".gea-api-log-center").evaluate((center) => {
       const frame = center.closest("[data-rightbar-collapsed]");
       if (!frame) throw Error("Current Core frame must expose its rightbar state");
@@ -60,11 +66,14 @@ test(
       };
     });
     assert.equal(layout.columns.length, 3, JSON.stringify(layout));
-    // Core's ordinary Web main retains navigation; the retired fullscreen assertion is frozen at a429.
+    // 公共 main 面板保留 Core 默认导航栏，不隐藏宿主框架。
     assert.deepEqual(
-      [layout.columns[0], layout.columns[2]],
-      [before.sidebar, 0],
-      JSON.stringify(layout),
+      await page
+        .locator('[class*="sidebarCol"], [data-rightbar-col]')
+        .evaluateAll((elements) =>
+          elements.map((element) => Math.round(element.getBoundingClientRect().width)),
+        ),
+      [280, 0],
     );
     assert.equal(layout.sidebarCollapsed, before.sidebarCollapsed, JSON.stringify(layout));
     assert.equal(layout.rightbarCollapsed, "true", JSON.stringify(layout));
@@ -99,21 +108,23 @@ test(
       app.requests.filter((request) => request.url.pathname.endsWith("/getUserInfo")).length >= 2,
     );
 
-    await mkdir(".runtime/api-log-evidence", { recursive: true });
+    await mkdir(".scratch", { recursive: true });
+    const screenshots = await mkdtemp(resolve(".scratch/api-log-review-"));
+    t.diagnostic(`API log screenshots: ${screenshots}`);
     await page.screenshot({
-      path: ".runtime/api-log-evidence/desktop.png",
+      path: join(screenshots, "desktop.png"),
       fullPage: true,
     });
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator(".gea-api-log-center")).toBeVisible();
     await page.screenshot({
-      path: ".runtime/api-log-evidence/mobile.png",
+      path: join(screenshots, "mobile.png"),
       fullPage: true,
     });
     await page.locator(".gea-api-call-row").nth(1).click();
     await expect(page.locator(".gea-api-detail")).toBeInViewport();
     await page.screenshot({
-      path: ".runtime/api-log-evidence/mobile-detail.png",
+      path: join(screenshots, "mobile-detail.png"),
     });
     assert.deepEqual(errors, []);
   },

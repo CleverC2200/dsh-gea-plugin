@@ -7,39 +7,39 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { businessDeploymentPatch, deploymentPatch } from "../scripts/deployment.mjs";
+import { findSupportedCore, readSupportedCore, sdkVersion } from "../scripts/supported-cores.mjs";
 const require = createRequire(import.meta.url);
 test("fixed Core and workbench resolve while ordinary patches preserve the official layout", async () => {
   const root = fileURLToPath(new URL("../", import.meta.url));
   const coreRoot = resolve(root, "../../official-latest-standard");
   const manifest = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
   const lock = parse(await readFile(resolve(root, "pnpm-lock.yaml"), "utf8"));
-  const core = JSON.parse(await readFile(resolve(root, "scripts/current-core.json"), "utf8"));
-  assert.equal(core.version, "0.2.1-alpha.1");
-  assert.equal(core.upstream, "5badb15009ae1756c3afe0ae0cef1faafc290ccc");
-  assert.equal(core.adaptation, core.upstream);
-  assert.equal(
-    execFileSync("git", ["-C", coreRoot, "rev-parse", "HEAD"], {
-      encoding: "utf8",
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-    }).trim(),
-    core.upstream,
+  const current = JSON.parse(await readFile(resolve(root, "scripts/current-core.json"), "utf8"));
+  assert.equal(current.version, "0.2.1-alpha.1");
+  assert.equal(current.upstream, "5badb15009ae1756c3afe0ae0cef1faafc290ccc");
+  assert.ok(
+    findSupportedCore({ head: current.adaptation, version: current.version }),
+    "the default deployment adaptation must remain registered",
   );
+  // The deployment default and the official CI axis have separate registered identities.
+  const core = await readSupportedCore(coreRoot);
+  assert.equal(core.id, undefined, "a private adaptation cannot pass as an official Core axis");
   assert.deepEqual(
     await readFile(resolve(coreRoot, "pnpm-lock.yaml")),
-    execFileSync("git", ["-C", coreRoot, "show", core.upstream + ":pnpm-lock.yaml"]),
+    execFileSync("git", ["-C", coreRoot, "show", core.head + ":pnpm-lock.yaml"]),
   );
   for (const [section, name, link, version] of [
     [
       "devDependencies",
       "@deepseek-ai/dsh",
       "link:../../official-latest-standard/apps/cli",
-      core.version,
+      sdkVersion(core, "@deepseek-ai/dsh"),
     ],
     [
       "devDependencies",
       "@deepseek-ai/dsh-client-ui-layout",
       "link:../../official-latest-standard/packages/client/ui-layout",
-      core.version,
+      sdkVersion(core, "@deepseek-ai/dsh-client-ui-layout"),
     ],
     ["dependencies", "@cleverc2200/dsh-agent-workbench", "link:../dsh-agent-workbench", "0.1.1"],
   ]) {

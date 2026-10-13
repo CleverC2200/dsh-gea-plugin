@@ -67,17 +67,44 @@ test(
       exact: true,
     });
     await expect(receipt).toBeVisible();
-    // GEA intentionally hides auxiliary launch buttons; retain that policy and use the native shortcut.
-    await page.keyboard.press("ControlOrMeta+Shift+B");
+    // GEA hides auxiliary launch buttons; configure a public shortcut supported by Linux Web too.
+    await expect(page.getByRole("dialog", { name: /内测声明|预览版说明/ })).toHaveCount(0);
+    await page.keyboard.press("ControlOrMeta+/");
+    const shortcuts = page.getByRole("dialog", { name: "快捷键", exact: true });
+    await shortcuts
+      .getByRole("button", { name: "修改展开／收起右侧栏快捷键", exact: true })
+      .click();
+    const recorder = shortcuts.getByRole("group", { name: "展开／收起右侧栏", exact: true });
+    await expect(recorder).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+Shift+,");
+    await expect(recorder).toBeHidden();
+    await page.keyboard.press("Escape");
+    await expect(shortcuts).toHaveCount(0);
     const pane = page.locator("[data-sidebar-right-panel]");
-    await expect(pane).toBeVisible();
+    const expandSidebar = async () => {
+      await expect(pane).toBeAttached();
+      if ((await pane.getAttribute("data-sidebar-right-open")) !== "true")
+        await page.keyboard.press("ControlOrMeta+Shift+,");
+      await expect(pane).toHaveAttribute("data-sidebar-right-open", "true");
+      await expect(pane).toBeVisible();
+    };
+    await expandSidebar();
+    const showGuide = async () => {
+      const guide = page.locator("[data-sidebar-right-guide]");
+      if (!(await guide.isVisible())) {
+        const start = pane.getByRole("tab", { name: /^(开始|Start)$/ });
+        if (await start.isVisible()) await start.click();
+        else await pane.locator("[data-dockkit-add-tab]").first().click();
+      }
+      await expect(guide).toBeVisible();
+    };
+    await showGuide();
     const kinds = ["files", "git", "subagent", "sidechat", "terminal"];
     for (const kind of kinds)
       await expect(page.locator(`[data-sidebar-right-guide-entry="${kind}"]`)).toHaveCount(1);
     await expect(page.locator('[data-sidebar-right-guide-entry="browser"]')).toHaveCount(0);
     const open = async (kind) => {
-      if (!(await page.locator("[data-sidebar-right-guide]").count()))
-        await pane.locator("[data-dockkit-add-tab]").first().click();
+      await showGuide();
       await page.locator(`[data-sidebar-right-guide-entry="${kind}"]`).click();
     };
     await open("files");
@@ -100,7 +127,7 @@ test(
       .getByText("侧栏隔离验收", { exact: true })
       .click();
     await expect(receipt).toBeVisible({ timeout: 15000 });
-    if (!(await pane.isVisible())) await page.keyboard.press("ControlOrMeta+Shift+B");
+    await expandSidebar();
     await expect(pane.locator(".cm-content:visible").first()).toContainText(
       "saved from isolated sidebar",
     );

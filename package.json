@@ -55,7 +55,19 @@
     "delivery:verify-goal": "node scripts/delivery-check.mjs --verify-goal",
     "test:fixture-inputs": "node --test tests/source-window-input.test.mjs",
     "check:prompt-execution": "node scripts/prompt-execution-check.mjs",
-    "test:prompt-execution": "node scripts/prompt-execution-check.mjs && node --test tests/prompt-execution-state.test.mjs"
+    "test:prompt-execution": "node scripts/prompt-execution-check.mjs && node --test tests/prompt-execution-state.test.mjs",
+    "lint": "node scripts/quality.mjs lint",
+    "lint:audit": "node scripts/quality.mjs lint:audit",
+    "format:check": "node scripts/quality.mjs format:check",
+    "format:audit": "node scripts/quality.mjs format:audit",
+    "test:quality": "node --test scripts/run-quality-checks.test.mjs scripts/quality.test.mjs scripts/quality-policy.test.mjs scripts/run-quality-ci.test.mjs scripts/quality-upstreams.test.mjs scripts/quality-test-reporter.test.mjs scripts/quality-workbench.test.mjs scripts/run-quality-full.test.mjs",
+    "quality:fast": "node scripts/run-quality-fast.mjs",
+    "quality:ci": "node scripts/run-quality-ci.mjs",
+    "test:final-group": "node --test scripts/final-group-input.contract.mjs",
+    "quality:upstreams": "node scripts/quality-upstreams.mjs",
+    "test:ci-full": "node scripts/run-quality-full.mjs",
+    "test:contracts": "node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/controlled-execution.test.mjs tests/plugin-sql-cancel.test.mjs tests/read-paging.test.mjs tests/business-page-grant.test.mjs tests/gateway-handshake.test.mjs tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs",
+    "test:profile-window": "node --test tests/profile-window.test.mjs"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "link:../../upstream-inputs/genui",
@@ -127,7 +139,19 @@
     "react-dom": "18.3.1",
     "react-grab": "0.2.0",
     "typescript": "5.9.3",
-    "xlsx-republish": "0.20.3"
+    "xlsx-republish": "0.20.3",
+    "@deepseek-ai/cordis": "link:../../official-latest-standard/vendor/cordis",
+    "@deepseek-ai/dsh": "link:../../official-latest-standard/apps/cli",
+    "@deepseek-ai/dsh-api-session-controller": "link:../../official-latest-standard/packages/api/session-controller",
+    "@deepseek-ai/dsh-brand": "link:../../official-latest-standard/packages/util/brand",
+    "@deepseek-ai/dsh-llm": "link:../../official-latest-standard/packages/llm/llm",
+    "@deepseek-ai/dsh-llm-pi-ai": "link:../../official-latest-standard/packages/llm/llm-pi-ai",
+    "@deepseek-ai/dsh-persona": "link:../../official-latest-standard/packages/preset/persona",
+    "@deepseek-ai/dsh-tools": "link:../../official-latest-standard/packages/core/tools",
+    "@deepseek-ai/schemastery": "link:../../official-latest-standard/vendor/schemastery",
+    "dsh-agent-manage": "link:../dsh-agent-manage",
+    "oxlint": "1.87.0",
+    "oxfmt": "0.72.0"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -146,6 +170,8 @@
     "scripts/source-combination-integrity.mjs",
     "scripts/fixtures/delivery-history/",
     "scripts/current-core.json",
+    "scripts/supported-cores.mjs",
+    "scripts/supported-cores.json",
     "scripts/deployment.mjs",
     "scripts/verify.mjs",
     "scripts/session-log.mjs",

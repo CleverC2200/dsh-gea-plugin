@@ -134,8 +134,7 @@ export class PromptExecutionState {
   forget(agent: Agent): void {
     this.#states.delete(agent);
     for (const [token, lease] of this.#pending) {
-      if (this.#executions.get(lease)?.agent === agent)
-        this.#pending.delete(token);
+      if (this.#executions.get(lease)?.agent === agent) this.#pending.delete(token);
     }
   }
   clear(): void {
@@ -165,12 +164,10 @@ export class PromptExecutionState {
     const state = execution.state;
     if (outcome.failure) {
       state.failures.set(outcome.failure.key, outcome.failure.text);
-      while (state.failures.size > 4)
-        state.failures.delete(state.failures.keys().next().value!);
+      while (state.failures.size > 4) state.failures.delete(state.failures.keys().next().value!);
     }
     if (outcome.read) state.reads.set(outcome.read.key, outcome.read.text);
-    if (outcome.deniedConsumer)
-      state.deniedConsumers.add(outcome.deniedConsumer);
+    if (outcome.deniedConsumer) state.deniedConsumers.add(outcome.deniedConsumer);
     const catalog = outcome.catalog;
     if (catalog && execution.catalogGeneration === state.catalogGeneration) {
       state.catalogStalls =
@@ -190,23 +187,13 @@ export class PromptExecutionState {
     tool: string,
     text: string,
     grant: EvidenceGrant | undefined,
-    project: (
-      id: string,
-      alreadyDelivered: boolean,
-    ) => { text: string; receipt: string },
+    project: (id: string, alreadyDelivered: boolean) => { text: string; receipt: string },
   ): Promise<Publication> {
     const original = lease && this.#executions.get(lease);
-    if (original && original.epoch !== this.#store.epoch())
-      return { kind: "identity-changed" };
+    if (original && original.epoch !== this.#store.epoch()) return { kind: "identity-changed" };
     const execution = this.#current(lease);
     if (!execution) return { kind: "stale-context" };
-    const id = await this.#store.put(
-      execution.agent.id,
-      tool,
-      text,
-      execution.epoch,
-      grant,
-    );
+    const id = await this.#store.put(execution.agent.id, tool, text, execution.epoch, grant);
     // A turn/preset can change while the real store writes; retained files are not published into it.
     const current = this.#current(lease);
     if (!current) return { kind: "stale-context" };
@@ -252,20 +239,16 @@ export class PromptExecutionState {
     const key = `${id}:${viewId}`;
     if (!execution) return { ...read, viewId };
     const state = execution.state;
-    if (
-      state.evidenceViews.has(key) &&
-      delivered.visible(viewId) &&
-      !delivered.reload
-    ) {
+    if (state.evidenceViews.has(key) && delivered.visible(viewId) && !delivered.reload) {
       return {
         evidenceId: id,
         tool: read.tool,
         projection: "already-delivered",
         note: "此视图已完整返回并仍在上下文，直接使用已有业务行。无需重读。",
         evidenceDatasets: view.evidenceDatasets,
-        businessFacts: (
-          view as { datasets?: Array<{ businessFacts?: unknown }> }
-        ).datasets?.map((dataset) => dataset.businessFacts),
+        businessFacts: (view as { datasets?: Array<{ businessFacts?: unknown }> }).datasets?.map(
+          (dataset) => dataset.businessFacts,
+        ),
         nextRead: view.nextRead ?? null,
       };
     }

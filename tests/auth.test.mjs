@@ -5,28 +5,70 @@ import { profile } from "./profile.mjs";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 
-test("cancelled login requests cannot publish a late QR challenge or identity", async t => {
-  const {outputFiles} = await build({entryPoints: ["src/host/business.ts"], bundle: true, packages: "external", write: false, platform: "node", format: "cjs"});
-  const module = {exports: {}};
-  new Function("require", "module", "exports", outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
-  const business = new module.exports.Business({geaEnvironments: {production: "https://production.example/gea", test: "https://test.example/gea"}, requestTimeoutMs: 1000});
-  t.after(() => business.dispose());
-  let held = Promise.withResolvers(), entered = Promise.withResolvers();
-  t.mock.method(globalThis, "fetch", async () => {entered.resolve();return held.promise;});
-  const controller = new AbortController();const cancelled = business.loginStart(controller.signal, {environment: "test"});
-  await entered.promise;controller.abort();held.resolve(Response.json({success: true, result: {qrcodeId: "late"}}));
-  await assert.rejects(cancelled, /STALE_SELECTION/);assert.equal(business.status().authenticated, false);
-  await assert.rejects(business.loginPoll({loginId: "late"}, new AbortController().signal), /STALE_LOGIN/);
-  held = Promise.withResolvers();entered = Promise.withResolvers();
-  t.mock.method(globalThis, "fetch", async url => {
-    if (url.includes("getLoginQrcode")) return Response.json({success: true, result: {qrcodeId: "current"}});
-    if (url.includes("getQrcodeToken")) return Response.json({success: true, result: {success: true, token: "synthetic"}});
-    entered.resolve();return held.promise;
+test("cancelled login requests cannot publish a late QR challenge or identity", async (t) => {
+  const { outputFiles } = await build({
+    entryPoints: ["src/host/business.ts"],
+    bundle: true,
+    packages: "external",
+    write: false,
+    platform: "node",
+    format: "cjs",
   });
-  const qr = await business.loginStart(new AbortController().signal, {environment: "production"});
-  const polling = new AbortController();const late = business.loginPoll({loginId: qr.loginId}, polling.signal);
-  await entered.promise;polling.abort();held.resolve(Response.json({success: true, result: {userInfo: {id: "late", realname: "Late", tenantId: "0"}}}));
-  await assert.rejects(late, /STALE_SELECTION/);assert.equal(business.status().authenticated, false);assert.equal(business.status().user, null);
+  const module = { exports: {} };
+  new Function("require", "module", "exports", outputFiles[0].text)(
+    createRequire(import.meta.url),
+    module,
+    module.exports,
+  );
+  const business = new module.exports.Business({
+    geaEnvironments: {
+      production: "https://production.example/gea",
+      test: "https://test.example/gea",
+    },
+    requestTimeoutMs: 1000,
+  });
+  t.after(() => business.dispose());
+  let held = Promise.withResolvers(),
+    entered = Promise.withResolvers();
+  const fetchMock = t.mock.method(globalThis, "fetch", async () => {
+    entered.resolve();
+    return held.promise;
+  });
+  const controller = new AbortController();
+  const cancelled = business.loginStart(controller.signal, { environment: "test" });
+  await entered.promise;
+  controller.abort();
+  held.resolve(Response.json({ success: true, result: { qrcodeId: "late" } }));
+  await assert.rejects(cancelled, /STALE_SELECTION/);
+  assert.equal(business.status().authenticated, false);
+  await assert.rejects(
+    business.loginPoll({ loginId: "late" }, new AbortController().signal),
+    /STALE_LOGIN/,
+  );
+  held = Promise.withResolvers();
+  entered = Promise.withResolvers();
+  fetchMock.mock.mockImplementation(async (url) => {
+    if (url.includes("getLoginQrcode"))
+      return Response.json({ success: true, result: { qrcodeId: "current" } });
+    if (url.includes("getQrcodeToken"))
+      return Response.json({ success: true, result: { success: true, token: "synthetic" } });
+    entered.resolve();
+    return held.promise;
+  });
+  const qr = await business.loginStart(new AbortController().signal, { environment: "production" });
+  const polling = new AbortController();
+  const late = business.loginPoll({ loginId: qr.loginId }, polling.signal);
+  await entered.promise;
+  polling.abort();
+  held.resolve(
+    Response.json({
+      success: true,
+      result: { userInfo: { id: "late", realname: "Late", tenantId: "0" } },
+    }),
+  );
+  await assert.rejects(late, /STALE_SELECTION/);
+  assert.equal(business.status().authenticated, false);
+  assert.equal(business.status().user, null);
 });
 
 test(
@@ -153,17 +195,34 @@ test(
     app.route(undefined);
     assert.equal((await app.rpc("plans")).ok, true);
     // 审批身份要走网关会话解析当前用户角色：这两条是身份查询（POST 只为带 body），
-    // 不是业务写入；除此之外读路径不许发非 GET。
+    // 不是业务写入；可见 MCP 目录只允许初始化与列工具，不能发送工具执行。
     const identityLookups = [
       "/ai/gateway/session",
       "/ai/gateway/agent/session",
       "/ai/gateway/agent/session/current-user/resolve",
     ];
+    const isMcpDiscovery = (request) =>
+      request.method === "POST" &&
+      request.url.pathname.endsWith("/ai/gateway/mcp/proxy/mcp") &&
+      ["initialize", "notifications/initialized", "tools/list"].includes(
+        JSON.parse(request.body).method,
+      );
     assert.ok(
       app.requests.every(
         (request) =>
           request.method === "GET" ||
-          identityLookups.some((path) => request.url.pathname.endsWith(path)),
+          identityLookups.some((path) => request.url.pathname.endsWith(path)) ||
+          isMcpDiscovery(request),
+      ),
+      JSON.stringify(
+        app.requests
+          .filter(
+            (request) =>
+              request.method !== "GET" &&
+              !identityLookups.some((path) => request.url.pathname.endsWith(path)) &&
+              !isMcpDiscovery(request),
+          )
+          .map((request) => ({ method: request.method, path: request.url.pathname })),
       ),
       JSON.stringify(
         app.requests

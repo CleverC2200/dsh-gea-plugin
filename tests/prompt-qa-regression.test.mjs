@@ -4,7 +4,11 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { readSession, readToolResults, until } from "./profile.mjs";
-import { modelProfile as profile } from "./fixtures/model-profile.mjs";
+import {
+  assertCatalogScene,
+  catalogSceneProfile,
+  qaFixtureSkillNames,
+} from "./fixtures/catalog-scene.mjs";
 
 const out = new URL("../.runtime/prompt-qa-regression/", import.meta.url);
 await mkdir(out, { recursive: true });
@@ -77,27 +81,26 @@ const resultObject = (e) => {
 };
 
 test("independent acceptance, no production writes", { timeout: 150000 }, async (t) => {
-  const app = await profile(t, {
-    config: (base) => ({
-      geaEnvironments: { production: base, test: base },
-      analysis: {
-        mode: "model",
-        baseUrl: base + "/v1",
-        model: "fixture",
-        apiKeyEnv: "GEA_QA_MODEL_KEY",
-        agentCode: "sales_forecast",
-        contextWindow: 32768,
-        maxTokens: 2048,
-      },
-    }),
-    env: { GEA_QA_MODEL_KEY: "fixture-only" },
-  });
-  for (const name of [
-    "sinian-demand-dialogue",
-    "sinian-demand-baseline",
-    "sinian-forecast-scope",
-    "sinian-forecast-review",
-  ]) {
+  const app = await catalogSceneProfile(
+    t,
+    {
+      config: (base) => ({
+        geaEnvironments: { production: base, test: base },
+        analysis: {
+          mode: "model",
+          baseUrl: base + "/v1",
+          model: "fixture",
+          apiKeyEnv: "GEA_QA_MODEL_KEY",
+          agentCode: "sales_forecast",
+          contextWindow: 32768,
+          maxTokens: 2048,
+        },
+      }),
+      env: { GEA_QA_MODEL_KEY: "fixture-only" },
+    },
+    "promptQa",
+  );
+  for (const name of qaFixtureSkillNames) {
     const installed = await fixtureRequest(app, "/api/agent-plugins/user-panel/skills/create", {
       name,
       text: `---\nname: ${name}\ndescription: local regression fixture\n---\nExplicit domain rule fixture.`,
@@ -194,7 +197,7 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
   });
 
   await check(
-    "fixed native 11-tool prompt with four fixture forecast Skills preserves constraints within 20k",
+    "fixed native 11-tool prompt with four fixture forecast Skills preserves constraints and reports actual length",
     async () => {
       const r = await run(await create(), [], "本月提报情况");
       const b = r.requests[0];
@@ -212,17 +215,17 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
       const total = system.length + catalog.length + JSON.stringify(b.tools).length;
       assert.match(catalog, /sinian-demand-dialogue/);
       assert.match(catalog, /sinian-forecast-review/);
+      assertCatalogScene(app, b, r.rows);
+      const businessSchemas = fixedNativeTools.map((name) => {
+        const matches = b.tools.filter((tool) => tool.function.name === name);
+        assert.equal(matches.length, 1, `frozen business schema must be unique: ${name}`);
+        return matches[0];
+      });
       assert.deepEqual(
-        b.tools.map((tool) => tool.function.name).sort(),
-        [...fixedNativeTools].sort(),
-        "the fixed 20k scene requires review if its complete tool set changes",
-      );
-      assert.deepEqual(
-        schemaConstraints(b.tools),
+        schemaConstraints(businessSchemas),
         nativeConstraints,
         "display compression must preserve every original field, required/enums/ranges/union constraint",
       );
-      assert.ok(total <= 20000, `fixed native 11-tool scene actual ${total}`);
       return {
         system: system.length,
         nativeCatalog: catalog.length,

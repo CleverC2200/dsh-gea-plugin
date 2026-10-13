@@ -753,8 +753,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const verify = verifyGoal || args[0] === "--verify";
     if (verify) args.shift();
     const short = args.length === 3 && args[2] === "--continuation";
-    if ((!short && args.length !== 2) || args[0] !== "--input")
-      throw Error("CLI_INPUT_REQUIRED");
+    if ((!short && args.length !== 2) || args[0] !== "--input") throw Error("CLI_INPUT_REQUIRED");
     const file = args[1];
     const info = await stat(file);
     if (!info.isFile() || info.size > 1024 * 1024) throw Error("CLI_INPUT_INVALID");
@@ -767,16 +766,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     }
     const report = await checkDelivery(request);
     if (verify) {
-      const passed =
-        report.tasks.length > 0 && report.consistency.status === "observed";
+      const passed = report.tasks.length > 0 && report.consistency.status === "observed";
       report.verification = {
         status: passed ? "passed" : "failed",
-        reason: passed
-          ? "DELIVERY_CONSISTENCY_OBSERVED"
-          : "DELIVERY_CONSISTENCY_REQUIRED",
-        minimumGap: passed
-          ? null
-          : "RECONCILE_FIXED_RECEIPTS_USING_DELIVERY_REPORT",
+        reason: passed ? "DELIVERY_CONSISTENCY_OBSERVED" : "DELIVERY_CONSISTENCY_REQUIRED",
+        minimumGap: passed ? null : "RECONCILE_FIXED_RECEIPTS_USING_DELIVERY_REPORT",
       };
       report.consistency.exitZeroMeans = "consistency-observed-only";
       if (!passed) process.exitCode = 3;
@@ -785,17 +779,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
         if (passed) {
           const complete =
             report.continuation.state === "completed" &&
-            report.tasks.every(
-              (task) => task.continuation.inTransit.length === 0,
-            );
+            report.tasks.every((task) => task.continuation.inTransit.length === 0);
           report.verification = {
             status: complete ? "passed" : "failed",
-            reason: complete
-              ? "DECLARED_GOAL_VERIFIED"
-              : "DECLARED_GOAL_INCOMPLETE",
-            minimumGap: complete
-              ? null
-              : "READ_CONTINUATION_REMAINING_AND_STOP_CONDITIONS",
+            reason: complete ? "DECLARED_GOAL_VERIFIED" : "DECLARED_GOAL_INCOMPLETE",
+            minimumGap: complete ? null : "READ_CONTINUATION_REMAINING_AND_STOP_CONDITIONS",
           };
           if (!complete) process.exitCode = 4;
         }

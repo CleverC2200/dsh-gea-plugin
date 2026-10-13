@@ -1,3 +1,4 @@
+import { testBrowser } from "./fixtures/test-browser.mjs";
 /** Real source composition: settings, native conversation and shared shell. */
 import { fileURLToPath } from "node:url";
 import { changeThemeSetting } from "./theme-settings.mjs";
@@ -6,6 +7,7 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
+import { prepareCoreDocuments } from "./fixtures/core-documents.mjs";
 
 const baseline = process.env.THEME_BASELINE === "1";
 const output = new URL("../.runtime/theme-evidence/", import.meta.url);
@@ -17,6 +19,7 @@ test(
   },
   async (t) => {
     const app = await profile(t, {
+      beforeStart: prepareCoreDocuments(),
       config: (base) => ({
         analysis: {
           mode: "model",
@@ -45,8 +48,10 @@ test(
       return true;
     });
     await app.login();
-    const browser = await chromium.launch({ headless: true });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({ channel: "chrome", headless: true }),
+    );
+
     const context = await browser.newContext({
       locale: "zh-CN",
       viewport: { width: 1280, height: 900 },
@@ -67,6 +72,7 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/ })
       .getByRole("button", { name: "继续", exact: true })
       .click();
+    await expect(page.getByRole("dialog", { name: /内测声明|预览版说明/ })).toHaveCount(0);
     const composer = page.locator('[contenteditable="true"], textarea').first();
     await composer.fill("检查主题，不查询业务数据");
     await composer.press("Enter");
@@ -80,7 +86,7 @@ test(
     const sample = () =>
       page.evaluate(() => {
         const read = (selector) => {
-          const el = document.querySelector(selector);
+          const el = typeof selector === "string" ? document.querySelector(selector) : selector;
           if (!el) return null;
           const s = getComputedStyle(el);
           return {
@@ -95,7 +101,7 @@ test(
         return {
           body: read("body"),
           main: read(".gea-company-main"),
-          shell: read('[data-slot="root"] > :has(> [data-shell-bottom])'),
+          shell: read(document.querySelector("[data-rightbar-col]")?.parentElement),
           composer: read('[contenteditable="true"], textarea'),
           card: read('[data-slot="conversation.composer.bar"]'),
           dark: document.body.hasAttribute("data-ds-dark-theme"),

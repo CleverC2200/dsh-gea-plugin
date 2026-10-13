@@ -2,7 +2,8 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { openReadySalesPlan, openSalesPlan } from "./fixtures/business-page.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 
 const fixture = async (t) => {
   const app = await profile(t);
@@ -72,8 +73,9 @@ const fixture = async (t) => {
     return false;
   });
   await app.login();
-  const browser = await chromium.launch({ headless: true });
-  t.after(() => browser.close());
+  const browser = await testBrowser(t, () =>
+    chromium.launch({ channel: "chrome", headless: true }),
+  );
   const context = await browser.newContext({
     locale: "zh-CN",
     viewport: { width: 1536, height: 920 },
@@ -88,7 +90,7 @@ const fixture = async (t) => {
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
   await page.goto(app.origin);
-  const frame = await openSalesPlan(page);
+  const frame = await openReadySalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   return { frame, page };
 };
@@ -250,8 +252,9 @@ test("default node follows the account role, not every node", { timeout: 90000 }
     return false;
   });
   await app.login();
-  const browser = await chromium.launch({ headless: true });
-  t.after(() => browser.close());
+  const browser = await testBrowser(t, () =>
+    chromium.launch({ channel: "chrome", headless: true }),
+  );
   const context = await browser.newContext({
     locale: "zh-CN",
     viewport: { width: 1536, height: 920 },

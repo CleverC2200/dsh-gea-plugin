@@ -19,8 +19,13 @@ const git = (root, ...args) =>
   }).trim();
 
 export async function sourceWindow(t, mode, { inputFile } = {}) {
-  const { core: fixedCore, workbench: sharedWB, candidateOwners, historicalFailure } =
-    await readSourceWindowInputs(inputFile);
+  const {
+    core: fixedCore,
+    workbench: sharedWB,
+    manage: sharedManage,
+    candidateOwners,
+    historicalFailure,
+  } = await readSourceWindowInputs(inputFile);
   const temporary = await mkdtemp(join(tmpdir(), "source-window-"));
   t.after(() => rm(temporary, { recursive: true, force: true }));
   const group = join(temporary, "implement"),
@@ -55,6 +60,11 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
         compilerOptions: { paths: { "@deepseek-ai/cordis": [cordis] } },
       });
     }
+    if (repo === "dsh-agent-manage")
+      await cp(
+        join(sharedManage, "scripts/prepare-official-sdk.mjs"),
+        join(root, "scripts/prepare-official-sdk.mjs"),
+      );
     if (repo === "dsh-gea-plugin") {
       for (const name of [
         "start.mjs",
@@ -65,8 +75,15 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
         "source-combination-integrity.mjs",
         "deployment.mjs",
         "current-core.json",
+        "supported-cores.mjs",
+        "supported-cores.json",
       ])
         await cp(join(sourceRoot, "scripts", name), join(root, "scripts", name));
+      await mkdir(join(root, "tests"));
+      await cp(
+        join(sourceRoot, "tests/source-profile-start.mjs"),
+        join(root, "tests/source-profile-start.mjs"),
+      );
       await mkdir(join(root, "src"));
       await cp(join(sourceRoot, "src/shared"), join(root, "src/shared"), {
         recursive: true,

@@ -191,16 +191,47 @@ test(
       },
     );
     await t.test("scoped discovery reports its consumer and rejects unknown presets", async () => {
+      const count = modelRequests.length;
       const found = await app.rpc("model/discover", {
-        agentPreset: "gea-html-inventory-apsplan",
+        agentPreset: "gea-readonly",
       });
       assert.equal(found.ok, true, JSON.stringify(found));
-      assert.equal(found.value.consumerCode, "aps");
+      assert.equal(found.value.consumerCode, "sales_forecast");
+      const capability = JSON.parse(
+        await readFile(
+          resolve("../dsh-agent-workbench/lib/business/inventory-apsplan/capability.json"),
+          "utf8",
+        ),
+      );
+      assert.equal(capability.data.mock, true, "the CI APS build is explicitly mock-only");
+      const discoveryRequests = () =>
+        app.requests.filter((request) =>
+          /\/user-agent-credential\/my\/(?:list|claim)$|\/personal\/(?:models|chat\/completions)$/.test(
+            request.url.pathname,
+          ),
+        ).length;
+      const discoveryCount = discoveryRequests();
+      const mock = await app.rpc("model/discover", {
+        agentPreset: "gea-html-inventory-apsplan",
+      });
+      assert.equal(mock.ok, false);
+      assert.equal(mock.error.code, "GEA_CAPABILITY_MOCK_ONLY");
+      assert.equal(
+        discoveryRequests(),
+        discoveryCount,
+        "mock discovery stops before model and credential transport",
+      );
       const unknown = await app.rpc("model/discover", {
         agentPreset: "made-up",
       });
       assert.equal(unknown.ok, false);
       assert.match(JSON.stringify(unknown), /GEA_AGENT_PRESET_UNSUPPORTED/);
+      assert.equal(
+        discoveryRequests(),
+        discoveryCount,
+        "unknown presets stop before model and credential transport",
+      );
+      assert.equal(modelRequests.length, count, "discovery refusals cannot invoke the model");
     });
     await t.test(
       "unsupported model fails with a specific code before a completion request",

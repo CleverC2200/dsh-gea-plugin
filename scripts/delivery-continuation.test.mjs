@@ -494,27 +494,18 @@ test("goal verification admits the verified declared scope without granting busi
 test("verification refuses the real r31 counters and closed-window contradictions instead of treating report generation as a pass", async (t) => {
   const f = await fixture(t);
   const historical = await readFile(
-    new URL(
-      "./fixtures/delivery-history/r31-budget-projection.json",
-      import.meta.url,
-    ),
+    new URL("./fixtures/delivery-history/r31-budget-projection.json", import.meta.url),
     "utf8",
   );
   await f.put("old-budget", JSON.parse(historical));
-  f.delivery.reconciliation = [
-    { sourceId: "old-budget", profile: "call-budget" },
-  ];
+  f.delivery.reconciliation = [{ sourceId: "old-budget", profile: "call-budget" }];
   const task = await f.report();
   assert.equal(task.consistency.status, "failed");
   assert.ok(
-    task.reconciliation.conflicts.some(
-      (item) => item.reason === "BUDGET_PROJECTION_CONFLICT",
-    ),
+    task.reconciliation.conflicts.some((item) => item.reason === "BUDGET_PROJECTION_CONFLICT"),
   );
   assert.ok(
-    task.reconciliation.conflicts.some(
-      (item) => item.reason === "WINDOW_ACTIVATION_CONFLICT",
-    ),
+    task.reconciliation.conflicts.some((item) => item.reason === "WINDOW_ACTIVATION_CONFLICT"),
   );
   await writeFile(join(f.root, "request.json"), JSON.stringify(f.request));
   const before = await readFile(join(f.root, "old-budget.json"));
@@ -568,10 +559,7 @@ test("verification refuses unknown inputs and admits only observed consistency w
 
 test("an empty report cannot satisfy strict consistency verification", async (t) => {
   const f = await fixture(t);
-  await writeFile(
-    join(f.root, "request.json"),
-    JSON.stringify({ ...f.request, tasks: [] }),
-  );
+  await writeFile(join(f.root, "request.json"), JSON.stringify({ ...f.request, tasks: [] }));
   const result = verificationCLI(f);
   assert.notEqual(result.status, 0, result.stdout);
   const report = JSON.parse(result.stdout);

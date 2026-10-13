@@ -94,7 +94,7 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
         },
       });
       assert.equal(saved.ok, true, JSON.stringify(saved));
-      const browser = await chromium.launch({ headless: true });
+      const browser = await chromium.launch({ channel: "chrome", headless: true });
       t.after(() => browser.close());
       const page = await browser.newPage({
         locale: "zh-CN",

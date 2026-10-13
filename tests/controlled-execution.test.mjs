@@ -31,7 +31,7 @@ test("a generic Skill session can use ordinary model routing but cannot claim a 
     config: { analysisAgentCode: "sales" },
     currentPageIdentity: () => ({ consumerCode: "branch-inventory" }),
   };
-  assert.equal(sessionConsumer(ctx, business, "generic"), "branch-inventory");
+  assert.equal(sessionConsumer(ctx, business, "generic"), "sales");
   assert.throws(
     () => toolConsumer(ctx, business, "generic", undefined),
     /GEA_BUSINESS_PROFILE_REQUIRED/,
@@ -118,7 +118,14 @@ test("business masks deny unavailable GEA tools while preserving official preset
       return () => {};
     },
     schemas: () =>
-      ["gea_capabilities", "skill", "gea_cube_query", "gea_sales_plan_write", "run_code"].map((name) => ({ name })),
+      [
+        "gea_capabilities",
+        "skill",
+        "skill_reference_read",
+        "gea_cube_query",
+        "run_code",
+        "gea_unselected_fixture",
+      ].map((name) => ({ name })),
     get: (name, selectedAgent) => {
       assert.equal(selectedAgent, agent, "native loader lookup uses the selected Agent ancestry");
       return native.has(name) ? { name } : undefined;
@@ -171,7 +178,12 @@ test("business masks deny unavailable GEA tools while preserving official preset
     messages: [],
   }));
   assert.equal(mask.allow, undefined);
-  assert.deepEqual(mask.deny, ["gea_sales_plan_write"]);
+  assert.deepEqual(mask.deny, ["gea_unselected_fixture"]);
+  for (const nativeName of ["skill", "skill_reference_read", "run_code"]) {
+    assert.equal(mask.deny.includes(nativeName), false);
+    assert.equal(guard({ name: nativeName, agent, arguments: {} }), undefined);
+  }
+  assert.equal(mask.deny.includes("gea_cube_query"), false);
   assert.equal(mask.deny.includes("skill"), false);
   assert.equal(mask.deny.includes("run_code"), false);
   assert.equal(executionChecks, 1);

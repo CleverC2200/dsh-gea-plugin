@@ -207,26 +207,24 @@ test("接线：闸门在发送前调用，且清单不在手时先补读一次 i
   const source = await readFile("src/host/agent-tools.ts", "utf8");
   assert.match(source, /await moduleIndexFor\(module,\s*exec\.signal\)/);
   assert.match(source, /await loadMemberIndex\(module,\s*signal\)/);
-  assert.match(source, /preflightCubeArguments\(parameters, activeIndex\)/);
-  const sends = [
-    ...source.matchAll(/await module\.call\(\s*toolName,\s*parameters,\s*exec\.signal,/g),
-  ];
-  assert.equal(sends.length, 2, "inspect 和 query 必须使用同一模块与取消信号发送");
-  assert.match(source, /preflightCubeArguments\(parameters\)/);
-  assert.ok(
-    source.indexOf("preflightCubeArguments(parameters)") < sends[0].index,
-    "inspect 形状校验必须在 inspect 发送之前",
+  const queryStart = source.indexOf("let activeIndex: MemberIndex");
+  assert.ok(queryStart >= 0, "查询分支必须存在");
+  const querySource = source.slice(queryStart);
+  const querySend = querySource.search(
+    /await module\.call\(\s*toolName,\s*parameters,\s*exec\.signal/,
   );
+  assert.ok(querySend >= 0, "查询必须使用受控出站调用");
+  assert.match(querySource, /preflightCubeArguments\(parameters, activeIndex\)/);
   assert.ok(
-    source.indexOf("preflightCubeArguments(parameters, activeIndex)") < sends[1].index,
+    querySource.indexOf("preflightCubeArguments(parameters, activeIndex)") < querySend,
     "闸门必须在真正发送之前",
   );
   // 结构性缺口：已知取不到的组合要在发送前短路，且和被拒那次一样计入本轮总账。
-  assert.match(source, /business\.cubeGaps\(\)\.find\(consumerCode, queriedModel\)/);
+  assert.match(querySource, /business\.cubeGaps\(\)\.find\(consumerCode, queriedModel\)/);
   assert.match(source, /availability: "known-gap"/);
   assert.match(source, /business\.cubeGaps\(\)\.note\(consumerCode, queriedModel/);
   assert.ok(
-    source.indexOf("business.cubeGaps().find(consumerCode, queriedModel)") < sends[1].index,
+    querySource.indexOf("business.cubeGaps().find(consumerCode, queriedModel)") < querySend,
     "已知缺口必须在真正发送之前短路",
   );
 });

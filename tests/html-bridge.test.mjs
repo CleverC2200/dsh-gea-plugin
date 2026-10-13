@@ -1,6 +1,44 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareHtmlQuery, readHtmlQuery } from "../src/html-query.ts";
+import { createHtmlSessions } from "../../dsh-agent-workbench/src/html-sessions.ts";
+const session = "session-11111111-1111-1111-1111-111111111111";
+test("active leases renew but idle expiry and wrong-plugin isolation remain enforced", () => {
+  const originalNow = Date.now;
+  let now = 1000;
+  Date.now = () => now;
+  const pages = createHtmlSessions();
+  try {
+    const lease = pages.open("inventory-aqkc", session, {}, {});
+    now += 299000;
+    pages.get(lease, "inventory-aqkc");
+    now += 299000;
+    assert.ok(pages.get(lease, "inventory-aqkc"));
+    assert.throws(() => pages.get(lease, "inventory-other"), /WRONG_PLUGIN/);
+    now += 300001;
+    assert.throws(() => pages.get(lease), /PAGE_LEASE_EXPIRED/);
+  } finally {
+    pages.clear();
+    Date.now = originalNow;
+  }
+});
+test("a conversation without an open page reports it instead of a raw failure", async () => {
+  const pages = createHtmlSessions();
+  try {
+    assert.equal(pages.has("inventory-aqkc", session), false);
+    await assert.rejects(
+      () => pages.invoke("inventory-aqkc", session, "context", {}, new AbortController().signal),
+      /还没有打开业务页面/,
+    );
+    const lease = pages.open("inventory-aqkc", session, {}, {});
+    assert.equal(pages.has("inventory-aqkc", session), true);
+    assert.equal(pages.has("inventory-other", session), false);
+    pages.close(lease);
+    assert.equal(pages.has("inventory-aqkc", session), false);
+  } finally {
+    pages.clear();
+  }
+});
 test("named and positional parameters are bound without inserting data in SQL", () => {
   const query = prepareHtmlQuery({
     sql: "SELECT * FROM example WHERE a=:value AND b=':ignored' AND c::text=:value",
@@ -90,6 +128,53 @@ test("full pagination preserves order and checks final total", async () => {
     Array.from({ length: 401 }, (_, i) => i),
   );
 });
+test("page capabilities cannot cross plugins/conversations; logout rejects queued work", async () => {
+  const pages = createHtmlSessions(),
+    lease = pages.open("inventory-fc", session, {}, {});
+  assert.throws(() => pages.get(lease, "inventory-dealer"));
+  await assert.rejects(
+    pages.invoke(
+      "inventory-fc",
+      "session-22222222-2222-2222-2222-222222222222",
+      "context",
+      {},
+      new AbortController().signal,
+    ),
+  );
+  pages.get(lease).actions = [{ name: "refresh" }];
+  const pending = pages.invoke(
+    "inventory-fc",
+    session,
+    "refresh",
+    {},
+    new AbortController().signal,
+  );
+  pages.clear();
+  await assert.rejects(pending, /关闭|登录/);
+  assert.throws(() => pages.get(lease));
+});
+test("registered page action returns through correlated reply; cancellation clears queue", async () => {
+  const pages = createHtmlSessions(),
+    lease = pages.open("inventory-fc", session, {}, {});
+  pages.get(lease).actions = [{ name: "filter" }];
+  const response = pages.invoke(
+      "inventory-fc",
+      session,
+      "filter",
+      { warehouseId: "A" },
+      new AbortController().signal,
+    ),
+    event = pages.get(lease).queue[0];
+  pages.reply(lease, { id: event.id, result: { status: "filtered" } });
+  assert.deepEqual(await response, { status: "filtered" });
+  const abort = new AbortController();
+  const cancelled = pages.invoke("inventory-fc", session, "filter", {}, abort.signal);
+  abort.abort();
+  await assert.rejects(cancelled, /CANCELLED/);
+  assert.equal(pages.get(lease).queue.length, 0);
+  pages.clear();
+});
+
 test("GEA denial never becomes an empty successful snapshot", async () => {
   await assert.rejects(
     readHtmlQuery(

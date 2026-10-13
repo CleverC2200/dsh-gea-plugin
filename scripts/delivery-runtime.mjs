@@ -1,6 +1,7 @@
 import { isObservationTime as timestamp } from "./delivery-time.mjs";
 /** Interprets bounded, sanitized formal records; never observes a live service. */
 const id = (v) => typeof v === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(v);
+
 const sha = (v) => typeof v === "string" && /^[a-f0-9]{64}$/.test(v);
 const sources = (input) =>
   input?.sha256

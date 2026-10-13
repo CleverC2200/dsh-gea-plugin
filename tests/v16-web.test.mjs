@@ -1,9 +1,10 @@
-import test from "./fixtures/source-test.mjs";
+import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
+import { openReadySalesPlan as openSalesPlan } from "./fixtures/business-page.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 import { mkdir } from "node:fs/promises";
-import { profile } from "./profile.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 
 test(
   "V1.6 Web: compact header, stable progress, inline SKU and approval editing",
@@ -166,8 +167,9 @@ test(
       }
     });
     await app.login();
-    const browser = await chromium.launch({ headless: true });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({ channel: "chrome", headless: true }),
+    );
     const context = await browser.newContext({
       locale: "zh-CN",
       viewport: { width: 1536, height: 920 },

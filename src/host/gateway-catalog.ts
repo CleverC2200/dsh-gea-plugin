@@ -684,7 +684,6 @@ function modelDetails(
       );
     if (segments.length)
       parts.push(`  分段(${segments.length})：${segments.slice(0, options.maxMembers).join(", ")}`);
-    const countMemberSuffix = /_count$/;
     const semanticMembers = selected
       ? MEMBER_KEYS.flatMap((key) => selectedModel[key] ?? [])
       : (model.measures ?? []);
@@ -692,9 +691,7 @@ function modelDetails(
     let semanticChars = 0;
     const semantics = semanticMembers
       .filter((member) => typeof member?.name === "string")
-      .sort(
-        (a, b) => Number(countMemberSuffix.test(a.name!)) - Number(countMemberSuffix.test(b.name!)),
-      )
+      .sort((a, b) => Number(a.name!.endsWith("_count")) - Number(b.name!.endsWith("_count")))
       .map((member) => {
         const notes = [
           member.description,

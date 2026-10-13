@@ -4,7 +4,7 @@ import { attachDesktopLogin } from "./host/desktop-login.ts";
 import { createDesktopNavigation } from "./host/desktop-navigation.ts";
 import { attachWebLogin } from "./host/web-login.ts";
 /** GEA 外部 Fetch 能力和显式本地回执提供者的 DSH 插件入口。 */
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import companyDefaults from "../desktop/company.config.json" with { type: "json" };
 import type {} from "@deepseek-ai/dsh-app-boot";
@@ -69,11 +69,15 @@ export const inject = [
 const environmentSchema = z.union(["production", "test"]);
 export const Config = z.object({
   geaBaseUrl: z.string().default(companyDefaults.geaBaseUrl),
-  environment: environmentSchema.default(z.resolve(companyDefaults.environment, environmentSchema, {})[0]),
-  geaEnvironments: z.union([z.object({
-    production: z.string().required(),
-    test: z.string().required(),
-  })]),
+  environment: environmentSchema.default(
+    z.resolve(companyDefaults.environment, environmentSchema, {})[0],
+  ),
+  geaEnvironments: z.union([
+    z.object({
+      production: z.string().required(),
+      test: z.string().required(),
+    }),
+  ]),
   pageSize: z.natural().min(1).max(100).default(companyDefaults.pageSize),
   periodPageSize: z.natural().min(1).max(1000).default(companyDefaults.periodPageSize),
   requestTimeoutMs: z.natural().min(1000).max(120000).default(companyDefaults.requestTimeoutMs),
@@ -85,10 +89,15 @@ export const Config = z.object({
   analysisModel: z.string().default(companyDefaults.analysis.model),
   analysisSource: z.union(["gea", "direct", "receipt"]).default("gea"),
   analysisAgentCode: z.string().default(companyDefaults.analysis.agentCode),
-  inputByteBudget: z.natural().min(1).default(Math.min(
-    companyDefaults.maxSnapshotBytes,
-    companyDefaults.analysis.contextWindow - companyDefaults.analysis.maxTokens - 1000,
-  )),
+  inputByteBudget: z
+    .natural()
+    .min(1)
+    .default(
+      Math.min(
+        companyDefaults.maxSnapshotBytes,
+        companyDefaults.analysis.contextWindow - companyDefaults.analysis.maxTokens - 1000,
+      ),
+    ),
   /**
    * 问答侧是否允许调用受管只读 SQL（`/ai/gateway/sql/execute`）。
    * 默认关闭：问答取数只走模块 MCP + 页面证据，模型不再自己写 SQL。
@@ -406,28 +415,42 @@ function toGeaRequest(options: GenerateOptions) {
 }
 
 /** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
-export async function apply(ctx: Context, input: Omit<Deployment, "runtimeDir"> & { runtimeDir?: string }): Promise<void> {
+export async function apply(
+  ctx: Context,
+  input: Omit<Deployment, "runtimeDir"> & { runtimeDir?: string },
+): Promise<void> {
   const runtimeDir = input.runtimeDir ?? resolve(ctx.profileContext.dir, "gea");
   if (!isAbsolute(runtimeDir)) throw Error("INVALID_GEA_RUNTIME_DIR: absolute directory required");
   await mkdir(runtimeDir, { recursive: true, mode: 0o700 });
   const config: Deployment = {
     ...input,
     runtimeDir,
-    geaEnvironments: input.geaEnvironments ?? (
-      input.geaBaseUrl === companyDefaults.geaBaseUrl ? companyDefaults.geaEnvironments : undefined
-    ),
+    geaEnvironments:
+      input.geaEnvironments ??
+      (input.geaBaseUrl === companyDefaults.geaBaseUrl
+        ? companyDefaults.geaEnvironments
+        : undefined),
   };
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);
   // 迁移页面的页面桥入口：注册表建好后再接上（页面第一次轮询是 500ms 之后）。
-  const htmlPackages = ctx.workbenchPages.packages().filter(item=>item.manifest.gea?.contract === "gea-html-v2");
-  const releaseOriginalResources = await ctx.agentResources.register([{
-    id:"gea-readonly",enabled:config.workbenchCapability?.enabled !== false,label:profileFor("gea-readonly")!.label,
-    presetName:profileFor("gea-readonly")!.presetName,description:profileFor("gea-readonly")!.description,
-    root:fileURLToPath(new URL("../",import.meta.url)),prompt:"presets/prompt-policy.json",profileKey:"gea-readonly",
-    profile:profileFor("gea-readonly")!
-  }]);
+  const htmlPackages = ctx.workbenchPages
+    .packages()
+    .filter((item) => item.manifest.gea?.contract === "gea-html-v2");
+  const releaseOriginalResources = await ctx.agentResources.register([
+    {
+      id: "gea-readonly",
+      enabled: config.workbenchCapability?.enabled !== false,
+      label: profileFor("gea-readonly")!.label,
+      presetName: profileFor("gea-readonly")!.presetName,
+      description: profileFor("gea-readonly")!.description,
+      root: fileURLToPath(new URL("../", import.meta.url)),
+      prompt: "presets/prompt-policy.json",
+      profileKey: "gea-readonly",
+      profile: profileFor("gea-readonly")!,
+    },
+  ]);
   ctx.effect(() => releaseOriginalResources);
   const htmlPlugins = await registerHtmlPlugins(ctx, business, htmlPackages);
   // 能力契约注册表：页面白名单、草稿白名单、只读模块清单全部由它产出，宿主不再按模块写分支。

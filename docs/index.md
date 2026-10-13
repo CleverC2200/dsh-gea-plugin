@@ -4,9 +4,9 @@
 
 ## 当前需要核对的风险
 
-- 模型执行的 `sessionConsumer` 仍有无可信profile时页面Consumer/默认分析Consumer回退；业务工具另由 `toolConsumer` 强制可信profile。源码差异与迁移边界见 [执行链](execution-logic.md)，不把仍被消费的路径宣布退场。
+- 模型 Consumer、业务工具可信资源与页面身份的当前规则见 [执行链](execution-logic.md)。普通 Session 保留默认模型路由；页面可见不授予业务 Consumer。
 
-- 真实角色审批仍须服务端支持显式角色合同、组织授权、快照与事务；[V1.3 业务规则](../specs/sales-plan-role-approval-v1.3.md) 明确覆盖旧通知节点授予权限、状态10可SAVE等冲突口径。当前Host仍保留无角色/调整模式的兼容SAVE分支，未单独拒绝状态10，见 [执行链](execution-logic.md)；目标与源码差距不能写成已退场。原 [角色重审记录](reviews/returned-plan-approval-20260928.md) 保留未做真实后端联调的范围，不能用历史发行补齐。
+- 真实角色审批仍须服务端支持显式角色合同、组织授权、快照与事务；[V1.3 业务规则](../specs/sales-plan-role-approval-v1.3.md) 明确覆盖旧通知节点授予权限、状态10可SAVE等冲突口径。当前 Host 的 SAVE 状态与角色校验见 [执行链](execution-logic.md)。原 [角色重审记录](reviews/returned-plan-approval-20260928.md) 保留未做真实后端联调的范围，不能用历史发行补齐。
 - [纠偏合同](correction-backend-handoff.md) 与 [原验收](correction-acceptance.md) 仍需确认字段、absolute-net事务、显式零、实际流程与当前环境权限。DMS 按 [模拟记录](dms-mock-acceptance.md) 只完成模拟，不完成真实计划或正式DMS。
 - 分析发起、首次提单与退回重提按 [执行链](execution-logic.md) 区分。退回重提有Host接线，当前环境凭据与真实回读验收需对应证据；它不提供独立首次提单。
 - 通知读取不自动写；当前Host已有显式状态/审批命令，见 [执行链](execution-logic.md)。原 [只读接入](notifications-2026-09-11.md) 和 [v1.17 对照](notification-user-api-research-2026-09-16.md) 是日期证据，不代表当前全部实现只读或目标服务已部署。

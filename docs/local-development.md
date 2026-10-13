@@ -73,14 +73,16 @@ GEA 的 [公开 Config schema](../src/host.ts) 为空配置提供 [公司产品�
 
 `node --run test:fixture-inputs` 是无 SDK 的输入拒绝回归，也由现有 delivery fixture CI 执行。它不代替需要固定官方输入的 `test:window`；远端 workflow 的配置与实际执行结果分别记录。
 
+冷 runner 直接调用 `node scripts/run-quality-ci.mjs --input <三仓冻结 JSON> --final-group-sha256 <原始字节 SHA256> --final-group-workbench <绝对 Workbench 源路径> --prepare-sdk --prepare-inputs --core-source <已观察固定 Git 源>`；本地 `pnpm quality:ci --` 传入相同参数。公开 Workbench reader 先核实际三仓 HEAD、包身份、锁和 Core，缺少显式输入或原字节哈希立即拒绝；旧 `--phase input` 不再写历史 peer。普通 push/PR 通过 committed baseline 仅替换 own event，dispatch 必须声明完整三仓 tuple，两类验收回执分别记录。质量阶段分别保存 fast、contracts、full 状态到 `quality-checks.json`，fast 各检查保存 `.runtime/quality-fast.json`；前项红不挡后项，整体仍非零。输入或准备失败立即拒绝。
+
 ## 异步执行与确定性检查
 
 [`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出状态、执行 lease 与证据 store；[`prompt-runtime`](../src/host/prompt-runtime.ts) 接入真实 Host hooks。迟到的失败、成功和回读视图不进入新轮次或新资源的状态，持久化期间失去归属也不发布当前证据。预算与 UI mask 继续由原 admission 状态管理；详细执行条件见 [执行链](execution-logic.md)。
 
-| 检查范围 | 现有入口与边界 |
-|---|---|
+| 检查范围                                  | 现有入口与边界                                                                                                                                                                                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 执行状态、lease与真实文件 IO 的确定性回归 | `test:prompt-execution` 不要求 SDK 或工程依赖，运行要求从 package.json 的 engines 读取；Host 集成另由 [execution-convergence.test.mjs](../tests/execution-convergence.test.mjs) 在已准备官方依赖的 checkout 覆盖旧错误和资源准入/回读 |
-| 三包打包与安装/Loader接收的确定性失败 | `test:delivery:packages` 自建 fixture Core与发布输入，重放历史 APS入口/销售Skill缺失，运行不依赖兄弟仓或现成Core；正式普通profile接收另见 [打包与接收](package-delivery.md) |
-| Window输入拒绝与原行为 | `test:fixture-inputs` 只核输入；`test:window` 使用明确冻结Core、三仓和历史证据，保留原准入和预算门禁 |
+| 三包打包与安装/Loader接收的确定性失败     | `test:delivery:packages` 自建 fixture Core与发布输入，重放历史 APS入口/销售Skill缺失，运行不依赖兄弟仓或现成Core；正式普通profile接收另见 [打包与接收](package-delivery.md)                                                           |
+| Window输入拒绝与原行为                    | `test:fixture-inputs` 只核输入；`test:window` 使用明确冻结Core、三仓和历史证据，保留原准入和预算门禁                                                                                                                                  |
 
 上述 Node-only 检查由 [delivery fixture CI](../.github/workflows/delivery-fixtures.yml) 登记。workflow配置、局部检查通过、真实Host集成、当前窗口装载和业务验收分别留证；脚本存在不证明已经运行。

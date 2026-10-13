@@ -3,30 +3,14 @@ import assert from "node:assert/strict";
 import { readFile, rename, writeFile, unlink, mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { profile, readSession, until } from "./profile.mjs";
-
-function assertInitialSkillCatalog(messages) {
-  const catalogs = messages.filter((row) => row.data.source.kind === "skill-catalog");
-  assert.equal(catalogs.length, 1);
-  const source = catalogs[0].data.source;
-  assert.equal(source.form, "catalog");
-  assert.equal(source.update, undefined);
-  assert.ok(Array.isArray(source.entries));
-  assert.ok(source.entries.length > 0);
-  for (const entry of source.entries) {
-    assert.ok(entry && typeof entry === "object");
-    assert.equal(typeof entry.name, "string");
-    assert.ok(entry.name.length > 0);
-    assert.equal(typeof entry.description, "string");
-  }
-  assert.equal(new Set(source.entries.map((entry) => entry.name)).size, source.entries.length);
-}
+import { readSession, until } from "./profile.mjs";
+import { receiptProfile, assertReceiptMessages } from "./fixtures/receipt-skill-catalog.mjs";
 
 test(
   "one preview submits once through the standard Session and survives a fresh process",
-  { timeout: 60000 },
+  { timeout: 60000, sourceSetupCount: 2 },
   async (t) => {
-    const app = await profile(t);
+    const app = await receiptProfile(t);
     await app.login();
     const page = (await app.rpc("plans")).value;
     const preview = (
@@ -47,8 +31,8 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
     const messages = rows.filter((row) => row.type === "user/message");
-    assertInitialSkillCatalog(messages);
-    assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
+    assertReceiptMessages(rows, app.receiptCore);
+    assert.equal(messages.filter((row) => row.data.source.kind === "gea-proof").length, 1);
     const snapshot = messages.find(
       (row) => row.data.source.kind === "gea-proof" || row.data.source.plugin === "gea-proof",
     );
@@ -107,9 +91,9 @@ test(
 
 test(
   "a failed submission can retry the same preview after storage recovers",
-  { timeout: 60000 },
+  { timeout: 60000, sourceSetupCount: 1 },
   async (t) => {
-    const app = await profile(t);
+    const app = await receiptProfile(t);
     await app.login();
     const page = (await app.rpc("plans")).value;
     const preview = (
@@ -133,7 +117,7 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
     );
     const messages = rows.filter((row) => row.type === "user/message");
-    assertInitialSkillCatalog(messages);
-    assert.equal(messages.filter((row) => row.data.source.kind !== "skill-catalog").length, 1);
+    assertReceiptMessages(rows, app.receiptCore);
+    assert.equal(messages.filter((row) => row.data.source.kind === "gea-proof").length, 1);
   },
 );

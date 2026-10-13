@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { readSession, readToolResults, until } from "./profile.mjs";
+import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
+import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
 import { selectBusinessResource } from "./fixtures/business-session.mjs";
 
 test(
@@ -26,6 +28,7 @@ test(
       env: {
         GEA_TEST_MODEL_KEY: "fixture-key",
       },
+      beforeStart: fixtureWorkbench([resolve("../dsh-agent-workbench/lib/business/inventory-fc")]),
     });
     const state = stockState();
     let step = 0;
@@ -67,7 +70,6 @@ test(
     });
     await app.login();
     const selected = await selectBusinessResource(app, "gea-html-inventory-fc");
-    assert.equal(selected.preset, "gea-html-inventory-fc");
     const created = await app.remote("session/create", {
       cwd: app.runtime + "/workspace",
       agentPreset: selected.preset,

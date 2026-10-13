@@ -1,3 +1,4 @@
+import { testBrowser } from "./fixtures/test-browser.mjs";
 /** Real current profile activation uses local metadata-only candidate versions and loopback services. */
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
@@ -9,6 +10,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { openWorkbenchPage, htmlFrameElement } from "./fixtures/business-page.mjs";
 import { installStockRoutes, stockState } from "./fixtures/branch-stock.mjs";
+import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
 import {
   prepareSourcePlugins,
@@ -181,10 +183,13 @@ test(
       assert.match(tools.map((value) => value.content).join("\n"), /100/);
       return { content: "本地分仓样本100件和30件，合计130件。" };
     });
-    const browser = await chromium.launch({
-      headless: true,
-    });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({
+        channel: "chrome",
+        headless: true,
+      }),
+    );
+
     const userFile = join(app.runtime, "workspace/user.txt");
     await fs.writeFile(userFile, "ticket10 retained data");
     const rows = [],
@@ -248,6 +253,7 @@ test(
         })),
       );
       const page = await context.newPage();
+      await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
       page.setDefaultTimeout(20000);
       await page.goto(app.origin);
       await openWorkbenchPage(page, "分仓库存");

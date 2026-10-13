@@ -1,3 +1,5 @@
+import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 /** Switch real source profiles between pinned local combinations; external services are fixtures. */
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
@@ -134,10 +136,13 @@ test(
         content: "本地样本FC001=100件、FC002=30件，合计130件；依据本轮Skill及Cube回执。",
       };
     });
-    const browser = await chromium.launch({
-      headless: true,
-    });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({
+        channel: "chrome",
+        headless: true,
+      }),
+    );
+
     const userFile = join(app.runtime, "workspace/user-data.txt");
     await writeFile(userFile, "user-owned data kept across update and restore\n");
     const settingsFile = join(
@@ -212,6 +217,7 @@ test(
         })),
       );
       const page = await context.newPage();
+      await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
       page.setDefaultTimeout(20000);
       let opened;
       const captureOpen = async (response) => {

@@ -110,31 +110,9 @@ export async function dependencyDigests(directories, readScope) {
   const files = {},
     visited = new Set(),
     pending = [];
-  let digestError;
-  async function completeFirst() {
-    const { file, result } = pending.shift();
-    const outcome = await result;
-    if (outcome.error) {
-      digestError = outcome.error;
-      throw outcome.error;
-    }
-    files[file] = outcome.value;
-  }
-  async function hash(file) {
-    if (readScope) {
-      files[file] = await fileDigest(file, readScope);
-      return;
-    }
-    // Keep discovery and insertion order. Every scheduled read settles before return.
-    files[file] = undefined;
-    pending.push({
-      file,
-      result: fileDigest(file).then(
-        (value) => ({ value }),
-        (error) => ({ error }),
-      ),
-    });
-    if (pending.length === 4) await completeFirst();
+  function enqueue(file) {
+    files[file] = null;
+    pending.push(file);
   }
   async function visit(directory) {
     const physical = readScope
@@ -145,25 +123,37 @@ export async function dependencyDigests(directories, readScope) {
     for (const entry of await readdir(physical, { withFileTypes: true })) {
       if (entry.name.startsWith(".")) continue;
       const file = join(physical, entry.name);
-      if (entry.isFile()) await hash(file);
-      else if (entry.isDirectory() || entry.isSymbolicLink()) {
+      if (entry.isFile()) enqueue(file);
+      else if (entry.isDirectory()) await visit(file);
+      else if (entry.isSymbolicLink()) {
         const resolved = readScope
           ? await readScope.resolve(file, { traverse: true })
           : await realpath(file);
-        if (entry.isSymbolicLink()) files[file] = "link:" + resolved;
+        files[file] = "link:" + resolved;
         if ((await lstat(resolved)).isDirectory()) await visit(resolved);
-        else await hash(resolved);
+        else enqueue(resolved);
       }
     }
   }
-  try {
-    for (const directory of directories) await visit(directory);
-    while (pending.length) await completeFirst();
-  } catch (error) {
-    const outcomes = await Promise.all(pending.map((entry) => entry.result));
-    // Earlier file failures retain precedence over a later discovery failure.
-    throw digestError ?? outcomes.find((outcome) => outcome.error)?.error ?? error;
-  }
+  for (const directory of directories) await visit(directory);
+  // Keep the complete traversal and its key order; only independent byte reads overlap.
+  const digests = [];
+  let next = 0,
+    failure;
+  await Promise.all(
+    Array.from({ length: Math.min(readScope ? 1 : 16, pending.length) }, async () => {
+      while (!failure && next < pending.length) {
+        const index = next++;
+        try {
+          digests[index] = await fileDigest(pending[index], readScope);
+        } catch (error) {
+          failure ??= error;
+        }
+      }
+    }),
+  );
+  if (failure) throw failure;
+  for (const [index, file] of pending.entries()) files[file] = digests[index];
   return files;
 }
 

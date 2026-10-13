@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 
 /**
  * V1.8 #09：达成率列用「细进度条 + 百分比」，百分比前不带「金额」，
@@ -82,8 +83,9 @@ test(
       return false;
     });
     await app.login();
-    const browser = await chromium.launch({ headless: true });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({ channel: "chrome", headless: true }),
+    );
     const context = await browser.newContext({
       locale: "zh-CN",
       viewport: { width: 1536, height: 920 },

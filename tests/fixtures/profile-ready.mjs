@@ -61,7 +61,10 @@ export async function waitProfileReady({
     if (launch && deadline !== undefined) return launch;
     if (child.exitCode !== null || child.signalCode !== null)
       throw Error("Profile exited: " + output);
-    await delay(50, undefined, { signal });
+    // Leave another observation before a short startup deadline, without extending it.
+    const interval =
+      deadline === undefined ? 50 : Math.min(50, Math.max(1, (deadline - Date.now()) / 2));
+    await delay(interval, undefined, { signal });
   }
   throw Error("Profile not ready: " + readOutput());
 }

@@ -139,6 +139,11 @@ test("public quality binds the original policy and tools while accepting complet
     assert.deepEqual(readFileSync(join(directory, file)), bytes);
   for (const file of ["src/policy-valid.mjs", "src/policy-new-debugger.mjs"])
     rmSync(join(directory, file));
+  // Later main debt stays red. Compare the unmodified fixture before adding generated outputs.
+  const originalDiscovery = spawnSync(process.execPath, ["scripts/quality.mjs", "lint"], {
+    cwd: directory,
+    encoding: "utf8",
+  });
   // Original generated/third-party exclusions remain outside authored-source discovery.
   mkdirSync(join(directory, "src/lib"));
   writeFileSync(join(directory, "src/lib/policy-generated.mjs"), "debugger;\n");
@@ -162,7 +167,12 @@ test("public quality binds the original policy and tools while accepting complet
     return result;
   };
   const generated = discover("original-generated-and-third-party-exclusions");
-  assert.equal(generated.status, 0, generated.stdout + generated.stderr);
+  assert.equal(generated.status, originalDiscovery.status, generated.stdout + generated.stderr);
+  assert.equal(generated.stdout, originalDiscovery.stdout);
+  assert.deepEqual(
+    generated.stderr.trim().split("\n").sort(),
+    originalDiscovery.stderr.trim().split("\n").sort(),
+  );
   const probe = "src/shared/policy-ignored.mjs";
   writeFileSync(join(directory, probe), "debugger;\n");
   const consumer = "src/shared/environments.js";

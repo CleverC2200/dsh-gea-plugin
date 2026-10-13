@@ -57,9 +57,12 @@ async function fixture(t) {
     agentResources: {
       list: async () => {
         await resourceAdmission();
-        return [
-          ...new Set([preset, "gea-readonly", "gea-html-inventory-aqkc"]),
-        ].map((id) => ({ id, kind: "prompt", installed: true, enabled: true }));
+        return [...new Set([preset, "gea-readonly", "gea-html-inventory-aqkc"])].map((id) => ({
+          id,
+          kind: "prompt",
+          installed: true,
+          enabled: true,
+        }));
       },
     },
     skills: {
@@ -92,14 +95,7 @@ async function fixture(t) {
     surfaceFor: () => undefined,
     turnStopKind: () => undefined,
   };
-  t.after(
-    mountBusinessPrompts(
-      ctx,
-      business,
-      { readModules: () => [] },
-      authorizations,
-    ),
-  );
+  t.after(mountBusinessPrompts(ctx, business, { readModules: () => [] }, authorizations));
   return {
     root,
     agent,
@@ -143,8 +139,7 @@ test("GEA registers execution metadata and evidence only, preserving the origina
     tools: [{ name: "skill", description: "Official full-body loader" }],
   };
   const result = await current.assemble(original);
-  for (const section of original.sections)
-    assert.ok(result.sections.includes(section));
+  for (const section of original.sections) assert.ok(result.sections.includes(section));
   assert.equal(
     result.tools.find((tool) => tool.name === "skill").description,
     "Official full-body loader",
@@ -156,10 +151,7 @@ test("GEA registers execution metadata and evidence only, preserving the origina
   const capability = JSON.parse(
     await current.registered
       .get("gea_capabilities")
-      .execute(
-        { complex: true },
-        { agent: current.agent, signal: new AbortController().signal },
-      ),
+      .execute({ complex: true }, { agent: current.agent, signal: new AbortController().signal }),
   );
   assert.equal(capability.callLimit, 40);
   assert.equal("skills" in capability, false);
@@ -193,17 +185,11 @@ for (const transition of ["turn", "identity", "preset"]) {
     if (transition === "preset") current.setPreset("gea-html-inventory-aqkc");
     const result = {
       isError: true,
-      content: [
-        { type: "text", text: '{"availability":"permission-required"}' },
-      ],
+      content: [{ type: "text", text: '{"availability":"permission-required"}' }],
     };
     const decision = { kind: "accept" };
     assert.equal(
-      await current.handlers.get("tools/post-execute")(
-        exec,
-        result,
-        async () => decision,
-      ),
+      await current.handlers.get("tools/post-execute")(exec, result, async () => decision),
       decision,
     );
     const assembled = await current.assemble({ sections: [], tools: [] });
@@ -232,17 +218,12 @@ test("current permission failure remains visible across concurrent queries and p
     signal: new AbortController().signal,
   };
   await current.handlers.get("tools/execute")(exec, async () => {});
-  await current.handlers.get("tools/execute")(
-    { ...exec, token: Symbol() },
-    async () => {},
-  );
+  await current.handlers.get("tools/execute")({ ...exec, token: Symbol() }, async () => {});
   await current.handlers.get("tools/post-execute")(
     exec,
     {
       isError: true,
-      content: [
-        { type: "text", text: '{"availability":"permission-required"}' },
-      ],
+      content: [{ type: "text", text: '{"availability":"permission-required"}' }],
     },
     async () => ({ kind: "accept" }),
   );
@@ -289,8 +270,7 @@ test("late successful read after a new turn preserves its original result withou
   const { assembled, resultChars } = await promptState(t, current);
   assert.equal(
     assembled.sections.some(
-      (s) =>
-        ["gea:evidence-index", "gea:result-status"].includes(s.name) && s.text,
+      (s) => ["gea:evidence-index", "gea:result-status"].includes(s.name) && s.text,
     ),
     false,
   );
@@ -302,20 +282,16 @@ function pauseEvidenceWrite(t, root) {
   const entered = Promise.withResolvers();
   const resumed = Promise.withResolvers();
   const writeFile = fs.promises.writeFile;
-  const intercepted = t.mock.method(
-    fs.promises,
-    "writeFile",
-    async (...args) => {
-      if (
-        String(args[0]).startsWith(join(root, "prompt-evidence")) &&
-        String(args[0]).endsWith(".txt")
-      ) {
-        entered.resolve();
-        await resumed.promise;
-      }
-      return writeFile(...args);
-    },
-  );
+  const intercepted = t.mock.method(fs.promises, "writeFile", async (...args) => {
+    if (
+      String(args[0]).startsWith(join(root, "prompt-evidence")) &&
+      String(args[0]).endsWith(".txt")
+    ) {
+      entered.resolve();
+      await resumed.promise;
+    }
+    return writeFile(...args);
+  });
   syncBuiltinESMExports();
   t.after(() => {
     resumed.resolve();
@@ -339,11 +315,7 @@ test("a successful read crossing a turn during evidence persistence keeps its or
   const text = '{"status":"completed","value":{"period":"old-write"}}';
   const result = { content: [{ type: "text", text }] };
   const decision = { kind: "accept" };
-  const pending = current.handlers.get("tools/post-execute")(
-    exec,
-    result,
-    async () => decision,
-  );
+  const pending = current.handlers.get("tools/post-execute")(exec, result, async () => decision);
   await writing.entered;
   current.nextTurn();
   writing.resume();
@@ -351,8 +323,7 @@ test("a successful read crossing a turn during evidence persistence keeps its or
   const { assembled, resultChars } = await promptState(t, current);
   assert.equal(
     assembled.sections.some(
-      (s) =>
-        ["gea:evidence-index", "gea:result-status"].includes(s.name) && s.text,
+      (s) => ["gea:evidence-index", "gea:result-status"].includes(s.name) && s.text,
     ),
     false,
   );
@@ -361,10 +332,7 @@ test("a successful read crossing a turn during evidence persistence keeps its or
   const files = await readdir(join(current.root, "prompt-evidence"));
   const original = files.find((file) => file.endsWith(".txt"));
   assert.ok(original);
-  assert.equal(
-    await readFile(join(current.root, "prompt-evidence", original), "utf8"),
-    text,
-  );
+  assert.equal(await readFile(join(current.root, "prompt-evidence", original), "utf8"), text);
 });
 
 async function promptState(t, current) {
@@ -396,9 +364,7 @@ for (const transition of ["preset", "identity"]) {
     if (transition === "preset") current.setPreset("gea-html-inventory-aqkc");
     else current.changeIdentity();
     const result = {
-      content: [
-        { type: "text", text: '{"status":"completed","value":{"old":true}}' },
-      ],
+      content: [{ type: "text", text: '{"status":"completed","value":{"old":true}}' }],
     };
     const decision = { kind: "accept" };
     const received = await current.handlers.get("tools/post-execute")(
@@ -414,9 +380,7 @@ for (const transition of ["preset", "identity"]) {
     const { assembled, resultChars } = await promptState(t, current);
     assert.equal(
       assembled.sections.some(
-        (s) =>
-          ["gea:evidence-index", "gea:result-status"].includes(s.name) &&
-          s.text,
+        (s) => ["gea:evidence-index", "gea:result-status"].includes(s.name) && s.text,
       ),
       false,
     );
@@ -442,11 +406,7 @@ for (const transition of ["preset", "identity", "current"]) {
     });
     const result = { content: [{ type: "text", text }] };
     const decision = { kind: "accept" };
-    const pending = current.handlers.get("tools/post-execute")(
-      exec,
-      result,
-      async () => decision,
-    );
+    const pending = current.handlers.get("tools/post-execute")(exec, result, async () => decision);
     // Attach the expected identity rejection before releasing the real file write.
     const received =
       transition === "identity"
@@ -458,9 +418,7 @@ for (const transition of ["preset", "identity", "current"]) {
     writing.resume();
     const accepted = await received;
     const { assembled, resultChars } = await promptState(t, current);
-    const index = assembled.sections.find(
-      (s) => s.name === "gea:evidence-index",
-    ).text;
+    const index = assembled.sections.find((s) => s.name === "gea:evidence-index").text;
     if (transition === "current") {
       assert.equal(accepted.kind, "accept");
       assert.equal(accepted.content[0].text, text);
@@ -482,10 +440,7 @@ for (const transition of ["preset", "identity", "current"]) {
     const files = await readdir(join(current.root, "prompt-evidence"));
     const original = files.find((file) => file.endsWith(".txt"));
     assert.ok(original);
-    assert.equal(
-      await readFile(join(current.root, "prompt-evidence", original), "utf8"),
-      text,
-    );
+    assert.equal(await readFile(join(current.root, "prompt-evidence", original), "utf8"), text);
   });
 }
 
@@ -509,23 +464,16 @@ test("two successful reads in the same turn both retain their receipts and resul
       { content: [{ type: "text", text }] },
       async () => ({ kind: "accept" }),
     );
-  const returned = await Promise.all([
-    finish(first, firstText),
-    finish(second, secondText),
-  ]);
+  const returned = await Promise.all([finish(first, firstText), finish(second, secondText)]);
   assert.deepEqual(
     returned.map((result) => result.content[0].text),
     [firstText, secondText],
   );
   const { assembled, resultChars } = await promptState(t, current);
-  const index = assembled.sections.find(
-    (s) => s.name === "gea:evidence-index",
-  ).text;
+  const index = assembled.sections.find((s) => s.name === "gea:evidence-index").text;
   const ids = index.match(/ev-[a-f0-9]{24}/g);
   assert.equal(new Set(ids).size, 2);
-  const receipts = assembled.sections.find(
-    (s) => s.name === "gea:result-status",
-  ).text;
+  const receipts = assembled.sections.find((s) => s.name === "gea:result-status").text;
   for (const id of ids) assert.ok(receipts.includes(id));
   assert.equal(resultChars, firstText.length + secondText.length);
 });
@@ -546,10 +494,7 @@ for (const transition of ["turn", "preset", "identity"]) {
       arguments: {},
       signal: new AbortController().signal,
     };
-    const admission = current.handlers.get("tools/execute")(
-      exec,
-      async () => {},
-    );
+    const admission = current.handlers.get("tools/execute")(exec, async () => {});
     await entered.promise;
     if (transition === "turn") current.nextTurn();
     if (transition === "preset") current.setPreset("gea-html-inventory-aqkc");
@@ -560,19 +505,14 @@ for (const transition of ["turn", "preset", "identity"]) {
     const received = await current.handlers.get("tools/post-execute")(
       exec,
       {
-        content: [
-          { type: "text", text: '{"status":"completed","value":{"old":true}}' },
-        ],
+        content: [{ type: "text", text: '{"status":"completed","value":{"old":true}}' }],
       },
       async () => decision,
     );
     if (transition === "identity") assert.equal(received.kind, "block");
     else assert.equal(received, decision);
     const { assembled, resultChars } = await promptState(t, current);
-    assert.equal(
-      assembled.sections.find((s) => s.name === "gea:evidence-index").text,
-      "",
-    );
+    assert.equal(assembled.sections.find((s) => s.name === "gea:evidence-index").text, "");
     assert.equal(resultChars, 0);
   });
 }
@@ -607,19 +547,13 @@ for (const transition of ["preset", "turn", "current"]) {
     const entered = Promise.withResolvers(),
       resumed = Promise.withResolvers();
     const readFile = fs.promises.readFile;
-    const intercepted = t.mock.method(
-      fs.promises,
-      "readFile",
-      async (...args) => {
-        if (
-          String(args[0]) === join(current.root, "prompt-evidence", id + ".txt")
-        ) {
-          entered.resolve();
-          await resumed.promise;
-        }
-        return readFile(...args);
-      },
-    );
+    const intercepted = t.mock.method(fs.promises, "readFile", async (...args) => {
+      if (String(args[0]) === join(current.root, "prompt-evidence", id + ".txt")) {
+        entered.resolve();
+        await resumed.promise;
+      }
+      return readFile(...args);
+    });
     syncBuiltinESMExports();
     t.after(() => {
       resumed.resolve();
@@ -644,23 +578,16 @@ for (const transition of ["preset", "turn", "current"]) {
     await current.handlers.get("tools/execute")(freshExec, async () => {});
     if (transition === "turn") {
       await assert.rejects(
-        current.registered
-          .get("gea_evidence_read")
-          .execute({ evidenceId: id }, freshExec),
+        current.registered.get("gea_evidence_read").execute({ evidenceId: id }, freshExec),
         /GEA_EVIDENCE_STALE/,
       );
       const { assembled, resultChars } = await promptState(t, current);
-      assert.equal(
-        assembled.sections.find((s) => s.name === "gea:evidence-index").text,
-        "",
-      );
+      assert.equal(assembled.sections.find((s) => s.name === "gea:evidence-index").text, "");
       assert.equal(resultChars, 0);
       return;
     }
     const fresh = JSON.parse(
-      await current.registered
-        .get("gea_evidence_read")
-        .execute({ evidenceId: id }, freshExec),
+      await current.registered.get("gea_evidence_read").execute({ evidenceId: id }, freshExec),
     );
     if (transition === "current") {
       assert.equal(fresh.projection, "already-delivered");
@@ -677,9 +604,7 @@ for (const transition of ["preset", "turn", "current"]) {
     assert.notEqual(fresh.projection, "already-delivered");
     current.setMessages([{ viewId: fresh.viewId }]);
     const again = JSON.parse(
-      await current.registered
-        .get("gea_evidence_read")
-        .execute({ evidenceId: id }, freshExec),
+      await current.registered.get("gea_evidence_read").execute({ evidenceId: id }, freshExec),
     );
     assert.equal(again.projection, "already-delivered");
   });
@@ -716,10 +641,7 @@ test("a query rejected during resource admission does not reopen stalled catalog
     current.handlers.get("tools/execute")(query, async () => {}),
     /resource-admission-denied/,
   );
-  assert.match(
-    current.guard({ ...query, name: "gea_gateway_catalog" }),
-    /GEA_CATALOG_NO_PROGRESS/,
-  );
+  assert.match(current.guard({ ...query, name: "gea_gateway_catalog" }), /GEA_CATALOG_NO_PROGRESS/);
 });
 
 for (const phase of ["admission", "downstream"]) {
@@ -765,10 +687,7 @@ for (const phase of ["admission", "downstream"]) {
     );
     assert.equal(received, decision);
     const { assembled, resultChars, calls } = await promptState(t, current);
-    assert.equal(
-      assembled.sections.find((s) => s.name === "gea:evidence-index").text,
-      "",
-    );
+    assert.equal(assembled.sections.find((s) => s.name === "gea:evidence-index").text, "");
     assert.equal(resultChars, 0);
     assert.equal(calls, 1);
   });
@@ -791,9 +710,7 @@ test("a post policy error preserves the original error and retires metadata befo
   });
   const error = new TypeError("original-post-policy-error");
   const result = {
-    content: [
-      { type: "text", text: '{"status":"completed","value":{"late":true}}' },
-    ],
+    content: [{ type: "text", text: '{"status":"completed","value":{"late":true}}' }],
   };
   await assert.rejects(
     current.handlers.get("tools/post-execute")(exec, result, async () => {
@@ -804,18 +721,11 @@ test("a post policy error preserves the original error and retires metadata befo
   assert.equal(current.authorizations.has(exec.token), false);
   const decision = { kind: "accept" };
   assert.equal(
-    await current.handlers.get("tools/post-execute")(
-      exec,
-      result,
-      async () => decision,
-    ),
+    await current.handlers.get("tools/post-execute")(exec, result, async () => decision),
     decision,
   );
   const { assembled, resultChars, calls } = await promptState(t, current);
-  assert.equal(
-    assembled.sections.find((s) => s.name === "gea:evidence-index").text,
-    "",
-  );
+  assert.equal(assembled.sections.find((s) => s.name === "gea:evidence-index").text, "");
   assert.equal(resultChars, 0);
   assert.equal(calls, 1);
 });

@@ -1,3 +1,5 @@
+import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
+import { testBrowser } from "./fixtures/test-browser.mjs";
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
@@ -159,8 +161,10 @@ test(
       return stockRoute(request, response, reply);
     });
     await app.login();
-    const browser = await chromium.launch({ headless: true });
-    t.after(() => browser.close());
+    const browser = await testBrowser(t, () =>
+      chromium.launch({ channel: "chrome", headless: true }),
+    );
+
     const context = await browser.newContext({
       locale: "zh-CN",
       viewport: { width: 1440, height: 1000 },
@@ -174,6 +178,7 @@ test(
       })),
     );
     const page = await context.newPage();
+    await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
     page.setDefaultTimeout(25000);
     const opens = [],
       contexts = [],
@@ -200,7 +205,7 @@ test(
     const branchSession = opens.at(-1).sessionId;
     const branchOwner = opens.at(-1).owner;
     assert.equal(opens.at(-1).resourceId, "gea-html-inventory-fc");
-    assert.equal(await sessionPreset(app, branchSession), "gea-html-inventory-fc");
+    await expect.poll(() => sessionPreset(app, branchSession)).toBe("gea-html-inventory-fc");
     const search = frame.getByPlaceholder("搜索 SKU / 产品名称");
     await search.fill("FC001");
     await expect(frame.locator(".replenishment-table tbody")).toContainText("FC001");
@@ -338,7 +343,7 @@ test(
     await expect.poll(() => opens.at(-1)?.sessionId).not.toBe(branchSession);
     const qllSession = opens.at(-1).sessionId;
     assert.equal(opens.at(-1).resourceId, "gea-html-inventory-fc");
-    assert.equal(await sessionPreset(app, qllSession), "gea-html-inventory-qll");
+    await expect.poll(() => sessionPreset(app, qllSession)).toBe("gea-html-inventory-qll");
     const releasedOwner = await fixtureRequest(app, "/api/agent-workbench/page", {
       operation: "context",
       owner: branchOwner,

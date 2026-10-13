@@ -72,7 +72,12 @@ test(
       assert.equal(Object.hasOwn(page, "skillText"), false, "loaded Skill text is Host-only");
     }
     assert.equal(resource.kind, "prompt");
-    assert.equal(resource.label, declared.name);
+    const policy = JSON.parse(
+      await readFile(new URL("../presets/execution-policy.json", import.meta.url), "utf8"),
+    );
+    const trustedProfile = policy.profiles[resource.id];
+    assert.ok(trustedProfile, "the installed resource must have a trusted execution profile");
+    assert.equal(resource.label, trustedProfile.presetName ?? trustedProfile.label);
     assert.equal(resource.installed, true);
     assert.equal(resource.enabled, true);
     assert.equal(resource.provider, "package");

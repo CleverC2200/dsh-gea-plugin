@@ -3,8 +3,18 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, expect } from "@playwright/test";
-import { profile } from "./profile.mjs";
-import { openSalesPlan, salesPlanFrameElement } from "./fixtures/business-page.mjs";
+import { modelProfile as profile } from "./fixtures/model-profile.mjs";
+import {
+  salesPlanFrameElement,
+  openReadySalesPlan,
+  preparePageStartup,
+} from "./fixtures/business-page.mjs";
+import { nativeAssociation } from "./fixtures/native-page.mjs";
+import { prepareCoreDocuments } from "./fixtures/core-documents.mjs";
+
+const upstreams = JSON.parse(
+  await readFile(new URL("../scripts/quality-upstreams.json", import.meta.url), "utf8"),
+);
 
 test(
   "source GenUI renders a persisted model reply and restores local input after refresh",
@@ -14,6 +24,7 @@ test(
   },
   async (t) => {
     const app = await profile(t, {
+      beforeStart: prepareCoreDocuments(),
       config: (base) => ({
         analysis: {
           mode: "model",
@@ -60,10 +71,7 @@ test(
     const provenance = JSON.parse(
       await readFile(join(app.runtime, "company-plugins.json"), "utf8"),
     );
-    assert.equal(
-      provenance["@changfenhuang/dsh-genui"].commit,
-      "0cc64c97b426ff5afe54154e74ead31dd8739265",
-    );
+    assert.equal(provenance["@changfenhuang/dsh-genui"].commit, upstreams.genui.head);
     const modules = join(app.runtime, "home/profiles/plugin-split-validation/node_modules");
     assert.equal(
       await realpath(join(modules, "@changfenhuang/dsh-genui/node_modules/@deepseek-ai/cordis")),
@@ -72,7 +80,7 @@ test(
       ),
       "GenUI and GEA must share the source host's Cordis instance",
     );
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ channel: "chrome", headless: true });
     t.after(() => browser.close());
     const context = await browser.newContext({
       locale: "zh-CN",
@@ -91,8 +99,9 @@ test(
       releaseOpening = Promise.withResolvers();
     let heldOpening = false;
     t.after(() => releaseOpening.resolve());
-    await page.route("**/api/agent-workbench/config", async (route) => {
-      if (heldOpening) return route.continue();
+    await page.route("**/api/agent-manage/resources/select", async (route) => {
+      if (heldOpening || route.request().postDataJSON()?.id !== "gea-readonly")
+        return route.continue();
       heldOpening = true;
       opening.resolve();
       await releaseOpening.promise;
@@ -101,17 +110,22 @@ test(
     const messages = [];
     page.on("console", (message) => messages.push(message.text()));
     await page.goto(app.origin);
-    await page
-      .getByRole("dialog", { name: /内测声明|预览版说明/ })
-      .getByRole("button", { name: "继续", exact: true })
-      .click();
-    await openSalesPlan(page);
+    await preparePageStartup(page);
     const composer = page.locator('[contenteditable="true"], textarea').first();
+    await expect(composer).toBeVisible();
+    const ownerReady = openReadySalesPlan(page);
     await opening.promise;
     await expect(salesPlanFrameElement(page)).toBeVisible();
     await expect(composer).toBeHidden();
     releaseOpening.resolve();
+    await ownerReady;
     await expect(composer).toBeVisible();
+    const selected = await app.remote("session/selectModel", {
+      sessionId: (await nativeAssociation(page, "gea-proof")).sessionId,
+      provider: "gea-analysis",
+      model: "fixture",
+    });
+    assert.equal(selected.ok, true, JSON.stringify(selected));
     await composer.fill("用卡片展示测试样例，不查询业务数据。");
     await composer.press("Enter");
     const card = page.locator("[data-genui]").filter({ hasText: "样例已完成" }).first();
