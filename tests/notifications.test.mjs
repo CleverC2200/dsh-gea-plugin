@@ -1,4 +1,7 @@
 import test from "./fixtures/source-test.mjs";
+// [CI-NOTIFICATION-ORDER] begin
+import { notificationOrderProbe } from "./fixtures/notification-order-probe.mjs";
+// [CI-NOTIFICATION-ORDER] end
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
@@ -8,12 +11,20 @@ test(
   "GEA inbox reads preserve paging and identity, reject invalid responses and never mutate notification state",
   { timeout: 90000 },
   async (t) => {
+// [CI-NOTIFICATION-ORDER] begin
+    const probe = notificationOrderProbe();
+    probe.mark("test-start");
+    t.signal.addEventListener("abort", () => probe.mark("parent-aborted"), { once: true });
+// [CI-NOTIFICATION-ORDER] end
     const app = await profile(t, {
       config: (base) => ({
         pageSize: 2,
         geaEnvironments: { production: base, test: base + "/test" },
       }),
     });
+// [CI-NOTIFICATION-ORDER] begin
+    probe.mark("profile-ready");
+// [CI-NOTIFICATION-ORDER] end
     let mode = "success";
     let release;
     let contentItem;
@@ -29,6 +40,9 @@ test(
     };
     app.route((req, res, reply) => {
       if (!req.url.pathname.includes("/api/v1/notifications")) return false;
+// [CI-NOTIFICATION-ORDER] begin
+      probe.server(req, res, mode);
+// [CI-NOTIFICATION-ORDER] end
       assert.equal(req.method, "GET");
       if (mode === "content") {
         reply({
@@ -143,6 +157,9 @@ test(
       })),
     );
     const ui = await context.newPage();
+// [CI-NOTIFICATION-ORDER] begin
+    await probe.watch(context, ui);
+// [CI-NOTIFICATION-ORDER] end
     await ui.goto(app.origin);
     await ui
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
@@ -213,9 +230,22 @@ test(
     ];
     for (const [index, example] of cases.entries()) {
       await t.test(`notification content case ${index + 1}`, async (subtest) => {
+// [CI-NOTIFICATION-ORDER] begin
+        probe.mark("content-case-start", { index: index + 1 });
+        subtest.signal.addEventListener("abort", () => probe.mark("child-aborted", { index: index + 1 }), { once: true });
+// [CI-NOTIFICATION-ORDER] end
         subtest.after(async () => {
+// [CI-NOTIFICATION-ORDER] begin
+          probe.mark("cleanup-click-start", { index: index + 1 });
+// [CI-NOTIFICATION-ORDER] end
           await ui.getByRole("button", { name: "返回消息列表", exact: true }).click();
+// [CI-NOTIFICATION-ORDER] begin
+          probe.mark("cleanup-click-finished", { index: index + 1 });
+// [CI-NOTIFICATION-ORDER] end
           await ui.getByRole("button", { name: contentItem.title, exact: true }).waitFor();
+// [CI-NOTIFICATION-ORDER] begin
+          probe.mark("cleanup-list-ready", { index: index + 1 });
+// [CI-NOTIFICATION-ORDER] end
         });
         contentItem = {
           ...item,
@@ -225,9 +255,21 @@ test(
         };
         delete contentItem.expected;
         mode = "content";
+// [CI-NOTIFICATION-ORDER] begin
+        probe.mark("case-reload-start", { index: index + 1 });
+// [CI-NOTIFICATION-ORDER] end
         await ui.reload();
+// [CI-NOTIFICATION-ORDER] begin
+        probe.mark("case-reload-finished", { index: index + 1 });
+// [CI-NOTIFICATION-ORDER] end
         await ui.getByRole("button", { name: "消息待办", exact: true }).click();
+// [CI-NOTIFICATION-ORDER] begin
+        probe.mark("detail-click-start", { index: index + 1 });
+// [CI-NOTIFICATION-ORDER] end
         await ui.getByRole("button", { name: contentItem.title, exact: true }).click();
+// [CI-NOTIFICATION-ORDER] begin
+        probe.mark("detail-click-finished", { index: index + 1 });
+// [CI-NOTIFICATION-ORDER] end
         await expect(
           ui.getByRole("heading", { name: contentItem.title, exact: true }),
         ).toBeVisible();
@@ -240,6 +282,9 @@ test(
         assert.equal(await paragraph.locator("img, script").count(), 0);
         assert.equal(await ui.evaluate(() => window.notificationExecuted), undefined);
         assert.equal(await paragraph.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
+// [CI-NOTIFICATION-ORDER] begin
+        probe.mark("body-assertions-finished", { index: index + 1 });
+// [CI-NOTIFICATION-ORDER] end
         if (example.body === longBody) {
           await ui.getByText("正文结束", { exact: false }).scrollIntoViewIfNeeded();
           await ui.screenshot({
