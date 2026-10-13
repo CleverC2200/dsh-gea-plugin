@@ -6,8 +6,6 @@ import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
-import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
-import { observeFcProbe, captureFcFailure, recordFcReply } from "./fixtures/ci-fc-probe.mjs";
 import {
   htmlFrameElement,
   openWorkbenchPage,
@@ -27,7 +25,6 @@ test(
       ]),
     });
     const state = stockState();
-    const fcProbeReplies = [];
     let stockRoute;
     installStockRoutes(
       {
@@ -52,10 +49,7 @@ test(
         reply({ success: false, code: 500, message: "固定基地查询失败" }, 503);
         return true;
       }
-      return stockRoute(request, response, process.env.CI_FC_PROBE === "1" ? (...args) => {
-        try { recordFcReply(fcProbeReplies, request, ...args); } catch { /* Observation cannot alter the fixture response. */ }
-        return reply(...args);
-      } : reply);
+      return stockRoute(request, response, reply);
     });
     await app.login();
     const browser = await testBrowser(t, () =>
@@ -74,10 +68,6 @@ test(
       })),
     );
     const page = await context.newPage();
-    if (process.env.CI_FC_PROBE_SAMPLE_CLOCK === "1")
-      await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
-    const fcProbeEvents = process.env.CI_FC_PROBE === "1" ? observeFcProbe(page) : [];
-    let initialOpenReply;
     const contexts = [],
       contextRequests = [];
     let owner;
@@ -102,7 +92,7 @@ test(
       await openWorkbenchPage(page, "分仓库存");
       const reply = await opened;
       assert.equal(reply.status(), 200);
-      owner = (initialOpenReply = await reply.json()).owner;
+      owner = (await reply.json()).owner;
       assert.match(owner, /^[0-9a-f-]{36}$/);
       contexts.push(
         ...contextRequests
@@ -111,8 +101,6 @@ test(
       );
       const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
       await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
-      if (process.env.CI_FC_PROBE === "1")
-        console.log("[CI-FC-PROBE] " + JSON.stringify({ milestone: "original-FC001-assertion-passed", browserClock: await frame.locator("body").evaluate(() => new Date().toISOString()) }));
       await expect.poll(() => contexts.at(-1)?.parts?.queryState?.state).toBe("ready");
       assert.match(contexts.at(-1).visibleText, /当前库存[\d,]+件/);
       holdBase = true;
@@ -138,13 +126,6 @@ test(
         assert.doesNotMatch(value.visibleText, /当前库存[\d,]+件/);
       }
     } catch (error) {
-      if (process.env.CI_FC_PROBE === "1") {
-        try {
-          await captureFcFailure({ app, page, state, events: fcProbeEvents, replies: fcProbeReplies, initialOpenReply, contexts, failure: error });
-        } catch (probeError) {
-          console.log("[CI-FC-PROBE] observation unavailable: " + probeError.name);
-        }
-      }
       await mkdir(".runtime/branch-stock-evidence", { recursive: true });
       await writeFile(
         ".runtime/branch-stock-evidence/retained-text-debug.json",

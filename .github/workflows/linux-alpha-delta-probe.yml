@@ -2,10 +2,7 @@ name: linux-alpha-delta-probe
 run-name: "Linux original alpha delta cases / ${{ github.ref_name }} / ${{ github.sha }}"
 
 on:
-  push:
-    branches:
-      - codex/test-quality-linux-probe-before-20261013
-      - codex/test-quality-linux-probe-current-20261013
+  workflow_dispatch:
 
 permissions:
   contents: read
