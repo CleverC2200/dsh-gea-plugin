@@ -2,7 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { openReadySalesPlan } from "./fixtures/business-page.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 
 /** 建一条可审批、可内联改数的计划，并把动作报文收集起来。 */
@@ -108,7 +108,7 @@ const fixture = async (t) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(app.origin);
-  const frame = await openSalesPlan(page);
+  const frame = await openReadySalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   return { app, frame, writes, errors, page };
 };
