@@ -17,3 +17,5 @@
 旧 `linux-consumer-probe.yml` 改为 `workflow_dispatch`，避免同一 push 再次跑已归因 APS 原病例。它的原 source-event 校验仍拒绝不支持的 dispatch；本轮不从这个旧 workflow 执行新的 Consumer 诊断，也不改写事件以绕过 reader。
 
 准备和静态校验不证明实际 Linux runtime。必须核本次 artifact metadata、固定 tuple、原断言 verdict 与 lifecycle 后再比较 before/current。
+
+后续同病例诊断增加实际 fixture SQL response 的键名、packet 列名、行数及首行值类型，记录默认业务筛选和当前页签。只读原 reply 并原样转发，JSON 数据值和 SQL 原文不输出；原断言失败仍失败。配置 patch 按既有 YAML 协议解析。
