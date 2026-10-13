@@ -460,6 +460,67 @@ test("Cube-New catalog calls the separate inspection tool and filters metadata b
   assert.deepEqual(calls, [{ name: "inspect_cube_model", args: { limit: 50 } }]);
 });
 
+test("Cube-New View aliases expose only granted underlying members and support the actual query target", async (t) => {
+  const f = fixture(t);
+  const target = "agents_sales_forecast_detail_mi";
+  const calls = [];
+  const metadata = {
+    action: "inspect",
+    semanticModel: [
+      {
+        name: "sales_forecast_result_qa",
+        type: "view",
+        title: "销售预测",
+        measures: [
+          {
+            name: "sales_forecast_result_qa.amount",
+            aliasMember: target + ".amount",
+            type: "number",
+            description: "预测金额，单位元",
+          },
+          { name: "sales_forecast_result_qa.hidden", aliasMember: "hidden.amount", type: "number" },
+        ],
+        dimensions: [
+          {
+            name: "sales_forecast_result_qa.month",
+            aliasMember: target + ".plan_month",
+            type: "string",
+          },
+        ],
+      },
+    ],
+  };
+  const module = {
+    tools: () => [
+      { name: "inspect_cube_model", required: [] },
+      { name: "query_business_data", required: ["action", "queries"] },
+    ],
+    authorizedResources: async () => snapshot([target]),
+    call: async (name, args) => {
+      calls.push({ name, args });
+      return name === "inspect_cube_model"
+        ? JSON.stringify(metadata)
+        : JSON.stringify({ datasets: [{ name: "forecast", rows: [{ [target + ".amount"]: 0 }] }] });
+    },
+  };
+  t.mock.method(f.business, "moduleMcp", async () => module);
+  const catalog = await f.call("gea_gateway_catalog", { model: "sales_forecast_result" });
+  assert.match(catalog, /agents_sales_forecast_detail_mi\.amount/);
+  assert.match(catalog, /agents_sales_forecast_detail_mi\.plan_month/);
+  assert.match(catalog, /sales_forecast_result_qa/);
+  assert.doesNotMatch(catalog, /hidden\.amount|sales_forecast_result_qa\.amount/);
+  const result = JSON.parse(
+    await f.call("gea_cube_query", {
+      queries: [{ name: "forecast", query: { measures: [target + ".amount"], limit: 1 } }],
+    }),
+  );
+  assert.equal(result.datasets[0].rows[0][target + ".amount"], 0);
+  assert.deepEqual(
+    calls.find((call) => call.name === "query_business_data").args.queries[0].query.measures,
+    [target + ".amount"],
+  );
+});
+
 test("cancellation stops subsequent model groups", async (t) => {
   const f = fixture(t),
     controller = new AbortController();
