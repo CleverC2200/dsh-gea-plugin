@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 const built = await build({
   stdin: {
     contents:
-      "export {prepareGatewayMcp} from './src/host/gateway-mcp.ts';export {planCubeQuery} from './src/host/cube-query-plan.ts';export {Business} from './src/host/business.ts';export {registerGeaTools} from './src/host/agent-tools.ts';export {resourceConsumers} from './src/host/catalog-consumers.ts';export {installPromptProfile} from './src/host/prompt-policy.ts'",
+      "export {prepareGatewayMcp,gatewayMcpTransport} from './src/host/gateway-mcp.ts';export {openModuleMcp} from './src/host/mcp-client.ts';export {planCubeQuery} from './src/host/cube-query-plan.ts';export {Business} from './src/host/business.ts';export {registerGeaTools} from './src/host/agent-tools.ts';export {resourceConsumers} from './src/host/catalog-consumers.ts';export {installPromptProfile} from './src/host/prompt-policy.ts'",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -323,6 +323,117 @@ test("catalog shows only the current authorization snapshot and never revives ol
   };
   await assert.rejects(f.call("gea_gateway_catalog", {}), /AUDIT_UNAVAILABLE/);
   assert.equal(inspect, 1);
+});
+
+test("catalog identifies Cube-New absence from the authorized list without misreporting routing or empty data", async (t) => {
+  const f = fixture(t);
+  const sent = [];
+  const signal = new AbortController().signal;
+  const transport = mod.exports.gatewayMcpTransport(
+    "https://fixture",
+    {
+      agentCode: "sales_forecast",
+      sessionId: "private-session",
+      conversationId: "private-conversation",
+      delegationToken: "private-token",
+    },
+    signal,
+    1000,
+    async (_url, init) => {
+      const request = JSON.parse(init.body);
+      sent.push(request.method);
+      const result =
+        request.method === "initialize"
+          ? { protocolVersion: "2025-11-25" }
+          : {
+              tools: [
+                {
+                  name: "query_business_data",
+                  _meta: { sourceType: "MCP", sourceCode: "old-cube" },
+                  inputSchema: { type: "object", properties: {} },
+                },
+              ],
+            };
+      return request.method === "notifications/initialized"
+        ? new Response(null, { status: 202 })
+        : Response.json({ jsonrpc: "2.0", id: request.id, result });
+    },
+    { cubeMcpCode: "2109581866385289217" },
+  );
+  const module = await mod.exports.openModuleMcp(transport, signal);
+  t.mock.method(f.business, "moduleMcp", async () => module);
+  const discoveryCalls = sent.length;
+  const result = JSON.parse(await f.call("gea_gateway_catalog", {}));
+  assert.equal(result.availability, "tool-unavailable");
+  assert.equal(result.code, "GEA_MCP_TOOL_UNAVAILABLE");
+  assert.equal(result.sourceCode, "2109581866385289217");
+  assert.equal(result.consumerCode, "sales_forecast");
+  assert.equal(result.toolName, "query_business_data");
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /private-token|private-session|private-conversation|no_data/,
+  );
+  assert.equal(sent.length, discoveryCalls);
+});
+
+test("explicit catalog refresh discovers newly granted tools while preserving the current login and Consumer", async (t) => {
+  const f = fixture(t);
+  const signal = new AbortController().signal;
+  let granted = false;
+  let opened = 0;
+  const consumers = [];
+  t.mock.method(f.business, "authenticated", () => ({ token: "unchanged-login", tenantId: "0" }));
+  t.mock.method(f.business, "openMcpConnection", async (consumer) => {
+    consumers.push(consumer);
+    opened++;
+    return mod.exports.gatewayMcpTransport(
+      "https://fixture",
+      {
+        agentCode: consumer.consumerCode,
+        sessionId: "session",
+        conversationId: "conversation",
+        delegationToken: "delegation",
+      },
+      signal,
+      1000,
+      async (url, init) => {
+        if (url.endsWith("/resources")) return Response.json({ success: true, resources: [] });
+        const request = JSON.parse(init.body);
+        if (request.method === "notifications/initialized")
+          return new Response(null, { status: 202 });
+        const result =
+          request.method === "initialize"
+            ? { protocolVersion: "2025-11-25" }
+            : {
+                tools: granted
+                  ? ["inspect_cube_model", "query_business_data"].map((name) => ({
+                      name,
+                      _meta: { sourceType: "MCP", sourceCode: "2109581866385289217" },
+                      inputSchema: { type: "object", properties: {} },
+                    }))
+                  : [],
+              };
+        return Response.json({ jsonrpc: "2.0", id: request.id, result });
+      },
+      { cubeMcpCode: "2109581866385289217" },
+    );
+  });
+  assert.equal(
+    JSON.parse(await f.call("gea_gateway_catalog", {})).availability,
+    "tool-unavailable",
+  );
+  granted = true;
+  assert.equal(
+    JSON.parse(await f.call("gea_gateway_catalog", {})).availability,
+    "tool-unavailable",
+  );
+  const refreshed = JSON.parse(await f.call("gea_gateway_catalog", { refresh: true }));
+  assert.equal(refreshed.availability, "no-authorized-resources");
+  assert.equal(opened, 2);
+  assert.deepEqual(
+    consumers,
+    Array(2).fill({ consumerType: "AGENT", consumerCode: "sales_forecast" }),
+  );
 });
 
 test("Cube-New catalog calls the separate inspection tool and filters metadata by the current resource grant", async (t) => {
