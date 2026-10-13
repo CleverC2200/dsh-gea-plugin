@@ -1,0 +1,7 @@
+# 临时通知公开归属观测
+
+既有完整顺序两条诊断仍按其冻结原提交运行，不取消或更换输入。本workflow只做原通知完整文件20轮作为辅助归因，any failed round使总诊断失败，全部round/exit/原始日志保留。原断言及每个Node用例timeout不变。workflow90分钟是20次独立执行的总体预算，不扩大原单例action期限。
+
+公开identity响应只保留scope/subject的SHA256和authenticated布尔；公开presentation.v2只取gea-inbox active关联的Session/scope/subject散列；会话DOM属性只留节点ID与Session散列；main Session是否已打开不由关联记录推出。不记录Cookie/Header/正文/完整请求，不修改DOM、localStorage、接口响应或身份状态。节点观察增加外层页面/文档编号，辅助区分Inbox key变化与父Document重建。
+
+完整顺序workflow停止后续自动push，原40fab67e/6f594af5 run与证据保留。正式PR不包含观测。
