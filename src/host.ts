@@ -41,7 +41,7 @@ import { mountSidebarToolVisibility } from "./host/sidebar-tool-visibility.ts";
 import { networkError } from "./shared/net-error.ts";
 import { registerHtmlPlugins } from "./html-plugins.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
-import { forgetMemberIndex } from "./host/member-index.ts";
+import { createCubeMcpService } from "./host/cube-mcp-service.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { workbenchContract } from "./capability/contract.ts";
 const WORKBENCH_SURFACE = "gea-workbench";
@@ -529,35 +529,13 @@ export async function apply(
       },
     ),
   );
-  // 目录缓存（成员清单 + 模型 → consumerCode）也跟着身份走：换了账号或环境，上一份
-  // inspect 里的成员和可见模型都不能再用——规约 G5 要的是"当前模型版本的 inspect"。
-  ctx.effect(() =>
-    business.watchIdentity(() => {
-      forgetMemberIndex();
-    }),
-  );
   // Sidebar 工具遵循其公开 Document 条件；业务 profile 不再整体屏蔽官方通用能力。
   ctx.effect(() => mountSidebarToolVisibility(ctx, business));
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());
-  ctx.provide("geaMcp", {
-    version: 1 as const,
-    defaultConsumer: { consumerType: "AGENT" as const, consumerCode: config.analysisAgentCode },
-    authenticated: () => business.status().authenticated,
-    watch: (listener: () => void) => business.watchIdentity(listener),
-    open: (
-      consumer: { consumerType: "AGENT" | "CLIENT_APP"; consumerCode: string },
-      signal: AbortSignal,
-    ) => business.openMcpConnection(consumer, signal),
-  });
-  const queryAuthorizations = new Map<
-    symbol,
-    { consumer: string; resources: import("./host/authorized-resources.ts").AuthorizedResources }
-  >();
-  registerGeaTools(ctx, business, capability, (exec, consumer, resources) => {
-    queryAuthorizations.set(exec.token, { consumer, resources });
-  });
-  ctx.effect(() => mountBusinessPrompts(ctx, business, capability, queryAuthorizations));
+  ctx.provide("geaMcp", createCubeMcpService(ctx, business));
+  registerGeaTools(ctx, business, capability);
+  ctx.effect(() => mountBusinessPrompts(ctx, business, capability));
   // 每步把"用户这一轮问的是什么"钉在消息末尾：系统提示里的位置段只能劝阻，
   // 长轮次（一轮 17 次工具调用）里模型会把用户那条消息丢掉，最后说自己"没收到提问"。
   // 用户换了问题 = 新的一轮：把"本轮"级的计数清零（重复读闸门、本轮白跑总账）。

@@ -97,7 +97,9 @@ async function fixture(
       return () => {};
     },
     inject() {},
-    provide() {},
+    provide(name, value) {
+      this[name] = value;
+    },
     get(name) {
       return ctx[name];
     },
@@ -297,7 +299,21 @@ async function fixture(
       const core = new Context();
       core.provide("systemPrompt", { tools: () => () => {} });
       const runtime = new ToolRuntime(core);
-      const off = runtime.register(tools.get(name));
+      const definition =
+        name === "mcp__gea-gateway__query_business_data"
+          ? {
+              name,
+              description: "Direct Cube-New query",
+              parameters: { type: "object" },
+              output: {
+                schema: { type: "string" },
+                render: (_args, value) => [{ type: "text", text: value }],
+              },
+              execute: (args, exec) =>
+                ctx.geaMcp.call(exec.agent.id, "query_business_data", args, exec.signal),
+            }
+          : tools.get(name);
+      const off = runtime.register(definition);
       const detach = core.on("tools/execute", handlers.get("tools/execute")[0]);
       try {
         return await runtime.execute({
@@ -389,7 +405,7 @@ test("current disablement or withdrawal refuses persisted presets even after an 
           return true;
         },
       );
-      const tool = await app.executeTool("gea_module_mcp");
+      const tool = await app.executeTool("mcp__gea-gateway__query_business_data");
       assert.equal(tool.isError, true);
       assert.equal(tool.error.message, code);
       assert.deepEqual(app.calls, {
@@ -421,7 +437,7 @@ test("a persistent disabled preset refuses the registered GEA model stream befor
 
 test("a persistent disabled preset refuses business tool dispatch before query execution", async (t) => {
   const app = await fixture(t, false);
-  const tool = await app.executeTool("gea_cube_query");
+  const tool = await app.executeTool("mcp__gea-gateway__query_business_data");
   assert.equal(tool.isError, true);
   assert.equal(tool.error.message, "GEA_AGENT_RESOURCE_DISABLED");
   assert.deepEqual(app.calls, { route: [], transport: [] });
@@ -434,7 +450,7 @@ test("actual Host rejects a restored disabled native Task before any selected pr
   });
   app.agent.session.preset = "gea-readonly";
   await assert.rejects(app.preStep(), /GEA_AGENT_RESOURCE_DISABLED/);
-  const result = await app.executeTool("gea_cube_query");
+  const result = await app.executeTool("mcp__gea-gateway__query_business_data");
   assert.equal(result.isError, true);
   assert.match(result.error.message, /GEA_AGENT_RESOURCE_DISABLED/);
   assert.deepEqual(app.external, []);

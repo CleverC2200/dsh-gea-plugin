@@ -6,10 +6,10 @@
  * 最上面那层 JSON-RPC：initialize → tools/list → tools/call。
  */
 import { randomUUID } from "node:crypto";
-import { readableError, throwIfAborted } from "../shared/abort.ts";
+import { readableError, throwIfAborted } from "../../../src/shared/abort.ts";
 import { createParser } from "eventsource-parser";
-import type { ResourceReader } from "./authorized-resources.ts";
-import { cubeNewArtifact } from "./cube-new.ts";
+import type { ResourceReader } from "../../../src/host/authorized-resources.ts";
+import { cubeNewArtifact } from "../../../src/host/cube-new.ts";
 
 export type McpTool = {
   name: string;

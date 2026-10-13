@@ -71,13 +71,6 @@ export function mountBusinessPrompts(
   ctx: Context,
   business: Business,
   capability: CapabilityRegistry,
-  authorizations: Map<
-    symbol,
-    {
-      consumer: string;
-      resources: import("./authorized-resources.ts").AuthorizedResources;
-    }
-  >,
 ): () => void {
   const states = new Map<Agent, AdmissionState>();
   const executionGrants = new Map<symbol, EvidenceGrant>();
@@ -164,7 +157,7 @@ export function mountBusinessPrompts(
     const deny = ctx.tools
       .schemas()
       .map((tool) => tool.name)
-      .filter((name) => name.startsWith("gea_") && !names.has(name));
+      .filter((name) => businessMethod(name) && !names.has(name));
     const signature = deny.sort().join("|");
     if (signature === state.mask) return;
     // Business masks do not choose official or optional plugin capabilities.
@@ -225,19 +218,18 @@ export function mountBusinessPrompts(
       // Evidence exhaustion closes GEA calls, and all tools of the active Core driver.
       if (
         state.readCalls >= PROMPT_BUDGET.evidenceCalls &&
-        (exec.name.startsWith("gea_") || agent.status === "running")
+        (businessMethod(exec.name) || agent.status === "running")
       )
         return "GEA_EVIDENCE_BUDGET: 本轮证据读取额度已用完，请交付已读范围并说明未读部分。";
       if (["render_ui", "validate_dsh_ui"].includes(exec.name)) {
         const issue = businessUiIssue(exec.arguments);
         if (issue) return issue;
       }
-      if (!exec.name.startsWith("gea_")) return;
+      if (!businessMethod(exec.name)) return;
       if (!namesFor(agent, state).has(exec.name))
         return ["gea_page", "gea_workbench_apply"].includes(exec.name) && !pageBound(agent)
           ? "GEA_BUSINESS_TOOL_NOT_ALLOWED: reason=PAGE_NOT_BOUND。当前业务会话未绑定页面；打开相应业务页面并连接当前会话后再读取页面证据。独立查询结果不能代替页面确定性结果。"
           : "GEA_BUSINESS_TOOL_NOT_ALLOWED: 当前业务角色未声明此工具能力。";
-      const callArgs = exec.arguments as Record<string, unknown>;
       if (exec.name === "gea_sales_plan_read") {
         const questions = agent.session
           .snapshotEvents()
@@ -253,16 +245,6 @@ export function mountBusinessPrompts(
         const issue = salesSourceIssueForTurns(questions);
         if (issue) return issue;
       }
-      const currentConsumer = sessionConsumer(ctx, business, agent.id);
-      if (
-        executionState.snapshot(agent).deniedConsumers.has(currentConsumer) &&
-        typeof callArgs.consumerCode === "string" &&
-        callArgs.consumerCode.trim() !== currentConsumer &&
-        (exec.name === "gea_cube_query" ||
-          exec.name === "gea_gateway_catalog" ||
-          (exec.name === "gea_module_mcp" && callArgs.tool === "query_business_data"))
-      )
-        return "GEA_CONSUMER_FALLBACK_DENIED: 当前业务身份的资源缺口不能通过轮换其它consumer试探；交付已有证据与缺口。";
       if (
         exec.name === "gea_evidence_read" &&
         business.turnStopKind(agent.id) === "session-expired"
@@ -276,8 +258,11 @@ export function mountBusinessPrompts(
           return "GEA_CALL_BUDGET: 业务查询/业务能力调用额度已用完；仍可沿nextRead读取已取得证据，然后交付已有结果。";
         state.calls++;
       }
-      if (exec.name === "gea_gateway_catalog" && executionState.snapshot(agent).catalogStalls >= 2)
-        return "GEA_CATALOG_NO_PROGRESS: 目录连续未提供新信息；使用已返回成员执行最小gea_cube_query或说明具体缺口，查询后可按错误修正目录。本轮其它工具仍可用。";
+      if (
+        exec.name === "mcp__gea-gateway__inspect_cube_model" &&
+        executionState.snapshot(agent).catalogStalls >= 2
+      )
+        return "GEA_CATALOG_NO_PROGRESS: 目录连续未提供新信息；使用已返回成员执行最小query_business_data或说明具体缺口，查询后可按错误修正目录。本轮其它工具仍可用。";
     }),
   );
   offs.push(
@@ -285,7 +270,7 @@ export function mountBusinessPrompts(
       if (
         exec.agent &&
         profileOf(exec.agent) &&
-        (exec.name.startsWith("gea_") || exec.name === "forecast_compute")
+        (businessMethod(exec.name) || exec.name === "forecast_compute")
       ) {
         // Capture before resource admission awaits; old calls never acquire a new turn's owner.
         executionState.begin(exec.agent, exec.token);
@@ -296,7 +281,7 @@ export function mountBusinessPrompts(
         if (
           exec.agent &&
           profileOf(exec.agent) &&
-          (exec.name.startsWith("gea_") || exec.name === "forecast_compute")
+          (businessMethod(exec.name) || exec.name === "forecast_compute")
         ) {
           const args = exec.arguments as Record<string, unknown>;
           const grant: EvidenceGrant = {
@@ -305,7 +290,6 @@ export function mountBusinessPrompts(
           };
           if (exec.name === "forecast_compute") grant.kind = "local";
           if (exec.name === "gea_sales_plan_read") grant.query = args;
-          if (exec.name === "gea_cube_query" || exec.name === "gea_module_mcp") grant.kind = "mcp";
           executionGrants.set(exec.token, grant);
         }
         return await next();
@@ -313,7 +297,6 @@ export function mountBusinessPrompts(
         // Official around-dispatch failures bypass post-execute; retire this execution's metadata here.
         executionState.take(exec.token);
         executionGrants.delete(exec.token);
-        authorizations.delete(exec.token);
         throw error;
       }
     }),
@@ -324,21 +307,12 @@ export function mountBusinessPrompts(
       const execution = executionState.take(exec.token);
       const grant = executionGrants.get(exec.token);
       executionGrants.delete(exec.token);
-      const authorization = authorizations.get(exec.token);
-      authorizations.delete(exec.token);
       const decision = await next();
       const agent = exec.agent;
-      if (grant?.kind === "mcp" && authorization?.resources.resources.length) {
-        grant.consumer = authorization.consumer;
-        grant.resourceTool = "query_business_data";
-        grant.resources = hash(
-          authorization.resources.resources.map((resource) => JSON.stringify(resource)).sort(),
-        );
-      }
       if (
         agent &&
         profileOf(agent) &&
-        (exec.name.startsWith("gea_") || exec.name === "forecast_compute")
+        (businessMethod(exec.name) || exec.name === "forecast_compute")
       ) {
         const args = exec.arguments as Record<string, unknown>;
         const texts = result.content
@@ -372,21 +346,22 @@ export function mountBusinessPrompts(
                   text: JSON.stringify({
                     tool: exec.name,
                     status: "blocked",
-                    code: texts.match(/GEA_[A-Z_]+|AI_GATEWAY_[A-Z_]+/)?.[0] ?? "TOOL_FAILED",
+                    code:
+                      texts.match(/GEA_[A-Z_]+|AI_GATEWAY_[A-Z_]+|DATA_QUERY_[A-Z_]+/)?.[0] ??
+                      "TOOL_FAILED",
                     note: "本次未取得有效结果；不撤销其它成功证据",
                   }),
                 }
               : undefined,
           read,
           deniedConsumer:
-            ["gea_gateway_catalog", "gea_cube_query", "gea_module_mcp"].includes(exec.name) &&
-            permissionDenied(texts)
+            cubeMethod(exec.name) && permissionDenied(texts)
               ? typeof args.consumerCode === "string" && args.consumerCode.trim()
                 ? args.consumerCode.trim()
                 : sessionConsumer(ctx, business, agent.id)
               : undefined,
           catalog:
-            exec.name === "gea_gateway_catalog" &&
+            exec.name === "mcp__gea-gateway__inspect_cube_model" &&
             decision.kind === "accept" &&
             !result.isError &&
             !permissionDenied(texts)
@@ -408,9 +383,7 @@ export function mountBusinessPrompts(
         "value" in decision ||
         !(
           exec.name === "forecast_compute" ||
-          /^gea_(?:sales_plan_read|cube_query|module_mcp|page|visible_workbench_context)$/.test(
-            exec.name,
-          )
+          /^gea_(?:sales_plan_read|page|visible_workbench_context)$/.test(exec.name)
         )
       )
         return decision;
@@ -923,7 +896,7 @@ export function mountBusinessPrompts(
           ? [
               {
                 name: "gea:query-progress",
-                text: "目录连续未提供新信息，暂不继续探索目录。已有成员用于最小gea_cube_query，原结果用nextRead按数据集续读；执行查询后可再按具体错误核对目录。规则题直接用已核验规则，数据缺口明确记录，不换关键词或加载知识来代替取数。",
+                text: "目录连续未提供新信息，暂不继续探索目录。已有成员用于最小query_business_data，原结果用nextRead按数据集续读；执行查询后可再按具体错误核对目录。规则题直接用已核验规则，数据缺口明确记录，不换关键词或加载知识来代替取数。",
               },
             ]
           : []),
@@ -1031,7 +1004,6 @@ export function mountBusinessPrompts(
     for (const state of states.values()) state.dispose?.();
     states.clear();
     executionGrants.clear();
-    authorizations.clear();
     executionState.dispose();
   };
 }

@@ -6,7 +6,7 @@ import { build } from "esbuild";
 const { outputFiles } = await build({
   stdin: {
     contents:
-      "export {gatewayMcpTransport} from './src/host/gateway-mcp.ts'; export {openModuleMcp} from './src/host/mcp-client.ts';",
+      "export {gatewayMcpTransport} from './src/host/gateway-mcp.ts'; export {openModuleMcp} from './tests/fixtures/retired-query/mcp-client.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,

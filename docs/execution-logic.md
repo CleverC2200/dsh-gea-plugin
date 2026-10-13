@@ -18,19 +18,19 @@
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 页面打开、目录、动作、引用与恢复 | 同组 [Workbench 合同](../../dsh-agent-workbench/docs/workbench-contracts.md) 和 [呈现恢复](../../dsh-agent-workbench/docs/presentation-recovery.md)；GEA [HTML adapter](../src/html-plugins.ts) 提供当前业务 grant |
 | GEA 模型与业务工具               | [Host 注册](../src/host.ts)、[业务工具](../src/host/agent-tools.ts)；[标准能力边界](business-standard-capabilities.md) 保留官方 general tools 的原策略                                                             |
-| Gateway 会话与 MCP               | [统一会话握手](../src/host/gateway-session.ts)、[MCP 传输](../src/host/gateway-mcp.ts)、[MCP client](../src/host/mcp-client.ts)；保留原拒权码、HTTP/JSON 失败、路由与 Consumer 校验                                |
+| Gateway 会话与 MCP               | [统一会话握手](../src/host/gateway-session.ts)、[MCP 传输](../src/host/gateway-mcp.ts)、[Cube-New client](../src/host/cube-mcp-client.ts)；保留原拒权码、HTTP/JSON 失败、路由与 Consumer 校验                      |
 | 受管 SQL                         | [查询入口](../src/host/plugin-query.ts)、[物理额度](../src/shared/sql-read-limit.js)；实际端点和分页计数由源码定义                                                                                                 |
 | 证据与取消                       | [MCP 证据](../src/host/mcp-read-evidence.ts)、[隔离取消信号](../src/shared/transport-signal.ts)；保留部分、失败、unknown 与来源范围                                                                                |
 
 独立业务查询不要求先打开页面。页面动作仍只消费当前页面声明；Native 审批与 HTML 只读能力分别按原合同执行。页面的 view 或 draft 回执不等于真实业务保存/审批成功。
 
-Cube-New 的来源由 Host `cubeMcpCodes` 按环境指定。公司默认仅登记测试环境编码 `2109581866385289217`，正式环境沿用原配置。工具发现只接受当前业务 Session 授权列表中该来源的 `inspect_cube_model` 和 `query_business_data`；来源缺席时不借用旧 Cube 的同名工具。说明查询使用独立的 `inspect_cube_model`，查询使用 `action=query` 和 `response_mode=inline_complete`。网关返回的制品由原业务 Session 通过 `resources/read` 读取，并带实际工具来源编码。
+Cube-New 的来源由 Host `cubeMcpCodes` 按环境指定。公司默认仅登记测试环境编码 `2109581866385289217`；正式环境未登记新来源时不开放查询，也不回退旧 Cube。GEA 登录、业务页面和持久会话继续保留。
 
-目录显式 `refresh=true` 时，Host 在同一登录身份和 Consumer 下重建 MCP 业务会话并重新发现工具，再读取授权资源和模型目录。普通目录读取沿用当前连接，不反复建立会话。授权列表成功返回但没有指定 Cube-New 工具时，目录报告 `GEA_MCP_TOOL_UNAVAILABLE` 和 `availability=tool-unavailable`，不再误报缺少传输路由；该状态不代表业务数据为空，也不触发工具调用或旧来源回退。
+Manage 只注册当前登录授权列表中的 `inspect_cube_model` 和 `query_business_data`，使用服务端原始 schema。GEA 根据发起调用的真实 Core Session preset 选择 Consumer，每次调用重新校验身份、业务资源与执行归属；业务 arguments 不能指定身份或路由。旧 `gea_gateway_catalog`、`gea_cube_query`、`gea_module_mcp` 不再注册，旧成员索引、查询拆分、修参和结果分段适配退出运行时，历史回归材料留在 `tests/fixtures/retired-query`。
 
-Cube-New 返回 View 说明时，目录按其当前 `aliasMember` 投影底层查询成员，仅保留底层 `queryTarget` 已在本次授权资源快照中的部分。View 名不能替代底层资源授权；目录保留 `sourceView`，成员类型和说明来自实际 View。直接返回的底层模型定义优先于 View 投影。目录与预检索引使用同一投影，成员类别、字段和业务行范围仍由原查询链校验，不按文档示例猜底层模型名。
+`inspect_cube_model` 返回服务端原始说明，包括 View 的 `aliasMember`。客户端不再二次投影目录或替服务端判断成员发布。`query_business_data` 原样传递 `action=query`、`response_mode=inline_complete` 和具名查询；同次调用限一个底层模型，跨模型分次查询。制品由同一业务与传输 Session 通过 `resources/read` 在 Host 内部读取，模型无需第三个读取工具。
 
-Cube-New 制品在发布证据前核对原始 UTF-8 正文摘要、URI、内容类型、具名数据集、行数和分页状态。`complete=true` 仅表示当前页完整；`hasMorePages=true` 仍保留未读范围，`partial`、`no_data`、null、真实零及编码字符串保持原值。MCP 传输 Session 与 GEA 业务 Session 分别管理，不从业务参数或模型提供的元数据读取凭据与路由。接入依据为用户提供的 `Cube-New-MCP-外部调用指南-20261013.md`，该指南的 dev 配置与示例不证明目标服务部署或真实数据验收。
+制品发布前核原始 UTF-8 摘要、URI、内容类型、数据集名称、行数和分页状态。`complete=true` 仅表示当前页完整；`hasMorePages=true` 保留未读范围。`partial`、`no_data`、null、真实零、编码字符串及原始数值文本保持不变。成员未发布时保留 `DATA_QUERY_MEMBER_NOT_PUBLISHED` 与追踪编号，停止本轮查询，不换参数、成员或身份重试。接入依据为用户提供的 `Cube-New-MCP-外部调用指南-20261013.md`；该指南的示例不证明服务部署或业务数据验收。
 
 `sqlReadLimit` 限定同一 Host 生命周期内对应 Consumer 的物理请求。分页、续期后的再次请求、失败和发出后的取消计数；发出前取消不计数。零额度在登录或委托前拒绝，只开放声明的一个 Consumer，其他 Consumer 直接拒绝；不能换 Consumer 继续使用额度。页数或行数超限拒绝，不截断成完整结果。销售只读自动请求另沿 Business 的 `readonlyValidation` 合同计数；历史剩余额度不授权新窗口。
 

@@ -67,12 +67,12 @@ export function channelPlan(input: ChannelInput = {}): ChannelPlan {
   const moduleChoice: ChannelChoice | undefined = module
     ? {
         channel: "module-mcp",
-        tool: "gea_module_mcp",
+        tool: "mcp__gea-gateway__query_business_data",
         consumerCode: module.consumerCode,
         label: module.label,
         when:
           "页面没开，或问题超出这一屏（按范围、按月、要全量）时用它：" +
-          "模块自带的受管查询，先只带 consumerCode 列工具，再一次调用。",
+          "先用 inspect_cube_model 读取实际模型与 aliasMember，再用 query_business_data 提交该模型的只读查询。身份由当前 Agent 决定，不传 consumerCode。",
       }
     : undefined;
   const governedRead = input.governedRead !== false;
@@ -80,9 +80,7 @@ export function channelPlan(input: ChannelInput = {}): ChannelPlan {
     ? {
         channel: "governed-read",
         tool: "gea_plugin_read",
-        ...(module === undefined
-          ? {}
-          : { consumerCode: module.consumerCode, label: module.label }),
+        ...(module === undefined ? {} : { consumerCode: module.consumerCode, label: module.label }),
         when:
           "口径、范围或跨模块的数据问题用它：先 describe=true 取表与列名，常见问题优先用契约里的 recipe。" +
           (module?.readableTables === 0
@@ -106,9 +104,7 @@ export function channelPlan(input: ChannelInput = {}): ChannelPlan {
         : "") +
       (readChoice
         ? `按 ${order.join(" → ")} 选一条就够：同一条问题不要三条通道各试一遍。`
-        : `按 ${order.join(" → ")} 选一条就够：同一条问题不要重复试。取数只能走模块 MCP（gea_module_mcp）：先按模块清单里的 consumerCode 列工具，再调用；不要尝试写 SQL。`) +
-      (page?.mock
-        ? `注意：当前页「${page.label}」是演示模块，它的数字不能当业务事实引用。`
-        : ""),
+        : `按 ${order.join(" → ")} 选一条就够：同一条问题不要重复试。取数使用 query_business_data：先用 inspect_cube_model 查成员说明，再按原始 schema 查询；Consumer 由当前业务会话决定；不要尝试写 SQL。`) +
+      (page?.mock ? `注意：当前页「${page.label}」是演示模块，它的数字不能当业务事实引用。` : ""),
   };
 }
