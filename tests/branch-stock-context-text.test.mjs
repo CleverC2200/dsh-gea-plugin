@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
+import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
 import { observeFcProbe, captureFcFailure, recordFcReply } from "./fixtures/ci-fc-probe.mjs";
 import {
   htmlFrameElement,
@@ -73,6 +74,8 @@ test(
       })),
     );
     const page = await context.newPage();
+    if (process.env.CI_FC_PROBE_SAMPLE_CLOCK === "1")
+      await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
     const fcProbeEvents = process.env.CI_FC_PROBE === "1" ? observeFcProbe(page) : [];
     let initialOpenReply;
     const contexts = [],
@@ -108,6 +111,8 @@ test(
       );
       const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
       await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
+      if (process.env.CI_FC_PROBE === "1")
+        console.log("[CI-FC-PROBE] " + JSON.stringify({ milestone: "original-FC001-assertion-passed", browserClock: await frame.locator("body").evaluate(() => new Date().toISOString()) }));
       await expect.poll(() => contexts.at(-1)?.parts?.queryState?.state).toBe("ready");
       assert.match(contexts.at(-1).visibleText, /当前库存[\d,]+件/);
       holdBase = true;
