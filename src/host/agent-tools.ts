@@ -110,7 +110,11 @@ async function loadMemberIndex(
       const uri = extractArtifactUri(result);
       full = uri ? await module.artifact(uri, signal) : result;
     }
-    const payload = parseFirstJsonObject(full);
+    const raw = parseFirstJsonObject(full);
+    const payload =
+      inspection.name === "inspect_cube_model"
+        ? authorizedCatalog(raw, await module.authorizedResources("query_business_data", signal))
+        : raw;
     const index = memberIndexFrom(payload);
     if (index.size) {
       rememberMemberIndex(payload);
@@ -1538,8 +1542,9 @@ export function registerGeaTools(
               full = uri ? await module.artifact(uri, exec.signal) : result;
             }
             const payload = parseFirstJsonObject(full);
-            rememberMemberIndex(payload);
             const permitted = authorizedCatalog(payload, snapshot);
+            rememberMemberIndex(permitted);
+            moduleIndexes.set(module, { at: Date.now(), index: memberIndexFrom(permitted) });
             const consumers = resourceConsumers(snapshot, consumerCode);
             const limits = resources
               .filter(
