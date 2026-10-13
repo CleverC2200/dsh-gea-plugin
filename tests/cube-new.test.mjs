@@ -165,7 +165,16 @@ test("an unregistered or unauthorized Cube-New never borrows the old same-name q
     f.module.tools().some((t) => t.name === "query_business_data"),
     false,
   );
-  await assert.rejects(f.module.call("query_business_data", query, f.signal), /ROUTE_REQUIRED/);
+  const calls = f.sent.length;
+  await assert.rejects(f.module.call("query_business_data", query, f.signal), (error) => {
+    assert.equal(error.code, "GEA_MCP_TOOL_UNAVAILABLE");
+    assert.equal(error.toolName, "query_business_data");
+    assert.equal(error.sourceCode, code);
+    assert.match(error.message, /当前业务会话/);
+    assert.doesNotMatch(error.message, /private-delegation|business-session/);
+    return true;
+  });
+  assert.equal(f.sent.length, calls, "missing authorized tool must not issue a remote call");
 });
 
 test("Cube-New cannot publish forged hashes, incomplete pages or mismatched datasets as query evidence", async () => {

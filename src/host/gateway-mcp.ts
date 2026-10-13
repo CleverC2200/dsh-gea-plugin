@@ -12,6 +12,19 @@ export type GatewayMcpTransport = {
 const nonempty = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
+/** Successful discovery can omit a tool; that is distinct from a missing transport route. */
+export class GatewayMcpToolUnavailable extends Error {
+  readonly code = "GEA_MCP_TOOL_UNAVAILABLE";
+  constructor(
+    readonly toolName: string,
+    readonly sourceCode: string,
+  ) {
+    super(
+      `GEA_MCP_TOOL_UNAVAILABLE: 当前业务会话的授权工具列表未返回 ${toolName}（来源 ${sourceCode}），未发起该工具调用。请核对本环境的能力发布、人员和 Consumer 授权；工具注册可发现不代表当前会话已获准。不要换身份或旧来源重试。`,
+    );
+  }
+}
+
 /**
  * `Retry-After` 的两种形态都认：秒数（`2`）和 HTTP 日期。
  * 拿不到就返回 undefined——那就只说"限流了"，不编一个等待时间。
@@ -49,6 +62,18 @@ export function gatewayMcpTransport(
     throw Error("GEA_MCP_CUBE_SOURCE_INVALID");
   const url = base + "/ai/gateway/mcp/proxy/mcp";
   const routes = new Map<string, string>();
+  let discovered = false;
+  const routeFor = (toolName: string): string => {
+    const code = routes.get(toolName);
+    if (code) return code;
+    if (
+      discovered &&
+      routing.cubeMcpCode &&
+      ["query_business_data", "inspect_cube_model"].includes(toolName)
+    )
+      throw new GatewayMcpToolUnavailable(toolName, routing.cubeMcpCode);
+    throw Error("GEA_MCP_TOOL_ROUTE_REQUIRED");
+  };
   const artifactRoutes = new Map<string, string>();
   let initializeBody: string | undefined;
   let transportSession: string | undefined;
@@ -132,8 +157,7 @@ export function gatewayMcpTransport(
         // 完全替换调用方提供的身份；绝不把它写入业务参数。
         message.params = { ...message.params, _meta: meta };
         if (message.method === "tools/call") {
-          const mcpCode = routes.get(message.params.name);
-          if (!mcpCode) throw new Error("GEA_MCP_TOOL_ROUTE_REQUIRED");
+          const mcpCode = routeFor(message.params.name);
           message.params._meta = { ...meta, mcpCode };
           invocation = { id: message.id, code: mcpCode };
         } else if (message.method === "resources/read") {
@@ -251,6 +275,7 @@ export function gatewayMcpTransport(
         }
         routes.clear();
         for (const [name, code] of next) routes.set(name, code);
+        discovered = true;
       }
       if (discovery && routing.cubeMcpCode) {
         const headers = new Headers(res.headers);
@@ -270,8 +295,7 @@ export function gatewayMcpTransport(
   const authorizedResources: ResourceReader = async (toolName, signal) => {
     throwIfAborted(identity);
     throwIfAborted(signal);
-    const mcpCode = routes.get(toolName);
-    if (!mcpCode) throw Error("GEA_MCP_TOOL_ROUTE_REQUIRED");
+    const mcpCode = routeFor(toolName);
     const response = await fetchImpl(base + "/ai/gateway/mcp/proxy/resources", {
       method: "POST",
       redirect: "error",

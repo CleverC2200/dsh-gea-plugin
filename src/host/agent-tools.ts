@@ -5,6 +5,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import { defineTool, type ToolRunContext } from "@deepseek-ai/dsh-tools";
 import type { Business } from "./business.ts";
 import { PERMISSION_NOTICE_PREFIX } from "./mcp-client.ts";
+import { GatewayMcpToolUnavailable } from "./gateway-mcp.ts";
 import { cubeInspection } from "./cube-new.ts";
 import {
   noteMemberSamples,
@@ -1372,6 +1373,7 @@ export function registerGeaTools(
             });
           const consumerCode = toolConsumer(ctx, business, exec.agent?.id, args.consumerCode);
           try {
+            if (args.refresh) business.invalidateModuleMcp(consumerCode);
             const module = await business.moduleMcp(consumerCode, exec.signal);
             const snapshot = await module.authorizedResources("query_business_data", exec.signal);
             noteResourceSnapshot(module, snapshot);
@@ -1557,6 +1559,16 @@ export function registerGeaTools(
               "\n仅限当前 Agent 的资源级授权；字段、业务行范围和运行条件仍由实际查询校验。空限制值不表示无限制。同一 queryTarget 对应多个资源时需平台核对绑定，不能自行任选。";
             return delivered(dedup.remember(cacheKey, output));
           } catch (error) {
+            if (error instanceof GatewayMcpToolUnavailable)
+              return JSON.stringify({
+                source: "GEA_MCP_TOOL_AVAILABILITY",
+                availability: "tool-unavailable",
+                consumerCode,
+                code: error.code,
+                toolName: error.toolName,
+                sourceCode: error.sourceCode,
+                message: error.message,
+              });
             throw expiredSession(consumerCode, scope, error) ?? error;
           }
         },

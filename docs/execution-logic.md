@@ -26,6 +26,8 @@
 
 Cube-New 的来源由 Host `cubeMcpCodes` 按环境指定。公司默认仅登记测试环境编码 `2109581866385289217`，正式环境沿用原配置。工具发现只接受当前业务 Session 授权列表中该来源的 `inspect_cube_model` 和 `query_business_data`；来源缺席时不借用旧 Cube 的同名工具。说明查询使用独立的 `inspect_cube_model`，查询使用 `action=query` 和 `response_mode=inline_complete`。网关返回的制品由原业务 Session 通过 `resources/read` 读取，并带实际工具来源编码。
 
+目录显式 `refresh=true` 时，Host 在同一登录身份和 Consumer 下重建 MCP 业务会话并重新发现工具，再读取授权资源和模型目录。普通目录读取沿用当前连接，不反复建立会话。授权列表成功返回但没有指定 Cube-New 工具时，目录报告 `GEA_MCP_TOOL_UNAVAILABLE` 和 `availability=tool-unavailable`，不再误报缺少传输路由；该状态不代表业务数据为空，也不触发工具调用或旧来源回退。
+
 Cube-New 制品在发布证据前核对原始 UTF-8 正文摘要、URI、内容类型、具名数据集、行数和分页状态。`complete=true` 仅表示当前页完整；`hasMorePages=true` 仍保留未读范围，`partial`、`no_data`、null、真实零及编码字符串保持原值。MCP 传输 Session 与 GEA 业务 Session 分别管理，不从业务参数或模型提供的元数据读取凭据与路由。接入依据为用户提供的 `Cube-New-MCP-外部调用指南-20261013.md`，该指南的 dev 配置与示例不证明目标服务部署或真实数据验收。
 
 `sqlReadLimit` 限定同一 Host 生命周期内对应 Consumer 的物理请求。分页、续期后的再次请求、失败和发出后的取消计数；发出前取消不计数。零额度在登录或委托前拒绝，只开放声明的一个 Consumer，其他 Consumer 直接拒绝；不能换 Consumer 继续使用额度。页数或行数超限拒绝，不截断成完整结果。销售只读自动请求另沿 Business 的 `readonlyValidation` 合同计数；历史剩余额度不授权新窗口。
