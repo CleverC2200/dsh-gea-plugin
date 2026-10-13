@@ -29,7 +29,6 @@ export type McpDelivery = {
 
 export type McpModule = {
   authorizedResources: ResourceReader;
-  readonly cubeMcpCode?: string;
   tools(): McpTool[];
   /** 某个工具的完整入参定义（含类型、枚举、嵌套字段）；名字不存在返回 undefined。 */
   schema(name: string): string | undefined;
@@ -677,12 +676,7 @@ function rowPageHints(text: string, args: unknown): string[] {
  * 这里只按协议顺序调用；initialize 成功后 MCP-Session-Id 由传输层维护。
  */
 export async function openModuleMcp(
-  transport: {
-    url: string;
-    fetch: typeof fetch;
-    authorizedResources?: ResourceReader;
-    readonly cubeMcpCode?: string;
-  },
+  transport: { url: string; fetch: typeof fetch; authorizedResources?: ResourceReader },
   signal: AbortSignal,
 ): Promise<McpModule> {
   const post = async (
@@ -788,8 +782,7 @@ export async function openModuleMcp(
 
   // 先取工具清单：传输层靠 tools/list 把工具名映射成服务端路由码，tools/call 才认得。
   const tools = await listModuleTools(transport, signal, negotiated);
-  const cubeNew =
-    Boolean(transport.cubeMcpCode) || tools.some((tool) => tool.name === "inspect_cube_model");
+  const cubeNew = tools.some((tool) => tool.name === "inspect_cube_model");
   const queryArtifacts = new Map<
     string,
     { link: ResourceLink; arguments: Record<string, unknown> }
@@ -814,7 +807,6 @@ export async function openModuleMcp(
     return text;
   };
   return {
-    ...(transport.cubeMcpCode ? { cubeMcpCode: transport.cubeMcpCode } : {}),
     tools: () => tools,
     authorizedResources: (name, active) => {
       if (!transport.authorizedResources) throw Error("GEA_RESOURCE_DISCOVERY_UNAVAILABLE");
@@ -858,17 +850,6 @@ export async function openModuleMcp(
           throw Error(
             "GEA_CUBE_NEW_QUERY_ARGUMENTS: 模型说明使用 inspect_cube_model；查询使用 action=query、response_mode=inline_complete。",
           );
-        for (const entry of Array.isArray(args.queries) ? args.queries : []) {
-          const query = asRecord(asRecord(entry)?.query);
-          if (
-            query &&
-            ((query.total !== undefined && query.total !== true) ||
-              Object.hasOwn(query, "ungrouped"))
-          )
-            throw Error(
-              "GEA_CUBE_NEW_QUERY_ARGUMENTS: Cube-New 查询如提交 total，只能为 true；不接受旧来源的 ungrouped 参数。请读取当前 query_business_data 的公开 schema。",
-            );
-        }
         args = { ...args, response_mode: "inline_complete" };
       }
       const id = randomUUID();
@@ -882,10 +863,8 @@ export async function openModuleMcp(
         { expectId: id, ...(negotiated ? { version: negotiated } : {}) },
       );
       const result = await readReply(response, id, callSignal);
-      const text = readableToolOutcome(result, readableTexts(result) || resultText(result));
-      const denied = text.startsWith(PERMISSION_NOTICE_PREFIX);
       const links = resourceLinks(result);
-      if (cubeNew && name === "query_business_data" && !denied) {
+      if (cubeNew && name === "query_business_data" && asRecord(result)?.isError !== true) {
         if (
           links.length !== 1 ||
           links[0].mimeType !== "application/json" ||
@@ -901,8 +880,9 @@ export async function openModuleMcp(
           throw Error("GEA_CUBE_NEW_RESOURCE_REUSED");
         queryArtifacts.set(links[0].uri, { link: links[0], arguments: structuredClone(args) });
       }
-      if (links.length === 0 || denied) {
-        if (!denied) onResult?.(text);
+      if (links.length === 0) {
+        const text = readableToolOutcome(result, readableTexts(result) || resultText(result));
+        if (!text.startsWith(PERMISSION_NOTICE_PREFIX)) onResult?.(text);
         onDelivery?.({
           sourceReadComplete: true,
           unreadArtifacts: [],

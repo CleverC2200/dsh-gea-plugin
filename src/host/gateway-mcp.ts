@@ -7,26 +7,10 @@ export type GatewayMcpTransport = {
   url: string;
   fetch: typeof fetch;
   authorizedResources: ResourceReader;
-  /** Host-selected Cube-New source; tool discovery must not downgrade this protocol. */
-  readonly cubeMcpCode?: string;
 };
 
 const nonempty = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
-
-/** Successful discovery can omit a tool; that is distinct from a missing transport route. */
-export class GatewayMcpToolUnavailable extends Error {
-  readonly code = "GEA_MCP_TOOL_UNAVAILABLE";
-  readonly toolName: string;
-  readonly sourceCode: string;
-  constructor(toolName: string, sourceCode: string) {
-    super(
-      `GEA_MCP_TOOL_UNAVAILABLE: 当前业务会话的授权工具列表未返回 ${toolName}（来源 ${sourceCode}），未发起该工具调用。请核对本环境的能力发布、人员和 Consumer 授权；工具注册可发现不代表当前会话已获准。不要换身份或旧来源重试。`,
-    );
-    this.toolName = toolName;
-    this.sourceCode = sourceCode;
-  }
-}
 
 /**
  * `Retry-After` 的两种形态都认：秒数（`2`）和 HTTP 日期。
@@ -65,18 +49,6 @@ export function gatewayMcpTransport(
     throw Error("GEA_MCP_CUBE_SOURCE_INVALID");
   const url = base + "/ai/gateway/mcp/proxy/mcp";
   const routes = new Map<string, string>();
-  let discovered = false;
-  const routeFor = (toolName: string): string => {
-    const code = routes.get(toolName);
-    if (code) return code;
-    if (
-      discovered &&
-      routing.cubeMcpCode &&
-      ["query_business_data", "inspect_cube_model"].includes(toolName)
-    )
-      throw new GatewayMcpToolUnavailable(toolName, routing.cubeMcpCode);
-    throw Error("GEA_MCP_TOOL_ROUTE_REQUIRED");
-  };
   const artifactRoutes = new Map<string, string>();
   let initializeBody: string | undefined;
   let transportSession: string | undefined;
@@ -160,7 +132,8 @@ export function gatewayMcpTransport(
         // 完全替换调用方提供的身份；绝不把它写入业务参数。
         message.params = { ...message.params, _meta: meta };
         if (message.method === "tools/call") {
-          const mcpCode = routeFor(message.params.name);
+          const mcpCode = routes.get(message.params.name);
+          if (!mcpCode) throw new Error("GEA_MCP_TOOL_ROUTE_REQUIRED");
           message.params._meta = { ...meta, mcpCode };
           invocation = { id: message.id, code: mcpCode };
         } else if (message.method === "resources/read") {
@@ -278,7 +251,6 @@ export function gatewayMcpTransport(
         }
         routes.clear();
         for (const [name, code] of next) routes.set(name, code);
-        discovered = true;
       }
       if (discovery && routing.cubeMcpCode) {
         const headers = new Headers(res.headers);
@@ -298,7 +270,8 @@ export function gatewayMcpTransport(
   const authorizedResources: ResourceReader = async (toolName, signal) => {
     throwIfAborted(identity);
     throwIfAborted(signal);
-    const mcpCode = routeFor(toolName);
+    const mcpCode = routes.get(toolName);
+    if (!mcpCode) throw Error("GEA_MCP_TOOL_ROUTE_REQUIRED");
     const response = await fetchImpl(base + "/ai/gateway/mcp/proxy/resources", {
       method: "POST",
       redirect: "error",
@@ -332,5 +305,5 @@ export function gatewayMcpTransport(
     throwIfAborted(signal);
     return parseAuthorizedResources(payload, `MCP_TOOL:${mcpCode}:${toolName}`);
   };
-  return { url, fetch: gatewayFetch, authorizedResources, ...routing };
+  return { url, fetch: gatewayFetch, authorizedResources };
 }

@@ -5,7 +5,6 @@ import type { Context } from "@deepseek-ai/cordis";
 import { defineTool, type ToolRunContext } from "@deepseek-ai/dsh-tools";
 import type { Business } from "./business.ts";
 import { PERMISSION_NOTICE_PREFIX } from "./mcp-client.ts";
-import { GatewayMcpToolUnavailable } from "./gateway-mcp.ts";
 import { cubeInspection } from "./cube-new.ts";
 import {
   noteMemberSamples,
@@ -102,7 +101,7 @@ async function loadMemberIndex(
 ): Promise<MemberIndex | undefined> {
   try {
     let full = "";
-    const inspection = cubeInspection(module.tools(), undefined, module.cubeMcpCode);
+    const inspection = cubeInspection(module.tools());
     const result = await module.call(inspection.name, inspection.arguments, signal, (text) => {
       full = text;
     });
@@ -110,11 +109,7 @@ async function loadMemberIndex(
       const uri = extractArtifactUri(result);
       full = uri ? await module.artifact(uri, signal) : result;
     }
-    const raw = parseFirstJsonObject(full);
-    const payload =
-      inspection.name === "inspect_cube_model"
-        ? authorizedCatalog(raw, await module.authorizedResources("query_business_data", signal))
-        : raw;
+    const payload = parseFirstJsonObject(full);
     const index = memberIndexFrom(payload);
     if (index.size) {
       rememberMemberIndex(payload);
@@ -1377,7 +1372,6 @@ export function registerGeaTools(
             });
           const consumerCode = toolConsumer(ctx, business, exec.agent?.id, args.consumerCode);
           try {
-            if (args.refresh) business.invalidateModuleMcp(consumerCode);
             const module = await business.moduleMcp(consumerCode, exec.signal);
             const snapshot = await module.authorizedResources("query_business_data", exec.signal);
             noteResourceSnapshot(module, snapshot);
@@ -1528,7 +1522,6 @@ export function registerGeaTools(
             const inspection = cubeInspection(
               module.tools(),
               typeof args.model === "string" ? args.model : undefined,
-              module.cubeMcpCode,
             );
             const result = await module.call(
               inspection.name,
@@ -1543,9 +1536,8 @@ export function registerGeaTools(
               full = uri ? await module.artifact(uri, exec.signal) : result;
             }
             const payload = parseFirstJsonObject(full);
+            rememberMemberIndex(payload);
             const permitted = authorizedCatalog(payload, snapshot);
-            rememberMemberIndex(permitted);
-            moduleIndexes.set(module, { at: Date.now(), index: memberIndexFrom(permitted) });
             const consumers = resourceConsumers(snapshot, consumerCode);
             const limits = resources
               .filter(
@@ -1565,16 +1557,6 @@ export function registerGeaTools(
               "\n仅限当前 Agent 的资源级授权；字段、业务行范围和运行条件仍由实际查询校验。空限制值不表示无限制。同一 queryTarget 对应多个资源时需平台核对绑定，不能自行任选。";
             return delivered(dedup.remember(cacheKey, output));
           } catch (error) {
-            if (error instanceof GatewayMcpToolUnavailable)
-              return JSON.stringify({
-                source: "GEA_MCP_TOOL_AVAILABILITY",
-                availability: "tool-unavailable",
-                consumerCode,
-                code: error.code,
-                toolName: error.toolName,
-                sourceCode: error.sourceCode,
-                message: error.message,
-              });
             throw expiredSession(consumerCode, scope, error) ?? error;
           }
         },

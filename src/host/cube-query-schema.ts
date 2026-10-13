@@ -82,15 +82,8 @@ export const cubeQueryParameters = {
             },
             offset: { type: "integer" },
             timezone: { type: "string" },
-            total: {
-              type: "boolean",
-              description:
-                "Cube-New 如提交只能为 true；false 仅适用于声明支持的旧来源。以当前 MCP 工具 schema 为准。",
-            },
-            ungrouped: {
-              type: "boolean",
-              description: "仅适用于声明支持的旧 Cube 来源；Cube-New 不接受此字段。",
-            },
+            total: { type: "boolean" },
+            ungrouped: { type: "boolean" },
           },
         },
       },
