@@ -284,7 +284,6 @@ test(
         assert.equal(await paragraph.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
 // [CI-NOTIFICATION-ORDER] begin
         probe.mark("body-assertions-finished", { index: index + 1 });
-        await probe.releasePreparation(index + 1);
 // [CI-NOTIFICATION-ORDER] end
         if (example.body === longBody) {
           await ui.getByText("正文结束", { exact: false }).scrollIntoViewIfNeeded();
