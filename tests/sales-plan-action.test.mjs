@@ -19,7 +19,7 @@ new Function("require", "module", "exports", output.outputFiles[0].text)(
   module.exports,
 );
 
-function fixture(t) {
+function fixture(t, actionReply) {
   const business = new module.exports.Business({
     geaBaseUrl: "https://localhost",
     analysisAgentCode: "sales_forecast",
@@ -74,6 +74,7 @@ function fixture(t) {
       };
     else if (path.endsWith("/actions")) {
       writes++;
+      if (actionReply) return actionReply(url, init);
       result = {
         planId: "p",
         versionId: "v",
@@ -211,5 +212,45 @@ test("explicit role SAVE keeps its snapshot, authorization and one idempotent in
     ),
     /依据已变化/,
   );
+  assert.equal(f.writes(), 1);
+});
+
+test("a late approval 401 cannot expire a replacement login", async (t) => {
+  let release, entered;
+  const started = new Promise((done) => {
+    entered = done;
+  });
+  const f = fixture(t, async () => {
+    entered();
+    await new Promise((done) => {
+      release = done;
+    });
+    return Response.json({ message: "old login expired" }, { status: 401 });
+  });
+  await f.business.refreshApprovalRoles(new AbortController().signal);
+  const pending = f.business.salesPlanAction(
+    f.payload({
+      approvalRole: "category",
+      approvalPolicy: "role-visible-v1",
+    }),
+    new AbortController().signal,
+  );
+  await started;
+  f.business.restoreDesktopLogin({
+    schema: 1,
+    environment: "production",
+    base: "https://localhost",
+    auth: {
+      token: "replacement-token",
+      tenantId: "1",
+      name: "Replacement",
+      id: "user-2",
+      username: "replacement",
+    },
+  });
+  release();
+  await assert.rejects(pending);
+  assert.equal(f.business.status().authenticated, true);
+  assert.equal(f.business.status().user.id, "user-2");
   assert.equal(f.writes(), 1);
 });

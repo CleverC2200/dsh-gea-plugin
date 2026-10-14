@@ -1853,9 +1853,12 @@ export class Business {
         signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)]),
       },
     );
+    signal.throwIfAborted();
     if (!response.ok) {
-      if (response.status === 401) this.clearLogin(true);
-      throw await geaResponseError(response, [auth.token]);
+      const error = await geaResponseError(response, [auth.token]);
+      signal.throwIfAborted();
+      if (response.status === 401 && this.auth === auth) this.clearLogin(true);
+      throw error;
     }
     const data = object(parseJson(await response.text()));
     if (data.success !== true || !data.result) throw new Error("GEA_WRITE_REJECTED");
