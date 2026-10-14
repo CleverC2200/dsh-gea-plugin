@@ -30,11 +30,13 @@ Manage 只注册当前登录授权列表中的 `inspect_cube_model` 和 `query_b
 
 `inspect_cube_model` 返回服务端原始说明，包括 View 的 `aliasMember`。客户端不再二次投影目录或替服务端判断成员发布。`query_business_data` 原样传递 `action=query`、`response_mode=inline_complete` 和具名查询；业务参数及容量约束来自当前 `tools/list` Schema，不写死旧的8条/1000行上限，也不补默认 limit。
 
-查询入口检查度量、维度、时间、分段、嵌套筛选和排序的成员引用是否带完整前缀。裸字段在发送业务请求前返回 `GEA_CUBE_QUERY_MEMBER_REQUIRED`，提示按实际 `aliasMember` 修正；客户端不补前缀或推定 View 映射，成员存在性与授权仍由服务端判断。响应合同失败保留 `GEA_CUBE_NEW_*` 错误码，列出不符合约定的字段，按当前会话停止本轮查询。`deliveryMode=inline_complete` 不替代本页完整性声明；缺少 `complete` 或 `hasMore` 时由服务端核对响应，不能通过改查询参数或补默认值消除缺口。
+查询入口检查度量、维度、时间、分段、嵌套筛选和排序的成员引用是否带完整前缀。裸字段在发送业务请求前返回 `GEA_CUBE_QUERY_MEMBER_REQUIRED`，提示按实际 `aliasMember` 修正；客户端不补前缀或推定 View 映射，成员存在性与授权仍由服务端判断。响应合同失败保留 `GEA_CUBE_NEW_*` 错误码，列出不符合约定的字段，按当前会话停止本轮查询。
 
 查询优先消费本次响应的 `structuredContent`；只有文本能力时选择一份业务 JSON，不拼接说明文本，也不合并两份 rows。直返路径不调用 `resources/read`，不要求 URI、有效期或制品 SHA。原始金额、大整数、编码字符串、null和零值保持；结构化结果再序列化时保留原始数字词法形式。
 
-两种交付方式共用具名数据集、执行数、行数、完整性与分页校验。`complete=true` 仅表示当前页完整；`hasMorePages=true` 保留未读范围，下一页仍执行查询，保持原过滤条件和稳定排序。`partial` 和 `no_data` 保留原状态，不能据此补零或宣称全量。灰度时仅在实际收到旧 `resource_link` 且没有直返业务结果时，沿原业务及传输 Session 读取，并核 URI、类型和原始摘要；不猜存储地址。
+当前客户端按实际交付路径校验。直返必须具备与请求对应的具名数据集、执行数、`rows`、一致的 `rowCount`、列声明和数据状态；`offset/totalRowCount/hasMorePages` 必须存在并相互一致。直返允许缺少旧交付标记 `complete/hasMore`，保留原始缺省，不补为 true/false。标记存在时必须为 `complete=true/hasMore=false`，显式截断或无效标记仍拒绝；`deliveryMode` 或拿到 rows 单独不足以证明结果有效。
+
+`hasMorePages=true` 保留业务未读范围，下一页仍执行查询，保持原过滤条件和稳定排序。`partial` 和 `no_data` 保留原状态，不能据此补零或宣称全量。灰度时仅在实际收到旧 `resource_link` 且没有直返业务结果时，沿原业务及传输 Session 读取，并核 URI、类型、原始摘要及原完整性标记 `complete=true/hasMore=false`；不猜存储地址，也不对旧制品放宽完整性要求。该直返适配对应 2026-10-14 的客户端修复请求和 Native 回包，替代接入说明中对所有交付方式统一必填旧标记的要求。
 
 MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResponseBytes` 默认320 MiB，按解码后的 UTF-8 报文字节计量，覆盖结构化对象及转义文本的双份承载；这是客户端接收预算，不是服务端额度或完整100 MiB业务验收保证。读取期间超限即停止，取消仍遵循原身份代际。日志正文仍受独立4 MiB上限保护。
 

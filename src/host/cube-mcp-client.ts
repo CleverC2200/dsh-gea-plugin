@@ -239,7 +239,7 @@ export async function openCubeMcp(
         return text;
       }
       if (result.structuredContent !== undefined && result.structuredContent !== null) {
-        validateCubeQueryResult(result.structuredContent, args);
+        validateCubeQueryResult(result.structuredContent, args, "inline");
         return stringify(result.structuredContent);
       }
       const texts: string[] = [];
@@ -250,7 +250,7 @@ export async function openCubeMcp(
           const payload = parseText(entry.text);
           const candidate = record(payload);
           if (candidate?.action !== "query" && !candidate?.datasets) continue;
-          validateCubeQueryResult(payload, args);
+          validateCubeQueryResult(payload, args, "inline");
           texts.push(entry.text);
         }
       if (texts.length > 1) throw Error("GEA_CUBE_NEW_QUERY_AMBIGUOUS");

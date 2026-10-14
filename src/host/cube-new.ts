@@ -91,12 +91,16 @@ export function cubeNewArtifact(
   const readHash = object(item._meta)?.sha256;
   if (readHash !== digest || (link.sha256 !== undefined && link.sha256 !== digest))
     throw Error("GEA_CUBE_NEW_RESOURCE_DIGEST");
-  validateCubeQueryResult(JSON.parse(item.text), arguments_);
+  validateCubeQueryResult(JSON.parse(item.text), arguments_, "resource");
   return item.text;
 }
 
-/** Delivery format does not change named datasets, page completeness or business pagination. */
-export function validateCubeQueryResult(result: unknown, arguments_: unknown): void {
+/** Direct pages use row/pagination evidence; legacy artifacts also require their delivery flags. */
+export function validateCubeQueryResult(
+  result: unknown,
+  arguments_: unknown,
+  delivery: "inline" | "resource",
+): void {
   const payload = object(result);
   const queries = object(arguments_)?.queries;
   const expected = Array.isArray(queries) ? queries.map((query) => object(query)?.name) : [];
@@ -124,9 +128,15 @@ export function validateCubeQueryResult(result: unknown, arguments_: unknown): v
         : dataset.rowCount !== dataset.rows.length
           ? ["rowCount"]
           : []),
-      ...(dataset.complete !== true ? ["complete"] : []),
-      ...(dataset.hasMore !== false ? ["hasMore"] : []),
-      ...(dataset.truncated === true ? ["truncated"] : []),
+      ...((delivery === "resource" || Object.hasOwn(dataset, "complete")) &&
+      dataset.complete !== true
+        ? ["complete"]
+        : []),
+      ...((delivery === "resource" || Object.hasOwn(dataset, "hasMore")) &&
+      dataset.hasMore !== false
+        ? ["hasMore"]
+        : []),
+      ...(Object.hasOwn(dataset, "truncated") && dataset.truncated !== false ? ["truncated"] : []),
       ...(!Array.isArray(dataset.fields) ? ["fields"] : []),
       ...(!["ok", "no_data", "partial"].includes(String(dataset.dataStatus)) ? ["dataStatus"] : []),
     ];

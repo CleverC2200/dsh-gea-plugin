@@ -54,6 +54,7 @@ async function clientFixture({
   inline,
   maxResponseBytes,
   sse = false,
+  artifact = raw,
 } = {}) {
   const sent = [];
   const signal = new AbortController().signal;
@@ -132,7 +133,7 @@ async function clientFixture({
                   uri: "data-artifact://gateway/fixture",
                   mimeType: "application/json",
                   _meta: {
-                    sha256: createHash("sha256").update(raw).digest("hex"),
+                    sha256: createHash("sha256").update(artifact).digest("hex"),
                   },
                 },
               ],
@@ -143,9 +144,11 @@ async function clientFixture({
             {
               uri: wire.params.uri,
               mimeType: "application/json",
-              text: raw,
+              text: artifact,
               _meta: {
-                sha256: badHash ? "0".repeat(64) : createHash("sha256").update(raw).digest("hex"),
+                sha256: badHash
+                  ? "0".repeat(64)
+                  : createHash("sha256").update(artifact).digest("hex"),
               },
             },
           ],
@@ -502,8 +505,12 @@ for (const [label, change, code] of [
   ["missing dataset", (p) => (p.datasets = []), /DATASETS/],
   ["wrong dataset name", (p) => (p.datasets[0].name = "other"), /DATASET_NAME/],
   ["row count", (p) => (p.datasets[0].rowCount = 0), /PAGE_INCOMPLETE/],
-  ["missing completeness", (p) => delete p.datasets[0].complete, /PAGE_INCOMPLETE/],
+  ["explicit incompleteness", (p) => (p.datasets[0].complete = false), /PAGE_INCOMPLETE/],
+  ["undelivered rows", (p) => (p.datasets[0].hasMore = true), /PAGE_INCOMPLETE/],
+  ["invalid completeness", (p) => (p.datasets[0].complete = null), /PAGE_INCOMPLETE/],
+  ["invalid delivery remainder", (p) => (p.datasets[0].hasMore = "false"), /PAGE_INCOMPLETE/],
   ["truncation", (p) => (p.datasets[0].truncated = true), /PAGE_INCOMPLETE/],
+  ["invalid truncation", (p) => (p.datasets[0].truncated = null), /PAGE_INCOMPLETE/],
   ["missing pagination", (p) => delete p.datasets[0].offset, /PAGE_METADATA/],
   ["inconsistent pagination", (p) => (p.datasets[0].hasMorePages = true), /PAGE_METADATA/],
 ])
@@ -708,20 +715,92 @@ for (const [label, field] of [
     assert.equal(f.sent.filter((x) => x.wire.method === "tools/call").length, 0);
   });
 
-test("actual inline metadata without complete and hasMore fails with actionable fields and stops further queries", async () => {
+test("deployed direct pages without artifact flags preserve raw data and remain queryable", async () => {
+  const direct = raw.replace('"complete":true,"hasMore":false,', "");
+  for (const mode of ["structured", "text"]) {
+    const result =
+      mode === "structured"
+        ? inlineResult(direct)
+        : JSON.stringify({ content: [{ type: "text", text: direct }] });
+    const client = await clientFixture({ inline: result });
+    const service = serviceFixture();
+    service.module.call = (name, args, signal) => client.client.call(name, args, signal);
+    assert.equal(
+      await service.service.call("sales", "query_business_data", query, client.signal),
+      direct,
+    );
+    assert.equal(
+      await service.service.call("sales", "query_business_data", query, client.signal),
+      direct,
+    );
+    assert.equal(client.sent.filter((x) => x.wire.method === "tools/call").length, 2);
+    assert.equal(resourceReads(client), 0);
+    assert.equal(JSON.parse(direct).datasets[0].complete, undefined);
+    assert.match(direct, /9007199254740993\.1234/);
+  }
+});
+
+for (const [label, change, code] of [
+  ["row count", (p) => (p.datasets[0].rowCount = 2), /PAGE_INCOMPLETE/],
+  ["missing total", (p) => delete p.datasets[0].totalRowCount, /PAGE_METADATA/],
+  ["missing offset", (p) => delete p.datasets[0].offset, /PAGE_METADATA/],
+  ["missing continuation", (p) => delete p.datasets[0].hasMorePages, /PAGE_METADATA/],
+  ["contradictory continuation", (p) => (p.datasets[0].hasMorePages = true), /PAGE_METADATA/],
+  ["truncation", (p) => (p.datasets[0].truncated = true), /PAGE_INCOMPLETE/],
+])
+  test("direct pages without artifact flags still reject " + label, async () => {
+    const payload = JSON.parse(raw);
+    delete payload.datasets[0].complete;
+    delete payload.datasets[0].hasMore;
+    change(payload);
+    const client = await clientFixture({ inline: inlineResult(JSON.stringify(payload)) });
+    await assert.rejects(client.client.call("query_business_data", query, client.signal), code);
+    assert.equal(resourceReads(client), 0);
+    assert.equal(client.sent.filter((x) => x.wire.method === "tools/call").length, 1);
+  });
+
+test("direct pages without artifact flags preserve business continuation and partial data", async () => {
+  const payload = JSON.parse(raw);
+  delete payload.datasets[0].complete;
+  delete payload.datasets[0].hasMore;
+  payload.datasets[0].totalRowCount = 2;
+  payload.datasets[0].hasMorePages = true;
+  payload.datasets[0].dataStatus = "partial";
+  const client = await clientFixture({ inline: inlineResult(JSON.stringify(payload)) });
+  assert.deepEqual(
+    JSON.parse(await client.client.call("query_business_data", query, client.signal)),
+    payload,
+  );
+  assert.equal(resourceReads(client), 0);
+});
+
+for (const key of ["complete", "hasMore"])
+  test("legacy resource still requires " + key + " with a valid original digest", async () => {
+    const payload = JSON.parse(raw);
+    delete payload.datasets[0][key];
+    const client = await clientFixture({ artifact: JSON.stringify(payload) });
+    await assert.rejects(
+      client.client.call("query_business_data", query, client.signal),
+      /PAGE_INCOMPLETE/,
+    );
+    assert.equal(resourceReads(client), 1);
+    assert.equal(client.sent.filter((x) => x.wire.method === "tools/call").length, 1);
+  });
+
+test("direct metadata with contradictory pagination fails with actionable fields and stops further queries", async () => {
   const payload = JSON.parse(raw);
   payload.deliveryMode = "inline_complete";
   delete payload.datasets[0].complete;
   delete payload.datasets[0].hasMore;
+  payload.datasets[0].hasMorePages = true;
   const client = await clientFixture({ inline: inlineResult(JSON.stringify(payload)) });
   const service = serviceFixture();
   service.module.call = (name, args, signal) => client.client.call(name, args, signal);
   await assert.rejects(
     service.service.call("sales", "query_business_data", query, client.signal),
     (error) => {
-      assert.match(error.message, /GEA_CUBE_NEW_PAGE_INCOMPLETE/);
-      assert.match(error.message, /complete/);
-      assert.match(error.message, /hasMore/);
+      assert.match(error.message, /GEA_CUBE_NEW_PAGE_METADATA/);
+      assert.match(error.message, /hasMorePages/);
       assert.match(error.message, /本轮停止查询/);
       return true;
     },
