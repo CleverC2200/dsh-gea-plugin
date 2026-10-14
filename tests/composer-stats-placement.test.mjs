@@ -54,13 +54,20 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
 
   /** 发一条消息（receipt 模式是本地回执，不调模型），让宿主渲染出统计行。 */
   const ask = async (root) => {
+    const conversation = page
+      .locator(`${root}[data-conversation-session], ${root} [data-conversation-session]`)
+      .first();
+    await expect(conversation).toHaveAttribute("data-conversation-session", /.+/);
+    const selected = await app.remote("session/selectModel", {
+      sessionId: await conversation.getAttribute("data-conversation-session"),
+      provider: "gea-proof",
+      model: "receipt",
+    });
+    assert.equal(selected.ok, true, JSON.stringify(selected));
+    await expect(page.getByRole("button", { name: /^选择模型，当前/ })).toHaveAccessibleName(
+      /Local receipt/,
+    );
     const input = page.locator(`${root} [contenteditable="true"]`).first();
-    await page.getByRole("button", { name: /^选择模型，当前/ }).click();
-    await page.getByRole("menuitem", { name: /^模型/ }).click();
-    const receipt = page.getByRole("menuitemradio", { name: /Local receipt \/ 本地验证回执/ });
-    if ((await receipt.getAttribute("aria-checked")) === "true")
-      await page.keyboard.press("Escape");
-    else await receipt.click();
     await input.click();
     await input.type("1");
     await page.keyboard.press("Enter");
