@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import { profile, until } from "./profile.mjs";
+import { nativeAssociation } from "./fixtures/native-page.mjs";
+import { preparePageStartup } from "./fixtures/business-page.mjs";
 
 test(
   "GEA inbox reads preserve paging and identity, reject invalid responses and never mutate notification state",
@@ -143,16 +145,31 @@ test(
       })),
     );
     const ui = await context.newPage();
+    // The first confirmed GEA scope replaces the unconfirmed Inbox instance.
+    // Its real Core conversation appears only after that page owns the current Session.
+    const openInbox = async () => {
+      await preparePageStartup(ui);
+      await ui.getByRole("button", { name: "消息待办", exact: true }).click();
+      const conversation = ui.locator(
+        ".agent-workbench-document:has(.gea-inbox) .agent-workbench-native-conversation [data-conversation-session]",
+      );
+      await expect(conversation).toHaveAttribute("data-conversation-session", /^session-/);
+      const sessionId = await conversation.getAttribute("data-conversation-session");
+      const association = await nativeAssociation(ui, "gea-inbox");
+      assert.equal(association.sessionId, sessionId);
+      assert.equal(association.preset, "gea-readonly");
+      assert.equal(association.active, true);
+      assert.ok(association.ownerScope);
+      t.diagnostic(
+        JSON.stringify({ page: "gea-inbox", sessionId, ownerScope: association.ownerScope }),
+      );
+    };
     await ui.goto(app.origin);
-    await ui
-      .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
-      .getByRole("button", { name: "继续", exact: true })
-      .click();
-    await ui.getByRole("button", { name: "消息待办", exact: true }).click();
+    await openInbox();
     await ui.getByRole("button", { name: "Fixture task", exact: true }).waitFor();
     mode = "paging";
     await ui.reload();
-    await ui.getByRole("button", { name: "消息待办", exact: true }).click();
+    await openInbox();
     await ui.getByRole("button", { name: "Second task", exact: true }).waitFor();
     await ui.getByRole("button", { name: "下一页", exact: true }).click();
     await ui.getByRole("button", { name: "Later task", exact: true }).waitFor();
@@ -226,7 +243,7 @@ test(
         delete contentItem.expected;
         mode = "content";
         await ui.reload();
-        await ui.getByRole("button", { name: "消息待办", exact: true }).click();
+        await openInbox();
         await ui.getByRole("button", { name: contentItem.title, exact: true }).click();
         await expect(
           ui.getByRole("heading", { name: contentItem.title, exact: true }),
@@ -257,13 +274,13 @@ test(
     );
     mode = "denied";
     await ui.reload();
-    await ui.getByRole("button", { name: "消息待办", exact: true }).click();
+    await openInbox();
     await ui.getByRole("alert").waitFor();
     assert.equal(await ui.getByRole("button", { name: "Fixture task", exact: true }).count(), 0);
     assert.match(await ui.getByRole("alert").innerText(), /权限/);
     mode = "empty";
     await ui.reload();
-    await ui.getByRole("button", { name: "消息待办", exact: true }).click();
+    await openInbox();
     await ui.getByText("本次查询没有记录", { exact: true }).waitFor();
     mode = "expired";
     assert.equal((await app.rpc("notifications", {})).error.code, "NOTIFICATION_UNAUTHENTICATED");
