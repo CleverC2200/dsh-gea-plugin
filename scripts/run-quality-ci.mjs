@@ -138,17 +138,20 @@ try {
           refuse("QUALITY_PRIVATE_PEER_REQUIRED", entry.repo);
     const workbench = candidate.repositories.find((entry) => entry.repo === "dsh-agent-workbench"),
       manage = candidate.repositories.find((entry) => entry.repo === "dsh-agent-manage");
+    process.env.QUALITY_POLICY_WORKBENCH = workbench.path;
     if (values["prepare-inputs"])
       await prepareWorkbenchGeaAuthority({
         workbench: workbench.path,
         gea: own.path,
       });
     if (values.phase === "business-profile")
-      (await import("./business-profile-ci.mjs")).validateBusinessProfileGroup(
-        candidate.repositories,
-      );
+      (
+        await (await import("./business-profile-ci.mjs")).loadBusinessProfilePolicy(workbench.path)
+      ).validateBusinessProfileGroup(candidate.repositories);
     if (values.phase === "mcp-client-repair")
-      (await import("./business-profile-ci.mjs")).validateMcpClientGroup(candidate.repositories);
+      (
+        await (await import("./business-profile-ci.mjs")).loadBusinessProfilePolicy(workbench.path)
+      ).validateMcpClientGroup(candidate.repositories);
     const { selectCiTests } = await import(
       pathToFileURL(resolve(workbench.path, "scripts/ci-test-plan.mjs"))
     );
