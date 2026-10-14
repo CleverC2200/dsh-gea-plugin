@@ -13,7 +13,7 @@ export function productionManifest(source, versions) {
     if (typeof versions[name] !== "string" || !versions[name])
       throw Error("COMPANION_VERSION_REQUIRED: " + name);
     delete manifest.dependencies[name];
-    manifest.peerDependencies[name] = versions[name];
+    manifest.peerDependencies[name] = source.peerDependencies?.[name] ?? versions[name];
   }
   manifest.peerDependenciesMeta = { ...source.peerDependenciesMeta };
   for (const name of requiredCompanions) delete manifest.peerDependenciesMeta[name];

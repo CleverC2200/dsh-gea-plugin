@@ -67,7 +67,8 @@
     "quality:upstreams": "node scripts/quality-upstreams.mjs",
     "test:ci-full": "node scripts/run-quality-full.mjs",
     "test:contracts": "node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/controlled-execution.test.mjs tests/plugin-sql-cancel.test.mjs tests/read-paging.test.mjs tests/business-page-grant.test.mjs tests/gateway-handshake.test.mjs tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs",
-    "test:profile-window": "node --test tests/profile-window.test.mjs"
+    "test:profile-window": "node --test tests/profile-window.test.mjs",
+    "test:release-source": "node --test tests/plugin-release.test.mjs tests/plugin-release-source.test.mjs tests/optional-companion-manifest.test.mjs"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "link:../../upstream-inputs/genui",
@@ -77,7 +78,8 @@
     "esbuild": "0.25.9",
     "eventsource-parser": "3.1.1",
     "qrcode": "1.5.4",
-    "yaml": "2.9.0"
+    "yaml": "2.9.0",
+    "semver": "7.7.4"
   },
   "dsh": {
     "client": {

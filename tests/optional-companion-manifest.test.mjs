@@ -22,3 +22,24 @@ test("ordinary three-package manifest keeps required companions and exact option
   }
   assert.equal(manifest.peerDependencies["@deepseek-ai/cordis"], "4.0.4 || 4.0.5-alpha.1");
 });
+test("production manifest preserves an existing exact peer when another package gets an independent version", () => {
+  const manifest = productionManifest(source, {
+    ...versions,
+    "dsh-agent-manage": "0.6.3-company.7",
+  });
+  assert.equal(
+    manifest.peerDependencies["dsh-agent-manage"],
+    "0.6.3-company.6",
+  );
+  const ranged = productionManifest(
+    {
+      ...source,
+      peerDependencies: {
+        ...source.peerDependencies,
+        "dsh-agent-manage": "^0.6.3",
+      },
+    },
+    versions,
+  );
+  assert.equal(ranged.peerDependencies["dsh-agent-manage"], "^0.6.3");
+});

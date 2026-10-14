@@ -16,7 +16,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      # Node/npm/tar/git only. No dependency install, Core checkout, service or secrets.
+      # Only the declared semver runtime parser; no Core/SDK checkout, service or secrets.
+      - run: |
+          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4
+          ln -s "$PWD/.runtime/fixture-dependencies/node_modules" node_modules
+      - run: node --run test:release-source
       - run: npm run test:delivery:packages
       - run: node --run test:delivery
       - run: node --run test:fixture-inputs
