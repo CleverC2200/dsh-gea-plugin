@@ -1,14 +1,8 @@
 import semver from "semver";
-import type { PluginPackageUpdateProblem } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
-import type {
-  FixedCore,
-  PluginRelease,
-  PluginUpdatePlan,
-} from "./plugin-release.mjs";
+import type { FixedCore, PluginRelease, PluginUpdatePlan } from "./plugin-release.mjs";
 const namePattern = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/i;
 const text = (value: unknown): string => {
-  if (typeof value !== "string" || value.length > 160)
-    throw Error("UPDATE_STATUS_INVALID");
+  if (typeof value !== "string" || value.length > 160) throw Error("UPDATE_STATUS_INVALID");
   return value;
 };
 const npmName = (value: unknown) => {
@@ -27,9 +21,7 @@ const record = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 /** The only wire representation permitted for detailed update failures; never a raw exception. */
-export function parseUpdateProblem(
-  value: unknown,
-): PluginPackageUpdateProblem | undefined {
+export function parseUpdateProblem(value: unknown) {
   if (value === undefined) return undefined;
   const row = record(value);
   switch (row.kind) {
@@ -43,24 +35,23 @@ export function parseUpdateProblem(
       ] as const;
       const code = codes.find((code) => code === row.code);
       if (!code) throw Error("UPDATE_STATUS_INVALID");
-      return { kind: "policy", code };
+      return { kind: "policy", code } as const;
     }
     case "source": {
       const codes = ["signature", "http", "unavailable"] as const;
       const code = codes.find((code) => code === row.code);
       if (!code) throw Error("UPDATE_STATUS_INVALID");
-      return { kind: "source", code };
+      return { kind: "source", code } as const;
     }
     case "environment":
       if (row.code === "unsupported-platform")
-        return { kind: "environment", code: row.code };
+        return { kind: "environment", code: row.code } as const;
       throw Error("UPDATE_STATUS_INVALID");
     case "core": {
       const identity = (raw: unknown) => {
         const value = record(raw),
           revision = text(value.revision);
-        if (!/^[a-f0-9]{40}$/.test(revision))
-          throw Error("UPDATE_STATUS_INVALID");
+        if (!/^[a-f0-9]{40}$/.test(revision)) throw Error("UPDATE_STATUS_INVALID");
         return { version: version(value.version), revision };
       };
       if (!Array.isArray(row.required) || !row.required.length)
@@ -69,7 +60,7 @@ export function parseUpdateProblem(
         kind: "core",
         current: identity(row.current),
         required: row.required.map(identity),
-      };
+      } as const;
     }
     case "dependencies": {
       if (!Array.isArray(row.requirements) || !row.requirements.length)
@@ -79,10 +70,7 @@ export function parseUpdateProblem(
         requirements: row.requirements.map((raw) => {
           const item = record(raw),
             required = text(item.required);
-          if (
-            !/^[\w.*+^~<>=| -]*$/.test(required) ||
-            !semver.validRange(required)
-          )
+          if (!/^[\w.*+^~<>=| -]*$/.test(required) || !semver.validRange(required))
             throw Error("UPDATE_STATUS_INVALID");
           return {
             consumer: npmName(item.consumer),
@@ -91,13 +79,16 @@ export function parseUpdateProblem(
             installed: item.installed === null ? null : version(item.installed),
           };
         }),
-      };
+      } as const;
     }
     default:
       throw Error("UPDATE_STATUS_INVALID");
   }
 }
-export function sourceUpdateProblem(code: string): PluginPackageUpdateProblem {
+/** Safe facts owned by GEA; the optional UI capability is checked separately against its public contract. */
+export type PluginUpdateProblem = NonNullable<ReturnType<typeof parseUpdateProblem>>;
+
+export function sourceUpdateProblem(code: string): PluginUpdateProblem {
   return {
     kind: "source",
     code:
@@ -113,7 +104,7 @@ export function planUpdateProblem(
   plan: Extract<PluginUpdatePlan, { kind: "blocked" }>,
   release: PluginRelease,
   core: FixedCore,
-): PluginPackageUpdateProblem {
+): PluginUpdateProblem {
   if (plan.code === "CORE_UNSUPPORTED")
     return parseUpdateProblem({
       kind: "core",
@@ -132,8 +123,7 @@ export function planUpdateProblem(
         required: row.range,
         installed: row.installed,
       }));
-    if (requirements.length)
-      return parseUpdateProblem({ kind: "dependencies", requirements })!;
+    if (requirements.length) return parseUpdateProblem({ kind: "dependencies", requirements })!;
   }
   return { kind: "policy", code: "conditions" };
 }

@@ -329,23 +329,28 @@ test("provider supplies an actual timeout AbortSignal to a stalled source check"
 });
 test("missing or unsupported official capability does not register a provider", async (t) => {
   const { mountPluginUpdatesClient } = await subject(t, "src/plugin-updates-client.ts");
-  const ctx = new Context();
-  t.after(() => ctx.fiber.dispose());
-  const release = mountPluginUpdatesClient(ctx);
   let registrations = 0;
-  ctx.provide("pluginUpdates", {
-    version: 2,
-    register() {
-      registrations++;
-      return () => {};
+  for (const capability of [
+    {
+      version: 2,
+      register() {
+        registrations++;
+        return () => {};
+      },
     },
-  });
-  ctx.provide("modules", {
-    entries: { state: { getSnapshot: () => ({ syncing: false, failures: [] }) } },
-  });
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  assert.equal(registrations, 0);
-  await release();
+    { version: 1, register: null },
+  ]) {
+    const ctx = new Context();
+    t.after(() => ctx.fiber.dispose());
+    const release = mountPluginUpdatesClient(ctx);
+    ctx.provide("pluginUpdates", capability);
+    ctx.provide("modules", {
+      entries: { state: { getSnapshot: () => ({ syncing: false, failures: [] }) } },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(registrations, 0);
+    await release();
+  }
 });
 
 test("version one capability registers once and releases provider ownership with its Fiber", async (t) => {

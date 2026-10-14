@@ -22,6 +22,8 @@ corepack pnpm install --frozen-lockfile --prefer-offline
 
 完整 build 也仅构建 GEA host/client；页面在同组 Workbench 按自己的工具链构建。watch 只编译，不启动应用，勿并发写同一输出。官方类型检查需要明确准备的只读 SDK 与 peer 声明，不能以旧 SDK 或历史产物代替当前输入。
 
+插件列表更新是可选能力。GEA 的状态与安全原因类型从自身生产数据推导，不强制导入尚未部署的官方 UI 类型；运行时仅在 `pluginUpdates` 的 v1 注册能力存在时接入。开发新 UI 候选时，显式设置 `GEA_PLUGIN_UPDATE_SDK` 和 `GEA_PLUGIN_UPDATE_CANDIDATE_CORE` 的绝对路径，执行 `typecheck:plugin-updates`，它把 GEA provider 和原因数据核对到该候选的权威 UI 合同。旧 Core 编译通过不证明具备新界面，候选合同通过也不证明部署完成。
+
 只读交付一致性检查使用 `pnpm run delivery:check --input request.json`，failed/unknown 返回非零；人工浏览报告使用 `pnpm run delivery:report --input request.json`，短接续增加 `--continuation`。预算、阶段、原依赖与授权从同次固定回执读取派生，详见 [交付核对 interface](delivery-check.md)。`pnpm run test:delivery` 只运行本地 fixture 回归。报告命令退出0只表示生成成功，检查命令退出0只证明一致性；两者都不授予业务验收、不启动应用或恢复自动化。
 
 按授权启动与切换时复用 [源码组合说明](plugin-split-validation.md) 的明确五源和自有 runtime。可构建不等于窗口已获授权。旧 desktop:dev 使用已安装公司壳，属于历史入口，不作为当前官方客户端协议。

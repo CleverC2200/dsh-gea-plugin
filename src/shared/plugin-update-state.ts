@@ -1,4 +1,4 @@
-import type { PluginPackageUpdateProblem } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
+import type { PluginUpdateProblem } from "./plugin-update-diagnostics.ts";
 import type { CompanyPackageName } from "./plugin-release.mjs";
 export type PluginPackageStamp = { name: CompanyPackageName; version: string };
 export type CompiledModuleProof =
@@ -80,7 +80,7 @@ export type PluginUpdateRow = {
     | "snapshotting"
     | PluginUpdateStage;
   diagnostic: string | null;
-  problem?: PluginPackageUpdateProblem;
+  problem?: PluginUpdateProblem;
 };
 export type PluginUpdateSnapshot = {
   revision: number;

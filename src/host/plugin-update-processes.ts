@@ -9,9 +9,7 @@ function alive(target: number): "alive" | "gone" | "unknown" {
     process.kill(target, 0);
     return "alive";
   } catch (error) {
-    return error instanceof Error && "code" in error && error.code === "ESRCH"
-      ? "gone"
-      : "unknown";
+    return error instanceof Error && "code" in error && error.code === "ESRCH" ? "gone" : "unknown";
   }
 }
 function birth(pid: number): string | null {
@@ -65,9 +63,7 @@ export async function observeProfilePackageProcesses(profile: string) {
         sawAlive: old?.sawAlive === true || isAlive,
       });
     } catch (error) {
-      if (
-        !(error instanceof Error && "code" in error && error.code === "ENOENT")
-      )
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
         unreliable = true;
     }
   }
@@ -101,21 +97,14 @@ export async function observeProfilePackageProcesses(profile: string) {
   }
   function cancelObserved() {
     for (const row of observations.values()) {
-      if (
-        !row.grouped ||
-        !row.sawAlive ||
-        !row.startIdentity ||
-        process.platform === "win32"
-      )
+      if (!row.grouped || !row.sawAlive || !row.startIdentity || process.platform === "win32")
         continue;
       const current = birth(row.pid);
       if (current !== null && current !== row.startIdentity) continue;
       try {
         process.kill(-row.pid, "SIGKILL");
       } catch (error) {
-        if (
-          !(error instanceof Error && "code" in error && error.code === "ESRCH")
-        )
+        if (!(error instanceof Error && "code" in error && error.code === "ESRCH"))
           unreliable = true;
       }
     }

@@ -22,9 +22,7 @@ export type PluginRelease = {
   peerDependencies: Record<string, string>;
   peerDependenciesMeta: Record<string, { optional: boolean }>;
   dependencies: Record<string, string>;
-  dataCompatibility:
-    | { kind: "preserve" }
-    | { kind: "migration-required"; note: string };
+  dataCompatibility: { kind: "preserve" } | { kind: "migration-required"; note: string };
   notes: string;
 };
 export type CombinationFailure = {
@@ -61,11 +59,7 @@ export function parsePluginManifest(
 ): Required<
   Pick<
     PluginManifest,
-    | "name"
-    | "version"
-    | "dependencies"
-    | "peerDependencies"
-    | "peerDependenciesMeta"
+    "name" | "version" | "dependencies" | "peerDependencies" | "peerDependenciesMeta"
   >
 >;
 export function comparePluginVersions(left: string, right: string): number;
@@ -90,4 +84,4 @@ export function mergePluginChannelRelease(input: {
   issuedAt: string;
   expiresAt: string;
 }): PluginChannel;
-export function satisfiesPluginVersion(version:string,range:string):boolean;
+export function satisfiesPluginVersion(version: string, range: string): boolean;

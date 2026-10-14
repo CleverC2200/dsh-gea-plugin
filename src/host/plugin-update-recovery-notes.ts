@@ -1,10 +1,7 @@
 import { writeFile, open } from "node:fs/promises";
 import { join } from "node:path";
 /** Written outside the installed package so a broken GEA can still expose its recovery evidence. */
-export async function writePluginRecoveryNotes(
-  directory: string,
-  profileDirectory: string,
-) {
+export async function writePluginRecoveryNotes(directory: string, profileDirectory: string) {
   const script = `import{readFile}from'node:fs/promises';\nconst operation=JSON.parse(await readFile(new URL('./receipt.json',import.meta.url),'utf8'));\nconst saved=JSON.parse(await readFile(new URL('./recovery/snapshot.json',import.meta.url),'utf8'));\nconst processes=operation.processes.map(row=>{let status='unconfirmed';if(row.grouped&&row.sawAlive&&process.platform!=='win32'){try{process.kill(-row.pid,0);status='alive';}catch(error){if(error.code==='ESRCH')status='group-not-found';}}return {...row,status};});\nconsole.log(JSON.stringify({stage:operation.stage,diagnostic:operation.diagnostic,packageName:operation.packageName,targetVersion:operation.targetVersion,profileDirectory:saved.profileDirectory,recoveryDirectory:operation.recoveryDirectory,archivePath:operation.archivePath,baselineSha256:saved.sha256,processes,logs:operation.logs},null,2));\n`;
   await writeFile(join(directory, "recovery-status.mjs"), script, {
     mode: 0o600,

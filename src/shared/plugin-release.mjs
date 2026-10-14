@@ -16,12 +16,9 @@ export function validatePluginCombination({ core, manifests }) {
     versions.set(manifest.name, manifest.version);
   }
   for (const manifest of manifests) {
-    for (const [name, range] of Object.entries(
-      manifest.peerDependencies ?? {},
-    )) {
+    for (const [name, range] of Object.entries(manifest.peerDependencies ?? {})) {
       const version = versions.get(name);
-      if (!version && manifest.peerDependenciesMeta?.[name]?.optional === true)
-        continue;
+      if (!version && manifest.peerDependenciesMeta?.[name]?.optional === true) continue;
       if (!version || !semver.satisfies(version, range))
         failures.push({
           code: "PEER_INCOMPATIBLE",
@@ -59,10 +56,7 @@ export function planPluginUpdate({ release, core, installed }) {
   const comparison = semver.compare(release.version, current.version);
   if (comparison < 0) return { kind: "blocked", code: "DOWNGRADE_FORBIDDEN" };
   if (comparison === 0) {
-    if (
-      current.artifactSha256 &&
-      current.artifactSha256 !== release.artifact.sha256
-    )
+    if (current.artifactSha256 && current.artifactSha256 !== release.artifact.sha256)
       return { kind: "blocked", code: "SAME_VERSION_CONTENT_MISMATCH" };
     return { kind: "current" };
   }
@@ -77,9 +71,7 @@ export function planPluginUpdate({ release, core, installed }) {
   };
   const failures = validatePluginCombination({
     core,
-    manifests: installed.map((manifest) =>
-      manifest.name === release.name ? candidate : manifest,
-    ),
+    manifests: installed.map((manifest) => (manifest.name === release.name ? candidate : manifest)),
   });
   return failures.length
     ? { kind: "blocked", code: "COMBINATION_INCOMPATIBLE", failures }
@@ -105,9 +97,7 @@ export function projectPluginRelease({
       version,
     })),
     requires: Object.fromEntries(
-      Object.entries(peers).filter(([name]) =>
-        companyPackageNames.includes(name),
-      ),
+      Object.entries(peers).filter(([name]) => companyPackageNames.includes(name)),
     ),
     peerDependencies: peers,
     peerDependenciesMeta: manifest.peerDependenciesMeta ?? {},
@@ -117,8 +107,7 @@ export function projectPluginRelease({
   });
 }
 
-const record = (value) =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
+const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const fail = () => {
   throw Error("RELEASE_INVALID");
 };
@@ -155,29 +144,16 @@ export function parsePluginRelease(value) {
     !url.pathname.split("/").includes(artifact.sha256)
   )
     fail();
-  if (!Array.isArray(value.supportedCores) || !value.supportedCores.length)
-    fail();
+  if (!Array.isArray(value.supportedCores) || !value.supportedCores.length) fail();
   const supportedCores = value.supportedCores.map((core) => {
-    if (
-      !record(core) ||
-      !/^[a-f0-9]{40}$/.test(core.head) ||
-      !semver.valid(core.version)
-    )
-      fail();
+    if (!record(core) || !/^[a-f0-9]{40}$/.test(core.head) || !semver.valid(core.version)) fail();
     return { head: core.head, version: core.version };
   });
-  if (
-    new Set(supportedCores.map((core) => core.head)).size !==
-    supportedCores.length
-  )
-    fail();
-  const { peerDependencies, dependencies, peerDependenciesMeta } =
-    parsePluginManifest(value);
+  if (new Set(supportedCores.map((core) => core.head)).size !== supportedCores.length) fail();
+  const { peerDependencies, dependencies, peerDependenciesMeta } = parsePluginManifest(value);
   const requires = ranges(value.requires);
   const projected = Object.fromEntries(
-    Object.entries(peerDependencies).filter(([name]) =>
-      companyPackageNames.includes(name),
-    ),
+    Object.entries(peerDependencies).filter(([name]) => companyPackageNames.includes(name)),
   );
   if (
     JSON.stringify(Object.entries(projected).sort()) !==
@@ -188,8 +164,7 @@ export function parsePluginRelease(value) {
   if (
     !record(data) ||
     !["preserve", "migration-required"].includes(data.kind) ||
-    (data.kind === "migration-required" &&
-      (typeof data.note !== "string" || !data.note.trim()))
+    (data.kind === "migration-required" && (typeof data.note !== "string" || !data.note.trim()))
   )
     fail();
   if (typeof value.notes !== "string") fail();
@@ -217,11 +192,7 @@ export function parsePluginRelease(value) {
 
 /** Parse final publication graph once; unknown wire objects do not enter planning. */
 export function parsePluginManifest(value) {
-  if (
-    !record(value) ||
-    !companyPackageNames.includes(value.name) ||
-    !semver.valid(value.version)
-  )
+  if (!record(value) || !companyPackageNames.includes(value.name) || !semver.valid(value.version))
     fail();
   const peerDependencies = ranges(value.peerDependencies ?? {}),
     dependencies = ranges(value.dependencies ?? {});
@@ -294,10 +265,7 @@ export function parsePluginChannel(value) {
       sha256: reference.sha256,
     };
   });
-  if (
-    new Set(releases.map((reference) => reference.name)).size !==
-    companyPackageNames.length
-  )
+  if (new Set(releases.map((reference) => reference.name)).size !== companyPackageNames.length)
     throw Error("SOURCE_CHANNEL_INVALID");
   return {
     schema: 1,
@@ -309,13 +277,7 @@ export function parsePluginChannel(value) {
   };
 }
 /** Produce the complete next signed payload locally; publishing owns the atomic channel replacement. */
-export function mergePluginChannelRelease({
-  previous,
-  release,
-  revision,
-  issuedAt,
-  expiresAt,
-}) {
+export function mergePluginChannelRelease({ previous, release, revision, issuedAt, expiresAt }) {
   const channel = parsePluginChannel(previous);
   if (!channel.releases.some((reference) => reference.name === release.name))
     throw Error("SOURCE_CHANNEL_INVALID");
@@ -331,4 +293,6 @@ export function mergePluginChannelRelease({
     ),
   });
 }
-export function satisfiesPluginVersion(version,range) { return semver.satisfies(version,range); }
+export function satisfiesPluginVersion(version, range) {
+  return semver.satisfies(version, range);
+}

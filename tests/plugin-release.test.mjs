@@ -27,18 +27,14 @@ test("single-package update validates existing consumers and permits independent
   assert.equal(
     validatePluginCombination({
       core,
-      manifests: graph.map((m) =>
-        m.name === W ? { ...m, version: "1.1.0" } : m,
-      ),
+      manifests: graph.map((m) => (m.name === W ? { ...m, version: "1.1.0" } : m)),
     })[0].code,
     "PEER_INCOMPATIBLE",
   );
   assert.deepEqual(
     validatePluginCombination({
       core,
-      manifests: graph.map((m) =>
-        m.name === G ? { ...m, version: "3.1.0" } : m,
-      ),
+      manifests: graph.map((m) => (m.name === G ? { ...m, version: "3.1.0" } : m)),
     }),
     [],
   );
@@ -59,13 +55,8 @@ const release = () =>
 test("release projection keeps final manifest peers and fixed Core identity; plan prevents downgrade and replacement", () => {
   const r = release();
   assert.deepEqual(r.requires, { [W]: "1.0.0", [M]: "2.0.0" });
-  assert.deepEqual(r.supportedCores, [
-    { head: core.head, version: core.version },
-  ]);
-  assert.equal(
-    planPluginUpdate({ release: r, core, installed: graph }).kind,
-    "ready",
-  );
+  assert.deepEqual(r.supportedCores, [{ head: core.head, version: core.version }]);
+  assert.equal(planPluginUpdate({ release: r, core, installed: graph }).kind, "ready");
   assert.equal(
     planPluginUpdate({
       release: r,
@@ -151,9 +142,7 @@ test("optional installed peers are checked and unrelated installed consumers blo
   );
 });
 test("independent channel projection retains the other two references and advances revision", async () => {
-  const { mergePluginChannelRelease } = await import(
-    "../src/shared/plugin-release.mjs"
-  );
+  const { mergePluginChannelRelease } = await import("../src/shared/plugin-release.mjs");
   const previous = {
     schema: 1,
     channel: "test",
@@ -178,11 +167,7 @@ test("independent channel projection retains the other two references and advanc
     issuedAt: previous.issuedAt,
     expiresAt: previous.expiresAt,
   });
-  assert.deepEqual(next.releases, [
-    previous.releases[0],
-    selected,
-    previous.releases[2],
-  ]);
+  assert.deepEqual(next.releases, [previous.releases[0], selected, previous.releases[2]]);
   assert.throws(
     () =>
       mergePluginChannelRelease({

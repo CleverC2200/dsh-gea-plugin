@@ -30,6 +30,20 @@ await mkdir(".runtime", { recursive: true });
 const directory = await mkdtemp(resolve(".runtime/plugin-update-types-"));
 try {
   const file = join(directory, "tsconfig.json");
+  const probe = join(directory, "contract.ts");
+  await writeFile(
+    probe,
+    [
+      'import type { PluginUpdateProvider, PluginPackageUpdateProblem } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";',
+      `import type { createPluginUpdatesProvider } from ${JSON.stringify(join(root, "src/plugin-updates-client.ts"))};`,
+      `import type { PluginUpdateProblem } from ${JSON.stringify(join(root, "src/shared/plugin-update-diagnostics.ts"))};`,
+      "type RequireProvider<T extends PluginUpdateProvider> = T;",
+      "type RequireProblem<T extends PluginPackageUpdateProblem> = T;",
+      'export type ProviderContract = RequireProvider<ReturnType<typeof createPluginUpdatesProvider>["provider"]>;',
+      "export type ProblemContract = RequireProblem<PluginUpdateProblem>;",
+    ].join("\n"),
+  );
+  config.include.push(probe);
   await writeFile(file, JSON.stringify(config));
   execFileSync(process.execPath, ["node_modules/typescript/bin/tsc", "-p", file], {
     stdio: "inherit",

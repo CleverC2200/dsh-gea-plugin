@@ -376,9 +376,7 @@ async function deliver(input, destination) {
         : {}),
     });
   }
-  const finalManifests = packages.map((row) =>
-    archive(join(pending, row.filename), row.name),
-  );
+  const finalManifests = packages.map((row) => archive(join(pending, row.filename), row.name));
   const supported = findSupportedCore(input.core);
   const sdkNames = new Set(
     finalManifests.flatMap((manifest) =>
@@ -387,9 +385,7 @@ async function deliver(input, destination) {
       ),
     ),
   );
-  const sdk = Object.fromEntries(
-    [...sdkNames].map((name) => [name, sdkVersion(supported, name)]),
-  );
+  const sdk = Object.fromEntries([...sdkNames].map((name) => [name, sdkVersion(supported, name)]));
   if (
     validatePluginCombination({
       core: { ...coreIdentity(input.core), sdk },

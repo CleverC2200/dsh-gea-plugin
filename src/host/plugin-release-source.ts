@@ -1,21 +1,7 @@
-import {
-  createHash,
-  createPublicKey,
-  verify,
-  randomUUID,
-  type KeyObject,
-} from "node:crypto";
+import { createHash, createPublicKey, verify, randomUUID, type KeyObject } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import {
-  chmod,
-  lstat,
-  mkdir,
-  open,
-  readFile,
-  rename,
-  rm,
-} from "node:fs/promises";
+import { chmod, lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import {
   companyPackageNames,
@@ -28,8 +14,7 @@ import {
 } from "../shared/plugin-release.mjs";
 
 const run = promisify(execFile);
-const hash = (bytes: Uint8Array) =>
-  createHash("sha256").update(bytes).digest("hex");
+const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const fail = (code: string): never => {
   throw Error(code);
 };
@@ -39,20 +24,14 @@ const object = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 const text = (value: unknown): string =>
-  typeof value === "string" && value.length > 0
-    ? value
-    : fail("SOURCE_SCHEMA_INVALID");
+  typeof value === "string" && value.length > 0 ? value : fail("SOURCE_SCHEMA_INVALID");
 const sha = (value: unknown): string =>
-  typeof value === "string" && /^[a-f0-9]{64}$/.test(value)
-    ? value
-    : fail("SOURCE_SCHEMA_INVALID");
-const json = (bytes: Uint8Array): unknown =>
-  JSON.parse(Buffer.from(bytes).toString("utf8"));
+  typeof value === "string" && /^[a-f0-9]{64}$/.test(value) ? value : fail("SOURCE_SCHEMA_INVALID");
+const json = (bytes: Uint8Array): unknown => JSON.parse(Buffer.from(bytes).toString("utf8"));
 const base64 = (value: unknown): Buffer => {
   const encoded = text(value),
     bytes = Buffer.from(encoded, "base64");
-  if (bytes.toString("base64") !== encoded)
-    return fail("SOURCE_BASE64_INVALID");
+  if (bytes.toString("base64") !== encoded) return fail("SOURCE_BASE64_INVALID");
   return bytes;
 };
 
@@ -75,9 +54,7 @@ export type PluginReleaseSourceDependencies = {
 };
 
 /** Configuration and credentials stay in Host; only verified release projections cross to the client. */
-export function parsePluginReleaseSourceConfig(
-  raw: unknown,
-): PluginReleaseSourceConfig {
+export function parsePluginReleaseSourceConfig(raw: unknown): PluginReleaseSourceConfig {
   const value = object(raw);
   if (
     !Array.isArray(value.allowed) ||
@@ -136,8 +113,7 @@ function allowedUrl(
     url.hash ||
     /%|\\/.test(url.pathname) ||
     !config.allowed.some(
-      (rule) =>
-        rule.origin === url.origin && url.pathname.startsWith(rule.pathPrefix),
+      (rule) => rule.origin === url.origin && url.pathname.startsWith(rule.pathPrefix),
     ) ||
     (immutableSha && !url.pathname.split("/").includes(immutableSha))
   )
@@ -181,9 +157,7 @@ export async function inspectPluginArchive(
     encoding: "utf8" as const,
     signal,
   };
-  const entries = (await run("tar", ["-tzf", path], options)).stdout
-    .trim()
-    .split("\n");
+  const entries = (await run("tar", ["-tzf", path], options)).stdout.trim().split("\n");
   if (
     new Set(entries).size !== entries.length ||
     entries.some(
@@ -196,21 +170,12 @@ export async function inspectPluginArchive(
     )
   )
     return fail("SOURCE_ARCHIVE_INVALID");
-  const listing = (await run("tar", ["-tvzf", path], options)).stdout
-    .trim()
-    .split("\n");
-  if (
-    listing.length !== entries.length ||
-    listing.some((line) => !["-", "d"].includes(line[0]))
-  )
+  const listing = (await run("tar", ["-tvzf", path], options)).stdout.trim().split("\n");
+  if (listing.length !== entries.length || listing.some((line) => !["-", "d"].includes(line[0])))
     return fail("SOURCE_ARCHIVE_LINK_FORBIDDEN");
-  if (!entries.includes("package/package.json"))
-    return fail("SOURCE_ARCHIVE_MANIFEST_MISSING");
+  if (!entries.includes("package/package.json")) return fail("SOURCE_ARCHIVE_MANIFEST_MISSING");
   const value = object(
-    JSON.parse(
-      (await run("tar", ["-xOf", path, "package/package.json"], options))
-        .stdout,
-    ),
+    JSON.parse((await run("tar", ["-xOf", path, "package/package.json"], options)).stdout),
   );
   const name = text(value.name);
   if (!companyPackageNames.some((company) => company === name))
@@ -267,17 +232,12 @@ export async function inspectPluginArchive(
 }
 function sameGraph(manifest: PluginManifest, release: PluginRelease): boolean {
   const sorted = (value: unknown) =>
-    JSON.stringify(
-      Object.entries(object(value ?? {})).sort(([a], [b]) =>
-        a.localeCompare(b),
-      ),
-    );
+    JSON.stringify(Object.entries(object(value ?? {})).sort(([a], [b]) => a.localeCompare(b)));
   return (
     manifest.name === release.name &&
     manifest.version === release.version &&
     sorted(manifest.peerDependencies) === sorted(release.peerDependencies) &&
-    sorted(manifest.peerDependenciesMeta) ===
-      sorted(release.peerDependenciesMeta) &&
+    sorted(manifest.peerDependenciesMeta) === sorted(release.peerDependenciesMeta) &&
     sorted(manifest.dependencies) === sorted(release.dependencies)
   );
 }
@@ -288,29 +248,21 @@ export function createPluginReleaseSource(
 ) {
   const config = parsePluginReleaseSourceConfig(rawConfig);
   const keys = new Map<string, KeyObject>(
-    config.trustedKeys.map((key) => [
-      key.keyId,
-      createPublicKey(key.publicKeyPem),
-    ]),
+    config.trustedKeys.map((key) => [key.keyId, createPublicKey(key.publicKeyPem)]),
   );
-  if (!isAbsolute(dependencies.trustDirectory))
-    return fail("SOURCE_TRUST_ABSOLUTE_REQUIRED");
+  if (!isAbsolute(dependencies.trustDirectory)) return fail("SOURCE_TRUST_ABSOLUTE_REQUIRED");
   let verified = new Map<string, string>(),
     generation = 0,
     verifiedUntil = 0;
   let checks: Promise<unknown> = Promise.resolve();
-  const receiptPath = join(
-    dependencies.trustDirectory,
-    "approved-channel.json",
-  );
+  const receiptPath = join(dependencies.trustDirectory, "approved-channel.json");
   async function previousReceipt(): Promise<Record<string, unknown> | null> {
     try {
       const directory = await lstat(dependencies.trustDirectory);
       if (!directory.isDirectory() || directory.isSymbolicLink())
         return fail("SOURCE_TRUST_INVALID");
       const entry = await lstat(receiptPath);
-      if (!entry.isFile() || entry.isSymbolicLink())
-        return fail("SOURCE_TRUST_INVALID");
+      if (!entry.isFile() || entry.isSymbolicLink()) return fail("SOURCE_TRUST_INVALID");
       const receipt = object(json(await readFile(receiptPath)));
       if (
         receipt.schema !== 1 ||
@@ -335,21 +287,16 @@ export function createPluginReleaseSource(
       }
       return receipt;
     } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT")
-        return null;
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
       throw error;
     }
   }
   async function saveReceipt(receipt: unknown) {
     await mkdir(dependencies.trustDirectory, { recursive: true, mode: 0o700 });
     const entry = await lstat(dependencies.trustDirectory);
-    if (!entry.isDirectory() || entry.isSymbolicLink())
-      return fail("SOURCE_TRUST_INVALID");
+    if (!entry.isDirectory() || entry.isSymbolicLink()) return fail("SOURCE_TRUST_INVALID");
     await chmod(dependencies.trustDirectory, 0o700);
-    const partial = join(
-      dependencies.trustDirectory,
-      randomUUID() + ".partial",
-    );
+    const partial = join(dependencies.trustDirectory, randomUUID() + ".partial");
     try {
       const file = await open(partial, "wx", 0o600);
       try {
@@ -386,38 +333,21 @@ export function createPluginReleaseSource(
       return fail("SOURCE_HTTP_FAILED");
     return response;
   }
-  async function performCheck(
-    current: number,
-    signal?: AbortSignal,
-  ): Promise<PluginRelease[]> {
+  async function performCheck(current: number, signal?: AbortSignal): Promise<PluginRelease[]> {
     try {
       const envelope = object(
-        json(
-          await boundedBytes(
-            await request(config.channelUrl, signal),
-            1024 * 1024,
-            signal,
-          ),
-        ),
+        json(await boundedBytes(await request(config.channelUrl, signal), 1024 * 1024, signal)),
       );
       const key = keys.get(text(envelope.keyId));
       if (!key) return fail("SOURCE_KEY_UNTRUSTED");
       const payload = base64(envelope.payloadBase64),
         signature = base64(envelope.signatureBase64);
-      if (!verify(null, payload, key, signature))
-        return fail("SOURCE_SIGNATURE_INVALID");
+      if (!verify(null, payload, key, signature)) return fail("SOURCE_SIGNATURE_INVALID");
       const channel = parsePluginChannel(json(payload));
-      if (channel.channel !== config.channel)
-        return fail("SOURCE_CHANNEL_INVALID");
+      if (channel.channel !== config.channel) return fail("SOURCE_CHANNEL_INVALID");
       const now = (dependencies.now ?? Date.now)();
-      const issuedAt =
-        typeof channel.issuedAt === "string"
-          ? Date.parse(channel.issuedAt)
-          : NaN;
-      const expiresAt =
-        typeof channel.expiresAt === "string"
-          ? Date.parse(channel.expiresAt)
-          : NaN;
+      const issuedAt = typeof channel.issuedAt === "string" ? Date.parse(channel.issuedAt) : NaN;
+      const expiresAt = typeof channel.expiresAt === "string" ? Date.parse(channel.expiresAt) : NaN;
       if (
         !Number.isSafeInteger(channel.revision) ||
         Number(channel.revision) < 1 ||
@@ -433,8 +363,7 @@ export function createPluginReleaseSource(
       if (
         previous &&
         (Number(channel.revision) < Number(previous.revision) ||
-          (channel.revision === previous.revision &&
-            payloadSha256 !== previous.payloadSha256))
+          (channel.revision === previous.revision && payloadSha256 !== previous.payloadSha256))
       )
         return fail("SOURCE_CHANNEL_REPLAY");
       const releases: PluginRelease[] = [];
@@ -448,32 +377,19 @@ export function createPluginReleaseSource(
         )
           return fail("SOURCE_CHANNEL_INVALID");
         const url = allowedUrl(text(reference.url), config, releaseHash);
-        const bytes = await boundedBytes(
-          await request(url, signal),
-          1024 * 1024,
-          signal,
-        );
-        if (hash(bytes) !== releaseHash)
-          return fail("SOURCE_RELEASE_HASH_MISMATCH");
+        const bytes = await boundedBytes(await request(url, signal), 1024 * 1024, signal);
+        if (hash(bytes) !== releaseHash) return fail("SOURCE_RELEASE_HASH_MISMATCH");
         const release = parsePluginRelease(json(bytes));
-        if (release.name !== name)
-          return fail("SOURCE_RELEASE_IDENTITY_MISMATCH");
+        if (release.name !== name) return fail("SOURCE_RELEASE_IDENTITY_MISMATCH");
         allowedUrl(release.artifact.url, config, release.artifact.sha256);
         if (previous) {
           const old = (previous.releases as unknown[])
             .map(object)
             .find((row) => row.name === release.name);
-          if (
-            !old ||
-            typeof old.version !== "string" ||
-            typeof old.sha256 !== "string"
-          )
+          if (!old || typeof old.version !== "string" || typeof old.sha256 !== "string")
             return fail("SOURCE_TRUST_INVALID");
           // Version ordering is also checked against durable source approval, not only inventory.
-          const comparison = comparePluginVersions(
-            release.version,
-            old.version,
-          );
+          const comparison = comparePluginVersions(release.version, old.version);
           if (comparison < 0) return fail("SOURCE_VERSION_ROLLBACK");
           if (comparison === 0 && release.artifact.sha256 !== old.sha256)
             return fail("SOURCE_SAME_VERSION_CONTENT_MISMATCH");
@@ -497,12 +413,9 @@ export function createPluginReleaseSource(
       });
       signal?.throwIfAborted();
       if (current !== generation) return fail("SOURCE_CHECK_SUPERSEDED");
-      if ((dependencies.now ?? Date.now)() >= expiresAt)
-        return fail("SOURCE_CHANNEL_TIME_INVALID");
+      if ((dependencies.now ?? Date.now)() >= expiresAt) return fail("SOURCE_CHANNEL_TIME_INVALID");
       verifiedUntil = expiresAt;
-      verified = new Map(
-        releases.map((release) => [release.name, JSON.stringify(release)]),
-      );
+      verified = new Map(releases.map((release) => [release.name, JSON.stringify(release)]));
       return releases;
     } catch (error) {
       if (current === generation) verified.clear();
@@ -530,8 +443,7 @@ export function createPluginReleaseSource(
     signal?: AbortSignal,
   ): Promise<string> {
     assertCurrentRelease(release);
-    if (!isAbsolute(cacheDirectory))
-      return fail("SOURCE_CACHE_ABSOLUTE_REQUIRED");
+    if (!isAbsolute(cacheDirectory)) return fail("SOURCE_CACHE_ABSOLUTE_REQUIRED");
     await mkdir(cacheDirectory, { recursive: true, mode: 0o700 });
     if (
       !(await lstat(cacheDirectory)).isDirectory() ||
@@ -557,29 +469,17 @@ export function createPluginReleaseSource(
       await chmod(target, 0o600);
       return target;
     } catch (error) {
-      if (
-        !(error instanceof Error) ||
-        !("code" in error) ||
-        error.code !== "ENOENT"
-      )
-        throw error;
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
     }
-    if (release.artifact.size > 256 * 1024 * 1024)
-      return fail("SOURCE_SIZE_LIMIT");
-    const partial = join(
-      cacheDirectory,
-      release.artifact.sha256 + "." + randomUUID() + ".partial",
-    );
+    if (release.artifact.size > 256 * 1024 * 1024) return fail("SOURCE_SIZE_LIMIT");
+    const partial = join(cacheDirectory, release.artifact.sha256 + "." + randomUUID() + ".partial");
     try {
       const response = await request(
         allowedUrl(release.artifact.url, config, release.artifact.sha256),
         signal,
       );
       const bytes = await boundedBytes(response, release.artifact.size, signal);
-      if (
-        bytes.length !== release.artifact.size ||
-        hash(bytes) !== release.artifact.sha256
-      )
+      if (bytes.length !== release.artifact.size || hash(bytes) !== release.artifact.sha256)
         return fail("SOURCE_ARTIFACT_HASH_MISMATCH");
       const file = await open(partial, "wx", 0o600);
       try {

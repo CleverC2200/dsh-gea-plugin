@@ -24,9 +24,7 @@ setTimeout(() => {
     setInterval(() => console.log("working"), 50);
     return;
   }
-  const archive = args
-    .find((arg) => arg.startsWith("file:") && arg.endsWith(".tgz"))
-    ?.slice(5);
+  const archive = args.find((arg) => arg.startsWith("file:") && arg.endsWith(".tgz"))?.slice(5);
   if (!archive) process.exit(9);
   const manifest = JSON.parse(
     cp.execFileSync("tar", ["-xOf", archive, "package/package.json"], {
@@ -36,13 +34,7 @@ setTimeout(() => {
   const target = path.join(process.cwd(), "node_modules", manifest.name);
   fs.rmSync(target, { recursive: true, force: true });
   fs.mkdirSync(target, { recursive: true });
-  cp.execFileSync("tar", [
-    "-xzf",
-    archive,
-    "--strip-components=1",
-    "-C",
-    target,
-  ]);
+  cp.execFileSync("tar", ["-xzf", archive, "--strip-components=1", "-C", target]);
   const profilePath = path.join(process.cwd(), "package.json"),
     profile = JSON.parse(fs.readFileSync(profilePath, "utf8"));
   profile.dependencies[manifest.name] = "file:" + archive;

@@ -1,14 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  mkdtemp,
-  mkdir,
-  writeFile,
-  readFile,
-  stat,
-  copyFile,
-  rm,
-} from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, stat, copyFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,17 +8,20 @@ import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 
 const builder = fileURLToPath(new URL("./build.mjs", import.meta.url));
-const outputs = [
-  "lib/host.js",
-  "lib/client.js",
-];
+const outputs = ["lib/host.js", "lib/client.js"];
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "gea-build-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "scripts"));
-  await copyFile(new URL("./generate-plugin-package-version.mjs", import.meta.url), join(root, "scripts/generate-plugin-package-version.mjs"));
-  await writeFile(join(root, "package.json"), JSON.stringify({ name: "@cleverc2200/gea-dsh-prototype", version: "1.0.0-fixture" }));
+  await copyFile(
+    new URL("./generate-plugin-package-version.mjs", import.meta.url),
+    join(root, "scripts/generate-plugin-package-version.mjs"),
+  );
+  await writeFile(
+    join(root, "package.json"),
+    JSON.stringify({ name: "@cleverc2200/gea-dsh-prototype", version: "1.0.0-fixture" }),
+  );
   const inputs = {
     "src/host.ts": "export const value = 'host-original';",
     "src/client.tsx": "export const value = 'client';",
@@ -72,39 +67,23 @@ test(
   async (t) => {
     const root = await fixture(t);
     assert.equal((await run(root).done).code, 0);
-    for (const file of outputs)
-      assert.ok((await stat(join(root, file))).size > 0, file);
+    for (const file of outputs) assert.ok((await stat(join(root, file))).size > 0, file);
     assert.match(
       await readFile(join(root, "lib/client.js"), "utf8"),
       /window\.__ModuleLoader__\.load/,
     );
-    const unaffected = outputs.filter(
-      (file) => !["lib/host.js"].includes(file),
-    );
-    const before = await Promise.all(
-      unaffected.map((file) => stat(join(root, file))),
-    );
-    await writeFile(
-      join(root, "src/host.ts"),
-      "export const value = 'host-changed';",
-    );
+    const unaffected = outputs.filter((file) => !["lib/host.js"].includes(file));
+    const before = await Promise.all(unaffected.map((file) => stat(join(root, file))));
+    await writeFile(join(root, "src/host.ts"), "export const value = 'host-changed';");
     assert.equal((await run(root, ["--target", "host"]).done).code, 0);
-    assert.match(
-      await readFile(join(root, "lib/host.js"), "utf8"),
-      /host-changed/,
-    );
+    assert.match(await readFile(join(root, "lib/host.js"), "utf8"), /host-changed/);
     for (const [i, file] of unaffected.entries())
-      assert.equal(
-        (await stat(join(root, file))).mtimeMs,
-        before[i].mtimeMs,
-        file,
-      );
+      assert.equal((await stat(join(root, file))).mtimeMs, before[i].mtimeMs, file);
     const invalid = await run(root, ["--target", "unknown"]).done;
     assert.notEqual(invalid.code, 0);
     assert.match(invalid.log, /UNKNOWN_BUILD_TARGET/);
   },
 );
-
 
 test(
   "watch rebuilds client wrapper, retains last good output on syntax errors and shuts down",
@@ -119,20 +98,14 @@ test(
     const output = join(root, "lib/client.js");
     const content = () => readFile(output, "utf8").catch(() => "");
     await until(async () => (await content()).includes("client"));
-    await writeFile(
-      join(root, "src/client.tsx"),
-      "export const value = 'watch-updated';",
-    );
+    await writeFile(join(root, "src/client.tsx"), "export const value = 'watch-updated';");
     await until(async () => (await content()).includes("watch-updated"));
     const good = await content();
     assert.match(good, /window\.__ModuleLoader__\.load/);
     await writeFile(join(root, "src/client.tsx"), "export const value = ;");
     await until(() => watch.log().includes("ERROR"));
     assert.equal(await content(), good);
-    await writeFile(
-      join(root, "src/client.tsx"),
-      "export const value = 'watch-recovered';",
-    );
+    await writeFile(join(root, "src/client.tsx"), "export const value = 'watch-recovered';");
     await until(async () => (await content()).includes("watch-recovered"));
     watch.child.kill("SIGTERM");
     const stopped = await watch.done;

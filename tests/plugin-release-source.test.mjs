@@ -1,14 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign, createHash } from "node:crypto";
-import {
-  mkdtemp,
-  mkdir,
-  writeFile,
-  readFile,
-  rm,
-  stat,
-} from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -17,10 +10,7 @@ import {
   createPluginReleaseSource,
   inspectPluginArchive,
 } from "../src/host/plugin-release-source.ts";
-import {
-  companyPackageNames,
-  projectPluginRelease,
-} from "../src/shared/plugin-release.mjs";
+import { companyPackageNames, projectPluginRelease } from "../src/shared/plugin-release.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), "signed-plugin-source-"));
@@ -33,10 +23,7 @@ async function fixture(t) {
     await mkdir(join(packageRoot, "lib"), { recursive: true });
     const contracts = JSON.parse(
       await readFile(
-        new URL(
-          "../scripts/fixtures/plugin-release/production-exports.json",
-          import.meta.url,
-        ),
+        new URL("../scripts/fixtures/plugin-release/production-exports.json", import.meta.url),
         "utf8",
       ),
     );
@@ -49,26 +36,17 @@ async function fixture(t) {
       exports: actual.exports,
       dsh: actual.dsh,
     };
-    await writeFile(
-      join(packageRoot, "package.json"),
-      JSON.stringify(manifest),
-    );
+    await writeFile(join(packageRoot, "package.json"), JSON.stringify(manifest));
     for (const declaration of Object.values(manifest.exports)) {
-      const relative = (
-        typeof declaration === "string" ? declaration : declaration.default
-      ).slice(2);
+      const relative = (typeof declaration === "string" ? declaration : declaration.default).slice(
+        2,
+      );
       await mkdir(dirname(join(packageRoot, relative)), { recursive: true });
       await writeFile(join(packageRoot, relative), "export default {};");
     }
     await writeFile(join(packageRoot, "cordis.patch.yml"), "[]");
     const archive = join(dir, `${releases.length}.tgz`);
-    execFileSync("tar", [
-      "-czf",
-      archive,
-      "-C",
-      join(packageRoot, ".."),
-      "package",
-    ]);
+    execFileSync("tar", ["-czf", archive, "-C", join(packageRoot, ".."), "package"]);
     const archiveBytes = await readFile(archive),
       hash = digest(archiveBytes),
       url = `https://fixture.invalid/releases/${hash}/plugin.tgz`;
@@ -157,9 +135,7 @@ test("signed channel verifies raw bytes, release hashes and durable tgz manifest
   assert.equal((await stat(path)).mode & 0o777, 0o600);
   assert.equal(
     f.calls.every(
-      (c) =>
-        c.init.redirect === "error" &&
-        c.init.headers["X-Fixture-Read"] === "local-test",
+      (c) => c.init.redirect === "error" && c.init.headers["X-Fixture-Read"] === "local-test",
     ),
     true,
   );
@@ -184,9 +160,7 @@ test("source rejects mismatched release bytes and tgz hash without durable packa
     f.source.download(releases[0], join(f.dir, "cache")),
     /SOURCE_ARTIFACT_HASH_MISMATCH/,
   );
-  const releaseUrl = [...f.objects.keys()].find((url) =>
-    url.endsWith("/release.json"),
-  );
+  const releaseUrl = [...f.objects.keys()].find((url) => url.endsWith("/release.json"));
   f.objects.set(releaseUrl, Buffer.from("{}"));
   await assert.rejects(f.source.check(), /SOURCE_RELEASE_HASH_MISMATCH/);
 });
@@ -247,10 +221,7 @@ test("signed same-version new content and signed package rollback are rejected a
     p.revision = 2;
     p.releases[0] = { ...ref, url, sha256 };
   });
-  await assert.rejects(
-    f.source.check(),
-    /SOURCE_SAME_VERSION_CONTENT_MISMATCH/,
-  );
+  await assert.rejects(f.source.check(), /SOURCE_SAME_VERSION_CONTENT_MISMATCH/);
   const rollback = Buffer.from(JSON.stringify({ ...old, version: "1.0.0" })),
     rollbackHash = digest(rollback),
     rollbackUrl = `https://fixture.invalid/releases/${rollbackHash}/release.json`;
@@ -272,10 +243,7 @@ test("archive inspection rejects symlinks and supports real production condition
   await symlink("/etc/passwd", join(linkRoot, "package.json"));
   const bad = join(f.dir, "symlink.tgz");
   execFileSync("tar", ["-czf", bad, "-C", join(linkRoot, ".."), "package"]);
-  await assert.rejects(
-    inspectPluginArchive(bad),
-    /SOURCE_ARCHIVE_LINK_FORBIDDEN/,
-  );
+  await assert.rejects(inspectPluginArchive(bad), /SOURCE_ARCHIVE_LINK_FORBIDDEN/);
 });
 test("allowed-source policy rejects credential URLs and escapes before fetching", async (t) => {
   const f = await fixture(t);
@@ -323,10 +291,7 @@ test("single release CLI reads final conditional tar manifest and accepts only r
     release = releases[0];
   const archive = await f.source.download(release, join(f.dir, "cache"));
   const supported = JSON.parse(
-    await readFile(
-      new URL("../scripts/supported-cores.json", import.meta.url),
-      "utf8",
-    ),
+    await readFile(new URL("../scripts/supported-cores.json", import.meta.url), "utf8"),
   );
   const metadata = join(f.dir, "metadata.json");
   await writeFile(
@@ -338,9 +303,7 @@ test("single release CLI reads final conditional tar manifest and accepts only r
       notes: "independent release",
     }),
   );
-  const entry = fileURLToPath(
-    new URL("../scripts/create-plugin-release.mjs", import.meta.url),
-  );
+  const entry = fileURLToPath(new URL("../scripts/create-plugin-release.mjs", import.meta.url));
   const receipt = JSON.parse(
     execFileSync(
       process.execPath,
@@ -417,9 +380,7 @@ test("an older delayed check cannot replace the newer verified channel receipt",
   await rejection;
   const releases = await fresh;
   assert.equal(
-    JSON.parse(
-      await readFile(join(f.dir, "trust/approved-channel.json"), "utf8"),
-    ).revision,
+    JSON.parse(await readFile(join(f.dir, "trust/approved-channel.json"), "utf8")).revision,
     2,
   );
   assert.equal(releases.length, 3);
@@ -431,11 +392,14 @@ test("signed approval expires between check and download and cannot authorize a 
     trustDirectory: join(f.dir, "ttl-trust"),
     now: () => now,
     resolveAuthentication: async () => ({}),
-    fetch: async url => new Response(f.objects.get(url)),
+    fetch: async (url) => new Response(f.objects.get(url)),
   });
   const releases = await source.check();
   source.assertCurrentRelease(releases[0]);
   now += 7200000;
   assert.throws(() => source.assertCurrentRelease(releases[0]), /SOURCE_APPROVAL_EXPIRED/);
-  await assert.rejects(source.download(releases[0], join(f.dir, "cache")), /SOURCE_APPROVAL_EXPIRED/);
+  await assert.rejects(
+    source.download(releases[0], join(f.dir, "cache")),
+    /SOURCE_APPROVAL_EXPIRED/,
+  );
 });

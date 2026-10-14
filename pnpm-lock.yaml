@@ -183,6 +183,9 @@ importers:
       oxlint:
         specifier: 1.87.0
         version: 1.87.0
+      pnpm:
+        specifier: 11.7.0
+        version: 11.7.0
       prettier:
         specifier: 3.6.2
         version: 3.6.2
@@ -1244,6 +1247,11 @@ packages:
   pngjs@5.0.0:
     resolution: {integrity: sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==}
     engines: {node: '>=10.13.0'}
+
+  pnpm@11.7.0:
+    resolution: {integrity: sha512-GcyFLBIMcSV2DyRD7mvgyltA+fUFmN4aCaHxd1A+AQ5Xwjx3ZG4B52HeWb+HT7IqM5jDOrlpH8E+uUa28PTWIA==}
+    engines: {node: '>=22.13'}
+    hasBin: true
 
   prettier@3.6.2:
     resolution: {integrity: sha512-I7AIg5boAr5R0FFtJ6rCfD+LFsWHp81dolrFD8S79U9tb8Az2nGrJncnMSnys+bpQJfRUzqs9hnA81OAA3hCuQ==}
@@ -2431,6 +2439,8 @@ snapshots:
       fsevents: 2.3.2
 
   pngjs@5.0.0: {}
+
+  pnpm@11.7.0: {}
 
   prettier@3.6.2: {}
 

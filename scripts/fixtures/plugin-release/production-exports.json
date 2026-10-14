@@ -73,9 +73,7 @@
       "client": {
         "platform": "web",
         "inject": [],
-        "external": [
-          "@deepseek-ai/dsh-client-store"
-        ]
+        "external": ["@deepseek-ai/dsh-client-store"]
       },
       "bundle": {
         "patch": "./cordis.patch.yml"

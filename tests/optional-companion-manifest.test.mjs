@@ -27,10 +27,7 @@ test("production manifest preserves an existing exact peer when another package 
     ...versions,
     "dsh-agent-manage": "0.6.3-company.7",
   });
-  assert.equal(
-    manifest.peerDependencies["dsh-agent-manage"],
-    "0.6.3-company.6",
-  );
+  assert.equal(manifest.peerDependencies["dsh-agent-manage"], "0.6.3-company.6");
   const ranged = productionManifest(
     {
       ...source,

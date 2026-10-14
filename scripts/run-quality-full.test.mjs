@@ -22,7 +22,10 @@ test("the public contract command rejects a conditionally skipped required fixtu
   mkdirSync(join(root, "tests"));
   for (const file of ["quality-test-reporter.mjs", "run-quality-full.mjs"])
     copyFileSync(join("scripts", file), join(root, "scripts", file));
-  const contracts = scripts["test:contracts"].match(/\b(?:tests|scripts)\/[\w.-]+\.test\.mjs\b/g);
+  const contracts = [
+    ...scripts["test:contracts"].match(/\b(?:tests|scripts)\/[\w.-]+\.test\.mjs\b/g),
+    ...scripts["test:plugin-updates"].match(/\b(?:tests|scripts)\/[\w.-]+\.contract\.mjs\b/g),
+  ];
   for (const file of [...contracts, "tests/full-only.test.mjs", "scripts/gea-error.test.mjs"]) {
     mkdirSync(dirname(join(root, file)), { recursive: true });
     writeFileSync(
@@ -61,7 +64,10 @@ test("the public full-phase selection and contracts run every original full-suit
   });
   assert.equal(command.status, 0, command.stderr);
   const full = JSON.parse(command.stdout);
-  const contracts = scripts["test:contracts"].match(/\b(?:tests|scripts)\/[\w.-]+\.test\.mjs\b/g);
+  const contracts = [
+    ...scripts["test:contracts"].match(/\b(?:tests|scripts)\/[\w.-]+\.test\.mjs\b/g),
+    ...scripts["test:plugin-updates"].match(/\b(?:tests|scripts)\/[\w.-]+\.contract\.mjs\b/g),
+  ];
   assert.equal(new Set([...full, ...contracts]).size, full.length + contracts.length);
   for (const file of readdirSync("tests")
     .filter((name) => name.endsWith(".test.mjs"))

@@ -5,32 +5,20 @@ import { execFileSync } from "node:child_process";
 import { generateKeyPairSync, sign, createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createPluginReleaseSource } from "../../../src/host/plugin-release-source.ts";
-import {
-  companyPackageNames,
-  projectPluginRelease,
-} from "../../../src/shared/plugin-release.mjs";
+import { companyPackageNames, projectPluginRelease } from "../../../src/shared/plugin-release.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
-export async function controllerFixture(
-  t,
-  { mode = "success", sourceFailure } = {},
-) {
+export async function controllerFixture(t, { mode = "success", sourceFailure } = {}) {
   const root = await mkdtemp(join(tmpdir(), "plugin-update-real-profile-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const dir = join(root, "profile"),
     anchor = join(root, "anchor");
   await mkdir(join(dir, "node_modules"), { recursive: true });
   await mkdir(anchor);
-  await writeFile(
-    join(anchor, "package.json"),
-    JSON.stringify({ dependencies: {} }),
-  );
+  await writeFile(join(anchor, "package.json"), JSON.stringify({ dependencies: {} }));
   const oldVersions = ["1.0.0", "2.0.0", "3.0.0"];
   const contracts = JSON.parse(
     await readFile(
-      new URL(
-        "../../../scripts/fixtures/plugin-release/production-exports.json",
-        import.meta.url,
-      ),
+      new URL("../../../scripts/fixtures/plugin-release/production-exports.json", import.meta.url),
       "utf8",
     ),
   );
@@ -60,9 +48,7 @@ export async function controllerFixture(
     await writeFile(join(source, "package.json"), JSON.stringify(manifest));
     await writeFile(join(source, "cordis.patch.yml"), "[]");
     for (const declaration of Object.values(manifest.exports)) {
-      const file = (
-        typeof declaration === "string" ? declaration : declaration.default
-      ).slice(2);
+      const file = (typeof declaration === "string" ? declaration : declaration.default).slice(2);
       await mkdir(dirname(join(source, file)), { recursive: true });
       await writeFile(
         join(source, file),
@@ -90,13 +76,7 @@ export async function controllerFixture(
     references.push({ name, url: releaseUrl, sha256: releaseHash });
     const target = join(dir, "node_modules", name);
     await mkdir(target, { recursive: true });
-    execFileSync("tar", [
-      "-xzf",
-      archive,
-      "--strip-components=1",
-      "-C",
-      target,
-    ]);
+    execFileSync("tar", ["-xzf", archive, "--strip-components=1", "-C", target]);
     if (index === 2) {
       await writeFile(
         join(target, "package.json"),
@@ -120,10 +100,7 @@ export async function controllerFixture(
     retained: { draft: "keep", selection: "sales" },
   };
   await writeFile(join(dir, "package.json"), JSON.stringify(profileManifest));
-  await writeFile(
-    join(dir, "pnpm-lock.yaml"),
-    "lockfileVersion: 9\nold: true\n",
-  );
+  await writeFile(join(dir, "pnpm-lock.yaml"), "lockfileVersion: 9\nold: true\n");
   await writeFile(join(dir, "cordis.patch.yml"), "retained patch\n");
   const { privateKey, publicKey } = generateKeyPairSync("ed25519"),
     payload = Buffer.from(
@@ -191,10 +168,7 @@ export async function controllerFixture(
     home: root,
     packageManager: {
       command: process.execPath,
-      args: [
-        fileURLToPath(new URL("./package-manager.cjs", import.meta.url)),
-        "--fixture-prefix",
-      ],
+      args: [fileURLToPath(new URL("./package-manager.cjs", import.meta.url)), "--fixture-prefix"],
       env: {
         FIXTURE_MODE: mode,
         FIXTURE_LAUNCHER_MARKER: "launcher-provided",
@@ -245,8 +219,5 @@ export async function waitForStage(controller, stages, timeout = 12000) {
     if (operation && stages.includes(operation.stage)) return operation;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  throw Error(
-    "operation did not reach expected stage: " +
-      JSON.stringify(controller.snapshot()),
-  );
+  throw Error("operation did not reach expected stage: " + JSON.stringify(controller.snapshot()));
 }
