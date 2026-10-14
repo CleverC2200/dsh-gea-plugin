@@ -30,7 +30,7 @@ test(
     for (const [file, sha256] of Object.entries({
       "prompt.json": "a49c1e7e768e053459a395971994515cc568317e6a8ff09523ed0ebb049f8a55",
       "capability.json": "a8375227ec9fc3ec647069607d08affbea0c0547efd8f5bbbc7b62d4ec349fd1",
-      "skills/aqkc/SKILL.md": "0835006111622fd2c3289ab5d3910a05da50af77393cf76b24c481fd76a796ba",
+      "skills/aqkc/SKILL.md": "41b8fb11d166ff89afb926f0e5632b0a4f4c0da3866e3ddaafc654597aa29454",
     })) {
       const bytes = await readFile(join(maintainedRoot, file));
       assert.equal(createHash("sha256").update(bytes).digest("hex"), sha256, file);

@@ -1,7 +1,9 @@
 import { stockMcpRoute, stockState } from "./fixtures/branch-stock.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 import { resolve } from "node:path";
 import { profile, readSession, until } from "./profile.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
@@ -10,10 +12,41 @@ test(
   "GEA personal model preserves text and terminal states through the real profile",
   { timeout: 90000 },
   async (t) => {
+    const workbench = (await readProfileSources(process.env.GEA_TEST_SOURCE_INPUTS)).find(
+      (source) => source.repo === "dsh-agent-workbench",
+    );
+    const apsFixture = await mkdtemp(resolve(tmpdir(), "gea-model-aps-mock-"));
+    t.after(() => rm(apsFixture, { recursive: true, force: true }));
+    await cp(resolve(workbench.assetRoot, "lib/business/inventory-apsplan"), apsFixture, {
+      recursive: true,
+    });
+    for (const [file, update] of [
+      [
+        "plugin.json",
+        (value) => {
+          value.mode = "mock";
+        },
+      ],
+      [
+        "capability.json",
+        (value) => {
+          value.data.mock = true;
+        },
+      ],
+      [
+        "mcp.json",
+        (value) => {
+          value.capabilities = [];
+        },
+      ],
+    ]) {
+      const path = resolve(apsFixture, file);
+      const value = JSON.parse(await readFile(path, "utf8"));
+      update(value);
+      await writeFile(path, JSON.stringify(value));
+    }
     const app = await profile(t, {
-      beforeStart: fixtureWorkbench([
-        resolve("../dsh-agent-workbench/lib/business/inventory-apsplan"),
-      ]),
+      beforeStart: fixtureWorkbench([apsFixture]),
       config: () => ({
         cubeMcpCodes: { production: "cube" },
         modelRequestTimeoutMs: 1000,
@@ -203,13 +236,12 @@ test(
       });
       assert.equal(found.ok, true, JSON.stringify(found));
       assert.equal(found.value.consumerCode, "sales_forecast");
-      const capability = JSON.parse(
-        await readFile(
-          resolve("../dsh-agent-workbench/lib/business/inventory-apsplan/capability.json"),
-          "utf8",
-        ),
+      const capability = JSON.parse(await readFile(resolve(apsFixture, "capability.json"), "utf8"));
+      assert.equal(
+        capability.data.mock,
+        true,
+        "this model-admission fixture is explicitly mock-only",
       );
-      assert.equal(capability.data.mock, true, "the CI APS build is explicitly mock-only");
       const discoveryRequests = () =>
         app.requests.filter((request) =>
           /\/user-agent-credential\/my\/(?:list|claim)$|\/personal\/(?:models|chat\/completions)$/.test(
