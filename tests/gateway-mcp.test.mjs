@@ -28,6 +28,50 @@ const session = () => ({
   },
 });
 
+test("stopping a setup or request does not poison the retained login transport", async () => {
+  const identity = new AbortController();
+  const setup = new AbortController();
+  let sent = 0;
+  const connection = await prepareGatewayMcp(
+    "https://gea.test",
+    auth,
+    consumer,
+    identity.signal,
+    1000,
+    async (url, init) => {
+      init.signal.throwIfAborted();
+      sent++;
+      return url.endsWith("/session")
+        ? Response.json(session())
+        : Response.json({ jsonrpc: "2.0", result: {} });
+    },
+    { setupSignal: setup.signal },
+  );
+  setup.abort();
+  const stopped = new AbortController();
+  stopped.abort();
+  const request = {
+    method: "POST",
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }),
+  };
+  await assert.rejects(
+    connection.fetch(connection.url, { ...request, signal: stopped.signal }),
+    /abort/i,
+  );
+  assert.equal(sent, 1);
+  await connection.fetch(connection.url, {
+    ...request,
+    signal: new AbortController().signal,
+  });
+  assert.equal(sent, 2);
+  identity.abort();
+  await assert.rejects(
+    connection.fetch(connection.url, request),
+    /abort|login|身份/i,
+  );
+  assert.equal(sent, 2);
+});
+
 test("creates authorized session and isolates trusted meta from business arguments", async () => {
   const controller = new AbortController();
   const calls = [];
@@ -109,7 +153,10 @@ test("rejects denied, incomplete and wrong-consumer sessions despite HTTP succes
     [(p) => (p.result.accessDecision.allowed = false), /AGENT_ACCESS_DENIED/],
     [(p) => (p.result.delegationToken = ""), /SESSION_REJECTED/],
     [(p) => (p.result.gatewayContext.conversationId = ""), /SESSION_REJECTED/],
-    [(p) => (p.result.gatewayContext.consumerCode = "other"), /SESSION_REJECTED/],
+    [
+      (p) => (p.result.gatewayContext.consumerCode = "other"),
+      /SESSION_REJECTED/,
+    ],
     [(p) => (p.success = false), /SESSION_REJECTED/],
   ];
   for (const [mutate, expected] of cases) {
@@ -210,6 +257,7 @@ test("Business login notifications and transport capabilities follow logout and 
     },
     requestTimeoutMs: 1000,
     analysisAgentCode: "test-agent",
+    cubeMcpCodes: { production: "cube-fixture", test: "cube-fixture" },
   });
   const original = globalThis.fetch;
   let notifications = 0;
@@ -225,7 +273,14 @@ test("Business login notifications and transport capabilities follow logout and 
     if (url.includes("/getUserInfo"))
       return Response.json({
         success: true,
-        result: { userInfo: { id: "user", username: "user", tenantId: "0", avatar: "https://avatar.test/user.png" } },
+        result: {
+          userInfo: {
+            id: "user",
+            username: "user",
+            tenantId: "0",
+            avatar: "https://avatar.test/user.png",
+          },
+        },
       });
     if (url.endsWith("/session")) return Response.json(session());
     return Response.json({});
@@ -243,14 +298,22 @@ test("Business login notifications and transport capabilities follow logout and 
     assert.equal(business.status().authenticated, true);
     assert.equal(business.status().user.avatar, "https://avatar.test/user.png");
     assert.equal(notifications, 2);
-    const connection = await business.openMcpConnection(
-      consumer,
-      new AbortController().signal,
-    );
+    const setup = new AbortController();
+    const connection = await business.openMcpConnection(consumer, setup.signal);
+    setup.abort();
+    await connection.fetch(connection.url, {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }),
+    });
     business.logout({});
     assert.equal(notifications, 3);
     await assert.rejects(() => connection.fetch(connection.url, {}));
-    await assert.rejects(() => connection.authorizedResources("query_business_data",new AbortController().signal));
+    await assert.rejects(() =>
+      connection.authorizedResources(
+        "query_business_data",
+        new AbortController().signal,
+      ),
+    );
     business.selectEnvironment({ environment: "test" });
     assert.equal(notifications, 4);
     unwatch();
@@ -428,22 +491,45 @@ test("local Skill file URI is rejected before gateway IO with the correct reader
 
 test("SDK calls recover an expired transport session once, including concurrent calls", async () => {
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-  const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
-  let generation = 0, expired = false, initialized = false;
+  const { StreamableHTTPClientTransport } = await import(
+    "@modelcontextprotocol/sdk/client/streamableHttp.js"
+  );
+  let generation = 0,
+    expired = false,
+    initialized = false;
   const calls = [];
-  const connection = await prepareGatewayMcp("https://gea.test", auth, consumer,
-    new AbortController().signal, 1000, async (url, init) => {
+  const connection = await prepareGatewayMcp(
+    "https://gea.test",
+    auth,
+    consumer,
+    new AbortController().signal,
+    1000,
+    async (url, init) => {
       if (url.endsWith("/session")) return Response.json(session());
       if (init.method !== "POST") return new Response(null, { status: 405 });
       const message = JSON.parse(init.body);
       if (message.method === "initialize") {
-        generation++; expired = false; initialized = false;
-        return Response.json({ jsonrpc: "2.0", id: message.id, result: {
-          protocolVersion: message.params.protocolVersion, capabilities: { tools: {} },
-          serverInfo: { name: "test", version: "1" },
-        } }, { headers: { "MCP-Session-Id": "transport-" + generation } });
+        generation++;
+        expired = false;
+        initialized = false;
+        return Response.json(
+          {
+            jsonrpc: "2.0",
+            id: message.id,
+            result: {
+              protocolVersion: message.params.protocolVersion,
+              capabilities: { tools: {} },
+              serverInfo: { name: "test", version: "1" },
+            },
+          },
+          { headers: { "MCP-Session-Id": "transport-" + generation } },
+        );
       }
-      if (expired || new Headers(init.headers).get("MCP-Session-Id") !== "transport-" + generation)
+      if (
+        expired ||
+        new Headers(init.headers).get("MCP-Session-Id") !==
+          "transport-" + generation
+      )
         return new Response(null, { status: 404 });
       if (message.method === "notifications/initialized") {
         initialized = true;
@@ -451,47 +537,92 @@ test("SDK calls recover an expired transport session once, including concurrent 
       }
       assert.equal(initialized, true);
       assert.equal(message.params._meta.delegationToken, "delegation-secret");
-      if (message.method === "tools/list") return Response.json({ jsonrpc: "2.0", id: message.id, result: { tools: ["first", "second", "third"].map(name => ({ name, inputSchema: { type: "object" }, _meta: { sourceCode: "test-mcp" } })) } });
+      if (message.method === "tools/list")
+        return Response.json({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {
+            tools: ["first", "second", "third"].map((name) => ({
+              name,
+              inputSchema: { type: "object" },
+              _meta: { sourceCode: "test-mcp" },
+            })),
+          },
+        });
       assert.equal(message.params._meta.mcpCode, "test-mcp");
       calls.push(message.params.name);
-      return Response.json({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: "ok" }] } });
-    });
+      return Response.json({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: { content: [{ type: "text", text: "ok" }] },
+      });
+    },
+  );
   const client = new Client({ name: "regression", version: "1" });
-  const transport = new StreamableHTTPClientTransport(new URL(connection.url), { fetch: connection.fetch });
+  const transport = new StreamableHTTPClientTransport(new URL(connection.url), {
+    fetch: connection.fetch,
+  });
   await client.connect(transport);
   await client.listTools();
   try {
     expired = true;
-    const results = await Promise.all(["first", "second"].map(name => client.callTool({ name, arguments: {} })));
+    const results = await Promise.all(
+      ["first", "second"].map((name) =>
+        client.callTool({ name, arguments: {} }),
+      ),
+    );
     assert.equal(results.length, 2);
     await client.callTool({ name: "third", arguments: {} });
     assert.equal(generation, 2, "concurrent failures share one initialization");
     assert.deepEqual(calls.sort(), ["first", "second", "third"]);
-  } finally { await client.close(); }
+  } finally {
+    await client.close();
+  }
 });
 
 test("HTTP failures preserve their status, do not leak bodies and have bounded retries", async () => {
   for (const status of [400, 401, 403, 404, 500]) {
-    let attempts = 0, initializations = 0;
-    const connection = await prepareGatewayMcp("https://gea.test", auth, consumer,
-      new AbortController().signal, 1000, async (url, init) => {
+    let attempts = 0,
+      initializations = 0;
+    const connection = await prepareGatewayMcp(
+      "https://gea.test",
+      auth,
+      consumer,
+      new AbortController().signal,
+      1000,
+      async (url, init) => {
         if (url.endsWith("/session")) return Response.json(session());
         const message = JSON.parse(init.body);
         if (message.method === "initialize") {
           initializations++;
-          return Response.json({ result: { protocolVersion: "2025-11-25" } },
-            { headers: { "MCP-Session-Id": "session-" + initializations } });
+          return Response.json(
+            { result: { protocolVersion: "2025-11-25" } },
+            { headers: { "MCP-Session-Id": "session-" + initializations } },
+          );
         }
-        if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
+        if (message.method === "notifications/initialized")
+          return new Response(null, { status: 202 });
         attempts++;
         return new Response("upstream-secret", { status });
-      });
+      },
+    );
     const headers = { "MCP-Protocol-Version": "2025-11-25" };
-    await connection.fetch(connection.url, { method: "POST", headers,
-      body: JSON.stringify({ method: "initialize" }) });
-    await assert.rejects(() => connection.fetch(connection.url, { method: "POST", headers,
-      body: JSON.stringify({ method: "resources/list", params: {} }) }),
-    error => error.message.includes(`GEA_MCP_HTTP_${status}`) && !error.message.includes("upstream-secret"));
+    await connection.fetch(connection.url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ method: "initialize" }),
+    });
+    await assert.rejects(
+      () =>
+        connection.fetch(connection.url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ method: "resources/list", params: {} }),
+        }),
+      (error) =>
+        error.message.includes(`GEA_MCP_HTTP_${status}`) &&
+        !error.message.includes("upstream-secret"),
+    );
     assert.equal(attempts, status === 404 ? 2 : 1);
     assert.equal(initializations, status === 404 ? 2 : 1);
   }
@@ -499,22 +630,42 @@ test("HTTP failures preserve their status, do not leak bodies and have bounded r
 
 test("logout during transport recovery prevents replay", async () => {
   const controller = new AbortController();
-  let initializations = 0, calls = 0;
-  const connection = await prepareGatewayMcp("https://gea.test", auth, consumer,
-    controller.signal, 1000, async (url, init) => {
+  let initializations = 0,
+    calls = 0;
+  const connection = await prepareGatewayMcp(
+    "https://gea.test",
+    auth,
+    consumer,
+    controller.signal,
+    1000,
+    async (url, init) => {
       if (url.endsWith("/session")) return Response.json(session());
       if (JSON.parse(init.body).method === "initialize") {
         if (++initializations === 2) controller.abort();
-        return Response.json({ result: { protocolVersion: "2025-11-25" } },
-          { headers: { "MCP-Session-Id": "transport" } });
+        return Response.json(
+          { result: { protocolVersion: "2025-11-25" } },
+          { headers: { "MCP-Session-Id": "transport" } },
+        );
       }
       calls++;
       return new Response(null, { status: 404 });
-    });
+    },
+  );
   const headers = { "MCP-Protocol-Version": "2025-11-25" };
-  await connection.fetch(connection.url, { method: "POST", headers, body: JSON.stringify({ method: "initialize" }) });
-  await assert.rejects(() => connection.fetch(connection.url, { method: "POST", headers,
-    body: JSON.stringify({ method: "resources/list", params: {} }) }), { name: "AbortError" });
+  await connection.fetch(connection.url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ method: "initialize" }),
+  });
+  await assert.rejects(
+    () =>
+      connection.fetch(connection.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ method: "resources/list", params: {} }),
+      }),
+    { name: "AbortError" },
+  );
   assert.equal(calls, 1);
 });
 
@@ -538,7 +689,8 @@ test("网关拒绝 MCP 会话时给出稳定错误码，宿主据此止损", asy
           },
         }),
     ),
-    (error) => error.code === "AGENT_ACCESS_DENIED" && /无权访问/.test(error.message),
+    (error) =>
+      error.code === "AGENT_ACCESS_DENIED" && /无权访问/.test(error.message),
   );
   // 会话"形状不对"（不是权限问题）仍然是协议级错误。
   await assert.rejects(
@@ -582,23 +734,42 @@ test("HTTP 429 按 Retry-After 给出等待建议，不当作连接坏了", asyn
   // 规约 §14：限流要么回 429 + Retry-After（REST /call），要么在 200 的业务信封里回；
   // 两种情况都要给"等多久"，并且明确不能原样立刻重试。
   let calls = 0;
-  const connection = await prepareGatewayMcp("https://gea.test", auth, consumer,
-    new AbortController().signal, 1000, async (url, init) => {
+  const connection = await prepareGatewayMcp(
+    "https://gea.test",
+    auth,
+    consumer,
+    new AbortController().signal,
+    1000,
+    async (url, init) => {
       if (url.endsWith("/session")) return Response.json(session());
       const message = JSON.parse(init.body);
       if (message.method === "initialize")
-        return Response.json({ result: { protocolVersion: "2025-11-25" } },
-          { headers: { "MCP-Session-Id": "session-1" } });
-      if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
+        return Response.json(
+          { result: { protocolVersion: "2025-11-25" } },
+          { headers: { "MCP-Session-Id": "session-1" } },
+        );
+      if (message.method === "notifications/initialized")
+        return new Response(null, { status: 202 });
       calls++;
-      return new Response("rate limited", { status: 429, headers: { "Retry-After": "3" } });
-    });
+      return new Response("rate limited", {
+        status: 429,
+        headers: { "Retry-After": "3" },
+      });
+    },
+  );
   const headers = { "MCP-Protocol-Version": "2025-11-25" };
-  await connection.fetch(connection.url, { method: "POST", headers,
-    body: JSON.stringify({ method: "initialize" }) });
+  await connection.fetch(connection.url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ method: "initialize" }),
+  });
   await assert.rejects(
-    () => connection.fetch(connection.url, { method: "POST", headers,
-      body: JSON.stringify({ method: "resources/list", params: {} }) }),
+    () =>
+      connection.fetch(connection.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ method: "resources/list", params: {} }),
+      }),
     (error) => {
       assert.match(error.message, /GEA_MCP_RATE_LIMITED/);
       assert.match(error.message, /等 3 秒再试/);

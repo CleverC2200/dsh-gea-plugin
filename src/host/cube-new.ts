@@ -5,13 +5,6 @@ const object = (value: unknown): Record<string, unknown> | undefined =>
     ? (value as Record<string, unknown>)
     : undefined;
 
-/** Select the deployed model-description tool; never send the old inspect action to Cube-New. */
-export function cubeInspection(tools: readonly { name: string }[], keyword?: string) {
-  return tools.some((tool) => tool.name === "inspect_cube_model")
-    ? { name: "inspect_cube_model", arguments: { limit: 50, ...(keyword ? { keyword } : {}) } }
-    : { name: "query_business_data", arguments: { action: "inspect", queries: [] } };
-}
-
 /** Validate the gateway's original artifact bytes before publishing any business evidence. */
 export function cubeNewArtifact(
   result: unknown,
