@@ -133,6 +133,24 @@ export async function catalogSceneProfile(t, options, scene = "model") {
   const combination = join(app.runtime, "source-combinations", selected.id);
   const owners = JSON.parse(await readFile(join(combination, "company-plugins.json"), "utf8"));
   await assertCatalogSceneOwners(owners);
+  const apsRoot = join(
+    combination,
+    "node_modules",
+    packages.workbench,
+    "lib/business/inventory-apsplan",
+  );
+  const [apsBuild, apsPlugin, apsCapability] = await Promise.all(
+    ["build-inputs.json", "plugin.json", "capability.json"].map(async (file) =>
+      JSON.parse(await readFile(join(apsRoot, file), "utf8")),
+    ),
+  );
+  assert.ok(["mock", "governed-read"].includes(apsBuild.mode), "declared APS build mode required");
+  assert.equal(apsPlugin.mode === "mock", apsBuild.mode === "mock", "APS plugin build mode");
+  assert.equal(
+    apsCapability.data.mock === true,
+    apsBuild.mode === "mock",
+    "APS capability build mode",
+  );
   await assertCatalogSceneSources((source) =>
     readFile(
       join(
@@ -166,6 +184,7 @@ export async function catalogSceneProfile(t, options, scene = "model") {
   );
   app.catalogScene = {
     tools,
+    apsMode: apsBuild.mode,
     entries: fixture.completeSkillEntries[scene],
     bodies: [fixture.canary.body, ...(scene === "promptQa" ? [fixture.qaFixtureSkillBody] : [])],
   };
