@@ -1,31 +1,12 @@
-import {
-  forecastSourceProof,
-  forecastBaselineHash,
-  hasUserForecastInput,
-  FORECAST_VERSION,
-} from "dsh-agent-manage/forecast-source";
 import { hasPageReferences } from "@cleverc2200/dsh-agent-workbench/page-interaction/reference";
 import { sessionConsumer, assertSessionResourceAvailable } from "./business-identity.ts";
 import { businessToolDisplay } from "./business-tool-display.ts";
-import { catalogFactSummary } from "./gateway-catalog.ts";
 import { salesSourceIssueForTurns, requestedOutputScope } from "./sales-result-contract.ts";
 import { prefersBusinessCards } from "./business-presentation.ts";
-import {
-  resultView,
-  resultReceipt,
-  transientResult,
-  permissionDenied,
-  resultOutcome,
-  datasetIndex,
-  indexProjection,
-  readDataset,
-  compactDatasetProjection,
-} from "./prompt-result.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { resolve } from "node:path";
-import { createHash, randomUUID } from "node:crypto";
 import type { Business } from "./business.ts";
 import type { CapabilityRegistry } from "../capability/registry.ts";
 import { surfacePromptLine, isMainSurface } from "./workbench-surface.ts";
@@ -38,14 +19,6 @@ import {
   promptMeasurement,
   TOOL_DESCRIPTIONS,
 } from "./prompt-policy.ts";
-import { stopExpiredGateway } from "./agent-tools.ts";
-import {
-  projectEvidence,
-  withoutHistoricalEvidence,
-  exactResult,
-  type EvidenceGrant,
-} from "./prompt-evidence.ts";
-
 import { PromptExecutionState } from "./prompt-execution-state.ts";
 
 const cubeMethod = (name: string) =>
@@ -73,42 +46,6 @@ export function mountBusinessPrompts(
   capability: CapabilityRegistry,
 ): () => void {
   const states = new Map<Agent, AdmissionState>();
-  const executionGrants = new Map<symbol, EvidenceGrant>();
-  const runtimeId = randomUUID();
-  const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-  const owner = () => {
-    const status = business.status();
-    return hash([
-      status.source,
-      status.environment,
-      status.user?.id,
-      status.user?.tenantId,
-      status.permissionCodes,
-      status.roles,
-    ]);
-  };
-  const ephemeral = (agent: Agent) =>
-    `${runtimeId}:${business.readTurnRevision(agent.id)}:${business.surfaceFor(agent.id)?.menu ?? ""}`;
-  const resourceProof = async (
-    consumer: string,
-    tool: string,
-    signal: AbortSignal,
-    scope: string,
-  ) => {
-    try {
-      const module = await business.moduleMcp(consumer, signal);
-      const snapshot = await module.authorizedResources(tool, signal);
-      if (!snapshot.resources.length) throw Error("GEA_EVIDENCE_AUTHORIZATION_CHANGED");
-      return hash(snapshot.resources.map((resource) => JSON.stringify(resource)).sort());
-    } catch (error) {
-      throw stopExpiredGateway(business, consumer, scope, error) ?? error;
-    }
-  };
-  const valueHash = (text: string) => {
-    const result = exactResult(text) as { value?: unknown };
-    return hash(result.value ?? result);
-  };
-
   const presetOf = (agent: Agent) => ctx.sessionProjections.stateOf(agent.session, "agentPreset");
   const profileOf = (agent: Agent | undefined) =>
     agent ? profileFor(presetOf(agent) ?? undefined) : undefined;
@@ -118,6 +55,7 @@ export function mountBusinessPrompts(
     resolve(business.config.runtimeDir, "prompt-evidence"),
     (agent) => presetOf(agent) ?? undefined,
     (preset) => !!profileFor(preset),
+    { ctx, business },
   );
   const stateOf = (agent: Agent) => {
     let state = states.get(agent);
@@ -276,30 +214,15 @@ export function mountBusinessPrompts(
         (businessMethod(exec.name) || exec.name === "forecast_compute")
       ) {
         // Capture before resource admission awaits; old calls never acquire a new turn's owner.
-        executionState.begin(exec.agent, exec.token);
+        executionState.begin(exec.agent, exec.token, exec);
       }
       try {
         await assertSessionResourceAvailable(ctx, exec.agent?.id, exec.signal);
-        executionState.admitted(executionState.execution(exec.token), exec.name);
-        if (
-          exec.agent &&
-          profileOf(exec.agent) &&
-          (businessMethod(exec.name) || exec.name === "forecast_compute")
-        ) {
-          const args = exec.arguments as Record<string, unknown>;
-          const grant: EvidenceGrant = {
-            owner: owner(),
-            ephemeral: ephemeral(exec.agent),
-          };
-          if (exec.name === "forecast_compute") grant.kind = "local";
-          if (exec.name === "gea_sales_plan_read") grant.query = args;
-          executionGrants.set(exec.token, grant);
-        }
+        executionState.admitted(executionState.execution(exec.token));
         return await next();
       } catch (error) {
         // Official around-dispatch failures bypass post-execute; retire this execution's metadata here.
         executionState.take(exec.token);
-        executionGrants.delete(exec.token);
         throw error;
       }
     }),
@@ -308,229 +231,8 @@ export function mountBusinessPrompts(
     ctx.on("tools/post-execute", async (exec, result, next) => {
       // Tool dispatch has ended. This hook is the sole consumer of these receipts, even if a later policy throws.
       const execution = executionState.take(exec.token);
-      const grant = executionGrants.get(exec.token);
-      executionGrants.delete(exec.token);
       const decision = await next();
-      const agent = exec.agent;
-      if (
-        agent &&
-        profileOf(agent) &&
-        (businessMethod(exec.name) || exec.name === "forecast_compute")
-      ) {
-        const args = exec.arguments as Record<string, unknown>;
-        const texts = result.content
-          .filter((b) => b.type === "text")
-          .map((b) => (b.type === "text" ? b.text : ""))
-          .join("\n");
-        let read: { key: string; text: string } | undefined;
-        if (!result.isError && exec.name === "gea_evidence_read") {
-          try {
-            const part = JSON.parse(texts);
-            read = {
-              key: `${part.evidenceId}:${part.dataset ?? "raw"}`,
-              text: JSON.stringify({
-                evidenceId: part.evidenceId,
-                dataset: part.dataset,
-                name: part.name,
-                display: part.projection ?? part.representation,
-                rowOffset: part.rowOffset,
-                returnedRows: part.returnedRows,
-                readOffset: part.offset,
-                nextOffset: part.nextOffset,
-              }),
-            };
-          } catch {}
-        }
-        executionState.recordOutcome(execution, {
-          failure:
-            result.isError || resultOutcome(texts) === "blocked"
-              ? {
-                  key: hash([exec.name, exec.arguments]),
-                  text: JSON.stringify({
-                    tool: exec.name,
-                    status: "blocked",
-                    code:
-                      texts.match(/GEA_[A-Z_]+|AI_GATEWAY_[A-Z_]+|DATA_QUERY_[A-Z_]+/)?.[0] ??
-                      "TOOL_FAILED",
-                    note: "本次未取得有效结果；不撤销其它成功证据",
-                  }),
-                }
-              : undefined,
-          read,
-          deniedConsumer:
-            cubeMethod(exec.name) && permissionDenied(texts)
-              ? typeof args.consumerCode === "string" && args.consumerCode.trim()
-                ? args.consumerCode.trim()
-                : sessionConsumer(ctx, business, agent.id)
-              : undefined,
-          catalog:
-            exec.name === "mcp__gea-gateway__inspect_cube_model" &&
-            decision.kind === "accept" &&
-            !result.isError &&
-            !permissionDenied(texts)
-              ? {
-                  fingerprint: hash(texts),
-                  reused: texts.includes('"source":"GEA_CATALOG_REUSED"'),
-                  model: String(args.model ?? "catalog"),
-                  facts: catalogFactSummary(texts),
-                }
-              : undefined,
-        });
-      }
-
-      if (
-        !agent ||
-        !profileOf(agent) ||
-        result.isError ||
-        decision.kind !== "accept" ||
-        "value" in decision ||
-        !(
-          exec.name === "forecast_compute" ||
-          /^gea_(?:sales_plan_read|page|visible_workbench_context)$/.test(exec.name)
-        )
-      )
-        return decision;
-      const content = decision.content ?? result.content;
-      if (content.some((block) => block.type !== "text")) return decision;
-      const rawText = content.map((block) => (block.type === "text" ? block.text : "")).join("\n");
-      const text = withoutHistoricalEvidence(rawText);
-      if (!text) return decision;
-      if (resultOutcome(text) === "blocked")
-        return {
-          ...decision,
-          content: [{ type: "text", text: transientResult(text, PROMPT_BUDGET.result) }],
-        };
-      // Without the exact query's authorization receipt, preserve the original one-time result.
-      // Never invent a reusable permission from an empty snapshot or page/turn identity.
-      if (grant?.kind === "mcp" && !grant.resources)
-        return {
-          ...decision,
-          content: [
-            {
-              type: "text",
-              text: transientResult(
-                text,
-                PROMPT_BUDGET.result,
-                String((exec.arguments as Record<string, unknown>).tool ?? "").startsWith(
-                  "lightrag_",
-                ),
-              ),
-            },
-          ],
-        };
-      if (exec.name === "forecast_compute" && grant) {
-        const baseline = await ctx.skills.get("sinian-demand-baseline", {
-          scope: agent,
-          cwd: agent.session.header.cwd,
-          signal: exec.signal,
-        });
-        exec.signal.throwIfAborted();
-        const proof = forecastSourceProof(
-          exec.arguments,
-          agent.session
-            .snapshotEvents()
-            .filter((event) => event.type === "user/message")
-            .map((event) => event.data),
-          baseline,
-        );
-        const original = exactResult(text) as {
-          source?: Record<string, unknown>;
-        };
-        if (
-          original.source?.inputHash !== proof.inputHash ||
-          original.source?.calculatorVersion !== proof.calculatorVersion ||
-          original.source?.baselineHash !== proof.baselineHash ||
-          original.source?.userInputVerified !== proof.userInputVerified ||
-          original.source?.businessAuthorization !== false
-        )
-          return {
-            kind: "block",
-            feedback: [
-              {
-                type: "text",
-                text: "GEA_CALCULATION_SOURCE_CHANGED: 当前计算输入、原生规则或用户来源已改变，旧结果不可复用。",
-              },
-            ],
-          };
-        grant.baselineHash = proof.baselineHash;
-        grant.calculatorVersion = proof.calculatorVersion;
-        if (proof.userInputVerified) {
-          grant.inputHash = proof.inputHash;
-          delete grant.ephemeral;
-        }
-      }
-      if (grant?.query) {
-        try {
-          grant.valueHash = valueHash(text);
-        } catch {
-          delete grant.query;
-        }
-      }
-      const published = await executionState.publishEvidence(
-        execution,
-        exec.name,
-        text,
-        grant,
-        (id, alreadyDelivered) => {
-          const compact =
-            !alreadyDelivered && grant?.kind === "mcp"
-              ? compactDatasetProjection(text, id, PROMPT_BUDGET.result)
-              : undefined;
-          let projected = alreadyDelivered
-            ? JSON.stringify({
-                evidenceId: id,
-                projection: "reference",
-                note: "同一结果已返回，需要正文用 gea_evidence_read 回读。",
-              })
-            : (compact ??
-              projectEvidence(
-                text,
-                id,
-                PROMPT_BUDGET.result,
-                grant?.kind === "mcp" ? resultView(text) : undefined,
-              ));
-          if (grant?.kind === "mcp" && compact === undefined)
-            projected = indexProjection(
-              projected,
-              id,
-              datasetIndex(text, id),
-              PROMPT_BUDGET.result,
-            );
-          let display = "complete";
-          if (projected !== text) {
-            try {
-              display = JSON.parse(projected).projection ?? "complete";
-            } catch {
-              display = "partial";
-            }
-          }
-          return {
-            text: projected,
-            receipt: resultReceipt(
-              exec.name,
-              exec.arguments as Record<string, unknown>,
-              id,
-              text,
-              display,
-            ),
-          };
-        },
-      );
-      if (published.kind === "identity-changed")
-        return {
-          kind: "block",
-          feedback: [
-            {
-              type: "text",
-              text: "GEA_EVIDENCE_IDENTITY_CHANGED: 身份已改变，旧结果不能作为当前证据。",
-            },
-          ],
-        };
-      if (published.kind === "stale-context") return decision;
-      return {
-        ...decision,
-        content: [{ type: "text" as const, text: published.text }],
-      };
+      return executionState.finish(execution, result, decision);
     }),
   );
 
@@ -682,158 +384,9 @@ export function mountBusinessPrompts(
         output,
         isConcurrencySafe: () => true,
         async execute(args, exec) {
-          const agent = exec.agent;
-          if (!agent) throw Error("SESSION_REQUIRED");
-          const unknown = Object.keys(args).filter(
-            (key) =>
-              ![
-                "evidenceId",
-                "dataset",
-                "datasetId",
-                "rowOffset",
-                "rowLimit",
-                "offset",
-                "limit",
-                "format",
-                "reload",
-              ].includes(key),
+          return JSON.stringify(
+            await executionState.read(executionState.execution(exec.token), args),
           );
-          if (unknown.length)
-            throw Error(
-              "GEA_EVIDENCE_ARGUMENT: 未支持的参数 " +
-                unknown.join(",") +
-                "；请按nextRead调用，不会忽略参数退回原文模式。",
-            );
-          if (args.dataset && args.datasetId && args.dataset !== args.datasetId)
-            throw Error("GEA_EVIDENCE_ARGUMENT: dataset与datasetId不能不同。");
-          if (args.datasetId && !args.dataset) args = { ...args, dataset: args.datasetId };
-          if (args.dataset && args.format === "raw")
-            throw Error("GEA_EVIDENCE_READ_MODE: dataset和raw不能混用。");
-
-          if (!args.dataset && (args.rowOffset !== undefined || args.rowLimit !== undefined))
-            throw Error(
-              "GEA_EVIDENCE_READ_MODE: rowOffset/rowLimit必须指定dataset；不会忽略行参数退回原文模式。",
-            );
-          if (args.dataset && (args.offset !== undefined || args.limit !== undefined))
-            throw Error(
-              "GEA_EVIDENCE_READ_MODE: dataset模式使用rowOffset/rowLimit，原文模式使用offset/limit，按nextRead调用。",
-            );
-          let trackView = true;
-          const read = await executionState.readEvidence(
-            executionState.execution(exec.token),
-            agent,
-            args.evidenceId,
-            args.offset,
-            args.limit,
-            async (grant, tool) => {
-              if (
-                /^gea_(cube_query|module_mcp)$/.test(tool) &&
-                (!grant.consumer || !grant.resources)
-              )
-                throw Error("GEA_EVIDENCE_AUTHORIZATION_REQUIRED");
-              if (grant.owner !== owner()) throw Error("GEA_EVIDENCE_IDENTITY_CHANGED");
-              if (grant.kind === "local" && tool === "forecast_compute") {
-                const baseline = await ctx.skills.get("sinian-demand-baseline", {
-                  scope: agent,
-                  cwd: agent.session.header.cwd,
-                  signal: exec.signal,
-                });
-                exec.signal.throwIfAborted();
-                if (
-                  grant.calculatorVersion !== FORECAST_VERSION ||
-                  grant.baselineHash !== forecastBaselineHash(baseline)
-                )
-                  throw Error("GEA_CALCULATION_SOURCE_CHANGED: 计算版本或当前原生规则已变化。");
-                if (grant.inputHash) {
-                  if (
-                    !hasUserForecastInput(
-                      agent.session
-                        .snapshotEvents()
-                        .filter((event) => event.type === "user/message")
-                        .map((event) => event.data),
-                      grant.inputHash,
-                    )
-                  )
-                    throw Error("GEA_EVIDENCE_STALE: 当前Session缺少原用户结构化输入。");
-                } else if (grant.ephemeral !== ephemeral(agent))
-                  throw Error("GEA_EVIDENCE_STALE: 模型生成输入只能在当前轮次使用。");
-              } else if (grant.consumer && grant.resourceTool && grant.resources) {
-                if (
-                  (await resourceProof(
-                    grant.consumer,
-                    grant.resourceTool,
-                    exec.signal,
-                    agent.id,
-                  )) !== grant.resources
-                )
-                  throw Error("GEA_EVIDENCE_AUTHORIZATION_CHANGED");
-              } else if (grant.kind === "mcp") throw Error("GEA_EVIDENCE_AUTHORIZATION_REQUIRED");
-              else if (grant.query && grant.valueHash) {
-                // Direct sales reads have no resource-version endpoint. Revalidate the exact query under current row permissions.
-                const current = await business.agentQuery(grant.query, exec.signal);
-                if (valueHash(current) !== grant.valueHash)
-                  throw Error("GEA_EVIDENCE_STALE: 数据或权限范围已改变，请取得新的结果。");
-              } else if (grant.ephemeral !== ephemeral(agent))
-                throw Error("GEA_EVIDENCE_STALE: 页面或临时结果需要重新读取。");
-            },
-            args.format === "raw" || (args.format === undefined && Number(args.offset) > 0)
-              ? undefined
-              : (raw) => {
-                  const index = datasetIndex(raw, args.evidenceId);
-                  // Old non-Cube consumers use character slices (e.g. calculation drafts).
-                  if (
-                    !index.length &&
-                    args.format === undefined &&
-                    (args.offset !== undefined || args.limit !== undefined)
-                  ) {
-                    trackView = false;
-                    const offset = args.offset ?? 0,
-                      limit = args.limit ?? 4000,
-                      nextOffset = offset + limit < raw.length ? offset + limit : null;
-                    return {
-                      projection: offset === 0 && raw.length <= limit ? "complete" : "partial",
-                      offset,
-                      totalChars: raw.length,
-                      nextOffset,
-                      content: raw.slice(offset, offset + limit),
-                      nextRead:
-                        nextOffset === null
-                          ? null
-                          : {
-                              tool: "gea_evidence_read",
-                              args: {
-                                evidenceId: args.evidenceId,
-                                format: "raw",
-                                offset: nextOffset,
-                                limit,
-                              },
-                            },
-                    };
-                  }
-                  const view = args.dataset
-                    ? readDataset(raw, args.evidenceId, args.dataset, args.rowOffset, args.rowLimit)
-                    : (exactResult(
-                        compactDatasetProjection(raw, args.evidenceId) ??
-                          (index.length
-                            ? JSON.stringify({
-                                evidenceDatasets: index,
-                                projection: "index",
-                                nextRead: index[0]?.nextRead,
-                              })
-                            : projectEvidence(raw, args.evidenceId)),
-                      ) as Record<string, unknown>);
-                  return view;
-                },
-            args.format === "raw" || (args.format === undefined && Number(args.offset) > 0)
-              ? undefined
-              : {
-                  viewId: (view) => (trackView ? hash(view) : undefined),
-                  visible: (viewId) =>
-                    JSON.stringify(agent.session.deriveMessages()).includes(viewId),
-                  reload: args.reload,
-                },
-          );
-          return JSON.stringify(read);
         },
       }),
     ),
@@ -1011,7 +564,6 @@ export function mountBusinessPrompts(
     for (const off of offs.reverse()) off();
     for (const state of states.values()) state.dispose?.();
     states.clear();
-    executionGrants.clear();
     executionState.dispose();
   };
 }
