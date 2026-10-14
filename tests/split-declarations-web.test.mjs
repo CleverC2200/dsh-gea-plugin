@@ -415,7 +415,11 @@ test(
     );
     assert.deepEqual(mcpCalls[0].params.arguments, {});
     assert.equal(mcpCalls[0].params._meta.agentCode, "probe-consumer");
-    assert.equal(mcpCalls[0].params.arguments.consumerCode, undefined, "platform identity is outside business arguments");
+    assert.equal(
+      mcpCalls[0].params.arguments.consumerCode,
+      undefined,
+      "platform identity is outside business arguments",
+    );
     const toolCalls = rows.filter((row) => row.type === "tool/call");
     assert.equal(toolCalls.length, 1);
     assert.equal(toolCalls[0].data.name, "mcp__gea-gateway__inspect_cube_model");
