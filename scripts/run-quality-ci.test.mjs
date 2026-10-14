@@ -180,12 +180,9 @@ test("reader bootstrap binds the actual event and refuses mutable, malformed or 
   }
 });
 
-test("dispatch freezes the group without cancelling runs or replacing the original gates", () => {
+test("dispatch retains its frozen run while a new source event cancels its obsolete branch run", () => {
   const workflow = readFileSync(".github/workflows/quality.yml", "utf8");
-  assert.match(
-    workflow,
-    /github\.ref \}\}-\$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/,
-  );
+  assert.match(workflow, /github\.ref \}\}/);
   for (const input of ["gea_sha", "workbench_sha", "manage_sha"]) {
     assert.match(
       workflow,

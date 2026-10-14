@@ -21,6 +21,7 @@ import { resolveSourceInputs } from "./source-profile.mjs";
 import { resourceDigests } from "./source-combination-integrity.mjs";
 import { supportedCores } from "./supported-cores.mjs";
 let finalGroup;
+let profileTestsSelected = false;
 function refuse(code, detail = "") {
   throw Error(code + (detail ? ": " + detail : ""));
 }
@@ -132,6 +133,22 @@ try {
         workbench: workbench.path,
         gea: own.path,
       });
+    const { selectCiTests } = await import(
+      pathToFileURL(resolve(workbench.path, "scripts/ci-test-plan.mjs"))
+    );
+    const baseline = JSON.parse(readFileSync("scripts/quality-peer-baseline.json"));
+    const plan = selectCiTests({
+      repositories: candidate.repositories,
+      repo: "dsh-gea-plugin",
+      base:
+        process.env.QUALITY_BASE_SHA ||
+        baseline.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
+    });
+    profileTestsSelected = plan.runtime;
+    writeFileSync(
+      resolve(dirname(dirname(process.cwd())), "quality-test-plan.json"),
+      JSON.stringify(plan, null, 2) + "\n",
+    );
     const preparedWorkbench = resolve(dirname(process.cwd()), "dsh-agent-workbench");
     const workbenchReceipt = resolve(dirname(dirname(process.cwd())), "prepared-workbench.json");
     const workbenchAssetRoot = resolve(
@@ -139,7 +156,7 @@ try {
       "prepared-workbench-assets",
     );
     const core = resolve(dirname(dirname(process.cwd())), "official-latest-standard"),
-      upstream = resolve("../../../current-mainline-closeout-44");
+      upstream = resolve(dirname(dirname(process.cwd())), "quality-upstreams");
     run(process.execPath, [
       resolve(manage.path, "scripts/prepare-official-sdk.mjs"),
       "--core",
@@ -148,17 +165,20 @@ try {
       coreBaseline.head,
       "--consumer",
       process.cwd(),
-      "--with-web",
-      ...(process.platform === "win32" ? [] : ["--with-flock"]),
+      ...(plan.runtime
+        ? ["--with-web", ...(process.platform === "win32" ? [] : ["--with-flock"])]
+        : []),
       ...(values["prepare-sdk"]
         ? [
             "--prepare",
+            ...(process.env.QUALITY_REUSE_SDK === "true" ? ["--reuse-prepared"] : []),
             "--source",
             values["core-source"] ?? "https://github.com/deepseek-ai/deepseek-harness.git",
           ]
         : []),
     ]);
-    if (!existsSync(resolve(core, "apps/web/dist/index.html"))) refuse("QUALITY_CORE_WEB_REQUIRED");
+    if (plan.runtime && !existsSync(resolve(core, "apps/web/dist/index.html")))
+      refuse("QUALITY_CORE_WEB_REQUIRED");
     finalGroup?.verifyUnchanged();
     if (values["prepare-inputs"])
       await prepareQualityUpstreams(existsSync(upstream) ? realpathSync(upstream) : upstream);
@@ -225,20 +245,22 @@ try {
         ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
         preparedWorkbench,
       );
-      run(
-        "npm",
-        ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
-        resolve(preparedWorkbench, "business/inventory-apsplan/source"),
-      );
+      if (plan.runtime)
+        run(
+          "npm",
+          ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
+          resolve(preparedWorkbench, "business/inventory-apsplan/source"),
+        );
       run(
         "corepack",
         ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts", "--prefer-offline"],
         manage.path,
       );
-      run("npm", ["run", "build:core"], preparedWorkbench, {
-        DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
-        APS_BUILD_MODE: "mock",
-      });
+      if (plan.runtime)
+        run("npm", ["run", "build:core"], preparedWorkbench, {
+          DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
+          APS_BUILD_MODE: "mock",
+        });
       run("corepack", ["pnpm", "build"], manage.path);
       run("corepack", [
         "pnpm",
@@ -248,91 +270,95 @@ try {
         "--prefer-offline",
       ]);
       run("corepack", ["pnpm", "build:plugin"]);
-      const prepared = await readPreparedWorkbench({
-        source: workbench.path,
-        prepared: preparedWorkbench,
-        head: workbench.head,
-      });
-      finalGroup?.verifyUnchanged();
-      writeFileSync(workbenchReceipt, JSON.stringify(prepared, null, 2) + "\n");
-      await prepareWorkbenchAssets({
+      if (plan.runtime) {
+        const prepared = await readPreparedWorkbench({
+          source: workbench.path,
+          prepared: preparedWorkbench,
+          head: workbench.head,
+        });
+        finalGroup?.verifyUnchanged();
+        writeFileSync(workbenchReceipt, JSON.stringify(prepared, null, 2) + "\n");
+        await prepareWorkbenchAssets({
+          source: workbench.path,
+          prepared: preparedWorkbench,
+          head: workbench.head,
+          receipt: workbenchReceipt,
+          assets: workbenchAssetRoot,
+        });
+      }
+    }
+    if (plan.runtime) {
+      const workbenchAssets = await verifyPreparedWorkbench({
         source: workbench.path,
         prepared: preparedWorkbench,
         head: workbench.head,
         receipt: workbenchReceipt,
-        assets: workbenchAssetRoot,
       });
-    }
-    const workbenchAssets = await verifyPreparedWorkbench({
-      source: workbench.path,
-      prepared: preparedWorkbench,
-      head: workbench.head,
-      receipt: workbenchReceipt,
-    });
-    const upstreamRecord = await verifyQualityUpstreams(upstream);
-    const sourcesFile = resolve(dirname(dirname(process.cwd())), "profile-source-inputs.json");
-    const records = candidate.repositories.map((entry) => ({
-      repo: entry.repo,
-      source: entry.path,
-      commit: entry.head,
-      dependencies: resolve(entry.path, "node_modules"),
-    }));
-    Object.assign(
-      records.find((entry) => entry.repo === "dsh-agent-workbench"),
-      {
-        assets: workbenchAssetRoot,
-        files: workbenchAssets.files,
-        dependencies: resolve(preparedWorkbench, "node_modules"),
-      },
-    );
-    records.push(
-      {
-        repo: "dsh-genui",
-        source: resolve(upstream, "upstream-reference/dsh-genui"),
-        commit: upstreamRecord.genui.head,
-        assets: resolve(upstream, "upstream-assets/genui-0.11.3"),
-        files: upstreamRecord.genui.files,
-        dependencies: resolve(process.cwd(), "node_modules"),
-      },
-      {
-        repo: "dsh-better-sidebar",
-        source: resolve(upstream, "upstream-reference/dsh-better-sidebar"),
-        commit: upstreamRecord.sidebar.head,
-        dependencies: resolve(upstream, "upstream-reference/dsh-better-sidebar/node_modules"),
-      },
-    );
-    await resolveSourceInputs(records, { requireEntries: true });
-    finalGroup?.verifyUnchanged();
-    writeFileSync(sourcesFile, JSON.stringify(records, null, 2) + "\n");
-    process.env.GEA_TEST_SOURCE_INPUTS = sourcesFile;
-    process.env.GEA_TEST_CANDIDATE = resolve(input);
-    process.env.GEA_TEST_CANDIDATE_SHA256 = finalGroup.receipt.inputSha256;
-    const history = resolve(
-      "scripts/fixtures/delivery-history/navigation-r7-setup-failure.json.raw",
-    );
-    const windowInputs = resolve(dirname(dirname(process.cwd())), "source-window-inputs.json");
-    writeFileSync(
-      windowInputs,
-      JSON.stringify(
+      const upstreamRecord = await verifyQualityUpstreams(upstream);
+      const sourcesFile = resolve(dirname(dirname(process.cwd())), "profile-source-inputs.json");
+      const records = candidate.repositories.map((entry) => ({
+        repo: entry.repo,
+        source: entry.path,
+        commit: entry.head,
+        dependencies: resolve(entry.path, "node_modules"),
+      }));
+      Object.assign(
+        records.find((entry) => entry.repo === "dsh-agent-workbench"),
         {
-          ...candidate,
-          corePath: core,
-          historicalFailure: {
-            file: history,
-            sha256: createHash("sha256").update(readFileSync(history)).digest("hex"),
-          },
+          assets: workbenchAssetRoot,
+          files: workbenchAssets.files,
+          dependencies: resolve(preparedWorkbench, "node_modules"),
         },
-        null,
-        2,
-      ) + "\n",
-    );
-    process.env.GEA_TEST_CANDIDATE_INPUTS = windowInputs;
-    process.env.GEA_TEST_SOURCE_CORE = "1";
+      );
+      records.push(
+        {
+          repo: "dsh-genui",
+          source: resolve(upstream, "upstream-reference/dsh-genui"),
+          commit: upstreamRecord.genui.head,
+          assets: resolve(upstream, "upstream-assets/genui-0.11.3"),
+          files: upstreamRecord.genui.files,
+          dependencies: resolve(process.cwd(), "node_modules"),
+        },
+        {
+          repo: "dsh-better-sidebar",
+          source: resolve(upstream, "upstream-reference/dsh-better-sidebar"),
+          commit: upstreamRecord.sidebar.head,
+          dependencies: resolve(upstream, "upstream-reference/dsh-better-sidebar/node_modules"),
+        },
+      );
+      await resolveSourceInputs(records, { requireEntries: true });
+      finalGroup?.verifyUnchanged();
+      writeFileSync(sourcesFile, JSON.stringify(records, null, 2) + "\n");
+      process.env.GEA_TEST_SOURCE_INPUTS = sourcesFile;
+      process.env.GEA_TEST_CANDIDATE = resolve(input);
+      process.env.GEA_TEST_CANDIDATE_SHA256 = finalGroup.receipt.inputSha256;
+      const history = resolve(
+        "scripts/fixtures/delivery-history/navigation-r7-setup-failure.json.raw",
+      );
+      const windowInputs = resolve(dirname(dirname(process.cwd())), "source-window-inputs.json");
+      writeFileSync(
+        windowInputs,
+        JSON.stringify(
+          {
+            ...candidate,
+            corePath: core,
+            historicalFailure: {
+              file: history,
+              sha256: createHash("sha256").update(readFileSync(history)).digest("hex"),
+            },
+          },
+          null,
+          2,
+        ) + "\n",
+      );
+      process.env.GEA_TEST_CANDIDATE_INPUTS = windowInputs;
+      process.env.GEA_TEST_SOURCE_CORE = "1";
+    }
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(
       dirname(dirname(process.cwd())),
       ".quality-browser",
     );
-    if (values["prepare-inputs"])
+    if (plan.browser && values["prepare-inputs"])
       run("corepack", [
         "pnpm",
         "exec",
@@ -341,51 +367,55 @@ try {
         ...(process.platform === "linux" ? ["--with-deps"] : []),
         "chromium",
       ]);
-    const { chromium } = await import("@playwright/test");
-    const browserRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
-    const executable = chromium.executablePath();
-    if (!existsSync(executable)) refuse("QUALITY_BROWSER_REQUIRED", executable);
-    const dryRun = execFileSync(
-      "corepack",
-      ["pnpm", "exec", "playwright", "install", "--dry-run", "chromium"],
-      {
-        encoding: "utf8",
-      },
-    );
-    const browserDirectories = [
-      ...new Set([...dryRun.matchAll(/Install location:\s+(.+)/g)].map((match) => match[1].trim())),
-    ];
-    if (browserDirectories.length !== 3)
-      refuse("QUALITY_BROWSER_REQUIRED", "Chromium, headless shell and FFmpeg");
-    const browserFiles = {};
-    for (const directory of browserDirectories) {
-      if (!existsSync(directory)) refuse("QUALITY_BROWSER_REQUIRED", directory);
-      const location = relative(realpathSync(browserRoot), realpathSync(directory));
-      if (location.startsWith(".." + sep) || isAbsolute(location))
-        refuse("QUALITY_BROWSER_REQUIRED", directory);
-      const files = await resourceDigests(directory);
-      if (Object.keys(files).length === 0) refuse("QUALITY_BROWSER_REQUIRED", directory);
-      for (const [file, digest] of Object.entries(files))
-        browserFiles[resolve(directory, file)] = digest;
-    }
-    finalGroup?.verifyUnchanged();
-    writeFileSync(
-      resolve(dirname(dirname(process.cwd())), "browser-preparation.json"),
-      JSON.stringify(
+    if (plan.browser) {
+      const { chromium } = await import("@playwright/test");
+      const browserRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
+      const executable = chromium.executablePath();
+      if (!existsSync(executable)) refuse("QUALITY_BROWSER_REQUIRED", executable);
+      const dryRun = execFileSync(
+        "corepack",
+        ["pnpm", "exec", "playwright", "install", "--dry-run", "chromium"],
         {
-          root: browserRoot,
-          executable,
-          directories: browserDirectories,
-          playwright: JSON.parse(
-            readFileSync(resolve("node_modules/@playwright/test/package.json")),
-          ).version,
-          lockSha256: createHash("sha256").update(readFileSync("pnpm-lock.yaml")).digest("hex"),
-          files: browserFiles,
+          encoding: "utf8",
         },
-        null,
-        2,
-      ) + "\n",
-    );
+      );
+      const browserDirectories = [
+        ...new Set(
+          [...dryRun.matchAll(/Install location:\s+(.+)/g)].map((match) => match[1].trim()),
+        ),
+      ];
+      if (browserDirectories.length !== 3)
+        refuse("QUALITY_BROWSER_REQUIRED", "Chromium, headless shell and FFmpeg");
+      const browserFiles = {};
+      for (const directory of browserDirectories) {
+        if (!existsSync(directory)) refuse("QUALITY_BROWSER_REQUIRED", directory);
+        const location = relative(realpathSync(browserRoot), realpathSync(directory));
+        if (location.startsWith(".." + sep) || isAbsolute(location))
+          refuse("QUALITY_BROWSER_REQUIRED", directory);
+        const files = await resourceDigests(directory);
+        if (Object.keys(files).length === 0) refuse("QUALITY_BROWSER_REQUIRED", directory);
+        for (const [file, digest] of Object.entries(files))
+          browserFiles[resolve(directory, file)] = digest;
+      }
+      finalGroup?.verifyUnchanged();
+      writeFileSync(
+        resolve(dirname(dirname(process.cwd())), "browser-preparation.json"),
+        JSON.stringify(
+          {
+            root: browserRoot,
+            executable,
+            directories: browserDirectories,
+            playwright: JSON.parse(
+              readFileSync(resolve("node_modules/@playwright/test/package.json")),
+            ).version,
+            lockSha256: createHash("sha256").update(readFileSync("pnpm-lock.yaml")).digest("hex"),
+            files: browserFiles,
+          },
+          null,
+          2,
+        ) + "\n",
+      );
+    }
     if (values.phase === "quality") {
       const checks = runQualityChecks([
         {
@@ -399,15 +429,17 @@ try {
         },
         {
           name: "fast",
-          execute: () => run("corepack", ["pnpm", "quality:fast"]),
+          execute: () => run("corepack", ["pnpm", "quality:fast", "--checks-only"]),
         },
         {
-          name: "contracts",
-          execute: () => run("corepack", ["pnpm", "test:contracts"]),
-        },
-        {
-          name: "full",
-          execute: () => run("corepack", ["pnpm", "test:ci-full"]),
+          name: "required-and-affected",
+          execute: () =>
+            run(process.execPath, [
+              "--test",
+              "--test-concurrency=1",
+              "--test-reporter=./scripts/quality-test-reporter.mjs",
+              ...plan.files,
+            ]),
         },
       ]);
       writeFileSync(
@@ -422,7 +454,10 @@ try {
     JSON.stringify({
       status: "passed",
       phase: values.phase,
-      runtime: values.phase === "quality" ? "loopback-source-profile-tests" : "not-observed",
+      runtime:
+        values.phase === "quality" && profileTestsSelected
+          ? "loopback-source-profile-tests"
+          : "not-observed",
     }),
   );
 } catch (error) {
