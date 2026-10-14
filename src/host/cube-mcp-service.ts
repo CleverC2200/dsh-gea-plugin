@@ -7,6 +7,7 @@ import { profileFor } from "./prompt-policy.ts";
 import { throwIfAborted, readableError } from "../shared/abort.ts";
 import { stopExpiredGateway } from "./agent-tools.ts";
 import type { CubeMcpTool } from "./cube-mcp-client.ts";
+import { isDeepStrictEqual } from "node:util";
 
 export function createCubeMcpService(ctx: Context, business: Business) {
   return {
@@ -32,7 +33,8 @@ export function createCubeMcpService(ctx: Context, business: Business) {
       signal = AbortSignal.any([signal, business.identitySignal()]);
       const attempted = new Set<string>();
       let failure: unknown;
-      let discovered: CubeMcpTool[] | undefined;
+      const discovered = new Map<string, CubeMcpTool>();
+      let available = false;
       for (const agent of ctx.agents.list()) {
         const preset = ctx.sessionProjections.stateOf(agent.session, "agentPreset");
         if (!profileFor(preset ?? undefined)) continue;
@@ -46,17 +48,20 @@ export function createCubeMcpService(ctx: Context, business: Business) {
           await assertSessionResourceAvailable(ctx, agent.id, signal);
           if (toolConsumer(ctx, business, agent.id, undefined) !== consumer)
             throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
-          const tools = module.tools();
-          if (discovered && JSON.stringify(discovered) !== JSON.stringify(tools))
-            throw Error("GEA_MCP_SCHEMA_CONFLICT");
-          discovered = tools;
+          for (const tool of module.tools()) {
+            const previous = discovered.get(tool.name);
+            if (previous && !isDeepStrictEqual(previous.inputSchema, tool.inputSchema))
+              throw Error("GEA_MCP_SCHEMA_CONFLICT");
+            if (!previous) discovered.set(tool.name, tool);
+          }
+          available = true;
         } catch (error) {
           throwIfAborted(signal);
           if (error instanceof Error && error.message === "GEA_MCP_SCHEMA_CONFLICT") throw error;
           failure ??= error;
         }
       }
-      if (discovered) return discovered;
+      if (available) return [...discovered.values()];
       if (failure) throw failure;
       return [];
     },

@@ -336,6 +336,30 @@ test("different business Consumer schemas cannot overwrite each other's register
   await assert.rejects(f.service.listTools(new AbortController().signal), /SCHEMA_CONFLICT/);
 });
 
+test("compatible Consumer tool subsets and property order keep the server schemas", async () => {
+  const f = serviceFixture();
+  const inspect = { name: "inspect_cube_model", description: "inspect", inputSchema: schema };
+  const query = { name: "query_business_data", description: "query", inputSchema: schema };
+  f.business.moduleMcp = async (consumer) => ({
+    tools: () =>
+      consumer === "sales_forecast"
+        ? [inspect]
+        : [
+            query,
+            {
+              ...inspect,
+              inputSchema: {
+                additionalProperties: false,
+                properties: { keyword: { type: "string" } },
+                type: "object",
+              },
+            },
+          ],
+  });
+  const tools = await f.service.listTools(new AbortController().signal);
+  assert.deepEqual(tools, [inspect, query]);
+});
+
 test("direct MCP derives sales and dealer Consumers from real Session presets and rejects unprofiled callers", async () => {
   const f = serviceFixture(),
     signal = new AbortController().signal;
