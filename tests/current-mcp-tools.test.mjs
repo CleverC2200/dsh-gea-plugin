@@ -12,17 +12,23 @@ import {
 test("current registered MCP tools retain server schemas and exact direct results", async (t) => {
   const f = await currentMcp(t);
   assert.deepEqual(
-    f.ctx.tools.schemas(f.agents.get("sales")).find((tool) => tool.name === queryTool).parameters,
+    f.ctx.tools
+      .schemas(f.agents.get("sales"))
+      .find((tool) => tool.name === queryTool).parameters,
     serverSchema,
   );
   const result = await f.execute();
   assert.equal(result.isError, false, JSON.stringify(result));
   assert.equal(result.value, rawResult);
   assert.deepEqual(
-    f.calls.find(({ wire }) => wire.method === "tools/call").wire.params.arguments,
+    f.calls.find(({ wire }) => wire.method === "tools/call").wire.params
+      .arguments,
     query,
   );
-  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
+  assert.equal(
+    f.calls.filter(({ wire }) => wire.method === "tools/call").length,
+    1,
+  );
   assert.equal(
     f.calls.some(({ wire }) => wire.method === "resources/read"),
     false,
@@ -69,7 +75,10 @@ test("registered direct pages preserve partial, unknown and zero facts and read 
   const second = await f.execute(queryTool, next);
   assert.equal(second.isError, false, JSON.stringify(second));
   assert.equal(JSON.parse(second.value).datasets[0].hasMorePages, false);
-  assert.equal(JSON.parse(second.value).datasets[0].rows[0]["inventory.qty"], "0.0000");
+  assert.equal(
+    JSON.parse(second.value).datasets[0].rows[0]["inventory.qty"],
+    "0.0000",
+  );
   const sent = f.calls.filter(({ wire }) => wire.method === "tools/call");
   assert.equal(sent.length, 2);
   assert.deepEqual(sent[0].wire.params.arguments, query);
@@ -82,16 +91,27 @@ test("registered direct pages preserve partial, unknown and zero facts and read 
 
 test("registered inspect refreshes the current authorized server schema without a legacy resource catalog", async (t) => {
   const f = await currentMcp(t);
-  const before = f.calls.filter(({ wire }) => wire.method === "initialize").length;
+  const before = f.calls.filter(
+    ({ wire }) => wire.method === "initialize",
+  ).length;
   const result = await f.execute(inspectTool, { keyword: "inventory" });
   assert.equal(result.isError, false, JSON.stringify(result));
   assert.deepEqual(JSON.parse(result.value), {
-    semanticModel: [{ name: "inventory", measures: [{ name: "inventory.qty" }] }],
+    semanticModel: [
+      { name: "inventory", measures: [{ name: "inventory.qty" }] },
+    ],
   });
-  assert.equal(f.calls.filter(({ wire }) => wire.method === "initialize").length, before + 1);
-  assert.deepEqual(f.calls.find(({ wire }) => wire.method === "tools/call").wire.params.arguments, {
-    keyword: "inventory",
-  });
+  assert.equal(
+    f.calls.filter(({ wire }) => wire.method === "initialize").length,
+    before + 1,
+  );
+  assert.deepEqual(
+    f.calls.find(({ wire }) => wire.method === "tools/call").wire.params
+      .arguments,
+    {
+      keyword: "inventory",
+    },
+  );
 });
 
 test("registered tools reject ordinary or missing callers and disabled business resources before external execution", async (t) => {
@@ -115,9 +135,18 @@ test("registered tools reject ordinary or missing callers and disabled business 
 });
 
 test("registered tools reject caller supplied Consumer and routing without dispatch", async (t) => {
-  const f = await currentMcp(t, { schema: { ...serverSchema, additionalProperties: true } });
+  const f = await currentMcp(t, {
+    schema: { ...serverSchema, additionalProperties: true },
+  });
   const before = f.calls.length;
-  for (const field of ["consumerCode", "agentCode", "sessionId", "mcpCode", "tenantId", "_meta"]) {
+  for (const field of [
+    "consumerCode",
+    "agentCode",
+    "sessionId",
+    "mcpCode",
+    "tenantId",
+    "_meta",
+  ]) {
     const result = await f.execute(queryTool, { ...query, [field]: "forged" });
     assert.equal(result.isError, true);
     assert.match(JSON.stringify(result), /PLATFORM_ARGUMENT_REJECTED/);
@@ -137,7 +166,11 @@ for (const failure of [
     },
     message: "授权资源未允许",
   },
-  { code: "AI_GATEWAY_AUDIT_UNAVAILABLE", category: "AUDIT", message: "审计服务不可用" },
+  {
+    code: "AI_GATEWAY_AUDIT_UNAVAILABLE",
+    category: "AUDIT",
+    message: "审计服务不可用",
+  },
   {
     code: "AI_GATEWAY_RATE_LIMITED",
     category: "RATE_LIMIT",
@@ -145,7 +178,11 @@ for (const failure of [
     retryable: true,
     message: "请稍后再试",
   },
-  { code: "AI_GATEWAY_MCP_RESULT_TOO_LARGE", retryable: true, message: "结果过大" },
+  {
+    code: "AI_GATEWAY_MCP_RESULT_TOO_LARGE",
+    retryable: true,
+    message: "结果过大",
+  },
 ]) {
   test(`registered query preserves ${failure.code} without returning data or retrying`, async (t) => {
     const f = await currentMcp(t, {
@@ -170,7 +207,10 @@ for (const failure of [
     assert.doesNotMatch(text, /fixture-private|9007199254740993/);
     if (failure.code === "AI_GATEWAY_MCP_RESULT_TOO_LARGE")
       assert.match(text, /缩小查询.*分页|减少返回列/);
-    assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
+    assert.equal(
+      f.calls.filter(({ wire }) => wire.method === "tools/call").length,
+      1,
+    );
   });
 }
 
@@ -190,7 +230,10 @@ test("member publication failure stops the calling turn and a new turn can query
   assert.equal(failed.isError, true);
   assert.match(JSON.stringify(failed), /DATA_QUERY_MEMBER_NOT_PUBLISHED/);
   assert.match(JSON.stringify(await f.execute()), /TURN_STOPPED/);
-  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
+  assert.equal(
+    f.calls.filter(({ wire }) => wire.method === "tools/call").length,
+    1,
+  );
   f.business.clearTurnStops("sales");
   f.setHandler(undefined);
   assert.equal((await f.execute()).isError, false);
@@ -219,7 +262,10 @@ for (const transition of ["preset", "resource", "identity"]) {
     release();
     const result = await pending;
     assert.equal(result.isError, true);
-    assert.doesNotMatch(JSON.stringify(result), /9007199254740993|inventory\.unknown/);
+    assert.doesNotMatch(
+      JSON.stringify(result),
+      /9007199254740993|inventory\.unknown/,
+    );
     assert.match(
       JSON.stringify(result),
       {
@@ -242,7 +288,11 @@ test("registered cancellation preserves the current identity and allows the next
       await new Promise((_resolve, reject) => {
         if (init.signal.aborted) reject(init.signal.reason);
         else
-          init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+          init.signal.addEventListener(
+            "abort",
+            () => reject(init.signal.reason),
+            { once: true },
+          );
       });
     },
   });
@@ -257,7 +307,10 @@ test("registered cancellation preserves the current identity and allows the next
   assert.equal(f.business.turnStopped("sales"), undefined);
   f.setHandler(undefined);
   assert.equal((await f.execute()).isError, false);
-  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 2);
+  assert.equal(
+    f.calls.filter(({ wire }) => wire.method === "tools/call").length,
+    2,
+  );
 });
 
 test("registered expired gateway preserves the failure and stops the turn until a new session is negotiated", async (t) => {
@@ -282,7 +335,10 @@ test("registered expired gateway preserves the failure and stops the turn until 
   f.setHandler(undefined);
   f.business.clearTurnStops("sales");
   assert.equal((await f.execute()).isError, false);
-  assert.equal(f.calls.filter(({ url }) => url.endsWith("/session")).length, sessions + 1);
+  assert.equal(
+    f.calls.filter(({ url }) => url.endsWith("/session")).length,
+    sessions + 1,
+  );
 });
 
 test("registered malformed data stops subsequent queries without a retry or a fabricated empty result", async (t) => {
@@ -300,7 +356,10 @@ test("registered malformed data stops subsequent queries without a retry or a fa
   assert.equal(result.isError, true);
   assert.match(JSON.stringify(result), /GEA_CUBE_NEW_/);
   assert.match(JSON.stringify(await f.execute()), /TURN_STOPPED/);
-  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
+  assert.equal(
+    f.calls.filter(({ wire }) => wire.method === "tools/call").length,
+    1,
+  );
 });
 
 test("registered no_data retains an explicit empty dataset without converting missing values into zero", async (t) => {
@@ -327,7 +386,10 @@ test("registered no_data retains an explicit empty dataset without converting mi
   const result = await f.execute();
   assert.equal(result.isError, false, JSON.stringify(result));
   assert.deepEqual(JSON.parse(result.value), empty);
-  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
+  assert.equal(
+    f.calls.filter(({ wire }) => wire.method === "tools/call").length,
+    1,
+  );
 });
 
 test("registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged", async (t) => {
@@ -346,7 +408,8 @@ test("registered qualified-member guard rejects bare members and forwards valid 
   const result = await f.execute(queryTool, args);
   assert.equal(result.isError, false);
   assert.deepEqual(
-    f.calls.find(({ wire }) => wire.method === "tools/call").wire.params.arguments,
+    f.calls.find(({ wire }) => wire.method === "tools/call").wire.params
+      .arguments,
     args,
   );
   assert.deepEqual(args.queries[0].query.order, { "inventory.qty": "desc" });
@@ -363,5 +426,56 @@ test("one Host derives independent sales and dealer Consumers from their current
     calls.map(({ wire }) => wire.params._meta.agentCode),
     ["sales_forecast", "dealer-inventory-replenishment"],
   );
-  assert.ok(calls.every(({ wire }) => !Object.hasOwn(wire.params.arguments, "consumerCode")));
+  assert.ok(
+    calls.every(
+      ({ wire }) => !Object.hasOwn(wire.params.arguments, "consumerCode"),
+    ),
+  );
+});
+
+for (const options of [
+  { initializeStatus: 500 },
+  { protocolVersion: "unsupported-fixture" },
+]) {
+  test(`registered discovery refuses failed negotiation ${JSON.stringify(options)}`, async (t) => {
+    const f = await currentMcp(t, { ...options, discoveryFailure: true });
+    assert.equal(f.ctx.tools.get(queryTool), undefined);
+    assert.equal(f.ctx.tools.get(inspectTool), undefined);
+    assert.ok(
+      f.warnings.some((warning) => warning.includes("discovery failed")),
+    );
+    assert.equal(
+      f.calls.filter(({ wire }) => wire.method === "initialize").length,
+      1,
+    );
+    assert.equal(
+      f.calls.some(
+        ({ wire }) =>
+          wire.method === "tools/list" || wire.method === "tools/call",
+      ),
+      false,
+    );
+  });
+}
+
+test("registered successful code OK remains exact business data", async (t) => {
+  const raw = rawResult.replace('{"action":', '{"code":"OK","action":');
+  const f = await currentMcp(t, {
+    handler: (wire) =>
+      new Response(
+        '{"jsonrpc":"2.0","id":' +
+          JSON.stringify(wire.id) +
+          ',"result":{"structuredContent":' +
+          raw +
+          "}}",
+        { headers: { "content-type": "application/json" } },
+      ),
+  });
+  const result = await f.execute();
+  assert.equal(result.isError, false, JSON.stringify(result));
+  assert.equal(result.value, raw);
+  assert.equal(
+    f.calls.filter(({ wire }) => wire.method === "tools/call").length,
+    1,
+  );
 });

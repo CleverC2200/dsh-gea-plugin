@@ -190,8 +190,8 @@
   "requiredPeers": {
     "dsh-agent-workbench": "c5a5bc64fade154bf5b468f0d848974ac308823a",
     "dsh-agent-manage": "cdd2d6520a7790ca1a1c658d1fa71e07c651cd3f",
-    "dsh-genui": "0cc64c97b426ff5afe54154e74ead31dd8739265",
-    "dsh-better-sidebar": "e35120f1d9b3773062b68decb4f53a526d6c8baa"
+    "dsh-genui": "382db5575ad3068efeff0322eec9cc499f79ae01",
+    "dsh-better-sidebar": "a2751cfbde2dd425b8150737574bc6d1d57f73b8"
   },
   "completeNativeTools": {
     "639ed015397290b3745d163aafe02ffee4aa3f84": [
