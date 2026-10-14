@@ -144,14 +144,13 @@ try {
         workbench: workbench.path,
         gea: own.path,
       });
-    if (values.phase === "business-profile")
-      (
-        await (await import("./business-profile-ci.mjs")).loadBusinessProfilePolicy(workbench.path)
-      ).validateBusinessProfileGroup(candidate.repositories);
-    if (values.phase === "mcp-client-repair")
-      (
-        await (await import("./business-profile-ci.mjs")).loadBusinessProfilePolicy(workbench.path)
-      ).validateMcpClientGroup(candidate.repositories);
+    if (values.phase === "business-profile" || values.phase === "mcp-client-repair") {
+      const { loadBusinessProfilePolicy } = await import("./business-profile-ci.mjs");
+      const policy = await loadBusinessProfilePolicy(workbench.path);
+      if (values.phase === "business-profile")
+        policy.validateBusinessProfileGroup(candidate.repositories);
+      else policy.validateMcpClientGroup(candidate.repositories);
+    }
     const { selectCiTests } = await import(
       pathToFileURL(resolve(workbench.path, "scripts/ci-test-plan.mjs"))
     );
