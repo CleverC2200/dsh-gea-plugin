@@ -1001,6 +1001,21 @@ test(
         (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
       );
       // 模型每次请求都带全量历史，只能看"最后一条用户消息之后"的那条工具结果。
+      assert.equal(
+        modelRequests.length,
+        2,
+        JSON.stringify(
+          modelRequests.map((body) =>
+            body.messages.map((message) => ({
+              role: message.role,
+              id: message.tool_call_id,
+              calls: message.tool_calls,
+              content:
+                typeof message.content === "string" ? message.content.slice(-900) : message.content,
+            })),
+          ),
+        ),
+      );
       const messages = modelRequests[1].messages;
       const lastUser = messages.map((message) => message.role).lastIndexOf("user");
       const result = messages
@@ -1704,7 +1719,23 @@ test(
         outcome = "skill-reference";
         modelRequests = [];
         const rows = await ended(await submit());
-        assert.equal(modelRequests.length, 3);
+        assert.equal(
+          modelRequests.length,
+          3,
+          JSON.stringify(
+            modelRequests.map((body) =>
+              body.messages.map((message) => ({
+                role: message.role,
+                id: message.tool_call_id,
+                calls: message.tool_calls,
+                content:
+                  typeof message.content === "string"
+                    ? message.content.slice(-900)
+                    : message.content,
+              })),
+            ),
+          ),
+        );
         const initialSystem = modelRequests[0].messages
           .filter((x) => x.role === "system")
           .map((x) => x.content)
