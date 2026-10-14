@@ -145,7 +145,10 @@ export function mountBusinessPrompts(
     return state;
   };
   const namesFor = (agent: Agent, state = stateOf(agent)) => {
-    const names = allowedTools(profileOf(agent)!, pageBound(agent));
+    const names = allowedTools(
+      profileOf(agent)!,
+      pageBound(agent) ? business.currentPageIdentity(agent.id)?.pageTool : undefined,
+    );
     if (state.pageReferences || hasPageReferences(agent.session.snapshotEvents()))
       names.add("page_reference_read");
     if (business.config.agentSqlRead === true) names.add("gea_plugin_read");

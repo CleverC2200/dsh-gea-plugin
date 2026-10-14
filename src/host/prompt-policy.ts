@@ -57,7 +57,7 @@ export const CORE_TOOLS = [
   "mcp__gea-gateway__query_business_data",
   "gea_visible_workbench_context",
 ];
-export function allowedTools(profile: PromptProfile, boundPage = false): Set<string> {
+export function allowedTools(profile: PromptProfile, pageTool?: string): Set<string> {
   const names = new Set(CORE_TOOLS);
   for (const name of [
     "skill",
@@ -69,9 +69,7 @@ export function allowedTools(profile: PromptProfile, boundPage = false): Set<str
     "sidebar_open",
   ])
     names.add(name);
-  if (boundPage)
-    for (const name of ["gea_page", "gea_workbench_apply", "gea_plugin_page_apply"])
-      names.add(name);
+  if (pageTool) names.add(pageTool);
   if (profile === PROFILES["gea-readonly"]) names.add("gea_sales_plan_read");
   return names;
 }

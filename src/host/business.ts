@@ -1087,8 +1087,7 @@ export class Business {
       });
     }
     if (!value) {
-      // 页面开着但不是原生工作台页（HTML 插件页没有可见行快照）时，至少把"当前页是
-      // 谁、该用哪个工具"说清楚——比一句"不在业务工作台"准确得多。
+      // 绑定页面尚无快照时，保留所属页面和实际工具，不把 Native 当成 HTML lease。
       const identity = this.currentPageIdentity(sessionId);
       if (identity) return currentPageEnvelope(identity);
       return JSON.stringify({
