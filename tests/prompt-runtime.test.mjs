@@ -50,7 +50,13 @@ test("protected evidence restores after restart only with current authorization"
     resourceTool: "query_business_data",
     resources: "v1",
   };
-  const id = await first.put("s", "mcp__gea-gateway__query_business_data", "original business data", first.epoch(), grant);
+  const id = await first.put(
+    "s",
+    "mcp__gea-gateway__query_business_data",
+    "original business data",
+    first.epoch(),
+    grant,
+  );
   const restored = new PromptEvidenceStore(dir);
   let resourceVersion = "v1";
   const authorize = async (saved) => {

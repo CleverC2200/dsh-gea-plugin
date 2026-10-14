@@ -71,10 +71,8 @@ test(
           return true;
         }
         let result = {};
-        if (wire.method === "initialize")
-          result = { protocolVersion: wire.params.protocolVersion };
-        else if (wire.method === "tools/list")
-          result = { tools: fixtureCubeTools };
+        if (wire.method === "initialize") result = { protocolVersion: wire.params.protocolVersion };
+        else if (wire.method === "tools/list") result = { tools: fixtureCubeTools };
         else if (wire.method === "tools/call") {
           queries.push(wire.params);
           const name = wire.params.arguments.queries[0].name;
@@ -138,12 +136,9 @@ test(
       let delta;
       if (step++ === 0) {
         const calls =
-          phase === "read"
-            ? [call("inv"), { ...call("ship"), index: 1 }]
-            : [call("inv")];
+          phase === "read" ? [call("inv"), { ...call("ship"), index: 1 }] : [call("inv")];
         delta = { tool_calls: calls };
-      } else if (phase === "expired" && step === 2)
-        delta = { tool_calls: [call("inv")] };
+      } else if (phase === "expired" && step === 2) delta = { tool_calls: [call("inv")] };
       else
         delta = {
           content:
@@ -191,8 +186,7 @@ test(
       assert.equal(sent.ok, true, JSON.stringify(sent));
       const rows = await until(
         () => readSession(app.runtime, id),
-        (events) =>
-          events.filter((event) => event.type === "turn/end").length > turns,
+        (events) => events.filter((event) => event.type === "turn/end").length > turns,
         15000,
       );
       turns++;
@@ -201,10 +195,7 @@ test(
     const initial = await ask("查询库存和发货，缺失单位与币种不能补造。");
     assert.equal(queries.length, 2);
     assert.equal(initial[0].isError, false, initial[0].text);
-    assert.equal(
-      JSON.parse(initial[0].text).datasets[0].rows[0]["inv.row_count"],
-      42,
-    );
+    assert.equal(JSON.parse(initial[0].text).datasets[0].rows[0]["inv.row_count"], 42);
     assert.equal(JSON.parse(initial[0].text).datasets[0].dataStatus, "partial");
     assert.match(initial[1].text, /SHIP_FIXTURE_FAILED/);
     assert.ok(
@@ -215,17 +206,11 @@ test(
           entry._meta.sessionId === "trusted-session",
       ),
     );
-    assert.doesNotMatch(
-      JSON.stringify(requests),
-      /delegation-fixture-secret|trusted-session/,
-    );
+    assert.doesNotMatch(JSON.stringify(requests), /delegation-fixture-secret|trusted-session/);
     phase = "denied";
     const denied = await ask("重新查询当前库存授权范围。");
     assert.equal(denied[0].isError, true);
-    assert.match(
-      denied[0].text,
-      /AI_GATEWAY_DATA_PERMISSION_DENIED.*fixture-denial/s,
-    );
+    assert.match(denied[0].text, /AI_GATEWAY_DATA_PERMISSION_DENIED.*fixture-denial/s);
     assert.equal(
       queries.length,
       3,
@@ -253,9 +238,7 @@ test(
     assert.ok(
       firstSchema,
       "first model request must include the native query schema: " +
-        JSON.stringify(
-          requests[0].body.tools.map((tool) => tool.function.name),
-        ),
+        JSON.stringify(requests[0].body.tools.map((tool) => tool.function.name)),
     );
     assert.deepEqual(firstSchema.function.parameters, querySchema);
   },

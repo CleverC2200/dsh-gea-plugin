@@ -2,10 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
-import {
-  createBusinessSession,
-  fixtureRequest,
-} from "./fixtures/business-session.mjs";
+import { createBusinessSession, fixtureRequest } from "./fixtures/business-session.mjs";
 test(
   "native result route, atomic skill load and structured evidence reuse retain authorization",
   { timeout: 90000 },
@@ -98,8 +95,7 @@ test(
       if (path.endsWith("/ai/gateway/mcp/proxy/mcp")) {
         const b = JSON.parse(req.body);
         let result = {};
-        if (b.method === "initialize")
-          result = { protocolVersion: b.params.protocolVersion };
+        if (b.method === "initialize") result = { protocolVersion: b.params.protocolVersion };
         else if (b.method === "notifications/initialized") {
           res.statusCode = 202;
           res.end();
@@ -133,9 +129,7 @@ test(
                         semanticModel: [
                           {
                             name: "inv",
-                            measures: [
-                              { name: "inv.row_count", type: "number" },
-                            ],
+                            measures: [{ name: "inv.row_count", type: "number" }],
                           },
                         ],
                       }),
@@ -175,8 +169,7 @@ test(
       const body = JSON.parse(req.body);
       captured.push(body);
       const step = script.shift();
-      const args =
-        step && typeof step[1] === "function" ? step[1](body) : step?.[1];
+      const args = step && typeof step[1] === "function" ? step[1](body) : step?.[1];
       const delta = step
         ? {
             tool_calls: [
@@ -193,23 +186,17 @@ test(
       res.end(
         "data: " +
           JSON.stringify({
-            choices: [
-              { index: 0, delta, finish_reason: step ? "tool_calls" : "stop" },
-            ],
+            choices: [{ index: 0, delta, finish_reason: step ? "tool_calls" : "stop" }],
           }) +
           "\n\ndata: [DONE]\n\n",
       );
       return true;
     });
     await app.login();
-    const installed = await fixtureRequest(
-      app,
-      "/api/agent-plugins/user-panel/skills/create",
-      {
-        name: "sales-result-fixture",
-        text: "---\nname: sales-result-fixture\ndescription: result fixture\n---\nScoped rule body.",
-      },
-    );
+    const installed = await fixtureRequest(app, "/api/agent-plugins/user-panel/skills/create", {
+      name: "sales-result-fixture",
+      text: "---\nname: sales-result-fixture\ndescription: result fixture\n---\nScoped rule body.",
+    });
     assert.equal(installed.ok, true, JSON.stringify(installed));
     assert.equal(installed.value.ok, true, JSON.stringify(installed));
     const id = await createBusinessSession(app);
@@ -237,10 +224,9 @@ test(
       count++;
       return readToolResults(events.slice(before.length));
     }
-    let replies = await run(
-      "8月最终销售计划，只能使用Hive，不要使用在线计划接口。",
-      [["gea_sales_plan_read", { kind: "periods" }]],
-    );
+    let replies = await run("8月最终销售计划，只能使用Hive，不要使用在线计划接口。", [
+      ["gea_sales_plan_read", { kind: "periods" }],
+    ]);
     assert.match(replies[0].text, /GEA_SALES_RESULT_SOURCE/);
     assert.equal(online, 0);
     replies = await run("核对当前在线审批工作流周期。", [
@@ -261,36 +247,24 @@ test(
       { headers: { Cookie: app.cookie, Origin: app.origin } },
     );
     assert.equal(resources.ok, true);
-    const chosen = (await resources.json()).filter(
-      (x) => x.id === "skill:sales-result-fixture",
-    );
+    const chosen = (await resources.json()).filter((x) => x.id === "skill:sales-result-fixture");
     assert.equal(chosen.length, 1);
     assert.equal(chosen[0].installed, true);
     assert.equal(chosen[0].enabled, true);
     assert.equal(chosen[0].provider, "user-panel");
     const catalogs = (await readSession(app.runtime, id)).filter(
-      (row) =>
-        row.type === "user/message" && row.data.source.kind === "skill-catalog",
+      (row) => row.type === "user/message" && row.data.source.kind === "skill-catalog",
     );
     assert.equal(catalogs.length, 1);
     assert.equal(catalogs[0].data.source.form, "catalog");
     assert.equal(
-      catalogs[0].data.source.entries.filter(
-        (x) => x.name === "sales-result-fixture",
-      ).length,
+      catalogs[0].data.source.entries.filter((x) => x.name === "sales-result-fixture").length,
       1,
     );
-    assert.doesNotMatch(
-      JSON.stringify(captured[0].messages),
-      /Scoped rule body/,
-    );
-    assert.match(
-      replies[0].text,
-      /<skill_content name="sales-result-fixture">/,
-    );
+    assert.doesNotMatch(JSON.stringify(captured[0].messages), /Scoped rule body/);
+    assert.match(replies[0].text, /<skill_content name="sales-result-fixture">/);
     const loaded = captured[1].messages.find(
-      (message) =>
-        message.role === "tool" && message.content.includes("Scoped rule body"),
+      (message) => message.role === "tool" && message.content.includes("Scoped rule body"),
     );
     assert.ok(loaded);
     assert.match(loaded.content, /<skill_content name="sales-result-fixture">/);
@@ -309,37 +283,23 @@ test(
     assert.equal(queryCalls, 1);
     const direct = JSON.parse(replies[0].text);
     assert.equal(direct.datasets[0].rows[0]["inv.row_count"], 42);
-    assert.equal(
-      direct.evidenceId,
-      undefined,
-      "native MCP retains the direct server result",
-    );
+    assert.equal(direct.evidenceId, undefined, "native MCP retains the direct server result");
     const readArgs = (body) => {
       const receipt = body.messages
         .filter((message) => message.role === "system")
         .flatMap((message) => message.content.split("\n"))
         .find(
           (line) =>
-            line.startsWith('{"evidenceId":') &&
-            line.includes('"tool":"gea_sales_plan_read"'),
+            line.startsWith('{"evidenceId":') && line.includes('"tool":"gea_sales_plan_read"'),
         );
-      assert.ok(
-        receipt,
-        "sales evidence ID is advertised in the model's public result receipt",
-      );
+      assert.ok(receipt, "sales evidence ID is advertised in the model's public result receipt");
       evidenceId ??= JSON.parse(receipt).evidenceId;
       return { evidenceId, format: "raw", offset: 0, limit: 4000 };
     };
     replies = await run("核对当前在线审批清单及其证据。", [
-      [
-        "gea_sales_plan_read",
-        { kind: "list", query: { periodId: "20260801" } },
-      ],
+      ["gea_sales_plan_read", { kind: "list", query: { periodId: "20260801" } }],
       ["gea_evidence_read", readArgs],
-      [
-        "gea_evidence_read",
-        () => ({ evidenceId, format: "raw", offset: 0, limit: 100 }),
-      ],
+      ["gea_evidence_read", () => ({ evidenceId, format: "raw", offset: 0, limit: 100 })],
     ]);
     assert.equal(replies[1].isError, false, replies[1].text);
     const first = JSON.parse(replies[1].text);
@@ -348,15 +308,9 @@ test(
     const audit = JSON.parse(replies[2].text);
     assert.equal(audit.content.length, Math.min(audit.totalChars, 100));
     revoked = true;
-    replies = await run("继续读取刚才证据。", [
-      ["gea_evidence_read", () => ({ evidenceId })],
-    ]);
+    replies = await run("继续读取刚才证据。", [["gea_evidence_read", () => ({ evidenceId })]]);
     assert.equal(replies[0].isError, true);
     assert.match(replies[0].text, /GEA_EVIDENCE_STALE/);
-    assert.equal(
-      queryCalls,
-      1,
-      "native sales evidence never reruns the MCP query",
-    );
+    assert.equal(queryCalls, 1, "native sales evidence never reruns the MCP query");
   },
 );

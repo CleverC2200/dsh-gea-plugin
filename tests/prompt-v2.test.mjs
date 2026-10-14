@@ -24,10 +24,7 @@ import {
   compactDatasetProjection,
 } from "../src/host/prompt-result.ts";
 import { projectEvidence } from "../src/host/prompt-evidence.ts";
-import {
-  sessionConsumer,
-  toolConsumer,
-} from "../src/host/business-identity.ts";
+import { sessionConsumer, toolConsumer } from "../src/host/business-identity.ts";
 
 test("timeout keeps its category while arbitrary caller reasons stay private", () => {
   const c = new AbortController(),
@@ -101,9 +98,7 @@ test("artifact presentation decodes rows without modifying JSON business columns
     ],
     rows[0].jsonColumn,
   );
-  const projection = JSON.parse(
-    projectEvidence(raw + " ".repeat(7000), "ev-test", 6000, view),
-  );
+  const projection = JSON.parse(projectEvidence(raw + " ".repeat(7000), "ev-test", 6000, view));
   assert.equal(projection.projection, "complete");
   assert.equal(projection.data.queryArtifact.pages[0].complete, false);
 });
@@ -317,10 +312,8 @@ test(
           return true;
         }
         let result = {};
-        if (wire.method === "initialize")
-          result = { protocolVersion: wire.params.protocolVersion };
-        else if (wire.method === "tools/list")
-          result = { tools: fixtureCubeTools };
+        if (wire.method === "initialize") result = { protocolVersion: wire.params.protocolVersion };
+        else if (wire.method === "tools/list") result = { tools: fixtureCubeTools };
         else if (wire.method === "tools/call") {
           calls.push(wire.params);
           result = {
@@ -355,8 +348,7 @@ test(
         };
       else if (step === 5) {
         assert.match(
-          body.messages.filter((message) => message.role === "tool").at(-1)
-            .content,
+          body.messages.filter((message) => message.role === "tool").at(-1).content,
           /GEA_CATALOG_NO_PROGRESS/,
         );
         call = {
@@ -365,8 +357,7 @@ test(
         };
       } else {
         const value = JSON.parse(
-          body.messages.filter((message) => message.role === "tool").at(-1)
-            .content,
+          body.messages.filter((message) => message.role === "tool").at(-1).content,
         );
         assert.deepEqual(value.datasets, datasets);
         assert.equal(
@@ -377,18 +368,14 @@ test(
       }
       const delta = call
         ? {
-            tool_calls: [
-              { index: 0, id: randomUUID(), type: "function", function: call },
-            ],
+            tool_calls: [{ index: 0, id: randomUUID(), type: "function", function: call }],
           }
         : { content: "返回两份各70行样本，源数据状态为partial。" };
       res.setHeader("Content-Type", "text/event-stream");
       res.end(
         "data: " +
           JSON.stringify({
-            choices: [
-              { index: 0, delta, finish_reason: call ? "tool_calls" : "stop" },
-            ],
+            choices: [{ index: 0, delta, finish_reason: call ? "tool_calls" : "stop" }],
           }) +
           "\n\ndata: [DONE]\n\n",
       );
@@ -423,24 +410,14 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
       30000,
     );
-    assert.equal(
-      calls.filter((call) => call.name === "inspect_cube_model").length,
-      3,
-    );
+    assert.equal(calls.filter((call) => call.name === "inspect_cube_model").length, 3);
     const sent = calls.filter((call) => call.name === "query_business_data");
-    assert.equal(
-      sent.length,
-      1,
-      "caller-owned named queries stay in one native dispatch",
-    );
+    assert.equal(sent.length, 1, "caller-owned named queries stay in one native dispatch");
     assert.deepEqual(sent[0].arguments, args);
     assert.equal(requests.length, 6);
     assert.ok(
       requests.every((request) =>
-        request.tools.some(
-          (tool) =>
-            tool.function.name === "mcp__gea-gateway__inspect_cube_model",
-        ),
+        request.tools.some((tool) => tool.function.name === "mcp__gea-gateway__inspect_cube_model"),
       ),
     );
   },
@@ -451,9 +428,7 @@ test("permission and partial delivery are not ordinary successful receipts", () 
   assert.equal(permissionDenied(denial), true);
   assert.equal(resultOutcome(denial), "blocked");
   assert.equal(
-    JSON.parse(
-      resultReceipt("mcp__gea-gateway__query_business_data", {}, "ev", denial),
-    ).outcome,
+    JSON.parse(resultReceipt("mcp__gea-gateway__query_business_data", {}, "ev", denial)).outcome,
     "blocked",
   );
   const raw = {
@@ -462,9 +437,7 @@ test("permission and partial delivery are not ordinary successful receipts", () 
     presentation: "first resource succeeded; second failed",
     delivery: {
       sourceReadComplete: false,
-      unreadArtifacts: [
-        { uri: "data-artifact://missing", reason: "read-failed" },
-      ],
+      unreadArtifacts: [{ uri: "data-artifact://missing", reason: "read-failed" }],
       notes: ["partial coverage"],
     },
   };
@@ -472,10 +445,7 @@ test("permission and partial delivery are not ordinary successful receipts", () 
   assert.equal(view.delivery.sourceReadComplete, false);
   assert.equal(view.delivery.unreadArtifacts.length, 1);
   assert.equal(resultOutcome(JSON.stringify(raw)), "partial");
-  assert.equal(
-    resultOutcome(JSON.stringify({ ...raw, payloads: [] })),
-    "blocked",
-  );
+  assert.equal(resultOutcome(JSON.stringify({ ...raw, payloads: [] })), "blocked");
   assert.equal(
     resultOutcome(
       JSON.stringify({
@@ -534,9 +504,7 @@ test("structured evidence paginates actual rows, preserves coverage and never pa
     const table = page.table.displayTable;
     if (table)
       restored.push(
-        ...table.values.map((row) =>
-          Object.fromEntries(table.columns.map((k, i) => [k, row[i]])),
-        ),
+        ...table.values.map((row) => Object.fromEntries(table.columns.map((k, i) => [k, row[i]]))),
       );
     else restored.push(...page.table.rows);
     offset = page.nextRead?.args.rowOffset ?? null;
@@ -555,19 +523,13 @@ test("explicit cross-domain calls require trusted profile routes", () => {
     config: { analysisAgentCode: "custom-sales" },
     currentPageIdentity: () => undefined,
   };
-  assert.equal(
-    toolConsumer(ctx, business, "id", undefined),
-    "branch-inventory",
-  );
+  assert.equal(toolConsumer(ctx, business, "id", undefined), "branch-inventory");
   assert.throws(
     () => toolConsumer(ctx, business, "id", "base-safety-stock"),
     /ROUTE_NOT_REGISTERED/,
   );
   preset = "gea-html-inventory-aqkc";
-  assert.equal(
-    toolConsumer(ctx, business, "id", "custom-sales"),
-    "custom-sales",
-  );
+  assert.equal(toolConsumer(ctx, business, "id", "custom-sales"), "custom-sales");
   assert.throws(
     () => toolConsumer(ctx, business, "id", "branch-inventory"),
     /ROUTE_NOT_REGISTERED/,
@@ -599,9 +561,7 @@ test("same dataset labels from different models keep distinct source keys", () =
 });
 test("adding an evidence index never replaces inline datasets or their coverage", () => {
   const raw = JSON.stringify({
-    datasets: [
-      { name: "stock", rows: [{ quantity: "123.45" }], complete: false },
-    ],
+    datasets: [{ name: "stock", rows: [{ quantity: "123.45" }], complete: false }],
   });
   const shown = JSON.parse(indexProjection(raw, "ev", datasetIndex(raw, "ev")));
   assert.equal(shown.datasets[0].rows[0].quantity, "123.45");
@@ -616,8 +576,7 @@ test("knowledge projection uses cited chunks instead of a cut JSON envelope", ()
     content: "业务规则。".repeat(500),
   }));
   const raw =
-    JSON.stringify({ result: JSON.stringify({ document_ids: [], chunks }) }) +
-    "\ntransport note";
+    JSON.stringify({ result: JSON.stringify({ document_ids: [], chunks }) }) + "\ntransport note";
   const shown = JSON.parse(transientResult(raw, 6000, true));
   assert.equal(shown.source, "GEA_KNOWLEDGE_EXCERPTS");
   assert.ok(shown.excerpts.length > 0);
@@ -626,14 +585,9 @@ test("knowledge projection uses cited chunks instead of a cut JSON envelope", ()
   assert.ok(JSON.stringify(shown).length <= 6000);
   assert.equal(shown.rawAvailable, false);
   const broken = JSON.stringify({
-    result:
-      '{"chunks":[' +
-      JSON.stringify(chunks[0]) +
-      ',{"chunk_id":"broken","content":"cut',
+    result: '{"chunks":[' + JSON.stringify(chunks[0]) + ',{"chunk_id":"broken","content":"cut',
   });
-  const partial = JSON.parse(
-    transientResult(broken + " ".repeat(7000), 6000, true),
-  );
+  const partial = JSON.parse(transientResult(broken + " ".repeat(7000), 6000, true));
   assert.equal(partial.sourceComplete, false);
   assert.equal(partial.excerpts.length, 1);
 });
@@ -672,10 +626,7 @@ test("small nested artifacts expose exact business rows with coverage, not escap
   assert.equal(output.projection, "complete");
   assert.deepEqual(output.datasets[0].table.rows, rows);
   assert.equal(output.evidenceDatasets[0].nextRead, null);
-  assert.match(
-    JSON.stringify(output),
-    /not a complete snapshot|source batch unverified/,
-  );
+  assert.match(JSON.stringify(output), /not a complete snapshot|source batch unverified/);
   assert.ok(!JSON.stringify(output).includes('\\\\\\"rows'));
   const mixed = JSON.stringify({
     source: "GEA_CUBE_BATCH",

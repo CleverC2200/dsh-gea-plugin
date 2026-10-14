@@ -7,8 +7,7 @@ import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 
 for (const batchSize of [1, 3])
   test(
-    "evidence budget ends tool use and resets on a new user turn; batch size " +
-      batchSize,
+    "evidence budget ends tool use and resets on a new user turn; batch size " + batchSize,
     { timeout: 90000 },
     async (t) => {
       const app = await profile(t, {
@@ -63,10 +62,7 @@ for (const batchSize of [1, 3])
         let call;
         if (phase === "exhaust") {
           if (step === 0)
-            call = [
-              "gea_sales_plan_read",
-              { kind: "list", query: { periodId: "20261001" } },
-            ];
+            call = ["gea_sales_plan_read", { kind: "list", query: { periodId: "20261001" } }];
           else {
             const receipt = body.messages
               .filter((message) => message.role === "system")
@@ -82,10 +78,7 @@ for (const batchSize of [1, 3])
             );
             evidenceId ??= JSON.parse(receipt).evidenceId;
             // Imitate a model that keeps following the advertised read tool after its allowance is spent.
-            if (
-              step <= 12 / batchSize + 2 &&
-              names.includes("gea_evidence_read")
-            )
+            if (step <= 12 / batchSize + 2 && names.includes("gea_evidence_read"))
               call = ["gea_evidence_read", { evidenceId, reload: true }];
           }
         }
@@ -148,9 +141,7 @@ for (const batchSize of [1, 3])
         (r) => r.some((e) => e.type === "turn/end"),
         40000,
       );
-      const after = captured.find(
-        (r) => r.phase === "exhaust" && r.step === 1 + 12 / batchSize,
-      );
+      const after = captured.find((r) => r.phase === "exhaust" && r.step === 1 + 12 / batchSize);
       assert.ok(after, "12 successful reads reached the budget boundary");
       assert.equal(
         after.body.tools?.length ?? 0,
@@ -175,9 +166,7 @@ for (const batchSize of [1, 3])
           JSON.stringify(replies.filter((r) => r.isError)),
       );
       assert.equal(
-        events.filter(
-          (e) => e.type === "tool/call" && e.data.name === "gea_evidence_read",
-        ).length,
+        events.filter((e) => e.type === "tool/call" && e.data.name === "gea_evidence_read").length,
         12,
       );
       phase = "next-turn";

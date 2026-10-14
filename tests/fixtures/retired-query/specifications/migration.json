@@ -688,10 +688,7 @@
       "source": "authorized-cube-query.historical.mjs",
       "case": "two Agent catalogs in one host do not share authorization or metadata",
       "disposition": "Actual independent business Sessions derive their Consumer metadata; conflicting server schemas do not overwrite registration.",
-      "current": [
-        "tests/cube-direct-mcp.test.mjs",
-        "tests/current-mcp-tools.test.mjs"
-      ],
+      "current": ["tests/cube-direct-mcp.test.mjs", "tests/current-mcp-tools.test.mjs"],
       "status": "replaced",
       "assertions": [
         {
@@ -721,10 +718,7 @@
       "source": "authorized-cube-query.historical.mjs",
       "case": "expired session in a model group stops the batch before another model is sent",
       "disposition": "The next explicit model call is rejected locally after expiry. Local grouped batch planner retired.",
-      "current": [
-        "tests/authorized-cube-loop.test.mjs",
-        "tests/current-mcp-tools.test.mjs"
-      ],
+      "current": ["tests/authorized-cube-loop.test.mjs", "tests/current-mcp-tools.test.mjs"],
       "status": "replaced",
       "assertions": [
         {
@@ -1194,10 +1188,7 @@
       "source": "read-guard-wiring.historical.mjs",
       "case": "registered cancellation and non-Error failures are readable and cancellation spends no waste budget",
       "disposition": "Cancellation moved to actual native MCP request; non-Error native read failure remains active and readable.",
-      "current": [
-        "tests/current-mcp-tools.test.mjs",
-        "tests/read-guard-wiring.test.mjs"
-      ],
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/read-guard-wiring.test.mjs"],
       "status": "replaced",
       "assertions": [
         {

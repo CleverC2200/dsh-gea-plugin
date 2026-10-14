@@ -160,7 +160,11 @@ test("GEA registers execution metadata and evidence only, preserving the origina
 
 test("business admission and concurrent budget reservations survive resource orchestration removal", async (t) => {
   const current = await fixture(t);
-  const exec = { name: "mcp__gea-gateway__query_business_data", agent: current.agent, arguments: {} };
+  const exec = {
+    name: "mcp__gea-gateway__query_business_data",
+    agent: current.agent,
+    arguments: {},
+  };
   for (let i = 0; i < 20; i++) assert.equal(current.guard(exec), undefined);
   assert.match(current.guard(exec), /GEA_CALL_BUDGET/);
   current.setPreset("agent-resource-skill");
@@ -233,7 +237,6 @@ test("current permission failure remains visible across concurrent current MCP q
   );
   assert.equal(current.guard({ ...exec, token: Symbol(), arguments: {} }), undefined);
   // Current native tools derive Consumer in GEA; caller-supplied identity is rejected by the registered-tool tests.
-
 });
 
 test("late successful read after a new turn preserves its original result without entering current evidence", async (t) => {
@@ -635,7 +638,10 @@ test("a query rejected during resource admission does not reopen stalled catalog
     current.handlers.get("tools/execute")(query, async () => {}),
     /resource-admission-denied/,
   );
-  assert.match(current.guard({ ...query, name: "mcp__gea-gateway__inspect_cube_model" }), /GEA_CATALOG_NO_PROGRESS/);
+  assert.match(
+    current.guard({ ...query, name: "mcp__gea-gateway__inspect_cube_model" }),
+    /GEA_CATALOG_NO_PROGRESS/,
+  );
 });
 
 for (const phase of ["admission", "downstream"]) {

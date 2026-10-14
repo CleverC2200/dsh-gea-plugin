@@ -23,9 +23,7 @@ const built = await build({
       name: "manage-external-dependencies",
       setup(build) {
         build.onResolve({ filter: /^zod$/ }, () => ({
-          path: createRequire(
-            resolve("../dsh-agent-manage/package.json"),
-          ).resolve("zod"),
+          path: createRequire(resolve("../dsh-agent-manage/package.json")).resolve("zod"),
         }));
       },
     },
@@ -37,21 +35,10 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   module,
   module.exports,
 );
-const {
-  Business,
-  createCubeMcpService,
-  mountGeaMcp,
-  createCapabilityRegistry,
-} = module.exports;
+const { Business, createCubeMcpService, mountGeaMcp, createCapabilityRegistry } = module.exports;
 const official = (part) =>
   import(
-    pathToFileURL(
-      resolve(
-        "../../official-latest-standard/packages/core",
-        part,
-        "lib/index.js",
-      ),
-    )
+    pathToFileURL(resolve("../../official-latest-standard/packages/core", part, "lib/index.js"))
   );
 const { default: SystemPrompt } = await official("system-prompt");
 const { default: Tools } = await official("tools");
@@ -99,9 +86,7 @@ export async function currentMcp(t, options = {}) {
     export: (message) =>
       warnings.push(
         message.args
-          .map((value) =>
-            value instanceof Error ? value.stack : String(value),
-          )
+          .map((value) => (value instanceof Error ? value.stack : String(value)))
           .join(" "),
       ),
   });
@@ -182,16 +167,12 @@ export async function currentMcp(t, options = {}) {
   });
   ctx.provide("agentPresets", { composedPreset: () => undefined });
   ctx.provide("sessionProjections", {
-    stateOf: (session) =>
-      [...agents.values()].find((agent) => agent.session === session)?.preset,
+    stateOf: (session) => [...agents.values()].find((agent) => agent.session === session)?.preset,
   });
   let enabled = true;
   ctx.provide("agentResources", {
     list: async () =>
-      [
-        "gea-readonly",
-        ...(options.dealer ? ["gea-html-inventory-dealer"] : []),
-      ].map((id) => ({
+      ["gea-readonly", ...(options.dealer ? ["gea-html-inventory-dealer"] : [])].map((id) => ({
         id,
         kind: "prompt",
         installed: true,
@@ -220,21 +201,15 @@ export async function currentMcp(t, options = {}) {
           delegationToken: "fixture-private-delegation",
         },
       });
-    assert.ok(
-      String(url).endsWith("/mcp"),
-      "direct queries never discover resource catalogs",
-    );
-    const reply = (result) =>
-      Response.json({ jsonrpc: "2.0", id: wire.id, result });
+    assert.ok(String(url).endsWith("/mcp"), "direct queries never discover resource catalogs");
+    const reply = (result) => Response.json({ jsonrpc: "2.0", id: wire.id, result });
     if (wire.method === "initialize") {
-      if (options.initializeStatus)
-        return new Response(null, { status: options.initializeStatus });
+      if (options.initializeStatus) return new Response(null, { status: options.initializeStatus });
       return reply({
         protocolVersion: options.protocolVersion ?? "2025-11-25",
       });
     }
-    if (wire.method === "notifications/initialized")
-      return new Response(null, { status: 202 });
+    if (wire.method === "notifications/initialized") return new Response(null, { status: 202 });
     if (wire.method === "tools/list")
       return reply({
         tools: [
@@ -258,15 +233,10 @@ export async function currentMcp(t, options = {}) {
       });
     const custom = await handler?.(wire, init, reply);
     if (custom !== undefined) return custom;
-    if (
-      wire.method === "tools/call" &&
-      wire.params.name === "inspect_cube_model"
-    )
+    if (wire.method === "tools/call" && wire.params.name === "inspect_cube_model")
       return reply({
         structuredContent: {
-          semanticModel: [
-            { name: "inventory", measures: [{ name: "inventory.qty" }] },
-          ],
+          semanticModel: [{ name: "inventory", measures: [{ name: "inventory.qty" }] }],
         },
       });
     if (wire.method === "tools/call")
