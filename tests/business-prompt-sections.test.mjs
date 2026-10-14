@@ -92,10 +92,17 @@ test("business section policy preserves native UI protocol and leaves ordinary c
   );
   assert.ok(nativeFiles, "the admitted Core must register its native file protocol");
   const sections = [
-    { name: "app:web-surface", text: "Host GUI orientation and no replacement servers" },
+    {
+      name: "app:web-surface",
+      text: "Host GUI orientation and no replacement servers",
+    },
     { name: "genui:fence", text: "vendor coding presentation policy" },
     { name: "kept-native-section", text: "native section survives" },
     nativeFiles,
+    {
+      name: "gea:independent-extension",
+      text: "independent GEA source remains authoritative",
+    },
   ];
   const assembly = { sections, contexts: [], tools: [], variables: {} };
   const assemble = () =>
@@ -141,5 +148,21 @@ test("business section policy preserves native UI protocol and leaves ordinary c
   );
   assert.equal(assembly.sections[3].text, nativeFiles.text);
   preset = "standard";
-  assert.equal(await assemble(), assembly, "ordinary coding keeps the original native sections");
+  const ordinary = await assemble();
+  assert.deepEqual(
+    ordinary.sections.slice(0, -1),
+    sections,
+    "ordinary coding keeps every Core and independent source section",
+  );
+  for (const [index, section] of sections.entries())
+    assert.equal(ordinary.sections[index], section);
+  assert.deepEqual(ordinary.sections.at(-1), {
+    name: "gea:admission",
+    text: "当前实际会话预设未声明 GEA 业务身份。Skill 可用于规则说明，但实际库存取数需点击工作台的‘使用基地库存 Agent 分析’入口或选用相应业务资源。子智能体的角色名和提示词不改变其实际父会话的业务身份。GEA 工具当前不可用；其它 MCP 结果应标明独立来源，不证明 GEA 页面或授权恢复。",
+  });
+  assert.equal(ordinary.sections.length, sections.length + 1);
+  assert.deepEqual(ordinary.tools, assembly.tools);
+  assert.equal(ordinary.contexts, assembly.contexts);
+  assert.equal(ordinary.variables, assembly.variables);
+  assert.equal(assembly.sections, sections, "GEA does not mutate the original Core assembly");
 });
