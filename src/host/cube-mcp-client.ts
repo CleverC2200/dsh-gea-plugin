@@ -1,7 +1,12 @@
 /** Cube-New's two wire methods, with login-owned transport and validated inline or historical results. */
 import { randomUUID } from "node:crypto";
 import { createParser } from "eventsource-parser";
-import { cubeNewArtifact, validateCubeQueryMembers, validateCubeQueryResult } from "./cube-new.ts";
+import {
+  cubeNewArtifact,
+  cubeQueryResultError,
+  validateCubeQueryMembers,
+  validateCubeQueryResult,
+} from "./cube-new.ts";
 import type { GatewayMcpTransport } from "./gateway-mcp.ts";
 import { throwIfAborted } from "../shared/abort.ts";
 import { readMcpResponseText } from "./mcp-response.ts";
@@ -253,16 +258,18 @@ export async function openCubeMcp(
           validateCubeQueryResult(payload, args, "inline");
           texts.push(entry.text);
         }
-      if (texts.length > 1) throw Error("GEA_CUBE_NEW_QUERY_AMBIGUOUS");
+      if (texts.length > 1)
+        throw cubeQueryResultError("GEA_CUBE_NEW_QUERY_AMBIGUOUS", ["content.text"]);
       const [text] = texts;
       if (text !== undefined) return text;
       const links = Array.isArray(result.content)
         ? result.content.map(record).filter((part) => part?.type === "resource_link")
         : [];
       if (links.length === 0)
-        throw Error(
-          "GEA_CUBE_NEW_QUERY_RESULT_INVALID: 当前工具未返回有效业务 JSON 或实际结果资源链接。",
-        );
+        throw cubeQueryResultError("GEA_CUBE_NEW_QUERY_RESULT_INVALID", [
+          "structuredContent",
+          "content",
+        ]);
       const link = links[0];
       if (
         links.length !== 1 ||
@@ -270,7 +277,7 @@ export async function openCubeMcp(
         !link.uri.startsWith("data-artifact://gateway/") ||
         link.mimeType !== "application/json"
       )
-        throw Error("GEA_CUBE_NEW_QUERY_RESOURCE_LINK");
+        throw cubeQueryResultError("GEA_CUBE_NEW_QUERY_RESOURCE_LINK", ["content.resource_link"]);
       const { result: read } = await rpc("resources/read", { uri: link.uri }, callSignal);
       const sha256 = record(link._meta)?.sha256;
       return cubeNewArtifact(

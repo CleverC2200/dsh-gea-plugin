@@ -555,7 +555,7 @@ test("named query batches match by name and preserve business pagination and opt
   assert.equal(resourceReads(f), 0);
 });
 
-test("multiple business text blocks are ambiguous; unsupported responses do not guess a URL", async () => {
+test("ambiguous and unsupported query responses stop the current round without resource fallback", async () => {
   for (const [result, code] of [
     [
       {
@@ -567,10 +567,32 @@ test("multiple business text blocks are ambiguous; unsupported responses do not 
       /AMBIGUOUS/,
     ],
     [{ content: [{ type: "text", text: "查询已处理" }] }, /QUERY_RESULT_INVALID/],
+    [
+      {
+        content: [
+          {
+            type: "resource_link",
+            uri: "https://example.invalid/data",
+            mimeType: "application/json",
+          },
+        ],
+      },
+      /QUERY_RESOURCE_LINK/,
+    ],
   ]) {
-    const f = await clientFixture({ inline: JSON.stringify(result) });
-    await assert.rejects(f.client.call("query_business_data", query, f.signal), code);
-    assert.equal(resourceReads(f), 0);
+    const client = await clientFixture({ inline: JSON.stringify(result) });
+    const service = serviceFixture();
+    service.module.call = (name, args, signal) => client.client.call(name, args, signal);
+    await assert.rejects(
+      service.service.call("sales", "query_business_data", query, client.signal),
+      code,
+    );
+    await assert.rejects(
+      service.service.call("sales", "query_business_data", query, client.signal),
+      /GEA_TURN_STOPPED/,
+    );
+    assert.equal(client.sent.filter((x) => x.wire.method === "tools/call").length, 1);
+    assert.equal(resourceReads(client), 0);
   }
 });
 

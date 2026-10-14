@@ -53,7 +53,11 @@ export function validateCubeQueryMembers(arguments_: Record<string, unknown>): v
   });
 }
 
-function resultError(code: string, invalidFields: string[], datasetName?: unknown): Error {
+export function cubeQueryResultError(
+  code: string,
+  invalidFields: string[],
+  datasetName?: unknown,
+): Error {
   return Object.assign(
     Error(
       `${code}: GEA 查询响应字段缺失或不符合约定：${invalidFields.join("、")}。这是响应合同问题，不是查询参数错误。本轮停止查询，请核对服务端响应；不换字段重试，也不自行补成完整结果。`,
@@ -115,12 +119,14 @@ export function validateCubeQueryResult(
     expected.some((name) => typeof name !== "string") ||
     new Set(expected).size !== expected.length
   )
-    throw resultError("GEA_CUBE_NEW_DATASETS", ["action/status/executedQueryCount/datasets"]);
+    throw cubeQueryResultError("GEA_CUBE_NEW_DATASETS", [
+      "action/status/executedQueryCount/datasets",
+    ]);
   const seen = new Set();
   for (const value of datasets) {
     const dataset = object(value);
     if (!dataset || !expected.includes(dataset.name) || seen.has(dataset.name))
-      throw resultError("GEA_CUBE_NEW_DATASET_NAME", ["name"], dataset?.name);
+      throw cubeQueryResultError("GEA_CUBE_NEW_DATASET_NAME", ["name"], dataset?.name);
     seen.add(dataset.name);
     const invalidFields = [
       ...(!Array.isArray(dataset.rows)
@@ -141,7 +147,7 @@ export function validateCubeQueryResult(
       ...(!["ok", "no_data", "partial"].includes(String(dataset.dataStatus)) ? ["dataStatus"] : []),
     ];
     if (invalidFields.length || !Array.isArray(dataset.rows))
-      throw resultError("GEA_CUBE_NEW_PAGE_INCOMPLETE", invalidFields, dataset.name);
+      throw cubeQueryResultError("GEA_CUBE_NEW_PAGE_INCOMPLETE", invalidFields, dataset.name);
     const { offset, totalRowCount, hasMorePages } = dataset;
     if (
       typeof offset !== "number" ||
@@ -154,7 +160,7 @@ export function validateCubeQueryResult(
       hasMorePages !== offset + dataset.rows.length < totalRowCount ||
       (hasMorePages && dataset.rows.length === 0)
     )
-      throw resultError(
+      throw cubeQueryResultError(
         "GEA_CUBE_NEW_PAGE_METADATA",
         ["offset/totalRowCount/hasMorePages"],
         dataset.name,
