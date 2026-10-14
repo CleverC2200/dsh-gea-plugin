@@ -443,7 +443,8 @@ try {
           execute: () =>
             run(process.execPath, [
               "--test",
-              "--test-concurrency=1",
+              // Files have separate processes; fixtures allocate unique Homes and loopback ports.
+              "--test-concurrency=2",
               "--test-reporter=./scripts/quality-test-reporter.mjs",
               ...plan.files,
             ]),
