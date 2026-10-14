@@ -32,6 +32,7 @@ jobs:
   candidate-scope:
     runs-on: ubuntu-latest
     outputs:
+      business-lane: ${{ steps.business.outputs.lane }}
       cores: ${{ steps.cores.outputs.cores }}
       gea-sha: ${{ steps.group.outputs.gea-sha }}
       workbench-sha: ${{ steps.group.outputs.workbench-sha }}
@@ -53,6 +54,13 @@ jobs:
         env:
           QUALITY_SCOPE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: node scripts/run-quality-ci.mjs --phase scope
+      - name: Select the authorized business repair lane
+        id: business
+        env:
+          QUALITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          QUALITY_PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          QUALITY_PR_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: node scripts/business-profile-ci.mjs
       - name: Resolve immutable Workbench reader source
         id: reader
         env:
@@ -203,6 +211,7 @@ jobs:
           restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
       - name: Prepare owned Core source without compiling
         id: sdk-paths
+        if: needs.candidate-scope.outputs.business-lane != 'business-profile'
         env:
           CORE_HEAD: ${{ matrix.core }}
         run: |
@@ -210,6 +219,7 @@ jobs:
           node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
       - uses: actions/cache/restore@v4
         id: sdk-cache
+        if: needs.candidate-scope.outputs.business-lane != 'business-profile'
         with:
           path: ${{ steps.sdk-paths.outputs.paths }}
           key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ matrix.core }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
@@ -221,10 +231,11 @@ jobs:
         env:
           CORE_HEAD: ${{ matrix.core }}
           INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
-        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench"
+          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'business-profile' && 'business-profile' || 'quality' }}
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE"
 
       - name: Save verified SDK cache without delaying required checks
-        if: success() && steps.sdk-cache.outputs.cache-hit != 'true'
+        if: success() && needs.candidate-scope.outputs.business-lane != 'business-profile' && steps.sdk-cache.outputs.cache-hit != 'true'
         continue-on-error: true
         timeout-minutes: 1
         uses: actions/cache/save@v4

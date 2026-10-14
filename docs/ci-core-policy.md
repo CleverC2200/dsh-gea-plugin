@@ -13,3 +13,9 @@
 GitHub 全量集合的停用、受影响选择与缓存规则见[当前 CI 规则](../../dsh-agent-workbench/docs/ci-required-and-affected.md)。Core 的 required/compatibility 范围保持本页定义。
 
 2026-10-14 的 [PR 59](https://github.com/CleverC2200/dsh-gea-plugin/pull/59) 曾按固定产品提交 `99067baee958a2260ef3735c6b82818253e4906b` 使用单票定向接收例外。该 PR 已合并，本轮统一选择入口替代其临时路由。后续 PR、main 与手动兼容运行均不恢复 GitHub 全量集合；更新事务、签名来源、包版本及公共 Loader 测试按实际改动选择，业务断言保持原样。
+
+## Frozen business repair exception
+
+The user authorized merging the 2026-10-14 business repair group without full tests. The `business-profile` lane is limited to the reviewed product commits declared in `scripts/business-profile-ci.mjs`, plus the listed CI and evidence files. It validates all three actual source checkouts against those commits. A different product source rejects this lane; other PR branches keep the normal gates. Same-tree main and explicit main dispatch can use the targeted lane. The existing final aggregate still rejects failed, cancelled, skipped or missing jobs, and branch protection is unchanged.
+
+Targeted checks retain static gates and builds. Workbench runs the new-conversation/inventory/company/version cases and the sidebar browser file. Manage runs business resources, raw MCP scope, bundled tools and the real Core business-admission file; existing Windows archive and security lanes remain. GEA runs reasoning, history, identity/budgets, Cube-New, HTTP errors and plugin-update regressions. This is source acceptance, not real model, business, Native or release acceptance. The separate CI optimization and new query direct-return work are excluded.
