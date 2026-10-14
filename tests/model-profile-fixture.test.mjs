@@ -31,7 +31,7 @@ const cases = [
   ],
   [
     "authorized-cube-loop.test.mjs",
-    "native typed query exposes its schema, splits requests and refuses a revoked resource next turn",
+    "native queries preserve successful reads, server denial, expiry and next-turn recovery",
   ],
   [
     "dealer-prompt.test.mjs",

@@ -4,6 +4,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { modelProfile } from "./model-profile.mjs";
 import { fixtureCubeTools } from "./cube-wire.mjs";
+import { readProfileSources } from "./profile-inputs.mjs";
 
 // Literal declarations come from fixed registrations and resource headers, not model output.
 const fixture = JSON.parse(
@@ -36,12 +37,14 @@ async function hasPath(path) {
 /** Match assembled owners to the explicitly admitted candidate, retaining fixed fallback inputs. */
 export async function assertCatalogSceneOwners(
   owners,
-  { input, sha256 } = {
+  { input, sha256, sourcesFile } = {
     input: process.env.GEA_TEST_CANDIDATE,
     sha256: process.env.GEA_TEST_CANDIDATE_SHA256,
+    sourcesFile: process.env.GEA_TEST_SOURCE_INPUTS,
   },
 ) {
   const peers = { ...fixture.requiredPeers };
+  let candidate;
   if (input !== undefined || sha256 !== undefined) {
     assert.ok(
       input && sha256?.length === 64 && /^[a-f0-9]{64}$/.test(sha256),
@@ -54,6 +57,7 @@ export async function assertCatalogSceneOwners(
       "catalog candidate original bytes",
     );
     const manifest = JSON.parse(bytes);
+    candidate = manifest;
     const names = ["dsh-agent-workbench", "dsh-agent-manage", "dsh-gea-plugin"];
     assert.ok(
       manifest.repositories?.length === 3 &&
@@ -67,6 +71,19 @@ export async function assertCatalogSceneOwners(
       "catalog candidate registered tuple",
     );
     for (const entry of manifest.repositories) peers[entry.repo] = entry.head;
+  }
+  if (sourcesFile) {
+    const sources = await readProfileSources(sourcesFile);
+    for (const source of sources) {
+      const declared = candidate?.repositories.find((entry) => entry.repo === source.repo);
+      if (declared) assert.equal(source.commit, declared.head, `${source.repo} candidate source`);
+      peers[source.repo] = source.commit;
+    }
+    assert.equal(
+      owners["@cleverc2200/gea-dsh-prototype"].commit,
+      peers["dsh-gea-plugin"],
+      "gea scene input",
+    );
   }
   for (const [owner, name] of Object.entries(packages))
     assert.equal(owners[name].commit, peers[repos[owner]], `${owner} scene input`);

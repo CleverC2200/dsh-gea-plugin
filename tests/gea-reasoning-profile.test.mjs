@@ -1,93 +1,16 @@
 /** Real fixed Core and real three-plugin runtime; only external services and optional enhancements are fixtures. */
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { cp, mkdir, readFile, writeFile, symlink } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { sourceAssemblyFixture } from "./fixtures/source-assembly.mjs";
-import { sourcePlugins } from "../scripts/source-composition.mjs";
-import { resourceDigests } from "../scripts/source-profile.mjs";
 import { profile, readSession, until } from "./profile.mjs";
-
-// Published assets are a read-only snapshot of this frozen source group. Build
-// directories/dependencies stay in their owners; this fixture never builds Core.
-async function inputs(t) {
-  const input = JSON.parse(await readFile(process.env.GEA_REASONING_INTEGRATION_INPUT, "utf8"));
-  const fixture = await sourceAssemblyFixture(t);
-  const sources = fixture.sources;
-  await mkdir(join(fixture.root, "integration"));
-  await symlink(input.officialCorePath, join(fixture.root, "official-latest-standard"), "dir");
-  for (const row of input.repositories) {
-    assert.equal(
-      execFileSync("git", ["rev-parse", "HEAD"], { cwd: row.path, encoding: "utf8" }).trim(),
-      row.head,
-    );
-    const source =
-      row.repo === "dsh-gea-plugin" ? row.path : join(fixture.root, "integration", row.repo);
-    if (source === row.path) {
-      await symlink(source, join(fixture.root, "integration", row.repo), "dir");
-    } else {
-      execFileSync("git", [
-        "-c",
-        "advice.detachedHead=false",
-        "clone",
-        "-q",
-        "--no-hardlinks",
-        row.path,
-        source,
-      ]);
-      const sourceUrl = execFileSync("git", ["remote", "get-url", "source"], {
-        cwd: row.path,
-        encoding: "utf8",
-      }).trim();
-      execFileSync("git", ["remote", "add", "source", sourceUrl], { cwd: source });
-    }
-    assert.equal(
-      execFileSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).trim(),
-      row.head,
-    );
-    const assets = join(fixture.root, "compiled-" + row.repo);
-    await mkdir(assets);
-    for (const resource of sourcePlugins.find((x) => x.repo === row.repo).resources) {
-      try {
-        await cp(join(row.path, resource), join(assets, resource), { recursive: true });
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
-    }
-    Object.assign(
-      sources.find((x) => x.repo === row.repo),
-      {
-        source,
-        assets,
-        commit: row.head,
-        files: await resourceDigests(assets, "", true),
-        dependencies: join(row.path, "node_modules"),
-      },
-    );
-    if (row.repo !== "dsh-gea-plugin") row.path = source;
-  }
-  const file = join(fixture.root, "sources.json");
-  await writeFile(file, JSON.stringify(sources));
-  const candidate = join(fixture.root, "candidate.json");
-  await writeFile(candidate, JSON.stringify(input));
-  const previous = process.env.GEA_TEST_CANDIDATE;
-  process.env.GEA_TEST_CANDIDATE = candidate;
-  t.after(() => {
-    if (previous === undefined) delete process.env.GEA_TEST_CANDIDATE;
-    else process.env.GEA_TEST_CANDIDATE = previous;
-  });
-  return file;
-}
+import { createBusinessSession } from "./fixtures/business-session.mjs";
 
 test(
   "GEA reasoning survives actual Core tool continuation and process restart without repeating a completed tool",
   { timeout: 90000, sourceSetupCount: 2 },
   async (t) => {
-    const sourcesFile = await inputs(t);
     const app = await profile(t, {
-      sourcesFile,
       config: {
         analysis: {
           mode: "model",
@@ -168,12 +91,7 @@ test(
     await app.rpc("model/discover");
     await mkdir(app.runtime + "/workspace", { recursive: true });
     await writeFile(app.runtime + "/workspace/reasoning-fixture.txt", "fixture read result");
-    const created = await app.remote("session/create", {
-      cwd: app.runtime + "/workspace",
-      agentPreset: "gea-readonly",
-    });
-    assert.equal(created.ok, true, JSON.stringify(created));
-    const sessionId = created.value.sessionId;
+    const sessionId = await createBusinessSession(app);
     await app.remote("session/selectModel", {
       sessionId,
       provider: "gea-analysis",

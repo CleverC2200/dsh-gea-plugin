@@ -120,6 +120,7 @@ test(
     let tenantId = "0";
     const app = await profile(t, {
       config: (base) => ({
+        cubeMcpCodes: { production: "cube", test: "cube" },
         analysis: {
           mode: "model",
           baseUrl: base + "/v1",
