@@ -43,6 +43,7 @@ import { modelHttpError } from "./shared/model-http-error.ts";
 import { registerHtmlPlugins } from "./html-plugins.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
 import { createCubeMcpService } from "./host/cube-mcp-service.ts";
+import { DEFAULT_MCP_RESPONSE_BYTES } from "./host/mcp-response.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { workbenchContract } from "./capability/contract.ts";
 const WORKBENCH_SURFACE = "gea-workbench";
@@ -84,7 +85,12 @@ export const Config = z.object({
   pageSize: z.natural().min(1).max(100).default(companyDefaults.pageSize),
   periodPageSize: z.natural().min(1).max(1000).default(companyDefaults.periodPageSize),
   requestTimeoutMs: z.natural().min(1000).max(120000).default(companyDefaults.requestTimeoutMs),
-  mcpRequestTimeoutMs: z.natural().min(1000).max(120000).default(60000),
+  mcpRequestTimeoutMs: z.natural().min(1000).max(600000).default(300000),
+  mcpMaxResponseBytes: z
+    .natural()
+    .min(1024)
+    .max(1024 * 1024 * 1024)
+    .default(DEFAULT_MCP_RESPONSE_BYTES),
   cubeMcpCodes: z
     .object({ production: z.string(), test: z.string() })
     .default(companyDefaults.cubeMcpCodes),

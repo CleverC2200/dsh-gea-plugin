@@ -122,6 +122,7 @@ export interface Deployment {
   periodPageSize: number;
   requestTimeoutMs: number;
   mcpRequestTimeoutMs?: number;
+  mcpMaxResponseBytes?: number;
   /** Environment-specific Cube MCP source; absence keeps the existing deployment's routing. */
   cubeMcpCodes?: { production?: string; test?: string };
   modelRequestTimeoutMs: number;
@@ -2452,11 +2453,12 @@ export class Business {
       auth,
       consumer,
       identity,
-      this.config.mcpRequestTimeoutMs ?? 60000,
+      this.config.mcpRequestTimeoutMs ?? 300000,
       this.apiLog.fetch,
       {
         cubeMcpCode: this.config.cubeMcpCodes?.[this.environment],
         setupSignal: signal,
+        maxResponseBytes: this.config.mcpMaxResponseBytes,
       },
     );
   }

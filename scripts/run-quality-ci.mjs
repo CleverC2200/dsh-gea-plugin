@@ -61,7 +61,9 @@ try {
     },
   });
   if (
-    ["quality", "business-profile", "prepare", "verify-input"].includes(values.phase) ||
+    ["quality", "business-profile", "mcp-client-repair", "prepare", "verify-input"].includes(
+      values.phase,
+    ) ||
     values["final-group-sha256"] !== undefined ||
     values["final-group-workbench"] !== undefined
   ) {
@@ -75,7 +77,11 @@ try {
         "CANDIDATE_FINAL_GROUP_REQUIRED",
         "--input, original bytes --final-group-sha256 and absolute clean source --final-group-workbench required",
       );
-    if (!["quality", "business-profile", "prepare", "verify-input"].includes(values.phase))
+    if (
+      !["quality", "business-profile", "mcp-client-repair", "prepare", "verify-input"].includes(
+        values.phase,
+      )
+    )
       refuse("CANDIDATE_FINAL_GROUP_PHASE", values.phase);
   }
   if (values.phase === "scope") {
@@ -90,7 +96,11 @@ try {
       "use the shared hosted group writer and explicit hashed admission",
     );
   } else {
-    if (!["quality", "business-profile", "prepare", "verify-input"].includes(values.phase))
+    if (
+      !["quality", "business-profile", "mcp-client-repair", "prepare", "verify-input"].includes(
+        values.phase,
+      )
+    )
       refuse("QUALITY_PHASE_REQUIRED", values.phase);
     const input = values.input;
     // The public Workbench reader owns exact source, identity, lock and Core admission.
@@ -137,46 +147,68 @@ try {
       (await import("./business-profile-ci.mjs")).validateBusinessProfileGroup(
         candidate.repositories,
       );
+    if (values.phase === "mcp-client-repair")
+      (await import("./business-profile-ci.mjs")).validateMcpClientGroup(candidate.repositories);
     const { selectCiTests } = await import(
       pathToFileURL(resolve(workbench.path, "scripts/ci-test-plan.mjs"))
     );
     const baseline = JSON.parse(readFileSync("scripts/quality-peer-baseline.json"));
     const plan =
-      values.phase === "business-profile"
+      values.phase === "mcp-client-repair"
         ? {
-            lane: "business-profile",
+            lane: "mcp-client-repair",
             runtime: false,
             browser: false,
             files: [
-              "tests/api-log.test.mjs",
-              "tests/gea-messages.test.mjs",
-              "tests/gea-reasoning.test.mjs",
-              "tests/gea-stream.test.mjs",
-              "tests/prompt-runtime.test.mjs",
-              "tests/controlled-execution.test.mjs",
-              "tests/cube-new.test.mjs",
               "tests/cube-direct-mcp.test.mjs",
-              "tests/model-http.test.mjs",
+              "tests/cube-new.test.mjs",
+              "tests/mcp-response.test.mjs",
               "tests/gateway-mcp.test.mjs",
+              "tests/gateway-handshake.test.mjs",
+              "tests/host-config.test.mjs",
+              "tests/business-identity-client.test.mjs",
+              "tests/controlled-execution.test.mjs",
+              "tests/plugin-sql-cancel.test.mjs",
               "scripts/business-profile-ci.test.mjs",
-              "tests/plugin-update-controller.contract.mjs",
-              "tests/plugin-update-integration.contract.mjs",
-              "scripts/build.test.mjs",
-              "scripts/deliver-packages.test.mjs",
-              "scripts/package-version-gate.test.mjs",
-              "scripts/plugin-package-version.test.mjs",
-              "tests/plugin-release.test.mjs",
-              "tests/plugin-release-source.test.mjs",
-              "tests/optional-companion-manifest.test.mjs",
+              "scripts/run-quality-ci.test.mjs",
+              "scripts/run-quality-checks.test.mjs",
             ],
           }
-        : selectCiTests({
-            repositories: candidate.repositories,
-            repo: "dsh-gea-plugin",
-            base:
-              process.env.QUALITY_BASE_SHA ||
-              baseline.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
-          });
+        : values.phase === "business-profile"
+          ? {
+              lane: "business-profile",
+              runtime: false,
+              browser: false,
+              files: [
+                "tests/api-log.test.mjs",
+                "tests/gea-messages.test.mjs",
+                "tests/gea-reasoning.test.mjs",
+                "tests/gea-stream.test.mjs",
+                "tests/prompt-runtime.test.mjs",
+                "tests/controlled-execution.test.mjs",
+                "tests/cube-new.test.mjs",
+                "tests/cube-direct-mcp.test.mjs",
+                "tests/model-http.test.mjs",
+                "tests/gateway-mcp.test.mjs",
+                "scripts/business-profile-ci.test.mjs",
+                "tests/plugin-update-controller.contract.mjs",
+                "tests/plugin-update-integration.contract.mjs",
+                "scripts/build.test.mjs",
+                "scripts/deliver-packages.test.mjs",
+                "scripts/package-version-gate.test.mjs",
+                "scripts/plugin-package-version.test.mjs",
+                "tests/plugin-release.test.mjs",
+                "tests/plugin-release-source.test.mjs",
+                "tests/optional-companion-manifest.test.mjs",
+              ],
+            }
+          : selectCiTests({
+              repositories: candidate.repositories,
+              repo: "dsh-gea-plugin",
+              base:
+                process.env.QUALITY_BASE_SHA ||
+                baseline.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
+            });
     profileTestsSelected = plan.runtime;
     // The window contract traverses Core's complete dependency tree, including Web assets.
     const needsCoreWeb =
@@ -458,7 +490,7 @@ try {
         ) + "\n",
       );
     }
-    if (["quality", "business-profile"].includes(values.phase)) {
+    if (["quality", "business-profile", "mcp-client-repair"].includes(values.phase)) {
       const checks = runQualityChecks([
         {
           name: "final-group",
@@ -478,6 +510,7 @@ try {
           execute: () =>
             run(process.execPath, [
               ...(values.phase === "business-profile" ? ["--expose-internals"] : []),
+              ...(values.phase === "mcp-client-repair" ? ["--experimental-transform-types"] : []),
               "--test",
               // Files have separate processes; fixtures allocate unique Homes and loopback ports.
               "--test-concurrency=2",

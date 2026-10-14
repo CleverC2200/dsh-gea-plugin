@@ -36,3 +36,33 @@ test("only the authorized product source and CI supplement enter the targeted la
     );
   }
 });
+
+test("the MCP exception rejects another branch, fork, or changed product group", () => {
+  const mcp = {
+    ...input,
+    branch: "codex/mcp-direct-page-main-20261014",
+    matches: false,
+    matchesMcp: true,
+  };
+  assert.equal(selectBusinessProfileLane(mcp), "mcp-client-repair");
+  assert.throws(
+    () => selectBusinessProfileLane({ ...mcp, matchesMcp: false }),
+    /MCP_CLIENT_SCOPE_REJECTED/,
+  );
+  assert.throws(
+    () => selectBusinessProfileLane({ ...mcp, ownRepository: "someone/fork" }),
+    /MCP_CLIENT_SCOPE_REJECTED/,
+  );
+  assert.equal(selectBusinessProfileLane({ ...mcp, branch: "other-pr" }), "full");
+  for (const event of ["push", "workflow_dispatch"]) {
+    assert.equal(
+      selectBusinessProfileLane({ ...mcp, event, ref: "refs/heads/main" }),
+      "mcp-client-repair",
+    );
+    assert.equal(
+      selectBusinessProfileLane({ ...mcp, event, ref: "refs/heads/main", matchesMcp: false }),
+      "full",
+    );
+    assert.equal(selectBusinessProfileLane({ ...mcp, event, ref: "refs/heads/other" }), "full");
+  }
+});

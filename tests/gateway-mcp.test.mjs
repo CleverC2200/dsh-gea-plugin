@@ -231,6 +231,7 @@ test("Business login notifications and transport capabilities follow logout and 
     requestTimeoutMs: 1000,
     analysisAgentCode: "test-agent",
     cubeMcpCodes: { production: "cube-fixture", test: "cube-fixture" },
+    mcpMaxResponseBytes: 8388608,
   });
   const original = globalThis.fetch;
   let notifications = 0;
@@ -270,6 +271,7 @@ test("Business login notifications and transport capabilities follow logout and 
     assert.equal(notifications, 2);
     const setup = new AbortController();
     const connection = await business.openMcpConnection(consumer, setup.signal);
+    assert.equal(connection.maxResponseBytes, 8388608);
     setup.abort();
     await connection.fetch(connection.url, {
       method: "POST",
