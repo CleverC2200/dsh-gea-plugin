@@ -32,7 +32,7 @@ test("the public CI scope/final entry rejects missing, failed, skipped and cance
       assert.equal(run(["--phase", "final"], { ...good, [key]: result }).status, 1);
 });
 test("candidate execution requires the one explicit hashed public admission and input phase cannot write legacy peers", () => {
-  for (const phase of ["quality", "prepare", "verify-input"])
+  for (const phase of ["quality", "plugin-updates", "prepare", "verify-input"])
     assert.match(run(["--phase", phase]).stderr, /CANDIDATE_FINAL_GROUP_REQUIRED/);
   const directory = mkdtempSync(join(tmpdir(), "gea-quality-input-"));
   try {
@@ -60,6 +60,7 @@ test("the workflow binds full source history and the same public quality command
   assert.match(readFileSync("scripts/run-quality-ci.mjs", "utf8"), /APS_BUILD_MODE: ["']mock["']/);
   assert.match(workflow, /if: always\(\)/);
   assert.match(workflow, /needs: \[candidate-scope, gates\]/);
+  assert.match(workflow, /quality-lane == 'plugin-updates' && 'plugin-updates' \|\| 'quality'/);
   assert.match(workflow, /run: node scripts\/run-quality-ci.mjs --phase final/);
   assert.match(workflow, /PLUGIN_SPLIT_READ_TOKEN/);
   assert.match(workflow, /npm install --global npm@11\.11\.0/);
@@ -78,7 +79,7 @@ test("the workflow binds full source history and the same public quality command
 });
 
 test("all candidate entry modes reject absent or forged hash admission before source effects", () => {
-  for (const phase of ["quality", "prepare", "verify-input"])
+  for (const phase of ["quality", "plugin-updates", "prepare", "verify-input"])
     for (const hash of [undefined, "", "main", "A".repeat(64), "a".repeat(64) + "\n"])
       assert.match(
         run([

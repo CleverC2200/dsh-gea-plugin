@@ -60,7 +60,7 @@ try {
     },
   });
   if (
-    ["quality", "prepare", "verify-input"].includes(values.phase) ||
+    ["quality", "plugin-updates", "prepare", "verify-input"].includes(values.phase) ||
     values["final-group-sha256"] !== undefined ||
     values["final-group-workbench"] !== undefined
   ) {
@@ -74,7 +74,7 @@ try {
         "CANDIDATE_FINAL_GROUP_REQUIRED",
         "--input, original bytes --final-group-sha256 and absolute clean source --final-group-workbench required",
       );
-    if (!["quality", "prepare", "verify-input"].includes(values.phase))
+    if (!["quality", "plugin-updates", "prepare", "verify-input"].includes(values.phase))
       refuse("CANDIDATE_FINAL_GROUP_PHASE", values.phase);
   }
   if (values.phase === "scope") {
@@ -89,7 +89,7 @@ try {
       "use the shared hosted group writer and explicit hashed admission",
     );
   } else {
-    if (!["quality", "prepare", "verify-input"].includes(values.phase))
+    if (!["quality", "plugin-updates", "prepare", "verify-input"].includes(values.phase))
       refuse("QUALITY_PHASE_REQUIRED", values.phase);
     const input = values.input;
     // The public Workbench reader owns exact source, identity, lock and Core admission.
@@ -148,8 +148,10 @@ try {
       coreBaseline.head,
       "--consumer",
       process.cwd(),
-      "--with-web",
-      ...(process.platform === "win32" ? [] : ["--with-flock"]),
+      ...(values.phase === "plugin-updates" ? [] : ["--with-web"]),
+      ...(values.phase === "plugin-updates" || process.platform === "win32"
+        ? []
+        : ["--with-flock"]),
       ...(values["prepare-sdk"]
         ? [
             "--prepare",
@@ -158,7 +160,10 @@ try {
           ]
         : []),
     ]);
-    if (!existsSync(resolve(core, "apps/web/dist/index.html"))) refuse("QUALITY_CORE_WEB_REQUIRED");
+    if (values.phase !== "plugin-updates" && !existsSync(resolve(core, "apps/web/dist/index.html")))
+      refuse("QUALITY_CORE_WEB_REQUIRED");
+    if (values.phase === "plugin-updates" && process.platform !== "win32")
+      run(process.execPath, ["native/system/scripts/build.ts", "--host-addon-only"], core);
     finalGroup?.verifyUnchanged();
     if (values["prepare-inputs"])
       await prepareQualityUpstreams(existsSync(upstream) ? realpathSync(upstream) : upstream);
@@ -328,98 +333,135 @@ try {
     );
     process.env.GEA_TEST_CANDIDATE_INPUTS = windowInputs;
     process.env.GEA_TEST_SOURCE_CORE = "1";
-    process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(
-      dirname(dirname(process.cwd())),
-      ".quality-browser",
-    );
-    if (values["prepare-inputs"])
-      run("corepack", [
-        "pnpm",
-        "exec",
-        "playwright",
-        "install",
-        ...(process.platform === "linux" ? ["--with-deps"] : []),
-        "chromium",
-      ]);
-    const { chromium } = await import("@playwright/test");
-    const browserRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
-    const executable = chromium.executablePath();
-    if (!existsSync(executable)) refuse("QUALITY_BROWSER_REQUIRED", executable);
-    const dryRun = execFileSync(
-      "corepack",
-      ["pnpm", "exec", "playwright", "install", "--dry-run", "chromium"],
-      {
-        encoding: "utf8",
-      },
-    );
-    const browserDirectories = [
-      ...new Set([...dryRun.matchAll(/Install location:\s+(.+)/g)].map((match) => match[1].trim())),
-    ];
-    if (browserDirectories.length !== 3)
-      refuse("QUALITY_BROWSER_REQUIRED", "Chromium, headless shell and FFmpeg");
-    const browserFiles = {};
-    for (const directory of browserDirectories) {
-      if (!existsSync(directory)) refuse("QUALITY_BROWSER_REQUIRED", directory);
-      const location = relative(realpathSync(browserRoot), realpathSync(directory));
-      if (location.startsWith(".." + sep) || isAbsolute(location))
-        refuse("QUALITY_BROWSER_REQUIRED", directory);
-      const files = await resourceDigests(directory);
-      if (Object.keys(files).length === 0) refuse("QUALITY_BROWSER_REQUIRED", directory);
-      for (const [file, digest] of Object.entries(files))
-        browserFiles[resolve(directory, file)] = digest;
-    }
-    finalGroup?.verifyUnchanged();
-    writeFileSync(
-      resolve(dirname(dirname(process.cwd())), "browser-preparation.json"),
-      JSON.stringify(
-        {
-          root: browserRoot,
-          executable,
-          directories: browserDirectories,
-          playwright: JSON.parse(
-            readFileSync(resolve("node_modules/@playwright/test/package.json")),
-          ).version,
-          lockSha256: createHash("sha256").update(readFileSync("pnpm-lock.yaml")).digest("hex"),
-          files: browserFiles,
-        },
-        null,
-        2,
-      ) + "\n",
-    );
-    if (values.phase === "quality") {
+    if (values.phase === "plugin-updates") {
       const checks = runQualityChecks([
+        { name: "fast", execute: () => run("corepack", ["pnpm", "quality:fast"]) },
         {
-          name: "final-group",
+          name: "updates",
           execute: () =>
-            run("corepack", ["pnpm", "test:final-group"], process.cwd(), {
-              GEA_FINAL_GROUP_WORKBENCH_SOURCE: workbench.path,
-              GEA_FINAL_GROUP_MANAGE_SOURCE: manage.path,
-              GEA_FINAL_GROUP_CORE_SOURCE: core,
-            }),
-        },
-        {
-          name: "fast",
-          execute: () => run("corepack", ["pnpm", "quality:fast"]),
-        },
-        {
-          name: "contracts",
-          execute: () =>
-            run("corepack", ["pnpm", "test:contracts"], process.cwd(), {
+            run("corepack", ["pnpm", "test:plugin-updates"], process.cwd(), {
               GEA_PLUGIN_UPDATE_SDK: core,
               GEA_PLUGIN_UPDATE_CANDIDATE_CORE: core,
             }),
         },
+        { name: "release-source", execute: () => run("corepack", ["pnpm", "test:release-source"]) },
         {
-          name: "full",
-          execute: () => run("corepack", ["pnpm", "test:ci-full"]),
+          name: "package-version",
+          execute: () => run("corepack", ["pnpm", "test:package-version"]),
+        },
+        {
+          name: "build-delivery",
+          execute: () =>
+            run(process.execPath, [
+              "--test",
+              "scripts/build.test.mjs",
+              "scripts/deliver-packages.test.mjs",
+              "scripts/plugin-update-pr-lane.test.mjs",
+            ]),
         },
       ]);
       writeFileSync(
         resolve(dirname(dirname(process.cwd())), "quality-checks.json"),
-        JSON.stringify(checks, null, 2) + "\n",
+        JSON.stringify({ lane: "plugin-updates", checks }, null, 2) + "\n",
       );
       if (checks.some((check) => check.status !== "passed"))
         refuse("QUALITY_CHECKS_FAILED", JSON.stringify(checks));
+    } else {
+      process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(
+        dirname(dirname(process.cwd())),
+        ".quality-browser",
+      );
+      if (values["prepare-inputs"])
+        run("corepack", [
+          "pnpm",
+          "exec",
+          "playwright",
+          "install",
+          ...(process.platform === "linux" ? ["--with-deps"] : []),
+          "chromium",
+        ]);
+      const { chromium } = await import("@playwright/test");
+      const browserRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
+      const executable = chromium.executablePath();
+      if (!existsSync(executable)) refuse("QUALITY_BROWSER_REQUIRED", executable);
+      const dryRun = execFileSync(
+        "corepack",
+        ["pnpm", "exec", "playwright", "install", "--dry-run", "chromium"],
+        {
+          encoding: "utf8",
+        },
+      );
+      const browserDirectories = [
+        ...new Set(
+          [...dryRun.matchAll(/Install location:\s+(.+)/g)].map((match) => match[1].trim()),
+        ),
+      ];
+      if (browserDirectories.length !== 3)
+        refuse("QUALITY_BROWSER_REQUIRED", "Chromium, headless shell and FFmpeg");
+      const browserFiles = {};
+      for (const directory of browserDirectories) {
+        if (!existsSync(directory)) refuse("QUALITY_BROWSER_REQUIRED", directory);
+        const location = relative(realpathSync(browserRoot), realpathSync(directory));
+        if (location.startsWith(".." + sep) || isAbsolute(location))
+          refuse("QUALITY_BROWSER_REQUIRED", directory);
+        const files = await resourceDigests(directory);
+        if (Object.keys(files).length === 0) refuse("QUALITY_BROWSER_REQUIRED", directory);
+        for (const [file, digest] of Object.entries(files))
+          browserFiles[resolve(directory, file)] = digest;
+      }
+      finalGroup?.verifyUnchanged();
+      writeFileSync(
+        resolve(dirname(dirname(process.cwd())), "browser-preparation.json"),
+        JSON.stringify(
+          {
+            root: browserRoot,
+            executable,
+            directories: browserDirectories,
+            playwright: JSON.parse(
+              readFileSync(resolve("node_modules/@playwright/test/package.json")),
+            ).version,
+            lockSha256: createHash("sha256").update(readFileSync("pnpm-lock.yaml")).digest("hex"),
+            files: browserFiles,
+          },
+          null,
+          2,
+        ) + "\n",
+      );
+      if (values.phase === "quality") {
+        const checks = runQualityChecks([
+          {
+            name: "final-group",
+            execute: () =>
+              run("corepack", ["pnpm", "test:final-group"], process.cwd(), {
+                GEA_FINAL_GROUP_WORKBENCH_SOURCE: workbench.path,
+                GEA_FINAL_GROUP_MANAGE_SOURCE: manage.path,
+                GEA_FINAL_GROUP_CORE_SOURCE: core,
+              }),
+          },
+          {
+            name: "fast",
+            execute: () => run("corepack", ["pnpm", "quality:fast"]),
+          },
+          {
+            name: "contracts",
+            execute: () =>
+              run("corepack", ["pnpm", "test:contracts"], process.cwd(), {
+                GEA_PLUGIN_UPDATE_SDK: core,
+                GEA_PLUGIN_UPDATE_CANDIDATE_CORE: core,
+              }),
+          },
+          {
+            name: "full",
+            execute: () => run("corepack", ["pnpm", "test:ci-full"]),
+          },
+        ]);
+        writeFileSync(
+          resolve(dirname(dirname(process.cwd())), "quality-checks.json"),
+          JSON.stringify(checks, null, 2) + "\n",
+        );
+        if (checks.some((check) => check.status !== "passed"))
+          refuse("QUALITY_CHECKS_FAILED", JSON.stringify(checks));
+      }
     }
   }
   console.log(
