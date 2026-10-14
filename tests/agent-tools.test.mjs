@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
-import { createBusinessSession } from "./fixtures/business-session.mjs";
+import { createBusinessSession, openBusinessPageSession } from "./fixtures/business-session.mjs";
 import { prepareWorkbenchHtmlRoots } from "./fixtures/business-page.mjs";
 
 test(
@@ -495,6 +495,35 @@ test(
         );
         return true;
       }
+      if (outcome === "html-page-command") {
+        const context = body.messages.some((message) => message.tool_call_id === "html-context-1");
+        const applied = body.messages.some((message) => message.tool_call_id === "html-page-1");
+        res.end(
+          applied
+            ? event({ content: "已读取当前页并更新筛选视图，没有业务写入。" }, "stop")
+            : event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: context ? "html-page-1" : "html-context-1",
+                      type: "function",
+                      function: {
+                        name: context ? "gea_plugin_page_apply" : "gea_page",
+                        arguments: JSON.stringify(
+                          context
+                            ? { kind: "setValue", target: "filter:region", value: "河北" }
+                            : { action: "context" },
+                        ),
+                      },
+                    },
+                  ],
+                },
+                "tool_calls",
+              ),
+        );
+        return true;
+      }
       if (outcome === "workbench-command") {
         const appliedResult = body.messages.find(
           (message) => message.role === "tool" && message.tool_call_id === "workbench-command-1",
@@ -699,8 +728,11 @@ test(
       }
       return promptSession(id);
     }
-    async function pageEvents(id) {
-      const response = await pageOperation(id, "catalog", { pageSource: "self-report" });
+    async function pageEvents(id, catalog) {
+      const response = await pageOperation(id, "catalog", {
+        pageSource: "self-report",
+        ...(catalog ? { catalog } : {}),
+      });
       assert.equal(response.ok, true, JSON.stringify(response));
       const receipts = readToolResults(await readSession(app.runtime, id));
       assert.ok(!receipts.some((receipt) => receipt.isError), JSON.stringify(receipts));
@@ -1377,6 +1409,87 @@ test(
           /ELEMENT_NOT_EDITABLE/,
         );
         assert.equal(rows.filter((entry) => entry.type === "turn/end").length, 1);
+      },
+    );
+    await t.test(
+      "an HTML page retains its declared view action through the Core guard and AG-UI bridge",
+      async () => {
+        const resource = "gea-html-inventory-real";
+        const id = await createBusinessSession(app, resource);
+        const html = await openBusinessPageSession(app, id, "inventory-real", resource);
+        owners.set(id, html.owner);
+        const context = await html.context({
+          warehouse: "HTML-PROBE",
+          rows: [{ id: "HTML-ROW", quantity: "42" }],
+        });
+        assert.equal(context.ok, true, JSON.stringify(context));
+        const catalog = {
+          elements: [
+            {
+              id: "filter:region",
+              role: "field",
+              label: "区域",
+              value: "全部",
+              editable: true,
+              effect: "view",
+            },
+          ],
+        };
+        const declared = await html.catalog({ toolMessages: [], catalog });
+        assert.equal(declared.ok, true, JSON.stringify(declared));
+        outcome = "html-page-command";
+        modelRequests = [];
+        await promptSession(id, "把这一屏的区域筛选改成河北");
+        await until(() => modelRequests.length > 0, Boolean);
+        const tools = modelRequests[0].tools.map((tool) => tool.function.name);
+        assert.ok(tools.includes("gea_page"), JSON.stringify(tools));
+        assert.ok(tools.includes("gea_plugin_page_apply"), JSON.stringify(tools));
+        assert.ok(
+          !tools.includes("gea_workbench_apply"),
+          "HTML grant cannot claim a Native action",
+        );
+        const events = await until(
+          () => pageEvents(id, catalog),
+          (value) => value.length > 0,
+        );
+        assert.deepEqual(
+          events.map((event) => event.type),
+          ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END"],
+        );
+        assert.equal(events[0].toolCallName, "gea_plugin_page_apply");
+        assert.deepEqual(JSON.parse(events[1].delta), {
+          kind: "setValue",
+          target: "filter:region",
+          value: "河北",
+        });
+        const settled = await html.catalog({
+          catalog,
+          toolMessages: [
+            {
+              id: "html-view-result",
+              role: "tool",
+              toolCallId: events[0].toolCallId,
+              content: JSON.stringify({ toolCallId: events[0].toolCallId, applied: true }),
+            },
+          ],
+        });
+        assert.equal(settled.ok, true, JSON.stringify(settled));
+        assert.deepEqual(settled.value.events, []);
+        const rows = await ended(id);
+        const results = readToolResults(rows);
+        const observed = results.find((entry) => entry.callId === "html-context-1");
+        assert.equal(observed.isError, false, JSON.stringify(observed));
+        assert.equal(JSON.parse(observed.text).context.warehouse, "HTML-PROBE");
+        const receipt = results.find((entry) => entry.callId === "html-page-1");
+        assert.equal(receipt.isError, false, JSON.stringify(receipt));
+        assert.equal(JSON.parse(receipt.text).applied, true);
+        assert.equal(
+          app.requests.some((request) =>
+            /\/actions$|\/submit$|\/sales-plan\/action$/.test(request.url.pathname),
+          ),
+          false,
+        );
+        assert.equal((await html.close()).ok, true);
       },
     );
     await t.test("页面声明受策略收口：非白名单页面不注册，改数据的动作不暴露", async () => {
