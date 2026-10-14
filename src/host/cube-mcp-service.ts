@@ -13,6 +13,7 @@ export function createCubeMcpService(ctx: Context, business: Business) {
   return {
     version: 2 as const,
     authenticated: () => business.status().authenticated,
+    identitySignal: () => business.identitySignal(),
     watch: (listener: () => void) => {
       const offs = [
         business.watchIdentity(listener),
