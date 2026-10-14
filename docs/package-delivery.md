@@ -34,7 +34,9 @@ request.json 的所有输入路径须为绝对路径，destination 必须是不�
 }
 ```
 
-[productionManifest](../scripts/production-manifest.mjs) 从源码 manifest 生成发行图：移除开发脚本/工作区及源码入口，SDK 按双版支持声明核 exact OR；Workbench/Manage 使用同批 exact必需peers，GenUI/Sidebar 使用 exact optional peers，MCP SDK保留实际运行依赖。它不复制另一套宿主SDK。
+[productionManifest](../scripts/production-manifest.mjs) 从源码 manifest 生成发行图：移除开发脚本/工作区及源码入口，SDK 按双版支持声明核 exact OR；Workbench/Manage 保留源码已声明的必需 peer 约束，源码未声明时才使用明确输入的 exact peer，GenUI/Sidebar 使用 exact optional peers，MCP SDK保留实际运行依赖。它不复制另一套宿主SDK。
+
+三主包的 versions 必须等于对应 owner 当前 manifest 的真实 version。版本改变须先在 owner 修改 manifest 并重新构建；交付不再重贴已编译 JS 的版本。各 owner 构建生成 Host/client 共用的不可变 pluginPackageVersion，交付在创建输出前执行可信 owner 的本地 generator --check，最终 raw/final TGZ 继续按既有输出摘要核字节。不会为证明版本执行来源不明的归档 JS。
 
 versions 的两个辅助版本是 optional peer 的 exact 发布元数据，复用 productionManifest 时仍须明确填写；它们不增加交付 tgz、不自动安装辅助插件，也不把辅助能力变成三核心启动前提。入口在创建 destination 前调用同一 productionManifest 校验，缺少版本会失败且不运行 prepare。
 
@@ -87,10 +89,12 @@ corepack pnpm run delivery:reception --manifest /absolute/delivery/manifest.json
 
 ## 检查执行环境
 
-`npm run test:delivery:packages` 是本地与 `.github/workflows/delivery-fixtures.yml` 的同一条 Node fixture 检查命令，不安装工程依赖、不需要 Core 或兄弟仓库、不调用服务。原九项打包检查在临时目录运行生产 CLI 副本，临时 descriptor 对应 fixture Core 的真实 Git HEAD；生产 `current-core.json` 不变。Manage repository 使用保留来源提交的固定 fixture，继续验证真实历史 Git 元数据与运行依赖的区别。
+`npm run test:delivery:packages` 是本地与 `.github/workflows/delivery-fixtures.yml` 的同一条 Node fixture 检查命令，只需 package.json 声明的 semver 运行依赖，不需要 Core 或兄弟仓库，不调用服务。原九项打包检查在临时目录运行生产 CLI 副本，临时 descriptor 对应 fixture Core 的真实 Git HEAD；生产 `current-core.json` 不变。Manage repository 使用保留来源提交的固定 fixture，继续验证真实历史 Git 元数据与运行依赖的区别。
 
 这些 fixture 证明确定性失败传播、保密输出、归档及回执合同，不能代替 `delivery:reception` 的实际安装和 Host 观察，也不能证明远端 CI 已经运行。正式接收只认可明确 packaged 或 installed-and-host-observed 输入状态，任一已有状态都重新执行本次完整接收。失败或缺省 process/scope、包集合绑定不符均拒绝生成接受结论。
 
 可选官方 CLI 语法为 `dsh plugin --profile <name> add <tgz绝对路径>`，已核固定 Core apps/cli/src/args.ts 的实际命令帮助。默认交付 INSTALL.md 以 GUI 操作为主。
 
 Workbench 的 `lib/business/**/build-inputs.json` 是含源码构建路径的开发来源记录，companion curation 会从新包移除这些文件。原 raw tar 与 source 文件保持不变，收据记录每个 excludedProvenanceFiles 的路径/摘要及 raw archive SHA；页面 HTML、代码与公共 exports 仍逐项核验。来源 metadata 不作为运行资产随用户包交付。
+
+独立单包 release、签名频道和完整组合计划见 [签名插件来源](plugin-release-source.md)。三包交付沿最终 manifest 检查所有消费者的实际 peer ranges，保留已有 exact 约束；版本号独立不代表组合自动兼容。

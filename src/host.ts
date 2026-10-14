@@ -1,3 +1,4 @@
+import { mountPluginUpdates } from "./host/plugin-updates.ts";
 import { toGeaMessages } from "./host/gea-messages.ts";
 import type {} from "./shared/message-source.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
@@ -51,6 +52,7 @@ import type {} from "dsh-agent-manage/business-resources";
 import { fileURLToPath } from "node:url";
 import type {} from "@deepseek-ai/dsh-client-connection";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
+export { pluginPackageVersion } from "./plugin-package-version.ts";
 
 export const inject = [
   "profileContext",
@@ -88,6 +90,8 @@ export const Config = z.object({
   modelRequestTimeoutMs: z.natural().min(1000).max(600000).default(120000),
   maxSnapshotBytes: z.natural().min(1000).max(5000000).default(companyDefaults.maxSnapshotBytes),
   runtimeDir: z.string(),
+  // The feature validates this optional deployment input and stays blocked on incomplete configuration.
+  pluginUpdates: z.any<unknown>(),
   analysisMode: z.union(["receipt", "model"]).default("model"),
   analysisModel: z.string().default(companyDefaults.analysis.model),
   analysisSource: z.union(["gea", "direct", "receipt"]).default("gea"),
@@ -420,7 +424,7 @@ function toGeaRequest(options: GenerateOptions) {
 /** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
 export async function apply(
   ctx: Context,
-  input: Omit<Deployment, "runtimeDir"> & { runtimeDir?: string },
+  input: Omit<Deployment, "runtimeDir"> & { runtimeDir?: string; pluginUpdates?: unknown },
 ): Promise<void> {
   const runtimeDir = input.runtimeDir ?? resolve(ctx.profileContext.dir, "gea");
   if (!isAbsolute(runtimeDir)) throw Error("INVALID_GEA_RUNTIME_DIR: absolute directory required");
@@ -434,6 +438,7 @@ export async function apply(
         ? companyDefaults.geaEnvironments
         : undefined),
   };
+  ctx.effect(() => mountPluginUpdates(ctx, input.pluginUpdates, config));
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);

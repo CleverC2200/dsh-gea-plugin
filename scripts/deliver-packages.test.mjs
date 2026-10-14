@@ -26,6 +26,7 @@ async function requestFixture(
     runtimeDependency,
     successfulPackageManager = false,
     coreVersion = "0.2.1-alpha.1",
+    geaCompanionRange,
   } = {},
 ) {
   const work = await mkdtemp(join(tmpdir(), "delivery-owner-inputs-"));
@@ -54,7 +55,15 @@ async function requestFixture(
   const copiedScripts = join(work, "cli");
   await mkdir(copiedScripts);
   const fixtureEntry = join(copiedScripts, "deliver-packages.mjs");
-  await copyFile(entry, fixtureEntry);
+  const cliSource = await readFile(entry, "utf8");
+  // The temporary CLI exercises the production validator with its declared runtime dependency.
+  await writeFile(
+    fixtureEntry,
+    cliSource.replace(
+      "../src/shared/plugin-release.mjs",
+      new URL("../src/shared/plugin-release.mjs", import.meta.url).href,
+    ),
+  );
   const supported = JSON.parse(
     await readFile(new URL("./supported-cores.json", import.meta.url), "utf8"),
   );
@@ -75,7 +84,7 @@ async function requestFixture(
     await mkdir(join(path, "lib"), { recursive: true });
     const manifest = {
       name,
-      version: "1.0.0",
+      version: "1.0.0-candidate.installable.1",
       files: ["lib", "cordis.patch.yml"],
       exports: { ".": "./lib/host.js", "./client": "./lib/client.js" },
       dsh: { bundle: { patch: "./cordis.patch.yml" }, client: { platform: "web" } },
@@ -83,7 +92,10 @@ async function requestFixture(
       dependencies: {},
       devDependencies: { "@modelcontextprotocol/sdk": "1.30.0" },
     };
-    if (repo === "dsh-gea-plugin") manifest.files.push("npm-shrinkwrap.json");
+    if (repo === "dsh-gea-plugin") {
+      manifest.files.push("npm-shrinkwrap.json");
+      if (geaCompanionRange) manifest.peerDependencies["dsh-agent-manage"] = geaCompanionRange;
+    }
     if (repo === "dsh-agent-manage" && manageRepository)
       manifest.repository = JSON.parse(
         await readFile(
@@ -113,6 +125,13 @@ async function requestFixture(
       ])
         await copyFile(join(import.meta.dirname, file), join(path, "scripts", file));
     }
+    await mkdir(join(path, "scripts"), { recursive: true });
+    await mkdir(join(path, "src"), { recursive: true });
+    await copyFile(
+      join(import.meta.dirname, "generate-plugin-package-version.mjs"),
+      join(path, "scripts/generate-plugin-package-version.mjs"),
+    );
+    execFileSync(process.execPath, ["scripts/generate-plugin-package-version.mjs"], { cwd: path });
     execFileSync("git", ["init", "-q", path]);
     execFileSync("git", ["-C", path, "add", "."]);
     execFileSync("git", [
@@ -432,5 +451,51 @@ test("version and fixed SHA must select the same Core before output is created",
   );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_CORE_INCOMPATIBLE/);
+  await assert.rejects(access(fixture.destination));
+});
+
+test("three-package delivery validates peer ranges instead of requiring version-string equality", async (t) => {
+  const fixture = await requestFixture(t, {
+    successfulPackageManager: true,
+    geaCompanionRange: "^1.0.0-candidate.installable.1",
+  });
+  const result = spawnSync(
+    process.execPath,
+    [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
+    { encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(
+    JSON.parse(await readFile(join(fixture.destination, "manifest.json"), "utf8")).status,
+    "packaged",
+  );
+});
+test("three-package delivery rejects a retained exact companion constraint that the resulting graph breaks", async (t) => {
+  const fixture = await requestFixture(t, {
+    successfulPackageManager: true,
+    geaCompanionRange: "2.0.0",
+  });
+  const result = spawnSync(
+    process.execPath,
+    [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
+    { encoding: "utf8" },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /DELIVERY_THREE_PACKAGE_GRAPH_MISMATCH/);
+  await assert.rejects(access(join(fixture.destination, "manifest.json")));
+});
+
+test("delivery refuses a requested version that would relabel compiled owner outputs", async (t) => {
+  const fixture = await requestFixture(t);
+  const request = JSON.parse(await readFile(fixture.input, "utf8"));
+  request.versions["@cleverc2200/gea-dsh-prototype"] = "9.9.9";
+  await writeFile(fixture.input, JSON.stringify(request));
+  const result = spawnSync(
+    process.execPath,
+    [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
+    { encoding: "utf8" },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /DELIVERY_COMPILED_VERSION_MISMATCH/);
   await assert.rejects(access(fixture.destination));
 });

@@ -22,13 +22,23 @@
     "scripts/delivery-runtime.test.mjs",
     "scripts/delivery-continuation.test.mjs"
   ],
-  "tests": ["tests/*.test.mjs", "scripts/*.test.mjs"],
+  "tests": ["tests/*.test.mjs", "scripts/*.test.mjs", "tests/*.contract.mjs"],
   "rules": [
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^(?:package\\.json|pnpm-lock\\.yaml|tsconfig|\\.github/|scripts/ci-test-policy\\.json)",
       "tests": ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"],
       "exclusive": true
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/(?:host/plugin-update|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)",
+      "tests": [
+        "tests/plugin-update-controller.contract.mjs",
+        "tests/plugin-update-integration.contract.mjs",
+        "tests/plugin-release-source.test.mjs",
+        "tests/plugin-release.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -60,6 +70,12 @@
       "repo": "dsh-agent-manage",
       "pattern": "^scripts/",
       "tests": ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"],
+      "exclusive": true
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/plugin-update-pr-lane\\.",
+      "tests": ["scripts/run-quality-ci.test.mjs"],
       "exclusive": true
     }
   ]

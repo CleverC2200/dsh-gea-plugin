@@ -165,7 +165,10 @@ try {
       "--consumer",
       process.cwd(),
       ...(needsCoreWeb ? ["--with-web"] : []),
-      ...(plan.runtime && process.platform !== "win32" ? ["--with-flock"] : []),
+      ...((plan.runtime || plan.files.some((file) => file.endsWith(".contract.mjs"))) &&
+      process.platform !== "win32"
+        ? ["--with-flock"]
+        : []),
       ...(values["prepare-sdk"]
         ? [
             "--prepare",
@@ -178,6 +181,8 @@ try {
     if (needsCoreWeb && !existsSync(resolve(core, "apps/web/dist/index.html")))
       refuse("QUALITY_CORE_WEB_REQUIRED");
     finalGroup?.verifyUnchanged();
+    process.env.GEA_PLUGIN_UPDATE_SDK = core;
+    process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE = core;
     writeFileSync(
       resolve(dirname(dirname(process.cwd())), "quality-test-plan.json"),
       JSON.stringify(plan, null, 2) + "\n",

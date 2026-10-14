@@ -11,3 +11,5 @@
 本次只调整 CI 接收范围。插件包版本、锁文件、业务断言、预算、Core 源码及私有 Core 的验收范围保持原约定。在途运行仍按原双 Core 定义解释。将策略应用到重新审查并冻结的输入组后，分别核验候选组和合并后的实际 main。
 
 GitHub 全量集合的停用、受影响选择与缓存规则见[当前 CI 规则](../../dsh-agent-workbench/docs/ci-required-and-affected.md)。Core 的 required/compatibility 范围保持本页定义。
+
+2026-10-14 的 [PR 59](https://github.com/CleverC2200/dsh-gea-plugin/pull/59) 曾按固定产品提交 `99067baee958a2260ef3735c6b82818253e4906b` 使用单票定向接收例外。该 PR 已合并，本轮统一选择入口替代其临时路由。后续 PR、main 与手动兼容运行均不恢复 GitHub 全量集合；更新事务、签名来源、包版本及公共 Loader 测试按实际改动选择，业务断言保持原样。
