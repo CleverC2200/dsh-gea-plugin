@@ -218,7 +218,6 @@ export const stockState = (sample) => ({
   rest: [],
   restConsumers: [],
   gateway: [],
-  discovery: [],
   cube: [],
   models: [],
 });

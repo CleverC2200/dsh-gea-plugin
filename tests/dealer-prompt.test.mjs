@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { randomUUID, createHash } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
-import { selectBusinessResource } from "./fixtures/business-session.mjs";
+import { createBusinessSession, selectBusinessResource } from "./fixtures/business-session.mjs";
 import { requireSourceInputs } from "../scripts/source-profile.mjs";
 import { nativeWebPrompt, withoutNativeWebPrompt } from "./fixtures/native-web-prompt.mjs";
 
@@ -213,6 +213,8 @@ test(
       );
       return true;
     });
+    // Discovery needs an actual eligible Core Session; login does not grant one.
+    await createBusinessSession(app);
     await app.login();
     if (process.env.GEA_TEST_SOURCE_CORE === "1") {
       // The combined profile also connects Agent Manage's default MCP bridge at login.
