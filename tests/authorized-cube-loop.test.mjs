@@ -171,8 +171,8 @@ test(
       );
       return true;
     });
-    const id = await createBusinessSession(app);
     await app.login();
+    const id = await createBusinessSession(app);
     await app.remote("session/selectModel", {
       sessionId: id,
       provider: "gea-analysis",
@@ -207,10 +207,6 @@ test(
     );
     assert.equal(JSON.parse(initial[0].text).datasets[0].dataStatus, "partial");
     assert.match(initial[1].text, /SHIP_FIXTURE_FAILED/);
-    const schema = requests[0].body.tools.find(
-      (tool) => tool.function.name === "mcp__gea-gateway__query_business_data",
-    ).function.parameters;
-    assert.deepEqual(schema, querySchema);
     assert.ok(
       queries.every(
         (entry) =>
@@ -251,5 +247,16 @@ test(
     assert.equal(recovered[0].isError, false, recovered[0].text);
     assert.equal(queries.length, 5);
     assert.equal(sessions.length, opened + 1);
+    const firstSchema = requests[0].body.tools.find(
+      (tool) => tool.function.name === "mcp__gea-gateway__query_business_data",
+    );
+    assert.ok(
+      firstSchema,
+      "first model request must include the native query schema: " +
+        JSON.stringify(
+          requests[0].body.tools.map((tool) => tool.function.name),
+        ),
+    );
+    assert.deepEqual(firstSchema.function.parameters, querySchema);
   },
 );

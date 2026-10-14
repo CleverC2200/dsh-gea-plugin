@@ -394,6 +394,7 @@ test(
       );
       return true;
     });
+    await app.login();
     const selected = await selectBusinessResource(app, "gea-readonly");
     const made = await app.remote("session/create", {
       cwd: app.runtime + "/workspace",
@@ -401,7 +402,6 @@ test(
     });
     assert.equal(made.ok, true, JSON.stringify(made));
     const id = made.value.sessionId;
-    await app.login();
     await app.remote("session/selectModel", {
       sessionId: id,
       provider: "gea-analysis",
