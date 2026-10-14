@@ -256,7 +256,7 @@ test(
           assert.match(receipts[0].text, /order-net-gap-v3/);
           assert.match(receipts[1].text, /100/);
           assert.equal(state.cube.length, 1);
-          assert.ok(state.discovery.some((r) => r.agentCode === "branch-inventory"));
+          assert.ok(state.gateway.some((request) => request.consumerCode === "branch-inventory"));
           assert.doesNotMatch(
             JSON.stringify(state.models),
             /fixture-cube-token|fixture-delegation/,
@@ -266,7 +266,7 @@ test(
             JSON.stringify(
               {
                 receipts,
-                discovery: state.discovery,
+                gateway: state.gateway,
                 cube: state.cube,
                 answer: state.models.length,
               },
