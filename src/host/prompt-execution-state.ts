@@ -196,7 +196,11 @@ export class PromptExecutionState {
       state,
       epoch: this.#store.epoch(),
       catalogGeneration: state.catalogGeneration,
-      call: call && { ...call, arguments: structuredClone(call.arguments) },
+      call: call && {
+        name: call.name,
+        arguments: structuredClone(call.arguments),
+        signal: call.signal,
+      },
     });
     this.#pending.set(token, lease);
     return lease;

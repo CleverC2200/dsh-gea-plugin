@@ -10,6 +10,7 @@ import { PromptEvidenceStore } from "../src/host/prompt-evidence.ts";
 const hash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), "gea-execution-policy-"));
+  let retired = false;
   let identity = "one",
     revision = 1,
     queryResult = '{"value":{"rows":[{"amount":3}]}}';
@@ -31,7 +32,10 @@ async function fixture(t) {
   };
   const owner = new PromptExecutionState(
     directory,
-    () => "gea-readonly",
+    () => {
+      if (retired) throw Error("retired Agent queried");
+      return "gea-readonly";
+    },
     () => true,
     {
       ctx: {},
@@ -70,6 +74,9 @@ async function fixture(t) {
     nextTurn: () => {
       revision++;
       owner.startTurn(agent);
+    },
+    retire: () => {
+      retired = true;
     },
     changeIdentity: () => {
       identity = "two";
@@ -144,4 +151,12 @@ test("historic disk MCP grants retain exact resource revalidation without creati
     f.owner.read(f.begin("gea_evidence_read"), { evidenceId: unsafe }),
     /GEA_EVIDENCE_AUTHORIZATION_REQUIRED/,
   );
+});
+
+test("forgotten executions never consult or recreate a retired Agent when completing", async (t) => {
+  const f = await fixture(t);
+  const lease = f.begin();
+  f.owner.forget(f.agent);
+  f.retire();
+  assert.deepEqual(await f.publish(lease), { kind: "accept" });
 });

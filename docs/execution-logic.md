@@ -54,6 +54,8 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 
 轮次、实际preset、Agent状态与store身份epoch决定执行是否仍有效。迟到失败、成功和目录事实只记到原执行；新轮或资源切换后的旧结果不能更新当前状态。原始证据写入之后再次核归属，失去归属时不向当前轮发布回执或投影；文件仍保留。回读重新核原 grant/owner/资源，视图去重也只属于当前有效执行，不由同一个Session地址直接授予。
 
+旧磁盘证据在30分钟有效期内仍可按原grant回读：旧MCP记录必须重核确切Consumer、资源工具与资源快照，缺少授权收据就拒绝。当前原生MCP结果不进入此证据发布路径，不产生新的旧式MCP grant。
+
 现有确定性与Host集成检查入口见 [本地检查](local-development.md)。这些实现与fixture不证明当前窗口、真实模型或业务结果已经验收。
 
 ## 分析发起与业务提单
@@ -80,5 +82,3 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 角色契约、纠偏事务及字段部署、正式 DMS、首次提单、真实模型质量、Windows 和 Native 继续依各票对应环境证据核验。受控 fixture、本地构建与历史发布不完成这些验收。[文档索引](index.md) 保留原风险与证据入口。
 
 [0.0.100 原执行说明](history/current-docs-before-20261010/docs/execution-logic.md) 保留旧自动派生、扫描、页面 Consumer 选择、正式发布流程、失败、未验收项和独特实现理由。原命令、端口与支持矩阵仅供追溯。
-
-旧磁盘证据在30分钟有效期内仍可按原grant回读：旧MCP记录必须重核确切Consumer、资源工具与资源快照，缺少授权收据就拒绝。当前原生MCP结果不进入此证据发布路径，不产生新的旧式MCP grant。
