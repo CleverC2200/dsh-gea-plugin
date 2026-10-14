@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readSession, until } from "./profile.mjs";
