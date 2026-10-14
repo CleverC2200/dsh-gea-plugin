@@ -455,6 +455,7 @@ export async function apply(
       description: profileFor("gea-readonly")!.description,
       root: fileURLToPath(new URL("../", import.meta.url)),
       prompt: "presets/prompt-policy.json",
+      publishPreset: true,
       profileKey: "gea-readonly",
       profile: profileFor("gea-readonly")!,
     },
