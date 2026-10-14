@@ -19,7 +19,10 @@ test("scope queries do not require a bound page; page references cannot fabricat
   assert.ok(allowedTools(profile).has("gea_sales_plan_read"));
   assert.ok(allowedTools(profile).has("gea_visible_workbench_context"));
   assert.ok(!allowedTools(profile).has("gea_page"));
-  assert.ok(allowedTools(profile, "gea_page").has("gea_page"));
+  const html = allowedTools(profile, "gea_page");
+  assert.ok(html.has("gea_page"));
+  assert.ok(html.has("gea_plugin_page_apply"));
+  assert.ok(!html.has("gea_workbench_apply"));
 });
 test("page context keeps a narrow focus and does not claim complete scope", async () => {
   assert.match(TOOL_DESCRIPTIONS.gea_visible_workbench_context, /focus/);
@@ -40,4 +43,5 @@ test("a Native page grants its declared action tool without claiming an HTML lea
   assert.ok(native.has("gea_workbench_apply"));
   assert.ok(native.has("gea_visible_workbench_context"));
   assert.ok(!native.has("gea_page"));
+  assert.ok(!native.has("gea_plugin_page_apply"));
 });
