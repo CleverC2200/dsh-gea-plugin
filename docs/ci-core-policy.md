@@ -27,3 +27,5 @@ The user explicitly approved targeted acceptance and merge after the original re
 `mcp-client-repair` accepts only PR 63's same-repository branch and the exact three product commits in `mcpClientSources`, followed by the existing CI/evidence allowlist. Each actual checkout and HEAD is verified. A source change, fork or different PR branch rejects the exception; same-source main and explicit main dispatch can validate the merged tree. The rc.2 final aggregate, static checks, builds and main protection remain required.
 
 The selected tests cover direct structured/text results, historical resource integrity, paging and numeric precision, malformed response stopping, identity/Consumer admission, cancellation, Host settings and the exception's rejection cases. Runtime/browser and the historical full-suite failures remain outside this single-ticket acceptance; installed-client and real MCP evidence belongs to the earlier 0.0.144 candidate.
+
+冻结来源与历史例外统一由同组 Workbench 的 `scripts/ci-source-policy.mjs` 维护；本仓只适配已登记的事件与原 MCP 修复角色。workflow 先取得固定 Workbench 源码，联合 runner 读取 tuple 中的实际路径。例外分支、来源 SHA、路径范围和 required Core 均未扩张。
