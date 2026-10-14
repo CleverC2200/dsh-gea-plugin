@@ -43,10 +43,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-aqkc/skills/aqkc/SKILL.md",
-        "sha256": "0835006111622fd2c3289ab5d3910a05da50af77393cf76b24c481fd76a796ba",
+        "sha256": "41b8fb11d166ff89afb926f0e5632b0a4f4c0da3866e3ddaafc654597aa29454",
         "name": "inventory-aqkc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceHead": "2950d988a7ca531cc971484899ae9c6385fcfc1c",
         "sourceFile": "business-resources/inventory-aqkc/skills/aqkc/SKILL.md"
       },
       {
@@ -70,10 +70,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-fc/skills/fc/SKILL.md",
-        "sha256": "b217f1d93dd12fbce94f3af5981f806fd1de62c204d234b5976a82aa905085f6",
+        "sha256": "e423a08d7926d215f82c0c44784b27dd2f3deb19a9c42c804d8dc363c87b648c",
         "name": "inventory-fc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceHead": "2950d988a7ca531cc971484899ae9c6385fcfc1c",
         "sourceFile": "business-resources/inventory-fc/skills/fc/SKILL.md"
       },
       {
