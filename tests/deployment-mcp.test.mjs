@@ -42,20 +42,20 @@ test("explicit MCP source and wire budget survive deployment into ordinary and b
   }
 });
 
-test("deployment keeps the current MCP timeout and byte defaults while accepting explicit Host-supported limits", async (t) => {
+test("deployment retains launcher timeout limits and forwards the current wire byte budget", async (t) => {
   const config = await deployment(t);
-  assert.equal(config.mcpRequestTimeoutMs, 300000);
+  assert.equal(config.mcpRequestTimeoutMs, 60000);
   assert.equal(config.mcpMaxResponseBytes, 320 * 1024 * 1024);
   assert.equal(
     config.cubeMcpCodes,
     undefined,
     "undeclared production never borrows another Cube source",
   );
-  const explicit = await deployment(t, { mcpRequestTimeoutMs: 600000, mcpMaxResponseBytes: 1024 });
-  assert.equal(explicit.mcpRequestTimeoutMs, 600000);
+  const explicit = await deployment(t, { mcpRequestTimeoutMs: 120000, mcpMaxResponseBytes: 1024 });
+  assert.equal(explicit.mcpRequestTimeoutMs, 120000);
   assert.equal(explicit.mcpMaxResponseBytes, 1024);
   for (const settings of [
-    { mcpRequestTimeoutMs: 600001 },
+    { mcpRequestTimeoutMs: 120001 },
     { mcpMaxResponseBytes: 1023 },
     { mcpMaxResponseBytes: 1024 * 1024 * 1024 + 1 },
     { mcpMaxResponseBytes: 1.5 },
