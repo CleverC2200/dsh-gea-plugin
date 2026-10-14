@@ -586,7 +586,10 @@ export class GeaApiLogCenter {
         method,
         ...safeUrl,
         headers: sanitizeHeaders(requestHeaders),
-        body: bodyPreview(requestBody, requestHeaders),
+        body:
+          catalog?.id === "model.chat"
+            ? "[模型请求正文未保存]"
+            : bodyPreview(requestBody, requestHeaders),
       },
     };
     const body = replayableBody(requestBody);
@@ -623,7 +626,12 @@ export class GeaApiLogCenter {
         status: response.status,
         statusText: response.statusText,
         headers: sanitizeHeaders(response.headers),
-        body: await responsePreview(response),
+        body:
+          catalog?.id === "model.chat"
+            ? response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream")
+              ? STREAM_OMITTED
+              : "[模型响应正文未保存]"
+            : await responsePreview(response),
       };
       record.outcome = response.ok ? "success" : "error";
       this.finish(record, started);

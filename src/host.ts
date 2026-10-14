@@ -405,6 +405,7 @@ function toGeaRequest(options: GenerateOptions) {
     model: options.model,
     messages: toGeaMessages(options),
     stream: true,
+    gea_tool_execution_mode: "client",
     stream_options: { include_usage: true },
     ...(extraParams === undefined ? {} : { extra_params: extraParams }),
     ...(options.tools && options.tools.length > 0

@@ -20,6 +20,7 @@ const STREAM_FAILURES: Record<string, string> = {
   GEA_MODEL_INVALID_TOOL_CALL: "模型这一轮回复里的工具调用不合法，本轮已中止，请重发一次",
   GEA_MODEL_TOOL_CALL_TOO_LARGE: "模型这一轮想传的参数超过上限，本轮已中止，请把请求拆小一点再试",
   GEA_MODEL_UNSUPPORTED_FINISH_REASON: "模型返回了无法识别的结束原因，本轮已中止",
+  GEA_MODEL_REASONING_TOO_LARGE: "模型返回的思考超出网关历史上限，本轮已中止，原文不会被截断回传",
   GEA_MODEL_EMPTY_RESPONSE: "模型这一轮没有给出任何内容，请重发一次",
   GEA_MODEL_INVALID_SSE: "模型返回的数据格式无法解析，本轮已中止",
   GEA_MODEL_GATEWAY_ERROR: "模型网关在流里回了错误，本轮已中止",
@@ -38,53 +39,51 @@ function invalid(code: string, detail?: string): never {
   throw streamFailure(code, detail);
 }
 
-/** 出问题时把参数尾部（截断、去控制字符）留在运行日志里，方便下次定位。 */
-function printableLogText(text: string): string {
-  let flat = "",
-    previousControl = false;
-  for (const character of text) {
-    const control = character.charCodeAt(0) < 32;
-    if (!control || !previousControl) flat += control ? " " : character;
-    previousControl = control;
-  }
-  return flat.trim();
-}
-
-function argumentTail(argumentsText: string, max = 160): string {
-  const flat = printableLogText(argumentsText);
-  return flat.length > max ? "…" + flat.slice(-max) : flat;
-}
-
-/**
- * 保留失败片段的有界原文并去控制字符，使解析错误仍能说明网关返回的原因。
- */
-function snippet(text: string, max = 160): string {
-  const flat = printableLogText(text);
-  return flat.length > max ? flat.slice(0, max) + "…" : flat;
-}
-
-/** 上下文超限的常见说法（网关/模型侧措辞不一，统一归类）。 */
+/** Classify gateway failures without copying response text into diagnostics. */
 const CONTEXT_LIMIT_SIGN =
   /context length|context_length|maximum context|too many tokens|token limit|reduce the length|max_tokens/i;
 
-/** 流里的错误对象压成一句可读原因（含 code/type）。 */
-function gatewayErrorDetail(value: unknown): string {
-  const record_ = record(value);
-  const code = typeof record_.code === "string" ? record_.code : undefined;
-  const type = typeof record_.type === "string" ? record_.type : undefined;
-  const message =
-    typeof record_.message === "string" && record_.message.trim()
-      ? record_.message
-      : typeof value === "string"
-        ? value
-        : snippet(JSON.stringify(value) ?? "");
-  return [code, type, message].filter(Boolean).join(" | ");
-}
-
-function logRejectedToolCall(name: string, reason: string, argumentsText: string): void {
-  console.log(
-    `[model-stream] dropped tool call name=${name || "(no name)"} reason=${reason} bytes=${new TextEncoder().encode(argumentsText).byteLength} tail=${argumentTail(argumentsText)}`,
-  );
+function gatewayErrorDetail(value: unknown): { detail: string; contextLimit: boolean } {
+  const error = record(value);
+  const codes = new Set([
+    "invalid_request",
+    "invalid_tool_message",
+    "invalid_api_key",
+    "permission_denied",
+    "rate_limit_exceeded",
+    "concurrency_limit_exceeded",
+    "context_length_exceeded",
+    "MODEL_UPSTREAM_CONNECT_TIMEOUT",
+    "MODEL_UPSTREAM_TIMEOUT",
+    "MODEL_UPSTREAM_RATE_LIMITED",
+    "MODEL_UPSTREAM_REJECTED",
+    "MODEL_UPSTREAM_UNAVAILABLE",
+    "model_gateway_unavailable",
+    "STREAM_ERROR",
+    "STREAM_TRANSPORT_ERROR",
+    "INTERNAL",
+    "upstream_error",
+  ]);
+  const safeCode = (value: unknown) =>
+    typeof value === "string" && codes.has(value) ? value : undefined;
+  const types = new Set([
+    "invalid_request_error",
+    "server_error",
+    "authentication_error",
+    "permission_error",
+    "rate_limit_error",
+  ]);
+  return {
+    detail: [
+      safeCode(error.code),
+      typeof error.type === "string" && types.has(error.type) ? error.type : undefined,
+    ]
+      .filter(Boolean)
+      .join(" | "),
+    contextLimit: CONTEXT_LIMIT_SIGN.test(
+      [error.code, error.message].filter((value) => typeof value === "string").join(" "),
+    ),
+  };
 }
 
 /** Provider counters are authoritative; missing usage is not zero usage. */
@@ -116,6 +115,7 @@ export function geaUsage(value: unknown): import("@deepseek-ai/dsh-llm").TokenUs
 
 function completion(data: string): {
   text?: string;
+  reasoning?: string;
   finish?: "stop" | "max-tokens" | "tool-calls";
   tools?: unknown[];
 } {
@@ -126,7 +126,7 @@ function completion(data: string): {
   } catch {
     invalid(
       "GEA_MODEL_INVALID_SSE",
-      `这一帧不是 JSON（${new TextEncoder().encode(data).byteLength} 字节）：${snippet(data)}`,
+      `这一帧不是 JSON（${new TextEncoder().encode(data).byteLength} 字节）`,
     );
   }
   const payload = record(parsed);
@@ -134,30 +134,33 @@ function completion(data: string): {
   // 一律报"格式无法解析"等于把真因吞掉（线上就是这么被误导的）。
   if (payload.error != null) {
     const detail = gatewayErrorDetail(payload.error);
-    if (CONTEXT_LIMIT_SIGN.test(detail)) invalid("GEA_MODEL_CONTEXT_TOO_LONG", detail);
-    invalid("GEA_MODEL_GATEWAY_ERROR", detail);
+    if (detail.contextLimit) invalid("GEA_MODEL_CONTEXT_TOO_LONG", detail.detail);
+    invalid("GEA_MODEL_GATEWAY_ERROR", detail.detail);
   }
-  if (!Array.isArray(payload.choices))
-    invalid("GEA_MODEL_INVALID_SSE", `choices 不是数组：${snippet(data)}`);
+  if (!Array.isArray(payload.choices)) invalid("GEA_MODEL_INVALID_SSE", "choices 不是数组");
   if (payload.choices.length > 1)
     invalid("GEA_MODEL_INVALID_SSE", `choices 多于一条（${payload.choices.length}）`);
   if (payload.choices.length === 0) return {};
   const choice = record(payload.choices[0]);
   if (choice.index !== undefined && choice.index !== 0)
-    invalid("GEA_MODEL_INVALID_SSE", `choice.index=${String(choice.index)}`);
+    invalid("GEA_MODEL_INVALID_SSE", "不支持的 choice.index");
   const delta = choice.delta == null ? {} : record(choice.delta);
   if (delta.function_call != null) invalid("GEA_MODEL_UNSUPPORTED_TOOL_CALL");
   if (delta.tool_calls != null && !Array.isArray(delta.tool_calls))
-    invalid("GEA_MODEL_INVALID_SSE", `tool_calls 不是数组：${snippet(data)}`);
+    invalid("GEA_MODEL_INVALID_SSE", "tool_calls 不是数组");
   const tools = delta.tool_calls as unknown[] | undefined;
   if (delta.content != null && typeof delta.content !== "string")
     invalid("GEA_MODEL_INVALID_SSE", `content 类型是 ${typeof delta.content}`);
   const text = typeof delta.content === "string" ? delta.content : undefined;
-  // reasoning_content 不会被投影为最终答案。
-  if (choice.finish_reason == null) return { text, tools };
-  if (choice.finish_reason === "stop") return { text, tools, finish: "stop" };
-  if (choice.finish_reason === "length") return { text, tools, finish: "max-tokens" };
-  if (choice.finish_reason === "tool_calls") return { text, tools, finish: "tool-calls" };
+  if (delta.reasoning_content != null && typeof delta.reasoning_content !== "string")
+    invalid("GEA_MODEL_INVALID_SSE", "reasoning_content 不是字符串");
+  const reasoning =
+    typeof delta.reasoning_content === "string" ? delta.reasoning_content : undefined;
+  if (choice.finish_reason == null) return { text, reasoning, tools };
+  if (choice.finish_reason === "stop") return { text, reasoning, tools, finish: "stop" };
+  if (choice.finish_reason === "length") return { text, reasoning, tools, finish: "max-tokens" };
+  if (choice.finish_reason === "tool_calls")
+    return { text, reasoning, tools, finish: "tool-calls" };
   invalid("GEA_MODEL_UNSUPPORTED_FINISH_REASON");
 }
 
@@ -189,11 +192,20 @@ export async function* geaTextStream(
   const events: string[] = [];
   const parser = createParser({ onEvent: (event) => events.push(event.data) });
   let text = "";
+  let reasoning = "";
+  let reasoningStarted = false;
   const calls = new Map<number, { id: string; name: string; arguments: string }>();
   let callBytes = 0;
   let terminal: "stop" | "max-tokens" | "tool-calls" | undefined;
   let usage: import("@deepseek-ai/dsh-llm").TokenUsage | undefined;
   let usageDeadline = 0;
+  const finishChunk = (reason: NonNullable<typeof terminal>): StreamChunk => ({
+    type: "finish",
+    reason: { kind: reason },
+    ...(reasoning && reason !== "max-tokens"
+      ? { replayState: { response: { protocol: "gea-client-reasoning-v1", complete: true } } }
+      : {}),
+  });
   try {
     signal?.throwIfAborted();
     yield { type: "block-start", index: 0, blockType: "text" };
@@ -201,7 +213,7 @@ export async function* geaTextStream(
       signal?.throwIfAborted();
       if (terminal && Date.now() >= usageDeadline) {
         if (usage) yield { type: "usage", usage };
-        yield { type: "finish", reason: { kind: terminal } };
+        yield finishChunk(terminal);
         return;
       }
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -224,7 +236,7 @@ export async function* geaTextStream(
         signal?.throwIfAborted();
         if (data.trim() === "[DONE]" && terminal) {
           if (usage) yield { type: "usage", usage };
-          yield { type: "finish", reason: { kind: terminal } };
+          yield finishChunk(terminal);
           return;
         }
         try {
@@ -233,10 +245,18 @@ export async function* geaTextStream(
           /* completion reports malformed frames. */
         }
         const chunk = completion(data);
-        if (terminal) {
-          if (chunk.text || chunk.tools?.length || chunk.finish)
-            invalid("GEA_MODEL_INVALID_SSE", "content after finish_reason");
-          continue;
+        // completion still checks error envelopes. Late successful deltas do not
+        // mutate blocks which have already completed.
+        if (terminal) continue;
+        if (chunk.reasoning) {
+          if (reasoning.length + chunk.reasoning.length > 1_048_576)
+            invalid("GEA_MODEL_REASONING_TOO_LARGE");
+          reasoning += chunk.reasoning;
+          if (!reasoningStarted) {
+            reasoningStarted = true;
+            yield { type: "block-start", index: 1, blockType: "reasoning" };
+          }
+          yield { type: "reasoning-delta", index: 1, text: chunk.reasoning };
         }
         for (const value of chunk.tools ?? []) {
           if (!offered?.names.length) invalid("GEA_MODEL_UNSUPPORTED_TOOL_CALL");
@@ -286,47 +306,27 @@ export async function* geaTextStream(
         if (chunk.finish) {
           signal?.throwIfAborted();
           const ids = new Set<string>();
-          // 只有"参数不是合法 JSON"这一类降级为"这一次调用失败"：结构性问题
-          // （缺 id、id 重复、调了本轮没提供的工具）仍然硬失败，不能拿坏流糊过去。
-          const executable: Array<{
-            id: string;
-            name: string;
-            arguments: string;
-          }> = [];
-          const dropped: string[] = [];
+          if (calls.size > 0 !== (chunk.finish === "tool-calls"))
+            invalid("GEA_MODEL_INVALID_TOOL_CALL");
           for (const call of calls.values()) {
             if (!call.id || ids.has(call.id) || !offered?.names.includes(call.name))
               invalid("GEA_MODEL_INVALID_TOOL_CALL");
             ids.add(call.id);
-            let reason: string | undefined;
+            let args: unknown;
             try {
-              const args: unknown = JSON.parse(call.arguments);
-              if (!args || typeof args !== "object" || Array.isArray(args))
-                reason = "参数不是 JSON 对象";
+              args = JSON.parse(call.arguments);
             } catch {
-              reason = "参数不是合法 JSON（多半被截断，或引号/括号错位）";
+              invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具参数不是合法 JSON");
             }
-            if (reason) {
-              logRejectedToolCall(call.name, reason, call.arguments);
-              dropped.push(`${call.name}：${reason}`);
-              continue;
-            }
-            executable.push(call);
+            if (!args || typeof args !== "object" || Array.isArray(args))
+              invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具参数不是 JSON 对象");
           }
-          if (dropped.length === 0 && calls.size > 0 !== (chunk.finish === "tool-calls"))
-            invalid("GEA_MODEL_INVALID_TOOL_CALL");
-          // 被丢弃的调用要告诉模型，让它自己重发一次；不假装它调用成功了。
-          if (dropped.length > 0)
-            text +=
-              (text.trim() ? "\n\n" : "") +
-              `（宿主提示：${dropped.length} 次工具调用的参数不合法，已丢弃，没有执行：${dropped.join("；")}。` +
-              "请重新发起这些调用，参数必须是合法的 JSON 对象；如果用不到就忽略这条提示。）";
-          const finishKind =
-            dropped.length > 0 ? (executable.length > 0 ? "tool-calls" : "stop") : chunk.finish;
-          if (!text.trim() && finishKind === "stop") invalid("GEA_MODEL_EMPTY_RESPONSE");
+          if (!text.trim() && chunk.finish === "stop") invalid("GEA_MODEL_EMPTY_RESPONSE");
           yield { type: "block-end", index: 0, block: { type: "text", text } };
-          let index = 1;
-          for (const call of executable) {
+          if (reasoningStarted)
+            yield { type: "block-end", index: 1, block: { type: "reasoning", text: reasoning } };
+          let index = reasoningStarted ? 2 : 1;
+          for (const call of calls.values()) {
             signal?.throwIfAborted();
             const id = brandString<ToolCallId>(call.id);
             yield { type: "block-start", index, blockType: "tool-call" };
@@ -350,14 +350,14 @@ export async function* geaTextStream(
             index++;
           }
           signal?.throwIfAborted();
-          terminal = finishKind;
+          terminal = chunk.finish;
           usageDeadline = Date.now() + 250;
         }
       }
       if (read.done) {
         if (!terminal) invalid("GEA_MODEL_INCOMPLETE_STREAM");
         if (usage) yield { type: "usage", usage };
-        yield { type: "finish", reason: { kind: terminal } };
+        yield finishChunk(terminal);
         return;
       }
     }
