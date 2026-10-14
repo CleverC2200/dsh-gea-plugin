@@ -12,6 +12,8 @@
 
 [能力声明](capability-contract.md) 定义模块可用、影响等级与 mock 边界。GEA 使用 Workbench 包登记与 Manage 资源入口，不扫描 HTML SQL、DOM 或 Skill 正文来派生权限。
 
+[GatewayRequests](../src/host/gateway-requests.ts) 集中 GEA envelope 请求的身份代际、取消、超时、请求标识与读取处理。Business 保留登录权威和精确数字解析；模型凭据、通知与审批保留各自错误码，Gateway MCP 握手继续按独立协议校验。请求结束及正文读取后重新核原身份，旧身份迟到的 401 不得清除新登录；取消和超时分别报告，不包装成网络失败。
+
 ## 页面与独立查询
 
 | 行为                             | 责任与一手入口                                                                                                                                                                                                     |
