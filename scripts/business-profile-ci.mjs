@@ -31,18 +31,14 @@ export function selectBusinessProfileLane({
   ownRepository,
   matches,
 }) {
-  const requested =
-    event === "pull_request" &&
-    branch === "codex/business-profile-main-20261014";
+  const requested = event === "pull_request" && branch === "codex/business-profile-main-20261014";
   if (requested && (ownRepository !== repository || !matches))
     throw Error("BUSINESS_PROFILE_SCOPE_REJECTED");
-  const main =
-    ["push", "workflow_dispatch"].includes(event) && ref === "refs/heads/main";
+  const main = ["push", "workflow_dispatch"].includes(event) && ref === "refs/heads/main";
   return (requested || main) && matches ? "business-profile" : "full";
 }
 function matchesCheckout(repo, path, head) {
-  const git = (...args) =>
-    execFileSync("git", ["-C", path, ...args], { encoding: "utf8" }).trim();
+  const git = (...args) => execFileSync("git", ["-C", path, ...args], { encoding: "utf8" }).trim();
   if (!productSources[repo] || git("rev-parse", "HEAD") !== head)
     throw Error("BUSINESS_PROFILE_EVENT_MISMATCH");
   try {
@@ -50,31 +46,19 @@ function matchesCheckout(repo, path, head) {
   } catch {
     return false;
   }
-  const paths = git(
-    "diff",
-    "--no-renames",
-    "--name-only",
-    productSources[repo],
-    head,
-  )
+  const paths = git("diff", "--no-renames", "--name-only", productSources[repo], head)
     .split("\n")
     .filter(Boolean);
   return matchesProductSource(true, paths);
 }
 export function validateBusinessProfileGroup(repositories) {
-  if (
-    repositories.length !== 3 ||
-    new Set(repositories.map((row) => row.repo)).size !== 3
-  )
+  if (repositories.length !== 3 || new Set(repositories.map((row) => row.repo)).size !== 3)
     throw Error("BUSINESS_PROFILE_GROUP_REQUIRED");
   for (const row of repositories)
     if (!matchesCheckout(row.repo, row.path, row.head))
       throw Error("BUSINESS_PROFILE_PEER_REJECTED: " + row.repo);
 }
-if (
-  process.argv[1] &&
-  pathToFileURL(process.argv[1]).href === import.meta.url
-) {
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   const repository = process.env.GITHUB_REPOSITORY;
   const repo = repository?.replace("CleverC2200/", "");
   if (!productSources[repo] || repository !== "CleverC2200/" + repo)
@@ -85,14 +69,9 @@ if (
     ref: process.env.GITHUB_REF,
     branch: process.env.QUALITY_PR_BRANCH,
     ownRepository: process.env.QUALITY_PR_REPOSITORY,
-    matches: matchesCheckout(
-      repo,
-      process.cwd(),
-      process.env.QUALITY_EXPECTED_SHA,
-    ),
+    matches: matchesCheckout(repo, process.cwd(), process.env.QUALITY_EXPECTED_SHA),
   });
-  if (process.env.GITHUB_OUTPUT)
-    appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\n`);
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\n`);
   console.log(
     JSON.stringify({
       lane,

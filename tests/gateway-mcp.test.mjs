@@ -10,8 +10,7 @@ const { outputFiles } = await build({
   format: "esm",
 });
 const { prepareGatewayMcp } = await import(
-  "data:text/javascript;base64," +
-    Buffer.from(outputFiles[0].contents).toString("base64")
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 const consumer = { consumerType: "AGENT", consumerCode: "test-agent" };
 const auth = { token: "login-secret", tenantId: "0" };
@@ -65,10 +64,7 @@ test("stopping a setup or request does not poison the retained login transport",
   });
   assert.equal(sent, 2);
   identity.abort();
-  await assert.rejects(
-    connection.fetch(connection.url, request),
-    /abort|login|身份/i,
-  );
+  await assert.rejects(connection.fetch(connection.url, request), /abort|login|身份/i);
   assert.equal(sent, 2);
 });
 
@@ -77,10 +73,7 @@ test("creates authorized session and isolates trusted meta from business argumen
   const calls = [];
   const fake = async (url, init) => {
     calls.push({ url, init });
-    if (
-      !url.endsWith("/session") &&
-      JSON.parse(init.body).method === "tools/list"
-    )
+    if (!url.endsWith("/session") && JSON.parse(init.body).method === "tools/list")
       return Response.json({
         jsonrpc: "2.0",
         id: 1,
@@ -93,9 +86,7 @@ test("creates authorized session and isolates trusted meta from business argumen
           ],
         },
       });
-    return url.endsWith("/session")
-      ? Response.json(session())
-      : Response.json({ ok: true });
+    return url.endsWith("/session") ? Response.json(session()) : Response.json({ ok: true });
   };
   const connection = await prepareGatewayMcp(
     "https://gea.test",
@@ -138,10 +129,7 @@ test("creates authorized session and isolates trusted meta from business argumen
   });
   assert.ok(!JSON.stringify(calls[2]).includes("login-secret"));
   assert.equal(calls[2].init.redirect, "error");
-  await assert.rejects(
-    () => connection.fetch("https://foreign.test", {}),
-    /ENDPOINT_REJECTED/,
-  );
+  await assert.rejects(() => connection.fetch("https://foreign.test", {}), /ENDPOINT_REJECTED/);
   controller.abort();
   await assert.rejects(() => connection.fetch(connection.url, {}));
   assert.equal(calls.length, 3);
@@ -153,10 +141,7 @@ test("rejects denied, incomplete and wrong-consumer sessions despite HTTP succes
     [(p) => (p.result.accessDecision.allowed = false), /AGENT_ACCESS_DENIED/],
     [(p) => (p.result.delegationToken = ""), /SESSION_REJECTED/],
     [(p) => (p.result.gatewayContext.conversationId = ""), /SESSION_REJECTED/],
-    [
-      (p) => (p.result.gatewayContext.consumerCode = "other"),
-      /SESSION_REJECTED/,
-    ],
+    [(p) => (p.result.gatewayContext.consumerCode = "other"), /SESSION_REJECTED/],
     [(p) => (p.success = false), /SESSION_REJECTED/],
   ];
   for (const [mutate, expected] of cases) {
@@ -198,12 +183,7 @@ test("discovery gets the complete authorization context; init remains protocol-o
       return Response.json({});
     },
   );
-  for (const method of [
-    "initialize",
-    "tools/list",
-    "resources/list",
-    "resources/read",
-  ])
+  for (const method of ["initialize", "tools/list", "resources/list", "resources/read"])
     await connection.fetch(connection.url, {
       method: "POST",
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: {} }),
@@ -218,17 +198,10 @@ test("discovery gets the complete authorization context; init remains protocol-o
 test("late session responses cannot survive identity invalidation", async () => {
   const controller = new AbortController();
   await assert.rejects(() =>
-    prepareGatewayMcp(
-      "https://gea.test",
-      auth,
-      consumer,
-      controller.signal,
-      1000,
-      async () => {
-        controller.abort();
-        return Response.json(session());
-      },
-    ),
+    prepareGatewayMcp("https://gea.test", auth, consumer, controller.signal, 1000, async () => {
+      controller.abort();
+      return Response.json(session());
+    }),
   );
 });
 
@@ -291,10 +264,7 @@ test("Business login notifications and transport capabilities follow logout and 
       /LOGIN_REQUIRED/,
     );
     const qr = await business.loginStart(new AbortController().signal);
-    await business.loginPoll(
-      { loginId: qr.loginId },
-      new AbortController().signal,
-    );
+    await business.loginPoll({ loginId: qr.loginId }, new AbortController().signal);
     assert.equal(business.status().authenticated, true);
     assert.equal(business.status().user.avatar, "https://avatar.test/user.png");
     assert.equal(notifications, 2);
@@ -309,10 +279,7 @@ test("Business login notifications and transport capabilities follow logout and 
     assert.equal(notifications, 3);
     await assert.rejects(() => connection.fetch(connection.url, {}));
     await assert.rejects(() =>
-      connection.authorizedResources(
-        "query_business_data",
-        new AbortController().signal,
-      ),
+      connection.authorizedResources("query_business_data", new AbortController().signal),
     );
     business.selectEnvironment({ environment: "test" });
     assert.equal(notifications, 4);
@@ -349,9 +316,7 @@ test("routes discovered gateway and remote tools without trusting caller metadat
         },
       });
     const expected =
-      wire.params.name === "lightrag_list_docs"
-        ? "knowledge"
-        : "mcp.gateway.session";
+      wire.params.name === "lightrag_list_docs" ? "knowledge" : "mcp.gateway.session";
     assert.equal(wire.params._meta.mcpCode, expected);
     assert.equal(wire.params._meta.delegationToken, "delegation-secret");
     assert.deepEqual(wire.params.arguments, {});
@@ -375,10 +340,7 @@ test("routes discovered gateway and remote tools without trusting caller metadat
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
     });
   await send("tools/list", {});
-  for (const name of [
-    "gateway.session.currentUser.resolve",
-    "lightrag_list_docs",
-  ])
+  for (const name of ["gateway.session.currentUser.resolve", "lightrag_list_docs"])
     await send("tools/call", {
       name,
       arguments: {},
@@ -423,8 +385,7 @@ test("SSE discovery preserves response, pagination accumulates routes and refres
   assert.equal(await (await send("tools/list")).text(), body);
   tools = [{ name: "second", _meta: { sourceCode: "two" } }];
   await send("tools/list", { cursor: "next" });
-  for (const name of ["first", "second"])
-    await send("tools/call", { name, arguments: {} });
+  for (const name of ["first", "second"]) await send("tools/call", { name, arguments: {} });
   assert.deepEqual(
     sent.slice(-2).map((x) => x.params._meta.mcpCode),
     ["one", "two"],
@@ -491,9 +452,8 @@ test("local Skill file URI is rejected before gateway IO with the correct reader
 
 test("SDK calls recover an expired transport session once, including concurrent calls", async () => {
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-  const { StreamableHTTPClientTransport } = await import(
-    "@modelcontextprotocol/sdk/client/streamableHttp.js"
-  );
+  const { StreamableHTTPClientTransport } =
+    await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
   let generation = 0,
     expired = false,
     initialized = false;
@@ -525,11 +485,7 @@ test("SDK calls recover an expired transport session once, including concurrent 
           { headers: { "MCP-Session-Id": "transport-" + generation } },
         );
       }
-      if (
-        expired ||
-        new Headers(init.headers).get("MCP-Session-Id") !==
-          "transport-" + generation
-      )
+      if (expired || new Headers(init.headers).get("MCP-Session-Id") !== "transport-" + generation)
         return new Response(null, { status: 404 });
       if (message.method === "notifications/initialized") {
         initialized = true;
@@ -567,9 +523,7 @@ test("SDK calls recover an expired transport session once, including concurrent 
   try {
     expired = true;
     const results = await Promise.all(
-      ["first", "second"].map((name) =>
-        client.callTool({ name, arguments: {} }),
-      ),
+      ["first", "second"].map((name) => client.callTool({ name, arguments: {} })),
     );
     assert.equal(results.length, 2);
     await client.callTool({ name: "third", arguments: {} });
@@ -689,8 +643,7 @@ test("网关拒绝 MCP 会话时给出稳定错误码，宿主据此止损", asy
           },
         }),
     ),
-    (error) =>
-      error.code === "AGENT_ACCESS_DENIED" && /无权访问/.test(error.message),
+    (error) => error.code === "AGENT_ACCESS_DENIED" && /无权访问/.test(error.message),
   );
   // 会话"形状不对"（不是权限问题）仍然是协议级错误。
   await assert.rejects(
@@ -700,8 +653,7 @@ test("网关拒绝 MCP 会话时给出稳定错误码，宿主据此止损", asy
       consumer,
       new AbortController().signal,
       1000,
-      async () =>
-        Response.json({ success: true, result: { gatewayContext: {} } }),
+      async () => Response.json({ success: true, result: { gatewayContext: {} } }),
     ),
     { message: "GEA_MCP_SESSION_REJECTED" },
   );
@@ -719,10 +671,7 @@ test("网关拒绝 MCP 会话时给出稳定错误码，宿主据此止损", asy
 });
 
 test("宿主对拒绝过的模块在窗口内不再重试，并给出可读的下一步", async () => {
-  const source = await readFile(
-    new URL("../src/host/business.ts", import.meta.url),
-    "utf8",
-  );
+  const source = await readFile(new URL("../src/host/business.ts", import.meta.url), "utf8");
   // 线上实测：网关回 rejected 后模型会换模块反复试，一轮三次，每次都白等一次往返。
   assert.match(source, /MCP_REJECTION_TTL_MS = 10 \* 60 \* 1000/);
   assert.match(source, /AGENT_ACCESS_DENIED：当前账号没有/);

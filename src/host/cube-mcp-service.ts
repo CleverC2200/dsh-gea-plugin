@@ -2,10 +2,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { Business } from "./business.ts";
-import {
-  assertSessionResourceAvailable,
-  toolConsumer,
-} from "./business-identity.ts";
+import { assertSessionResourceAvailable, toolConsumer } from "./business-identity.ts";
 import { profileFor } from "./prompt-policy.ts";
 import { throwIfAborted, readableError } from "../shared/abort.ts";
 import { stopExpiredGateway } from "./agent-tools.ts";
@@ -19,12 +16,7 @@ export function createCubeMcpService(ctx: Context, business: Business) {
       const offs = [
         business.watchIdentity(listener),
         ...(
-          [
-            "agent/created",
-            "agent/disposed",
-            "agent-preset/selected",
-            "skills/change",
-          ] as const
+          ["agent/created", "agent/disposed", "agent-preset/selected", "skills/change"] as const
         ).map((event) => ctx.on(event, listener)),
       ];
       return () => offs.forEach((off) => off());
@@ -34,9 +26,7 @@ export function createCubeMcpService(ctx: Context, business: Business) {
       const preset = agent
         ? ctx.sessionProjections.stateOf(agent.session, "agentPreset")
         : undefined;
-      return (
-        business.status().authenticated && !!profileFor(preset ?? undefined)
-      );
+      return business.status().authenticated && !!profileFor(preset ?? undefined);
     },
     listTools: async (signal: AbortSignal) => {
       signal = AbortSignal.any([signal, business.identitySignal()]);
@@ -44,10 +34,7 @@ export function createCubeMcpService(ctx: Context, business: Business) {
       let failure: unknown;
       let discovered: CubeMcpTool[] | undefined;
       for (const agent of ctx.agents.list()) {
-        const preset = ctx.sessionProjections.stateOf(
-          agent.session,
-          "agentPreset",
-        );
+        const preset = ctx.sessionProjections.stateOf(agent.session, "agentPreset");
         if (!profileFor(preset ?? undefined)) continue;
         try {
           await assertSessionResourceAvailable(ctx, agent.id, signal);
@@ -60,19 +47,12 @@ export function createCubeMcpService(ctx: Context, business: Business) {
           if (toolConsumer(ctx, business, agent.id, undefined) !== consumer)
             throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
           const tools = module.tools();
-          if (
-            discovered &&
-            JSON.stringify(discovered) !== JSON.stringify(tools)
-          )
+          if (discovered && JSON.stringify(discovered) !== JSON.stringify(tools))
             throw Error("GEA_MCP_SCHEMA_CONFLICT");
           discovered = tools;
         } catch (error) {
           throwIfAborted(signal);
-          if (
-            error instanceof Error &&
-            error.message === "GEA_MCP_SCHEMA_CONFLICT"
-          )
-            throw error;
+          if (error instanceof Error && error.message === "GEA_MCP_SCHEMA_CONFLICT") throw error;
           failure ??= error;
         }
       }
@@ -101,12 +81,7 @@ export function createCubeMcpService(ctx: Context, business: Business) {
           throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
         return result;
       } catch (error) {
-        const expired = stopExpiredGateway(
-          business,
-          consumer,
-          sessionId,
-          error,
-        );
+        const expired = stopExpiredGateway(business, consumer, sessionId, error);
         if (expired) throw expired;
         if (
           error instanceof Error &&

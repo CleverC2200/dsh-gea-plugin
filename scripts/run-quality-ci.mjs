@@ -32,8 +32,7 @@ function admittedCore(head) {
 }
 function run(command, args, cwd = process.cwd(), environment = {}) {
   finalGroup?.verifyUnchanged();
-  const windows =
-    process.platform === "win32" && ["npm", "corepack"].includes(command);
+  const windows = process.platform === "win32" && ["npm", "corepack"].includes(command);
   const result = spawnSync(windows ? command + ".cmd" : command, args, {
     cwd,
     stdio: "inherit",
@@ -43,9 +42,7 @@ function run(command, args, cwd = process.cwd(), environment = {}) {
   if (result.error || result.signal || result.status !== 0)
     refuse(
       "QUALITY_COMMAND_FAILED",
-      command +
-        ": " +
-        (result.error?.message ?? result.signal ?? result.status),
+      command + ": " + (result.error?.message ?? result.signal ?? result.status),
     );
 }
 try {
@@ -64,9 +61,7 @@ try {
     },
   });
   if (
-    ["quality", "business-profile", "prepare", "verify-input"].includes(
-      values.phase,
-    ) ||
+    ["quality", "business-profile", "prepare", "verify-input"].includes(values.phase) ||
     values["final-group-sha256"] !== undefined ||
     values["final-group-workbench"] !== undefined
   ) {
@@ -80,40 +75,27 @@ try {
         "CANDIDATE_FINAL_GROUP_REQUIRED",
         "--input, original bytes --final-group-sha256 and absolute clean source --final-group-workbench required",
       );
-    if (
-      !["quality", "business-profile", "prepare", "verify-input"].includes(
-        values.phase,
-      )
-    )
+    if (!["quality", "business-profile", "prepare", "verify-input"].includes(values.phase))
       refuse("CANDIDATE_FINAL_GROUP_PHASE", values.phase);
   }
   if (values.phase === "scope") {
-    if (process.env.QUALITY_SCOPE_ALLOWED !== "true")
-      throw Error("CANDIDATE_SCOPE_REQUIRED");
+    if (process.env.QUALITY_SCOPE_ALLOWED !== "true") throw Error("CANDIDATE_SCOPE_REQUIRED");
   } else if (values.phase === "final") {
     for (const key of ["QUALITY_SCOPE_RESULT", "QUALITY_GATE_RESULT"])
       if (process.env[key] !== "success")
-        throw Error(
-          "QUALITY_REQUIRED: " + key + "=" + (process.env[key] ?? "missing"),
-        );
+        throw Error("QUALITY_REQUIRED: " + key + "=" + (process.env[key] ?? "missing"));
   } else if (values.phase === "input") {
     refuse(
       "CANDIDATE_INPUT_REQUIRED",
       "use the shared hosted group writer and explicit hashed admission",
     );
   } else {
-    if (
-      !["quality", "business-profile", "prepare", "verify-input"].includes(
-        values.phase,
-      )
-    )
+    if (!["quality", "business-profile", "prepare", "verify-input"].includes(values.phase))
       refuse("QUALITY_PHASE_REQUIRED", values.phase);
     const input = values.input;
     // The public Workbench reader owns exact source, identity, lock and Core admission.
     const { readFinalGroup } = await import(
-      pathToFileURL(
-        resolve(values["final-group-workbench"], "scripts/candidate-input.mjs"),
-      )
+      pathToFileURL(resolve(values["final-group-workbench"], "scripts/candidate-input.mjs"))
     );
     finalGroup = await readFinalGroup({
       input,
@@ -124,10 +106,7 @@ try {
       expectedSha: process.env.QUALITY_EXPECTED_SHA,
       ci: process.env.CI,
     });
-    if (
-      values["core-head"] !== undefined &&
-      values["core-head"] !== finalGroup.manifest.core
-    )
+    if (values["core-head"] !== undefined && values["core-head"] !== finalGroup.manifest.core)
       refuse("CANDIDATE_CORE_MISMATCH");
     if (values.phase === "verify-input") {
       console.log(JSON.stringify(finalGroup.receipt));
@@ -137,28 +116,18 @@ try {
     const coreBaseline = admittedCore(candidate.core);
     if (candidate.repositories?.length !== 3)
       refuse("CANDIDATE_PEER_REQUIRED", "fixed Core and exactly three sources");
-    const own = candidate.repositories.find(
-      (entry) => entry.repo === "dsh-gea-plugin",
-    );
+    const own = candidate.repositories.find((entry) => entry.repo === "dsh-gea-plugin");
     if (!own || resolve(own.path) !== process.cwd())
       refuse("CANDIDATE_CHECKOUT", "registered GEA checkout required");
-    if (process.env.CI && !process.env.QUALITY_EXPECTED_SHA)
-      refuse("CANDIDATE_EVENT_REQUIRED");
-    if (
-      process.env.QUALITY_EXPECTED_SHA &&
-      own.head !== process.env.QUALITY_EXPECTED_SHA
-    )
+    if (process.env.CI && !process.env.QUALITY_EXPECTED_SHA) refuse("CANDIDATE_EVENT_REQUIRED");
+    if (process.env.QUALITY_EXPECTED_SHA && own.head !== process.env.QUALITY_EXPECTED_SHA)
       refuse("CANDIDATE_EVENT_MISMATCH");
     if (values["prepare-inputs"])
       for (const entry of candidate.repositories)
         if (realpathSync(entry.path) !== resolve(entry.path))
           refuse("QUALITY_PRIVATE_PEER_REQUIRED", entry.repo);
-    const workbench = candidate.repositories.find(
-        (entry) => entry.repo === "dsh-agent-workbench",
-      ),
-      manage = candidate.repositories.find(
-        (entry) => entry.repo === "dsh-agent-manage",
-      );
+    const workbench = candidate.repositories.find((entry) => entry.repo === "dsh-agent-workbench"),
+      manage = candidate.repositories.find((entry) => entry.repo === "dsh-agent-manage");
     if (values["prepare-inputs"])
       await prepareWorkbenchGeaAuthority({
         workbench: workbench.path,
@@ -171,9 +140,7 @@ try {
     const { selectCiTests } = await import(
       pathToFileURL(resolve(workbench.path, "scripts/ci-test-plan.mjs"))
     );
-    const baseline = JSON.parse(
-      readFileSync("scripts/quality-peer-baseline.json"),
-    );
+    const baseline = JSON.parse(readFileSync("scripts/quality-peer-baseline.json"));
     const plan =
       values.phase === "business-profile"
         ? {
@@ -190,6 +157,7 @@ try {
               "tests/cube-new.test.mjs",
               "tests/cube-direct-mcp.test.mjs",
               "tests/model-http.test.mjs",
+              "tests/gateway-mcp.test.mjs",
               "scripts/business-profile-ci.test.mjs",
               "tests/plugin-update-controller.contract.mjs",
               "tests/plugin-update-integration.contract.mjs",
@@ -207,31 +175,19 @@ try {
             repo: "dsh-gea-plugin",
             base:
               process.env.QUALITY_BASE_SHA ||
-              baseline.repositories.find(
-                (entry) => entry.repo === "dsh-gea-plugin",
-              ).head,
+              baseline.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
           });
     profileTestsSelected = plan.runtime;
     // The window contract traverses Core's complete dependency tree, including Web assets.
     const needsCoreWeb =
-      plan.runtime ||
-      plan.files.includes("tests/window-launch-admission.test.mjs");
-    const preparedWorkbench = resolve(
-      dirname(process.cwd()),
-      "dsh-agent-workbench",
-    );
-    const workbenchReceipt = resolve(
-      dirname(dirname(process.cwd())),
-      "prepared-workbench.json",
-    );
+      plan.runtime || plan.files.includes("tests/window-launch-admission.test.mjs");
+    const preparedWorkbench = resolve(dirname(process.cwd()), "dsh-agent-workbench");
+    const workbenchReceipt = resolve(dirname(dirname(process.cwd())), "prepared-workbench.json");
     const workbenchAssetRoot = resolve(
       dirname(dirname(process.cwd())),
       "prepared-workbench-assets",
     );
-    const core = resolve(
-        dirname(dirname(process.cwd())),
-        "official-latest-standard",
-      ),
+    const core = resolve(dirname(dirname(process.cwd())), "official-latest-standard"),
       upstream = resolve(dirname(dirname(process.cwd())), "quality-upstreams");
     run(process.execPath, [
       resolve(manage.path, "scripts/prepare-official-sdk.mjs"),
@@ -242,31 +198,23 @@ try {
       "--consumer",
       process.cwd(),
       ...(needsCoreWeb ? ["--with-web"] : []),
-      ...((plan.runtime ||
-        plan.files.some((file) => file.endsWith(".contract.mjs"))) &&
+      ...((plan.runtime || plan.files.some((file) => file.endsWith(".contract.mjs"))) &&
       process.platform !== "win32"
         ? ["--with-flock"]
         : []),
       ...(values["prepare-sdk"]
         ? [
             "--prepare",
-            ...(process.env.QUALITY_REUSE_SDK === "true"
-              ? ["--reuse-prepared"]
-              : []),
+            ...(process.env.QUALITY_REUSE_SDK === "true" ? ["--reuse-prepared"] : []),
             "--source",
-            values["core-source"] ??
-              "https://github.com/deepseek-ai/deepseek-harness.git",
+            values["core-source"] ?? "https://github.com/deepseek-ai/deepseek-harness.git",
           ]
         : []),
     ]);
     if (needsCoreWeb && !existsSync(resolve(core, "apps/web/dist/index.html")))
       refuse("QUALITY_CORE_WEB_REQUIRED");
     if (values.phase === "business-profile" && process.platform !== "win32")
-      run(
-        process.execPath,
-        ["native/system/scripts/build.ts", "--host-addon-only"],
-        core,
-      );
+      run(process.execPath, ["native/system/scripts/build.ts", "--host-addon-only"], core);
     finalGroup?.verifyUnchanged();
     process.env.GEA_PLUGIN_UPDATE_SDK = core;
     process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE = core;
@@ -275,16 +223,10 @@ try {
       JSON.stringify(plan, null, 2) + "\n",
     );
     if (values["prepare-inputs"])
-      await prepareQualityUpstreams(
-        existsSync(upstream) ? realpathSync(upstream) : upstream,
-      );
-    await bindQualityUpstreamInputs(
-      upstream,
-      resolve("../../upstream-inputs"),
-      {
-        prepare: values["prepare-inputs"] === true,
-      },
-    );
+      await prepareQualityUpstreams(existsSync(upstream) ? realpathSync(upstream) : upstream);
+    await bindQualityUpstreamInputs(upstream, resolve("../../upstream-inputs"), {
+      prepare: values["prepare-inputs"] === true,
+    });
     run(process.execPath, [
       resolve(workbench.path, "scripts/verify-candidate-input.mjs"),
       "--input",
@@ -302,13 +244,9 @@ try {
     )
       refuse("QUALITY_TOOLCHAIN_REQUIRED", "Node 24 / pnpm 11.27.0");
     for (const entry of candidate.repositories) {
-      const source = spawnSync(
-        "git",
-        ["-C", entry.path, "remote", "get-url", "source"],
-        {
-          encoding: "utf8",
-        },
-      );
+      const source = spawnSync("git", ["-C", entry.path, "remote", "get-url", "source"], {
+        encoding: "utf8",
+      });
       if (source.status !== 0 && !values["prepare-inputs"])
         refuse("QUALITY_SOURCE_REMOTE_REQUIRED", entry.repo);
       if (source.status !== 0)
@@ -332,8 +270,7 @@ try {
       ).packageManager;
       if (
         npmManager !== "npm@11.11.0" ||
-        execFileSync("npm", ["--version"], { encoding: "utf8" }).trim() !==
-          npmManager.slice(4)
+        execFileSync("npm", ["--version"], { encoding: "utf8" }).trim() !== npmManager.slice(4)
       )
         refuse("QUALITY_TOOLCHAIN_REQUIRED", "Workbench npm@11.11.0");
       run("git", [
@@ -347,36 +284,18 @@ try {
       ]);
       run(
         "npm",
-        [
-          "ci",
-          "--ignore-scripts",
-          "--prefer-offline",
-          "--no-audit",
-          "--no-fund",
-        ],
+        ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
         preparedWorkbench,
       );
       if (plan.runtime)
         run(
           "npm",
-          [
-            "ci",
-            "--ignore-scripts",
-            "--prefer-offline",
-            "--no-audit",
-            "--no-fund",
-          ],
+          ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
           resolve(preparedWorkbench, "business/inventory-apsplan/source"),
         );
       run(
         "corepack",
-        [
-          "pnpm",
-          "install",
-          "--frozen-lockfile",
-          "--ignore-scripts",
-          "--prefer-offline",
-        ],
+        ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts", "--prefer-offline"],
         manage.path,
       );
       if (plan.runtime)
@@ -400,10 +319,7 @@ try {
           head: workbench.head,
         });
         finalGroup?.verifyUnchanged();
-        writeFileSync(
-          workbenchReceipt,
-          JSON.stringify(prepared, null, 2) + "\n",
-        );
+        writeFileSync(workbenchReceipt, JSON.stringify(prepared, null, 2) + "\n");
         await prepareWorkbenchAssets({
           source: workbench.path,
           prepared: preparedWorkbench,
@@ -421,10 +337,7 @@ try {
         receipt: workbenchReceipt,
       });
       const upstreamRecord = await verifyQualityUpstreams(upstream);
-      const sourcesFile = resolve(
-        dirname(dirname(process.cwd())),
-        "profile-source-inputs.json",
-      );
+      const sourcesFile = resolve(dirname(dirname(process.cwd())), "profile-source-inputs.json");
       const records = candidate.repositories.map((entry) => ({
         repo: entry.repo,
         source: entry.path,
@@ -452,10 +365,7 @@ try {
           repo: "dsh-better-sidebar",
           source: resolve(upstream, "upstream-reference/dsh-better-sidebar"),
           commit: upstreamRecord.sidebar.head,
-          dependencies: resolve(
-            upstream,
-            "upstream-reference/dsh-better-sidebar/node_modules",
-          ),
+          dependencies: resolve(upstream, "upstream-reference/dsh-better-sidebar/node_modules"),
         },
       );
       await resolveSourceInputs(records, { requireEntries: true });
@@ -469,10 +379,7 @@ try {
     const history = resolve(
       "scripts/fixtures/delivery-history/navigation-r7-setup-failure.json.raw",
     );
-    const windowInputs = resolve(
-      dirname(dirname(process.cwd())),
-      "source-window-inputs.json",
-    );
+    const windowInputs = resolve(dirname(dirname(process.cwd())), "source-window-inputs.json");
     writeFileSync(
       windowInputs,
       JSON.stringify(
@@ -481,9 +388,7 @@ try {
           corePath: core,
           historicalFailure: {
             file: history,
-            sha256: createHash("sha256")
-              .update(readFileSync(history))
-              .digest("hex"),
+            sha256: createHash("sha256").update(readFileSync(history)).digest("hex"),
           },
         },
         null,
@@ -508,8 +413,7 @@ try {
       const { chromium } = await import("@playwright/test");
       const browserRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
       const executable = chromium.executablePath();
-      if (!existsSync(executable))
-        refuse("QUALITY_BROWSER_REQUIRED", executable);
+      if (!existsSync(executable)) refuse("QUALITY_BROWSER_REQUIRED", executable);
       const dryRun = execFileSync(
         "corepack",
         ["pnpm", "exec", "playwright", "install", "--dry-run", "chromium"],
@@ -519,29 +423,19 @@ try {
       );
       const browserDirectories = [
         ...new Set(
-          [...dryRun.matchAll(/Install location:\s+(.+)/g)].map((match) =>
-            match[1].trim(),
-          ),
+          [...dryRun.matchAll(/Install location:\s+(.+)/g)].map((match) => match[1].trim()),
         ),
       ];
       if (browserDirectories.length !== 3)
-        refuse(
-          "QUALITY_BROWSER_REQUIRED",
-          "Chromium, headless shell and FFmpeg",
-        );
+        refuse("QUALITY_BROWSER_REQUIRED", "Chromium, headless shell and FFmpeg");
       const browserFiles = {};
       for (const directory of browserDirectories) {
-        if (!existsSync(directory))
-          refuse("QUALITY_BROWSER_REQUIRED", directory);
-        const location = relative(
-          realpathSync(browserRoot),
-          realpathSync(directory),
-        );
+        if (!existsSync(directory)) refuse("QUALITY_BROWSER_REQUIRED", directory);
+        const location = relative(realpathSync(browserRoot), realpathSync(directory));
         if (location.startsWith(".." + sep) || isAbsolute(location))
           refuse("QUALITY_BROWSER_REQUIRED", directory);
         const files = await resourceDigests(directory);
-        if (Object.keys(files).length === 0)
-          refuse("QUALITY_BROWSER_REQUIRED", directory);
+        if (Object.keys(files).length === 0) refuse("QUALITY_BROWSER_REQUIRED", directory);
         for (const [file, digest] of Object.entries(files))
           browserFiles[resolve(directory, file)] = digest;
       }
@@ -554,13 +448,9 @@ try {
             executable,
             directories: browserDirectories,
             playwright: JSON.parse(
-              readFileSync(
-                resolve("node_modules/@playwright/test/package.json"),
-              ),
+              readFileSync(resolve("node_modules/@playwright/test/package.json")),
             ).version,
-            lockSha256: createHash("sha256")
-              .update(readFileSync("pnpm-lock.yaml"))
-              .digest("hex"),
+            lockSha256: createHash("sha256").update(readFileSync("pnpm-lock.yaml")).digest("hex"),
             files: browserFiles,
           },
           null,
@@ -581,16 +471,13 @@ try {
         },
         {
           name: "fast",
-          execute: () =>
-            run("corepack", ["pnpm", "quality:fast", "--checks-only"]),
+          execute: () => run("corepack", ["pnpm", "quality:fast", "--checks-only"]),
         },
         {
           name: "required-and-affected",
           execute: () =>
             run(process.execPath, [
-              ...(values.phase === "business-profile"
-                ? ["--expose-internals"]
-                : []),
+              ...(values.phase === "business-profile" ? ["--expose-internals"] : []),
               "--test",
               // Files have separate processes; fixtures allocate unique Homes and loopback ports.
               "--test-concurrency=2",

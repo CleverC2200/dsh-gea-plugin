@@ -2,10 +2,7 @@
 import { prepareGatewaySession } from "./gateway-session.ts";
 import { createParser } from "eventsource-parser";
 import { readableError, throwIfAborted } from "../shared/abort.ts";
-import {
-  parseAuthorizedResources,
-  type ResourceReader,
-} from "./authorized-resources.ts";
+import { parseAuthorizedResources, type ResourceReader } from "./authorized-resources.ts";
 export type GatewayMcpTransport = {
   url: string;
   fetch: typeof fetch;
@@ -51,27 +48,10 @@ export async function prepareGatewayMcp(
   routing: { cubeMcpCode?: string; setupSignal?: AbortSignal } = {},
 ): Promise<GatewayMcpTransport> {
   // Setup and each request can stop without poisoning a login-owned cached connection.
-  const setup = AbortSignal.any([
-    identity,
-    ...(routing.setupSignal ? [routing.setupSignal] : []),
-  ]);
-  const meta = await prepareGatewaySession(
-    base,
-    auth,
-    consumer,
-    setup,
-    timeoutMs,
-    fetchImpl,
-  );
+  const setup = AbortSignal.any([identity, ...(routing.setupSignal ? [routing.setupSignal] : [])]);
+  const meta = await prepareGatewaySession(base, auth, consumer, setup, timeoutMs, fetchImpl);
   throwIfAborted(setup);
-  return gatewayMcpTransport(
-    base,
-    meta,
-    identity,
-    timeoutMs,
-    fetchImpl,
-    routing,
-  );
+  return gatewayMcpTransport(base, meta, identity, timeoutMs, fetchImpl, routing);
 }
 export function gatewayMcpTransport(
   base: string,
@@ -146,9 +126,7 @@ export function gatewayMcpTransport(
       result.error ||
       result.result?.protocolVersion !== headers.get("MCP-Protocol-Version")
     )
-      throw new Error(
-        "GEA_MCP_RECONNECT_REJECTED: 网关协议已变化，请重新登录建立连接。",
-      );
+      throw new Error("GEA_MCP_RECONNECT_REJECTED: 网关协议已变化，请重新登录建立连接。");
     headers.set("MCP-Session-Id", session);
     const ready = await send({
       method: "POST",
@@ -189,12 +167,7 @@ export function gatewayMcpTransport(
           "GEA_MCP_LOCAL_RESOURCE: 本地 Skill 参考文件请使用 skill_reference_read，传入技能名和正文链接的相对路径；MCP 只读取该服务返回的资源 URI。",
         );
       if (
-        [
-          "tools/list",
-          "tools/call",
-          "resources/list",
-          "resources/read",
-        ].includes(message.method)
+        ["tools/list", "tools/call", "resources/list", "resources/read"].includes(message.method)
       ) {
         // 完全替换调用方提供的身份；绝不把它写入业务参数。
         message.params = { ...message.params, _meta: meta };
@@ -254,9 +227,7 @@ export function gatewayMcpTransport(
         throw Object.assign(
           new Error(
             `GEA_MCP_RATE_LIMITED: 网关限流（HTTP 429）${
-              waitMs === undefined
-                ? ""
-                : `，建议等 ${Math.ceil(waitMs / 1000)} 秒再试`
+              waitMs === undefined ? "" : `，建议等 ${Math.ceil(waitMs / 1000)} 秒再试`
             }。请降低并发或缩小查询范围后再来，不要原样立刻重试。`,
           ),
           {
@@ -291,10 +262,7 @@ export function gatewayMcpTransport(
               content?: Array<{ type?: string; uri?: string }>;
             };
           };
-          if (
-            result.result?.isError !== true &&
-            Array.isArray(result.result?.content)
-          )
+          if (result.result?.isError !== true && Array.isArray(result.result?.content))
             for (const item of result.result.content)
               if (item.type === "resource_link" && nonempty(item.uri)) {
                 const existing = artifactRoutes.get(item.uri);
@@ -303,26 +271,18 @@ export function gatewayMcpTransport(
                 artifactRoutes.set(item.uri, invocation.code);
               }
         }
-        if (
-          !discovery ||
-          reply.id !== discovery.id ||
-          !Array.isArray(reply.result?.tools)
-        )
+        if (!discovery || reply.id !== discovery.id || !Array.isArray(reply.result?.tools))
           continue;
         const selectedTools = routing.cubeMcpCode
           ? reply.result.tools.filter(
               (tool) =>
-                !["query_business_data", "inspect_cube_model"].includes(
-                  tool?.name,
-                ) ||
+                !["query_business_data", "inspect_cube_model"].includes(tool?.name) ||
                 (tool?._meta?.sourceType === "MCP" &&
                   tool?._meta?.sourceCode === routing.cubeMcpCode),
             )
           : reply.result.tools;
         reply.result.tools = selectedTools;
-        const next = discovery.firstPage
-          ? new Map<string, string>()
-          : new Map(routes);
+        const next = discovery.firstPage ? new Map<string, string>() : new Map(routes);
         for (const tool of selectedTools) {
           const code = tool?._meta?.sourceCode;
           if (!nonempty(tool?.name) || !nonempty(code))
@@ -341,10 +301,7 @@ export function gatewayMcpTransport(
         return new Response(
           headers.get("content-type")?.includes("text/event-stream")
             ? messages
-                .map(
-                  (message) =>
-                    "event: message\ndata: " + JSON.stringify(message) + "\n\n",
-                )
+                .map((message) => "event: message\ndata: " + JSON.stringify(message) + "\n\n")
                 .join("")
             : JSON.stringify(messages[0]),
           { status: res.status, headers },
@@ -365,11 +322,7 @@ export function gatewayMcpTransport(
         Accept: "application/json",
       },
       body: JSON.stringify({ ...meta, mcpCode, toolName }),
-      signal: AbortSignal.any([
-        identity,
-        signal,
-        AbortSignal.timeout(timeoutMs),
-      ]),
+      signal: AbortSignal.any([identity, signal, AbortSignal.timeout(timeoutMs)]),
     });
     throwIfAborted(identity);
     throwIfAborted(signal);

@@ -22,12 +22,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   mod,
   mod.exports,
 );
-const {
-  openCubeMcp,
-  gatewayMcpTransport,
-  createCubeMcpService,
-  registerGeaTools,
-} = mod.exports;
+const { openCubeMcp, gatewayMcpTransport, createCubeMcpService, registerGeaTools } = mod.exports;
 const code = "2109581866385289217";
 const schema = {
   type: "object",
@@ -72,12 +67,8 @@ async function clientFixture({ badHash = false, failure } = {}) {
       const reply = (result, headers) =>
         Response.json({ jsonrpc: "2.0", id: wire.id, result }, { headers });
       if (wire.method === "initialize")
-        return reply(
-          { protocolVersion: "2025-06-18" },
-          { "MCP-Session-Id": "transport-session" },
-        );
-      if (wire.method === "notifications/initialized")
-        return new Response(null, { status: 202 });
+        return reply({ protocolVersion: "2025-06-18" }, { "MCP-Session-Id": "transport-session" });
+      if (wire.method === "notifications/initialized") return new Response(null, { status: 202 });
       if (wire.method === "tools/list")
         return reply({
           tools: [
@@ -99,10 +90,7 @@ async function clientFixture({ badHash = false, failure } = {}) {
             })),
           ],
         });
-      if (
-        wire.method === "tools/call" &&
-        wire.params.name === "inspect_cube_model"
-      )
+      if (wire.method === "tools/call" && wire.params.name === "inspect_cube_model")
         return reply({
           structuredContent: {
             action: "inspect",
@@ -143,9 +131,7 @@ async function clientFixture({ badHash = false, failure } = {}) {
               mimeType: "application/json",
               text: raw,
               _meta: {
-                sha256: badHash
-                  ? "0".repeat(64)
-                  : createHash("sha256").update(raw).digest("hex"),
+                sha256: badHash ? "0".repeat(64) : createHash("sha256").update(raw).digest("hex"),
               },
             },
           ],
@@ -167,26 +153,17 @@ test("direct Cube methods preserve server schemas, original decimals and the ori
   const metadata = JSON.parse(
     await f.client.call("inspect_cube_model", { keyword: "预测" }, f.signal),
   );
-  assert.equal(
-    metadata.semanticModel[0].measures[0].aliasMember,
-    "forecast.amount",
-  );
-  assert.equal(
-    await f.client.call("query_business_data", query, f.signal),
-    raw,
-  );
+  assert.equal(metadata.semanticModel[0].measures[0].aliasMember, "forecast.amount");
+  assert.equal(await f.client.call("query_business_data", query, f.signal), raw);
   assert.deepEqual(
-    f.sent.find((x) => x.wire.params?.name === "query_business_data").wire
-      .params.arguments,
+    f.sent.find((x) => x.wire.params?.name === "query_business_data").wire.params.arguments,
     query,
   );
   assert.ok(
     f.sent.every((x) => x.url.endsWith("/mcp")),
     "new calls must not run the old resource/planner adapters",
   );
-  for (const x of f.sent.filter((x) =>
-    ["tools/call", "resources/read"].includes(x.wire.method),
-  )) {
+  for (const x of f.sent.filter((x) => ["tools/call", "resources/read"].includes(x.wire.method))) {
     assert.equal(x.wire.params._meta.mcpCode, code);
     assert.equal(x.wire.params._meta.sessionId, "business-session");
     assert.equal(x.headers.get("MCP-Protocol-Version"), "2025-06-18");
@@ -196,17 +173,10 @@ test("direct Cube methods preserve server schemas, original decimals and the ori
 
 test("direct Cube rejects forged artifacts and caller-supplied platform identity without publication or retries", async () => {
   const f = await clientFixture({ badHash: true });
-  await assert.rejects(
-    f.client.call("query_business_data", query, f.signal),
-    /RESOURCE_DIGEST/,
-  );
+  await assert.rejects(f.client.call("query_business_data", query, f.signal), /RESOURCE_DIGEST/);
   const calls = f.sent.length;
   await assert.rejects(
-    f.client.call(
-      "query_business_data",
-      { ...query, consumerCode: "other" },
-      f.signal,
-    ),
+    f.client.call("query_business_data", { ...query, consumerCode: "other" }, f.signal),
     /PLATFORM_ARGUMENT_REJECTED/,
   );
   assert.equal(f.sent.length, calls);
@@ -224,19 +194,13 @@ test("member publication failure keeps the server code and does not suggest para
       requestId: "fixture-request",
     },
   });
-  await assert.rejects(
-    f.client.call("query_business_data", query, f.signal),
-    (error) => {
-      assert.equal(error.code, "DATA_QUERY_MEMBER_NOT_PUBLISHED");
-      assert.equal(error.retryable, false);
-      assert.match(error.message, /fixture-request|服务端/);
-      assert.doesNotMatch(
-        error.message,
-        /改好参数后可以|重新调用一次|private-fixture-token/,
-      );
-      return true;
-    },
-  );
+  await assert.rejects(f.client.call("query_business_data", query, f.signal), (error) => {
+    assert.equal(error.code, "DATA_QUERY_MEMBER_NOT_PUBLISHED");
+    assert.equal(error.retryable, false);
+    assert.match(error.message, /fixture-request|服务端/);
+    assert.doesNotMatch(error.message, /改好参数后可以|重新调用一次|private-fixture-token/);
+    return true;
+  });
   assert.equal(f.sent.filter((x) => x.wire.method === "tools/call").length, 1);
 });
 
@@ -327,11 +291,7 @@ test("discovery reacts to Session lifecycle and rejects disabled resources or a 
   const f = serviceFixture();
   let changes = 0;
   const stop = f.service.watch(() => changes++);
-  for (const event of [
-    "agent/created",
-    "agent/disposed",
-    "agent-preset/selected",
-  ])
+  for (const event of ["agent/created", "agent/disposed", "agent-preset/selected"])
     f.listeners.get(event)();
   f.listeners.get("skills/change")();
   assert.equal(changes, 4);
@@ -346,10 +306,7 @@ test("discovery reacts to Session lifecycle and rejects disabled resources or a 
       enabled: false,
     },
   ];
-  await assert.rejects(
-    f.service.listTools(new AbortController().signal),
-    /RESOURCE_DISABLED/,
-  );
+  await assert.rejects(f.service.listTools(new AbortController().signal), /RESOURCE_DISABLED/);
   assert.equal(f.calls.length, 0);
   f.ctx.agentResources.list = async () => [
     {
@@ -363,10 +320,7 @@ test("discovery reacts to Session lifecycle and rejects disabled resources or a 
     f.identity.abort();
     return f.module;
   };
-  await assert.rejects(
-    f.service.listTools(new AbortController().signal),
-    /abort/i,
-  );
+  await assert.rejects(f.service.listTools(new AbortController().signal), /abort/i);
 });
 
 test("different business Consumer schemas cannot overwrite each other's registered tools", async () => {
@@ -375,15 +329,11 @@ test("different business Consumer schemas cannot overwrite each other's register
     tools: () => [
       {
         name: "inspect_cube_model",
-        inputSchema:
-          consumer === "sales_forecast" ? schema : { type: "object" },
+        inputSchema: consumer === "sales_forecast" ? schema : { type: "object" },
       },
     ],
   });
-  await assert.rejects(
-    f.service.listTools(new AbortController().signal),
-    /SCHEMA_CONFLICT/,
-  );
+  await assert.rejects(f.service.listTools(new AbortController().signal), /SCHEMA_CONFLICT/);
 });
 
 test("direct MCP derives sales and dealer Consumers from real Session presets and rejects unprofiled callers", async () => {
@@ -447,11 +397,7 @@ test("the legacy catalog, batch and module tools are no longer registered", () =
     },
     { config: { analysisAgentCode: "sales_forecast", requestTimeoutMs: 1000 } },
   );
-  for (const name of [
-    "gea_gateway_catalog",
-    "gea_cube_query",
-    "gea_module_mcp",
-  ])
+  for (const name of ["gea_gateway_catalog", "gea_cube_query", "gea_module_mcp"])
     assert.equal(names.includes(name), false);
   assert.ok(names.includes("gea_sales_plan_read"));
 });
