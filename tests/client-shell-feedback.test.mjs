@@ -318,6 +318,20 @@ test(
             );
             assert.ok(box.offset <= 2, JSON.stringify(box));
           }
+          await page.waitForFunction(async () => {
+            const card = document.querySelector(
+              ".agent-workbench-native-conversation [data-composer-card]",
+            );
+            const first = card?.getBoundingClientRect();
+            if (!first) return false;
+            await new Promise((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve)),
+            );
+            const second = card.getBoundingClientRect();
+            return ["x", "y", "width", "height"].every(
+              (key) => Math.abs(first[key] - second[key]) < 1,
+            );
+          });
           const before = await page
             .locator(".agent-workbench-native-conversation [data-composer-card]")
             .boundingBox();
@@ -624,8 +638,15 @@ test(
       await expect(homeBrand).toBeVisible();
       await expect(page.getByText("探索未至之境", { exact: true })).toBeVisible();
       const heroCentered = await homeBrand.evaluate((el) => {
-        const row = el.parentElement.parentElement.getBoundingClientRect();
-        const content = el.closest("[data-conversation-content]").getBoundingClientRect();
+        const headline = [...document.querySelectorAll("span")].find(
+          (node) => node.textContent === "探索未至之境",
+        );
+        const row = headline.parentElement.parentElement.getBoundingClientRect();
+        // Core centers its hero on the composer column, which reserves the scrollbar gutter.
+        const content = el
+          .closest("[data-conversation-content]")
+          .querySelector("[data-composer-card]")
+          .getBoundingClientRect();
         return { delta: Math.round(row.left + row.width / 2 - content.left - content.width / 2) };
       });
       assert.ok(Math.abs(heroCentered.delta) <= 2, JSON.stringify(heroCentered));
