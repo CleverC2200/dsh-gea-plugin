@@ -6,7 +6,7 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan, openBusinessPage } from "./fixtures/business-page.mjs";
 
