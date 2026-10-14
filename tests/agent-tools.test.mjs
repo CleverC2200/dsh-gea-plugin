@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
+import { createBusinessSession } from "./fixtures/business-session.mjs";
 import { prepareWorkbenchHtmlRoots } from "./fixtures/business-page.mjs";
 
 test(
@@ -140,7 +141,6 @@ test(
         }),
       );
     let outcome = "success";
-    let pageGuardClosed = false;
     let toolReply;
     let closed = false;
     let modelRequests = [];
@@ -249,53 +249,6 @@ test(
       if (path !== "/personal/chat/completions") return false;
       const body = JSON.parse(req.body);
       res.setHeader("Content-Type", "text/event-stream");
-      const names = body.tools.map((tool) => tool.function.name);
-      const wantsPage =
-        /visible-context/.test(outcome) ||
-        outcome === "page-evidence-guard" ||
-        outcome === "page-tool";
-      const pack = outcome.startsWith("module-mcp")
-        ? "knowledge"
-        : wantsPage && !(outcome === "page-evidence-guard" && pageGuardClosed)
-          ? "page"
-          : undefined;
-      const ready =
-        pack === "knowledge"
-          ? names.includes("mcp__gea-gateway__query_business_data")
-          : pack === "page"
-            ? names.includes(outcome === "page-tool" ? "gea_page" : "gea_visible_workbench_context")
-            : true;
-      const skillReady =
-        outcome !== "skill-reference" ||
-        body.messages.some((message) => message.tool_call_id === "bootstrap-skill");
-      if (!ready || !skillReady) {
-        res.end(
-          event(
-            {
-              tool_calls: [
-                {
-                  index: 0,
-                  id: !skillReady ? "bootstrap-skill" : "bootstrap-pack",
-                  type: "function",
-                  function: {
-                    name: "gea_capabilities",
-                    arguments: JSON.stringify(
-                      !skillReady ? { skill: "reference-scope" } : { pack },
-                    ),
-                  },
-                },
-              ],
-            },
-            "tool_calls",
-          ),
-        );
-        return true;
-      }
-      body.messages = body.messages.filter(
-        (message) =>
-          !message.tool_call_id?.startsWith("bootstrap-") &&
-          !message.tool_calls?.some((call) => call.id.startsWith("bootstrap-")),
-      );
       modelRequests.push(body);
       if (outcome === "skill-reference") {
         const results = body.messages.filter((x) => x.role === "tool");
@@ -473,8 +426,8 @@ test(
                       id: "page-1",
                       type: "function",
                       function: {
-                        name: "gea_page",
-                        arguments: JSON.stringify({ action: "context", parameters: "{}" }),
+                        name: "gea_visible_workbench_context",
+                        arguments: "{}",
                       },
                     },
                   ],
@@ -711,7 +664,7 @@ test(
       return result;
     }
 
-    async function submit(workbenchContext, bindPage = true) {
+    async function submit() {
       const preview = await app.rpc("prepare", {
         queryId: page.queryId,
         planId: page.records[0].planId,
@@ -719,15 +672,39 @@ test(
       assert.equal(preview.ok, true, JSON.stringify(preview));
       const result = await app.rpc("submit", {
         previewId: preview.value.previewId,
-        ...(workbenchContext ? { workbenchContext } : {}),
       });
       assert.equal(result.ok, true, JSON.stringify(result));
-      // submit starts the turn before returning its Session; only page cases bind it afterwards.
-      if (bindPage) {
-        const surface = await openNativePage(result.value.sessionId);
-        assert.equal(surface.ok, true, JSON.stringify(surface));
-      }
       return result.value.sessionId;
+    }
+    async function createPageSession() {
+      const id = await createBusinessSession(app);
+      await openNativePage(id);
+      return id;
+    }
+    async function promptSession(id, question = "请看这一屏") {
+      const prompted = await app.remote("session/prompt", {
+        requestId: randomUUID(),
+        sessionId: id,
+        mode: "queue",
+        content: [{ type: "text", text: question }],
+      });
+      assert.equal(prompted.ok, true, JSON.stringify(prompted));
+      return id;
+    }
+    async function startPageTurn(context) {
+      const id = await createPageSession();
+      if (context) {
+        const synced = await pageOperation(id, "context", context);
+        assert.equal(synced.ok, true, JSON.stringify(synced));
+      }
+      return promptSession(id);
+    }
+    async function pageEvents(id) {
+      const response = await pageOperation(id, "catalog", { pageSource: "self-report" });
+      assert.equal(response.ok, true, JSON.stringify(response));
+      const receipts = readToolResults(await readSession(app.runtime, id));
+      assert.ok(!receipts.some((receipt) => receipt.isError), JSON.stringify(receipts));
+      return response.value.events;
     }
     const ended = (id) =>
       until(
@@ -737,7 +714,7 @@ test(
     await t.test(
       "successful query is logged before the next model request and preserves paging coverage",
       async () => {
-        const rows = await ended(await submit(undefined, false));
+        const rows = await ended(await submit());
         assert.equal(rows.find((x) => x.type === "turn/end").data.reason.kind, "completed");
         assert.equal(modelRequests.length, 2);
         const promptMessages = JSON.stringify(modelRequests[0].messages);
@@ -812,12 +789,12 @@ test(
       },
     );
     await t.test(
-      "a newly submitted conversation receives its rendered context before the first model tool call",
+      "a Native conversation receives its rendered context before the first model tool call",
       async () => {
         outcome = "visible-context";
         modelRequests = [];
         const rows = await ended(
-          await submit({
+          await startPageTurn({
             format: "gea-workbench-visible-v1",
             sequence: 1,
             view: "regional-approval",
@@ -914,7 +891,7 @@ test(
       outcome = "visible-context-twice";
       modelRequests = [];
       await ended(
-        await submit({
+        await startPageTurn({
           format: "gea-workbench-visible-v1",
           sequence: 1,
           view: "regional-approval",
@@ -965,7 +942,7 @@ test(
       async () => {
         outcome = "visible-context-unavailable";
         modelRequests = [];
-        const rows = await ended(await submit());
+        const rows = await ended(await startPageTurn());
         const result = modelRequests[1].messages.find(
           (message) =>
             message.role === "tool" && message.tool_call_id === "visible-context-unavailable-1",
@@ -987,7 +964,7 @@ test(
     await t.test("回到主对话后，同一份页面快照不再当本轮证据（菜单状态字段说了算）", async () => {
       outcome = "page-evidence-guard";
       modelRequests = [];
-      const id = await submit({
+      const id = await startPageTurn({
         format: "gea-workbench-visible-v1",
         sequence: 1,
         view: "regional-approval",
@@ -1069,16 +1046,26 @@ test(
       async () => {
         outcome = "page-tool";
         modelRequests = [];
-        const rows = await ended(await submit());
+        const rows = await ended(await promptSession(await createBusinessSession(app)));
         assert.ok(
-          modelRequests[0].tools.some((x) => x.function.name === "gea_page"),
-          "页面工具已暴露给模型",
+          modelRequests[0].tools.some((x) => x.function.name === "gea_visible_workbench_context"),
+          "未绑定会话仍提供安全的只读上下文说明",
+        );
+        assert.ok(
+          !modelRequests[0].tools.some((x) =>
+            ["gea_page", "gea_workbench_apply"].includes(x.function.name),
+          ),
+          "未绑定会话不能获得页面动作",
         );
         const result = modelRequests[1].messages.find(
           (message) => message.role === "tool" && message.tool_call_id === "page-1",
         );
         assert.match(result.content, /not-in-workbench/);
-        assert.equal(JSON.parse(result.content).code, "PAGE_NOT_IN_WORKBENCH");
+        const value = JSON.parse(result.content);
+        assert.equal(value.code, "PAGE_NOT_IN_WORKBENCH");
+        assert.equal(value.coverage, "none");
+        assert.equal(value.context, undefined);
+        assert.equal(value.rows, undefined);
         assert.equal(
           rows.some(
             (entry) => entry.type === "tool/result" && entry.data.message.content[0].isError,
@@ -1092,10 +1079,8 @@ test(
       "the current conversation reads only its synchronised visible workbench page",
       async () => {
         outcome = "success";
-        const id = await submit();
-        await ended(id);
+        const id = await createPageSession();
         // 菜单状态字段：只有点了业务菜单才算"在工作台"（默认是主对话）。
-        await openNativePage(id);
         const synced = await pageOperation(id, "context", {
           format: "gea-workbench-visible-v1",
           sequence: 1,
@@ -1143,7 +1128,7 @@ test(
         assert.equal(prompted.ok, true, JSON.stringify(prompted));
         const rows = await until(
           () => readSession(app.runtime, id),
-          (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
+          (entries) => entries.filter((entry) => entry.type === "turn/end").length === 1,
         );
         assert.equal(modelRequests.length, 2);
         assert.equal(
@@ -1194,10 +1179,8 @@ test(
           },
         });
         outcome = "success";
-        const id = await submit();
-        await ended(id);
+        const id = await createPageSession();
         // 菜单状态字段：这一屏的上下文只在"点了业务菜单"的对话里才算证据。
-        await openNativePage(id);
         // 页面自述能力：工具由通用桥按这份目录为该会话生成。
         const catalog = {
           surface: "gea-workbench",
@@ -1262,6 +1245,10 @@ test(
           "页面声明后该会话应能看到生成的工具：" +
             JSON.stringify(modelRequests[0].tools.map((tool) => tool.function.name)),
         );
+        assert.ok(
+          !modelRequests[0].tools.some((tool) => tool.function.name === "gea_page"),
+          "Native grant 不建立 HTML lease",
+        );
         // 工具由桥按元素目录生成：模型只会 4 个通用动词；说明里只给数量，
         // 目录按需取（directory=true），不再随每次请求把标签全塞进上下文。
         const applyTool = modelRequests[0].tools.find(
@@ -1291,8 +1278,7 @@ test(
           "kind 不再必填：只要元素目录时可以只传 directory=true",
         );
         const events = await until(
-          async () =>
-            (await pageOperation(id, "catalog", { pageSource: "self-report" })).value.events,
+          () => pageEvents(id),
           (value) => value.length > 0,
         );
         assert.deepEqual(
@@ -1331,7 +1317,7 @@ test(
         );
         const rows = await until(
           () => readSession(app.runtime, id),
-          (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
+          (entries) => entries.filter((entry) => entry.type === "turn/end").length === 1,
         );
         const toolResult = modelRequests[1].messages.find(
           (message) => message.role === "tool" && message.tool_call_id === "workbench-command-1",
@@ -1367,14 +1353,13 @@ test(
           ).content,
           /ELEMENT_NOT_EDITABLE/,
         );
-        assert.equal(rows.filter((entry) => entry.type === "turn/end").length, 2);
+        assert.equal(rows.filter((entry) => entry.type === "turn/end").length, 1);
       },
     );
     await t.test("页面声明受策略收口：非白名单页面不注册，改数据的动作不暴露", async () => {
       outcome = "success";
       // 1) 不在白名单里的页面：声明了也不给工具。
-      const foreign = await submit();
-      await ended(foreign);
+      const foreign = await createPageSession();
       const foreignDeclaration = await pageOperation(foreign, "catalog", {
         pageSource: "self-report",
         toolMessages: [],
@@ -1402,8 +1387,7 @@ test(
       );
 
       // 2) 白名单页面：改视图的动作和"填草稿"的动作都要暴露（它们都是页面开放的）。
-      const allowed = await submit();
-      await ended(allowed);
+      const allowed = await createPageSession();
       await pageOperation(allowed, "catalog", {
         pageSource: "self-report",
         toolMessages: [],
@@ -1451,8 +1435,7 @@ test(
     });
     await t.test("切页即撤：页面声明为 null 后，上一屏的元素当场从会话里消失", async () => {
       outcome = "success";
-      const id = await submit();
-      await ended(id);
+      const id = await createPageSession();
       const declared = await pageOperation(id, "catalog", {
         pageSource: "self-report",
         toolMessages: [],
@@ -1486,7 +1469,7 @@ test(
       );
       await until(
         () => readSession(app.runtime, id),
-        (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
+        (entries) => entries.filter((entry) => entry.type === "turn/end").length === 1,
       );
 
       // 页面切走了：桥关闭 / 这一屏不再是工作台时报 null。
@@ -1512,8 +1495,7 @@ test(
     });
     await t.test("元素目录：只读元素改不动，只有可编辑字段才下发到页面", async () => {
       outcome = "success";
-      const id = await submit();
-      await ended(id);
+      const id = await createPageSession();
       await pageOperation(id, "catalog", {
         pageSource: "self-report",
         toolMessages: [],
@@ -1570,8 +1552,7 @@ test(
           JSON.stringify(modelRequests[0].tools.map((candidate) => candidate.function.name)),
       );
       const events = await until(
-        async () =>
-          (await pageOperation(id, "catalog", { pageSource: "self-report" })).value.events,
+        () => pageEvents(id),
         (value) => value.length > 0,
       );
       const tool = modelRequests[0].tools.find(
@@ -1613,7 +1594,7 @@ test(
       });
       await until(
         () => readSession(app.runtime, id),
-        (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
+        (entries) => entries.filter((entry) => entry.type === "turn/end").length === 1,
       );
       const rejected = modelRequests[1].messages.find(
         (message) => message.role === "tool" && message.tool_call_id === "page-verb-1",
@@ -1632,8 +1613,7 @@ test(
     });
     await t.test("元素很多（20 行 + 字段）时工具仍要注册，说明不能因为超长把工具弄没", async () => {
       outcome = "success";
-      const id = await submit();
-      await ended(id);
+      const id = await createPageSession();
       const elements = [
         ...Array.from({ length: 20 }, (_, index) => ({
           id: `row:p-jxs-2026-10-${String(index).padStart(5, "0")}`,
@@ -1832,9 +1812,7 @@ test(
       "a live workbench read never wipes the visible page context it just synced",
       async () => {
         outcome = "success";
-        const id = await submit();
-        await ended(id);
-        await openNativePage(id);
+        const id = await createPageSession();
         const synced = {
           format: "gea-workbench-visible-v1",
           sequence: 1,
@@ -1879,7 +1857,7 @@ test(
         assert.equal(prompted.ok, true, JSON.stringify(prompted));
         await until(
           () => readSession(app.runtime, id),
-          (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
+          (entries) => entries.filter((entry) => entry.type === "turn/end").length === 1,
         );
         const result = modelRequests[1].messages.find(
           (message) => message.role === "tool" && message.tool_call_id === "visible-context-1",

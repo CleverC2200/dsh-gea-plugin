@@ -26,6 +26,8 @@
 
 独立业务查询不要求先打开页面。页面动作仍只消费当前页面声明；Native 审批与 HTML 只读能力分别按原合同执行。页面的 view 或 draft 回执不等于真实业务保存/审批成功。
 
+Native 页面授权与当前页面身份投影属于同一个 grant。打开时建立投影，当前 owner 上报可见上下文时刷新，关闭或身份撤销时释放；旧 owner 的刷新和释放不能覆盖新页面。模型只获得该页面声明的动作工具，Native 使用 `gea_workbench_apply`，`gea_page` 只供 HTML lease。没有页面绑定时，`gea_visible_workbench_context` 返回安全的不可用说明，不推断页面或数字。
+
 Cube-New 的来源由 Host `cubeMcpCodes` 按环境指定。公司默认仅登记测试环境编码 `2109581866385289217`；正式环境未登记新来源时不开放查询，也不回退旧 Cube。GEA 登录、业务页面和持久会话继续保留。
 
 Manage 只注册当前登录授权列表中的 `inspect_cube_model` 和 `query_business_data`，使用服务端原始 schema。GEA 根据发起调用的真实 Core Session preset 选择 Consumer，每次调用重新校验身份、业务资源与执行归属；业务 arguments 不能指定身份或路由。旧 `gea_gateway_catalog`、`gea_cube_query`、`gea_module_mcp` 不再注册，旧成员索引、查询拆分、修参和结果分段适配退出运行时，历史回归材料留在 `tests/fixtures/retired-query`。

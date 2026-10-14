@@ -14,7 +14,14 @@ import { fixtureEnvironment } from "./fixtures/business-session.mjs";
 async function fixture(
   t,
   enabled,
-  { mock = false, workbenchEnabled = true, actualBusiness = false, modelFailure, planRead } = {},
+  {
+    mock = false,
+    workbenchEnabled = true,
+    actualBusiness = false,
+    modelFailure,
+    planRead,
+    login = false,
+  } = {},
 ) {
   fixtureEnvironment(t, {
     GEA_DESKTOP_CONTROL_URL: "",
@@ -25,6 +32,28 @@ async function fixture(
   const external = [];
   globalThis.fetch = async (input) => {
     external.push(String(input));
+    if (login) {
+      const path = new URL(String(input)).pathname;
+      const result = path.endsWith("/getLoginQrcode")
+        ? { qrcodeId: "native-grant-qr" }
+        : path.endsWith("/getQrcodeToken")
+          ? { success: true, token: "native-grant-token" }
+          : path.endsWith("/getUserInfo")
+            ? { userInfo: { id: "native-user", loginTenantId: "0", realname: "Native fixture" } }
+            : path.endsWith("/getPermCode")
+              ? { codeList: [] }
+              : path.endsWith("/ai/gateway/agent/session")
+                ? {
+                    accessDecision: { allowed: true },
+                    delegationToken: "native-delegation",
+                    gatewayContext: { sessionId: "native-session" },
+                  }
+                : path.endsWith("/current-user/resolve")
+                  ? { success: true, roles: [] }
+                  : undefined;
+      assert.ok(result, "Unexpected external request: " + path);
+      return Response.json({ success: true, result });
+    }
     assert.fail("offline resource fixture forbids network");
   };
   t.after(() => {
@@ -114,6 +143,12 @@ async function fixture(
       ],
     },
     agentPresets: {
+      // This route-only fixture supplies the registry's public declaration document.
+      // Actual standard composition and Agent scopes run in the source-profile tests.
+      readDocument: async () => ({
+        agentPreset: "standard",
+        content: JSON.stringify([{ name: "@deepseek-ai/dsh-persona" }]),
+      }),
       register: async () => async () => {},
       resolve: async (id) => ({ id }),
     },
@@ -352,7 +387,12 @@ test("disabled installed capability refuses the public model directory before cr
 
 test("hiding an enabled page preserves discovery and the Session Consumer while native fallbacks stay valid", async (t) => {
   const app = await fixture(t, true);
-  assert.equal((await app.discover()).ok, true);
+  const initialDiscovery = await app.discover();
+  assert.equal(
+    initialDiscovery.ok,
+    true,
+    JSON.stringify({ initialDiscovery, resources: await app.ctx.agentResources.list() }),
+  );
   for await (const _chunk of app.adapter.stream({
     sessionId: app.agent.id,
     model: "fixture-model",
@@ -385,7 +425,12 @@ test("current disablement or withdrawal refuses persisted presets even after an 
   for (const enabled of [false, undefined]) {
     await t.test(enabled === false ? "disabled" : "withdrawn", async (t) => {
       const app = await fixture(t, true);
-      assert.equal((await app.discover()).ok, true);
+      const initialDiscovery = await app.discover();
+      assert.equal(
+        initialDiscovery.ok,
+        true,
+        JSON.stringify({ initialDiscovery, resources: await app.ctx.agentResources.list() }),
+      );
       await app.changeResource(enabled);
       const code = enabled === false ? "GEA_AGENT_RESOURCE_DISABLED" : "GEA_AGENT_RESOURCE_MISSING";
       const discovered = await app.discover();
@@ -635,4 +680,64 @@ test("the actual Host inbox resets read guards and records the question only for
     /PAGE_INTENT_MISSING/,
   );
   assert.equal(app.external.length, 0);
+});
+
+test("the actual Native Host grant binds and withdraws its current page projection", async (t) => {
+  const app = await fixture(t, true, { actualBusiness: true, login: true });
+  app.agent.session.preset = "gea-readonly";
+  const qr = await app.route("login/start");
+  assert.equal(qr.ok, true, JSON.stringify(qr));
+  const logged = await app.route("login/poll", { loginId: qr.value.loginId });
+  assert.equal(logged.ok, true, JSON.stringify(logged));
+  const bound = async () => JSON.parse(await app.executeRegistered("gea_runtime_diagnose", {}));
+  assert.equal((await bound()).pageBound, false);
+  const acquire = () =>
+    app.pages.get("gea-proof")(app.agent.id, "gea-readonly", new AbortController().signal);
+  const grant = await acquire();
+  assert.equal(
+    (await bound()).pageBound,
+    true,
+    "a valid Native grant must reach the current page guard",
+  );
+  const context = JSON.parse(await app.executeRegistered("gea_visible_workbench_context", {}));
+  assert.equal(context.availability, "in-workbench-no-snapshot");
+  assert.equal(context.currentPage.tool, "gea_workbench_apply");
+  assert.doesNotMatch(context.reason, /gea_page|HTML/);
+  const now = Date.now();
+  t.mock.method(Date, "now", () => now + 90_001);
+  assert.equal((await bound()).pageBound, false, "idle projection expires");
+  const contextSnapshot = {
+    format: "gea-workbench-visible-v1",
+    sequence: 1,
+    view: "regional-approval",
+    scope: { month: "2026-10", planType: "Y", approvalStage: "province", dimension: "customer" },
+    visibleRows: [],
+    selectedPlanIds: [],
+    pagination: { page: 1, pageSize: 20, total: 0 },
+    evidence: {
+      source: "gea-user-session",
+      completeness: "paged-queue",
+      queryState: "success",
+      dataVersion: "sales-plan-v1.11",
+    },
+  };
+  grant.observe(contextSnapshot);
+  assert.equal((await bound()).pageBound, true, "active owner refreshes its page projection");
+  assert.equal(grant.snapshot().sequence, 1);
+  const replacement = await acquire();
+  assert.throws(() => grant.observe(contextSnapshot), /PAGE_OWNER_RELEASED/);
+  grant.release();
+  assert.equal((await bound()).pageBound, true, "old release cannot clear the new owner");
+  replacement.observe({ ...contextSnapshot, sequence: 2 });
+  assert.equal(replacement.snapshot().sequence, 2);
+  replacement.release();
+  assert.equal((await bound()).pageBound, false);
+  assert.equal(replacement.snapshot(), undefined);
+  const revoked = await acquire();
+  const loggedOut = await app.route("logout");
+  assert.equal(loggedOut.ok, true, JSON.stringify(loggedOut));
+  assert.equal(revoked.signal.aborted, true);
+  assert.throws(() => revoked.observe(contextSnapshot), /abort/i);
+  revoked.release();
+  assert.equal((await bound()).pageBound, false);
 });
