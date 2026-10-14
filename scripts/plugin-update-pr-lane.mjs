@@ -1,8 +1,13 @@
 /** The human-authorized exception is limited to PR 59 and its unchanged merge tree. */
 import { execFileSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 const source = "99067baee958a2260ef3735c6b82818253e4906b";
+const peers = {
+  "dsh-agent-workbench": "1cf7a618f5431681eb5817a8ce26d12f0ab10a2b",
+  "dsh-agent-manage": "8aa7d48e6af40b8519d3bae22bb545f39d3509ea",
+  "dsh-gea-plugin": source,
+};
 const allowed = new Set([
   ".github/workflows/quality.yml",
   "scripts/plugin-update-pr-lane.mjs",
@@ -21,14 +26,23 @@ export function selectPluginUpdateLane({
   ownRepository,
   ancestor,
   paths,
+  peerInput,
 }) {
   const requested =
     event === "pull_request" && pr === "59" && branch === "codex/plugin-list-updates-pr-20261014";
   const merge = event === "push" && ref === "refs/heads/main";
   if (!requested && !merge) return "full";
+  const fixedPeers =
+    Array.isArray(peerInput) &&
+    peerInput.length === 3 &&
+    Object.entries(peers).every(
+      ([repo, head]) =>
+        peerInput.filter((entry) => entry?.repo === repo && entry.head === head).length === 1,
+    );
   const scoped =
     repository === "CleverC2200/dsh-gea-plugin" &&
     ancestor &&
+    fixedPeers &&
     paths.every((path) => allowed.has(path));
   if (requested && (!scoped || ownRepository !== repository))
     throw Error("PLUGIN_UPDATE_PR_SCOPE_REJECTED");
@@ -57,6 +71,7 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
     ownRepository: process.env.QUALITY_PR_REPOSITORY,
     ancestor,
     paths,
+    peerInput: JSON.parse(readFileSync("scripts/quality-peer-baseline.json", "utf8")).repositories,
   });
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\n`);
   console.log(JSON.stringify({ lane, source, head, paths }));
