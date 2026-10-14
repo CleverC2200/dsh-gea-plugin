@@ -164,7 +164,10 @@ test("prepared outputs cannot conceal a dirty source checkout or a changed non-o
     mkdirSync(source);
     writeFileSync(join(source, "package.json"), "{}");
     const git = (...args) =>
-      execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+      execFileSync("git", args, {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim();
     git("-C", source, "init", "-q");
     git("-C", source, "add", ".");
     git(

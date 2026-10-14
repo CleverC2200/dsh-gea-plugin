@@ -280,7 +280,12 @@ export function mountBusinessPrompts(
                       .join("\n")
                       .match(/\b(?:GEA|AI_GATEWAY|MODEL|MCP|TOOL)_[A-Z0-9_]{2,72}\b/)?.[0] ??
                     "UNCLASSIFIED_TOOL_ERROR");
-              return [{ toolName: calls.get(event.data.message.toolCallId) ?? null, code }];
+              return [
+                {
+                  toolName: calls.get(event.data.message.toolCallId) ?? null,
+                  code,
+                },
+              ];
             })
             .slice(-20);
           return JSON.stringify({

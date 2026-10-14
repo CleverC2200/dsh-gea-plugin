@@ -133,7 +133,12 @@ export async function verifyPreparedWorkbench({ source, prepared, head, receipt 
 }
 /** Keep publishable assets separate from the prepared worktree's Git metadata and dependency store. */
 export async function prepareWorkbenchAssets({ source, prepared, head, receipt, assets }) {
-  const record = await verifyPreparedWorkbench({ source, prepared, head, receipt });
+  const record = await verifyPreparedWorkbench({
+    source,
+    prepared,
+    head,
+    receipt,
+  });
   await mkdir(assets);
   await cp(record.prepared, assets, {
     recursive: true,
