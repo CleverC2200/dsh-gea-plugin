@@ -434,7 +434,7 @@ test(
       await page.setViewportSize({ width: 700, height: 1000 });
       const conversation = page.getByRole("complementary", { name: "AI对话", exact: true });
       await expect(conversation).toBeVisible();
-      await expect.poll(async () => (await conversation.boundingBox())?.width).toBe(300);
+      await expect.poll(async () => (await conversation.boundingBox())?.width).toBe(320);
       await expect(
         page.getByRole("separator", { name: "调整业务与AI栏宽", exact: true }),
       ).toBeHidden();

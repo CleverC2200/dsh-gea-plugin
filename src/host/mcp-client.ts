@@ -858,6 +858,17 @@ export async function openModuleMcp(
           throw Error(
             "GEA_CUBE_NEW_QUERY_ARGUMENTS: 模型说明使用 inspect_cube_model；查询使用 action=query、response_mode=inline_complete。",
           );
+        for (const entry of Array.isArray(args.queries) ? args.queries : []) {
+          const query = asRecord(asRecord(entry)?.query);
+          if (
+            query &&
+            ((query.total !== undefined && query.total !== true) ||
+              Object.hasOwn(query, "ungrouped"))
+          )
+            throw Error(
+              "GEA_CUBE_NEW_QUERY_ARGUMENTS: Cube-New 查询如提交 total，只能为 true；不接受旧来源的 ungrouped 参数。请读取当前 query_business_data 的公开 schema。",
+            );
+        }
         args = { ...args, response_mode: "inline_complete" };
       }
       const id = randomUUID();

@@ -66,6 +66,16 @@ async function fixture(options = {}) {
     if (wire.method === "initialize")
       return reply({ protocolVersion: "2025-11-25" }, { "MCP-Session-Id": "transport-session" });
     if (wire.method === "notifications/initialized") return new Response(null, { status: 202 });
+    if (wire.method === "tools/list" && options.legacy)
+      return reply({
+        tools: [
+          {
+            name: "query_business_data",
+            _meta: { sourceType: "MCP", sourceCode: "old-cube" },
+            inputSchema: { type: "object", properties: {} },
+          },
+        ],
+      });
     if (wire.method === "tools/list")
       return reply({
         tools: [
@@ -133,7 +143,7 @@ async function fixture(options = {}) {
     controller.signal,
     1000,
     fake,
-    { cubeMcpCode: code },
+    options.legacy ? {} : { cubeMcpCode: code },
   );
   return {
     module: await openModuleMcp(transport, controller.signal),
@@ -264,4 +274,29 @@ test("Cube-New preserves Session expiry and permission envelopes before validati
       );
     }
   }
+});
+
+for (const [label, fields] of [
+  ["total false", { total: false }],
+  ["ungrouped", { ungrouped: true }],
+]) {
+  test("Cube-New refuses " + label + " before sending the business query", async () => {
+    const f = await fixture();
+    const args = structuredClone(query);
+    Object.assign(args.queries[0].query, fields);
+    await assert.rejects(
+      () => f.module.call("query_business_data", args, f.signal),
+      /GEA_CUBE_NEW_QUERY_ARGUMENTS/,
+    );
+    assert.equal(f.sent.filter((item) => item.wire.method === "tools/call").length, 0);
+  });
+}
+test("legacy Cube keeps its supported total and ungrouped arguments", async () => {
+  const f = await fixture({ legacy: true });
+  const args = structuredClone(query);
+  Object.assign(args.queries[0].query, { total: false, ungrouped: true });
+  await f.module.call("query_business_data", args, f.signal);
+  const call = f.sent.find((item) => item.wire.method === "tools/call");
+  assert.equal(call.wire.params.arguments.queries[0].query.total, false);
+  assert.equal(call.wire.params.arguments.queries[0].query.ungrouped, true);
 });
