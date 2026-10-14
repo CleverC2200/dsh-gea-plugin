@@ -5,7 +5,7 @@ import { build } from "esbuild";
 
 const { outputFiles } = await build({
   stdin: {
-    contents: "export * from './src/host/member-index.ts';",
+    contents: "export * from './tests/fixtures/retired-query/member-index.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -14,8 +14,7 @@ const { outputFiles } = await build({
   format: "esm",
 });
 const m = await import(
-  "data:text/javascript;base64," +
-    Buffer.from(outputFiles[0].contents).toString("base64")
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 
 const payload = {
@@ -99,7 +98,12 @@ test("把维度写进 measures 要被拦下；无度量模型要说清只能自�
   assert.deepEqual(m.misplacedMeasures(good, index), []);
   // 有度量却把维度塞进 measures：要报出可用的度量清单。
   const mixed = [
-    { name: "t", query: { measures: ["agents_sales_shipment.base_name", "agents_sales_shipment.shipment_quantity"] } },
+    {
+      name: "t",
+      query: {
+        measures: ["agents_sales_shipment.base_name", "agents_sales_shipment.shipment_quantity"],
+      },
+    },
   ];
   const mixedHint = m.measureHint(m.misplacedMeasures(mixed, index), index, mixed);
   assert.match(mixedHint, /能写进 measures 的成员只有：agents_sales_shipment.shipment_quantity/);

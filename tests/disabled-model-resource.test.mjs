@@ -97,7 +97,9 @@ async function fixture(
       return () => {};
     },
     inject() {},
-    provide() {},
+    provide(name, value) {
+      this[name] = value;
+    },
     get(name) {
       return ctx[name];
     },
@@ -297,7 +299,21 @@ async function fixture(
       const core = new Context();
       core.provide("systemPrompt", { tools: () => () => {} });
       const runtime = new ToolRuntime(core);
-      const off = runtime.register(tools.get(name));
+      const definition =
+        name === "mcp__gea-gateway__query_business_data"
+          ? {
+              name,
+              description: "Direct Cube-New query",
+              parameters: { type: "object" },
+              output: {
+                schema: { type: "string" },
+                render: (_args, value) => [{ type: "text", text: value }],
+              },
+              execute: (args, exec) =>
+                ctx.geaMcp.call(exec.agent.id, "query_business_data", args, exec.signal),
+            }
+          : tools.get(name);
+      const off = runtime.register(definition);
       const detach = core.on("tools/execute", handlers.get("tools/execute")[0]);
       try {
         return await runtime.execute({
@@ -389,7 +405,7 @@ test("current disablement or withdrawal refuses persisted presets even after an 
           return true;
         },
       );
-      const tool = await app.executeTool("gea_module_mcp");
+      const tool = await app.executeTool("mcp__gea-gateway__query_business_data");
       assert.equal(tool.isError, true);
       assert.equal(tool.error.message, code);
       assert.deepEqual(app.calls, {
@@ -421,7 +437,7 @@ test("a persistent disabled preset refuses the registered GEA model stream befor
 
 test("a persistent disabled preset refuses business tool dispatch before query execution", async (t) => {
   const app = await fixture(t, false);
-  const tool = await app.executeTool("gea_cube_query");
+  const tool = await app.executeTool("mcp__gea-gateway__query_business_data");
   assert.equal(tool.isError, true);
   assert.equal(tool.error.message, "GEA_AGENT_RESOURCE_DISABLED");
   assert.deepEqual(app.calls, { route: [], transport: [] });
@@ -434,7 +450,7 @@ test("actual Host rejects a restored disabled native Task before any selected pr
   });
   app.agent.session.preset = "gea-readonly";
   await assert.rejects(app.preStep(), /GEA_AGENT_RESOURCE_DISABLED/);
-  const result = await app.executeTool("gea_cube_query");
+  const result = await app.executeTool("mcp__gea-gateway__query_business_data");
   assert.equal(result.isError, true);
   assert.match(result.error.message, /GEA_AGENT_RESOURCE_DISABLED/);
   assert.deepEqual(app.external, []);
@@ -521,6 +537,34 @@ test("the official LLM stream seam denies a retained direct GEA provider before 
   await assert.rejects(app.streamThroughCore("gea-readonly"), /GEA_AGENT_RESOURCE_DISABLED/);
   await assert.rejects(app.streamThroughCore("standard"), /GEA_CAPABILITY_DISABLED/);
   assert.deepEqual(app.external, []);
+});
+
+test("the registered GEA model adapter preserves a chat 403 without treating it as a network outage", async (t) => {
+  const app = await fixture(t, true, {
+    modelFailure: () =>
+      Response.json(
+        { error: { code: "permission_denied", message: "请求的Agent无权访问" } },
+        { status: 403 },
+      ),
+  });
+  await assert.rejects(
+    async () => {
+      for await (const _chunk of app.adapter.stream({
+        sessionId: app.agent.id,
+        model: "fixture-model",
+        messages: [],
+      })) {
+      }
+    },
+    (error) => {
+      assert.equal(error.code, "GEA_MODEL_HTTP_403");
+      assert.match(error.message, /permission_denied/);
+      assert.match(error.message, /请求的Agent无权访问/);
+      assert.doesNotMatch(error.message, /网络.*抖动|重问一次|代理/);
+      return true;
+    },
+  );
+  assert.equal(app.calls.transport.length, 1);
 });
 
 test("the registered GEA model adapter translates connection and stream failures at its actual outlet", async (t) => {

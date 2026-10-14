@@ -32,7 +32,7 @@ import { readHtmlQuery } from "../html-query.ts";
 import { createSqlReadLimit } from "../shared/sql-read-limit.js";
 import { createSalesReadonly, SalesReadonlyError } from "../shared/sales-readonly.js";
 import { probeTables, withDefaultPaging } from "./plugin-query.ts";
-import { openModuleMcp } from "./mcp-client.ts";
+import { openCubeMcp, type CubeMcpClient } from "./cube-mcp-client.ts";
 import { currentPageEnvelope, pageIdentityFresh, type PageIdentity } from "./page-identity.ts";
 import { workbenchPresence, type WorkbenchPresence } from "./workbench-presence.ts";
 import { normalizeSurface, type WorkbenchSurface } from "./workbench-surface.ts";
@@ -75,6 +75,7 @@ import {
 } from "@cleverc2200/dsh-agent-workbench/notifications";
 import { resolveNavigationTarget, type NavigationInput } from "./navigation-target.ts";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
+import { modelHttpError } from "../shared/model-http-error.ts";
 import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
 import {
   createMcpWasteGuard,
@@ -1080,7 +1081,7 @@ export class Business {
         code: "PAGE_NOT_IN_WORKBENCH",
         reason:
           `这个对话在「${presence.menuTitle}」（主对话），没有业务页面证据：不要推断用户在看哪一页，也不要去打开页面。` +
-          "这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答（gea_module_mcp、gea_sales_plan_read；不要自己写 SQL），不要因此拒答或索要经销商编码。" +
+          "这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答（query_business_data、gea_sales_plan_read；不要自己写 SQL），不要因此拒答或索要经销商编码。" +
           "确实需要“这一屏”时，说清需要哪一页，让用户从左侧功能区点开对应菜单。本工具每轮最多调用一次，不要重复调用。",
       });
     }
@@ -2242,7 +2243,7 @@ export class Business {
     }
     if (!response.ok) {
       if (response.status === 401) this.clearLogin(true);
-      throw new Error("GEA_MODEL_HTTP_" + response.status);
+      throw await modelHttpError(response, agentCode, "模型列表读取", [secret, auth.token]);
     }
     const modelsPayload = object(await response.json());
     if (!Array.isArray(modelsPayload.data)) throw new Error("GEA_MODEL_INVALID_RESPONSE");
@@ -2442,21 +2443,25 @@ export class Business {
     this.assertExecutionAllowed(consumer.consumerCode);
     const auth = this.authenticated();
     const identity = this.epoch.signal;
+    if (!this.config.cubeMcpCodes?.[this.environment])
+      throw Error(
+        "GEA_CUBE_MCP_NOT_CONFIGURED: 当前环境未登记 Cube-New 来源，不能使用旧 Cube 替代。",
+      );
     return prepareGatewayMcp(
       this.base,
       auth,
       consumer,
-      AbortSignal.any([signal, identity]),
+      identity,
       this.config.mcpRequestTimeoutMs ?? 60000,
       this.apiLog.fetch,
-      { cubeMcpCode: this.config.cubeMcpCodes?.[this.environment] },
+      {
+        cubeMcpCode: this.config.cubeMcpCodes?.[this.environment],
+        setupSignal: signal,
+      },
     );
   }
 
-  private readonly moduleMcpCache = new Map<
-    string,
-    { token: string; module: import("./mcp-client.ts").McpModule }
-  >();
+  private readonly moduleMcpCache = new Map<string, { token: string; module: CubeMcpClient }>();
   /** A rejected business Session cannot authorize later reads, even if the login stays valid. */
   invalidateModuleMcp(consumerCode: string): void {
     this.moduleMcpCache.delete(consumerCode);
@@ -2472,10 +2477,7 @@ export class Business {
    * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
    * 页面不可用时的兜底查询走这里：不依赖页面、也不依赖我们替它写 SQL。
    */
-  async moduleMcp(
-    consumerCode: string,
-    signal: AbortSignal,
-  ): Promise<import("./mcp-client.ts").McpModule> {
+  async moduleMcp(consumerCode: string, signal: AbortSignal): Promise<CubeMcpClient> {
     this.assertExecutionAllowed(consumerCode);
     const auth = this.authenticated();
     const rejected = this.moduleMcpRejections.get(consumerCode);
@@ -2493,13 +2495,13 @@ export class Business {
     }
     const cached = this.moduleMcpCache.get(consumerCode);
     if (cached && cached.token === auth.token) return cached.module;
-    let module: import("./mcp-client.ts").McpModule;
+    let module: CubeMcpClient;
     try {
       const transport = await this.openMcpConnection(
         { consumerType: "AGENT", consumerCode },
         signal,
       );
-      module = await openModuleMcp(transport, signal);
+      module = await openCubeMcp(transport, signal);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const code =
@@ -2507,7 +2509,7 @@ export class Business {
           ? String((error as { code?: unknown }).code)
           : "";
       // 权限没开通：这是业务状态，不是故障。原样抛出带 code 的错误，由工具层转成
-      // 正常提示（见 agent-tools 的 gea_module_mcp），不要显示成红色调用失败。
+      // 正常提示（见 Cube-New query_business_data），不要显示成红色调用失败。
       if (code === "AGENT_ACCESS_DENIED") {
         this.moduleMcpRejections.set(consumerCode, {
           at: Date.now(),
@@ -2895,7 +2897,7 @@ export class Business {
           // 不是 JSON 的响应不参与实验。
         }
       }
-      const module = await openModuleMcp(transport, signal);
+      const module = await openCubeMcp(transport, signal);
       return {
         consumerCode,
         ok: true,

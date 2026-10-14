@@ -25,8 +25,8 @@ import {
   unknownMembers,
   type ModelMembers,
 } from "./member-index.ts";
-import { yearMonthHint, yearMonthValues } from "./cube-query-guard.ts";
-import { monthFormatIssue } from './sales-result-contract.ts';
+import { yearMonthHint, yearMonthValues } from "../../../src/host/cube-query-guard.ts";
+import { monthFormatIssue } from "../../../src/host/sales-result-contract.ts";
 
 /** 下游 `CubeJsonQuery.additionalProperties=false`：只能用这些字段。 */
 const QUERY_FIELDS = new Set([
@@ -45,7 +45,7 @@ const QUERY_FIELDS = new Set([
 ]);
 
 /** `模型.字段`；裸字段、SQL 表达式、`*` 都不匹配。 */
-import { CUBE_FILTER_OPERATORS } from './cube-operators.ts';
+import { CUBE_FILTER_OPERATORS } from "../../../src/host/cube-operators.ts";
 const MODEL_MEMBER = /^[A-Za-z_][A-Za-z0-9_$]*\.[A-Za-z_][A-Za-z0-9_$]*$/;
 
 export const CUBE_MAX_QUERIES = 8;
@@ -99,35 +99,38 @@ const modelOf = (member: string): string | undefined =>
  * 模型偶尔把有序排序写成 [{"模型.字段":"desc"}]。仅当每个对象恰有一个合法成员
  * 和明确方向时，转换为网关接受的二元数组；其余形状继续交给 G6 拦截。
  */
-export function normalizeCubeOrderArguments(parameters: Record<string, unknown>): Record<string, unknown> {
-  if (parameters.action !== 'query' || !Array.isArray(parameters.queries)) return parameters;
+export function normalizeCubeOrderArguments(
+  parameters: Record<string, unknown>,
+): Record<string, unknown> {
+  if (parameters.action !== "query" || !Array.isArray(parameters.queries)) return parameters;
   let changed = false;
-  const queries = parameters.queries.map(raw => {
+  const queries = parameters.queries.map((raw) => {
     const item = asObject(raw);
     const query = asObject(item?.query);
     if (!item || !query || !Array.isArray(query.order)) return raw;
-    const order = query.order.map(entry => {
+    const order = query.order.map((entry) => {
       if (Array.isArray(entry)) return entry;
       const object = asObject(entry);
       if (!object) return entry;
       const keys = Object.keys(object);
       const member = keys[0];
       const direction = object[member];
-      if (keys.length !== 1 || !MODEL_MEMBER.test(member) || (direction !== 'asc' && direction !== 'desc')) return entry;
+      if (
+        keys.length !== 1 ||
+        !MODEL_MEMBER.test(member) ||
+        (direction !== "asc" && direction !== "desc")
+      )
+        return entry;
       changed = true;
       return [member, direction];
     });
-    return {...item, query: {...query, order}};
+    return { ...item, query: { ...query, order } };
   });
-  return changed ? {...parameters, queries} : parameters;
+  return changed ? { ...parameters, queries } : parameters;
 }
 
 /** 递归取 filters 里引用的成员；顺便把形状问题记下来。 */
-function walkFilters(
-  filters: unknown,
-  path: string,
-  out: Collected,
-): void {
+function walkFilters(filters: unknown, path: string, out: Collected): void {
   // 没写 filters 是正常情况（省略即可），只有写了但形状不对才拦。
   if (filters === undefined || filters === null) return;
   if (!Array.isArray(filters)) {
@@ -191,7 +194,11 @@ function walkFilters(
     }
     // set / notSet 这类运算符本来就不带值，其余一律要求 values。
     if (!(CUBE_FILTER_OPERATORS as readonly string[]).includes(operator)) {
-      out.issues.push({path: `${at}.operator`, problem: `operator=${operator} 不是支持的Cube操作符`, fix: '等于使用equals，大于使用gt；不能用SQL的=、IN或BETWEEN。'});
+      out.issues.push({
+        path: `${at}.operator`,
+        problem: `operator=${operator} 不是支持的Cube操作符`,
+        fix: "等于使用equals，大于使用gt；不能用SQL的=、IN或BETWEEN。",
+      });
       return;
     }
     const valueFree = operator === "set" || operator === "notSet" || operator === "measureFilter";
@@ -206,14 +213,9 @@ function walkFilters(
 }
 
 /** 递归取 order 里引用的成员；顺便把形状问题记下来（G6）。 */
-function walkOrder(
-  order: unknown,
-  path: string,
-  out: Collected,
-): void {
+function walkOrder(order: unknown, path: string, out: Collected): void {
   if (order === undefined || order === null) return;
-  const badDirection = (direction: unknown): boolean =>
-    direction !== "asc" && direction !== "desc";
+  const badDirection = (direction: unknown): boolean => direction !== "asc" && direction !== "desc";
   if (Array.isArray(order)) {
     order.forEach((entry, index) => {
       const at = `${path}[${index}]`;
@@ -275,11 +277,7 @@ function walkOrder(
 }
 
 /** 一条具名查询里引用的全部成员 + 形状问题。 */
-function inspectQuery(
-  rawQuery: unknown,
-  path: string,
-  out: Collected,
-): void {
+function inspectQuery(rawQuery: unknown, path: string, out: Collected): void {
   const query = asObject(rawQuery);
   if (!query) {
     out.issues.push({
@@ -362,7 +360,7 @@ function inspectQuery(
           out.issues.push({
             path: `${at}.dateRange`,
             problem: "dateRange 必须是 [起, 止] 两个非空日期字符串，且起不晚于止",
-            fix: "例如 [\"2026-09-01\",\"2026-09-23\"]",
+            fix: '例如 ["2026-09-01","2026-09-23"]',
           });
       });
   }
@@ -416,17 +414,20 @@ function checkNumbers(query: Record<string, unknown>, path: string, issues: Issu
       issues.push({ path: `${path}.${key}`, problem: `${key} 必须是 true 或 false` });
   const timezone = query.timezone;
   if (timezone !== undefined && (typeof timezone !== "string" || !timezone.trim()))
-    issues.push({ path: `${path}.timezone`, problem: "timezone 必须是非空字符串，例如 Asia/Shanghai" });
+    issues.push({
+      path: `${path}.timezone`,
+      problem: "timezone 必须是非空字符串，例如 Asia/Shanghai",
+    });
 }
 
 /** 把问题清单压成一段给模型看的说明；同类问题一次列全，不让它改一个再撞一个。 */
 function blocked(issues: readonly Issue[], extra?: string): string {
   const shown = issues.slice(0, 8);
   const lines = shown.map(
-    (issue) =>
-      `- ${issue.path}：${issue.problem}${issue.fix ? ` → ${issue.fix}` : ""}`,
+    (issue) => `- ${issue.path}：${issue.problem}${issue.fix ? ` → ${issue.fix}` : ""}`,
   );
-  if (issues.length > shown.length) lines.push(`- 还有 ${issues.length - shown.length} 处同类问题，一并改掉`);
+  if (issues.length > shown.length)
+    lines.push(`- 还有 ${issues.length - shown.length} 处同类问题，一并改掉`);
   return (
     `GEA_CUBE_PREFLIGHT_BLOCKED：入参预检没通过，**本次调用没有发出**（不用重试，改参数）。\n` +
     lines.join("\n") +
@@ -628,7 +629,12 @@ export function preflightCubeArguments(
   if (!index) return undefined;
   const namesOf = members.map((entry) => entry.member);
   const unknown = unknownMembers(namesOf, index);
-  if (unknown.length > 0) return memberHint(unknown, index, members.filter(entry => entry.where === 'measures').map(entry => entry.member));
+  if (unknown.length > 0)
+    return memberHint(
+      unknown,
+      index,
+      members.filter((entry) => entry.where === "measures").map((entry) => entry.member),
+    );
   const misplaced = misplacedMeasures(queries, index);
   if (misplaced.length > 0) return measureHint(misplaced, index, queries);
   // 其余"类别与位置不一致"：度量进 dimensions、分段进 dimensions/measures、
@@ -681,7 +687,14 @@ export function preflightCubeArguments(
 
 /** Collect model references from every member-bearing position, including filters and order. */
 export function cubeQueryModels(queries: unknown): string[] {
-  const collected: Collected = {members: [], issues: []};
-  if (Array.isArray(queries)) for (const item of queries) inspectQuery(asObject(item)?.query, 'query', collected);
-  return [...new Set(collected.members.map(entry => modelOf(entry.member)).filter((model): model is string => !!model))];
+  const collected: Collected = { members: [], issues: [] };
+  if (Array.isArray(queries))
+    for (const item of queries) inspectQuery(asObject(item)?.query, "query", collected);
+  return [
+    ...new Set(
+      collected.members
+        .map((entry) => modelOf(entry.member))
+        .filter((model): model is string => !!model),
+    ),
+  ];
 }

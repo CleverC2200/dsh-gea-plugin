@@ -1,9 +1,10 @@
-import type { ContentBlock, GenerateOptions } from "@deepseek-ai/dsh-llm";
+import { LlmError, type ContentBlock, type GenerateOptions } from "@deepseek-ai/dsh-llm";
 import { toolResults } from "../shared/tool-results.ts";
 
 type GeaMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content?: string;
+  reasoning_content?: string;
   tool_call_id?: string;
   tool_calls?: Array<{
     id: string;
@@ -14,18 +15,15 @@ type GeaMessage = {
 
 function textContent(content: readonly ContentBlock[]): string {
   return content
-    .filter(
-      (block): block is Extract<ContentBlock, { type: "text" }> =>
-        block.type === "text",
-    )
+    .filter((block): block is Extract<ContentBlock, { type: "text" }> => block.type === "text")
     .map((block) => block.text)
     .join("");
 }
 
 export function toGeaMessages(options: GenerateOptions): GeaMessage[] {
   const messages: GeaMessage[] = [];
-  if (options.system !== undefined)
-    messages.push({ role: "system", content: options.system });
+  let reasoningChars = 0;
+  if (options.system !== undefined) messages.push({ role: "system", content: options.system });
   for (const message of options.messages) {
     if (message.role === "system") {
       const content = textContent(message.content);
@@ -44,6 +42,37 @@ export function toGeaMessages(options: GenerateOptions): GeaMessage[] {
       continue;
     }
     if (message.role === "assistant") {
+      const reasoning = message.content
+        .filter((block) => block.type === "reasoning")
+        .map((block) => block.text)
+        .join("");
+      if (reasoning) {
+        // Core keeps cancelled prefixes for display. Only our successful finish
+        // supplies this durable replay marker; a partial prefix must not be replayed.
+        const replay = message.source?.replayState;
+        const response =
+          replay && typeof replay === "object" && "response" in replay
+            ? replay.response
+            : undefined;
+        if (
+          !response ||
+          typeof response !== "object" ||
+          !("protocol" in response) ||
+          response.protocol !== "gea-client-reasoning-v1" ||
+          !("complete" in response) ||
+          response.complete !== true
+        )
+          throw new LlmError(
+            "GEA_REASONING_HISTORY_INCOMPLETE: 已保存的思考缺少完整响应标记，请保留原会话并新建会话；不会将部分思考冒充完整历史回传。",
+            "PROVIDER_PROTOCOL",
+          );
+        reasoningChars += reasoning.length;
+        if (reasoning.length > 1_048_576 || reasoningChars > 4_194_304)
+          throw new LlmError(
+            "GEA_REASONING_HISTORY_TOO_LARGE: 思考历史超出网关上限，请按完整消息组缩减上下文；不会截断原文。",
+            "PROVIDER_PROTOCOL",
+          );
+      }
       const calls = message.content
         .filter(
           (block): block is Extract<ContentBlock, { type: "tool-call" }> =>
@@ -57,6 +86,7 @@ export function toGeaMessages(options: GenerateOptions): GeaMessage[] {
       messages.push({
         role: "assistant",
         content: textContent(message.content) || undefined,
+        ...(reasoning ? { reasoning_content: reasoning } : {}),
         ...(calls.length > 0 ? { tool_calls: calls } : {}),
       });
       continue;

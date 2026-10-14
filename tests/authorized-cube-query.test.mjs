@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 const built = await build({
   stdin: {
     contents:
-      "export {prepareGatewayMcp,gatewayMcpTransport} from './src/host/gateway-mcp.ts';export {openModuleMcp} from './src/host/mcp-client.ts';export {planCubeQuery} from './src/host/cube-query-plan.ts';export {Business} from './src/host/business.ts';export {registerGeaTools} from './src/host/agent-tools.ts';export {resourceConsumers} from './src/host/catalog-consumers.ts';export {installPromptProfile} from './src/host/prompt-policy.ts'",
+      "export {prepareGatewayMcp,gatewayMcpTransport} from './src/host/gateway-mcp.ts';export {openModuleMcp} from './tests/fixtures/retired-query/mcp-client.ts';export {planCubeQuery} from './tests/fixtures/retired-query/cube-query-plan.ts';export {Business} from './src/host/business.ts';export {registerGeaTools} from './src/host/agent-tools.ts';export {resourceConsumers} from './tests/fixtures/retired-query/catalog-consumers.ts';export {installPromptProfile} from './src/host/prompt-policy.ts'",
     resolveDir: process.cwd(),
   },
   bundle: true,

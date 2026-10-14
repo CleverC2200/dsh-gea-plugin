@@ -231,6 +231,23 @@ try {
     missingSkills: row.missingSkills ?? [],
   }));
   const signal = new AbortController().signal;
+  const initialRoster = await ctx.agentPresets.remoteExportList();
+  projected.initialPresets = initialRoster.presets.map((row) => ({
+    id: row.id,
+    isDefault: row.isDefault,
+    broken: Boolean(row.broken),
+  }));
+  for (const id of businessIds)
+    assert(
+      projected.initialPresets.some((row) => row.id === id && !row.broken),
+      `BUSINESS_PRESET_NOT_DISCOVERABLE_BEFORE_SELECTION:${id}`,
+    );
+  for (const id of [
+    "gea-html-inventory-customer",
+    "gea-html-inventory-orderworkbench",
+    "gea-html-inventory-orderfulfillment",
+  ])
+    assert(!projected.initialPresets.some((row) => row.id === id), `PREVIEW_PRESET_VISIBLE:${id}`);
   for (const id of businessIds) {
     assert(
       resources.some(

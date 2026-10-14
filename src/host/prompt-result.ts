@@ -1,5 +1,5 @@
 import { exactResult } from "./prompt-evidence.ts";
-import { PERMISSION_NOTICE_PREFIX } from "./mcp-client.ts";
+const PERMISSION_NOTICE_PREFIX = "模块数据未授权：";
 import { parseFirstJsonObject } from "./gateway-catalog.ts";
 
 type Row = Record<string, unknown>;
@@ -19,9 +19,7 @@ export function permissionDenied(text: string): boolean {
   if (text.startsWith(PERMISSION_NOTICE_PREFIX)) return true;
   return (
     record(data) &&
-    (["no-authorized-resources", "permission-required"].includes(
-      String(data.availability),
-    ) ||
+    (["no-authorized-resources", "permission-required"].includes(String(data.availability)) ||
       (Array.isArray(data.results) &&
         data.results.some(
           (r) =>
@@ -31,9 +29,7 @@ export function permissionDenied(text: string): boolean {
         )))
   );
 }
-export function resultOutcome(
-  text: string,
-): "returned" | "partial" | "blocked" {
+export function resultOutcome(text: string): "returned" | "partial" | "blocked" {
   const value = parsed(text);
   if (text.startsWith(PERMISSION_NOTICE_PREFIX)) return "blocked";
   if (!record(value)) return "returned";
@@ -48,17 +44,14 @@ export function resultOutcome(
   )
     return "blocked";
   if (value.source === "GEA_CUBE_BATCH" && Array.isArray(value.results)) {
-    const returned = value.results.filter(
-      (r) => record(r) && r.status === "returned",
-    );
+    const returned = value.results.filter((r) => record(r) && r.status === "returned");
     if (!returned.length) return "blocked";
     return returned.length < value.results.length ||
       returned.some(
         (r) =>
           record(r) &&
-          resultOutcome(
-            typeof r.result === "string" ? r.result : JSON.stringify(r.result),
-          ) !== "returned",
+          resultOutcome(typeof r.result === "string" ? r.result : JSON.stringify(r.result)) !==
+            "returned",
       )
       ? "partial"
       : "returned";
@@ -124,9 +117,7 @@ export function resultView(value: unknown, depth = 0): unknown {
     return {
       ...value,
       results: value.results.map((item) =>
-        record(item)
-          ? { ...item, result: resultView(item.result, depth + 1) }
-          : item,
+        record(item) ? { ...item, result: resultView(item.result, depth + 1) } : item,
       ),
     };
   if (value.source === "GEA_MCP_CONTENT" && Array.isArray(value.payloads))
@@ -137,10 +128,7 @@ export function resultView(value: unknown, depth = 0): unknown {
       ...(!record(value.delivery) ? { presentation: value.presentation } : {}),
       payloads: value.payloads.map((item) => resultView(item, depth + 1)),
     };
-  if (
-    record(value.queryArtifact) &&
-    Array.isArray(value.queryArtifact.resources)
-  ) {
+  if (record(value.queryArtifact) && Array.isArray(value.queryArtifact.resources)) {
     const pages: Row[] = [];
     for (const resource of value.queryArtifact.resources) {
       if (!record(resource) || !Array.isArray(resource.contents)) return value;
@@ -148,8 +136,8 @@ export function resultView(value: unknown, depth = 0): unknown {
         if (!record(content)) return value;
         const page = parsed(content.text);
         if (!record(page)) return value;
-        const { contents, ...resourceMetadata } = resource;
-        const { text, ...contentMetadata } = content;
+        const { contents: _contents, ...resourceMetadata } = resource;
+        const { text: _text, ...contentMetadata } = content;
         pages.push({
           ...page,
           sourceResource: resourceMetadata,
@@ -159,27 +147,18 @@ export function resultView(value: unknown, depth = 0): unknown {
     }
     // Preserve every non-body field, including status/error/coverage; redundant rendered bodies stay in the original.
     const { queryArtifact, ...metadata } = value;
-    const { resources, ...artifactMetadata } = queryArtifact as Row;
+    const { resources: _resources, ...artifactMetadata } = queryArtifact as Row;
     if (Array.isArray(metadata.datasets))
       metadata.datasets = metadata.datasets.map((dataset) => {
-        if (!record(dataset) || !Array.isArray(dataset.previewRows))
-          return dataset;
-        const matching = pages.filter(
-          (page) => page.datasetName === dataset.name,
-        );
-        if (
-          !matching.length ||
-          !matching.every((page) => Array.isArray(page.rows))
-        )
-          return dataset;
+        if (!record(dataset) || !Array.isArray(dataset.previewRows)) return dataset;
+        const matching = pages.filter((page) => page.datasetName === dataset.name);
+        if (!matching.length || !matching.every((page) => Array.isArray(page.rows))) return dataset;
         if (
           JSON.stringify(canonical(dataset.previewRows)) !==
-          JSON.stringify(
-            canonical(matching.flatMap((page) => page.rows as unknown[])),
-          )
+          JSON.stringify(canonical(matching.flatMap((page) => page.rows as unknown[])))
         )
           return dataset;
-        const { previewRows, ...info } = dataset;
+        const { previewRows: _previewRows, ...info } = dataset;
         return { ...info, rowsLocation: "queryArtifact.pages" };
       });
     return {
@@ -191,11 +170,7 @@ export function resultView(value: unknown, depth = 0): unknown {
 }
 
 /** Unknown/knowledge sources without a reusable authorization receipt get bounded one-time excerpts, never a fake evidence ID. */
-export function transientResult(
-  text: string,
-  limit = 6000,
-  knowledge = false,
-): string {
+export function transientResult(text: string, limit = 6000, knowledge = false): string {
   if (text.length <= limit) return text;
   if (knowledge) {
     let payload: unknown = text;
@@ -215,15 +190,13 @@ export function transientResult(
         sourceComplete = false;
       }
     }
-    let chunks: unknown[] =
-      record(payload) && Array.isArray(payload.chunks) ? payload.chunks : [];
+    let chunks: unknown[] = record(payload) && Array.isArray(payload.chunks) ? payload.chunks : [];
     if (typeof payload === "string") {
       // Recover complete chunk objects only; never invent a citation for a cut-off object.
       const start = /"chunks"\s*:\s*\[/.exec(payload);
       let cursor = start ? start.index + start[0].length : -1;
       while (cursor >= 0 && chunks.length < 8) {
-        while (/\s/.test(payload[cursor] ?? "") && cursor < payload.length)
-          cursor++;
+        while (/\s/.test(payload[cursor] ?? "") && cursor < payload.length) cursor++;
         if (payload[cursor] !== "{") break;
         try {
           let consumed = 0;
@@ -239,8 +212,7 @@ export function transientResult(
             break;
           chunks.push(chunk);
           cursor += consumed;
-          while (/\s/.test(payload[cursor] ?? "") && cursor < payload.length)
-            cursor++;
+          while (/\s/.test(payload[cursor] ?? "") && cursor < payload.length) cursor++;
           if (payload[cursor] !== ",") break;
           cursor++;
         } catch {
@@ -285,10 +257,7 @@ export function transientResult(
     excerpt: text.slice(0, Math.floor(limit / 2)),
   };
   while (JSON.stringify(result).length > limit && result.excerpt.length)
-    result.excerpt = result.excerpt.slice(
-      0,
-      Math.floor(result.excerpt.length * 0.75),
-    );
+    result.excerpt = result.excerpt.slice(0, Math.floor(result.excerpt.length * 0.75));
   return JSON.stringify(result);
 }
 
@@ -310,25 +279,22 @@ export function resultReceipt(
   if (typeof args.kind === "string") facts.kind = args.kind;
   if (record(args.query)) facts.scope = args.query;
   if (Array.isArray(args.queries))
-    facts.queries = args.queries
-      .map((q) => (record(q) ? q.name : undefined))
-      .slice(0, 8);
+    facts.queries = args.queries.map((q) => (record(q) ? q.name : undefined)).slice(0, 8);
   if (record(data)) {
     if (data.coverage !== undefined) facts.coverage = data.coverage;
     if (data.availability !== undefined) facts.availability = data.availability;
     if (Array.isArray(data.results))
       facts.results = data.results
-        .map((r) =>
-          record(r) ? { model: r.model, names: r.names, status: r.status } : r,
-        )
+        .map((r) => (record(r) ? { model: r.model, names: r.names, status: r.status } : r))
         .slice(0, 8);
   }
   const pages = datasetPages(raw);
-  if (pages.length) facts.businessFacts = pages.slice(0, 4).map(page => {
-    // System receipts retain state only; business values stay in their authorized tool result.
-    const {observedValues, ...status} = datasetBusinessFacts(page.rows);
-    return {name:page.name, ...status};
-  });
+  if (pages.length)
+    facts.businessFacts = pages.slice(0, 4).map((page) => {
+      // System receipts retain state only; business values stay in their authorized tool result.
+      const { observedValues: _observedValues, ...status } = datasetBusinessFacts(page.rows);
+      return { name: page.name, ...status };
+    });
   const text = JSON.stringify(facts);
   return text.length <= 1500
     ? text
@@ -344,17 +310,23 @@ export function resultReceipt(
 
 type DatasetPage = { key: string; name: string; rows: Row[]; source: Row };
 /** Decode only documented envelopes and keep source identity through every batch and artifact. */
-function datasetPages(
-  raw: unknown,
-  depth = 0,
-  path = "root",
-  provenance: Row = {},
-): DatasetPage[] {
+function datasetPages(raw: unknown, depth = 0, path = "root", provenance: Row = {}): DatasetPage[] {
   if (depth > 10) return [];
   const value = parsed(raw);
   if (!record(value)) return [];
-  const status = Object.fromEntries(['status','error','errors','warnings','coverage','partial','truncated'].filter(k=>Object.hasOwn(value,k)).map(k=>[k,value[k]]));
-  if (Object.keys(status).length) provenance = {...provenance,envelopeStatus:[...(Array.isArray(provenance.envelopeStatus)?provenance.envelopeStatus:[]),{path,...status}]};
+  const status = Object.fromEntries(
+    ["status", "error", "errors", "warnings", "coverage", "partial", "truncated"]
+      .filter((k) => Object.hasOwn(value, k))
+      .map((k) => [k, value[k]]),
+  );
+  if (Object.keys(status).length)
+    provenance = {
+      ...provenance,
+      envelopeStatus: [
+        ...(Array.isArray(provenance.envelopeStatus) ? provenance.envelopeStatus : []),
+        { path, ...status },
+      ],
+    };
   if (value.source === "GEA_CUBE_BATCH" && Array.isArray(value.results))
     return value.results.flatMap((r, i) =>
       record(r) && r.status === "returned"
@@ -373,10 +345,7 @@ function datasetPages(
         delivery: value.delivery,
       }),
     );
-  if (
-    record(value.queryArtifact) &&
-    Array.isArray(value.queryArtifact.resources)
-  ) {
+  if (record(value.queryArtifact) && Array.isArray(value.queryArtifact.resources)) {
     const pages: DatasetPage[] = [];
     value.queryArtifact.resources.forEach((resource, i) => {
       if (!record(resource) || !Array.isArray(resource.contents)) return;
@@ -384,8 +353,7 @@ function datasetPages(
       for (const c of resource.contents) {
         if (!record(c)) continue;
         const p = parsed(c.text);
-        if (!record(p) || !Array.isArray(p.rows) || !p.rows.every(record))
-          continue;
+        if (!record(p) || !Array.isArray(p.rows) || !p.rows.every(record)) continue;
         const name = String(p.datasetName ?? resource.datasetName ?? "result");
         if (!names.has(name)) names.set(name, names.size);
         const { rows, ...source } = p;
@@ -408,7 +376,7 @@ function datasetPages(
           ? d.previewRows
           : undefined;
       if (!rows?.every(record)) return [];
-      const { rows: ignoredRows, previewRows, ...source } = d;
+      const { rows: _ignoredRows, previewRows: _previewRows, ...source } = d;
       return [
         {
           key: `${path}/dataset${i}`,
@@ -455,33 +423,87 @@ export function datasetIndex(raw: string, evidenceId: string) {
 /** Business rows first; retain coverage and exact values, with the original available for audit.
  * Mixed failures keep the existing envelope projection so no rejected query disappears.
  */
-export function compactDatasetProjection(raw: string, evidenceId: string, limit = 6000): string | undefined {
-  if (resultOutcome(raw) === 'blocked') return undefined;
+export function compactDatasetProjection(
+  raw: string,
+  evidenceId: string,
+  limit = 6000,
+): string | undefined {
+  if (resultOutcome(raw) === "blocked") return undefined;
   const envelope = parsed(raw);
-  const queryFailures = record(envelope) && Array.isArray(envelope.results)
-    ? envelope.results.filter(r => record(r) && r.status !== 'returned').map(r => ({names:r.names,status:r.status,code:r.code,message:r.message})) : [];
+  const queryFailures =
+    record(envelope) && Array.isArray(envelope.results)
+      ? envelope.results
+          .filter((r) => record(r) && r.status !== "returned")
+          .map((r) => ({ names: r.names, status: r.status, code: r.code, message: r.message }))
+      : [];
   const index = datasetIndex(raw, evidenceId);
   if (!index.length || index.length > 8) return undefined;
   for (const rowLimit of [100, 30, 10, 3, 1]) {
     try {
-      const datasets = index.map(d => readDataset(raw, evidenceId, d.key, 0, rowLimit));
-      const incomplete = datasets.some(d => d.nextRead !== null);
-      const value = JSON.stringify({evidenceId, projection: incomplete ? 'partial' : 'complete', sourceOutcome: resultOutcome(raw), datasets,
-        ...(queryFailures.length ? {queryFailures} : {}),
-        evidenceDatasets: index.map((d,i)=>({...d,nextRead:datasets[i]!.nextRead})),
-        note:'业务行已结构化展示；完整表示本次返回行已展示，不证明源数据全量。无需再读外层JSON；仅未展示行沿nextRead读取。原产物保留供核对。'});
+      const datasets = index.map((d) => readDataset(raw, evidenceId, d.key, 0, rowLimit));
+      const incomplete = datasets.some((d) => d.nextRead !== null);
+      const value = JSON.stringify({
+        evidenceId,
+        projection: incomplete ? "partial" : "complete",
+        sourceOutcome: resultOutcome(raw),
+        datasets,
+        ...(queryFailures.length ? { queryFailures } : {}),
+        evidenceDatasets: index.map((d, i) => ({ ...d, nextRead: datasets[i]!.nextRead })),
+        note: "业务行已结构化展示；完整表示本次返回行已展示，不证明源数据全量。无需再读外层JSON；仅未展示行沿nextRead读取。原产物保留供核对。",
+      });
       if (value.length <= limit) return value;
-    } catch { return undefined; }
+    } catch {
+      return undefined;
+    }
   }
   return undefined;
 }
 
 /** Facts about displayed rows only; no model-created aggregates or inferred status dictionaries. */
 export function datasetBusinessFacts(rows: Row[]) {
-  const nullWithRows = rows.some(row => Object.entries(row).some(([key,value]) => /\.row_count$/.test(key) && Number(value)>0) && Object.entries(row).some(([key,value]) => /_sum$/.test(key) && value === null));
-  const emptyGroups = [...new Set(rows.flatMap(row => Object.entries(row).filter(([key,value]) => /\.(?:province_region_name|region_name)$/.test(key) && (value===null || typeof value==='string'&&!value.trim())).map(([key])=>key)))];
-  const totals = rows.length===1 ? Object.fromEntries(Object.entries(rows[0]!).filter(([key]) => /(?:_sum|\.row_count|\.customer_count|\.sku_count)$/.test(key)).slice(0,6)) : undefined;
-  return {displayedRows:rows.length, ...(totals?{observedValues:totals}:{}), ...(nullWithRows?{quantityState:'guarded-null',note:'有记录但汇总为NULL：检查批次、候选粒度、缺量等保护条件，不能判无数据。'}:{}), ...(emptyGroups.length?{emptyGroupMembers:emptyGroups,noteGroup:'存在组织成员为空的展示行；这些行不能归入已知省区，也不能换成基地。其它有效分组仍可展示并注明缺失覆盖。'}:{})};
+  const nullWithRows = rows.some(
+    (row) =>
+      Object.entries(row).some(([key, value]) => key.endsWith(".row_count") && Number(value) > 0) &&
+      Object.entries(row).some(([key, value]) => key.endsWith("_sum") && value === null),
+  );
+  const emptyGroups = [
+    ...new Set(
+      rows.flatMap((row) =>
+        Object.entries(row)
+          .filter(
+            ([key, value]) =>
+              /\.(?:province_region_name|region_name)$/.test(key) &&
+              (value === null || (typeof value === "string" && !value.trim())),
+          )
+          .map(([key]) => key),
+      ),
+    ),
+  ];
+  const totals =
+    rows.length === 1
+      ? Object.fromEntries(
+          Object.entries(rows[0]!)
+            .filter(([key]) => /(?:_sum|\.row_count|\.customer_count|\.sku_count)$/.test(key))
+            .slice(0, 6),
+        )
+      : undefined;
+  return {
+    displayedRows: rows.length,
+    ...(totals ? { observedValues: totals } : {}),
+    ...(nullWithRows
+      ? {
+          quantityState: "guarded-null",
+          note: "有记录但汇总为NULL：检查批次、候选粒度、缺量等保护条件，不能判无数据。",
+        }
+      : {}),
+    ...(emptyGroups.length
+      ? {
+          emptyGroupMembers: emptyGroups,
+          noteGroup:
+            "存在组织成员为空的展示行；这些行不能归入已知省区，也不能换成基地。其它有效分组仍可展示并注明缺失覆盖。",
+        }
+      : {}),
+  };
 }
 export function indexProjection(
   projected: string,
@@ -496,9 +518,7 @@ export function indexProjection(
     const fields = {
       evidenceId,
       evidenceDatasets: datasets,
-      ...(display.projection === "partial"
-        ? { nextRead: datasets[0]?.nextRead }
-        : {}),
+      ...(display.projection === "partial" ? { nextRead: datasets[0]?.nextRead } : {}),
     };
     const combined = JSON.stringify(
       Object.hasOwn(display, "evidenceDatasets")
@@ -531,9 +551,7 @@ export function readDataset(
     rowLimit < 1 ||
     rowLimit > 100
   )
-    throw Error(
-      "GEA_EVIDENCE_ROW_RANGE: rowOffset为0起点；rowLimit为1–100，默认30。",
-    );
+    throw Error("GEA_EVIDENCE_ROW_RANGE: rowOffset为0起点；rowLimit为1–100，默认30。");
   const all = datasetPages(raw);
   let pages = all.filter((p) => p.key === dataset);
   if (!pages.length) {
@@ -544,9 +562,7 @@ export function readDataset(
       );
   }
   if (!pages.length)
-    throw Error(
-      "GEA_EVIDENCE_DATASET_UNAVAILABLE: 请使用原回执列出的dataset名称。",
-    );
+    throw Error("GEA_EVIDENCE_DATASET_UNAVAILABLE: 请使用原回执列出的dataset名称。");
   const rows = pages.flatMap((p) => p.rows);
   const selected: Row[] = [];
   const wrap = (next: number | null): Row => ({
@@ -585,9 +601,5 @@ export function readDataset(
     throw Error(
       "GEA_EVIDENCE_ROW_TOO_LARGE: 单行或覆盖说明过大，请按原文offset/limit读取，不要重新查询。",
     );
-  return wrap(
-    rowOffset + selected.length < rows.length
-      ? rowOffset + selected.length
-      : null,
-  );
+  return wrap(rowOffset + selected.length < rows.length ? rowOffset + selected.length : null);
 }

@@ -11,7 +11,7 @@
  * 清单在手就逐字校验 dimensions/measures/filters/order，不认识的成员**不发出去**，
  * 就地告诉模型真名是什么。
  */
-import { didYouMean } from "../shared/name-lookup.ts";
+import { didYouMean } from "../../../src/shared/name-lookup.ts";
 
 export type ModelMembers = {
   dimensions: string[];
@@ -50,7 +50,7 @@ function memberNames(value: unknown, model: string): string[] {
         typeof item === "string"
           ? item
           : typeof (item as { name?: unknown })?.name === "string"
-            ? ((item as { name: string }).name)
+            ? (item as { name: string }).name
             : "";
       const trimmed = name.trim();
       if (!trimmed) return "";
@@ -142,8 +142,7 @@ export function queryMembers(queries: unknown): string[] {
     takeFilters(record.filters);
     const order = record.order;
     if (order && typeof order === "object" && !Array.isArray(order))
-      for (const member of Object.keys(order))
-        if (member.trim()) out.push(member.trim());
+      for (const member of Object.keys(order)) if (member.trim()) out.push(member.trim());
     if (Array.isArray(order))
       for (const entry of order)
         if (Array.isArray(entry) && typeof entry[0] === "string" && entry[0].trim())
@@ -153,10 +152,7 @@ export function queryMembers(queries: unknown): string[] {
 }
 
 /** 模型名对了、字段名不在清单里的成员（模型不在清单里时不判——那是模型名或权限的事）。 */
-export function unknownMembers(
-  members: readonly string[],
-  index: MemberIndex,
-): string[] {
+export function unknownMembers(members: readonly string[], index: MemberIndex): string[] {
   const out: string[] = [];
   for (const member of members) {
     const parts = splitMember(member);
@@ -183,7 +179,8 @@ export function misplacedMeasures(queries: unknown, index: MemberIndex): string[
       if (!parts) continue;
       const model = index.get(parts.model);
       if (!model) continue;
-      const isMeasure = model.measures.includes(member.trim()) || model.measures.includes(parts.field);
+      const isMeasure =
+        model.measures.includes(member.trim()) || model.measures.includes(parts.field);
       const isDimension =
         model.dimensions.includes(member.trim()) || model.dimensions.includes(parts.field);
       if (!isMeasure && isDimension) out.push(member.trim());
@@ -193,10 +190,7 @@ export function misplacedMeasures(queries: unknown, index: MemberIndex): string[
 }
 
 /** 同一个模型里最像的真名（只在成员名写错时用）。 */
-export function memberSuggestion(
-  member: string,
-  index: MemberIndex,
-): string | undefined {
+export function memberSuggestion(member: string, index: MemberIndex): string | undefined {
   const parts = splitMember(member);
   if (!parts) return undefined;
   const model = index.get(parts.model);
@@ -226,15 +220,22 @@ export function memberHint(
     `GEA_CUBE_MEMBER_UNKNOWN：这些成员名不在目录里（查询没有发出去）：${unknown.join("、")}。`,
   ];
   const measureSet = new Set(requestedMeasures);
-  const measureModels = new Set(requestedMeasures.map(member => splitMember(member)?.model).filter(Boolean));
+  const measureModels = new Set(
+    requestedMeasures.map((member) => splitMember(member)?.model).filter(Boolean),
+  );
   for (const modelName of measureModels) {
     const measures = index.get(modelName!)?.measures ?? [];
-    lines.push(`- ${modelName} 可用于 measures 的真实度量：${measures.join('、') || '没有可用度量'}。数值维度不能代替度量；不自动添加 _sum/_count 后缀。`);
+    lines.push(
+      `- ${modelName} 可用于 measures 的真实度量：${measures.join("、") || "没有可用度量"}。数值维度不能代替度量；不自动添加 _sum/_count 后缀。`,
+    );
   }
   for (const member of [...new Set(unknown)].slice(0, MAX_SUGGESTIONS)) {
     if (measureSet.has(member)) continue;
     const suggestion = memberSuggestion(member, index);
-    if (suggestion) lines.push(`- ${member} → 拼写相近的是 ${suggestion}（仅供定位，不代表业务含义相同，不能直接替换）`);
+    if (suggestion)
+      lines.push(
+        `- ${member} → 拼写相近的是 ${suggestion}（仅供定位，不代表业务含义相同，不能直接替换）`,
+      );
   }
   // 受影响的模型各列一次可用成员，模型照着抄就能改对。
   const listed = new Set<string>();
@@ -245,9 +246,7 @@ export function memberHint(
     listed.add(parts.model);
     lines.push(`- ${parts.model} 现有成员：${memberListFor(model, parts.model)}`);
   }
-  lines.push(
-    "成员名必须逐字来自目录（业务词要和成员名对上，别自己翻译）；改好参数再发一次。",
-  );
+  lines.push("成员名必须逐字来自目录（业务词要和成员名对上，别自己翻译）；改好参数再发一次。");
   return lines.join("\n");
 }
 

@@ -159,8 +159,8 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     "gea_capabilities",
     "skill",
     "gea_evidence_read",
-    "gea_gateway_catalog",
-    "gea_cube_query",
+    "mcp__gea-gateway__inspect_cube_model",
+    "mcp__gea-gateway__query_business_data",
     "gea_sales_plan_read",
     "read_file",
     "run_code",
@@ -228,7 +228,7 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     surfaceFor: () => undefined,
   };
   t.after(mountBusinessPrompts(ctx, business, { readModules: () => [] }, new Map()));
-  const start = async (name = "gea_gateway_catalog") => {
+  const start = async (name = "mcp__gea-gateway__inspect_cube_model") => {
     const exec = {
       name,
       token: Symbol(),
@@ -261,7 +261,7 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
   for (const transition of ["query", "turn", "preset", "identity"]) {
     const old1 = await start(),
       old2 = await start();
-    if (transition === "query") await start("gea_cube_query");
+    if (transition === "query") await start("mcp__gea-gateway__query_business_data");
     if (transition === "turn") {
       revision++;
       handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
@@ -270,9 +270,9 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     if (transition === "identity") identityChanged();
     await finish(old1);
     await finish(old2);
-    assert.ok((await visible()).includes("gea_gateway_catalog"), transition);
+    assert.ok((await visible()).includes("mcp__gea-gateway__inspect_cube_model"), transition);
     assert.equal(
-      guard({ name: "gea_gateway_catalog", agent, arguments: {} }),
+      guard({ name: "mcp__gea-gateway__inspect_cube_model", agent, arguments: {} }),
       undefined,
       transition + " ignores stale replies",
     );
@@ -280,14 +280,20 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     await finish(await start());
     const paused = await visible();
     assert.match(
-      guard({ name: "gea_gateway_catalog", agent, arguments: {} }),
+      guard({ name: "mcp__gea-gateway__inspect_cube_model", agent, arguments: {} }),
       /GEA_CATALOG_NO_PROGRESS/,
       transition + " current duplicate replies should pause",
     );
-    assert.ok(paused.includes("gea_cube_query"), "actual query remains callable");
-    await start("gea_cube_query");
-    assert.ok((await visible()).includes("gea_gateway_catalog"));
-    assert.equal(guard({ name: "gea_gateway_catalog", agent, arguments: {} }), undefined);
+    assert.ok(
+      paused.includes("mcp__gea-gateway__query_business_data"),
+      "actual query remains callable",
+    );
+    await start("mcp__gea-gateway__query_business_data");
+    assert.ok((await visible()).includes("mcp__gea-gateway__inspect_cube_model"));
+    assert.equal(
+      guard({ name: "mcp__gea-gateway__inspect_cube_model", agent, arguments: {} }),
+      undefined,
+    );
   }
   handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
   const acquired = await start("gea_page");
@@ -297,8 +303,14 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     async () => ({ kind: "accept" }),
   );
   for (let i = 0; i < 20; i++)
-    assert.equal(guard({ name: "gea_cube_query", agent, arguments: {} }), undefined);
-  assert.match(guard({ name: "gea_cube_query", agent, arguments: {} }), /GEA_CALL_BUDGET/);
+    assert.equal(
+      guard({ name: "mcp__gea-gateway__query_business_data", agent, arguments: {} }),
+      undefined,
+    );
+  assert.match(
+    guard({ name: "mcp__gea-gateway__query_business_data", agent, arguments: {} }),
+    /GEA_CALL_BUDGET/,
+  );
   const queryLimited = await assemble();
   assert.ok(queryLimited.tools.some((tool) => tool.name === "gea_evidence_read"));
   for (const name of ["read_file", "run_code", "run_agent"]) {
@@ -335,9 +347,9 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
   );
   assert.match(guard({ name: "gea_evidence_read", agent, arguments: {} }), /GEA_EVIDENCE_BUDGET/);
   for (const name of [
-    "gea_cube_query",
+    "mcp__gea-gateway__query_business_data",
     "gea_capabilities",
-    "gea_gateway_catalog",
+    "mcp__gea-gateway__inspect_cube_model",
     "read_file",
     "run_code",
     "run_agent",
@@ -366,7 +378,11 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     retainedReceipt,
     "idle retains acquired evidence receipts",
   );
-  for (const name of ["gea_evidence_read", "gea_cube_query", "gea_capabilities"])
+  for (const name of [
+    "gea_evidence_read",
+    "mcp__gea-gateway__query_business_data",
+    "gea_capabilities",
+  ])
     assert.match(guard({ name, agent, arguments: {} }), /GEA_EVIDENCE_BUDGET/);
   resourceEnabled = false;
   await assert.rejects(start("read_file"), /GEA_AGENT_RESOURCE_DISABLED/);
@@ -379,10 +395,13 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
   assert.ok((await assemble(otherAgent)).tools.some((tool) => tool.name === "read_file"));
   handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
   assert.equal(guard({ name: "gea_evidence_read", agent, arguments: {} }), undefined);
-  assert.equal(guard({ name: "gea_cube_query", agent, arguments: {} }), undefined);
+  assert.equal(
+    guard({ name: "mcp__gea-gateway__query_business_data", agent, arguments: {} }),
+    undefined,
+  );
   for (const name of [
     "gea_evidence_read",
-    "gea_cube_query",
+    "mcp__gea-gateway__query_business_data",
     "read_file",
     "run_code",
     "run_agent",

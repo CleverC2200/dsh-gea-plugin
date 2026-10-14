@@ -80,7 +80,10 @@ test(
     // 这两类错法（成员名 → not found for path；年月值）现在由宿主代码兜：协议里不再复述，
     // 所以改为检查代码里确实有对应机制（提示词只留"会被拦下"这一句）。
     assert.match(
-      await readFile(new URL("../src/host/member-index.ts", import.meta.url), "utf8"),
+      await readFile(
+        new URL("../tests/fixtures/retired-query/member-index.ts", import.meta.url),
+        "utf8",
+      ),
       /GEA_CUBE_MEMBER_UNKNOWN/,
       "成员名写错要由宿主给出真名",
     );
@@ -90,7 +93,7 @@ test(
       "年月值要由宿主按类型拦下",
     );
     // 形状类（order/跨模型/成员名/年月）都在发送前拦下：协议里只需要说明"会被拦下"。
-    assert.ok(instructions.includes("gea_cube_query"), "协议与实际注册的类型化 Cube 查询入口一致");
+    assert.ok(instructions.includes("query_business_data"), "协议与新 MCP 查询入口一致");
     assert.ok(instructions.includes("不暴露凭据"));
     // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在
     // 回答里渲染界面；这里显式记录该行为，避免它变成无声的提示词漂移。

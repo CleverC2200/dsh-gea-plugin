@@ -53,8 +53,8 @@ export function installPromptProfile(preset: string, profile: PromptProfile): ()
 export const CORE_TOOLS = [
   "gea_capabilities",
   "gea_evidence_read",
-  "gea_gateway_catalog",
-  "gea_cube_query",
+  "mcp__gea-gateway__inspect_cube_model",
+  "mcp__gea-gateway__query_business_data",
   "gea_visible_workbench_context",
 ];
 export function allowedTools(profile: PromptProfile, boundPage = false): Set<string> {
@@ -63,7 +63,6 @@ export function allowedTools(profile: PromptProfile, boundPage = false): Set<str
     "skill",
     "skill_reference_read",
     "forecast_compute",
-    "gea_module_mcp",
     "render_ui",
     "validate_dsh_ui",
     "visualize",
@@ -131,10 +130,6 @@ export function promptMeasurement(system: string, tools: readonly unknown[], ext
 export const TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = {
   gea_sales_plan_read:
     "在线销售计划只读：实时审批、日志、操作前版本或用户指定的在线数据。提报/计划结果走授权Hive Cube，不作替代。周期先periods取periodId；在线汇总用aggregate；baseName是基地。金额/ID保持精确，注明覆盖。versionSkus首次用versionId及pageSize；未读完时将返回的nextQuery原样作为query续读，直到nextQuery=null。",
-  gea_gateway_catalog:
-    "查看所选Agent授权模型：model精确匹配优先；members定向读成员定义、单位和格式，values=true才抽样取值。已有成员直接gea_cube_query，重复目录不会补出隐藏知识。目录不替代字段/行权限。",
-  gea_module_mcp:
-    "调用其它受管 MCP 能力或续读产物。仅传 consumerCode 列工具，tool + schema=true 读参数，tool + arguments 执行。Cube 查询用 gea_cube_query。产物已内联则无需重读；后续片段传原 artifact 和 offset。只读，不绕过授权。",
   gea_visible_workbench_context:
     "读取当前销售工作台中与 focus 相关的可见证据。只用于用户引用当前页面的任务，结果不是全量。没有页面时不要重复调用；独立范围查询直接走数据工具。",
   gea_page:

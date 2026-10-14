@@ -134,6 +134,8 @@ export async function registerHtmlPlugins(
       skills: [...profile.skills],
     });
     ctx.effect(() => installPromptProfile(preset, profile));
+    const retired = isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden);
+    const presetHidden = mock || retired;
     const releaseResources = await ctx.agentResources.register([
       {
         id: preset,
@@ -142,17 +144,14 @@ export async function registerHtmlPlugins(
         description: profile.description,
         root: directory,
         prompt: manifest.agentResources.prompt,
+        publishPreset: !presetHidden,
         capability: manifest.declarations.capability,
         profile,
-        enabled:
-          capabilityContract.enabled !== false &&
-          !isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden),
+        enabled: capabilityContract.enabled !== false && !retired,
         skillFiles: { [manifest.id]: manifest.skills?.[0] },
       },
     ]);
     ctx.effect(() => releaseResources);
-    const retired = isHtmlPluginRetired(manifest.id, mock, presetLabels.hidden);
-    const presetHidden = mock || retired;
     items.push({
       ...manifest,
 

@@ -61,7 +61,7 @@ try {
     },
   });
   if (
-    ["quality", "prepare", "verify-input"].includes(values.phase) ||
+    ["quality", "business-profile", "prepare", "verify-input"].includes(values.phase) ||
     values["final-group-sha256"] !== undefined ||
     values["final-group-workbench"] !== undefined
   ) {
@@ -75,7 +75,7 @@ try {
         "CANDIDATE_FINAL_GROUP_REQUIRED",
         "--input, original bytes --final-group-sha256 and absolute clean source --final-group-workbench required",
       );
-    if (!["quality", "prepare", "verify-input"].includes(values.phase))
+    if (!["quality", "business-profile", "prepare", "verify-input"].includes(values.phase))
       refuse("CANDIDATE_FINAL_GROUP_PHASE", values.phase);
   }
   if (values.phase === "scope") {
@@ -90,7 +90,7 @@ try {
       "use the shared hosted group writer and explicit hashed admission",
     );
   } else {
-    if (!["quality", "prepare", "verify-input"].includes(values.phase))
+    if (!["quality", "business-profile", "prepare", "verify-input"].includes(values.phase))
       refuse("QUALITY_PHASE_REQUIRED", values.phase);
     const input = values.input;
     // The public Workbench reader owns exact source, identity, lock and Core admission.
@@ -133,17 +133,50 @@ try {
         workbench: workbench.path,
         gea: own.path,
       });
+    if (values.phase === "business-profile")
+      (await import("./business-profile-ci.mjs")).validateBusinessProfileGroup(
+        candidate.repositories,
+      );
     const { selectCiTests } = await import(
       pathToFileURL(resolve(workbench.path, "scripts/ci-test-plan.mjs"))
     );
     const baseline = JSON.parse(readFileSync("scripts/quality-peer-baseline.json"));
-    const plan = selectCiTests({
-      repositories: candidate.repositories,
-      repo: "dsh-gea-plugin",
-      base:
-        process.env.QUALITY_BASE_SHA ||
-        baseline.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
-    });
+    const plan =
+      values.phase === "business-profile"
+        ? {
+            lane: "business-profile",
+            runtime: false,
+            browser: false,
+            files: [
+              "tests/api-log.test.mjs",
+              "tests/gea-messages.test.mjs",
+              "tests/gea-reasoning.test.mjs",
+              "tests/gea-stream.test.mjs",
+              "tests/prompt-runtime.test.mjs",
+              "tests/controlled-execution.test.mjs",
+              "tests/cube-new.test.mjs",
+              "tests/cube-direct-mcp.test.mjs",
+              "tests/model-http.test.mjs",
+              "tests/gateway-mcp.test.mjs",
+              "scripts/business-profile-ci.test.mjs",
+              "tests/plugin-update-controller.contract.mjs",
+              "tests/plugin-update-integration.contract.mjs",
+              "scripts/build.test.mjs",
+              "scripts/deliver-packages.test.mjs",
+              "scripts/package-version-gate.test.mjs",
+              "scripts/plugin-package-version.test.mjs",
+              "tests/plugin-release.test.mjs",
+              "tests/plugin-release-source.test.mjs",
+              "tests/optional-companion-manifest.test.mjs",
+            ],
+          }
+        : selectCiTests({
+            repositories: candidate.repositories,
+            repo: "dsh-gea-plugin",
+            base:
+              process.env.QUALITY_BASE_SHA ||
+              baseline.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
+          });
     profileTestsSelected = plan.runtime;
     // The window contract traverses Core's complete dependency tree, including Web assets.
     const needsCoreWeb =
@@ -180,6 +213,8 @@ try {
     ]);
     if (needsCoreWeb && !existsSync(resolve(core, "apps/web/dist/index.html")))
       refuse("QUALITY_CORE_WEB_REQUIRED");
+    if (values.phase === "business-profile" && process.platform !== "win32")
+      run(process.execPath, ["native/system/scripts/build.ts", "--host-addon-only"], core);
     finalGroup?.verifyUnchanged();
     process.env.GEA_PLUGIN_UPDATE_SDK = core;
     process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE = core;
@@ -423,7 +458,7 @@ try {
         ) + "\n",
       );
     }
-    if (values.phase === "quality") {
+    if (["quality", "business-profile"].includes(values.phase)) {
       const checks = runQualityChecks([
         {
           name: "final-group",
@@ -442,6 +477,7 @@ try {
           name: "required-and-affected",
           execute: () =>
             run(process.execPath, [
+              ...(values.phase === "business-profile" ? ["--expose-internals"] : []),
               "--test",
               // Files have separate processes; fixtures allocate unique Homes and loopback ports.
               "--test-concurrency=2",

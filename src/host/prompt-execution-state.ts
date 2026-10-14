@@ -114,7 +114,7 @@ export class PromptExecutionState {
   admitted(lease: PromptExecution | undefined, tool: string): void {
     const execution = this.#current(lease);
     if (!execution) return;
-    if (tool === "gea_cube_query") {
+    if (tool === "mcp__gea-gateway__query_business_data") {
       execution.state.catalogStalls = 0;
       execution.state.catalogGeneration++;
     }

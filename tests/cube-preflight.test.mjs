@@ -8,7 +8,7 @@ import { build } from "esbuild";
 const { outputFiles } = await build({
   stdin: {
     contents:
-      "export * from './src/host/cube-preflight.ts';\nexport * from './src/host/member-index.ts';",
+      "export * from './tests/fixtures/retired-query/cube-preflight.ts';\nexport * from './tests/fixtures/retired-query/member-index.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,

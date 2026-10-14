@@ -1,24 +1,9 @@
 import { createHash } from "node:crypto";
-import { GatewayMcpToolUnavailable } from "./gateway-mcp.ts";
 
 const object = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
-
-/** Select the deployed model-description tool; never send the old inspect action to Cube-New. */
-export function cubeInspection(
-  tools: readonly { name: string }[],
-  keyword?: string,
-  cubeMcpCode?: string,
-) {
-  const hasInspect = tools.some((tool) => tool.name === "inspect_cube_model");
-  if (cubeMcpCode && !hasInspect)
-    throw new GatewayMcpToolUnavailable("inspect_cube_model", cubeMcpCode);
-  return hasInspect
-    ? { name: "inspect_cube_model", arguments: { limit: 50, ...(keyword ? { keyword } : {}) } }
-    : { name: "query_business_data", arguments: { action: "inspect", queries: [] } };
-}
 
 /** Validate the gateway's original artifact bytes before publishing any business evidence. */
 export function cubeNewArtifact(

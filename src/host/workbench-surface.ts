@@ -25,7 +25,11 @@ export type WorkbenchSurface = {
 /** 菜单字段按不可信输入处理：去掉控制字符、裁长度，空值算没报。 */
 function cleanMenuText(value: unknown, max = MENU_MAX_CHARS): string | undefined {
   if (typeof value !== "string") return undefined;
-  const text = value.replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+  const text = Array.from(value, (char) =>
+    char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127 ? " " : char,
+  )
+    .join("")
+    .trim();
   if (!text) return undefined;
   return text.slice(0, max);
 }
@@ -64,10 +68,8 @@ export function surfaceLabel(surface: WorkbenchSurface | undefined): string {
  * 返回 not-in-workbench），然后才开始取数。所以把这条事实放进系统提示，
  * 让模型第一步就按位置选通道。
  */
-export function surfacePromptLine(
-  surface: WorkbenchSurface | undefined,
-): string {
+export function surfacePromptLine(surface: WorkbenchSurface | undefined): string {
   return isMainSurface(surface)
-    ? '页面：未绑定。整体范围查询直接走专用读取或 gea_cube_query；用户指向这一屏时说明需要页面或具体对象，不空读页面。'
-    : `页面：${surfaceLabel(surface)}。仅用户引用可见内容时读取相关页面证据；独立范围问题走专用读取或 gea_cube_query。`;
+    ? "页面：未绑定。整体范围查询直接走专用读取或 query_business_data；用户指向这一屏时说明需要页面或具体对象，不空读页面。"
+    : `页面：${surfaceLabel(surface)}。仅用户引用可见内容时读取相关页面证据；独立范围问题走专用读取或 query_business_data。`;
 }

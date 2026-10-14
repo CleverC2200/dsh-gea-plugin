@@ -7,8 +7,6 @@ export type GatewayMcpTransport = {
   url: string;
   fetch: typeof fetch;
   authorizedResources: ResourceReader;
-  /** Host-selected Cube-New source; tool discovery must not downgrade this protocol. */
-  readonly cubeMcpCode?: string;
 };
 
 const nonempty = (value: unknown): value is string =>
@@ -17,14 +15,13 @@ const nonempty = (value: unknown): value is string =>
 /** Successful discovery can omit a tool; that is distinct from a missing transport route. */
 export class GatewayMcpToolUnavailable extends Error {
   readonly code = "GEA_MCP_TOOL_UNAVAILABLE";
-  readonly toolName: string;
-  readonly sourceCode: string;
-  constructor(toolName: string, sourceCode: string) {
+  constructor(
+    readonly toolName: string,
+    readonly sourceCode: string,
+  ) {
     super(
       `GEA_MCP_TOOL_UNAVAILABLE: 当前业务会话的授权工具列表未返回 ${toolName}（来源 ${sourceCode}），未发起该工具调用。请核对本环境的能力发布、人员和 Consumer 授权；工具注册可发现不代表当前会话已获准。不要换身份或旧来源重试。`,
     );
-    this.toolName = toolName;
-    this.sourceCode = sourceCode;
   }
 }
 
@@ -48,14 +45,22 @@ export async function prepareGatewayMcp(
   identity: AbortSignal,
   timeoutMs: number,
   fetchImpl: typeof fetch = fetch,
-  routing: { cubeMcpCode?: string } = {},
+  routing: { cubeMcpCode?: string; setupSignal?: AbortSignal } = {},
 ): Promise<GatewayMcpTransport> {
-  const meta = await prepareGatewaySession(base, auth, consumer, identity, timeoutMs, fetchImpl);
+  // Setup and each request can stop without poisoning a login-owned cached connection.
+  const setup = AbortSignal.any([identity, ...(routing.setupSignal ? [routing.setupSignal] : [])]);
+  const meta = await prepareGatewaySession(base, auth, consumer, setup, timeoutMs, fetchImpl);
+  throwIfAborted(setup);
   return gatewayMcpTransport(base, meta, identity, timeoutMs, fetchImpl, routing);
 }
 export function gatewayMcpTransport(
   base: string,
-  meta: { sessionId: string; conversationId: string; delegationToken: string; agentCode?: string },
+  meta: {
+    sessionId: string;
+    conversationId: string;
+    delegationToken: string;
+    agentCode?: string;
+  },
   identity: AbortSignal,
   timeoutMs: number,
   fetchImpl: typeof fetch = fetch,
@@ -104,7 +109,11 @@ export function gatewayMcpTransport(
   const restore = async (headers: Headers) => {
     // 重新初始化只恢复传输会话，不重新申请业务权限，也不接受调用方自带身份。
     headers.delete("MCP-Session-Id");
-    const response = await send({ method: "POST", headers, body: initializeBody });
+    const response = await send({
+      method: "POST",
+      headers,
+      body: initializeBody,
+    });
     throwIfAborted(identity);
     if (!response.ok) {
       await response.body?.cancel();
@@ -122,7 +131,10 @@ export function gatewayMcpTransport(
     const ready = await send({
       method: "POST",
       headers,
-      body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+      }),
     });
     await ready.body?.cancel();
     throwIfAborted(identity);
@@ -245,7 +257,10 @@ export function gatewayMcpTransport(
         const reply = value as { id?: unknown; result?: { tools?: unknown } };
         if (invocation && reply.id === invocation.id) {
           const result = value as {
-            result?: { isError?: boolean; content?: Array<{ type?: string; uri?: string }> };
+            result?: {
+              isError?: boolean;
+              content?: Array<{ type?: string; uri?: string }>;
+            };
           };
           if (result.result?.isError !== true && Array.isArray(result.result?.content))
             for (const item of result.result.content)
@@ -302,7 +317,10 @@ export function gatewayMcpTransport(
     const response = await fetchImpl(base + "/ai/gateway/mcp/proxy/resources", {
       method: "POST",
       redirect: "error",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
       body: JSON.stringify({ ...meta, mcpCode, toolName }),
       signal: AbortSignal.any([identity, signal, AbortSignal.timeout(timeoutMs)]),
     });
@@ -332,5 +350,5 @@ export function gatewayMcpTransport(
     throwIfAborted(signal);
     return parseAuthorizedResources(payload, `MCP_TOOL:${mcpCode}:${toolName}`);
   };
-  return { url, fetch: gatewayFetch, authorizedResources, ...routing };
+  return { url, fetch: gatewayFetch, authorizedResources };
 }
