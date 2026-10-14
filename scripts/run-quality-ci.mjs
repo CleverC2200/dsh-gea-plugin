@@ -157,7 +157,7 @@ try {
     const workbench = candidate.repositories.find((entry) => entry.repo === "dsh-agent-workbench"),
       manage = candidate.repositories.find((entry) => entry.repo === "dsh-agent-manage");
     process.env.QUALITY_POLICY_WORKBENCH = workbench.path;
-    if (values["prepare-inputs"] && values.phase !== "macos-isolation")
+    if (values["prepare-inputs"] || values.phase === "macos-isolation")
       await prepareWorkbenchGeaAuthority({
         workbench: workbench.path,
         gea: own.path,
