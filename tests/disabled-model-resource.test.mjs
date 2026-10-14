@@ -683,7 +683,7 @@ test("the actual Host inbox resets read guards and records the question only for
 });
 
 test("the actual Native Host grant binds and withdraws its current page projection", async (t) => {
-  const app = await fixture(t, true, { actualBusiness: true, login: true });
+  const app = await fixture(t, true, { actualBusiness: true, login: true, mock: true });
   app.agent.session.preset = "gea-readonly";
   const qr = await app.route("login/start");
   assert.equal(qr.ok, true, JSON.stringify(qr));
@@ -724,6 +724,7 @@ test("the actual Native Host grant binds and withdraws its current page projecti
   grant.observe(contextSnapshot);
   assert.equal((await bound()).pageBound, true, "active owner refreshes its page projection");
   assert.equal(grant.snapshot().sequence, 1);
+  t.mock.restoreAll();
   const replacement = await acquire();
   assert.throws(() => grant.observe(contextSnapshot), /PAGE_OWNER_RELEASED/);
   grant.release();
@@ -733,6 +734,19 @@ test("the actual Native Host grant binds and withdraws its current page projecti
   replacement.release();
   assert.equal((await bound()).pageBound, false);
   assert.equal(replacement.snapshot(), undefined);
+  const previousPage = await acquire();
+  app.agent.session.preset = app.preset;
+  const html = await app.pages.get("inventory-dealer")(
+    app.agent.id,
+    app.preset,
+    new AbortController().signal,
+  );
+  assert.throws(() => previousPage.observe(contextSnapshot), /PAGE_OWNER_RELEASED/);
+  previousPage.release();
+  assert.equal((await bound()).pageBound, true, "old Native release preserves the new HTML grant");
+  html.release();
+  assert.equal((await bound()).pageBound, false);
+  app.agent.session.preset = "gea-readonly";
   const revoked = await acquire();
   const loggedOut = await app.route("logout");
   assert.equal(loggedOut.ok, true, JSON.stringify(loggedOut));
