@@ -2,7 +2,7 @@ import { runQualityChecks } from "./run-quality-checks.mjs";
 /** Public source-event admission and fail-closed workflow aggregation. */
 import { parseArgs } from "node:util";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, realpathSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, realpathSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, dirname, relative, isAbsolute, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
@@ -20,6 +20,15 @@ import {
 import { resolveSourceInputs } from "./source-profile.mjs";
 import { resourceDigests } from "./source-combination-integrity.mjs";
 import { supportedCores } from "./supported-cores.mjs";
+import { macosIsolationTests, selectPlatformTests } from "./ci-platform-tests.mjs";
+const candidatePhases = new Set([
+  "quality",
+  "business-profile",
+  "mcp-client-repair",
+  "prepare",
+  "verify-input",
+  "macos-isolation",
+]);
 let finalGroup;
 let profileTestsSelected = false;
 function refuse(code, detail = "") {
@@ -45,6 +54,27 @@ function run(command, args, cwd = process.cwd(), environment = {}) {
       command + ": " + (result.error?.message ?? result.signal ?? result.status),
     );
 }
+function writeSourceWindow(candidate, core, windowInputs) {
+  const history = resolve("scripts/fixtures/delivery-history/navigation-r7-setup-failure.json.raw");
+
+  writeFileSync(
+    windowInputs,
+    JSON.stringify(
+      {
+        ...candidate,
+        corePath: core,
+        historicalFailure: {
+          file: history,
+          sha256: createHash("sha256").update(readFileSync(history)).digest("hex"),
+        },
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+
+  process.env.GEA_TEST_CANDIDATE_INPUTS = windowInputs;
+}
 try {
   const { values } = parseArgs({
     options: {
@@ -61,9 +91,7 @@ try {
     },
   });
   if (
-    ["quality", "business-profile", "mcp-client-repair", "prepare", "verify-input"].includes(
-      values.phase,
-    ) ||
+    candidatePhases.has(values.phase) ||
     values["final-group-sha256"] !== undefined ||
     values["final-group-workbench"] !== undefined
   ) {
@@ -77,17 +105,12 @@ try {
         "CANDIDATE_FINAL_GROUP_REQUIRED",
         "--input, original bytes --final-group-sha256 and absolute clean source --final-group-workbench required",
       );
-    if (
-      !["quality", "business-profile", "mcp-client-repair", "prepare", "verify-input"].includes(
-        values.phase,
-      )
-    )
-      refuse("CANDIDATE_FINAL_GROUP_PHASE", values.phase);
+    if (!candidatePhases.has(values.phase)) refuse("CANDIDATE_FINAL_GROUP_PHASE", values.phase);
   }
   if (values.phase === "scope") {
     if (process.env.QUALITY_SCOPE_ALLOWED !== "true") throw Error("CANDIDATE_SCOPE_REQUIRED");
   } else if (values.phase === "final") {
-    for (const key of ["QUALITY_SCOPE_RESULT", "QUALITY_GATE_RESULT"])
+    for (const key of ["QUALITY_SCOPE_RESULT", "QUALITY_GATE_RESULT", "QUALITY_ISOLATION_RESULT"])
       if (process.env[key] !== "success")
         throw Error("QUALITY_REQUIRED: " + key + "=" + (process.env[key] ?? "missing"));
   } else if (values.phase === "input") {
@@ -96,12 +119,7 @@ try {
       "use the shared hosted group writer and explicit hashed admission",
     );
   } else {
-    if (
-      !["quality", "business-profile", "mcp-client-repair", "prepare", "verify-input"].includes(
-        values.phase,
-      )
-    )
-      refuse("QUALITY_PHASE_REQUIRED", values.phase);
+    if (!candidatePhases.has(values.phase)) refuse("QUALITY_PHASE_REQUIRED", values.phase);
     const input = values.input;
     // The public Workbench reader owns exact source, identity, lock and Core admission.
     const { readFinalGroup } = await import(
@@ -138,7 +156,7 @@ try {
           refuse("QUALITY_PRIVATE_PEER_REQUIRED", entry.repo);
     const workbench = candidate.repositories.find((entry) => entry.repo === "dsh-agent-workbench"),
       manage = candidate.repositories.find((entry) => entry.repo === "dsh-agent-manage");
-    if (values["prepare-inputs"])
+    if (values["prepare-inputs"] && values.phase !== "macos-isolation")
       await prepareWorkbenchGeaAuthority({
         workbench: workbench.path,
         gea: own.path,
@@ -149,70 +167,82 @@ try {
       );
     if (values.phase === "mcp-client-repair")
       (await import("./business-profile-ci.mjs")).validateMcpClientGroup(candidate.repositories);
+    if (values.phase === "macos-isolation" && process.platform !== "darwin")
+      refuse("QUALITY_MACOS_ISOLATION_REQUIRED");
     const { selectCiTests } = await import(
       pathToFileURL(resolve(workbench.path, "scripts/ci-test-plan.mjs"))
     );
     const baseline = JSON.parse(readFileSync("scripts/quality-peer-baseline.json"));
-    const plan =
-      values.phase === "mcp-client-repair"
+    const selectedPlan =
+      values.phase === "macos-isolation"
         ? {
-            lane: "mcp-client-repair",
+            lane: "macos-isolation",
             runtime: false,
             browser: false,
-            files: [
-              "tests/cube-direct-mcp.test.mjs",
-              "tests/cube-new.test.mjs",
-              "tests/mcp-response.test.mjs",
-              "tests/gateway-mcp.test.mjs",
-              "tests/gateway-handshake.test.mjs",
-              "tests/host-config.test.mjs",
-              "tests/business-identity-client.test.mjs",
-              "tests/controlled-execution.test.mjs",
-              "tests/plugin-sql-cancel.test.mjs",
-              "scripts/business-profile-ci.test.mjs",
-              "scripts/run-quality-ci.test.mjs",
-              "scripts/run-quality-checks.test.mjs",
-            ],
+            files: [...macosIsolationTests],
           }
-        : values.phase === "business-profile"
+        : values.phase === "mcp-client-repair"
           ? {
-              lane: "business-profile",
+              lane: "mcp-client-repair",
               runtime: false,
               browser: false,
               files: [
-                "tests/api-log.test.mjs",
-                "tests/gea-messages.test.mjs",
-                "tests/gea-reasoning.test.mjs",
-                "tests/gea-stream.test.mjs",
-                "tests/prompt-runtime.test.mjs",
-                "tests/controlled-execution.test.mjs",
-                "tests/cube-new.test.mjs",
                 "tests/cube-direct-mcp.test.mjs",
-                "tests/model-http.test.mjs",
+                "tests/cube-new.test.mjs",
+                "tests/mcp-response.test.mjs",
                 "tests/gateway-mcp.test.mjs",
+                "tests/gateway-handshake.test.mjs",
+                "tests/host-config.test.mjs",
+                "tests/business-identity-client.test.mjs",
+                "tests/controlled-execution.test.mjs",
+                "tests/plugin-sql-cancel.test.mjs",
                 "scripts/business-profile-ci.test.mjs",
-                "tests/plugin-update-controller.contract.mjs",
-                "tests/plugin-update-integration.contract.mjs",
-                "scripts/build.test.mjs",
-                "scripts/deliver-packages.test.mjs",
-                "scripts/package-version-gate.test.mjs",
-                "scripts/plugin-package-version.test.mjs",
-                "tests/plugin-release.test.mjs",
-                "tests/plugin-release-source.test.mjs",
-                "tests/optional-companion-manifest.test.mjs",
+                "scripts/run-quality-ci.test.mjs",
+                "scripts/run-quality-checks.test.mjs",
               ],
             }
-          : selectCiTests({
-              repositories: candidate.repositories,
-              repo: "dsh-gea-plugin",
-              base:
-                process.env.QUALITY_BASE_SHA ||
-                baseline.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
-            });
+          : values.phase === "business-profile"
+            ? {
+                lane: "business-profile",
+                runtime: false,
+                browser: false,
+                files: [
+                  "tests/api-log.test.mjs",
+                  "tests/gea-messages.test.mjs",
+                  "tests/gea-reasoning.test.mjs",
+                  "tests/gea-stream.test.mjs",
+                  "tests/prompt-runtime.test.mjs",
+                  "tests/controlled-execution.test.mjs",
+                  "tests/cube-new.test.mjs",
+                  "tests/cube-direct-mcp.test.mjs",
+                  "tests/model-http.test.mjs",
+                  "tests/gateway-mcp.test.mjs",
+                  "scripts/business-profile-ci.test.mjs",
+                  "tests/plugin-update-controller.contract.mjs",
+                  "tests/plugin-update-integration.contract.mjs",
+                  "scripts/build.test.mjs",
+                  "scripts/deliver-packages.test.mjs",
+                  "scripts/package-version-gate.test.mjs",
+                  "scripts/plugin-package-version.test.mjs",
+                  "tests/plugin-release.test.mjs",
+                  "tests/plugin-release-source.test.mjs",
+                  "tests/optional-companion-manifest.test.mjs",
+                ],
+              }
+            : selectCiTests({
+                repositories: candidate.repositories,
+                repo: "dsh-gea-plugin",
+                base:
+                  process.env.QUALITY_BASE_SHA ||
+                  baseline.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
+              });
+    const plan = selectPlatformTests(selectedPlan);
     profileTestsSelected = plan.runtime;
     // The window contract traverses Core's complete dependency tree, including Web assets.
     const needsCoreWeb =
-      plan.runtime || plan.files.includes("tests/window-launch-admission.test.mjs");
+      values.phase === "macos-isolation" ||
+      plan.runtime ||
+      plan.files.includes("tests/window-launch-admission.test.mjs");
     const preparedWorkbench = resolve(dirname(process.cwd()), "dsh-agent-workbench");
     const workbenchReceipt = resolve(dirname(dirname(process.cwd())), "prepared-workbench.json");
     const workbenchAssetRoot = resolve(
@@ -250,6 +280,38 @@ try {
     finalGroup?.verifyUnchanged();
     process.env.GEA_PLUGIN_UPDATE_SDK = core;
     process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE = core;
+    if (values.phase === "macos-isolation") {
+      const output = resolve(".runtime/quality-isolation");
+      mkdirSync(output, { recursive: true });
+      writeFileSync(resolve(output, "plan.json"), JSON.stringify(plan, null, 2) + "\n");
+      writeSourceWindow(candidate, core, resolve(output, "source-window-inputs.json"));
+      const checks = runQualityChecks([
+        {
+          name: "macos-kernel-isolation",
+          execute: () =>
+            run(process.execPath, [
+              "--test",
+              "--test-reporter=./scripts/quality-test-reporter.mjs",
+              ...macosIsolationTests,
+            ]),
+        },
+      ]);
+      finalGroup.verifyUnchanged();
+      writeFileSync(
+        resolve(output, "checks.json"),
+        JSON.stringify({ admission: finalGroup.receipt, checks }, null, 2) + "\n",
+      );
+      if (checks.some((check) => check.status !== "passed"))
+        refuse("QUALITY_CHECKS_FAILED", JSON.stringify(checks));
+      console.log(
+        JSON.stringify({
+          status: "passed",
+          phase: values.phase,
+          runtime: "macos-kernel-isolation",
+        }),
+      );
+      process.exit(0);
+    }
     writeFileSync(
       resolve(dirname(dirname(process.cwd())), "quality-test-plan.json"),
       JSON.stringify(plan, null, 2) + "\n",
@@ -408,26 +470,11 @@ try {
       process.env.GEA_TEST_CANDIDATE_SHA256 = finalGroup.receipt.inputSha256;
       process.env.GEA_TEST_SOURCE_CORE = "1";
     }
-    const history = resolve(
-      "scripts/fixtures/delivery-history/navigation-r7-setup-failure.json.raw",
+    writeSourceWindow(
+      candidate,
+      core,
+      resolve(dirname(dirname(process.cwd())), "source-window-inputs.json"),
     );
-    const windowInputs = resolve(dirname(dirname(process.cwd())), "source-window-inputs.json");
-    writeFileSync(
-      windowInputs,
-      JSON.stringify(
-        {
-          ...candidate,
-          corePath: core,
-          historicalFailure: {
-            file: history,
-            sha256: createHash("sha256").update(readFileSync(history)).digest("hex"),
-          },
-        },
-        null,
-        2,
-      ) + "\n",
-    );
-    process.env.GEA_TEST_CANDIDATE_INPUTS = windowInputs;
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(
       dirname(dirname(process.cwd())),
       ".quality-browser",

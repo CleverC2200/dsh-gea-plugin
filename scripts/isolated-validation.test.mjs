@@ -11,8 +11,13 @@ const launcher = resolve(import.meta.dirname, "start-isolated-validation.mjs");
 for (const mode of ["core"])
   test(
     `${mode} launcher serves a profile, denies outside writes and outbound network, then stops`,
-    { skip: process.platform !== "darwin", timeout: 20000 },
+    { timeout: 20000 },
     async (t) => {
+      assert.equal(
+        process.platform,
+        "darwin",
+        "kernel sandbox coverage requires the macOS platform task",
+      );
       const declared = await sourceWindow(t, "isolated-core-host");
       const fixture = declared.temporary;
       let child;
