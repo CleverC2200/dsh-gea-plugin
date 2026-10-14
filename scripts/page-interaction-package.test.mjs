@@ -148,7 +148,7 @@ test(
         meta: { toolCallId: "packaged-call", toolCallName: "packaged_action" },
       },
     ]);
-    assert.equal(observed.receipt.tool_call_id, "packaged-call");
+    assert.equal(observed.receipt.toolCallId, "packaged-call");
     assert.deepEqual(JSON.parse(observed.receipt.content), {
       toolCallId: "packaged-call",
       applied: true,
