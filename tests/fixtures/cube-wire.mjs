@@ -29,3 +29,23 @@ export const fixtureCubeTools = [
     _meta: { sourceType: "MCP", sourceCode: fixtureCubeCode },
   },
 ];
+
+/** Native discovery only; scenarios still own every business tool response. */
+export function fixtureCubeDiscovery(request, response, reply) {
+  if (!request.url.pathname.endsWith("/ai/gateway/mcp/proxy/mcp")) return false;
+  const wire = JSON.parse(request.body);
+  if (wire.method === "notifications/initialized") {
+    response.writeHead(202);
+    response.end();
+    return true;
+  }
+  const result =
+    wire.method === "initialize"
+      ? { protocolVersion: wire.params.protocolVersion }
+      : wire.method === "tools/list"
+        ? { tools: fixtureCubeTools }
+        : undefined;
+  if (!result) return false;
+  reply({ jsonrpc: "2.0", id: wire.id, result });
+  return true;
+}

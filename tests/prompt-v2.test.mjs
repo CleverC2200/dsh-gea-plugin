@@ -1,4 +1,4 @@
-import { fixtureCubeTools } from "./fixtures/cube-wire.mjs";
+import { fixtureCubeTools, fixtureCubeDiscovery } from "./fixtures/cube-wire.mjs";
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
 import { selectBusinessResource } from "./fixtures/business-session.mjs";
@@ -164,6 +164,7 @@ test(
     const app = await profile(t, {
       beforeStart: fixtureWorkbench(Object.values(roots)),
       config: {
+        cubeMcpCodes: { production: "cube", test: "cube" },
         analysis: {
           mode: "model",
           source: "gea",
@@ -178,6 +179,7 @@ test(
     const seen = [];
     app.route((req, res, reply) => {
       const p = req.url.pathname;
+      if (fixtureCubeDiscovery(req, res, reply)) return true;
       if (p.endsWith("/user-agent-credential/my/list")) {
         reply({
           success: true,
@@ -254,7 +256,15 @@ test(
         () => readSession(app.runtime, sessionId),
         (r) => r.some((e) => e.type === "turn/end"),
       );
-      assert.equal(seen.at(-1), consumer);
+      assert.equal(
+        seen.at(-1),
+        consumer,
+        JSON.stringify({
+          preset,
+          seen,
+          events: await readSession(app.runtime, sessionId),
+        }),
+      );
     }
   },
 );

@@ -280,7 +280,12 @@ export function mountBusinessPrompts(
                       .join("\n")
                       .match(/\b(?:GEA|AI_GATEWAY|MODEL|MCP|TOOL)_[A-Z0-9_]{2,72}\b/)?.[0] ??
                     "UNCLASSIFIED_TOOL_ERROR");
-              return [{ toolName: calls.get(event.data.message.toolCallId) ?? null, code }];
+              return [
+                {
+                  toolName: calls.get(event.data.message.toolCallId) ?? null,
+                  code,
+                },
+              ];
             })
             .slice(-20);
           return JSON.stringify({
@@ -527,10 +532,10 @@ export function mountBusinessPrompts(
           if (!visible.has(tool.name)) return false;
           if (
             state.readCalls >= PROMPT_BUDGET.evidenceCalls &&
-            (tool.name.startsWith("gea_") || agent.status === "running")
+            (businessMethod(tool.name) || agent.status === "running")
           )
             return false;
-          if (!tool.name.startsWith("gea_")) return true;
+          if (!businessMethod(tool.name)) return true;
           return state.calls < state.limit || tool.name === "gea_evidence_read";
         })
         .map((tool) =>
