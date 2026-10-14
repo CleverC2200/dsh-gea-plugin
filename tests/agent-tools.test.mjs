@@ -496,24 +496,25 @@ test(
         return true;
       }
       if (outcome === "html-page-command") {
+        const context = body.messages.some((message) => message.tool_call_id === "html-context-1");
         const applied = body.messages.some((message) => message.tool_call_id === "html-page-1");
         res.end(
           applied
-            ? event({ content: "已更新页面筛选视图，没有业务写入。" }, "stop")
+            ? event({ content: "已读取当前页并更新筛选视图，没有业务写入。" }, "stop")
             : event(
                 {
                   tool_calls: [
                     {
                       index: 0,
-                      id: "html-page-1",
+                      id: context ? "html-page-1" : "html-context-1",
                       type: "function",
                       function: {
-                        name: "gea_plugin_page_apply",
-                        arguments: JSON.stringify({
-                          kind: "setValue",
-                          target: "filter:region",
-                          value: "河北",
-                        }),
+                        name: context ? "gea_plugin_page_apply" : "gea_page",
+                        arguments: JSON.stringify(
+                          context
+                            ? { kind: "setValue", target: "filter:region", value: "河北" }
+                            : { action: "context" },
+                        ),
                       },
                     },
                   ],
@@ -727,8 +728,11 @@ test(
       }
       return promptSession(id);
     }
-    async function pageEvents(id) {
-      const response = await pageOperation(id, "catalog", { pageSource: "self-report" });
+    async function pageEvents(id, catalog) {
+      const response = await pageOperation(id, "catalog", {
+        pageSource: "self-report",
+        ...(catalog ? { catalog } : {}),
+      });
       assert.equal(response.ok, true, JSON.stringify(response));
       const receipts = readToolResults(await readSession(app.runtime, id));
       assert.ok(!receipts.some((receipt) => receipt.isError), JSON.stringify(receipts));
@@ -1414,21 +1418,24 @@ test(
         const id = await createBusinessSession(app, resource);
         const html = await openBusinessPageSession(app, id, "inventory-real", resource);
         owners.set(id, html.owner);
-        const declared = await html.catalog({
-          toolMessages: [],
-          catalog: {
-            elements: [
-              {
-                id: "filter:region",
-                role: "field",
-                label: "区域",
-                value: "全部",
-                editable: true,
-                effect: "view",
-              },
-            ],
-          },
+        const context = await html.context({
+          warehouse: "HTML-PROBE",
+          rows: [{ id: "HTML-ROW", quantity: "42" }],
         });
+        assert.equal(context.ok, true, JSON.stringify(context));
+        const catalog = {
+          elements: [
+            {
+              id: "filter:region",
+              role: "field",
+              label: "区域",
+              value: "全部",
+              editable: true,
+              effect: "view",
+            },
+          ],
+        };
+        const declared = await html.catalog({ toolMessages: [], catalog });
         assert.equal(declared.ok, true, JSON.stringify(declared));
         outcome = "html-page-command";
         modelRequests = [];
@@ -1442,7 +1449,7 @@ test(
           "HTML grant cannot claim a Native action",
         );
         const events = await until(
-          () => pageEvents(id),
+          () => pageEvents(id, catalog),
           (value) => value.length > 0,
         );
         assert.deepEqual(
@@ -1456,6 +1463,7 @@ test(
           value: "河北",
         });
         const settled = await html.catalog({
+          catalog,
           toolMessages: [
             {
               id: "html-view-result",
@@ -1468,7 +1476,11 @@ test(
         assert.equal(settled.ok, true, JSON.stringify(settled));
         assert.deepEqual(settled.value.events, []);
         const rows = await ended(id);
-        const receipt = readToolResults(rows).find((entry) => entry.callId === "html-page-1");
+        const results = readToolResults(rows);
+        const observed = results.find((entry) => entry.callId === "html-context-1");
+        assert.equal(observed.isError, false, JSON.stringify(observed));
+        assert.equal(JSON.parse(observed.text).context.warehouse, "HTML-PROBE");
+        const receipt = results.find((entry) => entry.callId === "html-page-1");
         assert.equal(receipt.isError, false, JSON.stringify(receipt));
         assert.equal(JSON.parse(receipt.text).applied, true);
         assert.equal(
