@@ -992,7 +992,7 @@ export function createPluginUpdateController(
     listeners.clear();
     lifetime.abort();
     if (initialization) await initialization;
-    await Promise.allSettled([...pendingChecks]);
+    await Promise.allSettled(pendingChecks);
     currentMonitor?.cancelObserved();
     if (active) await active;
     if (currentMonitor) {
