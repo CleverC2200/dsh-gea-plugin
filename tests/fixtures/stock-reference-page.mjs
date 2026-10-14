@@ -68,6 +68,7 @@ export async function stockReferencePage(
       );
     },
     config: (base) => ({
+      cubeMcpCodes: { production: "cube", test: "cube" },
       ...(environments
         ? {
             environment: "test",
