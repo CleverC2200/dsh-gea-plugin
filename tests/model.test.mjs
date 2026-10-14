@@ -1,3 +1,4 @@
+import { stockMcpRoute, stockState } from "./fixtures/branch-stock.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -12,6 +13,7 @@ test(
   async (t) => {
     const app = await catalogSceneProfile(t, {
       config: (base) => ({
+        cubeMcpCodes: { production: "cube" },
         analysis: {
           mode: "model",
           baseUrl: base + "/v1",
@@ -24,7 +26,9 @@ test(
       env: { GEA_TEST_MODEL_KEY: "fixture-model-key" },
     });
     const modelRequests = [];
-    app.route((req, res) => {
+    const mcpState = stockState();
+    app.route((req, res, reply) => {
+      if (stockMcpRoute(req, res, reply, mcpState)) return true;
       if (req.url.pathname === "/v1/chat/completions") {
         modelRequests.push(req);
         res.setHeader("Content-Type", "text/event-stream");
@@ -77,22 +81,7 @@ test(
     // 位置事实由宿主每轮注入：没有业务菜单的会话直接告诉模型"别读页面"，
     // 免得它先调页面工具去问一次（那一次必然白跑）。
     assert.ok(JSON.stringify(body.messages).includes("页面："), "系统提示里要带当前业务位置");
-    // 这两类错法（成员名 → not found for path；年月值）现在由宿主代码兜：协议里不再复述，
-    // 所以改为检查代码里确实有对应机制（提示词只留"会被拦下"这一句）。
-    assert.match(
-      await readFile(
-        new URL("../tests/fixtures/retired-query/member-index.ts", import.meta.url),
-        "utf8",
-      ),
-      /GEA_CUBE_MEMBER_UNKNOWN/,
-      "成员名写错要由宿主给出真名",
-    );
-    assert.match(
-      await readFile(new URL("../src/host/cube-query-guard.ts", import.meta.url), "utf8"),
-      /invalid input syntax for type date/,
-      "年月值要由宿主按类型拦下",
-    );
-    // 形状类（order/跨模型/成员名/年月）都在发送前拦下：协议里只需要说明"会被拦下"。
+    // Current registered MCP tests cover member and month forwarding through server schemas.
     assert.ok(instructions.includes("query_business_data"), "协议与新 MCP 查询入口一致");
     assert.ok(instructions.includes("不暴露凭据"));
     // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在
@@ -145,6 +134,7 @@ test(
 test("显式打开 agentSqlRead 时，受管只读 SQL 工具才回到工具清单", { timeout: 60000 }, async (t) => {
   const app = await profile(t, {
     config: (base) => ({
+      cubeMcpCodes: { production: "cube" },
       agentSqlRead: true,
       analysis: {
         mode: "model",
@@ -158,7 +148,9 @@ test("显式打开 agentSqlRead 时，受管只读 SQL 工具才回到工具清�
     env: { GEA_TEST_MODEL_KEY: "fixture-model-key" },
   });
   const modelRequests = [];
-  app.route((req, res) => {
+  const sqlMcpState = stockState();
+  app.route((req, res, reply) => {
+    if (stockMcpRoute(req, res, reply, sqlMcpState)) return true;
     if (req.url.pathname !== "/v1/chat/completions") return;
     modelRequests.push(req);
     res.setHeader("Content-Type", "text/event-stream");
@@ -196,10 +188,11 @@ test("显式打开 agentSqlRead 时，受管只读 SQL 工具才回到工具清�
   assert.ok(names.includes("gea_plugin_read"), "显式打开后 SQL 工具应存在");
   // 索引只挂一份：SQL 通道开着时挂在 gea_plugin_read，不再重复挂在 MCP 说明里。
   const mcp = JSON.parse(modelRequests[0].body).tools.find(
-    (tool) => tool.function.name === "gea_module_mcp",
+    (tool) => tool.function.name === "mcp__gea-gateway__query_business_data",
   );
+  assert.ok(mcp, "current registered query tool remains available beside SQL");
   assert.equal(
-    (mcp?.function.description ?? "").includes("模块清单（只有名称与编码，细节按需取）："),
+    (mcp.function.description ?? "").includes("模块清单（只有名称与编码，细节按需取）："),
     false,
     "索引只挂一份：SQL 通道开着时不再重复挂到 MCP 说明里",
   );

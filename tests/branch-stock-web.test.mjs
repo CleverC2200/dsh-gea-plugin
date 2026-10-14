@@ -31,7 +31,8 @@ const tool = (name, args, id) => ({
   ],
 });
 const query = {
-  consumerCode: "branch-inventory",
+  action: "query",
+  response_mode: "inline_complete",
   queries: [
     {
       name: "branch_stock",
@@ -83,6 +84,7 @@ test(
       let step = 0;
       const app = await profile(t, {
         config: (base) => ({
+          cubeMcpCodes: { production: "cube" },
           analysis: {
             mode: "model",
             baseUrl: base + "/v1",
@@ -100,7 +102,7 @@ test(
         step++;
         if (step === 1)
           return tool("skill", { name: "inventory-fc", offset: 1, limit: 80 }, "stock-skill");
-        if (step === 2) return tool("gea_cube_query", query, "stock-query");
+        if (step === 2) return tool("mcp__gea-gateway__query_business_data", query, "stock-query");
         const receipt = body.messages
           .filter((x) => x.role === "tool")
           .map((x) => x.content)

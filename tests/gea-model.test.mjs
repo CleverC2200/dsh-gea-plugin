@@ -1,3 +1,4 @@
+import { stockMcpRoute, stockState } from "./fixtures/branch-stock.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -14,6 +15,7 @@ test(
         resolve("../dsh-agent-workbench/lib/business/inventory-apsplan"),
       ]),
       config: () => ({
+        cubeMcpCodes: { production: "cube" },
         modelRequestTimeoutMs: 1000,
         analysis: {
           mode: "model",
@@ -29,10 +31,12 @@ test(
     let held;
     let heldClosed = false;
     const modelRequests = [];
+    const mcpState = stockState();
     const parts = ["源数据：", "数量差额 1.11。", "仅依据当前计划。"];
     const event = (value) => "data: " + JSON.stringify(value) + "\r\n\r\n";
     app.route((request, response, reply) => {
       const path = request.url.pathname;
+      if (stockMcpRoute(request, response, reply, mcpState)) return true;
       if (path === "/gea/aidata/user-agent-credential/my/list") {
         reply({
           success: true,
@@ -75,7 +79,9 @@ test(
       response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
       response.write(": heartbeat\r\n\r\n");
       for (const content of mode === "dsml"
-        ? ['<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="gea_cube_query">']
+        ? [
+            '<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="mcp__gea-gateway__query_business_data">',
+          ]
         : parts)
         response.write(
           event({
