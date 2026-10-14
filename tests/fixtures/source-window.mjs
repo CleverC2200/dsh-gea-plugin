@@ -61,10 +61,8 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
       });
     }
     if (repo === "dsh-agent-manage")
-      await cp(
-        join(sharedManage, "scripts/prepare-official-sdk.mjs"),
-        join(root, "scripts/prepare-official-sdk.mjs"),
-      );
+      for (const name of ["prepare-official-sdk.mjs", "sdk-artifact-cache.mjs"])
+        await cp(join(sharedManage, "scripts", name), join(root, "scripts", name));
     if (repo === "dsh-gea-plugin") {
       for (const name of [
         "start.mjs",
