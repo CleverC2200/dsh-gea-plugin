@@ -75,6 +75,7 @@ import {
 } from "@cleverc2200/dsh-agent-workbench/notifications";
 import { resolveNavigationTarget, type NavigationInput } from "./navigation-target.ts";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
+import { modelHttpError } from "../shared/model-http-error.ts";
 import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
 import {
   createMcpWasteGuard,
@@ -2242,7 +2243,7 @@ export class Business {
     }
     if (!response.ok) {
       if (response.status === 401) this.clearLogin(true);
-      throw new Error("GEA_MODEL_HTTP_" + response.status);
+      throw await modelHttpError(response, agentCode, "模型列表读取", [secret, auth.token]);
     }
     const modelsPayload = object(await response.json());
     if (!Array.isArray(modelsPayload.data)) throw new Error("GEA_MODEL_INVALID_RESPONSE");

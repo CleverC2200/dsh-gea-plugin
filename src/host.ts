@@ -39,6 +39,7 @@ import {
 import { mountBusinessPrompts } from "./host/prompt-runtime.ts";
 import { mountSidebarToolVisibility } from "./host/sidebar-tool-visibility.ts";
 import { networkError } from "./shared/net-error.ts";
+import { modelHttpError } from "./shared/model-http-error.ts";
 import { registerHtmlPlugins } from "./html-plugins.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
 import { createCubeMcpService } from "./host/cube-mcp-service.ts";
@@ -330,7 +331,7 @@ class GeaModelAdapter extends LlmAdapter {
       responseReceivedMs = Date.now() - startedAt;
       if (!response.ok) {
         if (response.status === 401) this.business.expireModelLogin();
-        throw new Error("GEA_MODEL_HTTP_" + response.status);
+        throw await modelHttpError(response, route.agentCode, "模型推理", [route.secret]);
       }
       if (!response.body) throw new Error("GEA_MODEL_HTTP_NO_BODY");
       stage = "流式读取";

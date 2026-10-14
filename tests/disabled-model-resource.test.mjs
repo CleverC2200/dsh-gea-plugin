@@ -539,6 +539,34 @@ test("the official LLM stream seam denies a retained direct GEA provider before 
   assert.deepEqual(app.external, []);
 });
 
+test("the registered GEA model adapter preserves a chat 403 without treating it as a network outage", async (t) => {
+  const app = await fixture(t, true, {
+    modelFailure: () =>
+      Response.json(
+        { error: { code: "permission_denied", message: "请求的Agent无权访问" } },
+        { status: 403 },
+      ),
+  });
+  await assert.rejects(
+    async () => {
+      for await (const _chunk of app.adapter.stream({
+        sessionId: app.agent.id,
+        model: "fixture-model",
+        messages: [],
+      })) {
+      }
+    },
+    (error) => {
+      assert.equal(error.code, "GEA_MODEL_HTTP_403");
+      assert.match(error.message, /permission_denied/);
+      assert.match(error.message, /请求的Agent无权访问/);
+      assert.doesNotMatch(error.message, /网络.*抖动|重问一次|代理/);
+      return true;
+    },
+  );
+  assert.equal(app.calls.transport.length, 1);
+});
+
 test("the registered GEA model adapter translates connection and stream failures at its actual outlet", async (t) => {
   for (const stage of ["connection", "stream"])
     await t.test(stage, async (t) => {
