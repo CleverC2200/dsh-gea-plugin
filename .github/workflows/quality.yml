@@ -193,7 +193,7 @@ jobs:
         shell: bash
         run: |
           echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: |
             ~/.npm
@@ -205,7 +205,8 @@ jobs:
         env:
           CORE_HEAD: ${{ matrix.core }}
         run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "$CORE_HEAD" --source "$GITHUB_WORKSPACE/source/official-core"
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: sdk-cache
         with:
           path: |
             official-latest-standard/packages/**/lib/**
@@ -216,7 +217,7 @@ jobs:
             official-latest-standard/apps/web/dist
             official-latest-standard/native/system/packages/**/*.node
           key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ matrix.core }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: .quality-browser
           key: chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('candidate/dsh-gea-plugin/pnpm-lock.yaml') }}
@@ -226,6 +227,21 @@ jobs:
           INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
         run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench"
 
+      - name: Save verified SDK cache without delaying required checks
+        if: success() && steps.sdk-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            official-latest-standard/packages/**/lib/**
+            official-latest-standard/vendor/**/lib/**
+            official-latest-standard/apps/**/lib/**
+            !official-latest-standard/**/node_modules/**
+            official-latest-standard/.git/dsh-sdk-*.json
+            official-latest-standard/apps/web/dist
+            official-latest-standard/native/system/packages/**/*.node
+          key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
       - name: Keep independent quality results including failure
         if: always()
         uses: actions/upload-artifact@v7

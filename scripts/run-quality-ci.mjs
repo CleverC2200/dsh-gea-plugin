@@ -332,28 +332,28 @@ try {
       process.env.GEA_TEST_SOURCE_INPUTS = sourcesFile;
       process.env.GEA_TEST_CANDIDATE = resolve(input);
       process.env.GEA_TEST_CANDIDATE_SHA256 = finalGroup.receipt.inputSha256;
-      const history = resolve(
-        "scripts/fixtures/delivery-history/navigation-r7-setup-failure.json.raw",
-      );
-      const windowInputs = resolve(dirname(dirname(process.cwd())), "source-window-inputs.json");
-      writeFileSync(
-        windowInputs,
-        JSON.stringify(
-          {
-            ...candidate,
-            corePath: core,
-            historicalFailure: {
-              file: history,
-              sha256: createHash("sha256").update(readFileSync(history)).digest("hex"),
-            },
-          },
-          null,
-          2,
-        ) + "\n",
-      );
-      process.env.GEA_TEST_CANDIDATE_INPUTS = windowInputs;
       process.env.GEA_TEST_SOURCE_CORE = "1";
     }
+    const history = resolve(
+      "scripts/fixtures/delivery-history/navigation-r7-setup-failure.json.raw",
+    );
+    const windowInputs = resolve(dirname(dirname(process.cwd())), "source-window-inputs.json");
+    writeFileSync(
+      windowInputs,
+      JSON.stringify(
+        {
+          ...candidate,
+          corePath: core,
+          historicalFailure: {
+            file: history,
+            sha256: createHash("sha256").update(readFileSync(history)).digest("hex"),
+          },
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    process.env.GEA_TEST_CANDIDATE_INPUTS = windowInputs;
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(
       dirname(dirname(process.cwd())),
       ".quality-browser",
