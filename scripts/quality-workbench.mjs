@@ -70,19 +70,15 @@ export async function readPreparedWorkbench({ source, prepared, head }) {
     ["-C", prepared, "status", "--porcelain", "--untracked-files=all"],
     { encoding: "utf8", env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" } },
   ).trimEnd();
-  if (
-    status
-      .split("\n")
-      .filter(Boolean)
-      .some((line) => {
-        const file = line.slice(3);
-        return !(
-          (line.startsWith(" M ") && derived(file)) ||
-          (line.startsWith("?? ") && file.startsWith("lib/types/") && file.endsWith(".d.ts"))
-        );
-      })
-  )
+  for (const line of status.split("\n").filter(Boolean)) {
+    const file = line.slice(3);
+    if (line.startsWith(" M ") && derived(file)) continue;
+    if (line.startsWith("?? ") && file.startsWith("lib/types/") && file.endsWith(".d.ts")) {
+      // Declaration emission adds regular files; lstat never follows external targets.
+      if ((await lstat(join(prepared, file))).isFile()) continue;
+    }
     throw Error("QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED");
+  }
   const sourceFiles = git(source, "ls-tree", "-r", "-z", head)
     .split("\0")
     .filter(Boolean)

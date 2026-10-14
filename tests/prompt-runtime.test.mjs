@@ -319,6 +319,14 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
   );
   const queryLimited = await assemble();
   assert.ok(queryLimited.tools.some((tool) => tool.name === "gea_evidence_read"));
+  for (const name of [
+    "mcp__gea-gateway__inspect_cube_model",
+    "mcp__gea-gateway__query_business_data",
+  ])
+    assert.ok(
+      !queryLimited.tools.some((tool) => tool.name === name),
+      "query allowance hides " + name,
+    );
   for (const name of ["read_file", "run_code", "run_agent"]) {
     assert.ok(
       queryLimited.tools.some((tool) => tool.name === name),
@@ -375,6 +383,11 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     assert.equal(guard({ name, agent, arguments: {} }), undefined);
   }
   assert.ok(!idle.tools.some((tool) => tool.name.startsWith("gea_")));
+  for (const name of [
+    "mcp__gea-gateway__inspect_cube_model",
+    "mcp__gea-gateway__query_business_data",
+  ])
+    assert.ok(!idle.tools.some((tool) => tool.name === name), "idle read exhaustion hides " + name);
   assert.match(
     idle.sections.find((section) => section.name === "gea:budget").text,
     /通用文件、规划、任务和协作能力仍按官方规则可用/,

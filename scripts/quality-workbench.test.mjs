@@ -114,6 +114,44 @@ test("new build declarations are frozen while new authored or staged files remai
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
 
+test("public verifier refuses a prior receipt for a declaration symlink and its changed external target", async (t) => {
+  const fixture = preparedFixture(t);
+  const file = "lib/types/page-session-core.d.ts";
+  const declaration = join(fixture.prepared, file);
+  const target = join(fixture.source, "..", "external.d.ts");
+  writeFileSync(declaration, "export declare class PageSessionCore {}\n");
+  const record = await readPreparedWorkbench(fixture);
+  rmSync(declaration);
+  writeFileSync(target, "export declare class External {}\n");
+  symlinkSync(target, declaration);
+  // Reproduce the receipt the old reader could issue for this symlink.
+  record.files[file] = "link:" + realpathSync(target);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  const verify = () =>
+    spawnSync(
+      process.execPath,
+      [
+        "scripts/quality-workbench.mjs",
+        "--source",
+        fixture.source,
+        "--prepared",
+        fixture.prepared,
+        "--head",
+        fixture.head,
+        "--receipt",
+        fixture.receipt,
+      ],
+      { encoding: "utf8" },
+    );
+  for (const text of ["original external bytes\n", "changed external bytes\n"]) {
+    writeFileSync(target, text);
+    const result = verify();
+    assert.equal(result.status, 1, "a symlink path cannot stand in for frozen declaration bytes");
+    assert.match(result.stderr, /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+  }
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
 test("prepared Git metadata changes preserve resource admission while real output changes are refused", async (t) => {
   const fixture = preparedFixture(t);
   const record = await readPreparedWorkbench(fixture);
