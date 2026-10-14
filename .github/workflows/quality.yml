@@ -193,7 +193,7 @@ jobs:
           CORE_HEAD: ${{ matrix.core }}
           INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
           QUALITY_PHASE: ${{ needs.candidate-scope.outputs.quality-lane == 'plugin-updates' && 'plugin-updates' || 'quality' }}
-        run: node scripts/run-quality-ci.mjs --prepare-sdk --phase "$QUALITY_PHASE" --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench"
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE"
 
       - name: Keep independent quality results including failure
         if: always()
