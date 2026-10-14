@@ -24,7 +24,7 @@ import {
   type ServiceAccountConfig,
 } from "./service-account.ts";
 
-/** A borrowed view of Business's current login; no identity is stored by this module. */
+/** Borrow Business's current identity for one write attempt. */
 export type SalesPlanWriteIdentity = {
   token: string;
   tenantId: string;
