@@ -7,12 +7,16 @@ import { readSession, readToolResults, until } from "./profile.mjs";
 import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
+import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 import { selectBusinessResource } from "./fixtures/business-session.mjs";
 
 test(
   "branch Agent preserves empty, missing, failed and revoked result meanings",
   { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 120000 },
   async (t) => {
+    const workbench = (await readProfileSources(process.env.GEA_TEST_SOURCE_INPUTS)).find(
+      (source) => source.repo === "dsh-agent-workbench",
+    );
     const app = await profile(t, {
       config: (base) => ({
         cubeMcpCodes: { production: "cube" },
@@ -29,7 +33,7 @@ test(
       env: {
         GEA_TEST_MODEL_KEY: "fixture-key",
       },
-      beforeStart: fixtureWorkbench([resolve("../dsh-agent-workbench/lib/business/inventory-fc")]),
+      beforeStart: fixtureWorkbench([resolve(workbench.assetRoot, "lib/business/inventory-fc")]),
     });
     const state = stockState();
     let step = 0;

@@ -11,6 +11,7 @@ import {
   branchStockAcceptance,
   branchStockExpectedText,
 } from "./fixtures/branch-stock-acceptance.mjs";
+import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 import { changeThemeSetting } from "./theme-settings.mjs";
 import {
   htmlFrameElement,
@@ -19,7 +20,6 @@ import {
 } from "./fixtures/business-page.mjs";
 
 const out = resolve(".runtime/branch-stock-evidence");
-const migrated = resolve("../dsh-agent-workbench/lib/business/inventory-fc");
 const tool = (name, args, id) => ({
   tool_calls: [
     {
@@ -60,6 +60,10 @@ test(
   "branch stock migration preserves rows and runs authorized page and Agent reads",
   { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 240000 },
   async (t) => {
+    const workbench = (await readProfileSources(process.env.GEA_TEST_SOURCE_INPUTS)).find(
+      (source) => source.repo === "dsh-agent-workbench",
+    );
+    const migrated = resolve(workbench.assetRoot, "lib/business/inventory-fc");
     await mkdir(out, { recursive: true });
     const browser = await testBrowser(t, () =>
       chromium.launch({
