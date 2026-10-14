@@ -296,7 +296,8 @@ export function createPluginReleaseSource(
   if (!isAbsolute(dependencies.trustDirectory))
     return fail("SOURCE_TRUST_ABSOLUTE_REQUIRED");
   let verified = new Map<string, string>(),
-    generation = 0;
+    generation = 0,
+    verifiedUntil = 0;
   let checks: Promise<unknown> = Promise.resolve();
   const receiptPath = join(
     dependencies.trustDirectory,
@@ -496,6 +497,9 @@ export function createPluginReleaseSource(
       });
       signal?.throwIfAborted();
       if (current !== generation) return fail("SOURCE_CHECK_SUPERSEDED");
+      if ((dependencies.now ?? Date.now)() >= expiresAt)
+        return fail("SOURCE_CHANNEL_TIME_INVALID");
+      verifiedUntil = expiresAt;
       verified = new Map(
         releases.map((release) => [release.name, JSON.stringify(release)]),
       );
@@ -512,13 +516,20 @@ export function createPluginReleaseSource(
     checks = result.catch(() => undefined);
     return result;
   }
+  function assertCurrentRelease(release: PluginRelease): void {
+    if ((dependencies.now ?? Date.now)() >= verifiedUntil) {
+      verified.clear();
+      return fail("SOURCE_APPROVAL_EXPIRED");
+    }
+    if (verified.get(release.name) !== JSON.stringify(release))
+      return fail("SOURCE_RELEASE_NOT_VERIFIED");
+  }
   async function download(
     release: PluginRelease,
     cacheDirectory: string,
     signal?: AbortSignal,
   ): Promise<string> {
-    if (verified.get(release.name) !== JSON.stringify(release))
-      return fail("SOURCE_RELEASE_NOT_VERIFIED");
+    assertCurrentRelease(release);
     if (!isAbsolute(cacheDirectory))
       return fail("SOURCE_CACHE_ABSOLUTE_REQUIRED");
     await mkdir(cacheDirectory, { recursive: true, mode: 0o700 });
@@ -591,5 +602,5 @@ export function createPluginReleaseSource(
       await rm(partial, { force: true });
     }
   }
-  return { check, download };
+  return { check, download, assertCurrentRelease };
 }

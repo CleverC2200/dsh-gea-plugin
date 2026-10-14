@@ -90,3 +90,4 @@ export function mergePluginChannelRelease(input: {
   issuedAt: string;
   expiresAt: string;
 }): PluginChannel;
+export function satisfiesPluginVersion(version:string,range:string):boolean;

@@ -60,6 +60,12 @@ importers:
       '@deepseek-ai/dsh-app-boot':
         specifier: link:../../official-latest-standard/packages/boot/app-boot
         version: link:../../official-latest-standard/packages/boot/app-boot
+      '@deepseek-ai/dsh-plugin-manager':
+        specifier: link:../../official-latest-standard/packages/boot/plugin-manager
+        version: link:../../official-latest-standard/packages/boot/plugin-manager
+      '@deepseek-ai/dsh-atomic-write':
+        specifier: link:../../official-latest-standard/packages/util/atomic-write
+        version: link:../../official-latest-standard/packages/util/atomic-write
       '@deepseek-ai/dsh-brand':
         specifier: link:../../official-latest-standard/packages/util/brand
         version: link:../../official-latest-standard/packages/util/brand

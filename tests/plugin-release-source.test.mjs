@@ -424,3 +424,18 @@ test("an older delayed check cannot replace the newer verified channel receipt",
   );
   assert.equal(releases.length, 3);
 });
+test("signed approval expires between check and download and cannot authorize a stale plan", async (t) => {
+  const f = await fixture(t);
+  let now = Date.now();
+  const source = createPluginReleaseSource(f.config, {
+    trustDirectory: join(f.dir, "ttl-trust"),
+    now: () => now,
+    resolveAuthentication: async () => ({}),
+    fetch: async url => new Response(f.objects.get(url)),
+  });
+  const releases = await source.check();
+  source.assertCurrentRelease(releases[0]);
+  now += 7200000;
+  assert.throws(() => source.assertCurrentRelease(releases[0]), /SOURCE_APPROVAL_EXPIRED/);
+  await assert.rejects(source.download(releases[0], join(f.dir, "cache")), /SOURCE_APPROVAL_EXPIRED/);
+});

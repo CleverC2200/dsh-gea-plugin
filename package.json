@@ -68,6 +68,7 @@
     "test:ci-full": "node scripts/run-quality-full.mjs",
     "test:contracts": "node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/controlled-execution.test.mjs tests/plugin-sql-cancel.test.mjs tests/read-paging.test.mjs tests/business-page-grant.test.mjs tests/gateway-handshake.test.mjs tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs",
     "test:profile-window": "node --test tests/profile-window.test.mjs",
+    "test:plugin-updates": "node --test tests/plugin-update-controller.contract.mjs",
     "test:release-source": "node --test tests/plugin-release.test.mjs tests/plugin-release-source.test.mjs tests/optional-companion-manifest.test.mjs"
   },
   "dependencies": {
@@ -102,6 +103,8 @@
     "@deepseek-ai/dsh-api-remotes": "link:../../official-latest-standard/packages/api/remotes",
     "@deepseek-ai/dsh-api-session-controller": "link:../../official-latest-standard/packages/api/session-controller",
     "@deepseek-ai/dsh-app-boot": "link:../../official-latest-standard/packages/boot/app-boot",
+    "@deepseek-ai/dsh-plugin-manager": "link:../../official-latest-standard/packages/boot/plugin-manager",
+    "@deepseek-ai/dsh-atomic-write": "link:../../official-latest-standard/packages/util/atomic-write",
     "@deepseek-ai/dsh-brand": "link:../../official-latest-standard/packages/util/brand",
     "@deepseek-ai/dsh-client-connection": "link:../../official-latest-standard/packages/client/connection",
     "@deepseek-ai/dsh-client-locale": "link:../../official-latest-standard/packages/client/locale",
@@ -204,6 +207,9 @@
     "@deepseek-ai/dsh-llm-pi-ai": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-persona": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-tools": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-app-boot": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-plugin-manager": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-atomic-write": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/schemastery": "3.18.4 || 3.18.5-alpha.1",
     "dsh-agent-manage": "0.6.3-company.6"
   }

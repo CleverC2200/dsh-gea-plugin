@@ -331,3 +331,4 @@ export function mergePluginChannelRelease({
     ),
   });
 }
+export function satisfiesPluginVersion(version,range) { return semver.satisfies(version,range); }
