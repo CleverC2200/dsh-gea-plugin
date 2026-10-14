@@ -351,3 +351,17 @@ test("registered qualified-member guard rejects bare members and forwards valid 
   );
   assert.deepEqual(args.queries[0].query.order, { "inventory.qty": "desc" });
 });
+
+test("one Host derives independent sales and dealer Consumers from their current business Sessions", async (t) => {
+  const f = await currentMcp(t, { dealer: true });
+  const sales = await f.execute();
+  const dealer = await f.execute(queryTool, query, "dealer");
+  assert.equal(sales.isError, false, JSON.stringify(sales));
+  assert.equal(dealer.isError, false, JSON.stringify(dealer));
+  const calls = f.calls.filter(({ wire }) => wire.method === "tools/call");
+  assert.deepEqual(
+    calls.map(({ wire }) => wire.params._meta.agentCode),
+    ["sales_forecast", "dealer-inventory-replenishment"],
+  );
+  assert.ok(calls.every(({ wire }) => !Object.hasOwn(wire.params.arguments, "consumerCode")));
+});

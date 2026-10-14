@@ -10,7 +10,7 @@ import { Context } from "@deepseek-ai/cordis";
 const built = await build({
   stdin: {
     contents:
-      "export {Business} from './src/host/business.ts';export {createCubeMcpService} from './src/host/cube-mcp-service.ts';export {mountGeaMcp} from '../dsh-agent-manage/src/runtime/gea-mcp.ts';",
+      "export {Business} from './src/host/business.ts';export {createCubeMcpService} from './src/host/cube-mcp-service.ts';export {mountGeaMcp} from '../dsh-agent-manage/src/runtime/gea-mcp.ts';export {createCapabilityRegistry} from './src/capability/registry.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -35,7 +35,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   module,
   module.exports,
 );
-const { Business, createCubeMcpService, mountGeaMcp } = module.exports;
+const { Business, createCubeMcpService, mountGeaMcp, createCapabilityRegistry } = module.exports;
 const official = (part) =>
   import(
     pathToFileURL(resolve("../../official-latest-standard/packages/core", part, "lib/index.js"))
@@ -113,11 +113,32 @@ export async function currentMcp(t, options = {}) {
       username: "fixture",
     },
   });
+  if (options.dealer)
+    business.setCapabilities(
+      createCapabilityRegistry([
+        {
+          id: "gea-workbench",
+          label: "Sales",
+          maxEffect: "view",
+          skills: [],
+          routing: { keywords: [], summary: "Sales" },
+        },
+        {
+          id: "dealer",
+          label: "Dealer",
+          maxEffect: "view",
+          skills: [],
+          routing: { keywords: [], summary: "Dealer" },
+          data: { consumerCode: "dealer-inventory-replenishment", tables: [], rules: [] },
+        },
+      ]),
+    );
   const agents = new Map();
   const scopes = [];
   for (const [id, preset] of [
     ["sales", "gea-readonly"],
     ["ordinary", "standard"],
+    ...(options.dealer ? [["dealer", "gea-html-inventory-dealer"]] : []),
   ]) {
     const agent = {
       id,
@@ -143,7 +164,13 @@ export async function currentMcp(t, options = {}) {
   });
   let enabled = true;
   ctx.provide("agentResources", {
-    list: async () => [{ id: "gea-readonly", kind: "prompt", installed: true, enabled }],
+    list: async () =>
+      ["gea-readonly", ...(options.dealer ? ["gea-html-inventory-dealer"] : [])].map((id) => ({
+        id,
+        kind: "prompt",
+        installed: true,
+        enabled,
+      })),
   });
   t.mock.method(globalThis, "fetch", async (url, init) => {
     assert.ok(
