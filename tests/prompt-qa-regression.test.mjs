@@ -24,11 +24,10 @@ const nativeConstraints = JSON.parse(
 const fixedNativeTools = [
   "forecast_compute",
   "gea_capabilities",
-  "gea_cube_query",
   "gea_evidence_read",
-  "gea_gateway_catalog",
-  "gea_module_mcp",
   "gea_sales_plan_read",
+  "mcp__gea-gateway__inspect_cube_model",
+  "mcp__gea-gateway__query_business_data",
   "render_ui",
   "skill",
   "skill_reference_read",
@@ -100,16 +99,6 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     },
     "promptQa",
   );
-  // The independent capture includes live APS. CI's declared mock APS has no controlled Consumer.
-  const expectedNativeConstraints = structuredClone(nativeConstraints);
-  if (app.catalogScene.apsMode === "mock") {
-    for (const name of ["gea_cube_query", "gea_gateway_catalog"]) {
-      const consumer = expectedNativeConstraints.find((tool) => tool.function.name === name)
-        .function.parameters.properties.consumerCode;
-      assert.equal(consumer.enum.filter((code) => code === "aps").length, 1);
-      consumer.enum = consumer.enum.filter((code) => code !== "aps");
-    }
-  }
   for (const name of qaFixtureSkillNames) {
     const installed = await fixtureRequest(app, "/api/agent-plugins/user-panel/skills/create", {
       name,
@@ -207,7 +196,7 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
   });
 
   await check(
-    "fixed native 11-tool prompt with four fixture forecast Skills preserves constraints and reports actual length",
+    "fixed native 10-tool prompt with four fixture forecast Skills preserves constraints and reports actual length",
     async () => {
       const r = await run(await create(), [], "本月提报情况");
       const b = r.requests[0];
@@ -233,7 +222,7 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
       });
       assert.deepEqual(
         schemaConstraints(businessSchemas),
-        expectedNativeConstraints,
+        nativeConstraints,
         "display compression must preserve every original field, required/enums/ranges/union constraint",
       );
       return {
@@ -530,7 +519,12 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
               }
             });
           const found = values.find((v) => v.evidenceId);
-          return { evidenceId: found.evidenceId, format: "raw", offset: 0, limit: 1000 };
+          return {
+            evidenceId: found.evidenceId,
+            format: "raw",
+            offset: 0,
+            limit: 1000,
+          };
         }),
       ],
       "计算后在同轮读取明细",
