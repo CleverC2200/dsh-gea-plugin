@@ -11,6 +11,7 @@ import {
   branchStockAcceptance,
   branchStockExpectedText,
 } from "./fixtures/branch-stock-acceptance.mjs";
+import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 import { changeThemeSetting } from "./theme-settings.mjs";
 import {
   htmlFrameElement,
@@ -19,7 +20,6 @@ import {
 } from "./fixtures/business-page.mjs";
 
 const out = resolve(".runtime/branch-stock-evidence");
-const migrated = resolve("../dsh-agent-workbench/lib/business/inventory-fc");
 const tool = (name, args, id) => ({
   tool_calls: [
     {
@@ -31,7 +31,8 @@ const tool = (name, args, id) => ({
   ],
 });
 const query = {
-  consumerCode: "branch-inventory",
+  action: "query",
+  response_mode: "inline_complete",
   queries: [
     {
       name: "branch_stock",
@@ -59,6 +60,10 @@ test(
   "branch stock migration preserves rows and runs authorized page and Agent reads",
   { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 240000 },
   async (t) => {
+    const workbench = (await readProfileSources(process.env.GEA_TEST_SOURCE_INPUTS)).find(
+      (source) => source.repo === "dsh-agent-workbench",
+    );
+    const migrated = resolve(workbench.assetRoot, "lib/business/inventory-fc");
     await mkdir(out, { recursive: true });
     const browser = await testBrowser(t, () =>
       chromium.launch({
@@ -83,6 +88,7 @@ test(
       let step = 0;
       const app = await profile(t, {
         config: (base) => ({
+          cubeMcpCodes: { production: "cube" },
           analysis: {
             mode: "model",
             baseUrl: base + "/v1",
@@ -100,7 +106,7 @@ test(
         step++;
         if (step === 1)
           return tool("skill", { name: "inventory-fc", offset: 1, limit: 80 }, "stock-skill");
-        if (step === 2) return tool("gea_cube_query", query, "stock-query");
+        if (step === 2) return tool("mcp__gea-gateway__query_business_data", query, "stock-query");
         const receipt = body.messages
           .filter((x) => x.role === "tool")
           .map((x) => x.content)
@@ -250,7 +256,7 @@ test(
           assert.match(receipts[0].text, /order-net-gap-v3/);
           assert.match(receipts[1].text, /100/);
           assert.equal(state.cube.length, 1);
-          assert.ok(state.discovery.some((r) => r.agentCode === "branch-inventory"));
+          assert.ok(state.gateway.some((request) => request.consumerCode === "branch-inventory"));
           assert.doesNotMatch(
             JSON.stringify(state.models),
             /fixture-cube-token|fixture-delegation/,
@@ -260,7 +266,7 @@ test(
             JSON.stringify(
               {
                 receipts,
-                discovery: state.discovery,
+                gateway: state.gateway,
                 cube: state.cube,
                 answer: state.models.length,
               },
@@ -315,6 +321,10 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
     "branch page distinguishes " + mode + " data",
     { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 90000 },
     async (t) => {
+      const workbench = (await readProfileSources(process.env.GEA_TEST_SOURCE_INPUTS)).find(
+        (source) => source.repo === "dsh-agent-workbench",
+      );
+      const migrated = resolve(workbench.assetRoot, "lib/business/inventory-fc");
       const state = stockState();
       state.mode = mode === "empty-error" ? "empty" : mode;
       const app = await profile(t, {

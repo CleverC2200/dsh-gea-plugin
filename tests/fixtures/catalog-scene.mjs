@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { modelProfile } from "./model-profile.mjs";
+import { fixtureCubeTools } from "./cube-wire.mjs";
 
 // Literal declarations come from fixed registrations and resource headers, not model output.
 const fixture = JSON.parse(
@@ -97,6 +98,10 @@ export async function catalogSceneProfile(t, options, scene = "model") {
   const env = { ...options.env, DSH_TOOLS_MODE: "native", GEA_BROWSER_MCP: "0" };
   const app = await modelProfile(t, {
     ...options,
+    config: (base) => ({
+      cubeMcpCodes: { production: "cube", test: "cube" },
+      ...(typeof options.config === "function" ? options.config(base) : options.config),
+    }),
     env,
     async beforeStart({ runtime }) {
       // Fresh HOME prevents implicit personal layouts; all existing business providers remain.
@@ -182,6 +187,34 @@ export async function catalogSceneProfile(t, options, scene = "model") {
     }),
     { flag: "wx" },
   );
+  // Every scene declares the same local MCP server schemas, independent of model output.
+  const setRoute = app.route;
+  app.route = (route) =>
+    setRoute(async (req, res, reply) => {
+      if (await route(req, res, reply)) return true;
+      if (!req.url.pathname.endsWith("/ai/gateway/mcp/proxy/mcp")) return false;
+      const wire = JSON.parse(req.body);
+      if (wire.method === "notifications/initialized") {
+        res.statusCode = 202;
+        res.end();
+        return true;
+      }
+      const result =
+        wire.method === "initialize"
+          ? { protocolVersion: wire.params.protocolVersion }
+          : wire.method === "tools/list"
+            ? { tools: fixtureCubeTools }
+            : {
+                isError: true,
+                structuredContent: {
+                  success: false,
+                  code: "FIXTURE_QUERY_NOT_DECLARED",
+                  message: "This catalog scene has no business query fixture",
+                },
+              };
+      reply({ jsonrpc: "2.0", id: wire.id, result });
+      return true;
+    });
   app.catalogScene = {
     tools,
     apsMode: apsBuild.mode,

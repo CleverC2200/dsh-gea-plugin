@@ -43,10 +43,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-aqkc/skills/aqkc/SKILL.md",
-        "sha256": "0835006111622fd2c3289ab5d3910a05da50af77393cf76b24c481fd76a796ba",
+        "sha256": "41b8fb11d166ff89afb926f0e5632b0a4f4c0da3866e3ddaafc654597aa29454",
         "name": "inventory-aqkc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceHead": "2950d988a7ca531cc971484899ae9c6385fcfc1c",
         "sourceFile": "business-resources/inventory-aqkc/skills/aqkc/SKILL.md"
       },
       {
@@ -70,10 +70,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-fc/skills/fc/SKILL.md",
-        "sha256": "b217f1d93dd12fbce94f3af5981f806fd1de62c204d234b5976a82aa905085f6",
+        "sha256": "e423a08d7926d215f82c0c44784b27dd2f3deb19a9c42c804d8dc363c87b648c",
         "name": "inventory-fc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceHead": "2950d988a7ca531cc971484899ae9c6385fcfc1c",
         "sourceFile": "business-resources/inventory-fc/skills/fc/SKILL.md"
       },
       {
@@ -175,7 +175,13 @@
       "serviceMountedBy": "packages/bundle/base/cordis.patch.yml:138 attachment-local, inherited by standard scope",
       "routeImageCapability": "execution only; registration remains for text routes"
     },
-    "sourceBinding": "Installed Workbench and Manage heads follow the admitted original-byte candidate; authored Skill bytes and headers are independently frozen from Manage Git, never model output."
+    "sourceBinding": "Installed Workbench and Manage heads follow the admitted original-byte candidate; authored Skill bytes and headers are independently frozen from Manage Git, never model output.",
+    "nativeToolMigration": {
+      "gea": "a918ba51fe782c7d3a83a4c0af8e9dd831712065",
+      "manage": "db24db166f57edc0740bc6480c95ea8f57f4a631",
+      "serverSchemas": "cube-wire.mjs; explicit loopback fixture contract",
+      "priorCapture": "retired-query/specifications/catalog-scene-expectations.legacy.json.raw"
+    }
   },
   "coreHeads": {
     "rc2": "639ed015397290b3745d163aafe02ffee4aa3f84",
@@ -184,8 +190,8 @@
   "requiredPeers": {
     "dsh-agent-workbench": "c5a5bc64fade154bf5b468f0d848974ac308823a",
     "dsh-agent-manage": "cdd2d6520a7790ca1a1c658d1fa71e07c651cd3f",
-    "dsh-genui": "0cc64c97b426ff5afe54154e74ead31dd8739265",
-    "dsh-better-sidebar": "e35120f1d9b3773062b68decb4f53a526d6c8baa"
+    "dsh-genui": "382db5575ad3068efeff0322eec9cc499f79ae01",
+    "dsh-better-sidebar": "a2751cfbde2dd425b8150737574bc6d1d57f73b8"
   },
   "completeNativeTools": {
     "639ed015397290b3745d163aafe02ffee4aa3f84": [
@@ -196,10 +202,8 @@
       "exit_plan_mode",
       "forecast_compute",
       "gea_capabilities",
-      "gea_cube_query",
       "gea_evidence_read",
-      "gea_gateway_catalog",
-      "gea_module_mcp",
+      "gea_runtime_diagnose",
       "gea_sales_plan_read",
       "gea_visible_workbench_context",
       "get_goal",
@@ -210,6 +214,8 @@
       "job_list",
       "job_output",
       "list_agents",
+      "mcp__gea-gateway__inspect_cube_model",
+      "mcp__gea-gateway__query_business_data",
       "page_reference_read",
       "present",
       "read",
@@ -238,10 +244,8 @@
       "exit_plan_mode",
       "forecast_compute",
       "gea_capabilities",
-      "gea_cube_query",
       "gea_evidence_read",
-      "gea_gateway_catalog",
-      "gea_module_mcp",
+      "gea_runtime_diagnose",
       "gea_sales_plan_read",
       "gea_visible_workbench_context",
       "get_goal",
@@ -252,6 +256,8 @@
       "job_list",
       "job_output",
       "list_agents",
+      "mcp__gea-gateway__inspect_cube_model",
+      "mcp__gea-gateway__query_business_data",
       "page_reference_read",
       "present",
       "read",

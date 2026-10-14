@@ -12,7 +12,7 @@ const { createScope } = await import(pathToFileURL(sdk + "/scope/lib/index.js"))
 const { agentEvents } = await import(pathToFileURL(sdk + "/agent/lib/index.js"));
 const { outputFiles } = await build({
   stdin: {
-    contents: `export{mountBusinessPrompts}from'./src/host/prompt-runtime.ts';export{mountSidebarToolVisibility}from'./src/host/sidebar-tool-visibility.ts';export{AgentOpenRegistry,registerOpenTool}from'dsh-better-sidebar/src/agent-opens.ts';export{SIDEBAR_PREFS_DEFAULTS}from'dsh-better-sidebar/src/prefs-shared.ts';`,
+    contents: `export{mountBusinessPrompts}from'./src/host/prompt-runtime.ts';export{mountSidebarToolVisibility}from'./src/host/sidebar-tool-visibility.ts';export{AgentOpenRegistry,registerOpenTool}from'./node_modules/dsh-better-sidebar/src/agent-opens.ts';export{SIDEBAR_PREFS_DEFAULTS}from'./node_modules/dsh-better-sidebar/src/prefs-shared.ts';`,
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -72,7 +72,7 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
   });
   ctx.provide("sessionProjections", { stateOf: () => "gea-readonly" });
   for (const name of [
-    "gea_cube_query",
+    "mcp__gea-gateway__query_business_data",
     "mcp__browser__browser_click",
     "terminal_create",
     "gea_sales_plan_write",
@@ -176,7 +176,7 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     registered: true,
     visible: true,
   });
-  assert.ok(names().includes("gea_cube_query"));
+  assert.ok(names().includes("mcp__gea-gateway__query_business_data"));
   for (const permitted of ["mcp__browser__browser_click", "terminal_create"])
     assert.equal(names().includes(permitted), true, permitted + " follows its owner registration");
   for (const denied of ["gea_sales_plan_write", "run_code"])
