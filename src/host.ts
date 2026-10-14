@@ -519,18 +519,35 @@ export async function apply(
         if (!agent || ctx.sessionProjections.stateOf(agent.session, "agentPreset") !== resourceId)
           throw Error("PAGE_AGENT_SESSION_MISMATCH");
         signal.throwIfAborted();
-        const projection = business.setSurface(sessionId, { menu: "gea-proof", title: "销售计划" });
+        const surface = business.setSurface(sessionId, { menu: "gea-proof", title: "销售计划" });
+        const identity = business.identitySignal();
+        const pageIdentity = {
+          pluginId: "gea-proof",
+          consumerCode: config.analysisAgentCode,
+          label: "销售计划",
+          pageTool: "gea_workbench_apply",
+        };
+        business.touchPageIdentity(sessionId, pageIdentity);
+        let projection = business.currentPageIdentity(sessionId);
         return {
-          signal: business.identitySignal(),
+          signal: identity,
           access: { authenticated: true },
           referenceScope,
           allowsEffect: (effect) => capability.allows(WORKBENCH_SURFACE, effect),
           snapshot: () => business.workbenchStateSnapshot(sessionId),
-          observe: (context) => business.updateVisibleWorkbenchContext(sessionId, context),
+          observe: (context) => {
+            identity.throwIfAborted();
+            if (business.surfaceFor(sessionId) !== surface) throw Error("PAGE_OWNER_RELEASED");
+            business.touchPageIdentity(sessionId, pageIdentity);
+            projection = business.currentPageIdentity(sessionId);
+            business.updateVisibleWorkbenchContext(sessionId, context);
+          },
           release: () => {
-            if (business.surfaceFor(sessionId) !== projection) return;
+            if (business.currentPageIdentity(sessionId) === projection)
+              business.clearPageIdentity(sessionId, pageIdentity.pluginId);
+            if (business.surfaceFor(sessionId) !== surface) return;
             business.clearVisibleWorkbenchContext(sessionId);
-            business.clearSurface(sessionId, "gea-proof");
+            business.clearSurface(sessionId, surface.menu);
           },
         };
       },

@@ -19,7 +19,10 @@ test("scope queries do not require a bound page; page references cannot fabricat
   assert.ok(allowedTools(profile).has("gea_sales_plan_read"));
   assert.ok(allowedTools(profile).has("gea_visible_workbench_context"));
   assert.ok(!allowedTools(profile).has("gea_page"));
-  assert.ok(allowedTools(profile, true).has("gea_page"));
+  const html = allowedTools(profile, "gea_page");
+  assert.ok(html.has("gea_page"));
+  assert.ok(html.has("gea_plugin_page_apply"));
+  assert.ok(!html.has("gea_workbench_apply"));
 });
 test("page context keeps a narrow focus and does not claim complete scope", async () => {
   assert.match(TOOL_DESCRIPTIONS.gea_visible_workbench_context, /focus/);
@@ -33,4 +36,12 @@ test("ordinary statistics do not mandate a Skill and generic sessions have no bu
   assert.ok(core.has("gea_capabilities"));
   assert.ok(!core.has("subagents_run"));
   assert.equal(profileFor("auto-negotiation"), undefined);
+});
+
+test("a Native page grants its declared action tool without claiming an HTML lease", () => {
+  const native = allowedTools(profileFor("gea-readonly"), "gea_workbench_apply");
+  assert.ok(native.has("gea_workbench_apply"));
+  assert.ok(native.has("gea_visible_workbench_context"));
+  assert.ok(!native.has("gea_page"));
+  assert.ok(!native.has("gea_plugin_page_apply"));
 });
