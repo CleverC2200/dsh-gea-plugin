@@ -19,7 +19,7 @@ test("evidence projection preserves exact numbers and scope; original reads cann
     '{"coverage":"complete","amount":12.3400,"id":9007199254740993,"rows":' +
     JSON.stringify(Array.from({ length: 200 }, (_, i) => ({ i, name: "商品".repeat(30) }))) +
     "}";
-  const id = await store.put("a", "gea_cube_query", text);
+  const id = await store.put("a", "mcp__gea-gateway__query_business_data", text);
   const result = JSON.parse(projectEvidence(text, id));
   assert.equal(result.projection, "partial");
   assert.equal(result.id, "9007199254740993");
@@ -50,7 +50,7 @@ test("protected evidence restores after restart only with current authorization"
     resourceTool: "query_business_data",
     resources: "v1",
   };
-  const id = await first.put("s", "gea_cube_query", "original business data", first.epoch(), grant);
+  const id = await first.put("s", "mcp__gea-gateway__query_business_data", "original business data", first.epoch(), grant);
   const restored = new PromptEvidenceStore(dir);
   let resourceVersion = "v1";
   const authorize = async (saved) => {

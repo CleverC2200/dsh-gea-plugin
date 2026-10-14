@@ -1,0 +1,651 @@
+{
+  "baseline": "a918ba51fe782c7d3a83a4c0af8e9dd831712065",
+  "currentInterface": "Core tools.execute -> Manage mountGeaMcp -> GEA createCubeMcpService -> Business/openCubeMcp",
+  "cases": [
+    {
+      "source": "member-index.historical.mjs",
+      "case": "清单解析：全名与短名都能认，度量与维度分开",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "member-index.historical.mjs",
+      "case": "查出不存在的成员，并说清最像的真名与该模型的现有成员",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "member-index.historical.mjs",
+      "case": "模型不在清单里时不判（那是模型名或权限的问题，不是成员名）",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "member-index.historical.mjs",
+      "case": "把维度写进 measures 要被拦下；无度量模型要说清只能自己汇总",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "member-index.historical.mjs",
+      "case": "查询里引用的成员名收全（dimensions/measures/filters/order 都要）",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "member-index.historical.mjs",
+      "case": "清单过期后不再拦（宁可漏拦，也不能拿旧清单拦住对的成员）",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "sales-result-regression.historical.mjs",
+      "case": "exact model retains tail measure semantics without unrelated forecast candidates",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/sales-result-regression.test.mjs"]
+    },
+    {
+      "source": "sales-result-regression.historical.mjs",
+      "case": "member lookup selects tail measures and dimensions, not the first eight",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/sales-result-regression.test.mjs"]
+    },
+    {
+      "source": "sales-result-regression.historical.mjs",
+      "case": "source-specific text months are checked before dispatch; unrelated strings unchanged",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "sales-result-regression.historical.mjs",
+      "case": "mixed rejection retains readable success rows and rejection, instead of raw envelope",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/sales-result-regression.test.mjs"]
+    },
+    {
+      "source": "sales-result-regression.historical.mjs",
+      "case": "source gate distinguishes result, workflow, mixed and result follow-ups",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/sales-result-regression.test.mjs"]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "actual tool stops distinct detail reads at 20 but leaves aggregation and other sessions usable",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/agent-read-convergence.test.mjs"]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "catalog replay converges without disabling data queries",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "aggregate argument order does not trigger a new scan and a replay keeps the summary table intact",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "artifact pages feed latest sample observations even when the member is already in a cached directory",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "resetting one conversation preserves another conversation guard and replay",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/agent-read-convergence.test.mjs"]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "MCP failures block that channel only and return the successful aggregate as evidence",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "success evidence survives a whole-turn stop but is cleared on a new question or identity change",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/agent-read-convergence.test.mjs"]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "model-style single-field order objects are adapted before governed query preflight",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "正向：同模型的一项与两项查询都放行",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G3 结构：空 queries、超过 8 项、name 重复或空白、缺 query 外壳、外层乱放字段",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G3 inspect：带 queries 的 inspect 直接拦（inspect 必须 queries=[]）",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G4 单模型：跨模型拦下并给出拆分方案，加 queries 项也绕不过去",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G4 单模型：同一个 query 里 dimensions 与 filters/order 用不同模型也要拦",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "接线：闸门在发送前调用，且清单不在手时先补读一次 inspect（G5）",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G5 成员：不存在的成员拦下并给真名；维度不能进 measures；measures 上限按清单",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G6 order：对象数组、大写方向、字符串方向都拦（一次列全同类问题）",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G6 limit/offset：字符串、0、超宿主保护上限都拦",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G6 filters：缺 values、缺 operator、and 与 member 混用、非数组都拦",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G5 时间维度：字符串日期不能当 timeDimensions，非时间成员一律拦",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "裸字段、物理表名、SQL 表达式都不是合法成员名",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "年月值：时间成员拦下并给正确写法，文本年月列放行",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "清单不在手时只做形状校验，不编造成员结论",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "§17.8 请求体字节：把整表列全的写法拦下，正常查询放行",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "unknown measure errors offer actual measures, never numeric dimensions as replacements",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "filter operators reject SQL aliases and retain supported Cube predicates",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "resource discovery uses the negotiated route and trusted session, handles audit failure and 429 without fallback",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "planner separates independent models, rejects internal joins and ambiguous or unauthorized targets, and enforces resource bounds",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "typed and legacy entry share splitting, receipts and authorization refresh; failed group does not erase success",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "catalog shows only the current authorization snapshot and never revives old inspect results after revocation",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "catalog identifies Cube-New absence from the authorized list without misreporting routing or empty data",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "explicit catalog refresh discovers newly granted tools while preserving the current login and Consumer",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "Cube-New catalog calls the separate inspection tool and filters metadata by the current resource grant",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "Cube-New View aliases expose only granted underlying members and support the actual query target",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "cancellation stops subsequent model groups",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "legacy inspect is filtered and authorization failure occurs before public metadata access",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "two Agent catalogs in one host do not share authorization or metadata",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "expired gateway session stops every read entry for this turn and never falls back to inspect",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "expired session in a model group stops the batch before another model is sent",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "invalidating an expired business Session creates a fresh module on the next turn",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "sample lookup keeps authorized models when another member has ambiguous resources",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "resource version change refreshes the same module field index",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "catalog samples reject measures and segments before dispatch and keep valid dimensions",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "generic Skill and unregistered Consumer cannot enter governed reads",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "catalog-consumers.historical.mjs",
+      "case": "resource-to-consumer projection is snapshot-local, excludes non-Cube resources and keeps two identities independent",
+      "disposition": "Retired local planner/member-index/catalog projection shape. Server schema and exact submitted fields are now authoritative; current registered-tool tests cover qualified members, forwarding, Consumer admission and preserved server errors.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "会话按 initialize → tools/list 建立，工具清单可读",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "明确标记为写入或破坏性的 MCP 工具不会进入只读清单",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "SSE 响应与业务错误都能读出来",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "协议版本协商失败时给出可读错误，不静默成功",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "resource_link 结果由宿主读回内联，模型不必自己读资源",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "大结果只内联一段，并说清还有多少、下一段怎么读（不用重新查）",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "一次返回多个制品时，没内联的那些要把 URI 报出来（别直接丢）",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "资源读不回来时给可读说明，不让模型拿着链接乱试",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "business Session expiry does not suggest changing Cube members or retrying the old request",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "下游工具失败：抛成可读错误（含 requestId），不是把 JSON 当数据",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "structuredContent + 对象 text 的校验失败：给字段路径并允许改参数重调",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "text 是对象但不是失败时：内容不能丢",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "资源未唯一匹配时保留映射诊断，不武断归为参数或授权错误",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "授权类失败：给可读业务状态、不抛红色错误",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "正常返回体带 code:OK 时不能被误判成失败",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "摘要只给字段名，完整定义按工具名展开（含类型/枚举/必填）",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "服务端 schema 很大时，完整定义也不能超过上限",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "行数正好等于 limit 时说清“别把这一页当全量”，同一段重复读要拦一下",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "取全了（行数小于 limit）时不提示截断",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "制品贴着授权上限时先提醒缩口径，而不是等网关整批拒掉",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "限流：HTTP 200 + 业务信封也认，给等待建议而不是让人改参数",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "权限失败要保留 details 里的诊断项，说清缺的是哪一项",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "host evidence callback receives hydrated content before the model preview is truncated",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "delivery metadata preserves failed and unhydrated resources beside one successful body",
+      "disposition": "Business assertion migrated to current native registration/direct response or real execution hooks; no retired client is executed.",
+      "current": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/execution-convergence.test.mjs"
+      ]
+    },
+    {
+      "source": "read-guard-wiring.historical.mjs",
+      "case": "registered sales reads replay after two reads, isolate scopes and permit a fresh round",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/read-guard-wiring.test.mjs"]
+    },
+    {
+      "source": "read-guard-wiring.historical.mjs",
+      "case": "registered catalog and MCP inspect filter authorization and recheck revoked resources",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "read-guard-wiring.historical.mjs",
+      "case": "registered module tool listing converges independently of another scope and resets next round",
+      "disposition": "Retired wrapper output/planning/catalog shape preserved in historical source. Valid schema, authorization, pagination, precision and failures are asserted through current native registration and direct client.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/cube-direct-mcp.test.mjs"]
+    },
+    {
+      "source": "read-guard-wiring.historical.mjs",
+      "case": "registered cancellation and non-Error failures are readable and cancellation spends no waste budget",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/read-guard-wiring.test.mjs"]
+    },
+    {
+      "source": "read-guard-wiring.historical.mjs",
+      "case": "registered page context reads require the current user",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/read-guard-wiring.test.mjs"]
+    },
+    {
+      "source": "read-guard-wiring.historical.mjs",
+      "case": "registered recipe executes parameterized SQL with only accepted query keys",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/read-guard-wiring.test.mjs"]
+    }
+  ]
+}

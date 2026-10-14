@@ -86,7 +86,7 @@ test("通道顺序由宿主算好：当前页 → 模块 MCP → 受管只读", 
     },
   });
   assert.equal(plan.page.tool, "inventory_dealer_page");
-  assert.equal(plan.module.tool, "gea_module_mcp");
+  assert.equal(plan.module.tool, "mcp__gea-gateway__query_business_data");
   assert.equal(plan.read.tool, "gea_plugin_read");
   assert.equal(plan.read.consumerCode, "dealer-inventory-replenishment");
   assert.match(plan.note, /不要三条通道各试一遍/);

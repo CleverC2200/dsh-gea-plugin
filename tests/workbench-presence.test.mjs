@@ -96,7 +96,7 @@ test("每轮注入的「业务位置」：主对话就明说别读页面", () =>
   const main = surfacePromptLine(undefined);
   assert.match(main, /页面/);
   assert.match(main, /未绑定/);
-  assert.match(main, /gea_cube_query/);
+  assert.match(main, /query_business_data/);
   // 线上实测：位置提示来回变之后，模型说"用户消息是空的"——这条必须钉住。
   assert.match(main, /用户指向这一屏/);
   assert.match(main, /不空读页面/);

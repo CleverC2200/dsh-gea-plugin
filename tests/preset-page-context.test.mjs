@@ -13,7 +13,7 @@ test("scope queries do not require a bound page; page references cannot fabricat
   const main = surfacePromptLine(undefined);
   assert.match(main, /未绑定/);
   assert.match(main, /不空读页面/);
-  assert.match(main, /gea_cube_query/);
+  assert.match(main, /query_business_data/);
   assert.match(COMMON_PROMPT, /独立查询无需开页面/);
   const profile = profileFor("gea-readonly");
   assert.ok(allowedTools(profile).has("gea_sales_plan_read"));

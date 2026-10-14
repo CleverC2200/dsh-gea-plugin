@@ -11,8 +11,7 @@ async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "gea-execution-only-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const handlers = new Map(),
-    registered = new Map(),
-    authorizations = new Map();
+    registered = new Map();
   let guard,
     assemble,
     identityChanged,
@@ -25,7 +24,7 @@ async function fixture(t) {
     "skill",
     "skill_reference_read",
     "forecast_compute",
-    "gea_cube_query",
+    "mcp__gea-gateway__query_business_data",
     "gea_capabilities",
     "gea_evidence_read",
   ];
@@ -95,7 +94,7 @@ async function fixture(t) {
     surfaceFor: () => undefined,
     turnStopKind: () => undefined,
   };
-  t.after(mountBusinessPrompts(ctx, business, { readModules: () => [] }, authorizations));
+  t.after(mountBusinessPrompts(ctx, business, { readModules: () => [] }));
   return {
     root,
     agent,
@@ -107,7 +106,6 @@ async function fixture(t) {
     },
     handlers,
     registered,
-    authorizations,
     guard: (exec) => guard(exec),
     assemble: (assembled) => assemble({}, { agent }, async () => assembled),
     setPreset: (value) => {
@@ -129,6 +127,7 @@ test("GEA registers execution metadata and evidence only, preserving the origina
   assert.deepEqual([...current.registered.keys()].sort(), [
     "gea_capabilities",
     "gea_evidence_read",
+    "gea_runtime_diagnose",
   ]);
   const original = {
     sections: [
@@ -161,7 +160,7 @@ test("GEA registers execution metadata and evidence only, preserving the origina
 
 test("business admission and concurrent budget reservations survive resource orchestration removal", async (t) => {
   const current = await fixture(t);
-  const exec = { name: "gea_cube_query", agent: current.agent, arguments: {} };
+  const exec = { name: "mcp__gea-gateway__query_business_data", agent: current.agent, arguments: {} };
   for (let i = 0; i < 20; i++) assert.equal(current.guard(exec), undefined);
   assert.match(current.guard(exec), /GEA_CALL_BUDGET/);
   current.setPreset("agent-resource-skill");
@@ -173,7 +172,7 @@ for (const transition of ["turn", "identity", "preset"]) {
   test(`late permission failure remains the original result after ${transition} without blocking current reads`, async (t) => {
     const current = await fixture(t);
     const exec = {
-      name: "gea_cube_query",
+      name: "mcp__gea-gateway__query_business_data",
       token: Symbol(),
       agent: current.agent,
       arguments: {},
@@ -208,10 +207,10 @@ for (const transition of ["turn", "identity", "preset"]) {
   });
 }
 
-test("current permission failure remains visible across concurrent queries and prevents Consumer fallback", async (t) => {
+test("current permission failure remains visible across concurrent current MCP queries", async (t) => {
   const current = await fixture(t);
   const exec = {
-    name: "gea_cube_query",
+    name: "mcp__gea-gateway__query_business_data",
     token: Symbol(),
     agent: current.agent,
     arguments: {},
@@ -232,14 +231,9 @@ test("current permission failure remains visible across concurrent queries and p
     assembled.sections.some((s) => s.name === "gea:read-gaps"),
     true,
   );
-  assert.match(
-    current.guard({
-      ...exec,
-      token: Symbol(),
-      arguments: { consumerCode: "another-registered-consumer" },
-    }),
-    /GEA_CONSUMER_FALLBACK_DENIED/,
-  );
+  assert.equal(current.guard({ ...exec, token: Symbol(), arguments: {} }), undefined);
+  // Current native tools derive Consumer in GEA; caller-supplied identity is rejected by the registered-tool tests.
+
 });
 
 test("late successful read after a new turn preserves its original result without entering current evidence", async (t) => {
@@ -614,7 +608,7 @@ test("a query rejected during resource admission does not reopen stalled catalog
   const current = await fixture(t);
   for (let i = 0; i < 2; i++) {
     const catalog = {
-      name: "gea_gateway_catalog",
+      name: "mcp__gea-gateway__inspect_cube_model",
       token: Symbol(),
       agent: current.agent,
       arguments: {},
@@ -628,7 +622,7 @@ test("a query rejected during resource admission does not reopen stalled catalog
     );
   }
   const query = {
-    name: "gea_cube_query",
+    name: "mcp__gea-gateway__query_business_data",
     token: Symbol(),
     agent: current.agent,
     arguments: {},
@@ -641,7 +635,7 @@ test("a query rejected during resource admission does not reopen stalled catalog
     current.handlers.get("tools/execute")(query, async () => {}),
     /resource-admission-denied/,
   );
-  assert.match(current.guard({ ...query, name: "gea_gateway_catalog" }), /GEA_CATALOG_NO_PROGRESS/);
+  assert.match(current.guard({ ...query, name: "mcp__gea-gateway__inspect_cube_model" }), /GEA_CATALOG_NO_PROGRESS/);
 });
 
 for (const phase of ["admission", "downstream"]) {
@@ -662,15 +656,10 @@ for (const phase of ["admission", "downstream"]) {
       });
     await assert.rejects(
       current.handlers.get("tools/execute")(exec, async () => {
-        current.authorizations.set(exec.token, {
-          consumer: "original",
-          resources: { resources: [] },
-        });
         throw error;
       }),
       (received) => received === error,
     );
-    assert.equal(current.authorizations.has(exec.token), false);
     // Official around-dispatch errors skip post-execute. Even an accidental later hook cannot resurrect this token.
     const decision = { kind: "accept" };
     const received = await current.handlers.get("tools/post-execute")(
@@ -704,10 +693,6 @@ test("a post policy error preserves the original error and retires metadata befo
   };
   assert.equal(current.guard(exec), undefined);
   await current.handlers.get("tools/execute")(exec, async () => {});
-  current.authorizations.set(exec.token, {
-    consumer: "original",
-    resources: { resources: [] },
-  });
   const error = new TypeError("original-post-policy-error");
   const result = {
     content: [{ type: "text", text: '{"status":"completed","value":{"late":true}}' }],
@@ -718,7 +703,6 @@ test("a post policy error preserves the original error and retires metadata befo
     }),
     (received) => received === error,
   );
-  assert.equal(current.authorizations.has(exec.token), false);
   const decision = { kind: "accept" };
   assert.equal(
     await current.handlers.get("tools/post-execute")(exec, result, async () => decision),
