@@ -1,0 +1,16 @@
+{
+  "sourceCommit": "23390fcdda89319750b5ead2b438fceecf6bbc9c",
+  "scope": "Retired fake rc.1 Core and standalone page-package fixture bytes. Current tests retain sandbox and packaged browser behavior at current public seams.",
+  "files": [
+    {
+      "source": "scripts/isolated-validation.test.mjs",
+      "snapshot": "tests/fixtures/retired-host-harness/isolated-validation.test.mjs.raw",
+      "sha256": "5830a392c3bc25d74cfb42b47ca904e319bb52e9f6fdc56f9fe7ce39abd02845"
+    },
+    {
+      "source": "scripts/page-interaction-package.test.mjs",
+      "snapshot": "tests/fixtures/retired-host-harness/page-interaction-package.test.mjs.raw",
+      "sha256": "ee97ffa6460abf2969920fe539fbed3f366afea7a479c1973a8c4ca3fbe341bd"
+    }
+  ]
+}

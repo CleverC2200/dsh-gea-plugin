@@ -17,13 +17,14 @@ const nonempty = (value: unknown): value is string =>
 /** Successful discovery can omit a tool; that is distinct from a missing transport route. */
 export class GatewayMcpToolUnavailable extends Error {
   readonly code = "GEA_MCP_TOOL_UNAVAILABLE";
-  constructor(
-    readonly toolName: string,
-    readonly sourceCode: string,
-  ) {
+  readonly toolName: string;
+  readonly sourceCode: string;
+  constructor(toolName: string, sourceCode: string) {
     super(
       `GEA_MCP_TOOL_UNAVAILABLE: 当前业务会话的授权工具列表未返回 ${toolName}（来源 ${sourceCode}），未发起该工具调用。请核对本环境的能力发布、人员和 Consumer 授权；工具注册可发现不代表当前会话已获准。不要换身份或旧来源重试。`,
     );
+    this.toolName = toolName;
+    this.sourceCode = sourceCode;
   }
 }
 
