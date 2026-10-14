@@ -156,7 +156,7 @@ try {
           refuse("QUALITY_PRIVATE_PEER_REQUIRED", entry.repo);
     const workbench = candidate.repositories.find((entry) => entry.repo === "dsh-agent-workbench"),
       manage = candidate.repositories.find((entry) => entry.repo === "dsh-agent-manage");
-    if (values["prepare-inputs"] && values.phase !== "macos-isolation")
+    if (values["prepare-inputs"] || values.phase === "macos-isolation")
       await prepareWorkbenchGeaAuthority({
         workbench: workbench.path,
         gea: own.path,
