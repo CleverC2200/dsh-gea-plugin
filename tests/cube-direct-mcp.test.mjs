@@ -683,3 +683,101 @@ test("nullable structuredContent does not block a valid text-only business resul
   assert.equal(await f.client.call("query_business_data", query, f.signal), raw);
   assert.equal(resourceReads(f), 0);
 });
+
+for (const [label, field] of [
+  ["measure", { measures: ["amount"] }],
+  ["dimension", { dimensions: ["month"] }],
+  ["segment", { segments: ["active"] }],
+  ["time", { timeDimensions: [{ dimension: "month" }] }],
+  [
+    "nested filter",
+    { filters: [{ or: [{ and: [{ member: "code", operator: "equals", values: ["001"] }] }] }] },
+  ],
+  ["sort", { order: { month: "desc" } }],
+  ["ordered sort", { order: [["month", "desc"]] }],
+])
+  test("bare " + label + " is rejected before any business request", async () => {
+    const f = await clientFixture();
+    const args = structuredClone(query);
+    Object.assign(args.queries[0].query, field);
+    await assert.rejects(f.client.call("query_business_data", args, f.signal), (error) => {
+      assert.equal(error.code, "GEA_CUBE_QUERY_MEMBER_REQUIRED");
+      assert.match(error.message, /aliasMember/);
+      return true;
+    });
+    assert.equal(f.sent.filter((x) => x.wire.method === "tools/call").length, 0);
+  });
+
+test("actual inline metadata without complete and hasMore fails with actionable fields and stops further queries", async () => {
+  const payload = JSON.parse(raw);
+  payload.deliveryMode = "inline_complete";
+  delete payload.datasets[0].complete;
+  delete payload.datasets[0].hasMore;
+  const client = await clientFixture({ inline: inlineResult(JSON.stringify(payload)) });
+  const service = serviceFixture();
+  service.module.call = (name, args, signal) => client.client.call(name, args, signal);
+  await assert.rejects(
+    service.service.call("sales", "query_business_data", query, client.signal),
+    (error) => {
+      assert.match(error.message, /GEA_CUBE_NEW_PAGE_INCOMPLETE/);
+      assert.match(error.message, /complete/);
+      assert.match(error.message, /hasMore/);
+      assert.match(error.message, /本轮停止查询/);
+      return true;
+    },
+  );
+  await assert.rejects(
+    service.service.call("sales", "query_business_data", query, client.signal),
+    /GEA_TURN_STOPPED/,
+  );
+  assert.equal(client.sent.filter((x) => x.wire.method === "tools/call").length, 1);
+  assert.equal(resourceReads(client), 0);
+  assert.equal(payload.datasets[0].complete, undefined);
+});
+
+test("response-contract stop is isolated to the calling session", async () => {
+  const f = serviceFixture();
+  f.module.call = async () => {
+    throw Object.assign(Error("contract mismatch"), {
+      category: "RESPONSE_CONTRACT",
+      code: "GEA_CUBE_NEW_PAGE_INCOMPLETE",
+    });
+  };
+  const signal = new AbortController().signal;
+  await assert.rejects(
+    f.service.call("sales", "query_business_data", query, signal),
+    /contract mismatch/,
+  );
+  f.module.call = async () => "other-session-result";
+  assert.equal(
+    await f.service.call("dealer", "query_business_data", query, signal),
+    "other-session-result",
+  );
+});
+
+test("a corrected member can proceed without changing identity or rewriting arguments", async () => {
+  const f = await clientFixture({ inline: inlineResult(raw) });
+  const bad = structuredClone(query);
+  bad.queries[0].query.measures = ["amount"];
+  await assert.rejects(f.client.call("query_business_data", bad, f.signal), /MEMBER_REQUIRED/);
+  assert.equal(await f.client.call("query_business_data", query, f.signal), raw);
+  assert.deepEqual(f.sent.find((x) => x.wire.method === "tools/call").wire.params.arguments, query);
+});
+
+test("a late response-contract error after cancellation cannot stop the next call", async () => {
+  const f = serviceFixture();
+  const controller = new AbortController();
+  f.module.call = async () => {
+    controller.abort();
+    throw Object.assign(Error("late contract mismatch"), { category: "RESPONSE_CONTRACT" });
+  };
+  await assert.rejects(
+    f.service.call("sales", "query_business_data", query, controller.signal),
+    /late contract mismatch/,
+  );
+  f.module.call = async () => "new-turn-result";
+  assert.equal(
+    await f.service.call("sales", "query_business_data", query, new AbortController().signal),
+    "new-turn-result",
+  );
+});

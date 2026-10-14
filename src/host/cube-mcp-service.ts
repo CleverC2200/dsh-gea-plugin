@@ -90,8 +90,10 @@ export function createCubeMcpService(ctx: Context, business: Business) {
         if (expired) throw expired;
         if (
           error instanceof Error &&
-          "code" in error &&
-          error.code === "DATA_QUERY_MEMBER_NOT_PUBLISHED"
+          !signal.aborted &&
+          toolConsumer(ctx, business, sessionId, undefined) === consumer &&
+          (("code" in error && error.code === "DATA_QUERY_MEMBER_NOT_PUBLISHED") ||
+            ("category" in error && error.category === "RESPONSE_CONTRACT"))
         )
           business.stopTurn(sessionId, error.message);
         throw readableError(error);

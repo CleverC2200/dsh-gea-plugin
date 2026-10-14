@@ -30,6 +30,8 @@ Manage 只注册当前登录授权列表中的 `inspect_cube_model` 和 `query_b
 
 `inspect_cube_model` 返回服务端原始说明，包括 View 的 `aliasMember`。客户端不再二次投影目录或替服务端判断成员发布。`query_business_data` 原样传递 `action=query`、`response_mode=inline_complete` 和具名查询；业务参数及容量约束来自当前 `tools/list` Schema，不写死旧的8条/1000行上限，也不补默认 limit。
 
+查询入口检查度量、维度、时间、分段、嵌套筛选和排序的成员引用是否带完整前缀。裸字段在发送业务请求前返回 `GEA_CUBE_QUERY_MEMBER_REQUIRED`，提示按实际 `aliasMember` 修正；客户端不补前缀或推定 View 映射，成员存在性与授权仍由服务端判断。响应合同失败保留 `GEA_CUBE_NEW_*` 错误码，列出不符合约定的字段，按当前会话停止本轮查询。`deliveryMode=inline_complete` 不替代本页完整性声明；缺少 `complete` 或 `hasMore` 时由服务端核对响应，不能通过改查询参数或补默认值消除缺口。
+
 查询优先消费本次响应的 `structuredContent`；只有文本能力时选择一份业务 JSON，不拼接说明文本，也不合并两份 rows。直返路径不调用 `resources/read`，不要求 URI、有效期或制品 SHA。原始金额、大整数、编码字符串、null和零值保持；结构化结果再序列化时保留原始数字词法形式。
 
 两种交付方式共用具名数据集、执行数、行数、完整性与分页校验。`complete=true` 仅表示当前页完整；`hasMorePages=true` 保留未读范围，下一页仍执行查询，保持原过滤条件和稳定排序。`partial` 和 `no_data` 保留原状态，不能据此补零或宣称全量。灰度时仅在实际收到旧 `resource_link` 且没有直返业务结果时，沿原业务及传输 Session 读取，并核 URI、类型和原始摘要；不猜存储地址。

@@ -1,7 +1,7 @@
 /** Cube-New's two wire methods, with login-owned transport and validated inline or historical results. */
 import { randomUUID } from "node:crypto";
 import { createParser } from "eventsource-parser";
-import { cubeNewArtifact, validateCubeQueryResult } from "./cube-new.ts";
+import { cubeNewArtifact, validateCubeQueryMembers, validateCubeQueryResult } from "./cube-new.ts";
 import type { GatewayMcpTransport } from "./gateway-mcp.ts";
 import { throwIfAborted } from "../shared/abort.ts";
 import { readMcpResponseText } from "./mcp-response.ts";
@@ -223,6 +223,7 @@ export async function openCubeMcp(
         throw Error("GEA_MCP_PLATFORM_ARGUMENT_REJECTED: 平台身份和路由不属于业务 arguments。");
       if (!tools.some((tool) => tool.name === name))
         throw Error(`GEA_MCP_TOOL_UNAVAILABLE: 当前业务会话未返回 ${name}`);
+      if (name === "query_business_data") validateCubeQueryMembers(args);
       const { result, stringify, parseText } = await rpc(
         "tools/call",
         { name, arguments: args },
