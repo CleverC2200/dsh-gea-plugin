@@ -492,6 +492,19 @@ try {
         ) + "\n",
       );
     }
+    if (plan.files.includes("scripts/package-desktop.test.mjs"))
+      run(process.execPath, ["scripts/build-desktop-tools.mjs"]);
+    if (
+      plan.files.some((file) =>
+        ["scripts/package-smoke.test.mjs", "scripts/page-interaction-package.test.mjs"].includes(
+          file,
+        ),
+      )
+    ) {
+      const pnpm = resolve(core, "apps/desktop/node_modules/pnpm/bin/pnpm.mjs");
+      if (!existsSync(pnpm)) refuse("QUALITY_PACKAGE_PNPM_REQUIRED", pnpm);
+      process.env.GEA_PACKAGE_PNPM = pnpm;
+    }
     if (["quality", "business-profile", "mcp-client-repair"].includes(values.phase)) {
       const checks = runQualityChecks([
         {
