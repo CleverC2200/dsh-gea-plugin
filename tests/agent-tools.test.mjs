@@ -861,7 +861,8 @@ test(
         // 通道顺序由宿主算好一起给出，模型不必自己挑通道。
         assert.match(result.content, /"channels"/);
         // 问答侧关掉受管 SQL 之后，取数通道指向模块 MCP。
-        assert.match(result.content, /mcp__gea-gateway__query_business_data/);
+        assert.match(JSON.parse(result.content).channels.note, /query_business_data/);
+        assert.match(JSON.parse(result.content).channels.note, /inspect_cube_model/);
         assert.equal(result.content.includes("gea_plugin_read"), false);
         assert.equal(
           rows.some(
