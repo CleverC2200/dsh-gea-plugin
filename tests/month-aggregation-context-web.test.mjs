@@ -8,6 +8,8 @@ test(
   "one month merges Y and DC plans and synchronises the combined page with the conversation",
   { timeout: 90000 },
   async (t) => {
+    let page;
+    t.after(async () => page?.removeAllListeners("response", { behavior: "wait" }));
     const app = await profile(t, {
       roles: [{ code: "sales_plan_province_approver", name: "省区审批" }],
     });
@@ -168,7 +170,7 @@ test(
         url: app.origin,
       })),
     );
-    const page = await context.newPage();
+    page = await context.newPage();
     const contextPayloads = [];
     const contextOwners = [];
     const openedPages = [];
