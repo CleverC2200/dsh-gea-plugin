@@ -142,7 +142,12 @@ for (const batchSize of [1, 3])
         40000,
       );
       const after = captured.find((r) => r.phase === "exhaust" && r.step === 1 + 12 / batchSize);
-      assert.ok(after, "12 successful reads reached the budget boundary");
+      assert.ok(after, "12 successful reads reached the budget boundary: " + JSON.stringify({
+        requests: captured.map(row => ({step: row.step, tools: row.body.tools?.map(tool => tool.function.name)})),
+        results: readToolResults(events),
+        endings: events.filter(event => event.type === "turn/end"),
+        toolCalls: events.filter(event => event.type === "tool/call"),
+      }));
       assert.equal(
         after.body.tools?.length ?? 0,
         0,

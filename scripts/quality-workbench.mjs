@@ -74,7 +74,13 @@ export async function readPreparedWorkbench({ source, prepared, head }) {
     status
       .split("\n")
       .filter(Boolean)
-      .some((line) => !line.startsWith(" M ") || !derived(line.slice(3)))
+      .some((line) => {
+        const file = line.slice(3);
+        return !(
+          (line.startsWith(" M ") && derived(file)) ||
+          (line.startsWith("?? ") && file.startsWith("lib/types/") && file.endsWith(".d.ts"))
+        );
+      })
   )
     throw Error("QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED");
   const sourceFiles = git(source, "ls-tree", "-r", "-z", head)

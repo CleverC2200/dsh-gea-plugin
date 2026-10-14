@@ -254,7 +254,7 @@ test(
         () => readSession(app.runtime, sessionId),
         (r) => r.some((e) => e.type === "turn/end"),
       );
-      assert.equal(seen.at(-1), consumer);
+      assert.equal(seen.at(-1), consumer, JSON.stringify({preset, seen, events: await readSession(app.runtime, sessionId)}));
     }
   },
 );

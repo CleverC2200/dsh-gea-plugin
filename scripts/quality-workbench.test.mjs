@@ -98,6 +98,22 @@ test("the three built static HTML outputs are frozen while authored static sourc
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_SOURCE_BLOB_MISMATCH/);
 });
 
+test("new build declarations are frozen while new authored or staged files remain forbidden", async (t) => {
+  const fixture = preparedFixture(t);
+  const declaration = join(fixture.prepared, "lib/types/page-session-core.d.ts");
+  writeFileSync(declaration, "export declare class PageSessionCore {}\n");
+  const record = await readPreparedWorkbench(fixture);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  writeFileSync(declaration, "changed output\n");
+  await assert.rejects(verifyPreparedWorkbench(fixture), /QUALITY_WORKBENCH_ASSET_MISMATCH/);
+  writeFileSync(join(fixture.prepared, "src/new.ts"), "authored source\n");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+  rmSync(join(fixture.prepared, "src/new.ts"));
+  fixture.git("-C", fixture.prepared, "add", "lib/types/page-session-core.d.ts");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
 test("prepared Git metadata changes preserve resource admission while real output changes are refused", async (t) => {
   const fixture = preparedFixture(t);
   const record = await readPreparedWorkbench(fixture);
