@@ -81,8 +81,8 @@
     "esbuild": "0.25.9",
     "eventsource-parser": "3.1.1",
     "qrcode": "1.5.4",
-    "yaml": "2.9.0",
-    "semver": "7.7.4"
+    "semver": "7.7.4",
+    "yaml": "2.9.0"
   },
   "dsh": {
     "client": {
@@ -99,19 +99,21 @@
   "devDependencies": {
     "@arco-design/web-react": "2.66.1",
     "@deepseek-ai/cordis": "link:../../official-latest-standard/vendor/cordis",
+    "@deepseek-ai/cordis-plugin-loader": "link:../../official-latest-standard/vendor/loader",
     "@deepseek-ai/dsh": "link:../../official-latest-standard/apps/cli",
     "@deepseek-ai/dsh-agent": "link:../../official-latest-standard/packages/core/agent",
     "@deepseek-ai/dsh-agent-default-model": "link:../../official-latest-standard/packages/core/agent-default-model",
     "@deepseek-ai/dsh-api-remotes": "link:../../official-latest-standard/packages/api/remotes",
     "@deepseek-ai/dsh-api-session-controller": "link:../../official-latest-standard/packages/api/session-controller",
     "@deepseek-ai/dsh-app-boot": "link:../../official-latest-standard/packages/boot/app-boot",
-    "@deepseek-ai/dsh-plugin-manager": "link:../../official-latest-standard/packages/boot/plugin-manager",
     "@deepseek-ai/dsh-atomic-write": "link:../../official-latest-standard/packages/util/atomic-write",
     "@deepseek-ai/dsh-brand": "link:../../official-latest-standard/packages/util/brand",
     "@deepseek-ai/dsh-client-connection": "link:../../official-latest-standard/packages/client/connection",
     "@deepseek-ai/dsh-client-locale": "link:../../official-latest-standard/packages/client/locale",
+    "@deepseek-ai/dsh-client-modules": "link:../../official-latest-standard/packages/client/modules",
     "@deepseek-ai/dsh-client-store": "link:../../official-latest-standard/packages/client/store",
     "@deepseek-ai/dsh-client-ui-layout": "link:../../official-latest-standard/packages/client/ui-layout",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "link:../../official-latest-standard/packages/client/ui-plugin-manager",
     "@deepseek-ai/dsh-client-ui-renderer": "link:../../official-latest-standard/packages/client/ui-renderer",
     "@deepseek-ai/dsh-client-ui-session": "link:../../official-latest-standard/packages/client/ui-session",
     "@deepseek-ai/dsh-client-ui-settings": "link:../../official-latest-standard/packages/client/ui-settings",
@@ -119,10 +121,12 @@
     "@deepseek-ai/dsh-client-ui-slots": "link:../../official-latest-standard/packages/client/ui-slots",
     "@deepseek-ai/dsh-client-ui-theme": "link:../../official-latest-standard/packages/client/ui-theme",
     "@deepseek-ai/dsh-client-ui-workspace": "link:../../official-latest-standard/packages/client/ui-workspace",
+    "@deepseek-ai/dsh-cmdline": "link:../../official-latest-standard/packages/boot/cmdline",
     "@deepseek-ai/dsh-fs": "link:../../official-latest-standard/packages/fs/fs",
     "@deepseek-ai/dsh-llm": "link:../../official-latest-standard/packages/llm/llm",
     "@deepseek-ai/dsh-llm-pi-ai": "link:../../official-latest-standard/packages/llm/llm-pi-ai",
     "@deepseek-ai/dsh-persona": "link:../../official-latest-standard/packages/preset/persona",
+    "@deepseek-ai/dsh-plugin-manager": "link:../../official-latest-standard/packages/boot/plugin-manager",
     "@deepseek-ai/dsh-session": "link:../../official-latest-standard/packages/core/session",
     "@deepseek-ai/dsh-skill": "link:../../official-latest-standard/packages/skill/skill",
     "@deepseek-ai/dsh-tools": "link:../../official-latest-standard/packages/core/tools",
@@ -135,6 +139,7 @@
     "@types/qrcode": "1.5.6",
     "@types/react": "18.3.31",
     "@types/react-dom": "18.3.7",
+    "@types/semver": "7.8.0",
     "builder-util-runtime": "9.7.0",
     "dsh-agent-manage": "link:../dsh-agent-manage",
     "electron-updater": "6.8.9",
@@ -146,11 +151,7 @@
     "react-dom": "18.3.1",
     "react-grab": "0.2.0",
     "typescript": "5.9.3",
-    "xlsx-republish": "0.20.3",
-    "@deepseek-ai/cordis-plugin-loader": "link:../../official-latest-standard/vendor/loader",
-    "@deepseek-ai/dsh-client-modules": "link:../../official-latest-standard/packages/client/modules",
-    "@deepseek-ai/dsh-cmdline": "link:../../official-latest-standard/packages/boot/cmdline",
-    "@deepseek-ai/dsh-client-ui-plugin-manager": "link:../../official-latest-standard/packages/client/ui-plugin-manager"
+    "xlsx-republish": "0.20.3"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -196,14 +197,14 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4 || 4.0.5-alpha.1",
     "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-app-boot": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-atomic-write": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-brand": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-llm": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-llm-pi-ai": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-persona": "0.2.0-rc.2 || 0.2.1-alpha.1",
-    "@deepseek-ai/dsh-tools": "0.2.0-rc.2 || 0.2.1-alpha.1",
-    "@deepseek-ai/dsh-app-boot": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-plugin-manager": "0.2.0-rc.2 || 0.2.1-alpha.1",
-    "@deepseek-ai/dsh-atomic-write": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/schemastery": "3.18.4 || 3.18.5-alpha.1",
     "dsh-agent-manage": "0.6.3-company.6"
   }

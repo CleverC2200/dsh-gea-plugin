@@ -1,5 +1,12 @@
-import { companyPackageNames, type CompanyPackageName } from "./plugin-release.mjs";
-import type { PluginPackageStamp, PluginUpdateRow } from "./plugin-update-state.ts";
+import { parseUpdateProblem } from "./plugin-update-diagnostics.ts";
+import {
+  companyPackageNames,
+  type CompanyPackageName,
+} from "./plugin-release.mjs";
+import type {
+  PluginPackageStamp,
+  PluginUpdateRow,
+} from "./plugin-update-state.ts";
 
 export function updateObject(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -11,7 +18,10 @@ export function updatePackageName(value: unknown): CompanyPackageName {
   if (!name) throw Error("UPDATE_PACKAGE_INVALID");
   return name;
 }
-export function compiledPackageStamp(value: unknown, name: CompanyPackageName): PluginPackageStamp {
+export function compiledPackageStamp(
+  value: unknown,
+  name: CompanyPackageName,
+): PluginPackageStamp {
   const stamp = updateObject(value);
   if (
     Object.keys(stamp).length !== 2 ||
@@ -27,7 +37,11 @@ export type UpdateClientReport = {
   pageIdentity: string;
   nonce: string;
   /** Revision of the desired public graph; actual loaded identity is the ACTIVE namespace stamp. */
-  modules: { stamp: PluginPackageStamp; identity: string; desiredArtifactRevision: string }[];
+  modules: {
+    stamp: PluginPackageStamp;
+    identity: string;
+    desiredArtifactRevision: string;
+  }[];
 };
 export type UpdateClientStatus = {
   revision: number;
@@ -41,14 +55,22 @@ export function parseUpdateClientReport(value: unknown): UpdateClientReport {
   const report = updateObject(value);
   if (
     Object.keys(report).some(
-      (key) => !["hostProcessIdentity", "pageIdentity", "nonce", "modules"].includes(key),
+      (key) =>
+        !["hostProcessIdentity", "pageIdentity", "nonce", "modules"].includes(
+          key,
+        ),
     )
   )
     throw Error("UPDATE_REQUEST_INVALID");
-  const fields = [report.hostProcessIdentity, report.pageIdentity, report.nonce];
+  const fields = [
+    report.hostProcessIdentity,
+    report.pageIdentity,
+    report.nonce,
+  ];
   if (
     !fields.every(
-      (value) => typeof value === "string" && value.length > 0 && value.length <= 200,
+      (value) =>
+        typeof value === "string" && value.length > 0 && value.length <= 200,
     ) ||
     !Array.isArray(report.modules) ||
     report.modules.length > 3
@@ -59,7 +81,8 @@ export function parseUpdateClientReport(value: unknown): UpdateClientReport {
       stamp = updateObject(module.stamp);
     if (
       Object.keys(module).some(
-        (key) => !["stamp", "identity", "desiredArtifactRevision"].includes(key),
+        (key) =>
+          !["stamp", "identity", "desiredArtifactRevision"].includes(key),
       ) ||
       typeof module.identity !== "string" ||
       !module.identity ||
@@ -75,7 +98,9 @@ export function parseUpdateClientReport(value: unknown): UpdateClientReport {
       desiredArtifactRevision: module.desiredArtifactRevision,
     };
   });
-  if (new Set(modules.map((module) => module.stamp.name)).size !== modules.length)
+  if (
+    new Set(modules.map((module) => module.stamp.name)).size !== modules.length
+  )
     throw Error("UPDATE_REQUEST_INVALID");
   return {
     hostProcessIdentity: report.hostProcessIdentity as string,
@@ -88,6 +113,7 @@ export function parseUpdateClientReport(value: unknown): UpdateClientReport {
 const states: PluginUpdateRow["state"][] = [
   "idle",
   "checking",
+  "check-failed",
   "available",
   "current",
   "blocked",
@@ -105,7 +131,8 @@ const states: PluginUpdateRow["state"][] = [
   "unknown",
 ];
 const nullableText = (value: unknown): string | null => {
-  if (value === null || (typeof value === "string" && value.length <= 300)) return value;
+  if (value === null || (typeof value === "string" && value.length <= 300))
+    return value;
   throw Error("UPDATE_STATUS_INVALID");
 };
 /** Validate Host status before publishing it into the official provider observable. */
@@ -141,9 +168,13 @@ export function parseUpdateClientStatus(raw: unknown): UpdateClientStatus {
       candidateVersion: nullableText(row.candidateVersion),
       planId: nullableText(row.planId),
       diagnostic: nullableText(row.diagnostic),
+      ...(row.problem === undefined
+        ? {}
+        : { problem: parseUpdateProblem(row.problem) }),
     };
   });
-  if (new Set(items.map((row) => row.packageName)).size !== 3) throw Error("UPDATE_STATUS_INVALID");
+  if (new Set(items.map((row) => row.packageName)).size !== 3)
+    throw Error("UPDATE_STATUS_INVALID");
   return {
     revision: Number(value.revision),
     items,

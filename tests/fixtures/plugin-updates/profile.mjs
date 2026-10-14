@@ -10,7 +10,10 @@ import {
   projectPluginRelease,
 } from "../../../src/shared/plugin-release.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
-export async function controllerFixture(t, { mode = "success" } = {}) {
+export async function controllerFixture(
+  t,
+  { mode = "success", sourceFailure } = {},
+) {
   const root = await mkdtemp(join(tmpdir(), "plugin-update-real-profile-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const dir = join(root, "profile"),
@@ -160,7 +163,24 @@ export async function controllerFixture(t, { mode = "success" } = {}) {
     {
       trustDirectory: join(root, "source-trust"),
       resolveAuthentication: async () => ({}),
-      fetch: async (url) => new Response(files.get(url)),
+      fetch: async (url) => {
+        if (sourceFailure === "http")
+          return new Response("secret-credential /private/path Authorization", {
+            status: 503,
+          });
+        if (sourceFailure === "network")
+          throw Error("secret-credential /private/path Authorization");
+        if (sourceFailure === "signature" && url === channel) {
+          const signed = JSON.parse(files.get(url).toString("utf8"));
+          return new Response(
+            JSON.stringify({
+              ...signed,
+              signatureBase64: Buffer.alloc(64).toString("base64"),
+            }),
+          );
+        }
+        return new Response(files.get(url));
+      },
     },
   );
   const profile = {

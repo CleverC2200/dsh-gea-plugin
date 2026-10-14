@@ -1,3 +1,7 @@
+import {
+  sourceUpdateProblem,
+  planUpdateProblem,
+} from "../shared/plugin-update-diagnostics.ts";
 import { withFileLock } from "@deepseek-ai/dsh-atomic-write";
 import { runProfilePnpm } from "@deepseek-ai/dsh-plugin-manager/operations";
 import { resolveBundleDir } from "@deepseek-ai/dsh-app-boot";
@@ -550,6 +554,21 @@ export function createPluginUpdateController(
     if (!initialized) await initialize();
     if (closed) fail("UPDATE_HOST_CLOSED");
     if (active || journalBroken || blocking(state.operation)) return snapshot();
+    if (process.platform === "win32") {
+      plans.clear();
+      state = {
+        ...state,
+        items: state.items.map((item) => ({
+          ...item,
+          state: "blocked",
+          planId: null,
+          diagnostic: "UPDATE_PROCESS_PLATFORM_UNSUPPORTED",
+          problem: { kind: "environment", code: "unsupported-platform" },
+        })),
+      };
+      publish();
+      return snapshot();
+    }
     const generation = ++checking;
     plans.clear();
     state = {
@@ -560,6 +579,7 @@ export function createPluginUpdateController(
         diagnostic: null,
         planId: null,
         candidateVersion: null,
+        problem: undefined,
       })),
     };
     publish();
@@ -632,6 +652,10 @@ export function createPluginUpdateController(
           row(release.name, {
             state: plan.kind === "current" ? "current" : "blocked",
             diagnostic: plan.kind === "blocked" ? plan.code : null,
+            problem:
+              plan.kind === "blocked"
+                ? planUpdateProblem(plan, release, options.core)
+                : undefined,
           });
       }
     } catch (error) {
@@ -641,8 +665,13 @@ export function createPluginUpdateController(
           ...state,
           items: state.items.map((item) => ({
             ...item,
-            state: "blocked",
+            state: code(error, "SOURCE_CHECK_FAILED").startsWith("SOURCE_")
+              ? "check-failed"
+              : "blocked",
             diagnostic: code(error, "SOURCE_CHECK_FAILED"),
+            problem: code(error, "SOURCE_CHECK_FAILED").startsWith("SOURCE_")
+              ? sourceUpdateProblem(code(error, "SOURCE_CHECK_FAILED"))
+              : { kind: "policy", code: "conditions" },
             planId: null,
             candidateVersion: null,
           })),
@@ -666,6 +695,8 @@ export function createPluginUpdateController(
   }): Promise<PluginUpdateOperation> {
     if (!initialized) await initialize();
     if (closed) fail("UPDATE_HOST_CLOSED");
+    if (process.platform === "win32")
+      fail("UPDATE_PROCESS_PLATFORM_UNSUPPORTED");
     if (active || journalBroken || blocking(state.operation))
       fail("UPDATE_OPERATION_BLOCKED");
     const plan = plans.get(request.packageName);
@@ -894,6 +925,7 @@ export function createPluginUpdateController(
                     after,
                     options.core,
                     options.profile.dir,
+                    options.profile.installAnchor,
                   )
                 ).length ||
                 !(await archiveMatches(archive, installed.dir, lifetime.signal))

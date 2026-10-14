@@ -17,7 +17,9 @@ import {
 import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
 
 /** Observe compiled exports that the public client Loader has actually activated. */
-export function readClientPluginModules(ctx: Context): UpdateClientReport["modules"] {
+export function readClientPluginModules(
+  ctx: Context,
+): UpdateClientReport["modules"] {
   const modules = ctx.get("modules");
   if (!modules || modules.entries.state.getSnapshot().syncing) return [];
   const observed: UpdateClientReport["modules"] = [];
@@ -32,14 +34,21 @@ export function readClientPluginModules(ctx: Context): UpdateClientReport["modul
       !entry ||
       fiber?.state !== 2 ||
       !record ||
-      modules.entries.state.getSnapshot().failures.some((failure) => failure.id === name)
+      modules.entries.state
+        .getSnapshot()
+        .failures.some((failure) => failure.id === name)
     )
       continue;
     try {
       const namespace = updateObject(record.exports);
-      if (ctx.registry.resolve(ctx.loader.unwrapExports(namespace)) !== fiber.runtime?.callback)
+      if (
+        ctx.registry.resolve(ctx.loader.unwrapExports(namespace)) !==
+        fiber.runtime?.callback
+      )
         continue;
-      const revision = modules.manifest.modules.find((row) => row.id === name)?.rev;
+      const revision = modules.manifest.modules.find(
+        (row) => row.id === name,
+      )?.rev;
       if (revision)
         observed.push({
           stamp: compiledPackageStamp(namespace.pluginPackageVersion, name),
@@ -53,7 +62,9 @@ export function readClientPluginModules(ctx: Context): UpdateClientReport["modul
   return observed;
 }
 
-export function projectPluginUpdates(rows: PluginUpdateRow[]): PluginPackageUpdates {
+export function projectPluginUpdates(
+  rows: PluginUpdateRow[],
+): PluginPackageUpdates {
   const updates: Record<string, PluginPackageUpdateState> = {};
   for (const row of rows) {
     switch (row.state) {
@@ -68,25 +79,41 @@ export function projectPluginUpdates(rows: PluginUpdateRow[]): PluginPackageUpda
         updates[row.packageName] =
           row.candidateVersion && row.planId
             ? { kind: "available", version: row.candidateVersion }
-            : { kind: "blocked", reason: "更新计划尚未确认" };
+            : {
+                kind: "blocked",
+                reason: "",
+                problem: { kind: "policy", code: "plan-unconfirmed" },
+              };
+        break;
+      case "check-failed":
+        updates[row.packageName] = {
+          kind: "check-failed",
+          reason: "",
+          problem: row.problem ?? { kind: "source", code: "unavailable" },
+        };
         break;
       case "blocked":
         updates[row.packageName] = {
           kind: "blocked",
-          reason:
-            row.diagnostic === "UPDATE_SOURCE_NOT_CONFIGURED"
-              ? "更新来源尚未配置"
-              : "更新条件尚未满足",
+          reason: "",
+          problem: row.problem ?? {
+            kind: "policy",
+            code:
+              row.diagnostic === "UPDATE_SOURCE_NOT_CONFIGURED"
+                ? "source-not-configured"
+                : "conditions",
+          },
         };
         break;
       case "downloading":
         updates[row.packageName] = { kind: "updating", phase: "downloading" };
         break;
       case "accepted":
+        updates[row.packageName] = { kind: "updating", phase: "submitting" };
+        break;
       case "waiting-lock":
       case "snapshotting":
-        // 01 review repair adds real lock/snapshot phases; until then this is submitted work, never installation.
-        updates[row.packageName] = { kind: "updating", phase: "submitting" };
+        updates[row.packageName] = { kind: "updating", phase: row.state };
         break;
       case "installing":
       case "verifying":
@@ -97,7 +124,8 @@ export function projectPluginUpdates(rows: PluginUpdateRow[]): PluginPackageUpda
         updates[row.packageName] = {
           kind: "pending-restart",
           installedVersion: row.installedVersion ?? row.candidateVersion ?? "",
-          ...(row.runningHostVersion && row.runningHostVersion === row.runningClientVersion
+          ...(row.runningHostVersion &&
+          row.runningHostVersion === row.runningClientVersion
             ? { runningVersion: row.runningHostVersion }
             : {}),
         };
@@ -106,12 +134,16 @@ export function projectPluginUpdates(rows: PluginUpdateRow[]): PluginPackageUpda
       case "failed":
         updates[row.packageName] = {
           kind: "failed",
-          reason: row.state === "restored" ? "更新失败，已恢复原安装" : "更新失败，请重新检查",
+          reason: "",
+          problem: {
+            kind: "policy",
+            code: row.state === "restored" ? "restored" : "failed",
+          },
           retryAvailable: false,
         };
         break;
       case "unknown":
-        updates[row.packageName] = { kind: "unknown", reason: "更新结果尚未确认" };
+        updates[row.packageName] = { kind: "unknown", reason: "" };
         break;
       default: {
         const exhaustive: never = row.state;
@@ -158,11 +190,14 @@ export function createPluginUpdatesProvider(ctx: Context) {
     });
     const result = updateObject(await response.json());
     signal.throwIfAborted();
-    if (!response.ok || result.ok !== true) throw Error("UPDATE_TRANSPORT_FAILED");
+    if (!response.ok || result.ok !== true)
+      throw Error("UPDATE_TRANSPORT_FAILED");
     return result.value;
   };
   const refresh = async (signal: AbortSignal) => {
-    const next = parseUpdateClientStatus(await request("status", { pageIdentity }, signal));
+    const next = parseUpdateClientStatus(
+      await request("status", { pageIdentity }, signal),
+    );
     if (
       !status ||
       status.hostProcessIdentity !== next.hostProcessIdentity ||
@@ -172,7 +207,10 @@ export function createPluginUpdatesProvider(ctx: Context) {
       publish(projectPluginUpdates(next.items));
     }
     const modules = readClientPluginModules(ctx);
-    if (modules.length && next.items.some((row) => row.runningHostVersion !== null))
+    if (
+      modules.length &&
+      next.items.some((row) => row.runningHostVersion !== null)
+    )
       await request(
         "observed",
         {
@@ -207,7 +245,8 @@ export function createPluginUpdatesProvider(ctx: Context) {
       if (!status) await refresh(initial);
       if (
         status!.items.every(
-          (row) => row.state === "blocked" && row.diagnostic?.startsWith("UPDATE_"),
+          (row) =>
+            row.state === "blocked" && row.diagnostic?.startsWith("UPDATE_"),
         )
       )
         return;
@@ -221,7 +260,8 @@ export function createPluginUpdatesProvider(ctx: Context) {
     },
     update: async (name) => {
       const row = status?.items.find((row) => row.packageName === name);
-      if (!row || row.state !== "available" || !row.planId) throw Error("UPDATE_PLAN_STALE");
+      if (!row || row.state !== "available" || !row.planId)
+        throw Error("UPDATE_PLAN_STALE");
       // No page lifetime signal: closing the view cannot cancel an accepted Host submission.
       try {
         await request(
@@ -230,23 +270,30 @@ export function createPluginUpdatesProvider(ctx: Context) {
           AbortSignal.timeout(status!.checkTimeoutMs),
         );
       } catch {
-        publish({ ...snapshot, [name]: { kind: "unknown", reason: "更新结果尚未确认" } });
+        publish({ ...snapshot, [name]: { kind: "unknown", reason: "" } });
       }
       if (!lifetime.signal.aborted)
         await refresh(
-          AbortSignal.any([lifetime.signal, AbortSignal.timeout(status!.checkTimeoutMs)]),
+          AbortSignal.any([
+            lifetime.signal,
+            AbortSignal.timeout(status!.checkTimeoutMs),
+          ]),
         );
     },
   };
   const tick = () => {
     poll = refresh(
-      AbortSignal.any([lifetime.signal, AbortSignal.timeout(status?.checkTimeoutMs ?? 5000)]),
+      AbortSignal.any([
+        lifetime.signal,
+        AbortSignal.timeout(status?.checkTimeoutMs ?? 5000),
+      ]),
     )
       .catch(() => {
         /* Existing authoritative state remains until a later status answers. */
       })
       .finally(() => {
-        if (!lifetime.signal.aborted) timer = setTimeout(tick, status?.pollIntervalMs ?? 2000);
+        if (!lifetime.signal.aborted)
+          timer = setTimeout(tick, status?.pollIntervalMs ?? 2000);
       });
   };
   return {

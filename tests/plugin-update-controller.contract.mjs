@@ -17,9 +17,9 @@ const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 if (!sdk)
   throw Error("GEA_PLUGIN_UPDATE_SDK must explicitly name unchanged fixed SDK");
 // The explicit generated SDK must implement the unchanged candidate public operations.
-const candidateSdk = process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE ?? fileURLToPath(
-  new URL("../../../official-latest-standard/", import.meta.url),
-);
+const candidateSdk =
+  process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE ??
+  fileURLToPath(new URL("../../../official-latest-standard/", import.meta.url));
 for (const [path, expected] of Object.entries({
   "packages/boot/plugin-manager/src/operations.ts":
     "16d141f794041d06122ce9f8ab7bae6f55b4a78feefb620f9cb6c7ba5efac547",
@@ -46,12 +46,14 @@ const work = await mkdtemp(
   ),
 );
 const modulePath = join(work, "controller.mjs");
+const subjectPath = join(work, "subjects.ts");
+await writeFile(
+  subjectPath,
+  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {projectPluginUpdates} from ${JSON.stringify(fileURLToPath(new URL("../src/plugin-updates-client.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {readPluginProfile, combinationManifests, validateActualProfile} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
+);
+
 await build({
-  entryPoints: [
-    fileURLToPath(
-      new URL("../src/host/plugin-update-controller.ts", import.meta.url),
-    ),
-  ],
+  entryPoints: [subjectPath],
   bundle: true,
   platform: "node",
   format: "esm",
@@ -78,9 +80,13 @@ await build({
     },
   ],
 });
-const { createPluginUpdateController } = await import(
-  pathToFileURL(modulePath)
-);
+const {
+  createPluginUpdateController,
+  readPluginProfile,
+  validateActualProfile,
+  projectPluginUpdates,
+  parseUpdateClientStatus,
+} = await import(pathToFileURL(modulePath));
 test("controller starts with an empty operation and preserves existing profile data", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "plugin-update-profile-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -576,4 +582,264 @@ test("receipt replacement failure after mutation remains unknown and unreadable 
     /UPDATE_OPERATION_BLOCKED/,
   );
   await reopened.dispose();
+});
+
+test("actual pinned pnpm reachable transitive peer blocks an incompatible independent update", async (t) => {
+  const { controllerFixture } = await import(
+    "./fixtures/plugin-updates/profile.mjs"
+  );
+  const { installPnpmConsumerLayout } = await import(
+    "./fixtures/plugin-updates/pnpm-profile.mjs"
+  );
+  const f = await controllerFixture(t);
+  await installPnpmConsumerLayout(f, "3.0.0");
+  const graph = await readPluginProfile(f.dir);
+  const consumer = graph.packages.find(
+    (row) => row.name === "fixture-consumer-b",
+  );
+  assert.ok(consumer, "transitive consumer must be reachable");
+  assert.equal(consumer.root, false);
+  assert.match(consumer.dir, /\.pnpm/);
+  await assert.rejects(
+    readFile(
+      join(consumer.dir, "node_modules/fixture-consumer-b/package.json"),
+    ),
+    { code: "ENOENT" },
+  );
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const row = controller
+    .snapshot()
+    .items.find((row) => row.packageName === "@cleverc2200/gea-dsh-prototype");
+  assert.equal(row.state, "blocked");
+  assert.equal(row.diagnostic, "COMBINATION_INCOMPATIBLE");
+  assert.equal(row.planId, null);
+  const projected = projectPluginUpdates([row])[row.packageName];
+  assert.equal(projected.problem.kind, "dependencies");
+  assert.deepEqual(projected.problem.requirements, [
+    {
+      consumer: "fixture-consumer-b",
+      dependency: row.packageName,
+      required: "3.0.0",
+      installed: "3.1.0",
+    },
+  ]);
+  const selected = graph.packages.find(
+    (row) => row.root && row.name === "@cleverc2200/gea-dsh-prototype",
+  );
+  const manifest = JSON.parse(
+    await readFile(join(selected.dir, "package.json"), "utf8"),
+  );
+  await writeFile(
+    join(selected.dir, "package.json"),
+    JSON.stringify({ ...manifest, version: "3.1.0" }),
+  );
+  assert.ok(
+    (
+      await validateActualProfile(
+        await readPluginProfile(f.dir),
+        f.options.core,
+        f.dir,
+        f.profile.installAnchor,
+      )
+    ).some(
+      (failure) =>
+        failure === "fixture-consumer-b:@cleverc2200/gea-dsh-prototype",
+    ),
+  );
+});
+test("compatible real pnpm peer permits update while unreachable obsolete contexts do not constrain the graph", async (t) => {
+  const { controllerFixture } = await import(
+    "./fixtures/plugin-updates/profile.mjs"
+  );
+  const { installPnpmConsumerLayout } = await import(
+    "./fixtures/plugin-updates/pnpm-profile.mjs"
+  );
+  const f = await controllerFixture(t);
+  await installPnpmConsumerLayout(f, "^3.0.0");
+  const stale = join(
+    f.dir,
+    "node_modules/.pnpm/obsolete-context/node_modules/obsolete-consumer",
+  );
+  await mkdir(stale, { recursive: true });
+  await writeFile(
+    join(stale, "package.json"),
+    JSON.stringify({
+      name: "obsolete-consumer",
+      version: "1.0.0",
+      peerDependencies: { "@cleverc2200/gea-dsh-prototype": "1.0.0" },
+    }),
+  );
+  const graph = await readPluginProfile(f.dir);
+  assert.ok(graph.packages.some((row) => row.name === "fixture-consumer-b"));
+  assert.ok(!graph.packages.some((row) => row.name === "obsolete-consumer"));
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  assert.equal(
+    controller
+      .snapshot()
+      .items.find((row) => row.packageName === "@cleverc2200/gea-dsh-prototype")
+      .state,
+    "available",
+  );
+  assert.deepEqual(
+    await validateActualProfile(
+      graph,
+      f.options.core,
+      f.dir,
+      f.profile.installAnchor,
+    ),
+    [],
+  );
+});
+
+test("Core SDK peers resolve from the explicit installation while a normal pnpm profile carries no SDK copy", async (t) => {
+  const { controllerFixture } = await import(
+    "./fixtures/plugin-updates/profile.mjs"
+  );
+  const { installPnpmConsumerLayout } = await import(
+    "./fixtures/plugin-updates/pnpm-profile.mjs"
+  );
+  const { symlink } = await import("node:fs/promises");
+  const f = await controllerFixture(t);
+  const sdkName = "@deepseek-ai/dsh-brand";
+  const sdkLinks = join(f.root, "anchor/node_modules/@deepseek-ai");
+  await mkdir(sdkLinks, { recursive: true });
+  await symlink(join(sdk, "packages/util/brand"), join(sdkLinks, "dsh-brand"));
+  const sdkVersion = JSON.parse(
+    await readFile(join(sdk, "packages/util/brand/package.json"), "utf8"),
+  ).version;
+  f.options.core.sdk = { [sdkName]: sdkVersion };
+  await installPnpmConsumerLayout(f, "^3.0.0", { [sdkName]: sdkVersion });
+  await assert.rejects(
+    readFile(join(f.dir, "node_modules", sdkName, "package.json")),
+    { code: "ENOENT" },
+  );
+  const graph = await readPluginProfile(f.dir);
+  assert.deepEqual(
+    await validateActualProfile(
+      graph,
+      f.options.core,
+      f.dir,
+      f.profile.installAnchor,
+    ),
+    [],
+  );
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  assert.equal(
+    controller
+      .snapshot()
+      .items.find((row) => row.packageName === "@cleverc2200/gea-dsh-prototype")
+      .state,
+    "available",
+  );
+});
+test("Windows check and submission reject before download, acceptance or any package mutation", async (t) => {
+  const { controllerFixture } = await import(
+    "./fixtures/plugin-updates/profile.mjs"
+  );
+  const f = await controllerFixture(t),
+    controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const available = controller
+    .snapshot()
+    .items.find((row) => row.state === "available");
+  const before = await readFile(join(f.dir, "package.json"));
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { ...descriptor, value: "win32" });
+  try {
+    await assert.rejects(
+      controller.submit({
+        packageName: available.packageName,
+        planId: available.planId,
+      }),
+      /UPDATE_PROCESS_PLATFORM_UNSUPPORTED/,
+    );
+    await controller.check();
+    assert.ok(
+      controller
+        .snapshot()
+        .items.every(
+          (row) =>
+            row.state === "blocked" &&
+            row.diagnostic === "UPDATE_PROCESS_PLATFORM_UNSUPPORTED" &&
+            row.planId === null,
+        ),
+    );
+    assert.equal(controller.snapshot().operation, null);
+    assert.deepEqual(await readFile(join(f.dir, "package.json")), before);
+    await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), {
+      code: "ENOENT",
+    });
+  } finally {
+    Object.defineProperty(process, "platform", descriptor);
+  }
+});
+
+test("signed/HTTP check failures retain safe distinct provider errors while Core and graph failures retain required versions", async (t) => {
+  const { controllerFixture } = await import(
+    "./fixtures/plugin-updates/profile.mjs"
+  );
+  for (const [sourceFailure, expected] of [
+    ["signature", "signature"],
+    ["http", "http"],
+    ["network", "unavailable"],
+  ]) {
+    const f = await controllerFixture(t, { sourceFailure });
+    const controller = createPluginUpdateController(f.options);
+    t.after(() => controller.dispose());
+    await controller.initialize();
+    await controller.check();
+    const snapshot = controller.snapshot();
+    assert.ok(
+      snapshot.items.every(
+        (row) => row.state === "check-failed" && row.planId === null,
+      ),
+    );
+    const status = parseUpdateClientStatus({
+      revision: snapshot.revision,
+      items: snapshot.items,
+      hostProcessIdentity: "fixture",
+      challenge: "nonce",
+      checkTimeoutMs: 1000,
+      pollIntervalMs: 1000,
+    });
+    const projected = projectPluginUpdates(status.items);
+    assert.ok(
+      Object.values(projected).every(
+        (row) =>
+          row.kind === "check-failed" &&
+          row.problem.kind === "source" &&
+          row.problem.code === expected,
+      ),
+    );
+    assert.ok(!JSON.stringify(status).includes("secret-credential"));
+    assert.ok(!JSON.stringify(status).includes("/private/path"));
+  }
+  const f = await controllerFixture(t),
+    controller = createPluginUpdateController({
+      ...f.options,
+      core: { ...f.options.core, head: "b".repeat(40) },
+    });
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const core = projectPluginUpdates(controller.snapshot().items)[
+    "@cleverc2200/gea-dsh-prototype"
+  ];
+  assert.equal(core.kind, "blocked");
+  assert.equal(core.problem.kind, "core");
+  assert.equal(core.problem.current.version, "0.2.0-rc.2");
+  assert.deepEqual(core.problem.required, [
+    { version: "0.2.0-rc.2", revision: "a".repeat(40) },
+  ]);
 });

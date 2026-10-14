@@ -15,7 +15,7 @@ import {
   writeFile,
   open,
 } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative, dirname } from "node:path";
 import {
   companyPackageNames,
   comparePluginVersions,
@@ -163,68 +163,86 @@ async function externalRoots(
 async function packages(root: string): Promise<ProfilePackage[]> {
   const output: ProfilePackage[] = [],
     seen = new Map<string, ProfilePackage>();
-  async function visitModules(modules: string, rootLevel: boolean) {
-    let names: string[];
-    try {
-      names = await readdir(modules);
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT")
-        return;
-      throw error;
+  const profileDirectory = dirname(root);
+  async function visitPackage(location: string, rootLevel: boolean) {
+    const dir = await realpath(location),
+      previous = seen.get(dir);
+    if (previous) {
+      if (rootLevel) previous.root = true;
+      return;
     }
-    for (const name of names.sort()) {
-      if (name.startsWith(".")) continue;
-      const locations = name.startsWith("@")
-        ? (await readdir(join(modules, name)))
-            .sort()
-            .map((child) => join(modules, name, child))
-        : [join(modules, name)];
-      for (const location of locations) {
-        const info = await lstat(location);
-        if (!info.isDirectory() && !info.isSymbolicLink()) continue;
-        const dir = await realpath(location);
-        const previous = seen.get(dir);
-        if (previous) {
-          if (rootLevel) previous.root = true;
-          continue;
-        }
-        const raw = await optionalFile(join(dir, "package.json"));
-        if (!raw) continue;
-        const manifest = object(JSON.parse(raw.toString("utf8")));
+    const raw = await optionalFile(join(dir, "package.json"));
+    if (!raw) return;
+    const manifest = object(JSON.parse(raw.toString("utf8")));
+    if (
+      typeof manifest.name !== "string" ||
+      typeof manifest.version !== "string"
+    )
+      throw Error("PROFILE_GRAPH_INVALID");
+    comparePluginVersions(manifest.version, manifest.version);
+    const peerDependencies = strings(manifest.peerDependencies),
+      dependencies = strings(manifest.dependencies),
+      optionalDependencies = strings(manifest.optionalDependencies);
+    const peerDependenciesMeta: Record<string, { optional: boolean }> = {};
+    for (const [peer, rawMeta] of Object.entries(
+      object(manifest.peerDependenciesMeta ?? {}),
+    )) {
+      const meta = object(rawMeta);
+      if (typeof meta.optional !== "boolean")
+        throw Error("PROFILE_GRAPH_INVALID");
+      peerDependenciesMeta[peer] = { optional: meta.optional };
+    }
+    const parsed = {
+      name: manifest.name,
+      version: manifest.version,
+      dir,
+      manifest,
+      root: rootLevel,
+      peerDependencies,
+      peerDependenciesMeta,
+      dependencies,
+    };
+    output.push(parsed);
+    seen.set(dir, parsed);
+    // Resolve from the real consumer anchor. Pnpm peers/dependencies can be siblings
+    // in its virtual context; enumerating .pnpm would also include obsolete instances.
+    for (const name of Object.keys({
+      ...dependencies,
+      ...optionalDependencies,
+      ...peerDependencies,
+    }).sort()) {
+      let resolved: string;
+      try {
+        resolved = resolveBundleDir(
+          "dsh",
+          name,
+          join(dir, "package.json"),
+          profileDirectory,
+        );
+      } catch (error) {
         if (
-          typeof manifest.name !== "string" ||
-          typeof manifest.version !== "string"
+          Object.hasOwn(dependencies, name) &&
+          !Object.hasOwn(optionalDependencies, name)
         )
-          throw Error("PROFILE_GRAPH_INVALID");
-        comparePluginVersions(manifest.version, manifest.version);
-        const peerDependencies = strings(manifest.peerDependencies),
-          dependencies = strings(manifest.dependencies),
-          peerDependenciesMeta: Record<string, { optional: boolean }> = {};
-        for (const [peer, rawMeta] of Object.entries(
-          object(manifest.peerDependenciesMeta ?? {}),
-        )) {
-          const meta = object(rawMeta);
-          if (typeof meta.optional !== "boolean")
-            throw Error("PROFILE_GRAPH_INVALID");
-          peerDependenciesMeta[peer] = { optional: meta.optional };
-        }
-        const parsed = {
-          name: manifest.name,
-          version: manifest.version,
-          dir,
-          manifest,
-          root: rootLevel,
-          peerDependencies,
-          peerDependenciesMeta,
-          dependencies,
-        };
-        output.push(parsed);
-        seen.set(dir, parsed);
-        await visitModules(join(dir, "node_modules"), false);
+          throw Error("PROFILE_GRAPH_UNRESOLVED", { cause: error });
+        continue; // Missing peers remain on the consumer for compatibility validation.
       }
+      await visitPackage(resolved, false);
     }
   }
-  await visitModules(root, true);
+  for (const name of (await readdir(root)).sort()) {
+    if (name.startsWith(".")) continue;
+    const locations = name.startsWith("@")
+      ? (await readdir(join(root, name)))
+          .sort()
+          .map((child) => join(root, name, child))
+      : [join(root, name)];
+    for (const location of locations) {
+      const info = await lstat(location);
+      if (info.isDirectory() || info.isSymbolicLink())
+        await visitPackage(location, true);
+    }
+  }
   return output;
 }
 export async function readPluginProfile(
@@ -292,11 +310,18 @@ export async function combinationManifests(
       ...consumer.dependencies,
       ...consumer.peerDependencies,
     })) {
+      if (Object.hasOwn(core.sdk, name)) {
+        affected[name] = range;
+        continue;
+      }
       if (!companyPackageNames.some((company) => company === name)) continue;
       const selected = snapshot.packages.find(
         (row) => row.root && row.name === name,
       );
-      if (!selected) continue;
+      if (!selected) {
+        affected[name] = range;
+        continue;
+      }
       try {
         const resolved = await realpath(
           resolveBundleDir(
@@ -317,7 +342,7 @@ export async function combinationManifests(
         name: consumer.name + "@" + sha256(consumer.dir).slice(0, 12),
         peerDependencies: affected,
         dependencies: {},
-        peerDependenciesMeta: {},
+        peerDependenciesMeta: consumer.peerDependenciesMeta,
       });
   }
   return roots;
@@ -326,19 +351,23 @@ export async function validateActualProfile(
   snapshot: ProfileSnapshot,
   core: FixedCore,
   profileDirectory: string,
+  installAnchor: string,
 ): Promise<string[]> {
   const failures: string[] = [];
   for (const consumer of snapshot.packages) {
     for (const [name, range] of Object.entries(
       consumer.peerDependencies ?? {},
     )) {
+      const expectedSdk =
+        core.sdk[name] ??
+        (/^@deepseek-ai\/dsh(?:-|$)/.test(name) ? core.version : undefined);
       let version: string | undefined;
       try {
         const dir = await realpath(
           resolveBundleDir(
             "dsh",
             name,
-            join(consumer.dir, "package.json"),
+            expectedSdk ? installAnchor : join(consumer.dir, "package.json"),
             profileDirectory,
           ),
         );
@@ -350,9 +379,6 @@ export async function validateActualProfile(
         /* Missing peers are judged below, including optional absence. */
       }
       if (!version && consumer.peerDependenciesMeta?.[name]?.optional) continue;
-      const expectedSdk =
-        core.sdk[name] ??
-        (/^@deepseek-ai\/dsh(?:-|$)/.test(name) ? core.version : undefined);
       if (
         !version ||
         !satisfiesPluginVersion(version, range) ||

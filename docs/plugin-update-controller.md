@@ -27,6 +27,10 @@
 
 成功 postcheck 核实际目标版本、原非图 manifest 字段、完整组合、每个 consumer 的实际 peer 解析，以及已验证 TGZ 文件内容。它只证明磁盘安装，随后进入 pending-restart。该阶段和 unknown 都阻断后续更新。
 
+可达图从 profile 当前根包出发，沿每个实际 consumer 的依赖、可选依赖及 peer 解析继续遍历，以 realpath 去重。pnpm 虚拟上下文中的同级 node_modules 也属于该图；未被当前根包引用的旧 .pnpm 实例不参与判断。普通包及公司 peer 按 consumer 的真实上下文核版本；Core 提供的 SDK peer 按公共解析合同使用真实 CLI installAnchor，不能用 consumer 的 package.json 冒充安装锚。
+
+当前进程所有权只支持受控 POSIX 进程组。Windows 在 check 和 submit 前均阻断，不能先写入依赖图再进入 unknown。投影保留 waiting-lock、snapshotting、installing、verifying 的真实阶段，公共 Core 合同与字典负责界面文案。
+
 失败时先根据官方 run.json 的实际进程观察判断写者是否停止。必须观察到受控 POSIX 进程组、生存及退出，才允许恢复完整旧 node_modules 和原 package.json/pnpm-lock。无观察、无组进程、Core 的无组兼容修复、仍活着的后代或权限不足均保留 unknown。恢复失败和回执写入失败也保留 unknown，不盲目重装。
 
 cordis.patch.yml 与 pnpm-workspace.yaml 只用于 baseline 观察，恢复保留它们的现值。若安装期间 package.json 非图字段改变，无法证明写入归属，保留 unknown 而不覆盖合法用户设置。Session、草稿、凭据和默认选择不属于安装事务。
@@ -37,6 +41,10 @@ cordis.patch.yml 与 pnpm-workspace.yaml 只用于 baseline 观察，恢复保�
 
 source 的 `assertCurrentRelease` 集中判断签名批准有效期，过期清除可执行 map。下载前、完整备份后以及物理 runner 前重新检查，旧 plan 不能绕过批准过期。频道 revision/时间及版本摘要保留在 source 的独立信任回执中。
 
+签名、HTTP 和来源读取失败使用 check-failed；Core 身份、依赖图或执行条件不满足使用 blocked。`src/shared/plugin-update-diagnostics.ts` 集中产生和解析安全事实：封闭错误种类、包名、所需范围、当前版本和 Core 版本/提交。原始路径、响应头、签名、凭据和 stderr 不进入公共 problem；client 不维护第二套错误字典。
+
 `GEA_PLUGIN_UPDATE_SDK=<generated fixed SDK> pnpm test:plugin-updates` 使用真实临时 profile、真实 Node 子进程及官方 public operations。显式 SDK 与候选 operations、run-tree、atomic-write、profile 源文件必须符合固定 SHA。候选 SDK 尚未生成 lib 时，可以用源码一致的原固定 SDK 只读测试，产品模块不含该绝对路径。此检查不等于完整 Core build、Native/真实 Loader、实际 pnpm 安装、OSS 频道或生产验收。
+
+真实隔离布局 fixture 另外要求 `GEA_PLUGIN_UPDATE_PNPM=<pnpm 11.7.0 的 bin/pnpm.cjs>`，固定版本断言后用私有 store 与本地 TGZ 离线安装。它覆盖不兼容 transitive peer、兼容图与无关旧上下文、以及由显式只读 Core installation 提供 SDK 的普通 profile；该 lane 不访问正式 App profile 或 OSS。
 
 当前实际 App pnpm 11.7.0 离线本地 TGZ 研究发现普通与 peer 上下文更新后旧实例及懒加载资产仍在，证据由总任务的 `pnpm-old-instance-probe-20261014/result.md` 与 receipt 文件提供。这只支持研究使用的精确命令和 layout，不保证其他管理器、prune/GC 或任意旧运行图完整可用。03 不增加保留旧安装实例的运行时机制。

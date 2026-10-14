@@ -1,3 +1,4 @@
+import type { PluginPackageUpdateProblem } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type { CompanyPackageName } from "./plugin-release.mjs";
 export type PluginPackageStamp = { name: CompanyPackageName; version: string };
 export type CompiledModuleProof =
@@ -70,6 +71,7 @@ export type PluginUpdateRow = {
   state:
     | "idle"
     | "checking"
+    | "check-failed"
     | "available"
     | "current"
     | "blocked"
@@ -78,6 +80,7 @@ export type PluginUpdateRow = {
     | "snapshotting"
     | PluginUpdateStage;
   diagnostic: string | null;
+  problem?: PluginPackageUpdateProblem;
 };
 export type PluginUpdateSnapshot = {
   revision: number;
