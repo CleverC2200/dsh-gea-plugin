@@ -33,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       cores: ${{ steps.cores.outputs.cores }}
+      quality-lane: ${{ steps.lane.outputs.lane }}
       gea-sha: ${{ steps.group.outputs.gea-sha }}
       workbench-sha: ${{ steps.group.outputs.workbench-sha }}
       manage-sha: ${{ steps.group.outputs.manage-sha }}
@@ -52,6 +53,14 @@ jobs:
         env:
           QUALITY_SCOPE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: node scripts/run-quality-ci.mjs --phase scope
+      - name: Select the authorized PR gate
+        id: lane
+        env:
+          QUALITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          QUALITY_PR_NUMBER: ${{ github.event.pull_request.number }}
+          QUALITY_PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          QUALITY_PR_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: node scripts/plugin-update-pr-lane.mjs
       - name: Resolve immutable Workbench reader source
         id: reader
         env:
@@ -115,6 +124,7 @@ jobs:
   gates:
     needs: candidate-scope
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ needs.candidate-scope.outputs.quality-lane == 'plugin-updates' && 20 || 360 }}
     strategy:
       fail-fast: false
       matrix:
@@ -178,11 +188,12 @@ jobs:
           QUALITY_BASELINE_ID: ${{ needs.candidate-scope.outputs.baseline-id }}
           CORE_HEAD: ${{ matrix.core }}
         run: node "$GITHUB_WORKSPACE/source/dsh-agent-workbench/scripts/write-hosted-group.mjs" --repo dsh-gea-plugin --root "$GITHUB_WORKSPACE" --core-head "$CORE_HEAD" --workbench-source
-      - name: Prepare independent SDK and run frozen source quality gates
+      - name: Run the selected frozen source quality gate
         env:
           CORE_HEAD: ${{ matrix.core }}
           INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
-        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench"
+          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.quality-lane == 'plugin-updates' && 'plugin-updates' || 'quality' }}
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE"
 
       - name: Keep independent quality results including failure
         if: always()

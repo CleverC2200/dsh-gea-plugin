@@ -16,7 +16,11 @@ test(
     const work = await mkdtemp(join(tmpdir(), "gea-production-package-"));
     t.after(() => rm(work, { recursive: true, force: true }));
     const versions = {
-      "@cleverc2200/gea-dsh-prototype": "0.0.135-candidate.44.9.1",
+      "@cleverc2200/gea-dsh-prototype": JSON.parse(
+        await import("node:fs/promises").then((fs) =>
+          fs.readFile(join(root, "package.json"), "utf8"),
+        ),
+      ).version,
       "@cleverc2200/dsh-agent-workbench": "0.1.1",
       "dsh-agent-manage": "0.6.3-company.6",
       "@changfenhuang/dsh-genui": "0.11.3",

@@ -1,0 +1,83 @@
+[
+  {
+    "name": "@cleverc2200/dsh-agent-workbench",
+    "sourceHead": "3f6092b3422838b7e19358c95acb920c5c16fa86",
+    "exports": {
+      ".": {
+        "types": "./lib/types/host.d.ts",
+        "default": "./lib/host.js"
+      },
+      "./client": {
+        "types": "./lib/types/client.d.ts",
+        "default": "./lib/client.js"
+      }
+    },
+    "dsh": {
+      "client": {
+        "platform": "web",
+        "inject": [
+          "@deepseek-ai/dsh-client-locale",
+          "@deepseek-ai/dsh-client-ui-renderer",
+          "@deepseek-ai/dsh-client-ui-layout",
+          "@deepseek-ai/dsh-client-ui-theme",
+          "@deepseek-ai/dsh-client-ui-conversation",
+          "@deepseek-ai/dsh-client-ui-input-trigger",
+          "@deepseek-ai/dsh-client-ui-workspace",
+          "@deepseek-ai/dsh-client-ui-settings",
+          "@deepseek-ai/dsh-client-ui-chat"
+        ],
+        "external": [
+          "@deepseek-ai/dsh-client-store",
+          "react-dom",
+          "@deepseek-ai/dsh-client-ui-primitives"
+        ]
+      },
+      "bundle": {
+        "patch": "./cordis.patch.yml"
+      }
+    }
+  },
+  {
+    "name": "dsh-agent-manage",
+    "sourceHead": "8136ab30ea7b5bcb9f13f91f5d56a6e11557b78f",
+    "exports": {
+      ".": {
+        "types": "./lib/types/index.d.ts",
+        "default": "./lib/index.js"
+      },
+      "./client": "./client/client.js"
+    },
+    "dsh": {
+      "bundle": {
+        "patch": "./cordis.patch.yml"
+      },
+      "client": {
+        "inject": [
+          "@deepseek-ai/dsh-api-remotes",
+          "@deepseek-ai/dsh-client-locale",
+          "@deepseek-ai/dsh-client-ui-settings",
+          "@deepseek-ai/dsh-client-ui-theme"
+        ],
+        "platform": "web"
+      }
+    }
+  },
+  {
+    "name": "@cleverc2200/gea-dsh-prototype",
+    "sourceHead": "3ce117493480dad3e393ca270001c460c12a6d42",
+    "exports": {
+      ".": "./lib/host.js",
+      "./client": "./lib/client.js"
+    },
+    "dsh": {
+      "client": {
+        "platform": "web",
+        "inject": [],
+        "external": ["@deepseek-ai/dsh-client-store"]
+      },
+      "bundle": {
+        "patch": "./cordis.patch.yml"
+      }
+    }
+  }
+]

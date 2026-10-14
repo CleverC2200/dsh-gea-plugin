@@ -2,6 +2,7 @@ import { build, context } from "esbuild";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { parseArgs } from "node:util";
+import { execFileSync } from "node:child_process";
 
 const { values } = parseArgs({
   options: {
@@ -9,17 +10,15 @@ const { values } = parseArgs({
     watch: { type: "boolean", default: false },
   },
 });
-const selected =
-  values.target === "all"
-    ? ["host", "client"]
-    : values.target.split(",");
+const selected = values.target === "all" ? ["host", "client"] : values.target.split(",");
 for (const name of selected) {
-  if (
-    !["host", "client"].includes(name)
-  ) {
+  if (!["host", "client"].includes(name)) {
     throw new Error("UNKNOWN_BUILD_TARGET: " + name);
   }
 }
+execFileSync(process.execPath, ["scripts/generate-plugin-package-version.mjs"], {
+  stdio: "inherit",
+});
 // One-shot and watch builds use identical wrappers and retain output on errors.
 function clientOutput(file, id) {
   return {
@@ -41,7 +40,11 @@ function clientOutput(file, id) {
   };
 }
 
-const clientExternals = ["react", "@deepseek-ai/dsh-client-store", "@deepseek-ai/dsh-client-ui-primitives"];
+const clientExternals = [
+  "react",
+  "@deepseek-ai/dsh-client-store",
+  "@deepseek-ai/dsh-client-ui-primitives",
+];
 
 const targets = {
   host: [
@@ -70,12 +73,9 @@ const targets = {
         ".html": "text",
         ".txt": "text",
       },
-      plugins: [
-        clientOutput("lib/client.js", "'@cleverc2200/gea-dsh-prototype'"),
-      ],
+      plugins: [clientOutput("lib/client.js", "'@cleverc2200/gea-dsh-prototype'")],
     },
   ],
-
 };
 
 const contexts = [];

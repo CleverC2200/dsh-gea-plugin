@@ -29,6 +29,9 @@ importers:
       qrcode:
         specifier: 1.5.4
         version: 1.5.4
+      semver:
+        specifier: 7.7.4
+        version: 7.7.4
       yaml:
         specifier: 2.9.0
         version: 2.9.0
@@ -39,6 +42,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: link:../../official-latest-standard/vendor/cordis
         version: link:../../official-latest-standard/vendor/cordis
+      '@deepseek-ai/cordis-plugin-loader':
+        specifier: link:../../official-latest-standard/vendor/loader
+        version: link:../../official-latest-standard/vendor/loader
       '@deepseek-ai/dsh':
         specifier: link:../../official-latest-standard/apps/cli
         version: link:../../official-latest-standard/apps/cli
@@ -57,6 +63,9 @@ importers:
       '@deepseek-ai/dsh-app-boot':
         specifier: link:../../official-latest-standard/packages/boot/app-boot
         version: link:../../official-latest-standard/packages/boot/app-boot
+      '@deepseek-ai/dsh-atomic-write':
+        specifier: link:../../official-latest-standard/packages/util/atomic-write
+        version: link:../../official-latest-standard/packages/util/atomic-write
       '@deepseek-ai/dsh-brand':
         specifier: link:../../official-latest-standard/packages/util/brand
         version: link:../../official-latest-standard/packages/util/brand
@@ -66,12 +75,18 @@ importers:
       '@deepseek-ai/dsh-client-locale':
         specifier: link:../../official-latest-standard/packages/client/locale
         version: link:../../official-latest-standard/packages/client/locale
+      '@deepseek-ai/dsh-client-modules':
+        specifier: link:../../official-latest-standard/packages/client/modules
+        version: link:../../official-latest-standard/packages/client/modules
       '@deepseek-ai/dsh-client-store':
         specifier: link:../../official-latest-standard/packages/client/store
         version: link:../../official-latest-standard/packages/client/store
       '@deepseek-ai/dsh-client-ui-layout':
         specifier: link:../../official-latest-standard/packages/client/ui-layout
         version: link:../../official-latest-standard/packages/client/ui-layout
+      '@deepseek-ai/dsh-client-ui-plugin-manager':
+        specifier: link:../../official-latest-standard/packages/client/ui-plugin-manager
+        version: link:../../official-latest-standard/packages/client/ui-plugin-manager
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: link:../../official-latest-standard/packages/client/ui-renderer
         version: link:../../official-latest-standard/packages/client/ui-renderer
@@ -93,6 +108,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-workspace':
         specifier: link:../../official-latest-standard/packages/client/ui-workspace
         version: link:../../official-latest-standard/packages/client/ui-workspace
+      '@deepseek-ai/dsh-cmdline':
+        specifier: link:../../official-latest-standard/packages/boot/cmdline
+        version: link:../../official-latest-standard/packages/boot/cmdline
       '@deepseek-ai/dsh-fs':
         specifier: link:../../official-latest-standard/packages/fs/fs
         version: link:../../official-latest-standard/packages/fs/fs
@@ -105,6 +123,9 @@ importers:
       '@deepseek-ai/dsh-persona':
         specifier: link:../../official-latest-standard/packages/preset/persona
         version: link:../../official-latest-standard/packages/preset/persona
+      '@deepseek-ai/dsh-plugin-manager':
+        specifier: link:../../official-latest-standard/packages/boot/plugin-manager
+        version: link:../../official-latest-standard/packages/boot/plugin-manager
       '@deepseek-ai/dsh-session':
         specifier: link:../../official-latest-standard/packages/core/session
         version: link:../../official-latest-standard/packages/core/session
@@ -141,6 +162,9 @@ importers:
       '@types/react-dom':
         specifier: 18.3.7
         version: 18.3.7(@types/react@18.3.31)
+      '@types/semver':
+        specifier: 7.8.0
+        version: 7.8.0
       builder-util-runtime:
         specifier: 9.7.0
         version: 9.7.0
@@ -159,6 +183,9 @@ importers:
       oxlint:
         specifier: 1.87.0
         version: 1.87.0
+      pnpm:
+        specifier: 11.7.0
+        version: 11.7.0
       prettier:
         specifier: 3.6.2
         version: 3.6.2
@@ -649,6 +676,9 @@ packages:
 
   '@types/react@18.3.31':
     resolution: {integrity: sha512-vfEqpXTvwT91yhmwdfouStN2hSKwTvyRs8qpLfADyrq/kxDw0hZM7Wk9Ug1FELj8hIby+S/+kQCSRFF32nv2Qw==}
+
+  '@types/semver@7.8.0':
+    resolution: {integrity: sha512-1mAINjtQCXXeLkJ9ehXkwOcBpqtLxiVtKhpUf83DdRNdQKV0iXZpaHYqRr7nj+wvxuJzoAmAwXI+sCNMv1CzLQ==}
 
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
@@ -1217,6 +1247,11 @@ packages:
   pngjs@5.0.0:
     resolution: {integrity: sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==}
     engines: {node: '>=10.13.0'}
+
+  pnpm@11.7.0:
+    resolution: {integrity: sha512-GcyFLBIMcSV2DyRD7mvgyltA+fUFmN4aCaHxd1A+AQ5Xwjx3ZG4B52HeWb+HT7IqM5jDOrlpH8E+uUa28PTWIA==}
+    engines: {node: '>=22.13'}
+    hasBin: true
 
   prettier@3.6.2:
     resolution: {integrity: sha512-I7AIg5boAr5R0FFtJ6rCfD+LFsWHp81dolrFD8S79U9tb8Az2nGrJncnMSnys+bpQJfRUzqs9hnA81OAA3hCuQ==}
@@ -1814,6 +1849,8 @@ snapshots:
       '@types/prop-types': 15.7.15
       csstype: 3.2.3
 
+  '@types/semver@7.8.0': {}
+
   accepts@2.0.0:
     dependencies:
       mime-types: 3.0.2
@@ -2402,6 +2439,8 @@ snapshots:
       fsevents: 2.3.2
 
   pngjs@5.0.0: {}
+
+  pnpm@11.7.0: {}
 
   prettier@3.6.2: {}
 

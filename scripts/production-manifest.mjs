@@ -1,6 +1,8 @@
 import { validSdkPeers } from "./supported-cores.mjs";
 /** Publish the plugin's runtime graph; the official profile provides SDK and companion peers. */
 export function productionManifest(source, versions) {
+  if (versions[source.name] !== undefined && versions[source.name] !== source.version)
+    throw Error("COMPILED_PACKAGE_VERSION_MISMATCH");
   if (!validSdkPeers(source)) throw Error("SDK_PEER_INCOMPATIBLE");
   const manifest = structuredClone(source);
   for (const field of ["devDependencies", "scripts", "workspaces", "packageManager", "pnpm"])
@@ -13,7 +15,7 @@ export function productionManifest(source, versions) {
     if (typeof versions[name] !== "string" || !versions[name])
       throw Error("COMPANION_VERSION_REQUIRED: " + name);
     delete manifest.dependencies[name];
-    manifest.peerDependencies[name] = versions[name];
+    manifest.peerDependencies[name] = source.peerDependencies?.[name] ?? versions[name];
   }
   manifest.peerDependenciesMeta = { ...source.peerDependenciesMeta };
   for (const name of requiredCompanions) delete manifest.peerDependenciesMeta[name];

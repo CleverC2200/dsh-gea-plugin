@@ -23,6 +23,9 @@ import {
   validSdkPeers,
 } from "./supported-cores.mjs";
 
+import { validatePluginCombination } from "../src/shared/plugin-release.mjs";
+import { sdkVersion } from "./supported-cores.mjs";
+
 const names = {
   "dsh-agent-workbench": "@cleverc2200/dsh-agent-workbench",
   "dsh-agent-manage": "dsh-agent-manage",
@@ -183,6 +186,12 @@ async function preflight(input, destination) {
     const version = input.versions?.[manifest.name];
     if (typeof version !== "string" || !/^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(version))
       fail("DELIVERY_VERSION_REQUIRED");
+    if (version !== manifest.version) fail("DELIVERY_COMPILED_VERSION_MISMATCH");
+    command(
+      process.execPath,
+      [join(path, "scripts/generate-plugin-package-version.mjs"), "--check"],
+      path,
+    );
     const lock = repo === "dsh-agent-workbench" ? "package-lock.json" : "pnpm-lock.yaml";
     const lockBytes = await readFile(join(path, lock));
     if (
@@ -367,14 +376,23 @@ async function deliver(input, destination) {
         : {}),
     });
   }
-  const geaManifest = archive(
-    join(pending, packages.find((row) => row.repo === "dsh-gea-plugin").filename),
-    names["dsh-gea-plugin"],
+  const finalManifests = packages.map((row) => archive(join(pending, row.filename), row.name));
+  const supported = findSupportedCore(input.core);
+  const sdkNames = new Set(
+    finalManifests.flatMap((manifest) =>
+      Object.keys(manifest.peerDependencies ?? {}).filter((name) =>
+        name.startsWith("@deepseek-ai/"),
+      ),
+    ),
   );
-  for (const name of [names["dsh-agent-workbench"], names["dsh-agent-manage"]]) {
-    if (geaManifest.peerDependencies?.[name] !== input.versions[name])
-      fail("DELIVERY_THREE_PACKAGE_GRAPH_MISMATCH");
-  }
+  const sdk = Object.fromEntries([...sdkNames].map((name) => [name, sdkVersion(supported, name)]));
+  if (
+    validatePluginCombination({
+      core: { ...coreIdentity(input.core), sdk },
+      manifests: finalManifests,
+    }).length
+  )
+    fail("DELIVERY_THREE_PACKAGE_GRAPH_MISMATCH");
   for (const file of ["package.json", "npm-shrinkwrap.json", "pnpm-lock.yaml"])
     await copyFile(join(stage, file), join(work, `gea-${file}`));
   await rm(stage, { recursive: true });

@@ -1,3 +1,4 @@
+import { mountPluginUpdatesClient } from "./plugin-updates-client.ts";
 import type {} from "@cleverc2200/dsh-agent-workbench/client";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-api-remotes/client";
@@ -9,6 +10,7 @@ import { createBusinessIdentityReader } from "./business-identity-client.ts";
 export const inject = [];
 /** GEA contributes business views and its read-only identity. Workbench owns navigation and HTML. */
 export function apply(ctx: Context): void {
+  ctx.effect(() => mountPluginUpdatesClient(ctx));
   const identity = createBusinessIdentityReader();
   ctx.provide("geaIdentity", {
     getSnapshot: identity.getSnapshot,
@@ -70,3 +72,4 @@ declare module "@deepseek-ai/cordis" {
     geaIdentity: import("./business-identity-client.ts").BusinessIdentityProjection;
   }
 }
+export { pluginPackageVersion } from "./plugin-package-version.ts";
