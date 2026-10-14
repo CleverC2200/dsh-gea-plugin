@@ -129,6 +129,7 @@ test(
     const app = await profile(t, {
       beforeStart: fixtureWorkbench(plugins),
       config: (base) => ({
+        cubeMcpCodes: { production: "probe" },
         analysis: {
           mode: "model",
           source: "direct",
@@ -194,7 +195,7 @@ test(
           result = {
             tools: [
               {
-                name: "probe_read",
+                name: "inspect_cube_model",
                 description: "Read isolated fixture",
                 _meta: { sourceType: "MCP", sourceCode: "probe" },
                 inputSchema: { type: "object", properties: {} },
@@ -203,7 +204,7 @@ test(
           };
         if (body.method === "tools/call") {
           mcpCalls.push(body);
-          result = { content: [{ type: "text", text: "SPLIT_MCP_RESULT_42" }] };
+          result = { structuredContent: { marker: "SPLIT_MCP_RESULT_42" } };
         }
         reply({ jsonrpc: "2.0", id: body.id, result });
         return true;
@@ -220,12 +221,8 @@ test(
                   id: "split-read",
                   type: "function",
                   function: {
-                    name: "gea_module_mcp",
-                    arguments: JSON.stringify({
-                      consumerCode: "probe-consumer",
-                      tool: "probe_read",
-                      arguments: {},
-                    }),
+                    name: "mcp__gea-gateway__inspect_cube_model",
+                    arguments: JSON.stringify({}),
                   },
                 },
               ],
@@ -408,21 +405,27 @@ test(
       1,
       JSON.stringify({ modelTools, output: app.output.slice(-3000) }),
     );
+    assert.equal(
+      app.requests
+        .filter((req) => req.url.pathname.endsWith("/ai/gateway/session"))
+        .map((req) => JSON.parse(req.body).consumerCode)
+        .at(-1),
+      "probe-consumer",
+      "MCP transport uses the real Session resource Consumer",
+    );
+    assert.deepEqual(mcpCalls[0].params.arguments, {});
     assert.equal(mcpCalls[0].params._meta.agentCode, "probe-consumer");
+    assert.equal(mcpCalls[0].params.arguments.consumerCode, undefined, "platform identity is outside business arguments");
     const toolCalls = rows.filter((row) => row.type === "tool/call");
     assert.equal(toolCalls.length, 1);
-    assert.equal(toolCalls[0].data.name, "gea_module_mcp");
-    assert.deepEqual(JSON.parse(toolCalls[0].data.arguments), {
-      consumerCode: "probe-consumer",
-      tool: "probe_read",
-      arguments: {},
-    });
+    assert.equal(toolCalls[0].data.name, "mcp__gea-gateway__inspect_cube_model");
+    assert.deepEqual(JSON.parse(toolCalls[0].data.arguments), {});
     const toolResults = readToolResults(rows);
     assert.equal(toolResults.length, 1);
     assert.equal(toolResults[0].callId, toolCalls[0].data.callId);
     assert.equal(toolResults[0].isError, false);
     assert.equal(modelTools.length, 2, "one model tool call and its follow-up");
-    assert.ok(modelTools.every((tools) => tools.includes("gea_module_mcp")));
+    assert.ok(modelTools.every((tools) => tools.includes("mcp__gea-gateway__inspect_cube_model")));
     assert.match(JSON.stringify(readToolResults(rows)), /SPLIT_MCP_RESULT_42/);
     assert.deepEqual(errors, []);
     await mkdir(".runtime/split-declarations", { recursive: true });

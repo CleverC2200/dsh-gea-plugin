@@ -1,0 +1,1323 @@
+{
+  "baseline": "a918ba51fe782c7d3a83a4c0af8e9dd831712065",
+  "currentInterface": "Core tools.execute -> Manage mountGeaMcp -> GEA createCubeMcpService -> Business/openCubeMcp",
+  "cases": [
+    {
+      "source": "member-index.historical.mjs",
+      "case": "清单解析：全名与短名都能认，度量与维度分开",
+      "disposition": "Retired local semantic planner assertion: 清单解析：全名与短名都能认，度量与维度分开. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "member-index.historical.mjs",
+      "case": "查出不存在的成员，并说清最像的真名与该模型的现有成员",
+      "disposition": "Retired local semantic planner assertion: 查出不存在的成员，并说清最像的真名与该模型的现有成员. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "member-index.historical.mjs",
+      "case": "模型不在清单里时不判（那是模型名或权限的问题，不是成员名）",
+      "disposition": "Retired local semantic planner assertion: 模型不在清单里时不判（那是模型名或权限的问题，不是成员名）. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "member-index.historical.mjs",
+      "case": "把维度写进 measures 要被拦下；无度量模型要说清只能自己汇总",
+      "disposition": "Retired local semantic planner assertion: 把维度写进 measures 要被拦下；无度量模型要说清只能自己汇总. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "member-index.historical.mjs",
+      "case": "查询里引用的成员名收全（dimensions/measures/filters/order 都要）",
+      "disposition": "Retired local semantic planner assertion: 查询里引用的成员名收全（dimensions/measures/filters/order 都要）. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "member-index.historical.mjs",
+      "case": "清单过期后不再拦（宁可漏拦，也不能拿旧清单拦住对的成员）",
+      "disposition": "Retired local semantic planner assertion: 清单过期后不再拦（宁可漏拦，也不能拿旧清单拦住对的成员）. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "sales-result-regression.historical.mjs",
+      "case": "exact model retains tail measure semantics without unrelated forecast candidates",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/sales-result-regression.test.mjs"]
+    },
+    {
+      "source": "sales-result-regression.historical.mjs",
+      "case": "member lookup selects tail measures and dimensions, not the first eight",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/sales-result-regression.test.mjs"]
+    },
+    {
+      "source": "sales-result-regression.historical.mjs",
+      "case": "source-specific text months are checked before dispatch; unrelated strings unchanged",
+      "disposition": "Source-specific local month inference retired; a qualified text-month filter and order reach the server unchanged. Other sales business assertions remain in the original suite.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        }
+      ]
+    },
+    {
+      "source": "sales-result-regression.historical.mjs",
+      "case": "mixed rejection retains readable success rows and rejection, instead of raw envelope",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/sales-result-regression.test.mjs"]
+    },
+    {
+      "source": "sales-result-regression.historical.mjs",
+      "case": "source gate distinguishes result, workflow, mixed and result follow-ups",
+      "disposition": "Non-MCP business assertion remains active in original mixed suite.",
+      "current": ["tests/sales-result-regression.test.mjs"]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "actual tool stops distinct detail reads at 20 but leaves aggregation and other sessions usable",
+      "disposition": "Original active business assertion retained without a retired MCP invocation.",
+      "current": ["tests/agent-read-convergence.test.mjs"],
+      "status": "retained",
+      "assertions": [
+        {
+          "file": "tests/agent-read-convergence.test.mjs",
+          "case": "actual tool stops distinct detail reads at 20 but leaves aggregation and other sessions usable"
+        }
+      ]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "catalog replay converges without disabling data queries",
+      "disposition": "Actual native inspect convergence stops another network request but preserves an explicit named native query. Local wrapper listing retired.",
+      "current": ["tests/prompt-v2.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/prompt-v2.test.mjs",
+          "case": "catalog stalls block backend repetition while native query results retain every returned row"
+        }
+      ]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "aggregate argument order does not trigger a new scan and a replay keeps the summary table intact",
+      "disposition": "Original active business assertion retained without a retired MCP invocation.",
+      "current": ["tests/agent-read-convergence.test.mjs"],
+      "status": "retained",
+      "assertions": [
+        {
+          "file": "tests/agent-read-convergence.test.mjs",
+          "case": "aggregate argument order does not trigger a new scan and a replay keeps the summary table intact"
+        }
+      ]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "artifact pages feed latest sample observations even when the member is already in a cached directory",
+      "disposition": "Original active business assertion retained without a retired MCP invocation.",
+      "current": ["tests/agent-read-convergence.test.mjs"],
+      "status": "retained",
+      "assertions": [
+        {
+          "file": "tests/agent-read-convergence.test.mjs",
+          "case": "artifact pages feed latest sample observations even when the member is already in a cached directory"
+        }
+      ]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "resetting one conversation preserves another conversation guard and replay",
+      "disposition": "Original active business assertion retained without a retired MCP invocation.",
+      "current": ["tests/agent-read-convergence.test.mjs"],
+      "status": "retained",
+      "assertions": [
+        {
+          "file": "tests/agent-read-convergence.test.mjs",
+          "case": "resetting one conversation preserves another conversation guard and replay"
+        }
+      ]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "MCP failures block that channel only and return the successful aggregate as evidence",
+      "disposition": "Actual model loop preserves the successful sales aggregate and visible native MCP refusal, then resets current-turn evidence. Wrapper channel ledger retired.",
+      "current": ["tests/partial-evidence.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/partial-evidence.test.mjs",
+          "case": "native model loop retains aggregate evidence after MCP failure, and clears the evidence section next turn"
+        }
+      ]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "success evidence survives a whole-turn stop but is cleared on a new question or identity change",
+      "disposition": "Original active business assertion retained without a retired MCP invocation.",
+      "current": ["tests/agent-read-convergence.test.mjs"],
+      "status": "retained",
+      "assertions": [
+        {
+          "file": "tests/agent-read-convergence.test.mjs",
+          "case": "success evidence survives a whole-turn stop but is cleared on a new question or identity change"
+        }
+      ]
+    },
+    {
+      "source": "agent-read-convergence.historical.mjs",
+      "case": "model-style single-field order objects are adapted before governed query preflight",
+      "disposition": "Local order adaptation retired. Qualified caller order reaches current server unchanged; no invented query rewrite.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "正向：同模型的一项与两项查询都放行",
+      "disposition": "Retired local semantic planner assertion: 正向：同模型的一项与两项查询都放行. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G3 结构：空 queries、超过 8 项、name 重复或空白、缺 query 外壳、外层乱放字段",
+      "disposition": "Retired local semantic planner assertion: G3 结构：空 queries、超过 8 项、name 重复或空白、缺 query 外壳、外层乱放字段. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G3 inspect：带 queries 的 inspect 直接拦（inspect 必须 queries=[]）",
+      "disposition": "Retired local semantic planner assertion: G3 inspect：带 queries 的 inspect 直接拦（inspect 必须 queries=[]）. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G4 单模型：跨模型拦下并给出拆分方案，加 queries 项也绕不过去",
+      "disposition": "Retired local semantic planner assertion: G4 单模型：跨模型拦下并给出拆分方案，加 queries 项也绕不过去. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G4 单模型：同一个 query 里 dimensions 与 filters/order 用不同模型也要拦",
+      "disposition": "Retired local semantic planner assertion: G4 单模型：同一个 query 里 dimensions 与 filters/order 用不同模型也要拦. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "接线：闸门在发送前调用，且清单不在手时先补读一次 inspect（G5）",
+      "disposition": "Retired local semantic planner assertion: 接线：闸门在发送前调用，且清单不在手时先补读一次 inspect（G5）. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G5 成员：不存在的成员拦下并给真名；维度不能进 measures；measures 上限按清单",
+      "disposition": "Retired local semantic planner assertion: G5 成员：不存在的成员拦下并给真名；维度不能进 measures；measures 上限按清单. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G6 order：对象数组、大写方向、字符串方向都拦（一次列全同类问题）",
+      "disposition": "Retired local semantic planner assertion: G6 order：对象数组、大写方向、字符串方向都拦（一次列全同类问题）. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G6 limit/offset：字符串、0、超宿主保护上限都拦",
+      "disposition": "Retired local semantic planner assertion: G6 limit/offset：字符串、0、超宿主保护上限都拦. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G6 filters：缺 values、缺 operator、and 与 member 混用、非数组都拦",
+      "disposition": "Retired local semantic planner assertion: G6 filters：缺 values、缺 operator、and 与 member 混用、非数组都拦. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "G5 时间维度：字符串日期不能当 timeDimensions，非时间成员一律拦",
+      "disposition": "Retired local semantic planner assertion: G5 时间维度：字符串日期不能当 timeDimensions，非时间成员一律拦. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "裸字段、物理表名、SQL 表达式都不是合法成员名",
+      "disposition": "Retired local semantic planner assertion: 裸字段、物理表名、SQL 表达式都不是合法成员名. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "年月值：时间成员拦下并给正确写法，文本年月列放行",
+      "disposition": "Retired local semantic planner assertion: 年月值：时间成员拦下并给正确写法，文本年月列放行. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "清单不在手时只做形状校验，不编造成员结论",
+      "disposition": "Retired local semantic planner assertion: 清单不在手时只做形状校验，不编造成员结论. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "§17.8 请求体字节：把整表列全的写法拦下，正常查询放行",
+      "disposition": "Retired local semantic planner assertion: §17.8 请求体字节：把整表列全的写法拦下，正常查询放行. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "unknown measure errors offer actual measures, never numeric dimensions as replacements",
+      "disposition": "Retired local semantic planner assertion: unknown measure errors offer actual measures, never numeric dimensions as replacements. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "cube-preflight.historical.mjs",
+      "case": "filter operators reject SQL aliases and retain supported Cube predicates",
+      "disposition": "Retired local semantic planner assertion: filter operators reject SQL aliases and retain supported Cube predicates. Current native schema is server-owned; the client forwards valid qualified fields unchanged, rejects bare members and preserves server failures. It no longer maintains a local member/type/month/filter/order model.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "resource discovery uses the negotiated route and trusted session, handles audit failure and 429 without fallback",
+      "disposition": "Existing transport-resource receipt authorization test remains active.",
+      "current": ["tests/authorized-cube-query.test.mjs"],
+      "status": "retained",
+      "assertions": [
+        {
+          "file": "tests/authorized-cube-query.test.mjs",
+          "case": "resource discovery uses the negotiated route and trusted session, handles audit failure and 429 without fallback"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "planner separates independent models, rejects internal joins and ambiguous or unauthorized targets, and enforces resource bounds",
+      "disposition": "Auto split/join/resource matching planner retired. Bare-member guard, exact qualified forwarding and server refusal remain executable.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_DATA_PERMISSION_DENIED without returning data or retrying"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "typed and legacy entry share splitting, receipts and authorization refresh; failed group does not erase success",
+      "disposition": "Explicit native model calls preserve independent success and failure. Legacy typed/auto-split/receipt shape retired.",
+      "current": ["tests/authorized-cube-loop.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/authorized-cube-loop.test.mjs",
+          "case": "native queries preserve successful reads, server denial, expiry and next-turn recovery"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "catalog shows only the current authorization snapshot and never revives old inspect results after revocation",
+      "disposition": "Client metadata cache no longer grants access. Disabled resources reject before dispatch; every query receives current server authorization.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered tools reject ordinary or missing callers and disabled business resources before external execution"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_DATA_PERMISSION_DENIED without returning data or retrying"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "catalog identifies Cube-New absence from the authorized list without misreporting routing or empty data",
+      "disposition": "Explicit source admission remains; no same-name or legacy fallback.",
+      "current": ["tests/cube-new.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/cube-new.test.mjs",
+          "case": "an unregistered or unauthorized Cube-New never borrows the old same-name query tool"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "explicit catalog refresh discovers newly granted tools while preserving the current login and Consumer",
+      "disposition": "Current inspect invalidates the module and negotiates afresh without replacing login or Consumer.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered inspect refreshes the current authorized server schema without a legacy resource catalog"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "Cube-New catalog calls the separate inspection tool and filters metadata by the current resource grant",
+      "disposition": "Separate inspect executes through native tool. Metadata filtering/visibility is owned by the authorized server, not a second local grant projection.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered inspect refreshes the current authorized server schema without a legacy resource catalog"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_DATA_PERMISSION_DENIED without returning data or retrying"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "Cube-New View aliases expose only granted underlying members and support the actual query target",
+      "disposition": "Local View-alias expansion and underlying-member filtering retired; exact server schema/args and server refusal are authoritative.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_DATA_PERMISSION_DENIED without returning data or retrying"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "cancellation stops subsequent model groups",
+      "disposition": "Current cancellation aborts the real request, retains identity and permits a later query. No local model-group splitting remains.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered cancellation preserves the current identity and allows the next query without spending a failure budget"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "legacy inspect is filtered and authorization failure occurs before public metadata access",
+      "disposition": "Legacy inspect removed. Current generic/disabled admission fails before network; business query authorization is enforced by the server.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered tools reject ordinary or missing callers and disabled business resources before external execution"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_DATA_PERMISSION_DENIED without returning data or retrying"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "two Agent catalogs in one host do not share authorization or metadata",
+      "disposition": "Actual independent business Sessions derive their Consumer metadata; conflicting server schemas do not overwrite registration.",
+      "current": ["tests/cube-direct-mcp.test.mjs", "tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "one Host derives independent sales and dealer Consumers from their current business Sessions"
+        },
+        {
+          "file": "tests/cube-direct-mcp.test.mjs",
+          "case": "different business Consumer schemas cannot overwrite each other's registered tools"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "expired gateway session stops every read entry for this turn and never falls back to inspect",
+      "disposition": "Current query expiry stops that Session turn with no inspect fallback.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered expired gateway preserves the failure and stops the turn until a new session is negotiated"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "expired session in a model group stops the batch before another model is sent",
+      "disposition": "The next explicit model call is rejected locally after expiry. Local grouped batch planner retired.",
+      "current": ["tests/authorized-cube-loop.test.mjs", "tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered expired gateway preserves the failure and stops the turn until a new session is negotiated"
+        },
+        {
+          "file": "tests/authorized-cube-loop.test.mjs",
+          "case": "native queries preserve successful reads, server denial, expiry and next-turn recovery"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "invalidating an expired business Session creates a fresh module on the next turn",
+      "disposition": "Next-turn query negotiates one fresh gateway Session.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered expired gateway preserves the failure and stops the turn until a new session is negotiated"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "sample lookup keeps authorized models when another member has ambiguous resources",
+      "disposition": "Local catalog sample/model lookup retired. Authorized server owns metadata and ambiguity; its refusal remains visible.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_DATA_PERMISSION_DENIED without returning data or retrying"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "resource version change refreshes the same module field index",
+      "disposition": "Local resource-version field index retired. Explicit inspect refreshes the current server module.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered inspect refreshes the current authorized server schema without a legacy resource catalog"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "catalog samples reject measures and segments before dispatch and keep valid dimensions",
+      "disposition": "Sample planner and local type guesses retired. Server schema and qualified member guard remain authoritative.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered qualified-member guard rejects bare members and forwards valid month and ordering unchanged"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-query.historical.mjs",
+      "case": "generic Skill and unregistered Consumer cannot enter governed reads",
+      "disposition": "Ordinary/missing/unprofiled callers cannot execute current registered business tools.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered tools reject ordinary or missing callers and disabled business resources before external execution"
+        }
+      ]
+    },
+    {
+      "source": "catalog-consumers.historical.mjs",
+      "case": "resource-to-consumer projection is snapshot-local, excludes non-Cube resources and keeps two identities independent",
+      "disposition": "Catalog projection retired. Actual registered queries derive two independent Consumers from the current business Session.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "one Host derives independent sales and dealer Consumers from their current business Sessions"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "会话按 initialize → tools/list 建立，工具清单可读",
+      "disposition": "The same initialization/listing is exercised by actual Manage registrations; qualified tool names replace the local module summary.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "明确标记为写入或破坏性的 MCP 工具不会进入只读清单",
+      "disposition": "The generic module tool catalog is retired. GEA exposes only the two current Cube read methods; server query schema is retained without a client-generated generic read-only projection.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "SSE 响应与业务错误都能读出来",
+      "disposition": "SSE and business-error semantics retained through the current direct client.",
+      "current": ["tests/cube-direct-mcp.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/cube-direct-mcp.test.mjs",
+          "case": "inline SSE preserves exact values and the existing protocol and route"
+        },
+        {
+          "file": "tests/cube-direct-mcp.test.mjs",
+          "case": "isError blocks valid-looking data and preserves server diagnostics and pagination guidance"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "协议版本协商失败时给出可读错误，不静默成功",
+      "disposition": "Failed HTTP/protocol negotiation publishes neither current tool, warns visibly, and never advances to list or call.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered discovery refuses failed negotiation {\"initializeStatus\":500}"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered discovery refuses failed negotiation {\"protocolVersion\":\"unsupported-fixture\"}"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "resource_link 结果由宿主读回内联，模型不必自己读资源",
+      "disposition": "Current MCP contract requires direct business JSON; resource_link is now rejected rather than hydrated. The rejection and no-resource fallback are executable.",
+      "current": ["tests/cube-direct-mcp.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/cube-direct-mcp.test.mjs",
+          "case": "ambiguous and unsupported query responses stop the current round without resource fallback"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "大结果只内联一段，并说清还有多少、下一段怎么读（不用重新查）",
+      "disposition": "Host previews and chunk rereads retired. Direct pages retain exact rows/hasMorePages and require an explicit offset query.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered direct pages preserve partial, unknown and zero facts and read the next page with unchanged filters"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "一次返回多个制品时，没内联的那些要把 URI 报出来（别直接丢）",
+      "disposition": "Multiple direct named datasets replace multiple artifact URIs; all datasets remain present.",
+      "current": ["tests/cube-direct-mcp.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/cube-direct-mcp.test.mjs",
+          "case": "named query batches match by name and preserve business pagination and optional metadata"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "资源读不回来时给可读说明，不让模型拿着链接乱试",
+      "disposition": "No resource hydration exists for the current direct result. Unsupported resource links fail and stop the round.",
+      "current": ["tests/cube-direct-mcp.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/cube-direct-mcp.test.mjs",
+          "case": "ambiguous and unsupported query responses stop the current round without resource fallback"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "business Session expiry does not suggest changing Cube members or retrying the old request",
+      "disposition": "Expiry keeps the server failure and blocks another query until the next session.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered expired gateway preserves the failure and stops the turn until a new session is negotiated"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "下游工具失败：抛成可读错误（含 requestId），不是把 JSON 当数据",
+      "disposition": "Native isError remains an error, retains requestId/traceId and never returns valid-looking data or retries.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_DATA_PERMISSION_DENIED without returning data or retrying"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "structuredContent + 对象 text 的校验失败：给字段路径并允许改参数重调",
+      "disposition": "An error wins over conflicting data. The old local schema-repair instruction is retired; native server schema remains authoritative.",
+      "current": ["tests/cube-direct-mcp.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/cube-direct-mcp.test.mjs",
+          "case": "isError blocks valid-looking data and preserves server diagnostics and pagination guidance"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "text 是对象但不是失败时：内容不能丢",
+      "disposition": "The direct text business JSON is returned intact.",
+      "current": ["tests/cube-direct-mcp.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/cube-direct-mcp.test.mjs",
+          "case": "text-only results select one business JSON block without joining explanatory text"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "资源未唯一匹配时保留映射诊断，不武断归为参数或授权错误",
+      "disposition": "Server authorization details remain in native failure. Client-side resource ambiguity diagnosis is retired with the local planner.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_DATA_PERMISSION_DENIED without returning data or retrying"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "授权类失败：给可读业务状态、不抛红色错误",
+      "disposition": "Current public Tools.execute returns isError=true for a refused query and retains the readable server code.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_DATA_PERMISSION_DENIED without returning data or retrying"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "正常返回体带 code:OK 时不能被误判成失败",
+      "disposition": "Successful code:OK remains exact native data including unsafe decimal tokens; it is not mistaken for failure.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered successful code OK remains exact business data"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "摘要只给字段名，完整定义按工具名展开（含类型/枚举/必填）",
+      "disposition": "Module summary/detail projection retired; the actual registered schema is exactly the server input schema.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "服务端 schema 很大时，完整定义也不能超过上限",
+      "disposition": "Client-generated bounded schema summaries retired. Native tool schemas remain the server schemas; prompt/catalog budgets remain asserted by prompt-qa-regression.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "current registered MCP tools retain server schemas and exact direct results"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "行数正好等于 limit 时说清“别把这一页当全量”，同一段重复读要拦一下",
+      "disposition": "Do not infer completion from limit equality. Explicit direct metadata supplies continuation; identical chunk replay is retired.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered direct pages preserve partial, unknown and zero facts and read the next page with unchanged filters"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "取全了（行数小于 limit）时不提示截断",
+      "disposition": "Last direct page explicitly has hasMorePages=false; no row-count inference or wrapper truncation prose.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered direct pages preserve partial, unknown and zero facts and read the next page with unchanged filters"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "制品贴着授权上限时先提醒缩口径，而不是等网关整批拒掉",
+      "disposition": "Artifact threshold preview retired. Actual server capacity failures preserve narrowing/paging guidance and do not retry.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_MCP_RESULT_TOO_LARGE without returning data or retrying"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "限流：HTTP 200 + 业务信封也认，给等待建议而不是让人改参数",
+      "disposition": "Rate-limited native tool stays failed and preserves diagnostic fields; no automatic retry.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_RATE_LIMITED without returning data or retrying"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "权限失败要保留 details 里的诊断项，说清缺的是哪一项",
+      "disposition": "The server permission details remain visible in the native structured error.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_DATA_PERMISSION_DENIED without returning data or retrying"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "host evidence callback receives hydrated content before the model preview is truncated",
+      "disposition": "MCP host evidence callbacks/previews retired. Exact success remains ordinary model tool history after a later failure.",
+      "current": ["tests/mcp-evidence-loop.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/mcp-evidence-loop.test.mjs",
+          "case": "native model loop retains ordinary MCP evidence after later failure and resets next turn"
+        }
+      ]
+    },
+    {
+      "source": "module-mcp.historical.mjs",
+      "case": "delivery metadata preserves failed and unhydrated resources beside one successful body",
+      "disposition": "Hydrated/unhydrated resource delivery bookkeeping retired; direct named datasets and native errors keep their own complete semantics.",
+      "current": ["tests/cube-direct-mcp.test.mjs"],
+      "status": "retired-shape",
+      "assertions": [
+        {
+          "file": "tests/cube-direct-mcp.test.mjs",
+          "case": "named query batches match by name and preserve business pagination and optional metadata"
+        },
+        {
+          "file": "tests/cube-direct-mcp.test.mjs",
+          "case": "isError blocks valid-looking data and preserves server diagnostics and pagination guidance"
+        }
+      ]
+    },
+    {
+      "source": "read-guard-wiring.historical.mjs",
+      "case": "registered sales reads replay after two reads, isolate scopes and permit a fresh round",
+      "disposition": "Original active registered sales replay/scope/reset assertions retained.",
+      "current": ["tests/read-guard-wiring.test.mjs"],
+      "status": "retained",
+      "assertions": [
+        {
+          "file": "tests/read-guard-wiring.test.mjs",
+          "case": "registered sales reads replay after two reads, isolate scopes and permit a fresh round"
+        }
+      ]
+    },
+    {
+      "source": "read-guard-wiring.historical.mjs",
+      "case": "registered catalog and MCP inspect filter authorization and recheck revoked resources",
+      "disposition": "Current native inspect negotiates afresh; disabled resources fail locally and current server checks query authorization. Old resource catalog grant projection retired.",
+      "current": ["tests/current-mcp-tools.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered tools reject ordinary or missing callers and disabled business resources before external execution"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered query preserves AI_GATEWAY_DATA_PERMISSION_DENIED without returning data or retrying"
+        },
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered inspect refreshes the current authorized server schema without a legacy resource catalog"
+        }
+      ]
+    },
+    {
+      "source": "read-guard-wiring.historical.mjs",
+      "case": "registered module tool listing converges independently of another scope and resets next round",
+      "disposition": "Generic module listing retired; actual native inspection repeats converge and query admission remains available.",
+      "current": ["tests/prompt-v2.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/prompt-v2.test.mjs",
+          "case": "catalog stalls block backend repetition while native query results retain every returned row"
+        }
+      ]
+    },
+    {
+      "source": "read-guard-wiring.historical.mjs",
+      "case": "registered cancellation and non-Error failures are readable and cancellation spends no waste budget",
+      "disposition": "Cancellation moved to actual native MCP request; non-Error native read failure remains active and readable.",
+      "current": ["tests/current-mcp-tools.test.mjs", "tests/read-guard-wiring.test.mjs"],
+      "status": "replaced",
+      "assertions": [
+        {
+          "file": "tests/current-mcp-tools.test.mjs",
+          "case": "registered cancellation preserves the current identity and allows the next query without spending a failure budget"
+        },
+        {
+          "file": "tests/read-guard-wiring.test.mjs",
+          "case": "registered native read non-Error failures remain readable"
+        }
+      ]
+    },
+    {
+      "source": "read-guard-wiring.historical.mjs",
+      "case": "registered page context reads require the current user",
+      "disposition": "Original page-intent identity behavior retained, title reflects the actual current gate.",
+      "current": ["tests/read-guard-wiring.test.mjs"],
+      "status": "retained",
+      "assertions": [
+        {
+          "file": "tests/read-guard-wiring.test.mjs",
+          "case": "registered page context reads require the current user's page intent"
+        }
+      ]
+    },
+    {
+      "source": "read-guard-wiring.historical.mjs",
+      "case": "registered recipe executes parameterized SQL with only accepted query keys",
+      "disposition": "Original parameterized SQL and key admission business assertion retained.",
+      "current": ["tests/read-guard-wiring.test.mjs"],
+      "status": "retained",
+      "assertions": [
+        {
+          "file": "tests/read-guard-wiring.test.mjs",
+          "case": "registered recipe executes parameterized SQL with only accepted query keys"
+        }
+      ]
+    },
+    {
+      "source": "mcp-evidence-loop.historical.mjs",
+      "case": "native model loop retains ordinary MCP evidence after later failure and resets next turn",
+      "status": "replaced",
+      "disposition": "Direct success stays in ordinary tool history after denial; next question clears current-turn evidence. MCP synthetic receipts/chunks retired.",
+      "current": ["tests/mcp-evidence-loop.test.mjs"],
+      "assertions": [
+        {
+          "file": "tests/mcp-evidence-loop.test.mjs",
+          "case": "native model loop retains ordinary MCP evidence after later failure and resets next turn"
+        }
+      ]
+    },
+    {
+      "source": "partial-evidence.historical.mjs",
+      "case": "native model loop retains aggregate evidence after MCP failure, and clears the evidence section next turn",
+      "status": "replaced",
+      "disposition": "Sales aggregate evidence survives native MCP refusal; next question clears the evidence section.",
+      "current": ["tests/partial-evidence.test.mjs"],
+      "assertions": [
+        {
+          "file": "tests/partial-evidence.test.mjs",
+          "case": "native model loop retains aggregate evidence after MCP failure, and clears the evidence section next turn"
+        }
+      ]
+    },
+    {
+      "source": "authorized-cube-loop.historical.mjs",
+      "case": "native typed query exposes its schema, splits requests and refuses a revoked resource next turn",
+      "status": "replaced",
+      "disposition": "Native server schema and explicit reads replace local typed splitting. Success, refusal, partial facts, trusted metadata, expiry stop and fresh gateway recovery remain real model assertions.",
+      "current": ["tests/authorized-cube-loop.test.mjs"],
+      "assertions": [
+        {
+          "file": "tests/authorized-cube-loop.test.mjs",
+          "case": "native queries preserve successful reads, server denial, expiry and next-turn recovery"
+        }
+      ]
+    },
+    {
+      "source": "sales-result-runtime.historical.mjs",
+      "case": "native result route, atomic skill load and structured evidence reuse retain authorization",
+      "status": "replaced",
+      "disposition": "Skill/source gates remain. MCP returns direct data; retained native sales receipt is reread and changed business facts refuse reuse with EVIDENCE_STALE.",
+      "current": ["tests/sales-result-runtime.test.mjs"],
+      "assertions": [
+        {
+          "file": "tests/sales-result-runtime.test.mjs",
+          "case": "native result route, atomic skill load and structured evidence reuse retain authorization"
+        }
+      ]
+    },
+    {
+      "source": "evidence-budget-stop.historical.mjs",
+      "case": "evidence budget ends tool use and resets on a new user turn; batch size 1/3",
+      "status": "replaced",
+      "disposition": "Seed from native sales receipt advertised to the model. All12 reads, successful history, zero further tools and next-turn reset remain; allowance unchanged.",
+      "current": ["tests/evidence-budget-stop.test.mjs"],
+      "assertions": [
+        {
+          "file": "tests/evidence-budget-stop.test.mjs",
+          "case": "evidence budget ends tool use and resets on a new user turn; batch size 1/3"
+        }
+      ]
+    },
+    {
+      "source": "prompt-v2.historical.mjs",
+      "case": "catalog stalls block backend repetition without removing tools, while mixed-model evidence stays recoverable",
+      "status": "replaced",
+      "disposition": "Three actual native inspections, fourth no-progress, explicit two-dataset query, exact70+70 rows and partial facts replace listing/planner/chunks. The other13 existing cases remain active.",
+      "current": ["tests/prompt-v2.test.mjs"],
+      "assertions": [
+        {
+          "file": "tests/prompt-v2.test.mjs",
+          "case": "catalog stalls block backend repetition while native query results retain every returned row"
+        }
+      ]
+    },
+    {
+      "source": "prompt-qa-regression.historical.mjs",
+      "case": "independent acceptance, no production writes",
+      "status": "replaced",
+      "disposition": "Original scenario matrix and budgets retained; fixed catalog and native input schemas refer to current two registrations and maintained author Skill bytes.",
+      "current": ["tests/prompt-qa-regression.test.mjs"],
+      "assertions": [
+        {
+          "file": "tests/prompt-qa-regression.test.mjs",
+          "case": "independent acceptance, no production writes"
+        }
+      ]
+    }
+  ],
+  "verification": "Per-target runtime status is recorded in task evidence. gap entries are unfinished; historical retention alone is never completion."
+}

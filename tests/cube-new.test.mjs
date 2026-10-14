@@ -6,7 +6,7 @@ import { build } from "esbuild";
 const { outputFiles } = await build({
   stdin: {
     contents:
-      "export {gatewayMcpTransport} from './src/host/gateway-mcp.ts'; export {openModuleMcp} from './tests/fixtures/retired-query/mcp-client.ts';",
+      "export {gatewayMcpTransport} from './src/host/gateway-mcp.ts'; export {openCubeMcp} from './src/host/cube-mcp-client.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -14,7 +14,7 @@ const { outputFiles } = await build({
   platform: "node",
   format: "esm",
 });
-const { gatewayMcpTransport, openModuleMcp } = await import(
+const { gatewayMcpTransport, openCubeMcp } = await import(
   "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 const code = "2109581866385289217";
@@ -126,7 +126,7 @@ async function fixture(options = {}) {
     { cubeMcpCode: code },
   );
   return {
-    module: await openModuleMcp(transport, controller.signal),
+    module: await openCubeMcp(transport, controller.signal),
     sent,
     signal: controller.signal,
   };
@@ -139,10 +139,8 @@ test("Cube-New discovers the explicit source, calls separate inspect, and reads 
     action: "inspect",
     semanticModel: [],
   });
-  let evidence;
-  const result = await f.module.call("query_business_data", query, f.signal, (text) => {
-    evidence = JSON.parse(text);
-  });
+  const result = await f.module.call("query_business_data", query, f.signal);
+  const evidence = JSON.parse(result);
   assert.match(result, /forecast/);
   assert.equal(evidence.datasets[0].rows[0]["sales_forecast_result.amount"], null);
   assert.equal(evidence.datasets[0].rows[0]["sales_forecast_result.code"], "001");
@@ -167,9 +165,7 @@ test("an unregistered or unauthorized Cube-New never borrows the old same-name q
   );
   const calls = f.sent.length;
   await assert.rejects(f.module.call("query_business_data", query, f.signal), (error) => {
-    assert.equal(error.code, "GEA_MCP_TOOL_UNAVAILABLE");
-    assert.equal(error.toolName, "query_business_data");
-    assert.equal(error.sourceCode, code);
+    assert.match(error.message, /GEA_MCP_TOOL_UNAVAILABLE.*query_business_data/);
     assert.match(error.message, /当前业务会话/);
     assert.doesNotMatch(error.message, /private-delegation|business-session/);
     return true;
@@ -184,11 +180,11 @@ test("Cube-New cannot publish forged hashes, incomplete pages or mismatched data
     { payload: { ...payload(), datasets: [{ ...payload().datasets[0], name: "wrong-query" }] } },
   ]) {
     const f = await fixture(options);
-    let published = false;
-    const result = await f.module.call("query_business_data", query, f.signal, () => {
-      published = true;
+    await assert.rejects(f.module.call("query_business_data", query, f.signal), (error) => {
+      assert.match(error.message, /GEA_CUBE_NEW_/);
+      assert.doesNotMatch(error.message, /private-delegation/);
+      return true;
     });
-    assert.equal(published, false);
-    assert.match(result, /GEA_CUBE_NEW_/);
+    assert.equal(f.sent.filter(({ wire }) => wire.method === "tools/call").length, 1);
   }
 });

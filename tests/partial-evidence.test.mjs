@@ -11,6 +11,7 @@ test(
   async (t) => {
     const app = await profile(t, {
       config: (base) => ({
+        cubeMcpCodes: { production: "cube", test: "cube" },
         analysis: {
           mode: "model",
           baseUrl: base + "/v1",
@@ -28,17 +29,13 @@ test(
     let secondTurn = false;
     const planArgs = { kind: "aggregate", query: { periodId: "20261001" } };
     const mcpArgs = {
-      consumerCode: "sales_forecast",
-      tool: "query_business_data",
-      arguments: {
-        action: "query",
-        queries: [
-          {
-            name: "region",
-            query: { dimensions: ["plans.region"], measures: ["plans.row_count"], limit: 3 },
-          },
-        ],
-      },
+      action: "query",
+      queries: [
+        {
+          name: "region",
+          query: { dimensions: ["plans.region"], measures: ["plans.row_count"], limit: 3 },
+        },
+      ],
     };
     const event = (delta, finish) =>
       "data: " + JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] }) + "\n\n";
@@ -167,35 +164,9 @@ test(
       if (path === "/v1/chat/completions") {
         const body = JSON.parse(req.body);
         res.setHeader("Content-Type", "text/event-stream");
-        if (!body.tools.some((tool) => tool.function.name === "gea_module_mcp")) {
-          res.end(
-            event(
-              {
-                tool_calls: [
-                  {
-                    index: 0,
-                    id: "load-knowledge",
-                    type: "function",
-                    function: {
-                      name: "gea_capabilities",
-                      arguments: JSON.stringify({ pack: "knowledge" }),
-                    },
-                  },
-                ],
-              },
-              "tool_calls",
-            ) + "data: [DONE]\n\n",
-          );
-          return true;
-        }
-        body.messages = body.messages.filter(
-          (message) =>
-            message.tool_call_id !== "load-knowledge" &&
-            !message.tool_calls?.some((call) => call.id === "load-knowledge"),
-        );
         requests.push(body);
         const n = requests.length;
-        if (secondTurn || n === 6) {
+        if (secondTurn || n === 3) {
           res.end(
             event(
               {
@@ -208,7 +179,8 @@ test(
           );
           return true;
         }
-        const name = n === 1 || n === 5 ? "gea_sales_plan_read" : "gea_module_mcp";
+        const name =
+          n === 1 || n === 5 ? "gea_sales_plan_read" : "mcp__gea-gateway__query_business_data";
         res.end(
           event(
             {
@@ -259,25 +231,14 @@ test(
       15000,
     );
     assert.equal(rows.find((r) => r.type === "turn/end").data.reason.kind, "completed");
-    assert.equal(upstreamQueries, 2, "third query stays blocked locally");
-    assert.equal(requests.length, 6);
+    assert.equal(upstreamQueries, 1, "one denied query is delivered without an automatic retry");
+    assert.equal(requests.length, 3);
     const notices = (i) => JSON.stringify(requests[i].messages.filter((m) => m.role === "system"));
-    assert.match(notices(1), /本轮已返回证据/);
-    assert.doesNotMatch(notices(4), /123\.45/);
-    assert.match(
-      JSON.stringify(requests[4].messages.filter((m) => m.role === "tool")),
-      /饺子/,
-      "category evidence survives in tool history",
-    );
-    const stopped = JSON.stringify(requests[4].messages.filter((m) => m.role === "tool"));
-    assert.match(stopped, /channel-stopped/);
-    assert.doesNotMatch(
-      stopped,
-      /availableEvidence/,
-      "historical facts remain only in their original tool result",
-    );
-    assert.match(stopped, /123\.45/);
-    assert.doesNotMatch(stopped, /GEA_TURN_STOPPED/);
+    assert.doesNotMatch(notices(2), /123\.45/);
+    const history = JSON.stringify(requests[2].messages.filter((m) => m.role === "tool"));
+    assert.match(history, /饺子/);
+    assert.match(history, /123\.45/);
+    assert.match(history, /AI_GATEWAY_DATA_PERMISSION_DENIED/);
     secondTurn = true;
     assert.equal((await prompt("新一轮，仅说明尚未重新取数")).ok, true);
     await until(
@@ -286,7 +247,7 @@ test(
       10000,
     );
     assert.doesNotMatch(
-      notices(6),
+      notices(3),
       /本轮已返回证据/,
       "previous turn must not appear as current-turn evidence",
     );

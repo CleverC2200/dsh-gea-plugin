@@ -39,6 +39,7 @@ test(
       runtimeParent: parent,
       preserveRuntime: true,
       config: (endpoint) => ({
+        cubeMcpCodes: { production: "cube" },
         analysis: {
           mode: "model",
           baseUrl: endpoint + "/v1",
@@ -162,9 +163,10 @@ test(
               id: randomUUID(),
               type: "function",
               function: {
-                name: "gea_cube_query",
+                name: "mcp__gea-gateway__query_business_data",
                 arguments: JSON.stringify({
-                  consumerCode: "branch-inventory",
+                  action: "query",
+                  response_mode: "inline_complete",
                   queries: [
                     {
                       name: "branch_stock",

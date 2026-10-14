@@ -38,6 +38,7 @@ test(
       runtimeParent: parent,
       preserveRuntime: true,
       config: (base) => ({
+        cubeMcpCodes: { production: "cube" },
         analysis: {
           mode: "model",
           baseUrl: base + "/v1",
@@ -98,7 +99,7 @@ test(
     installStockRoutes(app, state, (body) => {
       const index = body.messages.findLastIndex((message) => message.role === "user");
       const tools = body.messages.slice(index + 1).filter((message) => message.role === "tool");
-      const name = tools.length === 0 ? "skill" : "gea_cube_query";
+      const name = tools.length === 0 ? "skill" : "mcp__gea-gateway__query_business_data";
       if (tools.length < 2)
         return {
           tool_calls: [
@@ -112,7 +113,8 @@ test(
                   name === "skill"
                     ? { name: "inventory-fc", offset: 1, limit: 80 }
                     : {
-                        consumerCode: "branch-inventory",
+                        action: "query",
+                        response_mode: "inline_complete",
                         queries: [
                           {
                             name: "branch_stock",

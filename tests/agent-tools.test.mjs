@@ -1,3 +1,4 @@
+import { stockMcpRoute, stockState } from "./fixtures/branch-stock.mjs";
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 import { readFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -119,6 +120,7 @@ test(
       env: { DSH_AGENTS_HOME: agentsHome },
       beforeStart: prepareWorkbenchHtmlRoots([probeRoot, realRoot]),
       config: () => ({
+        cubeMcpCodes: { production: "cube" },
         requestTimeoutMs: 1000,
         visibleContextSubagent: false,
         analysis: {
@@ -142,6 +144,7 @@ test(
     let toolReply;
     let closed = false;
     let modelRequests = [];
+    const mcpState = stockState();
     const event = (delta, finish = null) =>
       "data: " +
       JSON.stringify({
@@ -150,21 +153,23 @@ test(
       "\n\n";
     app.route((req, res, reply) => {
       const path = req.url.pathname;
-      // 模块 MCP 的会话申请：网关明确说"当前用户无权访问该Agent"。
-      if (outcome === "module-mcp-denied" && path.endsWith("/ai/gateway/session")) {
-        reply({
-          success: true,
-          code: 200,
-          result: {
-            accessDecision: {
-              allowed: false,
-              code: "AGENT_ACCESS_DENIED",
-              stage: "AGENT",
-              message: "当前用户无权访问该Agent",
+      if (path.endsWith("/ai/gateway/mcp/proxy/mcp")) {
+        const wire = JSON.parse(req.body);
+        if (outcome === "module-mcp-denied" && wire.method === "tools/call") {
+          reply({
+            jsonrpc: "2.0",
+            id: wire.id,
+            result: {
+              isError: true,
+              structuredContent: {
+                code: "AI_GATEWAY_DATA_PERMISSION_DENIED",
+                message: "当前用户无权访问该Agent",
+              },
             },
-          },
-        });
-        return true;
+          });
+          return true;
+        }
+        if (stockMcpRoute(req, res, reply, mcpState)) return true;
       }
       if (path.endsWith("/user-agent-credential/my/list")) {
         reply({
@@ -256,7 +261,7 @@ test(
           : undefined;
       const ready =
         pack === "knowledge"
-          ? names.includes("gea_module_mcp")
+          ? names.includes("mcp__gea-gateway__query_business_data")
           : pack === "page"
             ? names.includes(outcome === "page-tool" ? "gea_page" : "gea_visible_workbench_context")
             : true;
@@ -359,9 +364,18 @@ test(
                       id: "module-mcp-denied-1",
                       type: "function",
                       function: {
-                        name: "gea_module_mcp",
+                        name: "mcp__gea-gateway__query_business_data",
                         arguments: JSON.stringify({
-                          consumerCode: "sales_forecast",
+                          action: "query",
+                          queries: [
+                            {
+                              name: "branch_stock",
+                              query: {
+                                measures: ["branch_stock.available_qty"],
+                                limit: 10,
+                              },
+                            },
+                          ],
                         }),
                       },
                     },
@@ -385,9 +399,19 @@ test(
                       id: "module-mcp-1",
                       type: "function",
                       function: {
-                        name: "gea_module_mcp",
+                        name: "mcp__gea-gateway__query_business_data",
                         arguments: JSON.stringify({
+                          action: "query",
                           consumerCode: "probe-consumer",
+                          queries: [
+                            {
+                              name: "branch_stock",
+                              query: {
+                                measures: ["branch_stock.available_qty"],
+                                limit: 10,
+                              },
+                            },
+                          ],
                         }),
                       },
                     },
@@ -837,7 +861,8 @@ test(
         // 通道顺序由宿主算好一起给出，模型不必自己挑通道。
         assert.match(result.content, /"channels"/);
         // 问答侧关掉受管 SQL 之后，取数通道指向模块 MCP。
-        assert.match(result.content, /gea_module_mcp/);
+        assert.match(JSON.parse(result.content).channels.note, /query_business_data/);
+        assert.match(JSON.parse(result.content).channels.note, /inspect_cube_model/);
         assert.equal(result.content.includes("gea_plugin_read"), false);
         assert.equal(
           rows.some(
@@ -847,36 +872,44 @@ test(
         );
       },
     );
-    await t.test("没权限时给的是「权限未开通」的正常提示，不是红色调用失败", async () => {
-      outcome = "module-mcp-denied";
-      modelRequests = [];
-      const rows = await ended(await submit());
-      const result = modelRequests[1].messages.find(
-        (message) => message.role === "tool" && message.tool_call_id === "module-mcp-denied-1",
-      );
-      assert.match(result.content, /permission-required/);
-      assert.match(result.content, /AGENT_ACCESS_DENIED/);
-      assert.match(result.content, /不是调用失败/);
-      // 关键：这一条不能是可见的工具错误（红色 Error）。
-      assert.equal(
-        rows.some(
-          (entry) =>
-            entry.type === "tool/result" &&
-            entry.data.message.content.some?.((block) => block.isError) === true,
-        ),
-        false,
-      );
-    });
-    await t.test("演示模块不再去撞 MCP：直接说明没有数据通道", async () => {
-      outcome = "module-mcp-mock";
-      modelRequests = [];
-      await ended(await submit());
-      const result = modelRequests[1].messages.find(
-        (message) => message.role === "tool" && message.tool_call_id === "module-mcp-1",
-      );
-      assert.match(result.content, /mock-module/);
-      assert.match(result.content, /演示模块/);
-    });
+    await t.test(
+      "current MCP permission denial stays visible in the persisted tool result",
+      async () => {
+        outcome = "module-mcp-denied";
+        modelRequests = [];
+        const rows = await ended(await submit());
+        const result = modelRequests[1].messages.find(
+          (message) => message.role === "tool" && message.tool_call_id === "module-mcp-denied-1",
+        );
+        assert.match(result.content, /AI_GATEWAY_DATA_PERMISSION_DENIED/);
+        assert.match(result.content, /当前用户无权访问该Agent/);
+        const receipt = readToolResults(rows).find((item) => item.callId === "module-mcp-denied-1");
+        assert.equal(receipt.isError, true);
+        assert.doesNotMatch(receipt.text, /"datasets"|"rows"/);
+      },
+    );
+    await t.test(
+      "current MCP rejects model-selected Consumers before external dispatch",
+      async () => {
+        outcome = "module-mcp-mock";
+        modelRequests = [];
+        const before = mcpState.cube.length;
+        const rows = await ended(await submit());
+        const result = modelRequests[1].messages.find(
+          (message) => message.role === "tool" && message.tool_call_id === "module-mcp-1",
+        );
+        assert.match(result.content, /GEA_MCP_PLATFORM_ARGUMENT_REJECTED|invalid arguments/);
+        assert.equal(
+          readToolResults(rows).find((item) => item.callId === "module-mcp-1").isError,
+          true,
+        );
+        assert.equal(
+          mcpState.cube.length,
+          before,
+          "rejected Consumer input cannot query any module",
+        );
+      },
+    );
     await t.test("同一轮第二次读这一屏被挡回，避免工具调用堆成一组把正文挤进折叠区", async () => {
       outcome = "visible-context-twice";
       modelRequests = [];
@@ -1019,11 +1052,17 @@ test(
         "默认不应注册 gea_plugin_read",
       );
       assert.equal(
-        modelRequests[0].tools.some((tool) => tool.function.name === "gea_module_mcp"),
+        modelRequests[0].tools.some(
+          (tool) => tool.function.name === "mcp__gea-gateway__query_business_data",
+        ),
         true,
       );
       assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_capabilities"));
-      assert.ok(modelRequests[0].tools.some((tool) => tool.function.name === "gea_cube_query"));
+      assert.ok(
+        modelRequests[0].tools.some(
+          (tool) => tool.function.name === "mcp__gea-gateway__inspect_cube_model",
+        ),
+      );
     });
     await t.test(
       "a page tool in a plain conversation explains the rule instead of failing",
