@@ -223,3 +223,18 @@ test("dispatch retains its frozen run while a new source event cancels its obsol
     );
   }
 });
+
+test("selected package contracts prepare current desktop outputs and bind the admitted Core pnpm", () => {
+  const source = readFileSync("scripts/run-quality-ci.mjs", "utf8");
+  assert.match(source, /plan\.files\.includes\("scripts\/package-desktop\.test\.mjs"\)/);
+  assert.match(source, /run\(process\.execPath, \["scripts\/build-desktop-tools\.mjs"\]\)/);
+  assert.match(
+    source,
+    /const pnpm = resolve\(core, "apps\/desktop\/node_modules\/pnpm\/bin\/pnpm\.mjs"\)/,
+  );
+  assert.match(source, /process\.env\.GEA_PACKAGE_PNPM = pnpm/);
+  assert.ok(
+    source.indexOf("process.env.GEA_PACKAGE_PNPM = pnpm") <
+      source.indexOf('name: "required-and-affected"'),
+  );
+});
