@@ -37,10 +37,7 @@ test("报了 main 也是主对话", () => {
 });
 
 test("点了业务菜单就在工作台，并且知道是哪一页", () => {
-  const surface = normalizeSurface(
-    { menu: "inventory-qll", title: "全链库存工作台" },
-    now,
-  );
+  const surface = normalizeSurface({ menu: "inventory-qll", title: "全链库存工作台" }, now);
   const presence = workbenchPresence({ surface });
   assert.equal(presence.inWorkbench, true);
   assert.equal(presence.signal, "menu");
@@ -49,22 +46,13 @@ test("点了业务菜单就在工作台，并且知道是哪一页", () => {
 });
 
 test("菜单名缺省时用菜单 id 兜底，不会变成空字符串", () => {
-  assert.equal(
-    normalizeSurface({ menu: "inventory-fc" }, now).title,
-    "inventory-fc",
-  );
+  assert.equal(normalizeSurface({ menu: "inventory-fc" }, now).title, "inventory-fc");
   assert.equal(surfaceLabel(undefined), "主对话（未上报菜单状态）");
 });
 
 test("菜单字段是不可信输入：缺 menu 报错，控制字符被清掉，超长被截断", () => {
-  assert.throws(
-    () => normalizeSurface({ menu: "  " }, now),
-    /INVALID_WORKBENCH_MENU/,
-  );
-  assert.throws(
-    () => normalizeSurface({ menu: 7 }, now),
-    /INVALID_WORKBENCH_MENU/,
-  );
+  assert.throws(() => normalizeSurface({ menu: "  " }, now), /INVALID_WORKBENCH_MENU/);
+  assert.throws(() => normalizeSurface({ menu: 7 }, now), /INVALID_WORKBENCH_MENU/);
   assert.equal(normalizeSurface({ menu: "a\u0000b" }, now).menu, "a b");
   const long = normalizeSurface({ menu: "x".repeat(200) }, now);
   assert.equal(long.menu.length, MENU_MAX_CHARS);
@@ -73,18 +61,13 @@ test("菜单字段是不可信输入：缺 menu 报错，控制字符被清掉�
 test("菜单状态字段是主对话/工作台的唯一判据", () => {
   assert.equal(isMainSurface(undefined), true);
   assert.equal(isMainSurface(normalizeSurface({ menu: MAIN_MENU }, now)), true);
-  assert.equal(
-    isMainSurface(normalizeSurface({ menu: "gea-proof" }, now)),
-    false,
-  );
+  assert.equal(isMainSurface(normalizeSurface({ menu: "gea-proof" }, now)), false);
 });
 
 test("菜单名解析：注册页面优先 → 原型目录 → 回退 id", () => {
   assert.equal(businessMenuTitle(MAIN_MENU), "主对话");
   assert.equal(
-    businessMenuTitle("inventory-qll", [
-      { id: "inventory-qll", title: "全链库存", order: 1 },
-    ]),
+    businessMenuTitle("inventory-qll", [{ id: "inventory-qll", title: "全链库存", order: 1 }]),
     "全链库存",
   );
   assert.equal(businessMenuTitle("inventory-qll"), "全链库存工作台");
@@ -96,7 +79,7 @@ test("每轮注入的「业务位置」：主对话就明说别读页面", () =>
   const main = surfacePromptLine(undefined);
   assert.match(main, /页面/);
   assert.match(main, /未绑定/);
-  assert.match(main, /gea_cube_query/);
+  assert.match(main, /query_business_data/);
   // 线上实测：位置提示来回变之后，模型说"用户消息是空的"——这条必须钉住。
   assert.match(main, /用户指向这一屏/);
   assert.match(main, /不空读页面/);

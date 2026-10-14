@@ -14,13 +14,7 @@ import {
 import { channelPlan } from "../src/capability/channel.ts";
 
 test("影响等级映射到能力层，写业务数据的两层必须确认", () => {
-  assert.deepEqual(CAPABILITY_LAYERS, [
-    "read",
-    "draft",
-    "submit",
-    "approve",
-    "export",
-  ]);
+  assert.deepEqual(CAPABILITY_LAYERS, ["read", "draft", "submit", "approve", "export"]);
   assert.equal(layerForEffect("view"), "read");
   assert.equal(layerForEffect("draft"), "draft");
   assert.equal(layerForEffect("submit"), "submit");
@@ -42,20 +36,19 @@ test("影响等级映射到能力层，写业务数据的两层必须确认", ()
 
 test("模块有哪几层由事实派生，最大等级之上的层不放行", () => {
   // 只读页面：只有读层。
-  assert.deepEqual(
-    layersForContract({ hasView: true, maxEffect: "view" }),
-    ["read"],
-  );
+  assert.deepEqual(layersForContract({ hasView: true, maxEffect: "view" }), ["read"]);
   // 能改草稿：读 + 改草稿。
-  assert.deepEqual(
-    layersForContract({ hasView: true, hasData: true, maxEffect: "draft" }),
-    ["read", "draft"],
-  );
+  assert.deepEqual(layersForContract({ hasView: true, hasData: true, maxEffect: "draft" }), [
+    "read",
+    "draft",
+  ]);
   // 能审批：一路展开到审批。
-  assert.deepEqual(
-    layersForContract({ hasView: true, hasData: true, maxEffect: "approve" }),
-    ["read", "draft", "submit", "approve"],
-  );
+  assert.deepEqual(layersForContract({ hasView: true, hasData: true, maxEffect: "approve" }), [
+    "read",
+    "draft",
+    "submit",
+    "approve",
+  ]);
   // 没有页面也没有数据：连读层都不算有。
   assert.deepEqual(layersForContract({ maxEffect: "view" }), []);
   // 模块自己声明的层与派生结果取并集（导出层只有声明了才有）。
@@ -86,7 +79,7 @@ test("通道顺序由宿主算好：当前页 → 模块 MCP → 受管只读", 
     },
   });
   assert.equal(plan.page.tool, "inventory_dealer_page");
-  assert.equal(plan.module.tool, "gea_module_mcp");
+  assert.equal(plan.module.tool, "mcp__gea-gateway__query_business_data");
   assert.equal(plan.read.tool, "gea_plugin_read");
   assert.equal(plan.read.consumerCode, "dealer-inventory-replenishment");
   assert.match(plan.note, /不要三条通道各试一遍/);

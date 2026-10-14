@@ -179,7 +179,7 @@ export function installStockRoutes(app, state, model) {
           accessDecision: { allowed: state.mode !== "denied" },
           gatewayContext: {
             consumerType: "AGENT",
-            consumerCode: "branch-inventory",
+            consumerCode: body.consumerCode,
             sessionId: "fixture-cube",
             conversationId: "fixture-conversation",
           },
@@ -188,119 +188,7 @@ export function installStockRoutes(app, state, model) {
       });
       return true;
     }
-    if (path.endsWith("/ai/gateway/mcp/proxy/resources")) {
-      state.discovery.push(JSON.parse(req.body));
-      reply({
-        success: true,
-        resources:
-          state.mode === "denied"
-            ? []
-            : [
-                {
-                  capabilityCode: "MCP_TOOL:cube:query_business_data",
-                  resourceCode: "branch_stock",
-                  resourceName: "分仓库存固定样本",
-                  resourceType: "EXTERNAL_MCP",
-                  queryTarget: "branch_stock",
-                  version: "fixture-20260929",
-                  maxRows: 100,
-                  maxBytes: null,
-                },
-              ],
-      });
-      return true;
-    }
-    if (path.endsWith("/ai/gateway/mcp/proxy/mcp")) {
-      const body = JSON.parse(req.body);
-      let result = {};
-      if (body.method === "initialize") result = { protocolVersion: body.params.protocolVersion };
-      else if (body.method === "notifications/initialized") {
-        res.statusCode = 202;
-        res.end();
-        return true;
-      } else if (body.method === "tools/list")
-        result = {
-          tools: [
-            {
-              name: "query_business_data",
-              _meta: { sourceType: "MCP", sourceCode: "cube" },
-              inputSchema: {
-                type: "object",
-                properties: {
-                  action: { type: "string" },
-                  queries: { type: "array" },
-                },
-                required: ["action", "queries"],
-              },
-            },
-          ],
-        };
-      else if (body.method === "tools/call") {
-        const args = body.params.arguments;
-        if (args.action === "inspect")
-          result = {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  semanticModel: [
-                    {
-                      name: "branch_stock",
-                      measures: [
-                        {
-                          name: "branch_stock.available_qty",
-                          type: "number",
-                          description: "可用库存，件",
-                        },
-                      ],
-                      dimensions: [
-                        { name: "branch_stock.material_code", type: "string" },
-                        { name: "branch_stock.warehouse_name", type: "string" },
-                        { name: "branch_stock.snapshot_date", type: "time" },
-                      ],
-                    },
-                  ],
-                }),
-              },
-            ],
-          };
-        else {
-          state.cube.push(args);
-          result =
-            state.mode === "error"
-              ? {
-                  isError: true,
-                  content: [{ type: "text", text: "固定样本读取失败" }],
-                }
-              : {
-                  content: [
-                    {
-                      type: "text",
-                      text: JSON.stringify({
-                        datasets: [
-                          {
-                            name: "branch_stock",
-                            rows:
-                              state.mode === "empty"
-                                ? []
-                                : stock.map((r) => ({
-                                    "branch_stock.material_code": r.material_code,
-                                    "branch_stock.warehouse_name": "长沙分仓",
-                                    "branch_stock.snapshot_date": r.snapshot_date,
-                                    "branch_stock.available_qty":
-                                      state.mode === "missing" ? null : r.available_qty,
-                                  })),
-                          },
-                        ],
-                      }),
-                    },
-                  ],
-                };
-        }
-      }
-      reply({ jsonrpc: "2.0", id: body.id, result });
-      return true;
-    }
+    if (stockMcpRoute(req, res, reply, state)) return true;
     if (path === "/v1/chat/completions") {
       const body = JSON.parse(req.body);
       state.models.push(body);
@@ -330,7 +218,143 @@ export const stockState = (sample) => ({
   rest: [],
   restConsumers: [],
   gateway: [],
-  discovery: [],
   cube: [],
   models: [],
 });
+
+/** Current Cube-New protocol over the caller-owned loopback server. */
+export function stockMcpRoute(req, res, reply, state) {
+  const path = req.url.pathname;
+  if (path.endsWith("/ai/gateway/mcp/proxy/mcp")) {
+    const body = JSON.parse(req.body);
+    let result = {};
+    if (body.method === "initialize") result = { protocolVersion: body.params.protocolVersion };
+    else if (body.method === "notifications/initialized") {
+      res.statusCode = 202;
+      res.end();
+      return true;
+    } else if (body.method === "tools/list")
+      result = {
+        tools: [
+          {
+            name: "inspect_cube_model",
+            _meta: { sourceType: "MCP", sourceCode: "cube" },
+            description: "Inspect fixed branch inventory members",
+            inputSchema: {
+              type: "object",
+              properties: { keyword: { type: "string" } },
+              additionalProperties: false,
+            },
+          },
+          {
+            name: "query_business_data",
+            _meta: { sourceType: "MCP", sourceCode: "cube" },
+            inputSchema: {
+              type: "object",
+              properties: {
+                action: { type: "string", enum: ["query"] },
+                response_mode: { type: "string", enum: ["inline_complete"] },
+                queries: { type: "array" },
+              },
+              required: ["action", "queries"],
+            },
+          },
+        ],
+      };
+    else if (body.method === "tools/call") {
+      const args = body.params.arguments;
+      if (body.params.name === "inspect_cube_model")
+        result = {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                semanticModel: [
+                  {
+                    name: "branch_stock",
+                    measures: [
+                      {
+                        name: "branch_stock.available_qty",
+                        type: "number",
+                        description: "可用库存，件",
+                      },
+                    ],
+                    dimensions: [
+                      { name: "branch_stock.material_code", type: "string" },
+                      { name: "branch_stock.warehouse_name", type: "string" },
+                      { name: "branch_stock.snapshot_date", type: "time" },
+                    ],
+                  },
+                ],
+              }),
+            },
+          ],
+        };
+      else {
+        state.cube.push(args);
+        result = ["error", "denied"].includes(state.mode)
+          ? {
+              structuredContent: {
+                code:
+                  state.mode === "denied"
+                    ? "AI_GATEWAY_DATA_PERMISSION_DENIED"
+                    : "GEA_MCP_TOOL_ERROR",
+                message: state.mode === "denied" ? "当前未获授权" : "固定样本读取失败",
+              },
+              isError: true,
+              content: [{ type: "text", text: "固定样本读取失败" }],
+            }
+          : {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    action: "query",
+                    status: "completed",
+                    executedQueryCount: 1,
+                    datasets: [
+                      {
+                        name: "branch_stock",
+                        rowCount: state.mode === "empty" ? 0 : stock.length,
+                        dataStatus: state.mode === "empty" ? "no_data" : "ok",
+                        offset: 0,
+                        totalRowCount: state.mode === "empty" ? 0 : stock.length,
+                        hasMorePages: false,
+                        fields: [
+                          {
+                            name: "branch_stock.material_code",
+                            type: "string",
+                          },
+                          {
+                            name: "branch_stock.warehouse_name",
+                            type: "string",
+                          },
+                          { name: "branch_stock.snapshot_date", type: "time" },
+                          {
+                            name: "branch_stock.available_qty",
+                            type: "number",
+                          },
+                        ],
+                        rows:
+                          state.mode === "empty"
+                            ? []
+                            : stock.map((r) => ({
+                                "branch_stock.material_code": r.material_code,
+                                "branch_stock.warehouse_name": "长沙分仓",
+                                "branch_stock.snapshot_date": r.snapshot_date,
+                                "branch_stock.available_qty":
+                                  state.mode === "missing" ? null : r.available_qty,
+                              })),
+                      },
+                    ],
+                  }),
+                },
+              ],
+            };
+      }
+    }
+    reply({ jsonrpc: "2.0", id: body.id, result });
+    return true;
+  }
+  return false;
+}
