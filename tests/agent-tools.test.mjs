@@ -441,7 +441,7 @@ test(
       // 每一轮都要先读一次"这一屏"，读到结果才收尾：用来验证"同一份快照，
       // 换菜单后还算不算本轮证据"。按"最后一条用户消息之后有没有工具结果"判断本轮。
       if (outcome === "page-evidence-guard") {
-        if (!names.includes("gea_visible_workbench_context")) {
+        if (!body.tools.some((tool) => tool.function.name === "gea_visible_workbench_context")) {
           res.end(event({ content: "当前主对话没有页面工具，未使用旧页面证据回答。" }, "stop"));
           return true;
         }
@@ -1006,13 +1006,17 @@ test(
         2,
         JSON.stringify(
           modelRequests.map((body) =>
-            body.messages.map((message) => ({
-              role: message.role,
-              id: message.tool_call_id,
-              calls: message.tool_calls,
-              content:
-                typeof message.content === "string" ? message.content.slice(-900) : message.content,
-            })),
+            body.messages
+              .filter((message) => message.role === "tool" || message.tool_calls)
+              .map((message) => ({
+                role: message.role,
+                id: message.tool_call_id,
+                calls: message.tool_calls,
+                content:
+                  typeof message.content === "string"
+                    ? message.content.slice(-900)
+                    : message.content,
+              })),
           ),
         ),
       );
@@ -1401,6 +1405,7 @@ test(
         "非白名单页面不应注册工具",
       );
 
+      await ended(foreign);
       // 2) 白名单页面：改视图的动作和"填草稿"的动作都要暴露（它们都是页面开放的）。
       const allowed = await createPageSession();
       await pageOperation(allowed, "catalog", {
@@ -1447,6 +1452,7 @@ test(
         ),
         false,
       );
+      await ended(allowed);
     });
     await t.test("切页即撤：页面声明为 null 后，上一屏的元素当场从会话里消失", async () => {
       outcome = "success";
@@ -1506,6 +1512,10 @@ test(
         modelRequests[0].tools.some((tool) => tool.function.name === "gea_workbench_apply"),
         false,
         "页面撤走后不能再把上一屏的元素留给模型",
+      );
+      await until(
+        () => readSession(app.runtime, id),
+        (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
       );
     });
     await t.test("元素目录：只读元素改不动，只有可编辑字段才下发到页面", async () => {
@@ -1698,6 +1708,7 @@ test(
         tool.function.description.length <= 20_200,
         `说明长度 ${tool.function.description.length} 应在上限内`,
       );
+      await ended(id);
     });
     await t.test(
       "Skill references use the local reader in the actual model-tool-model loop",
@@ -1724,15 +1735,17 @@ test(
           3,
           JSON.stringify(
             modelRequests.map((body) =>
-              body.messages.map((message) => ({
-                role: message.role,
-                id: message.tool_call_id,
-                calls: message.tool_calls,
-                content:
-                  typeof message.content === "string"
-                    ? message.content.slice(-900)
-                    : message.content,
-              })),
+              body.messages
+                .filter((message) => message.role === "tool" || message.tool_calls)
+                .map((message) => ({
+                  role: message.role,
+                  id: message.tool_call_id,
+                  calls: message.tool_calls,
+                  content:
+                    typeof message.content === "string"
+                      ? message.content.slice(-900)
+                      : message.content,
+                })),
             ),
           ),
         );
