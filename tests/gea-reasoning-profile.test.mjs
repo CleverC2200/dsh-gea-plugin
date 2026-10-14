@@ -2,7 +2,7 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile, symlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { sourceAssemblyFixture } from "./fixtures/source-assembly.mjs";
@@ -16,26 +16,33 @@ async function inputs(t) {
   const input = JSON.parse(await readFile(process.env.GEA_REASONING_INTEGRATION_INPUT, "utf8"));
   const fixture = await sourceAssemblyFixture(t);
   const sources = fixture.sources;
+  await mkdir(join(fixture.root, "integration"));
+  await symlink(input.officialCorePath, join(fixture.root, "official-latest-standard"), "dir");
   for (const row of input.repositories) {
     assert.equal(
       execFileSync("git", ["rev-parse", "HEAD"], { cwd: row.path, encoding: "utf8" }).trim(),
       row.head,
     );
-    const source = join(fixture.root, "frozen-" + row.repo);
-    execFileSync("git", [
-      "-c",
-      "advice.detachedHead=false",
-      "clone",
-      "-q",
-      "--no-hardlinks",
-      row.path,
-      source,
-    ]);
-    const sourceUrl = execFileSync("git", ["remote", "get-url", "source"], {
-      cwd: row.path,
-      encoding: "utf8",
-    }).trim();
-    execFileSync("git", ["remote", "add", "source", sourceUrl], { cwd: source });
+    const source =
+      row.repo === "dsh-gea-plugin" ? row.path : join(fixture.root, "integration", row.repo);
+    if (source === row.path) {
+      await symlink(source, join(fixture.root, "integration", row.repo), "dir");
+    } else {
+      execFileSync("git", [
+        "-c",
+        "advice.detachedHead=false",
+        "clone",
+        "-q",
+        "--no-hardlinks",
+        row.path,
+        source,
+      ]);
+      const sourceUrl = execFileSync("git", ["remote", "get-url", "source"], {
+        cwd: row.path,
+        encoding: "utf8",
+      }).trim();
+      execFileSync("git", ["remote", "add", "source", sourceUrl], { cwd: source });
+    }
     assert.equal(
       execFileSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).trim(),
       row.head,
