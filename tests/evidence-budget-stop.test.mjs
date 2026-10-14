@@ -30,84 +30,29 @@ for (const batchSize of [1, 3])
       const captured = [];
       app.route((req, res, reply) => {
         const path = req.url.pathname;
-        if (path.endsWith("/ai/gateway/session")) {
+        if (path.endsWith("/sales-plan/plans")) {
           reply({
             success: true,
             result: {
-              accessDecision: { allowed: true },
-              gatewayContext: {
-                consumerType: "AGENT",
-                consumerCode: "sales_forecast",
-                sessionId: "fixture",
-                conversationId: "fixture",
-              },
-              delegationToken: "fixture",
+              records: [
+                {
+                  planId: "fixture-plan",
+                  versionId: "fixture-version",
+                  periodId: "20261001",
+                  orderType: "M",
+                  planTypeCode: "Y",
+                  status: 1,
+                  baseName: "fixture",
+                  currentQty: "42",
+                  currentAmount: "12.3400",
+                },
+              ],
+              total: 1,
+              current: 1,
+              size: 200,
+              pages: 1,
             },
           });
-          return true;
-        }
-        if (path.endsWith("/ai/gateway/mcp/proxy/resources")) {
-          reply({
-            success: true,
-            resources: [
-              {
-                capabilityCode: "MCP_TOOL:cube:query_business_data",
-                resourceCode: "inv",
-                resourceName: "inv",
-                resourceType: "EXTERNAL_MCP",
-                queryTarget: "inv",
-                version: "1",
-                maxRows: 100,
-                maxBytes: null,
-              },
-            ],
-          });
-          return true;
-        }
-        if (path.endsWith("/ai/gateway/mcp/proxy/mcp")) {
-          const b = JSON.parse(req.body);
-          let result = {};
-          if (b.method === "initialize") result = { protocolVersion: b.params.protocolVersion };
-          else if (b.method === "notifications/initialized") {
-            res.statusCode = 202;
-            res.end();
-            return true;
-          } else if (b.method === "tools/list")
-            result = {
-              tools: [
-                {
-                  name: "query_business_data",
-                  _meta: { sourceType: "MCP", sourceCode: "cube" },
-                  inputSchema: {
-                    type: "object",
-                    properties: { action: { type: "string" }, queries: { type: "array" } },
-                    required: ["action", "queries"],
-                  },
-                },
-              ],
-            };
-          else if (b.method === "tools/call")
-            result = {
-              content: [
-                {
-                  type: "text",
-                  text: JSON.stringify(
-                    b.params.arguments.action === "inspect"
-                      ? {
-                          semanticModel: [
-                            { name: "inv", measures: [{ name: "inv.row_count", type: "number" }] },
-                          ],
-                        }
-                      : {
-                          datasets: [
-                            { name: "inv", rows: [{ "inv.row_count": 42 }], complete: true },
-                          ],
-                        },
-                  ),
-                },
-              ],
-            };
-          reply({ jsonrpc: "2.0", id: b.id, result });
           return true;
         }
         if (path !== "/v1/chat/completions") return false;
@@ -117,10 +62,7 @@ for (const batchSize of [1, 3])
         let call;
         if (phase === "exhaust") {
           if (step === 0)
-            call = [
-              "gea_cube_query",
-              { queries: [{ name: "inv", query: { measures: ["inv.row_count"] } }] },
-            ];
+            call = ["gea_sales_plan_read", { kind: "list", query: { periodId: "20261001" } }];
           else {
             evidenceId ??= JSON.parse(
               body.messages.find((m) => m.role === "tool").content,
@@ -143,7 +85,7 @@ for (const batchSize of [1, 3])
                 }),
               ),
             }
-          : { content: "已取得42条记录；未读范围未完成，不据此排列全量缺货名次。" };
+          : { content: "已取得数量42；未读范围未完成，不据此排列全量。" };
         res.setHeader("Content-Type", "text/event-stream");
         res.end(
           "data: " +
@@ -174,7 +116,7 @@ for (const batchSize of [1, 3])
           mode: "queue",
           content: [{ type: "text", text }],
         });
-      await ask("哪些分仓缺货最严重？");
+      await ask("读取当前在线工作流清单，并验证证据读取额度。");
       const events = await until(
         () => readSession(app.runtime, sessionId),
         (r) => r.some((e) => e.type === "turn/end"),

@@ -9,6 +9,7 @@ test(
   async (t) => {
     const app = await profile(t, {
       config: (base) => ({
+        cubeMcpCodes: { production: "cube", test: "cube" },
         analysis: {
           mode: "model",
           baseUrl: base + "/v1",
@@ -42,7 +43,7 @@ test(
                 planTypeCode: "Y",
                 orderType: "M",
                 status: 1,
-                currentQty: "10",
+                currentQty: revoked ? "11" : "10",
                 currentAmount: "20",
                 baseName: "fixture-base",
               },
@@ -134,8 +135,20 @@ test(
                     {
                       type: "text",
                       text: JSON.stringify({
+                        action: "query",
+                        status: "completed",
+                        executedQueryCount: 1,
                         datasets: [
-                          { name: "inv", rows: [{ "inv.row_count": 42 }], complete: true },
+                          {
+                            name: "inv",
+                            rowCount: 1,
+                            dataStatus: "ok",
+                            totalRowCount: 1,
+                            offset: 0,
+                            hasMorePages: false,
+                            fields: [{ name: "inv.row_count" }],
+                            rows: [{ "inv.row_count": 42 }],
+                          },
                         ],
                       }),
                     },
@@ -252,30 +265,36 @@ test(
     const capabilities = JSON.parse(replies[1].text);
     assert.equal(capabilities.preset, "gea-readonly");
     assert.equal(capabilities.modulesAreConfiguredNotAuthorized, true);
+    replies = await run("查询库存数量。", [
+      [
+        "mcp__gea-gateway__query_business_data",
+        { action: "query", queries: [{ name: "inv", query: { measures: ["inv.row_count"] } }] },
+      ],
+    ]);
+    assert.equal(queryCalls, 1);
+    const direct = JSON.parse(replies[0].text);
+    assert.equal(direct.datasets[0].rows[0]["inv.row_count"], 42);
+    assert.equal(direct.evidenceId, undefined, "native MCP retains the direct server result");
     const readArgs = (body) => {
       evidenceId ??= JSON.parse(
         body.messages.filter((m) => m.role === "tool").at(-1).content,
       ).evidenceId;
-      return { evidenceId, limit: 4000 };
+      return { evidenceId, format: "raw", offset: 0, limit: 4000 };
     };
-    replies = await run("查询库存数量。", [
-      ["gea_cube_query", { queries: [{ name: "inv", query: { measures: ["inv.row_count"] } }] }],
-      ["gea_evidence_read", readArgs],
+    replies = await run("核对当前在线审批清单及其证据。", [
+      ["gea_sales_plan_read", { kind: "list", query: { periodId: "20260801" } }],
       ["gea_evidence_read", readArgs],
       ["gea_evidence_read", () => ({ evidenceId, format: "raw", offset: 0, limit: 100 })],
     ]);
-    assert.equal(queryCalls, 1);
     const first = JSON.parse(replies[1].text);
-    assert.equal(first.datasets[0].table.rows[0]["inv.row_count"], 42);
-    assert.equal(first.content, undefined);
-    assert.equal(JSON.parse(replies[2].text).projection, "already-delivered");
-    const audit = JSON.parse(replies[3].text);
+    assert.match(first.content, /"currentQty":"10"/);
+    assert.match(first.content, /"currentAmount":"20"/);
+    const audit = JSON.parse(replies[2].text);
     assert.equal(audit.content.length, Math.min(audit.totalChars, 100));
-    assert.match(audit.content, /inv.row_count/);
     revoked = true;
     replies = await run("继续读取刚才证据。", [["gea_evidence_read", () => ({ evidenceId })]]);
     assert.equal(replies[0].isError, true);
-    assert.match(replies[0].text, /AUTHORIZATION_CHANGED/);
-    assert.equal(queryCalls, 1);
+    assert.match(replies[0].text, /GEA_EVIDENCE_STALE/);
+    assert.equal(queryCalls, 1, "native sales evidence never reruns the MCP query");
   },
 );
