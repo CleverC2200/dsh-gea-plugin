@@ -23,6 +23,79 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
 );
 const { Business, networkError, modelHttpError } = mod.exports;
 
+function loggedInBusiness(t) {
+  const business = new Business({
+    geaBaseUrl: "https://fixture.invalid/gea-boot",
+    analysisAgentCode: "aps",
+    workbenchCapability: { enabled: true },
+    requestTimeoutMs: 1000,
+    runtimeDir: "/unused/model-request-fixture",
+  });
+  const login = (token) =>
+    business.restoreDesktopLogin({
+      schema: 1,
+      environment: "production",
+      base: business.base,
+      auth: { token, tenantId: "0", id: "fixture-user", name: "Fixture", username: "fixture" },
+    });
+  login("original-login");
+  t.after(() => business.dispose());
+  return { business, login };
+}
+
+function credentialList() {
+  return Response.json({
+    success: true,
+    result: { records: [{ id: "fixture-credential", status: "ACTIVE" }] },
+  });
+}
+
+test("cancelling a credential claim preserves cancellation instead of reporting a network failure", async (t) => {
+  const { business } = loggedInBusiness(t);
+  const controller = new AbortController();
+  let entered;
+  const claiming = new Promise((resolve) => {
+    entered = resolve;
+  });
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    if (String(input).includes("/my/list")) return credentialList();
+    assert.match(String(input), /\/my\/claim/);
+    entered();
+    return new Promise((resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+    });
+  });
+  const result = business.modelRoute(controller.signal, "aps");
+  await claiming;
+  controller.abort(new Error("fixture-cancelled"));
+  await assert.rejects(result, /STALE_SELECTION|fixture-cancelled/);
+  assert.equal(business.status().authenticated, true);
+});
+
+test("a late credential-claim 401 cannot expire a replacement login", async (t) => {
+  const { business, login } = loggedInBusiness(t);
+  let entered;
+  let respond;
+  const claiming = new Promise((resolve) => {
+    entered = resolve;
+  });
+  t.mock.method(globalThis, "fetch", async (input) => {
+    if (String(input).includes("/my/list")) return credentialList();
+    assert.match(String(input), /\/my\/claim/);
+    entered();
+    return new Promise((resolve) => {
+      respond = resolve;
+    });
+  });
+  const result = business.modelRoute(new AbortController().signal, "aps");
+  await claiming;
+  login("replacement-login");
+  respond(Response.json({ success: false }, { status: 401 }));
+  await assert.rejects(result, /STALE_SELECTION|STALE_LOGIN/);
+  assert.equal(business.status().authenticated, true);
+  assert.equal(business.desktopLoginSnapshot().auth.token, "replacement-login");
+});
+
 test("model error diagnostics redact credentials and never expose proxy HTML", async () => {
   const response = Response.json(
     {

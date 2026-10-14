@@ -18,6 +18,7 @@ import {
   type GeaSalesPlanPeriod,
   type GeaSalesPlanSku,
 } from "@cleverc2200/dsh-agent-workbench/sales-plan";
+import { GatewayRequests } from "./gateway-requests.ts";
 import { avatarUrl } from "./avatar.ts";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -783,6 +784,7 @@ export class Business {
   private environment: "production" | "test";
   private readonly environments: Record<string, string>;
   private readonly apiLog: GeaApiLogCenter;
+  private readonly gatewayRequests: GatewayRequests;
   get base(): string {
     return this.selectedBase;
   }
@@ -843,6 +845,15 @@ export class Business {
       undefined,
       this.salesReadonly?.beforeRequest,
     );
+    this.gatewayRequests = new GatewayRequests({
+      scope: () => ({ base: this.base, signal: this.epoch.signal }),
+      timeoutMs: config.requestTimeoutMs,
+      fetch: (url, init, purpose) => this.apiLog.fetch(url, init, purpose),
+      expire: (identity) => {
+        if (identity && this.auth?.token === identity.token) this.clearLogin(true);
+      },
+      decode: (raw) => object(parseJson(raw)),
+    });
   }
 
   /** 仅桌面拥有者可用：凭证通过私有回环通道传递，绝不经浏览器 RPC。 */
@@ -1168,7 +1179,7 @@ export class Business {
     const refresh = (async () => {
       try {
         const identity = object(
-          await this.get(
+          await this.gatewayRequests.read(
             "/sys/user/getUserInfo",
             auth,
             AbortSignal.any([signal, this.epoch.signal]),
@@ -1201,7 +1212,7 @@ export class Business {
     const refresh = (async () => {
       try {
         const result = object(
-          await this.get(
+          await this.gatewayRequests.read(
             "/sys/permission/getPermCode",
             auth,
             AbortSignal.any([signal, this.epoch.signal]),
@@ -1299,12 +1310,17 @@ export class Business {
           this.gatewaySession = session;
         }
         const resolved = object(
-          await this.postJson("/ai/gateway/agent/session/current-user/resolve", auth, combined, {
-            agentCode,
-            sessionId: session.sessionId,
-            conversationId: session.conversationId,
-            delegationToken: session.delegationToken,
-          }),
+          await this.gatewayRequests.write(
+            "/ai/gateway/agent/session/current-user/resolve",
+            auth,
+            combined,
+            {
+              agentCode,
+              sessionId: session.sessionId,
+              conversationId: session.conversationId,
+              delegationToken: session.delegationToken,
+            },
+          ),
         );
         if (resolved.success !== true) throw new Error("GEA_APPROVAL_ROLES_UNAVAILABLE");
         const roles = Array.isArray(resolved.roles) ? resolved.roles : [];
@@ -1369,68 +1385,6 @@ export class Business {
       runId: this.runId,
       ...(readonlyValidation ? { readonlyValidation } : {}),
     };
-  }
-
-  private async get(
-    path: string,
-    identity: { token: string; tenantId?: string } | undefined,
-    signal: AbortSignal,
-    includeTenant = true,
-    purpose?: string,
-  ): Promise<unknown> {
-    const headers: Record<string, string> = { Accept: "application/json" };
-    if (identity)
-      Object.assign(headers, {
-        "X-Access-Token": identity.token,
-        ...(includeTenant && identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
-        "X-Request-Id": randomUUID(),
-      });
-    let response: Response;
-    const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
-    try {
-      response = await this.apiLog.fetch(
-        this.base + path,
-        {
-          method: "GET",
-          headers,
-          redirect: "error",
-          signal: AbortSignal.any([signal, timeout]),
-        },
-        purpose,
-      );
-    } catch (error) {
-      if (error instanceof SalesReadonlyError) throw error;
-      if (signal.aborted) throw new Error("STALE_SELECTION");
-      if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
-      throw new Error("GEA_NETWORK_ERROR");
-    }
-    if (signal.aborted) throw new Error("STALE_SELECTION");
-    if (!response.ok) {
-      const error = await geaResponseError(response, [identity?.token]);
-      if (response.status === 401 && this.auth?.token === identity?.token) this.clearLogin(true);
-      throw error;
-    }
-    let data: Record<string, unknown>;
-    try {
-      data = object(parseJson(await response.text()));
-    } catch {
-      if (signal.aborted) throw new Error("STALE_SELECTION");
-      if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
-      throw new Error("GEA_INVALID_JSON");
-    }
-    if (signal.aborted) throw new Error("STALE_SELECTION");
-    if (data.success !== true) {
-      if (typeof data.errorCode === "string" && /^NOTIFICATION_[A-Z_]+$/.test(data.errorCode)) {
-        if (
-          data.errorCode === "NOTIFICATION_UNAUTHENTICATED" &&
-          this.auth?.token === identity?.token
-        )
-          this.clearLogin(true);
-        throw new Error(data.errorCode);
-      }
-      throw new Error("GEA_REQUEST_REJECTED");
-    }
-    return data.result;
   }
 
   private authenticated(): NonNullable<Business["auth"]> {
@@ -2029,7 +1983,9 @@ export class Business {
       return {
         environment: this.environment,
         fetchedAt: new Date().toISOString(),
-        count: object(await this.get("/api/v1/notifications/unread-count", auth, signal)).count,
+        count: object(
+          await this.gatewayRequests.read("/api/v1/notifications/unread-count", auth, signal),
+        ).count,
       };
     }
     if (operation === "read" || operation === "dismiss") {
@@ -2039,12 +1995,16 @@ export class Business {
       const idempotencyKey = text(payload.idempotencyKey);
       if (operation === "dismiss") {
         const detail = notificationDetail(
-          await this.get(`/api/v1/notifications/${encodeURIComponent(id)}`, auth, signal),
+          await this.gatewayRequests.read(
+            `/api/v1/notifications/${encodeURIComponent(id)}`,
+            auth,
+            signal,
+          ),
           id,
         );
         if (detail.dismissible !== true) throw new Error("NOTIFICATION_NOT_DISMISSIBLE");
       }
-      return await this.postJson(
+      return await this.gatewayRequests.write(
         `/api/v1/notifications/${encodeURIComponent(id)}/${operation}`,
         auth,
         signal,
@@ -2065,7 +2025,7 @@ export class Business {
       });
       if (new Set(items.map((item) => item.notification_id)).size !== items.length)
         throw new Error("INVALID_PAYLOAD");
-      return await this.postJson("/api/v1/notifications/batch-read", auth, signal, {
+      return await this.gatewayRequests.write("/api/v1/notifications/batch-read", auth, signal, {
         idempotency_key: text(payload.idempotencyKey),
         items,
       });
@@ -2089,7 +2049,7 @@ export class Business {
         (typeof payload.comment !== "string" || payload.comment.length > 500)
       )
         throw new Error("INVALID_PAYLOAD");
-      return await this.postJson(
+      return await this.gatewayRequests.write(
         `/api/v1/notifications/${encodeURIComponent(id)}/approval-action`,
         auth,
         signal,
@@ -2126,7 +2086,7 @@ export class Business {
         query.set("eventType", text(payload.eventType));
       path += "?" + query;
     }
-    const value = await this.get(path, auth, signal);
+    const value = await this.gatewayRequests.read(path, auth, signal);
     signal.throwIfAborted();
     return {
       environment: this.environment,
@@ -2135,55 +2095,6 @@ export class Business {
         ? notificationPage(value, integer(payload.pageSize ?? this.config.pageSize, 1, 100))
         : { detail: notificationDetail(value, text(payload.id)) }),
     };
-  }
-
-  private async postJson(
-    path: string,
-    identity: { token: string; tenantId?: string },
-    signal: AbortSignal,
-    body: unknown,
-  ): Promise<unknown> {
-    let response: Response;
-    const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
-    signal.throwIfAborted();
-    try {
-      response = await this.apiLog.fetch(this.base + path, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-Access-Token": identity.token,
-          ...(identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
-          "X-Request-Id": randomUUID(),
-        },
-        body: JSON.stringify(body),
-        redirect: "error",
-        signal: AbortSignal.any([signal, timeout]),
-      });
-    } catch {
-      if (signal.aborted) throw new Error("STALE_SELECTION");
-      if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
-      throw new Error("GEA_NETWORK_ERROR");
-    }
-    signal.throwIfAborted();
-    if (this.auth !== identity) throw new Error("STALE_LOGIN");
-    if (!response.ok) {
-      if (response.status === 401) this.clearLogin(true);
-      throw await geaResponseError(response, [identity.token]);
-    }
-    const data = object(parseJson(await response.text()));
-    signal.throwIfAborted();
-    if (data.success !== true) {
-      if (
-        typeof data.errorCode === "string" &&
-        /^(NOTIFICATION|APPROVAL)_[A-Z_]+$/.test(data.errorCode)
-      ) {
-        if (data.errorCode === "NOTIFICATION_UNAUTHENTICATED") this.clearLogin(true);
-        throw new Error(data.errorCode);
-      }
-      throw new Error("GEA_REQUEST_REJECTED");
-    }
-    return data.result;
   }
 
   /** 解析当前登录用户的 GEA 个人模型路由，但不向浏览器暴露密钥。 */
@@ -2196,7 +2107,7 @@ export class Business {
     const cached = this.modelRoutes.get(agentCode);
     if (cached) return cached;
     const credentialResult = object(
-      await this.get(
+      await this.gatewayRequests.read(
         "/aidata/user-agent-credential/my/list?pageNo=1&pageSize=10",
         auth,
         AbortSignal.any([signal, epoch]),
@@ -2211,7 +2122,7 @@ export class Business {
     if (status === "DISABLED" || status === "REVOKED")
       throw new Error("GEA_MODEL_CREDENTIAL_DISABLED");
     const credentialId = text(credential.credentialId ?? credential.id);
-    const claim = await this.post(
+    const claim = await this.gatewayRequests.claim(
       "/aidata/user-agent-credential/my/claim?id=" + encodeURIComponent(credentialId),
       auth,
       AbortSignal.any([signal, epoch]),
@@ -2267,7 +2178,7 @@ export class Business {
       if (typeof label !== "string" || !label.trim()) {
         try {
           const metadata = object(
-            await this.get(
+            await this.gatewayRequests.read(
               "/airag/airagModel/queryById?id=" + encodeURIComponent(id),
               auth,
               AbortSignal.any([signal, epoch]),
@@ -2298,37 +2209,6 @@ export class Business {
     return route;
   }
 
-  private async post(
-    path: string,
-    identity: { token: string; tenantId?: string },
-    signal: AbortSignal,
-    includeTenant = true,
-  ): Promise<unknown> {
-    let response: Response;
-    try {
-      response = await this.apiLog.fetch(this.base + path, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "X-Access-Token": identity.token,
-          ...(includeTenant && identity.tenantId ? { "X-Tenant-Id": identity.tenantId } : {}),
-          "X-Request-Id": randomUUID(),
-        },
-        redirect: "error",
-        signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.requestTimeoutMs)]),
-      });
-    } catch {
-      throw new Error("GEA_NETWORK_ERROR");
-    }
-    if (!response.ok) {
-      if (response.status === 401) this.clearLogin(true);
-      throw new Error("GEA_MODEL_HTTP_" + response.status);
-    }
-    const data = object(parseJson(await response.text()));
-    if (data.success !== true) throw new Error("GEA_MODEL_REQUEST_REJECTED");
-    return data.result;
-  }
-
   /** 重启二维码登录，并使旧身份留下的所有选择失效。 */
   async loginStart(signal: AbortSignal, payload: Record<string, unknown> = {}) {
     keys(payload, ["environment"]);
@@ -2337,7 +2217,11 @@ export class Business {
     this.clearLogin();
     const epoch = this.epoch.signal;
     const result = object(
-      await this.get("/sys/getLoginQrcode", undefined, AbortSignal.any([epoch, signal])),
+      await this.gatewayRequests.read(
+        "/sys/getLoginQrcode",
+        undefined,
+        AbortSignal.any([epoch, signal]),
+      ),
     );
     const id = text(result.qrcodeId);
     const loginId = randomUUID();
@@ -2361,7 +2245,7 @@ export class Business {
     const epoch = this.epoch.signal;
     const combined = AbortSignal.any([epoch, signal]);
     const result = object(
-      await this.get(
+      await this.gatewayRequests.read(
         "/sys/getQrcodeToken?qrcodeId=" + encodeURIComponent(qr.id),
         undefined,
         combined,
@@ -2373,7 +2257,9 @@ export class Business {
     if (typeof result.token !== "string" || !result.token.trim() || result.token.length > 16384)
       throw new Error("GEA_INVALID_LOGIN");
     const token = result.token;
-    const identity = object(await this.get("/sys/user/getUserInfo", { token }, combined));
+    const identity = object(
+      await this.gatewayRequests.read("/sys/user/getUserInfo", { token }, combined),
+    );
     const user = object(identity.userInfo);
     const tenantId = String(user.loginTenantId ?? user.tenantId ?? "");
     if (!user.id || !/^\d+$/.test(tenantId)) throw new Error("GEA_IDENTITY_INCOMPLETE");
@@ -3289,7 +3175,7 @@ export class Business {
     }
     const epoch = this.queryEpoch.signal;
     const page = object(
-      await this.get(
+      await this.gatewayRequests.read(
         "/sales-plan/plans?" + query,
         auth,
         AbortSignal.any([epoch, this.epoch.signal, signal]),
@@ -3352,7 +3238,13 @@ export class Business {
     do {
       const path = `/sales-plan/plans?pageNo=${pageNo}&pageSize=${upstreamPageSize}`;
       const page = object(
-        await this.get(path, auth, AbortSignal.any([signal, this.epoch.signal]), true, "periods"),
+        await this.gatewayRequests.read(
+          path,
+          auth,
+          AbortSignal.any([signal, this.epoch.signal]),
+          true,
+          "periods",
+        ),
       );
       if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_PAGE");
       rows.push(...page.records.map(object));
@@ -3472,7 +3364,7 @@ export class Business {
       path = "/sales-plan/plans/" + encodeURIComponent(id);
     const active = this.request("detail:" + id, signal);
     this.details.delete(id);
-    const result = object(await this.get(path, this.authenticated(), active));
+    const result = object(await this.gatewayRequests.read(path, this.authenticated(), active));
     const currentVersion =
       result.currentVersion == null ? null : project(result.currentVersion, versionFields);
     if (currentVersion && (currentVersion.planId !== id || !currentVersion.id))
@@ -3501,7 +3393,7 @@ export class Business {
     const active = this.request("versions:" + id, signal);
     this.versionsByPlan.delete(id);
     const result = this.collection(
-      await this.get(path, this.authenticated(), active),
+      await this.gatewayRequests.read(path, this.authenticated(), active),
       versionFields,
       ["id", "planId", "seq", "status", "targetQty", "targetAmount"],
       path,
@@ -3535,7 +3427,7 @@ export class Business {
     const active = this.request("skus:" + id, signal);
     this.skusByVersion.delete(id);
     const result = this.collection(
-      await this.get(path, this.authenticated(), active),
+      await this.gatewayRequests.read(path, this.authenticated(), active),
       skuFields,
       ["skuCode", "baseQty", "qty", "price", "amt", "amtBase"],
       path,
@@ -3827,7 +3719,7 @@ export class Business {
       else if (key === "status" && kind !== "periods") params.set(key, String(integer(value, 0)));
       else params.set(key, text(value));
     }
-    const result = await this.get(
+    const result = await this.gatewayRequests.read(
       paths[kind]() + (params.size ? "?" + params : ""),
       this.authenticated(),
       AbortSignal.any([signal, this.epoch.signal]),
