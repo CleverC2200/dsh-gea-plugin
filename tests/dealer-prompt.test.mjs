@@ -346,7 +346,11 @@ test(
       ["dealer-inventory-replenishment", "sales_forecast"],
       "discovery and refreshed inspection stay in the owning Agent context",
     );
-    assert.deepEqual(inspections, ["dealer-inventory-replenishment", "sales_forecast"], "exactly one inspection per selected business Consumer");
+    assert.deepEqual(
+      inspections,
+      ["dealer-inventory-replenishment", "sales_forecast"],
+      "exactly one inspection per selected business Consumer",
+    );
     const handshakesBeforeSkill = catalogConsumers.length;
     loadSkill = true;
     const loaded = await ask("gea-readonly");
