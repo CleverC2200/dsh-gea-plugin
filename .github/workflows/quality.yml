@@ -202,20 +202,16 @@ jobs:
           key: downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml') }}
           restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
       - name: Prepare owned Core source without compiling
+        id: sdk-paths
         env:
           CORE_HEAD: ${{ matrix.core }}
-        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "$CORE_HEAD" --source "$GITHUB_WORKSPACE/source/official-core"
+        run: |
+          node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "$CORE_HEAD" --source "$GITHUB_WORKSPACE/source/official-core"
+          node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
       - uses: actions/cache/restore@v4
         id: sdk-cache
         with:
-          path: |
-            official-latest-standard/packages/**/lib/**
-            official-latest-standard/vendor/**/lib/**
-            official-latest-standard/apps/**/lib/**
-            !official-latest-standard/**/node_modules/**
-            official-latest-standard/.git/dsh-sdk-*.json
-            official-latest-standard/apps/web/dist
-            official-latest-standard/native/system/packages/**/*.node
+          path: ${{ steps.sdk-paths.outputs.paths }}
           key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ matrix.core }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
       - uses: actions/cache/restore@v4
         with:
@@ -233,14 +229,7 @@ jobs:
         timeout-minutes: 1
         uses: actions/cache/save@v4
         with:
-          path: |
-            official-latest-standard/packages/**/lib/**
-            official-latest-standard/vendor/**/lib/**
-            official-latest-standard/apps/**/lib/**
-            !official-latest-standard/**/node_modules/**
-            official-latest-standard/.git/dsh-sdk-*.json
-            official-latest-standard/apps/web/dist
-            official-latest-standard/native/system/packages/**/*.node
+          path: ${{ steps.sdk-paths.outputs.paths }}
           key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
       - name: Keep independent quality results including failure
         if: always()
