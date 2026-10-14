@@ -17,7 +17,7 @@ const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 if (!sdk)
   throw Error("GEA_PLUGIN_UPDATE_SDK must explicitly name unchanged fixed SDK");
 // The explicit generated SDK must implement the unchanged candidate public operations.
-const candidateSdk = fileURLToPath(
+const candidateSdk = process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE ?? fileURLToPath(
   new URL("../../../official-latest-standard/", import.meta.url),
 );
 for (const [path, expected] of Object.entries({

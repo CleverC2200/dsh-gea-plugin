@@ -25,3 +25,6 @@ freeze 拒绝 immutable source-combination 模块链接、另一张同目录 pac
 如已安装可选 Sidebar，另外核它的 Schemastery 依赖是否遮住 Host SDK。冲突应明确诊断并按该可选插件的有效修复办理，不能用用户本机源码 link 或版本豁免掩盖。没有额外插件时以官方完整标准能力为准，不宣称有未安装的第三方工具。
 
 本项目只做隔离开发，不向正式 GitLab、npm、OSS 或频道写入，不改正式 App 或已有用户数据。之前的五包与 source-link 操作材料按原字节保存在 [历史安装说明](history/install-before-installable-delivery.md)，仅供追溯。
+
+
+官方插件列表中的公司包更新由 GEA Host 校验签名来源、固定 Core 与安装图。缺少已批准来源或部署证明时显示更新条件未满足；不会沿旧 unsigned 频道更新。检查失败保留已安装内容，页面关闭不撤销已接受安装。安装成功后需要重启，只有新 Host 与客户端实际装载版本均已观察确认后才完成更新回执。普通包交付与 Native 更新接收分别验收，详见 [签名来源与接线](plugin-release-source.md)。

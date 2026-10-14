@@ -19,3 +19,21 @@ trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替�
 [mergePluginChannelRelease/signPluginChannel](../scripts/plugin-channel.mjs) 用显式旧频道、一个新引用、递增 revision 和时间生成完整的新签名 envelope，保留另两包引用。部署方持有私钥并负责原子替换频道。此处函数只生成对象；没有网络或频道写入能力。真实 OSS 地址、凭据、公钥与部署验收仍需明确输入。
 
 本地 `test:release-source` 使用真实 Ed25519 密钥、真实 tar 和受控 fetch；它验证签名链、篡改/回退、完整 peers、固定 Core、持久回执与实际 conditional exports。fixture 测试不证明真实 OSS、官方安装器、Native 自替换、发布或业务验收。
+
+## 官方插件页接线与部署输入
+
+GEA 的 Host/client 实际入口挂接更新能力。client 只在官方 `pluginUpdates.version=1` 与公开 `modules` 服务同时存在时注册三个包的 provider；缺失或其它版本不接管插件页。页面仅显示现有正式更新状态。Host 通过已认证的 `connection.fetch` 注册 status/check/update/observed 四个 POST 路由，不另建业务登录权威。检查使用部署声明的真实超时 AbortSignal；页面关闭中止检查与轮询，已接受安装由 Host 生命周期持有。
+
+`pluginUpdates` 是可选部署配置，省略或配置不完整时三包状态为 blocked，不使用旧 unsigned 频道、默认生产地址或凭据。有效配置包含 `source`（上述来源配置）、`core`（下面的显式来源证明）、`checkTimeoutMs`（1000–120000）和 `pollIntervalMs`（1000–30000）。本接线只支持 `source.authenticationRef="anonymous"`，认证解析器返回空 headers；公网 OSS origin/prefix 也必须显式填写。已核旧 OSS 匿名读取能力不提供新签名频道 URL 或公钥，二者仍需部署输入。
+
+`core` 包含绝对 source root、完整真实 Git head、launcher version，以及 `{path,sha256}` artifacts。它是部署方明确准入的来源记录；Host 核实际 installAnchor 位于该 root、Git HEAD 与干净 tracked 源码、launcher name/version、字节摘要及四个关键公开 SDK package 的实际解析目录/主导出文件，再从该源码读取 SDK 版本。artifact 列表必须覆盖 app-boot、cordis、plugin-manager、atomic-write 的实际主导出，另须覆盖实际消费的 plugin-manager/operations 子路径。这个 source deployment lane 不适用于无 Git 的任意桌面复制目录；不能把任意配置 head 当已验证来源，不能把旧 Core head 登记成同版本的新 head。真实部署须保存受信 owner 构建与装配记录，Native 接收另验。
+
+Host 证明来自公开 Loader 的唯一启用 entry、ACTIVE Fiber、实际 import namespace 与 callback 一致，以及该 namespace 的 `pluginPackageVersion` 编译常量。client 读取公开 `ctx.modules.loadCache` 的 materialized exports，核 ACTIVE Fiber/callback，再读取相同编译常量。`desiredArtifactRevision` 只绑定当前公开 graph；它不证明 cache 实际加载了该修订。报告是已认证受控 client 的观察，不是远端密码学证明。Host 严格解析报告，绑定 process/page/nonce 和过期时间，再核自身 ACTIVE 版本及当前目标 graph；任意 `{kind:"active"}`、旧 process、错误 nonce、版本或目标修订均拒绝。03 的持久回执只在真实新 Host 进程与匹配 client 观察成立后完成；缺证明保持 pending/unknown。Host/client 版本不一致时官方单一 runningVersion 字段省略。
+
+`waiting-lock`、`snapshotting` 暂投影为“已提交”；正式独立阶段由 01 复核补修，不误报为安装中。
+
+## 显式源码合同
+
+`test:contracts` 和已准备 SDK 的 `quality:ci` 会运行 `test:plugin-updates`，包括 03 恢复合同及 04 的真实公开 Host Loader/clientModules 接线、严格绑定、页面取消与请求超时测试。local 必须明确提供 `GEA_PLUGIN_UPDATE_SDK` 与 `GEA_PLUGIN_UPDATE_CANDIDATE_CORE`；03 核未变公开源码摘要，不能用任意旧 SDK 伪证新操作语义。`typecheck:plugin-updates` 使用同样的显式 SDK 输入和 candidate UI 的公开源码合同做定向类型检查。
+
+定向合同、类型检查和 Host/client build 不代表 cold CI、普通发行或桌面装配已准入新 Core。当前发行登记仍需按新的实际 head、SDK 和来源证据更新；没有真实签名 URL/key 或 Core 部署记录时实际更新与 Native 验收保持 blocked。

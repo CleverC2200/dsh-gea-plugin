@@ -42,6 +42,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: link:../../official-latest-standard/vendor/cordis
         version: link:../../official-latest-standard/vendor/cordis
+      '@deepseek-ai/cordis-plugin-loader':
+        specifier: link:../../official-latest-standard/vendor/loader
+        version: link:../../official-latest-standard/vendor/loader
       '@deepseek-ai/dsh':
         specifier: link:../../official-latest-standard/apps/cli
         version: link:../../official-latest-standard/apps/cli
@@ -60,9 +63,6 @@ importers:
       '@deepseek-ai/dsh-app-boot':
         specifier: link:../../official-latest-standard/packages/boot/app-boot
         version: link:../../official-latest-standard/packages/boot/app-boot
-      '@deepseek-ai/dsh-plugin-manager':
-        specifier: link:../../official-latest-standard/packages/boot/plugin-manager
-        version: link:../../official-latest-standard/packages/boot/plugin-manager
       '@deepseek-ai/dsh-atomic-write':
         specifier: link:../../official-latest-standard/packages/util/atomic-write
         version: link:../../official-latest-standard/packages/util/atomic-write
@@ -75,12 +75,18 @@ importers:
       '@deepseek-ai/dsh-client-locale':
         specifier: link:../../official-latest-standard/packages/client/locale
         version: link:../../official-latest-standard/packages/client/locale
+      '@deepseek-ai/dsh-client-modules':
+        specifier: link:../../official-latest-standard/packages/client/modules
+        version: link:../../official-latest-standard/packages/client/modules
       '@deepseek-ai/dsh-client-store':
         specifier: link:../../official-latest-standard/packages/client/store
         version: link:../../official-latest-standard/packages/client/store
       '@deepseek-ai/dsh-client-ui-layout':
         specifier: link:../../official-latest-standard/packages/client/ui-layout
         version: link:../../official-latest-standard/packages/client/ui-layout
+      '@deepseek-ai/dsh-client-ui-plugin-manager':
+        specifier: link:../../official-latest-standard/packages/client/ui-plugin-manager
+        version: link:../../official-latest-standard/packages/client/ui-plugin-manager
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: link:../../official-latest-standard/packages/client/ui-renderer
         version: link:../../official-latest-standard/packages/client/ui-renderer
@@ -102,6 +108,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-workspace':
         specifier: link:../../official-latest-standard/packages/client/ui-workspace
         version: link:../../official-latest-standard/packages/client/ui-workspace
+      '@deepseek-ai/dsh-cmdline':
+        specifier: link:../../official-latest-standard/packages/boot/cmdline
+        version: link:../../official-latest-standard/packages/boot/cmdline
       '@deepseek-ai/dsh-fs':
         specifier: link:../../official-latest-standard/packages/fs/fs
         version: link:../../official-latest-standard/packages/fs/fs
@@ -114,6 +123,9 @@ importers:
       '@deepseek-ai/dsh-persona':
         specifier: link:../../official-latest-standard/packages/preset/persona
         version: link:../../official-latest-standard/packages/preset/persona
+      '@deepseek-ai/dsh-plugin-manager':
+        specifier: link:../../official-latest-standard/packages/boot/plugin-manager
+        version: link:../../official-latest-standard/packages/boot/plugin-manager
       '@deepseek-ai/dsh-session':
         specifier: link:../../official-latest-standard/packages/core/session
         version: link:../../official-latest-standard/packages/core/session

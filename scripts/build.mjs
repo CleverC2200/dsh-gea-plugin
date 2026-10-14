@@ -2,6 +2,7 @@ import { build, context } from "esbuild";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { parseArgs } from "node:util";
+import { execFileSync } from "node:child_process";
 
 const { values } = parseArgs({
   options: {
@@ -20,6 +21,7 @@ for (const name of selected) {
     throw new Error("UNKNOWN_BUILD_TARGET: " + name);
   }
 }
+execFileSync(process.execPath, ["scripts/generate-plugin-package-version.mjs"], { stdio: "inherit" });
 // One-shot and watch builds use identical wrappers and retain output on errors.
 function clientOutput(file, id) {
   return {

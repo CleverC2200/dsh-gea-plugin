@@ -49,7 +49,8 @@ try {
     throw Error("UNEXPECTED_COMPANION_IDENTITY");
   const versions = JSON.parse(await readFile(resolve(values.versions), "utf8"));
   if (!versions[manifest.name]) throw Error("COMPANION_VERSION_REQUIRED");
-  manifest.version = versions[manifest.name];
+  if (manifest.version !== versions[manifest.name])
+    throw Error("COMPILED_PACKAGE_VERSION_MISMATCH");
   for (const key of ["devDependencies", "scripts", "workspaces", "packageManager", "pnpm"])
     delete manifest[key];
   if (/(?:link:|file:|\/Users\/)/.test(JSON.stringify(manifest)))
@@ -74,7 +75,7 @@ try {
     sha256: createHash("sha256")
       .update(await readFile(artifact))
       .digest("hex"),
-    changedFields: ["publication version", "development-only metadata"],
+    changedFields: ["development-only metadata"],
     excludedProvenanceFiles,
     originalLifecycleAlreadyCompleted: true,
   };

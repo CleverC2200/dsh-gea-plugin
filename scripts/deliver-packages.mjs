@@ -186,6 +186,12 @@ async function preflight(input, destination) {
     const version = input.versions?.[manifest.name];
     if (typeof version !== "string" || !/^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(version))
       fail("DELIVERY_VERSION_REQUIRED");
+    if (version !== manifest.version) fail("DELIVERY_COMPILED_VERSION_MISMATCH");
+    command(
+      process.execPath,
+      [join(path, "scripts/generate-plugin-package-version.mjs"), "--check"],
+      path,
+    );
     const lock = repo === "dsh-agent-workbench" ? "package-lock.json" : "pnpm-lock.yaml";
     const lockBytes = await readFile(join(path, lock));
     if (

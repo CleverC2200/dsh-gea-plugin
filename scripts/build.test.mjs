@@ -6,6 +6,7 @@ import {
   writeFile,
   readFile,
   stat,
+  copyFile,
   rm,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,6 +24,9 @@ const outputs = [
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "gea-build-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "scripts"));
+  await copyFile(new URL("./generate-plugin-package-version.mjs", import.meta.url), join(root, "scripts/generate-plugin-package-version.mjs"));
+  await writeFile(join(root, "package.json"), JSON.stringify({ name: "@cleverc2200/gea-dsh-prototype", version: "1.0.0-fixture" }));
   const inputs = {
     "src/host.ts": "export const value = 'host-original';",
     "src/client.tsx": "export const value = 'client';",

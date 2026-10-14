@@ -403,7 +403,11 @@ try {
         },
         {
           name: "contracts",
-          execute: () => run("corepack", ["pnpm", "test:contracts"]),
+          execute: () =>
+            run("corepack", ["pnpm", "test:contracts"], process.cwd(), {
+              GEA_PLUGIN_UPDATE_SDK: core,
+              GEA_PLUGIN_UPDATE_CANDIDATE_CORE: core,
+            }),
         },
         {
           name: "full",

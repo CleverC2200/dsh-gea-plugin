@@ -36,6 +36,8 @@ request.json 的所有输入路径须为绝对路径，destination 必须是不�
 
 [productionManifest](../scripts/production-manifest.mjs) 从源码 manifest 生成发行图：移除开发脚本/工作区及源码入口，SDK 按双版支持声明核 exact OR；Workbench/Manage 保留源码已声明的必需 peer 约束，源码未声明时才使用明确输入的 exact peer，GenUI/Sidebar 使用 exact optional peers，MCP SDK保留实际运行依赖。它不复制另一套宿主SDK。
 
+三主包的 versions 必须等于对应 owner 当前 manifest 的真实 version。版本改变须先在 owner 修改 manifest 并重新构建；交付不再重贴已编译 JS 的版本。各 owner 构建生成 Host/client 共用的不可变 pluginPackageVersion，交付在创建输出前执行可信 owner 的本地 generator --check，最终 raw/final TGZ 继续按既有输出摘要核字节。不会为证明版本执行来源不明的归档 JS。
+
 versions 的两个辅助版本是 optional peer 的 exact 发布元数据，复用 productionManifest 时仍须明确填写；它们不增加交付 tgz、不自动安装辅助插件，也不把辅助能力变成三核心启动前提。入口在创建 destination 前调用同一 productionManifest 校验，缺少版本会失败且不运行 prepare。
 
 构建回执必须包含实际执行命令、退出码、源码提交和锁摘要，并列出本次编译输出的路径/摘要。最少覆盖 manifest 的 Host 和 client 公共导出；需要交付的其它构建输出也应登记。output.path 相对对应 source checkout，sha256 核当前文件与 raw/final tar 同名文件，拒绝把旧 tgz 归到新构建下。command.cwd 要与源码实际目录一致。例：

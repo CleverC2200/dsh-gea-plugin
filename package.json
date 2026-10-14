@@ -12,7 +12,7 @@
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node scripts/generate-plugin-package-version.mjs --check && tsc --noEmit",
     "test:build": "node --test scripts/build.test.mjs",
     "test:window": "node --test tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs",
     "test:dependencies": "node --test scripts/dependency-lock.test.mjs",
@@ -44,7 +44,7 @@
     "package:desktop:mac": "node scripts/package-desktop.mjs --target mac",
     "package:desktop:win": "node scripts/package-desktop.mjs --target win",
     "test:package:desktop": "node --test scripts/package-desktop.test.mjs",
-    "typecheck:official": "node ../dsh-agent-workbench/scripts/verify-official-input.mjs && tsc -p tsconfig.official.json",
+    "typecheck:official": "node ../dsh-agent-workbench/scripts/verify-official-input.mjs && node scripts/generate-plugin-package-version.mjs --check && tsc -p tsconfig.official.json",
     "delivery:check": "node scripts/delivery-check.mjs --verify",
     "test:delivery": "node --test scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs",
     "check:knowledge": "node ../dsh-agent-workbench/scripts/check-agent-knowledge.mjs --root . --config docs/agent-knowledge.json",
@@ -66,10 +66,12 @@
     "test:final-group": "node --test scripts/final-group-input.contract.mjs",
     "quality:upstreams": "node scripts/quality-upstreams.mjs",
     "test:ci-full": "node scripts/run-quality-full.mjs",
-    "test:contracts": "node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/controlled-execution.test.mjs tests/plugin-sql-cancel.test.mjs tests/read-paging.test.mjs tests/business-page-grant.test.mjs tests/gateway-handshake.test.mjs tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs",
+    "test:contracts": "node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/controlled-execution.test.mjs tests/plugin-sql-cancel.test.mjs tests/read-paging.test.mjs tests/business-page-grant.test.mjs tests/gateway-handshake.test.mjs tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs && pnpm run test:plugin-updates",
     "test:profile-window": "node --test tests/profile-window.test.mjs",
-    "test:plugin-updates": "node --test tests/plugin-update-controller.contract.mjs",
-    "test:release-source": "node --test tests/plugin-release.test.mjs tests/plugin-release-source.test.mjs tests/optional-companion-manifest.test.mjs"
+    "test:plugin-updates": "node --expose-internals --test tests/plugin-update-controller.contract.mjs tests/plugin-update-integration.contract.mjs",
+    "test:release-source": "node --test tests/plugin-release.test.mjs tests/plugin-release-source.test.mjs tests/optional-companion-manifest.test.mjs",
+    "typecheck:plugin-updates": "node scripts/check-plugin-updates-types.mjs",
+    "test:package-version": "node --test scripts/package-version-gate.test.mjs scripts/plugin-package-version.test.mjs"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "link:../../upstream-inputs/genui",
@@ -145,18 +147,10 @@
     "react-grab": "0.2.0",
     "typescript": "5.9.3",
     "xlsx-republish": "0.20.3",
-    "@deepseek-ai/cordis": "link:../../official-latest-standard/vendor/cordis",
-    "@deepseek-ai/dsh": "link:../../official-latest-standard/apps/cli",
-    "@deepseek-ai/dsh-api-session-controller": "link:../../official-latest-standard/packages/api/session-controller",
-    "@deepseek-ai/dsh-brand": "link:../../official-latest-standard/packages/util/brand",
-    "@deepseek-ai/dsh-llm": "link:../../official-latest-standard/packages/llm/llm",
-    "@deepseek-ai/dsh-llm-pi-ai": "link:../../official-latest-standard/packages/llm/llm-pi-ai",
-    "@deepseek-ai/dsh-persona": "link:../../official-latest-standard/packages/preset/persona",
-    "@deepseek-ai/dsh-tools": "link:../../official-latest-standard/packages/core/tools",
-    "@deepseek-ai/schemastery": "link:../../official-latest-standard/vendor/schemastery",
-    "dsh-agent-manage": "link:../dsh-agent-manage",
-    "oxlint": "1.87.0",
-    "oxfmt": "0.72.0"
+    "@deepseek-ai/cordis-plugin-loader": "link:../../official-latest-standard/vendor/loader",
+    "@deepseek-ai/dsh-client-modules": "link:../../official-latest-standard/packages/client/modules",
+    "@deepseek-ai/dsh-cmdline": "link:../../official-latest-standard/packages/boot/cmdline",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "link:../../official-latest-standard/packages/client/ui-plugin-manager"
   },
   "engines": {
     "node": ">=24.0.0"
