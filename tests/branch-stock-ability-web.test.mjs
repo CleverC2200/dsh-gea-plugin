@@ -328,7 +328,11 @@ test(
         );
         assert.ok(
           receipts.some((receipt) => receipt.text.includes(expected)),
-          JSON.stringify(receipts),
+          JSON.stringify({
+            receipts,
+            endings: rows.filter((row) => row.type === "turn/end"),
+            requests: modelRequests.slice(modelRequestStart),
+          }),
         );
       }
     };
