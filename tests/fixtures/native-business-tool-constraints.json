@@ -690,7 +690,7 @@
           },
           "response_mode": {
             "type": "string",
-            "enum": ["resource", "inline_complete"]
+            "enum": ["inline_complete"]
           }
         },
         "required": ["queries"]

@@ -129,9 +129,9 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
 
   // ② 主对话：同一个输入条组件，规则必须同样生效。
   await newSession.click();
-  await expect(page.locator(".gea-company-main").first()).toBeVisible();
-  await ask(".gea-company-main");
-  await assertPlacement("主对话", ".gea-company-main");
+  await expect(page.locator("[data-conversation-content]").first()).toBeVisible();
+  await ask("[data-conversation-content]");
+  await assertPlacement("主对话", "[data-conversation-content]");
   await page.screenshot({
     path: ".runtime/composer-evidence/stats-current-dock-main.png",
   });

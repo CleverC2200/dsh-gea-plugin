@@ -100,7 +100,7 @@ test(
         };
         return {
           body: read("body"),
-          main: read(".gea-company-main"),
+          main: read('[data-slot="main.conversation"] [data-phase]'),
           shell: read(document.querySelector("[data-rightbar-col]")?.parentElement),
           composer: read('[contenteditable="true"], textarea'),
           card: read('[data-slot="conversation.composer.bar"]'),
