@@ -145,10 +145,9 @@ try {
         baseline.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
     });
     profileTestsSelected = plan.runtime;
-    writeFileSync(
-      resolve(dirname(dirname(process.cwd())), "quality-test-plan.json"),
-      JSON.stringify(plan, null, 2) + "\n",
-    );
+    // The window contract traverses Core's complete dependency tree, including Web assets.
+    const needsCoreWeb =
+      plan.runtime || plan.files.includes("tests/window-launch-admission.test.mjs");
     const preparedWorkbench = resolve(dirname(process.cwd()), "dsh-agent-workbench");
     const workbenchReceipt = resolve(dirname(dirname(process.cwd())), "prepared-workbench.json");
     const workbenchAssetRoot = resolve(
@@ -165,9 +164,8 @@ try {
       coreBaseline.head,
       "--consumer",
       process.cwd(),
-      ...(plan.runtime
-        ? ["--with-web", ...(process.platform === "win32" ? [] : ["--with-flock"])]
-        : []),
+      ...(needsCoreWeb ? ["--with-web"] : []),
+      ...(plan.runtime && process.platform !== "win32" ? ["--with-flock"] : []),
       ...(values["prepare-sdk"]
         ? [
             "--prepare",
@@ -177,9 +175,13 @@ try {
           ]
         : []),
     ]);
-    if (plan.runtime && !existsSync(resolve(core, "apps/web/dist/index.html")))
+    if (needsCoreWeb && !existsSync(resolve(core, "apps/web/dist/index.html")))
       refuse("QUALITY_CORE_WEB_REQUIRED");
     finalGroup?.verifyUnchanged();
+    writeFileSync(
+      resolve(dirname(dirname(process.cwd())), "quality-test-plan.json"),
+      JSON.stringify(plan, null, 2) + "\n",
+    );
     if (values["prepare-inputs"])
       await prepareQualityUpstreams(existsSync(upstream) ? realpathSync(upstream) : upstream);
     await bindQualityUpstreamInputs(upstream, resolve("../../upstream-inputs"), {
