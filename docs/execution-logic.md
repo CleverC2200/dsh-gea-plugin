@@ -50,9 +50,11 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 
 ## 异步执行与证据归属
 
-[`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出、失败/拒权事实、回读视图、执行 lease 与证据 store。[Prompt runtime](../src/host/prompt-runtime.ts) 在实际工具派发前登记执行，派发结束的唯一 post-execute 消费 token；around-dispatch 失败也撤销元数据。原 admission 状态继续管理预算与 UI mask。
+[`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出、失败/拒权事实、回读视图、执行 lease 与证据 store，并在同一个 lease 内保存调用参数快照与准入 grant。[Prompt runtime](../src/host/prompt-runtime.ts) 在实际工具派发前登记执行，派发结束的唯一 post-execute 消费 token；around-dispatch 失败也撤销元数据。hooks 只转交执行句柄、Core 结果与后续 policy 决定；State 的 `finish` 与 `read` 集中结果发布、来源复核和回读投影，runtime 不再配对另一份 grant Map。原 admission 状态继续管理预算与 UI mask。
 
 轮次、实际preset、Agent状态与store身份epoch决定执行是否仍有效。迟到失败、成功和目录事实只记到原执行；新轮或资源切换后的旧结果不能更新当前状态。原始证据写入之后再次核归属，失去归属时不向当前轮发布回执或投影；文件仍保留。回读重新核原 grant/owner/资源，视图去重也只属于当前有效执行，不由同一个Session地址直接授予。
+
+旧磁盘证据在30分钟有效期内仍可按原grant回读：旧MCP记录必须重核确切Consumer、资源工具与资源快照，缺少授权收据就拒绝。当前原生MCP结果不进入此证据发布路径，不产生新的旧式MCP grant。
 
 现有确定性与Host集成检查入口见 [本地检查](local-development.md)。这些实现与fixture不证明当前窗口、真实模型或业务结果已经验收。
 
