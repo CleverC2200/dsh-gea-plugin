@@ -176,6 +176,8 @@ export async function inspectPluginArchive(
 ): Promise<PluginManifest> {
   const options = {
     maxBuffer: 16 * 1024 * 1024,
+    timeout: 30_000,
+    killSignal: "SIGKILL" as const,
     encoding: "utf8" as const,
     signal,
   };
