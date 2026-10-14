@@ -166,9 +166,21 @@ for (const panel of ["gea-proof", "gea-inbox"])
       await app.rpc("logout");
       await expect.poll(async () => (await binding())?.sessionId).not.toBe(session);
       await app.login();
-      const authority = await page.evaluate(
-        async () => (await (await fetch("/api/gea-html/identity")).json()).scope,
-      );
+      // Login completion can precede the Host user projection. Bind only its confirmed scope.
+      let projection;
+      await expect
+        .poll(async () => {
+          projection = await page.evaluate(
+            async () => await (await fetch("/api/gea-html/identity")).json(),
+          );
+          return (
+            projection.status?.authenticated === true &&
+            typeof projection.scope === "string" &&
+            Boolean(projection.subject)
+          );
+        })
+        .toBe(true);
+      const authority = projection.scope;
       await expect.poll(async () => (await binding())?.ownerScope).toBe(authority);
       await expect.poll(async () => (await binding())?.sessionId).toMatch(/^session-/);
       const after = await binding();

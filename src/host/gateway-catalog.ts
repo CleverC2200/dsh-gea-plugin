@@ -322,6 +322,7 @@ type Member = {
 };
 type Model = {
   name?: string;
+  sourceView?: string;
   title?: string;
   description?: string;
   dimensions?: Member[];
@@ -473,6 +474,7 @@ function catalogCandidate(model: Model): NameCandidate {
   const name = model.name ?? "";
   const fields: NameField[] = [{ text: name, label: "模型名", identity: true }];
   if (model.title) fields.push({ text: model.title, label: "标题" });
+  if (model.sourceView) fields.push({ text: model.sourceView, label: "来源 View" });
   if (model.description) fields.push({ text: model.description, label: "说明" });
   for (const key of MEMBER_KEYS)
     for (const member of membersOf(model, key))
@@ -656,6 +658,10 @@ function modelDetails(
     const measures = taggedMembers(selectedModel, "measures");
     const segments = taggedMembers(selectedModel, "segments");
     const parts = [`- ${name}${model.title && model.title !== name ? `（${model.title}）` : ""}`];
+    if (model.sourceView)
+      parts.push(
+        `  说明来源 View：${model.sourceView}；成员已按 aliasMember 映射到当前授权的底层查询目标，字段与业务行范围仍由实际查询校验。`,
+      );
     if (selected)
       parts.push(
         `  定向成员视图：仅展示本次请求的成员，未列出不代表不存在或无权限。该模型共${(model.dimensions ?? []).length}个维度、${(model.measures ?? []).length}个度量；要完整目录请带model不带members。`,

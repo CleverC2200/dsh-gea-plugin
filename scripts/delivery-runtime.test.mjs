@@ -172,7 +172,7 @@ test("sent, received, delivered, failed and unknown are distinct formal handoff 
     pid: 12345,
     pendingAction: { visibility: "unavailable" },
     stopInterface: "unavailable",
-    rawLog: "https://secret.invalid/?token=secret",
+    rawLog: "https://private-fixture.invalid/?token=handoff-private-secret-marker",
   });
   await f.put("runtime", f.runtime);
   const r = await f.run();
@@ -190,7 +190,14 @@ test("sent, received, delivered, failed and unknown are distinct formal handoff 
   assert.equal(r.runtime.handoffs[4].minimumGap, "FORMAL_DELIVERY_RESULT_REQUIRED");
   assert.ok(r.runtimeGaps.some((v) => v.reason === "FORMAL_DELIVERY_RESULT_REQUIRED"));
   assert.equal(stage(r, "service-structure").status, "unknown");
-  assert.doesNotMatch(JSON.stringify(r), /12345|secret|https:|rawLog|resend|restart|kill/);
+  const publicTool = r.runtime.tools[0];
+  assert.equal("pid" in publicTool, false);
+  assert.equal("rawLog" in publicTool, false);
+  assert.equal("pid" in publicTool.process, false);
+  assert.doesNotMatch(
+    JSON.stringify(r),
+    /handoff-private-secret-marker|private-fixture\.invalid|https:|"rawLog"|"pid"|resend|restart|kill/,
+  );
   await f.put("handoff-delivered", {
     ...f.envelope,
     kind: "delivery-handoff",

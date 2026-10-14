@@ -6,7 +6,7 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan, openBusinessPage } from "./fixtures/business-page.mjs";
 
@@ -318,6 +318,20 @@ test(
             );
             assert.ok(box.offset <= 2, JSON.stringify(box));
           }
+          await page.waitForFunction(async () => {
+            const card = document.querySelector(
+              ".agent-workbench-native-conversation [data-composer-card]",
+            );
+            const first = card?.getBoundingClientRect();
+            if (!first) return false;
+            await new Promise((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve)),
+            );
+            const second = card.getBoundingClientRect();
+            return ["x", "y", "width", "height"].every(
+              (key) => Math.abs(first[key] - second[key]) < 1,
+            );
+          });
           const before = await page
             .locator(".agent-workbench-native-conversation [data-composer-card]")
             .boundingBox();
@@ -614,33 +628,35 @@ test(
         "28px",
       );
 
-      // 登记 30 经验收改回：AI 工作台主视觉保持居中；窄屏不横向溢出（登记 53 加固）。
+      // The authorized official Home centers its native hero row and retains the company brand.
       await page
         .getByRole("complementary", { name: "业务导航", exact: true })
         .getByRole("button", { name: "新会话", exact: true })
         .filter({ hasText: "AI工作台" })
         .click();
-      await page.locator(".gea-home-hero").waitFor();
-      assert.equal(
-        await page.locator(".gea-home-hero").evaluate((el) => getComputedStyle(el).textAlign),
-        "center",
-      );
-      const heroCentered = await page.locator(".gea-home-hero").evaluate((el) => {
-        const hero = el.getBoundingClientRect();
-        const logo = el.querySelector(".gea-home-logo").getBoundingClientRect();
-        const title = el.querySelector(".gea-home-title").getBoundingClientRect();
-        const center = (box) => box.left + box.width / 2;
-        return {
-          logo: Math.round(center(logo) - center(hero)),
-          title: Math.round(center(title) - center(hero)),
-        };
+      const homeBrand = page.locator("[data-company-hero-brand]");
+      await expect(homeBrand).toBeVisible();
+      await expect(page.getByText("探索未至之境", { exact: true })).toBeVisible();
+      const heroCentered = await homeBrand.evaluate((el) => {
+        const headline = [...document.querySelectorAll("span")].find(
+          (node) => node.textContent === "探索未至之境",
+        );
+        const row = headline.parentElement.parentElement.getBoundingClientRect();
+        // Core centers its hero on the composer column, which reserves the scrollbar gutter.
+        const content = el
+          .closest("[data-conversation-content]")
+          .querySelector("[data-composer-card]")
+          .getBoundingClientRect();
+        return { delta: Math.round(row.left + row.width / 2 - content.left - content.width / 2) };
       });
-      assert.ok(Math.abs(heroCentered.logo) <= 2, JSON.stringify(heroCentered));
-      assert.ok(Math.abs(heroCentered.title) <= 2, JSON.stringify(heroCentered));
+      assert.ok(Math.abs(heroCentered.delta) <= 2, JSON.stringify(heroCentered));
       await page.setViewportSize({ width: 700, height: 1000 });
       await page.waitForTimeout(300);
       assert.equal(
-        await page.locator(".gea-home-hero").evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+        await homeBrand.evaluate((el) => {
+          const content = el.closest("[data-conversation-content]");
+          return content.scrollWidth <= content.clientWidth + 1;
+        }),
         true,
       );
 

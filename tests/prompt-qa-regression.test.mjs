@@ -100,6 +100,16 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     },
     "promptQa",
   );
+  // The independent capture includes live APS. CI's declared mock APS has no controlled Consumer.
+  const expectedNativeConstraints = structuredClone(nativeConstraints);
+  if (app.catalogScene.apsMode === "mock") {
+    for (const name of ["gea_cube_query", "gea_gateway_catalog"]) {
+      const consumer = expectedNativeConstraints.find((tool) => tool.function.name === name)
+        .function.parameters.properties.consumerCode;
+      assert.equal(consumer.enum.filter((code) => code === "aps").length, 1);
+      consumer.enum = consumer.enum.filter((code) => code !== "aps");
+    }
+  }
   for (const name of qaFixtureSkillNames) {
     const installed = await fixtureRequest(app, "/api/agent-plugins/user-panel/skills/create", {
       name,
@@ -223,7 +233,7 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
       });
       assert.deepEqual(
         schemaConstraints(businessSchemas),
-        nativeConstraints,
+        expectedNativeConstraints,
         "display compression must preserve every original field, required/enums/ranges/union constraint",
       );
       return {

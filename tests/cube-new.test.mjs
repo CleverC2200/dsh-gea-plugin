@@ -1,0 +1,302 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { build } from "esbuild";
+
+const { outputFiles } = await build({
+  stdin: {
+    contents:
+      "export {gatewayMcpTransport} from './src/host/gateway-mcp.ts'; export {openModuleMcp} from './src/host/mcp-client.ts'; export {cubeInspection} from './src/host/cube-new.ts';",
+    resolveDir: process.cwd(),
+  },
+  bundle: true,
+  write: false,
+  platform: "node",
+  format: "esm",
+});
+const { gatewayMcpTransport, openModuleMcp, cubeInspection } = await import(
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
+);
+const code = "2109581866385289217";
+const uri = "data-artifact://gateway/new-result";
+const payload = () => ({
+  action: "query",
+  status: "completed",
+  executedQueryCount: 1,
+  datasets: [
+    {
+      name: "forecast",
+      rowCount: 1,
+      complete: true,
+      hasMore: false,
+      dataStatus: "ok",
+      totalRowCount: 2,
+      offset: 0,
+      hasMorePages: true,
+      fields: [{ name: "sales_forecast_result.amount" }],
+      rows: [
+        {
+          "sales_forecast_result.amount": null,
+          "sales_forecast_result.code": "001",
+          "sales_forecast_result.zero": 0,
+        },
+      ],
+    },
+  ],
+});
+const query = {
+  action: "query",
+  response_mode: "inline_complete",
+  queries: [
+    {
+      name: "forecast",
+      query: { measures: ["sales_forecast_result.amount"], limit: 1, total: true },
+    },
+  ],
+};
+async function fixture(options = {}) {
+  const sent = [];
+  const raw = JSON.stringify(options.payload ?? payload());
+  const hash = createHash("sha256").update(raw).digest("hex");
+  const fake = async (url, init) => {
+    const wire = JSON.parse(init.body);
+    sent.push({ wire, headers: new Headers(init.headers) });
+    const reply = (result, headers) =>
+      Response.json({ jsonrpc: "2.0", id: wire.id, result }, { headers });
+    if (wire.method === "initialize")
+      return reply({ protocolVersion: "2025-11-25" }, { "MCP-Session-Id": "transport-session" });
+    if (wire.method === "notifications/initialized") return new Response(null, { status: 202 });
+    if (wire.method === "tools/list" && options.legacy)
+      return reply({
+        tools: [
+          {
+            name: "query_business_data",
+            _meta: { sourceType: "MCP", sourceCode: "old-cube" },
+            inputSchema: { type: "object", properties: {} },
+          },
+        ],
+      });
+    if (wire.method === "tools/list")
+      return reply({
+        tools: [
+          {
+            name: "query_business_data",
+            _meta: { sourceType: "MCP", sourceCode: "old-cube" },
+            inputSchema: { type: "object", properties: {} },
+          },
+          ...(!options.missing
+            ? [
+                {
+                  name: "query_business_data",
+                  _meta: { sourceType: "MCP", sourceCode: code },
+                  inputSchema: { type: "object", properties: {} },
+                },
+                ...(!options.queryOnly
+                  ? [
+                      {
+                        name: "inspect_cube_model",
+                        _meta: { sourceType: "MCP", sourceCode: code },
+                        inputSchema: { type: "object", properties: {} },
+                      },
+                    ]
+                  : []),
+              ]
+            : []),
+        ],
+      });
+    if (wire.method === "tools/call" && wire.params.name === "inspect_cube_model")
+      return reply({ structuredContent: { action: "inspect", semanticModel: [] }, content: [] });
+    if (wire.method === "tools/call" && options.failure)
+      return reply(
+        options.structuredFailure
+          ? { structuredContent: options.failure }
+          : { content: [{ type: "text", text: JSON.stringify(options.failure) }] },
+      );
+    if (wire.method === "tools/call")
+      return reply({
+        content: [
+          { type: "resource_link", uri, mimeType: "application/json", _meta: { sha256: hash } },
+        ],
+      });
+    if (wire.method === "resources/read")
+      return reply({
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: raw,
+            _meta: { sha256: options.badHash ? "0".repeat(64) : hash },
+          },
+        ],
+      });
+    throw Error("unexpected " + wire.method);
+  };
+  const controller = new AbortController();
+  const transport = gatewayMcpTransport(
+    "https://gea.test",
+    {
+      sessionId: "business-session",
+      conversationId: "conversation",
+      agentCode: "sales_forecast",
+      delegationToken: "private-delegation",
+    },
+    controller.signal,
+    1000,
+    fake,
+    options.legacy ? {} : { cubeMcpCode: code },
+  );
+  return {
+    module: await openModuleMcp(transport, controller.signal),
+    sent,
+    signal: controller.signal,
+  };
+}
+
+test("Cube-New discovers the explicit source, calls separate inspect, and reads its artifact with the same business context", async () => {
+  const f = await fixture();
+  assert.equal(f.module.tools().filter((t) => t.name === "query_business_data").length, 1);
+  assert.deepEqual(JSON.parse(await f.module.call("inspect_cube_model", { limit: 50 }, f.signal)), {
+    action: "inspect",
+    semanticModel: [],
+  });
+  let evidence;
+  const result = await f.module.call("query_business_data", query, f.signal, (text) => {
+    evidence = JSON.parse(text);
+  });
+  assert.match(result, /forecast/);
+  assert.equal(evidence.datasets[0].rows[0]["sales_forecast_result.amount"], null);
+  assert.equal(evidence.datasets[0].rows[0]["sales_forecast_result.code"], "001");
+  assert.equal(evidence.datasets[0].rows[0]["sales_forecast_result.zero"], 0);
+  assert.equal(evidence.datasets[0].hasMorePages, true);
+  for (const { wire, headers } of f.sent.filter((x) =>
+    ["tools/call", "resources/read"].includes(x.wire.method),
+  )) {
+    assert.equal(wire.params._meta.mcpCode, code);
+    assert.equal(wire.params._meta.sessionId, "business-session");
+    assert.equal(wire.params._meta.delegationToken, "private-delegation");
+    assert.equal(headers.get("MCP-Session-Id"), "transport-session");
+    assert.equal(headers.get("MCP-Protocol-Version"), "2025-11-25");
+  }
+});
+
+test("an unregistered or unauthorized Cube-New never borrows the old same-name query tool", async () => {
+  const f = await fixture({ missing: true });
+  assert.equal(
+    f.module.tools().some((t) => t.name === "query_business_data"),
+    false,
+  );
+  const calls = f.sent.length;
+  await assert.rejects(f.module.call("query_business_data", query, f.signal), (error) => {
+    assert.equal(error.code, "GEA_MCP_TOOL_UNAVAILABLE");
+    assert.equal(error.toolName, "query_business_data");
+    assert.equal(error.sourceCode, code);
+    assert.match(error.message, /当前业务会话/);
+    assert.doesNotMatch(error.message, /private-delegation|business-session/);
+    return true;
+  });
+  assert.equal(f.sent.length, calls, "missing authorized tool must not issue a remote call");
+});
+
+test("Cube-New cannot publish forged hashes, incomplete pages or mismatched datasets as query evidence", async () => {
+  for (const options of [
+    { badHash: true },
+    { payload: { ...payload(), datasets: [{ ...payload().datasets[0], complete: false }] } },
+    { payload: { ...payload(), datasets: [{ ...payload().datasets[0], name: "wrong-query" }] } },
+  ]) {
+    const f = await fixture(options);
+    let published = false;
+    const result = await f.module.call("query_business_data", query, f.signal, () => {
+      published = true;
+    });
+    assert.equal(published, false);
+    assert.match(result, /GEA_CUBE_NEW_/);
+  }
+});
+
+test("a query-only Cube-New source still validates its query protocol and artifact", async () => {
+  for (const options of [
+    { badHash: true },
+    { payload: { ...payload(), datasets: [{ ...payload().datasets[0], complete: false }] } },
+  ]) {
+    const f = await fixture({ ...options, queryOnly: true });
+    let published = false;
+    const result = await f.module.call("query_business_data", query, f.signal, () => {
+      published = true;
+    });
+    assert.equal(published, false);
+    assert.match(result, /GEA_CUBE_NEW_/);
+    const sent = f.sent.length;
+    await assert.rejects(
+      f.module.call("query_business_data", { action: "inspect", queries: [] }, f.signal),
+      /GEA_CUBE_NEW_QUERY_ARGUMENTS/,
+    );
+    assert.equal(f.sent.length, sent);
+  }
+});
+
+test("a configured Cube-New source without inspect never selects the old inspect action", async () => {
+  const f = await fixture({ queryOnly: true });
+  const sent = f.sent.length;
+  assert.throws(
+    () => cubeInspection(f.module.tools(), undefined, code),
+    (error) => {
+      assert.equal(error.code, "GEA_MCP_TOOL_UNAVAILABLE");
+      assert.equal(error.toolName, "inspect_cube_model");
+      assert.equal(error.sourceCode, code);
+      return true;
+    },
+  );
+  assert.equal(f.sent.length, sent);
+});
+
+test("Cube-New preserves Session expiry and permission envelopes before validating successful links", async () => {
+  for (const structuredFailure of [false, true]) {
+    for (const expired of [false, true]) {
+      const failure = {
+        success: false,
+        code: expired ? "AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED" : "DATA_PERMISSION_DENIED",
+        category: expired ? "SESSION" : "PERMISSION",
+        requestId: "cube-new-failure",
+        message: expired ? "会话已过期" : "数据未授权",
+      };
+      const f = await fixture({ failure, structuredFailure });
+      let published = false;
+      const call = f.module.call("query_business_data", query, f.signal, () => {
+        published = true;
+      });
+      if (expired)
+        await assert.rejects(call, /GEA_GATEWAY_SESSION_EXPIRED.*requestId=cube-new-failure/);
+      else assert.match(await call, /^模块数据未授权：.*DATA_PERMISSION_DENIED/);
+      assert.equal(published, false);
+      assert.equal(
+        f.sent.some(({ wire }) => wire.method === "resources/read"),
+        false,
+      );
+    }
+  }
+});
+
+for (const [label, fields] of [
+  ["total false", { total: false }],
+  ["ungrouped", { ungrouped: true }],
+]) {
+  test("Cube-New refuses " + label + " before sending the business query", async () => {
+    const f = await fixture();
+    const args = structuredClone(query);
+    Object.assign(args.queries[0].query, fields);
+    await assert.rejects(
+      () => f.module.call("query_business_data", args, f.signal),
+      /GEA_CUBE_NEW_QUERY_ARGUMENTS/,
+    );
+    assert.equal(f.sent.filter((item) => item.wire.method === "tools/call").length, 0);
+  });
+}
+test("legacy Cube keeps its supported total and ungrouped arguments", async () => {
+  const f = await fixture({ legacy: true });
+  const args = structuredClone(query);
+  Object.assign(args.queries[0].query, { total: false, ungrouped: true });
+  await f.module.call("query_business_data", args, f.signal);
+  const call = f.sent.find((item) => item.wire.method === "tools/call");
+  assert.equal(call.wire.params.arguments.queries[0].query.total, false);
+  assert.equal(call.wire.params.arguments.queries[0].query.ungrouped, true);
+});

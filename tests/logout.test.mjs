@@ -119,7 +119,8 @@ test(
       .click();
     // Current Workbench retains visited Documents while the main Conversation becomes active.
     await expect(salesPlanFrameElement(page)).toBeHidden();
-    await expect(page.locator(".gea-home-hero")).toBeVisible();
+    await expect(page.getByText("探索未至之境", { exact: true })).toBeVisible();
+    await expect(page.locator("[data-company-hero-brand]")).toBeVisible();
     await page.getByRole("button", { name: "账户菜单", exact: true }).focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("menuitem", { name: "设置", exact: true })).toBeFocused();

@@ -180,7 +180,15 @@ test(
         collapsed: column.parentElement.getAttribute("data-sidebar-collapsed"),
       }));
       assert.deepEqual(navigationLayout, { sidebar: 280, collapsed: null });
-      assert.equal(loginBounds.height, 920);
+      const documentChrome = await page
+        .locator("[data-workbench-window-chrome]:visible")
+        .boundingBox();
+      assert.equal(documentChrome.height, 58);
+      assert.equal(
+        loginBounds.height + documentChrome.height,
+        920,
+        "login content and the requested Document title row fill the available main height",
+      );
 
       await mkdir(".runtime/web-evidence", { recursive: true });
       await page.screenshot({
@@ -426,7 +434,7 @@ test(
       await page.setViewportSize({ width: 700, height: 1000 });
       const conversation = page.getByRole("complementary", { name: "AI对话", exact: true });
       await expect(conversation).toBeVisible();
-      await expect.poll(async () => (await conversation.boundingBox())?.width).toBe(300);
+      await expect.poll(async () => (await conversation.boundingBox())?.width).toBe(320);
       await expect(
         page.getByRole("separator", { name: "调整业务与AI栏宽", exact: true }),
       ).toBeHidden();

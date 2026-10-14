@@ -77,6 +77,7 @@ test("actual tool stops distinct detail reads at 20 but leaves aggregation and o
 test("catalog replay converges without disabling data queries", async (t) => {
   const f = fixture(t);
   t.mock.method(f.business, "moduleMcp", async () => ({
+    tools: () => [{ name: "query_business_data", inputSchema: { type: "object" } }],
     authorizedResources: async () => ({
       fetchedAt: "fixture",
       resources: [

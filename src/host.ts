@@ -82,6 +82,9 @@ export const Config = z.object({
   periodPageSize: z.natural().min(1).max(1000).default(companyDefaults.periodPageSize),
   requestTimeoutMs: z.natural().min(1000).max(120000).default(companyDefaults.requestTimeoutMs),
   mcpRequestTimeoutMs: z.natural().min(1000).max(120000).default(60000),
+  cubeMcpCodes: z
+    .object({ production: z.string(), test: z.string() })
+    .default(companyDefaults.cubeMcpCodes),
   modelRequestTimeoutMs: z.natural().min(1000).max(600000).default(120000),
   maxSnapshotBytes: z.natural().min(1000).max(5000000).default(companyDefaults.maxSnapshotBytes),
   runtimeDir: z.string(),
