@@ -1,17 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, copyFile, rm, access } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
-const source = process.env.GEA_PACKAGE_PROFILE,
-  core = process.env.GEA_PACKAGE_CORE;
-if (!source || !core) throw Error("GEA_PACKAGE_PROFILE_AND_CORE_REQUIRED");
 test("a same-root package-lock with a different transitive graph cannot shadow the explicit npm input", async (t) => {
   const profile = await mkdtemp(join(tmpdir(), "gea-profile-lock-priority-"));
   t.after(() => rm(profile, { recursive: true, force: true }));
-  for (const name of ["package.json", "pnpm-workspace.yaml", "npm-shrinkwrap.json"])
-    await copyFile(join(source, name), join(profile, name));
+  const dependencies = { "decimal.js": "10.6.0" };
+  await writeFile(
+    join(profile, "package.json"),
+    JSON.stringify({ name: "ordinary-profile-lock-fixture", private: true, dependencies }),
+  );
+  await writeFile(
+    join(profile, "pnpm-workspace.yaml"),
+    "packages:\n  - .\nnodeLinker: hoisted\nautoInstallPeers: false\n",
+  );
+  await writeFile(
+    join(profile, "npm-shrinkwrap.json"),
+    JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "": { dependencies }, "node_modules/decimal.js": { version: "10.6.0" } },
+    }),
+  );
   const input = await readFile(join(profile, "npm-shrinkwrap.json"));
   const other = JSON.parse(input);
   const dependency = Object.keys(other.packages).find((path) =>
@@ -31,7 +42,7 @@ test("a same-root package-lock with a different transitive graph cannot shadow t
           "--profile",
           profile,
           "--core",
-          resolve(core),
+          join(profile, "unopened-core"),
           "--lock",
           join(profile, "npm-shrinkwrap.json"),
           "--receipt",
