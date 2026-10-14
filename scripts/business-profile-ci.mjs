@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 export const productSources = {
   "dsh-agent-workbench": "4d67ee3320ccb3cb3c45856369f1bf9c8f03e289",
   "dsh-agent-manage": "a09eb720ae5a4e9a746160272e99635f2377c1d9",
-  "dsh-gea-plugin": "7c16eb31437304d5a7117142ab9446acf6fd8ad3",
+  "dsh-gea-plugin": "9c2c84a379ce5560ed2ca833df2311de1139fa77",
 };
 const ciPaths = new Set([
   ".github/workflows/quality.yml",
