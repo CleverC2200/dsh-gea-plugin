@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { assertCatalogSceneOwners, assertCatalogSceneSources } from "./fixtures/catalog-scene.mjs";
+import { sourceAssemblyFixture } from "./fixtures/source-assembly.mjs";
+import { sourcePlugins } from "../scripts/source-composition.mjs";
 
 const fixture = JSON.parse(
   await readFile(new URL("./fixtures/catalog-scene-expectations.json", import.meta.url), "utf8"),
@@ -107,4 +109,37 @@ test("a changed installed Skill body remains rejected before catalog metadata is
     assertCatalogSceneSources(async () => Buffer.from("changed Skill body\n")),
     /workbench Skill source lib\/static\/category\/skills\/category-plan\/SKILL.md/,
   );
+});
+
+test("catalog owners follow all five explicitly admitted source records and reject another optional source", async (t) => {
+  const { root, sources } = await sourceAssemblyFixture(t);
+  const sourcesFile = join(root, "sources.json");
+  await writeFile(sourcesFile, JSON.stringify(sources));
+  const input = join(root, "candidate.json");
+  const bytes = JSON.stringify({
+    repositories: sources
+      .slice(0, 3)
+      .map((row) => ({ repo: row.repo, head: row.commit, path: row.source })),
+  });
+  await writeFile(input, bytes);
+  const options = { input, sha256: digest(bytes), sourcesFile };
+  const owners = Object.fromEntries(
+    sources.map((row) => [
+      sourcePlugins.find((plugin) => plugin.repo === row.repo).name,
+      { commit: row.commit },
+    ]),
+  );
+  await assertCatalogSceneOwners(owners, options);
+  for (const name of [
+    "@changfenhuang/dsh-genui",
+    "dsh-better-sidebar",
+    "@cleverc2200/gea-dsh-prototype",
+  ]) {
+    const foreign = structuredClone(owners);
+    foreign[name].commit = "0".repeat(40);
+    await assert.rejects(assertCatalogSceneOwners(foreign, options), /scene input/);
+  }
+  sources[3].commit = "0".repeat(40);
+  await writeFile(sourcesFile, JSON.stringify(sources));
+  await assert.rejects(assertCatalogSceneOwners(owners, options), /SOURCE_PLUGIN_COMMIT_MISMATCH/);
 });
