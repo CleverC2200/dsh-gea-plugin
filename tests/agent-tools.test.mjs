@@ -1268,6 +1268,10 @@ test(
           !modelRequests[0].tools.some((tool) => tool.function.name === "gea_page"),
           "Native grant 不建立 HTML lease",
         );
+        assert.ok(
+          !modelRequests[0].tools.some((tool) => tool.function.name === "gea_plugin_page_apply"),
+          "Native grant 不准入 HTML 声明动作",
+        );
         // 工具由桥按元素目录生成：模型只会 4 个通用动词；说明里只给数量，
         // 目录按需取（directory=true），不再随每次请求把标签全塞进上下文。
         const applyTool = modelRequests[0].tools.find(

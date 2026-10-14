@@ -70,6 +70,7 @@ export function allowedTools(profile: PromptProfile, pageTool?: string): Set<str
   ])
     names.add(name);
   if (pageTool) names.add(pageTool);
+  if (pageTool === "gea_page") names.add("gea_plugin_page_apply");
   if (profile === PROFILES["gea-readonly"]) names.add("gea_sales_plan_read");
   return names;
 }
