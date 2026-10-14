@@ -122,7 +122,7 @@ test("business masks deny unavailable GEA tools while preserving official preset
         "gea_capabilities",
         "skill",
         "skill_reference_read",
-        "gea_cube_query",
+        "mcp__gea-gateway__query_business_data",
         "run_code",
         "gea_unselected_fixture",
       ].map((name) => ({ name })),
@@ -183,7 +183,7 @@ test("business masks deny unavailable GEA tools while preserving official preset
     assert.equal(mask.deny.includes(nativeName), false);
     assert.equal(guard({ name: nativeName, agent, arguments: {} }), undefined);
   }
-  assert.equal(mask.deny.includes("gea_cube_query"), false);
+  assert.equal(mask.deny.includes("mcp__gea-gateway__query_business_data"), false);
   assert.equal(mask.deny.includes("skill"), false);
   assert.equal(mask.deny.includes("run_code"), false);
   assert.equal(executionChecks, 1);
@@ -198,10 +198,13 @@ test("business masks deny unavailable GEA tools while preserving official preset
   assert.equal(executionChecks, 2);
   preset = "agent-resource-skill";
   assert.match(
-    guard({ name: "gea_cube_query", agent, arguments: {} }),
+    guard({ name: "mcp__gea-gateway__query_business_data", agent, arguments: {} }),
     /GEA_BUSINESS_PROFILE_REQUIRED/,
   );
-  assert.match(guard({ name: "gea_cube_query", arguments: {} }), /GEA_BUSINESS_PROFILE_REQUIRED/);
+  assert.match(
+    guard({ name: "mcp__gea-gateway__query_business_data", arguments: {} }),
+    /GEA_BUSINESS_PROFILE_REQUIRED/,
+  );
   assert.equal(guard({ name: "skill", agent, arguments: {} }), undefined);
   dispose();
 });

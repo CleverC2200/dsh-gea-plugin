@@ -1,5 +1,13 @@
 # 当前能力声明与受控执行
 
+## 普通会话与运行态诊断
+
+GEA 在模型步骤按实际 Core 会话预设限制受控业务工具。普通及自定义预设可以加载规则 Skill，但模型工具清单不提供需要业务身份的 GEA 工具；官方通用工具和用户独立 MCP 保留。直接派发仍按原业务 guard 校验，角色名称与子智能体 persona 不授予 Consumer 身份。页面工具还要求同会话当前页面身份已绑定，界面菜单可见不能代替页面绑定。
+
+`gea_runtime_diagnose` 是所有会话可用的只读诊断工具。只返回当前调用 Agent、实际 preset、父会话 ID、资源安装及启用状态、声明 Consumer、页面是否绑定、登录布尔状态、工具名称和最近最多20条工具错误码。它不读取配置或凭据，不返回业务正文、工具参数或历史问题，不请求业务接口或模型。`businessAuthorization=not-checked` 明确保留服务端授权未核结论。无调用 Agent 与无业务预设仍保留 `GEA_BUSINESS_PROFILE_REQUIRED`，错误说明分别给出调用归属缺失与预设身份缺失；未绑定页面给出 `PAGE_NOT_BOUND` 原因。
+
+独立 MCP 的结果保留独立来源与原 GEA 失败，不能据此宣称页面确定性计算或 GEA 授权恢复。当前诊断工具和离线/Core 检查不证明同事电脑会话或真实模型行为通过。
+
 能力形状定义在 [contract](../src/capability/contract.ts)，装载由 [readPluginContract](../src/capability/declarations.ts) 校验，[registry](../src/capability/registry.ts) 管本 Host 安装能力。页面、Skill 和能力声明不授予服务端业务权限。
 
 ## HTML 声明输入
@@ -10,14 +18,14 @@
 { "declarations": { "page": "page.json", "capability": "capability.json" } }
 ```
 
-| 事实 | 当前来源与条件 |
-|---|---|
-| 模块、页面与 Consumer | plugin.json 的实际安装元数据，pageIds 与页面声明完全一致 |
-| 页面 surface/protocol | page.json 明确声明，当前协议为 self-report |
-| 数据 tables/rules | capability.json 提供，不扫描 HTML SQL、DOM 或 Skill 正文 |
-| 能力 enabled | capability.json，缺省 true，非布尔值拒绝 |
-| maxEffect/layers | 明确能力声明，不能超过安装模块允许的影响等级和层 |
-| Agent prompt/Skill | Manage 从安装资源管理，不由页面或 GEA Client 建另一目录权威 |
+| 事实                  | 当前来源与条件                                              |
+| --------------------- | ----------------------------------------------------------- |
+| 模块、页面与 Consumer | plugin.json 的实际安装元数据，pageIds 与页面声明完全一致    |
+| 页面 surface/protocol | page.json 明确声明，当前协议为 self-report                  |
+| 数据 tables/rules     | capability.json 提供，不扫描 HTML SQL、DOM 或 Skill 正文    |
+| 能力 enabled          | capability.json，缺省 true，非布尔值拒绝                    |
+| maxEffect/layers      | 明确能力声明，不能超过安装模块允许的影响等级和层            |
+| Agent prompt/Skill    | Manage 从安装资源管理，不由页面或 GEA Client 建另一目录权威 |
 
 HTML 的 `gea-html-v2` 当前只接收只读模块，不能通过声明升级成 draft、submit 或 approve。MCP 的 provider/transport/contract 与 AGENT Consumer 必须匹配；真实模块的 MCP 声明为 governed-sql-read，mock 模块的能力列表为空。`contractFromPlugin` 只提供已校验安装元数据的基础形状，缺声明不会沿旧路径自动派生。
 

@@ -3,7 +3,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { cp, mkdir, readFile, writeFile, symlink } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { sourceAssemblyFixture } from "./fixtures/source-assembly.mjs";
 import { sourcePlugins } from "../scripts/source-composition.mjs";
