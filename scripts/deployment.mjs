@@ -72,7 +72,8 @@ export async function readDeployment(
   )
     throw new Error("INVALID_WORKBENCH_CAPABILITY");
   validateSalesReadonly(config.workbenchCapability?.readonlyValidation);
-  if (config.mcpRequestTimeoutMs === undefined) config.mcpRequestTimeoutMs = 60000;
+  if (config.mcpRequestTimeoutMs === undefined) config.mcpRequestTimeoutMs = 300000;
+  if (config.mcpMaxResponseBytes === undefined) config.mcpMaxResponseBytes = 320 * 1024 * 1024;
   const selected = resolveEnvironments(config);
   config.environment = selected.environment;
   const url = httpsEndpoint(selected.baseUrl, "INVALID_GEA_BASE_URL");
@@ -81,7 +82,8 @@ export async function readDeployment(
     ["pageSize", 1, 100],
     ["periodPageSize", 1, 1000],
     ["requestTimeoutMs", 1000, 120000],
-    ["mcpRequestTimeoutMs", 1000, 120000],
+    ["mcpRequestTimeoutMs", 1000, 600000],
+    ["mcpMaxResponseBytes", 1024, 1024 * 1024 * 1024],
     ["modelRequestTimeoutMs", 1000, 600000],
     ["maxSnapshotBytes", 1000, 5000000],
   ]) {
@@ -264,6 +266,8 @@ export function businessDeploymentPatch(
             periodPageSize: config.periodPageSize,
             requestTimeoutMs: config.requestTimeoutMs,
             mcpRequestTimeoutMs: config.mcpRequestTimeoutMs,
+            mcpMaxResponseBytes: config.mcpMaxResponseBytes,
+            cubeMcpCodes: config.cubeMcpCodes,
             modelRequestTimeoutMs: config.modelRequestTimeoutMs,
             maxSnapshotBytes: config.maxSnapshotBytes,
             runtimeDir: runtime,
