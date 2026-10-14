@@ -65,3 +65,14 @@ test("ordinary GEA bundle accepts empty public settings without downgrading to r
   assert.equal(value.agentSqlRead, false);
   assert.equal(value.sqlReadLimit, undefined);
 });
+
+test("MCP inline delivery has configurable wire budget and query timeout without changing explicit settings", () => {
+  const defaults = Config({});
+  assert.equal(defaults.mcpRequestTimeoutMs, 300000);
+  assert.equal(defaults.mcpMaxResponseBytes, 320 * 1024 * 1024);
+  const explicit = Config({ mcpRequestTimeoutMs: 60000, mcpMaxResponseBytes: 8 * 1024 * 1024 });
+  assert.equal(explicit.mcpRequestTimeoutMs, 60000);
+  assert.equal(explicit.mcpMaxResponseBytes, 8 * 1024 * 1024);
+  for (const invalid of [0, -1, 1.5, 1024 * 1024 * 1024 + 1])
+    assert.throws(() => Config({ mcpMaxResponseBytes: invalid }));
+});

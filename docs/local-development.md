@@ -47,6 +47,10 @@ GEA_TEST_CANDIDATE_INPUTS=/absolute/candidate-input.json node --test tests/windo
 
 配置存在与命令行通过不证明应用内 setup/Action 已验。实际新任务需核 cwd、工具、冻结锁和结果；安装与完整构建不和 watch 并发。
 
+## Cube-New 直返定向验证
+
+`node --test tests/cube-direct-mcp.test.mjs tests/cube-new.test.mjs tests/mcp-response.test.mjs tests/gateway-mcp.test.mjs` 核标准MCP直返、文本回退、旧链接灰度、分页完整性、精度、错误、路由和接收预算。它只使用本地结构示例，不请求真实业务。完整质量入口保持原样；全量测试、真实部署、实际规模内存与代理超时另留证。
+
 ## 可选本地采样
 
 ```sh

@@ -28,9 +28,15 @@ Cube-New 的来源由 Host `cubeMcpCodes` 按环境指定。公司默认仅登�
 
 Manage 只注册当前登录授权列表中的 `inspect_cube_model` 和 `query_business_data`，使用服务端原始 schema。GEA 根据发起调用的真实 Core Session preset 选择 Consumer，每次调用重新校验身份、业务资源与执行归属；业务 arguments 不能指定身份或路由。旧 `gea_gateway_catalog`、`gea_cube_query`、`gea_module_mcp` 不再注册，旧成员索引、查询拆分、修参和结果分段适配退出运行时，历史回归材料留在 `tests/fixtures/retired-query`。
 
-`inspect_cube_model` 返回服务端原始说明，包括 View 的 `aliasMember`。客户端不再二次投影目录或替服务端判断成员发布。`query_business_data` 原样传递 `action=query`、`response_mode=inline_complete` 和具名查询；同次调用限一个底层模型，跨模型分次查询。制品由同一业务与传输 Session 通过 `resources/read` 在 Host 内部读取，模型无需第三个读取工具。
+`inspect_cube_model` 返回服务端原始说明，包括 View 的 `aliasMember`。客户端不再二次投影目录或替服务端判断成员发布。`query_business_data` 原样传递 `action=query`、`response_mode=inline_complete` 和具名查询；业务参数及容量约束来自当前 `tools/list` Schema，不写死旧的8条/1000行上限，也不补默认 limit。
 
-制品发布前核原始 UTF-8 摘要、URI、内容类型、数据集名称、行数和分页状态。`complete=true` 仅表示当前页完整；`hasMorePages=true` 保留未读范围。`partial`、`no_data`、null、真实零、编码字符串及原始数值文本保持不变。成员未发布时保留 `DATA_QUERY_MEMBER_NOT_PUBLISHED` 与追踪编号，停止本轮查询，不换参数、成员或身份重试。接入依据为用户提供的 `Cube-New-MCP-外部调用指南-20261013.md`；该指南的示例不证明服务部署或业务数据验收。
+查询优先消费本次响应的 `structuredContent`；只有文本能力时选择一份业务 JSON，不拼接说明文本，也不合并两份 rows。直返路径不调用 `resources/read`，不要求 URI、有效期或制品 SHA。原始金额、大整数、编码字符串、null和零值保持；结构化结果再序列化时保留原始数字词法形式。
+
+两种交付方式共用具名数据集、执行数、行数、完整性与分页校验。`complete=true` 仅表示当前页完整；`hasMorePages=true` 保留未读范围，下一页仍执行查询，保持原过滤条件和稳定排序。`partial` 和 `no_data` 保留原状态，不能据此补零或宣称全量。灰度时仅在实际收到旧 `resource_link` 且没有直返业务结果时，沿原业务及传输 Session 读取，并核 URI、类型和原始摘要；不猜存储地址。
+
+MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResponseBytes` 默认320 MiB，按解码后的 UTF-8 报文字节计量，覆盖结构化对象及转义文本的双份承载；这是客户端接收预算，不是服务端额度或完整100 MiB业务验收保证。读取期间超限即停止，取消仍遵循原身份代际。日志正文仍受独立4 MiB上限保护。
+
+错误先于业务数据解析。保留服务端 `code/category/retryable/suggestedAction/retryAfterMs` 及请求/审计标识；`AI_GATEWAY_MCP_RESULT_TOO_LARGE` 要求缩小查询、减少列或分页，即使返回retryable也不原样重试，不回退 OSS。成员未发布、拒权或过期仍沿原失败与会话保护。接入依据为2026-10-14《GEA MCP 查询结果直返：调用方适配说明》，它替代前一天关于固定制品交付的说明；真实环境部署和业务联调另行确认。
 
 `sqlReadLimit` 限定同一 Host 生命周期内对应 Consumer 的物理请求。分页、续期后的再次请求、失败和发出后的取消计数；发出前取消不计数。零额度在登录或委托前拒绝，只开放声明的一个 Consumer，其他 Consumer 直接拒绝；不能换 Consumer 继续使用额度。页数或行数超限拒绝，不截断成完整结果。销售只读自动请求另沿 Business 的 `readonlyValidation` 合同计数；历史剩余额度不授权新窗口。
 

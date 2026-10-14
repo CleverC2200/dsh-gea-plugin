@@ -25,13 +25,20 @@ export function cubeNewArtifact(
   const readHash = object(item._meta)?.sha256;
   if (readHash !== digest || (link.sha256 !== undefined && link.sha256 !== digest))
     throw Error("GEA_CUBE_NEW_RESOURCE_DIGEST");
-  const payload = object(JSON.parse(item.text));
+  validateCubeQueryResult(JSON.parse(item.text), arguments_);
+  return item.text;
+}
+
+/** Delivery format does not change named datasets, page completeness or business pagination. */
+export function validateCubeQueryResult(result: unknown, arguments_: unknown): void {
+  const payload = object(result);
   const queries = object(arguments_)?.queries;
   const expected = Array.isArray(queries) ? queries.map((query) => object(query)?.name) : [];
   const datasets = payload?.datasets;
   if (
     payload?.action !== "query" ||
     payload.status !== "completed" ||
+    payload.executedQueryCount !== expected.length ||
     !Array.isArray(datasets) ||
     datasets.length === 0 ||
     datasets.length !== expected.length ||
@@ -69,5 +76,4 @@ export function cubeNewArtifact(
     )
       throw Error("GEA_CUBE_NEW_PAGE_METADATA");
   }
-  return item.text;
 }

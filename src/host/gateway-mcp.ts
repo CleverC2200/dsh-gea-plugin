@@ -1,12 +1,14 @@
 /** 绑定登录身份的 GEA Gateway 能力；密钥不会离开 Fetch 闭包。 */
 import { prepareGatewaySession } from "./gateway-session.ts";
 import { createParser } from "eventsource-parser";
+import { readMcpResponseText } from "./mcp-response.ts";
 import { readableError, throwIfAborted } from "../shared/abort.ts";
 import { parseAuthorizedResources, type ResourceReader } from "./authorized-resources.ts";
 export type GatewayMcpTransport = {
   url: string;
   fetch: typeof fetch;
   authorizedResources: ResourceReader;
+  readonly maxResponseBytes?: number;
 };
 
 const nonempty = (value: unknown): value is string =>
@@ -45,7 +47,7 @@ export async function prepareGatewayMcp(
   identity: AbortSignal,
   timeoutMs: number,
   fetchImpl: typeof fetch = fetch,
-  routing: { cubeMcpCode?: string; setupSignal?: AbortSignal } = {},
+  routing: { cubeMcpCode?: string; setupSignal?: AbortSignal; maxResponseBytes?: number } = {},
 ): Promise<GatewayMcpTransport> {
   // Setup and each request can stop without poisoning a login-owned cached connection.
   const setup = AbortSignal.any([identity, ...(routing.setupSignal ? [routing.setupSignal] : [])]);
@@ -64,7 +66,7 @@ export function gatewayMcpTransport(
   identity: AbortSignal,
   timeoutMs: number,
   fetchImpl: typeof fetch = fetch,
-  routing: { cubeMcpCode?: string } = {},
+  routing: { cubeMcpCode?: string; maxResponseBytes?: number } = {},
 ): GatewayMcpTransport {
   if (routing.cubeMcpCode !== undefined && !nonempty(routing.cubeMcpCode))
     throw Error("GEA_MCP_CUBE_SOURCE_INVALID");
@@ -242,7 +244,11 @@ export function gatewayMcpTransport(
       );
     }
     if ((discovery || invocation) && res.ok) {
-      const text = await res.clone().text();
+      const text = await readMcpResponseText(
+        res,
+        AbortSignal.any([identity, ...(init?.signal ? [init.signal] : [])]),
+        routing.maxResponseBytes,
+      );
       throwIfAborted(identity);
       const messages: unknown[] = [];
       if (res.headers.get("content-type")?.includes("text/event-stream")) {
@@ -307,6 +313,11 @@ export function gatewayMcpTransport(
           { status: res.status, headers },
         );
       }
+      // Return the original wire text, preserving decimals and large integers in inline results.
+      const headers = new Headers(res.headers);
+      headers.delete("content-length");
+      headers.delete("content-encoding");
+      return new Response(text, { status: res.status, headers });
     }
     return res;
   };
@@ -350,5 +361,10 @@ export function gatewayMcpTransport(
     throwIfAborted(signal);
     return parseAuthorizedResources(payload, `MCP_TOOL:${mcpCode}:${toolName}`);
   };
-  return { url, fetch: gatewayFetch, authorizedResources };
+  return {
+    url,
+    fetch: gatewayFetch,
+    authorizedResources,
+    maxResponseBytes: routing.maxResponseBytes,
+  };
 }
