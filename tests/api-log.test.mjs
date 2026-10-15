@@ -10,8 +10,7 @@ const { outputFiles } = await build({
   format: "esm",
 });
 const { GeaApiLogCenter } = await import(
-  "data:text/javascript;base64," +
-    Buffer.from(outputFiles[0].contents).toString("base64")
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 
 const json = (value, init = {}) =>
@@ -46,15 +45,12 @@ test("records known APIs and never exposes credentials", async () => {
       );
     },
   );
-  const response = await center.fetch(
-    "https://gea.example/company/gea/sys/user/getUserInfo",
-    {
-      headers: {
-        "X-Access-Token": "request-secret",
-        Authorization: "Bearer bearer-secret",
-      },
+  const response = await center.fetch("https://gea.example/company/gea/sys/user/getUserInfo", {
+    headers: {
+      "X-Access-Token": "request-secret",
+      Authorization: "Bearer bearer-secret",
     },
-  );
+  });
   await response.body.cancel();
   const snapshot = center.snapshot();
   assert.ok(snapshot.catalog.length >= 20);
@@ -77,9 +73,7 @@ test("records known APIs and never exposes credentials", async () => {
 
   const replay = await center.replay(snapshot.records[0].id, false);
   assert.equal(calls.length, 2);
-  const replayed = center
-    .snapshot()
-    .records.find((record) => record.id === replay.recordId);
+  const replayed = center.snapshot().records.find((record) => record.id === replay.recordId);
   assert.equal(replayed.replayedFrom, snapshot.records[0].id);
   assert.equal(replayed.source, "replay");
 });
@@ -100,26 +94,20 @@ test("idempotent writes require confirmation and retain the original intent", as
     },
   );
   const body = JSON.stringify({ action: "APPROVE", expectedStatus: 1 });
-  const response = await center.fetch(
-    "https://gea.example/sales-plan/plans/versions/v-1/actions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Request-Id": "request-1",
-        "Idempotency-Key": "intent-1",
-        "X-Access-Token": "secret",
-      },
-      body,
+  const response = await center.fetch("https://gea.example/sales-plan/plans/versions/v-1/actions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Request-Id": "request-1",
+      "Idempotency-Key": "intent-1",
+      "X-Access-Token": "secret",
     },
-  );
+    body,
+  });
   await response.body.cancel();
   const record = center.snapshot().records[0];
   assert.equal(record.replayPolicy, "idempotent");
-  await assert.rejects(
-    center.replay(record.id, false),
-    /API_LOG_REPLAY_CONFIRMATION_REQUIRED/,
-  );
+  await assert.rejects(center.replay(record.id, false), /API_LOG_REPLAY_CONFIRMATION_REQUIRED/);
   await center.replay(record.id, true);
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[1], calls[0]);
@@ -140,13 +128,9 @@ test("identity changes disable old replay closures and the ring stays bounded", 
     await response.body.cancel();
   }
   assert.equal(center.snapshot().records.length, 2);
-  assert.ok(
-    center.snapshot().records.every((record) => record.replayAvailable),
-  );
+  assert.ok(center.snapshot().records.every((record) => record.replayAvailable));
   center.invalidateReplays();
-  assert.ok(
-    center.snapshot().records.every((record) => !record.replayAvailable),
-  );
+  assert.ok(center.snapshot().records.every((record) => !record.replayAvailable));
   await assert.rejects(
     center.replay(center.snapshot().records[0].id, false),
     /API_LOG_REPLAY_UNAVAILABLE/,
@@ -162,25 +146,19 @@ test("concurrent calls cannot steal a replay's source relationship", async () =>
     async () => {
       calls++;
       if (calls === 2) {
-        const nested = await center.fetch(
-          "https://gea.example/sys/permission/getPermCode",
-        );
+        const nested = await center.fetch("https://gea.example/sys/permission/getPermCode");
         await nested.body.cancel();
       }
       return json({ success: true, result: {} });
     },
   );
-  const original = await center.fetch(
-    "https://gea.example/sys/user/getUserInfo",
-  );
+  const original = await center.fetch("https://gea.example/sys/user/getUserInfo");
   await original.body.cancel();
   const source = center.snapshot().records[0];
   const replay = await center.replay(source.id, false);
   const records = center.snapshot().records;
   const replayed = records.find((record) => record.id === replay.recordId);
-  const nested = records.find(
-    (record) => record.catalogId === "identity.permissions",
-  );
+  const nested = records.find((record) => record.catalogId === "identity.permissions");
   assert.equal(replayed.catalogId, "identity.profile");
   assert.equal(replayed.replayedFrom, source.id);
   assert.equal(nested.replayedFrom, undefined);
@@ -218,10 +196,7 @@ test("streaming and oversized response bodies are summarized instead of buffered
       },
     );
     await result.body.cancel();
-    assert.match(
-      String(center.snapshot().records[0].response.body),
-      new RegExp(expected),
-    );
+    assert.match(String(center.snapshot().records[0].response.body), new RegExp(expected));
   }
 });
 
@@ -231,29 +206,23 @@ test("authorized resource discovery is classified, redacted and cannot replay sh
     20,
     async () => Response.json({ success: true, resources: [] }),
   );
-  const response = await center.fetch(
-    "https://fixture/ai/gateway/mcp/proxy/resources",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agentCode: "sales_forecast",
-        mcpCode: "cube",
-        toolName: "query_business_data",
-        delegationToken: "private-delegation",
-        sessionId: "private-session",
-        conversationId: "conversation",
-      }),
-    },
-  );
+  const response = await center.fetch("https://fixture/ai/gateway/mcp/proxy/resources", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      agentCode: "sales_forecast",
+      mcpCode: "cube",
+      toolName: "query_business_data",
+      delegationToken: "private-delegation",
+      sessionId: "private-session",
+      conversationId: "conversation",
+    }),
+  });
   await response.text();
   const snapshot = center.snapshot();
   assert.equal(snapshot.records[0].catalogId, "gateway.authorized-resources");
   assert.equal(snapshot.records[0].replayAvailable, false);
-  assert.doesNotMatch(
-    JSON.stringify(snapshot),
-    /private-delegation|private-session/,
-  );
+  assert.doesNotMatch(JSON.stringify(snapshot), /private-delegation|private-session/);
   await assert.rejects(center.replay(snapshot.records[0].id, false), /REPLAY/);
 });
 
@@ -286,9 +255,7 @@ test("model request/history and JSON response text stay out of the API log snaps
           role: "assistant",
           content: "PRIVATE_PROMPT_SENTINEL",
           reasoning_content: "PRIVATE_HISTORY_SENTINEL",
-          tool_calls: [
-            { function: { arguments: "PRIVATE_ARGUMENTS_SENTINEL" } },
-          ],
+          tool_calls: [{ function: { arguments: "PRIVATE_ARGUMENTS_SENTINEL" } }],
         },
       ],
     }),
@@ -299,9 +266,6 @@ test("model request/history and JSON response text stay out of the API log snaps
     "the model adapter still owns the original response",
   );
   const snapshot = JSON.stringify(center.snapshot());
-  assert.doesNotMatch(
-    snapshot,
-    /PRIVATE_(?:ANSWER|REASONING|PROMPT|HISTORY|ARGUMENTS)_SENTINEL/,
-  );
+  assert.doesNotMatch(snapshot, /PRIVATE_(?:ANSWER|REASONING|PROMPT|HISTORY|ARGUMENTS)_SENTINEL/);
   assert.equal(center.snapshot().records[0].replayAvailable, false);
 });

@@ -33,10 +33,9 @@ const endpoint = (
   matches: (method, path) => {
     if (method !== entry.method) return false;
     const parts = path.split("/").filter(Boolean);
-    return [
-      path,
-      ...parts.map((_, index) => "/" + parts.slice(index).join("/")),
-    ].some((candidate) => pattern.test(candidate));
+    return [path, ...parts.map((_, index) => "/" + parts.slice(index).join("/"))].some(
+      (candidate) => pattern.test(candidate),
+    );
   },
 });
 
@@ -352,13 +351,7 @@ const CATALOG: CatalogDefinition[] = [
       method: "POST",
       path: "/ai/gateway/session",
       description: "为 Agent 或客户端申请受控 MCP 网关上下文。",
-      requestFields: [
-        "consumerType",
-        "consumerCode",
-        "conversationId",
-        "requestId",
-        "channel",
-      ],
+      requestFields: ["consumerType", "consumerCode", "conversationId", "requestId", "channel"],
       replayPolicy: "blocked",
       replayNote: blocked,
     },
@@ -414,13 +407,7 @@ const CATALOG: CatalogDefinition[] = [
       method: "POST",
       path: "/api/v1/internal/sales-plans",
       description: "使用服务账号提交一份已完成来源校验的销售计划。",
-      requestFields: [
-        "planId",
-        "versionId",
-        "items",
-        "periodMonth",
-        "planTypeCode",
-      ],
+      requestFields: ["planId", "versionId", "items", "periodMonth", "planTypeCode"],
       replayPolicy: "idempotent",
       replayNote: idempotent,
     },
@@ -429,9 +416,7 @@ const CATALOG: CatalogDefinition[] = [
 ];
 
 type PrivateRecord = ApiLogRecord & {
-  replay?: (
-    signal: AbortSignal,
-  ) => Promise<{ response: Response; recordId: string }>;
+  replay?: (signal: AbortSignal) => Promise<{ response: Response; recordId: string }>;
 };
 
 function sanitizeString(value: string): string {
@@ -448,9 +433,7 @@ function sanitizeValue(value: unknown, key = "", depth = 0): unknown {
   if (depth > 12) return "[层级过深，未保存]";
   if (typeof value === "string") return sanitizeString(value);
   if (Array.isArray(value))
-    return value
-      .slice(0, 1000)
-      .map((item) => sanitizeValue(item, "", depth + 1));
+    return value.slice(0, 1000).map((item) => sanitizeValue(item, "", depth + 1));
   if (value && typeof value === "object")
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([name, item]) => [
@@ -461,9 +444,7 @@ function sanitizeValue(value: unknown, key = "", depth = 0): unknown {
   return value;
 }
 
-function sanitizeHeaders(
-  headers: HeadersInit | undefined,
-): Record<string, string> {
+function sanitizeHeaders(headers: HeadersInit | undefined): Record<string, string> {
   const result: Record<string, string> = {};
   if (!headers) return result;
   for (const [key, value] of new Headers(headers))
@@ -479,19 +460,14 @@ function sanitizeUrl(raw: string): {
   const parsed = new URL(raw);
   const query: Record<string, string> = {};
   for (const [key, value] of parsed.searchParams) {
-    const safeValue = SENSITIVE_QUERY.test(key)
-      ? "[已脱敏]"
-      : sanitizeString(value);
+    const safeValue = SENSITIVE_QUERY.test(key) ? "[已脱敏]" : sanitizeString(value);
     query[key] = safeValue;
     parsed.searchParams.set(key, safeValue);
   }
   return { url: parsed.toString(), path: parsed.pathname, query };
 }
 
-function bodyPreview(
-  body: BodyInit | null | undefined,
-  headers: Headers,
-): unknown {
+function bodyPreview(body: BodyInit | null | undefined, headers: Headers): unknown {
   if (body == null) return null;
   let text: string | undefined;
   if (typeof body === "string") text = body;
@@ -546,9 +522,7 @@ async function responsePreview(response: Response): Promise<unknown> {
   }
 }
 
-function replayableBody(
-  body: BodyInit | null | undefined,
-): BodyInit | undefined | false {
+function replayableBody(body: BodyInit | null | undefined): BodyInit | undefined | false {
   if (body == null) return undefined;
   if (typeof body === "string") return body;
   if (body instanceof URLSearchParams) return new URLSearchParams(body);
@@ -571,11 +545,8 @@ export class GeaApiLogCenter {
     ) => Promise<() => void>,
   ) {}
 
-  readonly fetch = (
-    input: RequestInfo | URL,
-    init?: RequestInit,
-    purpose?: string,
-  ) => this.fetchRequest(input, init, undefined, undefined, purpose);
+  readonly fetch = (input: RequestInfo | URL, init?: RequestInit, purpose?: string) =>
+    this.fetchRequest(input, init, undefined, undefined, purpose);
 
   private async fetchRequest(
     input: RequestInfo | URL,
@@ -591,17 +562,13 @@ export class GeaApiLogCenter {
     const method = (
       init?.method ?? (input instanceof Request ? input.method : "GET")
     ).toUpperCase();
-    const originalHeaders =
-      input instanceof Request ? input.headers : undefined;
+    const originalHeaders = input instanceof Request ? input.headers : undefined;
     const requestHeaders = new Headers(originalHeaders);
     if (init?.headers)
-      for (const [key, value] of new Headers(init.headers))
-        requestHeaders.set(key, value);
+      for (const [key, value] of new Headers(init.headers)) requestHeaders.set(key, value);
     const requestBody = init?.body;
     const safeUrl = sanitizeUrl(rawUrl);
-    const catalog = CATALOG.find((entry) =>
-      entry.matches(method, safeUrl.path),
-    );
+    const catalog = CATALOG.find((entry) => entry.matches(method, safeUrl.path));
     const started = Date.now();
     const record: PrivateRecord = {
       id: randomUUID(),
@@ -662,10 +629,7 @@ export class GeaApiLogCenter {
         headers: sanitizeHeaders(response.headers),
         body:
           catalog?.id === "model.chat"
-            ? response.headers
-                .get("content-type")
-                ?.toLowerCase()
-                .startsWith("text/event-stream")
+            ? response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream")
               ? STREAM_OMITTED
               : "[模型响应正文未保存]"
             : await responsePreview(response),
@@ -677,9 +641,7 @@ export class GeaApiLogCenter {
       record.outcome = "error";
       record.error = {
         name: error instanceof Error ? error.name : "Error",
-        message: sanitizeString(
-          error instanceof Error ? error.message : String(error),
-        ),
+        message: sanitizeString(error instanceof Error ? error.message : String(error)),
       };
       this.finish(record, started);
       // 线上实测：这类失败原样抛出去，界面只有 `fetch failed` + UNKNOWN（真实原因在 cause 里）。
@@ -698,14 +660,9 @@ export class GeaApiLogCenter {
     replayedFrom: string,
   ): Promise<{ response: Response; recordId: string }> {
     let recordId = "";
-    const response = await this.fetchRequest(
-      input,
-      init,
-      replayedFrom,
-      (id) => {
-        recordId = id;
-      },
-    );
+    const response = await this.fetchRequest(input, init, replayedFrom, (id) => {
+      recordId = id;
+    });
     if (!recordId) throw new Error("API_LOG_REPLAY_RECORD_MISSING");
     return { response, recordId };
   }
@@ -715,9 +672,7 @@ export class GeaApiLogCenter {
       revision: this.revision,
       limit: this.limit,
       catalog: CATALOG.map(({ matches: _matches, ...entry }) => ({ ...entry })),
-      records: this.records.map(({ replay: _replay, ...record }) =>
-        structuredClone(record),
-      ),
+      records: this.records.map(({ replay: _replay, ...record }) => structuredClone(record)),
     };
   }
 
@@ -745,8 +700,7 @@ export class GeaApiLogCenter {
   ): Promise<{ recordId: string }> {
     const target = this.records.find((record) => record.id === id);
     if (!target) throw new Error("API_LOG_NOT_FOUND");
-    if (!target.replayAvailable || !target.replay)
-      throw new Error("API_LOG_REPLAY_UNAVAILABLE");
+    if (!target.replayAvailable || !target.replay) throw new Error("API_LOG_REPLAY_UNAVAILABLE");
     if (target.replayPolicy === "idempotent" && !confirmed)
       throw new Error("API_LOG_REPLAY_CONFIRMATION_REQUIRED");
     const { response, recordId } = await target.replay(signal);
