@@ -92,10 +92,11 @@ test(
       ),
     ).toBeVisible();
     assert.ok((await page.locator(".gea-api-call-row").count()) >= 3);
+    await page.getByText("请求头与 Query · 已脱敏", { exact: true }).click();
     const visibleText = await page.locator(".gea-api-log-center").innerText();
     assert.equal(visibleText.includes("fixture-gea-token"), false);
     assert.equal(visibleText.includes("fixture-delegation"), false);
-    assert.equal(visibleText.includes("[已脱敏]"), true);
+    assert.equal(visibleText.includes("[已脱敏]"), true, visibleText);
 
     await page.locator(".gea-api-catalog-item").filter({ hasText: "读取当前用户" }).click();
     const profileCall = page.locator(".gea-api-call-row").first();
@@ -107,6 +108,22 @@ test(
     assert.ok(
       app.requests.filter((request) => request.url.pathname.endsWith("/getUserInfo")).length >= 2,
     );
+
+    const readsBeforeBatch = app.requests.filter((request) =>
+      request.url.pathname.endsWith("/getUserInfo"),
+    ).length;
+    await page.getByRole("button", { name: "批量", exact: true }).click();
+    await page.getByRole("checkbox", { name: "选择读取当前用户", exact: true }).check();
+    await page.getByRole("button", { name: "开始批量重发", exact: true }).click();
+    await page.getByRole("button", { name: "确认批量重发", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("批量已结束");
+    await expect
+      .poll(
+        () =>
+          app.requests.filter((request) => request.url.pathname.endsWith("/getUserInfo")).length,
+      )
+      .toBe(readsBeforeBatch + 1);
+    await expect(page.getByRole("combobox", { name: "选择重发批次", exact: true })).toBeVisible();
 
     await mkdir(".scratch", { recursive: true });
     const screenshots = await mkdtemp(resolve(".scratch/api-log-review-"));
