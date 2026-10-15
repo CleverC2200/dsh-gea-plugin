@@ -1,6 +1,5 @@
 import { exactResult } from "./prompt-evidence.ts";
 const PERMISSION_NOTICE_PREFIX = "模块数据未授权：";
-import { parseFirstJsonObject } from "./gateway-catalog.ts";
 
 type Row = Record<string, unknown>;
 const record = (value: unknown): value is Row =>
@@ -169,86 +168,10 @@ export function resultView(value: unknown, depth = 0): unknown {
   return value;
 }
 
-/** Unknown/knowledge sources without a reusable authorization receipt get bounded one-time excerpts, never a fake evidence ID. */
-export function transientResult(text: string, limit = 6000, knowledge = false): string {
+/** Results without a reusable authorization receipt get bounded one-time excerpts. */
+export function transientResult(text: string, limit = 6000): string {
   if (text.length <= limit) return text;
-  if (knowledge) {
-    let payload: unknown = text;
-    let sourceComplete = true;
-    // LightRAG may wrap JSON in result and append a transport note. Decode only this known envelope.
-    try {
-      payload = parseFirstJsonObject(text, exactResult);
-    } catch {
-      sourceComplete = false;
-    }
-    if (record(payload) && typeof payload.result === "string") {
-      const inner = payload.result;
-      try {
-        payload = exactResult(inner);
-      } catch {
-        payload = inner;
-        sourceComplete = false;
-      }
-    }
-    let chunks: unknown[] = record(payload) && Array.isArray(payload.chunks) ? payload.chunks : [];
-    if (typeof payload === "string") {
-      // Recover complete chunk objects only; never invent a citation for a cut-off object.
-      const start = /"chunks"\s*:\s*\[/.exec(payload);
-      let cursor = start ? start.index + start[0].length : -1;
-      while (cursor >= 0 && chunks.length < 8) {
-        while (/\s/.test(payload[cursor] ?? "") && cursor < payload.length) cursor++;
-        if (payload[cursor] !== "{") break;
-        try {
-          let consumed = 0;
-          const chunk = parseFirstJsonObject(payload.slice(cursor), (text) => {
-            consumed = text.length;
-            return exactResult(text);
-          });
-          if (
-            !record(chunk) ||
-            typeof chunk.chunk_id !== "string" ||
-            typeof chunk.content !== "string"
-          )
-            break;
-          chunks.push(chunk);
-          cursor += consumed;
-          while (/\s/.test(payload[cursor] ?? "") && cursor < payload.length) cursor++;
-          if (payload[cursor] !== ",") break;
-          cursor++;
-        } catch {
-          break;
-        }
-      }
-    }
-    const excerpts: Row[] = [];
-    const result: Row = {
-      source: "GEA_KNOWLEDGE_EXCERPTS",
-      projection: "partial",
-      rawAvailable: false,
-      sourceComplete,
-      totalChars: text.length,
-      excerpts,
-      note: "仅为当前授权检索的相关片段，不是全文或已确认规则。sourceComplete=false表示源返回本身不完整；需要其它内容应在同一授权知识工具中收窄问题，不能声称已核验全文。",
-    };
-    for (const chunk of chunks) {
-      if (!record(chunk) || typeof chunk.content !== "string") continue;
-      const excerpt = {
-        chunkId: chunk.chunk_id,
-        referenceId: chunk.reference_id,
-        documentId: chunk.document_id,
-        filePath: chunk.file_path,
-        content: chunk.content.slice(0, 1200),
-        truncated: chunk.content.length > 1200,
-      };
-      excerpts.push(excerpt);
-      if (JSON.stringify(result).length > limit) {
-        excerpts.pop();
-        break;
-      }
-      if (excerpts.length >= 4) break;
-    }
-    if (excerpts.length) return JSON.stringify(result);
-  }
+
   const result = {
     projection: "partial",
     rawAvailable: false,

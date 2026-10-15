@@ -55,6 +55,8 @@ export const CORE_TOOLS = [
   "gea_evidence_read",
   "mcp__gea-gateway__inspect_cube_model",
   "mcp__gea-gateway__query_business_data",
+  "mcp__gea-gateway__weknora_list_knowledge_bases",
+  "mcp__gea-gateway__weknora_ask",
   "gea_visible_workbench_context",
 ];
 export function allowedTools(profile: PromptProfile, pageTool?: string): Set<string> {

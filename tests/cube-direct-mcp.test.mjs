@@ -7,7 +7,7 @@ import { build } from "esbuild";
 const built = await build({
   stdin: {
     contents:
-      "export {openCubeMcp} from './src/host/cube-mcp-client.ts';export {gatewayMcpTransport} from './src/host/gateway-mcp.ts';export {createCubeMcpService} from './src/host/cube-mcp-service.ts';export {registerGeaTools} from './src/host/agent-tools.ts';",
+      "export {openGatewayMcp} from './src/host/gateway-mcp-client.ts';export {gatewayMcpTransport} from './src/host/gateway-mcp.ts';export {createGatewayMcpService} from './src/host/gateway-mcp-service.ts';export {registerGeaTools} from './src/host/agent-tools.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -22,7 +22,8 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   mod,
   mod.exports,
 );
-const { openCubeMcp, gatewayMcpTransport, createCubeMcpService, registerGeaTools } = mod.exports;
+const { openGatewayMcp, gatewayMcpTransport, createGatewayMcpService, registerGeaTools } =
+  mod.exports;
 const code = "2109581866385289217";
 const schema = {
   type: "object",
@@ -85,7 +86,7 @@ async function clientFixture({
               _meta: { sourceType: "MCP", sourceCode: "old-cube" },
             },
             {
-              name: "lightrag_query",
+              name: "weknora_ask",
               inputSchema: schema,
               _meta: { sourceType: "MCP", sourceCode: "rag" },
             },
@@ -157,7 +158,7 @@ async function clientFixture({
     },
     { cubeMcpCode: code, maxResponseBytes },
   );
-  return { client: await openCubeMcp(transport, signal), sent, signal };
+  return { client: await openGatewayMcp(transport, signal), sent, signal };
 }
 
 test("direct Cube methods preserve server schemas, original decimals and the original business/transport sessions", async () => {
@@ -272,7 +273,7 @@ function serviceFixture() {
     stopTurn: (id, message) => stopped.set(id, message),
   };
   return {
-    service: createCubeMcpService(ctx, business),
+    service: createGatewayMcpService(ctx, business),
     business,
     module,
     profiles,

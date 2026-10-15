@@ -1,4 +1,5 @@
-/** Cube-New's two wire methods, with login-owned transport and validated inline or historical results. */
+/** Authorized Cube and knowledge tools share login-owned MCP transport and keep distinct result contracts. */
+import { KNOWLEDGE_METHODS, knowledgeArguments, knowledgeResult } from "./knowledge-mcp.ts";
 import { randomUUID } from "node:crypto";
 import { createParser } from "eventsource-parser";
 import {
@@ -15,15 +16,15 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
-const METHODS = ["inspect_cube_model", "query_business_data"] as const;
+const METHODS = ["inspect_cube_model", "query_business_data", ...KNOWLEDGE_METHODS] as const;
 const VERSIONS = ["2025-11-25", "2025-06-18", "2024-11-05"];
-export type CubeMcpTool = {
+export type GatewayMcpTool = {
   name: (typeof METHODS)[number];
   description: string;
   inputSchema: Record<string, unknown>;
 };
-export type CubeMcpClient = {
-  tools(): CubeMcpTool[];
+export type GatewayMcpClient = {
+  tools(): GatewayMcpTool[];
   call(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string>;
   /** Retained evidence can recheck its original resource grant; new queries do not use this API. */
   authorizedResources: GatewayMcpTransport["authorizedResources"];
@@ -79,10 +80,10 @@ function toolError(
   );
 }
 
-export async function openCubeMcp(
+export async function openGatewayMcp(
   transport: GatewayMcpTransport,
   signal: AbortSignal,
-): Promise<CubeMcpClient> {
+): Promise<GatewayMcpClient> {
   let version: string | undefined;
   const rpc = async (method: string, params: Record<string, unknown>, callSignal: AbortSignal) => {
     throwIfAborted(callSignal);
@@ -144,7 +145,7 @@ export async function openCubeMcp(
       if (!textValues.has(text)) {
         let value: unknown;
         try {
-          value = JSON.parse(text);
+          value = parse(text);
         } catch {
           /* Explanatory text is not business JSON. */
         }
@@ -161,7 +162,7 @@ export async function openCubeMcp(
     {
       protocolVersion: VERSIONS[0],
       capabilities: {},
-      clientInfo: { name: "gea-cube-new", version: "1.0" },
+      clientInfo: { name: "gea-gateway", version: "1.0" },
     },
     signal,
   );
@@ -185,7 +186,7 @@ export async function openCubeMcp(
   await ready.body?.cancel();
   throwIfAborted(signal);
   if (!ready.ok) throw Error(`GEA_MCP_HTTP_${ready.status}`);
-  const tools: CubeMcpTool[] = [];
+  const tools: GatewayMcpTool[] = [];
   let cursor: string | undefined;
   do {
     const { result: listed } = await rpc("tools/list", cursor ? { cursor } : {}, signal);
@@ -228,12 +229,15 @@ export async function openCubeMcp(
         throw Error("GEA_MCP_PLATFORM_ARGUMENT_REJECTED: 平台身份和路由不属于业务 arguments。");
       if (!tools.some((tool) => tool.name === name))
         throw Error(`GEA_MCP_TOOL_UNAVAILABLE: 当前业务会话未返回 ${name}`);
+      const knowledge = KNOWLEDGE_METHODS.find((method) => method === name);
+      if (knowledge) knowledgeArguments(knowledge, args);
       if (name === "query_business_data") validateCubeQueryMembers(args);
       const { result, stringify, parseText } = await rpc(
         "tools/call",
         { name, arguments: args },
         callSignal,
       );
+      if (knowledge) return knowledgeResult(knowledge, result, args, stringify, parseText);
       if (name === "inspect_cube_model") {
         const structured = record(result.structuredContent);
         if (structured) return stringify(structured);

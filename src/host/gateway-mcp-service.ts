@@ -6,10 +6,10 @@ import { assertSessionResourceAvailable, toolConsumer } from "./business-identit
 import { profileFor } from "./prompt-policy.ts";
 import { throwIfAborted, readableError } from "../shared/abort.ts";
 import { stopExpiredGateway } from "./agent-tools.ts";
-import type { CubeMcpTool } from "./cube-mcp-client.ts";
+import type { GatewayMcpTool } from "./gateway-mcp-client.ts";
 import { isDeepStrictEqual } from "node:util";
 
-export function createCubeMcpService(ctx: Context, business: Business) {
+export function createGatewayMcpService(ctx: Context, business: Business) {
   return {
     version: 2 as const,
     authenticated: () => business.status().authenticated,
@@ -34,7 +34,7 @@ export function createCubeMcpService(ctx: Context, business: Business) {
       signal = AbortSignal.any([signal, business.identitySignal()]);
       const attempted = new Set<string>();
       let failure: unknown;
-      const discovered = new Map<string, CubeMcpTool>();
+      const discovered = new Map<string, GatewayMcpTool>();
       let available = false;
       for (const agent of ctx.agents.list()) {
         const preset = ctx.sessionProjections.stateOf(agent.session, "agentPreset");
@@ -77,7 +77,8 @@ export function createCubeMcpService(ctx: Context, business: Business) {
       const consumer = toolConsumer(ctx, business, sessionId, undefined);
       const stopped = business.turnStopped(sessionId);
       if (stopped) throw Error(`GEA_TURN_STOPPED: ${stopped}`);
-      if (name === "inspect_cube_model") business.invalidateModuleMcp(consumer);
+      if (name === "inspect_cube_model" || name === "weknora_list_knowledge_bases")
+        business.invalidateModuleMcp(consumer);
       const module = await business.moduleMcp(consumer, signal);
       try {
         const result = await module.call(name, args, signal);
