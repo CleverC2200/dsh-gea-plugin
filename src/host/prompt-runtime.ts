@@ -349,7 +349,12 @@ export function mountBusinessPrompts(
                   hasError: !!resource?.error,
                 }
               : null,
-            consumerCode: mcpAccess && "consumerCode" in mcpAccess ? mcpAccess.consumerCode : null,
+            consumerCode:
+              agent && profile
+                ? sessionConsumer(ctx, business, agent.id)
+                : mcpAccess && "consumerCode" in mcpAccess
+                  ? mcpAccess.consumerCode
+                  : null,
             mcpAccess,
             pageBound: agent ? pageBound(agent) : false,
             authenticated: business.status().authenticated === true,
