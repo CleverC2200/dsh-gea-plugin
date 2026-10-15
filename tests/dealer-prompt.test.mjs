@@ -274,7 +274,7 @@ test(
         const results = readToolResults(records);
         assert.equal(results.length, 1);
         assert.equal(results[0].callId, calls[0].data.callId);
-        assert.equal(results[0].isError, false);
+        assert.equal(results[0].isError, false, results[0].text);
         const text = results[0].text;
         assert.ok(text.startsWith('<skill_content name="inventory-dealer">'));
         assert.ok(
