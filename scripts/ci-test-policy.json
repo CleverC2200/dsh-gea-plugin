@@ -26,6 +26,11 @@
   "tests": ["tests/*.test.mjs", "scripts/*.test.mjs", "tests/*.contract.mjs"],
   "rules": [
     {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/ci-source-policy\\.mjs$",
+      "tests": ["scripts/business-profile-ci.test.mjs"]
+    },
+    {
       "repo": "dsh-gea-plugin",
       "pattern": "^(?:package\\.json|pnpm-lock\\.yaml|tsconfig|\\.github/|scripts/ci-test-policy\\.json)",
       "tests": ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"],

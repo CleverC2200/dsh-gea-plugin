@@ -28,6 +28,7 @@ const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const sourceRoot = resolve(import.meta.dirname, "..");
 const fixtureSourceFiles = [
   "run-quality-ci.mjs",
+  "business-profile-ci.mjs",
   "quality-ci-stages.mjs",
   "run-quality-checks.mjs",
   "quality-upstreams.mjs",
@@ -82,7 +83,7 @@ function fixture(t) {
     process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ?? resolve(sourceRoot, "../dsh-agent-workbench");
   const manageSource =
     process.env.GEA_FINAL_GROUP_MANAGE_SOURCE ?? resolve(sourceRoot, "../dsh-agent-manage");
-  for (const file of ["candidate-input.mjs", "ci-test-plan.mjs"]) {
+  for (const file of ["candidate-input.mjs", "ci-test-plan.mjs", "ci-source-policy.mjs"]) {
     mkdirSync(join(workbench, "scripts"), { recursive: true });
     copyFileSync(join(workbenchSource, "scripts", file), join(workbench, "scripts", file));
   }
@@ -175,7 +176,7 @@ function fixture(t) {
   });
   write(
     join(gea, "scripts/stage-fixture.test.mjs"),
-    `import test from 'node:test'; import assert from 'node:assert/strict'; import { existsSync, readFileSync, appendFileSync } from 'node:fs'; test('fixed environment reaches a real test process', {skip: process.env.FIXTURE_SKIP === 'true'}, () => { for (const key of ['GEA_PLUGIN_UPDATE_SDK', 'GEA_PLUGIN_UPDATE_CANDIDATE_CORE', 'GEA_TEST_CANDIDATE_INPUTS']) { assert.ok(existsSync(process.env[key]), key); assert.ok(!process.env[key].includes('stale')); } assert.equal(JSON.parse(readFileSync(process.env.GEA_TEST_CANDIDATE_INPUTS)).core, ${JSON.stringify(coreHead)}); appendFileSync(${JSON.stringify(join(job, "tests-executed"))}, 'test ran\\n'); if (process.env.FIXTURE_FAIL === 'tests') assert.fail('controlled test failure'); });`,
+    `import test from 'node:test'; import assert from 'node:assert/strict'; import { existsSync, readFileSync, appendFileSync } from 'node:fs'; import { loadBusinessProfilePolicy } from './business-profile-ci.mjs'; test('fixed environment reaches a real test process', {skip: process.env.FIXTURE_SKIP === 'true'}, async () => { assert.equal(process.env.QUALITY_POLICY_WORKBENCH, ${JSON.stringify(workbench)}); const policy = await loadBusinessProfilePolicy(process.env.QUALITY_POLICY_WORKBENCH); assert.equal(policy.matchesProductSource(true, ['scripts/run-quality-ci.mjs']), true); assert.equal(policy.matchesProductSource(true, ['src/host.ts']), false); for (const key of ['GEA_PLUGIN_UPDATE_SDK', 'GEA_PLUGIN_UPDATE_CANDIDATE_CORE', 'GEA_TEST_CANDIDATE_INPUTS']) { assert.ok(existsSync(process.env[key]), key); assert.ok(!process.env[key].includes('stale')); } assert.equal(JSON.parse(readFileSync(process.env.GEA_TEST_CANDIDATE_INPUTS)).core, ${JSON.stringify(coreHead)}); appendFileSync(${JSON.stringify(join(job, "tests-executed"))}, 'test ran\\n'); if (process.env.FIXTURE_FAIL === 'tests') assert.fail('controlled test failure'); });`,
   );
   const geaHead = commit(gea);
   const manifest = {
@@ -198,6 +199,7 @@ function fixture(t) {
       QUALITY_STAGE_FIXTURE_ROOT: job,
       QUALITY_BASE_SHA: geaHead,
       GITHUB_STEP_SUMMARY: summary,
+      QUALITY_POLICY_WORKBENCH: "/stale/policy",
       GEA_TEST_CANDIDATE_INPUTS: "/stale/candidate",
       GEA_TEST_SOURCE_INPUTS: "/stale/sources",
       ...extra,
