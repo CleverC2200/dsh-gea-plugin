@@ -66,7 +66,7 @@ function UpdateBadge({ subject, updates, t }: Props): ReactNode {
   const name = targetName(subject);
   return name ? <DetailBadge name={name} updates={updates} t={t} /> : null;
 }
-function tone(state: PluginUpdateRow["state"]): TagTone {
+function tone(state: PluginUpdateRow["state"] | "submitting"): TagTone {
   if (["failed", "check-failed", "unknown"].includes(state)) return "danger";
   if (["pending-restart", "restored", "blocked"].includes(state)) return "warning";
   if (["completed", "current"].includes(state)) return "success";
@@ -80,7 +80,11 @@ function DetailBadge({
   const state = useDetail(updates),
     row = state.items.find((row) => row.packageName === name);
   const stage =
-    state.submitting === name ? "accepted" : state.checking ? "checking" : (row?.state ?? "idle");
+    state.submitting === name && (!row || row.state === "available")
+      ? "submitting"
+      : state.checking
+        ? "checking"
+        : (row?.state ?? "idle");
   return (
     <span role="status">
       <Tag tone={tone(stage)}>{t(stage)}</Tag>

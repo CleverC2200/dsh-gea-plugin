@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url);
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { build } from "esbuild";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
@@ -26,6 +26,7 @@ async function until(predicate) {
 
 test("official detail slots check, update, close and reenter through controlled HTTP", async (t) => {
   execFileSync(process.execPath, ["scripts/build.mjs", "--target", "client"], { stdio: "pipe" });
+  await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(join(process.cwd(), ".runtime/detail-browser-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await build({
@@ -64,12 +65,14 @@ test("official detail slots check, update, close and reenter through controlled 
     statuses = 0,
     holdCheck = false,
     checkAborted = false,
-    updateAborted = false;
+    updateAborted = false,
+    updateResponded = false,
+    releaseUpdate;
   const status = () => ({
     revision: revision++,
     hostProcessIdentity: "fixture-host",
     challenge: "fixture-nonce",
-    checkTimeoutMs: 5000,
+    checkTimeoutMs: 30000,
     pollIntervalMs: 1000,
     items: names.map((packageName) => ({
       packageName,
@@ -110,11 +113,11 @@ test("official detail slots check, update, close and reenter through controlled 
           packageName: names[2],
           planId: "plan-one",
         });
-        phase = "installing";
         res.on("close", () => {
           if (!res.writableEnded) updateAborted = true;
         });
-        await new Promise((resolve) => setTimeout(resolve, 150));
+        await new Promise((resolve) => { releaseUpdate = resolve; });
+        updateResponded = true;
       }
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ ok: true, value: {} }));
@@ -188,14 +191,47 @@ test("official detail slots check, update, close and reenter through controlled 
   assert.equal(checks, 1);
   await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).click();
   await until(() => updates === 1);
+  await page.getByText("Submitting update", { exact: true }).waitFor();
+  assert.equal(
+    await page.getByText("Update accepted", { exact: true }).count(),
+    0,
+  );
+  await page.evaluate(() => window.fixture.locale("zh"));
+  await page.getByText("正在提交更新", { exact: true }).waitFor();
+  await page.evaluate(() => window.fixture.locale("en"));
+  phase = "downloading";
+  await page.getByText("Downloading", { exact: true }).waitFor();
+  assert.equal(
+    await page.getByText("Update accepted", { exact: true }).count(),
+    0,
+  );
+  // Controlled status samples verify display precedence, independently of Host transitions.
+  for (const [next, label] of [
+    ["waiting-lock", "Waiting for other plugin changes"],
+    ["snapshotting", "Backing up"],
+    ["check-failed", "Check failed"],
+    ["blocked", "Update unavailable"],
+    ["failed", "Update failed"],
+    ["unknown", "Result unknown"],
+    ["accepted", "Update accepted"],
+    ["installing", "Installing"],
+    ["pending-restart", "Restart required"],
+  ]) {
+    phase = next;
+    await page.getByText(label, { exact: true }).first().waitFor();
+    assert.equal(typeof releaseUpdate, "function");
+    assert.equal(updateResponded, false);
+    t.diagnostic(`Observed Host ${next} while the update response remained pending`);
+    assert.equal(updateAborted, false);
+  }
   await page.evaluate(() => window.fixture.close());
+  assert.equal(updateAborted, false);
+  releaseUpdate();
   await page.waitForTimeout(200);
   assert.equal(updateAborted, false);
   await page.evaluate(() => window.fixture.open());
-  await page.getByText("Installing", { exact: true }).first().waitFor();
-  assert.equal(updates, 1);
-  phase = "pending-restart";
   await page.getByText("Restart required", { exact: true }).first().waitFor();
+  assert.equal(updates, 1);
   assert.match(await page.locator("main").textContent(), /1.2.2/);
   await page.evaluate(() => window.fixture.close());
   const count = statuses;
