@@ -29,9 +29,7 @@ import { currentPageEnvelope, pageIdentityFresh, type PageIdentity } from "./pag
 import { workbenchPresence, type WorkbenchPresence } from "./workbench-presence.ts";
 import { normalizeSurface, type WorkbenchSurface } from "./workbench-surface.ts";
 import { compressForModel } from "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget";
-import { createCubeGapLedger, type CubeGapLedger } from "./cube-gap-ledger.ts";
 import { createRepeatGuard, type RepeatGuard } from "./repeat-guard.ts";
-import { createMcpReadLedger } from "./mcp-read-evidence.ts";
 import { aggregateSalesPlans } from "./sales-plan-aggregate.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
@@ -497,7 +495,7 @@ function capRows<T extends Record<string, unknown>>(
   budgetBytes: number,
 ): { rows: T[]; omitted: number } {
   const kept: T[] = [];
-  let used = 2; // "[]"
+  let used = 2;
   for (const row of rows) {
     const size = Buffer.byteLength(JSON.stringify(row), "utf8") + 1;
     if (used + size > budgetBytes) break;
@@ -915,7 +913,6 @@ export class Business {
     this.readDedup.clear();
     this.mcpWasteGuard.clear();
     this.mcpFailureGuard.clear();
-    this.cubeGapLedger.clear();
     this.repeatGuard.clear();
     this.clearTurnReplays();
     this.turnQuestions.clear();
@@ -2039,13 +2036,6 @@ export class Business {
     return this.readDedup;
   }
 
-  /** 结构性缺口账本：某个（模块 + 模型）确认取不到时，第二次直接给结论（见 cube-gap-ledger.ts）。 */
-  private readonly cubeGapLedger = createCubeGapLedger();
-
-  cubeGaps(): CubeGapLedger {
-    return this.cubeGapLedger;
-  }
-
   /** 同一轮里的重复读收敛（见 host/repeat-guard.ts）。 */
   private readonly repeatGuard = createRepeatGuard();
 
@@ -2088,39 +2078,6 @@ export class Business {
 
   turnReplay(scope: string, key: string): string | undefined {
     return this.turnReplays.get(`${scope || "global"}\u0000${key}`)?.text;
-  }
-
-  private readonly mcpReadLedger = createMcpReadLedger();
-
-  mcpReadEpoch(scope: string): object {
-    return this.mcpReadLedger.epoch(scope);
-  }
-
-  rememberPendingMcpQueries(
-    scope: string,
-    consumer: string,
-    parameters: Record<string, unknown>,
-    epoch?: object,
-  ): void {
-    this.mcpReadLedger.rememberPending(scope, consumer, parameters, epoch);
-  }
-
-  rememberMcpRead(
-    scope: string,
-    consumer: string,
-    parameters: Record<string, unknown>,
-    output: string,
-    epoch?: object,
-  ): void {
-    this.mcpReadLedger.success(scope, consumer, parameters, output, epoch);
-  }
-
-  pendingMcpQueries(scope: string) {
-    return this.mcpReadLedger.pending(scope);
-  }
-
-  successfulReadEvidence(scope: string): Record<string, unknown>[] {
-    return [...this.successfulPlanEvidence(scope), ...this.mcpReadLedger.evidence(scope)];
   }
 
   /** 本轮成功聚合的有界摘要；读取失败/停手不抹掉已有事实，换轮或身份沿用回执清理。 */
@@ -2199,7 +2156,6 @@ export class Business {
   }
 
   clearTurnReplays(scope?: string): void {
-    this.mcpReadLedger.clear(scope);
     if (scope !== undefined) {
       for (const key of this.turnReplays.keys())
         if (key.startsWith(`${scope || "global"}\u0000`)) this.turnReplays.delete(key);

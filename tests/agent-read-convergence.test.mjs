@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 const out = await build({
   stdin: {
     contents:
-      "export {Business} from './src/host/business.ts'; export {registerGeaTools} from './src/host/agent-tools.ts'; export {rowsFromText,noteMemberSamples,appendMemberSamples} from './src/host/gateway-catalog.ts'",
+      "export {Business} from './src/host/business.ts'; export {registerGeaTools} from './src/host/agent-tools.ts'",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -20,8 +20,7 @@ new Function("require", "module", "exports", out.outputFiles[0].text)(
   m,
   m.exports,
 );
-const { Business, registerGeaTools, rowsFromText, noteMemberSamples, appendMemberSamples } =
-  m.exports;
+const { Business, registerGeaTools } = m.exports;
 function fixture(t) {
   const business = new Business({
     geaBaseUrl: "https://gea.example.test",
@@ -99,35 +98,6 @@ test("aggregate argument order does not trigger a new scan and a replay keeps th
       /EXACT_TABLE_AT_END/,
     );
   assert.equal(reads, 1);
-});
-test("artifact pages feed latest sample observations even when the member is already in a cached directory", () => {
-  const rows = rowsFromText(
-    JSON.stringify({
-      queryArtifact: {
-        resources: [
-          {
-            contents: [
-              { text: JSON.stringify({ rows: [{ "plan.region": "" }] }) },
-              { text: JSON.stringify({ rows: [{ "plan.region": null }] }) },
-            ],
-          },
-        ],
-      },
-    }),
-  );
-  assert.equal(rows.length, 2);
-  const notes = new Map();
-  noteMemberSamples(notes, rows, ["plan.region"]);
-  const result = appendMemberSamples("model plan members: plan.region", notes, "plan");
-  assert.match(result, /本次 2 行样本均为空/);
-  assert.match(result, /不能据此断定全量为空/);
-  assert.doesNotMatch(appendMemberSamples("other", notes, "other"), /region/);
-  noteMemberSamples(notes, [{ "plan.region": "东" }, { "plan.region": "西" }], ["plan.region"]);
-  assert.equal(
-    appendMemberSamples("cached", notes, "plan"),
-    "cached",
-    "new varied sample removes old empty observation",
-  );
 });
 test("resetting one conversation preserves another conversation guard and replay", (t) => {
   const f = fixture(t);

@@ -94,6 +94,61 @@ test("registered inspect refreshes the current authorized server schema without 
   });
 });
 
+test("registered inspect retains all server member metadata and sparse sample facts without local catalog projection", async (t) => {
+  const f = await currentMcp(t);
+  const catalog = {
+    semanticModel: [
+      {
+        name: "inventory",
+        title: "库存货龄",
+        description: "当前授权模型",
+        dimensions: [
+          { name: "inventory.month", type: "string", samples: ["2026-08"] },
+          { name: "inventory.region", type: "string", samples: ["", null] },
+          { name: "inventory.quantity", type: "number" },
+          { name: "inventory.date", type: "time" },
+        ],
+        measures: [
+          ...Array.from({ length: 11 }, (_, i) => ({
+            name: `inventory.check_${i}`,
+            type: "number",
+          })),
+          {
+            name: "inventory.available_qty",
+            type: "number",
+            description: "单快照可用量；缺失保留未知",
+            meta: { unit: "件" },
+          },
+        ],
+      },
+      { name: "counts_only", measures: [{ name: "counts_only.row_count", type: "number" }] },
+      { name: "other", measures: [], dimensions: [] },
+      {
+        name: "inventory_view",
+        type: "view",
+        dimensions: [
+          { name: "inventory_view.region", aliasMember: "inventory.region", type: "string" },
+        ],
+        measures: [],
+      },
+    ],
+  };
+  f.setHandler((wire, _init, reply) =>
+    wire.method === "tools/call" ? reply({ structuredContent: catalog }) : undefined,
+  );
+  const result = await f.execute(inspectTool, { keyword: "货龄" });
+  assert.equal(result.isError, false, JSON.stringify(result));
+  assert.deepEqual(JSON.parse(result.value), catalog);
+  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
+  assert.deepEqual(f.calls.find(({ wire }) => wire.method === "tools/call").wire.params.arguments, {
+    keyword: "货龄",
+  });
+  assert.equal(
+    f.calls.some(({ wire }) => wire.method === "resources/read"),
+    false,
+  );
+});
+
 test("registered tools reject ordinary or missing callers and disabled business resources before external execution", async (t) => {
   const f = await currentMcp(t);
   const before = f.calls.length;
