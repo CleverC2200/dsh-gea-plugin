@@ -6,6 +6,9 @@ import { tmpdir } from "node:os";
 import { boot } from "@deepseek-ai/dsh-app-boot";
 import * as gea from "../lib/host.js";
 
+// Cordis's const enum is erased from JS; this is the app-boot audit value.
+const FIBER_ACTIVE = 2;
+
 // The production Loader and GEA Host run here; unrelated public services are local recording adapters.
 async function start(home, config = {}) {
   const dir = join(home, "profiles", "ordinary");
@@ -15,7 +18,8 @@ async function start(home, config = {}) {
   const routes = new Map(),
     resources = [],
     models = [],
-    guards = [];
+    guards = [],
+    agentWatchers = new Set();
   const dispose = () => {};
   const ctx = await boot(
     "ordinary-test",
@@ -48,7 +52,15 @@ async function start(home, config = {}) {
           return dispose;
         },
       });
-      ctx.provide("agents", { get: () => undefined });
+      ctx.provide("agents", { get: () => undefined, list: () => [] });
+      ctx.plugin((scope) => {
+        scope.provide("userAgents", {
+          watch: (listener) => {
+            agentWatchers.add(listener);
+            return () => agentWatchers.delete(listener);
+          },
+        });
+      });
       ctx.provide("tools", {
         register: () => dispose,
         guard: (fn) => {
@@ -74,7 +86,7 @@ async function start(home, config = {}) {
       ctx.loader.builtins["fixture-gea"] = gea;
     },
   );
-  return { ctx, dir, routes, resources, models, guards };
+  return { ctx, dir, routes, resources, models, guards, agentWatchers };
 }
 
 test("ordinary Loader mounts GEA with empty settings and a profile-owned runtime directory without network or login", async (t) => {
@@ -91,6 +103,10 @@ test("ordinary Loader mounts GEA with empty settings and a profile-owned runtime
   });
   const f = await start(home);
   t.after(() => f.ctx.fiber.dispose());
+  const entry = [...f.ctx.loader.entries()].find((entry) => entry.options.id === "gea-proof");
+  assert.equal(entry?.fiber?.state, FIBER_ACTIVE, "ordinary GEA Host must activate");
+  assert.equal(f.agentWatchers.size, 1, "Agent selection changes refresh business permissions");
+  for (const listener of f.agentWatchers) listener();
   assert.equal((await stat(join(f.dir, "gea"))).isDirectory(), true);
   assert.equal(f.resources[0].id, "gea-readonly");
   assert.deepEqual(f.models, [["gea-analysis"], []]);
@@ -115,6 +131,7 @@ test("ordinary Loader mounts GEA with empty settings and a profile-owned runtime
   assert.equal(requests, 0);
   assert.match(f.guards[0]({ name: "gea_evidence_read" }), /GEA_BUSINESS_PROFILE_REQUIRED/);
   await f.ctx.fiber.dispose();
+  assert.equal(f.agentWatchers.size, 0, "unloading GEA releases Agent subscriptions");
   const restarted = await start(home);
   await restarted.ctx.fiber.dispose();
   assert.equal(requests, 0);

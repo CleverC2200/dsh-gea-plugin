@@ -14,11 +14,13 @@ import {
   allowedTools,
   businessUiIssue,
   COMMON_PROMPT,
+  KNOWLEDGE_PROMPT,
   profileFor,
   PROMPT_BUDGET,
   promptMeasurement,
   TOOL_DESCRIPTIONS,
 } from "./prompt-policy.ts";
+import { cubeAllowed } from "./cube-access.ts";
 import { PromptExecutionState } from "./prompt-execution-state.ts";
 
 const gatewayMethod = (name: string) =>
@@ -97,6 +99,17 @@ export function mountBusinessPrompts(
   const refreshMask = (agent: Agent) => {
     const state = stateOf(agent);
     const names = profileOf(agent) ? namesFor(agent, state) : new Set<string>();
+    if (cubeAllowed(ctx, business, agent.id)) {
+      names.add("mcp__gea-gateway__inspect_cube_model");
+      names.add("mcp__gea-gateway__query_business_data");
+      names.add("mcp__gea-gateway__weknora_list_knowledge_bases");
+      names.add("mcp__gea-gateway__weknora_ask");
+    } else {
+      names.delete("mcp__gea-gateway__inspect_cube_model");
+      names.delete("mcp__gea-gateway__query_business_data");
+      names.delete("mcp__gea-gateway__weknora_list_knowledge_bases");
+      names.delete("mcp__gea-gateway__weknora_ask");
+    }
     const deny = ctx.tools
       .schemas()
       .map((tool) => tool.name)
@@ -116,7 +129,17 @@ export function mountBusinessPrompts(
       state.readCalls = 0;
     }
   };
-  const offs: Array<() => void> = [business.watchIdentity(clean)];
+  const refreshAll = () => {
+    for (const agent of ctx.agents.list()) refreshMask(agent);
+  };
+  const offs: Array<() => void> = [
+    business.watchIdentity(() => {
+      clean();
+      refreshAll();
+    }),
+  ];
+  if (ctx.agentResources?.watch) offs.push(ctx.agentResources.watch(refreshAll));
+  if (ctx.userAgents) offs.push(ctx.userAgents.watch(refreshAll));
   offs.push(
     ctx.on("session/event", (session, event) => {
       if (event.type !== "turn/start") return;
@@ -150,6 +173,13 @@ export function mountBusinessPrompts(
   offs.push(
     ctx.tools.guard((exec) => {
       const agent = exec.agent;
+      if (
+        gatewayMethod(exec.name) &&
+        agent &&
+        !profileOf(agent) &&
+        cubeAllowed(ctx, business, agent.id)
+      )
+        return;
       if (!profileOf(agent) || !agent) {
         if (businessMethod(exec.name))
           return agent
@@ -403,12 +433,18 @@ export function mountBusinessPrompts(
       if (!profile)
         return {
           ...assembled,
-          tools: assembled.tools.filter((tool) => !businessMethod(tool.name)),
+          tools: assembled.tools.filter(
+            (tool) =>
+              !businessMethod(tool.name) ||
+              (gatewayMethod(tool.name) && cubeAllowed(ctx, business, agent.id)),
+          ),
           sections: [
             ...assembled.sections,
             {
               name: "gea:admission",
-              text: "当前实际会话预设未声明 GEA 业务身份。Skill 可用于规则说明，但实际库存取数需点击工作台的‘使用基地库存 Agent 分析’入口或选用相应业务资源。子智能体的角色名和提示词不改变其实际父会话的业务身份。GEA 工具当前不可用；其它 MCP 结果应标明独立来源，不证明 GEA 页面或授权恢复。",
+              text: cubeAllowed(ctx, business, agent.id)
+                ? "Current personal Agent uses its retained Consumer with the current GEA identity. Server grants govern Cube and knowledge tools. This association grants no business writes or page actions.\n" + KNOWLEDGE_PROMPT
+                : "当前实际会话预设未声明 GEA 业务身份。Skill 可用于规则说明，但实际库存取数需点击工作台的‘使用基地库存 Agent 分析’入口或选用相应业务资源。子智能体的角色名和提示词不改变其实际父会话的业务身份。GEA 工具当前不可用；其它 MCP 结果应标明独立来源，不证明 GEA 页面或授权恢复。",
             },
           ],
         };

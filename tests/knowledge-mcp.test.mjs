@@ -404,3 +404,19 @@ test("switching to another enabled business Agent rejects the previous Consumer'
   assert.doesNotMatch(JSON.stringify(result), /有依据的完整答案|依据片段/);
   assert.equal(count(f, "weknora_ask"), 1);
 });
+
+test("current personal Agent exposes knowledge tools under its retained Consumer and source lifetime", async (t) => {
+  const f = await fixture(t, { personal: true, prompts: true });
+  const names = f.ctx.tools.schemas(f.agents.get("personal")).map((tool) => tool.name);
+  assert.ok(names.includes(catalog));
+  assert.ok(names.includes(ask));
+  assert.deepEqual(successful(await invoke(f, catalog, {}, "personal")), [library("current-library")]);
+  assert.deepEqual(successful(await invoke(f, ask, args, "personal")), answer());
+  const calls = f.calls.filter(({ wire }) => wire.method === "tools/call");
+  assert.ok(calls.every(({ wire }) => wire.params._meta.agentCode === "sales_forecast"));
+  assert.ok(!names.includes("gea_plugin_page_apply"));
+  f.setEnabled(false);
+  const refused = await invoke(f, ask, args, "personal");
+  assert.equal(refused.isError, true);
+  assert.equal(count(f, "weknora_ask"), 1);
+});

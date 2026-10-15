@@ -1,6 +1,6 @@
 import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
-import { currentHtmlResource } from "./fixtures/html-resource.mjs";
+import { writeHtmlDeclarations } from "./fixtures/html-resource.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
@@ -73,6 +73,8 @@ test(
         html: "index.html",
         skills: ["skills/SKILL.md"],
         mcp: "mcp.json",
+        declarations: { page: "page.json", capability: "capability.json" },
+        agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
         gea: { consumerCode: "full-chain-inventory", readonly: true, contract: "gea-html-v2" },
       }),
     );
@@ -90,7 +92,30 @@ test(
       join(qll, "index.html"),
       "<!doctype html><html><title>全链库存</title><body>固定样本辅助 Agent</body></html>",
     );
-    await currentHtmlResource(qll);
+    await writeHtmlDeclarations(qll, {
+      page: {
+        surface: "gea-html-inventory-qll",
+        protocol: "self-report",
+        pageIds: ["inventory-qll"],
+        consumerCode: "full-chain-inventory",
+        maxEffect: "view",
+      },
+      capability: {
+        id: "inventory-qll",
+        label: "全链库存",
+        data: { consumerCode: "full-chain-inventory", tables: [], rules: [] },
+        maxEffect: "view",
+        layers: ["read"],
+        skills: ["inventory-qll"],
+        routing: { keywords: ["inventory-qll"], summary: "全链库存" },
+      },
+      prompt: {
+        label: "全链库存",
+        consumerCode: "full-chain-inventory",
+        persona: "只读测试页面，保留用户会话与权限边界。",
+        skills: ["inventory-qll"],
+      },
+    });
     const state = stockState();
     let stockRoute;
     const modelRequests = [];

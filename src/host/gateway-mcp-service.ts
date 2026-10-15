@@ -1,9 +1,7 @@
 /** GEA selects the Consumer from the real Core Session, never from tool arguments. */
 import type { Context } from "@deepseek-ai/cordis";
-import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { Business } from "./business.ts";
-import { assertSessionResourceAvailable, toolConsumer } from "./business-identity.ts";
-import { profileFor } from "./prompt-policy.ts";
+import { cubeAllowed, resolveCubeAccess, sameCubeAccess } from "./cube-access.ts";
 import { throwIfAborted, readableError } from "../shared/abort.ts";
 import { stopExpiredGateway } from "./agent-tools.ts";
 import type { GatewayMcpTool } from "./gateway-mcp-client.ts";
@@ -17,19 +15,15 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
     watch: (listener: () => void) => {
       const offs = [
         business.watchIdentity(listener),
+        ...(ctx.agentResources.watch ? [ctx.agentResources.watch(listener)] : []),
+        ...(ctx.userAgents ? [ctx.userAgents.watch(listener)] : []),
         ...(
           ["agent/created", "agent/disposed", "agent-preset/selected", "skills/change"] as const
         ).map((event) => ctx.on(event, listener)),
       ];
       return () => offs.forEach((off) => off());
     },
-    allows: (sessionId: string) => {
-      const agent = ctx.agents.get(sessionId as SessionId);
-      const preset = agent
-        ? ctx.sessionProjections.stateOf(agent.session, "agentPreset")
-        : undefined;
-      return business.status().authenticated && !!profileFor(preset ?? undefined);
-    },
+    allows: (sessionId: string) => cubeAllowed(ctx, business, sessionId),
     listTools: async (signal: AbortSignal) => {
       signal = AbortSignal.any([signal, business.identitySignal()]);
       const attempted = new Set<string>();
@@ -37,17 +31,20 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
       const discovered = new Map<string, GatewayMcpTool>();
       let available = false;
       for (const agent of ctx.agents.list()) {
-        const preset = ctx.sessionProjections.stateOf(agent.session, "agentPreset");
-        if (!profileFor(preset ?? undefined)) continue;
+        if (!cubeAllowed(ctx, business, agent.id)) continue;
         try {
-          await assertSessionResourceAvailable(ctx, agent.id, signal);
-          const consumer = toolConsumer(ctx, business, agent.id, undefined);
+          const access = resolveCubeAccess(ctx, business, agent.id);
+          const consumer = access.consumerCode;
+          const ownedSignal = AbortSignal.any([
+            signal,
+            access.sourceSignal,
+            ...(access.associationSignal ? [access.associationSignal] : []),
+          ]);
           if (attempted.has(consumer)) continue;
           attempted.add(consumer);
-          const module = await business.moduleMcp(consumer, signal);
+          const module = await business.moduleMcp(consumer, ownedSignal);
           throwIfAborted(signal);
-          await assertSessionResourceAvailable(ctx, agent.id, signal);
-          if (toolConsumer(ctx, business, agent.id, undefined) !== consumer)
+          if (!sameCubeAccess(access, resolveCubeAccess(ctx, business, agent.id)))
             throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
           for (const tool of module.tools()) {
             const previous = discovered.get(tool.name);
@@ -72,28 +69,40 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
       args: Record<string, unknown>,
       signal: AbortSignal,
     ) => {
-      signal = AbortSignal.any([signal, business.identitySignal()]);
-      await assertSessionResourceAvailable(ctx, sessionId, signal);
-      const consumer = toolConsumer(ctx, business, sessionId, undefined);
+      const access = resolveCubeAccess(ctx, business, sessionId);
+      signal = AbortSignal.any([
+        signal,
+        access.identity,
+        access.sourceSignal,
+        ...(access.associationSignal ? [access.associationSignal] : []),
+      ]);
+      const consumer = access.consumerCode;
       const stopped = business.turnStopped(sessionId);
       if (stopped) throw Error(`GEA_TURN_STOPPED: ${stopped}`);
       if (name === "inspect_cube_model" || name === "weknora_list_knowledge_bases")
         business.invalidateModuleMcp(consumer);
       const module = await business.moduleMcp(consumer, signal);
+      signal.throwIfAborted();
+      if (!sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId)))
+        throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
       try {
         const result = await module.call(name, args, signal);
         throwIfAborted(signal);
-        await assertSessionResourceAvailable(ctx, sessionId, signal);
-        if (toolConsumer(ctx, business, sessionId, undefined) !== consumer)
+        if (!sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId)))
           throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
         return result;
       } catch (error) {
-        const expired = stopExpiredGateway(business, consumer, sessionId, error);
+        const current =
+          !signal.aborted &&
+          cubeAllowed(ctx, business, sessionId) &&
+          sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId));
+        const expired = current
+          ? stopExpiredGateway(business, consumer, sessionId, error)
+          : undefined;
         if (expired) throw expired;
         if (
           error instanceof Error &&
-          !signal.aborted &&
-          toolConsumer(ctx, business, sessionId, undefined) === consumer &&
+          current &&
           (("code" in error && error.code === "DATA_QUERY_MEMBER_NOT_PUBLISHED") ||
             ("category" in error && error.category === "RESPONSE_CONTRACT"))
         )

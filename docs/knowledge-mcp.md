@@ -27,3 +27,5 @@ LightRAG 旧工具未注册、旧问答结果解码已删除，现行业务指�
 现有 Core Tools → Manage → GEA Host → 模拟 MCP 服务的验证位于 `tests/knowledge-mcp.test.mjs`，与当前 Cube、网关、Prompt 和 Manage 生命周期检查一起验证。它不调用真实服务，不证明安装启用、真实模型表现或知识迁移完成。
 
 真实联调须确认具体环境、人员接入、实际 Agent Consumer、两个子工具与目标库 ASK 授权。2026-10-14 资料中的 test007、gea-client 和客户订单拒权均为历史观察，不作为当前授权。LightRAG 内容导出、WeKnora 内容迁入及完整性验收另行处理。
+
+当前 DSH 的个人 Agent 沿其已保存且仍有效的来源关联取得实际 Consumer，再按服务端授权使用知识工具。关联停用、来源撤销与身份切换同时撤销知识调用；该关联不授予页面动作或业务写入。当前客户端联调输入与结果由本轮验证记录负责。
