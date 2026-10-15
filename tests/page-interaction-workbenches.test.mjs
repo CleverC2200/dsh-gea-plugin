@@ -4,7 +4,7 @@ import {
   htmlFrameElement,
   preparePageStartup,
 } from "./fixtures/business-page.mjs";
-import { writeHtmlDeclarations } from "./fixtures/html-resource.mjs";
+import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 import { requireSourceInputs } from "../scripts/source-profile.mjs";
 import { profileFor } from "../src/host/prompt-policy.ts";
 import test from "./fixtures/source-test.mjs";
@@ -48,8 +48,6 @@ test(
           html: "index.html",
           skills: ["skills/page/SKILL.md"],
           mcp: "mcp.json",
-          declarations: { page: "page.json", capability: "capability.json" },
-          agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
           gea: {
             consumerCode: profileFor(`gea-html-${id}`).consumerCode,
             readonly: true,
@@ -78,30 +76,7 @@ test(
         join(root, "index.html"),
         `<!doctype html><html><body><section style="padding:24px"><h1>${name}</h1><table><thead><tr><th>客户</th><th>计划</th></tr></thead><tbody><tr><td>客户甲</td><td>120</td></tr></tbody></table></section><script>addEventListener('message',event=>{if(event.data.protocol!=='gea-html-v2'||event.data.type!=='connect')return;const port=event.ports[0];port.start();port.postMessage({type:'catalog',session:event.data.context.session,elements:[{id:'readout:customer',role:'field',label:'客户',value:'客户甲'},{id:'readout:plan',role:'field',label:'计划',value:'120'}]});});parent.postMessage({protocol:'gea-html-v2',type:'ready'},'*')</script></body></html>`,
       );
-      await writeHtmlDeclarations(root, {
-        page: {
-          surface: `gea-html-${id}`,
-          protocol: "self-report",
-          pageIds: [id],
-          consumerCode: profileFor(`gea-html-${id}`).consumerCode,
-          maxEffect: "view",
-        },
-        capability: {
-          id: id,
-          label: name,
-          data: { consumerCode: profileFor(`gea-html-${id}`).consumerCode, tables: [], rules: [] },
-          maxEffect: "view",
-          layers: ["read"],
-          skills: [id],
-          routing: { keywords: [id], summary: name },
-        },
-        prompt: {
-          label: name,
-          consumerCode: profileFor(`gea-html-${id}`).consumerCode,
-          persona: "只读测试页面，保留用户会话与权限边界。",
-          skills: [id],
-        },
-      });
+      await currentHtmlResource(root);
     }
     const app = await profile(t, {
       beforeStart: prepareWorkbenchHtmlRoots(roots),

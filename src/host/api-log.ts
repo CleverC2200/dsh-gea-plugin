@@ -612,7 +612,6 @@ export class GeaApiLogCenter {
       ...context,
       ownerScope,
       id: randomUUID(),
-      source: replayedFrom ? "replay" : "daily",
       sequence: ++this.sequence,
       catalogId: catalog?.id ?? null,
       catalogName: catalog?.name ?? "未登记接口",

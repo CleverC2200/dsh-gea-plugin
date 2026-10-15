@@ -13,7 +13,7 @@ export type ChannelName = "page" | "module-mcp" | "governed-read";
 
 export type ChannelChoice = {
   channel: ChannelName;
-
+  /** 该用的工具名。 */
   tool: string;
   consumerCode?: string;
   label?: string;
@@ -28,7 +28,7 @@ export type ChannelPlan = {
   module?: ChannelChoice;
   /** 兜底：受管只读（sql / recipe / describe）；问答侧关掉 SQL 时没有这一条。 */
   read?: ChannelChoice;
-
+  /** 选择顺序（一句话）。 */
   note: string;
 };
 

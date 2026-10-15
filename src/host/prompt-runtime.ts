@@ -144,7 +144,7 @@ export function mountBusinessPrompts(
     ctx.on("session/event", (session, event) => {
       if (event.type !== "turn/start") return;
       const agent = ctx.agents.get(session.id);
-      if (!agent || !profileOf(agent)) return;
+      if (!agent || (!profileOf(agent) && !cubeAllowed(ctx, business, agent.id))) return;
       const state = stateOf(agent);
       state.calls = 0;
       state.readCalls = 0;
@@ -173,14 +173,12 @@ export function mountBusinessPrompts(
   offs.push(
     ctx.tools.guard((exec) => {
       const agent = exec.agent;
-      if (
+      const personalGateway =
         gatewayMethod(exec.name) &&
-        agent &&
+        !!agent &&
         !profileOf(agent) &&
-        cubeAllowed(ctx, business, agent.id)
-      )
-        return;
-      if (!profileOf(agent) || !agent) {
+        cubeAllowed(ctx, business, agent.id);
+      if (!agent || (!profileOf(agent) && !personalGateway)) {
         if (businessMethod(exec.name))
           return agent
             ? "GEA_BUSINESS_PROFILE_REQUIRED: 当前实际会话预设未声明业务身份。请使用基地库存 Agent 分析入口或选用相应已启用业务资源；Skill、角色名称和页面可见不授予Consumer权限。"
@@ -199,7 +197,7 @@ export function mountBusinessPrompts(
         if (issue) return issue;
       }
       if (!businessMethod(exec.name)) return;
-      if (!namesFor(agent, state).has(exec.name))
+      if (!personalGateway && !namesFor(agent, state).has(exec.name))
         return ["gea_page", "gea_workbench_apply"].includes(exec.name) && !pageBound(agent)
           ? "GEA_BUSINESS_TOOL_NOT_ALLOWED: reason=PAGE_NOT_BOUND。当前业务会话未绑定页面；打开相应业务页面并连接当前会话后再读取页面证据。独立查询结果不能代替页面确定性结果。"
           : "GEA_BUSINESS_TOOL_NOT_ALLOWED: 当前业务角色未声明此工具能力。";
@@ -293,10 +291,8 @@ export function mountBusinessPrompts(
                 )
               : undefined;
           exec.signal.throwIfAborted();
-          let mcpAccess:
-            | { sourceRef: string; consumerCode: string }
-            | { error: string }
-            | null = null;
+          let mcpAccess: { sourceRef: string; consumerCode: string } | { error: string } | null =
+            null;
           if (agent) {
             try {
               const access = resolveCubeAccess(ctx, business, agent.id);
@@ -307,8 +303,7 @@ export function mountBusinessPrompts(
             } catch (error) {
               mcpAccess = {
                 error:
-                  (error instanceof Error &&
-                    error.message.match(/^GEA_[A-Z0-9_]+/)?.[0]) ||
+                  (error instanceof Error && error.message.match(/^GEA_[A-Z0-9_]+/)?.[0]) ||
                   "GEA_MCP_ACCESS_UNAVAILABLE",
               };
             }
@@ -354,7 +349,12 @@ export function mountBusinessPrompts(
                   hasError: !!resource?.error,
                 }
               : null,
-            consumerCode: mcpAccess && "consumerCode" in mcpAccess ? mcpAccess.consumerCode : null,
+            consumerCode:
+              agent && profile
+                ? sessionConsumer(ctx, business, agent.id)
+                : mcpAccess && "consumerCode" in mcpAccess
+                  ? mcpAccess.consumerCode
+                  : null,
             mcpAccess,
             pageBound: agent ? pageBound(agent) : false,
             authenticated: business.status().authenticated === true,
@@ -464,7 +464,8 @@ export function mountBusinessPrompts(
             {
               name: "gea:admission",
               text: cubeAllowed(ctx, business, agent.id)
-                ? "Current personal Agent uses its retained Consumer with the current GEA identity. Server grants govern Cube and knowledge tools. This association grants no business writes or page actions.\n" + KNOWLEDGE_PROMPT
+                ? "Current personal Agent uses its retained Consumer with the current GEA identity. Server grants govern Cube and knowledge tools. This association grants no business writes or page actions.\n" +
+                  KNOWLEDGE_PROMPT
                 : "当前实际会话预设未声明 GEA 业务身份。Skill 可用于规则说明，但实际库存取数需点击工作台的‘使用基地库存 Agent 分析’入口或选用相应业务资源。子智能体的角色名和提示词不改变其实际父会话的业务身份。GEA 工具当前不可用；其它 MCP 结果应标明独立来源，不证明 GEA 页面或授权恢复。",
             },
           ],

@@ -14,6 +14,7 @@
 
 /** 候选里的一段可匹配文本。 */
 export type NameField = {
+  /** 参与匹配的原文。 */
   text: string;
   /** 归类（模型名／说明／成员名／工具名…）：命中时回给模型，说明"为什么给你这个"。 */
   label: string;
@@ -32,7 +33,7 @@ export type NameMatch = {
   id: string;
   /** 0~1，越大越像。 */
   score: number;
-
+  /** 命中的那段文本。 */
   field: NameField;
 };
 
@@ -77,7 +78,8 @@ function bigrams(text: string): Set<string> {
     out.add(text);
     return out;
   }
-  for (let index = 0; index + 2 <= text.length; index += 1) out.add(text.slice(index, index + 2));
+  for (let index = 0; index + 2 <= text.length; index += 1)
+    out.add(text.slice(index, index + 2));
   return out;
 }
 
@@ -200,7 +202,8 @@ export function rankByName(
   // 同样像的时候，命中在更短的那段文本里更可信（标题/成员名 > 长说明）。
   return matches
     .sort(
-      (left, right) => right.score - left.score || left.field.text.length - right.field.text.length,
+      (left, right) =>
+        right.score - left.score || left.field.text.length - right.field.text.length,
     )
     .slice(0, options.limit ?? 5);
 }

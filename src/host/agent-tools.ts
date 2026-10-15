@@ -145,7 +145,8 @@ export function registerGeaTools(
           source: "GEA_METADATA_REPEAT_STOPPED",
           availability: "metadata-stopped",
           note: `本轮各项读取累计重复 ${business.repeatReads().repeats(scope)} 次；停止重复读取「${what}」。已有目录继续有效，按现有字段完成未完成的单模型业务查询；不要重读目录或改别名继续找。`,
-          availableEvidence: business.successfulPlanEvidence(scope),
+          availableEvidence: business.successfulReadEvidence(scope),
+          pendingQueries: business.pendingMcpQueries(scope),
         });
       wasteScope(scope);
       const reason = `本轮各项读取累计重复 ${business.repeatReads().repeats(scope)} 次（本次：${what}）`;
@@ -306,7 +307,7 @@ export function registerGeaTools(
             return JSON.stringify({
               source: "GEA_TURN_STOPPED",
               availability: "turn-stopped",
-              availableEvidence: business.successfulPlanEvidence(scope),
+              availableEvidence: business.successfulReadEvidence(scope),
               note: `【本轮已停手】${stop}。本轮所有取数工具都已停用：不要再换工具/换写法试，直接用已经拿到的证据作答；确实缺数据就如实说清缺哪一项，然后结束这一轮。`,
             });
           const key = `plan|${JSON.stringify({ kind: args.kind, query: Object.fromEntries(Object.entries(args.query ?? {}).sort(([a], [b]) => a.localeCompare(b))) })}`;

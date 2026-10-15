@@ -11,13 +11,19 @@
 /** 影响等级（与契约里的 effect 同一套名字，这里避免反向依赖）。 */
 export type LayerEffect = "view" | "draft" | "submit" | "approve";
 
-export const CAPABILITY_LAYERS = ["read", "draft", "submit", "approve", "export"] as const;
+export const CAPABILITY_LAYERS = [
+  "read",
+  "draft",
+  "submit",
+  "approve",
+  "export",
+] as const;
 export type CapabilityLayer = (typeof CAPABILITY_LAYERS)[number];
 
 export type LayerPolicy = {
   /** 这一层要不要在宿主侧留回执（可追溯"刚才那次到底怎么了"）。 */
   receipt: boolean;
-
+  /** 单次调用超时（毫秒）。 */
   timeoutMs: number;
   /** 同一个会话在这一层每分钟最多多少次。 */
   maxPerMinute: number;
@@ -97,7 +103,8 @@ export function layersForContract(input: {
   const layers = new Set<CapabilityLayer>();
   if (input.hasView === true || input.hasData === true) layers.add("read");
   for (const effect of ["draft", "submit", "approve"] as const) {
-    if (layerRank(effect) <= layerRank(layerForEffect(input.maxEffect))) layers.add(effect);
+    if (layerRank(effect) <= layerRank(layerForEffect(input.maxEffect)))
+      layers.add(effect);
   }
   for (const layer of input.declared ?? []) layers.add(layer);
   return CAPABILITY_LAYERS.filter((layer) => layers.has(layer));

@@ -38,7 +38,7 @@ test("连续失败到上限后停手，并且说清缺什么而不是让它继�
   const guard = createMcpFailureGuard();
   guard.check("branch-inventory");
   guard.note("branch-inventory", false);
-  guard.check("branch-inventory");
+  guard.check("branch-inventory"); // 第 1 次失败还没到上限
   guard.note("branch-inventory", false);
   assert.throws(
     () => guard.check("branch-inventory"),
@@ -91,7 +91,7 @@ test("本轮整体熔断：跨模块白跑到上限就停手（换模块也拦�
   const waste = createMcpWasteGuard();
   assert.equal(MCP_WASTE_LIMIT, 6);
   for (let i = 0; i < 5; i += 1) waste.waste("session-1");
-  waste.check("session-1");
+  waste.check("session-1"); // 还没到上限
   waste.waste("session-1");
   assert.throws(
     () => waste.check("session-1"),
@@ -120,14 +120,10 @@ test("白跑计数窗口过了自动放行；clear 清空全部", () => {
   waste.check("s");
 });
 
-test("failure budgets are scoped to the conversation; resetting one preserves the other and keeps the actual cause", () => {
-  const guard = createMcpFailureGuard();
-  for (const scope of ["one", "two"])
-    for (let n = 0; n < 2; n++)
-      guard.note("sales_forecast", false, scope, "GEA_MCP_RESOURCE_MAPPING_FAILED");
-  guard.clear("one");
-  guard.check("sales_forecast", "one");
-  assert.throws(() => guard.check("sales_forecast", "two"), /GEA_MCP_RESOURCE_MAPPING_FAILED/);
-  guard.clear();
-  guard.check("sales_forecast", "two");
+test('failure budgets are scoped to the conversation; resetting one preserves the other and keeps the actual cause', () => {
+  const guard=createMcpFailureGuard();
+  for (const scope of ['one','two']) for(let n=0;n<2;n++)guard.note('sales_forecast',false,scope,'GEA_MCP_RESOURCE_MAPPING_FAILED');
+  guard.clear('one');guard.check('sales_forecast','one');
+  assert.throws(()=>guard.check('sales_forecast','two'),/GEA_MCP_RESOURCE_MAPPING_FAILED/);
+  guard.clear();guard.check('sales_forecast','two');
 });

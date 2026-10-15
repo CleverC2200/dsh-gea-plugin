@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, realpath, rm, cp } from "node:fs/p
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
-import { writeHtmlDeclarations } from "./fixtures/html-resource.mjs";
+import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 const session = "session-11111111-1111-4111-8111-111111111111";
 test("registered regional, category and MPS mock resources authorize only their current page and no business query", async (t) => {
   for (const [id, pageId, consumer] of [
@@ -61,8 +61,6 @@ async function fixture(t, options = {}) {
       skills: ["SKILL.md"],
       mcp: "mcp.json",
       ...(options.mock ? { mode: "mock" } : {}),
-      declarations: { page: "page.json", capability: "capability.json" },
-      agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
       gea: { contract: "gea-html-v2", consumerCode: consumer, readonly: true },
     }),
   );
@@ -76,35 +74,7 @@ async function fixture(t, options = {}) {
       capabilities: options.mock ? [] : ["governed-sql-read"],
     }),
   );
-  await writeHtmlDeclarations(directory, {
-    page: {
-      surface: `gea-html-${id}`,
-      protocol: "self-report",
-      pageIds: [pageId],
-      consumerCode: consumer,
-      maxEffect: "view",
-    },
-    capability: {
-      id: id,
-      label: "Original page",
-      data: {
-        consumerCode: consumer,
-        tables: [],
-        rules: [],
-        ...(options.mock ? { mock: true } : {}),
-      },
-      maxEffect: "view",
-      layers: ["read"],
-      skills: [id],
-      routing: { keywords: [id], summary: "Original page" },
-    },
-    prompt: {
-      label: "Original page",
-      consumerCode: consumer,
-      persona: "只读测试页面，保留用户会话与权限边界。",
-      skills: [id],
-    },
-  });
+  await currentHtmlResource(directory);
   if (options.resourceRoot) await cp(options.resourceRoot, directory, { recursive: true });
   const manifest = JSON.parse(await readFile(join(directory, "plugin.json"), "utf8"));
   const packages = [{ directory, htmlPath: join(directory, "index.html"), manifest }];
@@ -128,35 +98,7 @@ async function fixture(t, options = {}) {
       join(second, "SKILL.md"),
       "---\nname: inventory-other\ndescription: Other interpreter\n---\nOther original rules.\n",
     );
-    await writeHtmlDeclarations(second, {
-      page: {
-        surface: `gea-html-${m.id}`,
-        protocol: "self-report",
-        pageIds: ["inventory-other"],
-        consumerCode: "other-consumer",
-        maxEffect: "view",
-      },
-      capability: {
-        id: m.id,
-        label: m.name,
-        data: {
-          consumerCode: "other-consumer",
-          tables: [],
-          rules: [],
-          ...(options.mock ? { mock: true } : {}),
-        },
-        maxEffect: "view",
-        layers: ["read"],
-        skills: [m.id],
-        routing: { keywords: [m.id], summary: m.name },
-      },
-      prompt: {
-        label: m.name,
-        consumerCode: "other-consumer",
-        persona: "只读测试页面，保留用户会话与权限边界。",
-        skills: [m.id],
-      },
-    });
+    await currentHtmlResource(second);
     packages.push({
       directory: second,
       htmlPath: join(second, "index.html"),

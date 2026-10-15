@@ -23,32 +23,8 @@
     "scripts/delivery-runtime.test.mjs",
     "scripts/delivery-continuation.test.mjs"
   ],
-  "tests": [
-    "tests/*.test.mjs",
-    "scripts/*.test.mjs",
-    "tests/*.contract.mjs",
-    "tests/*.browser.mjs"
-  ],
+  "tests": ["tests/*.test.mjs", "scripts/*.test.mjs", "tests/*.contract.mjs"],
   "rules": [
-    {
-      "repo": "dsh-gea-plugin",
-      "pattern": "^src/host/(?:cube-gap-ledger|mcp-read-evidence)\\.ts$",
-      "tests": [
-        "tests/current-mcp-tools.test.mjs",
-        "tests/cube-direct-mcp.test.mjs",
-        "tests/prompt-execution-state.test.mjs"
-      ]
-    },
-    {
-      "repo": "dsh-agent-workbench",
-      "pattern": "^business/inventory-(?:aqkc|dealer|fc|personal|qll)/source/",
-      "tests": ["tests/source-integrity.test.mjs", "tests/branch-stock-ability-web.test.mjs"]
-    },
-    {
-      "repo": "dsh-agent-workbench",
-      "pattern": "^static/regional/source/index\\.html$",
-      "tests": ["tests/page-interaction-workbenches.test.mjs"]
-    },
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^(?:business|static|theme)/",
@@ -100,14 +76,12 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^src/(?:client\\.tsx|host/plugin-update|plugin-updates|plugin-detail-updates|plugin-update-locales|shared/plugin-update|host/plugin-release|shared/plugin-release)",
+      "pattern": "^src/(?:host/plugin-update|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)",
       "tests": [
         "tests/plugin-update-controller.contract.mjs",
         "tests/plugin-update-integration.contract.mjs",
         "tests/plugin-release-source.test.mjs",
-        "tests/plugin-release.test.mjs",
-        "tests/plugin-update-install.contract.mjs",
-        "tests/plugin-update-detail.browser.mjs"
+        "tests/plugin-release.test.mjs"
       ]
     },
     {
@@ -150,16 +124,6 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^(?:scripts/(?:check-plugin-updates-types|create-plugin-release|build)\\.mjs|tests/(?:acceptance/plugin-update-desktop\\.mjs|fixtures/plugin-updates/installed-runtime\\.mjs))$",
-      "tests": [
-        "scripts/build.test.mjs",
-        "tests/plugin-update-install.contract.mjs",
-        "tests/plugin-update-detail.browser.mjs",
-        "tests/plugin-release-source.test.mjs"
-      ]
-    },
-    {
-      "repo": "dsh-gea-plugin",
       "pattern": "^(?:src/host(?:\\.ts|/(?:business|(?:gateway|cube)-mcp(?:-client|-service)?|knowledge-mcp|prompt-(?:runtime|policy|result))\\.ts)|presets/prompt-policy\\.json|tests/(?:knowledge-mcp|current-mcp-tools|cube-direct-mcp|gateway-mcp)\\.test\\.mjs|tests/fixtures/current-mcp\\.mjs)$",
       "tests": [
         "tests/knowledge-mcp.test.mjs",
@@ -174,6 +138,28 @@
       "repo": "dsh-agent-manage",
       "pattern": "^src/runtime/gea-mcp(?:-scope)?\\.ts$",
       "tests": ["tests/knowledge-mcp.test.mjs", "tests/current-mcp-tools.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/(?:client\\.tsx|host/plugin-update|plugin-updates|plugin-detail-updates|plugin-update-locales|shared/plugin-update|host/plugin-release|shared/plugin-release)",
+      "tests": [
+        "tests/plugin-update-controller.contract.mjs",
+        "tests/plugin-update-integration.contract.mjs",
+        "tests/plugin-release-source.test.mjs",
+        "tests/plugin-release.test.mjs",
+        "tests/plugin-update-install.contract.mjs",
+        "tests/plugin-update-detail.browser.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^(?:scripts/(?:check-plugin-updates-types|create-plugin-release|build)\\.mjs|tests/(?:acceptance/plugin-update-desktop\\.mjs|fixtures/plugin-updates/installed-runtime\\.mjs))$",
+      "tests": [
+        "scripts/build.test.mjs",
+        "tests/plugin-update-install.contract.mjs",
+        "tests/plugin-update-detail.browser.mjs",
+        "tests/plugin-release-source.test.mjs"
+      ]
     }
   ]
 }

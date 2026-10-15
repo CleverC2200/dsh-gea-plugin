@@ -256,7 +256,8 @@ export function gatewayMcpTransport(
         gatewayTrace,
       );
     }
-    if ((discovery || invocation) && res.ok) {
+    // Knowledge has no resource-link route; its client owns response parsing and trace errors.
+    if ((discovery || (invocation && invocation.code !== KNOWLEDGE_SOURCE)) && res.ok) {
       const text = await readMcpResponseText(
         res,
         AbortSignal.any([identity, ...(init?.signal ? [init.signal] : [])]),

@@ -23,7 +23,12 @@ export type DraftRequest = {
   reason?: string;
 };
 
-export type DraftReceiptOutcome = "pending" | "applied" | "rejected" | "timeout" | "failed";
+export type DraftReceiptOutcome =
+  | "pending"
+  | "applied"
+  | "rejected"
+  | "timeout"
+  | "failed";
 
 export type DraftReceipt = {
   id: string;
@@ -76,7 +81,7 @@ export function createDraftLayer(options: DraftLayerOptions = {}): DraftLayer {
   const maxPerWindow = options.maxPerWindow ?? LAYER_POLICY.draft.maxPerMinute;
   const maxReceipts = options.maxReceipts ?? 200;
   const receipts: DraftReceipt[] = [];
-
+  /** 每个会话的改动时间戳，用来限流。 */
   const stamps = new Map<string, number[]>();
 
   return {
@@ -126,6 +131,7 @@ export function createDraftLayer(options: DraftLayerOptions = {}): DraftLayer {
     },
 
     receipts: () => receipts,
-    lastFor: (sessionId) => receipts.find((receipt) => receipt.sessionId === sessionId),
+    lastFor: (sessionId) =>
+      receipts.find((receipt) => receipt.sessionId === sessionId),
   };
 }

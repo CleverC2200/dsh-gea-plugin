@@ -105,62 +105,68 @@ export async function openGatewayMcp(
         ? readMcpTrace(response.headers)
         : {};
     if (!response.ok) throw withMcpTrace(Error(`GEA_MCP_HTTP_${response.status}`), gatewayTrace);
-    const text = await readMcpResponseText(response, callSignal, transport.maxResponseBytes);
-    // Keep original numeric lexemes when structuredContent is serialized for the tool output.
-    const numbers = new WeakMap<object, Map<string, string>>();
-    const parse = (text: string): unknown =>
-      JSON.parse(
-        text,
-        function (this: object, key: string, value: unknown, context?: { source?: string }) {
-          if (typeof value === "number" && context?.source !== JSON.stringify(value)) {
-            if (!context?.source) throw Error("EXACT_JSON_RUNTIME_REQUIRED");
-            const entries = numbers.get(this) ?? new Map<string, string>();
-            entries.set(key, context.source);
-            numbers.set(this, entries);
+    try {
+      const text = await readMcpResponseText(response, callSignal, transport.maxResponseBytes);
+      // Keep original numeric lexemes when structuredContent is serialized for the tool output.
+      const numbers = new WeakMap<object, Map<string, string>>();
+      const parse = (text: string): unknown =>
+        JSON.parse(
+          text,
+          function (this: object, key: string, value: unknown, context?: { source?: string }) {
+            if (typeof value === "number" && context?.source !== JSON.stringify(value)) {
+              if (!context?.source) throw Error("EXACT_JSON_RUNTIME_REQUIRED");
+              const entries = numbers.get(this) ?? new Map<string, string>();
+              entries.set(key, context.source);
+              numbers.set(this, entries);
+            }
+            return value;
+          },
+        );
+      const stringify = (value: unknown) =>
+        JSON.stringify(value, function (this: object, key, value) {
+          const source = numbers.get(this)?.get(key);
+          if (source === undefined) return value;
+          if (!("rawJSON" in JSON) || typeof JSON.rawJSON !== "function")
+            throw Error("EXACT_JSON_RUNTIME_REQUIRED");
+          return JSON.rawJSON(source);
+        });
+      let reply: Record<string, unknown> | undefined;
+      if (response.headers.get("content-type")?.includes("text/event-stream")) {
+        createParser({
+          onEvent: (event) => {
+            const candidate = record(parse(event.data));
+            if (candidate?.id === id) reply = candidate;
+          },
+        }).feed(text);
+      } else reply = record(parse(text));
+      if (!reply || reply.id !== id || reply.jsonrpc !== "2.0")
+        throw Error("GEA_MCP_REPLY_MISMATCH");
+      if (reply.error)
+        throw Error(
+          `GEA_MCP_PROTOCOL_ERROR: ${String(record(reply.error)?.message ?? "网关协议失败")}`,
+        );
+      const result = record(reply.result);
+      if (!result) throw Error("GEA_MCP_RESULT_INVALID");
+      const textValues = new Map<string, unknown>();
+      const parseText = (text: string): unknown => {
+        if (!textValues.has(text)) {
+          let value: unknown;
+          try {
+            value = parse(text);
+          } catch {
+            /* Explanatory text is not business JSON. */
           }
-          return value;
-        },
-      );
-    const stringify = (value: unknown) =>
-      JSON.stringify(value, function (this: object, key, value) {
-        const source = numbers.get(this)?.get(key);
-        if (source === undefined) return value;
-        if (!("rawJSON" in JSON) || typeof JSON.rawJSON !== "function")
-          throw Error("EXACT_JSON_RUNTIME_REQUIRED");
-        return JSON.rawJSON(source);
-      });
-    let reply: Record<string, unknown> | undefined;
-    if (response.headers.get("content-type")?.includes("text/event-stream")) {
-      createParser({
-        onEvent: (event) => {
-          const candidate = record(parse(event.data));
-          if (candidate?.id === id) reply = candidate;
-        },
-      }).feed(text);
-    } else reply = record(parse(text));
-    if (!reply || reply.id !== id || reply.jsonrpc !== "2.0") throw Error("GEA_MCP_REPLY_MISMATCH");
-    if (reply.error)
-      throw Error(
-        `GEA_MCP_PROTOCOL_ERROR: ${String(record(reply.error)?.message ?? "网关协议失败")}`,
-      );
-    const result = record(reply.result);
-    if (!result) throw Error("GEA_MCP_RESULT_INVALID");
-    const textValues = new Map<string, unknown>();
-    const parseText = (text: string): unknown => {
-      if (!textValues.has(text)) {
-        let value: unknown;
-        try {
-          value = parse(text);
-        } catch {
-          /* Explanatory text is not business JSON. */
+          textValues.set(text, value);
         }
-        textValues.set(text, value);
-      }
-      return textValues.get(text);
-    };
-    const failed = toolError(result, parseText);
-    if (failed) throw withMcpTrace(failed, gatewayTrace);
-    return { result, stringify, parseText, gatewayTrace };
+        return textValues.get(text);
+      };
+      const failed = toolError(result, parseText);
+      if (failed) throw failed;
+      return { result, stringify, parseText, gatewayTrace };
+    } catch (error) {
+      if (error instanceof Error) throw withMcpTrace(error, gatewayTrace);
+      throw error;
+    }
   };
   const { result: initialized } = await rpc(
     "initialize",

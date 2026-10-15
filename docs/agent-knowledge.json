@@ -199,6 +199,7 @@
     "src/host/gateway-session.ts",
     "src/shared/sql-read-limit.js",
     "src/shared/transport-signal.ts",
+    "src/host/mcp-read-evidence.ts",
     "scripts/source-profile.mjs",
     "scripts/start.mjs",
     "scripts/window-admission.mjs",

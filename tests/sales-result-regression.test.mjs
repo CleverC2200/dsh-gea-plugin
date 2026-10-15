@@ -1,8 +1,57 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { projectCatalog } from "../src/host/gateway-catalog.ts";
 import { compactDatasetProjection } from "../src/host/prompt-result.ts";
 import { salesSourceIssue, salesSourceIssueForTurns } from "../src/host/sales-result-contract.ts";
 const model = "agents_sales_plan_detail_mi";
+const catalog = {
+  semanticModel: [
+    {
+      name: model,
+      dimensions: [{ name: model + ".plane_date", type: "string" }],
+      measures: [
+        ...Array.from({ length: 11 }, (_, i) => ({
+          name: model + ".check_" + i,
+          type: "number",
+          description: "quality count",
+        })),
+        {
+          name: model + ".plannum_sum",
+          type: "number",
+          description: "单月单批次；否则NULL不是无记录",
+          meta: { unit: "件" },
+        },
+        {
+          name: model + ".allnum_sum",
+          type: "number",
+          description: "最终合计；否则NULL",
+          meta: { unit: "件" },
+        },
+      ],
+    },
+    { name: "agents_sales_forecast_detail_mi", description: model, dimensions: [], measures: [] },
+  ],
+};
+test("exact model retains tail measure semantics without unrelated forecast candidates", () => {
+  const text = projectCatalog(catalog, { model });
+  assert.match(text, /plannum_sum 语义：.*单位：件/);
+  assert.doesNotMatch(text, /agents_sales_forecast_detail_mi/);
+});
+test("member lookup selects tail measures and dimensions, not the first eight", () => {
+  const text = projectCatalog(catalog, {
+    model,
+    members: [model + ".allnum_sum", model + ".plane_date"],
+  });
+  assert.match(text, /allnum_sum 语义：.*单位：件/);
+  assert.match(text, /plane_date.*2026-08/);
+  assert.doesNotMatch(text, /check_0/);
+  assert.match(text, /定向成员视图.*未列出不代表不存在/);
+  const dimensionsOnly = projectCatalog(catalog, { model, members: [model + ".plane_date"] });
+  assert.doesNotMatch(dimensionsOnly, /这个模型没有定义 measure/);
+  assert.match(dimensionsOnly, /模型已有13个度量/);
+});
+// Current MCP preserves caller month/order fields and server failures through its registered tool.
+// The retired local member/month planner specification remains in fixtures/retired-query/specifications.
 test("mixed rejection retains readable success rows and rejection, instead of raw envelope", () => {
   const raw = JSON.stringify({
     source: "GEA_CUBE_BATCH",

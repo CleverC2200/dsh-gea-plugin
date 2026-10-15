@@ -1,4 +1,4 @@
-import { writeHtmlDeclarations } from "./fixtures/html-resource.mjs";
+import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
@@ -294,8 +294,6 @@ test(
         html: "index.html",
         skills: ["skills/probe/SKILL.md"],
         mcp: "mcp.json",
-        declarations: { page: "page.json", capability: "capability.json" },
-        agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
         gea: {
           consumerCode: "branch-inventory",
           readonly: true,
@@ -317,30 +315,7 @@ test(
       join(root, "index.html"),
       `<!doctype html><html lang="zh-CN"><head><title>分仓库存</title><style>body{font:14px sans-serif;padding:24px;color:#202531}table{border-collapse:collapse;width:80%}td,th{padding:16px;border:1px solid #ddd;text-align:left}</style></head><body><h1>分仓库存</h1><section aria-label="订单概览" style="padding:16px;margin-bottom:16px;border:1px solid #ddd"><span id="tiny-metric">待补货</span><strong>8笔订单</strong><label>区域<select><option value="east">华东</option><option value="south" selected>华南</option></select></label></section><table><thead><tr><th>客户</th><th>库存</th><th>动作</th></tr></thead><tbody><tr><td>客户甲</td><td id="stock-one" data-gea-el="readout:stock-one">120 件</td><td><button id="business" onclick="this.textContent='已执行'">查看库存</button></td></tr><tr><td>无关客户乙</td><td id="stock-two" data-gea-el="readout:stock-two">987654 件</td></tr><tr style="display:none" data-page-target="row:hidden"><td>隐藏客户</td><td>隐秘900件</td></tr><tr><td>客户甲</td><td id="stock-three" data-gea-el="readout:stock-three">250 件</td></tr></tbody></table><script>let pagePort,pageContext;window.publishCurrentCatalog=()=>{const elements=['stock-one','stock-two','stock-three'].map(id=>({id:'readout:'+id,role:'field',label:'库存',value:document.getElementById(id).textContent}));if(pagePort)pagePort.postMessage({type:'catalog',session:pageContext.session,elements});return elements;};addEventListener('message',event=>{if(event.data.protocol!=='gea-html-v2'||event.data.type!=='connect')return;pagePort=event.ports[0];pageContext=event.data.context;pagePort.start();window.publishCurrentCatalog();});parent.postMessage({protocol:'gea-html-v2',type:'ready'},'*')</script></body></html>`,
     );
-    await writeHtmlDeclarations(root, {
-      page: {
-        surface: "gea-html-inventory-fc",
-        protocol: "self-report",
-        pageIds: ["inventory-fc"],
-        consumerCode: "branch-inventory",
-        maxEffect: "view",
-      },
-      capability: {
-        id: "inventory-fc",
-        label: "分仓库存",
-        data: { consumerCode: "branch-inventory", tables: [], rules: [] },
-        maxEffect: "view",
-        layers: ["read"],
-        skills: ["inventory-fc"],
-        routing: { keywords: ["inventory-fc"], summary: "分仓库存" },
-      },
-      prompt: {
-        label: "分仓库存",
-        consumerCode: "branch-inventory",
-        persona: "只读测试页面，保留用户会话与权限边界。",
-        skills: ["inventory-fc"],
-      },
-    });
+    await currentHtmlResource(root);
     const app = await profile(t, {
       beforeStart: prepareWorkbenchHtmlRoots([root]),
       config: (base) => ({

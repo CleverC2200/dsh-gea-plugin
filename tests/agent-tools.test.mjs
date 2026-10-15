@@ -1,5 +1,5 @@
 import { stockMcpRoute, stockState } from "./fixtures/branch-stock.mjs";
-import { writeHtmlDeclarations } from "./fixtures/html-resource.mjs";
+import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 import { readFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,7 +30,7 @@ test(
       "",
     ].join("\n");
     await mkdir(join(probeRoot, "skills", "probe"), { recursive: true });
-    // 页面 SQL 是受控查询输入；可读表来自独立 capability 声明。
+    // 页面里带上它自己的受管 SQL：能力契约据此静态导出"这个模块能读哪些表"。
     await writeFile(
       join(probeRoot, "index.html"),
       [
@@ -61,9 +61,7 @@ test(
         skills: ["skills/probe/SKILL.md"],
         mcp: "mcp.json",
         mode: "mock",
-        declarations: { page: "page.json", capability: "capability.json" },
-        agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
-        gea: { consumerCode: "probe-consumer", readonly: true, contract: "gea-html-v2" },
+        gea: { consumerCode: "probe-consumer", readonly: true, contract: "gea-html-v1" },
       }),
     );
     await writeFile(
@@ -71,7 +69,7 @@ test(
       JSON.stringify({
         provider: "gea",
         transport: "host-provided",
-        contract: "gea-html-v2",
+        contract: "gea-html-v1",
         consumer: { consumerType: "AGENT", consumerCode: "probe-consumer" },
         capabilities: [],
       }),
@@ -97,9 +95,7 @@ test(
         html: "index.html",
         skills: ["skills/probe/SKILL.md"],
         mcp: "mcp.json",
-        declarations: { page: "page.json", capability: "capability.json" },
-        agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
-        gea: { consumerCode: "branch-inventory", readonly: true, contract: "gea-html-v2" },
+        gea: { consumerCode: "branch-inventory", readonly: true, contract: "gea-html-v1" },
       }),
     );
     await writeFile(
@@ -107,7 +103,7 @@ test(
       JSON.stringify({
         provider: "gea",
         transport: "host-provided",
-        contract: "gea-html-v2",
+        contract: "gea-html-v1",
         consumer: { consumerType: "AGENT", consumerCode: "branch-inventory" },
         capabilities: ["governed-sql-read"],
       }),
@@ -117,54 +113,8 @@ test(
       join(realRoot, "references", "rules.md"),
       "按实际期间查询；缺失数据不能编造。\n",
     );
-    await writeHtmlDeclarations(probeRoot, {
-      page: {
-        surface: "gea-html-inventory-probe",
-        protocol: "self-report",
-        pageIds: ["inventory-probe"],
-        consumerCode: "probe-consumer",
-        maxEffect: "view",
-      },
-      capability: {
-        id: "inventory-probe",
-        label: "探针页面",
-        data: { consumerCode: "probe-consumer", tables: [], rules: [], mock: true },
-        maxEffect: "view",
-        layers: ["read"],
-        skills: ["inventory-probe"],
-        routing: { keywords: ["inventory-probe"], summary: "探针页面" },
-      },
-      prompt: {
-        label: "探针页面",
-        consumerCode: "probe-consumer",
-        persona: "只读测试页面，保留用户会话与权限边界。",
-        skills: ["inventory-probe"],
-      },
-    });
-    await writeHtmlDeclarations(realRoot, {
-      page: {
-        surface: "gea-html-inventory-real",
-        protocol: "self-report",
-        pageIds: ["inventory-real"],
-        consumerCode: "branch-inventory",
-        maxEffect: "view",
-      },
-      capability: {
-        id: "inventory-real",
-        label: "真模块探针",
-        data: { consumerCode: "branch-inventory", tables: [], rules: [] },
-        maxEffect: "view",
-        layers: ["read"],
-        skills: ["inventory-real"],
-        routing: { keywords: ["inventory-real"], summary: "真模块探针" },
-      },
-      prompt: {
-        label: "真模块探针",
-        consumerCode: "branch-inventory",
-        persona: "只读测试页面，保留用户会话与权限边界。",
-        skills: ["inventory-real"],
-      },
-    });
+    await currentHtmlResource(probeRoot);
+    await currentHtmlResource(realRoot);
     const app = await profile(t, {
       pluginRoot: process.env.GEA_TEST_PLUGIN_ROOT,
       bundle: Boolean(process.env.GEA_TEST_PLUGIN_ROOT),
