@@ -26,7 +26,12 @@ GEA 的 Host/client 实际入口挂接更新能力。client 只在官方 `plugin
 
 `pluginUpdates` 是可选部署配置，省略或配置不完整时三包状态为 blocked，不使用旧 unsigned 频道、默认生产地址或凭据。有效配置包含 `source`（上述来源配置）、`core`（下面的显式来源证明）、`checkTimeoutMs`（1000–120000）和 `pollIntervalMs`（1000–30000）。本接线只支持 `source.authenticationRef="anonymous"`，认证解析器返回空 headers；公网 OSS origin/prefix 也必须显式填写。已核旧 OSS 匿名读取能力不提供新签名频道 URL 或公钥，二者仍需部署输入。
 
-`core` 包含绝对 source root、完整真实 Git head、launcher version，以及 `{path,sha256}` artifacts。它是部署方明确准入的来源记录；Host 核实际 installAnchor 位于该 root、Git HEAD 与干净 tracked 源码、launcher name/version、字节摘要及四个关键公开 SDK package 的实际解析目录/主导出文件，再从该源码读取 SDK 版本。artifact 列表必须覆盖 app-boot、cordis、plugin-manager、atomic-write 的实际主导出，另须覆盖实际消费的 plugin-manager/operations 子路径。这个 source deployment lane 不适用于无 Git 的任意桌面复制目录；不能把任意配置 head 当已验证来源，不能把旧 Core head 登记成同版本的新 head。真实部署须保存受信 owner 构建与装配记录，Native 接收另验。
+`core` 是部署方明确准入的来源记录，包含绝对 `root`、完整 `head`、`version` 与 `{path,sha256}` artifacts。来源记录及摘要由受信部署方提供，Host 不从当前文件自动生成批准摘要。不能把任意配置 head 当已验证来源，也不能把版本相同视为构建来源相同。两种布局共用四个关键公开 SDK 的实际解析及文件校验，覆盖 app-boot、cordis、plugin-manager、atomic-write 的实际 Node import 主导出，以及 plugin-manager/operations 子路径。缺文件、错摘要、缺实际解析或不完整配置均拒绝。
+
+- 源码布局省略 `kind`，或显式使用 `kind: "source"`。Host 核 installAnchor 位于 root、真实 Git HEAD、干净 tracked 源码、CLI name/version，再从该源码读取 SDK 版本。artifacts 使用 root 下 apps、packages 或 vendor 路径。
+- 桌面布局显式使用 `kind: "desktop"`。root 指实际 app.asar 或同布局的部署根，不要求 Git。Host 核顶层 package.json 的 `@deepseek-ai/dsh-desktop`、version、dshBuildCommit 与 `dshBuildDirty: false`，再核 dsh/package.json 的 `@deepseek-ai/dsh-desktop-runtime` 与 version。安装锚必须等于该 runtime 下的 dsh/node_modules/@deepseek-ai/dsh/package.json，并匹配 CLI name/version。四个关键 SDK 必须实际解析到该 runtime 对应包，磁盘 manifest 与解析缓存的 name/version/exports/main 一致。完整 SDK 版本表来自受摘要保护的 runtime dependencies，并逐包核安装 manifest 的 name 与 exact version。
+
+桌面 artifacts 还必须包含 package.json、lib/main.js、dsh/package.json、CLI 安装锚 manifest、dsh-desktop-host 的 package.json 与 lib/index.js，以及四个关键 SDK 的 package.json。每个路径核实际文件范围、唯一性与摘要；SDK 条件导出按 Node import 条件选取，不能用未加载 default 的摘要替代实际入口。这里只验证明确批准的安装材料，受信 owner 构建与装配记录、实际进程及 Native 接收仍各自留证。
 
 Host 证明来自公开 Loader 的唯一启用 entry、ACTIVE Fiber、实际 import namespace 与 callback 一致，以及该 namespace 的 `pluginPackageVersion` 编译常量。client 读取公开 `ctx.modules.loadCache` 的 materialized exports，核 ACTIVE Fiber/callback，再读取相同编译常量。`desiredArtifactRevision` 只绑定当前公开 graph；它不证明 cache 实际加载了该修订。报告是已认证受控 client 的观察，不是远端密码学证明。Host 严格解析报告，绑定 process/page/nonce 和过期时间，再核自身 ACTIVE 版本及当前目标 graph；任意 `{kind:"active"}`、旧 process、错误 nonce、版本或目标修订均拒绝。03 的持久回执只在真实新 Host 进程与匹配 client 观察成立后完成；缺证明保持 pending/unknown。Host/client 版本不一致时官方单一 runningVersion 字段省略。
 
