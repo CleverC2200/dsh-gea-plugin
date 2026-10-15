@@ -193,12 +193,26 @@ test(
       return true;
     });
     await app.login();
-    const installed = await fixtureRequest(app, "/api/agent-plugins/user-panel/skills/create", {
-      name: "sales-result-fixture",
-      text: "---\nname: sales-result-fixture\ndescription: result fixture\n---\nScoped rule body.",
+    const plugins = await fetch(app.origin + "/api/agent-manage/agents/plugins", {
+      headers: { Cookie: app.cookie, Origin: app.origin },
+    });
+    assert.equal(plugins.ok, true);
+    const salesAgent = (await plugins.json()).find((agent) => agent.id === "gea-readonly");
+    assert.ok(salesAgent);
+    const installed = await fixtureRequest(app, "/api/agent-manage/agents/plugin/skills", {
+      id: "gea-readonly",
+      skills: [
+        ...salesAgent.skills,
+        {
+          kind: "personal",
+          name: "sales-result-fixture",
+          description: "result fixture",
+          content: "Scoped rule body.",
+          enabled: true,
+        },
+      ],
     });
     assert.equal(installed.ok, true, JSON.stringify(installed));
-    assert.equal(installed.value.ok, true, JSON.stringify(installed));
     const id = await createBusinessSession(app);
     await app.remote("session/selectModel", {
       sessionId: id,
@@ -240,18 +254,10 @@ test(
     ]);
     assert.equal(replies[0].isError, false, replies[0].text);
     assert.match(replies[0].text, /Scoped rule body/);
-    const resources = await fetch(
-      app.origin +
-        "/api/agent-manage/resources?cwd=" +
-        encodeURIComponent(app.runtime + "/workspace"),
-      { headers: { Cookie: app.cookie, Origin: app.origin } },
-    );
-    assert.equal(resources.ok, true);
-    const chosen = (await resources.json()).filter((x) => x.id === "skill:sales-result-fixture");
+    const chosen = installed.value.skills.filter((skill) => skill.name === "sales-result-fixture");
     assert.equal(chosen.length, 1);
-    assert.equal(chosen[0].installed, true);
     assert.equal(chosen[0].enabled, true);
-    assert.equal(chosen[0].provider, "user-panel");
+    assert.equal(chosen[0].kind, "personal");
     const catalogs = (await readSession(app.runtime, id)).filter(
       (row) => row.type === "user/message" && row.data.source.kind === "skill-catalog",
     );
