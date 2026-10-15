@@ -2,7 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
-import { createBusinessSession, fixtureRequest } from "./fixtures/business-session.mjs";
+import { createBusinessSession, configurePluginSkills } from "./fixtures/business-session.mjs";
 test(
   "native result route, atomic skill load and structured evidence reuse retain authorization",
   { timeout: 90000 },
@@ -193,26 +193,16 @@ test(
       return true;
     });
     await app.login();
-    const plugins = await fetch(app.origin + "/api/agent-manage/agents/plugins", {
-      headers: { Cookie: app.cookie, Origin: app.origin },
-    });
-    assert.equal(plugins.ok, true);
-    const salesAgent = (await plugins.json()).find((agent) => agent.id === "gea-readonly");
-    assert.ok(salesAgent);
-    const installed = await fixtureRequest(app, "/api/agent-manage/agents/plugin/skills", {
-      id: "gea-readonly",
-      skills: [
-        ...salesAgent.skills,
-        {
-          kind: "personal",
-          name: "sales-result-fixture",
-          description: "result fixture",
-          content: "Scoped rule body.",
-          enabled: true,
-        },
-      ],
-    });
-    assert.equal(installed.ok, true, JSON.stringify(installed));
+    await configurePluginSkills(app, (skills) => [
+      ...skills,
+      {
+        kind: "personal",
+        name: "sales-result-fixture",
+        description: "result fixture",
+        content: "Scoped rule body.",
+        enabled: true,
+      },
+    ]);
     const id = await createBusinessSession(app);
     await app.remote("session/selectModel", {
       sessionId: id,
@@ -254,10 +244,15 @@ test(
     ]);
     assert.equal(replies[0].isError, false, replies[0].text);
     assert.match(replies[0].text, /Scoped rule body/);
-    const chosen = installed.value.skills.filter((skill) => skill.name === "sales-result-fixture");
+    const configured = await fetch(app.origin + "/api/agent-manage/agents/plugins", {
+      headers: { Cookie: app.cookie, Origin: app.origin },
+    });
+    assert.equal(configured.ok, true);
+    const preset = (await configured.json()).find((row) => row.id === "gea-readonly");
+    const chosen = preset.skills.filter((skill) => skill.name === "sales-result-fixture");
     assert.equal(chosen.length, 1);
-    assert.equal(chosen[0].enabled, true);
     assert.equal(chosen[0].kind, "personal");
+    assert.equal(chosen[0].enabled, true);
     const catalogs = (await readSession(app.runtime, id)).filter(
       (row) => row.type === "user/message" && row.data.source.kind === "skill-catalog",
     );

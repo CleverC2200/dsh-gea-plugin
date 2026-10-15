@@ -4,7 +4,7 @@
 
 ## 当前需要核对的风险
 
-- 模型 Consumer、业务工具可信资源与页面身份的当前规则见 [执行链](execution-logic.md)。普通 Session 保留默认模型路由；页面可见不授予业务 Consumer。
+- 模型 Consumer、业务工具可信资源与页面身份的当前规则见 [执行链](execution-logic.md)。普通 Session 保留默认模型路由；个人 Agent 沿实际 Core revision 的可信 Cube 引用反查来源 owner 与 Consumer，未引用不开放工具。页面可见不授予业务 Consumer。
 
 - 真实角色审批仍须服务端支持显式角色合同、组织授权、快照与事务；[V1.3 业务规则](../specs/sales-plan-role-approval-v1.3.md) 明确覆盖旧通知节点授予权限、状态10可SAVE等冲突口径。当前 Host 的 SAVE 状态与角色校验见 [执行链](execution-logic.md)。原 [角色重审记录](reviews/returned-plan-approval-20260928.md) 保留未做真实后端联调的范围，不能用历史发行补齐。
 - [纠偏合同](correction-backend-handoff.md) 与 [原验收](correction-acceptance.md) 仍需确认字段、absolute-net事务、显式零、实际流程与当前环境权限。DMS 按 [模拟记录](dms-mock-acceptance.md) 只完成模拟，不完成真实计划或正式DMS。

@@ -181,10 +181,16 @@ test("actual APS mock registration and Manage route select its original resource
     retirePrompt() {},
   });
   real.provide("agentPresets", ctx.agentPresets);
+  ctx.tools = real.tools;
+  ctx.agents = real.agents;
+  ctx.sessionProjections = real.sessionProjections;
+  await applyManage(ctx, Config({ geaMcp: false }));
+  await Promise.all(pending);
   const controller = new SessionController(real, { nativeOpen: false });
   const pages = new HtmlPages(real, "", async () => "<picker-fixture>");
   const packages = await pages.registerHtml([
-    join(workbenchInput.assetRoot, "lib/business/inventory-apsplan"),
+    process.env.GEA_TEST_APS_PACKAGE ??
+      join(workbenchInput.assetRoot, "lib/business/inventory-apsplan"),
   ]);
   assert.equal(packages[0].manifest.mode, "mock", "use actual Root generated APS mock package");
   ctx.workbenchPages = pages;

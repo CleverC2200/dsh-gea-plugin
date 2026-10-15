@@ -163,7 +163,7 @@ test("registered tools reject ordinary or missing callers and disabled business 
   f.setEnabled(false);
   const disabled = await f.execute();
   assert.equal(disabled.isError, true);
-  assert.match(JSON.stringify(disabled), /GEA MCP requires/);
+  assert.match(JSON.stringify(disabled), /GEA MCP requires an enabled business Agent/);
   assert.equal(f.calls.length, before);
   f.setEnabled(true);
   assert.equal((await f.execute()).isError, false);

@@ -22,7 +22,7 @@
 | GEA 模型与业务工具               | [Host 注册](../src/host.ts)、[业务工具](../src/host/agent-tools.ts)；[标准能力边界](business-standard-capabilities.md) 保留官方 general tools 的原策略                                                             |
 | Gateway 会话与 MCP               | [统一会话握手](../src/host/gateway-session.ts)、[MCP 传输](../src/host/gateway-mcp.ts)、[MCP client](../src/host/gateway-mcp-client.ts)；保留原拒权码、HTTP/JSON 失败、路由与 Consumer 校验                        |
 | 受管 SQL                         | [查询入口](../src/host/plugin-query.ts)、[物理额度](../src/shared/sql-read-limit.js)；实际端点和分页计数由源码定义                                                                                                 |
-| 证据与取消                       | [MCP 证据](../src/host/mcp-read-evidence.ts)、[隔离取消信号](../src/shared/transport-signal.ts)；保留部分、失败、unknown 与来源范围                                                                                |
+| 证据与取消                       | [证据归属](../src/host/prompt-execution-state.ts)、[隔离取消信号](../src/shared/transport-signal.ts)；保留部分、失败、unknown 与来源范围                                                                           |
 
 独立业务查询不要求先打开页面。页面动作仍只消费当前页面声明；Native 审批与 HTML 只读能力分别按原合同执行。页面的 view 或 draft 回执不等于真实业务保存/审批成功。
 
@@ -31,6 +31,10 @@ Native 页面授权与当前页面身份投影属于同一个 grant。打开时�
 知识目录、问答及 LightRAG 退场合同见 [知识 MCP](knowledge-mcp.md)。知识工具不要求配置 Cube 来源；未配置 Cube 来源时不注册或调用 Cube 工具。
 
 Cube-New 的来源由 Host `cubeMcpCodes` 按环境指定。公司默认仅登记测试环境编码 `2109581866385289217`；正式环境未登记新来源时不开放查询，也不回退旧 Cube。GEA 登录、业务页面和持久会话继续保留。
+
+个人 Agent 可引用一个 GEA Host 验证的已安装 Cube 来源，仅保存来源 ID 与启停。Manage 将引用声明挂入实际 Core 预设 revision，GEA 用公开 `serviceFor` 读取当前 Session 及其子 Agent 的原声明，再复核当前关联、插件 owner 与身份。该引用只开放两项 Cube 工具，不安装业务 profile，不授予页面动作或业务写入。插件来源只允许启停；显式复制为个人 Agent 只复制获准的提示词、Skill 与 Cube 引用。
+
+发现与调用共用 [Cube 准入](../src/host/cube-access.ts)。关联停用、删除或来源撤销立即刷新 schema mask 并取消在途调用；返回前比较完整身份与 owner 归属，相同 Consumer 的新 owner 也不能接收旧结果。原生 v2 工具 schema 与首轮 publication 等待保持。
 
 Manage 注册当前业务会话授权列表中的 Cube 工具 `inspect_cube_model`、`query_business_data`，以及来源为 `mcp.weknora` 的 `weknora_list_knowledge_bases`、`weknora_ask`，使用服务端原始 schema。GEA 根据发起调用的真实 Core Session preset 选择 Consumer，每次调用重新校验身份、业务资源与执行归属；业务 arguments 不能指定身份或路由。旧 `gea_gateway_catalog`、`gea_cube_query`、`gea_module_mcp` 不再注册，旧成员索引、查询拆分、修参和结果分段适配退出运行时，历史回归材料留在 `tests/fixtures/retired-query`。
 
