@@ -311,14 +311,14 @@ test("routes discovered gateway and remote tools without trusting caller metadat
               _meta: { sourceType: "MCP", sourceCode: "mcp.gateway.session" },
             },
             {
-              name: "lightrag_list_docs",
-              _meta: { sourceType: "MCP", sourceCode: "knowledge" },
+              name: "weknora_list_knowledge_bases",
+              _meta: { sourceType: "MCP", sourceCode: "mcp.weknora" },
             },
           ],
         },
       });
     const expected =
-      wire.params.name === "lightrag_list_docs" ? "knowledge" : "mcp.gateway.session";
+      wire.params.name === "weknora_list_knowledge_bases" ? "mcp.weknora" : "mcp.gateway.session";
     assert.equal(wire.params._meta.mcpCode, expected);
     assert.equal(wire.params._meta.delegationToken, "delegation-secret");
     assert.deepEqual(wire.params.arguments, {});
@@ -342,7 +342,7 @@ test("routes discovered gateway and remote tools without trusting caller metadat
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
     });
   await send("tools/list", {});
-  for (const name of ["gateway.session.currentUser.resolve", "lightrag_list_docs"])
+  for (const name of ["gateway.session.currentUser.resolve", "weknora_list_knowledge_bases"])
     await send("tools/call", {
       name,
       arguments: {},

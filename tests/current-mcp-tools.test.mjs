@@ -163,7 +163,7 @@ test("registered tools reject ordinary or missing callers and disabled business 
   f.setEnabled(false);
   const disabled = await f.execute();
   assert.equal(disabled.isError, true);
-  assert.match(JSON.stringify(disabled), /RESOURCE_DISABLED/);
+  assert.match(JSON.stringify(disabled), /GEA MCP requires/);
   assert.equal(f.calls.length, before);
   f.setEnabled(true);
   assert.equal((await f.execute()).isError, false);
@@ -289,7 +289,7 @@ for (const transition of ["preset", "resource", "identity"]) {
       JSON.stringify(result),
       {
         preset: /GEA_BUSINESS_PROFILE_REQUIRED/,
-        resource: /GEA_AGENT_RESOURCE_DISABLED/,
+        resource: /GEA_CUBE_SOURCE_UNAVAILABLE/,
         identity: /operation was aborted/,
       }[transition],
     );

@@ -57,6 +57,7 @@ test("records known APIs and never exposes credentials", async () => {
   assert.equal(snapshot.records.length, 1);
   assert.equal(snapshot.records[0].catalogId, "identity.profile");
   assert.equal(snapshot.records[0].outcome, "success");
+  assert.equal(snapshot.records[0].source, "daily");
   assert.equal(snapshot.records[0].replayAvailable, true);
   const wire = JSON.stringify(snapshot);
   assert.equal(wire.includes("request-secret"), false);
@@ -74,6 +75,7 @@ test("records known APIs and never exposes credentials", async () => {
   assert.equal(calls.length, 2);
   const replayed = center.snapshot().records.find((record) => record.id === replay.recordId);
   assert.equal(replayed.replayedFrom, snapshot.records[0].id);
+  assert.equal(replayed.source, "replay");
 });
 
 test("idempotent writes require confirmation and retain the original intent", async () => {
@@ -160,6 +162,8 @@ test("concurrent calls cannot steal a replay's source relationship", async () =>
   assert.equal(replayed.catalogId, "identity.profile");
   assert.equal(replayed.replayedFrom, source.id);
   assert.equal(nested.replayedFrom, undefined);
+  assert.equal(nested.source, "daily");
+  assert.equal(replayed.source, "replay");
 });
 
 test("streaming and oversized response bodies are summarized instead of buffered into logs", async () => {

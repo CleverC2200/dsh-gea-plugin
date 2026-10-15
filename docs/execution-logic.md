@@ -20,7 +20,7 @@
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 页面打开、目录、动作、引用与恢复 | 同组 [Workbench 合同](../../dsh-agent-workbench/docs/workbench-contracts.md) 和 [呈现恢复](../../dsh-agent-workbench/docs/presentation-recovery.md)；GEA [HTML adapter](../src/html-plugins.ts) 提供当前业务 grant |
 | GEA 模型与业务工具               | [Host 注册](../src/host.ts)、[业务工具](../src/host/agent-tools.ts)；[标准能力边界](business-standard-capabilities.md) 保留官方 general tools 的原策略                                                             |
-| Gateway 会话与 MCP               | [统一会话握手](../src/host/gateway-session.ts)、[MCP 传输](../src/host/gateway-mcp.ts)、[Cube-New client](../src/host/cube-mcp-client.ts)；保留原拒权码、HTTP/JSON 失败、路由与 Consumer 校验                      |
+| Gateway 会话与 MCP               | [统一会话握手](../src/host/gateway-session.ts)、[MCP 传输](../src/host/gateway-mcp.ts)、[MCP client](../src/host/gateway-mcp-client.ts)；保留原拒权码、HTTP/JSON 失败、路由与 Consumer 校验                        |
 | 受管 SQL                         | [查询入口](../src/host/plugin-query.ts)、[物理额度](../src/shared/sql-read-limit.js)；实际端点和分页计数由源码定义                                                                                                 |
 | 证据与取消                       | [证据归属](../src/host/prompt-execution-state.ts)、[隔离取消信号](../src/shared/transport-signal.ts)；保留部分、失败、unknown 与来源范围                                                                           |
 
@@ -28,13 +28,15 @@
 
 Native 页面授权与当前页面身份投影属于同一个 grant。打开时建立投影，当前 owner 上报可见上下文时刷新，关闭或身份撤销时释放；旧 owner 的刷新和释放不能覆盖新页面。模型只获得该页面声明的动作工具，Native 使用 `gea_workbench_apply`，HTML lease 使用 `gea_page` 读取，以及目录声明的 `gea_plugin_page_apply` 视图动作。没有页面绑定时，`gea_visible_workbench_context` 返回安全的不可用说明，不推断页面或数字。
 
+知识目录、问答及 LightRAG 退场合同见 [知识 MCP](knowledge-mcp.md)。知识工具不要求配置 Cube 来源；未配置 Cube 来源时不注册或调用 Cube 工具。
+
 Cube-New 的来源由 Host `cubeMcpCodes` 按环境指定。公司默认仅登记测试环境编码 `2109581866385289217`；正式环境未登记新来源时不开放查询，也不回退旧 Cube。GEA 登录、业务页面和持久会话继续保留。
 
-个人 Agent 可引用一个 GEA Host 验证的已安装 Cube 来源，仅保存来源 ID 与启停。Manage 将引用声明挂入实际 Core 预设 revision，GEA 用公开 `serviceFor` 读取当前 Session 及其子 Agent 的原声明，再复核当前关联、插件 owner 与身份。该引用只开放两项 Cube 工具，不安装业务 profile，不授予页面动作或业务写入。插件来源只允许启停；显式复制为个人 Agent 只复制获准的提示词、Skill 与 Cube 引用。
+个人 Agent 可引用一个 GEA Host 验证的已安装 Cube 来源，仅保存来源 ID 与启停。Manage 将引用声明挂入实际 Core 预设 revision，GEA 用公开 `serviceFor` 读取当前 Session 及其子 Agent 的原声明，再复核当前关联、插件 owner 与身份。该引用提供当前 Agent 的受控 Consumer 关联；工具仍按服务端精确授权发布，其中可包含 Cube 与知识工具，不安装业务 profile，不授予页面动作或业务写入。插件来源只允许启停；显式复制为个人 Agent 只复制获准的提示词、Skill 与 Cube 引用。
 
 发现与调用共用 [Cube 准入](../src/host/cube-access.ts)。关联停用、删除或来源撤销立即刷新 schema mask 并取消在途调用；返回前比较完整身份与 owner 归属，相同 Consumer 的新 owner 也不能接收旧结果。原生 v2 工具 schema 与首轮 publication 等待保持。
 
-Manage 只注册当前登录授权列表中的 `inspect_cube_model` 和 `query_business_data`，使用服务端原始 schema。GEA 根据发起调用的真实 Core Session preset 选择 Consumer，每次调用重新校验身份、业务资源与执行归属；业务 arguments 不能指定身份或路由。旧 `gea_gateway_catalog`、`gea_cube_query`、`gea_module_mcp` 不再注册，旧成员索引、查询拆分、修参和结果分段适配退出运行时，历史回归材料留在 `tests/fixtures/retired-query`。
+Manage 注册当前业务会话授权列表中的 Cube 工具 `inspect_cube_model`、`query_business_data`，以及来源为 `mcp.weknora` 的 `weknora_list_knowledge_bases`、`weknora_ask`，使用服务端原始 schema。GEA 根据发起调用的真实 Core Session preset 选择 Consumer，每次调用重新校验身份、业务资源与执行归属；业务 arguments 不能指定身份或路由。旧 `gea_gateway_catalog`、`gea_cube_query`、`gea_module_mcp` 不再注册，旧成员索引、查询拆分、修参和结果分段适配退出运行时，历史回归材料留在 `tests/fixtures/retired-query`。
 
 `inspect_cube_model` 返回服务端原始说明，包括 View 的 `aliasMember`。客户端不再二次投影目录或替服务端判断成员发布。`query_business_data` 原样传递 `action=query`、`response_mode=inline_complete` 和具名查询；业务参数及容量约束来自当前 `tools/list` Schema，不写死旧的8条/1000行上限，也不补默认 limit。
 
