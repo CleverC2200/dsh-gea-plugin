@@ -265,3 +265,31 @@ test("model request/history and JSON response text stay out of the API log snaps
   assert.doesNotMatch(snapshot, /PRIVATE_(?:ANSWER|REASONING|PROMPT|HISTORY|ARGUMENTS)_SENTINEL/);
   assert.equal(center.snapshot().records[0].replayAvailable, false);
 });
+
+test("log ownership is captured before admission waits and hidden across identity changes", async () => {
+  let scope = "old";
+  let admit;
+  const center = new GeaApiLogCenter(
+    () => "test",
+    500,
+    async () => json({ privateValue: "old" }),
+    async () => {
+      await new Promise((resolve) => {
+        admit = resolve;
+      });
+      return () => {};
+    },
+    undefined,
+    () => scope,
+  );
+  const pending = center.fetch("https://gea.example/sys/user/getUserInfo");
+  scope = "new";
+  admit();
+  await (await pending).text();
+  assert.deepEqual(center.snapshot().records, []);
+  center.clear();
+  scope = "old";
+  assert.equal(center.snapshot().records.length, 1);
+  assert.deepEqual(center.snapshot().records[0].response.body, { privateValue: "old" });
+  assert.equal("ownerScope" in center.snapshot().records[0], false);
+});

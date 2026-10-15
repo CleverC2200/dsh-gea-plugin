@@ -83,7 +83,7 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 
 [Business.notifications](../src/host/business.ts) 通过固定通知端点读取列表、详情和未读数。读取不自动标已读或审批；显式 `read`、`dismiss`、`batch-read`、`approval-action` 已有 Host 接线，带当前身份、版本与幂等参数，实际权限与事务仍由服务端核对。忽略先核可忽略事实；通知审批桥与销售计划角色动作是独立接口，不将通知状态当销售审批权。通知来源引用不凭格式解释为 Core Session。
 
-[API 日志](../src/host/api-log.ts) 记录真实 Host 上游请求并脱敏。重发按实际目录策略、原身份代际、原正文和原幂等键校验；页面由 Workbench 呈现。日志、成功提示和 mock 回执均不证明完整业务结果。
+[API 日志](../src/host/api-log.ts) 记录真实 Host 上游请求并脱敏，模型请求／响应正文不保存。重发按实际目录策略、原身份代际、原正文和原幂等键校验；页面由 Workbench 呈现。[批量执行器](../src/host/api-log-batch.ts) 固定样本串行执行，逐条确认写记录，样本丢失或失效时跳过。单次与批量共用[调试互斥](../src/host/debug-run.ts)，不串行化普通业务请求。运行、日志来源及读取绑定 Host 身份代际；停止、离页和身份失效取消所属执行，已发送写请求保留结果未知。进程内保留最近20个结束批次。日志、成功提示和 mock 回执均不证明完整业务结果。
 
 ## 未完成验收与追溯
 
