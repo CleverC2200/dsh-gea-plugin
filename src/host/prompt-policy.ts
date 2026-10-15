@@ -1,7 +1,8 @@
 import policy from "../../presets/execution-policy.json" with { type: "json" };
 
 export const PROMPT_VERSION = policy.version;
-export const COMMON_PROMPT = policy.common + "\n" + policy.output;
+export const KNOWLEDGE_PROMPT = policy.knowledge;
+export const COMMON_PROMPT = [policy.common, KNOWLEDGE_PROMPT, policy.output].join("\n");
 export const PROMPT_BUDGET = {
   system: 2200,
   tools: 10000,
@@ -55,6 +56,8 @@ export const CORE_TOOLS = [
   "gea_evidence_read",
   "mcp__gea-gateway__inspect_cube_model",
   "mcp__gea-gateway__query_business_data",
+  "mcp__gea-gateway__weknora_list_knowledge_bases",
+  "mcp__gea-gateway__weknora_ask",
   "gea_visible_workbench_context",
 ];
 export function allowedTools(profile: PromptProfile, pageTool?: string): Set<string> {

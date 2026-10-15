@@ -2,25 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { request } from "node:https";
 import { readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
-import { build } from "esbuild";
 import { profile } from "./profile.mjs";
-
-const compiled = await build({
-  entryPoints: ["src/host/business.ts"],
-  bundle: true,
-  write: false,
-  platform: "node",
-  format: "cjs",
-  packages: "external",
-});
-const host = { exports: {} };
-new Function("require", "module", "exports", compiled.outputFiles[0].text)(
-  createRequire(import.meta.url),
-  host,
-  host.exports,
-);
-const { Business } = host.exports;
 
 function wire(base, method, params = {}) {
   return new Promise((resolve, reject) => {
@@ -35,7 +17,10 @@ function wire(base, method, params = {}) {
         const chunks = [];
         for await (const chunk of res) chunks.push(chunk);
         const body = Buffer.concat(chunks).toString();
-        resolve({ status: res.statusCode, body: body ? JSON.parse(body) : undefined });
+        resolve({
+          status: res.statusCode,
+          body: body ? JSON.parse(body) : undefined,
+        });
       },
     );
     req.on("error", reject);
@@ -50,7 +35,10 @@ test("profile supplies loopback Cube discovery but never invents a business resp
       coreOnly: true,
       async beforeStart({ config }) {
         const settings = JSON.parse(await readFile(config, "utf8"));
-        assert.deepEqual(settings.cubeMcpCodes, { production: "cube", test: "cube" });
+        assert.deepEqual(settings.cubeMcpCodes, {
+          production: "cube",
+          test: "cube",
+        });
         const initialized = await wire(settings.geaBaseUrl, "initialize", {
           protocolVersion: "2024-11-05",
         });
@@ -79,7 +67,12 @@ test("scenario configuration and explicit gateway denial precede fixture discove
   await assert.rejects(
     profile(t, {
       coreOnly: true,
-      config: { cubeMcpCodes: { production: "scenario-production", test: "scenario-test" } },
+      config: {
+        cubeMcpCodes: {
+          production: "scenario-production",
+          test: "scenario-test",
+        },
+      },
       route(req, _res, reply) {
         if (!req.url.pathname.endsWith("/ai/gateway/mcp/proxy/mcp")) return false;
         reply({ code: "SCENARIO_GATEWAY_DENIED" }, 403);
@@ -91,10 +84,16 @@ test("scenario configuration and explicit gateway denial precede fixture discove
           production: "scenario-production",
           test: "scenario-test",
         });
-        assert.deepEqual(await wire(settings.geaBaseUrl, "tools/list"), {
-          status: 403,
-          body: { code: "SCENARIO_GATEWAY_DENIED" },
-        });
+        assert.deepEqual(
+          await wire(settings.geaBaseUrl, "tools/call", {
+            name: "query_business_data",
+            arguments: {},
+          }),
+          {
+            status: 403,
+            body: { code: "SCENARIO_GATEWAY_DENIED" },
+          },
+        );
         throw inspected;
       },
     }),
@@ -102,7 +101,7 @@ test("scenario configuration and explicit gateway denial precede fixture discove
   );
 });
 
-test("a scenario can explicitly omit Cube configuration without fixture transport", async (t) => {
+test("a scenario can omit Cube configuration without inventing business tool results", async (t) => {
   const inspected = new Error("missing configuration inspected");
   let transports = 0;
   await assert.rejects(
@@ -116,30 +115,19 @@ test("a scenario can explicitly omit Cube configuration without fixture transpor
       async beforeStart({ config }) {
         const settings = JSON.parse(await readFile(config, "utf8"));
         assert.equal(Object.hasOwn(settings, "cubeMcpCodes"), false);
-        const business = new Business({ ...settings, analysisAgentCode: "test-agent" });
-        t.after(() => business.dispose());
-        business.restoreDesktopLogin({
-          schema: 1,
-          environment: "production",
-          base: settings.geaBaseUrl,
-          auth: {
-            token: "fixture-only",
-            tenantId: "0",
-            id: "fixture-user",
-            name: "Fixture",
-            username: "fixture",
+        // Knowledge can use the shared gateway without Cube. Omitting Cube must
+        // still leave this fixture's business tool response unavailable.
+        assert.deepEqual(
+          await wire(settings.geaBaseUrl, "tools/call", {
+            name: "query_business_data",
+            arguments: {},
+          }),
+          {
+            status: 404,
+            body: { message: "fixture route absent" },
           },
-        });
-        assert.equal(business.status().authenticated, true);
-        await assert.rejects(
-          () =>
-            business.openMcpConnection(
-              { consumerType: "AGENT", consumerCode: "test-agent" },
-              new AbortController().signal,
-            ),
-          /GEA_CUBE_MCP_NOT_CONFIGURED/,
         );
-        assert.equal(transports, 0);
+        assert.equal(transports, 1);
         throw inspected;
       },
     }),

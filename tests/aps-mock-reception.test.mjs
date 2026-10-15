@@ -100,8 +100,14 @@ test("actual APS mock registration and Manage route select its original resource
         providers.push(provider);
         return () => providers.splice(providers.indexOf(provider), 1);
       },
-      async list(options) {
+      async list(options = {}) {
         return (await Promise.all(providers.map((provider) => provider.list(options)))).flat();
+      },
+      async get(name, options = {}) {
+        for (const provider of providers) {
+          const candidate = (await provider.list(options)).find((row) => row.name === name);
+          if (candidate) return provider.get(candidate, options);
+        }
       },
     },
     agentPresets: {
@@ -148,8 +154,6 @@ test("actual APS mock registration and Manage route select its original resource
     },
   };
   real = new Context();
-  await applyManage(ctx, Config({ geaMcp: false }));
-  await Promise.all(pending);
   real.provide("connection", ctx.connection);
   await real.plugin(Typert);
   await real.plugin(Persistence, { root: join(root, "sessions"), compression: "none" });
@@ -161,6 +165,10 @@ test("actual APS mock registration and Manage route select its original resource
   await real.plugin(Tools);
   await real.plugin(Agents);
   await real.plugin(Loop, { agents: [] });
+  ctx.tools = real.tools;
+  ctx.agents = real.agents;
+  await applyManage(ctx, Config({ geaMcp: false }));
+  await Promise.all(pending);
   real.sessionProjections.register(agentPresetProjectionDefinition);
   real.provide("agentDefaultModel", {
     currentSelection: () => ({}),
