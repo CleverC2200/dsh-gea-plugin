@@ -1,8 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import {
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+  existsSync,
+  mkdirSync,
+  appendFileSync,
+} from "node:fs";
+import { join, resolve, dirname } from "node:path";
+import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { macosIsolationTests, selectPlatformTests } from "./ci-platform-tests.mjs";
 
@@ -302,4 +311,144 @@ test("both source and compatibility workflows require actual same-tuple macOS ex
     assert.match(source, /QUALITY_ISOLATION_RESULT: \$\{\{ needs\.macos-isolation\.result \}\}/);
   }
   assert.doesNotMatch(readFileSync("scripts/isolated-validation.test.mjs", "utf8"), /skip:/);
+});
+
+test("Linux stage wiring preserves independent tests and always summarizes and uploads receipts", () => {
+  const source = readFileSync(".github/workflows/quality.yml", "utf8");
+  const linux = source.slice(source.indexOf("  gates:\n"), source.indexOf("  macos-isolation:\n"));
+  const steps = linux.split(/\n      - /);
+  for (const stage of ["prepare", "build", "checks", "tests", "summary"]) {
+    const step = steps.find((entry) => entry.includes(`id: quality-${stage}\n`));
+    assert.ok(step, stage);
+    assert.match(step, new RegExp(`--stage ${stage}(?:\\n|$)`));
+    assert.match(step, /--final-group-sha256 "\$INPUT_SHA256"/);
+    assert.doesNotMatch(step, /continue-on-error/);
+    if (stage === "tests") {
+      assert.match(
+        step,
+        /!cancelled\(\).*steps\.quality-prepare\.outcome == 'success'.*steps\.quality-build\.outcome == 'success'/,
+      );
+      assert.doesNotMatch(step, /success\(\)|quality-checks\.outcome/);
+    }
+    if (stage === "summary") {
+      assert.match(step, /if: always\(\)/);
+      for (const required of ["prepare", "build", "checks", "tests"])
+        assert.ok(step.includes(`steps.quality-${required}.outcome`));
+    }
+  }
+  assert.match(linux, /quality-stages\.json/);
+  assert.match(linux, /if: always\(\)\n        uses: actions\/upload-artifact@v7/);
+});
+
+test("the current source impact maps changed paths without feature history and still rejects unknown scripts", async (t) => {
+  const source = resolve(import.meta.dirname, "..");
+  const directory = mkdtempSync(join(tmpdir(), "gea-current-source-impact-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const git = (cwd, ...args) =>
+    execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  const commit = (cwd, message) => {
+    git(cwd, "add", ".");
+    git(
+      cwd,
+      "-c",
+      "user.name=fixture",
+      "-c",
+      "user.email=fixture@invalid",
+      "commit",
+      "--quiet",
+      "-m",
+      message,
+    );
+    return git(cwd, "rev-parse", "HEAD");
+  };
+  // Keep fixture paths from creating a false source-graph consumer of the contract under test.
+  const contract = ["scripts/final-group-input", "contract", "mjs"].join(".");
+  const changedPaths = [
+    ".github/workflows/quality.yml",
+    "docs/local-development.md",
+    "package.json",
+    "scripts/ci-test-policy.json",
+    contract,
+    "scripts/fixtures/quality-ci-commands.mjs",
+    "scripts/quality-ci-stages.mjs",
+    "scripts/run-quality-ci-stages.test.mjs",
+    "scripts/run-quality-ci.mjs",
+    "scripts/run-quality-ci.test.mjs",
+  ];
+  const repositories = [];
+  for (const [repo, input] of [
+    [
+      "dsh-agent-workbench",
+      process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ?? resolve(source, "../dsh-agent-workbench"),
+    ],
+    [
+      "dsh-agent-manage",
+      process.env.GEA_FINAL_GROUP_MANAGE_SOURCE ?? resolve(source, "../dsh-agent-manage"),
+    ],
+    ["dsh-gea-plugin", source],
+  ]) {
+    const path = join(directory, repo);
+    // Use current authored bytes, excluding writable builds and untracked concurrent fixtures.
+    for (const file of git(input, "ls-files", "-z").split("\0").filter(Boolean)) {
+      if (
+        file.startsWith("lib/") ||
+        (!/\.(?:[cm]?[jt]sx?|css|html|json|ya?ml)$/.test(file) && !changedPaths.includes(file))
+      )
+        continue;
+      const target = join(path, file);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, readFileSync(join(input, file)));
+    }
+    git(path, "init", "--quiet");
+    repositories.push({
+      repo,
+      path,
+      head: repo === "dsh-gea-plugin" ? null : commit(path, "current peer snapshot"),
+    });
+  }
+  const gea = repositories.find((entry) => entry.repo === "dsh-gea-plugin");
+  writeFileSync(
+    join(gea.path, "scripts/quality-peer-baseline.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      repositories: repositories.map((entry) => ({
+        repo: entry.repo,
+        head: entry.head ?? "0".repeat(40),
+      })),
+    }),
+  );
+  const base = commit(gea.path, "current authored source snapshot");
+  // Make the known paths differ without changing the current code graph or policy semantics.
+  for (const file of changedPaths) appendFileSync(join(gea.path, file), "\n");
+  gea.head = commit(gea.path, "source impact fixture changes");
+  assert.equal(git(gea.path, "rev-list", "--count", "HEAD"), "2");
+  const { selectCiTests } = await import(
+    pathToFileURL(join(directory, "dsh-agent-workbench/scripts/ci-test-plan.mjs"))
+  );
+  const request = { repositories, repo: "dsh-gea-plugin", base };
+  const plan = selectCiTests(request);
+  assert.deepEqual(plan.changes.map((entry) => entry.file).sort(), changedPaths);
+  for (const entry of plan.changes.filter((entry) => !entry.file.endsWith(".md")))
+    assert.ok(plan.reasons[`${entry.repo}/${entry.file}`].length > 0, entry.file);
+  for (const file of ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"])
+    assert.ok(plan.reasons[`dsh-gea-plugin/${contract}`].includes(file));
+  for (const file of plan.required) assert.ok(plan.files.includes(file));
+  t.diagnostic(
+    JSON.stringify({
+      base,
+      head: gea.head,
+      repositories,
+      changes: plan.changes,
+      reasons: plan.reasons,
+      required: plan.required,
+      files: plan.files,
+    }),
+  );
+  const unmapped = `scripts/unmapped-${directory.split(/[\\/]/).at(-1)}.mjs`;
+  writeFileSync(join(gea.path, unmapped), "export const unmatched = true;\n");
+  gea.head = commit(gea.path, "unmapped source must still refuse");
+  assert.throws(
+    () => selectCiTests(request),
+    /CI_TEST_IMPACT_UNMAPPED: dsh-gea-plugin\/scripts\/unmapped-/,
+  );
 });

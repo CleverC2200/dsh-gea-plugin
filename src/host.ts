@@ -733,6 +733,9 @@ export async function apply(
     "api-log/snapshot",
     "api-log/replay",
     "api-log/clear",
+    "api-log/batch/start",
+    "api-log/batch/read",
+    "api-log/batch/stop",
     // 只在显式打开调试开关时注册：逐个模块真跑一遍 MCP，并把原始报文带回来。
     ...(process.env.GEA_DEBUG_PROBE === "1" ? ["debug/mcp-probe"] : []),
   ];
@@ -767,6 +770,15 @@ export async function apply(
                 break;
               case "api-log/clear":
                 value = business.apiLogClear(payload);
+                break;
+              case "api-log/batch/start":
+                value = business.apiLogBatchStart(payload, request.signal);
+                break;
+              case "api-log/batch/read":
+                value = business.apiLogBatchRead(payload);
+                break;
+              case "api-log/batch/stop":
+                value = business.apiLogBatchStop(payload);
                 break;
               case "debug/mcp-probe":
                 value = await business.debugProbeModuleMcp(

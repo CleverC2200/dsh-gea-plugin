@@ -39,7 +39,13 @@ async function fixture(
         : path.endsWith("/getQrcodeToken")
           ? { success: true, token: "native-grant-token" }
           : path.endsWith("/getUserInfo")
-            ? { userInfo: { id: "native-user", loginTenantId: "0", realname: "Native fixture" } }
+            ? {
+                userInfo: {
+                  id: "native-user",
+                  loginTenantId: "0",
+                  realname: "Native fixture",
+                },
+              }
             : path.endsWith("/getPermCode")
               ? { codeList: [] }
               : path.endsWith("/ai/gateway/agent/session")
@@ -391,7 +397,10 @@ test("hiding an enabled page preserves discovery and the Session Consumer while 
   assert.equal(
     initialDiscovery.ok,
     true,
-    JSON.stringify({ initialDiscovery, resources: await app.ctx.agentResources.list() }),
+    JSON.stringify({
+      initialDiscovery,
+      resources: await app.ctx.agentResources.list(),
+    }),
   );
   for await (const _chunk of app.adapter.stream({
     sessionId: app.agent.id,
@@ -429,7 +438,10 @@ test("current disablement or withdrawal refuses persisted presets even after an 
       assert.equal(
         initialDiscovery.ok,
         true,
-        JSON.stringify({ initialDiscovery, resources: await app.ctx.agentResources.list() }),
+        JSON.stringify({
+          initialDiscovery,
+          resources: await app.ctx.agentResources.list(),
+        }),
       );
       await app.changeResource(enabled);
       const code = enabled === false ? "GEA_AGENT_RESOURCE_DISABLED" : "GEA_AGENT_RESOURCE_MISSING";
@@ -521,12 +533,21 @@ test("actual registered Host business routes reject disabled execution with zero
     "versions",
     "skus",
     "model/advice",
-    "api-log/replay",
   ]) {
     const result = await app.route(endpoint);
     assert.equal(result.ok, false, endpoint + JSON.stringify(result));
     assert.equal(result.error.code, "GEA_CAPABILITY_DISABLED", endpoint + JSON.stringify(result));
   }
+  const replay = await app.route("api-log/replay");
+  assert.equal(replay.ok, true);
+  assert.deepEqual(replay.value, {
+    outcome: "rejected",
+    recordId: null,
+    reason: "GEA_CAPABILITY_DISABLED",
+  });
+  const batch = await app.route("api-log/batch/start");
+  assert.equal(batch.ok, false);
+  assert.equal(batch.error.code, "GEA_CAPABILITY_DISABLED");
   const sql = await app.route("plugin/sql", {
     consumerCode: "dealer-inventory-replenishment",
     sql: "SELECT 1",
@@ -588,7 +609,9 @@ test("the registered GEA model adapter preserves a chat 403 without treating it 
   const app = await fixture(t, true, {
     modelFailure: () =>
       Response.json(
-        { error: { code: "permission_denied", message: "请求的Agent无权访问" } },
+        {
+          error: { code: "permission_denied", message: "请求的Agent无权访问" },
+        },
         { status: 403 },
       ),
   });
@@ -683,7 +706,11 @@ test("the actual Host inbox resets read guards and records the question only for
 });
 
 test("the actual Native Host grant binds and withdraws its current page projection", async (t) => {
-  const app = await fixture(t, true, { actualBusiness: true, login: true, mock: true });
+  const app = await fixture(t, true, {
+    actualBusiness: true,
+    login: true,
+    mock: true,
+  });
   app.agent.session.preset = "gea-readonly";
   const qr = await app.route("login/start");
   assert.equal(qr.ok, true, JSON.stringify(qr));
@@ -710,7 +737,12 @@ test("the actual Native Host grant binds and withdraws its current page projecti
     format: "gea-workbench-visible-v1",
     sequence: 1,
     view: "regional-approval",
-    scope: { month: "2026-10", planType: "Y", approvalStage: "province", dimension: "customer" },
+    scope: {
+      month: "2026-10",
+      planType: "Y",
+      approvalStage: "province",
+      dimension: "customer",
+    },
     visibleRows: [],
     selectedPlanIds: [],
     pagination: { page: 1, pageSize: 20, total: 0 },
