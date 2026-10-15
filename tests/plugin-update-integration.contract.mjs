@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
-import { mkdir, mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm, readFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -417,4 +417,326 @@ test("explicit Core deployment input is cross-checked against Git, launcher, SDK
   );
   packages.get("@deepseek-ai/cordis").dir = tmpdir();
   await assert.rejects(readPluginUpdateCore(ctx, proof), /UPDATE_CORE_RESOLUTION_MISMATCH/);
+});
+
+async function desktopCoreFixture(t) {
+  const { readPluginUpdateCore } = await subject(t, "src/host/plugin-update-core.ts");
+  const root = await mkdtemp(join(tmpdir(), "desktop-core-proof-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const head = "5e9e301dd9dc8923b2762f76dacfc5751f6ca851";
+  const version = "0.2.0-rc.2";
+  const packages = new Map();
+  const artifacts = [];
+  const put = async (path, bytes) => {
+    await mkdir(join(root, path, ".."), { recursive: true });
+    await writeFile(join(root, path), bytes);
+    artifacts.push({
+      path,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
+  };
+  const app = {
+    name: "@deepseek-ai/dsh-desktop",
+    version,
+    dshBuildCommit: head,
+    dshBuildDirty: false,
+    main: "lib/main.js",
+  };
+  await put("package.json", JSON.stringify(app));
+  await put("lib/main.js", "export const desktop=true;");
+  for (const name of [
+    "dsh",
+    "dsh-desktop-host",
+    "dsh-app-boot",
+    "cordis",
+    "dsh-plugin-manager",
+    "dsh-atomic-write",
+  ]) {
+    const fullName = "@deepseek-ai/" + name;
+    const local = "dsh/node_modules/" + fullName;
+    const manifest = {
+      name: fullName,
+      version: name === "cordis" ? "4.0.4" : version,
+      exports: "./lib/index.js",
+    };
+    if (name === "dsh-plugin-manager")
+      manifest.exports = {
+        ".": "./lib/index.js",
+        "./operations": { default: "./lib/types/operations.js" },
+      };
+    await put(local + "/package.json", JSON.stringify(manifest));
+    await put(local + "/lib/index.js", "export const packageFixture=true;");
+    if (name === "dsh-plugin-manager")
+      await put(local + "/lib/types/operations.js", "export const operationFixture=true;");
+    packages.set(fullName, { dir: join(root, local), manifest });
+  }
+  const runtime = {
+    name: "@deepseek-ai/dsh-desktop-runtime",
+    version,
+    dependencies: Object.fromEntries(
+      [...packages].map(([name, pkg]) => [name, pkg.manifest.version]),
+    ),
+  };
+  await put("dsh/package.json", JSON.stringify(runtime));
+  const ctx = {
+    profileContext: {
+      installAnchor: join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json"),
+    },
+    fiber: {
+      entry: {
+        parent: {
+          tree: {
+            ctx: {
+              baseUrl: pathToFileURL(join(root, "dsh/package.json")).href,
+            },
+          },
+        },
+      },
+    },
+    get: () => ({ packageOf: (name) => packages.get(name) }),
+  };
+  return {
+    readPluginUpdateCore,
+    root,
+    app,
+    runtime,
+    packages,
+    ctx,
+    proof: { kind: "desktop", root, head, version, artifacts },
+  };
+}
+
+test("explicit desktop Core proof accepts the real installation layout without Git", async (t) => {
+  const f = await desktopCoreFixture(t);
+  const core = await f.readPluginUpdateCore(f.ctx, f.proof);
+  assert.deepEqual(core, {
+    head: f.proof.head,
+    version: "0.2.0-rc.2",
+    sdk: Object.fromEntries([...f.packages].map(([name, pkg]) => [name, pkg.manifest.version])),
+  });
+});
+
+test("desktop Core proof requires the runtime to declare its complete critical SDK", async (t) => {
+  const f = await desktopCoreFixture(t);
+  delete f.runtime.dependencies["@deepseek-ai/cordis"];
+  const bytes = JSON.stringify(f.runtime);
+  await writeFile(join(f.root, "dsh/package.json"), bytes);
+  f.proof.artifacts.find((row) => row.path === "dsh/package.json").sha256 = createHash("sha256")
+    .update(bytes)
+    .digest("hex");
+  await assert.rejects(f.readPluginUpdateCore(f.ctx, f.proof), /UPDATE_CORE_SDK_MISMATCH/);
+});
+
+test("desktop Core proof rejects a same-version SDK resolved outside its runtime", async (t) => {
+  const f = await desktopCoreFixture(t);
+  const pkg = f.packages.get("@deepseek-ai/cordis");
+  pkg.dir = join(f.root, "dsh/other/cordis");
+  await mkdir(join(pkg.dir, "lib"), { recursive: true });
+  for (const [file, bytes] of [
+    ["package.json", JSON.stringify(pkg.manifest)],
+    ["lib/index.js", "export const packageFixture=true;"],
+  ]) {
+    await writeFile(join(pkg.dir, file), bytes);
+    f.proof.artifacts.push({
+      path: "dsh/other/cordis/" + file,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
+  }
+  await assert.rejects(f.readPluginUpdateCore(f.ctx, f.proof), /UPDATE_CORE_RESOLUTION_MISMATCH/);
+});
+
+test("desktop Core proof rejects an SDK whose exports hide its required entry", async (t) => {
+  const f = await desktopCoreFixture(t);
+  const pkg = f.packages.get("@deepseek-ai/cordis");
+  pkg.manifest.exports = { "./package.json": "./package.json" };
+  pkg.manifest.main = "./lib/index.js";
+  const bytes = JSON.stringify(pkg.manifest),
+    path = "dsh/node_modules/@deepseek-ai/cordis/package.json";
+  await writeFile(join(f.root, path), bytes);
+  f.proof.artifacts.find((row) => row.path === path).sha256 = createHash("sha256")
+    .update(bytes)
+    .digest("hex");
+  await assert.rejects(f.readPluginUpdateCore(f.ctx, f.proof), /UPDATE_CORE_ARTIFACT_INCOMPLETE/);
+});
+
+test("desktop Core proof hashes the Node import target rather than an unused default", async (t) => {
+  const f = await desktopCoreFixture(t);
+  const pkg = f.packages.get("@deepseek-ai/cordis");
+  pkg.manifest.exports = {
+    ".": { import: "./lib/import.js", default: "./lib/index.js" },
+  };
+  await writeFile(join(pkg.dir, "lib/import.js"), "export const importEntry=true;");
+  const bytes = JSON.stringify(pkg.manifest),
+    path = "dsh/node_modules/@deepseek-ai/cordis/package.json";
+  await writeFile(join(f.root, path), bytes);
+  f.proof.artifacts.find((row) => row.path === path).sha256 = createHash("sha256")
+    .update(bytes)
+    .digest("hex");
+  await assert.rejects(f.readPluginUpdateCore(f.ctx, f.proof), /UPDATE_CORE_ARTIFACT_INCOMPLETE/);
+});
+
+test("desktop Core proof rejects mismatched identity, installation, bytes and incomplete admission", async (t) => {
+  const cases = [
+    [
+      "commit differs from App build",
+      (f) => {
+        f.proof.head = "0".repeat(40);
+      },
+      /UPDATE_CORE_SOURCE_MISMATCH/,
+    ],
+    [
+      "version differs from launcher",
+      (f) => {
+        f.proof.version = "2.0.0";
+      },
+      /UPDATE_CORE_VERSION_MISMATCH/,
+    ],
+    [
+      "dirty App build",
+      async (f) => {
+        f.app.dshBuildDirty = true;
+        await writeFile(join(f.root, "package.json"), JSON.stringify(f.app));
+      },
+      /UPDATE_CORE_SOURCE_MISMATCH/,
+    ],
+    [
+      "missing clean build flag",
+      async (f) => {
+        delete f.app.dshBuildDirty;
+        await writeFile(join(f.root, "package.json"), JSON.stringify(f.app));
+      },
+      /UPDATE_CORE_SOURCE_MISMATCH/,
+    ],
+    [
+      "wrong runtime identity",
+      async (f) => {
+        f.runtime.name = "@deepseek-ai/dsh";
+        await writeFile(join(f.root, "dsh/package.json"), JSON.stringify(f.runtime));
+      },
+      /UPDATE_CORE_VERSION_MISMATCH/,
+    ],
+    [
+      "wrong runtime version",
+      async (f) => {
+        f.runtime.version = "2.0.0";
+        await writeFile(join(f.root, "dsh/package.json"), JSON.stringify(f.runtime));
+      },
+      /UPDATE_CORE_VERSION_MISMATCH/,
+    ],
+    [
+      "different installation anchor inside App",
+      async (f) => {
+        await writeFile(
+          join(f.root, "dsh/other-anchor.json"),
+          JSON.stringify({
+            name: "@deepseek-ai/dsh",
+            version: f.proof.version,
+          }),
+        );
+        f.ctx.profileContext.installAnchor = join(f.root, "dsh/other-anchor.json");
+      },
+      /UPDATE_CORE_INSTALLATION_MISMATCH/,
+    ],
+    [
+      "unapproved App entry bytes",
+      async (f) => {
+        await writeFile(join(f.root, "lib/main.js"), "export const changed=true;");
+      },
+      /UPDATE_CORE_ARTIFACT_CHANGED/,
+    ],
+    [
+      "unapproved operations bytes",
+      async (f) => {
+        await writeFile(
+          join(f.root, "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/lib/types/operations.js"),
+          "export const changed=true;",
+        );
+      },
+      /UPDATE_CORE_ARTIFACT_CHANGED/,
+    ],
+    [
+      "absent operations hash",
+      (f) => {
+        f.proof.artifacts = f.proof.artifacts.filter((row) => !row.path.endsWith("/operations.js"));
+      },
+      /UPDATE_CORE_ARTIFACT_INCOMPLETE/,
+    ],
+    [
+      "absent App metadata hash",
+      (f) => {
+        f.proof.artifacts = f.proof.artifacts.filter((row) => row.path !== "package.json");
+      },
+      /UPDATE_CORE_ARTIFACT_INCOMPLETE/,
+    ],
+    [
+      "absent SDK manifest hash",
+      (f) => {
+        f.proof.artifacts = f.proof.artifacts.filter(
+          (row) => row.path !== "dsh/node_modules/@deepseek-ai/cordis/package.json",
+        );
+      },
+      /UPDATE_CORE_ARTIFACT_INCOMPLETE/,
+    ],
+    [
+      "missing actual SDK resolution",
+      (f) => {
+        f.packages.delete("@deepseek-ai/cordis");
+      },
+      /UPDATE_CORE_RESOLUTION_MISMATCH/,
+    ],
+    [
+      "cached SDK version differs from disk",
+      (f) => {
+        f.packages.get("@deepseek-ai/cordis").manifest.version = "4.0.5";
+      },
+      /UPDATE_CORE_SDK_MISMATCH/,
+    ],
+    [
+      "cached SDK exports differ from disk",
+      (f) => {
+        f.packages.get("@deepseek-ai/cordis").manifest.exports = "./lib/other.js";
+      },
+      /UPDATE_CORE_SDK_MISMATCH/,
+    ],
+    [
+      "empty explicit hashes",
+      (f) => {
+        f.proof.artifacts = [];
+      },
+      /UPDATE_CORE_PROVENANCE_REQUIRED/,
+    ],
+    [
+      "unknown proof kind",
+      (f) => {
+        f.proof.kind = "copied-desktop";
+      },
+      /UPDATE_CORE_PROVENANCE_REQUIRED/,
+    ],
+    [
+      "no explicit desktop lane",
+      (f) => {
+        delete f.proof.kind;
+      },
+      /Command failed|not a git repository/,
+    ],
+  ];
+  for (const [label, change, expected] of cases)
+    await t.test(label, async (t) => {
+      const f = await desktopCoreFixture(t);
+      await change(f);
+      await assert.rejects(f.readPluginUpdateCore(f.ctx, f.proof), expected);
+    });
+});
+
+test("desktop Core proof rejects an SDK manifest linked outside the admitted installation", async (t) => {
+  const f = await desktopCoreFixture(t);
+  const outside = await mkdtemp(join(tmpdir(), "outside-core-sdk-"));
+  t.after(() => rm(outside, { recursive: true, force: true }));
+  await writeFile(join(outside, "package.json"), JSON.stringify({ name: "@deepseek-ai/extra-sdk", version: "1.0.0" }));
+  await symlink(outside, join(f.root, "dsh/node_modules/@deepseek-ai/extra-sdk"));
+  f.runtime.dependencies["@deepseek-ai/extra-sdk"] = "1.0.0";
+  const bytes = JSON.stringify(f.runtime);
+  await writeFile(join(f.root, "dsh/package.json"), bytes);
+  f.proof.artifacts.find((row) => row.path === "dsh/package.json").sha256 = createHash("sha256").update(bytes).digest("hex");
+  await assert.rejects(f.readPluginUpdateCore(f.ctx, f.proof), /UPDATE_CORE_SDK_MISMATCH/);
 });
