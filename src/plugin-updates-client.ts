@@ -12,9 +12,7 @@ import {
 import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
 
 /** Observe compiled exports that the public client Loader has actually activated. */
-export function readClientPluginModules(
-  ctx: Context,
-): UpdateClientReport["modules"] {
+export function readClientPluginModules(ctx: Context): UpdateClientReport["modules"] {
   const modules = ctx.get("modules");
   if (!modules || modules.entries.state.getSnapshot().syncing) return [];
   const observed: UpdateClientReport["modules"] = [];
@@ -29,21 +27,14 @@ export function readClientPluginModules(
       !entry ||
       fiber?.state !== 2 ||
       !record ||
-      modules.entries.state
-        .getSnapshot()
-        .failures.some((failure) => failure.id === name)
+      modules.entries.state.getSnapshot().failures.some((failure) => failure.id === name)
     )
       continue;
     try {
       const namespace = updateObject(record.exports);
-      if (
-        ctx.registry.resolve(ctx.loader.unwrapExports(namespace)) !==
-        fiber.runtime?.callback
-      )
+      if (ctx.registry.resolve(ctx.loader.unwrapExports(namespace)) !== fiber.runtime?.callback)
         continue;
-      const revision = modules.manifest.modules.find(
-        (row) => row.id === name,
-      )?.rev;
+      const revision = modules.manifest.modules.find((row) => row.id === name)?.rev;
       if (revision)
         observed.push({
           stamp: compiledPackageStamp(namespace.pluginPackageVersion, name),
@@ -97,8 +88,7 @@ export function createPluginDetailUpdates(ctx: Context) {
         poll?: Promise<void>;
       }
     | undefined;
-  let checking: Promise<void> | undefined,
-    submitting: Promise<void> | undefined;
+  let checking: Promise<void> | undefined, submitting: Promise<void> | undefined;
   let disposed = false;
   const publish = (patch: Partial<PluginDetailUpdateSnapshot>) => {
     if (disposed) return;
@@ -120,19 +110,12 @@ export function createPluginDetailUpdates(ctx: Context) {
     });
     const result = updateObject(await response.json());
     signal.throwIfAborted();
-    if (!response.ok || result.ok !== true)
-      throw Error("UPDATE_TRANSPORT_FAILED");
+    if (!response.ok || result.ok !== true) throw Error("UPDATE_TRANSPORT_FAILED");
     return result.value;
   };
   const signalFor = (owner: NonNullable<typeof page>) =>
-    AbortSignal.any([
-      owner.lifetime.signal,
-      AbortSignal.timeout(status?.checkTimeoutMs ?? 5000),
-    ]);
-  const refresh = async (
-    owner: NonNullable<typeof page>,
-    signal = signalFor(owner),
-  ) => {
+    AbortSignal.any([owner.lifetime.signal, AbortSignal.timeout(status?.checkTimeoutMs ?? 5000)]);
+  const refresh = async (owner: NonNullable<typeof page>, signal = signalFor(owner)) => {
     const next = parseUpdateClientStatus(
       await request("status", { pageIdentity: owner.identity }, signal),
     );
@@ -146,10 +129,7 @@ export function createPluginDetailUpdates(ctx: Context) {
       publish({ items: next.items, transportError: null });
     }
     const modules = readClientPluginModules(ctx);
-    if (
-      modules.length &&
-      next.items.some((row) => row.runningHostVersion !== null)
-    )
+    if (modules.length && next.items.some((row) => row.runningHostVersion !== null))
       await request(
         "observed",
         {
@@ -208,8 +188,7 @@ export function createPluginDetailUpdates(ctx: Context) {
     check(): Promise<void> {
       if (checking) return checking;
       const owner = page;
-      if (!owner || submitting || pluginUpdateBusy(snapshot.items))
-        return Promise.resolve();
+      if (!owner || submitting || pluginUpdateBusy(snapshot.items)) return Promise.resolve();
       publish({ checking: true, transportError: null });
       const run = async () => {
         try {
