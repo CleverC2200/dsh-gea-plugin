@@ -314,19 +314,19 @@
       },
       {
         "name": "sinian-demand-baseline",
-        "description": "[用户技能] local regression fixture"
+        "description": "要算数量基线或生成预测草案时加载：按字典 V2 的④⑤⑥公式计算客户 SKU 次月拉货数量基线，处理新品与节令口径缺口；只出草案，不做 DMS 回写。"
       },
       {
         "name": "sinian-demand-dialogue",
-        "description": "[用户技能] local regression fixture"
+        "description": "需求预测对话的默认入口技能：用户在 GEA 会话里查/问需求预测、销售计划、提报或审批口径（例如“查一下 9 月需求预测的数据”）时先加载本技能，再按 V1.15 规则用只读数据作答、维护本地草稿并引导固定入口；不写回、不替用户点击最终提交。"
       },
       {
         "name": "sinian-forecast-review",
-        "description": "[用户技能] local regression fixture"
+        "description": "要复核或要报告时加载：用户要求核对数据覆盖、公式证据、业务风险、可解释报告或离线回测口径时，用本技能逐项复核并整理交付；不执行审批、排产或写回。"
       },
       {
         "name": "sinian-forecast-scope",
-        "description": "[用户技能] local regression fixture"
+        "description": "确认预测范围与口径时加载：用户问“这个月/这些客户/哪些 SKU 算在内、口径怎么定、实体怎么消歧”时，用本技能核对客户可售 SKU 范围与候选收缩；只做范围与数据准备，不执行预测或业务写入。"
       }
     ]
   },
