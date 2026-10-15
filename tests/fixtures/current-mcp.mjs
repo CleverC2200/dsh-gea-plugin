@@ -188,7 +188,17 @@ export async function currentMcp(t, options = {}) {
   });
   let enabled = true;
   ctx.provide("agentResources", {
-    cubeSource: (id) => enabled ? { id, consumerCode: id === "gea-html-inventory-dealer" ? "dealer-inventory-replenishment" : "sales_forecast", signal: business.identitySignal() } : undefined,
+    cubeSource: (id) =>
+      enabled
+        ? {
+            id,
+            consumerCode:
+              id === "gea-html-inventory-dealer"
+                ? "dealer-inventory-replenishment"
+                : "sales_forecast",
+            signal: business.identitySignal(),
+          }
+        : undefined,
     list: async () =>
       ["gea-readonly", ...(options.dealer ? ["gea-html-inventory-dealer"] : [])].map((id) => ({
         id,
@@ -273,7 +283,14 @@ export async function currentMcp(t, options = {}) {
       );
     throw Error("UNEXPECTED_FIXTURE_REQUEST: " + wire.method);
   });
-  if (options.personal) ctx.provide("userAgents", { cubeFor: (agent) => agent.id === "personal" ? { sourceRef: "gea-readonly", signal: business.identitySignal(), generation: 1 } : undefined, watch: () => () => {} });
+  if (options.personal)
+    ctx.provide("userAgents", {
+      cubeFor: (agent) =>
+        agent.id === "personal"
+          ? { sourceRef: "gea-readonly", signal: business.identitySignal(), generation: 1 }
+          : undefined,
+      watch: () => () => {},
+    });
   const stopPrompts = options.prompts
     ? mountBusinessPrompts(ctx, business, { readModules: () => [] })
     : undefined;

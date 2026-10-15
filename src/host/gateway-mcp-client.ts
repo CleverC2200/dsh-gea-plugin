@@ -139,7 +139,8 @@ export async function openGatewayMcp(
           },
         }).feed(text);
       } else reply = record(parse(text));
-      if (!reply || reply.id !== id || reply.jsonrpc !== "2.0") throw Error("GEA_MCP_REPLY_MISMATCH");
+      if (!reply || reply.id !== id || reply.jsonrpc !== "2.0")
+        throw Error("GEA_MCP_REPLY_MISMATCH");
       if (reply.error)
         throw Error(
           `GEA_MCP_PROTOCOL_ERROR: ${String(record(reply.error)?.message ?? "网关协议失败")}`,
