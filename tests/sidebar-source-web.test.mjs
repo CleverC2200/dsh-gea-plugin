@@ -52,21 +52,32 @@ test(
       .getByRole("button", { name: "继续", exact: true })
       .click();
     await expect(page.locator("[data-dsh-better-sidebar]")).toBeAttached({ timeout: 15000 });
+    // 新会话异步打开；先记录启动时的主对话，避免给即将卸载的旧会话选模型。
+    const conversation = page.locator(
+      "[data-conversation-content]:not(.agent-workbench-native-conversation *)",
+    );
+    await expect(conversation).toHaveAttribute("data-conversation-session", /.+/);
+    const initialSession = await conversation.getAttribute("data-conversation-session");
     await page
       .getByRole("complementary", { name: "业务导航", exact: true })
       .getByRole("button", { name: "新会话", exact: true })
       .filter({ hasText: "AI工作台" })
       .click();
-    await page.getByRole("button", { name: /^选择模型，当前/ }).click();
+    await expect(conversation).toBeVisible();
+    await expect(conversation).not.toHaveAttribute("data-conversation-session", initialSession);
+    await expect(conversation).toHaveAttribute("data-conversation-session", /.+/);
+    const sessionId = await conversation.getAttribute("data-conversation-session");
+    await conversation.getByRole("button", { name: /^选择模型，当前/ }).click();
     await page.getByRole("menuitem", { name: /^模型/ }).click();
     await page.getByRole("menuitemradio", { name: /Local receipt \/ 本地验证回执/ }).click();
-    const composer = page.locator('[contenteditable="true"], textarea').first();
+    const composer = conversation.locator('[contenteditable="true"], textarea').first();
     await composer.fill("侧栏隔离验收");
     await composer.press("Enter");
-    const receipt = page.getByText("本地验证回执（非 AI 分析）：业务资料已进入会话。", {
+    const receipt = conversation.getByText("本地验证回执（非 AI 分析）：业务资料已进入会话。", {
       exact: true,
     });
     await expect(receipt).toBeVisible();
+    await expect(conversation).toHaveAttribute("data-conversation-session", sessionId);
     // GEA hides auxiliary launch buttons; configure a public shortcut supported by Linux Web too.
     await expect(page.getByRole("dialog", { name: /内测声明|预览版说明/ })).toHaveCount(0);
     await page.keyboard.press("ControlOrMeta+/");
