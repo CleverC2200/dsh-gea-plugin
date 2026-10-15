@@ -165,6 +165,10 @@ test("actual APS mock registration and Manage route select its original resource
   await real.plugin(Tools);
   await real.plugin(Agents);
   await real.plugin(Loop, { agents: [] });
+  ctx.tools = real.tools;
+  ctx.agents = real.agents;
+  await applyManage(ctx, Config({ geaMcp: false }));
+  await Promise.all(pending);
   real.sessionProjections.register(agentPresetProjectionDefinition);
   real.provide("agentDefaultModel", {
     currentSelection: () => ({}),

@@ -1,4 +1,6 @@
-/** Cube-New's two wire methods, with login-owned transport and validated inline or historical results. */
+/** Authorized Cube and knowledge tools share login-owned MCP transport and keep distinct result contracts. */
+import { readMcpTrace, withMcpTrace } from "./mcp-trace.ts";
+import { KNOWLEDGE_METHODS, knowledgeArguments, knowledgeResult } from "./knowledge-mcp.ts";
 import { randomUUID } from "node:crypto";
 import { createParser } from "eventsource-parser";
 import {
@@ -15,15 +17,15 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
-const METHODS = ["inspect_cube_model", "query_business_data"] as const;
+const METHODS = ["inspect_cube_model", "query_business_data", ...KNOWLEDGE_METHODS] as const;
 const VERSIONS = ["2025-11-25", "2025-06-18", "2024-11-05"];
-export type CubeMcpTool = {
+export type GatewayMcpTool = {
   name: (typeof METHODS)[number];
   description: string;
   inputSchema: Record<string, unknown>;
 };
-export type CubeMcpClient = {
-  tools(): CubeMcpTool[];
+export type GatewayMcpClient = {
+  tools(): GatewayMcpTool[];
   call(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string>;
   /** Retained evidence can recheck its original resource grant; new queries do not use this API. */
   authorizedResources: GatewayMcpTransport["authorizedResources"];
@@ -79,10 +81,10 @@ function toolError(
   );
 }
 
-export async function openCubeMcp(
+export async function openGatewayMcp(
   transport: GatewayMcpTransport,
   signal: AbortSignal,
-): Promise<CubeMcpClient> {
+): Promise<GatewayMcpClient> {
   let version: string | undefined;
   const rpc = async (method: string, params: Record<string, unknown>, callSignal: AbortSignal) => {
     throwIfAborted(callSignal);
@@ -98,70 +100,80 @@ export async function openCubeMcp(
       },
       body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
     });
-    if (!response.ok) throw Error(`GEA_MCP_HTTP_${response.status}`);
-    const text = await readMcpResponseText(response, callSignal, transport.maxResponseBytes);
-    // Keep original numeric lexemes when structuredContent is serialized for the tool output.
-    const numbers = new WeakMap<object, Map<string, string>>();
-    const parse = (text: string): unknown =>
-      JSON.parse(
-        text,
-        function (this: object, key: string, value: unknown, context?: { source?: string }) {
-          if (typeof value === "number" && context?.source !== JSON.stringify(value)) {
-            if (!context?.source) throw Error("EXACT_JSON_RUNTIME_REQUIRED");
-            const entries = numbers.get(this) ?? new Map<string, string>();
-            entries.set(key, context.source);
-            numbers.set(this, entries);
+    const gatewayTrace =
+      method === "tools/call" && KNOWLEDGE_METHODS.some((name) => name === params.name)
+        ? readMcpTrace(response.headers)
+        : {};
+    if (!response.ok) throw withMcpTrace(Error(`GEA_MCP_HTTP_${response.status}`), gatewayTrace);
+    try {
+      const text = await readMcpResponseText(response, callSignal, transport.maxResponseBytes);
+      // Keep original numeric lexemes when structuredContent is serialized for the tool output.
+      const numbers = new WeakMap<object, Map<string, string>>();
+      const parse = (text: string): unknown =>
+        JSON.parse(
+          text,
+          function (this: object, key: string, value: unknown, context?: { source?: string }) {
+            if (typeof value === "number" && context?.source !== JSON.stringify(value)) {
+              if (!context?.source) throw Error("EXACT_JSON_RUNTIME_REQUIRED");
+              const entries = numbers.get(this) ?? new Map<string, string>();
+              entries.set(key, context.source);
+              numbers.set(this, entries);
+            }
+            return value;
+          },
+        );
+      const stringify = (value: unknown) =>
+        JSON.stringify(value, function (this: object, key, value) {
+          const source = numbers.get(this)?.get(key);
+          if (source === undefined) return value;
+          if (!("rawJSON" in JSON) || typeof JSON.rawJSON !== "function")
+            throw Error("EXACT_JSON_RUNTIME_REQUIRED");
+          return JSON.rawJSON(source);
+        });
+      let reply: Record<string, unknown> | undefined;
+      if (response.headers.get("content-type")?.includes("text/event-stream")) {
+        createParser({
+          onEvent: (event) => {
+            const candidate = record(parse(event.data));
+            if (candidate?.id === id) reply = candidate;
+          },
+        }).feed(text);
+      } else reply = record(parse(text));
+      if (!reply || reply.id !== id || reply.jsonrpc !== "2.0")
+        throw Error("GEA_MCP_REPLY_MISMATCH");
+      if (reply.error)
+        throw Error(
+          `GEA_MCP_PROTOCOL_ERROR: ${String(record(reply.error)?.message ?? "网关协议失败")}`,
+        );
+      const result = record(reply.result);
+      if (!result) throw Error("GEA_MCP_RESULT_INVALID");
+      const textValues = new Map<string, unknown>();
+      const parseText = (text: string): unknown => {
+        if (!textValues.has(text)) {
+          let value: unknown;
+          try {
+            value = parse(text);
+          } catch {
+            /* Explanatory text is not business JSON. */
           }
-          return value;
-        },
-      );
-    const stringify = (value: unknown) =>
-      JSON.stringify(value, function (this: object, key, value) {
-        const source = numbers.get(this)?.get(key);
-        if (source === undefined) return value;
-        if (!("rawJSON" in JSON) || typeof JSON.rawJSON !== "function")
-          throw Error("EXACT_JSON_RUNTIME_REQUIRED");
-        return JSON.rawJSON(source);
-      });
-    let reply: Record<string, unknown> | undefined;
-    if (response.headers.get("content-type")?.includes("text/event-stream")) {
-      createParser({
-        onEvent: (event) => {
-          const candidate = record(parse(event.data));
-          if (candidate?.id === id) reply = candidate;
-        },
-      }).feed(text);
-    } else reply = record(parse(text));
-    if (!reply || reply.id !== id || reply.jsonrpc !== "2.0") throw Error("GEA_MCP_REPLY_MISMATCH");
-    if (reply.error)
-      throw Error(
-        `GEA_MCP_PROTOCOL_ERROR: ${String(record(reply.error)?.message ?? "网关协议失败")}`,
-      );
-    const result = record(reply.result);
-    if (!result) throw Error("GEA_MCP_RESULT_INVALID");
-    const textValues = new Map<string, unknown>();
-    const parseText = (text: string): unknown => {
-      if (!textValues.has(text)) {
-        let value: unknown;
-        try {
-          value = JSON.parse(text);
-        } catch {
-          /* Explanatory text is not business JSON. */
+          textValues.set(text, value);
         }
-        textValues.set(text, value);
-      }
-      return textValues.get(text);
-    };
-    const failed = toolError(result, parseText);
-    if (failed) throw failed;
-    return { result, stringify, parseText };
+        return textValues.get(text);
+      };
+      const failed = toolError(result, parseText);
+      if (failed) throw failed;
+      return { result, stringify, parseText, gatewayTrace };
+    } catch (error) {
+      if (error instanceof Error) throw withMcpTrace(error, gatewayTrace);
+      throw error;
+    }
   };
   const { result: initialized } = await rpc(
     "initialize",
     {
       protocolVersion: VERSIONS[0],
       capabilities: {},
-      clientInfo: { name: "gea-cube-new", version: "1.0" },
+      clientInfo: { name: "gea-gateway", version: "1.0" },
     },
     signal,
   );
@@ -185,7 +197,7 @@ export async function openCubeMcp(
   await ready.body?.cancel();
   throwIfAborted(signal);
   if (!ready.ok) throw Error(`GEA_MCP_HTTP_${ready.status}`);
-  const tools: CubeMcpTool[] = [];
+  const tools: GatewayMcpTool[] = [];
   let cursor: string | undefined;
   do {
     const { result: listed } = await rpc("tools/list", cursor ? { cursor } : {}, signal);
@@ -228,12 +240,16 @@ export async function openCubeMcp(
         throw Error("GEA_MCP_PLATFORM_ARGUMENT_REJECTED: 平台身份和路由不属于业务 arguments。");
       if (!tools.some((tool) => tool.name === name))
         throw Error(`GEA_MCP_TOOL_UNAVAILABLE: 当前业务会话未返回 ${name}`);
+      const knowledge = KNOWLEDGE_METHODS.find((method) => method === name);
+      if (knowledge) knowledgeArguments(knowledge, args);
       if (name === "query_business_data") validateCubeQueryMembers(args);
-      const { result, stringify, parseText } = await rpc(
+      const { result, stringify, parseText, gatewayTrace } = await rpc(
         "tools/call",
         { name, arguments: args },
         callSignal,
       );
+      if (knowledge)
+        return knowledgeResult(knowledge, result, args, stringify, parseText, gatewayTrace);
       if (name === "inspect_cube_model") {
         const structured = record(result.structuredContent);
         if (structured) return stringify(structured);

@@ -29,3 +29,9 @@ The user explicitly approved targeted acceptance and merge after the original re
 The selected tests cover direct structured/text results, historical resource integrity, paging and numeric precision, malformed response stopping, identity/Consumer admission, cancellation, Host settings and the exception's rejection cases. Runtime/browser and the historical full-suite failures remain outside this single-ticket acceptance; installed-client and real MCP evidence belongs to the earlier 0.0.144 candidate.
 
 冻结来源与历史例外统一由同组 Workbench 的 `scripts/ci-source-policy.mjs` 维护；本仓只适配已登记的事件与原 MCP 修复角色。workflow 先取得固定 Workbench 源码，联合 runner 读取 tuple 中的实际路径。例外分支、来源 SHA、路径范围和 required Core 均未扩张。
+
+## PR 75 知识接入阶段例外
+
+用户在本聊天明确要求“跳过这个200的校验”，仅放行知识接入 PR 75 的源码合并。原205文件运行保留取消记录，不记为通过。`knowledge-merge` 保留固定rc.2、三仓原字节准入、静态检查、构建、macOS隔离、知识/网关/身份/预算/Cube定向测试及原最终聚合，main保护不变。
+
+本次产品源码固定为 GEA `60c9ce95b883485c79d77c6cb855ae4735d288e1`、Workbench `29d851d71bdbe4c490a246ab20447c76c19ae957`、Manage `307303d5532f4250879008573b329cf4bb202ff3`。GEA只允许本例外的五个CI及说明文件作为后续补充，实际HEAD或其它产品文件变化均拒绝。选择器只接收同仓PR75的原分支，以及从原main直接合并该树的一次main事件；其它PR、后续main提交和手动运行回到普通流程。完整205文件选择、最终安装客户端、知识迁移、上游正文完整性及正式发行仍待验。

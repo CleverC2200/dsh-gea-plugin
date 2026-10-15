@@ -3,14 +3,16 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { build } from "esbuild";
 import { Context } from "@deepseek-ai/cordis";
 
 const built = await build({
   stdin: {
     contents:
-      "export {Business} from './src/host/business.ts';export {createCubeMcpService} from './src/host/cube-mcp-service.ts';export {mountGeaMcp} from '../dsh-agent-manage/src/runtime/gea-mcp.ts';export {createCapabilityRegistry} from './src/capability/registry.ts';",
+      "export {PROMPT_BUDGET} from './src/host/prompt-policy.ts';export {Business} from './src/host/business.ts';export {mountBusinessPrompts} from './src/host/prompt-runtime.ts';export {createGatewayMcpService} from './src/host/gateway-mcp-service.ts';export {mountGeaMcp} from '../dsh-agent-manage/src/runtime/gea-mcp.ts';export {createCapabilityRegistry} from './src/capability/registry.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -35,7 +37,14 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   module,
   module.exports,
 );
-const { Business, createCubeMcpService, mountGeaMcp, createCapabilityRegistry } = module.exports;
+const {
+  PROMPT_BUDGET,
+  Business,
+  mountBusinessPrompts,
+  createGatewayMcpService,
+  mountGeaMcp,
+  createCapabilityRegistry,
+} = module.exports;
 const official = (part) =>
   import(
     pathToFileURL(resolve("../../official-latest-standard/packages/core", part, "lib/index.js"))
@@ -44,6 +53,7 @@ const { default: SystemPrompt } = await official("system-prompt");
 const { default: Tools } = await official("tools");
 const { createScope } = await official("scope");
 
+export const businessCallBudget = PROMPT_BUDGET.calls;
 export const inspectTool = "mcp__gea-gateway__inspect_cube_model";
 export const queryTool = "mcp__gea-gateway__query_business_data";
 export const cubeCode = "2109581866385289217";
@@ -94,12 +104,14 @@ export async function currentMcp(t, options = {}) {
   await system;
   const tools = ctx.plugin(Tools, { mode: "native" });
   await tools;
+  const runtime = options.prompts ? await mkdtemp(join(tmpdir(), "knowledge-runtime-")) : undefined;
   const business = new Business({
+    ...(runtime ? { runtimeDir: runtime } : {}),
     geaBaseUrl: "https://mcp.fixture.invalid",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 1000,
-    mcpRequestTimeoutMs: 1000,
-    cubeMcpCodes: { production: cubeCode },
+    mcpRequestTimeoutMs: options.timeoutMs ?? 1000,
+    cubeMcpCodes: options.cubeMcpCodes ?? { production: cubeCode },
   });
   business.restoreDesktopLogin({
     schema: 1,
@@ -143,11 +155,16 @@ export async function currentMcp(t, options = {}) {
     ["sales", "gea-readonly"],
     ["ordinary", "standard"],
     ...(options.dealer ? [["dealer", "gea-html-inventory-dealer"]] : []),
+    ...(options.personal ? [["personal", "personal-knowledge"]] : []),
   ]) {
     const agent = {
       id,
       preset,
-      session: { header: { cwd: process.cwd() }, snapshotEvents: () => [] },
+      session: {
+        header: { cwd: process.cwd() },
+        snapshotEvents: () => [],
+        deriveMessages: () => [],
+      },
     };
     await ctx.plugin(
       Object.assign(
@@ -213,17 +230,22 @@ export async function currentMcp(t, options = {}) {
         },
       });
     assert.ok(String(url).endsWith("/mcp"), "direct queries never discover resource catalogs");
-    const reply = (result) => Response.json({ jsonrpc: "2.0", id: wire.id, result });
+    const reply = (result, headers) =>
+      Response.json({ jsonrpc: "2.0", id: wire.id, result }, { headers });
     if (wire.method === "initialize") {
       if (options.initializeStatus) return new Response(null, { status: options.initializeStatus });
-      return reply({
-        protocolVersion: options.protocolVersion ?? "2025-11-25",
-      });
+      return reply(
+        {
+          protocolVersion: options.protocolVersion ?? "2025-11-25",
+        },
+        options.transportSession ? { "MCP-Session-Id": options.transportSession } : undefined,
+      );
     }
     if (wire.method === "notifications/initialized") return new Response(null, { status: 202 });
     if (wire.method === "tools/list")
       return reply({
         tools: [
+          ...(options.extraTools ?? []),
           {
             name: "inspect_cube_model",
             description: "Server inspect",
@@ -261,20 +283,31 @@ export async function currentMcp(t, options = {}) {
       );
     throw Error("UNEXPECTED_FIXTURE_REQUEST: " + wire.method);
   });
-  ctx.provide("geaMcp", createCubeMcpService(ctx, business));
+  if (options.personal)
+    ctx.provide("userAgents", {
+      cubeFor: (agent) =>
+        agent.id === "personal"
+          ? { sourceRef: "gea-readonly", signal: business.identitySignal(), generation: 1 }
+          : undefined,
+      watch: () => () => {},
+    });
+  const stopPrompts = options.prompts
+    ? mountBusinessPrompts(ctx, business, { readModules: () => [] })
+    : undefined;
+  ctx.provide("geaMcp", createGatewayMcpService(ctx, business));
   const mount = ctx.plugin(mountGeaMcp);
   await mount;
   const deadline = Date.now() + 1000;
   while (
     !(options.discoveryFailure
       ? warnings.some((warning) => warning.includes("discovery failed"))
-      : ctx.tools.get(queryTool)) &&
+      : ctx.tools.get(options.readyTool ?? queryTool)) &&
     Date.now() < deadline
   )
     await new Promise((done) => setTimeout(done, 5));
   if (!options.discoveryFailure)
     assert.ok(
-      ctx.tools.get(queryTool),
+      ctx.tools.get(options.readyTool ?? queryTool),
       "Manage must register the current server tool " +
         JSON.stringify({
           warnings,
@@ -284,10 +317,12 @@ export async function currentMcp(t, options = {}) {
     );
   t.after(async () => {
     await mount.dispose();
+    stopPrompts?.();
     business.dispose();
     for (const scope of scopes) await scope.dispose();
     await tools.dispose();
     await system.dispose();
+    if (runtime) await rm(runtime, { recursive: true, force: true });
   });
   return {
     ctx,

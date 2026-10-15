@@ -87,9 +87,9 @@ for (const mock of [false, true])
             return () => {};
           },
           list: (options = {}) => provider.list(options),
-          async get(name, options = {}) {
+          get: async (name, options = {}) => {
             const candidate = (await provider.list(options)).find((row) => row.name === name);
-            if (candidate) return provider.get(candidate, options);
+            return candidate && provider.get(candidate, options);
           },
         },
         agentPresets: {

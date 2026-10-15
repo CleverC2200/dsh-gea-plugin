@@ -1,4 +1,4 @@
-import { selectBusinessResource, configurePluginSkills } from "./fixtures/business-session.mjs";
+import { selectBusinessResource, fixtureRequest } from "./fixtures/business-session.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -99,14 +99,27 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     },
     "promptQa",
   );
-  await configurePluginSkills(app, (skills) =>
-    skills.map((skill) =>
-      qaFixtureSkillNames.includes(skill.name)
-        ? { ...skill, content: "Explicit domain rule fixture." }
-        : skill,
-    ),
-  );
-
+  const fixtureSkills = qaFixtureSkillNames.map((name) => ({
+    kind: "personal",
+    name,
+    description: "local regression fixture",
+    content: "Explicit domain rule fixture.",
+    enabled: true,
+  }));
+  async function saveFixtureSkills() {
+    const saved = await fixtureRequest(app, "/api/agent-manage/agents/plugin/skills", {
+      id: "gea-readonly",
+      skills: fixtureSkills,
+    });
+    assert.equal(saved.ok, true, JSON.stringify(saved));
+  }
+  async function updateFixtureSkill(name, changes) {
+    const skill = fixtureSkills.find((skill) => skill.name === name);
+    assert.ok(skill);
+    Object.assign(skill, changes);
+    await saveFixtureSkills();
+  }
+  await saveFixtureSkills();
   let script = [],
     captured = [];
   app.route(async (req, res) => {
@@ -279,18 +292,15 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     return { first: 40, next: 20 };
   });
   await check(
-    "native Skill instructions retain their Session revision and new Sessions receive explicit configuration changes",
+    "native Skill instructions retain their Session revision and new Sessions read the updated Agent",
     async () => {
       const changed = action("skill", { name: "sinian-demand-dialogue" });
-      changed.before = () =>
-        configurePluginSkills(app, (skills) =>
-          skills.map((skill) =>
-            skill.name === "sinian-demand-dialogue"
-              ? { ...skill, content: "Updated original domain rule fixture." }
-              : skill,
-          ),
-        );
-
+      changed.before = async () => {
+        await updateFixtureSkill("sinian-demand-dialogue", {
+          description: "changed fixture",
+          content: "Updated original domain rule fixture.",
+        });
+      };
       const r = await run(
         await create(),
         [
@@ -318,7 +328,7 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
       assert.match(
         r.tools[2].text,
         /Explicit domain rule fixture/,
-        "the live Session retains its captured Skill body",
+        "an existing Session retains its Skill revision",
       );
       const other = await run(
         await create(),
@@ -637,7 +647,7 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     },
   );
   await check(
-    "local calculation references retain their revision, new disabled configurations refuse calculation and a different GEA identity revokes old evidence",
+    "local calculations retain their Agent revision, new Sessions honor Skill revocation and a different GEA identity cannot reuse evidence",
     async () => {
       const id = await create(),
         data = input(24);
@@ -649,33 +659,42 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
       );
       const oldId = resultObject(first.tools[0]).evidenceId;
       assert.ok(oldId);
-      const update = (enabled, content) =>
-        configurePluginSkills(app, (skills) =>
-          skills.map((skill) =>
-            skill.name === "sinian-demand-baseline" ? { ...skill, enabled, content } : skill,
-          ),
-        );
-      await update(true, "Changed current baseline body.");
+      await updateFixtureSkill("sinian-demand-baseline", {
+        description: "changed baseline fixture",
+        content: "Changed current baseline body.",
+      });
       const retained = await run(
         id,
         [action("gea_evidence_read", { evidenceId: oldId })],
-        "旧会话继续使用其保存的规则版本",
+        "旧会话继续读取原版本计算稿",
       );
       assert.equal(retained.tools[0].isError, false, retained.tools[0].text);
-      await update(false, "Changed current baseline body.");
-      const disabled = await run(
+      const currentSession = await create();
+      const current = await run(
+        currentSession,
+        [action("forecast_compute", data)],
+        "用户原始输入：" + JSON.stringify(data),
+      );
+      const currentResult = resultObject(current.tools[0]);
+      const currentId = currentResult.evidenceId;
+      assert.ok(currentId);
+      assert.notEqual(
+        currentResult.source.baselineHash,
+        resultObject(first.tools[0]).source.baselineHash,
+      );
+      await updateFixtureSkill("sinian-demand-baseline", { enabled: false });
+      const revoked = await run(
         await create(),
         [action("forecast_compute", data)],
         "用户原始输入：" + JSON.stringify(data),
       );
-      assert.equal(disabled.tools[0].isError, true);
-      assert.match(disabled.tools[0].text, /FORECAST_CAPABILITY_DISABLED/);
-      await update(true, "Changed current baseline body.");
-      const currentId = oldId;
+      assert.equal(revoked.tools[0].isError, true);
+      assert.match(revoked.tools[0].text, /FORECAST_CAPABILITY_DISABLED/);
+      await updateFixtureSkill("sinian-demand-baseline", { enabled: true });
       assert.equal((await app.rpc("environment/select", { environment: "test" })).ok, true);
       await app.login();
       const otherIdentity = await run(
-        id,
+        currentSession,
         [action("gea_evidence_read", { evidenceId: currentId })],
         "不同GEA环境不得继承旧私有稿",
       );

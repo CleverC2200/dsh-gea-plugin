@@ -24,7 +24,7 @@ import { readHtmlQuery } from "../html-query.ts";
 import { createSqlReadLimit } from "../shared/sql-read-limit.js";
 import { createSalesReadonly, SalesReadonlyError } from "../shared/sales-readonly.js";
 import { probeTables, withDefaultPaging } from "./plugin-query.ts";
-import { openCubeMcp, type CubeMcpClient } from "./cube-mcp-client.ts";
+import { openGatewayMcp, type GatewayMcpClient } from "./gateway-mcp-client.ts";
 import { currentPageEnvelope, pageIdentityFresh, type PageIdentity } from "./page-identity.ts";
 import { workbenchPresence, type WorkbenchPresence } from "./workbench-presence.ts";
 import { normalizeSurface, type WorkbenchSurface } from "./workbench-surface.ts";
@@ -1944,10 +1944,6 @@ export class Business {
     this.assertExecutionAllowed(consumer.consumerCode);
     const auth = this.authenticated();
     const identity = this.epoch.signal;
-    if (!this.config.cubeMcpCodes?.[this.environment])
-      throw Error(
-        "GEA_CUBE_MCP_NOT_CONFIGURED: 当前环境未登记 Cube-New 来源，不能使用旧 Cube 替代。",
-      );
     return prepareGatewayMcp(
       this.base,
       auth,
@@ -1963,7 +1959,7 @@ export class Business {
     );
   }
 
-  private readonly moduleMcpCache = new Map<string, { token: string; module: CubeMcpClient }>();
+  private readonly moduleMcpCache = new Map<string, { token: string; module: GatewayMcpClient }>();
   /** A rejected business Session cannot authorize later reads, even if the login stays valid. */
   invalidateModuleMcp(consumerCode: string): void {
     this.moduleMcpCache.delete(consumerCode);
@@ -1979,7 +1975,7 @@ export class Business {
    * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
    * 页面不可用时的兜底查询走这里：不依赖页面、也不依赖我们替它写 SQL。
    */
-  async moduleMcp(consumerCode: string, signal: AbortSignal): Promise<CubeMcpClient> {
+  async moduleMcp(consumerCode: string, signal: AbortSignal): Promise<GatewayMcpClient> {
     this.assertExecutionAllowed(consumerCode);
     const auth = this.authenticated();
     const rejected = this.moduleMcpRejections.get(consumerCode);
@@ -1997,13 +1993,13 @@ export class Business {
     }
     const cached = this.moduleMcpCache.get(consumerCode);
     if (cached && cached.token === auth.token) return cached.module;
-    let module: CubeMcpClient;
+    let module: GatewayMcpClient;
     try {
       const transport = await this.openMcpConnection(
         { consumerType: "AGENT", consumerCode },
         signal,
       );
-      module = await openCubeMcp(transport, signal);
+      module = await openGatewayMcp(transport, signal);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const code =
@@ -2358,7 +2354,7 @@ export class Business {
           // 不是 JSON 的响应不参与实验。
         }
       }
-      const module = await openCubeMcp(transport, signal);
+      const module = await openGatewayMcp(transport, signal);
       return {
         consumerCode,
         ok: true,

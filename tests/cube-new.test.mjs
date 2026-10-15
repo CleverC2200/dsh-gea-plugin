@@ -6,7 +6,7 @@ import { build } from "esbuild";
 const { outputFiles } = await build({
   stdin: {
     contents:
-      "export {gatewayMcpTransport} from './src/host/gateway-mcp.ts'; export {openCubeMcp} from './src/host/cube-mcp-client.ts';",
+      "export {gatewayMcpTransport} from './src/host/gateway-mcp.ts'; export {openGatewayMcp} from './src/host/gateway-mcp-client.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -14,7 +14,7 @@ const { outputFiles } = await build({
   platform: "node",
   format: "esm",
 });
-const { gatewayMcpTransport, openCubeMcp } = await import(
+const { gatewayMcpTransport, openGatewayMcp } = await import(
   "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 const code = "2109581866385289217";
@@ -126,7 +126,7 @@ async function fixture(options = {}) {
     { cubeMcpCode: code },
   );
   return {
-    module: await openCubeMcp(transport, controller.signal),
+    module: await openGatewayMcp(transport, controller.signal),
     sent,
     signal: controller.signal,
   };

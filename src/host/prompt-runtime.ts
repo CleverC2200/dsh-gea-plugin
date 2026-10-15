@@ -14,19 +14,22 @@ import {
   allowedTools,
   businessUiIssue,
   COMMON_PROMPT,
+  KNOWLEDGE_PROMPT,
   profileFor,
   PROMPT_BUDGET,
   promptMeasurement,
   TOOL_DESCRIPTIONS,
 } from "./prompt-policy.ts";
-import { cubeAllowed } from "./cube-access.ts";
+import { cubeAllowed, resolveCubeAccess } from "./cube-access.ts";
 import { PromptExecutionState } from "./prompt-execution-state.ts";
 
-const cubeMethod = (name: string) =>
+const gatewayMethod = (name: string) =>
   name === "mcp__gea-gateway__inspect_cube_model" ||
-  name === "mcp__gea-gateway__query_business_data";
+  name === "mcp__gea-gateway__query_business_data" ||
+  name === "mcp__gea-gateway__weknora_list_knowledge_bases" ||
+  name === "mcp__gea-gateway__weknora_ask";
 const businessMethod = (name: string) =>
-  (name.startsWith("gea_") && name !== "gea_runtime_diagnose") || cubeMethod(name);
+  (name.startsWith("gea_") && name !== "gea_runtime_diagnose") || gatewayMethod(name);
 
 const UI_RULES =
   '业务概览、多指标、预测/库存结构或对比优先轻量卡片；简单事实或明确纯文字不用。用dsh-ui JSON围栏，根对象{"title":"标题","items":[节点]}；stat={type:"stat",label,value}、table={type:"table",columns,rows}、callout={type:"callout",content}。先1句结论，再1组卡片；结论、表格、说明各说一次，卡片后不重复数字和长篇解释。stat只放已核实数字，最多2项；版本名、未知量和缺口原因用短说明，不能放大成指标。按窄聊天栏设计：表格优先2列，最多3个短列，遵守前N；来源、日期范围、单位和版本放表外短注，不塞长列。标题和标签用业务中文，原始字段/表名仅排查时展示。缺数据说明影响，不补0；记录数不能改叫预测量。禁total:true自动合计、差额delta自动着色。复杂图表才读genui并校验；简单卡片无需通读Skill。按钮不授予写权限。';
@@ -99,9 +102,13 @@ export function mountBusinessPrompts(
     if (cubeAllowed(ctx, business, agent.id)) {
       names.add("mcp__gea-gateway__inspect_cube_model");
       names.add("mcp__gea-gateway__query_business_data");
+      names.add("mcp__gea-gateway__weknora_list_knowledge_bases");
+      names.add("mcp__gea-gateway__weknora_ask");
     } else {
       names.delete("mcp__gea-gateway__inspect_cube_model");
       names.delete("mcp__gea-gateway__query_business_data");
+      names.delete("mcp__gea-gateway__weknora_list_knowledge_bases");
+      names.delete("mcp__gea-gateway__weknora_ask");
     }
     const deny = ctx.tools
       .schemas()
@@ -137,7 +144,7 @@ export function mountBusinessPrompts(
     ctx.on("session/event", (session, event) => {
       if (event.type !== "turn/start") return;
       const agent = ctx.agents.get(session.id);
-      if (!agent || !profileOf(agent)) return;
+      if (!agent || (!profileOf(agent) && !cubeAllowed(ctx, business, agent.id))) return;
       const state = stateOf(agent);
       state.calls = 0;
       state.readCalls = 0;
@@ -166,14 +173,12 @@ export function mountBusinessPrompts(
   offs.push(
     ctx.tools.guard((exec) => {
       const agent = exec.agent;
-      if (
-        cubeMethod(exec.name) &&
-        agent &&
+      const personalGateway =
+        gatewayMethod(exec.name) &&
+        !!agent &&
         !profileOf(agent) &&
-        cubeAllowed(ctx, business, agent.id)
-      )
-        return;
-      if (!profileOf(agent) || !agent) {
+        cubeAllowed(ctx, business, agent.id);
+      if (!agent || (!profileOf(agent) && !personalGateway)) {
         if (businessMethod(exec.name))
           return agent
             ? "GEA_BUSINESS_PROFILE_REQUIRED: 当前实际会话预设未声明业务身份。请使用基地库存 Agent 分析入口或选用相应已启用业务资源；Skill、角色名称和页面可见不授予Consumer权限。"
@@ -192,7 +197,7 @@ export function mountBusinessPrompts(
         if (issue) return issue;
       }
       if (!businessMethod(exec.name)) return;
-      if (!namesFor(agent, state).has(exec.name))
+      if (!personalGateway && !namesFor(agent, state).has(exec.name))
         return ["gea_page", "gea_workbench_apply"].includes(exec.name) && !pageBound(agent)
           ? "GEA_BUSINESS_TOOL_NOT_ALLOWED: reason=PAGE_NOT_BOUND。当前业务会话未绑定页面；打开相应业务页面并连接当前会话后再读取页面证据。独立查询结果不能代替页面确定性结果。"
           : "GEA_BUSINESS_TOOL_NOT_ALLOWED: 当前业务角色未声明此工具能力。";
@@ -286,6 +291,23 @@ export function mountBusinessPrompts(
                 )
               : undefined;
           exec.signal.throwIfAborted();
+          let mcpAccess: { sourceRef: string; consumerCode: string } | { error: string } | null =
+            null;
+          if (agent) {
+            try {
+              const access = resolveCubeAccess(ctx, business, agent.id);
+              mcpAccess = {
+                sourceRef: access.sourceRef,
+                consumerCode: access.consumerCode,
+              };
+            } catch (error) {
+              mcpAccess = {
+                error:
+                  (error instanceof Error && error.message.match(/^GEA_[A-Z0-9_]+/)?.[0]) ||
+                  "GEA_MCP_ACCESS_UNAVAILABLE",
+              };
+            }
+          }
           const events = agent?.session.snapshotEvents() ?? [];
           const calls = new Map(
             events.flatMap((event) =>
@@ -327,7 +349,13 @@ export function mountBusinessPrompts(
                   hasError: !!resource?.error,
                 }
               : null,
-            consumerCode: agent && profile ? sessionConsumer(ctx, business, agent.id) : null,
+            consumerCode:
+              agent && profile
+                ? sessionConsumer(ctx, business, agent.id)
+                : mcpAccess && "consumerCode" in mcpAccess
+                  ? mcpAccess.consumerCode
+                  : null,
+            mcpAccess,
             pageBound: agent ? pageBound(agent) : false,
             authenticated: business.status().authenticated === true,
             businessAuthorization: "not-checked",
@@ -429,14 +457,15 @@ export function mountBusinessPrompts(
           tools: assembled.tools.filter(
             (tool) =>
               !businessMethod(tool.name) ||
-              (cubeMethod(tool.name) && cubeAllowed(ctx, business, agent.id)),
+              (gatewayMethod(tool.name) && cubeAllowed(ctx, business, agent.id)),
           ),
           sections: [
             ...assembled.sections,
             {
               name: "gea:admission",
               text: cubeAllowed(ctx, business, agent.id)
-                ? "当前个人 Agent 仅引用受控 Cube 查询能力，沿当前 GEA 身份与服务端授权执行。该引用不授予业务写入或页面动作。"
+                ? "Current personal Agent uses its retained Consumer with the current GEA identity. Server grants govern Cube and knowledge tools. This association grants no business writes or page actions.\n" +
+                  KNOWLEDGE_PROMPT
                 : "当前实际会话预设未声明 GEA 业务身份。Skill 可用于规则说明，但实际库存取数需点击工作台的‘使用基地库存 Agent 分析’入口或选用相应业务资源。子智能体的角色名和提示词不改变其实际父会话的业务身份。GEA 工具当前不可用；其它 MCP 结果应标明独立来源，不证明 GEA 页面或授权恢复。",
             },
           ],
