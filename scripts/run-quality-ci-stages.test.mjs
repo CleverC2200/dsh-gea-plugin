@@ -11,7 +11,6 @@ test("the public quality CLI rejects an unknown stage before preparation", () =>
 });
 
 import {
-  cpSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -27,6 +26,22 @@ import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const sourceRoot = resolve(import.meta.dirname, "..");
+const fixtureSourceFiles = [
+  "run-quality-ci.mjs",
+  "quality-ci-stages.mjs",
+  "run-quality-checks.mjs",
+  "quality-upstreams.mjs",
+  "quality-upstreams.json",
+  "quality-workbench.mjs",
+  "source-profile.mjs",
+  "source-combination-integrity.mjs",
+  "source-composition.mjs",
+  "supported-cores.mjs",
+  "ci-platform-tests.mjs",
+  "quality-test-reporter.mjs",
+  "fixtures/quality-ci-commands.mjs",
+  "fixtures/delivery-history/navigation-r7-setup-failure.json.raw",
+];
 function fixture(t) {
   const job = realpathSync(mkdtempSync(join(tmpdir(), "gea-ci-stages-")));
   t.after(() => rmSync(job, { recursive: true, force: true }));
@@ -60,7 +75,9 @@ function fixture(t) {
     manage = join(job, "candidate/dsh-agent-manage"),
     workbench = join(job, "source/dsh-agent-workbench"),
     core = join(job, "core-source");
-  cpSync(join(sourceRoot, "scripts"), join(gea, "scripts"), { recursive: true });
+  // Copy only this fixture's authored inputs; parallel quality tests own transient scripts directories.
+  for (const file of fixtureSourceFiles)
+    write(join(gea, "scripts", file), readFileSync(join(sourceRoot, "scripts", file)));
   const workbenchSource =
     process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ?? resolve(sourceRoot, "../dsh-agent-workbench");
   const manageSource =
@@ -347,4 +364,54 @@ test("a required fixture skip fails the staged test entry and final summary", (t
   assert.equal(skipped.status, 1, skipped.stdout + skipped.stderr);
   assert.match(skipped.stderr, /QUALITY_REQUIRED_TEST_SKIPPED/);
   assert.equal(f.run("summary").status, 1);
+});
+
+test("stage fixtures ignore a concurrent quality fixture disappearing from scripts", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "gea-stage-copy-race-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const probeSource = join(directory, "source");
+  for (const file of [...fixtureSourceFiles, "run-quality-ci-stages.test.mjs"]) {
+    const target = join(probeSource, "scripts", file);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(join(sourceRoot, "scripts", file), target);
+  }
+  const transient = realpathSync(mkdtempSync(join(probeSource, "scripts/quality-fixture-")));
+  writeFileSync(join(transient, "sample.mjs"), "export const value = 1;\n");
+  const schedule = join(directory, "disappear.mjs");
+  // Pin the filesystem race at the recursive-copy boundary instead of depending on timing.
+  writeFileSync(
+    schedule,
+    `
+    import fs from "node:fs";
+    import { syncBuiltinESMExports } from "node:module";
+    const copy = fs.cpSync;
+    fs.cpSync = (source, target, options) => copy(source, target, {
+      ...options,
+      filter(file) {
+        if (file === ${JSON.stringify(transient)}) fs.rmSync(file, { recursive: true, force: true });
+        return true;
+      },
+    });
+    syncBuiltinESMExports();
+  `,
+  );
+  const env = {
+    ...process.env,
+    NODE_OPTIONS: `--import=${schedule}`,
+    GEA_FINAL_GROUP_WORKBENCH_SOURCE:
+      process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ?? resolve(sourceRoot, "../dsh-agent-workbench"),
+    GEA_FINAL_GROUP_MANAGE_SOURCE:
+      process.env.GEA_FINAL_GROUP_MANAGE_SOURCE ?? resolve(sourceRoot, "../dsh-agent-manage"),
+  };
+  delete env.NODE_TEST_CONTEXT;
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--test",
+      "--test-name-pattern=^separate CLI processes prepare once",
+      "scripts/run-quality-ci-stages.test.mjs",
+    ],
+    { cwd: probeSource, encoding: "utf8", env },
+  );
+  assert.equal(result.status, 0, result.stdout + result.stderr);
 });
