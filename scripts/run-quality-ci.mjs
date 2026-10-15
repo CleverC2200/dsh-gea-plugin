@@ -179,8 +179,12 @@ try {
 
     let knowledgePlan;
     if (values.phase === "knowledge-merge") {
-      const { validateKnowledgeMergeGroup, knowledgeMergeTests, knowledgeMergeAuthorization } =
-        await import("./knowledge-merge-ci.mjs");
+      const {
+        knowledgeMergeLane,
+        validateKnowledgeMergeGroup,
+        knowledgeMergeTests,
+        knowledgeMergeAuthorization,
+      } = await import("./knowledge-merge-ci.mjs");
       if (!knowledgeMergeLane(process.cwd())) refuse("KNOWLEDGE_MERGE_EVENT_REQUIRED");
       validateKnowledgeMergeGroup(candidate.repositories);
       knowledgePlan = {

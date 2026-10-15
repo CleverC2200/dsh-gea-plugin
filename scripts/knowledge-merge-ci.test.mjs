@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { spawnSync, execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   matchesFrozenSource,
   selectKnowledgeMergeLane,
@@ -102,4 +102,66 @@ test("targeted knowledge acceptance keeps real tests and ordinary aggregation", 
   assert.match(runner, /validateKnowledgeMergeGroup\(candidate.repositories\)/);
   assert.match(runner, /acceptance: "targeted; 205-file selection not run"/);
   assert.match(runner, /QUALITY_ISOLATION_RESULT/);
+});
+
+test("the actual targeted CLI rejects an unapproved event after admission without entering preparation", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "knowledge-ci-entry-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const checkout = process.cwd();
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const manifest = {
+    core: "639ed015397290b3745d163aafe02ffee4aa3f84",
+    repositories: [
+      { repo: "dsh-gea-plugin", path: checkout, head },
+      {
+        repo: "dsh-agent-workbench",
+        path: resolve("../dsh-agent-workbench"),
+        head: "29d851d71bdbe4c490a246ab20447c76c19ae957",
+      },
+      {
+        repo: "dsh-agent-manage",
+        path: resolve("../dsh-agent-manage"),
+        head: "307303d5532f4250879008573b329cf4bb202ff3",
+      },
+    ],
+  };
+  mkdirSync(join(directory, "scripts"));
+  // Public raw-byte admission is tested independently. This seam reaches the real
+  // stage CLI with an admitted group, but no authorization to execute its stage.
+  writeFileSync(
+    join(directory, "scripts/candidate-input.mjs"),
+    "export async function readFinalGroup() { return {manifest: " +
+      JSON.stringify(manifest) +
+      "}; }\n",
+  );
+  const env = { ...process.env };
+  for (const key of [
+    "GITHUB_EVENT_NAME",
+    "GITHUB_EVENT_PATH",
+    "GITHUB_REPOSITORY",
+    "GITHUB_REF",
+    "QUALITY_EXPECTED_SHA",
+    "CI",
+  ])
+    delete env[key];
+  const run = spawnSync(
+    process.execPath,
+    [
+      "scripts/run-quality-ci.mjs",
+      "--phase",
+      "knowledge-merge",
+      "--stage",
+      "tests",
+      "--input",
+      join(directory, "input.json"),
+      "--final-group-workbench",
+      directory,
+      "--final-group-sha256",
+      "a".repeat(64),
+    ],
+    { env, encoding: "utf8" },
+  );
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /KNOWLEDGE_MERGE_EVENT_REQUIRED/);
+  assert.doesNotMatch(run.stderr, /ReferenceError/);
 });
