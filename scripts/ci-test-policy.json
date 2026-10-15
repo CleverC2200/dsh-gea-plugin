@@ -33,6 +33,11 @@
     },
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/final-group-input\\.contract\\.mjs$",
+      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^src/(?:host/plugin-update|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)",
       "tests": [
         "tests/plugin-update-controller.contract.mjs",
