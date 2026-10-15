@@ -57,8 +57,11 @@ test(
       .getByRole("button", { name: "新会话", exact: true })
       .filter({ hasText: "AI工作台" })
       .click();
-    // 等实际 Core Session 就绪后配置回执模型，避免新会话挂载时替换菜单。
-    const conversation = page.locator("[data-conversation-session]:visible").first();
+    // Core 异步打开主对话；旧业务页的 Native 对话列不能作为新会话就绪信号。
+    const conversation = page.locator(
+      "[data-conversation-content]:not(.agent-workbench-native-conversation *)",
+    );
+    await expect(conversation).toBeVisible();
     await expect(conversation).toHaveAttribute("data-conversation-session", /.+/);
     const sessionId = await conversation.getAttribute("data-conversation-session");
     const selected = await app.remote("session/selectModel", {
@@ -67,13 +70,13 @@ test(
       model: "receipt",
     });
     assert.equal(selected.ok, true, JSON.stringify(selected));
-    await expect(page.getByRole("button", { name: /^选择模型，当前/ })).toHaveAccessibleName(
-      /Local receipt/,
-    );
-    const composer = page.locator('[contenteditable="true"], textarea').first();
+    await expect(
+      conversation.getByRole("button", { name: /^选择模型，当前/ }),
+    ).toHaveAccessibleName(/Local receipt/);
+    const composer = conversation.locator('[contenteditable="true"], textarea').first();
     await composer.fill("侧栏隔离验收");
     await composer.press("Enter");
-    const receipt = page.getByText("本地验证回执（非 AI 分析）：业务资料已进入会话。", {
+    const receipt = conversation.getByText("本地验证回执（非 AI 分析）：业务资料已进入会话。", {
       exact: true,
     });
     await expect(receipt).toBeVisible();
