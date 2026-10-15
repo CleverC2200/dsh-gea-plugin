@@ -156,17 +156,19 @@ try {
           refuse("QUALITY_PRIVATE_PEER_REQUIRED", entry.repo);
     const workbench = candidate.repositories.find((entry) => entry.repo === "dsh-agent-workbench"),
       manage = candidate.repositories.find((entry) => entry.repo === "dsh-agent-manage");
+    process.env.QUALITY_POLICY_WORKBENCH = workbench.path;
     if (values["prepare-inputs"] || values.phase === "macos-isolation")
       await prepareWorkbenchGeaAuthority({
         workbench: workbench.path,
         gea: own.path,
       });
-    if (values.phase === "business-profile")
-      (await import("./business-profile-ci.mjs")).validateBusinessProfileGroup(
-        candidate.repositories,
-      );
-    if (values.phase === "mcp-client-repair")
-      (await import("./business-profile-ci.mjs")).validateMcpClientGroup(candidate.repositories);
+    if (values.phase === "business-profile" || values.phase === "mcp-client-repair") {
+      const { loadBusinessProfilePolicy } = await import("./business-profile-ci.mjs");
+      const policy = await loadBusinessProfilePolicy(workbench.path);
+      if (values.phase === "business-profile")
+        policy.validateBusinessProfileGroup(candidate.repositories);
+      else policy.validateMcpClientGroup(candidate.repositories);
+    }
     if (values.phase === "macos-isolation" && process.platform !== "darwin")
       refuse("QUALITY_MACOS_ISOLATION_REQUIRED");
     const { selectCiTests } = await import(
