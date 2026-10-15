@@ -206,3 +206,41 @@ test("a package-only change retains its original configuration contracts without
   ]);
   assert.deepEqual(plan.files, [...fixture.policy.required].sort());
 });
+
+test("retiring the Cube-only MCP module selects the knowledge and Cube bridge regressions", (t) => {
+  const { repositories, put, commit } = temporaryGitRepositories(t);
+  for (const entry of repositories) {
+    put(entry.path, "input.txt", "baseline");
+    entry.head = commit(entry.path);
+  }
+  const own = repositories[2];
+  const policy = JSON.parse(readFileSync(new URL("./ci-test-policy.json", import.meta.url)));
+  policy.required = ["tests/required.test.mjs"];
+  policy.rules = policy.rules.filter((rule) => rule.tests.includes("tests/knowledge-mcp.test.mjs"));
+  put(own.path, "scripts/ci-test-policy.json", JSON.stringify(policy));
+  put(own.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
+  const expected = [...new Set(policy.rules.flatMap((rule) => rule.tests))];
+  for (const file of [
+    "tests/required.test.mjs",
+    "tests/unrelated.test.mjs",
+    "scripts/unrelated.test.mjs",
+    "tests/unrelated.contract.mjs",
+    ...expected,
+  ])
+    put(own.path, file, "export const fixture = true;");
+  put(own.path, "src/host/cube-mcp-client.ts", "export const previous = true;");
+  own.head = commit(own.path);
+  const base = own.head;
+  rmSync(join(own.path, "src/host/cube-mcp-client.ts"));
+  put(own.path, "src/host/gateway-mcp-client.ts", "export const current = true;");
+  put(own.path, "src/host/knowledge-mcp.ts", "export const knowledge = true;");
+  own.head = commit(own.path);
+  const plan = selectCiTests({ repositories, repo: own.repo, base });
+  for (const file of expected) assert.ok(plan.files.includes(file), file);
+  assert.ok(
+    plan.reasons[own.repo + "/src/host/cube-mcp-client.ts"].includes(
+      "tests/knowledge-mcp.test.mjs",
+    ),
+  );
+  assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+});

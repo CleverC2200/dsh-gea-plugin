@@ -1,4 +1,5 @@
 /** 绑定登录身份的 GEA Gateway 能力；密钥不会离开 Fetch 闭包。 */
+import { KNOWLEDGE_METHODS, KNOWLEDGE_SOURCE } from "./knowledge-mcp.ts";
 import { prepareGatewaySession } from "./gateway-session.ts";
 import { createParser } from "eventsource-parser";
 import { readMcpResponseText } from "./mcp-response.ts";
@@ -152,7 +153,7 @@ export function gatewayMcpTransport(
     let body = init?.body;
     let method: string | undefined;
     let discovery: { id: unknown; firstPage: boolean } | undefined;
-    let invocation: { id: unknown; code: string } | undefined;
+    let invocation: { id: unknown; code: string; name: string } | undefined;
     if (body !== undefined && body !== null) {
       if (typeof body !== "string") throw new Error("GEA_MCP_BODY_INVALID");
       const message = JSON.parse(body);
@@ -177,7 +178,7 @@ export function gatewayMcpTransport(
         if (message.method === "tools/call") {
           const mcpCode = routeFor(message.params.name);
           message.params._meta = { ...meta, mcpCode };
-          invocation = { id: message.id, code: mcpCode };
+          invocation = { id: message.id, code: mcpCode, name: message.params.name };
         } else if (message.method === "resources/read") {
           const code = artifactRoutes.get(message.params.uri);
           if (code) message.params._meta = { ...meta, mcpCode: code };
@@ -199,11 +200,12 @@ export function gatewayMcpTransport(
       initializeBody = body as string;
       transportSession = res.headers.get("MCP-Session-Id") ?? undefined;
     }
-    // 传输层 404 会在业务执行前拒绝请求；只对这一种情况恢复一次，绝不重试有歧义的网络失败或业务错误。
+    // Restore transport once for a pre-execution 404, except knowledge asks, which must never be replayed.
     if (
       res.status === 404 &&
       init?.method === "POST" &&
       method !== "initialize" &&
+      invocation?.name !== "weknora_ask" &&
       sentSession &&
       initializeBody
     ) {
@@ -259,6 +261,7 @@ export function gatewayMcpTransport(
       } else {
         messages.push(JSON.parse(text));
       }
+      let discoveryFiltered = false;
       for (const value of messages) {
         if (!value || typeof value !== "object") continue;
         const reply = value as { id?: unknown; result?: { tools?: unknown } };
@@ -280,14 +283,20 @@ export function gatewayMcpTransport(
         }
         if (!discovery || reply.id !== discovery.id || !Array.isArray(reply.result?.tools))
           continue;
-        const selectedTools = routing.cubeMcpCode
-          ? reply.result.tools.filter(
-              (tool) =>
-                !["query_business_data", "inspect_cube_model"].includes(tool?.name) ||
-                (tool?._meta?.sourceType === "MCP" &&
-                  tool?._meta?.sourceCode === routing.cubeMcpCode),
-            )
-          : reply.result.tools;
+        const selectedTools = reply.result.tools.filter((tool) => {
+          if (["query_business_data", "inspect_cube_model"].includes(tool?.name))
+            return (
+              !!routing.cubeMcpCode &&
+              tool?._meta?.sourceType === "MCP" &&
+              tool?._meta?.sourceCode === routing.cubeMcpCode
+            );
+          if (KNOWLEDGE_METHODS.some((name) => name === tool?.name))
+            return (
+              tool?._meta?.sourceType === "MCP" && tool?._meta?.sourceCode === KNOWLEDGE_SOURCE
+            );
+          return true;
+        });
+        discoveryFiltered ||= selectedTools.length !== reply.result.tools.length;
         reply.result.tools = selectedTools;
         const next = discovery.firstPage ? new Map<string, string>() : new Map(routes);
         for (const tool of selectedTools) {
@@ -302,7 +311,7 @@ export function gatewayMcpTransport(
         for (const [name, code] of next) routes.set(name, code);
         discovered = true;
       }
-      if (discovery && routing.cubeMcpCode) {
+      if (discovery && discoveryFiltered) {
         const headers = new Headers(res.headers);
         headers.delete("content-length");
         return new Response(

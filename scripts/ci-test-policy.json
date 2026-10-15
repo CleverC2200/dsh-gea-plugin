@@ -121,6 +121,23 @@
       "pattern": "^scripts/plugin-update-pr-lane\\.",
       "tests": ["scripts/run-quality-ci.test.mjs"],
       "exclusive": true
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^(?:src/host(?:\\.ts|/(?:business|(?:gateway|cube)-mcp(?:-client|-service)?|knowledge-mcp|prompt-(?:runtime|policy|result))\\.ts)|presets/prompt-policy\\.json|tests/(?:knowledge-mcp|current-mcp-tools|cube-direct-mcp|gateway-mcp)\\.test\\.mjs|tests/fixtures/current-mcp\\.mjs)$",
+      "tests": [
+        "tests/knowledge-mcp.test.mjs",
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/gateway-mcp.test.mjs",
+        "tests/prompt-execution-policy.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-agent-manage",
+      "pattern": "^src/runtime/gea-mcp(?:-scope)?\\.ts$",
+      "tests": ["tests/knowledge-mcp.test.mjs", "tests/current-mcp-tools.test.mjs"]
     }
   ]
 }

@@ -42,7 +42,7 @@ import { networkError } from "./shared/net-error.ts";
 import { modelHttpError } from "./shared/model-http-error.ts";
 import { registerHtmlPlugins } from "./html-plugins.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
-import { createCubeMcpService } from "./host/cube-mcp-service.ts";
+import { createGatewayMcpService } from "./host/gateway-mcp-service.ts";
 import { DEFAULT_MCP_RESPONSE_BYTES } from "./host/mcp-response.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { workbenchContract } from "./capability/contract.ts";
@@ -557,7 +557,7 @@ export async function apply(
   ctx.effect(() => mountSidebarToolVisibility(ctx, business));
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());
-  ctx.provide("geaMcp", createCubeMcpService(ctx, business));
+  ctx.provide("geaMcp", createGatewayMcpService(ctx, business));
   registerGeaTools(ctx, business, capability);
   ctx.effect(() => mountBusinessPrompts(ctx, business, capability));
   // 每步把"用户这一轮问的是什么"钉在消息末尾：系统提示里的位置段只能劝阻，

@@ -1,0 +1,29 @@
+# 知识 MCP 接入
+
+GEA Host 沿 [执行链](execution-logic.md) 持有唯一登录身份、当前业务 Session、委托凭据与 MCP 传输。Manage 通过既有 GEA 工具接口注册服务端授权 Schema，Core 持有实际 Session。工具调用从当前业务 preset 解析 Agent Consumer，不切换为示例客户端身份。
+
+## 目录与问答
+
+仅接纳 MCP 来源 `mcp.weknora` 的 `weknora_list_knowledge_bases` 与 `weknora_ask`。Cube 使用其独立来源配置及结果合同；知识工具不受 Cube 是否配置影响。
+
+目录调用使用空 arguments。每次刷新目录重新核当前 Consumer 的业务 Session 与工具发现，再读取服务端实时目录；结果只保留具备 ASK 动作的 GEA 知识库 ID。目录不落盘，不用历史 ID 填补空列表。最终人员、Consumer、同实例和空间授权仍由服务端判断。
+
+问答的 query 是1至4000字符的完整问题；knowledgeBaseIds 是1至20个不重复的 GEA ID。Agent 根据当前对话补齐追问语义；客户端不把上一轮聊天当作 WeKnora 已持有的上下文。业务参数不传用户、登录凭据、Consumer、租户或 Session。
+
+响应优先消费 structuredContent；没有结构化结果时只解析一份业务 JSON。目录允许数组，问答保留 COMPLETED、answer、references，以及响应提供的 requestId、traceId、auditId。工具成功 envelope 存在时须为 success=true/code=SUCCESS，并保留外层标识。引用必须归属本次选择的知识库。空目录、未完成答案、无效结构和异常引用不构造可信答案。
+
+知识结果不进入 Cube 数据集解析，不调用 resources/read，不产生旧式可复用授权收据，也不做 LightRAG chunks 解码。长答案及完整引用按本次 MCP 接收预算保留，模型输出仍应说明来源与范围。
+
+## 失败与生命周期
+
+问答不自动重试，包括传输会话返回404；超时、限流或远程失败保留原错误。需要再次发起时先核结果与审计，由新的明确意图决定。目录和 Cube 保留既有安全传输恢复。
+
+当前业务资源、实际 Agent Consumer、登录身份与取消信号在发送前后校验。退出、切用户、租户、环境、业务 preset 或资源停用后，迟到结果不能返回到新的执行；用户 Session、草稿与历史保持。
+
+LightRAG 旧工具未注册、旧问答结果解码已删除，现行业务指引使用新知识工具；不存在旧库回退。冻结的历史记录与测试归档保留原件。知识依据不改变受控指标、公式、过滤条件或页面协议。
+
+## 验证与外部条件
+
+现有 Core Tools → Manage → GEA Host → 模拟 MCP 服务的验证位于 `tests/knowledge-mcp.test.mjs`，与当前 Cube、网关、Prompt 和 Manage 生命周期检查一起验证。它不调用真实服务，不证明安装启用、真实模型表现或知识迁移完成。
+
+真实联调须确认具体环境、人员接入、实际 Agent Consumer、两个子工具与目标库 ASK 授权。2026-10-14 资料中的 test007、gea-client 和客户订单拒权均为历史观察，不作为当前授权。LightRAG 内容导出、WeKnora 内容迁入及完整性验收另行处理。

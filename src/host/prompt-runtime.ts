@@ -21,11 +21,13 @@ import {
 } from "./prompt-policy.ts";
 import { PromptExecutionState } from "./prompt-execution-state.ts";
 
-const cubeMethod = (name: string) =>
+const gatewayMethod = (name: string) =>
   name === "mcp__gea-gateway__inspect_cube_model" ||
-  name === "mcp__gea-gateway__query_business_data";
+  name === "mcp__gea-gateway__query_business_data" ||
+  name === "mcp__gea-gateway__weknora_list_knowledge_bases" ||
+  name === "mcp__gea-gateway__weknora_ask";
 const businessMethod = (name: string) =>
-  (name.startsWith("gea_") && name !== "gea_runtime_diagnose") || cubeMethod(name);
+  (name.startsWith("gea_") && name !== "gea_runtime_diagnose") || gatewayMethod(name);
 
 const UI_RULES =
   '业务概览、多指标、预测/库存结构或对比优先轻量卡片；简单事实或明确纯文字不用。用dsh-ui JSON围栏，根对象{"title":"标题","items":[节点]}；stat={type:"stat",label,value}、table={type:"table",columns,rows}、callout={type:"callout",content}。先1句结论，再1组卡片；结论、表格、说明各说一次，卡片后不重复数字和长篇解释。stat只放已核实数字，最多2项；版本名、未知量和缺口原因用短说明，不能放大成指标。按窄聊天栏设计：表格优先2列，最多3个短列，遵守前N；来源、日期范围、单位和版本放表外短注，不塞长列。标题和标签用业务中文，原始字段/表名仅排查时展示。缺数据说明影响，不补0；记录数不能改叫预测量。禁total:true自动合计、差额delta自动着色。复杂图表才读genui并校验；简单卡片无需通读Skill。按钮不授予写权限。';
