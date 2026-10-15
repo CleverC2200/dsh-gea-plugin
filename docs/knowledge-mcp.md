@@ -12,6 +12,10 @@ GEA Host 沿 [执行链](execution-logic.md) 持有唯一登录身份、当前�
 
 响应优先消费 structuredContent；没有结构化结果时只解析一份业务 JSON。目录允许数组，问答保留 COMPLETED、answer、references，以及响应提供的 requestId、traceId、auditId。工具成功 envelope 存在时须为 success=true/code=SUCCESS，并保留外层标识。引用必须归属本次选择的知识库。空目录、未完成答案、无效结构和异常引用不构造可信答案。
 
+问答工具结果额外保留 `gatewayTrace`，只包含 HTTP 响应头中的 requestId、traceId、auditId。业务正文的原有标识保持原值；正文和引用不改写。失败或未完成响应的诊断也保留可用网关标识。目录成功结果继续使用原数组或原成功 envelope。
+
+COMPLETED 的解释与缺少生成结束原因时的答复要求，以 [实际执行策略](../presets/execution-policy.json) 的 knowledge 条目为准。客户端不从句尾推定生成状态。
+
 知识结果不进入 Cube 数据集解析，不调用 resources/read，不产生旧式可复用授权收据，也不做 LightRAG chunks 解码。长答案及完整引用按本次 MCP 接收预算保留，模型输出仍应说明来源与范围。
 
 ## 失败与生命周期

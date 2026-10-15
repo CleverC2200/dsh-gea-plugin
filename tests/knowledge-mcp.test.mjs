@@ -485,6 +485,7 @@ test("current personal Agent exposes knowledge tools under its retained Consumer
     JSON.stringify(assembled.sections),
     /weknora_list_knowledge_bases/,
   );
+  assert.match(JSON.stringify(assembled.sections), /COMPLETED 仅表示服务端处理结束/);
   assert.deepEqual(successful(await invoke(f, catalog, {}, "personal")), [
     library("current-library"),
   ]);
@@ -521,3 +522,61 @@ test("personal Agent diagnostics report retained Consumer and revoked source wit
   assert.deepEqual(revoked.mcpAccess, { error: "GEA_CUBE_SOURCE_UNAVAILABLE" });
   assert.equal(revoked.businessAuthorization, "not-checked");
 });
+
+test("knowledge answer exposes HTTP trace separately from business identifiers and credentials", async (t) => {
+  const payload = {
+    ...answer(),
+    requestId: "business-request",
+    usage: { total: 9007199254740994 },
+  };
+  const f = await fixture(t, {
+    handler: (_wire, _init, reply) =>
+      reply(
+        { structuredContent: payload },
+        {
+          "x-request-id": "gateway-request",
+          "x-trace-id": "gateway-trace",
+          "x-audit-id": "gateway-audit",
+          "mcp-session-id": "private-mcp-session",
+          "x-access-token": "private-access-token",
+          "set-cookie": "private-cookie",
+          authorization: "Bearer private-authorization",
+        },
+      ),
+  });
+  const result = successful(await invoke(f, ask, args));
+  assert.deepEqual(result, {
+    ...payload,
+    gatewayTrace: {
+      requestId: "gateway-request",
+      traceId: "gateway-trace",
+      auditId: "gateway-audit",
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(result), /private-|authorization|cookie/i);
+  assert.equal(count(f, "weknora_ask"), 1);
+});
+
+for (const failure of ["incomplete", "tool-error", "http-error"])
+  test(`knowledge ${failure} retains gateway trace and never retries`, async (t) => {
+    const f = await fixture(t, {
+      handler: (_wire, _init, reply) => {
+        const headers = { "x-request-id": "failed-request", "x-audit-id": "failed-audit" };
+        if (failure === "http-error") return new Response(null, { status: 503, headers });
+        return reply(
+          failure === "tool-error"
+            ? {
+                isError: true,
+                structuredContent: { code: "KNOWLEDGE_FAILED", message: "upstream failed" },
+              }
+            : { structuredContent: { ...answer(), status: "PARTIAL" } },
+          headers,
+        );
+      },
+    });
+    const result = await invoke(f, ask, args);
+    assert.equal(result.isError, true);
+    assert.match(JSON.stringify(result), /gateway.requestId=failed-request/);
+    assert.match(JSON.stringify(result), /gateway.auditId=failed-audit/);
+    assert.equal(count(f, "weknora_ask"), 1);
+  });
