@@ -51,7 +51,7 @@ async function fixture(t) {
   };
   const ctx = {
     tools,
-    agents: { get: () => agent },
+    agents: { get: () => agent, list: () => [agent] },
     sessionProjections: { stateOf: () => preset },
     agentResources: {
       list: async () => {

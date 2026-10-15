@@ -1,7 +1,9 @@
 /** WeKnora business results are answers and citations, never Cube datasets or reusable authorization grants. */
+import { withMcpTrace, type GatewayTrace } from "./mcp-trace.ts";
 export const KNOWLEDGE_SOURCE = "mcp.weknora";
 export const KNOWLEDGE_METHODS = ["weknora_list_knowledge_bases", "weknora_ask"] as const;
 type KnowledgeMethod = (typeof KNOWLEDGE_METHODS)[number];
+
 const record = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -9,7 +11,7 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
 const nonempty = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
-function invalid(field: string, payload?: unknown): Error {
+function invalid(field: string, payload?: unknown, gatewayTrace: GatewayTrace = {}): Error {
   const envelope = record(payload);
   const body = record(envelope?.result) ?? envelope;
   const ids = Object.fromEntries(
@@ -18,19 +20,22 @@ function invalid(field: string, payload?: unknown): Error {
       return typeof value === "string" ? [[key, value]] : [];
     }),
   );
-  return Object.assign(
-    Error(
-      `GEA_KNOWLEDGE_RESULT_INVALID: 知识响应的 ${field} 不符合约定，未取得可信答案。保留请求标识核对服务端结果，不自动重试。` +
-        Object.entries(ids)
-          .map(([key, value]) => ` ${key}=${value}`)
-          .join(""),
+  return withMcpTrace(
+    Object.assign(
+      Error(
+        `GEA_KNOWLEDGE_RESULT_INVALID: 知识响应的 ${field} 不符合约定，未取得可信答案。保留请求标识核对服务端结果，不自动重试。` +
+          Object.entries(ids)
+            .map(([key, value]) => ` ${key}=${value}`)
+            .join(""),
+      ),
+      {
+        code: "GEA_KNOWLEDGE_RESULT_INVALID",
+        category: "RESPONSE_CONTRACT",
+        retryable: false,
+        ...ids,
+      },
     ),
-    {
-      code: "GEA_KNOWLEDGE_RESULT_INVALID",
-      category: "RESPONSE_CONTRACT",
-      retryable: false,
-      ...ids,
-    },
+    gatewayTrace,
   );
 }
 
@@ -62,6 +67,7 @@ export function knowledgeResult(
   args: Record<string, unknown>,
   stringify: (value: unknown) => string,
   parseText: (text: string) => unknown,
+  gatewayTrace: GatewayTrace = {},
 ): string {
   let payload: unknown = result.structuredContent;
   if (payload === undefined || payload === null) {
@@ -73,16 +79,16 @@ export function knowledgeResult(
         const candidate = parseText(entry.text);
         if (Array.isArray(candidate) || record(candidate)) candidates.push(candidate);
       }
-    if (candidates.length !== 1) throw invalid("content.text");
+    if (candidates.length !== 1) throw invalid("content.text", undefined, gatewayTrace);
     [payload] = candidates;
   }
   const envelope = record(payload);
   const wrapped = envelope !== undefined && Object.hasOwn(envelope, "result");
   if (wrapped && (envelope.success !== true || envelope.code !== "SUCCESS"))
-    throw invalid("success/code", payload);
+    throw invalid("success/code", payload, gatewayTrace);
   const body = wrapped ? envelope.result : payload;
   if (method === "weknora_list_knowledge_bases") {
-    if (!Array.isArray(body)) throw invalid("knowledgeBases", payload);
+    if (!Array.isArray(body)) throw invalid("knowledgeBases", payload, gatewayTrace);
     const seen = new Set<string>();
     const askable = body.filter((item: unknown) => {
       const library = record(item);
@@ -94,7 +100,7 @@ export function knowledgeResult(
         !library.actions.every((action: unknown) => typeof action === "string") ||
         seen.has(library.id)
       )
-        throw invalid("knowledgeBases.id/name/actions", payload);
+        throw invalid("knowledgeBases.id/name/actions", payload, gatewayTrace);
       seen.add(library.id);
       return library.actions.includes("ASK");
     });
@@ -107,7 +113,7 @@ export function knowledgeResult(
     !nonempty(answer.answer) ||
     !Array.isArray(answer.references)
   )
-    throw invalid("status/answer/references", payload);
+    throw invalid("status/answer/references", payload, gatewayTrace);
   const selected = Array.isArray(args.knowledgeBaseIds) ? args.knowledgeBaseIds : [];
   for (const item of answer.references) {
     const reference = record(item);
@@ -116,7 +122,8 @@ export function knowledgeResult(
       !nonempty(reference.knowledgeBaseId) ||
       !selected.includes(reference.knowledgeBaseId)
     )
-      throw invalid("references.knowledgeBaseId", payload);
+      throw invalid("references.knowledgeBaseId", payload, gatewayTrace);
   }
+  if (Object.keys(gatewayTrace).length) Object.assign(envelope ?? answer, { gatewayTrace });
   return stringify(payload);
 }

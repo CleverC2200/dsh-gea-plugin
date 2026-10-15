@@ -1,4 +1,5 @@
 /** Authorized Cube and knowledge tools share login-owned MCP transport and keep distinct result contracts. */
+import { readMcpTrace, withMcpTrace } from "./mcp-trace.ts";
 import { KNOWLEDGE_METHODS, knowledgeArguments, knowledgeResult } from "./knowledge-mcp.ts";
 import { randomUUID } from "node:crypto";
 import { createParser } from "eventsource-parser";
@@ -99,7 +100,11 @@ export async function openGatewayMcp(
       },
       body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
     });
-    if (!response.ok) throw Error(`GEA_MCP_HTTP_${response.status}`);
+    const gatewayTrace =
+      method === "tools/call" && KNOWLEDGE_METHODS.some((name) => name === params.name)
+        ? readMcpTrace(response.headers)
+        : {};
+    if (!response.ok) throw withMcpTrace(Error(`GEA_MCP_HTTP_${response.status}`), gatewayTrace);
     const text = await readMcpResponseText(response, callSignal, transport.maxResponseBytes);
     // Keep original numeric lexemes when structuredContent is serialized for the tool output.
     const numbers = new WeakMap<object, Map<string, string>>();
@@ -154,8 +159,8 @@ export async function openGatewayMcp(
       return textValues.get(text);
     };
     const failed = toolError(result, parseText);
-    if (failed) throw failed;
-    return { result, stringify, parseText };
+    if (failed) throw withMcpTrace(failed, gatewayTrace);
+    return { result, stringify, parseText, gatewayTrace };
   };
   const { result: initialized } = await rpc(
     "initialize",
@@ -232,12 +237,13 @@ export async function openGatewayMcp(
       const knowledge = KNOWLEDGE_METHODS.find((method) => method === name);
       if (knowledge) knowledgeArguments(knowledge, args);
       if (name === "query_business_data") validateCubeQueryMembers(args);
-      const { result, stringify, parseText } = await rpc(
+      const { result, stringify, parseText, gatewayTrace } = await rpc(
         "tools/call",
         { name, arguments: args },
         callSignal,
       );
-      if (knowledge) return knowledgeResult(knowledge, result, args, stringify, parseText);
+      if (knowledge)
+        return knowledgeResult(knowledge, result, args, stringify, parseText, gatewayTrace);
       if (name === "inspect_cube_model") {
         const structured = record(result.structuredContent);
         if (structured) return stringify(structured);

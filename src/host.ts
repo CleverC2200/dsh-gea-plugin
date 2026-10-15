@@ -60,6 +60,7 @@ export const inject = [
   "profileContext",
   "workbenchPages",
   "agentResources",
+  "userAgents",
   "agents",
   "connection",
   "tools",
@@ -457,6 +458,7 @@ export async function apply(
   const releaseOriginalResources = await ctx.agentResources.register([
     {
       id: "gea-readonly",
+      cube: true,
       enabled: config.workbenchCapability?.enabled !== false,
       label: profileFor("gea-readonly")!.label,
       presetName: profileFor("gea-readonly")!.presetName,

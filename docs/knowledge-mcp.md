@@ -12,6 +12,10 @@ GEA Host 沿 [执行链](execution-logic.md) 持有唯一登录身份、当前�
 
 响应优先消费 structuredContent；没有结构化结果时只解析一份业务 JSON。目录允许数组，问答保留 COMPLETED、answer、references，以及响应提供的 requestId、traceId、auditId。工具成功 envelope 存在时须为 success=true/code=SUCCESS，并保留外层标识。引用必须归属本次选择的知识库。空目录、未完成答案、无效结构和异常引用不构造可信答案。
 
+问答工具结果额外保留 `gatewayTrace`，只包含 HTTP 响应头中的 requestId、traceId、auditId。业务正文的原有标识保持原值；正文和引用不改写。失败或未完成响应的诊断也保留可用网关标识。目录成功结果继续使用原数组或原成功 envelope。
+
+COMPLETED 的解释与缺少生成结束原因时的答复要求，以 [实际执行策略](../presets/execution-policy.json) 的 knowledge 条目为准。客户端不从句尾推定生成状态。
+
 知识结果不进入 Cube 数据集解析，不调用 resources/read，不产生旧式可复用授权收据，也不做 LightRAG chunks 解码。长答案及完整引用按本次 MCP 接收预算保留，模型输出仍应说明来源与范围。
 
 ## 失败与生命周期
@@ -27,3 +31,5 @@ LightRAG 旧工具未注册、旧问答结果解码已删除，现行业务指�
 现有 Core Tools → Manage → GEA Host → 模拟 MCP 服务的验证位于 `tests/knowledge-mcp.test.mjs`，与当前 Cube、网关、Prompt 和 Manage 生命周期检查一起验证。它不调用真实服务，不证明安装启用、真实模型表现或知识迁移完成。
 
 真实联调须确认具体环境、人员接入、实际 Agent Consumer、两个子工具与目标库 ASK 授权。2026-10-14 资料中的 test007、gea-client 和客户订单拒权均为历史观察，不作为当前授权。LightRAG 内容导出、WeKnora 内容迁入及完整性验收另行处理。
+
+当前 DSH 的个人 Agent 沿其已保存且仍有效的来源关联取得实际 Consumer，再按服务端授权使用知识工具。关联停用、来源撤销与身份切换同时撤销知识调用；该关联不授予页面动作或业务写入。当前客户端联调输入与结果由本轮验证记录负责。

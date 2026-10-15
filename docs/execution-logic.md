@@ -88,3 +88,5 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 角色契约、纠偏事务及字段部署、正式 DMS、首次提单、真实模型质量、Windows 和 Native 继续依各票对应环境证据核验。受控 fixture、本地构建与历史发布不完成这些验收。[文档索引](index.md) 保留原风险与证据入口。
 
 [0.0.100 原执行说明](history/current-docs-before-20261010/docs/execution-logic.md) 保留旧自动派生、扫描、页面 Consumer 选择、正式发布流程、失败、未验收项和独特实现理由。原命令、端口与支持矩阵仅供追溯。
+
+个人 Agent 的知识与 Cube 查询复用 Manage 保留的可信资源关联。Host 沿该来源解析 Consumer；来源、身份或关联变化取消在途请求，引用不授予业务写入或页面动作。

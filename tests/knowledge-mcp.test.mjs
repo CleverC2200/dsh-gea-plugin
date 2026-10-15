@@ -1,10 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { currentMcp, queryTool, query, businessCallBudget } from "./fixtures/current-mcp.mjs";
+import {
+  currentMcp,
+  queryTool,
+  query,
+  businessCallBudget,
+} from "./fixtures/current-mcp.mjs";
 
 const catalog = "mcp__gea-gateway__weknora_list_knowledge_bases";
 const ask = "mcp__gea-gateway__weknora_ask";
-const catalogSchema = { type: "object", properties: {}, additionalProperties: false };
+const catalogSchema = {
+  type: "object",
+  properties: {},
+  additionalProperties: false,
+};
 const askSchema = {
   type: "object",
   properties: {
@@ -26,8 +35,15 @@ const tools = [
     description: "Server knowledge catalog",
     inputSchema: catalogSchema,
   },
-  { name: "weknora_ask", description: "Server single-turn answer", inputSchema: askSchema },
-].map((tool) => ({ ...tool, _meta: { sourceType: "MCP", sourceCode: "mcp.weknora" } }));
+  {
+    name: "weknora_ask",
+    description: "Server single-turn answer",
+    inputSchema: askSchema,
+  },
+].map((tool) => ({
+  ...tool,
+  _meta: { sourceType: "MCP", sourceCode: "mcp.weknora" },
+}));
 const library = (id, actions = ["ASK"]) => ({
   id,
   name: `库 ${id}`,
@@ -48,9 +64,12 @@ const answer = (ids = args.knowledgeBaseIds) => ({
     content: "依据片段",
   })),
 });
-const invoke = (f, tool, input, id = "sales", signal) => f.execute(tool, input, id, signal);
+const invoke = (f, tool, input, id = "sales", signal) =>
+  f.execute(tool, input, id, signal);
 const count = (f, name) =>
-  f.calls.filter(({ wire }) => wire.method === "tools/call" && wire.params.name === name).length;
+  f.calls.filter(
+    ({ wire }) => wire.method === "tools/call" && wire.params.name === name,
+  ).length;
 async function fixture(t, options = {}) {
   return currentMcp(t, {
     extraTools: tools,
@@ -88,7 +107,8 @@ test("Manage exposes actual knowledge schemas and a dynamic ASK catalog for the 
       }),
   });
   assert.deepEqual(
-    f.ctx.tools.schemas(f.agents.get("sales")).find((tool) => tool.name === ask).parameters,
+    f.ctx.tools.schemas(f.agents.get("sales")).find((tool) => tool.name === ask)
+      .parameters,
     askSchema,
   );
   assert.deepEqual(
@@ -105,7 +125,9 @@ test("Manage exposes actual knowledge schemas and a dynamic ASK catalog for the 
     ["dealer-inventory-replenishment-2"],
   );
   assert.equal(count(f, "weknora_list_knowledge_bases"), 3);
-  for (const call of f.calls.filter(({ wire }) => wire.method === "tools/call")) {
+  for (const call of f.calls.filter(
+    ({ wire }) => wire.method === "tools/call",
+  )) {
     assert.equal(call.wire.params._meta.mcpCode, "mcp.weknora");
     assert.deepEqual(call.wire.params.arguments, {});
   }
@@ -114,7 +136,9 @@ test("Manage exposes actual knowledge schemas and a dynamic ASK catalog for the 
 test("knowledge works with no Cube source configured and cannot publish an unconfigured Cube", async (t) => {
   const f = await fixture(t, { cubeMcpCodes: {} });
   assert.equal(f.ctx.tools.get(queryTool), undefined);
-  assert.deepEqual(successful(await invoke(f, catalog, {})), [library("current-library")]);
+  assert.deepEqual(successful(await invoke(f, catalog, {})), [
+    library("current-library"),
+  ]);
   assert.deepEqual(successful(await invoke(f, ask, args)), answer());
 });
 
@@ -139,7 +163,9 @@ for (const mode of ["structured", "text", "wrapped", "nullable", "both"])
             : mode === "both"
               ? {
                   structuredContent: payload,
-                  content: [{ type: "text", text: JSON.stringify({ bad: true }) }],
+                  content: [
+                    { type: "text", text: JSON.stringify({ bad: true }) },
+                  ],
                 }
               : {
                   ...(mode === "nullable" ? { structuredContent: null } : {}),
@@ -157,7 +183,8 @@ for (const mode of ["structured", "text", "wrapped", "nullable", "both"])
       false,
     );
     assert.deepEqual(
-      f.calls.find(({ wire }) => wire.params?.name === "weknora_ask").wire.params.arguments,
+      f.calls.find(({ wire }) => wire.params?.name === "weknora_ask").wire
+        .params.arguments,
       args,
     );
   });
@@ -168,12 +195,16 @@ test("multi-library complete questions keep all selected IDs and references", as
     query: "请比较授权库甲和乙中的完整规则。",
     knowledgeBaseIds: ["library-a", "library-b"],
   };
-  assert.deepEqual(successful(await invoke(f, ask, multiple)), answer(multiple.knowledgeBaseIds));
+  assert.deepEqual(
+    successful(await invoke(f, ask, multiple)),
+    answer(multiple.knowledgeBaseIds),
+  );
 });
 
 test("empty authorized catalog is an explicit empty result", async (t) => {
   const f = await fixture(t, {
-    handler: (_wire, _init, reply) => reply({ content: [{ type: "text", text: "[]" }] }),
+    handler: (_wire, _init, reply) =>
+      reply({ content: [{ type: "text", text: "[]" }] }),
   });
   assert.deepEqual(successful(await invoke(f, catalog, {})), []);
 });
@@ -185,7 +216,10 @@ for (const [label, input] of [
   ["duplicate libraries", { ...args, knowledgeBaseIds: ["a", "a"] }],
   [
     "too many libraries",
-    { ...args, knowledgeBaseIds: Array.from({ length: 21 }, (_, i) => `library-${i}`) },
+    {
+      ...args,
+      knowledgeBaseIds: Array.from({ length: 21 }, (_, i) => `library-${i}`),
+    },
   ],
   ["empty library", { ...args, knowledgeBaseIds: [""] }],
   ["login token", { ...args, token: "forged" }],
@@ -207,8 +241,16 @@ for (const [label, input] of [
 
 for (const failure of [
   { code: "AI_PERMISSION_DENIED", message: "Consumer未获得知识库动作授权" },
-  { code: "AI_GATEWAY_CAPABILITY_NOT_ALLOWED", message: "调用方未授权知识工具" },
-  { code: "AI_GATEWAY_RATE_LIMITED", message: "请求限流", retryable: true, retryAfterMs: 1000 },
+  {
+    code: "AI_GATEWAY_CAPABILITY_NOT_ALLOWED",
+    message: "调用方未授权知识工具",
+  },
+  {
+    code: "AI_GATEWAY_RATE_LIMITED",
+    message: "请求限流",
+    retryable: true,
+    retryAfterMs: 1000,
+  },
 ])
   test(`knowledge preserves ${failure.code} and audit IDs without a replay`, async (t) => {
     const f = await fixture(t, {
@@ -226,7 +268,12 @@ for (const failure of [
     });
     const result = await invoke(f, ask, args);
     assert.equal(result.isError, true);
-    for (const text of [failure.code, "failure-request", "failure-trace", "failure-audit"])
+    for (const text of [
+      failure.code,
+      "failure-request",
+      "failure-trace",
+      "failure-audit",
+    ])
       assert.ok(JSON.stringify(result).includes(text));
     assert.equal(count(f, "weknora_ask"), 1);
   });
@@ -262,7 +309,12 @@ for (const [label, payload] of [
 test("ambiguous business text does not merge answers or fabricate citations", async (t) => {
   const f = await fixture(t, {
     handler: (_wire, _init, reply) =>
-      reply({ content: [1, 2].map(() => ({ type: "text", text: JSON.stringify(answer()) })) }),
+      reply({
+        content: [1, 2].map(() => ({
+          type: "text",
+          text: JSON.stringify(answer()),
+        })),
+      }),
   });
   assert.equal((await invoke(f, ask, args)).isError, true);
   assert.equal(count(f, "weknora_ask"), 1);
@@ -272,11 +324,15 @@ for (const status of [404, 429, 503])
   test(`HTTP ${status} never replays a knowledge ask even with a transport Session`, async (t) => {
     const f = await fixture(t, {
       transportSession: "transport-session",
-      handler: () => new Response(null, { status, headers: { "Retry-After": "1" } }),
+      handler: () =>
+        new Response(null, { status, headers: { "Retry-After": "1" } }),
     });
     assert.equal((await invoke(f, ask, args)).isError, true);
     assert.equal(count(f, "weknora_ask"), 1);
-    assert.equal(f.calls.filter(({ wire }) => wire.method === "initialize").length, 1);
+    assert.equal(
+      f.calls.filter(({ wire }) => wire.method === "initialize").length,
+      1,
+    );
   });
 
 test("knowledge timeout is not retried and does not clear login", async (t) => {
@@ -284,7 +340,11 @@ test("knowledge timeout is not retried and does not clear login", async (t) => {
     timeoutMs: 30,
     handler: (_wire, init) =>
       new Promise((_resolve, reject) => {
-        init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+        init.signal.addEventListener(
+          "abort",
+          () => reject(init.signal.reason),
+          { once: true },
+        );
       }),
   });
   // Node's timeout signal is unref'ed; keep the fixture alive until it reports the timeout.
@@ -354,7 +414,11 @@ test("production prompt guards allow knowledge calls, preserve long citations an
     prompts: true,
     handler: (_wire, _init, reply) => reply({ structuredContent: payload }),
   });
-  assert.ok(f.ctx.tools.schemas(f.agents.get("sales")).some((tool) => tool.name === ask));
+  assert.ok(
+    f.ctx.tools
+      .schemas(f.agents.get("sales"))
+      .some((tool) => tool.name === ask),
+  );
   assert.deepEqual(successful(await invoke(f, ask, args)), payload);
   // Knowledge is governed by the same budget as all other business methods.
   for (let i = 1; i < businessCallBudget; i++) await invoke(f, ask, args);
@@ -404,3 +468,115 @@ test("switching to another enabled business Agent rejects the previous Consumer'
   assert.doesNotMatch(JSON.stringify(result), /有依据的完整答案|依据片段/);
   assert.equal(count(f, "weknora_ask"), 1);
 });
+
+test("current personal Agent exposes knowledge tools under its retained Consumer and source lifetime", async (t) => {
+  const f = await fixture(t, { personal: true, prompts: true });
+  const names = f.ctx.tools
+    .schemas(f.agents.get("personal"))
+    .map((tool) => tool.name);
+  assert.ok(names.includes(catalog));
+  assert.ok(names.includes(ask));
+  const assembled = await f.ctx.systemPrompt.assemble({
+    scope: f.agents.get("personal"),
+    agent: f.agents.get("personal"),
+    signal: new AbortController().signal,
+  });
+  assert.match(
+    JSON.stringify(assembled.sections),
+    /weknora_list_knowledge_bases/,
+  );
+  assert.match(JSON.stringify(assembled.sections), /COMPLETED 仅表示服务端处理结束/);
+  assert.deepEqual(successful(await invoke(f, catalog, {}, "personal")), [
+    library("current-library"),
+  ]);
+  assert.deepEqual(
+    successful(await invoke(f, ask, args, "personal")),
+    answer(),
+  );
+  const calls = f.calls.filter(({ wire }) => wire.method === "tools/call");
+  assert.ok(
+    calls.every(({ wire }) => wire.params._meta.agentCode === "sales_forecast"),
+  );
+  assert.ok(!names.includes("gea_plugin_page_apply"));
+  f.setEnabled(false);
+  const refused = await invoke(f, ask, args, "personal");
+  assert.equal(refused.isError, true);
+  assert.equal(count(f, "weknora_ask"), 1);
+});
+
+test("personal Agent diagnostics report retained Consumer and revoked source without business grants", async (t) => {
+  const f = await fixture(t, { personal: true, prompts: true });
+  const diagnose = async () =>
+    successful(await invoke(f, "gea_runtime_diagnose", {}, "personal"));
+  const active = await diagnose();
+  assert.equal(active.consumerCode, "sales_forecast");
+  assert.deepEqual(active.mcpAccess, {
+    sourceRef: "gea-readonly",
+    consumerCode: "sales_forecast",
+  });
+  assert.equal(active.businessProfileDeclared, false);
+  assert.equal(active.businessAuthorization, "not-checked");
+  f.setEnabled(false);
+  const revoked = await diagnose();
+  assert.equal(revoked.consumerCode, null);
+  assert.deepEqual(revoked.mcpAccess, { error: "GEA_CUBE_SOURCE_UNAVAILABLE" });
+  assert.equal(revoked.businessAuthorization, "not-checked");
+});
+
+test("knowledge answer exposes HTTP trace separately from business identifiers and credentials", async (t) => {
+  const payload = {
+    ...answer(),
+    requestId: "business-request",
+    usage: { total: 9007199254740994 },
+  };
+  const f = await fixture(t, {
+    handler: (_wire, _init, reply) =>
+      reply(
+        { structuredContent: payload },
+        {
+          "x-request-id": "gateway-request",
+          "x-trace-id": "gateway-trace",
+          "x-audit-id": "gateway-audit",
+          "mcp-session-id": "private-mcp-session",
+          "x-access-token": "private-access-token",
+          "set-cookie": "private-cookie",
+          authorization: "Bearer private-authorization",
+        },
+      ),
+  });
+  const result = successful(await invoke(f, ask, args));
+  assert.deepEqual(result, {
+    ...payload,
+    gatewayTrace: {
+      requestId: "gateway-request",
+      traceId: "gateway-trace",
+      auditId: "gateway-audit",
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(result), /private-|authorization|cookie/i);
+  assert.equal(count(f, "weknora_ask"), 1);
+});
+
+for (const failure of ["incomplete", "tool-error", "http-error"])
+  test(`knowledge ${failure} retains gateway trace and never retries`, async (t) => {
+    const f = await fixture(t, {
+      handler: (_wire, _init, reply) => {
+        const headers = { "x-request-id": "failed-request", "x-audit-id": "failed-audit" };
+        if (failure === "http-error") return new Response(null, { status: 503, headers });
+        return reply(
+          failure === "tool-error"
+            ? {
+                isError: true,
+                structuredContent: { code: "KNOWLEDGE_FAILED", message: "upstream failed" },
+              }
+            : { structuredContent: { ...answer(), status: "PARTIAL" } },
+          headers,
+        );
+      },
+    });
+    const result = await invoke(f, ask, args);
+    assert.equal(result.isError, true);
+    assert.match(JSON.stringify(result), /gateway.requestId=failed-request/);
+    assert.match(JSON.stringify(result), /gateway.auditId=failed-audit/);
+    assert.equal(count(f, "weknora_ask"), 1);
+  });

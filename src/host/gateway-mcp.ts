@@ -1,4 +1,5 @@
 /** 绑定登录身份的 GEA Gateway 能力；密钥不会离开 Fetch 闭包。 */
+import { readMcpTrace, withMcpTrace } from "./mcp-trace.ts";
 import { KNOWLEDGE_METHODS, KNOWLEDGE_SOURCE } from "./knowledge-mcp.ts";
 import { prepareGatewaySession } from "./gateway-session.ts";
 import { createParser } from "eventsource-parser";
@@ -223,27 +224,36 @@ export function gatewayMcpTransport(
     }
     throwIfAborted(identity);
     if (!res.ok && init?.method === "POST") {
+      const gatewayTrace = KNOWLEDGE_METHODS.some((name) => name === invocation?.name)
+        ? readMcpTrace(res.headers)
+        : {};
       await res.body?.cancel();
       // 限流是"等一下还能用"，不是"连接坏了"：规约 §14 要求按 Retry-After 等待，
       // 并降低并发/缩小查询范围，不能原样立刻重试。REST /call 会回 429 + Retry-After；
       // 这里的 MCP 入口同样要认。
       if (res.status === 429) {
         const waitMs = retryAfterMs(res.headers);
-        throw Object.assign(
-          new Error(
-            `GEA_MCP_RATE_LIMITED: 网关限流（HTTP 429）${
-              waitMs === undefined ? "" : `，建议等 ${Math.ceil(waitMs / 1000)} 秒再试`
-            }。请降低并发或缩小查询范围后再来，不要原样立刻重试。`,
+        throw withMcpTrace(
+          Object.assign(
+            new Error(
+              `GEA_MCP_RATE_LIMITED: 网关限流（HTTP 429）${
+                waitMs === undefined ? "" : `，建议等 ${Math.ceil(waitMs / 1000)} 秒再试`
+              }。请降低并发或缩小查询范围后再来，不要原样立刻重试。`,
+            ),
+            {
+              code: "GEA_MCP_RATE_LIMITED",
+              retryable: true,
+              ...(waitMs === undefined ? {} : { retryAfterMs: waitMs }),
+            },
           ),
-          {
-            code: "GEA_MCP_RATE_LIMITED",
-            retryable: true,
-            ...(waitMs === undefined ? {} : { retryAfterMs: waitMs }),
-          },
+          gatewayTrace,
         );
       }
-      throw new Error(
-        `GEA_MCP_HTTP_${res.status}: 网关请求被拒绝，请检查连接或重新登录；不要原样重复调用。`,
+      throw withMcpTrace(
+        new Error(
+          `GEA_MCP_HTTP_${res.status}: 网关请求被拒绝，请检查连接或重新登录；不要原样重复调用。`,
+        ),
+        gatewayTrace,
       );
     }
     if ((discovery || invocation) && res.ok) {
