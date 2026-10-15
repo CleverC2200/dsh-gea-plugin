@@ -40,6 +40,7 @@ const tool = (name) => ({
 
 test("official Agent-scoped Tools view admits the actual BSP registered UI tool without bypassing its registration gate or scope intersection", async (t) => {
   const external = [];
+  const identity = new AbortController().signal;
   t.mock.method(globalThis, "fetch", async (input) => {
     external.push(String(input));
     assert.fail("offline scoped tool policy must not reach external wire");
@@ -80,13 +81,18 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
     ctx.tools.register(tool(name));
   const business = {
     config: { runtimeDir: directory, analysisAgentCode: "sales_forecast" },
-    status: () => ({ user: { id: "offline" } }),
+    status: () => ({ authenticated: true, user: { id: "offline" } }),
+    identitySignal: () => identity,
     watchIdentity: () => () => {},
     assertExecutionAllowed: () => {},
     readTurnRevision: () => 1,
     surfaceFor: () => undefined,
   };
   ctx.provide("agentResources", {
+    cubeSource: (id) =>
+      id === "gea-readonly"
+        ? { sourceRef: id, consumerCode: "sales_forecast", signal: identity }
+        : undefined,
     list: async () => [{ id: "gea-readonly", kind: "prompt", installed: true, enabled: true }],
   });
   let authenticated = true;

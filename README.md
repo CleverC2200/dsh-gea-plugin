@@ -6,17 +6,17 @@ GEA Host 管唯一业务身份、凭据、Consumer 授权、执行额度与受�
 
 ## 按任务阅读
 
-| 任务                                         | 权威入口                                                                                                |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| 全仓文档、业务规格与未验收风险               | [文档索引](docs/index.md)                                                                               |
-| 身份、Consumer、请求额度、取消、分析与业务写 | [执行逻辑](docs/execution-logic.md)；一手入口为 [Host](src/host.ts) 和 [Business](src/host/business.ts) |
-| HTML page/capability 声明、启用与 mock       | [能力声明](docs/capability-contract.md)                                                                 |
-| 页面接入、动作、引用与恢复                   | [页面桥入口](docs/page-bridge.md)，沿同组 Workbench 公开合同                                            |
-| 业务资源与官方 standard 的执行边界           | [标准能力边界](docs/business-standard-capabilities.md)                                                  |
-| 工具链、依赖、构建与静态知识检查             | [本地开发](docs/local-development.md)，精确命令与导出以 [package.json](package.json) 为准               |
-| 五源组合与实际启动                           | [源码组合](docs/plugin-split-validation.md)，启动前读 [窗口准入](docs/window-launch-admission.md)       |
-| 普通三包打包、安装与 Host 接收               | [三包交付](docs/package-delivery.md) 和 [安装协议](docs/install.md)                                     |
-| 回执一致性、预算、完整目标与接续             | [交付核对](docs/delivery-check.md)                                                                      |
+| 任务                                                    | 权威入口                                                                                                |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 全仓文档、业务规格与未验收风险                          | [文档索引](docs/index.md)                                                                               |
+| 身份、Consumer、请求额度、取消、分析与业务写            | [执行逻辑](docs/execution-logic.md)；一手入口为 [Host](src/host.ts) 和 [Business](src/host/business.ts) |
+| 个人 Agent 可信 Cube 引用、HTML capability、启用与 mock | [能力声明](docs/capability-contract.md)                                                                 |
+| 页面接入、动作、引用与恢复                              | [页面桥入口](docs/page-bridge.md)，沿同组 Workbench 公开合同                                            |
+| 业务资源与官方 standard 的执行边界                      | [标准能力边界](docs/business-standard-capabilities.md)                                                  |
+| 工具链、依赖、构建与静态知识检查                        | [本地开发](docs/local-development.md)，精确命令与导出以 [package.json](package.json) 为准               |
+| 五源组合与实际启动                                      | [源码组合](docs/plugin-split-validation.md)，启动前读 [窗口准入](docs/window-launch-admission.md)       |
+| 普通三包打包、安装与 Host 接收                          | [三包交付](docs/package-delivery.md) 和 [安装协议](docs/install.md)                                     |
+| 回执一致性、预算、完整目标与接续                        | [交付核对](docs/delivery-check.md)                                                                      |
 
 ## 完成边界
 

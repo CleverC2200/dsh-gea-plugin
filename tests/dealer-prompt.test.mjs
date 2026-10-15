@@ -274,7 +274,7 @@ test(
         const results = readToolResults(records);
         assert.equal(results.length, 1);
         assert.equal(results[0].callId, calls[0].data.callId);
-        assert.equal(results[0].isError, false);
+        assert.equal(results[0].isError, false, results[0].text);
         const text = results[0].text;
         assert.ok(text.startsWith('<skill_content name="inventory-dealer">'));
         assert.ok(
@@ -353,7 +353,8 @@ test(
     );
     const handshakesBeforeSkill = catalogConsumers.length;
     loadSkill = true;
-    const loaded = await ask("gea-readonly");
+    // Explicit Skill loading uses the owning Agent's selected reference.
+    const loaded = await ask("gea-html-inventory-dealer");
     const skillReply = JSON.stringify(loaded.messages.filter((x) => x.role === "tool"));
     // Consumer identity is verified by the stock gateway receipt above, not invented in Skill prose.
     assert.equal(catalogConsumers.length, handshakesBeforeSkill);

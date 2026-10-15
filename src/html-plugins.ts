@@ -139,6 +139,7 @@ export async function registerHtmlPlugins(
     const releaseResources = await ctx.agentResources.register([
       {
         id: preset,
+        cube: !mock && !retired && capabilityContract.data?.mock !== true,
         label: manifest.name,
         presetName: profile.presetName,
         description: profile.description,

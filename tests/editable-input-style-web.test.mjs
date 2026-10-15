@@ -106,17 +106,21 @@ test("editable quantity inputs are white, outlined and rounded", { timeout: 9000
   const input = frame.getByRole("spinbutton", { name: "确认计划量 1001", exact: true });
   await expect(input).toBeVisible();
 
-  const idle = await input.evaluate((el) => {
-    const s = getComputedStyle(el);
-    return {
-      bg: s.backgroundColor,
-      borderWidth: s.borderTopWidth,
-      borderColor: s.borderTopColor,
-      radius: s.borderRadius,
-    };
-  });
-  assert.equal(idle.bg, "rgb(255, 255, 255)", "可编辑输入框必须白底");
-  assert.equal(idle.borderWidth, "1px", "可编辑输入框要有 1px 描边");
+  let idle;
+  await expect
+    .poll(async () => {
+      idle = await input.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return {
+          bg: s.backgroundColor,
+          borderWidth: s.borderTopWidth,
+          borderColor: s.borderTopColor,
+          radius: s.borderRadius,
+        };
+      });
+      return idle;
+    })
+    .toMatchObject({ bg: "rgb(255, 255, 255)", borderWidth: "1px" });
   assert.notEqual(idle.borderColor, "rgba(0, 0, 0, 0)", "描边不能是透明");
   assert.ok(parseFloat(idle.radius) >= 4, `圆角要明显，实际 ${idle.radius}`);
 

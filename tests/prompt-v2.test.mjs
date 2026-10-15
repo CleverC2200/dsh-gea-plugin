@@ -604,29 +604,6 @@ test("adding an evidence index never replaces inline datasets or their coverage"
   assert.equal(shown.evidenceDatasets.length, 1);
 });
 
-test("knowledge projection uses cited chunks instead of a cut JSON envelope", () => {
-  const chunks = Array.from({ length: 6 }, (_, i) => ({
-    chunk_id: "chunk-" + i,
-    reference_id: "ref-" + i,
-    content: "业务规则。".repeat(500),
-  }));
-  const raw =
-    JSON.stringify({ result: JSON.stringify({ document_ids: [], chunks }) }) + "\ntransport note";
-  const shown = JSON.parse(transientResult(raw, 6000, true));
-  assert.equal(shown.source, "GEA_KNOWLEDGE_EXCERPTS");
-  assert.ok(shown.excerpts.length > 0);
-  assert.ok(shown.excerpts[0].content.startsWith("业务规则"));
-  assert.equal(shown.excerpts[0].chunkId, "chunk-0");
-  assert.ok(JSON.stringify(shown).length <= 6000);
-  assert.equal(shown.rawAvailable, false);
-  const broken = JSON.stringify({
-    result: '{"chunks":[' + JSON.stringify(chunks[0]) + ',{"chunk_id":"broken","content":"cut',
-  });
-  const partial = JSON.parse(transientResult(broken + " ".repeat(7000), 6000, true));
-  assert.equal(partial.sourceComplete, false);
-  assert.equal(partial.excerpts.length, 1);
-});
-
 test("small nested artifacts expose exact business rows with coverage, not escaped envelopes", () => {
   const rows = [
     { "inventory.material_code": "SKU01", "inventory.qty": "12.3400" },

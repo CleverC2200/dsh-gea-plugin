@@ -5,7 +5,7 @@ import { productionManifest } from "../scripts/production-manifest.mjs";
 const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const versions = {
   "@cleverc2200/dsh-agent-workbench": "0.1.1",
-  "dsh-agent-manage": "0.6.3-company.6",
+  "dsh-agent-manage": source.peerDependencies["dsh-agent-manage"],
   "@changfenhuang/dsh-genui": "0.11.3",
   "dsh-better-sidebar": "0.24.1",
 };
@@ -27,7 +27,11 @@ test("production manifest preserves an existing exact peer when another package 
     ...versions,
     "dsh-agent-manage": "0.6.3-company.7",
   });
-  assert.equal(manifest.peerDependencies["dsh-agent-manage"], "0.6.3-company.6");
+  assert.equal(
+    manifest.peerDependencies["dsh-agent-manage"],
+    source.peerDependencies["dsh-agent-manage"],
+  );
+  assert.notEqual(manifest.peerDependencies["dsh-agent-manage"], "0.6.3-company.7");
   const ranged = productionManifest(
     {
       ...source,

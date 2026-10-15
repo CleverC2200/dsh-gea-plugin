@@ -207,11 +207,20 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
       deriveMessages: () => [],
     },
   };
+  const identity = new AbortController().signal;
   const ctx = {
     tools: toolService,
-    agents: { get: () => agent },
+    agents: { get: () => agent, list: () => [agent] },
     sessionProjections: { stateOf: () => preset },
     agentResources: {
+      cubeSource: (id) =>
+        resourceEnabled && ["gea-readonly", "gea-html-inventory-aqkc"].includes(id)
+          ? {
+              sourceRef: id,
+              consumerCode: id === "gea-readonly" ? "sales_forecast" : "base-safety-stock",
+              signal: identity,
+            }
+          : undefined,
       list: async () => [{ id: preset, kind: "prompt", installed: true, enabled: resourceEnabled }],
     },
     skills: { list: async () => [] },
@@ -224,7 +233,8 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
   const business = {
     config: { runtimeDir: dir, analysisAgentCode: "sales_forecast" },
     assertExecutionAllowed: () => {},
-    status: () => ({ source: "fixture", user: { id: "one" } }),
+    status: () => ({ authenticated: true, source: "fixture", user: { id: "one" } }),
+    identitySignal: () => identity,
     turnStopKind: () => undefined,
     watchIdentity: (fn) => {
       identityChanged = fn;

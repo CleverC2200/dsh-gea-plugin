@@ -99,13 +99,27 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     },
     "promptQa",
   );
-  for (const name of qaFixtureSkillNames) {
-    const installed = await fixtureRequest(app, "/api/agent-plugins/user-panel/skills/create", {
-      name,
-      text: `---\nname: ${name}\ndescription: local regression fixture\n---\nExplicit domain rule fixture.`,
+  const fixtureSkills = qaFixtureSkillNames.map((name) => ({
+    kind: "personal",
+    name,
+    description: "local regression fixture",
+    content: "Explicit domain rule fixture.",
+    enabled: true,
+  }));
+  async function saveFixtureSkills() {
+    const saved = await fixtureRequest(app, "/api/agent-manage/agents/plugin/skills", {
+      id: "gea-readonly",
+      skills: fixtureSkills,
     });
-    assert.equal(installed.ok, true, JSON.stringify(installed));
+    assert.equal(saved.ok, true, JSON.stringify(saved));
   }
+  async function updateFixtureSkill(name, changes) {
+    const skill = fixtureSkills.find((skill) => skill.name === name);
+    assert.ok(skill);
+    Object.assign(skill, changes);
+    await saveFixtureSkills();
+  }
+  await saveFixtureSkills();
   let script = [],
     captured = [];
   app.route(async (req, res) => {
@@ -278,18 +292,14 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     return { first: 40, next: 20 };
   });
   await check(
-    "native Skill instructions stay visible and original resource changes are read afresh",
+    "native Skill instructions retain their Session revision and new Sessions read the updated Agent",
     async () => {
       const changed = action("skill", { name: "sinian-demand-dialogue" });
       changed.before = async () => {
-        const updated = await fixtureRequest(
-          app,
-          "/api/agent-plugins/user-panel/skills/update?name=sinian-demand-dialogue",
-          {
-            text: "---\nname: sinian-demand-dialogue\ndescription: changed fixture\n---\nUpdated original domain rule fixture.",
-          },
-        );
-        assert.equal(updated.ok, true, JSON.stringify(updated));
+        await updateFixtureSkill("sinian-demand-dialogue", {
+          description: "changed fixture",
+          content: "Updated original domain rule fixture.",
+        });
       };
       const r = await run(
         await create(),
@@ -315,7 +325,11 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
         /Explicit domain rule fixture/,
         "the current native contract returns the full validated body again",
       );
-      assert.match(r.tools[2].text, /Updated original domain rule fixture/);
+      assert.match(
+        r.tools[2].text,
+        /Explicit domain rule fixture/,
+        "an existing Session retains its Skill revision",
+      );
       const other = await run(
         await create(),
         [action("skill", { name: "sinian-demand-dialogue" })],
@@ -633,7 +647,7 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     },
   );
   await check(
-    "local calculation references reject baseline changes, revoked visibility and a different GEA identity",
+    "local calculations retain their Agent revision, new Sessions honor Skill revocation and a different GEA identity cannot reuse evidence",
     async () => {
       const id = await create(),
         data = input(24);
@@ -645,48 +659,42 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
       );
       const oldId = resultObject(first.tools[0]).evidenceId;
       assert.ok(oldId);
-      const update = async (text) => {
-        const changed = await fixtureRequest(
-          app,
-          "/api/agent-plugins/user-panel/skills/update?name=sinian-demand-baseline",
-          { text },
-        );
-        assert.equal(changed.ok, true, JSON.stringify(changed));
-      };
-      await update(
-        "---\nname: sinian-demand-baseline\ndescription: changed baseline fixture\n---\nChanged current baseline body.",
-      );
-      const changed = await run(
+      await updateFixtureSkill("sinian-demand-baseline", {
+        description: "changed baseline fixture",
+        content: "Changed current baseline body.",
+      });
+      const retained = await run(
         id,
         [action("gea_evidence_read", { evidenceId: oldId })],
-        "读取规则变更前旧稿",
+        "旧会话继续读取原版本计算稿",
       );
-      assert.equal(changed.tools[0].isError, true);
-      assert.match(changed.tools[0].text, /GEA_CALCULATION_SOURCE_CHANGED/);
+      assert.equal(retained.tools[0].isError, false, retained.tools[0].text);
+      const currentSession = await create();
       const current = await run(
-        id,
+        currentSession,
         [action("forecast_compute", data)],
         "用户原始输入：" + JSON.stringify(data),
       );
-      const currentId = resultObject(current.tools[0]).evidenceId;
+      const currentResult = resultObject(current.tools[0]);
+      const currentId = currentResult.evidenceId;
       assert.ok(currentId);
-      await update(
-        "---\nname: sinian-demand-baseline\ndescription: disabled baseline fixture\ndisable-model-invocation: true\n---\nChanged current baseline body.",
+      assert.notEqual(
+        currentResult.source.baselineHash,
+        resultObject(first.tools[0]).source.baselineHash,
       );
+      await updateFixtureSkill("sinian-demand-baseline", { enabled: false });
       const revoked = await run(
-        id,
-        [action("gea_evidence_read", { evidenceId: currentId })],
-        "读取当前撤销规则的旧稿",
+        await create(),
+        [action("forecast_compute", data)],
+        "用户原始输入：" + JSON.stringify(data),
       );
       assert.equal(revoked.tools[0].isError, true);
       assert.match(revoked.tools[0].text, /FORECAST_CAPABILITY_DISABLED/);
-      await update(
-        "---\nname: sinian-demand-baseline\ndescription: changed baseline fixture\n---\nChanged current baseline body.",
-      );
+      await updateFixtureSkill("sinian-demand-baseline", { enabled: true });
       assert.equal((await app.rpc("environment/select", { environment: "test" })).ok, true);
       await app.login();
       const otherIdentity = await run(
-        id,
+        currentSession,
         [action("gea_evidence_read", { evidenceId: currentId })],
         "不同GEA环境不得继承旧私有稿",
       );

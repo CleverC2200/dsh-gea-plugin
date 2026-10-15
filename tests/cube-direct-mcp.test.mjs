@@ -7,7 +7,7 @@ import { build } from "esbuild";
 const built = await build({
   stdin: {
     contents:
-      "export {openCubeMcp} from './src/host/cube-mcp-client.ts';export {gatewayMcpTransport} from './src/host/gateway-mcp.ts';export {createCubeMcpService} from './src/host/cube-mcp-service.ts';export {registerGeaTools} from './src/host/agent-tools.ts';",
+      "export {openGatewayMcp} from './src/host/gateway-mcp-client.ts';export {gatewayMcpTransport} from './src/host/gateway-mcp.ts';export {createGatewayMcpService} from './src/host/gateway-mcp-service.ts';export {registerGeaTools} from './src/host/agent-tools.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -22,7 +22,8 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   mod,
   mod.exports,
 );
-const { openCubeMcp, gatewayMcpTransport, createCubeMcpService, registerGeaTools } = mod.exports;
+const { openGatewayMcp, gatewayMcpTransport, createGatewayMcpService, registerGeaTools } =
+  mod.exports;
 const code = "2109581866385289217";
 const schema = {
   type: "object",
@@ -85,7 +86,7 @@ async function clientFixture({
               _meta: { sourceType: "MCP", sourceCode: "old-cube" },
             },
             {
-              name: "lightrag_query",
+              name: "weknora_ask",
               inputSchema: schema,
               _meta: { sourceType: "MCP", sourceCode: "rag" },
             },
@@ -157,7 +158,7 @@ async function clientFixture({
     },
     { cubeMcpCode: code, maxResponseBytes },
   );
-  return { client: await openCubeMcp(transport, signal), sent, signal };
+  return { client: await openGatewayMcp(transport, signal), sent, signal };
 }
 
 test("direct Cube methods preserve server schemas, original decimals and the original business/transport sessions", async () => {
@@ -231,6 +232,7 @@ function serviceFixture() {
     stopped = new Map();
   const identity = new AbortController();
   const listeners = new Map();
+  const resourceOwner = new AbortController();
   const ctx = {
     on: (event, listener) => {
       listeners.set(event, listener);
@@ -242,6 +244,15 @@ function serviceFixture() {
     },
     sessionProjections: { stateOf: (session) => profiles.get(session.id) },
     agentResources: {
+      cubeSource: (id) =>
+        ["gea-readonly", "gea-html-inventory-dealer"].includes(id)
+          ? {
+              sourceRef: id,
+              consumerCode:
+                id === "gea-readonly" ? "sales_forecast" : "dealer-inventory-replenishment",
+              signal: resourceOwner.signal,
+            }
+          : undefined,
       list: async () =>
         ["gea-readonly", "gea-html-inventory-dealer"].map((id) => ({
           id,
@@ -272,7 +283,7 @@ function serviceFixture() {
     stopTurn: (id, message) => stopped.set(id, message),
   };
   return {
-    service: createCubeMcpService(ctx, business),
+    service: createGatewayMcpService(ctx, business),
     business,
     module,
     profiles,
@@ -315,24 +326,11 @@ test("discovery reacts to Session lifecycle and rejects disabled resources or a 
   stop();
   assert.equal(f.listeners.size, 0);
   f.profiles.delete("sales");
-  f.ctx.agentResources.list = async () => [
-    {
-      id: "gea-html-inventory-dealer",
-      kind: "prompt",
-      installed: true,
-      enabled: false,
-    },
-  ];
-  await assert.rejects(f.service.listTools(new AbortController().signal), /RESOURCE_DISABLED/);
+  const source = f.ctx.agentResources.cubeSource;
+  f.ctx.agentResources.cubeSource = () => undefined;
+  assert.deepEqual(await f.service.listTools(new AbortController().signal), []);
   assert.equal(f.calls.length, 0);
-  f.ctx.agentResources.list = async () => [
-    {
-      id: "gea-html-inventory-dealer",
-      kind: "prompt",
-      installed: true,
-      enabled: true,
-    },
-  ];
+  f.ctx.agentResources.cubeSource = source;
   f.business.moduleMcp = async () => {
     f.identity.abort();
     return f.module;
@@ -881,4 +879,50 @@ test("a late response-contract error after cancellation cannot stop the next cal
     await f.service.call("sales", "query_business_data", query, new AbortController().signal),
     "new-turn-result",
   );
+});
+
+test("personal Cube resolves a trusted owner and rejects same-Consumer replacement and revoked late results", async () => {
+  const f = serviceFixture();
+  f.profiles.set("personal", "user-agent-personal");
+  const association = new AbortController();
+  let source = new AbortController();
+  f.ctx.userAgents = {
+    cubeFor: (agent) =>
+      agent.session.id === "personal"
+        ? {
+            sourceRef: "trusted-cube",
+            signal: association.signal,
+            generation: "revision-1",
+          }
+        : undefined,
+  };
+  f.ctx.agentResources.cubeSource = (id) =>
+    id === "trusted-cube"
+      ? {
+          sourceRef: id,
+          consumerCode: "trusted-consumer",
+          signal: source.signal,
+        }
+      : undefined;
+  assert.equal(f.service.allows("personal"), true);
+  await f.service.call("personal", "inspect_cube_model", {}, new AbortController().signal);
+  assert.equal(f.calls[0].consumer, "trusted-consumer");
+  f.module.call = async () => {
+    source = new AbortController();
+    return "stale";
+  };
+  await assert.rejects(
+    f.service.call("personal", "inspect_cube_model", {}, new AbortController().signal),
+    /OWNER_CHANGED/,
+  );
+  f.module.call = async (_name, _args, signal) => {
+    association.abort();
+    assert.equal(signal.aborted, true);
+    return "stale";
+  };
+  await assert.rejects(
+    f.service.call("personal", "inspect_cube_model", {}, new AbortController().signal),
+    /abort/i,
+  );
+  assert.equal(f.service.allows("personal"), false);
 });
