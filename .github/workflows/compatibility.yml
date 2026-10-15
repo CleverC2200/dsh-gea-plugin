@@ -240,9 +240,99 @@ jobs:
             candidate/dsh-gea-plugin/.runtime/quality-fast.json
           if-no-files-found: warn
 
+  macos-isolation:
+    needs: candidate-scope
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        core: ${{ fromJSON(needs.candidate-scope.outputs.cores) }}
+    env:
+      QUALITY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      QUALITY_REUSE_SDK: "true"
+      QUALITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      QUALITY_CANDIDATE: ${{ github.workspace }}/candidate-input.json
+    defaults:
+      run:
+        working-directory: candidate/dsh-gea-plugin
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          path: candidate/dsh-gea-plugin
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        id: node
+        with:
+          node-version: 24
+      - name: Require explicit peer contents-read credential
+        env:
+          PEER_READ_TOKEN: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+        run: |
+          node -e "if (!process.env.PEER_READ_TOKEN) throw Error('CANDIDATE_PEER_REQUIRED: configure peer contents-read token')"
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: ${{ needs.candidate-scope.outputs.manage-sha }}
+          fetch-depth: 0
+          path: candidate/dsh-agent-manage
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: ${{ needs.candidate-scope.outputs.workbench-sha }}
+          fetch-depth: 0
+          path: source/dsh-agent-workbench
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: ${{ matrix.core }}
+          fetch-depth: 0
+          path: source/official-core
+          persist-credentials: false
+      - name: Enable declared package managers
+        run: |
+          npm install --global npm@11.11.0
+          corepack enable
+      - name: Bind frozen peer source and actual own event
+        id: group
+        env:
+          QUALITY_GROUP_GEA: ${{ needs.candidate-scope.outputs.gea-sha }}
+          QUALITY_GROUP_WORKBENCH: ${{ needs.candidate-scope.outputs.workbench-sha }}
+          QUALITY_GROUP_MANAGE: ${{ needs.candidate-scope.outputs.manage-sha }}
+          QUALITY_GROUP_ID: ${{ needs.candidate-scope.outputs.group-id }}
+          QUALITY_SOURCE_KIND: ${{ needs.candidate-scope.outputs.source-kind }}
+          QUALITY_BASELINE_ID: ${{ needs.candidate-scope.outputs.baseline-id }}
+          CORE_HEAD: ${{ matrix.core }}
+        run: node "$GITHUB_WORKSPACE/source/dsh-agent-workbench/scripts/write-hosted-group.mjs" --repo dsh-gea-plugin --root "$GITHUB_WORKSPACE" --core-head "$CORE_HEAD" --workbench-source
+      - name: Verify frozen source before cache preparation
+        shell: bash
+        env:
+          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
+        run: node scripts/run-quality-ci.mjs --phase verify-input --input "$QUALITY_CANDIDATE" --core-source "$GITHUB_WORKSPACE/source/official-core" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench"
+      - name: Execute mandatory macOS kernel isolation for the same frozen tuple
+        env:
+          CORE_HEAD: ${{ matrix.core }}
+          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
+        run: node scripts/run-quality-ci.mjs --phase macos-isolation --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench"
+      - name: Keep macOS admission and isolation results including failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-isolation-${{ matrix.core }}
+          path: |
+            candidate-input.json
+            candidate-group.json
+            candidate/dsh-gea-plugin/.runtime/quality-isolation/
+          if-no-files-found: warn
+
   candidate-compatibility:
     if: always()
-    needs: [candidate-scope, gates]
+    needs: [candidate-scope, gates, macos-isolation]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -258,4 +348,5 @@ jobs:
         env:
           QUALITY_SCOPE_RESULT: ${{ needs.candidate-scope.result }}
           QUALITY_GATE_RESULT: ${{ needs.gates.result }}
+          QUALITY_ISOLATION_RESULT: ${{ needs.macos-isolation.result }}
         run: node scripts/run-quality-ci.mjs --phase final

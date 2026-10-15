@@ -68,6 +68,7 @@ export async function stockReferencePage(
       );
     },
     config: (base) => ({
+      cubeMcpCodes: { production: "cube", test: "cube" },
       ...(environments
         ? {
             environment: "test",
@@ -224,7 +225,15 @@ export async function stockReferencePage(
       (rows) => rows.filter((row) => row.type === "turn/end").length > before,
       60000,
     );
-    return readToolResults(rows).at(-1);
+    const receipt = readToolResults(rows).at(-1);
+    assert.ok(
+      receipt,
+      JSON.stringify({
+        endings: rows.filter((row) => row.type === "turn/end"),
+        calls: rows.filter((row) => row.type === "tool/call"),
+      }),
+    );
+    return receipt;
   };
   return {
     app,

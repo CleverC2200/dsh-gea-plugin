@@ -112,7 +112,12 @@ test(
             .trim(),
           focus: (() => {
             const s = getComputedStyle(document.activeElement);
-            return { color: s.outlineColor, style: s.outlineStyle, width: s.outlineWidth };
+            const ring = s.boxShadow.match(/^(rgba?\([^)]+\)) 0px 0px 0px (\d+(?:\.\d+)?px)$/);
+            return {
+              color: ring?.[1],
+              style: s.boxShadow === "none" ? "none" : "box-shadow",
+              width: ring?.[2],
+            };
           })(),
           menu: read('.gea-sidebar-tab[aria-controls="gea-panel-function"]'),
           workbenchPage: getComputedStyle(document.body)
@@ -137,8 +142,11 @@ test(
       await expect.poll(async () => (await sample()).axis).toBe(`${size}px`);
       await composer.fill("输入框字号与焦点验收");
       await expect(composer).toBeFocused();
-      await composer.press("Tab");
-      await composer.press("Shift+Tab");
+      // Sample the declared Core model control, rather than relying on the preceding tab-order item.
+      const focusControl = page.locator('[data-slot="conversation.input.model"] button').first();
+      await page.keyboard.press("Tab");
+      await focusControl.focus();
+      await expect(focusControl).toBeFocused();
       const value = await sample();
       samples.push({ label, ...value });
       if (!baseline) {

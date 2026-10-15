@@ -19,7 +19,7 @@ test("evidence projection preserves exact numbers and scope; original reads cann
     '{"coverage":"complete","amount":12.3400,"id":9007199254740993,"rows":' +
     JSON.stringify(Array.from({ length: 200 }, (_, i) => ({ i, name: "商品".repeat(30) }))) +
     "}";
-  const id = await store.put("a", "gea_cube_query", text);
+  const id = await store.put("a", "mcp__gea-gateway__query_business_data", text);
   const result = JSON.parse(projectEvidence(text, id));
   assert.equal(result.projection, "partial");
   assert.equal(result.id, "9007199254740993");
@@ -50,7 +50,13 @@ test("protected evidence restores after restart only with current authorization"
     resourceTool: "query_business_data",
     resources: "v1",
   };
-  const id = await first.put("s", "gea_cube_query", "original business data", first.epoch(), grant);
+  const id = await first.put(
+    "s",
+    "mcp__gea-gateway__query_business_data",
+    "original business data",
+    first.epoch(),
+    grant,
+  );
   const restored = new PromptEvidenceStore(dir);
   let resourceVersion = "v1";
   const authorize = async (saved) => {
@@ -313,6 +319,14 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
   );
   const queryLimited = await assemble();
   assert.ok(queryLimited.tools.some((tool) => tool.name === "gea_evidence_read"));
+  for (const name of [
+    "mcp__gea-gateway__inspect_cube_model",
+    "mcp__gea-gateway__query_business_data",
+  ])
+    assert.ok(
+      !queryLimited.tools.some((tool) => tool.name === name),
+      "query allowance hides " + name,
+    );
   for (const name of ["read_file", "run_code", "run_agent"]) {
     assert.ok(
       queryLimited.tools.some((tool) => tool.name === name),
@@ -369,6 +383,11 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     assert.equal(guard({ name, agent, arguments: {} }), undefined);
   }
   assert.ok(!idle.tools.some((tool) => tool.name.startsWith("gea_")));
+  for (const name of [
+    "mcp__gea-gateway__inspect_cube_model",
+    "mcp__gea-gateway__query_business_data",
+  ])
+    assert.ok(!idle.tools.some((tool) => tool.name === name), "idle read exhaustion hides " + name);
   assert.match(
     idle.sections.find((section) => section.name === "gea:budget").text,
     /通用文件、规划、任务和协作能力仍按官方规则可用/,

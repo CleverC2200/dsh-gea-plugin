@@ -16,7 +16,7 @@ export type PageIdentity = {
   consumerCode: string;
   /** 给模型看的模块名，例如 `经销商库存`。 */
   label: string;
-  /** 这个页面的对话入口工具名（全客户端只有一个：gea_page）。 */
+  /** 当前页面实际支持的动作工具名。 */
   pageTool: string;
   /** 演示（mock）模块要如实标出来，避免把它的数字当业务事实。 */
   mock?: boolean;
@@ -34,10 +34,7 @@ export const PAGE_IDENTITY_TTL_MS = 90_000;
 export const PAGE_TOOL = "gea_page";
 
 /** 这份身份还算不算"当前页"。 */
-export function pageIdentityFresh(
-  identity: PageIdentity,
-  now = Date.now(),
-): boolean {
+export function pageIdentityFresh(identity: PageIdentity, now = Date.now()): boolean {
   return now - identity.at <= PAGE_IDENTITY_TTL_MS;
 }
 
@@ -49,8 +46,18 @@ const currentPage = (identity: PageIdentity) => ({
   mock: identity.mock === true,
 });
 
-/** 页面开着、但这一类页面不向宿主上报可见行快照（HTML 插件页）时的权威回答。 */
+/** 当前页面尚无可见行快照时，只报告所属页面和实际支持的入口。 */
 export function currentPageEnvelope(identity: PageIdentity): string {
+  if (identity.pageTool !== PAGE_TOOL)
+    return JSON.stringify({
+      source: "GEA_RENDERED_WORKBENCH",
+      coverage: "none",
+      authority: "read-only-ui-context",
+      availability: "in-workbench-no-snapshot",
+      code: "PAGE_HAS_NO_SNAPSHOT",
+      currentPage: currentPage(identity),
+      reason: `当前页是「${identity.label}」，但这一屏还没有上报可见行快照，不能推断页面数据。页面动作由 ${identity.pageTool} 按实际元素目录提供；等待页面上报后，用 gea_visible_workbench_context 读取可见内容。`,
+    });
   return JSON.stringify({
     source: "GEA_RENDERED_WORKBENCH",
     coverage: "none",
@@ -61,8 +68,6 @@ export function currentPageEnvelope(identity: PageIdentity): string {
     reason:
       `当前页是「${identity.label}」：这一类页面不上报可见数据快照，所以拿不到"这一屏"的行数据。` +
       `要读这一屏请用 ${PAGE_TOOL}（action=context，可按 focus 收窄）；口径或范围问题请用受管只读直读该模块（consumerCode ${identity.consumerCode}）。` +
-      (identity.mock
-        ? "另：这个模块是演示数据，它的数字不能当业务事实引用。"
-        : ""),
+      (identity.mock ? "另：这个模块是演示数据，它的数字不能当业务事实引用。" : ""),
   });
 }

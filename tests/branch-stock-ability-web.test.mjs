@@ -120,6 +120,7 @@ test(
     let tenantId = "0";
     const app = await profile(t, {
       config: (base) => ({
+        cubeMcpCodes: { production: "cube", test: "cube" },
         analysis: {
           mode: "model",
           baseUrl: base + "/v1",
@@ -328,7 +329,11 @@ test(
         );
         assert.ok(
           receipts.some((receipt) => receipt.text.includes(expected)),
-          JSON.stringify(receipts),
+          JSON.stringify({
+            receipts,
+            endings: rows.filter((row) => row.type === "turn/end"),
+            requests: modelRequests.slice(modelRequestStart),
+          }),
         );
       }
     };

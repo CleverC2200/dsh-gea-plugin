@@ -55,51 +55,6 @@ function fixture(t) {
     registered.get(name).execute(args, { agent: { id: scope, session: {} }, signal });
   return { business, execute };
 }
-const catalog = {
-  semanticModel: [
-    {
-      name: "Allowed",
-      measures: [{ name: "Allowed.qty" }],
-      dimensions: [{ name: "Allowed.sku" }],
-    },
-    { name: "Forbidden", measures: [{ name: "Forbidden.qty" }] },
-  ],
-};
-const resource = {
-  capabilityCode: "query_business_data",
-  resourceCode: "allowed",
-  resourceName: "Allowed",
-  resourceType: "EXTERNAL_MCP",
-  queryTarget: "Allowed",
-  version: "1",
-  maxRows: 100,
-  maxBytes: 10000,
-};
-function moduleFixture(t, f) {
-  let reads = 0,
-    calls = 0,
-    allowed = true;
-  const adapter = {
-    tools: () => [{ name: "query_business_data" }],
-    authorizedResources: async () => {
-      reads++;
-      return { resources: allowed ? [resource] : [], fetchedAt: "2026-10-12" };
-    },
-    call: async () => {
-      calls++;
-      return JSON.stringify(catalog);
-    },
-  };
-  t.mock.method(f.business, "moduleMcp", async () => adapter);
-  return {
-    reads: () => reads,
-    calls: () => calls,
-    revoke: () => {
-      allowed = false;
-    },
-  };
-}
-
 test("registered sales reads replay after two reads, isolate scopes and permit a fresh round", async (t) => {
   const f = fixture(t);
   let reads = 0;
@@ -121,49 +76,10 @@ test("registered sales reads replay after two reads, isolate scopes and permit a
   assert.equal(reads, 4);
 });
 
-test("registered catalog and MCP inspect filter authorization and recheck revoked resources", async (t) => {
-  const f = fixture(t),
-    m = moduleFixture(t, f);
-  const first = await f.execute("gea_gateway_catalog");
-  assert.match(first, /Allowed/);
-  assert.doesNotMatch(first, /Forbidden/);
-  assert.doesNotMatch(
-    await f.execute("gea_module_mcp", {
-      tool: "query_business_data",
-      arguments: { action: "inspect", queries: [] },
-    }),
-    /Forbidden/,
-  );
-  await f.execute("gea_gateway_catalog");
-  assert.match(await f.execute("gea_gateway_catalog"), /already-read/);
-  m.revoke();
-  assert.match(await f.execute("gea_gateway_catalog"), /no-authorized-resources/);
-  assert.equal(m.reads(), 5);
-  assert.equal(m.calls(), 2);
-});
-
-test("registered module tool listing converges independently of another scope and resets next round", async (t) => {
+// Retired catalog/listing specifications are preserved under fixtures/retired-query/specifications.
+// Current authorization, schema refresh and cancellation run through Core tools.execute in current-mcp-tools.test.mjs.
+test("registered native read non-Error failures remain readable", async (t) => {
   const f = fixture(t);
-  moduleFixture(t, f);
-  await f.execute("gea_module_mcp");
-  await f.execute("gea_module_mcp");
-  assert.match(await f.execute("gea_module_mcp"), /已经读过/);
-  await f.execute("gea_module_mcp", {}, "s2");
-  for (let i = 0; i < 10; i++) await f.execute("gea_module_mcp");
-  assert.match(await f.execute("gea_module_mcp"), /metadata-stopped/);
-  assert.equal(f.business.turnStopped("s2"), undefined);
-  f.business.repeatReads().clear("s1");
-  f.business.clearTurnReplays("s1");
-  assert.doesNotMatch(await f.execute("gea_module_mcp"), /metadata-stopped/);
-});
-
-test("registered cancellation and non-Error failures are readable and cancellation spends no waste budget", async (t) => {
-  const f = fixture(t);
-  t.mock.method(f.business, "moduleMcp", async () => {
-    throw { kind: "aborted", reason: { kind: "user" } };
-  });
-  for (let i = 0; i < 6; i++) await assert.rejects(f.execute("gea_module_mcp"), /GEA_TURN_ABORTED/);
-  assert.doesNotThrow(() => f.business.moduleMcpWaste().check("s1"));
   t.mock.method(f.business, "agentQuery", async () => {
     throw { message: "fixture read failed" };
   });

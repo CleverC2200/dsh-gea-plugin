@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { randomUUID, createHash } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
-import { selectBusinessResource } from "./fixtures/business-session.mjs";
+import { createBusinessSession, selectBusinessResource } from "./fixtures/business-session.mjs";
 import { requireSourceInputs } from "../scripts/source-profile.mjs";
 import { nativeWebPrompt, withoutNativeWebPrompt } from "./fixtures/native-web-prompt.mjs";
 
@@ -30,7 +30,7 @@ test(
     for (const [file, sha256] of Object.entries({
       "prompt.json": "a49c1e7e768e053459a395971994515cc568317e6a8ff09523ed0ebb049f8a55",
       "capability.json": "a8375227ec9fc3ec647069607d08affbea0c0547efd8f5bbbc7b62d4ec349fd1",
-      "skills/aqkc/SKILL.md": "0835006111622fd2c3289ab5d3910a05da50af77393cf76b24c481fd76a796ba",
+      "skills/aqkc/SKILL.md": "41b8fb11d166ff89afb926f0e5632b0a4f4c0da3866e3ddaafc654597aa29454",
     })) {
       const bytes = await readFile(join(maintainedRoot, file));
       assert.equal(createHash("sha256").update(bytes).digest("hex"), sha256, file);
@@ -82,6 +82,7 @@ test(
     const app = await profile(t, {
       beforeStart: fixtureWorkbench([root]),
       config: (base) => ({
+        cubeMcpCodes: { production: "cube" },
         analysis: {
           mode: "model",
           baseUrl: base + "/v1",
@@ -97,28 +98,9 @@ test(
     });
     const requests = [];
     const catalogConsumers = [];
+    const inspections = [];
     let loadSkill = false;
     app.route((req, res, reply) => {
-      if (req.url.pathname.endsWith("/ai/gateway/mcp/proxy/resources")) {
-        const request = JSON.parse(req.body);
-        reply({
-          success: true,
-          resources: [
-            {
-              capabilityCode: `MCP_TOOL:${request.mcpCode}:query_business_data`,
-              resourceCode: "stock_cube-cube",
-              resourceName: "stock_cube",
-              resourceType: "EXTERNAL_MCP",
-              queryTarget: "stock_cube",
-              version: "1",
-              maxRows: 200,
-              maxBytes: 262144,
-            },
-          ],
-        });
-        return true;
-      }
-
       if (req.url.pathname.endsWith("/ai/gateway/session")) {
         const body = JSON.parse(req.body);
         catalogConsumers.push(body.consumerCode);
@@ -154,20 +136,22 @@ test(
           result = {
             tools: [
               {
-                name: "query_business_data",
+                name: "inspect_cube_model",
                 _meta: { sourceType: "MCP", sourceCode: "cube" },
                 inputSchema: {
                   type: "object",
                   properties: {
-                    action: { type: "string" },
-                    queries: { type: "array", items: { type: "object" } },
+                    keyword: { type: "string" },
                   },
-                  required: ["action", "queries"],
+                  additionalProperties: false,
                 },
               },
             ],
           };
-        else if (b.method === "tools/call")
+        else if (b.method === "tools/call") {
+          assert.equal(b.params.name, "inspect_cube_model");
+          assert.deepEqual(b.params.arguments, { keyword: "stock_cube" });
+          inspections.push(b.params._meta.agentCode);
           result = {
             content: [
               {
@@ -184,7 +168,7 @@ test(
               },
             ],
           };
-        else result = {};
+        } else result = {};
         reply({ jsonrpc: "2.0", id: b.id, result });
         return true;
       }
@@ -201,9 +185,9 @@ test(
                 id: "load-stock-context",
                 type: "function",
                 function: {
-                  name: loadSkill ? "skill" : "gea_gateway_catalog",
+                  name: loadSkill ? "skill" : "mcp__gea-gateway__inspect_cube_model",
                   arguments: JSON.stringify(
-                    loadSkill ? { name: "inventory-aqkc" } : { model: "stock_cube" },
+                    loadSkill ? { name: "inventory-aqkc" } : { keyword: "stock_cube" },
                   ),
                 },
               },
@@ -219,6 +203,8 @@ test(
       );
       return true;
     });
+    // Discovery needs an actual eligible Core Session; login does not grant one.
+    await createBusinessSession(app);
     await app.login();
     if (process.env.GEA_TEST_SOURCE_CORE === "1") {
       // The combined profile also connects Agent Manage's default MCP bridge at login.
@@ -310,11 +296,15 @@ test(
       withoutNativeWebPrompt(system, nativeWeb),
       /inventory_aqkc_page|name=context|明细既不做交付物|没有任何模型同时具备|HMR receiver|pnpm run dev:web|销售计划汇总例外/,
     );
-    assert.ok(stock.tools.some((x) => x.function.name === "gea_cube_query"));
+    assert.ok(stock.tools.some((x) => x.function.name === "mcp__gea-gateway__inspect_cube_model"));
     assert.ok(!stock.tools.some((x) => x.function.name === "gea_page"));
     const stockCatalog = JSON.stringify(stock.messages.filter((x) => x.role === "tool"));
-    assert.match(stockCatalog, /consumerCode=base-safety-stock/);
-    assert.doesNotMatch(stockCatalog, /consumerCode=sales_forecast/);
+    assert.match(stockCatalog, /stock_cube.row_count/);
+    assert.equal(
+      catalogConsumers.at(-1),
+      "base-safety-stock",
+      "inspection uses the selected business resource Consumer",
+    );
     const managed = maintained["skills/aqkc/SKILL.md"];
     assert.match(managed, /action=context/);
     assert.doesNotMatch(managed, /inventory_aqkc_page/);
@@ -330,7 +320,7 @@ test(
       .join("\n");
     assert.match(salesSystem, /agents_sales_plan_detail_mi/);
     assert.match(salesSystem, /实时审批状态/);
-    assert.match(salesSystem, /gea_cube_query/);
+    assert.match(salesSystem, /query_business_data/);
     assert.doesNotMatch(
       withoutNativeWebPrompt(salesSystem, nativeWeb),
       /HMR receiver/,
@@ -338,18 +328,26 @@ test(
     );
     assert.match(
       JSON.stringify(sales.messages.filter((x) => x.role === "tool")),
-      /consumerCode=sales_forecast/,
+      /stock_cube.row_count/,
+    );
+    assert.equal(catalogConsumers.at(-1), "sales_forecast");
+    assert.deepEqual(
+      [...new Set(catalogConsumers)],
+      ["base-safety-stock", "sales_forecast"],
+      "discovery and refreshed inspection stay in the owning Agent context",
     );
     assert.deepEqual(
-      catalogConsumers,
+      inspections,
       ["base-safety-stock", "sales_forecast"],
-      "catalog transport and cache must stay in the owning Agent context",
+      "exactly one inspection per selected business Consumer",
     );
+    const handshakesBeforeSkill = catalogConsumers.length;
     loadSkill = true;
     const loaded = await ask("gea-readonly");
     const skillReply = JSON.stringify(loaded.messages.filter((x) => x.role === "tool"));
     // Consumer identity is verified by the stock gateway receipt above, not invented in Skill prose.
-    assert.deepEqual(catalogConsumers, ["base-safety-stock", "sales_forecast"]);
+    assert.equal(catalogConsumers.length, handshakesBeforeSkill);
+    assert.deepEqual(inspections, ["base-safety-stock", "sales_forecast"]);
     assert.match(skillReply, /action=context/);
     assert.doesNotMatch(
       skillReply,

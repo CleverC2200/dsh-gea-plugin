@@ -1,3 +1,4 @@
+import { fixtureCubeTools, fixtureCubeDiscovery } from "./fixtures/cube-wire.mjs";
 import { currentHtmlResource } from "./fixtures/html-resource.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
 import { selectBusinessResource } from "./fixtures/business-session.mjs";
@@ -163,6 +164,7 @@ test(
     const app = await profile(t, {
       beforeStart: fixtureWorkbench(Object.values(roots)),
       config: {
+        cubeMcpCodes: { production: "cube", test: "cube" },
         analysis: {
           mode: "model",
           source: "gea",
@@ -177,6 +179,7 @@ test(
     const seen = [];
     app.route((req, res, reply) => {
       const p = req.url.pathname;
+      if (fixtureCubeDiscovery(req, res, reply)) return true;
       if (p.endsWith("/user-agent-credential/my/list")) {
         reply({
           success: true,
@@ -253,17 +256,26 @@ test(
         () => readSession(app.runtime, sessionId),
         (r) => r.some((e) => e.type === "turn/end"),
       );
-      assert.equal(seen.at(-1), consumer);
+      assert.equal(
+        seen.at(-1),
+        consumer,
+        JSON.stringify({
+          preset,
+          seen,
+          events: await readSession(app.runtime, sessionId),
+        }),
+      );
     }
   },
 );
 
 test(
-  "catalog stalls block backend repetition without removing tools, while mixed-model evidence stays recoverable",
+  "catalog stalls block backend repetition while native query results retain every returned row",
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t, {
       config: (base) => ({
+        cubeMcpCodes: { production: "cube", test: "cube" },
         analysis: {
           mode: "model",
           baseUrl: base + "/v1",
@@ -276,190 +288,99 @@ test(
       }),
       env: { V2_TEST_MODEL_KEY: "fixture" },
     });
-    const bodies = Object.fromEntries(
-      ["a", "b"].map((name) => [
+    const datasets = ["a", "b"].map((name) => ({
+      name,
+      rowCount: 70,
+      dataStatus: "partial",
+      totalRowCount: 70,
+      offset: 0,
+      hasMorePages: false,
+      fields: [{ name: name + ".quantity" }, { name: name + ".label" }],
+      rows: Array.from({ length: 70 }, (_, index) => ({
+        [name + ".id"]: String(index),
+        [name + ".quantity"]: "9007199254740993",
+        [name + ".label"]: "业务数据".repeat(40),
+      })),
+      tail: "END_" + name,
+    }));
+    const requests = [],
+      calls = [];
+    const args = {
+      action: "query",
+      queries: ["a", "b"].map((name) => ({
         name,
-        JSON.stringify({
-          datasetName: name,
-          complete: false,
-          rows: Array.from({ length: 70 }, (_, i) => ({
-            id: String(i),
-            quantity: "9007199254740993",
-            label: "业务数据".repeat(40),
-          })),
-          tail: "END_" + name,
-        }),
-      ]),
-    );
-    let phase = 0,
-      evidenceId,
-      rawDone = false;
-    let catalogCalls = 0,
-      catalogPaused = false,
-      checkedResume = false;
-    const pages = [];
+        query: { measures: [name + ".row_count"], limit: 100 },
+      })),
+    };
     app.route((req, res, reply) => {
       const path = req.url.pathname;
-      if (path.endsWith("/ai/gateway/session")) {
-        reply({
-          success: true,
-          result: {
-            accessDecision: { allowed: true },
-            gatewayContext: {
-              consumerType: "AGENT",
-              consumerCode: "sales_forecast",
-              sessionId: "trusted",
-              conversationId: "trusted",
-            },
-            delegationToken: "fixture",
-          },
-        });
-        return true;
-      }
-      if (path.endsWith("/ai/gateway/mcp/proxy/resources")) {
-        reply({
-          success: true,
-          resources: ["a", "b"].map((name) => ({
-            capabilityCode: "MCP_TOOL:cube:query_business_data",
-            resourceCode: name,
-            resourceName: name,
-            resourceType: "EXTERNAL_MCP",
-            queryTarget: name,
-            version: "1",
-            maxRows: 200,
-            maxBytes: null,
-          })),
-        });
-        return true;
-      }
       if (path.endsWith("/ai/gateway/mcp/proxy/mcp")) {
-        const b = JSON.parse(req.body);
-        let result = {};
-        if (b.method === "initialize") result = { protocolVersion: b.params.protocolVersion };
-        else if (b.method === "notifications/initialized") {
+        const wire = JSON.parse(req.body);
+        if (wire.method === "notifications/initialized") {
           res.statusCode = 202;
           res.end();
           return true;
-        } else if (b.method === "tools/list")
+        }
+        let result = {};
+        if (wire.method === "initialize") result = { protocolVersion: wire.params.protocolVersion };
+        else if (wire.method === "tools/list") result = { tools: fixtureCubeTools };
+        else if (wire.method === "tools/call") {
+          calls.push(wire.params);
           result = {
-            tools: [
-              {
-                name: "query_business_data",
-                _meta: { sourceType: "MCP", sourceCode: "cube" },
-                inputSchema: {
-                  type: "object",
-                  properties: {
-                    action: { type: "string" },
-                    queries: { type: "array" },
+            structuredContent:
+              wire.params.name === "inspect_cube_model"
+                ? {
+                    semanticModel: ["a", "b"].map((name) => ({
+                      name,
+                      measures: [{ name: name + ".row_count", type: "number" }],
+                    })),
+                  }
+                : {
+                    action: "query",
+                    status: "completed",
+                    executedQueryCount: 2,
+                    datasets,
                   },
-                  required: ["action", "queries"],
-                },
-              },
-            ],
-          };
-        else if (b.method === "tools/call") {
-          const a = b.params.arguments;
-          result = {
-            content: [
-              {
-                type: "text",
-                text:
-                  a.action === "inspect"
-                    ? JSON.stringify({
-                        semanticModel: ["a", "b"].map((name) => ({
-                          name,
-                          measures: [{ name: name + ".row_count", type: "number" }],
-                        })),
-                      })
-                    : bodies[a.queries[0].name],
-              },
-            ],
           };
         }
-        reply({ jsonrpc: "2.0", id: b.id, result });
+        reply({ jsonrpc: "2.0", id: wire.id, result });
         return true;
       }
       if (path !== "/v1/chat/completions") return false;
-      const b = JSON.parse(req.body);
+      const body = JSON.parse(req.body);
+      requests.push(body);
+      const step = requests.length;
       let call;
-      const offersCatalog =
-        b.tools?.some((x) => x.function?.name === "gea_gateway_catalog") ?? false;
-      if (!catalogPaused) {
-        if (catalogCalls < 5) {
-          catalogCalls++;
-          call = {
-            name: "gea_gateway_catalog",
-            arguments: JSON.stringify({ model: "a" }),
-          };
-        } else {
-          assert.equal(offersCatalog, true, "keep the tool schema stable for provider validation");
-          assert.match(
-            b.messages.filter((m) => m.role === "tool").at(-1).content,
-            /GEA_CATALOG_NO_PROGRESS/,
-          );
-          catalogPaused = true;
-        }
-      }
-      if (call) {
-        /* The next model step observes the catalog result. */
-      } else if (phase++ === 0)
+      if (step <= 4)
         call = {
-          name: "gea_cube_query",
-          arguments: JSON.stringify({
-            queries: ["a", "b"].map((name) => ({
-              name,
-              query: { measures: [name + ".row_count"], limit: 100 },
-            })),
-          }),
+          name: "mcp__gea-gateway__inspect_cube_model",
+          arguments: JSON.stringify({ keyword: "a" }),
         };
-      else {
-        if (!checkedResume) {
-          assert.equal(offersCatalog, true, "a real query attempt restores targeted discovery");
-          checkedResume = true;
-        }
-        const value = JSON.parse(b.messages.filter((m) => m.role === "tool").at(-1).content);
-        if (!evidenceId) {
-          evidenceId = value.evidenceId;
-          assert.ok(evidenceId);
-          call = {
-            name: "gea_evidence_read",
-            arguments: JSON.stringify({
-              evidenceId,
-              format: "raw",
-              limit: 6000,
-            }),
-          };
-        } else if (!rawDone) {
-          pages.push(value.content);
-          if (value.nextRead)
-            call = {
-              name: value.nextRead.tool,
-              arguments: JSON.stringify(value.nextRead.args),
-            };
-          else {
-            rawDone = true;
-            call = {
-              name: "gea_evidence_read",
-              arguments: JSON.stringify({
-                evidenceId,
-                datasetId: "a",
-                rowOffset: 1,
-                rowLimit: 2,
-              }),
-            };
-          }
-        } else {
-          assert.equal(value.representation, "rows");
-          assert.equal(value.rowOffset, 1);
-          assert.equal(value.returnedRows, 2);
-          assert.equal(value.name, "a");
-        }
+      else if (step === 5) {
+        assert.match(
+          body.messages.filter((message) => message.role === "tool").at(-1).content,
+          /GEA_CATALOG_NO_PROGRESS/,
+        );
+        call = {
+          name: "mcp__gea-gateway__query_business_data",
+          arguments: JSON.stringify(args),
+        };
+      } else {
+        const value = JSON.parse(
+          body.messages.filter((message) => message.role === "tool").at(-1).content,
+        );
+        assert.deepEqual(value.datasets, datasets);
+        assert.equal(
+          value.evidenceId,
+          undefined,
+          "direct results are already delivered through their native tool",
+        );
       }
       const delta = call
         ? {
             tool_calls: [{ index: 0, id: randomUUID(), type: "function", function: call }],
           }
-        : { content: "complete" };
+        : { content: "返回两份各70行样本，源数据状态为partial。" };
       res.setHeader("Content-Type", "text/event-stream");
       res.end(
         "data: " +
@@ -471,46 +392,44 @@ test(
       return true;
     });
     await app.login();
-    await selectBusinessResource(app, "gea-readonly");
+    const selected = await selectBusinessResource(app, "gea-readonly");
     const made = await app.remote("session/create", {
       cwd: app.runtime + "/workspace",
-      agentPreset: "gea-readonly",
+      agentPreset: selected.preset,
     });
-    const sessionId = made.value.sessionId;
+    assert.equal(made.ok, true, JSON.stringify(made));
+    const id = made.value.sessionId;
     await app.remote("session/selectModel", {
-      sessionId,
+      sessionId: id,
       provider: "gea-analysis",
       model: "fixture",
     });
     await app.remote("session/prompt", {
       requestId: randomUUID(),
-      sessionId,
+      sessionId: id,
       mode: "queue",
-      content: [{ type: "text", text: "读取两个模型并续读完整正文" }],
+      content: [
+        {
+          type: "text",
+          text: "按已发布成员读取a和b样本，不能把partial当全量。",
+        },
+      ],
     });
     await until(
-      () => readSession(app.runtime, sessionId),
-      (r) => r.some((e) => e.type === "turn/end"),
-      40000,
+      () => readSession(app.runtime, id),
+      (rows) => rows.some((row) => row.type === "turn/end"),
+      30000,
     );
+    assert.equal(calls.filter((call) => call.name === "inspect_cube_model").length, 3);
+    const sent = calls.filter((call) => call.name === "query_business_data");
+    assert.equal(sent.length, 1, "caller-owned named queries stay in one native dispatch");
+    assert.deepEqual(sent[0].arguments, args);
+    assert.equal(requests.length, 6);
     assert.ok(
-      catalogPaused && checkedResume,
-      JSON.stringify({
-        catalogCalls,
-        catalogPaused,
-        checkedResume,
-        events: (await readSession(app.runtime, sessionId)).slice(-3),
-        output: app.output.slice(-4000),
-      }),
+      requests.every((request) =>
+        request.tools.some((tool) => tool.function.name === "mcp__gea-gateway__inspect_cube_model"),
+      ),
     );
-    const raw = JSON.parse(pages.join(""));
-    assert.equal(raw.source, "GEA_CUBE_BATCH");
-    assert.equal(raw.results.length, 2);
-    for (const result of raw.results) {
-      assert.equal(result.result, bodies[result.model]);
-      assert.equal(result.resultOmitted, false);
-      assert.equal(JSON.parse(result.result).complete, false);
-    }
   },
 );
 
@@ -518,7 +437,10 @@ test("permission and partial delivery are not ordinary successful receipts", () 
   const denial = "模块数据未授权：fixture";
   assert.equal(permissionDenied(denial), true);
   assert.equal(resultOutcome(denial), "blocked");
-  assert.equal(JSON.parse(resultReceipt("gea_module_mcp", {}, "ev", denial)).outcome, "blocked");
+  assert.equal(
+    JSON.parse(resultReceipt("mcp__gea-gateway__query_business_data", {}, "ev", denial)).outcome,
+    "blocked",
+  );
   const raw = {
     source: "GEA_MCP_CONTENT",
     payloads: ['{"rows":[{"qty":"1"}]}'],

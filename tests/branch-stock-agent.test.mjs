@@ -7,14 +7,19 @@ import { readSession, readToolResults, until } from "./profile.mjs";
 import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
+import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 import { selectBusinessResource } from "./fixtures/business-session.mjs";
 
 test(
   "branch Agent preserves empty, missing, failed and revoked result meanings",
   { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 120000 },
   async (t) => {
+    const workbench = (await readProfileSources(process.env.GEA_TEST_SOURCE_INPUTS)).find(
+      (source) => source.repo === "dsh-agent-workbench",
+    );
     const app = await profile(t, {
       config: (base) => ({
+        cubeMcpCodes: { production: "cube" },
         analysis: {
           mode: "model",
           baseUrl: base + "/v1",
@@ -28,7 +33,7 @@ test(
       env: {
         GEA_TEST_MODEL_KEY: "fixture-key",
       },
-      beforeStart: fixtureWorkbench([resolve("../dsh-agent-workbench/lib/business/inventory-fc")]),
+      beforeStart: fixtureWorkbench([resolve(workbench.assetRoot, "lib/business/inventory-fc")]),
     });
     const state = stockState();
     let step = 0;
@@ -41,9 +46,10 @@ test(
               id: "stock-state-" + step,
               type: "function",
               function: {
-                name: "gea_cube_query",
+                name: "mcp__gea-gateway__query_business_data",
                 arguments: JSON.stringify({
-                  consumerCode: "branch-inventory",
+                  action: "query",
+                  response_mode: "inline_complete",
                   queries: [
                     {
                       name: "branch_stock",
@@ -101,11 +107,19 @@ test(
       const result = readToolResults(rows).at(-1);
       assert.ok(result);
       if (mode === "denied") {
-        assert.equal(state.cube.length, before);
-        assert.match(result.text, /NOT_AUTHORIZED|REJECTED/);
+        assert.equal(state.cube.length, before + 1, "server denies the current invocation");
+        assert.match(result.text, /AI_GATEWAY_DATA_PERMISSION_DENIED/);
+        assert.equal(result.isError, true);
+        assert.doesNotMatch(result.text, /"datasets"|"branch_stock.available_qty"/);
       } else if (mode === "error") assert.match(result.text, /失败|failed|MCP_TOOL_ERROR/i);
       else if (mode === "missing") assert.match(result.text, /null/);
-      else assert.doesNotMatch(result.text, /"branch_stock.available_qty":(?:100|30)/);
+      else {
+        assert.equal(result.isError, false);
+        const page = JSON.parse(result.text).datasets[0];
+        assert.deepEqual(page.rows, []);
+        assert.equal(page.dataStatus, "no_data");
+        assert.equal(page.hasMorePages, false);
+      }
       results.push({ mode, result });
     }
     const output = resolve(".runtime/branch-stock-evidence");

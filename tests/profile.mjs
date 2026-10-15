@@ -15,6 +15,7 @@ import { readDeployment } from "../scripts/deployment.mjs";
 import { freezeProfileWindow } from "./fixtures/profile-window.mjs";
 import { withSourceSetup } from "./fixtures/source-test.mjs";
 import { waitProfileReady } from "./fixtures/profile-ready.mjs";
+import { fixtureCubeDiscovery } from "./fixtures/cube-wire.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
 /** Decode persisted tool receipts at the test boundary; never omit a malformed result. */
@@ -114,7 +115,7 @@ async function createProfile(t, options) {
   const recordAbort = () => recordLifecycle({ event: "fixture-aborted" });
   t.signal?.addEventListener("abort", recordAbort, { once: true });
   const requests = [];
-  let route;
+  let route = options.route;
   const server = createServer(
     { key: await readFile(key), cert: await readFile(cert) },
     async (req, res) => {
@@ -136,6 +137,7 @@ async function createProfile(t, options) {
       };
       try {
         if (await route?.(request, res, reply)) return;
+        if (fixtureCubeDiscovery(request, res, reply)) return;
         const path = request.url.pathname;
         if (path.endsWith("/getLoginQrcode"))
           reply({ success: true, result: { qrcodeId: "fixture-qr" } });
@@ -263,6 +265,7 @@ async function createProfile(t, options) {
       requestTimeoutMs: 2000,
       maxSnapshotBytes: 100000,
       analysis: { mode: "receipt" },
+      cubeMcpCodes: { production: "cube", test: "cube" },
       ...(typeof options.config === "function" ? options.config(base) : options.config),
     }),
   );

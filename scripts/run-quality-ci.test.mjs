@@ -4,6 +4,7 @@ import { spawnSync, execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { macosIsolationTests, selectPlatformTests } from "./ci-platform-tests.mjs";
 
 const run = (args, environment = {}) => {
   const env = { ...process.env };
@@ -11,6 +12,7 @@ const run = (args, environment = {}) => {
     "QUALITY_SCOPE_ALLOWED",
     "QUALITY_SCOPE_RESULT",
     "QUALITY_GATE_RESULT",
+    "QUALITY_ISOLATION_RESULT",
     "QUALITY_CANDIDATE",
     "QUALITY_EXPECTED_SHA",
     "CI",
@@ -25,14 +27,18 @@ test("the public CI scope/final entry rejects missing, failed, skipped and cance
   assert.equal(run(["--phase", "scope"], { QUALITY_SCOPE_ALLOWED: "true" }).status, 0);
   for (const scope of ["", "false"])
     assert.equal(run(["--phase", "scope"], { QUALITY_SCOPE_ALLOWED: scope }).status, 1);
-  const good = { QUALITY_SCOPE_RESULT: "success", QUALITY_GATE_RESULT: "success" };
+  const good = {
+    QUALITY_SCOPE_RESULT: "success",
+    QUALITY_GATE_RESULT: "success",
+    QUALITY_ISOLATION_RESULT: "success",
+  };
   assert.equal(run(["--phase", "final"], good).status, 0);
   for (const key of Object.keys(good))
     for (const result of ["", "skipped", "cancelled", "failure"])
       assert.equal(run(["--phase", "final"], { ...good, [key]: result }).status, 1);
 });
 test("candidate execution requires the one explicit hashed public admission and input phase cannot write legacy peers", () => {
-  for (const phase of ["quality", "prepare", "verify-input"])
+  for (const phase of ["quality", "prepare", "verify-input", "macos-isolation"])
     assert.match(run(["--phase", phase]).stderr, /CANDIDATE_FINAL_GROUP_REQUIRED/);
   const directory = mkdtempSync(join(tmpdir(), "gea-quality-input-"));
   try {
@@ -59,7 +65,7 @@ test("the workflow binds full source history and the same public quality command
   assert.match(workflow, /node scripts\/run-quality-ci.mjs --prepare-sdk.*--prepare-inputs/);
   assert.match(readFileSync("scripts/run-quality-ci.mjs", "utf8"), /APS_BUILD_MODE: ["']mock["']/);
   assert.match(workflow, /if: always\(\)/);
-  assert.match(workflow, /needs: \[candidate-scope, gates\]/);
+  assert.match(workflow, /needs: \[candidate-scope, gates, macos-isolation\]/);
   assert.match(workflow, /run: node scripts\/run-quality-ci.mjs --phase final/);
   assert.match(workflow, /PLUGIN_SPLIT_READ_TOKEN/);
   assert.match(workflow, /npm install --global npm@11\.11\.0/);
@@ -78,7 +84,7 @@ test("the workflow binds full source history and the same public quality command
 });
 
 test("all candidate entry modes reject absent or forged hash admission before source effects", () => {
-  for (const phase of ["quality", "prepare", "verify-input"])
+  for (const phase of ["quality", "prepare", "verify-input", "macos-isolation"])
     for (const hash of [undefined, "", "main", "A".repeat(64), "a".repeat(64) + "\n"])
       assert.match(
         run([
@@ -165,7 +171,10 @@ test("reader bootstrap binds the actual event and refuses mutable, malformed or 
       assert.equal(result.status, 1, JSON.stringify(value));
       assert.match(result.stderr, /CANDIDATE_BASELINE_REQUIRED/);
     }
-    const mismatch = execute({ ...valid, QUALITY_EXPECTED_SHA: "d".repeat(40) });
+    const mismatch = execute({
+      ...valid,
+      QUALITY_EXPECTED_SHA: "d".repeat(40),
+    });
     assert.equal(mismatch.status, 1);
     assert.match(mismatch.stderr, /CANDIDATE_EVENT_MISMATCH/);
     const absent = execute({ ...valid, GITHUB_EVENT_NAME: "push" });
@@ -222,4 +231,75 @@ test("dispatch retains its frozen run while a new source event cancels its obsol
       "dispatch input must be passed through environment variables",
     );
   }
+});
+
+test("selected package contracts prepare current desktop outputs and bind the admitted Core pnpm", () => {
+  const source = readFileSync("scripts/run-quality-ci.mjs", "utf8");
+  assert.match(source, /plan\.files\.includes\("scripts\/package-desktop\.test\.mjs"\)/);
+  assert.match(source, /run\(process\.execPath, \["scripts\/build-desktop-tools\.mjs"\]\)/);
+  assert.match(
+    source,
+    /const pnpm = resolve\(core, "apps\/desktop\/node_modules\/pnpm\/bin\/pnpm\.mjs"\)/,
+  );
+  assert.match(source, /process\.env\.GEA_PACKAGE_PNPM = pnpm/);
+  assert.ok(
+    source.indexOf("process.env.GEA_PACKAGE_PNPM = pnpm") <
+      source.indexOf('name: "required-and-affected"'),
+  );
+});
+
+test("the Linux plan delegates only the kernel sandbox file to mandatory macOS execution", () => {
+  const files = [
+    "tests/gateway-handshake.test.mjs",
+    ...macosIsolationTests,
+    "tests/controlled-execution.test.mjs",
+  ];
+  const plan = {
+    files,
+    runtime: true,
+    browser: false,
+    reasons: { required: [...files] },
+  };
+  for (const platform of ["linux", "win32"]) {
+    const selected = selectPlatformTests(plan, platform);
+    assert.deepEqual(selected.files, [files[0], files[2]]);
+    assert.deepEqual(selected.reasons, plan.reasons);
+    assert.deepEqual(selected.platformTasks, [
+      {
+        platform: "darwin",
+        phase: "macos-isolation",
+        files: [...macosIsolationTests],
+      },
+    ]);
+    assert.equal(selected.runtime, true);
+  }
+  assert.deepEqual(selectPlatformTests(plan, "darwin").files, files);
+  assert.deepEqual(plan.files, files, "selection does not mutate the authoritative required pool");
+  assert.deepEqual(
+    selectPlatformTests({ files: [files[0]], runtime: false }, "linux").platformTasks[0].files,
+    macosIsolationTests,
+    "even a narrow source lane retains the mandatory platform gate",
+  );
+});
+
+test("both source and compatibility workflows require actual same-tuple macOS execution", () => {
+  for (const file of ["quality", "compatibility"]) {
+    const source = readFileSync(`.github/workflows/${file}.yml`, "utf8");
+    const macos = source.slice(
+      source.indexOf("  macos-isolation:\n"),
+      source.indexOf("  candidate-", source.indexOf("  macos-isolation:\n")),
+    );
+    assert.match(macos, /runs-on: macos-latest/);
+    assert.match(macos, /needs: candidate-scope/);
+    for (const entry of ["gea", "manage", "workbench"])
+      assert.ok(macos.includes(`needs.candidate-scope.outputs.${entry}-sha`));
+    assert.match(macos, /fromJSON\(needs.candidate-scope.outputs.cores\)/);
+    assert.match(macos, /--phase macos-isolation --prepare-sdk/);
+    assert.match(macos, /--final-group-sha256 "\$INPUT_SHA256"/);
+    assert.match(macos, /write-hosted-group.mjs.*--root "\$GITHUB_WORKSPACE"/);
+    assert.doesNotMatch(macos, /continue-on-error|if: needs|if: success/);
+    assert.match(source, /needs: \[candidate-scope, gates, macos-isolation\]/);
+    assert.match(source, /QUALITY_ISOLATION_RESULT: \$\{\{ needs\.macos-isolation\.result \}\}/);
+  }
+  assert.doesNotMatch(readFileSync("scripts/isolated-validation.test.mjs", "utf8"), /skip:/);
 });
