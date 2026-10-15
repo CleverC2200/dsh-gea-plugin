@@ -48,10 +48,7 @@ test("profile supplies loopback Cube discovery but never invents a business resp
           listed.body.result.tools.map((tool) => tool.name),
           ["inspect_cube_model", "query_business_data"],
         );
-        assert.equal(
-          (await wire(settings.geaBaseUrl, "notifications/initialized")).status,
-          202,
-        );
+        assert.equal((await wire(settings.geaBaseUrl, "notifications/initialized")).status, 202);
         const called = await wire(settings.geaBaseUrl, "tools/call", {
           name: "query_business_data",
           arguments: {},
@@ -77,8 +74,7 @@ test("scenario configuration and explicit gateway denial precede fixture discove
         },
       },
       route(req, _res, reply) {
-        if (!req.url.pathname.endsWith("/ai/gateway/mcp/proxy/mcp"))
-          return false;
+        if (!req.url.pathname.endsWith("/ai/gateway/mcp/proxy/mcp")) return false;
         reply({ code: "SCENARIO_GATEWAY_DENIED" }, 403);
         return true;
       },
