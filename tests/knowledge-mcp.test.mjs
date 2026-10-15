@@ -557,12 +557,17 @@ test("knowledge answer exposes HTTP trace separately from business identifiers a
   assert.equal(count(f, "weknora_ask"), 1);
 });
 
-for (const failure of ["incomplete", "tool-error", "http-error"])
+for (const failure of ["incomplete", "tool-error", "http-error", "protocol-error", "mismatched-reply", "malformed-json"])
   test(`knowledge ${failure} retains gateway trace and never retries`, async (t) => {
     const f = await fixture(t, {
       handler: (_wire, _init, reply) => {
         const headers = { "x-request-id": "failed-request", "x-audit-id": "failed-audit" };
         if (failure === "http-error") return new Response(null, { status: 503, headers });
+        if (failure === "protocol-error")
+          return Response.json({ jsonrpc: "2.0", id: _wire.id, error: { code: -32603, message: "upstream protocol failure" } }, { headers });
+        if (failure === "mismatched-reply")
+          return Response.json({ jsonrpc: "2.0", id: "wrong-id", result: {} }, { headers });
+        if (failure === "malformed-json") return new Response("invalid json", { headers });
         return reply(
           failure === "tool-error"
             ? {
@@ -580,3 +585,21 @@ for (const failure of ["incomplete", "tool-error", "http-error"])
     assert.match(JSON.stringify(result), /gateway.auditId=failed-audit/);
     assert.equal(count(f, "weknora_ask"), 1);
   });
+
+
+test("personal knowledge calls share the turn budget and regain it on the next turn", async (t) => {
+  const f = await fixture(t, {
+    personal: true,
+    prompts: true,
+    handler: (_wire, _init, reply) => reply({ structuredContent: answer() }),
+  });
+  for (let i = 0; i < businessCallBudget; i++)
+    assert.equal((await invoke(f, ask, args, "personal")).isError, false);
+  const refused = await invoke(f, ask, args, "personal");
+  assert.equal(refused.isError, true);
+  assert.match(JSON.stringify(refused), /GEA_CALL_BUDGET/);
+  assert.equal(count(f, "weknora_ask"), businessCallBudget);
+  f.ctx.emit("session/event", { id: "personal" }, { type: "turn/start" });
+  assert.equal((await invoke(f, ask, args, "personal")).isError, false);
+  assert.equal(count(f, "weknora_ask"), businessCallBudget + 1);
+});

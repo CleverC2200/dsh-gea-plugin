@@ -144,7 +144,7 @@ export function mountBusinessPrompts(
     ctx.on("session/event", (session, event) => {
       if (event.type !== "turn/start") return;
       const agent = ctx.agents.get(session.id);
-      if (!agent || !profileOf(agent)) return;
+      if (!agent || (!profileOf(agent) && !cubeAllowed(ctx, business, agent.id))) return;
       const state = stateOf(agent);
       state.calls = 0;
       state.readCalls = 0;
@@ -173,14 +173,12 @@ export function mountBusinessPrompts(
   offs.push(
     ctx.tools.guard((exec) => {
       const agent = exec.agent;
-      if (
+      const personalGateway =
         gatewayMethod(exec.name) &&
-        agent &&
+        !!agent &&
         !profileOf(agent) &&
-        cubeAllowed(ctx, business, agent.id)
-      )
-        return;
-      if (!profileOf(agent) || !agent) {
+        cubeAllowed(ctx, business, agent.id);
+      if (!agent || (!profileOf(agent) && !personalGateway)) {
         if (businessMethod(exec.name))
           return agent
             ? "GEA_BUSINESS_PROFILE_REQUIRED: 当前实际会话预设未声明业务身份。请使用基地库存 Agent 分析入口或选用相应已启用业务资源；Skill、角色名称和页面可见不授予Consumer权限。"
@@ -199,7 +197,7 @@ export function mountBusinessPrompts(
         if (issue) return issue;
       }
       if (!businessMethod(exec.name)) return;
-      if (!namesFor(agent, state).has(exec.name))
+      if (!personalGateway && !namesFor(agent, state).has(exec.name))
         return ["gea_page", "gea_workbench_apply"].includes(exec.name) && !pageBound(agent)
           ? "GEA_BUSINESS_TOOL_NOT_ALLOWED: reason=PAGE_NOT_BOUND。当前业务会话未绑定页面；打开相应业务页面并连接当前会话后再读取页面证据。独立查询结果不能代替页面确定性结果。"
           : "GEA_BUSINESS_TOOL_NOT_ALLOWED: 当前业务角色未声明此工具能力。";
