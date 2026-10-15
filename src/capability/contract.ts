@@ -45,7 +45,7 @@ export type CapabilityData = {
 export type CapabilityRouting = {
   /** 首页路由用的关键词（用户话里出现就落到这个模块）。 */
   keywords: string[];
-  
+
   summary: string;
 };
 

@@ -10,11 +10,7 @@
  *
  * 不用页面心跳或快照新鲜度当判据：它们只能证明"页面还在轮询"，证明不了"用户在看这一页"。
  */
-import {
-  MAIN_MENU,
-  surfaceLabel,
-  type WorkbenchSurface,
-} from "./workbench-surface.ts";
+import { MAIN_MENU, surfaceLabel, type WorkbenchSurface } from "./workbench-surface.ts";
 
 export type WorkbenchPresence = {
   inWorkbench: boolean;
@@ -22,7 +18,7 @@ export type WorkbenchPresence = {
   signal: "menu";
   /** 菜单 id；主对话时为 `main`。 */
   menu: string;
-  
+
   menuTitle: string;
   /** 前端上报时间（ISO），排查用；没上报过就没有。 */
   menuReportedAt?: string;
@@ -38,8 +34,6 @@ export function workbenchPresence(input: {
     signal: "menu",
     menu: surface?.menu ?? MAIN_MENU,
     menuTitle: surfaceLabel(surface),
-    ...(surface === undefined
-      ? {}
-      : { menuReportedAt: new Date(surface.at).toISOString() }),
+    ...(surface === undefined ? {} : { menuReportedAt: new Date(surface.at).toISOString() }),
   };
 }

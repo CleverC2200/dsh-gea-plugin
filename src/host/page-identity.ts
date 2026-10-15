@@ -20,7 +20,7 @@ export type PageIdentity = {
   pageTool: string;
   /** 演示（mock）模块要如实标出来，避免把它的数字当业务事实。 */
   mock?: boolean;
-  
+
   at: number;
 };
 
