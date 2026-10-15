@@ -76,6 +76,8 @@ import {
 import { resolveNavigationTarget, type NavigationInput } from "./navigation-target.ts";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { modelHttpError } from "../shared/model-http-error.ts";
+import { ApiLogBatch, parseApiBatchRequest } from "./api-log-batch.ts";
+import { DebugRunCoordinator } from "./debug-run.ts";
 import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
 import {
   createMcpWasteGuard,
@@ -783,6 +785,8 @@ export class Business {
   private environment: "production" | "test";
   private readonly environments: Record<string, string>;
   private readonly apiLog: GeaApiLogCenter;
+  private readonly debugRuns = new DebugRunCoordinator();
+  private readonly apiLogBatch: ApiLogBatch;
   get base(): string {
     return this.selectedBase;
   }
@@ -842,7 +846,28 @@ export class Business {
       undefined,
       undefined,
       this.salesReadonly?.beforeRequest,
+      (url, headers, caller) => {
+        const auth = this.auth;
+        const epoch = this.epoch.signal;
+        const owned =
+          !!auth &&
+          url.startsWith(this.base + "/") &&
+          headers.get("X-Access-Token") === auth.token &&
+          headers.get("X-Tenant-Id") === auth.tenantId;
+        return (response) => {
+          if (
+            owned &&
+            response.status === 401 &&
+            this.auth === auth &&
+            this.epoch.signal === epoch &&
+            !epoch.aborted &&
+            !caller?.aborted
+          )
+            this.clearLogin(true);
+        };
+      },
     );
+    this.apiLogBatch = new ApiLogBatch(this.apiLog, this.debugRuns);
   }
 
   /** 仅桌面拥有者可用：凭证通过私有回环通道传递，绝不经浏览器 RPC。 */
@@ -3260,13 +3285,59 @@ export class Business {
   }
 
   /** 在当前身份内执行日志中心已校验的安全重发。 */
-  apiLogReplay(payload: Record<string, unknown>, signal: AbortSignal) {
+  async apiLogReplay(payload: Record<string, unknown>, signal: AbortSignal) {
+    const controller = new AbortController();
+    let release: (() => void) | undefined;
+    try {
+      this.assertExecutionAllowed(this.config.analysisAgentCode);
+      keys(payload, ["id", "confirmed"]);
+      this.authenticated();
+      if (payload.confirmed !== true && payload.confirmed !== false) throw Error("INVALID_PAYLOAD");
+      release = this.debugRuns.claim(randomUUID(), controller);
+      return await this.apiLog.replay(
+        text(payload.id),
+        payload.confirmed,
+        AbortSignal.any([signal, this.epoch.signal, controller.signal]),
+      );
+    } catch (error) {
+      return {
+        outcome: "rejected",
+        recordId: null,
+        reason: error instanceof Error ? error.message : "重发被拒绝，无调用日志",
+      } as const;
+    } finally {
+      release?.();
+    }
+  }
+
+  private debugScope(): string {
+    const scope = this.pageSessionScope();
+    if (!scope) throw Error("LOGIN_REQUIRED");
+    return scope;
+  }
+
+  apiLogBatchStart(payload: Record<string, unknown>, signal: AbortSignal) {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
-    keys(payload, ["id", "confirmed"]);
     this.authenticated();
-    if (payload.confirmed !== true && payload.confirmed !== false)
-      throw new Error("INVALID_PAYLOAD");
-    return this.apiLog.replay(text(payload.id), payload.confirmed, signal);
+    return this.apiLogBatch.start(
+      parseApiBatchRequest(payload),
+      this.debugScope(),
+      this.epoch.signal,
+      signal,
+    );
+  }
+  apiLogBatchRead(payload: Record<string, unknown>) {
+    keys(payload, ["runId"]);
+    this.authenticated();
+    return this.apiLogBatch.read(
+      payload.runId === undefined ? undefined : text(payload.runId),
+      this.debugScope(),
+    );
+  }
+  apiLogBatchStop(payload: Record<string, unknown>) {
+    keys(payload, ["runId"]);
+    this.authenticated();
+    return this.apiLogBatch.stop(text(payload.runId), this.debugScope());
   }
 
   /** 开启新分页查询时立即失效旧选择，后续 detail/version/SKU 只能引用本次页面。 */

@@ -26,6 +26,24 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^src/(?:host\\.ts|host/(?:api-log|business|debug-run))",
+      "tests": [
+        "tests/api-log.test.mjs",
+        "tests/api-log-replay.test.mjs",
+        "tests/api-log-web.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/(?:workbench/api-log|business-views|workbench/page)",
+      "tests": [
+        "tests/api-log.test.mjs",
+        "tests/api-log-replay.test.mjs",
+        "tests/api-log-web.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^(?:package\\.json|pnpm-lock\\.yaml|tsconfig|\\.github/|scripts/ci-test-policy\\.json)",
       "tests": ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"],
       "exclusive": true

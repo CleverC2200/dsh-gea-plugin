@@ -2,12 +2,16 @@ import type {
   ApiCatalogEntry,
   ApiLogRecord,
   ApiLogSnapshot,
+  ApiLogContext,
+  ApiReplayResult,
 } from "@cleverc2200/dsh-agent-workbench/api-log";
 export type {
   ApiReplayPolicy,
   ApiCatalogEntry,
   ApiLogRecord,
   ApiLogSnapshot,
+  ApiLogContext,
+  ApiReplayResult,
 } from "@cleverc2200/dsh-agent-workbench/api-log";
 import { randomUUID } from "node:crypto";
 import { networkError } from "../shared/net-error.ts";
@@ -18,8 +22,6 @@ const BODY_OMITTED = "[正文超过 4 MiB，未保存]";
 const STREAM_OMITTED = "[流式响应正文未保存]";
 const SENSITIVE_KEY =
   /^(?:authorization|proxy-authorization|cookies?|set-cookie|x-access-token|x-delegation-token|mcp[_-]?session[_-]?id|access[_-]?token|refresh[_-]?token|tokens?|secrets?|passwords?|client[_-]?(?:id|secret)|delegation[_-]?token|api[_-]?key|session[_-]?id|qrcode[_-]?id|credentials?|credential[_-]?id)$/i;
-const SENSITIVE_QUERY =
-  /^(?:token|secret|password|client_id|client_secret|qrcodeId|credentialId)$/i;
 
 type CatalogDefinition = ApiCatalogEntry & {
   matches(method: string, path: string): boolean;
@@ -416,7 +418,10 @@ const CATALOG: CatalogDefinition[] = [
 ];
 
 type PrivateRecord = ApiLogRecord & {
-  replay?: (signal: AbortSignal) => Promise<{ response: Response; recordId: string }>;
+  replay?: (
+    signal: AbortSignal,
+    context: ApiLogContext,
+  ) => Promise<{ response: Response; recordId: string }>;
 };
 
 function sanitizeString(value: string): string {
@@ -460,7 +465,7 @@ function sanitizeUrl(raw: string): {
   const parsed = new URL(raw);
   const query: Record<string, string> = {};
   for (const [key, value] of parsed.searchParams) {
-    const safeValue = SENSITIVE_QUERY.test(key) ? "[已脱敏]" : sanitizeString(value);
+    const safeValue = SENSITIVE_KEY.test(key) ? "[已脱敏]" : sanitizeString(value);
     query[key] = safeValue;
     parsed.searchParams.set(key, safeValue);
   }
@@ -524,9 +529,24 @@ async function responsePreview(response: Response): Promise<unknown> {
 
 function replayableBody(body: BodyInit | null | undefined): BodyInit | undefined | false {
   if (body == null) return undefined;
-  if (typeof body === "string") return body;
-  if (body instanceof URLSearchParams) return new URLSearchParams(body);
+  if (typeof body === "string") return Buffer.byteLength(body, "utf8") <= BODY_LIMIT ? body : false;
+  if (body instanceof URLSearchParams)
+    return Buffer.byteLength(body.toString(), "utf8") <= BODY_LIMIT
+      ? new URLSearchParams(body)
+      : false;
   return false;
+}
+
+class CapturedRequestError extends Error {
+  readonly code?: string;
+  constructor(
+    readonly recordId: string,
+    cause: Error,
+  ) {
+    super(cause.message, { cause });
+    this.name = cause.name;
+    if ("code" in cause && typeof cause.code === "string") this.code = cause.code;
+  }
 }
 
 export class GeaApiLogCenter {
@@ -543,10 +563,19 @@ export class GeaApiLogCenter {
       init?: RequestInit,
       purpose?: string,
     ) => Promise<() => void>,
+    private readonly observeReplay?: (
+      url: string,
+      headers: Headers,
+      signal: AbortSignal | undefined,
+    ) => (response: Response) => void,
   ) {}
 
   readonly fetch = (input: RequestInfo | URL, init?: RequestInit, purpose?: string) =>
     this.fetchRequest(input, init, undefined, undefined, purpose);
+
+  scopedFetch(context: ApiLogContext, onRecord?: (id: string) => void): typeof fetch {
+    return (input, init) => this.fetchRequest(input, init, undefined, onRecord, undefined, context);
+  }
 
   private async fetchRequest(
     input: RequestInfo | URL,
@@ -554,10 +583,12 @@ export class GeaApiLogCenter {
     replayedFrom?: string,
     onRecord?: (id: string) => void,
     purpose?: string,
+    context: ApiLogContext = { source: "daily" },
   ): Promise<Response> {
     const acceptRequest = this.beforeRequest
       ? await this.beforeRequest(input, init, purpose)
       : undefined;
+    init?.signal?.throwIfAborted();
     const rawUrl = input instanceof Request ? input.url : String(input);
     const method = (
       init?.method ?? (input instanceof Request ? input.method : "GET")
@@ -566,11 +597,16 @@ export class GeaApiLogCenter {
     const requestHeaders = new Headers(originalHeaders);
     if (init?.headers)
       for (const [key, value] of new Headers(init.headers)) requestHeaders.set(key, value);
+    const observeResponse =
+      context.source === "replay" || context.source === "api-batch"
+        ? this.observeReplay?.(rawUrl, requestHeaders, init?.signal ?? undefined)
+        : undefined;
     const requestBody = init?.body;
     const safeUrl = sanitizeUrl(rawUrl);
     const catalog = CATALOG.find((entry) => entry.matches(method, safeUrl.path));
     const started = Date.now();
     const record: PrivateRecord = {
+      ...context,
       id: randomUUID(),
       sequence: ++this.sequence,
       catalogId: catalog?.id ?? null,
@@ -606,7 +642,7 @@ export class GeaApiLogCenter {
         body,
       };
       record.replayAvailable = true;
-      record.replay = (signal) =>
+      record.replay = (signal, context) =>
         this.fetchWithSource(
           rawUrl,
           {
@@ -614,8 +650,16 @@ export class GeaApiLogCenter {
             signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
           },
           record.id,
+          context,
         );
     }
+    if (!record.replayAvailable)
+      record.replayUnavailableReason =
+        catalog?.replayPolicy === "blocked"
+          ? catalog.replayNote
+          : !catalog
+            ? "该调用未登记，不能重发"
+            : "二进制、流式或无法保留原正文，不能重发";
     acceptRequest?.();
     this.prepend(record);
     onRecord?.(record.id);
@@ -635,6 +679,7 @@ export class GeaApiLogCenter {
       };
       record.outcome = response.ok ? "success" : "error";
       this.finish(record, started);
+      observeResponse?.(response);
       return response;
     } catch (error) {
       record.outcome = "error";
@@ -645,10 +690,13 @@ export class GeaApiLogCenter {
       this.finish(record, started);
       // 线上实测：这类失败原样抛出去，界面只有 `fetch failed` + UNKNOWN（真实原因在 cause 里）。
       // 统一翻成可读、带 code 的错误，并把"在连哪个接口"写进去。
-      throw networkError(error, {
-        what: safeUrl.path,
-        stage: "请求",
-      });
+      throw new CapturedRequestError(
+        record.id,
+        networkError(error, {
+          what: safeUrl.path,
+          stage: "请求",
+        }),
+      );
     }
   }
 
@@ -657,11 +705,19 @@ export class GeaApiLogCenter {
     input: RequestInfo | URL,
     init: RequestInit | undefined,
     replayedFrom: string,
+    context: ApiLogContext,
   ): Promise<{ response: Response; recordId: string }> {
     let recordId = "";
-    const response = await this.fetchRequest(input, init, replayedFrom, (id) => {
-      recordId = id;
-    });
+    const response = await this.fetchRequest(
+      input,
+      init,
+      replayedFrom,
+      (id) => {
+        recordId = id;
+      },
+      undefined,
+      context,
+    );
     if (!recordId) throw new Error("API_LOG_REPLAY_RECORD_MISSING");
     return { response, recordId };
   }
@@ -686,6 +742,7 @@ export class GeaApiLogCenter {
     for (const record of this.records) {
       if (!record.replayAvailable && !record.replay) continue;
       record.replayAvailable = false;
+      record.replayUnavailableReason = "原身份或环境已失效，不能重发";
       record.replay = undefined;
       changed = true;
     }
@@ -696,15 +753,36 @@ export class GeaApiLogCenter {
     id: string,
     confirmed: boolean,
     signal: AbortSignal = new AbortController().signal,
-  ): Promise<{ recordId: string }> {
+    context: ApiLogContext = { source: "replay" },
+  ): Promise<ApiReplayResult> {
     const target = this.records.find((record) => record.id === id);
     if (!target) throw new Error("API_LOG_NOT_FOUND");
     if (!target.replayAvailable || !target.replay) throw new Error("API_LOG_REPLAY_UNAVAILABLE");
     if (target.replayPolicy === "idempotent" && !confirmed)
       throw new Error("API_LOG_REPLAY_CONFIRMATION_REQUIRED");
-    const { response, recordId } = await target.replay(signal);
-    await response.body?.cancel();
-    return { recordId };
+    signal.throwIfAborted();
+    try {
+      const { response, recordId } = await target.replay(signal, context);
+      await response.body?.cancel();
+      if (signal.aborted)
+        return {
+          outcome: "cancelled",
+          recordId,
+          reason: "已取消",
+          resultUnknown: target.replayPolicy === "idempotent",
+        };
+      return response.ok
+        ? { outcome: "replayed", recordId }
+        : { outcome: "failed", recordId, reason: `HTTP ${response.status}`, resultUnknown: false };
+    } catch (error) {
+      if (!(error instanceof CapturedRequestError)) throw error;
+      return {
+        outcome: signal.aborted ? "cancelled" : "failed",
+        recordId: error.recordId,
+        reason: error.message,
+        resultUnknown: target.replayPolicy === "idempotent",
+      };
+    }
   }
 
   private prepend(record: PrivateRecord): void {
