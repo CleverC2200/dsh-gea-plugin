@@ -83,10 +83,11 @@ GEA 的 [公开 Config schema](../src/host.ts) 为空配置提供 [公司产品�
 
 ## 异步执行与确定性检查
 
-[`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出状态、执行 lease 与证据 store；[`prompt-runtime`](../src/host/prompt-runtime.ts) 接入真实 Host hooks。迟到的失败、成功和回读视图不进入新轮次或新资源的状态，持久化期间失去归属也不发布当前证据。预算与 UI mask 继续由原 admission 状态管理；详细执行条件见 [执行链](execution-logic.md)。
+[`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出状态、参数快照、grant、执行 lease 与证据 store；[`prompt-runtime`](../src/host/prompt-runtime.ts) 接入真实 Host hooks。迟到的失败、成功和回读视图不进入新轮次或新资源的状态，持久化期间失去归属也不发布当前证据。预算与 UI mask 继续由原 admission 状态管理；详细执行条件见 [执行链](execution-logic.md)。
 
 | 检查范围                                  | 现有入口与边界                                                                                                                                                                                                                        |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 执行元数据、发布与回读政策                | `node --test tests/prompt-execution-policy.test.mjs tests/prompt-execution-tools.test.mjs`；准备本仓依赖与官方rc.2工具，后者使用真实Core Tools、GEA Business、Manage计算器                                                            |
 | 执行状态、lease与真实文件 IO 的确定性回归 | `test:prompt-execution` 不要求 SDK 或工程依赖，运行要求从 package.json 的 engines 读取；Host 集成另由 [execution-convergence.test.mjs](../tests/execution-convergence.test.mjs) 在已准备官方依赖的 checkout 覆盖旧错误和资源准入/回读 |
 | 三包打包与安装/Loader接收的确定性失败     | `test:delivery:packages` 自建 fixture Core与发布输入，重放历史 APS入口/销售Skill缺失，运行不依赖兄弟仓或现成Core；正式普通profile接收另见 [打包与接收](package-delivery.md)                                                           |
 | Window输入拒绝与原行为                    | `test:fixture-inputs` 只核输入；`test:window` 使用明确冻结Core、三仓和历史证据，保留原准入和预算门禁                                                                                                                                  |
