@@ -30,7 +30,7 @@ test(
       "",
     ].join("\n");
     await mkdir(join(probeRoot, "skills", "probe"), { recursive: true });
-    // 页面里带上它自己的受管 SQL：能力契约据此静态导出"这个模块能读哪些表"。
+    // 页面 SQL 是受控查询输入；可读表来自独立 capability 声明。
     await writeFile(
       join(probeRoot, "index.html"),
       [

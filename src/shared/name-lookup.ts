@@ -14,7 +14,7 @@
 
 /** 候选里的一段可匹配文本。 */
 export type NameField = {
-  /** 参与匹配的原文。 */
+  
   text: string;
   /** 归类（模型名／说明／成员名／工具名…）：命中时回给模型，说明"为什么给你这个"。 */
   label: string;
@@ -33,7 +33,7 @@ export type NameMatch = {
   id: string;
   /** 0~1，越大越像。 */
   score: number;
-  /** 命中的那段文本。 */
+  
   field: NameField;
 };
 

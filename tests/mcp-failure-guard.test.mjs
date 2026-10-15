@@ -38,7 +38,7 @@ test("连续失败到上限后停手，并且说清缺什么而不是让它继�
   const guard = createMcpFailureGuard();
   guard.check("branch-inventory");
   guard.note("branch-inventory", false);
-  guard.check("branch-inventory"); // 第 1 次失败还没到上限
+  guard.check("branch-inventory"); 
   guard.note("branch-inventory", false);
   assert.throws(
     () => guard.check("branch-inventory"),
@@ -91,7 +91,7 @@ test("本轮整体熔断：跨模块白跑到上限就停手（换模块也拦�
   const waste = createMcpWasteGuard();
   assert.equal(MCP_WASTE_LIMIT, 6);
   for (let i = 0; i < 5; i += 1) waste.waste("session-1");
-  waste.check("session-1"); // 还没到上限
+  waste.check("session-1"); 
   waste.waste("session-1");
   assert.throws(
     () => waste.check("session-1"),

@@ -497,7 +497,7 @@ function capRows<T extends Record<string, unknown>>(
   budgetBytes: number,
 ): { rows: T[]; omitted: number } {
   const kept: T[] = [];
-  let used = 2; // "[]"
+  let used = 2; 
   for (const row of rows) {
     const size = Buffer.byteLength(JSON.stringify(row), "utf8") + 1;
     if (used + size > budgetBytes) break;

@@ -23,7 +23,7 @@ export type CapabilityLayer = (typeof CAPABILITY_LAYERS)[number];
 export type LayerPolicy = {
   /** 这一层要不要在宿主侧留回执（可追溯"刚才那次到底怎么了"）。 */
   receipt: boolean;
-  /** 单次调用超时（毫秒）。 */
+  
   timeoutMs: number;
   /** 同一个会话在这一层每分钟最多多少次。 */
   maxPerMinute: number;

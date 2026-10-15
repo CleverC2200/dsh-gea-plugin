@@ -81,7 +81,7 @@ export function createDraftLayer(options: DraftLayerOptions = {}): DraftLayer {
   const maxPerWindow = options.maxPerWindow ?? LAYER_POLICY.draft.maxPerMinute;
   const maxReceipts = options.maxReceipts ?? 200;
   const receipts: DraftReceipt[] = [];
-  /** 每个会话的改动时间戳，用来限流。 */
+  
   const stamps = new Map<string, number[]>();
 
   return {

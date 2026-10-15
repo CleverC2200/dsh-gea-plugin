@@ -22,7 +22,7 @@ export type WorkbenchPresence = {
   signal: "menu";
   /** 菜单 id；主对话时为 `main`。 */
   menu: string;
-  /** 菜单名（人话）。 */
+  
   menuTitle: string;
   /** 前端上报时间（ISO），排查用；没上报过就没有。 */
   menuReportedAt?: string;

@@ -18,7 +18,7 @@ export type WorkbenchSurface = {
   menu: string;
   /** 菜单名（人话），给模型和排查用；主对话时为「主对话」。 */
   title: string;
-  /** 最近一次上报时间（毫秒）。 */
+  
   at: number;
 };
 

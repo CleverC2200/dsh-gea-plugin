@@ -154,9 +154,9 @@ test("collapsing the flow lane keeps filters and inline edits", { timeout: 90000
   await expect(frame.locator("td").getByRole("status")).toHaveCount(0, { timeout: 10000 });
 
   const toggle = frame.getByTestId("regional-approval-flow-toggle");
-  await toggle.click(); // 展开
+  await toggle.click(); 
   await expect(frame.getByTestId("regional-approval-flow-lane")).toBeVisible();
-  await toggle.click(); // 收起
+  await toggle.click(); 
   await expect(frame.getByTestId("regional-approval-flow-lane")).toBeHidden();
 
   // 展开回来时，之前改的数字和展开行都还在。

@@ -45,7 +45,7 @@ export type CapabilityData = {
 export type CapabilityRouting = {
   /** 首页路由用的关键词（用户话里出现就落到这个模块）。 */
   keywords: string[];
-  /** 一句话说明这个模块负责回答什么。 */
+  
   summary: string;
 };
 
@@ -331,7 +331,7 @@ export function normalizeContract(value: unknown): CapabilityContract {
     typeof raw.routing === "object" && raw.routing !== null
       ? (raw.routing as Record<string, unknown>)
       : {};
-  // 模块显式声明的层与派生结果取并集：现在按事实派生，将来模块自己声明就直接生效。
+  // layersForContract 统一归一化显式层与页面、数据和影响等级，安装声明另受装载上限约束。
   const declaredLayers = Array.isArray(raw.layers)
     ? (raw.layers as unknown[]).filter(
         (layer): layer is CapabilityLayer =>
