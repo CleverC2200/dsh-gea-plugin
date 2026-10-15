@@ -144,12 +144,16 @@ test("business masks deny unavailable GEA tools while preserving official preset
       },
     },
   };
+  const sourceSignal = new AbortController().signal;
   const ctx = {
     tools,
     agents: { get: () => agent },
     sessionProjections: { stateOf: () => preset },
     agentResources: {
-      list: async () => [{ id: "gea-readonly", kind: "prompt", installed: true, enabled: true }],
+      cubeSource: () => ({ consumerCode: "sales", signal: sourceSignal }),
+      list: async () => [
+        { id: "gea-readonly", kind: "prompt", installed: true, enabled: true, cube: true },
+      ],
     },
     on: (name, fn) => {
       handlers.set(name, fn);
@@ -162,7 +166,8 @@ test("business masks deny unavailable GEA tools while preserving official preset
       runtimeDir: process.cwd() + "/.scratch",
       analysisAgentCode: "sales",
     },
-    status: () => ({ user: { id: "one" } }),
+    status: () => ({ authenticated: true, user: { id: "one" } }),
+    identitySignal: () => sourceSignal,
     watchIdentity: () => () => {},
     readTurnRevision: () => 1,
     surfaceFor: () => undefined,

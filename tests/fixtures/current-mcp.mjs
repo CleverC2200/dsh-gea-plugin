@@ -170,13 +170,24 @@ export async function currentMcp(t, options = {}) {
     stateOf: (session) => [...agents.values()].find((agent) => agent.session === session)?.preset,
   });
   let enabled = true;
+  const sourceSignal = new AbortController().signal;
   ctx.provide("agentResources", {
+    cubeSource: (id) =>
+      enabled &&
+      ["gea-readonly", ...(options.dealer ? ["gea-html-inventory-dealer"] : [])].includes(id)
+        ? {
+            consumerCode:
+              id === "gea-readonly" ? "sales_forecast" : "dealer-inventory-replenishment",
+            signal: sourceSignal,
+          }
+        : undefined,
     list: async () =>
       ["gea-readonly", ...(options.dealer ? ["gea-html-inventory-dealer"] : [])].map((id) => ({
         id,
         kind: "prompt",
         installed: true,
         enabled,
+        cube: true,
       })),
   });
   t.mock.method(globalThis, "fetch", async (url, init) => {

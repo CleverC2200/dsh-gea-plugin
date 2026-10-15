@@ -86,7 +86,11 @@ for (const mock of [false, true])
             });
             return () => {};
           },
-          list: (options) => provider.list(options),
+          list: (options = {}) => provider.list(options),
+          async get(name, options = {}) {
+            const candidate = (await provider.list(options)).find((row) => row.name === name);
+            if (candidate) return provider.get(candidate, options);
+          },
         },
         agentPresets: {
           async readDocument(id) {
