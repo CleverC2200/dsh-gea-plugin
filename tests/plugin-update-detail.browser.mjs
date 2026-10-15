@@ -15,6 +15,14 @@ const names = [
   "@cleverc2200/gea-dsh-prototype",
 ];
 const pkg = (name) => ({ name, installed: true, enabled: true, rows: [] });
+async function until(predicate) {
+  const deadline = Date.now() + 5000;
+  while (!predicate()) {
+    assert.ok(Date.now() < deadline, "Expected HTTP fixture request within 5 seconds");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 test("official detail slots check, update, close and reenter through controlled HTTP", async (t) => {
   const root = await mkdtemp(join(process.cwd(), ".runtime/detail-browser-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -170,7 +178,7 @@ test("official detail slots check, update, close and reenter through controlled 
   await page
     .getByRole("button", { name: "Update to 1.2.4", exact: true })
     .click();
-  while (updates !== 1) await new Promise((resolve) => setTimeout(resolve, 1));
+  await until(() => updates === 1);
   await page.evaluate(() => window.fixture.close());
   await page.waitForTimeout(200);
   assert.equal(updateAborted, false);
@@ -251,7 +259,7 @@ test("official detail slots check, update, close and reenter through controlled 
   await page
     .getByRole("button", { name: "Check for updates", exact: true })
     .click();
-  while (checks !== 2) await new Promise((resolve) => setTimeout(resolve, 1));
+  await until(() => checks === 2);
   await page.evaluate(() => window.fixture.close());
   for (let i = 0; i < 100 && !checkAborted; i++)
     await new Promise((resolve) => setTimeout(resolve, 5));
