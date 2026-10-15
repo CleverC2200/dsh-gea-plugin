@@ -54,13 +54,6 @@ jobs:
         env:
           QUALITY_SCOPE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: node scripts/run-quality-ci.mjs --phase scope
-      - name: Select the authorized business repair lane
-        id: business
-        env:
-          QUALITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          QUALITY_PR_BRANCH: ${{ github.event.pull_request.head.ref }}
-          QUALITY_PR_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-        run: node scripts/business-profile-ci.mjs
       - name: Resolve immutable Workbench reader source
         id: reader
         env:
@@ -117,6 +110,13 @@ jobs:
           QUALITY_GROUP_WORKBENCH: ${{ inputs.workbench_sha }}
           QUALITY_GROUP_MANAGE: ${{ inputs.manage_sha }}
         run: node "$GITHUB_WORKSPACE/scope-peer/dsh-agent-workbench/scripts/read-hosted-peer-input.mjs" --repo dsh-gea-plugin
+      - name: Select the authorized business repair lane
+        id: business
+        env:
+          QUALITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          QUALITY_PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          QUALITY_PR_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: node scripts/business-profile-ci.mjs --workbench "$GITHUB_WORKSPACE/scope-peer/dsh-agent-workbench"
       - name: Read the registered official baselines
         id: cores
         run: node --input-type=module -e 'import fs from "node:fs"; import {ciCores} from "./scripts/ci-core-policy.mjs"; fs.appendFileSync(process.env.GITHUB_OUTPUT, "cores=" + JSON.stringify(ciCores("required").map(core => core.head)) + "\n")'
