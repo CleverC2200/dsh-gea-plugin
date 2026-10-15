@@ -1,43 +1,43 @@
-.actions {
+.gea-plugin-update-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
 }
-.section {
+.gea-plugin-update-section {
   padding-block: 20px;
   color: var(--dsw-alias-label-primary);
   border-top: 1px solid var(--dsw-alias-border-l3);
 }
-.title {
+.gea-plugin-update-title {
   margin: 0 0 16px;
   font-size: 14px;
   font-weight: 600;
 }
-.versions {
+.gea-plugin-update-versions {
   display: grid;
   grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
   gap: 10px 16px;
   margin: 0;
   font-size: 13px;
 }
-.versions dt {
+.gea-plugin-update-versions dt {
   color: var(--dsw-alias-label-secondary);
 }
-.versions dd {
+.gea-plugin-update-versions dd {
   margin: 0;
   overflow-wrap: anywhere;
 }
-.notice,
-.error {
+.gea-plugin-update-notice,
+.gea-plugin-update-error {
   margin: 16px 0 0;
   font-size: 13px;
 }
-.error {
+.gea-plugin-update-error {
   color: var(--dsw-alias-state-error-primary);
 }
 @media (max-width: 480px) {
-  .versions {
+  .gea-plugin-update-versions {
     grid-template-columns: minmax(100px, 1fr) minmax(0, 1fr);
   }
 }

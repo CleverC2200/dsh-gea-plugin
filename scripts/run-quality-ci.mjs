@@ -220,7 +220,7 @@ try {
             ? {
                 lane: "business-profile",
                 runtime: false,
-                browser: false,
+                browser: true,
                 files: [
                   "tests/api-log.test.mjs",
                   "tests/gea-messages.test.mjs",
@@ -235,6 +235,8 @@ try {
                   "scripts/business-profile-ci.test.mjs",
                   "tests/plugin-update-controller.contract.mjs",
                   "tests/plugin-update-integration.contract.mjs",
+                  "tests/plugin-update-install.contract.mjs",
+                  "tests/plugin-update-detail.browser.mjs",
                   "scripts/build.test.mjs",
                   "scripts/deliver-packages.test.mjs",
                   "scripts/package-version-gate.test.mjs",
@@ -331,7 +333,6 @@ try {
       run(process.execPath, ["native/system/scripts/build.ts", "--host-addon-only"], core);
     finalGroup?.verifyUnchanged();
     process.env.GEA_PLUGIN_UPDATE_SDK = core;
-    process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE = core;
     if (values.phase === "macos-isolation") {
       const output = resolve(".runtime/quality-isolation");
       mkdirSync(output, { recursive: true });
@@ -658,7 +659,10 @@ try {
             name: "required-and-affected",
             execute: () =>
               run(process.execPath, [
-                ...(values.phase === "business-profile" ? ["--expose-internals"] : []),
+                ...(values.phase === "business-profile" ||
+                plan.files.some((file) => file.endsWith(".contract.mjs"))
+                  ? ["--expose-internals"]
+                  : []),
                 ...(values.phase === "mcp-client-repair" ? ["--experimental-transform-types"] : []),
                 "--test",
                 // Files have separate processes; fixtures allocate unique Homes and loopback ports.

@@ -62,8 +62,16 @@ test("the actual declared client builder exposes the compiled stamp in its mater
       },
     },
   });
+  // This namespace-only contract does not render UI; the browser contract loads actual SDK controls.
+  const externals = {
+    react: await import("react"),
+    "react/jsx-runtime": await import("react/jsx-runtime"),
+    "@deepseek-ai/dsh-client-store": await import("@deepseek-ai/dsh-client-store"),
+    "@deepseek-ai/dsh-client-ui-primitives": {},
+  };
   const namespace = loaded.factory((name) => {
-    throw Error("Unexpected client external: " + name);
+    if (!(name in externals)) throw Error("Unexpected client external: " + name);
+    return externals[name];
   });
   const manifest = JSON.parse(await readFile("package.json", "utf8"));
   assert.equal(namespace.pluginPackageVersion.name, manifest.name);

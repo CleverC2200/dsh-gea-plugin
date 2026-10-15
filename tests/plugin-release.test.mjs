@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   validatePluginCombination,
   planPluginUpdate,
@@ -179,4 +180,25 @@ test("independent channel projection retains the other two references and advanc
       }),
     /CHANNEL_REVISION_REQUIRED/,
   );
+});
+
+// The range is backed by the three public-interface checks recorded for this change.
+test("GEA permits the verified Manage versions and rejects unverified versions", async () => {
+  const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const combination = (version) =>
+    validatePluginCombination({
+      core,
+      manifests: [
+        { name: W, version: "1.0.0" },
+        { name: M, version },
+        { name: G, version: source.version, peerDependencies: { [M]: source.peerDependencies[M] } },
+      ],
+    });
+  for (const version of ["0.6.3-company.12", "0.6.3-company.14", "0.6.3-company.15"])
+    assert.deepEqual(combination(version), [], version);
+  for (const version of ["0.6.3-company.11", "0.6.3-company.13", "0.6.3-company.16"])
+    assert.ok(
+      combination(version).some((issue) => issue.code === "PEER_INCOMPATIBLE"),
+      version,
+    );
 });

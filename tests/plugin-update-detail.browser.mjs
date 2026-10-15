@@ -1,4 +1,5 @@
 import test from "node:test";
+import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 import assert from "node:assert/strict";
@@ -24,6 +25,7 @@ async function until(predicate) {
 }
 
 test("official detail slots check, update, close and reenter through controlled HTTP", async (t) => {
+  execFileSync(process.execPath, ["scripts/build.mjs", "--target", "client"], { stdio: "pipe" });
   const root = await mkdtemp(join(process.cwd(), ".runtime/detail-browser-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await build({
@@ -39,22 +41,17 @@ test("official detail slots check, update, close and reenter through controlled 
       {
         name: "official-source",
         setup(builder) {
-          builder.onResolve(
-            { filter: /^(react|react-dom)(\/.*)?$/ },
-            (args) => ({ path: require.resolve(args.path) }),
-          );
+          builder.onResolve({ filter: /^(react|react-dom)(\/.*)?$/ }, (args) => ({
+            path: require.resolve(args.path),
+          }));
           const sources = {
-            "@deepseek-ai/dsh-client-ui-primitives":
-              "packages/client/ui-primitives/src/index.ts",
+            "@deepseek-ai/dsh-client-ui-primitives": "packages/client/ui-primitives/src/index.ts",
             "@deepseek-ai/dsh-client-ui-renderer/client":
               "packages/client/ui-renderer/src/client/index.ts",
-            "@deepseek-ai/dsh-client-locale/client":
-              "packages/client/locale/src/client/index.ts",
+            "@deepseek-ai/dsh-client-locale/client": "packages/client/locale/src/client/index.ts",
           };
           builder.onResolve({ filter: /^@deepseek-ai\// }, (args) =>
-            sources[args.path]
-              ? { path: join(sdk, sources[args.path]) }
-              : undefined,
+            sources[args.path] ? { path: join(sdk, sources[args.path]) } : undefined,
           );
         },
       },
@@ -83,9 +80,7 @@ test("official detail slots check, update, close and reenter through controlled 
       candidateVersion: "1.2.4",
       planId: "plan-one",
       diagnostic: "/private/secret-credential",
-      ...(phase === "check-failed"
-        ? { problem: { kind: "source", code: "signature" } }
-        : {}),
+      ...(phase === "check-failed" ? { problem: { kind: "source", code: "signature" } } : {}),
     })),
   });
   const server = createServer(async (req, res) => {
@@ -125,17 +120,19 @@ test("official detail slots check, update, close and reenter through controlled 
       res.end(JSON.stringify({ ok: true, value: {} }));
       return;
     }
+    if (url === "/gea-client.js") {
+      res.setHeader("content-type", "text/javascript");
+      res.end(await readFile("lib/client.js"));
+      return;
+    }
     if (url === "/app.js" || url === "/app.css") {
-      res.setHeader(
-        "content-type",
-        url.endsWith("css") ? "text/css" : "text/javascript",
-      );
+      res.setHeader("content-type", url.endsWith("css") ? "text/css" : "text/javascript");
       res.end(await readFile(join(root, url.slice(1))));
       return;
     }
     res.setHeader("content-type", "text/html");
     res.end(
-      '<style>body{font-family:var(--dsw-font-family);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);margin:32px}main{max-width:760px;margin:auto;display:flex;flex-direction:column;align-items:flex-start;gap:20px}section{width:100%}</style><div id="app"></div><link rel="stylesheet" href="/app.css"><script type="module" src="/app.js"></script>',
+      '<style>body{font-family:var(--dsw-font-family);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);margin:32px}main{max-width:760px;margin:auto;display:flex;flex-direction:column;align-items:flex-start;gap:20px}section{width:100%}</style><div id="app"></div><link rel="stylesheet" href="/app.css"><script>window.__ModuleLoader__={load(entry){window.geaFactory=entry.factory}}</script><script src="/gea-client.js"></script><script type="module" src="/app.js"></script>',
     );
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -163,21 +160,33 @@ test("official detail slots check, update, close and reenter through controlled 
       console.error({ errors, html: await page.locator("body").innerHTML() });
       throw error;
     });
-  await page
-    .getByRole("button", { name: "Update to 1.2.4", exact: true })
-    .waitFor();
+  await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).waitFor();
+  const packageVersion = await page.evaluate(() => window.fixture.packageVersion);
+  const packageManifest = JSON.parse(await readFile("package.json", "utf8"));
+  assert.deepEqual(packageVersion, {
+    value: { name: packageManifest.name, version: packageManifest.version },
+    frozen: true,
+  });
+  assert.equal(
+    await page
+      .locator(".gea-plugin-update-actions")
+      .evaluate((node) => getComputedStyle(node).display),
+    "flex",
+  );
+  assert.equal(
+    await page
+      .locator(".gea-plugin-update-versions")
+      .evaluate((node) => getComputedStyle(node).display),
+    "grid",
+  );
   if (process.env.GEA_DETAIL_SCREENSHOT)
     await page.screenshot({
       path: process.env.GEA_DETAIL_SCREENSHOT + "-available.png",
     });
-  await page
-    .getByRole("button", { name: "Check for updates", exact: true })
-    .dblclick();
+  await page.getByRole("button", { name: "Check for updates", exact: true }).dblclick();
   await page.waitForTimeout(200);
   assert.equal(checks, 1);
-  await page
-    .getByRole("button", { name: "Update to 1.2.4", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).click();
   await until(() => updates === 1);
   await page.evaluate(() => window.fixture.close());
   await page.waitForTimeout(200);
@@ -195,13 +204,8 @@ test("official detail slots check, update, close and reenter through controlled 
   await page.evaluate(() => window.fixture.open());
   await page.getByText("Restart required", { exact: true }).first().waitFor();
   for (const name of names) {
-    await page.evaluate(
-      (pkg) => window.fixture.subject({ kind: "bundle", pkg }),
-      pkg(name),
-    );
-    await page
-      .getByRole("button", { name: "Check for updates", exact: true })
-      .waitFor();
+    await page.evaluate((pkg) => window.fixture.subject({ kind: "bundle", pkg }), pkg(name));
+    await page.getByRole("button", { name: "Check for updates", exact: true }).waitFor();
   }
   for (const subject of [
     { kind: "bundle", pkg: pkg("other") },
@@ -215,10 +219,7 @@ test("official detail slots check, update, close and reenter through controlled 
     await page.evaluate((subject) => window.fixture.subject(subject), subject);
     assert.equal(await page.locator("main").textContent(), "");
   }
-  await page.evaluate(
-    (pkg) => window.fixture.subject({ kind: "bundle", pkg }),
-    pkg(names[2]),
-  );
+  await page.evaluate((pkg) => window.fixture.subject({ kind: "bundle", pkg }), pkg(names[2]));
   await page.evaluate(() => window.fixture.locale("zh"));
   await page.getByRole("button", { name: "检查更新", exact: true }).waitFor();
   if (process.env.GEA_DETAIL_SCREENSHOT) {
@@ -230,9 +231,7 @@ test("official detail slots check, update, close and reenter through controlled 
       path: process.env.GEA_DETAIL_SCREENSHOT + "-mobile.png",
     });
     assert.equal(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       true,
     );
   }
@@ -242,23 +241,13 @@ test("official detail slots check, update, close and reenter through controlled 
     .getByRole("alert")
     .filter({ hasText: "The update source could not be verified." })
     .waitFor();
-  assert.doesNotMatch(
-    await page.locator("main").textContent(),
-    /private|secret-credential/,
-  );
+  assert.doesNotMatch(await page.locator("main").textContent(), /private|secret-credential/);
   phase = "unknown";
-  await page
-    .getByRole("alert")
-    .filter({ hasText: "The update result is unknown." })
-    .waitFor();
+  await page.getByRole("alert").filter({ hasText: "The update result is unknown." }).waitFor();
   phase = "available";
-  await page
-    .getByRole("button", { name: "Update to 1.2.4", exact: true })
-    .waitFor();
+  await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).waitFor();
   holdCheck = true;
-  await page
-    .getByRole("button", { name: "Check for updates", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Check for updates", exact: true }).click();
   await until(() => checks === 2);
   await page.evaluate(() => window.fixture.close());
   for (let i = 0; i < 100 && !checkAborted; i++)
@@ -266,9 +255,7 @@ test("official detail slots check, update, close and reenter through controlled 
   assert.equal(checkAborted, true);
   holdCheck = false;
   await page.evaluate(() => window.fixture.open());
-  await page
-    .getByRole("button", { name: "Check for updates", exact: true })
-    .waitFor();
+  await page.getByRole("button", { name: "Check for updates", exact: true }).waitFor();
   await page.evaluate(() => window.fixture.dispose());
   await page.waitForTimeout(20);
   assert.equal(await page.locator("main").textContent(), "");

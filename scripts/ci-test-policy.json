@@ -23,7 +23,12 @@
     "scripts/delivery-runtime.test.mjs",
     "scripts/delivery-continuation.test.mjs"
   ],
-  "tests": ["tests/*.test.mjs", "scripts/*.test.mjs", "tests/*.contract.mjs"],
+  "tests": [
+    "tests/*.test.mjs",
+    "scripts/*.test.mjs",
+    "tests/*.contract.mjs",
+    "tests/*.browser.mjs"
+  ],
   "rules": [
     {
       "repo": "dsh-gea-plugin",
@@ -95,12 +100,14 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^src/(?:host/plugin-update|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)",
+      "pattern": "^src/(?:client\\.tsx|host/plugin-update|plugin-updates|plugin-detail-updates|plugin-update-locales|shared/plugin-update|host/plugin-release|shared/plugin-release)",
       "tests": [
         "tests/plugin-update-controller.contract.mjs",
         "tests/plugin-update-integration.contract.mjs",
         "tests/plugin-release-source.test.mjs",
-        "tests/plugin-release.test.mjs"
+        "tests/plugin-release.test.mjs",
+        "tests/plugin-update-install.contract.mjs",
+        "tests/plugin-update-detail.browser.mjs"
       ]
     },
     {
@@ -140,6 +147,16 @@
       "pattern": "^scripts/plugin-update-pr-lane\\.",
       "tests": ["scripts/run-quality-ci.test.mjs"],
       "exclusive": true
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^(?:scripts/(?:check-plugin-updates-types|create-plugin-release|build)\\.mjs|tests/(?:acceptance/plugin-update-desktop\\.mjs|fixtures/plugin-updates/installed-runtime\\.mjs))$",
+      "tests": [
+        "scripts/build.test.mjs",
+        "tests/plugin-update-install.contract.mjs",
+        "tests/plugin-update-detail.browser.mjs",
+        "tests/plugin-release-source.test.mjs"
+      ]
     }
   ]
 }

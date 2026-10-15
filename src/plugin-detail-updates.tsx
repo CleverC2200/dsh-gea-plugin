@@ -3,28 +3,17 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
 import type { PluginDetailProps } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
-import type {
-  PropsLocale,
-  TranslateNS,
-} from "@deepseek-ai/dsh-client-ui-slots";
-import {
-  Button,
-  Tag,
-  type TagTone,
-} from "@deepseek-ai/dsh-client-ui-primitives";
+import type { PropsLocale, TranslateNS } from "@deepseek-ai/dsh-client-ui-slots";
+import { Button, Tag, type TagTone } from "@deepseek-ai/dsh-client-ui-primitives";
 import { companyPackageNames } from "./shared/plugin-release.mjs";
 import type { PluginUpdateProblem } from "./shared/plugin-update-diagnostics.ts";
 import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
-import {
-  createPluginDetailUpdates,
-  pluginUpdateBusy,
-} from "./plugin-updates-client.ts";
+import { createPluginDetailUpdates, pluginUpdateBusy } from "./plugin-updates-client.ts";
 import { en, zh, pluginUpdateLocale } from "./plugin-update-locales.ts";
-import css from "./plugin-detail-updates.module.css";
+import css from "./plugin-detail-updates.css";
 
 type Owner = ReturnType<typeof createPluginDetailUpdates>;
-type Props = PluginDetailProps &
-  PropsLocale<typeof pluginUpdateLocale> & { updates: Owner };
+type Props = PluginDetailProps & PropsLocale<typeof pluginUpdateLocale> & { updates: Owner };
 function targetName(subject: PluginDetailProps["subject"]) {
   return subject.kind === "bundle"
     ? companyPackageNames.find((name) => name === subject.pkg.name)
@@ -42,17 +31,12 @@ function DetailActions({
   name,
   updates,
   t,
-}: { name: string; updates: Owner } & PropsLocale<
-  typeof pluginUpdateLocale
->): ReactNode {
+}: { name: string; updates: Owner } & PropsLocale<typeof pluginUpdateLocale>): ReactNode {
   const state = useDetail(updates),
     row = state.items.find((row) => row.packageName === name);
-  const busy =
-    state.checking ||
-    state.submitting !== null ||
-    pluginUpdateBusy(state.items);
+  const busy = state.checking || state.submitting !== null || pluginUpdateBusy(state.items);
   return (
-    <div className={css.actions}>
+    <div className="gea-plugin-update-actions">
       <Button
         size="sm"
         variant="outline"
@@ -84,8 +68,7 @@ function UpdateBadge({ subject, updates, t }: Props): ReactNode {
 }
 function tone(state: PluginUpdateRow["state"]): TagTone {
   if (["failed", "check-failed", "unknown"].includes(state)) return "danger";
-  if (["pending-restart", "restored", "blocked"].includes(state))
-    return "warning";
+  if (["pending-restart", "restored", "blocked"].includes(state)) return "warning";
   if (["completed", "current"].includes(state)) return "success";
   return "info";
 }
@@ -93,17 +76,11 @@ function DetailBadge({
   name,
   updates,
   t,
-}: { name: string; updates: Owner } & PropsLocale<
-  typeof pluginUpdateLocale
->): ReactNode {
+}: { name: string; updates: Owner } & PropsLocale<typeof pluginUpdateLocale>): ReactNode {
   const state = useDetail(updates),
     row = state.items.find((row) => row.packageName === name);
   const stage =
-    state.submitting === name
-      ? "accepted"
-      : state.checking
-        ? "checking"
-        : (row?.state ?? "idle");
+    state.submitting === name ? "accepted" : state.checking ? "checking" : (row?.state ?? "idle");
   return (
     <span role="status">
       <Tag tone={tone(stage)}>{t(stage)}</Tag>
@@ -125,9 +102,7 @@ function problemText(
             : problem.code,
       );
     case "source":
-      return t(
-        problem.code === "unavailable" ? "sourceUnavailable" : problem.code,
-      );
+      return t(problem.code === "unavailable" ? "sourceUnavailable" : problem.code);
     case "environment":
       return t("platform");
     case "core":
@@ -148,9 +123,7 @@ function DetailSection({
   name,
   updates,
   t,
-}: { name: string; updates: Owner } & PropsLocale<
-  typeof pluginUpdateLocale
->): ReactNode {
+}: { name: string; updates: Owner } & PropsLocale<typeof pluginUpdateLocale>): ReactNode {
   const state = useDetail(updates),
     row = state.items.find((row) => row.packageName === name);
   const error = state.transportError
@@ -163,9 +136,9 @@ function DetailSection({
       )
     : problemText(row?.problem, t);
   return (
-    <section className={css.section} aria-label={t("title")}>
-      <h3 className={css.title}>{t("title")}</h3>
-      <dl className={css.versions}>
+    <section className="gea-plugin-update-section" aria-label={t("title")}>
+      <h3 className="gea-plugin-update-title">{t("title")}</h3>
+      <dl className="gea-plugin-update-versions">
         <dt>{t("installed")}</dt>
         <dd>{row?.installedVersion ?? t("unavailable")}</dd>
         <dt>{t("host")}</dt>
@@ -176,25 +149,25 @@ function DetailSection({
         <dd>{row?.candidateVersion ?? t("unavailable")}</dd>
       </dl>
       {row?.state === "pending-restart" ? (
-        <p className={css.notice} role="status">
+        <p className="gea-plugin-update-notice" role="status">
           {t("restart")}
         </p>
       ) : null}
       {error ? (
-        <p className={css.error} role="alert">
+        <p className="gea-plugin-update-error" role="alert">
           {error}
         </p>
       ) : null}
       {row?.state === "restored" && !error ? (
-        <p className={css.notice}>{t("restoredReason")}</p>
+        <p className="gea-plugin-update-notice">{t("restoredReason")}</p>
       ) : null}
       {row?.state === "unknown" && !error ? (
-        <p className={css.error} role="alert">
+        <p className="gea-plugin-update-error" role="alert">
           {t("unknownError")}
         </p>
       ) : null}
       {row?.state === "failed" && !error ? (
-        <p className={css.error} role="alert">
+        <p className="gea-plugin-update-error" role="alert">
           {t("failedReason")}
         </p>
       ) : null}
@@ -204,6 +177,12 @@ function DetailSection({
 /** Contribute only through the official detail slots; the Host retains installation ownership. */
 export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
   const fiber = ctx.inject(["slots", "locale", "modules"], (scope) => {
+    scope.effect(() => {
+      const style = document.createElement("style");
+      style.textContent = css;
+      document.head.append(style);
+      return () => style.remove();
+    });
     const updates = createPluginDetailUpdates(scope);
     scope.effect(() => scope.locale.register(pluginUpdateLocale, { en, zh }));
     scope.effect(() => () => updates.dispose());

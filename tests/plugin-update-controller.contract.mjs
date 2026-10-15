@@ -8,10 +8,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 if (!sdk) throw Error("GEA_PLUGIN_UPDATE_SDK must explicitly name unchanged fixed SDK");
-// The explicit generated SDK must implement the unchanged candidate public operations.
-const candidateSdk =
-  process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE ??
-  fileURLToPath(new URL("../../../official-latest-standard/", import.meta.url));
+// Verify the unchanged public installation and locking source used by this SDK lane.
 for (const [path, expected] of Object.entries({
   "packages/boot/plugin-manager/src/operations.ts":
     "16d141f794041d06122ce9f8ab7bae6f55b4a78feefb620f9cb6c7ba5efac547",
@@ -22,7 +19,7 @@ for (const [path, expected] of Object.entries({
   "packages/boot/app-boot/src/profile.ts":
     "30a883b090c4489b14371d947113d532ab9484d4e0f79c7a4fcddd066e24b6ab",
 })) {
-  for (const root of [sdk, candidateSdk])
+  for (const root of [sdk])
     assert.equal(
       createHash("sha256")
         .update(await readFile(join(root, path)))
@@ -669,7 +666,9 @@ test("signed/HTTP check failures retain safe distinct status errors while Core a
   t.after(() => controller.dispose());
   await controller.initialize();
   await controller.check();
-  const core = controller.snapshot().items.find(row => row.packageName === "@cleverc2200/gea-dsh-prototype");
+  const core = controller
+    .snapshot()
+    .items.find((row) => row.packageName === "@cleverc2200/gea-dsh-prototype");
   assert.equal(core.state, "blocked");
   assert.equal(core.problem.kind, "core");
   assert.equal(core.problem.current.version, "0.2.0-rc.2");

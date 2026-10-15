@@ -24,6 +24,7 @@ test("a dynamic Workbench source-policy change selects the GEA adapter contract"
     "scripts/business-profile-ci.test.mjs",
     "tests/unrelated.test.mjs",
     "tests/unrelated.contract.mjs",
+    "tests/plugin-update-detail.browser.mjs",
   ])
     put(own.path, file, "export const fixture = true;");
   own.head = commit(own.path);
@@ -90,8 +91,11 @@ function resourceImpactFixture(t) {
     ...policy.required,
     "scripts/ci-policy-impact.test.mjs",
     "tests/sales-plan-action.test.mjs",
+    "tests/branch-stock-ability-web.test.mjs",
+    "tests/page-interaction-workbenches.test.mjs",
     "tests/unrelated.test.mjs",
     "tests/unrelated.contract.mjs",
+    "tests/plugin-update-detail.browser.mjs",
   ])
     put(own.path, file, "export const fixture = true;\n");
   own.head = commit(own.path);
@@ -123,12 +127,21 @@ test("Workbench page resources select GEA page grants and admitted asset integri
       fixture.change(fixture.peer, file);
       const plan = fixture.plan();
       assert.deepEqual(plan.changes, [{ repo: fixture.peer.repo, file }]);
-      assert.deepEqual(plan.reasons[fixture.peer.repo + "/" + file], [
-        "scripts/quality-workbench.test.mjs",
-        "tests/business-page-grant.test.mjs",
-      ]);
+      const affected = file.startsWith("business/inventory-")
+        ? ["tests/source-integrity.test.mjs", "tests/branch-stock-ability-web.test.mjs"]
+        : file === "static/regional/source/index.html"
+          ? ["tests/page-interaction-workbenches.test.mjs"]
+          : [];
+      assert.deepEqual(
+        plan.reasons[fixture.peer.repo + "/" + file],
+        [
+          ...affected,
+          "scripts/quality-workbench.test.mjs",
+          "tests/business-page-grant.test.mjs",
+        ].sort(),
+      );
       assert.deepEqual(plan.required, [...fixture.policy.required].sort());
-      assert.deepEqual(plan.files, [...fixture.policy.required].sort());
+      assert.deepEqual(plan.files, [...new Set([...fixture.policy.required, ...affected])].sort());
       assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
       assert.ok(!plan.files.includes("tests/unrelated.contract.mjs"));
     });
@@ -205,4 +218,22 @@ test("a package-only change retains its original configuration contracts without
     "tests/window-launch-admission.test.mjs",
   ]);
   assert.deepEqual(plan.files, [...fixture.policy.required].sort());
+});
+
+test("detail contributions select the built browser and actual installer contracts", (t) => {
+  const fixture = resourceImpactFixture(t);
+  for (const file of [
+    "tests/plugin-update-controller.contract.mjs",
+    "tests/plugin-update-integration.contract.mjs",
+    "tests/plugin-update-install.contract.mjs",
+    "tests/plugin-update-detail.browser.mjs",
+    "tests/plugin-release-source.test.mjs",
+    "tests/plugin-release.test.mjs",
+  ])
+    writeFileSync(join(fixture.own.path, file), "export const fixture = true;\n");
+  fixture.change(fixture.own, "src/plugin-detail-updates.tsx", "export const changed = true;\n");
+  const plan = fixture.plan();
+  assert.ok(plan.files.includes("tests/plugin-update-install.contract.mjs"), JSON.stringify(plan));
+  assert.ok(plan.files.includes("tests/plugin-update-detail.browser.mjs"), JSON.stringify(plan));
+  assert.equal(plan.browser, true);
 });

@@ -12,7 +12,7 @@ trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替�
 
 ## 生成独立发布输入
 
-[source publication formatter](../scripts/production-manifest.mjs) 保留源码已有 peer 约束，包括当前 exact Manage peer。只有源码没有 companion peer 时才按明确版本输入生成 exact peer；辅助能力仍是 optional。普通三包交付按最终 manifest 完整图验证，不以三个版本相等或 GEA peer 字符串相等代替兼容性。semver 是明确的运行依赖，生产 stage 正常生成的 shrinkwrap 包含它。
+[source publication formatter](../scripts/production-manifest.mjs) 保留源码已有 peer 约束，包括经 GEA 实际消费接口验证的 Manage `.12 || .14 || .15` exact OR。验证覆盖 business-resources、user-agent-cube 与 forecast-source，不声明其它 Manage 版本或全部功能兼容。只有源码没有 companion peer 时才按明确版本输入生成 exact peer；辅助能力仍是 optional。普通三包交付按最终 manifest 完整图验证，不以三个版本相等或 GEA peer 字符串相等代替兼容性。semver 是明确的运行依赖，生产 stage 正常生成的 shrinkwrap 包含它。
 
 `node scripts/create-plugin-release.mjs --archive /absolute/final.tgz --metadata /absolute/metadata.json --destination /absolute/new-output` 从最终归档投影单包 release。metadata 只提供 artifactUrl、已登记 supportedCores、dataCompatibility 和 notes；版本、requires、完整 peer/dependency 图、size/hash 来自归档。destination 必须不存在。输出包含 release 文件路径、摘要和 published=false，不上传 OSS、不更新频道。
 
@@ -22,7 +22,7 @@ trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替�
 
 ## 官方插件页接线与部署输入
 
-GEA 的 Host/client 实际入口挂接更新能力。client 只在官方 `pluginUpdates.version=1` 与公开 `modules` 服务同时存在时注册三个包的 provider；缺失或其它版本不接管插件页。页面仅显示现有正式更新状态。Host 通过已认证的 `connection.fetch` 注册 status/check/update/observed 四个 POST 路由，不另建业务登录权威。检查使用部署声明的真实超时 AbortSignal；页面关闭中止检查与轮询，已接受安装由 Host 生命周期持有。
+GEA client 使用官方既有的 `plugins.detail.actions`、`plugins.detail.badge` 和 `plugins.detail.section` 扩展位，仅向 Workbench、Manage、GEA 三个 bundle 的详情贡献检查、单包更新、状态与版本。它等待公开 slots、locale 与 modules 服务，不要求额外的 Core 更新 provider。中英文随官方 locale 切换；按钮和状态使用官方公共组件与主题，样式随贡献生命周期装载和释放。非目标 bundle、row 与 item 不贡献内容。Host 通过已认证的 `connection.fetch` 注册 status/check/update/observed 四个 POST 路由，不另建业务登录权威。详情关闭中止本页检查与轮询，已接受安装由 Host 生命周期持有；重入读取同一持久状态。官方列表、详情卸载等控件继续由官方锁和更新前后的基线检查保护。
 
 `pluginUpdates` 是可选部署配置，省略或配置不完整时三包状态为 blocked，不使用旧 unsigned 频道、默认生产地址或凭据。有效配置包含 `source`（上述来源配置）、`core`（下面的显式来源证明）、`checkTimeoutMs`（1000–120000）和 `pollIntervalMs`（1000–30000）。本接线只支持 `source.authenticationRef="anonymous"`，认证解析器返回空 headers；公网 OSS origin/prefix 也必须显式填写。已核旧 OSS 匿名读取能力不提供新签名频道 URL 或公钥，二者仍需部署输入。
 
@@ -33,12 +33,20 @@ GEA 的 Host/client 实际入口挂接更新能力。client 只在官方 `plugin
 
 桌面 artifacts 还必须包含 package.json、lib/main.js、dsh/package.json、CLI 安装锚 manifest、dsh-desktop-host 的 package.json 与 lib/index.js，以及四个关键 SDK 的 package.json。每个路径核实际文件范围、唯一性与摘要；SDK 条件导出按 Node import 条件选取，不能用未加载 default 的摘要替代实际入口。这里只验证明确批准的安装材料，受信 owner 构建与装配记录、实际进程及 Native 接收仍各自留证。
 
-Host 证明来自公开 Loader 的唯一启用 entry、ACTIVE Fiber、实际 import namespace 与 callback 一致，以及该 namespace 的 `pluginPackageVersion` 编译常量。client 读取公开 `ctx.modules.loadCache` 的 materialized exports，核 ACTIVE Fiber/callback，再读取相同编译常量。`desiredArtifactRevision` 只绑定当前公开 graph；它不证明 cache 实际加载了该修订。报告是已认证受控 client 的观察，不是远端密码学证明。Host 严格解析报告，绑定 process/page/nonce 和过期时间，再核自身 ACTIVE 版本及当前目标 graph；任意 `{kind:"active"}`、旧 process、错误 nonce、版本或目标修订均拒绝。03 的持久回执只在真实新 Host 进程与匹配 client 观察成立后完成；缺证明保持 pending/unknown。Host/client 版本不一致时官方单一 runningVersion 字段省略。
+Host 证明来自公开 Loader 的唯一启用 entry、ACTIVE Fiber、实际 import namespace 与 callback 一致，以及该 namespace 的 `pluginPackageVersion` 编译常量。client 读取公开 `ctx.modules.loadCache` 的 materialized exports，核 ACTIVE Fiber/callback，再读取相同编译常量。`desiredArtifactRevision` 只绑定当前公开 graph；它不证明 cache 实际加载了该修订。报告是已认证受控 client 的观察，不是远端密码学证明。Host 严格解析报告，绑定 process/page/nonce 和过期时间，再核自身 ACTIVE 版本及当前目标 graph；任意 `{kind:"active"}`、旧 process、错误 nonce、版本或目标修订均拒绝。03 的持久回执只在真实新 Host 进程与匹配 client 观察成立后完成；缺证明保持 pending/unknown。详情分别呈现 Host 与 client 实际观察版本，缺失观察显示未确认。
 
-`waiting-lock`、`snapshotting` 暂投影为“已提交”；正式独立阶段由 01 复核补修，不误报为安装中。
+`waiting-lock` 与 `snapshotting` 分别显示等待其它插件操作与备份中；安装、验证、恢复、待重启和 unknown 使用 Host 的实际状态。
 
-## 显式源码合同
+## 分层验证
 
-`test:contracts` 和已准备 SDK 的 `quality:ci` 会运行 `test:plugin-updates`，包括 03 恢复合同及 04 的真实公开 Host Loader/clientModules 接线、严格绑定、页面取消与请求超时测试。local 必须明确提供 `GEA_PLUGIN_UPDATE_SDK` 与 `GEA_PLUGIN_UPDATE_CANDIDATE_CORE`；03 核未变公开源码摘要，不能用任意旧 SDK 伪证新操作语义。`typecheck:plugin-updates` 使用同样的显式 SDK 输入和 candidate UI 的公开源码合同做定向类型检查。
+`test:plugin-updates` 使用 `GEA_PLUGIN_UPDATE_SDK` 的绝对路径运行固定官方公开安装/锁源码合同、Host 路由与恢复回归、真实 pnpm 临时 profile 安装，以及实际生产构建的 client 在官方 Slots/Renderer 下的浏览器行为。浏览器测试检查已构建 `lib/client.js` 的依赖装载、按钮、错误、待重启、关闭/重入、样式及 effect 释放。来源使用本地生成的 Ed25519 签名与临时 TGZ，网络读取由受控 fixture 提供；安装使用官方 `runProfilePnpm` 与项目锁定的 pnpm 实际执行。新子进程通过公开 Host Loader、clientModules graph 和实际 client factory 证明新版本加载。原有故障恢复、锁冲突与 unknown 合同保留。
 
-定向合同、类型检查和 Host/client build 不代表 cold CI、普通发行或桌面装配已准入新 Core。当前发行登记仍需按新的实际 head、SDK 和来源证据更新；没有真实签名 URL/key 或 Core 部署记录时实际更新与 Native 验收保持 blocked。
+普通 CI 的受影响集合登记实际安装和浏览器测试；`typecheck:plugin-updates` 核未修改 SDK 的现有详情接口，不要求另一个 UI 候选。完整发行图校验和来源准入继续由普通包/发布入口负责。局部通过不代替远端完整 CI、Native、Windows 或业务验收。
+
+验证明确批准的安装版时，将 `GEA_PLUGIN_UPDATE_DESKTOP_PROOF` 指向上述 `kind: "desktop"` 证明 JSON 的绝对路径，执行 `test:plugin-updates:desktop`。该独立验收入口要求调用者事先准备受保护的安装布局或只读快照；不会发现、复制或修改当前 App。它使用同一 Host 路由、实际 packaged SDK runner、真实 pnpm 与新子进程 Host/client 观察，并验证下面的 desktop release 准入。它不属于冷 CI 的默认输入，没有证明文件时立即失败，不静默跳过。
+
+## 为已批准 desktop 构建生成 release
+
+`create-plugin-release.mjs` 默认继续只接受已登记源码 Core。若要为明确批准的 desktop 构建准备本地 release，可加 `--desktop-core-proof /absolute/proof.json`，并使用 `node --expose-internals` 启动该命令。CLI 复用同一 Core reader 与固定工具 SDK 的公开包解析器，验证安装布局、摘要与 SDK 解析；不会执行证明根内的代码。metadata.supportedCores 中额外的构建必须与验证返回的 head/version 完全匹配。普通来源登记、完整归档图和任意 head 的拒绝保持原规则；同版本不等于同构建。
+
+输出仍是本地 release JSON 与 `published: false`。签名频道部署、正式 OSS、当前客户端安装、Native 和业务验收需要各自的有效输入与验收记录。
