@@ -502,3 +502,22 @@ test("current personal Agent exposes knowledge tools under its retained Consumer
   assert.equal(refused.isError, true);
   assert.equal(count(f, "weknora_ask"), 1);
 });
+
+test("personal Agent diagnostics report retained Consumer and revoked source without business grants", async (t) => {
+  const f = await fixture(t, { personal: true, prompts: true });
+  const diagnose = async () =>
+    successful(await invoke(f, "gea_runtime_diagnose", {}, "personal"));
+  const active = await diagnose();
+  assert.equal(active.consumerCode, "sales_forecast");
+  assert.deepEqual(active.mcpAccess, {
+    sourceRef: "gea-readonly",
+    consumerCode: "sales_forecast",
+  });
+  assert.equal(active.businessProfileDeclared, false);
+  assert.equal(active.businessAuthorization, "not-checked");
+  f.setEnabled(false);
+  const revoked = await diagnose();
+  assert.equal(revoked.consumerCode, null);
+  assert.deepEqual(revoked.mcpAccess, { error: "GEA_CUBE_SOURCE_UNAVAILABLE" });
+  assert.equal(revoked.businessAuthorization, "not-checked");
+});
