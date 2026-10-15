@@ -185,7 +185,8 @@ test("actual APS mock registration and Manage route select its original resource
   const controller = new SessionController(real, { nativeOpen: false });
   const pages = new HtmlPages(real, "", async () => "<picker-fixture>");
   const packages = await pages.registerHtml([
-    join(workbenchInput.assetRoot, "lib/business/inventory-apsplan"),
+    process.env.GEA_TEST_APS_PACKAGE ??
+      join(workbenchInput.assetRoot, "lib/business/inventory-apsplan"),
   ]);
   assert.equal(packages[0].manifest.mode, "mock", "use actual Root generated APS mock package");
   ctx.workbenchPages = pages;
