@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.135",
+  "version": "0.0.145",
   "private": true,
   "packageManager": "pnpm@11.27.0",
   "type": "module",
@@ -207,6 +207,6 @@
     "@deepseek-ai/dsh-plugin-manager": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-tools": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/schemastery": "3.18.4 || 3.18.5-alpha.1",
-    "dsh-agent-manage": "0.6.3-company.6"
+    "dsh-agent-manage": "0.6.3-company.12"
   }
 }
