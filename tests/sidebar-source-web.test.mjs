@@ -57,9 +57,19 @@ test(
       .getByRole("button", { name: "新会话", exact: true })
       .filter({ hasText: "AI工作台" })
       .click();
-    await page.getByRole("button", { name: /^选择模型，当前/ }).click();
-    await page.getByRole("menuitem", { name: /^模型/ }).click();
-    await page.getByRole("menuitemradio", { name: /Local receipt \/ 本地验证回执/ }).click();
+    // 等实际 Core Session 就绪后配置回执模型，避免新会话挂载时替换菜单。
+    const conversation = page.locator("[data-conversation-session]:visible").first();
+    await expect(conversation).toHaveAttribute("data-conversation-session", /.+/);
+    const sessionId = await conversation.getAttribute("data-conversation-session");
+    const selected = await app.remote("session/selectModel", {
+      sessionId,
+      provider: "gea-proof",
+      model: "receipt",
+    });
+    assert.equal(selected.ok, true, JSON.stringify(selected));
+    await expect(page.getByRole("button", { name: /^选择模型，当前/ })).toHaveAccessibleName(
+      /Local receipt/,
+    );
     const composer = page.locator('[contenteditable="true"], textarea').first();
     await composer.fill("侧栏隔离验收");
     await composer.press("Enter");
@@ -67,6 +77,7 @@ test(
       exact: true,
     });
     await expect(receipt).toBeVisible();
+    await expect(conversation).toHaveAttribute("data-conversation-session", sessionId);
     // GEA hides auxiliary launch buttons; configure a public shortcut supported by Linux Web too.
     await expect(page.getByRole("dialog", { name: /内测声明|预览版说明/ })).toHaveCount(0);
     await page.keyboard.press("ControlOrMeta+/");
