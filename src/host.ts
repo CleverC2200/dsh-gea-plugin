@@ -60,6 +60,7 @@ export const inject = [
   "profileContext",
   "workbenchPages",
   "agentResources",
+  "userAgents",
   "agents",
   "connection",
   "tools",
