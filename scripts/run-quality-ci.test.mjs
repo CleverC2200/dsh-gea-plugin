@@ -1,8 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import {
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+  existsSync,
+  mkdirSync,
+  appendFileSync,
+} from "node:fs";
+import { join, resolve, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { macosIsolationTests, selectPlatformTests } from "./ci-platform-tests.mjs";
@@ -332,66 +340,103 @@ test("Linux stage wiring preserves independent tests and always summarizes and u
   assert.match(linux, /if: always\(\)\n        uses: actions\/upload-artifact@v7/);
 });
 
-test("the real C1 PR impact maps every changed source and still rejects an unknown script", async (t) => {
+test("the current source impact maps changed paths without feature history and still rejects unknown scripts", async (t) => {
   const source = resolve(import.meta.dirname, "..");
-  const directory = mkdtempSync(join(tmpdir(), "gea-c1-source-impact-"));
+  const directory = mkdtempSync(join(tmpdir(), "gea-current-source-impact-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const git = (cwd, ...args) =>
     execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-  const base = "d35011eca8752a1fabff896c9d78dc60b27243a6";
-  const head = "1a5ec9552b710917376d56c82ebaf143b326219e";
-  const baseline = JSON.parse(git(source, "show", `${head}:scripts/quality-peer-baseline.json`));
-  const repositories = [];
-  for (const [repo, input, commit] of [
-    [
-      "dsh-agent-workbench",
-      process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ?? resolve(source, "../dsh-agent-workbench"),
-      baseline.repositories.find((entry) => entry.repo === "dsh-agent-workbench").head,
-    ],
-    [
-      "dsh-agent-manage",
-      process.env.GEA_FINAL_GROUP_MANAGE_SOURCE ?? resolve(source, "../dsh-agent-manage"),
-      baseline.repositories.find((entry) => entry.repo === "dsh-agent-manage").head,
-    ],
-    ["dsh-gea-plugin", source, head],
-  ]) {
-    const path = join(directory, repo);
-    git(directory, "clone", "--quiet", "--shared", "--no-checkout", input, path);
-    git(path, "checkout", "--quiet", "--detach", commit);
-    repositories.push({ repo, path, head: commit });
-  }
-  const gea = repositories.find((entry) => entry.repo === "dsh-gea-plugin");
-  // Overlay only the policy under review onto the PR's exact frozen source group.
-  writeFileSync(
-    join(gea.path, "scripts/ci-test-policy.json"),
-    readFileSync(join(source, "scripts/ci-test-policy.json")),
-  );
-  const { selectCiTests } = await import(
-    pathToFileURL(join(directory, "dsh-agent-workbench/scripts/ci-test-plan.mjs"))
-  );
-  const request = { repositories, repo: "dsh-gea-plugin", base };
-  const plan = selectCiTests(request);
-  assert.deepEqual(plan.changes.map((entry) => entry.file).sort(), [
+  const commit = (cwd, message) => {
+    git(cwd, "add", ".");
+    git(
+      cwd,
+      "-c",
+      "user.name=fixture",
+      "-c",
+      "user.email=fixture@invalid",
+      "commit",
+      "--quiet",
+      "-m",
+      message,
+    );
+    return git(cwd, "rev-parse", "HEAD");
+  };
+  // Keep fixture paths from creating a false source-graph consumer of the contract under test.
+  const contract = ["scripts/final-group-input", "contract", "mjs"].join(".");
+  const changedPaths = [
     ".github/workflows/quality.yml",
     "docs/local-development.md",
     "package.json",
     "scripts/ci-test-policy.json",
-    "scripts/final-group-input.contract.mjs",
+    contract,
     "scripts/fixtures/quality-ci-commands.mjs",
     "scripts/quality-ci-stages.mjs",
     "scripts/run-quality-ci-stages.test.mjs",
     "scripts/run-quality-ci.mjs",
     "scripts/run-quality-ci.test.mjs",
-  ]);
+  ];
+  const repositories = [];
+  for (const [repo, input] of [
+    [
+      "dsh-agent-workbench",
+      process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ?? resolve(source, "../dsh-agent-workbench"),
+    ],
+    [
+      "dsh-agent-manage",
+      process.env.GEA_FINAL_GROUP_MANAGE_SOURCE ?? resolve(source, "../dsh-agent-manage"),
+    ],
+    ["dsh-gea-plugin", source],
+  ]) {
+    const path = join(directory, repo);
+    // Use current authored bytes, excluding writable builds and untracked concurrent fixtures.
+    for (const file of git(input, "ls-files", "-z").split("\0").filter(Boolean)) {
+      if (
+        file.startsWith("lib/") ||
+        (!/\.(?:[cm]?[jt]sx?|css|html|json|ya?ml)$/.test(file) && !changedPaths.includes(file))
+      )
+        continue;
+      const target = join(path, file);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, readFileSync(join(input, file)));
+    }
+    git(path, "init", "--quiet");
+    repositories.push({
+      repo,
+      path,
+      head: repo === "dsh-gea-plugin" ? null : commit(path, "current peer snapshot"),
+    });
+  }
+  const gea = repositories.find((entry) => entry.repo === "dsh-gea-plugin");
+  writeFileSync(
+    join(gea.path, "scripts/quality-peer-baseline.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      repositories: repositories.map((entry) => ({
+        repo: entry.repo,
+        head: entry.head ?? "0".repeat(40),
+      })),
+    }),
+  );
+  const base = commit(gea.path, "current authored source snapshot");
+  // Make the known paths differ without changing the current code graph or policy semantics.
+  for (const file of changedPaths) appendFileSync(join(gea.path, file), "\n");
+  gea.head = commit(gea.path, "source impact fixture changes");
+  assert.equal(git(gea.path, "rev-list", "--count", "HEAD"), "2");
+  const { selectCiTests } = await import(
+    pathToFileURL(join(directory, "dsh-agent-workbench/scripts/ci-test-plan.mjs"))
+  );
+  const request = { repositories, repo: "dsh-gea-plugin", base };
+  const plan = selectCiTests(request);
+  assert.deepEqual(plan.changes.map((entry) => entry.file).sort(), changedPaths);
   for (const entry of plan.changes.filter((entry) => !entry.file.endsWith(".md")))
     assert.ok(plan.reasons[`${entry.repo}/${entry.file}`].length > 0, entry.file);
   for (const file of ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"])
-    assert.ok(plan.reasons["dsh-gea-plugin/scripts/final-group-input.contract.mjs"].includes(file));
+    assert.ok(plan.reasons[`dsh-gea-plugin/${contract}`].includes(file));
   for (const file of plan.required) assert.ok(plan.files.includes(file));
   t.diagnostic(
     JSON.stringify({
       base,
-      head,
+      head: gea.head,
       repositories,
       changes: plan.changes,
       reasons: plan.reasons,
@@ -401,19 +446,7 @@ test("the real C1 PR impact maps every changed source and still rejects an unkno
   );
   const unmapped = `scripts/unmapped-${directory.split(/[\\/]/).at(-1)}.mjs`;
   writeFileSync(join(gea.path, unmapped), "export const unmatched = true;\n");
-  git(gea.path, "add", unmapped);
-  git(
-    gea.path,
-    "-c",
-    "user.name=fixture",
-    "-c",
-    "user.email=fixture@invalid",
-    "commit",
-    "--quiet",
-    "-m",
-    "unmapped source must still refuse",
-  );
-  gea.head = git(gea.path, "rev-parse", "HEAD");
+  gea.head = commit(gea.path, "unmapped source must still refuse");
   assert.throws(
     () => selectCiTests(request),
     /CI_TEST_IMPACT_UNMAPPED: dsh-gea-plugin\/scripts\/unmapped-/,
