@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 test("the public test reporter rejects an exit-zero skipped lane and keeps executed fixtures green", () => {
   const root = mkdtempSync(join(tmpdir(), "gea-test-report-"));
@@ -248,6 +248,46 @@ test("discovered files report an unknown plan until the real file total is known
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /file start .*files=0\/\?/);
     assert.match(result.stdout, /summary files=2\/2 .*running=none/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("relative CLI file paths count completed files before buffered spec output", async () => {
+  const root = mkdtempSync(join(tmpdir(), "gea-test-report-relative-"));
+  try {
+    const slow = join(root, "a-slow.mjs");
+    const fast = join(root, "b-fast.mjs");
+    writeFileSync(
+      slow,
+      'import test from "node:test"; test("slow relative fixture", async () => { await new Promise(resolve => setTimeout(resolve, 700)); });',
+    );
+    writeFileSync(
+      fast,
+      'import test from "node:test"; test("same", async t => { await t.test("same", () => {}); await t.test("same", () => {}); });',
+    );
+    let completedLive = false;
+    const result = await runLive(
+      [relative(process.cwd(), slow), `./${relative(process.cwd(), fast)}`],
+      (output) => {
+        if (output.includes(`file complete ${fast}`) && !output.includes("✔ slow relative fixture"))
+          completedLive = true;
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(completedLive, result.stdout);
+    assert.equal(
+      (result.stdout.match(/\[quality-progress\] file start /g) ?? []).length,
+      2,
+      result.stdout,
+    );
+    assert.equal(
+      (result.stdout.match(/\[quality-progress\] file complete /g) ?? []).length,
+      2,
+      result.stdout,
+    );
+    assert.match(result.stdout, /summary files=2\/2 .*running=none/);
+    assert.match(result.stdout, /ℹ tests 4/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

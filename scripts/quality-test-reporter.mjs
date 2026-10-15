@@ -51,11 +51,16 @@ export default async function* report(source) {
   const checked = (async function* () {
     for await (const event of source) {
       const data = event.data;
-      // The process wrapper has its entry path as name and source location 1:1.
-      // This also works on early Node 24 versions without entryFile metadata.
+      // The wrapper name preserves the CLI path, while file/entryFile is absolute.
+      // Normalize paths before matching its 1:1 process source location.
       const entry = data.entryFile ?? data.file;
       const wrapper =
-        entry && data.nesting === 0 && data.name === entry && data.line === 1 && data.column === 1;
+        entry &&
+        data.nesting === 0 &&
+        typeof data.name === "string" &&
+        resolve(data.name) === resolve(entry) &&
+        data.line === 1 &&
+        data.column === 1;
       if (wrapper && event.type === "test:dequeue") {
         files.set(entry, { complete: false });
         progress(`file start ${entry} ${counts()} elapsed=${elapsed()}ms`);
