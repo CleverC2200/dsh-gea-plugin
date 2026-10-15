@@ -5,6 +5,7 @@
     "scripts/quality.test.mjs",
     "scripts/quality-policy.test.mjs",
     "scripts/run-quality-ci.test.mjs",
+    "scripts/run-quality-ci-stages.test.mjs",
     "scripts/quality-upstreams.test.mjs",
     "scripts/quality-test-reporter.test.mjs",
     "scripts/quality-workbench.test.mjs",

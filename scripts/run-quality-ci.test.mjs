@@ -303,3 +303,30 @@ test("both source and compatibility workflows require actual same-tuple macOS ex
   }
   assert.doesNotMatch(readFileSync("scripts/isolated-validation.test.mjs", "utf8"), /skip:/);
 });
+
+test("Linux stage wiring preserves independent tests and always summarizes and uploads receipts", () => {
+  const source = readFileSync(".github/workflows/quality.yml", "utf8");
+  const linux = source.slice(source.indexOf("  gates:\n"), source.indexOf("  macos-isolation:\n"));
+  const steps = linux.split(/\n      - /);
+  for (const stage of ["prepare", "build", "checks", "tests", "summary"]) {
+    const step = steps.find((entry) => entry.includes(`id: quality-${stage}\n`));
+    assert.ok(step, stage);
+    assert.match(step, new RegExp(`--stage ${stage}(?:\\n|$)`));
+    assert.match(step, /--final-group-sha256 "\$INPUT_SHA256"/);
+    assert.doesNotMatch(step, /continue-on-error/);
+    if (stage === "tests") {
+      assert.match(
+        step,
+        /!cancelled\(\).*steps\.quality-prepare\.outcome == 'success'.*steps\.quality-build\.outcome == 'success'/,
+      );
+      assert.doesNotMatch(step, /success\(\)|quality-checks\.outcome/);
+    }
+    if (stage === "summary") {
+      assert.match(step, /if: always\(\)/);
+      for (const required of ["prepare", "build", "checks", "tests"])
+        assert.ok(step.includes(`steps.quality-${required}.outcome`));
+    }
+  }
+  assert.match(linux, /quality-stages\.json/);
+  assert.match(linux, /if: always\(\)\n        uses: actions\/upload-artifact@v7/);
+});

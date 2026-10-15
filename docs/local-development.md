@@ -81,6 +81,14 @@ GEA 的 [公开 Config schema](../src/host.ts) 为空配置提供 [公司产品�
 
 冷 runner 直接调用 `node scripts/run-quality-ci.mjs --input <三仓冻结 JSON> --final-group-sha256 <原始字节 SHA256> --final-group-workbench <绝对 Workbench 源路径> --prepare-sdk --prepare-inputs --core-source <已观察固定 Git 源>`；本地 `pnpm quality:ci --` 传入相同参数。公开 Workbench reader 先核实际三仓 HEAD、包身份、锁和 Core，缺少显式输入或原字节哈希立即拒绝；旧 `--phase input` 不再写历史 peer。普通 push/PR 通过 committed baseline 仅替换 own event，dispatch 必须声明完整三仓 tuple，两类验收回执分别记录。质量阶段保存 fast 与 required-and-affected 状态到 `quality-checks.json`，选择依据保存 `quality-test-plan.json`。GitHub 不再执行全量集合；Profile 准备仅在受影响集合需要时执行。具体规则与缓存拒绝条件见[当前 CI 规则](../../dsh-agent-workbench/docs/ci-required-and-affected.md)。前项红不挡后项，整体仍非零；输入或准备失败立即拒绝。
 
+Linux `quality.yml` 将同一个 CLI 分为 `--stage prepare`、`build`、`checks`、`tests` 和 `summary`。省略 `--stage` 仍完整运行，`--phase` 继续选择原质量 lane。各步骤传入同一组参数，包含 `--prepare-sdk --prepare-inputs --input <冻结 JSON> --core-source <固定 Git 源> --final-group-sha256 <原始字节 SHA256> --final-group-workbench <绝对源路径>`。
+
+阶段回执写入本 job 的 `quality-stages.json`，绑定原输入哈希、lane、完整三仓与测试计划，保存阶段起止、耗时和独立检查结果。准备执行 SDK、依赖和私有 Workbench worktree 准备；构建执行候选包、资产与所需浏览器/桌面准备。后续进程重新走公开源码准入、SDK 和现有准备回执检查，并从冻结源码重建 `GEA_TEST_*` 环境，不读取上一 shell 的环境。GEA/Manage 的构建输出另按字节摘要核对；不能仅凭阶段 JSON 证明产物有效。
+
+`checks` 收集 final-group 与 fast；其失败后 `tests` 仍运行原必选与受影响集合，保持并行 2 和拒绝必选 skip。准备或构建失败阻止依赖步骤。汇总拒绝失败、缺失、running、skip 或取消，上传 `quality-stages.json` 与原质量回执。GitHub step summary 是结束时的耗时摘要，不是实时 API。macOS 与最终 `candidate-quality` 继续使用原强制门禁。阶段状态只属于当前 job，不是跨任务状态或未来执行许可。
+
+`node --test scripts/run-quality-ci-stages.test.mjs` 通过公开 CLI 验证真实临时 Git 输入、跨进程恢复、实际 fixture 测试、失败与取消。独立 checkout 可用 `GEA_FINAL_GROUP_WORKBENCH_SOURCE` 和 `GEA_FINAL_GROUP_MANAGE_SOURCE` 指向本票登记的只读 peer 源码。安装/编译命令使用受控 OS adapter，不安装依赖或构建产品；这些结果不代替远端完整 CI、真实 SDK 编译、Native 或业务验收。
+
 ## 异步执行与确定性检查
 
 [`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出状态、执行 lease 与证据 store；[`prompt-runtime`](../src/host/prompt-runtime.ts) 接入真实 Host hooks。迟到的失败、成功和回读视图不进入新轮次或新资源的状态，持久化期间失去归属也不发布当前证据。预算与 UI mask 继续由原 admission 状态管理；详细执行条件见 [执行链](execution-logic.md)。
