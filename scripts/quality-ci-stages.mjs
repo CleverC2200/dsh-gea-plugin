@@ -9,7 +9,7 @@ export function qualityStageRun({ file, binding, requested }) {
     renameSync(file + ".tmp", file);
   };
   let record;
-  if (requested === "full" || (requested === "prepare" && !existsSync(file))) {
+  if (requested === "full" || (["prepare", "summary"].includes(requested) && !existsSync(file))) {
     record = {
       schemaVersion: 1,
       binding,

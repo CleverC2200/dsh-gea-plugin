@@ -54,11 +54,19 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
     "package.json",
   ])
     copyFileSync(join(root, file), join(gea, file));
+  // Freeze this disposable fixture's peer baseline to the actual cold sources under test.
+  // Admission cases should not accidentally test unrelated historical affected-source differences.
+  const baselineFile = join(gea, "scripts/quality-peer-baseline.json");
+  const baseline = JSON.parse(readFileSync(baselineFile));
+  for (const entry of baseline.repositories)
+    entry.head = git(roots[entry.repo], "rev-parse", "HEAD");
+  writeFileSync(baselineFile, JSON.stringify(baseline, null, 2) + "\n");
   git(
     gea,
     "add",
     "scripts/run-quality-ci.mjs",
     "scripts/final-group-input.contract.mjs",
+    "scripts/quality-peer-baseline.json",
     "package.json",
   );
   git(
@@ -97,7 +105,12 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
   writeFileSync(file, original);
   const entriesBefore = readdirSync(job).sort();
   const run = (name, extra = [], environment = {}) => {
-    const env = { ...process.env, GIT_OPTIONAL_LOCKS: "0", ...environment };
+    const env = {
+      ...process.env,
+      GIT_OPTIONAL_LOCKS: "0",
+      QUALITY_BASE_SHA: manifest.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
+      ...environment,
+    };
     for (const key of ["CI", "QUALITY_EXPECTED_SHA"])
       if (!Object.hasOwn(environment, key)) delete env[key];
     const args = [

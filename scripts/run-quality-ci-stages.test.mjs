@@ -282,6 +282,8 @@ test("prepare or build failures block dependent stages and missing receipts cann
   const empty = fixture(t);
   assert.equal(empty.run("build").status, 1);
   assert.equal(empty.run("summary").status, 1);
+  assert.equal(empty.read().status, "failed");
+  assert.match(readFileSync(empty.summary, "utf8"), /missing/);
 });
 
 test("cancelled processes retain running receipts and summary refuses cancellation or skipped steps", (t) => {
