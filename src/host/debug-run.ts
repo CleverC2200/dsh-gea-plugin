@@ -1,14 +1,11 @@
-/** API重发与权限运行共用的在途互斥，不保存业务或身份状态。 */
+/** 单次重发与批量重发共用的在途互斥。 */
 export class DebugRunCoordinator {
-  private current?: { id: string; controller: AbortController };
-  get active(): boolean {
-    return this.current !== undefined;
-  }
-  claim(id: string, controller: AbortController): () => void {
+  private current?: string;
+  claim(id: string): () => void {
     if (this.current) throw Error("DEBUG_RUN_ACTIVE");
-    this.current = { id, controller };
+    this.current = id;
     return () => {
-      if (this.current?.id === id) this.current = undefined;
+      if (this.current === id) this.current = undefined;
     };
   }
 }

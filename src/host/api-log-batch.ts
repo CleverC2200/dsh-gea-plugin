@@ -55,7 +55,7 @@ export class ApiLogBatch {
   ): ApiBatchRun {
     caller.throwIfAborted();
     identity.throwIfAborted();
-    const catalog = this.log.snapshot().catalog;
+    const catalog = this.log.catalog();
     if (
       input.items.length > catalog.length ||
       input.items.some((item) => !catalog.some((entry) => entry.id === item.catalogId))
@@ -69,7 +69,7 @@ export class ApiLogBatch {
       status: "running",
       items: input.items.map((item) => ({ ...item, status: "queued" })),
     };
-    const release = this.coordinator.claim(run.runId, controller);
+    const release = this.coordinator.claim(run.runId);
     this.runs.push({ scope, run, controller });
     const active = AbortSignal.any([controller.signal, identity, caller]);
     void this.execute(run, input.confirmedWriteIds, active).finally(() => {
@@ -97,18 +97,11 @@ export class ApiLogBatch {
     try {
       for (const item of run.items) {
         if (signal.aborted) break;
-        const snapshot = this.log.snapshot();
-        const catalog = snapshot.catalog.find((entry) => entry.id === item.catalogId)!;
-        const record = snapshot.records.find((entry) => entry.id === item.recordId);
-        let reason: string | undefined;
-        if (catalog.replayPolicy === "blocked") reason = catalog.replayNote;
-        else if (item.recordId === null) reason = "没有已捕获样本，无调用日志";
-        else if (!record) reason = "原样本已淘汰或清空，不替换样本，无调用日志";
-        else if (record.catalogId !== item.catalogId) reason = "样本与接口不匹配，无调用日志";
-        else if (!record.replayAvailable)
-          reason = record.replayUnavailableReason ?? "原请求条件已失效，无调用日志";
-        else if (record.replayPolicy === "idempotent" && !confirmed.includes(record.id))
-          reason = "未确认这条写记录，无调用日志";
+        const reason = this.log.batchSampleRejection(
+          item.catalogId,
+          item.recordId,
+          item.recordId !== null && confirmed.includes(item.recordId),
+        );
         if (reason) {
           item.status = "skipped";
           item.reason = reason;

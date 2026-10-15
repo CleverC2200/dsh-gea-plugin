@@ -12,6 +12,8 @@
 
 [能力声明](capability-contract.md) 定义模块可用、影响等级与 mock 边界。GEA 使用 Workbench 包登记与 Manage 资源入口，不扫描 HTML SQL、DOM 或 Skill 正文来派生权限。
 
+[GatewayRequests](../src/host/gateway-requests.ts) 集中 GEA envelope 请求的身份代际、取消、超时、请求标识与读取处理。Business 保留登录权威和精确数字解析；模型凭据、通知与审批保留各自错误码，Gateway MCP 握手继续按独立协议校验。请求结束及正文读取后重新核原身份，旧身份迟到的 401 不得清除新登录；取消和超时分别报告，不包装成网络失败。
+
 ## 页面与独立查询
 
 | 行为                             | 责任与一手入口                                                                                                                                                                                                     |
@@ -50,9 +52,11 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 
 ## 异步执行与证据归属
 
-[`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出、失败/拒权事实、回读视图、执行 lease 与证据 store。[Prompt runtime](../src/host/prompt-runtime.ts) 在实际工具派发前登记执行，派发结束的唯一 post-execute 消费 token；around-dispatch 失败也撤销元数据。原 admission 状态继续管理预算与 UI mask。
+[`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出、失败/拒权事实、回读视图、执行 lease 与证据 store，并在同一个 lease 内保存调用参数快照与准入 grant。[Prompt runtime](../src/host/prompt-runtime.ts) 在实际工具派发前登记执行，派发结束的唯一 post-execute 消费 token；around-dispatch 失败也撤销元数据。hooks 只转交执行句柄、Core 结果与后续 policy 决定；State 的 `finish` 与 `read` 集中结果发布、来源复核和回读投影，runtime 不再配对另一份 grant Map。原 admission 状态继续管理预算与 UI mask。
 
 轮次、实际preset、Agent状态与store身份epoch决定执行是否仍有效。迟到失败、成功和目录事实只记到原执行；新轮或资源切换后的旧结果不能更新当前状态。原始证据写入之后再次核归属，失去归属时不向当前轮发布回执或投影；文件仍保留。回读重新核原 grant/owner/资源，视图去重也只属于当前有效执行，不由同一个Session地址直接授予。
+
+旧磁盘证据在30分钟有效期内仍可按原grant回读：旧MCP记录必须重核确切Consumer、资源工具与资源快照，缺少授权收据就拒绝。当前原生MCP结果不进入此证据发布路径，不产生新的旧式MCP grant。
 
 现有确定性与Host集成检查入口见 [本地检查](local-development.md)。这些实现与fixture不证明当前窗口、真实模型或业务结果已经验收。
 
@@ -66,6 +70,8 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 | 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 仍核当前身份、角色、版本、快照、服务端显式契约和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md)                                 |
 
 `salesPlanAction` 的 SAVE 与审批共用当前状态、有效版本和来源校验，只接受明确 `approvalRole` 或 `adjustmentMode` 的请求。0、5、10 和历史版本均拒绝写入；无角色、无调整模式的兼容 SAVE 已删除。合法角色 SAVE 仍核当前角色、服务端契约和快照，并保留原幂等意图。源码规则不证明服务端 V1.3 已部署或真实业务验收通过。
+
+[`SalesPlanTransactions`](../src/host/sales-plan-transactions.ts) 持有本次登录内的重提与审批意图、已验证原正文、在途请求和回执。Business 保留公开写入口与登录权威，只借出当前身份、环境地址、身份取消信号和现有查询能力；退出或切换身份清空事务状态。意图登记时复制调用参数，校验、幂等指纹与发送正文使用同一快照；结果未知时只允许原键原正文重试。审批迟到的401或成功回执不能登出新身份或替换其回执。
 
 服务凭据留在 Host，配置只存引用。未知重提结果保持原键与原正文，退出或重启后重新回读计划。HTTP 成功还须核有效版本、旧版本失效、节点字段和日志，不等于真实业务验收。角色审批不借用客户重提来生成新版本；通知位置不授予审批角色。
 

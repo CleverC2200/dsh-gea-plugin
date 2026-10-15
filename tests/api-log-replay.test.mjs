@@ -431,3 +431,45 @@ test("current profile query token without a tenant header still binds replay exp
   assert.equal(f.business.status().loginState, "expired");
   assert.equal(f.requests.length, 2);
 });
+
+test("replacement identity cannot read or replay earlier or late-completing logs", async (t) => {
+  const f = await fixture(t);
+  const old = await f.capture();
+  const originalFetch = globalThis.fetch;
+  let complete;
+  globalThis.fetch = async () =>
+    new Promise((resolve) => {
+      complete = () => resolve(Response.json({ secretBusinessValue: "old identity" }));
+    });
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const pending = f.business.fetchExternal(f.origin + "/sys/user/getUserInfo");
+  while (!complete) await new Promise((r) => setTimeout(r, 5));
+  const saved = f.business.desktopLoginSnapshot();
+  f.business.logout({});
+  f.business.restoreDesktopLogin(saved);
+  complete();
+  await (await pending).text();
+  globalThis.fetch = originalFetch;
+  assert.deepEqual(f.business.apiLogSnapshot({}).records, []);
+  const replay = await f.business.apiLogReplay({ id: old.id, confirmed: false }, signal());
+  assert.deepEqual(replay, {
+    outcome: "rejected",
+    recordId: null,
+    reason: "API_LOG_NOT_FOUND",
+  });
+  const batch = f.business.apiLogBatchStart(
+    {
+      items: [{ catalogId: old.catalogId, recordId: old.id }],
+      confirmedWriteIds: [],
+    },
+    signal(),
+  );
+  assert.equal((await ended(f.business, batch.runId)).items[0].status, "skipped");
+  const current = await f.capture();
+  assert.deepEqual(
+    f.business.apiLogSnapshot({}).records.map((record) => record.id),
+    [current.id],
+  );
+});

@@ -418,6 +418,7 @@ const CATALOG: CatalogDefinition[] = [
 ];
 
 type PrivateRecord = ApiLogRecord & {
+  ownerScope: string | undefined;
   replay?: (
     signal: AbortSignal,
     context: ApiLogContext,
@@ -568,6 +569,7 @@ export class GeaApiLogCenter {
       headers: Headers,
       signal: AbortSignal | undefined,
     ) => (response: Response) => void,
+    private readonly currentScope: () => string | undefined = () => undefined,
   ) {}
 
   readonly fetch = (input: RequestInfo | URL, init?: RequestInit, purpose?: string) =>
@@ -585,6 +587,7 @@ export class GeaApiLogCenter {
     purpose?: string,
     context: ApiLogContext = { source: "daily" },
   ): Promise<Response> {
+    const ownerScope = this.currentScope();
     const acceptRequest = this.beforeRequest
       ? await this.beforeRequest(input, init, purpose)
       : undefined;
@@ -607,6 +610,7 @@ export class GeaApiLogCenter {
     const started = Date.now();
     const record: PrivateRecord = {
       ...context,
+      ownerScope,
       id: randomUUID(),
       sequence: ++this.sequence,
       catalogId: catalog?.id ?? null,
@@ -726,13 +730,36 @@ export class GeaApiLogCenter {
     return {
       revision: this.revision,
       limit: this.limit,
-      catalog: CATALOG.map(({ matches: _matches, ...entry }) => ({ ...entry })),
-      records: this.records.map(({ replay: _replay, ...record }) => structuredClone(record)),
+      catalog: this.catalog(),
+      records: this.records
+        .filter((record) => record.ownerScope === this.currentScope())
+        .map(({ replay: _replay, ownerScope: _ownerScope, ...record }) => structuredClone(record)),
     };
   }
 
+  catalog(): ApiCatalogEntry[] {
+    return CATALOG.map(({ matches: _matches, ...entry }) => structuredClone(entry));
+  }
+
+  batchSampleRejection(catalogId: string, recordId: string | null, confirmed: boolean) {
+    const catalog = CATALOG.find((entry) => entry.id === catalogId);
+    if (!catalog) return "未登记接口，无调用日志";
+    if (catalog.replayPolicy === "blocked") return catalog.replayNote;
+    if (recordId === null) return "没有已捕获样本，无调用日志";
+    const record = this.records.find(
+      (entry) => entry.id === recordId && entry.ownerScope === this.currentScope(),
+    );
+    if (!record) return "原样本已淘汰或清空，不替换样本，无调用日志";
+    if (record.catalogId !== catalogId) return "样本与接口不匹配，无调用日志";
+    if (!record.replayAvailable)
+      return record.replayUnavailableReason ?? "原请求条件已失效，无调用日志";
+    if (record.replayPolicy === "idempotent" && !confirmed) return "未确认这条写记录，无调用日志";
+    return undefined;
+  }
+
   clear(): ApiLogSnapshot {
-    this.records.length = 0;
+    for (let index = this.records.length - 1; index >= 0; index--)
+      if (this.records[index].ownerScope === this.currentScope()) this.records.splice(index, 1);
     this.revision++;
     return this.snapshot();
   }
@@ -755,7 +782,9 @@ export class GeaApiLogCenter {
     signal: AbortSignal = new AbortController().signal,
     context: ApiLogContext = { source: "replay" },
   ): Promise<ApiReplayResult> {
-    const target = this.records.find((record) => record.id === id);
+    const target = this.records.find(
+      (record) => record.id === id && record.ownerScope === this.currentScope(),
+    );
     if (!target) throw new Error("API_LOG_NOT_FOUND");
     if (!target.replayAvailable || !target.replay) throw new Error("API_LOG_REPLAY_UNAVAILABLE");
     if (target.replayPolicy === "idempotent" && !confirmed)
@@ -773,7 +802,12 @@ export class GeaApiLogCenter {
         };
       return response.ok
         ? { outcome: "replayed", recordId }
-        : { outcome: "failed", recordId, reason: `HTTP ${response.status}`, resultUnknown: false };
+        : {
+            outcome: "failed",
+            recordId,
+            reason: `HTTP ${response.status}`,
+            resultUnknown: false,
+          };
     } catch (error) {
       if (!(error instanceof CapturedRequestError)) throw error;
       return {

@@ -100,10 +100,18 @@ test("disabled native contracts refuse direct sales, workflow, notification, mod
     () =>
       business.openMcpConnection({ consumerType: "AGENT", consumerCode: "sales_forecast" }, signal),
     () => business.pluginSql({ consumerCode: "sales_forecast", sql: "SELECT 1" }, signal),
-    () => business.apiLogReplay({ id: "old", confirmed: true }, signal),
   ];
   for (const attempt of attempts)
     await assert.rejects(async () => attempt(), /GEA_CAPABILITY_DISABLED/);
+  assert.deepEqual(await business.apiLogReplay({ id: "old", confirmed: true }, signal), {
+    outcome: "rejected",
+    recordId: null,
+    reason: "GEA_CAPABILITY_DISABLED",
+  });
+  assert.throws(
+    () => business.apiLogBatchStart({ items: [], confirmedWriteIds: [] }, signal),
+    /GEA_CAPABILITY_DISABLED/,
+  );
   assert.deepEqual(requests, []);
 });
 
