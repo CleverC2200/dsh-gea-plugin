@@ -27,6 +27,16 @@
   "rules": [
     {
       "repo": "dsh-agent-workbench",
+      "pattern": "^(?:business|static|theme)/",
+      "tests": ["scripts/quality-workbench.test.mjs", "tests/business-page-grant.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/sales-plan\\.ts$",
+      "tests": ["tests/sales-plan-action.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
       "pattern": "^scripts/ci-source-policy\\.mjs$",
       "tests": ["scripts/business-profile-ci.test.mjs"]
     },
@@ -35,6 +45,11 @@
       "pattern": "^(?:package\\.json|pnpm-lock\\.yaml|tsconfig|\\.github/|scripts/ci-test-policy\\.json)",
       "tests": ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"],
       "exclusive": true
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/ci-test-policy\\.json$",
+      "tests": ["scripts/ci-policy-impact.test.mjs", "tests/sales-plan-action.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",
