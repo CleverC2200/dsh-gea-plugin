@@ -314,19 +314,19 @@
       },
       {
         "name": "sinian-demand-baseline",
-        "description": "[用户技能] local regression fixture"
+        "description": "local regression fixture"
       },
       {
         "name": "sinian-demand-dialogue",
-        "description": "[用户技能] local regression fixture"
+        "description": "local regression fixture"
       },
       {
         "name": "sinian-forecast-review",
-        "description": "[用户技能] local regression fixture"
+        "description": "local regression fixture"
       },
       {
         "name": "sinian-forecast-scope",
-        "description": "[用户技能] local regression fixture"
+        "description": "local regression fixture"
       }
     ]
   },
