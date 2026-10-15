@@ -2,9 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { productionManifest } from "../scripts/production-manifest.mjs";
-const source = JSON.parse(
-  await readFile(new URL("../package.json", import.meta.url), "utf8"),
-);
+const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const versions = {
   "@cleverc2200/dsh-agent-workbench": "0.1.1",
   "dsh-agent-manage": source.peerDependencies["dsh-agent-manage"],
@@ -22,10 +20,7 @@ test("ordinary three-package manifest keeps required companions and exact option
     assert.equal(manifest.peerDependenciesMeta?.[name]?.optional, true);
     assert.equal(manifest.dependencies[name], undefined);
   }
-  assert.equal(
-    manifest.peerDependencies["@deepseek-ai/cordis"],
-    "4.0.4 || 4.0.5-alpha.1",
-  );
+  assert.equal(manifest.peerDependencies["@deepseek-ai/cordis"], "4.0.4 || 4.0.5-alpha.1");
 });
 test("production manifest preserves an existing exact peer when another package gets an independent version", () => {
   const manifest = productionManifest(source, {
@@ -36,10 +31,7 @@ test("production manifest preserves an existing exact peer when another package 
     manifest.peerDependencies["dsh-agent-manage"],
     source.peerDependencies["dsh-agent-manage"],
   );
-  assert.notEqual(
-    manifest.peerDependencies["dsh-agent-manage"],
-    "0.6.3-company.7",
-  );
+  assert.notEqual(manifest.peerDependencies["dsh-agent-manage"], "0.6.3-company.7");
   const ranged = productionManifest(
     {
       ...source,
