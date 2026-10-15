@@ -23,6 +23,10 @@ export function checkPromptExecutionSource(source, file) {
       use: "PromptExecutionState.recordOutcome/readEvidence/publishEvidence",
     },
     {
+      pattern: /\bexecutionGrants\b|\bEvidenceGrant\b/g,
+      use: "PromptExecutionState.begin/admitted/finish/read",
+    },
+    {
       pattern:
         /\.(?:evidence|returned|catalogStalls|catalogGeneration|turnGeneration)\s*(?:\+=(?!=)|-=(?!=)|=(?!=)|\+\+|--)/g,
       use: "PromptExecutionState.begin/startTurn/publishEvidence",
