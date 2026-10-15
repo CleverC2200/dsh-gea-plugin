@@ -5,6 +5,7 @@
     "scripts/quality.test.mjs",
     "scripts/quality-policy.test.mjs",
     "scripts/run-quality-ci.test.mjs",
+    "scripts/run-quality-ci-stages.test.mjs",
     "scripts/quality-upstreams.test.mjs",
     "scripts/quality-test-reporter.test.mjs",
     "scripts/quality-workbench.test.mjs",
@@ -34,6 +35,11 @@
       "pattern": "^(?:package\\.json|pnpm-lock\\.yaml|tsconfig|\\.github/|scripts/ci-test-policy\\.json)",
       "tests": ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"],
       "exclusive": true
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/final-group-input\\.contract\\.mjs$",
+      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",

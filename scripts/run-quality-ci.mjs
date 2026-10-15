@@ -1,3 +1,4 @@
+import { qualityStageRun } from "./quality-ci-stages.mjs";
 import { runQualityChecks } from "./run-quality-checks.mjs";
 /** Public source-event admission and fail-closed workflow aggregation. */
 import { parseArgs } from "node:util";
@@ -30,6 +31,7 @@ const candidatePhases = new Set([
   "macos-isolation",
 ]);
 let finalGroup;
+let stages;
 let profileTestsSelected = false;
 function refuse(code, detail = "") {
   throw Error(code + (detail ? ": " + detail : ""));
@@ -79,6 +81,7 @@ try {
   const { values } = parseArgs({
     options: {
       phase: { type: "string", default: "quality" },
+      stage: { type: "string", default: "full" },
       input: { type: "string" },
       root: { type: "string" },
       sha: { type: "string" },
@@ -90,6 +93,13 @@ try {
       "final-group-workbench": { type: "string" },
     },
   });
+  if (!["full", "prepare", "build", "checks", "tests", "summary"].includes(values.stage))
+    refuse("QUALITY_STAGE_REQUIRED", values.stage);
+  if (
+    values.stage !== "full" &&
+    !["quality", "business-profile", "mcp-client-repair"].includes(values.phase)
+  )
+    refuse("QUALITY_STAGE_PHASE", values.phase);
   if (
     candidatePhases.has(values.phase) ||
     values["final-group-sha256"] !== undefined ||
@@ -157,7 +167,10 @@ try {
     const workbench = candidate.repositories.find((entry) => entry.repo === "dsh-agent-workbench"),
       manage = candidate.repositories.find((entry) => entry.repo === "dsh-agent-manage");
     process.env.QUALITY_POLICY_WORKBENCH = workbench.path;
-    if (values["prepare-inputs"] || values.phase === "macos-isolation")
+    if (
+      (values["prepare-inputs"] && ["full", "prepare"].includes(values.stage)) ||
+      values.phase === "macos-isolation"
+    )
       await prepareWorkbenchGeaAuthority({
         workbench: workbench.path,
         gea: own.path,
@@ -253,6 +266,43 @@ try {
     );
     const core = resolve(dirname(dirname(process.cwd())), "official-latest-standard"),
       upstream = resolve(dirname(dirname(process.cwd())), "quality-upstreams");
+    const jobRoot = dirname(dirname(process.cwd()));
+    const stagedPhase = ["quality", "business-profile", "mcp-client-repair"].includes(values.phase);
+    if (stagedPhase) {
+      stages = qualityStageRun({
+        file: resolve(jobRoot, "quality-stages.json"),
+        requested: values.stage,
+        binding: {
+          input: resolve(input),
+          inputSha256: finalGroup.receipt.inputSha256,
+          phase: values.phase,
+          manifest: candidate,
+          plan,
+          coreSource: values["core-source"] ? resolve(values["core-source"]) : null,
+        },
+      });
+      if (values.stage === "summary") {
+        if (
+          ["prepare", "build", "checks", "tests"].some(
+            (name) => stages.record.stages[name]?.status !== "passed",
+          )
+        )
+          stages.summarize({ workflowResults: process.env.CI === "true" });
+      } else stages.start(values.stage === "full" ? "prepare" : values.stage);
+    }
+    const preparing = values.stage === "full" || values.stage === "prepare";
+    const building = values.stage === "full" || values.stage === "build";
+    const prepareInputs = preparing && values["prepare-inputs"];
+    // Stage processes reconstruct these values from the admitted tuple, never a prior shell.
+    for (const key of [
+      "GEA_TEST_SOURCE_INPUTS",
+      "GEA_TEST_CANDIDATE",
+      "GEA_TEST_CANDIDATE_SHA256",
+      "GEA_TEST_SOURCE_CORE",
+      "GEA_TEST_CANDIDATE_INPUTS",
+      "GEA_PACKAGE_PNPM",
+    ])
+      delete process.env[key];
     run(process.execPath, [
       resolve(manage.path, "scripts/prepare-official-sdk.mjs"),
       "--core",
@@ -266,7 +316,7 @@ try {
       process.platform !== "win32"
         ? ["--with-flock"]
         : []),
-      ...(values["prepare-sdk"]
+      ...(preparing && values["prepare-sdk"]
         ? [
             "--prepare",
             ...(process.env.QUALITY_REUSE_SDK === "true" ? ["--reuse-prepared"] : []),
@@ -277,7 +327,7 @@ try {
     ]);
     if (needsCoreWeb && !existsSync(resolve(core, "apps/web/dist/index.html")))
       refuse("QUALITY_CORE_WEB_REQUIRED");
-    if (values.phase === "business-profile" && process.platform !== "win32")
+    if (building && values.phase === "business-profile" && process.platform !== "win32")
       run(process.execPath, ["native/system/scripts/build.ts", "--host-addon-only"], core);
     finalGroup?.verifyUnchanged();
     process.env.GEA_PLUGIN_UPDATE_SDK = core;
@@ -318,10 +368,10 @@ try {
       resolve(dirname(dirname(process.cwd())), "quality-test-plan.json"),
       JSON.stringify(plan, null, 2) + "\n",
     );
-    if (values["prepare-inputs"])
+    if (prepareInputs)
       await prepareQualityUpstreams(existsSync(upstream) ? realpathSync(upstream) : upstream);
     await bindQualityUpstreamInputs(upstream, resolve("../../upstream-inputs"), {
-      prepare: values["prepare-inputs"] === true,
+      prepare: prepareInputs === true,
     });
     run(process.execPath, [
       resolve(workbench.path, "scripts/verify-candidate-input.mjs"),
@@ -343,7 +393,7 @@ try {
       const source = spawnSync("git", ["-C", entry.path, "remote", "get-url", "source"], {
         encoding: "utf8",
       });
-      if (source.status !== 0 && !values["prepare-inputs"])
+      if (source.status !== 0 && !prepareInputs)
         refuse("QUALITY_SOURCE_REMOTE_REQUIRED", entry.repo);
       if (source.status !== 0)
         run("git", [
@@ -355,7 +405,7 @@ try {
           "https://github.com/CleverC2200/" + entry.repo + ".git",
         ]);
     }
-    if (values["prepare-inputs"]) {
+    if (prepareInputs) {
       if (existsSync(preparedWorkbench))
         refuse(
           "QUALITY_PREPARED_ALREADY_EXISTS",
@@ -394,12 +444,6 @@ try {
         ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts", "--prefer-offline"],
         manage.path,
       );
-      if (plan.runtime)
-        run("npm", ["run", "build:core"], preparedWorkbench, {
-          DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
-          APS_BUILD_MODE: "mock",
-        });
-      run("corepack", ["pnpm", "build"], manage.path);
       run("corepack", [
         "pnpm",
         "install",
@@ -407,6 +451,19 @@ try {
         "--ignore-scripts",
         "--prefer-offline",
       ]);
+    }
+    if (stagedPhase) {
+      if (preparing) stages.finish();
+      if (values.stage === "prepare") process.exit(0);
+      if (values.stage === "full") stages.start("build");
+    }
+    if (building && values["prepare-inputs"]) {
+      if (plan.runtime)
+        run("npm", ["run", "build:core"], preparedWorkbench, {
+          DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
+          APS_BUILD_MODE: "mock",
+        });
+      run("corepack", ["pnpm", "build"], manage.path);
       run("corepack", ["pnpm", "build:plugin"]);
       if (plan.runtime) {
         const prepared = await readPreparedWorkbench({
@@ -481,7 +538,7 @@ try {
       dirname(dirname(process.cwd())),
       ".quality-browser",
     );
-    if (plan.browser && values["prepare-inputs"])
+    if (building && plan.browser && values["prepare-inputs"])
       run("corepack", [
         "pnpm",
         "exec",
@@ -521,25 +578,23 @@ try {
           browserFiles[resolve(directory, file)] = digest;
       }
       finalGroup?.verifyUnchanged();
-      writeFileSync(
-        resolve(dirname(dirname(process.cwd())), "browser-preparation.json"),
-        JSON.stringify(
-          {
-            root: browserRoot,
-            executable,
-            directories: browserDirectories,
-            playwright: JSON.parse(
-              readFileSync(resolve("node_modules/@playwright/test/package.json")),
-            ).version,
-            lockSha256: createHash("sha256").update(readFileSync("pnpm-lock.yaml")).digest("hex"),
-            files: browserFiles,
-          },
-          null,
-          2,
-        ) + "\n",
-      );
+      const browserReceipt = resolve(jobRoot, "browser-preparation.json");
+      const preparedBrowser = {
+        root: browserRoot,
+        executable,
+        directories: browserDirectories,
+        playwright: JSON.parse(readFileSync(resolve("node_modules/@playwright/test/package.json")))
+          .version,
+        lockSha256: createHash("sha256").update(readFileSync("pnpm-lock.yaml")).digest("hex"),
+        files: browserFiles,
+      };
+      if (building) writeFileSync(browserReceipt, JSON.stringify(preparedBrowser, null, 2) + "\n");
+      else if (
+        JSON.stringify(JSON.parse(readFileSync(browserReceipt))) !== JSON.stringify(preparedBrowser)
+      )
+        refuse("QUALITY_BROWSER_PREPARATION_CHANGED");
     }
-    if (plan.files.includes("scripts/package-desktop.test.mjs"))
+    if (building && plan.files.includes("scripts/package-desktop.test.mjs"))
       run(process.execPath, ["scripts/build-desktop-tools.mjs"]);
     if (
       plan.files.some((file) =>
@@ -552,41 +607,80 @@ try {
       if (!existsSync(pnpm)) refuse("QUALITY_PACKAGE_PNPM_REQUIRED", pnpm);
       process.env.GEA_PACKAGE_PNPM = pnpm;
     }
-    if (["quality", "business-profile", "mcp-client-repair"].includes(values.phase)) {
-      const checks = runQualityChecks([
-        {
-          name: "final-group",
-          execute: () =>
-            run("corepack", ["pnpm", "test:final-group"], process.cwd(), {
-              GEA_FINAL_GROUP_WORKBENCH_SOURCE: workbench.path,
-              GEA_FINAL_GROUP_MANAGE_SOURCE: manage.path,
-              GEA_FINAL_GROUP_CORE_SOURCE: core,
-            }),
-        },
-        {
-          name: "fast",
-          execute: () => run("corepack", ["pnpm", "quality:fast", "--checks-only"]),
-        },
-        {
-          name: "required-and-affected",
-          execute: () =>
-            run(process.execPath, [
-              ...(values.phase === "business-profile" ? ["--expose-internals"] : []),
-              ...(values.phase === "mcp-client-repair" ? ["--experimental-transform-types"] : []),
-              "--test",
-              // Files have separate processes; fixtures allocate unique Homes and loopback ports.
-              "--test-concurrency=2",
-              "--test-reporter=./scripts/quality-test-reporter.mjs",
-              ...plan.files,
-            ]),
-        },
-      ]);
-      writeFileSync(
-        resolve(dirname(dirname(process.cwd())), "quality-checks.json"),
-        JSON.stringify(checks, null, 2) + "\n",
-      );
-      if (checks.some((check) => check.status !== "passed"))
-        refuse("QUALITY_CHECKS_FAILED", JSON.stringify(checks));
+    if (stagedPhase) {
+      if (building) {
+        // Freeze the prepared package outputs before later processes can execute checks.
+        stages.record.artifacts = {};
+        for (const root of [resolve("lib"), resolve(manage.path, "lib")])
+          stages.record.artifacts[root] = await resourceDigests(root);
+        stages.finish();
+        if (values.stage === "build") process.exit(0);
+      } else {
+        for (const [root, expected] of Object.entries(stages.record.artifacts ?? {}))
+          if (JSON.stringify(await resourceDigests(root)) !== JSON.stringify(expected))
+            refuse("QUALITY_STAGE_ARTIFACT_CHANGED", root);
+        if (Object.keys(stages.record.artifacts ?? {}).length !== 2)
+          refuse("QUALITY_STAGE_ARTIFACT_REQUIRED");
+      }
+      if (values.stage === "summary") {
+        stages.summarize({ workflowResults: process.env.CI === "true" });
+        process.exit(0);
+      }
+      if (["full", "checks"].includes(values.stage)) {
+        if (values.stage === "full") stages.start("checks");
+        const checks = runQualityChecks([
+          {
+            name: "final-group",
+            execute: () =>
+              run("corepack", ["pnpm", "test:final-group"], process.cwd(), {
+                GEA_FINAL_GROUP_WORKBENCH_SOURCE: workbench.path,
+                GEA_FINAL_GROUP_MANAGE_SOURCE: manage.path,
+                GEA_FINAL_GROUP_CORE_SOURCE: core,
+              }),
+          },
+          {
+            name: "fast",
+            execute: () => run("corepack", ["pnpm", "quality:fast", "--checks-only"]),
+          },
+        ]);
+        stages.record.checks.push(...checks);
+        const failed = checks.some((check) => check.status !== "passed");
+        stages.finish(failed ? Error("QUALITY_CHECKS_FAILED") : undefined);
+        if (values.stage === "checks") {
+          if (failed) refuse("QUALITY_CHECKS_FAILED", JSON.stringify(checks));
+          process.exit(0);
+        }
+      }
+      if (["full", "tests"].includes(values.stage)) {
+        if (values.stage === "full") stages.start("tests");
+        const checks = runQualityChecks([
+          {
+            name: "required-and-affected",
+            execute: () =>
+              run(process.execPath, [
+                ...(values.phase === "business-profile" ? ["--expose-internals"] : []),
+                ...(values.phase === "mcp-client-repair" ? ["--experimental-transform-types"] : []),
+                "--test",
+                // Files have separate processes; fixtures allocate unique Homes and loopback ports.
+                "--test-concurrency=2",
+                "--test-reporter=./scripts/quality-test-reporter.mjs",
+                ...plan.files,
+              ]),
+          },
+        ]);
+        stages.record.checks.push(...checks);
+        stages.finish(
+          checks.some((check) => check.status !== "passed")
+            ? Error("QUALITY_CHECKS_FAILED")
+            : undefined,
+        );
+        if (values.stage === "tests") {
+          if (checks.some((check) => check.status !== "passed"))
+            refuse("QUALITY_CHECKS_FAILED", JSON.stringify(checks));
+          process.exit(0);
+        }
+      }
+      stages.summarize();
     }
   }
   console.log(
@@ -600,6 +694,7 @@ try {
     }),
   );
 } catch (error) {
+  stages?.finish(error);
   console.error(error.message);
   process.exitCode = 1;
 }
