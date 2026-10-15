@@ -52,27 +52,24 @@ test(
       .getByRole("button", { name: "继续", exact: true })
       .click();
     await expect(page.locator("[data-dsh-better-sidebar]")).toBeAttached({ timeout: 15000 });
+    // 新会话异步打开；先记录启动时的主对话，避免给即将卸载的旧会话选模型。
+    const conversation = page.locator(
+      "[data-conversation-content]:not(.agent-workbench-native-conversation *)",
+    );
+    await expect(conversation).toHaveAttribute("data-conversation-session", /.+/);
+    const initialSession = await conversation.getAttribute("data-conversation-session");
     await page
       .getByRole("complementary", { name: "业务导航", exact: true })
       .getByRole("button", { name: "新会话", exact: true })
       .filter({ hasText: "AI工作台" })
       .click();
-    // Core 异步打开主对话；旧业务页的 Native 对话列不能作为新会话就绪信号。
-    const conversation = page.locator(
-      "[data-conversation-content]:not(.agent-workbench-native-conversation *)",
-    );
     await expect(conversation).toBeVisible();
+    await expect(conversation).not.toHaveAttribute("data-conversation-session", initialSession);
     await expect(conversation).toHaveAttribute("data-conversation-session", /.+/);
     const sessionId = await conversation.getAttribute("data-conversation-session");
-    const selected = await app.remote("session/selectModel", {
-      sessionId,
-      provider: "gea-proof",
-      model: "receipt",
-    });
-    assert.equal(selected.ok, true, JSON.stringify(selected));
-    await expect(
-      conversation.getByRole("button", { name: /^选择模型，当前/ }),
-    ).toHaveAccessibleName(/Local receipt/);
+    await conversation.getByRole("button", { name: /^选择模型，当前/ }).click();
+    await page.getByRole("menuitem", { name: /^模型/ }).click();
+    await page.getByRole("menuitemradio", { name: /Local receipt \/ 本地验证回执/ }).click();
     const composer = conversation.locator('[contenteditable="true"], textarea').first();
     await composer.fill("侧栏隔离验收");
     await composer.press("Enter");
