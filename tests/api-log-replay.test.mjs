@@ -419,3 +419,15 @@ test("late old 401 cannot expire a replacement login even when the login token i
   assert.equal(f.business.status().authenticated, true);
   assert.equal(f.business.status().user.id, "u2");
 });
+
+test("current profile query token without a tenant header still binds replay expiry to the Host", async (t) => {
+  const f = await fixture(t);
+  const record = await f.capture("/sys/user/getUserInfo?token=fixture-secret");
+  f.setStatus(401);
+  const result = await f.business.apiLogReplay({ id: record.id, confirmed: false }, signal());
+  assert.equal(result.outcome, "cancelled");
+  assert.ok(result.recordId);
+  assert.equal(f.business.status().authenticated, false);
+  assert.equal(f.business.status().loginState, "expired");
+  assert.equal(f.requests.length, 2);
+});

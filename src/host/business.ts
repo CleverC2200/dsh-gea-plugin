@@ -849,11 +849,13 @@ export class Business {
       (url, headers, caller) => {
         const auth = this.auth;
         const epoch = this.epoch.signal;
+        const token = headers.get("X-Access-Token") ?? new URL(url).searchParams.get("token");
+        const tenant = headers.get("X-Tenant-Id");
         const owned =
           !!auth &&
           url.startsWith(this.base + "/") &&
-          headers.get("X-Access-Token") === auth.token &&
-          headers.get("X-Tenant-Id") === auth.tenantId;
+          token === auth.token &&
+          (tenant === null || tenant === auth.tenantId);
         return (response) => {
           if (
             owned &&
