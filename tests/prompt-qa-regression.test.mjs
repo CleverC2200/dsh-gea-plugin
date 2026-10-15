@@ -1,7 +1,4 @@
-import {
-  selectBusinessResource,
-  configurePluginSkills,
-} from "./fixtures/business-session.mjs";
+import { selectBusinessResource, configurePluginSkills } from "./fixtures/business-session.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";

@@ -2,10 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
-import {
-  createBusinessSession,
-  configurePluginSkills,
-} from "./fixtures/business-session.mjs";
+import { createBusinessSession, configurePluginSkills } from "./fixtures/business-session.mjs";
 test(
   "native result route, atomic skill load and structured evidence reuse retain authorization",
   { timeout: 90000 },
