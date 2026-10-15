@@ -228,7 +228,13 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
   const dirty = run("dirty-source");
   rmSync(join(gea, "uncommitted-source.txt"));
   reject(dirty, /CANDIDATE_DIRTY/);
-  reject(run("quality-still-requires-sdk", ["--phase", "quality"]), /SDK_SOURCE_REQUIRED/);
+  const missingSdk = run("quality-still-requires-sdk", ["--phase", "quality"]);
+  assert.notEqual(missingSdk.status, 0);
+  assert.match(missingSdk.stderr, /SDK_SOURCE_REQUIRED/);
+  const stageReceipt = join(job, "quality-stages.json");
+  assert.equal(JSON.parse(readFileSync(stageReceipt)).stages.prepare.status, "failed");
+  rmSync(stageReceipt); // Only the new job-local failure receipt is an expected quality effect.
+  unchangedEffects();
   for (const [repo, badHead] of [
     ["dsh-agent-workbench", "9b4863692cb29a3edc8a2358e98feb7846526d1b"],
     ["dsh-agent-manage", "9e9aba86d12a2d743604e63a6000e7abb7da1ddd"],
