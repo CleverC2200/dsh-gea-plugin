@@ -156,6 +156,11 @@ test("missing signed source and Core provenance expose blocked routes without ru
   const status = await response.json();
   assert.equal(status.ok, true);
   assert.ok(status.value.items.every((row) => row.state === "blocked"));
+  assert.ok(
+    status.value.items.every(
+      (row) => row.problem?.kind === "policy" && row.problem.code === "source-not-configured",
+    ),
+  );
   const rejected = await handlers.get("/api/gea/plugin-updates/update")(
     new Request("https://fixture.test/api/gea/plugin-updates/update", {
       method: "POST",
@@ -258,10 +263,7 @@ test("wire rejects asserted active proofs and duplicate observations", async (t)
   );
 });
 test("detail checks deduplicate and cancel on close while an accepted submission remains alive", async (t) => {
-  const { createPluginDetailUpdates } = await subject(
-    t,
-    "src/plugin-updates-client.ts",
-  );
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
   const original = globalThis.fetch;
   t.after(() => (globalThis.fetch = original));
   let checkSignal,
@@ -269,17 +271,14 @@ test("detail checks deduplicate and cancel on close while an accepted submission
     releaseUpdate,
     checks = 0;
   globalThis.fetch = async (url, options) => {
-    if (url.endsWith("/status"))
-      return Response.json({ ok: true, value: status() });
+    if (url.endsWith("/status")) return Response.json({ ok: true, value: status() });
     if (url.endsWith("/check")) {
       checks++;
       checkSignal = options.signal;
       return new Promise((_, reject) =>
-        options.signal.addEventListener(
-          "abort",
-          () => reject(options.signal.reason),
-          { once: true },
-        ),
+        options.signal.addEventListener("abort", () => reject(options.signal.reason), {
+          once: true,
+        }),
       );
     }
     if (url.endsWith("/update")) {
@@ -295,8 +294,7 @@ test("detail checks deduplicate and cancel on close while an accepted submission
   t.after(() => ctx.fiber.dispose());
   t.after(() => owner.dispose());
   const close = owner.retain();
-  while (!owner.getSnapshot().items.length)
-    await new Promise((resolve) => setTimeout(resolve, 1));
+  while (!owner.getSnapshot().items.length) await new Promise((resolve) => setTimeout(resolve, 1));
   const checking = owner.check();
   owner.check();
   while (!checkSignal) await new Promise((resolve) => setTimeout(resolve, 1));
@@ -732,11 +730,16 @@ test("desktop Core proof rejects an SDK manifest linked outside the admitted ins
   const f = await desktopCoreFixture(t);
   const outside = await mkdtemp(join(tmpdir(), "outside-core-sdk-"));
   t.after(() => rm(outside, { recursive: true, force: true }));
-  await writeFile(join(outside, "package.json"), JSON.stringify({ name: "@deepseek-ai/extra-sdk", version: "1.0.0" }));
+  await writeFile(
+    join(outside, "package.json"),
+    JSON.stringify({ name: "@deepseek-ai/extra-sdk", version: "1.0.0" }),
+  );
   await symlink(outside, join(f.root, "dsh/node_modules/@deepseek-ai/extra-sdk"));
   f.runtime.dependencies["@deepseek-ai/extra-sdk"] = "1.0.0";
   const bytes = JSON.stringify(f.runtime);
   await writeFile(join(f.root, "dsh/package.json"), bytes);
-  f.proof.artifacts.find((row) => row.path === "dsh/package.json").sha256 = createHash("sha256").update(bytes).digest("hex");
+  f.proof.artifacts.find((row) => row.path === "dsh/package.json").sha256 = createHash("sha256")
+    .update(bytes)
+    .digest("hex");
   await assert.rejects(f.readPluginUpdateCore(f.ctx, f.proof), /UPDATE_CORE_SDK_MISMATCH/);
 });

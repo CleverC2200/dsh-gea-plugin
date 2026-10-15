@@ -121,30 +121,44 @@ function problemText(
 }
 function UpdateSection({ subject, updates, t }: Props): ReactNode {
   const name = targetName(subject);
-  return name ? <DetailSection name={name} updates={updates} t={t} /> : null;
+  return name ? (
+    <DetailSection
+      name={name}
+      installedVersion={subject.kind === "bundle" ? subject.pkg.version : undefined}
+      updates={updates}
+      t={t}
+    />
+  ) : null;
 }
 function DetailSection({
   name,
+  installedVersion,
   updates,
   t,
-}: { name: string; updates: Owner } & PropsLocale<typeof pluginUpdateLocale>): ReactNode {
+}: { name: string; installedVersion?: string; updates: Owner } & PropsLocale<
+  typeof pluginUpdateLocale
+>): ReactNode {
   const state = useDetail(updates),
     row = state.items.find((row) => row.packageName === name);
-  const error = state.transportError
-    ? t(
-        state.transportError === "check"
-          ? "checkError"
-          : state.transportError === "unknown"
-            ? "unknownError"
-            : "statusError",
-      )
-    : problemText(row?.problem, t);
+  const problem = problemText(row?.problem, t);
+  const error =
+    row?.state === "blocked" && problem
+      ? problem
+      : state.transportError
+        ? t(
+            state.transportError === "check"
+              ? "checkError"
+              : state.transportError === "unknown"
+                ? "unknownError"
+                : "statusError",
+          )
+        : problem;
   return (
     <section className="gea-plugin-update-section" aria-label={t("title")}>
       <h3 className="gea-plugin-update-title">{t("title")}</h3>
       <dl className="gea-plugin-update-versions">
         <dt>{t("installed")}</dt>
-        <dd>{row?.installedVersion ?? t("unavailable")}</dd>
+        <dd>{row?.installedVersion ?? installedVersion ?? t("unavailable")}</dd>
         <dt>{t("host")}</dt>
         <dd>{row?.runningHostVersion ?? t("unavailable")}</dd>
         <dt>{t("client")}</dt>

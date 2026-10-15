@@ -15,7 +15,7 @@ const names = [
   "dsh-agent-manage",
   "@cleverc2200/gea-dsh-prototype",
 ];
-const pkg = (name) => ({ name, installed: true, enabled: true, rows: [] });
+const pkg = (name) => ({ name, version: "1.2.3", installed: true, enabled: true, rows: [] });
 async function until(predicate) {
   const deadline = Date.now() + 5000;
   while (!predicate()) {
@@ -64,6 +64,7 @@ test("official detail slots check, update, close and reenter through controlled 
     updates = 0,
     statuses = 0,
     holdCheck = false,
+    sourceMissing = false,
     checkAborted = false,
     updateAborted = false,
     updateResponded = false,
@@ -77,13 +78,14 @@ test("official detail slots check, update, close and reenter through controlled 
     items: names.map((packageName) => ({
       packageName,
       state: phase,
-      installedVersion: "1.2.3",
-      runningHostVersion: "1.2.2",
-      runningClientVersion: "1.2.3",
-      candidateVersion: "1.2.4",
-      planId: "plan-one",
+      installedVersion: sourceMissing ? null : "1.2.3",
+      runningHostVersion: sourceMissing ? null : "1.2.2",
+      runningClientVersion: sourceMissing ? null : "1.2.3",
+      candidateVersion: sourceMissing ? null : "1.2.4",
+      planId: sourceMissing ? null : "plan-one",
       diagnostic: "/private/secret-credential",
       ...(phase === "check-failed" ? { problem: { kind: "source", code: "signature" } } : {}),
+      ...(sourceMissing ? { problem: { kind: "policy", code: "source-not-configured" } } : {}),
     })),
   });
   const server = createServer(async (req, res) => {
@@ -99,6 +101,11 @@ test("official detail slots check, update, close and reenter through controlled 
       }
       if (url.endsWith("/check")) {
         checks++;
+        if (sourceMissing) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: { code: "UPDATE_SOURCE_NOT_CONFIGURED" } }));
+          return;
+        }
         if (holdCheck) {
           res.on("close", () => {
             checkAborted = true;
@@ -116,7 +123,9 @@ test("official detail slots check, update, close and reenter through controlled 
         res.on("close", () => {
           if (!res.writableEnded) updateAborted = true;
         });
-        await new Promise((resolve) => { releaseUpdate = resolve; });
+        await new Promise((resolve) => {
+          releaseUpdate = resolve;
+        });
         updateResponded = true;
       }
       res.setHeader("content-type", "application/json");
@@ -192,19 +201,13 @@ test("official detail slots check, update, close and reenter through controlled 
   await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).click();
   await until(() => updates === 1);
   await page.getByText("Submitting update", { exact: true }).waitFor();
-  assert.equal(
-    await page.getByText("Update accepted", { exact: true }).count(),
-    0,
-  );
+  assert.equal(await page.getByText("Update accepted", { exact: true }).count(), 0);
   await page.evaluate(() => window.fixture.locale("zh"));
   await page.getByText("正在提交更新", { exact: true }).waitFor();
   await page.evaluate(() => window.fixture.locale("en"));
   phase = "downloading";
   await page.getByText("Downloading", { exact: true }).waitFor();
-  assert.equal(
-    await page.getByText("Update accepted", { exact: true }).count(),
-    0,
-  );
+  assert.equal(await page.getByText("Update accepted", { exact: true }).count(), 0);
   // Controlled status samples verify display precedence, independently of Host transitions.
   for (const [next, label] of [
     ["waiting-lock", "Waiting for other plugin changes"],
@@ -292,6 +295,27 @@ test("official detail slots check, update, close and reenter through controlled 
   holdCheck = false;
   await page.evaluate(() => window.fixture.open());
   await page.getByRole("button", { name: "Check for updates", exact: true }).waitFor();
+  sourceMissing = true;
+  phase = "blocked";
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "Updates are not configured for this installation." })
+    .waitFor();
+  assert.equal(await page.locator(".gea-plugin-update-versions dd").first().textContent(), "1.2.3");
+  await page.getByRole("button", { name: "Check for updates", exact: true }).click();
+  await until(() => checks === 3);
+  await page.waitForTimeout(50);
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "Updates are not configured for this installation." })
+    .waitFor();
+  assert.equal(
+    await page.getByText("Could not check for updates. Try again.", { exact: true }).count(),
+    0,
+  );
+  await page.evaluate(() => window.fixture.locale("zh"));
+  await page.getByRole("alert").filter({ hasText: "当前安装尚未配置更新来源。" }).waitFor();
+  assert.doesNotMatch(await page.locator("main").textContent(), /private|secret-credential/);
   await page.evaluate(() => window.fixture.dispose());
   await page.waitForTimeout(20);
   assert.equal(await page.locator("main").textContent(), "");

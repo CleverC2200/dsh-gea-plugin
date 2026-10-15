@@ -81,6 +81,11 @@ export function mountPluginUpdates(
       planId: null,
       state: "blocked",
       diagnostic,
+      problem: {
+        kind: "policy",
+        code:
+          diagnostic === "UPDATE_SOURCE_NOT_CONFIGURED" ? "source-not-configured" : "conditions",
+      },
     }));
   const ready = (): Promise<void> =>
     (initialize ??= (async () => {
