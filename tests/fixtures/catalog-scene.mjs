@@ -235,7 +235,11 @@ export async function catalogSceneProfile(t, options, scene = "model") {
   app.catalogScene = {
     tools,
     apsMode: apsBuild.mode,
-    entries: fixture.completeSkillEntries[scene],
+    // This scene selects the forecast Agent; other installed business Skills stay out of its catalog.
+    entries: fixture.completeSkillEntries[scene].filter(
+      (entry) =>
+        entry.name === fixture.canary.name || fixture.qaFixtureSkillNames.includes(entry.name),
+    ),
     bodies: [fixture.canary.body, ...(scene === "promptQa" ? [fixture.qaFixtureSkillBody] : [])],
   };
   assert.ok(app.catalogScene.entries, "catalog scene metadata declaration required");

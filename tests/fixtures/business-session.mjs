@@ -81,3 +81,20 @@ export function fixtureEnvironment(t, values) {
     process.env[name] = value;
   }
 }
+
+/** Edit only this plugin Agent's Skill configuration through the current authenticated UI contract. */
+export async function configurePluginSkills(app, configure, preset = "gea-readonly") {
+  const response = await fetch(app.origin + "/api/agent-manage/agents/plugins", {
+    headers: { Cookie: app.cookie, Origin: app.origin },
+  });
+  assert.equal(response.ok, true);
+  const agent = (await response.json()).find((row) => row.id === preset);
+  assert.ok(agent, "the target plugin Agent must be registered");
+  const saved = await fixtureRequest(app, "/api/agent-manage/agents/plugin/skills", {
+    id: preset,
+    skills: configure(agent.skills),
+  });
+  assert.equal(saved.ok, true, JSON.stringify(saved));
+  assert.equal(saved.value.publication, "ready", JSON.stringify(saved));
+  return saved.value;
+}
