@@ -28,6 +28,7 @@ export function parseUpdateProblem(value: unknown) {
     case "policy": {
       const codes = [
         "source-not-configured",
+        "release-not-published",
         "plan-unconfirmed",
         "conditions",
         "restored",

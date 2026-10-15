@@ -227,7 +227,8 @@ export function parsePluginChannel(value) {
     !Number.isSafeInteger(value.revision) ||
     value.revision < 1 ||
     !Array.isArray(value.releases) ||
-    value.releases.length !== companyPackageNames.length
+    value.releases.length === 0 ||
+    value.releases.length > companyPackageNames.length
   )
     throw Error("SOURCE_CHANNEL_INVALID");
   for (const date of [value.issuedAt, value.expiresAt]) {
@@ -265,7 +266,7 @@ export function parsePluginChannel(value) {
       sha256: reference.sha256,
     };
   });
-  if (new Set(releases.map((reference) => reference.name)).size !== companyPackageNames.length)
+  if (new Set(releases.map((reference) => reference.name)).size !== releases.length)
     throw Error("SOURCE_CHANNEL_INVALID");
   return {
     schema: 1,
@@ -279,8 +280,6 @@ export function parsePluginChannel(value) {
 /** Produce the complete next signed payload locally; publishing owns the atomic channel replacement. */
 export function mergePluginChannelRelease({ previous, release, revision, issuedAt, expiresAt }) {
   const channel = parsePluginChannel(previous);
-  if (!channel.releases.some((reference) => reference.name === release.name))
-    throw Error("SOURCE_CHANNEL_INVALID");
   if (!Number.isSafeInteger(revision) || revision <= channel.revision)
     throw Error("CHANNEL_REVISION_REQUIRED");
   return parsePluginChannel({
@@ -288,9 +287,9 @@ export function mergePluginChannelRelease({ previous, release, revision, issuedA
     revision,
     issuedAt,
     expiresAt,
-    releases: channel.releases.map((reference) =>
-      reference.name === release.name ? release : reference,
-    ),
+    releases: channel.releases.some((reference) => reference.name === release.name)
+      ? channel.releases.map((reference) => (reference.name === release.name ? release : reference))
+      : [...channel.releases, release],
   });
 }
 export function satisfiesPluginVersion(version, range) {

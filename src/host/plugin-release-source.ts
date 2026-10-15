@@ -270,7 +270,8 @@ export function createPluginReleaseSource(
         Number(receipt.revision) < 1 ||
         receipt.channel !== config.channel ||
         !Array.isArray(receipt.releases) ||
-        receipt.releases.length !== companyPackageNames.length
+        receipt.releases.length === 0 ||
+        receipt.releases.length > companyPackageNames.length
       )
         return fail("SOURCE_TRUST_INVALID");
       sha(receipt.payloadSha256);
@@ -386,18 +387,32 @@ export function createPluginReleaseSource(
           const old = (previous.releases as unknown[])
             .map(object)
             .find((row) => row.name === release.name);
-          if (!old || typeof old.version !== "string" || typeof old.sha256 !== "string")
-            return fail("SOURCE_TRUST_INVALID");
-          // Version ordering is also checked against durable source approval, not only inventory.
-          const comparison = comparePluginVersions(release.version, old.version);
-          if (comparison < 0) return fail("SOURCE_VERSION_ROLLBACK");
-          if (comparison === 0 && release.artifact.sha256 !== old.sha256)
-            return fail("SOURCE_SAME_VERSION_CONTENT_MISMATCH");
+          if (old) {
+            if (typeof old.version !== "string" || typeof old.sha256 !== "string")
+              return fail("SOURCE_TRUST_INVALID");
+            // A temporarily absent release keeps its durable version and digest approval.
+            const comparison = comparePluginVersions(release.version, old.version);
+            if (comparison < 0) return fail("SOURCE_VERSION_ROLLBACK");
+            if (comparison === 0 && release.artifact.sha256 !== old.sha256)
+              return fail("SOURCE_SAME_VERSION_CONTENT_MISMATCH");
+          }
         }
         releases.push(release);
       }
       if (current !== generation) return fail("SOURCE_CHECK_SUPERSEDED");
       signal?.throwIfAborted();
+      const approved = new Map(
+        ((previous?.releases ?? []) as unknown[]).map((raw) => {
+          const release = object(raw);
+          return [text(release.name), release] as const;
+        }),
+      );
+      for (const release of releases)
+        approved.set(release.name, {
+          name: release.name,
+          version: release.version,
+          sha256: release.artifact.sha256,
+        });
       await saveReceipt({
         schema: 1,
         channel: config.channel,
@@ -405,11 +420,7 @@ export function createPluginReleaseSource(
         payloadSha256,
         issuedAt: channel.issuedAt,
         expiresAt: channel.expiresAt,
-        releases: releases.map((release) => ({
-          name: release.name,
-          version: release.version,
-          sha256: release.artifact.sha256,
-        })),
+        releases: [...approved.values()],
       });
       signal?.throwIfAborted();
       if (current !== generation) return fail("SOURCE_CHECK_SUPERSEDED");

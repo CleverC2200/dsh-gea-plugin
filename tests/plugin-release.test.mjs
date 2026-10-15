@@ -202,3 +202,28 @@ test("GEA permits the verified Manage versions and rejects unverified versions",
       version,
     );
 });
+
+test("a partial channel adds an independently published package without replacing existing references", async () => {
+  const { mergePluginChannelRelease } = await import("../src/shared/plugin-release.mjs");
+  const reference = (name) => ({
+    name,
+    sha256: "a".repeat(64),
+    url: `https://fixture.invalid/${"a".repeat(64)}/release.json`,
+  });
+  const previous = {
+    schema: 1,
+    channel: "test",
+    revision: 1,
+    issuedAt: "2026-10-15T01:00:00.000Z",
+    expiresAt: "2026-10-16T01:00:00.000Z",
+    releases: [reference(G)],
+  };
+  const next = mergePluginChannelRelease({
+    previous,
+    release: reference(W),
+    revision: 2,
+    issuedAt: previous.issuedAt,
+    expiresAt: previous.expiresAt,
+  });
+  assert.deepEqual(next.releases, [reference(G), reference(W)]);
+});

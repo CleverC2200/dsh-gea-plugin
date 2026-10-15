@@ -674,3 +674,27 @@ test("signed/HTTP check failures retain safe distinct status errors while Core a
   assert.equal(core.problem.current.version, "0.2.0-rc.2");
   assert.deepEqual(core.problem.required, [{ version: "0.2.0-rc.2", revision: "a".repeat(40) }]);
 });
+
+test("a single-package channel leaves omitted installed packages out of the checking state", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const originalCheck = f.options.source.check;
+  f.options.source = {
+    ...f.options.source,
+    check: async (signal) =>
+      (await originalCheck(signal)).filter((r) => r.name === "@cleverc2200/gea-dsh-prototype"),
+  };
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const items = controller.snapshot().items;
+  assert.equal(
+    items.find((r) => r.packageName === "@cleverc2200/gea-dsh-prototype").state,
+    "available",
+  );
+  for (const row of items.filter((r) => r.packageName !== "@cleverc2200/gea-dsh-prototype")) {
+    assert.equal(row.state, "blocked");
+    assert.deepEqual(row.problem, { kind: "policy", code: "release-not-published" });
+  }
+});

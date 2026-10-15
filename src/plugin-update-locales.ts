@@ -10,8 +10,7 @@ export const en = {
   restart: "Restart the application to load the installed version.",
   statusError: "Update status is unavailable. Try checking again.",
   checkError: "Could not check for updates. Try again.",
-  unknownError:
-    "The update result is unknown. Check the status before trying again.",
+  unknownError: "The update result is unknown. Check the status before trying again.",
   idle: "Not checked",
   checking: "Checking for updates",
   submitting: "Submitting update",
@@ -32,18 +31,17 @@ export const en = {
   failed: "Update failed",
   unknown: "Result unknown",
   "source-not-configured": "Updates are not configured for this installation.",
+  "release-not-published": "This channel has no release for this plugin.",
   "plan-unconfirmed": "Check for updates again before installing.",
   conditions: "This update does not meet the installation requirements.",
   restoredReason: "The update failed. The previous version was restored.",
-  failedReason:
-    "The update failed. Check the installation before trying again.",
+  failedReason: "The update failed. Check the installation before trying again.",
   signature: "The update source could not be verified.",
   http: "The update source is unavailable.",
   sourceUnavailable: "Could not read the update source.",
   platform: "Updates are not supported on this platform.",
   core: "This update requires a supported application version.",
-  dependencies:
-    "The installed plugin versions are incompatible with this update.",
+  dependencies: "The installed plugin versions are incompatible with this update.",
 } as const;
 export const zh: Record<keyof typeof en, string> = {
   title: "插件更新",
@@ -78,6 +76,7 @@ export const zh: Record<keyof typeof en, string> = {
   failed: "更新失败",
   unknown: "结果待确认",
   "source-not-configured": "当前安装尚未配置更新来源。",
+  "release-not-published": "此频道尚未发布该插件。",
   "plan-unconfirmed": "请重新检查更新后再安装。",
   conditions: "此更新不满足安装条件。",
   restoredReason: "更新失败，已恢复原版本。",
