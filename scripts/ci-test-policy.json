@@ -25,6 +25,25 @@
   "tests": ["tests/*.test.mjs", "scripts/*.test.mjs", "tests/*.contract.mjs"],
   "rules": [
     {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/(?:cube-gap-ledger|mcp-read-evidence)\\.ts$",
+      "tests": [
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/prompt-execution-state.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^business/inventory-(?:aqkc|dealer|fc|personal|qll)/source/",
+      "tests": ["tests/source-integrity.test.mjs", "tests/branch-stock-ability-web.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^static/regional/source/index\\.html$",
+      "tests": ["tests/page-interaction-workbenches.test.mjs"]
+    },
+    {
       "repo": "dsh-agent-workbench",
       "pattern": "^scripts/ci-source-policy\\.mjs$",
       "tests": ["scripts/business-profile-ci.test.mjs"]
