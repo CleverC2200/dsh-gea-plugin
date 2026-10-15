@@ -211,3 +211,14 @@ test("the Workbench sales-plan export selects GEA's actual approval transaction 
     [...fixture.policy.required, "tests/sales-plan-action.test.mjs"].sort(),
   );
 });
+
+test("a package-only change retains its original configuration contracts without policy consumers", (t) => {
+  const fixture = resourceImpactFixture(t);
+  fixture.change(fixture.own, "package.json", JSON.stringify({ name: "fixture-package" }));
+  const plan = fixture.plan();
+  assert.deepEqual(plan.reasons[fixture.own.repo + "/package.json"], [
+    "scripts/run-quality-ci.test.mjs",
+    "tests/window-launch-admission.test.mjs",
+  ]);
+  assert.deepEqual(plan.files, [...fixture.policy.required].sort());
+});
