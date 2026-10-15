@@ -1,6 +1,5 @@
 import {
   selectBusinessResource,
-  fixtureRequest,
   configurePluginSkills,
 } from "./fixtures/business-session.mjs";
 import test from "./fixtures/source-test.mjs";

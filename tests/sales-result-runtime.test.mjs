@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import {
   createBusinessSession,
-  fixtureRequest,
   configurePluginSkills,
 } from "./fixtures/business-session.mjs";
 test(
