@@ -698,3 +698,25 @@ test("a single-package channel leaves omitted installed packages out of the chec
     assert.deepEqual(row.problem, { kind: "policy", code: "release-not-published" });
   }
 });
+
+test("an absent optional executable target does not block update or change its saved link", async (t) => {
+  const { symlink, readlink } = await import("node:fs/promises");
+  const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const bin = join(f.dir, "node_modules/.bin");
+  await mkdir(bin, { recursive: true });
+  const target = "../optional-tunnel/bin/cloudflared";
+  await symlink(target, join(bin, "cloudflared"));
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const row = controller
+    .snapshot()
+    .items.find((item) => item.packageName === "@cleverc2200/gea-dsh-prototype");
+  assert.equal(row.state, "available", JSON.stringify(controller.snapshot()));
+  await controller.submit({ packageName: row.packageName, planId: row.planId });
+  const operation = await waitForStage(controller, ["pending-restart", "unknown", "restored"]);
+  assert.equal(operation.stage, "pending-restart", JSON.stringify(operation));
+  assert.equal(await readlink(join(bin, "cloudflared")), target);
+});
