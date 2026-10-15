@@ -257,128 +257,62 @@ test("wire rejects asserted active proofs and duplicate observations", async (t)
     parseUpdateClientReport({ ...report, modules: [report.modules[0], report.modules[0]] }),
   );
 });
-test("pending restart never projects mixed Host and client versions as a running version", async (t) => {
-  const { projectPluginUpdates } = await subject(t, "src/plugin-updates-client.ts");
-  const items = rows("pending-restart");
-  items[2].runningHostVersion = "1.2.4";
-  assert.deepEqual(projectPluginUpdates(items)[name], {
-    kind: "pending-restart",
-    installedVersion: "1.2.3",
-  });
-});
-test("provider aborts live check requests on disposal but leaves a submission request alive", async (t) => {
-  const { createPluginUpdatesProvider } = await subject(t, "src/plugin-updates-client.ts");
+test("detail checks deduplicate and cancel on close while an accepted submission remains alive", async (t) => {
+  const { createPluginDetailUpdates } = await subject(
+    t,
+    "src/plugin-updates-client.ts",
+  );
   const original = globalThis.fetch;
   t.after(() => (globalThis.fetch = original));
-  let checkSignal, updateSignal, releaseUpdate;
+  let checkSignal,
+    updateSignal,
+    releaseUpdate,
+    checks = 0;
   globalThis.fetch = async (url, options) => {
-    if (url.endsWith("/status")) return Response.json({ ok: true, value: status() });
+    if (url.endsWith("/status"))
+      return Response.json({ ok: true, value: status() });
     if (url.endsWith("/check")) {
+      checks++;
       checkSignal = options.signal;
       return new Promise((_, reject) =>
-        options.signal.addEventListener("abort", () => reject(options.signal.reason), {
-          once: true,
-        }),
+        options.signal.addEventListener(
+          "abort",
+          () => reject(options.signal.reason),
+          { once: true },
+        ),
       );
     }
     if (url.endsWith("/update")) {
       updateSignal = options.signal;
-      return new Promise(
-        (resolve) =>
-          (releaseUpdate = () =>
-            resolve(Response.json({ ok: true, value: { stage: "accepted" } }))),
-      );
+      return new Promise((resolve) => {
+        releaseUpdate = () => resolve(Response.json({ ok: true, value: {} }));
+      });
     }
     throw Error("unexpected request");
   };
   const ctx = new Context(),
-    owner = createPluginUpdatesProvider(ctx);
-  t.after(() => ctx.fiber.dispose());
-  const checking = owner.provider.check([], new AbortController().signal);
-  while (!checkSignal) await new Promise((resolve) => setTimeout(resolve, 1));
-  const updating = owner.provider.update(name);
-  while (!updateSignal) await new Promise((resolve) => setTimeout(resolve, 1));
-  await owner.dispose();
-  assert.equal(checkSignal.aborted, true);
-  assert.equal(updateSignal.aborted, false);
-  await assert.rejects(checking);
-  releaseUpdate();
-  await updating;
-});
-test("provider supplies an actual timeout AbortSignal to a stalled source check", async (t) => {
-  const { createPluginUpdatesProvider } = await subject(t, "src/plugin-updates-client.ts");
-  const original = globalThis.fetch;
-  t.after(() => (globalThis.fetch = original));
-  let checkSignal;
-  globalThis.fetch = async (url, options) => {
-    if (url.endsWith("/status")) return Response.json({ ok: true, value: status() });
-    checkSignal = options.signal;
-    return new Promise((_, reject) =>
-      options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true }),
-    );
-  };
-  const ctx = new Context(),
-    owner = createPluginUpdatesProvider(ctx);
+    owner = createPluginDetailUpdates(ctx);
   t.after(() => ctx.fiber.dispose());
   t.after(() => owner.dispose());
-  const keepAlive = setTimeout(() => {}, 1500);
-  t.after(() => clearTimeout(keepAlive));
-  await assert.rejects(owner.provider.check([], new AbortController().signal));
+  const close = owner.retain();
+  while (!owner.getSnapshot().items.length)
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  const checking = owner.check();
+  owner.check();
+  while (!checkSignal) await new Promise((resolve) => setTimeout(resolve, 1));
+  assert.equal(checks, 1);
+  close();
+  await checking;
   assert.equal(checkSignal.aborted, true);
-  assert.equal(checkSignal.reason.name, "TimeoutError");
-});
-test("missing or unsupported official capability does not register a provider", async (t) => {
-  const { mountPluginUpdatesClient } = await subject(t, "src/plugin-updates-client.ts");
-  let registrations = 0;
-  for (const capability of [
-    {
-      version: 2,
-      register() {
-        registrations++;
-        return () => {};
-      },
-    },
-    { version: 1, register: null },
-  ]) {
-    const ctx = new Context();
-    t.after(() => ctx.fiber.dispose());
-    const release = mountPluginUpdatesClient(ctx);
-    ctx.provide("pluginUpdates", capability);
-    ctx.provide("modules", {
-      entries: { state: { getSnapshot: () => ({ syncing: false, failures: [] }) } },
-    });
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    assert.equal(registrations, 0);
-    await release();
-  }
-});
-
-test("version one capability registers once and releases provider ownership with its Fiber", async (t) => {
-  const { mountPluginUpdatesClient } = await subject(t, "src/plugin-updates-client.ts");
-  const original = globalThis.fetch;
-  t.after(() => (globalThis.fetch = original));
-  globalThis.fetch = async () => Response.json({ ok: true, value: status(rows("blocked")) });
-  const ctx = new Context();
-  t.after(() => ctx.fiber.dispose());
-  let registered,
-    releases = 0;
-  ctx.provide("pluginUpdates", {
-    version: 1,
-    register(provider) {
-      assert.equal(registered, undefined);
-      registered = provider;
-      return () => releases++;
-    },
-  });
-  ctx.provide("modules", {
-    entries: { state: { getSnapshot: () => ({ syncing: true, failures: [] }) } },
-  });
-  const release = mountPluginUpdatesClient(ctx);
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  assert.equal(registered.id, "gea-company-packages");
-  assert.equal(registered.packages.length, 3);
-  await release();
-  assert.equal(releases, 1);
+  const closeAgain = owner.retain();
+  const updating = owner.update(name);
+  owner.update(name);
+  while (!updateSignal) await new Promise((resolve) => setTimeout(resolve, 1));
+  closeAgain();
+  await owner.dispose();
+  assert.equal(updateSignal.aborted, false);
+  releaseUpdate();
+  await updating;
 });
 
 test("explicit Core deployment input is cross-checked against Git, launcher, SDK resolution and artifact bytes", async (t) => {

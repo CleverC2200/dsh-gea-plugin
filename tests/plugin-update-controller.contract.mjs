@@ -39,7 +39,7 @@ const modulePath = join(work, "controller.mjs");
 const subjectPath = join(work, "subjects.ts");
 await writeFile(
   subjectPath,
-  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {projectPluginUpdates} from ${JSON.stringify(fileURLToPath(new URL("../src/plugin-updates-client.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {readPluginProfile, combinationManifests, validateActualProfile} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
+  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {readPluginProfile, combinationManifests, validateActualProfile} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
 );
 
 await build({
@@ -71,7 +71,6 @@ const {
   createPluginUpdateController,
   readPluginProfile,
   validateActualProfile,
-  projectPluginUpdates,
   parseUpdateClientStatus,
 } = await import(pathToFileURL(modulePath));
 test("controller starts with an empty operation and preserves existing profile data", async (t) => {
@@ -496,9 +495,8 @@ test("actual pinned pnpm reachable transitive peer blocks an incompatible indepe
   assert.equal(row.state, "blocked");
   assert.equal(row.diagnostic, "COMBINATION_INCOMPATIBLE");
   assert.equal(row.planId, null);
-  const projected = projectPluginUpdates([row])[row.packageName];
-  assert.equal(projected.problem.kind, "dependencies");
-  assert.deepEqual(projected.problem.requirements, [
+  assert.equal(row.problem.kind, "dependencies");
+  assert.deepEqual(row.problem.requirements, [
     {
       consumer: "fixture-consumer-b",
       dependency: row.packageName,
@@ -630,7 +628,7 @@ test("Windows check and submission reject before download, acceptance or any pac
   }
 });
 
-test("signed/HTTP check failures retain safe distinct provider errors while Core and graph failures retain required versions", async (t) => {
+test("signed/HTTP check failures retain safe distinct status errors while Core and graph failures retain required versions", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   for (const [sourceFailure, expected] of [
     ["signature", "signature"],
@@ -652,11 +650,10 @@ test("signed/HTTP check failures retain safe distinct provider errors while Core
       checkTimeoutMs: 1000,
       pollIntervalMs: 1000,
     });
-    const projected = projectPluginUpdates(status.items);
     assert.ok(
-      Object.values(projected).every(
+      status.items.every(
         (row) =>
-          row.kind === "check-failed" &&
+          row.state === "check-failed" &&
           row.problem.kind === "source" &&
           row.problem.code === expected,
       ),
@@ -672,8 +669,8 @@ test("signed/HTTP check failures retain safe distinct provider errors while Core
   t.after(() => controller.dispose());
   await controller.initialize();
   await controller.check();
-  const core = projectPluginUpdates(controller.snapshot().items)["@cleverc2200/gea-dsh-prototype"];
-  assert.equal(core.kind, "blocked");
+  const core = controller.snapshot().items.find(row => row.packageName === "@cleverc2200/gea-dsh-prototype");
+  assert.equal(core.state, "blocked");
   assert.equal(core.problem.kind, "core");
   assert.equal(core.problem.current.version, "0.2.0-rc.2");
   assert.deepEqual(core.problem.required, [{ version: "0.2.0-rc.2", revision: "a".repeat(40) }]);
