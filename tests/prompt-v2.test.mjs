@@ -1,5 +1,5 @@
 import { fixtureCubeTools, fixtureCubeDiscovery } from "./fixtures/cube-wire.mjs";
-import { currentHtmlResource } from "./fixtures/html-resource.mjs";
+import { writeHtmlDeclarations } from "./fixtures/html-resource.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
 import { selectBusinessResource } from "./fixtures/business-session.mjs";
 import test from "./fixtures/source-test.mjs";
@@ -146,7 +146,9 @@ test(
           html: "index.html",
           skills: ["SKILL.md"],
           mcp: "mcp.json",
-          gea: { consumerCode, readonly: true, contract: "gea-html-v1" },
+          declarations: { page: "page.json", capability: "capability.json" },
+          agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
+          gea: { consumerCode, readonly: true, contract: "gea-html-v2" },
         }),
       );
       await writeFile(
@@ -154,13 +156,36 @@ test(
         JSON.stringify({
           provider: "gea",
           transport: "host-provided",
-          contract: "gea-html-v1",
+          contract: "gea-html-v2",
           consumer: { consumerType: "AGENT", consumerCode },
           capabilities: ["governed-sql-read"],
         }),
       );
+      await writeHtmlDeclarations(path, {
+        page: {
+          surface: `gea-html-${id}`,
+          protocol: "self-report",
+          pageIds: [id],
+          consumerCode: consumerCode,
+          maxEffect: "view",
+        },
+        capability: {
+          id: id,
+          label: id,
+          data: { consumerCode: consumerCode, tables: [], rules: [] },
+          maxEffect: "view",
+          layers: ["read"],
+          skills: [id],
+          routing: { keywords: [id], summary: id },
+        },
+        prompt: {
+          label: id,
+          consumerCode: consumerCode,
+          persona: "只读测试页面，保留用户会话与权限边界。",
+          skills: [id],
+        },
+      });
     }
-    for (const path of Object.values(roots)) await currentHtmlResource(path);
     const app = await profile(t, {
       beforeStart: fixtureWorkbench(Object.values(roots)),
       config: {
