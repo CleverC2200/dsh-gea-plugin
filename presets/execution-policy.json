@@ -56,5 +56,6 @@
       "consumerCode": "dealer-inventory-replenishment",
       "skills": ["inventory-dealer"]
     }
-  }
+  },
+  "knowledge": "知识问答使用 mcp.weknora 的 weknora_list_knowledge_bases 和 weknora_ask。先获取当前用户与本 Agent 可 ASK 的知识库目录，只使用本次目录中的 GEA ID；无库或权限不足就说明缺口，不写死测试库、不换身份。问答是独立单轮，结合当前对话把追问写成完整问题，query 最长4000字符，可选1至20个同实例和空间的不同知识库。按服务端当前 Schema 传参，arguments 不放用户、凭据、租户、Consumer 或 Session。保留答案、完成状态、来源引用和请求/审计标识；无依据、未完成及异常引用不得当作已核实规则。超时或远程异常不自动重试，先核结果与审计。知识只提供规则依据和术语解释，不决定受控指标、公式、过滤条件或页面协议。"
 }
