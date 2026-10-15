@@ -54,11 +54,19 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
     "package.json",
   ])
     copyFileSync(join(root, file), join(gea, file));
+  // Freeze this disposable fixture's peer baseline to the actual cold sources under test.
+  // Admission cases should not accidentally test unrelated historical affected-source differences.
+  const baselineFile = join(gea, "scripts/quality-peer-baseline.json");
+  const baseline = JSON.parse(readFileSync(baselineFile));
+  for (const entry of baseline.repositories)
+    entry.head = git(roots[entry.repo], "rev-parse", "HEAD");
+  writeFileSync(baselineFile, JSON.stringify(baseline, null, 2) + "\n");
   git(
     gea,
     "add",
     "scripts/run-quality-ci.mjs",
     "scripts/final-group-input.contract.mjs",
+    "scripts/quality-peer-baseline.json",
     "package.json",
   );
   git(
@@ -97,7 +105,12 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
   writeFileSync(file, original);
   const entriesBefore = readdirSync(job).sort();
   const run = (name, extra = [], environment = {}) => {
-    const env = { ...process.env, GIT_OPTIONAL_LOCKS: "0", ...environment };
+    const env = {
+      ...process.env,
+      GIT_OPTIONAL_LOCKS: "0",
+      QUALITY_BASE_SHA: manifest.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
+      ...environment,
+    };
     for (const key of ["CI", "QUALITY_EXPECTED_SHA"])
       if (!Object.hasOwn(environment, key)) delete env[key];
     const args = [
@@ -215,7 +228,13 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
   const dirty = run("dirty-source");
   rmSync(join(gea, "uncommitted-source.txt"));
   reject(dirty, /CANDIDATE_DIRTY/);
-  reject(run("quality-still-requires-sdk", ["--phase", "quality"]), /SDK_SOURCE_REQUIRED/);
+  const missingSdk = run("quality-still-requires-sdk", ["--phase", "quality"]);
+  assert.notEqual(missingSdk.status, 0);
+  assert.match(missingSdk.stderr, /SDK_SOURCE_REQUIRED/);
+  const stageReceipt = join(job, "quality-stages.json");
+  assert.equal(JSON.parse(readFileSync(stageReceipt)).stages.prepare.status, "failed");
+  rmSync(stageReceipt); // Only the new job-local failure receipt is an expected quality effect.
+  unchangedEffects();
   for (const [repo, badHead] of [
     ["dsh-agent-workbench", "9b4863692cb29a3edc8a2358e98feb7846526d1b"],
     ["dsh-agent-manage", "9e9aba86d12a2d743604e63a6000e7abb7da1ddd"],

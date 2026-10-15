@@ -227,12 +227,53 @@ jobs:
         with:
           path: .quality-browser
           key: chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('candidate/dsh-gea-plugin/pnpm-lock.yaml') }}
-      - name: Prepare independent SDK and run frozen source quality gates
+      - name: Prepare owned SDK and dependencies
+        id: quality-prepare
         env:
           CORE_HEAD: ${{ matrix.core }}
           INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
           QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
-        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE"
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --stage prepare
+
+      - name: Build frozen candidate packages
+        id: quality-build
+        if: steps.quality-prepare.outcome == 'success'
+        env:
+          CORE_HEAD: ${{ matrix.core }}
+          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
+          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --stage build
+
+      - name: Run independent source checks
+        id: quality-checks
+        if: steps.quality-build.outcome == 'success'
+        env:
+          CORE_HEAD: ${{ matrix.core }}
+          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
+          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --stage checks
+
+      - name: Run required and affected tests
+        id: quality-tests
+        if: ${{ !cancelled() && steps.quality-prepare.outcome == 'success' && steps.quality-build.outcome == 'success' }}
+        env:
+          CORE_HEAD: ${{ matrix.core }}
+          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
+          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --stage tests
+
+      - name: Summarize required quality stages
+        id: quality-summary
+        if: always()
+        env:
+          CORE_HEAD: ${{ matrix.core }}
+          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
+          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
+          QUALITY_STAGE_PREPARE_RESULT: ${{ steps.quality-prepare.outcome }}
+          QUALITY_STAGE_BUILD_RESULT: ${{ steps.quality-build.outcome }}
+          QUALITY_STAGE_CHECKS_RESULT: ${{ steps.quality-checks.outcome }}
+          QUALITY_STAGE_TESTS_RESULT: ${{ steps.quality-tests.outcome }}
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --stage summary
 
       - name: Save verified SDK cache without delaying required checks
         if: success() && needs.candidate-scope.outputs.business-lane == 'full' && steps.sdk-cache.outputs.cache-hit != 'true'
@@ -251,6 +292,7 @@ jobs:
             candidate-input.json
             candidate-group.json
             quality-checks.json
+            quality-stages.json
             quality-test-plan.json
             candidate/dsh-gea-plugin/.runtime/quality-fast.json
           if-no-files-found: warn
