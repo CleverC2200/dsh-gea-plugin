@@ -66,6 +66,7 @@ await build({
   entryPoints: ["src/host/plugin-update-controller.ts"],
   outfile: controller,
   bundle: true,
+  packages: "external",
   format: "esm",
   platform: "node",
   plugins: [

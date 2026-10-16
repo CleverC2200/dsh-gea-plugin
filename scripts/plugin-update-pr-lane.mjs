@@ -29,6 +29,7 @@ const supplements = [
   "tests/plugin-release.test.mjs",
 ];
 const bootstrapSupplements = [
+  "scripts/check-windows-plugin-update.mjs",
   "scripts/quality-peer-baseline.json",
   "scripts/plugin-update-pr-lane.mjs",
   "scripts/plugin-update-pr-lane.test.mjs",
