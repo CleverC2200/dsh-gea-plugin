@@ -28,8 +28,8 @@ test(
     );
     const maintained = {};
     for (const [file, sha256] of Object.entries({
-      "prompt.json": "a49c1e7e768e053459a395971994515cc568317e6a8ff09523ed0ebb049f8a55",
-      "capability.json": "a8375227ec9fc3ec647069607d08affbea0c0547efd8f5bbbc7b62d4ec349fd1",
+      "prompt.json": "68fe496185a9af92883ce54ca8733b5219a4930ccd402335981b36e195175a54",
+      "capability.json": "6429c5a2fa2d0da45c1e5e194ff8795575730e3aa60d338b1e87b5784ba67273",
       "skills/aqkc/SKILL.md": "41b8fb11d166ff89afb926f0e5632b0a4f4c0da3866e3ddaafc654597aa29454",
     })) {
       const bytes = await readFile(join(maintainedRoot, file));
@@ -288,10 +288,11 @@ test(
       .filter((x) => x.role === "system")
       .map((x) => x.content)
       .join("\n");
-    assert.match(system, /base-safety-stock/);
-    assert.match(system, /不空读页面/);
-    assert.match(system, /截断明细注明覆盖范围，不能冒充全量/);
-    assert.match(system, /业务键/);
+    assert.equal(
+      system,
+      "You are the smartest and most useful AI assistant in the world, capable of helping users complete all tasks.\n\n" +
+        JSON.parse(maintained["prompt.json"]).persona,
+    );
     assert.doesNotMatch(
       withoutNativeWebPrompt(system, nativeWeb),
       /inventory_aqkc_page|name=context|明细既不做交付物|没有任何模型同时具备|HMR receiver|pnpm run dev:web|销售计划汇总例外/,

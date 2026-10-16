@@ -450,6 +450,13 @@ test("two successful reads in the same turn both retain their receipts and resul
   const index = current.state().evidence.join(",");
   const ids = index.match(/ev-[a-f0-9]{24}/g);
   assert.equal(new Set(ids).size, 2);
+  const capabilities = JSON.parse(
+    await current.registered
+      .get("gea_capabilities")
+      .execute({}, { agent: current.agent, signal: new AbortController().signal }),
+  );
+  assert.deepEqual(capabilities.evidence.map((entry) => entry.evidenceId).sort(), [...ids].sort());
+  assert.ok(capabilities.evidence.every((entry) => typeof entry.tool === "string"));
   const receipts = [...current.state().receipts.values()].join("\n");
   for (const id of ids) assert.ok(receipts.includes(id));
   assert.equal(resultChars, firstText.length + secondText.length);

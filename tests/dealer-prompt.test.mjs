@@ -298,10 +298,11 @@ test(
       .filter((x) => x.role === "system")
       .map((x) => x.content)
       .join("\n");
-    assert.match(system, /dealer-inventory-replenishment/);
-    assert.match(system, /不空读页面/);
-    assert.match(system, /截断明细注明覆盖范围，不能冒充全量/);
-    assert.match(system, /业务键/);
+    assert.equal(
+      system,
+      "You are the smartest and most useful AI assistant in the world, capable of helping users complete all tasks.\n\n" +
+        JSON.parse(maintained["prompt.json"]).persona,
+    );
     assert.doesNotMatch(
       withoutNativeWebPrompt(system, nativeWeb),
       /inventory_dealer_page|name=context|明细既不做交付物|没有任何模型同时具备|HMR receiver|pnpm run dev:web|销售计划汇总例外/,

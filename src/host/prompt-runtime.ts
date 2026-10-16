@@ -329,16 +329,22 @@ export function mountBusinessPrompts(
     ctx.tools.register(
       defineTool({
         name: "gea_capabilities",
-        description: "查看已配置的 GEA 业务模块。配置与工具可见不代表业务授权。",
+        description:
+          "查看已配置的 GEA 业务模块和当前会话证据索引。证据编号可交给 gea_evidence_read 读取；配置与工具可见不代表业务授权。",
         parameters: {},
         output,
         isConcurrencySafe: () => false,
-        async execute(args, exec) {
+        async execute(_args, exec) {
           if (!exec.agent || !profileOf(exec.agent)) throw Error("GEA_BUSINESS_SESSION_REQUIRED");
           exec.signal.throwIfAborted();
+          const snapshot = executionState.snapshot(exec.agent);
           return JSON.stringify({
             preset: presetOf(exec.agent),
             modulesAreConfiguredNotAuthorized: true,
+            evidence: snapshot.evidence.map((evidenceId) => ({
+              evidenceId,
+              tool: JSON.parse(snapshot.receipts.get(evidenceId)!).tool,
+            })),
             modules: capability
               .readModules()
               .filter((module) => !module.data?.mock)
@@ -356,7 +362,7 @@ export function mountBusinessPrompts(
       defineTool({
         name: "gea_evidence_read",
         description:
-          "仅在nextRead非空时续读未展示业务行；完整结果直接使用。默认结构化结果，原始审计需format=raw。回读不重新查询，不改变权限或数据覆盖。",
+          "仅在nextRead非空时续读未展示业务行；完整结果直接使用。缺少证据编号时通过 gea_capabilities 获取当前会话证据索引。默认结构化结果，原始审计需format=raw。回读不重新查询，不改变权限或数据覆盖。",
         parameters: {
           format: {
             type: "string",

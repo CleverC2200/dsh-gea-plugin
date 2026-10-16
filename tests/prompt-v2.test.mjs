@@ -445,7 +445,7 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
       30000,
     );
-    assert.equal(calls.filter((call) => call.name === "inspect_cube_model").length, 3);
+    assert.equal(calls.filter((call) => call.name === "inspect_cube_model").length, 4);
     const sent = calls.filter((call) => call.name === "query_business_data");
     assert.equal(sent.length, 1, "caller-owned named queries stay in one native dispatch");
     assert.deepEqual(sent[0].arguments, args);

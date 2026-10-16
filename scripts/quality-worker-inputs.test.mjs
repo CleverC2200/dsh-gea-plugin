@@ -541,7 +541,7 @@ if ((install || (process.env.INSTALL_SCENARIO==='cancel-path'&&args.includes('ro
   }
   await new Promise(()=>{});
 }
-if (install && ['cancel','leader-exit'].includes(process.env.INSTALL_SCENARIO) && basename(cwd)==='dsh-better-sidebar') {watch(root,()=>{});await new Promise(()=>{});}
+if (install && ['cancel','leader-exit'].includes(process.env.INSTALL_SCENARIO) && basename(cwd)==='dsh-better-sidebar') {writeFileSync(join(root,'second-install-ready'),'ready');watch(root,()=>{});await new Promise(()=>{});}
 if (install && process.env.INSTALL_SCENARIO==='fail-second' && basename(cwd)==='dsh-better-sidebar') {
   const file=join(root,'grandchild-ready');
   if(!existsSync(file))await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{watcher.close();reject(Error('grandchild not ready'))},5000);const done=()=>{if(existsSync(file)){clearTimeout(timer);watcher.close();resolve()}};const watcher=watch(root,done);done()});
@@ -1805,7 +1805,12 @@ for (const signal of ["SIGTERM", "SIGINT"]) {
       f.clear();
       const run = f.receiveAsync({ PROCESS_INSTALLS: "1", INSTALL_SCENARIO: "cancel" });
       try {
-        await deadline(fileReady(join(f.root, "grandchild-ready")));
+        await deadline(
+          Promise.all([
+            fileReady(join(f.root, "grandchild-ready")),
+            fileReady(join(f.root, "second-install-ready")),
+          ]),
+        );
         run.child.kill(signal);
         const r = await deadline(run.closed);
         assert.equal(r.code, 1, r.stderr);

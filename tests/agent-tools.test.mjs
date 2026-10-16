@@ -827,7 +827,7 @@ test(
           assert.ok(toolNames.includes(expected), `${expected} 在工具列表里`);
         for (const name of ["gea_page", "gea_workbench_apply", "gea_plugin_page_apply"])
           assert.equal(toolNames.includes(name), false, `${name} requires a bound page`);
-        assert.match(
+        assert.doesNotMatch(
           modelRequests[0].messages
             .filter((message) => message.role === "system")
             .map((message) => message.content)
@@ -1920,7 +1920,7 @@ test(
           .filter((x) => x.role === "system")
           .map((x) => x.content)
           .join("\n");
-        assert.match(initialSystem, /沿用用户语言及指定格式/);
+        assert.doesNotMatch(initialSystem, /沿用用户语言及指定格式/);
         const results = modelRequests[2].messages.filter((x) => x.role === "tool");
         assert.match(results[0].content, /reference-scope/);
         assert.match(results[1].content, /按实际期间查询；缺失数据不能编造/);

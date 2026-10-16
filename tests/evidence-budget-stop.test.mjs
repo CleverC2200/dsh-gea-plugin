@@ -8,7 +8,7 @@ import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 
 for (const batchSize of [1, 3])
   test(
-    "evidence budget ends tool use and resets on a new user turn; batch size " + batchSize,
+    "evidence reads preserve tools across repeated calls and a new turn; batch size " + batchSize,
     { timeout: 90000 },
     async (t) => {
       const app = await profile(t, {
@@ -67,22 +67,15 @@ for (const batchSize of [1, 3])
           if (step === 0)
             call = ["gea_sales_plan_read", { kind: "list", query: { periodId: "20261001" } }];
           else {
-            const receipt = body.messages
-              .filter((message) => message.role === "system")
-              .flatMap((message) => message.content.split("\n"))
-              .find(
-                (line) =>
-                  line.startsWith('{"evidenceId":') &&
-                  line.includes('"tool":"gea_sales_plan_read"'),
-              );
-            assert.ok(
-              receipt,
-              "sales evidence ID is advertised in the model's public result receipt",
-            );
-            evidenceId ??= JSON.parse(receipt).evidenceId;
-            // Imitate a model that keeps following the advertised read tool after its allowance is spent.
-            if (step <= 12 / batchSize + 2 && names.includes("gea_evidence_read"))
-              call = ["gea_evidence_read", { evidenceId, reload: true }];
+            if (step === 1) call = ["gea_capabilities", {}];
+            else {
+              if (!evidenceId)
+                evidenceId = JSON.parse(
+                  body.messages.filter((message) => message.role === "tool").at(-1).content,
+                ).evidence.find((entry) => entry.tool === "gea_sales_plan_read").evidenceId;
+              if (step <= 2 + 36 / batchSize && names.includes("gea_evidence_read"))
+                call = ["gea_evidence_read", { evidenceId, reload: true }];
+            }
           }
         }
         step++;
@@ -144,35 +137,17 @@ for (const batchSize of [1, 3])
         (r) => r.some((e) => e.type === "turn/end"),
         40000,
       );
-      const after = captured.find((r) => r.phase === "exhaust" && r.step === 1 + 12 / batchSize);
+      const after = captured.find((r) => r.phase === "exhaust" && r.step === 2 + 36 / batchSize);
+      assert.ok(after, "repeated evidence reads reached the final fixture step");
+      assert.ok(after.body.tools.some((tool) => tool.function.name === "gea_evidence_read"));
       assert.ok(
-        after,
-        "12 successful reads reached the budget boundary: " +
-          JSON.stringify({
-            requests: captured.map((row) => ({
-              step: row.step,
-              tools: row.body.tools?.map((tool) => tool.function.name),
-            })),
-            results: readToolResults(events),
-            endings: events.filter((event) => event.type === "turn/end"),
-            toolCalls: events.filter((event) => event.type === "tool/call"),
-          }),
+        after.body.tools.some(
+          (tool) => tool.function.name === "mcp__gea-gateway__query_business_data",
+        ),
       );
-      assert.equal(
-        after.body.tools?.length ?? 0,
-        0,
-        "exhausted evidence must end tool use even when ordinary query allowance remains",
-      );
-      assert.match(
-        JSON.stringify(after.body.messages),
-        /42/,
-        "successful evidence survives the stop",
-      );
-      assert.match(
-        JSON.stringify(after.body.messages),
-        /证据读取额度已用完/,
-        "the final-answer request must explain the stop",
-      );
+      assert.ok(after.body.tools.some((tool) => tool.function.name === "write"));
+      assert.match(JSON.stringify(after.body.messages), /42/);
+      assert.doesNotMatch(JSON.stringify(after.body.messages), /证据读取额度已用完/);
       const replies = readToolResults(events);
       assert.ok(replies.length > 0);
       assert.ok(
@@ -182,7 +157,7 @@ for (const batchSize of [1, 3])
       );
       assert.equal(
         events.filter((e) => e.type === "tool/call" && e.data.name === "gea_evidence_read").length,
-        12,
+        36 + batchSize,
       );
       phase = "next-turn";
       step = 0;
@@ -196,7 +171,7 @@ for (const batchSize of [1, 3])
         captured
           .find((r) => r.phase === "next-turn")
           .body.tools.some((t) => t.function.name === "gea_evidence_read"),
-        "new user turn restores the bounded read allowance",
+        "new user turn retains evidence tools",
       );
     },
   );
