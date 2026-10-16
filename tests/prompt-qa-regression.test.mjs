@@ -249,13 +249,13 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     },
   );
   await check(
-    "invalid capability schema cannot change the configured tools or enlarge this turn budget",
+    "invalid tool schema cannot change configured tools or introduce a turn budget",
     async () => {
       const r = await run(
         await create(),
         [
-          action("gea_capabilities", {
-            complex: "invalid",
+          action("gea_evidence_read", {
+            evidenceId: 12,
           }),
           action("gea_capabilities", {}),
         ],
@@ -289,7 +289,7 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     assert.equal(resultObject(a.tools[0]).callLimit, undefined);
     const b = await run(id, [action("gea_capabilities", {})], "新一轮简单查询");
     assert.equal(resultObject(b.tools[0]).callLimit, undefined);
-    return { first: 40, next: 20 };
+    return { callLimitDeclared: false };
   });
   await check(
     "native Skill instructions retain their Session revision and new Sessions read the updated Agent",
@@ -457,8 +457,8 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
         id,
         [
           action("gea_capabilities", {}),
-          action("gea_capabilities", {
-            complex: "invalid",
+          action("gea_evidence_read", {
+            evidenceId: 12,
           }),
           action("gea_capabilities", {}),
         ],
