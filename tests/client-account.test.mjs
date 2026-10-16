@@ -150,3 +150,62 @@ test("a cancelled account login cannot refresh the identity or accept its late c
   assert.equal(reads, 0);
   assert.equal(account.getSnapshot().state, "unknown");
 });
+
+for (const [desktop, authenticated, expected] of [
+  [true, false, 1],
+  [true, true, 0],
+  [false, false, 0],
+])
+  test(`company login navigation follows confirmed Host identity: desktop=${desktop}, authenticated=${authenticated}`, async () => {
+    const module = { exports: {} },
+      provided = new Map(),
+      opened = [];
+    const window = new EventTarget();
+    if (desktop) window.dshDesktop = { protocolVersion: 1 };
+    runInNewContext(outputFiles[0].text, {
+      module,
+      exports: module.exports,
+      require,
+      fetch: async (url) =>
+        Response.json(
+          url === "/api/gea-html/identity"
+            ? {
+                scope: authenticated ? "host-owned" : null,
+                status: { environment: "production", authenticated, user: null },
+              }
+            : { ok: true, value: { loginId: "company", expiresIn: 120 } },
+        ),
+      Response,
+      AbortController,
+      AbortSignal,
+      CustomEvent,
+      window,
+      crypto: globalThis.crypto,
+      console,
+      setTimeout,
+      clearTimeout,
+    });
+    const disposers = [];
+    const scope = {
+      slots: {
+        inject: (_name, callback) => disposers.push(callback()),
+        entries: () => [{ options: { key: "gea-proof" } }],
+      },
+      agentWorkbench: {
+        open: async (id) => {
+          opened.push(id);
+          return true;
+        },
+      },
+    };
+    module.exports.apply({
+      effect: () => {},
+      provide: (name, value) => provided.set(name, value),
+      inject: (_names, callback) => callback(scope),
+    });
+    assert.equal(opened.length, 0);
+    await provided.get("businessAccount").startLogin(new AbortController().signal, "production");
+    assert.equal(opened.length, expected);
+    if (expected) assert.equal(opened[0], "gea-proof");
+    for (const dispose of disposers) dispose?.();
+  });

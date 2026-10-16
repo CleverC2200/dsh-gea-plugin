@@ -1,6 +1,7 @@
 import { mountPluginUpdatesClient } from "./plugin-detail-updates.tsx";
 import type {} from "@cleverc2200/dsh-agent-workbench/client";
 import type { Context } from "@deepseek-ai/cordis";
+import type { MainPanelId } from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-api-remotes/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
@@ -18,6 +19,33 @@ export function apply(ctx: Context): void {
     readScope: identity.readScope,
   });
   ctx.effect(() => identity.start());
+  if ("dshDesktop" in window)
+    ctx.inject(["agentWorkbench", "slots"], (scope) => {
+      scope.slots.inject("main", () => {
+        let opened = false;
+        const openLogin = () => {
+          const snapshot = identity.getSnapshot();
+          if (opened || snapshot.state !== "confirmed" || snapshot.status?.authenticated !== false)
+            return;
+          const entry = scope.slots
+            .entries("main")
+            .find((entry) => entry.options.key === "gea-proof");
+          if (!entry) return;
+          opened = true;
+          void scope.agentWorkbench.open(entry.options.key as MainPanelId).then(
+            (accepted) => {
+              opened = accepted;
+            },
+            () => {
+              opened = false;
+            },
+          );
+        };
+        const dispose = identity.subscribe(openLogin);
+        openLogin();
+        return dispose;
+      });
+    });
   ctx.provide("businessAccount", {
     getSnapshot: identity.getSnapshot,
     subscribe: identity.subscribe,

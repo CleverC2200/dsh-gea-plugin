@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <title>GEA Desktop</title>
+    <link rel="stylesheet" href="gea-welcome.css" />
+    <script src="gea-welcome.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <img src="gea-logo.png" width="80" height="80" alt="GEA" />
+      <h1>欢迎使用 GEA 工作台</h1>
+      <p>使用公司飞书账号登录</p>
+      <button type="button" id="company-login">公司扫码登录</button>
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+  </body>
+</html>

@@ -55,6 +55,6 @@ Host 证明来自公开 Loader 的唯一启用 entry、ACTIVE Fiber、实际 imp
 
 ## 官方 Core 桌面包的公司包装
 
-`desktop/official-branding.mjs` 在官方 electron-builder 配置上恢复 GEA Desktop 名称、App ID、Dock 图标及应用内图标资源，保留官方运行时布局和校验回调，不修改 Core 源码。Core 的 About 内容和功能仍由官方实现持有。
+`desktop/official-branding.mjs` 在官方 electron-builder 配置上恢复 GEA Desktop 名称、App ID、Dock 图标及应用内图标资源。公司欢迎页只调用官方已有的工作台入口，不提供 DeepSeek 账号或 API Key 入口；未登录的桌面客户端打开 Workbench 现有公司扫码页，身份仍由 GEA Host 确认。保留官方运行时布局和校验回调，不修改 Core 源码。Core 的 About 内容仍由官方实现持有。
 
 换装后由随包的更新适配命令调用 `desktop/configure-official-updates.mjs`。命令要求退出客户端、使用目标 App 的 Electron Node、匹配已安装三包版本，并通过原 Core reader 和签名发行检查；只替换原配置中的 Core 证明。来源、其它配置、WeKnora 和既有安装回执保留，原配置及回执先保存到 profile 的 `gea/plugin-updates/core-switches/`。同版本但不同构建仍分别验明，不添加任意构建回退。
