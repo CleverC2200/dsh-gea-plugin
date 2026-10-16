@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign, createHash } from "node:crypto";
 import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { join, dirname, delimiter } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -140,6 +140,28 @@ test("signed channel verifies raw bytes, release hashes and durable tgz manifest
     true,
   );
 });
+test(
+  "archive listing accepts Windows CRLF while retaining archive inspection",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const f = await fixture(t),
+      bin = join(f.dir, "bin");
+    await mkdir(bin);
+    await writeFile(
+      join(bin, "tar"),
+      `#!/usr/bin/env node\nconst cp=require('node:child_process');const result=cp.spawnSync('/usr/bin/tar',process.argv.slice(2));process.stdout.write(process.argv[2].startsWith('-t')?result.stdout.toString().replaceAll('\\n','\\r\\n'):result.stdout);process.stderr.write(result.stderr);process.exitCode=result.status;\n`,
+      { mode: 0o700 },
+    );
+    const previous = process.env.PATH;
+    process.env.PATH = bin + delimiter + previous;
+    try {
+      const manifest = await inspectPluginArchive(join(f.dir, "0.tgz"));
+      assert.equal(manifest.name, companyPackageNames[0]);
+    } finally {
+      process.env.PATH = previous;
+    }
+  },
+);
 test("source rejects tampering and clears previous execution authority while original inventory remains outside source", async (t) => {
   const f = await fixture(t),
     releases = await f.source.check();

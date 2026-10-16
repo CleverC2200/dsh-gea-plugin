@@ -159,7 +159,7 @@ export async function inspectPluginArchive(
     encoding: "utf8" as const,
     signal,
   };
-  const entries = (await run("tar", ["-tzf", path], options)).stdout.trim().split("\n");
+  const entries = (await run("tar", ["-tzf", path], options)).stdout.trim().split(/\r?\n/);
   if (
     new Set(entries).size !== entries.length ||
     entries.some(
@@ -172,7 +172,7 @@ export async function inspectPluginArchive(
     )
   )
     return fail("SOURCE_ARCHIVE_INVALID");
-  const listing = (await run("tar", ["-tvzf", path], options)).stdout.trim().split("\n");
+  const listing = (await run("tar", ["-tvzf", path], options)).stdout.trim().split(/\r?\n/);
   if (listing.length !== entries.length || listing.some((line) => !["-", "d"].includes(line[0])))
     return fail("SOURCE_ARCHIVE_LINK_FORBIDDEN");
   if (!entries.includes("package/package.json")) return fail("SOURCE_ARCHIVE_MANIFEST_MISSING");
