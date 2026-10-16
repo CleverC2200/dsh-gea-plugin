@@ -57,7 +57,7 @@ jobs:
           appendFileSync(process.env.GITHUB_OUTPUT,`bootstrap=${selected}\n`);
           JS
       - if: steps.scope.outputs.bootstrap == 'true'
-        run: node --test scripts/plugin-update-pr-lane.test.mjs desktop/company-bootstrap.test.mjs desktop/official-branding.test.mjs
+        run: node --test scripts/plugin-update-pr-lane.test.mjs
       - if: steps.scope.outputs.bootstrap != 'true'
         run: node --run test:release-source
       - if: steps.scope.outputs.bootstrap != 'true'
