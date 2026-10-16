@@ -16,16 +16,15 @@ const event = {
   headRepository: a.repository,
   matches: true,
 };
-test("targeted update acceptance belongs only to PR 76's frozen product and peers", () => {
+test("targeted update acceptance belongs only to PR 78's frozen product and peers", () => {
   assert.equal(selectPluginUpdateLane(event), true);
   for (const change of [
-    { pullRequest: 75 },
     { branch: "another" },
     { repository: "other/fork" },
     { event: "workflow_dispatch" },
   ])
     assert.equal(selectPluginUpdateLane({ ...event, ...change }), false);
-  for (const change of [{ matches: false }, { headRepository: "other/fork" }])
+  for (const change of [{ pullRequest: 75 }, { matches: false }, { headRepository: "other/fork" }])
     assert.throws(
       () => selectPluginUpdateLane({ ...event, ...change }),
       /PLUGIN_UPDATE_SCOPE_REJECTED/,
