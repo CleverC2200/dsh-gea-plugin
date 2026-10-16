@@ -232,6 +232,16 @@ function fixture(
     "source/dsh-agent-workbench/business/inventory-apsplan/source/package-lock.json",
     "fixed inventory lock",
   );
+  if (runtime) {
+    put(
+      "candidate/dsh-agent-manage/business-resources/inventory-aqkc/skills/inventory-policy/SKILL.md",
+      "Only admitted inventory rows may be read.\n",
+    );
+    put(
+      "source/dsh-agent-workbench/.gitignore",
+      "node_modules/\nlib/*\n!lib/business/\nlib/business/*\n!lib/business/inventory-aqkc/\nlib/business/inventory-aqkc/*\n!lib/business/inventory-aqkc/skills/\n",
+    );
+  }
   const coreHead = commit(coreSource),
     wbHead = commit(wb),
     manageHead = commit(manage);
@@ -423,6 +433,10 @@ function fixture(
     json("official-latest-standard/.git/dsh-sdk-artifacts.json", sdk);
   }
   if (runtime) {
+    put(
+      "candidate/dsh-agent-workbench/lib/business/inventory-aqkc/skills/inventory-policy/SKILL.md",
+      "Only admitted inventory rows may be read.\n",
+    );
     for (const file of ["host.js", "client.js", "types/host.d.ts", "types/client.d.ts"])
       put("candidate/dsh-agent-workbench/lib/" + file, "fixed Workbench");
     put("official-latest-standard/apps/web/dist/index.html", "fixed Web");
@@ -616,7 +630,7 @@ cp.spawnSync=(command,args,options={})=>{
   delete env.NODE_TEST_CONTEXT;
   put(
     "produce.mjs",
-    `import {createWorkerBinding} from ${JSON.stringify(join(gea, "scripts/quality-worker-inputs.mjs"))};import {readPreparedWorkbench} from ${JSON.stringify(join(gea, "scripts/quality-workbench.mjs"))};import {readFileSync,writeFileSync} from 'node:fs';const read=f=>JSON.parse(readFileSync(f));if(${runtime})writeFileSync(${JSON.stringify(join(root, "prepared-workbench.json"))},JSON.stringify(await readPreparedWorkbench({source:${JSON.stringify(wb)},prepared:${JSON.stringify(join(root, "candidate/dsh-agent-workbench"))},head:${JSON.stringify(wbHead)}})));writeFileSync(${JSON.stringify(join(root, "binding.json"))},JSON.stringify(createWorkerBinding({root:${JSON.stringify(root)},executionPlan:read(${JSON.stringify(join(root, "quality-test-execution-plan.json"))}),stages:read(${JSON.stringify(join(root, "quality-stages.json"))})})));`,
+    `import {createWorkerBinding} from ${JSON.stringify(join(gea, "scripts/quality-worker-inputs.mjs"))};import {readPreparedWorkbench} from ${JSON.stringify(join(gea, "scripts/quality-workbench.mjs"))};import {readFileSync,writeFileSync} from 'node:fs';const read=f=>JSON.parse(readFileSync(f));if(${runtime})writeFileSync(${JSON.stringify(join(root, "prepared-workbench.json"))},JSON.stringify(await readPreparedWorkbench({source:${JSON.stringify(wb)},prepared:${JSON.stringify(join(root, "candidate/dsh-agent-workbench"))},head:${JSON.stringify(wbHead)},manage:{path:${JSON.stringify(manage)},head:${JSON.stringify(manageHead)}}})));writeFileSync(${JSON.stringify(join(root, "binding.json"))},JSON.stringify(createWorkerBinding({root:${JSON.stringify(root)},executionPlan:read(${JSON.stringify(join(root, "quality-test-execution-plan.json"))}),stages:read(${JSON.stringify(join(root, "quality-stages.json"))})})));`,
   );
   const run = (file, args = [], extra = {}) =>
     spawnSync(process.execPath, [file, ...args], {
@@ -1330,6 +1344,16 @@ test("runtime workers install the inherited npm inventory lock separately and as
   );
   assert.ok(existsSync(join(f.root, "prepared-workbench-assets/lib/host.js")));
   assert.ok(!existsSync(join(f.root, "prepared-workbench-assets/.git")));
+  assert.equal(
+    readFileSync(
+      join(
+        f.root,
+        "prepared-workbench-assets/lib/business/inventory-aqkc/skills/inventory-policy/SKILL.md",
+      ),
+      "utf8",
+    ),
+    "Only admitted inventory rows may be read.\n",
+  );
   assert.ok(record.steps.some((x) => x.name === "workbench-assets" && x.status === "passed"));
 });
 

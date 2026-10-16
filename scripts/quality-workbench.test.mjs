@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  copyFileSync,
   mkdtempSync,
   mkdirSync,
   writeFileSync,
@@ -76,6 +77,143 @@ function preparedFixture(t, worktree = false) {
   writeFileSync(join(prepared, "lib/host.js"), "built output\n");
   return { source, prepared, head, receipt, git };
 }
+
+function copiedSkillFixture(t) {
+  const fixture = preparedFixture(t);
+  const path = join(fixture.source, "..", "manage");
+  const resource =
+    "business-resources/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md";
+  const output = "lib/business/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md";
+  mkdirSync(join(path, resource, ".."), { recursive: true });
+  writeFileSync(join(path, resource), "Only admitted inventory rows may be read.\n");
+  fixture.git("-C", path, "init", "-q");
+  fixture.git("-C", path, "add", ".");
+  fixture.git(
+    "-C",
+    path,
+    "-c",
+    "user.name=fixture",
+    "-c",
+    "user.email=fixture@invalid",
+    "commit",
+    "-qm",
+    "fixed Manage Skill",
+  );
+  fixture.manage = { path, head: fixture.git("-C", path, "rev-parse", "HEAD") };
+  mkdirSync(join(fixture.prepared, output, ".."), { recursive: true });
+  copyFileSync(join(path, resource), join(fixture.prepared, output));
+  return { ...fixture, resource, output };
+}
+
+test("new AQKC Skill copies from the frozen Manage source are admitted and frozen", async (t) => {
+  const fixture = copiedSkillFixture(t);
+  const record = await readPreparedWorkbench(fixture);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  const assets = join(fixture.source, "..", "copied-assets");
+  await prepareWorkbenchAssets({ ...fixture, assets });
+  assert.equal(
+    readFileSync(join(assets, fixture.output), "utf8"),
+    "Only admitted inventory rows may be read.\n",
+  );
+});
+
+test("the public verifier uses caller-frozen Manage input for copied Skills", async (t) => {
+  const fixture = copiedSkillFixture(t);
+  const record = await readPreparedWorkbench(fixture);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  const args = [
+    "scripts/quality-workbench.mjs",
+    "--source",
+    fixture.source,
+    "--prepared",
+    fixture.prepared,
+    "--head",
+    fixture.head,
+    "--receipt",
+    fixture.receipt,
+  ];
+  const result = spawnSync(
+    process.execPath,
+    [...args, "--manage-source", fixture.manage.path, "--manage-head", fixture.manage.head],
+    { encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  writeFileSync(fixture.receipt, JSON.stringify({ ...record, manage: fixture.manage }));
+  const missing = spawnSync(process.execPath, args, { encoding: "utf8" });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
+test("AQKC copied Skills reject changed frozen sources, unknown outputs, staging and redirects", async (t) => {
+  const fixture = copiedSkillFixture(t);
+  const output = join(fixture.prepared, fixture.output),
+    original = join(fixture.manage.path, fixture.resource);
+  const bytes = readFileSync(original);
+  for (const file of [output, original]) {
+    writeFileSync(file, "changed resource\n");
+    await assert.rejects(
+      readPreparedWorkbench(fixture),
+      /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+    );
+    writeFileSync(file, bytes);
+  }
+  writeFileSync(original, "changed source and copy\n");
+  writeFileSync(output, "changed source and copy\n");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+  writeFileSync(original, bytes);
+  writeFileSync(output, bytes);
+  for (const file of ["lib/unexpected.js", "lib/business/inventory-aqkc/skills/unknown.md"]) {
+    writeFileSync(join(fixture.prepared, file), bytes);
+    await assert.rejects(
+      readPreparedWorkbench(fixture),
+      /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+    );
+    rmSync(join(fixture.prepared, file));
+  }
+  const external = join(fixture.source, "..", "external-skill.md");
+  writeFileSync(external, bytes);
+  for (const file of [output, original]) {
+    rmSync(file);
+    symlinkSync(external, file);
+    await assert.rejects(
+      readPreparedWorkbench(fixture),
+      /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+    );
+    rmSync(file);
+    writeFileSync(file, bytes);
+  }
+  const parent = join(fixture.prepared, fixture.output, "..");
+  rmSync(parent, { recursive: true });
+  symlinkSync(join(fixture.manage.path, fixture.resource, ".."), parent, "dir");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+  rmSync(parent);
+  mkdirSync(parent);
+  writeFileSync(output, bytes);
+  fixture.git("-C", fixture.prepared, "add", fixture.output);
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
+test("copied Skills retain expected Manage head and receipt byte admission", async (t) => {
+  const fixture = copiedSkillFixture(t);
+  await assert.rejects(
+    readPreparedWorkbench({ ...fixture, manage: { ...fixture.manage, head: "f".repeat(40) } }),
+    /QUALITY_WORKBENCH_MANAGE_SOURCE_MISMATCH/,
+  );
+  const record = await readPreparedWorkbench(fixture);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  writeFileSync(join(fixture.prepared, fixture.output), "changed after preparation\n");
+  await assert.rejects(
+    verifyPreparedWorkbench(fixture),
+    /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+  );
+  copyFileSync(join(fixture.manage.path, fixture.resource), join(fixture.prepared, fixture.output));
+  writeFileSync(
+    fixture.receipt,
+    JSON.stringify({ ...record, files: { ...record.files, [fixture.output]: "0".repeat(64) } }),
+  );
+  await assert.rejects(verifyPreparedWorkbench(fixture), /QUALITY_WORKBENCH_ASSET_MISMATCH/);
+});
 
 test("the three built static HTML outputs are frozen while authored static source remains immutable", async (t) => {
   const fixture = preparedFixture(t);
