@@ -14,9 +14,9 @@
     },
     {
       "name": "@cleverc2200/gea-dsh-prototype",
-      "version": "0.0.156",
-      "path": "cleverc2200-gea-dsh-prototype-0.0.156.tgz",
-      "sha256": "28ae7b1ff662660ef4f297df90622dad2bcdd033dda4fbaf68baee7929b11326"
+      "version": "0.0.157",
+      "path": "cleverc2200-gea-dsh-prototype-0.0.157.tgz",
+      "sha256": "720b9c0804c9b0dd60d18502d25ef78e5e78af30b420ea5ccc9a0b3da32a2d27"
     },
     {
       "name": "@changfenhuang/dsh-genui",

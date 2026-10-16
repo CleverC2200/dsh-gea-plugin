@@ -42,7 +42,7 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       ELECTRON_BUILDER_7Z_FILTER: BCJ
       LEFTHOOK: '0'
-      GEA_COMPLETE_SOURCE_SHA: 62fc2f32bad9dd4dd0ff9576be9b2abe6ef4bfd4
+      GEA_COMPLETE_SOURCE_SHA: 67bbaac444fb751e4961b1ca8e83a689a48c29af
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,7 +50,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 62fc2f32bad9dd4dd0ff9576be9b2abe6ef4bfd4
+          ref: 67bbaac444fb751e4961b1ca8e83a689a48c29af
           path: gea
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -77,7 +77,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GEA-Desktop-rc2-win-x64-complete-local
+          name: GEA-Desktop-rc2-win-x64-gea157-local
           if-no-files-found: warn
           compression-level: 0
           path: |
