@@ -1,7 +1,16 @@
 import { installPnpmConsumerLayout } from "./fixtures/plugin-updates/pnpm-profile.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, symlink, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  symlink,
+  rm,
+  readdir,
+  readlink,
+  stat,
+  realpath,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -64,6 +73,24 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
         ? "restored"
         : "unknown";
     if (result.stage !== expected) {
+      const inspect = async (path) => {
+        for (const entry of await readdir(path, { withFileTypes: true })) {
+          const child = join(path, entry.name);
+          if (entry.isSymbolicLink()) {
+            try {
+              await realpath(child);
+            } catch (error) {
+              console.error("WINDOWS_FIXTURE_LINK", child, await readlink(child), String(error));
+              try {
+                console.error("WINDOWS_FIXTURE_LINK_TARGET", await stat(await readlink(child)));
+              } catch (targetError) {
+                console.error(String(targetError));
+              }
+            }
+          } else if (entry.isDirectory()) await inspect(child);
+        }
+      };
+      await inspect(join(f.dir, "node_modules"));
       for (const log of result.logs)
         console.error("WINDOWS_FIXTURE_LOG", mode, await readFile(log, "utf8"));
     }

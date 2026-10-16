@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, writeFile, rm, rename } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, rename, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -8,7 +8,7 @@ import { createPluginReleaseSource } from "../../../src/host/plugin-release-sour
 import { companyPackageNames, projectPluginRelease } from "../../../src/shared/plugin-release.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
 export async function controllerFixture(t, { mode = "success", sourceFailure, fileCommit } = {}) {
-  const root = await mkdtemp(join(tmpdir(), "plugin-update-real-profile-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "plugin-update-real-profile-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const dir = join(root, "profile"),
     anchor = join(root, "anchor");
