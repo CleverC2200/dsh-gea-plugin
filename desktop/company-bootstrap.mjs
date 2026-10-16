@@ -163,7 +163,7 @@ async function assertCompletedInstallation(record, profile) {
     if (error.code === "ENOENT") return;
     throw Error("GEA_COMPANY_INSTALL_INCOMPLETE", { cause: error });
   }
-  if (receipt?.status === "installed") return;
+  if (receipt?.status === "installed") return receipt;
   try {
     const prefix = "GEA_COMPANY_INSTALL_FAILED: ";
     if (
@@ -307,11 +307,15 @@ export async function installCompanyPackages({
 export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   const profile = join(home, "profiles/desktop");
   const record = join(profile, "gea/bootstrap");
-  await assertCompletedInstallation(record, profile);
+  const receipt = await assertCompletedInstallation(record, profile);
   const current = existsSync(join(profile, "package.json"))
     ? await json(join(profile, "package.json"))
     : undefined;
-  let missing = names.filter((name) => !current?.dependencies?.[name]);
+  let missing = names.filter(
+    (name) =>
+      !current?.dependencies?.[name] &&
+      (name !== "@changfenhuang/dsh-genui" || receipt?.status !== "installed"),
+  );
   if (!missing.length) return { status: "existing-profile-preserved", changed: false };
   const manifest = await readCompanySeed(seed);
   const core = await verifyCompanyCore(root, manifest.core);
@@ -323,11 +327,15 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   return withFileLock(
     join(record, "installation"),
     async () => {
-      await assertCompletedInstallation(record, profile);
+      const latestReceipt = await assertCompletedInstallation(record, profile);
       const latest = existsSync(join(profile, "package.json"))
         ? await json(join(profile, "package.json"))
         : undefined;
-      missing = names.filter((name) => !latest?.dependencies?.[name]);
+      missing = names.filter(
+        (name) =>
+          !latest?.dependencies?.[name] &&
+          (name !== "@changfenhuang/dsh-genui" || latestReceipt?.status !== "installed"),
+      );
       if (!missing.length) return { status: "existing-profile-preserved", changed: false };
       for (const file of [
         "package.json",

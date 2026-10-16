@@ -344,10 +344,7 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     );
     assert.equal(guard({ name, agent, arguments: {} }), undefined);
   }
-  const retainedReceipt = queryLimited.sections.find(
-    (section) => section.name === "gea:result-status",
-  );
-  assert.ok(retainedReceipt, "acquired evidence receipts exist before stopping");
+  assert.deepEqual(queryLimited.sections, assembly.sections, "execution gates add no system prose");
   for (let i = 0; i < 12; i++)
     assert.equal(
       guard({ name: "gea_evidence_read", agent, arguments: {} }),
@@ -357,17 +354,13 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
   const stopped = await assemble();
   assert.deepEqual(stopped.tools, [], "the final model assembly stops every tool after 12 reads");
   assert.deepEqual(
-    stopped.sections.find((section) => section.name === "gea:result-status"),
-    retainedReceipt,
-    "stopping preserves acquired evidence receipts",
+    stopped.sections,
+    assembly.sections,
+    "stopping preserves the caller system without adding budget prose",
   );
   assert.equal(
     stopped.sections.find((section) => section.name === "native").text,
     "native policy survives",
-  );
-  assert.match(
-    stopped.sections.find((section) => section.name === "gea:budget").text,
-    /本轮全部工具/,
   );
   assert.match(guard({ name: "gea_evidence_read", agent, arguments: {} }), /GEA_EVIDENCE_BUDGET/);
   for (const name of [
@@ -398,15 +391,7 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     "mcp__gea-gateway__query_business_data",
   ])
     assert.ok(!idle.tools.some((tool) => tool.name === name), "idle read exhaustion hides " + name);
-  assert.match(
-    idle.sections.find((section) => section.name === "gea:budget").text,
-    /通用文件、规划、任务和协作能力仍按官方规则可用/,
-  );
-  assert.deepEqual(
-    idle.sections.find((section) => section.name === "gea:result-status"),
-    retainedReceipt,
-    "idle retains acquired evidence receipts",
-  );
+  assert.deepEqual(idle.sections, assembly.sections, "idle gates add no system prose");
   for (const name of [
     "gea_evidence_read",
     "mcp__gea-gateway__query_business_data",

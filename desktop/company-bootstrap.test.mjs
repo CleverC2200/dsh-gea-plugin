@@ -137,6 +137,26 @@ test("an existing company profile retains configuration, disabled bundles, WeKno
     assert.equal(await readFile(join(profile, name), "utf8"), text);
 });
 
+test("an existing profile does not reinstall the uninstalled optional GenUI plugin", async () => {
+  const home = await mkdtemp(join(tmpdir(), "gea-bootstrap-genui-uninstalled-"));
+  const profile = join(home, "profiles/desktop");
+  await mkdir(join(profile, "gea/bootstrap"), { recursive: true });
+  await writeFile(join(profile, "gea/bootstrap/receipt.json"), JSON.stringify({ status: "installed" }));
+  const manifest = JSON.stringify({
+    dependencies: {
+      "@cleverc2200/dsh-agent-workbench": "keep",
+      "dsh-agent-manage": "keep",
+      "@cleverc2200/gea-dsh-prototype": "keep",
+    },
+  });
+  await writeFile(join(profile, "package.json"), manifest);
+  assert.deepEqual(
+    await bootstrapCompanyProfile({ root: "unused", support: "unused", seed: "unused", home }),
+    { status: "existing-profile-preserved", changed: false },
+  );
+  assert.equal(await readFile(join(profile, "package.json"), "utf8"), manifest);
+});
+
 test("an incomplete owned installation cannot be hidden by four declared dependencies", async () => {
   for (const receipt of [
     '{"status":"installing","packages":["dsh-agent-manage"]}',
