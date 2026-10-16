@@ -51,7 +51,7 @@ setTimeout(() => {
         "-e",
         "require('node:fs').writeFileSync(require('node:path').join(process.cwd(),'orphan-ready'),'ready');process.on('SIGTERM',()=>{});setInterval(()=>require('node:fs').writeFileSync(process.env.FIXTURE_LATE_FILE,String(Date.now())),20);setTimeout(()=>process.exit(0),10000)",
       ],
-      { stdio: "inherit", env: process.env },
+      { stdio: "inherit", env: process.env, detached: process.platform === "win32" },
     );
     fs.writeFileSync(path.join(process.cwd(), "orphan-pid"), String(child.pid));
     child.on("error", (error) => {

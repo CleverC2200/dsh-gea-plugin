@@ -12,7 +12,7 @@ import {
   realpath,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { controllerFixture, waitForStage } from "./fixtures/plugin-updates/profile.mjs";
 import { prepareWindowsFileCommit } from "../src/host/plugin-update-windows.ts";
@@ -82,7 +82,10 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
             } catch (error) {
               console.error("WINDOWS_FIXTURE_LINK", child, await readlink(child), String(error));
               try {
-                console.error("WINDOWS_FIXTURE_LINK_TARGET", await stat(await readlink(child)));
+                console.error(
+                  "WINDOWS_FIXTURE_LINK_TARGET",
+                  await stat(resolve(dirname(child), await readlink(child))),
+                );
               } catch (targetError) {
                 console.error(String(targetError));
               }

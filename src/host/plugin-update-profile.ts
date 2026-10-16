@@ -20,7 +20,7 @@ import {
   open,
   stat,
 } from "node:fs/promises";
-import { isAbsolute, join, relative, dirname } from "node:path";
+import { isAbsolute, join, relative, dirname, resolve } from "node:path";
 import {
   companyPackageNames,
   comparePluginVersions,
@@ -185,6 +185,25 @@ async function externalRoots(
       // The physical snapshot already preserves the link. Optional executable
       // targets may be absent; required package resolution is checked separately.
       if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
+      if (
+        process.platform === "win32" &&
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "EPERM"
+      ) {
+        const link = join(nodeModules, entry.path);
+        try {
+          await lstat(resolve(dirname(link), await readlink(link)));
+        } catch (targetError) {
+          if (
+            targetError instanceof Error &&
+            "code" in targetError &&
+            targetError.code === "ENOENT"
+          )
+            continue;
+          throw targetError;
+        }
+      }
       throw error;
     }
     if (within(nodeModules, target) || targets[target]) continue;
