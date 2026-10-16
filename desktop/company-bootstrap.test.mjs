@@ -141,7 +141,10 @@ test("an existing profile does not reinstall the uninstalled optional GenUI plug
   const home = await mkdtemp(join(tmpdir(), "gea-bootstrap-genui-uninstalled-"));
   const profile = join(home, "profiles/desktop");
   await mkdir(join(profile, "gea/bootstrap"), { recursive: true });
-  await writeFile(join(profile, "gea/bootstrap/receipt.json"), JSON.stringify({ status: "installed" }));
+  await writeFile(
+    join(profile, "gea/bootstrap/receipt.json"),
+    JSON.stringify({ status: "installed" }),
+  );
   const manifest = JSON.stringify({
     dependencies: {
       "@cleverc2200/dsh-agent-workbench": "keep",

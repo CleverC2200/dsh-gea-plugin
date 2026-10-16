@@ -278,16 +278,14 @@ export async function* geaTextStream(
             ["name", fn.name],
           ] as const) {
             if (fragment === undefined || fragment === "") continue;
-            if (
-              typeof fragment !== "string" ||
-              (call[field] && call[field] !== fragment)
-            )
+            if (typeof fragment !== "string" || (call[field] && call[field] !== fragment))
               invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具调用标识或名称片段冲突");
             if (!call[field]) callBytes += new TextEncoder().encode(fragment).byteLength;
             call[field] = fragment;
           }
           if (fn.arguments !== undefined) {
-            if (typeof fn.arguments !== "string") invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具参数片段不是字符串");
+            if (typeof fn.arguments !== "string")
+              invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具参数片段不是字符串");
             call.arguments += fn.arguments;
             callBytes += new TextEncoder().encode(fn.arguments).byteLength;
           }

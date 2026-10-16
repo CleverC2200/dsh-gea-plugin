@@ -195,7 +195,6 @@ export function mountBusinessPrompts(
         business.turnStopKind(agent.id) === "session-expired"
       )
         return "GEA_GATEWAY_SESSION_EXPIRED: 本轮网关会话已过期，不能通过证据回读重建会话；下一轮重新验证。";
-
     }),
   );
   offs.push(
@@ -330,8 +329,7 @@ export function mountBusinessPrompts(
     ctx.tools.register(
       defineTool({
         name: "gea_capabilities",
-        description:
-          "查看已配置的 GEA 业务模块。配置与工具可见不代表业务授权。",
+        description: "查看已配置的 GEA 业务模块。配置与工具可见不代表业务授权。",
         parameters: {},
         output,
         isConcurrencySafe: () => false,
@@ -414,7 +412,9 @@ export function mountBusinessPrompts(
         return {
           ...assembled,
           tools: assembled.tools.filter(
-            (tool) => !businessMethod(tool.name) || (gatewayMethod(tool.name) && cubeAllowed(ctx, business, agent.id)),
+            (tool) =>
+              !businessMethod(tool.name) ||
+              (gatewayMethod(tool.name) && cubeAllowed(ctx, business, agent.id)),
           ),
         };
       const state = executionState.snapshot(agent);

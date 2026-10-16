@@ -330,7 +330,10 @@ test("repeated catalog, query and evidence calls retain business and standard to
   for (const status of ["running", "idle"]) {
     agent.status = status;
     const assembled = await assemble();
-    assert.deepEqual(assembled.tools.map((tool) => tool.name), before);
+    assert.deepEqual(
+      assembled.tools.map((tool) => tool.name),
+      before,
+    );
     assert.deepEqual(assembled.sections, assembly.sections);
     for (const name of ["read_file", "run_code", "run_agent"])
       assert.equal(guard({ name, agent, arguments: {} }), undefined);
@@ -339,5 +342,8 @@ test("repeated catalog, query and evidence calls retain business and standard to
   await assert.rejects(start("read_file"), /GEA_AGENT_RESOURCE_DISABLED/);
   resourceEnabled = true;
   handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
-  assert.deepEqual((await assemble()).tools.map((tool) => tool.name), before);
+  assert.deepEqual(
+    (await assemble()).tools.map((tool) => tool.name),
+    before,
+  );
 });
