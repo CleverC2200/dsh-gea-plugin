@@ -1154,6 +1154,7 @@ export async function prepareWorkerInputs(values) {
           source: p.wb,
           prepared: p.prepared,
           head: binding.manifest.repositories.find((x) => x.repo === "dsh-agent-workbench").head,
+          manage: binding.manifest.repositories.find((x) => x.repo === "dsh-agent-manage"),
           receipt: join(p.root, "prepared-workbench.json"),
           assets: join(p.root, "prepared-workbench-assets"),
         }),

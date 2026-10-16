@@ -760,6 +760,7 @@ try {
           source: workbench.path,
           prepared: preparedWorkbench,
           head: workbench.head,
+          manage,
         });
         finalGroup?.verifyUnchanged();
         writeFileSync(workbenchReceipt, JSON.stringify(prepared, null, 2) + "\n");
@@ -767,6 +768,7 @@ try {
           source: workbench.path,
           prepared: preparedWorkbench,
           head: workbench.head,
+          manage,
           receipt: workbenchReceipt,
           assets: workbenchAssetRoot,
         });
@@ -777,6 +779,7 @@ try {
         source: workbench.path,
         prepared: preparedWorkbench,
         head: workbench.head,
+        manage,
         receipt: workbenchReceipt,
       });
       const upstreamRecord = await verifyQualityUpstreams(upstream);
