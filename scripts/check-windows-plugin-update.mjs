@@ -80,7 +80,7 @@ await build({
               'console.error("WINDOWS_FIXTURE_INSTALL_ERROR", error); if (mutationStarted) {',
             )
             .replace(
-              "if (\n                !installed ||",
+              /if\s*\(\s*!installed\s*\|\|/,
               'console.error("WINDOWS_FIXTURE_POSTCHECK", {manifest:after.manifest,archive,retains:retainsProfileFields(baseline,after,plan.release,archive),combination:validatePluginCombination({core:options.core,manifests:await combinationManifests(after,options.core,options.profile.dir)}),actual:await validateActualProfile(after,options.core,options.profile.dir,options.profile.installAnchor)}); if (\n                !installed ||',
             ),
           loader: "ts",
