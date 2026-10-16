@@ -1,6 +1,27 @@
 /** GitHub run-attempt clocks only; source admission and execution coverage belong to the caller. */
 const budgetMs = 600000;
 
+export async function waitForHostedRun({ intervalMs = 30000, timeoutMs = 1800000, ...input }) {
+  if (
+    !Number.isSafeInteger(intervalMs) ||
+    intervalMs < 1 ||
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1
+  )
+    throw Error("HOSTED_WAIT_INPUT_REQUIRED");
+  const deadline = performance.now() + timeoutMs;
+  while (true) {
+    const snapshot = await readHostedRun(input);
+    if (["completed", "waiting", "action_required"].includes(snapshot.run.status)) return snapshot;
+    if (!["queued", "in_progress", "pending", "requested"].includes(snapshot.run.status))
+      throw Error("HOSTED_RUN_STATUS_REQUIRED");
+    const remaining = deadline - performance.now();
+    if (remaining <= 0) throw Error("HOSTED_WAIT_TIMEOUT");
+    await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
+    if (performance.now() >= deadline) throw Error("HOSTED_WAIT_TIMEOUT");
+  }
+}
+
 export async function readHostedRun({
   repository,
   runId,

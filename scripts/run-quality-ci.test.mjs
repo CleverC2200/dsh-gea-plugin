@@ -14,6 +14,46 @@ import { join, resolve, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { macosIsolationTests, selectPlatformTests } from "./ci-platform-tests.mjs";
+import { parse } from "yaml";
+
+test("all admitted quality lanes reuse the same fixed SDK cache without weakening source admission", () => {
+  const workflow = parse(readFileSync(".github/workflows/quality.yml", "utf8"));
+  const producer = workflow.jobs.gates;
+  const steps = producer.steps;
+  const paths = steps.find((step) => step.id === "sdk-paths");
+  const restore = steps.find((step) => step.id === "sdk-cache");
+  const save = steps.find((step) => step.name?.startsWith("Save verified SDK cache"));
+  assert.equal(paths.if, undefined);
+  assert.equal(restore.if, undefined);
+  assert.doesNotMatch(save.if, /business-lane/);
+  assert.match(save.if, /steps\.quality-build\.outcome == 'success'/);
+  assert.match(save.if, /steps\.sdk-cache\.outputs\.cache-hit != 'true'/);
+  assert.equal(save.with.key, "${{ steps.sdk-cache.outputs.cache-primary-key }}");
+  assert.equal(restore.with.path, "${{ steps.sdk-paths.outputs.paths }}");
+  assert.equal(restore.with["restore-keys"], undefined);
+  for (const input of [
+    "github.repository",
+    "runner.os",
+    "runner.arch",
+    "steps.node.outputs.node-version",
+    "matrix.core",
+  ])
+    assert.ok(restore.with.key.includes(input), input);
+  for (const input of [
+    "prepare-official-sdk.mjs",
+    "sdk-artifact-cache.mjs",
+    "supported-cores.json",
+    "pnpm-lock.yaml",
+  ])
+    assert.ok(restore.with.key.includes(input), input);
+  const admission = steps.findIndex((step) => step.run?.includes("--phase verify-input"));
+  const plan = steps.findIndex((step) => step.id === "quality-plan");
+  const preparation = steps.findIndex((step) => step.id === "quality-prepare");
+  assert.ok(admission >= 0 && admission < plan && plan < steps.indexOf(paths));
+  assert.ok(steps.indexOf(paths) < steps.indexOf(restore) && steps.indexOf(restore) < preparation);
+  assert.equal(producer.env.QUALITY_REUSE_SDK, "true");
+  assert.match(steps[preparation].run, /--prepare-sdk.*--stage prepare/);
+});
 
 const run = (args, environment = {}) => {
   const env = { ...process.env };
@@ -328,7 +368,7 @@ test("both source and compatibility workflows require actual same-tuple macOS ex
   assert.doesNotMatch(readFileSync("scripts/isolated-validation.test.mjs", "utf8"), /skip:/);
 });
 
-test("Linux preparation exports once and workers retain independent tests after failed checks", () => {
+test("Linux preparation exports once and failed checks block executable worker inputs", () => {
   const source = readFileSync(".github/workflows/quality.yml", "utf8");
   const linux = source.slice(source.indexOf("  gates:\n"), source.indexOf("  plan-test-shards:\n"));
   const sourcePlan = source.slice(source.indexOf("  source-plan:\n"), source.indexOf("  gates:\n"));
@@ -344,8 +384,7 @@ test("Linux preparation exports once and workers retain independent tests after 
     assert.ok(step, stage);
     assert.match(step, new RegExp(`--stage ${stage}(?:\n|$)`));
     assert.match(step, /--final-group-sha256 "\$INPUT_SHA256"/);
-    if (stage === "checks") assert.match(step, /continue-on-error: true/);
-    else assert.doesNotMatch(step, /continue-on-error/);
+    assert.doesNotMatch(step, /continue-on-error/);
   }
   for (const name of [
     "Freeze the actual system Chrome distribution",
@@ -356,9 +395,12 @@ test("Linux preparation exports once and workers retain independent tests after 
     const step = steps.find((entry) => entry.includes(name));
     assert.ok(step, name);
     assert.match(step, /!cancelled\(\).*steps\.(?:quality-build|bundle)\.outcome == 'success'/);
-    assert.doesNotMatch(step, /quality-checks\.outcome|if: success/);
+    if (!name.startsWith("Publish")) assert.match(step, /quality-checks\.outcome == 'success'/);
   }
   assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: cache-path"));
+  assert.ok(linux.indexOf("id: quality-source") < linux.indexOf("id: quality-build"));
+  assert.match(linux, /quality:fast --source-only/);
+  assert.match(sourcePlan, /GITHUB_STEP_SUMMARY/);
   assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: sdk-paths"));
   assert.match(linux, /--stage plan.*--test-shards auto/);
   assert.match(linux, /QUALITY_TEST_SHARDS: \$\{\{ steps\.quality-plan\.outputs\.shards \}\}/);

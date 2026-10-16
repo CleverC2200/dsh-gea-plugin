@@ -374,7 +374,7 @@ function fixture(
     stages: {
       prepare: { status: "passed" },
       build: { status: "passed" },
-      checks: { status: "failed" },
+      checks: { status: "passed" },
     },
     checks: [],
     artifacts: Object.fromEntries(
@@ -915,8 +915,8 @@ test("one live three-file worker prepares five independent locks before receivin
   assert.equal(f.read("producer-index.json").plan.concurrency, 3);
   assert.equal(
     f.read("producer-index.json").stages.stages.checks.status,
-    "failed",
-    "a successful transport producer retains the original checks failure",
+    "passed",
+    "an executable producer has passed source checks",
   );
   const started = f.earlyReceiveAsync(apiBase, { EARLY_BROWSER_CLOSURE: "1" });
   const received = await started.closed;
@@ -935,6 +935,17 @@ test("one live three-file worker prepares five independent locks before receivin
     "executed",
   );
   assert.equal(readFileSync(join(f.root, "early-apt-executed"), "utf8"), "actual Node CLI");
+  const checked = f.read("quality-stages.json");
+  f.json("quality-stages.json", {
+    ...checked,
+    stages: { ...checked.stages, checks: { ...checked.stages.checks, status: "failed" } },
+  });
+  const blocked = f.quality("tests");
+  assert.equal(blocked.status, 1, blocked.stdout + blocked.stderr);
+  assert.match(blocked.stderr, /QUALITY_STAGE_DEPENDENCY: checks/);
+  assert.equal(existsSync(join(f.root, "tests-executed")), false);
+  assert.equal(f.read("quality-stages.json").stages.checks.status, "failed");
+  f.json("quality-stages.json", checked);
   const quality = f.quality("tests");
   assert.equal(quality.status, 0, quality.stdout + quality.stderr);
   assert.equal(readFileSync(join(f.root, "tests-executed"), "utf8"), "actual Node test");
@@ -944,8 +955,8 @@ test("one live three-file worker prepares five independent locks before receivin
   assert.equal(execution.status, "passed");
   assert.equal(
     f.read("quality-stages.json").stages.checks.status,
-    "failed",
-    "running tests must not erase failed checks",
+    "passed",
+    "running tests must retain the passed source checks",
   );
   const cleaned = f.run("scripts/quality-system-chrome.mjs", ["cleanup", "--root", f.root]);
   assert.equal(cleaned.status, 0, cleaned.stderr);
@@ -987,7 +998,7 @@ watch(process.env.GITHUB_WORKSPACE,()=>{});await new Promise(()=>{});
   chmodSync(join(f.root, "bin/gh"), 0o755);
   const run = f.earlyReceiveAsync(apiBase, { EARLY_BROWSER_CLOSURE: "1" });
   try {
-    await deadline(fileReady(join(f.root, "download-descendant")));
+    await fileReady(join(f.root, "download-descendant"), 15000);
     run.child.kill("SIGINT");
     const result = await deadline(run.closed);
     assert.equal(result.code, 1, result.stderr);
@@ -1017,7 +1028,9 @@ test("the public source planner and final catalog reconcile original producer in
     sources: candidate.repositories.map(({ repo, head }) => ({ repo, head })),
   };
   f.put("controls/one/control.json", readFileSync(join(f.root, "early.json")));
-  f.put("indexes/one/quality-index.json", readFileSync(join(f.root, "producer-index.json")));
+  const failedChecks = f.read("producer-index.json");
+  failedChecks.stages.stages.checks.status = "failed";
+  f.json("indexes/one/quality-index.json", failedChecks);
   f.put("expected.json", JSON.stringify(expected));
   const planArgs = [
     "--mode",
@@ -1135,6 +1148,9 @@ test("early APT failures and before/after package drift cannot fall back to a la
 
 test("the producer binding fixes actual sources, SDK builder and original execution inputs while retaining failed checks", (t) => {
   const f = fixture(t);
+  const stages = f.read("quality-stages.json");
+  stages.stages.checks.status = "failed";
+  f.json("quality-stages.json", stages);
   const result = f.produce();
   assert.equal(result.status, 0, result.stderr);
   const original = readFileSync(join(f.root, "binding.json"));
@@ -1170,6 +1186,7 @@ test("the producer binding fixes actual sources, SDK builder and original execut
     hash(readFileSync(join(f.manage, "scripts/prepare-official-sdk.mjs"))),
   );
   assert.equal(b.worker.environment.imageVersion, "fixture-image");
+  assert.equal(f.read("quality-stages.json").stages.checks.status, "failed");
   assert.ok(b.worker.sources.some((x) => x.packageManager === "pnpm@11.17.0"));
 });
 
@@ -1742,12 +1759,12 @@ test("worker CLI rechecks all fresh dependency roots after managers are ready be
   assert.equal(f.read("quality-worker-inputs.json").status, "failed");
 });
 
-function fileReady(file) {
+function fileReady(file, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       watcher.close();
       reject(Error("fixture process did not become ready"));
-    }, 5000);
+    }, timeoutMs);
     const check = () => {
       if (existsSync(file)) {
         clearTimeout(timer);
