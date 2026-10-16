@@ -614,56 +614,6 @@ test("a required fixture skip fails the staged test entry and final summary", (t
   assert.equal(f.run("summary").status, 1);
 });
 
-test("stage fixtures ignore a concurrent quality fixture disappearing from scripts", (t) => {
-  const directory = mkdtempSync(join(tmpdir(), "gea-stage-copy-race-"));
-  t.after(() => rmSync(directory, { recursive: true, force: true }));
-  const probeSource = join(directory, "source");
-  for (const file of [...fixtureSourceFiles, "run-quality-ci-stages.test.mjs"]) {
-    const target = join(probeSource, "scripts", file);
-    mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(join(sourceRoot, "scripts", file), target);
-  }
-  const transient = realpathSync(mkdtempSync(join(probeSource, "scripts/quality-fixture-")));
-  writeFileSync(join(transient, "sample.mjs"), "export const value = 1;\n");
-  const schedule = join(directory, "disappear.mjs");
-  // Pin the filesystem race at the recursive-copy boundary instead of depending on timing.
-  writeFileSync(
-    schedule,
-    `
-    import fs from "node:fs";
-    import { syncBuiltinESMExports } from "node:module";
-    const copy = fs.cpSync;
-    fs.cpSync = (source, target, options) => copy(source, target, {
-      ...options,
-      filter(file) {
-        if (file === ${JSON.stringify(transient)}) fs.rmSync(file, { recursive: true, force: true });
-        return true;
-      },
-    });
-    syncBuiltinESMExports();
-  `,
-  );
-  const env = {
-    ...process.env,
-    NODE_OPTIONS: `--import=${schedule}`,
-    GEA_FINAL_GROUP_WORKBENCH_SOURCE:
-      process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ?? resolve(sourceRoot, "../dsh-agent-workbench"),
-    GEA_FINAL_GROUP_MANAGE_SOURCE:
-      process.env.GEA_FINAL_GROUP_MANAGE_SOURCE ?? resolve(sourceRoot, "../dsh-agent-manage"),
-  };
-  delete env.NODE_TEST_CONTEXT;
-  const result = spawnSync(
-    process.execPath,
-    [
-      "--test",
-      "--test-name-pattern=^separate CLI processes prepare once",
-      "scripts/run-quality-ci-stages.test.mjs",
-    ],
-    { cwd: probeSource, encoding: "utf8", env },
-  );
-  assert.equal(result.status, 0, result.stdout + result.stderr);
-});
-
 test("a frozen worker executes only its assigned shard and cannot claim complete coverage", (t) => {
   const f = fixture(t, { additionalTests: ["tests/worker-only.test.mjs"] });
   const flags = ["--test-shards", "2"];

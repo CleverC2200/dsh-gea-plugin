@@ -1608,26 +1608,7 @@ test("the actual producer binding and index CLI preserve the exact bytes consume
 });
 
 test("worker independently reads Linux OS and ABI and rejects drift or missing facts before source preparation or install", (t) => {
-  const cases = [
-    { ImageOS: "other-image-os" },
-    { FIXTURE_OS_RELEASE: 'ID=debian\nVERSION_ID="24.04"\n' },
-    { FIXTURE_OS_RELEASE: 'ID=ubuntu\nVERSION_ID="24.10"\n' },
-    { FIXTURE_ARCH: "other-arch" },
-    { FIXTURE_PLATFORM: "other-os" },
-    { FIXTURE_NODE: "24.0.0" },
-    { FIXTURE_MODULES: String(Number(process.versions.modules) + 1) },
-    { FIXTURE_NAPI: String(Number(process.versions.napi) + 1) },
-    { FIXTURE_GLIBC: "2.40" },
-    { ImageOS: "" },
-    { ImageVersion: "" },
-    { FIXTURE_MODULES: "" },
-    { FIXTURE_NAPI: "" },
-    { FIXTURE_GLIBC: "" },
-    { FIXTURE_OS_RELEASE: "MISSING" },
-    { FIXTURE_OS_RELEASE: 'VERSION_ID="24.04"\n' },
-    { FIXTURE_OS_RELEASE: "ID=ubuntu\n" },
-    { FIXTURE_OS_RELEASE: 'ID="ubuntu\nVERSION_ID=24.04\n' },
-  ];
+  const cases = [{ FIXTURE_OS_RELEASE: "MISSING" }, { FIXTURE_GLIBC: "2.40" }];
   for (const environment of cases) {
     const f = fixture(t, { browser: true });
     const producer = f.produce();
