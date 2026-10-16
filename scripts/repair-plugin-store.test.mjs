@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, symlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import * as YAML from "yaml";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { refreshCompanyCore } from "../desktop/company-bootstrap.mjs";
 import { repairPluginStore } from "./repair-plugin-store.mjs";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 if (!sdk) throw Error("GEA_PLUGIN_UPDATE_SDK required");
@@ -104,4 +106,93 @@ test("an old updater without a store argument can install after the local bridge
     YAML.parse(await readFile(join(profile, "node_modules/.modules.yaml"), "utf8")).storeDir,
     originalStore,
   );
+});
+
+const currentCore = {
+  kind: "desktop",
+  root: "/Applications/GEA Desktop.app/Contents/Resources/app.asar",
+  head: "639ed015397290b3745d163aafe02ffee4aa3f84",
+  version: "0.2.0-rc.2",
+  artifacts: [{ path: "package.json", sha256: "a".repeat(64) }],
+};
+
+test("an existing profile that only added GenUI receives its missing update source and preserves prior settings and receipts", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "gea-existing-update-source-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const root = join(directory, "app"),
+    seed = join(directory, "seed"),
+    home = join(directory, "home");
+  const profile = join(home, "profiles/desktop"),
+    bootstrap = join(profile, "gea/bootstrap");
+  await mkdir(join(root, "dsh/node_modules/@deepseek-ai"), { recursive: true });
+  await mkdir(seed);
+  await mkdir(bootstrap, { recursive: true });
+  const repository = fileURLToPath(new URL("../", import.meta.url));
+  await symlink(
+    await realpath(join(repository, "node_modules/yaml")),
+    join(root, "dsh/node_modules/yaml"),
+    "dir",
+  );
+  await symlink(
+    await realpath(join(repository, "node_modules/@deepseek-ai/dsh-atomic-write")),
+    join(root, "dsh/node_modules/@deepseek-ai/dsh-atomic-write"),
+    "dir",
+  );
+  await writeFile(join(root, "dsh/package.json"), "{}");
+  const metadata = JSON.stringify({
+    version: currentCore.version,
+    dshBuildCommit: currentCore.head,
+    dshBuildDirty: false,
+  });
+  await writeFile(join(root, "package.json"), metadata);
+  const core = {
+    ...currentCore,
+    root,
+    artifacts: [
+      {
+        path: "package.json",
+        sha256: createHash("sha256").update(metadata).digest("hex"),
+      },
+    ],
+  };
+  const source = {
+    channelUrl: "https://example.test/stable.json",
+    publicKey: "keep",
+  };
+  await writeFile(join(seed, "manifest.json"), JSON.stringify({ core, source }));
+  const patch =
+    "- id: gea-proof\n  disabled: false\n  config:\n    knowledge:\n      baseUrl: https://weknora.example.test\n- id: user-disabled\n  disabled: true\n";
+  await writeFile(join(profile, "cordis.patch.yml"), patch);
+  const receipt = JSON.stringify({
+    status: "installed",
+    changed: true,
+    packages: [{ name: "@changfenhuang/dsh-genui", version: "0.11.3" }],
+  });
+  await writeFile(join(bootstrap, "receipt.json"), receipt);
+  assert.equal((await refreshCompanyCore({ root, seed, home, apply: false })).status, "ready");
+  assert.equal(await readFile(join(profile, "cordis.patch.yml"), "utf8"), patch);
+  const result = await refreshCompanyCore({ root, seed, home });
+  assert.equal(result.status, "update-source-configured");
+  assert.equal(await readFile(result.backup, "utf8"), patch);
+  assert.equal(await readFile(join(bootstrap, "receipt.json"), "utf8"), receipt);
+  const YAML = await import("yaml");
+  const rows = YAML.parse(await readFile(join(profile, "cordis.patch.yml"), "utf8"));
+  assert.deepEqual(rows[0].config.knowledge, {
+    baseUrl: "https://weknora.example.test",
+  });
+  assert.deepEqual(rows[0].config.pluginUpdates, {
+    source,
+    core,
+    checkTimeoutMs: 60000,
+    pollIntervalMs: 2000,
+  });
+  assert.deepEqual(rows[1], { id: "user-disabled", disabled: true });
+  await writeFile(
+    join(seed, "manifest.json"),
+    JSON.stringify({
+      core,
+      source: { channelUrl: "https://example.test/other.json" },
+    }),
+  );
+  assert.equal((await refreshCompanyCore({ root, seed, home })).changed, false);
 });
