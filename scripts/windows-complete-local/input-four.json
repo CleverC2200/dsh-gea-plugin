@@ -2,21 +2,21 @@
   "packages": [
     {
       "name": "@cleverc2200/dsh-agent-workbench",
-      "version": "0.1.8",
-      "path": "cleverc2200-dsh-agent-workbench-0.1.8.tgz",
-      "sha256": "22434e45e47c94fdf5de420c7cc4150a6a35b1b9bfde892d539fe96336f845e2"
+      "version": "0.1.9",
+      "path": "cleverc2200-dsh-agent-workbench-0.1.9.tgz",
+      "sha256": "4d195000e1d92db5db4c439e4fd5c16a55da424c18f47452d6c371c9b2c567ff"
     },
     {
       "name": "dsh-agent-manage",
-      "version": "0.6.3-company.15",
-      "path": "dsh-agent-manage-0.6.3-company.15.tgz",
-      "sha256": "b917a338ff6a7f10bfe9a6911aa5aed3fd3dcfb3ba05672aa984a8c82509ab69"
+      "version": "0.6.3-company.16",
+      "path": "dsh-agent-manage-0.6.3-company.16.tgz",
+      "sha256": "2c8c6719f708da7f4b27c6cb59843029b22356a0bdf3210a0f38dc49e16db23d"
     },
     {
       "name": "@cleverc2200/gea-dsh-prototype",
-      "version": "0.0.155",
-      "path": "cleverc2200-gea-dsh-prototype-0.0.155.tgz",
-      "sha256": "42bbb26978402e835d843567aea979fdc65a2b192ecbbee8c68ba8cee969489e"
+      "version": "0.0.156",
+      "path": "cleverc2200-gea-dsh-prototype-0.0.156.tgz",
+      "sha256": "28ae7b1ff662660ef4f297df90622dad2bcdd033dda4fbaf68baee7929b11326"
     },
     {
       "name": "@changfenhuang/dsh-genui",

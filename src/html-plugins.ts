@@ -149,7 +149,11 @@ export async function registerHtmlPlugins(
         capability: manifest.declarations.capability,
         profile,
         enabled: capabilityContract.enabled !== false && !retired,
-        skillFiles: { [manifest.id]: manifest.skills?.[0] },
+        skillFiles: Object.fromEntries(
+          profile.skills.flatMap((name, index) =>
+            manifest.skills?.[index] ? [[name, manifest.skills[index]]] : [],
+          ),
+        ),
       },
     ]);
     ctx.effect(() => releaseResources);

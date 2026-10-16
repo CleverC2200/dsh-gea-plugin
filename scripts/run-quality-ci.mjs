@@ -931,8 +931,8 @@ try {
         stages.record.checks.push(...checks);
         const failed = checks.some((check) => check.status !== "passed");
         stages.finish(failed ? Error("QUALITY_CHECKS_FAILED") : undefined);
+        if (failed) refuse("QUALITY_CHECKS_FAILED", JSON.stringify(checks));
         if (values.stage === "checks") {
-          if (failed) refuse("QUALITY_CHECKS_FAILED", JSON.stringify(checks));
           process.exit(0);
         }
       }

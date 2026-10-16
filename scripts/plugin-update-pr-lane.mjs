@@ -12,12 +12,12 @@ export const pluginUpdateAuthorization = Object.freeze({
 });
 export const desktopBootstrapAuthorization = Object.freeze({
   repository: "CleverC2200/dsh-gea-plugin",
-  pullRequest: 80,
-  branch: "codex/gea-complete-desktop-20261016",
+  pullRequest: 81,
+  branch: "codex/gea-core-proof-refresh-20261016",
   instruction:
     "补齐最新三个核心插件、GenUI 和首次安装初始化，重打 Mac/Windows 完整 GEA 包；保留 WeKnora、已有配置与更新回执，不改 Core，只跑必要的定向校验。",
-  productHead: "f44d84ca32a3dfdcdff544aa86407309ea5768ac",
-  base: "aba376f9ee6c24c09ca64621a75fcc898cf84c20",
+  productHead: "3ead615b946d5a18bdf8be3d1bdfba52a337e920",
+  base: "2b182e25c0562b63c8cedaa6c27ae9cd6cbb8e5e",
 });
 const supplements = [
   "scripts/plugin-update-pr-lane.mjs",
@@ -29,12 +29,17 @@ const supplements = [
   "tests/plugin-release.test.mjs",
 ];
 const bootstrapSupplements = [
+  "scripts/quality-peer-baseline.json",
   "scripts/plugin-update-pr-lane.mjs",
   "scripts/plugin-update-pr-lane.test.mjs",
   "scripts/run-quality-ci.mjs",
   ".github/workflows/delivery-fixtures.yml",
   "docs/ci-core-policy.md",
 ];
+const desktopCompanions = {
+  "dsh-agent-workbench": "59aea218088da1ce0cdbbffb932cfb9cd518cae8",
+  "dsh-agent-manage": "6c54ba254e391ec34eb91f0cb4f2cec164be2cea",
+};
 const frozenSources = {
   "dsh-agent-workbench": "eda9f6367c35544f45866c5e06e1ebfd1f5b61e0",
   "dsh-agent-manage": "e7685b22e071fc8728f6e455699fa1d8099f5a00",
@@ -50,8 +55,7 @@ export function selectPluginUpdateLane(input, a = pluginUpdateAuthorization) {
   if (input.event === "pull_request") {
     if (input.branch === a.branch && input.pullRequest !== a.pullRequest)
       throw Error("PLUGIN_UPDATE_SCOPE_REJECTED");
-    if (input.pullRequest !== a.pullRequest || input.branch !== a.branch)
-      return false;
+    if (input.pullRequest !== a.pullRequest || input.branch !== a.branch) return false;
     if (input.headRepository !== a.repository || !input.matches)
       throw Error("PLUGIN_UPDATE_SCOPE_REJECTED");
     return true;
@@ -72,13 +76,7 @@ export function pluginUpdateLane(root, env = process.env) {
   let bootstrapMerge = false;
   if (env.GITHUB_EVENT_NAME === "push") {
     try {
-      git(
-        root,
-        "merge-base",
-        "--is-ancestor",
-        desktopBootstrapAuthorization.productHead,
-        head,
-      );
+      git(root, "merge-base", "--is-ancestor", desktopBootstrapAuthorization.productHead, head);
       bootstrapMerge = true;
     } catch {}
   }
@@ -96,41 +94,31 @@ export function pluginUpdateLane(root, env = process.env) {
       branch: event.pull_request?.head?.ref,
       headRepository: event.pull_request?.head?.repo?.full_name,
       ref: env.GITHUB_REF,
-      parents: git(root, "show", "-s", "--format=%P", head)
-        .split(" ")
-        .filter(Boolean),
+      parents: git(root, "show", "-s", "--format=%P", head).split(" ").filter(Boolean),
       matches:
         (!env.QUALITY_EXPECTED_SHA || env.QUALITY_EXPECTED_SHA === head) &&
         matchesFrozenSource(
           { path: root, head },
           authorization.productHead,
-          authorization === desktopBootstrapAuthorization
-            ? bootstrapSupplements
-            : supplements,
+          authorization === desktopBootstrapAuthorization ? bootstrapSupplements : supplements,
         ),
     },
     authorization,
   );
 }
 export function validatePluginUpdateGroup(repositories) {
-  if (
-    repositories.length !== 3 ||
-    new Set(repositories.map((row) => row.repo)).size !== 3
-  )
+  if (repositories.length !== 3 || new Set(repositories.map((row) => row.repo)).size !== 3)
     throw Error("PLUGIN_UPDATE_GROUP_REJECTED");
   const gea = repositories.find((row) => row.repo === "dsh-gea-plugin");
   const bootstrap =
     gea &&
-    matchesFrozenSource(
-      gea,
-      desktopBootstrapAuthorization.productHead,
-      bootstrapSupplements,
-    );
+    matchesFrozenSource(gea, desktopBootstrapAuthorization.productHead, bootstrapSupplements);
   for (const [repo, original] of Object.entries(frozenSources)) {
-    const baseline =
-      bootstrap && repo === "dsh-gea-plugin"
+    const baseline = bootstrap
+      ? repo === "dsh-gea-plugin"
         ? desktopBootstrapAuthorization.productHead
-        : original;
+        : desktopCompanions[repo]
+      : original;
     const entry = repositories.find((row) => row.repo === repo);
     if (
       !entry ||
@@ -141,7 +129,9 @@ export function validatePluginUpdateGroup(repositories) {
           ? bootstrap
             ? bootstrapSupplements
             : supplements
-          : [],
+          : bootstrap
+            ? ["scripts/quality-peer-baseline.json"]
+            : [],
       )
     )
       throw Error("PLUGIN_UPDATE_GROUP_REJECTED: " + repo);
@@ -150,22 +140,20 @@ export function validatePluginUpdateGroup(repositories) {
 export function pluginUpdatePlanFor(repositories) {
   const gea = repositories.find((row) => row.repo === "dsh-gea-plugin");
   return gea &&
-    matchesFrozenSource(
-      gea,
-      desktopBootstrapAuthorization.productHead,
-      bootstrapSupplements,
-    )
+    matchesFrozenSource(gea, desktopBootstrapAuthorization.productHead, bootstrapSupplements)
     ? {
         lane: "plugin-update-pr",
         runtime: false,
         browser: false,
-        acceptance:
-          "targeted complete desktop bootstrap; broad selection not run",
+        acceptance: "targeted complete desktop bootstrap; broad selection not run",
         authorization: desktopBootstrapAuthorization,
         files: [
           "scripts/plugin-update-pr-lane.test.mjs",
           "desktop/company-bootstrap.test.mjs",
           "desktop/official-branding.test.mjs",
+          "tests/client-account.test.mjs",
+          "tests/base-inventory-resources.test.mjs",
+          "tests/plugin-release.test.mjs",
         ],
       }
     : pluginUpdatePlan;

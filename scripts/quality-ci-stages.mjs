@@ -97,7 +97,7 @@ export function qualityStageRun({ file, binding, requested }) {
       for (const dependency of dependencies)
         if (record.stages[dependency]?.status !== "passed")
           throw Error("QUALITY_STAGE_DEPENDENCY: " + dependency);
-      if (name === "tests" && !["passed", "failed"].includes(record.stages.checks?.status))
+      if (name === "tests" && record.stages.checks?.status !== "passed")
         throw Error("QUALITY_STAGE_DEPENDENCY: checks");
       current = name;
       record.stages[name] = { status: "running", startedAt: new Date().toISOString() };

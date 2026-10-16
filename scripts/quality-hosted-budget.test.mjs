@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assessHostedBudget, readHostedRun } from "./quality-hosted-budget.mjs";
+import { assessHostedBudget, readHostedRun, waitForHostedRun } from "./quality-hosted-budget.mjs";
 import { createServer } from "node:http";
 import { once } from "node:events";
 
@@ -87,6 +87,54 @@ async function restFixture(t, change = (response) => response) {
   t.after(() => new Promise((resolve) => server.close(resolve)));
   return { apiBase: `http://127.0.0.1:${server.address().port}`, requests };
 }
+
+test("one waiter retains the original attempt and returns terminal or actionable results", async (t) => {
+  for (const [status, conclusion] of [
+    ["completed", "success"],
+    ["completed", "failure"],
+    ["completed", "cancelled"],
+    ["waiting", null],
+  ]) {
+    let reads = 0;
+    const api = await restFixture(t, (response) => {
+      if (!response.path.endsWith("/jobs")) {
+        reads++;
+        response.body.status = reads === 1 ? "in_progress" : status;
+        response.body.conclusion = reads === 1 ? null : conclusion;
+      }
+      return response;
+    });
+    const result = await waitForHostedRun({
+      ...expected,
+      apiBase: api.apiBase,
+      intervalMs: 1,
+      timeoutMs: 2000,
+    });
+    assert.equal(reads, 2);
+    assert.equal(result.run.status, status);
+    assert.equal(result.run.conclusion, conclusion);
+    assert.equal(result.expected.runAttempt, 1);
+    assert.equal(assess(result).passed, conclusion === "success");
+  }
+});
+
+test("the waiter stops on API errors, unknown states and its deadline", async (t) => {
+  for (const [status, httpStatus, error] of [
+    ["in_progress", 200, /HOSTED_WAIT_TIMEOUT/],
+    ["unrecognized", 200, /HOSTED_RUN_STATUS_REQUIRED/],
+    ["in_progress", 403, /HOSTED_API_READ_FAILED/],
+  ]) {
+    const api = await restFixture(t, (response) => {
+      response.status = httpStatus;
+      response.body.status = status;
+      return response;
+    });
+    await assert.rejects(
+      waitForHostedRun({ ...expected, apiBase: api.apiBase, intervalMs: 1, timeoutMs: 50 }),
+      error,
+    );
+  }
+});
 
 test("the public hosted reader fetches every attempt-specific jobs page through real HTTP", async (t) => {
   const api = await restFixture(t);

@@ -6,7 +6,67 @@ import { join } from "node:path";
 import {
   bootstrapCompanyProfile,
   readCompanySeed,
+  planCompanyCoreRefresh,
 } from "./company-bootstrap.mjs";
+
+const currentCore = {
+  kind: "desktop",
+  root: "/Applications/GEA Desktop.app/Contents/Resources/app.asar",
+  head: "639ed015397290b3745d163aafe02ffee4aa3f84",
+  version: "0.2.0-rc.2",
+  artifacts: [{ path: "package.json", sha256: "a".repeat(64) }],
+};
+
+test("the same admitted desktop Core refresh changes only its proof and supplies absent timing defaults", () => {
+  const updates = {
+    source: { channelUrl: "https://example.test/stable.json", publicKey: "keep" },
+    checkTimeoutMs: 45000,
+    pollIntervalMs: 1500,
+    core: {
+      ...currentCore,
+      root: "/Applications/old.app/Contents/Resources/app.asar",
+      artifacts: [{ path: "package.json", sha256: "b".repeat(64) }],
+    },
+  };
+  const config = { pluginUpdates: updates, knowledge: { baseUrl: "https://weknora.example.test" } };
+  const before = structuredClone(config);
+  const next = planCompanyCoreRefresh(updates, currentCore);
+  assert.deepEqual(next, { ...updates, core: currentCore });
+  assert.deepEqual(config, before);
+  assert.deepEqual(
+    planCompanyCoreRefresh({ source: updates.source, core: updates.core }, currentCore),
+    {
+      source: updates.source,
+      core: currentCore,
+      checkTimeoutMs: 60000,
+      pollIntervalMs: 2000,
+    },
+  );
+  assert.equal(planCompanyCoreRefresh(undefined, currentCore), undefined);
+});
+
+test("a different or unknown Core proof and invalid configured timing cannot be refreshed", () => {
+  for (const changed of [
+    { core: { ...currentCore, head: "b".repeat(40) } },
+    { core: { ...currentCore, version: "0.2.1-alpha.1" } },
+    { core: { ...currentCore, kind: "source" } },
+    { core: { ...currentCore, unrecognizedAdmission: true } },
+    { core: { ...currentCore, artifacts: [] } },
+    { core: { ...currentCore, artifacts: [{ path: "other.js", sha256: "b".repeat(64) }] } },
+    { core: undefined },
+    { checkTimeoutMs: 999 },
+    { pollIntervalMs: 30001 },
+  ]) {
+    const updates = { source: { channelUrl: "keep" }, core: currentCore, ...changed };
+    const before = structuredClone(updates);
+    assert.throws(() => planCompanyCoreRefresh(updates, currentCore), /GEA_CORE_REFRESH_REJECTED/);
+    assert.deepEqual(updates, before);
+  }
+  assert.throws(
+    () => planCompanyCoreRefresh({ core: currentCore }, { ...currentCore, head: "b".repeat(40) }),
+    /GEA_CORE_REFRESH_REJECTED/,
+  );
+});
 
 test("an existing company profile retains configuration, disabled bundles, WeKnora and update receipts byte for byte", async () => {
   const home = await mkdtemp(join(tmpdir(), "gea-bootstrap-existing-"));
@@ -27,11 +87,9 @@ test("an existing company profile retains configuration, disabled bundles, WeKno
     "cordis.patch.yml":
       "- id: gea-proof\n  config:\n    knowledge:\n      baseUrl: https://weknora.example.test\n",
     "gea/plugin-updates/latest.json": '{"id":"old","stage":"completed"}',
-    "gea/plugin-updates/operations/old/receipt.json":
-      '{"version":"0.0.154","stage":"completed"}',
+    "gea/plugin-updates/operations/old/receipt.json": '{"version":"0.0.154","stage":"completed"}',
   };
-  for (const [name, text] of Object.entries(files))
-    await writeFile(join(profile, name), text);
+  for (const [name, text] of Object.entries(files)) await writeFile(join(profile, name), text);
   const result = await bootstrapCompanyProfile({
     root: "unused",
     support: "unused",
@@ -44,6 +102,37 @@ test("an existing company profile retains configuration, disabled bundles, WeKno
   });
   for (const [name, text] of Object.entries(files))
     assert.equal(await readFile(join(profile, name), "utf8"), text);
+});
+
+test("an incomplete owned installation cannot be hidden by four declared dependencies", async () => {
+  for (const receipt of [
+    '{"status":"installing","packages":["dsh-agent-manage"]}',
+    '{"status":"failed","diagnostic":"configuration write failed"}',
+    '{"status":"unknown"}',
+    "{incomplete",
+  ]) {
+    const home = await mkdtemp(join(tmpdir(), "gea-bootstrap-incomplete-"));
+    const profile = join(home, "profiles/desktop");
+    const record = join(profile, "gea/bootstrap/receipt.json");
+    await mkdir(join(profile, "gea/bootstrap"), { recursive: true });
+    const manifest = JSON.stringify({
+      dependencies: {
+        "@cleverc2200/dsh-agent-workbench": "keep",
+        "dsh-agent-manage": "keep",
+        "@cleverc2200/gea-dsh-prototype": "keep",
+        "@changfenhuang/dsh-genui": "keep",
+      },
+      dsh: { profile: { bundles: ["user-choice"] } },
+    });
+    await writeFile(join(profile, "package.json"), manifest);
+    await writeFile(record, receipt);
+    await assert.rejects(
+      bootstrapCompanyProfile({ root: "unused", support: "unused", seed: "unused", home }),
+      /GEA_COMPANY_INSTALL_INCOMPLETE/,
+    );
+    assert.equal(await readFile(record, "utf8"), receipt);
+    assert.equal(await readFile(join(profile, "package.json"), "utf8"), manifest);
+  }
 });
 
 test("a damaged bundled archive stops first installation before creating the user profile", async () => {
@@ -79,10 +168,7 @@ test("a damaged bundled archive stops first installation before creating the use
 
 test("the packaged seed rejects missing plugins and paths outside its archives directory", async () => {
   const seed = await mkdtemp(join(tmpdir(), "gea-bootstrap-manifest-"));
-  await writeFile(
-    join(seed, "manifest.json"),
-    JSON.stringify({ schema: 1, packages: [] }),
-  );
+  await writeFile(join(seed, "manifest.json"), JSON.stringify({ schema: 1, packages: [] }));
   await assert.rejects(readCompanySeed(seed), /GEA_SEED_INVALID/);
   const names = [
     "@cleverc2200/dsh-agent-workbench",

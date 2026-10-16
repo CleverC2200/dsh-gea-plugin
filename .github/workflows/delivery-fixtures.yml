@@ -42,7 +42,7 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       ELECTRON_BUILDER_7Z_FILTER: BCJ
       LEFTHOOK: '0'
-      GEA_COMPLETE_SOURCE_SHA: f87a95eb1e7bf09685e05a1eeab5fd96447b7e19
+      GEA_COMPLETE_SOURCE_SHA: 317b886c7b2292586461c657f9841067cddaafbb
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,7 +50,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: f87a95eb1e7bf09685e05a1eeab5fd96447b7e19
+          ref: 317b886c7b2292586461c657f9841067cddaafbb
           path: gea
           persist-credentials: false
       - uses: actions/checkout@v4

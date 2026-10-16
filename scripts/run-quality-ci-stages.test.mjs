@@ -436,16 +436,16 @@ test("the public staged test entry proves every actual file exactly once and rec
   assert.match(duplicate.stderr, /QUALITY_TEST_EXECUTION_REJECTED/);
 });
 
-test("checks failure keeps real tests running and the final receipt fails", (t) => {
+test("checks failure blocks real tests and the final receipt fails", (t) => {
   const f = fixture(t);
   for (const stage of ["prepare", "build"]) assert.equal(f.run(stage).status, 0);
   assert.equal(f.run("checks", { FIXTURE_FAIL: "checks" }).status, 1);
-  assert.equal(f.run("tests").status, 0);
-  assert.ok(existsSync(join(f.job, "tests-executed")));
+  assert.equal(f.run("tests").status, 1);
+  assert.equal(existsSync(join(f.job, "tests-executed")), false);
   assert.equal(f.run("summary").status, 1);
   assert.deepEqual(
     f.read().checks.map((entry) => entry.status),
-    ["passed", "failed", "passed"],
+    ["passed", "failed"],
   );
 });
 
@@ -500,13 +500,13 @@ test("cancelled processes retain running receipts and summary refuses cancellati
     assert.equal(good.run("summary", { ...results, QUALITY_STAGE_TESTS_RESULT: value }).status, 1);
 });
 
-test("the default full CLI keeps independent checks and real tests in one invocation", (t) => {
+test("the default full CLI starts real tests only after passed checks", (t) => {
   for (const fail of [undefined, "checks", "tests"]) {
     const f = fixture(t);
     const result = f.run(undefined, { FIXTURE_FAIL: fail });
     assert.equal(result.status, fail ? 1 : 0, result.stdout + result.stderr);
-    assert.ok(existsSync(join(f.job, "tests-executed")));
-    assert.equal(f.read().checks.length, 3);
+    assert.equal(existsSync(join(f.job, "tests-executed")), fail !== "checks");
+    assert.equal(f.read().checks.length, fail === "checks" ? 2 : 3);
   }
 });
 
