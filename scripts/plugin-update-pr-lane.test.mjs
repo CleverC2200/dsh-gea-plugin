@@ -118,6 +118,8 @@ test("desktop first-install scope is bound to its own PR and frozen packaging so
     "scripts/plugin-update-pr-lane.test.mjs",
     "desktop/company-bootstrap.test.mjs",
     "desktop/official-branding.test.mjs",
+    "tests/client-account.test.mjs",
+    "tests/base-inventory-resources.test.mjs",
   ]);
   assert.equal(plan.authorization, a);
   assert.equal(plan.browser, false);

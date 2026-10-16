@@ -44,4 +44,4 @@ The selected tests cover direct structured/text results, historical resource int
 
 ## PR 80 完整桌面首次安装
 
-用户要求仅跑本次四插件首次安装与品牌装配影响的校验。固定产品提交 `f44d84ca32a3dfdcdff544aa86407309ea5768ac`；来源、分支、三仓输入及补充文件白名单由 `desktopBootstrapAuthorization` 定义。不匹配输入拒绝。测试仅选 bootstrap、品牌装配及路由拒绝条件三个文件；静态检查、构建、macOS 隔离和原最终聚合保持必需，分支保护不变。Mac/Windows 安装包和真实公司登录另行验收，源码 CI 不代替实际客户端结论。
+用户要求仅跑四插件首次安装、品牌与登录接线、基地库存新资源影响的校验。固定产品提交 `55251e27cbc873aee2a99873f284890909f737d7`；来源、分支、三仓产品输入及 CI 补充白名单由 `desktopBootstrapAuthorization` 定义，不匹配输入拒绝。GEA 定向五文件覆盖初始化、品牌、账户与多技能装配及路由拒绝条件；Workbench/Manage 沿既有 required-and-affected。静态检查、构建、macOS 隔离和原最终聚合保持必需，分支保护不变。Mac/Windows 包和真实公司登录另行验收，源码 CI 不代替客户端结论。原运行 38857068175 的格式失败保留，不重跑旧输入。

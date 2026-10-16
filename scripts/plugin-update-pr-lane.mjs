@@ -16,8 +16,8 @@ export const desktopBootstrapAuthorization = Object.freeze({
   branch: "codex/gea-complete-desktop-20261016",
   instruction:
     "补齐最新三个核心插件、GenUI 和首次安装初始化，重打 Mac/Windows 完整 GEA 包；保留 WeKnora、已有配置与更新回执，不改 Core，只跑必要的定向校验。",
-  productHead: "f44d84ca32a3dfdcdff544aa86407309ea5768ac",
-  base: "aba376f9ee6c24c09ca64621a75fcc898cf84c20",
+  productHead: "55251e27cbc873aee2a99873f284890909f737d7",
+  base: "4579bf2485063c9dfbe7ad74b8b46f37c4fffcdb",
 });
 const supplements = [
   "scripts/plugin-update-pr-lane.mjs",
@@ -29,12 +29,17 @@ const supplements = [
   "tests/plugin-release.test.mjs",
 ];
 const bootstrapSupplements = [
+  "scripts/quality-peer-baseline.json",
   "scripts/plugin-update-pr-lane.mjs",
   "scripts/plugin-update-pr-lane.test.mjs",
   "scripts/run-quality-ci.mjs",
   ".github/workflows/delivery-fixtures.yml",
   "docs/ci-core-policy.md",
 ];
+const desktopCompanions = {
+  "dsh-agent-workbench": "60bcbf039b80bf113b06a74dcc90350d690c1391",
+  "dsh-agent-manage": "b248d4521e904eccb76535266a7056809a853e80",
+};
 const frozenSources = {
   "dsh-agent-workbench": "eda9f6367c35544f45866c5e06e1ebfd1f5b61e0",
   "dsh-agent-manage": "e7685b22e071fc8728f6e455699fa1d8099f5a00",
@@ -109,15 +114,24 @@ export function validatePluginUpdateGroup(repositories) {
     gea &&
     matchesFrozenSource(gea, desktopBootstrapAuthorization.productHead, bootstrapSupplements);
   for (const [repo, original] of Object.entries(frozenSources)) {
-    const baseline =
-      bootstrap && repo === "dsh-gea-plugin" ? desktopBootstrapAuthorization.productHead : original;
+    const baseline = bootstrap
+      ? repo === "dsh-gea-plugin"
+        ? desktopBootstrapAuthorization.productHead
+        : desktopCompanions[repo]
+      : original;
     const entry = repositories.find((row) => row.repo === repo);
     if (
       !entry ||
       !matchesFrozenSource(
         entry,
         baseline,
-        repo === "dsh-gea-plugin" ? (bootstrap ? bootstrapSupplements : supplements) : [],
+        repo === "dsh-gea-plugin"
+          ? bootstrap
+            ? bootstrapSupplements
+            : supplements
+          : bootstrap
+            ? ["scripts/quality-peer-baseline.json"]
+            : [],
       )
     )
       throw Error("PLUGIN_UPDATE_GROUP_REJECTED: " + repo);
@@ -137,6 +151,8 @@ export function pluginUpdatePlanFor(repositories) {
           "scripts/plugin-update-pr-lane.test.mjs",
           "desktop/company-bootstrap.test.mjs",
           "desktop/official-branding.test.mjs",
+          "tests/client-account.test.mjs",
+          "tests/base-inventory-resources.test.mjs",
         ],
       }
     : pluginUpdatePlan;
