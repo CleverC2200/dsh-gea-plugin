@@ -16,7 +16,7 @@ export const desktopBootstrapAuthorization = Object.freeze({
   branch: "codex/gea-complete-desktop-20261016",
   instruction:
     "补齐最新三个核心插件、GenUI 和首次安装初始化，重打 Mac/Windows 完整 GEA 包；保留 WeKnora、已有配置与更新回执，不改 Core，只跑必要的定向校验。",
-  productHead: "55251e27cbc873aee2a99873f284890909f737d7",
+  productHead: "28767e17a547110095cffcac181f9940ade74b74",
   base: "4579bf2485063c9dfbe7ad74b8b46f37c4fffcdb",
 });
 const supplements = [
@@ -37,7 +37,7 @@ const bootstrapSupplements = [
   "docs/ci-core-policy.md",
 ];
 const desktopCompanions = {
-  "dsh-agent-workbench": "60bcbf039b80bf113b06a74dcc90350d690c1391",
+  "dsh-agent-workbench": "59aea218088da1ce0cdbbffb932cfb9cd518cae8",
   "dsh-agent-manage": "b248d4521e904eccb76535266a7056809a853e80",
 };
 const frozenSources = {
@@ -153,6 +153,7 @@ export function pluginUpdatePlanFor(repositories) {
           "desktop/official-branding.test.mjs",
           "tests/client-account.test.mjs",
           "tests/base-inventory-resources.test.mjs",
+          "tests/plugin-release.test.mjs",
         ],
       }
     : pluginUpdatePlan;
