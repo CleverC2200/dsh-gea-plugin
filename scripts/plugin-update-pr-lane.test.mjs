@@ -116,11 +116,7 @@ test("desktop first-install scope is bound to its own PR and frozen packaging so
   const plan = pluginUpdatePlanFor([{ repo: "dsh-gea-plugin", path: process.cwd(), head }]);
   assert.deepEqual(plan.files, [
     "scripts/plugin-update-pr-lane.test.mjs",
-    "desktop/company-bootstrap.test.mjs",
     "desktop/official-branding.test.mjs",
-    "tests/client-account.test.mjs",
-    "tests/base-inventory-resources.test.mjs",
-    "tests/plugin-release.test.mjs",
   ]);
   assert.equal(plan.authorization, a);
   assert.equal(plan.browser, false);
