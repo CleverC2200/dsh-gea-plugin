@@ -12,7 +12,7 @@ export const pluginUpdateAuthorization = Object.freeze({
 });
 export const desktopBootstrapAuthorization = Object.freeze({
   repository: "CleverC2200/dsh-gea-plugin",
-  pullRequest: 0,
+  pullRequest: 85,
   branch: "codex/gea-windows-store-157-20261016",
   instruction:
     "补齐最新三个核心插件、GenUI 和首次安装初始化，重打 Mac/Windows 完整 GEA 包；保留 WeKnora、已有配置与更新回执，不改 Core，只跑必要的定向校验。",
