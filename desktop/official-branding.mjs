@@ -18,7 +18,11 @@ export function officialGeaBranding(config) {
       ...config.files,
       "!renderer/welcome.html",
       { from: welcome, to: "renderer", filter: ["**/*"] },
-      { from: icon, to: "renderer/gea-logo.png" },
+      {
+        from: fileURLToPath(new URL("./build", import.meta.url)),
+        to: "renderer/gea-brand",
+        filter: ["icon.png"],
+      },
     ],
     extraResources: config.extraResources.map((resource) =>
       resource.to === "icon.png" ? { ...resource, from: icon } : resource,

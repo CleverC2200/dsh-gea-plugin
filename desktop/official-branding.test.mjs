@@ -29,7 +29,8 @@ test("GEA branding changes bundle identity and both icon locations while retaini
   assert.equal(result.beforePack, hook);
   assert.deepEqual(result.files.slice(0, files.length), files);
   assert.ok(result.files.includes("!renderer/welcome.html"));
-  assert.equal(result.files.at(-1).to, "renderer/gea-logo.png");
+  assert.equal(result.files.at(-1).to, "renderer/gea-brand");
+  assert.deepEqual(result.files.at(-1).filter, ["icon.png"]);
 });
 
 test("company welcome uses only the existing workspace entry and allows retry after a failed open", async () => {
