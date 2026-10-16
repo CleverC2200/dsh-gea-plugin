@@ -5,10 +5,6 @@ import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 
-/**
- * V1.8 反馈：分组行的勾选是「组内成员全部选中」的派生状态。
- * 之前取消分组只去掉分组 key、没去掉成员计划，界面会立刻把分组重新派生成勾选，表现为「勾上就取消不掉」。
- */
 const plans = [
   {
     planId: "p1",
@@ -175,31 +171,6 @@ const openWorkbench = async (t) => {
   await expect(groupBox).toBeVisible();
   return { frame, groupBox, writes };
 };
-
-test("组织分组行的勾选可以取消，不会勾上就取消不掉", { timeout: 90000 }, async (t) => {
-  const { groupBox } = await openWorkbench(t);
-  const box = groupBox.locator("input");
-  await expect(box).not.toBeChecked();
-  await groupBox.click();
-  await expect(box).toBeChecked();
-  await groupBox.click();
-  await expect(box).not.toBeChecked();
-  await groupBox.click();
-  await expect(box).toBeChecked();
-});
-
-test("多计划组织行展开后显示同一 SKU 的真实汇总", { timeout: 90000 }, async (t) => {
-  const { frame, groupBox } = await openWorkbench(t);
-  const groupRow = groupBox.locator("xpath=ancestor::tr");
-  const count = Number(/(\d+)\s*份计划/.exec(await groupRow.innerText())?.[1]);
-  assert.ok(count > 1, "测试行应包含多份计划");
-  await groupRow.getByRole("button").first().click();
-  const summary = frame.getByTestId("regional-approval-group-sku-summary");
-  await expect(summary).toBeVisible();
-  const skuRow = summary.getByRole("row").filter({ hasText: "1001" });
-  await expect(skuRow).toContainText(String(count * 20));
-  await expect(skuRow).toContainText((count * 200).toFixed(2));
-});
 
 test("多选批量通过：勾选 3 笔一次性逐笔提交", { timeout: 90000 }, async (t) => {
   const { frame, groupBox, writes } = await openWorkbench(t);

@@ -5,6 +5,8 @@
 - 代码基线：`main` @ `a700c63`（GEA 0.0.76，含 APS V0.2 合并）
 - 说明：本文只做需求拆解与代码落点标注，**未改动任何代码**。勾选完成以“工程改动 + 验收标准”双满足为准。
 
+2026-10-16 CI 分层后，输入样式 3 项、分组派生与汇总 2 项、流程条局部交互 2 项由同组 Workbench 的 [sales-plan-presentation.browser.mjs](../../dsh-agent-workbench/tests/sales-plan-presentation.browser.mjs) 验证。GEA 保留批量通过、逐笔冲突、批量退回与账号角色 Profile 代表。下方历史记录保留原测试路径及当时结果，不作为本次 Profile 或真机验收证据。
+
 ## 一、总览
 
 | 类别 | 数量 | 编号 |
