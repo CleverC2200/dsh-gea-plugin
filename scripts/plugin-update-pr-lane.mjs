@@ -8,8 +8,8 @@ export const pluginUpdateAuthorization = Object.freeze({
   branch: "codex/plugin-detail-updates-20261015",
   instruction:
     "只跑这次插件更新必要的定向校验，保留 WeKnora，不改 Core、不跑那181个文件，通过后尽快合并、发布OSS并在当前DSH实测。",
-  productHead: "b9e8008925468441d2bb4a88b6025f296f65efea",
-  base: "222e63b4b34b0e5b25e9c11e2a985aed1a448e54",
+  productHead: "bc3f9d0b3b0b0a8354e738b6b1f9415bcb64e062",
+  base: "feaeda7acf125bec92ebc697ce341dc88a19d5b5",
 });
 const supplements = [
   "scripts/plugin-update-pr-lane.mjs",
@@ -21,7 +21,7 @@ const supplements = [
   "tests/plugin-release.test.mjs",
 ];
 const frozenSources = {
-  "dsh-agent-workbench": "29d851d71bdbe4c490a246ab20447c76c19ae957",
+  "dsh-agent-workbench": "eda9f6367c35544f45866c5e06e1ebfd1f5b61e0",
   "dsh-agent-manage": "e7685b22e071fc8728f6e455699fa1d8099f5a00",
   "dsh-gea-plugin": pluginUpdateAuthorization.productHead,
 };
