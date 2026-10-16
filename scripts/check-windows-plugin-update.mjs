@@ -73,6 +73,13 @@ await build({
     {
       name: "fixed-windows-sdk",
       setup(b) {
+        b.onLoad({ filter: /plugin-update-controller\.ts$/ }, async (args) => ({
+          contents: (await readFile(args.path, "utf8")).replace(
+            "if (mutationStarted) {",
+            'console.error("WINDOWS_FIXTURE_INSTALL_ERROR", error); if (mutationStarted) {',
+          ),
+          loader: "ts",
+        }));
         b.onResolve({ filter: /^@deepseek-ai\// }, (args) =>
           sdk.has(args.path)
             ? { path: pathToFileURL(load.resolve(args.path)).href, external: true }

@@ -58,6 +58,15 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
       ["pending-restart", "restored", "unknown", "failed"],
       30000,
     );
+    const expected = ["success", "pnpm"].includes(mode)
+      ? "pending-restart"
+      : mode === "fail-after-write"
+        ? "restored"
+        : "unknown";
+    if (result.stage !== expected) {
+      for (const log of result.logs)
+        console.error("WINDOWS_FIXTURE_LOG", mode, await readFile(log, "utf8"));
+    }
     assert.equal(
       result.stage,
       ["success", "pnpm"].includes(mode)
