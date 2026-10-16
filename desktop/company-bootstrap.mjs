@@ -14,6 +14,17 @@ const names = [
 const json = async (path) => JSON.parse(await readFile(path, "utf8"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
+async function assertCompletedInstallation(record) {
+  let receipt;
+  try {
+    receipt = await json(join(record, "receipt.json"));
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw Error("GEA_COMPANY_INSTALL_INCOMPLETE", { cause: error });
+  }
+  if (receipt?.status !== "installed") throw Error("GEA_COMPANY_INSTALL_INCOMPLETE");
+}
+
 export async function readCompanySeed(seed) {
   const manifest = await json(join(seed, "manifest.json"));
   if (
@@ -47,6 +58,7 @@ export async function installCompanyPackages({
   packages,
   store,
   offline,
+  complete,
 }) {
   const anchor = join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json");
   const require = createRequire(anchor);
@@ -54,14 +66,15 @@ export async function installCompanyPackages({
   const { runProfilePnpm } = await import(
     pathToFileURL(require.resolve("@deepseek-ai/dsh-plugin-manager/operations"))
   );
-  const { withFileLock } = await import(
+  const { withFileLock, writeFileAtomic } = await import(
     pathToFileURL(require.resolve("@deepseek-ai/dsh-atomic-write"))
   );
-  boot.initProfile(profile, boot.PROFILE_TEMPLATES.web.bundles);
-  const result = await withFileLock(
+  await mkdir(profile, { recursive: true, mode: 0o700 });
+  return withFileLock(
     join(profile, "package.json"),
-    () =>
-      runProfilePnpm(
+    async () => {
+      boot.initProfile(profile, boot.PROFILE_TEMPLATES.web.bundles);
+      const result = await runProfilePnpm(
         {
           profile: "desktop",
           dir: profile,
@@ -91,15 +104,19 @@ export async function installCompanyPackages({
           idleTimeoutMs: 120000,
           lookupTimeoutMs: 30000,
         },
-      ),
+      );
+      if (result.exitCode !== 0) throw Error("GEA_COMPANY_INSTALL_FAILED: " + result.logPath);
+      await complete?.({ writeFileAtomic });
+      return result;
+    },
     { waitMs: 120000 },
   );
-  if (result.exitCode !== 0) throw Error("GEA_COMPANY_INSTALL_FAILED: " + result.logPath);
-  return result;
 }
 
 export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   const profile = join(home, "profiles/desktop");
+  const record = join(profile, "gea/bootstrap");
+  await assertCompletedInstallation(record);
   const current = existsSync(join(profile, "package.json"))
     ? await json(join(profile, "package.json"))
     : undefined;
@@ -117,7 +134,6 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
     if (digest(await readFile(join(root, artifact.path))) !== artifact.sha256)
       throw Error("GEA_SEED_CORE_CHANGED");
   }
-  const record = join(profile, "gea/bootstrap");
   await mkdir(record, { recursive: true, mode: 0o700 });
   const requireLock = createRequire(join(root, "dsh/package.json"));
   const { withFileLock } = await import(
@@ -126,6 +142,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   return withFileLock(
     join(record, "installation"),
     async () => {
+      await assertCompletedInstallation(record);
       const latest = existsSync(join(profile, "package.json"))
         ? await json(join(profile, "package.json"))
         : undefined;
@@ -177,48 +194,50 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
           packages: selected.map((row) => join(seed, "archives", row.file)),
           store,
           offline: true,
-        });
-        const installed = await json(join(profile, "package.json"));
-        for (const row of selected) {
-          const actual = await json(join(profile, "node_modules", row.name, "package.json"));
-          if (
-            actual.version !== row.version ||
-            !installed.dsh?.profile?.bundles?.includes(row.name)
-          )
-            throw Error("GEA_COMPANY_ACTIVATION_INCOMPLETE");
-        }
-        if (missing.includes("@cleverc2200/gea-dsh-prototype")) {
-          const require = createRequire(join(root, "dsh/package.json"));
-          const YAML = require("yaml");
-          const patch = join(profile, "cordis.patch.yml");
-          const document = YAML.parseDocument(await readFile(patch, "utf8"));
-          if (document.errors.length || !Array.isArray(document.toJS()))
-            throw Error("GEA_PROFILE_PATCH_INVALID");
-          const rows = document.toJS();
-          const index = rows.findIndex(
-            (row) => row?.id === "gea-proof" || row?.name === "@cleverc2200/gea-dsh-prototype",
-          );
-          if (index === -1)
-            document.add({
-              id: "gea-proof",
-              config: {
-                pluginUpdates: {
+          complete: async ({ writeFileAtomic }) => {
+            const installed = await json(join(profile, "package.json"));
+            for (const row of selected) {
+              const actual = await json(join(profile, "node_modules", row.name, "package.json"));
+              if (
+                actual.version !== row.version ||
+                !installed.dsh?.profile?.bundles?.includes(row.name)
+              )
+                throw Error("GEA_COMPANY_ACTIVATION_INCOMPLETE");
+            }
+            if (missing.includes("@cleverc2200/gea-dsh-prototype")) {
+              const require = createRequire(join(root, "dsh/package.json"));
+              const YAML = require("yaml");
+              const patch = join(profile, "cordis.patch.yml");
+              const document = YAML.parseDocument(await readFile(patch, "utf8"));
+              if (document.errors.length || !Array.isArray(document.toJS()))
+                throw Error("GEA_PROFILE_PATCH_INVALID");
+              const rows = document.toJS();
+              const index = rows.findIndex(
+                (row) => row?.id === "gea-proof" || row?.name === "@cleverc2200/gea-dsh-prototype",
+              );
+              if (index === -1)
+                document.add({
+                  id: "gea-proof",
+                  config: {
+                    pluginUpdates: {
+                      source: manifest.source,
+                      checkTimeoutMs: 60000,
+                      pollIntervalMs: 2000,
+                      core: { ...manifest.core, root, kind: "desktop" },
+                    },
+                  },
+                });
+              else if (!rows[index].config?.pluginUpdates)
+                document.setIn([index, "config", "pluginUpdates"], {
                   source: manifest.source,
                   checkTimeoutMs: 60000,
                   pollIntervalMs: 2000,
                   core: { ...manifest.core, root, kind: "desktop" },
-                },
-              },
-            });
-          else if (!rows[index].config?.pluginUpdates)
-            document.setIn([index, "config", "pluginUpdates"], {
-              source: manifest.source,
-              checkTimeoutMs: 60000,
-              pollIntervalMs: 2000,
-              core: { ...manifest.core, root, kind: "desktop" },
-            });
-          await writeFile(patch, document.toString(), { mode: 0o600 });
-        }
+                });
+              await writeFileAtomic(patch, document.toString(), { mode: 0o600 });
+            }
+          },
+        });
         const result = {
           status: "installed",
           changed: true,

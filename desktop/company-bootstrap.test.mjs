@@ -41,6 +41,37 @@ test("an existing company profile retains configuration, disabled bundles, WeKno
     assert.equal(await readFile(join(profile, name), "utf8"), text);
 });
 
+test("an incomplete owned installation cannot be hidden by four declared dependencies", async () => {
+  for (const receipt of [
+    '{"status":"installing","packages":["dsh-agent-manage"]}',
+    '{"status":"failed","diagnostic":"configuration write failed"}',
+    '{"status":"unknown"}',
+    "{incomplete",
+  ]) {
+    const home = await mkdtemp(join(tmpdir(), "gea-bootstrap-incomplete-"));
+    const profile = join(home, "profiles/desktop");
+    const record = join(profile, "gea/bootstrap/receipt.json");
+    await mkdir(join(profile, "gea/bootstrap"), { recursive: true });
+    const manifest = JSON.stringify({
+      dependencies: {
+        "@cleverc2200/dsh-agent-workbench": "keep",
+        "dsh-agent-manage": "keep",
+        "@cleverc2200/gea-dsh-prototype": "keep",
+        "@changfenhuang/dsh-genui": "keep",
+      },
+      dsh: { profile: { bundles: ["user-choice"] } },
+    });
+    await writeFile(join(profile, "package.json"), manifest);
+    await writeFile(record, receipt);
+    await assert.rejects(
+      bootstrapCompanyProfile({ root: "unused", support: "unused", seed: "unused", home }),
+      /GEA_COMPANY_INSTALL_INCOMPLETE/,
+    );
+    assert.equal(await readFile(record, "utf8"), receipt);
+    assert.equal(await readFile(join(profile, "package.json"), "utf8"), manifest);
+  }
+});
+
 test("a damaged bundled archive stops first installation before creating the user profile", async () => {
   const directory = await mkdtemp(join(tmpdir(), "gea-bootstrap-integrity-"));
   const seed = join(directory, "seed");
