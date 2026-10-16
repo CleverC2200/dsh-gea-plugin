@@ -7,7 +7,7 @@ export const pluginUpdateAuthorization = Object.freeze({
   branch: "codex/gea-rc2-brand-update-20261016",
   instruction:
     "只跑这次插件更新必要的定向校验，保留 WeKnora，不改 Core、不跑那181个文件，通过后尽快合并、发布OSS并在当前DSH实测。",
-  productHead: "4afba6a19babab0463f107ba7274dafa766d027e",
+  productHead: "30877e28e5d0f6877679b7b543190159aa0564bc",
   base: "5b8c06b15df6b066c845bbea180ffbc209d72e43",
 });
 const supplements = [
