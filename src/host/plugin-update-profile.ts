@@ -171,6 +171,21 @@ async function tree(root: string): Promise<{ entries: TreeEntry[]; bytes: number
   await walk(root, "");
   return { entries, bytes };
 }
+async function profileRealpath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    if (
+      process.platform === "win32" &&
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "EPERM" &&
+      (await lstat(path)).isSymbolicLink()
+    )
+      return realpath(resolve(dirname(path), await readlink(path)));
+    throw error;
+  }
+}
 async function externalRoots(
   nodeModules: string,
   entries: TreeEntry[],
@@ -180,30 +195,9 @@ async function externalRoots(
     if (entry.kind !== "symlink") continue;
     let target: string;
     try {
-      target = await realpath(join(nodeModules, entry.path));
+      target = await profileRealpath(join(nodeModules, entry.path));
     } catch (error) {
-      // The physical snapshot already preserves the link. Optional executable
-      // targets may be absent; required package resolution is checked separately.
       if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
-      if (
-        process.platform === "win32" &&
-        error instanceof Error &&
-        "code" in error &&
-        error.code === "EPERM"
-      ) {
-        const link = join(nodeModules, entry.path);
-        try {
-          await lstat(resolve(dirname(link), await readlink(link)));
-        } catch (targetError) {
-          if (
-            targetError instanceof Error &&
-            "code" in targetError &&
-            targetError.code === "ENOENT"
-          )
-            continue;
-          throw targetError;
-        }
-      }
       throw error;
     }
     if (within(nodeModules, target) || targets[target]) continue;
@@ -219,7 +213,7 @@ async function packages(root: string): Promise<ProfilePackage[]> {
     seen = new Map<string, ProfilePackage>();
   const profileDirectory = dirname(root);
   async function visitPackage(location: string, rootLevel: boolean) {
-    const dir = await realpath(location),
+    const dir = await profileRealpath(location),
       previous = seen.get(dir);
     if (previous) {
       if (rootLevel) previous.root = true;
