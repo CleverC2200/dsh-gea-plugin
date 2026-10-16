@@ -42,6 +42,10 @@ const fixtureSourceFiles = [
   "quality-test-reporter.mjs",
   "quality-test-execution.mjs",
   "quality-shards.mjs",
+  "quality-worker-inputs.mjs",
+  "quality-worker-control.mjs",
+  "quality-prepared-inputs.mjs",
+  "quality-prepared-tar.py",
   "quality-runner-environment.mjs",
   "quality-system-chrome.mjs",
   "fixtures/quality-ci-commands.mjs",
@@ -79,7 +83,7 @@ function fixture(t, { additionalTests = [] } = {}) {
   const gea = join(job, "candidate/dsh-gea-plugin"),
     manage = join(job, "candidate/dsh-agent-manage"),
     workbench = join(job, "source/dsh-agent-workbench"),
-    core = join(job, "core-source");
+    core = join(job, "source/official-core");
   // Copy only this fixture's authored inputs; parallel quality tests own transient scripts directories.
   for (const file of fixtureSourceFiles)
     write(join(gea, "scripts", file), readFileSync(join(sourceRoot, "scripts", file)));
@@ -278,6 +282,83 @@ test("separate CLI processes prepare once, preserve the plan, restore fixed envi
     1,
   );
   assert.equal(commands.filter((entry) => entry.command === "sdk").length, 5);
+});
+
+test("one producer executes the existing tests stage and indexes its original receipt without transport", (t) => {
+  const f = fixture(t);
+  const hosted = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_WORKSPACE: f.job,
+    GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
+    GITHUB_RUN_ID: "7",
+    GITHUB_RUN_ATTEMPT: "2",
+    FIXTURE_PLATFORM: "linux",
+    QUALITY_STAGE_FIXTURE_ROOT: f.job,
+    NODE_OPTIONS: `--import=${join(f.gea, "scripts/fixtures/quality-ci-commands.mjs")}`,
+  };
+  writeFileSync(
+    join(f.job, "candidate-group.json"),
+    JSON.stringify({ groupId: "producer-fixture" }),
+  );
+  const output = join(f.job, "github-output");
+  const planned = f.run("plan", { ...hosted, GITHUB_OUTPUT: output }, ["--root", f.job]);
+  assert.equal(planned.status, 0, planned.stdout + planned.stderr);
+  assert.equal(readFileSync(output, "utf8"), "browser=false\n");
+  for (const stage of ["prepare", "build", "checks", "tests", "verify-tests"]) {
+    const result = f.run(stage, hosted);
+    assert.equal(result.status, 0, stage + ": " + result.stdout + result.stderr);
+  }
+  const indexFile = join(f.job, "quality-index.json");
+  const invoke = (extra = {}) =>
+    spawnSync(
+      process.execPath,
+      ["scripts/quality-shards.mjs", "--mode", "index", "--root", f.job, "--output", indexFile],
+      { cwd: f.gea, encoding: "utf8", env: { ...process.env, ...hosted, ...extra } },
+    );
+  const wrongWorkspace = invoke({ GITHUB_WORKSPACE: f.gea });
+  assert.equal(wrongWorkspace.status, 1);
+  assert.match(wrongWorkspace.stderr, /original GITHUB_WORKSPACE required/);
+  const indexed = invoke();
+  assert.equal(indexed.status, 0, indexed.stdout + indexed.stderr);
+  const index = JSON.parse(readFileSync(indexFile));
+  assert.equal(index.execution, "producer");
+  assert.deepEqual(
+    index.receipt,
+    JSON.parse(readFileSync(join(f.job, "quality-test-execution.json"))),
+  );
+  assert.equal(index.binding.worker, undefined);
+  assert.equal(index.bundleArtifactId, undefined);
+  assert.equal(existsSync(join(f.job, "transfer")), false);
+  assert.equal(existsSync(join(f.job, "system-chrome-preparation.json")), false);
+  const result = JSON.parse(readFileSync(join(f.job, "quality-test-execution.json")));
+  for (const change of [
+    (record) => {
+      record.planSha256 = "a".repeat(64);
+    },
+    (record) => {
+      record.buildSha256 = "a".repeat(64);
+    },
+    (record) => {
+      record.results = [];
+    },
+    (record) => {
+      record.results.push(record.results[0]);
+    },
+    (record) => {
+      record.results[0].report.summary.counts.skipped = 1;
+    },
+    (record) => {
+      record.status = "failed";
+    },
+    (record) => {
+      record.terminal = false;
+    },
+  ]) {
+    const broken = structuredClone(result);
+    change(broken);
+    writeFileSync(join(f.job, "quality-test-execution.json"), JSON.stringify(broken));
+    assert.equal(invoke().status, 1);
+  }
 });
 
 test("the public plan stage reports the complete selection before any preparation or runtime writes", (t) => {
@@ -536,56 +617,6 @@ test("a required fixture skip fails the staged test entry and final summary", (t
   assert.equal(skipped.status, 1, skipped.stdout + skipped.stderr);
   assert.match(skipped.stderr, /QUALITY_REQUIRED_TEST_SKIPPED/);
   assert.equal(f.run("summary").status, 1);
-});
-
-test("stage fixtures ignore a concurrent quality fixture disappearing from scripts", (t) => {
-  const directory = mkdtempSync(join(tmpdir(), "gea-stage-copy-race-"));
-  t.after(() => rmSync(directory, { recursive: true, force: true }));
-  const probeSource = join(directory, "source");
-  for (const file of [...fixtureSourceFiles, "run-quality-ci-stages.test.mjs"]) {
-    const target = join(probeSource, "scripts", file);
-    mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(join(sourceRoot, "scripts", file), target);
-  }
-  const transient = realpathSync(mkdtempSync(join(probeSource, "scripts/quality-fixture-")));
-  writeFileSync(join(transient, "sample.mjs"), "export const value = 1;\n");
-  const schedule = join(directory, "disappear.mjs");
-  // Pin the filesystem race at the recursive-copy boundary instead of depending on timing.
-  writeFileSync(
-    schedule,
-    `
-    import fs from "node:fs";
-    import { syncBuiltinESMExports } from "node:module";
-    const copy = fs.cpSync;
-    fs.cpSync = (source, target, options) => copy(source, target, {
-      ...options,
-      filter(file) {
-        if (file === ${JSON.stringify(transient)}) fs.rmSync(file, { recursive: true, force: true });
-        return true;
-      },
-    });
-    syncBuiltinESMExports();
-  `,
-  );
-  const env = {
-    ...process.env,
-    NODE_OPTIONS: `--import=${schedule}`,
-    GEA_FINAL_GROUP_WORKBENCH_SOURCE:
-      process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ?? resolve(sourceRoot, "../dsh-agent-workbench"),
-    GEA_FINAL_GROUP_MANAGE_SOURCE:
-      process.env.GEA_FINAL_GROUP_MANAGE_SOURCE ?? resolve(sourceRoot, "../dsh-agent-manage"),
-  };
-  delete env.NODE_TEST_CONTEXT;
-  const result = spawnSync(
-    process.execPath,
-    [
-      "--test",
-      "--test-name-pattern=^separate CLI processes prepare once",
-      "scripts/run-quality-ci-stages.test.mjs",
-    ],
-    { cwd: probeSource, encoding: "utf8", env },
-  );
-  assert.equal(result.status, 0, result.stdout + result.stderr);
 });
 
 test("a frozen worker executes only its assigned shard and cannot claim complete coverage", (t) => {

@@ -1,29 +1,22 @@
 {
   "schemaVersion": 1,
   "required": [
-    "scripts/run-quality-checks.test.mjs",
-    "scripts/quality.test.mjs",
-    "scripts/quality-policy.test.mjs",
-    "scripts/run-quality-ci.test.mjs",
-    "scripts/run-quality-ci-stages.test.mjs",
-    "scripts/quality-upstreams.test.mjs",
-    "scripts/quality-test-reporter.test.mjs",
-    "scripts/quality-workbench.test.mjs",
-    "scripts/run-quality-full.test.mjs",
     "tests/controlled-execution.test.mjs",
     "tests/plugin-sql-cancel.test.mjs",
     "tests/business-page-grant.test.mjs",
-    "tests/gateway-handshake.test.mjs",
-    "tests/window-launch-admission.test.mjs",
-    "tests/source-selection-start.test.mjs",
-    "tests/source-integrity.test.mjs",
-    "scripts/delivery-check.test.mjs",
-    "scripts/delivery-integrity.test.mjs",
-    "scripts/delivery-readiness.test.mjs",
-    "scripts/delivery-runtime.test.mjs",
-    "scripts/delivery-continuation.test.mjs"
+    "tests/gateway-handshake.test.mjs"
   ],
   "tests": ["tests/*.test.mjs", "scripts/*.test.mjs", "tests/*.contract.mjs"],
+  "browserFixtures": [
+    "scripts/quality-prepared-inputs.test.mjs",
+    "scripts/knowledge-merge-ci.test.mjs",
+    "scripts/plugin-update-pr-lane.test.mjs",
+    "scripts/quality-shards.test.mjs",
+    "scripts/quality-worker-control.test.mjs",
+    "scripts/quality-worker-inputs.test.mjs",
+    "scripts/run-quality-ci-stages.test.mjs",
+    "scripts/run-quality-ci.test.mjs"
+  ],
   "rules": [
     {
       "repo": "dsh-gea-plugin",
@@ -112,7 +105,11 @@
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^scripts/ci-source-policy\\.mjs$",
-      "tests": ["scripts/business-profile-ci.test.mjs"]
+      "tests": [
+        "scripts/business-profile-ci.test.mjs",
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -134,9 +131,8 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^(?:package\\.json|pnpm-lock\\.yaml|tsconfig|\\.github/|scripts/ci-test-policy\\.json)",
-      "tests": ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"],
-      "exclusive": true
+      "pattern": "^(?:package\\.json|pnpm-lock\\.yaml|tsconfig(?:\\.[^/]+)?\\.json|scripts/ci-test-policy\\.json)$",
+      "tests": ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -184,18 +180,6 @@
       "tests": ["tests/window-launch-admission.test.mjs"]
     },
     {
-      "repo": "dsh-agent-workbench",
-      "pattern": "^scripts/",
-      "tests": ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"],
-      "exclusive": true
-    },
-    {
-      "repo": "dsh-agent-manage",
-      "pattern": "^scripts/",
-      "tests": ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"],
-      "exclusive": true
-    },
-    {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/plugin-update-pr-lane\\.",
       "tests": ["scripts/run-quality-ci.test.mjs"],
@@ -239,6 +223,49 @@
         "tests/plugin-update-detail.browser.mjs",
         "tests/plugin-release-source.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/start-isolated-validation\\.mjs$",
+      "tests": ["tests/window-launch-admission.test.mjs", "tests/source-selection-start.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^(?:package\\.json|pnpm-lock\\.yaml)$",
+      "tests": [
+        "scripts/quality.test.mjs",
+        "scripts/quality-policy.test.mjs",
+        "scripts/run-quality-full.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^\\.github/workflows/(?:quality|compatibility)\\.yml$",
+      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^\\.github/workflows/delivery-fixtures\\.yml$",
+      "tests": ["scripts/delivery-events.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:ci-test-plan|candidate-input)\\.mjs$",
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs",
+        "tests/window-launch-admission.test.mjs",
+        "tests/source-selection-start.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-agent-manage",
+      "pattern": "^scripts/(?:prepare-official-sdk|sdk-artifact-cache)\\.mjs$",
+      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "pattern": "^scripts/quality-peer-baseline\\.json$",
+      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
     }
   ]
 }

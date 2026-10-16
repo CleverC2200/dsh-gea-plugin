@@ -258,25 +258,44 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
   writeFileSync(join(root, "macos", "result.json"), JSON.stringify(macos[0]));
   let age = 30000,
     wrongHead = false,
-    hostedRequiredJobs = catalog.requiredJobs;
+    hostedRequiredJobs = catalog.requiredJobs,
+    hostedCores = [core],
+    hostedSkippedWorker = false,
+    skippedConclusion = "skipped",
+    skippedCopies = 1;
   const server = createServer((request, response) => {
     const now = Date.now(),
       at = (ms) => new Date(now + ms).toISOString(),
       head = "b".repeat(40);
     const body = request.url.includes("/jobs?")
       ? {
-          total_count: hostedRequiredJobs.length + 1,
-          jobs: [...hostedRequiredJobs, "candidate-quality"].map((name, i) => ({
-            id: i + 1,
-            name,
-            run_id: 7,
-            run_attempt: 2,
-            head_sha: head,
-            status: name === "candidate-quality" ? "in_progress" : "completed",
-            conclusion: name === "candidate-quality" ? null : "success",
-            started_at: at(-1000),
-            completed_at: name === "candidate-quality" ? null : at(-500),
-          })),
+          total_count: hostedRequiredJobs.length + 1 + (hostedSkippedWorker ? skippedCopies : 0),
+          jobs: [
+            ...[...hostedRequiredJobs, "candidate-quality"].map((name, i) => ({
+              id: i + 1,
+              name,
+              run_id: 7,
+              run_attempt: 2,
+              head_sha: head,
+              status: name === "candidate-quality" ? "in_progress" : "completed",
+              conclusion: name === "candidate-quality" ? null : "success",
+              started_at: at(-1000),
+              completed_at: name === "candidate-quality" ? null : at(-500),
+            })),
+            ...(hostedSkippedWorker
+              ? Array.from({ length: skippedCopies }, (_, offset) => ({
+                  id: 1000 + offset,
+                  name: "test-shards",
+                  run_id: 7,
+                  run_attempt: 2,
+                  head_sha: head,
+                  status: "completed",
+                  conclusion: skippedConclusion,
+                  started_at: null,
+                  completed_at: null,
+                }))
+              : []),
+          ],
         }
       : {
           id: 7,
@@ -318,7 +337,7 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
           GITHUB_RUN_ID: "7",
           GITHUB_RUN_ATTEMPT: "2",
           QUALITY_EXPECTED_WORKFLOW_SHA: "b".repeat(40),
-          QUALITY_FINAL_CORES: JSON.stringify([core]),
+          QUALITY_FINAL_CORES: JSON.stringify(hostedCores),
           QUALITY_FINAL_GROUP_ID: "group",
           QUALITY_FINAL_MANAGE_SHA: "b".repeat(40),
           QUALITY_FINAL_WORKBENCH_SHA: "b".repeat(40),
@@ -471,6 +490,271 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
   assert.throws(() => aggregateShardResults({ catalog, workers, macos: [] }));
   assert.throws(() =>
     aggregateShardResults({ catalog: { ...catalog, producerChecks: "failed" }, workers, macos }),
+  );
+
+  await t.test(
+    "a single producer shard reaches the public final CLI without transport or worker readiness",
+    async () => {
+      const producerCore = "e".repeat(40);
+      const producerCandidate = { ...candidate, core: producerCore };
+      const producerBinding = {
+        ...binding,
+        manifest: producerCandidate,
+        inputSha256: executionDigest(producerCandidate),
+      };
+      const producerPlan = createExecutionPlan({
+        concurrency: 3,
+        selection: {
+          files: ["one.test.mjs", "two.test.mjs", "mac.test.mjs"],
+          required: ["one.test.mjs"],
+        },
+        platformPlan: {
+          files: ["one.test.mjs", "two.test.mjs"],
+          platformTasks: [{ platform: "darwin", files: ["mac.test.mjs"] }],
+        },
+        binding: producerBinding,
+      });
+      const producerStages = structuredClone(stages);
+      producerStages.binding = {
+        executionPlan: producerPlan,
+        inputSha256: producerBinding.inputSha256,
+      };
+      producerStages.stages.tests = { status: "passed" };
+      const producerMetadata = {
+        ...workerMetadata,
+        sources: [...candidate.repositories, { repo: "official-core", head: producerCore }],
+      };
+      const producerAdmission = { ...admission, inputSha256: producerBinding.inputSha256 };
+      const producerIndex = {
+        schemaVersion: 1,
+        execution: "producer",
+        core: producerCore,
+        groupId: "group",
+        candidate: producerCandidate,
+        plan: producerPlan,
+        stages: producerStages,
+        admission: producerAdmission,
+        binding: {
+          ...producerBinding,
+          planSha256: producerPlan.planSha256,
+          buildSha256: index.binding.buildSha256,
+          producer: producerMetadata,
+        },
+        receipt: runExecutionPlan({
+          plan: producerPlan,
+          root,
+          reporter,
+          environment: { NODE_TEST_CONTEXT: undefined },
+          resultFile: join(root, "producer.json"),
+          buildSha256: index.binding.buildSha256,
+        }).receipt,
+      };
+      producerIndex.bindingBytes = JSON.stringify(producerIndex.binding, null, 2) + "\n";
+      const producerExpected = { ...earlyExpected, cores: [producerCore] };
+      const producerControlBytes = JSON.stringify({
+        ...controls[0].control,
+        candidateBytes: JSON.stringify(producerCandidate),
+        plan: producerPlan,
+        metadata: producerMetadata,
+        admission: producerAdmission,
+      });
+      const producerControls = [
+        {
+          control: JSON.parse(producerControlBytes),
+          sha256: createHash("sha256").update(producerControlBytes).digest("hex"),
+        },
+      ];
+      const producerAllocation = createEarlyAllocation({
+        controls: producerControls,
+        expected: producerExpected,
+      });
+      assert.deepEqual(producerAllocation.matrix.include, []);
+      assert.equal(producerAllocation.hasShards, false);
+      const producerCatalog = await createWorkerCatalog({
+        controls: producerControls,
+        indexes: [producerIndex],
+        allocation: producerAllocation,
+        expected: producerExpected,
+      });
+      assert.equal(
+        producerCatalog.requiredJobs.some((name) => name.startsWith("test-")),
+        false,
+      );
+      const producerMacPlan = createExecutionPlan({
+        selection: { files: ["mac.test.mjs"] },
+        platformPlan: { files: ["mac.test.mjs"] },
+        binding: { ...producerBinding, platform: "darwin" },
+      });
+      const producerMac = {
+        ...macos[0],
+        core: producerCore,
+        admission: producerAdmission,
+        plan: producerMacPlan,
+        receipt: runExecutionPlan({
+          plan: producerMacPlan,
+          root,
+          reporter,
+          environment: { NODE_TEST_CONTEXT: undefined },
+          resultFile: join(root, "producer-mac.json"),
+          buildSha256: executionDigest(sdk),
+        }).receipt,
+      };
+      for (const i of [0, 1]) rmSync(join(root, "workers", i + ".json"));
+      writeFileSync(join(root, "catalog.json"), JSON.stringify(producerCatalog));
+      writeFileSync(join(root, "early-controls/control.json"), producerControlBytes);
+      writeFileSync(join(root, "allocation.json"), JSON.stringify(producerAllocation));
+      writeFileSync(join(root, "macos/result.json"), JSON.stringify(producerMac));
+      hostedRequiredJobs = producerCatalog.requiredJobs;
+      hostedCores = [producerCore];
+      hostedSkippedWorker = true;
+      const green = await invoke("single-producer-green", earlyFlags);
+      assert.equal(green.status, 0, JSON.stringify(green));
+      assert.equal(green.coverage.coverage, "complete-exactly-once");
+      assert.equal(green.hosted.performance.status, "passed");
+      for (const conclusion of ["failure", "cancelled", "success", null]) {
+        skippedConclusion = conclusion;
+        assert.equal(
+          (await invoke("single-invalid-inapplicable-" + conclusion, earlyFlags)).status,
+          1,
+        );
+      }
+      skippedConclusion = "skipped";
+      skippedCopies = 2;
+      assert.equal((await invoke("single-duplicate-inapplicable", earlyFlags)).status, 1);
+      skippedCopies = 1;
+      hostedSkippedWorker = false;
+      assert.equal((await invoke("single-absent-inapplicable", earlyFlags)).status, 0);
+      hostedSkippedWorker = true;
+      for (const [scenario, change] of [
+        [
+          "missing",
+          (index) => {
+            delete index.receipt;
+          },
+        ],
+        [
+          "duplicate",
+          (index) => {
+            index.receipt.results.push(index.receipt.results[0]);
+          },
+        ],
+        [
+          "skip",
+          (index) => {
+            index.receipt.results[0].report.summary.counts.skipped = 1;
+          },
+        ],
+        [
+          "failed",
+          (index) => {
+            index.receipt.results[0].exitCode = 1;
+          },
+        ],
+        [
+          "cancelled",
+          (index) => {
+            index.receipt.results[0].signal = "SIGTERM";
+          },
+        ],
+        [
+          "plan",
+          (index) => {
+            index.receipt.planSha256 = "old";
+          },
+        ],
+        [
+          "build",
+          (index) => {
+            index.receipt.buildSha256 = "old";
+          },
+        ],
+        [
+          "tuple",
+          (index) => {
+            index.candidate.repositories[0].head = "f".repeat(40);
+          },
+        ],
+        [
+          "stage",
+          (index) => {
+            index.stages.stages.tests.status = "skipped";
+          },
+        ],
+        [
+          "source-metadata",
+          (index) => {
+            index.binding.producer.tools.fixture = "changed";
+            index.bindingBytes = JSON.stringify(index.binding);
+          },
+        ],
+        [
+          "sdk-identity",
+          (index) => {
+            index.binding.producer.sdkIdentity.fixture = "changed";
+            index.bindingBytes = JSON.stringify(index.binding);
+          },
+        ],
+        [
+          "scope",
+          (index) => {
+            index.receipt.scope = "shard";
+          },
+        ],
+      ]) {
+        const broken = structuredClone(producerIndex);
+        change(broken);
+        writeFileSync(
+          join(root, "catalog.json"),
+          JSON.stringify({ ...producerCatalog, indexes: [broken] }),
+        );
+        assert.equal((await invoke("single-reject-" + scenario, earlyFlags)).status, 1, scenario);
+      }
+      writeFileSync(join(root, "catalog.json"), JSON.stringify(producerCatalog));
+      writeFileSync(join(root, "workers/extra.json"), JSON.stringify(workers[0]));
+      assert.equal((await invoke("single-extra-worker", earlyFlags)).status, 1);
+      rmSync(join(root, "workers/extra.json"));
+
+      const mixedExpected = { ...earlyExpected, cores: [core, producerCore] };
+      const mixedControls = [...controls, ...producerControls];
+      const mixedAllocation = createEarlyAllocation({
+        controls: mixedControls,
+        expected: mixedExpected,
+      });
+      assert.deepEqual(
+        mixedAllocation.matrix.include.map((entry) => entry.core),
+        [core, core],
+      );
+      const mixedCatalog = await createWorkerCatalog({
+        controls: mixedControls,
+        indexes: [producerIndex, index],
+        allocation: mixedAllocation,
+        expected: mixedExpected,
+      });
+      assert.equal(mixedCatalog.matrix.include.length, 2);
+      assert.equal(mixedCatalog.requiredJobs.includes(`test-${producerCore}-1`), false);
+      hostedCores = [core, producerCore];
+      hostedSkippedWorker = false;
+      hostedRequiredJobs = mixedCatalog.requiredJobs;
+      mkdirSync(join(root, "early-controls/producer"));
+      writeFileSync(join(root, "early-controls/control.json"), controlBytes);
+      writeFileSync(join(root, "early-controls/producer/control.json"), producerControlBytes);
+      writeFileSync(join(root, "allocation.json"), JSON.stringify(mixedAllocation));
+      writeFileSync(join(root, "catalog.json"), JSON.stringify(mixedCatalog));
+      for (const [i, worker] of workers.entries())
+        writeFileSync(join(root, "workers", i + ".json"), JSON.stringify(worker));
+      writeFileSync(join(root, "macos/worker-core.json"), JSON.stringify(macos[0]));
+      const mixed = await invoke("mixed-producer-workers", earlyFlags);
+      assert.equal(mixed.status, 0, JSON.stringify(mixed));
+      assert.equal(mixed.coverage.platforms.length, 4);
+      writeFileSync(
+        join(root, "catalog.json"),
+        JSON.stringify({ ...mixedCatalog, notApplicableJobs: ["test-shards"] }),
+      );
+      assert.equal((await invoke("mixed-invalid-inapplicable", earlyFlags)).status, 1);
+      writeFileSync(join(root, "catalog.json"), JSON.stringify(mixedCatalog));
+      rmSync(join(root, "workers/0.json"));
+      assert.equal((await invoke("mixed-missing-worker", earlyFlags)).status, 1);
+    },
   );
 });
 

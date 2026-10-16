@@ -54,7 +54,7 @@ export async function prepareWorkbenchGeaAuthority({ workbench, gea }) {
   }
   await symlink(target, sibling, "dir");
 }
-export async function readPreparedWorkbench({ source, prepared, head }) {
+export async function readPreparedWorkbench({ source, prepared, head, manage }) {
   if (!source || !prepared || !head) throw Error("QUALITY_WORKBENCH_INPUT_REQUIRED");
   source = await realpath(source);
   prepared = await realpath(prepared);
@@ -78,7 +78,35 @@ export async function readPreparedWorkbench({ source, prepared, head }) {
       // Declaration emission adds regular files; lstat never follows external targets.
       if ((await lstat(join(prepared, file))).isFile()) continue;
     }
-    throw Error("QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED");
+    if (
+      line.startsWith("?? ") &&
+      file.startsWith("lib/business/inventory-aqkc/skills/") &&
+      manage
+    ) {
+      const owner = await realpath(manage.path);
+      if (!/^[a-f0-9]{40}$/.test(manage.head) || git(owner, "rev-parse", "HEAD") !== manage.head)
+        throw Error("QUALITY_WORKBENCH_MANAGE_SOURCE_MISMATCH");
+      const resource = file.replace(/^lib\/business\//, "business-resources/");
+      const entry = git(owner, "ls-tree", manage.head, "--", resource);
+      const original = join(owner, resource),
+        output = join(prepared, file);
+      if (
+        /^100644 blob [a-f0-9]{40}\t/.test(entry) &&
+        (await lstat(output)).isFile() &&
+        (await realpath(output)) === output &&
+        (await lstat(original)).isFile() &&
+        (await realpath(original)) === original
+      ) {
+        const bytes = await readFile(original);
+        const blob = createHash("sha1")
+          .update("blob " + bytes.length + "\0")
+          .update(bytes)
+          .digest("hex");
+        if (entry.split("\t")[0].endsWith(" " + blob) && bytes.equals(await readFile(output)))
+          continue;
+      }
+    }
+    throw Error("QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED: " + line);
   }
   const sourceFiles = git(source, "ls-tree", "-r", "-z", head)
     .split("\0")
@@ -120,20 +148,21 @@ export async function readPreparedWorkbench({ source, prepared, head }) {
     files,
   };
 }
-export async function verifyPreparedWorkbench({ source, prepared, head, receipt }) {
+export async function verifyPreparedWorkbench({ source, prepared, head, manage, receipt }) {
   if (!receipt) throw Error("QUALITY_WORKBENCH_RECEIPT_REQUIRED");
   const record = JSON.parse(await readFile(receipt, "utf8"));
-  const current = await readPreparedWorkbench({ source, prepared, head });
+  const current = await readPreparedWorkbench({ source, prepared, head, manage });
   if (JSON.stringify(record) !== JSON.stringify(current))
     throw Error("QUALITY_WORKBENCH_ASSET_MISMATCH");
   return current;
 }
 /** Keep publishable assets separate from the prepared worktree's Git metadata and dependency store. */
-export async function prepareWorkbenchAssets({ source, prepared, head, receipt, assets }) {
+export async function prepareWorkbenchAssets({ source, prepared, head, manage, receipt, assets }) {
   const record = await verifyPreparedWorkbench({
     source,
     prepared,
     head,
+    manage,
     receipt,
   });
   await mkdir(assets);
@@ -161,9 +190,18 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
         prepared: { type: "string" },
         head: { type: "string" },
         receipt: { type: "string" },
+        "manage-source": { type: "string" },
+        "manage-head": { type: "string" },
       },
     });
-    const result = await verifyPreparedWorkbench(values);
+    if (Boolean(values["manage-source"]) !== Boolean(values["manage-head"]))
+      throw Error("QUALITY_WORKBENCH_MANAGE_INPUT_REQUIRED");
+    const result = await verifyPreparedWorkbench({
+      ...values,
+      manage: values["manage-source"]
+        ? { path: values["manage-source"], head: values["manage-head"] }
+        : undefined,
+    });
     console.log(
       JSON.stringify({
         status: result.status,

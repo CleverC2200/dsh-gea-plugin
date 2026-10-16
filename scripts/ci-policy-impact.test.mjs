@@ -6,6 +6,203 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { selectCiTests } from "../../dsh-agent-workbench/scripts/ci-test-plan.mjs";
 
+const businessCore = [
+  "tests/controlled-execution.test.mjs",
+  "tests/plugin-sql-cancel.test.mjs",
+  "tests/business-page-grant.test.mjs",
+  "tests/gateway-handshake.test.mjs",
+].sort();
+
+test("a docs-only change keeps the four business contracts without unrelated engineering fixtures", (t) => {
+  const fixture = resourceImpactFixture(t);
+  fixture.change(fixture.own, "README.md", "Changed documentation\n");
+  const plan = fixture.plan();
+  assert.deepEqual(plan.required, businessCore);
+  assert.deepEqual(plan.files, businessCore);
+});
+
+test("engineering source, dynamic commands and configuration reselect the original contracts", async (t) => {
+  const { repositories, put, commit } = temporaryGitRepositories(t);
+  for (const entry of repositories) {
+    const source = new URL(
+      entry.repo === "dsh-gea-plugin" ? "../" : "../../" + entry.repo + "/",
+      import.meta.url,
+    );
+    const files = execFileSync(
+      "git",
+      [
+        "ls-files",
+        "scripts",
+        ...(entry.repo === "dsh-gea-plugin"
+          ? [
+              "tests",
+              ".github",
+              "package.json",
+              "pnpm-lock.yaml",
+              "tsconfig.json",
+              "tsconfig.official.json",
+              ".oxlintrc.json",
+              ".oxfmtrc.json",
+              ".qualityignore",
+              "quality-baseline.json",
+            ]
+          : []),
+      ],
+      { cwd: source, encoding: "utf8" },
+    )
+      .trim()
+      .split("\n");
+    for (const file of files) put(entry.path, file, readFileSync(new URL(file, source)));
+    entry.head = commit(entry.path);
+  }
+  const own = repositories[2];
+  put(own.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
+  own.head = commit(own.path);
+  const base = own.head;
+  const delivery = ["check", "integrity", "readiness", "runtime", "continuation"].map(
+    (name) => "scripts/delivery-" + name + ".test.mjs",
+  );
+  const cases = [
+    [
+      2,
+      "scripts/quality-peer-baseline.json",
+      ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
+    ],
+    [
+      0,
+      "scripts/quality-peer-baseline.json",
+      ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
+    ],
+    [
+      1,
+      "scripts/quality-peer-baseline.json",
+      ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
+    ],
+    [2, "scripts/run-quality-checks.mjs", ["scripts/run-quality-checks.test.mjs"]],
+    [2, "scripts/quality.mjs", ["scripts/quality.test.mjs", "scripts/quality-policy.test.mjs"]],
+    [
+      2,
+      "scripts/run-quality-ci.mjs",
+      ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
+    ],
+    [2, "scripts/quality-upstreams.mjs", ["scripts/quality-upstreams.test.mjs"]],
+    [
+      2,
+      "scripts/quality-runner-environment.mjs",
+      [
+        "scripts/quality-runner-environment.test.mjs",
+        "scripts/quality-worker-inputs.test.mjs",
+        "scripts/quality-prepared-inputs.test.mjs",
+      ],
+    ],
+    [2, "scripts/quality-test-reporter.mjs", ["scripts/quality-test-reporter.test.mjs"]],
+    [2, "scripts/quality-workbench.mjs", ["scripts/quality-workbench.test.mjs"]],
+    [2, "scripts/run-quality-full.mjs", ["scripts/run-quality-full.test.mjs"]],
+    [
+      2,
+      "scripts/start-isolated-validation.mjs",
+      ["tests/window-launch-admission.test.mjs", "tests/source-selection-start.test.mjs"],
+    ],
+    [2, "scripts/source-combination-integrity.mjs", ["tests/source-integrity.test.mjs"]],
+    [2, "scripts/delivery-check.mjs", delivery],
+    [
+      2,
+      "scripts/run-quality-fast.mjs",
+      ["scripts/run-quality-checks.test.mjs", "scripts/run-quality-full.test.mjs"],
+    ],
+    [
+      2,
+      "scripts/quality-ci-stages.mjs",
+      ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
+    ],
+    [
+      2,
+      "tests/fixtures/source-window.mjs",
+      ["tests/window-launch-admission.test.mjs", "tests/source-selection-start.test.mjs"],
+    ],
+    [2, ".oxlintrc.json", ["scripts/quality.test.mjs", "scripts/quality-policy.test.mjs"]],
+    [2, ".oxfmtrc.json", ["scripts/quality.test.mjs", "scripts/quality-policy.test.mjs"]],
+    [2, ".qualityignore", ["scripts/quality.test.mjs", "scripts/quality-policy.test.mjs"]],
+    [2, "quality-baseline.json", ["scripts/quality.test.mjs", "scripts/quality-policy.test.mjs"]],
+    [
+      2,
+      "scripts/quality-upstreams.json",
+      ["scripts/quality-upstreams.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
+    ],
+    [
+      2,
+      "scripts/supported-cores.json",
+      ["scripts/quality-workbench.test.mjs", "tests/window-launch-admission.test.mjs"],
+    ],
+    [2, "scripts/fixtures/quality-ci-commands.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
+    [
+      2,
+      "package.json",
+      [
+        "scripts/quality-policy.test.mjs",
+        "scripts/quality.test.mjs",
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-full.test.mjs",
+        "tests/window-launch-admission.test.mjs",
+      ],
+    ],
+    [
+      2,
+      "pnpm-lock.yaml",
+      [
+        "scripts/quality-policy.test.mjs",
+        "scripts/run-quality-ci.test.mjs",
+        "tests/window-launch-admission.test.mjs",
+      ],
+    ],
+    [
+      2,
+      "tsconfig.official.json",
+      ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"],
+    ],
+    [
+      2,
+      ".github/workflows/quality.yml",
+      ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
+    ],
+    [
+      2,
+      ".github/workflows/compatibility.yml",
+      ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
+    ],
+    [2, ".github/workflows/delivery-fixtures.yml", ["scripts/delivery-events.test.mjs"]],
+    [
+      0,
+      "scripts/ci-test-plan.mjs",
+      ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
+    ],
+    [
+      0,
+      "scripts/candidate-input.mjs",
+      [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs",
+        "tests/window-launch-admission.test.mjs",
+        "tests/source-selection-start.test.mjs",
+      ],
+    ],
+    [0, "scripts/ci-source-policy.mjs", ["scripts/business-profile-ci.test.mjs"]],
+    [1, "scripts/prepare-official-sdk.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
+    [1, "scripts/sdk-artifact-cache.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
+  ];
+  for (const [index, file, expected] of cases)
+    await t.test(repositories[index].repo + "/" + file, () => {
+      const entry = repositories[index];
+      put(entry.path, file, readFileSync(join(entry.path, file), "utf8") + "\n");
+      entry.head = commit(entry.path);
+      const plan = selectCiTests({ repositories, repo: own.repo, base });
+      const selected = plan.reasons[entry.repo + "/" + file];
+      for (const regression of expected)
+        assert.ok(selected.includes(regression), JSON.stringify({ file, regression, selected }));
+      assert.deepEqual(plan.required, businessCore);
+    });
+});
+
 test("a dynamic Workbench source-policy change selects the GEA adapter contract", (t) => {
   const { repositories, put, commit } = temporaryGitRepositories(t);
   for (const entry of repositories) {
@@ -19,6 +216,7 @@ test("a dynamic Workbench source-policy change selects the GEA adapter contract"
   put(own.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
   for (const file of [
     "tests/required.test.mjs",
+    ...policy.browserFixtures,
     "scripts/run-quality-ci.test.mjs",
     "tests/window-launch-admission.test.mjs",
     "scripts/business-profile-ci.test.mjs",
@@ -89,6 +287,8 @@ function resourceImpactFixture(t, authoredFiles = []) {
   put(own.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
   for (const file of [
     ...policy.required,
+    ...policy.rules.flatMap((rule) => rule.tests),
+    ...policy.browserFixtures,
     "scripts/ci-policy-impact.test.mjs",
     "scripts/quality-prepared-inputs.test.mjs",
     "tests/sales-plan-action.test.mjs",
@@ -110,6 +310,7 @@ function resourceImpactFixture(t, authoredFiles = []) {
   const base = own.head;
   return {
     own,
+    repositories,
     peer: repositories[0],
     policy,
     change(entry, file, value = "Changed resource\n") {
@@ -150,7 +351,12 @@ test("Workbench page resources select GEA page grants and admitted asset integri
         ].sort(),
       );
       assert.deepEqual(plan.required, [...fixture.policy.required].sort());
-      assert.deepEqual(plan.files, [...new Set([...fixture.policy.required, ...extra])].sort());
+      assert.deepEqual(
+        plan.files,
+        [
+          ...new Set([...fixture.policy.required, "scripts/quality-workbench.test.mjs", ...extra]),
+        ].sort(),
+      );
       assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
       assert.ok(!plan.files.includes("tests/unrelated.contract.mjs"));
     });
@@ -176,6 +382,8 @@ test("a policy-only source change selects this impact regression despite its exc
     [
       ...fixture.policy.required,
       "scripts/ci-policy-impact.test.mjs",
+      "scripts/run-quality-ci.test.mjs",
+      "tests/window-launch-admission.test.mjs",
       "tests/sales-plan-action.test.mjs",
     ].sort(),
   );
@@ -188,6 +396,15 @@ test("unmapped Workbench source still rejects selection", (t) => {
     () => fixture.plan(),
     /CI_TEST_IMPACT_UNMAPPED: dsh-agent-workbench\/src\/unowned-source\.ts/,
   );
+});
+
+test("unknown own and peer commands cannot fall back to configuration tests", (t) => {
+  for (const repo of ["dsh-gea-plugin", "dsh-agent-workbench", "dsh-agent-manage"]) {
+    const fixture = resourceImpactFixture(t);
+    const entry = fixture.repositories.find((entry) => entry.repo === repo);
+    fixture.change(entry, "scripts/unowned-command.mjs", "export const value = 1;\n");
+    assert.throws(() => fixture.plan(), /CI_TEST_IMPACT_UNMAPPED/);
+  }
 });
 
 test("the prepared tar helper selects its CLI regression while an unknown Python source still rejects", (t) => {
@@ -268,15 +485,19 @@ test("the Workbench sales-plan export selects GEA's actual approval transaction 
   );
 });
 
-test("a package-only change retains its original configuration contracts without policy consumers", (t) => {
+test("a package-only change retains affected tool and configuration contracts", (t) => {
   const fixture = resourceImpactFixture(t);
   fixture.change(fixture.own, "package.json", JSON.stringify({ name: "fixture-package" }));
   const plan = fixture.plan();
-  assert.deepEqual(plan.reasons[fixture.own.repo + "/package.json"], [
+  const expected = [
+    "scripts/quality-policy.test.mjs",
+    "scripts/quality.test.mjs",
     "scripts/run-quality-ci.test.mjs",
+    "scripts/run-quality-full.test.mjs",
     "tests/window-launch-admission.test.mjs",
-  ]);
-  assert.deepEqual(plan.files, [...fixture.policy.required].sort());
+  ];
+  assert.deepEqual(plan.reasons[fixture.own.repo + "/package.json"], expected);
+  assert.deepEqual(plan.files, [...fixture.policy.required, ...expected].sort());
 });
 
 test("detail contributions select the built browser and actual installer contracts", (t) => {
@@ -289,7 +510,12 @@ test("detail contributions select the built browser and actual installer contrac
     "tests/plugin-release-source.test.mjs",
     "tests/plugin-release.test.mjs",
   ])
-    writeFileSync(join(fixture.own.path, file), "export const fixture = true;\n");
+    writeFileSync(
+      join(fixture.own.path, file),
+      file.endsWith(".browser.mjs")
+        ? "import { chromium } from '@playwright/test'; await chromium.launch();"
+        : "export const fixture = true;\n",
+    );
   fixture.change(fixture.own, "src/plugin-detail-updates.tsx", "export const changed = true;\n");
   const plan = fixture.plan();
   assert.ok(plan.files.includes("tests/plugin-update-install.contract.mjs"), JSON.stringify(plan));
@@ -312,6 +538,7 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
   const expected = [...new Set(policy.rules.flatMap((rule) => rule.tests))];
   for (const file of [
     "tests/required.test.mjs",
+    ...policy.browserFixtures,
     "tests/unrelated.test.mjs",
     "scripts/unrelated.test.mjs",
     "tests/unrelated.contract.mjs",

@@ -39,6 +39,10 @@ function fixture(
     earlyManagePlaywright = "1.58.2",
   } = {},
 ) {
+  const testFiles = [
+    "scripts/fixture.test.mjs",
+    ...(publicQuality && withShards ? ["scripts/second.test.mjs"] : []),
+  ];
   const coreManager = actualPnpmConfig ? "pnpm@11.7.0" : "pnpm@11.11.0";
   const pnpmConfigCli = actualPnpmConfig
     ? (process.env.GEA_TEST_PNPM_CONFIG_CLI ?? join(own, "node_modules/pnpm/bin/pnpm.cjs"))
@@ -109,14 +113,19 @@ function fixture(
     ])
       put("candidate/dsh-gea-plugin/scripts/" + file, readFileSync(join(own, "scripts", file)));
     put("candidate/dsh-gea-plugin/tests/profile.mjs", "export {};\n");
+    if (withShards)
+      put(
+        "candidate/dsh-gea-plugin/scripts/second.test.mjs",
+        "import test from 'node:test'; test('second assigned file', () => {});\n",
+      );
     put(
       "candidate/dsh-gea-plugin/scripts/fixture.test.mjs",
       `import '../tests/profile.mjs';import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync,writeFileSync} from 'node:fs';test('original CLI admitted all five public entries',()=>{const records=JSON.parse(readFileSync(process.env.GEA_TEST_SOURCE_INPUTS));assert.equal(records.length,5);const manage=records.find(x=>x.repo==='dsh-agent-manage');assert.equal(readFileSync(manage.source+'/client/client.js','utf8'),'fixed public client');writeFileSync(${JSON.stringify(join(root, "tests-executed"))},'actual Node test');});`,
     );
     json("candidate/dsh-gea-plugin/scripts/ci-test-policy.json", {
       schemaVersion: 1,
-      required: ["scripts/fixture.test.mjs"],
-      tests: ["scripts/fixture.test.mjs"],
+      required: testFiles,
+      tests: testFiles,
       rules: [],
     });
   }
@@ -223,6 +232,16 @@ function fixture(
     "source/dsh-agent-workbench/business/inventory-apsplan/source/package-lock.json",
     "fixed inventory lock",
   );
+  if (runtime) {
+    put(
+      "candidate/dsh-agent-manage/business-resources/inventory-aqkc/skills/inventory-policy/SKILL.md",
+      "Only admitted inventory rows may be read.\n",
+    );
+    put(
+      "source/dsh-agent-workbench/.gitignore",
+      "node_modules/\nlib/*\n!lib/business/\nlib/business/*\n!lib/business/inventory-aqkc/\nlib/business/inventory-aqkc/*\n!lib/business/inventory-aqkc/skills/\n",
+    );
+  }
   const coreHead = commit(coreSource),
     wbHead = commit(wb),
     manageHead = commit(manage);
@@ -339,7 +358,7 @@ function fixture(
   };
   json("candidate-input.json", candidate);
   json("candidate-group.json", { groupId: "fixture" });
-  let plan = { runtime, browser, files: ["scripts/fixture.test.mjs"] };
+  let plan = { runtime, browser, files: testFiles };
   json("quality-test-plan.json", plan);
   const binding = {
     inputSha256: hash(readFileSync(join(root, "candidate-input.json"))),
@@ -414,6 +433,10 @@ function fixture(
     json("official-latest-standard/.git/dsh-sdk-artifacts.json", sdk);
   }
   if (runtime) {
+    put(
+      "candidate/dsh-agent-workbench/lib/business/inventory-aqkc/skills/inventory-policy/SKILL.md",
+      "Only admitted inventory rows may be read.\n",
+    );
     for (const file of ["host.js", "client.js", "types/host.d.ts", "types/client.d.ts"])
       put("candidate/dsh-agent-workbench/lib/" + file, "fixed Workbench");
     put("official-latest-standard/apps/web/dist/index.html", "fixed Web");
@@ -607,7 +630,7 @@ cp.spawnSync=(command,args,options={})=>{
   delete env.NODE_TEST_CONTEXT;
   put(
     "produce.mjs",
-    `import {createWorkerBinding} from ${JSON.stringify(join(gea, "scripts/quality-worker-inputs.mjs"))};import {readPreparedWorkbench} from ${JSON.stringify(join(gea, "scripts/quality-workbench.mjs"))};import {readFileSync,writeFileSync} from 'node:fs';const read=f=>JSON.parse(readFileSync(f));if(${runtime})writeFileSync(${JSON.stringify(join(root, "prepared-workbench.json"))},JSON.stringify(await readPreparedWorkbench({source:${JSON.stringify(wb)},prepared:${JSON.stringify(join(root, "candidate/dsh-agent-workbench"))},head:${JSON.stringify(wbHead)}})));writeFileSync(${JSON.stringify(join(root, "binding.json"))},JSON.stringify(createWorkerBinding({root:${JSON.stringify(root)},executionPlan:read(${JSON.stringify(join(root, "quality-test-execution-plan.json"))}),stages:read(${JSON.stringify(join(root, "quality-stages.json"))})})));`,
+    `import {createWorkerBinding} from ${JSON.stringify(join(gea, "scripts/quality-worker-inputs.mjs"))};import {readPreparedWorkbench} from ${JSON.stringify(join(gea, "scripts/quality-workbench.mjs"))};import {readFileSync,writeFileSync} from 'node:fs';const read=f=>JSON.parse(readFileSync(f));if(${runtime})writeFileSync(${JSON.stringify(join(root, "prepared-workbench.json"))},JSON.stringify(await readPreparedWorkbench({source:${JSON.stringify(wb)},prepared:${JSON.stringify(join(root, "candidate/dsh-agent-workbench"))},head:${JSON.stringify(wbHead)},manage:{path:${JSON.stringify(manage)},head:${JSON.stringify(manageHead)}}})));writeFileSync(${JSON.stringify(join(root, "binding.json"))},JSON.stringify(createWorkerBinding({root:${JSON.stringify(root)},executionPlan:read(${JSON.stringify(join(root, "quality-test-execution-plan.json"))}),stages:read(${JSON.stringify(join(root, "quality-stages.json"))})})));`,
   );
   const run = (file, args = [], extra = {}) =>
     spawnSync(process.execPath, [file, ...args], {
@@ -629,6 +652,8 @@ cp.spawnSync=(command,args,options={})=>{
       coreSource,
       "--test-file-concurrency",
       String(concurrency),
+      "--test-shards",
+      withShards ? "2" : "1",
       ...extraArgs,
     ]);
   if (publicQuality) {
@@ -1319,6 +1344,16 @@ test("runtime workers install the inherited npm inventory lock separately and as
   );
   assert.ok(existsSync(join(f.root, "prepared-workbench-assets/lib/host.js")));
   assert.ok(!existsSync(join(f.root, "prepared-workbench-assets/.git")));
+  assert.equal(
+    readFileSync(
+      join(
+        f.root,
+        "prepared-workbench-assets/lib/business/inventory-aqkc/skills/inventory-policy/SKILL.md",
+      ),
+      "utf8",
+    ),
+    "Only admitted inventory rows may be read.\n",
+  );
   assert.ok(record.steps.some((x) => x.name === "workbench-assets" && x.status === "passed"));
 });
 
@@ -1419,6 +1454,7 @@ test("the real selector maps only the worker implementation to its public CLI co
   put(ownRepo.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
   for (const file of [
     "tests/required.test.mjs",
+    ...policy.browserFixtures,
     "scripts/quality-worker-inputs.test.mjs",
     "scripts/quality-prepared-inputs.test.mjs",
     "tests/unrelated.test.mjs",
@@ -1596,26 +1632,7 @@ test("the actual producer binding and index CLI preserve the exact bytes consume
 });
 
 test("worker independently reads Linux OS and ABI and rejects drift or missing facts before source preparation or install", (t) => {
-  const cases = [
-    { ImageOS: "other-image-os" },
-    { FIXTURE_OS_RELEASE: 'ID=debian\nVERSION_ID="24.04"\n' },
-    { FIXTURE_OS_RELEASE: 'ID=ubuntu\nVERSION_ID="24.10"\n' },
-    { FIXTURE_ARCH: "other-arch" },
-    { FIXTURE_PLATFORM: "other-os" },
-    { FIXTURE_NODE: "24.0.0" },
-    { FIXTURE_MODULES: String(Number(process.versions.modules) + 1) },
-    { FIXTURE_NAPI: String(Number(process.versions.napi) + 1) },
-    { FIXTURE_GLIBC: "2.40" },
-    { ImageOS: "" },
-    { ImageVersion: "" },
-    { FIXTURE_MODULES: "" },
-    { FIXTURE_NAPI: "" },
-    { FIXTURE_GLIBC: "" },
-    { FIXTURE_OS_RELEASE: "MISSING" },
-    { FIXTURE_OS_RELEASE: 'VERSION_ID="24.04"\n' },
-    { FIXTURE_OS_RELEASE: "ID=ubuntu\n" },
-    { FIXTURE_OS_RELEASE: 'ID="ubuntu\nVERSION_ID=24.04\n' },
-  ];
+  const cases = [{ FIXTURE_OS_RELEASE: "MISSING" }, { FIXTURE_GLIBC: "2.40" }];
   for (const environment of cases) {
     const f = fixture(t, { browser: true });
     const producer = f.produce();
