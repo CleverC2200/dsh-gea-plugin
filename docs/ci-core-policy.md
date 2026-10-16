@@ -57,3 +57,7 @@ The selected tests cover direct structured/text results, historical resource int
 ## 正式 Cube 157 配置补修
 
 产品固定 `f75eeab0e5fd4ac0e7d795d2e854f4d6cf1a5cb3`，仅登记用户确认的正式 Cube 来源 `MCP:mcp.cube`，保留测试编码并升版。定向七文件覆盖来源准入与请求路由、WeKnora、包版本及发行声明；三仓冻结、静态检查、构建、macOS 隔离及最终聚合保持必需。没有修改 Core、业务授权或未知来源拒绝规则。在线更新由用户从正式详情页操作，源码定向通过不等于真实业务验收。
+
+## Windows 157 安装缓存补修
+
+固定产品 `dd8ceb412afcaac2de8a3a9f57fd32286b648c5f`，复用已通过 Mac 隔离与当前 profile 联合安装的缓存修补。Windows 157 完整包也沿用旧 profile 的缓存，未知或部分安装仍拒绝，失败回执保留。定向三个文件仅检查初始化、品牌封包与来源准入；其他必需门禁和 Core 保持，插件157归档复用正式已发字节。
