@@ -287,6 +287,8 @@ test("separate CLI processes prepare once, preserve the plan, restore fixed envi
 test("one producer executes the existing tests stage and indexes its original receipt without transport", (t) => {
   const f = fixture(t);
   const hosted = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_WORKSPACE: f.job,
     GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
     GITHUB_RUN_ID: "7",
     GITHUB_RUN_ATTEMPT: "2",
@@ -307,12 +309,15 @@ test("one producer executes the existing tests stage and indexes its original re
     assert.equal(result.status, 0, stage + ": " + result.stdout + result.stderr);
   }
   const indexFile = join(f.job, "quality-index.json");
-  const invoke = () =>
+  const invoke = (extra = {}) =>
     spawnSync(
       process.execPath,
       ["scripts/quality-shards.mjs", "--mode", "index", "--root", f.job, "--output", indexFile],
-      { cwd: f.gea, encoding: "utf8", env: { ...process.env, ...hosted } },
+      { cwd: f.gea, encoding: "utf8", env: { ...process.env, ...hosted, ...extra } },
     );
+  const wrongWorkspace = invoke({ GITHUB_WORKSPACE: f.gea });
+  assert.equal(wrongWorkspace.status, 1);
+  assert.match(wrongWorkspace.stderr, /original GITHUB_WORKSPACE required/);
   const indexed = invoke();
   assert.equal(indexed.status, 0, indexed.stdout + indexed.stderr);
   const index = JSON.parse(readFileSync(indexFile));
