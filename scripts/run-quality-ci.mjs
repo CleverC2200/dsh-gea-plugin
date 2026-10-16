@@ -309,11 +309,11 @@ try {
     process.env.QUALITY_POLICY_WORKBENCH = workbench.path;
     let pluginPlan;
     if (values.phase === "plugin-update-pr") {
-      const { pluginUpdateLane, validatePluginUpdateGroup, pluginUpdatePlan } =
+      const { pluginUpdateLane, validatePluginUpdateGroup, pluginUpdatePlanFor } =
         await import("./plugin-update-pr-lane.mjs");
       if (!pluginUpdateLane(process.cwd())) refuse("PLUGIN_UPDATE_EVENT_REQUIRED");
       validatePluginUpdateGroup(candidate.repositories);
-      pluginPlan = pluginUpdatePlan;
+      pluginPlan = pluginUpdatePlanFor(candidate.repositories);
     }
     let knowledgePlan;
     if (values.phase === "knowledge-merge") {

@@ -10,6 +10,15 @@ export const pluginUpdateAuthorization = Object.freeze({
   productHead: "30877e28e5d0f6877679b7b543190159aa0564bc",
   base: "5b8c06b15df6b066c845bbea180ffbc209d72e43",
 });
+export const desktopBootstrapAuthorization = Object.freeze({
+  repository: "CleverC2200/dsh-gea-plugin",
+  pullRequest: 80,
+  branch: "codex/gea-complete-desktop-20261016",
+  instruction:
+    "补齐最新三个核心插件、GenUI 和首次安装初始化，重打 Mac/Windows 完整 GEA 包；保留 WeKnora、已有配置与更新回执，不改 Core，只跑必要的定向校验。",
+  productHead: "28767e17a547110095cffcac181f9940ade74b74",
+  base: "4579bf2485063c9dfbe7ad74b8b46f37c4fffcdb",
+});
 const supplements = [
   "scripts/plugin-update-pr-lane.mjs",
   "scripts/plugin-update-pr-lane.test.mjs",
@@ -19,6 +28,18 @@ const supplements = [
   // Synchronizes the release assertion with main's strict Manage peer.
   "tests/plugin-release.test.mjs",
 ];
+const bootstrapSupplements = [
+  "scripts/quality-peer-baseline.json",
+  "scripts/plugin-update-pr-lane.mjs",
+  "scripts/plugin-update-pr-lane.test.mjs",
+  "scripts/run-quality-ci.mjs",
+  ".github/workflows/delivery-fixtures.yml",
+  "docs/ci-core-policy.md",
+];
+const desktopCompanions = {
+  "dsh-agent-workbench": "59aea218088da1ce0cdbbffb932cfb9cd518cae8",
+  "dsh-agent-manage": "6c54ba254e391ec34eb91f0cb4f2cec164be2cea",
+};
 const frozenSources = {
   "dsh-agent-workbench": "eda9f6367c35544f45866c5e06e1ebfd1f5b61e0",
   "dsh-agent-manage": "e7685b22e071fc8728f6e455699fa1d8099f5a00",
@@ -29,8 +50,7 @@ const git = (root, ...args) =>
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
-export function selectPluginUpdateLane(input) {
-  const a = pluginUpdateAuthorization;
+export function selectPluginUpdateLane(input, a = pluginUpdateAuthorization) {
   if (input.repository !== a.repository) return false;
   if (input.event === "pull_request") {
     if (input.branch === a.branch && input.pullRequest !== a.pullRequest)
@@ -53,30 +73,90 @@ export function pluginUpdateLane(root, env = process.env) {
     ? JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, "utf8"))
     : {};
   const head = git(root, "rev-parse", "HEAD");
-  return selectPluginUpdateLane({
-    event: env.GITHUB_EVENT_NAME,
-    repository: env.GITHUB_REPOSITORY,
-    pullRequest: event.number,
-    branch: event.pull_request?.head?.ref,
-    headRepository: event.pull_request?.head?.repo?.full_name,
-    ref: env.GITHUB_REF,
-    parents: git(root, "show", "-s", "--format=%P", head).split(" ").filter(Boolean),
-    matches:
-      (!env.QUALITY_EXPECTED_SHA || env.QUALITY_EXPECTED_SHA === head) &&
-      matchesFrozenSource({ path: root, head }, pluginUpdateAuthorization.productHead, supplements),
-  });
+  let bootstrapMerge = false;
+  if (env.GITHUB_EVENT_NAME === "push") {
+    try {
+      git(root, "merge-base", "--is-ancestor", desktopBootstrapAuthorization.productHead, head);
+      bootstrapMerge = true;
+    } catch {}
+  }
+  const authorization =
+    event.pull_request?.head?.ref === desktopBootstrapAuthorization.branch ||
+    event.number === desktopBootstrapAuthorization.pullRequest ||
+    bootstrapMerge
+      ? desktopBootstrapAuthorization
+      : pluginUpdateAuthorization;
+  return selectPluginUpdateLane(
+    {
+      event: env.GITHUB_EVENT_NAME,
+      repository: env.GITHUB_REPOSITORY,
+      pullRequest: event.number,
+      branch: event.pull_request?.head?.ref,
+      headRepository: event.pull_request?.head?.repo?.full_name,
+      ref: env.GITHUB_REF,
+      parents: git(root, "show", "-s", "--format=%P", head).split(" ").filter(Boolean),
+      matches:
+        (!env.QUALITY_EXPECTED_SHA || env.QUALITY_EXPECTED_SHA === head) &&
+        matchesFrozenSource(
+          { path: root, head },
+          authorization.productHead,
+          authorization === desktopBootstrapAuthorization ? bootstrapSupplements : supplements,
+        ),
+    },
+    authorization,
+  );
 }
 export function validatePluginUpdateGroup(repositories) {
   if (repositories.length !== 3 || new Set(repositories.map((row) => row.repo)).size !== 3)
     throw Error("PLUGIN_UPDATE_GROUP_REJECTED");
-  for (const [repo, baseline] of Object.entries(frozenSources)) {
+  const gea = repositories.find((row) => row.repo === "dsh-gea-plugin");
+  const bootstrap =
+    gea &&
+    matchesFrozenSource(gea, desktopBootstrapAuthorization.productHead, bootstrapSupplements);
+  for (const [repo, original] of Object.entries(frozenSources)) {
+    const baseline = bootstrap
+      ? repo === "dsh-gea-plugin"
+        ? desktopBootstrapAuthorization.productHead
+        : desktopCompanions[repo]
+      : original;
     const entry = repositories.find((row) => row.repo === repo);
     if (
       !entry ||
-      !matchesFrozenSource(entry, baseline, repo === "dsh-gea-plugin" ? supplements : [])
+      !matchesFrozenSource(
+        entry,
+        baseline,
+        repo === "dsh-gea-plugin"
+          ? bootstrap
+            ? bootstrapSupplements
+            : supplements
+          : bootstrap
+            ? ["scripts/quality-peer-baseline.json"]
+            : [],
+      )
     )
       throw Error("PLUGIN_UPDATE_GROUP_REJECTED: " + repo);
   }
+}
+export function pluginUpdatePlanFor(repositories) {
+  const gea = repositories.find((row) => row.repo === "dsh-gea-plugin");
+  return gea &&
+    matchesFrozenSource(gea, desktopBootstrapAuthorization.productHead, bootstrapSupplements)
+    ? {
+        lane: "plugin-update-pr",
+        runtime: false,
+        browser: false,
+        acceptance: "targeted complete desktop bootstrap; broad selection not run",
+        authorization: desktopBootstrapAuthorization,
+        files: [
+          "scripts/plugin-update-pr-lane.test.mjs",
+          "desktop/company-bootstrap.test.mjs",
+          "desktop/official-branding.test.mjs",
+          "tests/client-account.test.mjs",
+          "tests/base-inventory-resources.test.mjs",
+          "tests/plugin-release.test.mjs",
+        ],
+      }
+    : pluginUpdatePlan;
 }
 export const pluginUpdatePlan = Object.freeze({
   lane: "plugin-update-pr",

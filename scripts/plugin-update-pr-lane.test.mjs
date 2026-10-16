@@ -7,6 +7,8 @@ import {
   selectPluginUpdateLane,
   validatePluginUpdateGroup,
   pluginUpdatePlan,
+  desktopBootstrapAuthorization,
+  pluginUpdatePlanFor,
 } from "./plugin-update-pr-lane.mjs";
 const event = {
   event: "pull_request",
@@ -85,4 +87,41 @@ test("every targeted stage requires public hash admission before preparation", (
     assert.equal(result.status, 1);
     assert.match(result.stderr, /CANDIDATE_FINAL_GROUP_REQUIRED/);
   }
+});
+
+test("desktop first-install scope is bound to its own PR and frozen packaging source", () => {
+  const a = desktopBootstrapAuthorization;
+  const input = {
+    event: "pull_request",
+    repository: a.repository,
+    headRepository: a.repository,
+    pullRequest: a.pullRequest,
+    branch: a.branch,
+    matches: true,
+  };
+  assert.equal(selectPluginUpdateLane(input, a), true);
+  assert.throws(() => selectPluginUpdateLane({ ...input, matches: false }, a), /SCOPE_REJECTED/);
+  assert.throws(
+    () => selectPluginUpdateLane({ ...input, pullRequest: a.pullRequest + 1 }, a),
+    /SCOPE_REJECTED/,
+  );
+  assert.throws(
+    () => selectPluginUpdateLane({ ...input, headRepository: "other/fork" }, a),
+    /SCOPE_REJECTED/,
+  );
+  assert.equal(selectPluginUpdateLane({ ...input, branch: "unrelated" }, a), false);
+  const head = spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  const plan = pluginUpdatePlanFor([{ repo: "dsh-gea-plugin", path: process.cwd(), head }]);
+  assert.deepEqual(plan.files, [
+    "scripts/plugin-update-pr-lane.test.mjs",
+    "desktop/company-bootstrap.test.mjs",
+    "desktop/official-branding.test.mjs",
+    "tests/client-account.test.mjs",
+    "tests/base-inventory-resources.test.mjs",
+    "tests/plugin-release.test.mjs",
+  ]);
+  assert.equal(plan.authorization, a);
+  assert.equal(plan.browser, false);
 });

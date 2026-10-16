@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -20,9 +22,27 @@ jobs:
       - run: |
           npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4
           ln -s "$PWD/.runtime/fixture-dependencies/node_modules" node_modules
-      - run: node --run test:release-source
-      - run: npm run test:delivery:packages
-      - run: node --run test:delivery
-      - run: node --run test:fixture-inputs
-      - run: node --run test:prompt-execution
-      - run: node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs
+      - id: scope
+        run: |
+          node --input-type=module <<'JS'
+          import {appendFileSync} from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          import {pluginUpdateLane, pluginUpdatePlanFor, desktopBootstrapAuthorization} from './scripts/plugin-update-pr-lane.mjs';
+          const head=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+          const selected=pluginUpdateLane(process.cwd()) && pluginUpdatePlanFor([{repo:'dsh-gea-plugin',path:process.cwd(),head}]).authorization===desktopBootstrapAuthorization;
+          appendFileSync(process.env.GITHUB_OUTPUT,`bootstrap=${selected}\n`);
+          JS
+      - if: steps.scope.outputs.bootstrap == 'true'
+        run: node --test scripts/plugin-update-pr-lane.test.mjs desktop/company-bootstrap.test.mjs desktop/official-branding.test.mjs
+      - if: steps.scope.outputs.bootstrap != 'true'
+        run: node --run test:release-source
+      - if: steps.scope.outputs.bootstrap != 'true'
+        run: npm run test:delivery:packages
+      - if: steps.scope.outputs.bootstrap != 'true'
+        run: node --run test:delivery
+      - if: steps.scope.outputs.bootstrap != 'true'
+        run: node --run test:fixture-inputs
+      - if: steps.scope.outputs.bootstrap != 'true'
+        run: node --run test:prompt-execution
+      - if: steps.scope.outputs.bootstrap != 'true'
+        run: node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs
