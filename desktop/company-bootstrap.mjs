@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { basename, delimiter, isAbsolute, join } from "node:path";
+import { basename, delimiter, isAbsolute, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const names = [
@@ -137,7 +137,7 @@ export async function refreshCompanyCore({ root, seed, home }) {
   );
 }
 
-async function assertCompletedInstallation(record) {
+async function assertCompletedInstallation(record, profile) {
   let receipt;
   try {
     receipt = await json(join(record, "receipt.json"));
@@ -145,7 +145,44 @@ async function assertCompletedInstallation(record) {
     if (error.code === "ENOENT") return;
     throw Error("GEA_COMPANY_INSTALL_INCOMPLETE", { cause: error });
   }
-  if (receipt?.status !== "installed") throw Error("GEA_COMPANY_INSTALL_INCOMPLETE");
+  if (receipt?.status === "installed") return;
+  try {
+    const prefix = "GEA_COMPANY_INSTALL_FAILED: ";
+    if (
+      receipt?.status !== "failed" ||
+      typeof receipt.diagnostic !== "string" ||
+      !receipt.diagnostic.startsWith(prefix) ||
+      existsSync(join(record, "before-store-conflict-retry.json"))
+    )
+      throw Error("NOT_RECOVERABLE");
+    const log = receipt.diagnostic.slice(prefix.length);
+    const local = relative(join(profile, ".plugin-manager/logs"), log).split(/[\\/]/);
+    if (
+      !isAbsolute(log) ||
+      local.length !== 2 ||
+      !/^operation-[a-zA-Z0-9_-]+$/.test(local[0]) ||
+      local[1] !== "pnpm.log" ||
+      !(await readFile(log, "utf8")).startsWith("[ERR_PNPM_UNEXPECTED_STORE]")
+    )
+      throw Error("NOT_RECOVERABLE");
+    const current = await json(join(profile, "package.json"));
+    if (names.every((name) => current.dependencies?.[name])) throw Error("NOT_RECOVERABLE");
+    for (const file of [
+      "package.json",
+      "cordis.patch.yml",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+    ])
+      if (
+        !(await readFile(join(profile, file))).equals(
+          await readFile(join(record, "before-" + file)),
+        )
+      )
+        throw Error("PROFILE_CHANGED");
+    return receipt;
+  } catch (error) {
+    throw Error("GEA_COMPANY_INSTALL_INCOMPLETE", { cause: error });
+  }
 }
 
 export async function readCompanySeed(seed) {
@@ -181,6 +218,7 @@ export async function installCompanyPackages({
   packages,
   store,
   offline,
+  beforeInstall,
   complete,
 }) {
   const anchor = join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json");
@@ -196,6 +234,18 @@ export async function installCompanyPackages({
   return withFileLock(
     join(profile, "package.json"),
     async () => {
+      await beforeInstall?.();
+      const modulesPath = join(profile, "node_modules/.modules.yaml");
+      let selectedStore = store;
+      let offlineArguments = offline ? ["--offline"] : [];
+      if (existsSync(modulesPath)) {
+        const modules = require("yaml").parse(await readFile(modulesPath, "utf8"));
+        if (typeof modules?.storeDir !== "string" || !isAbsolute(modules.storeDir))
+          throw Error("GEA_COMPANY_STORE_INVALID");
+        selectedStore = modules.storeDir;
+        if (offline && selectedStore !== join(store, "v11"))
+          offlineArguments = ["--prefer-offline"];
+      }
       boot.initProfile(profile, boot.PROFILE_TEMPLATES.web.bundles);
       const result = await runProfilePnpm(
         {
@@ -208,9 +258,9 @@ export async function installCompanyPackages({
         [
           "add",
           ...packages,
-          ...(offline ? ["--offline"] : []),
+          ...offlineArguments,
           "--registry=https://registry.npmjs.org",
-          "--store-dir=" + store,
+          "--store-dir=" + selectedStore,
           "--config.cache-dir=" + join(home, "desktop-company-cache", "metadata"),
         ],
         {
@@ -239,7 +289,7 @@ export async function installCompanyPackages({
 export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   const profile = join(home, "profiles/desktop");
   const record = join(profile, "gea/bootstrap");
-  await assertCompletedInstallation(record);
+  await assertCompletedInstallation(record, profile);
   const current = existsSync(join(profile, "package.json"))
     ? await json(join(profile, "package.json"))
     : undefined;
@@ -255,7 +305,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   return withFileLock(
     join(record, "installation"),
     async () => {
-      await assertCompletedInstallation(record);
+      await assertCompletedInstallation(record, profile);
       const latest = existsSync(join(profile, "package.json"))
         ? await json(join(profile, "package.json"))
         : undefined;
@@ -292,11 +342,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
           errorOnExist: true,
           force: false,
         });
-      await writeFile(
-        join(record, "receipt.json"),
-        JSON.stringify({ status: "installing", packages: missing }) + "\n",
-        { mode: 0o600 },
-      );
+      let operationStarted = false;
       try {
         const selected = manifest.packages.filter((row) => missing.includes(row.name));
         await installCompanyPackages({
@@ -307,6 +353,21 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
           packages: selected.map((row) => join(seed, "archives", row.file)),
           store,
           offline: true,
+          beforeInstall: async () => {
+            const rejected = await assertCompletedInstallation(record, profile);
+            if (rejected)
+              await cp(
+                join(record, "receipt.json"),
+                join(record, "before-store-conflict-retry.json"),
+                { force: false, errorOnExist: true },
+              );
+            await writeFile(
+              join(record, "receipt.json"),
+              JSON.stringify({ status: "installing", packages: missing }) + "\n",
+              { mode: 0o600 },
+            );
+            operationStarted = true;
+          },
           complete: async ({ writeFileAtomic }) => {
             const installed = await json(join(profile, "package.json"));
             for (const row of selected) {
@@ -361,11 +422,12 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
         });
         return result;
       } catch (error) {
-        await writeFile(
-          join(record, "receipt.json"),
-          JSON.stringify({ status: "failed", diagnostic: error.message }) + "\n",
-          { mode: 0o600 },
-        );
+        if (operationStarted)
+          await writeFile(
+            join(record, "receipt.json"),
+            JSON.stringify({ status: "failed", diagnostic: error.message }) + "\n",
+            { mode: 0o600 },
+          );
         throw error;
       }
     },
