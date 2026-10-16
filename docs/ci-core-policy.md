@@ -53,3 +53,7 @@ The selected tests cover direct structured/text results, historical resource int
 ## Windows ASAR 路径补修
 
 产品固定 `f0fae2cef4234381f0ac1ff69c757567ecfc99de`，仅将封包读取路径转换为本机分隔符。定向执行品牌测试与范围准入测试两个文件；三仓冻结、静态检查、构建、macOS 隔离及最终聚合保持必需。Mac 与插件包内容不变，复用已通过证据；Windows 新输入单独构建验收。
+
+## 已有客户端缓存修补
+
+固定产品 `431f18ee56e3677eb67903ac376d78513300358b`，仅修补公司初始化复用已有 pnpm store，并允许原配置未变化的已知写入前缓存拒绝恢复一次，保留原失败回执。定向运行初始化、品牌封包及范围准入三个测试文件；三仓冻结、静态检查、构建、macOS 隔离与最终聚合保持必需。未知或部分安装、配置变化及重复恢复均拒绝；原安装包和失败证据保留。

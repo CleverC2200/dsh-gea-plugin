@@ -12,12 +12,12 @@ export const pluginUpdateAuthorization = Object.freeze({
 });
 export const desktopBootstrapAuthorization = Object.freeze({
   repository: "CleverC2200/dsh-gea-plugin",
-  pullRequest: 82,
-  branch: "codex/gea-windows-asar-20261016",
+  pullRequest: 0,
+  branch: "codex/gea-existing-store-20261016",
   instruction:
     "补齐最新三个核心插件、GenUI 和首次安装初始化，重打 Mac/Windows 完整 GEA 包；保留 WeKnora、已有配置与更新回执，不改 Core，只跑必要的定向校验。",
-  productHead: "f0fae2cef4234381f0ac1ff69c757567ecfc99de",
-  base: "317b886c7b2292586461c657f9841067cddaafbb",
+  productHead: "431f18ee56e3677eb67903ac376d78513300358b",
+  base: "62fc2f32bad9dd4dd0ff9576be9b2abe6ef4bfd4",
 });
 const supplements = [
   "scripts/plugin-update-pr-lane.mjs",
@@ -147,7 +147,11 @@ export function pluginUpdatePlanFor(repositories) {
         browser: false,
         acceptance: "targeted complete desktop bootstrap; broad selection not run",
         authorization: desktopBootstrapAuthorization,
-        files: ["scripts/plugin-update-pr-lane.test.mjs", "desktop/official-branding.test.mjs"],
+        files: [
+          "scripts/plugin-update-pr-lane.test.mjs",
+          "desktop/company-bootstrap.test.mjs",
+          "desktop/official-branding.test.mjs",
+        ],
       }
     : pluginUpdatePlan;
 }
