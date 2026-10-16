@@ -345,7 +345,7 @@ export async function combinationManifests(
         continue;
       }
       try {
-        const resolved = await realpath(
+        const resolved = await profileRealpath(
           resolveBundleDir("dsh", name, join(consumer.dir, "package.json"), profileDirectory),
         );
         if (resolved === selected.dir) affected[name] = range;
@@ -377,7 +377,7 @@ export async function validateActualProfile(
         core.sdk[name] ?? (/^@deepseek-ai\/dsh(?:-|$)/.test(name) ? core.version : undefined);
       let version: string | undefined;
       try {
-        const dir = await realpath(
+        const dir = await profileRealpath(
           resolveBundleDir(
             "dsh",
             name,
