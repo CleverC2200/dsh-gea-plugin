@@ -58,7 +58,7 @@ export function officialGeaBranding(config, { companySeed } = {}) {
             );
             for (const artifact of manifest.core.artifacts)
               artifact.sha256 = createHash("sha256")
-                .update(asar.extractFile(root, artifact.path))
+                .update(asar.extractFile(root, join(...artifact.path.split("/"))))
                 .digest("hex");
             await writeFile(path, JSON.stringify(manifest, null, 2) + "\n");
           },
