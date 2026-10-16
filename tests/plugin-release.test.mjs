@@ -197,7 +197,11 @@ test("GEA requires Manage company.15 and rejects older or unverified versions", 
   assert.equal(source.peerDependencies[M], "0.6.3-company.15");
   assert.deepEqual(combination("0.6.3-company.15"), []);
   for (const version of [
-    "0.6.3-company.11", "0.6.3-company.12", "0.6.3-company.13", "0.6.3-company.14", "0.6.3-company.16",
+    "0.6.3-company.11",
+    "0.6.3-company.12",
+    "0.6.3-company.13",
+    "0.6.3-company.14",
+    "0.6.3-company.16",
   ])
     assert.ok(
       combination(version).some((issue) => issue.code === "PEER_INCOMPATIBLE"),
