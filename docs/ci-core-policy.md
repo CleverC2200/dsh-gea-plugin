@@ -49,3 +49,7 @@ The selected tests cover direct structured/text results, historical resource int
 ## 同基线桌面更新证明刷新
 
 完整包在旧配置上补齐实际 App 的更新证明，固定产品提交 `3ead615b946d5a18bdf8be3d1bdfba52a337e920`，来源及范围仍由 `desktopBootstrapAuthorization` 约束。沿用上述六文件定向集合与全部必需门禁；仅承认原 rc.2/639ed 基线，保留配置、WeKnora 和历史回执。原 PR 80 及其 CI 通过记录保留。
+
+## Windows ASAR 路径补修
+
+产品固定 `f0fae2cef4234381f0ac1ff69c757567ecfc99de`，仅将封包读取路径转换为本机分隔符。定向执行品牌测试与范围准入测试两个文件；三仓冻结、静态检查、构建、macOS 隔离及最终聚合保持必需。Mac 与插件包内容不变，复用已通过证据；Windows 新输入单独构建验收。
