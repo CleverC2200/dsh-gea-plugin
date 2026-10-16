@@ -196,11 +196,7 @@
       "name": "gea_capabilities",
       "parameters": {
         "type": "object",
-        "properties": {
-          "complex": {
-            "type": "boolean"
-          }
-        }
+        "properties": {}
       }
     }
   },

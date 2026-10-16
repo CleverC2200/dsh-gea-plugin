@@ -12,7 +12,7 @@ import { Context } from "@deepseek-ai/cordis";
 const built = await build({
   stdin: {
     contents:
-      "export {PROMPT_BUDGET} from './src/host/prompt-policy.ts';export {Business} from './src/host/business.ts';export {mountBusinessPrompts} from './src/host/prompt-runtime.ts';export {createGatewayMcpService} from './src/host/gateway-mcp-service.ts';export {mountGeaMcp} from '../dsh-agent-manage/src/runtime/gea-mcp.ts';export {createCapabilityRegistry} from './src/capability/registry.ts';",
+      "export {Business} from './src/host/business.ts';export {mountBusinessPrompts} from './src/host/prompt-runtime.ts';export {createGatewayMcpService} from './src/host/gateway-mcp-service.ts';export {mountGeaMcp} from '../dsh-agent-manage/src/runtime/gea-mcp.ts';export {createCapabilityRegistry} from './src/capability/registry.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -38,7 +38,6 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   module.exports,
 );
 const {
-  PROMPT_BUDGET,
   Business,
   mountBusinessPrompts,
   createGatewayMcpService,
@@ -53,7 +52,6 @@ const { default: SystemPrompt } = await official("system-prompt");
 const { default: Tools } = await official("tools");
 const { createScope } = await official("scope");
 
-export const businessCallBudget = PROMPT_BUDGET.calls;
 export const inspectTool = "mcp__gea-gateway__inspect_cube_model";
 export const queryTool = "mcp__gea-gateway__query_business_data";
 export const cubeCode = "2109581866385289217";
