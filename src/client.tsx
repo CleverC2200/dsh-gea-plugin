@@ -1,4 +1,4 @@
-import { mountPluginUpdatesClient } from "./plugin-updates-client.ts";
+import { mountPluginUpdatesClient } from "./plugin-detail-updates.tsx";
 import type {} from "@cleverc2200/dsh-agent-workbench/client";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-api-remotes/client";

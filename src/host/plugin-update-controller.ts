@@ -511,6 +511,14 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       const proofs = await options.readRuntimeProofs(pluginUpdateProcessIdentity);
       if (generation !== checking || closed) return snapshot();
       reflectProfile(profile, proofs);
+      for (const name of companyPackageNames) {
+        if (!releases.some((release) => release.name === name))
+          row(name, {
+            state: "blocked",
+            diagnostic: "RELEASE_NOT_PUBLISHED",
+            problem: { kind: "policy", code: "release-not-published" },
+          });
+      }
       for (const rawRelease of releases) {
         const release = parsePluginRelease(rawRelease);
         const selected = profile.packages.find((pkg) => pkg.root && pkg.name === release.name);

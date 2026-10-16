@@ -10,8 +10,8 @@ const { outputFiles } = await build({
   write: false,
   format: "cjs",
   platform: "node",
-  external: ["react", "react/jsx-runtime"],
-  loader: { ".css": "text" },
+  external: ["react", "react/jsx-runtime", "react-dom", "react-dom/*"],
+  loader: { ".css": "text", ".module.css": "text" },
 });
 test("public account actions consume the same GEA Host identity and reject expired login without inventing client authentication", async () => {
   const module = { exports: {} };

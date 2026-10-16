@@ -8,10 +8,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 if (!sdk) throw Error("GEA_PLUGIN_UPDATE_SDK must explicitly name unchanged fixed SDK");
-// The explicit generated SDK must implement the unchanged candidate public operations.
-const candidateSdk =
-  process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE ??
-  fileURLToPath(new URL("../../../official-latest-standard/", import.meta.url));
+// Verify the unchanged public installation and locking source used by this SDK lane.
 for (const [path, expected] of Object.entries({
   "packages/boot/plugin-manager/src/operations.ts":
     "16d141f794041d06122ce9f8ab7bae6f55b4a78feefb620f9cb6c7ba5efac547",
@@ -22,7 +19,7 @@ for (const [path, expected] of Object.entries({
   "packages/boot/app-boot/src/profile.ts":
     "30a883b090c4489b14371d947113d532ab9484d4e0f79c7a4fcddd066e24b6ab",
 })) {
-  for (const root of [sdk, candidateSdk])
+  for (const root of [sdk])
     assert.equal(
       createHash("sha256")
         .update(await readFile(join(root, path)))
@@ -39,7 +36,7 @@ const modulePath = join(work, "controller.mjs");
 const subjectPath = join(work, "subjects.ts");
 await writeFile(
   subjectPath,
-  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {projectPluginUpdates} from ${JSON.stringify(fileURLToPath(new URL("../src/plugin-updates-client.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {readPluginProfile, combinationManifests, validateActualProfile} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
+  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {readPluginProfile, combinationManifests, validateActualProfile} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
 );
 
 await build({
@@ -71,7 +68,6 @@ const {
   createPluginUpdateController,
   readPluginProfile,
   validateActualProfile,
-  projectPluginUpdates,
   parseUpdateClientStatus,
 } = await import(pathToFileURL(modulePath));
 test("controller starts with an empty operation and preserves existing profile data", async (t) => {
@@ -496,9 +492,8 @@ test("actual pinned pnpm reachable transitive peer blocks an incompatible indepe
   assert.equal(row.state, "blocked");
   assert.equal(row.diagnostic, "COMBINATION_INCOMPATIBLE");
   assert.equal(row.planId, null);
-  const projected = projectPluginUpdates([row])[row.packageName];
-  assert.equal(projected.problem.kind, "dependencies");
-  assert.deepEqual(projected.problem.requirements, [
+  assert.equal(row.problem.kind, "dependencies");
+  assert.deepEqual(row.problem.requirements, [
     {
       consumer: "fixture-consumer-b",
       dependency: row.packageName,
@@ -630,7 +625,7 @@ test("Windows check and submission reject before download, acceptance or any pac
   }
 });
 
-test("signed/HTTP check failures retain safe distinct provider errors while Core and graph failures retain required versions", async (t) => {
+test("signed/HTTP check failures retain safe distinct status errors while Core and graph failures retain required versions", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   for (const [sourceFailure, expected] of [
     ["signature", "signature"],
@@ -652,11 +647,10 @@ test("signed/HTTP check failures retain safe distinct provider errors while Core
       checkTimeoutMs: 1000,
       pollIntervalMs: 1000,
     });
-    const projected = projectPluginUpdates(status.items);
     assert.ok(
-      Object.values(projected).every(
+      status.items.every(
         (row) =>
-          row.kind === "check-failed" &&
+          row.state === "check-failed" &&
           row.problem.kind === "source" &&
           row.problem.code === expected,
       ),
@@ -672,9 +666,57 @@ test("signed/HTTP check failures retain safe distinct provider errors while Core
   t.after(() => controller.dispose());
   await controller.initialize();
   await controller.check();
-  const core = projectPluginUpdates(controller.snapshot().items)["@cleverc2200/gea-dsh-prototype"];
-  assert.equal(core.kind, "blocked");
+  const core = controller
+    .snapshot()
+    .items.find((row) => row.packageName === "@cleverc2200/gea-dsh-prototype");
+  assert.equal(core.state, "blocked");
   assert.equal(core.problem.kind, "core");
   assert.equal(core.problem.current.version, "0.2.0-rc.2");
   assert.deepEqual(core.problem.required, [{ version: "0.2.0-rc.2", revision: "a".repeat(40) }]);
+});
+
+test("a single-package channel leaves omitted installed packages out of the checking state", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const originalCheck = f.options.source.check;
+  f.options.source = {
+    ...f.options.source,
+    check: async (signal) =>
+      (await originalCheck(signal)).filter((r) => r.name === "@cleverc2200/gea-dsh-prototype"),
+  };
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const items = controller.snapshot().items;
+  assert.equal(
+    items.find((r) => r.packageName === "@cleverc2200/gea-dsh-prototype").state,
+    "available",
+  );
+  for (const row of items.filter((r) => r.packageName !== "@cleverc2200/gea-dsh-prototype")) {
+    assert.equal(row.state, "blocked");
+    assert.deepEqual(row.problem, { kind: "policy", code: "release-not-published" });
+  }
+});
+
+test("an absent optional executable target does not block update or change its saved link", async (t) => {
+  const { symlink, readlink } = await import("node:fs/promises");
+  const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const bin = join(f.dir, "node_modules/.bin");
+  await mkdir(bin, { recursive: true });
+  const target = "../optional-tunnel/bin/cloudflared";
+  await symlink(target, join(bin, "cloudflared"));
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const row = controller
+    .snapshot()
+    .items.find((item) => item.packageName === "@cleverc2200/gea-dsh-prototype");
+  assert.equal(row.state, "available", JSON.stringify(controller.snapshot()));
+  await controller.submit({ packageName: row.packageName, planId: row.planId });
+  const operation = await waitForStage(controller, ["pending-restart", "unknown", "restored"]);
+  assert.equal(operation.stage, "pending-restart", JSON.stringify(operation));
+  assert.equal(await readlink(join(bin, "cloudflared")), target);
 });

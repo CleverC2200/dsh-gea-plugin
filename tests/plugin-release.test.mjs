@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   validatePluginCombination,
   planPluginUpdate,
@@ -179,4 +180,56 @@ test("independent channel projection retains the other two references and advanc
       }),
     /CHANNEL_REVISION_REQUIRED/,
   );
+});
+
+// Keep the release contract aligned with the exact Manage peer retained from main.
+test("GEA requires Manage company.15 and rejects older or unverified versions", async () => {
+  const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const combination = (version) =>
+    validatePluginCombination({
+      core,
+      manifests: [
+        { name: W, version: "1.0.0" },
+        { name: M, version },
+        { name: G, version: source.version, peerDependencies: { [M]: source.peerDependencies[M] } },
+      ],
+    });
+  assert.equal(source.peerDependencies[M], "0.6.3-company.15");
+  assert.deepEqual(combination("0.6.3-company.15"), []);
+  for (const version of [
+    "0.6.3-company.11",
+    "0.6.3-company.12",
+    "0.6.3-company.13",
+    "0.6.3-company.14",
+    "0.6.3-company.16",
+  ])
+    assert.ok(
+      combination(version).some((issue) => issue.code === "PEER_INCOMPATIBLE"),
+      version,
+    );
+});
+
+test("a partial channel adds an independently published package without replacing existing references", async () => {
+  const { mergePluginChannelRelease } = await import("../src/shared/plugin-release.mjs");
+  const reference = (name) => ({
+    name,
+    sha256: "a".repeat(64),
+    url: `https://fixture.invalid/${"a".repeat(64)}/release.json`,
+  });
+  const previous = {
+    schema: 1,
+    channel: "test",
+    revision: 1,
+    issuedAt: "2026-10-15T01:00:00.000Z",
+    expiresAt: "2026-10-16T01:00:00.000Z",
+    releases: [reference(G)],
+  };
+  const next = mergePluginChannelRelease({
+    previous,
+    release: reference(W),
+    revision: 2,
+    issuedAt: previous.issuedAt,
+    expiresAt: previous.expiresAt,
+  });
+  assert.deepEqual(next.releases, [reference(G), reference(W)]);
 });

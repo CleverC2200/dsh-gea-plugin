@@ -148,7 +148,15 @@ async function externalRoots(
   const targets: Record<string, string> = {};
   for (const entry of entries) {
     if (entry.kind !== "symlink") continue;
-    const target = await realpath(join(nodeModules, entry.path));
+    let target: string;
+    try {
+      target = await realpath(join(nodeModules, entry.path));
+    } catch (error) {
+      // The physical snapshot already preserves the link. Optional executable
+      // targets may be absent; required package resolution is checked separately.
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
+      throw error;
+    }
     if (within(nodeModules, target) || targets[target]) continue;
     const info = await lstat(target);
     targets[target] = info.isDirectory()

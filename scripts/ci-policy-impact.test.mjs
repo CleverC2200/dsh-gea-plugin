@@ -24,6 +24,7 @@ test("a dynamic Workbench source-policy change selects the GEA adapter contract"
     "scripts/business-profile-ci.test.mjs",
     "tests/unrelated.test.mjs",
     "tests/unrelated.contract.mjs",
+    "tests/plugin-update-detail.browser.mjs",
   ])
     put(own.path, file, "export const fixture = true;");
   own.head = commit(own.path);
@@ -95,6 +96,7 @@ function resourceImpactFixture(t, authoredFiles = []) {
     "tests/page-interaction-workbenches.test.mjs",
     "tests/unrelated.test.mjs",
     "tests/unrelated.contract.mjs",
+    "tests/plugin-update-detail.browser.mjs",
     ...authoredFiles,
   ])
     put(
@@ -277,6 +279,24 @@ test("a package-only change retains its original configuration contracts without
   assert.deepEqual(plan.files, [...fixture.policy.required].sort());
 });
 
+test("detail contributions select the built browser and actual installer contracts", (t) => {
+  const fixture = resourceImpactFixture(t);
+  for (const file of [
+    "tests/plugin-update-controller.contract.mjs",
+    "tests/plugin-update-integration.contract.mjs",
+    "tests/plugin-update-install.contract.mjs",
+    "tests/plugin-update-detail.browser.mjs",
+    "tests/plugin-release-source.test.mjs",
+    "tests/plugin-release.test.mjs",
+  ])
+    writeFileSync(join(fixture.own.path, file), "export const fixture = true;\n");
+  fixture.change(fixture.own, "src/plugin-detail-updates.tsx", "export const changed = true;\n");
+  const plan = fixture.plan();
+  assert.ok(plan.files.includes("tests/plugin-update-install.contract.mjs"), JSON.stringify(plan));
+  assert.ok(plan.files.includes("tests/plugin-update-detail.browser.mjs"), JSON.stringify(plan));
+  assert.equal(plan.browser, true);
+});
+
 test("retiring the Cube-only MCP module selects the knowledge and Cube bridge regressions", (t) => {
   const { repositories, put, commit } = temporaryGitRepositories(t);
   for (const entry of repositories) {
@@ -295,6 +315,7 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
     "tests/unrelated.test.mjs",
     "scripts/unrelated.test.mjs",
     "tests/unrelated.contract.mjs",
+    "tests/unrelated.browser.mjs",
     ...expected,
   ])
     put(own.path, file, "export const fixture = true;");

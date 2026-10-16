@@ -217,6 +217,28 @@
       "repo": "dsh-agent-manage",
       "pattern": "^src/runtime/gea-mcp(?:-scope)?\\.ts$",
       "tests": ["tests/knowledge-mcp.test.mjs", "tests/current-mcp-tools.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/(?:client\\.tsx|host/plugin-update|plugin-updates|plugin-detail-updates|plugin-update-locales|shared/plugin-update|host/plugin-release|shared/plugin-release)",
+      "tests": [
+        "tests/plugin-update-controller.contract.mjs",
+        "tests/plugin-update-integration.contract.mjs",
+        "tests/plugin-release-source.test.mjs",
+        "tests/plugin-release.test.mjs",
+        "tests/plugin-update-install.contract.mjs",
+        "tests/plugin-update-detail.browser.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^(?:scripts/(?:check-plugin-updates-types|create-plugin-release|build)\\.mjs|tests/(?:acceptance/plugin-update-desktop\\.mjs|fixtures/plugin-updates/installed-runtime\\.mjs))$",
+      "tests": [
+        "scripts/build.test.mjs",
+        "tests/plugin-update-install.contract.mjs",
+        "tests/plugin-update-detail.browser.mjs",
+        "tests/plugin-release-source.test.mjs"
+      ]
     }
   ]
 }

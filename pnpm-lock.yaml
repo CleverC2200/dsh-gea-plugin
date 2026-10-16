@@ -87,6 +87,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-plugin-manager':
         specifier: link:../../official-latest-standard/packages/client/ui-plugin-manager
         version: link:../../official-latest-standard/packages/client/ui-plugin-manager
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: link:../../official-latest-standard/packages/client/ui-primitives
+        version: link:../../official-latest-standard/packages/client/ui-primitives
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: link:../../official-latest-standard/packages/client/ui-renderer
         version: link:../../official-latest-standard/packages/client/ui-renderer

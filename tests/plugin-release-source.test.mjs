@@ -403,3 +403,80 @@ test("signed approval expires between check and download and cannot authorize a 
     /SOURCE_APPROVAL_EXPIRED/,
   );
 });
+
+test("a signed channel can publish one company package and later add another", async (t) => {
+  const f = await fixture(t);
+  resign(f, (p) => {
+    p.releases = [f.releases[2]];
+  });
+  let releases = await f.source.check();
+  assert.deepEqual(
+    releases.map((r) => r.name),
+    [companyPackageNames[2]],
+  );
+  const archive = await f.source.download(releases[0], join(f.dir, "single-cache"));
+  assert.equal(digest(await readFile(archive)), releases[0].artifact.sha256);
+  resign(f, (p) => {
+    p.revision = 2;
+    p.releases.push(f.releases[0]);
+  });
+  releases = await f.source.check();
+  assert.deepEqual(
+    releases.map((r) => r.name),
+    [companyPackageNames[2], companyPackageNames[0]],
+  );
+});
+
+test("omitting a published package does not erase durable rollback or digest protection", async (t) => {
+  const f = await fixture(t);
+  await f.source.check();
+  resign(f, (p) => {
+    p.revision = 2;
+    p.releases = [f.releases[2]];
+  });
+  await f.source.check();
+  const reloaded = createPluginReleaseSource(f.config, {
+    trustDirectory: join(f.dir, "trust"),
+    resolveAuthentication: async () => ({}),
+    fetch: async (url) => new Response(f.objects.get(url)),
+  });
+  const original = JSON.parse(f.objects.get(f.releases[0].url));
+  for (const [candidate, expected] of [
+    [{ ...original, version: "1.0.0" }, /SOURCE_VERSION_ROLLBACK/],
+    [
+      {
+        ...original,
+        artifact: {
+          ...original.artifact,
+          sha256: "e".repeat(64),
+          url: `https://fixture.invalid/releases/${"e".repeat(64)}/plugin.tgz`,
+        },
+      },
+      /SOURCE_SAME_VERSION_CONTENT_MISMATCH/,
+    ],
+  ]) {
+    const bytes = Buffer.from(JSON.stringify(candidate)),
+      sha256 = digest(bytes),
+      url = `https://fixture.invalid/releases/${sha256}/release.json`;
+    f.objects.set(url, bytes);
+    resign(f, (p) => {
+      p.revision = 3;
+      p.releases = [f.releases[2], { ...f.releases[0], url, sha256 }];
+    });
+    await assert.rejects(reloaded.check(), expected);
+  }
+});
+
+test("partial signed channels still reject empty, duplicate and unknown references", async (t) => {
+  const f = await fixture(t);
+  for (const releases of [
+    [],
+    [f.releases[2], f.releases[2]],
+    [{ ...f.releases[2], name: "other-plugin" }],
+  ]) {
+    resign(f, (p) => {
+      p.releases = releases;
+    });
+    await assert.rejects(f.source.check(), /SOURCE_CHANNEL_INVALID/);
+  }
+});
