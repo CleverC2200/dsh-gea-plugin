@@ -16,7 +16,7 @@ export const desktopBootstrapAuthorization = Object.freeze({
   branch: "codex/windows-plugin-updates-159-20261016",
   instruction:
     "修复 Windows 158 无法获取更新；保留 WeKnora、原配置和回执，不改 Core、不放宽门禁，先发插件，安装包后置，只跑受影响校验。",
-  productHead: "083ac2ae543a96df6327c2d47d0648167a42e937",
+  productHead: "59558d781e808c0f91c4f7a14104fe95f30c8500",
   base: "6d88f6b941c80aac1d84e0f68436775907bc0635",
 });
 const supplements = [
