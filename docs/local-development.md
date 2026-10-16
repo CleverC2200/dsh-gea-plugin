@@ -79,11 +79,13 @@ GEA 的 [公开 Config schema](../src/host.ts) 为空配置提供 [公司产品�
 
 `node --run test:fixture-inputs` 是无 SDK 的输入拒绝回归，也由现有 delivery fixture CI 执行。它不代替需要固定官方输入的 `test:window`；远端 workflow 的配置与实际执行结果分别记录。
 
-冷 runner 直接调用 `node scripts/run-quality-ci.mjs --input <三仓冻结 JSON> --final-group-sha256 <原始字节 SHA256> --final-group-workbench <绝对 Workbench 源路径> --prepare-sdk --prepare-inputs --core-source <已观察固定 Git 源>`；本地 `pnpm quality:ci --` 传入相同参数。公开 Workbench reader 先核实际三仓 HEAD、包身份、锁和 Core，缺少显式输入或原字节哈希立即拒绝；旧 `--phase input` 不再写历史 peer。普通 push/PR 通过 committed baseline 仅替换 own event，dispatch 必须声明完整三仓 tuple，两类验收回执分别记录。质量阶段保存 fast 与 required-and-affected 状态到 `quality-checks.json`，选择依据保存 `quality-test-plan.json`。GitHub 不再执行全量集合；Profile 准备仅在受影响集合需要时执行。具体规则与缓存拒绝条件见[当前 CI 规则](../../dsh-agent-workbench/docs/ci-required-and-affected.md)。前项红不挡后项，整体仍非零；输入或准备失败立即拒绝。
+提交昂贵的候选 CI 前，先用本仓 `corepack pnpm quality:fast --source-only <改动文件...>`。它复用 lint、format:check、知识及 Prompt 执行合同检查，不准备 SDK、不构建、不启动测试；省略文件则沿用仓内默认扫描范围。默认 fast 在源码检查失败时记录跳过依赖 SDK 的检查与测试，并返回失败。
+
+冷 runner 直接调用 `node scripts/run-quality-ci.mjs --input <三仓冻结 JSON> --final-group-sha256 <原始字节 SHA256> --final-group-workbench <绝对 Workbench 源路径> --prepare-sdk --prepare-inputs --core-source <已观察固定 Git 源>`；本地 `pnpm quality:ci --` 传入相同参数。公开 Workbench reader 先核实际三仓 HEAD、包身份、锁和 Core，缺少显式输入或原字节哈希立即拒绝；旧 `--phase input` 不再写历史 peer。普通 push/PR 通过 committed baseline 仅替换 own event，dispatch 必须声明完整三仓 tuple，两类验收回执分别记录。质量阶段保存 fast 与 required-and-affected 状态到 `quality-checks.json`，选择依据保存 `quality-test-plan.json`。GitHub 不再执行全量集合；Profile 准备仅在受影响集合需要时执行。具体规则与缓存拒绝条件见[当前 CI 规则](../../dsh-agent-workbench/docs/ci-required-and-affected.md)。独立源码检查保留各自结果；checks 失败会阻断后续测试，整体仍非零。输入或准备失败立即拒绝。
 
 Linux [quality workflow](../.github/workflows/quality.yml) 在 scope 后并行启动 source-plan、producer 与 Mac。source-plan 仅 checkout 同组三仓/Core、写原候选并运行公开 `--stage plan --test-shards auto --test-file-concurrency 3 --test-timings scripts/quality-test-timings.json`，不安装或编译；小 control 只有计划与来源，没有产物或依赖准入权。early planner 收齐每个 required Core 后生成原正式计划的全部非空片，最多14个 worker、`max-parallel: 14`，不填空片。普通入口文件并发仍为2，Linux 各阶段显式3、Mac保持默认2；算法、容量拒绝和历史来源见 [测试执行合同](ci-test-execution.md)。历史样本未知耗时仍为 null，不证明新候选的性能通过。
 
-每个 required Core 的 producer 只执行一次 `prepare`、`build`、`checks`，用原输入哈希、lane、完整三仓和执行计划形成 `quality-stages.json`。准备安装声明的原锁、SDK及私有 Workbench worktree；构建生成候选包、资产和必要浏览器/桌面输出。GEA/Manage 输出按字节摘要冻结。`checks` 收集 final-group 与 fast；检查失败仍导出已成功构建的准备物并继续测试，最终结果保留该失败。准备或构建失败则不能发布可执行输入。
+每个 required Core 的 producer 只执行一次 `prepare`、`build`、`checks`，用原输入哈希、lane、完整三仓和执行计划形成 `quality-stages.json`。准备安装声明的原锁、SDK及私有 Workbench worktree；构建生成候选包、资产和必要浏览器/桌面输出。GEA/Manage 输出按字节摘要冻结。`checks` 收集 final-group 与 fast；producer 在依赖准备后、候选构建前先调用现有 fast 的 source-only 检查。checks 失败阻断 Chrome 快照与准备物导出，worker 不会收到可执行输入，最终结果保留原失败。准备或构建失败也不能发布可执行输入。
 
 producer 将原 candidate、阶段/执行计划、来源回执、binding 原字节及准备物摘要发布为小 index；大 bundle 每 Core 只导出、上传一次，保留1天。worker 在 producer 构建期间以一次活调用准备固定源码和独立的五组锁，保留最多双安装及 Workbench→inventory 顺序。GEA 依赖所需 GenUI 产物留到接收后；没有可重放的 source-ready token 或第二次调用接受旧 modules。新增 source-plan 的四仓 checkout 与小 control 传输都计入真实成本，不假称提前启动必然更快。
 

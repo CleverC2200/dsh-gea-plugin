@@ -328,7 +328,7 @@ test("both source and compatibility workflows require actual same-tuple macOS ex
   assert.doesNotMatch(readFileSync("scripts/isolated-validation.test.mjs", "utf8"), /skip:/);
 });
 
-test("Linux preparation exports once and workers retain independent tests after failed checks", () => {
+test("Linux preparation exports once and failed checks block executable worker inputs", () => {
   const source = readFileSync(".github/workflows/quality.yml", "utf8");
   const linux = source.slice(source.indexOf("  gates:\n"), source.indexOf("  plan-test-shards:\n"));
   const sourcePlan = source.slice(source.indexOf("  source-plan:\n"), source.indexOf("  gates:\n"));
@@ -344,8 +344,7 @@ test("Linux preparation exports once and workers retain independent tests after 
     assert.ok(step, stage);
     assert.match(step, new RegExp(`--stage ${stage}(?:\n|$)`));
     assert.match(step, /--final-group-sha256 "\$INPUT_SHA256"/);
-    if (stage === "checks") assert.match(step, /continue-on-error: true/);
-    else assert.doesNotMatch(step, /continue-on-error/);
+    assert.doesNotMatch(step, /continue-on-error/);
   }
   for (const name of [
     "Freeze the actual system Chrome distribution",
@@ -356,9 +355,12 @@ test("Linux preparation exports once and workers retain independent tests after 
     const step = steps.find((entry) => entry.includes(name));
     assert.ok(step, name);
     assert.match(step, /!cancelled\(\).*steps\.(?:quality-build|bundle)\.outcome == 'success'/);
-    assert.doesNotMatch(step, /quality-checks\.outcome|if: success/);
+    if (!name.startsWith("Publish")) assert.match(step, /quality-checks\.outcome == 'success'/);
   }
   assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: cache-path"));
+  assert.ok(linux.indexOf("id: quality-source") < linux.indexOf("id: quality-build"));
+  assert.match(linux, /quality:fast --source-only/);
+  assert.match(sourcePlan, /GITHUB_STEP_SUMMARY/);
   assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: sdk-paths"));
   assert.match(linux, /--stage plan.*--test-shards auto/);
   assert.match(linux, /QUALITY_TEST_SHARDS: \$\{\{ steps\.quality-plan\.outputs\.shards \}\}/);
