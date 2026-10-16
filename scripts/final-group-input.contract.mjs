@@ -233,7 +233,25 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
   assert.match(missingSdk.stderr, /SDK_SOURCE_REQUIRED/);
   const stageReceipt = join(job, "quality-stages.json");
   assert.equal(JSON.parse(readFileSync(stageReceipt)).stages.prepare.status, "failed");
-  rmSync(stageReceipt); // Only the new job-local failure receipt is an expected quality effect.
+  const planFile = join(job, "quality-test-execution-plan.json");
+  const executionPlan = JSON.parse(readFileSync(planFile));
+  assert.equal(executionPlan.binding.inputSha256, digest(original));
+  assert.deepEqual(executionPlan.binding.manifest, manifest);
+  const required = JSON.parse(readFileSync(join(gea, "scripts/ci-test-policy.json"))).required;
+  assert.deepEqual(executionPlan.required, [...required].sort());
+  for (const file of required) assert.ok(executionPlan.selected.includes(file));
+  assert.deepEqual(
+    executionPlan.shards.flatMap((shard) => shard.files).sort(),
+    [...executionPlan.files].sort(),
+  );
+  for (const file of [
+    "quality-test-execution.json",
+    "quality-test-results",
+    "quality-test-plan.json",
+  ])
+    assert.equal(existsSync(join(job, file)), false, "SDK failure must not execute tests: " + file);
+  rmSync(planFile); // A preparation failure still preserves the required pre-preparation plan.
+  rmSync(stageReceipt);
   unchangedEffects();
   for (const [repo, badHead] of [
     ["dsh-agent-workbench", "9b4863692cb29a3edc8a2358e98feb7846526d1b"],

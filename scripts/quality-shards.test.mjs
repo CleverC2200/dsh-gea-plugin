@@ -1,0 +1,518 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  rmSync,
+  existsSync,
+  realpathSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+import { once } from "node:events";
+import {
+  createExecutionPlan,
+  executionDigest,
+  runExecutionPlan,
+} from "./quality-test-execution.mjs";
+
+test("the public planner collects every Core and rejects missing, duplicate or changed indexes", async () => {
+  const { createShardCatalog } = await import("./quality-shards.mjs");
+  const expected = {
+    cores: ["a".repeat(40), "b".repeat(40)],
+    runId: "7",
+    runAttempt: "2",
+    node: process.versions.node,
+    groupId: "group",
+    sources: [{ repo: "dsh-gea-plugin", head: "c".repeat(40), lockSha256: "d".repeat(64) }],
+  };
+  const indexes = expected.cores.map((core) => {
+    const candidate = { core, groupId: "group", repositories: expected.sources };
+    const plan = createExecutionPlan({
+      selection: { files: ["one.test.mjs", "two.test.mjs"], required: ["one.test.mjs"] },
+      platformPlan: { files: ["one.test.mjs", "two.test.mjs"], platformTasks: [] },
+      binding: {
+        manifest: candidate,
+        inputSha256: executionDigest(candidate),
+        phase: "quality",
+        runId: "7",
+        runAttempt: "2",
+        platform: "linux",
+        arch: "x64",
+        node: process.versions.node,
+      },
+      shardCount: 2,
+    });
+    const stages = {
+      binding: { executionPlan: plan, inputSha256: plan.binding.inputSha256 },
+      artifacts: { lib: { "index.js": "hash" } },
+      stages: {
+        prepare: { status: "passed" },
+        build: { status: "passed" },
+        checks: { status: "failed" },
+      },
+    };
+    return {
+      schemaVersion: 1,
+      bundleBytes: 2048,
+      bundleSha256: "f".repeat(64),
+      core,
+      groupId: "group",
+      plan,
+      stages,
+      candidate,
+      binding: {
+        ...plan.binding,
+        planSha256: plan.planSha256,
+        buildSha256: executionDigest(stages.artifacts),
+      },
+      manifestSha256: "e".repeat(64),
+      bundleArtifactId: "42",
+    };
+  });
+  for (const index of indexes) {
+    index.bindingBytes = JSON.stringify(index.binding, null, 2) + "\n";
+    index.admission = {
+      status: "passed",
+      inputSha256: index.binding.inputSha256,
+      repositories: index.candidate.repositories.map((entry) => ({
+        ...entry,
+        lockSha256: "c".repeat(64),
+      })),
+    };
+  }
+  const catalog = createShardCatalog({ indexes, expected });
+  assert.equal(catalog.matrix.include.length, 4);
+  assert.deepEqual(catalog.requiredJobs, [
+    "candidate-scope",
+    "plan-test-shards",
+    ...expected.cores.flatMap((core) => [
+      `prepare-${core}`,
+      `test-${core}-1`,
+      `test-${core}-2`,
+      `macos-${core}`,
+    ]),
+  ]);
+  assert.equal(
+    catalog.producerChecks,
+    "failed",
+    "checks failure must not suppress worker scheduling",
+  );
+  for (const broken of [
+    indexes.slice(0, 1),
+    [...indexes, indexes[0]],
+    indexes.map((x, i) => (i ? x : { ...x, manifestSha256: "" })),
+  ])
+    assert.throws(() => createShardCatalog({ indexes: broken, expected }));
+  assert.throws(() => createShardCatalog({ indexes, expected: { ...expected, node: "0.0.0" } }));
+});
+
+test("aggregation observes real child reports and rejects omitted, duplicate, stale, skipped and failed executions", async (t) => {
+  const { createShardCatalog, aggregateShardResults } = await import("./quality-shards.mjs");
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "quality-aggregate-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const name of ["one", "two", "mac"])
+    writeFileSync(
+      join(root, name + ".test.mjs"),
+      `import test from 'node:test'; test('${name}',()=>{});\n`,
+    );
+  const core = "a".repeat(40),
+    candidate = {
+      core,
+      repositories: ["dsh-gea-plugin", "dsh-agent-manage", "dsh-agent-workbench"].map((repo) => ({
+        repo,
+        head: "b".repeat(40),
+      })),
+    };
+  const binding = {
+    manifest: candidate,
+    inputSha256: executionDigest(candidate),
+    phase: "quality",
+    runId: "7",
+    runAttempt: "2",
+    node: process.versions.node,
+    platform: "linux",
+    arch: "x64",
+  };
+  const plan = createExecutionPlan({
+    concurrency: 3,
+    selection: {
+      files: ["one.test.mjs", "two.test.mjs", "mac.test.mjs"],
+      required: ["one.test.mjs"],
+    },
+    platformPlan: {
+      files: ["one.test.mjs", "two.test.mjs"],
+      platformTasks: [{ platform: "darwin", files: ["mac.test.mjs"] }],
+    },
+    binding,
+    shardCount: 2,
+  });
+  const stages = {
+    binding: { executionPlan: plan, inputSha256: binding.inputSha256 },
+    artifacts: { lib: { one: "hash" } },
+    stages: {
+      prepare: { status: "passed" },
+      build: { status: "passed" },
+      checks: { status: "passed" },
+    },
+  };
+  const admission = {
+    status: "passed",
+    inputSha256: binding.inputSha256,
+    repositories: candidate.repositories.map((entry) => ({ ...entry, lockSha256: "c".repeat(64) })),
+  };
+  const index = {
+    schemaVersion: 1,
+    bundleBytes: 2048,
+    bundleSha256: "f".repeat(64),
+    core,
+    groupId: "group",
+    candidate,
+    plan,
+    stages,
+    admission,
+    binding: {
+      ...binding,
+      planSha256: plan.planSha256,
+      buildSha256: executionDigest(stages.artifacts),
+    },
+    manifestSha256: "d".repeat(64),
+    bundleArtifactId: "42",
+  };
+  const workerMetadata = {
+    sources: [...candidate.repositories, { repo: "official-core", head: core }],
+    tools: { fixture: "fixed tool bytes" },
+    sdkIdentity: { fixture: "fixed SDK identity" },
+  };
+  index.binding.worker = { ...workerMetadata, runtime: false };
+  index.bindingBytes = JSON.stringify(index.binding, null, 2) + "\n";
+  const catalog = createShardCatalog({
+    indexes: [index],
+    expected: {
+      cores: [core],
+      sources: candidate.repositories,
+      node: process.versions.node,
+      runId: "7",
+      runAttempt: "2",
+      groupId: "group",
+    },
+  });
+  const reporter = resolve("scripts/quality-test-reporter.mjs");
+  const workers = plan.shards.map((shard) => ({
+    core,
+    receipt: runExecutionPlan({
+      plan,
+      root,
+      reporter,
+      environment: { NODE_TEST_CONTEXT: undefined },
+      resultFile: join(root, "linux-" + shard.id + ".json"),
+      shardId: shard.id,
+      buildSha256: index.binding.buildSha256,
+    }).receipt,
+  }));
+  for (const worker of workers)
+    worker.preparation = {
+      status: "worker-inputs-ready",
+      quality: "not-observed",
+      tests: "not-run",
+      bindingSha256: catalog.matrix.include[0].bindingSha256,
+      bundleBytes: 2048,
+    };
+  const macPlan = createExecutionPlan({
+      selection: { files: ["mac.test.mjs"] },
+      platformPlan: { files: ["mac.test.mjs"] },
+      binding: { ...binding, platform: "darwin" },
+    }),
+    sdk = { identity: "original SDK" };
+  const macos = [
+    {
+      core,
+      groupId: "group",
+      admission,
+      plan: macPlan,
+      sdk,
+      buildSha256: executionDigest(sdk),
+      receipt: runExecutionPlan({
+        plan: macPlan,
+        root,
+        reporter,
+        environment: { NODE_TEST_CONTEXT: undefined },
+        resultFile: join(root, "mac.json"),
+        buildSha256: executionDigest(sdk),
+      }).receipt,
+    },
+  ];
+  assert.equal(
+    aggregateShardResults({ catalog, workers, macos }).coverage,
+    "complete-exactly-once",
+  );
+  writeFileSync(join(root, "catalog.json"), JSON.stringify(catalog));
+  mkdirSync(join(root, "workers"));
+  mkdirSync(join(root, "macos"));
+  for (const [i, worker] of workers.entries())
+    writeFileSync(join(root, "workers", i + ".json"), JSON.stringify(worker));
+  writeFileSync(join(root, "macos", "result.json"), JSON.stringify(macos[0]));
+  let age = 30000,
+    wrongHead = false,
+    hostedRequiredJobs = catalog.requiredJobs;
+  const server = createServer((request, response) => {
+    const now = Date.now(),
+      at = (ms) => new Date(now + ms).toISOString(),
+      head = "b".repeat(40);
+    const body = request.url.includes("/jobs?")
+      ? {
+          total_count: hostedRequiredJobs.length + 1,
+          jobs: [...hostedRequiredJobs, "candidate-quality"].map((name, i) => ({
+            id: i + 1,
+            name,
+            run_id: 7,
+            run_attempt: 2,
+            head_sha: head,
+            status: name === "candidate-quality" ? "in_progress" : "completed",
+            conclusion: name === "candidate-quality" ? null : "success",
+            started_at: at(-1000),
+            completed_at: name === "candidate-quality" ? null : at(-500),
+          })),
+        }
+      : {
+          id: 7,
+          run_attempt: 2,
+          head_sha: wrongHead ? "c".repeat(40) : head,
+          status: "in_progress",
+          conclusion: null,
+          created_at: at(-age - 1000),
+          run_started_at: at(-age),
+          updated_at: at(-500),
+        };
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify(body));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => server.close());
+  const invoke = async (suffix, extra = []) => {
+    const child = spawn(
+      process.execPath,
+      [
+        "scripts/run-quality-ci.mjs",
+        "--phase",
+        "final",
+        "--catalog",
+        join(root, "catalog.json"),
+        "--worker-results",
+        join(root, "workers"),
+        "--macos-results",
+        join(root, "macos"),
+        "--final-output",
+        join(root, suffix),
+        ...extra,
+      ],
+      {
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
+          GITHUB_RUN_ID: "7",
+          GITHUB_RUN_ATTEMPT: "2",
+          QUALITY_EXPECTED_WORKFLOW_SHA: "b".repeat(40),
+          QUALITY_FINAL_CORES: JSON.stringify([core]),
+          QUALITY_FINAL_GROUP_ID: "group",
+          QUALITY_FINAL_MANAGE_SHA: "b".repeat(40),
+          QUALITY_FINAL_WORKBENCH_SHA: "b".repeat(40),
+          QUALITY_HOSTED_API_BASE: "http://127.0.0.1:" + server.address().port,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let stderr = "";
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.stdout.resume();
+    const [status] = await once(child, "exit");
+    return {
+      status,
+      stderr,
+      coverage: existsSync(join(root, suffix, "coverage.json"))
+        ? JSON.parse(readFileSync(join(root, suffix, "coverage.json")))
+        : null,
+      hosted: existsSync(join(root, suffix, "hosted-budget.json"))
+        ? JSON.parse(readFileSync(join(root, suffix, "hosted-budget.json")))
+        : null,
+    };
+  };
+  const green = await invoke("final-green");
+  assert.equal(green.status, 0, green.stderr);
+  assert.equal(green.hosted.completedMeasurement, false, "in-gate is not completed acceptance");
+  const { createEarlyAllocation, createWorkerCatalog } =
+    await import("./quality-worker-control.mjs");
+  const controlBytes = JSON.stringify({
+    schemaVersion: 1,
+    scope: "source-plan-only",
+    repository: "CleverC2200/dsh-gea-plugin",
+    candidateBytes: JSON.stringify(candidate),
+    groupBytes: JSON.stringify({ groupId: "group" }),
+    plan,
+    metadata: workerMetadata,
+    admission,
+    runtime: false,
+  });
+  const { createHash } = await import("node:crypto");
+  const controls = [
+    {
+      control: JSON.parse(controlBytes),
+      sha256: createHash("sha256").update(controlBytes).digest("hex"),
+    },
+  ];
+  const earlyExpected = { ...catalog.expected, repository: "CleverC2200/dsh-gea-plugin" };
+  const allocation = createEarlyAllocation({ controls, expected: earlyExpected });
+  mkdirSync(join(root, "early-controls"));
+  writeFileSync(join(root, "early-controls/control.json"), controlBytes);
+  writeFileSync(join(root, "allocation.json"), JSON.stringify(allocation));
+  const earlyCatalog = await createWorkerCatalog({
+    controls,
+    indexes: [index],
+    allocation,
+    expected: earlyExpected,
+  });
+  writeFileSync(join(root, "catalog.json"), JSON.stringify(earlyCatalog));
+  hostedRequiredJobs = earlyCatalog.requiredJobs;
+  const earlyFlags = [
+    "--early-controls",
+    join(root, "early-controls"),
+    "--early-allocation",
+    join(root, "allocation.json"),
+  ];
+  const earlyGreen = await invoke("final-early-green", earlyFlags);
+  assert.equal(earlyGreen.status, 0, JSON.stringify(earlyGreen));
+  assert.equal(earlyGreen.coverage.status, "passed");
+  assert.equal((await invoke("final-early-missing-flags")).status, 1);
+  assert.equal((await invoke("final-early-one-flag", earlyFlags.slice(0, 2))).status, 1);
+  writeFileSync(
+    join(root, "catalog.json"),
+    JSON.stringify({ ...earlyCatalog, requiredJobs: catalog.requiredJobs }),
+  );
+  assert.equal((await invoke("final-early-required-jobs", earlyFlags)).status, 1);
+  writeFileSync(join(root, "catalog.json"), JSON.stringify(earlyCatalog));
+  writeFileSync(
+    join(root, "allocation.json"),
+    JSON.stringify({ ...allocation, expected: { ...earlyExpected, runAttempt: "1" } }),
+  );
+  assert.equal((await invoke("final-early-wrong-attempt", earlyFlags)).status, 1);
+  writeFileSync(join(root, "allocation.json"), JSON.stringify(allocation));
+  writeFileSync(join(root, "early-controls/extra.txt"), "unexpected extra control");
+  assert.equal((await invoke("final-early-extra", earlyFlags)).status, 1);
+  rmSync(join(root, "early-controls/extra.txt"));
+  stages.stages.checks.status = "failed";
+  const failedChecksCatalog = await createWorkerCatalog({
+    controls,
+    indexes: [index],
+    allocation,
+    expected: earlyExpected,
+  });
+  assert.equal(failedChecksCatalog.producerChecks, "failed");
+  writeFileSync(join(root, "catalog.json"), JSON.stringify(failedChecksCatalog));
+  const failedChecks = await invoke("final-early-failed-checks", earlyFlags);
+  assert.equal(failedChecks.status, 1);
+  assert.match(failedChecks.coverage.error, /source checks failed/);
+  stages.stages.checks.status = "passed";
+  writeFileSync(join(root, "catalog.json"), JSON.stringify(catalog));
+  hostedRequiredJobs = catalog.requiredJobs;
+
+  age = 601000;
+  const over = await invoke("final-over");
+  assert.equal(over.status, 0);
+  assert.equal(over.hosted.functional.status, "passed");
+  assert.equal(over.hosted.passed, false);
+  assert.equal(over.coverage.status, "passed");
+  assert.equal(over.hosted.performance.status, "failed");
+  age = 30000;
+  wrongHead = true;
+  const mismatch = await invoke("final-head");
+  assert.equal(mismatch.status, 1);
+  assert.equal(mismatch.hosted.performance.status, "unknown");
+  wrongHead = false;
+  const changed = structuredClone(workers[0]);
+  changed.receipt.results[0].exitCode = 1;
+  writeFileSync(join(root, "workers", "0.json"), JSON.stringify(changed));
+  const failed = await invoke("final-coverage");
+  assert.equal(failed.status, 1);
+  assert.equal(failed.coverage.status, "failed");
+  assert.equal(
+    failed.hosted.performance.status,
+    "passed",
+    "performance and functional evidence stay separate",
+  );
+  const bad = [
+    workers.slice(0, 1),
+    [workers[0], workers[0]],
+    structuredClone(workers),
+    structuredClone(workers),
+    structuredClone(workers),
+  ];
+  bad[2][0].receipt.results[0].report.context.planSha256 = "old";
+  bad[3][0].receipt.results[0].report.summary.counts.skipped = 1;
+  bad[4][0].receipt.results[0].exitCode = 1;
+  for (const entries of bad)
+    assert.throws(() => aggregateShardResults({ catalog, workers: entries, macos }));
+  assert.throws(
+    () =>
+      aggregateShardResults({
+        catalog,
+        workers: workers.map(({ core, receipt }) => ({ core, receipt })),
+        macos,
+      }),
+    "missing worker preparation cannot pass",
+  );
+  const wrongLock = structuredClone(macos);
+  wrongLock[0].admission.repositories[0].lockSha256 = "0".repeat(64);
+  assert.throws(() => aggregateShardResults({ catalog, workers, macos: wrongLock }));
+  assert.throws(() => aggregateShardResults({ catalog, workers, macos: [] }));
+  assert.throws(() =>
+    aggregateShardResults({ catalog: { ...catalog, producerChecks: "failed" }, workers, macos }),
+  );
+});
+
+test("historical scheduling weights retain the complete v13 source and leave new tests unknown", () => {
+  const timings = JSON.parse(readFileSync(new URL("./quality-test-timings.json", import.meta.url)));
+  assert.equal(timings.source.runId, 38810045174);
+  assert.equal(timings.source.kind, "historical-reference-only");
+  assert.equal(timings.source.fileConcurrency, 3);
+  assert.equal(timings.source.acceptance, "not-acceptance");
+  assert.equal(timings.source.head, "3f205ba454c10cbf165a02e0255488febab871a7");
+  assert.equal(timings.files.length, 167);
+  const files = [
+    "tests/source-update-web.test.mjs",
+    "tests/future-profile.test.mjs",
+    "scripts/future.test.mjs",
+  ];
+  const plan = createExecutionPlan({
+    selection: { files },
+    platformPlan: { files },
+    binding: {},
+    shardCount: 14,
+    concurrency: 3,
+    timings,
+  });
+  assert.equal(plan.shards.length, 3);
+  assert.equal(plan.estimates.unknownFiles, 2);
+  assert.equal(plan.estimates.estimatedMs, null);
+  assert.equal(plan.timingSource.runId, 38810045174);
+  assert.equal(plan.shards.filter((x) => x.estimatedMs === null).length, 2);
+});
+
+test("routing uses one shard without Profiles and bounds fixed heavy work at fourteen", async () => {
+  const { plannedShardCount } = await import("./quality-shards.mjs");
+  const files = Array.from({ length: 30 }, (_, index) => `tests/heavy-${index}.test.mjs`);
+  const timings = { files: files.map((file) => ({ file, durationMs: 400000 })) };
+  assert.equal(plannedShardCount({ selection: { files, runtimeFiles: [] }, timings }), 1);
+  assert.equal(plannedShardCount({ selection: { files, runtimeFiles: files }, timings }), 14);
+  assert.equal(
+    plannedShardCount({
+      selection: { files: ["new.test.mjs"], runtimeFiles: ["new.test.mjs"] },
+      timings,
+    }),
+    1,
+  );
+});

@@ -41,7 +41,7 @@ test("the public CI scope/final entry rejects missing, failed, skipped and cance
     QUALITY_GATE_RESULT: "success",
     QUALITY_ISOLATION_RESULT: "success",
   };
-  assert.equal(run(["--phase", "final"], good).status, 0);
+  assert.equal(run(["--phase", "final"], good).status, 1);
   for (const key of Object.keys(good))
     for (const result of ["", "skipped", "cancelled", "failure"])
       assert.equal(run(["--phase", "final"], { ...good, [key]: result }).status, 1);
@@ -74,7 +74,10 @@ test("the workflow binds full source history and the same public quality command
   assert.match(workflow, /node scripts\/run-quality-ci.mjs --prepare-sdk.*--prepare-inputs/);
   assert.match(readFileSync("scripts/run-quality-ci.mjs", "utf8"), /APS_BUILD_MODE: ["']mock["']/);
   assert.match(workflow, /if: always\(\)/);
-  assert.match(workflow, /needs: \[candidate-scope, gates, macos-isolation\]/);
+  assert.match(
+    workflow,
+    /needs: \[candidate-scope, source-plan, gates, plan-test-shards, test-shards, macos-isolation\]/,
+  );
   assert.match(workflow, /run: node scripts\/run-quality-ci.mjs --phase final/);
   assert.match(workflow, /PLUGIN_SPLIT_READ_TOKEN/);
   assert.match(workflow, /npm install --global npm@11\.11\.0/);
@@ -306,38 +309,99 @@ test("both source and compatibility workflows require actual same-tuple macOS ex
     assert.match(macos, /--phase macos-isolation --prepare-sdk/);
     assert.match(macos, /--final-group-sha256 "\$INPUT_SHA256"/);
     assert.match(macos, /write-hosted-group.mjs.*--root "\$GITHUB_WORKSPACE"/);
-    assert.doesNotMatch(macos, /continue-on-error|if: needs|if: success/);
-    assert.match(source, /needs: \[candidate-scope, gates, macos-isolation\]/);
-    assert.match(source, /QUALITY_ISOLATION_RESULT: \$\{\{ needs\.macos-isolation\.result \}\}/);
+    const execute = macos
+      .split(/\n      - /)
+      .find((step) => step.includes("Execute mandatory macOS"));
+    assert.doesNotMatch(execute, /continue-on-error|if:/, "native execution remains mandatory");
+    if (file === "quality") {
+      assert.match(macos, /sdk-artifact-cache\.mjs.*--github-paths/);
+      assert.match(macos, /path: quality-macos-result\.json/);
+      assert.match(
+        source,
+        /needs: \[candidate-scope, source-plan, gates, plan-test-shards, test-shards, macos-isolation\]/,
+      );
+    } else {
+      assert.match(source, /QUALITY_ISOLATION_RESULT: \$\{\{ needs\.macos-isolation\.result \}\}/);
+      assert.match(source, /--phase compatibility-final/);
+    }
   }
   assert.doesNotMatch(readFileSync("scripts/isolated-validation.test.mjs", "utf8"), /skip:/);
 });
 
-test("Linux stage wiring preserves independent tests and always summarizes and uploads receipts", () => {
+test("Linux preparation exports once and workers retain independent tests after failed checks", () => {
   const source = readFileSync(".github/workflows/quality.yml", "utf8");
-  const linux = source.slice(source.indexOf("  gates:\n"), source.indexOf("  macos-isolation:\n"));
+  const linux = source.slice(source.indexOf("  gates:\n"), source.indexOf("  plan-test-shards:\n"));
+  const sourcePlan = source.slice(source.indexOf("  source-plan:\n"), source.indexOf("  gates:\n"));
+  assert.match(sourcePlan, /--stage plan.*--test-file-concurrency 3/);
+  assert.doesNotMatch(
+    sourcePlan,
+    /npm install|corepack enable|--prepare-sdk|--stage (?:prepare|build)/,
+  );
+  assert.match(sourcePlan, /quality-worker-control\.mjs --mode freeze/);
   const steps = linux.split(/\n      - /);
-  for (const stage of ["prepare", "build", "checks", "tests", "summary"]) {
+  for (const stage of ["prepare", "build", "checks"]) {
     const step = steps.find((entry) => entry.includes(`id: quality-${stage}\n`));
     assert.ok(step, stage);
-    assert.match(step, new RegExp(`--stage ${stage}(?:\\n|$)`));
+    assert.match(step, new RegExp(`--stage ${stage}(?:\n|$)`));
     assert.match(step, /--final-group-sha256 "\$INPUT_SHA256"/);
-    assert.doesNotMatch(step, /continue-on-error/);
-    if (stage === "tests") {
-      assert.match(
-        step,
-        /!cancelled\(\).*steps\.quality-prepare\.outcome == 'success'.*steps\.quality-build\.outcome == 'success'/,
-      );
-      assert.doesNotMatch(step, /success\(\)|quality-checks\.outcome/);
-    }
-    if (stage === "summary") {
-      assert.match(step, /if: always\(\)/);
-      for (const required of ["prepare", "build", "checks", "tests"])
-        assert.ok(step.includes(`steps.quality-${required}.outcome`));
-    }
+    if (stage === "checks") assert.match(step, /continue-on-error: true/);
+    else assert.doesNotMatch(step, /continue-on-error/);
   }
-  assert.match(linux, /quality-stages\.json/);
-  assert.match(linux, /if: always\(\)\n        uses: actions\/upload-artifact@v7/);
+  for (const name of [
+    "Freeze the actual system Chrome distribution",
+    "Freeze worker preparation binding",
+    "Export prepared bytes once",
+    "Publish the small Core index",
+  ]) {
+    const step = steps.find((entry) => entry.includes(name));
+    assert.ok(step, name);
+    assert.match(step, /!cancelled\(\).*steps\.(?:quality-build|bundle)\.outcome == 'success'/);
+    assert.doesNotMatch(step, /quality-checks\.outcome|if: success/);
+  }
+  assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: cache-path"));
+  assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: sdk-paths"));
+  assert.match(linux, /--stage plan.*--test-shards auto/);
+  assert.match(linux, /QUALITY_TEST_SHARDS: \$\{\{ steps\.quality-plan\.outputs\.shards \}\}/);
+  assert.doesNotMatch(linux, /--stage tests|--stage summary/);
+  assert.equal((linux.match(/quality-prepared-inputs\.mjs export/g) ?? []).length, 1);
+  const planner = source.slice(
+    source.indexOf("  plan-test-shards:\n"),
+    source.indexOf("  test-shards:\n"),
+  );
+  assert.match(planner, /always\(\).*needs\.candidate-scope\.result == 'success'/);
+  assert.match(planner, /pattern: quality-a\$\{\{ github\.run_attempt \}\}-source-\*/);
+  assert.doesNotMatch(planner, /quality-bundle|needs\.gates\.outputs/);
+  const worker = source.slice(
+    source.indexOf("  test-shards:\n"),
+    source.indexOf("  macos-isolation:\n"),
+  );
+  assert.match(worker, /always\(\).*needs\.plan-test-shards\.result == 'success'/);
+  assert.match(worker, /has-shards == 'true'/);
+  assert.match(worker, /max-parallel: 14/);
+  assert.match(worker, /quality-worker-inputs\.mjs --root.*--early-control.*--early-sha256/);
+  assert.match(worker, /--stage tests --execution-plan.*--test-shard/);
+  assert.ok(linux.indexOf("--mode prepare-browser") < linux.indexOf("--mode binding"));
+  const cleanup = worker
+    .split(/\n      - /)
+    .find((step) => step.includes("Verify and unmount this job's fixed system Chrome"));
+  assert.match(cleanup, /if: always\(\)/);
+  assert.match(cleanup, /quality-system-chrome\.mjs cleanup --root/);
+  assert.doesNotMatch(cleanup, /continue-on-error/);
+  assert.ok(worker.indexOf("--stage tests") < worker.indexOf("quality-system-chrome.mjs cleanup"));
+  assert.ok(
+    worker.indexOf("quality-system-chrome.mjs cleanup") <
+      worker.indexOf("Preserve actual execution"),
+  );
+  assert.doesNotMatch(
+    worker,
+    /--prepare-sdk|--prepare-inputs|--stage build|actions\/cache|id: cache-path/,
+  );
+  assert.doesNotMatch(worker, /needs:.*gates/);
+  assert.match(worker, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(
+    source,
+    /QUALITY_EXPECTED_WORKFLOW_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/,
+  );
 });
 
 test("the current source impact maps changed paths without feature history and still rejects unknown scripts", async (t) => {
@@ -371,10 +435,15 @@ test("the current source impact maps changed paths without feature history and s
     contract,
     "scripts/fixtures/quality-ci-commands.mjs",
     "scripts/quality-ci-stages.mjs",
+    "scripts/quality-test-timings.json",
+    "scripts/quality-system-chrome.mjs",
+    "scripts/quality-worker-control.mjs",
+    "scripts/quality-worker-control.test.mjs",
+    "scripts/fixtures/quality-system-chrome-commands.mjs",
     "scripts/run-quality-ci-stages.test.mjs",
     "scripts/run-quality-ci.mjs",
     "scripts/run-quality-ci.test.mjs",
-  ];
+  ].sort();
   const repositories = [];
   for (const [repo, input] of [
     [
@@ -451,4 +520,31 @@ test("the current source impact maps changed paths without feature history and s
     () => selectCiTests(request),
     /CI_TEST_IMPACT_UNMAPPED: dsh-gea-plugin\/scripts\/unmapped-/,
   );
+});
+
+test("final cannot pass from job result environment flags without machine coverage and hosted clocks", () => {
+  const result = spawnSync(process.execPath, ["scripts/run-quality-ci.mjs", "--phase", "final"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      QUALITY_SCOPE_RESULT: "success",
+      QUALITY_GATE_RESULT: "success",
+      QUALITY_ISOLATION_RESULT: "success",
+    },
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /QUALITY_FINAL_INPUT_REQUIRED/);
+});
+
+test("compatibility keeps its own status summary while required final still demands complete receipts", () => {
+  const good = {
+    QUALITY_SCOPE_RESULT: "success",
+    QUALITY_GATE_RESULT: "success",
+    QUALITY_ISOLATION_RESULT: "success",
+  };
+  assert.equal(run(["--phase", "compatibility-final"], good).status, 0);
+  for (const key of Object.keys(good))
+    for (const result of ["failure", "skipped", "cancelled", ""])
+      assert.equal(run(["--phase", "compatibility-final"], { ...good, [key]: result }).status, 1);
+  assert.equal(run(["--phase", "final"], good).status, 1);
 });

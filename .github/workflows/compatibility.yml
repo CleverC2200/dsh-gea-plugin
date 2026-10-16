@@ -349,4 +349,4 @@ jobs:
           QUALITY_SCOPE_RESULT: ${{ needs.candidate-scope.result }}
           QUALITY_GATE_RESULT: ${{ needs.gates.result }}
           QUALITY_ISOLATION_RESULT: ${{ needs.macos-isolation.result }}
-        run: node scripts/run-quality-ci.mjs --phase final
+        run: node scripts/run-quality-ci.mjs --phase compatibility-final

@@ -77,7 +77,7 @@ function temporaryGitRepositories(t) {
   return { repositories, put, commit };
 }
 
-function resourceImpactFixture(t) {
+function resourceImpactFixture(t, authoredFiles = []) {
   const { repositories, put, commit } = temporaryGitRepositories(t);
   for (const entry of repositories) {
     put(entry.path, "README.md", "Fixture source\n");
@@ -90,14 +90,22 @@ function resourceImpactFixture(t) {
   for (const file of [
     ...policy.required,
     "scripts/ci-policy-impact.test.mjs",
+    "scripts/quality-prepared-inputs.test.mjs",
     "tests/sales-plan-action.test.mjs",
     "tests/branch-stock-ability-web.test.mjs",
     "tests/page-interaction-workbenches.test.mjs",
     "tests/unrelated.test.mjs",
     "tests/unrelated.contract.mjs",
     "tests/plugin-update-detail.browser.mjs",
+    ...authoredFiles,
   ])
-    put(own.path, file, "export const fixture = true;\n");
+    put(
+      own.path,
+      file,
+      authoredFiles.includes(file)
+        ? readFileSync(new URL("../" + file, import.meta.url))
+        : "export const fixture = true;\n",
+    );
   own.head = commit(own.path);
   const base = own.head;
   return {
@@ -182,6 +190,27 @@ test("unmapped Workbench source still rejects selection", (t) => {
   );
 });
 
+test("the prepared tar helper selects its CLI regression while an unknown Python source still rejects", (t) => {
+  const fixture = resourceImpactFixture(t);
+  fixture.change(
+    fixture.own,
+    "scripts/quality-prepared-inputs.test.mjs",
+    'import {spawnSync} from "node:child_process"; spawnSync("python3", ["scripts/quality-prepared-tar.py"]);\n',
+  );
+  fixture.change(fixture.own, "scripts/quality-prepared-tar.py", "# changed tar implementation\n");
+  const plan = fixture.plan();
+  assert.deepEqual(plan.reasons[fixture.own.repo + "/scripts/quality-prepared-tar.py"], [
+    "scripts/quality-prepared-inputs.test.mjs",
+  ]);
+  assert.ok(plan.files.includes("scripts/quality-prepared-inputs.test.mjs"));
+  assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+  fixture.change(fixture.own, "scripts/unknown-transport.py", "# unmapped implementation\n");
+  assert.throws(
+    () => fixture.plan(),
+    /CI_TEST_IMPACT_UNMAPPED: dsh-gea-plugin\/scripts\/unknown-transport\.py/,
+  );
+});
+
 test("a missing mapped policy regression target still rejects selection", (t) => {
   const fixture = resourceImpactFixture(t);
   fixture.change(
@@ -193,6 +222,35 @@ test("a missing mapped policy regression target still rejects selection", (t) =>
   assert.throws(
     () => fixture.plan(),
     /CI_TEST_FILE_REQUIRED: scripts\/ci-policy-impact\.test\.mjs/,
+  );
+});
+
+test("the dynamically loaded test reporter selects its real consumers while an unknown reporter rejects", (t) => {
+  const fixture = resourceImpactFixture(t);
+  writeFileSync(
+    join(fixture.own.path, "scripts/quality-test-execution.test.mjs"),
+    "export const fixture = true;\n",
+  );
+  fixture.change(
+    fixture.own,
+    "scripts/quality-test-reporter.mjs",
+    "export default async function* reporter() {}\n",
+  );
+  const plan = fixture.plan();
+  assert.deepEqual(plan.reasons[fixture.own.repo + "/scripts/quality-test-reporter.mjs"], [
+    "scripts/quality-test-execution.test.mjs",
+    "scripts/quality-test-reporter.test.mjs",
+    "scripts/run-quality-ci-stages.test.mjs",
+  ]);
+  assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+  fixture.change(
+    fixture.own,
+    "scripts/unknown-reporter.mjs",
+    "export default async function* reporter() {}\n",
+  );
+  assert.throws(
+    () => fixture.plan(),
+    /CI_TEST_IMPACT_UNMAPPED: dsh-gea-plugin\/scripts\/unknown-reporter\.mjs/,
   );
 });
 
