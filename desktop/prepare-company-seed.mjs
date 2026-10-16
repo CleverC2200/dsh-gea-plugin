@@ -1,4 +1,4 @@
-import { copyFile, cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createHash } from "node:crypto";
 import { installCompanyPackages } from "./company-bootstrap.mjs";
@@ -32,6 +32,7 @@ await installCompanyPackages({
   store: join(output, "store"),
   offline: false,
 });
+await rm(join(output, "store/v11/projects"), { recursive: true, force: true });
 await cp(
   join(home, "desktop-company-cache/metadata"),
   join(output, "metadata"),
