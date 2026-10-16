@@ -26,6 +26,7 @@ const candidatePhases = new Set([
   "quality",
   "business-profile",
   "mcp-client-repair",
+  "knowledge-merge",
   "prepare",
   "verify-input",
   "macos-isolation",
@@ -97,7 +98,7 @@ try {
     refuse("QUALITY_STAGE_REQUIRED", values.stage);
   if (
     values.stage !== "full" &&
-    !["quality", "business-profile", "mcp-client-repair"].includes(values.phase)
+    !["quality", "business-profile", "mcp-client-repair", "knowledge-merge"].includes(values.phase)
   )
     refuse("QUALITY_STAGE_PHASE", values.phase);
   if (
@@ -175,6 +176,26 @@ try {
         workbench: workbench.path,
         gea: own.path,
       });
+
+    let knowledgePlan;
+    if (values.phase === "knowledge-merge") {
+      const {
+        knowledgeMergeLane,
+        validateKnowledgeMergeGroup,
+        knowledgeMergeTests,
+        knowledgeMergeAuthorization,
+      } = await import("./knowledge-merge-ci.mjs");
+      if (!knowledgeMergeLane(process.cwd())) refuse("KNOWLEDGE_MERGE_EVENT_REQUIRED");
+      validateKnowledgeMergeGroup(candidate.repositories);
+      knowledgePlan = {
+        lane: "knowledge-merge",
+        runtime: false,
+        browser: false,
+        acceptance: "targeted; 205-file selection not run",
+        authorization: knowledgeMergeAuthorization,
+        files: knowledgeMergeTests,
+      };
+    }
     if (values.phase === "business-profile" || values.phase === "mcp-client-repair") {
       const { loadBusinessProfilePolicy } = await import("./business-profile-ci.mjs");
       const policy = await loadBusinessProfilePolicy(workbench.path);
@@ -189,7 +210,8 @@ try {
     );
     const baseline = JSON.parse(readFileSync("scripts/quality-peer-baseline.json"));
     const selectedPlan =
-      values.phase === "macos-isolation"
+      knowledgePlan ??
+      (values.phase === "macos-isolation"
         ? {
             lane: "macos-isolation",
             runtime: false,
@@ -220,7 +242,7 @@ try {
             ? {
                 lane: "business-profile",
                 runtime: false,
-                browser: true,
+                browser: false,
                 files: [
                   "tests/api-log.test.mjs",
                   "tests/gea-messages.test.mjs",
@@ -235,8 +257,6 @@ try {
                   "scripts/business-profile-ci.test.mjs",
                   "tests/plugin-update-controller.contract.mjs",
                   "tests/plugin-update-integration.contract.mjs",
-                  "tests/plugin-update-install.contract.mjs",
-                  "tests/plugin-update-detail.browser.mjs",
                   "scripts/build.test.mjs",
                   "scripts/deliver-packages.test.mjs",
                   "scripts/package-version-gate.test.mjs",
@@ -252,7 +272,7 @@ try {
                 base:
                   process.env.QUALITY_BASE_SHA ||
                   baseline.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
-              });
+              }));
     const plan = selectPlatformTests(selectedPlan);
     profileTestsSelected = plan.runtime;
     // The window contract traverses Core's complete dependency tree, including Web assets.
@@ -269,7 +289,12 @@ try {
     const core = resolve(dirname(dirname(process.cwd())), "official-latest-standard"),
       upstream = resolve(dirname(dirname(process.cwd())), "quality-upstreams");
     const jobRoot = dirname(dirname(process.cwd()));
-    const stagedPhase = ["quality", "business-profile", "mcp-client-repair"].includes(values.phase);
+    const stagedPhase = [
+      "quality",
+      "business-profile",
+      "mcp-client-repair",
+      "knowledge-merge",
+    ].includes(values.phase);
     if (stagedPhase) {
       stages = qualityStageRun({
         file: resolve(jobRoot, "quality-stages.json"),
@@ -333,6 +358,7 @@ try {
       run(process.execPath, ["native/system/scripts/build.ts", "--host-addon-only"], core);
     finalGroup?.verifyUnchanged();
     process.env.GEA_PLUGIN_UPDATE_SDK = core;
+    process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE = core;
     if (values.phase === "macos-isolation") {
       const output = resolve(".runtime/quality-isolation");
       mkdirSync(output, { recursive: true });

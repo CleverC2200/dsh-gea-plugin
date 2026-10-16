@@ -451,7 +451,7 @@ export async function apply(
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);
-  // 迁移页面的页面桥入口：注册表建好后再接上（页面第一次轮询是 500ms 之后）。
+  // 只装载 Workbench 已登记的 v2 HTML 包；缺少分离声明由装载校验拒绝。
   const htmlPackages = ctx.workbenchPages
     .packages()
     .filter((item) => item.manifest.gea?.contract === "gea-html-v2");

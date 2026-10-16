@@ -140,6 +140,15 @@ async function fixture(
     },
     skills: {
       registerProvider: () => () => {},
+      get: async (name) =>
+        name === "inventory-dealer"
+          ? {
+              name,
+              provider: "fixture",
+              content: "Dealer fixture rules",
+              invocation: { userInvocable: true },
+            }
+          : undefined,
       list: async () => [
         {
           name: "inventory-dealer",

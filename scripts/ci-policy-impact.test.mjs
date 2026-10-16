@@ -113,35 +113,36 @@ function resourceImpactFixture(t) {
 }
 
 test("Workbench page resources select GEA page grants and admitted asset integrity without unrelated tests", async (t) => {
-  for (const file of [
-    "business/inventory-aqkc/source/inventory-light-plugins/src/dsh-ui/DshButton.tsx",
-    "business/inventory-dealer/source/inventory-light-plugins/src/dsh-ui/controls.module.css",
-    "business/shared/author-questions.css",
-    "static/regional/source/index.html",
-    "static/category/plugin.json",
-    "theme/tokens.css",
-    "theme/html-defaults.css",
+  for (const [file, extra] of [
+    [
+      "business/inventory-aqkc/source/inventory-light-plugins/src/dsh-ui/DshButton.tsx",
+      ["tests/source-integrity.test.mjs", "tests/branch-stock-ability-web.test.mjs"],
+    ],
+    [
+      "business/inventory-dealer/source/inventory-light-plugins/src/dsh-ui/controls.module.css",
+      ["tests/source-integrity.test.mjs", "tests/branch-stock-ability-web.test.mjs"],
+    ],
+    ["business/shared/author-questions.css", []],
+    ["static/regional/source/index.html", ["tests/page-interaction-workbenches.test.mjs"]],
+    ["static/category/plugin.json", []],
+    ["theme/tokens.css", []],
+    ["theme/html-defaults.css", []],
   ]) {
     await t.test(file, (t) => {
       const fixture = resourceImpactFixture(t);
       fixture.change(fixture.peer, file);
       const plan = fixture.plan();
       assert.deepEqual(plan.changes, [{ repo: fixture.peer.repo, file }]);
-      const affected = file.startsWith("business/inventory-")
-        ? ["tests/source-integrity.test.mjs", "tests/branch-stock-ability-web.test.mjs"]
-        : file === "static/regional/source/index.html"
-          ? ["tests/page-interaction-workbenches.test.mjs"]
-          : [];
       assert.deepEqual(
         plan.reasons[fixture.peer.repo + "/" + file],
         [
-          ...affected,
           "scripts/quality-workbench.test.mjs",
           "tests/business-page-grant.test.mjs",
+          ...extra,
         ].sort(),
       );
       assert.deepEqual(plan.required, [...fixture.policy.required].sort());
-      assert.deepEqual(plan.files, [...new Set([...fixture.policy.required, ...affected])].sort());
+      assert.deepEqual(plan.files, [...new Set([...fixture.policy.required, ...extra])].sort());
       assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
       assert.ok(!plan.files.includes("tests/unrelated.contract.mjs"));
     });

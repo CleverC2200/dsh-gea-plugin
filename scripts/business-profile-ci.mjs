@@ -1,3 +1,4 @@
+import { appendFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -10,6 +11,20 @@ export async function loadBusinessProfilePolicy(workbench) {
 }
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   const { values } = parseArgs({ options: { workbench: { type: "string" } } });
+  const { knowledgeMergeLane, knowledgeMergeAuthorization } =
+    await import("./knowledge-merge-ci.mjs");
+  if (knowledgeMergeLane(process.cwd())) {
+    if (process.env.GITHUB_OUTPUT)
+      appendFileSync(process.env.GITHUB_OUTPUT, "lane=knowledge-merge\n");
+    console.log(
+      JSON.stringify({
+        lane: "knowledge-merge",
+        authorization: knowledgeMergeAuthorization,
+        fullSelection: "not run",
+      }),
+    );
+    process.exit(0);
+  }
   const policy = await loadBusinessProfilePolicy(values.workbench);
   const { runBusinessProfileCli } = await import(
     pathToFileURL(resolve(values.workbench, "scripts/ci-source-policy.mjs"))

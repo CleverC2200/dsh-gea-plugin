@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, stat, copyFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, stat, copyFile, rm, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,6 +52,12 @@ function run(root, args = []) {
   return { child, done, log: () => log };
 }
 
+async function replaceSource(file, text) {
+  const next = file + ".next";
+  await writeFile(next, text);
+  await rename(next, file);
+}
+
 async function until(predicate) {
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
@@ -98,14 +104,14 @@ test(
     const output = join(root, "lib/client.js");
     const content = () => readFile(output, "utf8").catch(() => "");
     await until(async () => (await content()).includes("client"));
-    await writeFile(join(root, "src/client.tsx"), "export const value = 'watch-updated';");
+    await replaceSource(join(root, "src/client.tsx"), "export const value = 'watch-updated';");
     await until(async () => (await content()).includes("watch-updated"));
     const good = await content();
     assert.match(good, /window\.__ModuleLoader__\.load/);
-    await writeFile(join(root, "src/client.tsx"), "export const value = ;");
+    await replaceSource(join(root, "src/client.tsx"), "export const value = ;");
     await until(() => watch.log().includes("ERROR"));
     assert.equal(await content(), good);
-    await writeFile(join(root, "src/client.tsx"), "export const value = 'watch-recovered';");
+    await replaceSource(join(root, "src/client.tsx"), "export const value = 'watch-recovered';");
     await until(async () => (await content()).includes("watch-recovered"));
     watch.child.kill("SIGTERM");
     const stopped = await watch.done;

@@ -1,63 +1,7 @@
 [
   {
-    "name": "category-plan",
-    "description": "本地模拟品类计划快照与交互，不代表真实业务结果。"
-  },
-  {
-    "name": "genui",
-    "description": "GenUI dsh-ui component/schema reference. Preserve conversation language for all user-visible text."
-  },
-  {
-    "name": "inventory-apsplan",
-    "description": "解释产销协同当前经营页面的 GEA 只读指标、来源、范围和缺失项。"
-  },
-  {
-    "name": "inventory-aqkc",
-    "description": "基地库存只读规则与风险分析：解释目标偏差、当前待发订单缺口和货龄；实际取数须使用基地库存业务会话，页面分析复用同一会话绑定页面的确定性结果。"
-  },
-  {
-    "name": "inventory-customer",
-    "description": "客户库存演示页面的业务范围与数据边界。"
-  },
-  {
-    "name": "inventory-dealer",
-    "description": "在 DSH 经销商库存业务页读取当前授权证据、调整筛选、解释指标，并在右侧 DSH 会话中整理分析方案。"
-  },
-  {
-    "name": "inventory-fc",
-    "description": "在 DSH 分仓库存业务页读取当前 GEA 证据、调整筛选、解释指标，并在右侧 DSH 会话中整理分析方案。"
-  },
-  {
-    "name": "inventory-mps",
-    "description": "解释MPS模拟原型当前页面的需求、滚动计划、产能与缺口"
-  },
-  {
-    "name": "inventory-orderfulfillment",
-    "description": "订单履约原型的模拟数据、筛选和引用范围。"
-  },
-  {
-    "name": "inventory-orderworkbench",
-    "description": "订单工作台页面的演示范围与数据边界。"
-  },
-  {
-    "name": "inventory-qll",
-    "description": "解读当前公司全链库存、趋势与缺口，核当前范围、缺失或拒权，并引用当前页面证据。"
-  },
-  {
-    "name": "plan-regional",
-    "description": "在区域计划原型当前页面解释模拟提报跟进、品类达成、复盘和异常，或按要求切换模块、维度及模拟日期。"
-  },
-  {
     "name": "receipt-catalog-canary",
     "description": "Receipt catalog metadata fixture; its body requires an explicit skill invocation."
-  },
-  {
-    "name": "sales-forecast-result-analysis",
-    "description": "解读已有预测、比较计划版本或复盘历史偏差；不生成新预测或修改正式计划。"
-  },
-  {
-    "name": "sales-ops-problem-analysis",
-    "description": "已有产销指标异常，需要定位贡献对象、核查订单库存生产事件及改善措施时使用。"
   },
   {
     "name": "sinian-demand-baseline",
