@@ -29,7 +29,8 @@ const generatedHtml = new Set([
   "static/mps/index.html",
   "static/regional/index.html",
 ]);
-const derived = (file) => file.startsWith("lib/") || generatedHtml.has(file);
+export const isPreparedWorkbenchOutput = (file) =>
+  file.startsWith("lib/") || generatedHtml.has(file);
 
 /** Bind the fixed Workbench reader to the already admitted GEA authority without copying it. */
 export async function prepareWorkbenchGeaAuthority({ workbench, gea }) {
@@ -72,7 +73,7 @@ export async function readPreparedWorkbench({ source, prepared, head }) {
   ).trimEnd();
   for (const line of status.split("\n").filter(Boolean)) {
     const file = line.slice(3);
-    if (line.startsWith(" M ") && derived(file)) continue;
+    if (line.startsWith(" M ") && isPreparedWorkbenchOutput(file)) continue;
     if (line.startsWith("?? ") && file.startsWith("lib/types/") && file.endsWith(".d.ts")) {
       // Declaration emission adds regular files; lstat never follows external targets.
       if ((await lstat(join(prepared, file))).isFile()) continue;
@@ -87,7 +88,7 @@ export async function readPreparedWorkbench({ source, prepared, head }) {
       const [mode, , expected] = entry.slice(0, at).split(" ");
       return { file: entry.slice(at + 1), mode, expected };
     })
-    .filter((entry) => !derived(entry.file));
+    .filter((entry) => !isPreparedWorkbenchOutput(entry.file));
   for (const { file, mode, expected } of sourceFiles) {
     const bytes =
       mode === "120000"

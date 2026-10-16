@@ -1,6 +1,52 @@
 /** Job-local receipts for the public quality CLI's process-independent stages. */
-import { readFileSync, writeFileSync, renameSync, existsSync, appendFileSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  existsSync,
+  appendFileSync,
+  readdirSync,
+} from "node:fs";
 import { resolve } from "node:path";
+import { clientEntry } from "./source-combination-integrity.mjs";
+
+// Manage's fixed tsdown build declares one CJS client entry, sourcemap, injected CSS and no DTS.
+// Source/lock admission fixes that build configuration; all three consumers use this exact output set.
+const buildOutputs = [
+  { path: "candidate/dsh-gea-plugin/lib" },
+  { path: "candidate/dsh-agent-manage/lib" },
+  { path: "candidate/dsh-agent-manage/client", files: ["client.js", "client.js.map"] },
+];
+export function isQualityBuildOutput(file) {
+  return buildOutputs.some(({ path, files }) =>
+    files ? files.some((name) => file === path + "/" + name) : file.startsWith(path + "/"),
+  );
+}
+export function qualityBuildOutputs(root) {
+  const manifest = JSON.parse(
+    readFileSync(resolve(root, "candidate/dsh-agent-manage/package.json")),
+  );
+  if (manifest.name !== "dsh-agent-manage" || clientEntry(manifest) !== "./client/client.js")
+    throw Error("QUALITY_STAGE_CLIENT_DECLARATION_CHANGED");
+  return buildOutputs.map(({ path, ...entry }) => ({ root: resolve(root, path), ...entry }));
+}
+export function verifyQualityBuildInventory(root, artifacts) {
+  const outputs = qualityBuildOutputs(root);
+  if (
+    JSON.stringify(Object.keys(artifacts ?? {}).sort()) !==
+    JSON.stringify(outputs.map((x) => x.root).sort())
+  )
+    throw Error("QUALITY_STAGE_ARTIFACT_REQUIRED: exact build inventory roots");
+  for (const output of outputs)
+    if (
+      output.files &&
+      (JSON.stringify(Object.keys(artifacts[output.root] ?? {}).sort()) !==
+        JSON.stringify(output.files) ||
+        JSON.stringify(readdirSync(output.root).sort()) !== JSON.stringify(output.files))
+    )
+      throw Error("QUALITY_STAGE_ARTIFACT_REQUIRED: exact Manage client outputs");
+  return outputs;
+}
 
 export const qualityStages = ["prepare", "build", "checks", "tests"];
 export function qualityStageRun({ file, binding, requested }) {

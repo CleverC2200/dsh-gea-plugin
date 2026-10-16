@@ -123,31 +123,15 @@ export async function verifyQualityUpstreams(root) {
     runtime: "not-observed",
   };
 }
-export async function prepareQualityUpstreams(root) {
+/** Own fixed source checkouts without downloading assets, installing dependencies or compiling. */
+export async function prepareQualityUpstreamSources(root) {
   if (!root) throw Error("QUALITY_UPSTREAM_REQUIRED");
   root = resolve(root);
   if (Number(process.versions.node.split(".")[0]) !== 24) throw Error("QUALITY_UPSTREAM_TOOLCHAIN");
   if ((await exists(root)) && (await realpath(root)) !== root)
     throw Error("QUALITY_UPSTREAM_PRIVATE_ROOT_REQUIRED");
   await mkdir(root, { recursive: true });
-  const genui = join(root, "upstream-assets/genui-0.11.3"),
-    sidebar = join(root, "upstream-reference/dsh-better-sidebar");
-  if (!(await exists(genui))) {
-    const response = await fetch(fixed.genui.url);
-    if (!response.ok) throw Error("QUALITY_UPSTREAM_DOWNLOAD: " + response.status);
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (hash(bytes) !== fixed.genui.sha256) throw Error("QUALITY_UPSTREAM_ARCHIVE_HASH");
-    const archive = join(root, "genui-0.11.3.tgz"),
-      staging = join(root, "genui-unpack");
-    await writeFile(archive, bytes);
-    await mkdir(staging);
-    const paths = run("tar", ["-tzf", archive], root, true).split("\n");
-    if (paths.some((path) => !path.startsWith("package/") || path.split("/").includes("..")))
-      throw Error("QUALITY_UPSTREAM_ARCHIVE_PATH");
-    run("tar", ["-xzf", archive, "-C", staging], root);
-    await mkdir(dirname(genui), { recursive: true });
-    await rename(join(staging, "package"), genui);
-  }
+  const sidebar = join(root, "upstream-reference/dsh-better-sidebar");
   const genuiSource = join(root, "upstream-reference/dsh-genui");
   if (!(await exists(genuiSource))) {
     await mkdir(dirname(genuiSource), { recursive: true });
@@ -199,6 +183,36 @@ export async function prepareQualityUpstreams(root) {
     throw Error("QUALITY_UPSTREAM_GENUI_SOURCE_REQUIRED");
   sourceRemote(genuiSource, fixed.genui.repository, true);
   sourceRemote(sidebar, fixed.sidebar.repository, true);
+  return {
+    status: "source-only",
+    root,
+    genui: { source: genuiSource, head: fixed.genui.head },
+    sidebar: { source: sidebar, head: fixed.sidebar.head },
+    dependencies: "not-prepared",
+    runtime: "not-observed",
+  };
+}
+
+export async function prepareQualityUpstreams(root) {
+  ({ root } = await prepareQualityUpstreamSources(root));
+  const genui = join(root, "upstream-assets/genui-0.11.3"),
+    sidebar = join(root, "upstream-reference/dsh-better-sidebar");
+  if (!(await exists(genui))) {
+    const response = await fetch(fixed.genui.url);
+    if (!response.ok) throw Error("QUALITY_UPSTREAM_DOWNLOAD: " + response.status);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (hash(bytes) !== fixed.genui.sha256) throw Error("QUALITY_UPSTREAM_ARCHIVE_HASH");
+    const archive = join(root, "genui-0.11.3.tgz"),
+      staging = join(root, "genui-unpack");
+    await writeFile(archive, bytes);
+    await mkdir(staging);
+    const paths = run("tar", ["-tzf", archive], root, true).split("\n");
+    if (paths.some((path) => !path.startsWith("package/") || path.split("/").includes("..")))
+      throw Error("QUALITY_UPSTREAM_ARCHIVE_PATH");
+    run("tar", ["-xzf", archive, "-C", staging], root);
+    await mkdir(dirname(genui), { recursive: true });
+    await rename(join(staging, "package"), genui);
+  }
   if (run("corepack", ["pnpm", "--version"], sidebar, true) !== "11.8.0")
     throw Error("QUALITY_UPSTREAM_TOOLCHAIN");
   run(
@@ -241,12 +255,17 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
       options: {
         root: { type: "string" },
         prepare: { type: "boolean" },
+        "source-only": { type: "boolean" },
         receipt: { type: "string" },
       },
     });
-    const result = await (values.prepare ? prepareQualityUpstreams : verifyQualityUpstreams)(
-      values.root,
-    );
+    if (values.prepare && values["source-only"]) throw Error("QUALITY_UPSTREAM_MODE_CONFLICT");
+    const execute = values["source-only"]
+      ? prepareQualityUpstreamSources
+      : values.prepare
+        ? prepareQualityUpstreams
+        : verifyQualityUpstreams;
+    const result = await execute(values.root);
     if (values.receipt)
       await writeFile(resolve(values.receipt), JSON.stringify(result, null, 2) + "\n");
     console.log(JSON.stringify(result));

@@ -1,9 +1,53 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+
+test("the public reporter records real relative files exactly once with nested same-name case totals", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "gea-test-receipt-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const receipt = join(root, "receipt.json");
+  for (const name of ["first", "second"])
+    writeFileSync(
+      join(root, name + ".mjs"),
+      `import test from 'node:test'; test('same', async t => { await t.test('same', () => {}); await t.test('same', () => {}); });`,
+    );
+  const env = {
+    ...process.env,
+    QUALITY_TEST_ROOT: root,
+    QUALITY_TEST_FILES: JSON.stringify(["first.mjs", "second.mjs"]),
+    QUALITY_TEST_RECEIPT: receipt,
+    QUALITY_TEST_CONTEXT: JSON.stringify({ planSha256: "a".repeat(64), shardId: "1" }),
+  };
+  delete env.NODE_TEST_CONTEXT;
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--test",
+      `--test-reporter=${resolve("scripts/quality-test-reporter.mjs")}`,
+      "./first.mjs",
+      "second.mjs",
+    ],
+    { cwd: root, env, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const record = JSON.parse(readFileSync(receipt));
+  assert.equal(record.terminal, true);
+  assert.equal(record.status, "completed");
+  assert.deepEqual(record.files.map((file) => file.file).sort(), ["first.mjs", "second.mjs"]);
+  for (const file of record.files) {
+    assert.equal(file.startCount, 1);
+    assert.equal(file.completeCount, 1);
+    assert.equal(file.summaryCount, 1);
+    assert.equal(file.passed, true);
+    assert.equal(file.counts.tests, 3);
+    assert.equal(file.counts.passed, 3);
+    assert.ok(Number.isFinite(file.durationMs) && file.durationMs >= 0);
+    assert.ok(Date.parse(file.finishedAt) >= Date.parse(file.startedAt));
+  }
+});
 test("the public test reporter rejects an exit-zero skipped lane and keeps executed fixtures green", () => {
   const root = mkdtempSync(join(tmpdir(), "gea-test-report-"));
   try {
