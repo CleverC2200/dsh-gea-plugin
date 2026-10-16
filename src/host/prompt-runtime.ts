@@ -13,7 +13,6 @@ import {
   allowedTools,
   businessUiIssue,
   profileFor,
-  PROMPT_BUDGET,
   promptMeasurement,
   TOOL_DESCRIPTIONS,
 } from "./prompt-policy.ts";
@@ -31,9 +30,6 @@ const businessMethod = (name: string) =>
 type AdmissionState = {
   pageReferences?: boolean;
   preset: string;
-  calls: number;
-  readCalls: number;
-  limit: number;
   dispose?: () => void;
   mask: string;
 };
@@ -67,9 +63,6 @@ export function mountBusinessPrompts(
     if (!state) {
       state = {
         preset,
-        calls: 0,
-        readCalls: 0,
-        limit: PROMPT_BUDGET.calls,
         mask: "",
       };
       states.set(agent, state);
@@ -119,10 +112,6 @@ export function mountBusinessPrompts(
   };
   const clean = () => {
     executionState.clear();
-    for (const state of states.values()) {
-      state.calls = 0;
-      state.readCalls = 0;
-    }
   };
   const refreshAll = () => {
     for (const agent of ctx.agents.list()) refreshMask(agent);
@@ -140,11 +129,7 @@ export function mountBusinessPrompts(
       if (event.type !== "turn/start") return;
       const agent = ctx.agents.get(session.id);
       if (!agent || (!profileOf(agent) && !cubeAllowed(ctx, business, agent.id))) return;
-      const state = stateOf(agent);
-      state.calls = 0;
-      state.readCalls = 0;
       executionState.startTurn(agent);
-      state.limit = PROMPT_BUDGET.calls;
     }),
   );
   offs.push(
@@ -181,12 +166,6 @@ export function mountBusinessPrompts(
         return;
       }
       const state = stateOf(agent);
-      // Evidence exhaustion closes GEA calls, and all tools of the active Core driver.
-      if (
-        state.readCalls >= PROMPT_BUDGET.evidenceCalls &&
-        (businessMethod(exec.name) || agent.status === "running")
-      )
-        return "GEA_EVIDENCE_BUDGET: 本轮证据读取额度已用完，请交付已读范围并说明未读部分。";
       if (["render_ui", "validate_dsh_ui"].includes(exec.name)) {
         const issue = businessUiIssue(exec.arguments);
         if (issue) return issue;
@@ -216,19 +195,7 @@ export function mountBusinessPrompts(
         business.turnStopKind(agent.id) === "session-expired"
       )
         return "GEA_GATEWAY_SESSION_EXPIRED: 本轮网关会话已过期，不能通过证据回读重建会话；下一轮重新验证。";
-      // Reserve before dispatch: parallel calls must not all pass against the same stale counter.
-      if (exec.name === "gea_evidence_read") {
-        state.readCalls++;
-      } else {
-        if (state.calls >= state.limit)
-          return "GEA_CALL_BUDGET: 业务查询/业务能力调用额度已用完；仍可沿nextRead读取已取得证据，然后交付已有结果。";
-        state.calls++;
-      }
-      if (
-        exec.name === "mcp__gea-gateway__inspect_cube_model" &&
-        executionState.snapshot(agent).catalogStalls >= 2
-      )
-        return "GEA_CATALOG_NO_PROGRESS: 目录连续未提供新信息；使用已返回成员执行最小query_business_data或说明具体缺口，查询后可按错误修正目录。本轮其它工具仍可用。";
+
     }),
   );
   offs.push(
@@ -364,18 +331,15 @@ export function mountBusinessPrompts(
       defineTool({
         name: "gea_capabilities",
         description:
-          "查看已配置的 GEA 业务模块和本轮执行预算。配置与工具可见不代表业务授权。复杂任务可选择 complex 额度。",
-        parameters: { complex: { type: "boolean" } },
+          "查看已配置的 GEA 业务模块。配置与工具可见不代表业务授权。",
+        parameters: {},
         output,
         isConcurrencySafe: () => false,
         async execute(args, exec) {
           if (!exec.agent || !profileOf(exec.agent)) throw Error("GEA_BUSINESS_SESSION_REQUIRED");
           exec.signal.throwIfAborted();
-          const state = stateOf(exec.agent);
-          if (args.complex) state.limit = PROMPT_BUDGET.complexCalls;
           return JSON.stringify({
             preset: presetOf(exec.agent),
-            callLimit: state.limit,
             modulesAreConfiguredNotAuthorized: true,
             modules: capability
               .readModules()
@@ -453,20 +417,11 @@ export function mountBusinessPrompts(
             (tool) => !businessMethod(tool.name) || (gatewayMethod(tool.name) && cubeAllowed(ctx, business, agent.id)),
           ),
         };
-      const state = { ...stateOf(agent), ...executionState.snapshot(agent) };
+      const state = executionState.snapshot(agent);
       refreshMask(agent);
       const visible = new Set(ctx.tools.schemas(agent).map((tool) => tool.name));
       const tools = assembled.tools
-        .filter((tool) => {
-          if (!visible.has(tool.name)) return false;
-          if (
-            state.readCalls >= PROMPT_BUDGET.evidenceCalls &&
-            (businessMethod(tool.name) || agent.status === "running")
-          )
-            return false;
-          if (!businessMethod(tool.name)) return true;
-          return state.calls < state.limit || tool.name === "gea_evidence_read";
-        })
+        .filter((tool) => visible.has(tool.name))
         .map((tool) =>
           businessToolDisplay({
             ...tool,
@@ -482,7 +437,6 @@ export function mountBusinessPrompts(
           event: "GEA_PROMPT_BUDGET",
           preset: presetOf(agent),
           ...measurement,
-          calls: state.calls,
           resultChars: state.returned,
         }),
       );

@@ -156,7 +156,7 @@ test("large top-level data and reserved metadata fields remain represented in th
   assert.ok(!projected.omittedPaths.includes("$.data"));
 });
 
-test("catalog recovery and terminal evidence budgets preserve turn ownership", async (t) => {
+test("repeated catalog, query and evidence calls retain business and standard tools", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "gea-catalog-generation-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const handlers = new Map(),
@@ -295,10 +295,10 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     await finish(await start());
     await finish(await start());
     const paused = await visible();
-    assert.match(
+    assert.equal(
       guard({ name: "mcp__gea-gateway__inspect_cube_model", agent, arguments: {} }),
-      /GEA_CATALOG_NO_PROGRESS/,
-      transition + " current duplicate replies should pause",
+      undefined,
+      transition + " repeated catalog replies do not block later calls",
     );
     assert.ok(
       paused.includes("mcp__gea-gateway__query_business_data"),
@@ -318,112 +318,26 @@ test("catalog recovery and terminal evidence budgets preserve turn ownership", a
     { content: [{ type: "text", text: '{"amount":"12.3400","coverage":"partial"}' }] },
     async () => ({ kind: "accept" }),
   );
-  for (let i = 0; i < 20; i++)
+  const before = (await assemble()).tools.map((tool) => tool.name);
+  for (let i = 0; i < 64; i++)
     assert.equal(
       guard({ name: "mcp__gea-gateway__query_business_data", agent, arguments: {} }),
       undefined,
+      "business calls remain available beyond both former limits",
     );
-  assert.match(
-    guard({ name: "mcp__gea-gateway__query_business_data", agent, arguments: {} }),
-    /GEA_CALL_BUDGET/,
-  );
-  const queryLimited = await assemble();
-  assert.ok(queryLimited.tools.some((tool) => tool.name === "gea_evidence_read"));
-  for (const name of [
-    "mcp__gea-gateway__inspect_cube_model",
-    "mcp__gea-gateway__query_business_data",
-  ])
-    assert.ok(
-      !queryLimited.tools.some((tool) => tool.name === name),
-      "query allowance hides " + name,
-    );
-  for (const name of ["read_file", "run_code", "run_agent"]) {
-    assert.ok(
-      queryLimited.tools.some((tool) => tool.name === name),
-      name,
-    );
-    assert.equal(guard({ name, agent, arguments: {} }), undefined);
+  for (let i = 0; i < 32; i++)
+    assert.equal(guard({ name: "gea_evidence_read", agent, arguments: {} }), undefined);
+  for (const status of ["running", "idle"]) {
+    agent.status = status;
+    const assembled = await assemble();
+    assert.deepEqual(assembled.tools.map((tool) => tool.name), before);
+    assert.deepEqual(assembled.sections, assembly.sections);
+    for (const name of ["read_file", "run_code", "run_agent"])
+      assert.equal(guard({ name, agent, arguments: {} }), undefined);
   }
-  assert.deepEqual(queryLimited.sections, assembly.sections, "execution gates add no system prose");
-  for (let i = 0; i < 12; i++)
-    assert.equal(
-      guard({ name: "gea_evidence_read", agent, arguments: {} }),
-      undefined,
-      "already acquired evidence retains a bounded read allowance",
-    );
-  const stopped = await assemble();
-  assert.deepEqual(stopped.tools, [], "the final model assembly stops every tool after 12 reads");
-  assert.deepEqual(
-    stopped.sections,
-    assembly.sections,
-    "stopping preserves the caller system without adding budget prose",
-  );
-  assert.equal(
-    stopped.sections.find((section) => section.name === "native").text,
-    "native policy survives",
-  );
-  assert.match(guard({ name: "gea_evidence_read", agent, arguments: {} }), /GEA_EVIDENCE_BUDGET/);
-  for (const name of [
-    "mcp__gea-gateway__query_business_data",
-    "gea_capabilities",
-    "mcp__gea-gateway__inspect_cube_model",
-    "read_file",
-    "run_code",
-    "run_agent",
-  ])
-    assert.match(
-      guard({ name, agent, arguments: {} }),
-      /GEA_EVIDENCE_BUDGET/,
-      "read exhaustion cannot be bypassed via " + name,
-    );
-  agent.status = "idle";
-  const idle = await assemble();
-  for (const name of ["read_file", "run_code", "run_agent"]) {
-    assert.ok(
-      idle.tools.some((tool) => tool.name === name),
-      "idle retains standard " + name,
-    );
-    assert.equal(guard({ name, agent, arguments: {} }), undefined);
-  }
-  assert.ok(!idle.tools.some((tool) => tool.name.startsWith("gea_")));
-  for (const name of [
-    "mcp__gea-gateway__inspect_cube_model",
-    "mcp__gea-gateway__query_business_data",
-  ])
-    assert.ok(!idle.tools.some((tool) => tool.name === name), "idle read exhaustion hides " + name);
-  assert.deepEqual(idle.sections, assembly.sections, "idle gates add no system prose");
-  for (const name of [
-    "gea_evidence_read",
-    "mcp__gea-gateway__query_business_data",
-    "gea_capabilities",
-  ])
-    assert.match(guard({ name, agent, arguments: {} }), /GEA_EVIDENCE_BUDGET/);
   resourceEnabled = false;
   await assert.rejects(start("read_file"), /GEA_AGENT_RESOURCE_DISABLED/);
   resourceEnabled = true;
-  agent.status = "running";
-  assert.deepEqual((await assemble()).tools, [], "idle must not reopen the exhausted model driver");
-  assert.match(guard({ name: "run_code", agent, arguments: {} }), /GEA_EVIDENCE_BUDGET/);
-  const otherAgent = { ...agent, id: "other" };
-  assert.equal(guard({ name: "read_file", agent: otherAgent, arguments: {} }), undefined);
-  assert.ok((await assemble(otherAgent)).tools.some((tool) => tool.name === "read_file"));
   handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
-  assert.equal(guard({ name: "gea_evidence_read", agent, arguments: {} }), undefined);
-  assert.equal(
-    guard({ name: "mcp__gea-gateway__query_business_data", agent, arguments: {} }),
-    undefined,
-  );
-  for (const name of [
-    "gea_evidence_read",
-    "mcp__gea-gateway__query_business_data",
-    "read_file",
-    "run_code",
-    "run_agent",
-  ]) {
-    assert.ok(
-      (await assemble()).tools.some((tool) => tool.name === name),
-      name + " restores next turn",
-    );
-  }
-  assert.equal(guard({ name: "run_code", agent, arguments: {} }), undefined);
+  assert.deepEqual((await assemble()).tools.map((tool) => tool.name), before);
 });

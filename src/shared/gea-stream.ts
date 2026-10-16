@@ -266,7 +266,7 @@ export async function* geaTextStream(
             (delta.index as number) < 0 ||
             (delta.type !== undefined && delta.type !== "function")
           )
-            invalid("GEA_MODEL_INVALID_TOOL_CALL");
+            invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具调用索引或类型无效");
           const fn = delta.function == null ? {} : record(delta.function);
           const call = calls.get(delta.index as number) ?? {
             id: "",
@@ -277,18 +277,17 @@ export async function* geaTextStream(
             ["id", delta.id],
             ["name", fn.name],
           ] as const) {
-            if (fragment === undefined) continue;
+            if (fragment === undefined || fragment === "") continue;
             if (
               typeof fragment !== "string" ||
-              !fragment ||
               (call[field] && call[field] !== fragment)
             )
-              invalid("GEA_MODEL_INVALID_TOOL_CALL");
+              invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具调用标识或名称片段冲突");
             if (!call[field]) callBytes += new TextEncoder().encode(fragment).byteLength;
             call[field] = fragment;
           }
           if (fn.arguments !== undefined) {
-            if (typeof fn.arguments !== "string") invalid("GEA_MODEL_INVALID_TOOL_CALL");
+            if (typeof fn.arguments !== "string") invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具参数片段不是字符串");
             call.arguments += fn.arguments;
             callBytes += new TextEncoder().encode(fn.arguments).byteLength;
           }
@@ -307,10 +306,12 @@ export async function* geaTextStream(
           signal?.throwIfAborted();
           const ids = new Set<string>();
           if (calls.size > 0 !== (chunk.finish === "tool-calls"))
-            invalid("GEA_MODEL_INVALID_TOOL_CALL");
+            invalid("GEA_MODEL_INVALID_TOOL_CALL", "结束标记与工具调用不一致");
           for (const call of calls.values()) {
-            if (!call.id || ids.has(call.id) || !offered?.names.includes(call.name))
-              invalid("GEA_MODEL_INVALID_TOOL_CALL");
+            if (!call.id || ids.has(call.id))
+              invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具调用标识为空或重复");
+            if (!offered?.names.includes(call.name))
+              invalid("GEA_MODEL_INVALID_TOOL_CALL", "调用的工具不在本轮提供的清单中");
             ids.add(call.id);
             let args: unknown;
             try {

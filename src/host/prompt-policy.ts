@@ -7,9 +7,6 @@ export const PROMPT_BUDGET = {
   initial: 16000,
   target: 12000,
   result: 6000,
-  calls: 20,
-  evidenceCalls: 12,
-  complexCalls: 40,
 } as const;
 export type PromptProfile = {
   label: string;
