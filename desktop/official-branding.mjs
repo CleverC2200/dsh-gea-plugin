@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 
 export function officialGeaBranding(config, { companySeed } = {}) {
   const icon = fileURLToPath(new URL("./build/icon.png", import.meta.url));
@@ -55,9 +56,15 @@ export function officialGeaBranding(config, { companySeed } = {}) {
             const path = join(resources, "company-seed/manifest.json");
             const manifest = JSON.parse(await readFile(path, "utf8"));
             const root = join(resources, "app.asar");
+            const require = createRequire(
+              join(context.packager.projectDir, "package.json"),
+            );
+            const asar = createRequire(
+              require.resolve("app-builder-lib/package.json"),
+            )("@electron/asar");
             for (const artifact of manifest.core.artifacts)
               artifact.sha256 = createHash("sha256")
-                .update(await readFile(join(root, artifact.path)))
+                .update(asar.extractFile(root, artifact.path))
                 .digest("hex");
             await writeFile(path, JSON.stringify(manifest, null, 2) + "\n");
           },
