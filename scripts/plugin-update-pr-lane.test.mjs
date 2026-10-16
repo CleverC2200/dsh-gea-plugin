@@ -26,11 +26,7 @@ test("targeted update acceptance belongs only to PR 78's frozen product and peer
     { event: "workflow_dispatch" },
   ])
     assert.equal(selectPluginUpdateLane({ ...event, ...change }), false);
-  for (const change of [
-    { pullRequest: 75 },
-    { matches: false },
-    { headRepository: "other/fork" },
-  ])
+  for (const change of [{ pullRequest: 75 }, { matches: false }, { headRepository: "other/fork" }])
     assert.throws(
       () => selectPluginUpdateLane({ ...event, ...change }),
       /PLUGIN_UPDATE_SCOPE_REJECTED/,
@@ -38,18 +34,13 @@ test("targeted update acceptance belongs only to PR 78's frozen product and peer
   for (const entries of [
     [],
     Array(3).fill({ repo: "dsh-gea-plugin" }),
-    ["dsh-gea-plugin", "dsh-agent-manage", "dsh-agent-workbench"].map(
-      (repo) => ({
-        repo,
-        path: "/missing",
-        head: "a".repeat(40),
-      }),
-    ),
+    ["dsh-gea-plugin", "dsh-agent-manage", "dsh-agent-workbench"].map((repo) => ({
+      repo,
+      path: "/missing",
+      head: "a".repeat(40),
+    })),
   ])
-    assert.throws(
-      () => validatePluginUpdateGroup(entries),
-      /PLUGIN_UPDATE_GROUP_REJECTED/,
-    );
+    assert.throws(() => validatePluginUpdateGroup(entries), /PLUGIN_UPDATE_GROUP_REJECTED/);
 });
 test("only the immediate ordinary merge retains targeted acceptance", () => {
   const merge = {
@@ -90,13 +81,7 @@ test("every targeted stage requires public hash admission before preparation", (
   for (const stage of ["prepare", "build", "checks", "tests", "summary"]) {
     const result = spawnSync(
       process.execPath,
-      [
-        "scripts/run-quality-ci.mjs",
-        "--phase",
-        "plugin-update-pr",
-        "--stage",
-        stage,
-      ],
+      ["scripts/run-quality-ci.mjs", "--phase", "plugin-update-pr", "--stage", stage],
       { encoding: "utf8" },
     );
     assert.equal(result.status, 1);
@@ -115,29 +100,20 @@ test("desktop first-install scope is bound to its own PR and frozen packaging so
     matches: true,
   };
   assert.equal(selectPluginUpdateLane(input, a), true);
+  assert.throws(() => selectPluginUpdateLane({ ...input, matches: false }, a), /SCOPE_REJECTED/);
   assert.throws(
-    () => selectPluginUpdateLane({ ...input, matches: false }, a),
-    /SCOPE_REJECTED/,
-  );
-  assert.throws(
-    () =>
-      selectPluginUpdateLane({ ...input, pullRequest: a.pullRequest + 1 }, a),
+    () => selectPluginUpdateLane({ ...input, pullRequest: a.pullRequest + 1 }, a),
     /SCOPE_REJECTED/,
   );
   assert.throws(
     () => selectPluginUpdateLane({ ...input, headRepository: "other/fork" }, a),
     /SCOPE_REJECTED/,
   );
-  assert.equal(
-    selectPluginUpdateLane({ ...input, branch: "unrelated" }, a),
-    false,
-  );
+  assert.equal(selectPluginUpdateLane({ ...input, branch: "unrelated" }, a), false);
   const head = spawnSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
   }).stdout.trim();
-  const plan = pluginUpdatePlanFor([
-    { repo: "dsh-gea-plugin", path: process.cwd(), head },
-  ]);
+  const plan = pluginUpdatePlanFor([{ repo: "dsh-gea-plugin", path: process.cwd(), head }]);
   assert.deepEqual(plan.files, [
     "scripts/plugin-update-pr-lane.test.mjs",
     "desktop/company-bootstrap.test.mjs",

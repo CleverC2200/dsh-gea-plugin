@@ -50,9 +50,7 @@ export async function installCompanyPackages({
 }) {
   const anchor = join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json");
   const require = createRequire(anchor);
-  const boot = await import(
-    pathToFileURL(require.resolve("@deepseek-ai/dsh-app-boot"))
-  );
+  const boot = await import(pathToFileURL(require.resolve("@deepseek-ai/dsh-app-boot")));
   const { runProfilePnpm } = await import(
     pathToFileURL(require.resolve("@deepseek-ai/dsh-plugin-manager/operations"))
   );
@@ -77,8 +75,7 @@ export async function installCompanyPackages({
           ...(offline ? ["--offline"] : []),
           "--registry=https://registry.npmjs.org",
           "--store-dir=" + store,
-          "--config.cache-dir=" +
-            join(home, "desktop-company-cache", "metadata"),
+          "--config.cache-dir=" + join(home, "desktop-company-cache", "metadata"),
         ],
         {
           execution: "service",
@@ -97,8 +94,7 @@ export async function installCompanyPackages({
       ),
     { waitMs: 120000 },
   );
-  if (result.exitCode !== 0)
-    throw Error("GEA_COMPANY_INSTALL_FAILED: " + result.logPath);
+  if (result.exitCode !== 0) throw Error("GEA_COMPANY_INSTALL_FAILED: " + result.logPath);
   return result;
 }
 
@@ -108,8 +104,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
     ? await json(join(profile, "package.json"))
     : undefined;
   let missing = names.filter((name) => !current?.dependencies?.[name]);
-  if (!missing.length)
-    return { status: "existing-profile-preserved", changed: false };
+  if (!missing.length) return { status: "existing-profile-preserved", changed: false };
   const manifest = await readCompanySeed(seed);
   const app = await json(join(root, "package.json"));
   if (
@@ -135,18 +130,14 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
         ? await json(join(profile, "package.json"))
         : undefined;
       missing = names.filter((name) => !latest?.dependencies?.[name]);
-      if (!missing.length)
-        return { status: "existing-profile-preserved", changed: false };
+      if (!missing.length) return { status: "existing-profile-preserved", changed: false };
       for (const file of [
         "package.json",
         "cordis.patch.yml",
         "pnpm-lock.yaml",
         "pnpm-workspace.yaml",
       ]) {
-        if (
-          existsSync(join(profile, file)) &&
-          !existsSync(join(record, "before-" + file))
-        )
+        if (existsSync(join(profile, file)) && !existsSync(join(record, "before-" + file)))
           await cp(join(profile, file), join(record, "before-" + file), {
             errorOnExist: true,
             force: false,
@@ -177,9 +168,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
         { mode: 0o600 },
       );
       try {
-        const selected = manifest.packages.filter((row) =>
-          missing.includes(row.name),
-        );
+        const selected = manifest.packages.filter((row) => missing.includes(row.name));
         await installCompanyPackages({
           root,
           support,
@@ -191,9 +180,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
         });
         const installed = await json(join(profile, "package.json"));
         for (const row of selected) {
-          const actual = await json(
-            join(profile, "node_modules", row.name, "package.json"),
-          );
+          const actual = await json(join(profile, "node_modules", row.name, "package.json"));
           if (
             actual.version !== row.version ||
             !installed.dsh?.profile?.bundles?.includes(row.name)
@@ -209,9 +196,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
             throw Error("GEA_PROFILE_PATCH_INVALID");
           const rows = document.toJS();
           const index = rows.findIndex(
-            (row) =>
-              row?.id === "gea-proof" ||
-              row?.name === "@cleverc2200/gea-dsh-prototype",
+            (row) => row?.id === "gea-proof" || row?.name === "@cleverc2200/gea-dsh-prototype",
           );
           if (index === -1)
             document.add({
@@ -219,6 +204,8 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
               config: {
                 pluginUpdates: {
                   source: manifest.source,
+                  checkTimeoutMs: 60000,
+                  pollIntervalMs: 2000,
                   core: { ...manifest.core, root, kind: "desktop" },
                 },
               },
@@ -226,6 +213,8 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
           else if (!rows[index].config?.pluginUpdates)
             document.setIn([index, "config", "pluginUpdates"], {
               source: manifest.source,
+              checkTimeoutMs: 60000,
+              pollIntervalMs: 2000,
               core: { ...manifest.core, root, kind: "desktop" },
             });
           await writeFile(patch, document.toString(), { mode: 0o600 });
@@ -235,17 +224,14 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
           changed: true,
           packages: selected.map(({ name, version }) => ({ name, version })),
         };
-        await writeFile(
-          join(record, "receipt.json"),
-          JSON.stringify(result, null, 2) + "\n",
-          { mode: 0o600 },
-        );
+        await writeFile(join(record, "receipt.json"), JSON.stringify(result, null, 2) + "\n", {
+          mode: 0o600,
+        });
         return result;
       } catch (error) {
         await writeFile(
           join(record, "receipt.json"),
-          JSON.stringify({ status: "failed", diagnostic: error.message }) +
-            "\n",
+          JSON.stringify({ status: "failed", diagnostic: error.message }) + "\n",
           { mode: 0o600 },
         );
         throw error;
@@ -255,10 +241,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [root, support, seed] = process.argv.slice(2);
   const require = createRequire(join(root, "dsh/package.json"));
   const { resolveDshHome } = await import(

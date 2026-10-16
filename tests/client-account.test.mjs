@@ -152,11 +152,11 @@ test("a cancelled account login cannot refresh the identity or accept its late c
 });
 
 for (const [desktop, authenticated, expected] of [
-  [true, false, 1],
+  [true, false, 0],
   [true, true, 0],
   [false, false, 0],
 ])
-  test(`company login navigation follows confirmed Host identity: desktop=${desktop}, authenticated=${authenticated}`, async () => {
+  test(`GEA account leaves login presentation to Workbench: desktop=${desktop}, authenticated=${authenticated}`, async () => {
     const module = { exports: {} },
       provided = new Map(),
       opened = [];

@@ -3,10 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  bootstrapCompanyProfile,
-  readCompanySeed,
-} from "./company-bootstrap.mjs";
+import { bootstrapCompanyProfile, readCompanySeed } from "./company-bootstrap.mjs";
 
 test("an existing company profile retains configuration, disabled bundles, WeKnora and update receipts byte for byte", async () => {
   const home = await mkdtemp(join(tmpdir(), "gea-bootstrap-existing-"));
@@ -27,11 +24,9 @@ test("an existing company profile retains configuration, disabled bundles, WeKno
     "cordis.patch.yml":
       "- id: gea-proof\n  config:\n    knowledge:\n      baseUrl: https://weknora.example.test\n",
     "gea/plugin-updates/latest.json": '{"id":"old","stage":"completed"}',
-    "gea/plugin-updates/operations/old/receipt.json":
-      '{"version":"0.0.154","stage":"completed"}',
+    "gea/plugin-updates/operations/old/receipt.json": '{"version":"0.0.154","stage":"completed"}',
   };
-  for (const [name, text] of Object.entries(files))
-    await writeFile(join(profile, name), text);
+  for (const [name, text] of Object.entries(files)) await writeFile(join(profile, name), text);
   const result = await bootstrapCompanyProfile({
     root: "unused",
     support: "unused",
@@ -79,10 +74,7 @@ test("a damaged bundled archive stops first installation before creating the use
 
 test("the packaged seed rejects missing plugins and paths outside its archives directory", async () => {
   const seed = await mkdtemp(join(tmpdir(), "gea-bootstrap-manifest-"));
-  await writeFile(
-    join(seed, "manifest.json"),
-    JSON.stringify({ schema: 1, packages: [] }),
-  );
+  await writeFile(join(seed, "manifest.json"), JSON.stringify({ schema: 1, packages: [] }));
   await assert.rejects(readCompanySeed(seed), /GEA_SEED_INVALID/);
   const names = [
     "@cleverc2200/dsh-agent-workbench",

@@ -17,11 +17,7 @@ for (const row of config.packages) {
 }
 await writeFile(
   join(output, "manifest.json"),
-  JSON.stringify(
-    { schema: 1, packages, core: config.core, source: config.source },
-    null,
-    2,
-  ) + "\n",
+  JSON.stringify({ schema: 1, packages, core: config.core, source: config.source }, null, 2) + "\n",
 );
 await installCompanyPackages({
   root,
@@ -33,11 +29,11 @@ await installCompanyPackages({
   offline: false,
 });
 await rm(join(output, "store/v11/projects"), { recursive: true, force: true });
-await cp(
-  join(home, "desktop-company-cache/metadata"),
-  join(output, "metadata"),
-  { recursive: true, errorOnExist: true, force: false },
-);
+await cp(join(home, "desktop-company-cache/metadata"), join(output, "metadata"), {
+  recursive: true,
+  errorOnExist: true,
+  force: false,
+});
 console.log(
   "Company packages installed through official package operations; dependency store prepared.",
 );

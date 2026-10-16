@@ -42,26 +42,20 @@ export function officialGeaBranding(config, { companySeed } = {}) {
       ...config.extraResources.map((resource) =>
         resource.to === "icon.png" ? { ...resource, from: icon } : resource,
       ),
-      ...(companySeed
-        ? [{ from: companySeed, to: "company-seed", filter: ["**/*"] }]
-        : []),
+      ...(companySeed ? [{ from: companySeed, to: "company-seed", filter: ["**/*"] }] : []),
     ],
     ...(companySeed
       ? {
           afterPack: async (context) => {
             await config.afterPack?.(context);
-            const resources = context.packager.getResourcesDir(
-              context.appOutDir,
-            );
+            const resources = context.packager.getResourcesDir(context.appOutDir);
             const path = join(resources, "company-seed/manifest.json");
             const manifest = JSON.parse(await readFile(path, "utf8"));
             const root = join(resources, "app.asar");
-            const require = createRequire(
-              join(context.packager.projectDir, "package.json"),
+            const require = createRequire(join(context.packager.projectDir, "package.json"));
+            const asar = createRequire(require.resolve("app-builder-lib/package.json"))(
+              "@electron/asar",
             );
-            const asar = createRequire(
-              require.resolve("app-builder-lib/package.json"),
-            )("@electron/asar");
             for (const artifact of manifest.core.artifacts)
               artifact.sha256 = createHash("sha256")
                 .update(asar.extractFile(root, artifact.path))

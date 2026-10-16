@@ -50,8 +50,7 @@ export function selectPluginUpdateLane(input, a = pluginUpdateAuthorization) {
   if (input.event === "pull_request") {
     if (input.branch === a.branch && input.pullRequest !== a.pullRequest)
       throw Error("PLUGIN_UPDATE_SCOPE_REJECTED");
-    if (input.pullRequest !== a.pullRequest || input.branch !== a.branch)
-      return false;
+    if (input.pullRequest !== a.pullRequest || input.branch !== a.branch) return false;
     if (input.headRepository !== a.repository || !input.matches)
       throw Error("PLUGIN_UPDATE_SCOPE_REJECTED");
     return true;
@@ -72,13 +71,7 @@ export function pluginUpdateLane(root, env = process.env) {
   let bootstrapMerge = false;
   if (env.GITHUB_EVENT_NAME === "push") {
     try {
-      git(
-        root,
-        "merge-base",
-        "--is-ancestor",
-        desktopBootstrapAuthorization.productHead,
-        head,
-      );
+      git(root, "merge-base", "--is-ancestor", desktopBootstrapAuthorization.productHead, head);
       bootstrapMerge = true;
     } catch {}
   }
@@ -96,52 +89,35 @@ export function pluginUpdateLane(root, env = process.env) {
       branch: event.pull_request?.head?.ref,
       headRepository: event.pull_request?.head?.repo?.full_name,
       ref: env.GITHUB_REF,
-      parents: git(root, "show", "-s", "--format=%P", head)
-        .split(" ")
-        .filter(Boolean),
+      parents: git(root, "show", "-s", "--format=%P", head).split(" ").filter(Boolean),
       matches:
         (!env.QUALITY_EXPECTED_SHA || env.QUALITY_EXPECTED_SHA === head) &&
         matchesFrozenSource(
           { path: root, head },
           authorization.productHead,
-          authorization === desktopBootstrapAuthorization
-            ? bootstrapSupplements
-            : supplements,
+          authorization === desktopBootstrapAuthorization ? bootstrapSupplements : supplements,
         ),
     },
     authorization,
   );
 }
 export function validatePluginUpdateGroup(repositories) {
-  if (
-    repositories.length !== 3 ||
-    new Set(repositories.map((row) => row.repo)).size !== 3
-  )
+  if (repositories.length !== 3 || new Set(repositories.map((row) => row.repo)).size !== 3)
     throw Error("PLUGIN_UPDATE_GROUP_REJECTED");
   const gea = repositories.find((row) => row.repo === "dsh-gea-plugin");
   const bootstrap =
     gea &&
-    matchesFrozenSource(
-      gea,
-      desktopBootstrapAuthorization.productHead,
-      bootstrapSupplements,
-    );
+    matchesFrozenSource(gea, desktopBootstrapAuthorization.productHead, bootstrapSupplements);
   for (const [repo, original] of Object.entries(frozenSources)) {
     const baseline =
-      bootstrap && repo === "dsh-gea-plugin"
-        ? desktopBootstrapAuthorization.productHead
-        : original;
+      bootstrap && repo === "dsh-gea-plugin" ? desktopBootstrapAuthorization.productHead : original;
     const entry = repositories.find((row) => row.repo === repo);
     if (
       !entry ||
       !matchesFrozenSource(
         entry,
         baseline,
-        repo === "dsh-gea-plugin"
-          ? bootstrap
-            ? bootstrapSupplements
-            : supplements
-          : [],
+        repo === "dsh-gea-plugin" ? (bootstrap ? bootstrapSupplements : supplements) : [],
       )
     )
       throw Error("PLUGIN_UPDATE_GROUP_REJECTED: " + repo);
@@ -150,17 +126,12 @@ export function validatePluginUpdateGroup(repositories) {
 export function pluginUpdatePlanFor(repositories) {
   const gea = repositories.find((row) => row.repo === "dsh-gea-plugin");
   return gea &&
-    matchesFrozenSource(
-      gea,
-      desktopBootstrapAuthorization.productHead,
-      bootstrapSupplements,
-    )
+    matchesFrozenSource(gea, desktopBootstrapAuthorization.productHead, bootstrapSupplements)
     ? {
         lane: "plugin-update-pr",
         runtime: false,
         browser: false,
-        acceptance:
-          "targeted complete desktop bootstrap; broad selection not run",
+        acceptance: "targeted complete desktop bootstrap; broad selection not run",
         authorization: desktopBootstrapAuthorization,
         files: [
           "scripts/plugin-update-pr-lane.test.mjs",

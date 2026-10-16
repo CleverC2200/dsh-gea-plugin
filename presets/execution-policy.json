@@ -40,7 +40,15 @@
       "presetName": "基地库存Agent",
       "description": "基地库存只读查询与解释，支持上下文压缩、文件操作、规划、任务和协作；业务执行遵循当前身份与资源授权。",
       "consumerCode": "base-safety-stock",
-      "skills": ["inventory-aqkc"],
+      "skills": [
+        "inventory-aqkc",
+        "aging-stagnation-monitoring",
+        "future-aging-projection",
+        "inventory-deviation-monitoring",
+        "inventory-policy",
+        "report-templates",
+        "shortage-monitoring"
+      ],
       "crossConsumers": ["sales_forecast"]
     },
     "gea-html-inventory-fc": {
