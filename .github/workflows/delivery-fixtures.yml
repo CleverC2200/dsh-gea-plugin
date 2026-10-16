@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   delivery-fixtures:
+    if: github.ref_name != 'codex/windows-rc2-local-20261016'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,3 +27,59 @@ jobs:
       - run: node --run test:fixture-inputs
       - run: node --run test:prompt-execution
       - run: node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs
+
+  windows-local-package:
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'codex/windows-rc2-local-20261016'
+    runs-on: windows-2025
+    timeout-minutes: 75
+    env:
+      DSH_DESKTOP_TARGET_PLATFORM: win32
+      DSH_DESKTOP_TARGET_ARCH: x64
+      DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
+      DSH_DESKTOP_UNSIGNED: '1'
+      DSH_DESKTOP_BUILD_COMMIT: 639ed015397290b3745d163aafe02ffee4aa3f84
+      DSH_DESKTOP_BUILD_DIRTY: '0'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      ELECTRON_BUILDER_7Z_FILTER: BCJ
+      LEFTHOOK: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: packaging
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: aba376f9ee6c24c09ca64621a75fcc898cf84c20
+          path: gea
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: 639ed015397290b3745d163aafe02ffee4aa3f84
+          path: core
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.14.1'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Prepare fixed toolchain
+        working-directory: core
+        run: |
+          corepack enable
+          corepack pnpm install --frozen-lockfile --prefer-offline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build Windows package and smoke runtime
+        run: node packaging/scripts/windows-rc2-local/build.mjs core gea
+      - name: Keep package and build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GEA-Desktop-rc2-win-x64-local
+          if-no-files-found: warn
+          compression-level: 0
+          path: |
+            core/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.json
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.log
