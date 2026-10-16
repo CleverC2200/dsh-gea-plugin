@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   pluginUpdateAuthorization as a,
@@ -89,7 +91,7 @@ test("every targeted stage requires public hash admission before preparation", (
   }
 });
 
-test("desktop first-install scope is bound to its own PR and frozen packaging source", () => {
+test("desktop first-install scope is bound to its own PR and frozen packaging source", (t) => {
   const a = desktopBootstrapAuthorization;
   const input = {
     event: "pull_request",
@@ -110,10 +112,17 @@ test("desktop first-install scope is bound to its own PR and frozen packaging so
     /SCOPE_REJECTED/,
   );
   assert.equal(selectPluginUpdateLane({ ...input, branch: "unrelated" }, a), false);
-  const head = spawnSync("git", ["rev-parse", "HEAD"], {
-    encoding: "utf8",
-  }).stdout.trim();
-  const plan = pluginUpdatePlanFor([{ repo: "dsh-gea-plugin", path: process.cwd(), head }]);
+  const frozen = mkdtempSync(join(tmpdir(), "gea-frozen-bootstrap-"));
+  t.after(() => rmSync(frozen, { recursive: true, force: true }));
+  const git = (...args) => {
+    const result = spawnSync("git", args, { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  git("clone", "--shared", "--no-checkout", process.cwd(), frozen);
+  git("-C", frozen, "sparse-checkout", "set", "--no-cone", "/src/host.ts");
+  git("-C", frozen, "checkout", "--detach", a.productHead);
+  const plan = pluginUpdatePlanFor([{ repo: "dsh-gea-plugin", path: frozen, head: a.productHead }]);
   assert.deepEqual(plan.files, [
     "scripts/plugin-update-pr-lane.test.mjs",
     "tests/cube-new.test.mjs",
@@ -125,4 +134,23 @@ test("desktop first-install scope is bound to its own PR and frozen packaging so
   ]);
   assert.equal(plan.authorization, a);
   assert.equal(plan.browser, false);
+  writeFileSync(join(frozen, "src/host.ts"), "export {};\n");
+  git("-C", frozen, "add", "src/host.ts");
+  git(
+    "-C",
+    frozen,
+    "-c",
+    "user.name=fixture",
+    "-c",
+    "user.email=fixture@invalid",
+    "commit",
+    "-qm",
+    "unapproved product change",
+  );
+  assert.equal(
+    pluginUpdatePlanFor([
+      { repo: "dsh-gea-plugin", path: frozen, head: git("-C", frozen, "rev-parse", "HEAD") },
+    ]),
+    pluginUpdatePlan,
+  );
 });
