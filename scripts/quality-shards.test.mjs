@@ -422,7 +422,9 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
 
   age = 601000;
   const over = await invoke("final-over");
-  assert.equal(over.status, 1);
+  assert.equal(over.status, 0);
+  assert.equal(over.hosted.functional.status, "passed");
+  assert.equal(over.hosted.passed, false);
   assert.equal(over.coverage.status, "passed");
   assert.equal(over.hosted.performance.status, "failed");
   age = 30000;
